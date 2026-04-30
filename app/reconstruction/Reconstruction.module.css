@@ -996,3 +996,184 @@
 .trustCard .metricBarTrack {
   height: 8px !important;
 }
+
+/* Modal styles - Phase 2.5A CTA capture */
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(2, 6, 12, 0.78);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.modalPanel {
+  position: relative;
+  width: 100%;
+  max-width: 380px;
+  max-height: 90vh;
+  overflow-y: auto;
+  background: linear-gradient(145deg, rgba(15, 23, 35, 0.98), rgba(8, 14, 22, 0.98));
+  border: 1px solid rgba(139, 92, 246, 0.25);
+  border-radius: 16px;
+  padding: 24px 20px 20px;
+  box-shadow:
+    0 25px 50px -12px rgba(0, 0, 0, 0.5),
+    0 0 30px rgba(139, 92, 246, 0.1);
+}
+
+.modalClose {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  cursor: pointer;
+  color: rgba(244, 246, 250, 0.7);
+  transition: all 0.2s ease;
+}
+
+.modalClose:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #F4F6FA;
+}
+
+.modalClose svg {
+  width: 18px;
+  height: 18px;
+}
+
+.modalTitle {
+  font-size: 22px;
+  font-weight: 700;
+  color: #F4F6FA;
+  margin: 0 0 10px 0;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.modalSubtitle {
+  font-size: 13px;
+  color: rgba(244, 246, 250, 0.65);
+  margin: 0 0 20px 0;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.modalPreview {
+  background: rgba(139, 92, 246, 0.08);
+  border: 1px solid rgba(139, 92, 246, 0.2);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 20px;
+}
+
+.previewRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.1);
+}
+
+.previewRow:last-child {
+  border-bottom: none;
+}
+
+.previewLabel {
+  font-size: 12px;
+  color: rgba(244, 246, 250, 0.55);
+  font-weight: 500;
+}
+
+.previewValue {
+  font-size: 13px;
+  color: #F4F6FA;
+  font-weight: 600;
+}
+
+.modalForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modalInput {
+  width: 100%;
+  padding: 14px 16px;
+  font-size: 15px;
+  color: #F4F6FA;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.modalInput::placeholder {
+  color: rgba(244, 246, 250, 0.4);
+}
+
+.modalInput:focus {
+  border-color: rgba(139, 92, 246, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 0 0 3px rgba(139, 92, 246, 0.15);
+}
+
+.modalError {
+  font-size: 12px;
+  color: #ef4444;
+  margin-top: -6px;
+  margin-bottom: 4px;
+}
+
+.modalPrimary {
+  width: 100%;
+  padding: 15px 20px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #0B0F14;
+  background: linear-gradient(135deg, #F4F6FA, #E8ECEF);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-top: 4px;
+}
+
+.modalPrimary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 8px 20px rgba(244, 246, 250, 0.25);
+}
+
+.modalPrimary:active {
+  transform: translateY(0);
+}
+
+.modalFineprint {
+  font-size: 11px;
+  color: rgba(244, 246, 250, 0.45);
+  text-align: center;
+  margin: 14px 0 6px 0;
+}
+
+.modalFooter {
+  font-size: 11px;
+  color: rgba(244, 246, 250, 0.35);
+  text-align: center;
+  margin: 0;
+}
+
+.modalSuccess {
+  text-align: center;
+  padding: 20px 0 10px;
+}
