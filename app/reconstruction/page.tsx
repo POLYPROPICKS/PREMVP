@@ -10,6 +10,7 @@ export default function ReconstructionPage() {
   const [email, setEmail] = useState('');
   const [isSuccess, setIsSuccess] = useState(false);
   const [emailError, setEmailError] = useState('');
+  const [apiError, setApiError] = useState('');
 
   const activeSignal = premiumSignals[0];
 
@@ -18,6 +19,7 @@ export default function ReconstructionPage() {
     setIsSuccess(false);
     setEmail('');
     setEmailError('');
+    setApiError('');
   }, []);
 
   const closeModal = useCallback(() => {
@@ -25,13 +27,14 @@ export default function ReconstructionPage() {
     setIsSuccess(false);
     setEmail('');
     setEmailError('');
+    setApiError('');
   }, []);
 
   const validateEmail = (email: string): boolean => {
     return email.includes('@') && email.includes('.');
   };
 
-  const handleSubmit = useCallback((e: React.FormEvent) => {
+  const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (!validateEmail(email)) {
@@ -41,16 +44,41 @@ export default function ReconstructionPage() {
 
     const captureData = {
       email,
+      signalId: activeSignal.id,
       eventTitle: activeSignal.eventTitle,
       position: activeSignal.position,
       winProbability: activeSignal.winProbability,
       price: activeSignal.price,
+      source: 'cta_modal',
       createdAt: new Date().toISOString(),
     };
 
+    // Always save to localStorage as fallback/debug
     localStorage.setItem('polypropicks_lead_capture', JSON.stringify(captureData));
-    setIsSuccess(true);
-    setEmailError('');
+
+    try {
+      const response = await fetch('/api/leads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(captureData),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setIsSuccess(true);
+        setEmailError('');
+        setApiError('');
+      } else {
+        setApiError('Saved locally. We could not sync yet.');
+        setEmailError('');
+      }
+    } catch {
+      setApiError('Saved locally. We could not sync yet.');
+      setEmailError('');
+    }
   }, [email, activeSignal]);
 
   // Escape key handler
@@ -87,6 +115,7 @@ export default function ReconstructionPage() {
           email={email}
           setEmail={setEmail}
           emailError={emailError}
+          apiError={apiError}
           isSuccess={isSuccess}
           onSubmit={handleSubmit}
           activeSignal={activeSignal}
@@ -391,6 +420,7 @@ interface UnlockModalProps {
   email: string;
   setEmail: (email: string) => void;
   emailError: string;
+  apiError: string;
   isSuccess: boolean;
   onSubmit: (e: React.FormEvent) => void;
   activeSignal: {
@@ -407,6 +437,7 @@ function UnlockModal({
   email,
   setEmail,
   emailError,
+  apiError,
   isSuccess,
   onSubmit,
   activeSignal,
@@ -454,6 +485,7 @@ function UnlockModal({
                 required
               />
               {emailError && <span className={styles.modalError}>{emailError}</span>}
+              {apiError && <span className={styles.modalError}>{apiError}</span>}
               <button type="submit" className={styles.modalPrimary}>
                 Reserve signal access — {activeSignal.price}
               </button>
