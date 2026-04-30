@@ -1,0 +1,249 @@
+.card {
+  position: relative;
+  width: 100%;
+  min-width: 336px;
+  max-width: 782px;
+  min-height: 178px;
+  border-radius: 22px;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(320px 120px at 24% 0%, rgba(0, 140, 255, 0.08), transparent 42%),
+    linear-gradient(180deg, #071321 0%, #040b16 100%);
+  border: 1.5px solid rgba(24, 231, 255, 0.62);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.02) inset,
+    0 0 22px rgba(24, 231, 255, 0.16),
+    0 18px 40px rgba(0, 0, 0, 0.42);
+  padding: 14px 18px 14px;
+}
+
+.card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(255, 255, 255, 0.03), transparent 22%),
+    radial-gradient(circle at 90% 30%, rgba(24, 231, 255, 0.03), transparent 20%);
+  mix-blend-mode: screen;
+}
+
+.topRow {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.sourceMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.spacer {
+  min-width: 0;
+}
+
+.eqIcon {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 auto;
+  color: #18e7ff;
+  filter: drop-shadow(0 0 8px rgba(24, 231, 255, 0.14));
+}
+
+.sectionLabel {
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: #b8c2cd;
+  white-space: nowrap;
+}
+
+.pill {
+  min-height: 34px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border-radius: 12px;
+  background: rgba(8, 17, 29, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  color: #f6f8fb;
+  font-size: 14px;
+  line-height: 1;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
+}
+
+.recencyPill {
+  padding-inline: 11px;
+}
+
+.platformIcon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: #ffffff;
+}
+
+.platformIconPolygon {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  color: #c25bff;
+}
+
+.contentRow {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 190px 1fr;
+  gap: 18px;
+  align-items: end;
+}
+
+.chartSide {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  min-height: 96px;
+  padding-left: 2px;
+}
+
+.chart {
+  width: 180px;
+  height: 72px;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.chartLine {
+  stroke: #56f0ff;
+  stroke-width: 3.2;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.chartFill {
+  fill: rgba(86, 240, 255, 0.12);
+}
+
+.chartDot {
+  fill: #56f0ff;
+}
+
+.changeLabel {
+  color: #8bff4d;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  text-align: right;
+  padding-right: 2px;
+}
+
+.copySide {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding-bottom: 12px;
+}
+
+.headline {
+  margin: 0 0 10px;
+  font-size: 32px;
+  line-height: 0.96;
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.subline {
+  margin: 0;
+  font-size: 18px;
+  line-height: 1.12;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  color: #18e7ff;
+  white-space: nowrap;
+}
+
+.divider {
+  position: absolute;
+  left: 24px;
+  right: 24px;
+  bottom: 14px;
+  height: 1px;
+  background: rgba(255, 255, 255, 0.16);
+  z-index: 1;
+}
+
+@media (max-width: 640px) {
+  .card {
+    min-width: 336px;
+    min-height: 170px;
+    padding: 10px 12px 12px;
+    border-radius: 18px;
+  }
+
+  .topRow {
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+  }
+
+  .topRow > .pill:nth-of-type(2) {
+    display: none;
+  }
+
+  .contentRow {
+    grid-template-columns: 132px 1fr;
+    gap: 10px;
+  }
+
+  .chart {
+    width: 124px;
+    height: 56px;
+  }
+
+  .headline {
+    font-size: 22px;
+  }
+
+  .subline {
+    font-size: 13px;
+  }
+
+  .changeLabel {
+    font-size: 14px;
+  }
+
+  .divider {
+    left: 14px;
+    right: 14px;
+    bottom: 10px;
+  }
+
+  .sectionLabel {
+    font-size: 12px;
+  }
+
+  .pill {
+    min-height: 30px;
+    font-size: 12px;
+    padding: 0 10px;
+  }
+}

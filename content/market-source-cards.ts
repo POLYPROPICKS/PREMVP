@@ -1,0 +1,52 @@
+import { MarketSourceCard } from '@/lib/types';
+
+export const marketSourceCards: MarketSourceCard[] = [
+  {
+    id: '1',
+    sectionLabel: 'Market Source',
+    sourceName: 'Polymarket',
+    sourcePills: ['Polymarket', 'Polygon'],
+    recencyPill: '8 min ago',
+    ageLabel: '8 min ago',
+    headline: '$13K whale flow',
+    subheadline: 'Barcelona odds moved +7%',
+    changeLabel: '+7% ↗',
+    isActive: true,
+  },
+  {
+    id: '2',
+    sourceName: 'Kalshi',
+    ageLabel: '12 min ago',
+    headline: 'Fed rate cut surge',
+    subheadline: 'Probability jumps 15% in 1 hour',
+    changeLabel: '+15% ↗',
+    isActive: true,
+  },
+  {
+    id: '3',
+    sourceName: 'PredictIt',
+    ageLabel: '25 min ago',
+    headline: 'Senate flip momentum',
+    subheadline: 'Democratic odds climbing fast',
+    changeLabel: '+8% ↗',
+    isActive: true,
+  },
+  {
+    id: '4',
+    sourceName: 'Polymarket',
+    ageLabel: '32 min ago',
+    headline: 'Oil price correction',
+    subheadline: 'WTI Down 5% by EOD',
+    changeLabel: '-5% ↘',
+    isActive: false,
+  },
+  {
+    id: '5',
+    sourceName: 'Kalshi',
+    ageLabel: '45 min ago',
+    headline: 'Tech earnings beat',
+    subheadline: 'Q3 revenue exceeds expectations',
+    changeLabel: '+12% ↗',
+    isActive: false,
+  },
+];

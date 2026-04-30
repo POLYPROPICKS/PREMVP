@@ -1,0 +1,113 @@
+.header {
+  background: #000000;
+  color: #ffffff;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  position: relative;
+  z-index: 10;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gemIcon {
+  width: 28px;
+  height: 28px;
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.gemIcon::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, #06b6d4, #3b82f6);
+  transform: rotate(45deg);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);
+}
+
+.gemIcon::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  background: linear-gradient(135deg, #22d3ee, #60a5fa);
+  transform: rotate(45deg) scale(0.75);
+  border-radius: 4px;
+}
+
+.brandName {
+  font-size: 18px;
+  font-weight: 900;
+  color: #ffffff;
+  margin: 0;
+}
+
+.liveStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #111827;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(6, 182, 212, 0.6);
+  box-shadow: 0 4px 12px rgba(6, 182, 212, 0.2);
+}
+
+.liveDot {
+  width: 8px;
+  height: 8px;
+  background: #4ade80;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.liveText {
+  font-size: 12px;
+  font-weight: 700;
+  color: #67e8f9;
+  white-space: nowrap;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+@media (max-width: 640px) {
+  .header {
+    padding: 8px 12px;
+  }
+  
+  .gemIcon {
+    width: 24px;
+    height: 24px;
+  }
+  
+  .brandName {
+    font-size: 16px;
+  }
+  
+  .liveStatus {
+    padding: 4px 8px;
+    gap: 6px;
+  }
+  
+  .liveDot {
+    width: 6px;
+    height: 6px;
+  }
+  
+  .liveText {
+    font-size: 11px;
+  }
+}
