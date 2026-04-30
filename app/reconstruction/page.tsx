@@ -2,9 +2,10 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import styles from './Reconstruction.module.css';
-import { premiumSignals } from '@/content/signals';
+import { premiumSignals, PremiumSignal } from '@/content/signals';
 import { marketSources } from '@/content/marketSources';
 import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
+import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
 
 export default function ReconstructionPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -12,8 +13,7 @@ export default function ReconstructionPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [apiError, setApiError] = useState('');
-
-  const activeSignal = premiumSignals[0];
+  const [activeSignal, setActiveSignal] = useState<PremiumSignal>(premiumSignals[0]);
 
   const openModal = useCallback(() => {
     setIsModalOpen(true);
@@ -105,7 +105,11 @@ export default function ReconstructionPage() {
           <Header />
           <MarketSourceCarousel renderCard={(source) => <MarketSourceCard source={source} />} />
           <PillsRow />
-          <PremiumSignalCard onCtaClick={openModal} />
+          <PremiumEventCarousel
+            renderCard={(signal, onCtaClick) => <PremiumSignalCard signal={signal} onCtaClick={onCtaClick} />}
+            onActiveSignalChange={setActiveSignal}
+            onCtaClick={openModal}
+          />
         </div>
       </section>
 
@@ -264,9 +268,7 @@ function PillsRow() {
   );
 }
 
-function PremiumSignalCard({ onCtaClick }: { onCtaClick: () => void }) {
-  const activeSignal = premiumSignals[0];
-  
+function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof premiumSignals[0]; onCtaClick: () => void }) {
   return (
     <article className={styles.premiumSignalCard}>
       <div className={styles.premiumTop}>
@@ -279,7 +281,7 @@ function PremiumSignalCard({ onCtaClick }: { onCtaClick: () => void }) {
             <path d="M8 15.1 6.8 17.7 10 19.2l2-1.5V15H8Z" fill="#11161E" />
             <path d="M16 15.1 17.2 17.7 14 19.2l-2-1.5V15h4Z" fill="#11161E" />
           </svg>
-          <span>{activeSignal.league} • {activeSignal.time}</span>
+          <span>{signal.league} • {signal.time}</span>
         </div>
         <div className={styles.confidencePill}>
           <svg viewBox="0 0 24 24" className={styles.shield} aria-hidden="true">
@@ -296,14 +298,14 @@ function PremiumSignalCard({ onCtaClick }: { onCtaClick: () => void }) {
               fill="none"
             />
           </svg>
-          <span>{activeSignal.confidenceLabel}</span>
+          <span>{signal.confidenceLabel}</span>
         </div>
       </div>
-      <h1 className={styles.eventTitle}>{activeSignal.eventTitle}</h1>
+      <h1 className={styles.eventTitle}>{signal.eventTitle}</h1>
       <div className={styles.positionProfit}>
         <div className={styles.positionCol}>
           <div className={styles.label}>Position</div>
-          <div className={styles.positionValue}>{activeSignal.position}</div>
+          <div className={styles.positionValue}>{signal.position}</div>
           <div className={styles.target} aria-hidden="true">
             <img className={styles.decorIconImg} src="/icons/position-target.png" alt="" />
           </div>
@@ -311,7 +313,7 @@ function PremiumSignalCard({ onCtaClick }: { onCtaClick: () => void }) {
         <div className={styles.positionProfitDivider} />
         <div className={styles.profitCol}>
           <div className={styles.label}>Profit</div>
-          <div className={styles.profitValue}>{activeSignal.profit}</div>
+          <div className={styles.profitValue}>{signal.profit}</div>
           <div className={styles.trend} aria-hidden="true">
             <img className={styles.decorIconImg} src="/icons/profit-trend.png" alt="" />
           </div>
@@ -322,7 +324,7 @@ function PremiumSignalCard({ onCtaClick }: { onCtaClick: () => void }) {
           <div className={styles.winTitle}>WIN PROBABILITY</div>
           <div className={styles.ring}>
             <div className={styles.ringInner}>
-              <span className={styles.ringNumber}>{activeSignal.winProbability}</span>
+              <span className={styles.ringNumber}>{signal.winProbability}</span>
             </div>
           </div>
         </div>
@@ -335,7 +337,7 @@ function PremiumSignalCard({ onCtaClick }: { onCtaClick: () => void }) {
               <circle cx="12" cy="7.2" r="1.1" fill="currentColor" />
             </svg>
           </div>
-          {activeSignal.metrics.map((metric) => (
+          {signal.metrics.map((metric) => (
             <MetricRow
               key={metric.id}
               icon={
@@ -354,7 +356,7 @@ function PremiumSignalCard({ onCtaClick }: { onCtaClick: () => void }) {
           ))}
         </div>
       </div>
-      <button className={styles.cta} onClick={onCtaClick}>{activeSignal.ctaLabel} — {activeSignal.price}</button>
+      <button className={styles.cta} onClick={onCtaClick}>{signal.ctaLabel} — {signal.price}</button>
     </article>
   );
 }
