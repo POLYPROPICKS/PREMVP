@@ -1,10 +1,69 @@
 'use client';
 
+import { useState, useEffect, useCallback } from 'react';
 import styles from './Reconstruction.module.css';
 import { premiumSignals } from '@/content/signals';
 import { marketSources } from '@/content/marketSources';
 
 export default function ReconstructionPage() {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [email, setEmail] = useState('');
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [emailError, setEmailError] = useState('');
+
+  const activeSignal = premiumSignals[0];
+
+  const openModal = useCallback(() => {
+    setIsModalOpen(true);
+    setIsSuccess(false);
+    setEmail('');
+    setEmailError('');
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setIsModalOpen(false);
+    setIsSuccess(false);
+    setEmail('');
+    setEmailError('');
+  }, []);
+
+  const validateEmail = (email: string): boolean => {
+    return email.includes('@') && email.includes('.');
+  };
+
+  const handleSubmit = useCallback((e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!validateEmail(email)) {
+      setEmailError('Please enter a valid email');
+      return;
+    }
+
+    const captureData = {
+      email,
+      eventTitle: activeSignal.eventTitle,
+      position: activeSignal.position,
+      winProbability: activeSignal.winProbability,
+      price: activeSignal.price,
+      createdAt: new Date().toISOString(),
+    };
+
+    localStorage.setItem('polypropicks_lead_capture', JSON.stringify(captureData));
+    setIsSuccess(true);
+    setEmailError('');
+  }, [email, activeSignal]);
+
+  // Escape key handler
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isModalOpen) {
+        closeModal();
+      }
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isModalOpen, closeModal]);
+
   return (
     <main className={styles.page}>
       <div className={styles.proofMarker}>
@@ -17,9 +76,22 @@ export default function ReconstructionPage() {
           <Header />
           <MarketSourceCard />
           <PillsRow />
-          <PremiumSignalCard />
+          <PremiumSignalCard onCtaClick={openModal} />
         </div>
       </section>
+
+      {isModalOpen && (
+        <UnlockModal
+          isOpen={isModalOpen}
+          onClose={closeModal}
+          email={email}
+          setEmail={setEmail}
+          emailError={emailError}
+          isSuccess={isSuccess}
+          onSubmit={handleSubmit}
+          activeSignal={activeSignal}
+        />
+      )}
     </main>
   );
 }
@@ -164,7 +236,7 @@ function PillsRow() {
   );
 }
 
-function PremiumSignalCard() {
+function PremiumSignalCard({ onCtaClick }: { onCtaClick: () => void }) {
   const activeSignal = premiumSignals[0];
   
   return (
@@ -254,7 +326,7 @@ function PremiumSignalCard() {
           ))}
         </div>
       </div>
-      <button className={styles.cta}>{activeSignal.ctaLabel} — {activeSignal.price}</button>
+      <button className={styles.cta} onClick={onCtaClick}>{activeSignal.ctaLabel} — {activeSignal.price}</button>
     </article>
   );
 }
@@ -310,5 +382,98 @@ function AiChipIcon() {
         AI
       </text>
     </svg>
+  );
+}
+
+interface UnlockModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  email: string;
+  setEmail: (email: string) => void;
+  emailError: string;
+  isSuccess: boolean;
+  onSubmit: (e: React.FormEvent) => void;
+  activeSignal: {
+    eventTitle: string;
+    position: string;
+    winProbability: number;
+    price: string;
+  };
+}
+
+function UnlockModal({
+  isOpen,
+  onClose,
+  email,
+  setEmail,
+  emailError,
+  isSuccess,
+  onSubmit,
+  activeSignal,
+}: UnlockModalProps) {
+  if (!isOpen) return null;
+
+  return (
+    <div className={styles.modalBackdrop} onClick={onClose}>
+      <div className={styles.modalPanel} onClick={(e) => e.stopPropagation()}>
+        <button className={styles.modalClose} onClick={onClose} aria-label="Close">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M6 6L18 18M6 18L18 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          </svg>
+        </button>
+
+        {!isSuccess ? (
+          <>
+            <h2 className={styles.modalTitle}>Unlock full signal</h2>
+            <p className={styles.modalSubtitle}>
+              Get the full pick, entry logic, confidence breakdown, and movement alerts before odds shift.
+            </p>
+
+            <div className={styles.modalPreview}>
+              <div className={styles.previewRow}>
+                <span className={styles.previewLabel}>Event</span>
+                <span className={styles.previewValue}>{activeSignal.eventTitle}</span>
+              </div>
+              <div className={styles.previewRow}>
+                <span className={styles.previewLabel}>Position</span>
+                <span className={styles.previewValue}>{activeSignal.position}</span>
+              </div>
+              <div className={styles.previewRow}>
+                <span className={styles.previewLabel}>Win Probability</span>
+                <span className={styles.previewValue}>{activeSignal.winProbability}%</span>
+              </div>
+            </div>
+
+            <form onSubmit={onSubmit} className={styles.modalForm}>
+              <input
+                type="email"
+                className={styles.modalInput}
+                placeholder="Enter your email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+              />
+              {emailError && <span className={styles.modalError}>{emailError}</span>}
+              <button type="submit" className={styles.modalPrimary}>
+                Reserve signal access — {activeSignal.price}
+              </button>
+            </form>
+
+            <p className={styles.modalFineprint}>No spam. Early access users get first pricing.</p>
+            <p className={styles.modalFooter}>Full checkout opens in the next step.</p>
+          </>
+        ) : (
+          <div className={styles.modalSuccess}>
+            <h2 className={styles.modalTitle}>You&apos;re on the early list</h2>
+            <p className={styles.modalSubtitle}>
+              We saved your signal request. Next step: checkout and live alerts.
+            </p>
+            <button className={styles.modalPrimary} onClick={onClose}>
+              Close
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
