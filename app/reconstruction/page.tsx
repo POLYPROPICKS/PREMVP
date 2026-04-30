@@ -1,6 +1,8 @@
 'use client';
 
 import styles from './Reconstruction.module.css';
+import { premiumSignals } from '@/content/signals';
+import { marketSources } from '@/content/marketSources';
 
 export default function ReconstructionPage() {
   return (
@@ -80,6 +82,8 @@ function Header() {
 }
 
 function MarketSourceCard() {
+  const activeMarketSource = marketSources[0];
+  
   return (
     <section className={styles.marketSourceCard}>
       <div className={styles.marketTop}>
@@ -93,7 +97,7 @@ function MarketSourceCard() {
               fill="none"
             />
           </svg>
-          <span>Market Source</span>
+          <span>{activeMarketSource.sourceLabel}</span>
         </div>
         <div className={styles.marketPill}>
           <svg viewBox="0 0 24 24" className={styles.marketPillIcon} aria-hidden="true">
@@ -105,7 +109,7 @@ function MarketSourceCard() {
               fill="none"
             />
           </svg>
-          <span>Polymarket</span>
+          <span>{activeMarketSource.platform}</span>
         </div>
         <div className={styles.marketPill}>
           <svg viewBox="0 0 24 24" className={styles.marketPillIcon} aria-hidden="true">
@@ -118,10 +122,10 @@ function MarketSourceCard() {
               fill="none"
             />
           </svg>
-          <span>Polygon</span>
+          <span>{activeMarketSource.network}</span>
         </div>
         <div className={`${styles.marketPill} ${styles.marketPillTime}`}>
-          <span>8 min ago</span>
+          <span>{activeMarketSource.timeAgo}</span>
         </div>
       </div>
       <div className={styles.marketBody}>
@@ -137,12 +141,12 @@ function MarketSourceCard() {
             />
             <circle cx="145" cy="6" r="3.7" className={styles.chartDot} />
           </svg>
-          <div className={styles.marketDelta}>+7% ↗</div>
+          <div className={styles.marketDelta}>{activeMarketSource.delta} ↗</div>
         </div>
 
         <div className={styles.marketCopy}>
-          <div className={styles.marketHeadline}>$13K whale flow</div>
-          <div className={styles.marketSubline}>Barcelona odds moved +7%</div>
+          <div className={styles.marketHeadline}>{activeMarketSource.headline}</div>
+          <div className={styles.marketSubline}>{activeMarketSource.subline}</div>
         </div>
       </div>
     </section>
@@ -161,6 +165,8 @@ function PillsRow() {
 }
 
 function PremiumSignalCard() {
+  const activeSignal = premiumSignals[0];
+  
   return (
     <article className={styles.premiumSignalCard}>
       <div className={styles.premiumTop}>
@@ -173,7 +179,7 @@ function PremiumSignalCard() {
             <path d="M8 15.1 6.8 17.7 10 19.2l2-1.5V15H8Z" fill="#11161E" />
             <path d="M16 15.1 17.2 17.7 14 19.2l-2-1.5V15h4Z" fill="#11161E" />
           </svg>
-          <span>La Liga • 10:00 PM</span>
+          <span>{activeSignal.league} • {activeSignal.time}</span>
         </div>
         <div className={styles.confidencePill}>
           <svg viewBox="0 0 24 24" className={styles.shield} aria-hidden="true">
@@ -190,14 +196,14 @@ function PremiumSignalCard() {
               fill="none"
             />
           </svg>
-          <span>HIGH CONFIDENCE</span>
+          <span>{activeSignal.confidenceLabel}</span>
         </div>
       </div>
-      <h1 className={styles.eventTitle}>Barcelona vs Real Madrid</h1>
+      <h1 className={styles.eventTitle}>{activeSignal.eventTitle}</h1>
       <div className={styles.positionProfit}>
         <div className={styles.positionCol}>
           <div className={styles.label}>Position</div>
-          <div className={styles.positionValue}>Barcelona</div>
+          <div className={styles.positionValue}>{activeSignal.position}</div>
           <div className={styles.target} aria-hidden="true">
             <img className={styles.decorIconImg} src="/icons/position-target.png" alt="" />
           </div>
@@ -205,7 +211,7 @@ function PremiumSignalCard() {
         <div className={styles.positionProfitDivider} />
         <div className={styles.profitCol}>
           <div className={styles.label}>Profit</div>
-          <div className={styles.profitValue}>317%</div>
+          <div className={styles.profitValue}>{activeSignal.profit}</div>
           <div className={styles.trend} aria-hidden="true">
             <img className={styles.decorIconImg} src="/icons/profit-trend.png" alt="" />
           </div>
@@ -216,7 +222,7 @@ function PremiumSignalCard() {
           <div className={styles.winTitle}>WIN PROBABILITY</div>
           <div className={styles.ring}>
             <div className={styles.ringInner}>
-              <span className={styles.ringNumber}>78</span>
+              <span className={styles.ringNumber}>{activeSignal.winProbability}</span>
             </div>
           </div>
         </div>
@@ -229,36 +235,26 @@ function PremiumSignalCard() {
               <circle cx="12" cy="7.2" r="1.1" fill="currentColor" />
             </svg>
           </div>
-          <MetricRow icon={
-            <img
-              className={styles.metricIconImg}
-              src="/icons/trust-smart-money.png"
-              alt=""
-              aria-hidden="true"
-              draggable={false}
+          {activeSignal.metrics.map((metric) => (
+            <MetricRow
+              key={metric.id}
+              icon={
+                <img
+                  className={styles.metricIconImg}
+                  src={metric.icon}
+                  alt=""
+                  aria-hidden="true"
+                  draggable={false}
+                />
+              }
+              label={metric.label}
+              value={`${metric.value}%`}
+              width={`${metric.bar}%`}
             />
-          } label="Smart Money" value="82%" width="82%" />
-          <MetricRow icon={
-            <img
-              className={styles.metricIconImg}
-              src="/icons/trust-public-whale.png"
-              alt=""
-              aria-hidden="true"
-              draggable={false}
-            />
-          } label="Public vs Whale Money" value="74%" width="74%" />
-          <MetricRow icon={
-            <img
-              className={styles.metricIconImg}
-              src="/icons/trust-ai-score.png"
-              alt=""
-              aria-hidden="true"
-              draggable={false}
-            />
-          } label="PreEventScore AI" value="93%" width="93%" />
+          ))}
         </div>
       </div>
-      <button className={styles.cta}>Unlock Full Signal — $1.99</button>
+      <button className={styles.cta}>{activeSignal.ctaLabel} — {activeSignal.price}</button>
     </article>
   );
 }
