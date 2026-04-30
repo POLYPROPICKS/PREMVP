@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import styles from './Reconstruction.module.css';
 import { premiumSignals } from '@/content/signals';
 import { marketSources } from '@/content/marketSources';
+import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 
 export default function ReconstructionPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -102,7 +103,7 @@ export default function ReconstructionPage() {
         <div className={styles.screen}>
           <StatusBar />
           <Header />
-          <MarketSourceCard />
+          <MarketSourceCarousel renderCard={(source) => <MarketSourceCard source={source} />} />
           <PillsRow />
           <PremiumSignalCard onCtaClick={openModal} />
         </div>
@@ -182,9 +183,7 @@ function Header() {
   );
 }
 
-function MarketSourceCard() {
-  const activeMarketSource = marketSources[0];
-  
+function MarketSourceCard({ source }: { source: typeof marketSources[0] }) {
   return (
     <section className={styles.marketSourceCard}>
       <div className={styles.marketTop}>
@@ -198,7 +197,7 @@ function MarketSourceCard() {
               fill="none"
             />
           </svg>
-          <span>{activeMarketSource.sourceLabel}</span>
+          <span>{source.sourceLabel}</span>
         </div>
         <div className={styles.marketPill}>
           <svg viewBox="0 0 24 24" className={styles.marketPillIcon} aria-hidden="true">
@@ -210,7 +209,7 @@ function MarketSourceCard() {
               fill="none"
             />
           </svg>
-          <span>{activeMarketSource.platform}</span>
+          <span>{source.platform}</span>
         </div>
         <div className={styles.marketPill}>
           <svg viewBox="0 0 24 24" className={styles.marketPillIcon} aria-hidden="true">
@@ -223,10 +222,10 @@ function MarketSourceCard() {
               fill="none"
             />
           </svg>
-          <span>{activeMarketSource.network}</span>
+          <span>{source.network}</span>
         </div>
         <div className={`${styles.marketPill} ${styles.marketPillTime}`}>
-          <span>{activeMarketSource.timeAgo}</span>
+          <span>{source.timeAgo}</span>
         </div>
       </div>
       <div className={styles.marketBody}>
@@ -242,12 +241,12 @@ function MarketSourceCard() {
             />
             <circle cx="145" cy="6" r="3.7" className={styles.chartDot} />
           </svg>
-          <div className={styles.marketDelta}>{activeMarketSource.delta} ↗</div>
+          <div className={styles.marketDelta}>{source.delta} ↗</div>
         </div>
 
         <div className={styles.marketCopy}>
-          <div className={styles.marketHeadline}>{activeMarketSource.headline}</div>
-          <div className={styles.marketSubline}>{activeMarketSource.subline}</div>
+          <div className={styles.marketHeadline}>{source.headline}</div>
+          <div className={styles.marketSubline}>{source.subline}</div>
         </div>
       </div>
     </section>
