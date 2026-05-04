@@ -7,6 +7,8 @@ export interface MarketSource {
   headline: string;
   subline: string;
   delta: string;
+  type?: "sharp-flow" | "market-momentum" | "news-pulse";
+  visualType?: "chart" | "shark-avatar" | "event-icon" | "news-icon";
 }
 
 export const marketSources: MarketSource[] = [
@@ -19,6 +21,8 @@ export const marketSources: MarketSource[] = [
     headline: "$13K whale flow",
     subline: "Barcelona odds moved +7%",
     delta: "+7%",
+    type: "sharp-flow",
+    visualType: "chart",
   },
   {
     id: "brazil-whale-flow",
@@ -29,6 +33,8 @@ export const marketSources: MarketSource[] = [
     headline: "$21K sharp flow",
     subline: "Brazil odds moved +5%",
     delta: "+5%",
+    type: "sharp-flow",
+    visualType: "chart",
   },
   {
     id: "usa-mexico-market-move",
@@ -39,6 +45,8 @@ export const marketSources: MarketSource[] = [
     headline: "$9K entry spike",
     subline: "USA contract demand +6%",
     delta: "+6%",
+    type: "market-momentum",
+    visualType: "chart",
   },
   {
     id: "france-sharp-entry",
@@ -49,6 +57,8 @@ export const marketSources: MarketSource[] = [
     headline: "$17K whale entry",
     subline: "France probability moved +4%",
     delta: "+4%",
+    type: "sharp-flow",
+    visualType: "chart",
   },
   {
     id: "argentina-liquidity-spike",
@@ -59,5 +69,7 @@ export const marketSources: MarketSource[] = [
     headline: "$12K liquidity shift",
     subline: "Argentina side volume +8%",
     delta: "+8%",
+    type: "sharp-flow",
+    visualType: "chart",
   },
 ];
