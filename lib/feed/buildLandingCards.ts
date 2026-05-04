@@ -19,6 +19,8 @@ import {
 
 import {
   fetchPolymarketActiveEvents,
+  fetchPolymarketSportsMetadataSafe,
+  fetchPolymarketEventsByTagSafe,
   fetchPriceHistorySafe,
   fetchSpreadSafe,
   fetchOrderBookSafe,
@@ -51,6 +53,10 @@ interface CandidateMarket {
   market: PolymarketRawMarket;
   rejectionReasons: string[];
   warnings: string[];
+  isSportsRelated: boolean;
+  isEnded: boolean;
+  sportsMatchedKeyword?: string;
+  sportsBlockedKeyword?: string;
 }
 
 interface ParentEventMeta {
@@ -112,9 +118,135 @@ function safeParseNumber(value: unknown): number | null {
 }
 
 /**
+ * Sports keywords ALLOWLIST - market must contain at least one
+ */
+const SPORTS_ALLOWLIST = [
+  "football", "soccer", "nba", "nfl", "mlb", "nhl", "ufc", "tennis",
+  "world cup", "champions league", "la liga", "premier league",
+  "baseball", "basketball", "hockey", "boxing", "mma",
+  "formula 1", "f1", "nascar", "golf", "cricket", "rugby", "racing",
+  "esports", "epl", "laliga", "bundesliga", "serie a", "copa",
+  "olympics", "wnba", "ncaa", "march madness", "playoffs",
+  "super bowl", "world series", "stanley cup", "pga", "lpga",
+  "masters", "kentucky derby", "wimbledon", "us open",
+  "french open", "australian open", "atp", "wta", "grand slam",
+];
+
+/**
+ * Non-sports BLOCKLIST - if market contains any, it CANNOT be sports
+ * Blocklist wins over allowlist
+ */
+const NON_SPORTS_BLOCKLIST = [
+  "politics", "election", "president", "senate", "congress",
+  "trump", "biden", "macron", "putin", "zelensky",
+  "nato", "russia", "ukraine", "war", "military", "invasion",
+  "gaza", "israel", "iran", "hamas", "palestine", "conflict",
+  "bitcoin", "crypto", "btc", "eth", "ethereum", "solana",
+  "ipo", "fed", "rates", "recession", "inflation", "tariff",
+  "microstrategy", "kraken", "coinbase", "binance",
+  "company", "stock", "shares", "equity", "nasdaq", "nyse",
+  "acquisition", "merger", "lawsuit", "regulation",
+];
+
+/**
+ * Helper to safely get lowercase string
+ */
+function safeLower(val: unknown): string {
+  if (typeof val === "string" && val) return val.toLowerCase();
+  return "";
+}
+
+/**
+ * Extract searchable text from candidate
+ */
+function getCandidateSearchText(event: PolymarketRawEvent, market: PolymarketRawMarket): string {
+  const textFields: string[] = [
+    safeLower(event.title),
+    safeLower(event.slug),
+    safeLower(event.category),
+    safeLower(event.description),
+    safeLower(event.groupTitle),
+    safeLower(event.groupItemTitle),
+    safeLower((event as unknown as Record<string, unknown>).subcategory),
+    safeLower((event as unknown as Record<string, unknown>).series),
+    safeLower(market.question),
+    safeLower(market.slug),
+    safeLower(market.category),
+    safeLower((market as unknown as Record<string, unknown>).groupTitle),
+    safeLower((market as unknown as Record<string, unknown>).groupItemTitle),
+    ...(event.tags || []).map(t => safeLower(t)),
+  ].filter(t => t.length > 0);
+
+  return textFields.join(" ");
+}
+
+/**
+ * STRICT sports candidate check
+ * Returns { isSports: boolean, matchedKeyword?: string, blockedKeyword?: string }
+ */
+function isSportsCandidate(event: PolymarketRawEvent, market: PolymarketRawMarket): {
+  isSports: boolean;
+  matchedKeyword?: string;
+  blockedKeyword?: string;
+} {
+  const searchText = getCandidateSearchText(event, market);
+
+  // First check blocklist - blocklist WINS over allowlist
+  for (const blocked of NON_SPORTS_BLOCKLIST) {
+    if (searchText.includes(blocked)) {
+      return { isSports: false, blockedKeyword: blocked };
+    }
+  }
+
+  // Then check allowlist
+  for (const allowed of SPORTS_ALLOWLIST) {
+    if (searchText.includes(allowed)) {
+      return { isSports: true, matchedKeyword: allowed };
+    }
+  }
+
+  // No match in either list
+  return { isSports: false };
+}
+
+/**
+ * Legacy check for backwards compatibility
+ * Uses the new strict isSportsCandidate
+ */
+function checkIsSportsRelated(event: PolymarketRawEvent, market: PolymarketRawMarket): boolean {
+  return isSportsCandidate(event, market).isSports;
+}
+
+/**
+ * Check if event/market is ended/closed
+ */
+function checkIsEndedMarket(event: PolymarketRawEvent, market: PolymarketRawMarket): boolean {
+  // Check explicit closed/active flags
+  if (market.closed === true || event.closed === true) return true;
+  if (market.active === false || event.active === false) return true;
+
+  // Check end dates
+  const endDateStr = event.endDate || event.endDateIso || event.endTime || market.endDate;
+  if (endDateStr) {
+    try {
+      const endDate = new Date(endDateStr);
+      if (!isNaN(endDate.getTime()) && endDate < new Date()) {
+        return true;
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  return false;
+}
+
+/**
  * Validate and flatten events into candidate markets
  * ONLY reject clearly invalid markets (closed, no outcomes, no prices)
  * Missing enrichment data (token IDs, trades, etc.) is a warning, not fatal
+ * 
+ * Also computes isSportsRelated and isEnded flags for filtering
  */
 function extractCandidateMarkets(events: PolymarketRawEvent[]): CandidateMarket[] {
   const candidates: CandidateMarket[] = [];
@@ -175,10 +307,23 @@ function extractCandidateMarkets(events: PolymarketRawEvent[]): CandidateMarket[
         warnings.push("Missing token IDs - CLOB enrichment unavailable");
       }
 
+      // Compute sports and ended flags using strict check
+      const sportsCheck = isSportsCandidate(event, market);
+      const endedFlag = checkIsEndedMarket(event, market);
+
       // Attach parent metadata to market for later use
       (market as unknown as Record<string, unknown>)._parentMeta = parentMeta;
 
-      candidates.push({ event, market, rejectionReasons, warnings });
+      candidates.push({
+        event,
+        market,
+        rejectionReasons,
+        warnings,
+        isSportsRelated: sportsCheck.isSports,
+        isEnded: endedFlag,
+        sportsMatchedKeyword: sportsCheck.matchedKeyword,
+        sportsBlockedKeyword: sportsCheck.blockedKeyword,
+      });
     }
   }
 
@@ -628,27 +773,131 @@ function truncateText(text: string, maxLength: number): string {
 }
 
 /**
+ * Fetch events with pagination support for sports discovery
+ * Tries sports tag API first if available, falls back to broad events + keyword filtering
+ */
+async function fetchEventsForCategory(
+  category: string,
+  targetCount: number
+): Promise<{
+  events: PolymarketRawEvent[];
+  sportsTagAttempted: boolean;
+  sportsTagSuccess: boolean;
+  sportsTagError?: string;
+}> {
+  const allEvents: PolymarketRawEvent[] = [];
+  let sportsTagAttempted = false;
+  let sportsTagSuccess = false;
+  let sportsTagError: string | undefined;
+
+  // For sports category, try to get sports tag metadata first
+  if (category === "sports") {
+    sportsTagAttempted = true;
+    const sportsMeta = await fetchPolymarketSportsMetadataSafe();
+
+    if (sportsMeta.success && sportsMeta.tagId) {
+      // Use tag-filtered fetch for better sports discovery
+      const tagEvents = await fetchPolymarketEventsByTagSafe(sportsMeta.tagId, 100);
+      if (tagEvents.length > 0) {
+        allEvents.push(...tagEvents);
+        sportsTagSuccess = true;
+      }
+    } else {
+      sportsTagError = sportsMeta.error;
+    }
+
+    // If tag fetch didn't yield enough results, supplement with broad search
+    if (allEvents.length < targetCount) {
+      // Fetch up to 3 pages of active events (300 total)
+      for (let page = 0; page < 3; page++) {
+        const pageEvents = await fetchPolymarketActiveEvents({
+          limit: 100,
+          offset: page * 100,
+        });
+
+        if (pageEvents.length === 0) break;
+
+        // Add events that aren't already in the list
+        const newEvents = pageEvents.filter(
+          e => !allEvents.some(existing => existing.id === e.id)
+        );
+        allEvents.push(...newEvents);
+
+        // Stop if we have enough events
+        if (allEvents.length >= targetCount * 3) break;
+      }
+    }
+  } else {
+    // For non-sports or category=all, fetch broad events
+    for (let page = 0; page < 2; page++) {
+      const pageEvents = await fetchPolymarketActiveEvents({
+        limit: 100,
+        offset: page * 100,
+      });
+
+      if (pageEvents.length === 0) break;
+      allEvents.push(...pageEvents);
+
+      if (allEvents.length >= targetCount * 2) break;
+    }
+  }
+
+  return {
+    events: allEvents,
+    sportsTagAttempted,
+    sportsTagSuccess,
+    sportsTagError,
+  };
+}
+
+/**
  * Main function to build landing cards from Polymarket data
+ *
+ * Supports filtering by:
+ * - category: sports-first filtering (sports | all)
+ * - minDataCoverage: minimum data coverage threshold
+ * - excludeEnded: exclude ended/closed markets
  */
 export async function buildLandingCards(options?: {
   limit?: number;
+  category?: string;
+  minDataCoverage?: number;
+  excludeEnded?: boolean;
 }): Promise<LandingCardsResponse> {
   const limit = clamp(options?.limit ?? 4, 1, 10);
+  const category = options?.category ?? "sports";
+  const minDataCoverage = clamp(options?.minDataCoverage ?? 40, 0, 100);
+  const excludeEnded = options?.excludeEnded ?? true;
+
+  // Track inspected counts for diagnostics
+  let eventsCount = 0;
+  let marketsCount = 0;
+  let candidatesAfterCategoryFilter = 0;
+  let candidatesAfterEndedFilter = 0;
+  let pairsGenerated = 0;
+  let candidatesAfterDataCoverageFilter = 0;
+
+  // Track fetch metadata
+  let sportsTagAttempted = false;
+  let sportsTagSuccess = false;
+  let sportsTagError: string | undefined;
+
+  // Sampled titles for diagnostics
+  let sampledEventTitles: string[] = [];
+  let sampledMarketQuestions: string[] = [];
 
   try {
-    // Fetch active events
-    const events = await fetchPolymarketActiveEvents({ limit: 20 });
+    // Fetch events with pagination and optional sports tag discovery
+    const fetchResult = await fetchEventsForCategory(category, limit * 3);
+    const events = fetchResult.events;
+    sportsTagAttempted = fetchResult.sportsTagAttempted;
+    sportsTagSuccess = fetchResult.sportsTagSuccess;
+    sportsTagError = fetchResult.sportsTagError;
 
-    // Detailed diagnostics for debugging
-    const debugInfo = {
-      eventsCount: events.length,
-      responseType: Array.isArray(events) ? "array" : typeof events,
-      firstEventSample: events.length > 0 ? {
-        hasTitle: !!events[0].title,
-        hasMarkets: Array.isArray(events[0].markets),
-        marketsCount: events[0].markets?.length,
-      } : null,
-    };
+    eventsCount = events.length;
+
+    // Sample first 5 event titles
+    sampledEventTitles = events.slice(0, 5).map(e => safeString(e.title) || "(no title)");
 
     if (events.length === 0) {
       return {
@@ -658,18 +907,134 @@ export async function buildLandingCards(options?: {
         pairs: [],
         rejected: [{
           rejectionReasons: [
-            "No active events found",
-            `Response type: ${debugInfo.responseType}`,
-          ],
+            "No active events found from Polymarket API",
+            sportsTagAttempted && !sportsTagSuccess ? "Sports tag fetch attempted but failed" : "",
+            sportsTagError || "",
+          ].filter(Boolean),
         }],
+        filters: { limit, category, minDataCoverage, excludeEnded },
+        inspected: {
+          eventsCount,
+          marketsCount,
+          candidatesAfterCategoryFilter,
+          candidatesAfterEndedFilter,
+          candidatesAfterDataCoverageFilter,
+          pairsGenerated,
+        },
       };
     }
 
-    // Extract candidate markets
-    const candidates = extractCandidateMarkets(events);
+    // Extract candidate markets from all events
+    const allCandidates = extractCandidateMarkets(events);
+    marketsCount = allCandidates.length;
+
+    // Sample first 5 market questions
+    sampledMarketQuestions = allCandidates.slice(0, 5).map(c => safeString(c.market.question) || "(no question)");
+
+    // Filter by category (sports-first with STRICT enforcement)
+    let candidates = allCandidates;
+    let nonSportsRejected: Array<{ id?: string; rejectionReasons: string[] }> = [];
+
+    if (category === "sports") {
+      // STRICT: Only allow markets that pass isSportsCandidate (blocklist wins)
+      const sportsCandidates: CandidateMarket[] = [];
+      for (const c of allCandidates) {
+        if (c.isSportsRelated) {
+          sportsCandidates.push(c);
+        } else {
+          // Sample rejection reasons for non-sports markets (limit to first 5)
+          if (nonSportsRejected.length < 5) {
+            const question = truncateText(safeString(c.market.question) || "(no question)", 50);
+            if (c.sportsBlockedKeyword) {
+              nonSportsRejected.push({
+                id: c.market.id,
+                rejectionReasons: [`Excluded by sports filter (blocked: ${c.sportsBlockedKeyword}): ${question}`],
+              });
+            } else {
+              nonSportsRejected.push({
+                id: c.market.id,
+                rejectionReasons: [`Excluded by sports filter (no sports keywords): ${question}`],
+              });
+            }
+          }
+        }
+      }
+      candidates = sportsCandidates;
+      candidatesAfterCategoryFilter = candidates.length;
+
+      if (candidates.length === 0) {
+        // Return 200 with empty pairs and detailed diagnostics (NOT an error)
+        return {
+          generatedAt: new Date().toISOString(),
+          source: "polymarket",
+          formulaVersion: FORMULA_VERSION,
+          pairs: [],
+          rejected: [
+            {
+              rejectionReasons: [
+                "No sports candidates found after strict sports filtering",
+                `Total events inspected: ${eventsCount}`,
+                `Total markets inspected: ${marketsCount}`,
+                `Markets excluded by sports filter: ${allCandidates.length - candidates.length}`,
+                `Sports tag fetch attempted: ${sportsTagAttempted}`,
+                `Sports tag fetch succeeded: ${sportsTagSuccess}`,
+                sportsTagError ? `Sports tag error: ${sportsTagError}` : "",
+                `Sampled event titles: ${sampledEventTitles.join(" | ")}`,
+                `Sampled market questions: ${sampledMarketQuestions.join(" | ")}`,
+              ].filter(Boolean),
+            },
+            ...nonSportsRejected,
+          ],
+          filters: { limit, category, minDataCoverage, excludeEnded },
+          inspected: {
+            eventsCount,
+            marketsCount,
+            candidatesAfterCategoryFilter,
+            candidatesAfterEndedFilter,
+            candidatesAfterDataCoverageFilter,
+            pairsGenerated,
+          },
+        };
+      }
+    } else {
+      // category = "all" or any other - skip sports filtering
+      candidatesAfterCategoryFilter = candidates.length;
+    }
 
     const pairs: LandingCardPair[] = [];
     const rejected: Array<{ id?: string; rejectionReasons: string[] }> = [];
+
+    // Filter out ended markets if excludeEnded is true
+    if (excludeEnded) {
+      const endedRejectionReason = "Market ended";
+      const closedRejectionReason = "Market closed";
+      const inactiveRejectionReason = "Inactive market";
+
+      const activeCandidates: CandidateMarket[] = [];
+      for (const candidate of candidates) {
+        if (candidate.isEnded) {
+          // Add to rejected with specific reason
+          const rejectionReasons: string[] = [];
+          if (candidate.market.closed === true) {
+            rejectionReasons.push(closedRejectionReason);
+          } else if (candidate.market.active === false) {
+            rejectionReasons.push(inactiveRejectionReason);
+          } else {
+            rejectionReasons.push(endedRejectionReason);
+          }
+          rejected.push({
+            id: candidate.market.id,
+            rejectionReasons: [...rejectionReasons, ...candidate.rejectionReasons],
+          });
+        } else {
+          activeCandidates.push(candidate);
+        }
+      }
+      candidates = activeCandidates;
+      candidatesAfterEndedFilter = candidates.length;
+    } else {
+      candidatesAfterEndedFilter = candidates.length;
+    }
 
     // Process candidates until we have enough pairs
     for (const candidate of candidates) {
@@ -695,6 +1060,20 @@ export async function buildLandingCards(options?: {
         continue;
       }
 
+      // Check data coverage threshold
+      if (enriched.diagnostics.dataCoverage < minDataCoverage) {
+        rejected.push({
+          id: candidate.market.id,
+          rejectionReasons: [
+            `Data coverage below threshold: ${enriched.diagnostics.dataCoverage}%`,
+            `Required: ${minDataCoverage}%`,
+          ],
+        });
+        continue;
+      }
+
+      candidatesAfterDataCoverageFilter++;
+
       if (enriched.diagnostics.rejectionReasons.length > 0) {
         rejected.push({
           id: candidate.market.id,
@@ -714,17 +1093,42 @@ export async function buildLandingCards(options?: {
         continue;
       }
 
+      // Check if premiumSignal.time is "Ended" and exclude if needed
+      if (excludeEnded && pair.premiumSignal.time === "Ended") {
+        rejected.push({
+          id: candidate.market.id,
+          rejectionReasons: ["Market ended (premiumSignal.time = Ended)"],
+        });
+        continue;
+      }
+
       pairs.push(pair);
+      pairsGenerated++;
     }
+
+    // Include non-sports rejected markets in final rejected list (for category=sports)
+    const finalRejected = category === "sports"
+      ? [...nonSportsRejected, ...rejected]
+      : rejected;
 
     return {
       generatedAt: new Date().toISOString(),
       source: "polymarket",
       formulaVersion: FORMULA_VERSION,
       pairs,
-      rejected,
+      rejected: finalRejected,
+      filters: { limit, category, minDataCoverage, excludeEnded },
+      inspected: {
+        eventsCount,
+        marketsCount,
+        candidatesAfterCategoryFilter,
+        candidatesAfterEndedFilter,
+        candidatesAfterDataCoverageFilter,
+        pairsGenerated,
+      },
     };
   } catch (error) {
+    // Only return error field for unexpected runtime failures
     console.error("buildLandingCards failed:", error);
 
     return {
@@ -732,8 +1136,22 @@ export async function buildLandingCards(options?: {
       source: "polymarket",
       formulaVersion: FORMULA_VERSION,
       pairs: [],
-      rejected: [],
-      error: "Failed to generate landing cards",
+      rejected: [{
+        rejectionReasons: [
+          "Unexpected runtime error during feed generation",
+          String(error),
+        ],
+      }],
+      error: "Unexpected runtime error - check rejection reasons for details",
+      filters: { limit, category, minDataCoverage, excludeEnded },
+      inspected: {
+        eventsCount,
+        marketsCount,
+        candidatesAfterCategoryFilter,
+        candidatesAfterEndedFilter,
+        candidatesAfterDataCoverageFilter,
+        pairsGenerated,
+      },
     };
   }
 }

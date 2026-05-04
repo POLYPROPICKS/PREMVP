@@ -67,6 +67,22 @@ export interface LandingCardPair {
   diagnostics: LandingCardDiagnostics;
 }
 
+export interface FilterParams {
+  limit: number;
+  category: string;
+  minDataCoverage: number;
+  excludeEnded: boolean;
+}
+
+export interface InspectedMetadata {
+  eventsCount: number;
+  marketsCount: number;
+  candidatesAfterCategoryFilter: number;
+  candidatesAfterEndedFilter: number;
+  candidatesAfterDataCoverageFilter: number;
+  pairsGenerated: number;
+}
+
 export interface LandingCardsResponse {
   generatedAt: string;
   source: "polymarket";
@@ -74,6 +90,8 @@ export interface LandingCardsResponse {
   pairs: LandingCardPair[];
   rejected: Array<{ id?: string; rejectionReasons: string[] }>;
   error?: string;
+  filters?: FilterParams;
+  inspected?: InspectedMetadata;
 }
 
 // Polymarket API raw types
@@ -116,11 +134,16 @@ export interface PolymarketRawEvent {
   description?: string;
   category?: string;
   endDate?: string;
+  endDateIso?: string;
+  endTime?: string;
   active: boolean;
   closed: boolean;
   markets: PolymarketRawMarket[];
   volume24hr?: number;
   liquidity?: number;
+  tags?: string[]; // Event tags for filtering
+  groupTitle?: string; // Group title for categorization
+  groupItemTitle?: string; // Item title within group
 }
 
 export interface PolymarketPricePoint {
