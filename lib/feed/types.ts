@@ -165,3 +165,149 @@ export interface PolymarketHolder {
   balance: number;
   value: number;
 }
+
+// ============================================================================
+// Sports Discovery Types (Phase 3.6B)
+// ============================================================================
+
+export interface SportsMarketCandidate {
+  id: string;
+  slug: string;
+  question: string;
+  conditionId?: string;
+  active: boolean;
+  closed: boolean;
+  marketType?: string;
+  formatType?: string;
+  sportsMarketType?: string;
+  gameId?: string;
+  teamAID?: string;
+  teamBID?: string;
+  gameStartTime?: string;
+  eventStartTime?: string;
+  startDate?: string;
+  startDateIso?: string;
+  endDate?: string;
+  endDateIso?: string;
+  nestedEventId?: string;
+  nestedEventSlug?: string;
+  nestedEventTitle?: string;
+  nestedEventStartTime?: string;
+  nestedEventEndDate?: string;
+  outcomes: string[];
+  outcomePrices: number[];
+  shortOutcomes: string[];
+  clobTokenIds: string[];
+  volumeNum: number | null;
+  volume24hr: number | null;
+  volume24hrClob: number | null;
+  volumeClob: number | null;
+  liquidityNum: number | null;
+  liquidityClob: number | null;
+  bestBid: number | null;
+  bestAsk: number | null;
+  oneDayPriceChange: number | null;
+  oneHourPriceChange: number | null;
+  tagsText: string[];
+  raw: Record<string, unknown>;
+}
+
+export interface GameGroup {
+  groupKey: string;
+  markets: SportsMarketCandidate[];
+  gameId?: string;
+  nestedEventId?: string;
+  teamAID?: string;
+  teamBID?: string;
+  resolvedGameTimeIso: string | null;
+  gameTimeSource: string;
+  gameTimeConfidence: "high" | "medium" | "low" | "none";
+  eventVolumeUsd: number;
+  highestVolumeMarket: SportsMarketCandidate | null;
+  primaryMarket: SportsMarketCandidate | null;
+}
+
+export interface SportsDiscoveryConfig {
+  windowHours: number;
+  fallbackWindowHours: number;
+  fetchVolumeMinUsd: number;
+  finalEventVolumeMinUsd: number;
+  targetCards: number;
+  platform: string;
+  network: string;
+  formulaVersion: string;
+}
+
+export interface SportsDiscoveryCounts {
+  rawMarketsFetched: number;
+  normalizedMarkets: number;
+  activeMarkets: number;
+  closedRejected: number;
+  withGameId: number;
+  withSportsMarketType: number;
+  withTeamIds: number;
+  withGameStartTime: number;
+  withEventStartTime: number;
+  withNestedEventStartTime: number;
+  strongGameSignalCandidates: number;
+  mediumGameSignalCandidates: number;
+  futuresRejected: number;
+  groupedGames: number;
+  within24hGroups: number;
+  within48hGroups: number;
+  volumeEligibleGroups: number;
+  finalPairs: number;
+}
+
+export interface SportsDiscoverySample {
+  title: string;
+  slug: string;
+  gameId?: string;
+  sportsMarketType?: string;
+  eventVolumeUsd: number;
+  resolvedGameTimeIso: string | null;
+  gameTimeSource: string;
+  gameTimeConfidence: "high" | "medium" | "low" | "none";
+  marketCount: number;
+  strategy: string;
+  rejectionReason?: string;
+  primaryMarketRaw?: {
+    outcomes: string[];
+    outcomePrices: number[];
+    clobTokenIds: string[];
+    question: string;
+    sportsMarketType?: string;
+    gameId?: string;
+    conditionId?: string;
+    volumeNum?: number | null;
+    volume24hr?: number | null;
+    volumeClob?: number | null;
+    oneDayPriceChange?: number | null;
+  } | null;
+  marketsRaw?: Array<{
+    outcomes: string[];
+    outcomePrices: number[];
+    clobTokenIds: string[];
+    question: string;
+    sportsMarketType?: string;
+    conditionId?: string;
+    volumeNum?: number | null;
+    volume24hr?: number | null;
+    volumeClob?: number | null;
+    oneDayPriceChange?: number | null;
+  }>;
+}
+
+export interface SportsDiscoveryResult {
+  generatedAt: string;
+  config: SportsDiscoveryConfig;
+  counts: SportsDiscoveryCounts;
+  rejectionReasonCounts: Record<string, number>;
+  acceptedSamples: SportsDiscoverySample[];
+  rejectedSamples: SportsDiscoverySample[];
+  warnings: string[];
+  finalCandidates: SportsDiscoverySample[];
+  fallback48hCandidates: SportsDiscoverySample[];
+  diagnosis?: string;
+  recommendedPath?: string;
+}

@@ -329,3 +329,162 @@ export async function fetchOpenInterestSafe(
 
   return data.openInterest ?? data.value ?? null;
 }
+
+// ============================================================================
+// Sports Discovery Markets-First API (Phase 3.6B)
+// ============================================================================
+
+/**
+ * Fetch sports metadata from Gamma API
+ * Returns sports list with extracted tag IDs
+ */
+export async function fetchSportsMetadata(): Promise<{
+  sports: unknown[];
+  tagIds: string[];
+  success: boolean;
+  error?: string;
+}> {
+  const url = `${GAMMA_API_BASE}/sports`;
+  const response = await safeFetch<unknown>(url, {}, 10000);
+
+  if (!response) {
+    return { sports: [], tagIds: [], success: false, error: "No response from /sports" };
+  }
+
+  const sports = Array.isArray(response) ? response : [];
+  const tagIds: string[] = [];
+
+  for (const s of sports) {
+    const sport = s as Record<string, unknown>;
+    const tagsVal = sport.tags;
+    if (typeof tagsVal === "string") {
+      tagIds.push(...tagsVal.split(",").map(t => t.trim()).filter(Boolean));
+    } else if (Array.isArray(tagsVal)) {
+      tagIds.push(...tagsVal.map(String).filter(Boolean));
+    }
+  }
+
+  // Also check for tag_id field directly
+  for (const s of sports) {
+    const sport = s as Record<string, unknown>;
+    if (sport.tag_id && typeof sport.tag_id === "string") {
+      tagIds.push(sport.tag_id);
+    }
+    if (sport.tagId && typeof sport.tagId === "string") {
+      tagIds.push(sport.tagId);
+    }
+  }
+
+  const uniqueTagIds = [...new Set(tagIds)];
+  return { sports, tagIds: uniqueTagIds, success: true };
+}
+
+/**
+ * Fetch teams from Gamma API
+ */
+export async function fetchTeams(): Promise<{ teams: unknown[]; count: number }> {
+  const url = `${GAMMA_API_BASE}/teams`;
+  const response = await safeFetch<unknown>(url, {}, 10000);
+  const teams = Array.isArray(response) ? response : [];
+  return { teams, count: teams.length };
+}
+
+/**
+ * Fetch sports market types from Gamma API (diagnostic only)
+ */
+export async function fetchSportsMarketTypes(): Promise<{ types: string[]; count: number }> {
+  const url = `${GAMMA_API_BASE}/sports/market-types`;
+  const response = await safeFetch<unknown>(url, {}, 10000);
+
+  const types: string[] = [];
+  if (Array.isArray(response)) {
+    for (const t of response) {
+      const text = typeof t === "string" ? t : (t as Record<string, unknown>).name || (t as Record<string, unknown>).type || (t as Record<string, unknown>).slug;
+      if (text) types.push(String(text));
+    }
+  }
+
+  return { types, count: types.length };
+}
+
+/**
+ * Fetch markets by sports tag ID
+ * Primary discovery endpoint for markets-first approach
+ */
+export async function fetchMarketsBySportsTag(
+  tagId: string,
+  options?: {
+    relatedTags?: boolean;
+    volumeMinUsd?: number;
+    limit?: number;
+  }
+): Promise<Record<string, unknown>[]> {
+  const params = new URLSearchParams({
+    closed: "false",
+    tag_id: tagId,
+    include_tag: "true",
+    volume_num_min: String(options?.volumeMinUsd ?? 50000),
+    limit: String(options?.limit ?? 500),
+  });
+
+  if (options?.relatedTags !== false) {
+    params.set("related_tags", "true");
+  }
+
+  const url = `${GAMMA_API_BASE}/markets?${params.toString()}`;
+  const response = await safeFetch<unknown>(url, {}, 15000);
+
+  if (!response) return [];
+
+  // Handle raw array response
+  if (Array.isArray(response)) {
+    return response as Record<string, unknown>[];
+  }
+
+  // Handle object wrappers
+  if (typeof response === "object" && response !== null) {
+    const obj = response as Record<string, unknown>;
+    if (Array.isArray(obj.data)) return obj.data as Record<string, unknown>[];
+    if (Array.isArray(obj.markets)) return obj.markets as Record<string, unknown>[];
+    if (Array.isArray(obj.results)) return obj.results as Record<string, unknown>[];
+  }
+
+  return [];
+}
+
+/**
+ * Fetch events by sports tag ID (fallback only)
+ */
+export async function fetchEventsBySportsTag(
+  tagId: string,
+  options?: {
+    volumeMinUsd?: number;
+    limit?: number;
+  }
+): Promise<Record<string, unknown>[]> {
+  const params = new URLSearchParams({
+    active: "true",
+    closed: "false",
+    tag_id: tagId,
+    related_tags: "true",
+    volume_min: String(options?.volumeMinUsd ?? 50000),
+    limit: String(options?.limit ?? 500),
+  });
+
+  const url = `${GAMMA_API_BASE}/events?${params.toString()}`;
+  const response = await safeFetch<unknown>(url, {}, 15000);
+
+  if (!response) return [];
+
+  if (Array.isArray(response)) {
+    return response as Record<string, unknown>[];
+  }
+
+  if (typeof response === "object" && response !== null) {
+    const obj = response as Record<string, unknown>;
+    if (Array.isArray(obj.events)) return obj.events as Record<string, unknown>[];
+    if (Array.isArray(obj.data)) return obj.data as Record<string, unknown>[];
+  }
+
+  return [];
+}

@@ -1,7 +1,7 @@
 // Signal generation script
 // Generates TrustedInitialformulaLanding1.1 pairs and caches them in Supabase
 
-import { buildLandingCards } from "../lib/feed/buildLandingCards";
+import { buildSportsLandingCards } from "../lib/feed/buildSportsLandingCards";
 import {
   writeGeneratedSignalPairs,
   writeJobRun,
@@ -28,22 +28,21 @@ async function main() {
   console.log(`[generate-signals] Config: ${JSON.stringify(CONFIG)}`);
 
   try {
-    // Call feed generation logic
-    const result = await buildLandingCards({
+    // Call sports landing cards generation logic
+    const result = await buildSportsLandingCards({
       limit: CONFIG.limit,
-      category: CONFIG.category,
-      minDataCoverage: CONFIG.minDataCoverage,
-      excludeEnded: CONFIG.excludeEnded,
     });
 
     generatedCount = result.pairs.length;
-    rejectedCount = result.rejected.length;
+    rejectedCount = 0; // buildSportsLandingCards doesn't return rejected array
 
     // Store diagnostics for job run
     diagnostics = {
-      filters: result.filters,
-      inspected: result.inspected,
-      error: result.error,
+      discoveryMode: "markets-first",
+      feedStatus: result.feedStatus,
+      generated_count: generatedCount,
+      warnings: result.warnings,
+      counts: result.counts,
     };
 
     console.log(`[generate-signals] Generated ${generatedCount} pairs`);
@@ -52,15 +51,24 @@ async function main() {
     if (generatedCount === 0) {
       status = "empty";
       console.log("[generate-signals] No pairs generated - caching skipped");
+    } else if (result.feedStatus === "manual_fallback_required") {
+      status = "empty";
+      console.log("[generate-signals] Feed status manual_fallback_required - caching skipped");
     } else {
-      // Write pairs to cache
+      // Write pairs to cache for ok/partial status
       const expiresAt = new Date(
         Date.now() + CONFIG.cacheExpiryHours * 60 * 60 * 1000
       ).toISOString();
 
       await writeGeneratedSignalPairs({
-        pairs: result.pairs.map((p) => ({
-          premiumSignal: p.premiumSignal,
+        pairs: result.pairs.map((p: any) => ({
+          premiumSignal: {
+            ...p.premiumSignal,
+            metrics: p.premiumSignal.metrics.map((m: any) => ({
+              ...m,
+              value: typeof m.value === 'number' ? m.value : parseFloat(String(m.value)) || 0,
+            })),
+          },
           marketSource: p.marketSource,
           diagnostics: p.diagnostics,
         })),
