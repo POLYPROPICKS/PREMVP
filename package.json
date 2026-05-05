@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "generate:signals": "tsx scripts/generate-signals.ts"
+    "generate:signals": "tsx scripts/generate-signals.ts",
+    "probe:sports-docs": "tsx scripts/probe-polymarket-sports-docs.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
