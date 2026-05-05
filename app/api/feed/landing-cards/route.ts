@@ -4,7 +4,8 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { buildLandingCards } from "@/lib/feed/buildLandingCards";
-import { FORMULA_VERSION } from "@/lib/feed/types";
+import { readLatestGeneratedSignalPairs } from "@/lib/feed/cacheGeneratedSignals";
+import { FORMULA_VERSION, LandingCardsResponse } from "@/lib/feed/types";
 
 export async function GET(request: NextRequest) {
   try {
@@ -38,15 +39,67 @@ export async function GET(request: NextRequest) {
     const excludeEndedParam = searchParams.get("excludeEnded");
     const excludeEnded = excludeEndedParam !== "false";
 
-    // Build landing cards with filters
-    const response = await buildLandingCards({
-      limit,
-      category,
-      minDataCoverage,
-      excludeEnded,
-    });
+    // Try cache first
+    let cacheStatus: "hit" | "miss" | "error" = "miss";
+    let response: LandingCardsResponse;
 
-    return NextResponse.json(response, { status: 200 });
+    try {
+      const cachedPairs = await readLatestGeneratedSignalPairs(limit);
+      if (cachedPairs.length > 0) {
+        // Cache hit - return cached pairs
+        cacheStatus = "hit";
+        response = {
+          generatedAt: new Date().toISOString(),
+          source: "polymarket",
+          formulaVersion: FORMULA_VERSION,
+          pairs: cachedPairs.map((cp) => ({
+            id: cp.id || `${cp.premiumSignal.id}-${cp.marketSource.id}`,
+            premiumSignal: cp.premiumSignal,
+            marketSource: cp.marketSource,
+            diagnostics: cp.diagnostics,
+          })),
+          rejected: [], // Cached pairs don't include rejection data
+          filters: { limit, category, minDataCoverage, excludeEnded },
+          inspected: {
+            eventsCount: 0,
+            marketsCount: 0,
+            candidatesAfterCategoryFilter: cachedPairs.length,
+            candidatesAfterEndedFilter: cachedPairs.length,
+            candidatesAfterDataCoverageFilter: cachedPairs.length,
+            pairsGenerated: cachedPairs.length,
+          },
+        };
+        console.log(`[landing-cards] Cache hit: ${cachedPairs.length} pairs`);
+      } else {
+        // Cache miss - fall back to live generation
+        cacheStatus = "miss";
+        console.log("[landing-cards] Cache miss - falling back to live generation");
+        response = await buildLandingCards({
+          limit,
+          category,
+          minDataCoverage,
+          excludeEnded,
+        });
+      }
+    } catch (cacheError) {
+      // Cache read error - fall back to live generation
+      cacheStatus = "error";
+      console.error("[landing-cards] Cache read failed:", cacheError);
+      response = await buildLandingCards({
+        limit,
+        category,
+        minDataCoverage,
+        excludeEnded,
+      });
+    }
+
+    // Add cache status to response
+    const responseWithCache = {
+      ...response,
+      cacheStatus,
+    };
+
+    return NextResponse.json(responseWithCache, { status: 200 });
   } catch (error) {
     console.error("API route /api/feed/landing-cards failed:", error);
 
@@ -59,6 +112,7 @@ export async function GET(request: NextRequest) {
         pairs: [],
         rejected: [],
         error: "Failed to generate landing cards",
+        cacheStatus: "error",
       },
       { status: 500 }
     );
