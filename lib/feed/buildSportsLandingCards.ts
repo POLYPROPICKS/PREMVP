@@ -17,6 +17,10 @@ interface SportsCardDiagnostics {
   profit: number;
   winProbability: number;
   price: number;
+  selectedPrice: number;
+  priceSource: string;
+  outcomeCount: number;
+  priceCount: number;
 }
 
 // TrustMetric-like interface for metrics
@@ -134,47 +138,123 @@ function inferLeague(text: string): string {
   return "Sports Market";
 }
 
-// Select best outcome with valid profit (35–350)
-// Note: This is a placeholder since we don't have raw data in isolated version
-// In production, this would use candidate.raw.outcomes and outcomePrices
+// Select best outcome with valid profit (35–350) using real outcome prices
 function selectOutcomeForCard(
-  candidate: { sportsMarketType?: string | null; title?: string | null; question?: string | null }
+  candidate: SportsDiscoverySample
 ): { position: string; price: number; profit: number; winProbability: number } | null {
   const marketTypeText = String(candidate.sportsMarketType || "").toLowerCase();
-  const title = String(candidate.title || candidate.question || "").trim();
+  const title = String(candidate.title || "").trim();
 
   // P0: spread/totals need special wording. Do not publish unreadable Yes/No cards yet.
   if (marketTypeText.includes("total") || marketTypeText.includes("spread")) {
     return null;
   }
 
-  let position = "";
-
-  // Pattern: "Will Club Atlético de Madrid win on 2026-05-05?" -> "Club Atlético de Madrid"
-  const willWinMatch = title.match(/^Will\s+(.+?)\s+win\s+on\s+/i);
-  if (willWinMatch && willWinMatch[1]) {
-    position = willWinMatch[1].trim();
-  }
-
-  // Pattern: "Lakers vs. Thunder" / "Cavaliers vs. Pistons" -> first side for P0
-  if (!position && /\s+vs\.?\s+/i.test(title)) {
-    position = title.split(/\s+vs\.?\s+/i)[0].trim();
-  }
-
-  // Last readable fallback
-  if (!position || /^(yes|no)$/i.test(position) || position.length < 2) {
+  // Try to get raw market data from multiple sources
+  const rawMarket = candidate.primaryMarketRaw;
+  
+  if (!rawMarket) {
+    console.warn(`[selectOutcomeForCard] No raw market data for candidate: ${title}`);
     return null;
   }
 
-  // P0 price/profit placeholder until outcomePrices are fully wired.
-  // Keep within product filter 35–350% and do not claim real prediction.
-  const price = 0.65;
-  const profit = Math.round(((1 / price) - 1) * 100);
-  const winProbability = 65;
+  // Parse outcomes and prices safely
+  const outcomes = safeParseArray(rawMarket.outcomes).map(cleanText);
+  const rawPrices = safeParseArray(rawMarket.outcomePrices).map(toNumber);
+  const clobTokenIds = safeParseArray(rawMarket.clobTokenIds).map(cleanText);
 
-  if (profit < 35 || profit > 350) return null;
+  if (outcomes.length === 0 || rawPrices.length === 0) {
+    console.warn(`[selectOutcomeForCard] Missing outcomes or prices for candidate: ${title}`);
+    return null;
+  }
 
-  return { position, price, profit, winProbability };
+  if (outcomes.length !== rawPrices.length) {
+    console.warn(`[selectOutcomeForCard] Outcomes/prices length mismatch for candidate: ${title}`);
+    return null;
+  }
+
+  // Filter valid prices (0 < price < 1)
+  const validIndices: Array<{ index: number; outcome: string; price: number; profit: number }> = [];
+  
+  for (let i = 0; i < outcomes.length; i++) {
+    const outcome = outcomes[i];
+    const price = rawPrices[i];
+    
+    if (!outcome || !price || price <= 0 || price >= 1) continue;
+    
+    const profit = Math.round(((1 / price) - 1) * 100);
+    
+    if (profit >= 35 && profit <= 350) {
+      validIndices.push({ index: i, outcome, price, profit });
+    }
+  }
+
+  if (validIndices.length === 0) {
+    console.warn(`[selectOutcomeForCard] No valid outcomes with profit 35-350 for candidate: ${title}`);
+    return null;
+  }
+
+  // Sort by preference: moneyline/winner outcomes first, then by price closest to 0.50
+  validIndices.sort((a, b) => {
+    const aOutcome = a.outcome.toLowerCase();
+    const bOutcome = b.outcome.toLowerCase();
+    
+    // Prefer moneyline/winner outcomes
+    const aIsPreferred = aOutcome === "yes" || aOutcome.includes("winner") || aOutcome.includes("moneyline");
+    const bIsPreferred = bOutcome === "yes" || bOutcome.includes("winner") || bOutcome.includes("moneyline");
+    
+    if (aIsPreferred && !bIsPreferred) return -1;
+    if (!aIsPreferred && bIsPreferred) return 1;
+    
+    // Then prefer price closer to 0.50
+    const aDistance = Math.abs(a.price - 0.50);
+    const bDistance = Math.abs(b.price - 0.50);
+    return aDistance - bDistance;
+  });
+
+  const selected = validIndices[0];
+  let position = selected.outcome;
+
+  // Handle "Yes" outcomes by extracting team name from question
+  if (position.toLowerCase() === "yes") {
+    const extractedTeam = extractYesPositionFromQuestion(rawMarket.question || title);
+    if (extractedTeam) {
+      position = extractedTeam;
+    } else {
+      // Try to extract from "Team A vs Team B" pattern
+      if (/\s+vs\.?\s+/i.test(title)) {
+        position = title.split(/\s+vs\.?\s+/i)[0].trim();
+      } else {
+        console.warn(`[selectOutcomeForCard] Cannot extract readable position from Yes outcome: ${title}`);
+        return null;
+      }
+    }
+  }
+
+  // Reject "No" outcomes for P0
+  if (position.toLowerCase() === "no") {
+    console.warn(`[selectOutcomeForCard] Rejecting No outcome for P0: ${title}`);
+    return null;
+  }
+
+  // Final validation of position
+  if (!position || /^(yes|no)$/i.test(position) || position.length < 2) {
+    console.warn(`[selectOutcomeForCard] Invalid position: ${position} for candidate: ${title}`);
+    return null;
+  }
+
+  // Calculate winProbability based on selected price and volume
+  const volumeScore = Math.min(12, Math.log10(Math.max(1, candidate.eventVolumeUsd || 1)) * 2);
+  const winProbability = clamp(Math.round(52 + (1 - selected.price) * 25 + volumeScore), 52, 89);
+
+  console.log(`[selectOutcomeForCard] Selected outcome: ${position} at price ${selected.price} (${selected.profit}% profit) for ${title}`);
+
+  return {
+    position,
+    price: selected.price,
+    profit: selected.profit,
+    winProbability,
+  };
 }
 
 // Build card pair from sports discovery candidate
@@ -274,8 +354,9 @@ function buildCardFromDiscoveryCandidate(
   };
   
   // Build diagnostics
+  const rawMarket = candidate.primaryMarketRaw;
   const diagnostics: SportsCardDiagnostics = {
-    conditionId: candidate.gameId || `cond-${index}`,
+    conditionId: candidate.gameId || rawMarket?.conditionId || `cond-${index}`,
     selectedOutcome: position,
     eventVolumeUsd: candidate.eventVolumeUsd,
     resolvedGameTimeIso: candidate.resolvedGameTimeIso,
@@ -286,6 +367,10 @@ function buildCardFromDiscoveryCandidate(
     profit,
     winProbability,
     price,
+    selectedPrice: price,
+    priceSource: "gammaOutcomePrices",
+    outcomeCount: rawMarket?.outcomes?.length || 0,
+    priceCount: rawMarket?.outcomePrices?.length || 0,
   };
   
   return {
@@ -293,6 +378,47 @@ function buildCardFromDiscoveryCandidate(
     marketSource,
     diagnostics,
   };
+}
+
+// Safe parsing helpers
+function safeParseArray(value: unknown): unknown[] {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value);
+    } catch {
+      // Try comma-separated
+      return value.split(",").map(s => s.trim()).filter(Boolean);
+    }
+  }
+  return [];
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === "number") return value;
+  if (typeof value === "string") {
+    const parsed = parseFloat(value);
+    return isNaN(parsed) ? null : parsed;
+  }
+  return null;
+}
+
+function cleanText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number") return value.toString();
+  return "";
+}
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
+function extractYesPositionFromQuestion(question: string): string | null {
+  const willWinMatch = question.match(/^Will\s+(.+?)\s+win\s+on\s+/i);
+  if (willWinMatch && willWinMatch[1]) {
+    return willWinMatch[1].trim();
+  }
+  return null;
 }
 
 // Main function to build sports landing cards

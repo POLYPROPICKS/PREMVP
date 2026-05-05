@@ -271,6 +271,18 @@ export interface SportsDiscoverySample {
   marketCount: number;
   strategy: string;
   rejectionReason?: string;
+  primaryMarketRaw?: {
+    outcomes: string[];
+    outcomePrices: number[];
+    clobTokenIds: string[];
+    question: string;
+    sportsMarketType?: string;
+    gameId?: string;
+    conditionId?: string;
+    volumeNum?: number | null;
+    volume24hr?: number | null;
+    volumeClob?: number | null;
+  } | null;
 }
 
 export interface SportsDiscoveryResult {

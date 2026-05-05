@@ -325,6 +325,19 @@ export async function discoverSportsMarkets(
       gameTimeConfidence: g.gameTimeConfidence,
       marketCount: g.markets.length,
       strategy: "markets-first",
+      // Add raw market data for outcome pricing
+      primaryMarketRaw: g.primaryMarket ? {
+        outcomes: g.primaryMarket.outcomes,
+        outcomePrices: g.primaryMarket.outcomePrices,
+        clobTokenIds: g.primaryMarket.clobTokenIds,
+        question: g.primaryMarket.question,
+        sportsMarketType: g.primaryMarket.sportsMarketType,
+        gameId: g.primaryMarket.gameId,
+        conditionId: g.primaryMarket.conditionId,
+        volumeNum: g.primaryMarket.volumeNum,
+        volume24hr: g.primaryMarket.volume24hr,
+        volumeClob: g.primaryMarket.volumeClob,
+      } : null,
     }));
 
   counts.finalPairs = finalCandidates.length;
