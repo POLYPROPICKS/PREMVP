@@ -337,7 +337,21 @@ export async function discoverSportsMarkets(
         volumeNum: g.primaryMarket.volumeNum,
         volume24hr: g.primaryMarket.volume24hr,
         volumeClob: g.primaryMarket.volumeClob,
+        oneDayPriceChange: g.primaryMarket.oneDayPriceChange,
       } : null,
+      // Add all grouped markets for mapper to try
+      marketsRaw: g.markets.map(m => ({
+        outcomes: m.outcomes,
+        outcomePrices: m.outcomePrices,
+        clobTokenIds: m.clobTokenIds,
+        question: m.question,
+        sportsMarketType: m.sportsMarketType,
+        conditionId: m.conditionId,
+        volumeNum: m.volumeNum,
+        volume24hr: m.volume24hr,
+        volumeClob: m.volumeClob,
+        oneDayPriceChange: m.oneDayPriceChange,
+      })),
     }));
 
   counts.finalPairs = finalCandidates.length;

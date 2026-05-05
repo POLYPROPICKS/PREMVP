@@ -282,7 +282,20 @@ export interface SportsDiscoverySample {
     volumeNum?: number | null;
     volume24hr?: number | null;
     volumeClob?: number | null;
+    oneDayPriceChange?: number | null;
   } | null;
+  marketsRaw?: Array<{
+    outcomes: string[];
+    outcomePrices: number[];
+    clobTokenIds: string[];
+    question: string;
+    sportsMarketType?: string;
+    conditionId?: string;
+    volumeNum?: number | null;
+    volume24hr?: number | null;
+    volumeClob?: number | null;
+    oneDayPriceChange?: number | null;
+  }>;
 }
 
 export interface SportsDiscoveryResult {
