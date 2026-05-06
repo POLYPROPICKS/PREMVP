@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import styles from './Reconstruction.module.css';
 import { premiumSignals as staticPremiumSignals, PremiumSignal } from '@/content/signals';
 import { marketSources as staticMarketSources } from '@/content/marketSources';
@@ -32,10 +32,26 @@ export default function ReconstructionPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [apiError, setApiError] = useState('');
-  const [landingSignals, setLandingSignals] = useState(() => fallbackPairs.map((pair) => pair.premiumSignal));
-  const [landingSources, setLandingSources] = useState(() => fallbackPairs.map((pair) => pair.marketSource));
-  const [activePairIndex, setActivePairIndex] = useState(0);
-  const [activeSignal, setActiveSignal] = useState<PremiumSignal>(fallbackPairs[0]?.premiumSignal ?? staticPremiumSignals[0]);
+  const [allPairs, setAllPairs] = useState<LandingPair[]>(fallbackPairs);
+  const [activePairId, setActivePairId] = useState<string>(fallbackPairs[0]?.id ?? '');
+
+  const landingSignals = useMemo(() => allPairs.map((pair) => pair.premiumSignal), [allPairs]);
+  const landingSources = useMemo(() => allPairs.map((pair) => pair.marketSource), [allPairs]);
+
+  const activePairIndex = useMemo(() => {
+    const index = allPairs.findIndex((pair) => pair.id === activePairId);
+    return index >= 0 ? index : 0;
+  }, [allPairs, activePairId]);
+
+  const activePair = allPairs[activePairIndex] ?? fallbackPairs[0] ?? null;
+  const activeSignal = activePair?.premiumSignal ?? staticPremiumSignals[0];
+
+  const handleActivePairIndexChange = useCallback((nextIndex: number) => {
+    const nextPair = allPairs[nextIndex];
+    if (nextPair) {
+      setActivePairId(nextPair.id);
+    }
+  }, [allPairs]);
 
   const openModal = useCallback(() => {
     setIsModalOpen(true);
@@ -115,13 +131,8 @@ export default function ReconstructionPage() {
           const normalizedPairs = normalizeLandingPairs(data.pairs ?? [], 'api');
 
           if (normalizedPairs.length > 0) {
-            const apiSignals = normalizedPairs.map((pair) => pair.premiumSignal);
-            const apiSources = normalizedPairs.map((pair) => pair.marketSource);
-
-            setLandingSignals(apiSignals);
-            setLandingSources(apiSources);
-            setActivePairIndex(0);
-            setActiveSignal(apiSignals[0] ?? fallbackPairs[0]?.premiumSignal ?? staticPremiumSignals[0]);
+            setAllPairs(normalizedPairs);
+            setActivePairId(normalizedPairs[0]?.id ?? fallbackPairs[0]?.id ?? '');
 
             console.log('[landing-feed] using normalized api feed:', normalizedPairs.length, 'pairs');
           } else {
@@ -150,15 +161,14 @@ export default function ReconstructionPage() {
           <MarketSourceCarousel 
             sources={landingSources}
             activeIndex={activePairIndex}
-            onActiveIndexChange={setActivePairIndex}
+            onActiveIndexChange={handleActivePairIndexChange}
             renderCard={(source) => <MarketSourceCard source={source} />} 
           />
           <PillsRow />
           <PremiumEventCarousel
             signals={landingSignals}
             activeIndex={activePairIndex}
-            onActiveIndexChange={setActivePairIndex}
-            onActiveSignalChange={setActiveSignal}
+            onActiveIndexChange={handleActivePairIndexChange}
             renderCard={(signal, onCtaClick) => <PremiumSignalCard signal={signal} onCtaClick={onCtaClick} />}
             onCtaClick={openModal}
           />
