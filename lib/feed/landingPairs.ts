@@ -152,46 +152,52 @@ export function normalizeLandingPairs(rawPairs: unknown[], source: LandingPairSo
     .filter((pair): pair is LandingPair => Boolean(pair));
 }
 
+function getPairRank(pair: LandingPair): number {
+  const defaultBoost = pair.isDefaultToday ? 1_000_000_000_000 : 0;
+  const priorityBoost = clampNumber(pair.priority) * 1_000_000_000;
+  const scoreBoost = clampNumber(pair.sortScore) * 1_000_000;
+  const volumeBoost = clampNumber(pair.volumeUsd);
+  const probabilityBoost = clampNumber(pair.premiumSignal?.winProbability) * 1_000;
+
+  return defaultBoost + priorityBoost + scoreBoost + volumeBoost + probabilityBoost;
+}
+
+function sortPairsByRank(pairs: LandingPair[]): LandingPair[] {
+  return [...pairs].sort((a, b) => getPairRank(b) - getPairRank(a));
+}
+
+const FILTER_PREVIEW_OFFSETS: Record<FilterTag, number> = {
+  sports: 0,
+  trending: 1,
+  live: 2,
+  wc2026: 3,
+};
+
+function rotatePairs(pairs: LandingPair[], offset: number): LandingPair[] {
+  if (pairs.length <= 1) return pairs;
+
+  const safeOffset = offset % pairs.length;
+  return [...pairs.slice(safeOffset), ...pairs.slice(0, safeOffset)];
+}
+
 export function selectDefaultPair(pairs: LandingPair[]): LandingPair | null {
   if (!pairs.length) return null;
-
-  return [...pairs].sort((a, b) => {
-    if (a.isDefaultToday !== b.isDefaultToday) {
-      return a.isDefaultToday ? -1 : 1;
-    }
-
-    if ((b.priority ?? 0) !== (a.priority ?? 0)) {
-      return (b.priority ?? 0) - (a.priority ?? 0);
-    }
-
-    if ((b.sortScore ?? 0) !== (a.sortScore ?? 0)) {
-      return (b.sortScore ?? 0) - (a.sortScore ?? 0);
-    }
-
-    return (b.volumeUsd ?? 0) - (a.volumeUsd ?? 0);
-  })[0] ?? null;
+  return sortPairsByRank(pairs)[0] ?? null;
 }
 
 export function getCandidatePairsForFilter(pairs: LandingPair[], activeFilter: FilterTag): LandingPair[] {
   if (!pairs.length) return [];
 
   const matchingPairs = pairs.filter((pair) => pair.filterTags.includes(activeFilter));
+  const basePairs = matchingPairs.length > 0 ? matchingPairs : pairs;
+  const rankedPairs = sortPairsByRank(basePairs);
 
-  if (matchingPairs.length > 0) {
-    return matchingPairs;
-  }
-
-  if (activeFilter !== 'trending') {
-    const trendingPairs = pairs.filter((pair) => pair.filterTags.includes('trending'));
-    if (trendingPairs.length > 0) return trendingPairs;
-  }
-
-  return pairs;
+  return rotatePairs(rankedPairs, FILTER_PREVIEW_OFFSETS[activeFilter]);
 }
 
 export function selectBestPairForFilter(pairs: LandingPair[], activeFilter: FilterTag): LandingPair | null {
   const candidates = getCandidatePairsForFilter(pairs, activeFilter);
-  return selectDefaultPair(candidates);
+  return candidates[0] ?? selectDefaultPair(pairs);
 }
 
 export function selectPeekPair(pairs: LandingPair[], activePairId: string): LandingPair | null {
