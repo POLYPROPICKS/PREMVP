@@ -1038,6 +1038,17 @@
   font-size: 13px;
   color: #F4F6FA;
   font-weight: 600;
+  text-align: right;
+}
+
+.previewEventValue {
+  max-width: 72%;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .modalForm {

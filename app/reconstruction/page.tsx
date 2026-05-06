@@ -493,11 +493,7 @@ function UnlockModal({
             <div className={styles.modalPreview}>
               <div className={styles.previewRow}>
                 <span className={styles.previewLabel}>Event</span>
-                <span className={styles.previewValue}>{activeSignal.eventTitle}</span>
-              </div>
-              <div className={styles.previewRow}>
-                <span className={styles.previewLabel}>Position</span>
-                <span className={styles.previewValue}>{activeSignal.position}</span>
+                <span className={`${styles.previewValue} ${styles.previewEventValue}`}>{activeSignal.eventTitle}</span>
               </div>
               <div className={styles.previewRow}>
                 <span className={styles.previewLabel}>Win Probability</span>
