@@ -4,8 +4,27 @@ import { useState, useEffect, useCallback } from 'react';
 import styles from './Reconstruction.module.css';
 import { premiumSignals as staticPremiumSignals, PremiumSignal } from '@/content/signals';
 import { marketSources as staticMarketSources } from '@/content/marketSources';
+import { normalizeLandingPairs, type LandingPair } from '@/lib/feed/landingPairs';
 import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
+
+const fallbackPairs: LandingPair[] = staticPremiumSignals.flatMap((signal, index) => {
+  const marketSource = staticMarketSources[index] ?? staticMarketSources[0];
+
+  if (!marketSource) return [];
+
+  return [{
+    id: `fallback-${index}`,
+    premiumSignal: signal,
+    marketSource,
+    marketSources: [marketSource],
+    filterTags: ['sports', 'trending'],
+    priority: staticPremiumSignals.length - index,
+    sortScore: signal.winProbability,
+    volumeUsd: 0,
+    source: 'fallback',
+  }];
+});
 
 export default function ReconstructionPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -13,10 +32,10 @@ export default function ReconstructionPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [apiError, setApiError] = useState('');
-  const [landingSignals, setLandingSignals] = useState(staticPremiumSignals);
-  const [landingSources, setLandingSources] = useState(staticMarketSources);
+  const [landingSignals, setLandingSignals] = useState(() => fallbackPairs.map((pair) => pair.premiumSignal));
+  const [landingSources, setLandingSources] = useState(() => fallbackPairs.map((pair) => pair.marketSource));
   const [activePairIndex, setActivePairIndex] = useState(0);
-  const [activeSignal, setActiveSignal] = useState<PremiumSignal>(staticPremiumSignals[0]);
+  const [activeSignal, setActiveSignal] = useState<PremiumSignal>(fallbackPairs[0]?.premiumSignal ?? staticPremiumSignals[0]);
 
   const openModal = useCallback(() => {
     setIsModalOpen(true);
@@ -90,22 +109,23 @@ export default function ReconstructionPage() {
     const fetchFeed = async () => {
       try {
         const response = await fetch('/api/feed/landing-cards?limit=5&category=sports&minDataCoverage=40&excludeEnded=true');
-        
+
         if (response.ok) {
           const data = await response.json();
-          
-          if (data.pairs && data.pairs.length > 0) {
-            const apiSignals = data.pairs.map((p: any) => p.premiumSignal).filter(Boolean);
-            const apiSources = data.pairs.map((p: any) => p.marketSource).filter(Boolean);
-            
+          const normalizedPairs = normalizeLandingPairs(data.pairs ?? [], 'api');
+
+          if (normalizedPairs.length > 0) {
+            const apiSignals = normalizedPairs.map((pair) => pair.premiumSignal);
+            const apiSources = normalizedPairs.map((pair) => pair.marketSource);
+
             setLandingSignals(apiSignals);
             setLandingSources(apiSources);
             setActivePairIndex(0);
-            setActiveSignal(apiSignals[0]);
-            
-            console.log('[landing-feed] using api feed:', data.pairs.length, 'pairs');
+            setActiveSignal(apiSignals[0] ?? fallbackPairs[0]?.premiumSignal ?? staticPremiumSignals[0]);
+
+            console.log('[landing-feed] using normalized api feed:', normalizedPairs.length, 'pairs');
           } else {
-            console.warn('[landing-feed] using manual fallback: empty pairs');
+            console.warn('[landing-feed] using manual fallback: empty normalized pairs');
           }
         } else {
           console.warn('[landing-feed] using manual fallback: response not ok');
