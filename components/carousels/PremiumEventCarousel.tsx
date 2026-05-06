@@ -7,37 +7,62 @@ interface PremiumEventCarouselProps {
   renderCard?: (signal: PremiumSignal, onCtaClick: () => void) => React.ReactNode;
   onActiveSignalChange?: (signal: PremiumSignal) => void;
   onCtaClick?: () => void;
+  signals?: PremiumSignal[];
+  activeIndex?: number;
+  onActiveIndexChange?: (index: number) => void;
 }
 
 export default function PremiumEventCarousel({
   renderCard,
   onActiveSignalChange,
   onCtaClick,
+  signals,
+  activeIndex,
+  onActiveIndexChange,
 }: PremiumEventCarouselProps) {
-  const [activeIndex, setActiveIndex] = useState(0);
+  const [internalActiveIndex, setInternalActiveIndex] = useState(0);
 
-  const activeSignal = premiumSignals[activeIndex];
+  const items = signals && signals.length > 0 ? signals : premiumSignals;
+  const isControlled = typeof activeIndex === 'number';
+  const currentIndex = isControlled ? activeIndex : internalActiveIndex;
 
   const goToNext = useCallback(() => {
-    setActiveIndex((prev) => (prev + 1) % premiumSignals.length);
-  }, []);
+    const next = (currentIndex + 1) % items.length;
+    if (isControlled) {
+      onActiveIndexChange?.(next);
+    } else {
+      setInternalActiveIndex(next);
+    }
+  }, [currentIndex, items.length, isControlled, onActiveIndexChange]);
 
   const goToPrev = useCallback(() => {
-    setActiveIndex((prev) => (prev - 1 + premiumSignals.length) % premiumSignals.length);
-  }, []);
+    const prev = (currentIndex - 1 + items.length) % items.length;
+    if (isControlled) {
+      onActiveIndexChange?.(prev);
+    } else {
+      setInternalActiveIndex(prev);
+    }
+  }, [currentIndex, items.length, isControlled, onActiveIndexChange]);
 
   // Notify parent of active signal change
   useEffect(() => {
-    onActiveSignalChange?.(activeSignal);
-  }, [activeSignal, onActiveSignalChange]);
+    onActiveSignalChange?.(items[currentIndex]);
+  }, [currentIndex, items, onActiveSignalChange]);
 
-  // Optional auto-advance every 5 seconds
+  // Auto-advance every 5 seconds (when controlled, compute next index)
   useEffect(() => {
     const interval = setInterval(() => {
-      goToNext();
+      const next = (currentIndex + 1) % items.length;
+      if (isControlled) {
+        onActiveIndexChange?.(next);
+      } else {
+        setInternalActiveIndex(next);
+      }
     }, 5000);
     return () => clearInterval(interval);
-  }, [goToNext]);
+  }, [currentIndex, items.length, isControlled, onActiveIndexChange]);
+
+  const activeSignal = items[currentIndex];
 
   return (
     <div style={{ position: 'relative' }}>
@@ -119,14 +144,14 @@ export default function PremiumEventCarousel({
           opacity: 0.4,
         }}
       >
-        {premiumSignals.map((_, idx) => (
+        {items.map((_, idx) => (
           <span
             key={idx}
             style={{
               width: '6px',
               height: '6px',
               borderRadius: '50%',
-              background: idx === activeIndex ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.3)',
+              background: idx === currentIndex ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.3)',
               transition: 'background 0.2s',
             }}
           />

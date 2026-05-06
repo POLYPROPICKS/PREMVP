@@ -31,7 +31,7 @@ export const premiumSignals: PremiumSignal[] = [
     profit: "317%",
     winProbability: 78,
     price: "$1.99",
-    ctaLabel: "Unlock Full Signal",
+    ctaLabel: "Get 5 Free Signals NOW",
     metrics: [
       {
         id: "smart-money",
@@ -66,7 +66,7 @@ export const premiumSignals: PremiumSignal[] = [
     profit: "214%",
     winProbability: 72,
     price: "$1.99",
-    ctaLabel: "Unlock Full Signal",
+    ctaLabel: "Get 5 Free Signals NOW",
     metrics: [
       {
         id: "smart-money",
@@ -101,7 +101,7 @@ export const premiumSignals: PremiumSignal[] = [
     profit: "186%",
     winProbability: 69,
     price: "$1.99",
-    ctaLabel: "Unlock Full Signal",
+    ctaLabel: "Get 5 Free Signals NOW",
     metrics: [
       {
         id: "smart-money",
@@ -136,7 +136,7 @@ export const premiumSignals: PremiumSignal[] = [
     profit: "241%",
     winProbability: 74,
     price: "$1.99",
-    ctaLabel: "Unlock Full Signal",
+    ctaLabel: "Get 5 Free Signals NOW",
     metrics: [
       {
         id: "smart-money",
@@ -171,7 +171,7 @@ export const premiumSignals: PremiumSignal[] = [
     profit: "205%",
     winProbability: 71,
     price: "$1.99",
-    ctaLabel: "Unlock Full Signal",
+    ctaLabel: "Get 5 Free Signals NOW",
     metrics: [
       {
         id: "smart-money",

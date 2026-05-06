@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import styles from './Reconstruction.module.css';
-import { premiumSignals, PremiumSignal } from '@/content/signals';
-import { marketSources } from '@/content/marketSources';
+import { premiumSignals as staticPremiumSignals, PremiumSignal } from '@/content/signals';
+import { marketSources as staticMarketSources } from '@/content/marketSources';
 import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
 
@@ -13,7 +13,10 @@ export default function ReconstructionPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [emailError, setEmailError] = useState('');
   const [apiError, setApiError] = useState('');
-  const [activeSignal, setActiveSignal] = useState<PremiumSignal>(premiumSignals[0]);
+  const [landingSignals, setLandingSignals] = useState(staticPremiumSignals);
+  const [landingSources, setLandingSources] = useState(staticMarketSources);
+  const [activePairIndex, setActivePairIndex] = useState(0);
+  const [activeSignal, setActiveSignal] = useState<PremiumSignal>(staticPremiumSignals[0]);
 
   const openModal = useCallback(() => {
     setIsModalOpen(true);
@@ -82,16 +85,38 @@ export default function ReconstructionPage() {
     }
   }, [email, activeSignal]);
 
-  // Escape key handler
+  // Fetch API feed on mount
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isModalOpen) {
-        closeModal();
+    const fetchFeed = async () => {
+      try {
+        const response = await fetch('/api/feed/landing-cards?limit=5&category=sports&minDataCoverage=40&excludeEnded=true');
+        
+        if (response.ok) {
+          const data = await response.json();
+          
+          if (data.pairs && data.pairs.length > 0) {
+            const apiSignals = data.pairs.map((p: any) => p.premiumSignal).filter(Boolean);
+            const apiSources = data.pairs.map((p: any) => p.marketSource).filter(Boolean);
+            
+            setLandingSignals(apiSignals);
+            setLandingSources(apiSources);
+            setActivePairIndex(0);
+            setActiveSignal(apiSignals[0]);
+            
+            console.log('[landing-feed] using api feed:', data.pairs.length, 'pairs');
+          } else {
+            console.warn('[landing-feed] using manual fallback: empty pairs');
+          }
+        } else {
+          console.warn('[landing-feed] using manual fallback: response not ok');
+        }
+      } catch (error) {
+        console.warn('[landing-feed] using manual fallback: fetch error', error);
       }
     };
-    window.addEventListener('keydown', handleEscape);
-    return () => window.removeEventListener('keydown', handleEscape);
-  }, [isModalOpen, closeModal]);
+
+    fetchFeed();
+  }, []);
 
   return (
     <main className={styles.page}>
@@ -103,11 +128,19 @@ export default function ReconstructionPage() {
         <div className={styles.screen}>
           <StatusBar />
           <Header />
-          <MarketSourceCarousel renderCard={(source) => <MarketSourceCard source={source} />} />
+          <MarketSourceCarousel 
+            sources={landingSources}
+            activeIndex={activePairIndex}
+            onActiveIndexChange={setActivePairIndex}
+            renderCard={(source) => <MarketSourceCard source={source} />} 
+          />
           <PillsRow />
           <PremiumEventCarousel
-            renderCard={(signal, onCtaClick) => <PremiumSignalCard signal={signal} onCtaClick={onCtaClick} />}
+            signals={landingSignals}
+            activeIndex={activePairIndex}
+            onActiveIndexChange={setActivePairIndex}
             onActiveSignalChange={setActiveSignal}
+            renderCard={(signal, onCtaClick) => <PremiumSignalCard signal={signal} onCtaClick={onCtaClick} />}
             onCtaClick={openModal}
           />
         </div>
@@ -187,7 +220,7 @@ function Header() {
   );
 }
 
-function MarketSourceCard({ source }: { source: typeof marketSources[0] }) {
+function MarketSourceCard({ source }: { source: typeof staticMarketSources[0] }) {
   return (
     <section className={styles.marketSourceCard}>
       <div className={styles.marketTop}>
@@ -245,7 +278,7 @@ function MarketSourceCard({ source }: { source: typeof marketSources[0] }) {
             />
             <circle cx="145" cy="6" r="3.7" className={styles.chartDot} />
           </svg>
-          <div className={styles.marketDelta}>{source.delta} ↗</div>
+          <div className={styles.marketDelta}>{source.delta} up</div>
         </div>
 
         <div className={styles.marketCopy}>
@@ -268,7 +301,7 @@ function PillsRow() {
   );
 }
 
-function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof premiumSignals[0]; onCtaClick: () => void }) {
+function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiumSignals[0]; onCtaClick: () => void }) {
   return (
     <article className={styles.premiumSignalCard}>
       <div className={styles.premiumTop}>
@@ -281,7 +314,7 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof premiumSigna
             <path d="M8 15.1 6.8 17.7 10 19.2l2-1.5V15H8Z" fill="#11161E" />
             <path d="M16 15.1 17.2 17.7 14 19.2l-2-1.5V15h4Z" fill="#11161E" />
           </svg>
-          <span>{signal.league} • {signal.time}</span>
+         <span>{signal.league} | {signal.time}</span>
         </div>
         <div className={styles.confidencePill}>
           <svg viewBox="0 0 24 24" className={styles.shield} aria-hidden="true">
@@ -337,7 +370,7 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof premiumSigna
               <circle cx="12" cy="7.2" r="1.1" fill="currentColor" />
             </svg>
           </div>
-          {signal.metrics.map((metric) => (
+          {signal.metrics.map((metric: any) => (
             <MetricRow
               key={metric.id}
               icon={
@@ -356,7 +389,7 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof premiumSigna
           ))}
         </div>
       </div>
-      <button className={styles.cta} onClick={onCtaClick}>{signal.ctaLabel} — {signal.price}</button>
+      <button className={styles.cta} onClick={onCtaClick}>Get 5 Free Signals NOW</button>
     </article>
   );
 }
@@ -456,9 +489,9 @@ function UnlockModal({
 
         {!isSuccess ? (
           <>
-            <h2 className={styles.modalTitle}>Unlock full signal</h2>
+            <h2 className={styles.modalTitle}>Get 5 Free Signals</h2>
             <p className={styles.modalSubtitle}>
-              Get the full pick, entry logic, confidence breakdown, and movement alerts before odds shift.
+              Get 5 free sports picks with full analysis and live alerts.
             </p>
 
             <div className={styles.modalPreview}>
@@ -488,18 +521,18 @@ function UnlockModal({
               {emailError && <span className={styles.modalError}>{emailError}</span>}
               {apiError && <span className={styles.modalError}>{apiError}</span>}
               <button type="submit" className={styles.modalPrimary}>
-                Reserve signal access — {activeSignal.price}
+                Get 5 Free Signals NOW
               </button>
             </form>
 
-            <p className={styles.modalFineprint}>No spam. Early access users get first pricing.</p>
-            <p className={styles.modalFooter}>Full checkout opens in the next step.</p>
+            <p className={styles.modalFineprint}>No spam. Early access users get priority signal access.</p>
+            <p className={styles.modalFooter}>Free signals unlock after email confirmation.</p>
           </>
         ) : (
           <div className={styles.modalSuccess}>
             <h2 className={styles.modalTitle}>You&apos;re on the early list</h2>
             <p className={styles.modalSubtitle}>
-              We saved your signal request. Next step: checkout and live alerts.
+              We saved your request. Your free signals access is reserved.
             </p>
             <button className={styles.modalPrimary} onClick={onClose}>
               Close

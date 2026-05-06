@@ -5,28 +5,47 @@ import { marketSources, MarketSource } from '@/content/marketSources';
 
 interface MarketSourceCarouselProps {
   renderCard?: (source: MarketSource) => React.ReactNode;
+  sources?: MarketSource[];
+  activeIndex?: number;
+  onActiveIndexChange?: (index: number) => void;
 }
 
-export default function MarketSourceCarousel({ renderCard }: MarketSourceCarouselProps) {
-  const [activeIndex, setActiveIndex] = useState(0);
+export default function MarketSourceCarousel({ renderCard, sources, activeIndex, onActiveIndexChange }: MarketSourceCarouselProps) {
+  const [internalActiveIndex, setInternalActiveIndex] = useState(0);
+
+  const items = sources && sources.length > 0 ? sources : marketSources;
+  const isControlled = typeof activeIndex === 'number';
+  const currentIndex = isControlled ? activeIndex : internalActiveIndex;
 
   const goToNext = useCallback(() => {
-    setActiveIndex((prev) => (prev + 1) % marketSources.length);
-  }, []);
+    const next = (currentIndex + 1) % items.length;
+    if (isControlled) {
+      onActiveIndexChange?.(next);
+    } else {
+      setInternalActiveIndex(next);
+    }
+  }, [currentIndex, items.length, isControlled, onActiveIndexChange]);
 
   const goToPrev = useCallback(() => {
-    setActiveIndex((prev) => (prev - 1 + marketSources.length) % marketSources.length);
-  }, []);
+    const prev = (currentIndex - 1 + items.length) % items.length;
+    if (isControlled) {
+      onActiveIndexChange?.(prev);
+    } else {
+      setInternalActiveIndex(prev);
+    }
+  }, [currentIndex, items.length, isControlled, onActiveIndexChange]);
 
-  // Optional auto-advance every 5 seconds
+  // Optional auto-advance every 5 seconds (only when not controlled)
   useEffect(() => {
+    if (isControlled) return;
+    
     const interval = setInterval(() => {
       goToNext();
     }, 5000);
     return () => clearInterval(interval);
-  }, [goToNext]);
+  }, [goToNext, isControlled]);
 
-  const activeSource = marketSources[activeIndex];
+  const activeSource = items[currentIndex];
 
   return (
     <div style={{ position: 'relative' }}>
@@ -108,14 +127,14 @@ export default function MarketSourceCarousel({ renderCard }: MarketSourceCarouse
           opacity: 0.4,
         }}
       >
-        {marketSources.map((_, idx) => (
+        {items.map((_, idx) => (
           <span
             key={idx}
             style={{
               width: '6px',
               height: '6px',
               borderRadius: '50%',
-              background: idx === activeIndex ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.3)',
+              background: idx === currentIndex ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.3)',
               transition: 'background 0.2s',
             }}
           />

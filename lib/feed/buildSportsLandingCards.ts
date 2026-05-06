@@ -409,7 +409,7 @@ function buildCardFromDiscoveryCandidate(
     profit: `${profit}%`,
     winProbability,
     price: `${Math.round(price * 100)}¢`,
-    ctaLabel: "Unlock Premium Insights",
+    ctaLabel: "Get 5 Free Signals NOW",
     metrics: [
       {
         id: "pre-event-score",
