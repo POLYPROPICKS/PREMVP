@@ -302,6 +302,44 @@ function PillsRow() {
 }
 
 function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiumSignals[0]; onCtaClick: () => void }) {
+  // Compute sanitized probability and confidence data
+  const probability = Math.max(0, Math.min(100, Number(signal.winProbability) || 0));
+  const ringDegrees = probability * 3.6;
+  
+  // Get badge text based on probability (badge background stays green)
+  const getBadgeText = (prob: number) => {
+    if (prob >= 80) {
+      return "ABSOLUTE CONFIDENCE";
+    } else if (prob > 65) {
+      return "HIGH CONFIDENCE";
+    } else if (prob > 55) {
+      return "MIDDLE CONFIDENCE";
+    } else {
+      return "LOW CONFIDENCE";
+    }
+  };
+
+  // Get ring color based on probability
+  const getRingColor = (prob: number) => {
+    if (prob >= 80) {
+      return "#FFF500"; // ABSOLUTE
+    }
+    if (prob > 65) {
+      return "#FFF500"; // HIGH
+    }
+    if (prob > 55) {
+      return "#2190F6"; // MIDDLE
+    }
+    return "#FF8A00"; // LOW
+  };
+
+  const badgeText = getBadgeText(probability);
+  const ringColor = getRingColor(probability);
+
+  // Compute ring style with direct conic-gradient
+  const ringStyle = {
+    background: `conic-gradient(${ringColor} 0deg ${ringDegrees}deg, rgba(255,255,255,0.16) ${ringDegrees}deg 360deg)`
+  };
   return (
     <article className={styles.premiumSignalCard}>
       <div className={styles.premiumTop}>
@@ -331,7 +369,7 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
               fill="none"
             />
           </svg>
-          <span>{signal.confidenceLabel}</span>
+          <span>{badgeText}</span>
         </div>
       </div>
       <h1 className={styles.eventTitle}>{signal.eventTitle}</h1>
@@ -355,9 +393,9 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
       <div className={styles.analyticsRow}>
         <div className={styles.winCard}>
           <div className={styles.winTitle}>WIN PROBABILITY</div>
-          <div className={styles.ring}>
+          <div className={styles.ring} style={ringStyle}>
             <div className={styles.ringInner}>
-              <span className={styles.ringNumber}>{signal.winProbability}</span>
+              <span className={styles.ringNumber}>{probability}</span>
             </div>
           </div>
         </div>
