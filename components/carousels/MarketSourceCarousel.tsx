@@ -117,29 +117,6 @@ export default function MarketSourceCarousel({ renderCard, sources, activeIndex,
         </button>
       </div>
 
-      {/* Index indicator - subtle dots */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '6px',
-          marginTop: '8px',
-          opacity: 0.4,
-        }}
-      >
-        {items.map((_, idx) => (
-          <span
-            key={idx}
-            style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              background: idx === currentIndex ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.3)',
-              transition: 'background 0.2s',
-            }}
-          />
-        ))}
-      </div>
-    </div>
+          </div>
   );
 }
