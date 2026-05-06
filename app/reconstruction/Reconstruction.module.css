@@ -940,8 +940,8 @@
 .modalBackdrop {
   position: fixed;
   inset: 0;
-  background: rgba(2, 6, 12, 0.78);
-  backdrop-filter: blur(6px);
+  background: rgba(2, 6, 12, 0.42);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -955,13 +955,16 @@
   max-width: 380px;
   max-height: 90vh;
   overflow-y: auto;
-  background: linear-gradient(145deg, rgba(15, 23, 35, 0.98), rgba(8, 14, 22, 0.98));
-  border: 1px solid rgba(139, 92, 246, 0.25);
-  border-radius: 16px;
-  padding: 24px 20px 20px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(34, 211, 238, 0.10), transparent 34%),
+    linear-gradient(180deg, rgba(8, 21, 34, 0.98), rgba(2, 9, 16, 0.98));
+  border: 1px solid rgba(93, 221, 255, 0.26);
+  border-radius: 22px;
+  padding: 24px 20px;
   box-shadow:
-    0 25px 50px -12px rgba(0, 0, 0, 0.5),
-    0 0 30px rgba(139, 92, 246, 0.1);
+    0 26px 60px rgba(0, 0, 0, 0.58),
+    0 0 34px rgba(34, 211, 238, 0.10),
+    0 0 28px rgba(133, 231, 166, 0.045) inset;
 }
 
 .modalClose {
@@ -973,11 +976,11 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
+  border-radius: 50%;
+  background: rgba(8, 22, 34, 0.82);
+  border: 1px solid rgba(142, 231, 255, 0.20);
+  color: rgba(244, 246, 250, 0.72);
   cursor: pointer;
-  color: rgba(244, 246, 250, 0.7);
   transition: all 0.2s ease;
 }
 
@@ -1009,11 +1012,12 @@
 }
 
 .modalPreview {
-  background: rgba(139, 92, 246, 0.08);
-  border: 1px solid rgba(139, 92, 246, 0.2);
-  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(6, 21, 31, 0.88), rgba(3, 13, 22, 0.92));
+  border: 1px solid rgba(142, 231, 255, 0.18);
+  border-radius: 14px;
   padding: 14px 16px;
   margin-bottom: 20px;
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.045) inset;
 }
 
 .previewRow {
@@ -1061,11 +1065,10 @@
   width: 100%;
   padding: 14px 16px;
   font-size: 15px;
+  background: rgba(5, 17, 28, 0.86);
+  border: 1px solid rgba(142, 231, 255, 0.18);
+  border-radius: 12px;
   color: #F4F6FA;
-  background: rgba(255, 255, 255, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 10px;
-  outline: none;
   transition: all 0.2s ease;
 }
 
