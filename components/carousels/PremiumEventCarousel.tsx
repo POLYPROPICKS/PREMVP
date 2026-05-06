@@ -47,20 +47,18 @@ export default function PremiumEventCarousel({
   // Notify parent of active signal change
   useEffect(() => {
     onActiveSignalChange?.(items[currentIndex]);
-  }, [currentIndex, items, onActiveSignalChange]);
+  }, [currentIndex, items, onActiveSignalChange, internalActiveIndex]);
 
-  // Auto-advance every 5 seconds (when controlled, compute next index)
+  // Auto-advance every 5 seconds (only when not controlled)
   useEffect(() => {
+    if (isControlled) return;
+
     const interval = setInterval(() => {
       const next = (currentIndex + 1) % items.length;
-      if (isControlled) {
-        onActiveIndexChange?.(next);
-      } else {
-        setInternalActiveIndex(next);
-      }
+      setInternalActiveIndex(next);
     }, 5000);
     return () => clearInterval(interval);
-  }, [currentIndex, items.length, isControlled, onActiveIndexChange]);
+  }, [currentIndex, items.length, isControlled, onActiveIndexChange, internalActiveIndex]);
 
   const activeSignal = items[currentIndex];
 

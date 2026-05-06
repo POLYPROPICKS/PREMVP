@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import styles from './Reconstruction.module.css';
 import { premiumSignals as staticPremiumSignals, PremiumSignal } from '@/content/signals';
 import { marketSources as staticMarketSources } from '@/content/marketSources';
-import { normalizeLandingPairs, type LandingPair } from '@/lib/feed/landingPairs';
+import { getCandidatePairsForFilter, normalizeLandingPairs, selectBestPairForFilter, type FilterTag, type LandingPair } from '@/lib/feed/landingPairs';
 import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
 
@@ -34,22 +34,37 @@ export default function ReconstructionPage() {
   const [apiError, setApiError] = useState('');
   const [allPairs, setAllPairs] = useState<LandingPair[]>(fallbackPairs);
   const [activePairId, setActivePairId] = useState<string>(fallbackPairs[0]?.id ?? '');
+  const [activeFilter, setActiveFilter] = useState<FilterTag>('sports');
 
-  const landingSignals = useMemo(() => allPairs.map((pair) => pair.premiumSignal), [allPairs]);
-  const landingSources = useMemo(() => allPairs.map((pair) => pair.marketSource), [allPairs]);
+  const candidatePairs = useMemo(
+    () => getCandidatePairsForFilter(allPairs, activeFilter),
+    [allPairs, activeFilter]
+  );
+
+  const landingSignals = useMemo(() => candidatePairs.map((pair) => pair.premiumSignal), [candidatePairs]);
+  const landingSources = useMemo(() => candidatePairs.map((pair) => pair.marketSource), [candidatePairs]);
 
   const activePairIndex = useMemo(() => {
-    const index = allPairs.findIndex((pair) => pair.id === activePairId);
+    const index = candidatePairs.findIndex((pair) => pair.id === activePairId);
     return index >= 0 ? index : 0;
-  }, [allPairs, activePairId]);
+  }, [candidatePairs, activePairId]);
 
-  const activePair = allPairs[activePairIndex] ?? fallbackPairs[0] ?? null;
+  const activePair = candidatePairs[activePairIndex] ?? allPairs[0] ?? fallbackPairs[0] ?? null;
   const activeSignal = activePair?.premiumSignal ?? staticPremiumSignals[0];
 
   const handleActivePairIndexChange = useCallback((nextIndex: number) => {
-    const nextPair = allPairs[nextIndex];
+    const nextPair = candidatePairs[nextIndex];
     if (nextPair) {
       setActivePairId(nextPair.id);
+    }
+  }, [candidatePairs]);
+
+  const handleFilterClick = useCallback((filter: FilterTag) => {
+    setActiveFilter(filter);
+
+    const bestPair = selectBestPairForFilter(allPairs, filter);
+    if (bestPair) {
+      setActivePairId(bestPair.id);
     }
   }, [allPairs]);
 
@@ -164,7 +179,7 @@ export default function ReconstructionPage() {
             onActiveIndexChange={handleActivePairIndexChange}
             renderCard={(source) => <MarketSourceCard source={source} />} 
           />
-          <PillsRow />
+          <PillsRow activeFilter={activeFilter} onFilterClick={handleFilterClick} />
           <PremiumEventCarousel
             signals={landingSignals}
             activeIndex={activePairIndex}
@@ -278,13 +293,32 @@ function MarketSourceCard({ source }: { source: typeof staticMarketSources[0] })
   );
 }
 
-function PillsRow() {
+function PillsRow({
+  activeFilter,
+  onFilterClick,
+}: {
+  activeFilter: FilterTag;
+  onFilterClick: (filter: FilterTag) => void;
+}) {
+  const filters: Array<{ tag: FilterTag; label: string }> = [
+    { tag: 'live', label: 'Live' },
+    { tag: 'wc2026', label: 'WC2026' },
+    { tag: 'sports', label: 'Sports' },
+    { tag: 'trending', label: 'Trending' },
+  ];
+
   return (
     <div className={styles.pillsRow}>
-      <button className={styles.pill}>Live</button>
-      <button className={styles.pill}>WC2026</button>
-      <button className={`${styles.pill} ${styles.pillActive}`}>Sports</button>
-      <button className={styles.pill}>Trending</button>
+      {filters.map((filter) => (
+        <button
+          key={filter.tag}
+          type="button"
+          className={`${styles.pill} ${activeFilter === filter.tag ? styles.pillActive : ''}`}
+          onClick={() => onFilterClick(filter.tag)}
+        >
+          {filter.label}
+        </button>
+      ))}
     </div>
   );
 }
