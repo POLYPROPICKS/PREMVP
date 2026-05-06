@@ -126,7 +126,6 @@ export default function ReconstructionPage() {
       
       <section className={styles.viewport}>
         <div className={styles.screen}>
-          <StatusBar />
           <Header />
           <MarketSourceCarousel 
             sources={landingSources}
@@ -163,47 +162,6 @@ export default function ReconstructionPage() {
   );
 }
 
-function StatusBar() {
-  return (
-    <div className={styles.statusBar}>
-      <div className={styles.statusTime}>9:41</div>
-      <div className={styles.statusIcons}>
-        <div className={styles.cellular}>
-          <span />
-          <span />
-          <span />
-          <span />
-        </div>
-        <svg viewBox="0 0 20 14" className={styles.wifi} aria-hidden="true">
-          <path
-            d="M2 5.5C6.8 1.5 13.2 1.5 18 5.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-          />
-          <path
-            d="M5 8.5C8.3 5.8 11.7 5.8 15 8.5"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-          />
-          <path
-            d="M8.2 11.2c1.2-1 2.4-1 3.6 0"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="1.7"
-            strokeLinecap="round"
-          />
-        </svg>
-        <div className={styles.battery}>
-          <div className={styles.batteryFill} />
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function Header() {
   return (
