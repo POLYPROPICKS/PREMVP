@@ -254,7 +254,7 @@ function PillsRow() {
       <button className={styles.pill}>Live</button>
       <button className={styles.pill}>WC2026</button>
       <button className={`${styles.pill} ${styles.pillActive}`}>Sports</button>
-      <button className={styles.pill}>Econ</button>
+      <button className={styles.pill}>Trending</button>
     </div>
   );
 }
