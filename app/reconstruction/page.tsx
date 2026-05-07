@@ -539,7 +539,7 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
         </div>
 
         <div className={styles.winCard}>
-          <div className={styles.winTitle}>WIN PROBABILITY</div>
+          <div className={styles.winTitle}>SIGNAL CONFIDENCE</div>
           <div className={styles.ring} style={ringStyle}>
             <div className={styles.ringInner}>
               <span className={styles.ringNumber}>{probability}</span>
