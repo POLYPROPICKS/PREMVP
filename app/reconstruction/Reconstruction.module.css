@@ -44,7 +44,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 10px 14px;
+  padding: 9px 10px 8px;
 }
 
 .brandLogo {
@@ -859,7 +859,8 @@
 
 .cta {
   width: 100%;
-  min-height: 64px;
+  min-height: clamp(48px, 11.4vw, 56px);
+  font-size: clamp(15px, 4.45vw, 19px);
   border: 0;
   border-radius: 999px;
   cursor: default;
@@ -1154,8 +1155,8 @@
   width: var(--premium-card-width, min(416px, calc(100vw - 24px)));
   max-width: var(--premium-card-width, min(416px, calc(100vw - 24px)));
   margin: 0;
-  padding: clamp(15px, 4vw, 19px) clamp(12px, 3.7vw, 18px) clamp(14px, 3.8vw, 17px);
-  min-height: clamp(486px, 118vw, 506px);
+  padding: clamp(11px, 2.8vw, 14px) clamp(11px, 3.2vw, 16px) clamp(10px, 2.7vw, 13px);
+  min-height: clamp(438px, 106vw, 456px);
 }
 
 .premiumSignalCard::after {
@@ -1163,8 +1164,8 @@
 }
 
 .premiumTop {
-  gap: clamp(6px, 2vw, 10px);
-  margin-bottom: clamp(13px, 3.8vw, 18px);
+  gap: clamp(5px, 1.45vw, 7px);
+  margin-bottom: clamp(8px, 2.2vw, 11px);
 }
 
 .leagueMeta {
@@ -1190,11 +1191,11 @@
 }
 
 .eventTitle {
-  height: clamp(54px, 14vw, 60px);
-  max-height: clamp(54px, 14vw, 60px);
-  font-size: clamp(23px, 6.8vw, 28px);
-  line-height: 1.04;
-  margin-bottom: clamp(10px, 3vw, 12px);
+  height: clamp(42px, 10.6vw, 48px);
+  max-height: clamp(42px, 10.6vw, 48px);
+  font-size: clamp(21px, 5.85vw, 25px);
+  line-height: 1.02;
+  margin-bottom: clamp(7px, 1.9vw, 9px);
 }
 
 .positionProfit {
@@ -1337,27 +1338,27 @@
 /* PREMVP10 responsive shell + market source fixes */
 
 .pillsRow {
-  padding: clamp(11px, 3.2vw, 13px) clamp(6px, 2.5vw, 10px) clamp(12px, 3.6vw, 16px);
-  gap: clamp(7px, 2.2vw, 9px);
+  padding: clamp(7px, 2vw, 9px) clamp(6px, 2.2vw, 9px) clamp(8px, 2.2vw, 10px);
+  gap: clamp(6px, 1.7vw, 8px);
 }
 
 .pill {
-  min-height: clamp(34px, 9vw, 40px);
-  padding: 0 clamp(8px, 2.7vw, 13px);
-  font-size: clamp(10px, 3vw, 12px);
+  min-height: clamp(30px, 7.8vw, 35px);
+  padding: 0 clamp(8px, 2.4vw, 12px);
+  font-size: clamp(9.5px, 2.7vw, 11px);
 }
 
 .marketSourceCard {
   width: min(416px, calc(100vw - 24px));
   max-width: min(416px, calc(100vw - 24px));
-  min-height: clamp(136px, 36vw, 152px);
-  padding: clamp(12px, 3.5vw, 15px) clamp(11px, 3.5vw, 15px) clamp(11px, 3.5vw, 14px);
-  border-radius: clamp(18px, 5.2vw, 22px);
+  min-height: clamp(108px, 28vw, 128px);
+  padding: clamp(9px, 2.45vw, 11px) clamp(10px, 2.8vw, 13px) clamp(8px, 2.2vw, 10px);
+  border-radius: clamp(16px, 4.7vw, 20px);
 }
 
 .marketTop {
-  gap: clamp(5px, 1.8vw, 8px);
-  margin-bottom: clamp(10px, 3vw, 15px);
+  gap: clamp(4px, 1.4vw, 6px);
+  margin-bottom: clamp(6px, 1.8vw, 9px);
 }
 
 .marketSourceLabel span {
@@ -1365,11 +1366,11 @@
 }
 
 .marketPill {
-  min-height: clamp(24px, 6.7vw, 28px);
-  padding: 0 clamp(6px, 2vw, 8px);
-  gap: clamp(4px, 1.5vw, 7px);
-  font-size: clamp(8.5px, 2.5vw, 10px);
-  border-radius: clamp(8px, 2.8vw, 10px);
+  min-height: clamp(22px, 5.8vw, 25px);
+  padding: 0 clamp(5px, 1.6vw, 7px);
+  gap: clamp(3px, 1.1vw, 5px);
+  font-size: clamp(8px, 2.25vw, 9.5px);
+  border-radius: clamp(8px, 2.5vw, 10px);
 }
 
 .marketPillIcon {
@@ -1646,22 +1647,24 @@
   height: clamp(6px, 1.8vw, 8px) !important;
 }
 
-/* PREMVP10 final Decision Core layout: Signal Confidence aligned, Profit matched, Position/Profit text-safe */
+/* PREMVP10 final Decision Core layout: mobile fold-fit, wider Profit/Signal, compact vertical stack */
 
 .premiumSignalCard .analyticsRow {
-  grid-template-columns: minmax(0, 1.34fr) minmax(104px, 0.66fr) !important;
-  gap: clamp(6px, 1.8vw, 8px) !important;
-  align-items: stretch !important;
+  grid-template-columns: minmax(0, 1.14fr) minmax(124px, 0.86fr) !important;
+  gap: clamp(6px, 1.6vw, 8px) !important;
+  align-items: start !important;
 }
 
 .premiumSignalCard .analyticsRow .trustCard {
   min-width: 0;
-  padding: clamp(11px, 2.9vw, 13px) clamp(9px, 2.35vw, 12px) clamp(10px, 2.7vw, 12px) !important;
+  align-self: start !important;
+  padding: clamp(7px, 1.75vw, 9px) clamp(7px, 1.75vw, 9px) clamp(6px, 1.45vw, 8px) !important;
 }
 
 .premiumSignalCard .analyticsRow .winCard {
   min-width: 0;
-  padding: clamp(8px, 2.15vw, 10px) clamp(5px, 1.35vw, 7px) clamp(11px, 2.9vw, 13px) !important;
+  align-self: start !important;
+  padding: clamp(6px, 1.45vw, 8px) clamp(6px, 1.45vw, 8px) clamp(6px, 1.45vw, 8px) !important;
   align-items: center !important;
   justify-content: flex-start !important;
 }
@@ -1670,57 +1673,57 @@
   display: block;
   width: 100%;
   color: #87ff4d;
-  font-size: clamp(9px, 2.42vw, 10.8px) !important;
+  font-size: clamp(10px, 2.55vw, 12px) !important;
   line-height: 0.9 !important;
   font-weight: 950;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.04em;
   text-align: center;
   white-space: normal !important;
   text-wrap: balance;
-  margin: 0 0 clamp(7px, 1.8vw, 9px) !important;
+  margin: 0 0 clamp(5px, 1.25vw, 7px) !important;
 }
 
 .premiumSignalCard .analyticsRow .ring {
-  width: clamp(74px, 19.8vw, 88px) !important;
-  height: clamp(74px, 19.8vw, 88px) !important;
-  margin: 0 auto;
+  width: clamp(68px, 17.4vw, 78px) !important;
+  height: clamp(68px, 17.4vw, 78px) !important;
+  margin: clamp(1px, 0.35vw, 3px) auto 0 !important;
 }
 
 .premiumSignalCard .analyticsRow .ring::before {
-  inset: clamp(5px, 1.45vw, 7px) !important;
+  inset: clamp(5px, 1.35vw, 7px) !important;
 }
 
 .premiumSignalCard .analyticsRow .ringNumber {
-  font-size: clamp(29px, 7.65vw, 35px) !important;
+  font-size: clamp(27px, 6.9vw, 32px) !important;
 }
 
 .premiumSignalCard .analyticsRow .trustHeader {
-  margin-bottom: clamp(7px, 1.95vw, 9px) !important;
+  margin-bottom: clamp(5px, 1.2vw, 7px) !important;
 }
 
 .premiumSignalCard .analyticsRow .trustTitle {
-  font-size: clamp(10px, 2.75vw, 11.5px) !important;
+  font-size: clamp(10px, 2.65vw, 11.5px) !important;
   line-height: 1 !important;
   letter-spacing: 0.015em;
 }
 
 .premiumSignalCard .analyticsRow .info {
-  width: clamp(13px, 3.35vw, 16px) !important;
-  height: clamp(13px, 3.35vw, 16px) !important;
+  width: clamp(13px, 3.2vw, 15px) !important;
+  height: clamp(13px, 3.2vw, 15px) !important;
 }
 
 .premiumSignalCard .analyticsRow .trustCard .metricRow {
-  grid-template-columns: clamp(24px, 6.2vw, 28px) minmax(0, 1fr) !important;
-  column-gap: clamp(5px, 1.35vw, 7px) !important;
-  margin-bottom: clamp(8px, 2.05vw, 10px) !important;
+  grid-template-columns: clamp(22px, 5.45vw, 26px) minmax(0, 1fr) !important;
+  column-gap: clamp(4px, 0.95vw, 6px) !important;
+  margin-bottom: clamp(4px, 1vw, 6px) !important;
   align-items: center !important;
 }
 
 .premiumSignalCard .analyticsRow .trustCard .metricIconWrap {
-  width: clamp(24px, 6.2vw, 28px) !important;
-  height: clamp(24px, 6.2vw, 28px) !important;
-  min-width: clamp(24px, 6.2vw, 28px) !important;
-  min-height: clamp(24px, 6.2vw, 28px) !important;
+  width: clamp(23px, 5.75vw, 27px) !important;
+  height: clamp(23px, 5.75vw, 27px) !important;
+  min-width: clamp(23px, 5.75vw, 27px) !important;
+  min-height: clamp(23px, 5.75vw, 27px) !important;
   display: flex !important;
   align-items: center !important;
   justify-content: center !important;
@@ -1728,16 +1731,16 @@
 }
 
 .premiumSignalCard .analyticsRow .trustCard .metricIconImg {
-  width: clamp(34px, 8.65vw, 39px) !important;
-  height: clamp(34px, 8.65vw, 39px) !important;
-  min-width: clamp(34px, 8.65vw, 39px) !important;
-  min-height: clamp(34px, 8.65vw, 39px) !important;
+  width: clamp(32px, 7.8vw, 37px) !important;
+  height: clamp(32px, 7.8vw, 37px) !important;
+  min-width: clamp(32px, 7.8vw, 37px) !important;
+  min-height: clamp(32px, 7.8vw, 37px) !important;
   max-width: none !important;
   max-height: none !important;
   object-fit: contain !important;
   display: block !important;
   opacity: 1 !important;
-  margin-left: clamp(-5px, -1.15vw, -3px) !important;
+  margin-left: clamp(-5px, -1.1vw, -3px) !important;
   filter:
     contrast(1.18)
     saturate(1.18)
@@ -1749,15 +1752,15 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: clamp(3px, 0.85vw, 5px);
-  margin-bottom: clamp(4px, 1.15vw, 5px) !important;
+  gap: clamp(2px, 0.55vw, 4px);
+  margin-bottom: clamp(2px, 0.55vw, 3px) !important;
 }
 
 .premiumSignalCard .analyticsRow .trustCard .metricLabel {
-  font-size: clamp(8.2px, 2.14vw, 9.6px) !important;
+  font-size: clamp(7.7px, 1.95vw, 9px) !important;
   line-height: 1.03 !important;
   font-weight: 850;
-  letter-spacing: -0.052em;
+  letter-spacing: -0.055em;
   color: #ffffff;
   white-space: nowrap;
   overflow: hidden;
@@ -1767,17 +1770,17 @@
 }
 
 .premiumSignalCard .analyticsRow .trustCard .metricValue {
-  font-size: clamp(8.3px, 2.12vw, 9.6px) !important;
+  font-size: clamp(7.8px, 1.95vw, 9px) !important;
   line-height: 1 !important;
   font-weight: 950;
   color: #8bff4d;
   flex: 0 0 auto;
   white-space: nowrap;
-  margin-left: clamp(2px, 0.5vw, 4px);
+  margin-left: clamp(1px, 0.35vw, 3px);
 }
 
 .premiumSignalCard .analyticsRow .trustCard .metricBar {
-  height: clamp(7px, 1.82vw, 9px) !important;
+  height: clamp(5px, 1.25vw, 6px) !important;
   background: rgba(102, 113, 124, 0.34);
   border-radius: 999px;
   overflow: hidden;
@@ -1786,10 +1789,10 @@
 
 .premiumSignalCard .positionProfit {
   display: grid !important;
-  grid-template-columns: minmax(0, 1.34fr) minmax(104px, 0.66fr) !important;
-  gap: clamp(6px, 1.8vw, 8px) !important;
-  min-height: clamp(92px, 24.8vw, 106px) !important;
-  margin-bottom: clamp(12px, 3.4vw, 16px) !important;
+  grid-template-columns: minmax(0, 1.14fr) minmax(124px, 0.86fr) !important;
+  gap: clamp(6px, 1.6vw, 8px) !important;
+  min-height: clamp(78px, 20.2vw, 88px) !important;
+  margin-bottom: clamp(6px, 1.55vw, 8px) !important;
   padding: 0 !important;
   border: 0 !important;
   background: transparent !important;
@@ -1808,11 +1811,11 @@
   justify-content: flex-end !important;
   align-items: flex-start !important;
   min-width: 0 !important;
-  min-height: clamp(92px, 24.8vw, 106px) !important;
-  padding: clamp(12px, 3.25vw, 15px) clamp(12px, 3.15vw, 15px) clamp(13px, 3.45vw, 16px) !important;
+  min-height: clamp(78px, 20.2vw, 88px) !important;
+  padding: clamp(9px, 2.25vw, 11px) clamp(10px, 2.45vw, 12px) clamp(9px, 2.35vw, 11px) !important;
   text-align: left !important;
   overflow: hidden !important;
-  border-radius: clamp(10px, 2.7vw, 13px) !important;
+  border-radius: clamp(10px, 2.55vw, 13px) !important;
   border: 1px solid rgba(123, 151, 174, 0.26) !important;
   background:
     radial-gradient(circle at 84% 42%, rgba(141, 255, 111, 0.15), transparent 36%),
@@ -1825,12 +1828,12 @@
 .premiumSignalCard .positionCol > :first-child,
 .premiumSignalCard .profitCol > :first-child {
   position: absolute !important;
-  top: clamp(11px, 2.95vw, 14px) !important;
-  left: clamp(12px, 3.15vw, 15px) !important;
+  top: clamp(9px, 2.35vw, 12px) !important;
+  left: clamp(10px, 2.55vw, 12px) !important;
   z-index: 3 !important;
   margin: 0 !important;
   color: rgba(221, 230, 239, 0.82) !important;
-  font-size: clamp(11px, 2.9vw, 13px) !important;
+  font-size: clamp(10px, 2.55vw, 12px) !important;
   line-height: 1 !important;
   font-weight: 560 !important;
   letter-spacing: -0.025em !important;
@@ -1850,7 +1853,7 @@
 
 .premiumSignalCard .positionCol .positionValue {
   color: #ffffff !important;
-  font-size: clamp(22px, 5.85vw, 29px) !important;
+  font-size: clamp(21px, 5.35vw, 27px) !important;
   max-width: 72% !important;
   white-space: normal !important;
   overflow: hidden !important;
@@ -1867,7 +1870,7 @@
 
 .premiumSignalCard .profitCol .profitValue {
   color: #7cff5e !important;
-  font-size: clamp(27px, 7vw, 34px) !important;
+  font-size: clamp(28px, 7.15vw, 35px) !important;
   max-width: 98% !important;
   white-space: nowrap !important;
   text-shadow:
@@ -1888,16 +1891,16 @@
 .premiumSignalCard .positionCol .target {
   right: clamp(-2px, -0.4vw, 0px) !important;
   top: 53% !important;
-  width: clamp(78px, 20.6vw, 96px) !important;
-  height: clamp(78px, 20.6vw, 96px) !important;
-  opacity: 0.42 !important;
+  width: clamp(74px, 19.2vw, 90px) !important;
+  height: clamp(74px, 19.2vw, 90px) !important;
+  opacity: 0.4 !important;
 }
 
 .premiumSignalCard .profitCol .trend {
   right: clamp(-6px, -1.3vw, -3px) !important;
   top: 37% !important;
-  width: clamp(70px, 18.6vw, 86px) !important;
-  height: clamp(70px, 18.6vw, 86px) !important;
+  width: clamp(70px, 18vw, 84px) !important;
+  height: clamp(70px, 18vw, 84px) !important;
   opacity: 0.48 !important;
 }
 
@@ -1915,4 +1918,256 @@
     saturate(1.25)
     drop-shadow(0 0 13px rgba(124, 255, 94, 0.25))
     drop-shadow(0 1px 2px rgba(0, 0, 0, 0.8)) !important;
+}
+
+/* PREMVP11 FINAL PROPORTIONAL MOBILE LANDING SOURCE OF TRUTH
+   Purpose:
+   - distribute remaining vertical space proportionally
+   - keep CTA visible at 390x700 / 428x760
+   - restore strong lower-section proportions
+   - avoid both over-compression and dead-space
+*/
+
+.header {
+  padding: 8px 10px 7px !important;
+}
+
+.livePill {
+  min-height: 36px !important;
+  padding: 0 15px !important;
+  gap: 8px !important;
+}
+
+.marketSourceCard {
+  min-height: clamp(106px, 27.1vw, 124px) !important;
+  padding: clamp(8px, 2vw, 10px) clamp(10px, 2.6vw, 12px) clamp(6px, 1.45vw, 8px) !important;
+  border-radius: clamp(15px, 4.2vw, 18px) !important;
+}
+
+.marketTop {
+  gap: clamp(3px, 1vw, 5px) !important;
+  margin-bottom: clamp(4px, 1.05vw, 6px) !important;
+}
+
+.marketPill {
+  min-height: clamp(20px, 5.1vw, 23px) !important;
+  padding: 0 clamp(5px, 1.4vw, 7px) !important;
+  gap: clamp(3px, 0.9vw, 5px) !important;
+  font-size: clamp(7.6px, 2vw, 9px) !important;
+  border-radius: clamp(7px, 2vw, 9px) !important;
+}
+
+.marketBody {
+  grid-template-columns: minmax(104px, 36%) minmax(0, 1fr) !important;
+  gap: clamp(9px, 2.6vw, 14px) !important;
+  align-items: center !important;
+}
+
+.marketChartWrap {
+  height: clamp(62px, 15.9vw, 74px) !important;
+}
+
+.chart {
+  height: clamp(44px, 11.9vw, 54px) !important;
+}
+
+.marketDelta {
+  bottom: clamp(5px, 1.35vw, 8px) !important;
+  font-size: clamp(13px, 3.8vw, 16px) !important;
+}
+
+.marketCopy {
+  padding-bottom: clamp(4px, 1vw, 6px) !important;
+  transform: translateY(0) !important;
+}
+
+.marketHeadline {
+  font-size: clamp(19px, 5.65vw, 24px) !important;
+  line-height: 0.98 !important;
+  margin: 0 0 3px !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.marketSubline {
+  font-size: clamp(11px, 3.1vw, 13px) !important;
+  line-height: 1.05 !important;
+  transform: none !important;
+}
+
+.pillsRow {
+  padding: clamp(6px, 1.55vw, 8px) clamp(6px, 2vw, 9px) clamp(7px, 1.8vw, 9px) !important;
+  gap: clamp(6px, 1.5vw, 8px) !important;
+}
+
+.pill {
+  min-height: clamp(28px, 7.2vw, 33px) !important;
+  padding: 0 clamp(8px, 2.1vw, 11px) !important;
+  font-size: clamp(9.2px, 2.45vw, 10.5px) !important;
+}
+
+.premiumSignalCard {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: clamp(476px, 122vw, 512px) !important;
+  padding: clamp(9px, 2.3vw, 12px) clamp(11px, 3vw, 15px) clamp(10px, 2.5vw, 13px) !important;
+}
+
+.premiumTop {
+  gap: clamp(4px, 1.1vw, 6px) !important;
+  margin-bottom: clamp(6px, 1.45vw, 8px) !important;
+}
+
+.leagueMeta {
+  font-size: clamp(10.5px, 2.75vw, 12.5px) !important;
+}
+
+.confidencePill {
+  min-height: clamp(30px, 7.8vw, 36px) !important;
+  padding: 0 clamp(9px, 2.6vw, 13px) !important;
+  font-size: clamp(8.8px, 2.35vw, 11px) !important;
+}
+
+.eventTitle {
+  height: clamp(51px, 13.1vw, 57px) !important;
+  max-height: clamp(51px, 13.1vw, 57px) !important;
+  font-size: clamp(19px, 5.15vw, 23px) !important;
+  line-height: 1.02 !important;
+  margin-bottom: clamp(6px, 1.45vw, 8px) !important;
+  overflow: hidden !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  text-overflow: ellipsis !important;
+}
+
+.premiumSignalCard .positionProfit {
+  min-height: clamp(82px, 20.9vw, 92px) !important;
+  margin-bottom: clamp(7px, 1.7vw, 9px) !important;
+}
+
+.premiumSignalCard .positionCol,
+.premiumSignalCard .profitCol {
+  min-height: clamp(82px, 20.9vw, 92px) !important;
+  padding: clamp(9px, 2.2vw, 11px) clamp(10px, 2.35vw, 12px) clamp(9px, 2.25vw, 11px) !important;
+}
+
+.premiumSignalCard .analyticsRow {
+  align-items: stretch !important;
+  grid-template-columns: minmax(0, 1.14fr) minmax(124px, 0.86fr) !important;
+  gap: clamp(6px, 1.45vw, 8px) !important;
+  margin-bottom: clamp(8px, 1.95vw, 10px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard,
+.premiumSignalCard .analyticsRow .winCard {
+  align-self: stretch !important;
+  height: clamp(198px, 50.8vw, 218px) !important;
+  min-height: clamp(198px, 50.8vw, 218px) !important;
+  max-height: clamp(198px, 50.8vw, 218px) !important;
+  overflow: hidden !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  padding: clamp(11px, 2.65vw, 13px) clamp(8px, 2vw, 10px) clamp(11px, 2.55vw, 13px) !important;
+}
+
+.premiumSignalCard .analyticsRow .winCard {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  padding: clamp(11px, 2.55vw, 13px) clamp(7px, 1.7vw, 9px) clamp(11px, 2.55vw, 13px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustHeader {
+  flex: 0 0 auto !important;
+  min-height: clamp(18px, 4.25vw, 21px) !important;
+  margin-bottom: clamp(10px, 2.6vw, 13px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustTitle {
+  font-size: clamp(10px, 2.6vw, 11.8px) !important;
+  line-height: 1 !important;
+}
+
+.premiumSignalCard .analyticsRow .info {
+  width: clamp(12px, 3vw, 14px) !important;
+  height: clamp(12px, 3vw, 14px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricRow {
+  grid-template-columns: clamp(23px, 5.7vw, 27px) minmax(0, 1fr) !important;
+  column-gap: clamp(4px, 1vw, 6px) !important;
+  margin-bottom: clamp(10px, 2.45vw, 12px) !important;
+  align-items: center !important;
+  flex: 0 0 auto !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricRow:last-child {
+  margin-bottom: 0 !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricIconWrap {
+  width: clamp(23px, 5.7vw, 27px) !important;
+  height: clamp(23px, 5.7vw, 27px) !important;
+  min-width: clamp(23px, 5.7vw, 27px) !important;
+  min-height: clamp(23px, 5.7vw, 27px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricIconImg {
+  width: clamp(31px, 7.75vw, 35px) !important;
+  height: clamp(31px, 7.75vw, 35px) !important;
+  min-width: clamp(31px, 7.75vw, 35px) !important;
+  min-height: clamp(31px, 7.75vw, 35px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricTopLine {
+  gap: clamp(2px, 0.5vw, 4px) !important;
+  margin-bottom: clamp(3px, 0.85vw, 4px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricLabel {
+  font-size: clamp(7.9px, 2.08vw, 9.4px) !important;
+  line-height: 1.02 !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricValue {
+  font-size: clamp(8px, 2.08vw, 9.4px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricBar {
+  height: clamp(5px, 1.35vw, 7px) !important;
+}
+
+.premiumSignalCard .analyticsRow .winTitle {
+  flex: 0 0 auto !important;
+  font-size: clamp(10px, 2.6vw, 12px) !important;
+  line-height: 0.9 !important;
+  margin: 0 !important;
+}
+
+.premiumSignalCard .analyticsRow .ring {
+  width: clamp(94px, 24vw, 110px) !important;
+  height: clamp(94px, 24vw, 110px) !important;
+  margin: auto auto !important;
+}
+
+.premiumSignalCard .analyticsRow .ring::before {
+  inset: clamp(7px, 1.75vw, 9px) !important;
+}
+
+.premiumSignalCard .analyticsRow .ringNumber {
+  font-size: clamp(33px, 8.4vw, 39px) !important;
+}
+
+.cta {
+  width: 100% !important;
+  min-height: clamp(48px, 11.4vw, 56px) !important;
+  font-size: clamp(15px, 4.35vw, 19px) !important;
+  margin-top: auto !important;
+  border: 0 !important;
 }
