@@ -398,6 +398,13 @@
   margin-top: 12px;
 }
 
+/* PremiumEventCarousel responsive overrides */
+.premiumSignalCard:has(~ .premiumFeed) {
+  width: var(--premium-card-width);
+  max-width: var(--premium-card-width);
+  margin: 0;
+}
+
 .premiumSignalCard::before {
   content: '';
   position: absolute;
@@ -1129,4 +1136,650 @@
 .modalSuccess {
   text-align: center;
   padding: 20px 0 10px;
+}
+
+/* PREMVP10 responsive locked premium feed overrides */
+
+.viewport {
+  width: min(100vw, 428px);
+  max-width: 428px;
+}
+
+.screen {
+  width: min(100vw, 428px);
+  max-width: 428px;
+}
+
+.premiumSignalCard {
+  width: var(--premium-card-width, min(416px, calc(100vw - 24px)));
+  max-width: var(--premium-card-width, min(416px, calc(100vw - 24px)));
+  margin: 0;
+  padding: clamp(15px, 4vw, 19px) clamp(12px, 3.7vw, 18px) clamp(14px, 3.8vw, 17px);
+  min-height: clamp(486px, 118vw, 506px);
+}
+
+.premiumSignalCard::after {
+  display: none;
+}
+
+.premiumTop {
+  gap: clamp(6px, 2vw, 10px);
+  margin-bottom: clamp(13px, 3.8vw, 18px);
+}
+
+.leagueMeta {
+  font-size: clamp(11px, 3.1vw, 14px);
+  gap: clamp(6px, 2vw, 9px);
+}
+
+.ball {
+  width: clamp(18px, 5vw, 22px);
+  height: clamp(18px, 5vw, 22px);
+}
+
+.confidencePill {
+  min-height: clamp(32px, 8.4vw, 39px);
+  padding: 0 clamp(9px, 3vw, 15px);
+  gap: clamp(5px, 1.8vw, 8px);
+  font-size: clamp(9px, 2.8vw, 12px);
+}
+
+.shield {
+  width: clamp(13px, 3.8vw, 16px);
+  height: clamp(13px, 3.8vw, 16px);
+}
+
+.eventTitle {
+  height: clamp(54px, 14vw, 60px);
+  max-height: clamp(54px, 14vw, 60px);
+  font-size: clamp(23px, 6.8vw, 28px);
+  line-height: 1.04;
+  margin-bottom: clamp(10px, 3vw, 12px);
+}
+
+.positionProfit {
+  min-height: clamp(92px, 25vw, 106px);
+  margin-bottom: clamp(13px, 3.8vw, 17px);
+}
+
+.positionCol,
+.profitCol {
+  padding: clamp(12px, 3.4vw, 16px) clamp(9px, 2.8vw, 14px);
+}
+
+.label {
+  font-size: clamp(10px, 3vw, 13px);
+  margin-bottom: clamp(6px, 2.2vw, 9px);
+}
+
+.positionValue,
+.profitValue {
+  font-size: clamp(21px, 6.4vw, 29px);
+}
+
+.targetIconWrap {
+  width: clamp(38px, 11vw, 54px);
+  height: clamp(38px, 11vw, 54px);
+  right: clamp(6px, 2.5vw, 12px);
+}
+
+.targetIconImg {
+  width: clamp(38px, 11vw, 54px);
+  height: clamp(38px, 11vw, 54px);
+}
+
+.trendIconWrap {
+  width: clamp(26px, 8vw, 34px);
+  height: clamp(26px, 8vw, 34px);
+  right: clamp(6px, 2.5vw, 12px);
+}
+
+.trendIconImg {
+  width: clamp(26px, 8vw, 34px);
+  height: clamp(26px, 8vw, 34px);
+}
+
+.analyticsRow {
+  grid-template-columns: minmax(0, 0.94fr) minmax(0, 1.06fr);
+  gap: clamp(7px, 2.4vw, 12px);
+  margin-bottom: clamp(13px, 3.8vw, 18px);
+}
+
+.winCard,
+.trustCard {
+  min-height: clamp(184px, 47vw, 222px);
+}
+
+.winCard {
+  padding: clamp(12px, 3.5vw, 14px) clamp(7px, 2.4vw, 10px);
+}
+
+.trustCard {
+  padding: clamp(12px, 3.4vw, 16px) clamp(9px, 2.8vw, 14px) clamp(10px, 3vw, 14px);
+}
+
+.winTitle,
+.trustTitle {
+  font-size: clamp(11px, 3.4vw, 15px);
+  line-height: 1;
+}
+
+.winTitle {
+  margin-bottom: clamp(12px, 3.8vw, 18px);
+}
+
+.trustHeader {
+  min-height: clamp(19px, 5vw, 24px);
+  margin-bottom: clamp(10px, 3.2vw, 16px);
+}
+
+.info {
+  width: clamp(14px, 4vw, 18px);
+  height: clamp(14px, 4vw, 18px);
+}
+
+.ring {
+  width: clamp(92px, 27vw, 126px);
+  height: clamp(92px, 27vw, 126px);
+}
+
+.ring::before {
+  inset: clamp(9px, 2.8vw, 13px);
+}
+
+.ringNumber {
+  font-size: clamp(34px, 10vw, 44px);
+}
+
+.metricRow,
+.trustCard .metricRow {
+  grid-template-columns: clamp(16px, 4.7vw, 24px) minmax(0, 1fr) clamp(24px, 7vw, 34px) !important;
+  column-gap: clamp(5px, 1.8vw, 10px) !important;
+  margin-bottom: clamp(9px, 2.8vw, 16px);
+}
+
+.metricIconWrap,
+.trustCard .metricIconWrap,
+.metricIconImg,
+.trustCard .metricIconImg {
+  width: clamp(16px, 4.7vw, 24px) !important;
+  height: clamp(16px, 4.7vw, 24px) !important;
+  min-width: clamp(16px, 4.7vw, 24px) !important;
+  min-height: clamp(16px, 4.7vw, 24px) !important;
+}
+
+.metricLabel,
+.trustCard .metricLabel {
+  font-size: clamp(8.5px, 2.6vw, 11px) !important;
+  line-height: 1.05 !important;
+  margin-bottom: clamp(4px, 1.8vw, 7px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metricValue,
+.trustCard .metricValue {
+  font-size: clamp(8.5px, 2.6vw, 11px) !important;
+}
+
+.metricBar,
+.trustCard .metricBar,
+.trustCard .metricBarTrack {
+  height: clamp(5px, 1.8vw, 8px) !important;
+}
+
+.cta {
+  min-height: clamp(52px, 13vw, 64px);
+  font-size: clamp(16px, 5vw, 21px);
+}
+
+/* PREMVP10 responsive shell + market source fixes */
+
+.pillsRow {
+  padding: clamp(11px, 3.2vw, 13px) clamp(6px, 2.5vw, 10px) clamp(12px, 3.6vw, 16px);
+  gap: clamp(7px, 2.2vw, 9px);
+}
+
+.pill {
+  min-height: clamp(34px, 9vw, 40px);
+  padding: 0 clamp(8px, 2.7vw, 13px);
+  font-size: clamp(10px, 3vw, 12px);
+}
+
+.marketSourceCard {
+  width: min(416px, calc(100vw - 24px));
+  max-width: min(416px, calc(100vw - 24px));
+  min-height: clamp(136px, 36vw, 152px);
+  padding: clamp(12px, 3.5vw, 15px) clamp(11px, 3.5vw, 15px) clamp(11px, 3.5vw, 14px);
+  border-radius: clamp(18px, 5.2vw, 22px);
+}
+
+.marketTop {
+  gap: clamp(5px, 1.8vw, 8px);
+  margin-bottom: clamp(10px, 3vw, 15px);
+}
+
+.marketSourceLabel span {
+  font-size: clamp(9px, 2.5vw, 11px);
+}
+
+.marketPill {
+  min-height: clamp(24px, 6.7vw, 28px);
+  padding: 0 clamp(6px, 2vw, 8px);
+  gap: clamp(4px, 1.5vw, 7px);
+  font-size: clamp(8.5px, 2.5vw, 10px);
+  border-radius: clamp(8px, 2.8vw, 10px);
+}
+
+.marketPillIcon {
+  width: clamp(13px, 3.8vw, 16px);
+  height: clamp(13px, 3.8vw, 16px);
+}
+
+.marketBody {
+  grid-template-columns: minmax(104px, 36%) minmax(0, 1fr);
+  gap: clamp(9px, 3vw, 16px);
+  align-items: end;
+}
+
+.marketChartWrap {
+  width: 100%;
+  max-width: 150px;
+  height: clamp(68px, 20vw, 84px);
+}
+
+.chart {
+  width: 100%;
+  height: clamp(46px, 14vw, 56px);
+}
+
+.marketDelta {
+  right: clamp(4px, 1.8vw, 10px);
+  bottom: clamp(10px, 3vw, 14px);
+  font-size: clamp(13px, 4vw, 16px);
+}
+
+.marketCopy {
+  min-width: 0;
+  overflow: hidden;
+  padding-bottom: clamp(9px, 3vw, 14px);
+  transform: translateY(-2px);
+}
+
+.marketContent {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.marketHeadline {
+  font-size: clamp(19px, 5.9vw, 24px);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.marketSubline {
+  font-size: clamp(11px, 3.3vw, 13px);
+  line-height: 1.08;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* PREMVP10 Trust Metrics semantic layout fix */
+
+.trustCard .metricRow {
+  grid-template-columns: clamp(24px, 6.4vw, 30px) minmax(0, 1fr) !important;
+  column-gap: clamp(8px, 2.8vw, 12px) !important;
+  align-items: center !important;
+  margin-bottom: clamp(10px, 3vw, 15px);
+  overflow: visible;
+}
+
+.trustCard .metricIconWrap {
+  width: clamp(24px, 6.4vw, 30px) !important;
+  height: clamp(24px, 6.4vw, 30px) !important;
+  min-width: clamp(24px, 6.4vw, 30px) !important;
+  min-height: clamp(24px, 6.4vw, 30px) !important;
+  flex: 0 0 clamp(24px, 6.4vw, 30px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: visible !important;
+}
+
+.trustCard .metricIconImg {
+  width: clamp(24px, 6.4vw, 30px) !important;
+  height: clamp(24px, 6.4vw, 30px) !important;
+  min-width: clamp(24px, 6.4vw, 30px) !important;
+  min-height: clamp(24px, 6.4vw, 30px) !important;
+  object-fit: contain !important;
+  display: block !important;
+  opacity: 1 !important;
+  filter:
+    drop-shadow(0 1px 3px rgba(0, 0, 0, 0.65))
+    drop-shadow(0 0 5px rgba(255, 255, 255, 0.2)) !important;
+}
+
+.trustCard .metricMain {
+  min-width: 0;
+  width: 100%;
+}
+
+.metricTopLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(6px, 2vw, 10px);
+  width: 100%;
+  margin-bottom: clamp(4px, 1.6vw, 6px);
+}
+
+.trustCard .metricLabel {
+  min-width: 0;
+  color: #ffffff;
+  font-size: clamp(8.5px, 2.7vw, 11px) !important;
+  line-height: 1.05 !important;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.trustCard .metricValue {
+  flex: 0 0 auto;
+  color: #8bff4d;
+  font-size: clamp(9px, 2.8vw, 11px) !important;
+  line-height: 1 !important;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  text-align: right;
+  white-space: nowrap;
+  opacity: 1;
+}
+
+.trustCard .metricBar,
+.trustCard .metricBarTrack {
+  width: 100%;
+  height: clamp(6px, 1.9vw, 8px) !important;
+  border-radius: 999px;
+  background: rgba(102, 113, 124, 0.32);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.04) inset;
+}
+
+.trustCard .metricFill {
+  height: 100%;
+  border-radius: 999px;
+  box-shadow: 0 0 10px rgba(255, 245, 0, 0.16);
+  transition: width 0.2s ease, background 0.2s ease;
+}
+
+/* PREMVP10 Analytics Row final layout fix */
+
+.analyticsRow {
+  grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.94fr) !important;
+}
+
+.trustCard .metricRow {
+  grid-template-columns: clamp(28px, 7.5vw, 36px) minmax(0, 1fr) !important;
+  column-gap: clamp(8px, 2.8vw, 12px) !important;
+  align-items: center !important;
+  margin-bottom: clamp(10px, 3vw, 15px);
+  overflow: visible;
+}
+
+.trustCard .metricIconWrap {
+  width: clamp(28px, 7.5vw, 36px) !important;
+  height: clamp(28px, 7.5vw, 36px) !important;
+  min-width: clamp(28px, 7.5vw, 36px) !important;
+  min-height: clamp(28px, 7.5vw, 36px) !important;
+  flex: 0 0 clamp(28px, 7.5vw, 36px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: visible !important;
+}
+
+.trustCard .metricIconImg {
+  width: clamp(28px, 7.5vw, 36px) !important;
+  height: clamp(28px, 7.5vw, 36px) !important;
+  min-width: clamp(28px, 7.5vw, 36px) !important;
+  min-height: clamp(28px, 7.5vw, 36px) !important;
+  object-fit: contain !important;
+  display: block !important;
+  opacity: 1 !important;
+  filter:
+    drop-shadow(0 1px 3px rgba(0, 0, 0, 0.65))
+    drop-shadow(0 0 5px rgba(255, 255, 255, 0.2)) !important;
+}
+
+/* PREMVP10 final analytics row swap + Trust Metrics icon visibility */
+
+.analyticsRow {
+  grid-template-columns: minmax(0, 1.13fr) minmax(0, 0.87fr);
+  gap: clamp(7px, 2.2vw, 10px);
+}
+
+.analyticsRow .trustCard {
+  padding: clamp(11px, 3.1vw, 14px) clamp(8px, 2.6vw, 12px) clamp(10px, 2.8vw, 13px);
+}
+
+.analyticsRow .winCard {
+  padding: clamp(11px, 3vw, 14px) clamp(6px, 2vw, 8px);
+}
+
+.analyticsRow .trustHeader {
+  margin-bottom: clamp(8px, 2.6vw, 12px);
+}
+
+.analyticsRow .trustTitle,
+.analyticsRow .winTitle {
+  font-size: clamp(10px, 3.1vw, 13px);
+}
+
+.analyticsRow .ring {
+  width: clamp(86px, 24vw, 108px);
+  height: clamp(86px, 24vw, 108px);
+}
+
+.analyticsRow .ring::before {
+  inset: clamp(8px, 2.4vw, 11px);
+}
+
+.analyticsRow .ringNumber {
+  font-size: clamp(32px, 8.8vw, 40px);
+}
+
+.premiumSignalCard .trustCard .metricRow {
+  grid-template-columns: clamp(31px, 8.4vw, 38px) minmax(0, 1fr) !important;
+  column-gap: clamp(8px, 2.6vw, 11px) !important;
+  align-items: center !important;
+  margin-bottom: clamp(8px, 2.4vw, 12px) !important;
+  overflow: visible !important;
+}
+
+.premiumSignalCard .trustCard .metricIconWrap {
+  width: clamp(31px, 8.4vw, 38px) !important;
+  height: clamp(31px, 8.4vw, 38px) !important;
+  min-width: clamp(31px, 8.4vw, 38px) !important;
+  min-height: clamp(31px, 8.4vw, 38px) !important;
+  flex: 0 0 clamp(31px, 8.4vw, 38px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  overflow: visible !important;
+}
+
+.premiumSignalCard .trustCard .metricIconImg {
+  width: clamp(31px, 8.4vw, 38px) !important;
+  height: clamp(31px, 8.4vw, 38px) !important;
+  min-width: clamp(31px, 8.4vw, 38px) !important;
+  min-height: clamp(31px, 8.4vw, 38px) !important;
+  object-fit: contain !important;
+  display: block !important;
+  opacity: 1 !important;
+  filter:
+    drop-shadow(0 1px 3px rgba(0, 0, 0, 0.75))
+    drop-shadow(0 0 7px rgba(86, 240, 255, 0.24)) !important;
+}
+
+.premiumSignalCard .trustCard .metricTopLine {
+  gap: clamp(5px, 1.7vw, 8px);
+  margin-bottom: clamp(3px, 1.3vw, 5px);
+}
+
+.premiumSignalCard .trustCard .metricLabel {
+  font-size: clamp(8px, 2.45vw, 10px) !important;
+  line-height: 1.02 !important;
+  max-width: 100%;
+}
+
+.premiumSignalCard .trustCard .metricValue {
+  font-size: clamp(8.5px, 2.55vw, 10px) !important;
+}
+
+.premiumSignalCard .trustCard .metricBar {
+  height: clamp(6px, 1.8vw, 8px) !important;
+}
+
+/* PREMVP10 final Analytics Row clean fix: Trust wider, Win narrower, Position/Profit balanced */
+
+.premiumSignalCard .analyticsRow {
+  grid-template-columns: minmax(0, 1.32fr) minmax(0, 0.68fr) !important;
+  gap: clamp(6px, 2vw, 8px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard {
+  min-width: 0;
+  padding: clamp(12px, 3.2vw, 15px) clamp(14px, 3.8vw, 16px) clamp(11px, 3vw, 13px) !important;
+}
+
+.premiumSignalCard .analyticsRow .winCard {
+  min-width: 0;
+  padding: clamp(8px, 2.4vw, 11px) clamp(6px, 1.6vw, 7px) clamp(9px, 2.6vw, 11px) !important;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.premiumSignalCard .analyticsRow .winTitle {
+  display: block;
+  width: 100%;
+  color: #87ff4d;
+  font-size: clamp(9px, 2.8vw, 11px) !important;
+  line-height: 0.95 !important;
+  font-weight: 900;
+  text-align: center;
+  white-space: normal !important;
+  margin: 0 0 clamp(6px, 1.8vw, 8px) !important;
+}
+
+.premiumSignalCard .analyticsRow .ring {
+  width: clamp(76px, 21vw, 92px) !important;
+  height: clamp(76px, 21vw, 92px) !important;
+  margin: 0 auto;
+}
+
+.premiumSignalCard .analyticsRow .ring::before {
+  inset: clamp(6px, 1.8vw, 8px) !important;
+}
+
+.premiumSignalCard .analyticsRow .ringNumber {
+  font-size: clamp(29px, 8vw, 36px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustHeader {
+  margin-bottom: clamp(8px, 2.3vw, 11px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustTitle {
+  font-size: clamp(10px, 3.1vw, 12px) !important;
+}
+
+.premiumSignalCard .analyticsRow .info {
+  width: clamp(14px, 3.8vw, 17px) !important;
+  height: clamp(14px, 3.8vw, 17px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricRow {
+  grid-template-columns: clamp(34px, 8.8vw, 40px) minmax(0, 1fr) !important;
+  column-gap: clamp(9px, 2.6vw, 12px) !important;
+  margin-bottom: clamp(9px, 2.4vw, 12px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricIconWrap,
+.premiumSignalCard .analyticsRow .trustCard .metricIconImg {
+  width: clamp(34px, 8.8vw, 40px) !important;
+  height: clamp(34px, 8.8vw, 40px) !important;
+  min-width: clamp(34px, 8.8vw, 40px) !important;
+  min-height: clamp(34px, 8.8vw, 40px) !important;
+  object-fit: contain !important;
+  display: block !important;
+  opacity: 1 !important;
+  filter:
+    drop-shadow(0 1px 3px rgba(0, 0, 0, 0.75))
+    drop-shadow(0 0 7px rgba(86, 240, 255, 0.24)) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricTopLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(3px, 1vw, 5px);
+  margin-bottom: clamp(4px, 1.4vw, 6px) !important;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricLabel {
+  font-size: clamp(7.2px, 2.05vw, 9px) !important;
+  line-height: 1.05 !important;
+  font-weight: 800;
+  letter-spacing: -0.055em;
+  color: #ffffff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricValue {
+  font-size: clamp(8px, 2.2vw, 9.5px) !important;
+  line-height: 1 !important;
+  font-weight: 900;
+  color: #8bff4d;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.premiumSignalCard .analyticsRow .trustCard .metricBar {
+  height: clamp(7px, 1.9vw, 9px) !important;
+  background: rgba(102, 113, 124, 0.32);
+  border-radius: 999px;
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.04) inset;
+}
+
+.premiumSignalCard .positionProfit {
+  display: grid;
+  grid-template-columns: 1.1fr 1px 0.9fr;
+  gap: 0;
+  min-height: clamp(94px, 26vw, 110px);
+  margin-bottom: clamp(12px, 3.5vw, 16px);
+}
+
+.premiumSignalCard .positionCol,
+.premiumSignalCard .profitCol {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+}
+
+.premiumSignalCard .positionProfitDivider {
+  background: rgba(167, 174, 185, 0.35);
+  margin: clamp(16px, 4.5vw, 20px) 0;
 }

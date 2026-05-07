@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, type CSSProperties } from 'react';
 import { premiumSignals, PremiumSignal } from '@/content/signals';
 
 interface PremiumEventCarouselProps {
@@ -10,7 +10,48 @@ interface PremiumEventCarouselProps {
   signals?: PremiumSignal[];
   activeIndex?: number;
   onActiveIndexChange?: (index: number) => void;
+  onLockedFeedAttempt?: () => void;
 }
+
+const feedStyle = {
+  position: 'relative',
+  width: '100%',
+  overflow: 'hidden',
+  ['--premium-feed-pad' as string]: 'clamp(12px, 3.7vw, 16px)',
+  ['--premium-feed-gap' as string]: 'clamp(10px, 2.8vw, 12px)',
+  ['--premium-peek-width' as string]: 'clamp(28px, 7vw, 34px)',
+  ['--premium-card-width' as string]:
+    'calc(min(100vw, 428px) - var(--premium-feed-pad) - var(--premium-feed-gap) - var(--premium-peek-width))',
+} as CSSProperties;
+
+const trackStyle = {
+  display: 'flex',
+  alignItems: 'stretch',
+  gap: 'var(--premium-feed-gap)',
+  paddingLeft: 'var(--premium-feed-pad)',
+  width: 'max-content',
+  transform: 'translateX(0)',
+} as CSSProperties;
+
+const slideStyle = {
+  flex: '0 0 var(--premium-card-width)',
+  width: 'var(--premium-card-width)',
+} as CSSProperties;
+
+const peekSlideStyle = {
+  ...slideStyle,
+  position: 'relative',
+} as CSSProperties;
+
+const lockedOverlayStyle = {
+  position: 'absolute',
+  inset: 0,
+  zIndex: 20,
+  border: 'none',
+  background: 'transparent',
+  cursor: 'pointer',
+  padding: 0,
+} as CSSProperties;
 
 export default function PremiumEventCarousel({
   renderCard,
@@ -19,6 +60,7 @@ export default function PremiumEventCarousel({
   signals,
   activeIndex,
   onActiveIndexChange,
+  onLockedFeedAttempt,
 }: PremiumEventCarouselProps) {
   const [internalActiveIndex, setInternalActiveIndex] = useState(0);
 
@@ -27,29 +69,37 @@ export default function PremiumEventCarousel({
   const currentIndex = isControlled ? activeIndex : internalActiveIndex;
 
   const goToNext = useCallback(() => {
+    if (isControlled && onLockedFeedAttempt) {
+      onLockedFeedAttempt();
+      return;
+    }
+
     const next = (currentIndex + 1) % items.length;
     if (isControlled) {
       onActiveIndexChange?.(next);
     } else {
       setInternalActiveIndex(next);
     }
-  }, [currentIndex, items.length, isControlled, onActiveIndexChange]);
+  }, [currentIndex, items.length, isControlled, onActiveIndexChange, onLockedFeedAttempt]);
 
   const goToPrev = useCallback(() => {
+    if (isControlled && onLockedFeedAttempt) {
+      onLockedFeedAttempt();
+      return;
+    }
+
     const prev = (currentIndex - 1 + items.length) % items.length;
     if (isControlled) {
       onActiveIndexChange?.(prev);
     } else {
       setInternalActiveIndex(prev);
     }
-  }, [currentIndex, items.length, isControlled, onActiveIndexChange]);
+  }, [currentIndex, items.length, isControlled, onActiveIndexChange, onLockedFeedAttempt]);
 
-  // Notify parent of active signal change
   useEffect(() => {
     onActiveSignalChange?.(items[currentIndex]);
-  }, [currentIndex, items, onActiveSignalChange, internalActiveIndex]);
+  }, [currentIndex, items, onActiveSignalChange]);
 
-  // Auto-advance every 5 seconds (only when not controlled)
   useEffect(() => {
     if (isControlled) return;
 
@@ -57,103 +107,32 @@ export default function PremiumEventCarousel({
       const next = (currentIndex + 1) % items.length;
       setInternalActiveIndex(next);
     }, 5000);
+
     return () => clearInterval(interval);
-  }, [currentIndex, items.length, isControlled, onActiveIndexChange, internalActiveIndex]);
+  }, [currentIndex, items.length, isControlled, onActiveIndexChange]);
 
   const activeSignal = items[currentIndex];
+  const peekSignal = items.length > 1 ? items[(currentIndex + 1) % items.length] : null;
 
   return (
-    <div style={{ position: 'relative' }}>
-      {/* Active card */}
-      {renderCard ? renderCard(activeSignal, onCtaClick || (() => {})) : null}
+    <div style={feedStyle}>
+      <div style={trackStyle}>
+        <div style={slideStyle}>
+          {renderCard ? renderCard(activeSignal, onCtaClick || (() => {})) : null}
+        </div>
 
-      {/* Navigation controls - subtle/invisible */}
-      <div
-        style={{
-          position: 'absolute',
-          top: '50%',
-          left: 0,
-          right: 0,
-          transform: 'translateY(-50%)',
-          display: 'flex',
-          justifyContent: 'space-between',
-          padding: '0 8px',
-          pointerEvents: 'none',
-          zIndex: 10,
-        }}
-      >
-        <button
-          onClick={goToPrev}
-          style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '50%',
-            background: 'rgba(0,0,0,0.3)',
-            border: 'none',
-            color: 'rgba(255,255,255,0.5)',
-            cursor: 'pointer',
-            pointerEvents: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '14px',
-            opacity: 0.3,
-            transition: 'opacity 0.2s',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.6')}
-          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.3')}
-          aria-label="Previous"
-        >
-          ‹
-        </button>
-        <button
-          onClick={goToNext}
-          style={{
-            width: '32px',
-            height: '32px',
-            borderRadius: '50%',
-            background: 'rgba(0,0,0,0.3)',
-            border: 'none',
-            color: 'rgba(255,255,255,0.5)',
-            cursor: 'pointer',
-            pointerEvents: 'auto',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: '14px',
-            opacity: 0.3,
-            transition: 'opacity 0.2s',
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.6')}
-          onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.3')}
-          aria-label="Next"
-        >
-          ›
-        </button>
-      </div>
+        {peekSignal && (
+          <div style={peekSlideStyle} aria-hidden="true">
+            {renderCard ? renderCard(peekSignal, onLockedFeedAttempt || (() => {})) : null}
 
-      {/* Index indicator - subtle dots */}
-      <div
-        style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '6px',
-          marginTop: '8px',
-          opacity: 0.4,
-        }}
-      >
-        {items.map((_, idx) => (
-          <span
-            key={idx}
-            style={{
-              width: '6px',
-              height: '6px',
-              borderRadius: '50%',
-              background: idx === currentIndex ? 'rgba(255,255,255,0.8)' : 'rgba(255,255,255,0.3)',
-              transition: 'background 0.2s',
-            }}
-          />
-        ))}
+            <button
+              type="button"
+              aria-label="Unlock more premium signals"
+              onClick={onLockedFeedAttempt}
+              style={lockedOverlayStyle}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
