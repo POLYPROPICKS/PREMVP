@@ -324,7 +324,104 @@ function PillsRow({
   );
 }
 
+function normalizeTrustMetricText(metric: any): string {
+  return `${metric?.id ?? ''} ${metric?.label ?? ''}`.toLowerCase();
+}
+
+function getTrustMetricRank(metric: any): number {
+  const text = normalizeTrustMetricText(metric);
+
+  if (text.includes('smart')) return 0;
+
+  if (
+    (text.includes('whale') && text.includes('public')) ||
+    text.includes('public vs whale') ||
+    text.includes('whale vs public')
+  ) {
+    return 1;
+  }
+
+  if (
+    text.includes('preevent') ||
+    text.includes('pre-event') ||
+    text.includes('pre event') ||
+    text.includes('score') ||
+    text.includes('ai')
+  ) {
+    return 2;
+  }
+
+  return 99;
+}
+
+function getOrderedTrustMetrics(metrics: any[]): any[] {
+  if (!Array.isArray(metrics)) return [];
+
+  return metrics
+    .map((metric, index) => ({ metric, index }))
+    .sort((a, b) => {
+      const rankDiff = getTrustMetricRank(a.metric) - getTrustMetricRank(b.metric);
+      return rankDiff !== 0 ? rankDiff : a.index - b.index;
+    })
+    .map((item) => item.metric);
+}
+
+function getTrustMetricDisplayLabel(metric: any): string {
+  const text = normalizeTrustMetricText(metric);
+
+  if (text.includes('smart')) return 'Smart Money';
+
+  if (
+    (text.includes('whale') && text.includes('public')) ||
+    text.includes('public vs whale') ||
+    text.includes('whale vs public')
+  ) {
+    return 'Whale vs Public Money';
+  }
+
+  if (
+    text.includes('preevent') ||
+    text.includes('pre-event') ||
+    text.includes('pre event') ||
+    text.includes('score') ||
+    text.includes('ai')
+  ) {
+    return 'PreEventScore AI';
+  }
+
+  return metric?.label ?? 'Trust Metric';
+}
+
+function getTrustMetricValue(metric: any): number {
+  const rawValue = metric?.value ?? metric?.bar ?? 0;
+  const normalizedValue =
+    typeof rawValue === 'string'
+      ? Number(rawValue.replace('%', '').trim())
+      : Number(rawValue);
+
+  if (!Number.isFinite(normalizedValue)) return 0;
+
+  return Math.max(0, Math.min(100, Math.round(normalizedValue)));
+}
+
+function getTrustMetricFillBackground(value: number): string {
+  if (value >= 85) {
+    return 'linear-gradient(90deg, #23e6bb 0%, #61ef4a 55%, #fff500 100%)';
+  }
+
+  if (value >= 70) {
+    return 'linear-gradient(90deg, #18e7ff 0%, #23e6bb 45%, #61ef4a 100%)';
+  }
+
+  if (value >= 55) {
+    return 'linear-gradient(90deg, #f59e0b 0%, #facc15 65%, #fff500 100%)';
+  }
+
+  return 'linear-gradient(90deg, #ef4444 0%, #f97316 100%)';
+}
+
 function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiumSignals[0]; onCtaClick: () => void }) {
+  const orderedTrustMetrics = getOrderedTrustMetrics(signal.metrics);
   // Compute sanitized probability and confidence data
   const probability = Math.max(0, Math.min(100, Number(signal.winProbability) || 0));
   const ringDegrees = probability * 3.6;
@@ -414,14 +511,6 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
         </div>
       </div>
       <div className={styles.analyticsRow}>
-        <div className={styles.winCard}>
-          <div className={styles.winTitle}>WIN PROBABILITY</div>
-          <div className={styles.ring} style={ringStyle}>
-            <div className={styles.ringInner}>
-              <span className={styles.ringNumber}>{probability}</span>
-            </div>
-          </div>
-        </div>
         <div className={styles.trustCard}>
           <div className={styles.trustHeader}>
             <div className={styles.trustTitle}>TRUST METRICS</div>
@@ -431,7 +520,7 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
               <circle cx="12" cy="7.2" r="1.1" fill="currentColor" />
             </svg>
           </div>
-          {signal.metrics.map((metric: any) => (
+          {orderedTrustMetrics.map((metric: any) => (
             <MetricRow
               key={metric.id}
               icon={
@@ -443,11 +532,19 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
                   draggable={false}
                 />
               }
-              label={metric.label}
-              value={`${metric.value}%`}
-              width={`${metric.bar}%`}
+              label={getTrustMetricDisplayLabel(metric)}
+              value={getTrustMetricValue(metric)}
             />
           ))}
+        </div>
+
+        <div className={styles.winCard}>
+          <div className={styles.winTitle}>SIGNAL CONFIDENCE</div>
+          <div className={styles.ring} style={ringStyle}>
+            <div className={styles.ringInner}>
+              <span className={styles.ringNumber}>{probability}</span>
+            </div>
+          </div>
         </div>
       </div>
       <button className={styles.cta} onClick={onCtaClick}>Get 5 Free Signals NOW</button>
@@ -455,17 +552,27 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
   );
 }
 
-function MetricRow({ icon, label, value, width }: { icon: React.ReactNode; label: string; value: string; width: string }) {
+function MetricRow({ icon, label, value }: { icon: React.ReactNode; label: string; value: number }) {
+  const safeValue = Math.max(0, Math.min(100, value));
+
   return (
     <div className={styles.metricRow}>
       <div className={styles.metricIconWrap}>{icon}</div>
       <div className={styles.metricMain}>
-        <div className={styles.metricLabel}>{label}</div>
+        <div className={styles.metricTopLine}>
+          <div className={styles.metricLabel}>{label}</div>
+          <div className={styles.metricValue}>{safeValue}%</div>
+        </div>
         <div className={styles.metricBar}>
-          <div className={styles.metricFill} style={{ width }} />
+          <div
+            className={styles.metricFill}
+            style={{
+              width: `${safeValue}%`,
+              background: getTrustMetricFillBackground(safeValue),
+            }}
+          />
         </div>
       </div>
-      <div className={styles.metricValue}>{value}</div>
     </div>
   );
 }
