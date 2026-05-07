@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import styles from './Reconstruction.module.css';
 import { premiumSignals as staticPremiumSignals, PremiumSignal } from '@/content/signals';
 import { marketSources as staticMarketSources } from '@/content/marketSources';
-import { getCandidatePairsForFilter, normalizeLandingPairs, selectBestPairForFilter, type FilterTag, type LandingPair } from '@/lib/feed/landingPairs';
+import { getCandidatePairsForFilter, normalizeLandingPairs, selectBestPairForFilter, type FilterTag, type LandingPair, type PassModalStep } from '@/lib/feed/landingPairs';
 import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
 
@@ -29,7 +29,7 @@ const fallbackPairs: LandingPair[] = staticPremiumSignals.flatMap((signal, index
 export default function ReconstructionPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [email, setEmail] = useState('');
-  const [isSuccess, setIsSuccess] = useState(false);
+  const [passModalStep, setPassModalStep] = useState<PassModalStep>('soldOutEmail');
   const [emailError, setEmailError] = useState('');
   const [apiError, setApiError] = useState('');
   const [allPairs, setAllPairs] = useState<LandingPair[]>(fallbackPairs);
@@ -70,7 +70,7 @@ export default function ReconstructionPage() {
 
   const openModal = useCallback(() => {
     setIsModalOpen(true);
-    setIsSuccess(false);
+    setPassModalStep('soldOutEmail');
     setEmail('');
     setEmailError('');
     setApiError('');
@@ -78,7 +78,7 @@ export default function ReconstructionPage() {
 
   const closeModal = useCallback(() => {
     setIsModalOpen(false);
-    setIsSuccess(false);
+    setPassModalStep('soldOutEmail');
     setEmail('');
     setEmailError('');
     setApiError('');
@@ -122,7 +122,7 @@ export default function ReconstructionPage() {
       const result = await response.json();
 
       if (response.ok && result.success) {
-        setIsSuccess(true);
+        setPassModalStep('success');
         setEmailError('');
         setApiError('');
       } else {
@@ -198,7 +198,8 @@ export default function ReconstructionPage() {
           setEmail={setEmail}
           emailError={emailError}
           apiError={apiError}
-          isSuccess={isSuccess}
+          passModalStep={passModalStep}
+          onPassModalStepChange={setPassModalStep}
           onSubmit={handleSubmit}
           activeSignal={activeSignal}
         />
@@ -515,7 +516,8 @@ interface UnlockModalProps {
   setEmail: (email: string) => void;
   emailError: string;
   apiError: string;
-  isSuccess: boolean;
+  passModalStep: PassModalStep;
+  onPassModalStepChange: (step: PassModalStep) => void;
   onSubmit: (e: React.FormEvent) => void;
   activeSignal: {
     eventTitle: string;
@@ -532,7 +534,8 @@ function UnlockModal({
   setEmail,
   emailError,
   apiError,
-  isSuccess,
+  passModalStep,
+  onPassModalStepChange,
   onSubmit,
   activeSignal,
 }: UnlockModalProps) {
@@ -547,7 +550,39 @@ function UnlockModal({
           </svg>
         </button>
 
-        {!isSuccess ? (
+        {passModalStep === 'offer' ? (
+          <>
+            <h2 className={styles.modalTitle}>Early Access — 3-Day Signal Pass</h2>
+            <p className={styles.modalSubtitle}>
+              Unlock the premium signal feed for 3 days. Pass access is limited while we tune the product.
+            </p>
+
+            <div className={styles.modalPreview}>
+              <div className={styles.previewRow}>
+                <span className={styles.previewLabel}>Pass</span>
+                <span className={styles.previewValue}>3 days</span>
+              </div>
+              <div className={styles.previewRow}>
+                <span className={styles.previewLabel}>Price</span>
+                <span className={styles.previewValue}>$4.99</span>
+              </div>
+              <div className={styles.previewRow}>
+                <span className={styles.previewLabel}>Event</span>
+                <span className={`${styles.previewValue} ${styles.previewEventValue}`}>{activeSignal.eventTitle}</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className={styles.modalPrimary}
+              onClick={() => onPassModalStepChange('soldOutEmail')}
+            >
+              Reserve My Spot — $4.99
+            </button>
+
+            <p className={styles.modalFineprint}>No charge today. Early access is released in small batches.</p>
+          </>
+        ) : passModalStep === 'soldOutEmail' ? (
           <>
             <h2 className={styles.modalTitle}>Get 5 Free Signals</h2>
             <p className={styles.modalSubtitle}>
