@@ -1,0 +1,539 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  background: linear-gradient(135deg, rgba(2, 6, 12, 0.95) 0%, rgba(6, 14, 26, 0.98) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow: hidden;
+}
+
+.container {
+  width: 100%;
+  max-width: 428px;
+  height: 100%;
+  max-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.topBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  flex-shrink: 0;
+  height: 32px;
+  box-sizing: border-box;
+}
+
+.backButton {
+  background: transparent;
+  border: none;
+  color: rgba(244, 246, 250, 0.7);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.backButton:hover {
+  color: #F4F6FA;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.closeButton {
+  background: transparent;
+  border: none;
+  color: rgba(244, 246, 250, 0.7);
+  cursor: pointer;
+  padding: 8px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.closeButton:hover {
+  color: #F4F6FA;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.closeButton svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 40px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  box-sizing: border-box;
+  min-height: 0;
+}
+
+.content::-webkit-scrollbar {
+  display: none;
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.lockIcon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, rgba(133, 231, 166, 0.15) 0%, rgba(61, 239, 74, 0.1) 100%);
+  border: 1px solid rgba(133, 231, 166, 0.3);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #85E7A6;
+  box-sizing: border-box;
+}
+
+.lockIcon svg {
+  width: 20px;
+  height: 20px;
+  stroke-width: 2;
+}
+
+.lockedLabel {
+  color: #85E7A6;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.headline {
+  color: #F4F6FA;
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+@media (max-width: 390px) {
+  .headline {
+    font-size: 18px;
+  }
+}
+
+.subheadline {
+  color: rgba(244, 246, 250, 0.7);
+  font-size: 12px;
+  line-height: 1.3;
+  text-align: center;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.valueBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.valueItem {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.valueIcon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, rgba(133, 231, 166, 0.1) 0%, rgba(61, 239, 74, 0.05) 100%);
+  border: 1px solid rgba(133, 231, 166, 0.2);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #85E7A6;
+  flex-shrink: 0;
+}
+
+.valueIcon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.valueText {
+  flex: 1;
+}
+
+.valueChip {
+  color: #F4F6FA;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
+  box-sizing: border-box;
+}
+
+.valueDesc {
+  color: rgba(244, 246, 250, 0.6);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.pricingGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.pricingCard {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 16px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.pricingCard:hover {
+  border-color: rgba(133, 231, 166, 0.3);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.04) 100%);
+}
+
+.pricingCard.selected {
+  border-color: #85E7A6;
+  background: linear-gradient(135deg, rgba(133, 231, 166, 0.15) 0%, rgba(61, 239, 74, 0.08) 100%);
+  box-shadow: 0 0 20px rgba(133, 231, 166, 0.2);
+}
+
+.badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: #85E7A6;
+  color: #02060C;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 8px;
+  border-radius: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.planName {
+  color: #F4F6FA;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 2px;
+}
+
+.planSubtitle {
+  color: rgba(244, 246, 250, 0.7);
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.planHelper {
+  color: rgba(244, 246, 250, 0.5);
+  font-size: 10px;
+  margin-bottom: 8px;
+}
+
+.planPrice {
+  color: #F4F6FA;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.primaryCta {
+  background: linear-gradient(135deg, #85E7A6 0%, #3DEF4A 100%);
+  border: none;
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: #02060C;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+  margin-top: 4px;
+  box-sizing: border-box;
+}
+
+.primaryCta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(133, 231, 166, 0.3);
+}
+
+.primaryCta:active {
+  transform: translateY(0);
+}
+
+.secondarySection {
+  margin-top: 4px;
+}
+
+.secondaryLink {
+  background: transparent;
+  border: none;
+  color: rgba(244, 246, 250, 0.6);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 8px;
+  text-decoration: underline;
+  transition: color 0.2s ease;
+  box-sizing: border-box;
+}
+
+.secondaryLink:hover {
+  color: #F4F6FA;
+}
+
+.footer {
+  color: rgba(244, 246, 250, 0.4);
+  font-size: 11px;
+  line-height: 1.3;
+  text-align: center;
+  padding: 12px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  margin-top: auto;
+}
+
+.emailSection {
+  margin: 8px 0;
+}
+
+.emailInput {
+  width: 100%;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #F4F6FA;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+}
+
+.emailInput:focus {
+  border-color: #85E7A6;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.emailInput::placeholder {
+  color: rgba(244, 246, 250, 0.4);
+}
+
+.container::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 200%;
+  height: 200%;
+  background: radial-gradient(
+    circle at center,
+    rgba(133, 231, 166, 0.03) 0%,
+    transparent 50%
+  );
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+
+.heroSection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  box-sizing: border-box;
+}
+
+.heroContent {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.valueBlockCompact {
+  display: flex;
+  flex-direction: row;
+  gap: 6px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  box-sizing: border-box;
+}
+
+.valueItemCompact {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+  flex: 1;
+  box-sizing: border-box;
+}
+
+.valueItemCompact .valueIcon {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+}
+
+.valueItemCompact .valueText {
+  flex: 1;
+  min-width: 0;
+}
+
+.pricingGridCompact {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 6px;
+  margin-bottom: 6px;
+  box-sizing: border-box;
+}
+
+.pricingCardCompact {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 8px 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  position: relative;
+  overflow: hidden;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pricingCardCompact.selected {
+  border-color: #85E7A6;
+  background: linear-gradient(135deg, rgba(133, 231, 166, 0.15) 0%, rgba(61, 239, 74, 0.08) 100%);
+  box-shadow: 0 0 8px rgba(133, 231, 166, 0.2);
+}
+
+.pricingCardCompact .badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  background: #85E7A6;
+  color: #02060C;
+  font-size: 8px;
+  font-weight: 700;
+  padding: 2px 4px;
+  border-radius: 3px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.pricingCardCompact .planName {
+  color: #F4F6FA;
+  font-size: 13px;
+  font-weight: 700;
+  margin-bottom: 1px;
+}
+
+.pricingCardCompact .planSubtitle {
+  color: rgba(244, 246, 250, 0.7);
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.pricingCardCompact .planHelper {
+  color: rgba(244, 246, 250, 0.5);
+  font-size: 10px;
+  margin-bottom: 4px;
+}
+
+.pricingCardCompact .planPrice {
+  color: #F4F6FA;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.ctaSection {
+  margin-top: 4px;
+}
+
+.footerCompact {
+  color: rgba(244, 246, 250, 0.4);
+  font-size: 9px;
+  line-height: 1.2;
+  text-align: center;
+  padding: 6px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  margin-top: auto;
+  box-sizing: border-box;
+}
+
+/* Ghost cards in background */
+.container::before {
+  content: '';
+  position: absolute;
+  top: -10%;
+  left: -20%;
+  width: 140%;
+  height: 120%;
+  background: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 80px,
+    rgba(133, 231, 166, 0.02) 80px,
+    rgba(133, 231, 166, 0.02) 82px
+  );
+  transform: rotate(-2deg);
+  pointer-events: none;
+}
+
+/* Mobile optimizations */
+@media (max-width: 390px) {
+  .headline {
+    font-size: 24px;
+  }
+  
+  .subheadline {
+    font-size: 15px;
+  }
+  
+  .pricingCard {
+    padding: 16px;
+  }
+  
+  .planPrice {
+    font-size: 20px;
+  }
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, type CSSProperties } from 'react';
+import { useState, useCallback, useEffect, useRef, type CSSProperties } from 'react';
 import { premiumSignals, PremiumSignal } from '@/content/signals';
 
 interface PremiumEventCarouselProps {
@@ -63,6 +63,8 @@ export default function PremiumEventCarousel({
   onLockedFeedAttempt,
 }: PremiumEventCarouselProps) {
   const [internalActiveIndex, setInternalActiveIndex] = useState(0);
+  const touchStartX = useRef<number>(0);
+  const touchStartY = useRef<number>(0);
 
   const items = signals && signals.length > 0 ? signals : premiumSignals;
   const isControlled = typeof activeIndex === 'number';
@@ -114,8 +116,28 @@ export default function PremiumEventCarousel({
   const activeSignal = items[currentIndex];
   const peekSignal = items.length > 1 ? items[(currentIndex + 1) % items.length] : null;
 
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (!onLockedFeedAttempt) return;
+
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+    
+    const dx = touchEndX - touchStartX.current;
+    const dy = touchEndY - touchStartY.current;
+    
+    // Check for horizontal swipe with sufficient distance and dominance over vertical movement
+    if (Math.abs(dx) > 36 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+      onLockedFeedAttempt();
+    }
+  }, [onLockedFeedAttempt]);
+
   return (
-    <div style={feedStyle}>
+    <div style={feedStyle} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
       <div style={trackStyle}>
         <div style={slideStyle}>
           {renderCard ? renderCard(activeSignal, onCtaClick || (() => {})) : null}

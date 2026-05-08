@@ -7,6 +7,7 @@ import { marketSources as staticMarketSources } from '@/content/marketSources';
 import { getCandidatePairsForFilter, normalizeLandingPairs, selectBestPairForFilter, type FilterTag, type LandingPair, type PassModalStep } from '@/lib/feed/landingPairs';
 import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
+import PassOfferModal from '@/components/modals/PassOfferModal';
 
 const fallbackPairs: LandingPair[] = staticPremiumSignals.flatMap((signal, index) => {
   const marketSource = staticMarketSources[index] ?? staticMarketSources[0];
@@ -35,6 +36,7 @@ export default function ReconstructionPage() {
   const [allPairs, setAllPairs] = useState<LandingPair[]>(fallbackPairs);
   const [activePairId, setActivePairId] = useState<string>(fallbackPairs[0]?.id ?? '');
   const [activeFilter, setActiveFilter] = useState<FilterTag>('sports');
+  const [isPassOfferModalOpen, setIsPassOfferModalOpen] = useState(false);
 
   const candidatePairs = useMemo(
     () => getCandidatePairsForFilter(allPairs, activeFilter),
@@ -78,6 +80,19 @@ export default function ReconstructionPage() {
 
   const closeModal = useCallback(() => {
     setIsModalOpen(false);
+    setPassModalStep('soldOutEmail');
+    setEmail('');
+    setEmailError('');
+    setApiError('');
+  }, []);
+
+  const handleLockedFeedAttempt = useCallback(() => {
+    setIsPassOfferModalOpen(true);
+  }, []);
+
+  const handleReservePass = useCallback((planId: '7day' | '3day' | 'monthly') => {
+    setIsPassOfferModalOpen(false);
+    setIsModalOpen(true);
     setPassModalStep('soldOutEmail');
     setEmail('');
     setEmailError('');
@@ -186,6 +201,7 @@ export default function ReconstructionPage() {
             onActiveIndexChange={handleActivePairIndexChange}
             renderCard={(signal, onCtaClick) => <PremiumSignalCard signal={signal} onCtaClick={onCtaClick} />}
             onCtaClick={openModal}
+            onLockedFeedAttempt={handleLockedFeedAttempt}
           />
         </div>
       </section>
@@ -202,6 +218,14 @@ export default function ReconstructionPage() {
           onPassModalStepChange={setPassModalStep}
           onSubmit={handleSubmit}
           activeSignal={activeSignal}
+        />
+      )}
+
+      {isPassOfferModalOpen && (
+        <PassOfferModal
+          isOpen={isPassOfferModalOpen}
+          onClose={() => setIsPassOfferModalOpen(false)}
+          onReserve={handleReservePass}
         />
       )}
     </main>
