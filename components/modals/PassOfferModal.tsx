@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import styles from './PassOfferModal.module.css';
 
 type PlanId = '7day' | '3day' | 'monthly';
+type ViewState = 'offer' | 'reserve' | 'reserved';
 
 interface PassOfferModalProps {
   isOpen: boolean;
@@ -11,242 +12,296 @@ interface PassOfferModalProps {
   onReserve: (planId: PlanId) => void;
 }
 
+const plans: Array<{
+  id: PlanId;
+  name: string;
+  subtitle: string;
+  helper?: string;
+  price: string;
+  perDay?: string;
+  badge?: string;
+}> = [
+  {
+    id: '7day',
+    name: '7-Day Premium',
+    subtitle: 'Full week of live signals',
+    price: '$15',
+    perDay: '$2.14/day',
+    badge: 'BEST FOR YOU',
+  },
+  {
+    id: '3day',
+    name: '24-Hour Pass',
+    subtitle: 'Unlock today\'s premium feed',
+    helper: '24-hour access',
+    price: '$4.99',
+    perDay: '$4.99',
+  },
+  {
+    id: 'monthly',
+    name: 'Monthly Pro',
+    subtitle: 'Best for daily market users',
+    price: '$49',
+    perDay: '$1.63/day',
+  },
+];
+
+function getPlan(planId: PlanId) {
+  return plans.find((plan) => plan.id === planId) ?? plans[0];
+}
+
 export default function PassOfferModal({ isOpen, onClose, onReserve }: PassOfferModalProps) {
   const [selectedPlan, setSelectedPlan] = useState<PlanId>('7day');
-  const [currentView, setCurrentView] = useState<'offer' | 'reserve'>('offer');
+  const [currentView, setCurrentView] = useState<ViewState>('offer');
   const [email, setEmail] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Close modal on Escape key
+  const currentPlan = useMemo(() => getPlan(selectedPlan), [selectedPlan]);
+
+  const resetAndClose = useCallback(() => {
+    setCurrentView('offer');
+    setEmail('');
+    setEmailError('');
+    setIsSubmitting(false);
+    onClose();
+  }, [onClose]);
+
   useEffect(() => {
     if (!isOpen) return;
 
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        onClose();
-      }
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') resetAndClose();
     };
 
     document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, onClose]);
 
-  // Lock body scroll when modal is open
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, resetAndClose]);
+
   useEffect(() => {
     if (!isOpen) return;
 
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
+
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
     };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentView('offer');
+      setEmail('');
+      setEmailError('');
+      setIsSubmitting(false);
+    }
   }, [isOpen]);
 
   if (!isOpen) return null;
 
-  const handlePlanSelect = (planId: PlanId) => {
-    setSelectedPlan(planId);
-  };
+  const primaryCta = `Unlock ${currentPlan.name} — ${currentPlan.price}`;
 
-  const handleReserve = () => {
-    setCurrentView('reserve');
-  };
+  const handleSubmitReserve = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
 
-  const handleBackToOffer = () => {
-    setCurrentView('offer');
-  };
+    const normalizedEmail = email.trim();
+    if (!normalizedEmail || !normalizedEmail.includes('@')) {
+      setEmailError('Enter a valid email to reserve access.');
+      return;
+    }
 
-  const handleReserveSubmit = async () => {
     if (isSubmitting) return;
-    
-    setIsSubmitting(true);
-    
-    // Save to localStorage as fallback
-    const reserveData = {
-      email,
-      planId: selectedPlan,
-      planName: getPlanDetails(selectedPlan).name,
-      price: getPlanDetails(selectedPlan).price,
-      timestamp: new Date().toISOString(),
-    };
-    
-    localStorage.setItem('polypropicks_pass_reserve', JSON.stringify(reserveData));
-    
-    // Simulate submission delay
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    setIsSubmitting(false);
-    onClose();
-  };
 
-  const getPlanDetails = (planId: PlanId) => {
-    switch (planId) {
-      case '7day':
-        return {
-          name: '7-Day Premium',
-          badge: 'MOST POPULAR',
-          subtitle: 'Best for this week\'s live markets',
-          helper: '$2.71/day',
-          price: '$19',
-        };
-      case '3day':
-        return {
-          name: '3-Day Pass',
-          subtitle: 'Fast access for the next match cycle',
-          price: '$9',
-        };
-      case 'monthly':
-        return {
-          name: 'Monthly Pro',
-          subtitle: 'Best for daily market users',
-          helper: '$1.63/day',
-          price: '$49',
-        };
+    setIsSubmitting(true);
+    setEmailError('');
+
+    const reserveData = {
+      email: normalizedEmail,
+      planId: selectedPlan,
+      planName: currentPlan.name,
+      price: currentPlan.price,
+      timestamp: new Date().toISOString(),
+      source: 'pass_offer_modal',
+    };
+
+    try {
+      localStorage.setItem('polypropicks_pass_reserve', JSON.stringify(reserveData));
+      onReserve(selectedPlan);
+      setCurrentView('reserved');
+    } catch {
+      setEmailError('Could not save locally. Try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  const currentPlan = getPlanDetails(selectedPlan);
-
   return (
-    <div className={styles.overlay} role="dialog" aria-modal="true">
-      <div className={styles.container}>
-        {/* Top bar */}
-        <div className={styles.topBar}>
-          <button className={styles.backButton} onClick={onClose}>
-            Back to free signal
-          </button>
-          <button className={styles.closeButton} onClick={onClose} aria-label="Close">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M6 6L18 18M6 18L18 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-            </svg>
-          </button>
-        </div>
+    <div className={styles.overlay} role="dialog" aria-modal="true" aria-label="Premium pass offer">
+      <div className={styles.shell}>
+        <div className={styles.backdropSignal} aria-hidden="true" />
 
-        {/* Main content */}
-        <div className={styles.content}>
+        <header className={styles.topBar}>
           {currentView === 'offer' ? (
-            <>
-              {/* Compact hero section */}
-              <div className={styles.heroSection}>
-                <div className={styles.heroContent}>
-                  <div className={styles.lockIcon}>
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <rect x="5" y="11" width="14" height="10" rx="2" fill="none" stroke="currentColor" strokeWidth="2" />
-                      <path d="M7 11V7a5 5 0 0110 0v4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-                      <circle cx="12" cy="16" r="1" fill="currentColor" />
-                    </svg>
-                  </div>
-                  <div className={styles.lockedLabel}>LIVE SIGNALS LOCKED</div>
-                </div>
-                <h1 className={styles.headline}>Unlock the next signals before the line moves</h1>
-                <p className={styles.subheadline}>
-                  Live picks, entry timing, and smart-money context.
-                </p>
-              </div>
-
-              {/* Compact value block */}
-              <div className={styles.valueBlockCompact}>
-                <div className={styles.valueItemCompact}>
-                  <div className={styles.valueIcon}>
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27z" fill="currentColor" />
-                    </svg>
-                  </div>
-                  <div className={styles.valueText}>
-                    <div className={styles.valueChip}>Signal Confidence + position</div>
-                  </div>
-                </div>
-                <div className={styles.valueItemCompact}>
-                  <div className={styles.valueIcon}>
-                    <svg viewBox="0 0 24 24" aria-hidden="true">
-                      <path d="M3 12h2m3-4v8m4-12v16m4-10v4m4-7v10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
-                    </svg>
-                  </div>
-                  <div className={styles.valueText}>
-                    <div className={styles.valueChip}>Smart-money evidence</div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Pricing cards */}
-              <div className={styles.pricingGridCompact}>
-                {(['7day', '3day', 'monthly'] as PlanId[]).map((planId) => {
-                  const plan = getPlanDetails(planId);
-                  const isSelected = selectedPlan === planId;
-                  
-                  return (
-                    <button
-                      key={planId}
-                      className={`${styles.pricingCardCompact} ${isSelected ? styles.selected : ''}`}
-                      onClick={() => handlePlanSelect(planId)}
-                    >
-                      {plan.badge && <div className={styles.badge}>{plan.badge}</div>}
-                      <div className={styles.planName}>{plan.name}</div>
-                      <div className={styles.planHelper}>{plan.subtitle}</div>
-                      <div className={styles.planPrice}>{plan.price}</div>
-                    </button>
-                  );
-                })}
-              </div>
-
-              {/* Primary CTA */}
-              <div className={styles.ctaSection}>
-                <button className={styles.primaryCta} onClick={handleReserve}>
-                  Reserve {currentPlan.name} — {currentPlan.price}
-                </button>
-              </div>
-
-              {/* Secondary link */}
-              <div className={styles.secondarySection}>
-                <button className={styles.secondaryLink} onClick={onClose}>
-                  Keep 1 free signal
-                </button>
-              </div>
-
-              {/* Footer */}
-              <div className={styles.footerCompact}>
-                Payment is not live yet. We'll notify you when pass opens.
-              </div>
-            </>
+            <div className={styles.livePill}>
+              <span className={styles.liveDot} />
+              <span>LIVE EDGE LOCKED</span>
+            </div>
           ) : (
-            <>
-              {/* Reserve/Waitlist screen */}
-              <div className={styles.header}>
-                <h2 className={styles.headline}>Reserve your premium access</h2>
+            <button type="button" className={styles.backButton} onClick={() => setCurrentView('offer')}>
+              ‹ Back to pricing
+            </button>
+          )}
+
+          <button type="button" className={styles.closeButton} onClick={resetAndClose} aria-label="Close premium offer">
+            <span aria-hidden="true">×</span>
+          </button>
+        </header>
+
+        {currentView === 'offer' ? (
+          <main className={styles.offerView}>
+            <section className={styles.hero}>
+              <h1 className={styles.heroTitle}>
+                <span>Live edge is moving.</span>
+                <span>The next signal is locked.</span>
+              </h1>
+            </section>
+
+            <section className={styles.chartCard} aria-label="Past 7 days signal chart">
+              <div className={styles.chartLabel}>Past 7 days</div>
+              <div className={styles.chartBody}>
+                <svg className={styles.chartSvg} viewBox="0 0 220 84" preserveAspectRatio="none" aria-hidden="true">
+                  <defs>
+                    <linearGradient id="paywallGreenLine" x1="0" x2="1" y1="0" y2="0">
+                      <stop offset="0" stopColor="#72ff48" stopOpacity="0.72" />
+                      <stop offset="1" stopColor="#a8ff32" stopOpacity="1" />
+                    </linearGradient>
+                    <linearGradient id="paywallCyanLine" x1="0" x2="1" y1="0" y2="0">
+                      <stop offset="0" stopColor="#28d4ff" stopOpacity="0.72" />
+                      <stop offset="1" stopColor="#54dfff" stopOpacity="1" />
+                    </linearGradient>
+                  </defs>
+                  <path className={styles.gridLine} d="M0 18H220M0 38H220M0 58H220M26 0V84M55 0V84M84 0V84M113 0V84M142 0V84M171 0V84M200 0V84" />
+                  <path className={styles.axisLine} d="M0 74H220" />
+                  <path className={styles.cyanLine} d="M0 68 L12 65 L24 64 L36 60 L48 59 L60 57 L72 54 L84 53 L96 50 L108 49 L120 48 L132 46 L144 44 L156 43 L168 41 L180 39 L192 37 L204 35 L218 30" />
+                  <path className={styles.greenLine} d="M0 60 L12 56 L24 54 L36 50 L48 47 L60 44 L72 39 L84 36 L96 34 L108 30 L120 27 L132 24 L144 19 L156 21 L168 18 L180 17 L192 15 L204 12 L218 5" />
+                  <circle cx="218" cy="5" r="2.4" className={styles.greenPoint} />
+                  <circle cx="218" cy="30" r="2.2" className={styles.cyanPoint} />
+                </svg>
+
+                <div className={styles.chartLegend}>
+                  <div>
+                    <span className={styles.greenBullet} />
+                    <span>Middle Confidence</span>
+                    <strong>+240%</strong>
+                  </div>
+                  <div>
+                    <span className={styles.cyanBullet} />
+                    <span>High Confidence</span>
+                    <strong>+170%</strong>
+                  </div>
+                </div>
               </div>
+            </section>
 
-              <p className={styles.subheadline}>
-                Payment is not live yet. Leave your email and we'll notify you when this pass opens.
+            <section className={styles.benefits} aria-label="Premium benefits">
+              <div><span />Enter before odds move</div>
+              <div><span />Smart-money reversal alerts</div>
+              <div><span />Access to premium WC2026 pool</div>
+            </section>
+
+            <section className={styles.plans} aria-label="Select premium plan">
+              {plans.map((plan) => {
+                const isSelected = selectedPlan === plan.id;
+
+                return (
+                  <button
+                    key={plan.id}
+                    type="button"
+                    className={`${styles.planCard} ${isSelected ? styles.selectedPlan : ''}`}
+                    onClick={() => setSelectedPlan(plan.id)}
+                    aria-pressed={isSelected}
+                  >
+                    <span className={styles.radio} aria-hidden="true">
+                      {isSelected ? '✓' : ''}
+                    </span>
+
+                    <span className={styles.planCopy}>
+                      {plan.badge && <span className={styles.planBadge}>{plan.badge}</span>}
+                      <span className={styles.planName}>{plan.name}</span>
+                      <span className={styles.planSubtitle}>{plan.subtitle}</span>
+                      {plan.helper && <span className={styles.planHelper}>◷ {plan.helper}</span>}
+                    </span>
+
+                    <span className={styles.priceBlock}>
+                      <strong>{plan.price}</strong>
+                      {plan.perDay && <span>{plan.perDay}</span>}
+                    </span>
+                  </button>
+                );
+              })}
+            </section>
+
+            <section className={styles.actionArea}>
+              <button type="button" className={styles.primaryCta} onClick={() => setCurrentView('reserve')}>
+                {primaryCta}
+              </button>
+              <button type="button" className={styles.secondaryLink} onClick={resetAndClose}>
+                Keep only 1 free signal
+              </button>
+              <p className={styles.legalText}>
+                Signals are probabilistic, not guaranteed outcomes.<br />
+                Past signal P&amp;L does not guarantee future results. Not financial advice.<br />
+                Cancel anytime. {currentPlan.price} weekly until canceled.
               </p>
-
-              {/* Email input */}
-              <div className={styles.emailSection}>
+            </section>
+          </main>
+        ) : currentView === 'reserve' ? (
+          <main className={styles.reserveView}>
+            <section className={styles.reserveCard}>
+              <div className={styles.reserveLock} aria-hidden="true">✓</div>
+              <h2>Reserve your premium access</h2>
+              <p>
+                Payment is not live yet. Leave your email and we'll notify you when {currentPlan.name} opens.
+              </p>
+              <form onSubmit={handleSubmitReserve} className={styles.reserveForm}>
                 <input
                   type="email"
-                  className={styles.emailInput}
-                  placeholder="Enter your email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(event) => setEmail(event.target.value)}
+                  placeholder="Enter your email"
+                  className={styles.emailInput}
                   disabled={isSubmitting}
+                  aria-label="Email address"
                 />
-              </div>
-
-              {/* Primary submit CTA */}
-              <button className={styles.primaryCta} onClick={handleReserveSubmit} disabled={isSubmitting}>
-                {isSubmitting ? 'Reserving...' : 'Reserve My Spot'}
-              </button>
-
-              {/* Secondary back action */}
-              <button className={styles.secondaryLink} onClick={handleBackToOffer}>
+                {emailError && <div className={styles.emailError}>{emailError}</div>}
+                <button type="submit" className={styles.primaryCta} disabled={isSubmitting}>
+                  {isSubmitting ? 'Reserving…' : 'Reserve My Spot'}
+                </button>
+              </form>
+              <button type="button" className={styles.secondaryLink} onClick={() => setCurrentView('offer')}>
                 Back to pricing
               </button>
-
-              {/* Footer */}
-              <div className={styles.footer}>
-                We'll notify you as soon as {currentPlan.name} becomes available.
-              </div>
-            </>
-          )}
-        </div>
+              <p className={styles.legalText}>
+                You are reserving {currentPlan.name} for {currentPlan.price}. No payment is taken now.
+              </p>
+            </section>
+          </main>
+        ) : (
+          <main className={styles.reserveView}>
+            <section className={styles.reserveCard}>
+              <div className={styles.reserveLock} aria-hidden="true">✓</div>
+              <h2>Premium access reserved</h2>
+              <p>We saved your request. We'll notify you as soon as to pass opens.</p>
+              <button type="button" className={styles.primaryCta} onClick={resetAndClose}>
+                Back to free signal
+              </button>
+            </section>
+          </main>
+        )}
       </div>
     </div>
   );
