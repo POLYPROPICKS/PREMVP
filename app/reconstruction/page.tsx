@@ -90,6 +90,49 @@ export default function ReconstructionPage() {
     setIsPassOfferModalOpen(true);
   }, []);
 
+  const handlePremiumReserve = useCallback(async (data: {
+    email: string;
+    planId: '7day' | '3day' | 'monthly';
+    planName: string;
+    planPrice: string;
+  }) => {
+    try {
+      const captureData = {
+        email: data.email,
+        signalId: activeSignal.id,
+        eventTitle: activeSignal.eventTitle,
+        position: activeSignal.position,
+        winProbability: activeSignal.winProbability,
+        price: activeSignal.price,
+        source: 'pass_offer_modal',
+        intentType: 'premium_reserve',
+        planId: data.planId,
+        planName: data.planName,
+        planPrice: data.planPrice,
+        planSource: 'pass_offer_modal',
+        reservedAt: new Date().toISOString(),
+      };
+
+      const response = await fetch('/api/leads', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(captureData),
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.success) {
+        setIsPassOfferModalOpen(false);
+      } else {
+        console.error('Premium reserve failed:', result);
+      }
+    } catch (error) {
+      console.error('Premium reserve error:', error);
+    }
+  }, [activeSignal]);
+
   const handleReservePass = useCallback((planId: '7day' | '3day' | 'monthly') => {
     setIsPassOfferModalOpen(false);
     setIsModalOpen(true);
@@ -226,6 +269,7 @@ export default function ReconstructionPage() {
           isOpen={isPassOfferModalOpen}
           onClose={() => setIsPassOfferModalOpen(false)}
           onReserve={handleReservePass}
+          onPremiumReserve={handlePremiumReserve}
         />
       )}
     </main>

@@ -9,6 +9,12 @@ type LeadRequestBody = {
   winProbability?: unknown;
   price?: unknown;
   source?: unknown;
+  intentType?: unknown;
+  planId?: unknown;
+  planName?: unknown;
+  planPrice?: unknown;
+  planSource?: unknown;
+  reservedAt?: unknown;
 };
 
 function isValidEmail(email: unknown): email is string {
@@ -78,6 +84,12 @@ export async function POST(request: Request) {
       win_probability: optionalNumber(body.winProbability),
       price: optionalString(body.price),
       source: optionalString(body.source) || "cta_modal",
+      intent_type: optionalString(body.intentType),
+      plan_id: optionalString(body.planId),
+      plan_name: optionalString(body.planName),
+      plan_price: optionalString(body.planPrice),
+      plan_source: optionalString(body.planSource),
+      reserved_at: optionalString(body.reservedAt),
       user_agent: request.headers.get("user-agent"),
     })
     .select("id")

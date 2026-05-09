@@ -10,6 +10,12 @@ interface PassOfferModalProps {
   isOpen: boolean;
   onClose: () => void;
   onReserve: (planId: PlanId) => void;
+  onPremiumReserve: (data: {
+    email: string;
+    planId: PlanId;
+    planName: string;
+    planPrice: string;
+  }) => void;
 }
 
 const plans: Array<{
@@ -50,7 +56,7 @@ function getPlan(planId: PlanId) {
   return plans.find((plan) => plan.id === planId) ?? plans[0];
 }
 
-export default function PassOfferModal({ isOpen, onClose, onReserve }: PassOfferModalProps) {
+export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumReserve }: PassOfferModalProps) {
   const [selectedPlan, setSelectedPlan] = useState<PlanId>('7day');
   const [currentView, setCurrentView] = useState<ViewState>('offer');
   const [email, setEmail] = useState('');
@@ -130,7 +136,12 @@ export default function PassOfferModal({ isOpen, onClose, onReserve }: PassOffer
 
     try {
       localStorage.setItem('polypropicks_pass_reserve', JSON.stringify(reserveData));
-      onReserve(selectedPlan);
+      onPremiumReserve({
+        email: normalizedEmail,
+        planId: selectedPlan,
+        planName: currentPlan.name,
+        planPrice: currentPlan.price,
+      });
       setCurrentView('reserved');
     } catch {
       setEmailError('Could not save locally. Try again.');
@@ -265,7 +276,7 @@ export default function PassOfferModal({ isOpen, onClose, onReserve }: PassOffer
               <div className={styles.reserveLock} aria-hidden="true">✓</div>
               <h2>Reserve your premium access</h2>
               <p>
-                Payment is not live yet. Leave your email and we'll notify you when {currentPlan.name} opens.
+                Premium access for this month is currently limited. Leave your email and we'll notify you when new invite spots open.
               </p>
               <form onSubmit={handleSubmitReserve} className={styles.reserveForm}>
                 <input
@@ -286,7 +297,7 @@ export default function PassOfferModal({ isOpen, onClose, onReserve }: PassOffer
                 Back to pricing
               </button>
               <p className={styles.legalText}>
-                You are reserving {currentPlan.name} for {currentPlan.price}. No payment is taken now.
+                No payment is taken now.
               </p>
             </section>
           </main>
