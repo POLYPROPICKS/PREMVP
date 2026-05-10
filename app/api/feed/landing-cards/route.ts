@@ -5,7 +5,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildLandingCards } from "@/lib/feed/buildLandingCards";
 import { readLatestGeneratedSignalPairs } from "@/lib/feed/cacheGeneratedSignals";
-import { FORMULA_VERSION, LandingCardsResponse } from "@/lib/feed/types";
+import { normalizeLandingPairEvidenceStack } from "@/lib/feed/landingPairs";
+import { FORMULA_VERSION, LandingCardsResponse, LandingCardPair } from "@/lib/feed/types";
 
 export async function GET(request: NextRequest) {
   try {
@@ -52,12 +53,28 @@ export async function GET(request: NextRequest) {
           generatedAt: new Date().toISOString(),
           source: "polymarket",
           formulaVersion: FORMULA_VERSION,
-          pairs: cachedPairs.map((cp) => ({
-            id: cp.id || `${cp.premiumSignal.id}-${cp.marketSource.id}`,
-            premiumSignal: cp.premiumSignal,
-            marketSource: cp.marketSource,
-            diagnostics: cp.diagnostics,
-          })),
+          pairs: cachedPairs.map((cp) => {
+            const pair = normalizeLandingPairEvidenceStack({
+              id: cp.id || `${cp.premiumSignal.id}-${cp.marketSource.id}`,
+              premiumSignal: cp.premiumSignal,
+              marketSource: cp.marketSource,
+              marketSources: cp.marketSources,
+              filterTags: [],
+              isDefaultToday: false,
+              priority: 0,
+              sortScore: 0,
+              volumeUsd: 0,
+              source: 'api',
+            });
+
+            return {
+              id: pair.id,
+              premiumSignal: pair.premiumSignal,
+              marketSource: pair.marketSource,
+              marketSources: pair.marketSources,
+              diagnostics: cp.diagnostics,
+            };
+          }),
           rejected: [], // Cached pairs don't include rejection data
           filters: { limit, category, minDataCoverage, excludeEnded },
           inspected: {

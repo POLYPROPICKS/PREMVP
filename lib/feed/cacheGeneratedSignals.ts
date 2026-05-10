@@ -8,6 +8,7 @@ export interface CachedSignalPair {
   id?: string;
   premiumSignal: PremiumSignal;
   marketSource: MarketSource;
+  marketSources?: MarketSource[];
   diagnostics: LandingCardDiagnostics;
   score?: number;
   createdAt?: string;

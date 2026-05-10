@@ -760,6 +760,7 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
     id: pairId,
     premiumSignal,
     marketSource,
+    marketSources: [marketSource],
     diagnostics,
   };
 }
