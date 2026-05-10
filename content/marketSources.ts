@@ -1,3 +1,12 @@
+// Legacy visual types for backward compatibility
+export type LegacyMarketSourceVisualType = "shark-avatar" | "event-icon" | "news-icon";
+
+// Approved visual types for PREMVP12
+export type MarketSourceVisualType = "chart" | "news-image" | "team-crests" | "avatar";
+
+// Approved card types for PREMVP12
+export type MarketSourceCardType = "market-source" | "news-pulse" | "market-momentum" | "sharp-flow";
+
 export interface MarketSource {
   id: string;
   sourceLabel: string;
@@ -7,8 +16,22 @@ export interface MarketSource {
   headline: string;
   subline: string;
   delta: string;
-  type?: "sharp-flow" | "market-momentum" | "news-pulse";
-  visualType?: "chart" | "shark-avatar" | "event-icon" | "news-icon";
+  type?: MarketSourceCardType;
+  visualType?: MarketSourceVisualType | LegacyMarketSourceVisualType;
+}
+
+// Evidence stack card type (same shape as MarketSource but with explicit type)
+export interface MarketSourceEvidenceCard {
+  id: string;
+  sourceLabel: string;
+  platform: string;
+  network: string;
+  timeAgo: string;
+  headline: string;
+  subline: string;
+  delta: string;
+  type?: MarketSourceCardType;
+  visualType?: MarketSourceVisualType | LegacyMarketSourceVisualType;
 }
 
 export const marketSources: MarketSource[] = [
@@ -21,7 +44,7 @@ export const marketSources: MarketSource[] = [
     headline: "$13K whale flow",
     subline: "Barcelona odds moved +7%",
     delta: "+7%",
-    type: "sharp-flow",
+    type: "sharp-flow" as MarketSourceCardType,
     visualType: "chart",
   },
   {
@@ -33,7 +56,7 @@ export const marketSources: MarketSource[] = [
     headline: "$21K sharp flow",
     subline: "Brazil odds moved +5%",
     delta: "+5%",
-    type: "sharp-flow",
+    type: "sharp-flow" as MarketSourceCardType,
     visualType: "chart",
   },
   {
@@ -45,7 +68,7 @@ export const marketSources: MarketSource[] = [
     headline: "$9K entry spike",
     subline: "USA contract demand +6%",
     delta: "+6%",
-    type: "market-momentum",
+    type: "market-momentum" as MarketSourceCardType,
     visualType: "chart",
   },
   {
@@ -57,7 +80,7 @@ export const marketSources: MarketSource[] = [
     headline: "$17K whale entry",
     subline: "France probability moved +4%",
     delta: "+4%",
-    type: "sharp-flow",
+    type: "sharp-flow" as MarketSourceCardType,
     visualType: "chart",
   },
   {
@@ -69,7 +92,7 @@ export const marketSources: MarketSource[] = [
     headline: "$12K liquidity shift",
     subline: "Argentina side volume +8%",
     delta: "+8%",
-    type: "sharp-flow",
+    type: "sharp-flow" as MarketSourceCardType,
     visualType: "chart",
   },
 ];

@@ -4,6 +4,11 @@
 
 export const FORMULA_VERSION = "trusted-initial-formula-v1.1" as const;
 
+// PREMVP12 approved types for evidence stack
+export type MarketSourceCardType = "market-source" | "news-pulse" | "market-momentum" | "sharp-flow";
+export type MarketSourceVisualType = "chart" | "news-image" | "team-crests" | "avatar";
+export type LegacyMarketSourceVisualType = "shark-avatar" | "event-icon" | "news-icon";
+
 export interface TrustMetric {
   id: string;
   label: string;
@@ -35,8 +40,8 @@ export interface MarketSource {
   headline: string;
   subline: string;
   delta: string;
-  type?: "sharp-flow" | "market-momentum" | "news-pulse";
-  visualType?: "chart" | "shark-avatar" | "event-icon" | "news-icon";
+  type?: "market-source" | "news-pulse" | "market-momentum" | "sharp-flow";
+  visualType?: "chart" | "news-image" | "team-crests" | "avatar" | "shark-avatar" | "event-icon" | "news-icon";
 }
 
 export interface LandingCardDiagnostics {
@@ -64,6 +69,7 @@ export interface LandingCardPair {
   id: string;
   premiumSignal: PremiumSignal;
   marketSource: MarketSource;
+  marketSources?: MarketSourceEvidenceCard[];
   diagnostics: LandingCardDiagnostics;
 }
 
@@ -296,6 +302,19 @@ export interface SportsDiscoverySample {
     volumeClob?: number | null;
     oneDayPriceChange?: number | null;
   }>;
+}
+
+export interface MarketSourceEvidenceCard {
+  id: string;
+  sourceLabel: string;
+  platform: string;
+  network: string;
+  timeAgo: string;
+  headline: string;
+  subline: string;
+  delta: string;
+  type?: MarketSourceCardType;
+  visualType?: MarketSourceVisualType | LegacyMarketSourceVisualType;
 }
 
 export interface SportsDiscoveryResult {

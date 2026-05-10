@@ -1,5 +1,5 @@
 import type { PremiumSignal } from '@/content/signals';
-import type { MarketSource } from '@/content/marketSources';
+import type { MarketSource, MarketSourceEvidenceCard, MarketSourceCardType } from '@/content/marketSources';
 
 export type FilterTag = 'live' | 'wc2026' | 'sports' | 'trending';
 
@@ -11,7 +11,7 @@ export interface LandingPair {
   id: string;
   premiumSignal: PremiumSignal;
   marketSource: MarketSource;
-  marketSources?: MarketSource[];
+  marketSources?: MarketSourceEvidenceCard[];
   filterTags: FilterTag[];
   isDefaultToday?: boolean;
   priority?: number;
@@ -23,7 +23,7 @@ export interface LandingPair {
 type RawLandingPair = Partial<LandingPair> & {
   premiumSignal?: PremiumSignal;
   marketSource?: MarketSource;
-  marketSources?: MarketSource[];
+  marketSources?: MarketSourceEvidenceCard[];
   id?: string;
   pairId?: string;
   filterTags?: FilterTag[];
@@ -104,7 +104,7 @@ function createPairId(raw: RawLandingPair, index: number): string {
   const eventTitle = raw.premiumSignal?.eventTitle || 'event';
   const position = raw.premiumSignal?.position || 'position';
 
-  return `${eventTitle}-${position}-${index}` 
+  return `${eventTitle}-${position}-${index}`
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/(^-|-$)/g, '');
@@ -131,7 +131,7 @@ export function normalizeLandingPairs(rawPairs: unknown[], source: LandingPairSo
         marketSource: pair.marketSource,
         marketSources: Array.isArray(pair.marketSources) && pair.marketSources.length > 0
           ? pair.marketSources
-          : [pair.marketSource],
+          : [pair.marketSource as MarketSourceEvidenceCard],
         filterTags: Array.isArray(pair.filterTags) && pair.filterTags.length > 0
           ? uniqueFilterTags(pair.filterTags)
           : getPairFilterTags({
@@ -210,4 +210,41 @@ export function selectPeekPair(pairs: LandingPair[], activePairId: string): Land
   }
 
   return pairs[(activeIndex + 1) % pairs.length] ?? null;
+}
+
+/**
+ * Ensure marketSources array is never empty by falling back to [marketSource]
+ */
+export function ensureMarketSourcesArray(
+  marketSource: MarketSource,
+  marketSources?: MarketSourceEvidenceCard[]
+): MarketSourceEvidenceCard[] {
+  if (marketSources && marketSources.length > 0) {
+    return marketSources;
+  }
+
+  // Convert primary marketSource to evidence card, handle type compatibility
+  const sourceType = marketSource.type as MarketSourceCardType || 'sharp-flow';
+  return [{
+    ...marketSource,
+    type: sourceType,
+  } as MarketSourceEvidenceCard];
+}
+
+/**
+ * Normalize landing pair to ensure marketSources is always populated
+ */
+export function normalizeLandingPairEvidenceStack(pair: LandingPair): LandingPair {
+  return {
+    id: pair.id,
+    premiumSignal: pair.premiumSignal,
+    marketSource: pair.marketSource,
+    marketSources: ensureMarketSourcesArray(pair.marketSource, pair.marketSources),
+    filterTags: pair.filterTags,
+    isDefaultToday: pair.isDefaultToday,
+    priority: pair.priority,
+    sortScore: pair.sortScore,
+    volumeUsd: pair.volumeUsd,
+    source: pair.source,
+  };
 }
