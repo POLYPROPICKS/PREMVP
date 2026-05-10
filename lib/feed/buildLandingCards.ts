@@ -9,6 +9,7 @@ import {
   type LandingCardDiagnostics,
   type PremiumSignal,
   type MarketSource,
+  type MarketSourceEvidenceCard,
   type TrustMetric,
   type PolymarketRawEvent,
   type PolymarketRawMarket,
@@ -245,7 +246,7 @@ function checkIsEndedMarket(event: PolymarketRawEvent, market: PolymarketRawMark
  * Validate and flatten events into candidate markets
  * ONLY reject clearly invalid markets (closed, no outcomes, no prices)
  * Missing enrichment data (token IDs, trades, etc.) is a warning, not fatal
- * 
+ *
  * Also computes isSportsRelated and isEnded flags for filtering
  */
 function extractCandidateMarkets(events: PolymarketRawEvent[]): CandidateMarket[] {
@@ -756,13 +757,85 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
     visualType: "chart",
   };
 
+  // Build evidence stack for the selected market
+  const marketSources = buildEvidenceStack({
+    marketSource,
+    selectedOutcome,
+    diagnostics,
+    deltaStr,
+    timeAgo,
+  });
+
   return {
     id: pairId,
     premiumSignal,
     marketSource,
-    marketSources: [marketSource],
+    marketSources,
     diagnostics,
   };
+}
+
+/**
+ * Build evidence stack for a selected market using available diagnostics data
+ */
+function buildEvidenceStack(params: {
+  marketSource: MarketSource;
+  selectedOutcome: any;
+  diagnostics: LandingCardDiagnostics;
+  deltaStr: string;
+  timeAgo: string;
+}): MarketSourceEvidenceCard[] {
+  const primaryEvidenceCard: MarketSourceEvidenceCard = {
+    ...params.marketSource,
+    type: "market-source",
+    visualType: "chart",
+  };
+
+  const evidenceCards: MarketSourceEvidenceCard[] = [primaryEvidenceCard];
+
+  const baseId = params.marketSource.id.replace(/-market-source$/, "") || params.marketSource.id;
+
+  // 2. Sharp Flow evidence card (only if sufficient trade flow)
+  if (params.diagnostics.maxTradeCash !== null && params.diagnostics.maxTradeCash >= 3000) {
+    evidenceCards.push({
+      id: `${baseId}-sharp-flow`,
+      sourceLabel: "Sharp Flow",
+      platform: "Polymarket",
+      network: "Polygon",
+      timeAgo: params.timeAgo,
+      headline: params.diagnostics.maxTradeCash >= 10000
+        ? `$${compactMoney(params.diagnostics.maxTradeCash)} whale entry`
+        : `$${compactMoney(params.diagnostics.maxTradeCash)} sharp entry`,
+      subline: `${params.selectedOutcome.name} odds moved ${params.deltaStr}`,
+      delta: params.deltaStr,
+      type: "sharp-flow",
+      visualType: "avatar",
+    });
+  }
+
+  // 3. Market Momentum evidence card (only if sufficient price movement)
+  const absDelta1h = params.diagnostics.delta1hPp !== null ? Math.abs(params.diagnostics.delta1hPp) : 0;
+  const absDelta6h = params.diagnostics.delta6hPp !== null ? Math.abs(params.diagnostics.delta6hPp) : 0;
+  const absDelta = params.diagnostics.delta6hPp ?? params.diagnostics.delta1hPp ?? 0;
+
+  if (absDelta1h >= 3 || absDelta6h >= 5 || Math.abs(absDelta) >= 3) {
+    evidenceCards.push({
+      id: `${baseId}-market-momentum`,
+      sourceLabel: "Market Momentum",
+      platform: "Polymarket",
+      network: "Polygon",
+      timeAgo: params.timeAgo,
+      headline: `${params.selectedOutcome.name} momentum ${params.deltaStr}`,
+      subline: `Demand gap ${params.deltaStr}`,
+      delta: params.deltaStr,
+      type: "market-momentum",
+      visualType: "team-crests",
+    });
+  }
+
+  // News Pulse is intentionally not generated until a verified news/context source is integrated
+
+  return evidenceCards;
 }
 
 /**
