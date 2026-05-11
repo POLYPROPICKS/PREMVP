@@ -158,6 +158,93 @@ function safeLower(val: unknown): string {
 }
 
 /**
+ * Check if market is likely a sports future or outright.
+ * Keep this conservative: reject obvious long-term championship/outright,
+ * league winner, placement, relegation, and promotion markets, but do not reject
+ * normal game markets like "Team A to win vs Team B".
+ */
+function isLikelySportsFutureOrOutright(event: PolymarketRawEvent, market: PolymarketRawMarket): boolean {
+  const normalizedText = getCandidateSearchText(event, market)
+    .toLowerCase()
+    .replace(/[-_/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalizedText) return false;
+
+  const explicitFuturePhrases = [
+    "stanley cup",
+    "super bowl",
+    "nba finals",
+    "world cup winner",
+    "world series winner",
+    "championship winner",
+    "league winner",
+    "season winner",
+    "tournament winner",
+    "conference winner",
+    "division winner",
+    "playoff winner",
+    "playoffs winner",
+    "regular season winner",
+    "overall winner",
+  ];
+
+  if (explicitFuturePhrases.some(phrase => normalizedText.includes(phrase))) {
+    return true;
+  }
+
+  const competitionTerms = [
+    "epl",
+    "english premier league",
+    "premier league",
+    "french ligue 1",
+    "ligue 1",
+    "ligue",
+    "la liga",
+    "liga",
+    "serie a",
+    "bundesliga",
+    "eredivisie",
+    "championship",
+    "league",
+    "nba",
+    "nfl",
+    "nhl",
+    "mlb",
+    "mls",
+    "cup",
+    "tournament",
+    "conference",
+    "division",
+    "season",
+  ];
+
+  const competitionPattern = competitionTerms
+    .map(term => term.replace(/\s+/g, "\\s+"))
+    .join("|");
+
+  const placementPattern = "\\d+(st|nd|rd|th)\\s+place|top\\s+\\d+|last\\s+place";
+  const relegationPattern = "relegation|relegated|get\\s+relegated|gets\\s+relegated|clubs\\s+get\\s+relegated";
+  const promotionPattern = "promotion|promoted|get\\s+promoted|gets\\s+promoted|clubs\\s+get\\s+promoted";
+  const seasonOutcomePattern = `${placementPattern}|${relegationPattern}|${promotionPattern}`;
+
+  const futureRegexes = [
+    new RegExp(`\\b(${competitionPattern})\\s+(\\d+\\s+)?(winner|champion)s?\\b`),
+    new RegExp(`\\b(${competitionPattern})\\b.{0,80}\\b(${seasonOutcomePattern})\\b`),
+    new RegExp(`\\b(which|what)\\s+clubs?\\s+get\\s+(relegated|promoted)\\b`),
+    new RegExp(`\\b(${seasonOutcomePattern})\\b`),
+    /\bwho will win (the )?(stanley cup|super bowl|nba finals|world cup|world series|championship|league|season|tournament|conference|division|playoffs?|cup)\b/,
+    /\bwinner of (the )?(stanley cup|super bowl|nba finals|world cup|world series|championship|league|season|tournament|conference|division|playoffs?|cup)\b/,
+    /\bto win (the )?(stanley cup|super bowl|nba finals|world cup|world series|championship|league|season|tournament|conference|division|playoffs?|cup)\b/,
+    /\bto be (the )?(stanley cup|super bowl|nba finals|world cup|world series|championship|league|season|tournament|conference|division|playoffs?|cup) (winner|champion)s?\b/,
+    /\b(stanley cup|super bowl|nba finals|world cup|world series|championship|league|season|tournament|conference|division|playoffs?|cup) champion(s)?\b/,
+  ];
+
+  return futureRegexes.some(regex => regex.test(normalizedText));
+}
+
+/**
  * Extract searchable text from candidate
  */
 function getCandidateSearchText(event: PolymarketRawEvent, market: PolymarketRawMarket): string {
@@ -312,13 +399,19 @@ function extractCandidateMarkets(events: PolymarketRawEvent[]): CandidateMarket[
       const sportsCheck = isSportsCandidate(event, market);
       const endedFlag = checkIsEndedMarket(event, market);
 
+      // Additional futures/outrights check for sports category
+      let futuresRejectionReason: string | undefined;
+      if (sportsCheck.isSports && isLikelySportsFutureOrOutright(event, market)) {
+        futuresRejectionReason = "sports_future_or_outright";
+      }
+
       // Attach parent metadata to market for later use
       (market as unknown as Record<string, unknown>)._parentMeta = parentMeta;
 
       candidates.push({
         event,
         market,
-        rejectionReasons,
+        rejectionReasons: futuresRejectionReason ? [...rejectionReasons, futuresRejectionReason] : rejectionReasons,
         warnings,
         isSportsRelated: sportsCheck.isSports,
         isEnded: endedFlag,
