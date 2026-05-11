@@ -225,7 +225,8 @@ export async function fetchPriceHistorySafe(
 
   const params = new URLSearchParams({
     interval,
-    token_id: tokenId,
+    market: tokenId,
+    fidelity: "60",
   });
 
   const url = `${CLOB_API_BASE}/prices-history?${params.toString()}`;
@@ -269,14 +270,14 @@ export async function fetchOrderBookSafe(
  * Fetch recent trades for a market from Data API
  */
 export async function fetchTradesSafe(
-  marketId: string
+  conditionId: string
 ): Promise<PolymarketTrade[] | null> {
-  if (!marketId) return null;
+  if (!conditionId) return null;
 
   // Try multiple possible endpoints
   const urls = [
-    `${DATA_API_BASE}/markets/${marketId}/trades`,
-    `${DATA_API_BASE}/markets/${marketId}/recent-trades`,
+    `${DATA_API_BASE}/trades?market=${encodeURIComponent(conditionId)}&limit=100&takerOnly=true`,
+    `${DATA_API_BASE}/trades?market=${encodeURIComponent(conditionId)}&limit=100`,
   ];
 
   for (const url of urls) {
@@ -294,13 +295,13 @@ export async function fetchTradesSafe(
  * Fetch holders for a market from Data API
  */
 export async function fetchHoldersSafe(
-  marketId: string
+  conditionId: string
 ): Promise<PolymarketHolder[] | null> {
-  if (!marketId) return null;
+  if (!conditionId) return null;
 
   const urls = [
-    `${DATA_API_BASE}/markets/${marketId}/holders`,
-    `${DATA_API_BASE}/markets/${marketId}/positions`,
+    `${DATA_API_BASE}/holders?market=${encodeURIComponent(conditionId)}&limit=20&minBalance=1`,
+    `${DATA_API_BASE}/v1/market-positions?market=${encodeURIComponent(conditionId)}&status=OPEN&sortBy=TOKENS&limit=50`,
   ];
 
   for (const url of urls) {
@@ -318,11 +319,11 @@ export async function fetchHoldersSafe(
  * Fetch open interest for a market from Data API
  */
 export async function fetchOpenInterestSafe(
-  marketId: string
+  conditionId: string
 ): Promise<number | null> {
-  if (!marketId) return null;
+  if (!conditionId) return null;
 
-  const url = `${DATA_API_BASE}/markets/${marketId}/open-interest`;
+  const url = `${DATA_API_BASE}/oi?market=${encodeURIComponent(conditionId)}`;
 
   const data = await safeFetch<{ openInterest?: number; value?: number }>(url);
   if (!data) return null;

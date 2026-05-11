@@ -503,7 +503,7 @@ async function enrichMarket(
     : null;
 
   // Fetch trades (best effort)
-  const trades = await fetchTradesSafe(market.id);
+  const trades = await fetchTradesSafe(market.conditionId);
 
   if (trades && trades.length > 0) {
     const selectedTrades = trades.filter(
@@ -523,7 +523,7 @@ async function enrichMarket(
   }
 
   // Fetch holders (best effort)
-  const holders = await fetchHoldersSafe(market.id);
+  const holders = await fetchHoldersSafe(market.conditionId);
 
   if (holders && holders.length > 0) {
     // Calculate holder concentration (Gini-like proxy)
@@ -538,7 +538,7 @@ async function enrichMarket(
   }
 
   // Fetch open interest (best effort)
-  const openInterest = await fetchOpenInterestSafe(market.id);
+  const openInterest = await fetchOpenInterestSafe(market.conditionId);
   diagnostics.openInterest = openInterest;
   if (openInterest === null) {
     warnings.push("Open interest data unavailable");
