@@ -736,6 +736,11 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
     spreadQualityScore,
   });
 
+  const isMiddleConfidenceFallbackMarket = isMiddleConfidenceSportsFallbackMarket(enriched.event, market);
+  const finalDisplaySignalScore = isMiddleConfidenceFallbackMarket
+    ? clamp(displaySignalScore, 45, 65)
+    : displaySignalScore;
+
   // Compute metrics with fallbacks
   const smartMoneyProxy = computeSmartMoneyProxy({
     largeTradePressureScore,
@@ -784,6 +789,14 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
     },
   ];
 
+  const finalMetrics = isMiddleConfidenceFallbackMarket
+    ? metrics.map(metric => ({
+        ...metric,
+        value: Math.min(metric.value, 65),
+        bar: Math.min(metric.bar, 65),
+      }))
+    : metrics;
+
   // Generate profit string
   const profitPercent = computePotentialProfitPercent(selectedOutcome.price);
   const profitStr = `${profitPercent}%`;
@@ -827,13 +840,13 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
     league: parentMeta.category || "Prediction Market",
     time: formatEndTime(parentMeta.endDate),
     eventTitle: truncateText(parentMeta.title || safeString(market.question) || "Unknown Event", 50),
-    confidenceLabel: getConfidenceLabel(displaySignalScore),
+    confidenceLabel: getConfidenceLabel(finalDisplaySignalScore),
     position: selectedOutcome.name,
     profit: profitStr,
-    winProbability: displaySignalScore, // NOTE: displaySignalScore for UI, NOT real win probability
+    winProbability: finalDisplaySignalScore, // NOTE: displaySignalScore for UI, NOT real win probability
     price: "$1.99",
     ctaLabel: "Unlock Full Signal",
-    metrics,
+    metrics: finalMetrics,
   };
 
   // Build market source
@@ -952,6 +965,51 @@ function buildEvidenceStack(params: {
 function truncateText(text: string, maxLength: number): string {
   if (!text || text.length <= maxLength) return text || "";
   return text.slice(0, maxLength - 3) + "...";
+}
+
+/**
+ * Identify real sports markets that should be displayed as conservative fallback,
+ * not as high-confidence live-edge signals.
+ *
+ * This does not reject the market. It only caps UI confidence/tone.
+ */
+function isMiddleConfidenceSportsFallbackMarket(event: PolymarketRawEvent, market: PolymarketRawMarket): boolean {
+  const normalizedText = getCandidateSearchText(event, market)
+    .toLowerCase()
+    .replace(/[-_/]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalizedText) return false;
+
+  const fallbackPatterns = [
+    /\bwinner\b/,
+    /\bchampion(s)?\b/,
+    /\bchampionship\b/,
+    /\bstanley cup\b/,
+    /\bsuper bowl\b/,
+    /\bnba finals\b/,
+    /\bworld cup\b/,
+    /\bworld series\b/,
+    /\bseason\b/,
+    /\bregular season\b/,
+    /\bplayoff(s)?\b/,
+    /\bconference\b/,
+    /\bdivision\b/,
+    /\brelegation\b/,
+    /\brelegated\b/,
+    /\bpromotion\b/,
+    /\bpromoted\b/,
+    /\btop\s+\d+\b/,
+    /\b\d+(st|nd|rd|th)\s+place\b/,
+    /\btop\s+goalscorer\b/,
+    /\btop\s+goal\s+scorer\b/,
+    /\btop\s+scorer\b/,
+    /\bgolden\s+boot\b/,
+    /\bmost\s+goals\b/,
+  ];
+
+  return fallbackPatterns.some(regex => regex.test(normalizedText));
 }
 
 /**
