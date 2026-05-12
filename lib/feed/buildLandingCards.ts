@@ -1242,6 +1242,8 @@ export async function buildLandingCards(options?: {
     }
 
     const pairs: LandingCardPair[] = [];
+    const seenPairIds = new Set<string>();
+    const seenMarketKeys = new Set<string>();
     const rejected: Array<{ id?: string; rejectionReasons: string[] }> = [];
 
     // Filter out ended markets if excludeEnded is true
@@ -1341,6 +1343,22 @@ export async function buildLandingCards(options?: {
         });
         continue;
       }
+
+      const marketKey = safeString(candidate.market.id)
+        || safeString(candidate.market.conditionId)
+        || safeString(candidate.market.slug)
+        || pair.id;
+
+      if (seenPairIds.has(pair.id) || seenMarketKeys.has(marketKey)) {
+        rejected.push({
+          id: candidate.market.id,
+          rejectionReasons: [`Duplicate landing pair skipped: ${pair.id}`],
+        });
+        continue;
+      }
+
+      seenPairIds.add(pair.id);
+      seenMarketKeys.add(marketKey);
 
       pairs.push(pair);
       pairsGenerated++;
