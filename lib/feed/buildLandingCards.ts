@@ -869,7 +869,12 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
 }
 
 /**
- * Build evidence stack for a selected market using available diagnostics data
+ * Build evidence stack for a selected market using available diagnostics data.
+ *
+ * Product rule:
+ * - Always return at least 2 evidence cards.
+ * - Prefer 3 evidence cards when market diagnostics are available.
+ * - Do not generate News Pulse until a verified news/context source exists.
  */
 function buildEvidenceStack(params: {
   marketSource: MarketSource;
@@ -880,6 +885,7 @@ function buildEvidenceStack(params: {
 }): MarketSourceEvidenceCard[] {
   const primaryEvidenceCard: MarketSourceEvidenceCard = {
     ...params.marketSource,
+    id: params.marketSource.id,
     type: "market-source",
     visualType: "chart",
   };
@@ -888,47 +894,56 @@ function buildEvidenceStack(params: {
 
   const baseId = params.marketSource.id.replace(/-market-source$/, "") || params.marketSource.id;
 
-  // 2. Sharp Flow evidence card (only if sufficient trade flow)
-  if (params.diagnostics.maxTradeCash !== null && params.diagnostics.maxTradeCash >= 3000) {
-    evidenceCards.push({
-      id: `${baseId}-sharp-flow`,
-      sourceLabel: "Sharp Flow",
-      platform: "Polymarket",
-      network: "Polygon",
-      timeAgo: params.timeAgo,
-      headline: params.diagnostics.maxTradeCash >= 10000
-        ? `$${compactMoney(params.diagnostics.maxTradeCash)} whale entry`
-        : `$${compactMoney(params.diagnostics.maxTradeCash)} sharp entry`,
-      subline: `${params.selectedOutcome.name} odds moved ${params.deltaStr}`,
-      delta: params.deltaStr,
-      type: "sharp-flow",
-      visualType: "avatar",
-    });
-  }
+  const hasMajorFlow = params.diagnostics.maxTradeCash !== null && params.diagnostics.maxTradeCash >= 3000;
 
-  // 3. Market Momentum evidence card (only if sufficient price movement)
+  evidenceCards.push({
+    id: `${baseId}-sharp-flow`,
+    sourceLabel: "Sharp Flow",
+    platform: "Polymarket",
+    network: "Polygon",
+    timeAgo: params.timeAgo,
+    headline: hasMajorFlow
+      ? params.diagnostics.maxTradeCash! >= 10000
+        ? `$${compactMoney(params.diagnostics.maxTradeCash!)} whale entry`
+        : `$${compactMoney(params.diagnostics.maxTradeCash!)} sharp entry`
+      : "Flow scan active",
+    subline: hasMajorFlow
+      ? `${params.selectedOutcome.name} odds moved ${params.deltaStr}`
+      : "No major whale spike detected yet",
+    delta: params.deltaStr,
+    type: "sharp-flow",
+    visualType: "avatar",
+  });
+
   const absDelta1h = params.diagnostics.delta1hPp !== null ? Math.abs(params.diagnostics.delta1hPp) : 0;
   const absDelta6h = params.diagnostics.delta6hPp !== null ? Math.abs(params.diagnostics.delta6hPp) : 0;
   const absDelta = params.diagnostics.delta6hPp ?? params.diagnostics.delta1hPp ?? 0;
+  const hasMeaningfulMomentum = absDelta1h >= 3 || absDelta6h >= 5 || Math.abs(absDelta) >= 3;
 
-  if (absDelta1h >= 3 || absDelta6h >= 5 || Math.abs(absDelta) >= 3) {
-    evidenceCards.push({
-      id: `${baseId}-market-momentum`,
-      sourceLabel: "Market Momentum",
-      platform: "Polymarket",
-      network: "Polygon",
-      timeAgo: params.timeAgo,
-      headline: `${params.selectedOutcome.name} momentum ${params.deltaStr}`,
-      subline: `Demand gap ${params.deltaStr}`,
-      delta: params.deltaStr,
-      type: "market-momentum",
-      visualType: "team-crests",
-    });
-  }
+  evidenceCards.push({
+    id: `${baseId}-market-momentum`,
+    sourceLabel: "Market Momentum",
+    platform: "Polymarket",
+    network: "Polygon",
+    timeAgo: params.timeAgo,
+    headline: hasMeaningfulMomentum
+      ? `${params.selectedOutcome.name} momentum ${params.deltaStr}`
+      : `${params.selectedOutcome.name} price holding`,
+    subline: hasMeaningfulMomentum
+      ? `Demand gap ${params.deltaStr}`
+      : `Movement check ${params.deltaStr}`,
+    delta: params.deltaStr,
+    type: "market-momentum",
+    visualType: "team-crests",
+  });
 
-  // News Pulse is intentionally not generated until a verified news/context source is integrated
+  // News Pulse is intentionally not generated until a verified news/context source is integrated.
 
-  return evidenceCards;
+  const uniqueEvidenceCards = evidenceCards.filter((card, index, cards) =>
+    cards.findIndex(existingCard => existingCard.id === card.id) === index
+  );
+
+  return uniqueEvidenceCards;
 }
 
 /**
