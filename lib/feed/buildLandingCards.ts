@@ -824,9 +824,7 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
   }
 
   // Generate subline for market source
-  const subline = hasPriceMove
-    ? `${selectedOutcome.name} odds moved ${deltaStr}`
-    : `${selectedOutcome.name} priced at ${priceCents}¢`;
+  const subline = `${selectedOutcome.name} priced at ${priceCents}¢`;
 
   // Generate time ago (use "Live now" as fallback)
   const timeAgo = "Live now";
