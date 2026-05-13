@@ -112,6 +112,28 @@ export function formatDeltaPp(value: number): string {
 }
 
 /**
+ * Format game start time for display (e.g. "In 3h", "In 2 days")
+ */
+export function formatGameTime(startDate: string | null | undefined): string {
+  if (!startDate) return "Live";
+
+  const start = new Date(startDate);
+  const now = new Date();
+  const diffMs = start.getTime() - now.getTime();
+
+  if (diffMs < 0) return "Live";
+
+  const diffMins = Math.floor(diffMs / 60000);
+  const diffHours = Math.floor(diffMs / 3600000);
+  const diffDays = Math.floor(diffMs / 86400000);
+
+  if (diffDays >= 2) return `In ${diffDays} days`;
+  if (diffHours >= 1) return `In ${diffHours}h`;
+  if (diffMins >= 1) return `In ${diffMins}m`;
+  return "Starting soon";
+}
+
+/**
  * Format end time for display
  */
 export function formatEndTime(endDate: string | undefined): string {

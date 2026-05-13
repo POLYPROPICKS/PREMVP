@@ -41,6 +41,7 @@ import {
   formatTimeAgo,
   formatDeltaPp,
   formatEndTime,
+  formatGameTime,
   slugify,
   clamp,
   roundNumber,
@@ -87,6 +88,7 @@ function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket
     slug: sample.slug,
     category: "sports",
     endDate: sample.resolvedGameTimeIso || undefined,
+    startDate: sample.resolvedGameTimeIso || undefined,
   };
 
   return {
@@ -116,6 +118,7 @@ interface ParentEventMeta {
   slug: string;
   category?: string;
   endDate?: string;
+  startDate?: string;
 }
 
 interface EnrichedMarket {
@@ -890,7 +893,9 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
   const premiumSignal: PremiumSignal = {
     id: pairId,
     league: parentMeta.category || "Prediction Market",
-    time: formatEndTime(parentMeta.endDate),
+    time: parentMeta.startDate
+      ? formatGameTime(parentMeta.startDate)
+      : formatEndTime(parentMeta.endDate),
     eventTitle: truncateText(parentMeta.title || safeString(market.question) || "Unknown Event", 50),
     confidenceLabel: getConfidenceLabel(finalDisplaySignalScore),
     position: selectedOutcome.name,
