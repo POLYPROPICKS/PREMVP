@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   const result = await buildLandingCards({
     limit,
     category,
-    minDataCoverage,
+    minDataCoverage: 0,
     excludeEnded,
   });
 
@@ -44,6 +44,9 @@ export async function GET(request: Request) {
     generatedAt: result.generatedAt,
     source: result.source,
     formulaVersion: result.formulaVersion,
+    inspected: result.inspected,
+    rejected: result.rejected?.slice(0, 10) ?? [],
+    error: result.error ?? null,
     pairCount: pairs.length,
     pairs: pairs.map((pair) => {
       const evidence = pair.marketSources ?? [];

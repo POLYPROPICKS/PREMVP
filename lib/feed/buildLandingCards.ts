@@ -422,7 +422,7 @@ function extractCandidateMarkets(events: PolymarketRawEvent[]): CandidateMarket[
       candidates.push({
         event,
         market,
-        rejectionReasons: futuresRejectionReason ? [...rejectionReasons, futuresRejectionReason] : rejectionReasons,
+        rejectionReasons,
         warnings,
         isSportsRelated: sportsCheck.isSports,
         isEnded: endedFlag,
@@ -909,7 +909,7 @@ function buildEvidenceStack(params: {
   const maxTradeCash = params.diagnostics.maxTradeCash;
 
   // Sharp Flow: only real trade-size evidence. Never create placeholder Sharp Flow.
-  if (maxTradeCash !== null && maxTradeCash >= 1000) {
+  if (maxTradeCash !== null && maxTradeCash >= 500) {
     let headline: string;
     let subline: string;
 
@@ -1119,7 +1119,7 @@ export async function buildLandingCards(options?: {
 }): Promise<LandingCardsResponse> {
   const limit = clamp(options?.limit ?? 4, 1, 10);
   const category = options?.category ?? "sports";
-  const minDataCoverage = clamp(options?.minDataCoverage ?? 40, 0, 100);
+  const minDataCoverage = clamp(options?.minDataCoverage ?? 25, 0, 100);
   const excludeEnded = options?.excludeEnded ?? true;
 
   // Track inspected counts for diagnostics
