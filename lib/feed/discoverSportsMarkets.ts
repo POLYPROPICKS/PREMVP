@@ -340,24 +340,53 @@ export async function discoverSportsMarkets(
       leagueName: (() => {
         const teamA = g.teamAID ? teamsMap.get(g.teamAID) : null;
         if (teamA?.league) return teamA.league;
+
+        // Primary: slug prefix map (Polymarket encodes league as first slug segment)
+        const slug = g.primaryMarket?.slug || g.primaryMarket?.nestedEventSlug || "";
+        const prefix = slug.split("-")[0].toLowerCase();
+        const prefixMap: Record<string, string> = {
+          epl: "Premier League",
+          lal: "La Liga",
+          ucl: "Champions League",
+          bun: "Bundesliga",
+          ser: "Serie A",
+          fl1: "Ligue 1",
+          nba: "NBA",
+          nhl: "NHL",
+          mlb: "MLB",
+          nfl: "NFL",
+          ufc: "UFC",
+          mls: "MLS",
+          mma: "UFC",
+          atp: "Tennis",
+          wta: "Tennis",
+          cs2: "Esports",
+          val: "Esports",
+          lol: "Esports",
+          dota: "Esports",
+        };
+        if (prefixMap[prefix]) return prefixMap[prefix];
+
+        // Fallback: text search across all available fields
         const q = [
           g.primaryMarket?.question || "",
-          g.primaryMarket?.slug || "",
+          slug,
           g.primaryMarket?.nestedEventSlug || "",
           g.groupKey || "",
         ].join(" ").toLowerCase();
-        if (q.includes("premier league") || q.includes(" epl") || q.includes("-epl-")) return "Premier League";
-        if (q.includes("la liga") || q.includes("laliga") || q.includes("-ll-")) return "La Liga";
-        if (q.includes("champions league") || q.includes("-ucl-")) return "Champions League";
-        if (q.includes("bundesliga") || q.includes("-bun-")) return "Bundesliga";
-        if (q.includes("serie a") || q.includes("-sa-")) return "Serie A";
-        if (q.includes("ligue 1") || q.includes("-fl1-") || q.includes("-l1-")) return "Ligue 1";
-        if (q.includes("nba") || q.includes("-nba-")) return "NBA";
-        if (q.includes("nhl") || q.includes("-nhl-")) return "NHL";
-        if (q.includes("mlb") || q.includes("-mlb-")) return "MLB";
-        if (q.includes("nfl") || q.includes("-nfl-")) return "NFL";
-        if (q.includes("ufc") || q.includes("mma") || q.includes("-ufc-")) return "UFC";
-        if (q.includes("cs2") || q.includes("csgo") || q.includes("dota") || q.includes("valorant") || q.includes("map handicap") || q.includes("esport")) return "Esports";
+        if (q.includes("premier league")) return "Premier League";
+        if (q.includes("la liga") || q.includes("laliga")) return "La Liga";
+        if (q.includes("champions league")) return "Champions League";
+        if (q.includes("bundesliga")) return "Bundesliga";
+        if (q.includes("serie a")) return "Serie A";
+        if (q.includes("ligue 1")) return "Ligue 1";
+        if (q.includes("nba")) return "NBA";
+        if (q.includes("nhl")) return "NHL";
+        if (q.includes("mlb")) return "MLB";
+        if (q.includes("nfl")) return "NFL";
+        if (q.includes("ufc") || q.includes("mma")) return "UFC";
+        if (q.includes("tennis") || q.includes("atp") || q.includes("wta")) return "Tennis";
+        if (q.includes("cs2") || q.includes("csgo") || q.includes("dota") || q.includes("valorant") || q.includes("map handicap")) return "Esports";
         return "Sports";
       })(),
       polymarketEventSlug: g.primaryMarket?.nestedEventSlug || g.primaryMarket?.slug || "",
