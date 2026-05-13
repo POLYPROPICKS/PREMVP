@@ -471,7 +471,9 @@ function selectOutcome(market: PolymarketRawMarket): { name: string; tokenId: st
   if (validOutcomes.length === 0) return null;
 
   // Prefer outcomes with price between 0.2 and 0.8 (not too extreme)
-  const balancedOutcomes = validOutcomes.filter((o) => o.price > 0.2 && o.price < 0.8);
+  const balancedOutcomes = validOutcomes.filter(
+    (o) => o.price > 0.2 && o.price < 0.8 && ((1 / o.price) - 1) * 100 >= 15
+  );
 
   if (balancedOutcomes.length > 0) {
     // Select the one closest to 0.5 (most balanced)
@@ -1251,6 +1253,38 @@ export async function buildLandingCards(options?: {
       // category = "all" or any other - skip sports filtering
       candidatesAfterCategoryFilter = candidates.length;
     }
+
+    candidates.sort((a, b) => {
+      const getGameTime = (c: CandidateMarket): number => {
+        const raw = c.market as unknown as Record<string, unknown>;
+        const gs = raw.gameStartTime ?? raw.game_start_time ?? raw.startDate;
+        if (gs && typeof gs === "string") {
+          const t = new Date(gs).getTime();
+          if (!isNaN(t) && t > Date.now()) return t;
+        }
+        const ed = c.event.endDate;
+        if (ed) {
+          const t = new Date(ed).getTime();
+          if (!isNaN(t) && t > Date.now()) return t;
+        }
+        return Infinity;
+      };
+      const now = Date.now();
+      const aTime = getGameTime(a);
+      const bTime = getGameTime(b);
+      const aIsUpcoming = aTime < now + 48 * 60 * 60 * 1000;
+      const bIsUpcoming = bTime < now + 48 * 60 * 60 * 1000;
+      if (aIsUpcoming && !bIsUpcoming) return -1;
+      if (!aIsUpcoming && bIsUpcoming) return 1;
+      if (aIsUpcoming && bIsUpcoming) return aTime - bTime;
+      const aVol = safeParseNumber(
+        (a.market as unknown as Record<string, unknown>).volume24hr ?? 0
+      ) ?? 0;
+      const bVol = safeParseNumber(
+        (b.market as unknown as Record<string, unknown>).volume24hr ?? 0
+      ) ?? 0;
+      return bVol - aVol;
+    });
 
     const pairs: LandingCardPair[] = [];
     const seenPairIds = new Set<string>();
