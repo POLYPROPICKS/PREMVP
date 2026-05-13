@@ -102,8 +102,13 @@ export function formatTimeAgo(timestamp: string | number | Date): string {
  * Format delta in percentage points with + sign
  */
 export function formatDeltaPp(value: number): string {
-  const sign = value >= 0 ? "+" : "";
-  return `${sign}${roundNumber(value)}%`;
+  const rounded = roundNumber(value);
+  if (Math.abs(rounded) === 0) {
+    return "0%";
+  }
+
+  const sign = rounded > 0 ? "+" : "";
+  return `${sign}${rounded}%`;
 }
 
 /**

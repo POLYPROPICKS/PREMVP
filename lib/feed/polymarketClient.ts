@@ -24,12 +24,14 @@ async function safeFetch<T>(
 
     const response = await fetch(url, {
       ...options,
+      cache: "no-store",
       signal: controller.signal,
       headers: {
         "Accept": "application/json",
         ...options?.headers,
       },
-    });
+      next: { revalidate: 0 },
+    } as RequestInit & { next?: { revalidate: number } });
 
     clearTimeout(timeout);
 

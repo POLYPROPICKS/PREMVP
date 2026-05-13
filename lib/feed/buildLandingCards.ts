@@ -188,9 +188,20 @@ function isLikelySportsFutureOrOutright(event: PolymarketRawEvent, market: Polym
     "playoffs winner",
     "regular season winner",
     "overall winner",
+    "top goalscorer",
+    "top goal scorer",
+    "top scorer",
+    "golden boot",
+    "most goals",
+    "most assists",
   ];
 
   if (explicitFuturePhrases.some(phrase => normalizedText.includes(phrase))) {
+    return true;
+  }
+
+  // Futures/props that are not a concrete upcoming game. These were leaking into the feed.
+  if (/\b(top\s+goalscorer|top\s+goal\s+scorer|top\s+scorer|golden\s+boot|most\s+goals|most\s+assists)\b/.test(normalizedText)) {
     return true;
   }
 
@@ -579,21 +590,14 @@ async function enrichMarket(
     }
   }
 
-  // Fetch spread (best effort - only if we have token ID)
-  let spread: { min: number; max: number } | null = null;
-  if (selectedOutcome.tokenId) {
-    spread = await fetchSpreadSafe(selectedOutcome.tokenId);
-  }
-  if (spread) {
-    diagnostics.spread = roundNumber((spread.max - spread.min) * 100);
-  } else {
-    warnings.push("Spread data unavailable");
-  }
+  // PREMVP15 rescue: skip slow CLOB spread/order-book enrichment in the live landing route.
+  // The feed already has enough P0 evidence from Gamma volume, current price, trades and holders.
+  // Spread/order-book calls were causing 60s local requests and abort noise.
+  const spread: { min: number; max: number } | null = null;
+  diagnostics.spread = null;
+  warnings.push("Spread lookup skipped for landing-feed performance");
 
-  // Fetch order book (best effort)
-  const orderBook = selectedOutcome.tokenId
-    ? await fetchOrderBookSafe(selectedOutcome.tokenId)
-    : null;
+  const orderBook = null;
 
   // Fetch trades (best effort)
   const trades = await fetchTradesSafe(market.conditionId);
@@ -630,23 +634,19 @@ async function enrichMarket(
     warnings.push("Holder data unavailable");
   }
 
-  // Fetch open interest (best effort)
-  const openInterest = await fetchOpenInterestSafe(market.conditionId);
-  diagnostics.openInterest = openInterest;
-  if (openInterest === null) {
-    warnings.push("Open interest data unavailable");
-  }
+  // PREMVP15 rescue: skip open interest in the live landing route for speed/stability.
+  const openInterest = null;
+  diagnostics.openInterest = null;
+  warnings.push("Open interest lookup skipped for landing-feed performance");
 
   // Calculate data coverage (0-100)
   let coveragePoints = 0;
-  let totalPoints = 6;
+  const totalPoints = 4;
 
   if (diagnostics.currentPrice !== null) coveragePoints++;
   if (diagnostics.price6hAgo !== null || diagnostics.delta6hPp !== null) coveragePoints++;
-  if (diagnostics.spread !== null) coveragePoints++;
   if (diagnostics.recentTradeCash !== null) coveragePoints++;
   if (diagnostics.holderConcentrationScore !== null) coveragePoints++;
-  if (diagnostics.openInterest !== null) coveragePoints++;
 
   diagnostics.dataCoverage = roundNumber((coveragePoints / totalPoints) * 100);
 
@@ -804,28 +804,29 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
   // Generate delta string for market source
   const deltaPp = diagnostics.delta6hPp ?? diagnostics.delta1hPp ?? 0;
   const deltaStr = formatDeltaPp(deltaPp);
+  const priceCents = Math.round(selectedOutcome.price * 100);
+  const hasPriceMove = Math.abs(deltaPp) >= 1;
 
-  // Generate headline for market source using Gamma data as fallback
+  // Generate headline for market source using market volume/liquidity only.
+  // Sharp Flow owns trade-size evidence; do not duplicate maxTradeCash here.
   const gammaVolume = safeParseNumber((market as unknown as Record<string, unknown>).volume);
   const gammaLiquidity = safeParseNumber((market as unknown as Record<string, unknown>).liquidity);
 
   let headline: string;
-  if (diagnostics.maxTradeCash !== null && diagnostics.maxTradeCash >= 10000) {
-    headline = `$${compactMoney(diagnostics.maxTradeCash)} whale entry`;
-  } else if (diagnostics.maxTradeCash !== null && diagnostics.maxTradeCash >= 3000) {
-    headline = `$${compactMoney(diagnostics.maxTradeCash)} sharp entry`;
-  } else if (diagnostics.recentTradeCash !== null && diagnostics.recentTradeCash > 0) {
-    headline = `$${compactMoney(diagnostics.recentTradeCash)} market flow`;
-  } else if (gammaVolume !== null && gammaVolume > 0) {
-    headline = `$${compactMoney(gammaVolume)} volume`;
+  if (gammaVolume !== null && gammaVolume > 0) {
+    headline = `$${compactMoney(gammaVolume)} market volume`;
   } else if (gammaLiquidity !== null && gammaLiquidity > 0) {
-    headline = `$${compactMoney(gammaLiquidity)} liquidity`;
+    headline = `$${compactMoney(gammaLiquidity)} market liquidity`;
+  } else if (diagnostics.recentTradeCash !== null && diagnostics.recentTradeCash > 0) {
+    headline = `$${compactMoney(diagnostics.recentTradeCash)} matched activity`;
   } else {
-    headline = "Live market flow";
+    headline = "Live market activity";
   }
 
   // Generate subline for market source
-  const subline = `${selectedOutcome.name} odds moved ${deltaStr}`;
+  const subline = hasPriceMove
+    ? `${selectedOutcome.name} odds moved ${deltaStr}`
+    : `${selectedOutcome.name} priced at ${priceCents}¢`;
 
   // Generate time ago (use "Live now" as fallback)
   const timeAgo = "Live now";
@@ -859,7 +860,7 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
     headline,
     subline,
     delta: deltaStr,
-    type: "sharp-flow",
+    type: "market-source",
     visualType: "chart",
   };
 
@@ -904,34 +905,46 @@ function buildEvidenceStack(params: {
   };
 
   const evidenceCards: MarketSourceEvidenceCard[] = [primaryEvidenceCard];
-
   const baseId = params.marketSource.id.replace(/-market-source$/, "") || params.marketSource.id;
+  const maxTradeCash = params.diagnostics.maxTradeCash;
 
-  const hasMajorFlow = params.diagnostics.maxTradeCash !== null && params.diagnostics.maxTradeCash >= 3000;
+  // Sharp Flow: only real trade-size evidence. Never create placeholder Sharp Flow.
+  if (maxTradeCash !== null && maxTradeCash >= 1000) {
+    let headline: string;
+    let subline: string;
 
-  evidenceCards.push({
-    id: `${baseId}-sharp-flow`,
-    sourceLabel: "Sharp Flow",
-    platform: "Polymarket",
-    network: "Polygon",
-    timeAgo: params.timeAgo,
-    headline: hasMajorFlow
-      ? params.diagnostics.maxTradeCash! >= 10000
-        ? `$${compactMoney(params.diagnostics.maxTradeCash!)} whale entry`
-        : `$${compactMoney(params.diagnostics.maxTradeCash!)} sharp entry`
-      : "Flow scan active",
-    subline: hasMajorFlow
-      ? `${params.selectedOutcome.name} odds moved ${params.deltaStr}`
-      : "No major whale spike detected yet",
-    delta: params.deltaStr,
-    type: "sharp-flow",
-    visualType: "avatar",
-  });
+    if (maxTradeCash >= 10000) {
+      headline = `$${compactMoney(maxTradeCash)} whale trade`;
+      subline = "Largest matched trade";
+    } else if (maxTradeCash >= 5000) {
+      headline = `$${compactMoney(maxTradeCash)} sharp trade`;
+      subline = "Largest matched trade";
+    } else {
+      headline = `$${compactMoney(maxTradeCash)} trade flow`;
+      subline = "Recent matched trade";
+    }
+
+    evidenceCards.push({
+      id: `${baseId}-sharp-flow`,
+      sourceLabel: "Sharp Flow",
+      platform: "Polymarket",
+      network: "Polygon",
+      timeAgo: params.timeAgo,
+      headline,
+      subline,
+      delta: params.deltaStr,
+      type: "sharp-flow",
+      visualType: "avatar",
+    });
+  }
 
   const absDelta1h = params.diagnostics.delta1hPp !== null ? Math.abs(params.diagnostics.delta1hPp) : 0;
   const absDelta6h = params.diagnostics.delta6hPp !== null ? Math.abs(params.diagnostics.delta6hPp) : 0;
   const absDelta = params.diagnostics.delta6hPp ?? params.diagnostics.delta1hPp ?? 0;
-  const hasMeaningfulMomentum = absDelta1h >= 3 || absDelta6h >= 5 || Math.abs(absDelta) >= 3;
+  const hasMeaningfulMomentum = absDelta1h >= 1 || absDelta6h >= 1 || Math.abs(absDelta) >= 1;
+  const price = params.diagnostics.currentPrice;
+  const priceCents = price !== null ? Math.round(price * 100) : null;
+  const impliedOdds = price !== null && price > 0 ? (1 / price).toFixed(2) : null;
 
   evidenceCards.push({
     id: `${baseId}-market-momentum`,
@@ -940,11 +953,13 @@ function buildEvidenceStack(params: {
     network: "Polygon",
     timeAgo: params.timeAgo,
     headline: hasMeaningfulMomentum
-      ? `${params.selectedOutcome.name} momentum ${params.deltaStr}`
-      : `${params.selectedOutcome.name} price holding`,
+      ? `Odds moved ${params.deltaStr}`
+      : "Odds holding",
     subline: hasMeaningfulMomentum
-      ? `Demand gap ${params.deltaStr}`
-      : `Movement check ${params.deltaStr}`,
+      ? `Market repricing detected: ${params.deltaStr}`
+      : impliedOdds && priceCents !== null
+        ? `Implied odds from ${priceCents}¢ price: ≈ ${impliedOdds}x`
+        : "No repricing detected",
     delta: params.deltaStr,
     type: "market-momentum",
     visualType: "team-crests",
@@ -952,11 +967,9 @@ function buildEvidenceStack(params: {
 
   // News Pulse is intentionally not generated until a verified news/context source is integrated.
 
-  const uniqueEvidenceCards = evidenceCards.filter((card, index, cards) =>
+  return evidenceCards.filter((card, index, cards) =>
     cards.findIndex(existingCard => existingCard.id === card.id) === index
   );
-
-  return uniqueEvidenceCards;
 }
 
 /**

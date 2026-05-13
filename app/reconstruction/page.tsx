@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, type CSSProperties } from 'react';
 import styles from './Reconstruction.module.css';
 import { premiumSignals as staticPremiumSignals, PremiumSignal } from '@/content/signals';
 import { marketSources as staticMarketSources } from '@/content/marketSources';
@@ -8,6 +8,8 @@ import { getCandidatePairsForFilter, normalizeLandingPairs, selectBestPairForFil
 import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
 import PassOfferModal from '@/components/modals/PassOfferModal';
+
+type MarketEvidenceSource = NonNullable<LandingPair['marketSources']>[number];
 
 const fallbackPairs: LandingPair[] = staticPremiumSignals.flatMap((signal, index) => {
   const marketSource = staticMarketSources[index] ?? staticMarketSources[0];
@@ -35,6 +37,7 @@ export default function ReconstructionPage() {
   const [apiError, setApiError] = useState('');
   const [allPairs, setAllPairs] = useState<LandingPair[]>(fallbackPairs);
   const [activePairId, setActivePairId] = useState<string>(fallbackPairs[0]?.id ?? '');
+  const [activeEvidenceIndex, setActiveEvidenceIndex] = useState(0);
   const [activeFilter, setActiveFilter] = useState<FilterTag>('sports');
   const [isPassOfferModalOpen, setIsPassOfferModalOpen] = useState(false);
 
@@ -44,7 +47,6 @@ export default function ReconstructionPage() {
   );
 
   const landingSignals = useMemo(() => candidatePairs.map((pair) => pair.premiumSignal), [candidatePairs]);
-  const landingSources = useMemo(() => candidatePairs.map((pair) => pair.marketSource), [candidatePairs]);
 
   const activePairIndex = useMemo(() => {
     const index = candidatePairs.findIndex((pair) => pair.id === activePairId);
@@ -54,12 +56,41 @@ export default function ReconstructionPage() {
   const activePair = candidatePairs[activePairIndex] ?? allPairs[0] ?? fallbackPairs[0] ?? null;
   const activeSignal = activePair?.premiumSignal ?? staticPremiumSignals[0];
 
+  const activeMarketSources = useMemo(() => {
+    if (!activePair) return [];
+
+    if (Array.isArray(activePair.marketSources) && activePair.marketSources.length > 0) {
+      return activePair.marketSources;
+    }
+
+    return activePair.marketSource ? [activePair.marketSource as MarketEvidenceSource] : [];
+  }, [activePair]);
+
   const handleActivePairIndexChange = useCallback((nextIndex: number) => {
     const nextPair = candidatePairs[nextIndex];
     if (nextPair) {
       setActivePairId(nextPair.id);
+      setActiveEvidenceIndex(0);
     }
   }, [candidatePairs]);
+
+  const handleEvidenceIndexChange = useCallback((nextIndex: number) => {
+    setActiveEvidenceIndex(nextIndex);
+  }, []);
+
+  useEffect(() => {
+    setActiveEvidenceIndex(0);
+  }, [activePair?.id]);
+
+  useEffect(() => {
+    if (!activePair || activeMarketSources.length <= 1) return;
+
+    const timer = window.setInterval(() => {
+      setActiveEvidenceIndex((currentIndex) => (currentIndex + 1) % activeMarketSources.length);
+    }, 4500);
+
+    return () => window.clearInterval(timer);
+  }, [activePair, activeMarketSources.length]);
 
   const handleFilterClick = useCallback((filter: FilterTag) => {
     setActiveFilter(filter);
@@ -67,6 +98,7 @@ export default function ReconstructionPage() {
     const bestPair = selectBestPairForFilter(allPairs, filter);
     if (bestPair) {
       setActivePairId(bestPair.id);
+      setActiveEvidenceIndex(0);
     }
   }, [allPairs]);
 
@@ -206,6 +238,7 @@ export default function ReconstructionPage() {
           if (normalizedPairs.length > 0) {
             setAllPairs(normalizedPairs);
             setActivePairId(normalizedPairs[0]?.id ?? fallbackPairs[0]?.id ?? '');
+            setActiveEvidenceIndex(0);
 
             console.log('[landing-feed] using normalized api feed:', normalizedPairs.length, 'pairs');
           } else {
@@ -232,10 +265,10 @@ export default function ReconstructionPage() {
         <div className={styles.screen}>
           <Header />
           <MarketSourceCarousel 
-            sources={landingSources}
-            activeIndex={activePairIndex}
-            onActiveIndexChange={handleActivePairIndexChange}
-            renderCard={(source) => <MarketSourceCard source={source} />} 
+            sources={activeMarketSources}
+            activeIndex={activeEvidenceIndex}
+            onActiveIndexChange={handleEvidenceIndexChange}
+            renderCard={(source) => <MarketSourceCard source={source as MarketEvidenceSource} />}
           />
           <PillsRow activeFilter={activeFilter} onFilterClick={handleFilterClick} />
           <PremiumEventCarousel
@@ -292,7 +325,252 @@ function Header() {
   );
 }
 
-function MarketSourceCard({ source }: { source: typeof staticMarketSources[0] }) {
+
+function normalizeEvidenceDelta(rawDelta: unknown): string {
+  const raw = String(rawDelta ?? '').trim();
+  const normalized = raw.toLowerCase().replace(/\s+/g, ' ');
+
+  if (
+    !normalized ||
+    normalized === '+0%' ||
+    normalized === '0%' ||
+    normalized === '+0% up' ||
+    normalized === '0% up' ||
+    normalized === '0% flat'
+  ) {
+    return '0%';
+  }
+
+  return raw;
+}
+
+function isZeroEvidenceDelta(rawDelta: unknown): boolean {
+  return normalizeEvidenceDelta(rawDelta) === '0%';
+}
+
+function extractMoneyAmount(value: unknown): string | null {
+  const match = String(value ?? '').match(/\$[\d,.]+(?:\.\d+)?[KMB]?/i);
+  return match?.[0] ?? null;
+}
+
+function extractPriceCents(value: unknown): number | null {
+  const match = String(value ?? '').match(/(\d+(?:\.\d+)?)\s*¢/);
+  if (!match) return null;
+
+  const cents = Number(match[1]);
+  return Number.isFinite(cents) && cents > 0 ? cents : null;
+}
+
+function formatImpliedOddsFromCents(cents: number | null): string | null {
+  if (!cents || cents <= 0) return null;
+
+  return `${(100 / cents).toFixed(2)}x`;
+}
+
+function getEvidencePills(source: MarketEvidenceSource): string[] {
+  const type = source.type ?? 'market-source';
+  const time = source.timeAgo || 'Live now';
+
+  if (type === 'sharp-flow') {
+    return ['Sharp Flow', 'Trades', time];
+  }
+
+  if (type === 'market-momentum') {
+    return ['Momentum', 'Odds', time];
+  }
+
+  return [
+    source.platform || 'Polymarket',
+    source.network || 'Polygon',
+    time,
+  ];
+}
+
+function normalizeEvidenceHeadline(source: MarketEvidenceSource): string {
+  const type = source.type ?? 'market-source';
+  const headline = String(source.headline ?? '').trim();
+
+  if (type === 'market-momentum') {
+    const delta = normalizeEvidenceDelta(source.delta);
+    return delta === '0%' ? 'Odds holding steady' : `Odds moved ${delta}`;
+  }
+
+  return headline || 'Market evidence';
+}
+
+function normalizeEvidenceSubline(source: MarketEvidenceSource): string {
+  const type = source.type ?? 'market-source';
+  const subline = String(source.subline ?? '').trim();
+
+  if (type === 'market-momentum') {
+    const cents = extractPriceCents(subline);
+    const odds = formatImpliedOddsFromCents(cents);
+
+    if (odds && cents) {
+      return `Implied odds ≈ ${odds} at ${cents}¢`;
+    }
+
+    const delta = normalizeEvidenceDelta(source.delta);
+    return delta === '0%' ? 'No sharp repricing detected' : `Market repricing detected: ${delta}`;
+  }
+
+  return subline || 'Live market evidence';
+}
+
+function MarketDepthChart({ source }: { source: MarketEvidenceSource }) {
+  const delta = normalizeEvidenceDelta(source.delta);
+  const hasMovement = !isZeroEvidenceDelta(source.delta);
+  const moneyAmount = extractMoneyAmount(source.headline);
+  const rawAmount = Number(String(moneyAmount ?? '').replace(/[$,]/g, '').replace(/K/i, '000').replace(/M/i, '000000')) || 0;
+  const intensity = Math.min(1, rawAmount / 1000000);
+  const lift = Math.round(6 + intensity * 14);
+
+  return (
+    <div className={styles.marketChartWrap} style={{ justifyContent: 'center', gap: 4 }}>
+      <svg viewBox="0 0 180 72" className={styles.marketChart} aria-hidden="true">
+        <path
+          d={`M4 58 L18 55 L32 57 L46 51 L60 53 L74 45 L88 48 L102 39 L116 ${36 - lift / 3} L130 31 L144 ${20 - lift / 2} L158 ${10 + lift / 4}`}
+          className={styles.chartLine}
+        />
+        <path
+          d={`M4 58 L18 55 L32 57 L46 51 L60 53 L74 45 L88 48 L102 39 L116 ${36 - lift / 3} L130 31 L144 ${20 - lift / 2} L158 ${10 + lift / 4} L158 72 L4 72 Z`}
+          className={styles.chartFill}
+        />
+        <circle cx="158" cy={10 + lift / 4} r="3.7" className={styles.chartDot} />
+      </svg>
+      {hasMovement ? <div className={styles.marketDelta}>{delta}</div> : null}
+    </div>
+  );
+}
+
+function SharpFlowVisual({ source }: { source: MarketEvidenceSource }) {
+  const delta = normalizeEvidenceDelta(source.delta);
+  const hasMovement = !isZeroEvidenceDelta(source.delta);
+
+  return (
+    <div
+      className={styles.marketChartWrap}
+      style={{
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: 68,
+      }}
+    >
+      <div
+        style={{
+          position: 'relative',
+          width: 64,
+          height: 64,
+          borderRadius: 999,
+          border: '1px solid rgba(24, 231, 255, 0.56)',
+          background: 'radial-gradient(circle at 38% 30%, rgba(24,231,255,0.34), rgba(6,18,34,0.96) 58%)',
+          boxShadow: '0 0 20px rgba(24,231,255,0.28), inset 0 0 18px rgba(24,231,255,0.16)',
+          display: 'grid',
+          placeItems: 'center',
+          color: '#dffbff',
+          overflow: 'hidden',
+        }}
+      >
+        <svg viewBox="0 0 80 80" width="52" height="52" aria-hidden="true">
+          <path d="M12 48c10-23 35-29 56-17-12 2-16 9-20 17-6 13-20 20-36 14 8-2 11-6 13-10-5 1-9 0-13-4Z" fill="rgba(190,245,255,.92)" />
+          <path d="M27 39c7-7 18-10 31-8-11 2-19 6-26 13-5 5-11 9-18 10 4-4 8-8 13-15Z" fill="rgba(24,231,255,.36)" />
+        </svg>
+        {hasMovement ? (
+          <span
+            style={{
+              position: 'absolute',
+              right: 3,
+              bottom: 5,
+              padding: '2px 5px',
+              borderRadius: 999,
+              background: 'rgba(18, 255, 130, 0.18)',
+              border: '1px solid rgba(18, 255, 130, 0.42)',
+              color: '#7dff77',
+              fontSize: 9,
+              fontWeight: 900,
+            }}
+          >
+            {delta}
+          </span>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function MarketMomentumVisual({ source }: { source: MarketEvidenceSource }) {
+  return (
+    <div
+      className={styles.marketChartWrap}
+      style={{
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: 68,
+      }}
+    >
+      <div
+        style={{
+          width: '100%',
+          minHeight: 64,
+          borderRadius: 14,
+          border: '1px solid rgba(24,231,255,0.24)',
+          background: 'linear-gradient(135deg, rgba(20,62,130,0.72), rgba(8,16,34,0.96) 46%, rgba(120,18,34,0.56))',
+          display: 'grid',
+          gridTemplateColumns: '1fr auto 1fr',
+          alignItems: 'center',
+          justifyItems: 'center',
+          color: '#ffffff',
+          overflow: 'hidden',
+          boxShadow: 'inset 0 0 22px rgba(24,231,255,0.12)',
+        }}
+      >
+        <span style={{ width: 34, height: 34, borderRadius: 8, background: 'linear-gradient(135deg, #1b4f9c, #eef6ff)', opacity: .9 }} />
+        <span style={{ fontSize: 16, fontWeight: 950, color: '#e9fbff', textShadow: '0 0 10px rgba(24,231,255,.45)' }}>VS</span>
+        <span style={{ width: 34, height: 34, borderRadius: 8, background: 'linear-gradient(135deg, #e6fff7, #a71930)', opacity: .9 }} />
+      </div>
+    </div>
+  );
+}
+
+function MarketVisual({ source }: { source: MarketEvidenceSource }) {
+  const type = source.type ?? 'market-source';
+
+  if (type === 'sharp-flow') {
+    return <SharpFlowVisual source={source} />;
+  }
+
+  if (type === 'market-momentum') {
+    return <MarketMomentumVisual source={source} />;
+  }
+
+  return <MarketDepthChart source={source} />;
+}
+
+function MarketSourceCard({ source }: { source: MarketEvidenceSource }) {
+  const pills = getEvidencePills(source);
+  const headline = normalizeEvidenceHeadline(source);
+  const subline = normalizeEvidenceSubline(source);
+
+  const headlineStyle: CSSProperties = {
+    fontSize: 'clamp(15px, 4.7vw, 20px)',
+    lineHeight: 1.02,
+    whiteSpace: 'normal',
+    overflow: 'hidden',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+  };
+
+  const sublineStyle: CSSProperties = {
+    fontSize: 'clamp(10px, 2.9vw, 12px)',
+    lineHeight: 1.15,
+    whiteSpace: 'normal',
+    overflow: 'hidden',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+  };
+
   return (
     <section className={styles.marketSourceCard}>
       <div className={styles.marketTop}>
@@ -308,54 +586,43 @@ function MarketSourceCard({ source }: { source: typeof staticMarketSources[0] })
           </svg>
           <span>{source.sourceLabel}</span>
         </div>
-        <div className={styles.marketPill}>
-          <svg viewBox="0 0 24 24" className={styles.marketPillIcon} aria-hidden="true">
-            <path
-              d="M4 7.5 13.5 3v8.5L4 21v-8.5L13.5 8M13.5 3 20 7v8.5l-6.5-4"
-              stroke="currentColor"
-              strokeWidth="1.9"
-              strokeLinejoin="round"
-              fill="none"
-            />
-          </svg>
-          <span>{source.platform}</span>
-        </div>
-        <div className={styles.marketPill}>
-          <svg viewBox="0 0 24 24" className={styles.marketPillIcon} aria-hidden="true">
-            <path
-              d="M8.2 9.2c0-1.8 1.4-3.2 3.2-3.2 1.2 0 2.1.5 2.7 1.4l3.1 3.8a3.2 3.2 0 1 1-5.1 3.9l-1.1-1.4"
-              stroke="currentColor"
-              strokeWidth="2.1"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
-          </svg>
-          <span>{source.network}</span>
-        </div>
-        <div className={`${styles.marketPill} ${styles.marketPillTime}`}>
-          <span>{source.timeAgo}</span>
-        </div>
+
+        {pills.map((pill) => (
+          <div key={pill} className={`${styles.marketPill} ${pill === source.timeAgo ? styles.marketPillTime : ''}`}>
+            {pill === 'Polymarket' || pill === source.platform ? (
+              <svg viewBox="0 0 24 24" className={styles.marketPillIcon} aria-hidden="true">
+                <path
+                  d="M4 7.5 13.5 3v8.5L4 21v-8.5L13.5 8M13.5 3 20 7v8.5l-6.5-4"
+                  stroke="currentColor"
+                  strokeWidth="1.9"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </svg>
+            ) : null}
+            {pill === 'Polygon' || pill === source.network ? (
+              <svg viewBox="0 0 24 24" className={styles.marketPillIcon} aria-hidden="true">
+                <path
+                  d="M8.2 9.2c0-1.8 1.4-3.2 3.2-3.2 1.2 0 2.1.5 2.7 1.4l3.1 3.8a3.2 3.2 0 1 1-5.1 3.9l-1.1-1.4"
+                  stroke="currentColor"
+                  strokeWidth="2.1"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  fill="none"
+                />
+              </svg>
+            ) : null}
+            <span>{pill}</span>
+          </div>
+        ))}
       </div>
+
       <div className={styles.marketBody}>
-        <div className={styles.marketChartWrap}>
-          <svg viewBox="0 0 180 72" className={styles.marketChart} aria-hidden="true">
-            <path
-              d="M4 60 L14 57 L24 59 L34 52 L44 55 L54 49 L64 52 L74 44 L84 37 L94 43 L104 34 L114 39 L124 30 L134 17 L145 6"
-              className={styles.chartLine}
-            />
-            <path
-              d="M4 60 L14 57 L24 59 L34 52 L44 55 L54 49 L64 52 L74 44 L84 37 L94 43 L104 34 L114 39 L124 30 L134 17 L145 6 L145 72 L4 72 Z"
-              className={styles.chartFill}
-            />
-            <circle cx="145" cy="6" r="3.7" className={styles.chartDot} />
-          </svg>
-          <div className={styles.marketDelta}>{source.delta} up</div>
-        </div>
+        <MarketVisual source={source} />
 
         <div className={styles.marketCopy}>
-          <div className={styles.marketHeadline}>{source.headline}</div>
-          <div className={styles.marketSubline}>{source.subline}</div>
+          <div className={styles.marketHeadline} style={headlineStyle}>{headline}</div>
+          <div className={styles.marketSubline} style={sublineStyle}>{subline}</div>
         </div>
       </div>
     </section>

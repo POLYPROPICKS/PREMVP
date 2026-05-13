@@ -224,7 +224,7 @@ export function ensureMarketSourcesArray(
   }
 
   // Convert primary marketSource to evidence card, handle type compatibility
-  const sourceType = marketSource.type as MarketSourceCardType || 'sharp-flow';
+  const sourceType = marketSource.type as MarketSourceCardType || 'market-source';
   return [{
     ...marketSource,
     type: sourceType,

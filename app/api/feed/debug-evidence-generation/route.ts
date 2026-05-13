@@ -65,6 +65,20 @@ export async function GET(request: Request) {
         evidenceHeadlines: evidence.map((item) => item.headline),
         evidenceSubline: evidence.map((item) => item.subline),
         evidenceDelta: evidence.map((item) => item.delta),
+        diagnostics: {
+          conditionId: pair.diagnostics?.conditionId,
+          selectedTokenId: pair.diagnostics?.selectedTokenId,
+          selectedOutcome: pair.diagnostics?.selectedOutcome,
+          currentPrice: pair.diagnostics?.currentPrice,
+          delta1hPp: pair.diagnostics?.delta1hPp,
+          delta6hPp: pair.diagnostics?.delta6hPp,
+          recentTradeCash: pair.diagnostics?.recentTradeCash,
+          maxTradeCash: pair.diagnostics?.maxTradeCash,
+          selectedTradeCount: pair.diagnostics?.selectedTradeCount,
+          totalTradeCount: pair.diagnostics?.totalTradeCount,
+          holderConcentrationScore: pair.diagnostics?.holderConcentrationScore,
+          dataCoverage: pair.diagnostics?.dataCoverage,
+        },
       };
     }),
   });
