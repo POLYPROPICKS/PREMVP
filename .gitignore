@@ -44,3 +44,7 @@ node_modules/
 .env
 .env.local
 *.log
+.claude/ 
+debug-evidence-check.json 
+debug-v2.json 
+landing-check.json 
