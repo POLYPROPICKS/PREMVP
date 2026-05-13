@@ -1005,15 +1005,17 @@ function buildEvidenceStack(params: {
     timeAgo: params.timeAgo,
     headline: hasMeaningfulMomentum
       ? `Odds moved ${params.deltaStr}`
-      : "Odds holding",
-    subline: hasMeaningfulMomentum
-      ? `Market repricing detected: ${params.deltaStr}`
       : impliedOdds && priceCents !== null
-        ? `Implied odds from ${priceCents}¢ price: ≈ ${impliedOdds}x`
-        : "No repricing detected",
+        ? `Market holding at ${priceCents}¢`
+        : "Odds holding steady",
+    subline: hasMeaningfulMomentum
+      ? `Market repricing — sharp entry window`
+      : impliedOdds && priceCents !== null
+        ? `Implied return ≈ ${impliedOdds}x — stable entry`
+        : "No significant price movement",
     delta: params.deltaStr,
     type: "market-momentum",
-    visualType: "team-crests",
+    visualType: "chart",
   });
 
   // News Pulse is intentionally not generated until a verified news/context source is integrated.
