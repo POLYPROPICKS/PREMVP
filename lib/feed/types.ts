@@ -309,6 +309,7 @@ export interface SportsDiscoverySample {
   teamBLogo?: string | null;
   teamAName?: string | null;
   teamBName?: string | null;
+  eventImage?: string | null;
 }
 
 export interface MarketSourceEvidenceCard {
