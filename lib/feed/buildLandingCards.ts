@@ -13,6 +13,7 @@ import {
   type TrustMetric,
   type PolymarketRawEvent,
   type PolymarketRawMarket,
+  type PolymarketRawOutcome,
   type PolymarketPricePoint,
   type PolymarketTrade,
   type PolymarketHolder,
