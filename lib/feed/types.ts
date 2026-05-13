@@ -29,6 +29,7 @@ export interface PremiumSignal {
   price: string;
   ctaLabel: string;
   metrics: TrustMetric[];
+  polymarketUrl?: string;
 }
 
 export interface MarketSource {
@@ -302,6 +303,12 @@ export interface SportsDiscoverySample {
     volumeClob?: number | null;
     oneDayPriceChange?: number | null;
   }>;
+  leagueName?: string;
+  polymarketEventSlug?: string;
+  teamALogo?: string | null;
+  teamBLogo?: string | null;
+  teamAName?: string | null;
+  teamBName?: string | null;
 }
 
 export interface MarketSourceEvidenceCard {

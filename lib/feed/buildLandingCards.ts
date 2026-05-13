@@ -89,6 +89,7 @@ function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket
     category: "sports",
     endDate: sample.resolvedGameTimeIso || undefined,
     startDate: sample.resolvedGameTimeIso || undefined,
+    polymarketEventSlug: sample.polymarketEventSlug || undefined,
   };
 
   return {
@@ -119,6 +120,7 @@ interface ParentEventMeta {
   category?: string;
   endDate?: string;
   startDate?: string;
+  polymarketEventSlug?: string;
 }
 
 interface EnrichedMarket {
@@ -904,6 +906,9 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
     price: "$1.99",
     ctaLabel: "Unlock Full Signal",
     metrics: finalMetrics,
+    polymarketUrl: parentMeta.polymarketEventSlug
+      ? `https://polymarket.com/event/${parentMeta.polymarketEventSlug}`
+      : undefined,
   };
 
   // Build market source

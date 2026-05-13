@@ -167,8 +167,20 @@ export async function discoverSportsMarkets(
     allTagIds.push(probeTagId);
   }
 
-  // 2. Fetch teams (diagnostic)
-  const { count: teamsCount } = await fetchTeams();
+  // 2. Fetch teams and build lookup map
+  const { teams: teamsRaw } = await fetchTeams();
+  const teamsMap = new Map<string, { logo: string | null; name: string; league: string }>();
+  for (const t of teamsRaw) {
+    const team = t as Record<string, unknown>;
+    const id = String(team.id || "");
+    if (id) {
+      teamsMap.set(id, {
+        logo: typeof team.logo === "string" ? team.logo : null,
+        name: typeof team.name === "string" ? team.name : "",
+        league: typeof team.league === "string" ? team.league : "",
+      });
+    }
+  }
 
   // 3. Fetch markets by sports tags
   const allRawMarkets: Record<string, unknown>[] = [];
@@ -325,6 +337,28 @@ export async function discoverSportsMarkets(
       gameTimeConfidence: g.gameTimeConfidence,
       marketCount: g.markets.length,
       strategy: "markets-first",
+      leagueName: (() => {
+        const teamA = g.teamAID ? teamsMap.get(g.teamAID) : null;
+        if (teamA?.league) return teamA.league;
+        const q = (g.primaryMarket?.question || "").toLowerCase();
+        if (q.includes("premier league") || q.includes(" epl")) return "Premier League";
+        if (q.includes("la liga") || q.includes("laliga")) return "La Liga";
+        if (q.includes("champions league")) return "Champions League";
+        if (q.includes("bundesliga")) return "Bundesliga";
+        if (q.includes("serie a")) return "Serie A";
+        if (q.includes("ligue 1")) return "Ligue 1";
+        if (q.includes("nba")) return "NBA";
+        if (q.includes("nhl")) return "NHL";
+        if (q.includes("mlb")) return "MLB";
+        if (q.includes("nfl")) return "NFL";
+        if (q.includes("ufc") || q.includes("mma")) return "UFC";
+        return "Sports";
+      })(),
+      polymarketEventSlug: g.primaryMarket?.nestedEventSlug || g.primaryMarket?.slug || "",
+      teamALogo: g.teamAID ? (teamsMap.get(g.teamAID)?.logo ?? null) : null,
+      teamBLogo: g.teamBID ? (teamsMap.get(g.teamBID)?.logo ?? null) : null,
+      teamAName: g.teamAID ? (teamsMap.get(g.teamAID)?.name ?? null) : null,
+      teamBName: g.teamBID ? (teamsMap.get(g.teamBID)?.name ?? null) : null,
       // Add raw market data for outcome pricing
       primaryMarketRaw: g.primaryMarket ? {
         outcomes: g.primaryMarket.outcomes,
