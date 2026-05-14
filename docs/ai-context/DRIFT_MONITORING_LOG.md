@@ -56,9 +56,16 @@ Same high violation 3× in one week      → update VERIFICATION_GATES.md
 ### Week of 14.05.2026
 
 ```
-No violations recorded yet.
-Contour deployed. First real tasks pending.
-Baseline: enforcement backbone committed and pushed.
+DATE: 14.05.2026
+TASK: UI: replace Profit tile with Market Return (1a8d782)
+SCORE: ~60/100
+DECISION: LESSON
+CRITICAL VIOLATIONS:
+- CSS structure patch applied without inspect-only (:first-child conflict missed)
+HIGH VIOLATIONS:
+- No inspect of active CSS selectors before structural change
+FOUNDER TIME: medium (required 2 follow-up fix commits: 9109138, a2a661c)
+CORRECTION APPLIED: yes — inspect-only before CSS structure change reinforced
 ```
 
 ---
@@ -96,4 +103,4 @@ When a violation triggers artifact update:
 
 | Period | Violations | Most common | Trend |
 |---|---|---|---|
-| 14.05.2026 | 0 | — | Baseline |
+| 14.05.2026 | 1 | CSS patch without inspect-only | Baseline — first real task |

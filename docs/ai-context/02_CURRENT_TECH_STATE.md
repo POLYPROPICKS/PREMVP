@@ -10,23 +10,22 @@
 
 ```
 Branch:         main
-HEAD:           b3a5cb2 Harden source inventory and architecture map; gitignore debug dumps
-Origin:         synced (b3a5cb2 = origin/main)
+HEAD:           5264fd6 UI: constrain Mkt Return label width so Odds chip fits
+Origin:         synced (5264fd6 = origin/main)
 Working tree:   clean
 ```
 
 ## Recent commits (newest first)
 
 ```
-b3a5cb2  Harden source inventory and architecture map; gitignore debug dumps
+5264fd6  UI: constrain Mkt Return label width so Odds chip fits
+a2a661c  UI: shorten Market Return label to fit tile
+9109138  UI: fix Market Return layout — correct structure under CSS absolute rules
+568cc5d  Add MarketSourceCarousel inspect-only prompt for UI phase
+0237661  Context sync: HEAD b3a5cb2, contour complete, UI phase logged
+1a8d782  UI: replace Profit tile with Market Return in American odds format
+b3a5cb2  Harden source inventory and architecture map
 1b36f07  UI: add see on polymarket label to link icon
-3176a66  Harden monitoring: conditional drift log, zero-applicable fix, invocation rules
-a7c444e  UI: improve Polymarket link icon — green tint, larger hit area
-eb52988  UI: add subtle Polymarket link icon in signal confidence card
-5101f64  UI phase prep: viewport sync, gate hardening, context updates
-fd2f994  P0 hardening: fix placeholders, example warning, stop condition #19
-00c5cfa  Fix league: use leagueName from discovery sample, not hardcoded sports
-3d1028f  Add chat starter prompt template
 ```
 
 ## Build state

@@ -10,17 +10,51 @@
 
 ```
 Backend phase:       CLOSED ✅
-UI phase:            IN PROGRESS — Polymarket link icon shipped (3 commits)
+UI phase:            IN PROGRESS — Market Return tile + Polymarket link shipped
 Enforcement contour: COMPLETE — Phase 1+2+3 done
-Git HEAD:            b3a5cb2
+Git HEAD:            5264fd6
 Origin:              synced
 Working tree:        clean
-Next phase:          MarketSourceCarousel evidence-stack UI
+Next:                filterTags bug (one card on all filters) + MarketSourceCarousel
 ```
 
 ---
 
-## Delta entry — 14.05.2026 (contour complete + UI phase started)
+## Delta entry — 14.05.2026 (Market Return UI + drift lesson #1)
+
+### UI commits — Market Return tile
+```
+1a8d782  UI: replace Profit tile with Market Return in American odds format
+9109138  UI: fix Market Return layout — correct structure under CSS absolute rules  ← regression fix
+a2a661c  UI: shorten Market Return label to fit tile
+5264fd6  UI: constrain Mkt Return label width so Odds chip fits
+```
+
+### Drift lesson #1 — CSS regression
+```
+Cause:   Patch 1a8d782 added flex-div as first child — conflicted with CSS :first-child absolute rule
+Missed:  inspect-only before CSS structure change was skipped
+Fixed:   9109138
+Lesson:  CSS structure changes MUST inspect active :first-child / :last-child rules before patching
+Log entry: see DRIFT_MONITORING_LOG.md
+```
+
+### Known open bug
+```
+filterTags not distinguishing signals — one card shown on all filters
+Root cause: selection logic returns same pair regardless of filter
+Status: deferred until after design/carousel phase
+```
+
+### Pending
+```
+- [ ] filterTags bug fix
+- [ ] MarketSourceCarousel evidence-stack UI (inspect-only first)
+- [ ] buildSportsLandingCards.ts import graph check
+- [ ] AUTOMATION_SCORECARD first scoring run
+```
+
+---
 
 ### Enforcement contour — FULLY COMMITTED ✅
 
