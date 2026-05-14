@@ -888,14 +888,13 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
               aria-label="View on Polymarket"
               style={{
                 display: 'block',
-                marginTop: '6px',
-                opacity: 0.35,
+                marginTop: '8px',
                 lineHeight: 1,
                 textAlign: 'center',
-                color: 'inherit',
+                color: 'rgba(135,255,77,0.55)',
               }}
             >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
                 <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
                 <polyline points="15 3 21 3 21 9"/>
                 <line x1="10" y1="14" x2="21" y2="3"/>
