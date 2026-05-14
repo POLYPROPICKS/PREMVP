@@ -10,21 +10,23 @@
 
 ```
 Branch:         main
-HEAD:           3d1028f Add chat starter prompt template
-Origin:         synced (3d1028f = origin/main)
-Working tree:   clean (after P0 hardening commit if applied)
+HEAD:           b3a5cb2 Harden source inventory and architecture map; gitignore debug dumps
+Origin:         synced (b3a5cb2 = origin/main)
+Working tree:   clean
 ```
 
 ## Recent commits (newest first)
 
 ```
+b3a5cb2  Harden source inventory and architecture map; gitignore debug dumps
+1b36f07  UI: add see on polymarket label to link icon
+3176a66  Harden monitoring: conditional drift log, zero-applicable fix, invocation rules
+a7c444e  UI: improve Polymarket link icon — green tint, larger hit area
+eb52988  UI: add subtle Polymarket link icon in signal confidence card
+5101f64  UI phase prep: viewport sync, gate hardening, context updates
+fd2f994  P0 hardening: fix placeholders, example warning, stop condition #19
+00c5cfa  Fix league: use leagueName from discovery sample, not hardcoded sports
 3d1028f  Add chat starter prompt template
-4e9308c  Add failure modes and stop conditions
-5fc5d56  Add context handoff template
-39ab5aa  Add enforcement contour backbone: CLAUDE.md, AGENTS.md, docs/ai-context artifacts
-26fb50d  Add gitignore for debug/cache json artifacts
-af4ed5e  Cron: switch to buildLandingCards, persist marketSources in cache
-5423d79  Fix league: use slug prefix map as primary source
 ```
 
 ## Build state
@@ -91,27 +93,34 @@ Next phase:    MarketSourceCarousel evidence-stack UI
 ## Enforcement contour state
 
 ```
-CLAUDE.md:                        committed (39ab5aa) — repo root
-AGENTS.md:                        committed (39ab5aa) — repo root
-docs/ai-context/:                 committed (39ab5aa)
-  TASK_ROUTING_MATRIX.md          ✓
-  CLAUDE_CODE_EXECUTION_PROTOCOL.md ✓
-  VERIFICATION_GATES.md           ✓
-  RULE_COMPLIANCE_MONITOR_AGENT.md ✓
-  CONTEXT_HANDOFF_TEMPLATE.md     ✓
-  FAILURE_MODES_AND_STOP_CONDITIONS.md ✓
-  CHAT_STARTER_PROMPT.md          ✓
-P0 hardening patches:             downloaded — commit pending
+CLAUDE.md:                           ✅ committed (39ab5aa) — repo root
+AGENTS.md:                           ✅ committed (39ab5aa) — repo root
+docs/ai-context/:
+  TASK_ROUTING_MATRIX.md             ✅
+  CLAUDE_CODE_EXECUTION_PROTOCOL.md  ✅
+  VERIFICATION_GATES.md              ✅ (viewport sync 5101f64)
+  OPERATOR_ACCEPTANCE_CHECKLIST.md   ✅ (5101f64)
+  RULE_COMPLIANCE_MONITOR_AGENT.md   ✅ (hardened 3176a66)
+  CONTEXT_HANDOFF_TEMPLATE.md        ✅ (hardened fd2f994)
+  FAILURE_MODES_AND_STOP_CONDITIONS.md ✅ (hardened fd2f994)
+  CHAT_STARTER_PROMPT.md             ✅ (hardened fd2f994)
+  AUTOMATION_SCORECARD.md            ✅ (3176a66)
+  DRIFT_MONITORING_LOG.md            ✅ (3176a66)
+  03_CURRENT_SOURCE_ARCHITECTURE_MAP.md ✅ (hardened b3a5cb2)
+  11_SOURCE_FILES_AND_REPO_INVENTORY.md ✅ (hardened b3a5cb2)
+Phase: Phase 1 + 2 + 3 COMPLETE
 ```
 
 ## Known blockers / pending
 
 ```
 - [x] Runtime fresh-generation verification — CONFIRMED ✅ (14.05.2026)
-- [ ] P0 hardening commit (CHAT_STARTER_PROMPT, CONTEXT_HANDOFF_TEMPLATE, FAILURE_MODES patches)
+- [x] P0 hardening — DONE (fd2f994)
+- [x] Enforcement contour backbone — DONE (39ab5aa+)
+- [x] Source inventory + architecture map hardened — DONE (b3a5cb2)
 - [ ] MarketSourceCarousel evidence-stack UI — next product phase
-- [ ] AUTOMATION_SCORECARD.md — not created yet (after 3–5 real tasks)
-- [ ] DRIFT_MONITORING_LOG.md — not created yet
+- [ ] buildSportsLandingCards.ts import graph — NOT VERIFIED (safe to delete?)
+- [ ] AUTOMATION_SCORECARD first real scoring — after 3–5 tasks
 ```
 
 ## Environment / connectors

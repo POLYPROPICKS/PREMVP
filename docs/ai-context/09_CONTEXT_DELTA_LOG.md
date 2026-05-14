@@ -6,21 +6,64 @@
 
 ---
 
-## ✅ CURRENT TRUTH SUMMARY (14.05.2026 ~12:24)
+## ✅ CURRENT TRUTH SUMMARY (14.05.2026 ~latest)
 
 ```
-Backend phase:    CLOSED
-Cron generator:   buildLandingCards ✅
-Runtime:          CONFIRMED — Supabase verified
-marketSources[]:  in Supabase cache ✅
-No futures:       confirmed ✅
-Next phase:       MarketSourceCarousel evidence-stack UI
-Git HEAD:         3d1028f Add chat starter prompt template
-Origin:           synced
+Backend phase:       CLOSED ✅
+UI phase:            IN PROGRESS — Polymarket link icon shipped (3 commits)
+Enforcement contour: COMPLETE — Phase 1+2+3 done
+Git HEAD:            b3a5cb2
+Origin:              synced
+Working tree:        clean
+Next phase:          MarketSourceCarousel evidence-stack UI
 ```
 
-> Any older entry that says "Runtime verified: NO" or "NEEDS VERIFICATION"
-> for buildLandingCards / cron / marketSources is SUPERSEDED by this entry.
+---
+
+## Delta entry — 14.05.2026 (contour complete + UI phase started)
+
+### Enforcement contour — FULLY COMMITTED ✅
+
+All backbone artifacts committed and pushed. Phase 1+2+3 complete:
+```
+AUTOMATION_SCORECARD.md              3176a66
+DRIFT_MONITORING_LOG.md              3176a66
+VERIFICATION_GATES.md (hardened)     5101f64
+OPERATOR_ACCEPTANCE_CHECKLIST.md     5101f64
+CHAT_STARTER_PROMPT.md (hardened)    fd2f994
+CONTEXT_HANDOFF_TEMPLATE.md (hardened) fd2f994
+FAILURE_MODES_AND_STOP_CONDITIONS.md fd2f994
+03_CURRENT_SOURCE_ARCHITECTURE_MAP.md (hardened) b3a5cb2
+11_SOURCE_FILES_AND_REPO_INVENTORY.md (hardened) b3a5cb2
+```
+
+### UI phase — IN PROGRESS
+
+```
+eb52988  UI: add subtle Polymarket link icon in signal confidence card
+a7c444e  UI: improve Polymarket link icon — green tint, larger hit area
+1b36f07  UI: add see on polymarket label to link icon
+```
+
+Files modified: `app/reconstruction/page.tsx`, `Reconstruction.module.css`
+Backup files created: 4× `.tsx` + 4× `.css` in `app/reconstruction/`
+
+### League fix
+```
+00c5cfa  Fix league: use leagueName from discovery sample, not hardcoded sports
+```
+
+### gitignore updates
+```
+Added: *.txt patterns (recon-css.txt, recon-full.txt debug dumps)
+```
+
+### Pending
+```
+- [ ] MarketSourceCarousel evidence-stack UI — next product phase (inspect-only first)
+- [ ] buildSportsLandingCards.ts import graph — NOT VERIFIED
+- [ ] AUTOMATION_SCORECARD first real scoring — after 3–5 tasks through contour
+```
 
 ---
 
