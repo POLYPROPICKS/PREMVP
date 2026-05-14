@@ -86,7 +86,7 @@ function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket
   (market as unknown as Record<string, unknown>)._parentMeta = {
     title: sample.title,
     slug: sample.slug,
-    category: "sports",
+    category: sample.leagueName || "Sports",
     endDate: sample.resolvedGameTimeIso || undefined,
     startDate: sample.resolvedGameTimeIso || undefined,
     polymarketEventSlug: sample.polymarketEventSlug || undefined,
