@@ -1,12 +1,139 @@
 # **CURRENT\_SOURCE\_ARCHITECTURE\_MAP.md**
 
-## **1\. Purpose**
+> ⚠️ DELTA OVERRIDE — 14.05.2026
+> Verified from: `git log --oneline -10`, `git status --short`, `dir` output.
+> Full re-inspection of file contents required before next major patch.
+
+## VERIFIED CHANGES SINCE BASELINE
+
+### Git state (verified)
+```
+HEAD:    1b36f07 UI: add see on polymarket label to link icon
+Origin:  synced (1b36f07 = origin/main)
+Working tree: NOT CLEAN — untracked debug files present: recon-css.txt, recon-full.txt
+Do not commit/push until these files are deleted or intentionally ignored.
+```
+
+### Recent commits since baseline
+```
+1b36f07  UI: add see on polymarket label to link icon
+a7c444e  UI: improve Polymarket link icon — green tint, larger hit area
+eb52988  UI: add subtle Polymarket link icon in signal confidence card
+00c5cfa  Fix league: use leagueName from discovery sample, not hardcoded sports
+5101f64  UI phase prep: viewport sync, gate hardening, context updates
+fd2f994  P0 hardening docs
+3d1028f  Add chat starter prompt template
+```
+
+### lib/feed/ — verified file list
+```
+buildLandingCards.ts        ✅ PRIMARY GENERATOR — active
+buildSportsLandingCards.ts  ⚠️ EXISTS but SUPERSEDED
+                              Not called by cron: CONFIRMED
+                              Not imported elsewhere: NOT VERIFIED
+                              Safe to delete: NOT VERIFIED
+                              Do not delete without import graph inspection.
+cacheGeneratedSignals.ts    ✅ ACTIVE — marketSources field added (af4ed5e)
+discoverSportsMarkets.ts    present — status NEEDS CONTENT INSPECTION
+landingPairs.ts             present — active (canonical LandingPair helpers)
+normalizePolymarket.ts      present — active
+polymarketClient.ts         present — active (Polymarket API client)
+scorePolymarket.ts          present — active
+types.ts                    present — active (shared feed types)
+```
+
+### scripts/ — verified file list
+```
+generate-signals.ts         ✅ ACTIVE — uses buildLandingCards (confirmed af4ed5e)
+```
+
+### app/reconstruction/ — verified file list
+```
+page.tsx                                    ✅ ACTIVE (UI phase modified)
+Reconstruction.module.css                   ✅ ACTIVE
+
+page.before-forced-icons.tsx                📦 BACKUP — do not edit
+page.before-icons.tsx                       📦 BACKUP — do not edit
+page.broken.tsx                             📦 BACKUP — do not edit
+page.phase1-trust-before.tsx                📦 BACKUP — do not edit
+Reconstruction.module.before-forced-icons.css 📦 BACKUP — do not edit
+Reconstruction.module.before-icons.css       📦 BACKUP — do not edit
+Reconstruction.module.broken.css             📦 BACKUP — do not edit
+Reconstruction.module.phase1-trust-before.css 📦 BACKUP — do not edit
+```
+
+### Untracked files to gitignore
+```
+recon-css.txt    — debug dump, add to .gitignore
+recon-full.txt   — debug dump, add to .gitignore
+```
+
+### STILL NEEDS CONTENT INSPECTION (function-level)
+```
+- Exact function signatures in generate-signals.ts after buildLandingCards switch
+- cacheGeneratedSignals.ts: exact marketSources insert shape
+- buildSportsLandingCards.ts: safe to delete? (confirm no imports)
+- MarketSourceCarousel wiring in page.tsx: activePairId, activeEvidenceIndex
+- lib/feed/types.ts: any new types added after af4ed5e?
+- What exactly changed in page.tsx across 3 UI commits (eb52988, a7c444e, 1b36f07)
+```
+
+---
+
+
+
+## KNOWN CHANGES SINCE BASELINE (verified from commits)
+
+### Feed / cron — CONFIRMED
+
+| File | Change | Status |
+|---|---|---|
+| `scripts/generate-signals.ts` | Switched from `buildSportsLandingCards` to `buildLandingCards` | ✅ CONFIRMED af4ed5e |
+| `lib/feed/cacheGeneratedSignals.ts` | Added `marketSources?: MarketSource[]` to WritePairsInput + insert | ✅ CONFIRMED af4ed5e |
+| `lib/feed/buildSportsLandingCards.ts` | No longer called by cron — LEGACY/SUPERSEDED | ✅ CONFIRMED |
+| `lib/feed/buildLandingCards.ts` | Now primary generator — active | ✅ CONFIRMED |
+
+### Supabase schema — CONFIRMED
+
+| Table | Change |
+|---|---|
+| `public.generated_signal_pairs` | `market_sources jsonb NULL` column added 14.05.2026 |
+
+### Repository structure — CONFIRMED
+
+| Path | Change |
+|---|---|
+| `docs/ai-context/` | Now committed — 12 context files + 9 enforcement contour artifacts |
+| `CLAUDE.md` | New — repo root, primary agent entrypoint |
+| `AGENTS.md` | Updated — repo root, full agent constitution |
+| `.gitignore` | Updated — debug JSON patterns added |
+
+### UI phase — IN PROGRESS ⚠️
+
+| File | Status |
+|---|---|
+| `app/reconstruction/page.tsx` | Currently modified — UI phase in progress |
+| `app/reconstruction/Reconstruction.module.css` | Possibly modified — verify before touching |
+
+### NEEDS FRESH INSPECTION before next major patch
+
+```
+- Exact function signatures in generate-signals.ts + cacheGeneratedSignals.ts
+- Whether buildSportsLandingCards.ts was deleted or just unused
+- New files created by UI phase (reconstruction/page.tsx changes)
+- MarketSourceCarousel wiring: activePairId, activeEvidenceIndex state
+- Any new imports/exports in lib/feed/types.ts
+```
+
+---
+
+
 
 This file exists to keep the new ChatGPT Project aligned with the real current repository structure.
 
 Chat memory is not enough. The actual PolyProPicks source files may have changed through Windsurf, manual commands, merges, commits, deploys, or partial failed attempts. Future LLMs must not infer current architecture only from old chat history.
 
-The only reliable source for the current source architecture is the current repo inspected directly by Windsurf in inspect-only mode.
+The reliable source for the current source architecture is current repo inspection through available read-only tools: Claude Code inspect-only, CMD/Git output, Windsurf inspect-only, and direct source snippets provided by the operator.
 
 This file should be updated after major source changes. It prevents:
 

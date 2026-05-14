@@ -1,6 +1,170 @@
 # **11\_SOURCE\_FILES\_AND\_REPO\_INVENTORY.md**
 
-## **1\. Purpose**
+> ⚠️ DELTA OVERRIDE — 14.05.2026
+> Verified from: `git log --oneline -10`, `git status --short`, `dir` output.
+> Inventory below reflects 10.05.2026 baseline. This block supersedes stale entries.
+
+## VERIFIED STATUS CHANGES
+
+### Git state
+```
+HEAD:    1b36f07 UI: add see on polymarket label to link icon
+Origin:  synced
+Working tree: NOT CLEAN — untracked debug files present: recon-css.txt, recon-full.txt
+Do not commit/push until these files are deleted or intentionally ignored.
+```
+
+### lib/feed/ — verified file list (14.05.2026)
+| File | Status | Notes |
+|---|---|---|
+| `buildLandingCards.ts` | ✅ ACTIVE — PRIMARY | Confirmed primary generator |
+| `buildSportsLandingCards.ts` | ⚠️ SUPERSEDED — exists, not deleted | Not called by cron: CONFIRMED. Not imported elsewhere: NOT VERIFIED. Safe to delete: NOT VERIFIED. Do not delete without import graph inspection. |
+| `cacheGeneratedSignals.ts` | ✅ ACTIVE — MODIFIED | marketSources field added af4ed5e |
+| `discoverSportsMarkets.ts` | present — NEEDS CONTENT INSPECTION | |
+| `landingPairs.ts` | present — active | |
+| `normalizePolymarket.ts` | present — active | |
+| `polymarketClient.ts` | present — active | |
+| `scorePolymarket.ts` | present — active | |
+| `types.ts` | present — active | New types possible after af4ed5e — inspect before use |
+
+### scripts/ — verified
+| File | Status |
+|---|---|
+| `generate-signals.ts` | ✅ ACTIVE — uses buildLandingCards |
+
+### app/reconstruction/ — verified (10 files)
+| File | Status |
+|---|---|
+| `page.tsx` | ✅ ACTIVE — modified by UI phase (3 commits) |
+| `Reconstruction.module.css` | ✅ ACTIVE |
+| `page.before-forced-icons.tsx` | 📦 BACKUP — do not edit |
+| `page.before-icons.tsx` | 📦 BACKUP — do not edit |
+| `page.broken.tsx` | 📦 BACKUP — do not edit |
+| `page.phase1-trust-before.tsx` | 📦 BACKUP — do not edit |
+| `Reconstruction.module.before-forced-icons.css` | 📦 BACKUP — do not edit |
+| `Reconstruction.module.before-icons.css` | 📦 BACKUP — do not edit |
+| `Reconstruction.module.broken.css` | 📦 BACKUP — do not edit |
+| `Reconstruction.module.phase1-trust-before.css` | 📦 BACKUP — do not edit |
+
+### docs/ai-context/ — new files (all committed 39ab5aa+)
+```
+CLAUDE_CODE_EXECUTION_PROTOCOL.md  ✅ NEW
+TASK_ROUTING_MATRIX.md             ✅ NEW
+VERIFICATION_GATES.md              ✅ NEW
+OPERATOR_ACCEPTANCE_CHECKLIST.md   ✅ NEW
+RULE_COMPLIANCE_MONITOR_AGENT.md   ✅ NEW
+FAILURE_MODES_AND_STOP_CONDITIONS.md ✅ NEW
+CHAT_STARTER_PROMPT.md             ✅ NEW
+CONTEXT_HANDOFF_TEMPLATE.md        ✅ NEW
+AUTOMATION_SCORECARD.md            ✅ NEW
+DRIFT_MONITORING_LOG.md            ✅ NEW
+```
+
+### Untracked — add to .gitignore
+```
+recon-css.txt
+recon-full.txt
+```
+
+### NEEDS CONTENT INSPECTION before next patch
+```
+- buildSportsLandingCards.ts: any active imports? safe to delete?
+- page.tsx: exact changes from 3 UI commits (Polymarket link icon)
+- lib/feed/types.ts: new types after cron switch?
+```
+
+## CURRENT STATE SUMMARY — MarketSourceCarousel phase
+
+### Active next-touch files (inspect before edit)
+```
+app/reconstruction/page.tsx               ← primary UI — modified by 3 icon commits
+app/reconstruction/Reconstruction.module.css ← active styles
+components/carousels/MarketSourceCarousel.tsx ← NEEDS CONTENT INSPECTION
+components/cards/MarketSourceCard.tsx         ← NEEDS CONTENT INSPECTION
+lib/feed/landingPairs.ts                     ← LandingPair/marketSources wiring
+lib/feed/types.ts                            ← type source of truth
+```
+
+### Do NOT edit — backup files
+```
+page.before-forced-icons.tsx
+page.before-icons.tsx
+page.broken.tsx
+page.phase1-trust-before.tsx
+Reconstruction.module.before-forced-icons.css
+Reconstruction.module.before-icons.css
+Reconstruction.module.broken.css
+Reconstruction.module.phase1-trust-before.css
+```
+
+### Requires content inspection before patch
+```
+- MarketSourceCarousel: activePairId, activeEvidenceIndex wiring
+- page.tsx: current import list and component structure
+- buildSportsLandingCards.ts: import graph — is anything importing it?
+- lib/feed/types.ts: complete type list after af4ed5e changes
+```
+
+---
+
+> ⚠️ HISTORICAL BASELINE — SUPERSEDED
+> Everything below this line reflects the older inventory from 10.05.2026.
+> Do not use old Git status, old commit references, or old docs tracking state as current truth.
+> Use the DELTA OVERRIDE and CURRENT STATE SUMMARY sections above instead.
+
+---
+
+
+
+
+## KNOWN STATUS CHANGES SINCE BASELINE
+
+### Feed files
+
+| File | Old status | New status |
+|---|---|---|
+| `scripts/generate-signals.ts` | "Likely active / NEEDS VERIFICATION" | ✅ ACTIVE — uses buildLandingCards |
+| `lib/feed/cacheGeneratedSignals.ts` | Active | ✅ ACTIVE — marketSources field added |
+| `lib/feed/buildLandingCards.ts` | Active | ✅ PRIMARY GENERATOR — confirmed |
+| `lib/feed/buildSportsLandingCards.ts` | "Unknown / likely active or legacy" | ⚠️ LEGACY — no longer called by cron |
+
+### Docs / contour files (all new — committed 39ab5aa+)
+
+```
+docs/ai-context/CLAUDE_CODE_EXECUTION_PROTOCOL.md   NEW ✅
+docs/ai-context/TASK_ROUTING_MATRIX.md               NEW ✅
+docs/ai-context/VERIFICATION_GATES.md                NEW ✅
+docs/ai-context/OPERATOR_ACCEPTANCE_CHECKLIST.md     NEW ✅
+docs/ai-context/RULE_COMPLIANCE_MONITOR_AGENT.md     NEW ✅
+docs/ai-context/FAILURE_MODES_AND_STOP_CONDITIONS.md NEW ✅
+docs/ai-context/CHAT_STARTER_PROMPT.md               NEW ✅
+docs/ai-context/CONTEXT_HANDOFF_TEMPLATE.md          NEW ✅
+docs/ai-context/AUTOMATION_SCORECARD.md              NEW ✅
+docs/ai-context/DRIFT_MONITORING_LOG.md              NEW ✅
+CLAUDE.md                                            NEW ✅ (repo root)
+AGENTS.md                                            UPDATED ✅ (repo root)
+```
+
+### UI files — IN PROGRESS ⚠️
+
+```
+app/reconstruction/page.tsx           MODIFIED — UI phase in progress
+app/reconstruction/Reconstruction.module.css  POSSIBLY MODIFIED — verify
+```
+
+### NEEDS FRESH INSPECTION
+
+```
+- Exact content of modified feed files
+- buildSportsLandingCards.ts: deleted or just unused?
+- New UI files created by reconstruction phase
+- MarketSourceCarousel: activePairId / activeEvidenceIndex wiring
+- lib/feed/types.ts: any new types added?
+```
+
+---
+
+
 
 This file maps actual current source files for PolyProPicks / PolyPicks Current so future ChatGPT, Codex, Claude, Windsurf, and other AI coding agents can work from repo reality instead of stale chat memory.
 
