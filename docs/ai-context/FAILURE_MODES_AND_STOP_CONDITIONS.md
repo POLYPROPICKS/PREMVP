@@ -38,7 +38,7 @@ Stop all work and output §3 format if ANY of these occur:
 16. Source/context files conflict with each other
 17. File path cannot be confirmed from repo — only from memory
 18. `11_SOURCE_FILES_AND_REPO_INVENTORY.md` is stale (>7 days) and path unverifiable
-19. `12_AGENT_STARTUP_PROTOCOL.md` not found in `/docs/ai-context/`
+19. Required Tier 0 startup artifact missing or unreadable: `CLAUDE.md`, `AGENTS.md`, or `CHAT_STARTER_PROMPT.md` not found in expected location (repo root or `/docs/ai-context/`)
 20. Env/secrets needed to continue
 
 ### Agent behavior failures

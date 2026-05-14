@@ -58,10 +58,15 @@ HARD RULES (gates, not preferences):
 - Stop if task expands beyond allowed files
 
 CURRENT STATE:
-Branch: main
-HEAD: [FOUNDER: paste latest commit hash + message]
-Git status: [FOUNDER: paste git status --short output or "clean"]
-Active task: [FOUNDER: describe in one line or "none — starting fresh"]
+Branch: MISSING_UNTIL_FOUNDER_PASTES
+HEAD: MISSING_UNTIL_FOUNDER_PASTES
+Git status: MISSING_UNTIL_FOUNDER_PASTES
+Active task: MISSING_UNTIL_FOUNDER_PASTES
+
+STOP RULE: If any field above still says MISSING_UNTIL_FOUNDER_PASTES or contains
+bracket placeholder text like [FOUNDER: ...], do NOT proceed.
+Ask founder for exact git output before any action:
+  git log --oneline -1 && git status --short
 
 CONTEXT FILES LOCATION: /docs/ai-context/
 KEY FILES:

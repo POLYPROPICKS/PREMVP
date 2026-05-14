@@ -80,7 +80,11 @@ Pushed to origin: YES / NO
 
 ---
 
-## FILLED EXAMPLE (current state as of 14.05.2026)
+> ⚠️ EXAMPLE ONLY — DO NOT USE AS CURRENT STATE.
+> Claude must ignore this block unless founder explicitly says "use this as current state".
+> This example reflects a past session. Always request fresh git output before acting.
+
+## FILLED EXAMPLE (past session — 14.05.2026)
 
 ```
 § 1. Git state
