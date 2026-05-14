@@ -1,7 +1,7 @@
 // Signal generation script
 // Generates TrustedInitialformulaLanding1.1 pairs and caches them in Supabase
 
-import { buildSportsLandingCards } from "../lib/feed/buildSportsLandingCards";
+import { buildLandingCards } from "../lib/feed/buildLandingCards";
 import {
   writeGeneratedSignalPairs,
   writeJobRun,
@@ -29,20 +29,21 @@ async function main() {
 
   try {
     // Call sports landing cards generation logic
-    const result = await buildSportsLandingCards({
+    const result = await buildLandingCards({
       limit: CONFIG.limit,
+      category: CONFIG.category,
+      minDataCoverage: CONFIG.minDataCoverage,
+      excludeEnded: CONFIG.excludeEnded,
     });
 
     generatedCount = result.pairs.length;
-    rejectedCount = 0; // buildSportsLandingCards doesn't return rejected array
+    rejectedCount = result.rejected?.length ?? 0;
 
-    // Store diagnostics for job run
     diagnostics = {
-      discoveryMode: "markets-first",
-      feedStatus: result.feedStatus,
+      discoveryMode: "markets-first-buildLandingCards",
       generated_count: generatedCount,
-      warnings: result.warnings,
-      counts: result.counts,
+      rejected_count: rejectedCount,
+      inspected: result.inspected,
     };
 
     console.log(`[generate-signals] Generated ${generatedCount} pairs`);
@@ -51,9 +52,6 @@ async function main() {
     if (generatedCount === 0) {
       status = "empty";
       console.log("[generate-signals] No pairs generated - caching skipped");
-    } else if (result.feedStatus === "manual_fallback_required") {
-      status = "empty";
-      console.log("[generate-signals] Feed status manual_fallback_required - caching skipped");
     } else {
       // Write pairs to cache for ok/partial status
       const expiresAt = new Date(
@@ -70,6 +68,7 @@ async function main() {
             })),
           },
           marketSource: p.marketSource,
+          marketSources: p.marketSources,
           diagnostics: p.diagnostics,
         })),
         source: "polymarket",

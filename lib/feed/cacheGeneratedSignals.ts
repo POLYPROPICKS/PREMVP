@@ -32,6 +32,7 @@ export interface WritePairsInput {
   pairs: Array<{
     premiumSignal: PremiumSignal;
     marketSource: MarketSource;
+    marketSources?: MarketSource[];
     diagnostics: LandingCardDiagnostics;
   }>;
   source: string;
@@ -86,6 +87,7 @@ export async function writeGeneratedSignalPairs(
     selected_outcome: pair.diagnostics.selectedOutcome,
     premium_signal: pair.premiumSignal,
     market_source: pair.marketSource,
+    market_sources: pair.marketSources ?? null,
     diagnostics: pair.diagnostics,
     score: null, // score field doesn't exist on diagnostics
     expires_at: input.expiresAt,
