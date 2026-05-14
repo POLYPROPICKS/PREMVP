@@ -844,12 +844,10 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
         </div>
         <div className={styles.positionProfitDivider} />
         <div className={styles.profitCol}>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'2px'}}>
-            <div style={{fontSize:'11px',fontWeight:700,color:'#BFD3E0',letterSpacing:'0.02em',lineHeight:1}}>Market Return</div>
-            <div style={{fontSize:'10px',fontWeight:700,color:'#D8E8F2',background:'rgba(10,22,38,0.75)',border:'1px solid rgba(180,210,230,0.18)',borderRadius:'6px',padding:'2px 6px',lineHeight:1.3,whiteSpace:'nowrap'}}>Odds {americanOdds}</div>
-          </div>
-          <div className={styles.profitValue} style={{color:'#86FF5A',textShadow:'0 0 12px rgba(134,255,90,0.28)'}}>+${profitDollars}</div>
-          <div style={{fontSize:'clamp(10px,2.5vw,12px)',fontWeight:600,color:'rgba(213,229,238,0.75)',lineHeight:1.2}}>per $100 stake</div>
+          <span>Market Return</span>
+          <span style={{position:'absolute',top:'clamp(9px,2.35vw,11px)',right:'clamp(8px,2vw,10px)',zIndex:4,fontSize:'10px',fontWeight:700,color:'#D8E8F2',background:'rgba(8,18,32,0.8)',border:'1px solid rgba(160,200,230,0.2)',borderRadius:'6px',padding:'2px 7px',lineHeight:1.3,whiteSpace:'nowrap'}}>Odds {americanOdds}</span>
+          <div className={styles.profitValue} style={{color:'#86FF5A',textShadow:'0 0 14px rgba(134,255,90,0.32)'}}>+${profitDollars}</div>
+          <div style={{fontSize:'clamp(9px,2.3vw,11px)',fontWeight:600,color:'rgba(213,229,238,0.72)',lineHeight:1.2,position:'relative',zIndex:3,marginTop:'1px'}}>per $100 stake</div>
           <div className={styles.trend} aria-hidden="true">
             <img className={styles.decorIconImg} src="/icons/profit-trend.png" alt="" />
           </div>
