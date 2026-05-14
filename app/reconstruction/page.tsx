@@ -844,7 +844,7 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
         </div>
         <div className={styles.positionProfitDivider} />
         <div className={styles.profitCol}>
-          <span>Market Return</span>
+          <span>Mkt Return</span>
           <span style={{position:'absolute',top:'clamp(9px,2.35vw,11px)',right:'clamp(8px,2vw,10px)',zIndex:4,fontSize:'10px',fontWeight:700,color:'#D8E8F2',background:'rgba(8,18,32,0.8)',border:'1px solid rgba(160,200,230,0.2)',borderRadius:'6px',padding:'2px 7px',lineHeight:1.3,whiteSpace:'nowrap'}}>Odds {americanOdds}</span>
           <div className={styles.profitValue} style={{color:'#86FF5A',textShadow:'0 0 14px rgba(134,255,90,0.32)'}}>+${profitDollars}</div>
           <div style={{fontSize:'clamp(9px,2.3vw,11px)',fontWeight:600,color:'rgba(213,229,238,0.72)',lineHeight:1.2,position:'relative',zIndex:3,marginTop:'1px'}}>per $100 stake</div>
