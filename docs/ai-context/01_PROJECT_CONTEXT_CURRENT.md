@@ -1,5 +1,23 @@
 # **PROJECT\_CONTEXT\_CURRENT.md**
-
+> ⚠️ CURRENT STATE OVERRIDE — 14.05.2026
+> Sections 7 and 8 below are STALE. Use this override block instead.
+>
+> CURRENT PHASE: MarketSourceCarousel evidence-stack UI
+> BACKEND PHASE: CLOSED — verified in Supabase ~12:24 14.05.2026
+> ACTIVE BRANCH: main (HEAD: 3d1028f)
+> OLD BRANCH premvp12-evidence-generation: MERGED AND CLOSED
+> OLD BLOCKERS (resolved):
+>   - trailing whitespace in buildLandingCards.ts: FIXED
+>   - runtime verification NEEDS VERIFICATION: CONFIRMED ✅
+>   - market_sources Supabase column: ADDED ✅
+>   - cron on buildLandingCards: CONFIRMED ✅
+>
+> NEXT TASK: MarketSourceCarousel evidence-stack UI
+>   → inspect-only first: activePair/activePairId, MarketSourceCarousel props,
+>     PremiumEventCarousel control flow, marketSources[] consumption
+>   → See AUTOMATION_MODE_HANDOFF.md §MarketSourceCarousel Target Behavior
+>
+> See 02_CURRENT_TECH_STATE.md and 09_CONTEXT_DELTA_LOG.md for full current state.
 ## **1\. Project Identity**
 
 * **Product name:** PolyProPicks  

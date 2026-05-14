@@ -60,11 +60,20 @@
 | Check | Who | Pass condition | Action on fail |
 |---|---|---|---|
 | UI renders correctly | Founder | Browser at target viewport | Fix CSS; do not re-patch blindly |
-| Mobile viewport verified | Founder | 390×700 or 428×760 | Required for all UI changes |
+| Mobile viewport verified | Founder | See OPERATOR_ACCEPTANCE_CHECKLIST.md for viewport policy | Required for all UI changes |
 | CTA visible without scroll | Founder | Above fold at target viewport | CSS fix required |
 | Business copy correct | Founder | Matches locked product decisions | Revert if wrong |
 | Free signal visible | Founder | First card visible without login | STOP if blocked |
 | Modal behavior correct | Founder | Opens on locked-feed tap; closes on secondary CTA | Fix modal handler |
+
+**Gate 2 viewport source of truth: `OPERATOR_ACCEPTANCE_CHECKLIST.md`**
+If VERIFICATION_GATES.md and OPERATOR_ACCEPTANCE_CHECKLIST.md conflict, OPERATOR_ACCEPTANCE_CHECKLIST.md controls Gate 2.
+
+```
+Tier A minimum (every UI patch):    390×844 + 430×932 + 360×780
+Tier B full (layout-sensitive):     all Tier B viewports from OPERATOR_ACCEPTANCE_CHECKLIST §1
+Tier C launch (paywall/conversion): Top-15 matrix from OPERATOR_ACCEPTANCE_CHECKLIST §1
+```
 
 **Gate 2 is Founder-only. Claude cannot accept Gate 2.**
 
