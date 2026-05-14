@@ -15,11 +15,15 @@ Invoke monitoring agent after:
 - Any `frontend-UI` task
 - Any task where Claude Code returned a response claiming completion
 - Any response that felt uncertain or incomplete
+- Any enforcement-contour artifact change: `CLAUDE.md`, `AGENTS.md`, `VERIFICATION_GATES.md`,
+  `RULE_COMPLIANCE_MONITOR_AGENT.md`, `AUTOMATION_SCORECARD.md`, `DRIFT_MONITORING_LOG.md`,
+  `TASK_ROUTING_MATRIX.md`, `CLAUDE_CODE_EXECUTION_PROTOCOL.md`,
+  `CONTEXT_HANDOFF_TEMPLATE.md`, `OPERATOR_ACCEPTANCE_CHECKLIST.md`
 
 Do NOT invoke for:
 - Direct CMD (git status, simple curl)
 - Architecture-review-only responses
-- Docs/context updates with no code changes
+- Trivial docs edits with no workflow impact (e.g. typo fix in non-enforcement file)
 
 ## 2. How to invoke
 
@@ -82,6 +86,7 @@ N/A RULES:
 - N/A is valid only with inline justification: "N/A — [reason]"
 - Unjustified N/A = FAIL
 - N/A rules (justified) are EXCLUDED from denominator
+- Applicable rules = PASS + FAIL rules only (N/A excluded)
 - ≥6 unjustified N/As = "audit evasion" → total score = 0
 
 Applicable critical rules: [N_applicable] / 10
@@ -92,12 +97,21 @@ Critical rules passed: [N_passed] / [N_applicable]
 High rules passed: [N_passed] / [N_applicable]
 Medium rules passed: [N_passed] / [N_applicable]
 
-Weighted score (based on applicable rules only):
-  Critical: [passed] / [applicable] × 60 = [points]
-  High:     [passed] / [applicable] × 18 = [points]
-  Medium:   [passed] / [applicable] × 4  = [points]
+Weighted score formula:
+  Score = (applicable weighted passed / applicable weighted total) × 100
+
+  Critical: ([passed] / [applicable]) × 60 = [points]
+  High:     ([passed] / [applicable]) × 18 = [points]
+  Medium:   ([passed] / [applicable]) × 4  = [points]
   Bonus:    all applicable critical passed = +18
   Total: [total] / 100
+
+Zero-applicable-category rule:
+  If a category has 0 applicable rules → exclude that category weight from applicable total.
+  Do NOT divide by zero.
+  Example: if all Medium rules are N/A → applicable total = 60+18 = 78, not 82.
+
+⚠️ ANY CRITICAL FAIL = REJECT regardless of total score.
 
 ═══════════ DECISION ═══════════
 
@@ -131,19 +145,25 @@ If ACCEPT: proceed with Gate 2 if visual task; or commit gate if code task
 
 ═══════════ READY-TO-PASTE DRIFT LOG ENTRY ═══════════
 
-Copy this entire block into DRIFT_MONITORING_LOG.md:
+Generate this entry ONLY if decision = REJECT, STOP, or ACCEPT/CONDITIONAL ACCEPT
+reveals a meaningful process lesson worth tracking.
+
+If no entry needed, output: "No drift log entry required."
+Do NOT instruct founder to paste ACCEPT tasks into DRIFT_MONITORING_LOG.md by default.
+
+If entry IS needed, copy this block into DRIFT_MONITORING_LOG.md:
 
 ```
 DATE: [today's date]
 TASK: [task description 1 line]
 SCORE: [N]/100
-DECISION: [ACCEPT / REJECT / STOP]
+DECISION: [REJECT / STOP / LESSON]
 CRITICAL VIOLATIONS:
 - [list or "none"]
 HIGH VIOLATIONS:
 - [list or "none"]
 FOUNDER TIME: [low/medium/high]
-CORRECTION APPLIED: [yes/no — what changed]
+CORRECTION APPLIED: [yes — what changed / no — why deferred]
 ```
 
 ═══════════ END AUDIT ═══════════
