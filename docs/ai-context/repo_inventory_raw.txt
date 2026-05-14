@@ -1,0 +1,147 @@
+# RAW_REPO_INVENTORY 
+ 
+## Git branch 
+main
+ 
+## Git status 
+?? docs/
+ 
+## Recent commits 
+966f6c2 Stabilize PREMVP15 feed contract and evidence stack
+808aaef Add automation mode handoff
+5d091e8 Add project agent instructions
+296c330 Dedupe generated landing feed pairs
+86c603d Cap fallback sports markets to middle confidence
+5b790c1 Guarantee market evidence stack cards
+2875d89 Tighten sports futures and relegation market filtering
+43677cf Merge Polymarket API mapping fix
+ 
+## Tracked files 
+.env.example
+.gitignore
+AGENTS.md
+AUTOMATION_MODE_HANDOFF.md
+CLAUDE.md
+README.md
+app/api/feed/debug-evidence-generation/route.ts
+app/api/feed/debug-sports-cards/route.ts
+app/api/feed/debug-sports-discovery/route.ts
+app/api/feed/landing-cards/route.ts
+app/api/leads/route.ts
+app/favicon.ico
+app/globals.css
+app/layout.tsx
+app/page.tsx
+app/reconstruction/Reconstruction.module.before-forced-icons.css
+app/reconstruction/Reconstruction.module.before-icons.css
+app/reconstruction/Reconstruction.module.broken.css
+app/reconstruction/Reconstruction.module.css
+app/reconstruction/Reconstruction.module.phase1-trust-before.css
+app/reconstruction/page.before-forced-icons.tsx
+app/reconstruction/page.before-icons.tsx
+app/reconstruction/page.broken.tsx
+app/reconstruction/page.phase1-trust-before.tsx
+app/reconstruction/page.tsx
+app/robots.ts
+app/sitemap.ts
+components/cards/HeaderBar.module.css
+components/cards/HeaderBar.tsx
+components/cards/MarketSourceCard.module.css
+components/cards/MarketSourceCard.tsx
+components/cards/PremiumEventCard.module.css
+components/cards/PremiumEventCard.tsx
+components/carousels/MarketSourceCarousel.tsx
+components/carousels/PremiumEventCarousel.tsx
+components/layout/HeaderBar.module.css
+components/layout/HeaderBar.tsx
+components/layout/StatusBar.tsx
+components/modals/PassOfferModal.module.css
+components/modals/PassOfferModal.tsx
+components/sections/CTASection.tsx
+components/sections/HeroSection.tsx
+components/sections/MarketSourcesSection.tsx
+components/sections/PremiumEventsSection.tsx
+components/ui/CategoryTabs.tsx
+components/ui/PaginationDots.tsx
+content/category-tabs.ts
+content/cta-content.ts
+content/hero-content.ts
+content/market-source-cards.ts
+content/marketSources.ts
+content/premium-event-cards.ts
+content/section-headings.ts
+content/signals.ts
+eslint.config.mjs
+lib/feed/buildLandingCards.ts
+lib/feed/buildSportsLandingCards.ts
+lib/feed/cacheGeneratedSignals.ts
+lib/feed/discoverSportsMarkets.ts
+lib/feed/landingPairs.ts
+lib/feed/normalizePolymarket.ts
+lib/feed/polymarketClient.ts
+lib/feed/scorePolymarket.ts
+lib/feed/types.ts
+lib/supabase/server.ts
+lib/types.ts
+next.config.ts
+package-lock.json
+package.json
+postcss.config.mjs
+public/brand/polypropicks-mark.png
+public/file.svg
+public/globe.svg
+public/iconify-icon.min.js
+public/icons/position-target.png
+public/icons/profit-trend.png
+public/icons/trust-ai-score.png
+public/icons/trust-public-whale.png
+public/icons/trust-smart-money.png
+public/next.svg
+public/reference/PolyCARD1.3.png
+public/vercel.svg
+public/window.svg
+scripts/generate-signals.ts
+tsconfig.json
+ 
+## App API route files 
+C:\WORK\KalshiProPulse\sipropicks-premvp1-1\app\api\feed\debug-evidence-generation\route.ts
+C:\WORK\KalshiProPulse\sipropicks-premvp1-1\app\api\feed\debug-sports-cards\route.ts
+C:\WORK\KalshiProPulse\sipropicks-premvp1-1\app\api\feed\debug-sports-discovery\route.ts
+C:\WORK\KalshiProPulse\sipropicks-premvp1-1\app\api\feed\landing-cards\route.ts
+C:\WORK\KalshiProPulse\sipropicks-premvp1-1\app\api\leads\route.ts
+ 
+## App page/layout files 
+C:\WORK\KalshiProPulse\sipropicks-premvp1-1\app\page.tsx
+C:\WORK\KalshiProPulse\sipropicks-premvp1-1\app\layout.tsx
+C:\WORK\KalshiProPulse\sipropicks-premvp1-1\app\reconstruction\page.tsx
+ 
+## Package scripts 
+{
+  "name": "sipropicks-premvp1-1",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "generate:signals": "tsx scripts/generate-signals.ts"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.105.1",
+    "next": "16.2.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "tsx": "^4.7.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.4",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}

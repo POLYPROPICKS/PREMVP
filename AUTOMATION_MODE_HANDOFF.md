@@ -1,4 +1,6 @@
-# PolyProPicks Automation Mode Handoff
+> STATUS: Tier 4 — Archive/Reference. Superseded by CLAUDE.md + AGENTS.md backbone.
+> Executor updated from Windsurf to Claude Code. Rules remain compatible.
+> Read only when working with Windsurf-specific features (worktree, browser preview).# PolyProPicks Automation Mode Handoff
 
 ## Purpose
 

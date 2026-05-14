@@ -1,310 +1,210 @@
-# PolyProPicks Agent Instructions
+# AGENTS.md — PolyProPicks AI Agent Constitution
 
-These instructions apply to the entire repository.
+<!-- ACTIVATION POINT: Read after CLAUDE.md, before any implementation -->
+<!-- TOKEN LOADING RULE: ALWAYS load. Tier 0. Repo root. -->
+<!-- OWNER: Founder/Operator -->
+<!-- MONITORING CHECK: Agent behavior audited against §3 forbidden list and §5 stop conditions -->
 
-## Project Identity
+## 1. Source-of-truth hierarchy
 
-PolyProPicks is a mobile-first sports / prediction-market signal product.
+```
+1. Repo source files + git output        ← beats everything
+2. /docs/ai-context/*.md                 ← beats memory
+3. CLAUDE.md + AGENTS.md                 ← active rules
+4. Current user message
+5. Old chat history                      ← lowest priority
+```
 
-The product turns noisy Polymarket-style market data into one clear decision card with supporting market evidence.
+ChatGPT Saved Memory is NOT project source of truth.
 
-Current mode: PreMVP / production prototype.
+## 2. Role split
 
-Primary stack:
-- Next.js / React / TypeScript / CSS Modules
-- Supabase for lead/reserve/cache data
-- Railway production deploy
-- Windows CMD preferred over PowerShell
+| Agent | Role | Must NOT do |
+|---|---|---|
+| Claude Chat | Classify tasks, plan, review, generate Claude Code prompts | Directly edit local repo files |
+| Claude Code | Inspect source, apply narrow patches, run verification, report evidence | Commit/push without approval; broad refactor |
+| CMD / Terminal | Cheap verification: git/build/curl ≤5 commands | Multi-step complex verification |
+| Founder | Product intent, visual acceptance, business decisions, deploy approval | Manual code editing, multi-file snippet replacement |
+| ChatGPT | External strategic backup; may challenge stale or conflicting /docs/ai-context/ entries by flagging them explicitly to founder | Must NOT silently override /docs/ai-context/ decisions; any challenge must be stated as "I believe [file X] may be stale because [reason] — founder to decide" |
 
-Known repo path:
-`C:\WORK\KalshiProPulse\sipropicks-premvp1-1`
+## 3. Forbidden behaviors — hard rules
 
-Production domain:
-`https://polypropicks.com`
+Every rule below is a **gate**, not a preference.
 
-## Always Respect Source of Truth
+### 3.1 Code and source rules
+- Do NOT propose full rewrite or broad refactor
+- Do NOT edit source before git/source state is verified
+- Do NOT patch when source is uncertain — inspect first
+- Do NOT mix zones: UI task → no backend; backend task → no UI/CSS
+- Do NOT invent file paths — verify against 11_SOURCE_FILES_AND_REPO_INVENTORY.md
+- Do NOT provide "open file X and replace snippet Y" instructions to founder
 
-Use current source files, git state, build output, API output, browser behavior, and Supabase rows as truth.
+### 3.2 Product/architecture rules
+- Do NOT override locked product decisions in 04_PRODUCT_DECISIONS_LOCKED.md
+- Do NOT recommend localStorage-only premium entitlement
+- Do NOT allow forced login before one free signal is visible
+- Do NOT recommend Whop-only or Stripe-only internal architecture
+- Do NOT redesign frontend without explicit founder request
+- Do NOT change DOM/className/CSS structure without explicit UI scope
 
-Do not rely on old chat memory or summaries.
+### 3.3 Payment/auth rules
+- Supabase entitlement is internal source of truth — UI must not trust Whop/Stripe directly
+- Whop first, Stripe later — provider-neutral internal architecture required
+- No payment/auth changes without locked decision in 04_PRODUCT_DECISIONS_LOCKED.md
 
-If source and memory conflict, inspected source wins.
+### 3.4 Verification and completion rules
+- Do NOT claim "done" or "success" without full proof package
+- Do NOT treat build pass as visual/product acceptance
+- Do NOT treat cached API response as fresh-generation proof
+- Do NOT omit git status / git diff stat / build result from patch responses
+- Do NOT treat old/new snippets as optional for code-changing tasks
 
-Useful source-of-truth docs may exist in repo root:
-- `PROJECT_CONTEXT_CURRENT.md`
-- `WINDSURF_WORKFLOW_RULES.md`
-- `CURRENT_TECH_STATE.md`
-- `PRODUCT_DECISIONS_LOCKED.md`
-- `CURRENT_SOURCE_ARCHITECTURE_MAP.md`
-- `_PREMVP_LESSONS_AND_OPERATOR_BEST_PRACTICES.md`
+### 3.5 Git/deploy rules
+- Do NOT commit without explicit gate check
+- Do NOT push/deploy without explicit founder approval
+- Do NOT continue when git status is unexpectedly dirty
+- Do NOT commit when git diff --check reports trailing whitespace
 
-Read them when relevant, but do not edit them unless explicitly asked.
+### 3.6 Env/secrets rules
+- Do NOT expose or print env vars / secrets
+- Do NOT request secrets unless absolutely required
+- Do NOT change Railway/Supabase/connector config without explicit scope
 
-## Roles
+### 3.7 Source file path rules
+- Do NOT invent file paths from memory
+- Primary source for file paths: `/docs/ai-context/11_SOURCE_FILES_AND_REPO_INVENTORY.md`
+- If that file is missing OR its last-modified date is >7 days before current task date → treat as STALE
+- Stale or missing fallback: verify paths directly from repo tree
+  (Claude Code: run `dir` / `ls` on relevant folder; confirm file exists before referencing)
+- If path cannot be confirmed from repo → mark as NEEDS VERIFICATION, do not patch
 
-Founder:
-- Operator and final visual/business acceptor.
-- Should not manually edit many files.
-- Should not be asked to run long command chains when Cascade can run them.
-- Should receive exact outputs to paste back.
+## 4. Project identity and environment
 
-ChatGPT / Architect:
-- Defines scope, allowed files, forbidden files, acceptance, and next safe step.
+```
+Repo path:      C:\WORK\KalshiProPulse\sipropicks-premvp1-1
+Production:     https://polypropicks.com
+Stack:          Next.js / React / TypeScript / CSS Modules
+Data:           Supabase (lead/reserve/cache)
+Deploy:         Railway
+Terminal:       Windows CMD preferred over PowerShell
+```
 
-Cascade / Windsurf:
-- Executor/inspector only.
-- Must not decide product architecture.
-- Must not broaden scope.
-- Must return snippets, diff, build result, risks, and stop conditions.
+## 5. Project preservation rules
 
-## Core Product Architecture
+```
+LandingPair                    → canonical unit — preserve
+PremiumEventCard               → master signal card — preserve
+MarketSourceCard               → dependent evidence card — preserve
+MarketSourceCarousel           → dependent evidence carousel — preserve
+marketSource                   → backward compatibility required
+marketSources[]                → evidence stack — preserve
+marketSources[0]               → must correspond to marketSource where possible
+Feed generation                → display-grade deterministic, not ML
+```
 
-`LandingPair` is the canonical product unit.
-
-PremiumEventCard is the master signal card.
-
-MarketSourceCard is dependent evidence.
-
-MarketSourceCarousel must never become an independent random feed.
-
-MarketSource evidence must always match the active PremiumEventCard / active LandingPair.
-
+Evidence must always match active PremiumEventCard / active LandingPair.
+MarketSourceCarousel must NOT become an independent random feed.
 Do not create proof/signal mismatch.
 
-Correct direction:
-- active PremiumEventCard controls active pair.
-- active pair controls MarketSource evidence stack.
-- `marketSource` remains backward-compatible.
-- `marketSources[]` is the evidence stack.
-- `marketSources[0]` should correspond to `marketSource` where possible.
+## 6. Approved MarketSource evidence types
 
-## Product Copy / Claims
-
-Do not claim guaranteed profit.
-
-Do not claim real calibrated ML.
-
-Do not call current score a real win probability.
-
-Preferred UI label:
-- `Signal Confidence`
-
-Do not revive:
-- `Win Probability`
-
-Main landing CTA must remain:
-- `Get 5 Free Signals NOW`
-
-Do not change CTA/pricing/copy unless explicitly requested.
-
-Do not generate or display fake verified news evidence.
-
-Do not claim verified institutional smart money.
-
-`news-pulse` is future-only unless a verified news/context source is implemented.
-
-Sharp/whale language must remain proxy-safe.
-
-## Current Approved MarketSource Evidence Types
-
-Only these current visible card types are approved unless explicitly changed:
+Only these card types are approved unless explicitly changed by founder:
 
 1. `market-source`
-2. `news-pulse` — future-only unless verified source exists
+2. `news-pulse` — **future-only** unless a verified news/context source is implemented
 3. `market-momentum`
 4. `sharp-flow`
 
-Do not add new visible P0 evidence types casually.
+Do NOT add new P0 evidence types without explicit founder approval.
+Do NOT display `news-pulse` as live data unless verified source exists.
 
-## UI / CSS Rules
+## 7. Product copy / claims rules
 
-Mobile-first checks matter.
-
-Primary target viewports:
-- `390x700`
-- `428x760`
-
-Secondary:
-- `390x844`
-- `428x926`
-
-Build passing is not visual acceptance.
-
-Screenshot/browser behavior beats self-report.
-
-Do not redesign UI from scratch.
-
-Do not rename classNames casually.
-
-Do not change DOM nesting for cleanliness.
-
-Do not add/remove wrapper divs unless explicitly required.
-
-Do not rewrite working layout.
-
-For CSS changes:
-- identify active JSX className first;
-- identify active CSS selector;
-- modify only active source selector;
-- return old/new snippets;
-- run build;
-- require visual check.
-
-If screenshot is unchanged after a claimed CSS fix, inspect selectors instead of appending random overrides.
-
-Keep modal styles isolated in:
-- `components/modals/PassOfferModal.module.css`
-
-Do not style modal via `app/reconstruction/Reconstruction.module.css` unless explicitly required.
-
-## Feed / API Rules
-
-Backend feed work must not touch UI/CSS unless explicitly scoped.
-
-UI work must not touch feed/Supabase/payment unless explicitly scoped.
-
-Current formula direction:
-- deterministic display-grade
-- API-lite / cache-first
-- Polymarket public data first
-- no fake ML
-
-Preserve fallback/manual content.
-
-Do not remove `marketSource`.
-
-Do not make `marketSources[]` required without fallback unless explicitly approved.
-
-Cache hit may hide fresh generation behavior.
-
-Do not treat cache-hit response as proof of fresh generation.
-
-Debug endpoints may use different mappers; verify the actual path being changed.
-
-## Supabase / Lead / Payment Rules
-
-Supabase production rows beat localStorage.
-
-`public.lead_intents` is the active table for lead and premium reserve capture.
-
-Premium reserve fields may include:
-- `source`
-- `intent_type`
-- `plan_id`
-- `plan_name`
-- `plan_price`
-- `plan_source`
-- `event_title`
-- `position`
-
-Do not change payment, Stripe, auth, admin, lead capture, or Supabase schema unless explicitly scoped.
-
-Payment architecture/audit docs are reference material only.
-Do not implement payment changes unless the current task explicitly says payment phase.
-
-## Git / Build / Commit Rules
-
-Before any commit, run:
-- `git branch --show-current`
-- `git status --short`
-- `git diff --stat`
-- `git diff --check`
-- `npm run build`
-
-Do not commit if build fails.
-
-Do not commit if `git diff --check` reports trailing whitespace.
-
-Do not commit unexpected files.
-
-Do not push unless explicitly instructed.
-
-Do not deploy unless explicitly instructed.
-
-Main branch is a stable checkpoint.
-
-Use feature branches or worktrees for AI-risky UI work.
-
-Commit only after bounded verified milestone.
-
-## Default Verification Commands
-
-Run from repo root:
-
-```cmd
-cd /d C:\WORK\KalshiProPulse\sipropicks-premvp1-1
-git branch --show-current
-git status --short
-git diff --stat
-git diff --check
-git log --oneline -5
-npm run build
+```
+Signal Confidence              → approved label for display score
+Win Probability                → DO NOT revive
+Main landing CTA               → "Get 5 Free Signals NOW" — do not change
+Sharp/whale language           → must remain proxy-safe
 ```
 
-Required Response Format After Code Changes
+Do NOT claim: guaranteed profit / real calibrated ML / verified news without source /
+verified institutional smart money.
 
-Return:
+## 8. Supabase / lead / payment rules
 
-Files changed
-Whether every changed file was allowed
-Exact old/new snippets for changed code
-git status --short
-git diff --stat
-git diff --check
-npm run build result
-Acceptance criteria status
-Human visual/API/Supabase check required
-Risks / assumptions
-Stop conditions encountered
+Active table: `public.lead_intents`
 
-Do not say "done" or "implemented successfully" without evidence.
+Premium reserve fields:
+- `source`, `intent_type`, `plan_id`, `plan_name`, `plan_price`, `plan_source`
+- `event_title`, `position`
 
-Stop Immediately If
+Supabase production rows beat localStorage.
+Do NOT change payment / Stripe / auth / admin / lead capture / Supabase schema
+unless explicitly scoped in current task.
+Payment architecture docs are reference only — do not implement payment changes
+unless the current task explicitly says payment phase.
 
-Stop and report if:
+## 9. Stop conditions
 
-branch is wrong;
-unexpected product files are dirty;
-required source block is missing;
-forbidden file would need editing;
-build fails;
-diff check fails;
-screenshot contradicts claimed UI result;
-source differs from assumed architecture;
-task starts growing beyond one zone;
-implementation touches payment/Supabase/deploy without explicit scope;
-UI task starts touching backend/API;
-backend task starts touching CSS/UI;
-user has not explicitly authorized commit/push/deploy.
+Stop immediately and output STOP CONDITION response if:
 
-Preferred Working Pattern
+1. `git status --short` is dirty unexpectedly
+2. Build fails (treat as FAIL, not partial success)
+3. Expected file or code block is missing from repo
+4. Forbidden file must be edited to continue
+5. Task expands beyond allowed files
+6. Env/secrets are needed
+7. Payment/auth boundary is unclear
+8. Source/context files conflict with each other
+9. Broad refactor becomes necessary
+10. UI changes become necessary during backend-only task
+11. Backend changes become necessary during UI-only task
+12. Cached API output is being treated as fresh-generation proof
+13. Screenshot unchanged after claimed UI fix
+14. After one failed Claude Code attempt — evaluate direct-source check before another prompt
 
-For uncertain wiring:
+### Stop condition response format
 
-inspect-only first;
-report active files/snippets/data flow;
-recommend smallest patch;
-wait for bounded execution task.
+```
+STOP CONDITION:
+Why: [specific reason]
+Unknown: [what is uncertain]
+Verification needed: [exactly what]
+Files/commands needed: [list]
+Safe next action: [one action]
+Do NOT: commit / push / continue patching
+```
 
-For known narrow patch:
+## 10. Token loading rules
 
-exact replacement preferred;
-allowed files only;
-no broad refactor;
-snippets + build + diff required.
+| Artifact | When to load |
+|---|---|
+| CLAUDE.md | Always — first |
+| AGENTS.md | Always — second |
+| TASK_ROUTING_MATRIX.md | Before every task classification |
+| CLAUDE_CODE_EXECUTION_PROTOCOL.md | Before every implementation task |
+| VERIFICATION_GATES.md | After every patch |
+| 04_PRODUCT_DECISIONS_LOCKED.md | When product/UX/payment decisions arise |
+| 02_CURRENT_TECH_STATE.md | When tech state uncertain |
+| 03_CURRENT_SOURCE_ARCHITECTURE_MAP.md | When source wiring uncertain |
+| 10_DESIGN_SYSTEM_AND_FRONTEND_BASELINE.md | UI tasks only |
+| 06_PREMVP_LESSONS | Failure investigation only — NOT at session start |
+| 07_AI_AGENT_MIGRATION_CONTEXT.md | Archive — do not load routinely |
 
-After one failed Windsurf attempt:
+## 11. Context tier system
 
-perform direct-source option check;
-do not keep prompting blindly.
+```
+Tier 0: CLAUDE.md, AGENTS.md                         ← always load
+Tier 1: TASK_ROUTING_MATRIX, EXECUTION_PROTOCOL,     ← load at task start
+        VERIFICATION_GATES, FAILURE_MODES
+Tier 2: 01–04, 08, 10, 11 /docs/ai-context/          ← load when task-relevant
+Tier 3: MONITORING, SCORECARD, DRIFT_LOG              ← load after task
+Tier 4: 06, 07 /docs/ai-context/                     ← load at failure only
+```
 
-For risky UI work:
+## 12. Compliance monitoring
 
-prefer Worktree mode;
-use Browser Preview / Send Element to Cascade;
-still require founder visual acceptance.
+All Claude/Code responses are audited by:
+`/docs/ai-context/RULE_COMPLIANCE_MONITOR_AGENT.md`
 
-For repetitive verification:
-
-Cascade should run checks itself.
-Do not force founder to manually run long CMD sequences.
+Responses missing required fields will be scored as FAIL and trigger a ready-to-paste drift log entry.
