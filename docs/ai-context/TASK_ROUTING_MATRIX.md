@@ -1,5 +1,17 @@
 # TASK_ROUTING_MATRIX.md — PolyProPicks Task Routing
 
+---
+
+## Token Economy Routing — 2026-05-15
+
+- ChatGPT compresses and formats the task into a bounded execution spec
+- Claude Code receives only the bounded spec — no project history, no broad roadmap
+- Research, architecture decisions, and roadmap planning stay in ChatGPT or scarce Claude Chat sessions
+- Claude Code executes the final bounded prompt only
+- Claude Code does not receive context it doesn't need to execute the patch
+
+---
+
 <!-- ACTIVATION POINT: Before every task — determines who executes and in what format -->
 <!-- TOKEN LOADING RULE: Load at task start. Tier 1. -->
 <!-- OWNER: Claude Chat (applies rules); Founder (approves routing) -->

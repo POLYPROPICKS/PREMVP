@@ -2,6 +2,28 @@
 
 ---
 
+## P0 — Small Patch Token Economy Mode — 2026-05-15
+
+Claude Code is executor only on small/medium patches.
+
+- No long architecture prompts
+- No dev server start
+- No curl / API / debug-route checks unless explicitly requested
+- No unrelated file reads
+- No broad investigation without explicit approval
+- STOP after ~5 minutes or ~5k tokens if patch is not complete
+- Final output under 1200 characters
+
+**STOP status format:**
+```
+STOP: [reason]
+Files inspected: [list]
+Blocker: [one line]
+No edits / no commit / no push
+```
+
+---
+
 ## CRITICAL TOKEN ECONOMY OVERRIDE — 2026-05-15
 
 Claude Pro session capacity is scarce.

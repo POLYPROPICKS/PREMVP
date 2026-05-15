@@ -1,5 +1,24 @@
 # RULE_COMPLIANCE_MONITOR_AGENT.md v0 — PolyProPicks Compliance Monitor
 
+---
+
+## Critical Audit Rule — Token-economy mode respected — 2026-05-15
+
+**Critical FAIL** if Claude Code:
+- Performs broad investigation without explicit permission
+- Starts dev server, runs curl, or performs debug-route archaeology without explicit request
+- Reads files outside the ALLOWED FILES list
+- Exceeds small/medium patch scope and does not STOP
+- Gives long architecture explanation instead of an executor status report
+
+**Pass** if Claude Code:
+- Executes only within ALLOWED FILES
+- Returns output under 1200 characters (or explicitly approved longer)
+- STOPs with standard format when blocker is hit
+- Does not commit/push unless explicitly instructed
+
+---
+
 <!-- ACTIVATION POINT: After any patch/inspect/significant Claude or Claude Code response -->
 <!-- TOKEN LOADING RULE: Load when auditing. Tier 1. Do NOT load at session start. -->
 <!-- OWNER: Founder invokes; Claude Chat executes; output auto-generates drift entry -->
