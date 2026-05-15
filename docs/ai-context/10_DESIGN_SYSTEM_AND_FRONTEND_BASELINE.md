@@ -1,5 +1,22 @@
 # **10\_DESIGN\_SYSTEM\_AND\_FRONTEND\_BASELINE.md**
 
+---
+
+## CURRENT FRONTEND BASELINE OVERRIDE — 2026-05-15
+
+- Current active UI gate: Decision Card visual acceptance
+- Current visual blocker: Market Return tile is overcrowded
+- Observed issue: separate "Odds +160" chip/label inside the Market Return tile visually collides/overloads the tile
+- Accepted direction: Market Return / American odds concept remains, but the tile must prioritize readability
+- Preferred next UI fix: remove or simplify the separate Odds chip; preserve "Market Return", "+$X", and "per $100 stake"
+- Do not redesign the card
+- Do not touch Signal Confidence, Trust Metrics, Position, filters, carousel, modal, backend scoring, or CTA during this fix
+- No CSS broad refactor
+- Allowed file for next patch: `app/reconstruction/page.tsx` only
+- Founder visual acceptance required after patch
+
+---
+
 ## **1\. Purpose**
 
 This file documents the current frontend/design baseline for PolyProPicks / PolyPicks Current.

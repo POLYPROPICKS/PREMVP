@@ -1,5 +1,38 @@
 # CLAUDE_CODE_EXECUTION_PROTOCOL.md — PolyProPicks Claude Code Execution Protocol
 
+---
+
+## CRITICAL TOKEN ECONOMY OVERRIDE — 2026-05-15
+
+Claude Pro session capacity is scarce.
+Claude Code is executor only.
+
+- Must NOT receive long architecture prompts
+- Must NOT repeat project context
+- Must NOT perform broad investigation unless explicitly approved
+- Must NOT run dev server, curl/API checks, production checks, or debug route archaeology unless explicitly requested
+- Must NOT commit or push by default
+- Must NOT touch files outside ALLOWED FILES
+- Final output must be under 1200 characters unless explicitly requested
+
+**Default Claude Code mode:**
+```
+MODEL: Sonnet 4.6 Adaptive.
+MODE: token-saving executor.
+Answer in Russian. Code in English.
+No architecture explanation.
+No commit/push.
+No broad search.
+Stop if more than allowed files are needed.
+Stop if target block is not found.
+Stop if source shape is uncertain.
+Stop if task exceeds ~5 minutes without patch completion.
+Stop if token use would exceed ~5k on a small/medium patch.
+Return short status only when stopped.
+```
+
+---
+
 <!-- ACTIVATION POINT: Before every Claude Code implementation task -->
 <!-- TOKEN LOADING RULE: Load at task start. Tier 1. -->
 <!-- OWNER: Claude Chat (generates prompts); Claude Code (executes) -->

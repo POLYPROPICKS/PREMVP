@@ -1,5 +1,26 @@
 # **PRODUCT\_DECISIONS\_LOCKED.md**
 
+---
+
+## CURRENT ROADMAP OVERRIDE — 2026-05-15
+
+> This section supersedes older roadmap/order sections where they conflict with current main.
+
+- Current branch: `main`
+- Current HEAD: `1d254cc` Score: selectedOdds banded confidence and anchored trust metrics
+- Current active gate: Decision Card visual acceptance
+- Signal Confidence scoring rebuild is already on main ✅
+- Market Return / American odds direction is already on main, but not visually accepted yet
+- Current blocker: Market Return tile overcrowding; the "Odds +160" chip/label visually collides inside the tile
+- Next safe product patch: `app/reconstruction/page.tsx` only — simplify/remove the separate Odds chip inside profitCol while preserving +$ return and "per $100 stake"
+- After visual acceptance: inspect/fix filterTags / one-card-across-filters issue
+- MarketSourceCarousel evidence-stack UI: ON HOLD until Decision Card + filter/selection sanity accepted
+- Whop readiness/integration: ON HOLD until card/feed/evidence sanity accepted
+- Older PREMVP12 backend-only roadmap/order is HISTORICAL / SUPERSEDED where it conflicts with this override
+- Locked decisions still active: no fake ML, no Win Probability label, no guaranteed profit claims, no independent MarketSourceCarousel browsing, no premature payment/auth/admin
+
+---
+
 ## **1\. Purpose**
 
 This file prevents product and architecture context drift for PolyProPicks / PolyPicks Current.
