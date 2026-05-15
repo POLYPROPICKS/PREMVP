@@ -26,7 +26,7 @@ import {
 
 const DEFAULT_CONFIG: SportsDiscoveryConfig = {
   windowHours: 24,
-  fallbackWindowHours: 48,
+  fallbackWindowHours: 72,
   fetchVolumeMinUsd: 50000,
   finalEventVolumeMinUsd: 100000,
   targetCards: 5,

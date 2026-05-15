@@ -526,20 +526,28 @@ function selectOutcome(market: PolymarketRawMarket): { name: string; tokenId: st
 
   if (validOutcomes.length === 0) return null;
 
-  // Prefer outcomes with price between 0.2 and 0.8 (not too extreme)
-  const balancedOutcomes = validOutcomes.filter(
-    (o) => o.price > 0.2 && o.price < 0.8 && ((1 / o.price) - 1) * 100 >= 15
+  // Primary target: 1.7x-3x (price 0.333-0.588)
+  const targetOutcomes = validOutcomes.filter(
+    (o) => o.price >= 0.333 && o.price <= 0.588
   );
-
-  if (balancedOutcomes.length > 0) {
-    // Select the one closest to 0.5 (most balanced)
-    return balancedOutcomes.sort((a, b) =>
-      Math.abs(a.price - 0.5) - Math.abs(b.price - 0.5)
+  if (targetOutcomes.length > 0) {
+    return targetOutcomes.sort((a, b) =>
+      Math.abs(a.price - 0.45) - Math.abs(b.price - 0.45)
     )[0];
   }
 
-  // Fallback: select highest price outcome (most "Yes" biased)
-  return validOutcomes.sort((a, b) => b.price - a.price)[0];
+  // Fallback: 1.35x-5x (price 0.20-0.741)
+  const fallbackOutcomes = validOutcomes.filter(
+    (o) => o.price >= 0.20 && o.price <= 0.741
+  );
+  if (fallbackOutcomes.length > 0) {
+    return fallbackOutcomes.sort((a, b) =>
+      Math.abs(a.price - 0.45) - Math.abs(b.price - 0.45)
+    )[0];
+  }
+
+  // No outcome in range — reject
+  return null;
 }
 
 /**
