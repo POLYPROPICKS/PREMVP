@@ -132,14 +132,17 @@ export function normalizeLandingPairs(rawPairs: unknown[], source: LandingPairSo
         marketSources: Array.isArray(pair.marketSources) && pair.marketSources.length > 0
           ? pair.marketSources
           : [pair.marketSource as MarketSourceEvidenceCard],
-        filterTags: Array.isArray(pair.filterTags) && pair.filterTags.length > 0
-          ? uniqueFilterTags(pair.filterTags)
-          : getPairFilterTags({
-              premiumSignal: pair.premiumSignal,
-              marketSource: pair.marketSource,
-              volumeUsd,
-              sortScore,
-            }),
+        filterTags: Array.from(new Set([
+          ...(Array.isArray(pair.filterTags) && pair.filterTags.length > 0
+            ? uniqueFilterTags(pair.filterTags)
+            : getPairFilterTags({
+                premiumSignal: pair.premiumSignal,
+                marketSource: pair.marketSource,
+                volumeUsd,
+                sortScore,
+              })),
+          ...(source === 'api' ? ['live' as FilterTag] : []),
+        ])) as FilterTag[],
         isDefaultToday: Boolean(pair.isDefaultToday),
         priority,
         sortScore,
