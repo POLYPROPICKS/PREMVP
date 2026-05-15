@@ -803,9 +803,17 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
   });
 
   const isMiddleConfidenceFallbackMarket = isMiddleConfidenceSportsFallbackMarket(enriched.event, market);
-  const finalDisplaySignalScore = isMiddleConfidenceFallbackMarket
+  const baseDisplayScore = isMiddleConfidenceFallbackMarket
     ? clamp(displaySignalScore, 45, 65)
     : displaySignalScore;
+  // Cap confidence based on opposite outcome odds (favorite strength)
+  const oppPrice = 1 - selectedOutcome.price;
+  const oppOdds = oppPrice > 0.01 ? 1 / oppPrice : 99;
+  const oppCap = oppOdds > 4.0 ? 65
+    : oppOdds > 3.0 ? 75
+    : oppOdds > 1.44 ? 77
+    : 90;
+  const finalDisplaySignalScore = Math.min(baseDisplayScore, oppCap);
 
   // Compute metrics with fallbacks
   const smartMoneyProxy = computeSmartMoneyProxy({
@@ -1416,6 +1424,13 @@ export async function buildLandingCards(options?: {
         rejected.push({
           id: candidate.market.id,
           rejectionReasons: ["Failed to generate landing card pair"],
+        });
+        continue;
+      }
+      if (pair.premiumSignal.winProbability < 52) {
+        rejected.push({
+          id: candidate.market.id,
+          rejectionReasons: [`Signal confidence too low: ${pair.premiumSignal.winProbability}`],
         });
         continue;
       }

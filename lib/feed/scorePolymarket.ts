@@ -353,7 +353,7 @@ export function computeDisplaySignalScore(params: {
     ]);
   } else {
     const impliedProb = clamp(marketImpliedProbabilityScore ?? 50, 0, 100);
-    const momentumAdj = ((momentumScore ?? 50) - 50) * 0.10;
+    const momentumAdj = ((momentumScore ?? 50) - 50) * 0.03;
     score = clamp(35 + impliedProb * 0.65 + momentumAdj, 35, 97);
   }
 
