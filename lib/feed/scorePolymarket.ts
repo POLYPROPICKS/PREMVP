@@ -361,6 +361,79 @@ export function computeDisplaySignalScore(params: {
   return clamp(score, 35, 97);
 }
 
+export interface OddsBand {
+  min: number;
+  max: number;
+  midpoint: number;
+}
+
+export function getSelectedOddsBand(selectedOdds: number): OddsBand {
+  if (selectedOdds <= 1.44) return { min: 80, max: 90, midpoint: 85 };
+  if (selectedOdds <= 1.70) return { min: 77, max: 85, midpoint: 81 };
+  if (selectedOdds <= 2.20) return { min: 72, max: 80, midpoint: 76 };
+  if (selectedOdds <= 2.70) return { min: 68, max: 75, midpoint: 72 };
+  if (selectedOdds <= 3.20) return { min: 63, max: 70, midpoint: 67 };
+  if (selectedOdds <= 4.00) return { min: 58, max: 65, midpoint: 62 };
+  return { min: 52, max: 57, midpoint: 55 };
+}
+
+export interface BandedScoreParams {
+  selectedOdds: number;
+  delta6hPp: number | null;
+  maxTradeCash: number | null;
+  recentTradeCash: number | null;
+  holderConcentrationScore: number | null;
+}
+
+export function computeBandedSignalScore(params: BandedScoreParams): number | null {
+  const { selectedOdds, delta6hPp, maxTradeCash, recentTradeCash, holderConcentrationScore } = params;
+
+  if (selectedOdds < 1.35 || selectedOdds > 5.0) return null;
+  if (delta6hPp !== null && delta6hPp <= -4) return null;
+
+  const band = getSelectedOddsBand(selectedOdds);
+
+  let deltaAdj = 0;
+  if (delta6hPp !== null) {
+    if (delta6hPp > 10)       deltaAdj = 4;
+    else if (delta6hPp >= 6)  deltaAdj = 3;
+    else if (delta6hPp >= 3)  deltaAdj = 2;
+    else if (delta6hPp >= 1)  deltaAdj = 1;
+    else if (delta6hPp === 0) deltaAdj = 0;
+    else if (delta6hPp >= -2) deltaAdj = -1;
+    else                      deltaAdj = -3;
+  }
+
+  let maxTradeAdj = 0;
+  if (maxTradeCash !== null) {
+    if (maxTradeCash >= 10000)     maxTradeAdj = 3;
+    else if (maxTradeCash >= 3000) maxTradeAdj = 2;
+    else if (maxTradeCash >= 500)  maxTradeAdj = 1;
+  }
+
+  let recentTradeAdj = 0;
+  if (recentTradeCash === null) {
+    recentTradeAdj = -1;
+  } else if (recentTradeCash >= 10000) {
+    recentTradeAdj = 1;
+  }
+
+  const holderAdj = holderConcentrationScore !== null ? 0 : -1;
+
+  const rawScore = band.midpoint + deltaAdj + maxTradeAdj + recentTradeAdj + holderAdj;
+  let finalConfidence = clamp(rawScore, band.min, band.max);
+
+  const isZeroData = (delta6hPp === null || delta6hPp === 0)
+    && maxTradeCash === null
+    && recentTradeCash === null
+    && holderConcentrationScore === null;
+  if (isZeroData) {
+    finalConfidence = Math.min(finalConfidence, 57);
+  }
+
+  return finalConfidence;
+}
+
 /**
  * Get confidence label based on display signal score
  */

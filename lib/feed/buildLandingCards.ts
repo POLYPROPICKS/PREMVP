@@ -47,10 +47,7 @@ import {
   roundNumber,
   computePotentialProfitPercent,
   computeDeltaPp,
-  computeSmartMoneyProxy,
-  computePublicVsWhaleProxy,
-  computePreEventScoreAI,
-  computeDisplaySignalScore,
+  computeBandedSignalScore,
   getConfidenceLabel,
 } from "./scorePolymarket";
 
@@ -738,138 +735,64 @@ async function enrichMarket(
  * Uses fallback scores when enrichment data is missing
  */
 function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | null {
-  const { parentMeta, market, selectedOutcome, diagnostics, gammaPriceChange } = enriched;
+  const { parentMeta, market, selectedOutcome, diagnostics } = enriched;
 
-  // Compute component scores (0-100 scale)
-  const marketImpliedProbabilityScore = clamp(roundNumber(selectedOutcome.price * 100), 0, 100);
-
-  // Momentum score from delta (if available)
-  let momentumScore = 50; // neutral
-  if (diagnostics.delta6hPp !== null) {
-    momentumScore = clamp(50 + diagnostics.delta6hPp, 0, 100);
-  } else if (diagnostics.delta1hPp !== null) {
-    momentumScore = clamp(50 + diagnostics.delta1hPp * 2, 0, 100); // amplify 1h signal
-  } else if (gammaPriceChange !== null) {
-    // Use Gamma price change as fallback
-    momentumScore = clamp(50 + roundNumber(gammaPriceChange * 100), 0, 100);
-  }
-
-  // Trade flow score from recent activity (fallback to neutral if missing)
-  let tradeFlowScore = 50; // neutral
-  if (diagnostics.recentTradeCash !== null && diagnostics.recentTradeCash > 0) {
-    // Higher trade volume = higher score (logarithmic scale)
-    const logVolume = Math.log10(Math.max(diagnostics.recentTradeCash, 1));
-    tradeFlowScore = clamp(roundNumber((logVolume / 6) * 100), 0, 100);
-  }
-
-  // Liquidity depth score from spread (inverse - tighter spread = higher score)
-  let liquidityDepthScore = 50;
-  if (diagnostics.spread !== null) {
-    // Spread in percentage points, tighter is better
-    liquidityDepthScore = clamp(100 - diagnostics.spread * 2, 0, 100);
-  }
-
-  // Spread quality score (same as liquidity for now)
-  const spreadQualityScore = liquidityDepthScore;
-
-  // Open interest score
-  let openInterestScore = 50;
-  if (diagnostics.openInterest !== null && diagnostics.openInterest > 0) {
-    const logOI = Math.log10(Math.max(diagnostics.openInterest, 1));
-    openInterestScore = clamp(roundNumber((logOI / 8) * 100), 0, 100);
-  }
-
-  // Large trade pressure score from max trade (fallback to neutral)
-  let largeTradePressureScore = 50;
-  if (diagnostics.maxTradeCash !== null && diagnostics.maxTradeCash > 0) {
-    const logMax = Math.log10(Math.max(diagnostics.maxTradeCash, 1));
-    largeTradePressureScore = clamp(roundNumber((logMax / 5) * 100), 0, 100);
-  }
-
-  // Holder concentration score (already computed, fallback to neutral)
-  const holderConcentrationScore = diagnostics.holderConcentrationScore ?? 50;
-
-  // Recency score (assume recent if we have data)
-  const recencyScore = 80; // default to recent
-
-  // Compute display signal score (UI winProbability) - uses fallbacks
-  const displaySignalScore = computeDisplaySignalScore({
-    marketImpliedProbabilityScore,
-    momentumScore,
-    tradeFlowScore,
+  // Banded confidence scoring anchored to selectedOdds
+  const selectedOdds = selectedOutcome.price > 0 ? 1 / selectedOutcome.price : 99;
+  const holderConcentrationScore = diagnostics.holderConcentrationScore ?? null;
+  const finalDisplaySignalScore = computeBandedSignalScore({
+    selectedOdds,
+    delta6hPp: diagnostics.delta6hPp,
+    maxTradeCash: diagnostics.maxTradeCash,
+    recentTradeCash: diagnostics.recentTradeCash,
     holderConcentrationScore,
-    liquidityDepthScore,
-    spreadQualityScore,
   });
+  if (finalDisplaySignalScore === null) return null;
 
-  const isMiddleConfidenceFallbackMarket = isMiddleConfidenceSportsFallbackMarket(enriched.event, market);
-  const baseDisplayScore = isMiddleConfidenceFallbackMarket
-    ? clamp(displaySignalScore, 45, 65)
-    : displaySignalScore;
-  // Cap confidence based on opposite outcome odds (favorite strength)
-  const oppPrice = 1 - selectedOutcome.price;
-  const oppOdds = oppPrice > 0.01 ? 1 / oppPrice : 99;
-  const oppCap = oppOdds > 4.0 ? 65
-    : oppOdds > 3.0 ? 75
-    : oppOdds > 1.44 ? 77
-    : 90;
-  const finalDisplaySignalScore = Math.min(baseDisplayScore, oppCap);
+  const fc = finalDisplaySignalScore;
 
-  // Compute metrics with fallbacks
-  const smartMoneyProxy = computeSmartMoneyProxy({
-    largeTradePressureScore,
-    holderConcentrationScore,
-    liquidityDepthScore,
-    openInterestScore,
-  });
+  // Smart Money — anchored to fc
+  const smartMoneyVal = diagnostics.maxTradeCash !== null && diagnostics.maxTradeCash >= 3000
+    ? clamp(fc + 3, fc - 5, fc + 5)
+    : diagnostics.recentTradeCash !== null
+      ? clamp(fc, fc - 5, fc + 5)
+      : clamp(fc - 4, fc - 5, fc + 5);
 
-  const publicVsWhaleProxy = computePublicVsWhaleProxy({
-    selectedTradeCount: diagnostics.selectedTradeCount,
-    totalTradeCount: diagnostics.totalTradeCount,
-    selectedTradeCashVolume: diagnostics.recentTradeCash,
-    totalTradeCashVolume: diagnostics.recentTradeCash, // Use same if we don't have total
-  });
+  // Public vs Whale — anchored to fc
+  const pubWhaleVal = diagnostics.selectedTradeCount !== null && diagnostics.recentTradeCash !== null
+    ? clamp(fc - 1, fc - 8, fc + 5)
+    : clamp(fc - 5, fc - 8, fc + 5);
 
-  const preEventScoreAI = computePreEventScoreAI({
-    momentumScore,
-    liquidityDepthScore,
-    spreadQualityScore,
-    openInterestScore,
-    recencyScore,
-  });
+  // PreEventScore AI — anchored to fc
+  const preEventVal = (diagnostics.delta6hPp !== null && diagnostics.delta6hPp > 0)
+    ? clamp(fc + 2, fc - 3, fc + 5)
+    : clamp(fc + 1, fc - 3, fc + 5);
 
-  // Build trust metrics
   const metrics: TrustMetric[] = [
     {
       id: "smart-money",
       label: "Smart Money",
-      value: roundNumber(smartMoneyProxy),
-      bar: roundNumber(smartMoneyProxy),
+      value: roundNumber(smartMoneyVal),
+      bar: roundNumber(smartMoneyVal),
       icon: "/icons/trust-smart-money.png",
     },
     {
       id: "public-vs-whale",
       label: "Public vs Whale Money",
-      value: roundNumber(publicVsWhaleProxy),
-      bar: roundNumber(publicVsWhaleProxy),
+      value: roundNumber(pubWhaleVal),
+      bar: roundNumber(pubWhaleVal),
       icon: "/icons/trust-public-whale.png",
     },
     {
       id: "pre-event-score",
       label: "PreEventScore AI",
-      value: roundNumber(preEventScoreAI),
-      bar: roundNumber(preEventScoreAI),
+      value: roundNumber(preEventVal),
+      bar: roundNumber(preEventVal),
       icon: "/icons/trust-ai-score.png",
     },
   ];
 
-  const finalMetrics = isMiddleConfidenceFallbackMarket
-    ? metrics.map(metric => ({
-        ...metric,
-        value: Math.min(metric.value, 65),
-        bar: Math.min(metric.bar, 65),
-      }))
-    : metrics;
+  const finalMetrics = metrics;
 
   // Generate profit string
   const profitPercent = computePotentialProfitPercent(selectedOutcome.price);
