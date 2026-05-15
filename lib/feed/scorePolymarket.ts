@@ -352,17 +352,13 @@ export function computeDisplaySignalScore(params: {
       { value: spreadQualityScore, weight: 0.10 },
     ]);
   } else {
-    score = normalizeWeightedScore([
-      { value: marketImpliedProbabilityScore, weight: 0.30 },
-      { value: momentumScore, weight: 0.25 },
-      { value: tradeFlowScore, weight: 0.20 },
-      { value: liquidityDepthScore, weight: 0.15 },
-      { value: spreadQualityScore, weight: 0.10 },
-    ]);
+    const impliedProb = clamp(marketImpliedProbabilityScore ?? 50, 0, 100);
+    const momentumAdj = ((momentumScore ?? 50) - 50) * 0.10;
+    score = clamp(35 + impliedProb * 0.65 + momentumAdj, 35, 97);
   }
 
-  // Clamp to 52-89 for UI consistency
-  return clamp(score, 52, 89);
+  // Clamp to 35-97 for full range display
+  return clamp(score, 35, 97);
 }
 
 /**
