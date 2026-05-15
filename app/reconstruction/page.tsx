@@ -792,10 +792,13 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
   const ringColor = getRingColor(probability);
 
   const profitPercent = parseFloat((signal.profit || '0').replace('%', '')) || 0;
-  const profitDollars = Math.round(profitPercent);
   const americanOdds = profitPercent >= 100
     ? `+${Math.round(profitPercent)}`
     : `-${Math.round(10000 / Math.max(profitPercent, 1))}`;
+  const americanOddsNumber = Number.parseInt(String(americanOdds).replace(/[^\d-]/g, ''), 10);
+  const profitDollars = Number.isFinite(americanOddsNumber) && americanOddsNumber !== 0
+    ? Math.round(americanOddsNumber > 0 ? americanOddsNumber : 10000 / Math.abs(americanOddsNumber))
+    : Math.round(profitPercent);
 
   // Compute ring style with direct conic-gradient
   const ringStyle = {
@@ -844,8 +847,8 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
         </div>
         <div className={styles.positionProfitDivider} />
         <div className={styles.profitCol}>
-          <span style={{maxWidth:'52%'}}>Mkt Return</span>
-          <span style={{position:'absolute',top:'clamp(9px,2.35vw,11px)',right:'clamp(8px,2vw,10px)',zIndex:4,fontSize:'10px',fontWeight:700,color:'#D8E8F2',background:'rgba(8,18,32,0.8)',border:'1px solid rgba(160,200,230,0.2)',borderRadius:'6px',padding:'2px 7px',lineHeight:1.3,whiteSpace:'nowrap'}}>Odds {americanOdds}</span>
+          <span style={{display:'inline-block',maxWidth:'calc(100% - 68px)',fontSize:'clamp(8px,1.9vw,10px)',whiteSpace:'nowrap',position:'relative',zIndex:4}}>Market Return</span>
+          <span style={{position:'absolute',top:'clamp(8px,2.15vw,10px)',right:'clamp(8px,2vw,10px)',zIndex:4,fontSize:'clamp(7.5px,1.85vw,9px)',fontWeight:700,color:'#D8E8F2',background:'rgba(8,18,32,0.72)',border:'1px solid rgba(160,200,230,0.22)',borderRadius:'999px',padding:'2px 5px',lineHeight:1.25,whiteSpace:'nowrap'}}>Odds {americanOdds}</span>
           <div className={styles.profitValue} style={{color:'#86FF5A',textShadow:'0 0 14px rgba(134,255,90,0.32)'}}>+${profitDollars}</div>
           <div style={{fontSize:'clamp(9px,2.3vw,11px)',fontWeight:600,color:'rgba(213,229,238,0.72)',lineHeight:1.2,position:'relative',zIndex:3,marginTop:'1px'}}>per $100 stake</div>
           <div className={styles.trend} aria-hidden="true">
