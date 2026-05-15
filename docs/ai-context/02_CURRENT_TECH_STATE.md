@@ -1,31 +1,53 @@
 # 02_CURRENT_TECH_STATE.md — PolyProPicks
 
-> Last updated: 14.05.2026
+> Last updated: 15.05.2026
 > Update this file after every significant commit or state change.
 > Git output beats this file — always verify with `git log --oneline -3 && git status --short`.
 
 ---
 
-## Git state
+## CURRENT STATE OVERRIDE — 2026-05-15
 
 ```
 Branch:         main
-HEAD:           5264fd6 UI: constrain Mkt Return label width so Odds chip fits
-Origin:         synced (5264fd6 = origin/main)
+HEAD:           1d254cc Score: selectedOdds banded confidence and anchored trust metrics
+Origin:         synced
 Working tree:   clean
 ```
 
 ## Recent commits (newest first)
 
 ```
+1d254cc  Score: selectedOdds banded confidence and anchored trust metrics
+8cabbb6  Score: opp-odds confidence cap, min threshold 52, delta multiplier 0.03
+a24fbc4  Feed: two-stage odds selection 1.7x-3x primary, 1.35x-5x fallback, 72h window
+c87d03c  Score: Gamma-only direct formula 35+prob*0.65, full range 35-97
+ab85fd2  Context sync: HEAD 5264fd6, drift lesson #1 logged, filterTags bug noted
 5264fd6  UI: constrain Mkt Return label width so Odds chip fits
 a2a661c  UI: shorten Market Return label to fit tile
 9109138  UI: fix Market Return layout — correct structure under CSS absolute rules
-568cc5d  Add MarketSourceCarousel inspect-only prompt for UI phase
-0237661  Context sync: HEAD b3a5cb2, contour complete, UI phase logged
-1a8d782  UI: replace Profit tile with Market Return in American odds format
-b3a5cb2  Harden source inventory and architecture map
-1b36f07  UI: add see on polymarket label to link icon
+```
+
+## Product / roadmap state
+
+- Active gate: Decision Card visual acceptance
+- Signal Confidence scoring rebuild (banded selectedOdds formula): on main ✅
+- Market Return / American odds: on main, NOT visually accepted
+- Current blocker: "Odds +160" chip visually collides inside Market Return tile
+- Next safe patch: `app/reconstruction/page.tsx` — simplify/remove Odds chip in profitCol
+- After visual acceptance: filterTags / one-card-across-filters bug
+- MarketSourceCarousel evidence-stack UI: ON HOLD
+- Whop integration: ON HOLD
+
+---
+
+## HISTORICAL — Git state as of 14.05.2026 — SUPERSEDED BY CURRENT STATE OVERRIDE ABOVE
+
+```
+Branch:         main
+HEAD:           5264fd6 UI: constrain Mkt Return label width so Odds chip fits
+Origin:         synced (5264fd6 = origin/main)
+Working tree:   clean
 ```
 
 ## Build state

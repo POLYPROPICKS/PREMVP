@@ -6,7 +6,40 @@
 
 ---
 
-## ✅ CURRENT TRUTH SUMMARY (14.05.2026 ~latest)
+## ✅ CURRENT STATE OVERRIDE — 2026-05-15
+
+```
+Branch:         main
+HEAD:           1d254cc Score: selectedOdds banded confidence and anchored trust metrics
+Origin:         synced
+Working tree:   clean
+```
+
+### Recent commits (newest first)
+```
+1d254cc  Score: selectedOdds banded confidence and anchored trust metrics
+8cabbb6  Score: opp-odds confidence cap, min threshold 52, delta multiplier 0.03
+a24fbc4  Feed: two-stage odds selection 1.7x-3x primary, 1.35x-5x fallback, 72h window
+c87d03c  Score: Gamma-only direct formula 35+prob*0.65, full range 35-97
+ab85fd2  Context sync: HEAD 5264fd6, drift lesson #1 logged, filterTags bug noted
+5264fd6  UI: constrain Mkt Return label width so Odds chip fits
+a2a661c  UI: shorten Market Return label to fit tile
+9109138  UI: fix Market Return layout — correct structure under CSS absolute rules
+```
+
+### Product / roadmap state
+- Active gate: Decision Card visual acceptance
+- Signal Confidence scoring rebuild (banded selectedOdds formula) is on main ✅
+- Market Return / American odds is on main but NOT visually accepted
+- Current blocker: "Odds +160" chip/label visually collides inside the Market Return tile
+- Next safe patch: `app/reconstruction/page.tsx` only — simplify/remove Odds chip inside profitCol
+- After visual acceptance: inspect/fix filterTags / one-card-across-filters issue
+- MarketSourceCarousel evidence-stack UI: ON HOLD until Decision Card + filter sanity accepted
+- Whop readiness: ON HOLD until card/feed/evidence sanity accepted
+
+---
+
+## ✅ CURRENT TRUTH SUMMARY (14.05.2026 ~latest) — HISTORICAL / SUPERSEDED BY CURRENT STATE OVERRIDE ABOVE
 
 ```
 Backend phase:       CLOSED ✅
