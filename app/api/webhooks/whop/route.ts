@@ -168,7 +168,8 @@ export async function POST(request: Request) {
   const internalPlanId = meta ? getString(meta, "internalPlanId") : null;
   const leadIntentId = meta ? getString(meta, "leadIntentId") : null;
   const metaCheckoutSessionId = meta ? getString(meta, "checkoutSessionId") : null;
-  const membershipStatus = getString(eventData, "status");
+  const membershipStatus = typeof eventData["status"] === "string" ? eventData["status"] : "";
+  const accessValidStatuses = new Set(["completed", "active", "trialing"]);
 
   const plan = internalPlanId ? getPlanById(internalPlanId) : null;
 
@@ -191,7 +192,7 @@ export async function POST(request: Request) {
     incomingProductId !== expectedProductId
   )
     ignoreReason = "product_id_mismatch";
-  else if (membershipStatus !== "completed") ignoreReason = "status_not_completed";
+  else if (!accessValidStatuses.has(membershipStatus)) ignoreReason = `status_not_access_valid:${membershipStatus}`;
   else if (!internalPlanId) ignoreReason = "missing_internalPlanId";
   else if (!metaCheckoutSessionId) ignoreReason = "missing_checkoutSessionId";
   else if (!leadIntentId) ignoreReason = "missing_leadIntentId";
