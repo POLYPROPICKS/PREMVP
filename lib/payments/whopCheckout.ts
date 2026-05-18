@@ -26,12 +26,12 @@ export async function createWhopCheckoutConfiguration(
 ): Promise<WhopCheckoutResult> {
   const {
     companyId,
-    productId,
     internalPlanId,
     priceUsd,
     source,
     leadIntentId,
     checkoutSessionId,
+    appUrl,
   } = params;
 
   const apiKey = process.env.WHOP_API_KEY;
@@ -40,11 +40,15 @@ export async function createWhopCheckoutConfiguration(
   }
 
   const body = {
-    company_id: companyId,
-    product_id: productId,
     plan: {
-      initial_price: priceUsd,
+      company_id: companyId,
+      currency: "usd",
       plan_type: "one_time",
+      release_method: "buy_now",
+      initial_price: priceUsd,
+      renewal_price: 0,
+      visibility: "visible",
+      adaptive_pricing_enabled: true,
     },
     metadata: {
       internalPlanId,
@@ -52,6 +56,9 @@ export async function createWhopCheckoutConfiguration(
       checkoutSessionId,
       source,
     },
+    mode: "payment",
+    redirect_url: `${appUrl}/checkout/complete`,
+    source_url: appUrl,
   };
 
   const response = await fetch(WHOP_CHECKOUT_CONFIGS_URL, {

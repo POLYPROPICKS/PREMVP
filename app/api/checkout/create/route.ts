@@ -96,6 +96,7 @@ export async function POST(request: Request) {
       status: "created",
       email,
       metadata: { internalPlanId: plan.internalPlanId, leadIntentId, source },
+      // checkoutSessionId added to metadata after insert (id not yet known at this point)
     })
     .select("id")
     .single();
@@ -109,6 +110,13 @@ export async function POST(request: Request) {
   }
 
   const checkoutSessionId: string = sessionRow.id;
+
+  const checkoutMetadata = {
+    internalPlanId: plan.internalPlanId,
+    leadIntentId,
+    checkoutSessionId,
+    source,
+  };
 
   // --- call Whop provider ---
   let providerResult: Awaited<ReturnType<typeof createWhopCheckoutConfiguration>>;
@@ -129,7 +137,7 @@ export async function POST(request: Request) {
     console.error("Whop checkout config failed:", msg);
     await supabaseAdmin
       .from("checkout_sessions")
-      .update({ status: "failed", metadata: { error: msg } })
+      .update({ status: "failed", metadata: { ...checkoutMetadata, error: msg } })
       .eq("id", checkoutSessionId);
     return NextResponse.json(
       { success: false, error: "PROVIDER_CHECKOUT_FAILED" },
@@ -146,6 +154,7 @@ export async function POST(request: Request) {
       provider_product_id: providerResult.providerProductId ?? productId,
       provider_purchase_url: providerResult.purchaseUrl,
       status: "pending",
+      metadata: checkoutMetadata,
     })
     .eq("id", checkoutSessionId);
 
