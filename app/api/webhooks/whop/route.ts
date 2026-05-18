@@ -146,6 +146,88 @@ export async function POST(request: Request) {
     return jsonError("PAYMENT_EVENT_INSERT_FAILED", 500);
   }
 
+  // ── Deactivation events ──
+  const isDeactivation =
+    eventType === "membership.deactivated" ||
+    eventType === "membership_deactivated";
+
+  if (isDeactivation) {
+    const deactMeta = getMetadata(eventData);
+    const deactMembershipId = eventDataId;
+    const deactSessionId = (() => {
+      const v = deactMeta?.["checkoutSessionId"];
+      return isUuidLike(v) ? v : null;
+    })();
+
+    const renewalEnd = getString(eventData, "renewal_period_end");
+    const now = new Date();
+    const renewalEndDate = renewalEnd ? new Date(renewalEnd) : null;
+    const renewalEndValid = renewalEndDate && !isNaN(renewalEndDate.getTime());
+    const accessStillActive = renewalEndValid && renewalEndDate! > now;
+
+    const deactUpdate = accessStillActive
+      ? {
+          has_premium_access: true,
+          status: "active",
+          access_until: renewalEndDate!.toISOString(),
+          last_event_id: providerEventId,
+          updated_at: now.toISOString(),
+        }
+      : {
+          has_premium_access: false,
+          status: "inactive",
+          access_until: renewalEndValid
+            ? renewalEndDate!.toISOString()
+            : now.toISOString(),
+          last_event_id: providerEventId,
+          updated_at: now.toISOString(),
+        };
+
+    let deactExistingId: string | null = null;
+    if (deactMembershipId) {
+      const { data: byM } = await supabaseAdmin
+        .from("user_entitlements")
+        .select("id")
+        .eq("provider", "whop")
+        .eq("provider_membership_id", deactMembershipId)
+        .maybeSingle();
+      if (byM) deactExistingId = byM.id;
+    }
+    if (!deactExistingId && deactSessionId) {
+      const { data: byS } = await supabaseAdmin
+        .from("user_entitlements")
+        .select("id")
+        .eq("checkout_session_id", deactSessionId)
+        .maybeSingle();
+      if (byS) deactExistingId = byS.id;
+    }
+
+    if (deactExistingId) {
+      await supabaseAdmin
+        .from("user_entitlements")
+        .update(deactUpdate)
+        .eq("id", deactExistingId);
+    }
+
+    await supabaseAdmin
+      .from("payment_events")
+      .update({
+        processing_status: deactExistingId ? "processed" : "logged",
+        processed_at: now.toISOString(),
+        provider_membership_id: deactMembershipId,
+        checkout_session_id: deactSessionId,
+      })
+      .eq("provider", "whop")
+      .eq("provider_event_id", providerEventId);
+
+    return NextResponse.json({
+      received: true,
+      processed: !!deactExistingId,
+      eventType,
+      accessStillActive,
+    });
+  }
+
   // ── Non-membership events: log and return ──
   if (eventType !== "membership.activated") {
     await supabaseAdmin
