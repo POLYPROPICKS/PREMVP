@@ -7,6 +7,9 @@ export type WhopCheckoutParams = {
   internalPlanId: string;
   displayName: string;
   priceUsd: number;
+  renewalPriceUsd: number;
+  billingPeriodDays: number;
+  paymentMode: "recurring" | "one_time";
   source: string;
   leadIntentId: string;
   checkoutSessionId: string;
@@ -28,6 +31,9 @@ export async function createWhopCheckoutConfiguration(
     companyId,
     internalPlanId,
     priceUsd,
+    renewalPriceUsd,
+    billingPeriodDays,
+    paymentMode,
     source,
     leadIntentId,
     checkoutSessionId,
@@ -39,14 +45,18 @@ export async function createWhopCheckoutConfiguration(
     throw new Error("MISSING_ENV: WHOP_API_KEY not set");
   }
 
+  const planType = paymentMode === "recurring" ? "renewal" : "one_time";
+
   const body = {
     plan: {
       company_id: companyId,
+      product_id: params.productId,
       currency: "usd",
-      plan_type: "one_time",
+      plan_type: planType,
       release_method: "buy_now",
       initial_price: priceUsd,
-      renewal_price: 0,
+      renewal_price: renewalPriceUsd,
+      billing_period: billingPeriodDays,
       visibility: "visible",
       adaptive_pricing_enabled: true,
     },
@@ -71,9 +81,24 @@ export async function createWhopCheckoutConfiguration(
   });
 
   if (!response.ok) {
-    throw new Error(
+    const rawText = await response.text().catch(() => "");
+    let parsedBody: unknown = rawText;
+    try {
+      parsedBody = JSON.parse(rawText);
+    } catch {
+      // keep as text
+    }
+    const err = new Error(
       `PROVIDER_CHECKOUT_FAILED: Whop returned ${response.status}`
-    );
+    ) as Error & {
+      providerStatus: number;
+      providerStatusText: string;
+      providerResponseBody: unknown;
+    };
+    err.providerStatus = response.status;
+    err.providerStatusText = response.statusText ?? "";
+    err.providerResponseBody = parsedBody;
+    throw err;
   }
 
   const json = (await response.json()) as Record<string, unknown>;

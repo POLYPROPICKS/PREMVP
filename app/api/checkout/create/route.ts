@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { getEnabledPlanById } from "@/lib/payments/planCatalog";
+import {
+  getEnabledPlanById,
+  getWhopProductIdForPlan,
+} from "@/lib/payments/planCatalog";
 import { createWhopCheckoutConfiguration } from "@/lib/payments/whopCheckout";
 
 const UUID_RE =
@@ -27,20 +30,18 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  const missingEnv: string[] = [];
-  if (!process.env.WHOP_API_KEY) missingEnv.push("WHOP_API_KEY");
-  if (!process.env.WHOP_COMPANY_ID) missingEnv.push("WHOP_COMPANY_ID");
-  if (!process.env.WHOP_PRODUCT_ID) missingEnv.push("WHOP_PRODUCT_ID");
-  if (!process.env.NEXT_PUBLIC_APP_URL) missingEnv.push("NEXT_PUBLIC_APP_URL");
-  if (missingEnv.length > 0) {
+  const missingBase: string[] = [];
+  if (!process.env.WHOP_API_KEY) missingBase.push("WHOP_API_KEY");
+  if (!process.env.WHOP_COMPANY_ID) missingBase.push("WHOP_COMPANY_ID");
+  if (!process.env.NEXT_PUBLIC_APP_URL) missingBase.push("NEXT_PUBLIC_APP_URL");
+  if (missingBase.length > 0) {
     return NextResponse.json(
-      { success: false, error: "MISSING_ENV", missing: missingEnv },
+      { success: false, error: "MISSING_ENV", missing: missingBase },
       { status: 500 }
     );
   }
 
   const companyId = process.env.WHOP_COMPANY_ID!;
-  const productId = process.env.WHOP_PRODUCT_ID!;
   const appUrl = process.env.NEXT_PUBLIC_APP_URL!;
 
   // --- body parse ---
@@ -55,13 +56,30 @@ export async function POST(request: Request) {
   }
 
   // --- input validation ---
-  const internalPlanId =
+  // Backward compatibility: map legacy "premium_7day" to canonical
+  const rawPlanId =
     typeof body.internalPlanId === "string" ? body.internalPlanId : "";
+  const internalPlanId =
+    rawPlanId === "premium_7day" ? "premium_7day_weekly" : rawPlanId;
+
   const plan = getEnabledPlanById(internalPlanId);
   if (!plan) {
     return NextResponse.json(
       { success: false, error: "INVALID_PLAN" },
       { status: 400 }
+    );
+  }
+
+  // Per-plan product env check
+  const productId = getWhopProductIdForPlan(plan);
+  if (!productId) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "MISSING_ENV",
+        missing: [plan.whopProductEnvKey],
+      },
+      { status: 500 }
     );
   }
 
@@ -96,7 +114,6 @@ export async function POST(request: Request) {
       status: "created",
       email,
       metadata: { internalPlanId: plan.internalPlanId, leadIntentId, source },
-      // checkoutSessionId added to metadata after insert (id not yet known at this point)
     })
     .select("id")
     .single();
@@ -119,7 +136,9 @@ export async function POST(request: Request) {
   };
 
   // --- call Whop provider ---
-  let providerResult: Awaited<ReturnType<typeof createWhopCheckoutConfiguration>>;
+  let providerResult: Awaited<
+    ReturnType<typeof createWhopCheckoutConfiguration>
+  >;
   try {
     providerResult = await createWhopCheckoutConfiguration({
       companyId,
@@ -127,6 +146,9 @@ export async function POST(request: Request) {
       internalPlanId: plan.internalPlanId,
       displayName: plan.displayName,
       priceUsd: plan.priceUsd,
+      renewalPriceUsd: plan.renewalPriceUsd,
+      billingPeriodDays: plan.billingPeriodDays,
+      paymentMode: plan.paymentMode,
       source,
       leadIntentId,
       checkoutSessionId,
@@ -134,10 +156,29 @@ export async function POST(request: Request) {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : "unknown";
-    console.error("Whop checkout config failed:", msg);
+    const providerStatus =
+      typeof (err as Record<string, unknown>)["providerStatus"] === "number"
+        ? (err as Record<string, unknown>)["providerStatus"]
+        : null;
+    const providerStatusText =
+      typeof (err as Record<string, unknown>)["providerStatusText"] === "string"
+        ? (err as Record<string, unknown>)["providerStatusText"]
+        : null;
+    const providerResponseBody =
+      (err as Record<string, unknown>)["providerResponseBody"] ?? null;
+    console.error("Whop checkout config failed:", msg, "status:", providerStatus);
     await supabaseAdmin
       .from("checkout_sessions")
-      .update({ status: "failed", metadata: { ...checkoutMetadata, error: msg } })
+      .update({
+        status: "failed",
+        metadata: {
+          ...checkoutMetadata,
+          error: msg,
+          providerStatus,
+          providerStatusText,
+          providerResponseBody,
+        },
+      })
       .eq("id", checkoutSessionId);
     return NextResponse.json(
       { success: false, error: "PROVIDER_CHECKOUT_FAILED" },

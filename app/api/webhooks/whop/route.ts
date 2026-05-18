@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import Whop from "@whop/sdk";
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { getPlanById } from "@/lib/payments/planCatalog";
+import { getPlanById, getWhopProductIdForPlan } from "@/lib/payments/planCatalog";
 
 export const runtime = "nodejs";
 
@@ -64,7 +64,6 @@ export async function POST(request: Request) {
   if (!process.env.WHOP_API_KEY) missingEnv.push("WHOP_API_KEY");
   if (!process.env.WHOP_WEBHOOK_SECRET) missingEnv.push("WHOP_WEBHOOK_SECRET");
   if (!process.env.WHOP_COMPANY_ID) missingEnv.push("WHOP_COMPANY_ID");
-  if (!process.env.WHOP_PRODUCT_ID) missingEnv.push("WHOP_PRODUCT_ID");
   if (missingEnv.length > 0) {
     return NextResponse.json(
       { success: false, error: "MISSING_ENV", missing: missingEnv },
@@ -73,7 +72,6 @@ export async function POST(request: Request) {
   }
 
   const companyId = process.env.WHOP_COMPANY_ID!;
-  const productId = process.env.WHOP_PRODUCT_ID!;
 
   // ── Required webhook headers ──
   if (
@@ -174,6 +172,12 @@ export async function POST(request: Request) {
 
   const plan = internalPlanId ? getPlanById(internalPlanId) : null;
 
+  // Resolve expected product id from plan's env key (per-plan validation)
+  const expectedProductId = plan ? getWhopProductIdForPlan(plan) : null;
+  const incomingProductId = dataProduct
+    ? getString(dataProduct as Record<string, unknown>, "id")
+    : null;
+
   let ignoreReason: string | null = null;
   if (eventCompanyId !== companyId) ignoreReason = "company_id_mismatch";
   else if (
@@ -182,8 +186,9 @@ export async function POST(request: Request) {
   )
     ignoreReason = "data_company_id_mismatch";
   else if (
-    dataProduct &&
-    getString(dataProduct as Record<string, unknown>, "id") !== productId
+    incomingProductId &&
+    expectedProductId &&
+    incomingProductId !== expectedProductId
   )
     ignoreReason = "product_id_mismatch";
   else if (membershipStatus !== "completed") ignoreReason = "status_not_completed";
@@ -209,12 +214,21 @@ export async function POST(request: Request) {
   const membershipId = eventDataId!;
   const providerUserId = dataUser ? getString(dataUser as Record<string, unknown>, "id") : null;
   const providerMemberId = dataMember ? getString(dataMember as Record<string, unknown>, "id") : null;
+
+  // access_until: prefer Whop renewal_period_end, fallback to plan.durationHours
+  const renewalPeriodEnd = getString(eventData, "renewal_period_end");
+  const accessUntil = (() => {
+    if (renewalPeriodEnd) {
+      const parsed = new Date(renewalPeriodEnd);
+      if (!isNaN(parsed.getTime())) return parsed.toISOString();
+    }
+    return addHours(plan!.durationHours);
+  })();
   const providerPlanId = dataPlan ? getString(dataPlan as Record<string, unknown>, "id") : null;
   const providerProductId = dataProduct ? getString(dataProduct as Record<string, unknown>, "id") : null;
   const email = dataUser ? getString(dataUser as Record<string, unknown>, "email") : null;
   const userIdentifier =
     email ?? providerUserId ?? providerMemberId ?? membershipId;
-  const accessUntil = addHours(plan!.durationHours);
 
   const entitlementRow = {
     user_identifier: userIdentifier,
