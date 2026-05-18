@@ -3,6 +3,21 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import styles from './PassOfferModal.module.css';
 
+type InternalPlanId = 'premium_7day_weekly' | 'premium_monthly';
+
+function toInternalPlanId(planId: PlanId): InternalPlanId | null {
+  if (planId === '7day') return 'premium_7day_weekly';
+  if (planId === 'monthly') return 'premium_monthly';
+  return null;
+}
+
+function generateLeadIntentId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return '00000000-0000-4000-8000-' + Date.now().toString().padStart(12, '0').slice(-12);
+}
+
 type PlanId = '7day' | '3day' | 'monthly';
 type ViewState = 'offer' | 'reserve' | 'reserved';
 
@@ -62,6 +77,8 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
   const [email, setEmail] = useState('');
   const [emailError, setEmailError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [checkoutLoading, setCheckoutLoading] = useState(false);
+  const [checkoutError, setCheckoutError] = useState<string | null>(null);
 
   const currentPlan = useMemo(() => getPlan(selectedPlan), [selectedPlan]);
 
@@ -70,6 +87,8 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
     setEmail('');
     setEmailError('');
     setIsSubmitting(false);
+    setCheckoutLoading(false);
+    setCheckoutError(null);
     onClose();
   }, [onClose]);
 
@@ -104,6 +123,8 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
       setEmail('');
       setEmailError('');
       setIsSubmitting(false);
+      setCheckoutLoading(false);
+      setCheckoutError(null);
     }
   }, [isOpen]);
 
@@ -116,37 +137,47 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
 
     const normalizedEmail = email.trim();
     if (!normalizedEmail || !normalizedEmail.includes('@')) {
-      setEmailError('Enter a valid email to reserve access.');
+      setEmailError('Enter a valid email to continue.');
       return;
     }
 
-    if (isSubmitting) return;
+    const internalPlanId = toInternalPlanId(selectedPlan);
+    if (!internalPlanId) {
+      setCheckoutError('This pass is not available yet. Choose 7-Day Premium or Monthly Pro.');
+      return;
+    }
 
-    setIsSubmitting(true);
+    if (checkoutLoading) return;
+
+    setCheckoutLoading(true);
+    setCheckoutError(null);
     setEmailError('');
 
-    const reserveData = {
-      email: normalizedEmail,
-      planId: selectedPlan,
-      planName: currentPlan.name,
-      price: currentPlan.price,
-      timestamp: new Date().toISOString(),
-      source: 'pass_offer_modal',
-    };
-
     try {
-      localStorage.setItem('polypropicks_pass_reserve', JSON.stringify(reserveData));
-      onPremiumReserve({
-        email: normalizedEmail,
-        planId: selectedPlan,
-        planName: currentPlan.name,
-        planPrice: currentPlan.price,
+      const leadIntentId = generateLeadIntentId();
+      const response = await fetch('/api/checkout/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          internalPlanId,
+          leadIntentId,
+          source: 'pass_offer_modal',
+          email: normalizedEmail,
+        }),
       });
-      setCurrentView('reserved');
+
+      const json = await response.json().catch(() => ({}));
+
+      if (response.ok && typeof json.checkoutUrl === 'string' && json.checkoutUrl.length > 0) {
+        window.location.href = json.checkoutUrl;
+        return;
+      }
+
+      throw new Error('no_checkout_url');
     } catch {
-      setEmailError('Could not save locally. Try again.');
+      setCheckoutError('Checkout could not be started. Please try again.');
     } finally {
-      setIsSubmitting(false);
+      setCheckoutLoading(false);
     }
   };
 
@@ -274,9 +305,9 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
           <main className={styles.reserveView}>
             <section className={styles.reserveCard}>
               <div className={styles.reserveLock} aria-hidden="true">✓</div>
-              <h2>Reserve your premium access</h2>
+              <h2>Unlock your premium access</h2>
               <p>
-                Premium access for this month is currently limited. Leave your email and we'll notify you when new invite spots open.
+                Enter your email to proceed to secure checkout. You'll get instant access after payment.
               </p>
               <form onSubmit={handleSubmitReserve} className={styles.reserveForm}>
                 <input
@@ -285,19 +316,20 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="Enter your email"
                   className={styles.emailInput}
-                  disabled={isSubmitting}
+                  disabled={checkoutLoading}
                   aria-label="Email address"
                 />
                 {emailError && <div className={styles.emailError}>{emailError}</div>}
-                <button type="submit" className={styles.primaryCta} disabled={isSubmitting}>
-                  {isSubmitting ? 'Reserving…' : 'Reserve My Spot'}
+                {checkoutError && <div className={styles.emailError}>{checkoutError}</div>}
+                <button type="submit" className={styles.primaryCta} disabled={checkoutLoading}>
+                  {checkoutLoading ? 'Starting checkout…' : `Unlock ${currentPlan.name} — ${currentPlan.price}`}
                 </button>
               </form>
               <button type="button" className={styles.secondaryLink} onClick={() => setCurrentView('offer')}>
                 Back to pricing
               </button>
               <p className={styles.legalText}>
-                No payment is taken now.
+                You will be taken to a secure Whop checkout page.
               </p>
             </section>
           </main>
