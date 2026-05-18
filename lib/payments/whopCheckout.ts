@@ -70,7 +70,7 @@ export async function createWhopCheckoutConfiguration(
       source,
     },
     mode: "payment",
-    redirect_url: `${appUrl}/checkout/complete`,
+    redirect_url: `${appUrl}/checkout/complete?checkoutSessionId=${encodeURIComponent(checkoutSessionId)}`,
     source_url: appUrl,
   };
 

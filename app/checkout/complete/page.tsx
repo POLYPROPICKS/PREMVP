@@ -49,6 +49,20 @@ function CheckoutCompleteInner() {
   const [checking, setChecking] = useState(false);
   const [result, setResult] = useState<EntitlementResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [activated, setActivated] = useState(false);
+
+  async function createSession(sessionId: string): Promise<boolean> {
+    try {
+      const res = await fetch('/api/auth/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ checkoutSessionId: sessionId }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  }
 
   async function checkBySessionId(sessionId: string) {
     setChecking(true);
@@ -61,12 +75,17 @@ function CheckoutCompleteInner() {
       });
       const json = await res.json().catch(() => ({}));
       if (res.ok && json.success) {
-        setResult({
+        const entResult = {
           hasPremiumAccess: json.hasPremiumAccess,
           status: json.status,
           activePlan: json.activePlan ?? null,
           accessUntil: json.accessUntil ?? null,
-        });
+        };
+        setResult(entResult);
+        if (entResult.hasPremiumAccess) {
+          const ok = await createSession(sessionId);
+          setActivated(ok);
+        }
       } else {
         setError('Could not verify access. Enter your email below.');
       }
@@ -122,6 +141,31 @@ function CheckoutCompleteInner() {
   // ── Result card ──────────────────────────────────────────────────────────
   if (result) {
     if (result.hasPremiumAccess) {
+      if (activated) {
+        // Activation bridge — session cookie set, checkoutSessionId proof confirmed
+        return (
+          <div className={styles.page}>
+            <div className={styles.card}>
+              <span className={styles.icon} aria-hidden="true">✓</span>
+              <h1 className={styles.title}>Access Activated</h1>
+              <p className={styles.body}>Your premium pass is now active on this device.</p>
+              {result.activePlan && (
+                <span className={styles.planChip}>{result.activePlan.replace(/_/g, ' ')}</span>
+              )}
+              {result.accessUntil && (
+                <p className={styles.secondary}>
+                  Active until: {formatDate(result.accessUntil)}
+                </p>
+              )}
+              <a href="/premium" className={styles.cta}>Go to Premium Feed</a>
+              <p className={styles.compliance}>
+                Sports market intelligence is informational only. No guarantee of results.
+              </p>
+            </div>
+          </div>
+        );
+      }
+      // Email-only confirmed — no session cookie
       return (
         <div className={styles.page}>
           <div className={styles.card}>
@@ -133,7 +177,7 @@ function CheckoutCompleteInner() {
                 Access active until: {formatDate(result.accessUntil)}
               </p>
             )}
-            <a href="/" className={styles.cta}>Go to PolyProPicks</a>
+            <a href="/premium" className={styles.cta}>Go to Premium Feed</a>
             <p className={styles.compliance}>
               Sports market intelligence is informational only. No guarantee of results.
             </p>

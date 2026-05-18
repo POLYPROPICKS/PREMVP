@@ -1,0 +1,176 @@
+.page {
+  min-height: 100dvh;
+  background: #080e1a;
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: #d8e8f4;
+}
+
+.header {
+  padding: 20px 16px 12px;
+  border-bottom: 1px solid rgba(96, 160, 220, 0.12);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.headerTitle {
+  font-size: clamp(15px, 4vw, 18px);
+  font-weight: 700;
+  color: #d8e8f4;
+  margin: 0;
+}
+
+.planChip {
+  display: inline-block;
+  padding: 3px 12px;
+  background: rgba(26, 110, 196, 0.22);
+  border: 1px solid rgba(96, 160, 220, 0.3);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #7ec8f4;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.liveDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #72ff48;
+  display: inline-block;
+  flex-shrink: 0;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.body {
+  flex: 1;
+  padding: 20px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.sectionLabel {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(160, 190, 215, 0.55);
+  margin: 0;
+}
+
+.feedShell {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.signalCard {
+  background: #0d1a2e;
+  border: 1px solid rgba(96, 160, 220, 0.14);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.signalEvent {
+  font-size: 13px;
+  font-weight: 600;
+  color: #d8e8f4;
+}
+
+.signalPos {
+  font-size: 12px;
+  color: rgba(160, 190, 215, 0.7);
+}
+
+.signalMeta {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+}
+
+.badgeGreen {
+  background: rgba(114, 255, 72, 0.12);
+  color: #72ff48;
+  border: 1px solid rgba(114, 255, 72, 0.25);
+}
+
+.badgeBlue {
+  background: rgba(96, 160, 220, 0.12);
+  color: #7ec8f4;
+  border: 1px solid rgba(96, 160, 220, 0.25);
+}
+
+.until {
+  font-size: 11px;
+  color: rgba(160, 190, 215, 0.42);
+  padding: 0 16px 16px;
+}
+
+.restoreCard {
+  max-width: 440px;
+  margin: 40px auto;
+  background: #0d1a2e;
+  border: 1px solid rgba(96, 160, 220, 0.18);
+  border-radius: 16px;
+  padding: 32px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+
+.restoreTitle {
+  font-size: clamp(16px, 4vw, 20px);
+  font-weight: 700;
+  color: #d8e8f4;
+  margin: 0;
+}
+
+.restoreBody {
+  font-size: 13px;
+  color: rgba(196, 218, 236, 0.75);
+  line-height: 1.55;
+  margin: 0;
+}
+
+.cta {
+  display: inline-block;
+  padding: 12px 28px;
+  background: linear-gradient(135deg, #1a6ec4 0%, #0f4a8a 100%);
+  color: #e8f2fc;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 999px;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+.compliance {
+  font-size: 10px;
+  color: rgba(140, 170, 200, 0.35);
+  text-align: center;
+  padding: 0 16px 20px;
+  line-height: 1.45;
+}

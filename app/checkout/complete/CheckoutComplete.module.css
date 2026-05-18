@@ -76,6 +76,19 @@
   margin-top: 4px;
 }
 
+.planChip {
+  display: inline-block;
+  padding: 4px 14px;
+  background: rgba(26, 110, 196, 0.22);
+  border: 1px solid rgba(96, 160, 220, 0.3);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #7ec8f4;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .checkForm {
   display: flex;
   flex-direction: column;
