@@ -46,6 +46,9 @@ export async function createWhopCheckoutConfiguration(
   }
 
   const planType = paymentMode === "recurring" ? "renewal" : "one_time";
+  const isRecurring = planType === "renewal";
+  const initialPriceForWhop = isRecurring ? 0 : priceUsd;
+  const renewalPriceForWhop = isRecurring ? renewalPriceUsd : 0;
 
   const body = {
     plan: {
@@ -54,8 +57,8 @@ export async function createWhopCheckoutConfiguration(
       currency: "usd",
       plan_type: planType,
       release_method: "buy_now",
-      initial_price: priceUsd,
-      renewal_price: renewalPriceUsd,
+      initial_price: initialPriceForWhop,
+      renewal_price: renewalPriceForWhop,
       billing_period: billingPeriodDays,
       visibility: "visible",
       adaptive_pricing_enabled: true,
