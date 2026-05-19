@@ -72,26 +72,80 @@ export async function readLatestGeneratedSignalPairs(
   }));
 }
 
+// Parses a percent string like "+38%" or "-5.5%" to a number (38, -5.5).
+// Returns null for unparseable input.
+function parsePercentLikeNumber(raw: string | undefined | null): number | null {
+  if (!raw) return null;
+  const match = raw.match(/([+-]?\d+(?:\.\d+)?)\s*%/);
+  if (!match) return null;
+  const n = parseFloat(match[1]);
+  return isNaN(n) ? null : n;
+}
+
+// Returns the numeric value of the first metric whose label contains `keyword` (case-insensitive).
+function findMetricValue(
+  metrics: Array<{ label: string; value: number }> | undefined | null,
+  keyword: string
+): number | null {
+  if (!metrics) return null;
+  const kw = keyword.toLowerCase();
+  const found = metrics.find((m) => m.label.toLowerCase().includes(kw));
+  return found != null ? found.value : null;
+}
+
 /**
  * Write generated signal pairs to cache
  */
 export async function writeGeneratedSignalPairs(
   input: WritePairsInput
 ): Promise<number> {
-  const rows = input.pairs.map((pair) => ({
-    source: input.source,
-    formula_version: input.formulaVersion,
-    event_slug: pair.premiumSignal.eventTitle,
-    market_slug: pair.marketSource.headline,
-    condition_id: pair.diagnostics.conditionId,
-    selected_outcome: pair.diagnostics.selectedOutcome,
-    premium_signal: pair.premiumSignal,
-    market_source: pair.marketSource,
-    market_sources: pair.marketSources ?? null,
-    diagnostics: pair.diagnostics,
-    score: null, // score field doesn't exist on diagnostics
-    expires_at: input.expiresAt,
-  }));
+  const rows = input.pairs.map((pair) => {
+    const { premiumSignal: ps, diagnostics: diag } = pair;
+
+    // --- immutable point-in-time performance snapshot ---
+    const selectedTokenId = diag.selectedTokenId ?? null;
+    const entryPriceNum =
+      typeof diag.currentPrice === "number" ? diag.currentPrice : null;
+    const signalConfidenceNum =
+      typeof ps.winProbability === "number" ? ps.winProbability : null;
+    const expectedReturnPctNum = parsePercentLikeNumber(ps.profit);
+    const trustMetrics =
+      Array.isArray(ps.metrics) && ps.metrics.length > 0 ? ps.metrics : null;
+    const smartMoneyScoreNum = findMetricValue(ps.metrics, "smart money");
+    const whalePublicScoreNum =
+      findMetricValue(ps.metrics, "whale") ??
+      findMetricValue(ps.metrics, "public");
+    const preEventScoreNum = findMetricValue(ps.metrics, "pre");
+
+    return {
+      source: input.source,
+      formula_version: input.formulaVersion,
+      event_slug: ps.eventTitle,
+      market_slug: pair.marketSource.headline,
+      condition_id: diag.conditionId,
+      selected_outcome: diag.selectedOutcome,
+      premium_signal: ps,
+      market_source: pair.marketSource,
+      market_sources: pair.marketSources ?? null,
+      diagnostics: diag,
+      score: null, // score field doesn't exist on diagnostics
+      expires_at: input.expiresAt,
+      // performance snapshot columns
+      selected_token_id: selectedTokenId,
+      entry_price_num: entryPriceNum,
+      signal_confidence_num: signalConfidenceNum,
+      expected_return_pct_num: expectedReturnPctNum,
+      trust_metrics: trustMetrics,
+      smart_money_score_num: smartMoneyScoreNum,
+      whale_public_score_num: whalePublicScoreNum,
+      pre_event_score_num: preEventScoreNum,
+      // result columns — unpopulated; filled by future resolver
+      signal_result: null,
+      resolved_at: null,
+      winning_outcome: null,
+      realized_return_pct: null,
+    };
+  });
 
   const { error, count } = await supabaseAdmin
     .from("generated_signal_pairs")
