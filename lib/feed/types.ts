@@ -97,6 +97,7 @@ export interface LandingCardsResponse {
   source: "polymarket";
   formulaVersion: typeof FORMULA_VERSION;
   pairs: LandingCardPair[];
+  upcomingPairs?: LandingCardPair[];
   rejected: Array<{ id?: string; rejectionReasons: string[] }>;
   error?: string;
   filters?: FilterParams;
