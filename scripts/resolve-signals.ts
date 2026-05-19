@@ -21,6 +21,15 @@ const rawLimit = (() => {
   return Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : 25;
 })();
 
+// In write mode, default maxUpdates = 1 to prevent accidental bulk writes.
+// In dry-run mode, this value is logged but has no effect.
+const maxUpdates = (() => {
+  const arg = process.argv.find((a) => a.startsWith("--max-updates="));
+  if (!arg) return WRITE_MODE ? 1 : Infinity;
+  const n = parseInt(arg.split("=")[1], 10);
+  return Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : WRITE_MODE ? 1 : Infinity;
+})();
+
 // ---- Main ------------------------------------------------------------------
 
 async function main() {
@@ -33,7 +42,8 @@ async function main() {
   const startedAt = new Date().toISOString();
   const mode = WRITE_MODE ? "write" : "dry-run";
 
-  console.log(`[resolve-signals] === START mode=${mode} limit=${rawLimit} ===`);
+  const maxUpdatesLabel = WRITE_MODE ? String(maxUpdates) : "n/a";
+  console.log(`[resolve-signals] === START mode=${mode} limit=${rawLimit} maxUpdates=${maxUpdatesLabel} ===`);
 
   // Select unresolved rows with required snapshot fields
   const { data: rows, error: selectError } = await supabase
@@ -107,6 +117,15 @@ async function main() {
     if (!WRITE_MODE) {
       skippedCount++;
       continue;
+    }
+
+    // Write mode: enforce max-updates guard before each write
+    if (updatedCount >= maxUpdates) {
+      console.log(
+        `[resolve-signals] Max updates reached (${maxUpdates}) — stopping write updates`
+      );
+      skippedCount++;
+      break;
     }
 
     // Write mode: update with idempotency guard
