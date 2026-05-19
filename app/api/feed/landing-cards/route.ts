@@ -244,12 +244,14 @@ function buildResponse(
   inspected?: LandingCardsResponse["inspected"],
   cacheBypassed = false,
   cacheBypassReason?: string,
+  upcomingPairs?: LandingCardPair[],
 ) {
   return {
     generatedAt: new Date().toISOString(),
     source: "polymarket" as const,
     formulaVersion: FORMULA_VERSION,
     pairs,
+    ...(upcomingPairs !== undefined ? { upcomingPairs } : {}),
     rejected,
     filters: { limit, category, minDataCoverage, excludeEnded },
     inspected: inspected ?? {
@@ -293,12 +295,17 @@ export async function GET(request: NextRequest) {
     const excludeEndedParam = searchParams.get("excludeEnded");
     const excludeEnded = excludeEndedParam !== "false";
 
+    const includeUpcoming = searchParams.get("includeUpcoming") === "true";
+    const emptyUpcoming: LandingCardPair[] = [];
+
     try {
       const cachedPairs = await readLatestGeneratedSignalPairs(limit);
       const canonicalCachedPairs = canonicalizePairs(cachedPairs, limit);
       if (canonicalCachedPairs.length > 0) {
         return NextResponse.json(
-          buildResponse(canonicalCachedPairs, limit, category, minDataCoverage, excludeEnded, "hit"),
+          buildResponse(canonicalCachedPairs, limit, category, minDataCoverage, excludeEnded, "hit",
+            undefined, undefined, false, undefined,
+            includeUpcoming ? emptyUpcoming : undefined),
           { status: 200 }
         );
       }
@@ -325,6 +332,9 @@ export async function GET(request: NextRequest) {
           "miss",
           generated.rejected,
           generated.inspected,
+          false,
+          undefined,
+          includeUpcoming ? emptyUpcoming : undefined,
         ),
         { status: 200 }
       );
@@ -343,6 +353,7 @@ export async function GET(request: NextRequest) {
         generated.inspected,
         false,
         "empty_generated_pairs",
+        includeUpcoming ? emptyUpcoming : undefined,
       ),
       { status: 200 }
     );
