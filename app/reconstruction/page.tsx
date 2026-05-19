@@ -4,12 +4,48 @@ import { useState, useEffect, useCallback, useMemo, type CSSProperties } from 'r
 import styles from './Reconstruction.module.css';
 import { premiumSignals as staticPremiumSignals, PremiumSignal } from '@/content/signals';
 import { marketSources as staticMarketSources } from '@/content/marketSources';
-import { getCandidatePairsForFilter, normalizeLandingPairs, selectBestPairForFilter, type FilterTag, type LandingPair, type PassModalStep } from '@/lib/feed/landingPairs';
+import { normalizeLandingPairs, type LandingPair, type PassModalStep } from '@/lib/feed/landingPairs';
 import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
 import PassOfferModal from '@/components/modals/PassOfferModal';
 
 type MarketEvidenceSource = NonNullable<LandingPair['marketSources']>[number];
+
+type PublicFilter = "live" | "wc2026" | "nhl" | "nba" | "esport";
+
+function signalMatchesPublicFilter(signal: PremiumSignal, tag: PublicFilter): boolean {
+  if (tag === "live") return true;
+  const league = (signal.league ?? "").toLowerCase();
+  const title = (signal.eventTitle ?? "").toLowerCase();
+  const combined = `${league} ${title}`;
+  if (tag === "wc2026") {
+    const isWorldCup =
+      combined.includes("world cup") ||
+      combined.includes("wc2026") ||
+      combined.includes("wc 2026") ||
+      combined.includes("fifa");
+    const isHockey = combined.includes("hockey") || league.includes("nhl");
+    return isWorldCup && !isHockey;
+  }
+  if (tag === "nhl")
+    return league.includes("nhl") || combined.includes("stanley") || (combined.includes("hockey") && !combined.includes("world cup"));
+  if (tag === "nba")
+    return league.includes("nba") || combined.includes("basketball") || combined.includes("knicks") || combined.includes("cavaliers");
+  if (tag === "esport")
+    return (
+      league.includes("esport") ||
+      league.includes("gaming") ||
+      combined.includes("esports") ||
+      combined.includes("esport") ||
+      combined.includes("lol") ||
+      combined.includes("league of legends") ||
+      combined.includes("cs2") ||
+      combined.includes("counter-strike") ||
+      combined.includes("dota") ||
+      combined.includes("valorant")
+    );
+  return false;
+}
 
 const fallbackPairs: LandingPair[] = staticPremiumSignals.flatMap((signal, index) => {
   const marketSource = staticMarketSources[index] ?? staticMarketSources[0];
@@ -38,20 +74,21 @@ export default function ReconstructionPage() {
   const [allPairs, setAllPairs] = useState<LandingPair[]>(fallbackPairs);
   const [activePairId, setActivePairId] = useState<string>(fallbackPairs[0]?.id ?? '');
   const [activeEvidenceIndex, setActiveEvidenceIndex] = useState(0);
-  const [activeFilter, setActiveFilter] = useState<FilterTag>('sports');
+  const [activeFilter, setActiveFilter] = useState<PublicFilter>("live");
   const [isPassOfferModalOpen, setIsPassOfferModalOpen] = useState(false);
 
-  const candidatePairs = useMemo(
-    () => getCandidatePairsForFilter(allPairs, activeFilter),
-    [allPairs, activeFilter]
-  );
+  const candidatePairs = useMemo(() => {
+    if (activeFilter === "live") return allPairs;
+    return allPairs.filter((p) => signalMatchesPublicFilter(p.premiumSignal, activeFilter));
+  }, [allPairs, activeFilter]);
 
-  const filterCounts = useMemo<Record<FilterTag, number>>(
+  const filterCounts = useMemo<Record<PublicFilter, number>>(
     () => ({
-      live: allPairs.filter((p) => p.filterTags.includes('live')).length,
-      wc2026: allPairs.filter((p) => p.filterTags.includes('wc2026')).length,
-      sports: allPairs.filter((p) => p.filterTags.includes('sports')).length,
-      trending: allPairs.filter((p) => p.filterTags.includes('trending')).length,
+      live: allPairs.length,
+      wc2026: allPairs.filter((p) => signalMatchesPublicFilter(p.premiumSignal, "wc2026")).length,
+      nhl: allPairs.filter((p) => signalMatchesPublicFilter(p.premiumSignal, "nhl")).length,
+      nba: allPairs.filter((p) => signalMatchesPublicFilter(p.premiumSignal, "nba")).length,
+      esport: allPairs.filter((p) => signalMatchesPublicFilter(p.premiumSignal, "esport")).length,
     }),
     [allPairs]
   );
@@ -102,12 +139,14 @@ export default function ReconstructionPage() {
     return () => window.clearInterval(timer);
   }, [activePair, activeMarketSources.length]);
 
-  const handleFilterClick = useCallback((filter: FilterTag) => {
+  const handleFilterClick = useCallback((filter: PublicFilter) => {
     setActiveFilter(filter);
-
-    const bestPair = selectBestPairForFilter(allPairs, filter);
-    if (bestPair) {
-      setActivePairId(bestPair.id);
+    const candidates = filter === "live"
+      ? allPairs
+      : allPairs.filter((p) => signalMatchesPublicFilter(p.premiumSignal, filter));
+    const first = (candidates.length > 0 ? candidates[0] : allPairs[0]) ?? null;
+    if (first) {
+      setActivePairId(first.id);
       setActiveEvidenceIndex(0);
     }
   }, [allPairs]);
@@ -281,14 +320,21 @@ export default function ReconstructionPage() {
             renderCard={(source) => <MarketSourceCard source={source as MarketEvidenceSource} />}
           />
           <PillsRow activeFilter={activeFilter} onFilterClick={handleFilterClick} counts={filterCounts} />
-          <PremiumEventCarousel
-            signals={landingSignals}
-            activeIndex={activePairIndex}
-            onActiveIndexChange={handleActivePairIndexChange}
-            renderCard={(signal, onCtaClick) => <PremiumSignalCard signal={signal} onCtaClick={onCtaClick} />}
-            onCtaClick={openModal}
-            onLockedFeedAttempt={handleLockedFeedAttempt}
-          />
+          {activeFilter !== "live" && candidatePairs.length === 0 ? (
+            <EmptyFilterTeaser
+              filterLabel={FILTER_LABELS[activeFilter]}
+              onSwitchToLive={() => handleFilterClick("live")}
+            />
+          ) : (
+            <PremiumEventCarousel
+              signals={landingSignals}
+              activeIndex={activePairIndex}
+              onActiveIndexChange={handleActivePairIndexChange}
+              renderCard={(signal, onCtaClick) => <PremiumSignalCard signal={signal} onCtaClick={onCtaClick} />}
+              onCtaClick={openModal}
+              onLockedFeedAttempt={handleLockedFeedAttempt}
+            />
+          )}
         </div>
       </section>
 
@@ -639,20 +685,57 @@ function MarketSourceCard({ source }: { source: MarketEvidenceSource }) {
   );
 }
 
+const FILTER_LABELS: Record<PublicFilter, string> = {
+  live: "Live",
+  wc2026: "WC2026",
+  nhl: "NHL",
+  nba: "NBA",
+  esport: "eSport",
+};
+
+function EmptyFilterTeaser({
+  filterLabel,
+  onSwitchToLive,
+}: {
+  filterLabel: string;
+  onSwitchToLive: () => void;
+}) {
+  return (
+    <div className={styles.emptyFilterTeaser}>
+      <div className={styles.emptyFilterTeaserEyebrow}>PREMIUM EDGE SCANNING</div>
+      <div className={styles.emptyFilterTeaserTitle}>No live {filterLabel} signal right now</div>
+      <p className={styles.emptyFilterTeaserBody}>
+        We only show a card when market movement, liquidity, and confidence pass our threshold.
+      </p>
+      <div className={styles.emptyFilterTeaserHint}>
+        Next qualified {filterLabel} edge will appear here.
+      </div>
+      <button
+        type="button"
+        className={styles.emptyFilterTeaserLink}
+        onClick={onSwitchToLive}
+      >
+        Switch to Live to see all available signals →
+      </button>
+    </div>
+  );
+}
+
 function PillsRow({
   activeFilter,
   onFilterClick,
   counts,
 }: {
-  activeFilter: FilterTag;
-  onFilterClick: (filter: FilterTag) => void;
-  counts: Record<FilterTag, number>;
+  activeFilter: PublicFilter;
+  onFilterClick: (filter: PublicFilter) => void;
+  counts: Record<PublicFilter, number>;
 }) {
-  const filters: Array<{ tag: FilterTag; label: string }> = [
-    { tag: 'live', label: 'Live' },
-    { tag: 'wc2026', label: 'WC2026' },
-    { tag: 'sports', label: 'Sports' },
-    { tag: 'trending', label: 'Trending' },
+  const filters: Array<{ tag: PublicFilter; label: string }> = [
+    { tag: "live", label: "Live" },
+    { tag: "wc2026", label: "WC2026" },
+    { tag: "nhl", label: "NHL" },
+    { tag: "nba", label: "NBA" },
+    { tag: "esport", label: "eSport" },
   ];
 
   return (
@@ -665,9 +748,7 @@ function PillsRow({
           onClick={() => onFilterClick(filter.tag)}
         >
           {filter.label}
-          {counts[filter.tag] > 0 && (
-            <span className={styles.pillCount}>{counts[filter.tag]}</span>
-          )}
+          <span className={styles.pillCount}>{counts[filter.tag]}</span>
         </button>
       ))}
     </div>

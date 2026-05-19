@@ -2193,3 +2193,76 @@
   margin-top: auto !important;
   border: 0 !important;
 }
+
+/* ── Empty filter teaser card ────────────────────────────────────────────── */
+.emptyFilterTeaser {
+  width: min(416px, calc(100vw - 24px));
+  margin: 0 auto;
+  padding: 28px 20px 24px;
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(10, 23, 38, 0.92) 0%, rgba(2, 9, 16, 0.96) 100%);
+  border: 1.5px solid rgba(193, 167, 62, 0.22);
+  box-shadow:
+    0 0 22px rgba(255, 230, 75, 0.05),
+    0 26px 48px rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+  filter: saturate(0.65);
+}
+
+.emptyFilterTeaserEyebrow {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(35, 230, 187, 0.5);
+}
+
+.emptyFilterTeaserTitle {
+  font-size: clamp(17px, 4.5vw, 22px);
+  font-weight: 900;
+  color: rgba(245, 247, 251, 0.6);
+  line-height: 1.2;
+  letter-spacing: -0.03em;
+  margin: 0;
+}
+
+.emptyFilterTeaserBody {
+  font-size: 12px;
+  color: rgba(196, 218, 236, 0.42);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.emptyFilterTeaserHint {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 230, 75, 0.28);
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: rgba(255, 230, 75, 0.04);
+  border: 1px solid rgba(255, 230, 75, 0.09);
+  width: 100%;
+  box-sizing: border-box;
+  line-height: 1.4;
+}
+
+.emptyFilterTeaserLink {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(126, 200, 244, 0.65);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+  text-align: left;
+  margin-top: 2px;
+}
+
+.emptyFilterTeaserLink:hover {
+  color: #7ec8f4;
+}
