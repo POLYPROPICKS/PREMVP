@@ -1,3 +1,4 @@
+/* ── Page shell ──────────────────────────────────────────────────────────── */
 .page {
   min-height: 100dvh;
   background: #080e1a;
@@ -56,6 +57,7 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+  align-items: center;
 }
 
 .sectionLabel {
@@ -65,68 +67,427 @@
   text-transform: uppercase;
   color: rgba(160, 190, 215, 0.55);
   margin: 0;
+  align-self: flex-start;
 }
 
 .feedShell {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 20px;
+  width: 100%;
+  align-items: center;
 }
 
-.signalCard {
-  background: #0d1a2e;
-  border: 1px solid rgba(96, 160, 220, 0.14);
-  border-radius: 12px;
-  padding: 16px;
+/* ── Premium signal card — visual copy of public PremiumSignalCard ─────── */
+.premiumSignalCard {
+  position: relative;
+  width: min(416px, calc(100vw - 24px));
+  max-width: 416px;
+  margin: 0 auto;
+  padding: clamp(11px, 2.8vw, 19px) clamp(11px, 3.2vw, 18px) clamp(10px, 2.7vw, 17px);
+  border-radius: 30px;
+  min-height: clamp(438px, 106vw, 506px);
+  overflow: hidden;
+  background:
+    linear-gradient(180deg, rgba(10, 23, 38, 0.96) 0%, rgba(2, 9, 16, 0.98) 100%),
+    radial-gradient(circle at 30% 16%, rgba(51, 110, 171, 0.18), transparent 38%);
+  border: 1.5px solid rgba(193, 167, 62, 0.55);
+  box-shadow:
+    0 0 0 1px rgba(75, 141, 211, 0.12) inset,
+    0 0 22px rgba(255, 230, 75, 0.14),
+    0 0 34px rgba(74, 168, 255, 0.1),
+    0 26px 58px rgba(0, 0, 0, 0.68);
+}
+
+.premiumSignalCard::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(74, 165, 255, 0.14), transparent 20%, transparent 80%, rgba(255, 230, 75, 0.12)),
+    radial-gradient(circle at 8% 95%, rgba(81, 176, 255, 0.16), transparent 22%);
+  opacity: 0.72;
+}
+
+/* ── Top row ─────────────────────────────────────────────────────────────── */
+.premiumTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: clamp(8px, 2.2vw, 18px);
+  gap: clamp(5px, 1.45vw, 10px);
+  position: relative;
+  z-index: 1;
+}
+
+.leagueMeta {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 2vw, 9px);
+  color: #c7ced8;
+  font-size: clamp(11px, 3.1vw, 14px);
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+}
+
+.ball {
+  width: clamp(18px, 5vw, 22px);
+  height: clamp(18px, 5vw, 22px);
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.08));
+}
+
+.confidencePill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(5px, 1.8vw, 8px);
+  min-height: clamp(32px, 8.4vw, 39px);
+  padding: 0 clamp(9px, 3vw, 15px);
+  border-radius: 10px;
+  color: #fff;
+  font-size: clamp(9px, 2.8vw, 12px);
+  font-weight: 900;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, rgba(31, 102, 48, 0.96), rgba(9, 42, 20, 0.96));
+  border: 1.5px solid rgba(116, 255, 79, 0.88);
+  box-shadow:
+    0 0 0 1px rgba(121, 255, 67, 0.24) inset,
+    0 0 12px rgba(97, 255, 53, 0.48),
+    0 0 24px rgba(99, 255, 59, 0.24);
+  white-space: nowrap;
+  position: relative;
+  z-index: 1;
+}
+
+.shield {
+  width: clamp(13px, 3.8vw, 16px);
+  height: clamp(13px, 3.8vw, 16px);
+  color: #61f65f;
+}
+
+/* ── Event title ──────────────────────────────────────────────────────────── */
+.eventTitle {
+  margin: 0 0 clamp(7px, 1.9vw, 12px);
+  min-height: 0;
+  max-height: clamp(56px, 14.5vw, 70px);
+  color: #f5f7fb;
+  font-size: clamp(18px, 5.2vw, 24px);
+  line-height: 1.2;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  text-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+  position: relative;
+  z-index: 1;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: break-word;
+}
+
+/* ── Position / Profit block ─────────────────────────────────────────────── */
+.positionProfit {
+  position: relative;
+  min-height: clamp(92px, 25vw, 106px);
+  display: grid;
+  grid-template-columns: 1fr 1px 1fr;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(10, 24, 38, 0.82), rgba(4, 13, 24, 0.86));
+  border: 1px solid rgba(142, 162, 185, 0.28);
+  box-shadow:
+    0 10px 24px rgba(0, 0, 0, 0.26),
+    0 0 16px rgba(66, 136, 200, 0.06) inset;
+  overflow: hidden;
+  margin-bottom: clamp(13px, 3.8vw, 17px);
+  z-index: 1;
+}
+
+.positionCol,
+.profitCol {
+  position: relative;
+  padding: clamp(12px, 3.4vw, 16px) clamp(9px, 2.8vw, 14px);
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  justify-content: center;
+  overflow: hidden;
+  z-index: 2;
 }
 
-.signalEvent {
-  font-size: 13px;
+.positionProfitDivider {
+  background: rgba(167, 174, 185, 0.35);
+  margin: 18px 0;
+}
+
+.label {
+  color: #f2f4f8;
+  font-size: clamp(10px, 3vw, 13px);
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  margin-bottom: clamp(6px, 2.2vw, 9px);
+}
+
+.positionValue {
+  color: #ffffff;
+  font-size: clamp(14px, 3.9vw, 19px);
+  line-height: 1.18;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  position: relative;
+  z-index: 2;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+.oddsLabel {
+  display: inline-block;
+  font-size: clamp(8px, 1.9vw, 10px);
+  white-space: nowrap;
+  position: relative;
+  z-index: 4;
+  color: rgba(213, 229, 238, 0.72);
+}
+
+.profitValue {
+  color: #86FF5A;
+  text-shadow: 0 0 14px rgba(134, 255, 90, 0.32);
+  font-size: clamp(21px, 6.4vw, 29px);
+  line-height: 1;
+  font-weight: 900;
+  position: relative;
+  z-index: 2;
+}
+
+.perStake {
+  font-size: clamp(9px, 2.3vw, 11px);
   font-weight: 600;
-  color: #d8e8f4;
+  color: rgba(213, 229, 238, 0.72);
+  line-height: 1.2;
+  position: relative;
+  z-index: 3;
+  margin-top: 1px;
+  text-align: right;
+  align-self: stretch;
+  padding-right: clamp(4px, 1.4vw, 8px);
 }
 
-.signalPos {
-  font-size: 12px;
-  color: rgba(160, 190, 215, 0.7);
+/* ── Analytics row ───────────────────────────────────────────────────────── */
+.analyticsRow {
+  display: grid;
+  grid-template-columns: minmax(0, 0.94fr) minmax(0, 1.06fr);
+  gap: clamp(7px, 2.4vw, 12px);
+  margin-bottom: clamp(13px, 3.8vw, 18px);
+  position: relative;
+  z-index: 1;
 }
 
-.signalMeta {
+.trustCard {
+  min-height: clamp(184px, 47vw, 222px);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(6, 21, 31, 0.89), rgba(3, 13, 22, 0.92));
+  border: 1px solid rgba(150, 160, 180, 0.2);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.3),
+    0 0 16px rgba(40, 120, 190, 0.06) inset;
+  position: relative;
+  padding: 12px 10px 12px 12px;
+  overflow: hidden;
+}
+
+.winCard {
+  min-height: clamp(184px, 47vw, 222px);
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(6, 21, 31, 0.89), rgba(3, 13, 22, 0.92));
+  border: 1px solid rgba(150, 160, 180, 0.2);
+  box-shadow:
+    0 12px 28px rgba(0, 0, 0, 0.3),
+    0 0 16px rgba(40, 120, 190, 0.06) inset;
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 4px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 10px 12px;
 }
 
-.badge {
+.trustHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.trustTitle {
+  color: #cfd5df;
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.winTitle {
+  color: #cfd5df;
   font-size: 10px;
-  font-weight: 600;
-  padding: 2px 8px;
-  border-radius: 999px;
-  letter-spacing: 0.04em;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  margin-bottom: 10px;
 }
 
-.badgeGreen {
-  background: rgba(114, 255, 72, 0.12);
-  color: #72ff48;
-  border: 1px solid rgba(114, 255, 72, 0.25);
+/* ── Confidence ring ─────────────────────────────────────────────────────── */
+.ring {
+  position: relative;
+  width: clamp(100px, 30vw, 126px);
+  height: clamp(100px, 30vw, 126px);
+  border-radius: 50%;
+  box-shadow:
+    0 0 18px rgba(255, 245, 0, 0.36),
+    0 0 32px rgba(255, 245, 0, 0.14);
+  display: grid;
+  place-items: center;
 }
 
-.badgeBlue {
-  background: rgba(96, 160, 220, 0.12);
-  color: #7ec8f4;
-  border: 1px solid rgba(96, 160, 220, 0.25);
+.ring::before {
+  content: '';
+  position: absolute;
+  inset: 13px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.05), transparent 36%),
+    #07111a;
+  box-shadow:
+    0 0 0 1px rgba(255, 245, 0, 0.18) inset,
+    0 0 20px rgba(0, 0, 0, 0.42) inset;
 }
 
-.until {
+.ringInner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+}
+
+.ringNumber {
+  color: #fff;
+  font-size: clamp(36px, 10vw, 44px);
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -0.045em;
+  text-shadow: 0 5px 20px rgba(0, 0, 0, 0.55);
+}
+
+/* ── Metric rows ─────────────────────────────────────────────────────────── */
+.metricRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.metricRow:last-child {
+  margin-bottom: 0;
+}
+
+.metricIconWrap {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.metricIconImg {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  display: block;
+}
+
+.metricMain {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.metricTopLine {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px;
+}
+
+.metricLabel {
+  color: #ffffff;
   font-size: 11px;
-  color: rgba(160, 190, 215, 0.42);
-  padding: 0 16px 16px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
+.metricValue {
+  color: #54e447;
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.metricBar {
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(102, 113, 124, 0.32);
+  overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+}
+
+.metricFill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+/* ── Polymarket external link ────────────────────────────────────────────── */
+.polymarketLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: auto;
+  color: rgba(35, 230, 187, 0.82);
+  text-decoration: none;
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.9;
+  transition: opacity 0.15s;
+}
+
+.polymarketLink:hover {
+  opacity: 1;
+}
+
+/* ── Restore / expired states ────────────────────────────────────────────── */
 .restoreCard {
   max-width: 440px;
   margin: 40px auto;
@@ -155,7 +516,7 @@
   margin: 0;
 }
 
-.cta {
+.ctaLink {
   display: inline-block;
   padding: 12px 28px;
   background: linear-gradient(135deg, #1a6ec4 0%, #0f4a8a 100%);
@@ -167,10 +528,138 @@
   letter-spacing: 0.02em;
 }
 
+.secondaryLink {
+  font-size: 13px;
+  color: rgba(160, 190, 215, 0.6);
+  text-decoration: none;
+}
+
+/* ── Feed footer ─────────────────────────────────────────────────────────── */
+.historySection {
+  margin-top: 8px;
+  padding: 14px 16px;
+  background: rgba(96, 160, 220, 0.04);
+  border: 1px dashed rgba(96, 160, 220, 0.15);
+  border-radius: 10px;
+  width: 100%;
+  max-width: 416px;
+}
+
+.historyNote {
+  font-size: 12px;
+  color: rgba(160, 190, 215, 0.45);
+  margin: 6px 0 0;
+  line-height: 1.5;
+}
+
+.until {
+  font-size: 11px;
+  color: rgba(160, 190, 215, 0.42);
+  padding: 0 16px 16px;
+  align-self: flex-start;
+}
+
 .compliance {
   font-size: 10px;
   color: rgba(140, 170, 200, 0.35);
   text-align: center;
   padding: 0 16px 20px;
   line-height: 1.45;
+}
+
+/* ── Filter row ──────────────────────────────────────────────────────────── */
+.filterRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  max-width: 416px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.filterPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  text-decoration: none;
+  color: rgba(180, 210, 235, 0.72);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(96, 160, 220, 0.18);
+  transition: background 0.14s, color 0.14s, border-color 0.14s;
+  white-space: nowrap;
+}
+
+.filterPill:hover {
+  background: rgba(96, 160, 220, 0.1);
+  color: #c8e0f4;
+  border-color: rgba(96, 160, 220, 0.32);
+}
+
+.filterPillActive {
+  background: rgba(26, 110, 196, 0.28);
+  border-color: rgba(96, 160, 220, 0.55);
+  color: #7ec8f4;
+}
+
+.filterCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  color: rgba(190, 215, 235, 0.7);
+  margin-left: 4px;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
+.filterPillActive .filterCount {
+  background: rgba(126, 200, 244, 0.2);
+  color: #7ec8f4;
+}
+
+/* ── Empty filter state ──────────────────────────────────────────────────── */
+.emptyFilter {
+  width: 100%;
+  max-width: 416px;
+  padding: 28px 20px;
+  background: rgba(96, 160, 220, 0.04);
+  border: 1px dashed rgba(96, 160, 220, 0.15);
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.emptyFilterText {
+  font-size: 13px;
+  color: rgba(160, 190, 215, 0.6);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.emptyFilterLink {
+  font-size: 12px;
+  font-weight: 600;
+  color: #7ec8f4;
+  text-decoration: none;
+  letter-spacing: 0.02em;
+}
+
+.emptyFilterLink:hover {
+  text-decoration: underline;
 }
