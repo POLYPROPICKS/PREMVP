@@ -47,7 +47,7 @@ async function loadFeedPairs(): Promise<LandingCardPair[]> {
   try {
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
     const res = await fetch(
-      `${appUrl}/api/feed/landing-cards?limit=5&category=sports&minDataCoverage=40&excludeEnded=true`,
+      `${appUrl}/api/feed/landing-cards?limit=10&category=sports&minDataCoverage=40&excludeEnded=true`,
       { cache: "no-store" },
     );
     if (!res.ok) return [];
@@ -292,7 +292,11 @@ export default async function PremiumPage({
   const accessUntil = entitlement.accessUntil ?? sessionAccessUntil;
 
   const activeFilter = parseFilter(resolvedParams.filter);
-  const feedPairs = await loadFeedPairs();
+  const rawFeedPairs = await loadFeedPairs();
+  const feedPairs = rawFeedPairs.filter((pair, index, arr) => {
+    const key = pair.diagnostics?.conditionId || pair.id;
+    return arr.findIndex((p) => (p.diagnostics?.conditionId || p.id) === key) === index;
+  });
   const hasFeed = feedPairs.length > 0;
 
   // All eligible signals regardless of active filter — used for counts
