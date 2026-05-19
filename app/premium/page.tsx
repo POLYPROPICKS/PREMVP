@@ -384,14 +384,64 @@ export default async function PremiumPage({
   const token = cookieStore.get("ppp_session")?.value ?? null;
 
   if (!token) {
+    const restoreStatus = typeof resolvedParams.restore === "string" ? resolvedParams.restore : null;
+    const showForm = restoreStatus !== "requested" && restoreStatus !== "provider-missing";
     return (
       <div className={styles.page}>
         <div className={styles.restoreCard}>
-          <h1 className={styles.restoreTitle}>Premium access not found</h1>
-          <p className={styles.restoreBody}>
-            If you already purchased premium, return to checkout to verify your access.
-          </p>
-          <a href="/checkout/complete" className={styles.ctaLink}>Verify access</a>
+          {restoreStatus === "invalid" ? (
+            <>
+              <h1 className={styles.restoreTitle}>Link invalid or expired</h1>
+              <p className={styles.restoreBody}>
+                This access link is invalid or has already been used. Request a new one below.
+              </p>
+            </>
+          ) : restoreStatus === "requested" ? (
+            <>
+              <h1 className={styles.restoreTitle}>Check your email</h1>
+              <p className={styles.restoreBody}>
+                A secure one-time access link has been sent. It expires in 15&nbsp;minutes.
+              </p>
+            </>
+          ) : restoreStatus === "provider-missing" ? (
+            <>
+              <h1 className={styles.restoreTitle}>Email delivery unavailable</h1>
+              <p className={styles.restoreBody}>Email delivery is not configured yet.</p>
+            </>
+          ) : (
+            <h1 className={styles.restoreTitle}>Restore premium access</h1>
+          )}
+
+          {showForm && (
+            <>
+              <p className={styles.restoreBody}>
+                Enter the email used at purchase. We&apos;ll send a secure one-time access link.
+              </p>
+              <form
+                method="post"
+                action="/api/auth/magic-link/request"
+                className={styles.restoreForm}
+              >
+                <input
+                  type="email"
+                  name="email"
+                  required
+                  placeholder="your@email.com"
+                  className={styles.restoreInput}
+                  aria-label="Email address"
+                />
+                <button type="submit" className={styles.ctaLink}>
+                  Send secure access link
+                </button>
+              </form>
+            </>
+          )}
+
+          {restoreStatus === "requested" && (
+            <a href="/premium" className={styles.secondaryLink}>Request another link</a>
+          )}
+
+          <a href="/checkout/complete" className={styles.secondaryLink}>Verify via checkout ID</a>
           <a href="/" className={styles.secondaryLink}>Back to free signals</a>
         </div>
       </div>

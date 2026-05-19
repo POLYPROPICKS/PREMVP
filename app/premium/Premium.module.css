@@ -534,6 +534,36 @@
   text-decoration: none;
 }
 
+/* ── Restore access form ─────────────────────────────────────────────────── */
+.restoreForm {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.restoreInput {
+  width: 100%;
+  padding: 11px 14px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(96, 160, 220, 0.22);
+  border-radius: 10px;
+  color: #d8e8f4;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.restoreInput::placeholder {
+  color: rgba(160, 190, 215, 0.45);
+}
+
+.restoreInput:focus {
+  border-color: rgba(96, 160, 220, 0.5);
+}
+
 /* ── Feed footer ─────────────────────────────────────────────────────────── */
 .historySection {
   margin-top: 8px;
