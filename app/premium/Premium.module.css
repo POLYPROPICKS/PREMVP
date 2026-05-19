@@ -693,3 +693,166 @@
 .emptyFilterLink:hover {
   text-decoration: underline;
 }
+
+/* ── Card wrapper (groups card + trigger + details panel) ────────────────── */
+.cardWrapper {
+  width: 100%;
+  max-width: 416px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Get Details trigger ─────────────────────────────────────────────────── */
+.detailsTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 14px;
+  background: rgba(26, 110, 196, 0.1);
+  border: 1px solid rgba(96, 160, 220, 0.22);
+  border-radius: 12px;
+  color: #7ec8f4;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  margin-top: 6px;
+  font-family: inherit;
+  transition: background 0.14s, border-color 0.14s;
+}
+
+.detailsTrigger:hover {
+  background: rgba(26, 110, 196, 0.18);
+  border-color: rgba(96, 160, 220, 0.38);
+}
+
+.detailsChevronDown {
+  transform: rotate(0deg);
+  transition: transform 0.18s;
+  opacity: 0.75;
+}
+
+.detailsChevronUp {
+  transform: rotate(180deg);
+  transition: transform 0.18s;
+  opacity: 0.75;
+}
+
+/* ── Inline details panel ────────────────────────────────────────────────── */
+.detailsPanel {
+  width: 100%;
+  margin-top: 6px;
+  background: linear-gradient(180deg, rgba(8, 18, 30, 0.97) 0%, rgba(4, 12, 22, 0.98) 100%);
+  border: 1.5px solid rgba(96, 160, 220, 0.2);
+  border-radius: 18px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+/* ── Evidence grid ───────────────────────────────────────────────────────── */
+.detailsGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.detailsSectionTitle {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(160, 190, 215, 0.5);
+  margin: 0 0 2px;
+}
+
+.detailsEvidenceCard {
+  padding: 11px 12px;
+  background: rgba(20, 40, 62, 0.65);
+  border: 1px solid rgba(96, 160, 220, 0.14);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.detailsEvidenceSource {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(126, 200, 244, 0.6);
+}
+
+.detailsEvidenceHeadline {
+  font-size: 12px;
+  font-weight: 700;
+  color: #d8e8f4;
+  line-height: 1.35;
+}
+
+.detailsEvidenceSubline {
+  font-size: 11px;
+  color: rgba(196, 218, 236, 0.6);
+  line-height: 1.4;
+}
+
+.detailsEvidenceDelta {
+  font-size: 11px;
+  font-weight: 700;
+  color: #72ff48;
+  margin-top: 2px;
+}
+
+/* ── Market data stats ───────────────────────────────────────────────────── */
+.detailsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.detailsMetricRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.detailsMetricLabel {
+  color: rgba(196, 218, 236, 0.55);
+}
+
+.detailsMetricValue {
+  color: #d8e8f4;
+  font-weight: 700;
+}
+
+/* ── Disclaimer and Polymarket link ──────────────────────────────────────── */
+.detailsDisclaimer {
+  font-size: 10px;
+  color: rgba(140, 170, 200, 0.35);
+  line-height: 1.45;
+  margin: 0;
+}
+
+.detailsPolymarketLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: rgba(35, 230, 187, 0.8);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.detailsPolymarketLink:hover {
+  color: rgba(35, 230, 187, 1);
+}

@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { verifyPremiumSession } from "@/lib/auth/premiumSession";
 import { premiumSignals as staticPremiumSignals } from "@/content/signals";
-import { type PremiumSignal, type TrustMetric, type LandingCardPair } from "@/lib/feed/types";
+import { type PremiumSignal, type LandingCardPair } from "@/lib/feed/types";
+import PremiumSignalCard from "./PremiumSignalCard";
 import styles from "./Premium.module.css";
 
 export const dynamic = "force-dynamic";
@@ -141,76 +142,6 @@ function isEligiblePosition(position: string | undefined): boolean {
   return position.trim() !== "";
 }
 
-function isNoPosition(signal: PremiumSignal): boolean {
-  return signal.position?.trim().toLowerCase() === "no";
-}
-
-function isQuestionStyleTitle(title: string): boolean {
-  const t = title.trim();
-  return t.endsWith("?") || /^(will|does|is|can|who|when|which|has|did)\b/i.test(t);
-}
-
-function getDisplayTitle(signal: PremiumSignal): string {
-  const title = signal.eventTitle ?? "";
-  if (!isNoPosition(signal)) return title;
-  // question-style title already makes the No position clear
-  if (isQuestionStyleTitle(title)) return title;
-  // generic matchup: conservative — keep original, Position "No" column provides context
-  return title;
-}
-
-// ── Trust metric helpers ───────────────────────────────────────────────────
-
-function normalizeTrustMetricText(m: TrustMetric): string {
-  return `${m.id} ${m.label}`.toLowerCase();
-}
-
-function getTrustMetricRank(m: TrustMetric): number {
-  const t = normalizeTrustMetricText(m);
-  if (t.includes("smart")) return 0;
-  if ((t.includes("whale") && t.includes("public")) || t.includes("public vs whale")) return 1;
-  if (t.includes("preevent") || t.includes("pre-event") || t.includes("score") || t.includes("ai")) return 2;
-  return 99;
-}
-
-function getOrderedMetrics(metrics: TrustMetric[]): TrustMetric[] {
-  return [...metrics].sort((a, b) => getTrustMetricRank(a) - getTrustMetricRank(b));
-}
-
-function getMetricDisplayLabel(m: TrustMetric): string {
-  const t = normalizeTrustMetricText(m);
-  if (t.includes("smart")) return "Smart Money";
-  if ((t.includes("whale") && t.includes("public")) || t.includes("public vs whale")) return "Whale vs Public Money";
-  if (t.includes("preevent") || t.includes("pre-event") || t.includes("score") || t.includes("ai")) return "PreEventScore AI";
-  return m.label;
-}
-
-function getMetricValue(m: TrustMetric): number {
-  return Math.max(0, Math.min(100, Math.round(Number(m.value) || 0)));
-}
-
-function getMetricFillBg(v: number): string {
-  if (v >= 85) return "linear-gradient(90deg,#23e6bb 0%,#61ef4a 55%,#fff500 100%)";
-  if (v >= 70) return "linear-gradient(90deg,#18e7ff 0%,#23e6bb 45%,#61ef4a 100%)";
-  if (v >= 55) return "linear-gradient(90deg,#f59e0b 0%,#facc15 65%,#fff500 100%)";
-  return "linear-gradient(90deg,#ef4444 0%,#f97316 100%)";
-}
-
-// ── Badge helpers ──────────────────────────────────────────────────────────
-
-function getBadgeText(prob: number): string {
-  if (prob >= 80) return "ABSOLUTE CONFIDENCE";
-  if (prob > 65) return "HIGH CONFIDENCE";
-  if (prob > 55) return "MIDDLE CONFIDENCE";
-  return "LOW CONFIDENCE";
-}
-
-function getRingColor(prob: number): string {
-  if (prob >= 65) return "#FFF500";
-  if (prob > 55) return "#2190F6";
-  return "#FF8A00";
-}
-
 // ── Filter row ─────────────────────────────────────────────────────────────
 
 function FilterRow({ active, counts }: { active: PremiumFilter; counts: FilterCounts }) {
@@ -244,131 +175,6 @@ function EmptyFilterState({ active }: { active: PremiumFilter }) {
         View all live signals →
       </a>
     </div>
-  );
-}
-
-// ── Premium Signal Card (read-only, no CTA, no paywall) ────────────────────
-
-function PremiumSignalCardReadOnly({ signal }: { signal: PremiumSignal }) {
-  const probability = Math.max(0, Math.min(100, Number(signal.winProbability) || 0));
-  const ringDegrees = probability * 3.6;
-  const ringColor = getRingColor(probability);
-  const badgeText = getBadgeText(probability);
-  const ringStyle = {
-    background: `conic-gradient(${ringColor} 0deg ${ringDegrees}deg, rgba(255,255,255,0.16) ${ringDegrees}deg 360deg)`,
-  };
-
-  const profitPercent = parseFloat((signal.profit || "0").replace("%", "")) || 0;
-  const americanOdds =
-    profitPercent >= 100
-      ? `+${Math.round(profitPercent)}`
-      : `-${Math.round(10000 / Math.max(profitPercent, 1))}`;
-  const americanOddsNum = parseInt(String(americanOdds).replace(/[^\d-]/g, ""), 10);
-  const profitDollars = Number.isFinite(americanOddsNum) && americanOddsNum !== 0
-    ? Math.round(americanOddsNum > 0 ? americanOddsNum : 10000 / Math.abs(americanOddsNum))
-    : Math.round(profitPercent);
-
-  const orderedMetrics = getOrderedMetrics(signal.metrics);
-
-  const safePolymarketUrl =
-    typeof signal.polymarketUrl === "string" &&
-    signal.polymarketUrl.startsWith("https://polymarket.com/")
-      ? signal.polymarketUrl
-      : undefined;
-
-  return (
-    <article className={styles.premiumSignalCard}>
-      {/* Top row */}
-      <div className={styles.premiumTop}>
-        <div className={styles.leagueMeta}>
-          <svg viewBox="0 0 24 24" className={styles.ball} aria-hidden="true">
-            <circle cx="12" cy="12" r="10" fill="#F4F6FA" />
-            <path d="M12 7.1 8.8 9.4 10 13.1h4L15.2 9.4 12 7.1Z" fill="#11161E" />
-            <path d="M8.2 10.1 6.1 9.3 4.7 12l1.8 2.5 2.4-.6.9-3.8Z" fill="#11161E" />
-            <path d="M15.8 10.1 17.9 9.3 19.3 12l-1.8 2.5-2.4-.6-.9-3.8Z" fill="#11161E" />
-            <path d="M8 15.1 6.8 17.7 10 19.2l2-1.5V15H8Z" fill="#11161E" />
-            <path d="M16 15.1 17.2 17.7 14 19.2l-2-1.5V15h4Z" fill="#11161E" />
-          </svg>
-          <span>{signal.league} | {signal.time}</span>
-        </div>
-        <div className={styles.confidencePill}>
-          <svg viewBox="0 0 24 24" className={styles.shield} aria-hidden="true">
-            <path d="M12 2.8 19 5.7v5.1c0 5-3 8.7-7 10.4-4-1.7-7-5.4-7-10.4V5.7L12 2.8Z" fill="currentColor" />
-            <path d="m8.7 12.2 2.1 2.1 4.5-4.7" stroke="#06220B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-          </svg>
-          <span>{badgeText}</span>
-        </div>
-      </div>
-
-      {/* Event title */}
-      <h2 className={styles.eventTitle}>{getDisplayTitle(signal)}</h2>
-
-      {/* Position / Profit block */}
-      <div className={styles.positionProfit}>
-        <div className={styles.positionCol}>
-          <div className={styles.label}>Position</div>
-          <div className={styles.positionValue}>{signal.position}</div>
-        </div>
-        <div className={styles.positionProfitDivider} />
-        <div className={styles.profitCol}>
-          <span className={styles.oddsLabel}>Odds {americanOdds}</span>
-          <div className={styles.profitValue}>+${profitDollars}</div>
-          <span className={styles.perStake}>per $100 stake</span>
-        </div>
-      </div>
-
-      {/* Analytics row */}
-      <div className={styles.analyticsRow}>
-        <div className={styles.trustCard}>
-          <div className={styles.trustHeader}>
-            <span className={styles.trustTitle}>TRUST METRICS</span>
-          </div>
-          {orderedMetrics.map((m) => {
-            const val = getMetricValue(m);
-            return (
-              <div key={m.id} className={styles.metricRow}>
-                <div className={styles.metricIconWrap}>
-                  <img className={styles.metricIconImg} src={m.icon} alt="" aria-hidden="true" draggable={false} />
-                </div>
-                <div className={styles.metricMain}>
-                  <div className={styles.metricTopLine}>
-                    <div className={styles.metricLabel}>{getMetricDisplayLabel(m)}</div>
-                    <div className={styles.metricValue}>{val}%</div>
-                  </div>
-                  <div className={styles.metricBar}>
-                    <div className={styles.metricFill} style={{ width: `${val}%`, background: getMetricFillBg(val) }} />
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        <div className={styles.winCard}>
-          <div className={styles.winTitle}>SIGNAL CONFIDENCE</div>
-          <div className={styles.ring} style={ringStyle}>
-            <div className={styles.ringInner}>
-              <span className={styles.ringNumber}>{probability}</span>
-            </div>
-          </div>
-          {safePolymarketUrl && (
-            <a
-              href={safePolymarketUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={styles.polymarketLink}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                <polyline points="15 3 21 3 21 9"/>
-                <line x1="10" y1="14" x2="21" y2="3"/>
-              </svg>
-              <span>SEE ON POLYMARKET</span>
-            </a>
-          )}
-        </div>
-      </div>
-    </article>
   );
 }
 
@@ -496,11 +302,36 @@ export default async function PremiumPage({
 
   const filterCounts = computeFilterCounts(allEligible);
 
-  let signalsToRender: PremiumSignal[];
-  if (activeFilter === "live") {
-    signalsToRender = allEligible;
+  // pairsToRender: live feed uses full LandingCardPair for the expandable details panel;
+  // static fallback wraps PremiumSignal into a minimal pair (no evidence data).
+  let pairsToRender: LandingCardPair[];
+  if (hasFeed) {
+    const eligiblePairs = feedPairs.filter((p) => isEligiblePosition(p.premiumSignal.position));
+    pairsToRender =
+      activeFilter === "live"
+        ? eligiblePairs
+        : eligiblePairs.filter((p) => signalMatchesFilter(p.premiumSignal, activeFilter));
   } else {
-    signalsToRender = allEligible.filter((s) => signalMatchesFilter(s, activeFilter));
+    const staticFiltered =
+      activeFilter === "live"
+        ? allEligible
+        : allEligible.filter((s) => signalMatchesFilter(s, activeFilter));
+    pairsToRender = staticFiltered.map(
+      (s): LandingCardPair => ({
+        id: s.id,
+        premiumSignal: s,
+        marketSource: { id: "", sourceLabel: "", platform: "", network: "", timeAgo: "", headline: "", subline: "", delta: "" },
+        marketSources: [],
+        diagnostics: {
+          conditionId: null, selectedTokenId: null, selectedOutcome: "",
+          currentPrice: null, price1hAgo: null, price6hAgo: null,
+          delta1hPp: null, delta6hPp: null, spread: null, openInterest: null,
+          recentTradeCash: null, maxTradeCash: null, selectedTradeCount: null,
+          totalTradeCount: null, holderConcentrationScore: null,
+          dataCoverage: 0, formulaUsed: "", rejectionReasons: [],
+        },
+      })
+    );
   }
 
   return (
@@ -517,11 +348,11 @@ export default async function PremiumPage({
         <FilterRow active={activeFilter} counts={filterCounts} />
         <p className={styles.sectionLabel}>Live premium signals</p>
         <div className={styles.feedShell}>
-          {signalsToRender.length === 0 ? (
+          {pairsToRender.length === 0 ? (
             <EmptyFilterState active={activeFilter} />
           ) : (
-            signalsToRender.map((signal) => (
-              <PremiumSignalCardReadOnly key={signal.id} signal={signal} />
+            pairsToRender.map((pair) => (
+              <PremiumSignalCard key={pair.id} pair={pair} />
             ))
           )}
         </div>
