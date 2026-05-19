@@ -46,6 +46,16 @@ export default function ReconstructionPage() {
     [allPairs, activeFilter]
   );
 
+  const filterCounts = useMemo<Record<FilterTag, number>>(
+    () => ({
+      live: allPairs.filter((p) => p.filterTags.includes('live')).length,
+      wc2026: allPairs.filter((p) => p.filterTags.includes('wc2026')).length,
+      sports: allPairs.filter((p) => p.filterTags.includes('sports')).length,
+      trending: allPairs.filter((p) => p.filterTags.includes('trending')).length,
+    }),
+    [allPairs]
+  );
+
   const landingSignals = useMemo(() => candidatePairs.map((pair) => pair.premiumSignal), [candidatePairs]);
 
   const activePairIndex = useMemo(() => {
@@ -270,7 +280,7 @@ export default function ReconstructionPage() {
             onActiveIndexChange={handleEvidenceIndexChange}
             renderCard={(source) => <MarketSourceCard source={source as MarketEvidenceSource} />}
           />
-          <PillsRow activeFilter={activeFilter} onFilterClick={handleFilterClick} />
+          <PillsRow activeFilter={activeFilter} onFilterClick={handleFilterClick} counts={filterCounts} />
           <PremiumEventCarousel
             signals={landingSignals}
             activeIndex={activePairIndex}
@@ -632,9 +642,11 @@ function MarketSourceCard({ source }: { source: MarketEvidenceSource }) {
 function PillsRow({
   activeFilter,
   onFilterClick,
+  counts,
 }: {
   activeFilter: FilterTag;
   onFilterClick: (filter: FilterTag) => void;
+  counts: Record<FilterTag, number>;
 }) {
   const filters: Array<{ tag: FilterTag; label: string }> = [
     { tag: 'live', label: 'Live' },
@@ -653,6 +665,9 @@ function PillsRow({
           onClick={() => onFilterClick(filter.tag)}
         >
           {filter.label}
+          {counts[filter.tag] > 0 && (
+            <span className={styles.pillCount}>{counts[filter.tag]}</span>
+          )}
         </button>
       ))}
     </div>

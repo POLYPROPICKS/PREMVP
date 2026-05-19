@@ -377,6 +377,28 @@
     0 0 24px rgba(19, 233, 255, 0.08);
 }
 
+.pillCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  font-size: 9px;
+  font-weight: 800;
+  color: rgba(190, 215, 235, 0.7);
+  margin-left: 4px;
+  letter-spacing: 0;
+  vertical-align: middle;
+}
+
+.pillActive .pillCount {
+  background: rgba(19, 233, 255, 0.18);
+  color: rgba(19, 233, 255, 0.9);
+}
+
 .premiumSignalCard {
   position: relative;
   width: 416px;
