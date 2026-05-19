@@ -64,6 +64,8 @@ export interface LandingCardDiagnostics {
   dataCoverage: number;
   formulaUsed: string;
   rejectionReasons: string[];
+  signalStatus?: "qualified" | "upcoming_candidate";
+  gameStartIso?: string | null;
 }
 
 export interface LandingCardPair {
