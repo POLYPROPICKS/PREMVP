@@ -1258,7 +1258,7 @@ export async function buildLandingCards(options?: {
   includeUpcoming?: boolean;
   upcomingLimit?: number;
 }): Promise<LandingCardsResponse> {
-  const limit = clamp(options?.limit ?? 4, 1, 10);
+  const limit = clamp(options?.limit ?? 4, 1, 15);
   const category = options?.category ?? "sports";
   const minDataCoverage = clamp(options?.minDataCoverage ?? 25, 0, 100);
   const excludeEnded = options?.excludeEnded ?? true;
