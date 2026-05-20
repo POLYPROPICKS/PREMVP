@@ -1,154 +1,201 @@
 # 02_CURRENT_TECH_STATE.md — PolyProPicks
 
-> Last updated: 15.05.2026
-> Update this file after every significant commit or state change.
-> Git output beats this file — always verify with `git log --oneline -3 && git status --short`.
+> Refreshed: 2026-05-21
+> Source of truth: git log + current source files.
+> Git output beats this file — always verify with: git log --oneline -3 && git status --short
 
 ---
 
-## CURRENT STATE OVERRIDE — 2026-05-15
+## Current state
 
 ```
-Branch:         main
-HEAD:           1d254cc Score: selectedOdds banded confidence and anchored trust metrics
-Origin:         synced
-Working tree:   clean
+Branch:          main
+HEAD:            264500d Deploy: force Next.js standalone runtime
+Origin:          synced
+Working tree:    clean (docs/design/ untracked — intentional)
 ```
 
-## Recent commits (newest first)
+## Recent commits (newest first, since 2026-05-15)
 
 ```
-1d254cc  Score: selectedOdds banded confidence and anchored trust metrics
-8cabbb6  Score: opp-odds confidence cap, min threshold 52, delta multiplier 0.03
-a24fbc4  Feed: two-stage odds selection 1.7x-3x primary, 1.35x-5x fallback, 72h window
-c87d03c  Score: Gamma-only direct formula 35+prob*0.65, full range 35-97
-ab85fd2  Context sync: HEAD 5264fd6, drift lesson #1 logged, filterTags bug noted
-5264fd6  UI: constrain Mkt Return label width so Odds chip fits
-a2a661c  UI: shorten Market Return label to fit tile
-9109138  UI: fix Market Return layout — correct structure under CSS absolute rules
+264500d  Deploy: force Next.js standalone runtime
+9bd6b71  Feed: cache proactive upcoming gap-fill
+6716f7d  Chore: remove Railway autodeploy smoke file
+43b623d  Chore: test Railway autodeploy trigger
+9359876  Feed: generate upcoming market pairs
+9561daf  Chore: trigger Railway deploy
+822f576  Feed: add upcoming pairs API contract
+89a0cbe  Feed: add upcoming signal diagnostics fields
+a11e383  Feed: add league names to fallback sports candidates
+0c8f313  Landing: add sports-specific filters with empty teaser
+df87213  Landing: add filter count badges
+5b6de35  Premium: deduplicate live signal cards
+39eb563  Premium: add signal details panel
+ca59563  Feed: limit signal resolver write updates
+831951e  Feed: add signal resolver script
+e7436f6  Feed: add dry-run signal resolver debug endpoint
+82fff99  Automation: add Claude Code verify command
+61afd67  Data: store signal performance snapshots
+e418020  Auth: add premium magic link restore access
+295ea76  Premium: add feed-backed unlocked signal cards
+5ef8811  Payment: add premium session access flow
+38ec21a  Payment: add post-checkout entitlement verification
+c663edb  Payment: wire pass offer modal to Whop checkout
+b2b9909  Payment: add entitlement check endpoint
+212cd1c  Payment: handle Whop membership deactivation
+9f08f73  Payment: accept trialing Whop memberships
+adffc56  Payment: fix Whop recurring initial price
+0ab5872  Payment: add Whop checkout complete page
+24b08ed  Payment: support Whop recurring weekly and monthly plans
+afe5b4d  Payment: add Whop webhook entitlement sync
+4aa56d9  Payment: add Whop SDK dependency
 ```
-
-## Product / roadmap state
-
-- Active gate: Decision Card visual acceptance
-- Signal Confidence scoring rebuild (banded selectedOdds formula): on main ✅
-- Market Return / American odds: on main, NOT visually accepted
-- Current blocker: "Odds +160" chip visually collides inside Market Return tile
-- Next safe patch: `app/reconstruction/page.tsx` — simplify/remove Odds chip in profitCol
-- After visual acceptance: filterTags / one-card-across-filters bug
-- MarketSourceCarousel evidence-stack UI: ON HOLD
-- Whop integration: ON HOLD
 
 ---
 
-## HISTORICAL — Git state as of 14.05.2026 — SUPERSEDED BY CURRENT STATE OVERRIDE ABOVE
+## Framework / runtime
 
 ```
-Branch:         main
-HEAD:           5264fd6 UI: constrain Mkt Return label width so Odds chip fits
-Origin:         synced (5264fd6 = origin/main)
-Working tree:   clean
+Framework:      Next.js (App Router)
+Language:       TypeScript
+Styling:        CSS Modules
+Runtime target: Node.js (Next.js standalone — output: "standalone" added 264500d)
+Package mgr:    npm
 ```
 
 ## Build state
 
 ```
-npm run build:   PASS (inferred from commits — verify before next patch)
-TypeScript:      no known errors
+npm run build:  PASS — verified at commit 264500d
+TypeScript:     no known errors at HEAD
+next.config.ts: output: "standalone" (added for Railway RAILPACK fix)
+package.json:   start script = "node .next/standalone/server.js"
 ```
+
+---
 
 ## Deployment
 
 ```
-Platform:        Railway
-Production URL:  https://polypropicks.com
-Deploy trigger:  git push to main → auto-deploy on Railway
-Last deploy:     triggered by push of af4ed5e (cron patch)
+Platform:         Railway
+Production URL:   https://polypropicks.com
+Deploy trigger:   git push to main → auto-deploy
+Current status:   NOT VERIFIED — blocked by Railway external platform incident/recovery
+                  AND RAILPACK V3 config issue. Do not treat last deploy as confirmed OK.
+
+Known issue 1 — RAILPACK V3 (config):
+  Railway RAILPACK V3 generates Caddy-only container for Next.js.
+  Fix: output: "standalone" committed at 264500d.
+  Manual action required: Railway Dashboard → Settings → Build
+    → Change builder from RAILPACK to Nixpacks → Save → Redeploy.
+
+Known issue 2 — Railway external incident (platform):
+  eb7fe40 (2026-05-18): "Deploy: retrigger PREMVP after Railway incident"
+  External Railway platform incident occurred on or around 2026-05-18.
+  Recovery state unknown. Production verification unreliable while incident context unclear.
+  Attribution: Railway platform behaviour, NOT PolyProPicks application code regression.
+
+Last confirmed OK: NOT VERIFIED since standalone fix and Railway incident.
+```
+
+---
+
+## Routes — active
+
+| Route | File | Notes |
+|---|---|---|
+| `/` | `app/page.tsx` → `app/reconstruction/page.tsx` | Landing, thin wrapper |
+| `/reconstruction` | `app/reconstruction/page.tsx` | Main landing implementation |
+| `/premium` | `app/premium/page.tsx` | NEW — premium feed (auth-gated) |
+| `/checkout/complete` | `app/checkout/complete/page.tsx` | NEW — post-Whop checkout |
+
+## API routes — active
+
+| Route | File | Notes |
+|---|---|---|
+| `/api/feed/landing-cards` | `app/api/feed/landing-cards/route.ts` | Cache-first feed, returns pairs + upcomingPairs |
+| `/api/feed/debug-evidence-generation` | debug route | Force-fresh generation bypass |
+| `/api/feed/debug-sports-cards` | debug route | Sports mapper debug |
+| `/api/feed/debug-sports-discovery` | debug route | Sports discovery debug |
+| `/api/feed/debug-resolve-signals` | debug route | Dry-run signal resolver |
+| `/api/cron/generate-signals` | cron trigger | Signal cache generation |
+| `/api/leads` | `app/api/leads/route.ts` | Lead intent capture |
+| `/api/checkout/create` | `app/api/checkout/create/route.ts` | NEW — Whop checkout creation |
+| `/api/webhooks/whop` | `app/api/webhooks/whop/route.ts` | NEW — Whop membership events |
+| `/api/entitlement/check` | `app/api/entitlement/check/route.ts` | NEW — membership status check |
+| `/api/auth/session` | `app/api/auth/session/route.ts` | NEW — session check/set |
+| `/api/auth/magic-link/request` | `app/api/auth/magic-link/request/route.ts` | NEW — request magic link |
+| `/api/auth/magic-link/verify` | `app/api/auth/magic-link/verify/route.ts` | NEW — verify magic link token |
+
+---
+
+## Feed / cron state
+
+```
+Cron script:        scripts/generate-signals.ts (uses buildLandingCards)
+Generator:          lib/feed/buildLandingCards.ts ← PRIMARY ACTIVE
+Cache writer:       lib/feed/cacheGeneratedSignals.ts
+Signal resolver:    lib/feed/resolveSignalOutcome.ts (NEW — batch outcome resolution)
+Resolve script:     scripts/resolve-signals.ts (NEW)
+Upcoming pairs:     Generated and cached; returned as upcomingPairs[] in API response
+Cache gap-fill:     Proactive upcoming generation if active pairs < threshold (9bd6b71)
+Formula version:    trusted-initial-formula-v1.1
 ```
 
 ## Supabase state
 
 ```
-Active table:    public.generated_signal_pairs
-Columns added:   market_sources jsonb NULL  ← added 14.05.2026
-Lead table:      public.lead_intents (unchanged)
-Schema changes:  market_sources column added manually via SQL Editor
+Active tables:
+  public.generated_signal_pairs    — feed cache (includes market_sources jsonb column)
+  public.lead_intents              — free lead + premium reserve intent
+  public.signal_snapshots          — NEW — signal performance snapshots (61afd67)
+
+Auth:
+  Magic-link tokens stored in Supabase
+  Premium session verified against entitlement
+
+Schema changes since 2026-05-15:
+  signal_snapshots table: added (NOT VERIFIED — inferred from commit 61afd67)
 ```
 
-## Feed / cron state
+## Payment / auth state
 
 ```
-Cron script:     scripts/generate-signals.ts
-Generator:       buildLandingCards ✅ (switched from buildSportsLandingCards — af4ed5e)
-Cache writer:    lib/feed/cacheGeneratedSignals.ts
-marketSources:   persisted to market_sources column in generated_signal_pairs
-Runtime verified: CONFIRMED ✅ — Supabase ~12:24 14.05.2026
-
-Verified components:
-  Fresh generation via buildLandingCards   ✅
-  Sharp Flow in evidence stack             ✅
-  Market Momentum in evidence stack        ✅
-  League names (La Liga, Esports, NBA...)  ✅
-  polymarketUrl in PremiumSignal           ✅
-  marketSources[] in Supabase cache        ✅
-  Cron on buildLandingCards                ✅
-  Live matches — no futures/outrights      ✅
-
-Sample verified pairs:
-  La Liga | polymarket.com/event/lal-val-ray-2026-05-14
-  La Liga | polymarket.com/event/lal-gir-rso-2026-05-14
-  Esports | polymarket.com/event/lol-gx-sly-2026-05-14
-
-Backend phase: CLOSED
-Next phase:    MarketSourceCarousel evidence-stack UI
+Payment provider:   Whop
+Plans:              Weekly recurring, monthly recurring
+Trialing:           accepted (9f08f73)
+Deactivation:       handled (212cd1c)
+Webhook:            afe5b4d — handles membership events
+Checkout:           app/api/checkout/create/route.ts
+Entitlement:        app/api/entitlement/check/route.ts
+Session:            lib/auth/premiumSession.ts — secure cookie
+Magic link:         request + verify endpoints (e418020)
+End-to-end status:  NOT VERIFIED in production
 ```
 
-## API routes (known active)
+---
+
+## Known blockers / open
 
 ```
-/api/feed/landing-cards          ← production feed (cache-first)
-/api/feed/debug-evidence-generation ← fresh generation bypass
-/api/cron/generate-signals       ← cron trigger
+[ ] Production Railway deployment — manual Nixpacks switch required
+[ ] signal-cache-cron — not redeployed after Railway incident
+[ ] Whop payment end-to-end — not production-verified
+[ ] Magic-link auth — not production-verified
+[ ] Proof of Results card — Claude Design phase pending
+[ ] filterTags one-card-across-filters bug — deferred
+[ ] buildSportsLandingCards.ts — exists, superseded, import graph NOT VERIFIED (safe to delete: NOT VERIFIED)
 ```
 
-## Enforcement contour state
-
-```
-CLAUDE.md:                           ✅ committed (39ab5aa) — repo root
-AGENTS.md:                           ✅ committed (39ab5aa) — repo root
-docs/ai-context/:
-  TASK_ROUTING_MATRIX.md             ✅
-  CLAUDE_CODE_EXECUTION_PROTOCOL.md  ✅
-  VERIFICATION_GATES.md              ✅ (viewport sync 5101f64)
-  OPERATOR_ACCEPTANCE_CHECKLIST.md   ✅ (5101f64)
-  RULE_COMPLIANCE_MONITOR_AGENT.md   ✅ (hardened 3176a66)
-  CONTEXT_HANDOFF_TEMPLATE.md        ✅ (hardened fd2f994)
-  FAILURE_MODES_AND_STOP_CONDITIONS.md ✅ (hardened fd2f994)
-  CHAT_STARTER_PROMPT.md             ✅ (hardened fd2f994)
-  AUTOMATION_SCORECARD.md            ✅ (3176a66)
-  DRIFT_MONITORING_LOG.md            ✅ (3176a66)
-  03_CURRENT_SOURCE_ARCHITECTURE_MAP.md ✅ (hardened b3a5cb2)
-  11_SOURCE_FILES_AND_REPO_INVENTORY.md ✅ (hardened b3a5cb2)
-Phase: Phase 1 + 2 + 3 COMPLETE
-```
-
-## Known blockers / pending
-
-```
-- [x] Runtime fresh-generation verification — CONFIRMED ✅ (14.05.2026)
-- [x] P0 hardening — DONE (fd2f994)
-- [x] Enforcement contour backbone — DONE (39ab5aa+)
-- [x] Source inventory + architecture map hardened — DONE (b3a5cb2)
-- [ ] MarketSourceCarousel evidence-stack UI — next product phase
-- [ ] buildSportsLandingCards.ts import graph — NOT VERIFIED (safe to delete?)
-- [ ] AUTOMATION_SCORECARD first real scoring — after 3–5 tasks
-```
+---
 
 ## Environment / connectors
 
 ```
-See 08_ENVIRONMENT_AND_CONNECTORS.md for full env var list.
-.env.local:  present, not committed
-.env:        gitignored
-Railway env: set in Railway dashboard
+.env.local:     present, not committed
+.env:           gitignored
+Railway env:    set in Railway Dashboard
+Whop:           API key required in env (WHOP_API_KEY or similar)
+Supabase:       SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY
+See 08_ENVIRONMENT_AND_CONNECTORS.md for full list (needs refresh — Whop vars not documented there yet).
 ```

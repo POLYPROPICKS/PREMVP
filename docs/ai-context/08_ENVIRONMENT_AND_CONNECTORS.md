@@ -209,11 +209,17 @@ Rules:
 
 ## **6\. Supabase Context**
 
-Known Supabase usage:
+Known Supabase usage (refreshed 2026-05-21):
 
-* Supabase is used for lead capture.  
-* Known table: `public.lead_intents`.  
-* LocalStorage may exist as fallback/debug but is not production source of truth.
+* Supabase is used for lead capture, feed cache, and signal tracking.
+
+Active tables:
+
+* `public.lead_intents` — free lead + premium reserve intent
+* `public.generated_signal_pairs` — feed cache (includes `market_sources` jsonb column)
+* `public.signal_snapshots` — signal performance snapshots (added 61afd67, schema NEEDS VERIFICATION)
+
+LocalStorage may exist as fallback/debug but is not production source of truth.
 
 Known `public.lead_intents` fields/values from project context:
 
@@ -284,17 +290,43 @@ Supabase security caveats:
 
 ## **7\. Railway / Deployment Context**
 
-Railway/deployment context exists or has been used. Exact values require verification.
+Refreshed 2026-05-21.
 
-Known/assumed:
+Known facts:
 
-* Railway likely used for deployment.  
-* Production domain has been discussed/used.  
-* Exact Railway project/environment details: `NEEDS VERIFICATION`.  
-* Active production domain: `NEEDS VERIFICATION`.  
-* Production verification is separate from local build.  
-* Never store Railway tokens in repo docs.  
+* Railway is the deployment platform.
+* Production domain: `https://polypropicks.com`
+* Deploy trigger: git push to main triggers auto-deploy.
+* Production status: NOT VERIFIED — blocked by RAILPACK V3 config issue AND Railway external incident.
+* Never store Railway tokens in repo docs.
 * Never paste Railway tokens into chat.
+
+Current known issue 1 — RAILPACK V3 (config problem):
+
+* Railway RAILPACK V3 builder generates a Caddy-only container for Next.js apps.
+* This causes Caddy 404 responses instead of Node.js serving the app.
+* Fix committed: `next.config.ts output: "standalone"` at 264500d.
+* Manual action still required: Railway Dashboard → PREMVP service → Settings → Build
+  → Change builder from RAILPACK to Nixpacks → Save → Redeploy.
+* This is a Railway builder configuration issue, not an application code regression.
+
+Current known issue 2 — Railway external incident (platform event):
+
+* Commit `eb7fe40 Deploy: retrigger PREMVP after Railway incident` (2026-05-18) confirms
+  a Railway external platform incident occurred around 2026-05-18.
+* Recovery state and whether the incident is fully resolved: NEEDS VERIFICATION.
+* Production verification results may be unreliable until Railway platform state is confirmed stable.
+* Attribution: Railway platform behaviour, NOT PolyProPicks application code.
+
+Production verification after Railway fix should include:
+
+* Confirm Railway Dashboard shows Nixpacks builder (not RAILPACK).
+* Confirm latest deploy logs are clean (no Caddy config generated).
+* Production `/` browser check — must return landing page, not Caddy 404.
+* Production `/api/feed/landing-cards?limit=1` — must return JSON, not HTML error.
+* Lead capture endpoint if touched.
+* Payment/webhook route if touched.
+* Supabase write/read if touched.
 
 Verification questions:
 
@@ -321,13 +353,20 @@ Do not deploy/push without explicit approval.
 
 ## **8\. API Routes And Runtime Verification**
 
-Known routes:
+Known routes (refreshed 2026-05-21):
 
-/api/feed/landing-cards  
-/api/feed/debug-evidence-generation  
-/api/feed/debug-sports-cards  
-/api/feed/debug-sports-discovery  
+/api/feed/landing-cards
+/api/feed/debug-evidence-generation
+/api/feed/debug-sports-cards
+/api/feed/debug-sports-discovery
+/api/feed/debug-resolve-signals
 /api/leads
+/api/checkout/create
+/api/webhooks/whop
+/api/entitlement/check
+/api/auth/session
+/api/auth/magic-link/request
+/api/auth/magic-link/verify
 
 ### **/api/feed/landing-cards**
 
@@ -540,23 +579,26 @@ Rules:
 
 ## **11\. Auth / Registration Connector**
 
-Current auth state:
+Current auth state (refreshed 2026-05-21):
 
-NEEDS VERIFICATION
+SHIPPED — magic-link + session (e418020, 5ef8811)
 
-Likely candidate:
+Active implementation:
+* `app/api/auth/magic-link/request/route.ts` — request magic link email
+* `app/api/auth/magic-link/verify/route.ts` — verify token, grant session
+* `app/api/auth/session/route.ts` — session check/set
+* `lib/auth/premiumSession.ts` — session cookie helpers
 
-Supabase Auth
+Auth mechanism: magic-link email → verified entitlement → secure server-set cookie → `/premium` access.
+Production verification: NEEDS VERIFICATION.
 
 Rules:
 
-* Registration should not block the free signal.  
-* Free signal remains visible without forced login.  
-* Anonymous lead → buyer → registered user linking must be planned.  
-* User ID must not be provider customer ID.  
-* Auth should not be blindly added before entitlement/payment boundary is clear.  
-* Magic-link restore may be introduced later.  
-* Premium access must be based on internal entitlement, not localStorage or provider redirect.
+* Registration does not block the free signal.
+* Free signal remains visible without forced login.
+* Premium access is based on internal entitlement, not localStorage or provider redirect.
+* `lib/auth/premiumSession.ts` manages session cookies — server-only.
+* Full OAuth (Google, GitHub) is deliberately postponed.
 
 Future env var names:
 
@@ -578,10 +620,10 @@ Security:
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase | Client | NEEDS VERIFICATION | Yes | Supabase client/auth | No | NEEDS VERIFICATION |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase | Server-only | NEEDS VERIFICATION | Yes | Server routes, privileged DB writes | No | NEEDS VERIFICATION |
 | `NEXT_PUBLIC_APP_URL` | App / payments | Client/server public URL | NEEDS VERIFICATION | Yes | Checkout return/cancel URLs, links | No | NEEDS VERIFICATION |
-| `WHOP_API_KEY` | Whop | Server-only | No | Yes | `/api/checkout/create`, Whop API | No | VALUE NOT STORED / NEEDS VERIFICATION |
-| `WHOP_WEBHOOK_SECRET` | Whop | Server-only | No | Yes | `/api/webhooks/whop` | No | VALUE NOT STORED / NEEDS VERIFICATION |
-| `WHOP_PRODUCT_ID` | Whop | Server/config | No | Yes | Plan/product mapping | No | VALUE NOT STORED / NEEDS VERIFICATION |
-| `WHOP_PLAN_ID` | Whop | Server/config | No | Yes | Plan/product mapping | No | VALUE NOT STORED / NEEDS VERIFICATION |
+| `WHOP_API_KEY` | Whop | Server-only | **YES (SHIPPED)** | Yes | `/api/checkout/create`, Whop API | No | VALUE NOT STORED / NEEDS VERIFICATION |
+| `WHOP_WEBHOOK_SECRET` | Whop | Server-only | **YES (SHIPPED)** | Yes | `/api/webhooks/whop` | No | VALUE NOT STORED / NEEDS VERIFICATION |
+| `WHOP_PRODUCT_ID` | Whop | Server/config | **YES (SHIPPED)** | Yes | Plan/product mapping | No | VALUE NOT STORED / NEEDS VERIFICATION |
+| `WHOP_PLAN_ID` | Whop | Server/config | **YES (SHIPPED)** | Yes | Plan/product mapping | No | VALUE NOT STORED / NEEDS VERIFICATION |
 | `STRIPE_SECRET_KEY` | Stripe | Server-only | No | Later | Stripe checkout/webhooks | No | VALUE NOT STORED / NEEDS VERIFICATION |
 | `STRIPE_WEBHOOK_SECRET` | Stripe | Server-only | No | Later | `/api/webhooks/stripe` | No | VALUE NOT STORED / NEEDS VERIFICATION |
 | `STRIPE_PRICE_ID_24H` | Stripe | Server/config | No | Later | Stripe price mapping | No | VALUE NOT STORED / NEEDS VERIFICATION |
@@ -695,23 +737,27 @@ Agents must not:
 
 ## **15\. Immediate Known Environment State**
 
-Latest known state from project context and recent work:
+Refreshed 2026-05-21 from git log + source files.
 
-* `/docs/ai-context/` has been created locally and baseline files copied: `NEEDS VERIFICATION`.  
-* Git status previously showed `docs/` as untracked before docs commit: `NEEDS VERIFICATION`.  
-* Local main previously contained commit `2875d89 Tighten sports futures and relegation market filtering`: `NEEDS VERIFICATION`.  
-* Previous origin/main commit was `43677cf Merge Polymarket API mapping fix`: `NEEDS VERIFICATION`.  
-* Later local recovery/feed checkpoint may include `966f6c2 Stabilize PREMVP15 feed contract and evidence stack`: `NEEDS VERIFICATION`.  
-* Source code working tree was cleaned after accidental untracked junk files: `NEEDS VERIFICATION`.  
-* Feed contract checkpoint may have been committed locally: `NEEDS VERIFICATION`.  
-* Fresh-generation debug verification still `NEEDS VERIFICATION` unless completed later.  
-* Sharp Flow real API presence still `NEEDS VERIFICATION` unless `/api/feed/landing-cards` or debug route shows `type: "sharp-flow"` in `marketSources[]`.  
-* Push of local feed/payment/docs commits requires explicit approval.  
-* Local dev server may already run on port `3000`: `NEEDS VERIFICATION`.  
-* Railway project/environment/domain details: `NEEDS VERIFICATION`.  
-* Supabase env var presence: `NEEDS VERIFICATION`.  
-* Whop product/plan/env configuration: `NEEDS VERIFICATION`.  
-* Stripe configuration: later / `NEEDS VERIFICATION`.
+```
+Branch:           main
+HEAD:             264500d Deploy: force Next.js standalone runtime
+Origin:           synced
+Working tree:     clean (docs/design/ untracked — intentional)
+```
+
+Known facts:
+* Whop payment stack: SHIPPED (11+ commits) — production env vars required
+* Magic-link auth + session: SHIPPED — production env vars required
+* Premium page /premium: SHIPPED
+* Signal resolver + snapshots: SHIPPED
+* Upcoming pairs API: SHIPPED
+* Railway deploy: NEEDS VERIFICATION — RAILPACK/Caddy 404 issue; manual Nixpacks switch required in Railway Dashboard
+* Production URL https://polypropicks.com: NEEDS VERIFICATION
+* Whop product/plan/env config: NEEDS VERIFICATION (vars present in Railway env? UNKNOWN)
+* Supabase signal_snapshots table schema: NEEDS VERIFICATION
+* Sharp Flow real API presence: NEEDS VERIFICATION (check marketSources[].type in /api/feed/landing-cards)
+* Stripe configuration: deferred / NEEDS VERIFICATION when added
 
 If any of this is outdated by current command output, current command output wins.
 

@@ -2,13 +2,19 @@
 
 ---
 
-## Token Economy Routing — 2026-05-15
+## Token Economy Routing — refreshed 2026-05-21
 
-- ChatGPT compresses and formats the task into a bounded execution spec
-- Claude Code receives only the bounded spec — no project history, no broad roadmap
-- Research, architecture decisions, and roadmap planning stay in ChatGPT or scarce Claude Chat sessions
-- Claude Code executes the final bounded prompt only
-- Claude Code does not receive context it doesn't need to execute the patch
+- Claude Chat / Cowork is the advisor: architecture, product, roadmap, design review
+- Claude Code is the executor: bounded patches, inspection, git/build commands
+- Claude Design is the visual explorer: card design, variant exploration only
+- Claude Code receives only bounded execution specs — no broad project history
+- Research and architecture decisions stay in Claude Chat
+- Claude Code executes only the final scoped prompt
+- Claude Code does not receive context it doesn't need
+
+### Railway manual deploy warning (still active as of 2026-05-21)
+Railway Dashboard manual intervention required for builder change (RAILPACK → Nixpacks).
+Do NOT route this to Claude Code. Founder must act in Railway Dashboard UI directly.
 
 ---
 

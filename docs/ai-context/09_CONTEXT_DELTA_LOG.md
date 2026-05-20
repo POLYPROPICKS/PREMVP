@@ -6,6 +6,136 @@
 
 ---
 
+## ✅ 2026-05-15 → 2026-05-21 verified delta
+
+```
+Branch:          main
+HEAD at end:     264500d Deploy: force Next.js standalone runtime
+HEAD at start:   1d254cc Score: selectedOdds banded confidence and anchored trust metrics
+Commits in period: 52
+```
+
+### Commits (newest first)
+
+```
+264500d  Deploy: force Next.js standalone runtime
+9bd6b71  Feed: cache proactive upcoming gap-fill
+9359876  Feed: generate upcoming market pairs
+822f576  Feed: add upcoming pairs API contract
+89a0cbe  Feed: add upcoming signal diagnostics fields
+a11e383  Feed: add league names to fallback sports candidates
+0c8f313  Landing: add sports-specific filters with empty teaser
+df87213  Landing: add filter count badges
+5b6de35  Premium: deduplicate live signal cards
+39eb563  Premium: add signal details panel
+ca59563  Feed: limit signal resolver write updates
+831951e  Feed: add signal resolver script
+e7436f6  Feed: add dry-run signal resolver debug endpoint
+82fff99  Automation: add Claude Code verify command
+61afd67  Data: store signal performance snapshots
+e418020  Auth: add premium magic link restore access
+295ea76  Premium: add feed-backed unlocked signal cards
+5ef8811  Payment: add premium session access flow
+38ec21a  Payment: add post-checkout entitlement verification
+c663edb  Payment: wire pass offer modal to Whop checkout
+b2b9909  Payment: add entitlement check endpoint
+212cd1c  Payment: handle Whop membership deactivation
+9f08f73  Payment: accept trialing Whop memberships
+adffc56  Payment: fix Whop recurring initial price
+0ab5872  Payment: add Whop checkout complete page
+24b08ed  Payment: support Whop recurring weekly and monthly plans
+afe5b4d  Payment: add Whop webhook entitlement sync
+4aa56d9  Payment: add Whop SDK dependency
+(+ chore/trigger commits)
+```
+
+### Architecture changes
+
+**NEW ROUTES:**
+- `/premium` — premium feed (session-gated)
+- `/checkout/complete` — post-Whop checkout page
+
+**NEW API ROUTES:**
+- `/api/checkout/create` — Whop checkout creation
+- `/api/webhooks/whop` — Whop membership webhook handler
+- `/api/entitlement/check` — entitlement verification
+- `/api/auth/session` — session check/set
+- `/api/auth/magic-link/request` — magic link request
+- `/api/auth/magic-link/verify` — magic link verify
+- `/api/feed/debug-resolve-signals` — dry-run signal resolver
+
+**NEW LIB FILES:**
+- `lib/auth/premiumSession.ts` — session cookie helpers
+- `lib/payments/whopCheckout.ts` — Whop API helpers
+- `lib/feed/resolveSignalOutcome.ts` — outcome resolution
+
+**NEW SCRIPTS:**
+- `scripts/resolve-signals.ts` — batch signal outcome resolution
+
+**NEW CONFIG:**
+- `next.config.ts`: `output: "standalone"` (Railway RAILPACK fix)
+- `package.json`: start = `node .next/standalone/server.js`
+- `.railwayignore`: excludes local artifacts from railway up
+
+**FEED API CHANGES:**
+- `/api/feed/landing-cards` now returns `upcomingPairs?: LandingCardPair[]`
+- `LandingCardDiagnostics.signalStatus` added: `"qualified" | "upcoming_candidate"`
+- Proactive cache gap-fill: auto-generates upcoming pairs if active < threshold
+
+**LANDING UI CHANGES:**
+- Filter count badges added
+- Sports-specific filter empty teaser added
+
+**PREMIUM UI CHANGES:**
+- Signal details panel added
+- Live signal card deduplication
+
+### Stale assumptions corrected
+
+| Old assumption | Correction |
+|---|---|
+| "Whop integration: ON HOLD" | SHIPPED — full payment stack on main |
+| "Auth: ON HOLD" | SHIPPED — magic link + session on main |
+| "No premium page" | `/premium` page shipped |
+| "HEAD: 1d254cc" | STALE — HEAD is now 264500d |
+| "Market Return tile overcrowding is active blocker" | Status UNKNOWN — not recently verified |
+| "premvp12-evidence-generation branch active" | CLOSED — merged long ago |
+| "buildSportsLandingCards safe to delete: NOT VERIFIED" | Still NOT VERIFIED — do not delete |
+
+### What changed in workflow
+
+- Claude Code replaces Windsurf as primary executor (already transitioned, confirmed in this period)
+- Claude Design source pack created (`docs/design/claude-design-source-pack/`) — ready for upload
+- Proof of Results card Claude Design brief and prompt are ready
+
+### Railway deployment: two-factor block (added 2026-05-21)
+
+Production is NOT VERIFIED — blocked by two separate Railway issues:
+
+1. RAILPACK V3 config: Railway generates Caddy-only container for Next.js.
+   Fix committed (`output: "standalone"` at 264500d) but manual Nixpacks switch still required
+   in Railway Dashboard. Attribution: Railway builder config, not PolyProPicks code.
+
+2. Railway external platform incident: `eb7fe40 Deploy: retrigger PREMVP after Railway incident`
+   (2026-05-18). External Railway incident occurred; recovery state unconfirmed.
+   Production verification unreliable until Railway platform confirmed stable.
+   Attribution: Railway platform, not PolyProPicks application code regression.
+
+Required manual action: Railway Dashboard → PREMVP service → Settings → Build
+  → Change builder to Nixpacks → Save → Redeploy → verify 200 on production.
+
+### What remains open
+
+- Production Railway deployment — NOT VERIFIED (RAILPACK V3 config + Railway incident block)
+- signal-cache-cron not redeployed after Railway incident
+- Whop payment end-to-end NOT verified in production
+- Magic-link auth NOT verified in production
+- Proof of Results card — Claude Design phase pending
+- filterTags one-card-across-filters bug — deferred
+- buildSportsLandingCards.ts import graph — NOT VERIFIED (safe to delete: NOT VERIFIED)
+
+---
+
 ## ✅ CURRENT STATE OVERRIDE — 2026-05-15
 
 ```

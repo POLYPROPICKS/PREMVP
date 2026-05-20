@@ -114,3 +114,28 @@ Full role definitions, forbidden behaviors, and project rules:
 
 This file is an enforcement gate, not a preference list.
 Responses not following §4 format will be rejected by the monitoring agent.
+
+## PolyProPicks Current Context Loading Rule
+
+Before any non-trivial PolyProPicks task, read:
+  `docs/ai-context/00_CONTEXT_INDEX_CURRENT.md`
+
+Then load relevant docs by task type:
+- product/roadmap → `01_PROJECT_CONTEXT_CURRENT.md` + `04_PRODUCT_DECISIONS_LOCKED.md`
+- technical/source/API/feed/payment/auth → `02_CURRENT_TECH_STATE.md` + `03_CURRENT_SOURCE_ARCHITECTURE_MAP.md` + `08_ENVIRONMENT_AND_CONNECTORS.md`
+- UI/design/Claude Design → `10_DESIGN_SYSTEM_AND_FRONTEND_BASELINE.md`
+- workflow/execution/routing → `TASK_ROUTING_MATRIX.md` + `CLAUDE_CODE_EXECUTION_PROTOCOL.md`
+- handoff → `CONTEXT_HANDOFF_TEMPLATE.md`
+- Claude Chat/Cowork handoff → latest `CLAUDE_CHAT_UPLOAD_PACK_*.md`
+
+If docs are older than latest relevant commits, run:
+  `/project:refresh-ai-context [since-date]`
+
+Claude Code is executor only. Do not make product strategy, positioning, conversion,
+trust, or design decisions unless explicitly asked.
+
+Production/Railway checks: if Railway or another provider is down, mark
+production/deploy verification as NOT VERIFIED due to external provider outage/recovery —
+not as PolyProPicks app regression.
+
+`docs/design/` is a design artifact layer, not source of truth. Source files are source of truth.

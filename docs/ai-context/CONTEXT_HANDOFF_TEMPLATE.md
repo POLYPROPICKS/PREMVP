@@ -56,6 +56,33 @@ Assumptions (not verified):
 -
 ```
 
+## § 4b. Claude Design → Claude Code handoff (fill when handing off design output)
+
+```
+Claude Design session date:
+Variant selected: [A / B / modified]
+Copy changes annotated: [YES / NO — list changes]
+New card name: [e.g. ProofOfResultsCard]
+Allowed implementation files:
+  - components/cards/ProofOfResultsCard.tsx  (CREATE)
+  - components/cards/ProofOfResultsCard.module.css  (CREATE)
+  - [optional: content/marketSources.ts — add card type]
+  - [optional: lib/feed/types.ts — add card type]
+  - [optional: app/reconstruction/page.tsx — wire render]
+Forbidden files:
+  - components/cards/MarketSourceCard.tsx
+  - components/cards/PremiumEventCard.tsx
+  - components/modals/PassOfferModal.tsx
+  - lib/feed/buildLandingCards.ts
+  - app/globals.css
+Acceptance criteria:
+  - npm run build passes
+  - git diff --stat shows only new files
+  - No gold/yellow introduced
+  - No win rate % or profit claim in copy
+  - Visual confirmed at 390px
+```
+
 ## § 5. Forbidden changes for next session
 
 ```
