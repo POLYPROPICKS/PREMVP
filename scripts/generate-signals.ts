@@ -9,11 +9,13 @@ import {
 import { FORMULA_VERSION } from "../lib/feed/types";
 
 const CONFIG = {
-  limit: 10,
+  limit: 15,
   category: "sports",
   minDataCoverage: 40,
   excludeEnded: true,
   cacheExpiryHours: 1, // Cache valid for 1 hour
+  includeUpcoming: true,
+  upcomingLimit: 5,
 };
 
 async function main() {
@@ -34,19 +36,24 @@ async function main() {
       category: CONFIG.category,
       minDataCoverage: CONFIG.minDataCoverage,
       excludeEnded: CONFIG.excludeEnded,
+      includeUpcoming: CONFIG.includeUpcoming,
+      upcomingLimit: CONFIG.upcomingLimit,
     });
 
-    generatedCount = result.pairs.length;
+    const pairsToCache = [...result.pairs, ...(result.upcomingPairs ?? [])];
+    generatedCount = pairsToCache.length;
     rejectedCount = result.rejected?.length ?? 0;
 
     diagnostics = {
       discoveryMode: "markets-first-buildLandingCards",
       generated_count: generatedCount,
+      qualified_count: result.pairs.length,
+      upcoming_count: result.upcomingPairs?.length ?? 0,
       rejected_count: rejectedCount,
       inspected: result.inspected,
     };
 
-    console.log(`[generate-signals] Generated ${generatedCount} pairs`);
+    console.log(`[generate-signals] Generated ${result.pairs.length} qualified + ${result.upcomingPairs?.length ?? 0} upcoming = ${generatedCount} total pairs`);
     console.log(`[generate-signals] Rejected ${rejectedCount} markets`);
 
     if (generatedCount === 0) {
@@ -59,7 +66,7 @@ async function main() {
       ).toISOString();
 
       await writeGeneratedSignalPairs({
-        pairs: result.pairs.map((p: any) => ({
+        pairs: pairsToCache.map((p: any) => ({
           premiumSignal: {
             ...p.premiumSignal,
             metrics: p.premiumSignal.metrics.map((m: any) => ({

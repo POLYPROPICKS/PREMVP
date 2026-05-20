@@ -277,7 +277,7 @@ export async function GET(request: NextRequest) {
     if (limitParam) {
       const parsed = parseInt(limitParam, 10);
       if (!isNaN(parsed)) {
-        limit = Math.max(1, Math.min(10, parsed));
+        limit = Math.max(1, Math.min(15, parsed));
       }
     }
 
@@ -300,7 +300,12 @@ export async function GET(request: NextRequest) {
 
     try {
       const cachedPairs = await readLatestGeneratedSignalPairs(limit);
-      const canonicalCachedPairs = canonicalizePairs(cachedPairs, limit);
+      const allCachedPairs = canonicalizePairs(cachedPairs, limit);
+      const canonicalCachedPairs = includeUpcoming
+        ? allCachedPairs
+        : allCachedPairs.filter(
+            (p) => p.diagnostics?.signalStatus !== "upcoming_candidate"
+          );
       if (canonicalCachedPairs.length > 0) {
         return NextResponse.json(
           buildResponse(canonicalCachedPairs, limit, category, minDataCoverage, excludeEnded, "hit",

@@ -278,7 +278,7 @@ export default function ReconstructionPage() {
   useEffect(() => {
     const fetchFeed = async () => {
       try {
-        const response = await fetch('/api/feed/landing-cards?limit=5&category=sports&minDataCoverage=40&excludeEnded=true');
+        const response = await fetch('/api/feed/landing-cards?limit=15&category=sports&minDataCoverage=40&excludeEnded=true&includeUpcoming=true');
 
         if (response.ok) {
           const data = await response.json();
