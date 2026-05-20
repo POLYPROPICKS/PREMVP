@@ -318,6 +318,7 @@ export async function GET(request: NextRequest) {
       category,
       minDataCoverage,
       excludeEnded,
+      ...(includeUpcoming ? { includeUpcoming: true, upcomingLimit: 5 } : {}),
     });
 
     const canonicalGeneratedPairs = canonicalizePairs(generated.pairs, limit);
@@ -334,7 +335,7 @@ export async function GET(request: NextRequest) {
           generated.inspected,
           false,
           undefined,
-          includeUpcoming ? emptyUpcoming : undefined,
+          includeUpcoming ? (generated.upcomingPairs ?? emptyUpcoming) : undefined,
         ),
         { status: 200 }
       );
@@ -353,7 +354,7 @@ export async function GET(request: NextRequest) {
         generated.inspected,
         false,
         "empty_generated_pairs",
-        includeUpcoming ? emptyUpcoming : undefined,
+        includeUpcoming ? (generated.upcomingPairs ?? emptyUpcoming) : undefined,
       ),
       { status: 200 }
     );

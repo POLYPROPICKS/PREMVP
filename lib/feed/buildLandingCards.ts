@@ -1106,6 +1106,143 @@ async function fetchEventsForCategory(
 }
 
 /**
+ * Build upcoming candidate pairs from fallback48hCandidates without CLOB enrichment.
+ * Sets signalStatus: "upcoming_candidate" and gameStartIso on diagnostics.
+ */
+function buildUpcomingPairs(
+  samples: SportsDiscoverySample[],
+  upcomingLimit: number,
+): LandingCardPair[] {
+  const pairs: LandingCardPair[] = [];
+
+  const sorted = [...samples].sort((a, b) => {
+    const aTime = a.resolvedGameTimeIso ? new Date(a.resolvedGameTimeIso).getTime() : Infinity;
+    const bTime = b.resolvedGameTimeIso ? new Date(b.resolvedGameTimeIso).getTime() : Infinity;
+    if (aTime !== bTime) return aTime - bTime;
+    return (b.eventVolumeUsd ?? 0) - (a.eventVolumeUsd ?? 0);
+  });
+
+  for (const sample of sorted) {
+    if (pairs.length >= upcomingLimit) break;
+    if (!sample.leagueName || !sample.resolvedGameTimeIso || !sample.primaryMarketRaw?.conditionId) continue;
+
+    const raw = sample.primaryMarketRaw;
+    const outcomes = raw.outcomes ?? [];
+    const outcomePrices = raw.outcomePrices ?? [];
+
+    let position = "Market Watch";
+    let currentPrice: number | null = null;
+    let profitStr = "Pending";
+
+    if (outcomes.length > 0 && outcomePrices.length === outcomes.length) {
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < outcomePrices.length; i++) {
+        const p = outcomePrices[i];
+        if (typeof p === "number" && p > 0.15 && p < 0.85) {
+          const dist = Math.abs(p - 0.45);
+          if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+        }
+      }
+      const price = outcomePrices[bestIdx];
+      if (typeof price === "number" && price > 0.15 && price < 0.85) {
+        position = safeString(outcomes[bestIdx]) || "Market Watch";
+        currentPrice = price;
+        profitStr = `${computePotentialProfitPercent(price)}%`;
+      }
+    }
+
+    const conditionId = raw.conditionId ?? "";
+    const pairId = `upcoming-${slugify(conditionId || sample.slug || "market")}-${slugify(position)}`;
+    const gameTimeDisplay = formatGameTime(sample.resolvedGameTimeIso);
+    const volNum = (raw.volumeNum ?? 0) || (raw.volume24hr ?? 0) || sample.eventVolumeUsd;
+    const headline = volNum > 0 ? `$${compactMoney(volNum)} market volume` : "Upcoming market";
+
+    const marketSourceId = `${pairId}-market-source`;
+    const marketSource: MarketSource = {
+      id: marketSourceId,
+      sourceLabel: "Upcoming Market",
+      platform: "Polymarket",
+      network: "Polygon",
+      timeAgo: gameTimeDisplay,
+      headline,
+      subline: `Starts ${gameTimeDisplay}`,
+      delta: "0%",
+      type: "market-source",
+      visualType: "chart",
+    };
+
+    const marketSources: MarketSourceEvidenceCard[] = [
+      { ...marketSource, type: "market-source", visualType: "chart" },
+      {
+        id: `${pairId}-market-momentum`,
+        sourceLabel: "Market Watch",
+        platform: "Polymarket",
+        network: "Polygon",
+        timeAgo: gameTimeDisplay,
+        headline: `Game starts ${gameTimeDisplay}`,
+        subline: "Pre-game market — monitoring for edge signal",
+        delta: "0%",
+        type: "market-momentum",
+        visualType: "chart",
+      },
+    ];
+
+    const volScore = clamp(Math.round((Math.min(volNum, 500000) / 500000) * 60 + 30), 30, 90);
+    const metrics: TrustMetric[] = [
+      { id: "volume-signal", label: "Volume Signal", value: volScore, bar: volScore, icon: "/icons/trust-smart-money.png" },
+      { id: "public-vs-whale", label: "Market Activity", value: 55, bar: 55, icon: "/icons/trust-public-whale.png" },
+      { id: "pre-event-score", label: "PreEventScore AI", value: 55, bar: 55, icon: "/icons/trust-ai-score.png" },
+    ];
+
+    const winProbability = 57;
+    const premiumSignal: PremiumSignal = {
+      id: pairId,
+      league: sample.leagueName || "Sports",
+      time: gameTimeDisplay,
+      eventTitle: truncateText(sample.title || safeString(raw.question) || "Upcoming Market", 50),
+      confidenceLabel: getConfidenceLabel(winProbability),
+      position,
+      profit: profitStr,
+      winProbability,
+      price: "$1.99",
+      ctaLabel: "Watch Market",
+      metrics,
+      polymarketUrl: sample.polymarketEventSlug
+        ? `https://polymarket.com/event/${sample.polymarketEventSlug}`
+        : undefined,
+    };
+
+    const diagnostics: LandingCardDiagnostics = {
+      conditionId,
+      selectedTokenId: null,
+      selectedOutcome: position,
+      currentPrice,
+      price1hAgo: null,
+      price6hAgo: null,
+      delta1hPp: null,
+      delta6hPp: null,
+      spread: null,
+      openInterest: null,
+      recentTradeCash: null,
+      maxTradeCash: null,
+      selectedTradeCount: null,
+      totalTradeCount: null,
+      holderConcentrationScore: null,
+      dataCoverage: 0,
+      formulaUsed: FORMULA_VERSION,
+      rejectionReasons: [],
+      signalStatus: "upcoming_candidate",
+      gameStartIso: sample.resolvedGameTimeIso,
+    };
+
+    pairs.push({ id: pairId, premiumSignal, marketSource, marketSources, diagnostics });
+  }
+
+  return pairs;
+}
+
+/**
  * Main function to build landing cards from Polymarket data
  *
  * Supports filtering by:
@@ -1118,11 +1255,17 @@ export async function buildLandingCards(options?: {
   category?: string;
   minDataCoverage?: number;
   excludeEnded?: boolean;
+  includeUpcoming?: boolean;
+  upcomingLimit?: number;
 }): Promise<LandingCardsResponse> {
   const limit = clamp(options?.limit ?? 4, 1, 10);
   const category = options?.category ?? "sports";
   const minDataCoverage = clamp(options?.minDataCoverage ?? 25, 0, 100);
   const excludeEnded = options?.excludeEnded ?? true;
+  const includeUpcoming = options?.includeUpcoming ?? false;
+  const upcomingLimit = clamp(options?.upcomingLimit ?? 5, 1, 10);
+
+  let upcomingRawSamples: SportsDiscoverySample[] = [];
 
   // Track inspected counts for diagnostics
   let eventsCount = 0;
@@ -1156,6 +1299,10 @@ export async function buildLandingCards(options?: {
         targetCards: limit * 2,
       });
 
+      if (includeUpcoming) {
+        upcomingRawSamples = discovery.fallback48hCandidates;
+      }
+
       const discoverySamples = [
         ...discovery.finalCandidates,
         ...discovery.fallback48hCandidates,
@@ -1176,6 +1323,7 @@ export async function buildLandingCards(options?: {
           source: "polymarket",
           formulaVersion: FORMULA_VERSION,
           pairs: [],
+          ...(includeUpcoming ? { upcomingPairs: buildUpcomingPairs(upcomingRawSamples, upcomingLimit) } : {}),
           rejected: [{
             rejectionReasons: [
               "No sports candidates from markets-first discovery",
@@ -1395,6 +1543,7 @@ export async function buildLandingCards(options?: {
       source: "polymarket",
       formulaVersion: FORMULA_VERSION,
       pairs,
+      ...(includeUpcoming ? { upcomingPairs: buildUpcomingPairs(upcomingRawSamples, upcomingLimit) } : {}),
       rejected: finalRejected,
       filters: { limit, category, minDataCoverage, excludeEnded },
       inspected: {
