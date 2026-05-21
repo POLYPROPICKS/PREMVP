@@ -114,16 +114,32 @@ export default function PremiumSignalCard({ pair }: { pair: LandingCardPair }) {
     background: `conic-gradient(${ringColor} 0deg ${ringDegrees}deg, rgba(255,255,255,0.16) ${ringDegrees}deg 360deg)`,
   };
 
+  // Prefer derivation from real market price (Polymarket 0–1) so extreme but
+  // tradable markets show correct American odds. Falls back to profit-string parse.
+  const rawPrice = typeof diag.currentPrice === "number" ? diag.currentPrice : NaN;
   const profitPercent = parseFloat((signal.profit || "0").replace("%", "")) || 0;
-  const americanOdds =
-    profitPercent >= 100
-      ? `+${Math.round(profitPercent)}`
-      : `-${Math.round(10000 / Math.max(profitPercent, 1))}`;
-  const americanOddsNum = parseInt(String(americanOdds).replace(/[^\d-]/g, ""), 10);
-  const profitDollars =
-    Number.isFinite(americanOddsNum) && americanOddsNum !== 0
-      ? Math.round(americanOddsNum > 0 ? americanOddsNum : 10000 / Math.abs(americanOddsNum))
-      : Math.round(profitPercent);
+
+  let americanOdds = "";
+  let profitDollars = 0;
+
+  if (Number.isFinite(rawPrice) && rawPrice > 0 && rawPrice < 1) {
+    if (rawPrice >= 0.5) {
+      const neg = Math.max(1, Math.round((rawPrice / (1 - rawPrice)) * 100));
+      americanOdds = `-${neg}`;
+      profitDollars = Math.max(1, Math.round(((1 - rawPrice) / rawPrice) * 100));
+    } else {
+      const pos = Math.max(1, Math.round(((1 - rawPrice) / rawPrice) * 100));
+      americanOdds = `+${pos}`;
+      profitDollars = pos;
+    }
+  } else if (profitPercent >= 100) {
+    americanOdds = `+${Math.round(profitPercent)}`;
+    profitDollars = Math.round(profitPercent);
+  } else if (profitPercent > 0) {
+    americanOdds = `-${Math.round(10000 / profitPercent)}`;
+    profitDollars = Math.round(profitPercent);
+  }
+  // else: no real price and no real profit → leave americanOdds empty (safety guard).
 
   const orderedMetrics = getOrderedMetrics(signal.metrics);
 
@@ -175,9 +191,15 @@ export default function PremiumSignalCard({ pair }: { pair: LandingCardPair }) {
           </div>
           <div className={styles.positionProfitDivider} />
           <div className={styles.profitCol}>
-            <span className={styles.oddsLabel}>Odds {americanOdds}</span>
-            <div className={styles.profitValue}>+${profitDollars}</div>
-            <span className={styles.perStake}>per $100 stake</span>
+            {americanOdds ? (
+              <>
+                <span className={styles.oddsLabel}>Odds {americanOdds}</span>
+                <div className={styles.profitValue}>+${profitDollars}</div>
+                <span className={styles.perStake}>per $100 stake</span>
+              </>
+            ) : (
+              <span className={styles.oddsLabel}>Pricing pending</span>
+            )}
           </div>
         </div>
 

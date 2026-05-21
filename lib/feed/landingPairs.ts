@@ -342,6 +342,26 @@ export function landingPairMatchesFilter(pair: LandingFilterablePair, filter: La
   return false;
 }
 
+export function getLandingPairConfidenceTier(
+  pair: LandingFilterablePair & { premiumSignal?: { winProbability?: number } },
+): number {
+  const wp = Number(pair.premiumSignal?.winProbability ?? 0);
+  if (wp >= 80) return 4; // ABSOLUTE
+  if (wp > 65) return 3;  // HIGH
+  if (wp > 55) return 2;  // MIDDLE
+  return 1;               // LOW
+}
+
+export function sortLandingPairsByConfidence<
+  T extends LandingFilterablePair & { premiumSignal?: { winProbability?: number } },
+>(pairs: T[]): T[] {
+  return [...pairs].sort((a, b) => {
+    const tierDiff = getLandingPairConfidenceTier(b) - getLandingPairConfidenceTier(a);
+    if (tierDiff !== 0) return tierDiff;
+    return Number(b.premiumSignal?.winProbability ?? 0) - Number(a.premiumSignal?.winProbability ?? 0);
+  });
+}
+
 export function computeLandingFilterCounts<T extends LandingFilterablePair>(
   pairs: T[],
 ): Record<LandingFilter, number> {

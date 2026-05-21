@@ -7,6 +7,7 @@ import { marketSources as staticMarketSources } from '@/content/marketSources';
 import {
   normalizeLandingPairs,
   dedupeLandingPairsByMarketOutcome,
+  sortLandingPairsByConfidence,
   landingPairMatchesFilter,
   computeLandingFilterCounts,
   type LandingPair,
@@ -253,10 +254,11 @@ export default function ReconstructionPage() {
           const allApiPairs = [...(data.pairs ?? []), ...(data.upcomingPairs ?? [])];
           const normalizedPairs = normalizeLandingPairs(allApiPairs, 'api');
           const dedupedPairs = dedupeLandingPairsByMarketOutcome(normalizedPairs);
+          const sortedPairs = sortLandingPairsByConfidence(dedupedPairs);
 
-          if (dedupedPairs.length > 0) {
-            setAllPairs(dedupedPairs);
-            setActivePairId(dedupedPairs[0]?.id ?? fallbackPairs[0]?.id ?? '');
+          if (sortedPairs.length > 0) {
+            setAllPairs(sortedPairs);
+            setActivePairId(sortedPairs[0]?.id ?? fallbackPairs[0]?.id ?? '');
             setActiveEvidenceIndex(0);
 
             console.log('[landing-feed] using normalized api feed:', normalizedPairs.length, 'pairs');

@@ -1147,28 +1147,56 @@ function buildUpcomingPairs(
     const raw = sample.primaryMarketRaw;
     const outcomes = raw.outcomes ?? [];
     const outcomePrices = raw.outcomePrices ?? [];
+    const clobTokenIds = (raw as { clobTokenIds?: string[] }).clobTokenIds ?? [];
 
     let position = "Market Watch";
     let currentPrice: number | null = null;
     let profitStr = "Pending";
+    let selectedTokenId: string | null = null;
 
     if (outcomes.length > 0 && outcomePrices.length === outcomes.length) {
-      let bestIdx = 0;
+      // Locked actionable-odds bands (decimal 1.7–3 primary; 1.35–5 fallback)
+      // No extreme-favorite or longshot fallback: better to skip than to display 0.9995/0.0005.
+      const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
+      const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
+      let bestIdx = -1;
       let bestDist = Infinity;
+      // Pass 1: primary band, prefer closest to 0.45
       for (let i = 0; i < outcomePrices.length; i++) {
         const p = outcomePrices[i];
-        if (typeof p === "number" && p > 0.15 && p < 0.85) {
+        if (typeof p === "number" && p >= PRIMARY_MIN && p <= PRIMARY_MAX) {
           const dist = Math.abs(p - 0.45);
           if (dist < bestDist) { bestDist = dist; bestIdx = i; }
         }
       }
-      const price = outcomePrices[bestIdx];
-      if (typeof price === "number" && price > 0.15 && price < 0.85) {
-        position = safeString(outcomes[bestIdx]) || "Market Watch";
-        currentPrice = price;
-        profitStr = `${computePotentialProfitPercent(price)}%`;
+      // Pass 2: fallback band only if primary empty
+      if (bestIdx === -1) {
+        bestDist = Infinity;
+        for (let i = 0; i < outcomePrices.length; i++) {
+          const p = outcomePrices[i];
+          if (typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX) {
+            const dist = Math.abs(p - 0.45);
+            if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+          }
+        }
+      }
+      if (bestIdx >= 0) {
+        const price = outcomePrices[bestIdx];
+        if (typeof price === "number" && price > 0 && price < 1) {
+          position = safeString(outcomes[bestIdx]) || position;
+          currentPrice = price;
+          profitStr = `${computePotentialProfitPercent(price)}%`;
+          if (Array.isArray(clobTokenIds) && typeof clobTokenIds[bestIdx] === "string") {
+            selectedTokenId = clobTokenIds[bestIdx];
+          }
+        }
       }
     }
+
+    // Quality beats immediacy: if no actionable price found, do NOT emit a Market Watch
+    // pair with Pending profit. Skip the sample; discovery's window expansion should
+    // provide better candidates within 7/14/30 days.
+    if (currentPrice === null) continue;
 
     const conditionId = raw.conditionId ?? "";
     const pairId = `upcoming-${slugify(conditionId || sample.slug || "market")}-${slugify(position)}`;
@@ -1252,7 +1280,7 @@ function buildUpcomingPairs(
 
     const diagnostics: LandingCardDiagnostics = {
       conditionId,
-      selectedTokenId: null,
+      selectedTokenId,
       selectedOutcome: position,
       currentPrice,
       price1hAgo: null,

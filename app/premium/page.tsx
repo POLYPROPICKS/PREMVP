@@ -5,6 +5,7 @@ import { premiumSignals as staticPremiumSignals } from "@/content/signals";
 import { type PremiumSignal, type LandingCardPair } from "@/lib/feed/types";
 import {
   dedupeLandingPairsByMarketOutcome,
+  sortLandingPairsByConfidence,
   landingPairMatchesFilter,
   computeLandingFilterCounts,
   type LandingFilter,
@@ -241,7 +242,7 @@ export default async function PremiumPage({
 
   const activeFilter = parseFilter(resolvedParams.filter);
   const rawFeedPairs = await loadFeedPairs();
-  const feedPairs = dedupeLandingPairsByMarketOutcome(rawFeedPairs);
+  const feedPairs = sortLandingPairsByConfidence(dedupeLandingPairsByMarketOutcome(rawFeedPairs));
   const hasFeed = feedPairs.length > 0;
 
   // Eligible pairs (with non-empty position) — used for counts and render base
