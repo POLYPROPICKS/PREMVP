@@ -296,8 +296,8 @@ export default async function PremiumPage({
   const activeFilter = parseFilter(resolvedParams.filter);
   const rawFeedPairs = await loadFeedPairs();
   const feedPairs = rawFeedPairs.filter((pair, index, arr) => {
-    const key = pair.diagnostics?.conditionId || pair.id;
-    return arr.findIndex((p) => (p.diagnostics?.conditionId || p.id) === key) === index;
+    const key = pair.id;
+    return arr.findIndex((p) => p.id === key) === index;
   });
   const hasFeed = feedPairs.length > 0;
 
