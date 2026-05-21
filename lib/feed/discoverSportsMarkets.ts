@@ -418,11 +418,30 @@ export async function discoverSportsMarkets(
         const endIso = event.endDateIso || event.endDate || null;
         if (endIso) {
           const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
-          if (hoursUntil < 0 || hoursUntil > 720) continue;
+          // 2160h = 90 days. FIFA WC settles on tournament-end (July 20, 2026) which is
+          // ~60d out; per-match markets are sooner. Match NBA/NHL futures horizon.
+          if (hoursUntil < 0 || hoursUntil > 2160) continue;
         }
-        const pm = event.markets?.[0] ?? null;
-        if (!pm) continue;
-        const normalizedPm = normalizeSportsMarket(pm as unknown as Record<string, unknown>);
+        // Scan all markets[] (WC event has ~40 team-future sub-markets) for first actionable
+        const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
+        const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
+        let chosenPm: Record<string, unknown> | null = null;
+        let chosenNormalized: SportsMarketCandidate | null = null;
+        for (const m of event.markets ?? []) {
+          const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
+          if (!Array.isArray(nm.outcomePrices) || nm.outcomePrices.length === 0) continue;
+          const primaryIdx = nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= PRIMARY_MIN && p <= PRIMARY_MAX);
+          const fallbackIdx = primaryIdx === -1
+            ? nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX)
+            : primaryIdx;
+          if (fallbackIdx !== -1) {
+            chosenPm = m as unknown as Record<string, unknown>;
+            chosenNormalized = nm;
+            break;
+          }
+        }
+        if (!chosenPm || !chosenNormalized) continue;
+        const pm = chosenPm as { volume?: number; volume24hr?: number; question?: string; conditionId?: string };
         const vol = typeof pm.volume === "number" ? pm.volume
           : typeof pm.volume24hr === "number" ? pm.volume24hr
           : typeof event.volume24hr === "number" ? event.volume24hr : 0;
@@ -440,11 +459,11 @@ export async function discoverSportsMarkets(
           leagueName: "World Cup 2026",
           polymarketEventSlug: (event.slug || "").substring(0, 80),
           primaryMarketRaw: {
-            outcomes: normalizedPm.outcomes,
-            outcomePrices: normalizedPm.outcomePrices,
-            clobTokenIds: normalizedPm.clobTokenIds,
-            question: normalizedPm.question || (pm.question ?? title),
-            conditionId: normalizedPm.conditionId || (pm.conditionId ?? undefined),
+            outcomes: chosenNormalized.outcomes,
+            outcomePrices: chosenNormalized.outcomePrices,
+            clobTokenIds: chosenNormalized.clobTokenIds,
+            question: chosenNormalized.question || (pm.question ?? title),
+            conditionId: chosenNormalized.conditionId || (pm.conditionId ?? undefined),
             volumeNum: typeof pm.volume === "number" ? pm.volume : null,
             volume24hr: typeof pm.volume24hr === "number" ? pm.volume24hr : null,
             volumeClob: null,
