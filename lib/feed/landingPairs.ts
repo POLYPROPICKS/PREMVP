@@ -7,6 +7,11 @@ export type PassModalStep = 'offer' | 'soldOutEmail' | 'success';
 
 export type LandingPairSource = 'api' | 'fallback';
 
+export interface LandingPairDiagnosticsLike {
+  conditionId?: string | null;
+  selectedOutcome?: string;
+}
+
 export interface LandingPair {
   id: string;
   premiumSignal: PremiumSignal;
@@ -18,6 +23,15 @@ export interface LandingPair {
   sortScore?: number;
   volumeUsd?: number;
   source?: LandingPairSource;
+  diagnostics?: LandingPairDiagnosticsLike;
+}
+
+export type LandingFilter = 'live' | 'wc2026' | 'nhl' | 'nba' | 'esport';
+
+export interface LandingFilterablePair {
+  id: string;
+  premiumSignal: PremiumSignal;
+  diagnostics?: LandingPairDiagnosticsLike;
 }
 
 type RawLandingPair = Partial<LandingPair> & {
@@ -125,6 +139,7 @@ export function normalizeLandingPairs(rawPairs: unknown[], source: LandingPairSo
       const sortScore = clampNumber(pair.sortScore);
       const priority = clampNumber(pair.priority);
 
+      const rawDiag = (raw as { diagnostics?: LandingPairDiagnosticsLike })?.diagnostics;
       const normalizedPair: LandingPair = {
         id: createPairId(pair, index),
         premiumSignal: pair.premiumSignal,
@@ -148,6 +163,9 @@ export function normalizeLandingPairs(rawPairs: unknown[], source: LandingPairSo
         sortScore,
         volumeUsd,
         source,
+        ...(rawDiag
+          ? { diagnostics: { conditionId: rawDiag.conditionId ?? null, selectedOutcome: rawDiag.selectedOutcome } }
+          : {}),
       };
 
       return normalizedPair;
@@ -249,5 +267,89 @@ export function normalizeLandingPairEvidenceStack(pair: LandingPair): LandingPai
     sortScore: pair.sortScore,
     volumeUsd: pair.volumeUsd,
     source: pair.source,
+    ...(pair.diagnostics ? { diagnostics: pair.diagnostics } : {}),
+  };
+}
+
+// ── Shared landing feed contract (public + premium) ─────────────────────────
+
+export function getLandingPairDedupeKey(pair: LandingFilterablePair): string {
+  const cid = pair.diagnostics?.conditionId;
+  const out = pair.diagnostics?.selectedOutcome;
+  if (cid && out) return `${cid}::${out}`;
+  return pair.id;
+}
+
+export function dedupeLandingPairsByMarketOutcome<T extends LandingFilterablePair>(pairs: T[]): T[] {
+  return pairs.filter((p, i, arr) => {
+    const k = getLandingPairDedupeKey(p);
+    return arr.findIndex((o) => getLandingPairDedupeKey(o) === k) === i;
+  });
+}
+
+export function landingPairMatchesFilter(pair: LandingFilterablePair, filter: LandingFilter): boolean {
+  if (filter === 'live') return true;
+  const league = (pair.premiumSignal?.league ?? '').toLowerCase();
+  const title = (pair.premiumSignal?.eventTitle ?? '').toLowerCase();
+  const combined = `${league} ${title}`;
+  if (filter === 'wc2026') {
+    const isWc =
+      combined.includes('world cup') ||
+      combined.includes('wc2026') ||
+      combined.includes('wc 2026') ||
+      combined.includes('fifa world cup') ||
+      combined.includes('fifa');
+    const isHockey = combined.includes('hockey') || league.includes('nhl');
+    return isWc && !isHockey;
+  }
+  if (filter === 'nhl') {
+    return (
+      league.includes('nhl') ||
+      combined.includes('stanley') ||
+      (combined.includes('hockey') && !combined.includes('world cup'))
+    );
+  }
+  if (filter === 'nba') {
+    return league.includes('nba') || combined.includes('basketball');
+  }
+  if (filter === 'esport') {
+    const isEsport =
+      league.includes('esport') ||
+      league.includes('gaming') ||
+      combined.includes('esports') ||
+      combined.includes('esport') ||
+      combined.includes('e-sport') ||
+      combined.includes('league of legends') ||
+      combined.includes('cs2') ||
+      combined.includes('counter-strike') ||
+      combined.includes('dota') ||
+      combined.includes('valorant') ||
+      combined.includes('overwatch') ||
+      combined.includes('fortnite') ||
+      combined.includes('rocket league');
+    const isTrad =
+      combined.includes('nba') ||
+      combined.includes('nhl') ||
+      combined.includes('world cup') ||
+      combined.includes('soccer') ||
+      combined.includes('basketball') ||
+      combined.includes('hockey') ||
+      combined.includes('baseball') ||
+      combined.includes('tennis') ||
+      combined.includes('golf');
+    return isEsport && !isTrad;
+  }
+  return false;
+}
+
+export function computeLandingFilterCounts<T extends LandingFilterablePair>(
+  pairs: T[],
+): Record<LandingFilter, number> {
+  return {
+    live: pairs.length,
+    wc2026: pairs.filter((p) => landingPairMatchesFilter(p, 'wc2026')).length,
+    nhl: pairs.filter((p) => landingPairMatchesFilter(p, 'nhl')).length,
+    nba: pairs.filter((p) => landingPairMatchesFilter(p, 'nba')).length,
+    esport: pairs.filter((p) => landingPairMatchesFilter(p, 'esport')).length,
   };
 }

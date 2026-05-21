@@ -4,48 +4,22 @@ import { useState, useEffect, useCallback, useMemo, type CSSProperties } from 'r
 import styles from './Reconstruction.module.css';
 import { premiumSignals as staticPremiumSignals, PremiumSignal } from '@/content/signals';
 import { marketSources as staticMarketSources } from '@/content/marketSources';
-import { normalizeLandingPairs, type LandingPair, type PassModalStep } from '@/lib/feed/landingPairs';
+import {
+  normalizeLandingPairs,
+  dedupeLandingPairsByMarketOutcome,
+  landingPairMatchesFilter,
+  computeLandingFilterCounts,
+  type LandingPair,
+  type LandingFilter,
+  type PassModalStep,
+} from '@/lib/feed/landingPairs';
 import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
 import PassOfferModal from '@/components/modals/PassOfferModal';
 
 type MarketEvidenceSource = NonNullable<LandingPair['marketSources']>[number];
 
-type PublicFilter = "live" | "wc2026" | "nhl" | "nba" | "esport";
-
-function signalMatchesPublicFilter(signal: PremiumSignal, tag: PublicFilter): boolean {
-  if (tag === "live") return true;
-  const league = (signal.league ?? "").toLowerCase();
-  const title = (signal.eventTitle ?? "").toLowerCase();
-  const combined = `${league} ${title}`;
-  if (tag === "wc2026") {
-    const isWorldCup =
-      combined.includes("world cup") ||
-      combined.includes("wc2026") ||
-      combined.includes("wc 2026") ||
-      combined.includes("fifa");
-    const isHockey = combined.includes("hockey") || league.includes("nhl");
-    return isWorldCup && !isHockey;
-  }
-  if (tag === "nhl")
-    return league.includes("nhl") || combined.includes("stanley") || (combined.includes("hockey") && !combined.includes("world cup"));
-  if (tag === "nba")
-    return league.includes("nba") || combined.includes("basketball") || combined.includes("knicks") || combined.includes("cavaliers");
-  if (tag === "esport")
-    return (
-      league.includes("esport") ||
-      league.includes("gaming") ||
-      combined.includes("esports") ||
-      combined.includes("esport") ||
-      combined.includes("lol") ||
-      combined.includes("league of legends") ||
-      combined.includes("cs2") ||
-      combined.includes("counter-strike") ||
-      combined.includes("dota") ||
-      combined.includes("valorant")
-    );
-  return false;
-}
+type PublicFilter = LandingFilter;
 
 const fallbackPairs: LandingPair[] = staticPremiumSignals.flatMap((signal, index) => {
   const marketSource = staticMarketSources[index] ?? staticMarketSources[0];
@@ -79,17 +53,11 @@ export default function ReconstructionPage() {
 
   const candidatePairs = useMemo(() => {
     if (activeFilter === "live") return allPairs;
-    return allPairs.filter((p) => signalMatchesPublicFilter(p.premiumSignal, activeFilter));
+    return allPairs.filter((p) => landingPairMatchesFilter(p, activeFilter));
   }, [allPairs, activeFilter]);
 
   const filterCounts = useMemo<Record<PublicFilter, number>>(
-    () => ({
-      live: allPairs.length,
-      wc2026: allPairs.filter((p) => signalMatchesPublicFilter(p.premiumSignal, "wc2026")).length,
-      nhl: allPairs.filter((p) => signalMatchesPublicFilter(p.premiumSignal, "nhl")).length,
-      nba: allPairs.filter((p) => signalMatchesPublicFilter(p.premiumSignal, "nba")).length,
-      esport: allPairs.filter((p) => signalMatchesPublicFilter(p.premiumSignal, "esport")).length,
-    }),
+    () => computeLandingFilterCounts(allPairs),
     [allPairs]
   );
 
@@ -143,7 +111,7 @@ export default function ReconstructionPage() {
     setActiveFilter(filter);
     const candidates = filter === "live"
       ? allPairs
-      : allPairs.filter((p) => signalMatchesPublicFilter(p.premiumSignal, filter));
+      : allPairs.filter((p) => landingPairMatchesFilter(p, filter));
     const first = (candidates.length > 0 ? candidates[0] : allPairs[0]) ?? null;
     if (first) {
       setActivePairId(first.id);
@@ -284,10 +252,11 @@ export default function ReconstructionPage() {
           const data = await response.json();
           const allApiPairs = [...(data.pairs ?? []), ...(data.upcomingPairs ?? [])];
           const normalizedPairs = normalizeLandingPairs(allApiPairs, 'api');
+          const dedupedPairs = dedupeLandingPairsByMarketOutcome(normalizedPairs);
 
-          if (normalizedPairs.length > 0) {
-            setAllPairs(normalizedPairs);
-            setActivePairId(normalizedPairs[0]?.id ?? fallbackPairs[0]?.id ?? '');
+          if (dedupedPairs.length > 0) {
+            setAllPairs(dedupedPairs);
+            setActivePairId(dedupedPairs[0]?.id ?? fallbackPairs[0]?.id ?? '');
             setActiveEvidenceIndex(0);
 
             console.log('[landing-feed] using normalized api feed:', normalizedPairs.length, 'pairs');

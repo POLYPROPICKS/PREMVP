@@ -3,6 +3,12 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { verifyPremiumSession } from "@/lib/auth/premiumSession";
 import { premiumSignals as staticPremiumSignals } from "@/content/signals";
 import { type PremiumSignal, type LandingCardPair } from "@/lib/feed/types";
+import {
+  dedupeLandingPairsByMarketOutcome,
+  landingPairMatchesFilter,
+  computeLandingFilterCounts,
+  type LandingFilter,
+} from "@/lib/feed/landingPairs";
 import PremiumSignalCard from "./PremiumSignalCard";
 import styles from "./Premium.module.css";
 
@@ -64,7 +70,7 @@ async function loadFeedPairs(): Promise<LandingCardPair[]> {
 
 // ── Filter helpers ─────────────────────────────────────────────────────────
 
-type PremiumFilter = "live" | "wc2026" | "nhl" | "nba" | "esport";
+type PremiumFilter = LandingFilter;
 type FilterCounts = Record<PremiumFilter, number>;
 
 const FILTER_LABELS: Array<{ tag: PremiumFilter; label: string }> = [
@@ -79,64 +85,6 @@ function parseFilter(raw: string | string[] | undefined): PremiumFilter {
   const s = typeof raw === "string" ? raw : "";
   if (s === "wc2026" || s === "nhl" || s === "nba" || s === "esport") return s;
   return "live";
-}
-
-function signalMatchesFilter(signal: PremiumSignal, tag: PremiumFilter): boolean {
-  if (tag === "live") return true;
-  const league = (signal.league ?? "").toLowerCase();
-  const title = (signal.eventTitle ?? "").toLowerCase();
-  const combined = `${league} ${title}`;
-  if (tag === "wc2026") {
-    const isWorldCup =
-      combined.includes("world cup") ||
-      combined.includes("wc2026") ||
-      combined.includes("wc 2026") ||
-      combined.includes("fifa");
-    const isHockey = combined.includes("hockey") || league.includes("nhl");
-    return isWorldCup && !isHockey;
-  }
-  if (tag === "nhl")
-    return league.includes("nhl") || combined.includes("stanley cup") || (combined.includes("hockey") && !combined.includes("world cup"));
-  if (tag === "nba")
-    return league.includes("nba") || combined.includes("basketball");
-  if (tag === "esport") {
-    const isEsport =
-      league.includes("esport") ||
-      league.includes("gaming") ||
-      combined.includes("esports") ||
-      combined.includes("esport") ||
-      combined.includes("e-sport") ||
-      combined.includes("league of legends") ||
-      combined.includes("cs2") ||
-      combined.includes("counter-strike") ||
-      combined.includes("dota") ||
-      combined.includes("valorant") ||
-      combined.includes("overwatch") ||
-      combined.includes("fortnite") ||
-      combined.includes("rocket league");
-    const isTradSport =
-      combined.includes("nba") ||
-      combined.includes("nhl") ||
-      combined.includes("world cup") ||
-      combined.includes("soccer") ||
-      combined.includes("basketball") ||
-      combined.includes("hockey") ||
-      combined.includes("baseball") ||
-      combined.includes("tennis") ||
-      combined.includes("golf");
-    return isEsport && !isTradSport;
-  }
-  return false;
-}
-
-function computeFilterCounts(eligible: PremiumSignal[]): FilterCounts {
-  return {
-    live: eligible.length,
-    wc2026: eligible.filter((s) => signalMatchesFilter(s, "wc2026")).length,
-    nhl: eligible.filter((s) => signalMatchesFilter(s, "nhl")).length,
-    nba: eligible.filter((s) => signalMatchesFilter(s, "nba")).length,
-    esport: eligible.filter((s) => signalMatchesFilter(s, "esport")).length,
-  };
 }
 
 function isEligiblePosition(position: string | undefined): boolean {
@@ -295,55 +243,37 @@ export default async function PremiumPage({
 
   const activeFilter = parseFilter(resolvedParams.filter);
   const rawFeedPairs = await loadFeedPairs();
-  const getPairDedupeKey = (pair: LandingCardPair) =>
-    pair.diagnostics?.conditionId && pair.diagnostics?.selectedOutcome
-      ? `${pair.diagnostics.conditionId}::${pair.diagnostics.selectedOutcome}`
-      : pair.id;
-
-  const feedPairs = rawFeedPairs.filter((pair, index, arr) => {
-    const key = getPairDedupeKey(pair);
-    return arr.findIndex((p) => getPairDedupeKey(p) === key) === index;
-  });
+  const feedPairs = dedupeLandingPairsByMarketOutcome(rawFeedPairs);
   const hasFeed = feedPairs.length > 0;
 
-  // All eligible signals regardless of active filter — used for counts
-  const allEligible: PremiumSignal[] = hasFeed
-    ? feedPairs.map((p) => p.premiumSignal).filter((s) => isEligiblePosition(s.position))
-    : (staticPremiumSignals as unknown as PremiumSignal[]).filter((s) => isEligiblePosition(s.position)).slice(0, 5);
+  // Eligible pairs (with non-empty position) — used for counts and render base
+  const eligibleFeedPairs = feedPairs.filter((p) => isEligiblePosition(p.premiumSignal.position));
+  const staticFallbackPairs: LandingCardPair[] = (staticPremiumSignals as unknown as PremiumSignal[])
+    .filter((s) => isEligiblePosition(s.position))
+    .slice(0, 5)
+    .map((s, i) => ({
+      id: `static-${s.id ?? i}`,
+      premiumSignal: s,
+      marketSource: { id: "", sourceLabel: "", platform: "", network: "", timeAgo: "", headline: "", subline: "", delta: "" },
+      marketSources: [],
+      diagnostics: {
+        conditionId: null, selectedTokenId: null, selectedOutcome: "",
+        currentPrice: null, price1hAgo: null, price6hAgo: null,
+        delta1hPp: null, delta6hPp: null, spread: null, openInterest: null,
+        recentTradeCash: null, maxTradeCash: null, selectedTradeCount: null,
+        totalTradeCount: null, holderConcentrationScore: null,
+        dataCoverage: 0, formulaUsed: "", rejectionReasons: [],
+      },
+    }));
 
-  const filterCounts = computeFilterCounts(allEligible);
+  const eligiblePairsForCount: LandingCardPair[] = hasFeed ? eligibleFeedPairs : staticFallbackPairs;
+  const filterCounts = computeLandingFilterCounts(eligiblePairsForCount);
 
-  // pairsToRender: live feed uses full LandingCardPair for the expandable details panel;
-  // static fallback wraps PremiumSignal into a minimal pair (no evidence data).
-  let pairsToRender: LandingCardPair[];
-  if (hasFeed) {
-    const eligiblePairs = feedPairs.filter((p) => isEligiblePosition(p.premiumSignal.position));
-    pairsToRender =
-      activeFilter === "live"
-        ? eligiblePairs
-        : eligiblePairs.filter((p) => signalMatchesFilter(p.premiumSignal, activeFilter));
-  } else {
-    const staticFiltered =
-      activeFilter === "live"
-        ? allEligible
-        : allEligible.filter((s) => signalMatchesFilter(s, activeFilter));
-    pairsToRender = staticFiltered.map(
-      (s): LandingCardPair => ({
-        id: s.id,
-        premiumSignal: s,
-        marketSource: { id: "", sourceLabel: "", platform: "", network: "", timeAgo: "", headline: "", subline: "", delta: "" },
-        marketSources: [],
-        diagnostics: {
-          conditionId: null, selectedTokenId: null, selectedOutcome: "",
-          currentPrice: null, price1hAgo: null, price6hAgo: null,
-          delta1hPp: null, delta6hPp: null, spread: null, openInterest: null,
-          recentTradeCash: null, maxTradeCash: null, selectedTradeCount: null,
-          totalTradeCount: null, holderConcentrationScore: null,
-          dataCoverage: 0, formulaUsed: "", rejectionReasons: [],
-        },
-      })
-    );
-  }
+  // pairsToRender uses the same eligible+deduped pair base used for counts.
+  const pairsToRender: LandingCardPair[] =
+    activeFilter === "live"
+      ? eligiblePairsForCount
+      : eligiblePairsForCount.filter((p) => landingPairMatchesFilter(p, activeFilter));
 
   return (
     <div className={styles.page}>

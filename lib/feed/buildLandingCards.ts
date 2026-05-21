@@ -837,7 +837,7 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
     time: parentMeta.startDate
       ? formatGameTime(parentMeta.startDate)
       : formatEndTime(parentMeta.endDate),
-    eventTitle: truncateText(parentMeta.title || safeString(market.question) || "Unknown Event", 50),
+    eventTitle: truncateText(humanizeMatchupTitle(parentMeta.title || safeString(market.question) || "Unknown Event", selectedOutcome.name), 50),
     confidenceLabel: getConfidenceLabel(finalDisplaySignalScore),
     position: selectedOutcome.name,
     profit: profitStr,
@@ -980,6 +980,24 @@ function buildEvidenceStack(params: {
 function truncateText(text: string, maxLength: number): string {
   if (!text || text.length <= maxLength) return text || "";
   return text.slice(0, maxLength - 3) + "...";
+}
+
+/**
+ * If position is exactly "Yes"/"No" and title is a generic matchup like
+ * "Team A vs. Team B", rewrite to "Will Team A beat Team B?" for clarity.
+ * Safe: returns original title if cannot parse.
+ */
+function humanizeMatchupTitle(title: string, position: string | undefined): string {
+  if (!title || !position) return title;
+  const pos = position.trim().toLowerCase();
+  if (pos !== "yes" && pos !== "no") return title;
+  if (title.includes("?")) return title;
+  const m = title.match(/^(.+?)\s+(?:vs\.?|v\.?)\s+(.+)$/i);
+  if (!m) return title;
+  const teamA = m[1].trim();
+  const teamB = m[2].trim();
+  if (!teamA || !teamB) return title;
+  return `Will ${teamA} beat ${teamB}?`;
 }
 
 /**
@@ -1219,7 +1237,7 @@ function buildUpcomingPairs(
       id: pairId,
       league: sample.leagueName || "Sports",
       time: gameTimeDisplay,
-      eventTitle: truncateText(sample.title || safeString(raw.question) || "Upcoming Market", 50),
+      eventTitle: truncateText(humanizeMatchupTitle(sample.title || safeString(raw.question) || "Upcoming Market", position), 50),
       confidenceLabel: getConfidenceLabel(winProbability),
       position,
       profit: profitStr,
