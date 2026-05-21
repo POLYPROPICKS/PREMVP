@@ -8,12 +8,14 @@ import type {
   SportsDiscoveryCounts,
   SportsDiscoverySample,
   SportsDiscoveryResult,
+  PolymarketRawEvent,
 } from "./types";
 
 import {
   fetchSportsMetadata,
   fetchTeams,
   fetchMarketsBySportsTag,
+  fetchEventsByTagSlugSafe,
 } from "./polymarketClient";
 
 import {
@@ -386,6 +388,70 @@ export async function discoverSportsMarkets(
       leagueName: "World Cup 2026",
       primaryMarketRaw: g.primaryMarket,
     }));
+
+  // 8c. Targeted WC2026 tag-slug fetch (fills gap when sports-tag misses WC2026 events)
+  {
+    const WC2026_PROP_EXCLUDE_RE = /\b(top goalscorer|longshots parlay|qualification longshots|squad)\b|player to make|will .+ play/i;
+    const WC2026_TAG_SLUGS = ["fifa-world-cup", "2026-fifa-world-cup"];
+    const rawTagEvents: PolymarketRawEvent[] = [];
+    for (const tagSlug of WC2026_TAG_SLUGS) {
+      try {
+        const events = await fetchEventsByTagSlugSafe(tagSlug, 50);
+        rawTagEvents.push(...events);
+      } catch {
+        warnings.push(`WC2026 tag-slug fetch failed for ${tagSlug}`);
+      }
+    }
+    if (rawTagEvents.length > 0) {
+      const existingKeys = new Set(extendedWc2026Candidates.map(s => s.slug || s.gameId || s.title));
+      const seenTagIds = new Set<string>();
+      const nowMs = now.getTime();
+      const wc2026FromTag: SportsDiscoverySample[] = [];
+      for (const event of rawTagEvents) {
+        if (!event.active || event.closed) continue;
+        const key = event.id || event.slug;
+        if (!key || seenTagIds.has(key)) continue;
+        seenTagIds.add(key);
+        const title = event.title || event.slug || "";
+        if (WC2026_PROP_EXCLUDE_RE.test(title)) continue;
+        if (existingKeys.has(event.slug || title)) continue;
+        const endIso = event.endDateIso || event.endDate || null;
+        if (endIso) {
+          const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
+          if (hoursUntil < 0 || hoursUntil > 720) continue;
+        }
+        const pm = event.markets?.[0] ?? null;
+        const vol = typeof pm?.volume === "number" ? pm.volume
+          : typeof pm?.volume24hr === "number" ? pm.volume24hr
+          : typeof event.volume24hr === "number" ? event.volume24hr : 0;
+        wc2026FromTag.push({
+          title: title.substring(0, 100),
+          slug: (event.slug || "").substring(0, 60),
+          gameId: undefined,
+          sportsMarketType: undefined,
+          eventVolumeUsd: vol,
+          resolvedGameTimeIso: endIso,
+          gameTimeSource: "gamma-event-enddate",
+          gameTimeConfidence: "medium",
+          marketCount: event.markets?.length ?? 1,
+          strategy: "targeted-wc2026-tag-slug",
+          leagueName: "World Cup 2026",
+          primaryMarketRaw: pm ? {
+            outcomes: [],
+            outcomePrices: [],
+            clobTokenIds: [],
+            question: pm.question ?? title,
+            conditionId: pm.conditionId ?? undefined,
+            volumeNum: typeof pm.volume === "number" ? pm.volume : null,
+            volume24hr: typeof pm.volume24hr === "number" ? pm.volume24hr : null,
+            volumeClob: null,
+          } : null,
+        });
+      }
+      wc2026FromTag.sort((a, b) => b.eventVolumeUsd - a.eventVolumeUsd);
+      extendedWc2026Candidates.push(...wc2026FromTag.slice(0, 5));
+    }
+  }
 
   // 9. Filter by volume
   const volumeEligible24hGroups = within24hGroups.filter(g => g.eventVolumeUsd >= cfg.finalEventVolumeMinUsd);

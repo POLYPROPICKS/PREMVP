@@ -217,6 +217,31 @@ export async function fetchPolymarketEventsByTagSafe(tagId: string, limit = 100)
 }
 
 /**
+ * Fetch events from Gamma API by tag_slug (e.g. "fifa-world-cup", "2026-fifa-world-cup").
+ * Used for targeted category discovery when sports-tag discovery misses specific leagues.
+ */
+export async function fetchEventsByTagSlugSafe(tagSlug: string, limit = 50): Promise<PolymarketRawEvent[]> {
+  const params = new URLSearchParams({
+    tag_slug: tagSlug,
+    active: "true",
+    closed: "false",
+    limit: limit.toString(),
+  });
+  const url = `${GAMMA_API_BASE}/events?${params.toString()}`;
+  const response = await safeFetch<unknown>(url, { next: { revalidate: 300 } });
+  if (!response) return [];
+  if (Array.isArray(response)) return response as PolymarketRawEvent[];
+  if (typeof response === "object" && response !== null) {
+    const obj = response as Record<string, unknown>;
+    if (Array.isArray(obj.events)) return obj.events as PolymarketRawEvent[];
+    if (Array.isArray(obj.data)) return obj.data as PolymarketRawEvent[];
+    if (Array.isArray(obj.items)) return obj.items as PolymarketRawEvent[];
+  }
+  console.warn(`fetchEventsByTagSlugSafe: unexpected response shape for tag_slug=${tagSlug}`);
+  return [];
+}
+
+/**
  * Fetch price history for a token from CLOB API
  */
 export async function fetchPriceHistorySafe(
