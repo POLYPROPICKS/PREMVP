@@ -1001,6 +1001,48 @@ function humanizeMatchupTitle(title: string, position: string | undefined): stri
 }
 
 /**
+ * Detect whether a pair belongs to the Esports category by league/title text.
+ */
+function isEsportPair(pair: LandingCardPair): boolean {
+  const text = `${pair.premiumSignal?.league ?? ""} ${pair.premiumSignal?.eventTitle ?? ""}`.toLowerCase();
+  return /\b(esport|esports|gaming|cs2|csgo|dota|valorant|lol|league of legends|counter[ -]strike|overwatch)\b/.test(text);
+}
+
+/**
+ * Cap Esports pairs across the combined qualified + upcoming pool. Prefer qualified
+ * bucket and higher winProbability when trimming. Strategic categories (WC26/NBA/NHL)
+ * are not capped here — they're constrained only by upstream supply.
+ */
+function applyCategoryAllocation(
+  qualifiedPairs: LandingCardPair[],
+  upcomingPairs: LandingCardPair[],
+  esportCap = 2,
+): { pairs: LandingCardPair[]; upcomingPairs: LandingCardPair[] } {
+  const allEsport: Array<{ id: string; wp: number; from: "q" | "u" }> = [];
+  for (const p of qualifiedPairs) {
+    if (isEsportPair(p)) {
+      allEsport.push({ id: p.id, wp: Number(p.premiumSignal?.winProbability ?? 0), from: "q" });
+    }
+  }
+  for (const p of upcomingPairs) {
+    if (isEsportPair(p)) {
+      allEsport.push({ id: p.id, wp: Number(p.premiumSignal?.winProbability ?? 0), from: "u" });
+    }
+  }
+  if (allEsport.length <= esportCap) {
+    return { pairs: qualifiedPairs, upcomingPairs };
+  }
+  // Prefer qualified bucket first, then higher winProbability
+  allEsport.sort((a, b) => (a.from === b.from ? b.wp - a.wp : a.from === "q" ? -1 : 1));
+  const keepIds = new Set(allEsport.slice(0, esportCap).map((e) => e.id));
+  const filterFn = (p: LandingCardPair) => !isEsportPair(p) || keepIds.has(p.id);
+  return {
+    pairs: qualifiedPairs.filter(filterFn),
+    upcomingPairs: upcomingPairs.filter(filterFn),
+  };
+}
+
+/**
  * Identify real sports markets that should be displayed as conservative fallback,
  * not as high-confidence live-edge signals.
  *
@@ -1399,12 +1441,14 @@ export async function buildLandingCards(options?: {
       candidatesAfterEndedFilter = candidates.length;
 
       if (candidates.length === 0) {
+        const rawUpcoming = includeUpcoming ? buildUpcomingPairs(upcomingRawSamples, upcomingLimit) : [];
+        const allocated = applyCategoryAllocation([], rawUpcoming);
         return {
           generatedAt: new Date().toISOString(),
           source: "polymarket",
           formulaVersion: FORMULA_VERSION,
           pairs: [],
-          ...(includeUpcoming ? { upcomingPairs: buildUpcomingPairs(upcomingRawSamples, upcomingLimit) } : {}),
+          ...(includeUpcoming ? { upcomingPairs: allocated.upcomingPairs } : {}),
           rejected: [{
             rejectionReasons: [
               "No sports candidates from markets-first discovery",
@@ -1618,13 +1662,15 @@ export async function buildLandingCards(options?: {
 
     // Include non-sports rejected markets in final rejected list (for category=sports)
     const finalRejected = rejected;
+    const rawUpcomingFinal = includeUpcoming ? buildUpcomingPairs(upcomingRawSamples, upcomingLimit) : [];
+    const allocatedFinal = applyCategoryAllocation(pairs, rawUpcomingFinal);
 
     return {
       generatedAt: new Date().toISOString(),
       source: "polymarket",
       formulaVersion: FORMULA_VERSION,
-      pairs,
-      ...(includeUpcoming ? { upcomingPairs: buildUpcomingPairs(upcomingRawSamples, upcomingLimit) } : {}),
+      pairs: allocatedFinal.pairs,
+      ...(includeUpcoming ? { upcomingPairs: allocatedFinal.upcomingPairs } : {}),
       rejected: finalRejected,
       filters: { limit, category, minDataCoverage, excludeEnded },
       inspected: {
