@@ -83,12 +83,13 @@ Tier C launch (paywall/conversion): Top-15 matrix from OPERATOR_ACCEPTANCE_CHECK
 |---|---|---|---|
 | Gate 1 passed | Claude Code | PASS | No commit |
 | git diff --check clean | Claude Code | No warnings | Fix trailing whitespace first |
-| Only intended files staged | Founder CMD | `git diff --stat` matches scope | Unstage extra files |
+| Only intended files staged | Claude Code / Founder CMD | `git diff --stat` matches scope | Unstage extra files |
 | Build passes | Claude Code | PASS | No commit |
-| Founder explicit approval | Founder | Stated in message | No commit |
+| Commit authorization present | Claude Code check | Explicit authorization in prompt OR founder CMD approval | No commit |
 
-**Commit command provided by Claude; executed by Founder in CMD.**
-**No exceptions: no commit without explicit founder approval.**
+**Autopilot commit (non-visual tasks):** Claude Code may execute commit when the prompt includes explicit founder authorization AND Gate 1 passed AND only allowed files changed.
+**UI/visual tasks:** Commit waits for founder Gate 2 visual/business acceptance; founder runs CMD or re-authorizes via follow-up prompt.
+**No commit without one of: (a) explicit prompt authorization + Gate 1 PASS, or (b) explicit founder CMD approval.**
 
 ## Gate 4 — Deploy gate (before push/Railway deploy)
 

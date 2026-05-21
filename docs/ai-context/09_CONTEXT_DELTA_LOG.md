@@ -6,6 +6,15 @@
 
 ---
 
+## ✅ WORKFLOW DECISION — 2026-05-21
+
+**Decision:** Claude-Code Autopilot Operator Mode adopted.
+**Reason:** Reduce founder CMD burden and speed execution while preserving Gate 2 for UI/visual tasks.
+**Rule:** Non-visual tasks (backend/data/docs) — Claude Code may patch + verify + commit when prompt includes explicit authorization and Gate 1 passes. UI/visual tasks still require founder Gate 2 acceptance before commit. Push always requires explicit founder authorization.
+**Docs updated:** CLAUDE.md §10, TASK_ROUTING_MATRIX.md §7, CLAUDE_CODE_EXECUTION_PROTOCOL.md Autopilot section, VERIFICATION_GATES.md Gate 3, OPERATOR_ACCEPTANCE_CHECKLIST.md Founder role.
+
+---
+
 ## ✅ CURRENT STATE OVERRIDE — 2026-05-15
 
 ```

@@ -42,8 +42,9 @@ Any code edit                               → Claude Code (not founder manual)
 | `npm run build` | ✓ | | | | 1 command |
 | `git diff --stat` / `--check` | ✓ | | | | 1–2 commands |
 | Simple curl to one endpoint | ✓ | | | | 1 command |
-| git add + commit (command only) | ✓ | | | ✓ approval | Founder runs CMD, Claude provides exact command |
-| git push | | | | ✓ | Founder explicit approval always |
+| git add + commit (non-visual, authorized) | | ✓ | | ✓ approval | Claude Code commits when prompt authorizes + Gate 1 PASS |
+| git add + commit (UI/visual task) | ✓ | | | ✓ approval | Founder runs CMD after Gate 2 visual acceptance |
+| git push | | ✓ (when authorized) | | ✓ | Founder explicit approval always; Claude Code may execute when prompt authorizes |
 | Source file inspection (uncertain) | | ✓ inspect-only | | | inspect-only mode — no edits |
 | Single-file exact patch | | ✓ | ✓ plan | | Claude Chat plans, Claude Code executes |
 | Multi-file patch | | ✓ | ✓ plan | | Must have explicit allowed_files[] per zone |
@@ -58,7 +59,7 @@ Any code edit                               → Claude Code (not founder manual)
 | Claude Code prompt writing | | | ✓ | | Claude Chat produces prompt; Founder pastes |
 | Monitoring-agent audit | | | ✓ | | Claude Chat runs RULE_COMPLIANCE_MONITOR_AGENT |
 | Artifact update (docs) | | | ✓ | | Claude Chat updates /docs/ai-context/ content |
-| Build + diff + commit flow (>5 cmds) | | ✓ | | ✓ approval | Package as Claude Code block |
+| Build + diff + commit flow (>5 cmds) | | ✓ | | ✓ approval | Claude Code executes commit when prompt authorizes + Gate 1 PASS |
 | Production verification | ✓ curl | | | ✓ decision | Separate from local build check |
 | Railway/Supabase config changes | | | | ✓ | Founder only; env-deploy scope |
 | Regression check (multiple routes) | | ✓ | | | Inspect + curl in Claude Code block |
@@ -109,3 +110,15 @@ Founder should run ≤2 CMD commands per task cycle.
 If more are needed → package as Claude Code block.
 Founder never manually edits source files.
 Founder never interprets raw build logs — Claude provides verdict.
+
+## 7. Claude-Code Autopilot Operator Mode — 2026-05-21
+
+Default mode: Claude Code handles patch + verify + commit for non-visual tasks when explicitly authorized.
+
+```
+Non-visual task (authorized)  → Claude Code: patch + verify + commit. Founder: review proof package only.
+UI/visual task                 → Claude Code: patch + verify. Founder: Gate 2 acceptance + commit authorization.
+Push/deploy                    → Explicit founder authorization required. Claude Code may execute when prompt authorizes.
+Railway/Supabase               → Founder only (manual external gate).
+CMD to founder                 → Reserved for: visual checks, Railway/Supabase gates, production verification, emergency recovery.
+```

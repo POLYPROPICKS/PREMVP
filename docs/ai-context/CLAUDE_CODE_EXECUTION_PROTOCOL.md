@@ -55,6 +55,26 @@ Return short status only when stopped.
 
 ---
 
+## Claude-Code Autopilot Operator Mode — 2026-05-21
+
+Default operator mode: founder copy-pastes Claude Code prompts and reviews proof packages.
+Claude Code handles patch + verify + commit for non-visual tasks when explicitly authorized.
+
+**Prompt authorization pattern** (include verbatim in non-visual task prompts):
+```
+FOUNDER AUTHORIZATION: For this non-visual task, if Gate 1 passes and only allowed files
+changed, you are authorized to commit. Do not push.
+```
+
+Rules:
+- Non-visual (backend/data/docs): Claude Code may commit if prompt includes authorization AND Gate 1 PASS AND only allowed files changed.
+- UI/visual/product-sensitive: Claude Code may patch + verify. Commit requires founder Gate 2 acceptance first.
+- Push/deploy: requires explicit founder authorization per push; Claude Code may execute only when prompt explicitly authorizes.
+- Console/CMD to founder: reserved for visual checks, Railway/Supabase manual gates, production verification, emergency recovery.
+- Proof package always required: status, diff stat, diff check, build, snippets, commit hash if committed.
+
+---
+
 <!-- ACTIVATION POINT: Before every Claude Code implementation task -->
 <!-- TOKEN LOADING RULE: Load at task start. Tier 1. -->
 <!-- OWNER: Claude Chat (generates prompts); Claude Code (executes) -->

@@ -9,6 +9,15 @@
 
 ---
 
+## Founder role (Autopilot mode — 2026-05-21)
+
+Founder's role is **visual/business acceptance only**, not routine CMD operation.
+For non-visual tasks: founder copy-pastes Claude Code prompts and reviews proof packages — no CMD required.
+Routine git operations (add/commit) are handled by Claude Code when explicitly authorized in the prompt.
+Founder CMD is reserved for: Gate 2 visual verification, Railway/Supabase manual gates, production checks, push authorization, emergency recovery.
+
+---
+
 ## Gate 2 rule
 
 **Gate 1 (technical) ≠ Gate 2 (visual/business).**

@@ -16,7 +16,8 @@ Your output for implementation tasks = one ready-to-paste Claude Code block.
 ### If you are Claude Code (IDE / terminal agent)
 Executor. You inspect files, apply narrow patches, run verification, return evidence.
 You do NOT make product/architecture decisions.
-You do NOT commit or push without explicit instruction.
+You do NOT push without explicit founder authorization in the prompt.
+**Autopilot commit rule:** For non-visual backend/data tasks, if the prompt includes explicit commit authorization AND Gate 1 passes AND only allowed files changed → you MAY commit. Do not push.
 Your output for every patch task = full §7 proof package.
 
 Neither role may: claim "done" without proof, provide manual snippet instructions to founder,
@@ -90,7 +91,8 @@ FOUNDER ACTION: [exactly one action]
 - Patch before inspecting when source is uncertain
 - Mix UI and backend in one task
 - Override locked product decisions without explicit founder approval
-- Commit or push without explicit gate
+- Push without explicit founder authorization in the prompt
+- Commit without either (a) explicit prompt authorization + Gate 1 PASS, or (b) explicit founder CMD approval
 
 ## 7. After every patch — required output
 
@@ -114,3 +116,22 @@ Full role definitions, forbidden behaviors, and project rules:
 
 This file is an enforcement gate, not a preference list.
 Responses not following §4 format will be rejected by the monitoring agent.
+
+## 10. Claude-Code Autopilot Operator Mode
+
+**Adopted: 2026-05-21**
+
+The default operator mode is Claude Code Autopilot. Founder almost never works in CMD.
+
+| Task type | Claude Code does | Founder does |
+|---|---|---|
+| Backend/data/non-visual | patch + verify + commit (when authorized) | copy-paste prompt → review proof package |
+| UI/visual/product-sensitive | patch + verify | Gate 2 visual/business acceptance → explicit commit authorization |
+| Push/deploy | push (when prompt explicitly authorizes + gates pass) | explicit authorization per push |
+| Railway/Supabase/production | prepare command only | execute manually |
+| Emergency recovery | STOP + report | decide + execute |
+
+**Authorization pattern** — include in non-visual task prompts:
+> `FOUNDER AUTHORIZATION: For this non-visual task, if Gate 1 passes and only allowed files changed, you are authorized to commit. Do not push.`
+
+Console/CMD instructions to founder are reserved for: visual checks, Railway/Supabase manual gates, production verification, and emergency recovery only.
