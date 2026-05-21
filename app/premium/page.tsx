@@ -47,14 +47,16 @@ async function loadFeedPairs(): Promise<LandingCardPair[]> {
   try {
     const appUrl = (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
     const res = await fetch(
-      `${appUrl}/api/feed/landing-cards?limit=10&category=sports&minDataCoverage=40&excludeEnded=true`,
+      `${appUrl}/api/feed/landing-cards?limit=15&category=sports&minDataCoverage=40&excludeEnded=true&includeUpcoming=true`,
       { cache: "no-store" },
     );
     if (!res.ok) return [];
     const json = await res.json();
-    return Array.isArray(json?.pairs)
-      ? (json.pairs as LandingCardPair[]).filter((p) => p?.premiumSignal)
-      : [];
+    const allPairs = [
+      ...(Array.isArray(json?.pairs) ? (json.pairs as LandingCardPair[]) : []),
+      ...(Array.isArray(json?.upcomingPairs) ? (json.upcomingPairs as LandingCardPair[]) : []),
+    ];
+    return allPairs.filter((p) => p?.premiumSignal);
   } catch {
     return [];
   }

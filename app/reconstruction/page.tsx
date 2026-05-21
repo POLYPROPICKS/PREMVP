@@ -282,7 +282,8 @@ export default function ReconstructionPage() {
 
         if (response.ok) {
           const data = await response.json();
-          const normalizedPairs = normalizeLandingPairs(data.pairs ?? [], 'api');
+          const allApiPairs = [...(data.pairs ?? []), ...(data.upcomingPairs ?? [])];
+          const normalizedPairs = normalizeLandingPairs(allApiPairs, 'api');
 
           if (normalizedPairs.length > 0) {
             setAllPairs(normalizedPairs);
