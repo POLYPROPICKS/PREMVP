@@ -295,9 +295,14 @@ export default async function PremiumPage({
 
   const activeFilter = parseFilter(resolvedParams.filter);
   const rawFeedPairs = await loadFeedPairs();
+  const getPairDedupeKey = (pair: LandingCardPair) =>
+    pair.diagnostics?.conditionId && pair.diagnostics?.selectedOutcome
+      ? `${pair.diagnostics.conditionId}::${pair.diagnostics.selectedOutcome}`
+      : pair.id;
+
   const feedPairs = rawFeedPairs.filter((pair, index, arr) => {
-    const key = pair.id;
-    return arr.findIndex((p) => p.id === key) === index;
+    const key = getPairDedupeKey(pair);
+    return arr.findIndex((p) => getPairDedupeKey(p) === key) === index;
   });
   const hasFeed = feedPairs.length > 0;
 
