@@ -421,8 +421,10 @@ export async function discoverSportsMarkets(
           if (hoursUntil < 0 || hoursUntil > 720) continue;
         }
         const pm = event.markets?.[0] ?? null;
-        const vol = typeof pm?.volume === "number" ? pm.volume
-          : typeof pm?.volume24hr === "number" ? pm.volume24hr
+        if (!pm) continue;
+        const normalizedPm = normalizeSportsMarket(pm as unknown as Record<string, unknown>);
+        const vol = typeof pm.volume === "number" ? pm.volume
+          : typeof pm.volume24hr === "number" ? pm.volume24hr
           : typeof event.volume24hr === "number" ? event.volume24hr : 0;
         wc2026FromTag.push({
           title: title.substring(0, 100),
@@ -436,16 +438,17 @@ export async function discoverSportsMarkets(
           marketCount: event.markets?.length ?? 1,
           strategy: "targeted-wc2026-tag-slug",
           leagueName: "World Cup 2026",
-          primaryMarketRaw: pm ? {
-            outcomes: [],
-            outcomePrices: [],
-            clobTokenIds: [],
-            question: pm.question ?? title,
-            conditionId: pm.conditionId ?? undefined,
+          polymarketEventSlug: (event.slug || "").substring(0, 80),
+          primaryMarketRaw: {
+            outcomes: normalizedPm.outcomes,
+            outcomePrices: normalizedPm.outcomePrices,
+            clobTokenIds: normalizedPm.clobTokenIds,
+            question: normalizedPm.question || (pm.question ?? title),
+            conditionId: normalizedPm.conditionId || (pm.conditionId ?? undefined),
             volumeNum: typeof pm.volume === "number" ? pm.volume : null,
             volume24hr: typeof pm.volume24hr === "number" ? pm.volume24hr : null,
             volumeClob: null,
-          } : null,
+          },
         });
       }
       wc2026FromTag.sort((a, b) => b.eventVolumeUsd - a.eventVolumeUsd);
