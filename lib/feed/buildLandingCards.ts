@@ -1370,7 +1370,7 @@ export async function buildLandingCards(options?: {
   const minDataCoverage = clamp(options?.minDataCoverage ?? 25, 0, 100);
   const excludeEnded = options?.excludeEnded ?? true;
   const includeUpcoming = options?.includeUpcoming ?? false;
-  const upcomingLimit = clamp(options?.upcomingLimit ?? 5, 1, 10);
+  const upcomingLimit = clamp(options?.upcomingLimit ?? 5, 1, 15);
 
   let upcomingRawSamples: SportsDiscoverySample[] = [];
 
@@ -1407,23 +1407,31 @@ export async function buildLandingCards(options?: {
       });
 
       if (includeUpcoming) {
-        upcomingRawSamples = discovery.fallback48hCandidates;
-        // B5: append extended WC2026 candidates (>48h, ≤30d) if present and not already covered
-        if (discovery.extendedWc2026Candidates && discovery.extendedWc2026Candidates.length > 0) {
-          const existingIds = new Set(upcomingRawSamples.map(s => s.gameId || s.slug || s.title));
-          const wc2026ToAdd = discovery.extendedWc2026Candidates
-            .filter(s => !existingIds.has(s.gameId || s.slug || s.title))
-            .slice(0, 2);
-          upcomingRawSamples = [...upcomingRawSamples, ...wc2026ToAdd];
-        }
-        // B6: append extended eSports candidates from tag-slug discovery
-        if (discovery.extendedEsportsCandidates && discovery.extendedEsportsCandidates.length > 0) {
-          const existingIds = new Set(upcomingRawSamples.map(s => s.gameId || s.slug || s.title));
-          const esportsToAdd = discovery.extendedEsportsCandidates
-            .filter(s => !existingIds.has(s.gameId || s.slug || s.title))
-            .slice(0, 2);
-          upcomingRawSamples = [...upcomingRawSamples, ...esportsToAdd];
-        }
+        // Strategic priority order: WC26 → NBA → NHL → eSport → fallback48h.
+        // buildUpcomingPairs iterates in this order and stops at upcomingLimit.
+        const strategicOrdered: SportsDiscoverySample[] = [];
+        const pushUnique = (xs: SportsDiscoverySample[] | undefined, cap: number) => {
+          if (!xs || xs.length === 0) return;
+          const existing = new Set(strategicOrdered.map(s => s.gameId || s.slug || s.title));
+          for (const s of xs) {
+            if (cap <= 0) break;
+            const k = s.gameId || s.slug || s.title;
+            if (existing.has(k)) continue;
+            strategicOrdered.push(s);
+            existing.add(k);
+            cap--;
+          }
+        };
+        pushUnique(discovery.extendedWc2026Candidates, 2);
+        pushUnique(discovery.extendedNbaCandidates, 2);
+        pushUnique(discovery.extendedNhlCandidates, 2);
+        pushUnique(discovery.extendedEsportsCandidates, 2);
+        // Fallback48h candidates appended last, deduped
+        const existing = new Set(strategicOrdered.map(s => s.gameId || s.slug || s.title));
+        const fallbackUnique = discovery.fallback48hCandidates.filter(
+          s => !existing.has(s.gameId || s.slug || s.title),
+        );
+        upcomingRawSamples = [...strategicOrdered, ...fallbackUnique];
       }
 
       const discoverySamples = [

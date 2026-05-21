@@ -545,6 +545,120 @@ export async function discoverSportsMarkets(
     }
   }
 
+  // 8e. Targeted NBA/NHL tag-slug fetch (futures-style supply; allows championship/series-winner
+  // events because regular-season match supply is sparse outside playoffs).
+  const extendedNbaCandidates: SportsDiscoverySample[] = [];
+  const extendedNhlCandidates: SportsDiscoverySample[] = [];
+  {
+    const STRAT_PROP_EXCLUDE_RE = /\b(mvp|coach of the year|rookie of the year|top scorer|player to|sixth man|defensive player|finals mvp)\b/i;
+    const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
+    const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
+    const findActionableIdx = (prices: number[]): number => {
+      let idx = prices.findIndex((p) => typeof p === "number" && p >= PRIMARY_MIN && p <= PRIMARY_MAX);
+      if (idx === -1) idx = prices.findIndex((p) => typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX);
+      return idx;
+    };
+    type Picked = { pm: Record<string, unknown>; normalized: SportsMarketCandidate };
+    const pickActionableMarket = (event: PolymarketRawEvent): Picked | null => {
+      const markets = Array.isArray(event.markets) ? event.markets : [];
+      for (const m of markets) {
+        const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
+        if (!Array.isArray(nm.outcomePrices) || nm.outcomePrices.length === 0) continue;
+        if (findActionableIdx(nm.outcomePrices) !== -1) {
+          return { pm: m as unknown as Record<string, unknown>, normalized: nm };
+        }
+      }
+      return null;
+    };
+    const TARGET_PER_LEAGUE = 2;
+    // Windows up to 90d because NBA/NHL futures (Stanley Cup / NBA Champion) settle ~40-60d
+    const WINDOWS_HOURS = [48, 168, 336, 720, 1440, 2160];
+
+    const buildStrategicCandidate = (
+      event: PolymarketRawEvent,
+      picked: Picked,
+      endIso: string,
+      leagueLabel: "NBA" | "NHL",
+      strategy: string,
+    ): SportsDiscoverySample => {
+      const pm = picked.pm as { volume?: number; volume24hr?: number; question?: string; conditionId?: string };
+      const title = event.title || event.slug || "";
+      const vol = typeof pm.volume === "number" ? pm.volume
+        : typeof pm.volume24hr === "number" ? pm.volume24hr
+        : typeof event.volume24hr === "number" ? event.volume24hr : 0;
+      return {
+        title: title.substring(0, 100),
+        slug: (event.slug || "").substring(0, 60),
+        gameId: undefined,
+        sportsMarketType: undefined,
+        eventVolumeUsd: vol,
+        resolvedGameTimeIso: endIso,
+        gameTimeSource: "gamma-event-enddate",
+        gameTimeConfidence: "medium",
+        marketCount: event.markets?.length ?? 1,
+        strategy,
+        leagueName: leagueLabel,
+        polymarketEventSlug: (event.slug || "").substring(0, 80),
+        primaryMarketRaw: {
+          outcomes: picked.normalized.outcomes,
+          outcomePrices: picked.normalized.outcomePrices,
+          clobTokenIds: picked.normalized.clobTokenIds,
+          question: picked.normalized.question || (pm.question ?? title),
+          conditionId: picked.normalized.conditionId || (pm.conditionId ?? undefined),
+          volumeNum: typeof pm.volume === "number" ? pm.volume : null,
+          volume24hr: typeof pm.volume24hr === "number" ? pm.volume24hr : null,
+          volumeClob: null,
+        },
+      };
+    };
+
+    const collectForSlug = async (
+      slug: string,
+      bucket: SportsDiscoverySample[],
+      leagueLabel: "NBA" | "NHL",
+      strategy: string,
+    ) => {
+      let raw: PolymarketRawEvent[] = [];
+      try {
+        raw = await fetchEventsByTagSlugSafe(slug, 50);
+      } catch {
+        warnings.push(`${leagueLabel} tag-slug fetch failed for ${slug}`);
+        return;
+      }
+      if (raw.length === 0) return;
+      const seen = new Set<string>();
+      const nowMs = now.getTime();
+      for (const winHours of WINDOWS_HOURS) {
+        if (bucket.length >= TARGET_PER_LEAGUE) break;
+        for (const event of raw) {
+          if (bucket.length >= TARGET_PER_LEAGUE) break;
+          if (!event.active || event.closed) continue;
+          const key = event.id || event.slug;
+          if (!key || seen.has(key)) continue;
+          const title = event.title || event.slug || "";
+          if (STRAT_PROP_EXCLUDE_RE.test(title)) continue;
+          const endIso = event.endDateIso || event.endDate || null;
+          if (!endIso) continue;
+          const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
+          if (hoursUntil < 0 || hoursUntil > winHours) continue;
+          const picked = pickActionableMarket(event);
+          if (!picked) continue;
+          seen.add(key);
+          bucket.push(buildStrategicCandidate(event, picked, endIso, leagueLabel, strategy));
+        }
+      }
+    };
+
+    await collectForSlug("nba", extendedNbaCandidates, "NBA", "targeted-nba-tag-slug");
+    if (extendedNbaCandidates.length < 2) {
+      await collectForSlug("basketball", extendedNbaCandidates, "NBA", "targeted-nba-basketball-tag-slug");
+    }
+    await collectForSlug("nhl", extendedNhlCandidates, "NHL", "targeted-nhl-tag-slug");
+    if (extendedNhlCandidates.length < 2) {
+      await collectForSlug("ice-hockey", extendedNhlCandidates, "NHL", "targeted-nhl-icehockey-tag-slug");
+    }
+  }
+
   // 9. Filter by volume
   const volumeEligible24hGroups = within24hGroups.filter(g => g.eventVolumeUsd >= cfg.finalEventVolumeMinUsd);
   const volumeEligible48hGroups = within48hGroups.filter(g => g.eventVolumeUsd >= cfg.finalEventVolumeMinUsd);
@@ -680,6 +794,8 @@ export async function discoverSportsMarkets(
     fallback48hCandidates,
     extendedWc2026Candidates,
     extendedEsportsCandidates,
+    extendedNbaCandidates,
+    extendedNhlCandidates,
     diagnosis,
     recommendedPath,
   };
