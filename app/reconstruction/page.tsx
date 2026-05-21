@@ -657,7 +657,7 @@ function MarketSourceCard({ source }: { source: MarketEvidenceSource }) {
 
 const FILTER_LABELS: Record<PublicFilter, string> = {
   live: "Live",
-  wc2026: "WC2026",
+  wc2026: "WC26",
   nhl: "NHL",
   nba: "NBA",
   esport: "eSport",
@@ -702,7 +702,7 @@ function PillsRow({
 }) {
   const filters: Array<{ tag: PublicFilter; label: string }> = [
     { tag: "live", label: "Live" },
-    { tag: "wc2026", label: "WC2026" },
+    { tag: "wc2026", label: "WC26" },
     { tag: "nhl", label: "NHL" },
     { tag: "nba", label: "NBA" },
     { tag: "esport", label: "eSport" },

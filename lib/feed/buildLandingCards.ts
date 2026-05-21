@@ -1346,6 +1346,14 @@ export async function buildLandingCards(options?: {
             .slice(0, 2);
           upcomingRawSamples = [...upcomingRawSamples, ...wc2026ToAdd];
         }
+        // B6: append extended eSports candidates from tag-slug discovery
+        if (discovery.extendedEsportsCandidates && discovery.extendedEsportsCandidates.length > 0) {
+          const existingIds = new Set(upcomingRawSamples.map(s => s.gameId || s.slug || s.title));
+          const esportsToAdd = discovery.extendedEsportsCandidates
+            .filter(s => !existingIds.has(s.gameId || s.slug || s.title))
+            .slice(0, 2);
+          upcomingRawSamples = [...upcomingRawSamples, ...esportsToAdd];
+        }
       }
 
       const discoverySamples = [

@@ -164,6 +164,16 @@
   z-index: 1;
 }
 
+.confidencePillLow {
+  background: linear-gradient(180deg, rgba(120, 70, 18, 0.96), rgba(58, 32, 6, 0.96));
+  border-color: rgba(255, 170, 64, 0.78);
+  box-shadow:
+    0 0 0 1px rgba(255, 180, 60, 0.22) inset,
+    0 0 10px rgba(255, 158, 40, 0.36),
+    0 0 22px rgba(255, 158, 40, 0.18);
+  color: #ffe6c0;
+}
+
 .shield {
   width: clamp(13px, 3.8vw, 16px);
   height: clamp(13px, 3.8vw, 16px);

@@ -75,7 +75,7 @@ type FilterCounts = Record<PremiumFilter, number>;
 
 const FILTER_LABELS: Array<{ tag: PremiumFilter; label: string }> = [
   { tag: "live", label: "Live" },
-  { tag: "wc2026", label: "WC2026" },
+  { tag: "wc2026", label: "WC26" },
   { tag: "nhl", label: "NHL" },
   { tag: "nba", label: "NBA" },
   { tag: "esport", label: "eSport" },
@@ -104,9 +104,7 @@ function FilterRow({ active, counts }: { active: PremiumFilter; counts: FilterCo
           className={`${styles.filterPill}${active === tag ? ` ${styles.filterPillActive}` : ""}`}
         >
           {label}
-          {counts[tag] > 0 && (
-            <span className={styles.filterCount}>{counts[tag]}</span>
-          )}
+          <span className={styles.filterCount}>{counts[tag]}</span>
         </a>
       ))}
     </div>

@@ -456,6 +456,75 @@ export async function discoverSportsMarkets(
     }
   }
 
+  // 8d. Targeted eSports tag-slug fetch (fills gap when sports-tag misses Esports events)
+  const extendedEsportsCandidates: SportsDiscoverySample[] = [];
+  {
+    const ESPORTS_PROP_EXCLUDE_RE = /\b(longshots|outright|champion(s)?|tournament winner|top fragger)\b/i;
+    // Validated against Gamma public-search 2026-05-21: "esports" slug returns ~32 active
+    // events covering LoL/CS/Dota/Val broadly. counter-strike, cs2, dota-2, valorant are
+    // validated standalone tag slugs. league-of-legends is NOT a tag slug; "esports" covers it.
+    const ESPORTS_TAG_SLUGS = ["esports", "counter-strike", "cs2", "dota-2", "valorant"];
+    const rawEsportsEvents: PolymarketRawEvent[] = [];
+    for (const tagSlug of ESPORTS_TAG_SLUGS) {
+      try {
+        const events = await fetchEventsByTagSlugSafe(tagSlug, 30);
+        rawEsportsEvents.push(...events);
+      } catch {
+        warnings.push(`Esports tag-slug fetch failed for ${tagSlug}`);
+      }
+    }
+    if (rawEsportsEvents.length > 0) {
+      const seenTagIds = new Set<string>();
+      const nowMs = now.getTime();
+      const esportsFromTag: SportsDiscoverySample[] = [];
+      for (const event of rawEsportsEvents) {
+        if (!event.active || event.closed) continue;
+        const key = event.id || event.slug;
+        if (!key || seenTagIds.has(key)) continue;
+        seenTagIds.add(key);
+        const title = event.title || event.slug || "";
+        if (ESPORTS_PROP_EXCLUDE_RE.test(title)) continue;
+        const endIso = event.endDateIso || event.endDate || null;
+        if (endIso) {
+          const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
+          if (hoursUntil < 0 || hoursUntil > 720) continue;
+        }
+        const pm = event.markets?.[0] ?? null;
+        if (!pm) continue;
+        const normalizedPm = normalizeSportsMarket(pm as unknown as Record<string, unknown>);
+        const vol = typeof pm.volume === "number" ? pm.volume
+          : typeof pm.volume24hr === "number" ? pm.volume24hr
+          : typeof event.volume24hr === "number" ? event.volume24hr : 0;
+        esportsFromTag.push({
+          title: title.substring(0, 100),
+          slug: (event.slug || "").substring(0, 60),
+          gameId: undefined,
+          sportsMarketType: undefined,
+          eventVolumeUsd: vol,
+          resolvedGameTimeIso: endIso,
+          gameTimeSource: "gamma-event-enddate",
+          gameTimeConfidence: "medium",
+          marketCount: event.markets?.length ?? 1,
+          strategy: "targeted-esports-tag-slug",
+          leagueName: "Esports",
+          polymarketEventSlug: (event.slug || "").substring(0, 80),
+          primaryMarketRaw: {
+            outcomes: normalizedPm.outcomes,
+            outcomePrices: normalizedPm.outcomePrices,
+            clobTokenIds: normalizedPm.clobTokenIds,
+            question: normalizedPm.question || (pm.question ?? title),
+            conditionId: normalizedPm.conditionId || (pm.conditionId ?? undefined),
+            volumeNum: typeof pm.volume === "number" ? pm.volume : null,
+            volume24hr: typeof pm.volume24hr === "number" ? pm.volume24hr : null,
+            volumeClob: null,
+          },
+        });
+      }
+      esportsFromTag.sort((a, b) => b.eventVolumeUsd - a.eventVolumeUsd);
+      extendedEsportsCandidates.push(...esportsFromTag.slice(0, 5));
+    }
+  }
+
   // 9. Filter by volume
   const volumeEligible24hGroups = within24hGroups.filter(g => g.eventVolumeUsd >= cfg.finalEventVolumeMinUsd);
   const volumeEligible48hGroups = within48hGroups.filter(g => g.eventVolumeUsd >= cfg.finalEventVolumeMinUsd);
@@ -590,6 +659,7 @@ export async function discoverSportsMarkets(
     finalCandidates,
     fallback48hCandidates,
     extendedWc2026Candidates,
+    extendedEsportsCandidates,
     diagnosis,
     recommendedPath,
   };

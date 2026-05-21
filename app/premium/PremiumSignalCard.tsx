@@ -70,6 +70,19 @@ function getDisplayTitle(eventTitle: string | undefined, position: string | unde
   return title;
 }
 
+function getDisplayPosition(eventTitle: string | undefined, position: string | undefined): string {
+  if (!position) return "";
+  const pos = position.trim();
+  const lower = pos.toLowerCase();
+  if (lower !== "yes" && lower !== "no") return pos;
+  const title = (eventTitle ?? "").trim();
+  const m = title.match(/^will\s+(.+?)\s+beat\s+(.+?)\??$/i);
+  if (!m) return pos;
+  const teamA = m[1].trim();
+  if (!teamA) return pos;
+  return lower === "yes" ? `Yes — ${teamA} to win` : `No — ${teamA} not to win`;
+}
+
 function fmtCents(p: number): string {
   return `${(p * 100).toFixed(0)}¢`;
 }
@@ -142,7 +155,7 @@ export default function PremiumSignalCard({ pair }: { pair: LandingCardPair }) {
             </svg>
             <span>{signal.league} | {signal.time}</span>
           </div>
-          <div className={styles.confidencePill}>
+          <div className={`${styles.confidencePill}${probability <= 55 ? ` ${styles.confidencePillLow}` : ""}`}>
             <svg viewBox="0 0 24 24" className={styles.shield} aria-hidden="true">
               <path d="M12 2.8 19 5.7v5.1c0 5-3 8.7-7 10.4-4-1.7-7-5.4-7-10.4V5.7L12 2.8Z" fill="currentColor" />
               <path d="m8.7 12.2 2.1 2.1 4.5-4.7" stroke="#06220B" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" fill="none" />
@@ -158,7 +171,7 @@ export default function PremiumSignalCard({ pair }: { pair: LandingCardPair }) {
         <div className={styles.positionProfit}>
           <div className={styles.positionCol}>
             <div className={styles.label}>Position</div>
-            <div className={styles.positionValue}>{signal.position}</div>
+            <div className={styles.positionValue}>{getDisplayPosition(signal.eventTitle, signal.position)}</div>
           </div>
           <div className={styles.positionProfitDivider} />
           <div className={styles.profitCol}>
