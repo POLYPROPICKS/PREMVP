@@ -1189,13 +1189,32 @@ function buildUpcomingPairs(
     ];
 
     const volScore = clamp(Math.round((Math.min(volNum, 500000) / 500000) * 60 + 30), 30, 90);
+
+    const hoursToEvent = sample.resolvedGameTimeIso
+      ? Math.max(
+          1,
+          (new Date(sample.resolvedGameTimeIso).getTime() - Date.now()) / 3_600_000,
+        )
+      : 720;
+    const timeProximity = clamp(
+      Math.round(80 - (Math.min(hoursToEvent, 720) / 720) * 30),
+      50,
+      80,
+    );
+    const priceConfidence =
+      typeof currentPrice === "number" && Number.isFinite(currentPrice)
+        ? clamp(Math.round(50 + Math.abs(currentPrice - 0.5) * 60), 50, 72)
+        : 55;
+    const marketActivity = clamp(Math.round(volScore * 0.6 + timeProximity * 0.4), 45, 80);
+    const preEventScore = clamp(Math.round((priceConfidence + timeProximity) / 2), 50, 75);
+
     const metrics: TrustMetric[] = [
       { id: "volume-signal", label: "Volume Signal", value: volScore, bar: volScore, icon: "/icons/trust-smart-money.png" },
-      { id: "public-vs-whale", label: "Market Activity", value: 55, bar: 55, icon: "/icons/trust-public-whale.png" },
-      { id: "pre-event-score", label: "PreEventScore AI", value: 55, bar: 55, icon: "/icons/trust-ai-score.png" },
+      { id: "public-vs-whale", label: "Market Activity", value: marketActivity, bar: marketActivity, icon: "/icons/trust-public-whale.png" },
+      { id: "pre-event-score", label: "PreEventScore AI", value: preEventScore, bar: preEventScore, icon: "/icons/trust-ai-score.png" },
     ];
 
-    const winProbability = 57;
+    const winProbability = clamp(Math.round(priceConfidence), 52, 72);
     const premiumSignal: PremiumSignal = {
       id: pairId,
       league: sample.leagueName || "Sports",
