@@ -1301,6 +1301,14 @@ export async function buildLandingCards(options?: {
 
       if (includeUpcoming) {
         upcomingRawSamples = discovery.fallback48hCandidates;
+        // B5: append extended WC2026 candidates (>48h, ≤30d) if present and not already covered
+        if (discovery.extendedWc2026Candidates && discovery.extendedWc2026Candidates.length > 0) {
+          const existingIds = new Set(upcomingRawSamples.map(s => s.gameId || s.slug || s.title));
+          const wc2026ToAdd = discovery.extendedWc2026Candidates
+            .filter(s => !existingIds.has(s.gameId || s.slug || s.title))
+            .slice(0, 2);
+          upcomingRawSamples = [...upcomingRawSamples, ...wc2026ToAdd];
+        }
       }
 
       const discoverySamples = [

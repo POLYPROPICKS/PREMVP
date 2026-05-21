@@ -338,6 +338,7 @@ export interface SportsDiscoveryResult {
   warnings: string[];
   finalCandidates: SportsDiscoverySample[];
   fallback48hCandidates: SportsDiscoverySample[];
+  extendedWc2026Candidates?: SportsDiscoverySample[];
   diagnosis?: string;
   recommendedPath?: string;
 }

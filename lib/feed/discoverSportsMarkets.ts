@@ -87,6 +87,7 @@ function resolveLeagueName(
   if (q.includes("ufc") || q.includes("mma")) return "UFC";
   if (q.includes("tennis") || q.includes("atp") || q.includes("wta")) return "Tennis";
   if (q.includes("cs2") || q.includes("csgo") || q.includes("dota") || q.includes("valorant") || q.includes("map handicap")) return "Esports";
+  if (q.includes("world cup") || q.includes("wc2026") || q.includes("wc 2026") || q.includes("fifa world cup")) return "World Cup 2026";
   return "Sports";
 }
 
@@ -349,6 +350,43 @@ export async function discoverSportsMarkets(
   });
   counts.within48hGroups = within48hGroups.length;
 
+  // 8b. Extended WC2026 window (up to 30d) for upcoming gap-fill
+  const WC2026_FUTURES_RE = /\b(winner|champion(s)?|outright|top scorer|group winner|to win (the )?world cup|world cup winner)\b/i;
+  const extended30dWc2026Groups = groupedGames.filter(g => {
+    if (!g.resolvedGameTimeIso) return false;
+    const hoursUntil = (new Date(g.resolvedGameTimeIso).getTime() - now.getTime()) / (1000 * 60 * 60);
+    if (hoursUntil <= cfg.fallbackWindowHours || hoursUntil > 720) return false;
+    if (g.gameTimeConfidence !== "high" && g.gameTimeConfidence !== "medium") return false;
+    if (g.eventVolumeUsd <= 0) return false;
+    const leagueName = resolveLeagueName(g, teamsMap);
+    if (leagueName !== "World Cup 2026") return false;
+    const title = (g.primaryMarket?.question || g.highestVolumeMarket?.question || "").toLowerCase();
+    if (WC2026_FUTURES_RE.test(title)) return false;
+    return true;
+  });
+  extended30dWc2026Groups.sort((a, b) => {
+    if (b.eventVolumeUsd !== a.eventVolumeUsd) return b.eventVolumeUsd - a.eventVolumeUsd;
+    if (a.resolvedGameTimeIso && b.resolvedGameTimeIso)
+      return new Date(a.resolvedGameTimeIso).getTime() - new Date(b.resolvedGameTimeIso).getTime();
+    return 0;
+  });
+  const extendedWc2026Candidates: SportsDiscoverySample[] = extended30dWc2026Groups
+    .slice(0, 3)
+    .map(g => ({
+      title: g.primaryMarket?.question?.substring(0, 100) || g.highestVolumeMarket?.question?.substring(0, 100) || "Unknown",
+      slug: g.primaryMarket?.slug?.substring(0, 60) || g.highestVolumeMarket?.slug?.substring(0, 60) || "",
+      gameId: g.gameId,
+      sportsMarketType: g.primaryMarket?.sportsMarketType,
+      eventVolumeUsd: g.eventVolumeUsd,
+      resolvedGameTimeIso: g.resolvedGameTimeIso,
+      gameTimeSource: g.gameTimeSource,
+      gameTimeConfidence: g.gameTimeConfidence,
+      marketCount: g.markets.length,
+      strategy: "extended-wc2026-30d-fallback",
+      leagueName: "World Cup 2026",
+      primaryMarketRaw: g.primaryMarket,
+    }));
+
   // 9. Filter by volume
   const volumeEligible24hGroups = within24hGroups.filter(g => g.eventVolumeUsd >= cfg.finalEventVolumeMinUsd);
   const volumeEligible48hGroups = within48hGroups.filter(g => g.eventVolumeUsd >= cfg.finalEventVolumeMinUsd);
@@ -482,6 +520,7 @@ export async function discoverSportsMarkets(
     warnings,
     finalCandidates,
     fallback48hCandidates,
+    extendedWc2026Candidates,
     diagnosis,
     recommendedPath,
   };
