@@ -1175,7 +1175,19 @@ function buildUpcomingPairs(
 ): LandingCardPair[] {
   const pairs: LandingCardPair[] = [];
 
+  // Strategic priority overrides pure time-sort so WC26/NBA/NHL futures (settling weeks out)
+  // are not starved by near-term fallback48h matches when upcomingLimit is tight.
+  const STRATEGIC_PRIORITY: Record<string, number> = {
+    "World Cup 2026": 4,
+    "NBA": 3,
+    "NHL": 2,
+  };
+  const priorityOf = (s: SportsDiscoverySample): number =>
+    STRATEGIC_PRIORITY[s.leagueName ?? ""] ?? 0;
   const sorted = [...samples].sort((a, b) => {
+    const pa = priorityOf(a);
+    const pb = priorityOf(b);
+    if (pa !== pb) return pb - pa; // strategic categories first
     const aTime = a.resolvedGameTimeIso ? new Date(a.resolvedGameTimeIso).getTime() : Infinity;
     const bTime = b.resolvedGameTimeIso ? new Date(b.resolvedGameTimeIso).getTime() : Infinity;
     if (aTime !== bTime) return aTime - bTime;
