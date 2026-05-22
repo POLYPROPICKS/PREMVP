@@ -16,6 +16,7 @@ import {
   fetchTeams,
   fetchMarketsBySportsTag,
   fetchEventsByTagSlugSafe,
+  fetchEventsBySeriesSafe,
 } from "./polymarketClient";
 
 import {
@@ -389,18 +390,17 @@ export async function discoverSportsMarkets(
       primaryMarketRaw: g.primaryMarket,
     }));
 
-  // 8c. Targeted WC2026 tag-slug fetch (fills gap when sports-tag misses WC2026 events)
+  // 8c. Targeted WC2026 match-game discovery via Polymarket series soccer-fifwc.
+  // Polymarket FIFA World Cup match fixtures (Mexico vs South Africa, etc.) live under
+  // series_id 11433 — NOT tag_slug=fifa-world-cup (which returns only winner futures).
   {
-    const WC2026_PROP_EXCLUDE_RE = /\b(top goalscorer|longshots parlay|qualification longshots|squad)\b|player to make|will .+ play/i;
-    const WC2026_TAG_SLUGS = ["fifa-world-cup", "2026-fifa-world-cup"];
-    const rawTagEvents: PolymarketRawEvent[] = [];
-    for (const tagSlug of WC2026_TAG_SLUGS) {
-      try {
-        const events = await fetchEventsByTagSlugSafe(tagSlug, 50);
-        rawTagEvents.push(...events);
-      } catch {
-        warnings.push(`WC2026 tag-slug fetch failed for ${tagSlug}`);
-      }
+    const WC2026_PROP_EXCLUDE_RE = /\b(top goalscorer|longshots parlay|qualification longshots|squad|winner|champion|outright)\b|player to make|will .+ play/i;
+    const WC2026_SERIES_ID = "11433"; // series slug: soccer-fifwc
+    let rawTagEvents: PolymarketRawEvent[] = [];
+    try {
+      rawTagEvents = await fetchEventsBySeriesSafe(WC2026_SERIES_ID, 50);
+    } catch {
+      warnings.push(`WC2026 series fetch failed for series_id=${WC2026_SERIES_ID}`);
     }
     if (rawTagEvents.length > 0) {
       const existingKeys = new Set(extendedWc2026Candidates.map(s => s.slug || s.gameId || s.title));
@@ -422,13 +422,11 @@ export async function discoverSportsMarkets(
           // ~60d out; per-match markets are sooner. Match NBA/NHL futures horizon.
           if (hoursUntil < 0 || hoursUntil > 2160) continue;
         }
-        // Scan all sub-markets, score by tier + top-price, push top-N candidates per event.
-        // Tier 3: primary band [0.333, 0.588] — close match-style markets
-        // Tier 2: fallback band [0.20, 0.741] — wider match-style
-        // Tier 1: WC26 futures band [0.08, 0.45] — tournament-winner sub-markets
+        // Scan match sub-markets (Will TeamA win / Will draw / Will TeamB win) and pick
+        // the most actionable one. Unified bands only — no tournament-futures tier.
+        // Tier 3: primary band [0.333, 0.588]; Tier 2: fallback band [0.20, 0.741].
         const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
         const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
-        const WC26_FUTURES_MIN = 0.08, WC26_FUTURES_MAX = 0.45;
         type Cand = { m: Record<string, unknown>; nm: SportsMarketCandidate; tier: number; inBandPrice: number };
         const subCands: Cand[] = [];
         for (const m of event.markets ?? []) {
@@ -436,8 +434,6 @@ export async function discoverSportsMarkets(
           if (!Array.isArray(nm.outcomePrices) || nm.outcomePrices.length === 0) continue;
           const findBand = (lo: number, hi: number) =>
             nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= lo && p <= hi);
-          // Use the in-band price for ranking (not Math.max of all outcomes — that picks
-          // longshots whose NO-side price ~0.95 is highest, surfacing the worst teams).
           let tier = -1;
           let chosenPriceIdx = -1;
           const idxP = findBand(PRIMARY_MIN, PRIMARY_MAX);
@@ -445,10 +441,6 @@ export async function discoverSportsMarkets(
           else {
             const idxF = findBand(FALLBACK_MIN, FALLBACK_MAX);
             if (idxF !== -1) { tier = 2; chosenPriceIdx = idxF; }
-            else {
-              const idxW = findBand(WC26_FUTURES_MIN, WC26_FUTURES_MAX);
-              if (idxW !== -1) { tier = 1; chosenPriceIdx = idxW; }
-            }
           }
           if (tier === -1 || chosenPriceIdx === -1) continue;
           const inBandPrice = nm.outcomePrices[chosenPriceIdx];
@@ -456,22 +448,24 @@ export async function discoverSportsMarkets(
           subCands.push({ m: m as unknown as Record<string, unknown>, nm, tier, inBandPrice });
         }
         if (subCands.length === 0) continue;
-        // Higher tier first; within tier, higher in-band price = stronger contender
-        // (e.g. France 0.18 beats Brazil 0.09 in WC26 futures tier).
-        subCands.sort((a, b) => b.tier - a.tier || b.inBandPrice - a.inBandPrice);
+        // Higher tier first; within tier, in-band price closest to 0.45 = strongest edge.
+        subCands.sort((a, b) =>
+          b.tier - a.tier || Math.abs(a.inBandPrice - 0.45) - Math.abs(b.inBandPrice - 0.45));
 
-        const PER_EVENT_CAP = 3;
+        // One signal per match game (not per sub-market) — avoids win+draw duplicates.
+        const PER_EVENT_CAP = 1;
         for (const cand of subCands.slice(0, PER_EVENT_CAP)) {
           if (wc2026FromTag.length >= 5) break;
           const pm = cand.m as { volume?: number; volume24hr?: number; question?: string; conditionId?: string; slug?: string };
           const vol = typeof pm.volume === "number" ? pm.volume
             : typeof pm.volume24hr === "number" ? pm.volume24hr
             : typeof event.volume24hr === "number" ? event.volume24hr : 0;
-          // Use sub-market slug for uniqueness across team-future picks of the same parent event
-          const subSlug = (cand.nm.slug || pm.slug || event.slug || "").substring(0, 60);
+          const gameSlug = (event.slug || cand.nm.slug || pm.slug || "").substring(0, 60);
           wc2026FromTag.push({
-            title: (cand.nm.question || pm.question || title).substring(0, 100),
-            slug: subSlug,
+            // Event title = the matchup ("Mexico vs. South Africa"); buildUpcomingPairs
+            // humanizes it with the picked Yes/No position downstream.
+            title: (title || cand.nm.question || pm.question || "").substring(0, 100),
+            slug: gameSlug,
             gameId: undefined,
             sportsMarketType: undefined,
             eventVolumeUsd: vol,
@@ -479,7 +473,7 @@ export async function discoverSportsMarkets(
             gameTimeSource: "gamma-event-enddate",
             gameTimeConfidence: "medium",
             marketCount: event.markets?.length ?? 1,
-            strategy: "targeted-wc2026-tag-slug",
+            strategy: "targeted-wc2026-series-games",
             leagueName: "World Cup 2026",
             polymarketEventSlug: (event.slug || "").substring(0, 80),
             primaryMarketRaw: {

@@ -242,6 +242,32 @@ export async function fetchEventsByTagSlugSafe(tagSlug: string, limit = 50): Pro
 }
 
 /**
+ * Fetch events from Gamma API by series id (e.g. soccer-fifwc / id 11433).
+ * Polymarket sports match games are grouped by series, NOT by tag_slug — tag_slug
+ * returns only tournament-winner futures. Series queries surface fixture-level games.
+ */
+export async function fetchEventsBySeriesSafe(seriesId: string, limit = 50): Promise<PolymarketRawEvent[]> {
+  const params = new URLSearchParams({
+    series_id: seriesId,
+    active: "true",
+    closed: "false",
+    limit: limit.toString(),
+  });
+  const url = `${GAMMA_API_BASE}/events?${params.toString()}`;
+  const response = await safeFetch<unknown>(url, { next: { revalidate: 300 } });
+  if (!response) return [];
+  if (Array.isArray(response)) return response as PolymarketRawEvent[];
+  if (typeof response === "object" && response !== null) {
+    const obj = response as Record<string, unknown>;
+    if (Array.isArray(obj.events)) return obj.events as PolymarketRawEvent[];
+    if (Array.isArray(obj.data)) return obj.data as PolymarketRawEvent[];
+    if (Array.isArray(obj.items)) return obj.items as PolymarketRawEvent[];
+  }
+  console.warn(`fetchEventsBySeriesSafe: unexpected response shape for series_id=${seriesId}`);
+  return [];
+}
+
+/**
  * Fetch price history for a token from CLOB API
  */
 export async function fetchPriceHistorySafe(
