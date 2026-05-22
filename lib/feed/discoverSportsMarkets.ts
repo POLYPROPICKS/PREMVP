@@ -422,53 +422,69 @@ export async function discoverSportsMarkets(
           // ~60d out; per-match markets are sooner. Match NBA/NHL futures horizon.
           if (hoursUntil < 0 || hoursUntil > 2160) continue;
         }
-        // Scan all markets[] (WC event has ~40 team-future sub-markets) for first actionable
+        // Scan all sub-markets, score by tier + top-price, push top-N candidates per event.
+        // Tier 3: primary band [0.333, 0.588] — close match-style markets
+        // Tier 2: fallback band [0.20, 0.741] — wider match-style
+        // Tier 1: WC26 futures band [0.08, 0.45] — tournament-winner sub-markets
         const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
         const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
-        let chosenPm: Record<string, unknown> | null = null;
-        let chosenNormalized: SportsMarketCandidate | null = null;
+        const WC26_FUTURES_MIN = 0.08, WC26_FUTURES_MAX = 0.45;
+        type Cand = { m: Record<string, unknown>; nm: SportsMarketCandidate; tier: number; topPrice: number };
+        const subCands: Cand[] = [];
         for (const m of event.markets ?? []) {
           const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
           if (!Array.isArray(nm.outcomePrices) || nm.outcomePrices.length === 0) continue;
-          const primaryIdx = nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= PRIMARY_MIN && p <= PRIMARY_MAX);
-          const fallbackIdx = primaryIdx === -1
-            ? nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX)
-            : primaryIdx;
-          if (fallbackIdx !== -1) {
-            chosenPm = m as unknown as Record<string, unknown>;
-            chosenNormalized = nm;
-            break;
-          }
+          const inBand = (lo: number, hi: number) =>
+            nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= lo && p <= hi);
+          let tier = -1;
+          if (inBand(PRIMARY_MIN, PRIMARY_MAX) !== -1) tier = 3;
+          else if (inBand(FALLBACK_MIN, FALLBACK_MAX) !== -1) tier = 2;
+          else if (inBand(WC26_FUTURES_MIN, WC26_FUTURES_MAX) !== -1) tier = 1;
+          if (tier === -1) continue;
+          const topPrice = Math.max(
+            ...nm.outcomePrices.filter((p): p is number => typeof p === "number" && p > 0 && p < 1),
+          );
+          subCands.push({ m: m as unknown as Record<string, unknown>, nm, tier, topPrice });
         }
-        if (!chosenPm || !chosenNormalized) continue;
-        const pm = chosenPm as { volume?: number; volume24hr?: number; question?: string; conditionId?: string };
-        const vol = typeof pm.volume === "number" ? pm.volume
-          : typeof pm.volume24hr === "number" ? pm.volume24hr
-          : typeof event.volume24hr === "number" ? event.volume24hr : 0;
-        wc2026FromTag.push({
-          title: title.substring(0, 100),
-          slug: (event.slug || "").substring(0, 60),
-          gameId: undefined,
-          sportsMarketType: undefined,
-          eventVolumeUsd: vol,
-          resolvedGameTimeIso: endIso,
-          gameTimeSource: "gamma-event-enddate",
-          gameTimeConfidence: "medium",
-          marketCount: event.markets?.length ?? 1,
-          strategy: "targeted-wc2026-tag-slug",
-          leagueName: "World Cup 2026",
-          polymarketEventSlug: (event.slug || "").substring(0, 80),
-          primaryMarketRaw: {
-            outcomes: chosenNormalized.outcomes,
-            outcomePrices: chosenNormalized.outcomePrices,
-            clobTokenIds: chosenNormalized.clobTokenIds,
-            question: chosenNormalized.question || (pm.question ?? title),
-            conditionId: chosenNormalized.conditionId || (pm.conditionId ?? undefined),
-            volumeNum: typeof pm.volume === "number" ? pm.volume : null,
-            volume24hr: typeof pm.volume24hr === "number" ? pm.volume24hr : null,
-            volumeClob: null,
-          },
-        });
+        if (subCands.length === 0) continue;
+        subCands.sort((a, b) => b.tier - a.tier || b.topPrice - a.topPrice);
+
+        const PER_EVENT_CAP = 3;
+        for (const cand of subCands.slice(0, PER_EVENT_CAP)) {
+          if (wc2026FromTag.length >= 5) break;
+          const pm = cand.m as { volume?: number; volume24hr?: number; question?: string; conditionId?: string; slug?: string };
+          const vol = typeof pm.volume === "number" ? pm.volume
+            : typeof pm.volume24hr === "number" ? pm.volume24hr
+            : typeof event.volume24hr === "number" ? event.volume24hr : 0;
+          // Use sub-market slug for uniqueness across team-future picks of the same parent event
+          const subSlug = (cand.nm.slug || pm.slug || event.slug || "").substring(0, 60);
+          wc2026FromTag.push({
+            title: (cand.nm.question || pm.question || title).substring(0, 100),
+            slug: subSlug,
+            gameId: undefined,
+            sportsMarketType: undefined,
+            eventVolumeUsd: vol,
+            resolvedGameTimeIso: endIso,
+            gameTimeSource: "gamma-event-enddate",
+            gameTimeConfidence: "medium",
+            marketCount: event.markets?.length ?? 1,
+            strategy: "targeted-wc2026-tag-slug",
+            leagueName: "World Cup 2026",
+            polymarketEventSlug: (event.slug || "").substring(0, 80),
+            primaryMarketRaw: {
+              outcomes: cand.nm.outcomes,
+              outcomePrices: cand.nm.outcomePrices,
+              clobTokenIds: cand.nm.clobTokenIds,
+              question: cand.nm.question || (pm.question ?? title),
+              conditionId: cand.nm.conditionId || (pm.conditionId ?? undefined),
+              volumeNum: typeof pm.volume === "number" ? pm.volume : null,
+              volume24hr: typeof pm.volume24hr === "number" ? pm.volume24hr : null,
+              volumeClob: null,
+            },
+          });
+        }
+        // Continue outer event loop (don't `continue` to skip post-push lines)
+        continue;
       }
       wc2026FromTag.sort((a, b) => b.eventVolumeUsd - a.eventVolumeUsd);
       extendedWc2026Candidates.push(...wc2026FromTag.slice(0, 5));

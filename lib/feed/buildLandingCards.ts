@@ -1422,9 +1422,12 @@ export async function buildLandingCards(options?: {
             cap--;
           }
         };
-        pushUnique(discovery.extendedWc2026Candidates, 2);
-        pushUnique(discovery.extendedNbaCandidates, 2);
-        pushUnique(discovery.extendedNhlCandidates, 2);
+        // Strategic targets (priority cats get higher reserve than eSport).
+        // WC26/NBA/NHL are reserve up to 3; eSport hard cap 2 here AND in
+        // applyCategoryAllocation downstream (defensive double-cap).
+        pushUnique(discovery.extendedWc2026Candidates, 3);
+        pushUnique(discovery.extendedNbaCandidates, 3);
+        pushUnique(discovery.extendedNhlCandidates, 3);
         pushUnique(discovery.extendedEsportsCandidates, 2);
         // Fallback48h candidates appended last, deduped
         const existing = new Set(strategicOrdered.map(s => s.gameId || s.slug || s.title));
