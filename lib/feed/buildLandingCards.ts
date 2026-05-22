@@ -1001,6 +1001,58 @@ function humanizeMatchupTitle(title: string, position: string | undefined): stri
 }
 
 /**
+ * Classify a pair into a strategic category (or "other") by league/title text.
+ * Same matcher family as the frontend landingPairMatchesFilter contract.
+ */
+export function strategicCategoryOf(pair: LandingCardPair): "WC26" | "NBA" | "NHL" | "eSport" | "other" {
+  const text = `${pair.premiumSignal?.league ?? ""} ${pair.premiumSignal?.eventTitle ?? ""}`.toLowerCase();
+  if (/\b(esport|esports|gaming|cs2|csgo|dota|valorant|lol|league of legends|counter[ -]strike|overwatch)\b/.test(text)) return "eSport";
+  if (/world cup|wc2026|wc26|fifa/.test(text)) return "WC26";
+  if (/\bnhl\b|stanley|hockey/.test(text)) return "NHL";
+  if (/\bnba\b|basketball/.test(text)) return "NBA";
+  return "other";
+}
+
+/**
+ * Strategic Zero-Fill / Floor pass — applied to the FINAL combined cache feed.
+ *
+ * Root cause it solves: the cache feed is [...qualified, ...upcoming]; the route
+ * reads only the first `limit` (15). Strategic upcoming candidates (esp. eSport,
+ * last in priority order) get cut even though they were discovered and passed the
+ * unified scoring. This reorders so each strategic category that has ≥1 eligible
+ * generated pair anywhere in the feed gets at least one slot inside the first
+ * `limit`, displacing the lowest-winProbability NON-strategic pair. It never
+ * removes the only representative of another strategic category and never
+ * fabricates a pair — if a category has 0 eligible pairs it honestly stays 0.
+ */
+export function applyStrategicFloor(combined: LandingCardPair[], limit: number): LandingCardPair[] {
+  if (combined.length <= limit) return combined;
+  const window = combined.slice(0, limit);
+  const tail = combined.slice(limit);
+  const STRATEGIC: Array<"WC26" | "NBA" | "NHL" | "eSport"> = ["WC26", "NBA", "NHL", "eSport"];
+
+  for (const cat of STRATEGIC) {
+    const inWindow = window.filter((p) => strategicCategoryOf(p) === cat).length;
+    if (inWindow > 0) continue;
+    const tailIdx = tail.findIndex((p) => strategicCategoryOf(p) === cat);
+    if (tailIdx === -1) continue; // no eligible candidate — honest 0, no fabrication
+    // Displace the lowest-winProbability NON-strategic pair in the window.
+    let demoteIdx = -1;
+    let lowWp = Infinity;
+    for (let i = 0; i < window.length; i++) {
+      if (strategicCategoryOf(window[i]) !== "other") continue;
+      const wp = Number(window[i].premiumSignal?.winProbability) || 0;
+      if (wp < lowWp) { lowWp = wp; demoteIdx = i; }
+    }
+    if (demoteIdx === -1) continue; // no non-strategic slot free — don't break another strategic cat
+    const promote = tail.splice(tailIdx, 1)[0];
+    const demote = window.splice(demoteIdx, 1, promote)[0];
+    tail.push(demote);
+  }
+  return [...window, ...tail];
+}
+
+/**
  * Detect whether a pair belongs to the Esports category by league/title text.
  */
 function isEsportPair(pair: LandingCardPair): boolean {

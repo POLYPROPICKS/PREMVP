@@ -1,7 +1,7 @@
 // Signal generation script
 // Generates TrustedInitialformulaLanding1.1 pairs and caches them in Supabase
 
-import { buildLandingCards } from "../lib/feed/buildLandingCards";
+import { buildLandingCards, applyStrategicFloor } from "../lib/feed/buildLandingCards";
 import {
   writeGeneratedSignalPairs,
   writeJobRun,
@@ -42,7 +42,10 @@ async function main() {
       upcomingLimit: CONFIG.upcomingLimit,
     });
 
-    const pairsToCache = [...result.pairs, ...(result.upcomingPairs ?? [])];
+    // Strategic floor: ensure each strategic category with an eligible generated
+    // pair lands inside the route's first-`limit` window (eSport otherwise cut).
+    const combinedPairs = [...result.pairs, ...(result.upcomingPairs ?? [])];
+    const pairsToCache = applyStrategicFloor(combinedPairs, CONFIG.limit);
     generatedCount = pairsToCache.length;
     rejectedCount = result.rejected?.length ?? 0;
 
