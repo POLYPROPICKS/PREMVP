@@ -111,6 +111,14 @@ Report:
 - affected-category examples by title/league/url/diagnostics
 - whether the issue exists in JSON or only in UI
 
+**Source coverage rule (added after WC26 incident):**
+Gamma `public-search` and `tag_slug` are NOT sufficient evidence for Polymarket
+sports categories. Sports match games are grouped by **series**
+(`events?series_id=<id>`), not by tag — tag queries return only futures/outright.
+For any strategic category (WC26/NBA/NHL/eSport), the official Polymarket sports
+page and its series-backed endpoint MUST be checked before concluding "no supply".
+Run `npm run audit:sports-sources` and see `P0_SOURCE_COVERAGE_AUDIT_PROTOCOL.md`.
+
 ## 7. Required local pipeline trace
 
 If runtime API does not prove the loss point, Claude Code must create one temporary debug script.

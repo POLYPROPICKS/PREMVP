@@ -46,6 +46,7 @@ Load Tier 2 (project context) only when task-relevant.
 Do NOT load Tier 4 (lessons/archive) at session start.
 
 **Feed/data/scoring incidents:** follow `docs/ai-context/P0_FEED_FORENSIC_AUTOMATION_PROTOCOL.md`. No trace table = no patch.
+**Source coverage:** run `npm run audit:sports-sources` and follow `docs/ai-context/P0_SOURCE_COVERAGE_AUDIT_PROTOCOL.md` — Gamma tag_slug alone is not sufficient for Polymarket sports categories.
 
 ## 4. Mandatory first response format
 
