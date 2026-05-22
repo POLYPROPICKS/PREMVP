@@ -39,10 +39,13 @@ patch before inspecting when source is uncertain, or mix task zones.
 /AGENTS.md                                        ← constitution + forbidden list
 /docs/ai-context/TASK_ROUTING_MATRIX.md          ← before every task
 /docs/ai-context/CLAUDE_CODE_EXECUTION_PROTOCOL.md ← before every patch
+/docs/ai-context/P0_FEED_FORENSIC_AUTOMATION_PROTOCOL.md ← before any feed/data/scoring incident
 ```
 
 Load Tier 2 (project context) only when task-relevant.
 Do NOT load Tier 4 (lessons/archive) at session start.
+
+**Feed/data/scoring incidents:** follow `docs/ai-context/P0_FEED_FORENSIC_AUTOMATION_PROTOCOL.md`. No trace table = no patch.
 
 ## 4. Mandatory first response format
 
