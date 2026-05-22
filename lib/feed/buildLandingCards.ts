@@ -1201,6 +1201,10 @@ function buildUpcomingPairs(
       // No extreme-favorite or longshot fallback: better to skip than to display 0.9995/0.0005.
       const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
       const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
+      // WC26 tournament-winner sub-markets sit ~0.05–0.20 (no team is favorite). Apply
+      // a WC26-specific futures tier so France/Spain/Brazil-style top contenders pass.
+      const isWc2026 = sample.leagueName === "World Cup 2026";
+      const WC26_FUTURES_MIN = 0.08, WC26_FUTURES_MAX = 0.45;
       let bestIdx = -1;
       let bestDist = Infinity;
       // Pass 1: primary band, prefer closest to 0.45
@@ -1219,6 +1223,17 @@ function buildUpcomingPairs(
           if (typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX) {
             const dist = Math.abs(p - 0.45);
             if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+          }
+        }
+      }
+      // Pass 3: WC26-only futures tier — prefer top favorite (highest price in band)
+      if (bestIdx === -1 && isWc2026) {
+        let bestPrice = -1;
+        for (let i = 0; i < outcomePrices.length; i++) {
+          const p = outcomePrices[i];
+          if (typeof p === "number" && p >= WC26_FUTURES_MIN && p <= WC26_FUTURES_MAX && p > bestPrice) {
+            bestPrice = p;
+            bestIdx = i;
           }
         }
       }
