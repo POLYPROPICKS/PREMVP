@@ -66,6 +66,10 @@ export interface LandingCardDiagnostics {
   rejectionReasons: string[];
   signalStatus?: "qualified" | "upcoming_candidate";
   gameStartIso?: string | null;
+  metricDedupeAdjusted?: boolean;
+  metricDedupeReason?: string;
+  rawMetricVector?: number[];
+  adjustedMetricVector?: number[];
 }
 
 export interface LandingCardPair {

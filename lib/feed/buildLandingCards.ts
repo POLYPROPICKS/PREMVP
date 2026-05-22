@@ -1043,6 +1043,102 @@ function applyCategoryAllocation(
 }
 
 /**
+ * Deterministic FNV-1a-style hash → stable unsigned 32-bit seed.
+ */
+function stableHash(input: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < input.length; i++) {
+    h ^= input.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/**
+ * Final deterministic Duplicate Metric Guard.
+ * Trust metrics are derived from fc ± offsets, so distinct events can end up with
+ * an identical full display vector [winProbability, smart-money, public-vs-whale,
+ * pre-event-score]. When ≥2 DISTINCT events (different conditionId/title/price)
+ * share the same vector, apply a deterministic micro-offset (-1/0/+1, seeded from
+ * a stable hash — no randomness) so the display vector differs. Confidence offset
+ * never crosses a getConfidenceLabel threshold. Applied equally to all categories.
+ */
+function applyDuplicateMetricGuard(pairs: LandingCardPair[]): LandingCardPair[] {
+  const METRIC_IDS = ["smart-money", "public-vs-whale", "pre-event-score"];
+  const metricVal = (p: LandingCardPair, id: string): number => {
+    const m = (p.premiumSignal?.metrics ?? []).find((x) => x.id === id);
+    return m ? Math.round(Number(m.value) || 0) : 0;
+  };
+  const vectorOf = (p: LandingCardPair): number[] => [
+    Math.round(Number(p.premiumSignal?.winProbability) || 0),
+    ...METRIC_IDS.map((id) => metricVal(p, id)),
+  ];
+
+  const groups = new Map<string, LandingCardPair[]>();
+  for (const p of pairs) {
+    const key = vectorOf(p).join("|");
+    const arr = groups.get(key) ?? [];
+    arr.push(p);
+    groups.set(key, arr);
+  }
+
+  for (const group of groups.values()) {
+    if (group.length < 2) continue;
+    // Only adjust when the group spans DISTINCT events/markets.
+    const idOf = (p: LandingCardPair) =>
+      `${p.diagnostics?.conditionId ?? ""}|${p.premiumSignal?.eventTitle ?? ""}|${p.diagnostics?.currentPrice ?? ""}`;
+    const ids = group.map(idOf);
+    if (ids.every((x) => x === ids[0])) continue; // same event — not a fake-looking duplicate
+
+    group.forEach((p, idx) => {
+      if (idx === 0) return; // first member is the anchor — keep raw values
+      const seed = stableHash(
+        `${p.id}|${p.diagnostics?.conditionId ?? ""}|${p.diagnostics?.selectedOutcome ?? ""}|${p.premiumSignal?.eventTitle ?? ""}`,
+      );
+      const rawVec = vectorOf(p);
+
+      // Confidence offset — must not cross a label threshold (75 / 65).
+      const rawWp = rawVec[0];
+      let adjWp = clamp(rawWp + ((seed % 3) - 1), 0, 100);
+      if (getConfidenceLabel(adjWp) !== getConfidenceLabel(rawWp)) adjWp = rawWp;
+      p.premiumSignal.winProbability = adjWp;
+
+      // Metric offsets — deterministic -1/0/+1 from distinct hash bits.
+      const offsets = [((seed >> 2) % 3) - 1, ((seed >> 4) % 3) - 1, ((seed >> 6) % 3) - 1];
+      METRIC_IDS.forEach((id, i) => {
+        const m = (p.premiumSignal?.metrics ?? []).find((x) => x.id === id);
+        if (!m) return;
+        const adj = clamp(Math.round(Number(m.value) || 0) + offsets[i], 0, 100);
+        m.value = adj;
+        m.bar = adj;
+      });
+
+      // Guarantee the vector actually changed; if every offset cancelled, nudge
+      // the first metric deterministically (still no randomness).
+      let adjVec = vectorOf(p);
+      if (adjVec.join("|") === rawVec.join("|")) {
+        const m = (p.premiumSignal?.metrics ?? []).find((x) => x.id === METRIC_IDS[0]);
+        if (m) {
+          const cur = Math.round(Number(m.value) || 0);
+          const adj = cur < 100 ? cur + 1 : cur - 1;
+          m.value = adj;
+          m.bar = adj;
+          adjVec = vectorOf(p);
+        }
+      }
+
+      if (p.diagnostics) {
+        p.diagnostics.metricDedupeAdjusted = true;
+        p.diagnostics.metricDedupeReason = "duplicate_metric_vector";
+        p.diagnostics.rawMetricVector = rawVec;
+        p.diagnostics.adjustedMetricVector = adjVec;
+      }
+    });
+  }
+  return pairs;
+}
+
+/**
  * Identify real sports markets that should be displayed as conservative fallback,
  * not as high-confidence live-edge signals.
  *
@@ -1336,6 +1432,8 @@ export async function buildLandingCards(options?: {
       if (candidates.length === 0) {
         const rawUpcoming = includeUpcoming ? await buildUpcomingPairs(upcomingRawSamples, upcomingLimit) : [];
         const allocated = applyCategoryAllocation([], rawUpcoming);
+        // Final deterministic dedupe guard over the combined feed.
+        applyDuplicateMetricGuard([...allocated.pairs, ...allocated.upcomingPairs]);
         return {
           generatedAt: new Date().toISOString(),
           source: "polymarket",
@@ -1557,6 +1655,8 @@ export async function buildLandingCards(options?: {
     const finalRejected = rejected;
     const rawUpcomingFinal = includeUpcoming ? await buildUpcomingPairs(upcomingRawSamples, upcomingLimit) : [];
     const allocatedFinal = applyCategoryAllocation(pairs, rawUpcomingFinal);
+    // Final deterministic dedupe guard over the combined feed (all categories).
+    applyDuplicateMetricGuard([...allocatedFinal.pairs, ...allocatedFinal.upcomingPairs]);
 
     return {
       generatedAt: new Date().toISOString(),
