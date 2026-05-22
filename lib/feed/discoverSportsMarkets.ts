@@ -429,25 +429,36 @@ export async function discoverSportsMarkets(
         const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
         const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
         const WC26_FUTURES_MIN = 0.08, WC26_FUTURES_MAX = 0.45;
-        type Cand = { m: Record<string, unknown>; nm: SportsMarketCandidate; tier: number; topPrice: number };
+        type Cand = { m: Record<string, unknown>; nm: SportsMarketCandidate; tier: number; inBandPrice: number };
         const subCands: Cand[] = [];
         for (const m of event.markets ?? []) {
           const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
           if (!Array.isArray(nm.outcomePrices) || nm.outcomePrices.length === 0) continue;
-          const inBand = (lo: number, hi: number) =>
+          const findBand = (lo: number, hi: number) =>
             nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= lo && p <= hi);
+          // Use the in-band price for ranking (not Math.max of all outcomes — that picks
+          // longshots whose NO-side price ~0.95 is highest, surfacing the worst teams).
           let tier = -1;
-          if (inBand(PRIMARY_MIN, PRIMARY_MAX) !== -1) tier = 3;
-          else if (inBand(FALLBACK_MIN, FALLBACK_MAX) !== -1) tier = 2;
-          else if (inBand(WC26_FUTURES_MIN, WC26_FUTURES_MAX) !== -1) tier = 1;
-          if (tier === -1) continue;
-          const topPrice = Math.max(
-            ...nm.outcomePrices.filter((p): p is number => typeof p === "number" && p > 0 && p < 1),
-          );
-          subCands.push({ m: m as unknown as Record<string, unknown>, nm, tier, topPrice });
+          let chosenPriceIdx = -1;
+          const idxP = findBand(PRIMARY_MIN, PRIMARY_MAX);
+          if (idxP !== -1) { tier = 3; chosenPriceIdx = idxP; }
+          else {
+            const idxF = findBand(FALLBACK_MIN, FALLBACK_MAX);
+            if (idxF !== -1) { tier = 2; chosenPriceIdx = idxF; }
+            else {
+              const idxW = findBand(WC26_FUTURES_MIN, WC26_FUTURES_MAX);
+              if (idxW !== -1) { tier = 1; chosenPriceIdx = idxW; }
+            }
+          }
+          if (tier === -1 || chosenPriceIdx === -1) continue;
+          const inBandPrice = nm.outcomePrices[chosenPriceIdx];
+          if (typeof inBandPrice !== "number") continue;
+          subCands.push({ m: m as unknown as Record<string, unknown>, nm, tier, inBandPrice });
         }
         if (subCands.length === 0) continue;
-        subCands.sort((a, b) => b.tier - a.tier || b.topPrice - a.topPrice);
+        // Higher tier first; within tier, higher in-band price = stronger contender
+        // (e.g. France 0.18 beats Brazil 0.09 in WC26 futures tier).
+        subCands.sort((a, b) => b.tier - a.tier || b.inBandPrice - a.inBandPrice);
 
         const PER_EVENT_CAP = 3;
         for (const cand of subCands.slice(0, PER_EVENT_CAP)) {
