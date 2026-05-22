@@ -1209,14 +1209,11 @@ function buildUpcomingPairs(
     let selectedTokenId: string | null = null;
 
     if (outcomes.length > 0 && outcomePrices.length === outcomes.length) {
-      // Locked actionable-odds bands (decimal 1.7–3 primary; 1.35–5 fallback)
-      // No extreme-favorite or longshot fallback: better to skip than to display 0.9995/0.0005.
+      // Unified actionable-odds band — identical to the qualified path's
+      // computeBandedSignalScore gate (selectedOdds 1.35–5.0 => price 0.20–0.741).
+      // No category-specific tier: WC26/eSport/NBA/NHL all use one band.
       const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
       const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
-      // WC26 tournament-winner sub-markets sit ~0.05–0.20 (no team is favorite). Apply
-      // a WC26-specific futures tier so France/Spain/Brazil-style top contenders pass.
-      const isWc2026 = sample.leagueName === "World Cup 2026";
-      const WC26_FUTURES_MIN = 0.08, WC26_FUTURES_MAX = 0.45;
       let bestIdx = -1;
       let bestDist = Infinity;
       // Pass 1: primary band, prefer closest to 0.45
@@ -1235,17 +1232,6 @@ function buildUpcomingPairs(
           if (typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX) {
             const dist = Math.abs(p - 0.45);
             if (dist < bestDist) { bestDist = dist; bestIdx = i; }
-          }
-        }
-      }
-      // Pass 3: WC26-only futures tier — prefer top favorite (highest price in band)
-      if (bestIdx === -1 && isWc2026) {
-        let bestPrice = -1;
-        for (let i = 0; i < outcomePrices.length; i++) {
-          const p = outcomePrices[i];
-          if (typeof p === "number" && p >= WC26_FUTURES_MIN && p <= WC26_FUTURES_MAX && p > bestPrice) {
-            bestPrice = p;
-            bestIdx = i;
           }
         }
       }
@@ -1303,33 +1289,36 @@ function buildUpcomingPairs(
       },
     ];
 
-    const volScore = clamp(Math.round((Math.min(volNum, 500000) / 500000) * 60 + 30), 30, 90);
+    // ── Unified signal scoring contract ──────────────────────────────────
+    // Route upcoming candidates through the SAME computeBandedSignalScore used
+    // by qualified cards. No surrogate price-distance confidence, no separate
+    // trust-metric formula. Upcoming candidates are zero-enrichment (no CLOB
+    // delta/trade/holder data) so they score as zero-data: capped at 57 and
+    // anchored to the selected-odds band midpoint. A market whose selectedOdds
+    // fall outside 1.35–5.0 (price <0.20 or >0.741) returns null and is skipped
+    // — this is what blocks tournament-winner longshots (e.g. England 0.11).
+    const selectedOdds = currentPrice > 0 ? 1 / currentPrice : 99;
+    const fc = computeBandedSignalScore({
+      selectedOdds,
+      delta6hPp: null,
+      maxTradeCash: null,
+      recentTradeCash: null,
+      holderConcentrationScore: null,
+    });
+    if (fc === null) continue;
 
-    const hoursToEvent = sample.resolvedGameTimeIso
-      ? Math.max(
-          1,
-          (new Date(sample.resolvedGameTimeIso).getTime() - Date.now()) / 3_600_000,
-        )
-      : 720;
-    const timeProximity = clamp(
-      Math.round(80 - (Math.min(hoursToEvent, 720) / 720) * 30),
-      50,
-      80,
-    );
-    const priceConfidence =
-      typeof currentPrice === "number" && Number.isFinite(currentPrice)
-        ? clamp(Math.round(50 + Math.abs(currentPrice - 0.5) * 60), 50, 72)
-        : 55;
-    const marketActivity = clamp(Math.round(volScore * 0.6 + timeProximity * 0.4), 45, 80);
-    const preEventScore = clamp(Math.round((priceConfidence + timeProximity) / 2), 50, 75);
-
+    // Trust metrics anchored to fc — identical anchoring to the qualified path's
+    // zero-data branch (no enrichment → conservative offsets).
+    const smartMoneyVal = clamp(fc - 4, fc - 5, fc + 5);
+    const pubWhaleVal = clamp(fc - 5, fc - 8, fc + 5);
+    const preEventVal = clamp(fc + 1, fc - 3, fc + 5);
     const metrics: TrustMetric[] = [
-      { id: "volume-signal", label: "Volume Signal", value: volScore, bar: volScore, icon: "/icons/trust-smart-money.png" },
-      { id: "public-vs-whale", label: "Market Activity", value: marketActivity, bar: marketActivity, icon: "/icons/trust-public-whale.png" },
-      { id: "pre-event-score", label: "PreEventScore AI", value: preEventScore, bar: preEventScore, icon: "/icons/trust-ai-score.png" },
+      { id: "smart-money", label: "Smart Money", value: roundNumber(smartMoneyVal), bar: roundNumber(smartMoneyVal), icon: "/icons/trust-smart-money.png" },
+      { id: "public-vs-whale", label: "Public vs Whale Money", value: roundNumber(pubWhaleVal), bar: roundNumber(pubWhaleVal), icon: "/icons/trust-public-whale.png" },
+      { id: "pre-event-score", label: "PreEventScore AI", value: roundNumber(preEventVal), bar: roundNumber(preEventVal), icon: "/icons/trust-ai-score.png" },
     ];
 
-    const winProbability = clamp(Math.round(priceConfidence), 52, 72);
+    const winProbability = roundNumber(fc);
     const premiumSignal: PremiumSignal = {
       id: pairId,
       league: sample.leagueName || "Sports",
