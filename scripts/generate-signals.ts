@@ -15,7 +15,9 @@ const CONFIG = {
   excludeEnded: true,
   cacheExpiryHours: 1, // Cache valid for 1 hour
   includeUpcoming: true,
-  upcomingLimit: 5,
+  // 10 so strategic categories (WC26 2-3 + NBA 2 + NHL 1-2 + eSport 1-2) all fit
+  // without eSport being starved by strategic priority ordering at limit 5.
+  upcomingLimit: 10,
 };
 
 async function main() {

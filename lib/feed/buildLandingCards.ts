@@ -1166,16 +1166,21 @@ async function fetchEventsForCategory(
 }
 
 /**
- * Build upcoming candidate pairs from fallback48hCandidates without CLOB enrichment.
- * Sets signalStatus: "upcoming_candidate" and gameStartIso on diagnostics.
+ * Build upcoming candidate pairs through the SAME unified enrichment + scoring
+ * path as qualified cards: sampleToCandidateMarket → enrichMarket →
+ * generateLandingCardPair. No manual zero-enrichment metrics, no surrogate
+ * confidence formula. minDataCoverage is intentionally NOT gated here — upcoming
+ * markets have low coverage by nature; the actionable odds band inside
+ * computeBandedSignalScore (within generateLandingCardPair) is the real gate.
+ * Marks signalStatus: "upcoming_candidate" + gameStartIso on diagnostics.
  */
-function buildUpcomingPairs(
+async function buildUpcomingPairs(
   samples: SportsDiscoverySample[],
   upcomingLimit: number,
-): LandingCardPair[] {
+): Promise<LandingCardPair[]> {
   const pairs: LandingCardPair[] = [];
 
-  // Strategic priority overrides pure time-sort so WC26/NBA/NHL futures (settling weeks out)
+  // Strategic priority overrides pure time-sort so WC26/NBA/NHL (settling weeks out)
   // are not starved by near-term fallback48h matches when upcomingLimit is tight.
   const STRATEGIC_PRIORITY: Record<string, number> = {
     "World Cup 2026": 4,
@@ -1194,172 +1199,33 @@ function buildUpcomingPairs(
     return (b.eventVolumeUsd ?? 0) - (a.eventVolumeUsd ?? 0);
   });
 
+  const seenPairIds = new Set<string>();
   for (const sample of sorted) {
     if (pairs.length >= upcomingLimit) break;
     if (!sample.leagueName || !sample.resolvedGameTimeIso || !sample.primaryMarketRaw?.conditionId) continue;
 
-    const raw = sample.primaryMarketRaw;
-    const outcomes = raw.outcomes ?? [];
-    const outcomePrices = raw.outcomePrices ?? [];
-    const clobTokenIds = (raw as { clobTokenIds?: string[] }).clobTokenIds ?? [];
+    const candidate = sampleToCandidateMarket(sample);
+    if (!candidate) continue;
 
-    let position = "Market Watch";
-    let currentPrice: number | null = null;
-    let profitStr = "Pending";
-    let selectedTokenId: string | null = null;
+    // Unified enrichment — fetches price history / trades / holders just like
+    // qualified cards, so trust metrics vary per real market diagnostics.
+    const enriched = await enrichMarket(candidate.event, candidate.market, candidate.warnings);
+    if (!enriched) continue;
+    // minDataCoverage gate intentionally NOT applied for upcoming candidates:
+    // coverage is naturally low pre-event. computeBandedSignalScore's actionable
+    // odds band (inside generateLandingCardPair) is the real eligibility gate.
 
-    if (outcomes.length > 0 && outcomePrices.length === outcomes.length) {
-      // Unified actionable-odds band — identical to the qualified path's
-      // computeBandedSignalScore gate (selectedOdds 1.35–5.0 => price 0.20–0.741).
-      // No category-specific tier: WC26/eSport/NBA/NHL all use one band.
-      const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
-      const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
-      let bestIdx = -1;
-      let bestDist = Infinity;
-      // Pass 1: primary band, prefer closest to 0.45
-      for (let i = 0; i < outcomePrices.length; i++) {
-        const p = outcomePrices[i];
-        if (typeof p === "number" && p >= PRIMARY_MIN && p <= PRIMARY_MAX) {
-          const dist = Math.abs(p - 0.45);
-          if (dist < bestDist) { bestDist = dist; bestIdx = i; }
-        }
-      }
-      // Pass 2: fallback band only if primary empty
-      if (bestIdx === -1) {
-        bestDist = Infinity;
-        for (let i = 0; i < outcomePrices.length; i++) {
-          const p = outcomePrices[i];
-          if (typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX) {
-            const dist = Math.abs(p - 0.45);
-            if (dist < bestDist) { bestDist = dist; bestIdx = i; }
-          }
-        }
-      }
-      if (bestIdx >= 0) {
-        const price = outcomePrices[bestIdx];
-        if (typeof price === "number" && price > 0 && price < 1) {
-          position = safeString(outcomes[bestIdx]) || position;
-          currentPrice = price;
-          profitStr = `${computePotentialProfitPercent(price)}%`;
-          if (Array.isArray(clobTokenIds) && typeof clobTokenIds[bestIdx] === "string") {
-            selectedTokenId = clobTokenIds[bestIdx];
-          }
-        }
-      }
-    }
+    const pair = generateLandingCardPair(enriched);
+    if (!pair) continue;
+    if (pair.premiumSignal.winProbability < 52) continue; // unified low-confidence gate
+    if (seenPairIds.has(pair.id)) continue;
+    seenPairIds.add(pair.id);
 
-    // Quality beats immediacy: if no actionable price found, do NOT emit a Market Watch
-    // pair with Pending profit. Skip the sample; discovery's window expansion should
-    // provide better candidates within 7/14/30 days.
-    if (currentPrice === null) continue;
+    // Mark as upcoming candidate — unified scoring already applied above.
+    pair.diagnostics.signalStatus = "upcoming_candidate";
+    pair.diagnostics.gameStartIso = sample.resolvedGameTimeIso;
 
-    const conditionId = raw.conditionId ?? "";
-    const pairId = `upcoming-${slugify(conditionId || sample.slug || "market")}-${slugify(position)}`;
-    const gameTimeDisplay = formatGameTime(sample.resolvedGameTimeIso);
-    const volNum = (raw.volumeNum ?? 0) || (raw.volume24hr ?? 0) || sample.eventVolumeUsd;
-    const headline = volNum > 0 ? `$${compactMoney(volNum)} market volume` : "Upcoming market";
-
-    const marketSourceId = `${pairId}-market-source`;
-    const marketSource: MarketSource = {
-      id: marketSourceId,
-      sourceLabel: "Upcoming Market",
-      platform: "Polymarket",
-      network: "Polygon",
-      timeAgo: gameTimeDisplay,
-      headline,
-      subline: `Starts ${gameTimeDisplay}`,
-      delta: "0%",
-      type: "market-source",
-      visualType: "chart",
-    };
-
-    const marketSources: MarketSourceEvidenceCard[] = [
-      { ...marketSource, type: "market-source", visualType: "chart" },
-      {
-        id: `${pairId}-market-momentum`,
-        sourceLabel: "Market Watch",
-        platform: "Polymarket",
-        network: "Polygon",
-        timeAgo: gameTimeDisplay,
-        headline: `Game starts ${gameTimeDisplay}`,
-        subline: "Pre-game market — monitoring for edge signal",
-        delta: "0%",
-        type: "market-momentum",
-        visualType: "chart",
-      },
-    ];
-
-    // ── Unified signal scoring contract ──────────────────────────────────
-    // Route upcoming candidates through the SAME computeBandedSignalScore used
-    // by qualified cards. No surrogate price-distance confidence, no separate
-    // trust-metric formula. Upcoming candidates are zero-enrichment (no CLOB
-    // delta/trade/holder data) so they score as zero-data: capped at 57 and
-    // anchored to the selected-odds band midpoint. A market whose selectedOdds
-    // fall outside 1.35–5.0 (price <0.20 or >0.741) returns null and is skipped
-    // — this is what blocks tournament-winner longshots (e.g. England 0.11).
-    const selectedOdds = currentPrice > 0 ? 1 / currentPrice : 99;
-    const fc = computeBandedSignalScore({
-      selectedOdds,
-      delta6hPp: null,
-      maxTradeCash: null,
-      recentTradeCash: null,
-      holderConcentrationScore: null,
-    });
-    if (fc === null) continue;
-
-    // Trust metrics anchored to fc — identical anchoring to the qualified path's
-    // zero-data branch (no enrichment → conservative offsets).
-    const smartMoneyVal = clamp(fc - 4, fc - 5, fc + 5);
-    const pubWhaleVal = clamp(fc - 5, fc - 8, fc + 5);
-    const preEventVal = clamp(fc + 1, fc - 3, fc + 5);
-    const metrics: TrustMetric[] = [
-      { id: "smart-money", label: "Smart Money", value: roundNumber(smartMoneyVal), bar: roundNumber(smartMoneyVal), icon: "/icons/trust-smart-money.png" },
-      { id: "public-vs-whale", label: "Public vs Whale Money", value: roundNumber(pubWhaleVal), bar: roundNumber(pubWhaleVal), icon: "/icons/trust-public-whale.png" },
-      { id: "pre-event-score", label: "PreEventScore AI", value: roundNumber(preEventVal), bar: roundNumber(preEventVal), icon: "/icons/trust-ai-score.png" },
-    ];
-
-    const winProbability = roundNumber(fc);
-    const premiumSignal: PremiumSignal = {
-      id: pairId,
-      league: sample.leagueName || "Sports",
-      time: gameTimeDisplay,
-      eventTitle: truncateText(humanizeMatchupTitle(sample.title || safeString(raw.question) || "Upcoming Market", position), 50),
-      confidenceLabel: getConfidenceLabel(winProbability),
-      position,
-      profit: profitStr,
-      winProbability,
-      price: "$1.99",
-      ctaLabel: "Watch Market",
-      metrics,
-      polymarketUrl: sample.polymarketEventSlug
-        ? `https://polymarket.com/event/${sample.polymarketEventSlug}`
-        : undefined,
-    };
-
-    const diagnostics: LandingCardDiagnostics = {
-      conditionId,
-      selectedTokenId,
-      selectedOutcome: position,
-      currentPrice,
-      price1hAgo: null,
-      price6hAgo: null,
-      delta1hPp: null,
-      delta6hPp: null,
-      spread: null,
-      openInterest: null,
-      recentTradeCash: null,
-      maxTradeCash: null,
-      selectedTradeCount: null,
-      totalTradeCount: null,
-      holderConcentrationScore: null,
-      dataCoverage: 0,
-      formulaUsed: FORMULA_VERSION,
-      rejectionReasons: [],
-      signalStatus: "upcoming_candidate",
-      gameStartIso: sample.resolvedGameTimeIso,
-    };
-
-    pairs.push({ id: pairId, premiumSignal, marketSource, marketSources, diagnostics });
+    pairs.push(pair);
   }
 
   return pairs;
@@ -1468,7 +1334,7 @@ export async function buildLandingCards(options?: {
       candidatesAfterEndedFilter = candidates.length;
 
       if (candidates.length === 0) {
-        const rawUpcoming = includeUpcoming ? buildUpcomingPairs(upcomingRawSamples, upcomingLimit) : [];
+        const rawUpcoming = includeUpcoming ? await buildUpcomingPairs(upcomingRawSamples, upcomingLimit) : [];
         const allocated = applyCategoryAllocation([], rawUpcoming);
         return {
           generatedAt: new Date().toISOString(),
@@ -1689,7 +1555,7 @@ export async function buildLandingCards(options?: {
 
     // Include non-sports rejected markets in final rejected list (for category=sports)
     const finalRejected = rejected;
-    const rawUpcomingFinal = includeUpcoming ? buildUpcomingPairs(upcomingRawSamples, upcomingLimit) : [];
+    const rawUpcomingFinal = includeUpcoming ? await buildUpcomingPairs(upcomingRawSamples, upcomingLimit) : [];
     const allocatedFinal = applyCategoryAllocation(pairs, rawUpcomingFinal);
 
     return {
