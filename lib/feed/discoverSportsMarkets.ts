@@ -496,13 +496,31 @@ export async function discoverSportsMarkets(
     }
   }
 
-  // 8d. Targeted eSports tag-slug fetch (fills gap when sports-tag misses Esports events).
-  // Quality beats immediacy: scan event.markets[] for an actionable outcome (decimal 1.7-3
-  // primary, 1.35-5 fallback). Expand time window 48h -> 7d -> 14d -> 30d until cap met.
+  // 8d. Targeted eSports tag-slug fetch — collect all within 30d, sort by primary-band
+  // match-like candidates first (tier 3 > tier 2, vs/BO3/BO5 > futures, OddsFit desc).
   const extendedEsportsCandidates: SportsDiscoverySample[] = [];
   {
     const ESPORTS_PROP_EXCLUDE_RE = /\b(longshots|outright|champion(s)?|tournament winner|top fragger)\b/i;
-    const ESPORTS_TAG_SLUGS = ["esports", "counter-strike", "cs2", "dota-2", "valorant"];
+    const ESPORTS_TAG_SLUGS = ["esports", "counter-strike", "cs2", "dota-2", "valorant", "league-of-legends"];
+    const MAX_WINDOW_HOURS = 720; // 30d
+    const TARGET_ESPORTS_FALLBACK = 2;
+    const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
+    const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
+
+    const isMatchLikeEsportTitle = (t: string): boolean =>
+      /\bvs\.?\b|\bBO[135]\b/i.test(t);
+
+    type EsportCand = {
+      event: PolymarketRawEvent;
+      pm: Record<string, unknown>;
+      normalized: SportsMarketCandidate;
+      tier: number;
+      inBandPrice: number;
+      endIso: string;
+      vol: number;
+      matchLike: boolean;
+    };
+
     const rawEsportsEvents: PolymarketRawEvent[] = [];
     for (const tagSlug of ESPORTS_TAG_SLUGS) {
       try {
@@ -512,76 +530,90 @@ export async function discoverSportsMarkets(
         warnings.push(`Esports tag-slug fetch failed for ${tagSlug}`);
       }
     }
-    const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
-    const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
-    const findActionableIdx = (prices: number[]): number => {
-      let idx = prices.findIndex((p) => typeof p === "number" && p >= PRIMARY_MIN && p <= PRIMARY_MAX);
-      if (idx === -1) idx = prices.findIndex((p) => typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX);
-      return idx;
-    };
-    type Picked = { pm: Record<string, unknown>; normalized: SportsMarketCandidate };
-    const pickActionableMarket = (event: PolymarketRawEvent): Picked | null => {
-      const markets = Array.isArray(event.markets) ? event.markets : [];
-      for (const m of markets) {
+
+    const seenKeys = new Set<string>();
+    const nowMs = now.getTime();
+    const pool: EsportCand[] = [];
+
+    for (const event of rawEsportsEvents) {
+      if (!event.active || event.closed) continue;
+      const key = event.id || event.slug;
+      if (!key || seenKeys.has(key)) continue;
+      const title = event.title || event.slug || "";
+      if (ESPORTS_PROP_EXCLUDE_RE.test(title)) continue;
+      const endIso = event.endDateIso || event.endDate || null;
+      if (!endIso) continue;
+      const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
+      if (hoursUntil < 0 || hoursUntil > MAX_WINDOW_HOURS) continue;
+
+      // Score each sub-market; pick best by tier then OddsFit (price closest to 0.45)
+      type SubCand = { pm: Record<string, unknown>; nm: SportsMarketCandidate; tier: number; inBandPrice: number };
+      const subCands: SubCand[] = [];
+      for (const m of Array.isArray(event.markets) ? event.markets : []) {
         const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
         if (!Array.isArray(nm.outcomePrices) || nm.outcomePrices.length === 0) continue;
-        if (findActionableIdx(nm.outcomePrices) !== -1) {
-          return { pm: m as unknown as Record<string, unknown>, normalized: nm };
+        const idxP = nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= PRIMARY_MIN && p <= PRIMARY_MAX);
+        if (idxP !== -1) {
+          subCands.push({ pm: m as unknown as Record<string, unknown>, nm, tier: 3, inBandPrice: nm.outcomePrices[idxP] });
+          continue;
+        }
+        const idxF = nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX);
+        if (idxF !== -1) {
+          subCands.push({ pm: m as unknown as Record<string, unknown>, nm, tier: 2, inBandPrice: nm.outcomePrices[idxF] });
         }
       }
-      return null;
-    };
-    const TARGET_ESPORTS_FALLBACK = 2;
-    const WINDOWS_HOURS = [48, 168, 336, 720];
-    const seenTagIds = new Set<string>();
-    const nowMs = now.getTime();
-    if (rawEsportsEvents.length > 0) {
-      for (const winHours of WINDOWS_HOURS) {
-        if (extendedEsportsCandidates.length >= TARGET_ESPORTS_FALLBACK) break;
-        for (const event of rawEsportsEvents) {
-          if (extendedEsportsCandidates.length >= TARGET_ESPORTS_FALLBACK) break;
-          if (!event.active || event.closed) continue;
-          const key = event.id || event.slug;
-          if (!key || seenTagIds.has(key)) continue;
-          const title = event.title || event.slug || "";
-          if (ESPORTS_PROP_EXCLUDE_RE.test(title)) continue;
-          const endIso = event.endDateIso || event.endDate || null;
-          if (!endIso) continue;
-          const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
-          if (hoursUntil < 0 || hoursUntil > winHours) continue;
-          const picked = pickActionableMarket(event);
-          if (!picked) continue;
-          seenTagIds.add(key);
-          const pm = picked.pm as { volume?: number; volume24hr?: number; question?: string; conditionId?: string };
-          const vol = typeof pm.volume === "number" ? pm.volume
-            : typeof pm.volume24hr === "number" ? pm.volume24hr
-            : typeof event.volume24hr === "number" ? event.volume24hr : 0;
-          extendedEsportsCandidates.push({
-            title: title.substring(0, 100),
-            slug: (event.slug || "").substring(0, 60),
-            gameId: undefined,
-            sportsMarketType: undefined,
-            eventVolumeUsd: vol,
-            resolvedGameTimeIso: endIso,
-            gameTimeSource: "gamma-event-enddate",
-            gameTimeConfidence: "medium",
-            marketCount: event.markets?.length ?? 1,
-            strategy: "targeted-esports-tag-slug",
-            leagueName: "Esports",
-            polymarketEventSlug: (event.slug || "").substring(0, 80),
-            primaryMarketRaw: {
-              outcomes: picked.normalized.outcomes,
-              outcomePrices: picked.normalized.outcomePrices,
-              clobTokenIds: picked.normalized.clobTokenIds,
-              question: picked.normalized.question || (pm.question ?? title),
-              conditionId: picked.normalized.conditionId || (pm.conditionId ?? undefined),
-              volumeNum: typeof pm.volume === "number" ? pm.volume : null,
-              volume24hr: typeof pm.volume24hr === "number" ? pm.volume24hr : null,
-              volumeClob: null,
-            },
-          });
-        }
-      }
+      if (subCands.length === 0) continue;
+      subCands.sort((a, b) => b.tier - a.tier || Math.abs(a.inBandPrice - 0.45) - Math.abs(b.inBandPrice - 0.45));
+      const best = subCands[0];
+      const pmTyped = best.pm as { volume?: number; volume24hr?: number };
+      const vol = typeof pmTyped.volume === "number" ? pmTyped.volume
+        : typeof pmTyped.volume24hr === "number" ? pmTyped.volume24hr
+        : typeof event.volume24hr === "number" ? event.volume24hr : 0;
+
+      seenKeys.add(key);
+      pool.push({
+        event, pm: best.pm, normalized: best.nm,
+        tier: best.tier, inBandPrice: best.inBandPrice,
+        endIso, vol, matchLike: isMatchLikeEsportTitle(title),
+      });
+    }
+
+    // Primary-band first; match-like (vs/BO3) before futures; OddsFit desc; earlier end; higher vol
+    pool.sort((a, b) =>
+      b.tier - a.tier ||
+      (b.matchLike ? 1 : 0) - (a.matchLike ? 1 : 0) ||
+      Math.abs(a.inBandPrice - 0.45) - Math.abs(b.inBandPrice - 0.45) ||
+      new Date(a.endIso).getTime() - new Date(b.endIso).getTime() ||
+      b.vol - a.vol
+    );
+
+    for (const cand of pool.slice(0, TARGET_ESPORTS_FALLBACK)) {
+      const pmTyped = cand.pm as { volume?: number; volume24hr?: number; question?: string; conditionId?: string };
+      const title = cand.event.title || cand.event.slug || "";
+      extendedEsportsCandidates.push({
+        title: title.substring(0, 100),
+        slug: (cand.event.slug || "").substring(0, 60),
+        gameId: undefined,
+        sportsMarketType: undefined,
+        eventVolumeUsd: cand.vol,
+        resolvedGameTimeIso: cand.endIso,
+        gameTimeSource: "gamma-event-enddate",
+        gameTimeConfidence: "medium",
+        marketCount: cand.event.markets?.length ?? 1,
+        strategy: "targeted-esports-tag-slug",
+        leagueName: "Esports",
+        polymarketEventSlug: (cand.event.slug || "").substring(0, 80),
+        primaryMarketRaw: {
+          outcomes: cand.normalized.outcomes,
+          outcomePrices: cand.normalized.outcomePrices,
+          clobTokenIds: cand.normalized.clobTokenIds,
+          question: cand.normalized.question || (pmTyped.question ?? title),
+          conditionId: cand.normalized.conditionId || (pmTyped.conditionId ?? undefined),
+          volumeNum: typeof pmTyped.volume === "number" ? pmTyped.volume : null,
+          volume24hr: typeof pmTyped.volume24hr === "number" ? pmTyped.volume24hr : null,
+          volumeClob: null,
+        },
+      });
     }
   }
 
