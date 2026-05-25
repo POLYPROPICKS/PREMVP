@@ -94,10 +94,20 @@ export async function POST(request: Request) {
       reserved_at: optionalString(body.reservedAt),
       user_agent: request.headers.get("user-agent"),
       referred_by_code: (() => {
-        const raw = body.referredByCode ?? body.referralCode;
-        if (typeof raw !== "string") return null;
-        const trimmed = raw.trim().slice(0, 64);
-        return /^[A-Za-z0-9_-]+$/.test(trimmed) ? trimmed : null;
+        const REF_RE = /^[A-Za-z0-9_-]+$/;
+        // Body field takes priority; fall back to referral cookie if absent/invalid
+        const fromBody = body.referredByCode ?? body.referralCode;
+        if (typeof fromBody === "string") {
+          const t = fromBody.trim().slice(0, 64);
+          if (REF_RE.test(t)) return t;
+        }
+        const cookieHeader = request.headers.get("cookie") ?? "";
+        const match = cookieHeader.match(/(?:^|;\s*)ppp_referral_code=([^;]+)/);
+        if (match) {
+          const t = decodeURIComponent(match[1]).trim().slice(0, 64);
+          if (REF_RE.test(t)) return t;
+        }
+        return null;
       })(),
     })
     .select("id")
