@@ -1,0 +1,640 @@
+/* ── Reset ─────────────────────────────────────────────────────────────── */
+.page, .page *, .page *::before, .page *::after { box-sizing: border-box; }
+
+/* ── Page shell ─────────────────────────────────────────────────────────── */
+.page {
+  min-height: 100vh;
+  background: #02060d;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 0;
+  position: relative;
+  overflow-x: hidden;
+}
+
+.page::before {
+  content: "";
+  position: fixed;
+  top: -120px;
+  right: -80px;
+  width: 420px;
+  height: 420px;
+  background: radial-gradient(circle, rgba(57,215,255,0.07) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.page::after {
+  content: "";
+  position: fixed;
+  top: 300px;
+  left: -60px;
+  width: 320px;
+  height: 320px;
+  background: radial-gradient(circle, rgba(140,255,106,0.05) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 456px;
+  padding: 20px 16px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: rgba(7,20,32,0.86);
+  border: 1px solid rgba(148,163,184,0.20);
+  border-radius: 14px;
+  backdrop-filter: blur(12px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.monogram {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #39D7FF 0%, #8CFF6A 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 900;
+  color: #02060d;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}
+
+.brandName {
+  color: #F8FAFC;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+.accessPill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(140,255,106,0.08);
+  border: 1px solid rgba(140,255,106,0.34);
+  border-radius: 20px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: #8CFF6A;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.accessDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8CFF6A;
+  flex-shrink: 0;
+  box-shadow: 0 0 6px rgba(140,255,106,0.7);
+}
+
+/* ── Hero ────────────────────────────────────────────────────────────────── */
+.hero {
+  padding: 24px 20px 20px;
+  background: rgba(7,20,32,0.86);
+  border: 1px solid rgba(148,163,184,0.20);
+  border-radius: 16px;
+  backdrop-filter: blur(12px);
+}
+
+.headline {
+  font-size: 32px;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  line-height: 1.1;
+  color: #F8FAFC;
+  margin: 0 0 8px;
+}
+
+.headlineAccent {
+  background: linear-gradient(90deg, #8CFF6A 0%, #FFF34A 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.subheadline {
+  color: #A8B3C2;
+  font-size: 15px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+/* ── Trust strip ─────────────────────────────────────────────────────────── */
+.trustStrip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: rgba(57,215,255,0.05);
+  border: 1px solid rgba(57,215,255,0.34);
+  border-radius: 10px;
+}
+
+.trustIcon {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #39D7FF;
+  flex-shrink: 0;
+  box-shadow: 0 0 8px rgba(57,215,255,0.8);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.trustText {
+  font-size: 13px;
+  color: #A8B3C2;
+}
+
+.trustLink {
+  color: #39D7FF;
+  text-decoration: none;
+  font-weight: 600;
+}
+
+/* ── Credit ladder card ──────────────────────────────────────────────────── */
+.ladderCard {
+  background: rgba(3,10,18,0.94);
+  border: 1px solid rgba(140,255,106,0.34);
+  border-radius: 16px;
+  padding: 18px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ladderTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ladderLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7E8A99;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ladderPill {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8CFF6A;
+  background: rgba(140,255,106,0.1);
+  border: 1px solid rgba(140,255,106,0.34);
+  border-radius: 20px;
+  padding: 3px 9px;
+  letter-spacing: 0.03em;
+}
+
+.ladderTitle {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  background: linear-gradient(90deg, #8CFF6A 0%, #FFF34A 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0;
+  line-height: 1;
+}
+
+.ladderProgress {
+  font-size: 13px;
+  color: #7E8A99;
+  margin: -6px 0 0;
+}
+
+.ladderSteps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-left: 1px solid rgba(140,255,106,0.22);
+  margin-left: 6px;
+  padding-left: 0;
+}
+
+.ladderStep {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0 10px 14px;
+  position: relative;
+}
+
+.ladderStep::before {
+  content: "";
+  position: absolute;
+  left: -5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #02060d;
+  border: 1.5px solid rgba(140,255,106,0.5);
+}
+
+.stepNum {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8CFF6A;
+  background: rgba(140,255,106,0.1);
+  border-radius: 4px;
+  padding: 2px 6px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.stepText {
+  font-size: 13px;
+  color: #A8B3C2;
+  line-height: 1.4;
+}
+
+.ladderNote {
+  font-size: 11px;
+  color: #4a5568;
+  font-style: italic;
+  border-top: 1px solid rgba(148,163,184,0.12);
+  padding-top: 10px;
+}
+
+/* ── Action card ─────────────────────────────────────────────────────────── */
+.actionCard {
+  background: rgba(7,20,32,0.86);
+  border: 1px solid rgba(148,163,184,0.20);
+  border-radius: 16px;
+  padding: 20px 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  backdrop-filter: blur(12px);
+}
+
+.actionTitle {
+  font-size: 17px;
+  font-weight: 800;
+  color: #F8FAFC;
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.actionSub {
+  font-size: 13px;
+  color: #7E8A99;
+  margin: -4px 0 0;
+}
+
+.input {
+  width: 100%;
+  background: rgba(3,10,18,0.94);
+  border: 1px solid rgba(148,163,184,0.20);
+  border-radius: 10px;
+  padding: 14px 14px;
+  color: #F8FAFC;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.input:focus {
+  border-color: rgba(57,215,255,0.6);
+}
+
+.input::placeholder {
+  color: #4a5568;
+}
+
+.ctaBtn {
+  width: 100%;
+  min-height: 54px;
+  background: linear-gradient(90deg, #8CFF6A 0%, #FFF34A 100%);
+  color: #02060d;
+  border: none;
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  transition: opacity 0.15s, box-shadow 0.15s;
+  box-shadow: 0 0 24px rgba(140,255,106,0.28);
+}
+
+.ctaBtn:hover:not(:disabled) {
+  box-shadow: 0 0 32px rgba(140,255,106,0.44);
+}
+
+.ctaBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.errorText {
+  color: #fc8181;
+  font-size: 13px;
+}
+
+/* ── Success module ───────────────────────────────────────────────────────── */
+.successCard {
+  background: rgba(3,10,18,0.94);
+  border: 1px solid rgba(140,255,106,0.34);
+  border-radius: 16px;
+  padding: 18px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.successHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.successCheck {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: rgba(140,255,106,0.12);
+  border: 1.5px solid rgba(140,255,106,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.successTitle {
+  font-size: 16px;
+  font-weight: 800;
+  color: #8CFF6A;
+  letter-spacing: -0.02em;
+}
+
+.successSub {
+  font-size: 13px;
+  color: #A8B3C2;
+  line-height: 1.5;
+  margin: -6px 0 0;
+}
+
+.linkRow {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid rgba(57,215,255,0.34);
+  border-radius: 10px;
+  overflow: hidden;
+  background: rgba(3,10,18,0.94);
+}
+
+.linkText {
+  flex: 1;
+  padding: 11px 12px;
+  color: #39D7FF;
+  font-size: 13px;
+  font-family: monospace;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.copyInlineBtn {
+  flex-shrink: 0;
+  background: rgba(57,215,255,0.1);
+  border: none;
+  border-left: 1px solid rgba(57,215,255,0.34);
+  color: #39D7FF;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 0 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+  min-height: 44px;
+}
+
+.copyInlineBtn:hover {
+  background: rgba(57,215,255,0.18);
+}
+
+.shareBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shareLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7E8A99;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.shareTextBox {
+  background: rgba(3,10,18,0.8);
+  border: 1px solid rgba(148,163,184,0.15);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #A8B3C2;
+  line-height: 1.5;
+  font-style: italic;
+}
+
+.copyShareBtn {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid rgba(148,163,184,0.25);
+  color: #7E8A99;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.copyShareBtn:hover {
+  border-color: rgba(57,215,255,0.5);
+  color: #39D7FF;
+}
+
+.friendNote {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: rgba(57,215,255,0.04);
+  border: 1px solid rgba(57,215,255,0.18);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+  color: #A8B3C2;
+  line-height: 1.4;
+}
+
+.friendNote::before {
+  content: "ℹ";
+  color: #39D7FF;
+  flex-shrink: 0;
+  font-size: 14px;
+}
+
+/* ── Compact credit summary strip ───────────────────────────────────────── */
+.creditSummary {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 14px;
+  background: rgba(3,10,18,0.80);
+  border: 1px solid rgba(140,255,106,0.22);
+  border-radius: 10px;
+}
+
+.creditSummaryAmount {
+  font-size: 15px;
+  font-weight: 800;
+  background: linear-gradient(90deg, #8CFF6A 0%, #FFF34A 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: -0.02em;
+}
+
+.creditSummaryMid {
+  font-size: 12px;
+  color: #7E8A99;
+}
+
+.creditSummaryNote {
+  font-size: 11px;
+  color: #4a5568;
+  font-style: italic;
+}
+
+/* ── Short-screen compression (390×700 target) ───────────────────────────── */
+@media (max-height: 760px) {
+  .inner {
+    gap: 8px;
+    padding: 12px 14px 28px;
+  }
+
+  .header {
+    padding: 8px 12px;
+  }
+
+  .monogram {
+    width: 28px;
+    height: 28px;
+    font-size: 11px;
+  }
+
+  .brandName {
+    font-size: 14px;
+  }
+
+  .accessPill {
+    font-size: 11px;
+    padding: 4px 8px;
+  }
+
+  .hero {
+    padding: 14px 16px 12px;
+  }
+
+  .headline {
+    font-size: 26px;
+    margin-bottom: 5px;
+  }
+
+  .subheadline {
+    font-size: 13px;
+    line-height: 1.45;
+  }
+
+  .trustStrip {
+    padding: 8px 12px;
+  }
+
+  .trustText {
+    font-size: 12px;
+  }
+
+  .actionCard {
+    padding: 14px 14px 12px;
+    gap: 8px;
+  }
+
+  .actionTitle {
+    font-size: 15px;
+  }
+
+  .actionSub {
+    font-size: 12px;
+  }
+
+  .input {
+    padding: 11px 12px;
+    font-size: 14px;
+  }
+
+  .ctaBtn {
+    min-height: 50px;
+    font-size: 15px;
+  }
+}
+
+/* ── Terms ───────────────────────────────────────────────────────────────── */
+.terms {
+  background: rgba(7,20,32,0.60);
+  border: 1px solid rgba(148,163,184,0.12);
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.termLine {
+  display: flex;
+  gap: 7px;
+  font-size: 12px;
+  color: #4a5568;
+  line-height: 1.4;
+}
+
+.termLine::before {
+  content: "·";
+  flex-shrink: 0;
+  color: #2d3748;
+}
