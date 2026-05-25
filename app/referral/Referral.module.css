@@ -638,3 +638,323 @@
   flex-shrink: 0;
   color: #2d3748;
 }
+
+/* ── Segmented tabs ──────────────────────────────────────────────────────── */
+.tabs {
+  display: flex;
+  background: rgba(7,20,32,0.86);
+  border: 1px solid rgba(148,163,184,0.20);
+  border-radius: 10px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.tabActive {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: rgba(57,215,255,0.12);
+  border: 1px solid rgba(57,215,255,0.40);
+  color: #39D7FF;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.tabInactive {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #7E8A99;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.tabInactive:hover { color: #A8B3C2; }
+
+/* ── Switch tab link ─────────────────────────────────────────────────────── */
+.switchTabLink {
+  background: transparent;
+  border: none;
+  color: #4a5568;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: center;
+  padding: 2px 0;
+  transition: color 0.15s;
+}
+.switchTabLink:hover { color: #39D7FF; }
+
+/* ── Not found card ──────────────────────────────────────────────────────── */
+.notFoundCard {
+  background: rgba(7,20,32,0.86);
+  border: 1px solid rgba(148,163,184,0.15);
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.notFoundText { color: #A8B3C2; font-size: 14px; }
+
+/* ── Dashboard card ──────────────────────────────────────────────────────── */
+.dashCard {
+  background: rgba(3,10,18,0.94);
+  border: 1px solid rgba(57,215,255,0.34);
+  border-radius: 16px;
+  padding: 18px 18px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dashTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dashTitle {
+  font-size: 15px;
+  font-weight: 800;
+  color: #F8FAFC;
+  letter-spacing: -0.02em;
+}
+
+.dashCode {
+  font-size: 11px;
+  font-weight: 700;
+  color: #39D7FF;
+  background: rgba(57,215,255,0.10);
+  border: 1px solid rgba(57,215,255,0.30);
+  border-radius: 6px;
+  padding: 3px 8px;
+  font-family: monospace;
+}
+
+/* ── Stat tiles ──────────────────────────────────────────────────────────── */
+.statGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.statTile {
+  background: rgba(7,20,32,0.80);
+  border: 1px solid rgba(148,163,184,0.15);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.statValue {
+  font-size: 24px;
+  font-weight: 900;
+  color: #F8FAFC;
+  letter-spacing: -0.03em;
+  line-height: 1;
+}
+
+.statLabel {
+  font-size: 11px;
+  color: #7E8A99;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+}
+
+/* ── Credit progress ─────────────────────────────────────────────────────── */
+.progressBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.progressTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.progressLabel {
+  font-size: 12px;
+  font-weight: 700;
+  color: #7E8A99;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.progressAmount {
+  font-size: 14px;
+  font-weight: 800;
+  background: linear-gradient(90deg, #8CFF6A 0%, #FFF34A 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.progressTrack {
+  height: 6px;
+  background: rgba(148,163,184,0.12);
+  border-radius: 99px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: linear-gradient(90deg, #8CFF6A 0%, #FFF34A 100%);
+  border-radius: 99px;
+  transition: width 0.4s ease;
+  min-width: 0;
+}
+
+.progressNote {
+  font-size: 11px;
+  color: #4a5568;
+  font-style: italic;
+}
+
+/* ── Recent referrals ────────────────────────────────────────────────────── */
+.recentBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recentLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: #7E8A99;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.recentEmpty {
+  font-size: 13px;
+  color: #4a5568;
+  font-style: italic;
+}
+
+.recentList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.recentRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: rgba(7,20,32,0.60);
+  border-radius: 7px;
+  border: 1px solid rgba(148,163,184,0.08);
+}
+
+.recentEmail { flex: 1; font-size: 13px; color: #A8B3C2; font-family: monospace; }
+.recentDate  { font-size: 12px; color: #4a5568; flex-shrink: 0; }
+.recentStatus {
+  font-size: 11px;
+  font-weight: 700;
+  color: #F8C85A;
+  background: rgba(248,200,90,0.10);
+  border: 1px solid rgba(248,200,90,0.25);
+  border-radius: 4px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+
+.dashDisclaimer {
+  font-size: 11px;
+  color: #4a5568;
+  font-style: italic;
+  border-top: 1px solid rgba(148,163,184,0.10);
+  padding-top: 10px;
+}
+
+/* ── Community leaderboard ───────────────────────────────────────────────── */
+.leaderCard {
+  background: rgba(7,20,32,0.86);
+  border: 1px solid rgba(148,163,184,0.20);
+  border-radius: 16px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.leaderTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.leaderTitle {
+  font-size: 14px;
+  font-weight: 800;
+  color: #F8FAFC;
+  letter-spacing: -0.02em;
+}
+
+.demoLabel {
+  font-size: 11px;
+  font-weight: 700;
+  color: #F8C85A;
+  background: rgba(248,200,90,0.10);
+  border: 1px solid rgba(248,200,90,0.25);
+  border-radius: 20px;
+  padding: 3px 8px;
+  letter-spacing: 0.03em;
+}
+
+.leaderList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.leaderRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  background: rgba(3,10,18,0.60);
+  border-radius: 7px;
+  border: 1px solid rgba(148,163,184,0.06);
+}
+
+.leaderRank {
+  font-size: 11px;
+  font-weight: 700;
+  color: #4a5568;
+  width: 24px;
+  flex-shrink: 0;
+}
+
+.leaderName {
+  flex: 1;
+  font-size: 13px;
+  color: #A8B3C2;
+  font-weight: 600;
+}
+
+.leaderScore {
+  font-size: 13px;
+  font-weight: 700;
+  color: #39D7FF;
+  flex-shrink: 0;
+}
+
+.leaderFooter {
+  font-size: 11px;
+  color: #4a5568;
+  font-style: italic;
+  text-align: center;
+}
