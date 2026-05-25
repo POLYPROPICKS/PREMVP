@@ -144,6 +144,7 @@ export async function writeGeneratedSignalPairs(
       resolved_at: null,
       winning_outcome: null,
       realized_return_pct: null,
+      metric_formula_version: "v2-lite-growth-safe",
     };
   });
 
