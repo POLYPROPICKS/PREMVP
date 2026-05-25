@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, type CSSProperties } from 'react';
+import { useRouter } from 'next/navigation';
 import styles from './Reconstruction.module.css';
 import { premiumSignals as staticPremiumSignals, PremiumSignal } from '@/content/signals';
 import { marketSources as staticMarketSources } from '@/content/marketSources';
@@ -41,6 +42,7 @@ const fallbackPairs: LandingPair[] = staticPremiumSignals.flatMap((signal, index
 });
 
 export default function ReconstructionPage() {
+  const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [passModalStep, setPassModalStep] = useState<PassModalStep>('soldOutEmail');
@@ -119,6 +121,10 @@ export default function ReconstructionPage() {
       setActiveEvidenceIndex(0);
     }
   }, [allPairs]);
+
+  const handleCtaClick = useCallback(() => {
+    router.push('/referral');
+  }, [router]);
 
   const openModal = useCallback(() => {
     setIsModalOpen(true);
@@ -303,7 +309,7 @@ export default function ReconstructionPage() {
               activeIndex={activePairIndex}
               onActiveIndexChange={handleActivePairIndexChange}
               renderCard={(signal, onCtaClick) => <PremiumSignalCard signal={signal} onCtaClick={onCtaClick} />}
-              onCtaClick={openModal}
+              onCtaClick={handleCtaClick}
               onLockedFeedAttempt={handleLockedFeedAttempt}
             />
           )}
@@ -984,7 +990,8 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
           )}
         </div>
       </div>
-      <button className={styles.cta} onClick={onCtaClick}>Get 5 Free Signals NOW</button>
+      <button className={styles.cta} onClick={onCtaClick}>Get $30 Premium Credit</button>
+      <p className={styles.ctaSubline}>Give a friend a free week · see latest resolved signals →</p>
     </article>
   );
 }

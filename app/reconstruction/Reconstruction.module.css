@@ -903,6 +903,15 @@
   margin-top: 0;
 }
 
+.ctaSubline {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 12px;
+  line-height: 1.45;
+  margin: 6px 0 0;
+  padding: 0;
+}
+
 .premiumSignalCard::after {
   content: '';
   position: absolute;
