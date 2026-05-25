@@ -15,6 +15,8 @@ type LeadRequestBody = {
   planPrice?: unknown;
   planSource?: unknown;
   reservedAt?: unknown;
+  referredByCode?: unknown;
+  referralCode?: unknown;
 };
 
 function isValidEmail(email: unknown): email is string {
@@ -91,6 +93,12 @@ export async function POST(request: Request) {
       plan_source: optionalString(body.planSource),
       reserved_at: optionalString(body.reservedAt),
       user_agent: request.headers.get("user-agent"),
+      referred_by_code: (() => {
+        const raw = body.referredByCode ?? body.referralCode;
+        if (typeof raw !== "string") return null;
+        const trimmed = raw.trim().slice(0, 64);
+        return /^[A-Za-z0-9_-]+$/.test(trimmed) ? trimmed : null;
+      })(),
     })
     .select("id")
     .single();
