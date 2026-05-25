@@ -107,15 +107,14 @@ async function main() {
       continue;
     }
 
-    // resolved_candidate — log what would be / was written
-    console.log(
-      `  ${WRITE_MODE ? "WRITE" : "WOULD"} ${rowLabel}` +
-        ` result=${outcome.signalResult}` +
-        ` return=${outcome.realizedReturnPct}%` +
-        ` winner=${outcome.candidateWinningOutcome}`
-    );
-
+    // resolved_candidate — dry-run: log and continue
     if (!WRITE_MODE) {
+      console.log(
+        `  WOULD ${rowLabel}` +
+          ` result=${outcome.signalResult}` +
+          ` return=${outcome.realizedReturnPct}%` +
+          ` winner=${outcome.candidateWinningOutcome}`
+      );
       skippedCount++;
       continue;
     }
@@ -129,9 +128,9 @@ async function main() {
       break;
     }
 
-    // Write mode: update with idempotency guard
+    // Write mode: update with idempotency guard — select("id") to confirm actual rows affected
     const resolvedAt = new Date().toISOString();
-    const { error: updateError } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
       .from("generated_signal_pairs")
       .update({
         signal_result: outcome.signalResult,
@@ -140,7 +139,8 @@ async function main() {
         realized_return_pct: outcome.realizedReturnPct,
       })
       .eq("id", row.id as string)
-      .is("signal_result", null); // idempotency guard — never overwrite already-resolved rows
+      .is("signal_result", null) // idempotency guard — never overwrite already-resolved rows
+      .select("id");
 
     if (updateError) {
       console.error(
@@ -148,7 +148,21 @@ async function main() {
       );
       skippedCount++;
     } else {
-      updatedCount++;
+      const affectedRows = updatedRows?.length ?? 0;
+      if (affectedRows > 0) {
+        updatedCount++;
+        console.log(
+          `  WRITE ${rowLabel}` +
+            ` result=${outcome.signalResult}` +
+            ` return=${outcome.realizedReturnPct}%` +
+            ` winner=${outcome.candidateWinningOutcome}`
+        );
+      } else {
+        console.log(
+          `  NOOP  ${rowLabel} reason=Already resolved or update matched 0 rows`
+        );
+        skippedCount++;
+      }
     }
   }
 

@@ -2,6 +2,7 @@
 // Read-only helper: no DB logic. Used by scripts/resolve-signals.ts and debug endpoint.
 
 const GAMMA_API_BASE = "https://gamma-api.polymarket.com";
+const CLOB_API_BASE  = "https://clob.polymarket.com";
 
 export type ResolverState =
   | "active_unresolved"
@@ -67,6 +68,51 @@ function safeParseNumberArray(value: unknown): number[] | null {
   return nums.every((n) => Number.isFinite(n)) ? nums : null;
 }
 
+// CLOB fallback — used when Gamma returns no market for a conditionId.
+// Only normalizes closed markets with exactly one winner token.
+// Returns null on any fetch/parse/validation failure.
+async function fetchClobMarketByConditionId(
+  conditionId: string
+): Promise<GammaMarket | null> {
+  try {
+    const url = `${CLOB_API_BASE}/markets/${encodeURIComponent(conditionId)}`;
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as Record<string, unknown>;
+    if (!data || typeof data !== "object") return null;
+
+    const tokens = data["tokens"];
+    if (!Array.isArray(tokens) || tokens.length < 2) return null;
+
+    // Only resolve explicitly closed markets — do not infer from calendar or title
+    if (data["closed"] !== true) return null;
+
+    // Safety: require exactly 1 winner token; 0 or 2+ → leave for closed_unknown/manual
+    const winnerCount = (tokens as Record<string, unknown>[]).filter(
+      (t) => t["winner"] === true
+    ).length;
+    if (winnerCount !== 1) return null;
+
+    // Normalize into GammaMarket shape consumed by existing resolver logic
+    return {
+      conditionId:    typeof data["condition_id"] === "string" ? data["condition_id"] : undefined,
+      question:       typeof data["question"]     === "string" ? data["question"]     : undefined,
+      slug:           typeof data["market_slug"]  === "string" ? data["market_slug"]  : undefined,
+      closed:         data["closed"]   === true,
+      active:         data["active"]   === true,
+      archived:       data["archived"] === true,
+      outcomes:       (tokens as Record<string, unknown>[]).map((t) => String(t["outcome"] ?? "")),
+      outcomePrices:  (tokens as Record<string, unknown>[]).map((t) => Number(t["price"] ?? 0)),
+      clobTokenIds:   (tokens as Record<string, unknown>[]).map((t) => String(t["token_id"] ?? "")),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchGammaMarketByConditionId(
   conditionId: string
 ): Promise<GammaMarket | null> {
@@ -76,14 +122,16 @@ export async function fetchGammaMarketByConditionId(
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
-    if (!res.ok) return null;
+    if (!res.ok) return fetchClobMarketByConditionId(conditionId);
     const data = await res.json();
     const arr = Array.isArray(data)
       ? data
       : Array.isArray(data?.markets)
       ? data.markets
       : null;
-    return arr && arr.length > 0 ? (arr[0] as GammaMarket) : null;
+    if (arr && arr.length > 0) return arr[0] as GammaMarket;
+    // Gamma returned empty array — try CLOB fallback
+    return fetchClobMarketByConditionId(conditionId);
   } catch {
     return null;
   }
