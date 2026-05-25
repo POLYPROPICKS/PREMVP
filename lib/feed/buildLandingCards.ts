@@ -749,24 +749,56 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
   });
   if (finalDisplaySignalScore === null) return null;
 
-  const fc = finalDisplaySignalScore;
+  // v2-lite: independent evidence-based Trust Metrics (growth-safe caps)
+  const { maxTradeCash, recentTradeCash, selectedTradeCount, delta6hPp, dataCoverage } = diagnostics;
 
-  // Smart Money — anchored to fc
-  const smartMoneyVal = diagnostics.maxTradeCash !== null && diagnostics.maxTradeCash >= 3000
-    ? clamp(fc + 3, fc - 5, fc + 5)
-    : diagnostics.recentTradeCash !== null
-      ? clamp(fc, fc - 5, fc + 5)
-      : clamp(fc - 4, fc - 5, fc + 5);
+  // OddsFit: primary band [0.333,0.588] → 80+closeness; fallback → raw clamped lower
+  const oddsFit = (() => {
+    const p = selectedOutcome.price;
+    if (p < 0.20 || p > 0.741) return 55;
+    return clamp(80 + (1 - Math.abs(p - 0.45) / 0.138) * 15, 55, 95);
+  })();
 
-  // Public vs Whale — anchored to fc
-  const pubWhaleVal = diagnostics.selectedTradeCount !== null && diagnostics.recentTradeCash !== null
-    ? clamp(fc - 1, fc - 8, fc + 5)
-    : clamp(fc - 5, fc - 8, fc + 5);
+  // SmartMoney_v2: trade cash evidence
+  const smartMoneyVal = (() => {
+    if (maxTradeCash == null && recentTradeCash == null) return 50;
+    return clamp(
+      50 + Math.min((maxTradeCash ?? 0) / 10000, 1) * 30
+         + Math.min((recentTradeCash ?? 0) / 50000, 1) * 15,
+      45, 90,
+    );
+  })();
 
-  // PreEventScore AI — anchored to fc
-  const preEventVal = (diagnostics.delta6hPp !== null && diagnostics.delta6hPp > 0)
-    ? clamp(fc + 2, fc - 3, fc + 5)
-    : clamp(fc + 1, fc - 3, fc + 5);
+  // WhalePublic_v2: avg trade size + max trade
+  const pubWhaleVal = (() => {
+    if (selectedTradeCount == null || recentTradeCash == null || selectedTradeCount === 0) return 50;
+    const avg = recentTradeCash / selectedTradeCount;
+    return clamp(
+      50 + Math.min(avg / 2500, 1) * 20
+         + Math.min((maxTradeCash ?? 0) / 10000, 1) * 15,
+      45, 85,
+    );
+  })();
+
+  // PreEventScore_v2: OddsFit + Momentum + Liquidity + Coverage
+  const preEventVal = (() => {
+    const momentum = delta6hPp != null ? 50 + clamp(delta6hPp * 4, -20, 25) : 50;
+    const liquidity = recentTradeCash != null ? 50 + Math.min(recentTradeCash / 50000, 1) * 25 : 50;
+    return clamp(
+      0.40 * oddsFit + 0.30 * momentum + 0.20 * liquidity + 0.10 * (dataCoverage ?? 0),
+      45, 90,
+    );
+  })();
+
+  // SignalConfidence_v2: weighted independent components + growth-safe caps
+  const signalV2Raw = 0.35 * oddsFit + 0.25 * smartMoneyVal + 0.15 * pubWhaleVal
+    + 0.20 * preEventVal + 0.05 * (dataCoverage ?? 0);
+  const noTradeData = maxTradeCash == null && recentTradeCash == null;
+  let signalCap = 95;
+  if ((dataCoverage ?? 0) < 50) signalCap = Math.min(signalCap, 64);
+  else if ((dataCoverage ?? 0) < 75) signalCap = Math.min(signalCap, 75);
+  if (noTradeData) signalCap = Math.min(signalCap, 68);
+  const finalSignalV2 = roundNumber(clamp(signalV2Raw, 52, signalCap));
 
   const metrics: TrustMetric[] = [
     {
@@ -838,10 +870,10 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
       ? formatGameTime(parentMeta.startDate)
       : formatEndTime(parentMeta.endDate),
     eventTitle: truncateText(humanizeMatchupTitle(parentMeta.title || safeString(market.question) || "Unknown Event", selectedOutcome.name), 50),
-    confidenceLabel: getConfidenceLabel(finalDisplaySignalScore),
+    confidenceLabel: getConfidenceLabel(finalSignalV2),
     position: selectedOutcome.name,
     profit: profitStr,
-    winProbability: finalDisplaySignalScore, // NOTE: displaySignalScore for UI, NOT real win probability
+    winProbability: finalSignalV2,
     price: "$1.99",
     ctaLabel: "Unlock Full Signal",
     metrics: finalMetrics,
