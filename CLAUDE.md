@@ -139,3 +139,17 @@ The default operator mode is Claude Code Autopilot. Founder almost never works i
 > `FOUNDER AUTHORIZATION: For this non-visual task, if Gate 1 passes and only allowed files changed, you are authorized to commit. Do not push.`
 
 Console/CMD instructions to founder are reserved for: visual checks, Railway/Supabase manual gates, production verification, and emergency recovery only.
+
+## 11. Premium production QA gate
+
+For `/premium` production-only UI patches, do **not** request founder visual acceptance until the patch is built, committed, pushed, and Railway PREMVP shows `Deployment successful` for that exact commit.
+
+Localhost `/premium` is not a valid visual acceptance surface unless local founder preview env/session is explicitly configured. Production visual acceptance must use the founder-preview route after deploy.
+
+Required flow:
+```
+patch → build PASS → commit/push → Railway PREMVP deploy proof → founder-preview URL visual check
+```
+
+No deploy proof = no production visual check request.
+Do NOT say "awaiting founder visual check" for `/premium` if there is no commit + push + Railway deploy confirmation.

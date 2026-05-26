@@ -208,3 +208,12 @@ All Claude/Code responses are audited by:
 `/docs/ai-context/RULE_COMPLIANCE_MONITOR_AGENT.md`
 
 Responses missing required fields will be scored as FAIL and trigger a ready-to-paste drift log entry.
+
+## 13. Premium production QA gate
+
+For `/premium` production-only UI patches:
+- Do NOT request founder visual acceptance until: build PASS + committed + pushed + Railway PREMVP `Deployment successful` for that exact commit.
+- Localhost `/premium` is **not** a valid visual surface unless local founder-preview env/session is confirmed configured.
+- Production visual check must use founder-preview route after deploy.
+- Required flow: `patch → build PASS → commit/push → Railway deploy proof → founder-preview URL visual check`
+- No deploy proof = no production visual check request.
