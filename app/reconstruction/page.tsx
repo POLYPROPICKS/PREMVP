@@ -347,11 +347,99 @@ export default function ReconstructionPage() {
 }
 
 
+// ── Inline SVG icons — zero network requests ─────────────────
+function BrandMarkIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 22 22" fill="none" aria-hidden="true">
+      <polygon points="11,1.5 19.5,6.5 19.5,15.5 11,20.5 2.5,15.5 2.5,6.5"
+        stroke="#00d4ff" strokeWidth="1.4" fill="rgba(0,212,255,0.10)" />
+      <path d="M7.5 7.5h3.8a2.2 2.2 0 0 1 0 4.4H7.5V7.5z" fill="#00d4ff" />
+      <line x1="7.5" y1="11.9" x2="7.5" y2="14.8"
+        stroke="#00d4ff" strokeWidth="1.7" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function PositionTargetIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <circle cx="24" cy="24" r="18" stroke="rgba(0,212,255,0.18)" strokeWidth="1.5" />
+      <circle cx="24" cy="24" r="10" stroke="#00d4ff" strokeWidth="1.8" />
+      <circle cx="24" cy="24" r="3.5" fill="#00d4ff" />
+      <line x1="24" y1="5" x2="24" y2="13" stroke="#00d4ff" strokeWidth="1.8" strokeLinecap="round" />
+      <line x1="24" y1="35" x2="24" y2="43" stroke="#00d4ff" strokeWidth="1.8" strokeLinecap="round" />
+      <line x1="5" y1="24" x2="13" y2="24" stroke="#00d4ff" strokeWidth="1.8" strokeLinecap="round" />
+      <line x1="35" y1="24" x2="43" y2="24" stroke="#00d4ff" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ProfitTrendIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 48 48" fill="none" aria-hidden="true">
+      <polyline points="3,38 14,26 22,32 45,10"
+        stroke="#86ff5a" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <polyline points="37,10 45,10 45,18"
+        stroke="#86ff5a" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="14" cy="26" r="2.5" fill="#86ff5a" opacity="0.7" />
+      <circle cx="22" cy="32" r="2.5" fill="#86ff5a" opacity="0.5" />
+      <circle cx="45" cy="10" r="3" fill="#86ff5a" />
+    </svg>
+  );
+}
+
+function TrustSmartMoneyIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" stroke="#00d4ff" strokeWidth="1.4" fill="rgba(0,212,255,0.08)" />
+      <path d="M13.2 6.5l-4.8 5.8h4.2l-1.8 5.2 5-5.8H11.6z" fill="#00d4ff" />
+    </svg>
+  );
+}
+
+function TrustWhaleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <rect x="2.5" y="10" width="5" height="9" rx="1.4" fill="#00d4ff" opacity="0.5" />
+      <rect x="9.5" y="6" width="5" height="13" rx="1.4" fill="#00d4ff" opacity="0.8" />
+      <rect x="16.5" y="8" width="5" height="11" rx="1.4" fill="#00d4ff" />
+    </svg>
+  );
+}
+
+function TrustAiIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="3" fill="#00d4ff" />
+      <circle cx="4.5" cy="7.5" r="1.8" stroke="#00d4ff" strokeWidth="1.2" />
+      <circle cx="19.5" cy="7.5" r="1.8" stroke="#00d4ff" strokeWidth="1.2" />
+      <circle cx="4.5" cy="16.5" r="1.8" stroke="#00d4ff" strokeWidth="1.2" />
+      <circle cx="19.5" cy="16.5" r="1.8" stroke="#00d4ff" strokeWidth="1.2" />
+      <line x1="6.2" y1="8.8" x2="9.2" y2="10.8" stroke="#00d4ff" strokeWidth="1" strokeOpacity="0.65" />
+      <line x1="17.8" y1="8.8" x2="14.8" y2="10.8" stroke="#00d4ff" strokeWidth="1" strokeOpacity="0.65" />
+      <line x1="6.2" y1="15.2" x2="9.2" y2="13.2" stroke="#00d4ff" strokeWidth="1" strokeOpacity="0.65" />
+      <line x1="17.8" y1="15.2" x2="14.8" y2="13.2" stroke="#00d4ff" strokeWidth="1" strokeOpacity="0.65" />
+    </svg>
+  );
+}
+
+function TrustMetricIcon({ label, className }: { label: string; className?: string }) {
+  const l = label.toLowerCase();
+  if (l.includes('smart')) return <TrustSmartMoneyIcon className={className} />;
+  if (l.includes('whale') || l.includes('public')) return <TrustWhaleIcon className={className} />;
+  if (l.includes('ai') || l.includes('preevent') || l.includes('score')) return <TrustAiIcon className={className} />;
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <circle cx="12" cy="12" r="8" stroke="#00d4ff" strokeWidth="1.5" fill="rgba(0,212,255,0.10)" />
+    </svg>
+  );
+}
+
 function Header() {
   return (
     <header className={styles.header}>
       <div className={styles.brandWrap}>
-        <img className={styles.brandLogo} src="/brand/polypropicks-mark.png" alt="PolyProPicks" draggable="false" />
+        <BrandMarkIcon className={styles.brandLogo} />
         <div className={styles.brandText}>PolyProPicks</div>
       </div>
       <div className={styles.livePill}>
@@ -919,7 +1007,7 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
           <div className={styles.label}>Position</div>
           <div className={styles.positionValue}>{signal.position}</div>
           <div className={styles.target} aria-hidden="true">
-            <img className={styles.decorIconImg} src="/icons/position-target.png" alt="" />
+            <PositionTargetIcon className={styles.decorIconImg} />
           </div>
         </div>
         <div className={styles.positionProfitDivider} />
@@ -928,7 +1016,7 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
           <div className={styles.profitValue} style={{color:'#86FF5A',textShadow:'0 0 14px rgba(134,255,90,0.32)'}}>+${profitDollars}</div>
           <div style={{fontSize:'clamp(9px,2.3vw,11px)',fontWeight:600,color:'rgba(213,229,238,0.72)',lineHeight:1.2,position:'relative',zIndex:3,marginTop:'1px',textAlign:'right',alignSelf:'stretch',paddingRight:'clamp(4px,1.4vw,8px)'}}>per $100 stake</div>
           <div className={styles.trend} aria-hidden="true">
-            <img className={styles.decorIconImg} src="/icons/profit-trend.png" alt="" />
+            <ProfitTrendIcon className={styles.decorIconImg} />
           </div>
         </div>
       </div>
@@ -942,22 +1030,17 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
               <circle cx="12" cy="7.2" r="1.1" fill="currentColor" />
             </svg>
           </div>
-          {orderedTrustMetrics.map((metric: any) => (
-            <MetricRow
-              key={metric.id}
-              icon={
-                <img
-                  className={styles.metricIconImg}
-                  src={metric.icon}
-                  alt=""
-                  aria-hidden="true"
-                  draggable={false}
-                />
-              }
-              label={getTrustMetricDisplayLabel(metric)}
-              value={getTrustMetricValue(metric)}
-            />
-          ))}
+          {orderedTrustMetrics.map((metric: any) => {
+            const displayLabel = getTrustMetricDisplayLabel(metric);
+            return (
+              <MetricRow
+                key={metric.id}
+                icon={<TrustMetricIcon label={displayLabel} className={styles.metricIconImg} />}
+                label={displayLabel}
+                value={getTrustMetricValue(metric)}
+              />
+            );
+          })}
         </div>
 
         <div className={styles.winCard}>
