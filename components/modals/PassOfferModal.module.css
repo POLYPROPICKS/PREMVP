@@ -154,13 +154,13 @@
 
 .heroTitle {
   margin: 0;
-  color: rgba(251, 251, 246, 0.82);
+  color: #fbfbf6;
   text-align: left;
-  font-weight: 700;
-  letter-spacing: -0.03em;
-  line-height: 1.1;
-  font-size: clamp(17px, 4.6vw, 24px);
-  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  font-size: clamp(14px, 3.7vw, 19px);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
 }
 
 .heroTitle span {
@@ -168,7 +168,6 @@
 }
 
 .chartCard,
-.benefits,
 .planCard {
   border: 1px solid rgba(75, 116, 135, 0.58);
   background:
@@ -189,53 +188,51 @@
 }
 
 .benefits {
-  min-height: clamp(48px, 12.6vw, 64px);
-  border-radius: clamp(12px, 3.3vw, 17px);
-  display: grid;
-  align-content: center;
-  gap: clamp(4px, 1.15vw, 7px);
-  padding: clamp(7px, 1.8vw, 10px) clamp(14px, 3.6vw, 22px);
+  display: flex;
+  flex-direction: column;
+  gap: clamp(3px, 0.8vw, 5px);
+  padding: clamp(2px, 0.5vw, 3px) 0;
 }
 
 .benefits div {
   display: flex;
   align-items: center;
-  gap: clamp(8px, 2vw, 12px);
-  color: rgba(222, 230, 236, 0.78);
-  font-size: clamp(11px, 3.05vw, 16px);
-  line-height: 1.08;
+  gap: clamp(6px, 1.6vw, 9px);
+  color: rgba(212, 222, 230, 0.72);
+  font-size: clamp(10px, 2.65vw, 13px);
+  line-height: 1.1;
 }
 
 .benefits span {
-  width: clamp(5px, 1.35vw, 7px);
-  height: clamp(5px, 1.35vw, 7px);
+  width: 5px;
+  height: 5px;
   border-radius: 50%;
   background: #9cff42;
-  box-shadow: 0 0 8px rgba(156, 255, 66, 0.7);
+  box-shadow: 0 0 6px rgba(156, 255, 66, 0.65);
   flex: 0 0 auto;
 }
 
 .plans {
   display: grid;
-  gap: clamp(6px, 1.6vw, 9px);
+  gap: clamp(4px, 1.1vw, 6px);
   min-height: 0;
 }
 
 .planCard {
   width: 100%;
   display: grid;
-  grid-template-columns: clamp(34px, 9vw, 47px) minmax(0, 1fr) auto;
+  grid-template-columns: clamp(26px, 6.8vw, 34px) minmax(0, 1fr) auto;
   align-items: center;
-  gap: clamp(8px, 2.2vw, 13px);
-  min-height: clamp(58px, 15.2vw, 76px);
-  border-radius: clamp(12px, 3.3vw, 17px);
-  padding: clamp(7px, 1.85vw, 11px) clamp(10px, 2.7vw, 16px);
+  gap: clamp(6px, 1.6vw, 10px);
+  min-height: clamp(46px, 12vw, 58px);
+  border-radius: clamp(10px, 2.7vw, 14px);
+  padding: clamp(5px, 1.3vw, 8px) clamp(8px, 2.1vw, 12px);
   color: inherit;
   text-align: left;
 }
 
 .selectedPlan {
-  min-height: clamp(70px, 18vw, 90px);
+  min-height: clamp(54px, 14vw, 68px);
   border-color: rgba(192, 255, 27, 0.94);
   background:
     linear-gradient(90deg, rgba(6, 41, 23, 0.92), rgba(8, 52, 25, 0.72)),
@@ -246,14 +243,14 @@
 }
 
 .radio {
-  width: clamp(28px, 7.3vw, 42px);
-  height: clamp(28px, 7.3vw, 42px);
+  width: clamp(22px, 5.7vw, 30px);
+  height: clamp(22px, 5.7vw, 30px);
   border-radius: 50%;
   border: 2px solid rgba(176, 190, 200, 0.72);
   display: grid;
   place-items: center;
   color: #a8ff23;
-  font-size: clamp(18px, 5vw, 28px);
+  font-size: clamp(14px, 3.6vw, 20px);
   font-weight: 900;
   line-height: 1;
 }
@@ -283,7 +280,7 @@
 
 .planName {
   color: #fbfbf6;
-  font-size: clamp(16px, 4.3vw, 24px);
+  font-size: clamp(13px, 3.5vw, 18px);
   font-weight: 900;
   line-height: 1.02;
   letter-spacing: -0.03em;
@@ -294,10 +291,10 @@
 
 .planSubtitle,
 .planHelper {
-  color: rgba(220, 229, 236, 0.72);
-  font-size: clamp(10.5px, 2.85vw, 15px);
-  line-height: 1.12;
-  margin-top: clamp(2px, 0.6vw, 4px);
+  color: rgba(220, 229, 236, 0.68);
+  font-size: clamp(9px, 2.4vw, 12px);
+  line-height: 1.1;
+  margin-top: clamp(1px, 0.3vw, 2px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -310,12 +307,12 @@
 .priceBlock {
   display: grid;
   justify-items: end;
-  min-width: clamp(56px, 15vw, 82px);
+  min-width: clamp(42px, 11vw, 58px);
 }
 
 .priceBlock strong {
   color: #fbfbf6;
-  font-size: clamp(25px, 6.7vw, 38px);
+  font-size: clamp(19px, 5.1vw, 28px);
   font-weight: 950;
   line-height: 0.94;
   letter-spacing: -0.04em;

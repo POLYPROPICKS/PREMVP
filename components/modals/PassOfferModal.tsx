@@ -229,9 +229,11 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
             </section>
 
             <section className={styles.benefits} aria-label="Premium benefits">
-              <div><span />Enter before odds move</div>
-              <div><span />Smart-money reversal alerts</div>
-              <div><span />Access to premium WC2026 pool</div>
+              <div><span />ENTER · SKIP · WAIT per market</div>
+              <div><span />Signals 2–4h before odds move</div>
+              <div><span />Injury + lineup risk layer</div>
+              <div><span />Live Polymarket whale-flow evidence</div>
+              <div><span />Sharp market consensus checks</div>
             </section>
 
             <section className={styles.plans} aria-label="Select premium plan">
@@ -270,9 +272,6 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
               <button type="button" className={styles.primaryCta} onClick={() => setCurrentView('reserve')}>
                 {primaryCta}
               </button>
-              <p className={styles.legalText}>
-                Cancel anytime. {currentPlan.price} billed at selected interval.
-              </p>
             </section>
           </main>
         ) : currentView === 'reserve' ? (
