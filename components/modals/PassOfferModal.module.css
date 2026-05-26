@@ -15,8 +15,7 @@
   overflow: hidden;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   background:
-    radial-gradient(circle at 50% 18%, rgba(0, 212, 255, 0.09), transparent 31%),
-    radial-gradient(circle at 45% 75%, rgba(217, 240, 74, 0.06), transparent 34%),
+    radial-gradient(circle at 45% 75%, rgba(217, 240, 74, 0.05), transparent 34%),
     rgba(1, 5, 10, 0.88);
   backdrop-filter: blur(22px);
   -webkit-backdrop-filter: blur(22px);
@@ -33,7 +32,7 @@
   border-radius: 24px;
   background:
     linear-gradient(180deg, rgba(2, 7, 13, 0.98), rgba(4, 13, 22, 0.995)),
-    radial-gradient(circle at 48% 32%, rgba(0, 212, 255, 0.10), transparent 45%);
+    radial-gradient(circle at 48% 58%, rgba(0, 212, 255, 0.08), transparent 45%);
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.035) inset,
     0 20px 70px rgba(0, 0, 0, 0.56);
@@ -43,10 +42,9 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.20;
+  opacity: 0.15;
   background:
-    linear-gradient(90deg, transparent 0, rgba(0, 212, 255, 0.06) 1px, transparent 2px) 0 0 / 82px 100%,
-    radial-gradient(circle at 18% 8%, rgba(255, 255, 255, 0.08), transparent 9%);
+    linear-gradient(90deg, transparent 0, rgba(0, 212, 255, 0.05) 1px, transparent 2px) 0 0 / 82px 100%;
 }
 
 .shell::after {
@@ -171,7 +169,7 @@
 }
 
 .chartCard {
-  flex: 0 0 178px;
+  flex: 0 0 154px;
   min-height: 0;
   border: 1px solid rgba(75, 116, 135, 0.58);
   border-radius: 16px;
@@ -189,27 +187,35 @@
 
 .benefits {
   flex: 0 0 auto;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 4px 12px;
-  padding: 2px 4px 0;
-}
-
-.benefits div {
-  min-width: 0;
   display: flex;
-  align-items: flex-start;
-  gap: 7px;
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.25;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 0 2px;
 }
 
-.benefits span {
+.benefitChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: rgba(0, 212, 255, 0.055);
+  border: 1px solid rgba(0, 212, 255, 0.14);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.benefitChipWide {
+  flex: 1 1 auto;
+}
+
+.benefitDot {
   width: 4px;
   height: 4px;
-  margin-top: 5px;
   border-radius: 50%;
   background: #00d4ff;
   box-shadow: 0 0 5px rgba(0, 212, 255, 0.62);
@@ -491,8 +497,8 @@
   }
 
   .chartCard {
-    flex-basis: 166px;
-    padding: 12px 14px 10px;
+    flex-basis: 142px;
+    padding: 10px 14px 8px;
   }
 
   .benefits {

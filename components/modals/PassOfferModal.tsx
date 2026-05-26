@@ -229,11 +229,11 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
             </section>
 
             <section className={styles.benefits} aria-label="Premium benefits">
-              <div><span />ENTER · SKIP · WAIT per market</div>
-              <div><span />Signals 2–4h before odds move</div>
-              <div><span />Injury + lineup risk layer</div>
-              <div><span />Live Polymarket whale-flow evidence</div>
-              <div><span />Sharp market consensus checks</div>
+              <span className={styles.benefitChip}><span className={styles.benefitDot} />ENTER · SKIP · WAIT per market</span>
+              <span className={styles.benefitChip}><span className={styles.benefitDot} />Signals 2–4h before odds move</span>
+              <span className={styles.benefitChip}><span className={styles.benefitDot} />Injury + lineup risk layer</span>
+              <span className={styles.benefitChip}><span className={styles.benefitDot} />Live Polymarket whale-flow evidence</span>
+              <span className={[styles.benefitChip, styles.benefitChipWide].join(' ')}><span className={styles.benefitDot} />Sharp market consensus checks</span>
             </section>
 
             <section className={styles.plans} aria-label="Select premium plan">
