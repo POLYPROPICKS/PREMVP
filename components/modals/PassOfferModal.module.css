@@ -142,7 +142,7 @@
   height: calc(100dvh - clamp(40px, 10.8vw, 50px));
   display: grid;
   grid-template-rows: auto auto auto 1fr;
-  row-gap: clamp(6px, 1.55vw, 9px);
+  row-gap: clamp(4px, 1.1vw, 6px);
   padding: clamp(6px, 1.6vw, 9px) clamp(14px, 3.8vw, 22px) clamp(8px, 2vw, 12px);
   overflow: hidden;
   min-height: 0;
@@ -154,13 +154,13 @@
 
 .heroTitle {
   margin: 0;
-  color: #fbfbf6;
+  color: rgba(251, 251, 246, 0.82);
   text-align: left;
-  font-weight: 950;
-  letter-spacing: -0.065em;
-  line-height: 0.96;
-  font-size: clamp(31px, 8.25vw, 43px);
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.55);
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+  font-size: clamp(17px, 4.6vw, 24px);
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
 }
 
 .heroTitle span {

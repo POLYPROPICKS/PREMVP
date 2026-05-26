@@ -80,11 +80,6 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
   const isPositive = finalRet !== null && finalRet >= 0;
   const retLabel = finalRet !== null ? fmtRet(finalRet) : null;
 
-  const sampleLabel =
-    displayedStats.displayedCount < 5
-      ? `EARLY SAMPLE · N=${displayedStats.displayedCount}`
-      : 'RESOLVED TRACKING';
-
   const hasChart = apiPts.length > 0;
   const { pts: visPts, zeroY, pathD } = hasChart
     ? buildChart(apiPts)
@@ -122,7 +117,6 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
           <span className={styles.liveDot} aria-hidden="true" />
           PAST 7 DAYS
         </span>
-        <span className={styles.topSample}>{sampleLabel}</span>
       </div>
 
       {/* Row 2: hero metrics */}

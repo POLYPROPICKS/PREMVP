@@ -53,14 +53,6 @@ const plans: Array<{
     badge: 'BEST FOR YOU',
   },
   {
-    id: '3day',
-    name: '24-Hour Pass',
-    subtitle: 'Unlock today\'s premium feed',
-    helper: '24-hour access',
-    price: '$4.99',
-    perDay: '$4.99',
-  },
-  {
     id: 'monthly',
     name: 'Monthly Pro',
     subtitle: 'Best for daily market users',
@@ -278,13 +270,8 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
               <button type="button" className={styles.primaryCta} onClick={() => setCurrentView('reserve')}>
                 {primaryCta}
               </button>
-              <button type="button" className={styles.secondaryLink} onClick={resetAndClose}>
-                Keep only 1 free signal
-              </button>
               <p className={styles.legalText}>
-                Signals are probabilistic, not guaranteed outcomes.<br />
-                Past signal P&amp;L does not guarantee future results. Not financial advice.<br />
-                Cancel anytime. {currentPlan.price} weekly until canceled.
+                Cancel anytime. {currentPlan.price} billed at selected interval.
               </p>
             </section>
           </main>
