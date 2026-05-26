@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Paywall Modal — UI Preview</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #080c14;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  color: #f8f8f3;
+}
+
+/* ─── PREVIEW CONTROLS ─────────────────────────────────── */
+.preview-controls {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 8px;
+  z-index: 10000;
+}
+.ctrl-btn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.2);
+  background: rgba(0,0,0,0.6);
+  color: rgba(255,255,255,0.7);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.06em;
+}
+.ctrl-btn.active {
+  border-color: #00d4ff;
+  color: #00d4ff;
+}
+
+/* ─── OVERLAY ──────────────────────────────────────────── */
+.overlay {
+  position: relative;
+  width: 100vw;
+  height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* EXPERIMENTAL FIX A: removed top cyan radial that created floating arc above shell */
+  background:
+    radial-gradient(circle at 45% 75%, rgba(217, 240, 74, 0.05), transparent 34%),
+    rgba(1, 5, 10, 0.88);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+}
+
+/* ─── SHELL ─────────────────────────────────────────────── */
+.shell {
+  position: relative;
+  width: min(100vw, 428px);
+  height: auto;
+  max-height: min(760px, calc(100dvh - 8px));
+  overflow: hidden;
+  color: #f8f8f3;
+  border: 1px solid rgba(130, 161, 178, 0.26);
+  border-radius: 24px;
+  /* EXPERIMENTAL FIX A: moved inner cyan radial lower (was 48% 32%) to avoid
+     bleeding into topBar zone and creating the floating curved chrome artifact */
+  background:
+    linear-gradient(180deg, rgba(2, 7, 13, 0.98), rgba(4, 13, 22, 0.995)),
+    radial-gradient(circle at 48% 58%, rgba(0, 212, 255, 0.08), transparent 45%);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.035) inset,
+    0 20px 70px rgba(0, 0, 0, 0.56);
+}
+
+/* EXPERIMENTAL FIX A: removed backdropSignal top-left radial (was at 18% 8%)
+   which combined with overlay gradient to create visible chrome arc.
+   Keeping only the subtle grid lines. */
+.backdrop-signal {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.15;
+  background:
+    linear-gradient(90deg, transparent 0, rgba(0, 212, 255, 0.05) 1px, transparent 2px) 0 0 / 82px 100%;
+}
+
+.shell-after {
+  position: absolute;
+  inset: auto 18px 8px;
+  height: 42px;
+  pointer-events: none;
+  background: radial-gradient(ellipse at center, rgba(217, 240, 74, 0.08), transparent 70%);
+  filter: blur(14px);
+}
+
+/* ─── TOP BAR ───────────────────────────────────────────── */
+.top-bar {
+  position: relative;
+  z-index: 2;
+  height: 42px;
+  padding: 10px 14px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.live-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid rgba(0, 212, 255, 0.72);
+  border-radius: 999px;
+  background: rgba(3, 20, 27, 0.72);
+  box-shadow:
+    0 0 18px rgba(0, 212, 255, 0.16),
+    inset 0 0 16px rgba(0, 212, 255, 0.035);
+  color: #7dffe0;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.18em;
+}
+
+.live-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #00d4ff;
+  box-shadow: 0 0 6px #00d4ff;
+  flex: 0 0 auto;
+}
+
+.close-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(226, 232, 240, 0.24);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.70);
+  cursor: pointer;
+  font-size: 24px;
+  font-weight: 300;
+  line-height: 1;
+}
+
+/* ─── OFFER VIEW ────────────────────────────────────────── */
+.offer-view {
+  position: relative;
+  z-index: 1;
+  height: auto;
+  max-height: calc(min(760px, 100dvh) - 42px);
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 8px 14px 14px;
+}
+
+/* ─── HERO ──────────────────────────────────────────────── */
+.hero-title {
+  color: #ffffff;
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: -0.045em;
+  line-height: 1.05;
+  text-shadow: 0 1px 10px rgba(0,0,0,0.55);
+}
+.hero-title span { display: block; }
+
+/* ─── CHART CARD ────────────────────────────────────────── */
+.chart-card {
+  flex: 0 0 154px;
+  min-height: 0;
+  border: 1px solid rgba(75, 116, 135, 0.58);
+  border-radius: 16px;
+  padding: 14px 16px 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background:
+    linear-gradient(180deg, rgba(8, 24, 34, 0.84), rgba(4, 12, 20, 0.88)),
+    radial-gradient(circle at 58% 38%, rgba(0, 212, 255, 0.06), transparent 42%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.035),
+    0 10px 28px rgba(0, 0, 0, 0.24);
+  font-feature-settings: "tnum";
+}
+
+/* Chart top row */
+.chart-top-row {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+.chart-live {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: rgba(255,255,255,0.72);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.chart-live-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #00d4ff;
+  box-shadow: 0 0 6px #00d4ff;
+}
+
+/* Chart hero row */
+.chart-hero-row {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex: 0 0 auto;
+  gap: 10px;
+}
+.chart-hero-left {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.chart-metric {
+  color: #fbfbf6;
+  font-size: clamp(34px, 8.2vw, 46px);
+  font-weight: 900;
+  line-height: 0.9;
+  letter-spacing: -0.055em;
+  white-space: nowrap;
+}
+.chart-sub {
+  color: #00d4ff;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.chart-hero-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+.chart-label {
+  color: rgba(255,255,255,0.32);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.chart-val {
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 0.95;
+  letter-spacing: -0.045em;
+  color: #00d4ff;
+  text-shadow: 0 0 14px rgba(0, 212, 255, 0.44);
+}
+
+/* Chart SVG wrap */
+.chart-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+.chart-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+.zero-label {
+  position: absolute;
+  left: 0;
+  transform: translateY(-100%);
+  color: rgba(255,255,255,0.32);
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 8.5px;
+  font-weight: 700;
+  pointer-events: none;
+  line-height: 1;
+  letter-spacing: 0.04em;
+}
+
+/* Chips row */
+.chips-row {
+  flex: 0 0 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.chip-lost {
+  background: rgba(255, 51, 85, 0.06);
+  color: #ff3355;
+  border: 1px solid rgba(255, 51, 85, 0.22);
+}
+.chip-won {
+  background: rgba(0, 255, 136, 0.07);
+  color: #00ff88;
+  border: 1px solid rgba(0, 255, 136, 0.22);
+}
+.chip-more {
+  background: rgba(255,255,255,0.025);
+  color: rgba(255,255,255,0.32);
+  border: 1px dashed rgba(255,255,255,0.10);
+}
+
+/* ─── BENEFITS — EXPERIMENTAL VERSION B ─────────────────── */
+/*
+  EXPERIMENTAL FIX B: replaced 2-col text grid (heavy, wrapping, debug-list feel)
+  with compact inline proof-strip.
+  - 2 rows of badge-style chips
+  - shorter labels that fit in one line
+  - cyan dot + muted text for each item
+  - no heavy borders or cards
+*/
+.benefits {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 0 2px;
+}
+.benefits-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.benefit-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 6px;
+  background: rgba(0, 212, 255, 0.055);
+  border: 1px solid rgba(0, 212, 255, 0.14);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+.benefit-dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #00d4ff;
+  box-shadow: 0 0 5px rgba(0, 212, 255, 0.62);
+  flex: 0 0 auto;
+}
+.benefit-chip-wide {
+  flex: 1 1 auto;
+}
+
+/* ─── PLANS ─────────────────────────────────────────────── */
+.plans {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-rows: repeat(2, 76px);
+  gap: 8px;
+}
+.plan-card {
+  width: 100%;
+  height: 76px;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 22px minmax(0,1fr) auto;
+  align-items: center;
+  gap: 10px;
+  border-radius: 16px;
+  padding: 14px 16px;
+  text-align: left;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: #0a0f1d;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.035),
+    0 10px 28px rgba(0,0,0,0.20);
+  cursor: pointer;
+}
+.plan-card.selected {
+  border: 1.5px solid #d9f04a;
+  background: linear-gradient(180deg, rgba(217,240,74,0.06), rgba(3,18,12,0.92));
+  box-shadow: inset 0 0 20px rgba(217,240,74,0.045);
+}
+
+.radio {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255,255,255,0.25);
+  display: grid;
+  place-items: center;
+  color: #030303;
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+}
+.plan-card.selected .radio {
+  border-color: #d9f04a;
+  background: #d9f04a;
+}
+
+.plan-copy {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+}
+.plan-badge {
+  display: inline-block;
+  height: 18px;
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #d9f04a;
+  color: #030303;
+  font-size: 9.5px;
+  font-weight: 900;
+  line-height: 14px;
+  letter-spacing: 0.12em;
+}
+.plan-name {
+  color: #fbfbf6;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.022em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plan-subtitle {
+  margin-top: 3px;
+  color: rgba(255,255,255,0.50);
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.price-block {
+  min-width: 58px;
+  display: grid;
+  justify-items: end;
+  align-content: center;
+}
+.price-big {
+  color: #fbfbf6;
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 0.92;
+  letter-spacing: -0.04em;
+}
+.price-per {
+  margin-top: 4px;
+  color: #00d4ff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+/* ─── CTA ───────────────────────────────────────────────── */
+.action-area {
+  flex: 0 0 auto;
+  margin-top: auto;
+}
+.cta-btn {
+  display: block;
+  width: 100%;
+  min-height: 54px;
+  border: 0;
+  border-radius: clamp(14px, 3.6vw, 20px);
+  background: linear-gradient(90deg, #65ff66 0%, #f7ff45 54%, #ffd43b 100%);
+  color: #03110a;
+  font-size: clamp(16px, 4.1vw, 22px);
+  font-weight: 950;
+  letter-spacing: -0.025em;
+  text-align: center;
+  cursor: pointer;
+  box-shadow:
+    0 0 24px rgba(101, 255, 102, 0.34),
+    inset 0 1px 0 rgba(255,255,255,0.45);
+  font-family: inherit;
+}
+</style>
+</head>
+<body>
+
+<div class="preview-controls">
+  <span class="ctrl-btn active">390px</span>
+  <span class="ctrl-btn" onclick="document.querySelector('.shell').style.width='428px'">428px</span>
+  <span class="ctrl-btn" onclick="document.querySelector('.shell').style.width=''">auto</span>
+</div>
+
+<div class="overlay">
+  <div class="shell" style="width:390px">
+
+    <!-- Backdrop effects -->
+    <div class="backdrop-signal" aria-hidden="true"></div>
+    <div class="shell-after" aria-hidden="true"></div>
+
+    <!-- TOP BAR -->
+    <header class="top-bar">
+      <div class="live-pill">
+        <span class="live-dot"></span>
+        <span>LIVE EDGE LOCKED</span>
+      </div>
+      <button class="close-btn" aria-label="Close">
+        <span style="display:block;transform:translateY(-1px)">×</span>
+      </button>
+    </header>
+
+    <!-- OFFER VIEW -->
+    <main class="offer-view">
+
+      <!-- HERO -->
+      <section>
+        <h1 class="hero-title">
+          <span>Live edge is moving.</span>
+          <span>The next signal is locked.</span>
+        </h1>
+      </section>
+
+      <!-- CHART CARD -->
+      <section class="chart-card" aria-label="Past 7 days signal chart">
+
+        <div class="chart-top-row">
+          <span class="chart-live">
+            <span class="chart-live-dot"></span>
+            PAST 7 DAYS
+          </span>
+        </div>
+
+        <div class="chart-hero-row">
+          <div class="chart-hero-left">
+            <span class="chart-metric">1/2</span>
+            <span class="chart-sub">WON</span>
+          </div>
+          <div class="chart-hero-right">
+            <span class="chart-label">CUMULATIVE P&amp;L</span>
+            <span class="chart-val">+19.8%</span>
+          </div>
+        </div>
+
+        <div class="chart-wrap">
+          <!-- Static mock chart: baseline→loss(-100%)→recovery(+120%) -->
+          <!-- Points: (12,49)=0%, (110,70)=-100%, (208,24)=+120% | zeroY=49 -->
+          <svg class="chart-svg" viewBox="0 0 220 92" preserveAspectRatio="none" aria-hidden="true">
+            <!-- zero dashed line -->
+            <line x1="12" y1="49" x2="208" y2="49"
+              stroke="rgba(255,255,255,0.22)" stroke-width="0.8" stroke-dasharray="4 4" />
+
+            <!-- loss segment: baseline→-100% (red) -->
+            <path d="M12.0 49.0 L110.0 70.0"
+              fill="none" stroke="#ff3355" stroke-width="2.35"
+              stroke-linecap="round" stroke-linejoin="round"
+              style="filter:drop-shadow(0 0 4px rgba(255,51,85,0.25));opacity:0.85" />
+
+            <!-- recovery segment: -100%→+120% (cyan) -->
+            <path d="M110.0 70.0 L208.0 24.0"
+              fill="none" stroke="#00d4ff" stroke-width="2.35"
+              stroke-linecap="round" stroke-linejoin="round"
+              style="filter:drop-shadow(0 0 6px rgba(0,212,255,0.25))" />
+
+            <!-- start dot (baseline 0%) -->
+            <circle cx="12" cy="49" r="2.2" fill="rgba(255,255,255,0.45)" />
+
+            <!-- loss dot -->
+            <circle cx="110" cy="70" r="3.0" fill="#ff3355"
+              style="filter:drop-shadow(0 0 4px rgba(255,51,85,0.64))" />
+
+            <!-- end dot (final, cyan, pulsing via animation) -->
+            <circle cx="208" cy="24" r="3.4" fill="#00d4ff"
+              style="filter:drop-shadow(0 0 6px rgba(0,212,255,0.82))">
+              <animate attributeName="opacity" values="1;0.62;1" dur="2.4s" repeatCount="indefinite"/>
+            </circle>
+          </svg>
+
+          <!-- 0% START label -->
+          <span class="zero-label" style="top:47%">0% START</span>
+        </div>
+
+        <!-- Chips -->
+        <div class="chips-row">
+          <span class="chip chip-lost">✕ −100%</span>
+          <span class="chip chip-won">✓ +120%</span>
+          <span class="chip chip-more">· —</span>
+        </div>
+
+      </section>
+
+      <!-- BENEFITS — EXPERIMENTAL COMPACT PROOF-STRIP (full phrases) -->
+      <section class="benefits" aria-label="Premium benefits">
+        <div class="benefits-row">
+          <span class="benefit-chip"><span class="benefit-dot"></span>ENTER · SKIP · WAIT per market</span>
+          <span class="benefit-chip"><span class="benefit-dot"></span>Signals 2–4h before odds move</span>
+        </div>
+        <div class="benefits-row">
+          <span class="benefit-chip"><span class="benefit-dot"></span>Injury + lineup risk layer</span>
+          <span class="benefit-chip"><span class="benefit-dot"></span>Whale-flow evidence</span>
+        </div>
+        <div class="benefits-row">
+          <span class="benefit-chip benefit-chip-wide"><span class="benefit-dot"></span>Sharp market consensus checks</span>
+        </div>
+      </section>
+
+      <!-- PLANS -->
+      <section class="plans" aria-label="Select premium plan">
+
+        <!-- 7-Day (selected) -->
+        <button class="plan-card selected" type="button">
+          <span class="radio">✓</span>
+          <span class="plan-copy">
+            <span class="plan-badge">BEST FOR YOU</span>
+            <span class="plan-name">7-Day Premium</span>
+            <span class="plan-subtitle">Full week of live signals</span>
+          </span>
+          <span class="price-block">
+            <strong class="price-big">$15</strong>
+            <span class="price-per">$2.14/day</span>
+          </span>
+        </button>
+
+        <!-- Monthly -->
+        <button class="plan-card" type="button">
+          <span class="radio"></span>
+          <span class="plan-copy">
+            <span class="plan-name">Monthly Pro</span>
+            <span class="plan-subtitle">Best for daily market users</span>
+          </span>
+          <span class="price-block">
+            <strong class="price-big">$49</strong>
+            <span class="price-per">$1.63/day</span>
+          </span>
+        </button>
+
+      </section>
+
+      <!-- CTA -->
+      <section class="action-area">
+        <button class="cta-btn" type="button">
+          Unlock 7-Day Premium — $15
+        </button>
+      </section>
+
+    </main>
+
+  </div><!-- .shell -->
+</div><!-- .overlay -->
+
+<script>
+// Width switcher buttons
+document.querySelectorAll('.ctrl-btn').forEach((btn, i) => {
+  btn.addEventListener('click', () => {
+    const widths = ['390px', '428px', ''];
+    document.querySelector('.shell').style.width = widths[i] || '';
+    document.querySelectorAll('.ctrl-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>
