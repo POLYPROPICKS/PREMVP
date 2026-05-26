@@ -8,18 +8,18 @@
   inset: 0;
   width: 100vw;
   height: 100dvh;
-  background:
-    radial-gradient(circle at 50% 18%, rgba(39, 215, 255, 0.09), transparent 30%),
-    radial-gradient(circle at 44% 74%, rgba(140, 255, 42, 0.07), transparent 34%),
-    rgba(1, 5, 10, 0.88);
-  backdrop-filter: blur(22px);
-  -webkit-backdrop-filter: blur(22px);
   z-index: 9999;
   display: flex;
   align-items: center;
   justify-content: center;
   overflow: hidden;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  background:
+    radial-gradient(circle at 50% 18%, rgba(39, 215, 255, 0.09), transparent 30%),
+    radial-gradient(circle at 44% 74%, rgba(140, 255, 42, 0.07), transparent 34%),
+    rgba(1, 5, 10, 0.88);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
 }
 
 .shell {
@@ -32,8 +32,8 @@
   border: 1px solid rgba(130, 161, 178, 0.26);
   border-radius: clamp(0px, 4.6vw, 22px);
   background:
-    linear-gradient(180deg, rgba(2, 7, 13, 0.96), rgba(4, 13, 22, 0.985)),
-    radial-gradient(circle at 50% 32%, rgba(20, 75, 92, 0.23), transparent 44%);
+    linear-gradient(180deg, rgba(2, 7, 13, 0.97), rgba(4, 13, 22, 0.99)),
+    radial-gradient(circle at 50% 32%, rgba(20, 75, 92, 0.20), transparent 44%);
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.035) inset,
     0 20px 70px rgba(0, 0, 0, 0.56);
@@ -43,55 +43,54 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.24;
+  opacity: 0.22;
   background:
-    linear-gradient(90deg, transparent 0, rgba(39, 215, 255, 0.08) 1px, transparent 2px) 0 0 / 82px 100%,
+    linear-gradient(90deg, transparent 0, rgba(39, 215, 255, 0.07) 1px, transparent 2px) 0 0 / 82px 100%,
     radial-gradient(circle at 18% 8%, rgba(255, 255, 255, 0.10), transparent 9%),
-    radial-gradient(circle at 77% 48%, rgba(140, 255, 42, 0.12), transparent 22%);
-  filter: blur(0.2px);
+    radial-gradient(circle at 77% 48%, rgba(140, 255, 42, 0.11), transparent 22%);
 }
 
 .shell::after {
   content: '';
   position: absolute;
-  inset: auto 20px 10px 20px;
-  height: 62px;
+  inset: auto 18px 8px;
+  height: 52px;
   pointer-events: none;
-  background: radial-gradient(ellipse at center, rgba(140, 255, 42, 0.11), transparent 70%);
+  background: radial-gradient(ellipse at center, rgba(140, 255, 42, 0.10), transparent 70%);
   filter: blur(12px);
 }
 
 .topBar {
   position: relative;
   z-index: 2;
+  height: clamp(40px, 10.2vw, 46px);
+  padding: clamp(7px, 1.8vw, 10px) clamp(12px, 3vw, 16px) 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: clamp(40px, 10.8vw, 50px);
-  padding: clamp(8px, 2.2vw, 11px) clamp(12px, 3.3vw, 18px) 0;
 }
 
 .livePill {
   display: inline-flex;
   align-items: center;
-  gap: clamp(6px, 1.7vw, 9px);
-  min-height: clamp(28px, 7.5vw, 36px);
-  padding: 0 clamp(12px, 3.4vw, 17px);
+  gap: clamp(6px, 1.6vw, 8px);
+  min-height: clamp(28px, 7.2vw, 34px);
+  padding: 0 clamp(12px, 3vw, 16px);
   border: 1px solid rgba(23, 216, 230, 0.72);
   border-radius: 999px;
   background: rgba(3, 20, 27, 0.72);
   box-shadow:
-    0 0 18px rgba(23, 216, 230, 0.18),
+    0 0 18px rgba(23, 216, 230, 0.16),
     inset 0 0 16px rgba(23, 216, 230, 0.035);
   color: #20f0b2;
-  font-size: clamp(11px, 3.15vw, 15px);
+  font-size: clamp(11px, 2.95vw, 14px);
   font-weight: 900;
   letter-spacing: 0.075em;
 }
 
 .liveDot {
-  width: clamp(9px, 2.4vw, 12px);
-  height: clamp(9px, 2.4vw, 12px);
+  width: clamp(8px, 2.1vw, 10px);
+  height: clamp(8px, 2.1vw, 10px);
   border-radius: 50%;
   background: #95ff4b;
   box-shadow: 0 0 12px rgba(149, 255, 75, 0.92);
@@ -111,7 +110,7 @@
   border: 0;
   background: transparent;
   color: rgba(223, 231, 238, 0.72);
-  font-size: clamp(12px, 3.4vw, 15px);
+  font-size: clamp(12px, 3.2vw, 14px);
   font-weight: 700;
   padding: 6px 0;
 }
@@ -119,8 +118,8 @@
 .closeButton {
   display: grid;
   place-items: center;
-  width: clamp(30px, 8vw, 40px);
-  height: clamp(30px, 8vw, 40px);
+  width: clamp(30px, 7.6vw, 38px);
+  height: clamp(30px, 7.6vw, 38px);
   border-radius: 50%;
   border: 1px solid rgba(226, 232, 240, 0.34);
   background: rgba(7, 10, 16, 0.42);
@@ -131,36 +130,38 @@
 .closeButton span {
   display: block;
   transform: translateY(-1px);
-  font-size: clamp(24px, 6.8vw, 34px);
+  font-size: clamp(24px, 6.4vw, 32px);
   line-height: 1;
   font-weight: 300;
 }
 
+/* Source-of-truth first-screen layout: fixed-height sections, no stretch rows. */
 .offerView {
   position: relative;
   z-index: 1;
-  height: calc(100dvh - clamp(40px, 10.8vw, 50px));
-  display: grid;
-  grid-template-rows: auto auto auto 1fr auto;
-  row-gap: clamp(4px, 1.1vw, 6px);
-  padding: clamp(6px, 1.6vw, 9px) clamp(14px, 3.8vw, 22px) clamp(8px, 2vw, 12px);
-  overflow: hidden;
+  height: calc(100dvh - clamp(40px, 10.2vw, 46px));
   min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: clamp(5px, 1.25vw, 7px);
+  padding: clamp(5px, 1.3vw, 8px) clamp(12px, 3.2vw, 18px) clamp(8px, 2vw, 12px);
 }
 
 .hero {
+  flex: 0 0 auto;
   min-height: 0;
 }
 
 .heroTitle {
   margin: 0;
-  color: #fbfbf6;
+  color: #ffffff;
   text-align: left;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  line-height: 1.05;
-  font-size: clamp(14px, 3.7vw, 19px);
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.4);
+  font-size: clamp(15px, 3.75vw, 18px);
+  font-weight: 780;
+  letter-spacing: -0.025em;
+  line-height: 1.02;
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.55);
 }
 
 .heroTitle span {
@@ -175,11 +176,12 @@
     radial-gradient(circle at 58% 38%, rgba(39, 215, 255, 0.06), transparent 42%);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.035),
-    0 10px 28px rgba(0, 0, 0, 0.25);
+    0 10px 28px rgba(0, 0, 0, 0.24);
 }
 
 .chartCard {
-  height: clamp(120px, 32vw, 140px);
+  flex: 0 0 clamp(132px, 32vw, 144px);
+  min-height: 0;
   border-radius: clamp(12px, 3.2vw, 16px);
   padding: clamp(7px, 1.8vw, 10px) clamp(9px, 2.4vw, 14px);
   overflow: hidden;
@@ -188,102 +190,111 @@
 }
 
 .benefits {
+  flex: 0 0 auto;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: clamp(3px, 0.7vw, 4px) clamp(8px, 2.1vw, 12px);
-  padding: clamp(1px, 0.3vw, 2px) 0;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 4px 12px;
+  padding: 0 2px;
 }
 
 .benefits div {
+  min-width: 0;
   display: flex;
   align-items: flex-start;
   gap: 5px;
-  color: rgba(210, 220, 230, 0.68);
-  font-size: clamp(9px, 2.35vw, 11.5px);
-  line-height: 1.2;
+  color: rgba(215, 226, 234, 0.76);
+  font-size: clamp(9px, 2.28vw, 10.5px);
+  line-height: 1.18;
+  white-space: normal;
 }
 
 .benefits span {
   width: 4px;
   height: 4px;
+  margin-top: 4px;
   border-radius: 50%;
   background: #9cff42;
-  box-shadow: 0 0 5px rgba(156, 255, 66, 0.6);
+  box-shadow: 0 0 5px rgba(156, 255, 66, 0.62);
   flex: 0 0 auto;
-  margin-top: 4px;
 }
 
+/* Fixed plan area. No 1fr, no stretch. This is the bug that made cards huge. */
 .plans {
-  display: grid;
-  gap: clamp(4px, 1.1vw, 6px);
+  flex: 0 0 auto;
   min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(2, clamp(72px, 18vw, 78px));
+  gap: clamp(6px, 1.5vw, 8px);
 }
 
 .planCard {
   width: 100%;
+  height: clamp(72px, 18vw, 78px);
+  min-height: 0;
   display: grid;
-  grid-template-columns: clamp(26px, 6.8vw, 34px) minmax(0, 1fr) auto;
+  grid-template-columns: clamp(24px, 6vw, 30px) minmax(0, 1fr) auto;
   align-items: center;
-  gap: clamp(6px, 1.6vw, 10px);
-  min-height: clamp(46px, 12vw, 58px);
-  border-radius: clamp(10px, 2.7vw, 14px);
-  padding: clamp(5px, 1.3vw, 8px) clamp(8px, 2.1vw, 12px);
+  gap: clamp(7px, 1.8vw, 10px);
+  border-radius: clamp(12px, 3vw, 15px);
+  padding: clamp(8px, 2vw, 10px) clamp(10px, 2.5vw, 13px);
   color: inherit;
   text-align: left;
 }
 
 .selectedPlan {
-  min-height: clamp(54px, 14vw, 68px);
+  height: clamp(72px, 18vw, 78px);
+  min-height: 0;
   border-color: rgba(192, 255, 27, 0.94);
   background:
     linear-gradient(90deg, rgba(6, 41, 23, 0.92), rgba(8, 52, 25, 0.72)),
-    radial-gradient(circle at 72% 42%, rgba(192, 255, 27, 0.12), transparent 48%);
+    radial-gradient(circle at 72% 42%, rgba(192, 255, 27, 0.13), transparent 48%);
   box-shadow:
-    0 0 22px rgba(168, 255, 35, 0.38),
+    0 0 20px rgba(168, 255, 35, 0.30),
     inset 0 0 22px rgba(140, 255, 42, 0.055);
 }
 
 .radio {
-  width: clamp(22px, 5.7vw, 30px);
-  height: clamp(22px, 5.7vw, 30px);
+  width: clamp(22px, 5.4vw, 28px);
+  height: clamp(22px, 5.4vw, 28px);
   border-radius: 50%;
   border: 2px solid rgba(176, 190, 200, 0.72);
   display: grid;
   place-items: center;
   color: #a8ff23;
-  font-size: clamp(14px, 3.6vw, 20px);
+  font-size: clamp(14px, 3.4vw, 18px);
   font-weight: 900;
   line-height: 1;
 }
 
 .selectedPlan .radio {
   border-color: #bfff22;
-  box-shadow: 0 0 16px rgba(191, 255, 34, 0.35);
+  box-shadow: 0 0 14px rgba(191, 255, 34, 0.32);
 }
 
 .planCopy {
-  display: grid;
   min-width: 0;
+  display: grid;
   align-content: center;
 }
 
 .planBadge {
   justify-self: start;
-  margin-bottom: clamp(3px, 0.8vw, 5px);
-  padding: clamp(2px, 0.7vw, 4px) clamp(6px, 1.7vw, 10px);
+  margin-bottom: 4px;
+  padding: 3px 8px;
   border-radius: 5px;
   background: #c7ff2d;
   color: #03110a;
-  font-size: clamp(8.5px, 2.3vw, 12px);
+  font-size: clamp(8px, 2.1vw, 10px);
   font-weight: 950;
+  line-height: 1;
   letter-spacing: 0.03em;
 }
 
 .planName {
   color: #fbfbf6;
-  font-size: clamp(13px, 3.5vw, 18px);
-  font-weight: 900;
-  line-height: 1.02;
+  font-size: clamp(14px, 3.55vw, 17px);
+  font-weight: 920;
+  line-height: 1;
   letter-spacing: -0.03em;
   white-space: nowrap;
   overflow: hidden;
@@ -292,10 +303,10 @@
 
 .planSubtitle,
 .planHelper {
+  margin-top: 2px;
   color: rgba(220, 229, 236, 0.68);
-  font-size: clamp(9px, 2.4vw, 12px);
-  line-height: 1.1;
-  margin-top: clamp(1px, 0.3vw, 2px);
+  font-size: clamp(9px, 2.25vw, 11px);
+  line-height: 1.08;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -306,17 +317,18 @@
 }
 
 .priceBlock {
+  min-width: clamp(42px, 11vw, 58px);
   display: grid;
   justify-items: end;
-  min-width: clamp(42px, 11vw, 58px);
+  align-content: center;
 }
 
 .priceBlock strong {
   color: #fbfbf6;
-  font-size: clamp(19px, 5.1vw, 28px);
+  font-size: clamp(22px, 5.7vw, 28px);
   font-weight: 950;
-  line-height: 0.94;
-  letter-spacing: -0.04em;
+  line-height: 0.92;
+  letter-spacing: -0.045em;
 }
 
 .selectedPlan .priceBlock strong {
@@ -325,33 +337,33 @@
 }
 
 .priceBlock span {
+  margin-top: 4px;
   color: #2edbff;
-  font-size: clamp(10.5px, 2.85vw, 15px);
-  line-height: 1.1;
-  margin-top: clamp(3px, 0.8vw, 5px);
+  font-size: clamp(10px, 2.7vw, 13px);
+  line-height: 1;
 }
 
 .actionArea {
-  align-self: end;
-  display: grid;
-  gap: clamp(5px, 1.35vw, 8px);
-  align-content: end;
+  flex: 0 0 auto;
   min-height: 0;
+  display: grid;
+  align-content: end;
+  margin-top: auto;
 }
 
 .primaryCta {
   width: 100%;
-  min-height: clamp(46px, 12vw, 60px);
+  min-height: clamp(50px, 12.5vw, 56px);
   border: 0;
-  border-radius: clamp(14px, 3.8vw, 22px);
+  border-radius: clamp(14px, 3.6vw, 20px);
   background: linear-gradient(90deg, #65ff66 0%, #f7ff45 54%, #ffd43b 100%);
   color: #03110a;
-  font-size: clamp(16px, 4.35vw, 26px);
+  font-size: clamp(16px, 4.1vw, 22px);
   font-weight: 950;
   letter-spacing: -0.025em;
   text-align: center;
   box-shadow:
-    0 0 24px rgba(101, 255, 102, 0.38),
+    0 0 24px rgba(101, 255, 102, 0.34),
     inset 0 1px 0 rgba(255, 255, 255, 0.45);
 }
 
@@ -360,7 +372,7 @@
   border: 0;
   background: transparent;
   color: rgba(215, 225, 232, 0.72);
-  font-size: clamp(12px, 3.2vw, 17px);
+  font-size: clamp(12px, 3vw, 15px);
   line-height: 1;
   padding: 1px 4px;
   text-decoration: underline;
@@ -369,7 +381,7 @@
 .legalText {
   margin: 0;
   color: rgba(157, 169, 180, 0.76);
-  font-size: clamp(9.2px, 2.45vw, 12px);
+  font-size: clamp(9px, 2.25vw, 11px);
   line-height: 1.18;
   text-align: center;
 }
@@ -377,7 +389,7 @@
 .reserveView {
   position: relative;
   z-index: 1;
-  height: calc(100dvh - clamp(40px, 10.8vw, 50px));
+  height: calc(100dvh - clamp(40px, 10.2vw, 46px));
   display: grid;
   align-content: center;
   padding: clamp(12px, 3vw, 18px) clamp(14px, 3.8vw, 22px) clamp(12px, 3vw, 18px);
@@ -458,25 +470,44 @@
 
 @media (max-width: 390px) {
   .offerView {
-    padding-left: 12px;
-    padding-right: 12px;
-    row-gap: 4px;
+    padding-left: 10px;
+    padding-right: 10px;
+    gap: 4px;
   }
 
   .chartCard {
-    height: 112px;
+    flex-basis: 124px;
   }
 
-  .planCard {
-    min-height: 42px;
+  .benefits {
+    gap: 3px 8px;
   }
 
+  .benefits div {
+    font-size: 8.6px;
+  }
+
+  .plans {
+    grid-template-rows: repeat(2, 68px);
+    gap: 5px;
+  }
+
+  .planCard,
   .selectedPlan {
-    min-height: 50px;
+    height: 68px;
+    padding: 7px 9px;
+  }
+
+  .planName {
+    font-size: 13px;
+  }
+
+  .priceBlock strong {
+    font-size: 21px;
   }
 
   .primaryCta {
-    min-height: 44px;
+    min-height: 48px;
     font-size: 15px;
   }
 }

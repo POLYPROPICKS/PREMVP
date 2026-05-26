@@ -1,6 +1,7 @@
 .card {
   width: 100%;
   height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -8,19 +9,19 @@
 }
 
 .cardPaywall {
-  height: auto;
-  min-height: 168px;
-  max-height: 232px;
+  height: 208px;
+  max-height: 208px;
+  min-height: 208px;
   gap: 5px;
 }
 
-/* ── Row 1: status bar ───────────────────────────────────── */
-
+/* Row 1: status */
 .topRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-shrink: 0;
+  flex: 0 0 auto;
+  min-width: 0;
   gap: 6px;
   overflow: hidden;
 }
@@ -29,13 +30,14 @@
   display: flex;
   align-items: center;
   gap: 5px;
-  color: rgba(220, 230, 238, 0.82);
-  font-size: clamp(10px, 2.7vw, 13px);
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-  overflow: hidden;
   min-width: 0;
+  overflow: hidden;
+  color: rgba(220, 230, 238, 0.82);
+  font-size: clamp(9px, 2.35vw, 11px);
+  font-weight: 850;
+  letter-spacing: 0.075em;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .liveDot {
@@ -44,26 +46,26 @@
   border-radius: 50%;
   background: #9cff42;
   box-shadow: 0 0 6px rgba(156, 255, 66, 0.82);
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 
 .topSample {
   color: rgba(170, 186, 200, 0.68);
-  font-size: clamp(9px, 2.35vw, 11px);
+  font-size: clamp(8px, 2.1vw, 10px);
   font-weight: 700;
   letter-spacing: 0.04em;
   white-space: nowrap;
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 
-/* ── Row 2: hero metrics ─────────────────────────────────── */
-
+/* Row 2: metrics */
 .heroRow {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  flex-shrink: 0;
+  flex: 0 0 auto;
   gap: 8px;
+  min-width: 0;
   overflow: hidden;
 }
 
@@ -76,21 +78,22 @@
 
 .heroMetric {
   color: #fbfbf6;
-  font-size: clamp(22px, 5.8vw, 30px);
+  font-size: clamp(24px, 6.2vw, 32px);
   font-weight: 950;
-  line-height: 1;
-  letter-spacing: -0.04em;
+  line-height: 0.92;
+  letter-spacing: -0.05em;
   white-space: nowrap;
 }
 
 .heroSub {
   color: #9cff42;
-  font-size: clamp(10px, 2.6vw, 13px);
-  font-weight: 900;
-  letter-spacing: 0.05em;
+  font-size: clamp(9px, 2.35vw, 12px);
+  font-weight: 950;
+  letter-spacing: 0.055em;
   line-height: 1;
   margin-bottom: 1px;
-  flex-shrink: 0;
+  white-space: nowrap;
+  flex: 0 0 auto;
 }
 
 .heroRight {
@@ -98,22 +101,22 @@
   flex-direction: column;
   align-items: flex-end;
   gap: 1px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 
 .heroLabel {
-  color: rgba(170, 186, 200, 0.64);
-  font-size: clamp(8.5px, 2.25vw, 10.5px);
-  font-weight: 700;
-  letter-spacing: 0.05em;
+  color: rgba(170, 186, 200, 0.65);
+  font-size: clamp(8px, 2.05vw, 10px);
+  font-weight: 750;
+  letter-spacing: 0.06em;
   white-space: nowrap;
 }
 
 .heroVal {
-  font-size: clamp(15px, 4vw, 21px);
+  font-size: clamp(17px, 4.45vw, 23px);
   font-weight: 950;
-  line-height: 1;
-  letter-spacing: -0.03em;
+  line-height: 0.94;
+  letter-spacing: -0.04em;
   white-space: nowrap;
 }
 
@@ -127,19 +130,17 @@
   text-shadow: 0 0 14px rgba(255, 107, 107, 0.38);
 }
 
-/* ── Row 3: chart ────────────────────────────────────────── */
-
+/* Row 3: chart */
 .chartWrap {
-  flex: 1;
-  position: relative;
+  flex: 1 1 auto;
   min-height: 0;
+  position: relative;
   overflow: hidden;
 }
 
 .chartWrapPaywall {
-  flex: none;
-  height: 96px;
-  flex-shrink: 0;
+  flex: 0 0 112px;
+  height: 112px;
 }
 
 .chartSvg {
@@ -150,7 +151,7 @@
 }
 
 .zeroLine {
-  stroke: rgba(134, 154, 166, 0.32);
+  stroke: rgba(134, 154, 166, 0.30);
   stroke-width: 0.7;
   stroke-dasharray: 3 3;
 }
@@ -160,7 +161,7 @@
   stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(0 0 5px rgba(140, 255, 42, 0.35));
+  filter: drop-shadow(0 0 5px rgba(140, 255, 42, 0.34));
 }
 
 .endDot {
@@ -173,14 +174,13 @@
   filter: drop-shadow(0 0 3px rgba(255, 107, 107, 0.5));
 }
 
-/* absolutely-positioned chart labels — safe with preserveAspectRatio="none" */
 .zeroLabel {
   position: absolute;
   left: 8px;
   transform: translateY(-100%);
-  color: rgba(148, 166, 178, 0.52);
-  font-size: clamp(7.5px, 2vw, 9.5px);
-  font-weight: 600;
+  color: rgba(148, 166, 178, 0.54);
+  font-size: clamp(7px, 1.85vw, 9px);
+  font-weight: 650;
   letter-spacing: 0.04em;
   white-space: nowrap;
   pointer-events: none;
@@ -190,9 +190,9 @@
 .lossLabel {
   position: absolute;
   transform: translateX(-50%);
-  color: rgba(255, 107, 107, 0.8);
-  font-size: clamp(8px, 2.1vw, 10px);
-  font-weight: 700;
+  color: rgba(255, 107, 107, 0.82);
+  font-size: clamp(7px, 1.9vw, 9px);
+  font-weight: 750;
   white-space: nowrap;
   pointer-events: none;
   line-height: 1;
@@ -200,8 +200,8 @@
 
 .finalLabel {
   position: absolute;
-  font-size: clamp(10px, 2.6vw, 13px);
-  font-weight: 900;
+  font-size: clamp(9px, 2.35vw, 12px);
+  font-weight: 950;
   white-space: nowrap;
   pointer-events: none;
   line-height: 1;
@@ -224,34 +224,34 @@
   align-items: center;
   justify-content: center;
   color: rgba(200, 215, 224, 0.38);
-  font-size: clamp(10px, 2.7vw, 13px);
+  font-size: clamp(10px, 2.6vw, 12px);
 }
 
-/* ── Row 4: chips ────────────────────────────────────────── */
-
+/* Row 4: chips */
 .chipsRow {
+  flex: 0 0 20px;
+  height: 20px;
+  min-height: 20px;
   display: flex;
   flex-wrap: nowrap;
+  align-items: center;
   gap: 4px;
   overflow: hidden;
-  flex-shrink: 0;
-  height: 20px;
-  align-items: center;
 }
 
 .chip {
   display: inline-flex;
   align-items: center;
+  max-width: 86px;
   padding: 2px 7px;
   border-radius: 999px;
-  font-size: clamp(9px, 2.4vw, 11px);
-  font-weight: 700;
+  font-size: clamp(8.5px, 2.2vw, 10.5px);
+  font-weight: 750;
   line-height: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 90px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 
 .chipWon {
@@ -270,14 +270,13 @@
   background: rgba(134, 154, 166, 0.12);
   color: rgba(190, 206, 218, 0.48);
   border: 1px solid rgba(134, 154, 166, 0.18);
-  flex-shrink: 0;
 }
 
-/* ── Skeleton ────────────────────────────────────────────── */
-
+/* Skeleton */
 .skeleton {
   width: 100%;
   height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 5px;
@@ -285,38 +284,35 @@
 }
 
 .skeletonRow {
-  height: 11px;
+  flex: 0 0 11px;
   width: 100%;
   border-radius: 4px;
   background: rgba(134, 154, 166, 0.18);
   animation: pulse 1.4s ease-in-out infinite;
-  flex-shrink: 0;
 }
 
 .skeletonHero {
-  height: 30px;
+  flex: 0 0 26px;
   width: 55%;
   border-radius: 4px;
   background: rgba(134, 154, 166, 0.14);
   animation: pulse 1.4s ease-in-out infinite 0.1s;
-  flex-shrink: 0;
 }
 
 .skeletonChart {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   border-radius: 5px;
   background: rgba(134, 154, 166, 0.10);
   animation: pulse 1.4s ease-in-out infinite 0.2s;
-  min-height: 0;
 }
 
 .skeletonChips {
-  height: 20px;
+  flex: 0 0 20px;
   width: 75%;
   border-radius: 4px;
   background: rgba(134, 154, 166, 0.09);
   animation: pulse 1.4s ease-in-out infinite 0.3s;
-  flex-shrink: 0;
 }
 
 @keyframes pulse {
