@@ -827,17 +827,23 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
   const rawSignalBeforeOddsCap = roundNumber(clamp(signalV2Raw, 52, signalCap));
   const finalSignalV2 = roundNumber(clamp(signalV2Raw, 52, calibratedSignalCap));
 
-  // Determine action label based on band default + runtime overrides
-  let action: "ENTER" | "SMALL" | "WATCH" = oddsBand.action;
-  if (selectedOdds > 2.20 && selectedOdds <= 2.70) {
-    // Value Lean: downgrade to SMALL when display confidence below threshold
+  // Determine action label: confidence-aware thresholds per odds band.
+  // Action depends on final displayed Signal Confidence vs band lower guidance.
+  let action: "ENTER" | "SMALL" | "WATCH";
+  if (selectedOdds <= 1.44) {
+    action = finalSignalV2 >= 80 ? "ENTER" : "SMALL";
+  } else if (selectedOdds <= 1.70) {
+    action = finalSignalV2 >= 77 ? "ENTER" : "SMALL";
+  } else if (selectedOdds <= 2.20) {
+    action = finalSignalV2 >= 72 ? "ENTER" : "SMALL";
+  } else if (selectedOdds <= 2.70) {
     action = finalSignalV2 >= 70 ? "ENTER" : "SMALL";
-  } else if (selectedOdds > 2.70 && selectedOdds <= 3.50) {
-    // Underdog Value: always SMALL
-    action = "SMALL";
-  } else if (selectedOdds > 3.50 && selectedOdds <= 5.00) {
-    // Longshot Value: downgrade to WATCH if no trade evidence
+  } else if (selectedOdds <= 3.50) {
+    action = finalSignalV2 >= 63 ? "SMALL" : "WATCH";
+  } else if (selectedOdds <= 5.00) {
     action = (finalSignalV2 >= 58 && !noTradeData) ? "SMALL" : "WATCH";
+  } else {
+    action = "WATCH";
   }
 
   // Persist full formula audit snapshot for post-resolution debugging.
