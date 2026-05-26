@@ -1,0 +1,194 @@
+.card {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow: hidden;
+}
+
+/* paywall variant: self-contained height, not dependent on parent */
+.cardPaywall {
+  height: auto;
+  min-height: 168px;
+  max-height: 224px;
+  gap: 6px;
+}
+
+.topRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  min-width: 0;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.windowLabel {
+  color: rgba(216, 226, 234, 0.84);
+  font-size: clamp(11px, 3vw, 15px);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.winRatio {
+  color: #9cff42;
+  font-size: clamp(11px, 3vw, 15px);
+  font-weight: 900;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+/* compact: fills remaining parent height via flex */
+.chartWrap {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* paywall: fixed chart height, independent of flex chain */
+.chartWrapPaywall {
+  flex: none;
+  height: 112px;
+  flex-shrink: 0;
+}
+
+.chartSvg {
+  width: 100%;
+  height: 100%;
+  display: block;
+  overflow: visible;
+}
+
+.zeroLine {
+  stroke: rgba(134, 154, 166, 0.30);
+  stroke-width: 0.7;
+  stroke-dasharray: 3 3;
+}
+
+.returnLine {
+  fill: none;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 5px rgba(140, 255, 42, 0.35));
+}
+
+.endDot {
+  fill: #9cff42;
+  filter: drop-shadow(0 0 4px rgba(156, 255, 66, 0.8));
+}
+
+.retBadge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  font-size: clamp(13px, 3.6vw, 20px);
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+.retPos {
+  color: #9cff42;
+  text-shadow: 0 0 12px rgba(156, 255, 66, 0.5);
+}
+
+.retNeg {
+  color: #ff6b6b;
+  text-shadow: 0 0 12px rgba(255, 107, 107, 0.4);
+}
+
+.noData {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(200, 215, 224, 0.42);
+  font-size: clamp(11px, 3vw, 14px);
+  overflow: hidden;
+}
+
+/* chips row — future mini-results strip; never expands card height */
+.chipsRow {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow: hidden;
+  flex-shrink: 0;
+  height: 20px;
+  align-items: center;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 80px;
+  flex-shrink: 0;
+}
+
+.chipWon {
+  background: rgba(156, 255, 66, 0.12);
+  color: #9cff42;
+  border: 1px solid rgba(156, 255, 66, 0.28);
+}
+
+.chipLost {
+  background: rgba(255, 107, 107, 0.10);
+  color: #ff8080;
+  border: 1px solid rgba(255, 107, 107, 0.24);
+}
+
+.chipMore {
+  background: rgba(134, 154, 166, 0.14);
+  color: rgba(200, 215, 224, 0.6);
+  border: 1px solid rgba(134, 154, 166, 0.22);
+  flex-shrink: 0;
+}
+
+.skeleton {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.skeletonLabel {
+  height: 12px;
+  width: 80px;
+  border-radius: 4px;
+  background: rgba(134, 154, 166, 0.18);
+  animation: pulse 1.4s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+.skeletonChart {
+  flex: 1;
+  border-radius: 6px;
+  background: rgba(134, 154, 166, 0.12);
+  animation: pulse 1.4s ease-in-out infinite 0.2s;
+  min-height: 0;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}

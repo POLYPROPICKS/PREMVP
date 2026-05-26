@@ -2,6 +2,8 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import styles from './PassOfferModal.module.css';
+import SignalWeekResultsCard from '../signal-week-results/SignalWeekResultsCard';
+import type { WeekResultsCard } from '../signal-week-results/types';
 
 type InternalPlanId = 'premium_7day_weekly' | 'premium_monthly';
 
@@ -79,6 +81,8 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
+  const [weekCard, setWeekCard] = useState<WeekResultsCard | null>(null);
+  const [weekCardLoading, setWeekCardLoading] = useState(false);
 
   const currentPlan = useMemo(() => getPlan(selectedPlan), [selectedPlan]);
 
@@ -127,6 +131,22 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
       setCheckoutError(null);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (weekCard) return;
+    setWeekCardLoading(true);
+    fetch('/api/signals/resolved?mode=latest&days=7&limit=7')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        const card = json?.weekResultsCard;
+        if (card?.cardType === 'signal-week-results') {
+          setWeekCard(card as WeekResultsCard);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setWeekCardLoading(false));
+  }, [isOpen, weekCard]);
 
   if (!isOpen) return null;
 
@@ -213,40 +233,7 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
             </section>
 
             <section className={styles.chartCard} aria-label="Past 7 days signal chart">
-              <div className={styles.chartLabel}>Past 7 days</div>
-              <div className={styles.chartBody}>
-                <svg className={styles.chartSvg} viewBox="0 0 220 84" preserveAspectRatio="none" aria-hidden="true">
-                  <defs>
-                    <linearGradient id="paywallGreenLine" x1="0" x2="1" y1="0" y2="0">
-                      <stop offset="0" stopColor="#72ff48" stopOpacity="0.72" />
-                      <stop offset="1" stopColor="#a8ff32" stopOpacity="1" />
-                    </linearGradient>
-                    <linearGradient id="paywallCyanLine" x1="0" x2="1" y1="0" y2="0">
-                      <stop offset="0" stopColor="#28d4ff" stopOpacity="0.72" />
-                      <stop offset="1" stopColor="#54dfff" stopOpacity="1" />
-                    </linearGradient>
-                  </defs>
-                  <path className={styles.gridLine} d="M0 18H220M0 38H220M0 58H220M26 0V84M55 0V84M84 0V84M113 0V84M142 0V84M171 0V84M200 0V84" />
-                  <path className={styles.axisLine} d="M0 74H220" />
-                  <path className={styles.cyanLine} d="M0 68 L12 65 L24 64 L36 60 L48 59 L60 57 L72 54 L84 53 L96 50 L108 49 L120 48 L132 46 L144 44 L156 43 L168 41 L180 39 L192 37 L204 35 L218 30" />
-                  <path className={styles.greenLine} d="M0 60 L12 56 L24 54 L36 50 L48 47 L60 44 L72 39 L84 36 L96 34 L108 30 L120 27 L132 24 L144 19 L156 21 L168 18 L180 17 L192 15 L204 12 L218 5" />
-                  <circle cx="218" cy="5" r="2.4" className={styles.greenPoint} />
-                  <circle cx="218" cy="30" r="2.2" className={styles.cyanPoint} />
-                </svg>
-
-                <div className={styles.chartLegend}>
-                  <div>
-                    <span className={styles.greenBullet} />
-                    <span>Middle Confidence</span>
-                    <strong>+240%</strong>
-                  </div>
-                  <div>
-                    <span className={styles.cyanBullet} />
-                    <span>High Confidence</span>
-                    <strong>+170%</strong>
-                  </div>
-                </div>
-              </div>
+              <SignalWeekResultsCard data={weekCard} loading={weekCardLoading} variant="compact" />
             </section>
 
             <section className={styles.benefits} aria-label="Premium benefits">
