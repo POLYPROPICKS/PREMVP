@@ -141,7 +141,7 @@
   z-index: 1;
   height: calc(100dvh - clamp(40px, 10.8vw, 50px));
   display: grid;
-  grid-template-rows: auto auto auto 1fr;
+  grid-template-rows: auto auto auto 1fr auto;
   row-gap: clamp(4px, 1.1vw, 6px);
   padding: clamp(6px, 1.6vw, 9px) clamp(14px, 3.8vw, 22px) clamp(8px, 2vw, 12px);
   overflow: hidden;
@@ -179,37 +179,38 @@
 }
 
 .chartCard {
-  height: clamp(164px, 44vw, 202px);
-  border-radius: clamp(13px, 3.5vw, 18px);
-  padding: clamp(8px, 2vw, 11px) clamp(9px, 2.4vw, 14px);
+  height: clamp(120px, 32vw, 140px);
+  border-radius: clamp(12px, 3.2vw, 16px);
+  padding: clamp(7px, 1.8vw, 10px) clamp(9px, 2.4vw, 14px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
 }
 
 .benefits {
-  display: flex;
-  flex-direction: column;
-  gap: clamp(3px, 0.8vw, 5px);
-  padding: clamp(2px, 0.5vw, 3px) 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: clamp(3px, 0.7vw, 4px) clamp(8px, 2.1vw, 12px);
+  padding: clamp(1px, 0.3vw, 2px) 0;
 }
 
 .benefits div {
   display: flex;
-  align-items: center;
-  gap: clamp(6px, 1.6vw, 9px);
-  color: rgba(212, 222, 230, 0.72);
-  font-size: clamp(10px, 2.65vw, 13px);
-  line-height: 1.1;
+  align-items: flex-start;
+  gap: 5px;
+  color: rgba(210, 220, 230, 0.68);
+  font-size: clamp(9px, 2.35vw, 11.5px);
+  line-height: 1.2;
 }
 
 .benefits span {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
   background: #9cff42;
-  box-shadow: 0 0 6px rgba(156, 255, 66, 0.65);
+  box-shadow: 0 0 5px rgba(156, 255, 66, 0.6);
   flex: 0 0 auto;
+  margin-top: 4px;
 }
 
 .plans {
@@ -459,39 +460,23 @@
   .offerView {
     padding-left: 12px;
     padding-right: 12px;
-    row-gap: 5px;
-  }
-
-  .heroTitle {
-    font-size: 29px;
+    row-gap: 4px;
   }
 
   .chartCard {
-    height: 158px;
-  }
-
-  .benefits {
-    min-height: 46px;
-  }
-
-  .benefits div {
-    font-size: 10.5px;
+    height: 112px;
   }
 
   .planCard {
-    min-height: 54px;
+    min-height: 42px;
   }
 
   .selectedPlan {
-    min-height: 66px;
+    min-height: 50px;
   }
 
   .primaryCta {
-    min-height: 45px;
-    font-size: 16px;
-  }
-
-  .legalText {
-    font-size: 9px;
+    min-height: 44px;
+    font-size: 15px;
   }
 }
