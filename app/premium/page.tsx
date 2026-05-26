@@ -293,7 +293,7 @@ export default async function PremiumPage({
 
       <div className={styles.body}>
         <section className={styles.resolvedPreviewBlock}>
-          <ResolvedSignalsCarousel />
+          <ResolvedSignalsCarousel variant="premium" />
         </section>
         <FilterRow active={activeFilter} counts={filterCounts} />
         <p className={styles.sectionLabel}>Live premium signals</p>

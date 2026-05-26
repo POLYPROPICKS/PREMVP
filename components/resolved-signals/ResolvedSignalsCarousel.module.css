@@ -23,6 +23,17 @@
   gap: 3px;
 }
 
+/* Premium variant — compact strip, no header, no dots */
+.sectionPremium {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border-top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
 .headerTitle {
   font-size: 13px;
   font-weight: 700;

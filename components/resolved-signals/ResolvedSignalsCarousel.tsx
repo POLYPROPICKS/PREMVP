@@ -47,7 +47,12 @@ function applyClientFilter(raw: ApiResolvedSignal[]): ApiResolvedSignal[] {
   return out;
 }
 
-export default function ResolvedSignalsCarousel() {
+interface ResolvedSignalsCarouselProps {
+  variant?: 'landing' | 'premium';
+}
+
+export default function ResolvedSignalsCarousel({ variant = 'landing' }: ResolvedSignalsCarouselProps) {
+  const isPremium = variant === 'premium';
   const carouselRef = useRef<HTMLDivElement>(null);
   const [activeIndex, setActiveIndex] = useState(0);
   const [signals, setSignals] = useState<ApiResolvedSignal[]>([]);
@@ -85,11 +90,13 @@ export default function ResolvedSignalsCarousel() {
   if (status === 'error' || status === 'empty') return null;
 
   return (
-    <div className={styles.section}>
-      <div className={styles.header}>
-        <div className={styles.headerTitle}>Latest Resolved Signals</div>
-        <div className={styles.headerSubtitle}>Tracking is live · last 7 days</div>
-      </div>
+    <section className={isPremium ? styles.sectionPremium : styles.section}>
+      {!isPremium && (
+        <div className={styles.header}>
+          <div className={styles.headerTitle}>Latest Resolved Signals</div>
+          <div className={styles.headerSubtitle}>Tracking is live · last 7 days</div>
+        </div>
+      )}
 
       <div
         className={styles.carousel}
@@ -101,7 +108,7 @@ export default function ResolvedSignalsCarousel() {
         ))}
       </div>
 
-      {signals.length > 1 && (
+      {!isPremium && signals.length > 1 && (
         <div className={styles.dots} aria-hidden="true">
           {signals.map((_, i) => (
             <div
@@ -111,6 +118,6 @@ export default function ResolvedSignalsCarousel() {
           ))}
         </div>
       )}
-    </div>
+    </section>
   );
 }
