@@ -1,0 +1,378 @@
+/* ============================================================
+   ResolvedSignalCard v2 — CSS Module
+   PolyProPicks · Resolved Signals Carousel
+   All values sourced from design-tokens.css / reference.html
+   ============================================================ */
+
+/* ── Card shell ─────────────────────────────────────────────── */
+.card {
+  flex-shrink: 0;
+  width: 330px;
+  scroll-snap-align: start;
+  border-radius: 18px;
+  border: 1px solid rgba(0, 212, 255, 0.13);
+  background: #0a1020;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-self: flex-start;
+  font-family: -apple-system, "SF Pro Display", BlinkMacSystemFont, "Segoe UI",
+    Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.cardWon {
+  border-color: rgba(0, 255, 136, 0.22);
+  box-shadow: 0 0 20px rgba(0, 255, 136, 0.07), 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+.cardLost {
+  border-color: rgba(224, 85, 64, 0.18);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.5);
+}
+
+/* ── Zone 1: Top bar ────────────────────────────────────────── */
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 9px 14px 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  gap: 8px;
+}
+
+.resultPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  border-radius: 20px;
+  padding: 4px 11px;
+  flex-shrink: 0;
+}
+
+.resultPillWon {
+  background: #00ff88;
+  color: #041208;
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+}
+
+.resultPillLost {
+  background: rgba(224, 85, 64, 0.12);
+  border: 1px solid rgba(224, 85, 64, 0.3);
+  color: #e05540;
+}
+
+.sportBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #00d4ff;
+  text-align: right;
+}
+
+.sportBadgeMuted {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Zone 2: Score strip ────────────────────────────────────── */
+.scoreStrip {
+  padding: 8px 14px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.scoreRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.teamHome,
+.teamAway {
+  font-size: 13px;
+  font-weight: 700;
+  flex: 1;
+  letter-spacing: -0.005em;
+  color: #ffffff;
+}
+
+.teamAway {
+  text-align: right;
+}
+
+.teamWinner {
+  color: #00ff88;
+}
+
+.teamLoser {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.scoreBox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  padding: 4px 10px;
+  flex-shrink: 0;
+}
+
+.scoreNum {
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+
+.scoreNumWinner {
+  color: #00ff88;
+}
+
+.scoreNumLoser {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.scoreSep {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.4);
+  font-weight: 400;
+}
+
+.scoreQualifier {
+  font-size: 9px;
+  color: #ffaa00;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin-left: 4px;
+}
+
+/* Tennis sets (uses same scoreNum sizes but this is a variant) */
+.scoreSets {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.scoreSetsWinner {
+  color: #00ff88;
+}
+
+.scoreSetsLoser {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+/* Pick row */
+.pickRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pickLabel {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.pickValue {
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.005em;
+}
+
+.pickValueMuted {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.pickOdds {
+  font-size: 11px;
+  font-weight: 700;
+  color: #00d4ff;
+  margin-left: auto;
+}
+
+.pickOddsMuted {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+/* ── Zone 3: Social proof row ───────────────────────────────── */
+.socialRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 14px 8px;
+}
+
+.socialRowWon {
+  background: rgba(255, 170, 0, 0.04);
+  border-top: 1px solid rgba(255, 170, 0, 0.1);
+}
+
+.socialRowLost {
+  background: rgba(224, 85, 64, 0.03);
+  border-top: 1px solid rgba(224, 85, 64, 0.12);
+}
+
+.socialLeft {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.socialIcon {
+  font-size: 13px;
+  line-height: 1;
+}
+
+.socialText {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+  letter-spacing: -0.005em;
+}
+
+.socialText strong {
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.socialReturn {
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+.socialReturnPos {
+  color: #00ff88;
+}
+
+.socialReturnNeg {
+  color: #e05540;
+}
+
+/* ── Zone 4: Accordion trigger ──────────────────────────────── */
+.accordionTrigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  border-left: 0;
+  border-right: 0;
+  border-bottom: 0;
+  cursor: pointer;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.4);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: transparent;
+  width: 100%;
+  text-align: center;
+  font-family: inherit;
+  transition: color 0.2s;
+  -webkit-font-smoothing: antialiased;
+}
+
+.accordionTrigger:hover {
+  color: #00d4ff;
+}
+
+.chevron {
+  font-size: 9px;
+  line-height: 1;
+  transition: transform 0.25s ease;
+  display: inline-block;
+}
+
+.chevronOpen {
+  transform: rotate(180deg);
+}
+
+/* ── Zone 5: Accordion body ─────────────────────────────────── */
+.accordionBody {
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.3s ease;
+}
+
+.accordionBodyOpen {
+  max-height: 220px;
+}
+
+.accordionInner {
+  padding: 8px 14px 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.confRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.confLabel {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.confVal {
+  font-size: 14px;
+  font-weight: 800;
+  color: #ffaa00;
+  letter-spacing: -0.02em;
+}
+
+/* Trust metric rows */
+.trustRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trustName {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.7);
+  width: 110px;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+.trustBarWrap {
+  flex: 1;
+  height: 3px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.trustBarFill {
+  height: 100%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #00d4ff, rgba(0, 212, 255, 0.4));
+}
+
+.trustNum {
+  font-size: 10px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  width: 24px;
+  text-align: right;
+}

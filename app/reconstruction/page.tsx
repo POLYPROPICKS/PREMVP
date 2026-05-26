@@ -18,6 +18,7 @@ import {
 import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
 import PassOfferModal from '@/components/modals/PassOfferModal';
+import ResolvedSignalsCarousel from '@/components/resolved-signals/ResolvedSignalsCarousel';
 
 type MarketEvidenceSource = NonNullable<LandingPair['marketSources']>[number];
 
@@ -315,6 +316,8 @@ export default function ReconstructionPage() {
           )}
         </div>
       </section>
+
+      <ResolvedSignalsCarousel />
 
       {isModalOpen && (
         <UnlockModal

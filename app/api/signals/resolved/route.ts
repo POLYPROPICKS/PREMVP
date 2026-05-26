@@ -1,6 +1,6 @@
 // GET /api/signals/resolved
 // Read-only. Returns deduped resolved signals for landing carousel.
-// Dedupe key: condition_id + selected_outcome (earliest snapshot = representative).
+// mode=latest: last N days, max 7 cards, max 1 lost, no push/refund/tie.
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -11,6 +11,9 @@ const INTERNAL_FETCH_LIMIT = 200;
 const DEFAULT_LIMIT = 10;
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 25;
+const LATEST_MAX_CARDS = 7;
+const LATEST_MAX_LOST = 1;
+const LATEST_DEFAULT_DAYS = 7;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -79,6 +82,70 @@ function europeanOdds(entryPrice: number | null): number | null {
   return Math.round((1 / entryPrice) * 100) / 100;
 }
 
+function decimalToAmerican(decimalOdds: number | null): string | null {
+  if (!decimalOdds || !Number.isFinite(decimalOdds) || decimalOdds <= 1) return null;
+  if (decimalOdds >= 2) return `+${Math.round((decimalOdds - 1) * 100)}`;
+  return `${Math.round(-100 / (decimalOdds - 1))}`;
+}
+
+/** Extract best market activity proxy from diagnostics/premium_signal.
+ *  Priority: totalVolume > volume > recentTradeCash > maxTradeCash >
+ *            selectedTradeCount > totalTradeCount > snapshotRows */
+function extractActivityScore(row: DbRow, snapshotRows: number): {
+  score: number;
+  label: string | null;
+} {
+  const dx = row.diagnostics as Record<string, unknown> | null;
+  const ps = row.premium_signal as Record<string, unknown> | null;
+
+  const totalVolume = safeNum(dx?.totalVolume) ?? safeNum(ps?.totalVolume);
+  if (totalVolume !== null) {
+    const label = totalVolume >= 1000
+      ? `$${Math.round(totalVolume / 1000)}K market activity`
+      : `$${Math.round(totalVolume)} market activity`;
+    return { score: totalVolume, label };
+  }
+
+  const volume = safeNum(dx?.volume) ?? safeNum(ps?.volume);
+  if (volume !== null) {
+    const label = volume >= 1000
+      ? `$${Math.round(volume / 1000)}K market activity`
+      : `$${Math.round(volume)} market activity`;
+    return { score: volume, label };
+  }
+
+  const recentTradeCash = safeNum(dx?.recentTradeCash);
+  if (recentTradeCash !== null) {
+    const label = recentTradeCash >= 1000
+      ? `$${Math.round(recentTradeCash / 1000)}K recent trades`
+      : `$${Math.round(recentTradeCash)} recent trades`;
+    return { score: recentTradeCash, label };
+  }
+
+  const maxTradeCash = safeNum(dx?.maxTradeCash);
+  if (maxTradeCash !== null) {
+    return { score: maxTradeCash, label: null };
+  }
+
+  const selectedTradeCount = safeNum(dx?.selectedTradeCount);
+  if (selectedTradeCount !== null) {
+    return { score: selectedTradeCount, label: `${Math.round(selectedTradeCount)} market updates tracked` };
+  }
+
+  const totalTradeCount = safeNum(dx?.totalTradeCount);
+  if (totalTradeCount !== null) {
+    return { score: totalTradeCount, label: `${Math.round(totalTradeCount)} market updates tracked` };
+  }
+
+  // Fallback: snapshotRows
+  return {
+    score: snapshotRows,
+    label: snapshotRows > 1 ? `${snapshotRows} signal snapshots` : `${snapshotRows} signal snapshot`,
+  };
+}
+
+const PUSH_RESULTS = new Set(["push", "refund", "tie", "void", "cancelled", "no_contest"]);
+
 // ── DB row type ───────────────────────────────────────────────────────────────
 
 interface DbRow {
@@ -101,9 +168,15 @@ interface DbRow {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
 
+  const mode = searchParams.get("mode") ?? "";
+  const isLatestMode = mode === "latest";
+
+  const rawDays = parseInt(searchParams.get("days") ?? String(LATEST_DEFAULT_DAYS), 10);
+  const windowDays = Number.isFinite(rawDays) && rawDays > 0 ? rawDays : LATEST_DEFAULT_DAYS;
+
   const rawLimit = parseInt(searchParams.get("limit") ?? String(DEFAULT_LIMIT), 10);
   const limit = Number.isFinite(rawLimit)
-    ? Math.min(Math.max(rawLimit, MIN_LIMIT), MAX_LIMIT)
+    ? Math.min(Math.max(rawLimit, MIN_LIMIT), isLatestMode ? LATEST_MAX_CARDS : MAX_LIMIT)
     : DEFAULT_LIMIT;
 
   const supabaseUrl = process.env.SUPABASE_URL;
@@ -119,7 +192,8 @@ export async function GET(request: Request) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const { data: rows, error: queryError } = await supabase
+  // Build query — for latest mode, constrain to date window at DB level
+  let query = supabase
     .from("generated_signal_pairs")
     .select(
       "id, created_at, resolved_at, condition_id, selected_outcome, winning_outcome, " +
@@ -129,6 +203,13 @@ export async function GET(request: Request) {
     .not("signal_result", "is", null)
     .order("resolved_at", { ascending: false })
     .limit(INTERNAL_FETCH_LIMIT);
+
+  if (isLatestMode) {
+    const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+    query = query.gte("resolved_at", cutoff);
+  }
+
+  const { data: rows, error: queryError } = await query;
 
   if (queryError) {
     return NextResponse.json(
@@ -148,6 +229,14 @@ export async function GET(request: Request) {
           sampleSizeStatus: "early",
           showPerformanceClaim: false,
           message: "Tracking is live. Early sample, not performance guarantee.",
+          ...(isLatestMode && {
+            latestMode: true,
+            windowDays,
+            maxCards: LATEST_MAX_CARDS,
+            maxLost: LATEST_MAX_LOST,
+            excludePush: true,
+            selectionRule: "last_7d_highest_activity_max_one_loss",
+          }),
         },
         signals: [],
       },
@@ -174,38 +263,39 @@ export async function GET(request: Request) {
     returnPct: number | null;
     entryPrice: number | null;
     europeanOdds: number | null;
+    americanOdds: string | null;
     signalConfidence: number | null;
     trustMetrics: { smartMoney: number | null; whaleVsPublicMoney: number | null; preEventScoreAI: number | null };
     snapshotRows: number;
+    marketActivityScore: number | null;
+    marketActivityLabel: string | null;
     firstSignalCreatedAt: string;
     lastSignalCreatedAt: string;
     resolvedAt: string;
     metricFormulaVersion: string | null;
   }
 
-  const signals: ResolvedSignal[] = [];
+  const allSignals: ResolvedSignal[] = [];
   let wonCount = 0, lostCount = 0, pushCount = 0;
 
   for (const [, group] of groups) {
-    // sort by created_at asc — first snapshot = representative
     group.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
     const rep = group[0];
     const lastRow = group[group.length - 1];
 
-    // resolved_at: latest non-null across group
     const resolvedAt =
-      group
-        .map((r) => r.resolved_at)
-        .filter(Boolean)
-        .sort()
-        .reverse()[0] ?? rep.resolved_at ?? rep.created_at;
+      group.map((r) => r.resolved_at).filter(Boolean).sort().reverse()[0] ??
+      rep.resolved_at ?? rep.created_at;
 
     const result = rep.signal_result ?? "unknown";
     if (result === "won") wonCount++;
     else if (result === "lost") lostCount++;
-    else if (result === "push") pushCount++;
+    else pushCount++;
 
-    signals.push({
+    const decOdds = europeanOdds(rep.entry_price_num ?? null);
+    const { score: actScore, label: actLabel } = extractActivityScore(rep, group.length);
+
+    allSignals.push({
       id: rep.id,
       conditionId: rep.condition_id ?? "",
       eventTitle: extractEventTitle(rep),
@@ -214,10 +304,13 @@ export async function GET(request: Request) {
       result,
       returnPct: rep.realized_return_pct ?? null,
       entryPrice: rep.entry_price_num ?? null,
-      europeanOdds: europeanOdds(rep.entry_price_num ?? null),
+      europeanOdds: decOdds,
+      americanOdds: decimalToAmerican(decOdds),
       signalConfidence: extractConfidence(rep),
       trustMetrics: extractTrustMetrics(rep),
       snapshotRows: group.length,
+      marketActivityScore: actScore,
+      marketActivityLabel: actLabel,
       firstSignalCreatedAt: rep.created_at,
       lastSignalCreatedAt: lastRow.created_at,
       resolvedAt,
@@ -225,16 +318,42 @@ export async function GET(request: Request) {
     });
   }
 
-  // Sort by resolvedAt desc, then apply limit
-  signals.sort((a, b) => new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime());
-  const paginated = signals.slice(0, limit);
+  let signals = allSignals;
+
+  if (isLatestMode) {
+    // Exclude push/refund/tie/void
+    signals = signals.filter((s) => !PUSH_RESULTS.has(s.result));
+
+    // Sort by marketActivityScore desc, then resolvedAt desc
+    signals.sort((a, b) => {
+      const scoreDiff = (b.marketActivityScore ?? 0) - (a.marketActivityScore ?? 0);
+      if (scoreDiff !== 0) return scoreDiff;
+      return new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime();
+    });
+
+    // Apply founder rules: max 7 total, max 1 lost
+    const selected: ResolvedSignal[] = [];
+    let lostIncluded = 0;
+    for (const s of signals) {
+      if (selected.length >= LATEST_MAX_CARDS) break;
+      if (s.result === "lost") {
+        if (lostIncluded >= LATEST_MAX_LOST) continue;
+        lostIncluded++;
+      }
+      selected.push(s);
+    }
+    signals = selected;
+  } else {
+    signals.sort((a, b) => new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime());
+    signals = signals.slice(0, limit);
+  }
 
   return NextResponse.json(
     {
       ok: true,
       generatedAt: new Date().toISOString(),
       summary: {
-        uniqueResolved: signals.length,
+        uniqueResolved: allSignals.length,
         snapshotRows: rows.length,
         won: wonCount,
         lost: lostCount,
@@ -242,8 +361,16 @@ export async function GET(request: Request) {
         sampleSizeStatus: "early",
         showPerformanceClaim: false,
         message: "Tracking is live. Early sample, not performance guarantee.",
+        ...(isLatestMode && {
+          latestMode: true,
+          windowDays,
+          maxCards: LATEST_MAX_CARDS,
+          maxLost: LATEST_MAX_LOST,
+          excludePush: true,
+          selectionRule: "last_7d_highest_activity_max_one_loss",
+        }),
       },
-      signals: paginated,
+      signals,
     },
     { headers: { "Cache-Control": "no-store" } }
   );

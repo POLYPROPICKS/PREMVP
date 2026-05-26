@@ -11,10 +11,11 @@
   min-height: 100vh;
   background: #02060d;
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
   padding: 12px 0;
-  overflow: hidden;
+  overflow-x: hidden;
 }
 
 .proofMarker {
@@ -24,17 +25,18 @@
 .viewport {
   width: 428px;
   max-width: 428px;
-  height: 926px;
-  max-height: 926px;
+  height: auto;
   margin: 0 auto;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: visible;
 }
 
 .screen {
   width: 428px;
-  height: 926px;
   max-width: 428px;
-  overflow: hidden;
+  height: auto;
+  overflow-x: hidden;
+  overflow-y: visible;
   position: relative;
   padding-bottom: 0;
 }
