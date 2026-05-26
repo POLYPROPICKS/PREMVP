@@ -10,11 +10,12 @@ interface Props {
 }
 
 const SVG_W = 220;
-const SVG_H = 78;
+const SVG_H = 92;
 const PAD_X = 12;
-const PAD_Y_TOP = 16;
-const PAD_Y_BOT = 10;
-const MARGIN = 0.12;
+const PAD_Y_TOP = 18;
+const PAD_Y_BOT = 16;
+const MARGIN = 0.14;
+const MAX_CHIPS = 5;
 
 interface VisPt {
   x: number;
@@ -23,36 +24,14 @@ interface VisPt {
   result: 'won' | 'lost' | 'baseline';
 }
 
-function buildChart(apiPts: WeekResultsCard['paywallChart']['points']): {
-  pts: VisPt[];
-  zeroY: number;
-  pathD: string;
-} {
-  // prepend visual baseline 0 — never mutates API data
-  const raw = [
-    { cumRet: 0, result: 'baseline' as const },
-    ...apiPts.map((p) => ({ cumRet: p.cumulativeReturnPct, result: p.result as 'won' | 'lost' })),
-  ];
-  const vals = raw.map((p) => p.cumRet);
-  const rawMin = Math.min(...vals);
-  const rawMax = Math.max(...vals);
-  const rng = rawMax - rawMin || 1;
-  const dMin = rawMin - rng * MARGIN;
-  const dMax = rawMax + rng * MARGIN;
-  const dRng = dMax - dMin;
-  const toX = (i: number) =>
-    raw.length === 1 ? SVG_W / 2 : PAD_X + (i / (raw.length - 1)) * (SVG_W - PAD_X * 2);
-  const toY = (v: number) =>
-    SVG_H - PAD_Y_BOT - ((v - dMin) / dRng) * (SVG_H - PAD_Y_TOP - PAD_Y_BOT);
-  const pts: VisPt[] = raw.map((p, i) => ({
-    x: toX(i),
-    y: toY(p.cumRet),
-    cumRet: p.cumRet,
-    result: p.result,
-  }));
-  const zeroY = toY(0);
-  const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
-  return { pts, zeroY, pathD };
+interface Segment {
+  d: string;
+  result: 'won' | 'lost';
+}
+
+interface FuturePt {
+  x: number;
+  y: number;
 }
 
 function fmtRet(v: number): string {
@@ -60,7 +39,57 @@ function fmtRet(v: number): string {
   return (r >= 0 ? '+' : '') + r + '%';
 }
 
-const MAX_CHIPS = 5;
+function buildChart(apiPts: WeekResultsCard['paywallChart']['points']): {
+  pts: VisPt[];
+  zeroY: number;
+  segments: Segment[];
+  futurePts: FuturePt[];
+} {
+  const raw = [
+    { cumRet: 0, result: 'baseline' as const },
+    ...apiPts.map((p) => ({ cumRet: p.cumulativeReturnPct, result: p.result })),
+  ];
+
+  const vals = raw.map((p) => p.cumRet);
+  const rawMin = Math.min(0, ...vals);
+  const rawMax = Math.max(0, ...vals);
+  const rng = rawMax - rawMin || 1;
+  const dMin = rawMin - rng * MARGIN;
+  const dMax = rawMax + rng * MARGIN;
+  const dRng = dMax - dMin;
+
+  const futureCount = apiPts.length > 0 && apiPts.length < 3 ? 2 : 0;
+  const slotCount = Math.max(2, raw.length + futureCount);
+
+  const toX = (i: number) => PAD_X + (i / (slotCount - 1)) * (SVG_W - PAD_X * 2);
+  const toY = (v: number) =>
+    SVG_H - PAD_Y_BOT - ((v - dMin) / dRng) * (SVG_H - PAD_Y_TOP - PAD_Y_BOT);
+
+  const pts: VisPt[] = raw.map((p, i) => ({
+    x: toX(i),
+    y: toY(p.cumRet),
+    cumRet: p.cumRet,
+    result: p.result,
+  }));
+
+  const segments: Segment[] = [];
+  for (let i = 1; i < pts.length; i += 1) {
+    const prev = pts[i - 1];
+    const cur = pts[i];
+    segments.push({
+      d: `M${prev.x.toFixed(1)} ${prev.y.toFixed(1)} L${cur.x.toFixed(1)} ${cur.y.toFixed(1)}`,
+      result: cur.result === 'lost' ? 'lost' : 'won',
+    });
+  }
+
+  const zeroY = toY(0);
+  const futurePts: FuturePt[] = Array.from({ length: futureCount }, (_, i) => ({
+    x: toX(raw.length + i),
+    y: zeroY,
+  }));
+
+  return { pts, zeroY, segments, futurePts };
+}
 
 export default function SignalWeekResultsCard({ data, loading = false, variant = 'compact' }: Props) {
   if (loading || !data) {
@@ -81,23 +110,17 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
   const retLabel = finalRet !== null ? fmtRet(finalRet) : null;
 
   const hasChart = apiPts.length > 0;
-  const { pts: visPts, zeroY, pathD } = hasChart
+  const { pts: visPts, zeroY, segments, futurePts } = hasChart
     ? buildChart(apiPts)
-    : { pts: [] as VisPt[], zeroY: SVG_H / 2, pathD: '' };
+    : { pts: [] as VisPt[], zeroY: SVG_H / 2, segments: [] as Segment[], futurePts: [] as FuturePt[] };
 
   const finalVisPt = visPts.length > 0 ? visPts[visPts.length - 1] : null;
-
-  // find the deepest loss point (not baseline, not final)
-  const minIdx =
-    visPts.length > 2
-      ? visPts
-          .slice(1, -1)
-          .reduce((bi, p, i) => (p.cumRet < visPts.slice(1, -1)[bi].cumRet ? i : bi), 0) + 1
-      : -1;
-  const minVisPt = minIdx > 0 ? visPts[minIdx] : null;
+  const innerPts = visPts.slice(1);
+  const minVisPt = innerPts.length > 0
+    ? innerPts.reduce((best, p) => (p.cumRet < best.cumRet ? p : best), innerPts[0])
+    : null;
   const showMinLabel = minVisPt !== null && minVisPt.cumRet < 0;
 
-  // %-based helpers for absolutely-positioned labels (work with preserveAspectRatio="none")
   const xPct = (x: number) => `${((x / SVG_W) * 100).toFixed(1)}%`;
   const yPct = (y: number) => `${((y / SVG_H) * 100).toFixed(1)}%`;
 
@@ -110,8 +133,6 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
 
   return (
     <div className={[styles.card, variant === 'paywall' ? styles.cardPaywall : ''].join(' ').trim()}>
-
-      {/* Row 1: status bar */}
       <div className={styles.topRow}>
         <span className={styles.topLive}>
           <span className={styles.liveDot} aria-hidden="true" />
@@ -119,7 +140,6 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
         </span>
       </div>
 
-      {/* Row 2: hero metrics */}
       <div className={styles.heroRow}>
         <div className={styles.heroLeft}>
           <span className={styles.heroMetric}>
@@ -127,22 +147,17 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
           </span>
           <span className={styles.heroSub}>WON</span>
         </div>
+
         {retLabel !== null && (
           <div className={styles.heroRight}>
             <span className={styles.heroLabel}>CUMULATIVE P&amp;L</span>
-            <span
-              className={[
-                styles.heroVal,
-                isPositive ? styles.heroValPos : styles.heroValNeg,
-              ].join(' ')}
-            >
+            <span className={[styles.heroVal, isPositive ? styles.heroValPos : styles.heroValNeg].join(' ')}>
               {retLabel}
             </span>
           </div>
         )}
       </div>
 
-      {/* Row 3: chart */}
       <div className={wrapCls}>
         {!hasChart ? (
           <div className={styles.noData}>Signal history building…</div>
@@ -154,15 +169,6 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
               preserveAspectRatio="none"
               aria-hidden="true"
             >
-              <defs>
-                <clipPath id="wrcClipPos">
-                  <rect x="0" y="0" width={SVG_W} height={zeroY} />
-                </clipPath>
-                <clipPath id="wrcClipNeg">
-                  <rect x="0" y={zeroY.toFixed(1)} width={SVG_W} height={SVG_H} />
-                </clipPath>
-              </defs>
-              {/* zero dashed baseline */}
               <line
                 x1={PAD_X}
                 y1={zeroY.toFixed(1)}
@@ -170,64 +176,72 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
                 y2={zeroY.toFixed(1)}
                 className={styles.zeroLine}
               />
-              {/* cumulative return path — positive leg cyan, negative leg red */}
-              {pathD && (
-                <>
-                  <path d={pathD} className={styles.returnLine} stroke="#00d4ff" clipPath="url(#wrcClipPos)" />
-                  <path d={pathD} className={styles.returnLine} stroke="#ff3355" clipPath="url(#wrcClipNeg)" />
-                </>
-              )}
-              {/* loss dot */}
-              {showMinLabel && minVisPt && (
-                <circle
-                  cx={minVisPt.x.toFixed(1)}
-                  cy={minVisPt.y.toFixed(1)}
-                  r="2.5"
-                  className={styles.lossDot}
+
+              {segments.map((seg, i) => (
+                <path
+                  key={i}
+                  d={seg.d}
+                  className={[
+                    styles.returnLine,
+                    seg.result === 'lost' ? styles.lossLine : styles.recoveryLine,
+                  ].join(' ')}
                 />
-              )}
-              {/* end dot */}
-              {finalVisPt && (
-                <circle
-                  cx={finalVisPt.x.toFixed(1)}
-                  cy={finalVisPt.y.toFixed(1)}
-                  r="3"
-                  className={styles.endDot}
-                />
-              )}
+              ))}
+
+              {futurePts.map((p, i) => (
+                <circle key={`f-${i}`} cx={p.x.toFixed(1)} cy={p.y.toFixed(1)} r="1.6" className={styles.futureDot} />
+              ))}
+
+              {visPts.map((p, i) => {
+                if (i === 0) {
+                  return <circle key="start" cx={p.x.toFixed(1)} cy={p.y.toFixed(1)} r="2.2" className={styles.startDot} />;
+                }
+                return (
+                  <circle
+                    key={i}
+                    cx={p.x.toFixed(1)}
+                    cy={p.y.toFixed(1)}
+                    r={i === visPts.length - 1 ? '3.4' : '3.0'}
+                    className={p.result === 'lost' ? styles.lossDot : styles.endDot}
+                  />
+                );
+              })}
             </svg>
 
-            {/* 0% START label — above zero line */}
-            <span
-              className={styles.zeroLabel}
-              style={{ top: yPct(Math.max(zeroY - 1, 0)) }}
-            >
+            <span className={styles.zeroLabel} style={{ top: yPct(Math.max(zeroY - 1, 0)) }}>
               0% START
             </span>
 
-            {/* loss label — below loss dot */}
             {showMinLabel && minVisPt && (
               <span
                 className={styles.lossLabel}
                 style={{
                   left: xPct(minVisPt.x),
-                  top: yPct(Math.min(minVisPt.y + 2, 88)),
+                  top: yPct(Math.min(minVisPt.y + 8, SVG_H - 8)),
                 }}
               >
                 {Math.round(minVisPt.cumRet)}%
               </span>
             )}
 
-            {/* final return label — above end dot */}
+            {futurePts.length > 0 && (
+              <span
+                className={styles.futureLabel}
+                style={{
+                  left: xPct(futurePts[0].x),
+                  top: yPct(Math.min(zeroY + 10, SVG_H - 8)),
+                }}
+              >
+                FUTURE
+              </span>
+            )}
+
             {finalVisPt && retLabel !== null && (
               <span
-                className={[
-                  styles.finalLabel,
-                  isPositive ? styles.finalLabelPos : styles.finalLabelNeg,
-                ].join(' ')}
+                className={[styles.finalLabel, isPositive ? styles.finalLabelPos : styles.finalLabelNeg].join(' ')}
                 style={{
-                  right: `${(100 - (finalVisPt.x / SVG_W) * 100).toFixed(1)}%`,
-                  top: yPct(Math.max(finalVisPt.y - 14, 0)),
+                  right: `${Math.max(2, 100 - (finalVisPt.x / SVG_W) * 100).toFixed(1)}%`,
+                  top: yPct(Math.max(finalVisPt.y - 13, 0)),
                 }}
               >
                 {retLabel}
@@ -237,26 +251,21 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
         )}
       </div>
 
-      {/* Row 4: chips */}
       <div className={styles.chipsRow}>
         {chipPts.map((p, i) => (
           <span
             key={i}
-            className={[
-              styles.chip,
-              p.result === 'won' ? styles.chipWon : styles.chipLost,
-            ].join(' ')}
+            className={[styles.chip, p.result === 'won' ? styles.chipWon : styles.chipLost].join(' ')}
           >
             {p.result === 'won' ? '✓' : '✕'} {p.label}
           </span>
         ))}
         {Array.from({ length: placeholders }).map((_, i) => (
           <span key={`ph-${i}`} className={[styles.chip, styles.chipMore].join(' ')}>
-            · —
+            {i === 0 ? 'no data yet' : 'future'}
           </span>
         ))}
       </div>
-
     </div>
   );
 }
