@@ -347,99 +347,19 @@ export default function ReconstructionPage() {
 }
 
 
-// ── Inline SVG icons — zero network requests ─────────────────
-function BrandMarkIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 22 22" fill="none" aria-hidden="true">
-      <polygon points="11,1.5 19.5,6.5 19.5,15.5 11,20.5 2.5,15.5 2.5,6.5"
-        stroke="#00d4ff" strokeWidth="1.4" fill="rgba(0,212,255,0.10)" />
-      <path d="M7.5 7.5h3.8a2.2 2.2 0 0 1 0 4.4H7.5V7.5z" fill="#00d4ff" />
-      <line x1="7.5" y1="11.9" x2="7.5" y2="14.8"
-        stroke="#00d4ff" strokeWidth="1.7" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function PositionTargetIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 48 48" fill="none" aria-hidden="true">
-      <circle cx="24" cy="24" r="18" stroke="rgba(0,212,255,0.18)" strokeWidth="1.5" />
-      <circle cx="24" cy="24" r="10" stroke="#00d4ff" strokeWidth="1.8" />
-      <circle cx="24" cy="24" r="3.5" fill="#00d4ff" />
-      <line x1="24" y1="5" x2="24" y2="13" stroke="#00d4ff" strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="24" y1="35" x2="24" y2="43" stroke="#00d4ff" strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="5" y1="24" x2="13" y2="24" stroke="#00d4ff" strokeWidth="1.8" strokeLinecap="round" />
-      <line x1="35" y1="24" x2="43" y2="24" stroke="#00d4ff" strokeWidth="1.8" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function ProfitTrendIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 48 48" fill="none" aria-hidden="true">
-      <polyline points="3,38 14,26 22,32 45,10"
-        stroke="#86ff5a" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-      <polyline points="37,10 45,10 45,18"
-        stroke="#86ff5a" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx="14" cy="26" r="2.5" fill="#86ff5a" opacity="0.7" />
-      <circle cx="22" cy="32" r="2.5" fill="#86ff5a" opacity="0.5" />
-      <circle cx="45" cy="10" r="3" fill="#86ff5a" />
-    </svg>
-  );
-}
-
-function TrustSmartMoneyIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" stroke="#00d4ff" strokeWidth="1.4" fill="rgba(0,212,255,0.08)" />
-      <path d="M13.2 6.5l-4.8 5.8h4.2l-1.8 5.2 5-5.8H11.6z" fill="#00d4ff" />
-    </svg>
-  );
-}
-
-function TrustWhaleIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <rect x="2.5" y="10" width="5" height="9" rx="1.4" fill="#00d4ff" opacity="0.5" />
-      <rect x="9.5" y="6" width="5" height="13" rx="1.4" fill="#00d4ff" opacity="0.8" />
-      <rect x="16.5" y="8" width="5" height="11" rx="1.4" fill="#00d4ff" />
-    </svg>
-  );
-}
-
-function TrustAiIcon({ className }: { className?: string }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="3" fill="#00d4ff" />
-      <circle cx="4.5" cy="7.5" r="1.8" stroke="#00d4ff" strokeWidth="1.2" />
-      <circle cx="19.5" cy="7.5" r="1.8" stroke="#00d4ff" strokeWidth="1.2" />
-      <circle cx="4.5" cy="16.5" r="1.8" stroke="#00d4ff" strokeWidth="1.2" />
-      <circle cx="19.5" cy="16.5" r="1.8" stroke="#00d4ff" strokeWidth="1.2" />
-      <line x1="6.2" y1="8.8" x2="9.2" y2="10.8" stroke="#00d4ff" strokeWidth="1" strokeOpacity="0.65" />
-      <line x1="17.8" y1="8.8" x2="14.8" y2="10.8" stroke="#00d4ff" strokeWidth="1" strokeOpacity="0.65" />
-      <line x1="6.2" y1="15.2" x2="9.2" y2="13.2" stroke="#00d4ff" strokeWidth="1" strokeOpacity="0.65" />
-      <line x1="17.8" y1="15.2" x2="14.8" y2="13.2" stroke="#00d4ff" strokeWidth="1" strokeOpacity="0.65" />
-    </svg>
-  );
-}
-
-function TrustMetricIcon({ label, className }: { label: string; className?: string }) {
+function getTrustMetricIconSrc(label: string): string {
   const l = label.toLowerCase();
-  if (l.includes('smart')) return <TrustSmartMoneyIcon className={className} />;
-  if (l.includes('whale') || l.includes('public')) return <TrustWhaleIcon className={className} />;
-  if (l.includes('ai') || l.includes('preevent') || l.includes('score')) return <TrustAiIcon className={className} />;
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="8" stroke="#00d4ff" strokeWidth="1.5" fill="rgba(0,212,255,0.10)" />
-    </svg>
-  );
+  if (l.includes('smart')) return '/icons/trust-smart-money-optimized.webp';
+  if (l.includes('whale') || l.includes('public')) return '/icons/trust-public-whale-optimized.webp';
+  if (l.includes('ai') || l.includes('preevent') || l.includes('score')) return '/icons/trust-ai-score-optimized.webp';
+  return '/icons/trust-smart-money-optimized.webp';
 }
 
 function Header() {
   return (
     <header className={styles.header}>
       <div className={styles.brandWrap}>
-        <BrandMarkIcon className={styles.brandLogo} />
+        <img src="/brand/polypropicks-mark-optimized.webp" className={styles.brandLogo} alt="PolyProPicks" width={22} height={22} />
         <div className={styles.brandText}>PolyProPicks</div>
       </div>
       <div className={styles.livePill}>
@@ -1007,7 +927,7 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
           <div className={styles.label}>Position</div>
           <div className={styles.positionValue}>{signal.position}</div>
           <div className={styles.target} aria-hidden="true">
-            <PositionTargetIcon className={styles.decorIconImg} />
+            <img src="/icons/position-target-optimized.webp" className={styles.decorIconImg} alt="" width={160} height={160} />
           </div>
         </div>
         <div className={styles.positionProfitDivider} />
@@ -1016,7 +936,7 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
           <div className={styles.profitValue} style={{color:'#86FF5A',textShadow:'0 0 14px rgba(134,255,90,0.32)'}}>+${profitDollars}</div>
           <div style={{fontSize:'clamp(9px,2.3vw,11px)',fontWeight:600,color:'rgba(213,229,238,0.72)',lineHeight:1.2,position:'relative',zIndex:3,marginTop:'1px',textAlign:'right',alignSelf:'stretch',paddingRight:'clamp(4px,1.4vw,8px)'}}>per $100 stake</div>
           <div className={styles.trend} aria-hidden="true">
-            <ProfitTrendIcon className={styles.decorIconImg} />
+            <img src="/icons/profit-trend-optimized.webp" className={styles.decorIconImg} alt="" width={160} height={160} />
           </div>
         </div>
       </div>
@@ -1035,7 +955,7 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
             return (
               <MetricRow
                 key={metric.id}
-                icon={<TrustMetricIcon label={displayLabel} className={styles.metricIconImg} />}
+                icon={<img src={getTrustMetricIconSrc(displayLabel)} className={styles.metricIconImg} alt="" width={24} height={24} />}
                 label={displayLabel}
                 value={getTrustMetricValue(metric)}
               />
@@ -1114,45 +1034,6 @@ function MetricRow({ icon, label, value }: { icon: React.ReactNode; label: strin
         </div>
       </div>
     </div>
-  );
-}
-
-function WhaleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className={styles.metricIcon} aria-hidden="true">
-      <path
-        d="M5 14c1.5-3.5 5.5-5.5 10-5 2 .2 3.4-.6 4-2 1.4 2.6 1.3 5.8-.2 8.3-1.9 3.1-5.4 5-9 4.7-2.5-.1-4.3.7-5.3 2.3-.8-2.2-.6-4.8.5-7.3Z"
-        fill="currentColor"
-      />
-      <circle cx="16.8" cy="8.5" r="1.1" fill="rgba(2,7,13,.85)" />
-    </svg>
-  );
-}
-
-function BrainIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className={styles.metricIcon} aria-hidden="true">
-      <path
-        d="M12 3c-1.8 0-3.5.7-4.8 1.9A6.7 6.7 0 0 0 5 9.7c0 .7.1 1.4.3 2A4.7 4.7 0 0 0 3 16c0 2.8 2.2 5 5 5 1.3 0 2.6-.5 3.5-1.4.3-.3.8-.3 1.1 0A4.9 4.9 0 0 0 16 21a5 5 0 0 0 4.7-6.8c.2-.5.3-1.1.3-1.7 0-2-1-3.8-2.7-4.9A6.8 6.8 0 0 0 12 3Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function AiChipIcon() {
-  return (
-    <svg viewBox="0 0 24 24" className={styles.metricIcon} aria-hidden="true">
-      <rect x="5" y="5" width="14" height="14" rx="2.2" fill="none" stroke="currentColor" strokeWidth="1.7" />
-      <path d="M9 1v4M15 1v4M9 19v4M15 19v4M1 9h4M1 15h4M19 9h4M19 15h4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
-      <text x="12" y="15" textAnchor="middle" fontSize="6.5" fontWeight="700" fill="currentColor">
-        AI
-      </text>
-    </svg>
   );
 }
 
