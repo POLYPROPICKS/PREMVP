@@ -180,7 +180,7 @@
 }
 
 .chartCard {
-  height: clamp(102px, 26.2vw, 126px);
+  height: clamp(164px, 44vw, 202px);
   border-radius: clamp(13px, 3.5vw, 18px);
   padding: clamp(8px, 2vw, 11px) clamp(9px, 2.4vw, 14px);
   overflow: hidden;
@@ -470,7 +470,7 @@
   }
 
   .chartCard {
-    height: 98px;
+    height: 158px;
   }
 
   .benefits {

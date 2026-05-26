@@ -7,45 +7,128 @@
   overflow: hidden;
 }
 
-/* paywall variant: self-contained height, not dependent on parent */
 .cardPaywall {
   height: auto;
   min-height: 168px;
-  max-height: 224px;
-  gap: 6px;
+  max-height: 232px;
+  gap: 5px;
 }
+
+/* ── Row 1: status bar ───────────────────────────────────── */
 
 .topRow {
   display: flex;
   align-items: center;
   justify-content: space-between;
   flex-shrink: 0;
-  min-width: 0;
   gap: 6px;
   overflow: hidden;
 }
 
-.windowLabel {
-  color: rgba(216, 226, 234, 0.84);
-  font-size: clamp(11px, 3vw, 15px);
-  line-height: 1;
+.topLive {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: rgba(220, 230, 238, 0.82);
+  font-size: clamp(10px, 2.7vw, 13px);
+  font-weight: 800;
+  letter-spacing: 0.05em;
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   min-width: 0;
 }
 
-.winRatio {
-  color: #9cff42;
-  font-size: clamp(11px, 3vw, 15px);
-  font-weight: 900;
-  line-height: 1;
-  letter-spacing: 0.01em;
+.liveDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #9cff42;
+  box-shadow: 0 0 6px rgba(156, 255, 66, 0.82);
+  flex-shrink: 0;
+}
+
+.topSample {
+  color: rgba(170, 186, 200, 0.68);
+  font-size: clamp(9px, 2.35vw, 11px);
+  font-weight: 700;
+  letter-spacing: 0.04em;
   white-space: nowrap;
   flex-shrink: 0;
 }
 
-/* compact: fills remaining parent height via flex */
+/* ── Row 2: hero metrics ─────────────────────────────────── */
+
+.heroRow {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-shrink: 0;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.heroLeft {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+
+.heroMetric {
+  color: #fbfbf6;
+  font-size: clamp(26px, 7vw, 36px);
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: -0.04em;
+  white-space: nowrap;
+}
+
+.heroSub {
+  color: #9cff42;
+  font-size: clamp(11px, 3vw, 15px);
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  margin-bottom: 2px;
+  flex-shrink: 0;
+}
+
+.heroRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+  flex-shrink: 0;
+}
+
+.heroLabel {
+  color: rgba(170, 186, 200, 0.64);
+  font-size: clamp(8.5px, 2.25vw, 10.5px);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.heroVal {
+  font-size: clamp(18px, 4.8vw, 26px);
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  white-space: nowrap;
+}
+
+.heroValPos {
+  color: #9cff42;
+  text-shadow: 0 0 14px rgba(156, 255, 66, 0.44);
+}
+
+.heroValNeg {
+  color: #ff6b6b;
+  text-shadow: 0 0 14px rgba(255, 107, 107, 0.38);
+}
+
+/* ── Row 3: chart ────────────────────────────────────────── */
+
 .chartWrap {
   flex: 1;
   position: relative;
@@ -53,10 +136,9 @@
   overflow: hidden;
 }
 
-/* paywall: fixed chart height, independent of flex chain */
 .chartWrapPaywall {
   flex: none;
-  height: 112px;
+  height: 96px;
   flex-shrink: 0;
 }
 
@@ -68,7 +150,7 @@
 }
 
 .zeroLine {
-  stroke: rgba(134, 154, 166, 0.30);
+  stroke: rgba(134, 154, 166, 0.32);
   stroke-width: 0.7;
   stroke-dasharray: 3 3;
 }
@@ -86,38 +168,67 @@
   filter: drop-shadow(0 0 4px rgba(156, 255, 66, 0.8));
 }
 
-.retBadge {
+.lossDot {
+  fill: rgba(255, 107, 107, 0.72);
+  filter: drop-shadow(0 0 3px rgba(255, 107, 107, 0.5));
+}
+
+/* absolutely-positioned chart labels — safe with preserveAspectRatio="none" */
+.zeroLabel {
   position: absolute;
-  top: 0;
-  right: 0;
-  font-size: clamp(13px, 3.6vw, 20px);
-  font-weight: 950;
-  line-height: 1;
-  letter-spacing: -0.03em;
+  left: 8px;
+  transform: translateY(-100%);
+  color: rgba(148, 166, 178, 0.52);
+  font-size: clamp(7.5px, 2vw, 9.5px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
   white-space: nowrap;
+  pointer-events: none;
+  line-height: 1;
 }
 
-.retPos {
+.lossLabel {
+  position: absolute;
+  transform: translateX(-50%);
+  color: rgba(255, 107, 107, 0.8);
+  font-size: clamp(8px, 2.1vw, 10px);
+  font-weight: 700;
+  white-space: nowrap;
+  pointer-events: none;
+  line-height: 1;
+}
+
+.finalLabel {
+  position: absolute;
+  font-size: clamp(10px, 2.6vw, 13px);
+  font-weight: 900;
+  white-space: nowrap;
+  pointer-events: none;
+  line-height: 1;
+  letter-spacing: -0.02em;
+}
+
+.finalLabelPos {
   color: #9cff42;
-  text-shadow: 0 0 12px rgba(156, 255, 66, 0.5);
+  text-shadow: 0 0 8px rgba(156, 255, 66, 0.48);
 }
 
-.retNeg {
+.finalLabelNeg {
   color: #ff6b6b;
-  text-shadow: 0 0 12px rgba(255, 107, 107, 0.4);
 }
 
 .noData {
-  flex: 1;
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(200, 215, 224, 0.42);
-  font-size: clamp(11px, 3vw, 14px);
-  overflow: hidden;
+  color: rgba(200, 215, 224, 0.38);
+  font-size: clamp(10px, 2.7vw, 13px);
 }
 
-/* chips row — future mini-results strip; never expands card height */
+/* ── Row 4: chips ────────────────────────────────────────── */
+
 .chipsRow {
   display: flex;
   flex-wrap: nowrap;
@@ -131,61 +242,81 @@
 .chip {
   display: inline-flex;
   align-items: center;
-  padding: 2px 6px;
+  padding: 2px 7px;
   border-radius: 999px;
-  font-size: 10px;
+  font-size: clamp(9px, 2.4vw, 11px);
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 80px;
+  max-width: 90px;
   flex-shrink: 0;
 }
 
 .chipWon {
-  background: rgba(156, 255, 66, 0.12);
+  background: rgba(156, 255, 66, 0.11);
   color: #9cff42;
-  border: 1px solid rgba(156, 255, 66, 0.28);
+  border: 1px solid rgba(156, 255, 66, 0.26);
 }
 
 .chipLost {
-  background: rgba(255, 107, 107, 0.10);
+  background: rgba(255, 107, 107, 0.09);
   color: #ff8080;
-  border: 1px solid rgba(255, 107, 107, 0.24);
+  border: 1px solid rgba(255, 107, 107, 0.22);
 }
 
 .chipMore {
-  background: rgba(134, 154, 166, 0.14);
-  color: rgba(200, 215, 224, 0.6);
-  border: 1px solid rgba(134, 154, 166, 0.22);
+  background: rgba(134, 154, 166, 0.12);
+  color: rgba(190, 206, 218, 0.48);
+  border: 1px solid rgba(134, 154, 166, 0.18);
   flex-shrink: 0;
 }
+
+/* ── Skeleton ────────────────────────────────────────────── */
 
 .skeleton {
   width: 100%;
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   overflow: hidden;
 }
 
-.skeletonLabel {
-  height: 12px;
-  width: 80px;
+.skeletonRow {
+  height: 11px;
+  width: 100%;
   border-radius: 4px;
   background: rgba(134, 154, 166, 0.18);
   animation: pulse 1.4s ease-in-out infinite;
   flex-shrink: 0;
 }
 
+.skeletonHero {
+  height: 30px;
+  width: 55%;
+  border-radius: 4px;
+  background: rgba(134, 154, 166, 0.14);
+  animation: pulse 1.4s ease-in-out infinite 0.1s;
+  flex-shrink: 0;
+}
+
 .skeletonChart {
   flex: 1;
-  border-radius: 6px;
-  background: rgba(134, 154, 166, 0.12);
+  border-radius: 5px;
+  background: rgba(134, 154, 166, 0.10);
   animation: pulse 1.4s ease-in-out infinite 0.2s;
   min-height: 0;
+}
+
+.skeletonChips {
+  height: 20px;
+  width: 75%;
+  border-radius: 4px;
+  background: rgba(134, 154, 166, 0.09);
+  animation: pulse 1.4s ease-in-out infinite 0.3s;
+  flex-shrink: 0;
 }
 
 @keyframes pulse {
