@@ -188,6 +188,19 @@ interface WeekMiniResult {
   resolvedAt: string;
 }
 
+interface PaywallChartPoint {
+  index: number;
+  resolvedAt: string;
+  eventTitle: string;
+  pick: string;
+  result: "won" | "lost";
+  returnPct: number;
+  cumulativeReturnPct: number;
+  americanOdds: string | null;
+  europeanOdds: number | null;
+  label: string;
+}
+
 interface WeekResultsCard {
   cardType: "signal-week-results";
   schemaVersion: "week-results-v1";
@@ -203,7 +216,6 @@ interface WeekResultsCard {
     lostCount: number;
     pushCount: number;
     winRatePct: number | null;
-    avgReturnPct: number | null;
     totalReturnPct: number | null;
   };
   displayedStats: {
@@ -214,6 +226,12 @@ interface WeekResultsCard {
     winRatioLabel: string;
     maxDisplayed: 7;
     maxLosses: 1;
+  };
+  frontendHints: {
+    primaryMetric: string;
+    compactFields: string[];
+    paywallFields: string[];
+    hiddenFields: string[];
   };
   featuredResult: null | {
     id: string;
@@ -229,6 +247,16 @@ interface WeekResultsCard {
     resolvedAt: string;
   };
   miniResults: WeekMiniResult[];
+  paywallChart: {
+    chartType: "cumulative-return";
+    title: string;
+    source: "displayed_subset";
+    displayMode: "single_cumulative_line";
+    yUnit: "return_pct";
+    windowLabel: string;
+    finalReturnPct: number | null;
+    points: PaywallChartPoint[];
+  };
   diagnostics: {
     source: "generated_signal_pairs";
     dedupeKey: "condition_id:selected_outcome";
@@ -257,7 +285,13 @@ function buildEmptyWeekResultsCard(totalRowsScanned = 0): WeekResultsCard {
     showPerformanceClaim: false,
     totalStats: {
       resolvedCount: 0, wonCount: 0, lostCount: 0, pushCount: 0,
-      winRatePct: null, avgReturnPct: null, totalReturnPct: null,
+      winRatePct: null, totalReturnPct: null,
+    },
+    frontendHints: {
+      primaryMetric: "displayedStats.winRatioLabel",
+      compactFields: ["window.label", "displayedStats.winRatioLabel", "title", "featuredResult", "miniResults"],
+      paywallFields: ["window.label", "displayedStats.winRatioLabel", "paywallChart", "featuredResult"],
+      hiddenFields: ["diagnostics", "selectionRule", "totalStats.totalReturnPct", "totalStats.winRatePct"],
     },
     displayedStats: {
       displayedCount: 0, displayedWon: 0, displayedLost: 0, displayedPush: 0,
@@ -265,6 +299,16 @@ function buildEmptyWeekResultsCard(totalRowsScanned = 0): WeekResultsCard {
     },
     featuredResult: null,
     miniResults: [],
+    paywallChart: {
+      chartType: "cumulative-return",
+      title: "Cumulative P&L",
+      source: "displayed_subset",
+      displayMode: "single_cumulative_line",
+      yUnit: "return_pct",
+      windowLabel: "Past 7 days",
+      finalReturnPct: null,
+      points: [],
+    },
     diagnostics: {
       source: "generated_signal_pairs",
       dedupeKey: "condition_id:selected_outcome",
@@ -478,12 +522,6 @@ export async function GET(request: Request) {
   const totalPush = weekAll.filter((s) => PUSH_RESULTS.has(s.result)).length;
   const totalResolved = weekAll.length;
 
-  const wonForAvg = weekAll.filter((s) => s.result === "won" && s.returnPct !== null);
-  const avgReturnPct = wonForAvg.length > 0
-    ? Math.round(
-        (wonForAvg.reduce((sum, s) => sum + (s.returnPct ?? 0), 0) / wonForAvg.length) * 10
-      ) / 10
-    : null;
   const totalReturnPct = totalResolved > 0
     ? Math.round(
         weekAll.reduce((sum, s) => {
@@ -545,6 +583,33 @@ export async function GET(request: Request) {
     resolvedAt: s.resolvedAt,
   }));
 
+  // ── paywallChart: cumulative return line (chronological, displayed subset) ──
+  // Uses weekDisplayed sorted chronologically — same data as miniResults, different order.
+  const weekChronological = [...weekDisplayed].sort(
+    (a, b) => new Date(a.resolvedAt).getTime() - new Date(b.resolvedAt).getTime()
+  );
+  let runningReturn = 0;
+  const paywallPoints: PaywallChartPoint[] = weekChronological.map((s, i) => {
+    const pointReturn = s.result === "won" ? (s.returnPct ?? 0) : -100;
+    runningReturn = Math.round((runningReturn + pointReturn) * 10) / 10;
+    return {
+      index: i + 1,
+      resolvedAt: s.resolvedAt,
+      eventTitle: s.eventTitle,
+      pick: s.pick,
+      result: (s.result === "won" || s.result === "lost") ? s.result : "lost",
+      returnPct: pointReturn,
+      cumulativeReturnPct: runningReturn,
+      americanOdds: s.americanOdds ?? null,
+      europeanOdds: s.europeanOdds ?? null,
+      label: returnLabel(s.result, s.returnPct),
+    };
+  });
+  const paywallFinalReturn =
+    paywallPoints.length > 0
+      ? paywallPoints[paywallPoints.length - 1].cumulativeReturnPct
+      : null;
+
   const weekResultsCard: WeekResultsCard = {
     cardType: "signal-week-results",
     schemaVersion: "week-results-v1",
@@ -560,7 +625,6 @@ export async function GET(request: Request) {
       lostCount: totalLost,
       pushCount: totalPush,
       winRatePct,
-      avgReturnPct,
       totalReturnPct,
     },
     displayedStats: {
@@ -588,6 +652,22 @@ export async function GET(request: Request) {
         }
       : null,
     miniResults: weekMiniResults,
+    paywallChart: {
+      chartType: "cumulative-return",
+      title: "Cumulative P&L",
+      source: "displayed_subset",
+      displayMode: "single_cumulative_line",
+      yUnit: "return_pct",
+      windowLabel: "Past 7 days",
+      finalReturnPct: paywallFinalReturn,
+      points: paywallPoints,
+    },
+    frontendHints: {
+      primaryMetric: "displayedStats.winRatioLabel",
+      compactFields: ["window.label", "displayedStats.winRatioLabel", "title", "featuredResult", "miniResults"],
+      paywallFields: ["window.label", "displayedStats.winRatioLabel", "paywallChart", "featuredResult"],
+      hiddenFields: ["diagnostics", "selectionRule", "totalStats.totalReturnPct", "totalStats.winRatePct"],
+    },
     diagnostics: {
       source: "generated_signal_pairs",
       dedupeKey: "condition_id:selected_outcome",
@@ -621,6 +701,33 @@ export async function GET(request: Request) {
     if (r.americanOdds === undefined || r.europeanOdds === undefined)
       validationErrors.push(`miniResult ${r.id}: undefined odds`);
   }
+  // paywallChart checks
+  if (weekResultsCard.paywallChart.chartType !== "cumulative-return")
+    validationErrors.push("paywallChart.chartType mismatch");
+  if (weekResultsCard.paywallChart.source !== "displayed_subset")
+    validationErrors.push("paywallChart.source mismatch");
+  if (weekResultsCard.paywallChart.points.length !== weekResultsCard.displayedStats.displayedCount)
+    validationErrors.push("paywallChart.points.length !== displayedCount");
+  if (weekResultsCard.paywallChart.points.length !== weekResultsCard.miniResults.length)
+    validationErrors.push("paywallChart.points.length !== miniResults.length");
+  if (weekResultsCard.paywallChart.points.length === 0 && weekResultsCard.paywallChart.finalReturnPct !== null)
+    validationErrors.push("paywallChart.finalReturnPct should be null when no points");
+  if (weekResultsCard.paywallChart.points.length > 0) {
+    const lastPt = weekResultsCard.paywallChart.points[weekResultsCard.paywallChart.points.length - 1];
+    if (weekResultsCard.paywallChart.finalReturnPct !== lastPt.cumulativeReturnPct)
+      validationErrors.push("paywallChart.finalReturnPct !== last point cumulativeReturnPct");
+  }
+  for (const pt of weekResultsCard.paywallChart.points) {
+    if (pt.index < 1) validationErrors.push(`paywallChart point index < 1`);
+    if (pt.result !== "won" && pt.result !== "lost") validationErrors.push(`paywallChart point result not won/lost`);
+    if (!Number.isFinite(pt.returnPct)) validationErrors.push(`paywallChart point non-finite returnPct`);
+    if (!Number.isFinite(pt.cumulativeReturnPct)) validationErrors.push(`paywallChart point non-finite cumulativeReturnPct`);
+    if (pt.americanOdds === undefined || pt.europeanOdds === undefined)
+      validationErrors.push(`paywallChart point ${pt.index}: undefined odds`);
+  }
+  // avgReturnPct must not exist in totalStats
+  if ("avgReturnPct" in weekResultsCard.totalStats)
+    validationErrors.push("totalStats.avgReturnPct must not exist");
 
   if (validationErrors.length > 0) {
     console.error("[weekResultsCard] Validation failed:", validationErrors);
