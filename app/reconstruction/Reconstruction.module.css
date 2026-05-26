@@ -2275,3 +2275,45 @@
 .emptyFilterTeaserLink:hover {
   color: #7ec8f4;
 }
+
+/* ── Odds-calibrated action pill ─────────────────────────────────────────── */
+.confidenceFooterRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.actionEnter,
+.actionSmall,
+.actionWatch {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  line-height: 1.5;
+}
+
+.actionEnter {
+  background: rgba(134, 255, 90, 0.12);
+  color: #86ff5a;
+  border: 1px solid rgba(134, 255, 90, 0.28);
+}
+
+.actionSmall {
+  background: rgba(255, 210, 60, 0.10);
+  color: #ffd23c;
+  border: 1px solid rgba(255, 210, 60, 0.26);
+}
+
+.actionWatch {
+  background: rgba(57, 215, 255, 0.09);
+  color: #39d7ff;
+  border: 1px solid rgba(57, 215, 255, 0.22);
+}

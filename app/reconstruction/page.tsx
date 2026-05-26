@@ -835,18 +835,18 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
   const probability = Math.max(0, Math.min(100, Number(signal.winProbability) || 0));
   const ringDegrees = probability * 3.6;
   
-  // Get badge text based on probability (badge background stays green)
+  // Get badge text: use backend odds-context label if present, else fallback to probability tiers
   const getBadgeText = (prob: number) => {
-    if (prob >= 80) {
-      return "ABSOLUTE CONFIDENCE";
-    } else if (prob > 65) {
-      return "HIGH CONFIDENCE";
-    } else if (prob > 55) {
-      return "MIDDLE CONFIDENCE";
-    } else {
-      return "LOW CONFIDENCE";
-    }
+    const backendLabel = (signal as any).confidenceLabel as string | undefined;
+    if (backendLabel && backendLabel.length > 0) return backendLabel.toUpperCase();
+    if (prob >= 80) return "ABSOLUTE CONFIDENCE";
+    if (prob > 65)  return "HIGH CONFIDENCE";
+    if (prob > 55)  return "MIDDLE CONFIDENCE";
+    return "LOW CONFIDENCE";
   };
+
+  // Resolve action label from backend (actionLabel field)
+  const actionLabel = (signal as any).actionLabel as "ENTER" | "SMALL" | "WATCH" | undefined;
 
   // Get ring color based on probability
   const getRingColor = (prob: number) => {
@@ -964,30 +964,40 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
               <span className={styles.ringNumber}>{probability}</span>
             </div>
           </div>
-          {(signal as any).polymarketUrl && (
-            <a
-              href={(signal as any).polymarketUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="View on Polymarket"
-              style={{
-                display: 'block',
-                marginTop: '8px',
-                lineHeight: 1,
-                textAlign: 'center',
-                color: 'rgba(135,255,77,0.55)',
-              }}
-            >
-              <span style={{display:'flex',alignItems:'center',justifyContent:'center',gap:'4px'}}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                  <polyline points="15 3 21 3 21 9"/>
-                  <line x1="10" y1="14" x2="21" y2="3"/>
-                </svg>
-                <span style={{fontSize:'9px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',opacity:0.9}}>see on polymarket</span>
+          <div className={styles.confidenceFooterRow}>
+            {actionLabel && (
+              <span className={
+                actionLabel === "ENTER" ? styles.actionEnter :
+                actionLabel === "SMALL" ? styles.actionSmall :
+                styles.actionWatch
+              }>
+                {actionLabel}
               </span>
-            </a>
-          )}
+            )}
+            {(signal as any).polymarketUrl && (
+              <a
+                href={(signal as any).polymarketUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="View on Polymarket"
+                style={{
+                  lineHeight: 1,
+                  textAlign: 'center',
+                  color: 'rgba(135,255,77,0.55)',
+                  textDecoration: 'none',
+                }}
+              >
+                <span style={{display:'flex',alignItems:'center',gap:'4px'}}>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                    <polyline points="15 3 21 3 21 9"/>
+                    <line x1="10" y1="14" x2="21" y2="3"/>
+                  </svg>
+                  <span style={{fontSize:'9px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',opacity:0.9}}>see on polymarket</span>
+                </span>
+              </a>
+            )}
+          </div>
         </div>
       </div>
       <button className={styles.cta} onClick={onCtaClick}>Get $30 Premium Credit</button>
