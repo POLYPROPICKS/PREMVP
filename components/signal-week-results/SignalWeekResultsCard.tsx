@@ -129,7 +129,7 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
         </div>
         {retLabel !== null && (
           <div className={styles.heroRight}>
-            <span className={styles.heroLabel}>TOTAL RETURN</span>
+            <span className={styles.heroLabel}>CUMULATIVE P&amp;L</span>
             <span
               className={[
                 styles.heroVal,
@@ -155,10 +155,12 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
               aria-hidden="true"
             >
               <defs>
-                <linearGradient id="wrcLine" x1="0" x2="1" y1="0" y2="0">
-                  <stop offset="0" stopColor="#72ff48" stopOpacity="0.82" />
-                  <stop offset="1" stopColor="#c8ff35" stopOpacity="1" />
-                </linearGradient>
+                <clipPath id="wrcClipPos">
+                  <rect x="0" y="0" width={SVG_W} height={zeroY} />
+                </clipPath>
+                <clipPath id="wrcClipNeg">
+                  <rect x="0" y={zeroY.toFixed(1)} width={SVG_W} height={SVG_H} />
+                </clipPath>
               </defs>
               {/* zero dashed baseline */}
               <line
@@ -168,9 +170,12 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
                 y2={zeroY.toFixed(1)}
                 className={styles.zeroLine}
               />
-              {/* cumulative return path */}
+              {/* cumulative return path — positive leg cyan, negative leg red */}
               {pathD && (
-                <path d={pathD} className={styles.returnLine} stroke="url(#wrcLine)" />
+                <>
+                  <path d={pathD} className={styles.returnLine} stroke="#00d4ff" clipPath="url(#wrcClipPos)" />
+                  <path d={pathD} className={styles.returnLine} stroke="#ff3355" clipPath="url(#wrcClipNeg)" />
+                </>
               )}
               {/* loss dot */}
               {showMinLabel && minVisPt && (

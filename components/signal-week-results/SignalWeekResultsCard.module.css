@@ -44,8 +44,8 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #9cff42;
-  box-shadow: 0 0 6px rgba(156, 255, 66, 0.82);
+  background: #00d4ff;
+  box-shadow: 0 0 6px rgba(0, 212, 255, 0.82);
   flex: 0 0 auto;
 }
 
@@ -86,7 +86,7 @@
 }
 
 .heroSub {
-  color: #9cff42;
+  color: #00d4ff;
   font-size: clamp(9px, 2.35vw, 12px);
   font-weight: 950;
   letter-spacing: 0.055em;
@@ -121,8 +121,8 @@
 }
 
 .heroValPos {
-  color: #9cff42;
-  text-shadow: 0 0 14px rgba(156, 255, 66, 0.44);
+  color: #00d4ff;
+  text-shadow: 0 0 14px rgba(0, 212, 255, 0.44);
 }
 
 .heroValNeg {
@@ -161,17 +161,17 @@
   stroke-width: 2.2;
   stroke-linecap: round;
   stroke-linejoin: round;
-  filter: drop-shadow(0 0 5px rgba(140, 255, 42, 0.34));
+  filter: drop-shadow(0 0 5px rgba(0, 212, 255, 0.34));
 }
 
 .endDot {
-  fill: #9cff42;
-  filter: drop-shadow(0 0 4px rgba(156, 255, 66, 0.8));
+  fill: #00d4ff;
+  filter: drop-shadow(0 0 4px rgba(0, 212, 255, 0.8));
 }
 
 .lossDot {
-  fill: rgba(255, 107, 107, 0.72);
-  filter: drop-shadow(0 0 3px rgba(255, 107, 107, 0.5));
+  fill: #ff3355;
+  filter: drop-shadow(0 0 3px rgba(255, 51, 85, 0.6));
 }
 
 .zeroLabel {
@@ -209,8 +209,8 @@
 }
 
 .finalLabelPos {
-  color: #9cff42;
-  text-shadow: 0 0 8px rgba(156, 255, 66, 0.48);
+  color: #00d4ff;
+  text-shadow: 0 0 8px rgba(0, 212, 255, 0.48);
 }
 
 .finalLabelNeg {
@@ -255,9 +255,9 @@
 }
 
 .chipWon {
-  background: rgba(156, 255, 66, 0.11);
-  color: #9cff42;
-  border: 1px solid rgba(156, 255, 66, 0.26);
+  background: rgba(0, 212, 255, 0.10);
+  color: #00d4ff;
+  border: 1px solid rgba(0, 212, 255, 0.26);
 }
 
 .chipLost {
