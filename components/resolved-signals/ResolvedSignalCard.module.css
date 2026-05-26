@@ -239,6 +239,9 @@
   font-weight: 600;
   color: rgba(255, 255, 255, 0.7);
   letter-spacing: -0.005em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .socialText strong {

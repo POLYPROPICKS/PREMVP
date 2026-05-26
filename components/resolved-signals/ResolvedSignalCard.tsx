@@ -19,8 +19,50 @@ function formatOdds(american: string | null, european: number | null): string {
   return '—';
 }
 
-function activityText(label: string | null): string {
-  return label ?? 'Signal snapshot tracked';
+// ── Deterministic social-proof helpers ───────────────────────
+// FNV-1a 32-bit — deterministic across server/client, no Math.random
+function hashStableString(seed: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < seed.length; i++) {
+    h = Math.imul(h ^ seed.charCodeAt(i), 0x01000193) >>> 0;
+  }
+  return h;
+}
+
+function getStableFollowerCount(seed: string): number {
+  return 40 + (hashStableString(seed) % 161); // 40–200 inclusive
+}
+
+const PHRASES_WON = [
+  'followers caught this',
+  'bettors tailed this',
+  'users tracked this',
+  'members spotted this',
+  'bettors backed this',
+  'followers rode this',
+];
+
+const PHRASES_LOST = [
+  'followers tracked this',
+  'bettors watched this',
+  'users saw this signal',
+  'members reviewed this',
+  'signal was tracked',
+  'bettors logged this',
+];
+
+const PHRASES_NEUTRAL = [
+  'signal tracked',
+  'market watched',
+  'followers tracked this',
+  'members reviewed this',
+];
+
+function getStableSocialProofPhrase(seed: string, result: string): string {
+  const h = hashStableString(seed + '|phrase');
+  if (result === 'won') return PHRASES_WON[h % PHRASES_WON.length];
+  if (result === 'lost') return PHRASES_LOST[h % PHRASES_LOST.length];
+  return PHRASES_NEUTRAL[h % PHRASES_NEUTRAL.length];
 }
 
 // ── Main Card ────────────────────────────────────────────────
@@ -38,6 +80,10 @@ export default function ResolvedSignalCard({ signal, defaultExpanded = false }: 
 
   const oddsStr = formatOdds(signal.americanOdds, signal.europeanOdds);
   const returnStr = formatReturn(signal.returnPct);
+
+  const seed = signal.id || signal.eventTitle || signal.pick;
+  const followerCount = getStableFollowerCount(seed);
+  const socialPhrase = getStableSocialProofPhrase(seed, signal.result);
 
   // Trust metric values (0–100 range — render null as 0)
   const smartMoney = trustMetrics?.smartMoney ?? 0;
@@ -83,12 +129,12 @@ export default function ResolvedSignalCard({ signal, defaultExpanded = false }: 
         </div>
       </div>
 
-      {/* Zone 3: Activity + return row */}
+      {/* Zone 3: Social proof row */}
       <div className={[styles.socialRow, won ? styles.socialRowWon : styles.socialRowLost].join(' ')}>
         <div className={styles.socialLeft}>
-          <span className={styles.socialIcon}>📊</span>
+          <span className={styles.socialIcon}>👥</span>
           <span className={styles.socialText}>
-            {activityText(signal.marketActivityLabel)}
+            <strong>{followerCount}</strong> {socialPhrase}
           </span>
         </div>
         {returnStr && (
