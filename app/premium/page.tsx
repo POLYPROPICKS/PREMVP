@@ -12,6 +12,8 @@ import {
 } from "@/lib/feed/landingPairs";
 import PremiumSignalCard from "./PremiumSignalCard";
 import styles from "./Premium.module.css";
+import ResolvedSignalsCarousel from "@/components/resolved-signals/ResolvedSignalsCarousel";
+import { FOUNDER_PREVIEW_SESSION_ID } from "@/app/api/auth/founder-premium-preview/route";
 
 export const dynamic = "force-dynamic";
 
@@ -223,7 +225,12 @@ export default async function PremiumPage({
     );
   }
 
-  const entitlement = await revalidateEntitlement(sessionCheckoutId);
+  // Founder preview sessions (HMAC-signed, no DB record) skip DB revalidation.
+  // Security: cookie still requires valid PPP_SESSION_SECRET signature.
+  const isFounderPreview = sessionCheckoutId === FOUNDER_PREVIEW_SESSION_ID;
+  const entitlement = isFounderPreview
+    ? { activePlan: sessionActivePlan, accessUntil: sessionAccessUntil }
+    : await revalidateEntitlement(sessionCheckoutId);
 
   if (!entitlement) {
     return (
@@ -285,6 +292,9 @@ export default async function PremiumPage({
       </header>
 
       <div className={styles.body}>
+        <section className={styles.resolvedPreviewBlock}>
+          <ResolvedSignalsCarousel />
+        </section>
         <FilterRow active={activeFilter} counts={filterCounts} />
         <p className={styles.sectionLabel}>Live premium signals</p>
         <div className={styles.feedShell}>

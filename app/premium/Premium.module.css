@@ -608,6 +608,12 @@
 }
 
 /* ── Filter row ──────────────────────────────────────────────────────────── */
+/* Resolved signals carousel block in premium feed */
+.resolvedPreviewBlock {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
 .filterRow {
   display: flex;
   align-items: center;
