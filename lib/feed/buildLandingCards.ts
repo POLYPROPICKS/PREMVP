@@ -800,6 +800,21 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
   if (noTradeData) signalCap = Math.min(signalCap, 68);
   const finalSignalV2 = roundNumber(clamp(signalV2Raw, 52, signalCap));
 
+  // Persist formula audit snapshot into diagnostics for post-resolution debugging.
+  // No formula values are changed — this is append-only to existing diagnostics object.
+  diagnostics.formulaAudit = {
+    v: "v2-lite-growth-safe",
+    oddsFit: roundNumber(oddsFit),
+    smartMoneyVal: roundNumber(smartMoneyVal),
+    pubWhaleVal: roundNumber(pubWhaleVal),
+    preEventVal: roundNumber(preEventVal),
+    signalV2Raw: Math.round(signalV2Raw * 10) / 10,
+    signalCap,
+    noTradeData,
+    finalSignalV2,
+    selectedOdds: Math.round(selectedOdds * 1000) / 1000,
+  };
+
   const metrics: TrustMetric[] = [
     {
       id: "smart-money",

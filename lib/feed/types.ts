@@ -70,6 +70,18 @@ export interface LandingCardDiagnostics {
   metricDedupeReason?: string;
   rawMetricVector?: number[];
   adjustedMetricVector?: number[];
+  formulaAudit?: {
+    v: string;
+    oddsFit: number;
+    smartMoneyVal: number;
+    pubWhaleVal: number;
+    preEventVal: number;
+    signalV2Raw: number;
+    signalCap: number;
+    noTradeData: boolean;
+    finalSignalV2: number;
+    selectedOdds: number;
+  };
 }
 
 export interface LandingCardPair {
