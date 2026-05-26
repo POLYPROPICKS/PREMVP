@@ -51,6 +51,27 @@ import {
   getConfidenceLabel,
 } from "./scorePolymarket";
 
+// ── Odds-calibrated display calibration ───────────────────────────────────────
+// Maps European selectedOdds to max display confidence, label and default action.
+// Raw formula score is preserved in formulaAudit; only displayed value is capped.
+type OddsBandCalibration = {
+  min: number;
+  max: number;
+  label: string;
+  action: "ENTER" | "SMALL" | "WATCH";
+};
+
+function getOddsBandCalibration(selectedOdds: number): OddsBandCalibration {
+  // min = target lower guidance for audit only — NOT used in clamp to lift weak scores
+  if (selectedOdds <= 1.44) return { min: 80, max: 90, label: "Strong Favorite",      action: "ENTER" };
+  if (selectedOdds <= 1.70) return { min: 77, max: 86, label: "Favorite Edge",         action: "ENTER" };
+  if (selectedOdds <= 2.20) return { min: 72, max: 82, label: "Core Signal",           action: "ENTER" };
+  if (selectedOdds <= 2.70) return { min: 68, max: 74, label: "Value Lean",            action: "ENTER" };
+  if (selectedOdds <= 3.50) return { min: 63, max: 68, label: "Underdog Value",        action: "SMALL" };
+  if (selectedOdds <= 5.00) return { min: 58, max: 60, label: "Longshot Value",        action: "SMALL" };
+  return                           { min: 52, max: 55, label: "High-Upside Longshot",  action: "WATCH" };
+}
+
 function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket | null {
   const primary = sample.primaryMarketRaw;
   if (!primary || !primary.conditionId) return null;
@@ -798,10 +819,28 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
   if ((dataCoverage ?? 0) < 50) signalCap = Math.min(signalCap, 64);
   else if ((dataCoverage ?? 0) < 75) signalCap = Math.min(signalCap, 75);
   if (noTradeData) signalCap = Math.min(signalCap, 68);
-  const finalSignalV2 = roundNumber(clamp(signalV2Raw, 52, signalCap));
 
-  // Persist formula audit snapshot into diagnostics for post-resolution debugging.
-  // No formula values are changed — this is append-only to existing diagnostics object.
+  // Odds-calibrated display cap: preserve raw evidence score, cap displayed confidence by odds band.
+  // Raw score = what formula produced; displayed score = odds-aware public-facing value.
+  const oddsBand = getOddsBandCalibration(selectedOdds);
+  const calibratedSignalCap = Math.min(signalCap, oddsBand.max);
+  const rawSignalBeforeOddsCap = roundNumber(clamp(signalV2Raw, 52, signalCap));
+  const finalSignalV2 = roundNumber(clamp(signalV2Raw, 52, calibratedSignalCap));
+
+  // Determine action label based on band default + runtime overrides
+  let action: "ENTER" | "SMALL" | "WATCH" = oddsBand.action;
+  if (selectedOdds > 2.20 && selectedOdds <= 2.70) {
+    // Value Lean: downgrade to SMALL when display confidence below threshold
+    action = finalSignalV2 >= 70 ? "ENTER" : "SMALL";
+  } else if (selectedOdds > 2.70 && selectedOdds <= 3.50) {
+    // Underdog Value: always SMALL
+    action = "SMALL";
+  } else if (selectedOdds > 3.50 && selectedOdds <= 5.00) {
+    // Longshot Value: downgrade to WATCH if no trade evidence
+    action = (finalSignalV2 >= 58 && !noTradeData) ? "SMALL" : "WATCH";
+  }
+
+  // Persist full formula audit snapshot for post-resolution debugging.
   diagnostics.formulaAudit = {
     v: "v2-lite-growth-safe",
     oddsFit: roundNumber(oddsFit),
@@ -813,6 +852,15 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
     noTradeData,
     finalSignalV2,
     selectedOdds: Math.round(selectedOdds * 1000) / 1000,
+    rawSignalBeforeOddsCap,
+    displaySignalConfidence: finalSignalV2,
+    oddsBandMin: oddsBand.min,
+    oddsBandMax: oddsBand.max,
+    oddsBandLabel: oddsBand.label,
+    calibratedSignalCap,
+    oddsBandCapApplied: calibratedSignalCap < signalCap,
+    action,
+    confidenceMode: "odds_calibrated_display",
   };
 
   const metrics: TrustMetric[] = [
@@ -885,13 +933,17 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
       ? formatGameTime(parentMeta.startDate)
       : formatEndTime(parentMeta.endDate),
     eventTitle: truncateText(humanizeMatchupTitle(parentMeta.title || safeString(market.question) || "Unknown Event", selectedOutcome.name), 50),
-    confidenceLabel: getConfidenceLabel(finalSignalV2),
+    confidenceLabel: oddsBand.label,
     position: selectedOutcome.name,
     profit: profitStr,
     winProbability: finalSignalV2,
     price: "$1.99",
     ctaLabel: "Unlock Full Signal",
     metrics: finalMetrics,
+    actionLabel: action,
+    oddsBandLabel: oddsBand.label,
+    rawSignalScore: rawSignalBeforeOddsCap,
+    displaySignalConfidence: finalSignalV2,
     polymarketUrl: parentMeta.polymarketEventSlug
       ? `https://polymarket.com/event/${parentMeta.polymarketEventSlug}`
       : undefined,

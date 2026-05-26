@@ -30,6 +30,11 @@ export interface PremiumSignal {
   ctaLabel: string;
   metrics: TrustMetric[];
   polymarketUrl?: string;
+  // Odds-calibrated display fields (v2-lite-growth-safe)
+  actionLabel?: string;       // "ENTER" | "SMALL" | "WATCH"
+  oddsBandLabel?: string;     // e.g. "Longshot Value"
+  rawSignalScore?: number;    // pre-odds-cap score for audit
+  displaySignalConfidence?: number; // same as winProbability after cap
 }
 
 export interface MarketSource {
@@ -81,6 +86,16 @@ export interface LandingCardDiagnostics {
     noTradeData: boolean;
     finalSignalV2: number;
     selectedOdds: number;
+    // Odds-calibrated display fields
+    rawSignalBeforeOddsCap?: number;
+    displaySignalConfidence?: number;
+    oddsBandMin?: number;
+    oddsBandMax?: number;
+    oddsBandLabel?: string;
+    calibratedSignalCap?: number;
+    oddsBandCapApplied?: boolean;
+    action?: string;
+    confidenceMode?: string;
   };
 }
 
