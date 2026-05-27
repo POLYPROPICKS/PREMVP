@@ -37,9 +37,56 @@ async function main() {
   loadEnvConfig(process.cwd());
 
   const { supabaseAdmin } = await import("../lib/supabase/server");
+  // Dynamic import keeps loadEnvConfig ordering: env must be loaded before any
+  // module that reads process.env at initialisation time (supabaseAdmin).
+  const { writeJobRun } = await import("../lib/feed/cacheGeneratedSignals");
   const supabase = supabaseAdmin;
 
   const startedAt = new Date().toISOString();
+
+  // ── job_runs helper (write-mode only) ────────────────────────────────────
+  // source="resolver" distinguishes these rows from cache-cron source="polymarket".
+  // formula_version="resolver-v1" is a stable constant (resolver has no formula).
+  // generatedCount maps to updatedCount; rejectedCount maps to skippedCount.
+  async function tryWriteResolverJobRun(opts: {
+    status: "success" | "empty" | "error";
+    updatedCount?: number;
+    skippedCount?: number;
+    finishedAt: string;
+    errorMessage?: string;
+    extra?: Record<string, unknown>;
+  }) {
+    const dur =
+      new Date(opts.finishedAt).getTime() - new Date(startedAt).getTime();
+    try {
+      await writeJobRun({
+        source: "resolver",
+        formulaVersion: "resolver-v1",
+        startedAt,
+        finishedAt: opts.finishedAt,
+        status: opts.status,
+        generatedCount: opts.updatedCount ?? 0,
+        rejectedCount: opts.skippedCount ?? 0,
+        durationMs: dur,
+        errorMessage: opts.errorMessage,
+        diagnostics: {
+          writeMode: true,
+          limit: rawLimit,
+          maxUpdates,
+          ...(opts.extra ?? {}),
+        },
+      });
+      console.log(
+        `[resolve-signals] Job run recorded (${opts.status}, updated=${opts.updatedCount ?? 0})`,
+      );
+    } catch (e) {
+      console.error(
+        "[resolve-signals] Failed to write job run:",
+        e instanceof Error ? e.message : String(e),
+      );
+    }
+  }
+
   const mode = WRITE_MODE ? "write" : "dry-run";
 
   const maxUpdatesLabel = WRITE_MODE ? String(maxUpdates) : "n/a";
@@ -61,6 +108,14 @@ async function main() {
 
   if (selectError) {
     console.error("[resolve-signals] DB select failed:", selectError.message);
+    if (WRITE_MODE) {
+      await tryWriteResolverJobRun({
+        status: "error",
+        finishedAt: new Date().toISOString(),
+        errorMessage: selectError.message,
+        extra: { phase: "db-select" },
+      });
+    }
     process.exit(1);
   }
 
@@ -69,6 +124,13 @@ async function main() {
 
   if (selectedCount === 0) {
     console.log("[resolve-signals] Nothing to process. Done.");
+    if (WRITE_MODE) {
+      await tryWriteResolverJobRun({
+        status: "empty",
+        finishedAt: new Date().toISOString(),
+        extra: { selected: 0 },
+      });
+    }
     return;
   }
 
@@ -185,9 +247,53 @@ async function main() {
       `[resolve-signals] No rows updated — all were active, unknown, or already resolved.`
     );
   }
+
+  // ── Write job_runs (write-mode only) ─────────────────────────────────────
+  if (WRITE_MODE) {
+    await tryWriteResolverJobRun({
+      status: "success",
+      updatedCount,
+      skippedCount,
+      finishedAt,
+      extra: {
+        selected: selectedCount,
+        updated: updatedCount,
+        skipped: skippedCount,
+        by_state: stateCounts,
+        by_result: resultCounts,
+      },
+    });
+  } else {
+    console.log(
+      "[resolve-signals] Dry-run mode — job_runs not written.",
+    );
+  }
 }
 
-main().catch((err) => {
+main().catch(async (err) => {
   console.error("[resolve-signals] Fatal error:", err);
+  // Best-effort job_runs write on fatal throw (write-mode only)
+  if (WRITE_MODE) {
+    try {
+      const { writeJobRun: wjr } = await import(
+        "../lib/feed/cacheGeneratedSignals"
+      );
+      const tFatal = new Date().toISOString();
+      await wjr({
+        source: "resolver",
+        formulaVersion: "resolver-v1",
+        startedAt: tFatal, // startedAt inaccessible here — use current time as sentinel
+        finishedAt: tFatal,
+        status: "error",
+        generatedCount: 0,
+        rejectedCount: 0,
+        durationMs: 0,
+        errorMessage: err instanceof Error ? err.message : String(err),
+        diagnostics: { writeMode: true, fatal: true },
+      });
+    } catch {
+      // non-fatal: never let job_runs failure mask the real error
+    }
+  }
   process.exit(1);
 });
