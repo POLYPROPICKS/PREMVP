@@ -18,7 +18,7 @@ const rawLimit = (() => {
   const arg = process.argv.find((a) => a.startsWith("--limit="));
   if (!arg) return 25;
   const n = parseInt(arg.split("=")[1], 10);
-  return Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : 25;
+  return Number.isFinite(n) ? Math.min(Math.max(n, 1), 500) : 25;
 })();
 
 // In write mode, default maxUpdates = 1 to prevent accidental bulk writes.
