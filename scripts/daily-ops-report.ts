@@ -13,6 +13,8 @@ interface ResolvedRow {
   id: string;
   created_at: string;
   resolved_at: string | null;
+  condition_id: string | null;
+  selected_token_id: string | null;
   signal_result: string | null;
   signal_confidence_num: number | null;
   entry_price_num: number | null;
@@ -174,6 +176,54 @@ function execGit(cmd: string): string {
   }
 }
 
+// ── Deduplication ─────────────────────────────────────────────────────────────
+// Each market/outcome pair is cached repeatedly by signal-cache-cron (~30 min).
+// Resolver writes signal_result to ALL rows in the group simultaneously.
+// Canonical key: condition_id + selected_token_id (both 100% populated in prod).
+// Fallback: event_slug + selected_outcome → id.
+// Representative row: earliest created_at (first signal snapshot).
+
+interface DedupResult {
+  rows: ResolvedRow[];
+  rawCount: number;
+  uniqueCount: number;
+  duplicateGroups: number;
+  maxDuplicatesInGroup: number;
+}
+
+function deduplicateRows(rawRows: ResolvedRow[]): DedupResult {
+  const groups = new Map<string, ResolvedRow[]>();
+  for (const r of rawRows) {
+    const key =
+      r.condition_id && r.selected_token_id
+        ? `ct::${r.condition_id}::${r.selected_token_id}`
+        : r.event_slug && r.selected_outcome
+          ? `so::${r.event_slug}::${r.selected_outcome}`
+          : `id::${r.id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(r);
+  }
+  let duplicateGroups = 0;
+  let maxDuplicatesInGroup = 0;
+  const rows: ResolvedRow[] = [];
+  for (const group of groups.values()) {
+    // Earliest created_at = first signal snapshot (pre-cron-amplification)
+    group.sort(
+      (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    rows.push(group[0]);
+    if (group.length > 1) duplicateGroups++;
+    if (group.length > maxDuplicatesInGroup) maxDuplicatesInGroup = group.length;
+  }
+  return {
+    rows,
+    rawCount: rawRows.length,
+    uniqueCount: rows.length,
+    duplicateGroups,
+    maxDuplicatesInGroup,
+  };
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -321,13 +371,20 @@ async function main() {
 
   let resolvedRows: ResolvedRow[] = [];
   let resolvedError: string | null = null;
+  let dedupDiag = {
+    rawCount: 0,
+    uniqueCount: 0,
+    duplicateGroups: 0,
+    maxDuplicatesInGroup: 0,
+  };
 
   if (supabase) {
     try {
       const { data, error } = await supabase
         .from("generated_signal_pairs")
         .select(
-          "id, created_at, resolved_at, signal_result, signal_confidence_num, " +
+          "id, created_at, resolved_at, condition_id, selected_token_id, " +
+          "signal_result, signal_confidence_num, " +
           "entry_price_num, realized_return_pct, metric_formula_version, " +
           "event_slug, selected_outcome, premium_signal",
         )
@@ -336,7 +393,25 @@ async function main() {
         .order("resolved_at", { ascending: false })
         .limit(500);
       if (error) throw new Error(error.message);
-      resolvedRows = (data ?? []) as unknown as ResolvedRow[];
+      const rawRows72 = (data ?? []) as unknown as ResolvedRow[];
+      const deduped = deduplicateRows(rawRows72);
+      dedupDiag = {
+        rawCount: deduped.rawCount,
+        uniqueCount: deduped.uniqueCount,
+        duplicateGroups: deduped.duplicateGroups,
+        maxDuplicatesInGroup: deduped.maxDuplicatesInGroup,
+      };
+      resolvedRows = deduped.rows;
+      // Re-sort deduped rows by resolved_at DESC for display and latestResolvedAt
+      resolvedRows.sort((a, b) =>
+        (b.resolved_at ?? "").localeCompare(a.resolved_at ?? ""),
+      );
+      // Informational note — expected behaviour, not a failure
+      if (deduped.rawCount > 0 && deduped.rawCount / deduped.uniqueCount >= 2) {
+        redFlags.push(
+          `ℹ️ Dedup: ${deduped.rawCount} raw строк → ${deduped.uniqueCount} уникальных сигналов за 72h (ожидаемо — cache-cron вставляет повторные снимки)`,
+        );
+      }
     } catch (e) {
       resolvedError = e instanceof Error ? e.message : String(e);
       redFlags.push(`❌ Resolved stats: ${resolvedError}`);
@@ -506,6 +581,21 @@ async function main() {
   out(
     `| Red flags | ${redFlags.length === 0 ? "✅ 0" : `⚠️ ${redFlags.length}`} | Смотри секцию Red Flags |`,
   );
+  out(``);
+
+  // Counting Method
+  out(`## 📊 Counting Method`);
+  out(``);
+  out(`| Поле | Значение |`);
+  out(`|------|----------|`);
+  out(`| Метод | Unique signals (deduplicated) |`);
+  out(`| Dedup key | condition_id + selected_token_id |`);
+  out(`| Fallback key | event_slug + selected_outcome → id |`);
+  out(`| Snapshot | earliest created_at per group |`);
+  out(`| Raw rows 72h | ${dedupDiag.rawCount} |`);
+  out(`| Unique signals 72h | ${dedupDiag.uniqueCount} |`);
+  out(`| Duplicate groups | ${dedupDiag.duplicateGroups} |`);
+  out(`| Max duplicates/group | ${dedupDiag.maxDuplicatesInGroup} |`);
   out(``);
 
   // Deploy State
@@ -732,7 +822,7 @@ async function main() {
   out(``);
   out(`---`);
   out(
-    `*Отчёт сформирован: ${fmtDate(nowISO)} | PolyProPicks Ops Report v1.0*`,
+    `*Отчёт сформирован: ${fmtDate(nowISO)} | PolyProPicks Ops Report v1.1*`,
   );
 
   // Print to stdout
