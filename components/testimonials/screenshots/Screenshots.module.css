@@ -1,0 +1,773 @@
+/* ============================================================
+   Testimonials — Zone 3 Screenshot Skins
+   PolyProPicks · Scoped CSS Module
+   Source of truth: docs/design/testimonials/handoff/reference.html
+   ============================================================ */
+
+/* ── 3A: Polymarket (white skin) ──────────────────────────── */
+.zonePm {
+  background: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+}
+
+.pmNav {
+  background: #fff;
+  border-bottom: 1px solid #e8e8e8;
+  padding: 4px 9px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.pmLogoWrap {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pmWordmark {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #1a1a1a;
+  letter-spacing: -0.01em;
+}
+
+.pmFlag {
+  font-size: 12px;
+  line-height: 1;
+}
+
+.pmNavRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pmPortfolioWrap {
+  display: flex;
+  gap: 8px;
+}
+
+.pmStatItem {
+  text-align: right;
+}
+
+.pmStatLabel {
+  font-size: 7px;
+  color: #888;
+  font-weight: 500;
+  display: block;
+  line-height: 1.3;
+}
+
+.pmStatVal {
+  font-size: 8.5px;
+  font-weight: 700;
+  display: block;
+  filter: blur(4px);
+  user-select: none;
+}
+
+.pmStatValGreen { color: #00a152; }
+.pmStatValBlue  { color: #1652f0; }
+
+.pmDepositBtn {
+  background: #1652f0;
+  color: #fff;
+  font-size: 7.5px;
+  font-weight: 700;
+  border: none;
+  border-radius: 20px;
+  padding: 2px 7px;
+  cursor: default;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.pmTabs {
+  display: flex;
+  padding: 0 9px;
+  border-bottom: 1px solid #e8e8e8;
+}
+
+.pmTab {
+  font-size: 8.5px;
+  font-weight: 500;
+  color: #888;
+  padding: 4px 7px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.pmTabActive {
+  color: #1a1a1a;
+  font-weight: 700;
+  border-bottom: 2px solid #1a1a1a;
+}
+
+.pmColHeaders {
+  display: flex;
+  align-items: center;
+  padding: 3px 9px;
+  background: #fafafa;
+  border-bottom: 1px solid #f0f0f0;
+  gap: 8px;
+}
+
+.pmColAct {
+  font-size: 6px;
+  font-weight: 600;
+  color: #aaa;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  width: 48px;
+  flex-shrink: 0;
+}
+
+.pmColMkt {
+  font-size: 6px;
+  font-weight: 600;
+  color: #aaa;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  flex: 1;
+}
+
+.pmColVal {
+  font-size: 6px;
+  font-weight: 600;
+  color: #aaa;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  width: 44px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.pmColTime {
+  font-size: 6px;
+  font-weight: 600;
+  color: #aaa;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  width: 30px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.pmRow {
+  display: flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-top: 1px solid #f2f2f2;
+  gap: 8px;
+  background: #fff;
+}
+
+.pmRowWin { background: #f6fff9; }
+
+.pmActWrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 48px;
+  flex-shrink: 0;
+}
+
+.pmActIcon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1.5px solid #ccc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #555;
+  flex-shrink: 0;
+}
+
+.pmActLabel {
+  font-size: 8px;
+  font-weight: 600;
+  color: #444;
+}
+
+.pmMktCol {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.pmThumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  overflow: hidden;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+}
+
+.pmMktInner {
+  flex: 1;
+  min-width: 0;
+}
+
+.pmMktName {
+  font-size: 7.5px;
+  color: #1a1a1a;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pmMktMeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.pmPill {
+  display: inline-block;
+  font-size: 8.5px;
+  font-weight: 700;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+.pmPillYes { background: #e6f4ee; color: #00a152; }
+.pmPillNo  { background: #fce8e8; color: #d32f2f; }
+
+.pmShares {
+  font-size: 8.5px;
+  color: #aaa;
+}
+
+.pmVal {
+  width: 44px;
+  text-align: right;
+  flex-shrink: 0;
+  font-size: 8.5px;
+  font-weight: 700;
+}
+
+.pmValPos { color: #00a152; }
+.pmValNeg { color: #d32f2f; }
+.pmValNeu { color: #aaa; font-weight: 400; }
+
+.pmTime {
+  width: 30px;
+  text-align: right;
+  flex-shrink: 0;
+  font-size: 7px;
+  color: #bbb;
+}
+
+/* ── 3B: FanDuel (white + blue skin) ─────────────────────── */
+.zoneFanduel {
+  background: #fff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.fdChrome {
+  background: #fff;
+  border-bottom: 1px solid #e5e5e5;
+  padding: 5px 10px 0;
+}
+
+.fdLogoBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.fdLogoWrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.fdLogoIcon {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1493ff, #0a7aea);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.fdWordmark {
+  font-size: 10px;
+  font-weight: 800;
+  color: #1a1a1a;
+  letter-spacing: -0.02em;
+}
+
+.fdWordmark span { color: #1493ff; }
+
+.fdAccount {
+  font-size: 8.5px;
+  color: #888;
+}
+
+.fdTabs {
+  display: flex;
+  gap: 0;
+}
+
+.fdTab {
+  font-size: 8.5px;
+  font-weight: 500;
+  color: #888;
+  padding: 5px 7px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.fdTabActive {
+  color: #1493ff;
+  font-weight: 700;
+  border-bottom: 2px solid #1493ff;
+}
+
+.fdTabBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #1493ff;
+  color: #fff;
+  font-size: 7.5px;
+  font-weight: 700;
+  margin-left: 3px;
+}
+
+.fdBet {
+  padding: 7px 10px 9px;
+}
+
+.fdStatusRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 7px;
+}
+
+.fdWonBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: #e8f8ed;
+  border: 1px solid #4caf50;
+  border-radius: 6px;
+  padding: 2px 7px;
+  font-size: 8.5px;
+  font-weight: 800;
+  color: #2e7d32;
+  letter-spacing: 0.04em;
+}
+
+.fdWonDot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #4caf50;
+}
+
+.fdDate {
+  font-size: 8.5px;
+  color: #aaa;
+}
+
+.fdEventLeague {
+  font-size: 7.5px;
+  font-weight: 600;
+  color: #1493ff;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 3px;
+}
+
+.fdEventName {
+  font-size: 9.5px;
+  font-weight: 700;
+  color: #1a1a1a;
+  line-height: 1.3;
+  margin-bottom: 4px;
+}
+
+.fdSelection {
+  font-size: 8.5px;
+  color: #444;
+  margin-bottom: 2px;
+}
+
+.fdSelection span { font-weight: 600; }
+
+.fdResult {
+  font-size: 8px;
+  color: #888;
+  margin-bottom: 7px;
+}
+
+.fdResult span { color: #2e7d32; font-weight: 600; }
+
+.fdDivider {
+  height: 1px;
+  background: #f0f0f0;
+  margin: 7px 0;
+}
+
+.fdPayoutGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+
+.fdPayoutItem {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fdPayoutLabel {
+  font-size: 7.5px;
+  color: #aaa;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.fdPayoutVal {
+  font-size: 10px;
+  font-weight: 700;
+  color: #1a1a1a;
+}
+
+.fdPayoutValPayout {
+  color: #2e7d32;
+  font-size: 11px;
+}
+
+.fdPayoutValProfit { color: #2e7d32; }
+
+.fdFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 10px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+
+.fdBetId {
+  font-size: 7.5px;
+  color: #bbb;
+  font-family: monospace;
+}
+
+.fdShareBtn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 8.5px;
+  font-weight: 600;
+  color: #1493ff;
+  border: 1px solid #1493ff;
+  border-radius: 20px;
+  padding: 3px 8px;
+  cursor: default;
+  background: transparent;
+  font-family: inherit;
+}
+
+/* ── 3C: DraftKings (dark + lime skin) ───────────────────── */
+.zoneDraftkings {
+  background: #1a1a1a;
+  font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif;
+}
+
+.dkChrome {
+  background: #111;
+  border-bottom: 1px solid #2a2a2a;
+  padding: 5px 10px 0;
+}
+
+.dkLogoBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 5px;
+  border-bottom: 1px solid #2a2a2a;
+}
+
+.dkLogoWrap {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.dkLogoIcon {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: #53d22c;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dkWordmark {
+  font-size: 10px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: -0.02em;
+  text-transform: uppercase;
+}
+
+.dkWordmark span { color: #53d22c; }
+
+.dkAccount {
+  font-size: 8.5px;
+  color: #666;
+}
+
+.dkSearch {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #222;
+  border-radius: 8px;
+  padding: 4px 8px;
+  margin: 5px 0 0;
+}
+
+.dkSearchIcon {
+  font-size: 9px;
+  color: #666;
+}
+
+.dkSearchText {
+  font-size: 9px;
+  color: #444;
+}
+
+.dkTabs {
+  display: flex;
+  gap: 0;
+  margin-top: 1px;
+}
+
+.dkTab {
+  font-size: 8.5px;
+  font-weight: 500;
+  color: #666;
+  padding: 5px 7px;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.dkTabActive {
+  color: #53d22c;
+  font-weight: 700;
+  border-bottom: 2px solid #53d22c;
+}
+
+.dkTabCount {
+  color: #53d22c;
+  font-weight: 700;
+  margin-left: 2px;
+}
+
+.dkBet { padding: 8px 10px; }
+
+.dkBetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #252525;
+  border-radius: 8px 8px 0 0;
+  padding: 6px 10px;
+  border: 1px solid #333;
+  border-bottom: none;
+}
+
+.dkWonBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 8.5px;
+  font-weight: 800;
+  color: #53d22c;
+  letter-spacing: 0.04em;
+}
+
+.dkWonIcon { font-size: 10px; }
+
+.dkBetType {
+  font-size: 8.5px;
+  color: #666;
+}
+
+.dkPayoutHeader { text-align: right; }
+
+.dkPayoutLabel {
+  font-size: 7.5px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: block;
+}
+
+.dkPayoutVal {
+  font-size: 12px;
+  font-weight: 900;
+  color: #53d22c;
+  letter-spacing: -0.02em;
+}
+
+.dkBetBody {
+  background: #222;
+  border: 1px solid #333;
+  border-top: none;
+  border-radius: 0 0 8px 8px;
+  padding: 7px 10px;
+}
+
+.dkLeague {
+  font-size: 7.5px;
+  color: #666;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 3px;
+}
+
+.dkEventName {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.3;
+  margin-bottom: 4px;
+}
+
+.dkSelectionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: #1a1a1a;
+  border-radius: 6px;
+  padding: 5px 8px;
+  margin-bottom: 5px;
+}
+
+.dkSelectionLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dkSelectionName {
+  font-size: 9px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.dkSelectionResult {
+  font-size: 8.5px;
+  color: #53d22c;
+  font-weight: 600;
+}
+
+.dkSelectionOdds {
+  font-size: 11px;
+  font-weight: 800;
+  color: #53d22c;
+}
+
+.dkBetRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 5px;
+  border-top: 1px solid #2a2a2a;
+}
+
+.dkBetItem {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.dkBetItemLabel {
+  font-size: 7.5px;
+  color: #555;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.dkBetItemVal {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.dkBetItemValProfit { color: #53d22c; }
+
+.dkFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
+}
+
+.dkBetId {
+  font-size: 7.5px;
+  color: #444;
+  font-family: monospace;
+}
+
+.dkShareBtn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 8.5px;
+  font-weight: 700;
+  color: #1a1a1a;
+  background: #53d22c;
+  border: none;
+  border-radius: 20px;
+  padding: 4px 9px;
+  cursor: default;
+  font-family: inherit;
+}
+
+/* ── Brand logo images (founder-approved assets) ── */
+.pmLogoImg {
+  max-height: 20px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.brandLogoImg {
+  max-height: 22px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}

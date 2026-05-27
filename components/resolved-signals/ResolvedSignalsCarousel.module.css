@@ -4,23 +4,30 @@
    ============================================================ */
 
 .section {
+  --ppp-section-gap: 38px;
+  --ppp-section-pad-x: 20px;
+  --ppp-title-to-sub: 7px;
+  --ppp-header-to-body: 16px;
+
   width: 100%;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  margin-top: 16px;
-  padding-top: 0;
-  padding-bottom: 16px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  align-items: stretch;
+  margin-top: var(--ppp-section-gap);
+  padding: 0;
+  border-top: 0;
 }
 
 .header {
   width: 100%;
   max-width: 390px;
-  padding: 10px 20px 10px;
+  padding: 0 var(--ppp-section-pad-x);
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  align-items: flex-start;
+  font-family: -apple-system, "SF Pro Display", BlinkMacSystemFont, "Segoe UI",
+    Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* Premium variant — compact strip, no header, no dots */
@@ -34,25 +41,24 @@
   align-items: center;
 }
 
+
 .headerTitle {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  font-size: 24px;
+  font-weight: 780;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
   color: #ffffff;
-  font-family: -apple-system, "SF Pro Display", BlinkMacSystemFont, "Segoe UI",
-    Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
+  text-wrap: balance;
+  margin: 0;
 }
 
 .headerSubtitle {
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 500;
-  color: rgba(0, 212, 255, 0.6);
-  letter-spacing: 0.01em;
-  font-family: -apple-system, "SF Pro Display", BlinkMacSystemFont, "Segoe UI",
-    Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
+  color: rgba(255, 255, 255, 0.5);
+  letter-spacing: -0.005em;
+  line-height: 1.35;
+  margin-top: var(--ppp-title-to-sub);
 }
 
 .carousel {
@@ -64,32 +70,16 @@
   scrollbar-width: none;
   display: flex;
   gap: 12px;
-  padding: 4px 20px 8px;
+  padding: 4px var(--ppp-section-pad-x) 0;
+  margin-top: var(--ppp-header-to-body);
   scroll-snap-type: x mandatory;
+}
+
+.carousel::after {
+  content: "";
+  flex: 0 0 calc(var(--ppp-section-pad-x) - 12px);
 }
 
 .carousel::-webkit-scrollbar {
   display: none;
-}
-
-/* Scroll dots */
-.dots {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-  padding-top: 10px;
-}
-
-.dot {
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.15);
-  transition: all 0.3s;
-}
-
-.dotActive {
-  width: 16px;
-  border-radius: 3px;
-  background: #00d4ff;
 }

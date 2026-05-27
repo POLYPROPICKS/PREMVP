@@ -1,0 +1,102 @@
+/* ============================================================
+   TestimonialsSection — header · carousel
+   PolyProPicks · Scoped CSS Module
+   ============================================================ */
+
+.section {
+  --ppp-section-gap: 34px;
+  --ppp-section-pad-x: 20px;
+  --ppp-title-to-sub: 7px;
+  --ppp-header-to-body: 16px;
+
+  width: 100%;
+  background: #070914;
+  margin-top: var(--ppp-section-gap);
+  padding: 0 0 0;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Section header ─────────────────────────────────────────── */
+.header {
+  width: 100%;
+  max-width: 390px;
+  padding: 0 var(--ppp-section-pad-x);
+  text-align: center;
+  font-family: -apple-system, 'SF Pro Display', BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+
+.title {
+  font-size: 24px;
+  font-weight: 780;
+  color: #fff;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.ratingRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.stars {
+  color: #fbbf24;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+}
+
+.avgNum {
+  font-size: 16px;
+  font-weight: 800;
+  color: #fff;
+}
+
+.reviewCount {
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+}
+
+.platformPills {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 0;
+}
+
+.ppill {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+/* ── Carousel ───────────────────────────────────────────────── */
+.carousel {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  padding: 0 0 0 var(--ppp-section-pad-x);
+  margin-top: 16px;
+  display: flex;
+  gap: 14px;
+  scroll-snap-type: x mandatory;
+}
+
+.carousel::after {
+  content: "";
+  flex: 0 0 calc(var(--ppp-section-pad-x) - 14px);
+}
+
+.carousel::-webkit-scrollbar { display: none; }

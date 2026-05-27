@@ -1,0 +1,147 @@
+/* ============================================================
+   TestimonialCard — Zone 1 + Zone 2 + card shell
+   PolyProPicks · Scoped CSS Module
+   ============================================================ */
+
+.card {
+  flex-shrink: 0;
+  width: 336px;
+  scroll-snap-align: start;
+  align-self: flex-start;
+  border-radius: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  display: flex;
+  flex-direction: column;
+  font-family: -apple-system, 'SF Pro Display', BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Zone 1: Quote ─────────────────────────────────────────── */
+.zoneQuote {
+  background: #0d1224;
+  padding: 8px 12px 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.quoteText {
+  font-size: 11px;
+  line-height: 1.48;
+  color: rgba(255, 255, 255, 0.87);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.quoteAuthor {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.authorLeft {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  background: #222;
+}
+
+.authorName {
+  font-size: 10px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.2;
+}
+
+.authorPlatform {
+  font-size: 8.5px;
+  color: #00d4ff;
+  margin-top: 1px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.platSvg {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+}
+
+.authorArrow {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.2);
+}
+
+/* ── Zone 2: Verified strip ────────────────────────────────── */
+.zoneVerified {
+  background: rgba(0, 255, 136, 0.06);
+  border-top: 1px solid rgba(0, 255, 136, 0.14);
+  border-bottom: 1px solid rgba(0, 255, 136, 0.14);
+  padding: 5px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.verifiedLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.verifiedBadge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 7.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #00ff88;
+}
+
+.vDot {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #00ff88;
+  animation: vpulse 2s infinite;
+  flex-shrink: 0;
+}
+
+@keyframes vpulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+.verifiedEvent {
+  font-size: 8.5px;
+  color: rgba(255, 255, 255, 0.45);
+  max-width: 170px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.verifiedPnl {
+  font-size: 12.5px;
+  font-weight: 800;
+  color: #00ff88;
+  letter-spacing: -0.02em;
+  flex-shrink: 0;
+}

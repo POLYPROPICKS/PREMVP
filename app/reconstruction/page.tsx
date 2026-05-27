@@ -19,6 +19,7 @@ import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
 import PassOfferModal from '@/components/modals/PassOfferModal';
 import ResolvedSignalsCarousel from '@/components/resolved-signals/ResolvedSignalsCarousel';
+import TestimonialsSection from '@/components/testimonials/TestimonialsSection';
 
 type MarketEvidenceSource = NonNullable<LandingPair['marketSources']>[number];
 
@@ -318,6 +319,8 @@ export default function ReconstructionPage() {
       </section>
 
       <ResolvedSignalsCarousel />
+
+      <TestimonialsSection />
 
       {isModalOpen && (
         <UnlockModal
@@ -1007,7 +1010,11 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
         </div>
       </div>
       <button className={styles.cta} onClick={onCtaClick}>Get $30 Premium Credit</button>
-      <p className={styles.ctaSubline}>Give a friend a free week · see latest resolved signals →</p>
+      <p className={styles.ctaSubline}>
+        <span>Give a friend a free week</span>
+        <span className={styles.ctaSublineSeparator}>·</span>
+        <a className={styles.ctaSublineLink} href="#resolved-signals">see latest resolved signals →</a>
+      </p>
     </article>
   );
 }

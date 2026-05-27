@@ -1,11 +1,9 @@
 'use client';
 
-import { useRef, useState, useCallback, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import styles from './ResolvedSignalsCarousel.module.css';
 import ResolvedSignalCard from './ResolvedSignalCard';
 
-const CARD_WIDTH = 330;
-const CARD_GAP = 12;
 const PUSH_RESULTS = new Set(['push', 'refund', 'tie', 'void', 'cancelled', 'no_contest']);
 const MAX_CARDS = 7;
 const MAX_LOST = 1;
@@ -53,8 +51,6 @@ interface ResolvedSignalsCarouselProps {
 
 export default function ResolvedSignalsCarousel({ variant = 'landing' }: ResolvedSignalsCarouselProps) {
   const isPremium = variant === 'premium';
-  const carouselRef = useRef<HTMLDivElement>(null);
-  const [activeIndex, setActiveIndex] = useState(0);
   const [signals, setSignals] = useState<ApiResolvedSignal[]>([]);
   const [status, setStatus] = useState<'loading' | 'ok' | 'empty' | 'error'>('loading');
 
@@ -78,46 +74,25 @@ export default function ResolvedSignalsCarousel({ variant = 'landing' }: Resolve
     return () => { cancelled = true; };
   }, []);
 
-  const handleScroll = useCallback(() => {
-    const el = carouselRef.current;
-    if (!el) return;
-    const idx = Math.round(el.scrollLeft / (CARD_WIDTH + CARD_GAP));
-    setActiveIndex(Math.max(0, Math.min(signals.length - 1, idx)));
-  }, [signals.length]);
 
   // Don't render section at all while loading or on error with nothing to show
   if (status === 'loading') return null;
   if (status === 'error' || status === 'empty') return null;
 
   return (
-    <section className={isPremium ? styles.sectionPremium : styles.section}>
+    <section id={!isPremium ? "resolved-signals" : undefined} className={isPremium ? styles.sectionPremium : styles.section}>
       {!isPremium && (
         <div className={styles.header}>
-          <div className={styles.headerTitle}>Latest Resolved Signals</div>
+          <div className={styles.headerTitle}>Latest resolved signals</div>
           <div className={styles.headerSubtitle}>Tracking is live · last 7 days</div>
         </div>
       )}
 
-      <div
-        className={styles.carousel}
-        ref={carouselRef}
-        onScroll={handleScroll}
-      >
+      <div className={styles.carousel}>
         {signals.map((signal) => (
           <ResolvedSignalCard key={signal.id} signal={signal} />
         ))}
       </div>
-
-      {!isPremium && signals.length > 1 && (
-        <div className={styles.dots} aria-hidden="true">
-          {signals.map((_, i) => (
-            <div
-              key={i}
-              className={[styles.dot, i === activeIndex ? styles.dotActive : ''].join(' ').trim()}
-            />
-          ))}
-        </div>
-      )}
     </section>
   );
 }
