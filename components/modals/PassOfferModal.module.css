@@ -143,8 +143,8 @@
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 8px 14px 14px;
+  gap: 8px;
+  padding: 8px 14px 12px;
 }
 
 .hero {
@@ -169,7 +169,7 @@
 }
 
 .chartCard {
-  flex: 0 0 154px;
+  flex: 0 0 184px;
   min-height: 0;
   border: 1px solid rgba(75, 116, 135, 0.58);
   border-radius: 16px;
@@ -497,7 +497,7 @@
   }
 
   .chartCard {
-    flex-basis: 142px;
+    flex-basis: 174px;
     padding: 10px 14px 8px;
   }
 

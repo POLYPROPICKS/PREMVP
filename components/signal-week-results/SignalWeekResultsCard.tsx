@@ -15,7 +15,7 @@ const PAD_X = 12;
 const PAD_Y_TOP = 18;
 const PAD_Y_BOT = 16;
 const MARGIN = 0.14;
-const MAX_CHIPS = 5;
+const MAX_CHIPS = 7;
 
 interface VisPt {
   x: number;

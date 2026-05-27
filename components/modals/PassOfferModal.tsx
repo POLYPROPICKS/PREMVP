@@ -225,7 +225,7 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
             </section>
 
             <section className={styles.chartCard} aria-label="Past 7 days signal chart">
-              <SignalWeekResultsCard data={weekCard} loading={weekCardLoading} variant="compact" />
+              <SignalWeekResultsCard data={weekCard} loading={weekCardLoading} variant="paywall" />
             </section>
 
             <section className={styles.benefits} aria-label="Premium benefits">
