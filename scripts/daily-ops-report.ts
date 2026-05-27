@@ -122,6 +122,72 @@ function extractConf(row: ResolvedRow): number | null {
   );
 }
 
+function getConfBand(conf: number | null): string {
+  if (conf === null) return "Missing";
+  if (conf >= 80) return "80+";
+  if (conf >= 70) return "70–79";
+  if (conf >= 60) return "60–69";
+  return "<60";
+}
+
+function extractLabel(row: ResolvedRow): string {
+  const ps = row.premium_signal;
+  const confLabel = safeStr(ps?.confidenceLabel);
+  if (confLabel) return confLabel;
+  const oddsLabel = safeStr(ps?.oddsBandLabel);
+  if (oddsLabel) return oddsLabel;
+  const conf = extractConf(row);
+  return conf !== null ? `Band:${getConfBand(conf)}` : "Unknown";
+}
+
+interface BreakdownRow {
+  total: number;
+  won: number;
+  lost: number;
+  push: number;
+  returns: (number | null)[];
+}
+
+function computeBreakdown<K extends string>(
+  rows: ResolvedRow[],
+  keyFn: (r: ResolvedRow) => K,
+): Map<K, BreakdownRow> {
+  const map = new Map<K, BreakdownRow>();
+  for (const r of rows) {
+    const k = keyFn(r);
+    if (!map.has(k))
+      map.set(k, { total: 0, won: 0, lost: 0, push: 0, returns: [] });
+    const b = map.get(k)!;
+    b.total++;
+    if (r.signal_result === "won") b.won++;
+    else if (r.signal_result === "lost") b.lost++;
+    else if (PUSH_RESULTS.has(r.signal_result ?? "")) b.push++;
+    b.returns.push(safeNum(r.realized_return_pct));
+  }
+  return map;
+}
+
+function renderBreakdownTable(
+  map: Map<string, BreakdownRow>,
+  order: string[],
+  out: (s: string) => void,
+  minSample = 3,
+): void {
+  out(`| Группа | Resolved | Won | Lost | Win% | Avg Return | Примечание |`);
+  out(`|--------|----------|-----|------|------|------------|------------|`);
+  const allKeys = [...new Set([...order, ...map.keys()])];
+  for (const key of allKeys) {
+    const b = map.get(key);
+    if (!b) continue;
+    const wr = winRateFmt(b.won, b.lost);
+    const avgRet = avgReturnFmt(b.returns);
+    const note = b.total < minSample ? "⚠️ LOW SAMPLE" : "";
+    out(
+      `| ${key} | ${b.total} | ${b.won} | ${b.lost} | ${wr} | ${avgRet} | ${note} |`,
+    );
+  }
+}
+
 function computeWindow(rows: ResolvedRow[]): WindowStats {
   let won = 0,
     lost = 0,
@@ -523,6 +589,65 @@ async function main() {
     s.confs.push(extractConf(r));
   }
 
+  // ── 3e. Confidence band + label breakdowns ────────────────────────────────
+  const BAND_ORDER = ["80+", "70–79", "60–69", "<60", "Missing"];
+
+  const bandMap72 = computeBreakdown(rows72, (r) =>
+    getConfBand(extractConf(r)),
+  ) as Map<string, BreakdownRow>;
+  const bandMap24 = computeBreakdown(rows24, (r) =>
+    getConfBand(extractConf(r)),
+  ) as Map<string, BreakdownRow>;
+  const labelMap72 = computeBreakdown(rows72, (r) =>
+    extractLabel(r),
+  ) as Map<string, BreakdownRow>;
+
+  // League × Confidence ≥70 (24h and 72h)
+  const leagueConf70_24: Record<
+    string,
+    { total: number; won: number; lost: number }
+  > = {};
+  for (const r of rows24) {
+    const conf = extractConf(r) ?? 0;
+    if (conf >= 70) {
+      const league = inferLeague(r.event_slug, r.premium_signal);
+      if (!leagueConf70_24[league])
+        leagueConf70_24[league] = { total: 0, won: 0, lost: 0 };
+      leagueConf70_24[league].total++;
+      if (r.signal_result === "won") leagueConf70_24[league].won++;
+      if (r.signal_result === "lost") leagueConf70_24[league].lost++;
+    }
+  }
+  const leagueConf70_72: Record<
+    string,
+    { total: number; won: number; lost: number }
+  > = {};
+  for (const r of rows72) {
+    const conf = extractConf(r) ?? 0;
+    if (conf >= 70) {
+      const league = inferLeague(r.event_slug, r.premium_signal);
+      if (!leagueConf70_72[league])
+        leagueConf70_72[league] = { total: 0, won: 0, lost: 0 };
+      leagueConf70_72[league].total++;
+      if (r.signal_result === "won") leagueConf70_72[league].won++;
+      if (r.signal_result === "lost") leagueConf70_72[league].lost++;
+    }
+  }
+
+  // Integrity checks
+  const bandTotal72 = [...bandMap72.values()].reduce(
+    (s, b) => s + b.total,
+    0,
+  );
+  const integrityBandOk = bandTotal72 === stats72.total;
+  const leagueTotalCheck = Object.values(leagueStats24).reduce(
+    (s, v) => s + v.total,
+    0,
+  );
+  const integrityLeagueOk = leagueTotalCheck === stats24.total;
+  const missingConf72 = bandMap72.get("Missing")?.total ?? 0;
+  const missingLabel72 = labelMap72.get("Unknown")?.total ?? 0;
+
   // ── Build Markdown ─────────────────────────────────────────────────────────
 
   const feedEmoji =
@@ -811,6 +936,98 @@ async function main() {
   );
   out(``);
 
+  // Confidence Band Performance
+  out(`## 📊 Confidence Band Performance (72h)`);
+  out(``);
+  if (resolvedError || rows72.length === 0) {
+    out(`> ⚠️ Нет данных за 72h`);
+  } else {
+    renderBreakdownTable(bandMap72, BAND_ORDER, out);
+    out(``);
+    out(`**24h разбивка:**`);
+    out(``);
+    if (rows24.length === 0) {
+      out(`> ⚠️ Нет данных за 24h`);
+    } else {
+      renderBreakdownTable(bandMap24, BAND_ORDER, out);
+    }
+  }
+  out(``);
+
+  // Signal Label / Action Performance
+  out(`## 🧭 Signal Label / Action Performance (72h)`);
+  out(``);
+  if (resolvedError || rows72.length === 0) {
+    out(`> ⚠️ Нет данных за 72h`);
+  } else {
+    const labelOrder = ["Core Signal", "Value Lean", "Unknown"];
+    renderBreakdownTable(labelMap72, labelOrder, out);
+    out(``);
+    out(
+      `> ℹ️ Label источник: \`premium_signal.confidenceLabel\` → \`oddsBandLabel\` → \`Band:XX\`. \`formulaAudit\` не заполнен в БД — action breakdown недоступен.`,
+    );
+  }
+  out(``);
+
+  // League × Confidence ≥70
+  out(`## 🏟️ League × Confidence ≥70`);
+  out(``);
+  if (resolvedError) {
+    out(`> ❌ DB недоступен`);
+  } else {
+    out(`**24h (conf≥70 only):**`);
+    out(``);
+    if (Object.keys(leagueConf70_24).length === 0) {
+      out(`> ⚠️ Нет сигналов с confidence≥70 за 24h`);
+    } else {
+      out(`| Лига | Conf≥70 | Won | Lost | Win% |`);
+      out(`|------|---------|-----|------|------|`);
+      for (const [league, s] of Object.entries(leagueConf70_24).sort(
+        (a, b) => b[1].total - a[1].total,
+      )) {
+        out(
+          `| ${league} | ${s.total} | ${s.won} | ${s.lost} | ${winRateFmt(s.won, s.lost)} |`,
+        );
+      }
+    }
+    out(``);
+    out(`**72h (conf≥70 only):**`);
+    out(``);
+    if (Object.keys(leagueConf70_72).length === 0) {
+      out(`> ⚠️ Нет сигналов с confidence≥70 за 72h`);
+    } else {
+      out(`| Лига | Conf≥70 | Won | Lost | Win% |`);
+      out(`|------|---------|-----|------|------|`);
+      for (const [league, s] of Object.entries(leagueConf70_72).sort(
+        (a, b) => b[1].total - a[1].total,
+      )) {
+        out(
+          `| ${league} | ${s.total} | ${s.won} | ${s.lost} | ${winRateFmt(s.won, s.lost)} |`,
+        );
+      }
+    }
+  }
+  out(``);
+
+  // Report Integrity Checks
+  out(`## ✅ Report Integrity Checks`);
+  out(``);
+  out(`| Проверка | Статус | Детали |`);
+  out(`|----------|--------|--------|`);
+  out(
+    `| Band total == unique 72h | ${integrityBandOk ? "✅ OK" : "❌ MISMATCH"} | bandTotal=${bandTotal72}, unique72=${stats72.total} |`,
+  );
+  out(
+    `| League total == unique 24h | ${integrityLeagueOk ? "✅ OK" : "❌ MISMATCH"} | leagueTotal=${leagueTotalCheck}, unique24=${stats24.total} |`,
+  );
+  out(
+    `| Missing confidence 72h | ${missingConf72 === 0 ? "✅ 0" : `⚠️ ${missingConf72}`} | строк без confidence |`,
+  );
+  out(
+    `| Missing label 72h | ${missingLabel72 === 0 ? "✅ 0" : `⚠️ ${missingLabel72}`} | строк без confidenceLabel/oddsBandLabel |`,
+  );
+  out(``);
+
   // Red Flags
   out(`## 🔴 Red Flags / Action Items`);
   out(``);
@@ -822,7 +1039,7 @@ async function main() {
   out(``);
   out(`---`);
   out(
-    `*Отчёт сформирован: ${fmtDate(nowISO)} | PolyProPicks Ops Report v1.1*`,
+    `*Отчёт сформирован: ${fmtDate(nowISO)} | PolyProPicks Ops Report v1.2*`,
   );
 
   // Print to stdout
