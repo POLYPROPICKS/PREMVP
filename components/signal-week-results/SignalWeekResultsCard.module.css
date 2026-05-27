@@ -391,13 +391,13 @@
   padding: clamp(8px, 2vw, 10px) clamp(10px, 2.6vw, 12px) clamp(6px, 1.45vw, 8px);
   border-radius: clamp(15px, 4.2vw, 18px);
   box-sizing: border-box;
-  border: 1.4px solid rgba(116, 255, 79, 0.58);
+  border: 1.4px solid rgba(24, 231, 255, 0.42);
   background:
-    radial-gradient(280px 112px at 22% 0%, rgba(0, 255, 136, 0.07), transparent 48%),
+    radial-gradient(280px 112px at 22% 0%, rgba(0, 212, 255, 0.05), transparent 48%),
     linear-gradient(180deg, #071321 0%, #040b16 100%);
   box-shadow:
     0 0 0 1px rgba(255, 255, 255, 0.02) inset,
-    0 0 18px rgba(116, 255, 79, 0.10),
+    0 0 18px rgba(24, 231, 255, 0.08),
     0 18px 38px rgba(0, 0, 0, 0.36);
   display: flex;
   flex-direction: column;
@@ -472,10 +472,10 @@
 .tcLivePill {
   gap: 5px;
   padding: 0 clamp(6px, 1.65vw, 8px);
-  background: rgba(116, 255, 79, 0.08);
-  border: 1px solid rgba(116, 255, 79, 0.28);
-  box-shadow: 0 0 8px rgba(116, 255, 79, 0.08) inset;
-  color: rgba(255, 255, 255, 0.92);
+  background: rgba(0, 212, 255, 0.055);
+  border: 1px solid rgba(0, 212, 255, 0.26);
+  box-shadow: none;
+  color: rgba(0, 212, 255, 0.82);
   font-size: clamp(7.8px, 2.05vw, 9px);
   font-weight: 900;
   letter-spacing: 0.09em;
@@ -488,15 +488,15 @@
   height: 6px;
   border-radius: 999px;
   flex: 0 0 6px;
-  background: #74ff4f;
-  box-shadow: 0 0 6px rgba(116, 255, 79, 0.62);
+  background: rgba(0, 212, 255, 0.75);
+  box-shadow: 0 0 5px rgba(0, 212, 255, 0.50);
 }
 
 .tcPeriodPill {
   padding: 0 clamp(6px, 1.65vw, 8px);
-  background: rgba(116, 255, 79, 0.10);
-  border: 1px solid rgba(116, 255, 79, 0.30);
-  color: rgba(116, 255, 79, 0.92);
+  background: rgba(0, 212, 255, 0.055);
+  border: 1px solid rgba(0, 212, 255, 0.22);
+  color: rgba(0, 212, 255, 0.72);
   font-size: clamp(7.8px, 2.05vw, 9px);
   font-weight: 800;
   letter-spacing: 0.03em;
@@ -559,15 +559,15 @@
 }
 
 .tcChipWon {
-  background: rgba(116, 255, 79, 0.055);
-  color: rgba(116, 255, 79, 0.74);
-  border: 1px solid rgba(116, 255, 79, 0.18);
+  background: rgba(116, 255, 79, 0.025);
+  color: rgba(116, 255, 79, 0.50);
+  border: 1px solid rgba(116, 255, 79, 0.10);
 }
 
 .tcChipLost {
-  background: rgba(255, 51, 85, 0.055);
-  color: rgba(255, 82, 110, 0.78);
-  border: 1px solid rgba(255, 51, 85, 0.20);
+  background: rgba(255, 51, 85, 0.025);
+  color: rgba(255, 82, 110, 0.55);
+  border: 1px solid rgba(255, 51, 85, 0.12);
 }
 
 .tcSkeleton {

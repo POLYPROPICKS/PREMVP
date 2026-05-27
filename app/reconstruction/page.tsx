@@ -94,8 +94,16 @@ export default function ReconstructionPage() {
     return activePair.marketSource ? [activePair.marketSource as MarketEvidenceSource] : [];
   }, [activePair]);
 
+  const momentumLine = useMemo<string | undefined>(() => {
+    const momentumSource = activeMarketSources.find(isMarketMomentumSource);
+    return momentumSource ? normalizeEvidenceHeadline(momentumSource) : undefined;
+  }, [activeMarketSources]);
+
   const topCarouselItems = useMemo<TopCarouselItem[]>(() => {
-    const sourceItems: TopCarouselItem[] = activeMarketSources.map((s) => ({
+    const displaySources = activeMarketSources
+      .filter((s) => !isMarketMomentumSource(s))
+      .slice(0, 2);
+    const sourceItems: TopCarouselItem[] = displaySources.map((s) => ({
       kind: 'market-source' as const,
       id: s.id,
       source: s,
@@ -331,7 +339,7 @@ export default function ReconstructionPage() {
             onActiveIndexChange={handleEvidenceIndexChange}
             renderCard={(item) =>
               item.kind === 'market-source'
-                ? <MarketSourceCard source={item.source} />
+                ? <MarketSourceCard source={item.source} extraMomentumLine={isSharkFlowSource(item.source) ? momentumLine : undefined} />
                 : <SignalWeekResultsCard data={weekCard} loading={weekCardLoading} variant="top-carousel" />
             }
           />
@@ -449,6 +457,32 @@ function formatImpliedOddsFromCents(cents: number | null): string | null {
   if (!cents || cents <= 0) return null;
 
   return `${(100 / cents).toFixed(2)}x`;
+}
+
+function isMarketMomentumSource(source: MarketEvidenceSource): boolean {
+  const type = source.type ?? '';
+  const label = String(source.sourceLabel ?? '').toLowerCase();
+  return type === 'market-momentum'
+    || label.includes('momentum')
+    || label.includes('odds moved')
+    || label.includes('repricing');
+}
+
+function normalizeSharkHeadline(raw: string): string {
+  const match = raw.match(/\$[\d,.]+[KMBkmb]?/);
+  if (!match) return 'Whale flow signal';
+  const amt = match[0].replace(/k$/i, 'K').replace(/m$/i, 'M').replace(/b$/i, 'B');
+  return `${amt} whale flow`;
+}
+
+function isSharkFlowSource(source: MarketEvidenceSource): boolean {
+  const type = source.type ?? '';
+  const label = String(source.sourceLabel ?? '').toLowerCase();
+  return type === 'sharp-flow'
+    || label.includes('sharp flow')
+    || label.includes('shark flow')
+    || label.includes('whale')
+    || label.includes('trade');
 }
 
 function getEvidencePills(source: MarketEvidenceSource): string[] {
@@ -630,12 +664,23 @@ function MarketVisual({ source }: { source: MarketEvidenceSource }) {
   return <MarketDepthChart source={source} />;
 }
 
-function MarketSourceCard({ source }: { source: MarketEvidenceSource }) {
+function MarketSourceCard({ source, extraMomentumLine }: { source: MarketEvidenceSource; extraMomentumLine?: string }) {
   const pills = getEvidencePills(source);
   const headline = normalizeEvidenceHeadline(source);
   const subline = normalizeEvidenceSubline(source);
+  const visibleSourceLabel = String(source.sourceLabel ?? '').replace(/Sharp\s+Flow/gi, 'Shark Flow');
+  const normalizePill = (p: string) => (p === 'Sharp Flow' ? 'Shark Flow' : p);
+  const isShark = isSharkFlowSource(source);
+  const displayHeadline = isShark ? normalizeSharkHeadline(headline) : headline;
+  const sharkSecondary = isShark ? (extraMomentumLine || 'Live trade-flow signal') : null;
 
-  const headlineStyle: CSSProperties = {
+  const headlineStyle: CSSProperties = isShark ? {
+    fontSize: 'clamp(15px, 4.7vw, 20px)',
+    lineHeight: 1.02,
+    whiteSpace: 'nowrap',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+  } : {
     fontSize: 'clamp(15px, 4.7vw, 20px)',
     lineHeight: 1.02,
     whiteSpace: 'normal',
@@ -668,7 +713,7 @@ function MarketSourceCard({ source }: { source: MarketEvidenceSource }) {
               fill="none"
             />
           </svg>
-          <span>{source.sourceLabel}</span>
+          {!isSharkFlowSource(source) && <span>{visibleSourceLabel}</span>}
         </div>
 
         {pills.map((pill) => (
@@ -696,7 +741,7 @@ function MarketSourceCard({ source }: { source: MarketEvidenceSource }) {
                 />
               </svg>
             ) : null}
-            <span>{pill}</span>
+            <span>{normalizePill(pill)}</span>
           </div>
         ))}
       </div>
@@ -705,8 +750,21 @@ function MarketSourceCard({ source }: { source: MarketEvidenceSource }) {
         <MarketVisual source={source} />
 
         <div className={styles.marketCopy}>
-          <div className={styles.marketHeadline} style={headlineStyle}>{headline}</div>
-          <div className={styles.marketSubline} style={sublineStyle}>{subline}</div>
+          <div className={styles.marketHeadline} style={headlineStyle}>{displayHeadline}</div>
+          {!isShark && <div className={styles.marketSubline} style={sublineStyle}>{subline}</div>}
+          {(isShark || extraMomentumLine) && (
+            <div style={{
+              fontSize: 'clamp(9px, 2.5vw, 11px)',
+              color: 'rgba(0, 212, 255, 0.65)',
+              fontWeight: 700,
+              letterSpacing: '0.04em',
+              marginTop: '3px',
+              whiteSpace: 'nowrap',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              lineHeight: 1.2,
+            }}>{isShark ? sharkSecondary : extraMomentumLine}</div>
+          )}
         </div>
       </div>
     </section>

@@ -3,6 +3,7 @@ import styles from './MarketSourceCard.module.css';
 
 interface MarketSourceCardProps {
   data: MarketSourceCardType;
+  extraMomentumLine?: string;
 }
 
 function EqualizerIcon() {
@@ -81,15 +82,16 @@ function PillIcon({ label }: { label: string }) {
   return null;
 }
 
-export default function MarketSourceCard({ data }: MarketSourceCardProps) {
+export default function MarketSourceCard({ data, extraMomentumLine }: MarketSourceCardProps) {
   const sourcePills = data.sourcePills ?? [];
+  const normalizeLabel = (text: string) => text.replace(/Sharp\s+Flow/gi, 'Shark Flow');
 
   return (
     <article className={styles.card} aria-label="Market source signal card">
       <div className={styles.topRow}>
         <div className={styles.sourceMeta}>
           <EqualizerIcon />
-          <div className={styles.sectionLabel}>{data.sectionLabel}</div>
+          <div className={styles.sectionLabel}>{normalizeLabel(data.sectionLabel ?? '')}</div>
         </div>
 
         <div className={styles.spacer} />
@@ -97,7 +99,7 @@ export default function MarketSourceCard({ data }: MarketSourceCardProps) {
         {sourcePills.map((pill) => (
           <div key={pill} className={styles.pill}>
             <PillIcon label={pill} />
-            <span>{pill}</span>
+            <span>{normalizeLabel(pill)}</span>
           </div>
         ))}
 
@@ -117,6 +119,9 @@ export default function MarketSourceCard({ data }: MarketSourceCardProps) {
         <div className={styles.copySide}>
           <h3 className={styles.headline}>{data.headline}</h3>
           <p className={styles.subline}>{data.subheadline}</p>
+          {extraMomentumLine && (
+            <p className={styles.momentumLine}>{extraMomentumLine}</p>
+          )}
         </div>
       </div>
 

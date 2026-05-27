@@ -2014,6 +2014,14 @@
   margin-bottom: clamp(4px, 1.05vw, 6px) !important;
 }
 
+.marketSourceLabel {
+  flex: 0 0 auto;
+}
+
+.marketSourceLabel + .marketPill {
+  margin-left: auto;
+}
+
 .marketPill {
   min-height: clamp(20px, 5.1vw, 23px) !important;
   padding: 0 clamp(5px, 1.4vw, 7px) !important;
