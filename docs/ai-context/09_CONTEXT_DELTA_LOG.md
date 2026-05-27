@@ -6,6 +6,46 @@
 
 ---
 
+## ✅ TOP PROOF ROLLOUT COMPLETE — 2026-05-28
+
+**HEAD:** `fe5e0de` (main, clean)
+
+### Recent commits captured
+```
+fe5e0de  Repo: ignore local portrait source artifacts (.gitignore hygiene)
+cca288e  Landing: improve Shark Flow portrait diversity (source.id prefix inference)
+a7c73b3  Landing: add Shark Flow portrait medallions (portrait assets + CSS + picker)
+3426055  Landing: unify top proof cards (cyan color language, shark headline)
+5341ce0  Landing: add weekly proof card to top carousel
+870f0fb  Paywall: show seven-result proof strip
+c65dfba  Resolver: process newest signals first
+8f2000f  Resolver: allow larger fresh scan window
+```
+
+### Feature state now in production
+- **Top carousel** (max 3 slots): Shark Flow evidence card × N + Weekly Resolved Proof card (always last). Market Momentum merged into shark secondary line, not standalone card.
+- **Shark Flow portrait medallion:** circular, clamp(78–90px), cyan glow/border, deterministic picker using `hashString`, sport-specific pool + multi fallback.
+- **Portrait picker:** source.id prefix inference (nhl-…→nhl, wnba-…→nba, mlb-…→multi); aliases: mlb→multi, wnba→nba, mls→soccer, ncaaf→nfl, ncaab→nba; pool de-duplicated via Set; seed extended with eventTitle.
+- **Portrait assets:** 24 normalized 512×512 WebP in `public/market-source-portraits/normalized/` (esport×3, multi×6, nba×2, nfl×4, nhl×2, soccer×7). Rejected: nba-03, multi-02 in quarantine. manifest.json at `public/market-source-portraits/manifest.json`.
+- **Portrait diversity result:** 5 unique faces across 8 production pairs (was 2–3 before fix).
+- **Weekly proof card:** real resolved data from `/api/signals/resolved`, `SignalWeekResultsCard` `top-carousel` variant, cyan color family.
+- **Cron services (Railway):** `signal-resolve-cron` every 6h UTC (`0 */6 * * *`), `signal-cache-cron` every ~30 min.
+- **Resolver:** processes newest signals first, wider scan window (8f2000f).
+
+### UI accepted state (do NOT redesign unless P0 regression)
+- Shark portrait medallion layout: `.sharkSourceCard` CSS class, `position:relative` on card, avatar/copy absolute relative to full card, pills absolute top-right.
+- Weekly proof: large `tcReturn` + `tcReturnLabel` row, cyan pill family, chips row. Do NOT change again without founder request.
+- Card height stable at `clamp(106px, 27.1vw, 124px)`.
+
+### Next operational priority
+**Daily morning GMT+3 automated ops report** — see `.claude/commands/daily-ops-report-plan.md` for spec. NOT yet implemented. Must precede audience onboarding.
+
+### Hygiene
+- `.gitignore` now ignores: raw portraits, rejected normalized, preview docs, normalize script.
+- `docs/design/` remains intentionally untracked (local design reference only).
+
+---
+
 ## ✅ WORKFLOW DECISION — 2026-05-21
 
 **Decision:** Claude-Code Autopilot Operator Mode adopted.

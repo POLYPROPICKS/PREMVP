@@ -1,21 +1,62 @@
 # 02_CURRENT_TECH_STATE.md — PolyProPicks
 
-> Last updated: 15.05.2026
+> Last updated: 28.05.2026
 > Update this file after every significant commit or state change.
 > Git output beats this file — always verify with `git log --oneline -3 && git status --short`.
 
 ---
 
-## CURRENT STATE OVERRIDE — 2026-05-15
+## CURRENT STATE OVERRIDE — 2026-05-28
 
 ```
 Branch:         main
-HEAD:           1d254cc Score: selectedOdds banded confidence and anchored trust metrics
-Origin:         synced
-Working tree:   clean
+HEAD:           fe5e0de Repo: ignore local portrait source artifacts
+Origin:         synced (pushed)
+Working tree:   clean (docs/design/ untracked intentionally)
 ```
 
+### Top carousel architecture (accepted production state)
+- Slot order: [Shark Flow card(s)] + [Weekly Resolved Proof card] — max 3 total
+- Shark Flow card: `SharpFlowVisual` → `.sharkSourceCard` CSS class, portrait medallion clamp(78–90px)
+- Weekly proof: `SignalWeekResultsCard variant="top-carousel"`, cyan color family
+- Market Momentum: merged as secondary line in Shark card, NOT standalone carousel slot
+- Auto-rotate: 4.5s interval, resets on activePair change
+
+### Portrait system (production state)
+- Assets: `public/market-source-portraits/normalized/` — 24 WebP (esport×3, multi×6, nba×2, nfl×4, nhl×2, soccer×7)
+- Manifest: `public/market-source-portraits/manifest.json` (committed, force-added)
+- Rejected/quarantine: nba-03.webp, multi-02.webp (untracked, gitignored)
+- Picker: `pickMarketSourceAvatar(source, pair)` in `app/reconstruction/page.tsx`
+  - Step 1: source.id prefix → group/alias lookup
+  - Step 2: pair.filterTags + title keyword fallback
+  - Step 3: sport pool ∪ multi pool (Set de-dup)
+  - Seed: `source.id::pair.id::eventTitle` — deterministic, no Math.random
+- Diversity: ~5 unique portraits per 8 production pairs (as of 2026-05-28)
+
+### Cron services (Railway)
+- `signal-resolve-cron`: every 6h UTC (`0 */6 * * *`), processes newest first
+- `signal-cache-cron`: ~30 min refresh cycle
+- DO NOT modify cron env/config during UI-only tasks
+
+### Resolved API
+- Endpoint: `/api/signals/resolved`
+- Used by: `SignalWeekResultsCard` (weekly proof card in top carousel)
+- Feeds: 7-day win/loss/return stats displayed as proof
+
 ## Recent commits (newest first)
+
+```
+fe5e0de  Repo: ignore local portrait source artifacts
+cca288e  Landing: improve Shark Flow portrait diversity
+a7c73b3  Landing: add Shark Flow portrait medallions
+3426055  Landing: unify top proof cards
+5341ce0  Landing: add weekly proof card to top carousel
+870f0fb  Paywall: show seven-result proof strip
+c65dfba  Resolver: process newest signals first
+8f2000f  Resolver: allow larger fresh scan window
+```
+
+## Previous state (superseded)
 
 ```
 1d254cc  Score: selectedOdds banded confidence and anchored trust metrics

@@ -1,23 +1,27 @@
 # **PROJECT\_CONTEXT\_CURRENT.md**
-> ⚠️ CURRENT STATE OVERRIDE — 14.05.2026
-> Sections 7 and 8 below are STALE. Use this override block instead.
+> ⚠️ CURRENT STATE OVERRIDE — 2026-05-28
+> Previous override (14.05.2026) superseded. Use this block.
 >
-> CURRENT PHASE: MarketSourceCarousel evidence-stack UI
-> BACKEND PHASE: CLOSED — verified in Supabase ~12:24 14.05.2026
-> ACTIVE BRANCH: main (HEAD: 3d1028f)
-> OLD BRANCH premvp12-evidence-generation: MERGED AND CLOSED
-> OLD BLOCKERS (resolved):
->   - trailing whitespace in buildLandingCards.ts: FIXED
->   - runtime verification NEEDS VERIFICATION: CONFIRMED ✅
->   - market_sources Supabase column: ADDED ✅
->   - cron on buildLandingCards: CONFIRMED ✅
+> ACTIVE BRANCH: main
+> HEAD: fe5e0de (Repo: ignore local portrait source artifacts)
+> WORKING TREE: clean (only docs/design/ untracked intentionally)
 >
-> NEXT TASK: MarketSourceCarousel evidence-stack UI
->   → inspect-only first: activePair/activePairId, MarketSourceCarousel props,
->     PremiumEventCarousel control flow, marketSources[] consumption
->   → See AUTOMATION_MODE_HANDOFF.md §MarketSourceCarousel Target Behavior
+> CURRENT PHASE: Pre-audience onboarding — operational readiness
 >
-> See 02_CURRENT_TECH_STATE.md and 09_CONTEXT_DELTA_LOG.md for full current state.
+> COMPLETED FEATURES:
+>   ✅ Top carousel: Shark Flow portrait medallion + Weekly Resolved Proof card
+>   ✅ Portrait system: 24 normalized WebP, manifest, deterministic picker, diversity fix
+>   ✅ Resolver cron: 6h UTC, processes newest signals first, wider window
+>   ✅ Cache cron: ~30 min refresh cycle
+>   ✅ Weekly proof card: real resolved data, cyan color family
+>   ✅ Repo hygiene: .gitignore cleaned for portrait artifacts
+>
+> NEXT PRIORITY:
+>   → Daily morning GMT+3 automated ops report (NOT YET IMPLEMENTED)
+>   → See .claude/commands/daily-ops-report-plan.md for spec
+>   → Do NOT redesign top proof cards without explicit P0 regression
+>
+> See 09_CONTEXT_DELTA_LOG.md (entry 2026-05-28) for full detail.
 ## **1\. Project Identity**
 
 * **Product name:** PolyProPicks  
