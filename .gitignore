@@ -49,6 +49,26 @@ debug-evidence-check.json
 debug-v2.json 
 landing-check.json 
 *.json 
-normalize-dump.txt 
-recon-css.txt  
-recon-full.txt  
+normalize-dump.txt
+recon-css.txt
+recon-full.txt
+
+# ── PolyProPicks portrait source / preview artifacts ─────────────────────────
+# Preview harness docs (static HTML, not part of runtime)
+/docs/ui-previews/market-source-portraits/
+/docs/ui-previews/shark-flow-portrait-placement/
+
+# One-off normalization script (not part of runtime)
+/scripts/normalize-market-source-portraits.mjs
+
+# Raw portrait source images (large, not served; runtime uses /normalized/)
+/public/market-source-portraits/*.jpg
+/public/market-source-portraits/*.jpeg
+/public/market-source-portraits/*.png
+/public/market-source-portraits/*.webp
+
+# Rejected normalized portraits (excluded from manifest quarantine)
+/public/market-source-portraits/normalized/nba-03.webp
+/public/market-source-portraits/normalized/multi-02.webp
+# NOTE: manifest.json and accepted normalized/*.webp are committed (tracked)
+#       and remain tracked despite ignore rules above.
