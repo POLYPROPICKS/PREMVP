@@ -31,6 +31,31 @@ type TopCarouselItem =
 
 type PublicFilter = LandingFilter;
 
+// ── Portrait-medallion manifest (mirrors public/market-source-portraits/manifest.json) ──
+const PORTRAIT_MANIFEST = {
+  basePath: '/market-source-portraits/normalized/',
+  groups: {
+    multi:  ['multi-01.webp','multi-03.webp','multi-04.webp','multi-05.webp','multi-06.webp','multi-07.webp'],
+    esport: ['esport-01.webp','esport-02.webp','esport-03.webp'],
+    nba:    ['nba-01.webp','nba-02.webp','nfl-nba-01.webp'],
+    nfl:    ['nfl-01.webp','nfl-02.webp','nfl-03.webp','nfl-nba-01.webp'],
+    nhl:    ['nhl-01.webp','nhl-02.webp'],
+    soccer: ['soccer-01.webp','soccer-02.webp','soccer-03.webp','soccer-04.webp','soccer-05.webp','soccer-06.webp','soccer-07.webp'],
+  } as Record<string, string[]>,
+  aliases: {
+    basketball: 'nba',
+    hockey: 'nhl',
+    football: 'nfl',
+    worldCup: 'soccer',
+    wc26: 'soccer',
+  } as Record<string, string>,
+};
+
+interface PortraitAvatar {
+  src: string;
+  alt: string;
+}
+
 const fallbackPairs: LandingPair[] = staticPremiumSignals.flatMap((signal, index) => {
   const marketSource = staticMarketSources[index] ?? staticMarketSources[0];
 
@@ -339,7 +364,11 @@ export default function ReconstructionPage() {
             onActiveIndexChange={handleEvidenceIndexChange}
             renderCard={(item) =>
               item.kind === 'market-source'
-                ? <MarketSourceCard source={item.source} extraMomentumLine={isSharkFlowSource(item.source) ? momentumLine : undefined} />
+                ? <MarketSourceCard
+                    source={item.source}
+                    extraMomentumLine={isSharkFlowSource(item.source) ? momentumLine : undefined}
+                    avatar={isSharkFlowSource(item.source) ? pickMarketSourceAvatar(item.source, activePair) : undefined}
+                  />
                 : <SignalWeekResultsCard data={weekCard} loading={weekCardLoading} variant="top-carousel" />
             }
           />
@@ -485,6 +514,56 @@ function isSharkFlowSource(source: MarketEvidenceSource): boolean {
     || label.includes('trade');
 }
 
+// ── Portrait-medallion helpers ────────────────────────────────────────────────
+
+function hashString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
+    h = (Math.imul(31, h) + s.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h);
+}
+
+function inferAvatarSport(pair: LandingPair | null): string | null {
+  if (!pair) return null;
+  const sportKeys = Object.keys(PORTRAIT_MANIFEST.groups);
+  for (const tag of (pair.filterTags ?? [])) {
+    const lower = tag.toLowerCase();
+    if (sportKeys.includes(lower)) return lower;
+    const aliased = PORTRAIT_MANIFEST.aliases[lower];
+    if (aliased) return aliased;
+  }
+  const titleRaw = String((pair.premiumSignal as any)?.title ?? (pair.premiumSignal as any)?.market ?? '').toLowerCase();
+  const sportKeywords: [string, string[]][] = [
+    ['soccer', ['soccer', 'mls', 'premier', 'champions', 'copa', 'world cup', 'wc26', 'wc 2026']],
+    ['nba', ['nba', 'basketball']],
+    ['nfl', ['nfl', 'super bowl']],
+    ['nhl', ['nhl', 'hockey']],
+    ['esport', ['esport', 'e-sport', 'gaming', 'league of legends', 'dota', 'cs2', 'valorant']],
+  ];
+  for (const [sport, kws] of sportKeywords) {
+    if (kws.some((kw) => titleRaw.includes(kw))) return sport;
+  }
+  return null;
+}
+
+function pickMarketSourceAvatar(
+  source: MarketEvidenceSource,
+  pair: LandingPair | null,
+): PortraitAvatar | null {
+  const sport = inferAvatarSport(pair);
+  const sportPool: string[] = sport ? (PORTRAIT_MANIFEST.groups[sport] ?? []) : [];
+  const multiPool: string[] = PORTRAIT_MANIFEST.groups['multi'] ?? [];
+  const pool = sportPool.length > 0 ? [...sportPool, ...multiPool] : [...multiPool];
+  if (pool.length === 0) return null;
+  const seed = `${source.id ?? ''}::${pair?.id ?? ''}`;
+  const idx = hashString(seed) % pool.length;
+  return {
+    src: `${PORTRAIT_MANIFEST.basePath}${pool[idx]}`,
+    alt: 'Market source analyst',
+  };
+}
+
 function getEvidencePills(source: MarketEvidenceSource): string[] {
   const type = source.type ?? 'market-source';
   const time = source.timeAgo || 'Live now';
@@ -561,56 +640,32 @@ function MarketDepthChart({ source }: { source: MarketEvidenceSource }) {
   );
 }
 
-function SharpFlowVisual({ source }: { source: MarketEvidenceSource }) {
+function SharpFlowVisual({ source, avatar }: { source: MarketEvidenceSource; avatar?: PortraitAvatar | null }) {
   const delta = normalizeEvidenceDelta(source.delta);
   const hasMovement = !isZeroEvidenceDelta(source.delta);
 
   return (
     <div
       className={styles.marketChartWrap}
-      style={{
-        justifyContent: 'center',
-        alignItems: 'center',
-        minHeight: 68,
-      }}
+      style={{ justifyContent: 'center', alignItems: 'center', minHeight: 68 }}
     >
-      <div
-        style={{
-          position: 'relative',
-          width: 64,
-          height: 64,
-          borderRadius: 999,
-          border: '1px solid rgba(24, 231, 255, 0.56)',
-          background: 'radial-gradient(circle at 38% 30%, rgba(24,231,255,0.34), rgba(6,18,34,0.96) 58%)',
-          boxShadow: '0 0 20px rgba(24,231,255,0.28), inset 0 0 18px rgba(24,231,255,0.16)',
-          display: 'grid',
-          placeItems: 'center',
-          color: '#dffbff',
-          overflow: 'hidden',
-        }}
-      >
-        <svg viewBox="0 0 80 80" width="52" height="52" aria-hidden="true">
-          <path d="M12 48c10-23 35-29 56-17-12 2-16 9-20 17-6 13-20 20-36 14 8-2 11-6 13-10-5 1-9 0-13-4Z" fill="rgba(190,245,255,.92)" />
-          <path d="M27 39c7-7 18-10 31-8-11 2-19 6-26 13-5 5-11 9-18 10 4-4 8-8 13-15Z" fill="rgba(24,231,255,.36)" />
-        </svg>
-        {hasMovement ? (
-          <span
-            style={{
-              position: 'absolute',
-              right: 3,
-              bottom: 5,
-              padding: '2px 5px',
-              borderRadius: 999,
-              background: 'rgba(18, 255, 130, 0.18)',
-              border: '1px solid rgba(18, 255, 130, 0.42)',
-              color: '#7dff77',
-              fontSize: 9,
-              fontWeight: 900,
-            }}
-          >
-            {delta}
-          </span>
-        ) : null}
+      <div className={styles.sharpAvatarShell}>
+        {avatar ? (
+          <img
+            src={avatar.src}
+            alt={avatar.alt}
+            className={styles.sharpAvatarImage}
+            draggable={false}
+          />
+        ) : (
+          <svg viewBox="0 0 80 80" width="52" height="52" aria-hidden="true">
+            <path d="M12 48c10-23 35-29 56-17-12 2-16 9-20 17-6 13-20 20-36 14 8-2 11-6 13-10-5 1-9 0-13-4Z" fill="rgba(190,245,255,.92)" />
+            <path d="M27 39c7-7 18-10 31-8-11 2-19 6-26 13-5 5-11 9-18 10 4-4 8-8 13-15Z" fill="rgba(24,231,255,.36)" />
+          </svg>
+        )}
+        {hasMovement && (
+          <span className={styles.sharpAvatarDeltaBadge}>{delta}</span>
+        )}
       </div>
     </div>
   );
@@ -650,11 +705,11 @@ function MarketMomentumVisual({ source }: { source: MarketEvidenceSource }) {
   );
 }
 
-function MarketVisual({ source }: { source: MarketEvidenceSource }) {
+function MarketVisual({ source, avatar }: { source: MarketEvidenceSource; avatar?: PortraitAvatar | null }) {
   const type = source.type ?? 'market-source';
 
   if (type === 'sharp-flow') {
-    return <SharpFlowVisual source={source} />;
+    return <SharpFlowVisual source={source} avatar={avatar} />;
   }
 
   if (type === 'market-momentum') {
@@ -664,7 +719,7 @@ function MarketVisual({ source }: { source: MarketEvidenceSource }) {
   return <MarketDepthChart source={source} />;
 }
 
-function MarketSourceCard({ source, extraMomentumLine }: { source: MarketEvidenceSource; extraMomentumLine?: string }) {
+function MarketSourceCard({ source, extraMomentumLine, avatar }: { source: MarketEvidenceSource; extraMomentumLine?: string; avatar?: PortraitAvatar | null }) {
   const pills = getEvidencePills(source);
   const headline = normalizeEvidenceHeadline(source);
   const subline = normalizeEvidenceSubline(source);
@@ -701,7 +756,7 @@ function MarketSourceCard({ source, extraMomentumLine }: { source: MarketEvidenc
   };
 
   return (
-    <section className={styles.marketSourceCard}>
+    <section className={`${styles.marketSourceCard} ${isShark ? styles.sharkSourceCard : ''}`}>
       <div className={styles.marketTop}>
         <div className={styles.marketSourceLabel}>
           <svg viewBox="0 0 24 24" className={styles.eq} aria-hidden="true">
@@ -747,7 +802,7 @@ function MarketSourceCard({ source, extraMomentumLine }: { source: MarketEvidenc
       </div>
 
       <div className={styles.marketBody}>
-        <MarketVisual source={source} />
+        <MarketVisual source={source} avatar={isShark ? avatar : undefined} />
 
         <div className={styles.marketCopy}>
           <div className={styles.marketHeadline} style={headlineStyle}>{displayHeadline}</div>

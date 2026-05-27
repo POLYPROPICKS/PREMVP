@@ -1,0 +1,251 @@
+{
+  "version": 1,
+  "basePath": "/market-source-portraits/normalized/",
+  "groups": {
+    "multi": [
+      "multi-01.webp",
+      "multi-03.webp",
+      "multi-04.webp",
+      "multi-05.webp",
+      "multi-06.webp",
+      "multi-07.webp"
+    ],
+    "esport": [
+      "esport-01.webp",
+      "esport-02.webp",
+      "esport-03.webp"
+    ],
+    "nba": [
+      "nba-01.webp",
+      "nba-02.webp",
+      "nfl-nba-01.webp"
+    ],
+    "nfl": [
+      "nfl-01.webp",
+      "nfl-02.webp",
+      "nfl-03.webp",
+      "nfl-nba-01.webp"
+    ],
+    "nhl": [
+      "nhl-01.webp",
+      "nhl-02.webp"
+    ],
+    "soccer": [
+      "soccer-01.webp",
+      "soccer-02.webp",
+      "soccer-03.webp",
+      "soccer-04.webp",
+      "soccer-05.webp",
+      "soccer-06.webp",
+      "soccer-07.webp"
+    ]
+  },
+  "aliases": {
+    "basketball": "nba",
+    "hockey": "nhl",
+    "football": "nfl",
+    "worldCup": "soccer",
+    "wc26": "soccer"
+  },
+  "sourceMap": [
+    {
+      "original": "esport_1.jpg",
+      "output": "esport-01.webp",
+      "groups": [
+        "esport"
+      ]
+    },
+    {
+      "original": "esport_2.jpg",
+      "output": "esport-02.webp",
+      "groups": [
+        "esport"
+      ]
+    },
+    {
+      "original": "esport_3.jpg",
+      "output": "esport-03.webp",
+      "groups": [
+        "esport"
+      ]
+    },
+    {
+      "original": "nba1.webp",
+      "output": "nba-01.webp",
+      "groups": [
+        "nba"
+      ]
+    },
+    {
+      "original": "nba2.webp",
+      "output": "nba-02.webp",
+      "groups": [
+        "nba"
+      ]
+    },
+    {
+      "original": "nba3.jpg",
+      "output": "nba-03.webp",
+      "groups": [
+        "nba"
+      ]
+    },
+    {
+      "original": "NFL_Matthew Berry.png",
+      "output": "nfl-01.webp",
+      "groups": [
+        "nfl"
+      ]
+    },
+    {
+      "original": "NFL_Ross Tucker.png",
+      "output": "nfl-02.webp",
+      "groups": [
+        "nfl"
+      ]
+    },
+    {
+      "original": "NFL_salvetridfs.png",
+      "output": "nfl-03.webp",
+      "groups": [
+        "nfl"
+      ]
+    },
+    {
+      "original": "NFL_NBA_Jason Logan.png",
+      "output": "nfl-nba-01.webp",
+      "groups": [
+        "nfl",
+        "nba"
+      ]
+    },
+    {
+      "original": "nhl.jpg",
+      "output": "nhl-01.webp",
+      "groups": [
+        "nhl"
+      ]
+    },
+    {
+      "original": "nhl2.jpg",
+      "output": "nhl-02.webp",
+      "groups": [
+        "nhl"
+      ]
+    },
+    {
+      "original": "Soccer_Danny Higginbotham.png",
+      "output": "soccer-01.webp",
+      "groups": [
+        "soccer"
+      ]
+    },
+    {
+      "original": "Soccer_FPL Mate .png",
+      "output": "soccer-02.webp",
+      "groups": [
+        "soccer"
+      ]
+    },
+    {
+      "original": "Soccer_Landon Donovan1.png",
+      "output": "soccer-03.webp",
+      "groups": [
+        "soccer"
+      ]
+    },
+    {
+      "original": "Soccer_Landon Donovan2.webp",
+      "output": "soccer-04.webp",
+      "groups": [
+        "soccer"
+      ]
+    },
+    {
+      "original": "Soccer_Thierry Henry.png",
+      "output": "soccer-05.webp",
+      "groups": [
+        "soccer"
+      ]
+    },
+    {
+      "original": "Soccer_Tim Howard.png",
+      "output": "soccer-06.webp",
+      "groups": [
+        "soccer"
+      ]
+    },
+    {
+      "original": "Soccer_Zlatan Ibrahimovi.png",
+      "output": "soccer-07.webp",
+      "groups": [
+        "soccer"
+      ]
+    },
+    {
+      "original": "Multi_Amanda Vance.png",
+      "output": "multi-01.webp",
+      "groups": [
+        "multi"
+      ]
+    },
+    {
+      "original": "Multi_Dan Katz (Big Cat)1.png",
+      "output": "multi-02.webp",
+      "groups": [
+        "multi"
+      ]
+    },
+    {
+      "original": "Multi_Dan Katz (Big Cat)2.png",
+      "output": "multi-03.webp",
+      "groups": [
+        "multi"
+      ]
+    },
+    {
+      "original": "Multi_Nick Kostos.png",
+      "output": "multi-04.webp",
+      "groups": [
+        "multi"
+      ]
+    },
+    {
+      "original": "Multi_Rebecca Lowe.png",
+      "output": "multi-05.webp",
+      "groups": [
+        "multi"
+      ]
+    },
+    {
+      "original": "Multi_Rebecca Lowe2.png",
+      "output": "multi-06.webp",
+      "groups": [
+        "multi"
+      ]
+    },
+    {
+      "original": "Multi_tmathsports.png",
+      "output": "multi-07.webp",
+      "groups": [
+        "multi"
+      ]
+    }
+  ],
+  "quarantine": [
+    {
+      "src": "Screenshot_1.png",
+      "reason": "no sport prefix / needs visual review"
+    },
+    {
+      "src": "nba3.jpg",
+      "normalized": "nba-03.webp",
+      "reason": "rejected by founder visual review"
+    },
+    {
+      "src": "Multi_Dan Katz (Big Cat)1.png",
+      "normalized": "multi-02.webp",
+      "reason": "rejected by founder visual review"
+    }
+  ]
+}
