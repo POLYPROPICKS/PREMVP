@@ -43,11 +43,18 @@ const PORTRAIT_MANIFEST = {
     soccer: ['soccer-01.webp','soccer-02.webp','soccer-03.webp','soccer-04.webp','soccer-05.webp','soccer-06.webp','soccer-07.webp'],
   } as Record<string, string[]>,
   aliases: {
+    // sport-name aliases
     basketball: 'nba',
-    hockey: 'nhl',
-    football: 'nfl',
-    worldCup: 'soccer',
-    wc26: 'soccer',
+    hockey:     'nhl',
+    football:   'nfl',
+    worldCup:   'soccer',
+    wc26:       'soccer',
+    // source.id prefix aliases (production feed uses these prefixes)
+    mlb:        'multi',   // no MLB-specific portraits yet → use multi pool
+    wnba:       'nba',
+    mls:        'soccer',
+    ncaaf:      'nfl',
+    ncaab:      'nba',
   } as Record<string, string>,
 };
 
@@ -551,13 +558,34 @@ function pickMarketSourceAvatar(
   source: MarketEvidenceSource,
   pair: LandingPair | null,
 ): PortraitAvatar | null {
-  const sport = inferAvatarSport(pair);
+  // 1. Try source.id prefix first — production IDs look like 'nhl-car-mon-2026-...',
+  //    'mlb-tb-bal-2026-...', 'nba-...' so the first segment is the sport key.
+  const idPrefix = String(source.id ?? '').split('-')[0].toLowerCase();
+  const idSport: string | null =
+    PORTRAIT_MANIFEST.groups[idPrefix]
+      ? idPrefix
+      : (PORTRAIT_MANIFEST.aliases[idPrefix] ?? null);
+
+  // 2. Fall back to filterTags / title keyword inference.
+  const sport: string | null = idSport ?? inferAvatarSport(pair);
+
+  // 3. Build pool: sport-specific ∪ multi (de-duplicated via Set).
   const sportPool: string[] = sport ? (PORTRAIT_MANIFEST.groups[sport] ?? []) : [];
   const multiPool: string[] = PORTRAIT_MANIFEST.groups['multi'] ?? [];
-  const pool = sportPool.length > 0 ? [...sportPool, ...multiPool] : [...multiPool];
+  const pool: string[] = sportPool.length > 0
+    ? [...new Set([...sportPool, ...multiPool])]
+    : [...multiPool];
   if (pool.length === 0) return null;
-  const seed = `${source.id ?? ''}::${pair?.id ?? ''}`;
+
+  // 4. Deterministic seed: source.id + pair.id + event title for extra variance.
+  const eventTitle = String(
+    (pair?.premiumSignal as any)?.eventTitle ??
+    (pair?.premiumSignal as any)?.title ??
+    (pair?.premiumSignal as any)?.market ?? ''
+  );
+  const seed = `${source.id ?? ''}::${pair?.id ?? ''}::${eventTitle}`;
   const idx = hashString(seed) % pool.length;
+
   return {
     src: `${PORTRAIT_MANIFEST.basePath}${pool[idx]}`,
     alt: 'Market source analyst',
