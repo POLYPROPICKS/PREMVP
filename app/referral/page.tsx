@@ -129,7 +129,7 @@ export default function ReferralPage() {
         {/* Header */}
         <header className={styles.header}>
           <div className={styles.brand}>
-            <div className={styles.monogram}>PP</div>
+            <img src="/brand/logo/logo-24.png" alt="PolyProPicks" width={24} height={24} style={{ display: 'block', flexShrink: 0 }} />
             <span className={styles.brandName}>PolyProPicks</span>
           </div>
           <div className={styles.accessPill}>

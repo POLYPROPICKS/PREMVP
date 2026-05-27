@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>PolyProPicks · Logo contact sheet</title>
+<style>
+  body {
+    margin: 0; padding: 40px 32px 60px;
+    background: #02060d;
+    color: #fff;
+    font-family: -apple-system, "SF Pro Display", BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+  h1 { font-size: 22px; font-weight: 900; letter-spacing: -0.03em; margin: 0 0 6px; }
+  .sub { font-size: 12px; color: rgba(255,255,255,0.45); margin-bottom: 28px; max-width: 540px; line-height: 1.5; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 16px; max-width: 1080px; }
+  .cell {
+    background: #0d1224;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 16px 14px 12px;
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+    text-align: center;
+  }
+  .cell .frame {
+    height: 96px; width: 100%; display: grid; place-items: center;
+    background: repeating-conic-gradient(rgba(255,255,255,0.02) 0 25%, rgba(255,255,255,0.04) 0 50%) 0 0 / 12px 12px;
+    border-radius: 8px;
+  }
+  .cell img { display: block; image-rendering: -webkit-optimize-contrast; }
+  .name { font-size: 11px; font-weight: 700; letter-spacing: -0.01em; }
+  .meta { font-size: 10px; color: rgba(255,255,255,0.4); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .section-label { font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #00d4ff; margin: 28px 0 10px; }
+</style>
+</head>
+<body>
+  <h1>PolyProPicks · Logo contact sheet</h1>
+  <p class="sub">Every size shipped in this package, rendered at its intended display dimensions. Use the file paths below verbatim in code.</p>
+
+  <div class="section-label">Favicons</div>
+  <div class="grid">
+    <div class="cell"><div class="frame"><img src="favicon-16.png"  width="16"  height="16"  alt=""/></div><div class="name">favicon-16.png</div><div class="meta">16 × 16</div></div>
+    <div class="cell"><div class="frame"><img src="favicon-32.png"  width="32"  height="32"  alt=""/></div><div class="name">favicon-32.png</div><div class="meta">32 × 32</div></div>
+    <div class="cell"><div class="frame"><img src="favicon-48.png"  width="48"  height="48"  alt=""/></div><div class="name">favicon-48.png</div><div class="meta">48 × 48</div></div>
+  </div>
+
+  <div class="section-label">Platform icons</div>
+  <div class="grid">
+    <div class="cell"><div class="frame"><img src="apple-touch-icon.png" width="80" height="80" alt=""/></div><div class="name">apple-touch-icon.png</div><div class="meta">180 × 180 · iOS</div></div>
+    <div class="cell"><div class="frame"><img src="icon-192.png"          width="80" height="80" alt=""/></div><div class="name">icon-192.png</div><div class="meta">192 × 192 · PWA</div></div>
+    <div class="cell"><div class="frame"><img src="icon-512.png"          width="80" height="80" alt=""/></div><div class="name">icon-512.png</div><div class="meta">512 × 512 · Android</div></div>
+  </div>
+
+  <div class="section-label">Tooltip + inline</div>
+  <div class="grid">
+    <div class="cell"><div class="frame"><img src="logo-24.png" width="16" height="16" alt=""/></div><div class="name">logo-24.png @ 16 px</div><div class="meta">tooltip body</div></div>
+    <div class="cell"><div class="frame"><img src="logo-24.png" width="24" height="24" alt=""/></div><div class="name">logo-24.png @ 24 px</div><div class="meta">inline help</div></div>
+  </div>
+
+  <div class="section-label">Header (every page)</div>
+  <div class="grid">
+    <div class="cell"><div class="frame"><img src="logo-header-32.png"  width="28" height="28" alt=""/></div><div class="name">logo-header-32.png</div><div class="meta">28 px @1×</div></div>
+    <div class="cell"><div class="frame"><img src="logo-header-64.png"  width="28" height="28" alt=""/></div><div class="name">logo-header-64.png</div><div class="meta">28 px @2×</div></div>
+    <div class="cell"><div class="frame"><img src="logo-header-128.png" width="44" height="44" alt=""/></div><div class="name">logo-header-128.png</div><div class="meta">44 px desktop</div></div>
+  </div>
+
+  <div class="section-label">Premium / Referral</div>
+  <div class="grid">
+    <div class="cell"><div class="frame"><img src="logo-128.png" width="56" height="56" alt=""/></div><div class="name">logo-128.png</div><div class="meta">56 px default</div></div>
+    <div class="cell"><div class="frame"><img src="logo-256.png" width="80" height="80" alt=""/></div><div class="name">logo-256.png</div><div class="meta">96 px hero @1×</div></div>
+    <div class="cell"><div class="frame"><img src="logo-512.png" width="80" height="80" alt=""/></div><div class="name">logo-512.png</div><div class="meta">96 px hero @2-3×</div></div>
+  </div>
+
+  <div class="section-label">Master</div>
+  <div class="grid">
+    <div class="cell"><div class="frame"><img src="logo-master-1024.png" width="80" height="80" alt=""/></div><div class="name">logo-master-1024.png</div><div class="meta">1024 × 1024 master export</div></div>
+  </div>
+</body>
+</html>

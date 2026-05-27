@@ -362,7 +362,7 @@ function Header() {
   return (
     <header className={styles.header}>
       <div className={styles.brandWrap}>
-        <img src="/brand/polypropicks-mark-optimized.webp" className={styles.brandLogo} alt="PolyProPicks" width={22} height={22} />
+        <img src="/brand/logo/logo-24.png" className={styles.brandLogo} alt="PolyProPicks" width={24} height={24} />
         <div className={styles.brandText}>PolyProPicks</div>
       </div>
       <div className={styles.livePill}>

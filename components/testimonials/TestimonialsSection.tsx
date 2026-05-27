@@ -17,26 +17,6 @@ function HeaderTikTok() {
   );
 }
 
-function HeaderInstagram() {
-  return (
-    <div className={styles.ppill}>
-      <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true">
-        <defs>
-          <radialGradient id="ig-header-pills" cx="28%" cy="105%" r="120%">
-            <stop offset="0%"   stopColor="#fdf497" />
-            <stop offset="35%"  stopColor="#fd5949" />
-            <stop offset="65%"  stopColor="#d6249f" />
-            <stop offset="100%" stopColor="#285AEB" />
-          </radialGradient>
-        </defs>
-        <rect width="26" height="26" rx="7" fill="url(#ig-header-pills)" />
-        <rect x="7" y="7" width="12" height="12" rx="3.5" fill="none" stroke="#fff" strokeWidth="1.5" />
-        <circle cx="13" cy="13" r="3.2" fill="none" stroke="#fff" strokeWidth="1.5" />
-        <circle cx="19.2" cy="6.8" r="1" fill="#fff" />
-      </svg>
-    </div>
-  );
-}
 
 function HeaderX() {
   return (
@@ -48,15 +28,6 @@ function HeaderX() {
   );
 }
 
-function HeaderTelegram() {
-  return (
-    <div className={styles.ppill} style={{ background: '#229ed9' }}>
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <path d="M22 2L11 13M22 2L15 22l-4-9-9-4 20-7z" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      </svg>
-    </div>
-  );
-}
 
 // ── Section component ─────────────────────────────────────────
 
@@ -75,10 +46,8 @@ export default function TestimonialsSection({ cards = TESTIMONIAL_CARDS }: Testi
           <div className={styles.avgNum}>4.9</div>
           <div className={styles.reviewCount}>2.4k traders</div>
           <div className={styles.platformPills}>
-            <HeaderTikTok />
-            <HeaderInstagram />
-            <HeaderX />
-            <HeaderTelegram />
+            <a href="https://www.tiktok.com/@polypropicks2026pulse" target="_blank" rel="noopener noreferrer" style={{ display: 'contents' }}><HeaderTikTok /></a>
+            <a href="https://x.com/PolyProPicks" target="_blank" rel="noopener noreferrer" style={{ display: 'contents' }}><HeaderX /></a>
           </div>
         </div>
       </div>

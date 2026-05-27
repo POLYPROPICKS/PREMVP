@@ -67,6 +67,11 @@ const PLATFORM_LABEL: Record<Platform, string> = {
   telegram:  'Telegram',
 };
 
+const PLATFORM_URLS: Partial<Record<Platform, string>> = {
+  tiktok: 'https://www.tiktok.com/@polypropicks2026pulse',
+  x:      'https://x.com/PolyProPicks',
+};
+
 // ── Card component ────────────────────────────────────────────
 
 export default function TestimonialCard({ card }: { card: TCard }) {
@@ -80,10 +85,22 @@ export default function TestimonialCard({ card }: { card: TCard }) {
             <img className={styles.avatar} src={card.avatarUrl} alt="" loading="lazy" />
             <div>
               <div className={styles.authorName}>{card.username}</div>
-              <div className={styles.authorPlatform}>
-                <PlatformIcon platform={card.platform} cardId={card.id} />
-                {PLATFORM_LABEL[card.platform]}
-              </div>
+              {PLATFORM_URLS[card.platform] ? (
+                <a
+                  href={PLATFORM_URLS[card.platform]}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={styles.authorPlatform}
+                >
+                  <PlatformIcon platform={card.platform} cardId={card.id} />
+                  {PLATFORM_LABEL[card.platform]}
+                </a>
+              ) : (
+                <div className={styles.authorPlatform}>
+                  <PlatformIcon platform={card.platform} cardId={card.id} />
+                  {PLATFORM_LABEL[card.platform]}
+                </div>
+              )}
             </div>
           </div>
           <div className={styles.authorArrow}>›</div>
