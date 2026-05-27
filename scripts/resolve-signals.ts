@@ -56,7 +56,7 @@ async function main() {
     .not("selected_token_id", "is", null)
     .not("entry_price_num", "is", null)
     .not("metric_formula_version", "is", null)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
     .limit(rawLimit);
 
   if (selectError) {
