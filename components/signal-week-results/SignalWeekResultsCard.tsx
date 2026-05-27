@@ -6,7 +6,7 @@ import type { WeekResultsCard } from './types';
 interface Props {
   data: WeekResultsCard | null;
   loading?: boolean;
-  variant?: 'compact' | 'paywall';
+  variant?: 'compact' | 'paywall' | 'top-carousel';
 }
 
 const SVG_W = 220;
@@ -92,6 +92,10 @@ function buildChart(apiPts: WeekResultsCard['paywallChart']['points']): {
 }
 
 export default function SignalWeekResultsCard({ data, loading = false, variant = 'compact' }: Props) {
+  if (variant === 'top-carousel') {
+    return <TopCarouselCard data={data} loading={loading} />;
+  }
+
   if (loading || !data) {
     return (
       <div className={styles.skeleton}>
@@ -266,6 +270,142 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
           </span>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── Top-carousel variant ────────────────────────────────────────────────────
+
+function TopCarouselRing({ won, count }: { won: number; count: number }) {
+  const r = 25;
+  const cx = 32;
+  const cy = 32;
+  const circ = 2 * Math.PI * r;
+  const safeCount = Math.max(count, 1);
+  const wonFrac = Math.max(0, Math.min(1, won / safeCount));
+  const wonDash = circ * wonFrac;
+  const lostDash = circ * (1 - wonFrac);
+
+  return (
+    <svg width="64" height="64" viewBox="0 0 64 64" className={styles.tcRing} aria-hidden="true">
+      <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="4" />
+      {won > 0 && (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={r}
+          fill="none"
+          stroke="#74ff4f"
+          strokeWidth="5.4"
+          strokeDasharray={`${wonDash.toFixed(2)} ${circ.toFixed(2)}`}
+          strokeLinecap="round"
+          transform={`rotate(-90 ${cx} ${cy})`}
+          style={{ filter: 'drop-shadow(0 0 5px rgba(116,255,79,0.75))' }}
+        />
+      )}
+      {won < count && count > 0 && (
+        <circle
+          cx={cx}
+          cy={cy}
+          r={r}
+          fill="none"
+          stroke="#ff3355"
+          strokeWidth="4.2"
+          strokeDasharray={`${lostDash.toFixed(2)} ${circ.toFixed(2)}`}
+          strokeLinecap="round"
+          transform={`rotate(${(-90 + 360 * wonFrac).toFixed(2)} ${cx} ${cy})`}
+          style={{ opacity: 0.82, filter: 'drop-shadow(0 0 4px rgba(255,51,85,0.48))' }}
+        />
+      )}
+      <text
+        x={cx}
+        y={cy - 3}
+        textAnchor="middle"
+        fill="#ffffff"
+        fontSize="14.2"
+        fontWeight="900"
+        letterSpacing="-0.05em"
+        fontFamily="system-ui, -apple-system, sans-serif"
+      >
+        {won}/{count}
+      </text>
+      <text
+        x={cx}
+        y={cy + 9}
+        textAnchor="middle"
+        fill="rgba(116,255,79,0.92)"
+        fontSize="7.4"
+        fontWeight="900"
+        letterSpacing="0.11em"
+        fontFamily="system-ui, -apple-system, sans-serif"
+      >
+        WON
+      </text>
+    </svg>
+  );
+}
+
+function TopCarouselCard({ data, loading }: { data: WeekResultsCard | null; loading: boolean }) {
+  if (loading || !data) {
+    return (
+      <div className={styles.tcSkeleton}>
+        <div className={styles.tcSkeletonBody} />
+        <div className={styles.tcSkeletonChips} />
+      </div>
+    );
+  }
+
+  const { paywallChart, displayedStats } = data;
+  const won = displayedStats.displayedWon;
+  const count = displayedStats.displayedCount;
+  const finalRet = paywallChart.finalReturnPct;
+  const isPos = finalRet === null || finalRet >= 0;
+  const retLabel = finalRet !== null ? fmtRet(finalRet) : null;
+
+  const displayChips = paywallChart.points.slice(0, 7);
+
+  return (
+    <div className={styles.cardTopCarousel}>
+      <div className={styles.tcBody}>
+        <TopCarouselRing won={won} count={count} />
+
+        <div className={styles.tcCopy}>
+          <div className={styles.tcTopLine}>
+            <div className={styles.tcMetaPills}>
+              <span className={styles.tcLivePill}>
+                <span className={styles.tcLiveDot} aria-hidden="true" />
+                LIVE TRACKING
+              </span>
+              <span className={styles.tcPeriodPill}>Past 7 days</span>
+            </div>
+          </div>
+
+          <div className={styles.tcMetricLine}>
+            <span className={styles.tcReturnLabel}>CUMULATIVE TOTAL RETURN</span>
+            {retLabel !== null && (
+              <span className={[styles.tcReturn, !isPos ? styles.tcReturnNeg : ''].join(' ').trim()}>
+                {retLabel}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {displayChips.length > 0 && (
+        <div className={styles.tcChipsRow}>
+          {displayChips.map((pt, i) => (
+            <span
+              key={i}
+              className={[
+                styles.tcChip,
+                pt.result === 'won' ? styles.tcChipWon : styles.tcChipLost,
+              ].join(' ')}
+            >
+              {pt.label}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

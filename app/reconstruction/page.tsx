@@ -17,11 +17,17 @@ import {
 } from '@/lib/feed/landingPairs';
 import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
+import SignalWeekResultsCard from '@/components/signal-week-results/SignalWeekResultsCard';
+import type { WeekResultsCard } from '@/components/signal-week-results/types';
 import PassOfferModal from '@/components/modals/PassOfferModal';
 import ResolvedSignalsCarousel from '@/components/resolved-signals/ResolvedSignalsCarousel';
 import TestimonialsSection from '@/components/testimonials/TestimonialsSection';
 
 type MarketEvidenceSource = NonNullable<LandingPair['marketSources']>[number];
+
+type TopCarouselItem =
+  | { kind: 'market-source'; id: string; source: MarketEvidenceSource }
+  | { kind: 'weekly-resolved-proof'; id: 'weekly-resolved-proof' };
 
 type PublicFilter = LandingFilter;
 
@@ -55,6 +61,8 @@ export default function ReconstructionPage() {
   const [activeEvidenceIndex, setActiveEvidenceIndex] = useState(0);
   const [activeFilter, setActiveFilter] = useState<PublicFilter>("live");
   const [isPassOfferModalOpen, setIsPassOfferModalOpen] = useState(false);
+  const [weekCard, setWeekCard] = useState<WeekResultsCard | null>(null);
+  const [weekCardLoading, setWeekCardLoading] = useState(false);
 
   const candidatePairs = useMemo(() => {
     if (activeFilter === "live") return allPairs;
@@ -86,6 +94,15 @@ export default function ReconstructionPage() {
     return activePair.marketSource ? [activePair.marketSource as MarketEvidenceSource] : [];
   }, [activePair]);
 
+  const topCarouselItems = useMemo<TopCarouselItem[]>(() => {
+    const sourceItems: TopCarouselItem[] = activeMarketSources.map((s) => ({
+      kind: 'market-source' as const,
+      id: s.id,
+      source: s,
+    }));
+    return [...sourceItems, { kind: 'weekly-resolved-proof' as const, id: 'weekly-resolved-proof' }];
+  }, [activeMarketSources]);
+
   const handleActivePairIndexChange = useCallback((nextIndex: number) => {
     const nextPair = candidatePairs[nextIndex];
     if (nextPair) {
@@ -103,14 +120,14 @@ export default function ReconstructionPage() {
   }, [activePair?.id]);
 
   useEffect(() => {
-    if (!activePair || activeMarketSources.length <= 1) return;
+    if (!activePair || topCarouselItems.length <= 1) return;
 
     const timer = window.setInterval(() => {
-      setActiveEvidenceIndex((currentIndex) => (currentIndex + 1) % activeMarketSources.length);
+      setActiveEvidenceIndex((currentIndex) => (currentIndex + 1) % topCarouselItems.length);
     }, 4500);
 
     return () => window.clearInterval(timer);
-  }, [activePair, activeMarketSources.length]);
+  }, [activePair, topCarouselItems.length]);
 
   const handleFilterClick = useCallback((filter: PublicFilter) => {
     setActiveFilter(filter);
@@ -284,6 +301,21 @@ export default function ReconstructionPage() {
     fetchFeed();
   }, []);
 
+  // Fetch weekly resolved proof card for top carousel (global, fetched once on mount)
+  useEffect(() => {
+    setWeekCardLoading(true);
+    fetch('/api/signals/resolved?mode=latest&days=7&limit=7')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        const card = json?.weekResultsCard;
+        if (card?.cardType === 'signal-week-results') {
+          setWeekCard(card as WeekResultsCard);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setWeekCardLoading(false));
+  }, []);
+
   return (
     <main className={styles.page}>
       <div className={styles.proofMarker}>
@@ -293,11 +325,15 @@ export default function ReconstructionPage() {
       <section className={styles.viewport}>
         <div className={styles.screen}>
           <Header />
-          <MarketSourceCarousel 
-            sources={activeMarketSources}
+          <MarketSourceCarousel<TopCarouselItem>
+            sources={topCarouselItems}
             activeIndex={activeEvidenceIndex}
             onActiveIndexChange={handleEvidenceIndexChange}
-            renderCard={(source) => <MarketSourceCard source={source as MarketEvidenceSource} />}
+            renderCard={(item) =>
+              item.kind === 'market-source'
+                ? <MarketSourceCard source={item.source} />
+                : <SignalWeekResultsCard data={weekCard} loading={weekCardLoading} variant="top-carousel" />
+            }
           />
           <PillsRow activeFilter={activeFilter} onFilterClick={handleFilterClick} counts={filterCounts} />
           {activeFilter !== "live" && candidatePairs.length === 0 ? (

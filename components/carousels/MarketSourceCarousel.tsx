@@ -3,17 +3,17 @@
 import { useState, useCallback, useEffect } from 'react';
 import { marketSources, MarketSource } from '@/content/marketSources';
 
-interface MarketSourceCarouselProps {
-  renderCard?: (source: MarketSource) => React.ReactNode;
-  sources?: MarketSource[];
+interface MarketSourceCarouselProps<T = MarketSource> {
+  renderCard?: (source: T) => React.ReactNode;
+  sources?: T[];
   activeIndex?: number;
   onActiveIndexChange?: (index: number) => void;
 }
 
-export default function MarketSourceCarousel({ renderCard, sources, activeIndex, onActiveIndexChange }: MarketSourceCarouselProps) {
+export default function MarketSourceCarousel<T = MarketSource>({ renderCard, sources, activeIndex, onActiveIndexChange }: MarketSourceCarouselProps<T>) {
   const [internalActiveIndex, setInternalActiveIndex] = useState(0);
 
-  const items = sources && sources.length > 0 ? sources : marketSources;
+  const items: T[] = sources && sources.length > 0 ? sources : (marketSources as unknown as T[]);
   const isControlled = typeof activeIndex === 'number';
   const currentIndex = isControlled ? activeIndex : internalActiveIndex;
 
@@ -48,7 +48,14 @@ export default function MarketSourceCarousel({ renderCard, sources, activeIndex,
   const activeSource = items[currentIndex];
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: 'clamp(106px, 27.1vw, 124px)',
+        overflow: 'hidden',
+      }}
+    >
       {/* Active card */}
       {renderCard ? renderCard(activeSource) : null}
 
