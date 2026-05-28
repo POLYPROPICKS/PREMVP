@@ -1,0 +1,21 @@
+{
+  "section": "who-we-are",
+  "version": 3,
+  "status": "prepared",
+  "icons": [
+    "icons/academic-cap.svg",
+    "icons/analyze-bars.svg",
+    "icons/risk-shield.svg",
+    "icons/execute-target.svg",
+    "icons/spark-accent.svg"
+  ],
+  "portraits": [
+    "portraits/artem-k-source.webp",
+    "portraits/david-t-source.webp",
+    "portraits/emily-c-source.webp",
+    "portraits/artem-k-headshot.webp",
+    "portraits/david-t-headshot.webp",
+    "portraits/emily-c-headshot.webp"
+  ],
+  "notes": "v3: headshot crops added (512x512 square, top-crop from source). Component uses -headshot.webp assets."
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#18e7ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- outer circle frame -->
+  <circle cx="12" cy="12" r="10" stroke="rgba(24,231,255,0.35)" stroke-width="1.2" fill="rgba(24,231,255,0.04)"/>
+  <!-- shield body -->
+  <path d="M12 4.5L19 7v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V7Z"
+    fill="rgba(24,231,255,0.08)" stroke="#18e7ff" stroke-width="1.4"/>
+  <!-- checkmark inside shield -->
+  <path d="M9 12l2 2 4-4" stroke="#18e7ff" stroke-width="1.5" fill="none"/>
+</svg>

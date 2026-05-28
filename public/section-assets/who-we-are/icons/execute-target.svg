@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#18e7ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- outer circle frame -->
+  <circle cx="12" cy="12" r="10" stroke="rgba(24,231,255,0.35)" stroke-width="1.2" fill="rgba(24,231,255,0.04)"/>
+  <!-- target rings -->
+  <circle cx="12" cy="12" r="7" stroke="rgba(24,231,255,0.45)" stroke-width="1.1" fill="none"/>
+  <circle cx="12" cy="12" r="3.5" stroke="rgba(24,231,255,0.65)" stroke-width="1.1" fill="rgba(24,231,255,0.07)"/>
+  <!-- arrow / dart hitting target -->
+  <line x1="18" y1="6" x2="13.5" y2="10.5" stroke="#18e7ff" stroke-width="1.5"/>
+  <polyline points="15.5,6 18,6 18,8.5" stroke="#18e7ff" stroke-width="1.4" fill="none"/>
+  <!-- center dot -->
+  <circle cx="12" cy="12" r="1.2" fill="#18e7ff"/>
+</svg>

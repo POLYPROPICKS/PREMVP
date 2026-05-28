@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#18e7ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- outer circle frame -->
+  <circle cx="12" cy="12" r="10" stroke="rgba(24,231,255,0.35)" stroke-width="1.2" fill="rgba(24,231,255,0.04)"/>
+  <!-- bar 1 — left, medium -->
+  <rect x="5.5" y="13" width="3" height="5.5" rx="1" fill="rgba(24,231,255,0.55)" stroke="none"/>
+  <!-- bar 2 — center, tall -->
+  <rect x="10.5" y="9.5" width="3" height="9" rx="1" fill="rgba(24,231,255,0.80)" stroke="none"/>
+  <!-- bar 3 — right, short -->
+  <rect x="15.5" y="11.5" width="3" height="7" rx="1" fill="rgba(24,231,255,0.65)" stroke="none"/>
+  <!-- trend arrow overlay -->
+  <polyline points="6,13 10,10 14,11.5 18,6.5" stroke="#18e7ff" stroke-width="1.3" fill="none"/>
+  <polyline points="16,6.5 18,6.5 18,8.5" stroke="#18e7ff" stroke-width="1.3" fill="none"/>
+</svg>

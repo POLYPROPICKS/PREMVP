@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke-linecap="round" stroke-linejoin="round">
+  <!-- outer ring — gold accent circle -->
+  <circle cx="12" cy="12" r="10" stroke="rgba(251,191,36,0.40)" stroke-width="1.3" fill="rgba(251,191,36,0.05)"/>
+  <circle cx="12" cy="12" r="7.5" stroke="rgba(251,191,36,0.20)" stroke-width="0.8" fill="none"/>
+  <!-- 4-point star / spark shape -->
+  <path d="M12 3 L13.2 10.8 L21 12 L13.2 13.2 L12 21 L10.8 13.2 L3 12 L10.8 10.8 Z"
+    fill="rgba(251,191,36,0.15)" stroke="#fbbf24" stroke-width="1.3"/>
+  <!-- center dot -->
+  <circle cx="12" cy="12" r="1.5" fill="#fbbf24"/>
+</svg>

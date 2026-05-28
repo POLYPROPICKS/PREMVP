@@ -23,6 +23,7 @@ import PassOfferModal from '@/components/modals/PassOfferModal';
 import ResolvedSignalsCarousel from '@/components/resolved-signals/ResolvedSignalsCarousel';
 import TestimonialsSection from '@/components/testimonials/TestimonialsSection';
 import HowItWorksSection from '@/components/how-it-works/HowItWorksSection';
+import WhoWeAreSection from '@/components/who-we-are/WhoWeAreSection';
 
 type MarketEvidenceSource = NonNullable<LandingPair['marketSources']>[number];
 
@@ -404,6 +405,8 @@ export default function ReconstructionPage() {
       <TestimonialsSection />
 
       <HowItWorksSection onCtaClick={handleLockedFeedAttempt} />
+
+      <WhoWeAreSection onCtaClick={openModal} />
 
       {isModalOpen && (
         <UnlockModal

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#18e7ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- mortarboard base platform -->
+  <path d="M12 3L2 8l10 5 10-5-10-5Z" stroke="#18e7ff" stroke-width="1.5" fill="rgba(24,231,255,0.08)"/>
+  <!-- left and right sides of cap top -->
+  <path d="M2 8v5" stroke="#18e7ff" stroke-width="1.5"/>
+  <!-- diploma body -->
+  <path d="M6 10.5v5c0 2.5 2.7 4 6 4s6-1.5 6-4v-5" stroke="#18e7ff" stroke-width="1.5" fill="none"/>
+  <!-- tassel cord -->
+  <line x1="22" y1="8" x2="22" y2="14" stroke="rgba(24,231,255,0.55)" stroke-width="1.2"/>
+  <circle cx="22" cy="15" r="0.8" fill="#18e7ff"/>
+</svg>
