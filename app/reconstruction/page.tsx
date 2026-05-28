@@ -406,7 +406,7 @@ export default function ReconstructionPage() {
 
       <HowItWorksSection onCtaClick={handleLockedFeedAttempt} />
 
-      <WhoWeAreSection onCtaClick={openModal} />
+      <WhoWeAreSection />
 
       {isModalOpen && (
         <UnlockModal

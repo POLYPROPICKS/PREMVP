@@ -1,9 +1,9 @@
+'use client';
 // components/who-we-are/WhoWeAreSection.tsx
-// Production_Who_we_are v3 — source portrait assets · dark shell card
+// Production_Who_we_are v3 — source portrait assets · direct checkout flow
 
+import { useState } from 'react';
 import styles from './WhoWeAreSection.module.css';
-
-type WhoWeAreSectionProps = { onCtaClick: () => void };
 
 const PORTRAITS = [
   {
@@ -32,7 +32,58 @@ const PILLARS = [
   { title: 'Execute', sub: 'Betting discipline, not hype',      icon: '/section-assets/who-we-are/icons/execute-target.svg' },
 ] as const;
 
-export default function WhoWeAreSection({ onCtaClick }: WhoWeAreSectionProps) {
+const PLAN_META = {
+  '7day':   { internalPlanId: 'premium_7day_weekly',  label: 'Unlock 7-Day Premium — $15' },
+  monthly:  { internalPlanId: 'premium_monthly',       label: 'Unlock Monthly Pro — $49'   },
+} as const;
+
+type Plan = keyof typeof PLAN_META;
+
+const BENEFITS: Record<Plan, string[]> = {
+  '7day': [
+    'Signals 2–4h before odds move',
+    'Live Polymarket whale-flow evidence',
+    'Injury + lineup risk layer',
+    'Sharp market consensus checks',
+    'ENTER · SKIP · WAIT per market',
+  ],
+  monthly: [
+    'Everything in 7-Day Premium',
+    'Full month of live signals',
+    'Best for daily market users',
+    'Ongoing edge monitoring',
+    'More market coverage',
+  ],
+};
+
+export default function WhoWeAreSection() {
+  const [selectedPlan, setSelectedPlan] = useState<Plan>('7day');
+  const [loading, setLoading]           = useState(false);
+
+  async function handleCheckout() {
+    if (loading) return;
+    setLoading(true);
+    const { internalPlanId } = PLAN_META[selectedPlan];
+    const leadIntentId = crypto.randomUUID();
+    try {
+      const res = await fetch('/api/checkout/create', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ internalPlanId, leadIntentId, source: 'who_we_are_section' }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && typeof json.checkoutUrl === 'string') {
+        window.location.href = json.checkoutUrl;
+        return; // navigation in progress — keep loading state
+      }
+    } catch {
+      // fall through to reset loading
+    }
+    setLoading(false);
+  }
+
+  const ctaLabel = loading ? 'Opening checkout…' : PLAN_META[selectedPlan].label;
+
   return (
     <section className={styles.section} aria-label="Who We Are">
       <div className={styles.shell}>
@@ -105,14 +156,76 @@ export default function WhoWeAreSection({ onCtaClick }: WhoWeAreSectionProps) {
           </div>
         </div>
 
-        {/* ── 6. CTA ── */}
-        <button type="button" className={styles.cta} onClick={onCtaClick}>
-          Get 5 Free Signals NOW
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="2.2"
-              strokeLinecap="round" strokeLinejoin="round"/>
-          </svg>
-        </button>
+        {/* ── 6. Paywall controls ── */}
+        <div className={styles.paywallBlock}>
+
+          {/* plan cards — click selects plan, does NOT open modal */}
+          <div className={styles.plans}>
+
+            {/* 7-Day Premium */}
+            <button
+              type="button"
+              className={`${styles.planCard} ${selectedPlan === '7day' ? styles.planSelected : ''}`}
+              onClick={() => setSelectedPlan('7day')}
+              aria-pressed={selectedPlan === '7day'}
+            >
+              <span className={styles.radio}>{selectedPlan === '7day' ? '✓' : ''}</span>
+              <span className={styles.planCopy}>
+                <span className={styles.planBadge}>BEST FOR YOU</span>
+                <span className={styles.planName}>7-Day Premium</span>
+                <span className={styles.planSub}>Full week of live signals</span>
+              </span>
+              <span className={styles.priceBlock}>
+                <strong>$15</strong>
+                <span>$2.14/day</span>
+              </span>
+            </button>
+
+            {/* Monthly Pro */}
+            <button
+              type="button"
+              className={`${styles.planCard} ${selectedPlan === 'monthly' ? styles.planSelected : ''}`}
+              onClick={() => setSelectedPlan('monthly')}
+              aria-pressed={selectedPlan === 'monthly'}
+            >
+              <span className={styles.radio}>{selectedPlan === 'monthly' ? '✓' : ''}</span>
+              <span className={styles.planCopy}>
+                <span className={styles.planName}>Monthly Pro</span>
+                <span className={styles.planSub}>Best for daily market users</span>
+              </span>
+              <span className={styles.priceBlock}>
+                <strong>$49</strong>
+                <span>$1.63/day</span>
+              </span>
+            </button>
+
+          </div>
+
+          {/* benefits list — below plan cards */}
+          <div className={styles.benefitsList}>
+            <div className={styles.benefitsTitle}>What do I get?</div>
+            {BENEFITS[selectedPlan].map(txt => (
+              <div key={txt} className={styles.benefitRow}>
+                <svg className={styles.benefitCheck} viewBox="0 0 14 14" aria-hidden="true">
+                  <circle cx="7" cy="7" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M4 7l2.2 2.2L10 4.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                </svg>
+                <span className={styles.benefitText}>{txt}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* primary CTA — direct checkout */}
+          <button
+            type="button"
+            className={styles.primaryCta}
+            onClick={handleCheckout}
+            disabled={loading}
+          >
+            {ctaLabel}
+          </button>
+
+        </div>
 
       </div>
     </section>
