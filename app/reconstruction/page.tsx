@@ -22,6 +22,7 @@ import type { WeekResultsCard } from '@/components/signal-week-results/types';
 import PassOfferModal from '@/components/modals/PassOfferModal';
 import ResolvedSignalsCarousel from '@/components/resolved-signals/ResolvedSignalsCarousel';
 import TestimonialsSection from '@/components/testimonials/TestimonialsSection';
+import HowItWorksSection from '@/components/how-it-works/HowItWorksSection';
 
 type MarketEvidenceSource = NonNullable<LandingPair['marketSources']>[number];
 
@@ -401,6 +402,8 @@ export default function ReconstructionPage() {
       <ResolvedSignalsCarousel />
 
       <TestimonialsSection />
+
+      <HowItWorksSection onCtaClick={handleLockedFeedAttempt} />
 
       {isModalOpen && (
         <UnlockModal
