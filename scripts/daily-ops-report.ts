@@ -355,6 +355,55 @@ function deduplicateUnresolvedRows(
   };
 }
 
+// ── Email mode ───────────────────────────────────────────────────────────────
+
+const EMAIL_MODE_RECIPIENT = (() => {
+  const arg = process.argv.find((a) => a.startsWith("--email="));
+  return arg ? arg.split("=").slice(1).join("=") : null;
+})();
+
+// ── Email helpers ─────────────────────────────────────────────────────────────
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function sendEmail(opts: {
+  to: string;
+  subject: string;
+  text: string;
+  html: string;
+}): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.EMAIL_FROM;
+  if (!apiKey) throw new Error("RESEND_API_KEY missing — set in Railway env");
+  if (!from) throw new Error("EMAIL_FROM missing — set in Railway env");
+
+  const res = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: [opts.to],
+      subject: opts.subject,
+      text: opts.text,
+      html: opts.html,
+    }),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`Resend API ${res.status}: ${body.slice(0, 200)}`);
+  }
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -1227,8 +1276,26 @@ async function main() {
     `*Отчёт сформирован: ${fmtDate(nowISO)} | PolyProPicks Ops Report v1.4*`,
   );
 
-  // Print to stdout
-  console.log(lines.join("\n"));
+  const reportText = lines.join("\n");
+
+  if (EMAIL_MODE_RECIPIENT) {
+    const subject = `PolyProPicks Daily Ops Report — ${reportDate}`;
+    const html = `<pre style="white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:13px">${escapeHtml(reportText)}</pre>`;
+    try {
+      await sendEmail({ to: EMAIL_MODE_RECIPIENT, subject, text: reportText, html });
+      console.log(`[ops-report] ✅ Email sent to ${EMAIL_MODE_RECIPIENT}`);
+      console.log(`[ops-report] Subject: ${subject}`);
+    } catch (e) {
+      console.error(
+        "[ops-report] ❌ Email failed:",
+        e instanceof Error ? e.message : String(e),
+      );
+      process.exit(1);
+    }
+  } else {
+    // Print to stdout
+    console.log(reportText);
+  }
 
   // Exit 1 only if no data at all could be gathered
   if (dbConnectError && feedError) {

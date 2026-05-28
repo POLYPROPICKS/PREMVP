@@ -10,7 +10,8 @@
     "generate:signals": "tsx scripts/generate-signals.ts",
     "resolve:signals": "tsx scripts/resolve-signals.ts",
     "audit:sports-sources": "tsx scripts/audit-polymarket-sports-sources.ts",
-    "ops:report": "tsx scripts/daily-ops-report.ts"
+    "ops:report": "tsx scripts/daily-ops-report.ts",
+    "ops:report:email": "tsx scripts/daily-ops-report.ts --email=alexgrushin@gmail.com"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
