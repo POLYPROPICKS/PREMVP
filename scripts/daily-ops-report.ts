@@ -290,6 +290,71 @@ function deduplicateRows(rawRows: ResolvedRow[]): DedupResult {
   };
 }
 
+// ── Unresolved backlog dedup ──────────────────────────────────────────────────
+// Same canonical key as resolved dedup. Earliest created_at = representative row.
+
+interface UnresolvedRow {
+  id: string;
+  created_at: string;
+  condition_id: string | null;
+  selected_token_id: string | null;
+  event_slug: string | null;
+  selected_outcome: string | null;
+}
+
+interface UnresolvedDedupResult {
+  rows: UnresolvedRow[];
+  rawCount: number;
+  uniqueCount: number;
+  duplicateGroups: number;
+  maxDuplicatesInGroup: number;
+  oldestCreatedAt: string | null;
+  newestCreatedAt: string | null;
+}
+
+function deduplicateUnresolvedRows(
+  rawRows: UnresolvedRow[],
+): UnresolvedDedupResult {
+  const groups = new Map<string, UnresolvedRow[]>();
+  for (const r of rawRows) {
+    const key =
+      r.condition_id && r.selected_token_id
+        ? `ct::${r.condition_id}::${r.selected_token_id}`
+        : r.event_slug && r.selected_outcome
+          ? `so::${r.event_slug}::${r.selected_outcome}`
+          : `id::${r.id}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(r);
+  }
+  let duplicateGroups = 0;
+  let maxDuplicatesInGroup = 0;
+  const rows: UnresolvedRow[] = [];
+  for (const group of groups.values()) {
+    group.sort(
+      (a, b) =>
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+    );
+    rows.push(group[0]);
+    if (group.length > 1) duplicateGroups++;
+    if (group.length > maxDuplicatesInGroup)
+      maxDuplicatesInGroup = group.length;
+  }
+  const byAge = [...rows].sort(
+    (a, b) =>
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime(),
+  );
+  return {
+    rows,
+    rawCount: rawRows.length,
+    uniqueCount: rows.length,
+    duplicateGroups,
+    maxDuplicatesInGroup,
+    oldestCreatedAt: byAge.length > 0 ? byAge[0].created_at : null,
+    newestCreatedAt:
+      byAge.length > 0 ? byAge[byAge.length - 1].created_at : null,
+  };
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -554,15 +619,14 @@ async function main() {
   if (stats24.confTotal === 0 && stats24.total > 0)
     redFlags.push(`⚠️ Нет resolved с confidence≥70 за 24h`);
 
-  // ── 3c. Resolver health (approximation) ───────────────────────────────────
+  // ── 3c. Resolver health + unresolved backlog (deduped) ───────────────────
   let latestResolvedAt: string | null =
     resolvedRows.length > 0 ? (resolvedRows[0].resolved_at ?? null) : null;
-  let unresolvedCount: number | null = null;
-  let oldestUnresolved: string | null = null;
   let unresolvedError: string | null = null;
+  let backlogDedup: UnresolvedDedupResult | null = null;
 
   if (supabase) {
-    // If no rows in 72h, try latest globally
+    // latestResolvedAt fallback if no rows in 72h window
     if (!latestResolvedAt) {
       try {
         const { data } = await supabase
@@ -571,35 +635,29 @@ async function main() {
           .not("signal_result", "is", null)
           .order("resolved_at", { ascending: false })
           .limit(1);
-        latestResolvedAt = (data?.[0] as { resolved_at?: string } | undefined)?.resolved_at ?? null;
-      } catch { /* non-fatal */ }
-    }
-
-    try {
-      const { count, error } = await supabase
-        .from("generated_signal_pairs")
-        .select("id", { count: "exact", head: true })
-        .is("signal_result", null)
-        .not("metric_formula_version", "is", null);
-      if (error) throw new Error(error.message);
-      unresolvedCount = count ?? 0;
-    } catch (e) {
-      unresolvedError = e instanceof Error ? e.message : String(e);
-    }
-
-    if (!unresolvedError) {
-      try {
-        const { data: oldest } = await supabase
-          .from("generated_signal_pairs")
-          .select("created_at")
-          .is("signal_result", null)
-          .not("metric_formula_version", "is", null)
-          .order("created_at", { ascending: true })
-          .limit(1);
-        oldestUnresolved =
-          (oldest?.[0] as { created_at?: string } | undefined)?.created_at ??
+        latestResolvedAt =
+          (data?.[0] as { resolved_at?: string } | undefined)?.resolved_at ??
           null;
       } catch { /* non-fatal */ }
+    }
+
+    // Unresolved backlog — fetch rows for dedup (limit 2000 covers current backlog)
+    try {
+      const { data: unresolvedData, error: unresolvedErr } = await supabase
+        .from("generated_signal_pairs")
+        .select(
+          "id, created_at, condition_id, selected_token_id, event_slug, selected_outcome",
+        )
+        .is("signal_result", null)
+        .not("metric_formula_version", "is", null)
+        .order("created_at", { ascending: true })
+        .limit(2000);
+      if (unresolvedErr) throw new Error(unresolvedErr.message);
+      backlogDedup = deduplicateUnresolvedRows(
+        (unresolvedData ?? []) as unknown as UnresolvedRow[],
+      );
+    } catch (e) {
+      unresolvedError = e instanceof Error ? e.message : String(e);
     }
   }
 
@@ -621,9 +679,7 @@ async function main() {
   } else if (resolverCronStatus === "error") {
     const errMsg =
       safeStr(lastResolverJobRun.error_message) ?? "unknown error";
-    redFlags.push(
-      `❌ Resolver cron error: ${errMsg.slice(0, 120)}`,
-    );
+    redFlags.push(`❌ Resolver cron error: ${errMsg.slice(0, 120)}`);
   } else if (resolverCronAgeMins !== null && resolverCronAgeMins > 480) {
     redFlags.push(
       `⚠️ Resolver cron stale: последний запуск ${resolverCronAgeMins} мин назад (>8h)`,
@@ -640,8 +696,35 @@ async function main() {
     );
   }
 
-  if (unresolvedCount !== null && unresolvedCount > 200)
-    redFlags.push(`⚠️ Unresolved backlog ${unresolvedCount} строк (порог 200)`);
+  // Backlog red flags — unique count, not raw rows
+  if (unresolvedError) {
+    redFlags.push(`⚠️ Backlog query failed: ${unresolvedError}`);
+  } else if (backlogDedup) {
+    if (
+      backlogDedup.rawCount > 0 &&
+      backlogDedup.rawCount / backlogDedup.uniqueCount >= 2
+    ) {
+      redFlags.push(
+        `ℹ️ Backlog dedup: ${backlogDedup.rawCount} raw → ${backlogDedup.uniqueCount} уникальных (ожидаемо — cache-cron дублирует)`,
+      );
+    }
+    if (backlogDedup.uniqueCount > 200) {
+      redFlags.push(
+        `⚠️ Backlog: ${backlogDedup.uniqueCount} уникальных unresolved сигналов (порог 200)`,
+      );
+    }
+    if (backlogDedup.oldestCreatedAt) {
+      const oldestAgeHrs = Math.round(
+        (Date.now() - new Date(backlogDedup.oldestCreatedAt).getTime()) /
+          3_600_000,
+      );
+      if (oldestAgeHrs > 72) {
+        redFlags.push(
+          `⚠️ Backlog: старейший unresolved сигнал ${oldestAgeHrs}ч (порог 72h)`,
+        );
+      }
+    }
+  }
 
   // ── 3d. League split (24h) ────────────────────────────────────────────────
   const leagueStats24: Record<
@@ -1008,27 +1091,34 @@ async function main() {
   // Unresolved backlog
   out(`## 📦 Unresolved Backlog`);
   out(``);
-  out(`| Поле | Значение |`);
-  out(`|------|----------|`);
-  out(
-    `| Unresolved count | ${
-      unresolvedError
-        ? `⚠️ Ошибка: ${unresolvedError}`
-        : (unresolvedCount ?? "N/A")
-    } |`,
-  );
-  out(`| Oldest unresolved created_at | ${fmtDate(oldestUnresolved)} |`);
-  out(`| Latest resolved_at (global) | ${fmtDate(latestResolvedAt)} |`);
-  out(
-    `| Resolver gap | ${resolverAgeMins !== null ? `${resolverAgeMins} мин назад` : "N/A"} |`,
-  );
-  out(
-    `| Resolver health | ${
-      !lastResolverJobRun
-        ? "❓ нет job_runs строки (fallback: approx по resolved_at)"
-        : `${resolverEmoji} последний run: ${fmtAge(resolverCronLastAt)} назад, status=${resolverCronStatus}, updated=${resolverCronUpdated ?? "?"}`
-    } |`,
-  );
+  if (unresolvedError) {
+    out(`> ⚠️ Backlog query failed: ${unresolvedError}`);
+  } else if (!backlogDedup) {
+    out(`> ⚠️ Backlog data unavailable (DB not connected)`);
+  } else {
+    out(`| Метрика | Значение |`);
+    out(`|---------|----------|`);
+    out(`| Raw unresolved rows | ${backlogDedup.rawCount} |`);
+    out(
+      `| **Unique unresolved signals** | **${backlogDedup.uniqueCount}** |`,
+    );
+    out(`| Duplicate groups | ${backlogDedup.duplicateGroups} |`);
+    out(`| Max duplicates/group | ${backlogDedup.maxDuplicatesInGroup} |`);
+    out(
+      `| Oldest unique unresolved | ${fmtDate(backlogDedup.oldestCreatedAt)} (${fmtAge(backlogDedup.oldestCreatedAt)} назад) |`,
+    );
+    out(
+      `| Newest unique unresolved | ${fmtDate(backlogDedup.newestCreatedAt)} (${fmtAge(backlogDedup.newestCreatedAt)} назад) |`,
+    );
+    out(`| Latest resolved_at (global) | ${fmtDate(latestResolvedAt)} |`);
+    out(
+      `| Resolver health | ${
+        !lastResolverJobRun
+          ? "❓ нет job_runs строки (fallback: approx)"
+          : `${resolverEmoji} run: ${fmtAge(resolverCronLastAt)} назад, status=${resolverCronStatus}, updated=${resolverCronUpdated ?? "?"}`
+      } |`,
+    );
+  }
   out(``);
 
   // Confidence Band Performance
@@ -1134,7 +1224,7 @@ async function main() {
   out(``);
   out(`---`);
   out(
-    `*Отчёт сформирован: ${fmtDate(nowISO)} | PolyProPicks Ops Report v1.3*`,
+    `*Отчёт сформирован: ${fmtDate(nowISO)} | PolyProPicks Ops Report v1.4*`,
   );
 
   // Print to stdout
