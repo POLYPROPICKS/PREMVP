@@ -24,6 +24,7 @@ import ResolvedSignalsCarousel from '@/components/resolved-signals/ResolvedSigna
 import TestimonialsSection from '@/components/testimonials/TestimonialsSection';
 import HowItWorksSection from '@/components/how-it-works/HowItWorksSection';
 import WhoWeAreSection from '@/components/who-we-are/WhoWeAreSection';
+import FooterSection from '@/components/footer/FooterSection';
 
 type MarketEvidenceSource = NonNullable<LandingPair['marketSources']>[number];
 
@@ -407,6 +408,8 @@ export default function ReconstructionPage() {
       <HowItWorksSection onCtaClick={handleLockedFeedAttempt} />
 
       <WhoWeAreSection />
+
+      <FooterSection />
 
       {isModalOpen && (
         <UnlockModal

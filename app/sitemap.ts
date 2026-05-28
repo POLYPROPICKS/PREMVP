@@ -14,5 +14,29 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.3,
     },
+    {
+      url: "https://polypropicks.com/faq",
+      lastModified: new Date("2026-05-28"),
+      changeFrequency: "monthly",
+      priority: 0.7,
+    },
+    {
+      url: "https://polypropicks.com/legal",
+      lastModified: new Date("2026-05-28"),
+      changeFrequency: "monthly",
+      priority: 0.5,
+    },
+    {
+      url: "https://polypropicks.com/terms-of-use",
+      lastModified: new Date("2026-05-28"),
+      changeFrequency: "monthly",
+      priority: 0.5,
+    },
+    {
+      url: "https://polypropicks.com/privacy-policy",
+      lastModified: new Date("2026-05-28"),
+      changeFrequency: "monthly",
+      priority: 0.5,
+    },
   ];
 }

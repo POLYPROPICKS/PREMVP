@@ -1,0 +1,41 @@
+# PolyProPicks — LLM Discovery File
+# https://polypropicks.com/llms.txt
+# Standard: https://llmstxt.org
+
+## What is PolyProPicks?
+
+PolyProPicks is a sports and prediction-market intelligence platform operated by Benefitpoint Inc.
+It translates raw market data into signal cards with a position, Signal Confidence score, market evidence, and trust metrics.
+PolyProPicks is not a sportsbook, betting operator, broker, exchange, financial adviser, or investment adviser.
+We do not place bets, execute trades, custody user funds, or guarantee outcomes.
+
+## Who is it for?
+
+People who follow sports markets, prediction markets (Polymarket, Kalshi), and odds movement but want a faster way to understand what matters — without reading raw order books, fragmented signal channels, or noisy social posts.
+
+## Key concepts
+
+- Signal Confidence: a simplified score summarizing multiple market-intelligence factors (movement, liquidity, whale-flow proxies, data coverage). Not a win guarantee.
+- Trust Metrics: supporting indicators (Smart Money, Whale vs Public, PreEventScore AI, odds quality). Not guarantees.
+- Whale Flow / Smart Money: market-data interpretation signals (large trade proxies, concentrated activity). Not verified institutional or insider information.
+
+## Pages
+
+- / — Landing page
+- /reconstruction — Alternative landing (A/B)
+- /premium — Premium access (authenticated)
+- /faq — Frequently asked questions
+- /legal — Legal center (terms index, risk notices)
+- /terms-of-use — Full Terms of Use
+- /privacy-policy — Full Privacy Policy
+- /sitemap.xml — Sitemap
+
+## Contact
+
+Benefitpoint Inc. — doing business as PolyProPicks
+Email: Alex_ceo@polypropicks.com
+
+## Disclaimer
+
+Signals are probabilistic and informational only. Not betting, financial, legal, or investment advice.
+Third-party market data may be delayed, incomplete, or inaccurate. Use at your own risk.

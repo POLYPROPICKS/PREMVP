@@ -1,0 +1,438 @@
+Terms of Use
+Last updated: May 28, 2026
+These Terms of Use (“Terms”) are a binding agreement between you and Benefitpoint Inc., doing business as PolyProPicks (“PolyProPicks,” “we,” “us,” or “our”), governing your access to and use of PolyProPicks.com, our website, landing pages, signal pages, premium access features, email content, market-intelligence content, and any related services, tools, or features that link to these Terms (collectively, the “Service”).
+By accessing or using the Service, signing up for free signals, requesting premium access, purchasing access, clicking an acceptance checkbox, or otherwise interacting with PolyProPicks, you agree to these Terms and to our Privacy Policy.
+If you do not agree to these Terms, do not use the Service.
+
+1. Who We Are
+The Service is operated by:
+Benefitpoint Inc.
+Doing business as: PolyProPicks
+Website: PolyProPicks.com
+Contact: Alex_ceo@polypropicks.com
+
+2. Description of the Service
+PolyProPicks provides sports and prediction-market intelligence. The Service may include:
+signal cards;
+market movement summaries;
+Signal Confidence scores;
+market-source evidence cards;
+premium signal feeds;
+historical or resolved signal tracking;
+free signal signup flows;
+premium access or paid-access features;
+referral links or promotional flows;
+email communications;
+third-party market links or references.
+The Service is designed to help users understand market information more quickly. It is not designed to place bets, execute trades, manage funds, or make decisions on your behalf.
+
+3. Not a Sportsbook, Exchange, Broker, or Adviser
+PolyProPicks is not:
+a sportsbook;
+a betting operator;
+a broker;
+an exchange;
+a financial adviser;
+an investment adviser;
+a tax adviser;
+a legal adviser;
+a fiduciary;
+an agent acting on your behalf;
+a custodian of funds.
+We do not:
+accept bets;
+place bets or trades;
+execute orders;
+set betting lines;
+custody user funds;
+pay out winnings;
+guarantee liquidity, prices, odds, or market outcomes;
+provide individualized financial, legal, tax, betting, gambling, or investment advice.
+You are solely responsible for your own decisions and for determining whether your use of the Service is lawful where you are located.
+
+4. Eligibility
+You may use the Service only if:
+you are at least 18 years old;
+you are the age of majority in your jurisdiction;
+if your jurisdiction requires a higher age for sports betting, prediction markets, gambling-adjacent content, paid market-intelligence content, or similar services, you meet that higher age requirement;
+you have full legal capacity to enter into these Terms;
+you are not prohibited from using the Service under applicable law;
+your use of the Service does not violate any law, regulation, court order, sanction, or third-party right.
+If you use the Service on behalf of a company or other entity, you represent that you have authority to bind that entity to these Terms.
+We may restrict, suspend, or terminate access where we believe use may violate law, platform rules, payment-provider rules, sanctions, compliance obligations, or these Terms.
+
+5. Jurisdiction and User Responsibility
+Sports betting, gambling, prediction markets, and related market activity are regulated differently across jurisdictions.
+You are solely responsible for:
+understanding the laws that apply to you;
+determining whether you may access or use the Service;
+determining whether you may use any third-party market, sportsbook, prediction-market platform, exchange, or related service;
+complying with age, location, tax, reporting, and regulatory obligations;
+ensuring that your decisions are lawful in your jurisdiction.
+We do not represent that the Service is appropriate, available, or lawful in every jurisdiction.
+You may not use VPNs, proxies, anonymization tools, false identities, synthetic identities, or other methods to bypass legal, geographic, compliance, age, payment, or access restrictions.
+
+6. Informational Use Only
+All content provided through the Service is for informational and educational purposes only.
+The Service may display or describe:
+market data;
+odds movement;
+prediction-market prices;
+market probabilities;
+public trading or volume signals;
+signal confidence indicators;
+historical outcomes;
+data-backed insights;
+third-party market links;
+commentary or summaries.
+None of this is advice or a recommendation that you make any bet, trade, purchase, sale, financial decision, legal decision, tax decision, gambling decision, or market transaction.
+You should independently verify all information before relying on it.
+
+7. No Guaranteed Outcomes
+PolyProPicks does not guarantee:
+profit;
+winnings;
+market movement;
+signal accuracy;
+odds movement;
+event outcomes;
+trading outcomes;
+betting outcomes;
+returns;
+access to any particular market;
+availability of any third-party platform;
+that any signal will remain valid after publication.
+Any sports, betting, trading, prediction-market, or financial activity involves risk. You may lose money. You should never rely on PolyProPicks as the sole basis for any decision.
+Historical or resolved signal performance does not guarantee future performance.
+
+8. Signal Confidence
+“Signal Confidence” is a product label used by PolyProPicks to summarize market-intelligence factors in a simplified way.
+Signal Confidence may be based on factors such as:
+price or odds movement;
+liquidity;
+public market data;
+market momentum;
+volume changes;
+data coverage;
+proxy sharp-flow or whale-flow indicators;
+internal scoring logic;
+historical or contextual information.
+Signal Confidence is not:
+a guarantee;
+a calibrated win probability unless expressly stated and validated;
+a prediction of a certain outcome;
+financial advice;
+betting advice;
+investment advice;
+a promise of profit;
+a representation that a user should place a bet or trade.
+Signal Confidence may be wrong, incomplete, delayed, or affected by inaccurate third-party data.
+
+9. Market Data and Third-Party Sources
+The Service may rely on public data, third-party APIs, market pages, sports data, prediction-market data, odds data, trading data, or other external sources.
+Market data may be:
+delayed;
+stale;
+incomplete;
+inaccurate;
+unavailable;
+revised;
+misformatted;
+affected by third-party outages;
+affected by low liquidity;
+affected by market suspensions or closures;
+affected by event cancellations, postponements, rule changes, or resolution disputes.
+We do not guarantee the accuracy, completeness, freshness, or availability of third-party data.
+Third-party links, market pages, sportsbook pages, prediction-market platforms, payment providers, and other external services are controlled by third parties, not by PolyProPicks. Your use of those services is governed by their own terms and policies.
+
+10. Free Signals and Premium Access
+PolyProPicks may offer free signals, previews, waitlists, trial access, limited-access pages, premium feeds, subscription access, one-time passes, or other paid or unpaid product experiences.
+We may change, limit, expand, discontinue, or modify free or premium features at any time, subject to applicable law and any express checkout terms that apply to your purchase.
+Free access does not guarantee future free access. Premium access does not guarantee any specific outcome, profit, signal volume, signal frequency, market availability, sport availability, or event availability.
+
+11. Payments, Subscriptions, Renewals, and Refunds
+If you purchase premium access, your purchase may be processed by a third-party payment provider such as Whop, Stripe, Apple, Google, or another provider shown at checkout.
+The checkout page, payment provider terms, and any purchase-specific disclosures control the specific payment terms for that transaction, including:
+price;
+billing period;
+renewal status;
+trial period, if any;
+cancellation process;
+refund eligibility;
+taxes;
+payment method rules;
+access duration;
+chargeback or dispute procedures.
+Unless the checkout page or applicable law states otherwise:
+fees are charged in advance;
+paid access is for the access period shown at checkout;
+cancellations stop future renewal but may not create a refund for the current access period;
+partial billing periods, partially used passes, and unused access periods are not automatically refundable;
+refunds may be handled by the payment provider according to its own policies.
+If a subscription automatically renews, the renewal terms must be shown at checkout. You are responsible for reviewing those terms before purchasing.
+If a payment fails, is reversed, disputed, refunded, charged back, or flagged for fraud or abuse, we may suspend or terminate premium access.
+
+12. Payment Providers
+We do not intentionally collect or store full payment card numbers.
+Payment information is processed by the payment provider shown at checkout. We may receive limited transaction or access information from payment providers, such as:
+checkout session ID;
+customer ID;
+payment status;
+subscription status;
+renewal status;
+cancellation status;
+refund status;
+entitlement or access status.
+We are not responsible for payment-provider outages, errors, delays, policy changes, account restrictions, or processing failures.
+
+13. Taxes
+You are responsible for any taxes, duties, levies, reporting obligations, or similar government charges that apply to your use of the Service, your purchases, or your activity on third-party platforms.
+We may collect or remit taxes where required by law or where handled by a payment provider.
+
+14. Promotional Offers, Trials, and Referral Links
+We may offer promotional access, referral links, discount codes, trials, limited-time offers, or other promotional features.
+Promotions may be subject to additional terms, eligibility limits, expiration dates, usage caps, fraud-prevention controls, or payment-provider rules.
+We may modify, suspend, or revoke promotions if we believe they are being abused, manipulated, misused, or used in violation of these Terms.
+Referral links or referral rewards do not create an employment, agency, partnership, broker, adviser, or representative relationship with PolyProPicks.
+
+15. Accounts, Access, and Sessions
+Some features may require an email address, access link, session cookie, account, payment confirmation, or other access mechanism.
+You are responsible for:
+providing accurate information;
+keeping access links, sessions, passwords, or devices secure;
+not sharing premium access without permission;
+notifying us if you believe your access has been compromised;
+all activity that occurs through your access credentials or session, unless applicable law says otherwise.
+We may suspend, limit, or revoke access if we believe there is fraud, abuse, unauthorized sharing, scraping, payment failure, legal risk, security risk, or violation of these Terms.
+
+16. Prohibited Uses
+You may not use the Service to:
+violate any law, regulation, court order, sanction, or third-party right;
+engage in fraud, deception, manipulation, collusion, abuse, or unlawful activity;
+bypass age, location, legal, payment, compliance, or access restrictions;
+scrape, crawl, harvest, copy, or extract data without permission;
+use bots, scripts, automation, or high-volume requests that burden the Service;
+reverse engineer, decompile, disassemble, or attempt to derive source code;
+probe, scan, penetration test, or attack the Service without written permission;
+interfere with the Service or other users;
+upload malware, harmful code, or destructive content;
+impersonate any person or entity;
+misrepresent your identity, affiliation, or authority;
+resell, sublicense, redistribute, or commercially exploit the Service without permission;
+share paid access with unauthorized users;
+use the Service to create competing products or datasets without permission;
+use PolyProPicks content in misleading marketing, fake testimonials, fake performance claims, or fraudulent offers.
+
+17. Intellectual Property
+The Service, including its design, text, graphics, user interface, signal cards, scoring presentation, market summaries, product structure, software, data organization, logos, trade names, trademarks, and other content, is owned by PolyProPicks, Benefitpoint Inc., or our licensors.
+Subject to your compliance with these Terms, we grant you a limited, personal, revocable, non-exclusive, non-transferable license to access and use the Service for your own lawful personal use.
+You may not copy, reproduce, modify, distribute, display, sell, sublicense, scrape, mirror, frame, create derivative works from, or commercially exploit any part of the Service unless we give you written permission.
+All rights not expressly granted are reserved.
+
+18. Feedback
+If you send us feedback, suggestions, ideas, feature requests, comments, or other input about the Service, you grant us the right to use that feedback without restriction, attribution, or compensation.
+This does not give us ownership of your personal information. Personal information is handled according to our Privacy Policy.
+
+19. User Content and Communications
+If you send us messages, testimonials, comments, survey responses, support requests, or other content, you represent that you have the right to provide that content and that it does not violate law or third-party rights.
+You grant us a non-exclusive, worldwide, royalty-free license to use, host, store, reproduce, process, and display that content as reasonably necessary to operate, improve, secure, support, and promote the Service, subject to our Privacy Policy and applicable law.
+We will not use your name, likeness, testimonial, or personal story in public marketing without your permission where required by law.
+
+20. Marketing Communications
+By signing up for signals, waitlists, premium access, or updates, you may receive emails from PolyProPicks.
+You may unsubscribe from marketing emails at any time by using the unsubscribe link or contacting Alex_ceo@polypropicks.com.
+We may still send service-related, transactional, legal, security, or payment-related messages where permitted by law.
+We do not authorize fake testimonials, fake urgency, fake countdowns, fake winnings, unsubstantiated performance claims, or misleading endorsements.
+
+21. Third-Party Services and Links
+The Service may contain links to or information from third-party services, including prediction-market platforms, sports data providers, payment providers, analytics providers, social networks, sportsbooks, news sources, or other websites.
+Third-party services are not controlled by PolyProPicks.
+We are not responsible for:
+third-party content;
+third-party data accuracy;
+third-party pricing;
+third-party market availability;
+third-party payment processing;
+third-party platform decisions;
+third-party account restrictions;
+third-party privacy or security practices;
+third-party losses, errors, or outages.
+A link to a third-party service does not mean we endorse that service or guarantee its quality, legality, availability, or suitability for you.
+
+22. Beta, Experimental, and Limited-Release Features
+Some features may be beta, experimental, early-access, limited-release, or under active development.
+These features may be unstable, incomplete, unavailable, changed, discontinued, or inaccurate.
+We may change or remove beta or experimental features at any time without notice.
+
+23. Availability and Service Changes
+We may modify, suspend, discontinue, restrict, or change the Service at any time.
+We do not guarantee that the Service will be available continuously, securely, or without errors.
+The Service may be affected by:
+maintenance;
+internet outages;
+hosting failures;
+database failures;
+third-party API issues;
+sports event changes;
+data-source outages;
+payment-provider issues;
+security incidents;
+legal or regulatory changes;
+force majeure events.
+
+24. Investigations and Enforcement
+We may monitor, investigate, preserve, and disclose information where reasonably necessary to:
+protect the Service;
+prevent fraud or abuse;
+enforce these Terms;
+investigate security incidents;
+comply with law;
+respond to payment disputes;
+cooperate with regulators, law enforcement, courts, payment providers, hosting providers, or other parties where required or appropriate;
+protect our rights, users, or third parties.
+We may suspend, restrict, or terminate access with or without notice where we believe doing so is necessary to protect the Service, users, legal compliance, payment integrity, or platform security.
+
+25. Copyright and Intellectual Property Complaints
+If you believe content on the Service infringes your copyright or intellectual property rights, contact us at:
+Alex_ceo@polypropicks.com
+Please include:
+your name and contact information;
+identification of the work you claim is infringed;
+identification of the allegedly infringing material;
+enough information for us to locate the material;
+a statement that you have a good-faith belief the use is not authorized;
+a statement that the information you provide is accurate;
+your physical or electronic signature.
+We may remove or disable access to allegedly infringing material and may terminate repeat infringers where appropriate.
+
+26. Privacy
+Our Privacy Policy explains how we collect, use, disclose, and protect information.
+By using the Service, you acknowledge that internet transmissions and online services are not always private or secure, and that no security system is perfect.
+
+27. Disclaimer of Warranties
+To the fullest extent permitted by law, the Service is provided on an “as is” and “as available” basis.
+We disclaim all warranties, express, implied, statutory, or otherwise, including warranties of:
+accuracy;
+completeness;
+availability;
+reliability;
+timeliness;
+merchantability;
+fitness for a particular purpose;
+title;
+non-infringement;
+error-free operation;
+uninterrupted access;
+security;
+compatibility.
+We do not warrant that:
+the Service will produce specific results;
+any signal will be accurate;
+any market data will be current;
+any market will remain available;
+any odds, prices, or probabilities will remain valid;
+any defect will be corrected;
+the Service will be free from viruses, harmful code, or technical failures.
+
+28. Limitation of Liability
+To the fullest extent permitted by law, Benefitpoint Inc., PolyProPicks, and our affiliates, officers, directors, employees, contractors, licensors, service providers, and agents will not be liable for:
+indirect damages;
+incidental damages;
+special damages;
+consequential damages;
+exemplary damages;
+punitive damages;
+lost profits;
+lost opportunities;
+lost data;
+loss of goodwill;
+market losses;
+betting losses;
+trading losses;
+payment-provider losses;
+third-party platform losses;
+losses caused by inaccurate, stale, delayed, or incomplete data.
+To the fullest extent permitted by law, our total aggregate liability for all claims relating to the Service will not exceed the greater of:
+the amount you paid to PolyProPicks for the Service in the 12 months before the event giving rise to the claim; or
+USD $100.
+Some jurisdictions do not allow certain limitations of liability. In those jurisdictions, our liability is limited to the maximum extent permitted by law.
+
+29. Indemnification
+You agree to defend, indemnify, and hold harmless Benefitpoint Inc., PolyProPicks, and our affiliates, officers, directors, employees, contractors, licensors, service providers, and agents from and against any claims, liabilities, damages, losses, costs, and expenses, including reasonable legal fees, arising from or related to:
+your use of the Service;
+your breach of these Terms;
+your violation of law;
+your violation of third-party rights;
+your misuse of market data or signals;
+your use of third-party platforms;
+your payment disputes, chargebacks, or fraudulent activity;
+activity through your account, session, access link, or credentials.
+
+30. Force Majeure
+We are not liable for delay, failure, interruption, or loss caused by events beyond our reasonable control, including:
+internet outages;
+cloud or hosting failures;
+database failures;
+cyberattacks;
+payment-provider failures;
+third-party API outages;
+data-provider outages;
+sports event cancellations or changes;
+labor disputes;
+government actions;
+regulatory changes;
+sanctions changes;
+war;
+terrorism;
+civil unrest;
+natural disasters;
+other events outside our reasonable control.
+
+31. Termination
+You may stop using the Service at any time.
+We may suspend, restrict, or terminate your access to the Service at any time if:
+you violate these Terms;
+your payment fails, is disputed, or is reversed;
+we suspect fraud, abuse, scraping, unauthorized sharing, or security risk;
+continued access may create legal, regulatory, security, payment, or platform risk;
+we discontinue or materially change the Service.
+Termination does not limit any rights or obligations that accrued before termination. Sections that by their nature should survive termination will survive, including intellectual property, disclaimers, limitation of liability, indemnification, payment obligations, dispute terms, and legal compliance provisions.
+
+32. Governing Law
+These Terms are governed by the laws of [Delaware / United States / Insert governing law after legal review], without regard to conflict-of-law principles, unless mandatory law requires otherwise.
+This section must be confirmed by founder/legal counsel before publication if Benefitpoint Inc. is incorporated or operating under a specific jurisdiction.
+
+33. Dispute Resolution
+Before filing a claim, you agree to contact us at Alex_ceo@polypropicks.com and attempt to resolve the dispute informally.
+The parties will attempt in good faith to resolve the dispute for at least 30 days after written notice is received.
+If the dispute is not resolved, the parties agree that the dispute will be resolved in the courts or arbitration forum specified after legal review.
+Founder/legal review required: decide whether to use court venue only, arbitration, class action waiver, jury waiver, or a consumer-law-specific dispute process.
+
+34. Class Action and Jury Waiver
+To the fullest extent permitted by law, you and PolyProPicks agree that claims must be brought only on an individual basis and not as part of a class, collective, consolidated, mass, representative, or private-attorney-general action.
+To the fullest extent permitted by law, you and PolyProPicks waive the right to a jury trial.
+Some jurisdictions do not allow these waivers. Where not allowed, this section applies only to the maximum extent permitted by law.
+Founder/legal review required before relying on this section.
+
+35. Changes to These Terms
+We may update these Terms from time to time.
+When we update these Terms, we will revise the “Last updated” date above. If changes are material, we may provide additional notice where appropriate.
+Your continued use of the Service after updated Terms become effective means you accept the updated Terms.
+If you do not agree to updated Terms, you must stop using the Service.
+
+36. Severability, Waiver, and Assignment
+If any part of these Terms is found unenforceable, the remaining parts will remain in effect.
+Our failure to enforce any provision is not a waiver of our right to enforce it later.
+You may not assign or transfer your rights or obligations under these Terms without our written consent.
+We may assign these Terms in connection with a merger, acquisition, financing, reorganization, sale of assets, corporate transaction, or by operation of law.
+
+37. Entire Agreement
+These Terms, together with our Privacy Policy and any checkout-specific or product-specific terms presented to you, form the entire agreement between you and PolyProPicks regarding the Service.
+If there is a conflict between these Terms and specific checkout or product terms, the more specific terms control for that purchase or feature.
+
+38. Contact
+For questions about these Terms, contact:
+Benefitpoint Inc.
+Doing business as: PolyProPicks
+Email: Alex_ceo@polypropicks.com
+For legal notices, use the subject line: Legal Notice.

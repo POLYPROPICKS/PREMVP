@@ -1,0 +1,328 @@
+Privacy Policy
+Last updated: May 28, 2026
+This Privacy Policy explains how Benefitpoint Inc., doing business as PolyProPicks (“PolyProPicks,” “we,” “us,” or “our”), collects, uses, discloses, stores, and protects information when you visit PolyProPicks.com, use our website, sign up for free signals, request premium access, interact with our content, or otherwise use our services.
+PolyProPicks provides sports and prediction-market intelligence, including signal cards, market movement summaries, historical signal tracking, and related informational content. PolyProPicks is not a sportsbook, betting operator, broker, exchange, investment adviser, financial adviser, or gambling platform. We do not place bets or trades for users, custody user funds, or guarantee outcomes.
+If you do not agree with this Privacy Policy, do not use the Service.
+
+1. Who We Are
+The Service is operated by:
+Benefitpoint Inc.
+Doing business as: PolyProPicks
+Website: https://polypropicks.com
+Contact: Alex_ceo@polypropicks.com
+For privacy-related requests, please contact us at Alex_ceo@polypropicks.com.
+
+2. Scope of This Privacy Policy
+This Privacy Policy applies to information we collect through:
+PolyProPicks.com;
+landing pages, forms, waitlists, and referral links;
+free signal signups;
+premium access, subscription, or paid-intent flows;
+support and email communications;
+analytics, advertising, and attribution technologies;
+any related product features, pages, or services that link to this Privacy Policy.
+This Privacy Policy does not apply to third-party websites, payment providers, prediction-market platforms, sportsbooks, exchanges, social networks, or other services that we do not control. Their own privacy policies apply to their processing of your information.
+
+3. Information We Collect
+We may collect information that identifies you, relates to you, describes you, or could reasonably be linked to you.
+3.1 Information You Provide Directly
+You may provide information to us when you:
+sign up for free signals;
+request premium access;
+join a waitlist;
+submit a paid-access or subscription request;
+use a referral link or promotional offer;
+contact support;
+respond to surveys or feedback requests;
+interact with our emails or marketing forms.
+This information may include:
+email address;
+name, if provided;
+phone number, if provided;
+support messages and communications;
+marketing preferences;
+referral or campaign code;
+premium plan selected or requested;
+signal or event context attached to a signup, such as event title, selected position, source, or intent type.
+3.2 Premium Access and Plan Information
+If you request or purchase premium access, we may collect or receive information such as:
+selected plan ID;
+plan name;
+plan price;
+plan source;
+checkout session ID;
+payment status;
+entitlement or access status;
+subscription, cancellation, or renewal metadata;
+limited payment-related metadata from payment providers.
+We do not intentionally collect or store full payment card numbers. Payment information is processed by third-party payment providers, such as Whop, Stripe, or another checkout provider used at the time of purchase. Their own privacy policies and terms apply.
+3.3 Automatically Collected Information
+When you visit or use the Service, we and our service providers may automatically collect:
+IP address;
+browser type;
+device type;
+operating system;
+referring page;
+pages viewed;
+time and date of visit;
+session identifiers;
+approximate location inferred from IP address;
+interaction events, such as clicks, form submissions, CTA views, referral visits, or premium access attempts;
+technical logs used for security, fraud prevention, debugging, and performance.
+3.4 Cookies, Pixels, and Similar Technologies
+We may use cookies, pixels, local storage, server-side events, and similar technologies to:
+operate the website;
+remember preferences;
+maintain sessions or premium access;
+measure traffic and product performance;
+understand conversion funnels;
+detect abuse or fraud;
+attribute referrals and campaigns;
+improve our marketing;
+deliver or measure advertising, if enabled.
+These technologies may be provided by analytics, advertising, hosting, payment, email, or infrastructure providers.
+If we use advertising pixels or conversion APIs, such as Meta Pixel, Google Ads, TikTok Pixel, or similar tools, those providers may receive identifiers such as hashed email address, IP address, device information, browser information, page activity, or conversion events. Some privacy laws may treat this kind of disclosure as “sharing” personal information for cross-context behavioral advertising.
+You can manage cookies through your browser settings. Disabling cookies may affect website functionality, signups, referral tracking, or premium access features.
+
+4. How We Use Information
+We may use information for the following purposes.
+4.1 To Provide and Operate the Service
+We use information to:
+operate PolyProPicks.com;
+provide free signal access;
+manage premium access and entitlement status;
+process signups, waitlists, and premium access requests;
+deliver service-related communications;
+respond to support requests;
+maintain security and prevent abuse.
+4.2 To Personalize and Improve the Product
+We may use information to:
+understand which signals, markets, pages, or features users interact with;
+improve signal presentation and product usability;
+analyze conversion funnels;
+debug technical issues;
+improve website performance;
+test product changes and user experience.
+4.3 To Send Communications
+We may use your email address to send:
+requested free signals;
+premium access information;
+product updates;
+account or access-related notices;
+legal or policy updates;
+marketing emails, where permitted.
+You can unsubscribe from marketing emails by using the unsubscribe link in the email or contacting us at Alex_ceo@polypropicks.com. We may still send non-marketing service messages where necessary.
+4.4 To Process Payments and Premium Access
+We may use information to:
+create or verify checkout sessions;
+confirm payment or subscription status;
+activate or restore premium access;
+prevent abuse of paid access;
+handle refunds, cancellations, or support requests;
+maintain records required for accounting, tax, dispute, or legal purposes.
+4.5 For Referrals and Attribution
+If you arrive through a referral link or campaign, we may use referral codes, cookies, URLs, or attribution parameters to:
+credit referrals;
+measure campaign performance;
+prevent referral abuse;
+understand acquisition channels;
+improve marketing campaigns.
+4.6 For Security, Fraud Prevention, and Legal Compliance
+We may use information to:
+protect the Service;
+detect bots, spam, scraping, abuse, or suspicious activity;
+enforce our Terms of Use;
+investigate disputes or security incidents;
+comply with applicable law;
+respond to lawful requests from regulators, courts, or authorities;
+establish, exercise, or defend legal claims.
+
+5. Legal Bases for Processing
+Where laws such as the GDPR or UK GDPR apply, we process personal data based on one or more of the following legal bases:
+Purpose | Legal basis
+Providing requested services, premium access, checkout, support, or account/session functionality | Performance of a contract or steps before entering a contract
+Sending requested signals or service-related communications | Performance of a contract or legitimate interests
+Sending optional marketing communications | Consent or legitimate interests, depending on applicable law
+Analytics, product improvement, security, fraud prevention, and abuse prevention | Legitimate interests
+Payment records, tax, accounting, dispute handling, and legal compliance | Legal obligation or legitimate interests
+Advertising pixels, optional cookies, or targeted advertising where consent is required | Consent
+Responding to legal requests or enforcing rights | Legal obligation or legitimate interests
+Where we rely on consent, you may withdraw consent at any time. Withdrawal does not affect processing that occurred before withdrawal.
+
+6. How We Share Information
+We do not sell personal information for monetary compensation. However, we may disclose or share information with third parties in the following circumstances.
+6.1 Service Providers
+We may share information with vendors that help us operate the Service, such as:
+hosting providers;
+database providers;
+email delivery providers;
+analytics providers;
+payment and checkout providers;
+fraud prevention and security providers;
+customer support tools;
+infrastructure and monitoring providers;
+legal, accounting, or professional advisers.
+These providers may process information only as needed to provide services to us, subject to their own agreements and applicable law.
+6.2 Payment Providers
+If you purchase or request premium access, payment-related information may be processed by third-party payment providers such as Whop, Stripe, or another provider shown at checkout. We may receive limited information from those providers, such as checkout status, subscription status, payment confirmation, customer identifier, or entitlement metadata.
+We do not control how payment providers process your information. Please review the privacy policies and terms of the payment provider used at checkout.
+6.3 Analytics and Advertising Partners
+If enabled, we may share limited information with analytics or advertising partners to measure usage, improve the Service, attribute campaigns, or deliver and measure advertising.
+This may include device information, IP address, referral URL, page activity, conversion events, hashed email address, or similar identifiers.
+Some laws may consider disclosure to advertising partners for cross-context behavioral advertising to be a “sale” or “sharing” of personal information, even if no money is exchanged. Where required, you may opt out using the methods described in this Privacy Policy.
+6.4 Referrals and Promotions
+If you use a referral link, referral code, affiliate link, or promotion, we may process and share limited attribution information necessary to operate the referral or promotion program.
+We will not publicly display your personal information as a referral participant unless you separately agree.
+6.5 Legal, Safety, and Compliance
+We may disclose information if we believe it is reasonably necessary to:
+comply with applicable law;
+respond to lawful requests from authorities;
+enforce our Terms of Use;
+investigate fraud, abuse, or security incidents;
+protect the rights, property, or safety of PolyProPicks, users, or others;
+defend or pursue legal claims.
+6.6 Business Transfers
+If we are involved in a merger, acquisition, financing, reorganization, sale of assets, bankruptcy, or similar transaction, information may be transferred as part of that transaction, subject to appropriate protections where required by law.
+
+7. Third-Party Market Data and Links
+PolyProPicks may display or reference information from third-party markets, websites, APIs, public data sources, prediction-market platforms, sports data providers, or other sources.
+If you click a third-party link or use a third-party platform, that third party may collect information about you under its own privacy policy. We are not responsible for the privacy practices of third-party services.
+
+8. Data Retention
+We retain information for as long as reasonably necessary for the purposes described in this Privacy Policy, including to:
+provide the Service;
+maintain premium access records;
+process signups and communications;
+comply with legal, tax, accounting, or reporting obligations;
+resolve disputes;
+enforce agreements;
+maintain security;
+prevent fraud or abuse;
+preserve records needed for legal claims.
+Retention periods vary depending on the type of information and the reason we collected it.
+For example:
+email signup records may be kept until you unsubscribe or request deletion, subject to legal exceptions;
+premium access and payment metadata may be kept as required for tax, accounting, dispute, and fraud-prevention purposes;
+technical logs may be retained for a shorter period unless needed for security or investigations;
+referral and analytics data may be retained in aggregated or de-identified form.
+We may retain de-identified or aggregated information that no longer reasonably identifies you.
+
+9. International Transfers
+We may process and store information in the United States and other countries where we, our service providers, or our infrastructure providers operate.
+If you access the Service from outside the United States, your information may be transferred to countries that may not provide the same level of data protection as your jurisdiction.
+Where required, we use appropriate safeguards for international transfers, such as contractual protections or other mechanisms recognized by applicable law.
+
+10. Security
+We use reasonable technical and organizational measures designed to protect information from unauthorized access, loss, misuse, alteration, or disclosure.
+However, no website, database, transmission method, or storage system is completely secure. We cannot guarantee absolute security. You use the Service at your own risk.
+If you believe your information or access to the Service has been compromised, contact us at Alex_ceo@polypropicks.com.
+
+11. Your Privacy Rights
+Depending on where you live, you may have rights regarding your personal information, including the right to:
+access the personal information we hold about you;
+request correction of inaccurate information;
+request deletion of personal information;
+object to or restrict certain processing;
+request portability of your information;
+withdraw consent where processing is based on consent;
+opt out of marketing communications;
+opt out of targeted advertising, sale, or sharing where applicable;
+appeal a decision we make about a privacy request, where required by law.
+To exercise privacy rights, contact us at Alex_ceo@polypropicks.com.
+We may need to verify your identity before responding to certain requests. We may deny or limit requests where permitted by law, such as when we must retain information for legal, security, fraud-prevention, tax, accounting, dispute, or contractual reasons.
+
+12. California and U.S. State Privacy Notice
+This section applies to residents of jurisdictions with comprehensive privacy laws, including California where applicable.
+12.1 Categories of Personal Information We May Collect
+In the past 12 months, we may have collected the following categories of personal information:
+Category | Examples
+Identifiers | Email address, name if provided, IP address, device identifiers, referral identifiers
+Customer records | Signup data, premium access requests, support communications
+Commercial information | Plan selected, checkout status, subscription metadata, purchase or access history
+Internet or network activity | Pages viewed, clicks, referral URL, device/browser information, interaction events
+Geolocation data | Approximate location inferred from IP address
+Inferences | Product preferences, campaign attribution, likely interest in premium access
+Communications | Support messages, survey responses, feedback
+Sensitive personal information | We do not intentionally collect sensitive personal information for the purpose of inferring characteristics. Payment providers may process payment information directly.
+12.2 Sources of Personal Information
+We may collect personal information from:
+you directly;
+your browser or device;
+cookies, pixels, and similar technologies;
+payment providers;
+referral partners or campaign links;
+analytics and infrastructure providers;
+public or third-party sources, where relevant.
+12.3 Purposes for Collection
+We collect personal information for the purposes described above, including:
+providing the Service;
+processing signups and premium access;
+security and fraud prevention;
+analytics and product improvement;
+marketing and attribution;
+payment and entitlement verification;
+legal compliance and dispute handling.
+12.4 Disclosure of Personal Information
+We may disclose personal information to:
+service providers;
+payment providers;
+analytics providers;
+advertising partners, if enabled;
+email providers;
+hosting and infrastructure providers;
+professional advisers;
+authorities or legal parties where required;
+business transaction participants.
+12.5 Sale or Sharing of Personal Information
+We do not sell personal information for money.
+If we use advertising pixels, conversion APIs, retargeting tools, or similar technologies, some laws may treat that activity as “sharing” personal information for cross-context behavioral advertising or as a “sale” even if no money is exchanged.
+Where required, you may opt out by:
+emailing Alex_ceo@polypropicks.com with the subject line “Privacy Opt-Out”;
+using a “Do Not Sell or Share My Personal Information” or privacy choices link if available on the website;
+using a recognized browser-based opt-out preference signal where legally required and technically supported.
+12.6 Non-Discrimination
+We will not discriminate against you for exercising privacy rights. However, some features may require certain information to function. For example, if you ask us to delete the email or entitlement data needed to provide premium access, we may no longer be able to provide that access.
+12.7 Authorized Agents
+Where applicable law allows you to use an authorized agent, we may require proof that the agent is authorized to act on your behalf and may require you to verify your identity directly with us.
+
+13. Marketing Communications
+If you subscribe to emails or request signals, we may send you marketing or product communications.
+You may opt out at any time by:
+clicking the unsubscribe link in an email;
+contacting Alex_ceo@polypropicks.com.
+Opting out of marketing emails does not prevent us from sending transactional or service-related messages, such as premium access, payment, security, legal, or support notices.
+We do not authorize the use of misleading testimonials, fake results, fake countdowns, or unsubstantiated performance claims in our marketing.
+
+14. Children and Age Restrictions
+The Service is not directed to children.
+You must be at least 18 years old and the age of majority in your jurisdiction to use the Service. If your jurisdiction requires a higher age for sports, prediction-market, gambling-adjacent, or paid market-intelligence content, you must meet that higher age requirement.
+We do not knowingly collect personal information from children under 13. If we learn that a child has provided personal information, we will take reasonable steps to delete it where required by law.
+
+15. Do Not Track and Global Privacy Control
+Some browsers offer “Do Not Track” signals. There is no uniform industry standard for responding to Do Not Track signals, and our systems may not respond to them consistently unless required by law.
+Where legally required, we will process recognized opt-out preference signals, such as Global Privacy Control, as an opt-out from sale or sharing for targeted advertising, to the extent required by applicable law and technically feasible.
+
+16. Deletion Requests
+You may request deletion of your personal information by contacting Alex_ceo@polypropicks.com.
+Please include enough information for us to identify your account, signup, or request, such as the email address used with PolyProPicks.
+We may retain certain information where permitted or required by law, including for:
+tax, accounting, or payment records;
+fraud prevention;
+security investigations;
+dispute resolution;
+legal compliance;
+enforcing agreements;
+backup or archival systems for a limited period.
+
+17. Changes to This Privacy Policy
+We may update this Privacy Policy from time to time.
+When we make changes, we will update the “Last updated” date above. If changes are material, we may provide additional notice, such as by posting a notice on the website or sending an email where appropriate.
+Your continued use of the Service after an updated Privacy Policy becomes effective means you acknowledge the updated policy.
+
+18. Contact Us
+If you have questions, requests, or concerns about this Privacy Policy or our privacy practices, contact us at:
+Benefitpoint Inc.
+Doing business as: PolyProPicks
+Website: https://polypropicks.com
+Email: Alex_ceo@polypropicks.com
+For privacy requests, please use the subject line: Privacy Request.
