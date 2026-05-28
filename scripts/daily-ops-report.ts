@@ -430,6 +430,49 @@ async function main() {
   if (!cronLastAt && !jobRunError)
     redFlags.push(`⚠️ job_runs: нет записей для source=polymarket`);
 
+  // ── 3a-ii. Resolver cron health via job_runs ──────────────────────────────
+  let lastResolverJobRun: Record<string, unknown> | null = null;
+  let resolverJobRunError: string | null = null;
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from("job_runs")
+        .select(
+          "source, started_at, finished_at, status, generated_count, rejected_count, duration_ms, error_message, diagnostics",
+        )
+        .eq("source", "resolver")
+        .order("started_at", { ascending: false })
+        .limit(1);
+      if (error) throw new Error(error.message);
+      lastResolverJobRun =
+        data && data.length > 0
+          ? (data[0] as Record<string, unknown>)
+          : null;
+    } catch (e) {
+      resolverJobRunError = e instanceof Error ? e.message : String(e);
+    }
+  }
+
+  const resolverCronLastAt = lastResolverJobRun
+    ? safeStr(lastResolverJobRun.started_at)
+    : null;
+  const resolverCronAgeMs = resolverCronLastAt
+    ? Date.now() - new Date(resolverCronLastAt).getTime()
+    : null;
+  const resolverCronAgeMins =
+    resolverCronAgeMs !== null ? Math.round(resolverCronAgeMs / 60_000) : null;
+  const resolverCronStatus = safeStr(lastResolverJobRun?.status);
+  const resolverCronUpdated =
+    (lastResolverJobRun?.generated_count as number | null) ?? null;
+  const resolverCronSkipped =
+    (lastResolverJobRun?.rejected_count as number | null) ?? null;
+  const resolverCronDur =
+    (lastResolverJobRun?.duration_ms as number | null) ?? null;
+  const resolverCronDiag =
+    (lastResolverJobRun?.diagnostics as Record<string, unknown> | null) ?? null;
+  const resolverCronSelected = safeNum(resolverCronDiag?.selected);
+
   // ── 3b. Resolved performance (direct DB, 72h window) ─────────────────────
   const cutoff72 = new Date(now.getTime() - 72 * 3_600_000).toISOString();
   const cutoff48 = new Date(now.getTime() - 48 * 3_600_000).toISOString();
@@ -566,10 +609,37 @@ async function main() {
   const resolverAgeMins =
     resolverAgeMs !== null ? Math.round(resolverAgeMs / 60_000) : null;
 
-  if (resolverAgeMins !== null && resolverAgeMins > 480)
+  // Resolver cron red flags — from job_runs (authoritative), not approximation
+  if (resolverJobRunError) {
     redFlags.push(
-      `⚠️ Resolver: последний resolved_at ${resolverAgeMins} мин назад (>8h)`,
+      `⚠️ Resolver job_runs query failed: ${resolverJobRunError}`,
     );
+  } else if (!lastResolverJobRun) {
+    redFlags.push(
+      `⚠️ Resolver job_runs: нет записей (resolver не запускался или не задеплоен)`,
+    );
+  } else if (resolverCronStatus === "error") {
+    const errMsg =
+      safeStr(lastResolverJobRun.error_message) ?? "unknown error";
+    redFlags.push(
+      `❌ Resolver cron error: ${errMsg.slice(0, 120)}`,
+    );
+  } else if (resolverCronAgeMins !== null && resolverCronAgeMins > 480) {
+    redFlags.push(
+      `⚠️ Resolver cron stale: последний запуск ${resolverCronAgeMins} мин назад (>8h)`,
+    );
+  }
+  // Fallback approximate stale warning only if no job_run data at all
+  if (
+    !lastResolverJobRun &&
+    resolverAgeMins !== null &&
+    resolverAgeMins > 480
+  ) {
+    redFlags.push(
+      `⚠️ Resolver (approx fallback): последний resolved_at ${resolverAgeMins} мин назад (>8h)`,
+    );
+  }
+
   if (unresolvedCount !== null && unresolvedCount > 200)
     redFlags.push(`⚠️ Unresolved backlog ${unresolvedCount} строк (порог 200)`);
 
@@ -659,11 +729,12 @@ async function main() {
       : cronAgeMins !== null && cronAgeMins <= 120
         ? "✅"
         : "❌";
-  const resolverEmoji =
-    resolverAgeMins === null
-      ? "❓"
-      : resolverAgeMins <= 480
-        ? "✅ (approx)"
+  const resolverEmoji = !lastResolverJobRun
+    ? "❓"
+    : resolverCronStatus === "error"
+      ? "❌"
+      : resolverCronAgeMins !== null && resolverCronAgeMins <= 480
+        ? "✅"
         : "⚠️";
 
   out(`# PolyProPicks Daily Ops Report — ${reportDate}`);
@@ -695,7 +766,11 @@ async function main() {
     } |`,
   );
   out(
-    `| Resolver (approx) | ${resolverEmoji} | Нет job_runs. Последний resolved_at: ${fmtAge(latestResolvedAt)} назад |`,
+    `| Resolver cron | ${resolverEmoji} | ${
+      !lastResolverJobRun
+        ? `❓ нет job_run; fallback: latest resolved_at ${fmtAge(latestResolvedAt)} назад`
+        : `Последний: ${fmtAge(resolverCronLastAt)} назад (${resolverCronStatus}), updated=${resolverCronUpdated ?? "?"}, selected=${resolverCronSelected ?? "N/A"}`
+    } |`,
   );
   out(
     `| 24h Win rate | ${stats24.total > 0 ? stats24.winRate : "N/A"} | ${stats24.won}W / ${stats24.lost}L / ${stats24.total} total |`,
@@ -805,13 +880,29 @@ async function main() {
       `| signal-cache-cron | ${emoji} ${status ?? "?"} | ${fmtDate(safeStr(lastJobRun.started_at))} (${fmtAge(safeStr(lastJobRun.started_at))} назад) | ${genCount} пар | ${dur}ms |`,
     );
   }
-  out(
-    `| signal-resolve-cron | ❓ BLIND | Нет записи в job_runs (не инструментирован) | — | — |`,
-  );
-  out(``);
-  out(
-    `> ⚠️ Resolver BLIND: \`resolve-signals.ts\` не пишет в \`job_runs\`. Аппроксимация через \`resolved_at\`. Инструментирование — отдельная P1 задача.`,
-  );
+  if (resolverJobRunError) {
+    out(
+      `| signal-resolve-cron | ⚠️ query error | ${resolverJobRunError.slice(0, 60)} | — | — |`,
+    );
+  } else if (!lastResolverJobRun) {
+    out(
+      `| signal-resolve-cron | ❓ нет записей | — | — | — |`,
+    );
+  } else {
+    const rEmoji =
+      resolverCronStatus === "success"
+        ? "✅"
+        : resolverCronStatus === "error"
+          ? "❌"
+          : "⚠️";
+    const durSec =
+      resolverCronDur !== null
+        ? `${(resolverCronDur / 1000).toFixed(1)}s`
+        : "?";
+    out(
+      `| signal-resolve-cron | ${rEmoji} ${resolverCronStatus ?? "?"} | ${fmtDate(resolverCronLastAt)} (${fmtAge(resolverCronLastAt)} назад) | updated=${resolverCronUpdated ?? "?"} / selected=${resolverCronSelected ?? "N/A"} / skipped=${resolverCronSkipped ?? "?"} | ${durSec} |`,
+    );
+  }
   out(``);
 
   // Performance
@@ -932,7 +1023,11 @@ async function main() {
     `| Resolver gap | ${resolverAgeMins !== null ? `${resolverAgeMins} мин назад` : "N/A"} |`,
   );
   out(
-    `| Resolver health | ❓ BLIND — нет job_runs записи для resolver |`,
+    `| Resolver health | ${
+      !lastResolverJobRun
+        ? "❓ нет job_runs строки (fallback: approx по resolved_at)"
+        : `${resolverEmoji} последний run: ${fmtAge(resolverCronLastAt)} назад, status=${resolverCronStatus}, updated=${resolverCronUpdated ?? "?"}`
+    } |`,
   );
   out(``);
 
@@ -1039,7 +1134,7 @@ async function main() {
   out(``);
   out(`---`);
   out(
-    `*Отчёт сформирован: ${fmtDate(nowISO)} | PolyProPicks Ops Report v1.2*`,
+    `*Отчёт сформирован: ${fmtDate(nowISO)} | PolyProPicks Ops Report v1.3*`,
   );
 
   // Print to stdout
