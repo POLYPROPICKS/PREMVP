@@ -22,11 +22,19 @@ Output lands in `visual-runs/YYYY-MM-DD_HH-mm-ss_LABEL/`.
 
 ## How to run
 
-### Production snapshot (most common)
+### Production snapshot — default (mobile preset, most common)
 
 ```bash
 npm run visual:matrix -- --url=https://polypropicks.com --label=prod-home
 ```
+
+### Production snapshot — explicit mobile preset
+
+```bash
+npm run visual:matrix -- --url=https://polypropicks.com --label=prod-mobile-v2 --preset=mobile
+```
+
+Both commands are equivalent. `--preset=mobile` is the default and can be omitted.
 
 ### Local dev snapshot
 
@@ -36,35 +44,71 @@ Start the dev server first (`npm run dev`), then:
 npm run visual:matrix -- --url=http://localhost:3000 --label=local-home
 ```
 
+Or with explicit preset:
+
+```bash
+npm run visual:matrix -- --url=http://localhost:3000 --label=local-home --preset=mobile
+```
+
 ### Custom page
 
 ```bash
-npm run visual:matrix -- --url=https://polypropicks.com/premium --label=prod-premium
+npm run visual:matrix -- --url=https://polypropicks.com/premium --label=prod-premium --preset=mobile
 ```
 
 ---
 
-## Output files
+## CLI arguments
+
+| Argument | Default | Description |
+|---|---|---|
+| `--url` | `https://polypropicks.com` | Target URL to capture |
+| `--label` | `prod-home` | Run label (used in output folder name) |
+| `--preset` | `mobile` | Viewport preset. Only `mobile` is supported. See note below. |
+
+> **Note — desktop/full presets are intentionally deferred.**
+> Only `mobile` is currently implemented. Desktop and full-page presets may be
+> added in a future task once mobile coverage is stable.
+> **Unsupported presets fail intentionally** — passing `--preset=desktop` or
+> `--preset=full` will print a clear error and exit non-zero rather than
+> silently generating mobile screenshots with misleading metadata.
+
+---
+
+## Output folder
+
+```
+visual-runs/
+  2026-05-29_14-30-00_prod-home/
+    01_360x780.png
+    02_375x667.png
+    ...
+    09_432x960.png
+    contact-sheet.html
+    metadata.json
+```
 
 | File | Purpose |
 |---|---|
 | `01_360x780.png` … `09_432x960.png` | Individual viewport screenshots |
-| `contact-sheet.html` | Open in browser — shows all viewports in a grid |
-| `metadata.json` | Machine-readable run metadata |
+| `contact-sheet.html` | Open in browser — shows all viewports in a grid with run metadata |
+| `metadata.json` | Machine-readable run metadata (preset, viewport list, timestamps, paths) |
 
 ### Opening the contact sheet
 
 Double-click `contact-sheet.html` or open it in a browser.
 Images are referenced by relative path — keep them in the same folder.
+The contact sheet displays: URL, preset, viewport count, timestamp, and each
+viewport label clearly.
 
 ---
 
-## Viewports captured
+## Viewports captured (mobile preset)
 
 | # | Size | Device reference |
 |---|---|---|
 | 01 | 360×780 | Android (common) |
-| 02 | 375×667 | iPhone SE / 8 |
+| 02 | 375×667 | iPhone SE / 8 — legacy small-height canary |
 | 03 | 375×812 | iPhone X / 11 Pro |
 | 04 | 390×844 | iPhone 12 / 13 |
 | 05 | 393×852 | iPhone 15 Pro |
@@ -94,18 +138,7 @@ decision: accept tooling / rerun matrix / fix tooling
 
 ---
 
-## Folder structure
+## visual-runs/ folder
 
-```
-visual-runs/
-  2026-05-29_14-30-00_prod-home/
-    01_360x780.png
-    02_375x667.png
-    ...
-    09_432x960.png
-    contact-sheet.html
-    metadata.json
-```
-
-`visual-runs/` is in `.gitignore` (or should be added) — screenshots are
-local artifacts and are not committed to the repo.
+`visual-runs/` is in `.gitignore` — screenshots are local artifacts and are
+not committed to the repo.

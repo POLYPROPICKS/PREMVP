@@ -5,11 +5,12 @@
  * generates a contact-sheet HTML for visual QA review.
  *
  * Usage:
- *   node scripts/visual/capture-visual-matrix.mjs [--url=<url>] [--label=<label>]
+ *   node scripts/visual/capture-visual-matrix.mjs [--url=<url>] [--label=<label>] [--preset=<preset>]
  *
  * Defaults:
- *   --url   https://polypropicks.com
- *   --label prod-home
+ *   --url    https://polypropicks.com
+ *   --label  prod-home
+ *   --preset mobile
  *
  * Output:
  *   visual-runs/YYYY-MM-DD_HH-mm-ss_LABEL/
@@ -36,8 +37,19 @@ const args = Object.fromEntries(
     })
 );
 
-const TARGET_URL = args.url || 'https://polypropicks.com';
-const LABEL     = (args.label || 'prod-home').replace(/[^a-zA-Z0-9_-]/g, '_');
+const TARGET_URL = args.url   || 'https://polypropicks.com';
+const LABEL      = (args.label  || 'prod-home').replace(/[^a-zA-Z0-9_-]/g, '_');
+const PRESET     = (args.preset || 'mobile').toLowerCase();
+
+const SUPPORTED_PRESETS = ['mobile'];
+if (!SUPPORTED_PRESETS.includes(PRESET)) {
+  console.error(
+    `\n[visual-matrix] ERROR: Unsupported preset: "${PRESET}".\n` +
+    `  This runner currently supports only --preset=mobile.\n` +
+    `  Desktop/full presets are intentionally deferred.\n`
+  );
+  process.exit(1);
+}
 
 // --- Viewports ---
 const VIEWPORTS = [
@@ -74,8 +86,9 @@ const ts = makeTimestamp();
 const outDir = path.join(ROOT, 'visual-runs', `${ts}_${LABEL}`);
 fs.mkdirSync(outDir, { recursive: true });
 
-console.log(`\n[visual-matrix] URL: ${TARGET_URL}`);
-console.log(`[visual-matrix] Label: ${LABEL}`);
+console.log(`\n[visual-matrix] URL:    ${TARGET_URL}`);
+console.log(`[visual-matrix] Label:  ${LABEL}`);
+console.log(`[visual-matrix] Preset: ${PRESET}`);
 console.log(`[visual-matrix] Output: ${outDir}\n`);
 
 // --- Main capture ---
@@ -150,9 +163,18 @@ try {
 const metadata = {
   url: TARGET_URL,
   label: LABEL,
+  preset: PRESET,
   generatedAt,
-  viewports: screenshots.map(s => ({ name: s.viewport, width: s.width, height: s.height })),
-  screenshots: screenshots.map(s => s.filename),
+  viewportCount: screenshots.length,
+  contactSheetPath: 'contact-sheet.html',
+  screenshots: screenshots.map((s, i) => ({
+    order:    i + 1,
+    name:     s.viewport,
+    file:     s.filename,
+    width:    s.width,
+    height:   s.height,
+    category: PRESET,
+  })),
 };
 fs.writeFileSync(path.join(outDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
 console.log('\n[visual-matrix] metadata.json written');
@@ -188,11 +210,12 @@ const html = /* html */`<!DOCTYPE html>
 </style>
 </head>
 <body>
-<h1>PolyProPicks Visual Matrix <span class="badge">${LABEL}</span></h1>
+<h1>PolyProPicks Visual Matrix <span class="badge">${LABEL}</span> <span class="badge">${PRESET}</span></h1>
 <div class="meta">
   <strong>URL:</strong> ${TARGET_URL}<br/>
+  <strong>Preset:</strong> ${PRESET}<br/>
+  <strong>Viewports:</strong> ${screenshots.length}<br/>
   <strong>Generated:</strong> ${generatedAt}<br/>
-  <strong>Viewports:</strong> ${screenshots.length} mobile breakpoints<br/>
   <strong>Run ID:</strong> ${ts}_${LABEL}
 </div>
 <div class="grid">
