@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import styles from './ResolvedSignalsCarousel.module.css';
 import ResolvedSignalCard from './ResolvedSignalCard';
 
@@ -53,6 +53,7 @@ export default function ResolvedSignalsCarousel({ variant = 'landing' }: Resolve
   const isPremium = variant === 'premium';
   const [signals, setSignals] = useState<ApiResolvedSignal[]>([]);
   const [status, setStatus] = useState<'loading' | 'ok' | 'empty' | 'error'>('loading');
+  const carouselRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,6 +75,43 @@ export default function ResolvedSignalsCarousel({ variant = 'landing' }: Resolve
     return () => { cancelled = true; };
   }, []);
 
+  // Desktop / pointer-fine timed auto-scroll. Re-runs once cards mount.
+  useEffect(() => {
+    const el = carouselRef.current;
+    if (!el) return;
+    if (!window.matchMedia('(pointer: fine)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    let paused = false;
+    const pause = () => { paused = true; };
+    const resume = () => { paused = false; };
+    el.addEventListener('mouseenter', pause);
+    el.addEventListener('mouseleave', resume);
+    el.addEventListener('focusin', pause);
+    el.addEventListener('focusout', resume);
+
+    const tick = () => {
+      if (paused) return;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      if (maxScroll <= 0) return;
+      const first = el.firstElementChild as HTMLElement | null;
+      const gap = parseFloat(getComputedStyle(el).columnGap) || 0;
+      const step = first ? first.getBoundingClientRect().width + gap : el.clientWidth * 0.8;
+      const next = el.scrollLeft + step;
+      el.scrollTo({ left: next >= maxScroll - 4 ? 0 : next, behavior: 'smooth' });
+    };
+
+    const id = window.setInterval(tick, 3000);
+
+    return () => {
+      window.clearInterval(id);
+      el.removeEventListener('mouseenter', pause);
+      el.removeEventListener('mouseleave', resume);
+      el.removeEventListener('focusin', pause);
+      el.removeEventListener('focusout', resume);
+    };
+  }, [signals]);
+
 
   // Don't render section at all while loading or on error with nothing to show
   if (status === 'loading') return null;
@@ -88,7 +126,7 @@ export default function ResolvedSignalsCarousel({ variant = 'landing' }: Resolve
         </div>
       )}
 
-      <div className={styles.carousel}>
+      <div className={styles.carousel} ref={carouselRef}>
         {signals.map((signal) => (
           <ResolvedSignalCard key={signal.id} signal={signal} />
         ))}

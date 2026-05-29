@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef } from 'react';
 import styles from './TestimonialsSection.module.css';
 import TestimonialCard from './TestimonialCard';
 import { TESTIMONIAL_CARDS } from './mockData';
@@ -36,6 +37,44 @@ interface TestimonialsSectionProps {
 }
 
 export default function TestimonialsSection({ cards = TESTIMONIAL_CARDS }: TestimonialsSectionProps) {
+  const carouselRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const el = carouselRef.current;
+    if (!el) return;
+    if (!window.matchMedia('(pointer: fine)').matches) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    let paused = false;
+    const pause = () => { paused = true; };
+    const resume = () => { paused = false; };
+    el.addEventListener('mouseenter', pause);
+    el.addEventListener('mouseleave', resume);
+    el.addEventListener('focusin', pause);
+    el.addEventListener('focusout', resume);
+
+    const tick = () => {
+      if (paused) return;
+      const maxScroll = el.scrollWidth - el.clientWidth;
+      if (maxScroll <= 0) return;
+      const first = el.firstElementChild as HTMLElement | null;
+      const gap = parseFloat(getComputedStyle(el).columnGap) || 0;
+      const step = first ? first.getBoundingClientRect().width + gap : el.clientWidth * 0.8;
+      const next = el.scrollLeft + step;
+      el.scrollTo({ left: next >= maxScroll - 4 ? 0 : next, behavior: 'smooth' });
+    };
+
+    const id = window.setInterval(tick, 3000);
+
+    return () => {
+      window.clearInterval(id);
+      el.removeEventListener('mouseenter', pause);
+      el.removeEventListener('mouseleave', resume);
+      el.removeEventListener('focusin', pause);
+      el.removeEventListener('focusout', resume);
+    };
+  }, []);
+
   return (
     <section className={styles.section} aria-label="Verified trader testimonials">
       {/* Header */}
@@ -53,7 +92,7 @@ export default function TestimonialsSection({ cards = TESTIMONIAL_CARDS }: Testi
       </div>
 
       {/* Carousel */}
-      <div className={styles.carousel} aria-label="Testimonials carousel">
+      <div className={styles.carousel} ref={carouselRef} aria-label="Testimonials carousel">
         {cards.map((card) => (
           <TestimonialCard key={card.id} card={card} />
         ))}

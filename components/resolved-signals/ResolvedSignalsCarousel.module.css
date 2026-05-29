@@ -21,6 +21,7 @@
 .header {
   width: 100%;
   max-width: 390px;
+  align-self: center;
   padding: 0 var(--ppp-section-pad-x);
   display: flex;
   flex-direction: column;
@@ -64,6 +65,7 @@
 .carousel {
   width: 100%;
   max-width: 390px;
+  align-self: center;
   overflow-x: auto;
   overflow-y: visible;
   -webkit-overflow-scrolling: touch;

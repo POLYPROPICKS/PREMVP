@@ -20,6 +20,8 @@
 .header {
   width: 100%;
   max-width: 390px;
+  margin-left: auto;
+  margin-right: auto;
   padding: 0 var(--ppp-section-pad-x);
   text-align: center;
   font-family: -apple-system, 'SF Pro Display', BlinkMacSystemFont, 'Segoe UI', sans-serif;
@@ -84,6 +86,9 @@
 /* ── Carousel ───────────────────────────────────────────────── */
 .carousel {
   width: 100%;
+  max-width: 390px;
+  margin-left: auto;
+  margin-right: auto;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
