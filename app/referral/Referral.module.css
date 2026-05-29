@@ -48,6 +48,22 @@
   gap: 12px;
 }
 
+/* ── Back link ───────────────────────────────────────────────────────────── */
+.backLink {
+  display: inline-block;
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(57, 215, 255, 0.75);
+  text-decoration: none;
+  letter-spacing: 0.01em;
+  transition: color 0.13s;
+  padding: 2px 0;
+}
+
+.backLink:hover {
+  color: #39D7FF;
+}
+
 /* ── Header ─────────────────────────────────────────────────────────────── */
 .header {
   display: flex;
@@ -943,13 +959,33 @@
   font-size: 13px;
   color: #A8B3C2;
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.leaderStats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  flex-shrink: 0;
+  gap: 1px;
 }
 
 .leaderScore {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(57, 215, 255, 0.65);
+  white-space: nowrap;
+}
+
+.leaderCredit {
   font-size: 13px;
-  font-weight: 700;
-  color: #39D7FF;
-  flex-shrink: 0;
+  font-weight: 800;
+  color: #8CFF6A;
+  white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 
 .leaderFooter {

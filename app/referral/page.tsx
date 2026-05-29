@@ -15,6 +15,8 @@ type Dashboard = {
 type StatusResult = { ok: true; hasReferralLink: boolean; refCode?: string; referralLink?: string; dashboard: Dashboard | null };
 
 // ── Static leaderboard ────────────────────────────────────────────────────
+const REFERRAL_CREDIT_PER_REFERRAL = 10;
+
 const LEADERBOARD = [
   { name: "0xA7F3…9C2B", score: 28 }, { name: "0x91D4…7FA0", score: 24 },
   { name: "0xC8B1…44E9", score: 22 }, { name: "0x3F9A…B12D", score: 16 },
@@ -126,17 +128,16 @@ export default function ReferralPage() {
     <div className={styles.page}>
       <div className={styles.inner}>
 
-        {/* Header */}
-        <header className={styles.header}>
-          <div className={styles.brand}>
-            <img src="/brand/logo/logo-24.png" alt="PolyProPicks" width={24} height={24} style={{ display: 'block', flexShrink: 0 }} />
-            <span className={styles.brandName}>PolyProPicks</span>
-          </div>
-          <div className={styles.accessPill}>
-            <span className={styles.accessDot} />
-            Referral Access
-          </div>
-        </header>
+        {/* Back link */}
+        <a href="/" className={styles.backLink}>← Back to signals</a>
+
+        {/* Segmented tabs */}
+        <div className={styles.tabs}>
+          <button className={tab === "create" ? styles.tabActive : styles.tabInactive}
+            onClick={() => setTab("create")} type="button">Create Link</button>
+          <button className={tab === "dashboard" ? styles.tabActive : styles.tabInactive}
+            onClick={() => setTab("dashboard")} type="button">My Dashboard</button>
+        </div>
 
         {/* Hero */}
         <div className={styles.hero}>
@@ -146,23 +147,6 @@ export default function ReferralPage() {
           <p className={styles.subheadline}>
             Give a friend a free week. Earn Premium Credit when referrals become paid subscribers.
           </p>
-        </div>
-
-        {/* Trust strip */}
-        <div className={styles.trustStrip}>
-          <span className={styles.trustIcon} />
-          <span className={styles.trustText}>
-            Signal results are updating ·{" "}
-            <a href="/reconstruction" className={styles.trustLink}>see latest resolved signals →</a>
-          </span>
-        </div>
-
-        {/* Segmented tabs */}
-        <div className={styles.tabs}>
-          <button className={tab === "create" ? styles.tabActive : styles.tabInactive}
-            onClick={() => setTab("create")} type="button">Create Link</button>
-          <button className={tab === "dashboard" ? styles.tabActive : styles.tabInactive}
-            onClick={() => setTab("dashboard")} type="button">My Dashboard</button>
         </div>
 
         {/* ── CREATE TAB ──────────────────────────────────────── */}
@@ -337,7 +321,10 @@ export default function ReferralPage() {
                   <div className={styles.leaderRow} key={i}>
                     <span className={styles.leaderRank}>#{i + 1}</span>
                     <span className={styles.leaderName}>{row.name}</span>
-                    <span className={styles.leaderScore}>{row.score} referrals</span>
+                    <span className={styles.leaderStats}>
+                      <span className={styles.leaderScore}>{row.score} refs</span>
+                      <span className={styles.leaderCredit}>${row.score * REFERRAL_CREDIT_PER_REFERRAL}</span>
+                    </span>
                   </div>
                 ))}
               </div>
