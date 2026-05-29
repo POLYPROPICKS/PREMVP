@@ -53,6 +53,9 @@ normalize-dump.txt
 recon-css.txt
 recon-full.txt
 
+# Visual Matrix Runner generated output (screenshots, contact sheets)
+visual-runs/
+
 # ── PolyProPicks portrait source / preview artifacts ─────────────────────────
 # Preview harness docs (static HTML, not part of runtime)
 /docs/ui-previews/market-source-portraits/

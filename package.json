@@ -11,7 +11,8 @@
     "resolve:signals": "tsx scripts/resolve-signals.ts",
     "audit:sports-sources": "tsx scripts/audit-polymarket-sports-sources.ts",
     "ops:report": "tsx scripts/daily-ops-report.ts",
-    "ops:report:email": "tsx scripts/daily-ops-report.ts --email=alexgrushin@gmail.com"
+    "ops:report:email": "tsx scripts/daily-ops-report.ts --email=alexgrushin@gmail.com",
+    "visual:matrix": "node scripts/visual/capture-visual-matrix.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
@@ -22,6 +23,7 @@
     "tsx": "^4.7.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
