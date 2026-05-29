@@ -116,6 +116,14 @@ function FilterRow({ active, counts }: { active: PremiumFilter; counts: FilterCo
 
 // ── Empty filter state ─────────────────────────────────────────────────────
 
+function ReferralStrip() {
+  return (
+    <a href="/referral" className={styles.referralStrip}>
+      Get $30 Credit for inviting a friend →
+    </a>
+  );
+}
+
 function EmptyFilterState({ active }: { active: PremiumFilter }) {
   return (
     <div className={styles.emptyFilter}>
@@ -301,8 +309,11 @@ export default async function PremiumPage({
           {pairsToRender.length === 0 ? (
             <EmptyFilterState active={activeFilter} />
           ) : (
-            pairsToRender.map((pair) => (
-              <PremiumSignalCard key={pair.id} pair={pair} />
+            pairsToRender.map((pair, index) => (
+              <div key={pair.id}>
+                <PremiumSignalCard pair={pair} />
+                {index === 1 && <ReferralStrip />}
+              </div>
             ))
           )}
         </div>

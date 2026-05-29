@@ -874,3 +874,26 @@
 .detailsPolymarketLink:hover {
   color: rgba(35, 230, 187, 1);
 }
+
+/* ── Referral strip ───────────────────────────────────────────────────────── */
+.referralStrip {
+  display: block;
+  width: 100%;
+  padding: 13px 18px;
+  margin: 6px 0 2px;
+  background: linear-gradient(90deg, rgba(12, 28, 52, 0.92) 0%, rgba(8, 18, 34, 0.96) 100%);
+  border: 1px solid rgba(24, 231, 255, 0.16);
+  border-radius: 12px;
+  font-size: clamp(12.5px, 3.2vw, 14px);
+  font-weight: 700;
+  color: #18e7ff;
+  text-decoration: none;
+  letter-spacing: 0.01em;
+  transition: background 0.15s, border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.referralStrip:hover {
+  background: linear-gradient(90deg, rgba(16, 38, 70, 0.96) 0%, rgba(10, 22, 44, 0.98) 100%);
+  border-color: rgba(24, 231, 255, 0.32);
+}

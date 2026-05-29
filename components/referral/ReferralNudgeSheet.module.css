@@ -1,0 +1,101 @@
+/* ReferralNudgeSheet.module.css */
+/* Dark premium referral recovery modal — centered */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.62);
+  z-index: 80;
+}
+
+.sheet {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: calc(100% - 32px);
+  max-width: 390px;
+  min-height: 200px;
+  background: linear-gradient(158deg, #0d1e38 0%, #071020 65%, #050d1c 100%);
+  border: 1px solid rgba(24, 231, 255, 0.26);
+  border-radius: 20px;
+  padding: 36px 24px 28px;
+  z-index: 81;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  box-sizing: border-box;
+  box-shadow:
+    0 0 0 1px rgba(24, 231, 255, 0.07),
+    0 28px 72px rgba(0, 0, 0, 0.78),
+    0 0 56px rgba(24, 231, 255, 0.07);
+}
+
+.sheet::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 56px;
+  height: 2px;
+  background: linear-gradient(90deg, transparent 0%, #18e7ff 50%, transparent 100%);
+  border-radius: 1px;
+}
+
+.closeBtn {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  background: none;
+  border: none;
+  color: rgba(160, 200, 228, 0.50);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px 7px;
+  border-radius: 6px;
+  transition: color 0.12s;
+}
+
+.closeBtn:hover {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.headline {
+  font-size: clamp(15px, 4.2vw, 18px);
+  font-weight: 800;
+  color: #ffffff;
+  line-height: 1.4;
+  margin: 0;
+  padding-right: 28px;
+  letter-spacing: -0.015em;
+  text-shadow: 0 0 22px rgba(24, 231, 255, 0.12);
+}
+
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(90deg, #18e7ff 0%, #23e6bb 55%, #61ef4a 100%);
+  color: #03060e;
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0.025em;
+  border-radius: 12px;
+  padding: 15px 20px;
+  text-decoration: none;
+  transition: opacity 0.15s;
+  box-shadow: 0 0 22px rgba(24, 231, 255, 0.22);
+}
+
+.cta:hover {
+  opacity: 0.86;
+}
+
+@media (max-width: 375px) {
+  .sheet {
+    width: calc(100% - 24px);
+    padding: 32px 18px 24px;
+  }
+}

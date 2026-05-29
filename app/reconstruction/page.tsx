@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, type CSSProperties } from 'react';
-import { useRouter } from 'next/navigation';
 import styles from './Reconstruction.module.css';
 import { premiumSignals as staticPremiumSignals, PremiumSignal } from '@/content/signals';
 import { marketSources as staticMarketSources } from '@/content/marketSources';
@@ -25,6 +24,7 @@ import TestimonialsSection from '@/components/testimonials/TestimonialsSection';
 import HowItWorksSection from '@/components/how-it-works/HowItWorksSection';
 import WhoWeAreSection from '@/components/who-we-are/WhoWeAreSection';
 import FooterSection from '@/components/footer/FooterSection';
+import ReferralNudgeSheet from '@/components/referral/ReferralNudgeSheet';
 
 type MarketEvidenceSource = NonNullable<LandingPair['marketSources']>[number];
 
@@ -85,7 +85,6 @@ const fallbackPairs: LandingPair[] = staticPremiumSignals.flatMap((signal, index
 });
 
 export default function ReconstructionPage() {
-  const router = useRouter();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [passModalStep, setPassModalStep] = useState<PassModalStep>('soldOutEmail');
@@ -96,6 +95,7 @@ export default function ReconstructionPage() {
   const [activeEvidenceIndex, setActiveEvidenceIndex] = useState(0);
   const [activeFilter, setActiveFilter] = useState<PublicFilter>("live");
   const [isPassOfferModalOpen, setIsPassOfferModalOpen] = useState(false);
+  const [showReferralNudge, setShowReferralNudge] = useState(false);
   const [weekCard, setWeekCard] = useState<WeekResultsCard | null>(null);
   const [weekCardLoading, setWeekCardLoading] = useState(false);
 
@@ -108,6 +108,11 @@ export default function ReconstructionPage() {
     () => computeLandingFilterCounts(allPairs),
     [allPairs]
   );
+
+  const liveUnlockCount = Math.max((filterCounts["live"] ?? 0) - 1, 0);
+  const premiumCtaLabel = liveUnlockCount > 0
+    ? `Unlock +${liveUnlockCount} More Signals`
+    : "Unlock All Live Signals";
 
   const landingSignals = useMemo(() => candidatePairs.map((pair) => pair.premiumSignal), [candidatePairs]);
 
@@ -185,8 +190,8 @@ export default function ReconstructionPage() {
   }, [allPairs]);
 
   const handleCtaClick = useCallback(() => {
-    router.push('/referral');
-  }, [router]);
+    setIsPassOfferModalOpen(true);
+  }, []);
 
   const openModal = useCallback(() => {
     setIsModalOpen(true);
@@ -206,6 +211,17 @@ export default function ReconstructionPage() {
 
   const handleLockedFeedAttempt = useCallback(() => {
     setIsPassOfferModalOpen(true);
+  }, []);
+
+  const handlePassOfferClose = useCallback(() => {
+    setIsPassOfferModalOpen(false);
+    if (typeof window !== 'undefined') {
+      const key = 'referral_nudge_shown';
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, 'true');
+        setShowReferralNudge(true);
+      }
+    }
   }, []);
 
   const handlePremiumReserve = useCallback(async (data: {
@@ -393,7 +409,7 @@ export default function ReconstructionPage() {
               signals={landingSignals}
               activeIndex={activePairIndex}
               onActiveIndexChange={handleActivePairIndexChange}
-              renderCard={(signal, onCtaClick) => <PremiumSignalCard signal={signal} onCtaClick={onCtaClick} />}
+              renderCard={(signal, onCtaClick) => <PremiumSignalCard signal={signal} onCtaClick={onCtaClick} ctaLabel={premiumCtaLabel} />}
               onCtaClick={handleCtaClick}
               onLockedFeedAttempt={handleLockedFeedAttempt}
             />
@@ -429,10 +445,14 @@ export default function ReconstructionPage() {
       {isPassOfferModalOpen && (
         <PassOfferModal
           isOpen={isPassOfferModalOpen}
-          onClose={() => setIsPassOfferModalOpen(false)}
+          onClose={handlePassOfferClose}
           onReserve={handleReservePass}
           onPremiumReserve={handlePremiumReserve}
         />
+      )}
+
+      {showReferralNudge && (
+        <ReferralNudgeSheet onClose={() => setShowReferralNudge(false)} />
       )}
     </main>
   );
@@ -1029,7 +1049,7 @@ function getTrustMetricFillBackground(value: number): string {
   return 'linear-gradient(90deg, #ef4444 0%, #f97316 100%)';
 }
 
-function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiumSignals[0]; onCtaClick: () => void }) {
+function PremiumSignalCard({ signal, onCtaClick, ctaLabel }: { signal: typeof staticPremiumSignals[0]; onCtaClick: () => void; ctaLabel?: string }) {
   const orderedTrustMetrics = getOrderedTrustMetrics(signal.metrics);
   // Compute sanitized probability and confidence data
   const probability = Math.max(0, Math.min(100, Number(signal.winProbability) || 0));
@@ -1195,11 +1215,9 @@ function PremiumSignalCard({ signal, onCtaClick }: { signal: typeof staticPremiu
           </div>
         </div>
       </div>
-      <button className={styles.cta} onClick={onCtaClick}>Get $30 Premium Credit</button>
+      <button className={styles.cta} onClick={onCtaClick}>{ctaLabel ?? "Unlock All Live Signals"}</button>
       <p className={styles.ctaSubline}>
-        <span>Give a friend a free week</span>
-        <span className={styles.ctaSublineSeparator}>·</span>
-        <a className={styles.ctaSublineLink} href="#resolved-signals">see latest resolved signals →</a>
+        <a className={styles.ctaSublineLink} href="/referral">Can&apos;t pay? Get $30 Credit for inviting a friend →</a>
       </p>
     </article>
   );
