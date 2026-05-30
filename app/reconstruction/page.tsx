@@ -1215,6 +1215,13 @@ function PremiumSignalCard({ signal, onCtaClick, ctaLabel }: { signal: typeof st
 
       {/* 6 · Supporting metrics */}
       <div className={styles.whySignalCard}>
+        <a
+          className={styles.metricsInfoLink}
+          href="#how-it-works"
+          aria-label="Learn how trust metrics work"
+        >
+          i
+        </a>
         {orderedTrustMetrics.map((metric: any) => {
           const displayLabel = getTrustMetricDisplayLabel(metric);
           const safeVal = Math.max(0, Math.min(100, getTrustMetricValue(metric)));

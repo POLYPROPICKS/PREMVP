@@ -244,7 +244,7 @@ function EngineBar({ label, v, Ico, amber }: { label: string; v: number; Ico: ()
 export default function HowItWorksSection({ onCtaClick }: HowItWorksSectionProps) {
   const deg = Math.round(81 / 100 * 360);
   return (
-    <section className={styles.section} aria-label="How It Works">
+    <section id="how-it-works" className={styles.section} aria-label="How It Works">
 
       <div className={styles.hdr}>
         <h2 className={styles.hdrTitle}>HOW IT WORKS</h2>
