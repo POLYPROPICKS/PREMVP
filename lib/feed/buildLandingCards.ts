@@ -99,6 +99,7 @@ function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket
     endDate: sample.resolvedGameTimeIso || undefined,
     markets: [market],
     category: "sports",
+    volume24hr: sample.eventVolumeUsd,
   };
 
   (market as unknown as Record<string, unknown>)._parentMeta = {
