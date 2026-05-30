@@ -17,6 +17,75 @@ import {
 import { premiumSignals as staticPremiumSignals } from "@/content/signals";
 import { marketSources as staticMarketSources } from "@/content/marketSources";
 
+function orderLivePairsForResponse<T extends {
+  premiumSignal?: { eventTitle?: string };
+  diagnostics?: {
+    gameStartIso?: string | null;
+    parentEventVolume24hr?: number | null;
+  };
+}>(pairs: T[]): T[] {
+  const now = Date.now();
+  const horizon = now + 24 * 60 * 60 * 1000;
+
+  const indexed = pairs.map((pair, index) => ({ pair, index }));
+
+  const primaryMarketRank = (pair: T) => {
+    const title = String(pair.premiumSignal?.eventTitle ?? "").toLowerCase();
+    if (title.includes("match winner") || title.includes("moneyline")) return 0;
+    if (title.includes("spread") || title.includes("handicap")) return 1;
+    return 2;
+  };
+
+  indexed.sort((a, b) => {
+    const aStart = Date.parse(String(a.pair.diagnostics?.gameStartIso ?? ""));
+    const bStart = Date.parse(String(b.pair.diagnostics?.gameStartIso ?? ""));
+
+    const aWithin24h =
+      Number.isFinite(aStart) && aStart > now && aStart <= horizon;
+    const bWithin24h =
+      Number.isFinite(bStart) && bStart > now && bStart <= horizon;
+
+    if (aWithin24h !== bWithin24h) return aWithin24h ? -1 : 1;
+
+    if (aWithin24h && bWithin24h) {
+      const aVolume = Number(a.pair.diagnostics?.parentEventVolume24hr ?? 0);
+      const bVolume = Number(b.pair.diagnostics?.parentEventVolume24hr ?? 0);
+
+      if (aVolume !== bVolume) return bVolume - aVolume;
+
+      const rankDiff = primaryMarketRank(a.pair) - primaryMarketRank(b.pair);
+      if (rankDiff !== 0) return rankDiff;
+    }
+
+    return a.index - b.index;
+  });
+
+  let ordered = indexed.map(({ pair }) => pair);
+
+  // CEO emergency safety pin. Auto-expires shortly after kickoff.
+  const PSG_PIN_UNTIL = Date.parse("2026-05-30T16:15:00Z");
+
+  if (Date.now() < PSG_PIN_UNTIL) {
+    const psgIndex = ordered.findIndex((pair) => {
+      const title = String(pair.premiumSignal?.eventTitle ?? "").toLowerCase();
+      return (
+        title.includes("paris saint-germain") &&
+        title.includes("match winner")
+      );
+    });
+
+    if (psgIndex > 0) {
+      ordered = [
+        ordered[psgIndex],
+        ...ordered.slice(0, psgIndex),
+        ...ordered.slice(psgIndex + 1),
+      ];
+    }
+  }
+
+  return ordered;
+}
+
 type CacheStatus = "hit" | "miss" | "error" | "fallback_static";
 
 type RawPairLike = Partial<LandingCardPair> & {
@@ -307,8 +376,9 @@ export async function GET(request: NextRequest) {
             (p) => p.diagnostics?.signalStatus !== "upcoming_candidate"
           );
       if (canonicalCachedPairs.length > 0) {
+        const orderedCachedPairs = orderLivePairsForResponse(canonicalCachedPairs).slice(0, limit);
         return NextResponse.json(
-          buildResponse(canonicalCachedPairs, limit, category, minDataCoverage, excludeEnded, "hit",
+          buildResponse(orderedCachedPairs, limit, category, minDataCoverage, excludeEnded, "hit",
             undefined, undefined, false, undefined,
             includeUpcoming ? emptyUpcoming : undefined),
           { status: 200 }
@@ -328,9 +398,10 @@ export async function GET(request: NextRequest) {
 
     const canonicalGeneratedPairs = canonicalizePairs(generated.pairs, limit);
     if (canonicalGeneratedPairs.length > 0) {
+      const orderedGeneratedPairs = orderLivePairsForResponse(canonicalGeneratedPairs).slice(0, limit);
       return NextResponse.json(
         buildResponse(
-          canonicalGeneratedPairs,
+          orderedGeneratedPairs,
           limit,
           category,
           minDataCoverage,
