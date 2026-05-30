@@ -1760,9 +1760,19 @@ export async function buildLandingCards(options?: {
         }
         return Infinity;
       };
+      const eventVolume = (c: CandidateMarket): number =>
+        Number(c.event.volume24hr ?? c.market.volume24hr ?? 0) || 0;
       const now = Date.now();
       const aTime = getGameTime(a);
       const bTime = getGameTime(b);
+      // Founder hard rule: qualified sports events starting within the next 24h
+      // go first, ordered by aggregate parent-event volume DESC (fallback to
+      // selected-market volume). Everything else keeps existing relative order.
+      const aIn24h = aTime < now + 24 * 60 * 60 * 1000;
+      const bIn24h = bTime < now + 24 * 60 * 60 * 1000;
+      if (aIn24h && !bIn24h) return -1;
+      if (!aIn24h && bIn24h) return 1;
+      if (aIn24h && bIn24h) return eventVolume(b) - eventVolume(a);
       const aIsUpcoming = aTime < now + 48 * 60 * 60 * 1000;
       const bIsUpcoming = bTime < now + 48 * 60 * 60 * 1000;
       if (aIsUpcoming && !bIsUpcoming) return -1;

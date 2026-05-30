@@ -339,7 +339,9 @@ export default function ReconstructionPage() {
           const allApiPairs = [...(data.pairs ?? []), ...(data.upcomingPairs ?? [])];
           const normalizedPairs = normalizeLandingPairs(allApiPairs, 'api');
           const dedupedPairs = dedupeLandingPairsByMarketOutcome(normalizedPairs);
-          const sortedPairs = sortLandingPairsByConfidence(dedupedPairs);
+          // Preserve backend/API ordering for the initial homepage card so the
+          // highest aggregate-volume <=24h sports event (index 0) stays first.
+          const sortedPairs = dedupedPairs;
 
           if (sortedPairs.length > 0) {
             setAllPairs(sortedPairs);
