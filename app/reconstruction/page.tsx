@@ -25,6 +25,7 @@ import HowItWorksSection from '@/components/how-it-works/HowItWorksSection';
 import WhoWeAreSection from '@/components/who-we-are/WhoWeAreSection';
 import FooterSection from '@/components/footer/FooterSection';
 import ReferralNudgeSheet from '@/components/referral/ReferralNudgeSheet';
+import CanonicalSignalCard from '@/components/signal-card/CanonicalSignalCard';
 
 type MarketEvidenceSource = NonNullable<LandingPair['marketSources']>[number];
 
@@ -409,7 +410,23 @@ export default function ReconstructionPage() {
               signals={landingSignals}
               activeIndex={activePairIndex}
               onActiveIndexChange={handleActivePairIndexChange}
-              renderCard={(signal, onCtaClick) => <PremiumSignalCard signal={signal} onCtaClick={onCtaClick} ctaLabel={premiumCtaLabel} />}
+              renderCard={(signal, onCtaClick) => (
+                <CanonicalSignalCard
+                  signal={signal}
+                  footer={
+                    <>
+                      <button className={styles.cta} onClick={onCtaClick}>
+                        {premiumCtaLabel ?? "Unlock All Live Signals"}
+                      </button>
+                      <p className={styles.ctaSubline}>
+                        <a className={styles.ctaSublineLink} href="/referral">
+                          Can&apos;t pay? Get $30 Credit for inviting a friend →
+                        </a>
+                      </p>
+                    </>
+                  }
+                />
+              )}
               onCtaClick={handleCtaClick}
               onLockedFeedAttempt={handleLockedFeedAttempt}
             />
