@@ -1098,6 +1098,15 @@ function PremiumSignalCard({ signal, onCtaClick, ctaLabel }: { signal: typeof st
   const ringStyle = {
     background: `conic-gradient(${ringColor} 0deg ${ringDegrees}deg, rgba(255,255,255,0.16) ${ringDegrees}deg 360deg)`
   };
+
+  // Canonical card computed values
+  const decimalOdds = profitPercent >= 100
+    ? ((profitPercent / 100) + 1).toFixed(2)
+    : (100 / Math.max(profitPercent, 1) + 1).toFixed(2);
+  const positionDisplay = (signal as any).positionDisplay || signal.position;
+  const positionQualifier = (signal as any).positionQualifier || "";
+  const polymarketUrl = (signal as any).polymarketUrl as string | undefined;
+
   return (
     <article className={styles.premiumSignalCard}>
       <div className={styles.premiumTop}>
@@ -1131,89 +1140,95 @@ function PremiumSignalCard({ signal, onCtaClick, ctaLabel }: { signal: typeof st
         </div>
       </div>
       <h1 className={styles.eventTitle}>{signal.eventTitle}</h1>
-      <div className={styles.positionProfit}>
-        <div className={styles.positionCol}>
-          <div className={styles.label}>Position</div>
-          <div className={styles.positionValue}>{signal.position}</div>
-          <div className={styles.target} aria-hidden="true">
-            <img src="/icons/position-target-optimized.webp" className={styles.decorIconImg} alt="" width={160} height={160} />
-          </div>
-        </div>
-        <div className={styles.positionProfitDivider} />
-        <div className={styles.profitCol}>
-          <span style={{display:'inline-block',fontSize:'clamp(8px,1.9vw,10px)',whiteSpace:'nowrap',position:'relative',zIndex:4}}>Odds {americanOdds}</span>
-          <div className={styles.profitValue} style={{color:'#86FF5A',textShadow:'0 0 14px rgba(134,255,90,0.32)'}}>+${profitDollars}</div>
-          <div style={{fontSize:'clamp(9px,2.3vw,11px)',fontWeight:600,color:'rgba(213,229,238,0.72)',lineHeight:1.2,position:'relative',zIndex:3,marginTop:'1px',textAlign:'right',alignSelf:'stretch',paddingRight:'clamp(4px,1.4vw,8px)'}}>per $100 stake</div>
-          <div className={styles.trend} aria-hidden="true">
-            <img src="/icons/profit-trend-optimized.webp" className={styles.decorIconImg} alt="" width={160} height={160} />
-          </div>
+      {/* 3 · Recommended Position */}
+      <div className={styles.recommendedPosition}>
+        <svg className={styles.posTarget} viewBox="0 0 24 24" fill="none" stroke="#8bff4d" strokeWidth="1.2" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/>
+          <path d="M12 1v4M12 19v4M1 12h4M19 12h4"/>
+        </svg>
+        <div className={styles.posKLabel}>Recommended Position</div>
+        <div className={styles.posRow}>
+          <span className={styles.posName}>{positionDisplay}</span>
+          {positionQualifier && <span className={styles.posQual}>{positionQualifier}</span>}
         </div>
       </div>
-      <div className={styles.analyticsRow}>
-        <div className={styles.trustCard}>
-          <div className={styles.trustHeader}>
-            <div className={styles.trustTitle}>TRUST METRICS</div>
-            <svg viewBox="0 0 24 24" className={styles.info} aria-hidden="true">
-              <circle cx="12" cy="12" r="9.2" fill="none" stroke="currentColor" strokeWidth="1.7" />
-              <path d="M12 10.2v5.4" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" />
-              <circle cx="12" cy="7.2" r="1.1" fill="currentColor" />
+
+      {/* 4 · Odds / Expected Profit */}
+      <div className={styles.oddsProfitRow}>
+        <div className={styles.oddsCell}>
+          <div className={styles.cellCap}>Odds</div>
+          <div className={styles.cellBig}>
+            {americanOdds}
+            <svg className={styles.cellBigSpark} viewBox="0 0 24 18" fill="none" stroke="#8bff4d" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2 15l5-5 3 3 6-8"/><path d="M14 5h4v4"/>
             </svg>
           </div>
-          {orderedTrustMetrics.map((metric: any) => {
-            const displayLabel = getTrustMetricDisplayLabel(metric);
-            return (
-              <MetricRow
-                key={metric.id}
-                icon={<img src={getTrustMetricIconSrc(displayLabel)} className={styles.metricIconImg} alt="" width={24} height={24} />}
-                label={displayLabel}
-                value={getTrustMetricValue(metric)}
-              />
-            );
-          })}
+          <div className={styles.cellSub}><span>Decimal</span><span className={styles.cellSubVal}>{decimalOdds}</span></div>
         </div>
+        <div className={styles.profitCell}>
+          <div className={styles.cellCap}>Expected Profit</div>
+          <div className={styles.cellBig}>+${profitDollars}</div>
+          <div className={styles.cellSub}><span>per $100 stake</span></div>
+        </div>
+      </div>
 
-        <div className={styles.winCard}>
-          <div className={styles.winTitle}>SIGNAL CONFIDENCE</div>
-          <div className={styles.ring} style={ringStyle}>
-            <div className={styles.ringInner}>
-              <span className={styles.ringNumber}>{probability}</span>
+      {/* 5 · Market Signal Score / Recommended Action */}
+      <div className={styles.scoreActionRow}>
+        <div className={styles.scoreCell}>
+          <div className={styles.cellCap}>Market Signal Score</div>
+          <div className={styles.scoreRing}>
+            <div className={styles.ring} style={ringStyle}>
+              <div className={styles.ringInner}>
+                <span className={styles.ringNumber}>{probability}</span>
+              </div>
             </div>
-          </div>
-          <div className={styles.confidenceFooterRow}>
-            {actionLabel && (
-              <span className={
-                actionLabel === "ENTER" ? styles.actionEnter :
-                actionLabel === "SMALL" ? styles.actionSmall :
-                styles.actionWatch
-              }>
-                {actionLabel}
-              </span>
-            )}
-            {(signal as any).polymarketUrl && (
-              <a
-                href={(signal as any).polymarketUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="View on Polymarket"
-                style={{
-                  lineHeight: 1,
-                  textAlign: 'center',
-                  color: 'rgba(135,255,77,0.55)',
-                  textDecoration: 'none',
-                }}
-              >
-                <span style={{display:'flex',alignItems:'center',gap:'4px'}}>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                    <polyline points="15 3 21 3 21 9"/>
-                    <line x1="10" y1="14" x2="21" y2="3"/>
-                  </svg>
-                  <span style={{fontSize:'9px',fontWeight:600,letterSpacing:'0.04em',textTransform:'uppercase',opacity:0.9}}>see on polymarket</span>
-                </span>
-              </a>
-            )}
+            <span className={styles.scoreOf}>/100</span>
           </div>
         </div>
+        <div className={styles.actionCell}>
+          <div className={styles.cellCap}>Recommended Action</div>
+          {actionLabel && (
+            <div className={
+              actionLabel === "ENTER" ? styles.actionEnterLg :
+              actionLabel === "SMALL" ? styles.actionSmallLg :
+              styles.actionWatchLg
+            }>
+              {actionLabel}
+            </div>
+          )}
+          {polymarketUrl && (
+            <a
+              href={polymarketUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="View on Polymarket"
+              className={styles.polyLink}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M7 17L17 7M9 7h8v8"/>
+              </svg>
+              <span>SEE ON POLYMARKET</span>
+            </a>
+          )}
+        </div>
+      </div>
+
+      {/* 6 · Supporting metrics */}
+      <div className={styles.whySignalCard}>
+        {orderedTrustMetrics.map((metric: any) => {
+          const displayLabel = getTrustMetricDisplayLabel(metric);
+          const safeVal = Math.max(0, Math.min(100, getTrustMetricValue(metric)));
+          return (
+            <div key={metric.id} className={styles.whyRow}>
+              <img src={getTrustMetricIconSrc(displayLabel)} className={styles.whyIcon} alt="" width={18} height={18} />
+              <span className={styles.whyLabel}>{displayLabel}</span>
+              <span className={styles.whyTrack}>
+                <span className={styles.whyFill} style={{width:`${safeVal}%`, background: getTrustMetricFillBackground(safeVal)}} />
+              </span>
+              <span className={styles.whyVal}>{safeVal}%</span>
+            </div>
+          );
+        })}
       </div>
       <button className={styles.cta} onClick={onCtaClick}>{ctaLabel ?? "Unlock All Live Signals"}</button>
       <p className={styles.ctaSubline}>

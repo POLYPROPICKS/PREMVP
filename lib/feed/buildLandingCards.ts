@@ -931,6 +931,12 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
   const baseId = slugify(parentMeta.slug || safeString(market.slug) || safeString(market.conditionId) || market.id);
   const pairId = `${baseId}-${slugify(selectedOutcome.name)}`;
 
+  // Derive presentation fields (does NOT replace raw position)
+  const positionPresentation = derivePositionPresentation(
+    safeString(market.question) || "",
+    selectedOutcome.name,
+  );
+
   // Build premium signal
   const premiumSignal: PremiumSignal = {
     id: pairId,
@@ -938,9 +944,15 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
     time: parentMeta.startDate
       ? formatGameTime(parentMeta.startDate)
       : formatEndTime(parentMeta.endDate),
-    eventTitle: truncateText(humanizeMatchupTitle(parentMeta.title || safeString(market.question) || "Unknown Event", selectedOutcome.name), 50),
+    eventTitle: truncateText(deriveCompactEventTitle(
+      parentMeta.title || safeString(market.question) || "Unknown Event",
+      safeString(market.question) || "",
+      selectedOutcome.name,
+    ), 50),
     confidenceLabel: oddsBand.label,
     position: selectedOutcome.name,
+    positionDisplay: positionPresentation.positionDisplay,
+    positionQualifier: positionPresentation.positionQualifier,
     profit: profitStr,
     winProbability: finalSignalV2,
     price: "$1.99",
@@ -1085,6 +1097,92 @@ function buildEvidenceStack(params: {
 function truncateText(text: string, maxLength: number): string {
   if (!text || text.length <= maxLength) return text || "";
   return text.slice(0, maxLength - 3) + "...";
+}
+
+/**
+ * Derive human-readable presentation fields from the raw Polymarket question + selected outcome.
+ * Returns positionDisplay (safe to show in UI) and optional positionQualifier.
+ * Raw `position` (selectedOutcome.name) is preserved separately — this does NOT replace it.
+ */
+function derivePositionPresentation(
+  question: string,
+  selectedOutcomeName: string,
+): { positionDisplay: string; positionQualifier?: string } {
+  const raw = selectedOutcomeName.trim();
+  const q = question.trim().replace(/\?$/, "");
+
+  // Non-binary named token (e.g. team, player, draw, total, spread).
+  // Only add a qualifier when the raw token or question makes the semantics explicit.
+  if (!/^(yes|no)$/i.test(raw)) {
+    if (/^draw$/i.test(raw)) {
+      return { positionDisplay: raw, positionQualifier: "DRAW" };
+    }
+
+    const total = raw.match(/^(over|under)\s+([\d.]+)/i);
+    if (total) {
+      return { positionDisplay: raw, positionQualifier: `${total[1].toUpperCase()} ${total[2]}` };
+    }
+
+    const spread = raw.match(/([+-]\d+(?:\.\d+)?)$/);
+    if (spread) {
+      return { positionDisplay: raw, positionQualifier: spread[1] };
+    }
+
+    if (/\badvance\b/i.test(q)) {
+      return { positionDisplay: raw, positionQualifier: "TO ADVANCE" };
+    }
+
+    if (/\b(?:win|winner|beat)\b/i.test(q) || /\b(?:vs\.?|v\.?)\b/i.test(q)) {
+      return { positionDisplay: raw, positionQualifier: "TO WIN" };
+    }
+
+    return { positionDisplay: raw };
+  }
+
+  // Binary Yes/No — parse only explicit, safe question patterns.
+  const isYes = /^yes$/i.test(raw);
+
+  const advance = q.match(/^Will\s+(.+?)\s+advance(?:\s+.+)?$/i);
+  if (advance) {
+    return { positionDisplay: advance[1].trim(), positionQualifier: isYes ? "TO ADVANCE" : "NOT TO ADVANCE" };
+  }
+
+  const beat = q.match(/^Will\s+(.+?)\s+beat\s+(.+?)(?:\s+on\s+\d{4}-\d{2}-\d{2})?$/i);
+  if (beat) {
+    return { positionDisplay: beat[1].trim(), positionQualifier: isYes ? "TO WIN" : "NOT TO WIN" };
+  }
+
+  const win = q.match(/^Will\s+(.+?)\s+win(?:\s+on\s+\d{4}-\d{2}-\d{2})?$/i);
+  if (win) {
+    return { positionDisplay: win[1].trim(), positionQualifier: isYes ? "TO WIN" : "NOT TO WIN" };
+  }
+
+  // Ambiguous — preserve raw token and do not invent a qualifier.
+  return { positionDisplay: raw };
+}
+
+/**
+ * Create a compact, user-facing event label for explicit binary sports questions.
+ * Safe: if a known pattern is not matched, keep the existing title untouched.
+ */
+function deriveCompactEventTitle(
+  title: string,
+  question: string,
+  selectedOutcomeName: string,
+): string {
+  const base = title.trim() || question.trim();
+  const q = question.trim().replace(/\?$/, "");
+
+  const beat = q.match(/^Will\s+(.+?)\s+beat\s+(.+?)(?:\s+on\s+\d{4}-\d{2}-\d{2})?$/i);
+  if (beat) return `${beat[1].trim()} vs ${beat[2].trim()}`;
+
+  const win = q.match(/^Will\s+(.+?)\s+win(?:\s+on\s+\d{4}-\d{2}-\d{2})?$/i);
+  if (win) return `${win[1].trim()} — Match Winner`;
+
+  const advance = q.match(/^Will\s+(.+?)\s+advance(?:\s+.+)?$/i);
+  if (advance) return `${advance[1].trim()} — To Advance`;
+
+  return humanizeMatchupTitle(base, selectedOutcomeName);
 }
 
 /**

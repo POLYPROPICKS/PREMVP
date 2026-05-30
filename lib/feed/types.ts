@@ -23,7 +23,9 @@ export interface PremiumSignal {
   time: string;
   eventTitle: string;
   confidenceLabel: string;
-  position: string;
+  position: string;           // raw Polymarket token — audit source of truth
+  positionDisplay?: string;   // human-readable label derived from question parsing
+  positionQualifier?: string; // short qualifier, e.g. "TO WIN", "TO ADVANCE"
   profit: string;
   winProbability: number; // NOTE: displaySignalScore for UI compatibility, NOT real win probability
   price: string;
