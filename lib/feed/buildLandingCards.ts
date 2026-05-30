@@ -625,6 +625,7 @@ async function enrichMarket(
     parentEventVolume24hr: Number(
       event.volume24hr ?? market.volume24hr ?? 0
     ),
+    gameStartIso: parentMeta.startDate ?? event.endDate ?? null,
   };
 
   // Try to get price movement from Gamma fields as fallback
