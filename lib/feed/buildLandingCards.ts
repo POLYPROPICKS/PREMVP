@@ -1439,6 +1439,7 @@ async function buildUpcomingPairs(
     "World Cup 2026": 4,
     "NBA": 3,
     "NHL": 2,
+    "Esports": 1,
   };
   const priorityOf = (s: SportsDiscoverySample): number =>
     STRATEGIC_PRIORITY[s.leagueName ?? ""] ?? 0;
