@@ -622,6 +622,9 @@ async function enrichMarket(
     dataCoverage: 0,
     formulaUsed: FORMULA_VERSION,
     rejectionReasons: [],
+    parentEventVolume24hr: Number(
+      event.volume24hr ?? market.volume24hr ?? 0
+    ),
   };
 
   // Try to get price movement from Gamma fields as fallback

@@ -42,10 +42,45 @@ async function main() {
       upcomingLimit: CONFIG.upcomingLimit,
     });
 
+    // Founder LIVE rule: across the merged qualified + upcoming pool, pre-start
+    // sports pairs within the next 24h come first, ordered by aggregate
+    // parent-event volume DESC; primary winner/moneyline markets rank above
+    // spread/handicap variants of the same event; ties and out-of-window pairs
+    // keep their original relative order. Stable.
+    const mergedPairs = [...result.pairs, ...(result.upcomingPairs ?? [])];
+    const nowMs = Date.now();
+    const horizonMs = nowMs + 24 * 60 * 60 * 1000;
+    const isWithin24h = (pair: any): boolean => {
+      const ts = Date.parse(pair.diagnostics?.gameStartIso ?? "");
+      return Number.isFinite(ts) && ts > nowMs && ts <= horizonMs;
+    };
+    const parentVolume = (pair: any): number =>
+      Number(pair.diagnostics?.parentEventVolume24hr ?? 0);
+    const primaryMarketRank = (pair: any): number => {
+      const title = String(pair.premiumSignal?.eventTitle ?? "").toLowerCase();
+      if (title.includes("match winner") || title.includes("moneyline")) return 0;
+      if (title.includes("spread") || title.includes("handicap")) return 1;
+      return 2;
+    };
+    const sortedMergedPairs = mergedPairs
+      .map((pair, index) => ({ pair, index }))
+      .sort((a, b) => {
+        const aw = isWithin24h(a.pair);
+        const bw = isWithin24h(b.pair);
+        if (aw !== bw) return aw ? -1 : 1;
+        if (aw && bw) {
+          const dv = parentVolume(b.pair) - parentVolume(a.pair);
+          if (dv !== 0) return dv;
+          const dr = primaryMarketRank(a.pair) - primaryMarketRank(b.pair);
+          if (dr !== 0) return dr;
+        }
+        return a.index - b.index;
+      })
+      .map((entry) => entry.pair);
+
     // Strategic floor: ensure each strategic category with an eligible generated
     // pair lands inside the route's first-`limit` window (eSport otherwise cut).
-    const combinedPairs = [...result.pairs, ...(result.upcomingPairs ?? [])];
-    const pairsToCache = applyStrategicFloor(combinedPairs, CONFIG.limit);
+    const pairsToCache = applyStrategicFloor(sortedMergedPairs, CONFIG.limit);
     generatedCount = pairsToCache.length;
     rejectedCount = result.rejected?.length ?? 0;
 

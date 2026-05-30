@@ -73,6 +73,7 @@ export interface LandingCardDiagnostics {
   rejectionReasons: string[];
   signalStatus?: "qualified" | "upcoming_candidate";
   gameStartIso?: string | null;
+  parentEventVolume24hr?: number | null;
   metricDedupeAdjusted?: boolean;
   metricDedupeReason?: string;
   rawMetricVector?: number[];
