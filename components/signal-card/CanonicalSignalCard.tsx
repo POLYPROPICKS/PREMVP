@@ -71,7 +71,7 @@ function getTrustMetricDisplayLabel(metric: TrustMetric): string {
     text.includes("score") ||
     text.includes("ai")
   ) {
-    return "PreEventScore AI";
+    return "Pre-Match Power";
   }
   return metric?.label ?? "Trust Metric";
 }

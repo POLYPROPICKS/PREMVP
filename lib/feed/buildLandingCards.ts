@@ -891,7 +891,7 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
     },
     {
       id: "pre-event-score",
-      label: "PreEventScore AI",
+      label: "Pre-Match Power",
       value: roundNumber(preEventVal),
       bar: roundNumber(preEventVal),
       icon: "/icons/trust-ai-score.png",

@@ -73,7 +73,7 @@ const faqJsonLd = {
       name: 'What are Trust Metrics?',
       acceptedAnswer: {
         '@type': 'Answer',
-        text: 'Trust Metrics are supporting indicators that help explain why a signal appeared. Examples may include Smart Money, Whale vs Public Money, PreEventScore AI, market movement, odds quality, liquidity, and data coverage. They should not be treated as guarantees.',
+        text: 'Trust Metrics are supporting indicators that help explain why a signal appeared. Examples may include Smart Money, Whale vs Public Money, Pre-Match Power, market movement, odds quality, liquidity, and data coverage. They should not be treated as guarantees.',
       },
     },
     {
