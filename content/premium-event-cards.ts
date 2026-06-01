@@ -15,7 +15,7 @@ export const premiumEventCards: PremiumEventCard[] = [
     trustMetrics: [
       { id: 'smart-money', label: 'Smart Money', value: '72% Republican' },
       { id: 'public-whale', label: 'Public vs Whale', value: '68% Aligned' },
-      { id: 'ai-score', label: 'Pre-Match Power', value: '8.4/10' }
+      { id: 'ai-score', label: 'Injury data & PreMatchPower', value: '8.4/10' }
     ],
     ctaText: 'Unlock Full Analysis',
     priceLabel: '$34.99',
@@ -35,7 +35,7 @@ export const premiumEventCards: PremiumEventCard[] = [
     trustMetrics: [
       { id: 'smart-money', label: 'Smart Money', value: '91% Bullish' },
       { id: 'public-whale', label: 'Public vs Whale', value: '85% Aligned' },
-      { id: 'ai-score', label: 'Pre-Match Power', value: '9.2/10' }
+      { id: 'ai-score', label: 'Injury data & PreMatchPower', value: '9.2/10' }
     ],
     ctaText: 'Unlock Full Analysis',
     priceLabel: '$49.99',
@@ -55,7 +55,7 @@ export const premiumEventCards: PremiumEventCard[] = [
     trustMetrics: [
       { id: 'smart-money', label: 'Smart Money', value: '58% Lakers' },
       { id: 'public-whale', label: 'Public vs Whale', value: '52% Aligned' },
-      { id: 'ai-score', label: 'Pre-Match Power', value: '6.8/10' }
+      { id: 'ai-score', label: 'Injury data & PreMatchPower', value: '6.8/10' }
     ],
     ctaText: 'Unlock Full Analysis',
     priceLabel: '$24.99',
@@ -96,7 +96,7 @@ export const premiumEventCards: PremiumEventCard[] = [
     trustMetrics: [
       { id: 'smart-money', label: 'Smart Money', value: '82%' },
       { id: 'public-whale', label: 'Public vs Whale Money', value: '74%' },
-      { id: 'ai-score', label: 'Pre-Match Power', value: '93%' }
+      { id: 'ai-score', label: 'Injury data & PreMatchPower', value: '93%' }
     ],
     ctaText: 'Get Pick & Full analysis – 1.99 $',
     priceLabel: '$1.99',
@@ -116,7 +116,7 @@ export const premiumEventCards: PremiumEventCard[] = [
     trustMetrics: [
       { id: 'smart-money', label: 'Smart Money', value: '32% Approval' },
       { id: 'public-whale', label: 'Public vs Whale', value: '45% Aligned' },
-      { id: 'ai-score', label: 'Pre-Match Power', value: '4.3/10' }
+      { id: 'ai-score', label: 'Injury data & PreMatchPower', value: '4.3/10' }
     ],
     ctaText: 'Unlock Full Analysis',
     priceLabel: '$19.99',
@@ -136,7 +136,7 @@ export const premiumEventCards: PremiumEventCard[] = [
     trustMetrics: [
       { id: 'smart-money', label: 'Smart Money', value: '84% Trump' },
       { id: 'public-whale', label: 'Public vs Whale', value: '76% Aligned' },
-      { id: 'ai-score', label: 'Pre-Match Power', value: '8.9/10' }
+      { id: 'ai-score', label: 'Injury data & PreMatchPower', value: '8.9/10' }
     ],
     ctaText: 'Unlock Full Analysis',
     priceLabel: '$44.99',

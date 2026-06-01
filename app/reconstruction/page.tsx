@@ -1034,7 +1034,7 @@ function getTrustMetricDisplayLabel(metric: any): string {
     text.includes('score') ||
     text.includes('ai')
   ) {
-    return 'Pre-Match Power';
+    return 'Injury data & PreMatchPower';
   }
 
   return metric?.label ?? 'Trust Metric';

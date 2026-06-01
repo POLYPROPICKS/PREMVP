@@ -186,7 +186,7 @@ export default function ResolvedSignalCard({ signal, defaultExpanded = false }: 
           )}
           {preEventAI > 0 && (
             <div className={styles.trustRow}>
-              <div className={styles.trustName}>Pre-Match Power</div>
+              <div className={styles.trustName}>Injury data & PreMatchPower</div>
               <div className={styles.trustBarWrap}>
                 <div className={styles.trustBarFill} style={{ width: `${preEventAI}%` }} />
               </div>

@@ -27,7 +27,7 @@ function getMetricDisplayLabel(m: TrustMetric): string {
   const t = normalizeTrustMetricText(m);
   if (t.includes("smart")) return "Smart Money";
   if ((t.includes("whale") && t.includes("public")) || t.includes("public vs whale")) return "Whale vs Public Money";
-  if (t.includes("preevent") || t.includes("pre-event") || t.includes("score") || t.includes("ai")) return "Pre-Match Power";
+  if (t.includes("preevent") || t.includes("pre-event") || t.includes("score") || t.includes("ai")) return "Injury data & PreMatchPower";
   return m.label;
 }
 

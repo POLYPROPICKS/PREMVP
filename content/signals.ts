@@ -49,7 +49,7 @@ export const premiumSignals: PremiumSignal[] = [
       },
       {
         id: "pre-event-score",
-        label: "Pre-Match Power",
+        label: "Injury data & PreMatchPower",
         value: 93,
         bar: 93,
         icon: "/icons/trust-ai-score.png",
@@ -84,7 +84,7 @@ export const premiumSignals: PremiumSignal[] = [
       },
       {
         id: "pre-event-score",
-        label: "Pre-Match Power",
+        label: "Injury data & PreMatchPower",
         value: 88,
         bar: 88,
         icon: "/icons/trust-ai-score.png",
@@ -119,7 +119,7 @@ export const premiumSignals: PremiumSignal[] = [
       },
       {
         id: "pre-event-score",
-        label: "Pre-Match Power",
+        label: "Injury data & PreMatchPower",
         value: 84,
         bar: 84,
         icon: "/icons/trust-ai-score.png",
@@ -154,7 +154,7 @@ export const premiumSignals: PremiumSignal[] = [
       },
       {
         id: "pre-event-score",
-        label: "Pre-Match Power",
+        label: "Injury data & PreMatchPower",
         value: 90,
         bar: 90,
         icon: "/icons/trust-ai-score.png",
@@ -189,7 +189,7 @@ export const premiumSignals: PremiumSignal[] = [
       },
       {
         id: "pre-event-score",
-        label: "Pre-Match Power",
+        label: "Injury data & PreMatchPower",
         value: 86,
         bar: 86,
         icon: "/icons/trust-ai-score.png",
