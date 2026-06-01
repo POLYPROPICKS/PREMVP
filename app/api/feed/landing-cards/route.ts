@@ -60,28 +60,7 @@ function orderLivePairsForResponse<T extends {
     return a.index - b.index;
   });
 
-  let ordered = indexed.map(({ pair }) => pair);
-
-  // CEO emergency safety pin. Auto-expires shortly after kickoff.
-  const PSG_PIN_UNTIL = Date.parse("2026-05-30T16:15:00Z");
-
-  if (Date.now() < PSG_PIN_UNTIL) {
-    const psgIndex = ordered.findIndex((pair) => {
-      const title = String(pair.premiumSignal?.eventTitle ?? "").toLowerCase();
-      return (
-        title.includes("paris saint-germain") &&
-        title.includes("match winner")
-      );
-    });
-
-    if (psgIndex > 0) {
-      ordered = [
-        ordered[psgIndex],
-        ...ordered.slice(0, psgIndex),
-        ...ordered.slice(psgIndex + 1),
-      ];
-    }
-  }
+  const ordered = indexed.map(({ pair }) => pair);
 
   return ordered;
 }
