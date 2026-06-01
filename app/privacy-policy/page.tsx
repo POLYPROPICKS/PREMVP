@@ -5,7 +5,7 @@ import LegalDocument from '@/components/legal/LegalDocument';
 
 export const metadata = {
   title: 'Privacy Policy | PolyProPicks',
-  description: 'Privacy Policy for PolyProPicks by Benefitpoint, Inc.',
+  description: 'Privacy Policy for PolyProPicks by Benefitpoint Alexander Grushin.',
 };
 
 export default function PrivacyPolicyPage() {

@@ -1,16 +1,16 @@
 Privacy Policy
-Last updated: May 28, 2026
-This Privacy Policy explains how Benefitpoint Inc., doing business as PolyProPicks (“PolyProPicks,” “we,” “us,” or “our”), collects, uses, discloses, stores, and protects information when you visit PolyProPicks.com, use our website, sign up for free signals, request premium access, interact with our content, or otherwise use our services.
+Last updated: June 1, 2026
+This Privacy Policy explains how Benefitpoint Alexander Grushin, doing business as PolyProPicks (“PolyProPicks,” “we,” “us,” or “our”), collects, uses, discloses, stores, and protects information when you visit PolyProPicks.com, use our website, sign up for free signals, request premium access, interact with our content, or otherwise use our services.
 PolyProPicks provides sports and prediction-market intelligence, including signal cards, market movement summaries, historical signal tracking, and related informational content. PolyProPicks is not a sportsbook, betting operator, broker, exchange, investment adviser, financial adviser, or gambling platform. We do not place bets or trades for users, custody user funds, or guarantee outcomes.
 If you do not agree with this Privacy Policy, do not use the Service.
 
 1. Who We Are
 The Service is operated by:
-Benefitpoint Inc.
+Benefitpoint Alexander Grushin
 Doing business as: PolyProPicks
 Website: https://polypropicks.com
-Contact: Alex_ceo@polypropicks.com
-For privacy-related requests, please contact us at Alex_ceo@polypropicks.com.
+Contact: alex_ceo@polypropicks.com
+For privacy-related requests, please contact us at alex_ceo@polypropicks.com.
 
 2. Scope of This Privacy Policy
 This Privacy Policy applies to information we collect through:
@@ -44,6 +44,13 @@ marketing preferences;
 referral or campaign code;
 premium plan selected or requested;
 signal or event context attached to a signup, such as event title, selected position, source, or intent type.
+If you opt in to the SMS program, we may also collect:
+mobile phone number;
+SMS consent status;
+consent timestamp;
+consent source;
+disclosure version;
+opt-out status and timestamp where applicable.
 3.2 Premium Access and Plan Information
 If you request or purchase premium access, we may collect or receive information such as:
 selected plan ID;
@@ -111,7 +118,7 @@ product updates;
 account or access-related notices;
 legal or policy updates;
 marketing emails, where permitted.
-You can unsubscribe from marketing emails by using the unsubscribe link in the email or contacting us at Alex_ceo@polypropicks.com. We may still send non-marketing service messages where necessary.
+You can unsubscribe from marketing emails by using the unsubscribe link in the email or contacting us at alex_ceo@polypropicks.com. We may still send non-marketing service messages where necessary.
 4.4 To Process Payments and Premium Access
 We may use information to:
 create or verify checkout sessions;
@@ -161,6 +168,8 @@ payment and checkout providers;
 fraud prevention and security providers;
 customer support tools;
 infrastructure and monitoring providers;
+SMS platform providers;
+telecommunications carriers;
 legal, accounting, or professional advisers.
 These providers may process information only as needed to provide services to us, subject to their own agreements and applicable law.
 6.2 Payment Providers
@@ -215,7 +224,7 @@ Where required, we use appropriate safeguards for international transfers, such 
 10. Security
 We use reasonable technical and organizational measures designed to protect information from unauthorized access, loss, misuse, alteration, or disclosure.
 However, no website, database, transmission method, or storage system is completely secure. We cannot guarantee absolute security. You use the Service at your own risk.
-If you believe your information or access to the Service has been compromised, contact us at Alex_ceo@polypropicks.com.
+If you believe your information or access to the Service has been compromised, contact us at alex_ceo@polypropicks.com.
 
 11. Your Privacy Rights
 Depending on where you live, you may have rights regarding your personal information, including the right to:
@@ -228,7 +237,7 @@ withdraw consent where processing is based on consent;
 opt out of marketing communications;
 opt out of targeted advertising, sale, or sharing where applicable;
 appeal a decision we make about a privacy request, where required by law.
-To exercise privacy rights, contact us at Alex_ceo@polypropicks.com.
+To exercise privacy rights, contact us at alex_ceo@polypropicks.com.
 We may need to verify your identity before responding to certain requests. We may deny or limit requests where permitted by law, such as when we must retain information for legal, security, fraud-prevention, tax, accounting, dispute, or contractual reasons.
 
 12. California and U.S. State Privacy Notice
@@ -277,7 +286,7 @@ business transaction participants.
 We do not sell personal information for money.
 If we use advertising pixels, conversion APIs, retargeting tools, or similar technologies, some laws may treat that activity as “sharing” personal information for cross-context behavioral advertising or as a “sale” even if no money is exchanged.
 Where required, you may opt out by:
-emailing Alex_ceo@polypropicks.com with the subject line “Privacy Opt-Out”;
+emailing alex_ceo@polypropicks.com with the subject line “Privacy Opt-Out”;
 using a “Do Not Sell or Share My Personal Information” or privacy choices link if available on the website;
 using a recognized browser-based opt-out preference signal where legally required and technically supported.
 12.6 Non-Discrimination
@@ -289,9 +298,19 @@ Where applicable law allows you to use an authorized agent, we may require proof
 If you subscribe to emails or request signals, we may send you marketing or product communications.
 You may opt out at any time by:
 clicking the unsubscribe link in an email;
-contacting Alex_ceo@polypropicks.com.
+contacting alex_ceo@polypropicks.com.
 Opting out of marketing emails does not prevent us from sending transactional or service-related messages, such as premium access, payment, security, legal, or support notices.
 We do not authorize the use of misleading testimonials, fake results, fake countdowns, or unsubstantiated performance claims in our marketing.
+
+13.1 SMS/Text Messaging Program
+
+PolyProPicks offers an optional SMS program called "PolyProPicks Sports Market Analytics Alerts." If you expressly opt in, we may send recurring automated informational and promotional text messages, including analytical briefing alerts, product-access updates, account-related notices and requested links. Consent is not a condition of purchase. Message frequency may vary, up to 2 messages per week. Message and data rates may apply.
+
+You may unsubscribe at any time by replying STOP, END, CANCEL, UNSUBSCRIBE or QUIT. For help, reply HELP or contact alex_ceo@polypropicks.com.
+
+We use mobile numbers, consent records and opt-out records only to operate the SMS program, maintain suppression records, respond to requests and comply with applicable law. We may share this information with SMS platform providers, telecommunications carriers and service providers only as necessary to deliver messages, process replies, maintain suppression lists and operate the program.
+
+We do not sell mobile phone numbers. We do not share mobile phone numbers or SMS consent records with third parties or affiliates for their own marketing or promotional purposes.
 
 14. Children and Age Restrictions
 The Service is not directed to children.
@@ -303,7 +322,7 @@ Some browsers offer “Do Not Track” signals. There is no uniform industry sta
 Where legally required, we will process recognized opt-out preference signals, such as Global Privacy Control, as an opt-out from sale or sharing for targeted advertising, to the extent required by applicable law and technically feasible.
 
 16. Deletion Requests
-You may request deletion of your personal information by contacting Alex_ceo@polypropicks.com.
+You may request deletion of your personal information by contacting alex_ceo@polypropicks.com.
 Please include enough information for us to identify your account, signup, or request, such as the email address used with PolyProPicks.
 We may retain certain information where permitted or required by law, including for:
 tax, accounting, or payment records;
@@ -321,8 +340,8 @@ Your continued use of the Service after an updated Privacy Policy becomes effect
 
 18. Contact Us
 If you have questions, requests, or concerns about this Privacy Policy or our privacy practices, contact us at:
-Benefitpoint Inc.
+Benefitpoint Alexander Grushin
 Doing business as: PolyProPicks
 Website: https://polypropicks.com
-Email: Alex_ceo@polypropicks.com
+Email: alex_ceo@polypropicks.com
 For privacy requests, please use the subject line: Privacy Request.

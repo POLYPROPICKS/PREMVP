@@ -101,7 +101,7 @@ export default function FooterSection() {
               { label: 'Privacy Policy',href: '/privacy-policy' },
               { label: 'FAQ',           href: '/faq'          },
               { label: 'Legal',         href: '/legal'        },
-              { label: 'Contact',       href: 'mailto:Alex_ceo@polypropicks.com' },
+              { label: 'Contact',       href: 'mailto:alex_ceo@polypropicks.com' },
             ].map(({ label, href }) => (
               <a key={label} href={href} className={styles.link}>
                 {label}
@@ -116,10 +116,10 @@ export default function FooterSection() {
         {/* ── 4. Legal disclaimer ── */}
         <div className={styles.legal}>
           <p>
-            © 2026 Benefitpoint, Inc. All rights reserved. All opinions, picks, and predictions on PolyProPicks are for informational and entertainment purposes only and do not constitute betting advice, financial advice, or a guarantee of any outcome or profit. Past performance is not indicative of future results.
+            © 2026 Benefitpoint Alexander Grushin. All rights reserved. All opinions, picks, and predictions on PolyProPicks are for informational and entertainment purposes only and do not constitute betting advice, financial advice, or a guarantee of any outcome or profit. Past performance is not indicative of future results.
           </p>
           <p>
-            PolyProPicks does not offer or accept wagers and is not a sportsbook, bookmaker, or gambling operator. Users are responsible for complying with applicable laws in their jurisdiction. By using this site, users agree that Benefitpoint, Inc. is not liable for losses arising from use of the site.
+            PolyProPicks does not offer or accept wagers and is not a sportsbook, bookmaker, or gambling operator. Users are responsible for complying with applicable laws in their jurisdiction. By using this site, users agree that Benefitpoint Alexander Grushin is not liable for losses arising from use of the site.
           </p>
           <p>
             If you or someone you know has a gambling problem, call 1-800-GAMBLER or visit{' '}

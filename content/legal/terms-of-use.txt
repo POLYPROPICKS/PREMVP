@@ -1,15 +1,15 @@
 Terms of Use
-Last updated: May 28, 2026
-These Terms of Use (“Terms”) are a binding agreement between you and Benefitpoint Inc., doing business as PolyProPicks (“PolyProPicks,” “we,” “us,” or “our”), governing your access to and use of PolyProPicks.com, our website, landing pages, signal pages, premium access features, email content, market-intelligence content, and any related services, tools, or features that link to these Terms (collectively, the “Service”).
+Last updated: June 1, 2026
+These Terms of Use (“Terms”) are a binding agreement between you and Benefitpoint Alexander Grushin, doing business as PolyProPicks (“PolyProPicks,” “we,” “us,” or “our”), governing your access to and use of PolyProPicks.com, our website, landing pages, signal pages, premium access features, email content, market-intelligence content, and any related services, tools, or features that link to these Terms (collectively, the “Service”).
 By accessing or using the Service, signing up for free signals, requesting premium access, purchasing access, clicking an acceptance checkbox, or otherwise interacting with PolyProPicks, you agree to these Terms and to our Privacy Policy.
 If you do not agree to these Terms, do not use the Service.
 
 1. Who We Are
 The Service is operated by:
-Benefitpoint Inc.
+Benefitpoint Alexander Grushin
 Doing business as: PolyProPicks
 Website: PolyProPicks.com
-Contact: Alex_ceo@polypropicks.com
+Contact: alex_ceo@polypropicks.com
 
 2. Description of the Service
 PolyProPicks provides sports and prediction-market intelligence. The Service may include:
@@ -224,7 +224,7 @@ use the Service to create competing products or datasets without permission;
 use PolyProPicks content in misleading marketing, fake testimonials, fake performance claims, or fraudulent offers.
 
 17. Intellectual Property
-The Service, including its design, text, graphics, user interface, signal cards, scoring presentation, market summaries, product structure, software, data organization, logos, trade names, trademarks, and other content, is owned by PolyProPicks, Benefitpoint Inc., or our licensors.
+The Service, including its design, text, graphics, user interface, signal cards, scoring presentation, market summaries, product structure, software, data organization, logos, trade names, trademarks, and other content, is owned by PolyProPicks, Benefitpoint Alexander Grushin, or our licensors.
 Subject to your compliance with these Terms, we grant you a limited, personal, revocable, non-exclusive, non-transferable license to access and use the Service for your own lawful personal use.
 You may not copy, reproduce, modify, distribute, display, sell, sublicense, scrape, mirror, frame, create derivative works from, or commercially exploit any part of the Service unless we give you written permission.
 All rights not expressly granted are reserved.
@@ -238,11 +238,30 @@ If you send us messages, testimonials, comments, survey responses, support reque
 You grant us a non-exclusive, worldwide, royalty-free license to use, host, store, reproduce, process, and display that content as reasonably necessary to operate, improve, secure, support, and promote the Service, subject to our Privacy Policy and applicable law.
 We will not use your name, likeness, testimonial, or personal story in public marketing without your permission where required by law.
 
-20. Marketing Communications
+20. Marketing Communications and SMS/Text Messaging Program
 By signing up for signals, waitlists, premium access, or updates, you may receive emails from PolyProPicks.
-You may unsubscribe from marketing emails at any time by using the unsubscribe link or contacting Alex_ceo@polypropicks.com.
+You may unsubscribe from marketing emails at any time by using the unsubscribe link or contacting alex_ceo@polypropicks.com.
 We may still send service-related, transactional, legal, security, or payment-related messages where permitted by law.
 We do not authorize fake testimonials, fake urgency, fake countdowns, fake winnings, unsubstantiated performance claims, or misleading endorsements.
+
+Program name: PolyProPicks Sports Market Analytics Alerts
+
+If you expressly opt in to SMS alerts, you agree to receive recurring automated informational and promotional text messages from PolyProPicks, including analytical briefing alerts, product-access updates, account-related notices and requested links.
+
+Consent is not a condition of purchase.
+
+Message frequency may vary, up to 2 messages per week.
+
+Message and data rates may apply.
+
+Reply STOP, END, CANCEL, UNSUBSCRIBE or QUIT to unsubscribe.
+
+Reply HELP for help or contact alex_ceo@polypropicks.com.
+
+Your mobile carrier is not liable for delayed or undelivered messages.
+
+Privacy Policy:
+https://polypropicks.com/privacy-policy
 
 21. Third-Party Services and Links
 The Service may contain links to or information from third-party services, including prediction-market platforms, sports data providers, payment providers, analytics providers, social networks, sportsbooks, news sources, or other websites.
@@ -294,7 +313,7 @@ We may suspend, restrict, or terminate access with or without notice where we be
 
 25. Copyright and Intellectual Property Complaints
 If you believe content on the Service infringes your copyright or intellectual property rights, contact us at:
-Alex_ceo@polypropicks.com
+alex_ceo@polypropicks.com
 Please include:
 your name and contact information;
 identification of the work you claim is infringed;
@@ -335,7 +354,7 @@ any defect will be corrected;
 the Service will be free from viruses, harmful code, or technical failures.
 
 28. Limitation of Liability
-To the fullest extent permitted by law, Benefitpoint Inc., PolyProPicks, and our affiliates, officers, directors, employees, contractors, licensors, service providers, and agents will not be liable for:
+To the fullest extent permitted by law, Benefitpoint Alexander Grushin, PolyProPicks, and our affiliates, officers, directors, employees, contractors, licensors, service providers, and agents will not be liable for:
 indirect damages;
 incidental damages;
 special damages;
@@ -358,7 +377,7 @@ USD $100.
 Some jurisdictions do not allow certain limitations of liability. In those jurisdictions, our liability is limited to the maximum extent permitted by law.
 
 29. Indemnification
-You agree to defend, indemnify, and hold harmless Benefitpoint Inc., PolyProPicks, and our affiliates, officers, directors, employees, contractors, licensors, service providers, and agents from and against any claims, liabilities, damages, losses, costs, and expenses, including reasonable legal fees, arising from or related to:
+You agree to defend, indemnify, and hold harmless Benefitpoint Alexander Grushin, PolyProPicks, and our affiliates, officers, directors, employees, contractors, licensors, service providers, and agents from and against any claims, liabilities, damages, losses, costs, and expenses, including reasonable legal fees, arising from or related to:
 your use of the Service;
 your breach of these Terms;
 your violation of law;
@@ -399,20 +418,15 @@ we discontinue or materially change the Service.
 Termination does not limit any rights or obligations that accrued before termination. Sections that by their nature should survive termination will survive, including intellectual property, disclaimers, limitation of liability, indemnification, payment obligations, dispute terms, and legal compliance provisions.
 
 32. Governing Law
-These Terms are governed by the laws of [Delaware / United States / Insert governing law after legal review], without regard to conflict-of-law principles, unless mandatory law requires otherwise.
-This section must be confirmed by founder/legal counsel before publication if Benefitpoint Inc. is incorporated or operating under a specific jurisdiction.
+These Terms are governed by the laws of Poland, without regard to conflict-of-law principles, except where mandatory consumer-protection law in your place of residence applies.
 
 33. Dispute Resolution
-Before filing a claim, you agree to contact us at Alex_ceo@polypropicks.com and attempt to resolve the dispute informally.
-The parties will attempt in good faith to resolve the dispute for at least 30 days after written notice is received.
-If the dispute is not resolved, the parties agree that the dispute will be resolved in the courts or arbitration forum specified after legal review.
-Founder/legal review required: decide whether to use court venue only, arbitration, class action waiver, jury waiver, or a consumer-law-specific dispute process.
+Before filing a claim, you agree to contact us at alex_ceo@polypropicks.com and attempt to resolve the dispute informally. The parties will attempt in good faith to resolve the dispute for at least 30 days after written notice is received.
 
-34. Class Action and Jury Waiver
-To the fullest extent permitted by law, you and PolyProPicks agree that claims must be brought only on an individual basis and not as part of a class, collective, consolidated, mass, representative, or private-attorney-general action.
-To the fullest extent permitted by law, you and PolyProPicks waive the right to a jury trial.
-Some jurisdictions do not allow these waivers. Where not allowed, this section applies only to the maximum extent permitted by law.
-Founder/legal review required before relying on this section.
+If a dispute is not resolved, it will be resolved by the courts having jurisdiction under applicable law. Nothing in these Terms limits any mandatory consumer rights that cannot lawfully be excluded or limited.
+
+34. Mandatory Consumer Rights
+Nothing in these Terms excludes, restricts or limits rights or remedies that cannot lawfully be excluded, restricted or limited, including mandatory consumer-protection rights.
 
 35. Changes to These Terms
 We may update these Terms from time to time.
@@ -432,7 +446,7 @@ If there is a conflict between these Terms and specific checkout or product term
 
 38. Contact
 For questions about these Terms, contact:
-Benefitpoint Inc.
+Benefitpoint Alexander Grushin
 Doing business as: PolyProPicks
-Email: Alex_ceo@polypropicks.com
+Email: alex_ceo@polypropicks.com
 For legal notices, use the subject line: Legal Notice.

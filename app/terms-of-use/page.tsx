@@ -5,7 +5,7 @@ import LegalDocument from '@/components/legal/LegalDocument';
 
 export const metadata = {
   title: 'Terms of Use | PolyProPicks',
-  description: 'Terms of Use for PolyProPicks by Benefitpoint, Inc.',
+  description: 'Terms of Use for PolyProPicks by Benefitpoint Alexander Grushin.',
 };
 
 export default function TermsOfUsePage() {

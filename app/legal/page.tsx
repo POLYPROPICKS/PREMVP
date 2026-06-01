@@ -5,7 +5,7 @@ import LegalDocument from '@/components/legal/LegalDocument';
 
 export const metadata = {
   title: 'Legal | PolyProPicks',
-  description: 'Legal center for PolyProPicks by Benefitpoint, Inc.',
+  description: 'Legal center for PolyProPicks by Benefitpoint Alexander Grushin.',
 };
 
 const legalJsonLd = {
@@ -17,9 +17,9 @@ const legalJsonLd = {
     'Central index for PolyProPicks terms, privacy policy, risk notices, paid access disclosures, cookie and tracking notices, and user legal information.',
   publisher: {
     '@type': 'Organization',
-    name: 'Benefitpoint Inc.',
+    name: 'Benefitpoint Alexander Grushin',
     url: 'https://polypropicks.com',
-    email: 'Alex_ceo@polypropicks.com',
+    email: 'alex_ceo@polypropicks.com',
     brand: { '@type': 'Brand', name: 'PolyProPicks' },
   },
   about: [

@@ -4,7 +4,7 @@
 
 This Legal Center is the central index for the terms, policies, notices, and risk disclosures that apply to your use of **PolyProPicks.com**.
 
-PolyProPicks is operated by **Benefitpoint Inc.**, doing business as **PolyProPicks**.
+PolyProPicks is operated by **Benefitpoint Alexander Grushin**, doing business as **PolyProPicks**.
 
 PolyProPicks provides sports and prediction-market intelligence, including signal cards, Signal Confidence scores, market movement summaries, trust metrics, and related informational content.
 
@@ -60,7 +60,7 @@ The Terms explain:
 **Last updated:** May 28, 2026  
 **Status:** Active
 
-The Privacy Policy explains how Benefitpoint Inc. / PolyProPicks collects, uses, discloses, stores, and protects information when you visit the website, sign up for signals, request premium access, interact with emails, use referral links, or contact us.
+The Privacy Policy explains how Benefitpoint Alexander Grushin / PolyProPicks collects, uses, discloses, stores, and protects information when you visit the website, sign up for signals, request premium access, interact with emails, use referral links, or contact us.
 
 The Privacy Policy explains:
 
@@ -246,7 +246,7 @@ If advertising pixels or conversion APIs are enabled, some privacy laws may trea
 
 Privacy and opt-out requests can be sent to:
 
-**Alex\_ceo@polypropicks.com**
+**alex\_ceo@polypropicks.com**
 
 ---
 
@@ -342,9 +342,9 @@ By using PolyProPicks, you are responsible for:
 
 For legal, privacy, support, or policy questions, contact:
 
-**Benefitpoint Inc.**  
-Doing business as: **PolyProPicks**  
-Email: **Alex\_ceo@polypropicks.com**
+**Benefitpoint Alexander Grushin**
+Doing business as: **PolyProPicks**
+Email: **alex\_ceo@polypropicks.com**
 
 Suggested subject lines:
 

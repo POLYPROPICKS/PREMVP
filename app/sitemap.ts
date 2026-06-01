@@ -38,5 +38,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "monthly",
       priority: 0.5,
     },
+    {
+      url: "https://polypropicks.com/alerts",
+      lastModified: new Date("2026-06-01"),
+      changeFrequency: "monthly",
+      priority: 0.6,
+    },
   ];
 }
