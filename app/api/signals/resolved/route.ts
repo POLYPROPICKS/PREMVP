@@ -13,10 +13,10 @@ const DEFAULT_LIMIT = 10;
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 25;
 const LATEST_MAX_CARDS = 7;
-const LATEST_MAX_LOST = 1;
+const LATEST_MAX_LOST = 2;
 const LATEST_DEFAULT_DAYS = 7;
 const WEEK_MAX_CARDS = 7;
-const WEEK_MAX_LOST = 1;
+const WEEK_MAX_LOST = 2;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -207,7 +207,7 @@ interface WeekResultsCard {
   window: { label: "Past 7 days"; days: 7; startedAt: string; endedAt: string };
   title: string;
   subtitle: string;
-  selectionRule: "last_7d_highest_activity_max_7_max_1_loss_no_push";
+  selectionRule: "last_7d_highest_activity_max_7_max_2_loss_no_push";
   sampleSizeStatus: "empty" | "early" | "active" | "enough_data";
   showPerformanceClaim: boolean;
   totalStats: {
@@ -225,7 +225,7 @@ interface WeekResultsCard {
     displayedPush: number;
     winRatioLabel: string;
     maxDisplayed: 7;
-    maxLosses: 1;
+    maxLosses: 2;
   };
   frontendHints: {
     primaryMetric: string;
@@ -280,7 +280,7 @@ function buildEmptyWeekResultsCard(totalRowsScanned = 0): WeekResultsCard {
     window: { label: "Past 7 days", days: 7, startedAt, endedAt: generatedAt },
     title: "Signals tracked this week",
     subtitle: "Real tracking, not a performance guarantee",
-    selectionRule: "last_7d_highest_activity_max_7_max_1_loss_no_push",
+    selectionRule: "last_7d_highest_activity_max_7_max_2_loss_no_push",
     sampleSizeStatus: "empty",
     showPerformanceClaim: false,
     totalStats: {
@@ -295,7 +295,7 @@ function buildEmptyWeekResultsCard(totalRowsScanned = 0): WeekResultsCard {
     },
     displayedStats: {
       displayedCount: 0, displayedWon: 0, displayedLost: 0, displayedPush: 0,
-      winRatioLabel: "No results yet", maxDisplayed: 7, maxLosses: 1,
+      winRatioLabel: "No results yet", maxDisplayed: 7, maxLosses: 2,
     },
     featuredResult: null,
     miniResults: [],
@@ -394,7 +394,7 @@ export async function GET(request: Request) {
             maxCards: LATEST_MAX_CARDS,
             maxLost: LATEST_MAX_LOST,
             excludePush: true,
-            selectionRule: "last_7d_highest_activity_max_one_loss",
+            selectionRule: "last_7d_highest_activity_max_two_loss",
           }),
         },
         signals: [],
@@ -616,7 +616,7 @@ export async function GET(request: Request) {
     window: { label: "Past 7 days", days: 7, startedAt: weekStartedAt, endedAt: weekEndedAt },
     title: "Signals tracked this week",
     subtitle: "Real tracking, not a performance guarantee",
-    selectionRule: "last_7d_highest_activity_max_7_max_1_loss_no_push",
+    selectionRule: "last_7d_highest_activity_max_7_max_2_loss_no_push",
     sampleSizeStatus,
     showPerformanceClaim: false,
     totalStats: {
@@ -634,7 +634,7 @@ export async function GET(request: Request) {
       displayedPush,
       winRatioLabel,
       maxDisplayed: 7,
-      maxLosses: 1,
+      maxLosses: 2,
     },
     featuredResult: featured
       ? {
@@ -687,8 +687,8 @@ export async function GET(request: Request) {
     validationErrors.push("cardType mismatch");
   if (weekResultsCard.displayedStats.displayedCount > 7)
     validationErrors.push("displayedCount > 7");
-  if (weekResultsCard.displayedStats.displayedLost > 1)
-    validationErrors.push("displayedLost > 1");
+  if (weekResultsCard.displayedStats.displayedLost > 2)
+    validationErrors.push("displayedLost > 2");
   if (weekResultsCard.displayedStats.displayedPush !== 0)
     validationErrors.push("displayedPush !== 0");
   if (weekResultsCard.miniResults.length !== weekResultsCard.displayedStats.displayedCount)
@@ -757,7 +757,7 @@ export async function GET(request: Request) {
           maxCards: LATEST_MAX_CARDS,
           maxLost: LATEST_MAX_LOST,
           excludePush: true,
-          selectionRule: "last_7d_highest_activity_max_one_loss",
+          selectionRule: "last_7d_highest_activity_max_two_loss",
         }),
       },
       signals,

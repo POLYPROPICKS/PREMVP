@@ -6,7 +6,7 @@ import ResolvedSignalCard from './ResolvedSignalCard';
 
 const PUSH_RESULTS = new Set(['push', 'refund', 'tie', 'void', 'cancelled', 'no_contest']);
 const MAX_CARDS = 7;
-const MAX_LOST = 1;
+const MAX_LOST = 2;
 
 // Shape returned by /api/signals/resolved?mode=latest
 export interface ApiResolvedSignal {
