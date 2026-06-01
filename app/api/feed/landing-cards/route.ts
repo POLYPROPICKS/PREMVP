@@ -25,7 +25,6 @@ function orderLivePairsForResponse<T extends {
   };
 }>(pairs: T[]): T[] {
   const now = Date.now();
-  const horizon = now + 24 * 60 * 60 * 1000;
 
   const indexed = pairs.map((pair, index) => ({ pair, index }));
 
@@ -36,24 +35,38 @@ function orderLivePairsForResponse<T extends {
     return 2;
   };
 
+  const horizonRank = (pair: T) => {
+    const start = Date.parse(String(pair.diagnostics?.gameStartIso ?? ""));
+
+    if (!Number.isFinite(start) || start <= now) return 4;
+
+    const hoursUntilStart = (start - now) / (60 * 60 * 1000);
+
+    if (hoursUntilStart <= 24) return 0;
+    if (hoursUntilStart <= 48) return 1;
+    if (hoursUntilStart <= 7 * 24) return 2;
+    return 3;
+  };
+
   indexed.sort((a, b) => {
-    const aStart = Date.parse(String(a.pair.diagnostics?.gameStartIso ?? ""));
-    const bStart = Date.parse(String(b.pair.diagnostics?.gameStartIso ?? ""));
+    const aRank = horizonRank(a.pair);
+    const bRank = horizonRank(b.pair);
 
-    const aWithin24h =
-      Number.isFinite(aStart) && aStart > now && aStart <= horizon;
-    const bWithin24h =
-      Number.isFinite(bStart) && bStart > now && bStart <= horizon;
+    if (aRank !== bRank) return aRank - bRank;
 
-    if (aWithin24h !== bWithin24h) return aWithin24h ? -1 : 1;
-
-    if (aWithin24h && bWithin24h) {
-      const aVolume = Number(a.pair.diagnostics?.parentEventVolume24hr ?? 0);
-      const bVolume = Number(b.pair.diagnostics?.parentEventVolume24hr ?? 0);
+    if (aRank < 4) {
+      const aVolume = Number(
+        a.pair.diagnostics?.parentEventVolume24hr ?? 0
+      );
+      const bVolume = Number(
+        b.pair.diagnostics?.parentEventVolume24hr ?? 0
+      );
 
       if (aVolume !== bVolume) return bVolume - aVolume;
 
-      const rankDiff = primaryMarketRank(a.pair) - primaryMarketRank(b.pair);
+      const rankDiff =
+        primaryMarketRank(a.pair) - primaryMarketRank(b.pair);
+
       if (rankDiff !== 0) return rankDiff;
     }
 
