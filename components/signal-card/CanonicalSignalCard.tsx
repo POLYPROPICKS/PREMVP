@@ -113,15 +113,6 @@ export default function CanonicalSignalCard({ signal, diagnostics, footer }: Can
   const probability = Math.max(0, Math.min(100, Number(signal.winProbability) || 0));
   const ringDegrees = probability * 3.6;
 
-  const getBadgeText = (prob: number): string => {
-    const backendLabel = signal.confidenceLabel;
-    if (backendLabel && backendLabel.length > 0) return backendLabel.toUpperCase();
-    if (prob >= 80) return "ABSOLUTE CONFIDENCE";
-    if (prob > 65) return "HIGH CONFIDENCE";
-    if (prob > 55) return "MIDDLE CONFIDENCE";
-    return "LOW CONFIDENCE";
-  };
-
   const getRingColor = (prob: number): string => {
     if (prob >= 80) return "#FFF500"; // ABSOLUTE
     if (prob > 65) return "#FFF500"; // HIGH
@@ -130,8 +121,32 @@ export default function CanonicalSignalCard({ signal, diagnostics, footer }: Can
   };
 
   const actionLabel = signal.actionLabel as "ENTER" | "SMALL" | "WATCH" | undefined;
-  const badgeText = getBadgeText(probability);
   const ringColor = getRingColor(probability);
+
+  // Frontend-only display mappers (no backend fields changed)
+  const actionDisplay = ((): string => {
+    const a = (signal.actionLabel ?? "").toString().trim().toUpperCase();
+    if (a === "ENTER") return "ENTER";
+    if (a === "SMALL") return "LIGHT ENTRY";
+    if (a === "WATCH") return "WATCH";
+    return a.length > 0 ? a : "WATCH";
+  })();
+  const actionContext = ((): string => {
+    switch ((signal.confidenceLabel ?? "").toString().trim()) {
+      case "Strong Favorite": return "Strong favorite";
+      case "Favorite Edge": return "Favorite setup";
+      case "Core Signal": return "Core signal";
+      case "Value Lean": return "Value setup";
+      case "Underdog Value": return "Higher-odds setup";
+      case "Longshot Value": return "Longshot setup";
+      case "High-Upside Longshot": return "Speculative watch";
+      default: return "Market setup";
+    }
+  })();
+  const actionColorClass =
+    actionLabel === "ENTER" ? styles.actionEnterLg :
+    actionLabel === "SMALL" ? styles.actionSmallLg :
+    styles.actionWatchLg;
 
   const ringStyle = {
     background: `conic-gradient(${ringColor} 0deg ${ringDegrees}deg, rgba(255,255,255,0.16) ${ringDegrees}deg 360deg)`,
@@ -192,23 +207,6 @@ export default function CanonicalSignalCard({ signal, diagnostics, footer }: Can
           </svg>
           <span>{signal.league} | {signal.time}</span>
         </div>
-        <div className={styles.confidencePill}>
-          <svg viewBox="0 0 24 24" className={styles.shield} aria-hidden="true">
-            <path
-              d="M12 2.8 19 5.7v5.1c0 5-3 8.7-7 10.4-4-1.7-7-5.4-7-10.4V5.7L12 2.8Z"
-              fill="currentColor"
-            />
-            <path
-              d="m8.7 12.2 2.1 2.1 4.5-4.7"
-              stroke="#06220B"
-              strokeWidth="2.2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              fill="none"
-            />
-          </svg>
-          <span>{badgeText}</span>
-        </div>
       </div>
       <h1 className={styles.eventTitle}>{signal.eventTitle}</h1>
       {/* 3 · Recommended Position */}
@@ -234,7 +232,7 @@ export default function CanonicalSignalCard({ signal, diagnostics, footer }: Can
               <path d="M2 15l5-5 3 3 6-8" /><path d="M14 5h4v4" />
             </svg>
           </div>
-          <div className={styles.cellSub}><span>Decimal</span><span className={styles.cellSubVal}>{decimalOdds}</span></div>
+          <div className={`${styles.cellSub} ${styles.oddsSub}`}><span>Decimal</span><span className={styles.cellSubVal}>{decimalOdds}</span></div>
         </div>
         <div className={styles.profitCell}>
           <div className={styles.cellCap}>Expected Profit</div>
@@ -257,16 +255,13 @@ export default function CanonicalSignalCard({ signal, diagnostics, footer }: Can
           </div>
         </div>
         <div className={styles.actionCell}>
-          <div className={styles.cellCap}>Recommended Action</div>
-          {actionLabel && (
-            <div className={
-              actionLabel === "ENTER" ? styles.actionEnterLg :
-              actionLabel === "SMALL" ? styles.actionSmallLg :
-              styles.actionWatchLg
-            }>
-              {actionLabel}
+          <div className={`${styles.cellCap} ${styles.actionCap}`}>Recommended Action</div>
+          <div className={styles.actionGroup}>
+            <div className={`${styles.actionPill} ${actionColorClass}`}>
+              {actionDisplay}
             </div>
-          )}
+            <div className={styles.actionContext}>{actionContext}</div>
+          </div>
           {polymarketUrl && (
             <a
               href={polymarketUrl}
