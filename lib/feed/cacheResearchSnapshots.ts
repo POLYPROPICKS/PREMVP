@@ -38,6 +38,13 @@ export async function writeResearchEligibleSignalSnapshots({
     product_rejection_reasons: s.productRejectionReasons,
     diagnostics: s.diagnostics,
     public_feed_exposed: s.publicFeedExposed,
+    // Modeling feature contract v1
+    event_id: s.eventId ?? null,
+    formula_feature_version: s.formulaFeatureVersion ?? null,
+    hours_until_start_num: s.hoursUntilStartNum ?? null,
+    signal_phase_at_snapshot: s.signalPhaseAtSnapshot ?? null,
+    odds_band_label: s.oddsBandLabel ?? null,
+    opposing_price_num: s.opposingPriceNum ?? null,
   }));
 
   const { error, count } = await supabaseAdmin

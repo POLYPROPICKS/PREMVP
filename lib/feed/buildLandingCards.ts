@@ -1830,6 +1830,19 @@ async function tryBuildResearchSnapshot(
     execContext,
   };
 
+  // Modeling feature contract v1 — derived fields (no feed impact)
+  const hoursUntilStartNum =
+    Number.isFinite(gameStartMs) && Number.isFinite(snapshotMs)
+      ? Math.round(((gameStartMs - snapshotMs) / 3_600_000) * 100) / 100
+      : null;
+  // opposingPriceNum: safe only when binary guard is proven (checked at top of function)
+  const opposingPriceNum =
+    diag.directionalFlowBinaryGuard === true
+      ? Math.round((1 - price) * 10_000) / 10_000
+      : null;
+  const oddsBandLabel = diag.formulaAudit?.oddsBandLabel ?? null;
+  const eventId = safeString(candidate.event.id) ?? null;
+
   return {
     snapshotRunId,
     snapshotAt,
@@ -1854,6 +1867,13 @@ async function tryBuildResearchSnapshot(
     productRejectionReasons: [...diag.rejectionReasons],
     diagnostics: researchDiagnostics,
     publicFeedExposed: false, // will be marked true after pairsToCache is known
+    // Modeling feature contract v1
+    eventId,
+    formulaFeatureVersion: "modeling-features-v1",
+    hoursUntilStartNum,
+    signalPhaseAtSnapshot,
+    oddsBandLabel,
+    opposingPriceNum,
   };
 }
 

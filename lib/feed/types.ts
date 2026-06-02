@@ -229,6 +229,14 @@ export interface ResearchEligibleSignalSnapshot {
   diagnostics: LandingCardDiagnostics;
 
   publicFeedExposed: boolean;
+
+  // Modeling feature contract v1 — persisted for downstream analysis only
+  eventId?: string | null;
+  formulaFeatureVersion?: string | null;
+  hoursUntilStartNum?: number | null;
+  signalPhaseAtSnapshot?: string | null;
+  oddsBandLabel?: string | null;
+  opposingPriceNum?: number | null;
 }
 
 // Polymarket API raw types
