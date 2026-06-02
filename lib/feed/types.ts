@@ -125,6 +125,14 @@ export interface LandingCardDiagnostics {
     discoverySourceProxy: string | null;
     gameTimeConfidence: "high" | "medium" | "low" | "none" | null;
   };
+  execContext?: {
+    v: "v1";
+    fetchedAt: string;
+    fetchDurationMs: number;
+    fetchState: "ok" | "empty_book" | "fetch_failed";
+    selectedTopBids: Array<{ price: number; size: number }>;
+    selectedTopAsks: Array<{ price: number; size: number }>;
+  };
 }
 
 export interface LandingCardPair {

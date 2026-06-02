@@ -1667,14 +1667,14 @@ async function buildUpcomingPairs(
 // Returns null if the candidate fails research eligibility (binary guard,
 // token presence, odds corridor). Does NOT modify enriched or diagnostics.
 
-function tryBuildResearchSnapshot(
+async function tryBuildResearchSnapshot(
   enriched: EnrichedMarket,
   candidate: CandidateMarket,
   snapshotRunId: string,
   snapshotAt: string,
   oddsMin: number,
   oddsMax: number,
-): ResearchEligibleSignalSnapshot | null {
+): Promise<ResearchEligibleSignalSnapshot | null> {
   const diag = enriched.diagnostics;
 
   // Must have condition_id and selectedTokenId
@@ -1722,6 +1722,47 @@ function tryBuildResearchSnapshot(
   // marketCloseIso: event.endDate is resolvedGameTimeIso (game-time proxy) in the
   // sports-discovery path — not a proven market-close timestamp. No reliable source
   // for market close exists at snapshot time; store null.
+
+  // Fetch selected-token order book — research path only, fail-open
+  const fetchStartedAt = Date.now();
+  const rawBook = await fetchOrderBookSafe(selectedTokId);
+  const fetchDurationMs = Date.now() - fetchStartedAt;
+  const fetchedAt = new Date().toISOString();
+
+  type BookLevel = { price: number; size: number };
+  let selectedTopBids: BookLevel[] = [];
+  let selectedTopAsks: BookLevel[] = [];
+  let fetchState: "ok" | "empty_book" | "fetch_failed";
+
+  if (rawBook === null) {
+    fetchState = "fetch_failed";
+  } else {
+    const parseBid = ([p, s]: [string, string]): BookLevel | null => {
+      const price = parseFloat(p);
+      const size = parseFloat(s);
+      return Number.isFinite(price) && Number.isFinite(size) && price > 0 && size > 0
+        ? { price, size } : null;
+    };
+    const parseAsk = parseBid;
+
+    selectedTopBids = (rawBook.bids ?? [])
+      .map(parseBid)
+      .filter((l): l is BookLevel => l !== null)
+      .sort((a, b) => b.price - a.price)   // bids: price DESC
+      .slice(0, 10);
+
+    selectedTopAsks = (rawBook.asks ?? [])
+      .map(parseAsk)
+      .filter((l): l is BookLevel => l !== null)
+      .sort((a, b) => a.price - b.price)   // asks: price ASC
+      .slice(0, 10);
+
+    fetchState =
+      selectedTopBids.length === 0 && selectedTopAsks.length === 0
+        ? "empty_book"
+        : "ok";
+  }
+
   const researchDiagnostics: LandingCardDiagnostics = {
     ...diag,
     researchContext: {
@@ -1733,6 +1774,14 @@ function tryBuildResearchSnapshot(
       gameTimeConfidence:
         (parentMetaExt?.gameTimeConfidence as "high" | "medium" | "low" | "none" | undefined) ??
         null,
+    },
+    execContext: {
+      v: "v1",
+      fetchedAt,
+      fetchDurationMs,
+      fetchState,
+      selectedTopBids,
+      selectedTopAsks,
     },
   };
 
@@ -2067,7 +2116,7 @@ export async function buildLandingCards(options?: {
       // product-specific filters. dataCoverage is stored as a field, NOT used
       // as an eligibility gate here.
       if (collectResearchSnapshots && !researchCapReached && researchSnapshotRunId && researchSnapshotAt) {
-        const snap = tryBuildResearchSnapshot(
+        const snap = await tryBuildResearchSnapshot(
           enriched,
           candidate,
           researchSnapshotRunId,
