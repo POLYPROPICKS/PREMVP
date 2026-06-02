@@ -1729,50 +1729,90 @@ async function tryBuildResearchSnapshot(
   // for market close exists at snapshot time; store null.
 
   // Fetch selected-token order book — research path only, fail-open
-  if (funnel) funnel.execFetchAttempted++;
   const fetchStartedAt = Date.now();
-  const rawBook = await fetchOrderBookSafe(selectedTokId);
-  const fetchDurationMs = Date.now() - fetchStartedAt;
-  const fetchedAt = new Date().toISOString();
+  if (funnel) funnel.execFetchAttempted++;
 
   type BookLevel = { price: number; size: number };
-  let selectedTopBids: BookLevel[] = [];
-  let selectedTopAsks: BookLevel[] = [];
-  let fetchState: "ok" | "empty_book" | "fetch_failed";
+  // Default: fail-open in case of unexpected throw before state is determined
+  let execContext: NonNullable<LandingCardDiagnostics["execContext"]> = {
+    v: "v1",
+    fetchedAt: new Date().toISOString(),
+    fetchDurationMs: 0,
+    fetchState: "fetch_failed",
+    selectedTopBids: [],
+    selectedTopAsks: [],
+  };
 
-  if (rawBook === null) {
-    fetchState = "fetch_failed";
-  } else {
-    const parseBid = ([p, s]: [string, string]): BookLevel | null => {
-      const price = parseFloat(p);
-      const size = parseFloat(s);
-      return Number.isFinite(price) && Number.isFinite(size) && price > 0 && size > 0
-        ? { price, size } : null;
+  try {
+    const rawBook = await fetchOrderBookSafe(selectedTokId);
+    const fetchDurationMs = Date.now() - fetchStartedAt;
+    const fetchedAt = new Date().toISOString();
+
+    if (rawBook === null) {
+      if (funnel) funnel.execFetchFailed++;
+      execContext = {
+        v: "v1",
+        fetchedAt,
+        fetchDurationMs,
+        fetchState: "fetch_failed",
+        selectedTopBids: [],
+        selectedTopAsks: [],
+      };
+    } else {
+      const parseBid = ([p, s]: [string, string]): BookLevel | null => {
+        const price = parseFloat(p);
+        const size = parseFloat(s);
+        return Number.isFinite(price) && Number.isFinite(size) && price > 0 && size > 0
+          ? { price, size } : null;
+      };
+      const parseAsk = parseBid;
+
+      const selectedTopBids = (rawBook.bids ?? [])
+        .map(parseBid)
+        .filter((l): l is BookLevel => l !== null)
+        .sort((a, b) => b.price - a.price)   // bids: price DESC
+        .slice(0, 10);
+
+      const selectedTopAsks = (rawBook.asks ?? [])
+        .map(parseAsk)
+        .filter((l): l is BookLevel => l !== null)
+        .sort((a, b) => a.price - b.price)   // asks: price ASC
+        .slice(0, 10);
+
+      const fetchState =
+        selectedTopBids.length === 0 && selectedTopAsks.length === 0
+          ? "empty_book"
+          : "ok";
+
+      if (funnel) {
+        if (fetchState === "ok") funnel.execFetchOk++;
+        else funnel.execFetchEmptyBook++;
+      }
+
+      execContext = {
+        v: "v1",
+        fetchedAt,
+        fetchDurationMs,
+        fetchState,
+        selectedTopBids,
+        selectedTopAsks,
+      };
+    }
+  } catch (execErr) {
+    const fetchDurationMs = Date.now() - fetchStartedAt;
+    if (funnel) funnel.execFetchFailed++;
+    console.warn(
+      "[research-exec-context] fail-open fetch_failed:",
+      execErr instanceof Error ? execErr.message.slice(0, 180) : String(execErr).slice(0, 180),
+    );
+    execContext = {
+      v: "v1",
+      fetchedAt: new Date().toISOString(),
+      fetchDurationMs,
+      fetchState: "fetch_failed",
+      selectedTopBids: [],
+      selectedTopAsks: [],
     };
-    const parseAsk = parseBid;
-
-    selectedTopBids = (rawBook.bids ?? [])
-      .map(parseBid)
-      .filter((l): l is BookLevel => l !== null)
-      .sort((a, b) => b.price - a.price)   // bids: price DESC
-      .slice(0, 10);
-
-    selectedTopAsks = (rawBook.asks ?? [])
-      .map(parseAsk)
-      .filter((l): l is BookLevel => l !== null)
-      .sort((a, b) => a.price - b.price)   // asks: price ASC
-      .slice(0, 10);
-
-    fetchState =
-      selectedTopBids.length === 0 && selectedTopAsks.length === 0
-        ? "empty_book"
-        : "ok";
-  }
-
-  if (funnel) {
-    if (fetchState === "ok") funnel.execFetchOk++;
-    else if (fetchState === "empty_book") funnel.execFetchEmptyBook++;
-    else funnel.execFetchFailed++;
   }
 
   const researchDiagnostics: LandingCardDiagnostics = {
@@ -1787,14 +1827,7 @@ async function tryBuildResearchSnapshot(
         (parentMetaExt?.gameTimeConfidence as "high" | "medium" | "low" | "none" | undefined) ??
         null,
     },
-    execContext: {
-      v: "v1",
-      fetchedAt,
-      fetchDurationMs,
-      fetchState,
-      selectedTopBids,
-      selectedTopAsks,
-    },
+    execContext,
   };
 
   return {
