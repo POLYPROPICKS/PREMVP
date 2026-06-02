@@ -38,6 +38,7 @@ interface WindowStats {
   confLost: number;
   confWinRate: string;
   confMissing: number;
+  totalReturn: string;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -89,6 +90,14 @@ function avgOrNA(vals: (number | null)[]): string {
 function avgReturnFmt(vals: (number | null)[]): string {
   const s = avgOrNA(vals);
   return s === "N/A" ? "N/A" : `${s}%`;
+}
+
+function totalReturnFmt(vals: (number | null)[]): string {
+  const nums = vals.filter((v): v is number => Number.isFinite(v));
+  if (nums.length === 0) return "N/A";
+  const total = nums.reduce((sum, value) => sum + value, 0);
+  const rounded = Math.round(total * 10) / 10;
+  return `${rounded > 0 ? "+" : ""}${rounded}%`;
 }
 
 const PUSH_RESULTS = new Set([
@@ -231,6 +240,7 @@ function computeWindow(rows: ResolvedRow[]): WindowStats {
     confLost,
     confWinRate: winRateFmt(confWon, confLost),
     confMissing,
+    totalReturn: totalReturnFmt(returns),
   };
 }
 
@@ -587,10 +597,11 @@ async function main() {
     (lastResolverJobRun?.diagnostics as Record<string, unknown> | null) ?? null;
   const resolverCronSelected = safeNum(resolverCronDiag?.selected);
 
-  // ── 3b. Resolved performance (direct DB, 72h window) ─────────────────────
+  // ── 3b. Resolved performance (all-time paginated fetch) ──────────────────
   const cutoff72 = new Date(now.getTime() - 72 * 3_600_000).toISOString();
   const cutoff48 = new Date(now.getTime() - 48 * 3_600_000).toISOString();
   const cutoff24 = new Date(now.getTime() - 24 * 3_600_000).toISOString();
+  const cutoff7d = new Date(now.getTime() - 7 * 24 * 3_600_000).toISOString();
 
   let resolvedRows: ResolvedRow[] = [];
   let resolvedError: string | null = null;
@@ -603,21 +614,35 @@ async function main() {
 
   if (supabase) {
     try {
-      const { data, error } = await supabase
-        .from("generated_signal_pairs")
-        .select(
-          "id, created_at, resolved_at, condition_id, selected_token_id, " +
-          "signal_result, signal_confidence_num, " +
-          "entry_price_num, realized_return_pct, metric_formula_version, " +
-          "event_slug, selected_outcome, premium_signal",
-        )
-        .not("signal_result", "is", null)
-        .gte("resolved_at", cutoff72)
-        .order("resolved_at", { ascending: false })
-        .limit(500);
-      if (error) throw new Error(error.message);
-      const rawRows72 = (data ?? []) as unknown as ResolvedRow[];
-      const deduped = deduplicateRows(rawRows72);
+      const RESOLVED_PAGE_SIZE = 1000;
+      const RESOLVED_MAX_PAGES = 20;
+      const rawRowsAll: ResolvedRow[] = [];
+      const RESOLVED_FIELDS =
+        "id, created_at, resolved_at, condition_id, selected_token_id, " +
+        "signal_result, signal_confidence_num, " +
+        "entry_price_num, realized_return_pct, metric_formula_version, " +
+        "event_slug, selected_outcome, premium_signal";
+
+      for (let page = 0; page < RESOLVED_MAX_PAGES; page += 1) {
+        const from = page * RESOLVED_PAGE_SIZE;
+        const to = from + RESOLVED_PAGE_SIZE - 1;
+        const { data, error } = await supabase
+          .from("generated_signal_pairs")
+          .select(RESOLVED_FIELDS)
+          .not("signal_result", "is", null)
+          .order("resolved_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to);
+        if (error) throw new Error(error.message);
+        const pageRows = (data ?? []) as unknown as ResolvedRow[];
+        rawRowsAll.push(...pageRows);
+        if (pageRows.length < RESOLVED_PAGE_SIZE) break;
+        if (page === RESOLVED_MAX_PAGES - 1) {
+          throw new Error("Resolved rows pagination safety cap reached");
+        }
+      }
+
+      const deduped = deduplicateRows(rawRowsAll);
       dedupDiag = {
         rawCount: deduped.rawCount,
         uniqueCount: deduped.uniqueCount,
@@ -632,7 +657,7 @@ async function main() {
       // Informational note — expected behaviour, not a failure
       if (deduped.rawCount > 0 && deduped.rawCount / deduped.uniqueCount >= 2) {
         redFlags.push(
-          `ℹ️ Dedup: ${deduped.rawCount} raw строк → ${deduped.uniqueCount} уникальных сигналов за 72h (ожидаемо — cache-cron вставляет повторные снимки)`,
+          `ℹ️ Dedup: ${deduped.rawCount} raw строк → ${deduped.uniqueCount} уникальных сигналов (ожидаемо — cache-cron вставляет повторные снимки)`,
         );
       }
     } catch (e) {
@@ -641,17 +666,25 @@ async function main() {
     }
   }
 
-  const rows72 = resolvedRows;
+  const rows72 = resolvedRows.filter(
+    (r) => r.resolved_at != null && r.resolved_at >= cutoff72,
+  );
   const rows48 = resolvedRows.filter(
     (r) => r.resolved_at != null && r.resolved_at >= cutoff48,
   );
   const rows24 = resolvedRows.filter(
     (r) => r.resolved_at != null && r.resolved_at >= cutoff24,
   );
+  const rows7d = resolvedRows.filter(
+    (r) => r.resolved_at != null && r.resolved_at >= cutoff7d,
+  );
+  const rowsAllTime = resolvedRows;
 
   const stats72 = computeWindow(rows72);
   const stats48 = computeWindow(rows48);
   const stats24 = computeWindow(rows24);
+  const stats7d = computeWindow(rows7d);
+  const statsAllTime = computeWindow(rowsAllTime);
 
   if (stats24.total === 0)
     redFlags.push(`⚠️ За 24h нет resolved сигналов`);
@@ -1038,22 +1071,24 @@ async function main() {
   out(``);
 
   // Performance
-  out(`## 📊 Performance: Resolved 24h / 48h / 72h`);
+  out(`## 📊 Performance: Resolved 24h / 48h / 72h / 7d / All time`);
   out(``);
   if (resolvedError) {
     out(`> ❌ DB недоступен: ${resolvedError}`);
   } else {
-    out(`| Окно | Всего | Won | Lost | Push | Win% | Avg Conf | Avg Return |`);
+    out(`| Окно | Всего | Won | Lost | Push | Win% | Avg Conf | Avg Return | Total Return |`);
     out(
-      `|------|-------|-----|------|------|------|----------|------------|`,
+      `|------|-------|-----|------|------|------|----------|------------|--------------|`,
     );
     for (const [label, s] of [
       ["24h", stats24],
       ["48h", stats48],
       ["72h", stats72],
+      ["7d", stats7d],
+      ["All time", statsAllTime],
     ] as [string, WindowStats][]) {
       out(
-        `| ${label} | ${s.total} | ${s.won} | ${s.lost} | ${s.push} | ${s.winRate} | ${s.avgConf} | ${s.avgReturn} |`,
+        `| ${label} | ${s.total} | ${s.won} | ${s.lost} | ${s.push} | ${s.winRate} | ${s.avgConf} | ${s.avgReturn} | ${s.totalReturn} |`,
       );
     }
   }
