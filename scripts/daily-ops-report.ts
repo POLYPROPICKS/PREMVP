@@ -355,6 +355,221 @@ function computeObsStats(rows: ResolvedRow[]): ObsStats {
   };
 }
 
+// ── M3-B shadow helpers (observation only, no production impact) ─────────────
+
+type M3bCoverageState = "missing" | "none" | "low" | "medium" | "high" | "unexpected";
+
+// Exact discrete mapping — dataCoverage takes values: null / 0 / 25 / 50 / 75 / 100
+function deriveM3bCoverageState(dataCoverage: number | null | undefined): M3bCoverageState {
+  if (dataCoverage == null) return "missing";
+  if (dataCoverage === 0) return "none";
+  if (dataCoverage === 25) return "low";
+  if (dataCoverage === 50) return "medium";
+  if (dataCoverage === 75 || dataCoverage === 100) return "high";
+  return "unexpected";
+}
+
+interface M3bEvidenceState {
+  smartMoneyFallback: boolean;
+  pubWhaleFallback: boolean;
+  coverageValue: number | null;
+  coverageState: M3bCoverageState;
+  selectedCashAvailable: boolean;
+  selectedCountAvailable: boolean;
+  totalCountAvailable: boolean;
+  opposingCountDerivable: boolean;
+  opposingCashAvailable: false;
+}
+
+function deriveM3bEvidenceState(row: ResolvedRow): M3bEvidenceState {
+  const diag = row.diagnostics;
+  const maxTC  = diag ? safeNum(diag.maxTradeCash)       : null;
+  const recTC  = diag ? safeNum(diag.recentTradeCash)    : null;
+  const selCnt = diag ? safeNum(diag.selectedTradeCount) : null;
+  const totCnt = diag ? safeNum(diag.totalTradeCount)    : null;
+  const cov    = diag ? safeNum(diag.dataCoverage)       : null;
+  const smFall = maxTC === null && recTC === null;
+  const pwFall = selCnt === null || selCnt === 0 || recTC === null;
+  return {
+    smartMoneyFallback: smFall,
+    pubWhaleFallback: pwFall,
+    coverageValue: cov,
+    coverageState: deriveM3bCoverageState(cov),
+    selectedCashAvailable: recTC !== null,
+    selectedCountAvailable: selCnt !== null,
+    totalCountAvailable: totCnt !== null,
+    opposingCountDerivable: totCnt !== null && selCnt !== null,
+    opposingCashAvailable: false,
+  };
+}
+
+const ODDS_ALPHA_MAP: Record<string, number> = {
+  "Core Signal":     0.7,
+  "Value Lean":      0.7,
+  "Underdog Value":  1.0,
+  "Longshot Value":  0.2,
+  "ABSENT":          0.0,
+};
+const ACTION_MAP: Record<string, number> = {
+  "ENTER":       1.0,
+  "SMALL":       0.5,
+  "LIGHT ENTRY": 0.5,
+  "WATCH":       0.0,
+  "ABSENT":      0.0,
+};
+// FIXED train-only sigmoid anchors (immutable after training cutoff 2026-05-29)
+const P50_LOG_FLOW = 9.7840;
+const P75_LOG_FLOW = 10.4841;
+const M3B_SIGMOID_DENOM = P75_LOG_FLOW - P50_LOG_FLOW + 0.01;
+// SCOREC_B25_LOCKED_Q25: frozen constant — never re-derived from post-cutoff data
+// Source: train-only Q25 from created_at < 2026-05-29, known-action rows (n=84)
+// Exact float: 0.569196028392123  |  toFixed(6): 0.569196
+const SCOREC_B25_LOCKED_Q25 = 0.569196028392123;
+
+function computeScoreCMetaRisk(row: ResolvedRow): number | null {
+  const ps    = row.premium_signal;
+  const diag  = row.diagnostics;
+  const audit = diag ? (diag.formulaAudit as Record<string, unknown> | undefined) : undefined;
+  const bandLabel   = safeStr(ps?.oddsBandLabel)              ?? "ABSENT";
+  const actionLabel = safeStr(audit?.action ?? ps?.actionLabel) ?? "ABSENT";
+  const oddsQ  = ODDS_ALPHA_MAP[bandLabel]   ?? 0.5;
+  const actionQ = ACTION_MAP[actionLabel]    ?? 0.5;
+  const cov    = diag ? safeNum(diag.dataCoverage) : null;
+  const covNorm = cov !== null ? Math.max(0, Math.min(1, cov / 100)) : 0.5;
+  const recTC  = diag ? safeNum(diag.recentTradeCash) : null;
+  const logRec = Math.log1p(recTC ?? 0);
+  const flowSig = 1 / (1 + Math.exp(-(logRec - P75_LOG_FLOW) / M3B_SIGMOID_DENOM));
+  return 0.30 * oddsQ + 0.30 * flowSig + 0.25 * actionQ + 0.15 * covNorm;
+}
+
+function computeDedupeConservative(row: ResolvedRow): number | null {
+  const diag  = row.diagnostics;
+  if (!diag) return null;
+  const audit = diag.formulaAudit as Record<string, unknown> | undefined;
+  if (!audit) return null;
+  const oF = safeNum(audit.oddsFit);
+  const sm = safeNum(audit.smartMoneyVal);
+  const pw = safeNum(audit.pubWhaleVal);
+  const pe = safeNum(audit.preEventVal);
+  if (oF === null || sm === null || pw === null || pe === null) return null;
+  const cov = safeNum(diag.dataCoverage) ?? 0;
+  const flowAvg = (sm + pw) / 2;
+  return 0.35 * oF + 0.20 * flowAvg + 0.25 * pe + 0.20 * cov;
+}
+
+function getActionLabel(row: ResolvedRow): string {
+  const diag  = row.diagnostics;
+  const audit = diag ? (diag.formulaAudit as Record<string, unknown> | undefined) : undefined;
+  return safeStr(audit?.action ?? row.premium_signal?.actionLabel) ?? "ABSENT";
+}
+function getOddsBandLabel(row: ResolvedRow): string {
+  return safeStr(row.premium_signal?.oddsBandLabel) ?? "ABSENT";
+}
+
+function deriveSizingStakes(
+  row: ResolvedRow,
+  scoreCQ25: number | null,
+): { flat: number | null; a1: number | null; f2: number | null; f2b25: number | null } {
+  const act = getActionLabel(row);
+  if (act === "ABSENT") return { flat: null, a1: null, f2: null, f2b25: null };
+  const band = getOddsBandLabel(row);
+  const mf   = deriveMarketFamilyProxy(row);
+  const flat = 10;
+  const a1   = act === "ENTER" ? 10 : (act === "SMALL" || act === "LIGHT ENTRY") ? 5 : 0;
+  let f2 = a1;
+  if (band === "Longshot Value") f2 = Math.min(f2, 2.5);
+  if (mf === "totals" && (act === "SMALL" || act === "LIGHT ENTRY")) f2 = Math.min(f2, 2.5);
+  let f2b25 = f2;
+  if (scoreCQ25 !== null) {
+    const sc = computeScoreCMetaRisk(row);
+    if (sc !== null && sc < scoreCQ25) f2b25 = f2 * 0.5;
+  }
+  return { flat, a1, f2, f2b25 };
+}
+
+interface SizingStats {
+  activeRows: number; pnl: string; roi: string;
+  maxDD: string; worstDay: string; positiveDayShare: string;
+}
+
+function computeSizingStats(rows: ResolvedRow[], stakeGet: (r: ResolvedRow) => number | null): SizingStats {
+  type R = { date: string; rAt: string; stake: number; ret: number | null };
+  const active: R[] = [];
+  for (const r of rows) {
+    const s = stakeGet(r);
+    if (s === null || s <= 0) continue;
+    const rAt  = r.resolved_at ?? r.created_at;
+    active.push({ date: rAt.slice(0, 10), rAt, stake: s, ret: safeNum(r.realized_return_pct) });
+  }
+  if (active.length === 0) return { activeRows: 0, pnl: "N/A", roi: "N/A", maxDD: "N/A", worstDay: "N/A", positiveDayShare: "N/A" };
+  active.sort((a, b) => a.rAt.localeCompare(b.rAt));
+  const totalStaked = active.reduce((s, r) => s + r.stake, 0);
+  let pnl = 0, runPnl = 0, peak = 0, maxDD = 0;
+  const dayPnl: Record<string, number> = {};
+  for (const r of active) {
+    const rp = r.ret !== null ? r.stake * (r.ret / 100) : 0;
+    pnl += rp; runPnl += rp;
+    if (runPnl > peak) peak = runPnl;
+    const dd = peak - runPnl;
+    if (dd > maxDD) maxDD = dd;
+    dayPnl[r.date] = (dayPnl[r.date] ?? 0) + rp;
+  }
+  const days = Object.values(dayPnl);
+  const posDays = days.filter(d => d > 0).length;
+  const fmt = (v: number) => `$${Math.round(v * 10) / 10}`;
+  return {
+    activeRows: active.length,
+    pnl: fmt(pnl),
+    roi: totalStaked > 0 ? `${Math.round(pnl / totalStaked * 1000) / 10}%` : "N/A",
+    maxDD: fmt(maxDD),
+    worstDay: fmt(Math.min(...days, 0)),
+    positiveDayShare: days.length ? `${Math.round(posDays / days.length * 100)}%` : "N/A",
+  };
+}
+
+function spearmanVsReturn(rows: ResolvedRow[], scoreGet: (r: ResolvedRow) => number | null): string {
+  const pairs = rows
+    .map(r => [scoreGet(r), safeNum(r.realized_return_pct)] as [number | null, number | null])
+    .filter((p): p is [number, number] => p[0] !== null && p[1] !== null);
+  const n = pairs.length;
+  if (n < 3) return "N/A";
+  const rankOf = (vals: number[]) => {
+    const idx = vals.map((v, i) => [v, i] as [number, number]).sort((a, b) => a[0] - b[0]);
+    const r = new Array(n).fill(0);
+    idx.forEach(([, i], pos) => { r[i] = pos + 1; });
+    return r;
+  };
+  const rx = rankOf(pairs.map(p => p[0]));
+  const ry = rankOf(pairs.map(p => p[1]));
+  const dSq = rx.reduce((s, r, i) => s + (r - ry[i]) ** 2, 0);
+  const sp = 1 - (6 * dSq) / (n * (n * n - 1));
+  return `${Math.round(sp * 1000) / 1000}`;
+}
+
+function quartileROI(rows: ResolvedRow[], scoreGet: (r: ResolvedRow) => number | null): {
+  q4roi: string; q1roi: string; spread: string; n: number; uniqueVals: number;
+} {
+  const scored = rows
+    .map(r => ({ s: scoreGet(r), ret: safeNum(r.realized_return_pct) }))
+    .filter((x): x is { s: number; ret: number } => x.s !== null && x.ret !== null)
+    .sort((a, b) => a.s - b.s);
+  const n = scored.length;
+  const uniqueVals = new Set(scored.map(x => x.s)).size;
+  if (n < 4) return { q4roi: "N/A", q1roi: "N/A", spread: "N/A", n, uniqueVals };
+  const q1e = Math.floor(n * 0.25);
+  const q4s = Math.floor(n * 0.75);
+  // Tie-safe: if Q1 upper boundary == Q4 lower boundary, splitting is arbitrary
+  if (uniqueVals < 4 || scored[q1e - 1].s === scored[q4s].s) {
+    const tag = `N/A (DISCRETE_TIES, uv=${uniqueVals})`;
+    return { q4roi: "N/A (DISCRETE_TIES)", q1roi: "N/A (DISCRETE_TIES)", spread: tag, n, uniqueVals };
+  }
+  const avg = (arr: { ret: number }[]) => arr.reduce((s, x) => s + x.ret, 0) / arr.length;
+  const q1a = avg(scored.slice(0, q1e));
+  const q4a = avg(scored.slice(q4s));
+  const f = (v: number) => `${Math.round(v * 10) / 10}%`;
+  return { q4roi: f(q4a), q1roi: f(q1a), spread: f(q4a - q1a), n, uniqueVals };
+}
+
 // ── Deduplication ─────────────────────────────────────────────────────────────
 // Each market/outcome pair is cached repeatedly by signal-cache-cron (~30 min).
 // Resolver writes signal_result to ALL rows in the group simultaneously.
@@ -883,6 +1098,101 @@ async function main() {
     );
   }
   // ── END OBS pre-compute ─────────────────────────────────────────────────────
+
+  // ── OBS: M3-B pre-compute (shadow tracking — no production impact) ───────────
+
+  // Evidence state counters (all-time)
+  let m3bSmFallback = 0, m3bPwFallback = 0;
+  let m3bCovMissing = 0, m3bCovNone = 0, m3bCovLow = 0, m3bCovMedium = 0, m3bCovHigh = 0, m3bCovUnexpected = 0;
+  let m3bSelCashAvail = 0, m3bSelCntAvail = 0, m3bTotCntAvail = 0, m3bOppCntDerivable = 0;
+
+  for (const r of rowsAllTime) {
+    const ev = deriveM3bEvidenceState(r);
+    if (ev.smartMoneyFallback) m3bSmFallback++;
+    if (ev.pubWhaleFallback) m3bPwFallback++;
+    if (ev.coverageState === "missing") m3bCovMissing++;
+    else if (ev.coverageState === "none") m3bCovNone++;
+    else if (ev.coverageState === "low") m3bCovLow++;
+    else if (ev.coverageState === "medium") m3bCovMedium++;
+    else if (ev.coverageState === "high") m3bCovHigh++;
+    else if (ev.coverageState === "unexpected") m3bCovUnexpected++;
+    if (ev.selectedCashAvailable) m3bSelCashAvail++;
+    if (ev.selectedCountAvailable) m3bSelCntAvail++;
+    if (ev.totalCountAvailable) m3bTotCntAvail++;
+    if (ev.opposingCountDerivable) m3bOppCntDerivable++;
+  }
+
+  // Locked Q25 threshold for ScoreC
+  // Training rows: created_at < TRAIN_CUTOFF, action label != ABSENT
+  // Anchors are frozen after 2026-05-29 — never re-derived from post-cutoff data
+  const TRAIN_CUTOFF = "2026-05-29";
+  const m3bTrainRows = rowsAllTime.filter(
+    (r) => r.created_at.slice(0, 10) < TRAIN_CUTOFF && getActionLabel(r) !== "ABSENT",
+  );
+  const m3bTrainScores = m3bTrainRows
+    .map((r) => computeScoreCMetaRisk(r))
+    .filter((s): s is number => s !== null)
+    .sort((a, b) => a - b);
+  const m3bScoreCQ25: number | null =
+    m3bTrainScores.length >= 4
+      ? m3bTrainScores[Math.floor(m3bTrainScores.length * 0.25)]
+      : null;
+  const m3bTrainScoreCN = m3bTrainScores.length;
+
+  // Sizing stats per window (FLAT-KNOWN / ACTION-1 / FAMILY-2 / FAMILY-2+SCOREC-B25-HALF)
+  type M3bSizingKey = "flat" | "a1" | "f2" | "f2b25";
+  const M3B_SIZING_DEFS: [string, ResolvedRow[]][] = [
+    ["72h", rows72],
+    ["7d", rows7d],
+    ["All time", rowsAllTime],
+  ];
+  // Drift monitoring: compare locked constant against recomputed train-only Q25
+  const m3bScoreCDrift =
+    m3bScoreCQ25 !== null ? Math.abs(SCOREC_B25_LOCKED_Q25 - m3bScoreCQ25) : null;
+
+  // f2b25 MUST use only SCOREC_B25_LOCKED_Q25 — never the dynamically recomputed value
+  const m3bSizingStats: Record<string, Record<M3bSizingKey, SizingStats>> = {};
+  for (const [lbl, wr] of M3B_SIZING_DEFS) {
+    m3bSizingStats[lbl] = {
+      flat:  computeSizingStats(wr, (r) => deriveSizingStakes(r, m3bScoreCQ25).flat),
+      a1:    computeSizingStats(wr, (r) => deriveSizingStakes(r, m3bScoreCQ25).a1),
+      f2:    computeSizingStats(wr, (r) => deriveSizingStakes(r, m3bScoreCQ25).f2),
+      f2b25: computeSizingStats(wr, (r) => deriveSizingStakes(r, SCOREC_B25_LOCKED_Q25).f2b25),
+    };
+  }
+
+  // Score / component getter functions (read-only, no side effects)
+  function getProdRawScore(r: ResolvedRow): number | null {
+    const diag = r.diagnostics;
+    if (!diag) return null;
+    const audit = diag.formulaAudit as Record<string, unknown> | undefined;
+    if (!audit) return null;
+    return safeNum(audit.finalSignalV2) ?? safeNum(audit.signalV2Raw);
+  }
+  function getOddsQualityComponent(r: ResolvedRow): number | null {
+    const band = getOddsBandLabel(r);
+    if (band === "ABSENT") return null;
+    return ODDS_ALPHA_MAP[band] ?? null;
+  }
+  function getActionQualityComponent(r: ResolvedRow): number | null {
+    const act = getActionLabel(r);
+    if (act === "ABSENT") return null;
+    return ACTION_MAP[act] ?? null;
+  }
+  function getFlowSigmoidComponent(r: ResolvedRow): number | null {
+    const diag = r.diagnostics;
+    const recTC = diag ? safeNum(diag.recentTradeCash) : null;
+    if (recTC === null) return null; // absent → exclude from correlation (not zero)
+    const logRec = Math.log1p(recTC);
+    return 1 / (1 + Math.exp(-(logRec - P75_LOG_FLOW) / M3B_SIGMOID_DENOM));
+  }
+  function getCoverageNormComponent(r: ResolvedRow): number | null {
+    const diag = r.diagnostics;
+    const cov = diag ? safeNum(diag.dataCoverage) : null;
+    return cov !== null ? Math.max(0, Math.min(1, cov / 100)) : null;
+  }
+
+  // ── END OBS M3-B pre-compute ──────────────────────────────────────────────────
 
   if (stats24.total === 0)
     redFlags.push(`⚠️ За 24h нет resolved сигналов`);
@@ -1589,6 +1899,132 @@ async function main() {
   for (const [lg, cnt] of Object.entries(obsLeagueCounts).sort((a, b) => b[1] - a[1])) {
     out(`| ${lg} | ${cnt} |`);
   }
+  out(``);
+
+  // SECTION F: M3-B Source Truth Counters
+  out(`## 🔬 OBS: M3-B Source Truth Counters — All time [proxy only]`);
+  out(``);
+  {
+    const tot = rowsAllTime.length;
+    const pct = (n: number) => tot > 0 ? `${Math.round(n / tot * 100)}%` : "N/A";
+    out(`| Evidence Dimension | Count | % |`);
+    out(`|--------------------|-------|---|`);
+    out(`| Total resolved rows | ${tot} | 100% |`);
+    out(`| SmartMoney fallback (maxTC + recTC both null) | ${m3bSmFallback} | ${pct(m3bSmFallback)} |`);
+    out(`| PubWhale fallback (selCnt=0 or recTC null) | ${m3bPwFallback} | ${pct(m3bPwFallback)} |`);
+    out(`| coverage missing | ${m3bCovMissing} | ${pct(m3bCovMissing)} |`);
+    out(`| coverage none (=0) | ${m3bCovNone} | ${pct(m3bCovNone)} |`);
+    out(`| coverage low (=25) | ${m3bCovLow} | ${pct(m3bCovLow)} |`);
+    out(`| coverage medium (=50) | ${m3bCovMedium} | ${pct(m3bCovMedium)} |`);
+    out(`| coverage high (=75 or 100) | ${m3bCovHigh} | ${pct(m3bCovHigh)} |`);
+    out(`| coverage unexpected | ${m3bCovUnexpected} | ${pct(m3bCovUnexpected)} |`);
+    if (m3bCovUnexpected > 0) {
+      out(``);
+      out(`> ⚠️ WARNING: UNEXPECTED DATA COVERAGE VALUE DETECTED`);
+    }
+    out(`| selectedCashAvailable (recentTradeCash non-null) | ${m3bSelCashAvail} | ${pct(m3bSelCashAvail)} |`);
+    out(`| selectedCountAvailable (selectedTradeCount non-null) | ${m3bSelCntAvail} | ${pct(m3bSelCntAvail)} |`);
+    out(`| totalCountAvailable (totalTradeCount non-null) | ${m3bTotCntAvail} | ${pct(m3bTotCntAvail)} |`);
+    out(`| opposingCountDerivable (totCnt + selCnt non-null) | ${m3bOppCntDerivable} | ${pct(m3bOppCntDerivable)} |`);
+    out(`| opposingCashAvailable | 0 | ABSENT FROM RESOLVED SNAPSHOTS |`);
+  }
+  out(``);
+  out(`> ℹ️ Proxy only. These counters reflect evidence available at signal-creation time. Do not use as independent evidence.`);
+  out(``);
+
+  // SECTION G: M3-B Sizing Shadows
+  out(`## 🔬 OBS: M3-B Sizing Shadows — NOT DEPLOYED`);
+  out(``);
+  out(`**ScoreC B25 sizing threshold:**`);
+  out(`- Locked (SCOREC_B25_LOCKED_Q25): \`${SCOREC_B25_LOCKED_Q25.toFixed(6)}\` (frozen — never re-derived)`);
+  out(`- Recomputed train-only Q25 (cutoff ${TRAIN_CUTOFF}, n=${m3bTrainScoreCN}): ${m3bScoreCQ25 !== null ? m3bScoreCQ25.toFixed(6) : "N/A"}`);
+  out(`- Threshold drift: ${m3bScoreCDrift !== null ? m3bScoreCDrift.toFixed(6) : "N/A"}${m3bScoreCDrift !== null && m3bScoreCDrift > 0.000001 ? " ⚠️ WARNING: LOCKED SCOREC Q25 DRIFT DETECTED" : " (within tolerance)"}`);
+  out(``);
+  out(`| Window | Strategy | Active Rows | P&L | ROI | Max DD | Worst Day | +Day% |`);
+  out(`|--------|----------|-------------|-----|-----|--------|-----------|-------|`);
+  {
+    const sizingEntries: Array<[string, string]> = [
+      ["flat",  "FLAT-KNOWN ($10 if action≠ABSENT)"],
+      ["a1",    "ACTION-1 (ENTER=$10, SMALL=$5, WATCH=$0)"],
+      ["f2",    "FAMILY-2 (A1 + Longshot≤$2.50 + totals+SMALL≤$2.50)"],
+      ["f2b25", "FAMILY-2+SCOREC-B25-HALF (F2×0.5 if ScoreC<Q25)"],
+    ];
+    for (const [lbl] of M3B_SIZING_DEFS) {
+      const sz = m3bSizingStats[lbl];
+      for (const [key, label] of sizingEntries) {
+        const s = sz[key as M3bSizingKey];
+        out(`| ${lbl} | ${label} | ${s.activeRows} | ${s.pnl} | ${s.roi} | ${s.maxDD} | ${s.worstDay} | ${s.positiveDayShare} |`);
+      }
+    }
+  }
+  out(``);
+  out(`> ⚠️ Shadow only. No sizing changes are deployed. Historical simulation on proxy data.`);
+  out(``);
+
+  // SECTION H: M3-B Score Benchmarks
+  out(`## 🔬 OBS: M3-B Score Benchmarks — SHADOW ONLY`);
+  out(``);
+  {
+    // Known-action ranking universe: exclude legacy ABSENT rows (no action label)
+    const m3bKaAll = rowsAllTime.filter(r => getActionLabel(r) !== "ABSENT");
+    const m3bKa7d  = rows7d.filter(r => getActionLabel(r) !== "ABSENT");
+    const m3bExclAll = rowsAllTime.length - m3bKaAll.length;
+    const m3bExcl7d  = rows7d.length - m3bKa7d.length;
+    out(`benchmark universe: KNOWN_ACTION_ONLY`);
+    out(`- All time: included=${m3bKaAll.length}, excluded legacy ABSENT=${m3bExclAll}`);
+    out(`- 7d:       included=${m3bKa7d.length}, excluded legacy ABSENT=${m3bExcl7d}`);
+    out(`> ℹ️ LEGACY_ABSENT rows remain visible in overall performance reporting but are excluded from ranking-quality evaluation.`);
+    out(``);
+    out(`| Window | Score | N | Spearman | Q4 ROI | Q1 ROI | Spread (uv) |`);
+    out(`|--------|-------|---|----------|--------|--------|-------------|`);
+    const m3bBenchDefs: [string, ResolvedRow[]][] = [["7d", m3bKa7d], ["All time", m3bKaAll]];
+    const m3bScoreDefs: Array<[string, (r: ResolvedRow) => number | null]> = [
+      ["PROD-RAW (finalSignalV2)", getProdRawScore],
+      ["DEDUPE-CONSERVATIVE", computeDedupeConservative],
+      ["SCOREC-META-RISK-PROXY", computeScoreCMetaRisk],
+    ];
+    for (const [wlbl, wrows] of m3bBenchDefs) {
+      for (const [slbl, scoreFn] of m3bScoreDefs) {
+        const q = quartileROI(wrows, scoreFn);
+        const sp = spearmanVsReturn(wrows, scoreFn);
+        out(`| ${wlbl} | ${slbl} | ${q.n} | ${sp} | ${q.q4roi} | ${q.q1roi} | ${q.spread} |`);
+      }
+    }
+
+    // SECTION I: M3-B Component Diagnostics
+    out(``);
+    out(`## 🔬 OBS: M3-B Component Diagnostics — PROXY ONLY`);
+    out(``);
+    out(`benchmark universe: KNOWN_ACTION_ONLY (same filter as Score Benchmarks)`);
+    out(``);
+    out(`| Window | Component | N | Spearman | Q4 ROI | Q1 ROI | Spread (uv) |`);
+    out(`|--------|-----------|---|----------|--------|--------|-------------|`);
+    const m3bCompDefs: Array<[string, (r: ResolvedRow) => number | null]> = [
+      ["OddsQuality (ODDS_ALPHA_MAP[band])", getOddsQualityComponent],
+      ["ActionQuality (ACTION_MAP[action])", getActionQualityComponent],
+      ["FlowSigmoid (log-sigmoid recentTradeCash, PROXY ONLY)", getFlowSigmoidComponent],
+      ["CoverageNorm (dataCoverage/100)", getCoverageNormComponent],
+    ];
+    for (const [wlbl, wrows] of m3bBenchDefs) {
+      for (const [clbl, compFn] of m3bCompDefs) {
+        const q = quartileROI(wrows, compFn);
+        const sp = spearmanVsReturn(wrows, compFn);
+        out(`| ${wlbl} | ${clbl} | ${q.n} | ${sp} | ${q.q4roi} | ${q.q1roi} | ${q.spread} |`);
+      }
+    }
+  }
+  out(``);
+  out(`> ℹ️ FlowSigmoid: recentTradeCash selected-side proxy. Null rows excluded from N. Opposing-side cash ABSENT from all resolved snapshots.`);
+  out(``);
+
+  // M3-B methodology warning (FIX 5)
+  out(`---`);
+  out(`> **⚠️ M3-B Methodology Notice**`);
+  out(`> All M3-B metrics are observation-only.`);
+  out(`> Primary ranking-quality universe excludes legacy ABSENT rows.`);
+  out(`> Discrete components use tie-safe reporting; quartile ROI is N/A when equal-value splitting would be arbitrary.`);
+  out(`> Score-C is a meta-risk proxy overlay, not Independent Evidence v2.`);
+  out(`> Production feed, confidence, ranking and sizing are unchanged.`);
   out(``);
 
   // ── END OBS Sections ──────────────────────────────────────────────────────────
