@@ -1,11 +1,14 @@
 // Signal generation script
 // Generates TrustedInitialformulaLanding1.1 pairs and caches them in Supabase
 
+import { randomUUID } from "node:crypto";
+
 import { buildLandingCards, applyStrategicFloor } from "../lib/feed/buildLandingCards";
 import {
   writeGeneratedSignalPairs,
   writeJobRun,
 } from "../lib/feed/cacheGeneratedSignals";
+import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
 import { FORMULA_VERSION } from "../lib/feed/types";
 
 const CONFIG = {
@@ -32,6 +35,10 @@ async function main() {
   console.log(`[generate-signals] Config: ${JSON.stringify(CONFIG)}`);
 
   try {
+    // Research universe: one UUID per cron run, frozen before buildLandingCards
+    const researchSnapshotRunId = randomUUID();
+    const researchSnapshotAt = new Date().toISOString();
+
     // Call sports landing cards generation logic
     const result = await buildLandingCards({
       limit: CONFIG.limit,
@@ -40,6 +47,13 @@ async function main() {
       excludeEnded: CONFIG.excludeEnded,
       includeUpcoming: CONFIG.includeUpcoming,
       upcomingLimit: CONFIG.upcomingLimit,
+      // Research universe options — does not alter product feed behavior
+      collectResearchSnapshots: true,
+      researchSnapshotRunId,
+      researchSnapshotAt,
+      researchLimit: 45,
+      researchOddsMin: 1.25,
+      researchOddsMax: 4.00,
     });
 
     // Founder LIVE rule: across the merged qualified + upcoming pool, pre-start
@@ -124,6 +138,51 @@ async function main() {
       });
 
       console.log(`[generate-signals] Cached ${generatedCount} pairs (expires: ${expiresAt})`);
+    }
+
+    // ── Research universe persistence ──────────────────────────────────────────
+    // Mark which research snapshots also landed in the public feed, then write.
+    // Runs regardless of generatedCount (research may yield rows even if product feed is empty).
+    const rawResearchSnapshots = result.researchSnapshots ?? [];
+    if (rawResearchSnapshots.length > 0) {
+      // Build identity set from the final public pairs (after strategic floor)
+      const publicIdentitySet = new Set(
+        pairsToCache.map(
+          (pair) =>
+            `${pair.diagnostics?.conditionId ?? ""}::${pair.diagnostics?.selectedTokenId ?? ""}`,
+        ),
+      );
+
+      const markedSnapshots = rawResearchSnapshots.map((snap) => ({
+        ...snap,
+        publicFeedExposed: publicIdentitySet.has(
+          `${snap.conditionId}::${snap.selectedTokenId}`,
+        ),
+      }));
+
+      let researchInserted = 0;
+      try {
+        const researchResult = await writeResearchEligibleSignalSnapshots({
+          snapshots: markedSnapshots,
+        });
+        researchInserted = researchResult.inserted;
+      } catch (researchError) {
+        // Research write failure is non-fatal — log and continue
+        console.warn(
+          "[generate-signals] Research snapshot write failed (non-fatal):",
+          researchError instanceof Error ? researchError.message : String(researchError),
+        );
+      }
+
+      const exposedCount = markedSnapshots.filter((s) => s.publicFeedExposed).length;
+      const notExposedCount = markedSnapshots.length - exposedCount;
+      console.log(`[generate-signals] Research snapshots collected: ${rawResearchSnapshots.length}`);
+      console.log(`[generate-signals] Research snapshots inserted: ${researchInserted}`);
+      console.log(`[generate-signals] Research snapshots public_feed_exposed: ${exposedCount}`);
+      console.log(`[generate-signals] Research snapshots not exposed: ${notExposedCount}`);
+      console.log(`[generate-signals] Research odds corridor: 1.25–4.00`);
+    } else {
+      console.log(`[generate-signals] Research snapshots collected: 0`);
     }
   } catch (error) {
     status = "error";

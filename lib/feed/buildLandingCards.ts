@@ -17,6 +17,7 @@ import {
   type PolymarketPricePoint,
   type PolymarketTrade,
   type PolymarketHolder,
+  type ResearchEligibleSignalSnapshot,
 } from "./types";
 
 import {
@@ -1658,6 +1659,77 @@ async function buildUpcomingPairs(
   return pairs;
 }
 
+// ── Research universe snapshot builder ───────────────────────────────────────
+// Captures a snapshot BEFORE product gates (dataCoverage, rejectionReasons,
+// winProbability, duplicate suppression, category allocation, final cap).
+// Returns null if the candidate fails research eligibility (binary guard,
+// token presence, odds corridor). Does NOT modify enriched or diagnostics.
+
+function tryBuildResearchSnapshot(
+  enriched: EnrichedMarket,
+  candidate: CandidateMarket,
+  snapshotRunId: string,
+  snapshotAt: string,
+  oddsMin: number,
+  oddsMax: number,
+): ResearchEligibleSignalSnapshot | null {
+  const diag = enriched.diagnostics;
+
+  // Must have condition_id and selectedTokenId
+  const condId = diag.conditionId;
+  const selectedTokId = diag.selectedTokenId;
+  if (!condId || !selectedTokId) return null;
+
+  // Must be a binary market (derived by M3-C block and stored in diagnostics)
+  if (!diag.directionalFlowBinaryGuard) return null;
+
+  // Derive opposing token from market token array
+  const allTokenIds = safeParseArray<string>(
+    enriched.market.clobTokenIds ?? enriched.market.tokenIds,
+  );
+  const opposingTokId = allTokenIds.find((t) => Boolean(t) && t !== selectedTokId) ?? null;
+  if (!opposingTokId) return null;
+
+  // Must have a valid price in (0, 1)
+  const price = enriched.selectedOutcome.price;
+  if (price <= 0 || price >= 1) return null;
+
+  // European odds = 1 / price; enforce corridor
+  const europeanOdds = Math.round((1 / price) * 10000) / 10000;
+  if (europeanOdds < oddsMin || europeanOdds > oddsMax) return null;
+
+  // expiresAt = snapshotAt + 90 days
+  const expiresAt = new Date(
+    new Date(snapshotAt).getTime() + 90 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  return {
+    snapshotRunId,
+    snapshotAt,
+    expiresAt,
+    scope: "RESEARCH_ELIGIBLE_UNIVERSE",
+    formulaVersion: FORMULA_VERSION,
+    conditionId: condId,
+    selectedTokenId: selectedTokId,
+    opposingTokenId: opposingTokId,
+    eventSlug:
+      safeString(candidate.event.slug) ??
+      safeString(candidate.market.slug) ??
+      null,
+    selectedOutcome: diag.selectedOutcome,
+    selectedPriceNum: price,
+    selectedEuropeanOddsNum: europeanOdds,
+    marketFamily: safeString(enriched.parentMeta.category) ?? null,
+    league: safeString(enriched.parentMeta.category) ?? null,
+    gameStartIso: diag.gameStartIso ?? null,
+    dataCoverageNum: typeof diag.dataCoverage === "number" ? diag.dataCoverage : null,
+    // Collect existing product rejection reasons as metadata only — NOT used as eligibility filter
+    productRejectionReasons: [...diag.rejectionReasons],
+    diagnostics: diag,
+    publicFeedExposed: false, // will be marked true after pairsToCache is known
+  };
+}
+
 /**
  * Main function to build landing cards from Polymarket data
  *
@@ -1665,6 +1737,8 @@ async function buildUpcomingPairs(
  * - category: sports-first filtering (sports | all)
  * - minDataCoverage: minimum data coverage threshold
  * - excludeEnded: exclude ended/closed markets
+ * - collectResearchSnapshots: if true, collect RESEARCH_ELIGIBLE_UNIVERSE
+ *   snapshots before product gates (default: false — preserves old behavior)
  */
 export async function buildLandingCards(options?: {
   limit?: number;
@@ -1673,6 +1747,13 @@ export async function buildLandingCards(options?: {
   excludeEnded?: boolean;
   includeUpcoming?: boolean;
   upcomingLimit?: number;
+  // Research universe options — safe defaults preserve existing behavior
+  collectResearchSnapshots?: boolean;
+  researchSnapshotRunId?: string;
+  researchSnapshotAt?: string;
+  researchLimit?: number;
+  researchOddsMin?: number;
+  researchOddsMax?: number;
 }): Promise<LandingCardsResponse> {
   const limit = clamp(options?.limit ?? 4, 1, 15);
   const category = options?.category ?? "sports";
@@ -1680,6 +1761,16 @@ export async function buildLandingCards(options?: {
   const excludeEnded = options?.excludeEnded ?? true;
   const includeUpcoming = options?.includeUpcoming ?? false;
   const upcomingLimit = clamp(options?.upcomingLimit ?? 5, 1, 15);
+
+  // Research universe options — collectResearchSnapshots=false preserves old behavior exactly
+  const collectResearchSnapshots = options?.collectResearchSnapshots ?? false;
+  const researchSnapshotRunId = options?.researchSnapshotRunId ?? null;
+  const researchSnapshotAt = options?.researchSnapshotAt ?? null;
+  const researchLimit = clamp(options?.researchLimit ?? limit * 3, 1, 200);
+  const researchOddsMin = options?.researchOddsMin ?? 1.25;
+  const researchOddsMax = options?.researchOddsMax ?? 4.00;
+
+  const researchSnapshots: ResearchEligibleSignalSnapshot[] = [];
 
   let upcomingRawSamples: SportsDiscoverySample[] = [];
 
@@ -1789,6 +1880,7 @@ export async function buildLandingCards(options?: {
             candidatesAfterDataCoverageFilter,
             pairsGenerated,
           },
+          ...(collectResearchSnapshots ? { researchSnapshots } : {}),
         };
       }
     } else {
@@ -1811,6 +1903,7 @@ export async function buildLandingCards(options?: {
             candidatesAfterCategoryFilter, candidatesAfterEndedFilter,
             candidatesAfterDataCoverageFilter, pairsGenerated,
           },
+          ...(collectResearchSnapshots ? { researchSnapshots } : {}),
         };
       }
 
@@ -1899,16 +1992,26 @@ export async function buildLandingCards(options?: {
       candidatesAfterEndedFilter = candidates.length;
     }
 
-    // Process candidates until we have enough pairs
+    // Process candidates until we have enough product pairs AND research snapshots.
+    // When collectResearchSnapshots=false the loop breaks exactly as before (at pairs.length>=limit).
+    // When collectResearchSnapshots=true the loop continues past the product cap only until
+    // researchSnapshots.length>=researchLimit; product pairs[] is never extended past limit.
     for (const candidate of candidates) {
-      if (pairs.length >= limit) break;
+      const productCapReached = pairs.length >= limit;
+      const researchCapReached =
+        !collectResearchSnapshots || researchSnapshots.length >= researchLimit;
 
-      // Skip if already has rejection reasons
+      // Both caps satisfied — stop iterating
+      if (productCapReached && researchCapReached) break;
+
+      // Skip if already has rejection reasons (product path only; research skips pre-enrichment failures)
       if (candidate.rejectionReasons.length > 0) {
-        rejected.push({
-          id: candidate.market.id,
-          rejectionReasons: [...candidate.rejectionReasons],
-        });
+        if (!productCapReached) {
+          rejected.push({
+            id: candidate.market.id,
+            rejectionReasons: [...candidate.rejectionReasons],
+          });
+        }
         continue;
       }
 
@@ -1916,12 +2019,34 @@ export async function buildLandingCards(options?: {
       const enriched = await enrichMarket(candidate.event, candidate.market, candidate.warnings);
 
       if (!enriched) {
-        rejected.push({
-          id: candidate.market.id,
-          rejectionReasons: ["Failed to select valid outcome"],
-        });
+        if (!productCapReached) {
+          rejected.push({
+            id: candidate.market.id,
+            rejectionReasons: ["Failed to select valid outcome"],
+          });
+        }
         continue;
       }
+
+      // ── RESEARCH SNAPSHOT CAPTURE (before product gates) ────────────────────
+      // Captured AFTER enrichment and M3-C diagnostics, BEFORE dataCoverage
+      // threshold, rejectionReasons gate, winProbability threshold, and all
+      // product-specific filters. dataCoverage is stored as a field, NOT used
+      // as an eligibility gate here.
+      if (collectResearchSnapshots && !researchCapReached && researchSnapshotRunId && researchSnapshotAt) {
+        const snap = tryBuildResearchSnapshot(
+          enriched,
+          candidate,
+          researchSnapshotRunId,
+          researchSnapshotAt,
+          researchOddsMin,
+          researchOddsMax,
+        );
+        if (snap) researchSnapshots.push(snap);
+      }
+
+      // ── PRODUCT GATES (only when product cap not yet reached) ───────────────
+      if (productCapReached) continue;
 
       // Check data coverage threshold
       if (enriched.diagnostics.dataCoverage < minDataCoverage) {
@@ -1972,10 +2097,11 @@ export async function buildLandingCards(options?: {
         continue;
       }
 
-      const marketKey = safeString(candidate.market.id)
-        || safeString(candidate.market.conditionId)
-        || safeString(candidate.market.slug)
-        || pair.id;
+      const marketKey =
+        safeString(candidate.market.id) ||
+        safeString(candidate.market.conditionId) ||
+        safeString(candidate.market.slug) ||
+        pair.id;
 
       if (seenPairIds.has(pair.id) || seenMarketKeys.has(marketKey)) {
         rejected.push({
@@ -2015,6 +2141,7 @@ export async function buildLandingCards(options?: {
         candidatesAfterDataCoverageFilter,
         pairsGenerated,
       },
+      ...(collectResearchSnapshots ? { researchSnapshots } : {}),
     };
   } catch (error) {
     // Only return error field for unexpected runtime failures
@@ -2041,6 +2168,7 @@ export async function buildLandingCards(options?: {
         candidatesAfterDataCoverageFilter,
         pairsGenerated,
       },
+      ...(collectResearchSnapshots ? { researchSnapshots } : {}),
     };
   }
 }

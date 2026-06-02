@@ -153,6 +153,47 @@ export interface LandingCardsResponse {
   error?: string;
   filters?: FilterParams;
   inspected?: InspectedMetadata;
+  // Research universe — only present when collectResearchSnapshots=true
+  researchSnapshots?: ResearchEligibleSignalSnapshot[];
+}
+
+// ============================================================================
+// Research Universe Types (RESEARCH_ELIGIBLE_UNIVERSE scope)
+// Captured before product gates: before dataCoverage threshold, before
+// rejectionReasons gate, before winProbability threshold, before category
+// allocation, before strategic floor, before public cap.
+// NOT used for scoring, NOT used for formula tuning.
+// ============================================================================
+
+export interface ResearchEligibleSignalSnapshot {
+  snapshotRunId: string;
+  snapshotAt: string;
+  expiresAt: string;
+
+  scope: "RESEARCH_ELIGIBLE_UNIVERSE";
+
+  formulaVersion?: string | null;
+
+  conditionId: string;
+  selectedTokenId: string;
+  opposingTokenId: string;
+
+  eventSlug?: string | null;
+  selectedOutcome?: string | null;
+
+  selectedPriceNum?: number | null;
+  selectedEuropeanOddsNum?: number | null;
+
+  marketFamily?: string | null;
+  league?: string | null;
+  gameStartIso?: string | null;
+
+  dataCoverageNum?: number | null;
+  productRejectionReasons: string[];
+
+  diagnostics: LandingCardDiagnostics;
+
+  publicFeedExposed: boolean;
 }
 
 // Polymarket API raw types
