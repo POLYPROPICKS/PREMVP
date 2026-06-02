@@ -23,6 +23,7 @@ interface ResolvedRow {
   event_slug: string | null;
   selected_outcome: string | null;
   premium_signal: Record<string, unknown> | null;
+  diagnostics: Record<string, unknown> | null;
 }
 
 interface WindowStats {
@@ -250,6 +251,108 @@ function execGit(cmd: string): string {
   } catch {
     return "N/A";
   }
+}
+
+// ── Observation-only timing / phase / exposure helpers ────────────────────────
+
+interface TimingProxy {
+  eventStartProxyIso: string | null;
+  minutesToEventStartProxy: number | null;
+  phaseProxy: "prematch_proxy" | "live_proxy" | "unknown";
+  timingBasis:
+    | "upcoming_candidate_resolved_game_time_proxy"
+    | "ambiguous_game_start_or_close_proxy"
+    | "missing";
+  resolvedBeforeEventStartProxy: boolean;
+}
+
+function deriveTimingProxy(row: ResolvedRow): TimingProxy {
+  const diag = row.diagnostics;
+  const rawIso = diag ? safeStr(diag.gameStartIso as unknown) : null;
+  const missing: TimingProxy = {
+    eventStartProxyIso: null,
+    minutesToEventStartProxy: null,
+    phaseProxy: "unknown",
+    timingBasis: "missing",
+    resolvedBeforeEventStartProxy: false,
+  };
+  if (!rawIso) return missing;
+  const gameMs = new Date(rawIso).getTime();
+  if (!Number.isFinite(gameMs)) return missing;
+  const snapshotMs = new Date(row.created_at).getTime();
+  const mins = Math.round((gameMs - snapshotMs) / 60_000);
+  const resolvedMs = row.resolved_at ? new Date(row.resolved_at).getTime() : null;
+  const basis =
+    diag && safeStr(diag.signalStatus as unknown) === "upcoming_candidate"
+      ? "upcoming_candidate_resolved_game_time_proxy"
+      : "ambiguous_game_start_or_close_proxy";
+  return {
+    eventStartProxyIso: rawIso,
+    minutesToEventStartProxy: mins,
+    phaseProxy: mins > 0 ? "prematch_proxy" : "live_proxy",
+    timingBasis: basis,
+    resolvedBeforeEventStartProxy: resolvedMs !== null ? resolvedMs < gameMs : false,
+  };
+}
+
+interface ParentEventKeyProxy {
+  parentEventKeyProxy: string;
+  parentEventKeyBasis: "polymarket_url" | "event_slug_fallback" | "condition_id_fallback";
+}
+
+function deriveParentEventKeyProxy(row: ResolvedRow): ParentEventKeyProxy {
+  const url = safeStr(row.premium_signal?.polymarketUrl);
+  if (url) return { parentEventKeyProxy: url, parentEventKeyBasis: "polymarket_url" };
+  const slug = safeStr(row.event_slug);
+  if (slug) return { parentEventKeyProxy: slug, parentEventKeyBasis: "event_slug_fallback" };
+  return {
+    parentEventKeyProxy: row.condition_id ?? row.id,
+    parentEventKeyBasis: "condition_id_fallback",
+  };
+}
+
+function deriveMarketFamilyProxy(row: ResolvedRow): "handicap_spread" | "totals" | "primary_outcome" {
+  const text = [
+    safeStr(row.event_slug) ?? "",
+    safeStr(row.premium_signal?.id) ?? "",
+    safeStr(row.selected_outcome) ?? "",
+  ]
+    .join(" ")
+    .toLowerCase();
+  if (/handicap|spread|-1\.5|\+1\.5|\bats\b/.test(text)) return "handicap_spread";
+  if (/total|o\/u|\bover\b|\bunder\b/.test(text)) return "totals";
+  return "primary_outcome";
+}
+
+interface ObsStats {
+  total: number;
+  won: number;
+  lost: number;
+  push: number;
+  winRate: string;
+  avgReturn: string;
+  totalReturn: string;
+}
+
+function computeObsStats(rows: ResolvedRow[]): ObsStats {
+  let won = 0, lost = 0, push = 0;
+  const returns: (number | null)[] = [];
+  for (const r of rows) {
+    const res = r.signal_result ?? "";
+    if (res === "won") won++;
+    else if (res === "lost") lost++;
+    else if (PUSH_RESULTS.has(res)) push++;
+    returns.push(safeNum(r.realized_return_pct));
+  }
+  return {
+    total: rows.length,
+    won,
+    lost,
+    push,
+    winRate: winRateFmt(won, lost),
+    avgReturn: avgReturnFmt(returns),
+    totalReturn: totalReturnFmt(returns),
+  };
 }
 
 // ── Deduplication ─────────────────────────────────────────────────────────────
@@ -621,7 +724,7 @@ async function main() {
         "id, created_at, resolved_at, condition_id, selected_token_id, " +
         "signal_result, signal_confidence_num, " +
         "entry_price_num, realized_return_pct, metric_formula_version, " +
-        "event_slug, selected_outcome, premium_signal";
+        "event_slug, selected_outcome, premium_signal, diagnostics";
 
       for (let page = 0; page < RESOLVED_MAX_PAGES; page += 1) {
         const from = page * RESOLVED_PAGE_SIZE;
@@ -685,6 +788,101 @@ async function main() {
   const stats24 = computeWindow(rows24);
   const stats7d = computeWindow(rows7d);
   const statsAllTime = computeWindow(rowsAllTime);
+
+  // ── OBS: pre-compute timing proxies (observation only, no production impact) ─
+  const obsWindowDefs: [string, ResolvedRow[]][] = [
+    ["24h", rows24],
+    ["48h", rows48],
+    ["72h", rows72],
+    ["7d", rows7d],
+    ["All time", rowsAllTime],
+  ];
+
+  // Data quality counters (all-time)
+  let obsDiagMissing = 0;
+  let obsGameIsoMissing = 0;
+  let obsUpcomingBasis = 0;
+  let obsAmbiguousBasis = 0;
+  let obsResolvedBeforeProxy = 0;
+  let obsPrematch = 0;
+  let obsLiveProxy = 0;
+  let obsUnknown = 0;
+  let obsParentUrlBasis = 0;
+  let obsParentFallbackBasis = 0;
+  const obsParentKeyMap = new Map<string, Set<string>>(); // parentKey → condition_ids
+  const obsParentFamilyMap = new Map<string, Set<string>>(); // parentKey → market families
+  const obsFamilyCounts: Record<string, number> = {
+    primary_outcome: 0,
+    totals: 0,
+    handicap_spread: 0,
+  };
+  const obsLeagueCounts: Record<string, number> = {};
+
+  const obsTimingCache = new Map<string, TimingProxy>();
+  const obsFamilyCache = new Map<string, ReturnType<typeof deriveMarketFamilyProxy>>();
+
+  for (const r of rowsAllTime) {
+    if (!r.diagnostics) obsDiagMissing++;
+    const tp = deriveTimingProxy(r);
+    obsTimingCache.set(r.id, tp);
+    if (tp.timingBasis === "missing") obsGameIsoMissing++;
+    else if (tp.timingBasis === "upcoming_candidate_resolved_game_time_proxy") obsUpcomingBasis++;
+    else obsAmbiguousBasis++;
+    if (tp.resolvedBeforeEventStartProxy) obsResolvedBeforeProxy++;
+    if (tp.phaseProxy === "prematch_proxy") obsPrematch++;
+    else if (tp.phaseProxy === "live_proxy") obsLiveProxy++;
+    else obsUnknown++;
+
+    const pk = deriveParentEventKeyProxy(r);
+    if (pk.parentEventKeyBasis === "polymarket_url") obsParentUrlBasis++;
+    else obsParentFallbackBasis++;
+    if (!obsParentKeyMap.has(pk.parentEventKeyProxy))
+      obsParentKeyMap.set(pk.parentEventKeyProxy, new Set());
+    if (!obsParentFamilyMap.has(pk.parentEventKeyProxy))
+      obsParentFamilyMap.set(pk.parentEventKeyProxy, new Set());
+    if (r.condition_id)
+      obsParentKeyMap.get(pk.parentEventKeyProxy)!.add(r.condition_id);
+
+    const mf = deriveMarketFamilyProxy(r);
+    obsFamilyCache.set(r.id, mf);
+    obsParentFamilyMap.get(pk.parentEventKeyProxy)!.add(mf);
+    obsFamilyCounts[mf] = (obsFamilyCounts[mf] ?? 0) + 1;
+
+    const league = safeStr(r.premium_signal?.league) ?? "Unknown";
+    obsLeagueCounts[league] = (obsLeagueCounts[league] ?? 0) + 1;
+  }
+
+  const obsMultiConditionParents = [...obsParentKeyMap.values()].filter(
+    (s) => s.size > 1,
+  ).length;
+  const obsMultiFamilyParents = [...obsParentFamilyMap.values()].filter(
+    (s) => s.size > 1,
+  ).length;
+  const obsMaxCondPerParent = Math.max(
+    0,
+    ...[...obsParentKeyMap.values()].map((s) => s.size),
+  );
+
+  // Helper: filter rows by timing cohort (uses cache)
+  function obsPhaseFilter(
+    rows: ResolvedRow[],
+    phase: "prematch_proxy" | "live_proxy" | "unknown",
+  ): ResolvedRow[] {
+    return rows.filter((r) => (obsTimingCache.get(r.id) ?? deriveTimingProxy(r)).phaseProxy === phase);
+  }
+  function obsTimingCohortFilter(rows: ResolvedRow[], minM: number, maxM: number): ResolvedRow[] {
+    return rows.filter((r) => {
+      const tp = obsTimingCache.get(r.id) ?? deriveTimingProxy(r);
+      if (tp.phaseProxy !== "prematch_proxy" || tp.minutesToEventStartProxy === null) return false;
+      return tp.minutesToEventStartProxy >= minM && tp.minutesToEventStartProxy <= maxM;
+    });
+  }
+  function obsFamilyFilter(rows: ResolvedRow[], family: string): ResolvedRow[] {
+    return rows.filter(
+      (r) => (obsFamilyCache.get(r.id) ?? deriveMarketFamilyProxy(r)) === family,
+    );
+  }
+  // ── END OBS pre-compute ─────────────────────────────────────────────────────
 
   if (stats24.total === 0)
     redFlags.push(`⚠️ За 24h нет resolved сигналов`);
@@ -1277,6 +1475,123 @@ async function main() {
     }
   }
   out(``);
+
+  // ── OBS Sections ─────────────────────────────────────────────────────────────
+
+  // SECTION A: Timing Data Quality
+  out(`## 🔬 OBS: Timing Data Quality — All time [observation only]`);
+  out(``);
+  out(`| Counter | Value |`);
+  out(`|---------|-------|`);
+  out(`| Deduplicated resolved rows | ${rowsAllTime.length} |`);
+  out(`| diagnostics missing | ${obsDiagMissing} |`);
+  out(`| gameStartIso missing or invalid | ${obsGameIsoMissing} |`);
+  out(`| timing basis: upcoming_candidate_resolved_game_time_proxy | ${obsUpcomingBasis} |`);
+  out(`| timing basis: ambiguous_game_start_or_close_proxy | ${obsAmbiguousBasis} |`);
+  out(`| resolved before event-start proxy | ${obsResolvedBeforeProxy} |`);
+  out(`| derived prematch_proxy | ${obsPrematch} |`);
+  out(`| derived live_proxy | ${obsLiveProxy} |`);
+  out(`| unknown phase | ${obsUnknown} |`);
+  out(`| parent event URL basis | ${obsParentUrlBasis} |`);
+  out(`| parent event fallback basis | ${obsParentFallbackBasis} |`);
+  out(`| market_close_iso | ABSENT FROM RESOLVED SNAPSHOTS |`);
+  out(``);
+  out(`> ℹ️ Counters are observation-only. gameStartIso semantics are mixed (kickoff for sports-discovery, market endDate for others). Do not use as a production filter.`);
+  out(``);
+
+  // SECTION B: Derived Phase Proxy
+  out(`## 🔬 OBS: Derived Phase Proxy — observation only`);
+  out(``);
+  out(`| Window | Phase proxy | Total | Won | Lost | Push | Win% | Avg Return | Total Return |`);
+  out(`|--------|-------------|-------|-----|------|------|------|------------|--------------|`);
+  for (const [label, wrows] of obsWindowDefs) {
+    for (const phase of ["prematch_proxy", "live_proxy", "unknown"] as const) {
+      const s = computeObsStats(obsPhaseFilter(wrows, phase));
+      out(`| ${label} | ${phase} | ${s.total} | ${s.won} | ${s.lost} | ${s.push} | ${s.winRate} | ${s.avgReturn} | ${s.totalReturn} |`);
+    }
+  }
+  out(``);
+
+  // SECTION C: Prematch Timing Proxy Cohorts
+  out(`## 🔬 OBS: Prematch Timing Proxy Cohorts — observation only`);
+  out(``);
+  out(`| Window | Timing proxy cohort | Total | Won | Lost | Push | Win% | Avg Return | Total Return |`);
+  out(`|--------|---------------------|-------|-----|------|------|------|------------|--------------|`);
+  for (const [label, wrows] of obsWindowDefs) {
+    const cohorts: [string, ResolvedRow[]][] = [
+      ["<15m", obsTimingCohortFilter(wrows, 0, 14)],
+      ["15–59m", obsTimingCohortFilter(wrows, 15, 59)],
+      ["60–119m", obsTimingCohortFilter(wrows, 60, 119)],
+      ["120m+", obsTimingCohortFilter(wrows, 120, 999_999)],
+      ["live_proxy", obsPhaseFilter(wrows, "live_proxy")],
+      ["unknown", obsPhaseFilter(wrows, "unknown")],
+    ];
+    for (const [cohort, crows] of cohorts) {
+      const s = computeObsStats(crows);
+      out(`| ${label} | ${cohort} | ${s.total} | ${s.won} | ${s.lost} | ${s.push} | ${s.winRate} | ${s.avgReturn} | ${s.totalReturn} |`);
+    }
+  }
+  out(``);
+
+  // SECTION D: Simulated What-If Formulas
+  out(`## 🔬 OBS: Simulated What-If Formulas — NOT DEPLOYED`);
+  out(``);
+  out(`| Window | Formula | Total | Won | Lost | Push | Win% | Avg Return | Total Return |`);
+  out(`|--------|---------|-------|-----|------|------|------|------------|--------------|`);
+  for (const [label, wrows] of [["72h", rows72], ["7d", rows7d], ["All time", rowsAllTime]] as [string, ResolvedRow[]][]) {
+    const base = computeObsStats(wrows);
+    const excl1to2h = computeObsStats(
+      wrows.filter((r) => {
+        const tp = obsTimingCache.get(r.id) ?? deriveTimingProxy(r);
+        if (tp.phaseProxy !== "prematch_proxy" || tp.minutesToEventStartProxy === null) return true;
+        return !(tp.minutesToEventStartProxy >= 60 && tp.minutesToEventStartProxy <= 119);
+      }),
+    );
+    const only15to59 = computeObsStats(obsTimingCohortFilter(wrows, 15, 59));
+    const exclTotals = computeObsStats(
+      wrows.filter((r) => (obsFamilyCache.get(r.id) ?? deriveMarketFamilyProxy(r)) !== "totals"),
+    );
+    for (const [formula, s] of [
+      ["OBS-BASE", base],
+      ["OBS-EXCLUDE-1TO2H", excl1to2h],
+      ["OBS-ONLY-15TO59M", only15to59],
+      ["OBS-EXCLUDE-TOTALS", exclTotals],
+    ] as [string, ObsStats][]) {
+      out(`| ${label} | ${formula} | ${s.total} | ${s.won} | ${s.lost} | ${s.push} | ${s.winRate} | ${s.avgReturn} | ${s.totalReturn} |`);
+    }
+  }
+  out(``);
+  out(`> ⚠️ These rows are observation-only historical simulations. Production feed is unchanged. Do not interpret as approved filters.`);
+  out(``);
+
+  // SECTION E: Correlated Exposure Proxy
+  out(`## 🔬 OBS: Correlated Exposure Proxy — All time [observation only]`);
+  out(``);
+  out(`| Metric | Value |`);
+  out(`|--------|-------|`);
+  out(`| Unique parent-event proxies | ${obsParentKeyMap.size} |`);
+  out(`| Parent-event proxies with multiple condition_ids | ${obsMultiConditionParents} |`);
+  out(`| Parent-event proxies with multiple market-family proxies | ${obsMultiFamilyParents} |`);
+  out(`| Max condition_id count within one parent-event proxy | ${obsMaxCondPerParent} |`);
+  out(``);
+  out(`**Market-family proxy counts:**`);
+  out(``);
+  out(`| Family | Count |`);
+  out(`|--------|-------|`);
+  for (const [fam, cnt] of Object.entries(obsFamilyCounts).sort((a, b) => b[1] - a[1])) {
+    out(`| ${fam} | ${cnt} |`);
+  }
+  out(``);
+  out(`**League counts (all-time, explicit premium_signal.league):**`);
+  out(``);
+  out(`| League | Count |`);
+  out(`|--------|-------|`);
+  for (const [lg, cnt] of Object.entries(obsLeagueCounts).sort((a, b) => b[1] - a[1])) {
+    out(`| ${lg} | ${cnt} |`);
+  }
+  out(``);
+
+  // ── END OBS Sections ──────────────────────────────────────────────────────────
 
   // Report Integrity Checks
   out(`## ✅ Report Integrity Checks`);
