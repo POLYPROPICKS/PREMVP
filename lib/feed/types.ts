@@ -117,6 +117,14 @@ export interface LandingCardDiagnostics {
   opposingSideExactTradeCount?: number | null;
   selectedSideExactMaxTradeCash?: number | null;
   opposingSideExactMaxTradeCash?: number | null;
+  researchContext?: {
+    v: "v1";
+    signalPhaseAtSnapshot: "prematch" | "live" | "unknown";
+    marketCloseIso: string | null;
+    marketType: string | null;
+    discoverySourceProxy: string | null;
+    gameTimeConfidence: "high" | "medium" | "low" | "none" | null;
+  };
 }
 
 export interface LandingCardPair {

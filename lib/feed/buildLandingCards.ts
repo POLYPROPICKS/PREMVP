@@ -110,6 +110,8 @@ function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket
     endDate: sample.resolvedGameTimeIso || undefined,
     startDate: sample.resolvedGameTimeIso || undefined,
     polymarketEventSlug: sample.polymarketEventSlug || undefined,
+    sportsMarketType: sample.primaryMarketRaw?.sportsMarketType ?? undefined,
+    gameTimeConfidence: sample.gameTimeConfidence ?? undefined,
   };
 
   return {
@@ -1703,6 +1705,37 @@ function tryBuildResearchSnapshot(
     new Date(snapshotAt).getTime() + 90 * 24 * 60 * 60 * 1000,
   ).toISOString();
 
+  // Build research-only diagnostics clone — never mutate shared diag
+  const parentMetaExt = (enriched.market as unknown as Record<string, unknown>)._parentMeta as
+    (ParentEventMeta & { sportsMarketType?: string; gameTimeConfidence?: string }) | undefined;
+
+  const gameStartIso = diag.gameStartIso ?? null;
+  const gameStartMs = gameStartIso ? Date.parse(gameStartIso) : Number.NaN;
+  const snapshotMs = Date.parse(snapshotAt);
+  const signalPhaseAtSnapshot: "prematch" | "live" | "unknown" =
+    !Number.isFinite(gameStartMs) || !Number.isFinite(snapshotMs)
+      ? "unknown"
+      : snapshotMs < gameStartMs
+        ? "prematch"
+        : "live";
+
+  // marketCloseIso: event.endDate is resolvedGameTimeIso (game-time proxy) in the
+  // sports-discovery path — not a proven market-close timestamp. No reliable source
+  // for market close exists at snapshot time; store null.
+  const researchDiagnostics: LandingCardDiagnostics = {
+    ...diag,
+    researchContext: {
+      v: "v1",
+      signalPhaseAtSnapshot,
+      marketCloseIso: null,
+      marketType: safeString(parentMetaExt?.sportsMarketType) ?? null,
+      discoverySourceProxy: safeString(candidate.sportsMatchedKeyword) ?? null,
+      gameTimeConfidence:
+        (parentMetaExt?.gameTimeConfidence as "high" | "medium" | "low" | "none" | undefined) ??
+        null,
+    },
+  };
+
   return {
     snapshotRunId,
     snapshotAt,
@@ -1725,7 +1758,7 @@ function tryBuildResearchSnapshot(
     dataCoverageNum: typeof diag.dataCoverage === "number" ? diag.dataCoverage : null,
     // Collect existing product rejection reasons as metadata only — NOT used as eligibility filter
     productRejectionReasons: [...diag.rejectionReasons],
-    diagnostics: diag,
+    diagnostics: researchDiagnostics,
     publicFeedExposed: false, // will be marked true after pairsToCache is known
   };
 }
