@@ -18,6 +18,7 @@ import {
   type PolymarketTrade,
   type PolymarketHolder,
   type ResearchEligibleSignalSnapshot,
+  type ResearchFunnelCounters,
 } from "./types";
 
 import {
@@ -1674,31 +1675,35 @@ async function tryBuildResearchSnapshot(
   snapshotAt: string,
   oddsMin: number,
   oddsMax: number,
+  funnel?: ResearchFunnelCounters,
 ): Promise<ResearchEligibleSignalSnapshot | null> {
   const diag = enriched.diagnostics;
+  if (funnel) funnel.attempted++;
 
   // Must have condition_id and selectedTokenId
   const condId = diag.conditionId;
   const selectedTokId = diag.selectedTokenId;
-  if (!condId || !selectedTokId) return null;
+  if (!condId || !selectedTokId) { if (funnel) funnel.rejectedMissingConditionOrSelectedToken++; return null; }
 
   // Must be a binary market (derived by M3-C block and stored in diagnostics)
-  if (!diag.directionalFlowBinaryGuard) return null;
+  if (!diag.directionalFlowBinaryGuard) { if (funnel) funnel.rejectedNoBinaryGuard++; return null; }
 
   // Derive opposing token from market token array
   const allTokenIds = safeParseArray<string>(
     enriched.market.clobTokenIds ?? enriched.market.tokenIds,
   );
   const opposingTokId = allTokenIds.find((t) => Boolean(t) && t !== selectedTokId) ?? null;
-  if (!opposingTokId) return null;
+  if (!opposingTokId) { if (funnel) funnel.rejectedMissingOpposingToken++; return null; }
 
   // Must have a valid price in (0, 1)
   const price = enriched.selectedOutcome.price;
-  if (price <= 0 || price >= 1) return null;
+  if (price <= 0 || price >= 1) { if (funnel) funnel.rejectedInvalidPrice++; return null; }
 
   // European odds = 1 / price; enforce corridor
   const europeanOdds = Math.round((1 / price) * 10000) / 10000;
-  if (europeanOdds < oddsMin || europeanOdds > oddsMax) return null;
+  if (europeanOdds < oddsMin) { if (funnel) funnel.rejectedOddsBelowMin++; return null; }
+  if (europeanOdds > oddsMax) { if (funnel) funnel.rejectedOddsAboveMax++; return null; }
+  if (funnel) funnel.eligible++;
 
   // expiresAt = snapshotAt + 90 days
   const expiresAt = new Date(
@@ -1724,6 +1729,7 @@ async function tryBuildResearchSnapshot(
   // for market close exists at snapshot time; store null.
 
   // Fetch selected-token order book — research path only, fail-open
+  if (funnel) funnel.execFetchAttempted++;
   const fetchStartedAt = Date.now();
   const rawBook = await fetchOrderBookSafe(selectedTokId);
   const fetchDurationMs = Date.now() - fetchStartedAt;
@@ -1761,6 +1767,12 @@ async function tryBuildResearchSnapshot(
       selectedTopBids.length === 0 && selectedTopAsks.length === 0
         ? "empty_book"
         : "ok";
+  }
+
+  if (funnel) {
+    if (fetchState === "ok") funnel.execFetchOk++;
+    else if (fetchState === "empty_book") funnel.execFetchEmptyBook++;
+    else funnel.execFetchFailed++;
   }
 
   const researchDiagnostics: LandingCardDiagnostics = {
@@ -1853,6 +1865,14 @@ export async function buildLandingCards(options?: {
   const researchOddsMax = options?.researchOddsMax ?? 4.00;
 
   const researchSnapshots: ResearchEligibleSignalSnapshot[] = [];
+
+  const rf: ResearchFunnelCounters = {
+    candidatesSeen: 0, rejectedPreResearchCandidateReasons: 0, enrichmentNull: 0,
+    attempted: 0, rejectedMissingConditionOrSelectedToken: 0, rejectedNoBinaryGuard: 0,
+    rejectedMissingOpposingToken: 0, rejectedInvalidPrice: 0, rejectedOddsBelowMin: 0,
+    rejectedOddsAboveMax: 0, eligible: 0, execFetchAttempted: 0,
+    execFetchOk: 0, execFetchEmptyBook: 0, execFetchFailed: 0,
+  };
 
   let upcomingRawSamples: SportsDiscoverySample[] = [];
 
@@ -1962,7 +1982,7 @@ export async function buildLandingCards(options?: {
             candidatesAfterDataCoverageFilter,
             pairsGenerated,
           },
-          ...(collectResearchSnapshots ? { researchSnapshots } : {}),
+          ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
         };
       }
     } else {
@@ -1985,7 +2005,7 @@ export async function buildLandingCards(options?: {
             candidatesAfterCategoryFilter, candidatesAfterEndedFilter,
             candidatesAfterDataCoverageFilter, pairsGenerated,
           },
-          ...(collectResearchSnapshots ? { researchSnapshots } : {}),
+          ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
         };
       }
 
@@ -2086,6 +2106,8 @@ export async function buildLandingCards(options?: {
       // Both caps satisfied — stop iterating
       if (productCapReached && researchCapReached) break;
 
+      if (collectResearchSnapshots && !researchCapReached) rf.candidatesSeen++;
+
       // Skip if already has rejection reasons (product path only; research skips pre-enrichment failures)
       if (candidate.rejectionReasons.length > 0) {
         if (!productCapReached) {
@@ -2094,6 +2116,7 @@ export async function buildLandingCards(options?: {
             rejectionReasons: [...candidate.rejectionReasons],
           });
         }
+        if (collectResearchSnapshots && !researchCapReached) rf.rejectedPreResearchCandidateReasons++;
         continue;
       }
 
@@ -2107,6 +2130,7 @@ export async function buildLandingCards(options?: {
             rejectionReasons: ["Failed to select valid outcome"],
           });
         }
+        if (collectResearchSnapshots && !researchCapReached) rf.enrichmentNull++;
         continue;
       }
 
@@ -2123,6 +2147,7 @@ export async function buildLandingCards(options?: {
           researchSnapshotAt,
           researchOddsMin,
           researchOddsMax,
+          rf,
         );
         if (snap) researchSnapshots.push(snap);
       }
@@ -2223,7 +2248,7 @@ export async function buildLandingCards(options?: {
         candidatesAfterDataCoverageFilter,
         pairsGenerated,
       },
-      ...(collectResearchSnapshots ? { researchSnapshots } : {}),
+      ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
     };
   } catch (error) {
     // Only return error field for unexpected runtime failures
@@ -2250,7 +2275,7 @@ export async function buildLandingCards(options?: {
         candidatesAfterDataCoverageFilter,
         pairsGenerated,
       },
-      ...(collectResearchSnapshots ? { researchSnapshots } : {}),
+      ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
     };
   }
 }

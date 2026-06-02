@@ -135,6 +135,24 @@ export interface LandingCardDiagnostics {
   };
 }
 
+export interface ResearchFunnelCounters {
+  candidatesSeen: number;
+  rejectedPreResearchCandidateReasons: number;
+  enrichmentNull: number;
+  attempted: number;
+  rejectedMissingConditionOrSelectedToken: number;
+  rejectedNoBinaryGuard: number;
+  rejectedMissingOpposingToken: number;
+  rejectedInvalidPrice: number;
+  rejectedOddsBelowMin: number;
+  rejectedOddsAboveMax: number;
+  eligible: number;
+  execFetchAttempted: number;
+  execFetchOk: number;
+  execFetchEmptyBook: number;
+  execFetchFailed: number;
+}
+
 export interface LandingCardPair {
   id: string;
   premiumSignal: PremiumSignal;
@@ -171,6 +189,7 @@ export interface LandingCardsResponse {
   inspected?: InspectedMetadata;
   // Research universe — only present when collectResearchSnapshots=true
   researchSnapshots?: ResearchEligibleSignalSnapshot[];
+  researchFunnel?: ResearchFunnelCounters;
 }
 
 // ============================================================================

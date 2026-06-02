@@ -105,6 +105,7 @@ async function main() {
       upcoming_count: result.upcomingPairs?.length ?? 0,
       rejected_count: rejectedCount,
       inspected: result.inspected,
+      researchFunnel: result.researchFunnel ?? null,
     };
 
     console.log(`[generate-signals] Generated ${result.pairs.length} qualified + ${result.upcomingPairs?.length ?? 0} upcoming = ${generatedCount} total pairs`);
@@ -140,6 +141,9 @@ async function main() {
       console.log(`[generate-signals] Cached ${generatedCount} pairs (expires: ${expiresAt})`);
     }
 
+    let researchWriterAttempted = false;
+    let researchSnapshotsInserted = 0;
+    let researchWriterWarning: string | null = null;
     // ── Research universe persistence ──────────────────────────────────────────
     // Mark which research snapshots also landed in the public feed, then write.
     // Runs regardless of generatedCount (research may yield rows even if product feed is empty).
@@ -162,15 +166,18 @@ async function main() {
 
       let researchInserted = 0;
       try {
+        researchWriterAttempted = true;
         const researchResult = await writeResearchEligibleSignalSnapshots({
           snapshots: markedSnapshots,
         });
         researchInserted = researchResult.inserted;
+        researchSnapshotsInserted = researchInserted;
       } catch (researchError) {
         // Research write failure is non-fatal — log and continue
+        researchWriterWarning = researchError instanceof Error ? researchError.message : String(researchError);
         console.warn(
           "[generate-signals] Research snapshot write failed (non-fatal):",
-          researchError instanceof Error ? researchError.message : String(researchError),
+          researchWriterWarning,
         );
       }
 
@@ -184,6 +191,13 @@ async function main() {
     } else {
       console.log(`[generate-signals] Research snapshots collected: 0`);
     }
+    // Append research writer stats to diagnostics for job_runs observability
+    diagnostics.researchSnapshotsCollected = rawResearchSnapshots.length;
+    diagnostics.researchWriterAttempted = researchWriterAttempted;
+    diagnostics.researchSnapshotsInserted = researchSnapshotsInserted;
+    diagnostics.researchWriterWarning = researchWriterWarning;
+    const rf = result.researchFunnel;
+    console.log(`[generate-signals] research funnel: attempted=${rf?.attempted ?? 0} eligible=${rf?.eligible ?? 0} inserted=${researchSnapshotsInserted} exec_ok=${rf?.execFetchOk ?? 0} exec_empty=${rf?.execFetchEmptyBook ?? 0} exec_failed=${rf?.execFetchFailed ?? 0}`);
   } catch (error) {
     status = "error";
     errorMessage = error instanceof Error ? error.message : String(error);
