@@ -184,6 +184,14 @@
   cursor: not-allowed;
 }
 
+/* ── Inline consent validation ── */
+.consentError {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #fca5a5;
+  margin: -8px 0 0;
+}
+
 /* ── Status messages ── */
 .status {
   font-size: 14px;

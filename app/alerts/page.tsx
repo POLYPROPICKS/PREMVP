@@ -19,20 +19,28 @@ export default function AlertsPage() {
           Get PolyProPicks Sports Market Analytics Alerts
         </h1>
         <p className={styles.subtitle}>
-          Receive occasional SMS notifications about analytical briefings,
-          product-access updates and account-related information.
+          Receive occasional promotional SMS notifications about PolyProPicks
+          analytical briefings and product-access updates.
         </p>
 
         <AlertsForm />
 
+        <p className={styles.support}>Customer support:</p>
         <p className={styles.support}>
-          Questions?{" "}
           <Link
             href="mailto:alex_ceo@polypropicks.com"
             className={styles.supportLink}
           >
             alex_ceo@polypropicks.com
           </Link>
+        </p>
+        <p className={styles.support}>
+          <a href="tel:+48793127374" className={styles.supportLink}>
+            +48 793 127 374
+          </a>
+        </p>
+        <p className={styles.support}>
+          PolyProPicks is operated by Benefitpoint Alexander Grushin.
         </p>
       </div>
     </main>

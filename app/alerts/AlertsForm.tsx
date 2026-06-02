@@ -4,16 +4,32 @@ import { useState, FormEvent } from "react";
 import Link from "next/link";
 import styles from "./Alerts.module.css";
 
-type Status = "idle" | "submitting" | "success" | "error";
+type Status = "idle" | "submitting" | "success" | "no_phone" | "error";
 
 export default function AlertsForm() {
   const [phone, setPhone] = useState("");
   const [consent, setConsent] = useState(false);
   const [companyWebsite, setCompanyWebsite] = useState("");
   const [status, setStatus] = useState<Status>("idle");
+  const [showConsentError, setShowConsentError] = useState(false);
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
+
+    // Empty phone: no API call — show neutral message
+    if (!phone.trim()) {
+      setShowConsentError(false);
+      setStatus("no_phone");
+      return;
+    }
+
+    // Phone present: consent required before API call
+    if (!consent) {
+      setShowConsentError(true);
+      return;
+    }
+    setShowConsentError(false);
+
     setStatus("submitting");
 
     try {
@@ -34,6 +50,15 @@ export default function AlertsForm() {
     } catch {
       setStatus("error");
     }
+  }
+
+  if (status === "no_phone") {
+    return (
+      <p className={`${styles.status} ${styles.success}`} role="status" aria-live="polite">
+        Thank you. No SMS subscription was created because no mobile number was
+        provided.
+      </p>
+    );
   }
 
   if (status === "success") {
@@ -72,9 +97,8 @@ export default function AlertsForm() {
           inputMode="tel"
           autoComplete="tel"
           placeholder="+1 202 555 0147"
-          required
           value={phone}
-          onChange={(e) => setPhone(e.target.value)}
+          onChange={(e) => { setPhone(e.target.value); setShowConsentError(false); }}
           className={styles.input}
           disabled={status === "submitting"}
         />
@@ -85,19 +109,18 @@ export default function AlertsForm() {
           id="consent"
           name="consent"
           type="checkbox"
-          required
           checked={consent}
-          onChange={(e) => setConsent(e.target.checked)}
+          onChange={(e) => { setConsent(e.target.checked); setShowConsentError(false); }}
           className={styles.checkbox}
           disabled={status === "submitting"}
         />
         <div>
           <label htmlFor="consent" className={styles.disclosure}>
-            I agree to receive recurring automated informational and promotional
-            text messages from PolyProPicks. Consent is not a condition of
-            purchase. Message frequency may vary, up to 2 messages per week.
-            Message and data rates may apply. Reply STOP to unsubscribe. Reply
-            HELP for help.
+            I agree to receive recurring automated promotional text messages
+            from PolyProPicks about analytical briefings and product-access
+            updates. Consent is not a condition of purchase. Message frequency
+            may vary, up to 2 messages per week. Message and data rates may
+            apply. Reply STOP to unsubscribe. Reply HELP for help.
           </label>
           <p className={styles.legalLinks}>
             <Link href="/privacy-policy" className={styles.link}>
@@ -110,6 +133,12 @@ export default function AlertsForm() {
           </p>
         </div>
       </div>
+
+      {showConsentError && (
+        <p className={styles.consentError} role="alert" aria-live="polite">
+          Please check the consent box to subscribe to SMS alerts.
+        </p>
+      )}
 
       {status === "error" && (
         <p className={`${styles.status} ${styles.error}`} role="status" aria-live="polite">

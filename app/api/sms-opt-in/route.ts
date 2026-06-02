@@ -6,10 +6,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const DISCLOSURE_VERSION = "sms-alerts-v1-2026-06-01";
+const DISCLOSURE_VERSION = "sms-alerts-general-marketing-v2-2026-06-02";
 const CONSENT_SOURCE = "alerts_web_form";
 const DISCLOSURE_TEXT =
-  "I agree to receive recurring automated informational and promotional text messages from PolyProPicks. Consent is not a condition of purchase. Message frequency may vary, up to 2 messages per week. Message and data rates may apply. Reply STOP to unsubscribe. Reply HELP for help.";
+  "I agree to receive recurring automated promotional text messages from PolyProPicks about analytical briefings and product-access updates. Consent is not a condition of purchase. Message frequency may vary, up to 2 messages per week. Message and data rates may apply. Reply STOP to unsubscribe. Reply HELP for help.";
 
 /**
  * Normalize a user-supplied phone string to E.164 format.

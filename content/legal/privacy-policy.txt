@@ -304,7 +304,7 @@ We do not authorize the use of misleading testimonials, fake results, fake count
 
 13.1 SMS/Text Messaging Program
 
-PolyProPicks offers an optional SMS program called "PolyProPicks Sports Market Analytics Alerts." If you expressly opt in, we may send recurring automated informational and promotional text messages, including analytical briefing alerts, product-access updates, account-related notices and requested links. Consent is not a condition of purchase. Message frequency may vary, up to 2 messages per week. Message and data rates may apply.
+PolyProPicks offers an optional SMS program called "PolyProPicks Sports Market Analytics Alerts." If you expressly opt in, we may send recurring automated promotional text messages about analytical briefing alerts and product-access updates. Consent is not a condition of purchase. Message frequency may vary, up to 2 messages per week. Message and data rates may apply.
 
 You may unsubscribe at any time by replying STOP, END, CANCEL, UNSUBSCRIBE or QUIT. For help, reply HELP or contact alex_ceo@polypropicks.com.
 
@@ -344,4 +344,5 @@ Benefitpoint Alexander Grushin
 Doing business as: PolyProPicks
 Website: https://polypropicks.com
 Email: alex_ceo@polypropicks.com
+Phone: +48 793 127 374
 For privacy requests, please use the subject line: Privacy Request.

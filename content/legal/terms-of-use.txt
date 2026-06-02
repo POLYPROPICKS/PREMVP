@@ -246,7 +246,7 @@ We do not authorize fake testimonials, fake urgency, fake countdowns, fake winni
 
 Program name: PolyProPicks Sports Market Analytics Alerts
 
-If you expressly opt in to SMS alerts, you agree to receive recurring automated informational and promotional text messages from PolyProPicks, including analytical briefing alerts, product-access updates, account-related notices and requested links.
+If you expressly opt in to SMS alerts, you agree to receive recurring automated promotional text messages from PolyProPicks about analytical briefing alerts and product-access updates.
 
 Consent is not a condition of purchase.
 
@@ -449,4 +449,5 @@ For questions about these Terms, contact:
 Benefitpoint Alexander Grushin
 Doing business as: PolyProPicks
 Email: alex_ceo@polypropicks.com
+Phone: +48 793 127 374
 For legal notices, use the subject line: Legal Notice.
