@@ -2027,6 +2027,93 @@ async function main() {
   out(`> Production feed, confidence, ranking and sizing are unchanged.`);
   out(``);
 
+  // SECTION J: M3-C Directional Flow Raw Evidence
+  out(`## 🔬 OBS: M3-C Directional Flow Raw Evidence — NOT SCORED`);
+  out(``);
+  {
+    let m3cVersionN = 0, m3cExact = 0, m3cPartial = 0, m3cAbsent = 0, m3cNonBinary = 0;
+    let m3cCovSum = 0, m3cCovN = 0;
+    let m3cSelCashN = 0, m3cOppCashN = 0, m3cBothCashN = 0, m3cTsN = 0;
+    const cashImbalArr: number[] = [];
+    const countImbalArr: number[] = [];
+    const maxTradeImbalArr: number[] = [];
+
+    for (const r of rowsAllTime) {
+      const diag = r.diagnostics;
+      if (!diag) continue;
+      if (!safeStr(diag.directionalFlowVersion as unknown)) continue;
+      m3cVersionN++;
+      const state = safeStr(diag.directionalFlowEvidenceState as unknown) ?? "";
+      if (state === "exact") m3cExact++;
+      else if (state === "partial") m3cPartial++;
+      else if (state === "absent") m3cAbsent++;
+      else if (state === "non_binary") m3cNonBinary++;
+      const covR = safeNum(diag.directionalFlowCoverageRatio as unknown);
+      if (covR !== null) { m3cCovSum += covR; m3cCovN++; }
+      const selC   = safeNum(diag.selectedSideExactRecentCash as unknown);
+      const oppC   = safeNum(diag.opposingSideExactRecentCash as unknown);
+      const selCnt = safeNum(diag.selectedSideExactTradeCount as unknown);
+      const oppCnt = safeNum(diag.opposingSideExactTradeCount as unknown);
+      const selMax = safeNum(diag.selectedSideExactMaxTradeCash as unknown);
+      const oppMax = safeNum(diag.opposingSideExactMaxTradeCash as unknown);
+      const tsOld  = safeStr(diag.directionalFlowOldestTradeIso as unknown);
+      const tsNew  = safeStr(diag.directionalFlowNewestTradeIso as unknown);
+      if (selC !== null) m3cSelCashN++;
+      if (oppC !== null) m3cOppCashN++;
+      if (selC !== null && oppC !== null) {
+        m3cBothCashN++;
+        cashImbalArr.push((selC - oppC) / Math.max(selC + oppC, 1e-9));
+      }
+      if (tsOld && tsNew) m3cTsN++;
+      if (selCnt !== null && oppCnt !== null)
+        countImbalArr.push((selCnt - oppCnt) / Math.max(selCnt + oppCnt, 1));
+      if (selMax !== null && oppMax !== null)
+        maxTradeImbalArr.push((selMax - oppMax) / Math.max(selMax + oppMax, 1e-9));
+    }
+
+    const m3cAvgCov = m3cCovN > 0 ? `${Math.round(m3cCovSum / m3cCovN * 100)}%` : "N/A";
+
+    out(`| Counter | Value |`);
+    out(`|---------|-------|`);
+    out(`| rows with directionalFlowVersion | ${m3cVersionN} |`);
+    out(`| exact | ${m3cExact} |`);
+    out(`| partial | ${m3cPartial} |`);
+    out(`| absent | ${m3cAbsent} |`);
+    out(`| non_binary | ${m3cNonBinary} |`);
+    out(`| average coverage ratio | ${m3cAvgCov} |`);
+    out(`| selected-side exact cash available | ${m3cSelCashN} |`);
+    out(`| opposing-side exact cash available | ${m3cOppCashN} |`);
+    out(`| both-side exact cash available | ${m3cBothCashN} |`);
+    out(`| timestamps available | ${m3cTsN} |`);
+    out(``);
+    out(`> ℹ️ sample = last 100 fetched trades, not fixed-minute flow window`);
+    out(``);
+
+    function m3cStats(arr: number[]): string {
+      if (arr.length === 0) return `N=0`;
+      const s = [...arr].sort((a, b) => a - b);
+      const n = s.length;
+      const mean   = s.reduce((x, v) => x + v, 0) / n;
+      const median = n % 2 === 0 ? (s[n / 2 - 1] + s[n / 2]) / 2 : s[Math.floor(n / 2)];
+      const q25    = s[Math.floor(n * 0.25)];
+      const q75    = s[Math.floor(n * 0.75)];
+      const f = (v: number) => `${Math.round(v * 1000) / 1000}`;
+      return `N=${n} mean=${f(mean)} median=${f(median)} Q25=${f(q25)} Q75=${f(q75)}`;
+    }
+
+    out(`| Metric | Stats |`);
+    out(`|--------|-------|`);
+    out(`| CashImbalanceRaw | ${m3cStats(cashImbalArr)} |`);
+    out(`| CountImbalanceRaw | ${m3cStats(countImbalArr)} |`);
+    out(`| MaxTradeImbalanceRaw | ${m3cStats(maxTradeImbalArr)} |`);
+    out(``);
+    out(`> ⚠️ M3-C stores raw directional evidence only.`);
+    out(`> No score, weight, threshold or production behavior changed.`);
+    out(`> Historical rows are not backfilled.`);
+    out(`> Future modeling must validate locked formulas prospectively.`);
+    out(``);
+  }
+
   // ── END OBS Sections ──────────────────────────────────────────────────────────
 
   // Report Integrity Checks

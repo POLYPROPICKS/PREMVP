@@ -100,6 +100,23 @@ export interface LandingCardDiagnostics {
     action?: string;
     confidenceMode?: string;
   };
+  // M3-C: directional flow raw evidence (shadow only — no production score impact)
+  directionalFlowVersion?: "v1-binary-exact-token";
+  directionalFlowBinaryGuard?: boolean;
+  directionalFlowEvidenceState?: "exact" | "partial" | "absent" | "non_binary";
+  directionalFlowSampleLimit?: number;
+  directionalFlowFetchedTradeCount?: number;
+  directionalFlowTokenMatchedCount?: number;
+  directionalFlowTokenUnmatchedCount?: number;
+  directionalFlowCoverageRatio?: number | null;
+  directionalFlowOldestTradeIso?: string | null;
+  directionalFlowNewestTradeIso?: string | null;
+  selectedSideExactRecentCash?: number | null;
+  opposingSideExactRecentCash?: number | null;
+  selectedSideExactTradeCount?: number | null;
+  opposingSideExactTradeCount?: number | null;
+  selectedSideExactMaxTradeCash?: number | null;
+  opposingSideExactMaxTradeCash?: number | null;
 }
 
 export interface LandingCardPair {

@@ -708,6 +708,76 @@ async function enrichMarket(
     warnings.push("Trade data unavailable");
   }
 
+  // M3-C: directional flow raw evidence — shadow only, no production score impact
+  // Uses exact tokenId matching only; BUY fallback is intentionally excluded here.
+  {
+    const m3cAllTokenIds = safeParseArray<string>(market.clobTokenIds || market.tokenIds);
+    const m3cRawOutcomes = safeParseArray<string>(market.outcomes);
+    const m3cRawPrices   = safeParseArray<string>(market.outcomePrices);
+
+    // Rebuild valid-outcome list (mirrors selectOutcome logic) to determine binary guard
+    const m3cValidOutcomes: Array<{ index: number; tokenId: string | null }> = [];
+    for (let i = 0; i < m3cRawOutcomes.length; i++) {
+      const nm = safeString(m3cRawOutcomes[i]);
+      const pr = safeParseNumber(m3cRawPrices[i]);
+      if (!nm || pr === null) continue;
+      m3cValidOutcomes.push({ index: i, tokenId: m3cAllTokenIds[i] || null });
+    }
+
+    const m3cIsBinary = m3cValidOutcomes.length === 2;
+    const m3cOpposingEntry = m3cIsBinary
+      ? (m3cValidOutcomes.find(o => o.index !== selectedOutcome.index) ?? null)
+      : null;
+    const m3cOpposingTokenId = m3cOpposingEntry?.tokenId ?? null;
+
+    diagnostics.directionalFlowVersion    = "v1-binary-exact-token";
+    diagnostics.directionalFlowBinaryGuard = m3cIsBinary;
+    diagnostics.directionalFlowSampleLimit = 100;
+
+    if (!m3cIsBinary) {
+      diagnostics.directionalFlowEvidenceState = "non_binary";
+    } else if (!selectedOutcome.tokenId || !m3cOpposingTokenId || !trades || trades.length === 0) {
+      diagnostics.directionalFlowEvidenceState        = "absent";
+      diagnostics.directionalFlowFetchedTradeCount    = trades?.length ?? 0;
+      diagnostics.directionalFlowTokenMatchedCount    = 0;
+      diagnostics.directionalFlowTokenUnmatchedCount  = trades?.length ?? 0;
+      diagnostics.directionalFlowCoverageRatio        =
+        trades && trades.length > 0 ? 0 : null;
+    } else {
+      // Exact token matching only — no BUY fallback for M3-C
+      const tokenMatchedTrades  = trades.filter(t => Boolean(t.tokenId));
+      const selectedExactTrades = tokenMatchedTrades.filter(t => t.tokenId === selectedOutcome.tokenId);
+      const opposingExactTrades = tokenMatchedTrades.filter(t => t.tokenId === m3cOpposingTokenId);
+
+      const sumCash = (arr: typeof trades): number =>
+        arr.reduce((s, t) => s + t.price * t.size, 0);
+      const maxTrade = (arr: typeof trades): number | null =>
+        arr.length > 0 ? Math.max(...arr.map(t => t.price * t.size)) : null;
+
+      diagnostics.directionalFlowFetchedTradeCount   = trades.length;
+      diagnostics.directionalFlowTokenMatchedCount   = tokenMatchedTrades.length;
+      diagnostics.directionalFlowTokenUnmatchedCount = trades.length - tokenMatchedTrades.length;
+      diagnostics.directionalFlowCoverageRatio       =
+        roundNumber(tokenMatchedTrades.length / trades.length);
+
+      diagnostics.selectedSideExactRecentCash   = roundNumber(sumCash(selectedExactTrades));
+      diagnostics.opposingSideExactRecentCash   = roundNumber(sumCash(opposingExactTrades));
+      diagnostics.selectedSideExactTradeCount   = selectedExactTrades.length;
+      diagnostics.opposingSideExactTradeCount   = opposingExactTrades.length;
+      const selMax = maxTrade(selectedExactTrades);
+      const oppMax = maxTrade(opposingExactTrades);
+      diagnostics.selectedSideExactMaxTradeCash = selMax !== null ? roundNumber(selMax) : null;
+      diagnostics.opposingSideExactMaxTradeCash = oppMax !== null ? roundNumber(oppMax) : null;
+
+      const allTs = trades.map(t => t.timestamp).filter(Boolean).sort();
+      diagnostics.directionalFlowOldestTradeIso = allTs.length > 0 ? allTs[0] : null;
+      diagnostics.directionalFlowNewestTradeIso = allTs.length > 0 ? allTs[allTs.length - 1] : null;
+
+      diagnostics.directionalFlowEvidenceState =
+        tokenMatchedTrades.length === trades.length ? "exact" : "partial";
+    }
+  }
+
   // Fetch holders (best effort)
   const holders = await fetchHoldersSafe(market.conditionId);
 
