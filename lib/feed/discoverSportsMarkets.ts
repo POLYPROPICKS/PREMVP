@@ -819,7 +819,7 @@ export async function discoverSportsMarkets(
   const fallback48hCandidates: SportsDiscoverySample[] = volumeEligible48hGroups
     .filter(g => !finalCandidates.some(fc => fc.gameId && fc.gameId === g.gameId))
     .slice(0, cfg.targetCards)
-    .map((g, idx) => ({
+    .map((g) => ({
       title: g.primaryMarket?.question?.substring(0, 100) || g.highestVolumeMarket?.question?.substring(0, 100) || "Unknown",
       slug: g.primaryMarket?.slug?.substring(0, 60) || g.highestVolumeMarket?.slug?.substring(0, 60) || "",
       gameId: g.gameId,
@@ -831,6 +831,19 @@ export async function discoverSportsMarkets(
       marketCount: g.markets.length,
       strategy: "markets-first-48h-fallback",
       leagueName: resolveLeagueName(g, teamsMap),
+      primaryMarketRaw: g.primaryMarket ? {
+        outcomes: g.primaryMarket.outcomes,
+        outcomePrices: g.primaryMarket.outcomePrices,
+        clobTokenIds: g.primaryMarket.clobTokenIds,
+        question: g.primaryMarket.question,
+        sportsMarketType: g.primaryMarket.sportsMarketType,
+        gameId: g.primaryMarket.gameId,
+        conditionId: g.primaryMarket.conditionId,
+        volumeNum: g.primaryMarket.volumeNum,
+        volume24hr: g.primaryMarket.volume24hr,
+        volumeClob: g.primaryMarket.volumeClob,
+        oneDayPriceChange: g.primaryMarket.oneDayPriceChange,
+      } : null,
     }));
 
   // 13. Determine diagnosis

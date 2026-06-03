@@ -98,6 +98,8 @@ async function main() {
     generatedCount = pairsToCache.length;
     rejectedCount = result.rejected?.length ?? 0;
 
+    const inspectedAny = result.inspected as unknown as Record<string, unknown> | undefined;
+    const sportsDiscovery = (inspectedAny?.sportsDiscovery as Record<string, unknown> | undefined) ?? null;
     diagnostics = {
       discoveryMode: "markets-first-buildLandingCards",
       generated_count: generatedCount,
@@ -106,6 +108,18 @@ async function main() {
       rejected_count: rejectedCount,
       inspected: result.inspected,
       researchFunnel: result.researchFunnel ?? null,
+      sportsDiscoveryCounts: sportsDiscovery
+        ? (sportsDiscovery.counts as Record<string, unknown> | null) ?? null
+        : null,
+      sportsRejectionReasonCounts: sportsDiscovery
+        ? (sportsDiscovery.rejectionReasonCounts as Record<string, number> | null) ?? null
+        : null,
+      sampleToCandidateMarketNulls: sportsDiscovery
+        ? (sportsDiscovery.sampleToCandidateMarketNulls as number) ?? null
+        : null,
+      fallback48hNullDrops: sportsDiscovery
+        ? (sportsDiscovery.fallback48hNullDrops as number) ?? null
+        : null,
     };
 
     console.log(`[generate-signals] Generated ${result.pairs.length} qualified + ${result.upcomingPairs?.length ?? 0} upcoming = ${generatedCount} total pairs`);

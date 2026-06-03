@@ -1937,6 +1937,12 @@ export async function buildLandingCards(options?: {
   let pairsGenerated = 0;
   let candidatesAfterDataCoverageFilter = 0;
 
+  // Sports discovery diagnostics (null when category != "sports")
+  let sportsDiscoveryCounts: Record<string, unknown> | null = null;
+  let sportsRejectionReasonCounts: Record<string, number> | null = null;
+  let sportsSampleToNullCount = 0;
+  let sportsFallback48hNullDrops = 0;
+
   // Track fetch metadata
   let sportsTagAttempted = false;
   let sportsTagSuccess = false;
@@ -1997,14 +2003,28 @@ export async function buildLandingCards(options?: {
         ...discovery.fallback48hCandidates,
       ].slice(0, limit * 3);
 
-      candidates = discoverySamples
-        .map(sampleToCandidateMarket)
-        .filter((c): c is CandidateMarket => c !== null);
+      let sampleToNullCount = 0;
+      let fallback48hNullDrops = 0;
+      candidates = discoverySamples.reduce<CandidateMarket[]>((acc, sample) => {
+        const c = sampleToCandidateMarket(sample);
+        if (c === null) {
+          sampleToNullCount++;
+          if (sample.strategy === "markets-first-48h-fallback") fallback48hNullDrops++;
+        } else {
+          acc.push(c);
+        }
+        return acc;
+      }, []);
 
       eventsCount = discovery.counts.rawMarketsFetched;
       marketsCount = discovery.counts.normalizedMarkets;
       candidatesAfterCategoryFilter = candidates.length;
       candidatesAfterEndedFilter = candidates.length;
+      // Capture discovery diagnostics for job-run passthrough (no new computation)
+      sportsDiscoveryCounts = discovery.counts as unknown as Record<string, unknown>;
+      sportsRejectionReasonCounts = discovery.rejectionReasonCounts;
+      sportsSampleToNullCount = sampleToNullCount;
+      sportsFallback48hNullDrops = fallback48hNullDrops;
 
       if (candidates.length === 0) {
         const rawUpcoming = includeUpcoming ? await buildUpcomingPairs(upcomingRawSamples, upcomingLimit) : [];
@@ -2300,7 +2320,15 @@ export async function buildLandingCards(options?: {
         candidatesAfterEndedFilter,
         candidatesAfterDataCoverageFilter,
         pairsGenerated,
-      },
+        ...(sportsDiscoveryCounts !== null ? {
+          sportsDiscovery: {
+            counts: sportsDiscoveryCounts,
+            rejectionReasonCounts: sportsRejectionReasonCounts,
+            sampleToCandidateMarketNulls: sportsSampleToNullCount,
+            fallback48hNullDrops: sportsFallback48hNullDrops,
+          },
+        } : {}),
+      } as unknown as import("./types").InspectedMetadata,
       ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
     };
   } catch (error) {
@@ -2327,7 +2355,15 @@ export async function buildLandingCards(options?: {
         candidatesAfterEndedFilter,
         candidatesAfterDataCoverageFilter,
         pairsGenerated,
-      },
+        ...(sportsDiscoveryCounts !== null ? {
+          sportsDiscovery: {
+            counts: sportsDiscoveryCounts,
+            rejectionReasonCounts: sportsRejectionReasonCounts,
+            sampleToCandidateMarketNulls: sportsSampleToNullCount,
+            fallback48hNullDrops: sportsFallback48hNullDrops,
+          },
+        } : {}),
+      } as unknown as import("./types").InspectedMetadata,
       ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
     };
   }
