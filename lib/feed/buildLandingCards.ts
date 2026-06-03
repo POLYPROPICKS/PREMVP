@@ -19,6 +19,7 @@ import {
   type PolymarketHolder,
   type ResearchEligibleSignalSnapshot,
   type ResearchFunnelCounters,
+  type ResearchNestedMarket,
 } from "./types";
 
 import {
@@ -1942,6 +1943,10 @@ export async function buildLandingCards(options?: {
   let sportsRejectionReasonCounts: Record<string, number> | null = null;
   let sportsSampleToNullCount = 0;
   let sportsFallback48hNullDrops = 0;
+  // S2: Research universe lifted to outer scope so the S2 selection loop (which runs
+  // after the if/else candidates block) can access it without referencing `discovery`.
+  let s2ResearchUniverse: ResearchNestedMarket[] = [];
+  let s2ResearchUniverseEventCount = 0;
 
   // Track fetch metadata
   let sportsTagAttempted = false;
@@ -2023,6 +2028,9 @@ export async function buildLandingCards(options?: {
       // Capture discovery diagnostics for job-run passthrough (no new computation)
       sportsDiscoveryCounts = discovery.counts as unknown as Record<string, unknown>;
       sportsRejectionReasonCounts = discovery.rejectionReasonCounts;
+      // S2: Lift research universe to outer scope for the post-candidates S2 selection loop
+      s2ResearchUniverse = discovery.researchEligibleMarkets ?? [];
+      s2ResearchUniverseEventCount = discovery.counts.researchEligibleEvents ?? 0;
       sportsSampleToNullCount = sampleToNullCount;
       sportsFallback48hNullDrops = fallback48hNullDrops;
 
@@ -2304,6 +2312,149 @@ export async function buildLandingCards(options?: {
     const allocatedFinal = applyCategoryAllocation(pairs, rawUpcomingFinal);
     // Final deterministic dedupe guard over the combined feed (all categories).
     applyDuplicateMetricGuard([...allocatedFinal.pairs, ...allocatedFinal.upcomingPairs]);
+
+    // ── S2: Wide research universe snapshot selection ──────────────────────────────
+    // Runs after the public feed is finalized. Selects up to researchLimit snapshots
+    // from discovery.researchEligibleMarkets (pre-grouping, pre-volume universe).
+    // Always includes public-feed-exposed markets; fills remaining slots via
+    // deterministic rotation over the hidden pool (30-min UTC bucket offset).
+    // Does NOT call enrichMarket — builds minimal snapshots from raw event-spine fields.
+    // Public-path snapshots (from the candidate loop above) are preserved; this loop
+    // only ADDS to researchSnapshots, never replaces.
+    if (
+      collectResearchSnapshots &&
+      researchSnapshotRunId &&
+      researchSnapshotAt &&
+      s2ResearchUniverse.length > 0
+    ) {
+      const rawUniverse: ResearchNestedMarket[] = s2ResearchUniverse;
+
+      // Build public identity set from final allocated pairs + upcoming pairs
+      const publicIdentitySet = new Set<string>();
+      for (const p of [
+        ...allocatedFinal.pairs,
+        ...(includeUpcoming ? allocatedFinal.upcomingPairs : []),
+      ]) {
+        if (p.diagnostics?.conditionId && p.diagnostics?.selectedTokenId) {
+          publicIdentitySet.add(`${p.diagnostics.conditionId}::${p.diagnostics.selectedTokenId}`);
+        }
+      }
+
+      // Deduplicate universe by conditionId::selectedTokenId
+      const universeMap = new Map<string, ResearchNestedMarket>();
+      for (const rm of rawUniverse) {
+        const k = `${rm.conditionId}::${rm.selectedTokenId}`;
+        if (!universeMap.has(k)) universeMap.set(k, rm);
+      }
+      const dedupedUniverse = Array.from(universeMap.values());
+
+      // Split: public-exposed (always include) vs. hidden (rotating)
+      const publicExposed = dedupedUniverse.filter(rm =>
+        publicIdentitySet.has(`${rm.conditionId}::${rm.selectedTokenId}`)
+      );
+      const hidden = dedupedUniverse.filter(rm =>
+        !publicIdentitySet.has(`${rm.conditionId}::${rm.selectedTokenId}`)
+      );
+
+      // Deterministic stable sort of hidden pool by conditionId::selectedTokenId
+      hidden.sort((a, b) => {
+        const ka = `${a.conditionId}::${a.selectedTokenId}`;
+        const kb = `${b.conditionId}::${b.selectedTokenId}`;
+        return ka < kb ? -1 : ka > kb ? 1 : 0;
+      });
+
+      // Rotation: 30-min UTC bucket offset wraps around hidden pool
+      const bucket30min = Math.floor(Date.now() / (30 * 60 * 1000));
+      const offset = hidden.length > 0 ? bucket30min % hidden.length : 0;
+      const rotatedHidden = hidden.length > 0
+        ? [...hidden.slice(offset), ...hidden.slice(0, offset)]
+        : [];
+
+      // Select: public-exposed first, then rotating hidden, capped at researchLimit
+      const remainingSlots = Math.max(0, researchLimit - publicExposed.length);
+      const selectedHidden = rotatedHidden.slice(0, remainingSlots);
+      const selectedResearch = [...publicExposed, ...selectedHidden];
+
+      // Build set of already-captured conditionId::selectedTokenId keys (from public-path loop)
+      const alreadyCapturedKeys = new Set(
+        researchSnapshots.map(s => `${s.conditionId}::${s.selectedTokenId}`)
+      );
+
+      // Build minimal snapshots directly from ResearchNestedMarket fields
+      const nowMs = Date.now();
+      const s2ExpiresAt = new Date(
+        new Date(researchSnapshotAt).getTime() + 90 * 24 * 60 * 60 * 1000
+      ).toISOString();
+
+      for (const rm of selectedResearch) {
+        const rmKey = `${rm.conditionId}::${rm.selectedTokenId}`;
+        if (alreadyCapturedKeys.has(rmKey)) continue; // already captured via public-path loop
+
+        const hoursUntilStart = (new Date(rm.eventStartIso).getTime() - nowMs) / 3_600_000;
+        const europeanOdds = rm.selectedPriceNum > 0
+          ? Math.round((1 / rm.selectedPriceNum) * 10_000) / 10_000
+          : null;
+        const isPublicExposed = publicIdentitySet.has(rmKey);
+
+        const s2Snap: ResearchEligibleSignalSnapshot = {
+          snapshotRunId: researchSnapshotRunId,
+          snapshotAt: researchSnapshotAt,
+          expiresAt: s2ExpiresAt,
+          scope: "RESEARCH_ELIGIBLE_UNIVERSE",
+          formulaVersion: FORMULA_VERSION,
+          conditionId: rm.conditionId,
+          selectedTokenId: rm.selectedTokenId,
+          opposingTokenId: rm.opposingTokenId,
+          eventSlug: rm.eventSlug || null,
+          selectedOutcome: null,
+          selectedPriceNum: rm.selectedPriceNum,
+          selectedEuropeanOddsNum: europeanOdds,
+          marketFamily: rm.marketFamily,
+          league: rm.marketFamily,
+          gameStartIso: rm.eventStartIso,
+          dataCoverageNum: null,
+          productRejectionReasons: ["research-s2-direct"],
+          diagnostics: {
+            conditionId: rm.conditionId,
+            selectedTokenId: rm.selectedTokenId,
+            selectedOutcome: "",
+            currentPrice: rm.selectedPriceNum,
+            price1hAgo: null,
+            price6hAgo: null,
+            delta1hPp: null,
+            delta6hPp: null,
+            spread: null,
+            openInterest: null,
+            recentTradeCash: null,
+            maxTradeCash: null,
+            selectedTradeCount: null,
+            totalTradeCount: null,
+            holderConcentrationScore: null,
+            dataCoverage: 0,
+            formulaUsed: "research-s2-direct",
+            rejectionReasons: ["research-s2-direct"],
+            gameStartIso: rm.eventStartIso,
+          } as LandingCardDiagnostics,
+          publicFeedExposed: isPublicExposed,
+          eventId: rm.eventId || null,
+          formulaFeatureVersion: "modeling-features-v1",
+          hoursUntilStartNum: Math.round(hoursUntilStart * 100) / 100,
+          signalPhaseAtSnapshot: "prematch",
+          oddsBandLabel: null,
+          opposingPriceNum: rm.opposingPriceNum,
+        };
+        researchSnapshots.push(s2Snap);
+        alreadyCapturedKeys.add(rmKey);
+      }
+
+      // Persist S2 selection diagnostics on the research funnel
+      rf.researchSnapshotsSelected = selectedResearch.length;
+      rf.researchSnapshotsSelectedPublic = publicExposed.length;
+      rf.researchSnapshotsSelectedRotating = selectedHidden.length;
+      rf.researchSnapshotSelectionLimit = researchLimit;
+      rf.researchUniverseEvents = s2ResearchUniverseEventCount;
+      rf.researchUniverseMarkets = dedupedUniverse.length;
+    }
 
     return {
       generatedAt: new Date().toISOString(),

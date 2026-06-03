@@ -151,6 +151,33 @@ export interface ResearchFunnelCounters {
   execFetchOk: number;
   execFetchEmptyBook: number;
   execFetchFailed: number;
+  // S2: Wide research universe selection diagnostics
+  researchSnapshotsSelected?: number;
+  researchSnapshotsSelectedPublic?: number;
+  researchSnapshotsSelectedRotating?: number;
+  researchSnapshotSelectionLimit?: number;
+  researchUniverseEvents?: number;
+  researchUniverseMarkets?: number;
+}
+
+// ─── S2: Wide research universe — pre-grouping, pre-volume nested market ───────
+// Built from the event spine before public volume guards, grouping, primary-only
+// extraction, ranking, and card cap. One entry per eligible nested market.
+export interface ResearchNestedMarket {
+  eventId: string;
+  eventTitle: string;
+  eventSlug: string;
+  eventStartIso: string;
+  marketId: string;
+  marketQuestion: string;
+  marketEndIso: string;
+  marketFamily: string | null;
+  conditionId: string;
+  selectedTokenId: string;
+  opposingTokenId: string;
+  selectedPriceNum: number;
+  opposingPriceNum: number;
+  publicFeedExposed: boolean;
 }
 
 export interface LandingCardPair {
@@ -411,6 +438,14 @@ export interface SportsDiscoveryCounts {
   confirmedSportsEvents48h?: number;
   nestedSportsMarketsFlattened?: number;
   canonicalStartTimeApplied?: number;
+  // S2: Wide research universe diagnostics
+  researchEligibleEvents?: number;
+  researchEligibleMarketsCount?: number;
+  researchExcludedLongHorizonMarkets?: number;
+  researchExcludedOutrightMarkets?: number;
+  researchExcludedInvalidStaleMarkets?: number;
+  researchExcludedInvalidPriceMarkets?: number;
+  researchMarketsByFamily?: Record<string, number>;
 }
 
 export interface SportsDiscoverySample {
@@ -488,4 +523,6 @@ export interface SportsDiscoveryResult {
   extendedNhlCandidates?: SportsDiscoverySample[];
   diagnosis?: string;
   recommendedPath?: string;
+  // S2: Wide research universe (pre-grouping, pre-volume)
+  researchEligibleMarkets?: ResearchNestedMarket[];
 }

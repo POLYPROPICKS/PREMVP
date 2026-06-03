@@ -9,6 +9,7 @@ import type {
   SportsDiscoverySample,
   SportsDiscoveryResult,
   PolymarketRawEvent,
+  ResearchNestedMarket,
 } from "./types";
 
 import {
@@ -382,6 +383,103 @@ export async function discoverSportsMarkets(
   counts.withGameStartTime = normalizedMarkets.filter(m => m.gameStartTime).length;
   counts.withEventStartTime = normalizedMarkets.filter(m => m.eventStartTime).length;
   counts.withNestedEventStartTime = normalizedMarkets.filter(m => m.nestedEventStartTime).length;
+
+  // ── S2: Wide research universe (pre-grouping, pre-volume, pre-ranking) ─────────
+  // Per-market eligibility: event.startTime in [now, now+24h), market.endDate in
+  //   [event.startTime, now+48h), active binary market with valid prices, conditionId,
+  //   both clobTokenIds present, not tournament/season/series outright.
+  // No volume filter. No grouping. No primary-only. No card cap.
+  const researchEligibleMarketsArr: ResearchNestedMarket[] = [];
+  const research24hMs = now.getTime() + 24 * 60 * 60 * 1000;
+  const research48hMs = now.getTime() + 48 * 60 * 60 * 1000;
+  const researchSeenEventIds = new Set<string>();
+  let researchExcludedLongHorizon = 0;
+  let researchExcludedOutright = 0;
+  let researchExcludedInvalidStale = 0;
+  let researchExcludedInvalidPrice = 0;
+  const researchMarketsByFamily: Record<string, number> = {};
+
+  for (const nm of normalizedMarkets) {
+    // Active and open only
+    if (!nm.active || nm.closed) { researchExcludedInvalidStale++; continue; }
+
+    // Canonical event start must be within [now, now+24h)
+    const evStartStr = nm.eventStartTime || nm.nestedEventStartTime || nm.gameStartTime || null;
+    if (!evStartStr) { researchExcludedInvalidStale++; continue; }
+    const evStartMs = new Date(evStartStr).getTime();
+    if (isNaN(evStartMs) || evStartMs < now.getTime() || evStartMs >= research24hMs) {
+      researchExcludedInvalidStale++; continue;
+    }
+
+    // Not an outright/futures market
+    if (isFuturesMarket(nm)) { researchExcludedOutright++; continue; }
+
+    // market.endDate must exist and be in [event.startTime, now+48h)
+    const mktEndStr = nm.endDateIso || String((nm.raw as Record<string, unknown>).endDate ?? "") || null;
+    if (!mktEndStr) { researchExcludedInvalidStale++; continue; }
+    const mktEndMs = new Date(mktEndStr).getTime();
+    if (isNaN(mktEndMs) || mktEndMs < evStartMs) { researchExcludedInvalidStale++; continue; }
+    if (mktEndMs > research48hMs) { researchExcludedLongHorizon++; continue; }
+
+    // conditionId required
+    if (!nm.conditionId) { researchExcludedInvalidStale++; continue; }
+
+    // Exactly 2 outcomes
+    if (!nm.outcomes || nm.outcomes.length !== 2) { researchExcludedInvalidStale++; continue; }
+
+    // Both clobTokenIds present
+    if (!nm.clobTokenIds || nm.clobTokenIds.length < 2 || !nm.clobTokenIds[0] || !nm.clobTokenIds[1]) {
+      researchExcludedInvalidStale++; continue;
+    }
+
+    // Valid prices in (0, 1)
+    const p0 = nm.outcomePrices[0];
+    const p1 = nm.outcomePrices[1];
+    if (typeof p0 !== "number" || typeof p1 !== "number" ||
+        p0 <= 0 || p0 >= 1 || p1 <= 0 || p1 >= 1) {
+      researchExcludedInvalidPrice++; continue;
+    }
+
+    // Extract event context from augmented raw.events array
+    const eventsRaw = Array.isArray((nm.raw as Record<string, unknown>).events)
+      ? ((nm.raw as Record<string, unknown>).events as Record<string, unknown>[])
+      : [];
+    const evCtx = eventsRaw[0] ?? {};
+    const eventId = String(evCtx.id ?? "");
+    const eventTitle = String(evCtx.title ?? "");
+    const eventSlug = nm.nestedEventSlug || String(evCtx.slug ?? "");
+    const marketFamily = String((nm.raw as Record<string, unknown>).category ?? evCtx.category ?? "") || null;
+
+    if (eventId) researchSeenEventIds.add(eventId);
+
+    researchEligibleMarketsArr.push({
+      eventId,
+      eventTitle,
+      eventSlug,
+      eventStartIso: evStartStr,
+      marketId: nm.id,
+      marketQuestion: nm.question,
+      marketEndIso: mktEndStr,
+      marketFamily,
+      conditionId: nm.conditionId,
+      selectedTokenId: nm.clobTokenIds[0],
+      opposingTokenId: nm.clobTokenIds[1],
+      selectedPriceNum: p0,
+      opposingPriceNum: p1,
+      publicFeedExposed: false, // marked true in generate-signals.ts after pairsToCache known
+    });
+
+    const famKey = marketFamily || "unknown";
+    researchMarketsByFamily[famKey] = (researchMarketsByFamily[famKey] || 0) + 1;
+  }
+
+  counts.researchEligibleEvents = researchSeenEventIds.size;
+  counts.researchEligibleMarketsCount = researchEligibleMarketsArr.length;
+  counts.researchExcludedLongHorizonMarkets = researchExcludedLongHorizon;
+  counts.researchExcludedOutrightMarkets = researchExcludedOutright;
+  counts.researchExcludedInvalidStaleMarkets = researchExcludedInvalidStale;
+  counts.researchExcludedInvalidPriceMarkets = researchExcludedInvalidPrice;
+  counts.researchMarketsByFamily = researchMarketsByFamily;
 
   // 5. Filter active and classify
   const activeMarkets = normalizedMarkets.filter(m => {
@@ -987,5 +1085,6 @@ export async function discoverSportsMarkets(
     extendedNhlCandidates,
     diagnosis,
     recommendedPath,
+    researchEligibleMarkets: researchEligibleMarketsArr,
   };
 }
