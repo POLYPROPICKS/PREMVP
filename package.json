@@ -12,11 +12,13 @@
     "audit:sports-sources": "tsx scripts/audit-polymarket-sports-sources.ts",
     "ops:report": "tsx scripts/daily-ops-report.ts",
     "ops:report:email": "tsx scripts/daily-ops-report.ts --email=alexgrushin@gmail.com",
+    "ops:report:xlsx": "tsx scripts/daily-ops-report.ts --xlsx-preview",
     "visual:matrix": "node scripts/visual/capture-visual-matrix.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
     "@whop/sdk": "^0.0.39",
+    "exceljs": "4.4.0",
     "next": "16.2.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",

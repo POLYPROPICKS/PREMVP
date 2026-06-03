@@ -6,6 +6,7 @@
 
 import { loadEnvConfig } from "@next/env";
 import { execSync } from "child_process";
+import type { OpsReportXlsxInput, XlsxBenchmarkRow, XlsxSizingEntry } from "./buildOpsReportXlsx";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -690,6 +691,9 @@ const EMAIL_MODE_RECIPIENT = (() => {
   return arg ? arg.split("=").slice(1).join("=") : null;
 })();
 
+// ── XLSX Preview mode ─────────────────────────────────────────────────────────
+const XLSX_PREVIEW_MODE = process.argv.includes("--xlsx-preview");
+
 // ── Email helpers ─────────────────────────────────────────────────────────────
 
 function escapeHtml(s: string): string {
@@ -705,11 +709,23 @@ async function sendEmail(opts: {
   subject: string;
   text: string;
   html: string;
+  attachments?: { filename: string; content: string }[];
 }): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
   if (!apiKey) throw new Error("RESEND_API_KEY missing — set in Railway env");
   if (!from) throw new Error("EMAIL_FROM missing — set in Railway env");
+
+  const payload: Record<string, unknown> = {
+    from,
+    to: [opts.to],
+    subject: opts.subject,
+    text: opts.text,
+    html: opts.html,
+  };
+  if (opts.attachments && opts.attachments.length > 0) {
+    payload.attachments = opts.attachments;
+  }
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",
@@ -717,13 +733,7 @@ async function sendEmail(opts: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      from,
-      to: [opts.to],
-      subject: opts.subject,
-      text: opts.text,
-      html: opts.html,
-    }),
+    body: JSON.stringify(payload),
   });
 
   if (!res.ok) {
@@ -2151,13 +2161,132 @@ async function main() {
 
   const reportText = lines.join("\n");
 
+  // ── XLSX buffer (built for email attachment OR local preview) ────────────────
+  let xlsxAttachBuf: Buffer | null = null;
+  if (EMAIL_MODE_RECIPIENT || XLSX_PREVIEW_MODE) {
+    try {
+      // Pre-compute score benchmarks (all scoring functions are in scope here)
+      const m3bKaAll_x = rowsAllTime.filter(r => getActionLabel(r) !== "ABSENT");
+      const m3bKa7d_x  = rows7d.filter(r => getActionLabel(r) !== "ABSENT");
+      const _scoreBenchmarks: XlsxBenchmarkRow[] = [];
+      const _compBenchmarks: XlsxBenchmarkRow[] = [];
+      for (const [wlbl, wrows] of [["7d", m3bKa7d_x], ["All time", m3bKaAll_x]] as [string, ResolvedRow[]][]) {
+        for (const [slbl, fn] of [
+          ["PROD-RAW (finalSignalV2)", getProdRawScore],
+          ["DEDUPE-CONSERVATIVE", computeDedupeConservative],
+          ["SCOREC-META-RISK-PROXY", computeScoreCMetaRisk],
+        ] as [string, (r: ResolvedRow) => number | null][]) {
+          const q = quartileROI(wrows, fn);
+          const sp = spearmanVsReturn(wrows, fn);
+          _scoreBenchmarks.push({ window: wlbl, score: slbl, n: q.n, spearman: sp, q4roi: q.q4roi, q1roi: q.q1roi, spread: q.spread });
+        }
+        for (const [clbl, fn] of [
+          ["OddsQuality (ODDS_ALPHA_MAP[band])", getOddsQualityComponent],
+          ["ActionQuality (ACTION_MAP[action])", getActionQualityComponent],
+          ["FlowSigmoid (log-sigmoid recentTradeCash)", getFlowSigmoidComponent],
+          ["CoverageNorm (dataCoverage/100)", getCoverageNormComponent],
+        ] as [string, (r: ResolvedRow) => number | null][]) {
+          const q = quartileROI(wrows, fn);
+          const sp = spearmanVsReturn(wrows, fn);
+          _compBenchmarks.push({ window: wlbl, score: clbl, n: q.n, spearman: sp, q4roi: q.q4roi, q1roi: q.q1roi, spread: q.spread });
+        }
+      }
+
+      // Build sizing entries
+      const _sizingEntries: XlsxSizingEntry[] = [];
+      for (const lbl of ["72h", "7d", "All time"]) {
+        const sz = m3bSizingStats[lbl];
+        if (!sz) continue;
+        for (const [key, label] of [
+          ["flat",  "FLAT-KNOWN ($10 if action≠ABSENT)"],
+          ["a1",    "ACTION-1 (ENTER=$10, SMALL=$5, WATCH=$0)"],
+          ["f2",    "FAMILY-2 (A1+Longshot≤$2.50+totals+SMALL≤$2.50)"],
+          ["f2b25", "FAMILY-2+SCOREC-B25-HALF"],
+        ] as [M3bSizingKey, string][]) {
+          const s = sz[key];
+          _sizingEntries.push({ window: lbl, strategy: label, activeRows: s.activeRows, pnl: s.pnl, roi: s.roi, maxDD: s.maxDD, worstDay: s.worstDay, positiveDayShare: s.positiveDayShare });
+        }
+      }
+
+      const xlsxInput: OpsReportXlsxInput = {
+        reportDate,
+        generatedAt: nowISO,
+        headShort,
+        localMatchesOrigin,
+        feedAgeMins,
+        feedCacheStatus,
+        feedPairsCount: feedPairs.length,
+        feedConfGe70: feedConfCounts.ge70,
+        cronAgeMins,
+        cronStatus: safeStr(lastJobRun?.status),
+        resolverCronAgeMins,
+        resolverCronStatus,
+        dedupRawCount: dedupDiag.rawCount,
+        dedupUniqueCount: dedupDiag.uniqueCount,
+        backlogUniqueCount: backlogDedup?.uniqueCount ?? null,
+        stats24, stats48, stats72, stats7d, statsAllTime,
+        rows24, rows72, rows7d, rowsAllTime,
+        timingEntries: [...obsTimingCache.entries()].map(([rowId, tp]) => ({
+          rowId,
+          phaseProxy: tp.phaseProxy as string,
+          minutesUntil: tp.minutesToEventStartProxy,
+        })),
+        familyEntries: [...obsFamilyCache.entries()].map(([rowId, fam]) => ({
+          rowId,
+          family: fam as string,
+        })),
+        sizingEntries: _sizingEntries,
+        SCOREC_B25_LOCKED_Q25,
+        m3bScoreCQ25,
+        m3bTrainN: m3bTrainScoreCN,
+        scoreBenchmarks: _scoreBenchmarks,
+        componentBenchmarks: _compBenchmarks,
+        m3bSmFallback,
+        m3bPwFallback,
+        m3bCovMissing,
+        m3bCovNone,
+        m3bCovLow,
+        m3bCovMedium,
+        m3bCovHigh,
+        m3bCovUnexpected,
+        m3bSelCashAvail,
+        m3bSelCntAvail,
+        m3bTotCntAvail,
+        m3bOppCntDerivable,
+        redFlags,
+      };
+
+      const { buildOpsReportXlsx } = await import("./buildOpsReportXlsx");
+      const buf = await buildOpsReportXlsx(xlsxInput);
+      xlsxAttachBuf = buf;
+
+      if (XLSX_PREVIEW_MODE) {
+        const previewPath = "C:\\WORK\\PolyProPicksOps\\preview\\polypropicks_daily_ops_v8_preview.xlsx";
+        const { writeFileSync, mkdirSync } = await import("fs");
+        const { dirname } = await import("path");
+        mkdirSync(dirname(previewPath), { recursive: true });
+        writeFileSync(previewPath, buf);
+        const sizeKb = Math.round(buf.length / 1024);
+        console.error(`[ops-xlsx] ✅ Preview: ${previewPath}`);
+        console.error(`[ops-xlsx] Size: ${sizeKb} KB | Sheets: 14`);
+      }
+    } catch (xlsxErr) {
+      console.error("[ops-xlsx] ❌ XLSX failed:", xlsxErr instanceof Error ? xlsxErr.message : String(xlsxErr));
+    }
+  }
+
+  // ── Email or stdout ───────────────────────────────────────────────────────────
   if (EMAIL_MODE_RECIPIENT) {
     const subject = `PolyProPicks Daily Ops Report — ${reportDate}`;
     const html = `<pre style="white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:13px">${escapeHtml(reportText)}</pre>`;
+    const attachments = xlsxAttachBuf
+      ? [{ filename: "polypropicks_daily_ops_v8.xlsx", content: xlsxAttachBuf.toString("base64") }]
+      : undefined;
     try {
-      await sendEmail({ to: EMAIL_MODE_RECIPIENT, subject, text: reportText, html });
+      await sendEmail({ to: EMAIL_MODE_RECIPIENT, subject, text: reportText, html, attachments });
       console.log(`[ops-report] ✅ Email sent to ${EMAIL_MODE_RECIPIENT}`);
       console.log(`[ops-report] Subject: ${subject}`);
+      if (attachments) console.log(`[ops-report] XLSX attached: ${Math.round(xlsxAttachBuf!.length / 1024)} KB`);
     } catch (e) {
       console.error(
         "[ops-report] ❌ Email failed:",
@@ -2165,8 +2294,11 @@ async function main() {
       );
       process.exit(1);
     }
+  } else if (!XLSX_PREVIEW_MODE) {
+    // Print to stdout (non-email, non-preview mode)
+    console.log(reportText);
   } else {
-    // Print to stdout
+    // XLSX_PREVIEW_MODE without email: stdout still printed
     console.log(reportText);
   }
 
