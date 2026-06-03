@@ -96,6 +96,17 @@ export interface OpsReportXlsxInput {
   m3bTotCntAvail: number; m3bOppCntDerivable: number;
   // Red flags
   redFlags: string[];
+  // Research universe (from latest job_run diagnostics)
+  researchUniverseEvents: number | null;
+  researchUniverseMarkets: number | null;
+  researchEligibleEvents: number | null;
+  researchEligibleMarketsCount: number | null;
+  researchSnapshotsSelected: number | null;
+  researchSnapshotsSelectedPublic: number | null;
+  researchSnapshotsSelectedRotating: number | null;
+  researchSnapshotsInserted: number | null;
+  researchSnapshotDuplicatesDropped: number | null;
+  researchWriterWarning: string | null;
 }
 
 // ── Local helpers ─────────────────────────────────────────────────────────────
@@ -291,6 +302,14 @@ const A_FILL = { type: "pattern" as const, pattern: "solid" as const, fgColor: {
 const H_FONT = { bold: true, color: { argb: "FFFFFFFF" }, size: 9 };
 const S_FONT = { bold: true, color: { argb: "FFFFFFFF" }, size: 9 };
 const D_FONT = { size: 9 };
+// Public Feed / Research Universe column styles
+const PUB_FILL = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FF2E75B6" } }; // blue
+const RES_FILL = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FF7030A0" } }; // purple
+const OK_FILL  = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFE2EFDA" } }; // green
+const CD_FILL  = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFD9D9D9" } }; // gray COLLECTING DATA
+const WN_FILL  = { type: "pattern" as const, pattern: "solid" as const, fgColor: { argb: "FFFFC7CE" } }; // red warning
+const W_FONT   = { bold: true, color: { argb: "FFFFFFFF" }, size: 9 };
+const CD_TEXT  = "COLLECTING DATA";
 
 type CellVal = string | number | null | undefined;
 
@@ -352,6 +371,66 @@ function updateSheet00(ws: ExcelJS.Worksheet, i: OpsReportXlsxInput): void {
   ws.getCell("E17").value = addPlusSign(flatAll?.roi ?? i.statsAllTime.totalReturn); // "+10%"
   ws.getCell("F17").value = addPlusSign(shortDollar(flatAll?.pnl));                  // "+$240"
   ws.getCell("G17").value = negDollar(shortDollar(flatAll?.maxDD));                  // "−$160"
+
+  // ── RESEARCH COVERAGE · TODAY block (appended after template content) ─────
+  const na = (v: number | null) => v !== null ? String(v) : "NOT_AVAILABLE_YET";
+
+  // Section header
+  ws.addRow([]);
+  const rcHdr = ws.addRow(["RESEARCH COVERAGE · TODAY", "", "", "Metric", "Public Feed", "Research Universe"]);
+  rcHdr.getCell(1).font = W_FONT; rcHdr.getCell(1).fill = RES_FILL as ExcelJS.Fill;
+  rcHdr.getCell(4).font = W_FONT; rcHdr.getCell(4).fill = H_FILL as ExcelJS.Fill;
+  rcHdr.getCell(5).font = W_FONT; rcHdr.getCell(5).fill = PUB_FILL as ExcelJS.Fill;
+  rcHdr.getCell(6).font = W_FONT; rcHdr.getCell(6).fill = RES_FILL as ExcelJS.Fill;
+
+  const covRows: [string, string, string][] = [
+    ["Events",                 `${i.feedPairsCount} cards`,    na(i.researchUniverseEvents)],
+    ["Markets",                `${i.feedPairsCount} primary`,  na(i.researchUniverseMarkets)],
+    ["Selected for snapshot",  "—",                            na(i.researchSnapshotsSelected)],
+    ["Inserted snapshots",     "—",                            na(i.researchSnapshotsInserted)],
+    ["Duplicates removed",     "—",                            na(i.researchSnapshotDuplicatesDropped)],
+    ["Writer health",          "—",
+      i.researchWriterWarning
+        ? `⚠ ${i.researchWriterWarning.slice(0, 60)}`
+        : i.researchSnapshotsInserted !== null ? "PASS" : "NOT_AVAILABLE_YET"],
+  ];
+  covRows.forEach(([metric, pub, res], idx) => {
+    const r = ws.addRow(["", "", "", metric, pub, res]);
+    if (idx % 2 === 0) r.fill = A_FILL as ExcelJS.Fill;
+    r.font = D_FONT;
+    if (metric === "Writer health" && i.researchWriterWarning)
+      r.getCell(6).fill = WN_FILL as ExcelJS.Fill;
+    else if (metric === "Writer health" && i.researchSnapshotsInserted !== null && !i.researchWriterWarning)
+      r.getCell(6).fill = OK_FILL as ExcelJS.Fill;
+  });
+
+  // ── PERFORMANCE block — Public Feed vs Research Universe ──────────────────
+  ws.addRow([]);
+  const perfHdr = ws.addRow(["PERFORMANCE", "", "", "Metric", "Public Feed", "Research Universe"]);
+  perfHdr.getCell(1).font = W_FONT; perfHdr.getCell(1).fill = H_FILL as ExcelJS.Fill;
+  perfHdr.getCell(4).font = W_FONT; perfHdr.getCell(4).fill = H_FILL as ExcelJS.Fill;
+  perfHdr.getCell(5).font = W_FONT; perfHdr.getCell(5).fill = PUB_FILL as ExcelJS.Fill;
+  perfHdr.getCell(6).font = W_FONT; perfHdr.getCell(6).fill = RES_FILL as ExcelJS.Fill;
+
+  const MIN_RES_SAMPLE = 30;
+  const resN = (i.researchSnapshotsInserted ?? 0);
+  const resCollecting = resN < MIN_RES_SAMPLE;
+  const resPerf = resCollecting
+    ? `${CD_TEXT} (Resolved: ${resN} / ${MIN_RES_SAMPLE} minimum)`
+    : "SEE DB";
+
+  const perfRows: [string, string, string][] = [
+    ["Resolved signals 7d",  String(i.stats7d.total),          resPerf],
+    ["ROI 7d",               i.stats7d.totalReturn,            resCollecting ? CD_TEXT : "SEE DB"],
+    ["ROI all-time",         i.statsAllTime.totalReturn,       resCollecting ? CD_TEXT : "SEE DB"],
+    ["Max DD",               negDollar(flatAll?.maxDD ?? "N/A"), resCollecting ? CD_TEXT : "SEE DB"],
+  ];
+  perfRows.forEach(([metric, pub, res], idx) => {
+    const r = ws.addRow(["", "", "", metric, pub, res]);
+    if (idx % 2 === 0) r.fill = A_FILL as ExcelJS.Fill;
+    r.font = D_FONT;
+    if (resCollecting) r.getCell(6).fill = CD_FILL as ExcelJS.Fill;
+  });
 }
 
 // ── Sheet 01: update FULL STRATEGIES rows 6–10 and FEATURE BLOCKS rows 14–22 ──
@@ -397,6 +476,35 @@ function updateSheet01(ws: ExcelJS.Worksheet, i: OpsReportXlsxInput): void {
     ws.getCell(`I${rowNum}`).value = s.maxDD;
     ws.getCell(`J${rowNum}`).value = s.streak;
     ws.getCell(`K${rowNum}`).value = delta;
+  }
+
+  // ── Research comparison columns (L–R) added to strategy rows ──────────────
+  // Header row 5 (assumed to be the label row above data rows 6–10)
+  const resColHdr = ["Public N", "Public ROI", "Public Max DD", "Research N", "Research ROI", "Research Max DD", "Delta ROI"];
+  resColHdr.forEach((h, ci) => {
+    const cell = ws.getCell(5, 12 + ci); // cols L=12, M=13, ...
+    cell.value = h;
+    cell.font = W_FONT;
+    cell.fill = (ci < 3 ? PUB_FILL : ci < 6 ? RES_FILL : H_FILL) as ExcelJS.Fill;
+  });
+
+  const stratRowDefs: Array<[number, XlsxRow[] | null]> = stratDefs;
+  for (const [rowNum, rows] of stratRowDefs) {
+    if (rows === null) {
+      // Row 7: mark research as collecting data
+      for (let c = 0; c < 7; c++) {
+        const cell = ws.getCell(rowNum, 12 + c);
+        cell.value = CD_TEXT; cell.font = D_FONT; cell.fill = CD_FILL as ExcelJS.Fill;
+      }
+      continue;
+    }
+    const s = computeStratStats(rows);
+    const resVals: CellVal[] = [s.n, s.roi, s.maxDD, CD_TEXT, CD_TEXT, CD_TEXT, CD_TEXT];
+    resVals.forEach((v, ci) => {
+      const cell = ws.getCell(rowNum, 12 + ci);
+      cell.value = v; cell.font = D_FONT;
+      if (ci >= 3) cell.fill = CD_FILL as ExcelJS.Fill; // research = collecting
+    });
   }
 
   // ── B. FEATURE BUILDING BLOCKS: rows 14–22 (cols C & D) ──────────────────
@@ -479,40 +587,95 @@ function updateSheet01(ws: ExcelJS.Worksheet, i: OpsReportXlsxInput): void {
 // ── Analytical sheet builders (accept existing ws, called after spliceRows) ───
 
 function buildSheet03(ws: ExcelJS.Worksheet, i: OpsReportXlsxInput): void {
-  hdrRow(ws, ["League", "Total", "Won", "Lost", "Push", "Win%", "AvgReturn", "TotalReturn"],
-    [18, 10, 8, 8, 8, 10, 14, 14]);
+  // Header: Category | Public N 7d | Public ROI 7d | Research N 7d | Research ROI 7d | Delta ROI
+  const hdrVals: CellVal[] = ["Category", "Public N 7d", "Public ROI 7d", "Research N 7d", "Research ROI 7d", "Delta ROI", "Public N all", "Public ROI all"];
+  const hdrRow0 = ws.addRow(hdrVals);
+  hdrRow0.font = H_FONT; hdrRow0.fill = H_FILL as ExcelJS.Fill;
+  hdrRow0.getCell(2).fill = PUB_FILL as ExcelJS.Fill; hdrRow0.getCell(2).font = W_FONT;
+  hdrRow0.getCell(3).fill = PUB_FILL as ExcelJS.Fill; hdrRow0.getCell(3).font = W_FONT;
+  hdrRow0.getCell(4).fill = RES_FILL as ExcelJS.Fill; hdrRow0.getCell(4).font = W_FONT;
+  hdrRow0.getCell(5).fill = RES_FILL as ExcelJS.Fill; hdrRow0.getCell(5).font = W_FONT;
+  [18, 14, 14, 14, 14, 12, 14, 14].forEach((w, ci) => { ws.getColumn(ci + 1).width = w; });
+  ws.views = [{ state: "frozen", ySplit: 1, showGridLines: false }];
 
+  const lgMap7d  = computeBd(i.rows7d,      deriveLeague);
+  const lgMapAll = computeBd(i.rowsAllTime,  deriveLeague);
+  const allLeagues = [...new Set([...lgMap7d.keys(), ...lgMapAll.keys()])].sort();
+
+  secRow(ws, "LEAGUE BREAKDOWN — Public Feed vs Research Universe", 8);
+  let alt = false;
+  for (const lg of allLeagues) {
+    const p7  = lgMap7d.get(lg);
+    const pA  = lgMapAll.get(lg);
+    const pubN7   = p7?.total ?? 0;
+    const pubRoi7 = p7 ? avgR(p7.returns) : "N/A";
+    const pubNA   = pA?.total ?? 0;
+    const pubRoiA = pA ? avgR(pA.returns) : "N/A";
+    const row = ws.addRow([lg, pubN7, pubRoi7, CD_TEXT, CD_TEXT, "—", pubNA, pubRoiA]);
+    if (alt) row.fill = A_FILL as ExcelJS.Fill;
+    row.font = D_FONT;
+    row.getCell(4).fill = CD_FILL as ExcelJS.Fill;
+    row.getCell(5).fill = CD_FILL as ExcelJS.Fill;
+    alt = !alt;
+  }
+
+  // Also include existing full-window breakdown for reference
   for (const [wlbl, wrows] of [
-    ["24h", i.rows24], ["72h", i.rows72], ["7d", i.rows7d], ["All time", i.rowsAllTime],
+    ["72h", i.rows72], ["All time", i.rowsAllTime],
   ] as [string, XlsxRow[]][]) {
-    secRow(ws, `LEAGUE BREAKDOWN — ${wlbl}`, 8);
+    secRow(ws, `LEAGUE PUBLIC ONLY — ${wlbl}`, 8);
     const lgMap = computeBd(wrows, deriveLeague);
-    let alt = false;
+    let alt2 = false;
     [...lgMap.entries()].sort((a, b) => b[1].total - a[1].total).forEach(([lg, b]) => {
-      dataRow(ws, [lg, b.total, b.won, b.lost, b.push, winR(b.won, b.lost), avgR(b.returns), totR(b.returns)], alt);
-      alt = !alt;
+      dataRow(ws, [lg, b.total, b.won, b.lost, b.push, winR(b.won, b.lost), avgR(b.returns), totR(b.returns)], alt2);
+      alt2 = !alt2;
     });
   }
 }
 
 function buildSheet04(ws: ExcelJS.Worksheet, i: OpsReportXlsxInput): void {
-  hdrRow(ws, ["Band", "Total", "Won", "Lost", "Push", "Win%", "AvgReturn", "TotalReturn"],
-    [14, 10, 8, 8, 8, 10, 14, 14]);
-
   const BAND_ORDER = ["80+", "70–79", "60–69", "<60", "Missing"];
 
+  // Header with explicit Public / Research columns
+  const hdrVals: CellVal[] = ["Confidence Band", "Public N", "Public ROI", "Research N", "Research ROI", "Delta ROI", "Public Win%", "Public AvgReturn"];
+  const hdrRow0 = ws.addRow(hdrVals);
+  hdrRow0.font = H_FONT; hdrRow0.fill = H_FILL as ExcelJS.Fill;
+  hdrRow0.getCell(2).fill = PUB_FILL as ExcelJS.Fill; hdrRow0.getCell(2).font = W_FONT;
+  hdrRow0.getCell(3).fill = PUB_FILL as ExcelJS.Fill; hdrRow0.getCell(3).font = W_FONT;
+  hdrRow0.getCell(4).fill = RES_FILL as ExcelJS.Fill; hdrRow0.getCell(4).font = W_FONT;
+  hdrRow0.getCell(5).fill = RES_FILL as ExcelJS.Fill; hdrRow0.getCell(5).font = W_FONT;
+  [18, 10, 12, 12, 12, 10, 10, 14].forEach((w, ci) => { ws.getColumn(ci + 1).width = w; });
+  ws.views = [{ state: "frozen", ySplit: 1, showGridLines: false }];
+
+  // 7d comparison block (primary)
+  secRow(ws, "CONFIDENCE BAND — Public Feed vs Research Universe (7d)", 8);
+  const bMap7d = computeBd(i.rows7d, r => getConfBand(extractConf(r)));
+  let alt = false;
+  const allBands7d = [...new Set([...BAND_ORDER, ...bMap7d.keys()])];
+  for (const band of allBands7d) {
+    const b = bMap7d.get(band);
+    if (!b) continue;
+    const row = ws.addRow([band, b.total, avgR(b.returns), CD_TEXT, CD_TEXT, "—", winR(b.won, b.lost), avgR(b.returns)]);
+    if (alt) row.fill = A_FILL as ExcelJS.Fill;
+    row.font = D_FONT;
+    row.getCell(4).fill = CD_FILL as ExcelJS.Fill;
+    row.getCell(5).fill = CD_FILL as ExcelJS.Fill;
+    alt = !alt;
+  }
+
+  // Full historical breakdown (public only)
   for (const [wlbl, wrows] of [
-    ["24h", i.rows24], ["72h", i.rows72], ["7d", i.rows7d], ["All time", i.rowsAllTime],
+    ["72h", i.rows72], ["All time", i.rowsAllTime],
   ] as [string, XlsxRow[]][]) {
-    secRow(ws, `CONFIDENCE BAND — ${wlbl}`, 8);
+    secRow(ws, `CONFIDENCE BAND PUBLIC ONLY — ${wlbl}`, 8);
     const bMap = computeBd(wrows, r => getConfBand(extractConf(r)));
-    let alt = false;
+    let alt2 = false;
     const allKeys = [...new Set([...BAND_ORDER, ...bMap.keys()])];
     for (const band of allKeys) {
       const b = bMap.get(band);
       if (!b) continue;
-      dataRow(ws, [band, b.total, b.won, b.lost, b.push, winR(b.won, b.lost), avgR(b.returns), totR(b.returns)], alt);
-      alt = !alt;
+      dataRow(ws, [band, b.total, b.won, b.lost, b.push, winR(b.won, b.lost), avgR(b.returns), totR(b.returns)], alt2);
+      alt2 = !alt2;
     }
   }
 }

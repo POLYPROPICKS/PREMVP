@@ -853,7 +853,7 @@ async function main() {
       const { data, error } = await supabase
         .from("job_runs")
         .select(
-          "source, started_at, finished_at, status, generated_count, rejected_count, duration_ms, error_message",
+          "source, started_at, finished_at, status, generated_count, rejected_count, duration_ms, error_message, diagnostics",
         )
         .eq("source", "polymarket")
         .order("started_at", { ascending: false })
@@ -868,6 +868,21 @@ async function main() {
       redFlags.push(`⚠️ job_runs недоступен: ${jobRunError}`);
     }
   }
+
+  // ── Research diagnostics from latest signal-cache-cron job_run ───────────
+  const _ljDiag = (lastJobRun?.diagnostics as Record<string, unknown> | null) ?? null;
+  const _ljRf   = (_ljDiag?.researchFunnel as Record<string, unknown> | null) ?? null;
+  const _ljSc   = (_ljDiag?.sportsDiscoveryCounts as Record<string, unknown> | null) ?? null;
+  const researchUniverseEvents        = safeNum(_ljRf?.researchUniverseEvents)         ?? null;
+  const researchUniverseMarkets       = safeNum(_ljRf?.researchUniverseMarkets)        ?? null;
+  const researchEligibleEvents        = safeNum(_ljSc?.researchEligibleEvents)         ?? null;
+  const researchEligibleMarketsCount  = safeNum(_ljSc?.researchEligibleMarketsCount)   ?? null;
+  const researchSnapshotsSelected     = safeNum(_ljRf?.researchSnapshotsSelected)      ?? null;
+  const researchSnapshotsSelectedPublic   = safeNum(_ljRf?.researchSnapshotsSelectedPublic)   ?? null;
+  const researchSnapshotsSelectedRotating = safeNum(_ljRf?.researchSnapshotsSelectedRotating) ?? null;
+  const researchSnapshotsInserted     = safeNum(_ljDiag?.researchSnapshotsInserted)    ?? null;
+  const researchSnapshotDuplicatesDropped = safeNum(_ljDiag?.researchSnapshotDuplicatesDropped) ?? null;
+  const researchWriterWarning         = safeStr(_ljDiag?.researchWriterWarning as unknown) ?? null;
 
   const cronLastAt = lastJobRun ? safeStr(lastJobRun.started_at) : null;
   const cronAgeMs = cronLastAt
@@ -2254,6 +2269,16 @@ async function main() {
         m3bTotCntAvail,
         m3bOppCntDerivable,
         redFlags,
+        researchUniverseEvents,
+        researchUniverseMarkets,
+        researchEligibleEvents,
+        researchEligibleMarketsCount,
+        researchSnapshotsSelected,
+        researchSnapshotsSelectedPublic,
+        researchSnapshotsSelectedRotating,
+        researchSnapshotsInserted,
+        researchSnapshotDuplicatesDropped,
+        researchWriterWarning,
       };
 
       const { buildOpsReportXlsx } = await import("./buildOpsReportXlsx");
