@@ -507,6 +507,89 @@ export async function fetchMarketsBySportsTag(
 }
 
 /**
+ * Fetch all active events whose startTime falls within [startIso, endIso] using
+ * /events/keyset cursor pagination. Fail-open: returns empty events plus diagnostic
+ * state on any fetch error so callers can fall back gracefully.
+ *
+ * Safety cap: 100 pages maximum (10,000 events).
+ */
+export async function fetchActiveEventsByStartWindowKeysetSafe(
+  startIso: string,
+  endIso: string,
+): Promise<{
+  events: Record<string, unknown>[];
+  pagesFetched: number;
+  truncated: boolean;
+  errorState: string | null;
+}> {
+  const MAX_PAGES = 100;
+  const events: Record<string, unknown>[] = [];
+  const seenIds = new Set<string>();
+  let cursor: string | null = null;
+  let lastCursor: string | null = null;
+  let pagesFetched = 0;
+  let truncated = false;
+  let errorState: string | null = null;
+
+  try {
+    while (true) {
+      if (pagesFetched >= MAX_PAGES) {
+        truncated = true;
+        break;
+      }
+
+      const params = new URLSearchParams({
+        active: "true",
+        closed: "false",
+        start_time_min: startIso,
+        start_time_max: endIso,
+        limit: "100",
+      });
+      if (cursor) params.set("after_cursor", cursor);
+
+      const url = `${GAMMA_API_BASE}/events/keyset?${params.toString()}`;
+      const resp = await safeFetch<unknown>(url, {}, 20000);
+
+      if (!resp) {
+        errorState = "keyset page returned null";
+        break;
+      }
+
+      const obj = resp as Record<string, unknown>;
+      const pageEvents = Array.isArray(obj.events)
+        ? (obj.events as Record<string, unknown>[])
+        : Array.isArray(resp)
+          ? (resp as Record<string, unknown>[])
+          : null;
+
+      if (!pageEvents) {
+        errorState = "unexpected keyset response shape";
+        break;
+      }
+
+      pagesFetched++;
+
+      for (const ev of pageEvents) {
+        const id = String(ev.id ?? "");
+        if (id && !seenIds.has(id)) {
+          seenIds.add(id);
+          events.push(ev);
+        }
+      }
+
+      const nextCursor = typeof obj.next_cursor === "string" ? obj.next_cursor : null;
+      if (!nextCursor || nextCursor === "" || nextCursor === lastCursor) break;
+      lastCursor = cursor;
+      cursor = nextCursor;
+    }
+  } catch (err) {
+    errorState = err instanceof Error ? err.message : String(err);
+  }
+
+  return { events, pagesFetched, truncated, errorState };
+}
+
+/**
  * Fetch events by sports tag ID (fallback only)
  */
 export async function fetchEventsBySportsTag(

@@ -17,6 +17,7 @@ import {
   fetchMarketsBySportsTag,
   fetchEventsByTagSlugSafe,
   fetchEventsBySeriesSafe,
+  fetchActiveEventsByStartWindowKeysetSafe,
 } from "./polymarketClient";
 
 import {
@@ -211,15 +212,38 @@ export async function discoverSportsMarkets(
     within48hGroups: 0,
     volumeEligibleGroups: 0,
     finalPairs: 0,
+    // Event spine diagnostics (Patch S1)
+    eventSpineUsed: false,
+    eventSpineFallbackUsed: false,
+    eventPagesFetched: 0,
+    eventSpineTruncated: false,
+    officialEventsFetched48h: 0,
+    confirmedSportsEvents48h: 0,
+    nestedSportsMarketsFlattened: 0,
+    canonicalStartTimeApplied: 0,
   };
 
   // 1. Fetch sports metadata and tag IDs
-  const { tagIds: sportsTagIds, success: sportsSuccess, error: sportsError } = await fetchSportsMetadata();
+  const { tagIds: sportsTagIds, sports: sportsRaw, success: sportsSuccess, error: sportsError } = await fetchSportsMetadata();
   if (!sportsSuccess) {
     warnings.push(`Sports metadata fetch failed: ${sportsError}`);
   }
 
-  // Add probe tag if available
+  // Build sport-specific tag set (exclude generic root tags that appear on every event)
+  // Generic tags: "1" (root Sports) and "100639" (near-universal Live Sports) — these
+  // are present on 98-100% of sports config entries and would match non-sports events.
+  const GENERIC_SPORTS_TAGS = new Set(["1", "100639"]);
+  const specificSportsTagIds = new Set<string>();
+  for (const s of (sportsRaw as Record<string, unknown>[])) {
+    const tagsVal = s.tags;
+    if (typeof tagsVal === "string") {
+      tagsVal.split(",").map((t: string) => t.trim()).filter(Boolean).forEach((t: string) => {
+        if (!GENERIC_SPORTS_TAGS.has(t)) specificSportsTagIds.add(t);
+      });
+    }
+  }
+
+  // Add probe tag if available (for flat fallback path)
   const probeTagId = "100639";
   const allTagIds = [...sportsTagIds];
   if (!allTagIds.includes(probeTagId)) {
@@ -241,18 +265,98 @@ export async function discoverSportsMarkets(
     }
   }
 
-  // 3. Fetch markets by sports tags
+  // 3a. PRIMARY SPINE: fetch events via /events/keyset for now → now+48h
+  // This is the official event universe; nested markets are flattened and augmented
+  // with canonical event.startTime so resolveGameTime returns the correct start time.
+  const keysetEndIso = new Date(now.getTime() + 48 * 60 * 60 * 1000).toISOString();
+  const keysetResult = await fetchActiveEventsByStartWindowKeysetSafe(
+    now.toISOString(),
+    keysetEndIso,
+  );
+
+  counts.eventPagesFetched = keysetResult.pagesFetched;
+  counts.eventSpineTruncated = keysetResult.truncated;
+  counts.officialEventsFetched48h = keysetResult.events.length;
+
+  if (keysetResult.errorState) {
+    warnings.push(`Event keyset fetch error: ${keysetResult.errorState}`);
+  }
+
+  // Classify events and flatten nested markets with event context injected
+  const keysetMarkets: Record<string, unknown>[] = [];
+  let confirmedSportsCount = 0;
+
+  for (const ev of keysetResult.events) {
+    const event = ev as Record<string, unknown>;
+    const evTags = (event.tags as Array<Record<string, unknown>>) ?? [];
+    // Tier A: has at least one sport-specific tag (not the generic root tags)
+    const isConfirmedSports = specificSportsTagIds.size > 0
+      ? evTags.some(t => specificSportsTagIds.has(String(t.id ?? "")))
+      : evTags.some(t => sportsTagIds.includes(String(t.id ?? ""))); // fallback if metadata failed
+
+    if (!isConfirmedSports) continue;
+    confirmedSportsCount++;
+
+    const eventStartTime = typeof event.startTime === "string" ? event.startTime : undefined;
+    const eventId = String(event.id ?? "");
+    const eventSlug = String(event.slug ?? "");
+
+    const nestedMarkets = Array.isArray(event.markets)
+      ? (event.markets as Record<string, unknown>[])
+      : [];
+
+    for (const mkt of nestedMarkets) {
+      counts.nestedSportsMarketsFlattened = (counts.nestedSportsMarketsFlattened ?? 0) + 1;
+
+      // Augment the nested market with event context so normalizeSportsMarket picks up:
+      //   - eventStartTime → m.eventStartTime (canonical start)
+      //   - events[0]     → m.nestedEventId, m.nestedEventSlug, m.nestedEventStartTime
+      // Both eventStartTime AND nestedEventStartTime being set gives classifyGameSignal
+      // 2 reasons → "strong" signal for all keyset-derived markets with a valid startTime.
+      const augmented: Record<string, unknown> = {
+        ...mkt,
+        eventStartTime: eventStartTime ?? null,
+        events: [{
+          id: eventId,
+          slug: eventSlug,
+          startTime: eventStartTime ?? null,
+          title: event.title,
+        }],
+      };
+      if (eventStartTime) {
+        counts.canonicalStartTimeApplied = (counts.canonicalStartTimeApplied ?? 0) + 1;
+      }
+      keysetMarkets.push(augmented);
+    }
+  }
+
+  counts.confirmedSportsEvents48h = confirmedSportsCount;
+
+  // 3b. Decide whether to use event spine or fall back to flat /markets
+  // Spine is used if it returned confirmed sports events without a hard error.
+  // Fall back to flat /markets if spine returned zero confirmed sports (e.g. metadata
+  // failure left specificSportsTagIds empty) so discovery is never silently empty.
+  const useEventSpine = confirmedSportsCount > 0;
+  counts.eventSpineUsed = useEventSpine;
+  counts.eventSpineFallbackUsed = !useEventSpine;
+
   const allRawMarkets: Record<string, unknown>[] = [];
 
-  for (const tagId of allTagIds.slice(0, 5)) { // Limit to first 5 tags
-    try {
-      const markets = await fetchMarketsBySportsTag(tagId, {
-        volumeMinUsd: cfg.fetchVolumeMinUsd,
-        limit: 500,
-      });
-      allRawMarkets.push(...markets);
-    } catch (err) {
-      warnings.push(`Failed to fetch markets for tag ${tagId}: ${err}`);
+  if (useEventSpine) {
+    allRawMarkets.push(...keysetMarkets);
+  } else {
+    // Flat /markets fallback (original spine) — runs only when keyset yields 0 sports events
+    warnings.push("Event spine fallback: using flat /markets because keyset returned 0 confirmed sports events");
+    for (const tagId of allTagIds.slice(0, 5)) {
+      try {
+        const markets = await fetchMarketsBySportsTag(tagId, {
+          volumeMinUsd: cfg.fetchVolumeMinUsd,
+          limit: 500,
+        });
+        allRawMarkets.push(...markets);
+      } catch (err) {
+        warnings.push(`Failed to fetch markets for tag ${tagId}: ${err}`);
+      }
     }
   }
 

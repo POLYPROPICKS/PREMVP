@@ -402,6 +402,15 @@ export interface SportsDiscoveryCounts {
   within48hGroups: number;
   volumeEligibleGroups: number;
   finalPairs: number;
+  // Event spine diagnostics (Patch S1)
+  eventSpineUsed?: boolean;
+  eventSpineFallbackUsed?: boolean;
+  eventPagesFetched?: number;
+  eventSpineTruncated?: boolean;
+  officialEventsFetched48h?: number;
+  confirmedSportsEvents48h?: number;
+  nestedSportsMarketsFlattened?: number;
+  canonicalStartTimeApplied?: number;
 }
 
 export interface SportsDiscoverySample {
