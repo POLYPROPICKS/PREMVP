@@ -445,6 +445,9 @@ export interface SportsDiscoveryCounts {
   researchExcludedOutrightMarkets?: number;
   researchExcludedInvalidStaleMarkets?: number;
   researchExcludedInvalidPriceMarkets?: number;
+  researchExcludedOddsBelowMin?: number;
+  researchExcludedOddsAboveMax?: number;
+  researchExcludedOddsInvalid?: number;
   researchMarketsByFamily?: Record<string, number>;
 }
 

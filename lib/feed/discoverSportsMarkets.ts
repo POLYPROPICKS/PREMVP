@@ -397,6 +397,9 @@ export async function discoverSportsMarkets(
   let researchExcludedOutright = 0;
   let researchExcludedInvalidStale = 0;
   let researchExcludedInvalidPrice = 0;
+  let researchExcludedOddsBelowMin = 0;
+  let researchExcludedOddsAboveMax = 0;
+  let researchExcludedOddsInvalid = 0;
   const researchMarketsByFamily: Record<string, number> = {};
 
   for (const nm of normalizedMarkets) {
@@ -440,6 +443,12 @@ export async function discoverSportsMarkets(
       researchExcludedInvalidPrice++; continue;
     }
 
+    // European odds corridor [1.25, 4.00] — matches DB chk_gsrs_odds_corridor constraint
+    const s2EuropeanOdds = Math.round((1 / p0) * 10000) / 10000;
+    if (!Number.isFinite(s2EuropeanOdds)) { researchExcludedOddsInvalid++; continue; }
+    if (s2EuropeanOdds < 1.25) { researchExcludedOddsBelowMin++; continue; }
+    if (s2EuropeanOdds > 4.00) { researchExcludedOddsAboveMax++; continue; }
+
     // Extract event context from augmented raw.events array
     const eventsRaw = Array.isArray((nm.raw as Record<string, unknown>).events)
       ? ((nm.raw as Record<string, unknown>).events as Record<string, unknown>[])
@@ -479,6 +488,9 @@ export async function discoverSportsMarkets(
   counts.researchExcludedOutrightMarkets = researchExcludedOutright;
   counts.researchExcludedInvalidStaleMarkets = researchExcludedInvalidStale;
   counts.researchExcludedInvalidPriceMarkets = researchExcludedInvalidPrice;
+  counts.researchExcludedOddsBelowMin = researchExcludedOddsBelowMin;
+  counts.researchExcludedOddsAboveMax = researchExcludedOddsAboveMax;
+  counts.researchExcludedOddsInvalid = researchExcludedOddsInvalid;
   counts.researchMarketsByFamily = researchMarketsByFamily;
 
   // 5. Filter active and classify
