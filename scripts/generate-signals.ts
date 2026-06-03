@@ -158,6 +158,9 @@ async function main() {
     let researchWriterAttempted = false;
     let researchSnapshotsInserted = 0;
     let researchWriterWarning: string | null = null;
+    let researchSnapshotsBeforeDedup = 0;
+    let researchSnapshotsAfterDedup = 0;
+    let researchSnapshotDuplicatesDropped = 0;
     // ── Research universe persistence ──────────────────────────────────────────
     // Mark which research snapshots also landed in the public feed, then write.
     // Runs regardless of generatedCount (research may yield rows even if product feed is empty).
@@ -178,11 +181,37 @@ async function main() {
         ),
       }));
 
+      // Deduplicate by upsert conflict key: (snapshot_run_id, condition_id, selected_token_id).
+      // snapshot_run_id is fixed per cron run; dedup on conditionId+selectedTokenId is sufficient.
+      // PostgreSQL raises "cannot affect row a second time" when the same key appears ≥2 times in one batch.
+      // Merge rule: publicFeedExposed=true wins; prefer the row with the richer (longer) diagnostics object.
+      const seenResearchKeys = new Map<string, typeof markedSnapshots[number]>();
+      for (const snap of markedSnapshots) {
+        const key = `${snap.conditionId}::${snap.selectedTokenId}`;
+        const existing = seenResearchKeys.get(key);
+        if (!existing) {
+          seenResearchKeys.set(key, snap);
+        } else {
+          const mergedExposed = existing.publicFeedExposed || snap.publicFeedExposed;
+          const existingDiagLen = JSON.stringify(existing.diagnostics ?? {}).length;
+          const snapDiagLen = JSON.stringify(snap.diagnostics ?? {}).length;
+          const richer = snapDiagLen > existingDiagLen ? snap : existing;
+          seenResearchKeys.set(key, { ...richer, publicFeedExposed: mergedExposed });
+        }
+      }
+      const dedupedSnapshots = Array.from(seenResearchKeys.values());
+      researchSnapshotsBeforeDedup = markedSnapshots.length;
+      researchSnapshotsAfterDedup = dedupedSnapshots.length;
+      researchSnapshotDuplicatesDropped = markedSnapshots.length - dedupedSnapshots.length;
+      if (researchSnapshotDuplicatesDropped > 0) {
+        console.log(`[generate-signals] Research snapshot duplicates dropped: ${researchSnapshotDuplicatesDropped} (${researchSnapshotsBeforeDedup} → ${researchSnapshotsAfterDedup})`);
+      }
+
       let researchInserted = 0;
       try {
         researchWriterAttempted = true;
         const researchResult = await writeResearchEligibleSignalSnapshots({
-          snapshots: markedSnapshots,
+          snapshots: dedupedSnapshots,
         });
         researchInserted = researchResult.inserted;
         researchSnapshotsInserted = researchInserted;
@@ -207,6 +236,9 @@ async function main() {
     }
     // Append research writer stats to diagnostics for job_runs observability
     diagnostics.researchSnapshotsCollected = rawResearchSnapshots.length;
+    diagnostics.researchSnapshotsBeforeDedup = researchSnapshotsBeforeDedup;
+    diagnostics.researchSnapshotsAfterDedup = researchSnapshotsAfterDedup;
+    diagnostics.researchSnapshotDuplicatesDropped = researchSnapshotDuplicatesDropped;
     diagnostics.researchWriterAttempted = researchWriterAttempted;
     diagnostics.researchSnapshotsInserted = researchSnapshotsInserted;
     diagnostics.researchWriterWarning = researchWriterWarning;
