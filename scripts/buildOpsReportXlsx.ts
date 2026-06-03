@@ -299,7 +299,7 @@ function hdrRow(ws: ExcelJS.Worksheet, values: CellVal[], colWidths?: number[]):
   row.font = H_FONT;
   row.fill = H_FILL as ExcelJS.Fill;
   if (colWidths) colWidths.forEach((w, i) => { ws.getColumn(i + 1).width = w; });
-  ws.views = [{ state: "frozen", ySplit: 1, showGridLines: false, workbookViewId: 0 }];
+  ws.views = [{ state: "frozen", ySplit: 1, showGridLines: false }];
 }
 
 function secRow(ws: ExcelJS.Worksheet, label: string, cols: number): void {
