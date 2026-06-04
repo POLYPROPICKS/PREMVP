@@ -121,7 +121,10 @@ export interface LandingCardDiagnostics {
     v: "v1";
     signalPhaseAtSnapshot: "prematch" | "live" | "unknown";
     marketCloseIso: string | null;
-    marketType: string | null;
+    marketType: string | null;         // sportsMarketType (moneyline, totals, spreads, lol_*, …)
+    marketSubtype?: string | null;     // raw prop subtype when sportsMarketType encodes it (e.g. lol_penta_kill)
+    familySource?: string | null;      // how market_family/league was derived
+    taxonomyVersion?: string | null;   // dimension contract version (v1-dimension-fix)
     discoverySourceProxy: string | null;
     gameTimeConfidence: "high" | "medium" | "low" | "none" | null;
   };
@@ -171,7 +174,10 @@ export interface ResearchNestedMarket {
   marketId: string;
   marketQuestion: string;
   marketEndIso: string;
-  marketFamily: string | null;
+  marketFamily: string | null;         // league/sport name (MLB, NHL, Esports, Soccer…)
+  leagueName?: string | null;          // explicit league derived from slug prefix or Gamma category
+  sportsMarketType?: string | null;    // Polymarket market type (moneyline, totals, spreads, lol_*)
+  familySource?: string | null;        // how market_family/league was derived
   conditionId: string;
   selectedTokenId: string;
   opposingTokenId: string;

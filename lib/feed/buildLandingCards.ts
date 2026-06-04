@@ -1822,7 +1822,11 @@ async function tryBuildResearchSnapshot(
       v: "v1",
       signalPhaseAtSnapshot,
       marketCloseIso: null,
+      // parentMetaExt._parentMeta.sportsMarketType is set for sports-discovery samples only.
+      // null is acceptable for generic enriched candidates in Path A.
       marketType: safeString(parentMetaExt?.sportsMarketType) ?? null,
+      familySource: "parentMeta.category",
+      taxonomyVersion: "v1-dimension-fix",
       discoverySourceProxy: safeString(candidate.sportsMatchedKeyword) ?? null,
       gameTimeConfidence:
         (parentMetaExt?.gameTimeConfidence as "high" | "medium" | "low" | "none" | undefined) ??
@@ -2409,8 +2413,8 @@ export async function buildLandingCards(options?: {
           selectedOutcome: null,
           selectedPriceNum: rm.selectedPriceNum,
           selectedEuropeanOddsNum: europeanOdds,
-          marketFamily: rm.marketFamily,
-          league: rm.marketFamily,
+          marketFamily: rm.leagueName ?? rm.marketFamily,
+          league: rm.leagueName ?? rm.marketFamily,
           gameStartIso: rm.eventStartIso,
           dataCoverageNum: null,
           productRejectionReasons: ["research-s2-direct"],
@@ -2434,6 +2438,17 @@ export async function buildLandingCards(options?: {
             formulaUsed: "research-s2-direct",
             rejectionReasons: ["research-s2-direct"],
             gameStartIso: rm.eventStartIso,
+            researchContext: {
+              v: "v1",
+              signalPhaseAtSnapshot: "prematch",
+              marketCloseIso: null,
+              marketType: rm.sportsMarketType ?? null,
+              marketSubtype: rm.sportsMarketType?.includes("_") ? rm.sportsMarketType : null,
+              familySource: rm.familySource ?? "unknown",
+              taxonomyVersion: "v1-dimension-fix",
+              discoverySourceProxy: null,
+              gameTimeConfidence: null,
+            },
           } as LandingCardDiagnostics,
           publicFeedExposed: isPublicExposed,
           eventId: rm.eventId || null,

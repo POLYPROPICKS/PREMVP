@@ -40,17 +40,13 @@ const DEFAULT_CONFIG: SportsDiscoveryConfig = {
   formulaVersion: "trusted-initial-formula-v1.1",
 };
 
-// Resolve league name from a GameGroup using teamsMap and slug/text heuristics
-function resolveLeagueName(
-  g: GameGroup,
-  teamsMap: Map<string, { logo: string | null; name: string; league: string }>,
-): string {
-  const teamA = g.teamAID ? teamsMap.get(g.teamAID) : null;
-  if (teamA?.league) return teamA.league;
-
-  const slug = g.primaryMarket?.slug || g.primaryMarket?.nestedEventSlug || "";
-  const prefix = slug.split("-")[0].toLowerCase();
-  const prefixMap: Record<string, string> = {
+// Shared slug-prefix → league name resolver.
+// Single source of truth for all prefix-based league resolution.
+// Pass researchExtensions=true to enable additional prefixes for S2 research metadata only;
+// public-path callers (resolveLeagueName) use the default false — exact same outputs preserved.
+function leagueFromSlug(slug: string, researchExtensions = false): string {
+  const prefix = (slug || "").split("-")[0].toLowerCase();
+  const corePrefixMap: Record<string, string> = {
     epl: "Premier League",
     lal: "La Liga",
     ucl: "Champions League",
@@ -71,7 +67,32 @@ function resolveLeagueName(
     lol: "Esports",
     dota: "Esports",
   };
-  if (prefixMap[prefix]) return prefixMap[prefix];
+  if (corePrefixMap[prefix]) return corePrefixMap[prefix];
+  if (researchExtensions) {
+    const researchPrefixMap: Record<string, string> = {
+      wnba: "NBA",
+      mlbb: "Esports",
+      mlba: "Esports",
+      fif: "Soccer",
+      nrl: "Rugby",
+    };
+    if (researchPrefixMap[prefix]) return researchPrefixMap[prefix];
+  }
+  return "Sports";
+}
+
+// Resolve league name from a GameGroup using teamsMap and slug/text heuristics.
+// Delegates prefix lookup to leagueFromSlug (public path — no research extensions).
+function resolveLeagueName(
+  g: GameGroup,
+  teamsMap: Map<string, { logo: string | null; name: string; league: string }>,
+): string {
+  const teamA = g.teamAID ? teamsMap.get(g.teamAID) : null;
+  if (teamA?.league) return teamA.league;
+
+  const slug = g.primaryMarket?.slug || g.primaryMarket?.nestedEventSlug || "";
+  const fromSlug = leagueFromSlug(slug);
+  if (fromSlug !== "Sports") return fromSlug;
 
   const q = [
     g.primaryMarket?.question || "",
@@ -457,7 +478,13 @@ export async function discoverSportsMarkets(
     const eventId = String(evCtx.id ?? "");
     const eventTitle = String(evCtx.title ?? "");
     const eventSlug = nm.nestedEventSlug || String(evCtx.slug ?? "");
-    const marketFamily = String((nm.raw as Record<string, unknown>).category ?? evCtx.category ?? nm.sportsMarketType ?? "") || null;
+    // market_family = league name (not market type). Prefer raw Gamma category; fall back to slug inference.
+    // sportsMarketType = Polymarket internal market type — stored separately for research modeling.
+    const rawGammaCategory = String((nm.raw as Record<string, unknown>).category ?? evCtx.category ?? "") || null;
+    const s2FamilySource = rawGammaCategory ? "gamma.category" : "slug_inference";
+    const s2LeagueName = rawGammaCategory ?? leagueFromSlug(eventSlug, true);
+    const s2MarketType = nm.sportsMarketType || null;
+    const marketFamily = s2LeagueName; // family = league grain (not market type)
 
     if (eventId) researchSeenEventIds.add(eventId);
 
@@ -470,6 +497,9 @@ export async function discoverSportsMarkets(
       marketQuestion: nm.question,
       marketEndIso: mktEndStr,
       marketFamily,
+      leagueName: s2LeagueName,
+      sportsMarketType: s2MarketType,
+      familySource: s2FamilySource,
       conditionId: nm.conditionId,
       selectedTokenId: nm.clobTokenIds[0],
       opposingTokenId: nm.clobTokenIds[1],
