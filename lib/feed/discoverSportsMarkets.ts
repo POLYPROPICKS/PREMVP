@@ -457,7 +457,7 @@ export async function discoverSportsMarkets(
     const eventId = String(evCtx.id ?? "");
     const eventTitle = String(evCtx.title ?? "");
     const eventSlug = nm.nestedEventSlug || String(evCtx.slug ?? "");
-    const marketFamily = String((nm.raw as Record<string, unknown>).category ?? evCtx.category ?? "") || null;
+    const marketFamily = String((nm.raw as Record<string, unknown>).category ?? evCtx.category ?? nm.sportsMarketType ?? "") || null;
 
     if (eventId) researchSeenEventIds.add(eventId);
 
