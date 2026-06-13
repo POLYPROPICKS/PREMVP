@@ -336,6 +336,7 @@ export interface PolymarketTrade {
   size: number;
   side: string;
   tokenId?: string;
+  asset?: string;
 }
 
 export interface PolymarketHolder {

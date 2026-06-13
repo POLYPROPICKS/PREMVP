@@ -6,6 +6,29 @@
 
 ---
 
+## ✅ M3-C DIRECTIONAL TOKEN MATCH FIX — 2026-06-13
+
+**Scope:** research-only shadow diagnostics. Public formula, scoring, ranking — не изменены.
+
+**Root cause:** Polymarket Data API trades payload возвращает id токена в поле `asset` (decimal-string), а блок M3-C читал `t.tokenId` → все exact-token matches были 0.
+
+**Fix (2 файла):**
+- `lib/feed/types.ts` — добавлен `asset?: string` в `PolymarketTrade`
+- `lib/feed/buildLandingCards.ts` — M3-C exact-match фильтры переключены на `String(t.asset ?? t.tokenId ?? "").trim()`
+
+**Что НЕ изменено:**
+- Legacy aggregate фильтры (`selectedTradeCount`, `totalTradeCount`, `recentTradeCash`, `maxTradeCash`)
+- `formulaVersion: trusted-initial-formula-v1.1`
+- DB-схема, миграции, публичный scoring-путь
+
+**Старые строки** в research DB не backfill-ятся (fix работает только для свежих cron-прогонов).
+
+**Требуется:** FRESH_CRON_RUNTIME_PROOF — убедиться что `directionalFlowCoverageRatio` > 0 и `directionalFlowTokenMatchedCount` > 0 в следующем снимке.
+
+**Exit observer / trajectory SQL:** в backlog, отдельное решение фаундера.
+
+---
+
 ## ✅ TOP PROOF ROLLOUT COMPLETE — 2026-05-28
 
 **HEAD:** `fe5e0de` (main, clean)

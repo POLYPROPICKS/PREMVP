@@ -749,10 +749,20 @@ async function enrichMarket(
       diagnostics.directionalFlowCoverageRatio        =
         trades && trades.length > 0 ? 0 : null;
     } else {
-      // Exact token matching only — no BUY fallback for M3-C
-      const tokenMatchedTrades  = trades.filter(t => Boolean(t.tokenId));
-      const selectedExactTrades = tokenMatchedTrades.filter(t => t.tokenId === selectedOutcome.tokenId);
-      const opposingExactTrades = tokenMatchedTrades.filter(t => t.tokenId === m3cOpposingTokenId);
+      // Exact token matching only — no BUY fallback for M3-C.
+      // API returns token id in `asset` (decimal string); fall back to `tokenId` for compat.
+      const tokenMatchedTrades  = trades.filter(t => {
+        const tradeTokenId = String(t.asset ?? t.tokenId ?? "").trim();
+        return tradeTokenId !== "";
+      });
+      const selectedExactTrades = tokenMatchedTrades.filter(t => {
+        const tradeTokenId = String(t.asset ?? t.tokenId ?? "").trim();
+        return tradeTokenId === selectedOutcome.tokenId;
+      });
+      const opposingExactTrades = tokenMatchedTrades.filter(t => {
+        const tradeTokenId = String(t.asset ?? t.tokenId ?? "").trim();
+        return tradeTokenId === m3cOpposingTokenId;
+      });
 
       const sumCash = (arr: typeof trades): number =>
         arr.reduce((s, t) => s + t.price * t.size, 0);
