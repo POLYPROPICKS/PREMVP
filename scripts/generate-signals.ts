@@ -9,7 +9,7 @@ import {
   writeStrategicShadowPairs,
   writeJobRun,
 } from "../lib/feed/cacheGeneratedSignals";
-import { collectWcShadowCandidates, collectEsportShadowCandidates, collectNbaNhlShadowCandidates } from "../lib/feed/discoverSportsMarkets";
+import { collectWcShadowCandidates, collectEsportShadowCandidates, collectNbaNhlShadowCandidates, collectFullLineOutcomeV1Candidates } from "../lib/feed/discoverSportsMarkets";
 import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
 import { FORMULA_VERSION } from "../lib/feed/types";
 
@@ -305,6 +305,27 @@ async function main() {
     } catch (nbaNhlErr) {
       console.warn("[generate-signals] NBA/NHL shadow write failed (non-fatal):", nbaNhlErr instanceof Error ? nbaNhlErr.message : String(nbaNhlErr));
       diagnostics.nbaNhlShadowWarning = nbaNhlErr instanceof Error ? nbaNhlErr.message : String(nbaNhlErr);
+    }
+
+    // ── Full-line outcome capture V1 (fail-open) ───────────────────────────
+    // Captures all eligible binary in-band market outcomes (both sides) across
+    // WC/eSport/NBA/NHL. Supplements per-scope cap-based collectors. Non-fatal.
+    try {
+      const v1ExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const v1Candidates = await collectFullLineOutcomeV1Candidates();
+      if (v1Candidates.length > 0) {
+        const v1Inserted = await writeStrategicShadowPairs(v1Candidates, v1ExpiresAt);
+        console.log(`[generate-signals] full-line outcome capture v1 shadow pairs written: ${v1Inserted}`);
+        diagnostics.v1ShadowCandidatesFound = v1Candidates.length;
+        diagnostics.v1ShadowPairsInserted = v1Inserted;
+      } else {
+        console.log(`[generate-signals] full-line outcome capture v1 shadow pairs written: 0`);
+        diagnostics.v1ShadowCandidatesFound = 0;
+        diagnostics.v1ShadowPairsInserted = 0;
+      }
+    } catch (v1Err) {
+      console.warn("[generate-signals] V1 shadow write failed (non-fatal):", v1Err instanceof Error ? v1Err.message : String(v1Err));
+      diagnostics.v1ShadowWarning = v1Err instanceof Error ? v1Err.message : String(v1Err);
     }
   } catch (error) {
     status = "error";

@@ -1149,6 +1149,13 @@ export interface WcShadowEntry {
   marketTitle?: string | null;
   shadowScope: "WC2026" | "ESPORT" | "NBA" | "NHL";
   shadowReason: string;
+  // V1 full-line outcome capture fields
+  outcomeName?: string | null;
+  tokenIndex?: number;
+  priceBucket?: string | null;
+  volumeUsd?: number | null;
+  v1EligibilityReason?: string | null;
+  marketFamily?: string | null;
 }
 
 /**
@@ -1425,4 +1432,160 @@ export async function collectNbaNhlShadowCandidates(): Promise<WcShadowEntry[]> 
   } catch {
     return [];
   }
+}
+
+// ── Full-line outcome capture V1 ──────────────────────────────────────────
+
+const _v1InBand = (p: number) =>
+  (p >= 0.333 && p <= 0.588) || (p >= 0.20 && p <= 0.741);
+
+const _v1PriceBucket = (p: number): string =>
+  p > 0.85 ? "extreme_favorite" : p >= 0.65 ? "favorite" : p >= 0.35 ? "balanced" : p >= 0.15 ? "underdog" : "extreme_longshot";
+
+function _v1IsPrimary(nm: SportsMarketCandidate, scope: string): boolean {
+  if (scope === "WC2026") return true;
+  const mtype = (nm.sportsMarketType ?? "").toLowerCase();
+  if (mtype && /moneyline|match_winner|game_winner|h2h|winner/.test(mtype)) return true;
+  return /will .+ win\b|match winner|game winner|moneyline|head.?to.?head/.test((nm.question ?? "").toLowerCase());
+}
+
+function _v1MarketVol(nm: SportsMarketCandidate): number {
+  return nm.volumeNum ?? nm.volume24hr ?? nm.volumeClob ?? 0;
+}
+
+function _v1BothSides(
+  nm: SportsMarketCandidate,
+  scope: "WC2026" | "ESPORT" | "NBA" | "NHL",
+  eventSlug: string,
+  eventTitle: string,
+  eventEndIso: string | null,
+  eligReason: "PRIMARY_FAMILY" | "HIGH_VOLUME_NON_PRIMARY",
+): WcShadowEntry[] {
+  const conditionId = nm.conditionId ?? null;
+  if (!conditionId) return [];
+  if (!Array.isArray(nm.clobTokenIds) || nm.clobTokenIds.length < 2) return [];
+  if (!Array.isArray(nm.outcomePrices) || nm.outcomePrices.length < 2) return [];
+  const vol = _v1MarketVol(nm);
+  const out: WcShadowEntry[] = [];
+  for (let i = 0; i <= 1; i++) {
+    const tokenId = nm.clobTokenIds[i];
+    const price = nm.outcomePrices[i];
+    if (typeof tokenId !== "string" || !tokenId) continue;
+    if (typeof price !== "number" || !_v1InBand(price)) continue;
+    out.push({
+      conditionId,
+      selectedTokenId: tokenId,
+      entryPriceNum: price,
+      tier: price >= 0.333 && price <= 0.588 ? 3 : 2,
+      marketQuestion: (nm.question || eventTitle).substring(0, 200),
+      selectedOutcome: nm.outcomes[i] ?? null,
+      eventSlug,
+      eventTitle,
+      eventEndIso,
+      marketType: nm.sportsMarketType ?? null,
+      marketSlug: nm.slug ? String(nm.slug).substring(0, 80) : null,
+      marketTitle: nm.question ? nm.question.substring(0, 200) : null,
+      shadowScope: scope,
+      shadowReason: "FULL_LINE_OUTCOME_CAPTURE_V1",
+      outcomeName: nm.outcomes[i] ?? null,
+      tokenIndex: i,
+      priceBucket: _v1PriceBucket(price),
+      volumeUsd: vol > 0 ? vol : null,
+      v1EligibilityReason: eligReason,
+      marketFamily: _v1IsPrimary(nm, scope) ? "primary" : "non_primary",
+    });
+  }
+  return out;
+}
+
+/**
+ * Collect all eligible binary in-band outcomes across WC/eSport/NBA/NHL.
+ * Emits BOTH sides of each eligible binary market as separate shadow entries.
+ * Primary market families always eligible; non-primary requires volume >= 10000 USD.
+ * Fail-safe: returns [] on unrecoverable error.
+ */
+export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntry[]> {
+  const all: WcShadowEntry[] = [];
+  const MIN_VOL_NP = 10000;
+
+  // WC2026: series_id=11433 match-game markets (all primary family)
+  try {
+    const WC_EX = /\b(top goalscorer|longshots parlay|qualification longshots|squad|winner|champion|outright)\b|player to make|will .+ play/i;
+    const nowMs = Date.now();
+    const wcEv = await fetchEventsBySeriesSafe("11433", 50);
+    for (const ev of wcEv) {
+      if (!ev.active || ev.closed) continue;
+      const title = ev.title || ev.slug || "";
+      if (WC_EX.test(title)) continue;
+      const endIso = ev.endDateIso || ev.endDate || null;
+      if (endIso) {
+        const h = (new Date(endIso).getTime() - nowMs) / 3600000;
+        if (h < 0 || h > 2160) continue;
+      }
+      for (const m of ev.markets ?? []) {
+        const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
+        all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY"));
+      }
+    }
+  } catch { /* fail-open */ }
+
+  // eSport: 6 tag slugs, 30d window
+  try {
+    const ES_EX = /\b(longshots|outright|champion(s)?|tournament winner|top fragger)\b/i;
+    const nowMs = Date.now();
+    const rawEs: PolymarketRawEvent[] = [];
+    for (const s of ["esports", "counter-strike", "cs2", "dota-2", "valorant", "league-of-legends"]) {
+      try { rawEs.push(...await fetchEventsByTagSlugSafe(s, 30)); } catch { /**/ }
+    }
+    const seenEs = new Set<string>();
+    for (const ev of rawEs) {
+      if (!ev.active || ev.closed) continue;
+      const key = ev.id || ev.slug; if (!key || seenEs.has(key)) continue;
+      const title = ev.title || ev.slug || "";
+      if (ES_EX.test(title)) continue;
+      const endIso = ev.endDateIso || ev.endDate || null; if (!endIso) continue;
+      const h = (new Date(endIso).getTime() - nowMs) / 3600000;
+      if (h < 0 || h > 720) continue;
+      seenEs.add(key);
+      for (const m of Array.isArray(ev.markets) ? ev.markets : []) {
+        const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
+        const isPrim = _v1IsPrimary(nm, "ESPORT");
+        if (!isPrim && _v1MarketVol(nm) < MIN_VOL_NP) continue;
+        all.push(..._v1BothSides(nm, "ESPORT", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, isPrim ? "PRIMARY_FAMILY" : "HIGH_VOLUME_NON_PRIMARY"));
+      }
+    }
+  } catch { /* fail-open */ }
+
+  // NBA + NHL: parallel, 90d window
+  const leagueCfg: { slugs: string[]; scope: "NBA" | "NHL" }[] = [
+    { slugs: ["nba", "basketball"], scope: "NBA" },
+    { slugs: ["nhl", "ice-hockey"], scope: "NHL" },
+  ];
+  const NBA_NHL_EX = /\b(mvp|coach of the year|rookie of the year|top scorer|player to|sixth man|defensive player|finals mvp)\b/i;
+  await Promise.all(leagueCfg.map(async ({ slugs, scope }) => {
+    try {
+      const nowMs = Date.now();
+      const raw: PolymarketRawEvent[] = [];
+      for (const s of slugs) { try { raw.push(...await fetchEventsByTagSlugSafe(s, 50)); } catch { /**/ } }
+      const seen = new Set<string>();
+      for (const ev of raw) {
+        if (!ev.active || ev.closed) continue;
+        const key = ev.id || ev.slug; if (!key || seen.has(key)) continue;
+        const title = ev.title || ev.slug || "";
+        if (NBA_NHL_EX.test(title)) continue;
+        const endIso = ev.endDateIso || ev.endDate || null; if (!endIso) continue;
+        const h = (new Date(endIso).getTime() - nowMs) / 3600000;
+        if (h < 0 || h > 2160) continue;
+        seen.add(key);
+        for (const m of Array.isArray(ev.markets) ? ev.markets : []) {
+          const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
+          const isPrim = _v1IsPrimary(nm, scope);
+          if (!isPrim && _v1MarketVol(nm) < MIN_VOL_NP) continue;
+          all.push(..._v1BothSides(nm, scope, (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, isPrim ? "PRIMARY_FAMILY" : "HIGH_VOLUME_NON_PRIMARY"));
+        }
+      }
+    } catch { /* fail-open per league */ }
+  }));
+
+  return all;
 }
