@@ -2461,10 +2461,15 @@ export async function buildLandingCards(options?: {
               discoverySourceProxy: null,
               gameTimeConfidence: null,
             },
-            // Explainability: S2 markets are not enriched; no formula score available
+            // Explainability: S2 markets are not enriched; no formula score available.
+            // All codes below are truthful for this path — enrichMarket() was not called.
             formulaScore: null,
             productRejectionReasonDetails: [
-              { code: "RESEARCH_S2_DIRECT", detail: "Captured via S2 research universe scan; not enriched for product scoring." },
+              { code: "RESEARCH_S2_DIRECT", detail: "Market found via S2 wide research universe scan, not via the enrichment-then-product-gate path." },
+              { code: "S2_NOT_ENRICHED", detail: "enrichMarket() was not called; no trade data, holder concentration, or directional flow was computed for this snapshot." },
+              { code: "SCORE_UNAVAILABLE", detail: "formulaScore is null because scorePolymarket() was not executed in this path." },
+              { code: "FORMULA_AUDIT_UNAVAILABLE", detail: "No formulaAudit object exists; sub-scores (smartMoney, pubWhale, preEvent) were not computed." },
+              { code: "PRODUCT_GATE_NOT_EVALUATED", detail: "Score, dataCoverage, timingWindow, and duplicate gates were not evaluated; product eligibility is unknown for this snapshot." },
             ],
           } as LandingCardDiagnostics,
           publicFeedExposed: isPublicExposed,
