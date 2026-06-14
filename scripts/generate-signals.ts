@@ -340,7 +340,7 @@ async function main() {
       const mirrorInBand = (price: number) => (price >= 0.333 && price <= 0.588) || (price >= 0.20 && price <= 0.741);
       const mirrorExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       const mirrorCandidates: WcShadowEntry[] = [];
-      for (const pair of pairsToCache) {
+      for (const pair of sortedMergedPairs) {
         const p = pair as unknown as Record<string, any>;
         const conditionId: string | null = p.diagnostics?.conditionId ?? null;
         const selectedTokenId: string | null = p.diagnostics?.selectedTokenId ?? null;
@@ -400,7 +400,7 @@ async function main() {
           marketFamily: detectedGroup,
         });
       }
-      console.log(`[generate-signals] WC generated mirror candidates: ${mirrorCandidates.length}`);
+      console.log(`[generate-signals] WC generated mirror source pairs: ${sortedMergedPairs.length} eligible: ${mirrorCandidates.length}`);
       if (mirrorCandidates.length > 0) {
         const mirrorInserted = await writeStrategicShadowPairs(mirrorCandidates, mirrorExpiresAt);
         console.log(`[generate-signals] WC generated-row mirror shadow pairs written: ${mirrorInserted}`);
