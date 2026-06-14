@@ -2286,7 +2286,7 @@ async function main() {
       xlsxAttachBuf = buf;
 
       if (XLSX_PREVIEW_MODE) {
-        const previewPath = "C:\\WORK\\PolyProPicksOps\\preview\\polypropicks_daily_ops_v8_preview.xlsx";
+        const previewPath = "C:\\WORK\\PolyProPicksOps\\preview\\polypropicks_daily_ops_v9_preview.xlsx";
         const { writeFileSync, mkdirSync } = await import("fs");
         const { dirname } = await import("path");
         mkdirSync(dirname(previewPath), { recursive: true });
@@ -2305,7 +2305,7 @@ async function main() {
     const subject = `PolyProPicks Daily Ops Report — ${reportDate}`;
     const html = `<pre style="white-space:pre-wrap;font-family:ui-monospace,monospace;font-size:13px">${escapeHtml(reportText)}</pre>`;
     const attachments = xlsxAttachBuf
-      ? [{ filename: "polypropicks_daily_ops_v8.xlsx", content: xlsxAttachBuf.toString("base64") }]
+      ? [{ filename: "polypropicks_daily_ops_v9_pilot.xlsx", content: xlsxAttachBuf.toString("base64") }]
       : undefined;
     try {
       await sendEmail({ to: EMAIL_MODE_RECIPIENT, subject, text: reportText, html, attachments });
