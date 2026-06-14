@@ -10,6 +10,7 @@ import {
   writeJobRun,
 } from "../lib/feed/cacheGeneratedSignals";
 import { collectWcShadowCandidates, collectEsportShadowCandidates, collectNbaNhlShadowCandidates, collectFullLineOutcomeV1Candidates } from "../lib/feed/discoverSportsMarkets";
+import type { WcShadowEntry } from "../lib/feed/discoverSportsMarkets";
 import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
 import { FORMULA_VERSION } from "../lib/feed/types";
 
@@ -326,6 +327,82 @@ async function main() {
     } catch (v1Err) {
       console.warn("[generate-signals] V1 shadow write failed (non-fatal):", v1Err instanceof Error ? v1Err.message : String(v1Err));
       diagnostics.v1ShadowWarning = v1Err instanceof Error ? v1Err.message : String(v1Err);
+    }
+
+    // ── WC generated-row mirror to shadow (fail-open) ──────────────────────
+    // Maps eligible WC2026 rows from the already-produced v2-lite set into
+    // shadow-strategic-sports-v1. Targets spread/total/corners/goals/halves
+    // present in the public feed but missed by the game_id V1 collector.
+    try {
+      const WC_DET = /fifwc|world.?cup|fifa.?wc/i;
+      const WC_HVG = /spread|handicap|over.?under|\bO\/U\b|total|team.?total|both.?teams.?to.?score|first.?team.?to.?score|corner|\bhalf\b|first.?half|second.?half/i;
+      const WC_EXC = /exact.?scor|correct.?scor|player|assist|\bshot\b|goalscor|anytime.?scor/i;
+      const mirrorInBand = (price: number) => (price >= 0.333 && price <= 0.588) || (price >= 0.20 && price <= 0.741);
+      const mirrorExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const mirrorCandidates: WcShadowEntry[] = [];
+      for (const pair of pairsToCache) {
+        const p = pair as unknown as Record<string, any>;
+        const conditionId: string | null = p.diagnostics?.conditionId ?? null;
+        const selectedTokenId: string | null = p.diagnostics?.selectedTokenId ?? null;
+        const currentPrice: number | null = typeof p.diagnostics?.currentPrice === "number" ? p.diagnostics.currentPrice : null;
+        if (!conditionId || !selectedTokenId || currentPrice === null) continue;
+        if (!mirrorInBand(currentPrice)) continue;
+        const eventTitle = String(p.premiumSignal?.eventTitle ?? "");
+        const headline = String(p.marketSource?.headline ?? "");
+        const mtype = String(p.diagnostics?.researchContext?.marketType ?? "");
+        const srcProxy = String(p.diagnostics?.researchContext?.discoverySourceProxy ?? "");
+        if (!WC_DET.test(eventTitle) && !WC_DET.test(headline) && !/wc2026/i.test(srcProxy)) continue;
+        const groupText = `${mtype} ${headline}`;
+        if (!WC_HVG.test(groupText)) continue;
+        if (WC_EXC.test(groupText)) continue;
+        const vol: number = typeof p.diagnostics?.parentEventVolume24hr === "number" ? p.diagnostics.parentEventVolume24hr : 0;
+        if (vol <= 5000) continue;
+        const mtL = mtype.toLowerCase();
+        const hlL = headline.toLowerCase();
+        let detectedGroup = "high_vol_group";
+        if (/spread|handicap/.test(mtL) || /spread|handicap/.test(hlL)) detectedGroup = "spread";
+        else if (/team.?total/.test(mtL) || /team.?total/.test(hlL)) detectedGroup = "team_total";
+        else if (/corner/.test(mtL) || /corner/.test(hlL)) detectedGroup = "corner";
+        else if (/both.?teams.?to.?score|first.?team.?to.?score/.test(hlL)) detectedGroup = "goal";
+        else if (/over.?under|total|o\/u/.test(hlL) || /total.?goal|over.?under/.test(mtL)) detectedGroup = "total";
+        else if (/half/.test(mtL) || /first.?half|second.?half|halftime/.test(hlL)) detectedGroup = "half";
+        const pBucket = currentPrice > 0.85 ? "extreme_favorite"
+          : currentPrice >= 0.65 ? "favorite"
+          : currentPrice >= 0.35 ? "balanced"
+          : currentPrice >= 0.15 ? "underdog"
+          : "extreme_longshot";
+        mirrorCandidates.push({
+          conditionId,
+          selectedTokenId,
+          entryPriceNum: currentPrice,
+          tier: currentPrice >= 0.333 && currentPrice <= 0.588 ? 3 : 2,
+          marketQuestion: (headline || eventTitle).substring(0, 200),
+          selectedOutcome: String(p.diagnostics?.selectedOutcome ?? "Yes"),
+          eventSlug: eventTitle.substring(0, 80),
+          eventTitle: eventTitle.substring(0, 100),
+          eventEndIso: p.diagnostics?.researchContext?.marketCloseIso ?? null,
+          marketType: mtype || null,
+          marketSlug: headline.substring(0, 80),
+          marketTitle: headline.substring(0, 200),
+          shadowScope: "WC2026",
+          shadowReason: "FULL_LINE_OUTCOME_CAPTURE_V1",
+          outcomeName: String(p.diagnostics?.selectedOutcome ?? "") || null,
+          tokenIndex: undefined,
+          priceBucket: pBucket,
+          volumeUsd: vol > 0 ? vol : null,
+          v1EligibilityReason: "WC_HIGH_VOLUME_GROUP_V1_1",
+          marketFamily: detectedGroup,
+        });
+      }
+      if (mirrorCandidates.length > 0) {
+        const mirrorInserted = await writeStrategicShadowPairs(mirrorCandidates, mirrorExpiresAt);
+        console.log(`[generate-signals] WC generated-row mirror shadow pairs written: ${mirrorInserted}`);
+        diagnostics.wcMirrorShadowCandidatesFound = mirrorCandidates.length;
+        diagnostics.wcMirrorShadowPairsInserted = mirrorInserted;
+      }
+    } catch (mirrorErr) {
+      console.warn("[generate-signals] WC mirror shadow write failed (non-fatal):", mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr));
+      diagnostics.wcMirrorShadowWarning = mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr);
     }
   } catch (error) {
     status = "error";
