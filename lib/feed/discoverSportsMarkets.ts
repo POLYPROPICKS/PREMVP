@@ -1143,6 +1143,12 @@ export interface WcShadowEntry {
   eventSlug: string;
   eventTitle: string;
   eventEndIso: string | null;
+  // Extended diagnostics — populated by all collectors
+  marketType?: string | null;
+  marketSlug?: string | null;
+  marketTitle?: string | null;
+  shadowScope: "WC2026" | "ESPORT" | "NBA" | "NHL";
+  shadowReason: string;
 }
 
 /**
@@ -1215,11 +1221,207 @@ export async function collectWcShadowCandidates(): Promise<WcShadowEntry[]> {
           eventSlug: (event.slug || "").substring(0, 80),
           eventTitle: title.substring(0, 100),
           eventEndIso: endIso,
+          marketType: cand.nm.sportsMarketType ?? null,
+          marketSlug: cand.nm.slug ? (cand.nm.slug as string).substring(0, 80) : null,
+          marketTitle: cand.nm.question ? cand.nm.question.substring(0, 200) : null,
+          shadowScope: "WC2026" as const,
+          shadowReason: "PER_EVENT_CAP_EXTRA_MARKET",
         });
       }
     }
 
     return results;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Collect eSport shadow candidates: events beyond TARGET_ESPORTS_FALLBACK=2 that
+ * passed quality filters but were dropped from the product pool.
+ * Mirrors section 8d discovery logic. Fail-safe: returns [] on any error.
+ */
+export async function collectEsportShadowCandidates(): Promise<WcShadowEntry[]> {
+  const ESPORTS_PROP_EXCLUDE_RE = /\b(longshots|outright|champion(s)?|tournament winner|top fragger)\b/i;
+  const ESPORTS_TAG_SLUGS = ["esports", "counter-strike", "cs2", "dota-2", "valorant", "league-of-legends"];
+  const MAX_WINDOW_HOURS = 720;
+  const TARGET_ESPORTS_FALLBACK = 2;
+  const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
+  const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
+  const isMatchLike = (t: string) => /\bvs\.?\b|\bBO[135]\b/i.test(t);
+
+  try {
+    const rawEvents: PolymarketRawEvent[] = [];
+    for (const tagSlug of ESPORTS_TAG_SLUGS) {
+      try { rawEvents.push(...await fetchEventsByTagSlugSafe(tagSlug, 30)); } catch { /* skip tag */ }
+    }
+    if (rawEvents.length === 0) return [];
+
+    const nowMs = Date.now();
+    const seenKeys = new Set<string>();
+    type EPool = {
+      nm: SportsMarketCandidate; tier: number; inBandPrice: number; chosenPriceIdx: number;
+      conditionId: string; selectedTokenId: string;
+      eventSlug: string; eventTitle: string; eventEndIso: string; vol: number; matchLike: boolean;
+    };
+    const pool: EPool[] = [];
+
+    for (const event of rawEvents) {
+      if (!event.active || event.closed) continue;
+      const key = event.id || event.slug;
+      if (!key || seenKeys.has(key)) continue;
+      const title = event.title || event.slug || "";
+      if (ESPORTS_PROP_EXCLUDE_RE.test(title)) continue;
+      const endIso = event.endDateIso || event.endDate || null;
+      if (!endIso) continue;
+      const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
+      if (hoursUntil < 0 || hoursUntil > MAX_WINDOW_HOURS) continue;
+
+      type SubCand = { nm: SportsMarketCandidate; tier: number; inBandPrice: number; chosenPriceIdx: number };
+      const subCands: SubCand[] = [];
+      for (const m of Array.isArray(event.markets) ? event.markets : []) {
+        const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
+        if (!Array.isArray(nm.outcomePrices) || nm.outcomePrices.length === 0) continue;
+        const idxP = nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= PRIMARY_MIN && p <= PRIMARY_MAX);
+        if (idxP !== -1) { subCands.push({ nm, tier: 3, inBandPrice: nm.outcomePrices[idxP], chosenPriceIdx: idxP }); continue; }
+        const idxF = nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX);
+        if (idxF !== -1) { subCands.push({ nm, tier: 2, inBandPrice: nm.outcomePrices[idxF], chosenPriceIdx: idxF }); }
+      }
+      if (subCands.length === 0) continue;
+      subCands.sort((a, b) => b.tier - a.tier || Math.abs(a.inBandPrice - 0.45) - Math.abs(b.inBandPrice - 0.45));
+      const best = subCands[0];
+      const conditionId = best.nm.conditionId ?? null;
+      const selectedTokenId = typeof best.nm.clobTokenIds[best.chosenPriceIdx] === "string"
+        ? best.nm.clobTokenIds[best.chosenPriceIdx] : null;
+      if (!conditionId || !selectedTokenId) continue;
+      seenKeys.add(key);
+      pool.push({
+        nm: best.nm, tier: best.tier, inBandPrice: best.inBandPrice, chosenPriceIdx: best.chosenPriceIdx,
+        conditionId, selectedTokenId,
+        eventSlug: (event.slug || "").substring(0, 80),
+        eventTitle: title.substring(0, 100),
+        eventEndIso: endIso,
+        vol: (event as { volume24hr?: number }).volume24hr ?? 0,
+        matchLike: isMatchLike(title),
+      });
+    }
+
+    pool.sort((a, b) =>
+      b.tier - a.tier || (b.matchLike ? 1 : 0) - (a.matchLike ? 1 : 0) ||
+      Math.abs(a.inBandPrice - 0.45) - Math.abs(b.inBandPrice - 0.45) ||
+      new Date(a.eventEndIso).getTime() - new Date(b.eventEndIso).getTime() ||
+      b.vol - a.vol);
+
+    return pool.slice(TARGET_ESPORTS_FALLBACK).map((c) => ({
+      conditionId: c.conditionId,
+      selectedTokenId: c.selectedTokenId,
+      entryPriceNum: c.inBandPrice,
+      tier: c.tier,
+      marketQuestion: (c.nm.question || c.eventTitle).substring(0, 200),
+      selectedOutcome: c.nm.outcomes[c.chosenPriceIdx] ?? null,
+      eventSlug: c.eventSlug,
+      eventTitle: c.eventTitle,
+      eventEndIso: c.eventEndIso,
+      marketType: c.nm.sportsMarketType ?? null,
+      marketSlug: c.nm.slug ? (c.nm.slug as string).substring(0, 80) : null,
+      marketTitle: c.nm.question ? c.nm.question.substring(0, 200) : null,
+      shadowScope: "ESPORT" as const,
+      shadowReason: "TARGET_POOL_EXTRA_EVENT",
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Collect NBA/NHL shadow candidates: events beyond TARGET_PER_LEAGUE=2 that
+ * passed quality filters but were dropped from the product bucket.
+ * Mirrors section 8e discovery logic without break-at-cap. Fail-safe: returns [] on any error.
+ */
+export async function collectNbaNhlShadowCandidates(): Promise<WcShadowEntry[]> {
+  const STRAT_PROP_EXCLUDE_RE = /\b(mvp|coach of the year|rookie of the year|top scorer|player to|sixth man|defensive player|finals mvp)\b/i;
+  const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
+  const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
+  const TARGET_PER_LEAGUE = 2;
+  const MAX_SHADOW_PER_LEAGUE = 6;
+  const MAX_WINDOW_HOURS = 2160;
+
+  type LeagueEntry = {
+    nm: SportsMarketCandidate; chosenPriceIdx: number; tier: number; inBandPrice: number;
+    conditionId: string; selectedTokenId: string;
+    eventSlug: string; eventTitle: string; eventEndIso: string;
+    leagueLabel: "NBA" | "NHL";
+  };
+
+  const collectLeague = async (slugs: string[], leagueLabel: "NBA" | "NHL"): Promise<LeagueEntry[]> => {
+    const raw: PolymarketRawEvent[] = [];
+    for (const slug of slugs) {
+      try { raw.push(...await fetchEventsByTagSlugSafe(slug, 50)); } catch { /* skip */ }
+    }
+    const nowMs = Date.now();
+    const seen = new Set<string>();
+    const candidates: LeagueEntry[] = [];
+    for (const event of raw) {
+      if (!event.active || event.closed) continue;
+      const key = event.id || event.slug;
+      if (!key || seen.has(key)) continue;
+      const title = event.title || event.slug || "";
+      if (STRAT_PROP_EXCLUDE_RE.test(title)) continue;
+      const endIso = event.endDateIso || event.endDate || null;
+      if (!endIso) continue;
+      const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
+      if (hoursUntil < 0 || hoursUntil > MAX_WINDOW_HOURS) continue;
+
+      let picked: { nm: SportsMarketCandidate; chosenPriceIdx: number; tier: number; inBandPrice: number } | null = null;
+      for (const m of Array.isArray(event.markets) ? event.markets : []) {
+        const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
+        if (!Array.isArray(nm.outcomePrices) || nm.outcomePrices.length === 0) continue;
+        const idxP = nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= PRIMARY_MIN && p <= PRIMARY_MAX);
+        if (idxP !== -1) { picked = { nm, chosenPriceIdx: idxP, tier: 3, inBandPrice: nm.outcomePrices[idxP] }; break; }
+        const idxF = nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX);
+        if (idxF !== -1) { picked = { nm, chosenPriceIdx: idxF, tier: 2, inBandPrice: nm.outcomePrices[idxF] }; break; }
+      }
+      if (!picked) continue;
+      const conditionId = picked.nm.conditionId ?? null;
+      const selectedTokenId = typeof picked.nm.clobTokenIds[picked.chosenPriceIdx] === "string"
+        ? picked.nm.clobTokenIds[picked.chosenPriceIdx] : null;
+      if (!conditionId || !selectedTokenId) continue;
+      seen.add(key);
+      candidates.push({
+        nm: picked.nm, chosenPriceIdx: picked.chosenPriceIdx, tier: picked.tier, inBandPrice: picked.inBandPrice,
+        conditionId, selectedTokenId,
+        eventSlug: (event.slug || "").substring(0, 80),
+        eventTitle: title.substring(0, 100),
+        eventEndIso: endIso,
+        leagueLabel,
+      });
+    }
+    // Sort by nearest endDate — approximates window-expansion priority of section 8e
+    candidates.sort((a, b) => new Date(a.eventEndIso).getTime() - new Date(b.eventEndIso).getTime());
+    return candidates.slice(TARGET_PER_LEAGUE, TARGET_PER_LEAGUE + MAX_SHADOW_PER_LEAGUE);
+  };
+
+  try {
+    const [nbaExtras, nhlExtras] = await Promise.all([
+      collectLeague(["nba", "basketball"], "NBA"),
+      collectLeague(["nhl", "ice-hockey"], "NHL"),
+    ]);
+    return [...nbaExtras, ...nhlExtras].map((e) => ({
+      conditionId: e.conditionId,
+      selectedTokenId: e.selectedTokenId,
+      entryPriceNum: e.inBandPrice,
+      tier: e.tier,
+      marketQuestion: (e.nm.question || e.eventTitle).substring(0, 200),
+      selectedOutcome: e.nm.outcomes[e.chosenPriceIdx] ?? null,
+      eventSlug: e.eventSlug,
+      eventTitle: e.eventTitle,
+      eventEndIso: e.eventEndIso,
+      marketType: e.nm.sportsMarketType ?? null,
+      marketSlug: e.nm.slug ? (e.nm.slug as string).substring(0, 80) : null,
+      marketTitle: e.nm.question ? e.nm.question.substring(0, 200) : null,
+      shadowScope: e.leagueLabel,
+      shadowReason: "TARGET_LEAGUE_EXTRA_EVENT",
+    }));
   } catch {
     return [];
   }

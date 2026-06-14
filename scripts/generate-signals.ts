@@ -9,7 +9,7 @@ import {
   writeStrategicShadowPairs,
   writeJobRun,
 } from "../lib/feed/cacheGeneratedSignals";
-import { collectWcShadowCandidates } from "../lib/feed/discoverSportsMarkets";
+import { collectWcShadowCandidates, collectEsportShadowCandidates, collectNbaNhlShadowCandidates } from "../lib/feed/discoverSportsMarkets";
 import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
 import { FORMULA_VERSION } from "../lib/feed/types";
 
@@ -267,6 +267,44 @@ async function main() {
       const shadowMsg = shadowErr instanceof Error ? shadowErr.message : String(shadowErr);
       console.warn("[generate-signals] WC shadow write failed (non-fatal):", shadowMsg);
       diagnostics.wcShadowWarning = shadowMsg;
+    }
+
+    // ── eSport shadow write (fail-open) ────────────────────────────────────
+    try {
+      const esportExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const esportShadow = await collectEsportShadowCandidates();
+      if (esportShadow.length > 0) {
+        const esportInserted = await writeStrategicShadowPairs(esportShadow, esportExpiresAt);
+        console.log(`[generate-signals] eSport shadow pairs written: ${esportInserted}`);
+        diagnostics.esportShadowCandidatesFound = esportShadow.length;
+        diagnostics.esportShadowPairsInserted = esportInserted;
+      } else {
+        console.log(`[generate-signals] eSport shadow candidates: 0`);
+        diagnostics.esportShadowCandidatesFound = 0;
+        diagnostics.esportShadowPairsInserted = 0;
+      }
+    } catch (esportErr) {
+      console.warn("[generate-signals] eSport shadow write failed (non-fatal):", esportErr instanceof Error ? esportErr.message : String(esportErr));
+      diagnostics.esportShadowWarning = esportErr instanceof Error ? esportErr.message : String(esportErr);
+    }
+
+    // ── NBA/NHL shadow write (fail-open) ───────────────────────────────────
+    try {
+      const nbaNhlExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const nbaNhlShadow = await collectNbaNhlShadowCandidates();
+      if (nbaNhlShadow.length > 0) {
+        const nbaNhlInserted = await writeStrategicShadowPairs(nbaNhlShadow, nbaNhlExpiresAt);
+        console.log(`[generate-signals] NBA/NHL shadow pairs written: ${nbaNhlInserted}`);
+        diagnostics.nbaNhlShadowCandidatesFound = nbaNhlShadow.length;
+        diagnostics.nbaNhlShadowPairsInserted = nbaNhlInserted;
+      } else {
+        console.log(`[generate-signals] NBA/NHL shadow candidates: 0`);
+        diagnostics.nbaNhlShadowCandidatesFound = 0;
+        diagnostics.nbaNhlShadowPairsInserted = 0;
+      }
+    } catch (nbaNhlErr) {
+      console.warn("[generate-signals] NBA/NHL shadow write failed (non-fatal):", nbaNhlErr instanceof Error ? nbaNhlErr.message : String(nbaNhlErr));
+      diagnostics.nbaNhlShadowWarning = nbaNhlErr instanceof Error ? nbaNhlErr.message : String(nbaNhlErr);
     }
   } catch (error) {
     status = "error";
