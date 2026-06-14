@@ -1459,7 +1459,8 @@ function _v1BothSides(
   eventSlug: string,
   eventTitle: string,
   eventEndIso: string | null,
-  eligReason: "PRIMARY_FAMILY" | "HIGH_VOLUME_NON_PRIMARY",
+  eligReason: "PRIMARY_FAMILY" | "HIGH_VOLUME_NON_PRIMARY" | "WC_HIGH_VOLUME_GROUP_V1_1",
+  detectedMarketFamily?: string,
 ): WcShadowEntry[] {
   const conditionId = nm.conditionId ?? null;
   if (!conditionId) return [];
@@ -1492,7 +1493,7 @@ function _v1BothSides(
       priceBucket: _v1PriceBucket(price),
       volumeUsd: vol > 0 ? vol : null,
       v1EligibilityReason: eligReason,
-      marketFamily: _v1IsPrimary(nm, scope) ? "primary" : "non_primary",
+      marketFamily: detectedMarketFamily ?? (_v1IsPrimary(nm, scope) ? "primary" : "non_primary"),
     });
   }
   return out;
@@ -1570,21 +1571,27 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
         const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
         const mtype = (nm.sportsMarketType ?? "").toLowerCase();
         const question = (nm.question ?? "").toLowerCase();
-        // Exclude exact-score, player props, assists, shots
+        // Exclude exact-score, correct-score, player props, assists, shots
         if (EXACT_SCORE_SLUG.test(mtype)) continue;
-        if (/player|assist|\bshot\b|goalscor|anytime.?scor/.test(mtype)) continue;
+        if (/correct.?scor|player|assist|\bshot\b|goalscor|anytime.?scor/.test(mtype)) continue;
         // Primary markets: moneyline, halftime/second-half results — always eligible
         const isWcPrimary = isHalfTimeEv
           || /moneyline|match_winner|game_winner|h2h|halftime.?result|second.?half.?result/.test(mtype)
           || (!mtype && /will .+ win\b|match winner|head.?to.?head/.test(question));
-        // High-volume groups: spread, total, team total, corners, total goals — vol > 5000
-        const isHighVolGroup = /spread|handicap|over.?under|team.?total|corner|total.?goal/.test(mtype)
-          || (!mtype && /spread|handicap|over.?under|total goals?|corners/.test(question));
+        // High-volume groups: spread, total, team total, corners, total goals, halves — vol > 5000
+        const isHighVolGroup = /spread|handicap|over.?under|team.?total|corner|total.?goal|first.?half|second.?half/.test(mtype)
+          || (!mtype && /spread|handicap|over.?under|total goals?|corners|first half/.test(question));
         const vol = _v1MarketVol(nm);
         if (isWcPrimary) {
           all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY"));
         } else if (isHighVolGroup && vol > 5000) {
-          all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "HIGH_VOLUME_NON_PRIMARY"));
+          let detectedGroup = "high_vol_group";
+          if (/spread|handicap/.test(mtype)) detectedGroup = "spread";
+          else if (/team.?total/.test(mtype)) detectedGroup = "team_total";
+          else if (/corner/.test(mtype)) detectedGroup = "corner";
+          else if (/over.?under|total.?goal/.test(mtype)) detectedGroup = "total";
+          else if (/first.?half|second.?half/.test(mtype)) detectedGroup = "half";
+          all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "WC_HIGH_VOLUME_GROUP_V1_1", detectedGroup));
         }
         // else: unknown type or insufficient volume — skip
       }
