@@ -136,6 +136,16 @@ export interface LandingCardDiagnostics {
     selectedTopBids: Array<{ price: number; size: number }>;
     selectedTopAsks: Array<{ price: number; size: number }>;
   };
+  // Explainability fields — research snapshot diagnostics only; never used by product feed
+  formulaScore?: number | null;
+  productRejectionReasonDetails?: Array<{
+    code: string;
+    value?: number;
+    threshold?: number;
+    detail?: string;
+    cap?: number;
+    window?: string;
+  }>;
 }
 
 export interface ResearchFunnelCounters {

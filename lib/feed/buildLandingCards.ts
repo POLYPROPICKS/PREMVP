@@ -1843,6 +1843,8 @@ async function tryBuildResearchSnapshot(
         null,
     },
     execContext,
+    // Explainability: formula score available from enrichment (set before snapshot capture)
+    formulaScore: diag.formulaAudit?.finalSignalV2 ?? null,
   };
 
   // Modeling feature contract v1 — derived fields (no feed impact)
@@ -2459,6 +2461,11 @@ export async function buildLandingCards(options?: {
               discoverySourceProxy: null,
               gameTimeConfidence: null,
             },
+            // Explainability: S2 markets are not enriched; no formula score available
+            formulaScore: null,
+            productRejectionReasonDetails: [
+              { code: "RESEARCH_S2_DIRECT", detail: "Captured via S2 research universe scan; not enriched for product scoring." },
+            ],
           } as LandingCardDiagnostics,
           publicFeedExposed: isPublicExposed,
           eventId: rm.eventId || null,
