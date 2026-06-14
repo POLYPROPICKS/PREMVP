@@ -1558,6 +1558,9 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
       const title = ev.title || ev.slug || "";
       if (WC_EX.test(title)) continue;
       if (EXACT_SCORE_SLUG.test(ev.slug ?? "")) continue;
+      // Detect halftime / second-half sub-events by slug so their markets inherit PRIMARY status
+      const evSlugLower = (ev.slug ?? "").toLowerCase();
+      const isHalfTimeEv = /halftime.?result|second.?half.?result/.test(evSlugLower);
       const endIso = ev.endDateIso || ev.endDate || null;
       if (endIso) {
         const h = (new Date(endIso).getTime() - nowMs) / 3600000;
@@ -1565,8 +1568,25 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
       }
       for (const m of ev.markets ?? []) {
         const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
-        if (EXACT_SCORE_SLUG.test(nm.sportsMarketType ?? "")) continue;
-        all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY"));
+        const mtype = (nm.sportsMarketType ?? "").toLowerCase();
+        const question = (nm.question ?? "").toLowerCase();
+        // Exclude exact-score, player props, assists, shots
+        if (EXACT_SCORE_SLUG.test(mtype)) continue;
+        if (/player|assist|\bshot\b|goalscor|anytime.?scor/.test(mtype)) continue;
+        // Primary markets: moneyline, halftime/second-half results — always eligible
+        const isWcPrimary = isHalfTimeEv
+          || /moneyline|match_winner|game_winner|h2h|halftime.?result|second.?half.?result/.test(mtype)
+          || (!mtype && /will .+ win\b|match winner|head.?to.?head/.test(question));
+        // High-volume groups: spread, total, team total, corners, total goals — vol > 5000
+        const isHighVolGroup = /spread|handicap|over.?under|team.?total|corner|total.?goal/.test(mtype)
+          || (!mtype && /spread|handicap|over.?under|total goals?|corners/.test(question));
+        const vol = _v1MarketVol(nm);
+        if (isWcPrimary) {
+          all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY"));
+        } else if (isHighVolGroup && vol > 5000) {
+          all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "HIGH_VOLUME_NON_PRIMARY"));
+        }
+        // else: unknown type or insufficient volume — skip
       }
     }
   } catch { /* fail-open */ }
