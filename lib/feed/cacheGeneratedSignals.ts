@@ -174,20 +174,31 @@ export async function writeStrategicShadowPairs(
 ): Promise<number> {
   if (candidates.length === 0) return 0;
 
+  // Intra-batch dedup: collapse duplicates within the candidates array itself.
+  // Collectors may return the same conditionId::selectedTokenId multiple times
+  // (e.g., same event appearing in both series and game_id sub-event responses).
+  const batchKeys = new Set<string>();
+  const uniqueCandidates = candidates.filter((c) => {
+    const k = `${c.conditionId}::${c.selectedTokenId}`;
+    if (batchKeys.has(k)) return false;
+    batchKeys.add(k);
+    return true;
+  });
+
   // Read-before-write dedup: skip candidates already stored as shadow rows.
-  const conditionIds = candidates.map((c) => c.conditionId);
+  const conditionIds = uniqueCandidates.map((c) => c.conditionId);
   const { data: existing } = await supabaseAdmin
     .from("generated_signal_pairs")
-    .select("condition_id, selected_token_id")
+    .select("condition_id, selected_token_id, metric_formula_version")
     .in("condition_id", conditionIds)
     .eq("metric_formula_version", "shadow-strategic-sports-v1");
 
   const existingKeys = new Set<string>(
-    (existing ?? []).map((r) => `${r.condition_id}::${r.selected_token_id}`)
+    (existing ?? []).map((r) => `${r.condition_id}::${r.selected_token_id}::${r.metric_formula_version}`)
   );
 
-  const newCandidates = candidates.filter(
-    (c) => !existingKeys.has(`${c.conditionId}::${c.selectedTokenId}`)
+  const newCandidates = uniqueCandidates.filter(
+    (c) => !existingKeys.has(`${c.conditionId}::${c.selectedTokenId}::shadow-strategic-sports-v1`)
   );
   if (newCandidates.length === 0) return 0;
 
