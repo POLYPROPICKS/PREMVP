@@ -1578,9 +1578,9 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
         const isWcPrimary = isHalfTimeEv
           || /moneyline|match_winner|game_winner|h2h|halftime.?result|second.?half.?result/.test(mtype)
           || (!mtype && /will .+ win\b|match winner|head.?to.?head/.test(question));
-        // High-volume groups: spread, total, team total, corners, total goals, halves — vol > 5000
-        const isHighVolGroup = /spread|handicap|over.?under|team.?total|corner|total.?goal|first.?half|second.?half/.test(mtype)
-          || (!mtype && /spread|handicap|over.?under|total goals?|corners|first half/.test(question));
+        // High-volume groups: spread, total, team total, corners, total goals, halves, BTS — vol > 5000
+        const isHighVolGroup = /spread|handicap|over.?under|team.?total|corner|total.?goal|first.?half|second.?half|both.?teams.?to.?score/.test(mtype)
+          || (!mtype && /spread|handicap|over.?under|total goals?|corners|first half|both teams to score/.test(question));
         const vol = _v1MarketVol(nm);
         if (isWcPrimary) {
           all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY"));
@@ -1589,11 +1589,65 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
           if (/spread|handicap/.test(mtype)) detectedGroup = "spread";
           else if (/team.?total/.test(mtype)) detectedGroup = "team_total";
           else if (/corner/.test(mtype)) detectedGroup = "corner";
+          else if (/both.?teams.?to.?score/.test(mtype)) detectedGroup = "goal";
           else if (/over.?under|total.?goal/.test(mtype)) detectedGroup = "total";
           else if (/first.?half|second.?half/.test(mtype)) detectedGroup = "half";
           all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "WC_HIGH_VOLUME_GROUP_V1_1", detectedGroup));
         }
         // else: unknown type or insufficient volume — skip
+      }
+    }
+  } catch { /* fail-open */ }
+
+  // WC2026: tag-slug sweep for spread/total/corner/BTS events not in series 11433.
+  // Polymarket structures these as separate events tagged with "fifwc" / "soccer-fifwc".
+  try {
+    const WC_TAG_EX = /\b(top goalscorer|longshots parlay|qualification longshots|squad|winner|champion|outright)\b|player to make|will .+ play/i;
+    const EXACT_TAG = /exact.?score/i;
+    const nowMs2 = Date.now();
+    const wcTagRaw: PolymarketRawEvent[] = [];
+    for (const ts of ["fifwc", "soccer-fifwc"]) {
+      try { wcTagRaw.push(...await fetchEventsByTagSlugSafe(ts, 50)); } catch { /**/ }
+    }
+    const seenTag = new Set<string>();
+    for (const ev of wcTagRaw) {
+      if (!ev.active || ev.closed) continue;
+      const title = ev.title || ev.slug || "";
+      if (WC_TAG_EX.test(title)) continue;
+      const evSlugL = (ev.slug ?? "").toLowerCase();
+      if (EXACT_TAG.test(evSlugL)) continue;
+      const key = ev.id ?? ev.slug; if (!key || seenTag.has(key)) continue;
+      seenTag.add(key);
+      const endIso = ev.endDateIso || ev.endDate || null;
+      if (endIso) {
+        const h = (new Date(endIso).getTime() - nowMs2) / 3600000;
+        if (h < 0 || h > 2160) continue;
+      }
+      const isHalfEv = /halftime.?result|second.?half.?result/.test(evSlugL);
+      for (const m of ev.markets ?? []) {
+        const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
+        const mtype = (nm.sportsMarketType ?? "").toLowerCase();
+        const question = (nm.question ?? "").toLowerCase();
+        if (EXACT_TAG.test(mtype)) continue;
+        if (/correct.?scor|player|assist|\bshot\b|goalscor|anytime.?scor/.test(mtype)) continue;
+        const isWcP = isHalfEv
+          || /moneyline|match_winner|game_winner|h2h|halftime.?result|second.?half.?result/.test(mtype)
+          || (!mtype && /will .+ win\b|match winner|head.?to.?head/.test(question));
+        const isHvg = /spread|handicap|over.?under|team.?total|corner|total.?goal|first.?half|second.?half|both.?teams.?to.?score/.test(mtype)
+          || (!mtype && /spread|handicap|over.?under|total goals?|corners|first half|both teams/.test(question));
+        const vol = _v1MarketVol(nm);
+        if (isWcP) {
+          all.push(..._v1BothSides(nm, "WC2026", evSlugL.substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY"));
+        } else if (isHvg && vol > 5000) {
+          let dg = "high_vol_group";
+          if (/spread|handicap/.test(mtype)) dg = "spread";
+          else if (/team.?total/.test(mtype)) dg = "team_total";
+          else if (/corner/.test(mtype)) dg = "corner";
+          else if (/both.?teams.?to.?score/.test(mtype)) dg = "goal";
+          else if (/over.?under|total.?goal/.test(mtype)) dg = "total";
+          else if (/first.?half|second.?half/.test(mtype)) dg = "half";
+          all.push(..._v1BothSides(nm, "WC2026", evSlugL.substring(0, 80), title.substring(0, 100), endIso, "WC_HIGH_VOLUME_GROUP_V1_1", dg));
+        }
       }
     }
   } catch { /* fail-open */ }
