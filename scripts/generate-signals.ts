@@ -6,8 +6,10 @@ import { randomUUID } from "node:crypto";
 import { buildLandingCards, applyStrategicFloor } from "../lib/feed/buildLandingCards";
 import {
   writeGeneratedSignalPairs,
+  writeStrategicShadowPairs,
   writeJobRun,
 } from "../lib/feed/cacheGeneratedSignals";
+import { collectWcShadowCandidates } from "../lib/feed/discoverSportsMarkets";
 import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
 import { FORMULA_VERSION } from "../lib/feed/types";
 
@@ -244,6 +246,28 @@ async function main() {
     diagnostics.researchWriterWarning = researchWriterWarning;
     const rf = result.researchFunnel;
     console.log(`[generate-signals] research funnel: attempted=${rf?.attempted ?? 0} eligible=${rf?.eligible ?? 0} inserted=${researchSnapshotsInserted} exec_ok=${rf?.execFetchOk ?? 0} exec_empty=${rf?.execFetchEmptyBook ?? 0} exec_failed=${rf?.execFetchFailed ?? 0}`);
+
+    // ── WC shadow write (fail-open) ─────────────────────────────────────────
+    // Collects WC2026 extra-market candidates excluded by PER_EVENT_CAP=1 and
+    // writes them as shadow rows for resolver tracking. Non-fatal.
+    try {
+      const wcShadowExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const shadowCandidates = await collectWcShadowCandidates();
+      if (shadowCandidates.length > 0) {
+        const shadowInserted = await writeStrategicShadowPairs(shadowCandidates, wcShadowExpiresAt);
+        console.log(`[generate-signals] WC shadow pairs written: ${shadowInserted}`);
+        diagnostics.wcShadowCandidatesFound = shadowCandidates.length;
+        diagnostics.wcShadowPairsInserted = shadowInserted;
+      } else {
+        console.log(`[generate-signals] WC shadow candidates: 0 (no extra-cap markets found)`);
+        diagnostics.wcShadowCandidatesFound = 0;
+        diagnostics.wcShadowPairsInserted = 0;
+      }
+    } catch (shadowErr) {
+      const shadowMsg = shadowErr instanceof Error ? shadowErr.message : String(shadowErr);
+      console.warn("[generate-signals] WC shadow write failed (non-fatal):", shadowMsg);
+      diagnostics.wcShadowWarning = shadowMsg;
+    }
   } catch (error) {
     status = "error";
     errorMessage = error instanceof Error ? error.message : String(error);

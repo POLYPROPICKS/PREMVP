@@ -3,6 +3,7 @@
 
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { PremiumSignal, MarketSource, LandingCardDiagnostics } from "./types";
+import type { WcShadowEntry } from "./discoverSportsMarkets";
 
 export interface CachedSignalPair {
   id?: string;
@@ -157,6 +158,95 @@ export async function writeGeneratedSignalPairs(
 
   if (error) {
     throw new Error(`Failed to write signal pairs: ${error.message}`);
+  }
+
+  return count ?? rows.length;
+}
+
+/**
+ * Write WC shadow candidates as shadow rows in generated_signal_pairs.
+ * Deduplicates by (condition_id, selected_token_id) against existing shadow rows.
+ * Returns the count of newly inserted rows. Throws on DB error (caller wraps in fail-open try/catch).
+ */
+export async function writeStrategicShadowPairs(
+  candidates: WcShadowEntry[],
+  defaultExpiresAt: string
+): Promise<number> {
+  if (candidates.length === 0) return 0;
+
+  // Read-before-write dedup: skip candidates already stored as shadow rows.
+  const conditionIds = candidates.map((c) => c.conditionId);
+  const { data: existing } = await supabaseAdmin
+    .from("generated_signal_pairs")
+    .select("condition_id, selected_token_id")
+    .in("condition_id", conditionIds)
+    .eq("metric_formula_version", "shadow-strategic-sports-v1");
+
+  const existingKeys = new Set<string>(
+    (existing ?? []).map((r) => `${r.condition_id}::${r.selected_token_id}`)
+  );
+
+  const newCandidates = candidates.filter(
+    (c) => !existingKeys.has(`${c.conditionId}::${c.selectedTokenId}`)
+  );
+  if (newCandidates.length === 0) return 0;
+
+  const rows = newCandidates.map((entry) => {
+    // Per-row expiry: game endDate + 48h buffer so resolver can process it after settlement.
+    // Falls back to defaultExpiresAt (30d) when endDate is unavailable.
+    const rowExpiresAt = entry.eventEndIso
+      ? new Date(new Date(entry.eventEndIso).getTime() + 48 * 3600 * 1000).toISOString()
+      : defaultExpiresAt;
+    return {
+      source: "polymarket",
+      formula_version: "shadow-strategic-sports-v1",
+      event_slug: entry.eventTitle,
+      market_slug: entry.marketQuestion,
+      condition_id: entry.conditionId,
+      selected_outcome: entry.selectedOutcome ?? "Yes",
+      premium_signal: {
+        eventTitle: entry.eventTitle,
+        marketQuestion: entry.marketQuestion,
+        winProbability: entry.entryPriceNum,
+      },
+      market_source: {
+        headline: entry.marketQuestion,
+        type: "sports",
+      },
+      market_sources: null,
+      diagnostics: {
+        conditionId: entry.conditionId,
+        selectedTokenId: entry.selectedTokenId,
+        isShadow: true,
+        shadowScope: "WC2026",
+        shadowReason: "PER_EVENT_CAP_EXTRA_MARKET",
+        entryPrice: entry.entryPriceNum,
+        tier: entry.tier,
+      },
+      score: null,
+      expires_at: rowExpiresAt,
+      selected_token_id: entry.selectedTokenId,
+      entry_price_num: entry.entryPriceNum,
+      signal_confidence_num: null,
+      expected_return_pct_num: null,
+      trust_metrics: null,
+      smart_money_score_num: null,
+      whale_public_score_num: null,
+      pre_event_score_num: null,
+      signal_result: null,
+      resolved_at: null,
+      winning_outcome: null,
+      realized_return_pct: null,
+      metric_formula_version: "shadow-strategic-sports-v1",
+    };
+  });
+
+  const { error, count } = await supabaseAdmin
+    .from("generated_signal_pairs")
+    .insert(rows);
+
+  if (error) {
+    throw new Error(`Failed to write shadow pairs: ${error.message}`);
   }
 
   return count ?? rows.length;

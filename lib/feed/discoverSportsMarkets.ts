@@ -1130,3 +1130,97 @@ export async function discoverSportsMarkets(
     researchEligibleMarkets: researchEligibleMarketsArr,
   };
 }
+
+// ── WC shadow candidate collection ──────────────────────────────────────────
+
+export interface WcShadowEntry {
+  conditionId: string;
+  selectedTokenId: string;
+  entryPriceNum: number;
+  tier: number;
+  marketQuestion: string;
+  selectedOutcome: string | null;
+  eventSlug: string;
+  eventTitle: string;
+  eventEndIso: string | null;
+}
+
+/**
+ * Collect WC2026 extra-market shadow candidates: per-event subCands beyond
+ * PER_EVENT_CAP=1 that are excluded from the product feed.
+ * Mirrors section 8c discovery logic. Fail-safe: returns [] on any error.
+ */
+export async function collectWcShadowCandidates(): Promise<WcShadowEntry[]> {
+  const WC2026_SERIES_ID = "11433";
+  const WC2026_PROP_EXCLUDE_RE = /\b(top goalscorer|longshots parlay|qualification longshots|squad|winner|champion|outright)\b|player to make|will .+ play/i;
+  const PER_EVENT_CAP = 1;
+  const PRIMARY_MIN = 0.333, PRIMARY_MAX = 0.588;
+  const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
+
+  try {
+    const rawEvents = await fetchEventsBySeriesSafe(WC2026_SERIES_ID, 50);
+    if (rawEvents.length === 0) return [];
+
+    const nowMs = Date.now();
+    const results: WcShadowEntry[] = [];
+
+    for (const event of rawEvents) {
+      if (!event.active || event.closed) continue;
+      if (!event.id && !event.slug) continue;
+      const title = event.title || event.slug || "";
+      if (WC2026_PROP_EXCLUDE_RE.test(title)) continue;
+      const endIso = event.endDateIso || event.endDate || null;
+      if (endIso) {
+        const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
+        if (hoursUntil < 0 || hoursUntil > 2160) continue;
+      }
+
+      type ShadowCand = { nm: SportsMarketCandidate; tier: number; inBandPrice: number; chosenPriceIdx: number };
+      const subCands: ShadowCand[] = [];
+
+      for (const m of event.markets ?? []) {
+        const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
+        if (!Array.isArray(nm.outcomePrices) || nm.outcomePrices.length === 0) continue;
+        const findBand = (lo: number, hi: number) =>
+          nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= lo && p <= hi);
+        let tier = -1;
+        let chosenPriceIdx = -1;
+        const idxP = findBand(PRIMARY_MIN, PRIMARY_MAX);
+        if (idxP !== -1) { tier = 3; chosenPriceIdx = idxP; }
+        else {
+          const idxF = findBand(FALLBACK_MIN, FALLBACK_MAX);
+          if (idxF !== -1) { tier = 2; chosenPriceIdx = idxF; }
+        }
+        if (tier === -1 || chosenPriceIdx === -1) continue;
+        const inBandPrice = nm.outcomePrices[chosenPriceIdx];
+        if (typeof inBandPrice !== "number") continue;
+        subCands.push({ nm, tier, inBandPrice, chosenPriceIdx });
+      }
+
+      if (subCands.length <= PER_EVENT_CAP) continue;
+      subCands.sort((a, b) =>
+        b.tier - a.tier || Math.abs(a.inBandPrice - 0.45) - Math.abs(b.inBandPrice - 0.45));
+
+      for (const cand of subCands.slice(PER_EVENT_CAP)) {
+        const conditionId = cand.nm.conditionId ?? null;
+        const tokenId = cand.nm.clobTokenIds[cand.chosenPriceIdx];
+        if (!conditionId || typeof tokenId !== "string") continue;
+        results.push({
+          conditionId,
+          selectedTokenId: tokenId,
+          entryPriceNum: cand.inBandPrice,
+          tier: cand.tier,
+          marketQuestion: (cand.nm.question || title).substring(0, 200),
+          selectedOutcome: cand.nm.outcomes[cand.chosenPriceIdx] ?? null,
+          eventSlug: (event.slug || "").substring(0, 80),
+          eventTitle: title.substring(0, 100),
+          eventEndIso: endIso,
+        });
+      }
+    }
+
+    return results;
+  } catch {
+    return [];
+  }
+}
