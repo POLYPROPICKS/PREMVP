@@ -1498,6 +1498,21 @@ function _v1BothSides(
   return out;
 }
 
+// Fetches all sub-events for a WC game via the game_id endpoint.
+// The series_id=11433 endpoint only returns the primary moneyline event per game;
+// game_id returns all sub-events (halftime-result, second-half-result, exact-score, etc.).
+async function _fetchWcSubEvents(gameId: string): Promise<PolymarketRawEvent[]> {
+  try {
+    const url = `https://gamma-api.polymarket.com/events?game_id=${encodeURIComponent(gameId)}&active=true&closed=false&limit=20`;
+    const res = await fetch(url, { cache: "no-store", headers: { Accept: "application/json" } });
+    if (!res.ok) return [];
+    const data: unknown = await res.json();
+    if (Array.isArray(data)) return data as PolymarketRawEvent[];
+    const obj = data as Record<string, unknown>;
+    return (Array.isArray(obj.events) ? obj.events : Array.isArray(obj.data) ? obj.data : []) as PolymarketRawEvent[];
+  } catch { return []; }
+}
+
 /**
  * Collect all eligible binary in-band outcomes across WC/eSport/NBA/NHL.
  * Emits BOTH sides of each eligible binary market as separate shadow entries.
@@ -1508,15 +1523,41 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
   const all: WcShadowEntry[] = [];
   const MIN_VOL_NP = 10000;
 
-  // WC2026: series_id=11433 match-game markets (all primary family)
+  // WC2026: series_id=11433 + game_id sub-event expansion (halftime / second-half markets)
+  // The series endpoint returns only the primary moneyline event per game.
+  // We additionally fetch all sub-events per gameId to capture halftime and second-half markets.
+  // Exact-score sub-events are excluded per V1 policy.
   try {
     const WC_EX = /\b(top goalscorer|longshots parlay|qualification longshots|squad|winner|champion|outright)\b|player to make|will .+ play/i;
+    const EXACT_SCORE_SLUG = /exact.?score/i;
     const nowMs = Date.now();
-    const wcEv = await fetchEventsBySeriesSafe("11433", 50);
-    for (const ev of wcEv) {
+    const wcSeries = await fetchEventsBySeriesSafe("11433", 50);
+
+    // Expand each game's sub-events; deduplicate by event ID.
+    // gameId lives on the market level in the Gamma API response, not on the event.
+    const seenWcEvIds = new Set<string>();
+    const wcAllEvents: PolymarketRawEvent[] = [];
+    for (const ev of wcSeries) {
+      if (ev.id && !seenWcEvIds.has(ev.id)) { seenWcEvIds.add(ev.id); wcAllEvents.push(ev); }
+      const firstM = ev.markets?.[0];
+      const gameId = firstM
+        ? normalizeSportsMarket(firstM as unknown as Record<string, unknown>).gameId
+        : null;
+      if (gameId) {
+        const subs = await _fetchWcSubEvents(gameId);
+        for (const sub of subs) {
+          if (!sub.id || seenWcEvIds.has(sub.id)) continue;
+          seenWcEvIds.add(sub.id);
+          wcAllEvents.push(sub);
+        }
+      }
+    }
+
+    for (const ev of wcAllEvents) {
       if (!ev.active || ev.closed) continue;
       const title = ev.title || ev.slug || "";
       if (WC_EX.test(title)) continue;
+      if (EXACT_SCORE_SLUG.test(ev.slug ?? "")) continue;
       const endIso = ev.endDateIso || ev.endDate || null;
       if (endIso) {
         const h = (new Date(endIso).getTime() - nowMs) / 3600000;
@@ -1524,6 +1565,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
       }
       for (const m of ev.markets ?? []) {
         const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
+        if (EXACT_SCORE_SLUG.test(nm.sportsMarketType ?? "")) continue;
         all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY"));
       }
     }
