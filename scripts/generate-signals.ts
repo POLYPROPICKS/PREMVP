@@ -349,23 +349,29 @@ async function main() {
         if (!mirrorInBand(currentPrice)) continue;
         const eventTitle = String(p.premiumSignal?.eventTitle ?? "");
         const headline = String(p.marketSource?.headline ?? "");
+        const league = String(p.premiumSignal?.league ?? "");
+        const position = String(p.premiumSignal?.position ?? "");
+        const subline = String(p.marketSource?.subline ?? "");
         const mtype = String(p.diagnostics?.researchContext?.marketType ?? "");
         const srcProxy = String(p.diagnostics?.researchContext?.discoverySourceProxy ?? "");
-        if (!WC_DET.test(eventTitle) && !WC_DET.test(headline) && !/wc2026/i.test(srcProxy)) continue;
-        const groupText = `${mtype} ${headline}`;
-        if (!WC_HVG.test(groupText)) continue;
-        if (WC_EXC.test(groupText)) continue;
+        // Combine all text fields; eventTitle = event_slug and may be the market title itself
+        // (e.g. "Spread: Germany (-3.5)") — must be included in both WC + group detection
+        const allText = `${eventTitle} ${headline} ${league} ${position} ${subline} ${mtype} ${srcProxy}`;
+        // WC detection: identifiers OR WC2026 team names (slug-style rows lack "world cup" text)
+        const WC_TEAMS = /\b(germany|curacao|cura[çc]ao|netherlands|japan|sweden|tunisia|spain|c[oô]te.?d.?ivoire|ivory.?coast|ecuador|brazil|argentina|france|england|portugal|mexico|south.?korea|australia|morocco|senegal|ghana|cameroon|nigeria|croatia|uruguay|colombia)\b/i;
+        if (!WC_DET.test(allText) && !WC_TEAMS.test(allText)) continue;
+        if (!WC_HVG.test(allText)) continue;
+        if (WC_EXC.test(allText)) continue;
         const vol: number = typeof p.diagnostics?.parentEventVolume24hr === "number" ? p.diagnostics.parentEventVolume24hr : 0;
         if (vol <= 5000) continue;
-        const mtL = mtype.toLowerCase();
-        const hlL = headline.toLowerCase();
+        const allL = allText.toLowerCase();
         let detectedGroup = "high_vol_group";
-        if (/spread|handicap/.test(mtL) || /spread|handicap/.test(hlL)) detectedGroup = "spread";
-        else if (/team.?total/.test(mtL) || /team.?total/.test(hlL)) detectedGroup = "team_total";
-        else if (/corner/.test(mtL) || /corner/.test(hlL)) detectedGroup = "corner";
-        else if (/both.?teams.?to.?score|first.?team.?to.?score/.test(hlL)) detectedGroup = "goal";
-        else if (/over.?under|total|o\/u/.test(hlL) || /total.?goal|over.?under/.test(mtL)) detectedGroup = "total";
-        else if (/half/.test(mtL) || /first.?half|second.?half|halftime/.test(hlL)) detectedGroup = "half";
+        if (/spread|handicap/.test(allL)) detectedGroup = "spread";
+        else if (/team.?total/.test(allL)) detectedGroup = "team_total";
+        else if (/corner/.test(allL)) detectedGroup = "corner";
+        else if (/both.?teams.?to.?score|first.?team.?to.?score/.test(allL)) detectedGroup = "goal";
+        else if (/over.?under|o\/u|\btotal/.test(allL) || /total.?goal/.test(allL)) detectedGroup = "total";
+        else if (/half/.test(allL)) detectedGroup = "half";
         const pBucket = currentPrice > 0.85 ? "extreme_favorite"
           : currentPrice >= 0.65 ? "favorite"
           : currentPrice >= 0.35 ? "balanced"
@@ -376,14 +382,14 @@ async function main() {
           selectedTokenId,
           entryPriceNum: currentPrice,
           tier: currentPrice >= 0.333 && currentPrice <= 0.588 ? 3 : 2,
-          marketQuestion: (headline || eventTitle).substring(0, 200),
+          marketQuestion: (eventTitle || headline).substring(0, 200),
           selectedOutcome: String(p.diagnostics?.selectedOutcome ?? "Yes"),
           eventSlug: eventTitle.substring(0, 80),
           eventTitle: eventTitle.substring(0, 100),
           eventEndIso: p.diagnostics?.researchContext?.marketCloseIso ?? null,
           marketType: mtype || null,
-          marketSlug: headline.substring(0, 80),
-          marketTitle: headline.substring(0, 200),
+          marketSlug: (headline || eventTitle).substring(0, 80),
+          marketTitle: (eventTitle || headline).substring(0, 200),
           shadowScope: "WC2026",
           shadowReason: "FULL_LINE_OUTCOME_CAPTURE_V1",
           outcomeName: String(p.diagnostics?.selectedOutcome ?? "") || null,
@@ -394,6 +400,7 @@ async function main() {
           marketFamily: detectedGroup,
         });
       }
+      console.log(`[generate-signals] WC generated mirror candidates: ${mirrorCandidates.length}`);
       if (mirrorCandidates.length > 0) {
         const mirrorInserted = await writeStrategicShadowPairs(mirrorCandidates, mirrorExpiresAt);
         console.log(`[generate-signals] WC generated-row mirror shadow pairs written: ${mirrorInserted}`);
