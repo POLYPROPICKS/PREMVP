@@ -360,6 +360,8 @@ export async function GET(request: Request) {
       "premium_signal, diagnostics"
     )
     .not("signal_result", "is", null)
+    // Exclude shadow research rows; preserve legacy rows where metric_formula_version IS NULL.
+    .or("metric_formula_version.is.null,metric_formula_version.not.like.shadow-%")
     .order("resolved_at", { ascending: false })
     .limit(INTERNAL_FETCH_LIMIT);
 

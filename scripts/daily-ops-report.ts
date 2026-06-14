@@ -973,6 +973,8 @@ async function main() {
           .from("generated_signal_pairs")
           .select(RESOLVED_FIELDS)
           .not("signal_result", "is", null)
+          // Exclude shadow research rows; preserve legacy rows where metric_formula_version IS NULL.
+          .or("metric_formula_version.is.null,metric_formula_version.not.like.shadow-%")
           .order("resolved_at", { ascending: false })
           .order("id", { ascending: false })
           .range(from, to);
@@ -1265,6 +1267,8 @@ async function main() {
         )
         .is("signal_result", null)
         .not("metric_formula_version", "is", null)
+        // NULLs already excluded above; this additionally excludes shadow research rows.
+        .not("metric_formula_version", "like", "shadow-%")
         .order("created_at", { ascending: true })
         .limit(2000);
       if (unresolvedErr) throw new Error(unresolvedErr.message);

@@ -50,6 +50,9 @@ export async function readLatestGeneratedSignalPairs(
     .from("generated_signal_pairs")
     .select("id, premium_signal, market_source, diagnostics, score, created_at, expires_at")
     .gt("expires_at", new Date().toISOString())
+    // Exclude shadow research rows (metric_formula_version LIKE 'shadow-%').
+    // OR preserves legacy production rows where metric_formula_version IS NULL.
+    .or("metric_formula_version.is.null,metric_formula_version.not.like.shadow-%")
     .order("created_at", { ascending: false })
     .limit(limit);
 
