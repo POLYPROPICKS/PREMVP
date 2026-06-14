@@ -19,6 +19,8 @@ import {
   fetchEventsByTagSlugSafe,
   fetchEventsBySeriesSafe,
   fetchActiveEventsByStartWindowKeysetSafe,
+  fetchPolymarketEventsByTagSafe,
+  fetchTagIdBySlugSafe,
 } from "./polymarketClient";
 
 import {
@@ -1606,6 +1608,12 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
     const EXACT_TAG = /exact.?score/i;
     const nowMs2 = Date.now();
     const wcTagRaw: PolymarketRawEvent[] = [];
+    // tag_id + related_tags=true: surfaces spread/total/corner events under child tags
+    const wcTagId = await fetchTagIdBySlugSafe("fifwc").catch(() => null);
+    if (wcTagId) {
+      try { wcTagRaw.push(...await fetchPolymarketEventsByTagSafe(wcTagId, 100)); } catch { /**/ }
+    }
+    // slug fallback: tournament-winner futures (useful for WC title detection baseline)
     for (const ts of ["fifwc", "soccer-fifwc"]) {
       try { wcTagRaw.push(...await fetchEventsByTagSlugSafe(ts, 50)); } catch { /**/ }
     }

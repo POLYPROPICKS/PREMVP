@@ -242,6 +242,28 @@ export async function fetchEventsByTagSlugSafe(tagSlug: string, limit = 50): Pro
 }
 
 /**
+ * Resolve Gamma tag_id from a tag slug (e.g. "fifwc").
+ * Returns null on any failure. Enables related_tags=true discovery.
+ */
+export async function fetchTagIdBySlugSafe(tagSlug: string): Promise<string | null> {
+  const url = `${GAMMA_API_BASE}/tags?slug=${encodeURIComponent(tagSlug)}`;
+  const response = await safeFetch<unknown>(url, { next: { revalidate: 3600 } });
+  if (!response) return null;
+  const items: unknown[] = Array.isArray(response)
+    ? response
+    : Array.isArray((response as Record<string, unknown>).data)
+      ? ((response as Record<string, unknown>).data as unknown[])
+      : [];
+  for (const item of items) {
+    if (typeof item !== "object" || item === null) continue;
+    const t = item as Record<string, unknown>;
+    const id = t.id ?? t.tagId ?? t.tag_id;
+    if (id !== undefined && id !== null) return String(id);
+  }
+  return null;
+}
+
+/**
  * Fetch events from Gamma API by series id (e.g. soccer-fifwc / id 11433).
  * Polymarket sports match games are grouped by series, NOT by tag_slug — tag_slug
  * returns only tournament-winner futures. Series queries surface fixture-level games.
