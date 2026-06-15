@@ -10,6 +10,7 @@ export interface FireModelCandidate {
   strategy: string;
   rank: number;
   market_slug: string;
+  event_slug: string | null;
   condition_id: string;
   token_id: string;
   side: string;
@@ -198,6 +199,7 @@ export async function buildFireModelCandidates(limit: number, scope = "all"): Pr
       signal_id: row.id,
       strategy: tier,
       market_slug: row.market_slug || row.event_slug || row.condition_id,
+      event_slug: typeof row.event_slug === "string" && row.event_slug.trim() ? row.event_slug : null,
       condition_id: row.condition_id,
       token_id: row.selected_token_id,
       side,
