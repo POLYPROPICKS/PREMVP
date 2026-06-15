@@ -1,4 +1,9 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
+import { createHash } from "crypto";
+
+const POLICY_VERSION = "battle-sm-guard-v1-20260615";
+
+export type StrategicScope = "WC" | "SOCCER" | "MLB" | "ESPORT" | "OTHER" | "UNKNOWN";
 
 export interface FireModelCandidate {
   signal_id: string;
@@ -8,8 +13,21 @@ export interface FireModelCandidate {
   condition_id: string;
   token_id: string;
   side: string;
+  selected_outcome: string | null;
+  inferred_sport: string;
+  market_family: string;
+  strategic_scope: StrategicScope;
   max_entry_price: number;
   stake_usd: number;
+  max_order_usd: number;
+  max_spread: number;
+  one_order_only: boolean;
+  executor_mode_allowed: string;
+  first_live_test_allowed: boolean;
+  stale_after: string;
+  no_trade_after: string | null;
+  idempotency_key: string;
+  model_rule_id: string;
   created_at: string;
   source: string;
   diagnostics: {
@@ -35,14 +53,32 @@ const TIER_ORDER: Record<string, number> = {
   TIER3_MICRO_EXPAND_50_COV25: 3,
 };
 
-function isSportsExcluded(text: string | null | undefined): boolean {
-  if (!text) return false;
-  return /\bnba\b|basketball|\bnhl\b|ice[\s-]?hockey/i.test(text);
+const NBA_NHL_RE = /\bnba\b|basketball|\bnhl\b|ice[\s-]?hockey/i;
+const ESPORTS_RE = /esport|cs2|valorant|dota|league[\s-]of[\s-]legend|counter[\s-]strike/i;
+const WC_RE = /world[\s-]?cup|wc2026|fifa|cabo|belgium|egypt|spain/i;
+const SOCCER_RE = /soccer|\bfootball\b|premier[\s-]league|serie[\s-]a|bundesliga|la[\s-]liga|\bmls\b|champions[\s-]league|europa[\s-]league|ligue|eredivisie|match[\s-]result|clean[\s-]sheet|btts|both[\s-]teams/i;
+const MLB_RE = /\bmlb\b|\bbaseball\b|royals|yankees|red[\s-]sox|dodgers|\bcubs\b|\bmets\b|cardinals|\bbraves\b|astros|phillies|padres|mariners|brewers|pirates|\breds\b|orioles|nationals|athletics|\btigers\b|\btwins\b|white[\s-]sox|\brangers\b|\bangels\b|guardians|\brays\b|rockies|diamondbacks|marlins|blue[\s-]jays/i;
+
+function isSportsExcluded(text: string): boolean {
+  return NBA_NHL_RE.test(text);
 }
 
-function isEsports(text: string | null | undefined): boolean {
-  if (!text) return false;
-  return /esport|cs2|valorant|dota|league[\s-]of[\s-]legend|counter[\s-]strike/i.test(text);
+function inferScope(ref: string): StrategicScope {
+  if (WC_RE.test(ref)) return "WC";
+  if (SOCCER_RE.test(ref)) return "SOCCER";
+  if (MLB_RE.test(ref)) return "MLB";
+  if (ESPORTS_RE.test(ref)) return "ESPORT";
+  return "UNKNOWN";
+}
+
+function inferSportAndFamily(scope: StrategicScope): { sport: string; family: string } {
+  switch (scope) {
+    case "WC":     return { sport: "soccer",   family: "world_cup" };
+    case "SOCCER": return { sport: "soccer",   family: "soccer"    };
+    case "MLB":    return { sport: "baseball", family: "mlb"       };
+    case "ESPORT": return { sport: "esport",   family: "esport"    };
+    default:       return { sport: "unknown",  family: "other"     };
+  }
 }
 
 function computeTier(score: number, coverage: number): string | null {
@@ -76,13 +112,20 @@ function computeExecutorAction(score: number, coverage: number, hoursToStart: nu
   return "QUEUE_WAIT_T_MINUS_60";
 }
 
-export async function buildFireModelCandidates(limit: number): Promise<FireModelCandidate[]> {
+function makeIdempotencyKey(signalId: string, tokenId: string): string {
+  return createHash("sha256")
+    .update(`${signalId}__${tokenId}__${POLICY_VERSION}`)
+    .digest("hex")
+    .slice(0, 32);
+}
+
+export async function buildFireModelCandidates(limit: number, scope = "all"): Promise<FireModelCandidate[]> {
   const { data, error } = await supabaseAdmin
     .from("generated_signal_pairs")
     .select(
       "id, condition_id, selected_outcome, selected_token_id, entry_price_num, " +
       "signal_confidence_num, smart_money_score_num, diagnostics, " +
-      "market_slug, event_slug, metric_formula_version, created_at"
+      "market_slug, event_slug, metric_formula_version, created_at, expires_at"
     )
     .in("metric_formula_version", ALLOWED_VERSIONS)
     .is("signal_result", null)
@@ -116,24 +159,40 @@ export async function buildFireModelCandidates(limit: number): Promise<FireModel
     const gameStartMs = new Date(gameStartIso).getTime();
     if (isNaN(gameStartMs) || gameStartMs <= now) continue;
 
-    const marketRef = (row.market_slug ?? "") + " " + (row.event_slug ?? "");
+    const marketRef = ((row.market_slug ?? "") + " " + (row.event_slug ?? "")).toLowerCase();
     if (isSportsExcluded(marketRef)) continue;
 
     // Bad bucket: coverage 50–74 AND entry_price 0.44–0.58
     if (coverage >= 50 && coverage <= 74 && entryPrice >= 0.44 && entryPrice <= 0.58) continue;
 
+    const strategicScope = inferScope(marketRef);
+
+    // scope filter — default "all" passes everything
+    if (scope !== "all") {
+      const want = scope.toUpperCase();
+      if (want === "WC"     && strategicScope !== "WC") continue;
+      if (want === "SOCCER" && strategicScope !== "WC" && strategicScope !== "SOCCER") continue;
+      if (want === "MLB"    && strategicScope !== "MLB") continue;
+      if (want === "ESPORT" && strategicScope !== "ESPORT") continue;
+    }
+
     const tier = computeTier(score, coverage);
     if (!tier) continue;
 
-    const esports = isEsports(marketRef);
+    const isEsport = ESPORTS_RE.test(marketRef);
     const smartMoney = typeof row.smart_money_score_num === "number" ? row.smart_money_score_num : null;
     const baseStake = computeBaseStake(score, coverage);
-    const stakeUsd = computeStake(baseStake, smartMoney, esports);
+    const stakeUsd = computeStake(baseStake, smartMoney, isEsport);
     if (stakeUsd <= 0) continue;
 
     const maxEntryPrice = Math.min(Math.round((entryPrice + 0.04) * 1000) / 1000, 0.99);
     const hoursToStart = Math.round(((gameStartMs - now) / 3_600_000) * 100) / 100;
     const executorAction = computeExecutorAction(score, coverage, hoursToStart, tier);
+
+    const { sport, family } = inferSportAndFamily(strategicScope);
+    const staleAfter = typeof row.expires_at === "string" ? row.expires_at : gameStartIso;
+    const selectedOutcome = typeof row.selected_outcome === "string" ? row.selected_outcome : null;
+    const side = selectedOutcome ?? "Yes";
 
     candidates.push({
       signal_id: row.id,
@@ -141,9 +200,22 @@ export async function buildFireModelCandidates(limit: number): Promise<FireModel
       market_slug: row.market_slug || row.event_slug || row.condition_id,
       condition_id: row.condition_id,
       token_id: row.selected_token_id,
-      side: row.selected_outcome ?? "Yes",
+      side,
+      selected_outcome: selectedOutcome,
+      inferred_sport: sport,
+      market_family: family,
+      strategic_scope: strategicScope,
       max_entry_price: maxEntryPrice,
       stake_usd: stakeUsd,
+      max_order_usd: 5,
+      max_spread: 0.03,
+      one_order_only: true,
+      executor_mode_allowed: "dry_run_only",
+      first_live_test_allowed: true,
+      stale_after: staleAfter,
+      no_trade_after: gameStartIso,
+      idempotency_key: makeIdempotencyKey(row.id, row.selected_token_id),
+      model_rule_id: POLICY_VERSION,
       created_at: row.created_at,
       source: "FireModel1_private_executor_2026_06_15",
       diagnostics: {
