@@ -2158,6 +2158,7 @@ export async function buildLandingCards(options?: {
     const seenPairIds = new Set<string>();
     const seenMarketKeys = new Set<string>();
     const rejected: Array<{ id?: string; rejectionReasons: string[] }> = [];
+    const firemodel11ResearchCandidates: LandingCardPair[] = [];
 
     // Filter out ended markets if excludeEnded is true
     if (excludeEnded) {
@@ -2247,6 +2248,16 @@ export async function buildLandingCards(options?: {
           rf,
         );
         if (snap) researchSnapshots.push(snap);
+      }
+
+      // ── FIREMODEL1.1: Collect lower-gate research candidates ─────────────────
+      // dataCoverage in [25, minDataCoverage) — scored but excluded from public feed.
+      // Persisted to generated_signal_pairs as metric_formula_version='shadow-firemodel1_1_research_v0'.
+      if (enriched.diagnostics.dataCoverage >= 25 && enriched.diagnostics.dataCoverage < minDataCoverage) {
+        const fm11Pair = generateLandingCardPair(enriched);
+        if (fm11Pair && fm11Pair.premiumSignal.winProbability >= 50) {
+          firemodel11ResearchCandidates.push(fm11Pair);
+        }
       }
 
       // ── PRODUCT GATES (only when product cap not yet reached) ───────────────
@@ -2518,6 +2529,7 @@ export async function buildLandingCards(options?: {
         } : {}),
       } as unknown as import("./types").InspectedMetadata,
       ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
+      ...(firemodel11ResearchCandidates.length > 0 ? { firemodel11ResearchCandidates } : {}),
     };
   } catch (error) {
     // Only return error field for unexpected runtime failures

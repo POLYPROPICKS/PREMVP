@@ -233,6 +233,8 @@ export interface LandingCardsResponse {
   // Research universe — only present when collectResearchSnapshots=true
   researchSnapshots?: ResearchEligibleSignalSnapshot[];
   researchFunnel?: ResearchFunnelCounters;
+  // FireModel1.1 lower-gate research candidates (dataCoverage>=25, score>=50, NOT in public feed)
+  firemodel11ResearchCandidates?: LandingCardPair[];
 }
 
 // ============================================================================
@@ -324,6 +326,7 @@ export interface PolymarketRawEvent {
   endDate?: string;
   endDateIso?: string;
   endTime?: string;
+  startTime?: string;
   active: boolean;
   closed: boolean;
   markets: PolymarketRawMarket[];

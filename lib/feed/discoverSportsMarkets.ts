@@ -1145,6 +1145,7 @@ export interface WcShadowEntry {
   eventSlug: string;
   eventTitle: string;
   eventEndIso: string | null;
+  gameStartIso?: string | null;
   // Extended diagnostics — populated by all collectors
   marketType?: string | null;
   marketSlug?: string | null;
@@ -1463,6 +1464,7 @@ function _v1BothSides(
   eventEndIso: string | null,
   eligReason: "PRIMARY_FAMILY" | "HIGH_VOLUME_NON_PRIMARY" | "WC_HIGH_VOLUME_GROUP_V1_1",
   detectedMarketFamily?: string,
+  gameStartIso?: string | null,
 ): WcShadowEntry[] {
   const conditionId = nm.conditionId ?? null;
   if (!conditionId) return [];
@@ -1485,6 +1487,7 @@ function _v1BothSides(
       eventSlug,
       eventTitle,
       eventEndIso,
+      gameStartIso: gameStartIso ?? null,
       marketType: nm.sportsMarketType ?? null,
       marketSlug: nm.slug ? String(nm.slug).substring(0, 80) : null,
       marketTitle: nm.question ? nm.question.substring(0, 200) : null,
@@ -1565,6 +1568,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
       const evSlugLower = (ev.slug ?? "").toLowerCase();
       const isHalfTimeEv = /halftime.?result|second.?half.?result/.test(evSlugLower);
       const endIso = ev.endDateIso || ev.endDate || null;
+      const startIso = ev.startTime ?? null;
       if (endIso) {
         const h = (new Date(endIso).getTime() - nowMs) / 3600000;
         if (h < 0 || h > 2160) continue;
@@ -1585,7 +1589,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
           || (!mtype && /spread|handicap|over.?under|total goals?|corners|first half|both teams to score/.test(question));
         const vol = _v1MarketVol(nm);
         if (isWcPrimary) {
-          all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY"));
+          all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY", undefined, startIso));
         } else if (isHighVolGroup && vol > 5000) {
           let detectedGroup = "high_vol_group";
           if (/spread|handicap/.test(mtype)) detectedGroup = "spread";
@@ -1594,7 +1598,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
           else if (/both.?teams.?to.?score/.test(mtype)) detectedGroup = "goal";
           else if (/over.?under|total.?goal/.test(mtype)) detectedGroup = "total";
           else if (/first.?half|second.?half/.test(mtype)) detectedGroup = "half";
-          all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "WC_HIGH_VOLUME_GROUP_V1_1", detectedGroup));
+          all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "WC_HIGH_VOLUME_GROUP_V1_1", detectedGroup, startIso));
         }
         // else: unknown type or insufficient volume — skip
       }
@@ -1627,6 +1631,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
       const key = ev.id ?? ev.slug; if (!key || seenTag.has(key)) continue;
       seenTag.add(key);
       const endIso = ev.endDateIso || ev.endDate || null;
+      const startIsoTag = ev.startTime ?? null;
       if (endIso) {
         const h = (new Date(endIso).getTime() - nowMs2) / 3600000;
         if (h < 0 || h > 2160) continue;
@@ -1645,7 +1650,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
           || (!mtype && /spread|handicap|over.?under|total goals?|corners|first half|both teams/.test(question));
         const vol = _v1MarketVol(nm);
         if (isWcP) {
-          all.push(..._v1BothSides(nm, "WC2026", evSlugL.substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY"));
+          all.push(..._v1BothSides(nm, "WC2026", evSlugL.substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY", undefined, startIsoTag));
         } else if (isHvg && vol > 5000) {
           let dg = "high_vol_group";
           if (/spread|handicap/.test(mtype)) dg = "spread";
@@ -1654,7 +1659,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
           else if (/both.?teams.?to.?score/.test(mtype)) dg = "goal";
           else if (/over.?under|total.?goal/.test(mtype)) dg = "total";
           else if (/first.?half|second.?half/.test(mtype)) dg = "half";
-          all.push(..._v1BothSides(nm, "WC2026", evSlugL.substring(0, 80), title.substring(0, 100), endIso, "WC_HIGH_VOLUME_GROUP_V1_1", dg));
+          all.push(..._v1BothSides(nm, "WC2026", evSlugL.substring(0, 80), title.substring(0, 100), endIso, "WC_HIGH_VOLUME_GROUP_V1_1", dg, startIsoTag));
         }
       }
     }

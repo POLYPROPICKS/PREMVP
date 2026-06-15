@@ -7,6 +7,7 @@ import { buildLandingCards, applyStrategicFloor } from "../lib/feed/buildLanding
 import {
   writeGeneratedSignalPairs,
   writeStrategicShadowPairs,
+  writeFireModel1_1ResearchPairs,
   writeJobRun,
 } from "../lib/feed/cacheGeneratedSignals";
 import { collectWcShadowCandidates, collectEsportShadowCandidates, collectNbaNhlShadowCandidates, collectFullLineOutcomeV1Candidates } from "../lib/feed/discoverSportsMarkets";
@@ -410,6 +411,27 @@ async function main() {
     } catch (mirrorErr) {
       console.warn("[generate-signals] WC mirror shadow write failed (non-fatal):", mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr));
       diagnostics.wcMirrorShadowWarning = mirrorErr instanceof Error ? mirrorErr.message : String(mirrorErr);
+    }
+
+    // ── FireModel1.1 lower-gate research persistence (fail-open) ──────────────
+    // Persists enriched rows with dataCoverage>=25 but below product minDataCoverage gate.
+    // metric_formula_version='shadow-firemodel1_1_research_v0'; never shown in public feed.
+    try {
+      const fm11Candidates = result.firemodel11ResearchCandidates ?? [];
+      if (fm11Candidates.length > 0) {
+        const fm11ExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        const fm11Inserted = await writeFireModel1_1ResearchPairs(fm11Candidates, fm11ExpiresAt);
+        console.log(`[generate-signals] FireModel1.1 research pairs written: ${fm11Inserted}`);
+        diagnostics.fm11ResearchCandidatesFound = fm11Candidates.length;
+        diagnostics.fm11ResearchPairsInserted = fm11Inserted;
+      } else {
+        console.log(`[generate-signals] FireModel1.1 research candidates: 0`);
+        diagnostics.fm11ResearchCandidatesFound = 0;
+        diagnostics.fm11ResearchPairsInserted = 0;
+      }
+    } catch (fm11Err) {
+      console.warn("[generate-signals] FireModel1.1 research write failed (non-fatal):", fm11Err instanceof Error ? fm11Err.message : String(fm11Err));
+      diagnostics.fm11ResearchWarning = fm11Err instanceof Error ? fm11Err.message : String(fm11Err);
     }
   } catch (error) {
     status = "error";

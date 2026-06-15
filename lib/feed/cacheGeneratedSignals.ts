@@ -2,7 +2,7 @@
 // Handles read/write operations to Supabase generated_signal_pairs and job_runs tables
 
 import { supabaseAdmin } from "@/lib/supabase/server";
-import { PremiumSignal, MarketSource, LandingCardDiagnostics } from "./types";
+import { PremiumSignal, MarketSource, LandingCardDiagnostics, LandingCardPair } from "./types";
 import type { WcShadowEntry } from "./discoverSportsMarkets";
 
 export interface CachedSignalPair {
@@ -242,6 +242,7 @@ export async function writeStrategicShadowPairs(
         volumeUsd: entry.volumeUsd ?? null,
         v1EligibilityReason: entry.v1EligibilityReason ?? null,
         marketFamily: entry.marketFamily ?? null,
+        gameStartIso: entry.gameStartIso ?? null,
       },
       score: null,
       expires_at: rowExpiresAt,
@@ -267,6 +268,108 @@ export async function writeStrategicShadowPairs(
 
   if (error) {
     throw new Error(`Failed to write shadow pairs: ${error.message}`);
+  }
+
+  return count ?? rows.length;
+}
+
+/**
+ * Write FireModel1.1 lower-gate research candidates to generated_signal_pairs.
+ * These rows have dataCoverage in [25, minDataCoverage) and score >= 50 but are
+ * EXCLUDED from the public feed. metric_formula_version='shadow-firemodel1_1_research_v0'.
+ * Deduplicates by (condition_id, selected_token_id) against existing research rows.
+ * Throws on DB error (caller wraps in fail-open try/catch).
+ */
+export async function writeFireModel1_1ResearchPairs(
+  pairs: LandingCardPair[],
+  defaultExpiresAt: string,
+): Promise<number> {
+  if (pairs.length === 0) return 0;
+
+  const METRIC_VERSION = "shadow-firemodel1_1_research_v0";
+
+  const validPairs = pairs.filter(
+    (p) => p.diagnostics.conditionId && p.diagnostics.selectedTokenId,
+  );
+  if (validPairs.length === 0) return 0;
+
+  // Read-before-write dedup: skip already-stored research rows.
+  const conditionIds = validPairs.map((p) => p.diagnostics.conditionId as string);
+  const { data: existing } = await supabaseAdmin
+    .from("generated_signal_pairs")
+    .select("condition_id, selected_token_id")
+    .in("condition_id", conditionIds)
+    .eq("metric_formula_version", METRIC_VERSION);
+
+  const existingKeys = new Set<string>(
+    (existing ?? []).map((r) => `${r.condition_id}::${r.selected_token_id}`),
+  );
+
+  const newPairs = validPairs.filter(
+    (p) => !existingKeys.has(`${p.diagnostics.conditionId}::${p.diagnostics.selectedTokenId}`),
+  );
+  if (newPairs.length === 0) return 0;
+
+  const rows = newPairs.map((pair) => {
+    const { premiumSignal: ps, diagnostics: diag } = pair;
+    const smartMoneyScore = findMetricValue(
+      Array.isArray(ps.metrics) ? ps.metrics : null,
+      "smart money",
+    );
+    const whalePublicScore =
+      findMetricValue(Array.isArray(ps.metrics) ? ps.metrics : null, "whale") ??
+      findMetricValue(Array.isArray(ps.metrics) ? ps.metrics : null, "public");
+    const preEventScore = findMetricValue(
+      Array.isArray(ps.metrics) ? ps.metrics : null,
+      "pre",
+    );
+    const entryPriceNum = typeof diag.currentPrice === "number" ? diag.currentPrice : null;
+
+    return {
+      source: "polymarket",
+      formula_version: METRIC_VERSION,
+      event_slug: ps.eventTitle,
+      market_slug: pair.marketSource.headline,
+      condition_id: diag.conditionId,
+      selected_outcome: diag.selectedOutcome,
+      premium_signal: ps,
+      market_source: pair.marketSource,
+      market_sources: null,
+      diagnostics: {
+        ...diag,
+        fireModelAlias: "FireModel1.1",
+        entryGate: "score>=50_coverage>=25",
+        isResearchCandidate: true,
+        researchScore: ps.winProbability,
+        researchDataCoverage: diag.dataCoverage,
+        smartMoneyScore: smartMoneyScore ?? null,
+        gameStartIso: diag.gameStartIso ?? null,
+        recentTradeCash: diag.recentTradeCash ?? null,
+      },
+      score: null,
+      expires_at: defaultExpiresAt,
+      selected_token_id: diag.selectedTokenId,
+      entry_price_num: entryPriceNum,
+      signal_confidence_num: ps.winProbability,
+      expected_return_pct_num: parsePercentLikeNumber(ps.profit),
+      trust_metrics: Array.isArray(ps.metrics) && ps.metrics.length > 0 ? ps.metrics : null,
+      smart_money_score_num: typeof smartMoneyScore === "number" ? smartMoneyScore : null,
+      whale_public_score_num: typeof whalePublicScore === "number" ? whalePublicScore : null,
+      pre_event_score_num: typeof preEventScore === "number" ? preEventScore : null,
+      signal_result: null,
+      resolved_at: null,
+      winning_outcome: null,
+      realized_return_pct: null,
+      metric_formula_version: METRIC_VERSION,
+    };
+  });
+
+  const { error, count } = await supabaseAdmin
+    .from("generated_signal_pairs")
+    .insert(rows);
+
+  if (error) {
+    throw new Error(`Failed to write FireModel1.1 research pairs: ${error.message}`);
   }
 
   return count ?? rows.length;
