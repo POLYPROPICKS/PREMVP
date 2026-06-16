@@ -20,7 +20,12 @@ const EVENT_GUARD_RULE = "ONE_LIVE_POSITION_PER_EVENT";
 // token_id / idempotency_key are outcome/signal-level. condition_id and
 // market_slug are MARKET-level: two correlated markets in the same match carry
 // different values, so using them would defeat the one-position-per-event guard.
+//
+// match_family_key is checked first: it is the stable event-level key derived in
+// buildFireModelCandidates (event_slug when available, else WEAK_MARKET_LEVEL_KEY:…).
+// Keys starting with "WEAK_MARKET_LEVEL_KEY:" are excluded below (see isUsableString).
 const EVENT_KEY_FIELDS: Array<{ field: string; source: string }> = [
+  { field: "match_family_key", source: "match_family_key" },
   { field: "event_id", source: "event_id" },
   { field: "game_id", source: "game_id" },
   { field: "event_slug", source: "event_slug" },
@@ -38,10 +43,17 @@ function normalizeEventKey(raw: string): string {
   return raw.toLowerCase().trim().replace(/\s+/g, " ");
 }
 
+// Volume-label patterns that are not reliable event identifiers.
+// These appear as market titles like "$15K matched activity" or "matched activity".
+const WEAK_KEY_RE = /^\$\d+k?\s+matched|^matched\s+activity|^weak_market_level_key:/i;
+
 function isUsableString(val: unknown): val is string {
   if (typeof val !== "string") return false;
-  const t = val.trim().toLowerCase();
-  return t.length > 0 && t !== "null" && t !== "undefined";
+  const t = val.trim();
+  if (t.length === 0 || t.toLowerCase() === "null" || t.toLowerCase() === "undefined") return false;
+  // Reject volume-label event keys and explicit WEAK fallback keys.
+  if (WEAK_KEY_RE.test(t)) return false;
+  return true;
 }
 
 /**
@@ -72,15 +84,20 @@ function deriveExecutorEventKey(
  */
 function extractPriorEventKey(row: Record<string, unknown>): string | null {
   const candidates: unknown[] = [
-    // candidate_snapshot_json.event_key / .eventKey
+    // match_family_key is the preferred stable key (event-slug-level, added 2026-06-16).
+    safeGet(row.candidate_snapshot_json, "match_family_key"),
+    safeGet(safeGet(row.raw_event_json, "candidate_snapshot_json"), "match_family_key"),
+    safeGet(row.raw_event_json, "match_family_key"),
+    // Legacy: event_key / eventKey fields from older snapshots.
     safeGet(row.candidate_snapshot_json, "event_key"),
     safeGet(row.candidate_snapshot_json, "eventKey"),
-    // raw_event_json.candidate_snapshot_json.event_key
     safeGet(safeGet(row.raw_event_json, "candidate_snapshot_json"), "event_key"),
     safeGet(safeGet(row.raw_event_json, "candidate_snapshot_json"), "eventKey"),
-    // raw_event_json.event_key
     safeGet(row.raw_event_json, "event_key"),
     safeGet(row.raw_event_json, "eventKey"),
+    // event_slug from snapshot (used as match_family_key before this field was added).
+    safeGet(row.candidate_snapshot_json, "event_slug"),
+    safeGet(safeGet(row.raw_event_json, "candidate_snapshot_json"), "event_slug"),
   ];
 
   for (const val of candidates) {
@@ -159,6 +176,7 @@ interface SafeCandidate extends FireModelCandidate {
   same_event_guard_rule: typeof EVENT_GUARD_RULE;
   original_rank_before_event_dedupe: number;
   candidate_rank_after_event_dedupe: number;
+  // match_family_key_is_weak is inherited from FireModelCandidate (set in buildFireModelCandidates).
 }
 
 export async function GET(request: NextRequest) {
@@ -225,6 +243,9 @@ export async function GET(request: NextRequest) {
     let sameEventCandidatesSuppressed = 0;
     let unsafeNoEventKeySuppressed = 0;
     let priorLiveEventCandidatesSuppressed = 0;
+    // Candidates that passed event-dedupe guards but are live_eligible=false (paper/shadow only).
+    let liveBlockedCount = 0;
+    const liveBlockedByReason: Record<string, number> = {};
 
     const seenEventKeys = new Set<string>();
     const safeCandidates: SafeCandidate[] = [];
@@ -235,31 +256,41 @@ export async function GET(request: NextRequest) {
         c as unknown as Record<string, unknown>
       );
 
-      // Guard 1: no reliable event identity → unsafe, exclude.
+      // Guard 1: no reliable event identity → unsafe, exclude entirely (not even paper).
       if (!eventKey) {
         unsafeNoEventKeySuppressed += 1;
         continue;
       }
 
-      // Guard 2: event already live-traded in lookback window → suppress.
+      // Guard 2: event already live-traded in lookback window → suppress entirely.
       if (priorLiveEventKeys.has(eventKey)) {
         priorLiveEventCandidatesSuppressed += 1;
         continue;
       }
 
-      // Guard 3: same event already in this batch → suppress correlated duplicate.
+      // Guard 3: same event already in this batch → suppress correlated duplicate entirely.
       if (seenEventKeys.has(eventKey)) {
         sameEventCandidatesSuppressed += 1;
         continue;
       }
 
       seenEventKeys.add(eventKey);
+
+      // Track live_eligible=false candidates in diagnostics before discarding from live list.
+      if (!c.live_eligible) {
+        liveBlockedCount += 1;
+        const reason = c.live_rejection_reason ?? "UNKNOWN_REJECTION";
+        liveBlockedByReason[reason] = (liveBlockedByReason[reason] ?? 0) + 1;
+        // Paper/shadow candidates: still pass through to safeCandidates so the route can
+        // surface them in diagnostics; they are stripped from the returned live list below.
+      }
+
       safeCandidates.push({
         ...c,
         event_key: eventKey,
         event_key_source: source,
         event_one_position_guard: true,
-        executor_safe: true,
+        executor_safe: c.live_eligible,
         same_event_guard_rule: EVENT_GUARD_RULE,
         original_rank_before_event_dedupe: c.rank,
         candidate_rank_after_event_dedupe: safeCandidates.length + 1,
@@ -272,17 +303,29 @@ export async function GET(request: NextRequest) {
       priorLiveEventCandidatesSuppressed;
     const candidatesAfterEventDedupe = safeCandidates.length;
 
-    // Scope counts over the full safe pool (before user limit).
+    // Split into live-eligible and paper-only pools.
+    // Route returns only live_eligible=true candidates in the main list.
+    // Paper-only candidates appear only in diagnostics.paper_only_candidates (not served to executor).
+    const liveCandidates = safeCandidates.filter((c) => c.live_eligible);
+    const paperOnlyCandidates = safeCandidates.filter((c) => !c.live_eligible);
+
+    // Scope counts over the live pool only (what executor will actually see).
     const scopeCounts: Record<string, number> = {};
-    for (const c of safeCandidates) {
+    for (const c of liveCandidates) {
       const k = c.strategic_scope ?? "UNKNOWN";
       scopeCounts[k] = (scopeCounts[k] ?? 0) + 1;
     }
     const wcCount = scopeCounts["WC"] ?? 0;
     const soccerCount = (scopeCounts["WC"] ?? 0) + (scopeCounts["SOCCER"] ?? 0);
-    const allCount = safeCandidates.length;
 
-    const returned = safeCandidates.slice(0, limit);
+    // Timing bucket distribution over live candidates.
+    const timingBuckets: Record<string, number> = {};
+    for (const c of liveCandidates) {
+      const b = c.timing_bucket ?? "UNKNOWN";
+      timingBuckets[b] = (timingBuckets[b] ?? 0) + 1;
+    }
+
+    const returned = liveCandidates.slice(0, limit);
     const generatedAt = new Date().toISOString();
 
     return NextResponse.json(
@@ -290,6 +333,7 @@ export async function GET(request: NextRequest) {
         success: true,
         source: "FireModel1_private_executor",
         policy_version: "battle-sm-guard-v1-20260615",
+        live_policy_version: "live-risk-guard-v1",
         scope,
         count: returned.length,
         limit,
@@ -307,11 +351,27 @@ export async function GET(request: NextRequest) {
           candidates_after_event_dedupe: candidatesAfterEventDedupe,
           same_event_candidates_suppressed: sameEventCandidatesSuppressed,
           unsafe_no_event_key_suppressed: unsafeNoEventKeySuppressed,
+          live_eligible_count: liveCandidates.length,
+          live_blocked_count: liveBlockedCount,
+          live_blocked_by_reason: liveBlockedByReason,
+          paper_only_count: paperOnlyCandidates.length,
+          // Truncated list of paper-only candidates for monitoring; not served to executor.
+          paper_only_candidates: paperOnlyCandidates.slice(0, 10).map((c) => ({
+            signal_id: c.signal_id,
+            strategic_scope: c.strategic_scope,
+            strategy: c.strategy,
+            timing_bucket: c.timing_bucket,
+            live_rejection_reason: c.live_rejection_reason,
+            match_family_key: c.match_family_key,
+            match_family_key_is_weak: c.match_family_key_is_weak,
+            hours_to_start: c.diagnostics.hours_to_start_now,
+          })),
           scope_requested: scope,
           scope_counts: scopeCounts,
+          timing_bucket_counts: timingBuckets,
           soccer_count: soccerCount,
           wc_count: wcCount,
-          all_count: allCount,
+          all_live_count: liveCandidates.length,
           returned_count: returned.length,
           generated_at: generatedAt,
         },

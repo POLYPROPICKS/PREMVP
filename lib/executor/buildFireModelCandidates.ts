@@ -2,14 +2,35 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { createHash } from "crypto";
 
 const POLICY_VERSION = "battle-sm-guard-v1-20260615";
+const LIVE_POLICY_VERSION = "live-risk-guard-v1";
 
 export type StrategicScope = "WC" | "SOCCER" | "MLB" | "ESPORT" | "OTHER" | "UNKNOWN";
+
+// Timing buckets used for diagnostics and live policy auditing.
+// TODO(timing-audit): once resolved data is available, run per-sport win_rate/net_pnl
+// query grouped by timing_bucket to decide data-driven cutoffs per sport/market_family.
+// Current rule: WC/soccer hard-gated to ≤1h (T_0_30M + T_30_60M only).
+// Non-football: no hard gate yet — monitor timing_bucket distribution in CEO view first.
+export type TimingBucket =
+  | "T_0_30M"
+  | "T_30_60M"
+  | "T_1_2H"
+  | "T_2_6H"
+  | "T_6H_PLUS"
+  | "STARTED_OR_MISSING";
 
 export interface FireModelCandidate {
   signal_id: string;
   strategy: string;
   rank: number;
   market_slug: string;
+  // Stable match-family key used for cross-market dedupe (spread + total + corners = same event).
+  // Priority: event_slug (if present) → condition_id (WEAK fallback, labelled separately).
+  match_family_key: string;
+  match_family_key_source: "event_slug" | "condition_id_weak";
+  // true when match_family_key is backed only by condition_id (market-level, not event-level).
+  // Live policy: candidates with match_family_key_is_weak=true are live-blocked.
+  match_family_key_is_weak: boolean;
   event_slug: string | null;
   condition_id: string;
   token_id: string;
@@ -18,6 +39,14 @@ export interface FireModelCandidate {
   inferred_sport: string;
   market_family: string;
   strategic_scope: StrategicScope;
+  timing_bucket: TimingBucket;
+  // Live eligibility layer (live-risk-guard-v1).
+  // Route returns only live_eligible=true by default.
+  // paper_eligible covers shadow/research mode.
+  live_eligible: boolean;
+  live_rejection_reason: string | null;
+  live_policy_version: string;
+  paper_eligible: boolean;
   max_entry_price: number;
   stake_usd: number;
   max_order_usd: number;
@@ -56,7 +85,9 @@ const TIER_ORDER: Record<string, number> = {
 
 const NBA_NHL_RE = /\bnba\b|basketball|\bnhl\b|ice[\s-]?hockey/i;
 const ESPORTS_RE = /esport|cs2|valorant|dota|league[\s-]of[\s-]legend|counter[\s-]strike/i;
-const WC_RE = /world[\s-]?cup|wc2026|fifa|cabo|belgium|egypt|spain/i;
+// \bfifwc\b catches Polymarket FIFA World Cup event slugs (e.g. fifwc-fra-sen-2026-06-16).
+// Previously missing — caused all WC matches to fall through to UNKNOWN.
+const WC_RE = /world[\s-]?cup|wc2026|fifa|\bfifwc\b|cabo|belgium|egypt|spain/i;
 const SOCCER_RE = /soccer|\bfootball\b|premier[\s-]league|serie[\s-]a|bundesliga|la[\s-]liga|\bmls\b|champions[\s-]league|europa[\s-]league|ligue|eredivisie|match[\s-]result|clean[\s-]sheet|btts|both[\s-]teams/i;
 const MLB_RE = /\bmlb\b|\bbaseball\b|royals|yankees|red[\s-]sox|dodgers|\bcubs\b|\bmets\b|cardinals|\bbraves\b|astros|phillies|padres|mariners|brewers|pirates|\breds\b|orioles|nationals|athletics|\btigers\b|\btwins\b|white[\s-]sox|\brangers\b|\bangels\b|guardians|\brays\b|rockies|diamondbacks|marlins|blue[\s-]jays/i;
 
@@ -120,6 +151,49 @@ function makeIdempotencyKey(signalId: string, tokenId: string): string {
     .slice(0, 32);
 }
 
+function computeTimingBucket(hoursToStart: number): TimingBucket {
+  if (hoursToStart < 0) return "STARTED_OR_MISSING";
+  if (hoursToStart <= 0.5) return "T_0_30M";
+  if (hoursToStart <= 1.0) return "T_30_60M";
+  if (hoursToStart <= 2.0) return "T_1_2H";
+  if (hoursToStart <= 6.0) return "T_2_6H";
+  return "T_6H_PLUS";
+}
+
+/**
+ * Centralised live eligibility decision. Called after hard-rejects (UNKNOWN,
+ * football-too-early, football-No-side) have already been applied via `continue`.
+ *
+ * Returns soft-reject codes for candidates that are paper-safe but NOT live-safe:
+ *   TIER3_LIVE_BLOCKED              — score/coverage too weak for live capital.
+ *   WEAK_MATCH_FAMILY_KEY_LIVE_BLOCKED — event key is market-level only; correlated
+ *                                       exposure across same match cannot be prevented.
+ *   QUEUE_LATER_NOT_LIVE_ELIGIBLE   — game >6h away; live entry not supported yet.
+ *
+ * All other candidates are live_eligible=true. UNKNOWN, football-too-early,
+ * football-No-side do not reach here — they are hard-rejected above.
+ */
+function computeLiveEligibility(
+  tier: string,
+  matchFamilyKeySource: "event_slug" | "condition_id_weak",
+  matchFamilyKey: string,
+  hoursToStart: number
+): { liveEligible: boolean; liveRejectionReason: string | null } {
+  if (tier === "TIER3_MICRO_EXPAND_50_COV25") {
+    return { liveEligible: false, liveRejectionReason: "TIER3_LIVE_BLOCKED" };
+  }
+  const isWeakKey =
+    matchFamilyKeySource === "condition_id_weak" ||
+    matchFamilyKey.startsWith("WEAK_MARKET_LEVEL_KEY:");
+  if (isWeakKey) {
+    return { liveEligible: false, liveRejectionReason: "WEAK_MATCH_FAMILY_KEY_LIVE_BLOCKED" };
+  }
+  if (hoursToStart > 6.0) {
+    return { liveEligible: false, liveRejectionReason: "QUEUE_LATER_NOT_LIVE_ELIGIBLE" };
+  }
+  return { liveEligible: true, liveRejectionReason: null };
+}
+
 export async function buildFireModelCandidates(limit: number, scope = "all"): Promise<FireModelCandidate[]> {
   const { data, error } = await supabaseAdmin
     .from("generated_signal_pairs")
@@ -160,6 +234,9 @@ export async function buildFireModelCandidates(limit: number, scope = "all"): Pr
     const gameStartMs = new Date(gameStartIso).getTime();
     if (isNaN(gameStartMs) || gameStartMs <= now) continue;
 
+    // Compute hours-to-start early; used by football timing guard below.
+    const hoursToStart = Math.round(((gameStartMs - now) / 3_600_000) * 100) / 100;
+
     const marketRef = ((row.market_slug ?? "") + " " + (row.event_slug ?? "")).toLowerCase();
     if (isSportsExcluded(marketRef)) continue;
 
@@ -167,6 +244,16 @@ export async function buildFireModelCandidates(limit: number, scope = "all"): Pr
     if (coverage >= 50 && coverage <= 74 && entryPrice >= 0.44 && entryPrice <= 0.58) continue;
 
     const strategicScope = inferScope(marketRef);
+
+    // Guard F: UNKNOWN is never live-eligible. Classifier must positively identify scope.
+    // World Cup markets failing WC_RE (e.g. missing fifwc prefix) would land here — fail safe.
+    if (strategicScope === "UNKNOWN") continue;
+
+    const isSoccerFamily = strategicScope === "WC" || strategicScope === "SOCCER";
+
+    // Guard E: Football/WC candidates must be within 1 hour of kickoff for live eligibility.
+    // Matches 6-10h away were entering the live pool because there was no sport-specific timing gate.
+    if (isSoccerFamily && hoursToStart > 1.0) continue;
 
     // scope filter — default "all" passes everything
     if (scope !== "all") {
@@ -187,7 +274,6 @@ export async function buildFireModelCandidates(limit: number, scope = "all"): Pr
     if (stakeUsd <= 0) continue;
 
     const maxEntryPrice = Math.min(Math.round((entryPrice + 0.04) * 1000) / 1000, 0.99);
-    const hoursToStart = Math.round(((gameStartMs - now) / 3_600_000) * 100) / 100;
     const executorAction = computeExecutorAction(score, coverage, hoursToStart, tier);
 
     const { sport, family } = inferSportAndFamily(strategicScope);
@@ -195,11 +281,34 @@ export async function buildFireModelCandidates(limit: number, scope = "all"): Pr
     const selectedOutcome = typeof row.selected_outcome === "string" ? row.selected_outcome : null;
     const side = selectedOutcome ?? "Yes";
 
+    // Guard G: "No" side on football/WC match-winner markets has undefined semantics.
+    // Ban until an explicit outcome model for No-side football exists.
+    if (isSoccerFamily && side.toLowerCase() === "no") continue;
+
+    // Derive match_family_key: stable event-level identity for cross-market dedupe.
+    // event_slug (e.g. fifwc-irq-nor-2026-06-16) groups spread + corners + total for the same match.
+    // condition_id is market-level and labelled WEAK to flag insufficient dedup power.
+    const rawEventSlug = typeof row.event_slug === "string" && row.event_slug.trim() ? row.event_slug.trim().toLowerCase() : null;
+    const matchFamilyKey: string = rawEventSlug ?? `WEAK_MARKET_LEVEL_KEY:${row.condition_id}`;
+    const matchFamilyKeySource: "event_slug" | "condition_id_weak" = rawEventSlug ? "event_slug" : "condition_id_weak";
+    const matchFamilyKeyIsWeak = matchFamilyKeySource === "condition_id_weak";
+
+    const timingBucket = computeTimingBucket(hoursToStart);
+    const { liveEligible, liveRejectionReason } = computeLiveEligibility(
+      tier,
+      matchFamilyKeySource,
+      matchFamilyKey,
+      hoursToStart
+    );
+
     candidates.push({
       signal_id: row.id,
       strategy: tier,
       market_slug: row.market_slug || row.event_slug || row.condition_id,
-      event_slug: typeof row.event_slug === "string" && row.event_slug.trim() ? row.event_slug : null,
+      match_family_key: matchFamilyKey,
+      match_family_key_source: matchFamilyKeySource,
+      match_family_key_is_weak: matchFamilyKeyIsWeak,
+      event_slug: rawEventSlug,
       condition_id: row.condition_id,
       token_id: row.selected_token_id,
       side,
@@ -207,6 +316,11 @@ export async function buildFireModelCandidates(limit: number, scope = "all"): Pr
       inferred_sport: sport,
       market_family: family,
       strategic_scope: strategicScope,
+      timing_bucket: timingBucket,
+      live_eligible: liveEligible,
+      live_rejection_reason: liveRejectionReason,
+      live_policy_version: LIVE_POLICY_VERSION,
+      paper_eligible: true,
       max_entry_price: maxEntryPrice,
       stake_usd: stakeUsd,
       max_order_usd: 5,
@@ -222,7 +336,7 @@ export async function buildFireModelCandidates(limit: number, scope = "all"): Pr
       source: "FireModel1_private_executor_2026_06_15",
       diagnostics: {
         executor_action: executorAction,
-        paper_only: true,
+        paper_only: !liveEligible,
         real_trade: false,
         score,
         coverage,
