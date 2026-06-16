@@ -39,6 +39,11 @@ export interface RawPlanningDiagnostics {
   match_family_quality_counts: Record<string, number>;
   rejected_before_planning_by_reason: Record<string, number>;
   sample_source_rows: Array<Record<string, unknown>>;
+  // Per-version drop-reason breakdown — reveals why shadow-strategic-sports-v1 rows are dropped.
+  dropped_by_formula_version_and_reason: Record<string, Record<string, number>>;
+  // Which versions were queried vs. which had zero DB rows returned.
+  versions_queried: string[];
+  versions_with_zero_db_rows: string[];
 }
 
 export interface FireModelCandidate {
@@ -134,6 +139,9 @@ const MLB_RE =
 // Activity label patterns that must never be used as sport classifier or event key input.
 const ACTIVITY_LABEL_RE = /matched\s+activity|market\s+activity|live\s+market\s+activity/i;
 const PURE_VOLUME_RE = /^\s*\$[\d,.]+\s*[KkMmBb]?\s*$/;
+// Single-team spread title without an opponent: "spread: norway (-1.5)", "spread: argentina (+0.5)".
+// These MUST NOT become independent STRONG/MEDIUM event families — mark WEAK pending resolution.
+const SINGLE_TEAM_SPREAD_RE = /^spread:\s*([\w][\w\s'-]*?)\s*\([+-]?\d+\.?\d*\)\s*$/i;
 
 // Returns true for strings like "$25K matched activity", "Live market activity",
 // or bare volume labels like "$25K". These are UI activity labels, not market titles.
@@ -222,6 +230,23 @@ function deriveMatchFamilyKey(row: any, identityText: string): {
     const key = `pair:${team1}-vs-${team2}:${dateStr}`;
     const quality: IdentityQuality = dateStr !== "nodate" ? "STRONG" : "MEDIUM";
     return { key, source: "team_pair", quality, canonicalEventKey: key };
+  }
+
+  // Priority 2b: single-team spread title (no opponent) → provisional WEAK key.
+  // Resolved to parent pair group in post-processing if a matching pair:*:date key exists.
+  // Identity stays WEAK whether resolved or not — never live-eligible as standalone.
+  if (!identityText.match(/\bvs\.?\b/i) && SINGLE_TEAM_SPREAD_RE.test(identityText)) {
+    const sm = SINGLE_TEAM_SPREAD_RE.exec(identityText)!;
+    const team = sm[1].trim().toLowerCase().replace(/\s+/g, "-");
+    const diag: Record<string, unknown> = row.diagnostics ?? {};
+    const gameStartIso = typeof diag.gameStartIso === "string" ? diag.gameStartIso : null;
+    const dateStr = gameStartIso ? gameStartIso.slice(0, 10) : "nodate";
+    return {
+      key: `WEAK_SINGLE_TEAM_SPREAD:${team}:${dateStr}`,
+      source: "condition_id_weak",
+      quality: "WEAK",
+      canonicalEventKey: null,
+    };
   }
 
   // Priority 3: any other event slug (non-fifwc).
@@ -378,6 +403,9 @@ export async function buildFireModelCandidates(
         match_family_quality_counts: {},
         rejected_before_planning_by_reason: {},
         sample_source_rows: [],
+        dropped_by_formula_version_and_reason: {},
+        versions_queried: [...versions],
+        versions_with_zero_db_rows: [],
       }
     : null;
 
@@ -402,8 +430,16 @@ export async function buildFireModelCandidates(
     const entryPrice = typeof row.entry_price_num === "number" ? row.entry_price_num : null;
 
     const rejectReason = (r: string) => {
-      if (rawDiag) rawDiag.rejected_before_planning_by_reason[r] =
-        (rawDiag.rejected_before_planning_by_reason[r] ?? 0) + 1;
+      if (rawDiag) {
+        rawDiag.rejected_before_planning_by_reason[r] =
+          (rawDiag.rejected_before_planning_by_reason[r] ?? 0) + 1;
+        const ver = (row.metric_formula_version as string) ?? "unknown";
+        if (!rawDiag.dropped_by_formula_version_and_reason[ver]) {
+          rawDiag.dropped_by_formula_version_and_reason[ver] = {};
+        }
+        rawDiag.dropped_by_formula_version_and_reason[ver][r] =
+          (rawDiag.dropped_by_formula_version_and_reason[ver][r] ?? 0) + 1;
+      }
     };
 
     if (coverage == null || coverage < 25) { rejectReason("LOW_COVERAGE"); continue; }
@@ -587,6 +623,13 @@ export async function buildFireModelCandidates(
     });
   }
 
+  // Populate versions_with_zero_db_rows now that source_counts is complete.
+  if (rawDiag) {
+    rawDiag.versions_with_zero_db_rows = versions.filter(
+      v => !rawDiag!.source_counts_by_formula_version[v]
+    );
+  }
+
   candidates.sort((a, b) => {
     const tierDiff = (TIER_ORDER[a.strategy] ?? 9) - (TIER_ORDER[b.strategy] ?? 9);
     if (tierDiff !== 0) return tierDiff;
@@ -594,6 +637,34 @@ export async function buildFireModelCandidates(
     if (scoreDiff !== 0) return scoreDiff;
     return a.diagnostics.hours_to_start_now - b.diagnostics.hours_to_start_now;
   });
+
+  // Post-processing: resolve WEAK_SINGLE_TEAM_SPREAD keys into their parent pair groups.
+  // Example: "WEAK_SINGLE_TEAM_SPREAD:norway:2026-06-16" → "pair:iraq-vs-norway:2026-06-16"
+  // Merges the spread into the same event group so it does not create a duplicate planned slot.
+  // Identity stays WEAK (live-blocked) whether resolved or not.
+  if (candidates.some(c => c.match_family_key.startsWith("WEAK_SINGLE_TEAM_SPREAD:"))) {
+    const pairKeyByTeamDate = new Map<string, string>();
+    for (const c of candidates) {
+      const pm = c.match_family_key.match(/^pair:([\w-]+)-vs-([\w-]+):(\d{4}-\d{2}-\d{2})$/);
+      if (pm) {
+        pairKeyByTeamDate.set(`${pm[1]}:${pm[3]}`, c.match_family_key);
+        pairKeyByTeamDate.set(`${pm[2]}:${pm[3]}`, c.match_family_key);
+      }
+    }
+    for (const c of candidates) {
+      const sm = c.match_family_key.match(/^WEAK_SINGLE_TEAM_SPREAD:([\w-]+):(\d{4}-\d{2}-\d{2})$/);
+      if (!sm) continue;
+      const resolved = pairKeyByTeamDate.get(`${sm[1]}:${sm[2]}`);
+      if (resolved) {
+        c.match_family_key = resolved;
+        c.identity_warning_codes = [
+          ...c.identity_warning_codes.filter(w => w !== "TEAM_PAIR_INCOMPLETE"),
+          "TEAM_PAIR_RESOLVED_FROM_CONTEXT",
+        ];
+      }
+      // Unresolved spreads keep WEAK_SINGLE_TEAM_SPREAD: key; WEAK quality blocks live.
+    }
+  }
 
   return {
     candidates: candidates.slice(0, limit).map((c, i) => ({ ...c, rank: i + 1 })),

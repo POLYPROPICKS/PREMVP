@@ -94,6 +94,10 @@ export async function GET(request: NextRequest) {
               match_family_quality_counts: rawDiagnostics.match_family_quality_counts,
               rejected_before_planning_by_reason:
                 rawDiagnostics.rejected_before_planning_by_reason,
+              dropped_by_formula_version_and_reason:
+                rawDiagnostics.dropped_by_formula_version_and_reason,
+              versions_queried: rawDiagnostics.versions_queried,
+              versions_with_zero_db_rows: rawDiagnostics.versions_with_zero_db_rows,
               total_db_rows: rawDiagnostics.total_db_rows,
             }
           : {}),

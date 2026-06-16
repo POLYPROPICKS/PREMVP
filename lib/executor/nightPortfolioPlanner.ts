@@ -611,6 +611,19 @@ export function buildNightPortfolioPlan(
   const livePlannable: FireModelCandidate[] = [];
 
   for (const c of universe) {
+    // Guard: game start must fall within the current night window.
+    // Candidates whose kickoff is after window_end (e.g. tomorrow afternoon) do not belong
+    // in tonight's plan — they would be false planned slots with no executable entry window.
+    const gameStartMs = c.diagnostics.game_start_iso
+      ? new Date(c.diagnostics.game_start_iso).getTime()
+      : NaN;
+    if (!Number.isFinite(gameStartMs) || gameStartMs > endMs) {
+      const windowReason = "OUTSIDE_NIGHT_WINDOW";
+      topRejectedReasons[windowReason] = (topRejectedReasons[windowReason] ?? 0) + 1;
+      unsafeRejected += 1;
+      continue;
+    }
+
     const reason = planNoGoReason(c);
     if (reason === null) {
       livePlannable.push(c);
