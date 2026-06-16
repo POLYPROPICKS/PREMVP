@@ -15,7 +15,7 @@ function pct(n: number, total: number): string {
 
 async function main() {
   // Valid pool = all candidates that pass every FireModel1 gate (post bad-bucket / post started).
-  const pool = await buildFireModelCandidates(500);
+  const { candidates: pool } = await buildFireModelCandidates(500);
   const total = pool.length;
 
   // Tier counts

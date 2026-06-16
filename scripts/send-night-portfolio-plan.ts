@@ -79,7 +79,7 @@ async function main() {
     "../lib/executor/nightPortfolioPlanner"
   );
 
-  const universe = await buildFireModelCandidates(200, "all", true);
+  const { candidates: universe } = await buildFireModelCandidates(200, "all", true);
   const plan = buildNightPortfolioPlan(universe, { nowMs: Date.now() });
 
   const text = nightPlanEmailText(plan, PLAN_TIME);

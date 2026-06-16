@@ -20,7 +20,7 @@ const WC_RE = /world[\s-]?cup|wc2026|fifa|cabo|belgium|egypt|spain/i;
 const ESPORTS_RE = /esport|cs2|valorant|dota|league[\s-]of[\s-]legend|counter[\s-]strike/i;
 
 async function main() {
-  const pool = await buildFireModelCandidates(500);
+  const { candidates: pool } = await buildFireModelCandidates(500);
   const line = "─".repeat(62);
 
   console.log(`\nFIREMODEL1 NEXT LIVE SESSION READINESS  ${new Date().toISOString()}`);

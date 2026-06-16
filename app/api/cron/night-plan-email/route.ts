@@ -89,7 +89,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const universe = await buildFireModelCandidates(PLAN_POOL, "all", true);
+    const { candidates: universe } = await buildFireModelCandidates(PLAN_POOL, "all", true);
     const plan = buildNightPortfolioPlan(universe, { nowMs: Date.now() });
     const semantics = nightPlanControlSemantics(plan);
 

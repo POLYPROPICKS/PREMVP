@@ -34,8 +34,8 @@ export async function GET(request: NextRequest) {
     Number.isFinite(rawMax) && rawMax >= targetMin ? rawMax : TARGET_MAX_BETS_DEFAULT;
 
   try {
-    // planningMode=true: include future soccer/WC matches as future planning slots.
-    const universe = await buildFireModelCandidates(PLAN_POOL, "all", true);
+    // planningMode=true: include shadow-strategic-sports-v1 and future soccer/WC matches.
+    const { candidates: universe, rawDiagnostics } = await buildFireModelCandidates(PLAN_POOL, "all", true);
     const plan = buildNightPortfolioPlan(universe, {
       nowMs: Date.now(),
       targetMin,
@@ -77,10 +77,34 @@ export async function GET(request: NextRequest) {
       rebalance_policy: plan.rebalance_policy,
       planned_slots: plan.planned_slots,
       top_rejected_reasons: plan.top_rejected_reasons,
-      diagnostics: plan.diagnostics,
+      diagnostics: {
+        ...plan.diagnostics,
+        ...(rawDiagnostics
+          ? {
+              source_counts_by_formula_version:
+                rawDiagnostics.source_counts_by_formula_version,
+              activity_label_rows: rawDiagnostics.activity_label_rows,
+              rows_missing_game_start: rawDiagnostics.rows_missing_game_start,
+              rows_missing_event_slug: rawDiagnostics.rows_missing_event_slug,
+              rows_missing_selected_token: rawDiagnostics.rows_missing_selected_token,
+              rows_missing_selected_outcome: rawDiagnostics.rows_missing_selected_outcome,
+              wc_like_rows: rawDiagnostics.wc_like_rows,
+              soccer_like_rows: rawDiagnostics.soccer_like_rows,
+              sport_classification_confidence: rawDiagnostics.sport_classification_confidence_counts,
+              match_family_quality_counts: rawDiagnostics.match_family_quality_counts,
+              rejected_before_planning_by_reason:
+                rawDiagnostics.rejected_before_planning_by_reason,
+              total_db_rows: rawDiagnostics.total_db_rows,
+            }
+          : {}),
+      },
     };
 
-    // debug=1 surfaces only non-secret rejected-reason detail (already in plan).
+    // debug=1 adds sample source rows (safe fields only, no secrets) and full rejected reasons.
+    if (debug && rawDiagnostics) {
+      (body.diagnostics as Record<string, unknown>).sample_source_rows =
+        rawDiagnostics.sample_source_rows;
+    }
     if (!debug) {
       delete body.top_rejected_reasons;
     }

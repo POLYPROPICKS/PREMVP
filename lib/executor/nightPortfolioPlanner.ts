@@ -329,6 +329,7 @@ function isWeakKey(c: FireModelCandidate): boolean {
  */
 function planNoGoReason(c: FireModelCandidate): string | null {
   if (c.strategic_scope === "UNKNOWN") return "UNKNOWN_SCOPE_NOT_LIVE";
+  if (c.identity_quality === "WEAK" || c.identity_quality === "INVALID") return "WEAK_IDENTITY_NOT_LIVE";
   if (isWeakKey(c)) return "WEAK_MATCH_FAMILY_KEY_NOT_LIVE";
   const isSoccer = c.strategic_scope === "WC" || c.strategic_scope === "SOCCER";
   if (isSoccer && (c.side ?? "").toLowerCase() === "no") return "FOOTBALL_NO_SIDE_NOT_LIVE";
@@ -599,12 +600,22 @@ export function buildNightPortfolioPlan(
   let unsafeRejected = 0;
   let paperOnly = 0;
 
+  // Version-level window and mapped counts for diagnostics.
+  const windowCountsByVersion: Record<string, number> = {};
+  const mappedCountsByVersion: Record<string, number> = {};
+  for (const c of universe) {
+    const ver = c.diagnostics.version ?? "unknown";
+    windowCountsByVersion[ver] = (windowCountsByVersion[ver] ?? 0) + 1;
+  }
+
   const livePlannable: FireModelCandidate[] = [];
 
   for (const c of universe) {
     const reason = planNoGoReason(c);
     if (reason === null) {
       livePlannable.push(c);
+      const ver = c.diagnostics.version ?? "unknown";
+      mappedCountsByVersion[ver] = (mappedCountsByVersion[ver] ?? 0) + 1;
       continue;
     }
     topRejectedReasons[reason] = (topRejectedReasons[reason] ?? 0) + 1;
@@ -729,6 +740,8 @@ export function buildNightPortfolioPlan(
       comparable_tier1_stake_usd: comparableTier1Stake,
       total_planned_stake_usd:
         Math.round(plannedFinal.reduce((s, p) => s + p.planned_stake_usd, 0) * 100) / 100,
+      window_counts_by_formula_version: windowCountsByVersion,
+      mapped_counts_by_formula_version: mappedCountsByVersion,
     },
   };
 }
