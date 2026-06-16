@@ -555,13 +555,29 @@ export async function buildFireModelCandidates(
     if (scopeConfidence === "MEDIUM")   warningCodes.push("SCOPE_CLASSIFIED_BY_FALLBACK");
 
     const timingBucket = computeTimingBucket(hoursToStart);
-    const { liveEligible, liveRejectionReason } = computeLiveEligibility(
+    let { liveEligible, liveRejectionReason } = computeLiveEligibility(
       tier,
       matchFamilyKeySource,
       matchFamilyKey,
       hoursToStart,
       identityQuality
     );
+
+    // Pilot scope allowlist: PILOT_ALLOWED_SCOPES=MLB,ESPORT,ESPORTS
+    // When set, live eligibility is restricted to the listed strategic scopes only.
+    const pilotScopesRaw = process.env.PILOT_ALLOWED_SCOPES ?? "";
+    if (liveEligible && pilotScopesRaw.trim()) {
+      const pilotAllowed = new Set(
+        pilotScopesRaw.split(",").map(s => s.trim().toUpperCase()).filter(Boolean)
+      );
+      // Normalise ESPORTS → ESPORT so callers can use either spelling.
+      const scopeKey = strategicScope === "ESPORT" ? "ESPORT" : strategicScope;
+      const inAllowlist = pilotAllowed.has(scopeKey) || pilotAllowed.has("ESPORTS") && scopeKey === "ESPORT";
+      if (!inAllowlist) {
+        liveEligible = false;
+        liveRejectionReason = "PILOT_SCOPE_NOT_ALLOWED";
+      }
+    }
 
     const rawEventSlugForCandidate =
       typeof row.event_slug === "string" && row.event_slug.trim()
