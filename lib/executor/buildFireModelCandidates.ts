@@ -103,6 +103,7 @@ export interface FireModelCandidate {
     hours_to_start_now: number;
     fire_model_alias: string;
     version: string;
+    pilot_tier3_fallback?: true;
   };
 }
 
@@ -505,7 +506,7 @@ export async function buildFireModelCandidates(
     const isEsport = ESPORTS_RE.test(identityText);
     const smartMoney = typeof row.smart_money_score_num === "number" ? row.smart_money_score_num : null;
     const baseStake = computeBaseStake(score, coverage);
-    const stakeUsd = computeStake(baseStake, smartMoney, isEsport);
+    let stakeUsd = computeStake(baseStake, smartMoney, isEsport);
     if (stakeUsd <= 0) { rejectReason("ZERO_STAKE"); continue; }
 
     const maxEntryPrice = Math.min(Math.round((entryPrice + 0.04) * 1000) / 1000, 0.99);
@@ -579,6 +580,41 @@ export async function buildFireModelCandidates(
       }
     }
 
+    // Pilot Tier3 fallback: env-gated smoke-test override. Promotes a Tier3 candidate
+    // to live-eligible only when ALL of: PILOT_ALLOW_TIER3_FALLBACK=true, scope in
+    // PILOT_ALLOWED_SCOPES, not WC/SOCCER, strong identity, within timing window.
+    let pilotTier3FallbackApplied = false;
+    if (!liveEligible && liveRejectionReason === "TIER3_LIVE_BLOCKED" &&
+        process.env.PILOT_ALLOW_TIER3_FALLBACK === "true") {
+      const maxHours = parseFloat(process.env.PILOT_TIER3_MAX_HOURS_TO_START ?? "1.25");
+      const pilotScopesRaw2 = process.env.PILOT_ALLOWED_SCOPES ?? "";
+      const pilotAllowed2 = pilotScopesRaw2.trim()
+        ? new Set(pilotScopesRaw2.split(",").map(s => s.trim().toUpperCase()).filter(Boolean))
+        : null;
+      const scopeKey2 = strategicScope === "ESPORT" ? "ESPORT" : strategicScope;
+      const scopeOk = pilotAllowed2 !== null &&
+        (pilotAllowed2.has(scopeKey2) || (pilotAllowed2.has("ESPORTS") && scopeKey2 === "ESPORT"));
+      const isSoccerOrWC2 = strategicScope === "WC" || strategicScope === "SOCCER";
+      const identityOk = identityQuality !== "WEAK" && identityQuality !== "INVALID";
+      if (
+        scopeOk &&
+        !isSoccerOrWC2 &&
+        !matchFamilyKeyIsWeak &&
+        identityOk &&
+        hoursToStart > 0 &&
+        hoursToStart <= (isNaN(maxHours) ? 1.25 : maxHours)
+      ) {
+        liveEligible = true;
+        liveRejectionReason = null;
+        pilotTier3FallbackApplied = true;
+        // Cap stake for Tier3 pilot fallback.
+        const maxStake = parseFloat(process.env.PILOT_TIER3_MAX_STAKE_USD ?? "2");
+        if (!isNaN(maxStake) && maxStake > 0) {
+          stakeUsd = Math.min(stakeUsd, maxStake);
+        }
+      }
+    }
+
     const rawEventSlugForCandidate =
       typeof row.event_slug === "string" && row.event_slug.trim()
         ? row.event_slug.trim().toLowerCase()
@@ -635,6 +671,7 @@ export async function buildFireModelCandidates(
         hours_to_start_now: hoursToStart,
         fire_model_alias: "FireModel1",
         version: row.metric_formula_version,
+        ...(pilotTier3FallbackApplied ? { pilot_tier3_fallback: true as const } : {}),
       },
     });
   }
