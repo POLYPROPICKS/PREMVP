@@ -45,8 +45,12 @@ node_modules/
 .env.local
 *.log
 .claude/ 
-debug-evidence-check.json 
-debug-v2.json 
+debug-evidence-check.json
+debug-v2.json
+
+# Railway env snapshots — never commit, contain live secrets
+railway-config*.json
+railway-env*.json
 landing-check.json 
 *.json 
 normalize-dump.txt

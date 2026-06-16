@@ -194,7 +194,16 @@ function computeLiveEligibility(
   return { liveEligible: true, liveRejectionReason: null };
 }
 
-export async function buildFireModelCandidates(limit: number, scope = "all"): Promise<FireModelCandidate[]> {
+// planningMode is OFF by default. When true (night-plan universe only), the
+// soccer/WC ≤1h live timing gate is relaxed so future matches appear as
+// future planning slots. Every other guard (UNKNOWN, No-side, weak key, TIER3,
+// started, bad-bucket) is unchanged, and the live /candidates route NEVER sets
+// this flag — so the live execution path is not widened.
+export async function buildFireModelCandidates(
+  limit: number,
+  scope = "all",
+  planningMode = false
+): Promise<FireModelCandidate[]> {
   const { data, error } = await supabaseAdmin
     .from("generated_signal_pairs")
     .select(
@@ -253,7 +262,9 @@ export async function buildFireModelCandidates(limit: number, scope = "all"): Pr
 
     // Guard E: Football/WC candidates must be within 1 hour of kickoff for live eligibility.
     // Matches 6-10h away were entering the live pool because there was no sport-specific timing gate.
-    if (isSoccerFamily && hoursToStart > 1.0) continue;
+    // planningMode keeps future soccer matches in the universe as future planning slots only;
+    // they remain non-executable until their own entry window (enforced by the planner / executor).
+    if (!planningMode && isSoccerFamily && hoursToStart > 1.0) continue;
 
     // scope filter — default "all" passes everything
     if (scope !== "all") {

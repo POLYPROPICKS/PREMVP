@@ -172,7 +172,9 @@ interface SafeCandidate extends FireModelCandidate {
   event_key: string;
   event_key_source: string | null;
   event_one_position_guard: true;
-  executor_safe: true;
+  // Mirrors live_eligible: true when the candidate is live-safe, false for paper/shadow rows
+  // that pass event-dedupe but are surfaced only in diagnostics.
+  executor_safe: boolean;
   same_event_guard_rule: typeof EVENT_GUARD_RULE;
   original_rank_before_event_dedupe: number;
   candidate_rank_after_event_dedupe: number;
@@ -341,6 +343,12 @@ export async function GET(request: NextRequest) {
         diagnostics: {
           event_guard_enabled: true,
           event_guard_rule: EVENT_GUARD_RULE,
+          // Night-planner integration (read-only signalling for ops/monitoring).
+          // Same-event correlated markets are suppressed above (Guard 3); the
+          // suppressed count is the number of lower-ranked markets blocked.
+          same_event_lower_ranked_markets_blocked: sameEventCandidatesSuppressed,
+          event_rebalance_minutes_before_start: 45,
+          planned_portfolio_mode_supported: true,
           prior_live_event_guard_enabled: true,
           prior_live_lookback_hours: priorLiveLookbackHours,
           prior_live_rows_checked: priorLiveRowsChecked,
