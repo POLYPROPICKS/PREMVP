@@ -379,7 +379,7 @@ export async function buildFireModelCandidates(
     .not("entry_price_num", "is", null)
     .gte("signal_confidence_num", 50)
     .order("created_at", { ascending: false })
-    .limit(200);
+    .limit(planningMode ? 300 : 150);
 
   if (error) throw new Error(`DB query failed: ${error.message}`);
 

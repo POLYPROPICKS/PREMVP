@@ -327,7 +327,13 @@ export async function GET(request: NextRequest) {
       timingBuckets[b] = (timingBuckets[b] ?? 0) + 1;
     }
 
-    const returned = liveCandidates.slice(0, limit);
+    const pilotMaxRaw = parseInt(process.env.PILOT_MAX_LIVE_EVENTS ?? "", 10);
+    const pilotMaxLiveEvents =
+      !isNaN(pilotMaxRaw) && pilotMaxRaw > 0 ? pilotMaxRaw : null;
+    const returned = liveCandidates.slice(
+      0,
+      pilotMaxLiveEvents !== null ? Math.min(limit, pilotMaxLiveEvents) : limit
+    );
     const generatedAt = new Date().toISOString();
 
     return NextResponse.json(
@@ -381,6 +387,7 @@ export async function GET(request: NextRequest) {
           wc_count: wcCount,
           all_live_count: liveCandidates.length,
           returned_count: returned.length,
+          pilot_max_live_events: pilotMaxLiveEvents,
           generated_at: generatedAt,
         },
         generated_at: generatedAt,
