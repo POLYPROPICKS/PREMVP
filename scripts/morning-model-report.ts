@@ -48,7 +48,7 @@ const EMAIL_RECIPIENT =
   argValue("--email=") ??
   process.env.MORNING_MODEL_EMAIL_TO ??
   process.env.NIGHT_PLAN_EMAIL_TO ??
-  null;
+  "alexgrushin@gmail.com";
 
 function escapeHtml(s: string): string {
   return s
@@ -745,17 +745,14 @@ async function main() {
   console.log(JSON.stringify(summary, null, 2));
 
   if (!DRY_RUN && SEND_TEST) {
-    if (!EMAIL_RECIPIENT) {
-      console.log("[morning-model] Send-test skipped: no email recipient available.");
-      return;
-    }
     const apiKey = process.env.RESEND_API_KEY;
     const from = process.env.EMAIL_FROM;
-    if (!apiKey || !from) {
-      console.log(
-        `[morning-model] Send-test skipped: ${!apiKey ? "RESEND_API_KEY missing" : ""}${!apiKey && !from ? ", " : ""}${!from ? "EMAIL_FROM missing" : ""}`.trim(),
-      );
-      return;
+    const missing: string[] = [];
+    if (!apiKey) missing.push("RESEND_API_KEY");
+    if (!from) missing.push("EMAIL_FROM");
+    if (!EMAIL_RECIPIENT) missing.push("EMAIL_RECIPIENT");
+    if (missing.length > 0) {
+      throw new Error(`[morning-model] Send-test failed: missing ${missing.join(", ")}`);
     }
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",

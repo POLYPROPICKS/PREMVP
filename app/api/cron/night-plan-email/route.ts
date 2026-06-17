@@ -67,11 +67,10 @@ export async function GET(request: NextRequest) {
   // Fail loudly on missing email env (no silent skip).
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
-  const to = process.env.NIGHT_PLAN_EMAIL_TO;
+  const to = process.env.NIGHT_PLAN_EMAIL_TO ?? "alexgrushin@gmail.com";
   const missing: string[] = [];
   if (!apiKey) missing.push("RESEND_API_KEY");
   if (!from) missing.push("EMAIL_FROM");
-  if (!to) missing.push("NIGHT_PLAN_EMAIL_TO");
   if (missing.length > 0) {
     return NextResponse.json(
       {

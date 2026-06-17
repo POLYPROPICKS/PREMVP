@@ -50,6 +50,14 @@ Send a founder-readable daily morning report that freezes the latest resolved st
 ## Cron Command
 
 - `npm run morning:model-report -- --send-test`
+- `npm run morning:model-report -- --send-test --email=alexgrushin@gmail.com`
+
+## Required Railway Env
+
+- `RESEND_API_KEY`
+- `EMAIL_FROM`
+- `MORNING_MODEL_EMAIL_TO=alexgrushin@gmail.com`
+- `NIGHT_PLAN_EMAIL_TO=alexgrushin@gmail.com`
 
 ## Email Attachments
 

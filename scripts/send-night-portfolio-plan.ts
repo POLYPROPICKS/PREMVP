@@ -22,7 +22,7 @@ function argValue(prefix: string): string | null {
   return arg ? arg.split("=").slice(1).join("=") : null;
 }
 
-const EMAIL_RECIPIENT = argValue("--email=");
+const EMAIL_RECIPIENT = argValue("--email=") ?? process.env.NIGHT_PLAN_EMAIL_TO ?? "alexgrushin@gmail.com";
 const ALERT_ONLY = process.argv.includes("--alert-only");
 const PLAN_TIME = argValue("--plan-time=") ?? "17:00";
 
