@@ -26,6 +26,9 @@ Send a founder-readable daily morning report that freezes the latest resolved st
 - Latest signal-cache job health
 - Model KPI highlights
 - Decision summary
+- Window Model View
+- Freeze Ranking with ALT numbering
+- Night Execution Detail
 - Night Battle Look placeholder
 
 ## Outputs
@@ -40,10 +43,21 @@ Send a founder-readable daily morning report that freezes the latest resolved st
 - `tables/decision_board.csv`
 - `tables/bankroll_simulations.csv`
 - `tables/run_summary.json`
+- `tables/window_model_view.csv`
+- `tables/freeze_ranking_alt.csv`
+- `tables/night_execution_detail.csv`
 
 ## Cron Command
 
 - `npm run morning:model-report -- --send-test`
+
+## Email Attachments
+
+- `MORNING_REPORT.md`
+- `policy_kpis.csv`
+- `window_model_view.csv`
+- `freeze_ranking_alt.csv`
+- `night_execution_detail.csv`
 
 ## TODO
 

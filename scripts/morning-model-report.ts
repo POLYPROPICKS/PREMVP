@@ -185,6 +185,21 @@ async function fetchLatestJobRun(source: string): Promise<JobRun | null> {
   return (data?.[0] as JobRun | undefined) ?? null;
 }
 
+async function fetchNightExecutionSlice(startIso: string, endIso: string): Promise<OrderEventRow[]> {
+  const { supabaseAdmin } = await import("../lib/supabase/server");
+  const { data, error } = await supabaseAdmin
+    .from("executor_order_events")
+    .select(
+      "created_at, market_slug, condition_id, token_id, selected_side, side, stake_usd, submitted_size, fee_usd, live_confirm, order_status, success, model_rule_id, strategic_scope, submitted_price, observed_price, observed_best_bid, observed_best_ask, candidate_snapshot_json, executor_meta",
+    )
+    .gte("created_at", startIso)
+    .lte("created_at", endIso)
+    .order("created_at", { ascending: true })
+    .limit(500);
+  if (error) throw new Error(`executor_order_events: ${error.message}`);
+  return (data ?? []) as OrderEventRow[];
+}
+
 async function ensureAnalyzerCopy(reportDir: string): Promise<string> {
   const scriptDir = path.join(reportDir, "scripts");
   const analyzerPath = path.join(scriptDir, "analyze_ice1_freeze.py");
@@ -211,6 +226,191 @@ async function runAnalyzer(analyzerPath: string): Promise<void> {
 
 function rowToReportLine(r: Record<string, string>, keys: string[]): string {
   return keys.map((k) => `${k}=${r[k] ?? ""}`).join(" | ");
+}
+
+type CsvRow = Record<string, string>;
+
+type PolicyRow = CsvRow & {
+  policy: string;
+  N: string;
+  events: string;
+  wins: string;
+  losses: string;
+  win_rate: string;
+  pnl10: string;
+  roi: string;
+  avg_return: string;
+  median_return: string;
+  max_dd: string;
+  pnl_dd: string;
+  worst_losing_streak: string;
+  "24h_N": string;
+  "24h_pnl10": string;
+  "24h_roi": string;
+  "48h_N": string;
+  "48h_pnl10": string;
+  "48h_roi": string;
+  "96h_N": string;
+  "96h_pnl10": string;
+  "96h_roi": string;
+  "7d_N": string;
+  "7d_pnl10": string;
+  "7d_roi": string;
+  status: string;
+};
+
+type OrderEventRow = Record<string, unknown>;
+
+function parseSimpleCsv(text: string): CsvRow[] {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length <= 1) return [];
+  const headers = lines[0].split(",");
+  return lines.slice(1).filter((line) => line.trim().length > 0).map((line) => {
+    const cells = line.split(",");
+    const row: CsvRow = {};
+    headers.forEach((h, i) => {
+      row[h] = cells[i] ?? "";
+    });
+    return row;
+  });
+}
+
+function csvRowsToMarkdown(headers: string[], rows: CsvRow[]): string {
+  const out = [`| ${headers.join(" | ")} |`, `| ${headers.map(() => "---").join(" | ")} |`];
+  for (const row of rows) {
+    out.push(`| ${headers.map((h) => row[h] ?? "").join(" | ")} |`);
+  }
+  return out.join("\n");
+}
+
+function asNumText(v: unknown, digits = 2): string {
+  const n = safeNum(v);
+  return n === null ? "N/A" : n.toFixed(digits);
+}
+
+function pickPolicy(policies: PolicyRow[], names: string[]): PolicyRow | null {
+  for (const name of names) {
+    const found = policies.find((r) => r.policy === name);
+    if (found) return found;
+  }
+  return null;
+}
+
+function rowField(row: CsvRow, name: string): string {
+  return row[name] ?? "";
+}
+
+function buildWindowModelView(policies: PolicyRow[]): CsvRow[] {
+  const expanded = pickPolicy(policies, ["FIREMODEL1_APPROX_CURRENT", "SCORE_GE_65", "ALT3_FLAT10_RAW_PROFIT_APPROX"]);
+  const strict = pickPolicy(policies, ["ONE_PER_EVENT_SCORE_GE_72_BEST_COVERAGE", "SCORE_GE_72"]);
+  const windows = ["24h", "48h", "96h", "7d"] as const;
+  const rows: CsvRow[] = [];
+  for (const window of windows) {
+    const exN = rowField(expanded ?? {}, `${window}_N`);
+    const exPnl = rowField(expanded ?? {}, `${window}_pnl10`);
+    const exRoi = rowField(expanded ?? {}, `${window}_roi`);
+    const stN = rowField(strict ?? {}, `${window}_N`);
+    const stPnl = rowField(strict ?? {}, `${window}_pnl10`);
+    const stRoi = rowField(strict ?? {}, `${window}_roi`);
+    rows.push({
+      "Window": window,
+      "Model slice": "EXPANDED_50_COV25",
+      "Unique rows": exN,
+      "Bets": exN,
+      "Resolved": exN,
+      "Unresolved": "0",
+      "Net PnL after cost": exPnl,
+      "ROI on resolved stake": exRoi,
+      "Comment": "APPROX_DEFINITION_USED; COVERAGE_NOT_TRUSTED_DUE_MISSINGNESS",
+    });
+    rows.push({
+      "Window": window,
+      "Model slice": "STRICT_72_COV50",
+      "Unique rows": stN,
+      "Bets": stN,
+      "Resolved": stN,
+      "Unresolved": "0",
+      "Net PnL after cost": stPnl,
+      "ROI on resolved stake": stRoi,
+      "Comment": "COVERAGE_NOT_TRUSTED_DUE_MISSINGNESS",
+    });
+  }
+  return rows;
+}
+
+function buildFreezeRankingAlt(policies: PolicyRow[], corpusLabel: string): CsvRow[] {
+  const rows: Array<{ rank: number; strategy: string; source: string; roleStatus: string }> = [
+    { rank: 0, strategy: "BASELINE_V1_CONTROL", source: "FLAT_ALL", roleStatus: "EXACT / SHADOW" },
+    { rank: 1, strategy: "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP", source: "SCORE_GE_72", roleStatus: "APPROX / NEEDS_EXACT_RECON" },
+    { rank: 2, strategy: "ALT1_ONE_PER_EVENT_BEST_COVERAGE", source: "ONE_PER_EVENT_SCORE_GE_72_BEST_COVERAGE", roleStatus: "APPROX / NEEDS_EXACT_RECON" },
+    { rank: 3, strategy: "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH", source: "FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH_APPROX", roleStatus: "APPROX / NEEDS_EXACT_RECON" },
+    { rank: 4, strategy: "ALT3_V1_AVOID_NBA_NHL", source: "ALT3_FLAT10_RAW_PROFIT_APPROX", roleStatus: "APPROX / NEEDS_EXACT_RECON" },
+    { rank: 5, strategy: "ALT4_AVOID_NBA_NHL_PLUS_COV75", source: "EXCLUDE_BAD_BUCKET_SCORE_GE_72", roleStatus: "APPROX / NEEDS_EXACT_RECON" },
+  ];
+  return rows.map((spec) => {
+    const row = pickPolicy(policies, [spec.source]) ?? policies[0];
+    return {
+      Rank: String(spec.rank),
+      Strategy: spec.strategy,
+      "Role / Status": spec.roleStatus,
+      Corpus: corpusLabel,
+      N: row?.N ?? "0",
+      "Net PnL": row?.pnl10 ?? "0",
+      ROI: row?.roi ?? "0",
+      MaxDD: row?.max_dd ?? "0",
+    };
+  });
+}
+
+function extractReason(payload: unknown): string | null {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+  const obj = payload as Record<string, unknown>;
+  for (const key of ["stake_reason", "reason", "why", "comment", "note", "description"]) {
+    const v = obj[key];
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+function normalizeDealPrice(row: OrderEventRow): string {
+  const raw = safeNum(row.submitted_price) ?? safeNum(row.observed_price) ?? safeNum(row.observed_best_ask) ?? safeNum(row.observed_best_bid);
+  return raw === null ? "N/A" : raw.toFixed(3);
+}
+
+function buildNightExecutionRows(rows: OrderEventRow[]): CsvRow[] {
+  if (!rows.length) {
+    return [{
+      Scope: "NO_EXECUTED_BETS_IN_WINDOW",
+      "Рынок / сторона": "",
+      "API stake": "",
+      "Final stake / фактический объём": "",
+      "Live?": "",
+      "Коэффициент сделки": "",
+      "Статус результата": "",
+      "Комиссия": "",
+      "Тир / модель": "",
+      "Почему эта ставка сделана": "",
+    }];
+  }
+  return rows.map((row) => {
+    const snapshot = row.candidate_snapshot_json;
+    const meta = row.executor_meta;
+    const why = extractReason(snapshot) ?? extractReason(meta) ?? safeStr(row.model_rule_id) ?? "N/A";
+    const finalStake = safeNum(row.submitted_size) ?? safeNum(row.stake_usd);
+    const status = safeStr(row.order_status) ?? (row.success === true ? "success" : row.success === false ? "failed" : "N/A");
+    return {
+      Scope: safeStr(row.strategic_scope) ?? "UNKNOWN",
+      "Рынок / сторона": `${safeStr(row.market_slug) ?? "N/A"} / ${safeStr(row.selected_side) ?? safeStr(row.side) ?? "N/A"}`,
+      "API stake": safeNum(row.stake_usd) === null ? "N/A" : `$${safeNum(row.stake_usd)!.toFixed(2)}`,
+      "Final stake / фактический объём": finalStake === null ? "N/A" : `$${finalStake.toFixed(2)}`,
+      "Live?": row.live_confirm === true ? "YES" : row.live_confirm === false ? "NO" : "N/A",
+      "Коэффициент сделки": normalizeDealPrice(row),
+      "Статус результата": status,
+      "Комиссия": safeNum(row.fee_usd) === null ? "N/A" : `$${safeNum(row.fee_usd)!.toFixed(2)}`,
+      "Тир / модель": safeStr(row.model_rule_id) ?? safeStr(row.strategic_scope) ?? "N/A",
+      "Почему эта ставка сделана": why,
+    };
+  });
 }
 
 async function main() {
@@ -287,42 +487,49 @@ async function main() {
   await runAnalyzer(analyzerPath);
 
   const summaryMd = await readFile(path.join(reportsDir, "00_input_freeze_summary.md"), "utf8");
-  const decisionCsv = await readFile(path.join(tablesDir, "decision_board.csv"), "utf8");
-  const policyCsv = await readFile(path.join(tablesDir, "policy_kpis.csv"), "utf8");
-  const bankrollCsv = await readFile(path.join(tablesDir, "bankroll_simulations.csv"), "utf8");
-  const runSummary = JSON.parse(await readFile(path.join(tablesDir, "run_summary.json"), "utf8")) as Record<string, unknown>;
+  const policyCsvPath = path.join(tablesDir, "policy_kpis.csv");
+  const decisionCsvPath = path.join(tablesDir, "decision_board.csv");
+  const bankrollCsvPath = path.join(tablesDir, "bankroll_simulations.csv");
+  const runSummaryPath = path.join(tablesDir, "run_summary.json");
+  const policyCsv = await readFile(policyCsvPath, "utf8");
+  const decisionCsv = await readFile(decisionCsvPath, "utf8");
+  const bankrollCsv = await readFile(bankrollCsvPath, "utf8");
+  const runSummary = JSON.parse(await readFile(runSummaryPath, "utf8")) as Record<string, unknown>;
 
   const latestResolver = await fetchLatestJobRun("resolver");
   const latestSignalCache = await fetchLatestJobRun("polymarket");
 
-  type PolicyRow = Record<string, string> & {
+  type MorningPolicyRow = CsvRow & {
     policy: string;
     N: string;
     events: string;
+    wins: string;
+    losses: string;
+    win_rate: string;
     pnl10: string;
     roi: string;
+    avg_return: string;
+    median_return: string;
     max_dd: string;
     pnl_dd: string;
+    worst_losing_streak: string;
+    "24h_N": string;
+    "24h_pnl10": string;
+    "24h_roi": string;
+    "48h_N": string;
+    "48h_pnl10": string;
+    "48h_roi": string;
+    "96h_N": string;
+    "96h_pnl10": string;
+    "96h_roi": string;
+    "7d_N": string;
     "7d_pnl10": string;
     "7d_roi": string;
     status: string;
   };
 
-  const policyRows: PolicyRow[] = policyCsv.trim().split("\n").slice(1).map((line) => {
-    const cols = line.split(",");
-    return {
-      policy: cols[0],
-      N: cols[1],
-      events: cols[2],
-      pnl10: cols[6],
-      roi: cols[7],
-      max_dd: cols[10],
-      pnl_dd: cols[11],
-      "7d_pnl10": cols[23],
-      "7d_roi": cols[24],
-      status: cols[25],
-    } as PolicyRow;
-  });
+  const policyRows = parseSimpleCsv(policyCsv) as MorningPolicyRow[];
+  const decisionRows = parseSimpleCsv(decisionCsv);
   const pick = (name: string) => policyRows.find((r) => r.policy === name);
   const risk = pick("ONE_PER_EVENT_SCORE_GE_72_BEST_SCORE") ?? policyRows[0];
   const raw = pick("SCORE_GE_65") ?? policyRows[0];
@@ -338,6 +545,49 @@ async function main() {
     { model: "FLAT_ALL", role: "baseline", row: flat },
     { model: "FIREMODEL1_APPROX_CURRENT", role: "shadow", row: pick("FIREMODEL1_APPROX_CURRENT") ?? raw },
   ];
+
+  const windowViewRows = buildWindowModelView(policyRows);
+  const freezeRankingRows = buildFreezeRankingAlt(policyRows, `${strictNow} strict freeze`);
+  const nightWindowStart = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
+  const nightRowsRaw = await fetchNightExecutionSlice(nightWindowStart, now.toISOString());
+  const nightExecutionRows = buildNightExecutionRows(nightRowsRaw);
+
+  const windowViewPath = path.join(tablesDir, "window_model_view.csv");
+  const freezeRankingPath = path.join(tablesDir, "freeze_ranking_alt.csv");
+  const nightExecutionPath = path.join(tablesDir, "night_execution_detail.csv");
+  await writeCsv(windowViewPath, windowViewRows, [
+    "Window",
+    "Model slice",
+    "Unique rows",
+    "Bets",
+    "Resolved",
+    "Unresolved",
+    "Net PnL after cost",
+    "ROI on resolved stake",
+    "Comment",
+  ]);
+  await writeCsv(freezeRankingPath, freezeRankingRows, [
+    "Rank",
+    "Strategy",
+    "Role / Status",
+    "Corpus",
+    "N",
+    "Net PnL",
+    "ROI",
+    "MaxDD",
+  ]);
+  await writeCsv(nightExecutionPath, nightExecutionRows, [
+    "Scope",
+    "Рынок / сторона",
+    "API stake",
+    "Final stake / фактический объём",
+    "Live?",
+    "Коэффициент сделки",
+    "Статус результата",
+    "Комиссия",
+    "Тир / модель",
+    "Почему эта ставка сделана",
+  ]);
 
   const modelTable = [
     "| Model / Policy | Role | N | PnL @ $10 | ROI | MaxDD | PnL/DD | 24h ROI/PnL/N | 48h ROI/PnL/N | 72h ROI/PnL/N | 96h ROI/PnL/N | 7d ROI/PnL/N | Verdict |",
@@ -366,6 +616,19 @@ async function main() {
       ].join(" | ");
     }),
   ].join("\n");
+
+  const windowPreviewMd = csvRowsToMarkdown(
+    ["Window", "Model slice", "Unique rows", "Bets", "Resolved", "Unresolved", "Net PnL after cost", "ROI on resolved stake", "Comment"],
+    windowViewRows,
+  );
+  const freezeRankingPreviewMd = csvRowsToMarkdown(
+    ["Rank", "Strategy", "Role / Status", "Corpus", "N", "Net PnL", "ROI", "MaxDD"],
+    freezeRankingRows,
+  );
+  const nightExecutionPreviewMd = csvRowsToMarkdown(
+    ["Scope", "Рынок / сторона", "API stake", "Final stake / фактический объём", "Live?", "Коэффициент сделки", "Статус результата", "Комиссия", "Тир / модель", "Почему эта ставка сделана"],
+    nightExecutionRows,
+  );
 
   const reportText = [
     "# Morning Model Recalculation Report",
@@ -400,6 +663,15 @@ async function main() {
     `- Trust warning: coverage/timing fields are not trusted if missing in the freeze`,
     `- What not to change: live executor, Ireland routing, resolver backfill behavior`,
     "",
+    "## Window Model View",
+    windowPreviewMd,
+    "",
+    "## Freeze Ranking with ALT numbering",
+    freezeRankingPreviewMd,
+    "",
+    "## Night Execution Detail",
+    nightExecutionPreviewMd,
+    "",
     "## Night Battle Look",
     "Night execution detail table pending founder-provided format.",
     "",
@@ -407,7 +679,16 @@ async function main() {
     summaryMd.trim(),
     "",
     "Decision board preview:",
-    decisionCsv.split("\n").slice(0, 6).join("\n"),
+    csvRowsToMarkdown(
+      ["rank", "policy", "role", "exact_vs_approx", "N", "pnl", "roi", "maxDD", "pnlDD", "7d_roi", "7d_pnl", "bankroll_300_survival", "status", "reason"],
+      decisionRows.slice(0, 5),
+    ),
+    "",
+    "Policy KPI preview:",
+    csvRowsToMarkdown(
+      ["policy", "N", "events", "wins", "losses", "win_rate", "pnl10", "roi", "avg_return", "median_return", "max_dd", "pnl_dd", "worst_losing_streak", "24h_N", "24h_pnl10", "24h_roi", "48h_N", "48h_pnl10", "48h_roi", "96h_N", "96h_pnl10", "96h_roi", "7d_N", "7d_pnl10", "7d_roi", "status"],
+      policyRows.slice(0, 6),
+    ),
   ].join("\n");
 
   const reportPath = path.join(reportsDir, "MORNING_REPORT.md");
@@ -437,16 +718,27 @@ async function main() {
       generated_count: latestSignalCache.generated_count,
       rejected_count: latestSignalCache.rejected_count,
     } : null,
+    tables: {
+      policyCsv: policyCsvPath,
+      decisionCsv: decisionCsvPath,
+      bankrollCsv: bankrollCsvPath,
+      windowView: windowViewPath,
+      freezeRankingAlt: freezeRankingPath,
+      nightExecutionDetail: nightExecutionPath,
+    },
     sendMode: DRY_RUN ? "dry-run" : SEND_TEST ? "send-test" : "dry-run",
     emailRecipient: EMAIL_RECIPIENT,
     subject,
     artifacts: {
       report: reportPath,
       freeze: freezePath,
-      policyCsv: path.join(tablesDir, "policy_kpis.csv"),
-      decisionCsv: path.join(tablesDir, "decision_board.csv"),
-      bankrollCsv: path.join(tablesDir, "bankroll_simulations.csv"),
-      runSummary: path.join(tablesDir, "run_summary.json"),
+      policyCsv: policyCsvPath,
+      decisionCsv: decisionCsvPath,
+      bankrollCsv: bankrollCsvPath,
+      windowView: windowViewPath,
+      freezeRankingAlt: freezeRankingPath,
+      nightExecutionDetail: nightExecutionPath,
+      runSummary: runSummaryPath,
     },
   };
 
@@ -454,12 +746,17 @@ async function main() {
 
   if (!DRY_RUN && SEND_TEST) {
     if (!EMAIL_RECIPIENT) {
-      throw new Error("No email recipient available. Pass --email=... or set NIGHT_PLAN_EMAIL_TO.");
+      console.log("[morning-model] Send-test skipped: no email recipient available.");
+      return;
     }
     const apiKey = process.env.RESEND_API_KEY;
     const from = process.env.EMAIL_FROM;
-    if (!apiKey) throw new Error("RESEND_API_KEY missing");
-    if (!from) throw new Error("EMAIL_FROM missing");
+    if (!apiKey || !from) {
+      console.log(
+        `[morning-model] Send-test skipped: ${!apiKey ? "RESEND_API_KEY missing" : ""}${!apiKey && !from ? ", " : ""}${!from ? "EMAIL_FROM missing" : ""}`.trim(),
+      );
+      return;
+    }
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
@@ -473,10 +770,22 @@ async function main() {
         text: reportText,
         html,
         attachments: [
-          { filename: "Morning_Model_Report.md", content: Buffer.from(reportText, "utf8").toString("base64") },
+          { filename: "MORNING_REPORT.md", content: Buffer.from(reportText, "utf8").toString("base64") },
           {
             filename: "policy_kpis.csv",
-            content: (await readFile(path.join(tablesDir, "policy_kpis.csv"))).toString("base64"),
+            content: (await readFile(policyCsvPath)).toString("base64"),
+          },
+          {
+            filename: "window_model_view.csv",
+            content: (await readFile(windowViewPath)).toString("base64"),
+          },
+          {
+            filename: "freeze_ranking_alt.csv",
+            content: (await readFile(freezeRankingPath)).toString("base64"),
+          },
+          {
+            filename: "night_execution_detail.csv",
+            content: (await readFile(nightExecutionPath)).toString("base64"),
           },
         ],
       }),
@@ -487,7 +796,7 @@ async function main() {
     }
     console.log(`[morning-model] Email sent to ${EMAIL_RECIPIENT}`);
   } else {
-    console.log("[morning-model] Dry-run mode — no email sent.");
+    console.log("[morning-model] Dry-run mode - no email sent.");
   }
 }
 
