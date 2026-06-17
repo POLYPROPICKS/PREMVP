@@ -171,6 +171,9 @@ export interface ResearchFunnelCounters {
   researchSnapshotSelectionLimit?: number;
   researchUniverseEvents?: number;
   researchUniverseMarkets?: number;
+  firemodel11WideAttempted?: number;
+  firemodel11WideScored?: number;
+  firemodel11WideSelected?: number;
 }
 
 // ─── S2: Wide research universe — pre-grouping, pre-volume nested market ───────
@@ -194,6 +197,15 @@ export interface ResearchNestedMarket {
   selectedPriceNum: number;
   opposingPriceNum: number;
   publicFeedExposed: boolean;
+  selectedOutcomeName?: string | null;
+  selectedOutcomeIndex?: number | null;
+  opposingOutcomeName?: string | null;
+  opposingOutcomeIndex?: number | null;
+  marketSlug?: string | null;
+  marketTitle?: string | null;
+  marketSubtype?: string | null;
+  gameStartTimeIso?: string | null;
+  hoursUntilStartNum?: number | null;
 }
 
 export interface LandingCardPair {

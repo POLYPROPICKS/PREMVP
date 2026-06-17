@@ -127,6 +127,71 @@ function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket
   };
 }
 
+function researchNestedMarketToCandidate(rm: ResearchNestedMarket): {
+  candidate: CandidateMarket;
+  forcedOutcome: ForcedOutcomeSelection;
+} | null {
+  if (!rm.conditionId || !rm.selectedTokenId || !rm.opposingTokenId) return null;
+  if (rm.selectedPriceNum <= 0 || rm.selectedPriceNum >= 1) return null;
+  if (rm.opposingPriceNum <= 0 || rm.opposingPriceNum >= 1) return null;
+
+  const selectedName = rm.selectedOutcomeName ?? "Selected";
+  const opposingName = rm.opposingOutcomeName ?? "Opposing";
+  const eventSlug = rm.eventSlug || rm.marketSlug || rm.conditionId;
+  const marketSlug = rm.marketSlug || rm.marketId || rm.conditionId;
+
+  const market: PolymarketRawMarket = {
+    id: rm.marketId || rm.conditionId,
+    conditionId: rm.conditionId,
+    question: rm.marketQuestion || rm.marketTitle || rm.eventTitle,
+    slug: marketSlug,
+    active: true,
+    closed: false,
+    outcomes: [selectedName, opposingName] as unknown as PolymarketRawOutcome[] | string,
+    outcomePrices: [rm.selectedPriceNum, rm.opposingPriceNum] as unknown as Record<string, number> | string,
+    clobTokenIds: [rm.selectedTokenId, rm.opposingTokenId] as unknown as string[] | string,
+  };
+
+  const event: PolymarketRawEvent = {
+    id: rm.eventId || eventSlug,
+    title: rm.eventTitle || rm.marketQuestion,
+    slug: eventSlug,
+    active: true,
+    closed: false,
+    endDate: rm.gameStartTimeIso || rm.eventStartIso || undefined,
+    markets: [market],
+    category: rm.leagueName || rm.marketFamily || "sports",
+  };
+
+  (market as unknown as Record<string, unknown>)._parentMeta = {
+    title: rm.eventTitle || rm.marketQuestion,
+    slug: eventSlug,
+    category: rm.leagueName || rm.marketFamily || "Sports",
+    endDate: rm.gameStartTimeIso || rm.eventStartIso || undefined,
+    startDate: rm.gameStartTimeIso || rm.eventStartIso || undefined,
+    polymarketEventSlug: eventSlug,
+    sportsMarketType: rm.sportsMarketType ?? rm.marketSubtype ?? undefined,
+  };
+
+  return {
+    candidate: {
+      event,
+      market,
+      rejectionReasons: [],
+      warnings: ["wide-research-forced-token"],
+      isSportsRelated: true,
+      isEnded: false,
+      sportsMatchedKeyword: "wide-research-universe",
+    },
+    forcedOutcome: {
+      selectedTokenId: rm.selectedTokenId,
+      selectedOutcomeName: selectedName,
+      selectedOutcomeIndex: 0,
+      selectedPriceNum: rm.selectedPriceNum,
+    },
+  };
+}
+
 interface CandidateMarket {
   event: PolymarketRawEvent;
   market: PolymarketRawMarket;
@@ -136,6 +201,13 @@ interface CandidateMarket {
   isEnded: boolean;
   sportsMatchedKeyword?: string;
   sportsBlockedKeyword?: string;
+}
+
+interface ForcedOutcomeSelection {
+  selectedTokenId: string;
+  selectedOutcomeName?: string | null;
+  selectedOutcomeIndex?: number | null;
+  selectedPriceNum: number;
 }
 
 interface ParentEventMeta {
@@ -519,7 +591,10 @@ function extractCandidateMarkets(events: PolymarketRawEvent[]): CandidateMarket[
  * Select the best outcome candidate from a market
  * Works with Gamma data where outcomes/outcomePrices are JSON strings
  */
-function selectOutcome(market: PolymarketRawMarket): { name: string; tokenId: string | null; price: number; index: number } | null {
+function selectOutcome(
+  market: PolymarketRawMarket,
+  forced?: ForcedOutcomeSelection,
+): { name: string; tokenId: string | null; price: number; index: number } | null {
   // Parse JSON string arrays
   const outcomes = safeParseArray<string>(market.outcomes);
   const outcomePrices = safeParseArray<string>(market.outcomePrices);
@@ -549,6 +624,21 @@ function selectOutcome(market: PolymarketRawMarket): { name: string; tokenId: st
   }
 
   if (validOutcomes.length === 0) return null;
+
+  if (forced) {
+    const forcedByToken = validOutcomes.find((o) => o.tokenId === forced.selectedTokenId);
+    const forcedByIndex = typeof forced.selectedOutcomeIndex === "number"
+      ? validOutcomes.find((o) => o.index === forced.selectedOutcomeIndex)
+      : null;
+    const forcedOutcome = forcedByToken ?? forcedByIndex;
+    if (!forcedOutcome) return null;
+    return {
+      ...forcedOutcome,
+      name: forced.selectedOutcomeName ?? forcedOutcome.name,
+      tokenId: forced.selectedTokenId,
+      price: forced.selectedPriceNum,
+    };
+  }
 
   // Primary target: 1.7x-3x (price 0.333-0.588)
   const targetOutcomes = validOutcomes.filter(
@@ -593,10 +683,11 @@ function getParentMeta(market: PolymarketRawMarket): ParentEventMeta {
 async function enrichMarket(
   event: PolymarketRawEvent,
   market: PolymarketRawMarket,
-  initialWarnings: string[] = []
+  initialWarnings: string[] = [],
+  forcedOutcome?: ForcedOutcomeSelection,
 ): Promise<EnrichedMarket | null> {
   const parentMeta = getParentMeta(market);
-  const selectedOutcome = selectOutcome(market);
+  const selectedOutcome = selectOutcome(market, forcedOutcome);
 
   if (!selectedOutcome) {
     return null;
@@ -2250,16 +2341,6 @@ export async function buildLandingCards(options?: {
         if (snap) researchSnapshots.push(snap);
       }
 
-      // ── FIREMODEL1.1: Collect lower-gate research candidates ─────────────────
-      // dataCoverage in [25, minDataCoverage) — scored but excluded from public feed.
-      // Persisted to generated_signal_pairs as metric_formula_version='shadow-firemodel1_1_research_v0'.
-      if (enriched.diagnostics.dataCoverage >= 25 && enriched.diagnostics.dataCoverage < minDataCoverage) {
-        const fm11Pair = generateLandingCardPair(enriched);
-        if (fm11Pair && fm11Pair.premiumSignal.winProbability >= 50) {
-          firemodel11ResearchCandidates.push(fm11Pair);
-        }
-      }
-
       // ── PRODUCT GATES (only when product cap not yet reached) ───────────────
       if (productCapReached) continue;
 
@@ -2402,6 +2483,33 @@ export async function buildLandingCards(options?: {
       const selectedHidden = rotatedHidden.slice(0, remainingSlots);
       const selectedResearch = [...publicExposed, ...selectedHidden];
 
+      for (const rm of selectedResearch) {
+        rf.firemodel11WideAttempted = (rf.firemodel11WideAttempted ?? 0) + 1;
+        const adapted = researchNestedMarketToCandidate(rm);
+        if (!adapted) continue;
+
+        const enrichedResearch = await enrichMarket(
+          adapted.candidate.event,
+          adapted.candidate.market,
+          adapted.candidate.warnings,
+          adapted.forcedOutcome,
+        );
+        if (!enrichedResearch) continue;
+
+        const fm11Pair = generateLandingCardPair(enrichedResearch);
+        if (!fm11Pair) continue;
+        rf.firemodel11WideScored = (rf.firemodel11WideScored ?? 0) + 1;
+
+        if (
+          enrichedResearch.diagnostics.dataCoverage >= 25 &&
+          enrichedResearch.diagnostics.dataCoverage < minDataCoverage &&
+          fm11Pair.premiumSignal.winProbability >= 50
+        ) {
+          firemodel11ResearchCandidates.push(fm11Pair);
+          rf.firemodel11WideSelected = (rf.firemodel11WideSelected ?? 0) + 1;
+        }
+      }
+
       // Build set of already-captured conditionId::selectedTokenId keys (from public-path loop)
       const alreadyCapturedKeys = new Set(
         researchSnapshots.map(s => `${s.conditionId}::${s.selectedTokenId}`)
@@ -2417,7 +2525,8 @@ export async function buildLandingCards(options?: {
         const rmKey = `${rm.conditionId}::${rm.selectedTokenId}`;
         if (alreadyCapturedKeys.has(rmKey)) continue; // already captured via public-path loop
 
-        const hoursUntilStart = (new Date(rm.eventStartIso).getTime() - nowMs) / 3_600_000;
+        const gameStartIso = rm.gameStartTimeIso ?? rm.eventStartIso;
+        const hoursUntilStart = (new Date(gameStartIso).getTime() - nowMs) / 3_600_000;
         const europeanOdds = rm.selectedPriceNum > 0
           ? Math.round((1 / rm.selectedPriceNum) * 10_000) / 10_000
           : null;
@@ -2433,18 +2542,18 @@ export async function buildLandingCards(options?: {
           selectedTokenId: rm.selectedTokenId,
           opposingTokenId: rm.opposingTokenId,
           eventSlug: rm.eventSlug || null,
-          selectedOutcome: null,
+          selectedOutcome: rm.selectedOutcomeName ?? null,
           selectedPriceNum: rm.selectedPriceNum,
           selectedEuropeanOddsNum: europeanOdds,
           marketFamily: rm.leagueName ?? rm.marketFamily,
           league: rm.leagueName ?? rm.marketFamily,
-          gameStartIso: rm.eventStartIso,
+          gameStartIso,
           dataCoverageNum: null,
           productRejectionReasons: ["research-s2-direct"],
           diagnostics: {
             conditionId: rm.conditionId,
             selectedTokenId: rm.selectedTokenId,
-            selectedOutcome: "",
+            selectedOutcome: rm.selectedOutcomeName ?? "",
             currentPrice: rm.selectedPriceNum,
             price1hAgo: null,
             price6hAgo: null,
@@ -2460,13 +2569,13 @@ export async function buildLandingCards(options?: {
             dataCoverage: 0,
             formulaUsed: "research-s2-direct",
             rejectionReasons: ["research-s2-direct"],
-            gameStartIso: rm.eventStartIso,
+            gameStartIso,
             researchContext: {
               v: "v1",
               signalPhaseAtSnapshot: "prematch",
               marketCloseIso: null,
               marketType: rm.sportsMarketType ?? null,
-              marketSubtype: rm.sportsMarketType?.includes("_") ? rm.sportsMarketType : null,
+              marketSubtype: rm.marketSubtype ?? (rm.sportsMarketType?.includes("_") ? rm.sportsMarketType : null),
               familySource: rm.familySource ?? "unknown",
               taxonomyVersion: "v1-dimension-fix",
               discoverySourceProxy: null,

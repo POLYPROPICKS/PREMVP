@@ -467,11 +467,6 @@ export async function discoverSportsMarkets(
     }
 
     // European odds corridor [1.25, 4.00] — matches DB chk_gsrs_odds_corridor constraint
-    const s2EuropeanOdds = Math.round((1 / p0) * 10000) / 10000;
-    if (!Number.isFinite(s2EuropeanOdds)) { researchExcludedOddsInvalid++; continue; }
-    if (s2EuropeanOdds < 1.25) { researchExcludedOddsBelowMin++; continue; }
-    if (s2EuropeanOdds > 4.00) { researchExcludedOddsAboveMax++; continue; }
-
     // Extract event context from augmented raw.events array
     const eventsRaw = Array.isArray((nm.raw as Record<string, unknown>).events)
       ? ((nm.raw as Record<string, unknown>).events as Record<string, unknown>[])
@@ -490,25 +485,53 @@ export async function discoverSportsMarkets(
 
     if (eventId) researchSeenEventIds.add(eventId);
 
-    researchEligibleMarketsArr.push({
-      eventId,
-      eventTitle,
-      eventSlug,
-      eventStartIso: evStartStr,
-      marketId: nm.id,
-      marketQuestion: nm.question,
-      marketEndIso: mktEndStr,
-      marketFamily,
-      leagueName: s2LeagueName,
-      sportsMarketType: s2MarketType,
-      familySource: s2FamilySource,
-      conditionId: nm.conditionId,
-      selectedTokenId: nm.clobTokenIds[0],
-      opposingTokenId: nm.clobTokenIds[1],
-      selectedPriceNum: p0,
-      opposingPriceNum: p1,
-      publicFeedExposed: false, // marked true in generate-signals.ts after pairsToCache known
-    });
+    for (let sideIndex = 0; sideIndex <= 1; sideIndex++) {
+      const opposingIndex = sideIndex === 0 ? 1 : 0;
+      const selectedPrice = sideIndex === 0 ? p0 : p1;
+      const opposingPrice = sideIndex === 0 ? p1 : p0;
+      const selectedTokenId = nm.clobTokenIds[sideIndex];
+      const opposingTokenId = nm.clobTokenIds[opposingIndex];
+
+      // European odds corridor [1.25, 4.00] matches DB chk_gsrs_odds_corridor constraint.
+      const s2EuropeanOdds = Math.round((1 / selectedPrice) * 10000) / 10000;
+      if (!Number.isFinite(s2EuropeanOdds)) { researchExcludedOddsInvalid++; continue; }
+      if (s2EuropeanOdds < 1.25) { researchExcludedOddsBelowMin++; continue; }
+      if (s2EuropeanOdds > 4.00) { researchExcludedOddsAboveMax++; continue; }
+
+      const eventStartMs = new Date(evStartStr).getTime();
+      const hoursUntilStartNum = Number.isFinite(eventStartMs)
+        ? Math.round(((eventStartMs - now.getTime()) / 3_600_000) * 100) / 100
+        : null;
+
+      researchEligibleMarketsArr.push({
+        eventId,
+        eventTitle,
+        eventSlug,
+        eventStartIso: evStartStr,
+        marketId: nm.id,
+        marketQuestion: nm.question,
+        marketEndIso: mktEndStr,
+        marketFamily,
+        leagueName: s2LeagueName,
+        sportsMarketType: s2MarketType,
+        familySource: s2FamilySource,
+        conditionId: nm.conditionId,
+        selectedTokenId,
+        opposingTokenId,
+        selectedPriceNum: selectedPrice,
+        opposingPriceNum: opposingPrice,
+        publicFeedExposed: false, // marked true in generate-signals.ts after pairsToCache known
+        selectedOutcomeName: nm.outcomes[sideIndex] ?? null,
+        selectedOutcomeIndex: sideIndex,
+        opposingOutcomeName: nm.outcomes[opposingIndex] ?? null,
+        opposingOutcomeIndex: opposingIndex,
+        marketSlug: nm.slug ?? null,
+        marketTitle: nm.question ?? null,
+        marketSubtype: s2MarketType,
+        gameStartTimeIso: evStartStr,
+        hoursUntilStartNum,
+      });
+    }
 
     const famKey = marketFamily || "unknown";
     researchMarketsByFamily[famKey] = (researchMarketsByFamily[famKey] || 0) + 1;

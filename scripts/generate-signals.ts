@@ -55,7 +55,7 @@ async function main() {
       collectResearchSnapshots: true,
       researchSnapshotRunId,
       researchSnapshotAt,
-      researchLimit: 45,
+      researchLimit: 200,
       researchOddsMin: 1.25,
       researchOddsMax: 4.00,
     });
