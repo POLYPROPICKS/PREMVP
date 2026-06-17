@@ -39,9 +39,77 @@ function bool(v: unknown): boolean | null {
   return typeof v === "boolean" ? v : null;
 }
 
-export async function GET() {
+function safeJsonText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  try {
+    return JSON.stringify(value).slice(0, 500);
+  } catch {
+    return "";
+  }
+}
+
+function compactEvent(row: Record<string, unknown>) {
+  const meta = row.executor_meta as Record<string, unknown> | null;
+  const raw = row.raw_event_json as Record<string, unknown> | null;
+  return {
+    created_at: row.created_at,
+    event_type: row.event_type,
+    status: row.order_status,
+    action: meta?.action ?? raw?.action ?? null,
+    market: row.market_slug ?? meta?.market_slug ?? raw?.market_slug ?? null,
+    event: meta?.event_slug ?? raw?.event_slug ?? meta?.event_title ?? raw?.event_title ?? null,
+    title: meta?.title ?? raw?.title ?? null,
+    selected_outcome: row.selected_side ?? row.side ?? meta?.selected_outcome ?? raw?.selected_outcome ?? null,
+    selected_token_id: row.token_id,
+    stake_usd: row.stake_usd ?? row.submitted_size ?? null,
+    order_id: row.clob_order_id ?? null,
+    tx_hash: row.transaction_hashes ?? null,
+    reason: row.error_message ?? meta?.reason ?? meta?.skip_reason ?? raw?.reason ?? raw?.skip_reason ?? null,
+    source: row.source,
+    route: meta?.route ?? raw?.route ?? row.source ?? null,
+    dry_run: row.dry_run,
+    live_confirm: row.live_confirm,
+    success: row.success,
+  };
+}
+
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const rawLimit = parseInt(searchParams.get("limit") ?? "20", 10);
+  const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 100) : 20;
+  const rawSince = parseInt(searchParams.get("sinceMinutes") ?? "360", 10);
+  const sinceMinutes = Number.isFinite(rawSince) && rawSince > 0 ? rawSince : 360;
+  const eventFilter = searchParams.get("event")?.trim().toLowerCase() ?? "";
+  const sinceIso = new Date(Date.now() - sinceMinutes * 60_000).toISOString();
+
+  const { data, error } = await supabaseAdmin
+    .from("executor_order_events")
+    .select(
+      "created_at,event_type,source,market_slug,selected_side,side,token_id,order_status," +
+      "success,dry_run,live_confirm,stake_usd,submitted_size,clob_order_id,transaction_hashes," +
+      "error_message,executor_meta,raw_event_json"
+    )
+    .gte("created_at", sinceIso)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
+
+  const rows = ((data ?? []) as unknown as Record<string, unknown>[]).filter((row) => {
+    if (!eventFilter) return true;
+    return safeJsonText(row).toLowerCase().includes(eventFilter);
+  });
+
   return NextResponse.json(
-    { ok: true, endpoint: "executor/order-events", version: "v1" },
+    {
+      ok: true,
+      endpoint: "executor/order-events",
+      version: "v1",
+      count: rows.length,
+      events: rows.map(compactEvent),
+    },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

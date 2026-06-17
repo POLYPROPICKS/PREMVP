@@ -39,6 +39,24 @@ const EVENT_KEY_FIELDS: Array<{ field: string; source: string }> = [
 // Default lookback for prior-live event guard.
 const DEFAULT_PRIOR_LIVE_LOOKBACK_HOURS = 12;
 
+async function writePollProof(payload: Record<string, unknown>) {
+  try {
+    await supabaseAdmin.from("executor_order_events").insert({
+      event_type: "executor_poll",
+      source: "executor/candidates",
+      environment: process.env.NODE_ENV ?? "production",
+      order_status: "poll_ok",
+      success: true,
+      dry_run: true,
+      live_confirm: false,
+      executor_meta: payload,
+      raw_event_json: payload,
+    });
+  } catch (error) {
+    console.warn("[executor/candidates] poll proof write failed:", error instanceof Error ? error.message : error);
+  }
+}
+
 function normalizeEventKey(raw: string): string {
   return raw.toLowerCase().trim().replace(/\s+/g, " ");
 }
@@ -335,6 +353,15 @@ export async function GET(request: NextRequest) {
       pilotMaxLiveEvents !== null ? Math.min(limit, pilotMaxLiveEvents) : limit
     );
     const generatedAt = new Date().toISOString();
+
+    await writePollProof({
+      route: "executor/candidates",
+      candidate_count: returned.length,
+      live_candidate_count: liveCandidates.length,
+      non_tier1_live_count: liveCandidates.filter((c) => c.strategy !== "TIER1_CORE_STRICT_72_COV50").length,
+      same_event_candidates_suppressed: sameEventCandidatesSuppressed,
+      generated_at: generatedAt,
+    });
 
     return NextResponse.json(
       {

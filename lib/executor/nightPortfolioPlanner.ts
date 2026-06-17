@@ -261,6 +261,9 @@ export interface BuildNightPlanOptions {
   nowMs: number;
   targetMin?: number;
   targetMax?: number;
+  startingBankrollUsd?: number;
+  availableCashUsd?: number;
+  bankrollInputSource?: string;
 }
 
 // ── Timing helpers ──────────────────────────────────────────────────────────
@@ -594,6 +597,15 @@ export function buildNightPortfolioPlan(
   const nowMs = opts.nowMs;
   const targetMin = opts.targetMin ?? TARGET_MIN_BETS_DEFAULT;
   const targetMax = opts.targetMax ?? TARGET_MAX_BETS_DEFAULT;
+  const providedBankrolls = [opts.startingBankrollUsd, opts.availableCashUsd].filter(
+    (v): v is number => typeof v === "number" && Number.isFinite(v) && v > 0
+  );
+  const effectiveBankrollUsd =
+    providedBankrolls.length > 0
+      ? Math.min(...providedBankrolls, STARTING_BANKROLL_USD)
+      : STARTING_BANKROLL_USD;
+  const bankrollWarning =
+    providedBankrolls.length > 0 ? null : "DEFAULT_300_USED_NO_CASH_OVERRIDE";
   const { startMs, endMs } = resolveNightWindow(nowMs);
 
   const topRejectedReasons: Record<string, number> = {};
@@ -728,7 +740,7 @@ export function buildNightPortfolioPlan(
     planned_at_iso: new Date(nowMs).toISOString(),
     target_min_bets: targetMin,
     target_max_bets: targetMax,
-    starting_bankroll_usd: STARTING_BANKROLL_USD,
+    starting_bankroll_usd: Math.round(effectiveBankrollUsd * 100) / 100,
     tier1_event_slots: tier1EventSlots,
     tier2_fallback_slots: tier2FallbackSlots,
     paper_only_slots: paperOnly,
@@ -753,6 +765,24 @@ export function buildNightPortfolioPlan(
       comparable_tier1_stake_usd: comparableTier1Stake,
       total_planned_stake_usd:
         Math.round(plannedFinal.reduce((s, p) => s + p.planned_stake_usd, 0) * 100) / 100,
+      bankroll_input_source: opts.bankrollInputSource ?? (providedBankrolls.length ? "planner_options" : "default"),
+      effective_bankroll_usd: Math.round(effectiveBankrollUsd * 100) / 100,
+      bankroll_warning: bankrollWarning,
+      all_event_candidates_count: livePlannable.length,
+      balanced_event_groups_count: groups.length,
+      selected_per_event_count: plannedLiveSlots,
+      rejected_same_event_count: Math.max(0, livePlannable.length - groups.length),
+      selected_event_candidates: plannedFinal.map((s) => s.selected_candidate_preview),
+      rejected_same_event_candidates: groups.flatMap((g) =>
+        g.candidates.slice(1).map((c) => ({
+          signal_id: c.signal_id,
+          market_slug: c.market_slug,
+          selected_outcome: c.selected_outcome,
+          strategy: c.strategy,
+          match_family_key: c.match_family_key,
+          reason: "SAME_EVENT_BALANCER_REJECTED_LOWER_RANK",
+        }))
+      ).slice(0, 50),
       window_counts_by_formula_version: windowCountsByVersion,
       mapped_counts_by_formula_version: mappedCountsByVersion,
     },

@@ -16,6 +16,32 @@ import {
 // Wide pool so event-dedupe + Tier classification does not starve unique events.
 const PLAN_POOL = 200;
 
+function positiveNumber(v: string | null): number | null {
+  if (!v) return null;
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+async function writePollProof(route: string, payload: Record<string, unknown>) {
+  try {
+    await import("@/lib/supabase/server").then(({ supabaseAdmin }) =>
+      supabaseAdmin.from("executor_order_events").insert({
+        event_type: "night_plan_poll",
+        source: route,
+        environment: process.env.NODE_ENV ?? "production",
+        order_status: "poll_ok",
+        success: true,
+        dry_run: true,
+        live_confirm: false,
+        executor_meta: payload,
+        raw_event_json: payload,
+      })
+    );
+  } catch (error) {
+    console.warn("[executor/night-plan] poll proof write failed:", error instanceof Error ? error.message : error);
+  }
+}
+
 export async function GET(request: NextRequest) {
   const secret = request.headers.get("x-executor-secret");
   const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
@@ -32,6 +58,17 @@ export async function GET(request: NextRequest) {
   const targetMin = Number.isFinite(rawMin) && rawMin > 0 ? rawMin : TARGET_MIN_BETS_DEFAULT;
   const targetMax =
     Number.isFinite(rawMax) && rawMax >= targetMin ? rawMax : TARGET_MAX_BETS_DEFAULT;
+  const bankrollInputs = [
+    ["bankroll", positiveNumber(searchParams.get("bankroll"))],
+    ["cash", positiveNumber(searchParams.get("cash"))],
+    ["availableCash", positiveNumber(searchParams.get("availableCash"))],
+    ["currentBankroll", positiveNumber(searchParams.get("currentBankroll"))],
+  ] as const;
+  const provided = bankrollInputs.filter(([, value]) => value !== null);
+  const effectiveBankroll = provided.length
+    ? Math.min(...provided.map(([, value]) => value as number))
+    : null;
+  const bankrollInputSource = provided.map(([name]) => name).join(",") || "default_300";
 
   try {
     // planningMode=true: include shadow-strategic-sports-v1 and future soccer/WC matches.
@@ -40,6 +77,9 @@ export async function GET(request: NextRequest) {
       nowMs: Date.now(),
       targetMin,
       targetMax,
+      startingBankrollUsd: effectiveBankroll ?? undefined,
+      availableCashUsd: effectiveBankroll ?? undefined,
+      bankrollInputSource,
     });
 
     const semantics = nightPlanControlSemantics(plan);
@@ -66,6 +106,9 @@ export async function GET(request: NextRequest) {
       target_min_bets: plan.target_min_bets,
       target_max_bets: plan.target_max_bets,
       starting_bankroll_usd: plan.starting_bankroll_usd,
+      effective_bankroll_usd: plan.diagnostics.effective_bankroll_usd,
+      bankroll_input_source: plan.diagnostics.bankroll_input_source,
+      bankroll_warning: plan.diagnostics.bankroll_warning,
       plan_status: plan.plan_status,
       tier1_event_slots: plan.tier1_event_slots,
       tier2_fallback_slots: plan.tier2_fallback_slots,
@@ -103,6 +146,14 @@ export async function GET(request: NextRequest) {
           : {}),
       },
     };
+
+    await writePollProof("executor/night-plan", {
+      route: "executor/night-plan",
+      planned_count: plan.planned_live_slots,
+      tier1_event_slots: plan.tier1_event_slots,
+      effective_bankroll_usd: plan.diagnostics.effective_bankroll_usd,
+      generated_at: new Date().toISOString(),
+    });
 
     // debug=1 adds sample source rows (safe fields only, no secrets) and full rejected reasons.
     if (debug && rawDiagnostics) {

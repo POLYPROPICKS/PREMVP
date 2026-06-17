@@ -76,6 +76,8 @@ export interface FireModelCandidate {
   // Live eligibility layer (live-risk-guard-v1).
   live_eligible: boolean;
   live_rejection_reason: string | null;
+  side_mapping_status: "PROVEN_BY_TOKEN_ID" | "UNKNOWN_BLOCKED" | "TITLE_OUTCOME_AMBIGUOUS_BLOCKED";
+  live_block_reason: string | null;
   live_policy_version: string;
   paper_eligible: boolean;
   max_entry_price: number;
@@ -645,6 +647,19 @@ export async function buildFireModelCandidates(
       }
     }
 
+    const sideMappingStatus =
+      liveRejectionReason === "WEAK_IDENTITY_LIVE_BLOCKED" && /spread|match\s+winner/i.test(identityText)
+        ? "TITLE_OUTCOME_AMBIGUOUS_BLOCKED"
+        : liveEligible && row.selected_token_id && selectedOutcome
+        ? "PROVEN_BY_TOKEN_ID"
+        : liveEligible
+        ? "UNKNOWN_BLOCKED"
+        : "UNKNOWN_BLOCKED";
+    if (sideMappingStatus === "UNKNOWN_BLOCKED" && liveEligible) {
+      liveEligible = false;
+      liveRejectionReason = "SIDE_MAPPING_UNKNOWN_BLOCKED";
+    }
+
     const rawEventSlugForCandidate =
       typeof row.event_slug === "string" && row.event_slug.trim()
         ? row.event_slug.trim().toLowerCase()
@@ -674,6 +689,8 @@ export async function buildFireModelCandidates(
       sport_classification_confidence: scopeConfidence,
       live_eligible: liveEligible,
       live_rejection_reason: liveRejectionReason,
+      side_mapping_status: sideMappingStatus,
+      live_block_reason: liveRejectionReason,
       live_policy_version: LIVE_POLICY_VERSION,
       paper_eligible: true,
       max_entry_price: maxEntryPrice,
