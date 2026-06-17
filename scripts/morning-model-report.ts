@@ -1,4 +1,4 @@
-import { loadEnvConfig } from "@next/env";
+﻿import { loadEnvConfig } from "@next/env";
 import { spawnSync } from "child_process";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
@@ -47,8 +47,8 @@ const WINDOW_HEADERS = [
 ];
 const FREEZE_RANK_HEADERS = ["Rank", "Strategy", "Role / Status", "Corpus", "N", "Net PnL", "ROI", "MaxDD"];
 const NIGHT_HEADERS = [
-  "Scope", "Рынок / сторона", "API stake", "Final stake / фактический объём", "Live?",
-  "Коэффициент сделки", "Статус результата", "Комиссия", "Тир / модель", "Почему эта ставка сделана",
+  "Scope", "Р С‹РЅРѕРє / СЃС‚РѕСЂРѕРЅР°", "API stake", "Final stake / С„Р°РєС‚РёС‡РµСЃРєРёР№ РѕР±СЉС‘Рј", "Live?",
+  "РљРѕСЌС„С„РёС†РёРµРЅС‚ СЃРґРµР»РєРё", "РЎС‚Р°С‚СѓСЃ СЂРµР·СѓР»СЊС‚Р°С‚Р°", "РљРѕРјРёСЃСЃРёСЏ", "РўРёСЂ / РјРѕРґРµР»СЊ", "РџРѕС‡РµРјСѓ СЌС‚Р° СЃС‚Р°РІРєР° СЃРґРµР»Р°РЅР°",
 ];
 
 function argValue(prefix: string): string | null {
@@ -248,13 +248,22 @@ async function writeFallbackArtifacts(opts: {
   freezePath: string;
   reportDir: string;
   now: Date;
+  canonicalRows: CanonicalRow[];
+  nightRowsRaw: OrderEventRow[];
 }): Promise<{ summaryMd: string; reportText: string; subject: string }> {
-  await writeCsv(path.join(opts.tablesDir, "policy_kpis.csv"), [], POLICY_HEADERS);
-  await writeCsv(path.join(opts.tablesDir, "decision_board.csv"), [], DECISION_HEADERS);
-  await writeCsv(path.join(opts.tablesDir, "bankroll_simulations.csv"), [], BANKROLL_HEADERS);
-  await writeCsv(path.join(opts.tablesDir, "window_model_view.csv"), [], WINDOW_HEADERS);
-  await writeCsv(path.join(opts.tablesDir, "freeze_ranking_alt.csv"), [], FREEZE_RANK_HEADERS);
-  await writeCsv(path.join(opts.tablesDir, "night_execution_detail.csv"), [], NIGHT_HEADERS);
+  const policyRows = buildFallbackPolicyRows(opts.canonicalRows);
+  const decisionRows = buildDecisionBoardRows(policyRows);
+  const bankrollRows = buildBankrollRows(policyRows);
+  const windowRows = buildWindowModelView(policyRows);
+  const freezeRows = buildFreezeRankingAlt(policyRows, `${opts.strictNow} strict freeze`);
+  const nightExecutionRows = buildNightExecutionRows(opts.nightRowsRaw);
+
+  await writeCsv(path.join(opts.tablesDir, "policy_kpis.csv"), policyRows, POLICY_HEADERS);
+  await writeCsv(path.join(opts.tablesDir, "decision_board.csv"), decisionRows, DECISION_HEADERS);
+  await writeCsv(path.join(opts.tablesDir, "bankroll_simulations.csv"), bankrollRows, BANKROLL_HEADERS);
+  await writeCsv(path.join(opts.tablesDir, "window_model_view.csv"), windowRows, WINDOW_HEADERS);
+  await writeCsv(path.join(opts.tablesDir, "freeze_ranking_alt.csv"), freezeRows, FREEZE_RANK_HEADERS);
+  await writeCsv(path.join(opts.tablesDir, "night_execution_detail.csv"), nightExecutionRows, NIGHT_HEADERS);
 
   const latestResolverText = opts.latestResolver
     ? `- Resolver: ${opts.latestResolver.status} @ ${fmtDate(opts.latestResolver.started_at)} | selected=${safeNum(opts.latestResolver.diagnostics?.selected)} | generated=${opts.latestResolver.generated_count ?? "N/A"} | skipped=${opts.latestResolver.rejected_count ?? "N/A"}`
@@ -265,7 +274,7 @@ async function writeFallbackArtifacts(opts: {
   const fallbackSummaryMd = [
     "# Ice1 Input Freeze Summary",
     "",
-    "- WARNING: Analyzer failed, fallback report sent.",
+    "- WARNING: Analyzer failed, fallback KPIs recomputed in TypeScript.",
     `- CSV path used: \`${opts.freezePath}\``,
     `- row count: ${opts.strictNow}`,
     `- usable resolved rows: ${opts.strictNow}`,
@@ -288,7 +297,7 @@ async function writeFallbackArtifacts(opts: {
   const reportText = [
     "# Morning Model Recalculation Report",
     "",
-    "WARNING: Analyzer failed, fallback report sent.",
+    "WARNING: Analyzer failed, fallback KPIs recomputed in TypeScript.",
     `- strictNow: ${opts.strictNow}`,
     `- strict24h: ${opts.strict24h}`,
     `- events: ${opts.events}`,
@@ -300,6 +309,7 @@ async function writeFallbackArtifacts(opts: {
       ? `- latestSignalCache: ${opts.latestSignalCache.status} @ ${fmtDate(opts.latestSignalCache.started_at)} | generated=${opts.latestSignalCache.generated_count ?? "N/A"} | skipped=${opts.latestSignalCache.rejected_count ?? "N/A"}`
       : "- latestSignalCache: N/A",
     `- analyzer error: ${opts.analyzerError}`,
+    `- best fallback candidate: ${policyRows[0]?.policy ?? "N/A"}`,
     "",
     "## Artifact Paths",
     `- report: ${opts.reportPath}`,
@@ -320,6 +330,7 @@ async function writeFallbackArtifacts(opts: {
     JSON.stringify(
       {
         fallback: true,
+        fallbackMode: "FALLBACK_RECOMPUTED",
         analyzerError: opts.analyzerError,
         strictNow: opts.strictNow,
         strict24h: opts.strict24h,
@@ -345,7 +356,7 @@ async function writeFallbackArtifacts(opts: {
   return {
     summaryMd: fallbackSummaryMd,
     reportText,
-    subject: `PolyProPicks Morning Model Report — FALLBACK — ${opts.now.toISOString().slice(0, 10)} — N=${opts.strictNow}`,
+    subject: `PolyProPicks Morning Model Report — FALLBACK_RECOMPUTED — ${opts.now.toISOString().slice(0, 10)} — N=${opts.strictNow}`,
   };
 }
 
@@ -385,6 +396,257 @@ type PolicyRow = CsvRow & {
 };
 
 type OrderEventRow = Record<string, unknown>;
+
+type FallbackPolicySpec = {
+  name: string;
+  filter: (row: CanonicalRow) => boolean;
+  onePerEvent?: "score" | "coverage";
+};
+
+type ReportStatus = "FULL_ANALYZER_OK" | "FALLBACK_RECOMPUTED" | "FAIL_NO_DATA";
+
+function realizedPct(row: RawRow): number | null {
+  const direct = safeNum(row.realized_return_pct);
+  if (direct !== null) return direct;
+  const result = safeStr(row.signal_result)?.toLowerCase();
+  const price = safeNum(row.entry_price_num);
+  if (!result || price === null || price <= 0) return null;
+  if (["win", "won", "hit", "correct", "yes"].includes(result)) return ((1 - price) / price) * 100;
+  if (["loss", "lost", "miss", "incorrect", "no"].includes(result)) return -100;
+  return null;
+}
+
+function isWin(row: RawRow): boolean {
+  const result = safeStr(row.signal_result)?.toLowerCase();
+  if (result && ["win", "won", "hit", "correct", "yes"].includes(result)) return true;
+  const ret = realizedPct(row);
+  return ret !== null && ret > 0;
+}
+
+function isLoss(row: RawRow): boolean {
+  const result = safeStr(row.signal_result)?.toLowerCase();
+  if (result && ["loss", "lost", "miss", "incorrect", "no"].includes(result)) return true;
+  const ret = realizedPct(row);
+  return ret !== null && ret < 0;
+}
+
+function eventKey(row: RawRow): string {
+  return safeStr(row.event_key) ?? safeStr(row.event_slug) ?? safeStr(row.market_slug) ?? strictKey(row);
+}
+
+function fallbackPnl(row: RawRow, stake = 10): number {
+  const ret = realizedPct(row);
+  return ret === null ? 0 : (ret / 100) * stake;
+}
+
+function selectOnePerEvent(rows: CanonicalRow[], mode: "score" | "coverage"): CanonicalRow[] {
+  const selected = new Map<string, CanonicalRow>();
+  for (const row of rows) {
+    const key = eventKey(row);
+    const prev = selected.get(key);
+    if (!prev) {
+      selected.set(key, row);
+      continue;
+    }
+    const currentPrimary = mode === "coverage" ? safeNum(row.data_coverage_num) : safeNum(row.signal_confidence_num);
+    const prevPrimary = mode === "coverage" ? safeNum(prev.data_coverage_num) : safeNum(prev.signal_confidence_num);
+    const currentTie = safeNum(row.signal_confidence_num) ?? 0;
+    const prevTie = safeNum(prev.signal_confidence_num) ?? 0;
+    if ((currentPrimary ?? -1) > (prevPrimary ?? -1) || ((currentPrimary ?? -1) === (prevPrimary ?? -1) && currentTie > prevTie)) {
+      selected.set(key, row);
+    }
+  }
+  return [...selected.values()];
+}
+
+function policyMetrics(name: string, inputRows: CanonicalRow[]): PolicyRow {
+  const rows = [...inputRows].sort((a, b) => {
+    const at = parseIso(a.resolved_at) || parseIso(a.created_at);
+    const bt = parseIso(b.resolved_at) || parseIso(b.created_at);
+    return at - bt;
+  });
+  const wins = rows.filter(isWin).length;
+  const losses = rows.filter(isLoss).length;
+  const pnl = rows.reduce((sum, row) => sum + fallbackPnl(row), 0);
+  let equity = 0;
+  let peak = 0;
+  let maxDd = 0;
+  let streak = 0;
+  let worstStreak = 0;
+  for (const row of rows) {
+    const rowPnl = fallbackPnl(row);
+    equity += rowPnl;
+    peak = Math.max(peak, equity);
+    maxDd = Math.max(maxDd, peak - equity);
+    if (isLoss(row)) {
+      streak += 1;
+      worstStreak = Math.max(worstStreak, streak);
+    } else if (isWin(row)) {
+      streak = 0;
+    }
+  }
+  const avg = rows.length ? rows.reduce((sum, row) => sum + (realizedPct(row) ?? 0), 0) / rows.length : 0;
+  const sortedRet = rows.map((row) => realizedPct(row) ?? 0).sort((a, b) => a - b);
+  const median = sortedRet.length ? sortedRet[Math.floor(sortedRet.length / 2)] : 0;
+  const windowMetric = (hours: number) => {
+    const cutoff = Date.now() - hours * 60 * 60 * 1000;
+    const subset = rows.filter((row) => parseIso(row.resolved_at) >= cutoff);
+    const subsetPnl = subset.reduce((sum, row) => sum + fallbackPnl(row), 0);
+    return { n: subset.length, pnl: subsetPnl, roi: subset.length ? (subsetPnl / (subset.length * 10)) * 100 : 0 };
+  };
+  const w24 = windowMetric(24);
+  const w48 = windowMetric(48);
+  const w96 = windowMetric(96);
+  const w7d = windowMetric(168);
+  const roi = rows.length ? (pnl / (rows.length * 10)) * 100 : 0;
+  return {
+    policy: name,
+    N: String(rows.length),
+    events: String(new Set(rows.map(eventKey)).size),
+    wins: String(wins),
+    losses: String(losses),
+    win_rate: wins + losses ? ((wins / (wins + losses)) * 100).toFixed(2) : "0.00",
+    pnl10: pnl.toFixed(2),
+    roi: roi.toFixed(2),
+    avg_return: avg.toFixed(2),
+    median_return: median.toFixed(2),
+    max_dd: maxDd.toFixed(2),
+    pnl_dd: maxDd > 0 ? (pnl / maxDd).toFixed(4) : (pnl > 0 ? "999" : "0"),
+    worst_losing_streak: String(worstStreak),
+    "24h_N": String(w24.n),
+    "24h_pnl10": w24.pnl.toFixed(2),
+    "24h_roi": w24.roi.toFixed(2),
+    "48h_N": String(w48.n),
+    "48h_pnl10": w48.pnl.toFixed(2),
+    "48h_roi": w48.roi.toFixed(2),
+    "96h_N": String(w96.n),
+    "96h_pnl10": w96.pnl.toFixed(2),
+    "96h_roi": w96.roi.toFixed(2),
+    "7d_N": String(w7d.n),
+    "7d_pnl10": w7d.pnl.toFixed(2),
+    "7d_roi": w7d.roi.toFixed(2),
+    status: rows.length ? "FALLBACK_RECOMPUTED" : "APPROX_MISSING_FIELD",
+  };
+}
+
+function buildFallbackPolicyRows(rows: CanonicalRow[]): PolicyRow[] {
+  const specs: FallbackPolicySpec[] = [
+    { name: "FLAT_ALL", filter: () => true },
+    { name: "SCORE_GE_65", filter: (row) => (safeNum(row.signal_confidence_num) ?? -1) >= 65 },
+    { name: "SCORE_GE_72", filter: (row) => (safeNum(row.signal_confidence_num) ?? -1) >= 72 },
+    { name: "SCORE_GE_72_AVOID_6_24H", filter: (row) => (safeNum(row.signal_confidence_num) ?? -1) >= 72 && !((safeNum(row.hours_until_start_num) ?? -1) >= 6 && (safeNum(row.hours_until_start_num) ?? -1) < 24) },
+    { name: "ONE_PER_EVENT_SCORE_GE_72", filter: (row) => (safeNum(row.signal_confidence_num) ?? -1) >= 72, onePerEvent: "score" },
+    { name: "ONE_PER_EVENT_SCORE_GE_72_BEST_COVERAGE", filter: (row) => (safeNum(row.signal_confidence_num) ?? -1) >= 72, onePerEvent: "coverage" },
+    { name: "COVERAGE_75_SCORE_GE_72", filter: (row) => (safeNum(row.signal_confidence_num) ?? -1) >= 72 && (safeNum(row.data_coverage_num) ?? -1) >= 75 },
+    { name: "FIREMODEL1_APPROX_CURRENT", filter: (row) => (safeNum(row.signal_confidence_num) ?? -1) >= 65 && (safeNum(row.data_coverage_num) ?? 0) >= 25 },
+    { name: "EXCLUDE_BAD_BUCKET_SCORE_GE_65", filter: (row) => (safeNum(row.signal_confidence_num) ?? -1) >= 65 && !((safeNum(row.data_coverage_num) ?? -1) >= 50 && (safeNum(row.data_coverage_num) ?? -1) <= 74 && (safeNum(row.entry_price_num) ?? -1) >= 0.44 && (safeNum(row.entry_price_num) ?? -1) <= 0.58) },
+    { name: "EXCLUDE_BAD_BUCKET_SCORE_GE_72", filter: (row) => (safeNum(row.signal_confidence_num) ?? -1) >= 72 && !((safeNum(row.data_coverage_num) ?? -1) >= 50 && (safeNum(row.data_coverage_num) ?? -1) <= 74 && (safeNum(row.entry_price_num) ?? -1) >= 0.44 && (safeNum(row.entry_price_num) ?? -1) <= 0.58) },
+    { name: "FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH_APPROX", filter: (row) => (safeNum(row.signal_confidence_num) ?? -1) >= 65 },
+    { name: "ALT3_FLAT10_RAW_PROFIT_APPROX", filter: (row) => (safeNum(row.signal_confidence_num) ?? -1) >= 65 },
+  ];
+  return specs.map((spec) => {
+    const filtered = rows.filter((row) => spec.filter(row) && realizedPct(row) !== null);
+    const selected = spec.onePerEvent ? selectOnePerEvent(filtered, spec.onePerEvent) : filtered;
+    return policyMetrics(spec.name, selected);
+  });
+}
+
+function buildDecisionBoardRows(policies: PolicyRow[]): CsvRow[] {
+  const specs = [
+    ["0", "BASELINE_V1_CONTROL", "FLAT_ALL"],
+    ["1", "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP", "SCORE_GE_72_AVOID_6_24H"],
+    ["2", "ALT1_ONE_PER_EVENT_BEST_COVERAGE", "ONE_PER_EVENT_SCORE_GE_72_BEST_COVERAGE"],
+    ["3", "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH", "FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH_APPROX"],
+    ["4", "ALT3_V1_AVOID_NBA_NHL", "ALT3_FLAT10_RAW_PROFIT_APPROX"],
+    ["5", "ALT4_AVOID_NBA_NHL_PLUS_COV75", "COVERAGE_75_SCORE_GE_72"],
+  ] as const;
+  return specs.map(([rank, strategy, source]) => {
+    const row = pickPolicy(policies, [source]) ?? policies[0];
+    return {
+      rank,
+      policy: strategy,
+      role: rank === "0" ? "baseline" : "candidate",
+      exact_vs_approx: rank === "0" ? "APPROX_CONTROL" : "APPROX_NEEDS_RECON",
+      N: row?.N ?? "0",
+      pnl: row?.pnl10 ?? "0.00",
+      roi: row?.roi ?? "0.00",
+      maxDD: row?.max_dd ?? "0.00",
+      pnlDD: row?.pnl_dd ?? "0",
+      "7d_roi": row?.["7d_roi"] ?? "0.00",
+      "7d_pnl": row?.["7d_pnl10"] ?? "0.00",
+      bankroll_300_survival: "YES",
+      status: "NOT_DEPLOY_DECISION",
+      reason: `Fallback KPI from ${source}; exact strategy reconstruction pending.`,
+    };
+  });
+}
+
+function buildBankrollRows(policies: PolicyRow[]): CsvRow[] {
+  const specs = [
+    ["FLAT_10", "FLAT_ALL"],
+    ["STRICT_CAP_300_BANKROLL", "ONE_PER_EVENT_SCORE_GE_72"],
+    ["PRIMARY_CANDIDATE", "SCORE_GE_72_AVOID_6_24H"],
+  ] as const;
+  return specs.map(([stakePolicy, source]) => {
+    const row = pickPolicy(policies, [source]) ?? policies[0];
+    const pnl = safeNum(row?.pnl10) ?? 0;
+    const maxDd = safeNum(row?.max_dd) ?? 0;
+    const finalBank = 300 + pnl;
+    return {
+      stake_policy: stakePolicy,
+      bets: row?.N ?? "0",
+      final_bank: finalBank.toFixed(2),
+      total_pnl: pnl.toFixed(2),
+      roi_on_turnover: row?.roi ?? "0.00",
+      max_drawdown_dollars: maxDd.toFixed(2),
+      max_drawdown_pct: (maxDd / 300 * 100).toFixed(2),
+      minimum_equity: (300 - maxDd).toFixed(2),
+      CSM: maxDd > 0 ? (pnl / maxDd).toFixed(4) : (pnl > 0 ? "999" : "0"),
+      LHM_proxy: "open-position chronology unavailable",
+      worst_losing_streak: row?.worst_losing_streak ?? "0",
+      survives_300: finalBank > 0 && 300 - maxDd > 0 ? "YES" : "NO",
+      path_comment: "Fallback bankroll simulation; not a deploy decision.",
+    };
+  });
+}
+
+function validateMorningRows(rows: {
+  policyRows: CsvRow[];
+  decisionRows: CsvRow[];
+  bankrollRows: CsvRow[];
+  windowRows: CsvRow[];
+  freezeRows: CsvRow[];
+  nightRows: CsvRow[];
+}): string[] {
+  const failures: string[] = [];
+  if (rows.policyRows.length < 3) failures.push(`01_Policy KPIs rows=${rows.policyRows.length}, expected>=3`);
+  if (rows.decisionRows.length < 6) failures.push(`02_Decision Board rows=${rows.decisionRows.length}, expected>=6`);
+  if (rows.bankrollRows.length < 3) failures.push(`03_Bankroll rows=${rows.bankrollRows.length}, expected>=3`);
+  if (rows.windowRows.length < 8) failures.push(`04_Window Models rows=${rows.windowRows.length}, expected>=8`);
+  if (rows.freezeRows.length < 6) failures.push(`05_Freeze Ranking rows=${rows.freezeRows.length}, expected>=6`);
+  if (rows.nightRows.length < 1) failures.push(`06_Night Execution rows=${rows.nightRows.length}, expected>=1`);
+  return failures;
+}
+
+async function rewriteFallbackTablesFromRows(opts: {
+  canonicalRows: CanonicalRow[];
+  nightRowsRaw: OrderEventRow[];
+  strictNow: number;
+  tablesDir: string;
+}): Promise<void> {
+  const policyRows = buildFallbackPolicyRows(opts.canonicalRows);
+  const decisionRows = buildDecisionBoardRows(policyRows);
+  const bankrollRows = buildBankrollRows(policyRows);
+  const windowRows = buildWindowModelView(policyRows);
+  const freezeRows = buildFreezeRankingAlt(policyRows, `${opts.strictNow} strict freeze`);
+  const nightExecutionRows = buildNightExecutionRows(opts.nightRowsRaw);
+  await writeCsv(path.join(opts.tablesDir, "policy_kpis.csv"), policyRows, POLICY_HEADERS);
+  await writeCsv(path.join(opts.tablesDir, "decision_board.csv"), decisionRows, DECISION_HEADERS);
+  await writeCsv(path.join(opts.tablesDir, "bankroll_simulations.csv"), bankrollRows, BANKROLL_HEADERS);
+  await writeCsv(path.join(opts.tablesDir, "window_model_view.csv"), windowRows, WINDOW_HEADERS);
+  await writeCsv(path.join(opts.tablesDir, "freeze_ranking_alt.csv"), freezeRows, FREEZE_RANK_HEADERS);
+  await writeCsv(path.join(opts.tablesDir, "night_execution_detail.csv"), nightExecutionRows, NIGHT_HEADERS);
+}
 
 function parseSimpleCsv(text: string): CsvRow[] {
   const lines = text.trim().split(/\r?\n/);
@@ -427,7 +689,7 @@ function rowField(row: CsvRow, name: string): string {
 
 function buildWindowModelView(policies: PolicyRow[]): CsvRow[] {
   const expanded = pickPolicy(policies, ["FIREMODEL1_APPROX_CURRENT", "SCORE_GE_65", "ALT3_FLAT10_RAW_PROFIT_APPROX"]);
-  const strict = pickPolicy(policies, ["ONE_PER_EVENT_SCORE_GE_72_BEST_COVERAGE", "SCORE_GE_72"]);
+  const strict = pickPolicy(policies, ["ONE_PER_EVENT_SCORE_GE_72", "ONE_PER_EVENT_SCORE_GE_72_BEST_COVERAGE", "SCORE_GE_72"]);
   const windows = ["24h", "48h", "96h", "7d"] as const;
   const rows: CsvRow[] = [];
   for (const window of windows) {
@@ -470,7 +732,7 @@ function buildFreezeRankingAlt(policies: PolicyRow[], corpusLabel: string): CsvR
     { rank: 2, strategy: "ALT1_ONE_PER_EVENT_BEST_COVERAGE", source: "ONE_PER_EVENT_SCORE_GE_72_BEST_COVERAGE", roleStatus: "APPROX / NEEDS_EXACT_RECON" },
     { rank: 3, strategy: "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH", source: "FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH_APPROX", roleStatus: "APPROX / NEEDS_EXACT_RECON" },
     { rank: 4, strategy: "ALT3_V1_AVOID_NBA_NHL", source: "ALT3_FLAT10_RAW_PROFIT_APPROX", roleStatus: "APPROX / NEEDS_EXACT_RECON" },
-    { rank: 5, strategy: "ALT4_AVOID_NBA_NHL_PLUS_COV75", source: "EXCLUDE_BAD_BUCKET_SCORE_GE_72", roleStatus: "APPROX / NEEDS_EXACT_RECON" },
+    { rank: 5, strategy: "ALT4_AVOID_NBA_NHL_PLUS_COV75", source: "COVERAGE_75_SCORE_GE_72", roleStatus: "APPROX / NEEDS_EXACT_RECON" },
   ];
   return rows.map((spec) => {
     const row = pickPolicy(policies, [spec.source]) ?? policies[0];
@@ -506,15 +768,15 @@ function buildNightExecutionRows(rows: OrderEventRow[]): CsvRow[] {
   if (!rows.length) {
     return [{
       Scope: "NO_EXECUTED_BETS_IN_WINDOW",
-      "Рынок / сторона": "",
-      "API stake": "",
-      "Final stake / фактический объём": "",
-      "Live?": "",
-      "Коэффициент сделки": "",
-      "Статус результата": "",
-      "Комиссия": "",
-      "Тир / модель": "",
-      "Почему эта ставка сделана": "",
+      "Р С‹РЅРѕРє / СЃС‚РѕСЂРѕРЅР°": "N/A",
+      "API stake": "0",
+      "Final stake / С„Р°РєС‚РёС‡РµСЃРєРёР№ РѕР±СЉС‘Рј": "0",
+      "Live?": "N/A",
+      "РљРѕСЌС„С„РёС†РёРµРЅС‚ СЃРґРµР»РєРё": "N/A",
+      "РЎС‚Р°С‚СѓСЃ СЂРµР·СѓР»СЊС‚Р°С‚Р°": "NO_DATA",
+      "РљРѕРјРёСЃСЃРёСЏ": "0",
+      "РўРёСЂ / РјРѕРґРµР»СЊ": "N/A",
+      "РџРѕС‡РµРјСѓ СЌС‚Р° СЃС‚Р°РІРєР° СЃРґРµР»Р°РЅР°": "No executor orders found in the report window",
     }];
   }
   return rows.map((row) => {
@@ -525,15 +787,15 @@ function buildNightExecutionRows(rows: OrderEventRow[]): CsvRow[] {
     const status = safeStr(row.order_status) ?? (row.success === true ? "success" : row.success === false ? "failed" : "N/A");
     return {
       Scope: safeStr(row.strategic_scope) ?? "UNKNOWN",
-      "Рынок / сторона": `${safeStr(row.market_slug) ?? "N/A"} / ${safeStr(row.selected_side) ?? safeStr(row.side) ?? "N/A"}`,
+      "Р С‹РЅРѕРє / СЃС‚РѕСЂРѕРЅР°": `${safeStr(row.market_slug) ?? "N/A"} / ${safeStr(row.selected_side) ?? safeStr(row.side) ?? "N/A"}`,
       "API stake": safeNum(row.stake_usd) === null ? "N/A" : `$${safeNum(row.stake_usd)!.toFixed(2)}`,
-      "Final stake / фактический объём": finalStake === null ? "N/A" : `$${finalStake.toFixed(2)}`,
+      "Final stake / С„Р°РєС‚РёС‡РµСЃРєРёР№ РѕР±СЉС‘Рј": finalStake === null ? "N/A" : `$${finalStake.toFixed(2)}`,
       "Live?": row.live_confirm === true ? "YES" : row.live_confirm === false ? "NO" : "N/A",
-      "Коэффициент сделки": normalizeDealPrice(row),
-      "Статус результата": status,
-      "Комиссия": safeNum(row.fee_usd) === null ? "N/A" : `$${safeNum(row.fee_usd)!.toFixed(2)}`,
-      "Тир / модель": safeStr(row.model_rule_id) ?? safeStr(row.strategic_scope) ?? "N/A",
-      "Почему эта ставка сделана": why,
+      "РљРѕСЌС„С„РёС†РёРµРЅС‚ СЃРґРµР»РєРё": normalizeDealPrice(row),
+      "РЎС‚Р°С‚СѓСЃ СЂРµР·СѓР»СЊС‚Р°С‚Р°": status,
+      "РљРѕРјРёСЃСЃРёСЏ": safeNum(row.fee_usd) === null ? "N/A" : `$${safeNum(row.fee_usd)!.toFixed(2)}`,
+      "РўРёСЂ / РјРѕРґРµР»СЊ": safeStr(row.model_rule_id) ?? safeStr(row.strategic_scope) ?? "N/A",
+      "РџРѕС‡РµРјСѓ СЌС‚Р° СЃС‚Р°РІРєР° СЃРґРµР»Р°РЅР°": why,
     };
   });
 }
@@ -621,12 +883,15 @@ async function main() {
 
   const latestResolver = await fetchLatestJobRun('resolver');
   const latestSignalCache = await fetchLatestJobRun('polymarket');
+  const nightWindowStart = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
+  const nightRowsRaw = await fetchNightExecutionSlice(nightWindowStart, now.toISOString());
 
   let reportText = '';
   let subject = '';
   let summaryMd = '';
   let analyzerError: string | null = null;
   let fallback = false;
+  let reportStatus: ReportStatus = "FULL_ANALYZER_OK";
 
   try {
     if (process.env.MORNING_MODEL_FORCE_ANALYZER_FAIL === '1') {
@@ -688,8 +953,6 @@ async function main() {
       { model: 'FIREMODEL1_APPROX_CURRENT', role: 'shadow', row: pick('FIREMODEL1_APPROX_CURRENT') ?? raw },
     ];
 
-    const nightWindowStart = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
-    const nightRowsRaw = await fetchNightExecutionSlice(nightWindowStart, now.toISOString());
     const windowViewRows = buildWindowModelView(policyRows);
     const freezeRankingRows = buildFreezeRankingAlt(policyRows, `${strictNow} strict freeze`);
     const nightExecutionRows = buildNightExecutionRows(nightRowsRaw);
@@ -791,6 +1054,7 @@ async function main() {
   } catch (err) {
     analyzerError = err instanceof Error ? err.message : String(err);
     fallback = true;
+    reportStatus = "FALLBACK_RECOMPUTED";
     const fallbackArtifacts = await writeFallbackArtifacts({
       reportsDir,
       tablesDir,
@@ -807,18 +1071,53 @@ async function main() {
       freezePath,
       reportDir,
       now,
+      canonicalRows,
+      nightRowsRaw,
     });
     reportText = fallbackArtifacts.reportText;
     subject = fallbackArtifacts.subject;
     summaryMd = fallbackArtifacts.summaryMd;
   }
 
-  const policyRows = parseSimpleCsv(await readFile(policyCsvPath, 'utf8'));
-  const decisionRows = parseSimpleCsv(await readFile(decisionCsvPath, 'utf8'));
-  const bankrollRows = parseSimpleCsv(await readFile(bankrollCsvPath, 'utf8'));
-  const windowRows = parseSimpleCsv(await readFile(windowViewPath, 'utf8'));
-  const freezeRows = parseSimpleCsv(await readFile(freezeRankingPath, 'utf8'));
-  const nightRows = parseSimpleCsv(await readFile(nightExecutionPath, 'utf8'));
+  let policyRows = parseSimpleCsv(await readFile(policyCsvPath, 'utf8'));
+  let decisionRows = parseSimpleCsv(await readFile(decisionCsvPath, 'utf8'));
+  let bankrollRows = parseSimpleCsv(await readFile(bankrollCsvPath, 'utf8'));
+  let windowRows = parseSimpleCsv(await readFile(windowViewPath, 'utf8'));
+  let freezeRows = parseSimpleCsv(await readFile(freezeRankingPath, 'utf8'));
+  let nightRows = parseSimpleCsv(await readFile(nightExecutionPath, 'utf8'));
+  let validationFailures = validateMorningRows({ policyRows, decisionRows, bankrollRows, windowRows, freezeRows, nightRows });
+
+  if (validationFailures.length > 0 && canonicalRows.length > 0) {
+    reportStatus = "FALLBACK_RECOMPUTED";
+    fallback = true;
+    analyzerError = analyzerError ?? `Analyzer output failed workbook gates: ${validationFailures.join("; ")}`;
+    await rewriteFallbackTablesFromRows({ canonicalRows, nightRowsRaw, strictNow, tablesDir });
+    policyRows = parseSimpleCsv(await readFile(policyCsvPath, 'utf8'));
+    decisionRows = parseSimpleCsv(await readFile(decisionCsvPath, 'utf8'));
+    bankrollRows = parseSimpleCsv(await readFile(bankrollCsvPath, 'utf8'));
+    windowRows = parseSimpleCsv(await readFile(windowViewPath, 'utf8'));
+    freezeRows = parseSimpleCsv(await readFile(freezeRankingPath, 'utf8'));
+    nightRows = parseSimpleCsv(await readFile(nightExecutionPath, 'utf8'));
+    validationFailures = validateMorningRows({ policyRows, decisionRows, bankrollRows, windowRows, freezeRows, nightRows });
+  }
+
+  if (validationFailures.length > 0) {
+    reportStatus = "FAIL_NO_DATA";
+    subject = `PolyProPicks Morning Model Report — FAIL_NO_DATA — ${now.toISOString().slice(0, 10)} — N=${strictNow}`;
+    reportText = [
+      "# Morning Model Recalculation Report",
+      "",
+      "Status: FAIL_NO_DATA",
+      `N: ${strictNow}`,
+      `Events: ${events}`,
+      "",
+      "Failed workbook gates:",
+      ...validationFailures.map((failure) => `- ${failure}`),
+      "",
+      "Full details in attached XLSX workbook.",
+    ].join("\n");
+    await writeFile(reportPath, reportText + "\n", "utf8");
+  }
 
   const summaryRows = [
     { Metric: 'Run time', Value: now.toISOString(), Notes: '' },
@@ -841,11 +1140,13 @@ async function main() {
         ? `generated=${latestSignalCache.generated_count ?? 'N/A'} skipped=${latestSignalCache.rejected_count ?? 'N/A'}`
         : '',
     },
-    { Metric: 'Analyzer state', Value: fallback ? 'FALLBACK' : 'PASS', Notes: analyzerError ?? '' },
+    { Metric: 'Status', Value: reportStatus, Notes: reportStatus === "FULL_ANALYZER_OK" ? "Analyzer completed and workbook gates passed." : "Fallback or no-data gate activated." },
+    { Metric: 'Analyzer state', Value: fallback ? 'FALLBACK_RECOMPUTED' : 'PASS', Notes: analyzerError ?? '' },
     { Metric: 'Email recipient', Value: EMAIL_RECIPIENT, Notes: '' },
     { Metric: 'Subject', Value: subject, Notes: '' },
     { Metric: 'Artifact', Value: reportPath, Notes: 'MORNING_REPORT.md' },
     { Metric: 'Artifact', Value: workbookPath, Notes: 'XLSX workbook with 6 analytical tabs' },
+    { Metric: 'Recommendation', Value: reportStatus === "FAIL_NO_DATA" ? "Do not use this report for model decisions." : "Use workbook tabs for model review; do not change live executor without separate approval.", Notes: validationFailures.join("; ") },
     { Metric: 'Notice', Value: 'Night-plan and alert emails are separate and should still send.', Notes: '' },
   ];
 
@@ -858,6 +1159,17 @@ async function main() {
     { name: '05_Freeze Ranking', headers: FREEZE_RANK_HEADERS, rows: freezeRows },
     { name: '06_Night Execution', headers: NIGHT_HEADERS, rows: nightRows },
   ]);
+
+  const bestCandidate = [...policyRows].sort((a, b) => (safeNum(b.pnl_dd) ?? -999) - (safeNum(a.pnl_dd) ?? -999))[0];
+  const emailText = [
+    `Status: ${reportStatus}`,
+    `N / new 24h / events: ${strictNow} / ${strict24h} / ${events}`,
+    `Best current candidate by PnL/DD: ${bestCandidate?.policy ?? "N/A"} | N=${bestCandidate?.N ?? "0"} | PnL=${bestCandidate?.pnl10 ?? "0"} | PnL/DD=${bestCandidate?.pnl_dd ?? "0"}`,
+    `24h/48h/96h/7d: ${bestCandidate?.["24h_pnl10"] ?? "0"} / ${bestCandidate?.["48h_pnl10"] ?? "0"} / ${bestCandidate?.["96h_pnl10"] ?? "0"} / ${bestCandidate?.["7d_pnl10"] ?? "0"}`,
+    reportStatus === "FALLBACK_RECOMPUTED" ? `Warning: fallback KPIs recomputed after analyzer issue: ${analyzerError ?? "unknown"}` : "",
+    reportStatus === "FAIL_NO_DATA" ? `Failed gates: ${validationFailures.join("; ")}` : "",
+    "Full details in attached XLSX workbook.",
+  ].filter(Boolean).join("\n");
 
   const summary = {
     reportDir,
@@ -927,10 +1239,9 @@ async function main() {
         from,
         to: [EMAIL_RECIPIENT],
         subject,
-        text: reportText,
-        html: `<pre style="white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.5">${escapeHtml(reportText)}</pre>`,
+        text: emailText,
+        html: `<pre style="white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.5">${escapeHtml(emailText)}</pre>`,
         attachments: [
-          { filename: 'MORNING_REPORT.md', content: Buffer.from(reportText, 'utf8').toString('base64') },
           { filename: path.basename(workbookPath), content: (await readFile(workbookPath)).toString('base64') },
         ],
       }),

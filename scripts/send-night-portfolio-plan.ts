@@ -142,12 +142,14 @@ async function buildNightPlanWorkbook(
     {
       name: "01_Planned Events",
       headers: ["#", "Tier", "Event / Market", "Stake", "Timing", "Reason"],
-      rows: plannedEventRows,
+      rows: plannedEventRows.length
+        ? plannedEventRows
+        : [{ "#": 1, Tier: "NO_PLANNED_EVENTS", "Event / Market": "N/A", Stake: "$0.00", Timing: "N/A", Reason: "No planned live slots in this report window." }],
     },
     {
       name: "02_Rejected Reasons",
       headers: ["Reason", "Count"],
-      rows: rejectedRows,
+      rows: rejectedRows.length ? rejectedRows : [{ Reason: "NO_REJECTED_REASONS", Count: 0 }],
     },
   ]);
 }
