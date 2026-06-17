@@ -25,9 +25,11 @@
     "ops:report:email": "tsx scripts/daily-ops-report.ts --email=alexgrushin@gmail.com",
     "ops:report:xlsx": "tsx scripts/daily-ops-report.ts --xlsx-preview",
     "morning:model-report": "tsx scripts/morning-model-report.ts",
+    "founder:emails": "tsx scripts/founder-email-dispatcher.ts",
+    "ops-report-email-cron": "tsx scripts/founder-email-dispatcher.ts",
     "night:plan": "tsx scripts/send-night-portfolio-plan.ts",
-    "night:plan:email": "tsx scripts/send-night-portfolio-plan.ts --email=alexgrushin@gmail.com",
-    "night:plan:alert": "tsx scripts/send-night-portfolio-plan.ts --email=alexgrushin@gmail.com --alert-only --plan-time=17:45",
+    "night:plan:email": "tsx scripts/send-night-portfolio-plan.ts",
+    "night:plan:alert": "tsx scripts/send-night-portfolio-plan.ts --alert-only --plan-time=17:45",
     "visual:matrix": "node scripts/visual/capture-visual-matrix.mjs"
   },
   "dependencies": {
