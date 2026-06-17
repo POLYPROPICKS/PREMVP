@@ -50,6 +50,9 @@ type PlanTier = "TIER1" | "TIER2" | "TIER3" | "REJECTED";
 export interface CandidatePreview {
   signal_id: string;
   market_slug: string;
+  condition_id: string;
+  token_id: string;
+  selected_token_id: string;
   side: string;
   selected_outcome: string | null;
   strategy: string;
@@ -59,6 +62,11 @@ export interface CandidatePreview {
   smart_money: number | null;
   entry_price: number;
   max_entry_price: number;
+  stake_usd: number;
+  sport: string;
+  strategic_scope: string;
+  event_slug: string | null;
+  match_family_key: string;
   timing_bucket: string;
   hours_to_start: number;
   live_eligible: boolean;
@@ -347,6 +355,9 @@ function previewOf(c: FireModelCandidate): CandidatePreview {
   return {
     signal_id: c.signal_id,
     market_slug: c.market_slug,
+    condition_id: c.condition_id,
+    token_id: c.token_id,
+    selected_token_id: c.token_id,
     side: c.side,
     selected_outcome: c.selected_outcome,
     strategy: c.strategy,
@@ -356,6 +367,11 @@ function previewOf(c: FireModelCandidate): CandidatePreview {
     smart_money: c.diagnostics.smart_money,
     entry_price: c.diagnostics.entry_price,
     max_entry_price: c.max_entry_price,
+    stake_usd: c.stake_usd,
+    sport: c.inferred_sport,
+    strategic_scope: c.strategic_scope,
+    event_slug: c.event_slug,
+    match_family_key: c.match_family_key,
     timing_bucket: c.timing_bucket,
     hours_to_start: c.diagnostics.hours_to_start_now,
     live_eligible: c.live_eligible,
