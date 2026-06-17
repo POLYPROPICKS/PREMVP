@@ -2,6 +2,7 @@ import { loadEnvConfig } from "@next/env";
 import { spawnSync } from "child_process";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
+import { writeWorkbookXlsx } from "./report-xlsx";
 
 type JobRun = {
   source: string | null;
@@ -616,6 +617,7 @@ async function main() {
   const freezeRankingPath = path.join(tablesDir, 'freeze_ranking_alt.csv');
   const nightExecutionPath = path.join(tablesDir, 'night_execution_detail.csv');
   const reportPath = path.join(reportsDir, 'MORNING_REPORT.md');
+  const workbookPath = path.join(reportDir, `polypropicks_morning_model_report_${utcDate}_N${strictNow}.xlsx`);
 
   const latestResolver = await fetchLatestJobRun('resolver');
   const latestSignalCache = await fetchLatestJobRun('polymarket');
@@ -811,6 +813,52 @@ async function main() {
     summaryMd = fallbackArtifacts.summaryMd;
   }
 
+  const policyRows = parseSimpleCsv(await readFile(policyCsvPath, 'utf8'));
+  const decisionRows = parseSimpleCsv(await readFile(decisionCsvPath, 'utf8'));
+  const bankrollRows = parseSimpleCsv(await readFile(bankrollCsvPath, 'utf8'));
+  const windowRows = parseSimpleCsv(await readFile(windowViewPath, 'utf8'));
+  const freezeRows = parseSimpleCsv(await readFile(freezeRankingPath, 'utf8'));
+  const nightRows = parseSimpleCsv(await readFile(nightExecutionPath, 'utf8'));
+
+  const summaryRows = [
+    { Metric: 'Run time', Value: now.toISOString(), Notes: '' },
+    { Metric: 'Freeze', Value: freezePath, Notes: '' },
+    { Metric: 'Resolved strict tokens now', Value: strictNow, Notes: '' },
+    { Metric: 'New resolved strict tokens last 24h', Value: strict24h, Notes: '' },
+    { Metric: 'Events in freeze', Value: events, Notes: '' },
+    { Metric: 'Newest resolved_at', Value: fmtDate(newestResolvedAt), Notes: '' },
+    {
+      Metric: 'Latest resolver',
+      Value: latestResolver ? (latestResolver.status ?? 'N/A') : 'N/A',
+      Notes: latestResolver
+        ? `selected=${safeNum(latestResolver.diagnostics?.selected)} generated=${latestResolver.generated_count ?? 'N/A'} skipped=${latestResolver.rejected_count ?? 'N/A'}`
+        : '',
+    },
+    {
+      Metric: 'Latest signal-cache',
+      Value: latestSignalCache ? (latestSignalCache.status ?? 'N/A') : 'N/A',
+      Notes: latestSignalCache
+        ? `generated=${latestSignalCache.generated_count ?? 'N/A'} skipped=${latestSignalCache.rejected_count ?? 'N/A'}`
+        : '',
+    },
+    { Metric: 'Analyzer state', Value: fallback ? 'FALLBACK' : 'PASS', Notes: analyzerError ?? '' },
+    { Metric: 'Email recipient', Value: EMAIL_RECIPIENT, Notes: '' },
+    { Metric: 'Subject', Value: subject, Notes: '' },
+    { Metric: 'Artifact', Value: reportPath, Notes: 'MORNING_REPORT.md' },
+    { Metric: 'Artifact', Value: workbookPath, Notes: 'XLSX workbook with 6 analytical tabs' },
+    { Metric: 'Notice', Value: 'Night-plan and alert emails are separate and should still send.', Notes: '' },
+  ];
+
+  await writeWorkbookXlsx(workbookPath, [
+    { name: '00_Summary', headers: ['Metric', 'Value', 'Notes'], rows: summaryRows },
+    { name: '01_Policy KPIs', headers: POLICY_HEADERS, rows: policyRows },
+    { name: '02_Decision Board', headers: DECISION_HEADERS, rows: decisionRows },
+    { name: '03_Bankroll', headers: BANKROLL_HEADERS, rows: bankrollRows },
+    { name: '04_Window Models', headers: WINDOW_HEADERS, rows: windowRows },
+    { name: '05_Freeze Ranking', headers: FREEZE_RANK_HEADERS, rows: freezeRows },
+    { name: '06_Night Execution', headers: NIGHT_HEADERS, rows: nightRows },
+  ]);
+
   const summary = {
     reportDir,
     freezePath,
@@ -853,6 +901,7 @@ async function main() {
       freezeRankingAlt: freezeRankingPath,
       nightExecutionDetail: nightExecutionPath,
       runSummary: runSummaryPath,
+      workbook: workbookPath,
     },
   };
 
@@ -882,12 +931,7 @@ async function main() {
         html: `<pre style="white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.5">${escapeHtml(reportText)}</pre>`,
         attachments: [
           { filename: 'MORNING_REPORT.md', content: Buffer.from(reportText, 'utf8').toString('base64') },
-          { filename: 'policy_kpis.csv', content: (await readFile(policyCsvPath)).toString('base64') },
-          { filename: 'decision_board.csv', content: (await readFile(decisionCsvPath)).toString('base64') },
-          { filename: 'bankroll_simulations.csv', content: (await readFile(bankrollCsvPath)).toString('base64') },
-          { filename: 'window_model_view.csv', content: (await readFile(windowViewPath)).toString('base64') },
-          { filename: 'freeze_ranking_alt.csv', content: (await readFile(freezeRankingPath)).toString('base64') },
-          { filename: 'night_execution_detail.csv', content: (await readFile(nightExecutionPath)).toString('base64') },
+          { filename: path.basename(workbookPath), content: (await readFile(workbookPath)).toString('base64') },
         ],
       }),
     });
