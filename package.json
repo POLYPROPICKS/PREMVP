@@ -21,6 +21,7 @@
     "firemodel1:cohorts": "tsx scripts/firemodel1-cohort-lab.ts",
     "firemodel1:decision": "tsx scripts/firemodel1-decision-board.ts",
     "firemodel1:all-modeling": "tsx scripts/firemodel1-model-report.ts && tsx scripts/firemodel1-model-stack-compare.ts && tsx scripts/firemodel1-weight-lab.ts && tsx scripts/firemodel1-stake-lab.ts && tsx scripts/firemodel1-cohort-lab.ts && tsx scripts/firemodel1-decision-board.ts",
+    "modeling:one-per-match-backtest": "tsx scripts/modeling/one-per-match-backtest.ts",
     "ops:report": "tsx scripts/daily-ops-report.ts",
     "ops:report:email": "tsx scripts/ops-report-email-bundle.ts",
     "ops:report:email:legacy": "tsx scripts/daily-ops-report.ts --email=alexgrushin@gmail.com",

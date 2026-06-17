@@ -3,6 +3,14 @@ import { spawnSync } from "child_process";
 import ExcelJS from "exceljs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
+import {
+  addOnePerMatchBacktestSheet,
+  onePerMatchEmailSummary,
+  persistOnePerMatchBacktest,
+  runOnePerMatchBacktestFromRows,
+  writeOnePerMatchSummary,
+  type OnePerMatchBacktestResult,
+} from "../lib/modeling/onePerMatchBacktest";
 
 type JobRun = {
   source: string | null;
@@ -36,6 +44,7 @@ const CEO_SHEETS = [
   "05_Night_Execution",
   "06_Data_Quality",
 ] as const;
+const ONE_PER_MATCH_SHEET = "OnePerMatchBacktest";
 const POLICY_HEADERS = [
   "policy", "N", "events", "wins", "losses", "win_rate", "pnl10", "roi", "avg_return",
   "median_return", "max_dd", "pnl_dd", "worst_losing_streak", "24h_N", "24h_pnl10",
@@ -1266,7 +1275,10 @@ function noBadHeaderText(headers: string[]): boolean {
 function validateCeoWorkbook(workbook: ExcelJS.Workbook): string[] {
   const failures: string[] = [];
   const names = workbook.worksheets.map((ws) => ws.name);
-  if (names.join("|") !== [...CEO_SHEETS].join("|")) failures.push(`sheet order mismatch: ${names.join(", ")}`);
+  const expectedSheets = workbook.getWorksheet(ONE_PER_MATCH_SHEET)
+    ? [...CEO_SHEETS, ONE_PER_MATCH_SHEET]
+    : [...CEO_SHEETS];
+  if (names.join("|") !== expectedSheets.join("|")) failures.push(`sheet order mismatch: ${names.join(", ")}`);
   if (workbook.worksheets[0]?.name !== "00_CEO_Decision") failures.push("00_CEO_Decision is not sheet index 0");
   if (workbook.getWorksheet("06_Data_Quality")?.state !== "hidden") failures.push("06_Data_Quality is not hidden");
   const current = workbook.getWorksheet("01_Current_Model");
@@ -1332,6 +1344,9 @@ function validateCeoWorkbook(workbook: ExcelJS.Workbook): string[] {
   const dqFields = workbook.getWorksheet("06_Data_Quality")?.getColumn(1).values.map((v) => String(v ?? "")) ?? [];
   if (!dqFields.includes("model_metric_state")) failures.push("06_Data_Quality missing model_metric_state");
   if (!dqFields.includes("night_execution_state")) failures.push("06_Data_Quality missing night_execution_state");
+  if (workbook.getWorksheet(ONE_PER_MATCH_SHEET) && workbook.getWorksheet(ONE_PER_MATCH_SHEET)!.rowCount < 10) {
+    failures.push("OnePerMatchBacktest sheet missing expected rows");
+  }
   const analyzerState = String(workbook.getWorksheet("06_Data_Quality")?.getCell("B2").value ?? "");
   if (analyzerState !== "OK" && status !== "RED") failures.push(`status light ${status} does not reflect analyzer_state=${analyzerState}`);
   return [...new Set(failures)];
@@ -1351,6 +1366,7 @@ async function writeCeoMorningWorkbook(opts: {
   nightRows: CsvRow[];
   nightRowsRaw: OrderEventRow[];
   validationFailures: string[];
+  onePerMatchResult: OnePerMatchBacktestResult | null;
 }): Promise<string[]> {
   const template = new ExcelJS.Workbook();
   await template.xlsx.readFile(CEO_TEMPLATE_PATH);
@@ -1395,6 +1411,9 @@ async function writeCeoMorningWorkbook(opts: {
   applyTableSheet(workbook.getWorksheet("05_Night_Execution")!, NIGHT_HEADERS, opts.nightRows);
   applyTableSheet(workbook.getWorksheet("06_Data_Quality")!, DATA_QUALITY_HEADERS, dqRows);
   workbook.getWorksheet("06_Data_Quality")!.state = "hidden";
+  if (opts.onePerMatchResult) {
+    addOnePerMatchBacktestSheet(workbook, opts.onePerMatchResult);
+  }
   applyCeoFills(workbook);
   workbook.creator = "PolyProPicks";
   workbook.modified = new Date();
@@ -1436,6 +1455,11 @@ async function main() {
     if (!latest) return safeStr(r.resolved_at);
     return parseIso(r.resolved_at) > parseIso(latest) ? safeStr(r.resolved_at) : latest;
   }, null);
+  const onePerMatchDir = path.resolve(process.cwd(), "reports", "modeling", "one_per_match_backtest");
+  const onePerMatchResult = await runOnePerMatchBacktestFromRows(rawRows, onePerMatchDir);
+  onePerMatchResult.dbStatus = await persistOnePerMatchBacktest(onePerMatchResult);
+  await writeOnePerMatchSummary(onePerMatchResult);
+  const onePerMatchSummaryText = onePerMatchEmailSummary(onePerMatchResult);
 
   const freezePath = path.join(inputDir, INPUT_NAME);
   const freezeHeaders = [
@@ -1622,6 +1646,9 @@ async function main() {
       '',
       modelTable,
       '',
+      '## One-Per-Match Backtest',
+      onePerMatchSummaryText,
+      '',
       '## Decision',
       `- Main model: ONE_PER_EVENT_SCORE_GE_72_BEST_SCORE`,
       `- Shadow model: SCORE_GE_65`,
@@ -1736,7 +1763,8 @@ async function main() {
     policyRows: policyRows as PolicyRow[],
     nightRows,
     nightRowsRaw,
-    validationFailures,
+      validationFailures,
+      onePerMatchResult,
   });
   if (workbookGateFailures.length > 0) {
     throw new Error(`CEO workbook quality gates failed: ${workbookGateFailures.join("; ")}`);
@@ -1748,6 +1776,7 @@ async function main() {
     `N / new 24h / events: ${strictNow} / ${strict24h} / ${events}`,
     `Best current candidate by PnL/DD: ${bestCandidate?.policy ?? "N/A"} | N=${bestCandidate?.N ?? "0"} | PnL=${bestCandidate?.pnl10 ?? "0"} | PnL/DD=${bestCandidate?.pnl_dd ?? "0"}`,
     `24h/48h/96h/7d: ${bestCandidate?.["24h_pnl10"] ?? "0"} / ${bestCandidate?.["48h_pnl10"] ?? "0"} / ${bestCandidate?.["96h_pnl10"] ?? "0"} / ${bestCandidate?.["7d_pnl10"] ?? "0"}`,
+    onePerMatchSummaryText,
     reportStatus === "FALLBACK_RECOMPUTED" ? `Warning: fallback KPIs recomputed after analyzer issue: ${analyzerError ?? "unknown"}` : "",
     reportStatus === "FAIL_NO_DATA" ? `Failed gates: ${validationFailures.join("; ")}` : "",
     "Full details in attached XLSX workbook.",
@@ -1796,8 +1825,21 @@ async function main() {
       nightExecutionDetail: nightExecutionPath,
       runSummary: runSummaryPath,
       workbook: workbookPath,
+      onePerMatchSummary: onePerMatchResult.artifactPaths.summaryJson,
+      onePerMatchSelectedPicks: onePerMatchResult.artifactPaths.selectedPicksCsv,
+      onePerMatchEventGroups: onePerMatchResult.artifactPaths.eventGroupsCsv,
+      onePerMatchComparison: onePerMatchResult.artifactPaths.comparisonCsv,
     },
     workbookGateFailures,
+    onePerMatchBacktest: {
+      runId: onePerMatchResult.runId,
+      rawRows: onePerMatchResult.rawRows,
+      resolvedRows: onePerMatchResult.resolvedRows,
+      uniqueEventGroups: onePerMatchResult.uniqueEventGroups,
+      selectedRows: onePerMatchResult.selectedRows,
+      comparisonRows: onePerMatchResult.comparisonRows,
+      dbStatus: onePerMatchResult.dbStatus,
+    },
   };
 
   console.log(JSON.stringify(summary, null, 2));
