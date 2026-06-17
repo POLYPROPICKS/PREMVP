@@ -1,8 +1,8 @@
 ﻿import { loadEnvConfig } from "@next/env";
 import { spawnSync } from "child_process";
+import ExcelJS from "exceljs";
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
-import { writeWorkbookXlsx } from "./report-xlsx";
 
 type JobRun = {
   source: string | null;
@@ -24,8 +24,18 @@ type CanonicalRow = RawRow & {
 };
 
 const TRACKED_ANALYZER = path.resolve(process.cwd(), "scripts", "modeling", "analyze-ice1-freeze.py");
+const CEO_TEMPLATE_PATH = path.resolve(process.cwd(), "CEO_Morning_Report_TEMPLATE.xlsx");
 const INPUT_NAME = "resolved_freeze.csv";
 const REPORT_ROOT = path.resolve(process.cwd(), "modeling", "morning_model_report");
+const CEO_SHEETS = [
+  "00_CEO_Decision",
+  "01_Current_Model",
+  "02_Model_Ranking",
+  "03_Bankroll",
+  "04_Recent_Windows",
+  "05_Night_Execution",
+  "06_Data_Quality",
+] as const;
 const POLICY_HEADERS = [
   "policy", "N", "events", "wins", "losses", "win_rate", "pnl10", "roi", "avg_return",
   "median_return", "max_dd", "pnl_dd", "worst_losing_streak", "24h_N", "24h_pnl10",
@@ -47,9 +57,23 @@ const WINDOW_HEADERS = [
 ];
 const FREEZE_RANK_HEADERS = ["Rank", "Strategy", "Role / Status", "Corpus", "N", "Net PnL", "ROI", "MaxDD"];
 const NIGHT_HEADERS = [
-  "Scope", "Р С‹РЅРѕРє / СЃС‚РѕСЂРѕРЅР°", "API stake", "Final stake / С„Р°РєС‚РёС‡РµСЃРєРёР№ РѕР±СЉС‘Рј", "Live?",
-  "РљРѕСЌС„С„РёС†РёРµРЅС‚ СЃРґРµР»РєРё", "РЎС‚Р°С‚СѓСЃ СЂРµР·СѓР»СЊС‚Р°С‚Р°", "РљРѕРјРёСЃСЃРёСЏ", "РўРёСЂ / РјРѕРґРµР»СЊ", "РџРѕС‡РµРјСѓ СЌС‚Р° СЃС‚Р°РІРєР° СЃРґРµР»Р°РЅР°",
+  "#", "scope", "market_side", "tier_model", "live?", "stake", "odds_dec", "result_status",
+  "pnl", "fee_slippage_pct_of_stake", "why_this_bet",
 ];
+const CURRENT_MODEL_HEADERS = [
+  "model", "role", "current?", "exact_or_approx", "N", "roi", "7d_roi", "maxDD", "pnlDD",
+  "worst_streak", "survives_300", "deploy_status", "action_today",
+];
+const MODEL_RANKING_HEADERS = [
+  "rank", "model", "current?", "exact_or_approx", "N", "24h_N", "24h_roi", "48h_N",
+  "48h_roi", "96h_N", "96h_roi", "7d_N", "7d_roi", "maxDD", "pnlDD", "survives_300", "verdict",
+];
+const CEO_BANKROLL_HEADERS = [
+  "policy", "current?", "start_bank", "final_bank", "total_pnl", "roi", "max_dd_$", "max_dd_%",
+  "min_equity", "worst_streak", "survives_300", "comment",
+];
+const RECENT_WINDOWS_HEADERS = ["window", "model_slice", "bets", "resolved", "net_pnl", "roi", "trust_flag"];
+const DATA_QUALITY_HEADERS = ["field", "value"];
 
 function argValue(prefix: string): string | null {
   const arg = process.argv.find((a) => a.startsWith(prefix));
@@ -651,9 +675,31 @@ async function rewriteFallbackTablesFromRows(opts: {
 function parseSimpleCsv(text: string): CsvRow[] {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length <= 1) return [];
-  const headers = lines[0].split(",");
+  const parseLine = (line: string): string[] => {
+    const cells: string[] = [];
+    let current = "";
+    let quoted = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      const next = line[i + 1];
+      if (ch === '"' && quoted && next === '"') {
+        current += '"';
+        i += 1;
+      } else if (ch === '"') {
+        quoted = !quoted;
+      } else if (ch === "," && !quoted) {
+        cells.push(current);
+        current = "";
+      } else {
+        current += ch;
+      }
+    }
+    cells.push(current);
+    return cells;
+  };
+  const headers = parseLine(lines[0]);
   return lines.slice(1).filter((line) => line.trim().length > 0).map((line) => {
-    const cells = line.split(",");
+    const cells = parseLine(line);
     const row: CsvRow = {};
     headers.forEach((h, i) => {
       row[h] = cells[i] ?? "";
@@ -764,40 +810,598 @@ function normalizeDealPrice(row: OrderEventRow): string {
   return raw === null ? "N/A" : raw.toFixed(3);
 }
 
+function feeSlippagePct(row: OrderEventRow): string {
+  const stake = safeNum(row.submitted_size) ?? safeNum(row.stake_usd);
+  const fee = safeNum(row.fee_usd);
+  if (stake === null || stake <= 0 || fee === null) return "N/A";
+  return `${((fee / stake) * 100).toFixed(2)}%`;
+}
+
 function buildNightExecutionRows(rows: OrderEventRow[]): CsvRow[] {
+  const matched = rows.filter((row) => {
+    const status = (safeStr(row.order_status) ?? "").toLowerCase();
+    return row.success === true || ["matched", "filled", "success", "submitted"].includes(status);
+  }).length;
+  const skipped = rows.length - matched;
+  const totalStake = rows.reduce((sum, row) => sum + (safeNum(row.submitted_size) ?? safeNum(row.stake_usd) ?? 0), 0);
+  const dominantModel = safeStr(rows[0]?.model_rule_id) ?? safeStr(rows[0]?.strategic_scope) ?? "N/A";
+  const weightedFee = rows.reduce((sum, row) => {
+    const stake = safeNum(row.submitted_size) ?? safeNum(row.stake_usd);
+    const fee = safeNum(row.fee_usd);
+    return stake !== null && stake > 0 && fee !== null ? sum + fee : sum;
+  }, 0);
+  const weightedFeePct = totalStake > 0 && weightedFee > 0 ? `${((weightedFee / totalStake) * 100).toFixed(2)}%` : "N/A";
+  const summary: CsvRow = {
+    "#": "—",
+    scope: "NIGHT SUMMARY",
+    market_side: rows.length ? `${matched} placed / ${skipped} skipped` : "0 placed / 0 skipped",
+    tier_model: dominantModel,
+    "live?": "—",
+    stake: `$${totalStake.toFixed(2)}`,
+    odds_dec: "—",
+    result_status: rows.length ? `${matched} matched / ${skipped} skipped` : "NO_REAL_EXECUTION",
+    pnl: "pending",
+    fee_slippage_pct_of_stake: weightedFeePct,
+    why_this_bet: rows.length
+      ? "Real executor_order_events rows from the previous report window; PnL pending until resolution."
+      : "No real executor order rows found for this window; alerts/plans are not execution.",
+  };
   if (!rows.length) {
-    return [{
-      Scope: "NO_EXECUTED_BETS_IN_WINDOW",
-      "Р С‹РЅРѕРє / СЃС‚РѕСЂРѕРЅР°": "N/A",
-      "API stake": "0",
-      "Final stake / С„Р°РєС‚РёС‡РµСЃРєРёР№ РѕР±СЉС‘Рј": "0",
-      "Live?": "N/A",
-      "РљРѕСЌС„С„РёС†РёРµРЅС‚ СЃРґРµР»РєРё": "N/A",
-      "РЎС‚Р°С‚СѓСЃ СЂРµР·СѓР»СЊС‚Р°С‚Р°": "NO_DATA",
-      "РљРѕРјРёСЃСЃРёСЏ": "0",
-      "РўРёСЂ / РјРѕРґРµР»СЊ": "N/A",
-      "РџРѕС‡РµРјСѓ СЌС‚Р° СЃС‚Р°РІРєР° СЃРґРµР»Р°РЅР°": "No executor orders found in the report window",
-    }];
+    return [
+      summary,
+      {
+        "#": "1",
+        scope: "NO_REAL_EXECUTOR_ORDERS",
+        market_side: "alerts/plans only",
+        tier_model: "N/A",
+        "live?": "N/A",
+        stake: "$0.00",
+        odds_dec: "N/A",
+        result_status: "NO_EXECUTED_BETS",
+        pnl: "N/A",
+        fee_slippage_pct_of_stake: "N/A",
+        why_this_bet: "No real executor order rows found for this window; alerts/plans are not execution.",
+      },
+    ];
   }
-  return rows.map((row) => {
+  return [summary, ...rows.map((row, index) => {
     const snapshot = row.candidate_snapshot_json;
     const meta = row.executor_meta;
     const why = extractReason(snapshot) ?? extractReason(meta) ?? safeStr(row.model_rule_id) ?? "N/A";
     const finalStake = safeNum(row.submitted_size) ?? safeNum(row.stake_usd);
     const status = safeStr(row.order_status) ?? (row.success === true ? "success" : row.success === false ? "failed" : "N/A");
     return {
-      Scope: safeStr(row.strategic_scope) ?? "UNKNOWN",
-      "Р С‹РЅРѕРє / СЃС‚РѕСЂРѕРЅР°": `${safeStr(row.market_slug) ?? "N/A"} / ${safeStr(row.selected_side) ?? safeStr(row.side) ?? "N/A"}`,
-      "API stake": safeNum(row.stake_usd) === null ? "N/A" : `$${safeNum(row.stake_usd)!.toFixed(2)}`,
-      "Final stake / С„Р°РєС‚РёС‡РµСЃРєРёР№ РѕР±СЉС‘Рј": finalStake === null ? "N/A" : `$${finalStake.toFixed(2)}`,
-      "Live?": row.live_confirm === true ? "YES" : row.live_confirm === false ? "NO" : "N/A",
-      "РљРѕСЌС„С„РёС†РёРµРЅС‚ СЃРґРµР»РєРё": normalizeDealPrice(row),
-      "РЎС‚Р°С‚СѓСЃ СЂРµР·СѓР»СЊС‚Р°С‚Р°": status,
-      "РљРѕРјРёСЃСЃРёСЏ": safeNum(row.fee_usd) === null ? "N/A" : `$${safeNum(row.fee_usd)!.toFixed(2)}`,
-      "РўРёСЂ / РјРѕРґРµР»СЊ": safeStr(row.model_rule_id) ?? safeStr(row.strategic_scope) ?? "N/A",
-      "РџРѕС‡РµРјСѓ СЌС‚Р° СЃС‚Р°РІРєР° СЃРґРµР»Р°РЅР°": why,
+      "#": String(index + 1),
+      scope: safeStr(row.strategic_scope) ?? "UNKNOWN",
+      market_side: `${safeStr(row.market_slug) ?? "N/A"} / ${safeStr(row.selected_side) ?? safeStr(row.side) ?? "N/A"}`,
+      tier_model: safeStr(row.model_rule_id) ?? safeStr(row.strategic_scope) ?? "N/A",
+      "live?": row.live_confirm === true ? "YES" : row.live_confirm === false ? "NO" : "N/A",
+      stake: finalStake === null ? "N/A" : `$${finalStake.toFixed(2)}`,
+      odds_dec: normalizeDealPrice(row),
+      result_status: status,
+      pnl: "pending",
+      fee_slippage_pct_of_stake: feeSlippagePct(row),
+      why_this_bet: feeSlippagePct(row) === "N/A" ? `${why}; estimated fee+slippage unavailable` : why,
     };
+  })];
+}
+
+function percentText(v: unknown): string {
+  const n = safeNum(v);
+  return n === null ? "N/A" : `${n.toFixed(1)}%`;
+}
+
+function moneyText(v: unknown): string {
+  const n = safeNum(v);
+  if (n === null) return "N/A";
+  return n < 0 ? `-$${Math.abs(n).toFixed(2)}` : `$${n.toFixed(2)}`;
+}
+
+function jobSummary(job: JobRun | null): string {
+  if (!job) return "N/A";
+  const selected = safeNum(job.diagnostics?.selected);
+  return `${job.status ?? "N/A"} @ ${fmtDate(job.started_at)} | selected=${selected ?? "N/A"} generated=${job.generated_count ?? "N/A"} skipped=${job.rejected_count ?? "N/A"}`;
+}
+
+function metricSignature(row: PolicyRow | null): string {
+  if (!row) return "missing";
+  return [row.N, row.pnl10, row.roi, row.max_dd, row.pnl_dd, row["7d_N"], row["7d_roi"]].join("|");
+}
+
+function buildCeoCurrentModelRows(primary: PolicyRow | null, reportStatus: ReportStatus): CsvRow[] {
+  const approx = "APPROX_NEEDS_RECON";
+  return [{
+    model: "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP",
+    role: "current primary / live candidate",
+    "current?": "YES",
+    exact_or_approx: approx,
+    N: primary?.N ?? "0",
+    roi: percentText(primary?.roi),
+    "7d_roi": percentText(primary?.["7d_roi"]),
+    maxDD: moneyText(primary?.max_dd),
+    pnlDD: primary?.pnl_dd ?? "0",
+    worst_streak: primary?.worst_losing_streak ?? "0",
+    survives_300: "YES",
+    deploy_status: reportStatus === "FULL_ANALYZER_OK" ? "HOLD_NOT_VERIFIED" : "HOLD_NOT_VERIFIED",
+    action_today: reportStatus === "FULL_ANALYZER_OK" ? "REVIEW exact reconstruction before scaling" : "HOLD; analyzer fallback/recomputed",
+  }];
+}
+
+function buildCeoBankrollRows(policies: PolicyRow[]): CsvRow[] {
+  const sourceRows = buildBankrollRows(policies);
+  return sourceRows.map((row) => ({
+    policy: row.stake_policy === "STRICT_CAP_300_BANKROLL" ? "STRICT_CAP_300" : row.stake_policy,
+    "current?": row.stake_policy === "STRICT_CAP_300_BANKROLL" ? "YES" : "NO",
+    start_bank: "$300.00",
+    final_bank: moneyText(row.final_bank),
+    total_pnl: moneyText(row.total_pnl),
+    roi: percentText(row.roi_on_turnover),
+    "max_dd_$": moneyText(row.max_drawdown_dollars),
+    "max_dd_%": percentText(row.max_drawdown_pct),
+    min_equity: moneyText(row.minimum_equity),
+    worst_streak: row.worst_losing_streak,
+    survives_300: row.survives_300,
+    comment: row.stake_policy === "STRICT_CAP_300_BANKROLL" && row.survives_300 === "NO"
+      ? "CURRENT POLICY FAILS $300 survival in this reconstructed run — do not scale until exact check."
+      : row.stake_policy === "STRICT_CAP_300_BANKROLL" ? "CURRENT $300 active bankroll cap" : row.path_comment,
+  }));
+}
+
+function buildCeoRecentWindows(primary: PolicyRow | null, reportStatus: ReportStatus): CsvRow[] {
+  const windows = [
+    ["24h", "24h_N", "24h_pnl10", "24h_roi"],
+    ["48h", "48h_N", "48h_pnl10", "48h_roi"],
+    ["96h", "96h_N", "96h_pnl10", "96h_roi"],
+    ["7d", "7d_N", "7d_pnl10", "7d_roi"],
+  ] as const;
+  return windows.map(([window, nKey, pnlKey, roiKey]) => ({
+    window,
+    model_slice: "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP",
+    bets: primary?.[nKey] ?? "0",
+    resolved: primary?.[nKey] ?? "0",
+    net_pnl: moneyText(primary?.[pnlKey]),
+    roi: percentText(primary?.[roiKey]),
+    trust_flag: reportStatus === "FULL_ANALYZER_OK" ? "PARTIAL" : "PARTIAL",
+  })).filter((row) => row.bets !== "0");
+}
+
+function buildRealizedLastNightRow(nightRows: CsvRow[]): CsvRow {
+  const realRows = nightRows.filter((row) => row.scope !== "NIGHT SUMMARY" && row.scope !== "NO_REAL_EXECUTOR_ORDERS");
+  const summary = nightRows.find((row) => row.scope === "NIGHT SUMMARY");
+  const n = String(realRows.length);
+  const verdict = realRows.length >= 5 ? "REVIEW" : "HOLD";
+  return {
+    rank: "—",
+    model: "REALIZED_LAST_NIGHT (current model)",
+    "current?": "—",
+    exact_or_approx: "REAL_EXECUTED",
+    N: n,
+    "24h_N": n,
+    "24h_roi": summary?.pnl && summary.pnl !== "pending" ? summary.pnl : "pending",
+    "48h_N": "—",
+    "48h_roi": "—",
+    "96h_N": "—",
+    "96h_roi": "—",
+    "7d_N": "—",
+    "7d_roi": "—",
+    maxDD: "—",
+    pnlDD: "—",
+    survives_300: "n/a",
+    verdict: realRows.length === 0 ? "HOLD: no real execution rows; plans/alerts are not execution" : verdict,
+  };
+}
+
+function buildCeoModelRankingRows(policies: PolicyRow[], nightRows: CsvRow[]): { rows: CsvRow[]; duplicateNotes: string } {
+  const specs = [
+    { rank: "0", model: "BASELINE_V1_CONTROL", current: "NO", source: "FLAT_ALL", exact: "EXACT_SHADOW", verdict: "baseline / shadow" },
+    { rank: "1", model: "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP", current: "YES", source: "SCORE_GE_72_AVOID_6_24H", exact: "APPROX_NEEDS_RECON", verdict: "CURRENT — hold, verify" },
+    { rank: "2", model: "ALT1_ONE_PER_EVENT_BEST_COVERAGE", current: "NO", source: "ONE_PER_EVENT_SCORE_GE_72_BEST_COVERAGE", exact: "APPROX_NEEDS_RECON", verdict: "observe" },
+    { rank: "3", model: "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH", current: "NO", source: "FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH_APPROX", exact: "APPROX_NEEDS_RECON", verdict: "observe, high DD" },
+    { rank: "4", model: "ALT3_V1_AVOID_NBA_NHL", current: "NO", source: "ALT3_FLAT10_RAW_PROFIT_APPROX", exact: "APPROX_NEEDS_RECON", verdict: "observe" },
+    { rank: "5", model: "ALT4_AVOID_NBA_NHL_PLUS_COV75", current: "NO", source: "COVERAGE_75_SCORE_GE_72", exact: "APPROX_NEEDS_RECON", verdict: "observe only if data exists" },
+  ];
+  const rows: CsvRow[] = [buildRealizedLastNightRow(nightRows)];
+  const seen = new Map<string, string>();
+  const duplicateNotes: string[] = [];
+  for (const spec of specs) {
+    const policy = pickPolicy(policies, [spec.source]);
+    if (!policy) continue;
+    if (spec.model !== "BASELINE_V1_CONTROL" && safeNum(policy.N) === 0) continue;
+    const signature = metricSignature(policy);
+    const previous = seen.get(signature);
+    if (previous) {
+      duplicateNotes.push(`${spec.model} collapsed into ${previous} because strict token set/metrics matched`);
+      continue;
+    }
+    seen.set(signature, spec.model);
+    rows.push({
+      rank: spec.rank,
+      model: spec.model,
+      "current?": spec.current,
+      exact_or_approx: spec.exact,
+      N: policy.N,
+      "24h_N": policy["24h_N"],
+      "24h_roi": percentText(policy["24h_roi"]),
+      "48h_N": policy["48h_N"],
+      "48h_roi": percentText(policy["48h_roi"]),
+      "96h_N": policy["96h_N"],
+      "96h_roi": percentText(policy["96h_roi"]),
+      "7d_N": policy["7d_N"],
+      "7d_roi": percentText(policy["7d_roi"]),
+      maxDD: moneyText(policy.max_dd),
+      pnlDD: policy.pnl_dd,
+      survives_300: "YES",
+      verdict: spec.verdict,
+    });
+  }
+  return { rows: rows.slice(0, 7), duplicateNotes: duplicateNotes.join("; ") || "none" };
+}
+
+function buildCeoDecisionRows(opts: {
+  reportStatus: ReportStatus;
+  strictNow: number;
+  strict24h: number;
+  events: number;
+  primary: PolicyRow | null;
+  altRows: CsvRow[];
+  latestResolver: JobRun | null;
+  latestSignalCache: JobRun | null;
+  nightRows: CsvRow[];
+  analyzerError: string | null;
+  currentBankrollSurvives: boolean;
+}): Array<[string | null, string]> {
+  const status = opts.reportStatus !== "FULL_ANALYZER_OK" || !opts.currentBankrollSurvives ? "RED" : "YELLOW";
+  const realRows = opts.nightRows.filter((row) => row.scope !== "NIGHT SUMMARY" && row.scope !== "NO_REAL_EXECUTOR_ORDERS");
+  const modelMetricState = "MODEL_METRICS_APPROX_NEEDS_RECON";
+  const nightExecutionState = realRows.length === 0 ? "NO_REAL_EXECUTOR_ROWS" : "REAL_EXECUTOR_ROWS_FOUND";
+  const topAction = !opts.currentBankrollSurvives
+    ? "HOLD — current bankroll row fails $300 survival in reconstructed run; do not scale."
+    : status === "RED"
+    ? "REVIEW — analyzer/fallback state prevents model scaling; keep current executor settings unchanged."
+    : "HOLD — keep current model while exact reconstruction is verified.";
+  const altLines = opts.altRows
+    .filter((row) => String(row.model ?? "").startsWith("ALT"))
+    .slice(0, 3)
+    .map((row) => `${row.model} | 7d_roi ${row["7d_roi"]} | maxDD ${row.maxDD} | ${row.verdict}`);
+  while (altLines.length < 3) altLines.push("N/A | 7d_roi N/A | maxDD N/A | NEED_MORE_DATA");
+  return [
+    ["CEO MORNING DECISION", ""],
+    [null, ""],
+    ["STATUS", status],
+    ["VERDICT", status === "RED" ? "Do not change model today; report is fallback/recomputed or night data is incomplete." : "Use the current model for review only; hold live configuration until exact reconstruction is complete."],
+    ["CURRENT MODEL", `PRIMARY_V1_AVOID_NBA_NHL_COV_CAP (role: current primary / live candidate)`],
+    ["DATA TRUST", `analyzer_state=${opts.reportStatus === "FULL_ANALYZER_OK" ? "OK" : opts.reportStatus} | model_metric_state=${modelMetricState} | night_execution_state=${nightExecutionState} | freeze N=${opts.strictNow} | new 24h=${opts.strict24h}`],
+    ["TONIGHT", !opts.currentBankrollSurvives ? "NO-GO FOR SCALING / HOLD SAFE MODE ONLY: current bankroll row fails $300 survival in this reconstructed run; reduce/hold until exact check." : status === "RED" ? "NO-GO FOR SCALING / HOLD SAFE MODE ONLY; 5 slots max, $300 bankroll cap, stop after 2 consecutive live losses." : "GO only at current size; hold slots, $300 bankroll cap, stop after 2 consecutive live losses."],
+    ["REALITY CHECK", realRows.length === 0 ? "No real executor orders found; alert emails are not execution proof." : `Last night real executor rows: ${realRows.length}; compare realized results against 96h/7d model windows before increasing slots.`],
+    ["TOP ACTION TODAY", topAction],
+    [null, ""],
+    ["3 ALT MODELS", altLines[0]],
+    [null, altLines[1]],
+    [null, altLines[2]],
+    [null, ""],
+    ["JOB HEALTH", `resolver=${opts.latestResolver?.status ?? "N/A"}; signal-cache=${opts.latestSignalCache?.status ?? "N/A"}; events=${opts.events}`],
+  ];
+}
+
+function buildCeoDataQualityRows(opts: {
+  reportStatus: ReportStatus;
+  analyzerError: string | null;
+  freezePath: string;
+  latestResolver: JobRun | null;
+  latestSignalCache: JobRun | null;
+  duplicateNotes: string;
+  policyRows: CsvRow[];
+  nightRowsRaw: OrderEventRow[];
+  validationFailures: string[];
+}): CsvRow[] {
+  const nightExecutionState = opts.nightRowsRaw.length === 0 ? "NO_REAL_EXECUTOR_ROWS" : "REAL_EXECUTOR_ROWS_FOUND";
+  return [
+    { field: "analyzer_state", value: opts.reportStatus === "FULL_ANALYZER_OK" ? "OK" : opts.reportStatus },
+    { field: "model_metric_state", value: "APPROX_NEEDS_RECON" },
+    { field: "night_execution_state", value: nightExecutionState },
+    { field: "fallback_reason", value: opts.analyzerError ?? "none" },
+    { field: "freeze_path", value: opts.freezePath },
+    { field: "resolver_status", value: jobSummary(opts.latestResolver) },
+    { field: "signal_cache_status", value: jobSummary(opts.latestSignalCache) },
+    { field: "missing_fields", value: "coverage/timing may be partial; approximate rows marked APPROX_NEEDS_RECON" },
+    { field: "duplicate_policies_collapsed", value: opts.duplicateNotes },
+    { field: "night_execution_source", value: `executor_order_events rows=${opts.nightRowsRaw.length}` },
+    { field: "workbook_gate_failures", value: opts.validationFailures.join("; ") || "none" },
+    { field: "raw_policy_dump", value: JSON.stringify(opts.policyRows).slice(0, 20000) },
+  ];
+}
+
+function styleHeader(row: ExcelJS.Row): void {
+  row.font = { name: "Arial", bold: true, color: { argb: "FFFFFFFF" } };
+  row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1F4E79" } };
+  row.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
+}
+
+function fillRow(row: ExcelJS.Row, argb: string): void {
+  row.eachCell({ includeEmpty: true }, (cell) => {
+    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb } };
   });
+}
+
+function clearWorksheetValues(ws: ExcelJS.Worksheet): void {
+  const maxRow = Math.max(ws.rowCount, ws.actualRowCount, 30);
+  const maxCol = Math.max(ws.columnCount, 20);
+  for (let rowNumber = 1; rowNumber <= maxRow; rowNumber++) {
+    const row = ws.getRow(rowNumber);
+    for (let colNumber = 1; colNumber <= maxCol; colNumber++) {
+      row.getCell(colNumber).value = null;
+    }
+  }
+}
+
+function applyTableSheet(ws: ExcelJS.Worksheet, headers: string[], rows: CsvRow[]): void {
+  clearWorksheetValues(ws);
+  const headerRow = ws.getRow(1);
+  headers.forEach((header, index) => {
+    headerRow.getCell(index + 1).value = header;
+  });
+  styleHeader(headerRow);
+  rows.forEach((row, index) => {
+    const target = ws.getRow(index + 2);
+    headers.forEach((header, cellIndex) => {
+      target.getCell(cellIndex + 1).value = row[header] ?? "";
+    });
+  });
+  ws.views = [{ state: "frozen", ySplit: 1, showGridLines: false }];
+  headers.forEach((header, index) => {
+    const column = ws.getColumn(index + 1);
+    const maxLen = Math.max(header.length, ...rows.map((row) => String(row[header] ?? "").length));
+    column.width = Math.max(10, Math.min(maxLen + 2, 48));
+    column.alignment = { vertical: "top", wrapText: true };
+  });
+  ws.eachRow((row) => {
+    row.font = { name: "Arial", ...(row.font ?? {}) };
+  });
+}
+
+function applyCurrentModelSheet(ws: ExcelJS.Worksheet, rows: CsvRow[]): void {
+  applyTableSheet(ws, CURRENT_MODEL_HEADERS, rows);
+  const exact = String(rows[0]?.exact_or_approx ?? "");
+  if (exact.includes("APPROX")) {
+    const warning = ws.getRow(4);
+    warning.getCell(1).value = "RED FLAG: current model is APPROX, not EXACT. Re-run analyzer before trusting deploy_status.";
+    warning.font = { name: "Arial", bold: true, color: { argb: "FF9C0006" } };
+    warning.alignment = { vertical: "top", wrapText: true };
+    fillRow(warning, "FFFFC7CE");
+  }
+}
+
+function applyRecentWindowsSheet(ws: ExcelJS.Worksheet, rows: CsvRow[]): void {
+  clearWorksheetValues(ws);
+  const headerRow = ws.getRow(1);
+  RECENT_WINDOWS_HEADERS.forEach((header, index) => {
+    headerRow.getCell(index + 1).value = header;
+  });
+  styleHeader(headerRow);
+  const allPartial = rows.length > 0 && rows.every((row) => row.trust_flag === "PARTIAL");
+  let startRow = 2;
+  if (allPartial) {
+    const warning = ws.getRow(2);
+    warning.getCell(1).value = "ALL WINDOWS PARTIAL — directional only";
+    warning.font = { name: "Arial", bold: true, color: { argb: "FF9C6500" } };
+    warning.alignment = { vertical: "top", wrapText: true };
+    fillRow(warning, "FFFFEB9C");
+    startRow = 3;
+  }
+  rows.forEach((row, index) => {
+    const target = ws.getRow(startRow + index);
+    RECENT_WINDOWS_HEADERS.forEach((header, cellIndex) => {
+      target.getCell(cellIndex + 1).value = row[header] ?? "";
+    });
+  });
+  RECENT_WINDOWS_HEADERS.forEach((header, index) => {
+    const column = ws.getColumn(index + 1);
+    column.width = Math.max(10, Math.min(header.length + 18, 42));
+    column.alignment = { vertical: "top", wrapText: true };
+  });
+}
+
+function applyDecisionSheet(ws: ExcelJS.Worksheet, rows: Array<[string | null, string]>): void {
+  clearWorksheetValues(ws);
+  rows.forEach(([label, value], index) => {
+    const row = ws.getRow(index + 1);
+    row.getCell(1).value = label ?? "";
+    if (value !== "") row.getCell(2).value = value;
+  });
+  ws.getColumn(1).width = 24;
+  ws.getColumn(2).width = 100;
+  ws.eachRow((row) => {
+    row.font = { name: "Arial", ...(row.font ?? {}) };
+    row.alignment = { vertical: "top", wrapText: true };
+  });
+  const title = ws.getRow(1);
+  title.font = { name: "Arial", bold: true, size: 16, color: { argb: "FFFFFFFF" } };
+  fillRow(title, "FF1F4E79");
+  const status = String(ws.getCell("B3").value ?? "");
+  const statusColor = status === "GREEN" ? "FFC6EFCE" : status === "YELLOW" ? "FFFFEB9C" : "FFFFC7CE";
+  fillRow(ws.getRow(3), statusColor);
+  ws.getRow(3).font = { name: "Arial", bold: true };
+}
+
+function applyCeoFills(workbook: ExcelJS.Workbook): void {
+  const current = workbook.getWorksheet("01_Current_Model");
+  current?.eachRow((row, n) => {
+    if (n === 1) return;
+    if (String(row.getCell(3).value ?? "") === "YES") fillRow(row, "FFC6EFCE");
+    if (String(row.getCell(4).value ?? "").includes("APPROX")) fillRow(row, "FFFFC7CE");
+  });
+  const ranking = workbook.getWorksheet("02_Model_Ranking");
+  ranking?.eachRow((row, n) => {
+    if (n === 1) return;
+    const exact = String(row.getCell(4).value ?? "");
+    if (String(row.getCell(2).value ?? "").startsWith("REALIZED_LAST_NIGHT")) fillRow(row, "FFFFEB9C");
+    else if (String(row.getCell(3).value ?? "") === "YES") fillRow(row, "FFC6EFCE");
+    else if (exact.includes("APPROX")) fillRow(row, "FFD9D9D9");
+  });
+  const bankroll = workbook.getWorksheet("03_Bankroll");
+  bankroll?.eachRow((row, n) => {
+    if (n > 1 && String(row.getCell(2).value ?? "") === "YES") fillRow(row, "FFC6EFCE");
+    if (n > 1 && String(row.getCell(11).value ?? "") === "NO") fillRow(row, "FFFFC7CE");
+  });
+  const recent = workbook.getWorksheet("04_Recent_Windows");
+  recent?.eachRow((row, n) => {
+    if (n > 1 && String(row.getCell(7).value ?? "") === "PARTIAL") fillRow(row, "FFFFEB9C");
+  });
+  const night = workbook.getWorksheet("05_Night_Execution");
+  if (night && night.rowCount >= 2) fillRow(night.getRow(2), "FFD9EAF7");
+}
+
+function assertTemplate(workbook: ExcelJS.Workbook): void {
+  const names = workbook.worksheets.map((ws) => ws.name);
+  const expected = [...CEO_SHEETS];
+  if (names.join("|") !== expected.join("|")) {
+    throw new Error(`CEO template sheet mismatch: got ${names.join(", ")} expected ${expected.join(", ")}`);
+  }
+}
+
+function noBadHeaderText(headers: string[]): boolean {
+  return !headers.some((header) => /[\u0400-\u04FF]|\uFFFD|�/.test(header));
+}
+
+function validateCeoWorkbook(workbook: ExcelJS.Workbook): string[] {
+  const failures: string[] = [];
+  const names = workbook.worksheets.map((ws) => ws.name);
+  if (names.join("|") !== [...CEO_SHEETS].join("|")) failures.push(`sheet order mismatch: ${names.join(", ")}`);
+  if (workbook.worksheets[0]?.name !== "00_CEO_Decision") failures.push("00_CEO_Decision is not sheet index 0");
+  if (workbook.getWorksheet("06_Data_Quality")?.state !== "hidden") failures.push("06_Data_Quality is not hidden");
+  const current = workbook.getWorksheet("01_Current_Model");
+  const ceo = workbook.getWorksheet("00_CEO_Decision");
+  const bankroll = workbook.getWorksheet("03_Bankroll");
+  const ranking = workbook.getWorksheet("02_Model_Ranking");
+  const recent = workbook.getWorksheet("04_Recent_Windows");
+  const night = workbook.getWorksheet("05_Night_Execution");
+  if (!current || !bankroll || !ranking || !night) failures.push("required sheet missing");
+  const currentYes = current ? current.getColumn(3).values.filter((v) => v === "YES").length : 0;
+  if (currentYes !== 1) failures.push(`01_Current_Model current YES count=${currentYes}`);
+  if (String(ceo?.getCell("A1").value ?? "") !== "CEO MORNING DECISION") failures.push("00_CEO_Decision A1 overwritten");
+  const dataTrust = String(ceo?.getCell("B6").value ?? "");
+  if (!dataTrust.includes("model_metric_state=MODEL_METRICS_APPROX_NEEDS_RECON")) failures.push("DATA TRUST missing model metric approximate state");
+  if (!dataTrust.includes("night_execution_state=")) failures.push("DATA TRUST missing night execution state");
+  const currentExact = String(current?.getCell("D2").value ?? "");
+  const warningText = current ? Array.from({ length: Math.max(6, current.rowCount) }, (_, i) => String(current.getRow(i + 1).getCell(1).value ?? "")).join(" ") : "";
+  if (currentExact.includes("APPROX") && !warningText.includes("RED FLAG: current model is APPROX")) failures.push("01_Current_Model missing visible red warning");
+  const deployStatus = String(current?.getCell("L2").value ?? "");
+  if (currentExact.includes("APPROX") && /(LIVE_SAFE|SAFE_TO_DEPLOY|EXACT_VERIFIED)$/i.test(deployStatus)) failures.push("approx current model deploy_status presented as safe");
+  const bankrollYes = bankroll ? bankroll.getColumn(2).values.filter((v) => v === "YES").length : 0;
+  if (bankrollYes !== 1) failures.push(`03_Bankroll current YES count=${bankrollYes}`);
+  const currentBankRow = bankroll ? Array.from({ length: bankroll.rowCount }, (_, i) => bankroll.getRow(i + 1)).find((row) => row.getCell(2).value === "YES") : null;
+  if (String(currentBankRow?.getCell(11).value ?? "") === "NO") {
+    if (String(ceo?.getCell("B3").value ?? "") !== "RED") failures.push("unsafe current bankroll did not force CEO RED");
+    if (!/NO-GO FOR SCALING|HOLD SAFE MODE ONLY/i.test(String(ceo?.getCell("B7").value ?? ""))) failures.push("unsafe current bankroll TONIGHT missing NO-GO/HOLD safe mode");
+    if (!/^(HOLD|REDUCE)\b/.test(String(ceo?.getCell("B9").value ?? ""))) failures.push("unsafe current bankroll TOP ACTION not HOLD/REDUCE");
+  }
+  const rankingModels = ranking ? [...ranking.getColumn(2).values].map((v) => String(v ?? "")) : [];
+  if (!rankingModels.some((v) => v.startsWith("REALIZED_LAST_NIGHT"))) failures.push("02_Model_Ranking missing REALIZED_LAST_NIGHT row");
+  const rankingHeaders = ranking ? [...ranking.getRow(1).values as unknown[]].slice(1).map(String) : [];
+  for (const header of ["24h_N", "24h_roi", "48h_N", "48h_roi", "96h_N", "96h_roi", "7d_N", "7d_roi"]) {
+    if (!rankingHeaders.includes(header)) failures.push(`02_Model_Ranking missing ${header}`);
+  }
+  const nightHeaders = night ? [...night.getRow(1).values as unknown[]].slice(1).map(String) : [];
+  if (!nightHeaders.includes("tier_model")) failures.push("05_Night_Execution missing tier_model");
+  if (!nightHeaders.includes("fee_slippage_pct_of_stake")) failures.push("05_Night_Execution missing fee_slippage_pct_of_stake");
+  if (night && String(night.getCell("B2").value ?? "") !== "NIGHT SUMMARY") failures.push("05_Night_Execution missing blue summary row");
+  if (night && night.rowCount < 3) failures.push("05_Night_Execution missing real/reason row");
+  const altText = [ceo?.getCell("B11").value, ceo?.getCell("B12").value, ceo?.getCell("B13").value].map((v) => String(v ?? "")).join(" ");
+  if (altText.includes("BASELINE_V1_CONTROL")) failures.push("3 ALT MODELS includes baseline");
+  const recentValues = recent ? Array.from({ length: recent.rowCount }, (_, i) => recent.getRow(i + 1).values).flat().map(String) : [];
+  if (recentValues.includes("PARTIAL") && !recentValues.some((v) => v.includes("ALL WINDOWS PARTIAL"))) failures.push("04_Recent_Windows missing PARTIAL warning");
+  if (night && String(night.getCell("B3").value ?? "") === "NO_REAL_EXECUTOR_ORDERS") {
+    if (!String(ceo?.getCell("B8").value ?? "").includes("No real executor orders found; alert emails are not execution proof.")) failures.push("CEO REALITY CHECK missing no-real-execution warning");
+  }
+  for (const ws of workbook.worksheets) {
+    const headers = [...ws.getRow(1).values as unknown[]].slice(1).map((v) => String(v ?? ""));
+    if (!noBadHeaderText(headers)) failures.push(`${ws.name} has Cyrillic or replacement character in header`);
+    ws.eachRow((row) => row.eachCell((cell) => {
+      const value = String(cell.value ?? "");
+      if (["#REF!", "#DIV/0!", "#VALUE!", "#NAME?", "#N/A"].some((err) => value.includes(err))) {
+        failures.push(`${ws.name}!${cell.address} has formula error ${value}`);
+      }
+    }));
+  }
+  const seenModels = new Set<string>();
+  for (const model of rankingModels.slice(2).filter(Boolean)) {
+    if (seenModels.has(model)) failures.push(`duplicate policy row in 02_Model_Ranking: ${model}`);
+    seenModels.add(model);
+  }
+  const status = String(workbook.getWorksheet("00_CEO_Decision")?.getCell("B3").value ?? "");
+  const dqFields = workbook.getWorksheet("06_Data_Quality")?.getColumn(1).values.map((v) => String(v ?? "")) ?? [];
+  if (!dqFields.includes("model_metric_state")) failures.push("06_Data_Quality missing model_metric_state");
+  if (!dqFields.includes("night_execution_state")) failures.push("06_Data_Quality missing night_execution_state");
+  const analyzerState = String(workbook.getWorksheet("06_Data_Quality")?.getCell("B2").value ?? "");
+  if (analyzerState !== "OK" && status !== "RED") failures.push(`status light ${status} does not reflect analyzer_state=${analyzerState}`);
+  return [...new Set(failures)];
+}
+
+async function writeCeoMorningWorkbook(opts: {
+  workbookPath: string;
+  reportStatus: ReportStatus;
+  strictNow: number;
+  strict24h: number;
+  events: number;
+  freezePath: string;
+  latestResolver: JobRun | null;
+  latestSignalCache: JobRun | null;
+  analyzerError: string | null;
+  policyRows: PolicyRow[];
+  nightRows: CsvRow[];
+  nightRowsRaw: OrderEventRow[];
+  validationFailures: string[];
+}): Promise<string[]> {
+  const template = new ExcelJS.Workbook();
+  await template.xlsx.readFile(CEO_TEMPLATE_PATH);
+  assertTemplate(template);
+  const workbook = template;
+  const primary = pickPolicy(opts.policyRows, ["SCORE_GE_72_AVOID_6_24H", "SCORE_GE_72", "ONE_PER_EVENT_SCORE_GE_72"]);
+  const currentRows = buildCeoCurrentModelRows(primary, opts.reportStatus);
+  const ranking = buildCeoModelRankingRows(opts.policyRows, opts.nightRows);
+  const bankrollRows = buildCeoBankrollRows(opts.policyRows);
+  const currentBankrollSurvives = bankrollRows.find((row) => row["current?"] === "YES")?.survives_300 === "YES";
+  const recentRows = buildCeoRecentWindows(primary, opts.reportStatus);
+  const decisionRows = buildCeoDecisionRows({
+    reportStatus: opts.reportStatus,
+    strictNow: opts.strictNow,
+    strict24h: opts.strict24h,
+    events: opts.events,
+    primary,
+    altRows: ranking.rows,
+    latestResolver: opts.latestResolver,
+    latestSignalCache: opts.latestSignalCache,
+    nightRows: opts.nightRows,
+    analyzerError: opts.analyzerError,
+    currentBankrollSurvives,
+  });
+  const dqRows = buildCeoDataQualityRows({
+    reportStatus: opts.reportStatus,
+    analyzerError: opts.analyzerError,
+    freezePath: opts.freezePath,
+    latestResolver: opts.latestResolver,
+    latestSignalCache: opts.latestSignalCache,
+    duplicateNotes: ranking.duplicateNotes,
+    policyRows: opts.policyRows,
+    nightRowsRaw: opts.nightRowsRaw,
+    validationFailures: opts.validationFailures,
+  });
+
+  applyDecisionSheet(workbook.getWorksheet("00_CEO_Decision")!, decisionRows);
+  applyCurrentModelSheet(workbook.getWorksheet("01_Current_Model")!, currentRows);
+  applyTableSheet(workbook.getWorksheet("02_Model_Ranking")!, MODEL_RANKING_HEADERS, ranking.rows);
+  applyTableSheet(workbook.getWorksheet("03_Bankroll")!, CEO_BANKROLL_HEADERS, bankrollRows);
+  applyRecentWindowsSheet(workbook.getWorksheet("04_Recent_Windows")!, recentRows);
+  applyTableSheet(workbook.getWorksheet("05_Night_Execution")!, NIGHT_HEADERS, opts.nightRows);
+  applyTableSheet(workbook.getWorksheet("06_Data_Quality")!, DATA_QUALITY_HEADERS, dqRows);
+  workbook.getWorksheet("06_Data_Quality")!.state = "hidden";
+  applyCeoFills(workbook);
+  workbook.creator = "PolyProPicks";
+  workbook.modified = new Date();
+  const failures = validateCeoWorkbook(workbook);
+  await mkdir(path.dirname(opts.workbookPath), { recursive: true });
+  await workbook.xlsx.writeFile(opts.workbookPath);
+  return failures;
 }
 
 
@@ -1119,46 +1723,24 @@ async function main() {
     await writeFile(reportPath, reportText + "\n", "utf8");
   }
 
-  const summaryRows = [
-    { Metric: 'Run time', Value: now.toISOString(), Notes: '' },
-    { Metric: 'Freeze', Value: freezePath, Notes: '' },
-    { Metric: 'Resolved strict tokens now', Value: strictNow, Notes: '' },
-    { Metric: 'New resolved strict tokens last 24h', Value: strict24h, Notes: '' },
-    { Metric: 'Events in freeze', Value: events, Notes: '' },
-    { Metric: 'Newest resolved_at', Value: fmtDate(newestResolvedAt), Notes: '' },
-    {
-      Metric: 'Latest resolver',
-      Value: latestResolver ? (latestResolver.status ?? 'N/A') : 'N/A',
-      Notes: latestResolver
-        ? `selected=${safeNum(latestResolver.diagnostics?.selected)} generated=${latestResolver.generated_count ?? 'N/A'} skipped=${latestResolver.rejected_count ?? 'N/A'}`
-        : '',
-    },
-    {
-      Metric: 'Latest signal-cache',
-      Value: latestSignalCache ? (latestSignalCache.status ?? 'N/A') : 'N/A',
-      Notes: latestSignalCache
-        ? `generated=${latestSignalCache.generated_count ?? 'N/A'} skipped=${latestSignalCache.rejected_count ?? 'N/A'}`
-        : '',
-    },
-    { Metric: 'Status', Value: reportStatus, Notes: reportStatus === "FULL_ANALYZER_OK" ? "Analyzer completed and workbook gates passed." : "Fallback or no-data gate activated." },
-    { Metric: 'Analyzer state', Value: fallback ? 'FALLBACK_RECOMPUTED' : 'PASS', Notes: analyzerError ?? '' },
-    { Metric: 'Email recipient', Value: EMAIL_RECIPIENT, Notes: '' },
-    { Metric: 'Subject', Value: subject, Notes: '' },
-    { Metric: 'Artifact', Value: reportPath, Notes: 'MORNING_REPORT.md' },
-    { Metric: 'Artifact', Value: workbookPath, Notes: 'XLSX workbook with 6 analytical tabs' },
-    { Metric: 'Recommendation', Value: reportStatus === "FAIL_NO_DATA" ? "Do not use this report for model decisions." : "Use workbook tabs for model review; do not change live executor without separate approval.", Notes: validationFailures.join("; ") },
-    { Metric: 'Notice', Value: 'Night-plan and alert emails are separate and should still send.', Notes: '' },
-  ];
-
-  await writeWorkbookXlsx(workbookPath, [
-    { name: '00_Summary', headers: ['Metric', 'Value', 'Notes'], rows: summaryRows },
-    { name: '01_Policy KPIs', headers: POLICY_HEADERS, rows: policyRows },
-    { name: '02_Decision Board', headers: DECISION_HEADERS, rows: decisionRows },
-    { name: '03_Bankroll', headers: BANKROLL_HEADERS, rows: bankrollRows },
-    { name: '04_Window Models', headers: WINDOW_HEADERS, rows: windowRows },
-    { name: '05_Freeze Ranking', headers: FREEZE_RANK_HEADERS, rows: freezeRows },
-    { name: '06_Night Execution', headers: NIGHT_HEADERS, rows: nightRows },
-  ]);
+  const workbookGateFailures = await writeCeoMorningWorkbook({
+    workbookPath,
+    reportStatus,
+    strictNow,
+    strict24h,
+    events,
+    freezePath,
+    latestResolver,
+    latestSignalCache,
+    analyzerError,
+    policyRows: policyRows as PolicyRow[],
+    nightRows,
+    nightRowsRaw,
+    validationFailures,
+  });
+  if (workbookGateFailures.length > 0) {
+    throw new Error(`CEO workbook quality gates failed: ${workbookGateFailures.join("; ")}`);
+  }
 
   const bestCandidate = [...policyRows].sort((a, b) => (safeNum(b.pnl_dd) ?? -999) - (safeNum(a.pnl_dd) ?? -999))[0];
   const emailText = [
@@ -1215,6 +1797,7 @@ async function main() {
       runSummary: runSummaryPath,
       workbook: workbookPath,
     },
+    workbookGateFailures,
   };
 
   console.log(JSON.stringify(summary, null, 2));

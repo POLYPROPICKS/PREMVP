@@ -250,6 +250,21 @@ function deriveMatchFamilyKey(row: any, identityText: string): {
     };
   }
 
+  if (!identityText.match(/\bvs\.?\b/i) && /\bmatch\s+winner\b/i.test(identityText)) {
+    const team = identityText
+      .replace(/\bmatch\s+winner\b/i, "")
+      .replace(/[—–-]+/g, " ")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-");
+    return {
+      key: `WEAK_SINGLE_TEAM_MATCH_WINNER:${team || "unknown"}`,
+      source: "condition_id_weak",
+      quality: "WEAK",
+      canonicalEventKey: null,
+    };
+  }
+
   // Priority 3: any other event slug (non-fifwc).
   if (rawEventSlug) {
     return { key: rawEventSlug, source: "event_slug", quality: "MEDIUM", canonicalEventKey: rawEventSlug };
@@ -334,8 +349,14 @@ function computeLiveEligibility(
   hoursToStart: number,
   identityQuality: IdentityQuality
 ): { liveEligible: boolean; liveRejectionReason: string | null } {
-  if (tier === "TIER3_MICRO_EXPAND_50_COV25") {
-    return { liveEligible: false, liveRejectionReason: "TIER3_LIVE_BLOCKED" };
+  if (tier !== "TIER1_CORE_STRICT_72_COV50") {
+    return {
+      liveEligible: false,
+      liveRejectionReason:
+        tier === "TIER3_MICRO_EXPAND_50_COV25"
+          ? "TIER3_LIVE_BLOCKED"
+          : "TIER1_ONLY_LIVE_BLOCKED",
+    };
   }
   if (identityQuality === "WEAK" || identityQuality === "INVALID") {
     return { liveEligible: false, liveRejectionReason: "WEAK_IDENTITY_LIVE_BLOCKED" };
@@ -364,6 +385,9 @@ export async function buildFireModelCandidates(
   planningMode = false
 ): Promise<{ candidates: FireModelCandidate[]; rawDiagnostics: RawPlanningDiagnostics | null }> {
   const versions = planningMode ? PLANNING_ALLOWED_VERSIONS : ALLOWED_VERSIONS;
+  if (!planningMode) {
+    console.log("[ireland-executor] TIER1_ONLY guard active");
+  }
 
   const { data, error } = await supabaseAdmin
     .from("generated_signal_pairs")
@@ -563,6 +587,12 @@ export async function buildFireModelCandidates(
       hoursToStart,
       identityQuality
     );
+    if (!planningMode && liveRejectionReason === "TIER1_ONLY_LIVE_BLOCKED") {
+      console.log("[ireland-executor] rejected non-tier1 candidate", {
+        signal_id: row.id,
+        strategy: tier,
+      });
+    }
 
     // Pilot scope allowlist: PILOT_ALLOWED_SCOPES=MLB,ESPORT,ESPORTS
     // When set, live eligibility is restricted to the listed strategic scopes only.
