@@ -22,19 +22,8 @@ type CanonicalRow = RawRow & {
   __strict_rank: [number, number, number, number, number];
 };
 
-const BASE_MODELING_DIR = path.resolve(
-  process.cwd(),
-  "modeling",
-  "ice1_modeling_20260617_0800_minsk",
-);
-const SOURCE_ANALYZER = path.resolve(
-  BASE_MODELING_DIR,
-  "scripts",
-  "analyze_ice1_freeze.py",
-);
-
+const TRACKED_ANALYZER = path.resolve(process.cwd(), "scripts", "modeling", "analyze-ice1-freeze.py");
 const INPUT_NAME = "resolved_freeze.csv";
-const ANALYZER_INPUT_NAME = INPUT_NAME;
 const REPORT_ROOT = path.resolve(process.cwd(), "modeling", "morning_model_report");
 
 function argValue(prefix: string): string | null {
@@ -200,24 +189,18 @@ async function fetchNightExecutionSlice(startIso: string, endIso: string): Promi
   return (data ?? []) as OrderEventRow[];
 }
 
-async function ensureAnalyzerCopy(reportDir: string): Promise<string> {
-  const scriptDir = path.join(reportDir, "scripts");
-  const analyzerPath = path.join(scriptDir, "analyze_ice1_freeze.py");
-  await mkdir(scriptDir, { recursive: true });
-  const src = await readFile(SOURCE_ANALYZER, "utf8");
-  const patched = src.replace(
-    /INPUT = BASE \/ "input" \/ "ice1_resolved_now_freeze_2026_06_17_0800_minsk\.csv"/,
-    `INPUT = BASE / "input" / "${ANALYZER_INPUT_NAME}"`,
-  );
-  await writeFile(analyzerPath, patched, "utf8");
-  return analyzerPath;
-}
-
-async function runAnalyzer(analyzerPath: string): Promise<void> {
-  const py = spawnSync("python", [analyzerPath], {
-    cwd: path.dirname(path.dirname(analyzerPath)),
+async function runAnalyzer(reportDir: string, freezePath: string, reportsDir: string, tablesDir: string): Promise<void> {
+  const py = spawnSync("python", [TRACKED_ANALYZER], {
+    cwd: process.cwd(),
     encoding: "utf8",
     stdio: "pipe",
+    env: {
+      ...process.env,
+      ICE1_MODEL_BASE_DIR: reportDir,
+      ICE1_MODEL_INPUT_PATH: freezePath,
+      ICE1_MODEL_REPORTS_DIR: reportsDir,
+      ICE1_MODEL_TABLES_DIR: tablesDir,
+    },
   });
   if (py.status !== 0) {
     throw new Error((py.stderr || py.stdout || "analyzer failed").slice(0, 800));
@@ -483,8 +466,7 @@ async function main() {
   });
   await writeCsv(freezePath, csvRows, headers);
 
-  const analyzerPath = await ensureAnalyzerCopy(reportDir);
-  await runAnalyzer(analyzerPath);
+  await runAnalyzer(reportDir, freezePath, reportsDir, tablesDir);
 
   const summaryMd = await readFile(path.join(reportsDir, "00_input_freeze_summary.md"), "utf8");
   const policyCsvPath = path.join(tablesDir, "policy_kpis.csv");

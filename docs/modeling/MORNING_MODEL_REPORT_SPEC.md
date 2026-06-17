@@ -19,6 +19,9 @@ Send a founder-readable daily morning report that freezes the latest resolved st
 5. Write local reports and tables under the same timestamped folder.
 6. Email the founder when the runner is invoked in send mode.
 
+Implementation note:
+- The analyzer must come from the tracked repo path `scripts/modeling/analyze-ice1-freeze.py`; production must not depend on any `modeling/ice1_modeling_*` snapshot folder.
+
 ## Email Sections
 
 - Corpus summary
