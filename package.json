@@ -9,6 +9,7 @@
     "lint": "eslint",
     "generate:signals": "tsx scripts/generate-signals.ts",
     "resolve:signals": "tsx scripts/resolve-signals.ts",
+    "resolve:signals:cron": "tsx scripts/resolve-signals.ts --write --only-expired --order=oldest --dedupe-strict --limit=500 --max-updates=50",
     "audit:sports-sources": "tsx scripts/audit-polymarket-sports-sources.ts",
     "firemodel1:checkpoint": "tsx scripts/firemodel1-checkpoint.ts",
     "firemodel1:roi": "tsx scripts/firemodel1-roi-sanity.ts",
