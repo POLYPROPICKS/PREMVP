@@ -1,0 +1,72 @@
+[
+  {
+    "workbook": "polypropicks_morning_report_20260618.xlsx",
+    "sheet_name": "00_CEO_Decision",
+    "table_or_section": "CEO decision summary",
+    "current_generator_script_path": "scripts/morning-model-report.ts",
+    "current_function_or_query_name": "buildCeoDecisionRows / applyDecisionSheet",
+    "current_source_type": "MODELING_ARTIFACT",
+    "current_source_path_or_table": "reports/modeling/one_per_match_backtest/counterfactual_four_models_simulation.csv + Supabase public.executor_order_events",
+    "output_path": "modeling/morning_model_report/20260618_0600UTC/polypropicks_morning_report_20260618.xlsx",
+    "status": "TRUSTED_USED_NOW",
+    "known_failure": "Pre-patch ALT rows copied Primary 7d ROI through collapsed policy windows",
+    "required_invariant": "ALT1=14.96% 7d ROI, ALT3=14.18% 7d ROI, Primary=28.08% 7d ROI in one-match view",
+    "recommended_action": "KEEP"
+  },
+  {
+    "workbook": "polypropicks_morning_report_20260618.xlsx",
+    "sheet_name": "02_Model_Ranking",
+    "table_or_section": "CEO model ranking",
+    "current_generator_script_path": "scripts/morning-model-report.ts",
+    "current_function_or_query_name": "buildAcceptedCounterfactualPolicyRows / buildCeoModelRankingRows",
+    "current_source_type": "MODELING_ARTIFACT",
+    "current_source_path_or_table": "reports/modeling/one_per_match_backtest/counterfactual_four_models_simulation.csv",
+    "output_path": "modeling/morning_model_report/20260618_0600UTC/polypropicks_morning_report_20260618.xlsx",
+    "status": "TRUSTED_USED_NOW",
+    "known_failure": "Pre-patch Primary COV_CAP window metrics reused for Score, ALT1, ALT3",
+    "required_invariant": "Rows must use accepted counterfactual one-match metrics per model",
+    "recommended_action": "KEEP"
+  },
+  {
+    "workbook": "polypropicks_morning_report_20260618.xlsx",
+    "sheet_name": "05_Night_Execution",
+    "table_or_section": "night execution detail",
+    "current_generator_script_path": "scripts/morning-model-report.ts",
+    "current_function_or_query_name": "fetchNightExecutionSlice / buildNightExecutionRows",
+    "current_source_type": "SUPABASE_TABLE",
+    "current_source_path_or_table": "public.executor_order_events",
+    "output_path": "modeling/morning_model_report/20260618_0600UTC/polypropicks_morning_report_20260618.xlsx",
+    "status": "TRUSTED_USED_NOW",
+    "known_failure": "Previous rolling 12h window lost 10 source rows; repaired source window now returns 12 rows",
+    "required_invariant": "XLSX row count equals truth source row count; dry-run is not live",
+    "recommended_action": "KEEP"
+  },
+  {
+    "workbook": "ceo_dashboard_details_20260618.xlsx",
+    "sheet_name": "00_CEO Dashboard",
+    "table_or_section": "dashboard template body",
+    "current_generator_script_path": "scripts/morning-model-report.ts",
+    "current_function_or_query_name": "writeDashboardDetailsWorkbook / prependDashboardDatasetBanner",
+    "current_source_type": "TEMPLATE_ONLY",
+    "current_source_path_or_table": "ceo_dashboard_details2.xlsx",
+    "output_path": "modeling/morning_model_report/20260618_0600UTC/ceo_dashboard_details_20260618.xlsx",
+    "status": "STALE_TEMPLATE_ONLY",
+    "known_failure": "Legacy 238/223 values remain template references",
+    "required_invariant": "Must not present legacy values as current ICE 707/501",
+    "recommended_action": "MARK_LEGACY"
+  },
+  {
+    "workbook": "ice_four_models_counterfactual_20260618.xlsx",
+    "sheet_name": "Simulation Table",
+    "table_or_section": "four model counterfactual",
+    "current_generator_script_path": "scripts/morning-model-report.ts",
+    "current_function_or_query_name": "buildCounterfactualResult / writeCounterfactualWorkbook",
+    "current_source_type": "LOCAL_CSV",
+    "current_source_path_or_table": "modeling/ice1_modeling_20260617_post_resolver_707plus/input/ice1_resolved_post_resolver_707plus.csv",
+    "output_path": "modeling/morning_model_report/20260618_0600UTC/ice_four_models_counterfactual_20260618.xlsx",
+    "status": "TRUSTED_USED_NOW",
+    "known_failure": "None for source; preserve accepted metrics",
+    "required_invariant": "707 resolved rows, 501 events, SIMULATION_SANITY_PASS",
+    "recommended_action": "KEEP"
+  }
+]

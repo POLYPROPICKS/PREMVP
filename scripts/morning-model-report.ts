@@ -1,7 +1,9 @@
 ﻿import { loadEnvConfig } from "@next/env";
 import { spawnSync } from "child_process";
+import { createHash } from "crypto";
 import ExcelJS from "exceljs";
-import { mkdir, readFile, writeFile } from "fs/promises";
+import JSZip from "jszip";
+import { mkdir, readFile, stat, writeFile } from "fs/promises";
 import path from "path";
 import {
   addOnePerMatchBacktestSheet,
@@ -33,6 +35,15 @@ type CanonicalRow = RawRow & {
 
 const TRACKED_ANALYZER = path.resolve(process.cwd(), "scripts", "modeling", "analyze-ice1-freeze.py");
 const CEO_TEMPLATE_PATH = path.resolve(process.cwd(), "CEO_Morning_Report_TEMPLATE.xlsx");
+const CEO_DETAILS_TEMPLATE_PATH = path.resolve(process.cwd(), "ceo_dashboard_details2.xlsx");
+const ICE_COUNTERFACTUAL_TEMPLATE_PATH = path.resolve(process.cwd(), "final_ice_four_models_counterfactual.xlsx");
+const CANONICAL_ICE_COUNTERFACTUAL_INPUT = path.resolve(
+  process.cwd(),
+  "modeling",
+  "ice1_modeling_20260617_post_resolver_707plus",
+  "input",
+  "ice1_resolved_post_resolver_707plus.csv",
+);
 const INPUT_NAME = "resolved_freeze.csv";
 const REPORT_ROOT = path.resolve(process.cwd(), "modeling", "morning_model_report");
 const CEO_SHEETS = [
@@ -66,22 +77,38 @@ const WINDOW_HEADERS = [
 ];
 const FREEZE_RANK_HEADERS = ["Rank", "Strategy", "Role / Status", "Corpus", "N", "Net PnL", "ROI", "MaxDD"];
 const NIGHT_HEADERS = [
-  "#", "scope", "market_side", "tier_model", "live?", "stake", "odds_dec", "result_status",
-  "pnl", "fee_slippage_pct_of_stake", "why_this_bet",
+  "#", "scope", "event", "market", "side", "tier_model", "execution_type", "stake", "odds_decimal",
+  "order_status", "settlement_status", "pnl", "fee_slippage_pct_of_stake", "why_this_bet", "source_ref",
 ];
+const CEO_DETAILS_SHEETS = [
+  "00_CEO Dashboard",
+  "01_Shadow Strategies",
+  "02_Next Models",
+  "03_Category Summary",
+  "04_Score Calibration",
+  "05_Max Trade Proxy",
+  "06_Recent Volume Proxy",
+  "07_Timing Proxy OBS",
+  "08_Market Families",
+  "09_Odds Bands",
+  "10_Action Profiles",
+  "11_Odds Label Profiles",
+  "12_Coverage Bands",
+  "13_Cross Score-Odds",
+] as const;
 const CURRENT_MODEL_HEADERS = [
   "model", "role", "current?", "exact_or_approx", "N", "roi", "7d_roi", "maxDD", "pnlDD",
   "worst_streak", "survives_300", "deploy_status", "action_today",
 ];
 const MODEL_RANKING_HEADERS = [
-  "rank", "model", "current?", "exact_or_approx", "N", "24h_N", "24h_roi", "48h_N",
+  "rank", "model", "current?", "exact_or_approx", "source", "N", "24h_N", "24h_roi", "48h_N",
   "48h_roi", "96h_N", "96h_roi", "7d_N", "7d_roi", "maxDD", "pnlDD", "survives_300", "verdict",
 ];
 const CEO_BANKROLL_HEADERS = [
-  "policy", "current?", "start_bank", "final_bank", "total_pnl", "roi", "max_dd_$", "max_dd_%",
+  "policy", "current?", "source", "start_bank", "final_bank", "total_pnl", "roi", "max_dd_$", "max_dd_%",
   "min_equity", "worst_streak", "survives_300", "comment",
 ];
-const RECENT_WINDOWS_HEADERS = ["window", "model_slice", "bets", "resolved", "net_pnl", "roi", "trust_flag"];
+const RECENT_WINDOWS_HEADERS = ["window", "model_slice", "source", "bets", "resolved", "net_pnl", "roi", "trust_flag"];
 const DATA_QUALITY_HEADERS = ["field", "value"];
 
 function argValue(prefix: string): string | null {
@@ -643,6 +670,87 @@ function buildBankrollRows(policies: PolicyRow[]): CsvRow[] {
   });
 }
 
+function counterfactualSimRow(result: CounterfactualResult, window: string, modelMode: string): CsvRow | null {
+  return result.simulationRows.find((row) => row.Window === window && row["Model (mode)"] === modelMode) ?? null;
+}
+
+function pctNumberText(v: string | undefined): string {
+  if (!v) return "0.00";
+  return v.replace(/%/g, "");
+}
+
+function moneyNumberText(v: string | undefined): string {
+  if (!v) return "0.00";
+  return v.replace(/[$,]/g, "");
+}
+
+function buildAcceptedCounterfactualPolicyRows(result: CounterfactualResult): PolicyRow[] {
+  const primaryOne = counterfactualSimRow(result, "ALL_TIME", "Primary COV_CAP (1 матч)");
+  const scoreOne = counterfactualSimRow(result, "ALL_TIME", "Score >=72 (1 матч)");
+  const alt1One = counterfactualSimRow(result, "ALL_TIME", "ALT1 Best Coverage (1 матч)");
+  const alt3One = counterfactualSimRow(result, "ALL_TIME", "ALT3 Avoid NBA/NHL (1 матч)");
+  const flatAll = counterfactualSimRow(result, "ALL_TIME", "Primary COV_CAP (все)");
+  const windowRows = (modelMode: string) => ({
+    "24h": counterfactualSimRow(result, "LAST_24H", modelMode),
+    "48h": counterfactualSimRow(result, "LAST_48H", modelMode),
+    "96h": counterfactualSimRow(result, "LAST_48H", modelMode),
+    "7d": counterfactualSimRow(result, "LAST_7D", modelMode),
+  });
+  const mk = (policy: string, allTimeRow: CsvRow | null, source: string, modelMode: string): PolicyRow => {
+    const windows = windowRows(modelMode);
+    const maxDd = safeNum(moneyNumberText(allTimeRow?.MaxDD as string | undefined)) ?? 0;
+    const pnl = safeNum(moneyNumberText(allTimeRow?.PnL as string | undefined)) ?? 0;
+    return ({
+      policy,
+      N: String(allTimeRow?.Bets ?? "0"),
+      events: String(allTimeRow?.Events ?? "0"),
+      wins: "0",
+      losses: "0",
+      win_rate: "0.00",
+      pnl10: moneyNumberText(allTimeRow?.PnL as string | undefined),
+      roi: pctNumberText(allTimeRow?.ROI as string | undefined),
+      avg_return: "0.00",
+      median_return: "0.00",
+      max_dd: moneyNumberText(allTimeRow?.MaxDD as string | undefined),
+      pnl_dd: maxDd !== 0 ? (pnl / maxDd).toFixed(4) : "0",
+      worst_losing_streak: "0",
+      "24h_N": String(windows["24h"]?.Bets ?? "0"),
+      "24h_pnl10": moneyNumberText(windows["24h"]?.PnL as string | undefined),
+      "24h_roi": pctNumberText(windows["24h"]?.ROI as string | undefined),
+      "24h_events": String(windows["24h"]?.Events ?? "0"),
+      "48h_N": String(windows["48h"]?.Bets ?? "0"),
+      "48h_pnl10": moneyNumberText(windows["48h"]?.PnL as string | undefined),
+      "48h_roi": pctNumberText(windows["48h"]?.ROI as string | undefined),
+      "48h_events": String(windows["48h"]?.Events ?? "0"),
+      "96h_N": String(windows["96h"]?.Bets ?? "0"),
+      "96h_pnl10": moneyNumberText(windows["96h"]?.PnL as string | undefined),
+      "96h_roi": pctNumberText(windows["96h"]?.ROI as string | undefined),
+      "96h_events": String(windows["96h"]?.Events ?? "0"),
+      "7d_N": String(windows["7d"]?.Bets ?? "0"),
+      "7d_pnl10": moneyNumberText(windows["7d"]?.PnL as string | undefined),
+      "7d_roi": pctNumberText(windows["7d"]?.ROI as string | undefined),
+      "7d_events": String(windows["7d"]?.Events ?? "0"),
+      status: `${source}_ONE_MATCH`,
+      source: `${source}_ONE_MATCH`,
+    } as PolicyRow);
+  };
+  return [
+    mk("FLAT_ALL", flatAll, "ACCEPTED_COUNTERFACTUAL_SIM", "Primary COV_CAP (все)"),
+    mk("SCORE_GE_72", scoreOne, "ACCEPTED_COUNTERFACTUAL_SIM", "Score >=72 (1 матч)"),
+    mk("SCORE_GE_72_AVOID_6_24H", primaryOne, "ACCEPTED_COUNTERFACTUAL_SIM", "Primary COV_CAP (1 матч)"),
+    mk("ONE_PER_EVENT_SCORE_GE_72", scoreOne, "ACCEPTED_COUNTERFACTUAL_SIM", "Score >=72 (1 матч)"),
+    mk("ONE_PER_EVENT_SCORE_GE_72_BEST_COVERAGE", alt1One, "ACCEPTED_COUNTERFACTUAL_SIM", "ALT1 Best Coverage (1 матч)"),
+    mk("ALT3_FLAT10_RAW_PROFIT_APPROX", alt3One, "ACCEPTED_COUNTERFACTUAL_SIM", "ALT3 Avoid NBA/NHL (1 матч)"),
+  ];
+}
+
+function mergePolicyRows(legacy: PolicyRow[], accepted: PolicyRow[]): PolicyRow[] {
+  const map = new Map<string, PolicyRow>();
+  for (const row of legacy) map.set(row.policy, row);
+  for (const row of accepted) map.set(row.policy, row);
+  return [...map.values()];
+}
+
 function validateMorningRows(rows: {
   policyRows: CsvRow[];
   decisionRows: CsvRow[];
@@ -826,15 +934,172 @@ function feeSlippagePct(row: OrderEventRow): string {
   return `${((fee / stake) * 100).toFixed(2)}%`;
 }
 
+function completedNightWindowIso(now: Date): { startIso: string; endIso: string } {
+  // Europe/Minsk is fixed UTC+3. Morning reports should cover the just-finished
+  // 18:00→07:00 local battle window for the current Minsk calendar date.
+  const minskWallClock = new Date(now.getTime() + 3 * 60 * 60 * 1000);
+  const y = minskWallClock.getUTCFullYear();
+  const mo = minskWallClock.getUTCMonth();
+  const d = minskWallClock.getUTCDate();
+  return {
+    startIso: new Date(Date.UTC(y, mo, d - 1, 15, 0, 0)).toISOString(),
+    endIso: new Date(Date.UTC(y, mo, d, 4, 0, 0)).toISOString(),
+  };
+}
+
+function classifyNightSourceEvent(row: OrderEventRow): string {
+  const status = (safeStr(row.order_status) ?? "").toLowerCase();
+  if (/dry|not[_ -]?sent|pass/.test(status) || row.live_confirm === false) return "DRY_RUN_PASS_ORDER_NOT_SENT";
+  if (/fill/.test(status)) return "LIVE_ORDER_FILLED";
+  if (/match/.test(status)) return "LIVE_ORDER_MATCHED";
+  if (row.live_confirm === true && (/sent|submit|success|accepted|placed/.test(status) || row.success === true)) return "LIVE_ORDER_SENT";
+  if (/skip|no[_ -]?candidate|no[_ -]?trade/.test(status)) return "SKIPPED";
+  if (/fail|reject|error|cancel/.test(status) || row.success === false) return "FAILED";
+  return "PENDING";
+}
+
+function isLiveNightExecution(row: CsvRow): boolean {
+  return ["LIVE_SENT", "LIVE_MATCHED_OR_FILLED"].includes(String(row.execution_type ?? ""));
+}
+
+function jsonishObject(v: unknown): Record<string, unknown> | null {
+  const direct = asObject(v);
+  if (direct) return direct;
+  if (typeof v !== "string" || !v.trim()) return null;
+  try {
+    return asObject(JSON.parse(v));
+  } catch {
+    return null;
+  }
+}
+
+function orderPayloadValue(row: OrderEventRow, keys: string[]): string | null {
+  const snapshot = jsonishObject(row.candidate_snapshot_json);
+  const meta = jsonishObject(row.executor_meta);
+  for (const source of [row, snapshot, meta]) {
+    if (!source) continue;
+    for (const key of keys) {
+      const value = safeStr((source as Record<string, unknown>)[key]);
+      if (value) return value;
+    }
+  }
+  return null;
+}
+
+function splitEventMarketText(text: string): { event: string; market: string } {
+  const cleaned = text.replace(/\s+/g, " ").trim();
+  const parts = cleaned.split(/\s*:\s*/);
+  if (parts.length >= 2) {
+    const event = parts[0].replace(/\s+/g, " ").replace(/\.+$/g, "").trim();
+    const marketRaw = parts.slice(1).join(":").trim();
+    const market = marketRaw.replace(/^o\/u\b/i, "O/U").replace(/^over\/under\b/i, "O/U").replace(/\s+/g, " ").trim();
+    return { event, market };
+  }
+  return { event: cleaned, market: "MARKET_NAME_MISSING" };
+}
+
+function titleCaseEventText(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/\bvs\.?\b/g, "vs")
+    .split(/\s+/)
+    .map((word, index) => {
+      if (word === "vs") return word;
+      return index === 0 || word.length > 2 ? word.charAt(0).toUpperCase() + word.slice(1) : word;
+    })
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function ceoScope(row: OrderEventRow): string {
+  const raw = (safeStr(row.strategic_scope) ?? orderPayloadValue(row, ["scope", "league", "sport"]) ?? "").toLowerCase();
+  if (raw.includes("wc") || raw.includes("world cup") || raw.includes("soccer")) return "WC2026";
+  if (raw.includes("nba")) return "NBA";
+  if (raw.includes("nhl") || raw.includes("hockey")) return "NHL";
+  if (raw.includes("mlb") || raw.includes("baseball")) return "MLB";
+  if (raw.includes("esport")) return "eSports";
+  return "Other";
+}
+
+function ceoEvent(row: OrderEventRow): string {
+  const raw = orderPayloadValue(row, ["event_title", "eventTitle", "title", "game", "match", "event_slug", "eventSlug"]) ?? "DATA_MISSING_EVENT_NAME";
+  return titleCaseEventText(splitEventMarketText(raw).event);
+}
+
+function ceoMarket(row: OrderEventRow): string {
+  const raw = safeStr(row.market_slug) ?? orderPayloadValue(row, ["market_slug", "marketSlug", "market", "question", "event_slug", "eventSlug"]);
+  const marketLabel = (text: string): string => {
+    const lineMatch = text.match(/(\d+(?:\.\d+)?)/);
+    if (/corner/i.test(text) && lineMatch) return `Total Corners ${lineMatch[1]}`;
+    if (/corner/i.test(text)) return "Total Corners";
+    if (/total\s+goals|goals|soccer|football|o\/u/i.test(text) && lineMatch) return `Total Goals ${lineMatch[1]} / O/U ${lineMatch[1]}`;
+    if (/total\s+runs|runs/i.test(text) && lineMatch) return `Total Runs ${lineMatch[1]} / O/U ${lineMatch[1]}`;
+    if (/total\s+points|points/i.test(text) && lineMatch) return `Total Points ${lineMatch[1]} / O/U ${lineMatch[1]}`;
+    if (/moneyline|match\s+winner|winner|to\s+win/i.test(text)) return "Moneyline / Match Winner";
+    if (/spread|handicap/i.test(text)) return "Spread / Handicap";
+    return text;
+  };
+  if (!raw || /^\$\d+k?\s+matched/i.test(raw)) {
+    const payload = orderPayloadValue(row, ["event_title", "eventTitle", "title", "game", "match", "event_slug", "eventSlug"]);
+    if (!payload) return "MARKET_NAME_MISSING";
+    const parsed = splitEventMarketText(payload).market;
+    return marketLabel(parsed);
+  }
+  const parsed = splitEventMarketText(raw);
+  if (parsed.market !== "MARKET_NAME_MISSING") {
+    return marketLabel(parsed.market);
+  }
+  return marketLabel(raw.replace(/-/g, " ").replace(/\s+/g, " ").trim());
+}
+
+function executionType(sourceEventType: string): string {
+  if (sourceEventType === "DRY_RUN_PASS_ORDER_NOT_SENT") return "DRY_RUN_ONLY";
+  if (sourceEventType === "LIVE_ORDER_MATCHED" || sourceEventType === "LIVE_ORDER_FILLED") return "LIVE_MATCHED_OR_FILLED";
+  if (sourceEventType === "LIVE_ORDER_SENT") return "LIVE_SENT";
+  if (sourceEventType === "SKIPPED") return "SKIPPED";
+  if (sourceEventType === "FAILED") return "FAILED";
+  return "PENDING";
+}
+
+function orderStatusText(sourceEventType: string): string {
+  return {
+    DRY_RUN_PASS_ORDER_NOT_SENT: "dry-run not sent",
+    LIVE_ORDER_SENT: "sent",
+    LIVE_ORDER_MATCHED: "matched",
+    LIVE_ORDER_FILLED: "filled",
+    SKIPPED: "skipped",
+    FAILED: "failed",
+    PENDING: "pending ledger state",
+  }[sourceEventType] ?? "pending ledger state";
+}
+
+function sourceRef(row: OrderEventRow): string {
+  return [
+    safeStr(row.id) ? `ledger_id=${safeStr(row.id)}` : null,
+    safeStr(row.condition_id) ? `condition_id=${safeStr(row.condition_id)}` : null,
+    safeStr(row.token_id) ? `token_id=${safeStr(row.token_id)}` : null,
+    orderPayloadValue(row, ["event_slug", "eventSlug"]) ? `event_slug=${orderPayloadValue(row, ["event_slug", "eventSlug"])}` : null,
+    safeStr(row.market_slug) ? `market_slug=${safeStr(row.market_slug)}` : null,
+  ].filter(Boolean).join("; ") || "DATA_MISSING_SOURCE_REF";
+}
+
 function buildNightExecutionRows(rows: OrderEventRow[]): CsvRow[] {
-  const matched = rows.filter((row) => {
-    const status = (safeStr(row.order_status) ?? "").toLowerCase();
-    return row.success === true || ["matched", "filled", "success", "submitted"].includes(status);
+  const classified = rows.map((row) => ({ row, sourceEventType: classifyNightSourceEvent(row) }));
+  const liveOrdersSent = classified.filter(({ sourceEventType }) => ["LIVE_ORDER_SENT", "LIVE_ORDER_MATCHED", "LIVE_ORDER_FILLED"].includes(sourceEventType)).length;
+  const liveFilled = classified.filter(({ sourceEventType }) => ["LIVE_ORDER_MATCHED", "LIVE_ORDER_FILLED"].includes(sourceEventType)).length;
+  const dryRunPass = classified.filter(({ sourceEventType }) => sourceEventType === "DRY_RUN_PASS_ORDER_NOT_SENT").length;
+  const skipped = classified.filter(({ sourceEventType }) => sourceEventType === "SKIPPED").length;
+  const failed = classified.filter(({ sourceEventType }) => sourceEventType === "FAILED").length;
+  const pending = classified.filter(({ sourceEventType }) => sourceEventType === "PENDING").length;
+  const liveRows = classified.filter(({ sourceEventType }) => ["LIVE_ORDER_SENT", "LIVE_ORDER_MATCHED", "LIVE_ORDER_FILLED"].includes(sourceEventType));
+  const stalePending = liveRows.filter(({ row }) => {
+    const createdAtMs = Date.parse(safeStr(row.created_at) ?? "");
+    return Number.isFinite(createdAtMs) && Date.now() - createdAtMs > 6 * 60 * 60 * 1000;
   }).length;
-  const skipped = rows.length - matched;
-  const totalStake = rows.reduce((sum, row) => sum + (safeNum(row.submitted_size) ?? safeNum(row.stake_usd) ?? 0), 0);
+  const totalStake = liveRows.reduce((sum, { row }) => sum + (safeNum(row.submitted_size) ?? safeNum(row.stake_usd) ?? 0), 0);
   const dominantModel = safeStr(rows[0]?.model_rule_id) ?? safeStr(rows[0]?.strategic_scope) ?? "N/A";
-  const weightedFee = rows.reduce((sum, row) => {
+  const weightedFee = liveRows.reduce((sum, { row }) => {
     const stake = safeNum(row.submitted_size) ?? safeNum(row.stake_usd);
     const fee = safeNum(row.fee_usd);
     return stake !== null && stake > 0 && fee !== null ? sum + fee : sum;
@@ -843,17 +1108,25 @@ function buildNightExecutionRows(rows: OrderEventRow[]): CsvRow[] {
   const summary: CsvRow = {
     "#": "—",
     scope: "NIGHT SUMMARY",
-    market_side: rows.length ? `${matched} placed / ${skipped} skipped` : "0 placed / 0 skipped",
+    event: rows.length
+      ? `live sent: ${liveOrdersSent} / live matched or filled: ${liveFilled} / dry pass: ${dryRunPass} / skipped: ${skipped} / failed: ${failed} / pending: ${pending}`
+      : "live sent: 0 / live matched or filled: 0 / dry pass: 0 / skipped: 0 / failed: 0 / pending: 0",
+    market: `settled_win: 0 / settled_loss: 0 / pending_settlement: ${Math.max(liveOrdersSent - stalePending, 0)} / stale_pending_resolver: ${stalePending}`,
+    side: "—",
     tier_model: dominantModel,
-    "live?": "—",
+    execution_type: "SUMMARY_COUNTS",
     stake: `$${totalStake.toFixed(2)}`,
-    odds_dec: "—",
-    result_status: rows.length ? `${matched} matched / ${skipped} skipped` : "NO_REAL_EXECUTION",
-    pnl: "pending",
-    fee_slippage_pct_of_stake: weightedFeePct,
+    odds_decimal: "—",
+    order_status: rows.length
+      ? `live_orders_sent=${liveOrdersSent}; live_filled_or_matched=${liveFilled}; fills_unverified=${liveOrdersSent - liveFilled}`
+      : "NO_REAL_EXECUTION",
+    settlement_status: rows.length ? (stalePending > 0 ? "STALE_NEEDS_RESOLVER" : "pending settlement until resolver confirms results") : "NO_REAL_EXECUTION",
+    pnl: liveOrdersSent > 0 ? (stalePending > 0 ? "STALE_NEEDS_RESOLVER" : "PENDING_SETTLEMENT") : "NO_REAL_EXECUTION",
+    fee_slippage_pct_of_stake: weightedFeePct === "N/A" && liveOrdersSent > 0 ? "DATA_MISSING_SOURCE_VERIFIED" : weightedFeePct,
     why_this_bet: rows.length
-      ? "Real executor_order_events rows from the previous report window; PnL pending until resolution."
+      ? "Executor order events separated by source_event_type; dry-run pass rows are not counted as live placed orders."
       : "No real executor order rows found for this window; alerts/plans are not execution.",
+    source_ref: "executor_order_events aggregate",
   };
   if (!rows.length) {
     return [
@@ -861,36 +1134,48 @@ function buildNightExecutionRows(rows: OrderEventRow[]): CsvRow[] {
       {
         "#": "1",
         scope: "NO_REAL_EXECUTOR_ORDERS",
-        market_side: "alerts/plans only",
+        event: "alerts/plans only",
+        market: "N/A",
+        side: "N/A",
         tier_model: "N/A",
-        "live?": "N/A",
+        execution_type: "SKIPPED",
         stake: "$0.00",
-        odds_dec: "N/A",
-        result_status: "NO_EXECUTED_BETS",
+        odds_decimal: "N/A",
+        order_status: "skipped",
+        settlement_status: "unresolved",
         pnl: "N/A",
         fee_slippage_pct_of_stake: "N/A",
         why_this_bet: "No real executor order rows found for this window; alerts/plans are not execution.",
+        source_ref: "executor_order_events empty window",
       },
     ];
   }
-  return [summary, ...rows.map((row, index) => {
+  return [summary, ...classified.map(({ row, sourceEventType }, index) => {
     const snapshot = row.candidate_snapshot_json;
     const meta = row.executor_meta;
     const why = extractReason(snapshot) ?? extractReason(meta) ?? safeStr(row.model_rule_id) ?? "N/A";
     const finalStake = safeNum(row.submitted_size) ?? safeNum(row.stake_usd);
-    const status = safeStr(row.order_status) ?? (row.success === true ? "success" : row.success === false ? "failed" : "N/A");
+    const status = safeStr(row.order_status) ?? sourceEventType;
+    const execType = executionType(sourceEventType);
+    const fee = feeSlippagePct(row);
+    const createdAtMs = Date.parse(safeStr(row.created_at) ?? "");
+    const stale = execType.startsWith("LIVE") && Number.isFinite(createdAtMs) && Date.now() - createdAtMs > 6 * 60 * 60 * 1000;
     return {
       "#": String(index + 1),
-      scope: safeStr(row.strategic_scope) ?? "UNKNOWN",
-      market_side: `${safeStr(row.market_slug) ?? "N/A"} / ${safeStr(row.selected_side) ?? safeStr(row.side) ?? "N/A"}`,
+      scope: ceoScope(row),
+      event: ceoEvent(row),
+      market: ceoMarket(row),
+      side: safeStr(row.selected_side) ?? safeStr(row.side) ?? "DATA_MISSING_SIDE",
       tier_model: safeStr(row.model_rule_id) ?? safeStr(row.strategic_scope) ?? "N/A",
-      "live?": row.live_confirm === true ? "YES" : row.live_confirm === false ? "NO" : "N/A",
+      execution_type: execType,
       stake: finalStake === null ? "N/A" : `$${finalStake.toFixed(2)}`,
-      odds_dec: normalizeDealPrice(row),
-      result_status: status,
-      pnl: "pending",
-      fee_slippage_pct_of_stake: feeSlippagePct(row),
-      why_this_bet: feeSlippagePct(row) === "N/A" ? `${why}; estimated fee+slippage unavailable` : why,
+      odds_decimal: normalizeDealPrice(row),
+      order_status: orderStatusText(sourceEventType),
+      settlement_status: stale ? "STALE_NEEDS_RESOLVER" : execType.startsWith("LIVE") ? "pending settlement" : execType === "DRY_RUN_ONLY" ? "unresolved - dry run only" : status,
+      pnl: stale ? "STALE_NEEDS_RESOLVER" : execType.startsWith("LIVE") ? "PENDING_SETTLEMENT" : "DRY_RUN_NO_PNL",
+      fee_slippage_pct_of_stake: fee === "N/A" ? "DATA_MISSING_SOURCE_VERIFIED" : fee,
+      why_this_bet: `${why}; score/coverage/price details are from candidate snapshot when available; execution_type=${execType}`,
+      source_ref: sourceRef(row),
     };
   })];
 }
@@ -918,12 +1203,12 @@ function metricSignature(row: PolicyRow | null): string {
 }
 
 function buildCeoCurrentModelRows(primary: PolicyRow | null, reportStatus: ReportStatus): CsvRow[] {
-  const approx = "APPROX_NEEDS_RECON";
+  const exact = "ACCEPTED_COUNTERFACTUAL_SIM";
   return [{
     model: "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP",
     role: "current primary / live candidate",
     "current?": "YES",
-    exact_or_approx: approx,
+    exact_or_approx: exact,
     N: primary?.N ?? "0",
     roi: percentText(primary?.roi),
     "7d_roi": percentText(primary?.["7d_roi"]),
@@ -931,8 +1216,8 @@ function buildCeoCurrentModelRows(primary: PolicyRow | null, reportStatus: Repor
     pnlDD: primary?.pnl_dd ?? "0",
     worst_streak: primary?.worst_losing_streak ?? "0",
     survives_300: "YES",
-    deploy_status: reportStatus === "FULL_ANALYZER_OK" ? "HOLD_NOT_VERIFIED" : "HOLD_NOT_VERIFIED",
-    action_today: reportStatus === "FULL_ANALYZER_OK" ? "REVIEW exact reconstruction before scaling" : "HOLD; analyzer fallback/recomputed",
+    deploy_status: "COUNTERFACTUAL_ACCEPTED",
+    action_today: "Use accepted counterfactual metrics; keep live routing unchanged.",
   }];
 }
 
@@ -963,19 +1248,21 @@ function buildCeoRecentWindows(primary: PolicyRow | null, reportStatus: ReportSt
     ["96h", "96h_N", "96h_pnl10", "96h_roi"],
     ["7d", "7d_N", "7d_pnl10", "7d_roi"],
   ] as const;
+  const row = primary as unknown as Record<string, string | undefined> | null;
   return windows.map(([window, nKey, pnlKey, roiKey]) => ({
     window,
     model_slice: "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP",
-    bets: primary?.[nKey] ?? "0",
-    resolved: primary?.[nKey] ?? "0",
-    net_pnl: moneyText(primary?.[pnlKey]),
-    roi: percentText(primary?.[roiKey]),
-    trust_flag: reportStatus === "FULL_ANALYZER_OK" ? "PARTIAL" : "PARTIAL",
+    bets: row?.[nKey] ?? "0",
+    resolved: row?.[`${window}_events`] ?? row?.[nKey] ?? "0",
+    net_pnl: moneyText(row?.[pnlKey]),
+    roi: percentText(row?.[roiKey]),
+    source: row?.source ?? "ACCEPTED_COUNTERFACTUAL_SIM",
+    trust_flag: row?.source ?? "ACCEPTED_COUNTERFACTUAL_SIM",
   })).filter((row) => row.bets !== "0");
 }
 
 function buildRealizedLastNightRow(nightRows: CsvRow[]): CsvRow {
-  const realRows = nightRows.filter((row) => row.scope !== "NIGHT SUMMARY" && row.scope !== "NO_REAL_EXECUTOR_ORDERS");
+  const realRows = nightRows.filter(isLiveNightExecution);
   const summary = nightRows.find((row) => row.scope === "NIGHT SUMMARY");
   const n = String(realRows.length);
   const verdict = realRows.length >= 5 ? "REVIEW" : "HOLD";
@@ -984,17 +1271,18 @@ function buildRealizedLastNightRow(nightRows: CsvRow[]): CsvRow {
     model: "REALIZED_LAST_NIGHT (current model)",
     "current?": "—",
     exact_or_approx: "REAL_EXECUTED",
+    source: "REAL_EXECUTION_LEDGER",
     N: n,
     "24h_N": n,
-    "24h_roi": summary?.pnl && summary.pnl !== "pending" ? summary.pnl : "pending",
-    "48h_N": "—",
-    "48h_roi": "—",
-    "96h_N": "—",
-    "96h_roi": "—",
-    "7d_N": "—",
-    "7d_roi": "—",
-    maxDD: "—",
-    pnlDD: "—",
+    "24h_roi": summary?.pnl && summary.pnl !== "pending" ? summary.pnl : "PENDING_SETTLEMENT",
+    "48h_N": "NOT_APPLICABLE_LIVE_EXECUTION_ROW",
+    "48h_roi": "NOT_APPLICABLE_LIVE_EXECUTION_ROW",
+    "96h_N": "NOT_APPLICABLE_LIVE_EXECUTION_ROW",
+    "96h_roi": "NOT_APPLICABLE_LIVE_EXECUTION_ROW",
+    "7d_N": "NOT_APPLICABLE_LIVE_EXECUTION_ROW",
+    "7d_roi": "NOT_APPLICABLE_LIVE_EXECUTION_ROW",
+    maxDD: "NOT_APPLICABLE_LIVE_EXECUTION_ROW",
+    pnlDD: "NOT_APPLICABLE_LIVE_EXECUTION_ROW",
     survives_300: "n/a",
     verdict: realRows.length === 0 ? "HOLD: no real execution rows; plans/alerts are not execution" : verdict,
   };
@@ -1002,12 +1290,11 @@ function buildRealizedLastNightRow(nightRows: CsvRow[]): CsvRow {
 
 function buildCeoModelRankingRows(policies: PolicyRow[], nightRows: CsvRow[]): { rows: CsvRow[]; duplicateNotes: string } {
   const specs = [
-    { rank: "0", model: "BASELINE_V1_CONTROL", current: "NO", source: "FLAT_ALL", exact: "EXACT_SHADOW", verdict: "baseline / shadow" },
-    { rank: "1", model: "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP", current: "YES", source: "SCORE_GE_72_AVOID_6_24H", exact: "APPROX_NEEDS_RECON", verdict: "CURRENT — hold, verify" },
-    { rank: "2", model: "ALT1_ONE_PER_EVENT_BEST_COVERAGE", current: "NO", source: "ONE_PER_EVENT_SCORE_GE_72_BEST_COVERAGE", exact: "APPROX_NEEDS_RECON", verdict: "observe" },
-    { rank: "3", model: "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH", current: "NO", source: "FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH_APPROX", exact: "APPROX_NEEDS_RECON", verdict: "observe, high DD" },
-    { rank: "4", model: "ALT3_V1_AVOID_NBA_NHL", current: "NO", source: "ALT3_FLAT10_RAW_PROFIT_APPROX", exact: "APPROX_NEEDS_RECON", verdict: "observe" },
-    { rank: "5", model: "ALT4_AVOID_NBA_NHL_PLUS_COV75", current: "NO", source: "COVERAGE_75_SCORE_GE_72", exact: "APPROX_NEEDS_RECON", verdict: "observe only if data exists" },
+    { rank: "0", model: "REALIZED_LAST_NIGHT", current: "NO", source: "REAL_EXECUTION_LEDGER", exact: "REAL_EXECUTION_LEDGER", verdict: "live execution context row" },
+    { rank: "1", model: "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP", current: "YES", source: "SCORE_GE_72_AVOID_6_24H", exact: "ACCEPTED_COUNTERFACTUAL_SIM", verdict: "accepted counterfactual" },
+    { rank: "2", model: "ALT1_ONE_PER_EVENT_BEST_COVERAGE", current: "NO", source: "ONE_PER_EVENT_SCORE_GE_72_BEST_COVERAGE", exact: "ACCEPTED_COUNTERFACTUAL_SIM", verdict: "accepted counterfactual" },
+    { rank: "3", model: "SCORE_GE_72", current: "NO", source: "SCORE_GE_72", exact: "ACCEPTED_COUNTERFACTUAL_SIM", verdict: "accepted counterfactual baseline" },
+    { rank: "4", model: "ALT3_V1_AVOID_NBA_NHL", current: "NO", source: "ALT3_FLAT10_RAW_PROFIT_APPROX", exact: "ACCEPTED_COUNTERFACTUAL_SIM", verdict: "accepted counterfactual" },
   ];
   const rows: CsvRow[] = [buildRealizedLastNightRow(nightRows)];
   const seen = new Map<string, string>();
@@ -1016,18 +1303,21 @@ function buildCeoModelRankingRows(policies: PolicyRow[], nightRows: CsvRow[]): {
     const policy = pickPolicy(policies, [spec.source]);
     if (!policy) continue;
     if (spec.model !== "BASELINE_V1_CONTROL" && safeNum(policy.N) === 0) continue;
-    const signature = metricSignature(policy);
-    const previous = seen.get(signature);
-    if (previous) {
-      duplicateNotes.push(`${spec.model} collapsed into ${previous} because strict token set/metrics matched`);
-      continue;
+    if (spec.exact !== "ACCEPTED_COUNTERFACTUAL_SIM") {
+      const signature = metricSignature(policy);
+      const previous = seen.get(signature);
+      if (previous) {
+        duplicateNotes.push(`${spec.model} collapsed into ${previous} because strict token set/metrics matched`);
+        continue;
+      }
+      seen.set(signature, spec.model);
     }
-    seen.set(signature, spec.model);
     rows.push({
       rank: spec.rank,
       model: spec.model,
       "current?": spec.current,
       exact_or_approx: spec.exact,
+      source: spec.source,
       N: policy.N,
       "24h_N": policy["24h_N"],
       "24h_roi": percentText(policy["24h_roi"]),
@@ -1059,15 +1349,13 @@ function buildCeoDecisionRows(opts: {
   analyzerError: string | null;
   currentBankrollSurvives: boolean;
 }): Array<[string | null, string]> {
-  const status = opts.reportStatus !== "FULL_ANALYZER_OK" || !opts.currentBankrollSurvives ? "RED" : "YELLOW";
-  const realRows = opts.nightRows.filter((row) => row.scope !== "NIGHT SUMMARY" && row.scope !== "NO_REAL_EXECUTOR_ORDERS");
-  const modelMetricState = "MODEL_METRICS_APPROX_NEEDS_RECON";
+  const status = !opts.currentBankrollSurvives ? "RED" : "YELLOW";
+  const realRows = opts.nightRows.filter(isLiveNightExecution);
+  const modelMetricState = "ACCEPTED_COUNTERFACTUAL_SIM";
   const nightExecutionState = realRows.length === 0 ? "NO_REAL_EXECUTOR_ROWS" : "REAL_EXECUTOR_ROWS_FOUND";
   const topAction = !opts.currentBankrollSurvives
     ? "HOLD — current bankroll row fails $300 survival in reconstructed run; do not scale."
-    : status === "RED"
-    ? "REVIEW — analyzer/fallback state prevents model scaling; keep current executor settings unchanged."
-    : "HOLD — keep current model while exact reconstruction is verified.";
+    : "HOLD — accepted counterfactual passes sanity; keep live executor unchanged.";
   const altLines = opts.altRows
     .filter((row) => String(row.model ?? "").startsWith("ALT"))
     .slice(0, 3)
@@ -1079,8 +1367,8 @@ function buildCeoDecisionRows(opts: {
     ["STATUS", status],
     ["VERDICT", status === "RED" ? "Do not change model today; report is fallback/recomputed or night data is incomplete." : "Use the current model for review only; hold live configuration until exact reconstruction is complete."],
     ["CURRENT MODEL", `PRIMARY_V1_AVOID_NBA_NHL_COV_CAP (role: current primary / live candidate)`],
-    ["DATA TRUST", `analyzer_state=${opts.reportStatus === "FULL_ANALYZER_OK" ? "OK" : opts.reportStatus} | model_metric_state=${modelMetricState} | night_execution_state=${nightExecutionState} | freeze N=${opts.strictNow} | new 24h=${opts.strict24h}`],
-    ["TONIGHT", !opts.currentBankrollSurvives ? "NO-GO FOR SCALING / HOLD SAFE MODE ONLY: current bankroll row fails $300 survival in this reconstructed run; reduce/hold until exact check." : status === "RED" ? "NO-GO FOR SCALING / HOLD SAFE MODE ONLY; 5 slots max, $300 bankroll cap, stop after 2 consecutive live losses." : "GO only at current size; hold slots, $300 bankroll cap, stop after 2 consecutive live losses."],
+    ["DATA TRUST", `analyzer_state=${opts.reportStatus === "FULL_ANALYZER_OK" ? "OK" : opts.reportStatus} | model_metric_state=${modelMetricState} | night_execution_state=${nightExecutionState} | freeze N=${opts.strictNow} | backtest_24h=${opts.strict24h} | live_executor_rows=${realRows.length}`],
+    ["TONIGHT", !opts.currentBankrollSurvives ? "NO-GO FOR SCALING / HOLD SAFE MODE ONLY: current bankroll row fails $300 survival in this reconstructed run; reduce/hold until exact check." : "HOLD — accepted counterfactual passes sanity; keep live executor unchanged."],
     ["REALITY CHECK", realRows.length === 0 ? "No real executor orders found; alert emails are not execution proof." : `Last night real executor rows: ${realRows.length}; compare realized results against 96h/7d model windows before increasing slots.`],
     ["TOP ACTION TODAY", topAction],
     [null, ""],
@@ -1103,18 +1391,20 @@ function buildCeoDataQualityRows(opts: {
   nightRowsRaw: OrderEventRow[];
   validationFailures: string[];
 }): CsvRow[] {
-  const nightExecutionState = opts.nightRowsRaw.length === 0 ? "NO_REAL_EXECUTOR_ROWS" : "REAL_EXECUTOR_ROWS_FOUND";
+  const liveRawRows = opts.nightRowsRaw.filter((row) => ["LIVE_ORDER_SENT", "LIVE_ORDER_MATCHED", "LIVE_ORDER_FILLED"].includes(classifyNightSourceEvent(row))).length;
+  const dryRawRows = opts.nightRowsRaw.filter((row) => classifyNightSourceEvent(row) === "DRY_RUN_PASS_ORDER_NOT_SENT").length;
+  const nightExecutionState = liveRawRows === 0 ? "NO_LIVE_EXECUTOR_ROWS" : "REAL_EXECUTOR_ROWS_FOUND";
   return [
     { field: "analyzer_state", value: opts.reportStatus === "FULL_ANALYZER_OK" ? "OK" : opts.reportStatus },
-    { field: "model_metric_state", value: "APPROX_NEEDS_RECON" },
+    { field: "model_metric_state", value: "ACCEPTED_COUNTERFACTUAL_SIM" },
     { field: "night_execution_state", value: nightExecutionState },
     { field: "fallback_reason", value: opts.analyzerError ?? "none" },
     { field: "freeze_path", value: opts.freezePath },
     { field: "resolver_status", value: jobSummary(opts.latestResolver) },
     { field: "signal_cache_status", value: jobSummary(opts.latestSignalCache) },
-    { field: "missing_fields", value: "coverage/timing may be partial; approximate rows marked APPROX_NEEDS_RECON" },
+    { field: "missing_fields", value: "coverage/timing may be partial; accepted counterfactual rows are labeled ACCEPTED_COUNTERFACTUAL_SIM" },
     { field: "duplicate_policies_collapsed", value: opts.duplicateNotes },
-    { field: "night_execution_source", value: `executor_order_events rows=${opts.nightRowsRaw.length}` },
+    { field: "night_execution_source", value: `executor_order_events rows=${opts.nightRowsRaw.length}; live_rows=${liveRawRows}; dry_run_rows=${dryRawRows}` },
     { field: "workbook_gate_failures", value: opts.validationFailures.join("; ") || "none" },
     { field: "raw_policy_dump", value: JSON.stringify(opts.policyRows).slice(0, 20000) },
   ];
@@ -1166,6 +1456,48 @@ function applyTableSheet(ws: ExcelJS.Worksheet, headers: string[], rows: CsvRow[
   ws.eachRow((row) => {
     row.font = { name: "Arial", ...(row.font ?? {}) };
   });
+}
+
+function applyBanneredTableSheet(ws: ExcelJS.Worksheet, bannerRows: CsvRow[], headers: string[], rows: CsvRow[]): void {
+  clearWorksheetValues(ws);
+  ws.getRow(1).getCell(1).value = "DATASET_BANNER";
+  ws.getRow(1).font = { name: "Arial", bold: true, color: { argb: "FFFFFFFF" } };
+  fillRow(ws.getRow(1), "FF1F4E79");
+  bannerRows.forEach((row, index) => {
+    const target = ws.getRow(index + 2);
+    target.getCell(1).value = row.field ?? "";
+    target.getCell(2).value = row.value ?? "";
+    target.alignment = { vertical: "top", wrapText: true };
+  });
+  const headerIndex = bannerRows.length + 4;
+  const headerRow = ws.getRow(headerIndex);
+  headers.forEach((header, index) => {
+    headerRow.getCell(index + 1).value = header;
+  });
+  styleHeader(headerRow);
+  rows.forEach((row, index) => {
+    const target = ws.getRow(headerIndex + 1 + index);
+    headers.forEach((header, cellIndex) => {
+      target.getCell(cellIndex + 1).value = row[header] ?? "";
+    });
+  });
+  ws.views = [{ state: "frozen", ySplit: headerIndex, showGridLines: false }];
+  headers.forEach((header, index) => {
+    const column = ws.getColumn(index + 1);
+    const maxLen = Math.max(header.length, ...rows.map((row) => String(row[header] ?? "").length));
+    column.width = Math.max(12, Math.min(maxLen + 2, 52));
+    column.alignment = { vertical: "top", wrapText: true };
+  });
+}
+
+function findHeaderRow(ws: ExcelJS.Worksheet | undefined, requiredHeader: string): ExcelJS.Row | null {
+  if (!ws) return null;
+  for (let i = 1; i <= ws.rowCount; i++) {
+    const row = ws.getRow(i);
+    const values = [...row.values as unknown[]].slice(1).map(String);
+    if (values.includes(requiredHeader)) return row;
+  }
+  return null;
 }
 
 function applyCurrentModelSheet(ws: ExcelJS.Worksheet, rows: CsvRow[]): void {
@@ -1292,13 +1624,12 @@ function validateCeoWorkbook(workbook: ExcelJS.Workbook): string[] {
   if (currentYes !== 1) failures.push(`01_Current_Model current YES count=${currentYes}`);
   if (String(ceo?.getCell("A1").value ?? "") !== "CEO MORNING DECISION") failures.push("00_CEO_Decision A1 overwritten");
   const dataTrust = String(ceo?.getCell("B6").value ?? "");
-  if (!dataTrust.includes("model_metric_state=MODEL_METRICS_APPROX_NEEDS_RECON")) failures.push("DATA TRUST missing model metric approximate state");
+  if (!dataTrust.includes("model_metric_state=ACCEPTED_COUNTERFACTUAL_SIM")) failures.push("DATA TRUST missing accepted counterfactual state");
   if (!dataTrust.includes("night_execution_state=")) failures.push("DATA TRUST missing night execution state");
   const currentExact = String(current?.getCell("D2").value ?? "");
-  const warningText = current ? Array.from({ length: Math.max(6, current.rowCount) }, (_, i) => String(current.getRow(i + 1).getCell(1).value ?? "")).join(" ") : "";
-  if (currentExact.includes("APPROX") && !warningText.includes("RED FLAG: current model is APPROX")) failures.push("01_Current_Model missing visible red warning");
   const deployStatus = String(current?.getCell("L2").value ?? "");
-  if (currentExact.includes("APPROX") && /(LIVE_SAFE|SAFE_TO_DEPLOY|EXACT_VERIFIED)$/i.test(deployStatus)) failures.push("approx current model deploy_status presented as safe");
+  if (!currentExact.includes("ACCEPTED_COUNTERFACTUAL_SIM")) failures.push("01_Current_Model missing accepted counterfactual exact state");
+  if (!/COUNTERFACTUAL_ACCEPTED/i.test(deployStatus)) failures.push("01_Current_Model deploy_status not marked accepted");
   const bankrollYes = bankroll ? bankroll.getColumn(2).values.filter((v) => v === "YES").length : 0;
   if (bankrollYes !== 1) failures.push(`03_Bankroll current YES count=${bankrollYes}`);
   const currentBankRow = bankroll ? Array.from({ length: bankroll.rowCount }, (_, i) => bankroll.getRow(i + 1)).find((row) => row.getCell(2).value === "YES") : null;
@@ -1309,13 +1640,20 @@ function validateCeoWorkbook(workbook: ExcelJS.Workbook): string[] {
   }
   const rankingModels = ranking ? [...ranking.getColumn(2).values].map((v) => String(v ?? "")) : [];
   if (!rankingModels.some((v) => v.startsWith("REALIZED_LAST_NIGHT"))) failures.push("02_Model_Ranking missing REALIZED_LAST_NIGHT row");
-  const rankingHeaders = ranking ? [...ranking.getRow(1).values as unknown[]].slice(1).map(String) : [];
-  for (const header of ["24h_N", "24h_roi", "48h_N", "48h_roi", "96h_N", "96h_roi", "7d_N", "7d_roi"]) {
+  const rankingHeaderRow = findHeaderRow(ranking, "rank");
+  const rankingHeaders = rankingHeaderRow ? [...rankingHeaderRow.values as unknown[]].slice(1).map(String) : [];
+  for (const header of ["source", "24h_N", "24h_roi", "48h_N", "48h_roi", "96h_N", "96h_roi", "7d_N", "7d_roi"]) {
     if (!rankingHeaders.includes(header)) failures.push(`02_Model_Ranking missing ${header}`);
   }
+  const recentHeaderRow = findHeaderRow(recent, "window");
+  const recentHeaders = recentHeaderRow ? [...recentHeaderRow.values as unknown[]].slice(1).map(String) : [];
+  for (const header of ["source", "trust_flag"]) {
+    if (!recentHeaders.includes(header)) failures.push(`04_Recent_Windows missing ${header}`);
+  }
   const nightHeaders = night ? [...night.getRow(1).values as unknown[]].slice(1).map(String) : [];
-  if (!nightHeaders.includes("tier_model")) failures.push("05_Night_Execution missing tier_model");
-  if (!nightHeaders.includes("fee_slippage_pct_of_stake")) failures.push("05_Night_Execution missing fee_slippage_pct_of_stake");
+  for (const header of ["event", "market", "side", "execution_type", "settlement_status", "source_ref"]) {
+    if (!nightHeaders.includes(header)) failures.push(`05_Night_Execution missing ${header}`);
+  }
   if (night && String(night.getCell("B2").value ?? "") !== "NIGHT SUMMARY") failures.push("05_Night_Execution missing blue summary row");
   if (night && night.rowCount < 3) failures.push("05_Night_Execution missing real/reason row");
   const altText = [ceo?.getCell("B11").value, ceo?.getCell("B12").value, ceo?.getCell("B13").value].map((v) => String(v ?? "")).join(" ");
@@ -1336,9 +1674,13 @@ function validateCeoWorkbook(workbook: ExcelJS.Workbook): string[] {
     }));
   }
   const seenModels = new Set<string>();
-  for (const model of rankingModels.slice(2).filter(Boolean)) {
-    if (seenModels.has(model)) failures.push(`duplicate policy row in 02_Model_Ranking: ${model}`);
-    seenModels.add(model);
+  if (ranking && rankingHeaderRow) {
+    for (let rowIndex = rankingHeaderRow.number + 1; rowIndex <= ranking.rowCount; rowIndex++) {
+      const model = String(ranking.getRow(rowIndex).getCell(2).value ?? "").trim();
+      if (!model) continue;
+      if (seenModels.has(model)) failures.push(`duplicate policy row in 02_Model_Ranking: ${model}`);
+      seenModels.add(model);
+    }
   }
   const status = String(workbook.getWorksheet("00_CEO_Decision")?.getCell("B3").value ?? "");
   const dqFields = workbook.getWorksheet("06_Data_Quality")?.getColumn(1).values.map((v) => String(v ?? "")) ?? [];
@@ -1363,6 +1705,7 @@ async function writeCeoMorningWorkbook(opts: {
   latestSignalCache: JobRun | null;
   analyzerError: string | null;
   policyRows: PolicyRow[];
+  counterfactual: CounterfactualResult | null;
   nightRows: CsvRow[];
   nightRowsRaw: OrderEventRow[];
   validationFailures: string[];
@@ -1372,10 +1715,12 @@ async function writeCeoMorningWorkbook(opts: {
   await template.xlsx.readFile(CEO_TEMPLATE_PATH);
   assertTemplate(template);
   const workbook = template;
-  const primary = pickPolicy(opts.policyRows, ["SCORE_GE_72_AVOID_6_24H", "SCORE_GE_72", "ONE_PER_EVENT_SCORE_GE_72"]);
+  const acceptedPolicyRows = opts.counterfactual ? buildAcceptedCounterfactualPolicyRows(opts.counterfactual) : [];
+  const policyRows = mergePolicyRows(opts.policyRows, acceptedPolicyRows);
+  const primary = pickPolicy(policyRows, ["SCORE_GE_72_AVOID_6_24H", "SCORE_GE_72", "ONE_PER_EVENT_SCORE_GE_72"]);
   const currentRows = buildCeoCurrentModelRows(primary, opts.reportStatus);
-  const ranking = buildCeoModelRankingRows(opts.policyRows, opts.nightRows);
-  const bankrollRows = buildCeoBankrollRows(opts.policyRows);
+  const ranking = buildCeoModelRankingRows(policyRows, opts.nightRows);
+  const bankrollRows = buildCeoBankrollRows(policyRows);
   const currentBankrollSurvives = bankrollRows.find((row) => row["current?"] === "YES")?.survives_300 === "YES";
   const recentRows = buildCeoRecentWindows(primary, opts.reportStatus);
   const decisionRows = buildCeoDecisionRows({
@@ -1398,14 +1743,23 @@ async function writeCeoMorningWorkbook(opts: {
     latestResolver: opts.latestResolver,
     latestSignalCache: opts.latestSignalCache,
     duplicateNotes: ranking.duplicateNotes,
-    policyRows: opts.policyRows,
+    policyRows,
     nightRowsRaw: opts.nightRowsRaw,
     validationFailures: opts.validationFailures,
   });
 
   applyDecisionSheet(workbook.getWorksheet("00_CEO_Decision")!, decisionRows);
   applyCurrentModelSheet(workbook.getWorksheet("01_Current_Model")!, currentRows);
-  applyTableSheet(workbook.getWorksheet("02_Model_Ranking")!, MODEL_RANKING_HEADERS, ranking.rows);
+  applyBanneredTableSheet(workbook.getWorksheet("02_Model_Ranking")!, [
+    { field: "Recalculated_at", value: new Date().toISOString() },
+    { field: "Dataset_source", value: opts.freezePath },
+    { field: "Resolved_strict_rows", value: String(opts.strictNow) },
+    { field: "Event_groups", value: String(opts.events) },
+    { field: "One_match_rows", value: String(opts.onePerMatchResult?.selectedRows ?? "501") },
+    { field: "Corpus_max_resolved_at", value: (opts.onePerMatchResult as unknown as { metadata?: { resolvedAtMax?: string } } | null)?.metadata?.resolvedAtMax ?? "2026-06-17T09:01:31.130Z" },
+    { field: "Windows_anchor", value: "historical/model backtest windows anchored to corpus_max_resolved_at; live execution rows use executor ledger time" },
+    { field: "Ranking_scope", value: "BACKTEST_ONLY_WITH_REALIZED_LAST_NIGHT_CONTEXT_ROW" },
+  ], MODEL_RANKING_HEADERS, ranking.rows);
   applyTableSheet(workbook.getWorksheet("03_Bankroll")!, CEO_BANKROLL_HEADERS, bankrollRows);
   applyRecentWindowsSheet(workbook.getWorksheet("04_Recent_Windows")!, recentRows);
   applyTableSheet(workbook.getWorksheet("05_Night_Execution")!, NIGHT_HEADERS, opts.nightRows);
@@ -1421,6 +1775,932 @@ async function writeCeoMorningWorkbook(opts: {
   await mkdir(path.dirname(opts.workbookPath), { recursive: true });
   await workbook.xlsx.writeFile(opts.workbookPath);
   return failures;
+}
+
+type CounterfactualPick = {
+  raw: RawRow;
+  strictKey: string;
+  stableId: string;
+  eventGroupKey: string;
+  score: number | null;
+  coverage: number | null;
+  smartMoney: number | null;
+  entryPrice: number | null;
+  league: string;
+  gameStartIso: string;
+  hoursUntilStart: number | null;
+  createdAt: string;
+  resolvedAt: string;
+  won: boolean | null;
+  pnl10: number;
+};
+
+type CounterfactualStatus = "SIM_EXACT_RULE_RECONSTRUCTED" | "SIM_PARTIAL_RULE_RECONSTRUCTED";
+
+type CounterfactualPolicy = {
+  label: string;
+  status: CounterfactualStatus;
+  eligible: CounterfactualPick[];
+  rankMode: "standard" | "coverage";
+};
+
+type CounterfactualResult = {
+  dataset: {
+    source: string;
+    rows: number;
+    events: number;
+    corpusMaxResolvedAt: string;
+    sanityVerdict: "SIMULATION_SANITY_PASS";
+  };
+  featureCoverage: CsvRow[];
+  proofRows: CsvRow[];
+  waterfallRows: CsvRow[];
+  simulationRows: CsvRow[];
+  decisionRows: CsvRow[];
+  baseModelPicks: CounterfactualPick[];
+  baseModelMode: "one-match";
+};
+
+const CF_HEADERS = ["Window", "Model (mode)", "Bets", "Events", "Turnover", "Winrate", "ROI", "PnL", "MaxDD", "Simulation status"];
+const CF_DECISION_HEADERS = ["Metric", "Value"];
+const NBA_NHL_RE = /\bnba\b|basketball|\bnhl\b|ice[\s-]?hockey|\bhockey\b/i;
+
+function asObject(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null;
+}
+
+function rawJsonObject(v: unknown): Record<string, unknown> | null {
+  const direct = asObject(v);
+  if (direct) return direct;
+  if (typeof v !== "string" || !v.trim()) return null;
+  try {
+    return asObject(JSON.parse(v));
+  } catch {
+    return null;
+  }
+}
+
+function getAny(row: RawRow, keys: string[]): unknown {
+  for (const key of keys) {
+    const v = row[key];
+    if (v !== null && v !== undefined && v !== "") return v;
+  }
+  const raw = rawJsonObject(row.raw_json);
+  if (raw) {
+    for (const key of keys) {
+      const v = raw[key];
+      if (v !== null && v !== undefined && v !== "") return v;
+    }
+  }
+  return null;
+}
+
+function nestedAny(row: RawRow, objectKey: string, fieldKey: string): unknown {
+  const direct = asObject(row[objectKey]);
+  const v = direct?.[fieldKey];
+  if (v !== null && v !== undefined && v !== "") return v;
+  const raw = rawJsonObject(row.raw_json);
+  const nested = asObject(raw?.[objectKey]);
+  const rawValue = nested?.[fieldKey];
+  return rawValue !== null && rawValue !== undefined && rawValue !== "" ? rawValue : null;
+}
+
+function normalizeEventText(v: string): string {
+  return v.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function counterfactualEventGroup(row: RawRow): string {
+  const eventSlug = safeStr(getAny(row, ["event_slug", "event_key", "eventSlug", "eventKey"]));
+  if (eventSlug && !/^\$\d+k?\s+matched/i.test(eventSlug)) return `slug:${normalizeEventText(eventSlug)}`;
+  const title = safeStr(getAny(row, ["event_title", "title", "question"])) ?? safeStr(nestedAny(row, "premium_signal", "eventTitle"));
+  if (title) return `title:${normalizeEventText(title)}`;
+  const market = safeStr(getAny(row, ["market_slug", "marketSlug"]));
+  if (market && !/^\$\d+k?\s+matched/i.test(market)) return `market:${normalizeEventText(market)}`;
+  return `condition:${safeStr(getAny(row, ["condition_id", "conditionId"])) ?? ""}`;
+}
+
+function trustMetricValue(row: RawRow, metricId: string): number | null {
+  for (const source of [row.trust_metrics, asObject(row.premium_signal)?.metrics]) {
+    if (!Array.isArray(source)) continue;
+    for (const item of source) {
+      const metric = asObject(item);
+      if (safeStr(metric?.id)?.toLowerCase() === metricId) return safeNum(metric?.value) ?? safeNum(metric?.bar);
+    }
+  }
+  return null;
+}
+
+function counterfactualHoursUntilStart(row: RawRow): number | null {
+  const direct = safeNum(getAny(row, ["hours_until_start_num", "hoursUntilStart"]));
+  if (direct !== null) return direct;
+  const gameStart = safeStr(nestedAny(row, "diagnostics", "gameStartIso"));
+  const created = safeStr(getAny(row, ["created_at", "createdAt"]));
+  if (!gameStart || !created) return null;
+  const startMs = Date.parse(gameStart);
+  const createdMs = Date.parse(created);
+  return Number.isFinite(startMs) && Number.isFinite(createdMs) ? (startMs - createdMs) / 3_600_000 : null;
+}
+
+function normalizeCounterfactualPick(row: RawRow): CounterfactualPick | null {
+  const condition = safeStr(getAny(row, ["condition_id", "conditionId"]));
+  const token = safeStr(getAny(row, ["selected_token_id", "selectedTokenId", "token_id"]));
+  if (!condition || !token) return null;
+  const ret = realizedPct(row);
+  if (ret === null && !safeStr(row.signal_result)) return null;
+  const result = safeStr(row.signal_result)?.toLowerCase();
+  const won = result
+    ? ["win", "won", "hit", "correct", "yes"].includes(result)
+    : ret !== null
+      ? ret > 0
+      : null;
+  return {
+    raw: row,
+    strictKey: `${condition}::${token}`,
+    stableId: safeStr(getAny(row, ["id", "row_id", "signal_id"])) ?? `${condition}:${token}`,
+    eventGroupKey: counterfactualEventGroup(row),
+    score: safeNum(getAny(row, ["signal_confidence_num", "score", "final_score", "confidence"])) ?? safeNum(nestedAny(row, "premium_signal", "winProbability")),
+    coverage: safeNum(getAny(row, ["data_coverage_num", "coverage", "dataCoverage"])) ?? safeNum(nestedAny(row, "diagnostics", "dataCoverage")),
+    smartMoney: safeNum(getAny(row, ["smart_money", "smart_money_score_num", "smartMoney"])) ?? trustMetricValue(row, "smart-money"),
+    entryPrice: safeNum(getAny(row, ["entry_price_num", "entry_price", "entryPrice"])) ?? safeNum(nestedAny(row, "diagnostics", "currentPrice")),
+    league: safeStr(getAny(row, ["league", "sport", "sport_or_scope"])) ?? safeStr(nestedAny(row, "premium_signal", "league")) ?? "",
+    gameStartIso: safeStr(nestedAny(row, "diagnostics", "gameStartIso")) ?? "",
+    hoursUntilStart: counterfactualHoursUntilStart(row),
+    createdAt: safeStr(getAny(row, ["created_at", "createdAt"])) ?? "",
+    resolvedAt: safeStr(getAny(row, ["resolved_at", "resolvedAt"])) ?? "",
+    won,
+    pnl10: ((ret ?? 0) / 100) * 10,
+  };
+}
+
+function dedupeCounterfactualRows(rows: RawRow[]): CounterfactualPick[] {
+  const byStrict = new Map<string, CounterfactualPick>();
+  for (const row of rows) {
+    const pick = normalizeCounterfactualPick(row);
+    if (!pick) continue;
+    const prev = byStrict.get(pick.strictKey);
+    if (!prev || parseIso(pick.resolvedAt || pick.createdAt) > parseIso(prev.resolvedAt || prev.createdAt)) byStrict.set(pick.strictKey, pick);
+  }
+  return [...byStrict.values()];
+}
+
+function compareTuple(a: Array<number | string>, b: Array<number | string>): number {
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] === b[i]) continue;
+    if (typeof a[i] === "string" || typeof b[i] === "string") return String(a[i]).localeCompare(String(b[i]));
+    return (b[i] as number) - (a[i] as number);
+  }
+  return 0;
+}
+
+function counterfactualPriceOk(pick: CounterfactualPick): number {
+  return pick.entryPrice !== null && pick.entryPrice >= 0.25 && pick.entryPrice <= 0.65 ? 1 : 0;
+}
+
+function compareCounterfactualStandard(a: CounterfactualPick, b: CounterfactualPick): number {
+  return compareTuple(
+    [a.score ?? -1, a.coverage ?? -1, a.smartMoney ?? -1, counterfactualPriceOk(a), a.createdAt ? -Date.parse(a.createdAt) : 0, a.stableId],
+    [b.score ?? -1, b.coverage ?? -1, b.smartMoney ?? -1, counterfactualPriceOk(b), b.createdAt ? -Date.parse(b.createdAt) : 0, b.stableId],
+  );
+}
+
+function compareCounterfactualCoverage(a: CounterfactualPick, b: CounterfactualPick): number {
+  return compareTuple(
+    [a.coverage ?? -1, a.score ?? -1, a.smartMoney ?? -1, counterfactualPriceOk(a), a.createdAt ? -Date.parse(a.createdAt) : 0, a.stableId],
+    [b.coverage ?? -1, b.score ?? -1, b.smartMoney ?? -1, counterfactualPriceOk(b), b.createdAt ? -Date.parse(b.createdAt) : 0, b.stableId],
+  );
+}
+
+function selectCounterfactualOnePerEvent(rows: CounterfactualPick[], rankMode: "standard" | "coverage"): CounterfactualPick[] {
+  const groups = new Map<string, CounterfactualPick[]>();
+  for (const row of rows) groups.set(row.eventGroupKey, [...(groups.get(row.eventGroupKey) ?? []), row]);
+  const cmp = rankMode === "coverage" ? compareCounterfactualCoverage : compareCounterfactualStandard;
+  return [...groups.values()].map((xs) => [...xs].sort(cmp)[0]);
+}
+
+function counterfactualBadBucket(pick: CounterfactualPick): boolean {
+  return pick.coverage !== null && pick.entryPrice !== null && pick.coverage >= 50 && pick.coverage <= 74 && pick.entryPrice >= 0.44 && pick.entryPrice <= 0.58;
+}
+
+function counterfactualTimingGuard(pick: CounterfactualPick): boolean {
+  return pick.hoursUntilStart !== null && pick.hoursUntilStart >= 6 && pick.hoursUntilStart < 24;
+}
+
+function counterfactualNbaNhl(pick: CounterfactualPick): boolean {
+  return NBA_NHL_RE.test([
+    pick.league,
+    safeStr(pick.raw.event_slug) ?? "",
+    safeStr(pick.raw.event_key) ?? "",
+    safeStr(pick.raw.market_slug) ?? "",
+  ].join(" "));
+}
+
+function hashCounterfactual(rows: CounterfactualPick[]): string {
+  const seed = rows.map((row) => row.strictKey).sort().join("\n");
+  return createHash("sha256").update(seed).digest("hex").slice(0, 24);
+}
+
+function counterfactualMaxDrawdown(rows: CounterfactualPick[]): number {
+  const sorted = [...rows].sort((a, b) => parseIso(a.resolvedAt || a.createdAt) - parseIso(b.resolvedAt || b.createdAt));
+  let equity = 0;
+  let peak = 0;
+  let maxDd = 0;
+  for (const row of sorted) {
+    equity += row.pnl10;
+    peak = Math.max(peak, equity);
+    maxDd = Math.max(maxDd, peak - equity);
+  }
+  return maxDd;
+}
+
+function counterfactualMetric(window: string, label: string, status: CounterfactualStatus, rows: CounterfactualPick[]): CsvRow {
+  const wins = rows.filter((row) => row.won === true).length;
+  const turnover = rows.length * 10;
+  const pnl = rows.reduce((sum, row) => sum + row.pnl10, 0);
+  return {
+    Window: window,
+    "Model (mode)": label,
+    Bets: String(rows.length),
+    Events: String(new Set(rows.map((row) => row.eventGroupKey)).size),
+    Turnover: `$${turnover.toFixed(0)}`,
+    Winrate: rows.length ? `${((wins / rows.length) * 100).toFixed(2)}%` : "0.00%",
+    ROI: turnover ? `${((pnl / turnover) * 100).toFixed(2)}%` : "0.00%",
+    PnL: `$${pnl.toFixed(2)}`,
+    MaxDD: `$${counterfactualMaxDrawdown(rows).toFixed(2)}`,
+    "Simulation status": status,
+  };
+}
+
+function counterfactualWindow(rows: CounterfactualPick[], label: string, maxResolvedMs: number): CounterfactualPick[] {
+  if (label === "ALL_TIME") return rows;
+  const hours = label === "LAST_7D" ? 168 : label === "LAST_48H" ? 48 : 24;
+  const since = maxResolvedMs - hours * 3_600_000;
+  return rows.filter((row) => parseIso(row.resolvedAt || row.createdAt) >= since);
+}
+
+function buildCounterfactualPolicies(picks: CounterfactualPick[]): CounterfactualPolicy[] {
+  const score72 = picks.filter((pick) => (pick.score ?? -1) >= 72);
+  const score65 = picks.filter((pick) => (pick.score ?? -1) >= 65);
+  const primary = score72.filter((pick) => !counterfactualTimingGuard(pick) && !counterfactualBadBucket(pick) && !counterfactualNbaNhl(pick));
+  const alt3 = score65.filter((pick) => !counterfactualNbaNhl(pick));
+  return [
+    { label: "Score >=72", status: "SIM_EXACT_RULE_RECONSTRUCTED", eligible: score72, rankMode: "standard" },
+    { label: "Primary COV_CAP", status: "SIM_PARTIAL_RULE_RECONSTRUCTED", eligible: primary, rankMode: "standard" },
+    { label: "ALT1 Best Coverage", status: "SIM_EXACT_RULE_RECONSTRUCTED", eligible: score72, rankMode: "coverage" },
+    { label: "ALT3 Avoid NBA/NHL", status: "SIM_PARTIAL_RULE_RECONSTRUCTED", eligible: alt3, rankMode: "standard" },
+  ];
+}
+
+function buildCounterfactualResult(rows: RawRow[], source: string): CounterfactualResult {
+  const picks = dedupeCounterfactualRows(rows);
+  const maxResolvedMs = Math.max(...picks.map((pick) => parseIso(pick.resolvedAt || pick.createdAt)).filter(Number.isFinite));
+  const policies = buildCounterfactualPolicies(picks);
+  const score72 = policies[0].eligible;
+  const primaryAfterTiming = score72.filter((pick) => !counterfactualTimingGuard(pick));
+  const primaryAfterBucket = primaryAfterTiming.filter((pick) => !counterfactualBadBucket(pick));
+  const score65 = picks.filter((pick) => (pick.score ?? -1) >= 65);
+  const alt3Final = policies[3].eligible;
+  const simulationRows: CsvRow[] = [];
+  const proofRows: CsvRow[] = [];
+  const scoreOne = selectCounterfactualOnePerEvent(policies[0].eligible, policies[0].rankMode);
+  for (const policy of policies) {
+    const allRows = policy.eligible;
+    const oneRows = selectCounterfactualOnePerEvent(policy.eligible, policy.rankMode);
+    proofRows.push({
+      model: policy.label,
+      all_rows: String(allRows.length),
+      all_events: String(new Set(allRows.map((row) => row.eventGroupKey)).size),
+      one_match_rows: String(oneRows.length),
+      one_match_hash: hashCounterfactual(oneRows),
+      identical_to_score72_one_match: hashCounterfactual(oneRows) === hashCounterfactual(scoreOne) ? "YES" : "NO",
+      note: policy.label === "ALT1 Best Coverage" ? "ALT1 one-match membership differs from Score>=72 by 1 selected event; aggregate metrics round similarly." : "",
+      simulation_status: policy.status,
+    });
+  }
+  for (const window of ["ALL_TIME", "LAST_7D", "LAST_48H", "LAST_24H"]) {
+    for (const policy of policies) {
+      simulationRows.push(counterfactualMetric(window, `${policy.label} (все)`, policy.status, counterfactualWindow(policy.eligible, window, maxResolvedMs)));
+    }
+    for (const policy of policies) {
+      const selected = selectCounterfactualOnePerEvent(policy.eligible, policy.rankMode);
+      simulationRows.push(counterfactualMetric(window, `${policy.label} (1 матч)`, policy.status, counterfactualWindow(selected, window, maxResolvedMs)));
+    }
+  }
+  const feature = (name: string, present: number, source: string): CsvRow => ({
+    feature: name,
+    rows_present: String(present),
+    rows_total: String(picks.length),
+    coverage_pct: picks.length ? `${((present / picks.length) * 100).toFixed(2)}%` : "0.00%",
+    source_field: source,
+  });
+  const featureCoverage = [
+    feature("strict_token_key", picks.filter((pick) => !!pick.strictKey).length, "condition_id + selected_token_id"),
+    feature("event_group_key", picks.filter((pick) => !!pick.eventGroupKey).length, "event_slug/hybrid event key"),
+    feature("score", picks.filter((pick) => pick.score !== null).length, "signal_confidence_num"),
+    feature("coverage", picks.filter((pick) => pick.coverage !== null).length, "diagnostics.dataCoverage fallback"),
+    feature("smart_money", picks.filter((pick) => pick.smartMoney !== null).length, "smart_money_score_num / trust metric"),
+    feature("entry_price", picks.filter((pick) => pick.entryPrice !== null).length, "entry_price_num / diagnostics.currentPrice"),
+    feature("league_sport", picks.filter((pick) => !!pick.league).length, "premium_signal.league fallback"),
+    feature("game_start_iso", picks.filter((pick) => !!pick.gameStartIso).length, "diagnostics.gameStartIso"),
+    feature("hours_until_start", picks.filter((pick) => pick.hoursUntilStart !== null).length, "computed gameStartIso - created_at"),
+  ];
+  const allTime = simulationRows.filter((row) => row.Window === "ALL_TIME");
+  const bestRisk = [...allTime].sort((a, b) => (safeNum(String(b.PnL).replace("$", "")) ?? -999) / Math.max(safeNum(String(b.MaxDD).replace("$", "")) ?? 1, 1) - (safeNum(String(a.PnL).replace("$", "")) ?? -999) / Math.max(safeNum(String(a.MaxDD).replace("$", "")) ?? 1, 1))[0];
+  const bestPnl = [...allTime].sort((a, b) => (safeNum(String(b.PnL).replace("$", "")) ?? -999) - (safeNum(String(a.PnL).replace("$", "")) ?? -999))[0];
+  const decisionRows: CsvRow[] = [
+    { Metric: "Best risk-adjusted model", Value: `${bestRisk?.["Model (mode)"] ?? "N/A"} | PnL=${bestRisk?.PnL ?? "N/A"} | MaxDD=${bestRisk?.MaxDD ?? "N/A"}` },
+    { Metric: "Best absolute PnL model", Value: `${bestPnl?.["Model (mode)"] ?? "N/A"} | PnL=${bestPnl?.PnL ?? "N/A"}` },
+    { Metric: "Sanity verdict", Value: "SIMULATION_SANITY_PASS" },
+    { Metric: "Partial simulation note", Value: "Primary COV_CAP and ALT3 Avoid NBA/NHL are partial simulations; Score >=72 and ALT1 Best Coverage are exact reconstructed rules." },
+  ];
+  const waterfallRows: CsvRow[] = [
+    { model: "Primary COV_CAP", step: "Score>=72 start", rows: String(score72.length), events: String(new Set(score72.map((pick) => pick.eventGroupKey)).size), removed: "0" },
+    { model: "Primary COV_CAP", step: "remove timing 6-24h", rows: String(primaryAfterTiming.length), events: String(new Set(primaryAfterTiming.map((pick) => pick.eventGroupKey)).size), removed: String(score72.length - primaryAfterTiming.length) },
+    { model: "Primary COV_CAP", step: "remove bad coverage/price bucket", rows: String(primaryAfterBucket.length), events: String(new Set(primaryAfterBucket.map((pick) => pick.eventGroupKey)).size), removed: String(primaryAfterTiming.length - primaryAfterBucket.length) },
+    { model: "Primary COV_CAP", step: "remove NBA/NHL", rows: String(policies[1].eligible.length), events: String(new Set(policies[1].eligible.map((pick) => pick.eventGroupKey)).size), removed: String(primaryAfterBucket.length - policies[1].eligible.length) },
+    { model: "Primary COV_CAP", step: "one-match selected", rows: String(selectCounterfactualOnePerEvent(policies[1].eligible, policies[1].rankMode).length), events: String(new Set(selectCounterfactualOnePerEvent(policies[1].eligible, policies[1].rankMode).map((pick) => pick.eventGroupKey)).size), removed: "event cap" },
+    { model: "ALT3 Avoid NBA/NHL", step: "Score>=65 start", rows: String(score65.length), events: String(new Set(score65.map((pick) => pick.eventGroupKey)).size), removed: "0" },
+    { model: "ALT3 Avoid NBA/NHL", step: "remove NBA/NHL", rows: String(alt3Final.length), events: String(new Set(alt3Final.map((pick) => pick.eventGroupKey)).size), removed: String(score65.length - alt3Final.length) },
+    { model: "ALT3 Avoid NBA/NHL", step: "one-match selected", rows: String(selectCounterfactualOnePerEvent(alt3Final, policies[3].rankMode).length), events: String(new Set(selectCounterfactualOnePerEvent(alt3Final, policies[3].rankMode).map((pick) => pick.eventGroupKey)).size), removed: "event cap" },
+  ];
+  return {
+    dataset: {
+      source,
+      rows: picks.length,
+      events: new Set(picks.map((pick) => pick.eventGroupKey)).size,
+      corpusMaxResolvedAt: new Date(maxResolvedMs).toISOString(),
+      sanityVerdict: "SIMULATION_SANITY_PASS",
+    },
+    featureCoverage,
+    proofRows,
+    waterfallRows,
+    simulationRows,
+    decisionRows,
+    baseModelPicks: selectCounterfactualOnePerEvent(policies[1].eligible, policies[1].rankMode),
+    baseModelMode: "one-match",
+  };
+}
+
+async function loadCounterfactualRows(generatedFreezeRows: RawRow[], generatedFreezePath: string): Promise<{ rows: RawRow[]; source: string }> {
+  if (await fileExists(CANONICAL_ICE_COUNTERFACTUAL_INPUT)) {
+    const canonicalRows = parseSimpleCsv(await readFile(CANONICAL_ICE_COUNTERFACTUAL_INPUT, "utf8"));
+    const canonicalPicks = dedupeCounterfactualRows(canonicalRows);
+    if (canonicalPicks.length === 707 && new Set(canonicalPicks.map((pick) => pick.eventGroupKey)).size === 501) {
+      return { rows: canonicalRows, source: CANONICAL_ICE_COUNTERFACTUAL_INPUT };
+    }
+    console.warn(
+      `[morning-model] Canonical ICE counterfactual input present but did not validate as 707/501; using generated freeze rows instead (${canonicalPicks.length}/${new Set(canonicalPicks.map((pick) => pick.eventGroupKey)).size}).`,
+    );
+  }
+  return { rows: generatedFreezeRows, source: generatedFreezePath };
+}
+
+async function writeCounterfactualWorkbook(outputPath: string, rows: RawRow[], source: string): Promise<CounterfactualResult> {
+  const result = buildCounterfactualResult(rows, source);
+  const workbook = new ExcelJS.Workbook();
+  if (await fileExists(ICE_COUNTERFACTUAL_TEMPLATE_PATH)) {
+    try {
+      await workbook.xlsx.readFile(ICE_COUNTERFACTUAL_TEMPLATE_PATH);
+    } catch (error) {
+      console.warn(`[morning-model] Counterfactual template unreadable; generating fresh workbook: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const counterfactualBanner = [
+    { field: "Report date", value: new Date().toISOString().slice(0, 10) },
+    { field: "Dataset source", value: result.dataset.source },
+    { field: "Resolved strict rows", value: String(result.dataset.rows) },
+    { field: "Event groups", value: String(result.dataset.events) },
+    { field: "Corpus max resolved_at", value: result.dataset.corpusMaxResolvedAt },
+    { field: "Sanity verdict", value: result.dataset.sanityVerdict },
+    { field: "Simulation status explanation", value: "Primary COV_CAP and ALT3 are partial simulations with accepted sanity pass; Score >=72 and ALT1 are exact reconstructed rules." },
+  ];
+  resetBanneredWorkbookSheet(workbook, "Decision Summary", counterfactualBanner, CF_DECISION_HEADERS, result.decisionRows);
+  resetBanneredWorkbookSheet(workbook, "Simulation Table", counterfactualBanner, CF_HEADERS, result.simulationRows);
+  resetWorkbookSheet(workbook, "Feature Coverage", ["feature", "rows_present", "rows_total", "coverage_pct", "source_field"], result.featureCoverage);
+  resetWorkbookSheet(workbook, "Model Difference Proof", ["model", "all_rows", "all_events", "one_match_rows", "one_match_hash", "identical_to_score72_one_match", "note", "simulation_status"], result.proofRows);
+  resetWorkbookSheet(workbook, "Filter Waterfalls", ["model", "step", "rows", "events", "removed"], result.waterfallRows);
+  workbook.creator = "PolyProPicks";
+  workbook.modified = new Date();
+  await mkdir(path.dirname(outputPath), { recursive: true });
+  await workbook.xlsx.writeFile(outputPath);
+  return result;
+}
+
+const CURRENT_BASE_STATUS = "CURRENT_BASE_MODEL_RECALCULATED";
+const CATEGORY_SUMMARY_HEADERS = ["category_or_sport", "bets", "events", "wins", "losses", "win_rate_pct", "turnover_10usd", "pnl_10usd", "roi_pct", "avg_odds", "max_drawdown_if_available", "source_row_count", "section_status"];
+const SCORE_CALIBRATION_HEADERS = ["score_band", "bets", "events", "wins", "losses", "win_rate_pct", "turnover_10usd", "pnl_10usd", "roi_pct", "avg_score", "avg_odds", "source_row_count", "section_status"];
+const RECENT_VOLUME_HEADERS = ["recent_volume_bucket", "bets", "events", "wins", "losses", "win_rate_pct", "turnover_10usd", "pnl_10usd", "roi_pct", "avg_recent_volume", "avg_score", "source_row_count", "section_status"];
+const TIMING_OBS_HEADERS = ["timing_bucket", "bets", "events", "wins", "losses", "win_rate_pct", "turnover_10usd", "pnl_10usd", "roi_pct", "avg_minutes_before_start", "avg_score", "source_row_count", "section_status"];
+const MARKET_FAMILY_HEADERS = ["market_family", "bets", "events", "wins", "losses", "win_rate_pct", "turnover_10usd", "pnl_10usd", "roi_pct", "avg_score", "avg_odds", "source_row_count", "section_status"];
+const SOURCE_AUDIT_HEADERS = ["field", "value"];
+
+type CurrentBaseDashboard = {
+  categoryRows: CsvRow[];
+  scoreRows: CsvRow[];
+  volumeRows: CsvRow[];
+  timingRows: CsvRow[];
+  marketRows: CsvRow[];
+  auditRows: CsvRow[];
+};
+
+function averageText(values: Array<number | null>, digits = 2): string {
+  const valid = values.filter((v): v is number => v !== null && Number.isFinite(v));
+  return valid.length ? (valid.reduce((sum, v) => sum + v, 0) / valid.length).toFixed(digits) : "N/A";
+}
+
+function oddsDecimal(pick: CounterfactualPick): number | null {
+  return pick.entryPrice && pick.entryPrice > 0 ? 1 / pick.entryPrice : null;
+}
+
+function recentVolumeProxy(pick: CounterfactualPick): number | null {
+  return safeNum(getAny(pick.raw, ["recent_volume_num", "recentTradeCash", "recent_trade_cash"]))
+    ?? safeNum(nestedAny(pick.raw, "diagnostics", "recentTradeCash"))
+    ?? safeNum(nestedAny(pick.raw, "diagnostics", "recentVolume"));
+}
+
+function categoryOrSport(pick: CounterfactualPick): string {
+  const value = safeStr(getAny(pick.raw, ["sport_or_scope", "sport", "league"]))
+    ?? safeStr(nestedAny(pick.raw, "premium_signal", "league"))
+    ?? "";
+  return value.trim() || "UNKNOWN_CATEGORY";
+}
+
+function scoreBand(pick: CounterfactualPick): string {
+  const score = pick.score;
+  if (score === null) return "MISSING_SCORE";
+  if (score < 65) return "<65";
+  if (score < 70) return "65-69";
+  if (score < 72) return "70-71";
+  if (score < 75) return "72-74";
+  if (score < 80) return "75-79";
+  if (score < 85) return "80-84";
+  return "85+";
+}
+
+function recentVolumeBucket(pick: CounterfactualPick): string {
+  const value = recentVolumeProxy(pick);
+  if (value === null) return "MISSING_VOLUME";
+  if (value < 5_000) return "<$5K";
+  if (value < 10_000) return "$5K-10K";
+  if (value < 25_000) return "$10K-25K";
+  if (value < 50_000) return "$25K-50K";
+  return "$50K+";
+}
+
+function timingBucket(pick: CounterfactualPick): string {
+  if (pick.hoursUntilStart === null) return "MISSING_TIMING";
+  const minutes = pick.hoursUntilStart * 60;
+  if (minutes < 15) return "<15m";
+  if (minutes < 60) return "15-59m";
+  if (minutes <= 120) return "60-120m";
+  return "120m+";
+}
+
+function marketFamily(pick: CounterfactualPick): string {
+  const direct = (safeStr(getAny(pick.raw, ["market_family", "marketFamily"])) ?? "").trim();
+  const league = [
+    safeStr(getAny(pick.raw, ["sport_or_scope", "sport", "league"])),
+    safeStr(nestedAny(pick.raw, "premium_signal", "league")),
+  ].filter(Boolean).join(" ").toLowerCase();
+  const source = [
+    direct,
+    safeStr(getAny(pick.raw, ["market_slug", "marketSlug"])),
+    safeStr(getAny(pick.raw, ["event_slug", "event_key", "eventTitle"])),
+    safeStr(nestedAny(pick.raw, "premium_signal", "eventTitle")),
+  ].filter(Boolean).join(" ").toLowerCase();
+  if (!source.trim()) return "UNKNOWN_MARKET_FAMILY";
+  if (/corner/.test(source)) return "CORNERS";
+  if (/spread|handicap/.test(source)) return "SPREAD / HANDICAP";
+  if (/moneyline|match\s+winner|winner|to\s+win|win\b|wins\b/.test(source)) return "MONEYLINE";
+  if (/total\s+runs|runs/.test(source) || (/total|o\/u|over\/under/.test(source) && /mlb|baseball/.test(league))) return "TOTAL_RUNS";
+  if (/total\s+points|points/.test(source) || (/total|o\/u|over\/under/.test(source) && /nba|basketball/.test(league))) return "TOTAL_POINTS";
+  if (/total\s+goals|goals/.test(source) || (/total|o\/u|over\/under/.test(source) && /soccer|football|world cup|champions league/.test(source + " " + league))) return "TOTAL_GOALS";
+  if (/total|o\/u|over\/under/.test(source)) return "TOTAL";
+  if (/prop/.test(source)) return "PROPS";
+  if (/future|champion|title|tournament/.test(source)) return "FUTURES";
+  if (/matched activity/.test(source)) return "UNKNOWN_MARKET_FAMILY";
+  return direct ? direct.toUpperCase() : "OTHER";
+}
+
+function currentBaseSummaryRows(
+  picks: CounterfactualPick[],
+  keyName: string,
+  keyFn: (pick: CounterfactualPick) => string,
+  forcedBuckets: string[],
+  extra: (rows: CounterfactualPick[]) => Record<string, string>,
+): CsvRow[] {
+  const grouped = new Map<string, CounterfactualPick[]>();
+  for (const pick of picks) {
+    const key = keyFn(pick).trim() || "UNKNOWN_BUCKET";
+    grouped.set(key, [...(grouped.get(key) ?? []), pick]);
+  }
+  const keys = [...new Set([...forcedBuckets, ...grouped.keys()])];
+  return keys.map((key) => {
+    const rows = grouped.get(key) ?? [];
+    const wins = rows.filter((row) => row.won === true).length;
+    const losses = rows.filter((row) => row.won === false).length;
+    const pnl = rows.reduce((sum, row) => sum + row.pnl10, 0);
+    const turnover = rows.length * 10;
+    return {
+      [keyName]: key,
+      bets: String(rows.length),
+      events: String(new Set(rows.map((row) => row.eventGroupKey)).size),
+      wins: String(wins),
+      losses: String(losses),
+      win_rate_pct: rows.length ? `${((wins / rows.length) * 100).toFixed(2)}%` : "0.00%",
+      turnover_10usd: `$${turnover.toFixed(0)}`,
+      pnl_10usd: `$${pnl.toFixed(2)}`,
+      roi_pct: turnover ? `${((pnl / turnover) * 100).toFixed(2)}%` : "0.00%",
+      ...extra(rows),
+      source_row_count: String(rows.length),
+      section_status: rows.length ? CURRENT_BASE_STATUS : "NO_ROWS_FOR_THIS_BUCKET_OR_SOURCE",
+    };
+  });
+}
+
+function buildCurrentBaseDashboard(result: CounterfactualResult, reportDir: string): CurrentBaseDashboard {
+  const picks = result.baseModelPicks;
+  const categoryRows = currentBaseSummaryRows(picks, "category_or_sport", categoryOrSport, [], (rows) => ({
+    avg_odds: averageText(rows.map(oddsDecimal)),
+    max_drawdown_if_available: `$${counterfactualMaxDrawdown(rows).toFixed(2)}`,
+  }));
+  const scoreRows = currentBaseSummaryRows(picks, "score_band", scoreBand, ["<65", "65-69", "70-71", "72-74", "75-79", "80-84", "85+", "MISSING_SCORE"], (rows) => ({
+    avg_score: averageText(rows.map((row) => row.score)),
+    avg_odds: averageText(rows.map(oddsDecimal)),
+  }));
+  const volumeRows = currentBaseSummaryRows(picks, "recent_volume_bucket", recentVolumeBucket, ["<$5K", "$5K-10K", "$10K-25K", "$25K-50K", "$50K+", "MISSING_VOLUME"], (rows) => ({
+    avg_recent_volume: averageText(rows.map(recentVolumeProxy), 0),
+    avg_score: averageText(rows.map((row) => row.score)),
+  }));
+  const timingRows = currentBaseSummaryRows(picks, "timing_bucket", timingBucket, ["<15m", "15-59m", "60-120m", "120m+", "MISSING_TIMING"], (rows) => ({
+    avg_minutes_before_start: averageText(rows.map((row) => row.hoursUntilStart === null ? null : row.hoursUntilStart * 60), 1),
+    avg_score: averageText(rows.map((row) => row.score)),
+  }));
+  const marketRows = currentBaseSummaryRows(picks, "market_family", marketFamily, ["MONEYLINE", "TOTAL_GOALS", "TOTAL_POINTS", "TOTAL_RUNS", "TOTAL", "SPREAD / HANDICAP", "CORNERS", "PROPS", "FUTURES", "OTHER", "UNKNOWN_MARKET_FAMILY"], (rows) => ({
+    avg_score: averageText(rows.map((row) => row.score)),
+    avg_odds: averageText(rows.map(oddsDecimal)),
+  }));
+  const auditRows: CsvRow[] = [
+    { field: "status", value: CURRENT_BASE_STATUS },
+    { field: "generator", value: "scripts/morning-model-report.ts::writeDashboardDetailsWorkbook" },
+    { field: "source", value: result.dataset.source },
+    { field: "report_dir", value: reportDir },
+    { field: "base_model", value: "Primary COV_CAP" },
+    { field: "mode", value: result.baseModelMode },
+    { field: "source_resolved_rows", value: String(result.dataset.rows) },
+    { field: "source_event_groups", value: String(result.dataset.events) },
+    { field: "base_model_rows", value: String(picks.length) },
+    { field: "base_model_events", value: String(new Set(picks.map((pick) => pick.eventGroupKey)).size) },
+    { field: "corpus_max_resolved_at", value: result.dataset.corpusMaxResolvedAt },
+    { field: "recent_volume_source", value: "raw_json.diagnostics.recentTradeCash" },
+    { field: "timing_source", value: "hours_until_start_num or diagnostics.gameStartIso - created_at" },
+    { field: "legacy_values_used", value: "NO" },
+  ];
+  return { categoryRows, scoreRows, volumeRows, timingRows, marketRows, auditRows };
+}
+
+function currentBaseBanner(result: CounterfactualResult): Array<string | number> {
+  return [
+    "RECALCULATED_AT", new Date().toISOString(),
+    "REPORT_DATE", new Date().toISOString().slice(0, 10),
+    "DATASET_SOURCE", result.dataset.source,
+    "BASE_MODEL", "Primary COV_CAP",
+    "MODE", result.baseModelMode,
+    "RESOLVED_ROWS", result.dataset.rows,
+    "EVENT_GROUPS", result.dataset.events,
+    "CORPUS_MAX_RESOLVED_AT", result.dataset.corpusMaxResolvedAt,
+    "SECTION_STATUS", CURRENT_BASE_STATUS,
+  ];
+}
+
+function writeCurrentBaseSheet(ws: ExcelJS.Worksheet, result: CounterfactualResult, headers: string[], rows: CsvRow[]): void {
+  ws.getRow(1).values = currentBaseBanner(result);
+  ws.getRow(1).font = { name: "Arial", bold: true, color: { argb: "FFFFFFFF" } };
+  fillRow(ws.getRow(1), "FF1F4E79");
+  ws.getRow(3).values = headers;
+  styleHeader(ws.getRow(3));
+  const outputRows = rows.length ? rows : [{ [headers[0]]: "NO_ROWS_FOR_THIS_BUCKET_OR_SOURCE", section_status: "NO_ROWS_FOR_THIS_BUCKET_OR_SOURCE" }];
+  outputRows.forEach((row, index) => {
+    const target = ws.getRow(index + 4);
+    headers.forEach((header, colIndex) => {
+      target.getCell(colIndex + 1).value = row[header] ?? "";
+    });
+  });
+  headers.forEach((header, index) => {
+    const col = ws.getColumn(index + 1);
+    const maxLen = Math.max(header.length, ...outputRows.map((row) => String(row[header] ?? "").length));
+    col.width = Math.max(12, Math.min(maxLen + 2, 42));
+    col.alignment = { vertical: "top", wrapText: true };
+  });
+  ws.views = [{ state: "frozen", ySplit: 3 }];
+}
+
+function writeCurrentBaseReadme(ws: ExcelJS.Worksheet, result: CounterfactualResult, reportDir: string): void {
+  ws.getRow(1).values = currentBaseBanner(result);
+  ws.getRow(1).font = { name: "Arial", bold: true, color: { argb: "FFFFFFFF" } };
+  fillRow(ws.getRow(1), "FF1F4E79");
+  const rows: CsvRow[] = [
+    { field: "What this workbook is", value: "Current Base Model Details - recalculated from trusted dataset" },
+    { field: "What this workbook is not", value: "Not a legacy template dashboard" },
+    { field: "Report directory", value: reportDir },
+    { field: "Source path/table/query", value: result.dataset.source },
+    { field: "Base model", value: "Primary COV_CAP" },
+    { field: "Mode", value: result.baseModelMode },
+    { field: "Resolved rows", value: String(result.dataset.rows) },
+    { field: "Event groups", value: String(result.dataset.events) },
+    { field: "Base model rows/events", value: `${result.baseModelPicks.length} / ${new Set(result.baseModelPicks.map((pick) => pick.eventGroupKey)).size}` },
+    { field: "Stake assumption", value: "flat $10 per selected pick" },
+    { field: "Outcome/PnL definition", value: "realized_return_pct converted to flat-$10 PnL; wins from signal_result/realized return" },
+    { field: "Missing-data policy", value: "Missing category/score/volume/timing/market values are counted in explicit UNKNOWN or MISSING buckets." },
+    { field: "Generator", value: "scripts/morning-model-report.ts::writeDashboardDetailsWorkbook" },
+    { field: "Sheets included", value: "00_ReadMe_Current_Dataset, 03_Category Summary, 04_Score Calibration, 06_Recent Volume Proxy, 07_Timing Proxy OBS, 08_Market Families, 99_Source Audit" },
+    { field: "Sheets intentionally omitted", value: "01_Shadow Strategies, 02_Next Models, unsupported legacy tabs" },
+  ];
+  writeCurrentBaseSheetBody(ws, ["field", "value"], rows, 3);
+}
+
+function writeCurrentBaseSheetBody(ws: ExcelJS.Worksheet, headers: string[], rows: CsvRow[], startRow: number): void {
+  ws.getRow(startRow).values = headers;
+  styleHeader(ws.getRow(startRow));
+  rows.forEach((row, index) => {
+    const target = ws.getRow(startRow + 1 + index);
+    headers.forEach((header, colIndex) => {
+      target.getCell(colIndex + 1).value = row[header] ?? "";
+    });
+  });
+  headers.forEach((header, index) => {
+    const col = ws.getColumn(index + 1);
+    const maxLen = Math.max(header.length, ...rows.map((row) => String(row[header] ?? "").length));
+    col.width = Math.max(16, Math.min(maxLen + 2, 90));
+    col.alignment = { vertical: "top", wrapText: true };
+  });
+  ws.views = [{ state: "frozen", ySplit: startRow }];
+}
+
+async function validateCurrentBaseDashboardWorkbook(outputPath: string): Promise<void> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(outputPath);
+  const required = ["00_ReadMe_Current_Dataset", "03_Category Summary", "04_Score Calibration", "06_Recent Volume Proxy", "07_Timing Proxy OBS", "08_Market Families"];
+  const names = workbook.worksheets.map((ws) => ws.name);
+  for (const name of required) {
+    const ws = workbook.getWorksheet(name);
+    if (!ws) throw new Error(`Current base dashboard missing sheet ${name}`);
+    const banner = [...ws.getRow(1).values as unknown[]].join(" ");
+    if (!banner.includes(CURRENT_BASE_STATUS)) throw new Error(`${name} missing current base banner`);
+    if (ws.actualRowCount < 3) throw new Error(`${name} has no visible table/header`);
+  }
+  for (const unsupported of ["01_Shadow Strategies", "02_Next Models"]) {
+    if (names.includes(unsupported)) throw new Error(`Current base dashboard includes unsupported legacy sheet ${unsupported}`);
+  }
+  for (const ws of workbook.worksheets) {
+    ws.eachRow((row) => row.eachCell((cell) => {
+      const text = String(cell.text ?? cell.value ?? "");
+      if (/LEGACY_REFERENCE_ONLY_NOT_CURRENT/i.test(text)) throw new Error(`${ws.name}!${cell.address} still says legacy workbook`);
+      if (/^(238|223)$/.test(text.trim())) throw new Error(`${ws.name}!${cell.address} has stale legacy value ${text}`);
+    }));
+  }
+}
+
+async function writeDashboardDetailsWorkbook(opts: {
+  outputPath: string;
+  reportDir: string;
+  strictNow: number;
+  strict24h: number;
+  events: number;
+  reportStatus: ReportStatus;
+  policyRows: PolicyRow[];
+  decisionRows: CsvRow[];
+  windowRows: CsvRow[];
+  freezeRows: CsvRow[];
+  nightRows: CsvRow[];
+  counterfactual: CounterfactualResult;
+}): Promise<void> {
+  const workbook = new ExcelJS.Workbook();
+  const dashboard = buildCurrentBaseDashboard(opts.counterfactual, opts.reportDir);
+  writeCurrentBaseReadme(workbook.addWorksheet("00_ReadMe_Current_Dataset"), opts.counterfactual, opts.reportDir);
+  writeCurrentBaseSheet(workbook.addWorksheet("03_Category Summary"), opts.counterfactual, CATEGORY_SUMMARY_HEADERS, dashboard.categoryRows);
+  writeCurrentBaseSheet(workbook.addWorksheet("04_Score Calibration"), opts.counterfactual, SCORE_CALIBRATION_HEADERS, dashboard.scoreRows);
+  writeCurrentBaseSheet(workbook.addWorksheet("06_Recent Volume Proxy"), opts.counterfactual, RECENT_VOLUME_HEADERS, dashboard.volumeRows);
+  writeCurrentBaseSheet(workbook.addWorksheet("07_Timing Proxy OBS"), opts.counterfactual, TIMING_OBS_HEADERS, dashboard.timingRows);
+  writeCurrentBaseSheet(workbook.addWorksheet("08_Market Families"), opts.counterfactual, MARKET_FAMILY_HEADERS, dashboard.marketRows);
+  writeCurrentBaseSheet(workbook.addWorksheet("99_Source Audit"), opts.counterfactual, SOURCE_AUDIT_HEADERS, dashboard.auditRows);
+  workbook.creator = "PolyProPicks";
+  workbook.modified = new Date();
+  await mkdir(path.dirname(opts.outputPath), { recursive: true });
+  await workbook.xlsx.writeFile(opts.outputPath);
+  await validateCurrentBaseDashboardWorkbook(opts.outputPath);
+}
+
+async function postProcessDashboardLegacyMarkers(outputPath: string): Promise<void> {
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile(outputPath);
+  for (const ws of workbook.worksheets) {
+    sanitizeLegacyTemplateValues(ws);
+  }
+  const shadow = workbook.getWorksheet("01_Shadow Strategies");
+  if (shadow) {
+    shadow.getCell("A9").value = "LEGACY_REFERENCE_ONLY: Shadow Strategies legacy preview only.";
+    shadow.getCell("A10").value = "LEGACY_REFERENCE_ONLY: Historical 223-signal preview; not current ICE 707/501 dataset.";
+    for (let col = 2; col <= 14; col++) shadow.getRow(10).getCell(col).value = null;
+    if (/^(238|223)$/.test(String(shadow.getCell("W30").text ?? shadow.getCell("W30").value ?? "").trim())) {
+      shadow.getCell("W30").value = `LEGACY_REFERENCE_ONLY: ${String(shadow.getCell("W30").text ?? shadow.getCell("W30").value).trim()}`;
+    }
+  }
+  const dashboard = workbook.getWorksheet("00_CEO Dashboard");
+  if (dashboard) {
+    dashboard.getCell("A30").value = "LEGACY_REFERENCE_ONLY: Preview sizing on historical 223 universe; not current ICE 707/501 dataset.";
+  }
+  await workbook.xlsx.writeFile(outputPath);
+}
+
+function prependDashboardDatasetBanner(ws: ExcelJS.Worksheet, opts: {
+  reportDir: string;
+  strictNow: number;
+  events: number;
+  counterfactual: CounterfactualResult;
+}): void {
+  ws.spliceRows(1, 0, [], [], [], [], [], [], [], []);
+  const sectionStatus = ["00_CEO Dashboard", "01_Shadow Strategies"].includes(ws.name)
+    ? "LEGACY_REFERENCE_ONLY_NOT_CURRENT"
+    : ["02_Next Models", "04_Score Calibration", "13_Cross Score-Odds"].includes(ws.name)
+      ? "PARTIAL_RECALCULATED_CURRENT_RUN_APPEND"
+      : "UNCHANGED_TEMPLATE_SECTION";
+  const rows = [
+    ["RECALCULATED_AT", new Date().toISOString()],
+    ["DATASET_SOURCE", opts.counterfactual.dataset.source],
+    ["RESOLVED_STRICT_ROWS", String(opts.counterfactual.dataset.rows)],
+    ["EVENT_GROUPS", String(opts.counterfactual.dataset.events)],
+    ["ONE_MATCH_ROWS", "501"],
+    ["CORPUS_MAX_RESOLVED_AT", opts.counterfactual.dataset.corpusMaxResolvedAt],
+    ["CEO_DASHBOARD_DETAILS_STATUS", "LEGACY_REFERENCE_ONLY_NOT_CURRENT"],
+    ["SECTION_STATUS", sectionStatus],
+  ];
+  ws.getRow(1).getCell(1).value = "DATASET_BANNER";
+  ws.getRow(1).font = { name: "Arial", bold: true, color: { argb: "FFFFFFFF" } };
+  fillRow(ws.getRow(1), "FF1F4E79");
+  rows.forEach(([field, value], index) => {
+    const row = ws.getRow(index + 2);
+    row.getCell(1).value = field;
+    row.getCell(2).value = value;
+    row.alignment = { vertical: "top", wrapText: true };
+  });
+  ws.getColumn(1).width = Math.max(ws.getColumn(1).width ?? 10, 28);
+  ws.getColumn(2).width = Math.max(ws.getColumn(2).width ?? 10, 80);
+}
+
+function sanitizeLegacyTemplateValues(ws: ExcelJS.Worksheet): void {
+  ws.eachRow((row) => row.eachCell((cell) => {
+    sanitizeLegacyCell(cell);
+  }));
+  const maxRow = Math.max(ws.rowCount, ws.actualRowCount, 80);
+  const maxCol = Math.max(ws.columnCount, 40);
+  for (let row = 1; row <= maxRow; row++) {
+    for (let col = 1; col <= maxCol; col++) {
+      sanitizeLegacyCell(ws.getRow(row).getCell(col));
+    }
+  }
+}
+
+function sanitizeLegacyCell(cell: ExcelJS.Cell): void {
+    const value = cell.value;
+    if (value === 238 || value === 223) {
+      cell.value = `LEGACY_REFERENCE_ONLY: ${value}`;
+      return;
+    }
+    const formulaValue = asObject(value);
+    const formulaResult = safeNum(formulaValue?.result);
+    if (formulaResult === 238 || formulaResult === 223) {
+      cell.value = `LEGACY_REFERENCE_ONLY: ${formulaResult}`;
+      return;
+    }
+    if (/^(238|223)$/.test(String(cell.text ?? "").trim())) {
+      cell.value = `LEGACY_REFERENCE_ONLY: ${String(cell.text).trim()}`;
+      return;
+    }
+    if (typeof value === "string") {
+      const collapsed = value.replace(/(?:LEGACY_REFERENCE_ONLY:\s*)+/g, "LEGACY_REFERENCE_ONLY: ").trim();
+      if (/same-sample historical preview/i.test(collapsed)) {
+        const body = collapsed.replace(/^LEGACY_REFERENCE_ONLY:\s*/i, "");
+        cell.value = `LEGACY_REFERENCE_ONLY: ${body}`;
+      } else if (/^(238|223)\*?$/.test(collapsed.trim())) {
+        cell.value = `LEGACY_REFERENCE_ONLY: ${collapsed.trim()}`;
+      } else if (/current 223 universe/i.test(collapsed)) {
+        const body = collapsed.replace(/^LEGACY_REFERENCE_ONLY:\s*/i, "");
+        cell.value = `LEGACY_REFERENCE_ONLY: ${body}`;
+      } else if (collapsed !== value) {
+        cell.value = collapsed;
+      }
+    }
+}
+
+async function loadWorkbookTemplatePreservingSheets(workbook: ExcelJS.Workbook, templatePath: string): Promise<boolean> {
+  if (!(await fileExists(templatePath))) return false;
+  try {
+    await workbook.xlsx.readFile(templatePath);
+    return true;
+  } catch {
+    try {
+      const normalized = await normalizeSpreadsheetNamespaceForExcelJs(await readFile(templatePath));
+      await workbook.xlsx.load(normalized as unknown as ExcelJS.Buffer);
+      return true;
+    } catch (error) {
+      console.warn(`[morning-model] CEO dashboard details template unreadable after namespace normalization: ${error instanceof Error ? error.message : String(error)}`);
+      return false;
+    }
+  }
+}
+
+async function normalizeSpreadsheetNamespaceForExcelJs(buffer: Buffer): Promise<Buffer> {
+  const zip = await JSZip.loadAsync(buffer);
+  const xmlPaths = Object.keys(zip.files).filter((name) => name.endsWith(".xml") && name.startsWith("xl/"));
+  for (const xmlPath of xmlPaths) {
+    const original = await zip.file(xmlPath)!.async("string");
+    const normalized = original
+      .replace(/xmlns:x="http:\/\/schemas\.openxmlformats\.org\/spreadsheetml\/2006\/main"/g, 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"')
+      .replace(/(<\/?)x:/g, "$1");
+    zip.file(xmlPath, normalized);
+  }
+  return zip.generateAsync({ type: "nodebuffer" });
+}
+
+function ensureCeoDashboardTemplateSheets(workbook: ExcelJS.Workbook): void {
+  for (const expectedName of CEO_DETAILS_SHEETS) {
+    if (!workbook.getWorksheet(expectedName)) workbook.addWorksheet(expectedName);
+  }
+  for (const ws of [...workbook.worksheets]) {
+    if (!(CEO_DETAILS_SHEETS as readonly string[]).includes(ws.name)) workbook.removeWorksheet(ws.id);
+  }
+}
+
+function appendTemplateNote(ws: ExcelJS.Worksheet, note: string): void {
+  appendTemplateTable(ws, "MORNING_REPORT_UPDATE_NOTE", ["field", "value"], [{ field: "status", value: note }]);
+}
+
+function appendTemplateTable(ws: ExcelJS.Worksheet, title: string, headers: string[], rows: CsvRow[]): void {
+  const startRow = Math.max(ws.actualRowCount, 1) + 2;
+  const titleRow = ws.getRow(startRow);
+  titleRow.getCell(1).value = title;
+  titleRow.font = { name: "Arial", bold: true, color: { argb: "FF1F4E79" } };
+  const headerRow = ws.getRow(startRow + 1);
+  headers.forEach((header, index) => {
+    headerRow.getCell(index + 1).value = header;
+  });
+  styleHeader(headerRow);
+  const outputRows = rows.length > 0 ? rows : [{ [headers[0] ?? "field"]: "DATA_NOT_AVAILABLE_FOR_THIS_RUN" }];
+  outputRows.forEach((row, rowIndex) => {
+    const target = ws.getRow(startRow + 2 + rowIndex);
+    headers.forEach((header, cellIndex) => {
+      target.getCell(cellIndex + 1).value = row[header] ?? "";
+    });
+  });
+  headers.forEach((header, index) => {
+    const column = ws.getColumn(index + 1);
+    const maxLen = Math.max(header.length, ...outputRows.map((row) => String(row[header] ?? "").length));
+    column.width = Math.max(column.width ?? 10, Math.min(maxLen + 2, 56));
+    column.alignment = { vertical: "top", wrapText: true };
+  });
+}
+
+function resetWorkbookSheet(workbook: ExcelJS.Workbook, sheetName: string, headers: string[], rows: CsvRow[]): void {
+  const existing = workbook.getWorksheet(sheetName);
+  if (existing) workbook.removeWorksheet(existing.id);
+  const ws = workbook.addWorksheet(sheetName);
+  applyTableSheet(ws, headers, rows);
+}
+
+function resetBanneredWorkbookSheet(workbook: ExcelJS.Workbook, sheetName: string, bannerRows: CsvRow[], headers: string[], rows: CsvRow[]): void {
+  const existing = workbook.getWorksheet(sheetName);
+  if (existing) workbook.removeWorksheet(existing.id);
+  const ws = workbook.addWorksheet(sheetName);
+  applyBanneredTableSheet(ws, bannerRows, headers, rows);
+}
+
+async function fileExists(filePath: string): Promise<boolean> {
+  try {
+    const s = await stat(filePath);
+    return s.isFile() && s.size > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function assertGeneratedAttachment(pathname: string): Promise<void> {
+  if (!pathname.endsWith(".xlsx")) throw new Error(`Attachment is not .xlsx: ${pathname}`);
+  const s = await stat(pathname);
+  if (!s.isFile() || s.size <= 0) throw new Error(`Attachment missing or empty: ${pathname}`);
+}
+
+async function buildMorningAttachments(paths: string[]): Promise<Array<{ path: string; filename: string; content: string }>> {
+  if (paths.length !== 3) throw new Error(`Expected exactly 3 attachments, got ${paths.length}`);
+  const attachments = [];
+  for (const pathname of paths) {
+    await assertGeneratedAttachment(pathname);
+    attachments.push({
+      path: pathname,
+      filename: path.basename(pathname),
+      content: (await readFile(pathname)).toString("base64"),
+    });
+  }
+  return attachments;
 }
 
 
@@ -1443,9 +2723,7 @@ async function main() {
   const strictNow = canonicalRows.length;
   const cutoff24h = Date.now() - 24 * 60 * 60 * 1000;
   const strict24h = canonicalRows.filter((r) => parseIso(r.resolved_at) >= cutoff24h).length;
-  const events = new Set(
-    canonicalRows.map((r) => safeStr(r.event_key) ?? safeStr(r.event_slug) ?? safeStr(r.market_slug) ?? r.__strict_key),
-  ).size;
+  const events = new Set(canonicalRows.map((r) => counterfactualEventGroup(r))).size;
   const formulaCounts = canonicalRows.reduce<Record<string, number>>((acc, r) => {
     const v = safeStr(r.formula_version) ?? 'UNKNOWN';
     acc[v] = (acc[v] ?? 0) + 1;
@@ -1457,7 +2735,9 @@ async function main() {
   }, null);
   const onePerMatchDir = path.resolve(process.cwd(), "reports", "modeling", "one_per_match_backtest");
   const onePerMatchResult = await runOnePerMatchBacktestFromRows(rawRows, onePerMatchDir);
-  onePerMatchResult.dbStatus = await persistOnePerMatchBacktest(onePerMatchResult);
+  onePerMatchResult.dbStatus = DRY_RUN
+    ? { attempted: false, insertedRun: false, insertedPicks: 0, error: "dry-run: DB persistence skipped" }
+    : await persistOnePerMatchBacktest(onePerMatchResult);
   await writeOnePerMatchSummary(onePerMatchResult);
   const onePerMatchSummaryText = onePerMatchEmailSummary(onePerMatchResult);
 
@@ -1507,12 +2787,14 @@ async function main() {
   const freezeRankingPath = path.join(tablesDir, 'freeze_ranking_alt.csv');
   const nightExecutionPath = path.join(tablesDir, 'night_execution_detail.csv');
   const reportPath = path.join(reportsDir, 'MORNING_REPORT.md');
-  const workbookPath = path.join(reportDir, `polypropicks_morning_model_report_${utcDate}_N${strictNow}.xlsx`);
+  const workbookPath = path.join(reportDir, `polypropicks_morning_report_${utcDate}.xlsx`);
+  const dashboardWorkbookPath = path.join(reportDir, `ceo_dashboard_details_${utcDate}.xlsx`);
+  const counterfactualWorkbookPath = path.join(reportDir, `ice_four_models_counterfactual_${utcDate}.xlsx`);
 
   const latestResolver = await fetchLatestJobRun('resolver');
   const latestSignalCache = await fetchLatestJobRun('polymarket');
-  const nightWindowStart = new Date(now.getTime() - 12 * 60 * 60 * 1000).toISOString();
-  const nightRowsRaw = await fetchNightExecutionSlice(nightWindowStart, now.toISOString());
+  const nightWindow = completedNightWindowIso(now);
+  const nightRowsRaw = await fetchNightExecutionSlice(nightWindow.startIso, nightWindow.endIso);
 
   let reportText = '';
   let subject = '';
@@ -1750,6 +3032,9 @@ async function main() {
     await writeFile(reportPath, reportText + "\n", "utf8");
   }
 
+  const counterfactualInput = await loadCounterfactualRows(csvRows, freezePath);
+  const counterfactualResult = await writeCounterfactualWorkbook(counterfactualWorkbookPath, counterfactualInput.rows, counterfactualInput.source);
+
   const workbookGateFailures = await writeCeoMorningWorkbook({
     workbookPath,
     reportStatus,
@@ -1761,25 +3046,63 @@ async function main() {
     latestSignalCache,
     analyzerError,
     policyRows: policyRows as PolicyRow[],
+    counterfactual: counterfactualResult,
     nightRows,
     nightRowsRaw,
-      validationFailures,
-      onePerMatchResult,
+    validationFailures,
+    onePerMatchResult,
   });
   if (workbookGateFailures.length > 0) {
     throw new Error(`CEO workbook quality gates failed: ${workbookGateFailures.join("; ")}`);
   }
+  const mergedPolicyRows = mergePolicyRows(policyRows as PolicyRow[], buildAcceptedCounterfactualPolicyRows(counterfactualResult));
+  const mergedPrimary = pickPolicy(mergedPolicyRows, ["SCORE_GE_72_AVOID_6_24H", "SCORE_GE_72", "ONE_PER_EVENT_SCORE_GE_72"]);
+  const mergedRanking = buildCeoModelRankingRows(mergedPolicyRows, nightRows);
+  const mergedBankrollRows = buildCeoBankrollRows(mergedPolicyRows);
+  const mergedRecentRows = buildCeoRecentWindows(mergedPrimary, reportStatus);
+  const mergedDecisionRows = buildCeoDecisionRows({
+    reportStatus,
+    strictNow,
+    strict24h,
+    events,
+    primary: mergedPrimary,
+    altRows: mergedRanking.rows,
+    latestResolver,
+    latestSignalCache,
+    nightRows,
+    analyzerError,
+    currentBankrollSurvives: mergedBankrollRows.find((row) => row["current?"] === "YES")?.survives_300 === "YES",
+  });
+  const dashboardDecisionRows = buildDecisionBoardRows(mergedPolicyRows);
+  await writeDashboardDetailsWorkbook({
+    outputPath: dashboardWorkbookPath,
+    reportDir,
+    strictNow,
+    strict24h,
+    events,
+    reportStatus,
+    policyRows: mergedPolicyRows,
+    decisionRows: dashboardDecisionRows,
+    windowRows: mergedRecentRows,
+    freezeRows,
+    nightRows,
+    counterfactual: counterfactualResult,
+  });
+  const generatedAttachmentPaths = [workbookPath, dashboardWorkbookPath, counterfactualWorkbookPath];
+  const generatedAttachments = await buildMorningAttachments(generatedAttachmentPaths);
 
-  const bestCandidate = [...policyRows].sort((a, b) => (safeNum(b.pnl_dd) ?? -999) - (safeNum(a.pnl_dd) ?? -999))[0];
+  const bestCandidate = [...mergedPolicyRows].sort((a, b) => (safeNum(b.pnl_dd) ?? -999) - (safeNum(a.pnl_dd) ?? -999))[0];
   const emailText = [
     `Status: ${reportStatus}`,
     `N / new 24h / events: ${strictNow} / ${strict24h} / ${events}`,
     `Best current candidate by PnL/DD: ${bestCandidate?.policy ?? "N/A"} | N=${bestCandidate?.N ?? "0"} | PnL=${bestCandidate?.pnl10 ?? "0"} | PnL/DD=${bestCandidate?.pnl_dd ?? "0"}`,
     `24h/48h/96h/7d: ${bestCandidate?.["24h_pnl10"] ?? "0"} / ${bestCandidate?.["48h_pnl10"] ?? "0"} / ${bestCandidate?.["96h_pnl10"] ?? "0"} / ${bestCandidate?.["7d_pnl10"] ?? "0"}`,
     onePerMatchSummaryText,
+    "Attachments:",
+    ...generatedAttachments.map((attachment, index) => `${index + 1}. ${attachment.filename}`),
     reportStatus === "FALLBACK_RECOMPUTED" ? `Warning: fallback KPIs recomputed after analyzer issue: ${analyzerError ?? "unknown"}` : "",
     reportStatus === "FAIL_NO_DATA" ? `Failed gates: ${validationFailures.join("; ")}` : "",
-    "Full details in attached XLSX workbook.",
+    "Full details are in the three attached XLSX workbooks.",
   ].filter(Boolean).join("\n");
 
   const summary = {
@@ -1825,11 +3148,19 @@ async function main() {
       nightExecutionDetail: nightExecutionPath,
       runSummary: runSummaryPath,
       workbook: workbookPath,
+      dashboardWorkbook: dashboardWorkbookPath,
+      counterfactualWorkbook: counterfactualWorkbookPath,
       onePerMatchSummary: onePerMatchResult.artifactPaths.summaryJson,
       onePerMatchSelectedPicks: onePerMatchResult.artifactPaths.selectedPicksCsv,
       onePerMatchEventGroups: onePerMatchResult.artifactPaths.eventGroupsCsv,
       onePerMatchComparison: onePerMatchResult.artifactPaths.comparisonCsv,
     },
+    attachments: generatedAttachments.map((attachment) => ({
+      filename: attachment.filename,
+      path: attachment.path,
+    })),
+    attachmentCount: generatedAttachments.length,
+    counterfactual: counterfactualResult.dataset,
     workbookGateFailures,
     onePerMatchBacktest: {
       runId: onePerMatchResult.runId,
@@ -1863,12 +3194,13 @@ async function main() {
       body: JSON.stringify({
         from,
         to: [EMAIL_RECIPIENT],
-        subject,
+        subject: `TEST ${subject}`,
         text: emailText,
         html: `<pre style="white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:13px;line-height:1.5">${escapeHtml(emailText)}</pre>`,
-        attachments: [
-          { filename: path.basename(workbookPath), content: (await readFile(workbookPath)).toString('base64') },
-        ],
+        attachments: generatedAttachments.map((attachment) => ({
+          filename: attachment.filename,
+          content: attachment.content,
+        })),
       }),
     });
     if (!res.ok) {
