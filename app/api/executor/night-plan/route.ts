@@ -133,6 +133,12 @@ export async function GET(request: NextRequest) {
               rows_missing_selected_outcome: rawDiagnostics.rows_missing_selected_outcome,
               wc_like_rows: rawDiagnostics.wc_like_rows,
               soccer_like_rows: rawDiagnostics.soccer_like_rows,
+              wc_tier2_override_candidates:
+                rawDiagnostics.wc_tier2_override_candidates,
+              wc_tier2_override_live_enabled:
+                rawDiagnostics.wc_tier2_override_live_enabled,
+              wc_tier2_override_rejected_by_reason:
+                rawDiagnostics.wc_tier2_override_rejected_by_reason,
               sport_classification_confidence: rawDiagnostics.sport_classification_confidence_counts,
               match_family_quality_counts: rawDiagnostics.match_family_quality_counts,
               rejected_before_planning_by_reason:

@@ -42,6 +42,9 @@ export interface RawPlanningDiagnostics {
   rows_missing_selected_outcome: number;
   wc_like_rows: number;
   soccer_like_rows: number;
+  wc_tier2_override_candidates: number;
+  wc_tier2_override_live_enabled: number;
+  wc_tier2_override_rejected_by_reason: Record<string, number>;
   sport_classification_confidence_counts: Record<string, number>;
   match_family_quality_counts: Record<string, number>;
   rejected_before_planning_by_reason: Record<string, number>;
@@ -113,6 +116,10 @@ export interface FireModelCandidate {
     fire_model_alias: string;
     version: string;
     pilot_tier3_fallback?: true;
+    live_policy_override?: "WC_TIER2_68_COV50";
+    override_reason?: "FOUNDER_APPROVED_WC_TIER2_SMALL_STAKE";
+    max_stake_cap?: 5;
+    wc_tier2_override_rejected_reason?: string;
   };
 }
 
@@ -467,6 +474,44 @@ function computeLiveEligibility(
   return { liveEligible: true, liveRejectionReason: null };
 }
 
+function isWcTier2LiveOverrideCandidate(args: {
+  tier: string;
+  strategicScope: StrategicScope;
+  sport: string;
+  identityText: string;
+  eventSlug: string | null;
+  score: number;
+  coverage: number;
+  tokenId: unknown;
+  conditionId: unknown;
+  side: string;
+  selectedOutcome: string | null;
+  hoursToStart: number;
+  identityQuality: IdentityQuality;
+  matchFamilyKeyIsWeak: boolean;
+  matchFamilyKey: string;
+  liveRejectionReason: string | null;
+}): { allowed: boolean; reason: string } {
+  if (args.liveRejectionReason !== "TIER1_ONLY_LIVE_BLOCKED") return { allowed: false, reason: "NOT_TIER1_ONLY_BLOCK" };
+  if (args.tier !== "TIER2_SAFE_EXPAND_60_COV50") return { allowed: false, reason: "NOT_TIER2" };
+  const wcText = `${args.identityText} ${args.eventSlug ?? ""} ${args.sport}`.toLowerCase();
+  const isExplicitWc = args.strategicScope === "WC" || (args.sport === "soccer" && WC_EXPLICIT_RE.test(wcText));
+  if (!isExplicitWc) return { allowed: false, reason: "NOT_WC_SCOPE" };
+  if (args.score < 68) return { allowed: false, reason: "LOW_SCORE" };
+  if (args.coverage < 50) return { allowed: false, reason: "LOW_COVERAGE" };
+  if (!args.tokenId) return { allowed: false, reason: "MISSING_TOKEN" };
+  if (!args.conditionId) return { allowed: false, reason: "MISSING_CONDITION" };
+  if (!args.selectedOutcome || !args.side) return { allowed: false, reason: "MISSING_SIDE" };
+  if (args.side.toLowerCase() === "no") return { allowed: false, reason: "UNSAFE_NO_SIDE" };
+  if (args.identityQuality === "WEAK" || args.identityQuality === "INVALID") return { allowed: false, reason: "WEAK_IDENTITY" };
+  if (args.matchFamilyKeyIsWeak || args.matchFamilyKey.startsWith("WEAK_MARKET_LEVEL_KEY:")) {
+    return { allowed: false, reason: "WEAK_MATCH_FAMILY_KEY" };
+  }
+  if (args.hoursToStart < 0) return { allowed: false, reason: "GAME_STARTED_OR_INVALID" };
+  if (args.hoursToStart > 1.0) return { allowed: false, reason: "OUTSIDE_WC_TIER2_LIVE_WINDOW" };
+  return { allowed: true, reason: "WC_TIER2_OVERRIDE_ALLOWED" };
+}
+
 // planningMode is OFF by default. When true (night-plan universe only):
 //   1) includes shadow-strategic-sports-v1 in the version filter.
 //   2) relaxes the soccer/WC ≤1h live timing gate so future matches appear as
@@ -562,6 +607,9 @@ export async function buildFireModelCandidates(
         rows_missing_selected_outcome: 0,
         wc_like_rows: 0,
         soccer_like_rows: 0,
+        wc_tier2_override_candidates: 0,
+        wc_tier2_override_live_enabled: 0,
+        wc_tier2_override_rejected_by_reason: {},
         sport_classification_confidence_counts: {},
         match_family_quality_counts: {},
         rejected_before_planning_by_reason: {},
@@ -770,6 +818,41 @@ export async function buildFireModelCandidates(
       hoursToStart,
       identityQuality
     );
+
+    let wcTier2OverrideApplied = false;
+    let wcTier2OverrideReason: string | null = null;
+    if (liveRejectionReason === "TIER1_ONLY_LIVE_BLOCKED") {
+      if (rawDiag) rawDiag.wc_tier2_override_candidates += 1;
+      const override = isWcTier2LiveOverrideCandidate({
+        tier,
+        strategicScope,
+        sport,
+        identityText,
+        eventSlug: typeof row.event_slug === "string" ? row.event_slug : null,
+        score,
+        coverage,
+        tokenId: row.selected_token_id,
+        conditionId: row.condition_id,
+        side,
+        selectedOutcome,
+        hoursToStart,
+        identityQuality,
+        matchFamilyKeyIsWeak,
+        matchFamilyKey,
+        liveRejectionReason,
+      });
+      wcTier2OverrideReason = override.reason;
+      if (override.allowed) {
+        liveEligible = true;
+        liveRejectionReason = null;
+        wcTier2OverrideApplied = true;
+        stakeUsd = Math.min(stakeUsd, 5);
+        if (rawDiag) rawDiag.wc_tier2_override_live_enabled += 1;
+      } else if (rawDiag) {
+        rawDiag.wc_tier2_override_rejected_by_reason[override.reason] =
+          (rawDiag.wc_tier2_override_rejected_by_reason[override.reason] ?? 0) + 1;
+      }
+    }
     if (!planningMode && liveRejectionReason === "TIER1_ONLY_LIVE_BLOCKED") {
       console.log("[ireland-executor] rejected non-tier1 candidate", {
         signal_id: row.id,
@@ -899,6 +982,15 @@ export async function buildFireModelCandidates(
         hours_to_start_now: hoursToStart,
         fire_model_alias: "FireModel1",
         version: row.metric_formula_version,
+        ...(wcTier2OverrideApplied
+          ? {
+              live_policy_override: "WC_TIER2_68_COV50" as const,
+              override_reason: "FOUNDER_APPROVED_WC_TIER2_SMALL_STAKE" as const,
+              max_stake_cap: 5 as const,
+            }
+          : wcTier2OverrideReason
+            ? { wc_tier2_override_rejected_reason: wcTier2OverrideReason }
+            : {}),
         ...(pilotTier3FallbackApplied ? { pilot_tier3_fallback: true as const } : {}),
         ...(planningFallbackUsed
           ? {
