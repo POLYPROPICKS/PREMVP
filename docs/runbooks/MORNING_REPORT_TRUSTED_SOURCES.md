@@ -8,7 +8,8 @@ The primary generator is `scripts/morning-model-report.ts`.
 
 ## Daily generation flow
 
-1. Overnight resolver/model refresh completes first.
+1. Resolver pipeline completes first: `npm run resolve:signals:live-priority`;
+   `npm run resolve:signals:cron`; `npm run verify:resolver-pipeline`.
 2. The morning report job runs after the fresh resolved/model dataset is available.
 3. The job reads trusted sources and validates workbook gates.
 4. The job writes exactly three XLSX files into the morning report run folder.

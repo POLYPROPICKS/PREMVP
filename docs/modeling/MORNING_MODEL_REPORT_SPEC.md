@@ -4,6 +4,12 @@
 
 Send a founder-readable daily morning report that freezes the latest resolved strict-token corpus, reruns Ice1 KPI analysis, and summarizes the current model decision state.
 
+Morning reports and model freezes are valid only after the resolver pipeline has
+run in order: `npm run resolve:signals:live-priority`;
+`npm run resolve:signals:cron`; `npm run verify:resolver-pipeline`. The live
+priority step resolves executed real-money bets before generic backlog so PnL,
+freeze rows, and CEO report details do not use stale unresolved live bets.
+
 ## Schedule
 
 - Local target: 09:00 Minsk

@@ -11,6 +11,7 @@
     "resolve:signals": "tsx scripts/resolve-signals.ts",
     "resolve:signals:live-priority": "tsx scripts/resolve-signals.ts --write --priority-live-ledger --dedupe-strict --limit=100 --max-updates=100",
     "resolve:signals:cron": "tsx scripts/resolve-signals.ts --write --only-expired --order=oldest --dedupe-strict --limit=500 --max-updates=50",
+    "verify:resolver-pipeline": "tsx scripts/verify-resolver-pipeline.ts",
     "audit:sports-sources": "tsx scripts/audit-polymarket-sports-sources.ts",
     "firemodel1:checkpoint": "tsx scripts/firemodel1-checkpoint.ts",
     "firemodel1:roi": "tsx scripts/firemodel1-roi-sanity.ts",

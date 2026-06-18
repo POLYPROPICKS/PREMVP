@@ -17,6 +17,9 @@ import {
 const WRITE_MODE = process.argv.includes("--write");
 const ONLY_EXPIRED = process.argv.includes("--only-expired");
 const DEDUPE_STRICT = process.argv.includes("--dedupe-strict");
+// Permanent pipeline contract: executed live bets are money-truth and must
+// resolve before generic backlog. Do not remove or bypass this without an
+// equivalent priority queue for executed condition_id::token_id keys.
 const PRIORITY_LIVE_LEDGER = process.argv.includes("--priority-live-ledger");
 
 const DEFAULT_LIVE_LEDGER_PATH = path.join(
