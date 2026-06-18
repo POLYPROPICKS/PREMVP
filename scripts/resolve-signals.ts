@@ -5,6 +5,8 @@
 //   npm run resolve:signals -- --write    # write mode
 
 import { loadEnvConfig } from "@next/env";
+import { existsSync, readdirSync, readFileSync } from "fs";
+import path from "path";
 import {
   fetchGammaMarketByConditionId,
   resolveSignalOutcome,
@@ -15,6 +17,16 @@ import {
 const WRITE_MODE = process.argv.includes("--write");
 const ONLY_EXPIRED = process.argv.includes("--only-expired");
 const DEDUPE_STRICT = process.argv.includes("--dedupe-strict");
+const PRIORITY_LIVE_LEDGER = process.argv.includes("--priority-live-ledger");
+
+const DEFAULT_LIVE_LEDGER_PATH = path.join(
+  process.cwd(),
+  "modeling",
+  "morning_model_report",
+  "20260618_0600UTC",
+  "tables",
+  "night_execution_detail.csv",
+);
 
 type ResolverOrderMode = "newest" | "oldest";
 
@@ -29,6 +41,17 @@ type ResolverRow = {
   entry_price_num: number | null;
 };
 
+type PriorityLiveTarget = {
+  condition_id: string;
+  selected_token_id: string;
+  event: string;
+  market: string;
+  side: string;
+  execution_type: string;
+  order_status: string;
+  source_path: string;
+};
+
 const orderMode: ResolverOrderMode = (() => {
   const arg = process.argv.find((a) => a.startsWith("--order="));
   if (!arg) return "newest";
@@ -39,6 +62,8 @@ const orderMode: ResolverOrderMode = (() => {
   );
   process.exit(1);
 })();
+
+const HAS_EXPLICIT_ORDER = process.argv.some((a) => a.startsWith("--order="));
 
 function strictKey(row: Pick<ResolverRow, "condition_id" | "selected_token_id">): string {
   return `${row.condition_id}::${row.selected_token_id ?? ""}`;
@@ -57,8 +82,110 @@ const maxUpdates = (() => {
   const arg = process.argv.find((a) => a.startsWith("--max-updates="));
   if (!arg) return WRITE_MODE ? 1 : Infinity;
   const n = parseInt(arg.split("=")[1], 10);
-  return Number.isFinite(n) ? Math.min(Math.max(n, 1), 50) : WRITE_MODE ? 1 : Infinity;
+  return Number.isFinite(n) ? Math.min(Math.max(n, 1), 500) : WRITE_MODE ? 1 : Infinity;
 })();
+
+function csvSplitLine(line: string): string[] {
+  const cells: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (quoted && line[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else {
+        quoted = !quoted;
+      }
+    } else if (ch === "," && !quoted) {
+      cells.push(cell);
+      cell = "";
+    } else {
+      cell += ch;
+    }
+  }
+  cells.push(cell);
+  return cells;
+}
+
+function parseCsv(text: string): Record<string, string>[] {
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = csvSplitLine(lines[0]);
+  return lines.slice(1).map((line) => {
+    const cells = csvSplitLine(line);
+    return Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? ""]));
+  });
+}
+
+function findPriorityLiveLedgerPath(): string | null {
+  const explicit = process.argv.find((a) => a.startsWith("--live-ledger-path="));
+  if (explicit) {
+    const value = explicit.split("=").slice(1).join("=");
+    return existsSync(value) ? value : null;
+  }
+  if (existsSync(DEFAULT_LIVE_LEDGER_PATH)) return DEFAULT_LIVE_LEDGER_PATH;
+
+  const roots = [
+    path.join(process.cwd(), "modeling", "morning_model_report"),
+    path.join(process.cwd(), "reports", "morning"),
+  ];
+  const stack = roots.filter(existsSync);
+  while (stack.length) {
+    const dir = stack.pop() as string;
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) stack.push(full);
+      if (
+        entry.isFile() &&
+        /night_execution_(detail|truth).*\.csv$/i.test(entry.name)
+      ) {
+        return full;
+      }
+    }
+  }
+  return null;
+}
+
+function loadPriorityLiveTargets(): PriorityLiveTarget[] {
+  const sourcePath = findPriorityLiveLedgerPath();
+  if (!sourcePath) {
+    throw new Error(
+      `LIVE_PRIORITY_LEDGER_ARTIFACT_MISSING: expected ${DEFAULT_LIVE_LEDGER_PATH}`,
+    );
+  }
+
+  const rows = parseCsv(readFileSync(sourcePath, "utf8"));
+  const byKey = new Map<string, PriorityLiveTarget>();
+  for (const row of rows) {
+    const executionType = row.execution_type ?? "";
+    const orderStatus = row.order_status ?? "";
+    const isLive =
+      /live/i.test(executionType) || /\b(sent|filled|matched)\b/i.test(orderStatus);
+    const isDryRun = /dry/i.test(executionType) || /dry-run/i.test(orderStatus);
+    if (!isLive || isDryRun) continue;
+
+    const sourceRef = row.source_ref ?? "";
+    const conditionId = sourceRef.match(/condition_id=([^;\s]+)/i)?.[1];
+    const tokenId =
+      sourceRef.match(/(?:selected_token_id|token_id)=([^;\s]+)/i)?.[1];
+    if (!conditionId || !tokenId) continue;
+
+    const key = `${conditionId}::${tokenId}`;
+    byKey.set(key, {
+      condition_id: conditionId,
+      selected_token_id: tokenId,
+      event: row.event ?? "",
+      market: row.market ?? "",
+      side: row.side ?? "",
+      execution_type: executionType,
+      order_status: orderStatus,
+      source_path: sourcePath,
+    });
+  }
+  return [...byKey.values()];
+}
 
 // ---- Main ------------------------------------------------------------------
 
@@ -128,8 +255,175 @@ async function main() {
   console.log(
     `[resolve-signals] === START mode=${mode} limit=${rawLimit} maxUpdates=${maxUpdatesLabel}` +
       ` order=${orderMode} onlyExpired=${ONLY_EXPIRED} dedupeStrict=${DEDUPE_STRICT}` +
+      ` priorityLiveLedger=${PRIORITY_LIVE_LEDGER}` +
       `${ONLY_EXPIRED ? ` expiredCutoff=${expiredCutoff}` : ""} ===`,
   );
+
+  let livePriorityTargetsLoaded = 0;
+  let livePriorityTargetsMatchedInPairs = 0;
+  let livePriorityResolved = 0;
+  let livePriorityUnresolved = 0;
+  let livePriorityMissingInPairs = 0;
+  let livePriorityErrors = 0;
+  let livePriorityRowsUpdated = 0;
+
+  if (PRIORITY_LIVE_LEDGER) {
+    const targets = loadPriorityLiveTargets();
+    livePriorityTargetsLoaded = targets.length;
+    console.log(
+      `[resolve-signals] Live priority targets loaded: ${livePriorityTargetsLoaded}` +
+        `${targets[0] ? ` source=${targets[0].source_path}` : ""}`,
+    );
+
+    for (const target of targets) {
+      if (WRITE_MODE && livePriorityResolved >= maxUpdates) {
+        console.log(
+          `[resolve-signals] Max live priority updates reached (${maxUpdates}) — stopping priority writes`,
+        );
+        break;
+      }
+
+      const { data: matchingRows, error: matchError } = await supabase
+        .from("generated_signal_pairs")
+        .select(
+          "id, created_at, expires_at, event_slug, condition_id, selected_outcome, selected_token_id, entry_price_num",
+        )
+        .eq("condition_id", target.condition_id)
+        .eq("selected_token_id", target.selected_token_id)
+        .is("signal_result", null)
+        .not("entry_price_num", "is", null)
+        .not("metric_formula_version", "is", null);
+
+      if (matchError) {
+        livePriorityErrors++;
+        console.error(
+          `[resolve-signals] LIVE_PRIORITY_ERROR ${target.event} DB match failed: ${matchError.message}`,
+        );
+        continue;
+      }
+
+      const rowsForTarget = ((matchingRows ?? []) as unknown) as ResolverRow[];
+      if (!rowsForTarget.length) {
+        livePriorityMissingInPairs++;
+        console.log(
+          `[resolve-signals] LIVE_PRIORITY_MISSING ${target.event} ${target.condition_id}::${target.selected_token_id}`,
+        );
+        continue;
+      }
+      livePriorityTargetsMatchedInPairs++;
+
+      const row = rowsForTarget
+        .slice()
+        .sort((a, b) => Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? ""))[0];
+      const market = await fetchGammaMarketByConditionId(target.condition_id);
+      const outcome = resolveSignalOutcome({
+        conditionId: target.condition_id,
+        selectedTokenId: target.selected_token_id,
+        entryPriceNum: row.entry_price_num,
+        market,
+      });
+
+      if (outcome.resolverState !== "resolved_candidate") {
+        livePriorityUnresolved++;
+        console.log(
+          `[resolve-signals] LIVE_PRIORITY_SKIP ${target.event}` +
+            ` state=${outcome.resolverState} reason=${outcome.skipReason}`,
+        );
+        continue;
+      }
+
+      if (!WRITE_MODE) {
+        livePriorityUnresolved++;
+        console.log(
+          `[resolve-signals] LIVE_PRIORITY_WOULD ${target.event}` +
+            ` result=${outcome.signalResult}` +
+            ` return=${outcome.realizedReturnPct}%` +
+            ` winner=${outcome.candidateWinningOutcome}`,
+        );
+        continue;
+      }
+
+      const resolvedAt = new Date().toISOString();
+      const { data: updatedRows, error: updateError } = await supabase
+        .from("generated_signal_pairs")
+        .update({
+          signal_result: outcome.signalResult,
+          resolved_at: resolvedAt,
+          winning_outcome: outcome.candidateWinningOutcome,
+          realized_return_pct: outcome.realizedReturnPct,
+        })
+        .is("signal_result", null)
+        .eq("condition_id", target.condition_id)
+        .eq("selected_token_id", target.selected_token_id)
+        .select("id");
+
+      if (updateError) {
+        livePriorityErrors++;
+        console.error(
+          `[resolve-signals] LIVE_PRIORITY_ERROR ${target.event} update failed: ${updateError.message}`,
+        );
+        continue;
+      }
+
+      const affectedRows = updatedRows?.length ?? 0;
+      livePriorityRowsUpdated += affectedRows;
+      livePriorityResolved++;
+      console.log(
+        `[resolve-signals] LIVE_PRIORITY_WRITE ${target.event}` +
+          ` strictKey=${target.condition_id}::${target.selected_token_id}` +
+          ` rows=${affectedRows}` +
+          ` result=${outcome.signalResult}` +
+          ` return=${outcome.realizedReturnPct}%` +
+          ` winner=${outcome.candidateWinningOutcome}`,
+      );
+    }
+
+    console.log(
+      `[resolve-signals] LIVE_PRIORITY_SUMMARY` +
+        ` loaded=${livePriorityTargetsLoaded}` +
+        ` matched=${livePriorityTargetsMatchedInPairs}` +
+        ` resolved=${livePriorityResolved}` +
+        ` unresolved=${livePriorityUnresolved}` +
+        ` missing=${livePriorityMissingInPairs}` +
+        ` errors=${livePriorityErrors}` +
+        ` rows_updated=${livePriorityRowsUpdated}`,
+    );
+
+    if (!ONLY_EXPIRED && !HAS_EXPLICIT_ORDER) {
+      const finishedAt = new Date().toISOString();
+      if (WRITE_MODE) {
+        await tryWriteResolverJobRun({
+          status: "success",
+          updatedCount: livePriorityRowsUpdated,
+          skippedCount: livePriorityUnresolved + livePriorityMissingInPairs + livePriorityErrors,
+          finishedAt,
+          extra: {
+            selected: livePriorityTargetsLoaded,
+            rawSelected: livePriorityTargetsLoaded,
+            strictSelected: livePriorityTargetsMatchedInPairs,
+            rowsUpdatedTotal: livePriorityRowsUpdated,
+            strictTokensUpdated: livePriorityResolved,
+            updated: livePriorityRowsUpdated,
+            skipped: livePriorityUnresolved + livePriorityMissingInPairs + livePriorityErrors,
+            orderMode,
+            onlyExpired: ONLY_EXPIRED,
+            dedupeStrict: DEDUPE_STRICT,
+            priorityLiveLedger: PRIORITY_LIVE_LEDGER,
+            livePriorityTargetsLoaded,
+            livePriorityTargetsMatchedInPairs,
+            livePriorityResolved,
+            livePriorityUnresolved,
+            livePriorityMissingInPairs,
+            livePriorityErrors,
+            livePriorityRowsUpdated,
+          },
+        });
+      } else {
+        console.log("[resolve-signals] Dry-run mode — job_runs not written.");
+      }
+      return;
+    }
+  }
 
   // Select unresolved rows with required snapshot fields
   let query = supabase
@@ -366,6 +660,14 @@ async function main() {
         orderMode,
         onlyExpired: ONLY_EXPIRED,
         dedupeStrict: DEDUPE_STRICT,
+        priorityLiveLedger: PRIORITY_LIVE_LEDGER,
+        livePriorityTargetsLoaded,
+        livePriorityTargetsMatchedInPairs,
+        livePriorityResolved,
+        livePriorityUnresolved,
+        livePriorityMissingInPairs,
+        livePriorityErrors,
+        livePriorityRowsUpdated,
         expiredCutoff: ONLY_EXPIRED ? expiredCutoff : null,
         by_state: stateCounts,
         by_result: resultCounts,
