@@ -30,6 +30,7 @@
     "ops:report:email:legacy": "tsx scripts/daily-ops-report.ts --email=alexgrushin@gmail.com",
     "ops:report:xlsx": "tsx scripts/daily-ops-report.ts --xlsx-preview",
     "morning:model-report": "tsx scripts/morning-model-report.ts",
+    "morning:trusted-email": "tsx scripts/founder-email-dispatcher.ts --mode=morning",
     "founder:emails": "tsx scripts/founder-email-dispatcher.ts",
     "ops-report-email-cron": "tsx scripts/founder-email-dispatcher.ts",
     "night:plan": "tsx scripts/send-night-portfolio-plan.ts",

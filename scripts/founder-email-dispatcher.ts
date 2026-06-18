@@ -16,6 +16,13 @@ function runCommand(label: string, command: string, args: string[]): void {
   }
 }
 
+function runTrustedMorning(recipient: string): void {
+  runCommand("resolver-live-priority", "npm", ["run", "resolve:signals:live-priority"]);
+  runCommand("resolver-cron", "npm", ["run", "resolve:signals:cron"]);
+  runCommand("resolver-verify", "npm", ["run", "verify:resolver-pipeline"]);
+  runCommand("morning-model", "npm", ["run", "morning:model-report", "--", "--send-test", `--email=${recipient}`]);
+}
+
 function minskNow(): { date: string; minutes: number } {
   const parts = new Intl.DateTimeFormat("en-GB", {
     timeZone: "Europe/Minsk",
@@ -52,7 +59,7 @@ async function main() {
 
   if (modeArg === "auto") {
     if (inWindow(minskMinutes, 8 * 60 + 55, 9 * 60 + 10)) {
-      runCommand("morning-model", "npm", ["run", "morning:model-report", "--", "--send-test", `--email=${recipient}`]);
+      runTrustedMorning(recipient);
       return;
     }
     if (inWindow(minskMinutes, 16 * 60 + 55, 17 * 60 + 10)) {
@@ -68,7 +75,7 @@ async function main() {
   }
 
   if (modeArg === "morning") {
-    runCommand("morning-model", "npm", ["run", "morning:model-report", "--", "--send-test", `--email=${recipient}`]);
+    runTrustedMorning(recipient);
     return;
   }
   if (modeArg === "night-plan") {
@@ -80,7 +87,7 @@ async function main() {
     return;
   }
 
-  runCommand("morning-model", "npm", ["run", "morning:model-report", "--", "--send-test", `--email=${recipient}`]);
+  runTrustedMorning(recipient);
   runCommand("night-plan", "npm", ["run", "night:plan:email", "--", `--email=${recipient}`]);
   runCommand("alert", "npm", ["run", "night:plan:email", "--", "--alert-only", `--email=${recipient}`]);
 }

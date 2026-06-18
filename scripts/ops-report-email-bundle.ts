@@ -33,6 +33,10 @@ async function main() {
   const recipient = argValue("--email=") ?? "alexgrushin@gmail.com";
   const results: StepResult[] = [];
 
+  results.push(runStep("resolver-live-priority", "npm", ["run", "resolve:signals:live-priority"]));
+  results.push(runStep("resolver-cron", "npm", ["run", "resolve:signals:cron"]));
+  results.push(runStep("resolver-verify", "npm", ["run", "verify:resolver-pipeline"]));
+
   results.push(
     runStep("morning", "npm", [
       "run",
@@ -66,7 +70,7 @@ async function main() {
   const failed = results.length - sent;
   console.log(`[ops-email-bundle] DONE sent=${sent} failed=${failed}`);
 
-  const morningOk = results[0]?.ok ?? false;
+  const morningOk = results.find((r) => r.name === "morning")?.ok ?? false;
   const anyFailed = failed > 0;
   if (!morningOk || anyFailed) {
     process.exitCode = 1;
