@@ -25,6 +25,13 @@ export type TimingBucket =
 // Passed through to the night-plan route for operator visibility.
 export interface RawPlanningDiagnostics {
   total_db_rows: number;
+  scored_rows_count: number;
+  planning_shadow_rows_count: number;
+  planning_shadow_included_count: number;
+  planning_shadow_rejected_count: number;
+  planning_shadow_reject_reasons: Record<string, number>;
+  wc_soccer_candidate_count: number;
+  fallback_candidate_count: number;
   source_counts_by_formula_version: Record<string, number>;
   activity_label_rows: number;
   rows_missing_game_start: number;
@@ -158,10 +165,28 @@ export function isActivityLabelText(value: unknown): boolean {
 // Priority: event_slug → diagnostics.marketTitle/eventTitle/question/title → market_slug
 // (market_slug used only when it is not an activity label).
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function buildIdentityText(row: any): { text: string; activityLabelDetected: boolean } {
+function buildIdentityText(
+  row: any,
+  planningMode = false
+): { text: string; activityLabelDetected: boolean } {
   const diag: Record<string, unknown> = row.diagnostics ?? {};
   const activityLabelDetected = isActivityLabelText(row.market_slug);
-  const sources: unknown[] = [
+  const researchContext =
+    diag.researchContext && typeof diag.researchContext === "object"
+      ? (diag.researchContext as Record<string, unknown>)
+      : null;
+  const planningSources: unknown[] = [
+    researchContext?.eventTitle,
+    diag.eventTitle,
+    researchContext?.eventSlug,
+    diag.marketTitle,
+    researchContext?.marketTitle,
+    diag.question,
+    diag.title,
+    row.event_slug,
+    activityLabelDetected ? null : row.market_slug,
+  ];
+  const liveSources: unknown[] = [
     row.event_slug,
     diag.marketTitle,
     diag.eventTitle,
@@ -169,12 +194,79 @@ function buildIdentityText(row: any): { text: string; activityLabelDetected: boo
     diag.title,
     activityLabelDetected ? null : row.market_slug,
   ];
+  const sources = planningMode ? planningSources : liveSources;
   for (const v of sources) {
     if (typeof v === "string" && v.trim() && !isActivityLabelText(v)) {
       return { text: v.trim().toLowerCase(), activityLabelDetected };
     }
   }
   return { text: "", activityLabelDetected };
+}
+
+function safeLower(v: unknown): string {
+  return typeof v === "string" ? v.trim().toLowerCase() : "";
+}
+
+function resolvePlanningScope(
+  row: any,
+  identityText: string,
+  derivedScope: StrategicScope
+): { scope: StrategicScope; confidence: SportClassificationConfidence } {
+  if (derivedScope !== "UNKNOWN") return { scope: derivedScope, confidence: "HIGH" };
+  const diag: Record<string, unknown> = row.diagnostics ?? {};
+  const shadowScope = safeLower(diag.shadowScope);
+  const text = `${identityText} ${safeLower(diag.marketTitle)} ${safeLower(diag.eventTitle)} ${safeLower(diag.question)}`;
+  if (/(world[\s-]?cup|wc2026|fifwc)/i.test(shadowScope) || /(world[\s-]?cup|wc2026|fifwc)/i.test(text)) {
+    return { scope: "WC", confidence: "MEDIUM" };
+  }
+  if (/(soccer|football|premier[\s-]league|la[\s-]liga|bundesliga|serie[\s-]a|champions[\s-]league|europa[\s-]league)/i.test(shadowScope) ||
+      /(soccer|football|premier[\s-]league|la[\s-]liga|bundesliga|serie[\s-]a|champions[\s-]league|europa[\s-]league)/i.test(text)) {
+    return { scope: "SOCCER", confidence: "MEDIUM" };
+  }
+  return { scope: derivedScope, confidence: "NONE" };
+}
+
+function computePlanningFallbackScore(
+  row: any,
+  scope: StrategicScope,
+  identityText: string
+): { score: number | null; coverage: number | null; source: string } {
+  const diag: Record<string, unknown> = row.diagnostics ?? {};
+  const tier = typeof diag.tier === "number" ? diag.tier : null;
+  const entryPrice =
+    typeof diag.entryPrice === "number"
+      ? diag.entryPrice
+      : typeof row.entry_price_num === "number"
+        ? row.entry_price_num
+        : null;
+  const volumeUsd = typeof diag.volumeUsd === "number" ? diag.volumeUsd : null;
+  const hasEnoughIdentity =
+    Boolean(identityText) &&
+    Boolean(row.condition_id) &&
+    Boolean(row.selected_token_id) &&
+    (typeof diag.gameStartIso === "string" || Boolean(row.expires_at));
+  if (!hasEnoughIdentity) {
+    return { score: null, coverage: null, source: "shadow_sports_fallback_incomplete" };
+  }
+
+  const base = tier === 1 ? 72 : tier === 2 ? 66 : 58;
+  const priceBonus =
+    typeof entryPrice === "number"
+      ? Math.max(0, 6 - Math.round(Math.abs(entryPrice - 0.5) * 12))
+      : 0;
+  const volumeBonus =
+    typeof volumeUsd === "number" && volumeUsd > 0
+      ? Math.min(6, Math.floor(Math.log10(volumeUsd)))
+      : 0;
+  const scopeBonus = scope === "WC" || scope === "SOCCER" ? 2 : 0;
+  const score = Math.max(0, Math.min(79, Math.round(base + priceBonus + volumeBonus + scopeBonus)));
+
+  let coverage: number | null = null;
+  if (typeof diag.dataCoverage === "number") coverage = diag.dataCoverage;
+  else if (typeof diag.coverage === "number") coverage = diag.coverage;
+  else if (row.selected_token_id && row.condition_id && entryPrice != null && scope !== "UNKNOWN") coverage = 50;
+
+  return { score, coverage, source: "shadow_sports_fallback" };
 }
 
 // Classify sport scope from identity text.
@@ -391,12 +483,12 @@ export async function buildFireModelCandidates(
     console.log("[ireland-executor] TIER1_ONLY guard active");
   }
 
-  const { data, error } = await supabaseAdmin
+  const scoredQuery = supabaseAdmin
     .from("generated_signal_pairs")
     .select(
       "id, condition_id, selected_outcome, selected_token_id, entry_price_num, " +
-      "signal_confidence_num, smart_money_score_num, diagnostics, " +
-      "market_slug, event_slug, metric_formula_version, created_at, expires_at"
+        "signal_confidence_num, smart_money_score_num, diagnostics, " +
+        "market_slug, event_slug, metric_formula_version, created_at, expires_at"
     )
     .in("metric_formula_version", versions)
     .is("signal_result", null)
@@ -408,14 +500,58 @@ export async function buildFireModelCandidates(
     .order("created_at", { ascending: false })
     .limit(planningMode ? 300 : 150);
 
+  const { data: scoredRows, error } = await scoredQuery;
   if (error) throw new Error(`DB query failed: ${error.message}`);
+
+  let planningShadowRows: any[] = [];
+  if (planningMode) {
+    const { data: shadowRows, error: shadowError } = await supabaseAdmin
+      .from("generated_signal_pairs")
+      .select(
+        "id, condition_id, selected_outcome, selected_token_id, entry_price_num, " +
+          "signal_confidence_num, smart_money_score_num, diagnostics, " +
+          "market_slug, event_slug, metric_formula_version, created_at, expires_at"
+      )
+      .eq("metric_formula_version", "shadow-strategic-sports-v1")
+      .is("signal_result", null)
+      .gt("expires_at", new Date().toISOString())
+      .not("selected_token_id", "is", null)
+      .not("condition_id", "is", null)
+      .is("signal_confidence_num", null)
+      .order("created_at", { ascending: false })
+      .limit(300);
+    if (shadowError) throw new Error(`Shadow planning DB query failed: ${shadowError.message}`);
+    planningShadowRows = (shadowRows ?? []) as any[];
+  }
+
+  const mergedRows: any[] = [];
+  const seenRowKeys = new Set<string>();
+  for (const row of (scoredRows ?? []) as any[]) {
+    const key = `${row.condition_id}__${row.selected_token_id}`;
+    if (seenRowKeys.has(key)) continue;
+    seenRowKeys.add(key);
+    mergedRows.push({ ...row, __planning_source: "scored" });
+  }
+  for (const row of planningShadowRows) {
+    const key = `${row.condition_id}__${row.selected_token_id}`;
+    if (seenRowKeys.has(key)) continue;
+    seenRowKeys.add(key);
+    mergedRows.push({ ...row, __planning_source: "shadow_fallback" });
+  }
 
   const now = Date.now();
   const candidates: Array<Omit<FireModelCandidate, "rank">> = [];
 
   const rawDiag: RawPlanningDiagnostics | null = planningMode
     ? {
-        total_db_rows: (data ?? []).length,
+        total_db_rows: mergedRows.length,
+        scored_rows_count: (scoredRows ?? []).length,
+        planning_shadow_rows_count: planningShadowRows.length,
+        planning_shadow_included_count: 0,
+        planning_shadow_rejected_count: 0,
+        planning_shadow_reject_reasons: {},
+        wc_soccer_candidate_count: 0,
+        fallback_candidate_count: 0,
         source_counts_by_formula_version: {},
         activity_label_rows: 0,
         rows_missing_game_start: 0,
@@ -437,7 +573,7 @@ export async function buildFireModelCandidates(
     : null;
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  for (const row of (data ?? []) as any[]) {
+  for (const row of mergedRows) {
     if (rawDiag) {
       const ver = (row.metric_formula_version as string) ?? "unknown";
       rawDiag.source_counts_by_formula_version[ver] =
@@ -448,14 +584,6 @@ export async function buildFireModelCandidates(
     }
 
     const diag: Record<string, unknown> = row.diagnostics ?? {};
-    const coverage = typeof diag.dataCoverage === "number" ? diag.dataCoverage : null;
-    const gameStartIso =
-      typeof diag.gameStartIso === "string" && diag.gameStartIso !== "null"
-        ? diag.gameStartIso
-        : null;
-    const score = typeof row.signal_confidence_num === "number" ? row.signal_confidence_num : null;
-    const entryPrice = typeof row.entry_price_num === "number" ? row.entry_price_num : null;
-
     const rejectReason = (r: string) => {
       if (rawDiag) {
         rawDiag.rejected_before_planning_by_reason[r] =
@@ -468,6 +596,55 @@ export async function buildFireModelCandidates(
           (rawDiag.dropped_by_formula_version_and_reason[ver][r] ?? 0) + 1;
       }
     };
+    const planningFallbackRow =
+      planningMode &&
+      row.__planning_source === "shadow_fallback" &&
+      row.metric_formula_version === "shadow-strategic-sports-v1" &&
+      row.signal_confidence_num == null;
+    const baseCoverage =
+      typeof diag.dataCoverage === "number"
+        ? diag.dataCoverage
+        : typeof diag.coverage === "number"
+          ? diag.coverage
+          : null;
+    const gameStartIso =
+      typeof diag.gameStartIso === "string" && diag.gameStartIso !== "null"
+        ? diag.gameStartIso
+        : null;
+    const { text: identityText, activityLabelDetected } = buildIdentityText(row, planningMode);
+    let score = typeof row.signal_confidence_num === "number" ? row.signal_confidence_num : null;
+    let coverage = baseCoverage;
+    const entryPrice = typeof row.entry_price_num === "number" ? row.entry_price_num : null;
+    let planningFallbackUsed = false;
+    let planningScoreSource: string | null = null;
+
+    if (planningFallbackRow) {
+      const derivedScopeProbe = deriveSportScope(identityText);
+      const planningScope = resolvePlanningScope(row, identityText, derivedScopeProbe.scope);
+      if (planningScope.scope === "UNKNOWN") {
+        if (rawDiag) {
+          rawDiag.planning_shadow_rejected_count += 1;
+          rawDiag.planning_shadow_reject_reasons.WEAK_EVENT_IDENTITY =
+            (rawDiag.planning_shadow_reject_reasons.WEAK_EVENT_IDENTITY ?? 0) + 1;
+        }
+        rejectReason("WEAK_EVENT_IDENTITY");
+        continue;
+      }
+      const fallback = computePlanningFallbackScore(row, planningScope.scope, identityText);
+      if (fallback.score == null) {
+        if (rawDiag) {
+          rawDiag.planning_shadow_rejected_count += 1;
+          rawDiag.planning_shadow_reject_reasons.UNKNOWN_REJECT_NEEDS_CODE_TRACE =
+            (rawDiag.planning_shadow_reject_reasons.UNKNOWN_REJECT_NEEDS_CODE_TRACE ?? 0) + 1;
+        }
+        rejectReason("UNKNOWN_REJECT_NEEDS_CODE_TRACE");
+        continue;
+      }
+      score = fallback.score;
+      coverage = fallback.coverage ?? coverage;
+      planningFallbackUsed = true;
+      planningScoreSource = fallback.source;
+    }
 
     if (coverage == null || coverage < 25) { rejectReason("LOW_COVERAGE"); continue; }
     if (score == null || score < 50)       { rejectReason("LOW_SCORE"); continue; }
@@ -486,8 +663,6 @@ export async function buildFireModelCandidates(
 
     const hoursToStart = Math.round(((gameStartMs - now) / 3_600_000) * 100) / 100;
 
-    // Build identity text, quarantining activity-label market_slugs.
-    const { text: identityText, activityLabelDetected } = buildIdentityText(row);
     if (rawDiag && activityLabelDetected) rawDiag.activity_label_rows += 1;
 
     // Bad bucket: coverage 50–74 AND entry_price 0.44–0.58
@@ -496,7 +671,11 @@ export async function buildFireModelCandidates(
       continue;
     }
 
-    const { scope: strategicScope, confidence: scopeConfidence } = deriveSportScope(identityText);
+    const derivedScope = deriveSportScope(identityText);
+    const { scope: strategicScope, confidence: scopeConfidence } =
+      planningMode && derivedScope.scope === "UNKNOWN"
+        ? resolvePlanningScope(row, identityText, derivedScope.scope)
+        : derivedScope;
 
     if (rawDiag) {
       rawDiag.sport_classification_confidence_counts[scopeConfidence] =
@@ -571,6 +750,8 @@ export async function buildFireModelCandidates(
           match_family_key: matchFamilyKey,
           identity_quality: identityQuality,
           metric_formula_version: row.metric_formula_version,
+          planning_fallback_used: planningFallbackUsed || undefined,
+          planning_score_source: planningScoreSource || undefined,
         });
       }
     }
@@ -719,8 +900,23 @@ export async function buildFireModelCandidates(
         fire_model_alias: "FireModel1",
         version: row.metric_formula_version,
         ...(pilotTier3FallbackApplied ? { pilot_tier3_fallback: true as const } : {}),
+        ...(planningFallbackUsed
+          ? {
+              planning_score_source: planningScoreSource,
+              planning_fallback_used: true as const,
+              formula_version_source: row.metric_formula_version,
+            }
+          : {}),
       },
     });
+
+    if (rawDiag && (strategicScope === "WC" || strategicScope === "SOCCER")) {
+      rawDiag.wc_soccer_candidate_count += 1;
+    }
+    if (rawDiag && planningFallbackUsed) {
+      rawDiag.planning_shadow_included_count += 1;
+      rawDiag.fallback_candidate_count += 1;
+    }
   }
 
   // Populate versions_with_zero_db_rows now that source_counts is complete.
