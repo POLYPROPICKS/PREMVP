@@ -255,10 +255,12 @@ function writeCsv(pathname: string, rows: RawRow[], headers: string[]): Promise<
 
 async function fetchAllResolvedRows(): Promise<RawRow[]> {
   const { supabaseAdmin } = await import("../lib/supabase/server");
-  const rows: RawRow[] = [];
+  const strictMap = new Map<string, CanonicalRow>();
+  let rawFetched = 0;
   let page = 1;
   let cursorResolvedAt: string | null = null;
   let cursorId: string | null = null;
+  const targetStrict = Number(process.env.MORNING_STRICT_TARGET ?? "0") || null;
 
   while (true) {
     let query = supabaseAdmin
@@ -281,25 +283,32 @@ async function fetchAllResolvedRows(): Promise<RawRow[]> {
     const { data, error } = await query;
     if (error) throw new Error(`generated_signal_pairs: ${error.message}`);
     const chunk = (data ?? []) as unknown as RawRow[];
-    rows.push(...chunk);
-    console.log(`[morning-model] resolved-only page ${page} rows=${chunk.length} total=${rows.length}`);
+    rawFetched += chunk.length;
+    for (const row of chunk) {
+      const key = strictKey(row);
+      if (key === "::") continue;
+      const ranked: CanonicalRow = { ...row, __strict_key: key, __strict_rank: rowRank(row) };
+      const prev = strictMap.get(key);
+      if (!prev || betterRank(ranked.__strict_rank, prev.__strict_rank)) strictMap.set(key, ranked);
+    }
+    console.log(`[morning-model] strict-corpus page ${page} raw=${rawFetched} strict=${strictMap.size} target=${targetStrict ?? "N/A"}`);
     if (chunk.length < RESOLVED_PAGE_SIZE) break;
     const last = chunk[chunk.length - 1];
     cursorResolvedAt = safeStr(last.resolved_at) ?? cursorResolvedAt;
     cursorId = safeStr(last.id);
     page += 1;
+    if (targetStrict && strictMap.size >= targetStrict) break;
   }
 
-  const deduped = dedupeStrict(rows);
+  const deduped = [...strictMap.values()].sort((a, b) => b.__strict_rank[2] - a.__strict_rank[2]);
   const maxResolvedAt = deduped.reduce((max, row) => {
     const t = parseIso(row.resolved_at);
     return t > max ? t : max;
   }, Number.NEGATIVE_INFINITY);
-  console.log(
-    `[morning-model] strict_resolved_total=${deduped.length} events=${new Set(deduped.map((r) => eventKey(r))).size} max_resolved_at=${Number.isFinite(maxResolvedAt) ? new Date(maxResolvedAt).toISOString() : "N/A"}`,
-  );
+  console.log(`[morning-model] strict-corpus final rawFetched=${rawFetched} strict=${deduped.length} target=${targetStrict ?? "N/A"}`);
+  console.log(`[morning-model] strict_resolved_total=${deduped.length} events=${new Set(deduped.map((r) => eventKey(r))).size} max_resolved_at=${Number.isFinite(maxResolvedAt) ? new Date(maxResolvedAt).toISOString() : "N/A"}`);
 
-  return rows;
+  return deduped;
 }
 
 async function fetchLatestJobRun(source: string): Promise<JobRun | null> {
