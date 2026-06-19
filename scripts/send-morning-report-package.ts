@@ -8,6 +8,12 @@ type Manifest = {
   date: string;
   subject: string;
   files: Array<{ kind: string; path: string; bytes: number }>;
+  fire_model?: {
+    status?: string;
+    run_id?: string;
+    run_dir?: string;
+    attachment_included?: boolean;
+  };
 };
 
 function argValue(prefix: string): string | null {
@@ -45,7 +51,7 @@ async function main() {
     if (!existsSync(f.path)) throw new Error(`MORNING_PACKAGE_NOT_READY: missing ${f.path}`);
     return { filename: path.basename(f.path), path: f.path, bytes: f.bytes };
   });
-  if (attachments.length !== 3) throw new Error(`MORNING_PACKAGE_NOT_READY: attachmentCount=${attachments.length}`);
+  if (attachments.length < 3) throw new Error(`MORNING_PACKAGE_NOT_READY: attachmentCount=${attachments.length}`);
 
   const result = {
     manifestPath,
@@ -74,6 +80,9 @@ async function main() {
     text: [
       `Status: ${manifest.status}`,
       `Date: ${manifest.date}`,
+      `FireModel status: ${manifest.fire_model?.status ?? "NOT_RECORDED"}`,
+      `FireModel run_id: ${manifest.fire_model?.run_id ?? ""}`,
+      `FireModel run_dir: ${manifest.fire_model?.run_dir ?? ""}`,
       `Attachments: ${attachments.map((a) => a.filename).join(", ")}`,
     ].join("\n"),
     attachments: await Promise.all(

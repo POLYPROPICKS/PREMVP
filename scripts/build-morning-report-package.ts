@@ -1,5 +1,5 @@
 import { loadEnvConfig } from "@next/env";
-import { existsSync } from "fs";
+import { existsSync, readdirSync } from "fs";
 import { mkdir, readFile, stat, writeFile } from "fs/promises";
 import path from "path";
 import { spawnSync } from "child_process";
@@ -32,6 +32,17 @@ function run(label: string, command: string, args: string[], bestEffort = false)
   if (res.status !== 0 && bestEffort) {
     console.warn(`[morning-package] ${label} best-effort failure exit=${res.status ?? 1}`);
   }
+}
+
+function latestFireManifest(): string | null {
+  const root = path.join(process.cwd(), "modeling", "fire_runs");
+  if (!existsSync(root)) return null;
+  const manifests = readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && /_fire_model$/.test(entry.name))
+    .map((entry) => path.join(root, entry.name, "run_manifest.json"))
+    .filter(existsSync)
+    .sort((a, b) => b.localeCompare(a));
+  return manifests[0] ?? null;
 }
 
 function csvSplitLine(line: string): string[] {
@@ -77,6 +88,7 @@ async function main() {
   const date = argValue("--date=") ?? minskDateKey();
   const email = argValue("--email=") ?? "alexgrushin@gmail.com";
   const skipLivePriority = process.argv.includes("--skip-live-priority");
+  const skipResolvers = process.argv.includes("--skip-resolvers");
   const packageDir = path.join(process.cwd(), "modeling", "morning_model_report", `${date}_0600UTC`);
   const tablesDir = path.join(packageDir, "tables");
   const summaryPath = path.join(tablesDir, "run_summary.json");
@@ -85,12 +97,17 @@ async function main() {
   const auditPath = path.join(auditDir, "two_stage_morning_pipeline_audit.md");
   await mkdir(auditDir, { recursive: true });
 
-  if (!skipLivePriority) {
+  if (!skipResolvers && !skipLivePriority) {
     run("resolver-live-priority", "npm", ["run", "resolve:signals:live-priority"], true);
   }
-  run("resolver-cron", "npm", ["run", "resolve:signals:cron"]);
-  run("resolver-verify", "npm", ["run", "verify:resolver-pipeline"]);
+  if (!skipResolvers) {
+    run("resolver-cron", "npm", ["run", "resolve:signals:cron"]);
+    run("resolver-verify", "npm", ["run", "verify:resolver-pipeline"]);
+  } else {
+    console.warn("[morning-package] --skip-resolvers set; package build is read-only and assumes resolver freshness was verified separately");
+  }
   run("morning-model-report", "npm", ["run", "morning:model-report", "--", "--dry-run", `--email=${email}`]);
+  run("fire-model-report", "npm", ["run", "fire:model:report", "--", "--invoked-by=morning-package"], true);
 
   if (!existsSync(summaryPath)) throw new Error(`[morning-package] Missing run summary: ${summaryPath}`);
   const freezePath = path.join(packageDir, "input", "resolved_freeze.csv");
@@ -112,6 +129,28 @@ async function main() {
     { kind: "ceo_dashboard", path: path.join(packageDir, `ceo_dashboard_details_${date}.xlsx`) },
     { kind: "ice_counterfactual", path: path.join(packageDir, `ice_four_models_counterfactual_${date}.xlsx`) },
   ];
+  let fireModelStatus = "FIREMODEL_ATTACHMENT_MISSING_OR_FAILED";
+  let fireModelRunId = "";
+  let fireModelRunDir = "";
+  const fireManifestPath = latestFireManifest();
+  if (fireManifestPath) {
+    try {
+      const fireManifest = JSON.parse(await readFile(fireManifestPath, "utf8")) as {
+        run_id?: string;
+        status?: string;
+        run_dir?: string;
+        workbook_path?: string;
+      };
+      if (fireManifest.workbook_path && existsSync(fireManifest.workbook_path)) {
+        files.push({ kind: "fire_model", path: fireManifest.workbook_path });
+        fireModelStatus = fireManifest.status ?? "PASS";
+        fireModelRunId = fireManifest.run_id ?? "";
+        fireModelRunDir = fireManifest.run_dir ?? path.dirname(fireManifestPath);
+      }
+    } catch (error) {
+      console.warn(`[morning-package] FireModel manifest read failed: ${error instanceof Error ? error.message : error}`);
+    }
+  }
   const manifestFiles: ManifestFile[] = [];
   for (const file of files) {
     if (!existsSync(file.path)) throw new Error(`[morning-package] Missing file: ${file.path}`);
@@ -119,7 +158,7 @@ async function main() {
     if (bytes <= 0) throw new Error(`[morning-package] Empty file: ${file.path}`);
     manifestFiles.push({ kind: file.kind, path: file.path, bytes });
   }
-  if (manifestFiles.length !== 3) throw new Error(`[morning-package] attachment count invalid: ${manifestFiles.length}`);
+  if (manifestFiles.length < 3) throw new Error(`[morning-package] attachment count invalid: ${manifestFiles.length}`);
 
   if (strictResolvedTotal <= 707) throw new Error(`[morning-package] DATASET_STALE_BLOCKER strict_resolved_total=${strictResolvedTotal}`);
   if (!maxResolvedIso || Date.parse(maxResolvedIso) <= Date.parse("2026-06-17T09:01:31.130Z")) {
@@ -138,6 +177,12 @@ async function main() {
     delta_vs_ice707_rows: strictResolvedTotal - 707,
     delta_vs_ice707_events: eventGroups - 501,
     files: manifestFiles,
+    fire_model: {
+      status: fireModelStatus,
+      run_id: fireModelRunId,
+      run_dir: fireModelRunDir,
+      attachment_included: manifestFiles.some((file) => file.kind === "fire_model"),
+    },
     subject,
   };
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
@@ -158,6 +203,9 @@ async function main() {
       `delta_vs_ice707_rows: ${strictResolvedTotal - 707}`,
       `delta_vs_ice707_events: ${eventGroups - 501}`,
       `attachment_count: ${manifestFiles.length}`,
+      `fire_model_status: ${fireModelStatus}`,
+      `fire_model_run_id: ${fireModelRunId}`,
+      `fire_model_run_dir: ${fireModelRunDir}`,
       "",
       "The sender must never query generated_signal_pairs or rebuild XLSX.",
     ].join("\n") + "\n",
