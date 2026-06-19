@@ -1436,6 +1436,7 @@ function buildCeoDataQualityRows(opts: {
     { field: "model_metric_state", value: "ACCEPTED_COUNTERFACTUAL_SIM" },
     { field: "night_execution_state", value: nightExecutionState },
     { field: "fallback_reason", value: opts.analyzerError ?? "none" },
+    { field: "analyzer_warning", value: opts.reportStatus === "FALLBACK_RECOMPUTED" ? "ANALYZER_FALLBACK_RECOMPUTED_WARNING" : "none" },
     { field: "freeze_path", value: opts.freezePath },
     { field: "resolver_status", value: jobSummary(opts.latestResolver) },
     { field: "signal_cache_status", value: jobSummary(opts.latestSignalCache) },
@@ -1727,7 +1728,7 @@ function validateCeoWorkbook(workbook: ExcelJS.Workbook): string[] {
     failures.push("OnePerMatchBacktest sheet missing expected rows");
   }
   const analyzerState = String(workbook.getWorksheet("06_Data_Quality")?.getCell("B2").value ?? "");
-  if (analyzerState !== "OK" && status !== "RED") failures.push(`status light ${status} does not reflect analyzer_state=${analyzerState}`);
+  if (analyzerState !== "OK" && status !== "RED" && !(analyzerState === "FALLBACK_RECOMPUTED" && status === "YELLOW")) failures.push(`status light ${status} does not reflect analyzer_state=${analyzerState}`);
   return [...new Set(failures)];
 }
 
