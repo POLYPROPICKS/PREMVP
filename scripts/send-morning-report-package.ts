@@ -12,6 +12,14 @@ type Manifest = {
     status?: string;
     run_id?: string;
     run_dir?: string;
+    workbook_path?: string;
+    primary_scope?: string;
+    model_count?: number;
+    current_champion?: string;
+    best_96h_model?: string;
+    warning_count?: number;
+    live_contour_status?: string;
+    doctrine?: string;
     attachment_included?: boolean;
   };
 };
@@ -21,20 +29,13 @@ function argValue(prefix: string): string | null {
   return arg ? arg.split("=").slice(1).join("=") : null;
 }
 
-function minskDateKey(now = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/Minsk",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${get("year")}${get("month")}${get("day")}`;
+function utcDateKey(now = new Date()): string {
+  return now.toISOString().slice(0, 10).replace(/-/g, "");
 }
 
 async function main() {
   loadEnvConfig(process.cwd());
-  const date = argValue("--date=") ?? minskDateKey();
+  const date = argValue("--date=") ?? utcDateKey();
   const recipient = argValue("--email=") ?? process.env.MORNING_MODEL_EMAIL_TO ?? "alexgrushin@gmail.com";
   const sendTest = process.argv.includes("--send-test");
   const dryRun = process.argv.includes("--dry-run") || !sendTest;
@@ -81,6 +82,11 @@ async function main() {
       `Status: ${manifest.status}`,
       `Date: ${manifest.date}`,
       `FireModel status: ${manifest.fire_model?.status ?? "NOT_RECORDED"}`,
+      `FireModel scope: ${manifest.fire_model?.primary_scope ?? manifest.fire_model?.doctrine ?? "UNKNOWN"}`,
+      `FireModel current champion: ${manifest.fire_model?.current_champion ?? ""}`,
+      `FireModel best 96h model: ${manifest.fire_model?.best_96h_model ?? ""}`,
+      `FireModel warnings: ${manifest.fire_model?.warning_count ?? "N/A"}`,
+      `FireModel live contour: ${manifest.fire_model?.live_contour_status ?? "UNKNOWN"}`,
       `FireModel run_id: ${manifest.fire_model?.run_id ?? ""}`,
       `FireModel run_dir: ${manifest.fire_model?.run_dir ?? ""}`,
       `Attachments: ${attachments.map((a) => a.filename).join(", ")}`,

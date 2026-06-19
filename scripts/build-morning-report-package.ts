@@ -12,25 +12,26 @@ function argValue(prefix: string): string | null {
   return arg ? arg.split("=").slice(1).join("=") : null;
 }
 
-function minskDateKey(now = new Date()): string {
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Europe/Minsk",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(now);
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${get("year")}${get("month")}${get("day")}`;
+function utcDateKey(now = new Date()): string {
+  return now.toISOString().slice(0, 10).replace(/-/g, "");
 }
 
-function run(label: string, command: string, args: string[], bestEffort = false): void {
-  console.log(`[morning-package] ${label}: ${[command, ...args].join(" ")}`);
-  const res = spawnSync(command, args, { cwd: process.cwd(), stdio: "inherit", shell: true });
-  if (res.status !== 0 && !bestEffort) {
-    throw new Error(`[morning-package] ${label} failed with exit code ${res.status ?? 1}`);
+function run(label: string, command: string, args: string[], bestEffort = false, attempts = 1): void {
+  let lastStatus = 0;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    console.log(`[morning-package] ${label}: ${[command, ...args].join(" ")} attempt=${attempt}/${attempts}`);
+    const res = spawnSync(command, args, { cwd: process.cwd(), stdio: "inherit", shell: true });
+    lastStatus = res.status ?? 1;
+    if (lastStatus === 0) return;
+    if (attempt < attempts) {
+      console.warn(`[morning-package] ${label} failed exit=${lastStatus}; retrying once`);
+    }
   }
-  if (res.status !== 0 && bestEffort) {
-    console.warn(`[morning-package] ${label} best-effort failure exit=${res.status ?? 1}`);
+  if (lastStatus !== 0 && !bestEffort) {
+    throw new Error(`[morning-package] ${label} failed with exit code ${lastStatus}`);
+  }
+  if (lastStatus !== 0 && bestEffort) {
+    console.warn(`[morning-package] ${label} best-effort failure exit=${lastStatus}`);
   }
 }
 
@@ -85,7 +86,7 @@ async function fileBytes(filePath: string): Promise<number> {
 
 async function main() {
   loadEnvConfig(process.cwd());
-  const date = argValue("--date=") ?? minskDateKey();
+  const date = argValue("--date=") ?? utcDateKey();
   const email = argValue("--email=") ?? "alexgrushin@gmail.com";
   const skipLivePriority = process.argv.includes("--skip-live-priority");
   const skipResolvers = process.argv.includes("--skip-resolvers");
@@ -106,7 +107,7 @@ async function main() {
   } else {
     console.warn("[morning-package] --skip-resolvers set; package build is read-only and assumes resolver freshness was verified separately");
   }
-  run("morning-model-report", "npm", ["run", "morning:model-report", "--", "--dry-run", `--email=${email}`]);
+  run("morning-model-report", "npm", ["run", "morning:model-report", "--", "--dry-run", `--email=${email}`], false, 2);
   run("fire-model-report", "npm", ["run", "fire:model:report", "--", "--invoked-by=morning-package"], true);
 
   if (!existsSync(summaryPath)) throw new Error(`[morning-package] Missing run summary: ${summaryPath}`);
@@ -132,6 +133,13 @@ async function main() {
   let fireModelStatus = "FIREMODEL_ATTACHMENT_MISSING_OR_FAILED";
   let fireModelRunId = "";
   let fireModelRunDir = "";
+  let fireModelWorkbookPath = "";
+  let fireModelPrimaryScope = "UNKNOWN";
+  let fireModelModelCount = 0;
+  let fireModelCurrentChampion = "";
+  let fireModelBest96hModel = "";
+  let fireModelWarningCount = 0;
+  let fireModelLiveContourStatus = "UNKNOWN";
   const fireManifestPath = latestFireManifest();
   if (fireManifestPath) {
     try {
@@ -140,12 +148,25 @@ async function main() {
         status?: string;
         run_dir?: string;
         workbook_path?: string;
+        primary_scope?: string;
+        model_count?: number;
+        current_champion?: string;
+        best_96h_model?: string;
+        warning_count?: number;
+        live_contour_status?: string;
       };
       if (fireManifest.workbook_path && existsSync(fireManifest.workbook_path)) {
         files.push({ kind: "fire_model", path: fireManifest.workbook_path });
         fireModelStatus = fireManifest.status ?? "PASS";
         fireModelRunId = fireManifest.run_id ?? "";
         fireModelRunDir = fireManifest.run_dir ?? path.dirname(fireManifestPath);
+        fireModelWorkbookPath = fireManifest.workbook_path;
+        fireModelPrimaryScope = fireManifest.primary_scope ?? "UNKNOWN";
+        fireModelModelCount = fireManifest.model_count ?? 0;
+        fireModelCurrentChampion = fireManifest.current_champion ?? "";
+        fireModelBest96hModel = fireManifest.best_96h_model ?? "";
+        fireModelWarningCount = fireManifest.warning_count ?? 0;
+        fireModelLiveContourStatus = fireManifest.live_contour_status ?? "UNKNOWN";
       }
     } catch (error) {
       console.warn(`[morning-package] FireModel manifest read failed: ${error instanceof Error ? error.message : error}`);
@@ -181,6 +202,14 @@ async function main() {
       status: fireModelStatus,
       run_id: fireModelRunId,
       run_dir: fireModelRunDir,
+      workbook_path: fireModelWorkbookPath,
+      primary_scope: fireModelPrimaryScope,
+      model_count: fireModelModelCount,
+      current_champion: fireModelCurrentChampion,
+      best_96h_model: fireModelBest96hModel,
+      warning_count: fireModelWarningCount,
+      live_contour_status: fireModelLiveContourStatus,
+      doctrine: "ALL_SPORTS",
       attachment_included: manifestFiles.some((file) => file.kind === "fire_model"),
     },
     subject,
@@ -206,6 +235,10 @@ async function main() {
       `fire_model_status: ${fireModelStatus}`,
       `fire_model_run_id: ${fireModelRunId}`,
       `fire_model_run_dir: ${fireModelRunDir}`,
+      `fire_model_primary_scope: ${fireModelPrimaryScope}`,
+      `fire_model_current_champion: ${fireModelCurrentChampion}`,
+      `fire_model_best_96h_model: ${fireModelBest96hModel}`,
+      `fire_model_warning_count: ${fireModelWarningCount}`,
       "",
       "The sender must never query generated_signal_pairs or rebuild XLSX.",
     ].join("\n") + "\n",
