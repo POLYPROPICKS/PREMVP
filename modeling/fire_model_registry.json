@@ -1,0 +1,120 @@
+{
+  "framework": "FireModel",
+  "version": "1.0.0",
+  "scope": "PRIVATE_TRADING_MODEL",
+  "public_product_formula": "FROZEN_DO_NOT_MODIFY",
+  "created_at": "2026-06-19T00:00:00.000Z",
+  "datasets": [
+    {
+      "dataset_id": "ALL_SPORTS_RESOLVED_CANDIDATES_V1",
+      "sql_id": "all_sports_resolved_candidates_v1",
+      "source_tables": ["generated_signal_pairs"],
+      "grain": "condition_id::selected_token_id strict resolved candidate"
+    },
+    {
+      "dataset_id": "ALL_SPORTS_PUBLISHED_SIGNALS_V1",
+      "sql_id": "all_sports_published_signals_v1",
+      "source_tables": ["generated_signal_pairs"],
+      "grain": "published/saved signal row"
+    },
+    {
+      "dataset_id": "ALL_SPORTS_RESEARCH_CANDIDATES_V1",
+      "sql_id": "all_sports_research_candidates_v1",
+      "source_tables": ["generated_signal_research_snapshots"],
+      "grain": "research snapshot candidate row"
+    },
+    {
+      "dataset_id": "LIVE_CONTOUR_STATE_V1",
+      "sql_id": "live_contour_state_v1",
+      "source_tables": ["executor_audit_events"],
+      "grain": "executor audit event"
+    },
+    {
+      "dataset_id": "EXECUTION_LEDGER_V1",
+      "sql_id": "execution_ledger_v1",
+      "source_tables": ["executor_order_events", "local ledger artifacts when present"],
+      "grain": "order/execution event"
+    }
+  ],
+  "models": [
+    {
+      "model_id": "CHAMPION_CURRENT",
+      "role": "CHAMPION",
+      "sports_scope": "ALL_SPORTS",
+      "tiers_supported": ["TIER1", "TIER2", "TIER3"],
+      "allowed_families": ["moneyline", "spread", "total", "corners"],
+      "blocked_families": ["halftime", "team_total", "first_team_to_score"],
+      "dataset_contract": "ALL_SPORTS_RESOLVED_CANDIDATES_V1",
+      "selection_rule": "score>=72, avoid NBA/NHL, approximate coverage/timing safety guards when fields exist",
+      "live_status": "PRIVATE_ANALYTICS_CHAMPION",
+      "rollback_priority": 1,
+      "sql_id": "champion_current_v1"
+    },
+    {
+      "model_id": "PUBLISHED_ONE_PER_FIXTURE",
+      "role": "CHALLENGER",
+      "sports_scope": "ALL_SPORTS",
+      "tiers_supported": ["TIER1", "TIER2", "TIER3"],
+      "allowed_families": ["moneyline", "spread", "total", "corners", "other"],
+      "blocked_families": [],
+      "dataset_contract": "ALL_SPORTS_RESOLVED_CANDIDATES_V1",
+      "selection_rule": "one best published candidate per normalized fixture by score, coverage, created_at",
+      "live_status": "REPORT_ONLY",
+      "rollback_priority": 2,
+      "sql_id": "published_one_per_fixture_v1"
+    },
+    {
+      "model_id": "TIERED_LIVE_CONTOUR",
+      "role": "CHALLENGER",
+      "sports_scope": "ALL_SPORTS",
+      "tiers_supported": ["TIER1", "TIER2", "TIER3"],
+      "allowed_families": ["moneyline", "spread", "total", "corners", "other"],
+      "blocked_families": ["unsafe_side", "missing_token", "missing_condition"],
+      "dataset_contract": "ALL_SPORTS_RESOLVED_CANDIDATES_V1",
+      "selection_rule": "Tier1 first, Tier2 fallback, Tier3 fallback to target live slots; hard gates always required",
+      "live_status": "LIVE_CONTOUR_CONTROL",
+      "rollback_priority": 3,
+      "sql_id": "tiered_live_contour_v1"
+    },
+    {
+      "model_id": "FIRE_FAMILY_SELECTIVE",
+      "role": "SHADOW",
+      "sports_scope": "ALL_SPORTS",
+      "tiers_supported": ["TIER1", "TIER2", "TIER3"],
+      "allowed_families": ["spread", "total", "corners", "moneyline"],
+      "blocked_families": ["halftime", "team_total", "first_team_to_score", "matched_activity"],
+      "dataset_contract": "ALL_SPORTS_RESOLVED_CANDIDATES_V1",
+      "selection_rule": "score>=60, family selective, max two candidates per fixture",
+      "live_status": "SHADOW_RESEARCH",
+      "rollback_priority": 4,
+      "sql_id": "fire_family_selective_v1"
+    },
+    {
+      "model_id": "SAFETY_BASELINE",
+      "role": "BASELINE",
+      "sports_scope": "ALL_SPORTS",
+      "tiers_supported": ["UNKNOWN", "TIER1", "TIER2", "TIER3"],
+      "allowed_families": ["all"],
+      "blocked_families": [],
+      "dataset_contract": "ALL_SPORTS_RESOLVED_CANDIDATES_V1",
+      "selection_rule": "all strict resolved published signals with first-principles PnL",
+      "live_status": "BASELINE_NOT_LIVE_POLICY",
+      "rollback_priority": 5,
+      "sql_id": "safety_baseline_v1"
+    }
+  ],
+  "funnels": [
+    { "funnel_id": "L0_RAW_MARKET_INVENTORY", "sql_id": "l0_raw_market_inventory_v1" },
+    { "funnel_id": "L1_RESEARCH_CANDIDATES", "sql_id": "l1_research_candidates_v1" },
+    { "funnel_id": "L2_SCORED_CANDIDATES", "sql_id": "l2_scored_candidates_v1" },
+    { "funnel_id": "L3_DECISION_LAYER", "sql_id": "l3_decision_layer_v1" },
+    { "funnel_id": "L4_EXECUTION_LAYER", "sql_id": "l4_execution_layer_v1" },
+    { "funnel_id": "L5_RESOLUTION_LAYER", "sql_id": "l5_resolution_layer_v1" }
+  ],
+  "diagnostics": [
+    { "diagnostic_id": "DENOMINATOR_RECONCILIATION", "sql_id": "denominator_reconciliation_v1" },
+    { "diagnostic_id": "UNRESOLVED_CANDIDATE_AUDIT", "sql_id": "unresolved_candidate_audit_v1" },
+    { "diagnostic_id": "MARKET_FAMILY_COVERAGE", "sql_id": "market_family_coverage_v1" },
+    { "diagnostic_id": "GOLDEN_DATASET_REGRESSION", "sql_id": "golden_dataset_regression_v1" }
+  ]
+}

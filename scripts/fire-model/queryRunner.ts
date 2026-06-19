@@ -1,0 +1,173 @@
+import { loadEnvConfig } from "@next/env";
+import { createClient } from "@supabase/supabase-js";
+import { loadQueryRegistry } from "./queryRegistry";
+
+loadEnvConfig(process.cwd());
+
+export type FireRow = Record<string, any>;
+
+export type QueryRunResult = {
+  queryId: string;
+  adapterMode: "SUPABASE_REST_REGISTERED_QUERY";
+  sourceTable: string;
+  rows: FireRow[];
+  status: "OK" | "WARN";
+  warning?: string;
+};
+
+const PUBLISHED_COLUMNS = [
+  "id",
+  "created_at",
+  "resolved_at",
+  "expires_at",
+  "condition_id",
+  "selected_token_id",
+  "selected_outcome",
+  "selected_side",
+  "market_slug",
+  "event_slug",
+  "event_key",
+  "sport_or_scope",
+  "league",
+  "market_family",
+  "signal_result",
+  "winning_outcome",
+  "realized_return_pct",
+  "signal_confidence_num",
+  "pre_event_score_num",
+  "score",
+  "expected_return_pct_num",
+  "smart_money_score_num",
+  "whale_public_score_num",
+  "data_coverage_num",
+  "entry_price_num",
+  "metric_formula_version",
+  "formula_version",
+  "source",
+  "market_source",
+  "premium_signal",
+  "diagnostics",
+].join(",");
+
+const RESEARCH_COLUMNS = [
+  "id",
+  "created_at",
+  "snapshot_at",
+  "condition_id",
+  "selected_token_id",
+  "token_id",
+  "outcome_token_id",
+  "selected_outcome",
+  "side",
+  "market_slug",
+  "event_slug",
+  "sport",
+  "league",
+  "market_family",
+  "market_type",
+  "score",
+  "signal_score",
+  "confidence",
+  "coverage",
+  "data_coverage",
+  "entry_price_num",
+  "entry_price",
+  "selected_price",
+  "price",
+  "diagnostics",
+].join(",");
+
+function supabaseAdmin() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_ROLE;
+  if (!url || !key) {
+    throw new Error("FIREMODEL_DB_ENV_MISSING: SUPABASE_URL/NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required");
+  }
+  return createClient(url, key, { auth: { persistSession: false } });
+}
+
+async function fetchPaged(table: string, columns: string, options: {
+  order?: { column: string; ascending: boolean };
+  limit?: number;
+  sinceIso?: string;
+} = {}): Promise<FireRow[]> {
+  const client = supabaseAdmin();
+  const pageSize = 1000;
+  const limit = options.limit ?? 200000;
+  const rows: FireRow[] = [];
+  for (let from = 0; from < limit; from += pageSize) {
+    let query = client.from(table).select(columns);
+    if (options.sinceIso) query = query.gte("created_at", options.sinceIso);
+    if (options.order) query = query.order(options.order.column, { ascending: options.order.ascending });
+    const { data, error } = await query.range(from, from + pageSize - 1);
+    if (error) throw new Error(`${table}: ${error.message}`);
+    rows.push(...((data ?? []) as FireRow[]));
+    if (!data || data.length < pageSize) break;
+  }
+  return rows;
+}
+
+export async function runRegisteredQuery(queryId: string): Promise<QueryRunResult> {
+  const registry = await loadQueryRegistry();
+  if (!registry.has(queryId)) throw new Error(`UNREGISTERED_FIREMODEL_QUERY: ${queryId}`);
+
+  if (queryId === "all_sports_published_signals_v1" || queryId === "all_sports_resolved_candidates_v1") {
+    const rows = await fetchPaged("generated_signal_pairs", PUBLISHED_COLUMNS, {
+      order: { column: "created_at", ascending: false },
+    });
+    return {
+      queryId,
+      adapterMode: "SUPABASE_REST_REGISTERED_QUERY",
+      sourceTable: "generated_signal_pairs",
+      rows,
+      status: "OK",
+    };
+  }
+
+  if (queryId === "all_sports_research_candidates_v1" || queryId === "l0_raw_market_inventory_v1" || queryId === "l1_research_candidates_v1" || queryId === "l2_scored_candidates_v1") {
+    const rows = await fetchPaged("generated_signal_research_snapshots", RESEARCH_COLUMNS, {
+      order: { column: "created_at", ascending: false },
+    });
+    return {
+      queryId,
+      adapterMode: "SUPABASE_REST_REGISTERED_QUERY",
+      sourceTable: "generated_signal_research_snapshots",
+      rows,
+      status: "OK",
+    };
+  }
+
+  if (queryId === "live_contour_state_v1" || queryId === "l4_execution_layer_v1") {
+    const rows = await fetchPaged(
+      "executor_audit_events",
+      "id,created_at,run_id,trace_id,stage,event_slug,market_slug,side,condition_id,token_id,score,coverage,tier,stake_usd,live_eligible,status,reason,source,payload_json",
+      { order: { column: "created_at", ascending: false }, limit: 10000 },
+    ).catch((error) => [{ firemodel_warning: String(error instanceof Error ? error.message : error) }]);
+    return {
+      queryId,
+      adapterMode: "SUPABASE_REST_REGISTERED_QUERY",
+      sourceTable: "executor_audit_events",
+      rows,
+      status: rows.some((row) => row.firemodel_warning) ? "WARN" : "OK",
+      warning: rows.find((row) => row.firemodel_warning)?.firemodel_warning,
+    };
+  }
+
+  if (queryId === "execution_ledger_v1") {
+    const rows = await fetchPaged(
+      "executor_order_events",
+      "id,created_at,run_id,trace_id,event_slug,market_slug,condition_id,token_id,side,stake_usd,status,reason,payload_json",
+      { order: { column: "created_at", ascending: false }, limit: 10000 },
+    ).catch((error) => [{ firemodel_warning: String(error instanceof Error ? error.message : error) }]);
+    return {
+      queryId,
+      adapterMode: "SUPABASE_REST_REGISTERED_QUERY",
+      sourceTable: "executor_order_events",
+      rows,
+      status: rows.some((row) => row.firemodel_warning) ? "WARN" : "OK",
+      warning: rows.find((row) => row.firemodel_warning)?.firemodel_warning,
+    };
+  }
+
+  throw new Error(`REGISTERED_QUERY_HAS_NO_RUNTIME_ADAPTER: ${queryId}`);
+}
