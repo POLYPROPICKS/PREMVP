@@ -2141,14 +2141,11 @@ function buildCounterfactualResult(rows: RawRow[], source: string): Counterfactu
 }
 
 async function loadCounterfactualRows(generatedFreezeRows: RawRow[], generatedFreezePath: string): Promise<{ rows: RawRow[]; source: string }> {
+  // Morning reports must model the current resolved freeze. The ICE707 file is
+  // retained only as a historical baseline/reference, never as current truth.
   if (await fileExists(CANONICAL_ICE_COUNTERFACTUAL_INPUT)) {
-    const canonicalRows = parseSimpleCsv(await readFile(CANONICAL_ICE_COUNTERFACTUAL_INPUT, "utf8"));
-    const canonicalPicks = dedupeCounterfactualRows(canonicalRows);
-    if (canonicalPicks.length === 707 && new Set(canonicalPicks.map((pick) => pick.eventGroupKey)).size === 501) {
-      return { rows: canonicalRows, source: CANONICAL_ICE_COUNTERFACTUAL_INPUT };
-    }
     console.warn(
-      `[morning-model] Canonical ICE counterfactual input present but did not validate as 707/501; using generated freeze rows instead (${canonicalPicks.length}/${new Set(canonicalPicks.map((pick) => pick.eventGroupKey)).size}).`,
+      `[morning-model] Historical ICE707 counterfactual input present but ignored for current morning report; using generated freeze rows from ${generatedFreezePath}.`,
     );
   }
   return { rows: generatedFreezeRows, source: generatedFreezePath };
