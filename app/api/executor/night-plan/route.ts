@@ -15,6 +15,7 @@ import {
 
 // Wide pool so event-dedupe + Tier classification does not starve unique events.
 const PLAN_POOL = 200;
+type AuditCandidate = Record<string, any>;
 
 function positiveNumber(v: string | null): number | null {
   if (!v) return null;
@@ -39,6 +40,94 @@ async function writePollProof(route: string, payload: Record<string, unknown>) {
     );
   } catch (error) {
     console.warn("[executor/night-plan] poll proof write failed:", error instanceof Error ? error.message : error);
+  }
+}
+
+function auditTraceId(candidate: AuditCandidate): string {
+  return [
+    candidate.condition_id ?? "no_condition",
+    candidate.token_id ?? candidate.selected_token_id ?? "no_token",
+    candidate.event_slug ?? candidate.match_family_key ?? "no_event",
+  ].join("::");
+}
+
+function compactCandidatePayload(candidate: AuditCandidate): Record<string, unknown> {
+  return {
+    signal_id: candidate.signal_id,
+    event_slug: candidate.event_slug,
+    market_slug: candidate.market_slug,
+    side: candidate.side,
+    condition_id: candidate.condition_id,
+    token_id: candidate.token_id ?? candidate.selected_token_id,
+    selected_token_id: candidate.selected_token_id,
+    score: candidate.score,
+    coverage: candidate.coverage,
+    tier: candidate.tier,
+    stake_usd: candidate.stake_usd,
+    live_eligible: candidate.live_eligible,
+    live_rejection_reason: candidate.live_rejection_reason,
+    strategic_scope: candidate.strategic_scope,
+    sport: candidate.sport,
+    match_family_key: candidate.match_family_key,
+  };
+}
+
+async function writeNightPlanAudit(opts: {
+  runId: string;
+  plan: ReturnType<typeof buildNightPortfolioPlan>;
+  requestParams: Record<string, unknown>;
+  rawDiagnostics: Record<string, any> | null;
+}): Promise<{ failed: boolean; reason: string | null }> {
+  try {
+    const { supabaseAdmin } = await import("@/lib/supabase/server");
+    const selected = ((opts.plan.diagnostics.selected_event_candidates ?? []) as AuditCandidate[]);
+    const events = [
+      {
+        run_id: opts.runId,
+        trace_id: opts.runId,
+        stage: "NIGHT_PLAN_API_RUN",
+        status: "SUCCESS",
+        source: "api/executor/night-plan",
+        payload_json: {
+          raw_count: opts.rawDiagnostics?.total_db_rows ?? null,
+          selected_event_candidates_count: selected.length,
+          live_eligible_count: selected.filter((c) => c.live_eligible === true).length,
+          wc_count: selected.filter((c) => c.strategic_scope === "WC").length,
+          final_plan_count: opts.plan.planned_slots.length,
+          request_params: opts.requestParams,
+          window_start_iso: opts.plan.window_start_iso,
+          window_end_iso: opts.plan.window_end_iso,
+          plan_status: opts.plan.plan_status,
+        },
+      },
+      ...selected.map((candidate) => ({
+        run_id: opts.runId,
+        trace_id: auditTraceId(candidate),
+        stage: "EXPOSED_BY_API",
+        event_slug: candidate.event_slug ?? null,
+        market_slug: candidate.market_slug ?? null,
+        side: candidate.side ?? candidate.selected_outcome ?? null,
+        condition_id: candidate.condition_id ?? null,
+        token_id: candidate.token_id ?? candidate.selected_token_id ?? null,
+        score: candidate.score ?? null,
+        coverage: candidate.coverage ?? null,
+        tier: candidate.tier ?? null,
+        stake_usd: candidate.stake_usd ?? null,
+        live_eligible: candidate.live_eligible === true,
+        status: candidate.live_eligible === true ? "LIVE_ELIGIBLE" : "NOT_LIVE",
+        reason: candidate.live_rejection_reason ?? null,
+        source: "api/executor/night-plan",
+        payload_json: compactCandidatePayload(candidate),
+      })),
+    ];
+    const { error } = await supabaseAdmin.from("executor_audit_events").insert(events);
+    if (error) return { failed: true, reason: error.message };
+    return { failed: false, reason: null };
+  } catch (error) {
+    return {
+      failed: true,
+      reason: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -69,6 +158,7 @@ export async function GET(request: NextRequest) {
     ? Math.min(...provided.map(([, value]) => value as number))
     : null;
   const bankrollInputSource = provided.map(([name]) => name).join(",") || "default_300";
+  const runId = `night-plan:${new Date().toISOString()}:${Math.random().toString(36).slice(2, 10)}`;
 
   try {
     // planningMode=true: include shadow-strategic-sports-v1 and future soccer/WC matches.
@@ -153,8 +243,34 @@ export async function GET(request: NextRequest) {
       },
     };
 
+    const requestParams = {
+      targetMin,
+      targetMax,
+      bankroll_input_source: bankrollInputSource,
+      effective_bankroll: effectiveBankroll,
+      debug,
+      url: request.url,
+    };
+
+    const auditResult = await writeNightPlanAudit({
+      runId,
+      plan,
+      requestParams,
+      rawDiagnostics: rawDiagnostics as Record<string, any> | null,
+    });
+
+    if (auditResult.failed) {
+      (body.diagnostics as Record<string, unknown>).auditWriteFailed = true;
+      (body.diagnostics as Record<string, unknown>).auditWriteFailureReason =
+        auditResult.reason;
+    } else {
+      (body.diagnostics as Record<string, unknown>).auditWriteFailed = false;
+      (body.diagnostics as Record<string, unknown>).auditRunId = runId;
+    }
+
     await writePollProof("executor/night-plan", {
       route: "executor/night-plan",
+      run_id: runId,
       planned_count: plan.planned_live_slots,
       tier1_event_slots: plan.tier1_event_slots,
       effective_bankroll_usd: plan.diagnostics.effective_bankroll_usd,
