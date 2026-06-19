@@ -13,8 +13,8 @@ delta_vs_ice707_rows: 341
 delta_vs_ice707_events: 223
 attachment_count: 4
 fire_model_status: PASS_WITH_WARNINGS
-fire_model_run_id: fire_20260619_1781904195445
-fire_model_run_dir: C:\WORK\KalshiProPulse\sipropicks-premvp1-1\modeling\fire_runs\20260619_2123Z_fire_model
+fire_model_run_id: fire_20260619_1781905023593
+fire_model_run_dir: C:\WORK\KalshiProPulse\sipropicks-premvp1-1\modeling\fire_runs\20260619_2137Z_fire_model
 fire_model_primary_scope: ALL_SPORTS
 fire_model_current_champion: CHAMPION_CURRENT
 fire_model_best_96h_model: PUBLISHED_ONE_PER_FIXTURE
