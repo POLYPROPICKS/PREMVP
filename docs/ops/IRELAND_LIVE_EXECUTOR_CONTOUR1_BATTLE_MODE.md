@@ -59,6 +59,21 @@ RUN_SECONDS=46800
 
 Use `MAX_NIGHT_NOTIONAL=95` for the current approximately `$95` bankroll.
 
+## Live Slot Policy
+
+Tier1-only live execution is deprecated. PREMVP `/api/executor/night-plan` now
+uses founder-approved `TIER_FALLBACK_TO_15`:
+
+1. select Tier1 first;
+2. fill remaining slots with Tier2;
+3. fill remaining slots with Tier3 only after Tier2 is insufficient;
+4. stop at 15 executable slots or no safe candidates.
+
+Ireland must accept planned fallback candidates when `live_eligible=true` and
+`token_id`/`selected_token_id`, `condition_id`, and side are present. It must
+still drop rows missing token, condition, side, or rows marked ineligible by
+PREMVP.
+
 ## Critical Traps
 
 - `LIVE_ENABLED=true` is wrong; it must be `YES`.

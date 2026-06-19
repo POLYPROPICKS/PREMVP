@@ -2,6 +2,14 @@
 
 Status: permanent P0 observability contract.
 
+## Live Execution Policy
+
+Canonical live policy is `TIER_FALLBACK_TO_15`: Tier1 first, then Tier2, then
+Tier3 until 15 executable slots are filled or no safe candidates remain.
+Tier1-only live execution is deprecated. Hard safety gates still apply:
+token/condition/side, non-ended event, duplicate prevention, bankroll/notional
+caps, max live order cap, and CLOB/auth/region safety.
+
 ## Stage Diagram
 
 ```text
@@ -52,6 +60,9 @@ The PREMVP night-plan route currently writes:
 
 - one `NIGHT_PLAN_API_RUN` summary per authenticated call;
 - one `EXPOSED_BY_API` event per selected event candidate.
+
+Audit payloads must include the selected candidate tier, `live_eligible`, stake,
+rejection reason when present, and fallback policy diagnostics.
 
 If the audit table is missing or unavailable, `/api/executor/night-plan` still
 returns the plan and sets `diagnostics.auditWriteFailed=true`.

@@ -12,10 +12,9 @@
 //   - UNKNOWN scope is never a live slot (already pre-rejected upstream).
 //   - Weak match_family_key is never a live slot.
 //   - Football/WC No-side is never a live slot (already pre-rejected upstream).
-//   - TIER3 is paper-only, never a live slot.
 //   - At most ONE planned live slot per match_family_key (one event = one bet).
-//   - Tier2 is a reduced-stake fallback only, never a raw quantity filler.
-//   - Max bets is a CAP (25), not a target; never force to 15.
+//   - Tier fallback ladder is Tier1 -> Tier2 -> Tier3, capped at 15 live slots.
+//   - Tier2/Tier3 are fallback-only and keep reduced stake caps.
 
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 
@@ -27,7 +26,8 @@ const WINDOW_START_HOUR_MINSK = 18; // 18:00 Minsk
 const WINDOW_END_HOUR_MINSK = 7; // 07:00 Minsk next day
 
 export const TARGET_MIN_BETS_DEFAULT = 15;
-export const TARGET_MAX_BETS_DEFAULT = 25;
+export const TARGET_MAX_BETS_DEFAULT = 15;
+export const LIVE_FALLBACK_POLICY = "TIER_FALLBACK_TO_15";
 export const STARTING_BANKROLL_USD = 300;
 
 // T-45m is the preferred final rebalance / entry point before an event.
@@ -38,6 +38,7 @@ const LATEST_ENTRY_MINUTES_BEFORE = 5; // last safe entry at T-5m
 // Tier2 fallback hard stake ceilings (bankroll-safe; no Kelly, no stake increase).
 const TIER2_ABS_CAP_WITH_TIER1 = 5;
 const TIER2_ABS_CAP_NO_TIER1 = 3;
+const TIER3_ABS_CAP = 2.5;
 
 export type PlanStatus =
   | "HEALTHY_TIER1_SUPPLY"
@@ -71,6 +72,9 @@ export interface CandidatePreview {
   hours_to_start: number;
   live_eligible: boolean;
   live_rejection_reason: string | null;
+  fallback_policy?: typeof LIVE_FALLBACK_POLICY;
+  fallback_selected_tier?: PlanTier;
+  trace_id?: string;
 }
 
 export interface PlannedSlot {
@@ -112,6 +116,7 @@ export interface NightPortfolioPlan {
   starting_bankroll_usd: number;
   tier1_event_slots: number;
   tier2_fallback_slots: number;
+  tier3_fallback_slots: number;
   paper_only_slots: number;
   unsafe_rejected_count: number;
   planned_live_slots: number;
@@ -339,19 +344,26 @@ function isWeakKey(c: FireModelCandidate): boolean {
  * but we re-check defensively so the planner is safe with any universe.
  */
 function planNoGoReason(c: FireModelCandidate): string | null {
+  if (!c.token_id) return "MISSING_TOKEN";
+  if (!c.condition_id) return "MISSING_CONDITION";
+  if (!c.side && !c.selected_outcome) return "MISSING_SIDE";
   if (c.strategic_scope === "UNKNOWN") return "UNKNOWN_SCOPE_NOT_LIVE";
   if (c.identity_quality === "WEAK" || c.identity_quality === "INVALID") return "WEAK_IDENTITY_NOT_LIVE";
   if (isWeakKey(c)) return "WEAK_MATCH_FAMILY_KEY_NOT_LIVE";
   const isSoccer = c.strategic_scope === "WC" || c.strategic_scope === "SOCCER";
   if (isSoccer && (c.side ?? "").toLowerCase() === "no") return "FOOTBALL_NO_SIDE_NOT_LIVE";
   if (!c.diagnostics?.game_start_iso) return "MISSING_GAME_START_NOT_LIVE";
+  if (c.diagnostics.hours_to_start_now <= 0) return "GAME_STARTED_OR_INVALID";
   const tier = planTierOf(c);
-  if (tier === "TIER3") return "TIER3_PAPER_ONLY";
   if (tier === "REJECTED") return "TIER_NOT_LIVE_GRADE";
   return null;
 }
 
-function previewOf(c: FireModelCandidate): CandidatePreview {
+function traceIdOf(c: FireModelCandidate): string {
+  return [c.condition_id || "no_condition", c.token_id || "no_token", c.event_slug || c.match_family_key || "no_event"].join("::");
+}
+
+function previewOf(c: FireModelCandidate, opts?: { forceLiveEligible?: boolean; fallbackSelectedTier?: PlanTier }): CandidatePreview {
   return {
     signal_id: c.signal_id,
     market_slug: c.market_slug,
@@ -374,8 +386,15 @@ function previewOf(c: FireModelCandidate): CandidatePreview {
     match_family_key: c.match_family_key,
     timing_bucket: c.timing_bucket,
     hours_to_start: c.diagnostics.hours_to_start_now,
-    live_eligible: c.live_eligible,
-    live_rejection_reason: c.live_rejection_reason,
+    live_eligible: opts?.forceLiveEligible ? true : c.live_eligible,
+    live_rejection_reason: opts?.forceLiveEligible ? null : c.live_rejection_reason,
+    ...(opts?.forceLiveEligible
+      ? {
+          fallback_policy: LIVE_FALLBACK_POLICY,
+          fallback_selected_tier: opts.fallbackSelectedTier ?? planTierOf(c),
+        }
+      : {}),
+    trace_id: traceIdOf(c),
   };
 }
 
@@ -509,12 +528,13 @@ function tier2ReducedStake(
 
 interface EventGroup {
   key: string;
-  candidates: FireModelCandidate[]; // live-plannable only (Tier1/Tier2), ranked best-first
+  candidates: FireModelCandidate[]; // live-plannable Tier1/Tier2/Tier3, ranked best-first
   best: FireModelCandidate;
   backup: FireModelCandidate | null;
-  bestTier: PlanTier; // TIER1 or TIER2
+  bestTier: PlanTier;
   hasTier1: boolean;
   hasTier2: boolean;
+  hasTier3: boolean;
 }
 
 function buildSlotFromGroup(
@@ -530,12 +550,12 @@ function buildSlotFromGroup(
   let backup = group.backup;
   let tier = group.bestTier;
 
-  if (forcedTier === "TIER2") {
-    const t2 = group.candidates.find((c) => planTierOf(c) === "TIER2");
-    if (t2) {
-      chosen = t2;
-      tier = "TIER2";
-      backup = group.candidates.find((c) => c !== t2) ?? null;
+  if (forcedTier) {
+    const forced = group.candidates.find((c) => planTierOf(c) === forcedTier);
+    if (forced) {
+      chosen = forced;
+      tier = forcedTier;
+      backup = group.candidates.find((c) => c !== forced) ?? null;
     }
   }
 
@@ -546,11 +566,14 @@ function buildSlotFromGroup(
   if (tier === "TIER1") {
     plannedStake = chosen.stake_usd;
     stakeReason = `TIER1_MODEL_STAKE: ${chosen.stake_usd}`;
-  } else {
+  } else if (tier === "TIER2") {
     const r = tier2ReducedStake(chosen.stake_usd, comparableTier1Stake);
     plannedStake = r.stake;
     stakeReason = r.reason;
     tier2ReducedApplied = true;
+  } else {
+    plannedStake = Math.round(Math.min(chosen.stake_usd, TIER3_ABS_CAP) * 100) / 100;
+    stakeReason = `TIER3_FALLBACK_CAPPED: min(stake=${chosen.stake_usd}, cap=${TIER3_ABS_CAP})`;
   }
 
   const startMs = chosen.diagnostics.game_start_iso
@@ -559,6 +582,10 @@ function buildSlotFromGroup(
   const validStart = Number.isFinite(startMs);
   const eventTitle =
     chosen.event_slug ?? chosen.market_slug ?? chosen.match_family_key;
+  const selectedPreview = {
+    ...previewOf(chosen, { forceLiveEligible: true, fallbackSelectedTier: tier }),
+    stake_usd: plannedStake,
+  };
 
   // No-go reasons: any non-selected, non-backup market inside this event.
   const noGo: string[] = [];
@@ -578,7 +605,7 @@ function buildSlotFromGroup(
     stake_reason: stakeReason,
     tier2_reduced_stake_applied: tier2ReducedApplied,
     candidate_count_inside_event: group.candidates.length,
-    selected_candidate_preview: previewOf(chosen),
+    selected_candidate_preview: selectedPreview,
     backup_candidate_preview: backup ? previewOf(backup) : null,
     earliest_entry_iso: validStart
       ? toIso(startMs - EARLIEST_ENTRY_MINUTES_BEFORE * 60_000)
@@ -637,6 +664,7 @@ export function buildNightPortfolioPlan(
   }
 
   const livePlannable: FireModelCandidate[] = [];
+  const seenStrictKeys = new Set<string>();
 
   for (const c of universe) {
     // Guard: game start must fall within the current night window.
@@ -654,14 +682,20 @@ export function buildNightPortfolioPlan(
 
     const reason = planNoGoReason(c);
     if (reason === null) {
+      const strictKey = `${c.condition_id}::${c.token_id}`;
+      if (seenStrictKeys.has(strictKey)) {
+        topRejectedReasons.DUPLICATE_EVENT_OR_TOKEN = (topRejectedReasons.DUPLICATE_EVENT_OR_TOKEN ?? 0) + 1;
+        unsafeRejected += 1;
+        continue;
+      }
+      seenStrictKeys.add(strictKey);
       livePlannable.push(c);
       const ver = c.diagnostics.version ?? "unknown";
       mappedCountsByVersion[ver] = (mappedCountsByVersion[ver] ?? 0) + 1;
       continue;
     }
     topRejectedReasons[reason] = (topRejectedReasons[reason] ?? 0) + 1;
-    if (reason === "TIER3_PAPER_ONLY") paperOnly += 1;
-    else unsafeRejected += 1;
+    unsafeRejected += 1;
   }
 
   // Group live-plannable candidates by match_family_key (one event = one slot).
@@ -685,6 +719,7 @@ export function buildNightPortfolioPlan(
       bestTier: planTierOf(best),
       hasTier1: ranked.some((c) => planTierOf(c) === "TIER1"),
       hasTier2: ranked.some((c) => planTierOf(c) === "TIER2"),
+      hasTier3: ranked.some((c) => planTierOf(c) === "TIER3"),
     });
   }
 
@@ -693,6 +728,7 @@ export function buildNightPortfolioPlan(
 
   const tier1Groups = groups.filter((g) => g.bestTier === "TIER1");
   const tier2OnlyGroups = groups.filter((g) => g.bestTier === "TIER2");
+  const tier3OnlyGroups = groups.filter((g) => g.bestTier === "TIER3");
   // Tier1-event count = events whose best provisional candidate is Tier1.
   const tier1EventSlots = tier1Groups.length;
 
@@ -704,47 +740,45 @@ export function buildNightPortfolioPlan(
   const plannedSlots: PlannedSlot[] = [];
   let plan_status: PlanStatus;
 
-  if (tier1EventSlots >= targetMin) {
-    // HEALTHY: plan Tier1 only, capped at targetMax by quality.
-    for (const g of tier1Groups.slice(0, targetMax)) {
-      plannedSlots.push(buildSlotFromGroup(g, "TIER1", comparableTier1Stake, nowMs));
-    }
-    plan_status = "HEALTHY_TIER1_SUPPLY";
-  } else if (tier1EventSlots >= 8) {
-    // TIER2_FALLBACK_NEEDED: reserve all Tier1, top up with safe Tier2 to targetMin.
-    for (const g of tier1Groups) {
-      plannedSlots.push(buildSlotFromGroup(g, "TIER1", comparableTier1Stake, nowMs));
-    }
-    for (const g of tier2OnlyGroups) {
-      if (plannedSlots.length >= targetMin) break;
-      plannedSlots.push(buildSlotFromGroup(g, "TIER2", comparableTier1Stake, nowMs));
-    }
-    plan_status = "TIER2_FALLBACK_NEEDED";
-  } else if (tier1EventSlots > 0 || tier2OnlyGroups.length > 0) {
-    // SAFE_SUPPLY_SHORTAGE: reserve Tier1, add only high-quality Tier2; never force.
-    for (const g of tier1Groups) {
-      plannedSlots.push(buildSlotFromGroup(g, "TIER1", comparableTier1Stake, nowMs));
-    }
-    for (const g of tier2OnlyGroups) {
-      if (plannedSlots.length >= targetMax) break;
-      plannedSlots.push(buildSlotFromGroup(g, "TIER2", comparableTier1Stake, nowMs));
-    }
-    plan_status = "SAFE_SUPPLY_SHORTAGE";
-  } else {
-    plan_status = "NO_LIVE_PLAN";
+  const liveSlotTarget = Math.min(targetMin, targetMax, TARGET_MIN_BETS_DEFAULT);
+  for (const g of tier1Groups) {
+    if (plannedSlots.length >= liveSlotTarget) break;
+    plannedSlots.push(buildSlotFromGroup(g, "TIER1", comparableTier1Stake, nowMs));
+  }
+  for (const g of tier2OnlyGroups) {
+    if (plannedSlots.length >= liveSlotTarget) break;
+    plannedSlots.push(buildSlotFromGroup(g, "TIER2", comparableTier1Stake, nowMs));
+  }
+  for (const g of tier3OnlyGroups) {
+    if (plannedSlots.length >= liveSlotTarget) break;
+    plannedSlots.push(buildSlotFromGroup(g, "TIER3", comparableTier1Stake, nowMs));
   }
 
-  // Enforce the hard cap (max bets is a ceiling, never a target).
-  const plannedFinal = plannedSlots.slice(0, targetMax);
+  if (plannedSlots.length === 0) {
+    plan_status = "NO_LIVE_PLAN";
+  } else if (tier1EventSlots >= liveSlotTarget) {
+    plan_status = "HEALTHY_TIER1_SUPPLY";
+  } else if (plannedSlots.some((s) => s.tier === "TIER2" || s.tier === "TIER3")) {
+    plan_status = "TIER2_FALLBACK_NEEDED";
+  } else {
+    plan_status = "SAFE_SUPPLY_SHORTAGE";
+  }
+
+  const plannedFinal = plannedSlots;
   const plannedLiveSlots = plannedFinal.length;
   const tier1PlannedSlots = plannedFinal.filter((s) => s.tier === "TIER1").length;
   const tier2FallbackSlots = plannedFinal.filter((s) => s.tier === "TIER2").length;
-  const slotShortage = Math.max(0, targetMin - plannedLiveSlots);
+  const tier3FallbackSlots = plannedFinal.filter((s) => s.tier === "TIER3").length;
+  const slotShortage = Math.max(0, liveSlotTarget - plannedLiveSlots);
+  const noQuotaLeftCount = Math.max(0, groups.length - plannedLiveSlots);
+  if (noQuotaLeftCount > 0) {
+    topRejectedReasons.NO_QUOTA_LEFT = (topRejectedReasons.NO_QUOTA_LEFT ?? 0) + noQuotaLeftCount;
+  }
 
   // Second alert: low Tier1 OR below target OR a shortage/empty status.
   const second_alert_required =
     tier1EventSlots < 8 ||
-    plannedLiveSlots < targetMin ||
+    plannedLiveSlots < liveSlotTarget ||
     plan_status === "SAFE_SUPPLY_SHORTAGE" ||
     plan_status === "NO_LIVE_PLAN";
 
@@ -759,6 +793,7 @@ export function buildNightPortfolioPlan(
     starting_bankroll_usd: Math.round(effectiveBankrollUsd * 100) / 100,
     tier1_event_slots: tier1EventSlots,
     tier2_fallback_slots: tier2FallbackSlots,
+    tier3_fallback_slots: tier3FallbackSlots,
     paper_only_slots: paperOnly,
     unsafe_rejected_count: unsafeRejected,
     planned_live_slots: plannedLiveSlots,
@@ -777,7 +812,15 @@ export function buildNightPortfolioPlan(
       event_groups: groups.length,
       tier1_groups: tier1Groups.length,
       tier2_only_groups: tier2OnlyGroups.length,
+      tier3_only_groups: tier3OnlyGroups.length,
       tier1_planned_slots: tier1PlannedSlots,
+      tier1_selected_count: tier1PlannedSlots,
+      tier2_fallback_selected_count: tier2FallbackSlots,
+      tier3_fallback_selected_count: tier3FallbackSlots,
+      target_live_slots: liveSlotTarget,
+      final_live_slots: plannedLiveSlots,
+      candidate_shortfall: slotShortage,
+      fallback_policy: LIVE_FALLBACK_POLICY,
       comparable_tier1_stake_usd: comparableTier1Stake,
       total_planned_stake_usd:
         Math.round(plannedFinal.reduce((s, p) => s + p.planned_stake_usd, 0) * 100) / 100,

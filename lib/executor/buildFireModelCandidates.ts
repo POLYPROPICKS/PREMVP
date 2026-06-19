@@ -437,8 +437,10 @@ function computeTimingBucket(hoursToStart: number): TimingBucket {
  * Centralised live eligibility decision. Called after hard-rejects (UNKNOWN,
  * football-too-early, football-No-side) have already been applied via `continue`.
  *
- * Returns soft-reject codes for candidates that are paper-safe but NOT live-safe:
- *   TIER3_LIVE_BLOCKED              — score/coverage too weak for live capital.
+ * Returns soft-reject codes for candidates that are paper-safe but not directly
+ * Tier1-live. The night planner can promote Tier2/Tier3 through the
+ * founder-approved quota fallback ladder.
+ *   BELOW_LIVE_FALLBACK_POOL        — eligible only if planner needs fallback quota.
  *   WEAK_IDENTITY_LIVE_BLOCKED      — identity quality WEAK or INVALID.
  *   WEAK_MATCH_FAMILY_KEY_LIVE_BLOCKED — event key is market-level only.
  *   QUEUE_LATER_NOT_LIVE_ELIGIBLE   — game >6h away.
@@ -453,10 +455,7 @@ function computeLiveEligibility(
   if (tier !== "TIER1_CORE_STRICT_72_COV50") {
     return {
       liveEligible: false,
-      liveRejectionReason:
-        tier === "TIER3_MICRO_EXPAND_50_COV25"
-          ? "TIER3_LIVE_BLOCKED"
-          : "TIER1_ONLY_LIVE_BLOCKED",
+      liveRejectionReason: "BELOW_LIVE_FALLBACK_POOL",
     };
   }
   if (identityQuality === "WEAK" || identityQuality === "INVALID") {
@@ -492,7 +491,7 @@ function isWcTier2LiveOverrideCandidate(args: {
   matchFamilyKey: string;
   liveRejectionReason: string | null;
 }): { allowed: boolean; reason: string } {
-  if (args.liveRejectionReason !== "TIER1_ONLY_LIVE_BLOCKED") return { allowed: false, reason: "NOT_TIER1_ONLY_BLOCK" };
+  if (args.liveRejectionReason !== "BELOW_LIVE_FALLBACK_POOL") return { allowed: false, reason: "NOT_FALLBACK_POOL" };
   if (args.tier !== "TIER2_SAFE_EXPAND_60_COV50") return { allowed: false, reason: "NOT_TIER2" };
   const wcText = `${args.identityText} ${args.eventSlug ?? ""} ${args.sport}`.toLowerCase();
   const isExplicitWc = args.strategicScope === "WC" || (args.sport === "soccer" && WC_EXPLICIT_RE.test(wcText));
@@ -821,7 +820,7 @@ export async function buildFireModelCandidates(
 
     let wcTier2OverrideApplied = false;
     let wcTier2OverrideReason: string | null = null;
-    if (liveRejectionReason === "TIER1_ONLY_LIVE_BLOCKED") {
+    if (liveRejectionReason === "BELOW_LIVE_FALLBACK_POOL") {
       if (rawDiag) rawDiag.wc_tier2_override_candidates += 1;
       const override = isWcTier2LiveOverrideCandidate({
         tier,
@@ -853,7 +852,7 @@ export async function buildFireModelCandidates(
           (rawDiag.wc_tier2_override_rejected_by_reason[override.reason] ?? 0) + 1;
       }
     }
-    if (!planningMode && liveRejectionReason === "TIER1_ONLY_LIVE_BLOCKED") {
+    if (!planningMode && liveRejectionReason === "BELOW_LIVE_FALLBACK_POOL") {
       console.log("[ireland-executor] rejected non-tier1 candidate", {
         signal_id: row.id,
         strategy: tier,
@@ -880,7 +879,8 @@ export async function buildFireModelCandidates(
     // to live-eligible only when ALL of: PILOT_ALLOW_TIER3_FALLBACK=true, scope in
     // PILOT_ALLOWED_SCOPES, not WC/SOCCER, strong identity, within timing window.
     let pilotTier3FallbackApplied = false;
-    if (!liveEligible && liveRejectionReason === "TIER3_LIVE_BLOCKED" &&
+    if (!liveEligible && liveRejectionReason === "BELOW_LIVE_FALLBACK_POOL" &&
+        tier === "TIER3_MICRO_EXPAND_50_COV25" &&
         process.env.PILOT_ALLOW_TIER3_FALLBACK === "true") {
       const maxHours = parseFloat(process.env.PILOT_TIER3_MAX_HOURS_TO_START ?? "1.25");
       const pilotScopesRaw2 = process.env.PILOT_ALLOWED_SCOPES ?? "";

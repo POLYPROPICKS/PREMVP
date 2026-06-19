@@ -7,6 +7,7 @@ import {
   IRELAND_RECOMMENDED_RUNTIME_SECONDS,
   TARGET_MIN_BETS_DEFAULT,
   TARGET_MAX_BETS_DEFAULT,
+  LIVE_FALLBACK_POLICY,
 } from "@/lib/executor/nightPortfolioPlanner";
 
 // Read-only planning route. Returns the Night Portfolio Plan for the active
@@ -66,6 +67,9 @@ function compactCandidatePayload(candidate: AuditCandidate): Record<string, unkn
     stake_usd: candidate.stake_usd,
     live_eligible: candidate.live_eligible,
     live_rejection_reason: candidate.live_rejection_reason,
+    fallback_policy: candidate.fallback_policy,
+    fallback_selected_tier: candidate.fallback_selected_tier,
+    trace_id: candidate.trace_id,
     strategic_scope: candidate.strategic_scope,
     sport: candidate.sport,
     match_family_key: candidate.match_family_key,
@@ -94,6 +98,10 @@ async function writeNightPlanAudit(opts: {
           live_eligible_count: selected.filter((c) => c.live_eligible === true).length,
           wc_count: selected.filter((c) => c.strategic_scope === "WC").length,
           final_plan_count: opts.plan.planned_slots.length,
+          fallback_policy: LIVE_FALLBACK_POLICY,
+          tier1_selected_count: opts.plan.diagnostics.tier1_selected_count ?? null,
+          tier2_fallback_selected_count: opts.plan.diagnostics.tier2_fallback_selected_count ?? null,
+          tier3_fallback_selected_count: opts.plan.diagnostics.tier3_fallback_selected_count ?? null,
           request_params: opts.requestParams,
           window_start_iso: opts.plan.window_start_iso,
           window_end_iso: opts.plan.window_end_iso,
@@ -145,8 +153,9 @@ export async function GET(request: NextRequest) {
   const rawMin = parseInt(searchParams.get("targetMin") ?? "", 10);
   const rawMax = parseInt(searchParams.get("targetMax") ?? "", 10);
   const targetMin = Number.isFinite(rawMin) && rawMin > 0 ? rawMin : TARGET_MIN_BETS_DEFAULT;
-  const targetMax =
+  const requestedTargetMax =
     Number.isFinite(rawMax) && rawMax >= targetMin ? rawMax : TARGET_MAX_BETS_DEFAULT;
+  const targetMax = Math.min(requestedTargetMax, TARGET_MAX_BETS_DEFAULT);
   const bankrollInputs = [
     ["bankroll", positiveNumber(searchParams.get("bankroll"))],
     ["cash", positiveNumber(searchParams.get("cash"))],
@@ -202,6 +211,7 @@ export async function GET(request: NextRequest) {
       plan_status: plan.plan_status,
       tier1_event_slots: plan.tier1_event_slots,
       tier2_fallback_slots: plan.tier2_fallback_slots,
+      tier3_fallback_slots: plan.tier3_fallback_slots,
       planned_live_slots: plan.planned_live_slots,
       paper_only_slots: plan.paper_only_slots,
       unsafe_rejected_count: plan.unsafe_rejected_count,
