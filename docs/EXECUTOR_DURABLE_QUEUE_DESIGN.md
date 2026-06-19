@@ -1,13 +1,20 @@
 # Executor Durable Queue Design
 
-Status: recommended next reliability upgrade; not implemented in this patch.
+Status: recommended next P0/P1 reliability upgrade; not implemented in this
+patch.
 
 ## Why Endpoint-Only Polling Is Fragile
 
 The current contour depends on Ireland polling `/api/executor/night-plan` at the
-right time. If the updater misses the pre-match window, restarts, polls after
-kickoff, or drops fields before writing `data/candidates.json`, PREMVP has no
-authoritative execution-state record.
+right time. This endpoint-only polling contour is fragile and caused missed
+execution uncertainty: after Canada/Qatar and Mexico/Korea, the available
+evidence could not immediately prove whether PREMVP failed to expose candidates,
+Ireland missed the poll, the adapter dropped rows, `candidates.json` was stale,
+or the live loop failed to attempt orders.
+
+The recommended next step is a Supabase-backed `executor_candidate_queue`.
+Ireland should consume this queue first and use the endpoint second as a backup
+or preview. The queue should become the execution source of truth.
 
 ## Proposed Table
 
@@ -42,12 +49,13 @@ Key fields:
 ## Transition Rules
 
 1. PREMVP inserts or upserts eligible candidates as `PENDING`.
-2. Ireland atomically claims rows: `PENDING -> CLAIMED`.
-3. Ireland writes every adapter/live-loop decision.
-4. Order attempt transitions: `CLAIMED -> ORDER_ATTEMPTED`.
-5. CLOB result transitions to `ORDER_SENT` or `ORDER_REJECTED`.
-6. Ledger confirmation transitions to `ORDER_FILLED`.
-7. A scheduled cleanup transitions stale `PENDING/CLAIMED` rows to `EXPIRED`.
+2. Ireland consumes queue rows first, before endpoint fallback.
+3. Ireland atomically claims rows: `PENDING -> CLAIMED`.
+4. Ireland writes every adapter/live-loop decision.
+5. Order attempt transitions: `CLAIMED -> ORDER_ATTEMPTED`.
+6. CLOB result transitions to `ORDER_SENT` or `ORDER_REJECTED`.
+7. Ledger confirmation transitions to `ORDER_FILLED`.
+8. A scheduled cleanup transitions stale `PENDING/CLAIMED` rows to `EXPIRED`.
 
 ## Duplicate Prevention
 
