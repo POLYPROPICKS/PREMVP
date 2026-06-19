@@ -33,6 +33,8 @@
     "morning:model-report": "tsx scripts/morning-model-report.ts",
     "morning:trusted-email": "tsx scripts/founder-email-dispatcher.ts --mode=morning",
     "ops:morning-report": "tsx scripts/founder-email-dispatcher.ts --mode=morning",
+    "ops:morning-package": "tsx scripts/build-morning-report-package.ts",
+    "ops:morning-send-ready": "tsx scripts/send-morning-report-package.ts",
     "ops:night-plan-email": "tsx scripts/founder-email-dispatcher.ts --mode=night-plan",
     "ops:night-plan-alert": "tsx scripts/founder-email-dispatcher.ts --mode=alert",
     "founder:emails": "tsx scripts/founder-email-dispatcher.ts",
