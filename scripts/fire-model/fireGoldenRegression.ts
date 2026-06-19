@@ -2,7 +2,15 @@ import { existsSync } from "fs";
 import { readFile } from "fs/promises";
 import path from "path";
 
-type GoldenRow = { anchor_id: string; expected_roi: number; actual_roi: number | null; status: string; source_path: string };
+export type LegacyWcSmokeTestRow = {
+  anchor_id: string;
+  expected_roi: number;
+  actual_roi: number | null;
+  status: string;
+  source_path: string;
+  diagnostic_only: boolean;
+  is_benchmark: false;
+};
 
 function splitCsv(line: string): string[] {
   const cells: string[] = [];
@@ -38,8 +46,8 @@ function asNumber(value: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export async function goldenRegression(): Promise<GoldenRow[]> {
-  const rows: GoldenRow[] = [];
+export async function legacyWcSmokeTest(): Promise<LegacyWcSmokeTestRow[]> {
+  const rows: LegacyWcSmokeTestRow[] = [];
   const researchPath = path.join(process.cwd(), "modeling", "wc_research_universe_roi_202606191920Z", "wc_research_roi_policy_window.csv");
   if (existsSync(researchPath)) {
     const data = await readCsv(researchPath);
@@ -56,10 +64,12 @@ export async function goldenRegression(): Promise<GoldenRow[]> {
         actual_roi: actual,
         status: actual == null ? "WARN_MISSING" : Math.abs(actual - anchor.expected) <= 0.25 ? "PASS" : "WARN_DRIFT",
         source_path: researchPath,
+        diagnostic_only: true,
+        is_benchmark: false,
       });
     }
   } else {
-    rows.push({ anchor_id: "WC_RESEARCH_FILE", expected_roi: 0, actual_roi: null, status: "WARN_GOLDEN_DATASET_MISSING", source_path: researchPath });
+    rows.push({ anchor_id: "WC_RESEARCH_FILE", expected_roi: 0, actual_roi: null, status: "WARN_LEGACY_WC_SMOKE_DATA_MISSING", source_path: researchPath, diagnostic_only: true, is_benchmark: false });
   }
 
   const founderPath = path.join(process.cwd(), "modeling", "wc_founder_style_line_layer_20260619_2252Z", "wc_founder_style_policy_roi.csv");
@@ -73,9 +83,13 @@ export async function goldenRegression(): Promise<GoldenRow[]> {
       actual_roi: actual,
       status: actual == null ? "WARN_MISSING" : Math.abs(actual - 8.27) <= 0.25 ? "PASS" : "WARN_DRIFT",
       source_path: founderPath,
+      diagnostic_only: true,
+      is_benchmark: false,
     });
   } else {
-    rows.push({ anchor_id: "WC_FOUNDER_FILE", expected_roi: 0, actual_roi: null, status: "WARN_GOLDEN_DATASET_MISSING", source_path: founderPath });
+    rows.push({ anchor_id: "WC_FOUNDER_FILE", expected_roi: 0, actual_roi: null, status: "WARN_LEGACY_WC_SMOKE_DATA_MISSING", source_path: founderPath, diagnostic_only: true, is_benchmark: false });
   }
   return rows;
 }
+
+export const goldenRegression = legacyWcSmokeTest;

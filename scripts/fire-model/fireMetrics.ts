@@ -41,11 +41,21 @@ export type ModelMetricRow = {
   "96h_pnl": number;
   "96h_roi": number;
   "96h_maxDD": number;
+  "96h_pnl_over_maxDD": number | null;
+  "7d_N_bets": number;
+  "7d_N_fixtures": number;
+  "7d_pnl": number;
+  "7d_roi": number;
   avg_bets_per_fixture: number;
   allowed_families: string;
   blocked_families: string;
+  sport_coverage: string;
+  tier_coverage: string;
+  fire_rank_score: number;
   verdict: string;
   rollback_note: string;
+  promotion_note: string;
+  data_quality_status: string;
 };
 
 function str(value: unknown): string {
