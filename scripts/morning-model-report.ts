@@ -256,26 +256,48 @@ function writeCsv(pathname: string, rows: RawRow[], headers: string[]): Promise<
 async function fetchAllResolvedRows(): Promise<RawRow[]> {
   const { supabaseAdmin } = await import("../lib/supabase/server");
   const rows: RawRow[] = [];
-  let offset = 0;
   let page = 1;
+  let cursorResolvedAt: string | null = null;
+  let cursorId: string | null = null;
 
   while (true) {
-    const { data, error } = await supabaseAdmin
+    let query = supabaseAdmin
       .from("generated_signal_pairs")
       .select(GENERATED_SIGNAL_PAIRS_REPORT_COLUMNS)
       .not("signal_result", "is", null)
       .not("condition_id", "is", null)
       .not("selected_token_id", "is", null)
-      .order("id", { ascending: true })
-      .range(offset, offset + RESOLVED_PAGE_SIZE - 1);
+      .order("resolved_at", { ascending: false, nullsFirst: false })
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(RESOLVED_PAGE_SIZE);
+
+    if (cursorResolvedAt && cursorId) {
+      query = query.or(
+        `resolved_at.lt.${cursorResolvedAt},and(resolved_at.eq.${cursorResolvedAt},id.lt.${cursorId})`,
+      );
+    }
+
+    const { data, error } = await query;
     if (error) throw new Error(`generated_signal_pairs: ${error.message}`);
     const chunk = (data ?? []) as unknown as RawRow[];
     rows.push(...chunk);
-    console.log(`[morning-model] generated_signal_pairs page ${page} rows=${chunk.length} total=${rows.length}`);
+    console.log(`[morning-model] resolved-only page ${page} rows=${chunk.length} total=${rows.length}`);
     if (chunk.length < RESOLVED_PAGE_SIZE) break;
-    offset += RESOLVED_PAGE_SIZE;
+    const last = chunk[chunk.length - 1];
+    cursorResolvedAt = safeStr(last.resolved_at) ?? cursorResolvedAt;
+    cursorId = safeStr(last.id);
     page += 1;
   }
+
+  const deduped = dedupeStrict(rows);
+  const maxResolvedAt = deduped.reduce((max, row) => {
+    const t = parseIso(row.resolved_at);
+    return t > max ? t : max;
+  }, Number.NEGATIVE_INFINITY);
+  console.log(
+    `[morning-model] strict_resolved_total=${deduped.length} events=${new Set(deduped.map((r) => eventKey(r))).size} max_resolved_at=${Number.isFinite(maxResolvedAt) ? new Date(maxResolvedAt).toISOString() : "N/A"}`,
+  );
 
   return rows;
 }
