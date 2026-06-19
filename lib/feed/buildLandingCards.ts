@@ -1950,6 +1950,57 @@ async function tryBuildResearchSnapshot(
       : null;
   const oddsBandLabel = diag.formulaAudit?.oddsBandLabel ?? null;
   const eventId = safeString(candidate.event.id) ?? null;
+  const marketType = safeString(parentMetaExt?.sportsMarketType) ?? null;
+  const fixtureKey = safeString(candidate.event.slug) ?? safeString(candidate.market.slug) ?? condId;
+  const fireModelFamily = safeString(enriched.parentMeta.category) ?? marketType;
+  const minutesToStart = hoursUntilStartNum !== null ? Math.round(hoursUntilStartNum * 60) : null;
+  researchDiagnostics.fireModel = {
+    version: "firemodel_capture_v1",
+    capturedAt: snapshotAt,
+    sourceRunId: snapshotRunId,
+    formulaVersion: FORMULA_VERSION,
+    modelCandidate: {
+      score: diag.formulaAudit?.finalSignalV2 ?? null,
+      tier: diag.formulaAudit?.finalSignalV2 != null
+        ? diag.formulaAudit.finalSignalV2 >= 72 ? "TIER1" : diag.formulaAudit.finalSignalV2 >= 65 ? "TIER2" : diag.formulaAudit.finalSignalV2 >= 60 ? "TIER3" : "BELOW_TIER3"
+        : null,
+      confidence: diag.formulaAudit?.displaySignalConfidence ?? diag.formulaAudit?.finalSignalV2 ?? null,
+      dataCoverage: typeof diag.dataCoverage === "number" ? diag.dataCoverage : null,
+      entryPrice: price,
+      marketFamily: fireModelFamily,
+      normalizedFixtureKey: fixtureKey,
+      fixtureKeyConfidence: fixtureKey ? "MEDIUM" : "LOW",
+      sportBucket: safeString(enriched.parentMeta.category) ?? null,
+      leagueBucket: safeString(enriched.parentMeta.category) ?? null,
+      phase: signalPhaseAtSnapshot,
+      minutesToStart,
+      candidateRankWithinFixture: null,
+      candidateRankWithinFamily: null,
+      allowedFamilies: [],
+      blockedFamilyReason: null,
+      selectionStatus: "RESEARCH_SNAPSHOT_CAPTURED",
+      rejectionReason: diag.rejectionReasons.length ? diag.rejectionReasons.join("|") : null,
+      eligibilityFlags: {
+        hasConditionId: Boolean(condId),
+        hasSelectedTokenId: Boolean(selectedTokId),
+        hasOpposingTokenId: Boolean(opposingTokId),
+        hasEntryPrice: price !== null,
+        hasFormulaScore: diag.formulaAudit?.finalSignalV2 != null,
+      },
+      queryId: "all_sports_research_candidates_v1",
+      datasetId: "ALL_SPORTS_RESEARCH_CANDIDATES_V1",
+    },
+    rawFeatureHints: {
+      marketType,
+      marketSubtype: null,
+      familySource: "parentMeta.category",
+      liquidity: safeParseNumber(candidate.market.liquidity) ?? null,
+      selectedTokenId: selectedTokId,
+      opposingTokenId: opposingTokId,
+      derived: true,
+      derivation_source: "tryBuildResearchSnapshot",
+    },
+  };
 
   return {
     snapshotRunId,
@@ -2584,6 +2635,51 @@ export async function buildLandingCards(options?: {
             // Explainability: S2 markets are not enriched; no formula score available.
             // All codes below are truthful for this path — enrichMarket() was not called.
             formulaScore: null,
+            fireModel: {
+              version: "firemodel_capture_v1",
+              capturedAt: researchSnapshotAt,
+              sourceRunId: researchSnapshotRunId,
+              formulaVersion: FORMULA_VERSION,
+              modelCandidate: {
+                score: null,
+                tier: null,
+                confidence: null,
+                dataCoverage: null,
+                entryPrice: rm.selectedPriceNum,
+                marketFamily: rm.marketFamily ?? rm.leagueName ?? rm.sportsMarketType ?? null,
+                normalizedFixtureKey: rm.eventSlug || null,
+                fixtureKeyConfidence: rm.eventSlug ? "MEDIUM" : "LOW",
+                sportBucket: rm.leagueName ?? rm.marketFamily ?? null,
+                leagueBucket: rm.leagueName ?? rm.marketFamily ?? null,
+                phase: "prematch",
+                minutesToStart: Number.isFinite(hoursUntilStart) ? Math.round(hoursUntilStart * 60) : null,
+                candidateRankWithinFixture: null,
+                candidateRankWithinFamily: null,
+                allowedFamilies: [],
+                blockedFamilyReason: null,
+                selectionStatus: "RESEARCH_S2_DIRECT_CAPTURED",
+                rejectionReason: "SCORE_UNAVAILABLE",
+                eligibilityFlags: {
+                  hasConditionId: Boolean(rm.conditionId),
+                  hasSelectedTokenId: Boolean(rm.selectedTokenId),
+                  hasOpposingTokenId: Boolean(rm.opposingTokenId),
+                  hasEntryPrice: rm.selectedPriceNum != null,
+                  hasFormulaScore: false,
+                },
+                queryId: "all_sports_research_candidates_v1",
+                datasetId: "ALL_SPORTS_RESEARCH_CANDIDATES_V1",
+              },
+              rawFeatureHints: {
+                marketType: rm.sportsMarketType ?? null,
+                marketSubtype: rm.marketSubtype ?? null,
+                familySource: rm.familySource ?? "unknown",
+                liquidity: null,
+                selectedTokenId: rm.selectedTokenId,
+                opposingTokenId: rm.opposingTokenId,
+                derived: true,
+                derivation_source: "researchNestedMarketToCandidate:S2_DIRECT",
+              },
+            },
             productRejectionReasonDetails: [
               { code: "RESEARCH_S2_DIRECT", detail: "Market found via S2 wide research universe scan, not via the enrichment-then-product-gate path." },
               { code: "S2_NOT_ENRICHED", detail: "enrichMarket() was not called; no trade data, holder concentration, or directional flow was computed for this snapshot." },

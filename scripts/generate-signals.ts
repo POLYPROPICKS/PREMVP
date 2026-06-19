@@ -246,6 +246,25 @@ async function main() {
     diagnostics.researchWriterAttempted = researchWriterAttempted;
     diagnostics.researchSnapshotsInserted = researchSnapshotsInserted;
     diagnostics.researchWriterWarning = researchWriterWarning;
+    const fireModelCaptured = rawResearchSnapshots.filter((snap) => snap.diagnostics?.fireModel);
+    diagnostics.fireModelCaptureAttempted = rawResearchSnapshots.length;
+    diagnostics.fireModelCaptureInserted = researchSnapshotsInserted;
+    diagnostics.fireModelScorePresentCount = fireModelCaptured.filter(
+      (snap) => snap.diagnostics.fireModel?.modelCandidate.score != null,
+    ).length;
+    diagnostics.fireModelScoreMissingCount = fireModelCaptured.filter(
+      (snap) => snap.diagnostics.fireModel?.modelCandidate.score == null,
+    ).length;
+    diagnostics.fireModelTierPresentCount = fireModelCaptured.filter(
+      (snap) => snap.diagnostics.fireModel?.modelCandidate.tier != null,
+    ).length;
+    diagnostics.fireModelMarketFamilyPresentCount = fireModelCaptured.filter(
+      (snap) => snap.diagnostics.fireModel?.modelCandidate.marketFamily != null,
+    ).length;
+    diagnostics.fireModelCaptureWarning =
+      fireModelCaptured.length === 0 && rawResearchSnapshots.length > 0
+        ? "FIREMODEL_CAPTURE_METADATA_MISSING"
+        : null;
     const rf = result.researchFunnel;
     console.log(`[generate-signals] research funnel: attempted=${rf?.attempted ?? 0} eligible=${rf?.eligible ?? 0} inserted=${researchSnapshotsInserted} exec_ok=${rf?.execFetchOk ?? 0} exec_empty=${rf?.execFetchEmptyBook ?? 0} exec_failed=${rf?.execFetchFailed ?? 0}`);
 

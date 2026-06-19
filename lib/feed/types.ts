@@ -138,6 +138,45 @@ export interface LandingCardDiagnostics {
   };
   // Explainability fields — research snapshot diagnostics only; never used by product feed
   formulaScore?: number | null;
+  fireModel?: {
+    version: "firemodel_capture_v1";
+    capturedAt: string;
+    sourceRunId?: string | null;
+    formulaVersion?: string | null;
+    modelCandidate: {
+      score: number | null;
+      tier: string | null;
+      confidence: number | null;
+      dataCoverage: number | null;
+      entryPrice: number | null;
+      marketFamily: string | null;
+      normalizedFixtureKey: string | null;
+      fixtureKeyConfidence: "HIGH" | "MEDIUM" | "LOW";
+      sportBucket: string | null;
+      leagueBucket: string | null;
+      phase: "prematch" | "live" | "unknown";
+      minutesToStart: number | null;
+      candidateRankWithinFixture: number | null;
+      candidateRankWithinFamily: number | null;
+      allowedFamilies: string[];
+      blockedFamilyReason: string | null;
+      selectionStatus: string | null;
+      rejectionReason: string | null;
+      eligibilityFlags: Record<string, boolean | null>;
+      queryId: string;
+      datasetId: string;
+    };
+    rawFeatureHints: {
+      marketType: string | null;
+      marketSubtype: string | null;
+      familySource: string | null;
+      liquidity: number | null;
+      selectedTokenId: string | null;
+      opposingTokenId: string | null;
+      derived: boolean;
+      derivation_source: string;
+    };
+  };
   productRejectionReasonDetails?: Array<{
     code: string;
     value?: number;
