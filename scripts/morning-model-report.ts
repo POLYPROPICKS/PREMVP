@@ -49,7 +49,6 @@ const REPORT_ROOT = path.resolve(process.cwd(), "modeling", "morning_model_repor
 const ICE707_BASELINE_ROWS = 707;
 const ICE707_BASELINE_EVENTS = 501;
 const ICE707_MAX_RESOLVED_AT = "2026-06-17T09:01:31.130Z";
-const RESOLVED_PAGE_SIZE = 500;
 const GENERATED_SIGNAL_PAIRS_REPORT_COLUMNS = [
   "id",
   "created_at",
@@ -255,59 +254,30 @@ function writeCsv(pathname: string, rows: RawRow[], headers: string[]): Promise<
 
 async function fetchAllResolvedRows(): Promise<RawRow[]> {
   const { supabaseAdmin } = await import("../lib/supabase/server");
-  const strictMap = new Map<string, CanonicalRow>();
-  let rawFetched = 0;
-  let page = 1;
-  let cursorResolvedAt: string | null = null;
-  let cursorId: string | null = null;
-  const targetStrict = Number(process.env.MORNING_STRICT_TARGET ?? "0") || null;
-
-  while (true) {
-    let query = supabaseAdmin
-      .from("generated_signal_pairs")
-      .select(GENERATED_SIGNAL_PAIRS_REPORT_COLUMNS)
-      .not("signal_result", "is", null)
-      .not("condition_id", "is", null)
-      .not("selected_token_id", "is", null)
-      .order("resolved_at", { ascending: false, nullsFirst: false })
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: false })
-      .limit(RESOLVED_PAGE_SIZE);
-
-    if (cursorResolvedAt && cursorId) {
-      query = query.or(
-        `resolved_at.lt.${cursorResolvedAt},and(resolved_at.eq.${cursorResolvedAt},id.lt.${cursorId})`,
-      );
-    }
-
-    const { data, error } = await query;
-    if (error) throw new Error(`generated_signal_pairs: ${error.message}`);
-    const chunk = (data ?? []) as unknown as RawRow[];
-    rawFetched += chunk.length;
-    for (const row of chunk) {
+  const { data: countData, error: countError } = await supabaseAdmin.rpc("get_morning_strict_resolved_corpus_count");
+  if (countError) throw new Error(`DB_STRICT_CORPUS_RPC_MISSING: ${countError.message}`);
+  const target = Number(Array.isArray(countData) ? countData[0]?.get_morning_strict_resolved_corpus_count ?? countData[0]?.count ?? countData[0] : countData ?? 0);
+  if (!Number.isFinite(target) || target <= 0) throw new Error("DB_STRICT_CORPUS_RPC_MISSING: invalid count");
+  console.log(`[morning-model] db-strict-corpus-count rows=${target}`);
+  const deduped: CanonicalRow[] = [];
+  for (let offset = 0; offset < target; offset += 500) {
+    const { data, error } = await supabaseAdmin.rpc("get_morning_strict_resolved_corpus_page", { p_limit: 500, p_offset: offset });
+    if (error) throw new Error(`DB_STRICT_CORPUS_RPC_MISSING: ${error.message}`);
+    const chunk = ((data ?? []) as RawRow[]).map((row) => {
       const key = strictKey(row);
-      if (key === "::") continue;
-      const ranked: CanonicalRow = { ...row, __strict_key: key, __strict_rank: rowRank(row) };
-      const prev = strictMap.get(key);
-      if (!prev || betterRank(ranked.__strict_rank, prev.__strict_rank)) strictMap.set(key, ranked);
-    }
-    console.log(`[morning-model] strict-corpus page ${page} raw=${rawFetched} strict=${strictMap.size} target=${targetStrict ?? "N/A"}`);
-    if (chunk.length < RESOLVED_PAGE_SIZE) break;
-    const last = chunk[chunk.length - 1];
-    cursorResolvedAt = safeStr(last.resolved_at) ?? cursorResolvedAt;
-    cursorId = safeStr(last.id);
-    page += 1;
-    if (targetStrict && strictMap.size >= targetStrict) break;
+      return { ...row, __strict_key: key, __strict_rank: rowRank(row) } as CanonicalRow;
+    }).filter((row) => row.__strict_key !== "::");
+    deduped.push(...chunk);
+    console.log(`[morning-model] db-strict-corpus-page offset=${offset} rows=${chunk.length} total=${deduped.length}`);
+    if (chunk.length === 0) break;
   }
-
-  const deduped = [...strictMap.values()].sort((a, b) => b.__strict_rank[2] - a.__strict_rank[2]);
+  if (deduped.length !== target) throw new Error(`DB_STRICT_CORPUS_RPC_MISSING: collected=${deduped.length} expected=${target}`);
   const maxResolvedAt = deduped.reduce((max, row) => {
     const t = parseIso(row.resolved_at);
     return t > max ? t : max;
   }, Number.NEGATIVE_INFINITY);
-  console.log(`[morning-model] strict-corpus final rawFetched=${rawFetched} strict=${deduped.length} target=${targetStrict ?? "N/A"}`);
+  console.log(`[morning-model] db-strict-corpus final rows=${deduped.length} events=${new Set(deduped.map((r) => eventKey(r))).size} max_resolved_at=${Number.isFinite(maxResolvedAt) ? new Date(maxResolvedAt).toISOString() : "N/A"}`);
   console.log(`[morning-model] strict_resolved_total=${deduped.length} events=${new Set(deduped.map((r) => eventKey(r))).size} max_resolved_at=${Number.isFinite(maxResolvedAt) ? new Date(maxResolvedAt).toISOString() : "N/A"}`);
-
   return deduped;
 }
 
