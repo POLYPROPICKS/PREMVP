@@ -46,6 +46,38 @@ const CANONICAL_ICE_COUNTERFACTUAL_INPUT = path.resolve(
 );
 const INPUT_NAME = "resolved_freeze.csv";
 const REPORT_ROOT = path.resolve(process.cwd(), "modeling", "morning_model_report");
+const ICE707_BASELINE_ROWS = 707;
+const ICE707_BASELINE_EVENTS = 501;
+const ICE707_MAX_RESOLVED_AT = "2026-06-17T09:01:31.130Z";
+const RESOLVED_PAGE_SIZE = 500;
+const GENERATED_SIGNAL_PAIRS_REPORT_COLUMNS = [
+  "id",
+  "created_at",
+  "resolved_at",
+  "condition_id",
+  "selected_token_id",
+  "selected_outcome",
+  "market_slug",
+  "event_slug",
+  "signal_result",
+  "winning_outcome",
+  "realized_return_pct",
+  "signal_confidence_num",
+  "pre_event_score_num",
+  "score",
+  "expected_return_pct_num",
+  "smart_money_score_num",
+  "whale_public_score_num",
+  "entry_price_num",
+  "formula_version",
+  "metric_formula_version",
+  "expires_at",
+  "source",
+  "market_source",
+  "premium_signal",
+  "diagnostics",
+  "trust_metrics",
+].join(",");
 const CEO_SHEETS = [
   "00_CEO_Decision",
   "01_Current_Model",
@@ -223,25 +255,26 @@ function writeCsv(pathname: string, rows: RawRow[], headers: string[]): Promise<
 
 async function fetchAllResolvedRows(): Promise<RawRow[]> {
   const { supabaseAdmin } = await import("../lib/supabase/server");
-  const pageSize = 1000;
   const rows: RawRow[] = [];
   let offset = 0;
+  let page = 1;
 
   while (true) {
     const { data, error } = await supabaseAdmin
       .from("generated_signal_pairs")
-      .select("*")
+      .select(GENERATED_SIGNAL_PAIRS_REPORT_COLUMNS)
       .not("signal_result", "is", null)
       .not("condition_id", "is", null)
       .not("selected_token_id", "is", null)
-      .order("created_at", { ascending: true })
       .order("id", { ascending: true })
-      .range(offset, offset + pageSize - 1);
+      .range(offset, offset + RESOLVED_PAGE_SIZE - 1);
     if (error) throw new Error(`generated_signal_pairs: ${error.message}`);
-    const chunk = (data ?? []) as RawRow[];
+    const chunk = (data ?? []) as unknown as RawRow[];
     rows.push(...chunk);
-    if (chunk.length < pageSize) break;
-    offset += pageSize;
+    console.log(`[morning-model] generated_signal_pairs page ${page} rows=${chunk.length} total=${rows.length}`);
+    if (chunk.length < RESOLVED_PAGE_SIZE) break;
+    offset += RESOLVED_PAGE_SIZE;
+    page += 1;
   }
 
   return rows;
@@ -2730,6 +2763,16 @@ async function main() {
     if (!latest) return safeStr(r.resolved_at);
     return parseIso(r.resolved_at) > parseIso(latest) ? safeStr(r.resolved_at) : latest;
   }, null);
+  console.log(
+    `[morning-model] resolved freeze rows=${rawRows.length} strict=${strictNow} events=${events} max_resolved_at=${newestResolvedAt ?? "NONE"}`,
+  );
+  const newestMs = newestResolvedAt ? parseIso(newestResolvedAt) : 0;
+  const ice707Ms = parseIso(ICE707_MAX_RESOLVED_AT);
+  if (strictNow <= ICE707_BASELINE_ROWS || newestMs <= ice707Ms) {
+    throw new Error(
+      `DATASET_STALE_BLOCKER strict=${strictNow} events=${events} max_resolved_at=${newestResolvedAt ?? "NONE"} baseline=${ICE707_BASELINE_ROWS}/${ICE707_BASELINE_EVENTS}/${ICE707_MAX_RESOLVED_AT}`,
+    );
+  }
   const onePerMatchDir = path.resolve(process.cwd(), "reports", "modeling", "one_per_match_backtest");
   const onePerMatchResult = await runOnePerMatchBacktestFromRows(rawRows, onePerMatchDir);
   onePerMatchResult.dbStatus = DRY_RUN
