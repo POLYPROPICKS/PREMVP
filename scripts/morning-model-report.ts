@@ -34,7 +34,10 @@ type CanonicalRow = RawRow & {
 };
 
 const TRACKED_ANALYZER = path.resolve(process.cwd(), "scripts", "modeling", "analyze-ice1-freeze.py");
-const CEO_TEMPLATE_PATH = path.resolve(process.cwd(), "CEO_Morning_Report_TEMPLATE.xlsx");
+const CEO_TEMPLATE_PATHS = [
+  path.resolve(process.cwd(), "assets", "reporting", "CEO_Morning_Report_TEMPLATE.xlsx"),
+  path.resolve(process.cwd(), "CEO_Morning_Report_TEMPLATE.xlsx"),
+];
 const CEO_DETAILS_TEMPLATE_PATH = path.resolve(process.cwd(), "ceo_dashboard_details2.xlsx");
 const ICE_COUNTERFACTUAL_TEMPLATE_PATH = path.resolve(process.cwd(), "final_ice_four_models_counterfactual.xlsx");
 const CANONICAL_ICE_COUNTERFACTUAL_INPUT = path.resolve(
@@ -1746,7 +1749,11 @@ async function writeCeoMorningWorkbook(opts: {
   onePerMatchResult: OnePerMatchBacktestResult | null;
 }): Promise<string[]> {
   const template = new ExcelJS.Workbook();
-  await template.xlsx.readFile(CEO_TEMPLATE_PATH);
+  const templatePath = await resolveFirstExistingPath(CEO_TEMPLATE_PATHS);
+  if (!templatePath) {
+    throw new Error(`CEO template not found. Checked: ${CEO_TEMPLATE_PATHS.join(", ")}`);
+  }
+  await template.xlsx.readFile(templatePath);
   assertTemplate(template);
   const workbook = template;
   const acceptedPolicyRows = opts.counterfactual ? buildAcceptedCounterfactualPolicyRows(opts.counterfactual) : [];
@@ -2638,6 +2645,13 @@ async function loadWorkbookTemplatePreservingSheets(workbook: ExcelJS.Workbook, 
       return false;
     }
   }
+}
+
+async function resolveFirstExistingPath(paths: string[]): Promise<string | null> {
+  for (const candidate of paths) {
+    if (await fileExists(candidate)) return candidate;
+  }
+  return null;
 }
 
 async function normalizeSpreadsheetNamespaceForExcelJs(buffer: Buffer): Promise<Buffer> {
