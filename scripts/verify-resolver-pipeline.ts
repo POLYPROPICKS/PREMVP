@@ -152,7 +152,14 @@ async function main() {
   ).length;
 
   const { sourcePath, targets } = loadLiveTargets();
-  const unresolvedLive: LiveTarget[] = [];
+  // Two distinct categories:
+  //   pending  -> matching signal pair EXISTS in corpus but outcome not resolved yet (NORMAL,
+  //               just an open/unsettled live position). Must NOT crash the morning email.
+  //   missing  -> executed live target has NO matching row in generated_signal_pairs at all.
+  //               That is a real data-integrity contradiction (executed something not in corpus)
+  //               and stays FATAL.
+  const unresolvedPending: LiveTarget[] = [];
+  const missingFromCorpus: LiveTarget[] = [];
   for (const target of targets) {
     const { data, error } = await supabaseAdmin
       .from("generated_signal_pairs")
@@ -161,20 +168,45 @@ async function main() {
       .eq("selected_token_id", target.selected_token_id);
     if (error) throw new Error(error.message);
     const rows = data ?? [];
-    if (!rows.length || rows.some((row: Row) => !row.signal_result || !row.resolved_at)) {
-      unresolvedLive.push(target);
+    if (!rows.length) {
+      missingFromCorpus.push(target);
+    } else if (rows.some((row: Row) => !row.signal_result || !row.resolved_at)) {
+      unresolvedPending.push(target);
     }
   }
 
-  const status = !sourcePath ? "WARN" : unresolvedLive.length === 0 ? "PASS" : "FAIL";
+  // Fatal only on real corruption / impossible state — never on a normal pending live row.
+  const noResolvedCorpus = strictResolvedTotal === 0;
+  const isFatal = noResolvedCorpus || missingFromCorpus.length > 0;
+  const status: "PASS" | "PASS_WITH_WARNINGS" | "WARN" | "FAIL" = isFatal
+    ? "FAIL"
+    : !sourcePath
+      ? "WARN"
+      : unresolvedPending.length > 0
+        ? "PASS_WITH_WARNINGS"
+        : "PASS";
+
+  const warningCode = isFatal
+    ? noResolvedCorpus
+      ? "RESOLVER_NO_RESOLVED_CORPUS"
+      : "EXECUTED_LIVE_TARGET_MISSING_FROM_CORPUS"
+    : unresolvedPending.length > 0
+      ? "UNRESOLVED_EXECUTED_LIVE_ROWS"
+      : !sourcePath
+        ? "LIVE_LEDGER_ARTIFACT_MISSING"
+        : null;
+
   const code =
     status === "FAIL"
       ? "RESOLVER_PIPELINE_VERIFY_FAIL"
-      : "RESOLVER_PIPELINE_VERIFY_PASS";
+      : status === "PASS_WITH_WARNINGS" || status === "WARN"
+        ? "RESOLVER_PIPELINE_VERIFY_PASS_WITH_WARNINGS"
+        : "RESOLVER_PIPELINE_VERIFY_PASS";
 
   console.log(JSON.stringify({
     code,
     status,
+    warning_code: warningCode,
     strict_resolved_total: strictResolvedTotal,
     resolved_rows_last_24h: resolvedLast24h,
     max_resolved_at: maxIso(resolvedRows, "resolved_at"),
@@ -183,8 +215,12 @@ async function main() {
       ? null
       : "live ledger artifact missing; Railway must run with artifact present",
     executed_live_targets: targets.length,
-    unresolved_executed_live_rows: unresolvedLive.length,
-    unresolved_examples: unresolvedLive.slice(0, 10),
+    // Pending unresolved live rows are surfaced but tolerated (not fatal).
+    unresolved_executed_live_rows: unresolvedPending.length,
+    unresolved_examples: unresolvedPending.slice(0, 10),
+    // Executed targets absent from corpus ARE fatal — surfaced separately.
+    missing_from_corpus_rows: missingFromCorpus.length,
+    missing_from_corpus_examples: missingFromCorpus.slice(0, 10),
   }, null, 2));
 
   if (status === "FAIL") process.exit(1);

@@ -35,6 +35,56 @@ function run(label: string, command: string, args: string[], bestEffort = false,
   }
 }
 
+type ResolverVerify = {
+  status: string;
+  warning_code?: string | null;
+  unresolved_executed_live_rows?: number;
+  unresolved_examples?: unknown[];
+  missing_from_corpus_rows?: number;
+  source_path?: string;
+  note?: string;
+};
+
+// Run resolver-verify and capture its JSON summary. Returns the parsed summary so the
+// morning package can record resolver state in the manifest. Only a genuinely fatal
+// resolver-verify (nonzero exit) throws — PASS_WITH_WARNINGS exits 0 and is tolerated.
+function runResolverVerify(): ResolverVerify {
+  console.log("[morning-package] resolver-verify: npm run verify:resolver-pipeline (captured)");
+  const res = spawnSync("npm", ["run", "verify:resolver-pipeline"], {
+    cwd: process.cwd(),
+    encoding: "utf8",
+    shell: true,
+  });
+  const stdout = res.stdout ?? "";
+  if (res.stdout) process.stdout.write(res.stdout);
+  if (res.stderr) process.stderr.write(res.stderr);
+  let summary: ResolverVerify | null = null;
+  const match = stdout.match(/\{[\s\S]*"code"[\s\S]*\}/);
+  if (match) {
+    try {
+      const parsed = JSON.parse(match[0]) as Record<string, unknown>;
+      summary = {
+        status: String(parsed.status ?? "UNKNOWN"),
+        warning_code: (parsed.warning_code as string | null) ?? null,
+        unresolved_executed_live_rows: Number(parsed.unresolved_executed_live_rows ?? 0),
+        unresolved_examples: (parsed.unresolved_examples as unknown[]) ?? [],
+        missing_from_corpus_rows: Number(parsed.missing_from_corpus_rows ?? 0),
+        source_path: String(parsed.live_ledger_artifact ?? ""),
+      };
+    } catch {
+      summary = null;
+    }
+  }
+  const status = res.status ?? 1;
+  if (status !== 0) {
+    throw new Error(
+      `[morning-package] resolver-verify failed with exit code ${status}` +
+        (summary?.warning_code ? ` (${summary.warning_code})` : ""),
+    );
+  }
+  return summary ?? { status: "PASS", note: "resolver-verify exited 0 but emitted no parseable summary" };
+}
+
 function latestFireManifest(): string | null {
   const root = path.join(process.cwd(), "modeling", "fire_runs");
   if (!existsSync(root)) return null;
@@ -101,9 +151,15 @@ async function main() {
   if (!skipResolvers && !skipLivePriority) {
     run("resolver-live-priority", "npm", ["run", "resolve:signals:live-priority"], true);
   }
+  let resolverVerify: ResolverVerify = { status: "SKIPPED", note: "--skip-resolvers set" };
   if (!skipResolvers) {
     run("resolver-cron", "npm", ["run", "resolve:signals:cron"]);
-    run("resolver-verify", "npm", ["run", "verify:resolver-pipeline"]);
+    resolverVerify = runResolverVerify();
+    if (resolverVerify.status === "PASS_WITH_WARNINGS") {
+      console.warn(
+        `[morning-package] Live resolver: PASS_WITH_WARNINGS — ${resolverVerify.unresolved_executed_live_rows ?? 0} executed live rows unresolved/pending (${resolverVerify.warning_code ?? "UNRESOLVED_EXECUTED_LIVE_ROWS"})`,
+      );
+    }
   } else {
     console.warn("[morning-package] --skip-resolvers set; package build is read-only and assumes resolver freshness was verified separately");
   }
@@ -212,6 +268,14 @@ async function main() {
       doctrine: "ALL_SPORTS",
       attachment_included: manifestFiles.some((file) => file.kind === "fire_model"),
     },
+    resolver_verify: {
+      status: resolverVerify.status,
+      warning_code: resolverVerify.warning_code ?? null,
+      unresolved_executed_live_rows: resolverVerify.unresolved_executed_live_rows ?? 0,
+      unresolved_examples: resolverVerify.unresolved_examples ?? [],
+      missing_from_corpus_rows: resolverVerify.missing_from_corpus_rows ?? 0,
+      source_path: resolverVerify.source_path ?? "",
+    },
     subject,
   };
   await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n", "utf8");
@@ -239,6 +303,10 @@ async function main() {
       `fire_model_current_champion: ${fireModelCurrentChampion}`,
       `fire_model_best_96h_model: ${fireModelBest96hModel}`,
       `fire_model_warning_count: ${fireModelWarningCount}`,
+      `resolver_verify_status: ${resolverVerify.status}`,
+      `resolver_verify_warning_code: ${resolverVerify.warning_code ?? "none"}`,
+      `resolver_verify_unresolved_executed_live_rows: ${resolverVerify.unresolved_executed_live_rows ?? 0}`,
+      `resolver_verify_missing_from_corpus_rows: ${resolverVerify.missing_from_corpus_rows ?? 0}`,
       "",
       "The sender must never query generated_signal_pairs or rebuild XLSX.",
     ].join("\n") + "\n",

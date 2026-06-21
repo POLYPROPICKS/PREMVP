@@ -380,6 +380,8 @@ async function main() {
   const warnings = [
     ...(legacySmoke.length ? ["LEGACY_WC_SMOKE_TEST_ONLY_NOT_FIREMODEL_BENCHMARK"] : []),
     ...legacySmoke.filter((row) => row.status !== "PASS").map((row) => `${row.anchor_id}: ${row.status}`),
+    ...(published.warning ? [published.warning] : []),
+    ...(research.warning ? [research.warning] : []),
     ...(live.warning ? [`live_contour: ${live.warning}`] : []),
     ...funnelHealth.filter((row) => row.warnings).map((row) => `${row.funnel_id}: ${row.warnings}`),
   ];
