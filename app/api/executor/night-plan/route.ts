@@ -27,9 +27,12 @@ const PILOT_MAX_STAKE_USD = 5;
 const PILOT_PER_TOKEN_SIDE_CAP_USD = 10;
 const CONTRACT_VALIDITY_MINUTES = 15;
 const ENTRY_WINDOW_POLICY_VERSION = "night-plan-entry-window-v1";
-const STAKE_POLICY_VERSION = "P0D_PUBLISHED_1PF_TIER1_EXECUTABLE_V1+P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1+P0E_BLOCK_HALFTIME_MARKETS_V1";
+const STAKE_POLICY_VERSION = "P0D_PUBLISHED_1PF_TIER1_EXECUTABLE_V1+P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1+P0E_BLOCK_HALFTIME_MARKETS_V1+P0F_TIER1_EXECUTABLE_STAKE_7_V1";
 // P0E_BLOCK_HALFTIME_MARKETS_V1: matches halftime/first-half markets by slug/family/key fields.
 const HALFTIME_MARKET_RE = /halftime|half[\s-]time|first[\s-]half|1st[\s-]half|leading\s+at\s+halftime|draw\s+at\s+halftime|halftime[\s-]result/i;
+// P0F_TIER1_EXECUTABLE_STAKE_7_V1: producer-authoritative stake for all live Tier1 executable candidates.
+// Overrides SM_GUARD halving (smart money >= 75 → floor(base/2) = 3) at the projection layer.
+const P0F_TIER1_EXECUTABLE_STAKE_USD = 7;
 
 function positiveNumber(v: string | null): number | null {
   if (!v) return null;
@@ -246,9 +249,11 @@ export async function GET(request: NextRequest) {
       plan.target_max_bets <= 1 ? PILOT_EXECUTION_MODE : BATTLE_EXECUTION_MODE;
     const maxLiveOrders = Math.max(1, plan.planned_live_slots);
     const maxCandidateCount = Math.max(1, plan.planned_slots.length);
+    // P0F_TIER1_EXECUTABLE_STAKE_7_V1: max_stake_usd is always at least the Tier1 live stake.
     const maxStakeUsd = Math.max(
       ...plan.planned_slots.map((slot) => slot.planned_stake_usd),
-      PILOT_MAX_STAKE_USD
+      PILOT_MAX_STAKE_USD,
+      P0F_TIER1_EXECUTABLE_STAKE_USD
     );
     const perTokenSideCapUsd = Math.max(maxStakeUsd, PILOT_PER_TOKEN_SIDE_CAP_USD);
     const strategyRunId = buildStrategyRunId(plan.plan_version, plan.window_start_iso, plan.window_end_iso);
@@ -328,7 +333,8 @@ export async function GET(request: NextRequest) {
         event_title: slot.event_title,
         preferred_entry_iso: preferredEntryIso,
         latest_entry_iso: latestEntryIso,
-        stake_usd: slot.planned_stake_usd,
+        // P0F_TIER1_EXECUTABLE_STAKE_7_V1: executable Tier1 slots always report $7 stake.
+        stake_usd: executable ? P0F_TIER1_EXECUTABLE_STAKE_USD : slot.planned_stake_usd,
         max_stake_usd: maxStakeUsd,
         valid_until_iso: validUntilIso,
         execution_mode: executionMode,
