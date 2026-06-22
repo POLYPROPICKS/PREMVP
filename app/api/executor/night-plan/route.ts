@@ -27,7 +27,7 @@ const PILOT_MAX_STAKE_USD = 5;
 const PILOT_PER_TOKEN_SIDE_CAP_USD = 10;
 const CONTRACT_VALIDITY_MINUTES = 15;
 const ENTRY_WINDOW_POLICY_VERSION = "night-plan-entry-window-v1";
-const STAKE_POLICY_VERSION = "P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1";
+const STAKE_POLICY_VERSION = "P0D_PUBLISHED_1PF_TIER1_EXECUTABLE_V1+P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1";
 
 function positiveNumber(v: string | null): number | null {
   if (!v) return null;
@@ -275,7 +275,8 @@ export async function GET(request: NextRequest) {
       const preferredEntryIso = slot.preferred_entry_iso;
       const latestEntryIso = slot.latest_entry_iso;
       const stakeAboveCap = slot.planned_stake_usd > maxStakeUsd;
-      // P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1: Tier3 excluded from NIGHT_LIVE_EXECUTION candidates.
+      // P0D_PUBLISHED_1PF_TIER1_EXECUTABLE_V1: only Tier1 in NIGHT_LIVE_EXECUTION candidates.
+      // P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1: max base stake $7.
       const executable =
         Boolean(conditionId) &&
         Boolean(tokenId) &&
@@ -284,7 +285,7 @@ export async function GET(request: NextRequest) {
         slot.planned_stake_usd > 0 &&
         !stakeAboveCap &&
         selected.live_eligible === true &&
-        slot.tier !== "TIER3";
+        slot.tier === "TIER1";
       const blockReason = executable
         ? null
         : !conditionId
@@ -301,9 +302,11 @@ export async function GET(request: NextRequest) {
                       ? "INVALID_STAKE_USD"
                       : stakeAboveCap
                         ? "STAKE_ABOVE_MAX_STAKE_USD"
-                        : slot.tier === "TIER3"
-                          ? "TIER3_EXCLUDED_FROM_LIVE"
-                          : "NOT_EXECUTABLE";
+                        : slot.tier === "TIER2"
+                          ? "TIER2_SHADOW_FOR_PUBLISHED_1PF"
+                          : slot.tier === "TIER3"
+                            ? "TIER3_EXCLUDED_FROM_LIVE"
+                            : "NOT_EXECUTABLE";
       return {
         candidate_id: buildCandidateId(strategyRunId, selected),
         order_key: `${conditionId || "no_condition"}:${tokenId || "no_token"}:${side || "no_side"}`,
