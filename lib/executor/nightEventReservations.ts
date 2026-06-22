@@ -29,6 +29,11 @@ import type { NightEventReservationRow } from "./executorQueueTypes";
 
 const PLAN_POOL = 200;
 
+// Market-level terms that may appear in event_slug / match_family_key from Polymarket.
+// A key containing any of these is a prop/market line, not an event reservation key.
+const MARKET_LEVEL_KEY_RE =
+  /halftime|half[\s-]time|first[\s-]half|1st[\s-]half|halftime[\s-]result|\bo\/u\b|over[\s/]under|total\s+corners|\bcorners\b|total\s+goals|\bspread\b|\bmoneyline\b|exact\s+score|player\s+prop|goalscorer/i;
+
 function eventTierOf(c: FireModelCandidate): "TIER1" | "TIER2" | "TIER3" | "REJECTED" {
   if (c.strategy === "TIER1_CORE_STRICT_72_COV50") return "TIER1";
   if (c.strategy === "TIER2_SAFE_EXPAND_60_COV50") return "TIER2";
@@ -46,6 +51,32 @@ function isWeakEventKey(c: FireModelCandidate): boolean {
   );
 }
 
+/**
+ * True when the candidate's key or slug is a market-level prop line, not an event identifier.
+ * These must never become reservation keys — they are deferred to the rebalance market-selection.
+ */
+function isMarketLevelKey(c: FireModelCandidate): boolean {
+  return (
+    MARKET_LEVEL_KEY_RE.test(c.match_family_key) ||
+    MARKET_LEVEL_KEY_RE.test(c.event_slug ?? "") ||
+    MARKET_LEVEL_KEY_RE.test(c.market_slug ?? "")
+  );
+}
+
+/**
+ * Attempt to derive a canonical event group key for a market-level candidate.
+ * Returns the canonical_event_key if it is clean (pair:* or fifwc-* prefix, no market-level text).
+ * Returns null when no safe canonical key can be derived — caller should skip.
+ */
+function normalizedEventKey(c: FireModelCandidate): string | null {
+  const ck = c.canonical_event_key;
+  if (!ck) return null;
+  if (MARKET_LEVEL_KEY_RE.test(ck)) return null;
+  // Accept pair:* or fifwc-* as canonical
+  if (ck.startsWith("pair:") || ck.startsWith("fifwc-")) return ck;
+  return null;
+}
+
 export interface ReservationPlan {
   plan_run_id: string;
   plan_date_minsk: string;
@@ -54,12 +85,15 @@ export interface ReservationPlan {
   diagnostics: {
     universe_size: number;
     event_groups: number;
+    canonical_event_groups: number;
     reserved_count: number;
     by_sport: Record<string, number>;
     by_tier: Record<string, number>;
     skipped_outside_horizon: number;
     skipped_weak_key: number;
     skipped_non_tier1_event: number;
+    market_level_keys_skipped: number;
+    market_level_keys_normalized: number;
   };
 }
 
@@ -78,12 +112,29 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
   let skippedOutsideHorizon = 0;
   let skippedWeakKey = 0;
   let skippedNonTier1 = 0;
+  let marketLevelKeysSkipped = 0;
+  let marketLevelKeysNormalized = 0;
 
-  // Group by event-level match_family_key.
+  // Group by canonical event-level key.
+  // Market-level candidates (halftime, o/u, corners, etc.) are either normalized into
+  // their parent event group (if canonical_event_key is a clean pair:* key) or skipped.
   const groups = new Map<string, FireModelCandidate[]>();
   for (const c of universe) {
     if (isWeakEventKey(c)) {
       skippedWeakKey += 1;
+      continue;
+    }
+    if (isMarketLevelKey(c)) {
+      const ck = normalizedEventKey(c);
+      if (ck) {
+        // Normalize into the canonical event group (counted but still grouped).
+        marketLevelKeysNormalized += 1;
+        const arr = groups.get(ck) ?? [];
+        arr.push(c);
+        groups.set(ck, arr);
+      } else {
+        marketLevelKeysSkipped += 1;
+      }
       continue;
     }
     const arr = groups.get(c.match_family_key) ?? [];
@@ -154,12 +205,15 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
     diagnostics: {
       universe_size: universe.length,
       event_groups: groups.size,
+      canonical_event_groups: groups.size,
       reserved_count: reservations.length,
       by_sport: bySport,
       by_tier: byTier,
       skipped_outside_horizon: skippedOutsideHorizon,
       skipped_weak_key: skippedWeakKey,
       skipped_non_tier1_event: skippedNonTier1,
+      market_level_keys_skipped: marketLevelKeysSkipped,
+      market_level_keys_normalized: marketLevelKeysNormalized,
     },
   };
 }
