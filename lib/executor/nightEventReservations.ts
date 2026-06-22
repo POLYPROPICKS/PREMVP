@@ -19,6 +19,10 @@ import {
   resolveNightWindow,
   buildPlanRunId,
   isWithinHorizon,
+  formatMinskUtc,
+  REBALANCE_MINUTES_BEFORE_START,
+  PREFERRED_ENTRY_MINUTES_BEFORE,
+  LATEST_ENTRY_MINUTES_BEFORE,
   type NightWindow,
 } from "./nightWindow";
 import type { NightEventReservationRow } from "./executorQueueTypes";
@@ -228,6 +232,82 @@ export async function persistReservationPlan(
     reservations: plan.reservations,
     diagnostics: plan.diagnostics,
   };
+}
+
+// ── Founder email (rendered from frozen reservations, NOT stateless slots) ──────
+
+function reservationRebalanceIso(gameStartIso: string): string {
+  const ms = Date.parse(gameStartIso);
+  if (!Number.isFinite(ms)) return gameStartIso;
+  return new Date(ms - REBALANCE_MINUTES_BEFORE_START * 60_000).toISOString();
+}
+
+function reservationExecWindowIso(gameStartIso: string): { from: string; to: string } {
+  const ms = Date.parse(gameStartIso);
+  if (!Number.isFinite(ms)) return { from: gameStartIso, to: gameStartIso };
+  return {
+    from: new Date(ms - PREFERRED_ENTRY_MINUTES_BEFORE * 60_000).toISOString(),
+    to: new Date(ms - LATEST_ENTRY_MINUTES_BEFORE * 60_000).toISOString(),
+  };
+}
+
+export function nightReservationEmail(
+  planRunId: string,
+  reservations: NightEventReservationRow[]
+): { subject: string; text: string } {
+  const L: string[] = [];
+  const windowStart = reservations[0]?.window_start_iso ?? null;
+  const windowEnd = reservations[0]?.window_end_iso ?? null;
+  L.push(`PolyProPicks Night Portfolio Plan (frozen reservations)`);
+  L.push(`plan_run_id: ${planRunId}`);
+  if (windowStart && windowEnd) {
+    L.push(`Window: ${formatMinskUtc(windowStart)} -> ${formatMinskUtc(windowEnd)}`);
+  }
+  L.push(`Reserved events: ${reservations.length}`);
+  L.push("");
+  L.push("CONTROL MODEL: Ireland AUTO-STARTS at 18:00 Minsk. This email is informational +");
+  L.push("emergency-override only - NO approval required. Market selection per event happens");
+  L.push("later at T-60/T-30 rebalance; Ireland reads only the execution queue.");
+  L.push("");
+  if (reservations.length === 0) {
+    L.push("(no events reserved for tonight)");
+  } else {
+    L.push("Reserved events (event-level; one market chosen later per event):");
+    reservations.forEach((r) => {
+      const ew = reservationExecWindowIso(r.game_start_iso);
+      L.push(
+        `  #${r.reservation_rank} [${r.event_tier}] ${r.event_title} ` +
+          `(${r.strategic_scope}/${r.sport ?? "?"})`
+      );
+      L.push(`      start:     ${formatMinskUtc(r.game_start_iso)}`);
+      L.push(`      rebalance: ${formatMinskUtc(reservationRebalanceIso(r.game_start_iso))}`);
+      L.push(`      exec win:  ${formatMinskUtc(ew.from)} -> ${formatMinskUtc(ew.to)}`);
+    });
+  }
+  L.push("");
+  L.push("NOTE: one reserved event = at most one live position after rebalance.");
+  const subject = `PolyProPicks Night Plan — ${reservations.length} events reserved — ${planRunId}`;
+  return { subject, text: L.join("\n") };
+}
+
+/**
+ * Ensure a frozen plan exists for the current run, then return its reservations.
+ * Used by the email path so the email always reflects persisted reservations.
+ */
+export async function ensureAndLoadReservations(
+  nowMs: number,
+  opts: { allowCreate?: boolean } = {}
+): Promise<{ planRunId: string; reservations: NightEventReservationRow[]; created: boolean }> {
+  const planRunId = buildPlanRunId(nowMs);
+  let reservations = await loadReservations(planRunId);
+  let created = false;
+  if (reservations.length === 0 && opts.allowCreate) {
+    const plan = await buildReservationPlan(nowMs);
+    await persistReservationPlan(plan, { force: false });
+    reservations = await loadReservations(planRunId);
+    created = true;
+  }
+  return { planRunId, reservations, created };
 }
 
 /** Read frozen reservations for a plan_run_id, rank-ordered. */

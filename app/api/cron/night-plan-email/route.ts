@@ -1,21 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildFireModelCandidates } from "@/lib/executor/buildFireModelCandidates";
 import {
-  buildNightPortfolioPlan,
-  nightPlanControlSemantics,
-  nightPlanEmailSubject,
-  nightPlanEmailText,
-} from "@/lib/executor/nightPortfolioPlanner";
+  ensureAndLoadReservations,
+  nightReservationEmail,
+} from "@/lib/executor/nightEventReservations";
 
-// Autonomous Night Plan email cron.
-//   GET /api/cron/night-plan-email?mode=plan   → 17:00 Minsk, always sends if plan builds.
-//   GET /api/cron/night-plan-email?mode=alert  → 17:45 Minsk, sends only if shortage.
+// Autonomous Night Plan email cron (Contur3: rendered from FROZEN reservations).
+//   GET /api/cron/night-plan-email?mode=plan   → 17:00 Minsk, freezes plan if needed, sends.
+//   GET /api/cron/night-plan-email?mode=alert  → 17:45 Minsk, sends only if no events reserved.
 //
 // Auth: same x-executor-secret pattern as /api/executor/* (no new scheme, no
 // manual-approval token). This is informational/override-only — it NEVER gates
 // Ireland's autostart and never enters a "waiting for founder" state.
+//
+// The email reads night_event_reservations (frozen events), NOT stateless planned slots.
 
-const PLAN_POOL = 200;
+export const dynamic = "force-dynamic";
 
 function escapeHtml(s: string): string {
   return s
@@ -88,23 +87,20 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { candidates: universe } = await buildFireModelCandidates(PLAN_POOL, "all", true);
-    const plan = buildNightPortfolioPlan(universe, { nowMs: Date.now() });
-    const semantics = nightPlanControlSemantics(plan);
+    // mode=plan freezes the reservation plan if it does not exist yet; mode=alert never creates.
+    const { planRunId, reservations, created } = await ensureAndLoadReservations(Date.now(), {
+      allowCreate: mode === "plan",
+    });
+    const { subject, text } = nightReservationEmail(planRunId, reservations);
+    const shortage = reservations.length === 0;
 
-    // mode=alert only sends when a second alert is genuinely required.
+    // mode=alert only sends when there is a genuine shortage (no events reserved).
     let sent = false;
     let reason: string;
-    if (mode === "alert" && !plan.second_alert_required) {
+    if (mode === "alert" && !shortage) {
       reason = "ALERT_MODE_NO_SHORTAGE_NO_EMAIL_SENT";
     } else {
-      await sendEmail({
-        apiKey: apiKey!,
-        from: from!,
-        to: to!,
-        subject: nightPlanEmailSubject(plan),
-        text: nightPlanEmailText(plan, mode === "alert" ? "17:45" : "17:00"),
-      });
+      await sendEmail({ apiKey: apiKey!, from: from!, to: to!, subject, text });
       sent = true;
       reason = mode === "alert" ? "SHORTAGE_ALERT_SENT" : "NIGHT_PLAN_SENT";
     }
@@ -115,16 +111,15 @@ export async function GET(request: NextRequest) {
         mode,
         sent,
         reason,
+        plan_run_id: planRunId,
+        reserved_count: reservations.length,
+        plan_created_this_run: created,
+        shortage,
         founder_action_required: false,
         founder_action_mode: "override_only",
         email_is_approval_gate: false,
         ireland_autostart_expected: true,
-        plan_status: plan.plan_status,
-        tier1_event_slots: plan.tier1_event_slots,
-        planned_live_slots: plan.planned_live_slots,
-        second_alert_required: plan.second_alert_required,
-        risk_alert_level: semantics.risk_alert_level,
-        recommended_founder_override: semantics.recommended_founder_override,
+        source: "night_event_reservations",
       },
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
