@@ -19,11 +19,12 @@ const PLAN_POOL = 200;
 type AuditCandidate = Record<string, any>;
 
 const CONTRACT_SCHEMA_VERSION = "executor-night-plan-v1";
-const CONTRACT_EXECUTION_MODE = "ONE_ORDER_PILOT_REVIEW";
-const CONTRACT_MAX_LIVE_ORDERS = 1;
-const CONTRACT_MAX_CANDIDATE_COUNT = 1;
-const CONTRACT_MAX_STAKE_USD = 5;
-const CONTRACT_PER_TOKEN_SIDE_CAP_USD = 10;
+const PILOT_EXECUTION_MODE = "ONE_ORDER_PILOT_REVIEW";
+const BATTLE_EXECUTION_MODE = "NIGHT_LIVE_EXECUTION";
+const PILOT_MAX_LIVE_ORDERS = 1;
+const PILOT_MAX_CANDIDATE_COUNT = 1;
+const PILOT_MAX_STAKE_USD = 5;
+const PILOT_PER_TOKEN_SIDE_CAP_USD = 10;
 const CONTRACT_VALIDITY_MINUTES = 15;
 const ENTRY_WINDOW_POLICY_VERSION = "night-plan-entry-window-v1";
 const STAKE_POLICY_VERSION = "night-plan-stake-v1";
@@ -90,8 +91,8 @@ function toIsoMinutesFromNow(now: Date, minutes: number): string {
   return new Date(now.getTime() + minutes * 60_000).toISOString();
 }
 
-function buildStrategyRunId(plannedAtIso: string, runId: string): string {
-  return `executor-night-plan-v1:${plannedAtIso}:${runId.split(":").pop() ?? "run"}`;
+function buildStrategyRunId(planVersion: string, windowStartIso: string, windowEndIso: string): string {
+  return `executor-night-plan-v1:${planVersion}:${windowStartIso}:${windowEndIso}`;
 }
 
 function buildCandidateId(strategyRunId: string, candidate: {
@@ -239,8 +240,24 @@ export async function GET(request: NextRequest) {
 
     const semantics = nightPlanControlSemantics(plan);
     const generatedAtIso = plan.planned_at_iso;
-    const strategyRunId = buildStrategyRunId(generatedAtIso, runId);
-    const validUntilIso = toIsoMinutesFromNow(new Date(generatedAtIso), CONTRACT_VALIDITY_MINUTES);
+    const executionMode =
+      plan.target_max_bets <= 1 ? PILOT_EXECUTION_MODE : BATTLE_EXECUTION_MODE;
+    const maxLiveOrders = Math.max(1, plan.planned_live_slots);
+    const maxCandidateCount = Math.max(1, plan.planned_slots.length);
+    const maxStakeUsd = Math.max(
+      ...plan.planned_slots.map((slot) => slot.planned_stake_usd),
+      PILOT_MAX_STAKE_USD
+    );
+    const perTokenSideCapUsd = Math.max(maxStakeUsd, PILOT_PER_TOKEN_SIDE_CAP_USD);
+    const strategyRunId = buildStrategyRunId(plan.plan_version, plan.window_start_iso, plan.window_end_iso);
+    const validUntilSourceIso = plan.planned_slots.reduce<string | null>((acc, slot) => {
+      if (!slot.latest_entry_iso) return acc;
+      if (!acc) return slot.latest_entry_iso;
+      return new Date(slot.latest_entry_iso).getTime() < new Date(acc).getTime() ? slot.latest_entry_iso : acc;
+    }, null);
+    const validUntilIso = validUntilSourceIso
+      ? new Date(Math.min(Date.parse(validUntilSourceIso), Date.parse(toIsoMinutesFromNow(new Date(generatedAtIso), CONTRACT_VALIDITY_MINUTES)))).toISOString()
+      : toIsoMinutesFromNow(new Date(generatedAtIso), CONTRACT_VALIDITY_MINUTES);
     const rejectedCandidatesSummary = toRejectedSummary(
       plan.top_rejected_reasons,
       plan.planned_slots.reduce<Record<string, number>>((acc, slot) => {
@@ -257,13 +274,11 @@ export async function GET(request: NextRequest) {
       const side = selected.side;
       const preferredEntryIso = slot.preferred_entry_iso;
       const latestEntryIso = slot.latest_entry_iso;
-      const stakeAboveCap = slot.planned_stake_usd > CONTRACT_MAX_STAKE_USD;
+      const stakeAboveCap = slot.planned_stake_usd > maxStakeUsd;
       const executable =
         Boolean(conditionId) &&
         Boolean(tokenId) &&
         Boolean(side) &&
-        Boolean(preferredEntryIso) &&
-        Boolean(latestEntryIso) &&
         typeof slot.planned_stake_usd === "number" &&
         slot.planned_stake_usd > 0 &&
         !stakeAboveCap &&
@@ -287,7 +302,7 @@ export async function GET(request: NextRequest) {
                         : "NOT_EXECUTABLE";
       return {
         candidate_id: buildCandidateId(strategyRunId, selected),
-        order_key: `${strategyRunId}:${conditionId || "no_condition"}:${tokenId || "no_token"}:${side || "no_side"}`,
+        order_key: `${conditionId || "no_condition"}:${tokenId || "no_token"}:${side || "no_side"}`,
         strategy_run_id: strategyRunId,
         event_slug: selected.event_slug ?? slot.event_slug ?? null,
         event_id: selected.event_slug ?? slot.event_slug ?? null,
@@ -295,19 +310,20 @@ export async function GET(request: NextRequest) {
         token_id: tokenId ?? null,
         side: side ?? null,
         event_title: slot.event_title,
-        event_start_iso: null,
         preferred_entry_iso: preferredEntryIso,
         latest_entry_iso: latestEntryIso,
         stake_usd: slot.planned_stake_usd,
+        max_stake_usd: maxStakeUsd,
+        valid_until_iso: validUntilIso,
+        execution_mode: executionMode,
+        api_schema_version: CONTRACT_SCHEMA_VERSION,
         max_entry_price: selected.max_entry_price,
         selection_rank_for_event: index + 1,
         is_executable: executable,
         block_reason: blockReason,
       };
     });
-    const candidates = candidateProjections
-      .filter((candidate) => candidate.is_executable === true)
-      .slice(0, CONTRACT_MAX_CANDIDATE_COUNT);
+    const candidates = candidateProjections.filter((candidate) => candidate.is_executable === true);
 
     const body: Record<string, unknown> = {
       ok: true,
@@ -315,11 +331,11 @@ export async function GET(request: NextRequest) {
       strategy_run_id: strategyRunId,
       generated_at_iso: generatedAtIso,
       valid_until_iso: validUntilIso,
-      execution_mode: CONTRACT_EXECUTION_MODE,
-      max_live_orders: CONTRACT_MAX_LIVE_ORDERS,
-      max_candidate_count: CONTRACT_MAX_CANDIDATE_COUNT,
-      max_stake_usd: CONTRACT_MAX_STAKE_USD,
-      per_token_side_cap_usd: CONTRACT_PER_TOKEN_SIDE_CAP_USD,
+      execution_mode: executionMode,
+      max_live_orders: maxLiveOrders,
+      max_candidate_count: maxCandidateCount,
+      max_stake_usd: maxStakeUsd,
+      per_token_side_cap_usd: perTokenSideCapUsd,
       one_position_per_event: true,
       entry_window_policy_version: ENTRY_WINDOW_POLICY_VERSION,
       stake_policy_version: STAKE_POLICY_VERSION,
