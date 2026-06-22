@@ -64,6 +64,31 @@ function isMarketLevelKey(c: FireModelCandidate): boolean {
 }
 
 /**
+ * Derive a clean human-readable event title from the canonical reservation key.
+ * For pair:* keys, builds "<team a> vs <team b>" from the slug.
+ * Falls back to stripping market-level suffixes from the candidate's own slug.
+ */
+const MARKET_LEVEL_SUFFIX_RE =
+  /\s*[-:]\s*(halftime\s+result|half[\s-]time\s+result|first[\s-]half|1st[\s-]half|o\/u[\s\d.]*|over\/under[\s\d.]*|total\s+corners|total\s+goals|\bspread\b|\bmoneyline\b|exact\s+score|goalscorer)\s*$/i;
+
+function cleanReservationEventTitle(candidate: FireModelCandidate, canonicalKey: string): string {
+  // Derive title from pair:<team-a>-vs-<team-b>:<date>
+  const pairMatch = canonicalKey.match(/^pair:(.+):\d{4}-\d{2}-\d{2}$/);
+  if (pairMatch) {
+    const teamsPart = pairMatch[1];
+    const vsIdx = teamsPart.indexOf("-vs-");
+    if (vsIdx !== -1) {
+      const teamA = teamsPart.slice(0, vsIdx).replace(/-/g, " ");
+      const teamB = teamsPart.slice(vsIdx + 4).replace(/-/g, " ");
+      return `${teamA} vs ${teamB}`;
+    }
+  }
+  // Fallback: strip market-level suffixes from candidate slug
+  const raw = candidate.event_slug ?? candidate.market_slug ?? canonicalKey;
+  return raw.replace(MARKET_LEVEL_SUFFIX_RE, "").trim();
+}
+
+/**
  * Attempt to derive a canonical event group key for a market-level candidate.
  * Returns the canonical_event_key if it is clean (pair:* or fifwc-* prefix, no market-level text).
  * Returns null when no safe canonical key can be derived — caller should skip.
@@ -143,9 +168,9 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
   }
 
   const reservations: NightEventReservationRow[] = [];
-  const rankable: Array<{ best: FireModelCandidate; group: FireModelCandidate[] }> = [];
+  const rankable: Array<{ best: FireModelCandidate; group: FireModelCandidate[]; groupKey: string }> = [];
 
-  for (const [, arr] of groups.entries()) {
+  for (const [groupKey, arr] of groups.entries()) {
     const ranked = [...arr].sort(compareCandidateQuality);
     const best = ranked[0];
     const startMs = best.diagnostics.game_start_iso
@@ -160,13 +185,13 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
       skippedNonTier1 += 1;
       continue;
     }
-    rankable.push({ best, group: ranked });
+    rankable.push({ best, group: ranked, groupKey });
   }
 
   // Cross-event ranking by best-candidate quality.
   rankable.sort((a, b) => compareCandidateQuality(a.best, b.best));
 
-  rankable.forEach(({ best, group }, idx) => {
+  rankable.forEach(({ best, group, groupKey }, idx) => {
     const tier = eventTierOf(best);
     bySport[best.inferred_sport] = (bySport[best.inferred_sport] ?? 0) + 1;
     byTier[tier] = (byTier[tier] ?? 0) + 1;
@@ -177,7 +202,7 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
       window_end_iso: window.endIso,
       match_family_key: best.match_family_key,
       event_slug: best.event_slug,
-      event_title: best.event_slug ?? best.market_slug ?? best.match_family_key,
+      event_title: cleanReservationEventTitle(best, groupKey),
       sport: best.inferred_sport,
       league: null,
       strategic_scope: best.strategic_scope,
