@@ -3,6 +3,10 @@ import { createHash } from "crypto";
 
 const POLICY_VERSION = "battle-sm-guard-v1-20260615";
 const LIVE_POLICY_VERSION = "live-risk-guard-v1";
+// P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1: cap max base stake at $7 (was $10).
+// Source-proof: STAKE_5_DRAWDOWN_PROTECT ROI=14.98% MaxDD=$73.56 (P0B 2026-06-22).
+const STAKE_GUARD_POLICY = "P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1";
+const STAKE_GUARD_MAX_BASE_USD = 7;
 
 export type StrategicScope = "WC" | "SOCCER" | "MLB" | "ESPORT" | "OTHER" | "UNKNOWN";
 export type IdentityQuality = "STRONG" | "MEDIUM" | "WEAK" | "INVALID";
@@ -394,7 +398,7 @@ function computeTier(score: number, coverage: number): string | null {
 }
 
 function computeBaseStake(score: number, coverage: number): number {
-  if (score >= 72 && coverage >= 75) return 10;
+  if (score >= 72 && coverage >= 75) return STAKE_GUARD_MAX_BASE_USD; // P0C: was 10
   if (score >= 72 && coverage >= 50) return 7;
   if (score >= 60 && coverage >= 50) return 7;
   if (score >= 50 && coverage >= 25) return 3;
@@ -967,7 +971,7 @@ export async function buildFireModelCandidates(
       stale_after: staleAfter,
       no_trade_after: gameStartIso,
       idempotency_key: makeIdempotencyKey(row.id, row.selected_token_id),
-      model_rule_id: POLICY_VERSION,
+      model_rule_id: `${POLICY_VERSION}:${STAKE_GUARD_POLICY}`,
       created_at: row.created_at,
       source: "FireModel1_private_executor_2026_06_15",
       diagnostics: {
