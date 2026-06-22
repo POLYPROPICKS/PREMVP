@@ -6,6 +6,55 @@
 
 ---
 
+## ✅ CONTUR3 — CANONICAL NIGHT EVENT RESERVATION / EXECUTION PIPELINE — 2026-06-22
+
+**Scope:** backend executor pipeline. Public formula, scoring, landing/feed UI — НЕ изменены.
+
+**Root cause (locked):** `/api/executor/night-plan` был stateless — каждый вызов заново
+запрашивал `generated_signal_pairs`, скорил **market-level** кандидатов и применял жёсткий
+`hoursToStart > 6.0` (`QUEUE_LATER_NOT_LIVE_ELIGIBLE`) как фактическое правило live-eligibility.
+Не было таблицы резерваций событий, не было очереди исполнения, не было job-а ребалансировки.
+Это нарушало канонический алгоритм фаундера и позволяло MLB-кандидатам опережать ожидаемый
+футбольный событийный план.
+
+**Canonical founder algorithm (LOCKED — не нарушать):**
+1. ~17:00 Minsk PREMVP строит Night Portfolio Plan.
+2. Операционное окно: **17:00 Minsk → 08:00 Minsk**. Горизонт планирования: следующие ~18ч.
+   **Запрещено** использовать произвольный 6ч-порог как каноническое правило ночной eligibility.
+3. Сначала выбираются **СОБЫТИЯ/МАТЧИ**, а не отдельные рыночные кандидаты.
+4. Выбранные события замораживаются в таблицу `night_event_reservations` под `plan_run_id`.
+5. Фаундеру уходит email с замороженным событийным планом.
+6. Для каждого зарезервированного события за **T-60/T-30** до старта PREMVP ребалансирует:
+   грузит все текущие рынки этого события → выбирает ровно ОДИН лучший рынок →
+   пишет его в `event_execution_queue` (status `READY`).
+7. Ireland читает **только** `event_execution_queue` через `/api/executor/queue`.
+8. Ireland НЕ выбирает стратегию, НЕ ранжирует, НЕ тянет broad universe, НЕ применяет
+   Tier2/Tier3 fallback, НЕ выбирает рыночную семью, НЕ переопределяет ставку,
+   НЕ перезапрашивает `/api/executor/night-plan`.
+
+**Текущая политика исполнения (LOCKED):**
+- Executable real-money = **Tier1 only**. Tier2/Tier3 — только shadow.
+- halftime / first-half рынки — **заблокированы** для исполнения.
+- ставка выбранного рынка = **$7**.
+- vault live / sub-sport routing / esports-specific policy — НЕ в этой работе.
+
+**Новые объекты:**
+- Tables: `night_event_reservations`, `event_execution_queue` (миграции append-only, не деструктивны).
+- Libs: `lib/executor/nightWindow.ts`, `nightEventReservations.ts`, `eventExecutionQueue.ts`,
+  `executorQueueTypes.ts`.
+- Routes: `app/api/cron/night-event-reservations/route.ts`, `app/api/cron/event-rebalance/route.ts`,
+  `app/api/executor/queue/route.ts`.
+
+**`/api/executor/night-plan`** остаётся диагностическим: `planned_slots` = diagnostics only;
+top-level `candidates[]` больше НЕ является исполнительным источником для Ireland (его источник —
+`/api/executor/queue`). Hardcoded 6ч остаётся только как диагностический label.
+
+**Требуется ручное действие:** миграции применяются вручную через Supabase (CI/deploy не
+применяет миграции автоматически). Cron-расписание (17:00 reservation, rebalance каждые 5–10 мин)
+настраивается оператором — в репозитории нет `vercel.json`/cron-конфигурации.
+
+---
+
 ## ✅ M3-C DIRECTIONAL TOKEN MATCH FIX — 2026-06-13
 
 **Scope:** research-only shadow diagnostics. Public formula, scoring, ranking — не изменены.

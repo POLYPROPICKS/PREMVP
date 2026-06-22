@@ -57,6 +57,24 @@ FireModel report must include:
 - `npm run ops:morning-package -- --skip-live-priority --skip-resolvers --email=alexgrushin@gmail.com` for read-only package verification.
 - `npm run ops:morning-send-ready -- --dry-run --email=alexgrushin@gmail.com` for read-only email package verification.
 
+## Night Reservation / Execution Pipeline (Contur3, LOCKED 2026-06-22)
+
+Canonical live algorithm. Event-first, never market-first:
+
+1. ~17:00 Minsk → build Night Portfolio Plan over the **17:00→08:00 Minsk** operational
+   window (planning horizon ~18h). The legacy `hoursToStart > 6.0` cutoff is **NOT** the
+   canonical night eligibility rule — it survives only as a diagnostic label.
+2. Select **events/matches first**, then freeze them into `night_event_reservations`
+   under a single `plan_run_id`. One row per event, never per market.
+3. Founder email is rendered from frozen reservations, not from stateless planned slots.
+4. Per reserved event, at **T-60/T-30** before start, rebalance: load that event's markets,
+   pick exactly one best market (Tier1 only, no halftime, stake = $7), write one `READY`
+   row to `event_execution_queue`.
+5. Ireland reads only `/api/executor/queue` (queue-backed). Ireland never ranks, never
+   pulls the broad candidate universe, never applies Tier2/Tier3 fallback.
+
+`/api/executor/night-plan` is diagnostic only; it is not Ireland's executable source.
+
 ## Operator Rules
 
 - Do not run `railway up`.
