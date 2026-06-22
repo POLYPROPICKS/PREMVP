@@ -334,3 +334,12 @@ When something significant changes, prepend:
 ### Pending
 - [ ] [what is not yet verified or complete]
 ```
+
+## Delta entry - 2026-06-22
+
+### Contur2 preservation
+Preserved the Contur2 producer deployment and Ireland V4 audit state in docs:
+`10a2013 Executor: add night plan contract v1 envelope` deployed and runtime-verified, consumer rejector audited as present, hard-stop and no-live checks confirmed, live remains blocked pending CEO approval.
+
+### Pending
+- [ ] CEO one-order pilot checklist only
