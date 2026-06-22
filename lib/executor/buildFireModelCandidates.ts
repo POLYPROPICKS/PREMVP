@@ -967,7 +967,7 @@ export async function buildFireModelCandidates(
     candidates.push({
       signal_id: row.id,
       strategy: tier,
-      market_slug: row.market_slug || row.event_slug || row.condition_id,
+      market_slug: (activityLabelDetected ? null : row.market_slug) || row.event_slug || row.condition_id,
       match_family_key: matchFamilyKey,
       match_family_key_source: matchFamilyKeySource,
       match_family_key_is_weak: matchFamilyKeyIsWeak,

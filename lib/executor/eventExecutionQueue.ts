@@ -126,6 +126,9 @@ export interface BlockedCandidateDiag {
   side_mapping_status: string;
   live_eligible: boolean;
   live_rejection_reason: string | null;
+  activity_label_detected: boolean;
+  identity_quality: string;
+  identity_warning_codes: string[];
   is_halftime_market: boolean;
   stake_usd: number;
   game_start_iso: string;
@@ -166,6 +169,9 @@ function buildBlockedCandidateDiag(c: FireModelCandidate): BlockedCandidateDiag 
     side_mapping_status: c.side_mapping_status,
     live_eligible: c.live_eligible,
     live_rejection_reason: c.live_rejection_reason,
+    activity_label_detected: c.activity_label_detected,
+    identity_quality: c.identity_quality,
+    identity_warning_codes: c.identity_warning_codes,
     is_halftime_market: isHalftime(c),
     stake_usd: c.stake_usd,
     game_start_iso: c.diagnostics.game_start_iso,
