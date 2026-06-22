@@ -201,23 +201,36 @@ export async function runEventRebalance(
       continue;
     }
 
-    const eventMarkets = (marketsByKey.get(reservation.match_family_key) ?? [])
-      .filter(isExecutableMarket)
-      .sort(compareCandidateQuality);
+    const eventCandidates = marketsByKey.get(reservation.match_family_key) ?? [];
+    const tier1Candidates = eventCandidates.filter((c) => planTierLabel(c) === EXECUTABLE_TIER);
+    const tier1WithCondToken = tier1Candidates.filter(
+      (c) => Boolean(c.condition_id) && Boolean(c.token_id)
+    );
+    const tier1SideBlocked = tier1WithCondToken.filter(
+      (c) =>
+        !c.live_eligible &&
+        (c.live_rejection_reason === "SIDE_MAPPING_UNKNOWN_BLOCKED" ||
+          c.live_block_reason === "SIDE_MAPPING_UNKNOWN_BLOCKED")
+    );
+    const eventMarkets = eventCandidates.filter(isExecutableMarket).sort(compareCandidateQuality);
 
     if (eventMarkets.length === 0) {
+      const isSideMissingBlocker = tier1WithCondToken.length > 0 && tier1SideBlocked.length > 0;
+      const skipReason = isSideMissingBlocker
+        ? `NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE_SIDE_MISSING: candidate_count=${eventCandidates.length} tier1_count=${tier1Candidates.length} tier1_with_cond_token=${tier1WithCondToken.length} tier1_side_blocked=${tier1SideBlocked.length} examples=${tier1SideBlocked.slice(0, 2).map((c) => c.market_slug ?? c.event_slug ?? "?").join(",")}`
+        : `NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE: candidate_count=${eventCandidates.length} tier1_count=${tier1Candidates.length}`;
       skipped += 1;
       if (write) {
         await supabaseAdmin
           .from("night_event_reservations")
-          .update({ status: "SKIPPED", selection_reason: "NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE" })
+          .update({ status: "SKIPPED", selection_reason: skipReason })
           .eq("id", reservation.id);
       }
       outcomes.push({
         match_family_key: reservation.match_family_key,
         reservation_id: reservation.id ?? null,
         result: "SKIPPED",
-        reason: "NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE",
+        reason: skipReason,
       });
       continue;
     }

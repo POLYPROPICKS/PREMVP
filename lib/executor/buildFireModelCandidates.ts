@@ -380,6 +380,37 @@ function deriveMatchFamilyKey(row: any, identityText: string): {
   return { key: weakKey, source: "condition_id_weak", quality: "WEAK", canonicalEventKey: null };
 }
 
+/**
+ * Extract selected_outcome from multiple sources in priority order.
+ * 1. Top-level row.selected_outcome column.
+ * 2. row.diagnostics.selectedOutcome / .outcome.
+ * 3. row.diagnostics.researchContext.selectedOutcome / .outcome.
+ * 4. Token-ID → outcome array mapping via row.diagnostics.clobTokenIds + .outcomes.
+ * Returns null only when no safe derivation is possible (caller must not default to Yes for live).
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function extractSelectedOutcome(row: any, diag: Record<string, unknown>): string | null {
+  if (typeof row.selected_outcome === "string") return row.selected_outcome;
+  if (typeof diag.selectedOutcome === "string") return diag.selectedOutcome;
+  if (typeof diag.outcome === "string") return diag.outcome;
+  const rc =
+    diag.researchContext && typeof diag.researchContext === "object"
+      ? (diag.researchContext as Record<string, unknown>)
+      : null;
+  if (rc) {
+    if (typeof rc.selectedOutcome === "string") return rc.selectedOutcome;
+    if (typeof rc.outcome === "string") return rc.outcome;
+  }
+  // Token-ID → outcome mapping: Polymarket binary markets store clobTokenIds + outcomes arrays.
+  const clobIds = Array.isArray(diag.clobTokenIds) ? (diag.clobTokenIds as unknown[]) : null;
+  const outArr = Array.isArray(diag.outcomes) ? (diag.outcomes as unknown[]) : null;
+  if (clobIds && outArr && row.selected_token_id) {
+    const idx = clobIds.findIndex((id) => id === row.selected_token_id);
+    if (idx !== -1 && typeof outArr[idx] === "string") return outArr[idx] as string;
+  }
+  return null;
+}
+
 function inferSportAndFamily(scope: StrategicScope): { sport: string; family: string } {
   switch (scope) {
     case "WC":     return { sport: "soccer",   family: "world_cup" };
@@ -770,7 +801,7 @@ export async function buildFireModelCandidates(
 
     const { sport, family } = inferSportAndFamily(strategicScope);
     const staleAfter = typeof row.expires_at === "string" ? row.expires_at : gameStartIso;
-    const selectedOutcome = typeof row.selected_outcome === "string" ? row.selected_outcome : null;
+    const selectedOutcome = extractSelectedOutcome(row, diag);
     const side = selectedOutcome ?? "Yes";
 
     // Guard G: "No" side on football/WC match-winner markets has undefined semantics.
