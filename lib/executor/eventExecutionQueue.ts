@@ -1,0 +1,256 @@
+// lib/executor/eventExecutionQueue.ts
+//
+// Contur3 per-event REBALANCE → single-market execution queue.
+//
+// For each reserved event due for rebalance (T-60 .. T-30 before start), this loads
+// all current markets for that one event, applies the executable policy (Tier1 only,
+// no halftime, stake $7), selects exactly ONE best market, and writes one READY row
+// into event_execution_queue. The reservation is then marked QUEUED (or SKIPPED).
+//
+// This module NEVER places orders and NEVER pulls a broad executable universe for
+// Ireland — Ireland reads only the queue via /api/executor/queue.
+
+import { createHash } from "crypto";
+import { buildFireModelCandidates, type FireModelCandidate } from "./buildFireModelCandidates";
+import { compareCandidateQuality } from "./nightPortfolioPlanner";
+import {
+  buildRebalanceRunId,
+  isDueForRebalance,
+  preferredEntryIso,
+  latestEntryIso,
+} from "./nightWindow";
+import {
+  EXECUTABLE_STAKE_USD,
+  EXECUTABLE_TIER,
+  type EventExecutionQueueRow,
+  type NightEventReservationRow,
+} from "./executorQueueTypes";
+
+const PLAN_POOL = 200;
+
+// Mirror of /api/executor/night-plan halftime block (P0E_BLOCK_HALFTIME_MARKETS_V1).
+const HALFTIME_MARKET_RE =
+  /halftime|half[\s-]time|first[\s-]half|1st[\s-]half|leading\s+at\s+halftime|draw\s+at\s+halftime|halftime[\s-]result/i;
+
+function planTierLabel(c: FireModelCandidate): "TIER1" | "TIER2" | "TIER3" | "REJECTED" {
+  if (c.strategy === "TIER1_CORE_STRICT_72_COV50") return "TIER1";
+  if (c.strategy === "TIER2_SAFE_EXPAND_60_COV50") return "TIER2";
+  if (c.strategy === "TIER3_MICRO_EXPAND_50_COV25") return "TIER3";
+  return "REJECTED";
+}
+
+function isHalftime(c: FireModelCandidate): boolean {
+  return (
+    HALFTIME_MARKET_RE.test(c.market_slug ?? "") ||
+    HALFTIME_MARKET_RE.test(c.event_slug ?? "") ||
+    HALFTIME_MARKET_RE.test(c.match_family_key ?? "")
+  );
+}
+
+/**
+ * Executable filter for the SINGLE selected market (LOCKED policy):
+ *   Tier1 only, live_eligible, not halftime, condition_id + token_id + side present.
+ */
+function isExecutableMarket(c: FireModelCandidate): boolean {
+  return (
+    planTierLabel(c) === EXECUTABLE_TIER &&
+    c.live_eligible === true &&
+    !isHalftime(c) &&
+    Boolean(c.condition_id) &&
+    Boolean(c.token_id) &&
+    Boolean(c.side)
+  );
+}
+
+function buildQueueRow(
+  reservation: NightEventReservationRow,
+  best: FireModelCandidate,
+  rebalanceRunId: string
+): EventExecutionQueueRow {
+  const orderKey = `${best.condition_id}:${best.token_id}:${best.side}`;
+  const idem = createHash("sha256")
+    .update(`${reservation.plan_run_id}__${orderKey}`)
+    .digest("hex")
+    .slice(0, 32);
+  return {
+    reservation_id: reservation.id ?? null,
+    plan_run_id: reservation.plan_run_id,
+    rebalance_run_id: rebalanceRunId,
+    match_family_key: reservation.match_family_key,
+    event_title: reservation.event_title,
+    event_slug: best.event_slug ?? reservation.event_slug,
+    sport: best.inferred_sport,
+    league: reservation.league,
+    game_start_iso: best.diagnostics.game_start_iso,
+    condition_id: best.condition_id,
+    token_id: best.token_id,
+    side: best.side,
+    market_slug: best.market_slug,
+    market_title: best.market_slug,
+    market_family: best.market_family,
+    score: best.diagnostics.score,
+    coverage: best.diagnostics.coverage,
+    tier: EXECUTABLE_TIER,
+    stake_usd: EXECUTABLE_STAKE_USD,
+    preferred_entry_iso: preferredEntryIso(new Date(best.diagnostics.game_start_iso).getTime()),
+    latest_entry_iso: latestEntryIso(new Date(best.diagnostics.game_start_iso).getTime()),
+    selection_rank: 1,
+    selection_reason: `REBALANCE_SINGLE_BEST_MARKET: tier=${EXECUTABLE_TIER} score=${best.diagnostics.score} cov=${best.diagnostics.coverage}`,
+    status: "READY",
+    order_key: orderKey,
+    idempotency_key: idem,
+    diagnostics: {
+      hours_to_start: best.diagnostics.hours_to_start_now,
+      timing_bucket: best.timing_bucket,
+      smart_money: best.diagnostics.smart_money,
+      entry_price: best.diagnostics.entry_price,
+      max_entry_price: best.max_entry_price,
+    },
+  };
+}
+
+export interface RebalanceOutcome {
+  match_family_key: string;
+  reservation_id: string | null;
+  result: "QUEUED" | "SKIPPED" | "ALREADY_QUEUED";
+  reason: string;
+  queue_row?: EventExecutionQueueRow;
+}
+
+export interface RebalanceRunResult {
+  rebalance_run_id: string;
+  due_count: number;
+  queued_count: number;
+  skipped_count: number;
+  already_queued_count: number;
+  outcomes: RebalanceOutcome[];
+  wrote: boolean;
+}
+
+/**
+ * Run the per-event rebalance. write=false → pure dry-run (no DB writes).
+ * Loads the candidate universe once and selects one market per due reservation.
+ */
+export async function runEventRebalance(
+  nowMs: number,
+  opts: { write?: boolean } = {}
+): Promise<RebalanceRunResult> {
+  const write = opts.write === true;
+  const rebalanceRunId = buildRebalanceRunId(nowMs);
+  const { supabaseAdmin } = await import("@/lib/supabase/server");
+
+  // Due reservations: active status + start within the rebalance window.
+  const { data: reservationRows, error: resErr } = await supabaseAdmin
+    .from("night_event_reservations")
+    .select("*")
+    .in("status", ["RESERVED", "REBALANCE_PENDING"]);
+  if (resErr) throw new Error(`reservation due-query failed: ${resErr.message}`);
+
+  const due = ((reservationRows ?? []) as NightEventReservationRow[]).filter((r) => {
+    const startMs = Date.parse(r.game_start_iso);
+    return Number.isFinite(startMs) && isDueForRebalance(startMs, nowMs);
+  });
+
+  const outcomes: RebalanceOutcome[] = [];
+  if (due.length === 0) {
+    return {
+      rebalance_run_id: rebalanceRunId,
+      due_count: 0,
+      queued_count: 0,
+      skipped_count: 0,
+      already_queued_count: 0,
+      outcomes,
+      wrote: write,
+    };
+  }
+
+  // Existing READY/SENT queue rows so we never double-queue a reservation.
+  const { data: existingQueue, error: qErr } = await supabaseAdmin
+    .from("event_execution_queue")
+    .select("reservation_id, status")
+    .in("status", ["READY", "CLAIMED", "SENT"]);
+  if (qErr) throw new Error(`queue existing-query failed: ${qErr.message}`);
+  const alreadyQueued = new Set(
+    ((existingQueue ?? []) as Array<{ reservation_id: string | null }>)
+      .map((q) => q.reservation_id)
+      .filter((v): v is string => Boolean(v))
+  );
+
+  // Load current markets once; group by event key.
+  const { candidates: universe } = await buildFireModelCandidates(PLAN_POOL, "all", true);
+  const marketsByKey = new Map<string, FireModelCandidate[]>();
+  for (const c of universe) {
+    const arr = marketsByKey.get(c.match_family_key) ?? [];
+    arr.push(c);
+    marketsByKey.set(c.match_family_key, arr);
+  }
+
+  let queued = 0;
+  let skipped = 0;
+  let already = 0;
+
+  for (const reservation of due) {
+    if (reservation.id && alreadyQueued.has(reservation.id)) {
+      already += 1;
+      outcomes.push({
+        match_family_key: reservation.match_family_key,
+        reservation_id: reservation.id ?? null,
+        result: "ALREADY_QUEUED",
+        reason: "READY_OR_SENT_QUEUE_ROW_EXISTS",
+      });
+      continue;
+    }
+
+    const eventMarkets = (marketsByKey.get(reservation.match_family_key) ?? [])
+      .filter(isExecutableMarket)
+      .sort(compareCandidateQuality);
+
+    if (eventMarkets.length === 0) {
+      skipped += 1;
+      if (write) {
+        await supabaseAdmin
+          .from("night_event_reservations")
+          .update({ status: "SKIPPED", selection_reason: "NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE" })
+          .eq("id", reservation.id);
+      }
+      outcomes.push({
+        match_family_key: reservation.match_family_key,
+        reservation_id: reservation.id ?? null,
+        result: "SKIPPED",
+        reason: "NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE",
+      });
+      continue;
+    }
+
+    const best = eventMarkets[0];
+    const row = buildQueueRow(reservation, best, rebalanceRunId);
+
+    if (write) {
+      const { error: insErr } = await supabaseAdmin.from("event_execution_queue").insert(row);
+      if (insErr) throw new Error(`queue insert failed (${reservation.match_family_key}): ${insErr.message}`);
+      await supabaseAdmin
+        .from("night_event_reservations")
+        .update({ status: "QUEUED", selection_reason: row.selection_reason })
+        .eq("id", reservation.id);
+    }
+
+    queued += 1;
+    outcomes.push({
+      match_family_key: reservation.match_family_key,
+      reservation_id: reservation.id ?? null,
+      result: "QUEUED",
+      reason: row.selection_reason ?? "REBALANCE_SINGLE_BEST_MARKET",
+      queue_row: row,
+    });
+  }
+
+  return {
+    rebalance_run_id: rebalanceRunId,
+    due_count: due.length,
+    queued_count: queued,
+    skipped_count: skipped,
+    already_queued_count: already,
+    outcomes,
+    wrote: write,
+  };
+}
