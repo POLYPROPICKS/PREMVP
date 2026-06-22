@@ -1,4 +1,4 @@
-import { supabaseAdmin } from "@/lib/supabase/server";
+﻿import { supabaseAdmin } from "@/lib/supabase/server";
 import { createHash } from "crypto";
 
 const POLICY_VERSION = "battle-sm-guard-v1-20260615";

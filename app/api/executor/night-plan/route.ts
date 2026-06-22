@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+﻿import { NextRequest, NextResponse } from "next/server";
 import { buildFireModelCandidates } from "@/lib/executor/buildFireModelCandidates";
 import {
   buildNightPortfolioPlan,
@@ -27,7 +27,9 @@ const PILOT_MAX_STAKE_USD = 5;
 const PILOT_PER_TOKEN_SIDE_CAP_USD = 10;
 const CONTRACT_VALIDITY_MINUTES = 15;
 const ENTRY_WINDOW_POLICY_VERSION = "night-plan-entry-window-v1";
-const STAKE_POLICY_VERSION = "P0D_PUBLISHED_1PF_TIER1_EXECUTABLE_V1+P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1";
+const STAKE_POLICY_VERSION = "P0D_PUBLISHED_1PF_TIER1_EXECUTABLE_V1+P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1+P0E_BLOCK_HALFTIME_MARKETS_V1";
+// P0E_BLOCK_HALFTIME_MARKETS_V1: matches halftime/first-half markets by slug/family/key fields.
+const HALFTIME_MARKET_RE = /halftime|half[\s-]time|first[\s-]half|1st[\s-]half|leading\s+at\s+halftime|draw\s+at\s+halftime|halftime[\s-]result/i;
 
 function positiveNumber(v: string | null): number | null {
   if (!v) return null;
@@ -277,6 +279,10 @@ export async function GET(request: NextRequest) {
       const stakeAboveCap = slot.planned_stake_usd > maxStakeUsd;
       // P0D_PUBLISHED_1PF_TIER1_EXECUTABLE_V1: only Tier1 in NIGHT_LIVE_EXECUTION candidates.
       // P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1: max base stake $7.
+      // P0E_BLOCK_HALFTIME_MARKETS_V1: halftime/first-half markets never executable.
+      const isHalftimeMarket = HALFTIME_MARKET_RE.test(selected.market_slug ?? "") ||
+        HALFTIME_MARKET_RE.test(selected.event_slug ?? "") ||
+        HALFTIME_MARKET_RE.test(selected.match_family_key ?? "");
       const executable =
         Boolean(conditionId) &&
         Boolean(tokenId) &&
@@ -285,28 +291,31 @@ export async function GET(request: NextRequest) {
         slot.planned_stake_usd > 0 &&
         !stakeAboveCap &&
         selected.live_eligible === true &&
-        slot.tier === "TIER1";
+        slot.tier === "TIER1" &&
+        !isHalftimeMarket;
       const blockReason = executable
         ? null
-        : !conditionId
-          ? "MISSING_CONDITION_ID"
-          : !tokenId
-            ? "MISSING_TOKEN_ID"
-            : !side
-              ? "MISSING_SIDE"
-              : !preferredEntryIso
-                ? "MISSING_PREFERRED_ENTRY_ISO"
-                : !latestEntryIso
-                  ? "MISSING_LATEST_ENTRY_ISO"
-                  : slot.planned_stake_usd <= 0
-                      ? "INVALID_STAKE_USD"
-                      : stakeAboveCap
-                        ? "STAKE_ABOVE_MAX_STAKE_USD"
-                        : slot.tier === "TIER2"
-                          ? "TIER2_SHADOW_FOR_PUBLISHED_1PF"
-                          : slot.tier === "TIER3"
-                            ? "TIER3_EXCLUDED_FROM_LIVE"
-                            : "NOT_EXECUTABLE";
+        : isHalftimeMarket
+          ? "HALFTIME_MARKET_EXCLUDED_FROM_LIVE"
+          : !conditionId
+            ? "MISSING_CONDITION_ID"
+            : !tokenId
+              ? "MISSING_TOKEN_ID"
+              : !side
+                ? "MISSING_SIDE"
+                : !preferredEntryIso
+                  ? "MISSING_PREFERRED_ENTRY_ISO"
+                  : !latestEntryIso
+                    ? "MISSING_LATEST_ENTRY_ISO"
+                    : slot.planned_stake_usd <= 0
+                        ? "INVALID_STAKE_USD"
+                        : stakeAboveCap
+                          ? "STAKE_ABOVE_MAX_STAKE_USD"
+                          : slot.tier === "TIER2"
+                            ? "TIER2_SHADOW_FOR_PUBLISHED_1PF"
+                            : slot.tier === "TIER3"
+                              ? "TIER3_EXCLUDED_FROM_LIVE"
+                              : "NOT_EXECUTABLE";
       return {
         candidate_id: buildCandidateId(strategyRunId, selected),
         order_key: `${conditionId || "no_condition"}:${tokenId || "no_token"}:${side || "no_side"}`,
