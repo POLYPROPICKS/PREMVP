@@ -8,6 +8,7 @@ import {
   type EventExecutionQueueRow,
   type IrelandQueueCandidate,
 } from "@/lib/executor/executorQueueTypes";
+import { REBALANCE_MINUTES_BEFORE_START } from "@/lib/executor/nightWindow";
 
 // Contur3 queue-only executor endpoint — the ONLY executable source for Ireland.
 //   GET /api/executor/queue
@@ -91,6 +92,27 @@ export async function GET(request: NextRequest) {
 
     const planRunId = rows[0]?.plan_run_id ?? null;
 
+    // Next upcoming reservation not yet in rebalance window — for Ireland sleep guidance.
+    const nextRebalanceThresholdIso = new Date(
+      nowMs + REBALANCE_MINUTES_BEFORE_START * 60_000
+    ).toISOString();
+    const { data: nextResRows } = await supabaseAdmin
+      .from("night_event_reservations")
+      .select("match_family_key, game_start_iso, event_title, status")
+      .in("status", ["RESERVED", "REBALANCE_PENDING"])
+      .gt("game_start_iso", nextRebalanceThresholdIso)
+      .order("game_start_iso", { ascending: true })
+      .limit(1);
+    const nextRes = nextResRows?.[0] ?? null;
+    const nextDueIso = nextRes
+      ? new Date(
+          Date.parse(nextRes.game_start_iso) - REBALANCE_MINUTES_BEFORE_START * 60_000
+        ).toISOString()
+      : null;
+    const nextCheckAfterSeconds = nextDueIso
+      ? Math.max(0, Math.ceil((Date.parse(nextDueIso) - nowMs) / 1000))
+      : null;
+
     return NextResponse.json(
       {
         ok: true,
@@ -105,6 +127,16 @@ export async function GET(request: NextRequest) {
         include_upcoming: includeUpcoming,
         candidate_count: candidates.length,
         candidates,
+        next_due_iso: nextDueIso,
+        next_check_after_seconds: nextCheckAfterSeconds,
+        next_due_reservation: nextRes
+          ? {
+              match_family_key: nextRes.match_family_key,
+              event_title: nextRes.event_title,
+              game_start_iso: nextRes.game_start_iso,
+              rebalance_starts_iso: nextDueIso,
+            }
+          : null,
         diagnostics: {
           ready_rows_total: rows.length,
           in_window_count: candidates.filter((c) => c.entry_state === "IN_WINDOW").length,

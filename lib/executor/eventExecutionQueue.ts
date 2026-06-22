@@ -18,6 +18,8 @@ import {
   isDueForRebalance,
   preferredEntryIso,
   latestEntryIso,
+  REBALANCE_MINUTES_BEFORE_START,
+  LATEST_ENTRY_MINUTES_BEFORE,
 } from "./nightWindow";
 import {
   EXECUTABLE_STAKE_USD,
@@ -200,14 +202,25 @@ export interface RebalanceOutcome {
   blocked_candidates?: BlockedCandidateDiag[];
 }
 
+export interface NextDueReservation {
+  match_family_key: string;
+  game_start_iso: string;
+  rebalance_starts_iso: string;
+  rebalance_ends_iso: string;
+  next_check_after_seconds: number;
+}
+
 export interface RebalanceRunResult {
   rebalance_run_id: string;
   due_count: number;
   queued_count: number;
   skipped_count: number;
   already_queued_count: number;
+  expired_count: number;
   outcomes: RebalanceOutcome[];
   wrote: boolean;
+  next_due_reservations: NextDueReservation[];
+  next_check_after_seconds: number | null;
 }
 
 /**
@@ -229,12 +242,50 @@ export async function runEventRebalance(
     .in("status", ["RESERVED", "REBALANCE_PENDING"]);
   if (resErr) throw new Error(`reservation due-query failed: ${resErr.message}`);
 
-  const due = ((reservationRows ?? []) as NightEventReservationRow[]).filter((r) => {
+  const all = (reservationRows ?? []) as NightEventReservationRow[];
+  const due = all.filter((r) => {
     const startMs = Date.parse(r.game_start_iso);
     return Number.isFinite(startMs) && isDueForRebalance(startMs, nowMs);
   });
+  const expired = all.filter((r) => {
+    const startMs = Date.parse(r.game_start_iso);
+    const minutesToStart = (startMs - nowMs) / 60_000;
+    return Number.isFinite(startMs) && minutesToStart <= LATEST_ENTRY_MINUTES_BEFORE;
+  });
+  const upcoming = all
+    .filter((r) => {
+      const startMs = Date.parse(r.game_start_iso);
+      const minutesToStart = (startMs - nowMs) / 60_000;
+      return Number.isFinite(startMs) && minutesToStart > REBALANCE_MINUTES_BEFORE_START;
+    })
+    .sort((a, b) => Date.parse(a.game_start_iso) - Date.parse(b.game_start_iso));
+  const next_due_reservations: NextDueReservation[] = upcoming.slice(0, 3).map((r) => {
+    const startMs = Date.parse(r.game_start_iso);
+    const rebalanceStartsMs = startMs - REBALANCE_MINUTES_BEFORE_START * 60_000;
+    const rebalanceEndsMs = startMs - LATEST_ENTRY_MINUTES_BEFORE * 60_000;
+    return {
+      match_family_key: r.match_family_key,
+      game_start_iso: r.game_start_iso,
+      rebalance_starts_iso: new Date(rebalanceStartsMs).toISOString(),
+      rebalance_ends_iso: new Date(rebalanceEndsMs).toISOString(),
+      next_check_after_seconds: Math.max(0, Math.ceil((rebalanceStartsMs - nowMs) / 1000)),
+    };
+  });
+  const next_check_after_seconds: number | null =
+    next_due_reservations.length > 0 ? next_due_reservations[0].next_check_after_seconds : null;
 
   const outcomes: RebalanceOutcome[] = [];
+
+  if (write && expired.length > 0) {
+    const expiredIds = expired.map((r) => r.id).filter((v): v is string => Boolean(v));
+    if (expiredIds.length > 0) {
+      await supabaseAdmin
+        .from("night_event_reservations")
+        .update({ status: "EXPIRED", selection_reason: "MISSED_REBALANCE_WINDOW" })
+        .in("id", expiredIds);
+    }
+  }
+
   if (due.length === 0) {
     return {
       rebalance_run_id: rebalanceRunId,
@@ -242,8 +293,11 @@ export async function runEventRebalance(
       queued_count: 0,
       skipped_count: 0,
       already_queued_count: 0,
+      expired_count: expired.length,
       outcomes,
       wrote: write,
+      next_due_reservations,
+      next_check_after_seconds,
     };
   }
 
@@ -347,7 +401,10 @@ export async function runEventRebalance(
     queued_count: queued,
     skipped_count: skipped,
     already_queued_count: already,
+    expired_count: expired.length,
     outcomes,
     wrote: write,
+    next_due_reservations,
+    next_check_after_seconds,
   };
 }

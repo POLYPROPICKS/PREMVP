@@ -264,8 +264,9 @@ export async function persistReservationPlan(
 
   const { data: existing, error: readErr } = await supabaseAdmin
     .from("night_event_reservations")
-    .select("id, match_family_key")
-    .eq("plan_run_id", plan.plan_run_id);
+    .select("*")
+    .eq("plan_run_id", plan.plan_run_id)
+    .order("reservation_rank", { ascending: true });
   if (readErr) throw new Error(`reservation read failed: ${readErr.message}`);
 
   if ((existing?.length ?? 0) > 0 && !opts.force) {
@@ -274,7 +275,7 @@ export async function persistReservationPlan(
       already_exists: true,
       written_count: 0,
       reserved_count: existing!.length,
-      reservations: plan.reservations,
+      reservations: existing as unknown as NightEventReservationRow[],
       diagnostics: plan.diagnostics,
     };
   }

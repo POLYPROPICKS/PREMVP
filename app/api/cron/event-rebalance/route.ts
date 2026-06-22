@@ -32,6 +32,10 @@ async function handle(request: NextRequest) {
         queued_count: result.queued_count,
         skipped_count: result.skipped_count,
         already_queued_count: result.already_queued_count,
+        expired_count: result.expired_count,
+        next_due_iso: result.next_due_reservations[0]?.rebalance_starts_iso ?? null,
+        next_check_after_seconds: result.next_check_after_seconds,
+        next_due_reservations: result.next_due_reservations,
         outcomes: result.outcomes.map((o) => ({
           match_family_key: o.match_family_key,
           result: o.result,
@@ -49,7 +53,7 @@ async function handle(request: NextRequest) {
             : {}),
         })),
         founder_action_required: false,
-        ireland_autostart_expected: true,
+        ireland_autostart_expected: result.queued_count > 0 || result.already_queued_count > 0,
       },
       { status: 200, headers: { "Cache-Control": "no-store" } }
     );
