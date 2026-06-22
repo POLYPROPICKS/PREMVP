@@ -345,7 +345,14 @@ export async function GET(request: NextRequest) {
         block_reason: blockReason,
       };
     });
-    const candidates = candidateProjections.filter((candidate) => candidate.is_executable === true);
+    // Contur3: /api/executor/night-plan is DIAGNOSTIC ONLY. It is no longer Ireland's
+    // executable source — that moved to /api/executor/queue (frozen reservation → per-event
+    // rebalance → execution queue). The previously-executable projection is preserved under a
+    // diagnostic key for operator visibility; top-level candidates[] is intentionally empty.
+    const diagnostic_executable_projection = candidateProjections.filter(
+      (candidate) => candidate.is_executable === true
+    );
+    const candidates: never[] = [];
 
     const body: Record<string, unknown> = {
       ok: true,
@@ -354,6 +361,9 @@ export async function GET(request: NextRequest) {
       generated_at_iso: generatedAtIso,
       valid_until_iso: validUntilIso,
       execution_mode: executionMode,
+      diagnostic_only: true,
+      executable_source: "/api/executor/queue",
+      executable_candidates_warning: "EXECUTABLE_SOURCE_MOVED_TO_/api/executor/queue",
       max_live_orders: maxLiveOrders,
       max_candidate_count: maxCandidateCount,
       max_stake_usd: maxStakeUsd,
@@ -362,6 +372,7 @@ export async function GET(request: NextRequest) {
       entry_window_policy_version: ENTRY_WINDOW_POLICY_VERSION,
       stake_policy_version: STAKE_POLICY_VERSION,
       candidates,
+      diagnostic_executable_projection,
       rejected_candidates_summary: rejectedCandidatesSummary,
       // --- Autonomy / control semantics (founder approval is NOT required) ---
       ...semantics,
