@@ -1,0 +1,128 @@
+import { NextRequest, NextResponse } from "next/server";
+import { supabaseAdmin } from "@/lib/supabase/server";
+import {
+  QUEUE_SCHEMA_VERSION,
+  QUEUE_EXECUTION_MODE,
+  QUEUE_SOURCE,
+  EXECUTABLE_STAKE_USD,
+  type EventExecutionQueueRow,
+  type IrelandQueueCandidate,
+} from "@/lib/executor/executorQueueTypes";
+
+// Contur3 queue-only executor endpoint — the ONLY executable source for Ireland.
+//   GET /api/executor/queue
+//
+// Returns event_execution_queue rows (status=READY, latest_entry_iso>now), deterministically
+// ordered by preferred_entry_iso asc, then queued_at asc. It does NOT rank by strategy, does
+// NOT call buildFireModelCandidates, does NOT rebalance, and never returns Tier2/Tier3/halftime
+// (those can never enter the queue upstream). Ireland mechanically consumes this list.
+
+export const dynamic = "force-dynamic";
+
+const DEFAULT_CAP = 15;
+
+function envCap(): number {
+  const raw = parseInt(process.env.EXECUTOR_QUEUE_MAX_CANDIDATES ?? "", 10);
+  return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_CAP;
+}
+
+function toCandidate(row: EventExecutionQueueRow, nowMs: number): IrelandQueueCandidate {
+  const preferredMs = Date.parse(row.preferred_entry_iso);
+  const entryState: IrelandQueueCandidate["entry_state"] =
+    Number.isFinite(preferredMs) && preferredMs <= nowMs ? "IN_WINDOW" : "PENDING_WINDOW";
+  return {
+    candidate_id: row.id ?? `${row.plan_run_id}:${row.match_family_key}`,
+    order_key: row.order_key ?? `${row.condition_id}:${row.token_id}:${row.side}`,
+    plan_run_id: row.plan_run_id,
+    rebalance_run_id: row.rebalance_run_id,
+    match_family_key: row.match_family_key,
+    event_slug: row.event_slug,
+    event_id: row.event_slug,
+    event_title: row.event_title,
+    condition_id: row.condition_id,
+    token_id: row.token_id,
+    side: row.side,
+    market_slug: row.market_slug,
+    market_family: row.market_family,
+    score: row.score,
+    coverage: row.coverage,
+    tier: row.tier,
+    stake_usd: row.stake_usd ?? EXECUTABLE_STAKE_USD,
+    max_stake_usd: EXECUTABLE_STAKE_USD,
+    preferred_entry_iso: row.preferred_entry_iso,
+    latest_entry_iso: row.latest_entry_iso,
+    game_start_iso: row.game_start_iso,
+    entry_state: entryState,
+    selection_rank: row.selection_rank,
+    is_executable: true,
+  };
+}
+
+export async function GET(request: NextRequest) {
+  const secret = request.headers.get("x-executor-secret");
+  const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
+  if (!expectedSecret || secret !== expectedSecret) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  // includeUpcoming=1 returns PENDING_WINDOW rows too (Ireland file-runner waits for window).
+  const includeUpcoming = searchParams.get("includeUpcoming") === "1";
+  const nowIso = new Date().toISOString();
+  const nowMs = Date.now();
+  const cap = envCap();
+
+  try {
+    const { data, error } = await supabaseAdmin
+      .from("event_execution_queue")
+      .select("*")
+      .eq("status", "READY")
+      .gt("latest_entry_iso", nowIso)
+      .order("preferred_entry_iso", { ascending: true })
+      .order("queued_at", { ascending: true })
+      .limit(cap);
+    if (error) throw new Error(error.message);
+
+    const rows = (data ?? []) as EventExecutionQueueRow[];
+    let candidates = rows.map((r) => toCandidate(r, nowMs));
+    if (!includeUpcoming) {
+      candidates = candidates.filter((c) => c.entry_state === "IN_WINDOW");
+    }
+
+    const planRunId = rows[0]?.plan_run_id ?? null;
+
+    return NextResponse.json(
+      {
+        ok: true,
+        schema: QUEUE_SCHEMA_VERSION,
+        execution_mode: QUEUE_EXECUTION_MODE,
+        source: QUEUE_SOURCE,
+        plan_run_id: planRunId,
+        generated_at_iso: nowIso,
+        max_candidate_count: cap,
+        max_stake_usd: EXECUTABLE_STAKE_USD,
+        one_position_per_event: true,
+        include_upcoming: includeUpcoming,
+        candidate_count: candidates.length,
+        candidates,
+        diagnostics: {
+          ready_rows_total: rows.length,
+          in_window_count: candidates.filter((c) => c.entry_state === "IN_WINDOW").length,
+          pending_window_count: candidates.filter((c) => c.entry_state === "PENDING_WINDOW").length,
+        },
+        // Ireland contract reminder (informational).
+        ireland_contract: {
+          read_only_source: "event_execution_queue",
+          do_not_rank: true,
+          do_not_pull_broad_candidates: true,
+          do_not_apply_tier2_tier3: true,
+        },
+      },
+      { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } }
+    );
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : "Unknown error";
+    console.error("[executor/queue] Error:", msg);
+    return NextResponse.json({ ok: false, error: msg }, { status: 500 });
+  }
+}
