@@ -26,6 +26,7 @@ async function handle(request: NextRequest) {
       {
         ok: true,
         dry_run: dryRun,
+        rebalance_diagnostics_version: "blocked-candidates-v2",
         rebalance_run_id: result.rebalance_run_id,
         due_count: result.due_count,
         queued_count: result.queued_count,
@@ -40,6 +41,12 @@ async function handle(request: NextRequest) {
           stake_usd: o.queue_row?.stake_usd ?? null,
           preferred_entry_iso: o.queue_row?.preferred_entry_iso ?? null,
           latest_entry_iso: o.queue_row?.latest_entry_iso ?? null,
+          ...(o.blocked_candidates !== undefined
+            ? {
+                diagnostics_version: "blocked-candidates-v2",
+                blocked_candidates: o.blocked_candidates,
+              }
+            : {}),
         })),
         founder_action_required: false,
         ireland_autostart_expected: true,

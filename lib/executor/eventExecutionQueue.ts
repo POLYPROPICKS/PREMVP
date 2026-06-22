@@ -113,6 +113,8 @@ export interface BlockedCandidateDiag {
   market_slug: string;
   event_slug: string | null;
   market_title: string;
+  event_title: string | null;
+  match_family_key: string;
   tier: string;
   score: number;
   condition_id_present: boolean;
@@ -151,6 +153,8 @@ function buildBlockedCandidateDiag(c: FireModelCandidate): BlockedCandidateDiag 
     market_slug: c.market_slug,
     event_slug: c.event_slug,
     market_title: c.market_slug,
+    event_title: null,
+    match_family_key: c.match_family_key,
     tier: c.strategy,
     score: c.diagnostics.score,
     condition_id_present: Boolean(c.condition_id),
