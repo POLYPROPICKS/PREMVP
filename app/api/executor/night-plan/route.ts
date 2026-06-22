@@ -18,6 +18,16 @@ import {
 const PLAN_POOL = 200;
 type AuditCandidate = Record<string, any>;
 
+const CONTRACT_SCHEMA_VERSION = "executor-night-plan-v1";
+const CONTRACT_EXECUTION_MODE = "ONE_ORDER_PILOT_REVIEW";
+const CONTRACT_MAX_LIVE_ORDERS = 1;
+const CONTRACT_MAX_CANDIDATE_COUNT = 1;
+const CONTRACT_MAX_STAKE_USD = 5;
+const CONTRACT_PER_TOKEN_SIDE_CAP_USD = 10;
+const CONTRACT_VALIDITY_MINUTES = 15;
+const ENTRY_WINDOW_POLICY_VERSION = "night-plan-entry-window-v1";
+const STAKE_POLICY_VERSION = "night-plan-stake-v1";
+
 function positiveNumber(v: string | null): number | null {
   if (!v) return null;
   const n = Number(v);
@@ -74,6 +84,52 @@ function compactCandidatePayload(candidate: AuditCandidate): Record<string, unkn
     sport: candidate.sport,
     match_family_key: candidate.match_family_key,
   };
+}
+
+function toIsoMinutesFromNow(now: Date, minutes: number): string {
+  return new Date(now.getTime() + minutes * 60_000).toISOString();
+}
+
+function buildStrategyRunId(plannedAtIso: string, runId: string): string {
+  return `executor-night-plan-v1:${plannedAtIso}:${runId.split(":").pop() ?? "run"}`;
+}
+
+function buildCandidateId(strategyRunId: string, candidate: {
+  condition_id?: unknown;
+  token_id?: unknown;
+  side?: unknown;
+  event_slug?: unknown;
+  match_family_key?: unknown;
+}): string {
+  const eventKey =
+    typeof candidate.event_slug === "string" && candidate.event_slug.trim()
+      ? candidate.event_slug.trim()
+      : typeof candidate.match_family_key === "string" && candidate.match_family_key.trim()
+        ? candidate.match_family_key.trim()
+        : "no_event";
+  return [
+    strategyRunId,
+    typeof candidate.condition_id === "string" && candidate.condition_id.trim() ? candidate.condition_id.trim() : "no_condition",
+    typeof candidate.token_id === "string" && candidate.token_id.trim() ? candidate.token_id.trim() : "no_token",
+    typeof candidate.side === "string" && candidate.side.trim() ? candidate.side.trim() : "no_side",
+    eventKey,
+  ].join(":");
+}
+
+function toRejectedSummary(
+  reasons: Record<string, number> | undefined,
+  fallback: Record<string, number>
+) {
+  const merged = new Map<string, number>();
+  for (const [reason, count] of Object.entries(reasons ?? {})) {
+    merged.set(reason, (merged.get(reason) ?? 0) + count);
+  }
+  for (const [reason, count] of Object.entries(fallback)) {
+    merged.set(reason, (merged.get(reason) ?? 0) + count);
+  }
+  return [...merged.entries()]
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count || a.reason.localeCompare(b.reason));
 }
 
 async function writeNightPlanAudit(opts: {
@@ -182,9 +238,93 @@ export async function GET(request: NextRequest) {
     });
 
     const semantics = nightPlanControlSemantics(plan);
+    const generatedAtIso = plan.planned_at_iso;
+    const strategyRunId = buildStrategyRunId(generatedAtIso, runId);
+    const validUntilIso = toIsoMinutesFromNow(new Date(generatedAtIso), CONTRACT_VALIDITY_MINUTES);
+    const rejectedCandidatesSummary = toRejectedSummary(
+      plan.top_rejected_reasons,
+      plan.planned_slots.reduce<Record<string, number>>((acc, slot) => {
+        for (const reason of slot.no_go_reasons) {
+          acc[reason] = (acc[reason] ?? 0) + 1;
+        }
+        return acc;
+      }, {})
+    );
+    const candidateProjections = plan.planned_slots.map((slot, index) => {
+      const selected = slot.selected_candidate_preview;
+      const conditionId = selected.condition_id;
+      const tokenId = selected.token_id;
+      const side = selected.side;
+      const preferredEntryIso = slot.preferred_entry_iso;
+      const latestEntryIso = slot.latest_entry_iso;
+      const stakeAboveCap = slot.planned_stake_usd > CONTRACT_MAX_STAKE_USD;
+      const executable =
+        Boolean(conditionId) &&
+        Boolean(tokenId) &&
+        Boolean(side) &&
+        Boolean(preferredEntryIso) &&
+        Boolean(latestEntryIso) &&
+        typeof slot.planned_stake_usd === "number" &&
+        slot.planned_stake_usd > 0 &&
+        !stakeAboveCap &&
+        selected.live_eligible === true;
+      const blockReason = executable
+        ? null
+        : !conditionId
+          ? "MISSING_CONDITION_ID"
+          : !tokenId
+            ? "MISSING_TOKEN_ID"
+            : !side
+              ? "MISSING_SIDE"
+              : !preferredEntryIso
+                ? "MISSING_PREFERRED_ENTRY_ISO"
+                : !latestEntryIso
+                  ? "MISSING_LATEST_ENTRY_ISO"
+                  : slot.planned_stake_usd <= 0
+                      ? "INVALID_STAKE_USD"
+                      : stakeAboveCap
+                        ? "STAKE_ABOVE_MAX_STAKE_USD"
+                        : "NOT_EXECUTABLE";
+      return {
+        candidate_id: buildCandidateId(strategyRunId, selected),
+        order_key: `${strategyRunId}:${conditionId || "no_condition"}:${tokenId || "no_token"}:${side || "no_side"}`,
+        strategy_run_id: strategyRunId,
+        event_slug: selected.event_slug ?? slot.event_slug ?? null,
+        event_id: selected.event_slug ?? slot.event_slug ?? null,
+        condition_id: conditionId ?? null,
+        token_id: tokenId ?? null,
+        side: side ?? null,
+        event_title: slot.event_title,
+        event_start_iso: null,
+        preferred_entry_iso: preferredEntryIso,
+        latest_entry_iso: latestEntryIso,
+        stake_usd: slot.planned_stake_usd,
+        max_entry_price: selected.max_entry_price,
+        selection_rank_for_event: index + 1,
+        is_executable: executable,
+        block_reason: blockReason,
+      };
+    });
+    const candidates = candidateProjections
+      .filter((candidate) => candidate.is_executable === true)
+      .slice(0, CONTRACT_MAX_CANDIDATE_COUNT);
 
     const body: Record<string, unknown> = {
       ok: true,
+      api_schema_version: CONTRACT_SCHEMA_VERSION,
+      strategy_run_id: strategyRunId,
+      generated_at_iso: generatedAtIso,
+      valid_until_iso: validUntilIso,
+      execution_mode: CONTRACT_EXECUTION_MODE,
+      max_live_orders: CONTRACT_MAX_LIVE_ORDERS,
+      max_candidate_count: CONTRACT_MAX_CANDIDATE_COUNT,
+      max_stake_usd: CONTRACT_MAX_STAKE_USD,
+      per_token_side_cap_usd: CONTRACT_PER_TOKEN_SIDE_CAP_USD,
+      one_position_per_event: true,
+      entry_window_policy_version: ENTRY_WINDOW_POLICY_VERSION,
+      stake_policy_version: STAKE_POLICY_VERSION,
+      candidates,
+      rejected_candidates_summary: rejectedCandidatesSummary,
       // --- Autonomy / control semantics (founder approval is NOT required) ---
       ...semantics,
       // --- Ireland autostart contract (backend-exposed; Ireland edits out of scope) ---
