@@ -109,12 +109,85 @@ function buildQueueRow(
   };
 }
 
+export interface BlockedCandidateDiag {
+  market_slug: string;
+  event_slug: string | null;
+  market_title: string;
+  tier: string;
+  score: number;
+  condition_id_present: boolean;
+  token_id_present: boolean;
+  selected_token_id_present: boolean;
+  side: string;
+  selected_outcome: string | null;
+  selectedOutcome: string | null;
+  side_mapping_status: string;
+  live_eligible: boolean;
+  live_rejection_reason: string | null;
+  is_halftime_market: boolean;
+  stake_usd: number;
+  game_start_iso: string;
+  preferred_entry_iso: string | null;
+  latest_entry_iso: string | null;
+  block_flags: {
+    not_tier1: boolean;
+    missing_condition_id: boolean;
+    missing_token_id: boolean;
+    missing_side: boolean;
+    missing_market_slug: boolean;
+    side_mapping_unknown: boolean;
+    not_live_eligible: boolean;
+    halftime: boolean;
+    missing_entry_window: boolean;
+  };
+}
+
+function buildBlockedCandidateDiag(c: FireModelCandidate): BlockedCandidateDiag {
+  const gameStartMs = c.diagnostics.game_start_iso
+    ? new Date(c.diagnostics.game_start_iso).getTime()
+    : NaN;
+  const hasValidStart = Number.isFinite(gameStartMs);
+  return {
+    market_slug: c.market_slug,
+    event_slug: c.event_slug,
+    market_title: c.market_slug,
+    tier: c.strategy,
+    score: c.diagnostics.score,
+    condition_id_present: Boolean(c.condition_id),
+    token_id_present: Boolean(c.token_id),
+    selected_token_id_present: Boolean(c.token_id),
+    side: c.side,
+    selected_outcome: c.selected_outcome,
+    selectedOutcome: c.selected_outcome,
+    side_mapping_status: c.side_mapping_status,
+    live_eligible: c.live_eligible,
+    live_rejection_reason: c.live_rejection_reason,
+    is_halftime_market: isHalftime(c),
+    stake_usd: c.stake_usd,
+    game_start_iso: c.diagnostics.game_start_iso,
+    preferred_entry_iso: hasValidStart ? preferredEntryIso(gameStartMs) : null,
+    latest_entry_iso: hasValidStart ? latestEntryIso(gameStartMs) : null,
+    block_flags: {
+      not_tier1: planTierLabel(c) !== EXECUTABLE_TIER,
+      missing_condition_id: !Boolean(c.condition_id),
+      missing_token_id: !Boolean(c.token_id),
+      missing_side: !Boolean(c.side),
+      missing_market_slug: !Boolean(c.market_slug),
+      side_mapping_unknown: c.side_mapping_status === "UNKNOWN_BLOCKED",
+      not_live_eligible: !c.live_eligible,
+      halftime: isHalftime(c),
+      missing_entry_window: !c.diagnostics.game_start_iso,
+    },
+  };
+}
+
 export interface RebalanceOutcome {
   match_family_key: string;
   reservation_id: string | null;
   result: "QUEUED" | "SKIPPED" | "ALREADY_QUEUED";
   reason: string;
   queue_row?: EventExecutionQueueRow;
+  blocked_candidates?: BlockedCandidateDiag[];
 }
 
 export interface RebalanceRunResult {
@@ -231,6 +304,7 @@ export async function runEventRebalance(
         reservation_id: reservation.id ?? null,
         result: "SKIPPED",
         reason: skipReason,
+        blocked_candidates: eventCandidates.slice(0, 5).map(buildBlockedCandidateDiag),
       });
       continue;
     }
