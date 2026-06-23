@@ -44,7 +44,7 @@ if [ -z "$SECRET" ]; then
 fi
 
 echo ""
-echo "═══ Contur3 PREMVP Doctor — Battle 2026-06-23 ═══"
+echo "═══ Contur3 PREMVP Doctor — M1-M7 Ready PreLive 2026-06-23 ═══"
 echo "BASE: $BASE"
 echo "DATE: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 echo ""
@@ -247,12 +247,47 @@ else
 fi
 echo ""
 
+# ─── 8. M1-M7 artifact readiness checks ──────────────────────────────────────
+echo "── 8. M1-M7 artifact readiness (modeling/fire_runs/20260623_contur3_m1_m7_completion/)"
+M1_DIR="modeling/fire_runs/20260623_contur3_m1_m7_completion"
+
+check_artifact() {
+  local label="$1"
+  local path="$2"
+  if [ -f "$path" ]; then
+    pass "${label} artifact present: ${path}"
+  else
+    fail "${label} artifact MISSING: ${path}"
+  fi
+}
+
+check_artifact "M1" "${M1_DIR}/M1_UNKNOWN_MARKETS_AUDIT.md"
+check_artifact "M1-SQL" "${M1_DIR}/M1_UNKNOWN_MARKETS_SQL.sql"
+check_artifact "M2" "${M1_DIR}/M2_ESPORTS_POLICY_AUDIT.md"
+check_artifact "M2-SQL" "${M1_DIR}/M2_ESPORTS_SQL.sql"
+check_artifact "M3" "${M1_DIR}/M3_MLB_OTHER_SPORTS_AUDIT.md"
+check_artifact "M3-SQL" "${M1_DIR}/M3_MLB_OTHER_SPORTS_SQL.sql"
+check_artifact "M4" "${M1_DIR}/M4_FOOTBALL_POLICY.md"
+check_artifact "M4-SQL" "${M1_DIR}/M4_FOOTBALL_POLICY_SQL.sql"
+check_artifact "M5" "${M1_DIR}/M5_TIMING_FRAMEWORK.md"
+check_artifact "M5-SQL" "${M1_DIR}/M5_TIMING_SQL.sql"
+check_artifact "M6" "${M1_DIR}/M6_FIREMODEL_LINKAGE_AUDIT.md"
+check_artifact "M6-SQL" "${M1_DIR}/M6_FIREMODEL_LINKAGE_SQL.sql"
+check_artifact "M7" "${M1_DIR}/M7_FOUNDER_REPORTS_SPEC.md"
+check_artifact "M7-NIGHT" "${M1_DIR}/M7_NIGHT_PLAN_EMAIL_CHECKLIST.md"
+check_artifact "M7-MORNING" "${M1_DIR}/M7_MORNING_LIVE_PROOF_CHECKLIST.md"
+check_artifact "P0-STATE" "${M1_DIR}/P0_BATTLE_OPERATOR_STATE.md"
+check_artifact "P0-CMDS" "${M1_DIR}/P0_TWO_COMMANDS_LEFT.md"
+check_artifact "NO-JQ-CMD" "${M1_DIR}/PHASE4_BATTLE_DUE_WINDOW_NO_JQ_WINDOWS.cmd"
+check_artifact "IRELAND-CMDS" "${M1_DIR}/IRELAND_FINAL_TWO_COMMANDS_AFTER_GO.md"
+echo ""
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 echo "═══════════════════════════════════════════════════"
 TOTAL=$((PASS + FAIL))
 if [ "$FAIL" -eq 0 ]; then
   echo -e "${GREEN}ALL PASS${NC}  ${PASS}/${TOTAL} checks passed"
-  echo "ALL_PASS_CONTUR3_BATTLE_PREMVP"
+  echo "ALL_PASS_CONTUR3_M1_M7_READY_PRELIVE"
   exit 0
 else
   echo -e "${RED}FAIL${NC}  ${PASS}/${TOTAL} passed, ${FAIL} failed"
