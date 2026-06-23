@@ -88,16 +88,20 @@ export interface EventExecutionQueueRow {
 export interface IrelandQueueCandidate {
   candidate_id: string;
   order_key: string;
+  idempotency_key: string | null;
   plan_run_id: string;
   rebalance_run_id: string;
+  reservation_id: string | null;
   match_family_key: string;
   event_slug: string | null;
   event_id: string | null;
   event_title: string | null;
+  sport: string | null;
   condition_id: string;
   token_id: string;
   side: string;
   market_slug: string | null;
+  market_title: string | null;
   market_family: string | null;
   score: number | null;
   coverage: number | null;

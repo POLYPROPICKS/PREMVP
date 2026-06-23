@@ -44,7 +44,7 @@ if [ -z "$SECRET" ]; then
 fi
 
 echo ""
-echo "═══ Contur3 PREMVP Doctor — Today ═══"
+echo "═══ Contur3 PREMVP Doctor — Battle 2026-06-23 ═══"
 echo "BASE: $BASE"
 echo "DATE: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 echo ""
@@ -64,6 +64,7 @@ echo "── 1. Auth gates (expect HTTP 401 without secret)"
 
 for path in \
   "/api/executor/queue" \
+  "/api/executor/queue/mark" \
   "/api/cron/night-event-reservations" \
   "/api/cron/event-rebalance"; do
   code=$(http_status "${BASE}${path}" "x-executor-secret: INVALID_BAD_KEY")
@@ -251,7 +252,7 @@ echo "════════════════════════�
 TOTAL=$((PASS + FAIL))
 if [ "$FAIL" -eq 0 ]; then
   echo -e "${GREEN}ALL PASS${NC}  ${PASS}/${TOTAL} checks passed"
-  echo "ALL_PASS_CONTUR3_TODAY_PREMVP"
+  echo "ALL_PASS_CONTUR3_BATTLE_PREMVP"
   exit 0
 else
   echo -e "${RED}FAIL${NC}  ${PASS}/${TOTAL} passed, ${FAIL} failed"
