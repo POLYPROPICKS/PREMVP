@@ -36,6 +36,17 @@ const PLAN_POOL = 200;
 const MARKET_LEVEL_KEY_RE =
   /halftime|half[\s-]time|first[\s-]half|1st[\s-]half|halftime[\s-]result|\bo\/u\b|over[\s/]under|total\s+corners|\bcorners\b|total\s+goals|\bspread\b|\bmoneyline\b|exact\s+score|player\s+prop|goalscorer/i;
 
+const HALFTIME_MARKET_RE =
+  /halftime|half[\s-]time|first[\s-]half|1st[\s-]half|leading\s+at\s+halftime|draw\s+at\s+halftime|halftime[\s-]result/i;
+
+function isHalftimeMarket(c: FireModelCandidate): boolean {
+  return (
+    HALFTIME_MARKET_RE.test(c.market_slug ?? "") ||
+    HALFTIME_MARKET_RE.test(c.event_slug ?? "") ||
+    HALFTIME_MARKET_RE.test(c.match_family_key ?? "")
+  );
+}
+
 function eventTierOf(c: FireModelCandidate): "TIER1" | "TIER2" | "TIER3" | "REJECTED" {
   if (c.strategy === "TIER1_CORE_STRICT_72_COV50") return "TIER1";
   if (c.strategy === "TIER2_SAFE_EXPAND_60_COV50") return "TIER2";
@@ -180,7 +191,8 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
 
   for (const [groupKey, arr] of groups.entries()) {
     const ranked = [...arr].sort(compareCandidateQuality);
-    const best = ranked[0];
+    const nonHalftimeRanked = ranked.filter((c) => !isHalftimeMarket(c));
+    const best = nonHalftimeRanked.length > 0 ? nonHalftimeRanked[0] : ranked[0];
     const startMs = best.diagnostics.game_start_iso
       ? new Date(best.diagnostics.game_start_iso).getTime()
       : NaN;
@@ -190,6 +202,12 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
     }
     // Event-level eligibility: best candidate must be a Tier1 event opportunity.
     if (eventTierOf(best) !== "TIER1") {
+      skippedNonTier1 += 1;
+      continue;
+    }
+    // Safety gate: if the best candidate is a halftime market, skip this event.
+    // Halftime markets cannot be executed at rebalance, so they cannot serve as anchors.
+    if (isHalftimeMarket(best)) {
       skippedNonTier1 += 1;
       continue;
     }
