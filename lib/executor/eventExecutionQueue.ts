@@ -33,8 +33,13 @@ import path from "path";
 const PLAN_POOL = 200;
 
 // Mirror of /api/executor/night-plan halftime block (P0E_BLOCK_HALFTIME_MARKETS_V1).
+// IMPORTANT: detection must use only market IDENTITY fields (slug/title/key),
+// never full JSON serialization or diagnostics metric fields (delta1hPp, price1hAgo, etc.).
 const HALFTIME_MARKET_RE =
   /halftime|half[\s-]time|first[\s-]half|1st[\s-]half|leading\s+at\s+halftime|draw\s+at\s+halftime|halftime[\s-]result/i;
+
+// Corners block: O/U corners and total corners markets are not live-executable under current contract.
+const CORNERS_MARKET_RE = /\bcorners?\b|total[\s_-]corners?|corners?[\s_-]total/i;
 
 function planTierLabel(c: FireModelCandidate): "TIER1" | "TIER2" | "TIER3" | "REJECTED" {
   if (c.strategy === "TIER1_CORE_STRICT_72_COV50") return "TIER1";
@@ -43,27 +48,64 @@ function planTierLabel(c: FireModelCandidate): "TIER1" | "TIER2" | "TIER3" | "RE
   return "REJECTED";
 }
 
+/**
+ * Halftime detection using only market identity fields.
+ * MUST NOT scan full row JSON or diagnostics metric fields.
+ * Checks: market_slug, event_slug, match_family_key, diagnostics.marketTitle,
+ * diagnostics.marketType, diagnostics.question, diagnostics.title.
+ */
 function isHalftime(c: FireModelCandidate): boolean {
+  // Identity-only fields — never full JSON
+  if (HALFTIME_MARKET_RE.test(c.market_slug ?? "")) return true;
+  if (HALFTIME_MARKET_RE.test(c.event_slug ?? "")) return true;
+  if (HALFTIME_MARKET_RE.test(c.match_family_key ?? "")) return true;
+  // Diagnostics market-identity sub-fields only
+  const diag = (c.diagnostics ?? {}) as Record<string, unknown>;
+  const diagMarketTitle = typeof diag.marketTitle === "string" ? diag.marketTitle : "";
+  const diagMarketType  = typeof diag.marketType === "string"  ? diag.marketType  : "";
+  const diagQuestion    = typeof diag.question === "string"    ? diag.question    : "";
+  const diagTitle       = typeof diag.title === "string"       ? diag.title       : "";
   return (
-    HALFTIME_MARKET_RE.test(c.market_slug ?? "") ||
-    HALFTIME_MARKET_RE.test(c.event_slug ?? "") ||
-    HALFTIME_MARKET_RE.test(c.match_family_key ?? "")
+    HALFTIME_MARKET_RE.test(diagMarketTitle) ||
+    HALFTIME_MARKET_RE.test(diagMarketType) ||
+    HALFTIME_MARKET_RE.test(diagQuestion) ||
+    HALFTIME_MARKET_RE.test(diagTitle)
   );
 }
 
 /**
- * Executable filter for the SINGLE selected market (LOCKED policy):
- *   Tier1 only, live_eligible, not halftime, condition_id + token_id + side present.
+ * Corners detection using only market identity fields.
+ * Corners markets are NOT live-executable under current contract (full-match only).
  */
-function isExecutableMarket(c: FireModelCandidate): boolean {
-  return (
-    planTierLabel(c) === EXECUTABLE_TIER &&
-    c.live_eligible === true &&
-    !isHalftime(c) &&
-    Boolean(c.condition_id) &&
-    Boolean(c.token_id) &&
-    Boolean(c.side)
-  );
+function isCorners(c: FireModelCandidate): boolean {
+  if (CORNERS_MARKET_RE.test(c.market_slug ?? "")) return true;
+  if (CORNERS_MARKET_RE.test(c.event_slug ?? "")) return true;
+  if (CORNERS_MARKET_RE.test(c.match_family_key ?? "")) return true;
+  const diag = (c.diagnostics ?? {}) as Record<string, unknown>;
+  const diagMarketTitle = typeof diag.marketTitle === "string" ? diag.marketTitle : "";
+  const diagQuestion    = typeof diag.question === "string"    ? diag.question    : "";
+  return CORNERS_MARKET_RE.test(diagMarketTitle) || CORNERS_MARKET_RE.test(diagQuestion);
+}
+
+/**
+ * Executable filter for the SINGLE selected market (LOCKED policy):
+ *   Tier1 only, live_eligible, not halftime, not corners,
+ *   condition_id + token_id + side present.
+ * Candidates are filtered BEFORE ranking so a high-score corners market
+ * cannot outrank a lower-score core spread.
+ */
+function isExecutableMarket(c: FireModelCandidate): {
+  executable: boolean;
+  rejectReason: string | null;
+} {
+  if (planTierLabel(c) !== EXECUTABLE_TIER) return { executable: false, rejectReason: "NOT_TIER1" };
+  if (!c.live_eligible) return { executable: false, rejectReason: c.live_rejection_reason ?? "NOT_LIVE_ELIGIBLE" };
+  if (isHalftime(c)) return { executable: false, rejectReason: "HALFTIME_NOT_LIVE_EXECUTABLE" };
+  if (isCorners(c)) return { executable: false, rejectReason: "CORNERS_NOT_LIVE_EXECUTABLE" };
+  if (!c.condition_id) return { executable: false, rejectReason: "MISSING_CONDITION_ID" };
+  if (!c.token_id) return { executable: false, rejectReason: "MISSING_TOKEN_ID" };
+  if (!c.side) return { executable: false, rejectReason: "MISSING_SIDE" };
+  return { executable: true, rejectReason: null };
 }
 
 function buildQueueRow(
@@ -351,7 +393,15 @@ export async function runEventRebalance(
         (c.live_rejection_reason === "SIDE_MAPPING_UNKNOWN_BLOCKED" ||
           c.live_block_reason === "SIDE_MAPPING_UNKNOWN_BLOCKED")
     );
-    const eventMarkets = eventCandidates.filter(isExecutableMarket).sort(compareCandidateQuality);
+    const eventMarkets = eventCandidates.filter((c) => {
+      const { executable, rejectReason } = isExecutableMarket(c);
+      if (!executable) {
+        console.log(
+          `[contur3-rebalance] CANDIDATE_BLOCKED market=${c.market_slug ?? c.event_slug ?? "?"} reason=${rejectReason}`,
+        );
+      }
+      return executable;
+    }).sort(compareCandidateQuality);
 
     if (eventMarkets.length === 0) {
       const isSideMissingBlocker = tier1WithCondToken.length > 0 && tier1SideBlocked.length > 0;

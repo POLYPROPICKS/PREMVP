@@ -338,10 +338,41 @@ function deriveMatchFamilyKey(row: any, identityText: string): {
     return { key, source: "team_pair", quality, canonicalEventKey: key };
   }
 
-  // Priority 2b: single-team spread title (no opponent) → provisional WEAK key.
-  // Resolved to parent pair group in post-processing if a matching pair:*:date key exists.
-  // Identity stays WEAK whether resolved or not — never live-eligible as standalone.
+  // Priority 2b: single-team spread title (no opponent) e.g. "Spread: England (-1.5)".
+  // Before marking WEAK, check if diagnostics.eventTitle or researchContext.eventTitle
+  // has a "vs" pair — if so, use that pair as the match_family_key (MEDIUM quality).
+  // This ensures full-match spread markets are grouped with their parent event reservation,
+  // not isolated as WEAK standalone keys that can never be live-eligible.
   if (!identityText.match(/\bvs\.?\b/i) && SINGLE_TEAM_SPREAD_RE.test(identityText)) {
+    const diagObj: Record<string, unknown> = row.diagnostics ?? {};
+    const resCtx =
+      diagObj.researchContext && typeof diagObj.researchContext === "object"
+        ? (diagObj.researchContext as Record<string, unknown>)
+        : null;
+    const eventTitleCandidates = [
+      typeof diagObj.eventTitle === "string" ? diagObj.eventTitle : "",
+      resCtx && typeof resCtx.eventTitle === "string" ? resCtx.eventTitle : "",
+      resCtx && typeof resCtx.eventSlug === "string" ? resCtx.eventSlug : "",
+    ];
+    for (const et of eventTitleCandidates) {
+      if (!et) continue;
+      const etLower = et.trim().toLowerCase();
+      const evPairMatch = etLower.match(/\b([\w\s'-]+?)\s+vs\.?\s+([\w\s'-]+?)(?:\s*[:|,]|$)/i);
+      if (evPairMatch) {
+        const team1 = evPairMatch[1].trim().toLowerCase().replace(/\s+/g, "-");
+        const team2 = evPairMatch[2].trim().toLowerCase().replace(/\s+/g, "-");
+        const gameStartIso = typeof diagObj.gameStartIso === "string" ? diagObj.gameStartIso : null;
+        const dateStr = gameStartIso ? gameStartIso.slice(0, 10) : "nodate";
+        const key = `pair:${team1}-vs-${team2}:${dateStr}`;
+        return {
+          key,
+          source: "team_pair",
+          quality: dateStr !== "nodate" ? "STRONG" : "MEDIUM",
+          canonicalEventKey: key,
+        };
+      }
+    }
+    // No event-title pair found: fall back to WEAK single-team spread key.
     const sm = SINGLE_TEAM_SPREAD_RE.exec(identityText)!;
     const team = sm[1].trim().toLowerCase().replace(/\s+/g, "-");
     const diag: Record<string, unknown> = row.diagnostics ?? {};
