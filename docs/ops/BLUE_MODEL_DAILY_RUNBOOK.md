@@ -159,7 +159,22 @@ That repo has no PREMVP scripts — "Missing script: contur3:blue-status" is exp
 npm run contur3:verify-live-market-guards
 ```
 
-Run this after any change to `lib/executor/eventExecutionQueue.ts` or `buildFireModelCandidates.ts`. Exit 0 = `CONTUR3_MARKET_GUARD_REGRESSION_PASS`. Exit 1 = fix before deploy.
+Run this after any change to `lib/executor/eventExecutionQueue.ts` or `buildFireModelCandidates.ts`. Exit 0 = `CONTUR3_MARKET_GUARD_REGRESSION_PASS`. Exit 1 = fix before deploy. Currently 12 test cases.
+
+**Blocked market categories (pre-ranking filter):**
+1. `HALFTIME_NOT_LIVE_EXECUTABLE` — halftime, half-time, first half, 1st half
+2. `CORNERS_NOT_LIVE_EXECUTABLE` — corners, total corners
+3. `PROP_NOT_LIVE_EXECUTABLE` — exact score, goalscorer, player shots/assists, outrights
+
+### Overnight Battle Audit
+
+```bash
+npm run contur3:overnight-battle-audit
+```
+
+Comprehensive one-command audit: queue status, forbidden active rows, order ledger, reservations, upcoming candidates. Writes JSON/CSV/MD + daily JSONL. Exit 0 = GO_READY or ARMED_WAITING.
+
+**NO_FUTURE_RESERVATIONS warning:** If audit reports this, it means `night_event_reservations` has no future rows. Night-reservations cron must run before T-60 of the earliest upcoming match. Trigger via Railway "Run Now" on `contur3-night-reservations-cron`.
 
 ---
 
