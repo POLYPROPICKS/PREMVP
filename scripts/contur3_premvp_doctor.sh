@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/contur3_premvp_doctor.sh
-# Contur3 PREMVP Production Health Doctor — Phase 3 hardened
+# Contur3 PREMVP Production Health Doctor — Today (2026-06-23+)
 #
 # Usage:
 #   BASE=https://polypropicks.com PPP_SECRET=<secret> bash scripts/contur3_premvp_doctor.sh
@@ -9,7 +9,7 @@
 #   PPP_SECRET | EXECUTOR_SECRET | EXECUTOR_CRON_SECRET
 #
 # Requires: curl, jq (both must be in PATH)
-# Prints ALL_PASS_PHASE3_PREMVP_AUTOMATION when all checks pass.
+# Prints ALL_PASS_CONTUR3_TODAY_PREMVP when all checks pass.
 
 set -euo pipefail
 
@@ -44,7 +44,7 @@ if [ -z "$SECRET" ]; then
 fi
 
 echo ""
-echo "═══ Contur3 PREMVP Doctor (Phase 3) ═══"
+echo "═══ Contur3 PREMVP Doctor — Today ═══"
 echo "BASE: $BASE"
 echo "DATE: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 echo ""
@@ -200,12 +200,58 @@ else
 fi
 echo ""
 
+# ─── 6. Cross-check: activeFuture>0 → next_due_iso must exist (queue) ────────
+echo "── 6. Cross-check: activeFuture>0 → queue next_due_iso must exist"
+if [ "$RES_ACTIVE_FUTURE" != "null" ] && [ "$RES_ACTIVE_FUTURE" != "0" ]; then
+  if [ "$q_next" = "null" ] || [ -z "$q_next" ]; then
+    fail "activeFuture=${RES_ACTIVE_FUTURE} but queue next_due_iso=null — queue cannot see upcoming reservations"
+  else
+    pass "activeFuture=${RES_ACTIVE_FUTURE} and queue next_due_iso=${q_next} ✓"
+  fi
+else
+  warn "activeFuture=0 — no future reservations to cross-check (expected before 17:00 cron)"
+fi
+echo ""
+
+# ─── 7. Queue candidate field validation (only when count > 0) ───────────────
+echo "── 7. Queue candidate field validation (skip if count=0)"
+if [ "$q_ok" = "true" ] && [ "$q_count" != "0" ] && [ "$q_count" != "null" ]; then
+  CAND_FAIL=0
+  while IFS= read -r cand; do
+    CID=$(echo "$cand" | jq -r '.condition_id // ""')
+    TID=$(echo "$cand" | jq -r '.token_id // ""')
+    SIDE=$(echo "$cand" | jq -r '.side // ""')
+    STAKE=$(echo "$cand" | jq -r '.stake_usd // 0')
+    TIER=$(echo "$cand" | jq -r '.tier // ""')
+    MFG=$(echo "$cand" | jq -r '.match_family_key // "?"')
+    OK=true
+    [ -z "$CID" ] && { fail "Candidate missing condition_id: ${MFG}"; OK=false; }
+    [ -z "$TID" ] && { fail "Candidate missing token_id: ${MFG}"; OK=false; }
+    [ -z "$SIDE" ] && { fail "Candidate missing side: ${MFG}"; OK=false; }
+    if [[ "$TIER" != *"TIER1"* ]]; then
+      fail "Candidate tier=${TIER} not TIER1: ${MFG}"
+      OK=false
+    fi
+    if [ "$OK" = "true" ]; then
+      pass "Candidate OK: ${MFG}  tier=${TIER}  stake=${STAKE}  side=${SIDE}  condition_id=set  token_id=set"
+    else
+      CAND_FAIL=$((CAND_FAIL + 1))
+    fi
+  done < <(echo "$q_json" | jq -c '.candidates[]' 2>/dev/null || true)
+  if [ "$CAND_FAIL" -eq 0 ]; then
+    pass "All ${q_count} queued candidate(s) have required fields"
+  fi
+else
+  pass "Queue empty (count=${q_count}) — no candidate field check before due window (expected)"
+fi
+echo ""
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 echo "═══════════════════════════════════════════════════"
 TOTAL=$((PASS + FAIL))
 if [ "$FAIL" -eq 0 ]; then
   echo -e "${GREEN}ALL PASS${NC}  ${PASS}/${TOTAL} checks passed"
-  echo "ALL_PASS_PHASE3_PREMVP_AUTOMATION"
+  echo "ALL_PASS_CONTUR3_TODAY_PREMVP"
   exit 0
 else
   echo -e "${RED}FAIL${NC}  ${PASS}/${TOTAL} passed, ${FAIL} failed"
