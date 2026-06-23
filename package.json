@@ -47,7 +47,8 @@
     "night:plan": "tsx scripts/send-night-portfolio-plan.ts",
     "night:plan:email": "tsx scripts/send-night-portfolio-plan.ts",
     "night:plan:alert": "tsx scripts/send-night-portfolio-plan.ts --alert-only --plan-time=17:45",
-    "visual:matrix": "node scripts/visual/capture-visual-matrix.mjs"
+    "visual:matrix": "node scripts/visual/capture-visual-matrix.mjs",
+    "contur3:doctor": "bash scripts/contur3_premvp_doctor.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",

@@ -28,6 +28,15 @@ async function handle(request: NextRequest) {
     const plan = await buildReservationPlan(Date.now());
     const result = await persistReservationPlan(plan, { force });
 
+    // Derive per-status counts from DB-backed rows (or just-inserted rows).
+    const statusBuckets: Record<string, number> = {};
+    for (const r of result.reservations) {
+      statusBuckets[r.status] = (statusBuckets[r.status] ?? 0) + 1;
+    }
+    const queued_count = statusBuckets["QUEUED"] ?? 0;
+    const skipped_count = (statusBuckets["SKIPPED"] ?? 0) + (statusBuckets["CANCELLED"] ?? 0);
+    const expired_count = statusBuckets["EXPIRED"] ?? 0;
+
     return NextResponse.json(
       {
         ok: true,
@@ -39,6 +48,10 @@ async function handle(request: NextRequest) {
         already_exists: result.already_exists,
         written_count: result.written_count,
         reserved_count: result.reserved_count,
+        queued_count,
+        skipped_count,
+        expired_count,
+        bad_market_level_count: plan.diagnostics.market_level_keys_skipped,
         by_sport: plan.diagnostics.by_sport,
         by_tier: plan.diagnostics.by_tier,
         diagnostics: plan.diagnostics,

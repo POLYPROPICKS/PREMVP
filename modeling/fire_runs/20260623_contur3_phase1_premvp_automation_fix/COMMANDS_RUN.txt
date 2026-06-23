@@ -1,0 +1,24 @@
+INSPECTION COMMANDS
+===================
+
+git status --short
+git rev-parse --short HEAD   → ffff635
+git log --oneline -10
+
+grep -RIn "candidates: never\[\]\|diagnostic_only\|EXECUTABLE_SOURCE_MOVED_TO_/api/executor/queue" \
+  app/api/executor/night-plan lib app scripts
+
+grep -RIn "event_execution_queue\|night_event_reservations\|next_due_iso\|ireland_autostart_expected" \
+  app/api lib/executor scripts
+
+grep -RIn "night-plan\|buildFireModelCandidates\|generated_signal_pairs" \
+  app/api/executor/queue app/api/cron/event-rebalance lib/executor/eventExecutionQueue.ts scripts
+
+VERIFICATION COMMANDS
+=====================
+
+npm run build                         → PASS (✓ Compiled successfully)
+bash -n scripts/contur3_premvp_doctor.sh  → SYNTAX OK
+git diff --stat
+git diff --check                      → only CRLF line-ending warnings (Windows), no content errors
+git status --short
