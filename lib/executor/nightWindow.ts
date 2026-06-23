@@ -117,6 +117,28 @@ export function latestEntryIso(gameStartMs: number): string {
   return new Date(gameStartMs - LATEST_ENTRY_MINUTES_BEFORE * 60_000).toISOString();
 }
 
+/** Minsk decimal hour (e.g. 16.5 = 16:30) for an instant. */
+export function minskHourOf(nowMs: number): number {
+  const shifted = new Date(nowMs + MINSK_UTC_OFFSET_HOURS * 3_600_000);
+  return shifted.getUTCHours() + shifted.getUTCMinutes() / 60;
+}
+
+// Reservation creation is blocked 08:00–16:30 Minsk (daytime guard).
+// Allowed: 16:30–24:00 and 00:00–08:00 Minsk (evening/night operational window).
+export const RESERVATION_CREATION_ALLOWED_FROM_MINSK = 16.5;  // 16:30
+export const RESERVATION_CREATION_BLOCKED_UNTIL_MINSK = 8.0;  // 08:00
+
+/**
+ * Returns true when it is safe to create tonight's reservation plan.
+ * Creation is blocked during daytime (08:00–16:30 Minsk) to prevent
+ * accidental stale-plan generation with matches that expire before the
+ * operational window opens.
+ */
+export function isInReservationCreationWindow(nowMs: number): boolean {
+  const h = minskHourOf(nowMs);
+  return h >= RESERVATION_CREATION_ALLOWED_FROM_MINSK || h < RESERVATION_CREATION_BLOCKED_UNTIL_MINSK;
+}
+
 /** Human label "DD MMM HH:mm Minsk / HH:mm UTC" for emails. */
 export function formatMinskUtc(iso: string): string {
   const ms = Date.parse(iso);

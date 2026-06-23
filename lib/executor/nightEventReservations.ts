@@ -401,3 +401,134 @@ export async function loadReservations(planRunId: string): Promise<NightEventRes
   if (error) throw new Error(`reservation load failed: ${error.message}`);
   return (data ?? []) as NightEventReservationRow[];
 }
+
+// ── Plan health diagnostics ────────────────────────────────────────────────
+
+export interface PlanHealth {
+  has_rows: boolean;
+  total_count: number;
+  reserved_count: number;
+  queued_count: number;
+  skipped_count: number;
+  expired_count: number;
+  bad_market_level_count: number;
+  active_future_count: number;
+  earliest_game_start_iso: string | null;
+  latest_game_start_iso: string | null;
+  is_expired_only: boolean;
+  needs_rebuild: boolean;
+  rebuild_allowed: boolean;
+}
+
+/**
+ * Read existing plan rows from DB and compute health diagnostics.
+ * Pure read — no writes. Returns zero-counts when the plan does not exist yet.
+ */
+export async function loadPlanStatus(planRunId: string, nowMs: number): Promise<PlanHealth> {
+  const { supabaseAdmin } = await import("@/lib/supabase/server");
+  const { data, error } = await supabaseAdmin
+    .from("night_event_reservations")
+    .select("*")
+    .eq("plan_run_id", planRunId)
+    .order("reservation_rank", { ascending: true });
+  if (error) throw new Error(`loadPlanStatus: ${error.message}`);
+
+  const rows = (data ?? []) as NightEventReservationRow[];
+  const total = rows.length;
+
+  const statusBuckets: Record<string, number> = {};
+  for (const r of rows) statusBuckets[r.status] = (statusBuckets[r.status] ?? 0) + 1;
+
+  const reservedCount = statusBuckets["RESERVED"] ?? 0;
+  const rebalancePendingCount = statusBuckets["REBALANCE_PENDING"] ?? 0;
+  const queuedCount = statusBuckets["QUEUED"] ?? 0;
+  const skippedCount = (statusBuckets["SKIPPED"] ?? 0) + (statusBuckets["CANCELLED"] ?? 0);
+  const expiredCount = statusBuckets["EXPIRED"] ?? 0;
+
+  const ACTIVE_STATUSES = new Set(["RESERVED", "REBALANCE_PENDING", "QUEUED"]);
+  const activeFutureRows = rows.filter(
+    (r) => ACTIVE_STATUSES.has(r.status) && !!r.game_start_iso && Date.parse(r.game_start_iso) > nowMs
+  );
+  const activeFutureCount = activeFutureRows.length;
+
+  // Post-hoc check: rows whose match_family_key looks like a market-level prop line.
+  const badMarketLevelCount = rows.filter((r) => MARKET_LEVEL_KEY_RE.test(r.match_family_key)).length;
+
+  const gameStartTimes = rows
+    .map((r) => r.game_start_iso)
+    .filter((s): s is string => !!s)
+    .sort();
+
+  const isExpiredOnly = total > 0 && activeFutureCount === 0;
+  const needsRebuild = isExpiredOnly || badMarketLevelCount > 0;
+
+  return {
+    has_rows: total > 0,
+    total_count: total,
+    reserved_count: reservedCount + rebalancePendingCount,
+    queued_count: queuedCount,
+    skipped_count: skippedCount,
+    expired_count: expiredCount,
+    bad_market_level_count: badMarketLevelCount,
+    active_future_count: activeFutureCount,
+    earliest_game_start_iso: gameStartTimes[0] ?? null,
+    latest_game_start_iso: gameStartTimes[gameStartTimes.length - 1] ?? null,
+    is_expired_only: isExpiredOnly,
+    needs_rebuild: needsRebuild,
+    rebuild_allowed: true,
+  };
+}
+
+export interface ForceRebuildResult {
+  plan_run_id: string;
+  deleted_queue_count: number;
+  deleted_reservation_count: number;
+  plan: ReservationPlan;
+  persist: PersistReservationsResult;
+  plan_health: PlanHealth;
+}
+
+/**
+ * CEO-approved force rebuild for the current plan_run_id.
+ * Deletes event_execution_queue rows AND night_event_reservations rows for this plan,
+ * then rebuilds fresh from the current universe.
+ * Only touches the two Contur3 tables for the current plan_run_id.
+ */
+export async function executeForceRebuild(nowMs: number): Promise<ForceRebuildResult> {
+  const { supabaseAdmin } = await import("@/lib/supabase/server");
+  const planRunId = buildPlanRunId(nowMs);
+
+  // 1. Delete event_execution_queue rows for this plan_run_id.
+  const { data: deletedQueue, error: queueErr } = await supabaseAdmin
+    .from("event_execution_queue")
+    .delete()
+    .eq("plan_run_id", planRunId)
+    .select("id");
+  if (queueErr) throw new Error(`forceRebuild queue delete: ${queueErr.message}`);
+  const deletedQueueCount = deletedQueue?.length ?? 0;
+
+  // 2. Delete night_event_reservations rows for this plan_run_id.
+  const { data: deletedRes, error: resErr } = await supabaseAdmin
+    .from("night_event_reservations")
+    .delete()
+    .eq("plan_run_id", planRunId)
+    .select("id");
+  if (resErr) throw new Error(`forceRebuild reservation delete: ${resErr.message}`);
+  const deletedResCount = deletedRes?.length ?? 0;
+
+  // 3. Rebuild from current universe.
+  const plan = await buildReservationPlan(nowMs);
+  const persist = await persistReservationPlan(plan, { force: false });
+
+  // 4. Read back health of the new plan.
+  const planHealth = await loadPlanStatus(planRunId, nowMs);
+
+  return {
+    plan_run_id: planRunId,
+    deleted_queue_count: deletedQueueCount,
+    deleted_reservation_count: deletedResCount,
+    plan,
+    persist,
+    plan_health: planHealth,
+  };
+}
