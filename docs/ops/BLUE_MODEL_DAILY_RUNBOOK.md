@@ -48,13 +48,22 @@ node scripts/contur3/run-event-rebalance.mjs
 
 **Ops report email cron** (`ops-report-email-cron`):
 ```
-tsx scripts/founder-email-dispatcher.ts --mode=morning
+node scripts/contur3/run-ops-report-email.mjs
 ```
 (monitoring rail — email failure does not affect Ireland watcher)
 
-Required env vars (Railway, both cron services):
-- `EXECUTOR_CANDIDATES_SECRET` (or `EXECUTOR_SECRET` / `PPP_SECRET`)
-- `RESEND_API_KEY` and `EMAIL_FROM` required for email crons
+Required env vars for ops email cron (Railway → service → Variables):
+- `EXECUTOR_CANDIDATES_SECRET` (or `EXECUTOR_SECRET` / `PPP_SECRET`) — runner gate
+- `RESEND_API_KEY` — Resend API key for email transport
+- `EMAIL_FROM` — verified sender address (e.g. `noreply@yourdomain.com`)
+- `MORNING_MODEL_EMAIL_TO` or `FOUNDER_EMAIL_TO` — optional; defaults to `alexgrushin@gmail.com`
+- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` — required by resolver sub-scripts
+
+If email fails, inspect saved JSON report:
+```
+modeling/fire_runs/contur3-blue-model/<timestamp>_ops_report_email.json
+```
+The report includes exit_code, stdout, stderr, and missing_env_names.
 
 Do NOT use `node -e` / ad-hoc curl snippets as permanent Railway cron commands.
 
