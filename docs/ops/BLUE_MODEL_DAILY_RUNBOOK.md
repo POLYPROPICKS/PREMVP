@@ -52,18 +52,36 @@ node scripts/contur3/run-ops-report-email.mjs
 ```
 (monitoring rail — email failure does not affect Ireland watcher)
 
-Required env vars for ops email cron (Railway → service → Variables):
-- `EXECUTOR_CANDIDATES_SECRET` (or `EXECUTOR_SECRET` / `PPP_SECRET`) — runner gate
+**Pipeline sequence (deterministic, filesystem-first):**
+```
+1. resolve:signals:live-priority  — refresh generated_signal_pairs (Supabase)
+2. resolve:signals:cron           — resolve expired signals
+3. verify:resolver-pipeline       — validate resolver state
+4. morning:model-report           — fetch DB → write CSV/MD/XLSX → send email via Resend
+```
+Artifacts are always written to filesystem before email is sent.
+Email send is the final step inside `morning-model-report`.
+
+**Required Railway env vars** (ops-report-email-cron service → Variables):
+- `SUPABASE_URL` — DB connection for signal resolver and report scripts
+- `SUPABASE_SERVICE_ROLE_KEY` — DB service key
 - `RESEND_API_KEY` — Resend API key for email transport
 - `EMAIL_FROM` — verified sender address (e.g. `noreply@yourdomain.com`)
 - `MORNING_MODEL_EMAIL_TO` or `FOUNDER_EMAIL_TO` — optional; defaults to `alexgrushin@gmail.com`
-- `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` — required by resolver sub-scripts
 
-If email fails, inspect saved JSON report:
+**No executor secret required.** The ops email pipeline is CLI-only and does not call any PREMVP executor endpoints.
+
+**JSON report location:**
 ```
 modeling/fire_runs/contur3-blue-model/<timestamp>_ops_report_email.json
 ```
-The report includes exit_code, stdout, stderr, and missing_env_names.
+
+**How to interpret runner output:**
+| Verdict | Meaning |
+|---|---|
+| `OPS_REPORT_EMAIL_OK` | Pipeline ran, email sent |
+| `OPS_REPORT_EMAIL_FAIL` | Pipeline ran but failed (see JSON report stdout/stderr) |
+| `OPS_EMAIL_CODE_VALIDATED_RUNTIME_ENV_PENDING` | Missing env vars — check JSON `missing_env_names` |
 
 Do NOT use `node -e` / ad-hoc curl snippets as permanent Railway cron commands.
 

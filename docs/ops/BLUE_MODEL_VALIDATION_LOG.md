@@ -86,7 +86,7 @@ Hard-stop files (`/tmp/PPP_LIVE_HARD_STOP`, `data/PPP_LIVE_HARD_STOP`) confirmed
 
 ### Ops Email Status
 
-**2026-06-23 — hardened runner patch applied (session 2)**
+**2026-06-23 — pipeline sequence verified + executor secret gate removed (session 3)**
 
 | Field | Value |
 |---|---|
@@ -95,21 +95,32 @@ Hard-stop files (`/tmp/PPP_LIVE_HARD_STOP`, `data/PPP_LIVE_HARD_STOP`) confirmed
 | Code syntax check | PASS |
 | Build | PASS |
 | Runtime verdict | `OPS_EMAIL_CODE_VALIDATED_RUNTIME_ENV_PENDING` |
-| Missing env locally | `RESEND_API_KEY`, `EMAIL_FROM`, `EXECUTOR_CANDIDATES_SECRET` |
-| Missing env on Railway (must verify) | `RESEND_API_KEY`, `EMAIL_FROM` |
+| Missing env locally | `RESEND_API_KEY`, `EMAIL_FROM`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` |
 
-**Root cause of email failure:** `RESEND_API_KEY` and/or `EMAIL_FROM` likely not set in Railway ops-report-email-cron service variables.
+**Root cause of Railway cron failure (confirmed):**
+Runner previously required `EXECUTOR_CANDIDATES_SECRET`/`EXECUTOR_SECRET`/`PPP_SECRET` as preflight gate.
+This secret is NOT present in `ops-report-email-cron` Railway service (only in execution service).
+Pipeline failed at preflight — before any DB query or artifact was written.
 
-**Runner improvements in this patch:**
-- Changed `stdio: 'inherit'` → `encoding: 'utf8'` (pipe) so stdout/stderr are captured and saved to JSON report
-- Added pre-flight env var check: exits with `OPS_EMAIL_CODE_VALIDATED_RUNTIME_ENV_PENDING` if `RESEND_API_KEY` or `EMAIL_FROM` are absent
-- `missing_env_names` array included in JSON report
-- Secrets redacted in saved report
+**Pipeline sequence (verified filesystem-first):**
+The `founder-email-dispatcher.ts --mode=morning` sequence is:
+1. `resolve:signals:live-priority` → Supabase write (generated_signal_pairs)
+2. `resolve:signals:cron` → Supabase write (expire/resolve signals)
+3. `verify:resolver-pipeline` → read-only validation
+4. `morning:model-report --send-test` → fetch DB → write CSV/MD/XLSX to `modeling/morning_model_report/<date>/` → send email via Resend
+
+Email is always last. Artifacts are verified to be non-empty before send (dataset staleness check throws if rows ≤ baseline).
+
+**Fix applied (session 3):**
+- Removed `getSecret()` / executor secret gate from runner (wrong gate for email-only pipeline)
+- Pre-flight checks now: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`
+- `phase` field added to JSON report: `preflight_failed` / `pipeline_failed` / `complete`
+- stdout/stderr captured and saved in JSON report
 
 **Operator action required:**
-1. In Railway → `ops-report-email-cron` service → Variables, verify `RESEND_API_KEY` and `EMAIL_FROM` are set
-2. Change Start Command to: `node scripts/contur3/run-ops-report-email.mjs`
-3. After next cron run, check `modeling/fire_runs/contur3-blue-model/<timestamp>_ops_report_email.json` for verdict
+1. In Railway → `ops-report-email-cron` → Variables: confirm `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `EMAIL_FROM` are set (no executor secret needed)
+2. Start Command must be: `node scripts/contur3/run-ops-report-email.mjs`
+3. After next run, check `modeling/fire_runs/contur3-blue-model/<timestamp>_ops_report_email.json` for verdict and stdout/stderr
 
 Email is a **monitoring rail**, not an execution gate. Ireland watcher is unaffected by email failures.
 
