@@ -54,13 +54,18 @@ node scripts/contur3/run-ops-report-email.mjs
 
 **Pipeline sequence (deterministic, filesystem-first):**
 ```
-1. resolve:signals:live-priority  — refresh generated_signal_pairs (Supabase)
-2. resolve:signals:cron           — resolve expired signals
-3. verify:resolver-pipeline       — validate resolver state
-4. morning:model-report           — fetch DB → write CSV/MD/XLSX → send email via Resend
+1. resolve:signals:live-priority  — query executor_order_events (Supabase, last 24h)
+                                     → prioritize resolving condition_id::token_id pairs
+                                     → no bets last 24h: SUPABASE_EMPTY_LAST_24H, continue
+2. resolve:signals:cron           — resolve expired signals from generated_signal_pairs
+3. verify:resolver-pipeline       — validate resolver state (read-only)
+4. morning:model-report           — fetch Supabase → write CSV/MD/XLSX under
+                                     modeling/morning_model_report/<current_run>/
+                                     → send email via Resend (LAST STEP)
 ```
 Artifacts are always written to filesystem before email is sent.
-Email send is the final step inside `morning-model-report`.
+Old report CSV is NEVER used as input. All data comes from Supabase.
+If no live bets in last 24h: resolver continues with empty target list (not an error).
 
 **Required Railway env vars** (ops-report-email-cron service → Variables):
 - `SUPABASE_URL` — DB connection for signal resolver and report scripts

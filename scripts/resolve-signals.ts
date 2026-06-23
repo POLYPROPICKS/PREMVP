@@ -5,7 +5,6 @@
 //   npm run resolve:signals -- --write    # write mode
 
 import { loadEnvConfig } from "@next/env";
-import { existsSync, readdirSync, readFileSync } from "fs";
 import path from "path";
 import {
   fetchGammaMarketByConditionId,
@@ -21,15 +20,6 @@ const DEDUPE_STRICT = process.argv.includes("--dedupe-strict");
 // resolve before generic backlog. Do not remove or bypass this without an
 // equivalent priority queue for executed condition_id::token_id keys.
 const PRIORITY_LIVE_LEDGER = process.argv.includes("--priority-live-ledger");
-
-const DEFAULT_LIVE_LEDGER_PATH = path.join(
-  process.cwd(),
-  "modeling",
-  "morning_model_report",
-  "20260618_0600UTC",
-  "tables",
-  "night_execution_detail.csv",
-);
 
 type ResolverOrderMode = "newest" | "oldest";
 
@@ -88,106 +78,93 @@ const maxUpdates = (() => {
   return Number.isFinite(n) ? Math.min(Math.max(n, 1), 500) : WRITE_MODE ? 1 : Infinity;
 })();
 
-function csvSplitLine(line: string): string[] {
-  const cells: string[] = [];
-  let cell = "";
-  let quoted = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (quoted && line[i + 1] === '"') {
-        cell += '"';
-        i++;
-      } else {
-        quoted = !quoted;
-      }
-    } else if (ch === "," && !quoted) {
-      cells.push(cell);
-      cell = "";
-    } else {
-      cell += ch;
+/**
+ * Load live-priority resolver targets from executor_order_events (Supabase).
+ * Replaces the old filesystem CSV dependency \u2014 Railway filesystem is ephemeral
+ * and the old night_execution_detail.csv was a report OUTPUT, not a source of truth.
+ *
+ * Queries last 24h of non-dry-run order events where live_confirm=true or success=true.
+ * Returns [] if no live bets in window (not an error).
+ * Throws LIVE_PRIORITY_LEDGER_SUPABASE_QUERY_FAILED on DB error.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function loadPriorityLiveTargets(supabase: any): Promise<PriorityLiveTarget[]> {
+  const since = new Date(Date.now() - 24 * 3_600_000).toISOString();
+
+  const { data, error } = await supabase
+    .from("executor_order_events")
+    .select(
+      "id, created_at, order_status, dry_run, live_confirm, success, " +
+      "market_slug, selected_side, side, token_id, event_type, " +
+      "candidate_snapshot_json, raw_event_json"
+    )
+    .eq("dry_run", false)
+    .gt("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(500);
+
+  if (error) {
+    throw new Error(`LIVE_PRIORITY_LEDGER_SUPABASE_QUERY_FAILED: ${error.message}`);
+  }
+
+  const rows = (data ?? []) as unknown as Record<string, unknown>[];
+
+  // Keep only rows that represent actual live execution attempts
+  const liveRows = rows.filter((r) => r.live_confirm === true || r.success === true);
+
+  if (liveRows.length === 0) {
+    console.log("[resolve-signals] LIVE_PRIORITY_LEDGER_SUPABASE_EMPTY_LAST_24H");
+    return [];
+  }
+
+  function safeStr(obj: unknown, key: string): string {
+    if (obj !== null && typeof obj === "object") {
+      const v = (obj as Record<string, unknown>)[key];
+      return typeof v === "string" && v.length > 0 ? v : "";
     }
-  }
-  cells.push(cell);
-  return cells;
-}
-
-function parseCsv(text: string): Record<string, string>[] {
-  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) return [];
-  const headers = csvSplitLine(lines[0]);
-  return lines.slice(1).map((line) => {
-    const cells = csvSplitLine(line);
-    return Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? ""]));
-  });
-}
-
-function findPriorityLiveLedgerPath(): string | null {
-  const explicit = process.argv.find((a) => a.startsWith("--live-ledger-path="));
-  if (explicit) {
-    const value = explicit.split("=").slice(1).join("=");
-    return existsSync(value) ? value : null;
-  }
-  if (existsSync(DEFAULT_LIVE_LEDGER_PATH)) return DEFAULT_LIVE_LEDGER_PATH;
-
-  const roots = [
-    path.join(process.cwd(), "modeling", "morning_model_report"),
-    path.join(process.cwd(), "reports", "morning"),
-  ];
-  const stack = roots.filter(existsSync);
-  while (stack.length) {
-    const dir = stack.pop() as string;
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) stack.push(full);
-      if (
-        entry.isFile() &&
-        /night_execution_(detail|truth).*\.csv$/i.test(entry.name)
-      ) {
-        return full;
-      }
-    }
-  }
-  return null;
-}
-
-function loadPriorityLiveTargets(): PriorityLiveTarget[] {
-  const sourcePath = findPriorityLiveLedgerPath();
-  if (!sourcePath) {
-    throw new Error(
-      `LIVE_PRIORITY_LEDGER_ARTIFACT_MISSING: expected ${DEFAULT_LIVE_LEDGER_PATH}`,
-    );
+    return "";
   }
 
-  const rows = parseCsv(readFileSync(sourcePath, "utf8"));
   const byKey = new Map<string, PriorityLiveTarget>();
-  for (const row of rows) {
-    const executionType = row.execution_type ?? "";
-    const orderStatus = row.order_status ?? "";
-    const isLive =
-      /live/i.test(executionType) || /\b(sent|filled|matched)\b/i.test(orderStatus);
-    const isDryRun = /dry/i.test(executionType) || /dry-run/i.test(orderStatus);
-    if (!isLive || isDryRun) continue;
+  for (const row of liveRows) {
+    const snap = row.candidate_snapshot_json as Record<string, unknown> | null;
+    const raw = row.raw_event_json as Record<string, unknown> | null;
 
-    const sourceRef = row.source_ref ?? "";
-    const conditionId = sourceRef.match(/condition_id=([^;\s]+)/i)?.[1];
+    const conditionId =
+      safeStr(snap, "condition_id") ||
+      safeStr(raw, "condition_id");
     const tokenId =
-      sourceRef.match(/(?:selected_token_id|token_id)=([^;\s]+)/i)?.[1];
+      (typeof row.token_id === "string" && row.token_id ? row.token_id : "") ||
+      safeStr(snap, "token_id") ||
+      safeStr(snap, "selected_token_id");
+
     if (!conditionId || !tokenId) continue;
 
     const key = `${conditionId}::${tokenId}`;
     byKey.set(key, {
       condition_id: conditionId,
       selected_token_id: tokenId,
-      event: row.event ?? "",
-      market: row.market ?? "",
-      side: row.side ?? "",
-      execution_type: executionType,
-      order_status: orderStatus,
-      source_path: sourcePath,
+      event:
+        safeStr(snap, "event_slug") ||
+        safeStr(raw, "event_slug") ||
+        safeStr(snap, "match_family_key") ||
+        safeStr(raw, "match_family_key"),
+      market:
+        (typeof row.market_slug === "string" ? row.market_slug : "") ||
+        safeStr(snap, "market_slug"),
+      side:
+        (typeof row.selected_side === "string" ? row.selected_side : "") ||
+        (typeof row.side === "string" ? row.side : "") ||
+        safeStr(snap, "selected_outcome"),
+      execution_type: typeof row.event_type === "string" ? row.event_type : "live",
+      order_status: typeof row.order_status === "string" ? row.order_status : "",
+      source_path: "executor_order_events:supabase",
     });
   }
-  return [...byKey.values()];
+
+  const targets = [...byKey.values()];
+  console.log(`[resolve-signals] LIVE_PRIORITY_LEDGER_SUPABASE_ROWS_LOADED count=${targets.length}`);
+  return targets;
 }
 
 // ---- Main ------------------------------------------------------------------
@@ -271,7 +248,7 @@ async function main() {
   let livePriorityRowsUpdated = 0;
 
   if (PRIORITY_LIVE_LEDGER) {
-    const targets = loadPriorityLiveTargets();
+    const targets = await loadPriorityLiveTargets(supabase);
     livePriorityTargetsLoaded = targets.length;
     console.log(
       `[resolve-signals] Live priority targets loaded: ${livePriorityTargetsLoaded}` +

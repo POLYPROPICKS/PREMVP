@@ -124,6 +124,65 @@ Email is always last. Artifacts are verified to be non-empty before send (datase
 
 Email is a **monitoring rail**, not an execution gate. Ireland watcher is unaffected by email failures.
 
+---
+
+## 2026-06-23 — Live-priority ledger: Supabase source fix (session 4)
+
+**Validated by:** Claude Code (Sonnet 4.6), session 2026-06-23
+
+### Bug Found and Fixed
+
+| Field | Value |
+|---|---|
+| Broken script | `scripts/resolve-signals.ts` — `--priority-live-ledger` path |
+| Old wrong behavior | Read `modeling/morning_model_report/20260618_0600UTC/tables/night_execution_detail.csv` — a hardcoded old report OUTPUT used as INPUT |
+| Failure on Railway | `LIVE_PRIORITY_LEDGER_ARTIFACT_MISSING` — Railway filesystem is ephemeral, old CSV never exists |
+| New correct behavior | Query `executor_order_events` Supabase table, last 24h, `dry_run=false`, `live_confirm=true OR success=true` |
+
+### Source of Truth
+
+| Table | Purpose |
+|---|---|
+| `executor_order_events` | All order events from Ireland watcher. Live bets have `dry_run=false` and `live_confirm=true` or `success=true`. Columns: `token_id`, `order_status`, `market_slug`, `selected_side`, `candidate_snapshot_json` (has `condition_id`, `event_slug`). |
+
+### Resolver Behavior After Fix
+
+| Case | Log | Exit |
+|---|---|---|
+| Live bets found in last 24h | `LIVE_PRIORITY_LEDGER_SUPABASE_ROWS_LOADED count=<n>` | 0 |
+| No live bets last 24h (ARMED_WAITING) | `LIVE_PRIORITY_LEDGER_SUPABASE_EMPTY_LAST_24H` | 0 |
+| Supabase query failed | `LIVE_PRIORITY_LEDGER_SUPABASE_QUERY_FAILED: <msg>` | 1 |
+
+### Bounded Test Result
+
+```
+npx tsx scripts/resolve-signals.ts --priority-live-ledger --dedupe-strict --limit=5 --max-updates=5
+→ LIVE_PRIORITY_LEDGER_SUPABASE_EMPTY_LAST_24H  (ARMED_WAITING, no live bets yet)
+→ EXIT 0
+```
+No `ARTIFACT_MISSING`. No old CSV reference.
+
+### Fresh Artifact Generation (morning-model-report)
+
+Confirmed: `morning-model-report.ts` fetches Supabase data (`fetchAllResolvedRows`), writes fresh CSV/MD/XLSX to `modeling/morning_model_report/<current_run>/`, then sends email. Email is always last. Old CSV is never an input.
+
+### Build/Verification
+
+| Check | Result |
+|---|---|
+| `npm run build` | PASS |
+| `git diff --check` | PASS (LF/CRLF warnings only) |
+| `node -c run-ops-report-email.mjs` | SYNTAX_OK |
+| Bounded resolver test | EXIT 0 — correct Supabase path |
+
+### Commit
+
+`Ops: source email live priority from Supabase bets ledger`
+
+### Next Railway Action
+
+Deploy latest `main` → Railway `ops-report-email-cron` → **Run now** → inspect JSON report at `modeling/fire_runs/contur3-blue-model/<timestamp>_ops_report_email.json`.
+
 ### Final Verdict
 
 ```
