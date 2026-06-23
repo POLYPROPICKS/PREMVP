@@ -48,7 +48,10 @@
     "night:plan:email": "tsx scripts/send-night-portfolio-plan.ts",
     "night:plan:alert": "tsx scripts/send-night-portfolio-plan.ts --alert-only --plan-time=17:45",
     "visual:matrix": "node scripts/visual/capture-visual-matrix.mjs",
-    "contur3:doctor": "bash scripts/contur3_premvp_doctor.sh"
+    "contur3:doctor": "bash scripts/contur3_premvp_doctor.sh",
+    "contur3:night-reservations": "node scripts/contur3/run-night-reservations.mjs",
+    "contur3:event-rebalance": "node scripts/contur3/run-event-rebalance.mjs",
+    "contur3:blue-status": "node scripts/contur3/blue-model-status.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
