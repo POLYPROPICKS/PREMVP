@@ -954,7 +954,7 @@ export async function buildFireModelCandidates(
         : liveEligible
         ? "UNKNOWN_BLOCKED"
         : "UNKNOWN_BLOCKED";
-    if (sideMappingStatus === "UNKNOWN_BLOCKED" && liveEligible) {
+    if (sideMappingStatus === "UNKNOWN_BLOCKED" && liveEligible && tier !== "TIER1_CORE_STRICT_72_COV50") {
       liveEligible = false;
       liveRejectionReason = "SIDE_MAPPING_UNKNOWN_BLOCKED";
     }
