@@ -69,9 +69,11 @@ async function main() {
   const nextDueIso = queueBody.next_due_iso ?? queueBody.nextDueIso ?? rebalanceBody.next_due_iso ?? null;
   const nextDueReservation = queueBody.next_due_reservation ?? queueBody.nextDueReservation ?? null;
 
-  // Ireland contract fields from first candidate (read-only check)
+  // Ireland contract: check top-level queueBody first, then first candidate
   let irelandContract = null;
-  if (Array.isArray(candidates) && candidates.length > 0) {
+  if (queueBody.ireland_contract && typeof queueBody.ireland_contract === 'object') {
+    irelandContract = queueBody.ireland_contract;
+  } else if (Array.isArray(candidates) && candidates.length > 0) {
     const c = candidates[0];
     irelandContract = {
       market_id: c.market_id ?? c.marketId ?? null,
@@ -136,15 +138,22 @@ async function main() {
   console.log(`queue source:         ${report.queue.source}`);
   console.log(`candidate_count:      ${report.queue.candidate_count}`);
   console.log(`next_due_iso:         ${report.next_due_iso}`);
-  console.log(`next_due_reservation: ${report.next_due_reservation}`);
-  console.log(`ireland_contract:     ${report.ireland_contract ? JSON.stringify(report.ireland_contract) : 'none'}`);
+  console.log(`next_due_reservation: ${report.next_due_reservation != null ? JSON.stringify(report.next_due_reservation, null, 2) : 'MISSING'}`);
+  console.log(`ireland_contract:     ${report.ireland_contract != null ? JSON.stringify(report.ireland_contract, null, 2) : 'MISSING'}`);
   console.log(`rebalance dryRun ok:  ${report.rebalance_dry_run.ok}`);
   if (errors.length) console.log(`errors:               ${errors.join('; ')}`);
   console.log(`diagnostic_report_path: ${logPath}`);
   console.log('');
   console.log(`VERDICT: ${verdict}`);
 
-  process.exit(verdict === 'BLUE_MODEL_NO_GO' ? 1 : 0);
+  // Set exit code without calling process.exit() immediately.
+  // This lets the undici connection pool drain naturally and avoids the
+  // Windows libuv assertion (UV_HANDLE_CLOSING) that fires when process.exit()
+  // is called while fetch handles are still in a closing state.
+  process.exitCode = verdict === 'BLUE_MODEL_NO_GO' ? 1 : 0;
+
+  // Unref'd timeout: exits as soon as the event loop is empty, or after 3s max.
+  setTimeout(() => process.exit(process.exitCode), 3000).unref();
 }
 
 main();
