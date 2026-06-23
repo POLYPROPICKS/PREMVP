@@ -196,6 +196,65 @@ Meaning:
 
 ---
 
+## 2026-06-23 — England vs Ghana incident: market guard hardening (session 5)
+
+**Validated by:** Claude Code (Sonnet 4.6), session 2026-06-23
+
+### Incident Summary
+
+| Field | Value |
+|---|---|
+| Event | England vs Ghana, WC 2026 group stage |
+| Expected selection | Spread: England (-1.5) — valid Tier1, full-match core spread |
+| Actual selection | O/U 8.5 Total Corners — forbidden market |
+
+### Root Causes (both fixed in commit 55844ac)
+
+**Bug 1 — Full-JSON halftime scan false positive:**
+`isHalftime()` scanned entire JSON including metric fields (`delta1hPp`, `price1hAgo`). "1hPp" triggered `\b1st[\s-]half` pattern. Result: spread candidate blocked with `HALFTIME_NOT_LIVE_EXECUTABLE`, corners candidate not blocked and selected by ranking.
+
+**Fix:** `isHalftime()` now checks only market identity fields: `market_slug`, `event_slug`, `match_family_key`, `diagnostics.marketTitle/marketType/question/title`. No full JSON scan.
+
+**Bug 2 — Corners filter ran after sort:**
+`isCorners()` was missing entirely; halftime filter was the only gate. With spread falsely halftime-blocked, corners was the top-ranked surviving candidate.
+
+**Fix:** Added `isCorners()`. `isExecutableMarket()` now returns `{executable, rejectReason}` and checks corners BEFORE ranking (filter runs before `.sort(compareCandidateQuality)`).
+
+**Bug 3 — Single-team spread identity resolves WEAK:**
+"Spread: England (-1.5)" has no "vs" in market title → `SINGLE_TEAM_SPREAD_RE` path → `WEAK` key → `WEAK_MATCH_FAMILY_KEY_LIVE_BLOCKED` → `live_eligible=false`. Spread removed before market selection.
+
+**Fix:** `deriveMatchFamilyKey()` Priority 2b now checks `diagnostics.eventTitle` and `researchContext.eventTitle/eventSlug` for "vs" pair before falling to WEAK. If found → returns `pair:team1-vs-team2:date` (STRONG or MEDIUM key). "England vs Ghana" in diagnostics → `pair:england-vs-ghana:2026-06-23` → live eligible.
+
+### Regression Guard
+
+```bash
+npm run contur3:verify-live-market-guards
+```
+
+8 test cases covering: England/Ghana spread (EXECUTABLE), corners (CORNERS_NOT_LIVE_EXECUTABLE), halftime variants (HALFTIME_NOT_LIVE_EXECUTABLE), moneyline (EXECUTABLE), metrics-in-diagnostics spread (EXECUTABLE).
+
+### Files Changed
+
+| File | Change |
+|---|---|
+| `lib/executor/eventExecutionQueue.ts` | `CORNERS_MARKET_RE`, `isCorners()`, `isHalftime()` identity-only, `isExecutableMarket()` returns `{executable, rejectReason}`, corners blocked before sort |
+| `lib/executor/buildFireModelCandidates.ts` | Priority 2b: eventTitle "vs" pair check before WEAK fallback |
+| `scripts/contur3/verify-live-market-guards.mjs` | New regression guard script |
+| `scripts/contur3/run-event-rebalance.mjs` | Daily battle log JSONL |
+| `scripts/contur3/run-night-reservations.mjs` | Daily battle log JSONL |
+| `scripts/contur3/blue-model-status.mjs` | Daily battle log JSONL |
+| `package.json` | `contur3:verify-live-market-guards` script |
+| `docs/ops/BLUE_MODEL_DAILY_RUNBOOK.md` | Market guard rules, regression test, battle log docs |
+
+### Build/Verification
+
+| Check | Result |
+|---|---|
+| `npm run build` | PASS |
+| `npm run contur3:verify-live-market-guards` | CONTUR3_MARKET_GUARD_REGRESSION_PASS (8/8) |
+
+---
+
 ## Remaining Backlog
 
 ### P1

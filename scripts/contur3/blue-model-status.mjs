@@ -26,6 +26,21 @@ function nowIso() {
   return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + 'Z';
 }
 
+function battleLogPath() {
+  const date = new Date().toISOString().slice(0, 10);
+  return path.join(LOG_DIR, `contur3_battle_${date}.jsonl`);
+}
+
+function appendBattleLog(entry) {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    fs.appendFileSync(battleLogPath(), JSON.stringify(entry) + '\n', 'utf8');
+    console.log(`CONTUR3_BATTLE_LOG_WRITTEN path=${battleLogPath()}`);
+  } catch (err) {
+    console.warn(`CONTUR3_BATTLE_LOG_WARN: append failed: ${err}`);
+  }
+}
+
 async function fetchJson(url, options) {
   try {
     const res = await fetch(url, options);
@@ -132,6 +147,18 @@ async function main() {
   };
 
   fs.writeFileSync(logPath, JSON.stringify(report, null, 2));
+
+  appendBattleLog({
+    timestamp_iso: new Date().toISOString(),
+    runner: 'blue-model-status',
+    endpoint: '/api/executor/queue + /api/cron/event-rebalance (dryRun)',
+    http_status: queueResult.status,
+    ok: verdict !== 'BLUE_MODEL_NO_GO',
+    candidate_count: candidateCount,
+    next_due_iso: nextDueIso,
+    diagnostic_report_path: logPath,
+    verdict,
+  });
 
   console.log('');
   console.log(`queue http_status:    ${report.queue.http_status}`);

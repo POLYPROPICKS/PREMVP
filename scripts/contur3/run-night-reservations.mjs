@@ -3,6 +3,10 @@
  * Contur3 / Blue_model — night event reservations runner.
  * Calls /api/cron/night-event-reservations and saves a JSON log.
  * Exit 0 = HTTP ok + response ok=true. Exit 1 = any failure.
+ *
+ * Also appends one line to the daily battle log:
+ *   modeling/fire_runs/contur3-blue-model/contur3_battle_YYYY-MM-DD.jsonl
+ * Local file only — Railway filesystem is ephemeral; Supabase is the durable audit.
  */
 import fs from 'fs';
 import path from 'path';
@@ -25,6 +29,21 @@ function getSecret() {
 
 function nowIso() {
   return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + 'Z';
+}
+
+function battleLogPath() {
+  const date = new Date().toISOString().slice(0, 10);
+  return path.join(LOG_DIR, `contur3_battle_${date}.jsonl`);
+}
+
+function appendBattleLog(entry) {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    fs.appendFileSync(battleLogPath(), JSON.stringify(entry) + '\n', 'utf8');
+    console.log(`CONTUR3_BATTLE_LOG_WRITTEN path=${battleLogPath()}`);
+  } catch (err) {
+    console.warn(`CONTUR3_BATTLE_LOG_WARN: append failed: ${err}`);
+  }
 }
 
 async function main() {
@@ -75,6 +94,21 @@ async function main() {
   };
 
   fs.writeFileSync(logPath, JSON.stringify(report, null, 2));
+
+  const ok = res.ok && (report.ok === true);
+  appendBattleLog({
+    timestamp_iso: new Date().toISOString(),
+    runner: 'run-night-reservations',
+    endpoint: ENDPOINT,
+    http_status: res.status,
+    ok,
+    plan_run_id: report.plan_run_id,
+    reserved_count: report.reserved_count,
+    skipped_count: report.skipped_count,
+    next_due_iso: null,
+    diagnostic_report_path: logPath,
+    verdict: ok ? 'NIGHT_RESERVATIONS_OK' : 'NIGHT_RESERVATIONS_FAIL',
+  });
 
   console.log(`http_status:          ${report.http_status}`);
   console.log(`ok:                   ${report.ok}`);

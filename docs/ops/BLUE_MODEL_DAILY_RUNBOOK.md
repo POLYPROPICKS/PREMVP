@@ -1,6 +1,6 @@
 # Blue_model / Contur3 Daily Operations Runbook
 
-**Last updated:** 2026-06-23
+**Last updated:** 2026-06-23 (market guard hardening + battle log)
 **Canonical pipeline:** signal-cache → night_event_reservations → event_execution_queue → Ireland watcher
 
 ---
@@ -106,6 +106,9 @@ npm run contur3:event-rebalance
 
 # Ops report email (monitoring rail only — NOT an execution gate)
 npm run contur3:ops-report-email
+
+# Market guard regression test (run after any change to executor queue logic)
+npm run contur3:verify-live-market-guards
 ```
 
 ### IMPORTANT: Local status must be run from PREMVP repo
@@ -142,6 +145,22 @@ That repo has no PREMVP scripts — "Missing script: contur3:blue-status" is exp
 - **No corners**, no props, no futures, no outrights
 - Kalshi soccer markets for WC 2026 events in the planning horizon
 
+### Permanent Market Guard Rules (as of 2026-06-23)
+
+**Halftime block** — `HALFTIME_MARKET_RE` applied to: `market_slug`, `event_slug`, `match_family_key`, `diagnostics.marketTitle/marketType/question/title` ONLY. Never scans full JSON (prevents false positives from metric field names like `delta1hPp`, `price1hAgo`).
+
+**Corners block** — `CORNERS_MARKET_RE` applied to: `market_slug`, `event_slug`, `match_family_key`, `diagnostics.marketTitle/question`. Corners block runs **before** quality ranking so a corners market can never outrank a spread.
+
+**England vs Ghana incident (2026-06-23):** Valid core spread "Spread: England (-1.5)" was blocked as WEAK identity because market title had no "vs". Fixed: `deriveMatchFamilyKey()` checks `diagnostics.eventTitle` for "vs" pair before falling to WEAK — upgrades to `pair:team1-vs-team2:date` key (STRONG/MEDIUM). Corners market was also selected over spread due to full-JSON halftime scan false-positive. Both fixed in commit 55844ac.
+
+### Market Guard Regression Test
+
+```bash
+npm run contur3:verify-live-market-guards
+```
+
+Run this after any change to `lib/executor/eventExecutionQueue.ts` or `buildFireModelCandidates.ts`. Exit 0 = `CONTUR3_MARKET_GUARD_REGRESSION_PASS`. Exit 1 = fix before deploy.
+
 ---
 
 ## Stake Policy
@@ -166,6 +185,12 @@ modeling/fire_runs/contur3-blue-model/<timestamp>_blue_model_status.json
 modeling/fire_runs/contur3-blue-model/<timestamp>_night_reservations.json
 modeling/fire_runs/contur3-blue-model/<timestamp>_event_rebalance.json
 ```
+
+**Daily battle log** (one JSONL line per runner invocation):
+```
+modeling/fire_runs/contur3-blue-model/contur3_battle_YYYY-MM-DD.jsonl
+```
+Local file only — Railway filesystem is ephemeral. Supabase (`executor_order_events`) is the durable audit trail. The battle log is a session-scoped debugging aid.
 
 ---
 

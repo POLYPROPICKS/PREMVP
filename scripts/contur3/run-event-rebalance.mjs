@@ -3,6 +3,10 @@
  * Contur3 / Blue_model — event rebalance runner.
  * Calls /api/cron/event-rebalance and saves a JSON log.
  * Exit 0 = HTTP ok + response ok=true. Exit 1 = any failure.
+ *
+ * Also appends one line to the daily battle log:
+ *   modeling/fire_runs/contur3-blue-model/contur3_battle_YYYY-MM-DD.jsonl
+ * Local file only — Railway filesystem is ephemeral; Supabase is the durable audit.
  */
 import fs from 'fs';
 import path from 'path';
@@ -25,6 +29,21 @@ function getSecret() {
 
 function nowIso() {
   return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + 'Z';
+}
+
+function battleLogPath() {
+  const date = new Date().toISOString().slice(0, 10);
+  return path.join(LOG_DIR, `contur3_battle_${date}.jsonl`);
+}
+
+function appendBattleLog(entry) {
+  try {
+    fs.mkdirSync(LOG_DIR, { recursive: true });
+    fs.appendFileSync(battleLogPath(), JSON.stringify(entry) + '\n', 'utf8');
+    console.log(`CONTUR3_BATTLE_LOG_WRITTEN path=${battleLogPath()}`);
+  } catch (err) {
+    console.warn(`CONTUR3_BATTLE_LOG_WARN: append failed: ${err}`);
+  }
 }
 
 async function main() {
@@ -61,19 +80,35 @@ async function main() {
     body = { raw: await res.text().catch(() => '') };
   }
 
+  const ok = (body.ok ?? false) === true;
   const report = {
     timestamp,
     endpoint: ENDPOINT,
     http_status: res.status,
-    ok: body.ok ?? false,
+    ok,
     due_count: body.due_count ?? body.dueCount ?? null,
     queued_count: body.queued_count ?? body.queuedCount ?? null,
     skipped_count: body.skipped_count ?? body.skippedCount ?? null,
     next_due_iso: body.next_due_iso ?? body.nextDueIso ?? null,
+    outcomes: body.outcomes ?? null,
     body,
   };
 
   fs.writeFileSync(logPath, JSON.stringify(report, null, 2));
+
+  appendBattleLog({
+    timestamp_iso: new Date().toISOString(),
+    runner: 'run-event-rebalance',
+    endpoint: ENDPOINT,
+    http_status: res.status,
+    ok,
+    due_count: report.due_count,
+    queued_count: report.queued_count,
+    skipped_count: report.skipped_count,
+    next_due_iso: report.next_due_iso,
+    diagnostic_report_path: logPath,
+    verdict: ok ? 'REBALANCE_OK' : 'REBALANCE_FAIL',
+  });
 
   console.log(`http_status:          ${report.http_status}`);
   console.log(`ok:                   ${report.ok}`);
