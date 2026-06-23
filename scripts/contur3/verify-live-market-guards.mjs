@@ -19,6 +19,10 @@ const HALFTIME_MARKET_RE =
 // Corners block (full-match contract only)
 const CORNERS_MARKET_RE = /\bcorners?\b|total[\s_-]corners?|corners?[\s_-]total/i;
 
+// Prop/exact-score block (player props, goalscorer, exact scorelines, outrights)
+const PROP_MARKET_RE =
+  /exact[\s_-]score|goalscorer|goal[\s_-]scorer|anytime[\s_-]scorer|first[\s_-]scorer|last[\s_-]scorer|\bplayer[\s_-]shot|\bplayer[\s_-]assist|\boutright\b/i;
+
 // ── Pure detection helpers (mirror production logic) ──
 
 function isHalftime(c) {
@@ -45,9 +49,20 @@ function isCorners(c) {
   );
 }
 
+function isProp(c) {
+  if (PROP_MARKET_RE.test(c.market_slug ?? '')) return true;
+  if (PROP_MARKET_RE.test(c.event_slug ?? '')) return true;
+  const diag = c.diagnostics ?? {};
+  return (
+    PROP_MARKET_RE.test(diag.marketTitle ?? '') ||
+    PROP_MARKET_RE.test(diag.question ?? '')
+  );
+}
+
 function guardResult(c) {
   if (isHalftime(c)) return 'HALFTIME_NOT_LIVE_EXECUTABLE';
   if (isCorners(c)) return 'CORNERS_NOT_LIVE_EXECUTABLE';
+  if (isProp(c)) return 'PROP_NOT_LIVE_EXECUTABLE';
   return 'EXECUTABLE';
 }
 
@@ -66,7 +81,6 @@ const TESTS = [
       diagnostics: {
         marketTitle: 'Spread: England (-1.5)',
         eventTitle: 'England vs Ghana',
-        // Metric fields that MUST NOT trigger halftime detection:
         delta1hPp: 2.5,
         price1hAgo: 0.45,
         price6hAgo: 0.41,
@@ -117,9 +131,9 @@ const TESTS = [
     expect: 'HALFTIME_NOT_LIVE_EXECUTABLE',
   },
 
-  // ── 5. 1st half variant — must be blocked ─────────────────────────────────
+  // ── 5. 1H variant — must be blocked ───────────────────────────────────────
   {
-    name: '1ST_HALF: 1st-half variant — must be HALFTIME_NOT_LIVE_EXECUTABLE',
+    name: '1H_RESULT: 1H result variant — must be HALFTIME_NOT_LIVE_EXECUTABLE',
     candidate: {
       market_slug: 'england-ghana-1st-half-result',
       event_slug: null,
@@ -131,9 +145,51 @@ const TESTS = [
     expect: 'HALFTIME_NOT_LIVE_EXECUTABLE',
   },
 
-  // ── 6. Full-match moneyline — must be EXECUTABLE ──────────────────────────
+  // ── 6. Exact score — must be blocked ──────────────────────────────────────
   {
-    name: 'MONEYLINE: full-match winner — must be EXECUTABLE',
+    name: 'EXACT_SCORE: England vs Ghana exact score — must be PROP_NOT_LIVE_EXECUTABLE',
+    candidate: {
+      market_slug: 'england-ghana-exact-score',
+      event_slug: 'england-vs-ghana',
+      match_family_key: 'pair:england-vs-ghana:2026-06-23',
+      diagnostics: {
+        marketTitle: 'England vs Ghana: Exact Score',
+      },
+    },
+    expect: 'PROP_NOT_LIVE_EXECUTABLE',
+  },
+
+  // ── 7. Player props — must be blocked ─────────────────────────────────────
+  {
+    name: 'PLAYER_PROP: goalscorer market — must be PROP_NOT_LIVE_EXECUTABLE',
+    candidate: {
+      market_slug: 'england-ghana-anytime-goalscorer',
+      event_slug: null,
+      match_family_key: 'pair:england-vs-ghana:2026-06-23',
+      diagnostics: {
+        marketTitle: 'England vs Ghana: Anytime Goalscorer',
+      },
+    },
+    expect: 'PROP_NOT_LIVE_EXECUTABLE',
+  },
+
+  // ── 8. Full-match total GOALS (non-corners) — must be EXECUTABLE ───────────
+  {
+    name: 'TOTAL_GOALS: O/U 2.5 Total Goals (non-corners) — must be EXECUTABLE',
+    candidate: {
+      market_slug: 'england-vs-ghana-ou-2-5-total-goals',
+      event_slug: 'england-vs-ghana',
+      match_family_key: 'pair:england-vs-ghana:2026-06-23',
+      diagnostics: {
+        marketTitle: 'England vs Ghana: O/U 2.5 Total Goals',
+      },
+    },
+    expect: 'EXECUTABLE',
+  },
+
+  // ── 9. Full-match moneyline/winner — must be EXECUTABLE ──────────────────
+  {
+    name: 'MONEYLINE: full-match match winner — must be EXECUTABLE',
     candidate: {
       market_slug: 'england-vs-ghana-match-winner',
       event_slug: 'england-vs-ghana',
@@ -147,7 +203,26 @@ const TESTS = [
     expect: 'EXECUTABLE',
   },
 
-  // ── 7. Corners detected via diagnostics.marketTitle ───────────────────────
+  // ── 10. False-positive guard: spread with 1h telemetry must NOT be halftime ─
+  {
+    name: 'SPREAD_TELEMETRY_FALSE_POSITIVE: price1hAgo in diagnostics — must be EXECUTABLE',
+    candidate: {
+      market_slug: 'spread-brazil-minus-1-5',
+      event_slug: 'brazil-vs-mexico',
+      match_family_key: 'pair:brazil-vs-mexico:2026-06-24',
+      diagnostics: {
+        marketTitle: 'Spread: Brazil (-1.5)',
+        eventTitle: 'Brazil vs Mexico',
+        delta1hPp: -0.5,
+        price1hAgo: 0.55,
+        price6hAgo: 0.52,
+        delta6hPp: 3.0,
+      },
+    },
+    expect: 'EXECUTABLE',
+  },
+
+  // ── 11. Corners detected via diagnostics.marketTitle ─────────────────────
   {
     name: 'CORNERS_VIA_DIAG_TITLE: corners in diagnostics title — must be CORNERS_NOT_LIVE_EXECUTABLE',
     candidate: {
@@ -161,11 +236,11 @@ const TESTS = [
     expect: 'CORNERS_NOT_LIVE_EXECUTABLE',
   },
 
-  // ── 8. Spread with delta1hPp field in diagnostics — identity-only halftime ─
+  // ── 12. Spread with full diagnostic bundle — must be EXECUTABLE ───────────
   {
-    name: 'SPREAD_FULL_DIAG: spread with many diagnostic fields — must be EXECUTABLE',
+    name: 'SPREAD_FULL_DIAG: spread with many diagnostic metric fields — must be EXECUTABLE',
     candidate: {
-      market_slug: 'spread-brazil-minus-1-5',
+      market_slug: 'spread-brazil-minus-1-5-full',
       event_slug: 'brazil-vs-mexico',
       match_family_key: 'pair:brazil-vs-mexico:2026-06-24',
       diagnostics: {
@@ -175,6 +250,7 @@ const TESTS = [
         price1hAgo: 0.55,
         price6hAgo: 0.52,
         delta6hPp: 3.0,
+        volume1h: 1234,
       },
     },
     expect: 'EXECUTABLE',

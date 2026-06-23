@@ -41,6 +41,10 @@ const HALFTIME_MARKET_RE =
 // Corners block: O/U corners and total corners markets are not live-executable under current contract.
 const CORNERS_MARKET_RE = /\bcorners?\b|total[\s_-]corners?|corners?[\s_-]total/i;
 
+// Prop/exact-score block: player props, exact scorelines, goalscorer markets — not live-executable.
+const PROP_MARKET_RE =
+  /exact[\s_-]score|goalscorer|goal[\s_-]scorer|anytime[\s_-]scorer|first[\s_-]scorer|last[\s_-]scorer|\bplayer[\s_-]shot|\bplayer[\s_-]assist|\boutright\b/i;
+
 function planTierLabel(c: FireModelCandidate): "TIER1" | "TIER2" | "TIER3" | "REJECTED" {
   if (c.strategy === "TIER1_CORE_STRICT_72_COV50") return "TIER1";
   if (c.strategy === "TIER2_SAFE_EXPAND_60_COV50") return "TIER2";
@@ -88,6 +92,19 @@ function isCorners(c: FireModelCandidate): boolean {
 }
 
 /**
+ * Prop/exact-score detection using only market identity fields.
+ * Goalscorer, exact score, player props, outrights — not live-executable.
+ */
+function isProp(c: FireModelCandidate): boolean {
+  if (PROP_MARKET_RE.test(c.market_slug ?? "")) return true;
+  if (PROP_MARKET_RE.test(c.event_slug ?? "")) return true;
+  const diag = (c.diagnostics ?? {}) as Record<string, unknown>;
+  const diagMarketTitle = typeof diag.marketTitle === "string" ? diag.marketTitle : "";
+  const diagQuestion    = typeof diag.question === "string"    ? diag.question    : "";
+  return PROP_MARKET_RE.test(diagMarketTitle) || PROP_MARKET_RE.test(diagQuestion);
+}
+
+/**
  * Executable filter for the SINGLE selected market (LOCKED policy):
  *   Tier1 only, live_eligible, not halftime, not corners,
  *   condition_id + token_id + side present.
@@ -102,6 +119,7 @@ function isExecutableMarket(c: FireModelCandidate): {
   if (!c.live_eligible) return { executable: false, rejectReason: c.live_rejection_reason ?? "NOT_LIVE_ELIGIBLE" };
   if (isHalftime(c)) return { executable: false, rejectReason: "HALFTIME_NOT_LIVE_EXECUTABLE" };
   if (isCorners(c)) return { executable: false, rejectReason: "CORNERS_NOT_LIVE_EXECUTABLE" };
+  if (isProp(c)) return { executable: false, rejectReason: "PROP_NOT_LIVE_EXECUTABLE" };
   if (!c.condition_id) return { executable: false, rejectReason: "MISSING_CONDITION_ID" };
   if (!c.token_id) return { executable: false, rejectReason: "MISSING_TOKEN_ID" };
   if (!c.side) return { executable: false, rejectReason: "MISSING_SIDE" };
