@@ -46,7 +46,17 @@ node scripts/contur3/run-night-reservations.mjs
 node scripts/contur3/run-event-rebalance.mjs
 ```
 
-Required env var (Railway): `EXECUTOR_CANDIDATES_SECRET` (or `EXECUTOR_SECRET` / `PPP_SECRET`).
+**Ops report email cron** (`ops-report-email-cron`):
+```
+tsx scripts/founder-email-dispatcher.ts --mode=morning
+```
+(monitoring rail — email failure does not affect Ireland watcher)
+
+Required env vars (Railway, both cron services):
+- `EXECUTOR_CANDIDATES_SECRET` (or `EXECUTOR_SECRET` / `PPP_SECRET`)
+- `RESEND_API_KEY` and `EMAIL_FROM` required for email crons
+
+Do NOT use `node -e` / ad-hoc curl snippets as permanent Railway cron commands.
 
 ---
 
@@ -61,7 +71,24 @@ npm run contur3:night-reservations
 
 # Manually trigger event rebalance (live, dryRun=false)
 npm run contur3:event-rebalance
+
+# Ops report email (monitoring rail only — NOT an execution gate)
+npm run contur3:ops-report-email
 ```
+
+### IMPORTANT: Local status must be run from PREMVP repo
+
+Correct repo: `C:\WORK\KalshiProPulse\sipropicks-premvp1-1`
+
+Do NOT run `npm run contur3:blue-status` from Ireland (`~/polymarket-executor`).
+That repo has no PREMVP scripts — "Missing script: contur3:blue-status" is expected there, not a bug.
+
+### ops-report-email is a monitoring rail, not an execution gate
+
+- `npm run contur3:ops-report-email` spawns the morning email pipeline and saves a JSON log.
+- If email fails, Ireland watcher continues unaffected — use filesystem reports and `npm run contur3:blue-status` instead.
+- Do NOT use ad-hoc `node -e` / curl snippets as permanent Railway cron commands.
+- Railway Green UI logs may be inaccessible; repo scripts save JSON reports to `modeling/fire_runs/contur3-blue-model/`.
 
 ---
 
