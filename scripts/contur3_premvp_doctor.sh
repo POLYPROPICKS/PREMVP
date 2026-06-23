@@ -92,10 +92,16 @@ ph_expired=$(echo "$res_json" | jq -r '.plan_health.expired_count // "null"')
 ph_bad=$(echo "$res_json" | jq -r '.plan_health.bad_market_level_count // "null"')
 ph_expired_only=$(echo "$res_json" | jq -r '.plan_health.is_expired_only // "null"')
 ph_needs_rebuild=$(echo "$res_json" | jq -r '.plan_health.needs_rebuild // "null"')
+ph_wc_count=$(echo "$res_json" | jq -r '.plan_health.reserved_wc_or_soccer_count // "null"')
+ph_wc_floor=$(echo "$res_json" | jq -r '.plan_health.wc_floor_below_minimum // "null"')
+ph_horizon=$(echo "$res_json" | jq -r '.horizon_end_iso // .plan_health.horizon_end_iso // "null"')
+ph_latest=$(echo "$res_json" | jq -r '.plan_health.latest_game_start_iso // "null"')
 
 if [ "$res_ok" = "true" ]; then
   pass "reservation status  plan_run_id=${res_run}  read_only=${res_mode}  in_creation_window=${res_in_window}"
   pass "plan_health  total=${ph_total}  active_future=${ph_active}  expired=${ph_expired}  bad_market_level=${ph_bad}"
+  pass "horizon_end_iso=${ph_horizon}  latest_game_start_iso=${ph_latest}"
+  pass "reserved_wc_or_soccer=${ph_wc_count}  wc_floor_below_minimum=${ph_wc_floor}"
 
   # FAIL: bad market-level keys in plan
   if [ "$ph_bad" != "null" ] && [ "$ph_bad" != "0" ]; then
@@ -105,6 +111,26 @@ if [ "$res_ok" = "true" ]; then
   # FAIL: plan is expired-only (all rows past, none active future)
   if [ "$ph_expired_only" = "true" ]; then
     fail "plan is EXPIRED_ONLY (is_expired_only=true, active_future_count=0) — run forceRebuild or wait for 17:00 cron"
+  fi
+
+  # FAIL: active future events exist but queue next_due_iso is null — checked later in §6
+  # (cross-check deferred; noted here for clarity)
+
+  # FAIL: WC floor below minimum — plan has fewer WC/soccer reservations than expected
+  if [ "$ph_wc_floor" = "true" ]; then
+    fail "wc_floor_below_minimum=true — reserved_wc_or_soccer=${ph_wc_count} — run forceRebuild=CEO_APPROVED after new signals appear"
+  fi
+
+  # FAIL: WC battle window — if expected ≥4 WC events but reserved <4
+  # Only applies during overnight battle window when schedule shows 4+ WC fixtures.
+  # Parameterise: set DOCTOR_WC_MIN_EXPECTED=4 in env to activate strict check.
+  WC_EXPECTED="${DOCTOR_WC_MIN_EXPECTED:-0}"
+  if [ "$WC_EXPECTED" -gt 0 ] 2>/dev/null; then
+    if [ "$ph_wc_count" != "null" ] && [ "$ph_wc_count" -lt "$WC_EXPECTED" ] 2>/dev/null; then
+      fail "WC floor check: expected>=${WC_EXPECTED} reserved_wc_or_soccer=${ph_wc_count} — forceRebuild needed"
+    else
+      pass "WC floor check: expected>=${WC_EXPECTED} reserved_wc_or_soccer=${ph_wc_count} ✓"
+    fi
   fi
 
   # WARN: plan needs_rebuild
@@ -287,7 +313,7 @@ echo "════════════════════════�
 TOTAL=$((PASS + FAIL))
 if [ "$FAIL" -eq 0 ]; then
   echo -e "${GREEN}ALL PASS${NC}  ${PASS}/${TOTAL} checks passed"
-  echo "ALL_PASS_CONTUR3_M1_M7_READY_PRELIVE"
+  echo "ALL_PASS_CONTUR3_RESERVATION_HORIZON_READY"
   exit 0
 else
   echo -e "${RED}FAIL${NC}  ${PASS}/${TOTAL} passed, ${FAIL} failed"

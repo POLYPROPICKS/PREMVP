@@ -59,6 +59,7 @@ async function handle(request: NextRequest) {
           plan_date_minsk: window.planDateMinsk,
           window_start_iso: window.startIso,
           window_end_iso: window.endIso,
+          horizon_end_iso: window.horizonEndIso,
           plan_health: planHealth,
           in_creation_window: isInReservationCreationWindow(nowMs),
           generated_at_iso: nowIso,

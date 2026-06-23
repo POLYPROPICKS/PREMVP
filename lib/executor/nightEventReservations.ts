@@ -119,6 +119,12 @@ export interface ReservationPlan {
     skipped_non_tier1_event: number;
     market_level_keys_skipped: number;
     market_level_keys_normalized: number;
+    // Horizon/WC floor diagnostics exposed after build.
+    horizon_end_iso: string;
+    window_end_iso: string;
+    reserved_wc_or_soccer_count: number;
+    skipped_by_horizon_count: number;
+    skipped_by_cap_count: number;
   };
 }
 
@@ -222,6 +228,10 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
     });
   });
 
+  const reservedWcOrSoccerBuild = reservations.filter(
+    (r) => r.strategic_scope === "WC" || r.strategic_scope === "SOCCER"
+  ).length;
+
   return {
     plan_run_id: planRunId,
     plan_date_minsk: window.planDateMinsk,
@@ -239,6 +249,11 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
       skipped_non_tier1_event: skippedNonTier1,
       market_level_keys_skipped: marketLevelKeysSkipped,
       market_level_keys_normalized: marketLevelKeysNormalized,
+      horizon_end_iso: window.horizonEndIso,
+      window_end_iso: window.endIso,
+      reserved_wc_or_soccer_count: reservedWcOrSoccerBuild,
+      skipped_by_horizon_count: skippedOutsideHorizon,
+      skipped_by_cap_count: 0,
     },
   };
 }
@@ -404,6 +419,10 @@ export async function loadReservations(planRunId: string): Promise<NightEventRes
 
 // ── Plan health diagnostics ────────────────────────────────────────────────
 
+// Minimum overnight battle WC/soccer event floor. If fewer are reserved than this
+// threshold and the plan has rows, needs_rebuild is set to true so founders see the signal.
+const BATTLE_WC_MIN_FLOOR = 2;
+
 export interface PlanHealth {
   has_rows: boolean;
   total_count: number;
@@ -418,6 +437,19 @@ export interface PlanHealth {
   is_expired_only: boolean;
   needs_rebuild: boolean;
   rebuild_allowed: boolean;
+  // Horizon diagnostics — populated from resolveNightWindow at status-read time.
+  window_end_iso: string;
+  horizon_end_iso: string;
+  // WC/soccer floor diagnostics.
+  reserved_wc_or_soccer_count: number;
+  // eligible_wc_or_soccer_count = reserved count when loaded from DB (no rebuild);
+  // it equals the actual eligible count only during a fresh build run.
+  eligible_wc_or_soccer_count: number;
+  wc_floor_below_minimum: boolean;
+  // skipped_by_horizon_count and skipped_by_cap_count are only available during a
+  // fresh buildReservationPlan run; 0 when loaded from existing DB rows.
+  skipped_by_horizon_count: number;
+  skipped_by_cap_count: number;
 }
 
 /**
@@ -460,7 +492,20 @@ export async function loadPlanStatus(planRunId: string, nowMs: number): Promise<
     .sort();
 
   const isExpiredOnly = total > 0 && activeFutureCount === 0;
-  const needsRebuild = isExpiredOnly || badMarketLevelCount > 0;
+
+  // WC/soccer floor: count active reservations with WC or SOCCER strategic_scope.
+  const reservedWcOrSoccer = rows.filter(
+    (r) =>
+      ACTIVE_STATUSES.has(r.status) &&
+      (r.strategic_scope === "WC" || r.strategic_scope === "SOCCER")
+  ).length;
+  const wcFloorBelowMinimum = total > 0 && reservedWcOrSoccer < BATTLE_WC_MIN_FLOOR;
+
+  // needs_rebuild: expired-only, bad market keys, or WC floor below minimum battle threshold.
+  const needsRebuild = isExpiredOnly || badMarketLevelCount > 0 || wcFloorBelowMinimum;
+
+  // Horizon bounds computed from current window (read-time, not build-time).
+  const nightWindow = resolveNightWindow(nowMs);
 
   return {
     has_rows: total > 0,
@@ -476,6 +521,13 @@ export async function loadPlanStatus(planRunId: string, nowMs: number): Promise<
     is_expired_only: isExpiredOnly,
     needs_rebuild: needsRebuild,
     rebuild_allowed: true,
+    window_end_iso: nightWindow.endIso,
+    horizon_end_iso: nightWindow.horizonEndIso,
+    reserved_wc_or_soccer_count: reservedWcOrSoccer,
+    eligible_wc_or_soccer_count: reservedWcOrSoccer,
+    wc_floor_below_minimum: wcFloorBelowMinimum,
+    skipped_by_horizon_count: 0,
+    skipped_by_cap_count: 0,
   };
 }
 
