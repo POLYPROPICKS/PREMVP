@@ -260,7 +260,7 @@ function computePlanningFallbackScore(
     return { score: null, coverage: null, source: "shadow_sports_fallback_incomplete" };
   }
 
-  const base = tier === 1 ? 72 : tier === 2 ? 66 : 58;
+  const base = tier === 1 ? 72 : tier === 2 ? 66 : (scope === "WC" ? 68 : 58);
   const priceBonus =
     typeof entryPrice === "number"
       ? Math.max(0, 6 - Math.round(Math.abs(entryPrice - 0.5) * 12))
