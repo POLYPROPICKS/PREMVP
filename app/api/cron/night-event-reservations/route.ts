@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   buildReservationPlan,
   persistReservationPlan,
+  persistReservationPlanDiagnostics,
   loadPlanStatus,
   executeForceRebuild,
 } from "@/lib/executor/nightEventReservations";
@@ -71,6 +72,9 @@ async function handle(request: NextRequest) {
     // ── forceRebuild=CEO_APPROVED: delete queue + reservations + rebuild ──────
     if (forceRebuild) {
       const result = await executeForceRebuild(nowMs);
+      const diagResult = await persistReservationPlanDiagnostics(result.plan, {
+        context: "force-rebuild",
+      });
       return NextResponse.json(
         {
           ok: true,
@@ -85,6 +89,7 @@ async function handle(request: NextRequest) {
           by_sport: result.plan.diagnostics.by_sport,
           by_tier: result.plan.diagnostics.by_tier,
           diagnostics: result.plan.diagnostics,
+          diagnostic_report_path: diagResult.path,
           founder_action_required: false,
           note: "Force rebuild complete. event_execution_queue rows for this plan_run_id were deleted and reservations rebuilt.",
         },
@@ -123,6 +128,11 @@ async function handle(request: NextRequest) {
     const plan = await buildReservationPlan(nowMs);
     const result = await persistReservationPlan(plan, { force: force || forceCreate });
 
+    // Persist diagnostics (non-fatal if it fails).
+    const diagResult = await persistReservationPlanDiagnostics(plan, {
+      context: "night-event-reservations-cron",
+    });
+
     // Derive per-status counts from returned rows (DB-backed when already_exists=true).
     const statusBuckets: Record<string, number> = {};
     for (const r of result.reservations) {
@@ -154,6 +164,7 @@ async function handle(request: NextRequest) {
         by_sport: plan.diagnostics.by_sport,
         by_tier: plan.diagnostics.by_tier,
         diagnostics: plan.diagnostics,
+        diagnostic_report_path: diagResult.path,
         reserved_events: result.reservations.map((r) => ({
           rank: r.reservation_rank,
           tier: r.event_tier,

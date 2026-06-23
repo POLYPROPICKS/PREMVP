@@ -27,6 +27,8 @@ import {
   type EventExecutionQueueRow,
   type NightEventReservationRow,
 } from "./executorQueueTypes";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
 
 const PLAN_POOL = 200;
 
@@ -407,4 +409,59 @@ export async function runEventRebalance(
     next_due_reservations,
     next_check_after_seconds,
   };
+}
+
+/**
+ * Persist rebalance diagnostics to filesystem under modeling/fire_runs/contur3-rebalance/.
+ * Failure does NOT fail the business cron; it logs a warning and continues.
+ */
+export async function persistRebalanceDiagnostics(
+  result: RebalanceRunResult,
+  opts?: { context?: string }
+): Promise<{ path: string | null; error: string | null }> {
+  try {
+    const commit = process.env.VERCEL_GIT_COMMIT_SHA ?? "unknown";
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const runIdSafe = result.rebalance_run_id.replace(/[^a-z0-9_-]/gi, "_");
+    const filename = `${runIdSafe}_${timestamp}.json`;
+
+    const dirPath = path.join(process.cwd(), "modeling", "fire_runs", "contur3-rebalance");
+    await mkdir(dirPath, { recursive: true });
+
+    const filePath = path.join(dirPath, filename);
+    const payload = {
+      generated_at: new Date().toISOString(),
+      rebalance_run_id: result.rebalance_run_id,
+      commit,
+      context: opts?.context || "runEventRebalance",
+      due_count: result.due_count,
+      queued_count: result.queued_count,
+      skipped_count: result.skipped_count,
+      already_queued_count: result.already_queued_count,
+      expired_count: result.expired_count,
+      wrote: result.wrote,
+      outcomes_summary: {
+        total: result.outcomes.length,
+        queued: result.outcomes.filter((o) => o.result === "QUEUED").length,
+        skipped: result.outcomes.filter((o) => o.result === "SKIPPED").length,
+        already_queued: result.outcomes.filter((o) => o.result === "ALREADY_QUEUED").length,
+      },
+      outcomes: result.outcomes.map((o) => ({
+        match_family_key: o.match_family_key,
+        result: o.result,
+        reason: o.reason,
+        queued_event: o.queue_row?.event_title ?? null,
+        skipped_candidate_count: o.blocked_candidates?.length ?? 0,
+      })),
+      next_due_reservations: result.next_due_reservations.slice(0, 3),
+      next_check_after_seconds: result.next_check_after_seconds,
+    };
+
+    await writeFile(filePath, JSON.stringify(payload, null, 2), "utf-8");
+    return { path: filePath, error: null };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[persistRebalanceDiagnostics] Diagnostic write failed (non-fatal):", msg);
+    return { path: null, error: msg };
+  }
 }

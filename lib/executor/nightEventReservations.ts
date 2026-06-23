@@ -26,6 +26,8 @@ import {
   type NightWindow,
 } from "./nightWindow";
 import type { NightEventReservationRow } from "./executorQueueTypes";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
 
 const PLAN_POOL = 200;
 
@@ -327,6 +329,51 @@ export async function persistReservationPlan(
     reservations: plan.reservations,
     diagnostics: plan.diagnostics,
   };
+}
+
+/**
+ * Persist reservation plan diagnostics to filesystem under modeling/fire_runs/contur3-reservations/.
+ * Failure does NOT fail the business cron; it logs a warning and continues.
+ */
+export async function persistReservationPlanDiagnostics(
+  plan: ReservationPlan,
+  opts?: { context?: string }
+): Promise<{ path: string | null; error: string | null }> {
+  try {
+    const commit = process.env.VERCEL_GIT_COMMIT_SHA ?? "unknown";
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const runIdSafe = plan.plan_run_id.replace(/[^a-z0-9_-]/gi, "_");
+    const filename = `${runIdSafe}_${timestamp}.json`;
+
+    const dirPath = path.join(process.cwd(), "modeling", "fire_runs", "contur3-reservations");
+    await mkdir(dirPath, { recursive: true });
+
+    const filePath = path.join(dirPath, filename);
+    const payload = {
+      generated_at: new Date().toISOString(),
+      plan_run_id: plan.plan_run_id,
+      plan_date_minsk: plan.plan_date_minsk,
+      commit,
+      context: opts?.context || "persistReservationPlan",
+      diagnostics: plan.diagnostics,
+      reservation_count: plan.reservations.length,
+      reserved_events: plan.reservations.map((r) => ({
+        rank: r.reservation_rank,
+        event_title: r.event_title,
+        match_family_key: r.match_family_key,
+        sport: r.sport,
+        tier: r.event_tier,
+        score: r.event_score,
+      })),
+    };
+
+    await writeFile(filePath, JSON.stringify(payload, null, 2), "utf-8");
+    return { path: filePath, error: null };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[persistReservationPlanDiagnostics] Diagnostic write failed (non-fatal):", msg);
+    return { path: null, error: msg };
+  }
 }
 
 // ── Founder email (rendered from frozen reservations, NOT stateless slots) ──────
