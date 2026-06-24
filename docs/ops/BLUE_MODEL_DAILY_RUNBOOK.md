@@ -1,6 +1,6 @@
 # Blue_model / Contur3 Daily Operations Runbook
 
-**Last updated:** 2026-06-24 (reservation anchor guard + positive admission audit + continuous rebalance window)
+**Last updated:** 2026-06-24 (funnel trace audit + battle_trace_id in diagnostics + roadmap gate discipline)
 **Canonical pipeline:** signal-cache → night_event_reservations → event_execution_queue → Ireland watcher
 
 ---
@@ -112,8 +112,26 @@ Do NOT use `node -e` / ad-hoc curl snippets as permanent Railway cron commands.
 ## npm Commands
 
 ```bash
+# ══ CANONICAL FORENSIC — run first when betting chain is unclear ══
+npm run contur3:funnel-trace-audit
+# → Answers "why did/didn't a bet happen?" in one command.
+# → Outputs JSON/MD/CSV to modeling/fire_runs/contur3-blue-model/
+# → Optional: CONTUR3_LOOKBACK_HOURS=48 CONTUR3_EVENT_FILTER=scotland npm run contur3:funnel-trace-audit
+
 # Status check (read-only, safe to run anytime)
 npm run contur3:blue-status
+
+# Rebalance window audit (check for MISSED_REBALANCE_WINDOW / schedule gaps)
+npm run contur3:rebalance-window-audit
+
+# Why no bets last night? (lookback only — use funnel-trace-audit for forward + backward)
+npm run contur3:why-no-bets-last-night
+
+# Overnight battle audit (comprehensive — queue + orders + reservations + signals)
+npm run contur3:overnight-battle-audit
+
+# Reservation admission audit (why are signals not becoming reservations?)
+npm run contur3:reservation-admission-audit
 
 # Manually trigger night reservations (CEO_APPROVED)
 npm run contur3:night-reservations
@@ -126,9 +144,6 @@ npm run contur3:ops-report-email
 
 # Market guard regression test (run after any change to executor queue logic)
 npm run contur3:verify-live-market-guards
-
-# Rebalance window audit (check for MISSED_REBALANCE_WINDOW / schedule gaps)
-npm run contur3:rebalance-window-audit
 ```
 
 ### IMPORTANT: Local status must be run from PREMVP repo
@@ -292,9 +307,116 @@ Set in Railway → contur3-event-rebalance-cron → Settings → Cron Schedule.
 - `MISSED_REBALANCE_WINDOW` — reservation expired (status=EXPIRED, reason=MISSED_REBALANCE_WINDOW) before rebalance ran
 - `REBALANCE_SCHEDULE_GAP_RISK` — any expired count > 0 indicates a cron gap
 
+---
+
+## Forensic Architecture and Trace IDs
+
+### Observability Storage Layers
+
+| Layer | What it is | How to access |
+|-------|-----------|--------------|
+| **Filesystem JSONL** | Local battle log per day | `modeling/fire_runs/contur3-blue-model/contur3_battle_YYYY-MM-DD.jsonl` |
+| **Filesystem JSON/MD/CSV** | Per-run audit artifacts | `modeling/fire_runs/contur3-blue-model/<timestamp>_*.{json,md,csv}` |
+| **Railway logs** | HTTP-level cron stdout | Railway dashboard → service → logs |
+| **Supabase (source of truth)** | Persistent state — reservations, queue, orders | `night_event_reservations`, `event_execution_queue`, `executor_order_events` |
+| **Computed trace key** | Deterministic correlation key (not persisted) | Computed by `funnel-trace-audit.mjs` at read time |
+| **Durable trace ID** | `battle_trace_id` in `diagnostics` JSON | Written by producer since 2026-06-24 — NO schema migration required |
+
+### Trace ID Status (as of 2026-06-24)
+
+**Durable `battle_trace_id` is now written to `diagnostics` JSON in both producer tables:**
+
+| Table | When written | Format |
+|-------|-------------|--------|
+| `night_event_reservations` | At reservation creation | `contur3:<plan_run_id>:<match_family_key>:unknown:unknown` |
+| `event_execution_queue` | At rebalance queue row creation | `contur3:<plan_run_id>:<match_family_key>:<condition_id>:<token_id>` |
+
+**No schema migration was required** — both tables already had `diagnostics jsonb` column.
+
+**Computed `battle_trace_key` (read-time, not persisted):**
+```
+contur3:<plan_run_id>:<match_family_key>:<condition_id_or_unknown>:<token_id_or_unknown>
+```
+Used by `funnel-trace-audit.mjs` for CSV grouping and MD trace examples.
+
+**P1 migration (future — deferred):** Add a top-level `battle_trace_id` column to both tables for indexed lookup. Requires a proper schema migration. Document it as `TRACE_ID_SCHEMA_MIGRATION_REQUIRED` when needed.
+
+### Canonical Forensic Command
+
+```bash
+npm run contur3:funnel-trace-audit
+```
+
+This is the **single source of truth** for answering "why did/didn't a bet happen?". Run it before any other investigation.
+
+**Optional filters:**
+```bash
+CONTUR3_LOOKBACK_HOURS=48 npm run contur3:funnel-trace-audit
+CONTUR3_EVENT_FILTER=scotland npm run contur3:funnel-trace-audit
+CONTUR3_LOOKBACK_HOURS=72 CONTUR3_LOOKAHEAD_HOURS=48 npm run contur3:funnel-trace-audit
+```
+
+**Root cause stages (classified in priority order):**
+
+| Stage | Meaning |
+|-------|---------|
+| `SIGNALS_MISSING` | 0 signals in `generated_signal_pairs` — data ingestion failed |
+| `VALID_CANDIDATES_MISSING` | Signals exist but 0 pass allowed full-match filter |
+| `RESERVATIONS_MISSING` | Allowed candidates exist but 0 reservations created |
+| `RESERVATIONS_FORBIDDEN_MARKET_ANCHORS` | Future reservations exist but ALL are forbidden anchors |
+| `VALID_RESERVATIONS_NOT_DUE_YET` | Valid future reservations exist but all BEFORE_WINDOW |
+| `REBALANCE_DUE_BUT_NO_QUEUE` | Reservation(s) IN_WINDOW but queue is empty |
+| `MISSED_REBALANCE_WINDOW` | Reservation(s) expired (EXPIRED status) without queue row |
+| `QUEUE_READY_WAITING_FOR_IRELAND` | READY queue row exists but Ireland not consuming |
+| `QUEUE_CLAIMED_NO_ORDER` | CLAIMED/SENT queue rows but no executor_order_events |
+| `QUEUE_SENT_ORDER_MISSING` | Real order events but 0 live_confirmed |
+| `ORDER_CONFIRMED` | Live order confirmed — chain worked |
+| `AUDIT_PARTIAL_TABLE_READ_FAILURE` | Supabase read failed — check env vars |
+
+### Gate Discipline (do not skip)
+
+| Do not patch | Until |
+|-------------|-------|
+| **Ireland executor** | READY queue row proven to exist, Ireland not consuming it |
+| **Email / ops pipeline** | Full betting chain RESERVED → ORDER_CONFIRMED is proven |
+| **Rebalance cron** | DUE_NOW or MISSED_WINDOW with no queue is proven by funnel-trace-audit |
+| **Reservation planner** | Valid candidates exist but future valid reservations are missing |
+| **Stake policy** | Never — locked at $7 TIER1, do not change |
+| **Market policy** | Never loosen — corners/halftime/props block is a hard gate |
+
 ### Roadmap (P1 migration — durable audit)
 
-**Durable Supabase battle audit with trace_id:** P1 migration task. Current battle log is local JSONL only (not persisted to Supabase). When trace_id column is added to `night_event_reservations` and `event_execution_queue`, each reservation can be linked to its rebalance queue row and order event for full funnel tracing without running scripts.
+**Durable Supabase battle audit with trace_id:** P1 migration task. `battle_trace_id` is now written to `diagnostics` JSON (no schema migration needed). When a top-level indexed `battle_trace_id` column is added, cross-table SQL joins become trivial. Proposed SQL:
+
+```sql
+ALTER TABLE night_event_reservations ADD COLUMN battle_trace_id text;
+ALTER TABLE event_execution_queue ADD COLUMN battle_trace_id text;
+CREATE INDEX ON night_event_reservations (battle_trace_id);
+CREATE INDEX ON event_execution_queue (battle_trace_id);
+```
+
+Status: `TRACE_ID_SCHEMA_MIGRATION_REQUIRED` — do not auto-apply. Requires explicit founder approval.
+
+---
+
+## CEO Status Summary
+
+| Category | Status |
+|---------|--------|
+| Signal generation | Proven — `generated_signal_pairs` populated |
+| Reservation creation | Proven — future reservations confirmed in Supabase |
+| Valid market admission | Proven — forbidden anchor guard hardened (2026-06-24) |
+| Rebalance → queue | Unproven — next proof window at T-70m before match start |
+| Ireland order | Unproven — requires READY queue row first |
+| End-to-end trace | Partial — `battle_trace_id` now in `diagnostics`; full indexed trace pending P1 schema migration |
+| Canonical forensic | `npm run contur3:funnel-trace-audit` |
+
+**Next runtime proof time:** Run `npm run contur3:funnel-trace-audit` at T-80m before the earliest reserved match. If `due_now_count > 0` and `queue_ready_count = 0`, run `npm run contur3:event-rebalance`.
+
+**Operator actions required (max 3):**
+1. At T-80m before match: run `npm run contur3:funnel-trace-audit` → confirm `VALID_RESERVATIONS_NOT_DUE_YET` transitions to `REBALANCE_DUE_BUT_NO_QUEUE` or `QUEUE_READY_WAITING_FOR_IRELAND`.
+2. If `REBALANCE_DUE_BUT_NO_QUEUE`: verify Railway cron is `* * * * *` → run `npm run contur3:event-rebalance`.
+3. If `QUEUE_READY_WAITING_FOR_IRELAND`: check Ireland executor is running and polling.
 
 ---
 

@@ -240,8 +240,16 @@ async function main() {
     rootCauseReason = `signals=${signalCount} res=${reservationCount} queue=${queueTotal} orders=${ordersTotal} — unknown gap; inspect reservation/rebalance logs`;
   }
 
-  console.log(`\nROOT_CAUSE_STAGE:  ${rootCauseStage}`);
-  console.log(`ROOT_CAUSE_REASON: ${rootCauseReason}`);
+  // Compute suggested next check time
+  const suggestedNextCheckIso = rootCauseStage === 'REBALANCE_QUEUE_MISSING' ||
+    rootCauseStage === 'RESERVATIONS_MISSING' || rootCauseStage === 'VALID_MARKETS_FILTERED_BEFORE_RESERVATION'
+    ? new Date(Date.now() + 10 * 60_000).toISOString()
+    : null;
+
+  console.log(`\nROOT_CAUSE_STAGE:   ${rootCauseStage}`);
+  console.log(`ROOT_CAUSE_REASON:  ${rootCauseReason}`);
+  if (suggestedNextCheckIso) console.log(`SUGGESTED_NEXT_CHECK: ${suggestedNextCheckIso}`);
+  console.log(`canonical_forensic: npm run contur3:funnel-trace-audit`);
 
   // ── 6. Write report ───────────────────────────────────────────────────────
   fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -273,6 +281,8 @@ async function main() {
     },
     root_cause_stage: rootCauseStage,
     root_cause_reason: rootCauseReason,
+    suggested_next_check_iso: suggestedNextCheckIso,
+    canonical_forensic: 'npm run contur3:funnel-trace-audit',
     sample_reservation_events: (reservationRows ?? []).slice(0, 5).map(r => ({
       event_title: r.event_title,
       game_start_iso: r.game_start_iso,

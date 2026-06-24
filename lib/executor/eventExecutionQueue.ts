@@ -172,6 +172,7 @@ function buildQueueRow(
       smart_money: best.diagnostics.smart_money,
       entry_price: best.diagnostics.entry_price,
       max_entry_price: best.max_entry_price,
+      battle_trace_id: `contur3:${reservation.plan_run_id}:${reservation.match_family_key}:${best.condition_id}:${best.token_id}`,
     },
   };
 }

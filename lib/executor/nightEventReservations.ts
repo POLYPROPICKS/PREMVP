@@ -285,6 +285,7 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
         scope_confidence: best.sport_classification_confidence,
         timing_bucket: best.timing_bucket,
         hours_to_start: best.diagnostics.hours_to_start_now,
+        battle_trace_id: `contur3:${planRunId}:${best.match_family_key}:unknown:unknown`,
       },
     });
   });

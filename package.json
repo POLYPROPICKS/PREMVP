@@ -57,7 +57,8 @@
     "contur3:overnight-battle-audit": "node scripts/contur3/run-overnight-battle-audit.mjs",
     "contur3:why-no-bets-last-night": "node scripts/contur3/why-no-bets-last-night.mjs",
     "contur3:reservation-admission-audit": "node scripts/contur3/reservation-admission-audit.mjs",
-    "contur3:rebalance-window-audit": "node scripts/contur3/rebalance-window-audit.mjs"
+    "contur3:rebalance-window-audit": "node scripts/contur3/rebalance-window-audit.mjs",
+    "contur3:funnel-trace-audit": "node scripts/contur3/funnel-trace-audit.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",

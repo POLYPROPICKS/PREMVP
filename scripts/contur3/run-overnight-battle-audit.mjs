@@ -526,6 +526,7 @@ async function main() {
   console.log(`\nVERDICT: ${verdict}`);
   console.log(`ROOT_CAUSE_STAGE: ${rootCauseStage ?? 'N/A'}`);
   console.log(`ROOT_CAUSE_REASON: ${rootCauseReason ?? 'N/A'}`);
+  console.log(`canonical_forensic: npm run contur3:funnel-trace-audit`);
   if (errors.length) {
     for (const e of errors) console.warn(`  ERROR: ${e}`);
   }
@@ -845,6 +846,8 @@ ${forbiddenActiveRows.length > 0
     next_due_iso: nextDueIso,
     root_cause_stage: rootCauseStage,
     root_cause_reason: rootCauseReason,
+    suggested_next_check_iso: nextDueIso ?? null,
+    canonical_forensic: 'npm run contur3:funnel-trace-audit',
     diagnostic_report_path: jsonPath,
     verdict,
     errors,

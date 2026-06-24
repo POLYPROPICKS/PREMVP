@@ -2,6 +2,71 @@
 
 ---
 
+## 2026-06-24 — Funnel Trace Audit + battle_trace_id Implementation
+
+**Validated by:** Claude Code (Sonnet 4.6), session 2026-06-24
+
+### Repo State
+
+| Field | Value |
+|---|---|
+| Branch | `main` |
+| HEAD before session | `6beee31` (continuous rebalance window coverage) |
+| HEAD after session | see commit below |
+| Task | Add end-to-end funnel trace audit + battle_trace_id in diagnostics |
+
+### Changes Applied
+
+| File | Change |
+|---|---|
+| `scripts/contur3/funnel-trace-audit.mjs` | NEW — canonical one-command forensic script |
+| `package.json` | Added `contur3:funnel-trace-audit` script |
+| `lib/executor/nightEventReservations.ts` | Added `battle_trace_id` to reservation diagnostics (no schema change) |
+| `lib/executor/eventExecutionQueue.ts` | Added `battle_trace_id` to queue row diagnostics (no schema change) |
+| `scripts/contur3/blue-model-status.mjs` | Added `root_cause_stage`, `next_operator_action`, canonical forensic reference |
+| `scripts/contur3/run-overnight-battle-audit.mjs` | Added `suggested_next_check_iso`, canonical forensic reference |
+| `scripts/contur3/why-no-bets-last-night.mjs` | Added `suggested_next_check_iso`, canonical forensic reference |
+| `docs/ops/BLUE_MODEL_DAILY_RUNBOOK.md` | Added Forensic Architecture section, trace ID docs, gate discipline, CEO summary |
+
+### Funnel Stage Map (current proven status)
+
+| Stage | Status | Evidence |
+|-------|--------|---------|
+| Signals generated | ✅ PROVEN | `generated_signal_pairs` populated |
+| Valid market admission | ✅ PROVEN | Reservation anchor guard hardened 2026-06-24 |
+| Reservations created | ✅ PROVEN | Future reservations in Supabase (Scotland vs Brazil, Morocco vs Haiti, etc.) |
+| Rebalance → queue (RESERVED → READY) | ⏳ UNPROVEN | Next proof at T-70m window |
+| Ireland → order | ⏳ UNPROVEN | Requires READY queue row first |
+| Order confirmed | ⏳ UNPROVEN | Requires Ireland run |
+
+### Trace ID Implementation
+
+| Item | Status |
+|------|--------|
+| Durable `battle_trace_id` in `night_event_reservations.diagnostics` | ✅ IMPLEMENTED — format: `contur3:<plan_run_id>:<match_family_key>:unknown:unknown` |
+| Durable `battle_trace_id` in `event_execution_queue.diagnostics` | ✅ IMPLEMENTED — format: `contur3:<plan_run_id>:<match_family_key>:<condition_id>:<token_id>` |
+| No schema migration required | ✅ CONFIRMED — both tables already had `diagnostics jsonb` |
+| Computed `battle_trace_key` at read time | ✅ IMPLEMENTED in `funnel-trace-audit.mjs` |
+| Indexed top-level `battle_trace_id` column | 🔴 DEFERRED — `TRACE_ID_SCHEMA_MIGRATION_REQUIRED` |
+
+### Behavior Changes
+
+| Policy | Changed? |
+|--------|----------|
+| Market guards (halftime/corners/props) | ❌ NO CHANGE — guards unchanged |
+| Stake policy ($7 TIER1) | ❌ NO CHANGE |
+| Ranking / market selection | ❌ NO CHANGE |
+| Forbidden market enforcement | ❌ NO CHANGE |
+| Ireland executor protocol | ❌ NOT TOUCHED |
+
+### Next Operator Actions
+
+1. At T-80m before earliest reserved match: run `npm run contur3:funnel-trace-audit`
+2. If `REBALANCE_DUE_BUT_NO_QUEUE`: verify Railway cron `* * * * *` → run `npm run contur3:event-rebalance`
+3. If `QUEUE_READY_WAITING_FOR_IRELAND`: check Ireland executor logs
+
+---
+
 ## 2026-06-23 — V0 Supervised-Live Validation
 
 **Validated by:** Claude Code (Sonnet 4.6), session 2026-06-23

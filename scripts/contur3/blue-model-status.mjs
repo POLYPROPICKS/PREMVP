@@ -178,8 +178,21 @@ async function main() {
   }
   if (errors.length) console.log(`errors:               ${errors.join('; ')}`);
   console.log(`diagnostic_report_path: ${logPath}`);
+  // Map API verdict to funnel root-cause stage for operator clarity
+  const rootCauseStage =
+    verdict === 'BLUE_MODEL_GO_READY'      ? 'QUEUE_READY_WAITING_FOR_IRELAND' :
+    verdict === 'BLUE_MODEL_ARMED_WAITING' ? (nextDueIso ? 'VALID_RESERVATIONS_NOT_DUE_YET' : 'RESERVATIONS_MISSING') :
+    'REBALANCE_DUE_BUT_NO_QUEUE';
+  const nextOperatorAction =
+    verdict === 'BLUE_MODEL_GO_READY'      ? 'Ireland should pick up READY row automatically. Monitor queue.' :
+    verdict === 'BLUE_MODEL_ARMED_WAITING' ? `Wait for rebalance window. Next due: ${nextDueIso ?? 'unknown'}. Run npm run contur3:funnel-trace-audit for full trace.` :
+    'Run npm run contur3:funnel-trace-audit to identify bottleneck.';
+
   console.log('');
   console.log(`VERDICT: ${verdict}`);
+  console.log(`root_cause_stage:     ${rootCauseStage}`);
+  console.log(`next_operator_action: ${nextOperatorAction}`);
+  console.log(`canonical_forensic:   npm run contur3:funnel-trace-audit`);
 
   // Set exit code without calling process.exit() immediately.
   // This lets the undici connection pool drain naturally and avoids the
