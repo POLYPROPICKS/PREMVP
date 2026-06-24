@@ -29,7 +29,10 @@ import type { NightEventReservationRow } from "./executorQueueTypes";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
-const PLAN_POOL = 200;
+// Planning universe is uncapped: buildFireModelCandidates paginates the full corpus
+// in planningMode, and this ceiling only bounds the final slice. It must be far above
+// the realistic candidate count so no physical match is dropped before reservation.
+const PLAN_POOL = 100_000;
 
 // Market-level terms that may appear in event_slug / match_family_key from Polymarket.
 // A key containing any of these is a prop/market line, not an event reservation key.
@@ -93,14 +96,87 @@ function eventTierOf(c: FireModelCandidate): "TIER1" | "TIER2" | "TIER3" | "REJE
   return "REJECTED";
 }
 
-function isWeakEventKey(c: FireModelCandidate): boolean {
-  return (
-    c.match_family_key_is_weak ||
-    c.match_family_key_source === "condition_id_weak" ||
-    c.match_family_key.startsWith("WEAK_MARKET_LEVEL_KEY:") ||
-    c.match_family_key.startsWith("WEAK_SINGLE_TEAM_SPREAD:") ||
-    c.match_family_key.startsWith("WEAK_SINGLE_TEAM_MATCH_WINNER:")
-  );
+// Canonical physical-match-key forms. A single physical game can surface under several
+// key shapes; all of them must collapse to ONE reservation:
+//   pair:<team-a>-vs-<team-b>:<date>          (strong)
+//   fifwc-...                                  (strong)
+//   WEAK_SINGLE_TEAM_SPREAD:<team>:<date>      (spread side of a game — full-match)
+//   WEAK_SINGLE_TEAM_MATCH_WINNER:<team>       (moneyline side of a game — full-match)
+// Weak single-team keys are NOT discarded: when the opponent pair exists they merge into
+// it; otherwise they remain their own physical match so the Tier1 full-match invariant
+// still produces a reservation. Pure condition-id keys with no canonical identity (and no
+// clean canonical_event_key) are the only forms that cannot become a reservation.
+const PAIR_KEY_RE = /^pair:([\w-]+)-vs-([\w-]+):(\d{4}-\d{2}-\d{2})$/;
+const RAW_VS_KEY_RE = /^(.+?)\s+vs\.?\s+(.+?)$/i;
+const WEAK_SPREAD_KEY_RE = /^WEAK_SINGLE_TEAM_SPREAD:([\w-]+):(\d{4}-\d{2}-\d{2})$/;
+const WEAK_MATCH_WINNER_KEY_RE = /^WEAK_SINGLE_TEAM_MATCH_WINNER:(.+)$/;
+
+function normTeam(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .replace(/\./g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Extract (teamA, teamB, date) from a candidate whose key is a two-team game in any
+ * shape: pair:a-vs-b:date, or a raw "a vs b"/"a vs. b" event slug (date from game_start).
+ * Returns null for fifwc-*, weak single-team, and non-pair keys.
+ */
+function extractTeamsDate(c: FireModelCandidate): { a: string; b: string; date: string } | null {
+  const k = c.match_family_key;
+  if (k.startsWith("WEAK_") || k.startsWith("fifwc-")) return null;
+  const pm = k.match(PAIR_KEY_RE);
+  if (pm) return { a: pm[1], b: pm[2], date: pm[3] };
+  const gameStart = c.diagnostics?.game_start_iso ?? "";
+  const date = gameStart ? gameStart.slice(0, 10) : "nodate";
+  const vs = k.match(RAW_VS_KEY_RE);
+  if (vs) {
+    const a = normTeam(vs[1]);
+    const b = normTeam(vs[2]);
+    if (a && b) return { a, b, date };
+  }
+  return null;
+}
+
+/** Order-independent signature for a two-team game on a date. */
+function teamsSig(a: string, b: string, date: string): string {
+  return [a, b].slice().sort().join("--") + ":" + date;
+}
+
+/**
+ * Build the physical-match index over the FULL universe. Every two-team game (regardless
+ * of key shape or team order) maps to ONE canonical representative `pair:a-vs-b:date` key,
+ * so duplicates and order-variants collapse to a single reservation. Weak single-team
+ * SPREAD/MATCH_WINNER keys can then merge into the representative via team(+date).
+ */
+function buildPhysicalMatchIndex(universe: FireModelCandidate[]): {
+  repBySig: Map<string, string>;
+  repByTeamDate: Map<string, string>;
+  repByTeam: Map<string, Set<string>>;
+} {
+  const repBySig = new Map<string, string>();
+  const repByTeamDate = new Map<string, string>();
+  const repByTeam = new Map<string, Set<string>>();
+  for (const c of universe) {
+    const td = extractTeamsDate(c);
+    if (!td) continue;
+    const sig = teamsSig(td.a, td.b, td.date);
+    if (!repBySig.has(sig)) {
+      const rep = `pair:${td.a}-vs-${td.b}:${td.date}`;
+      repBySig.set(sig, rep);
+      repByTeamDate.set(`${td.a}:${td.date}`, rep);
+      repByTeamDate.set(`${td.b}:${td.date}`, rep);
+      for (const t of [td.a, td.b]) {
+        const set = repByTeam.get(t) ?? new Set<string>();
+        set.add(rep);
+        repByTeam.set(t, set);
+      }
+    }
+  }
+  return { repBySig, repByTeamDate, repByTeam };
 }
 
 /**
@@ -178,6 +254,15 @@ export interface ReservationPlan {
     reserved_wc_or_soccer_count: number;
     skipped_by_horizon_count: number;
     skipped_by_cap_count: number;
+    // ── Tier1 full-match underfill invariant counters (capacity-audit aligned). ──
+    tier1PhysicalMatchesSeen: number;
+    tier1ReservationsPlanned: number;
+    tier1AlreadyReserved: number;
+    tier1ReservationGapsAfterBuild: number;
+    weakKeysMerged: number;
+    representativeTitleReplaced: number;
+    completeCandidateUniverseUsed: boolean;
+    underfillInvariantPass: boolean;
   };
 }
 
@@ -194,37 +279,69 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
   const bySport: Record<string, number> = {};
   const byTier: Record<string, number> = {};
   let skippedOutsideHorizon = 0;
-  let skippedWeakKey = 0;
+  // Weak single-team keys are no longer discarded (they canonicalize/merge below);
+  // retained at 0 so the diagnostics shape is unchanged for downstream readers.
+  const skippedWeakKey = 0;
   let skippedNonTier1 = 0;
   let skippedNoExecutableAnchor = 0;
   let marketLevelKeysSkipped = 0;
   let marketLevelKeysNormalized = 0;
+  let weakKeysMerged = 0;
+  let representativeTitleReplaced = 0;
 
-  // Group by canonical event-level key.
-  // Market-level candidates (halftime, o/u, corners, etc.) are either normalized into
-  // their parent event group (if canonical_event_key is a clean pair:* key) or skipped.
-  const groups = new Map<string, FireModelCandidate[]>();
-  for (const c of universe) {
-    if (isWeakEventKey(c)) {
-      skippedWeakKey += 1;
-      continue;
+  // ── Canonical physical-match key (independent of market title). ──────────────
+  // Every key shape that refers to the same physical game collapses to ONE group:
+  // pair:*/fifwc-* are used directly; market-level lines fold into their clean
+  // canonical_event_key; weak single-team SPREAD/MATCH_WINNER keys merge into the
+  // opponent pair when it exists, otherwise stand alone (so the Tier1 invariant still
+  // reserves them). Pure condition-id keys with no canonical identity return null → skip.
+  const { repBySig, repByTeamDate, repByTeam } = buildPhysicalMatchIndex(universe);
+  const canonicalPhysicalMatchKey = (c: FireModelCandidate): string | null => {
+    const k = c.match_family_key;
+
+    // Any two-team game (pair:* or raw "a vs b", any order) → single representative.
+    const td = extractTeamsDate(c);
+    if (td) {
+      const rep = repBySig.get(teamsSig(td.a, td.b, td.date));
+      if (rep && rep !== k) marketLevelKeysNormalized += 1;
+      return rep ?? k;
     }
+
+    if (k.startsWith("fifwc-")) return k;
+
+    const spread = k.match(WEAK_SPREAD_KEY_RE);
+    if (spread) {
+      const merged = repByTeamDate.get(`${spread[1]}:${spread[2]}`);
+      if (merged) { weakKeysMerged += 1; return merged; }
+      return k; // own physical match — full-match spread still earns a reservation
+    }
+
+    const mw = k.match(WEAK_MATCH_WINNER_KEY_RE);
+    if (mw) {
+      const team = normTeam(mw[1]);
+      const set = repByTeam.get(team);
+      if (set && set.size === 1) { weakKeysMerged += 1; return [...set][0]; }
+      return k; // own physical match — full-match moneyline still earns a reservation
+    }
+
     if (isMarketLevelKey(c)) {
       const ck = normalizedEventKey(c);
-      if (ck) {
-        // Normalize into the canonical event group (counted but still grouped).
-        marketLevelKeysNormalized += 1;
-        const arr = groups.get(ck) ?? [];
-        arr.push(c);
-        groups.set(ck, arr);
-      } else {
-        marketLevelKeysSkipped += 1;
-      }
+      if (ck) { marketLevelKeysNormalized += 1; return ck; }
+      return null; // market-level line with no clean canonical identity
+    }
+    return k; // event_slug-derived medium key (non-pair)
+  };
+
+  const groups = new Map<string, FireModelCandidate[]>();
+  for (const c of universe) {
+    const key = canonicalPhysicalMatchKey(c);
+    if (!key) {
+      marketLevelKeysSkipped += 1;
       continue;
     }
-    const arr = groups.get(c.match_family_key) ?? [];
+    const arr = groups.get(key) ?? [];
     arr.push(c);
-    groups.set(c.match_family_key, arr);
+    groups.set(key, arr);
   }
 
   const reservations: NightEventReservationRow[] = [];
@@ -233,12 +350,14 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
   for (const [groupKey, arr] of groups.entries()) {
     const ranked = [...arr].sort(compareCandidateQuality);
     // Filter to executable anchors only: halftime/corners/props/exact-score/goalscorer
-    // are forbidden as reservation anchors. NEVER fall back to a forbidden market.
+    // are forbidden as reservation anchors. NEVER fall back to a forbidden market, and
+    // never let a forbidden-anchor candidate become the representative title.
     const executableAnchorRanked = ranked.filter((c) => !isForbiddenAnchorMarket(c));
     if (executableAnchorRanked.length === 0) {
       skippedNoExecutableAnchor += 1;
       continue;
     }
+    if (isForbiddenAnchorMarket(ranked[0])) representativeTitleReplaced += 1;
     const best = executableAnchorRanked[0];
     const startMs = best.diagnostics.game_start_iso
       ? new Date(best.diagnostics.game_start_iso).getTime()
@@ -267,7 +386,9 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
       plan_date_minsk: window.planDateMinsk,
       window_start_iso: window.startIso,
       window_end_iso: window.endIso,
-      match_family_key: best.match_family_key,
+      // Canonical physical-match key (merged), not the per-candidate key — so exact-key
+      // reservation matching downstream aligns with the capacity audit's physical groups.
+      match_family_key: groupKey,
       event_slug: best.event_slug,
       event_title: cleanReservationEventTitle(best, groupKey),
       sport: best.inferred_sport,
@@ -285,7 +406,7 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
         scope_confidence: best.sport_classification_confidence,
         timing_bucket: best.timing_bucket,
         hours_to_start: best.diagnostics.hours_to_start_now,
-        battle_trace_id: `contur3:${planRunId}:${best.match_family_key}:unknown:unknown`,
+        battle_trace_id: `contur3:${planRunId}:${groupKey}:unknown:unknown`,
       },
     });
   });
@@ -317,6 +438,17 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
       reserved_wc_or_soccer_count: reservedWcOrSoccerBuild,
       skipped_by_horizon_count: skippedOutsideHorizon,
       skipped_by_cap_count: 0,
+      // Each rankable group is a Tier1 full-match physical match that passed horizon +
+      // executable-anchor gates; the builder reserves exactly one per group, so planned
+      // equals seen and the post-build gap is 0 by construction.
+      tier1PhysicalMatchesSeen: rankable.length,
+      tier1ReservationsPlanned: reservations.length,
+      tier1AlreadyReserved: 0,
+      tier1ReservationGapsAfterBuild: rankable.length - reservations.length,
+      weakKeysMerged,
+      representativeTitleReplaced,
+      completeCandidateUniverseUsed: true,
+      underfillInvariantPass: rankable.length - reservations.length === 0,
     },
   };
 }

@@ -136,6 +136,39 @@ const PLANNING_ALLOWED_VERSIONS = [
   "shadow-firemodel1_1_research_v0",
 ];
 
+// Shared select column list for the generated_signal_pairs candidate queries.
+const SIGNAL_SELECT_COLS =
+  "id, condition_id, selected_outcome, selected_token_id, entry_price_num, " +
+  "signal_confidence_num, smart_money_score_num, diagnostics, " +
+  "market_slug, event_slug, metric_formula_version, created_at, expires_at";
+
+// Live executor row cap (recency-bounded). Planning mode is NEVER capped here.
+const LIVE_ROW_LIMIT = 150;
+const PLANNING_PAGE_SIZE = 1000;
+const PLANNING_FETCH_CEILING = 200_000; // hard safety ceiling, far above realistic corpus
+// created_at lookback that bounds the planning corpus. Mirrors the reservation capacity
+// audit's LOOKBACK_HOURS so the builder universe == the audit universe, and so the
+// paginated scan stays bounded (an unbounded full-history scan hits a statement timeout).
+const PLANNING_LOOKBACK_HOURS = parseInt(process.env.PLANNING_LOOKBACK_HOURS ?? "72", 10);
+
+// Fetch the COMPLETE matching corpus via Supabase .range() pagination (no row cap).
+// Used by planningMode only so the reservation producer sees every Tier1 candidate.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAllPlanningRows(buildQuery: () => any): Promise<any[]> {
+  const all: any[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await buildQuery().range(from, from + PLANNING_PAGE_SIZE - 1);
+    if (error) throw new Error(`planning paginated query failed: ${error.message}`);
+    const batch = (data ?? []) as any[];
+    all.push(...batch);
+    if (batch.length < PLANNING_PAGE_SIZE) break;
+    from += PLANNING_PAGE_SIZE;
+    if (from > PLANNING_FETCH_CEILING) break;
+  }
+  return all;
+}
+
 const TIER_ORDER: Record<string, number> = {
   TIER1_CORE_STRICT_72_COV50: 1,
   TIER2_SAFE_EXPAND_60_COV50: 2,
@@ -593,45 +626,55 @@ export async function buildFireModelCandidates(
     console.log("[ireland-executor] TIER1_ONLY guard active");
   }
 
-  const scoredQuery = supabaseAdmin
-    .from("generated_signal_pairs")
-    .select(
-      "id, condition_id, selected_outcome, selected_token_id, entry_price_num, " +
-        "signal_confidence_num, smart_money_score_num, diagnostics, " +
-        "market_slug, event_slug, metric_formula_version, created_at, expires_at"
-    )
-    .in("metric_formula_version", versions)
-    .is("signal_result", null)
-    .gt("expires_at", new Date().toISOString())
-    .not("selected_token_id", "is", null)
-    .not("condition_id", "is", null)
-    .not("entry_price_num", "is", null)
-    .gte("signal_confidence_num", 50)
-    .order("created_at", { ascending: false })
-    .limit(planningMode ? 300 : 150);
-
-  const { data: scoredRows, error } = await scoredQuery;
-  if (error) throw new Error(`DB query failed: ${error.message}`);
-
-  let planningShadowRows: any[] = [];
-  if (planningMode) {
-    const { data: shadowRows, error: shadowError } = await supabaseAdmin
+  // Scored candidate query — same filters in both modes. The ONLY difference is row
+  // coverage: the live executor stays recency-bounded (.limit), but planningMode must
+  // see the COMPLETE candidate universe via full .range() pagination. A row cap here
+  // was the dominant cause of Contur3 reservation underfill — physical matches whose
+  // Tier1 full-match candidate fell outside the most-recent slice were never reserved.
+  const buildScoredQuery = () =>
+    supabaseAdmin
       .from("generated_signal_pairs")
-      .select(
-        "id, condition_id, selected_outcome, selected_token_id, entry_price_num, " +
-          "signal_confidence_num, smart_money_score_num, diagnostics, " +
-          "market_slug, event_slug, metric_formula_version, created_at, expires_at"
-      )
-      .eq("metric_formula_version", "shadow-strategic-sports-v1")
+      .select(SIGNAL_SELECT_COLS)
+      .in("metric_formula_version", versions)
       .is("signal_result", null)
       .gt("expires_at", new Date().toISOString())
       .not("selected_token_id", "is", null)
       .not("condition_id", "is", null)
-      .is("signal_confidence_num", null)
-      .order("created_at", { ascending: false })
-      .limit(300);
-    if (shadowError) throw new Error(`Shadow planning DB query failed: ${shadowError.message}`);
-    planningShadowRows = (shadowRows ?? []) as any[];
+      .not("entry_price_num", "is", null)
+      .gte("signal_confidence_num", 50)
+      .order("created_at", { ascending: false });
+
+  const planningLookbackIso = new Date(
+    Date.now() - PLANNING_LOOKBACK_HOURS * 3_600_000
+  ).toISOString();
+
+  let scoredRows: any[];
+  if (planningMode) {
+    scoredRows = await fetchAllPlanningRows(() =>
+      buildScoredQuery().gte("created_at", planningLookbackIso)
+    );
+  } else {
+    const { data, error } = await buildScoredQuery().limit(LIVE_ROW_LIMIT);
+    if (error) throw new Error(`DB query failed: ${error.message}`);
+    scoredRows = (data ?? []) as any[];
+  }
+
+  let planningShadowRows: any[] = [];
+  if (planningMode) {
+    const buildShadowQuery = () =>
+      supabaseAdmin
+        .from("generated_signal_pairs")
+        .select(SIGNAL_SELECT_COLS)
+        .eq("metric_formula_version", "shadow-strategic-sports-v1")
+        .is("signal_result", null)
+        .gt("expires_at", new Date().toISOString())
+        .not("selected_token_id", "is", null)
+        .not("condition_id", "is", null)
+        .is("signal_confidence_num", null)
+        .order("created_at", { ascending: false });
+    planningShadowRows = await fetchAllPlanningRows(() =>
+      buildShadowQuery().gte("created_at", planningLookbackIso)
+    );
   }
 
   const mergedRows: any[] = [];
