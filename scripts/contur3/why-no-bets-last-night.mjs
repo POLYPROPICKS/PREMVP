@@ -32,6 +32,19 @@ const LOOKBACK_HOURS = parseInt(process.env.LOOKBACK_HOURS ?? '18', 10);
 const WC_FOOTBALL_RE = /\b(fifwc|world[\s-]?cup|wc2026|fifa|soccer|football|match[\s-]result|both[\s-]teams|match[\s-]winner|premier[\s-]league|bundesliga|la[\s-]liga|serie[\s-]a|champions[\s-]league)\b/i;
 const WC_COUNTRY_RE = /\b(france|senegal|iraq|norway|argentina|algeria|austria|jordan|saudi[\s-]arabia|uruguay|iran|new[\s-]zealand|spain|cape[\s-]verde|belgium|egypt|portugal|england|croatia|ghana|panama|colombia|uzbekistan|dr[\s-]congo|germany|ecuador|netherlands|sweden|japan|tunisia|mexico|south[\s-]korea|canada|qatar|brazil|morocco|scotland|haiti|\busa\b|australia|turkey|paraguay)\b/i;
 
+// Forbidden reservation anchor regexes — mirrors nightEventReservations.ts
+const HALFTIME_MARKET_RE = /halftime|half[\s-]time|first[\s-]half|1st[\s-]half|leading\s+at\s+halftime|draw\s+at\s+halftime|halftime[\s-]result/i;
+const CORNERS_MARKET_RE = /\bcorners?\b|total[\s_-]corners?|corners?[\s_-]total/i;
+const PROP_MARKET_RE = /exact[\s_-]score|goalscorer|goal[\s_-]scorer|anytime[\s_-]scorer|first[\s_-]scorer|last[\s_-]scorer|\bplayer[\s_-]prop|\boutright\b/i;
+
+function classifyReservationAnchor(r) {
+  const text = [r.match_family_key, r.event_title, r.event_slug].filter(Boolean).join(' ');
+  if (HALFTIME_MARKET_RE.test(text)) return 'FORBIDDEN_HALFTIME';
+  if (CORNERS_MARKET_RE.test(text)) return 'FORBIDDEN_CORNERS';
+  if (PROP_MARKET_RE.test(text)) return 'FORBIDDEN_PROP';
+  return 'EXECUTABLE';
+}
+
 function nowIso() {
   return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + 'Z';
 }
@@ -121,9 +134,23 @@ async function main() {
   const futureReservations = (reservationRows ?? []).filter(r => r.game_start_iso && new Date(r.game_start_iso) > new Date());
   const wcFootballReservations = (reservationRows ?? []).filter(r => r.strategic_scope === 'WC' || r.strategic_scope === 'SOCCER');
 
+  // Classify future reservations by anchor type
+  const futureForbiddenReservations = futureReservations.filter(r => classifyReservationAnchor(r) !== 'EXECUTABLE');
+  const futureValidExecutableReservations = futureReservations.filter(r => classifyReservationAnchor(r) === 'EXECUTABLE');
+  const futureForbiddenCount = futureForbiddenReservations.length;
+  const futureValidExecutableCount = futureValidExecutableReservations.length;
+
   console.log(`\nreservations (last ${LOOKBACK_HOURS}h):      ${reservationCount}`);
   console.log(`future reservations:         ${futureReservations.length}`);
+  console.log(`  valid (executable anchors): ${futureValidExecutableCount}`);
+  console.log(`  forbidden anchors:          ${futureForbiddenCount}`);
   console.log(`WC/SOCCER reservations:      ${wcFootballReservations.length}`);
+  if (futureForbiddenCount > 0) {
+    console.error(`FORBIDDEN_RESERVATION_ANCHORS: ${futureForbiddenCount} future reservation(s) with forbidden market anchors:`);
+    for (const r of futureForbiddenReservations) {
+      console.error(`  [${classifyReservationAnchor(r)}] ${r.event_title ?? r.match_family_key} | start=${r.game_start_iso} | status=${r.status}`);
+    }
+  }
 
   // ── 3. Execution queue ────────────────────────────────────────────────────
   const { data: queueRows, error: queueErr } = await supabase
@@ -184,6 +211,9 @@ async function main() {
   } else if (queueTotal > 0 && queueReady === 0 && queueSkipped === queueTotal) {
     rootCauseStage = 'MARKET_GUARD_BLOCKED';
     rootCauseReason = `All ${queueTotal} queue rows were SKIPPED — market guard blocked every candidate (corners/halftime/props?)`;
+  } else if (futureReservations.length > 0 && futureValidExecutableCount === 0) {
+    rootCauseStage = 'RESERVATIONS_FORBIDDEN_MARKET_ANCHORS';
+    rootCauseReason = `${futureReservations.length} future reservation(s) exist but ALL have forbidden anchors (corners/halftime/props) — forceRebuild required after planner fix`;
   } else if (reservationCount > 0 && queueTotal === 0) {
     rootCauseStage = 'REBALANCE_QUEUE_MISSING';
     rootCauseReason = `${reservationCount} reservations existed but event_execution_queue had 0 rows — rebalance did not run or found no due events`;
@@ -220,6 +250,8 @@ async function main() {
       sample_events: sampleEvents,
       reservations_created: reservationCount,
       reservations_future: futureReservations.length,
+      reservations_future_forbidden: futureForbiddenCount,
+      reservations_future_valid_executable: futureValidExecutableCount,
       reservations_wc_soccer: wcFootballReservations.length,
       queue_total: queueTotal,
       queue_ready: queueReady,
@@ -237,6 +269,15 @@ async function main() {
       game_start_iso: r.game_start_iso,
       status: r.status,
       strategic_scope: r.strategic_scope,
+      anchor_classification: classifyReservationAnchor(r),
+    })),
+    sample_forbidden_reservation_events: futureForbiddenReservations.slice(0, 5).map(r => ({
+      event_title: r.event_title,
+      event_slug: r.event_slug ?? null,
+      game_start_iso: r.game_start_iso,
+      status: r.status,
+      selection_reason: r.selection_reason ?? null,
+      anchor_classification: classifyReservationAnchor(r),
     })),
     sample_queue_rows: (queueRows ?? []).slice(0, 5).map(r => ({
       event_title: r.event_title,
@@ -264,6 +305,8 @@ async function main() {
 | WC/football signals | ${footballWcCount} |
 | Reservations created | ${reservationCount} |
 | Future reservations | ${futureReservations.length} |
+| Future forbidden (corners/halftime/props) | ${futureForbiddenCount} |
+| Future valid executable | ${futureValidExecutableCount} |
 | Queue total | ${queueTotal} |
 | Queue READY | ${queueReady} |
 | Queue SENT | ${queueSent} |

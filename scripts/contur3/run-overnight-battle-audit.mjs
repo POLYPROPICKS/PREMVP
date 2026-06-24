@@ -37,6 +37,16 @@ function classifyMarketTitle(title) {
   return 'ALLOWED_CORE';
 }
 
+// Classify a reservation row anchor using identity fields only.
+// Forbidden = halftime/corners/props anchor that cannot be executed.
+function classifyReservationAnchor(r) {
+  const text = [r.match_family_key, r.event_title, r.event_slug].filter(Boolean).join(' ');
+  if (HALFTIME_MARKET_RE.test(text)) return 'FORBIDDEN_HALFTIME';
+  if (CORNERS_MARKET_RE.test(text)) return 'FORBIDDEN_CORNERS';
+  if (PROP_MARKET_RE.test(text)) return 'FORBIDDEN_PROP';
+  return 'EXECUTABLE';
+}
+
 function nowIso() {
   return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + 'Z';
 }
@@ -298,6 +308,29 @@ async function main() {
     }
   }
 
+  // ── H2. Classify future reservations by anchor type ─────────────────────────
+  const futureReservationsCount = futureReservations.length;
+  const futureForbiddenReservations = futureReservations.filter(
+    r => classifyReservationAnchor(r) !== 'EXECUTABLE'
+  );
+  const futureValidExecutableReservations = futureReservations.filter(
+    r => classifyReservationAnchor(r) === 'EXECUTABLE'
+  );
+  const futureForbiddenCount = futureForbiddenReservations.length;
+  const futureValidExecutableCount = futureValidExecutableReservations.length;
+
+  if (futureReservationsCount > 0) {
+    console.log(`future reservations classified:`);
+    console.log(`  valid (executable anchors): ${futureValidExecutableCount}`);
+    console.log(`  forbidden (corners/halftime/props): ${futureForbiddenCount}`);
+    if (futureForbiddenCount > 0) {
+      console.error(`\nFORBIDDEN_RESERVATION_ANCHORS: ${futureForbiddenCount} future reservation(s) have forbidden market anchors:`);
+      for (const r of futureForbiddenReservations) {
+        console.error(`  classification=${classifyReservationAnchor(r)} event_title=${r.event_title ?? r.match_family_key} game_start=${r.game_start_iso} status=${r.status}`);
+      }
+    }
+  }
+
   // ── I. Upcoming candidates from generated_signal_pairs ──────────────────────
   // Uses signal_confidence_num (the column the planner reads), NOT the score column
   // (which may be NULL for shadow-strategic-sports-v1 planning rows).
@@ -413,6 +446,11 @@ async function main() {
       verdict = 'BLUE_MODEL_NO_GO_RESERVATIONS_MISSING';
       rootCauseStage = 'RESERVATIONS_MISSING';
       rootCauseReason = `${totalAvailableSignals} signals available but future_reservations=0 — night-reservations cron did not produce reservations (forceRebuild may be needed)`;
+    } else if (hasFutureReservations && futureValidExecutableCount === 0) {
+      verdict = 'BLUE_MODEL_NO_GO_FORBIDDEN_RESERVATION_MARKETS';
+      rootCauseStage = 'RESERVATIONS_FORBIDDEN_MARKET_ANCHORS';
+      rootCauseReason = `${futureReservationsCount} future reservation(s) exist but ALL have forbidden market anchors (corners/halftime/props) — forceRebuild needed; reservation planner must be updated to block these anchors`;
+      errors.push(rootCauseReason);
     } else if (hasFutureReservations && !hasQueueReady && queueRows.length === 0) {
       verdict = 'BLUE_MODEL_NO_GO_REBALANCE_QUEUE_MISSING';
       rootCauseStage = 'REBALANCE_QUEUE_MISSING';
@@ -567,9 +605,12 @@ async function main() {
       })),
     },
     future_reservations: {
-      total: futureReservations.length,
+      total: futureReservationsCount,
+      future_forbidden_count: futureForbiddenCount,
+      future_valid_executable_count: futureValidExecutableCount,
       error: futureResError,
-      no_future_reservations_warning: noFutureReservationsFlag && futureReservations.length === 0,
+      no_future_reservations_warning: noFutureReservationsFlag && futureReservationsCount === 0,
+      all_future_forbidden_warning: futureReservationsCount > 0 && futureValidExecutableCount === 0,
       rows: (futureReservations ?? []).map(r => ({
         match_family_key: r.match_family_key,
         event_title: r.event_title,
@@ -577,6 +618,16 @@ async function main() {
         status: r.status,
         created_at: r.created_at,
         selection_reason: r.selection_reason,
+        anchor_classification: classifyReservationAnchor(r),
+      })),
+      forbidden_rows: futureForbiddenReservations.map(r => ({
+        event_title: r.event_title,
+        event_slug: r.event_slug ?? null,
+        match_family_key: r.match_family_key,
+        game_start_iso: r.game_start_iso,
+        status: r.status,
+        selection_reason: r.selection_reason,
+        anchor_classification: classifyReservationAnchor(r),
       })),
     },
     upcoming_signal_pairs: {
@@ -633,8 +684,19 @@ async function main() {
       ? `  (нет scored-кандидатов signal_confidence_num>=50; shadow-strategic-sports-v1 planning rows: ${shadowPlanningCount})`
       : '  (нет кандидатов signal_confidence_num>=50 и нет shadow-planning rows не истёкших)';
 
-  const futureResBlock = (futureReservations ?? []).length > 0
-    ? futureReservations.map(r => `  - ${r.event_title ?? r.match_family_key} | старт: ${r.game_start_iso} | статус: ${r.status}`).join('\n')
+  const futureResBlock = futureReservationsCount > 0
+    ? [
+        `**Итого:** ${futureReservationsCount} | valid (executable): ${futureValidExecutableCount} | forbidden: ${futureForbiddenCount}`,
+        '',
+        ...futureReservations.map(r => {
+          const cls = classifyReservationAnchor(r);
+          const icon = cls === 'EXECUTABLE' ? '✅' : '⛔';
+          return `  - ${icon} [${cls}] ${r.event_title ?? r.match_family_key} | старт: ${r.game_start_iso} | статус: ${r.status}`;
+        }),
+        futureForbiddenCount > 0
+          ? `\n⛔ **FORBIDDEN_RESERVATION_ANCHORS** — ${futureForbiddenCount} резервация(ий) с недопустимым якорем. forceRebuild обязателен после обновления кода.`
+          : '',
+      ].join('\n')
     : noFutureReservationsFlag
       ? '  ⚠️ **NO_FUTURE_RESERVATIONS** — нет резерваций для будущих матчей!\n  Необходимо запустить `npm run contur3:night-reservations` или Railway "Run Now" на night-reservations-cron.'
       : '  (Supabase недоступен — требуется ручная проверка)';
@@ -740,8 +802,10 @@ ${forbiddenActiveRows.length > 0
     ok: verdict === 'BLUE_MODEL_GO_READY' || verdict === 'BLUE_MODEL_ARMED_WAITING',
     candidate_count: candidateCount,
     active_reservations: activeReservations.length,
-    future_reservations: (futureReservations ?? []).length,
-    no_future_reservations_warning: noFutureReservationsFlag && (futureReservations ?? []).length === 0,
+    future_reservations: futureReservationsCount,
+    future_forbidden_reservations: futureForbiddenCount,
+    future_valid_executable_reservations: futureValidExecutableCount,
+    no_future_reservations_warning: noFutureReservationsFlag && futureReservationsCount === 0,
     upcoming_signals_scored: upcomingCandidates.length,
     upcoming_signals_shadow: shadowPlanningCount,
     upcoming_signals_total: upcomingCandidates.length + shadowPlanningCount,

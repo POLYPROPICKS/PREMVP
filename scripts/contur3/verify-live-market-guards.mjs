@@ -255,6 +255,127 @@ const TESTS = [
     },
     expect: 'EXECUTABLE',
   },
+
+  // ── 13. Switzerland/Canada corners (incident case) — must be blocked ──────
+  {
+    name: 'CORNERS_SWITZERLAND_CANADA: O/U 9.5 Total Corners — must be CORNERS_NOT_LIVE_EXECUTABLE',
+    candidate: {
+      market_slug: 'switzerland-vs-canada-ou-9-5-total-corners',
+      event_slug: 'switzerland-vs-canada',
+      match_family_key: 'pair:switzerland-vs-canada:2026-06-24',
+      diagnostics: {
+        marketTitle: 'Switzerland vs Canada: O/U 9.5 Total Corners',
+        eventTitle: 'Switzerland vs Canada',
+      },
+    },
+    expect: 'CORNERS_NOT_LIVE_EXECUTABLE',
+  },
+
+  // ── 14. England/Ghana corners (via market_slug) — must be blocked ─────────
+  {
+    name: 'CORNERS_ENGLAND_GHANA_SLUG: corners in market_slug only — must be CORNERS_NOT_LIVE_EXECUTABLE',
+    candidate: {
+      market_slug: 'england-vs-ghana-total-corners-8-5',
+      event_slug: 'england-vs-ghana',
+      match_family_key: 'pair:england-vs-ghana:2026-06-23',
+      diagnostics: {
+        marketTitle: 'England vs Ghana: O/U 8.5 Total Corners',
+      },
+    },
+    expect: 'CORNERS_NOT_LIVE_EXECUTABLE',
+  },
+
+  // ── 15. Spread England full-match — must be EXECUTABLE ────────────────────
+  {
+    name: 'SPREAD_ENGLAND_FULLMATCH: Spread England (-1.5) with eventTitle — must be EXECUTABLE',
+    candidate: {
+      market_slug: 'spread-england-minus-1-5',
+      event_slug: 'england-vs-ghana',
+      match_family_key: 'pair:england-vs-ghana:2026-06-23',
+      diagnostics: {
+        marketTitle: 'Spread: England (-1.5)',
+        eventTitle: 'England vs Ghana',
+      },
+    },
+    expect: 'EXECUTABLE',
+  },
+
+  // ── 16. Total Goals O/U 2.5 full-match — must be EXECUTABLE ──────────────
+  {
+    name: 'TOTAL_GOALS_FULLMATCH: O/U 2.5 Total Goals — must be EXECUTABLE',
+    candidate: {
+      market_slug: 'england-vs-ghana-ou-2-5-total-goals',
+      event_slug: 'england-vs-ghana',
+      match_family_key: 'pair:england-vs-ghana:2026-06-23',
+      diagnostics: {
+        marketTitle: 'Total Goals Over 2.5',
+        eventTitle: 'England vs Ghana',
+      },
+    },
+    expect: 'EXECUTABLE',
+  },
+
+  // ── 17. First Half Result — must be blocked ────────────────────────────────
+  {
+    name: 'FIRST_HALF_RESULT: first half in marketTitle — must be HALFTIME_NOT_LIVE_EXECUTABLE',
+    candidate: {
+      market_slug: 'england-vs-ghana-first-half-result',
+      event_slug: 'england-vs-ghana',
+      match_family_key: 'pair:england-vs-ghana:2026-06-23',
+      diagnostics: {
+        marketTitle: 'First Half Result',
+      },
+    },
+    expect: 'HALFTIME_NOT_LIVE_EXECUTABLE',
+  },
+
+  // ── 18. Exact Score — must be blocked ─────────────────────────────────────
+  {
+    name: 'EXACT_SCORE_TITLE: exact score in marketTitle — must be PROP_NOT_LIVE_EXECUTABLE',
+    candidate: {
+      market_slug: 'england-vs-ghana-score',
+      event_slug: 'england-vs-ghana',
+      match_family_key: 'pair:england-vs-ghana:2026-06-23',
+      diagnostics: {
+        marketTitle: 'Exact Score',
+      },
+    },
+    expect: 'PROP_NOT_LIVE_EXECUTABLE',
+  },
+
+  // ── 19. Anytime Goalscorer — must be blocked ──────────────────────────────
+  {
+    name: 'ANYTIME_GOALSCORER: goalscorer in marketTitle — must be PROP_NOT_LIVE_EXECUTABLE',
+    candidate: {
+      market_slug: 'england-vs-ghana-scorer',
+      event_slug: 'england-vs-ghana',
+      match_family_key: 'pair:england-vs-ghana:2026-06-23',
+      diagnostics: {
+        marketTitle: 'Anytime Goalscorer',
+      },
+    },
+    expect: 'PROP_NOT_LIVE_EXECUTABLE',
+  },
+
+  // ── 20. Telemetry false-positive guard: price1hAgo / delta1hPp must NOT trigger halftime ──
+  {
+    name: 'TELEMETRY_FALSE_POSITIVE: price1hAgo+delta1hPp in diagnostics — must be EXECUTABLE',
+    candidate: {
+      market_slug: 'spread-england-minus-1-0',
+      event_slug: 'england-vs-ghana',
+      match_family_key: 'pair:england-vs-ghana:2026-06-23',
+      diagnostics: {
+        marketTitle: 'Spread: England (-1.0)',
+        eventTitle: 'England vs Ghana',
+        price1hAgo: 0.47,
+        delta1hPp: 3.2,
+        price6hAgo: 0.44,
+        delta6hPp: 6.8,
+        volume1h: 5000,
+      },
+    },
+    expect: 'EXECUTABLE',
+  },
 ];
 
 // ── Runner ──

@@ -39,12 +39,51 @@ const MARKET_LEVEL_KEY_RE =
 const HALFTIME_MARKET_RE =
   /halftime|half[\s-]time|first[\s-]half|1st[\s-]half|leading\s+at\s+halftime|draw\s+at\s+halftime|halftime[\s-]result/i;
 
+// Anchor guards — applied at reservation selection to prevent forbidden live-market anchors.
+// Only identity fields are inspected (market_slug, event_slug, match_family_key, diagnostics.marketTitle).
+// Telemetry fields (price1hAgo, delta1hPp, etc.) are never checked here.
+const CORNERS_ANCHOR_RE = /\bcorners?\b|total[\s_-]corners?|corners?[\s_-]total/i;
+
+const PROP_ANCHOR_RE =
+  /exact[\s_-]score|goalscorer|goal[\s_-]scorer|anytime[\s_-]scorer|first[\s_-]scorer|last[\s_-]scorer|\bplayer[\s_-]prop|\boutright\b/i;
+
 function isHalftimeMarket(c: FireModelCandidate): boolean {
   return (
     HALFTIME_MARKET_RE.test(c.market_slug ?? "") ||
     HALFTIME_MARKET_RE.test(c.event_slug ?? "") ||
     HALFTIME_MARKET_RE.test(c.match_family_key ?? "")
   );
+}
+
+function isCornersAnchorMarket(c: FireModelCandidate): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const diagTitle: string = (c as any).diagnostics?.marketTitle ?? "";
+  return (
+    CORNERS_ANCHOR_RE.test(c.market_slug ?? "") ||
+    CORNERS_ANCHOR_RE.test(c.event_slug ?? "") ||
+    CORNERS_ANCHOR_RE.test(c.match_family_key ?? "") ||
+    CORNERS_ANCHOR_RE.test(diagTitle)
+  );
+}
+
+function isPropAnchorMarket(c: FireModelCandidate): boolean {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const diagTitle: string = (c as any).diagnostics?.marketTitle ?? "";
+  return (
+    PROP_ANCHOR_RE.test(c.market_slug ?? "") ||
+    PROP_ANCHOR_RE.test(c.event_slug ?? "") ||
+    PROP_ANCHOR_RE.test(c.match_family_key ?? "") ||
+    PROP_ANCHOR_RE.test(diagTitle)
+  );
+}
+
+/**
+ * True when the candidate is a forbidden live-market anchor.
+ * Forbidden: halftime/1H, corners, exact score, goalscorer, props, outrights.
+ * Allowed: full-match winner/moneyline, spread, full-match total goals.
+ */
+function isForbiddenAnchorMarket(c: FireModelCandidate): boolean {
+  return isHalftimeMarket(c) || isCornersAnchorMarket(c) || isPropAnchorMarket(c);
 }
 
 function eventTierOf(c: FireModelCandidate): "TIER1" | "TIER2" | "TIER3" | "REJECTED" {
@@ -130,6 +169,7 @@ export interface ReservationPlan {
     skipped_outside_horizon: number;
     skipped_weak_key: number;
     skipped_non_tier1_event: number;
+    skipped_no_executable_anchor: number;
     market_level_keys_skipped: number;
     market_level_keys_normalized: number;
     // Horizon/WC floor diagnostics exposed after build.
@@ -156,6 +196,7 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
   let skippedOutsideHorizon = 0;
   let skippedWeakKey = 0;
   let skippedNonTier1 = 0;
+  let skippedNoExecutableAnchor = 0;
   let marketLevelKeysSkipped = 0;
   let marketLevelKeysNormalized = 0;
 
@@ -191,8 +232,14 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
 
   for (const [groupKey, arr] of groups.entries()) {
     const ranked = [...arr].sort(compareCandidateQuality);
-    const nonHalftimeRanked = ranked.filter((c) => !isHalftimeMarket(c));
-    const best = nonHalftimeRanked.length > 0 ? nonHalftimeRanked[0] : ranked[0];
+    // Filter to executable anchors only: halftime/corners/props/exact-score/goalscorer
+    // are forbidden as reservation anchors. NEVER fall back to a forbidden market.
+    const executableAnchorRanked = ranked.filter((c) => !isForbiddenAnchorMarket(c));
+    if (executableAnchorRanked.length === 0) {
+      skippedNoExecutableAnchor += 1;
+      continue;
+    }
+    const best = executableAnchorRanked[0];
     const startMs = best.diagnostics.game_start_iso
       ? new Date(best.diagnostics.game_start_iso).getTime()
       : NaN;
@@ -202,12 +249,6 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
     }
     // Event-level eligibility: best candidate must be a Tier1 event opportunity.
     if (eventTierOf(best) !== "TIER1") {
-      skippedNonTier1 += 1;
-      continue;
-    }
-    // Safety gate: if the best candidate is a halftime market, skip this event.
-    // Halftime markets cannot be executed at rebalance, so they cannot serve as anchors.
-    if (isHalftimeMarket(best)) {
       skippedNonTier1 += 1;
       continue;
     }
@@ -267,6 +308,7 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
       skipped_outside_horizon: skippedOutsideHorizon,
       skipped_weak_key: skippedWeakKey,
       skipped_non_tier1_event: skippedNonTier1,
+      skipped_no_executable_anchor: skippedNoExecutableAnchor,
       market_level_keys_skipped: marketLevelKeysSkipped,
       market_level_keys_normalized: marketLevelKeysNormalized,
       horizon_end_iso: window.horizonEndIso,

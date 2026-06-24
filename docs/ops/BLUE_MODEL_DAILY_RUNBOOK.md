@@ -1,6 +1,6 @@
 # Blue_model / Contur3 Daily Operations Runbook
 
-**Last updated:** 2026-06-23 (market guard hardening + battle log)
+**Last updated:** 2026-06-24 (reservation anchor guard hardening — corners/props blocked at planner stage)
 **Canonical pipeline:** signal-cache → night_event_reservations → event_execution_queue → Ireland watcher
 
 ---
@@ -159,12 +159,27 @@ That repo has no PREMVP scripts — "Missing script: contur3:blue-status" is exp
 npm run contur3:verify-live-market-guards
 ```
 
-Run this after any change to `lib/executor/eventExecutionQueue.ts` or `buildFireModelCandidates.ts`. Exit 0 = `CONTUR3_MARKET_GUARD_REGRESSION_PASS`. Exit 1 = fix before deploy. Currently 12 test cases.
+Run this after any change to `lib/executor/eventExecutionQueue.ts`, `buildFireModelCandidates.ts`, or `nightEventReservations.ts`. Exit 0 = `CONTUR3_MARKET_GUARD_REGRESSION_PASS`. Exit 1 = fix before deploy. Currently 20 test cases.
 
-**Blocked market categories (pre-ranking filter):**
+**Blocked market categories (pre-ranking filter, applied at BOTH reservation planner and execution queue):**
 1. `HALFTIME_NOT_LIVE_EXECUTABLE` — halftime, half-time, first half, 1st half
 2. `CORNERS_NOT_LIVE_EXECUTABLE` — corners, total corners
 3. `PROP_NOT_LIVE_EXECUTABLE` — exact score, goalscorer, player shots/assists, outrights
+
+### Reservation Anchor Guard (CRITICAL — 2026-06-24 addition)
+
+**Rule:** `future_reservations > 0` is NOT a GO signal alone. You must check `future_valid_executable_reservations > 0`.
+
+**Incident (2026-06-24):** After forceRebuild was fixed, reservation planner created RESERVED rows with corners anchor ("Switzerland vs Canada: O/U 9.5 Total Corners", event_tier=TIER1, event_score=82). These reservations would never execute (rebalance skips forbidden markets) — but the audit was reporting ARMED_WAITING, masking the real funnel break.
+
+**Root cause:** `nightEventReservations.ts` filtered only halftime from anchor candidates but NOT corners/props/exact-score. The corners candidate (normalized into the pair event group via `canonical_event_key`) could outrank a spread and become the reservation anchor.
+
+**Fix (commit after b37b6d5):** `isForbiddenAnchorMarket()` replaces `isHalftimeMarket()` in anchor selection. If no executable anchor exists for an event group, the event is skipped with `NO_EXECUTABLE_RESERVATION_ANCHOR`. The forbidden anchor check inspects ONLY identity fields: `market_slug`, `event_slug`, `match_family_key`, `diagnostics.marketTitle`. Never full JSON.
+
+**Verdict mapping for forbidden reservations:**
+- `BLUE_MODEL_NO_GO_FORBIDDEN_RESERVATION_MARKETS` — future reservations exist but all have forbidden anchors
+- root_cause_stage = `RESERVATIONS_FORBIDDEN_MARKET_ANCHORS`
+- Action: run forceRebuild after planner fix is deployed
 
 ### Overnight Battle Audit
 
@@ -175,6 +190,12 @@ npm run contur3:overnight-battle-audit
 Comprehensive one-command audit: queue status, forbidden active rows, order ledger, reservations, upcoming candidates. Writes JSON/CSV/MD + daily JSONL. Exit 0 = GO_READY or ARMED_WAITING.
 
 **NO_FUTURE_RESERVATIONS warning:** If audit reports this, it means `night_event_reservations` has no future rows. Night-reservations cron must run before T-60 of the earliest upcoming match. Trigger via Railway "Run Now" on `contur3-night-reservations-cron`.
+
+**FORBIDDEN_RESERVATION_ANCHORS warning:** If `future_forbidden_count > 0` and `future_valid_executable_count = 0`, the verdict is `BLUE_MODEL_NO_GO_FORBIDDEN_RESERVATION_MARKETS`. Deploy the planner fix, then run forceRebuild.
+
+### Roadmap (P1 migration — durable audit)
+
+**Durable Supabase battle audit with trace_id:** P1 migration task. Current battle log is local JSONL only (not persisted to Supabase). When trace_id column is added to `night_event_reservations` and `event_execution_queue`, each reservation can be linked to its rebalance queue row and order event for full funnel tracing without running scripts.
 
 ---
 

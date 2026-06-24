@@ -115,6 +115,49 @@ Email is always last. Artifacts are verified to be non-empty before send (datase
 - Removed `getSecret()` / executor secret gate from runner (wrong gate for email-only pipeline)
 - Pre-flight checks now: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `RESEND_API_KEY`, `EMAIL_FROM`
 - `phase` field added to JSON report: `preflight_failed` / `pipeline_failed` / `complete`
+
+---
+
+## 2026-06-24 — Reservation Anchor Guard Fix
+
+**Validated by:** Claude Code (Sonnet 4.6), session 2026-06-24
+
+### Incident
+
+After forceRebuild fix (commit b37b6d5), reservation planner created RESERVED rows with corners anchor:
+- event_title: "Switzerland vs Canada: O/U 9.5 Total Corners"
+- event_tier: TIER1, event_score: 82, status: RESERVED
+- These rows were future reservations that would NEVER execute (rebalance guard would skip them)
+- Audit was reporting ARMED_WAITING — masking the real funnel break
+
+### Root Cause
+
+`nightEventReservations.ts` (prior to this fix):
+- `nonHalftimeRanked = ranked.filter(c => !isHalftimeMarket(c))` — filtered only halftime
+- Corners/props/exact-score/goalscorer candidates could rank as `best` anchor
+- Corners candidate was normalized into the event group via `canonical_event_key = pair:switzerland-vs-canada:...`
+- Result: RESERVED reservation with a corners market anchor
+
+`future_reservations > 0` was incorrectly treated as a GO/ARMED_WAITING signal.
+
+### Fix Applied
+
+| File | Change |
+|---|---|
+| `lib/executor/nightEventReservations.ts` | Added `isForbiddenAnchorMarket()` = halftime ∨ corners ∨ props. Replaced `nonHalftimeRanked`/`isHalftimeMarket` with `executableAnchorRanked`/`isForbiddenAnchorMarket`. If no executable anchor exists for an event group → skip with `skipped_no_executable_anchor`. |
+| `scripts/contur3/run-overnight-battle-audit.mjs` | Added `classifyReservationAnchor()`, counts `future_forbidden_count` / `future_valid_executable_count`. New verdict: `BLUE_MODEL_NO_GO_FORBIDDEN_RESERVATION_MARKETS` when all future reservations have forbidden anchors. |
+| `scripts/contur3/why-no-bets-last-night.mjs` | Added same classification + root_cause_stage `RESERVATIONS_FORBIDDEN_MARKET_ANCHORS`. |
+| `scripts/contur3/verify-live-market-guards.mjs` | Extended to 20 test cases including Switzerland/Canada corners, exact score, goalscorer, telemetry false-positive guard. |
+| `docs/ops/BLUE_MODEL_DAILY_RUNBOOK.md` | Added reservation anchor guard rule, incident note, roadmap P1 item. |
+
+### Key Rule Added
+
+**`future_reservations_count > 0` is NOT a GO signal.**
+`future_valid_executable_reservations_count > 0` is required.
+
+### Roadmap
+
+**P1:** Durable Supabase battle audit with `trace_id` column in `night_event_reservations` and `event_execution_queue` — links each reservation to its rebalance queue row and order event. Currently battle log is local JSONL only.
 - stdout/stderr captured and saved in JSON report
 
 **Operator action required:**
