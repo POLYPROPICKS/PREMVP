@@ -376,6 +376,101 @@ const TESTS = [
     },
     expect: 'EXECUTABLE',
   },
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // POSITIVE ADMISSION CASES — valid full-match markets must be admitted
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  // ── 21. Positive: "Team A vs Team B: Spread Team A -1.5" ──────────────────
+  {
+    name: 'POSITIVE_SPREAD_PAIR: pair spread with both teams — must be EXECUTABLE',
+    candidate: {
+      market_slug: 'france-vs-senegal-spread-france-minus-1-5',
+      event_slug: 'france-vs-senegal',
+      match_family_key: 'pair:france-vs-senegal:2026-06-24',
+      diagnostics: {
+        marketTitle: 'France vs Senegal: Spread France -1.5',
+        eventTitle: 'France vs Senegal',
+      },
+    },
+    expect: 'EXECUTABLE',
+  },
+
+  // ── 22. Positive: "Team A vs Team B: Moneyline" ───────────────────────────
+  {
+    name: 'POSITIVE_MONEYLINE_PAIR: pair moneyline — must be EXECUTABLE',
+    candidate: {
+      market_slug: 'france-vs-senegal-moneyline',
+      event_slug: 'france-vs-senegal',
+      match_family_key: 'pair:france-vs-senegal:2026-06-24',
+      diagnostics: {
+        marketTitle: 'France vs Senegal: Moneyline',
+        eventTitle: 'France vs Senegal',
+      },
+    },
+    expect: 'EXECUTABLE',
+  },
+
+  // ── 23. Positive: "Team A vs Team B: Total Goals Over 2.5" ───────────────
+  {
+    name: 'POSITIVE_TOTAL_GOALS_PAIR: pair total goals — must be EXECUTABLE',
+    candidate: {
+      market_slug: 'france-vs-senegal-total-goals-ou-2-5',
+      event_slug: 'france-vs-senegal',
+      match_family_key: 'pair:france-vs-senegal:2026-06-24',
+      diagnostics: {
+        marketTitle: 'France vs Senegal: Total Goals Over 2.5',
+        eventTitle: 'France vs Senegal',
+      },
+    },
+    expect: 'EXECUTABLE',
+  },
+
+  // ── 24. Positive: "Team A vs Team B: Winner" ─────────────────────────────
+  {
+    name: 'POSITIVE_WINNER_PAIR: pair match winner — must be EXECUTABLE',
+    candidate: {
+      market_slug: 'france-vs-senegal-winner',
+      event_slug: 'france-vs-senegal',
+      match_family_key: 'pair:france-vs-senegal:2026-06-24',
+      diagnostics: {
+        marketTitle: 'France vs Senegal: Winner',
+        eventTitle: 'France vs Senegal',
+      },
+    },
+    expect: 'EXECUTABLE',
+  },
+
+  // ── 25. Positive: "Spread: England (-1.5)" resolved from eventTitle ────────
+  {
+    name: 'POSITIVE_SINGLE_TEAM_SPREAD_RESOLVED: spread resolved from eventTitle — must be EXECUTABLE',
+    candidate: {
+      market_slug: 'spread-england-minus-1-5',
+      event_slug: null,
+      match_family_key: 'pair:england-vs-ghana:2026-06-23',
+      diagnostics: {
+        marketTitle: 'Spread: England (-1.5)',
+        eventTitle: 'England vs Ghana',
+        delta1hPp: 2.5,
+        price1hAgo: 0.45,
+      },
+    },
+    expect: 'EXECUTABLE',
+  },
+
+  // ── 26. Negative: "Outright Winner" — must be blocked ─────────────────────
+  {
+    name: 'OUTRIGHT_WINNER: outright winner — must be PROP_NOT_LIVE_EXECUTABLE',
+    candidate: {
+      market_slug: 'world-cup-outright-winner-france',
+      event_slug: null,
+      match_family_key: 'world-cup-outright',
+      diagnostics: {
+        marketTitle: 'Outright Winner: France',
+      },
+    },
+    expect: 'PROP_NOT_LIVE_EXECUTABLE',
+  },
 ];
 
 // ── Runner ──

@@ -214,6 +214,10 @@ async function main() {
   } else if (futureReservations.length > 0 && futureValidExecutableCount === 0) {
     rootCauseStage = 'RESERVATIONS_FORBIDDEN_MARKET_ANCHORS';
     rootCauseReason = `${futureReservations.length} future reservation(s) exist but ALL have forbidden anchors (corners/halftime/props) — forceRebuild required after planner fix`;
+  } else if (reservationCount === 0 && footballWcCount > 0 && signalCount > 0) {
+    // Signals exist but no reservations — could be valid markets filtered before reaching reservation planner
+    rootCauseStage = 'VALID_MARKETS_FILTERED_BEFORE_RESERVATION';
+    rootCauseReason = `${footballWcCount} WC/football signals exist but 0 reservations created — valid markets may be blocked by MISSING_GAME_START / UNKNOWN_SCOPE / weak key. Run npm run contur3:reservation-admission-audit`;
   } else if (reservationCount > 0 && queueTotal === 0) {
     rootCauseStage = 'REBALANCE_QUEUE_MISSING';
     rootCauseReason = `${reservationCount} reservations existed but event_execution_queue had 0 rows — rebalance did not run or found no due events`;
@@ -305,8 +309,8 @@ async function main() {
 | WC/football signals | ${footballWcCount} |
 | Reservations created | ${reservationCount} |
 | Future reservations | ${futureReservations.length} |
-| Future forbidden (corners/halftime/props) | ${futureForbiddenCount} |
-| Future valid executable | ${futureValidExecutableCount} |
+| Future forbidden anchors (corners/halftime/props) | ${futureForbiddenCount} |
+| Future valid executable (spread/moneyline/total) | ${futureValidExecutableCount} |
 | Queue total | ${queueTotal} |
 | Queue READY | ${queueReady} |
 | Queue SENT | ${queueSent} |

@@ -443,9 +443,20 @@ async function main() {
       rootCauseStage = 'SIGNALS_MISSING';
       rootCauseReason = `No signal candidates (signal_confidence_num>=50 or shadow) found not-expired in generated_signal_pairs`;
     } else if (hasSignals && !hasFutureReservations) {
-      verdict = 'BLUE_MODEL_NO_GO_RESERVATIONS_MISSING';
-      rootCauseStage = 'RESERVATIONS_MISSING';
-      rootCauseReason = `${totalAvailableSignals} signals available but future_reservations=0 — night-reservations cron did not produce reservations (forceRebuild may be needed)`;
+      // Distinguish: were signals present but valid markets filtered out before reservation planner?
+      const hasScoredFootballSignals = upcomingCandidates.some(c => {
+        const t = c.event_slug ?? c.market_slug ?? '';
+        return classifyMarketTitle(t) === 'ALLOWED_CORE' || /fifwc|world.?cup|wc2026|soccer|football/i.test(t);
+      });
+      if (hasScoredFootballSignals) {
+        verdict = 'BLUE_MODEL_NO_GO_VALID_MARKETS_FILTERED';
+        rootCauseStage = 'VALID_MARKETS_FILTERED_BEFORE_RESERVATION';
+        rootCauseReason = `${totalAvailableSignals} signals exist (including football/WC) but 0 future reservations — valid markets may be blocked by MISSING_GAME_START/UNKNOWN_SCOPE/weak key. Run npm run contur3:reservation-admission-audit`;
+      } else {
+        verdict = 'BLUE_MODEL_NO_GO_RESERVATIONS_MISSING';
+        rootCauseStage = 'RESERVATIONS_MISSING';
+        rootCauseReason = `${totalAvailableSignals} signals available but future_reservations=0 — night-reservations cron did not produce reservations (forceRebuild may be needed)`;
+      }
     } else if (hasFutureReservations && futureValidExecutableCount === 0) {
       verdict = 'BLUE_MODEL_NO_GO_FORBIDDEN_RESERVATION_MARKETS';
       rootCauseStage = 'RESERVATIONS_FORBIDDEN_MARKET_ANCHORS';

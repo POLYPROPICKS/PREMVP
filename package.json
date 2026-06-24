@@ -55,7 +55,8 @@
     "contur3:ops-report-email": "node scripts/contur3/run-ops-report-email.mjs",
     "contur3:verify-live-market-guards": "node scripts/contur3/verify-live-market-guards.mjs",
     "contur3:overnight-battle-audit": "node scripts/contur3/run-overnight-battle-audit.mjs",
-    "contur3:why-no-bets-last-night": "node scripts/contur3/why-no-bets-last-night.mjs"
+    "contur3:why-no-bets-last-night": "node scripts/contur3/why-no-bets-last-night.mjs",
+    "contur3:reservation-admission-audit": "node scripts/contur3/reservation-admission-audit.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",

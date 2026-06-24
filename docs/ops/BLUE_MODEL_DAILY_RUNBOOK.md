@@ -1,6 +1,6 @@
 # Blue_model / Contur3 Daily Operations Runbook
 
-**Last updated:** 2026-06-24 (reservation anchor guard hardening — corners/props blocked at planner stage)
+**Last updated:** 2026-06-24 (reservation anchor guard + positive admission audit)
 **Canonical pipeline:** signal-cache → night_event_reservations → event_execution_queue → Ireland watcher
 
 ---
@@ -132,8 +132,14 @@ That repo has no PREMVP scripts — "Missing script: contur3:blue-status" is exp
 | Verdict | Condition | Action |
 |---|---|---|
 | `BLUE_MODEL_GO_READY` | ≥1 candidate, source=event_execution_queue, contract valid | Ireland watcher can fire |
-| `BLUE_MODEL_ARMED_WAITING` | 0 candidates but next_due_iso present | Normal — wait for game window |
-| `BLUE_MODEL_NO_GO` | Endpoint error OR source ≠ event_execution_queue OR contract missing | STOP. Investigate before any live run. |
+| `BLUE_MODEL_ARMED_WAITING` | 0 candidates but next_due_iso present OR valid reservations exist | Normal — wait for game window |
+| `BLUE_MODEL_NO_GO` | Endpoint error OR source ≠ event_execution_queue OR contract missing | STOP. Investigate. |
+| `BLUE_MODEL_NO_GO_SIGNALS_MISSING` | 0 signals in generated_signal_pairs | Check signal ingestion cron |
+| `BLUE_MODEL_NO_GO_VALID_MARKETS_FILTERED` | Signals exist but 0 reservations, valid markets may be blocked upstream | Run `contur3:reservation-admission-audit` |
+| `BLUE_MODEL_NO_GO_RESERVATIONS_MISSING` | Signals exist, 0 future reservations | Run forceRebuild on night-reservations-cron |
+| `BLUE_MODEL_NO_GO_FORBIDDEN_RESERVATION_MARKETS` | future_reservations > 0 but ALL have forbidden anchors | Deploy planner fix + forceRebuild |
+| `BLUE_MODEL_NO_GO_REBALANCE_QUEUE_MISSING` | Valid reservations but 0 queue rows | Check rebalance cron timing |
+| `BLUE_MODEL_NO_GO_FORBIDDEN_ACTIVE_QUEUE` | READY/CLAIMED/SENT queue rows have forbidden markets | Emergency stop + investigate |
 
 ---
 
@@ -192,6 +198,51 @@ Comprehensive one-command audit: queue status, forbidden active rows, order ledg
 **NO_FUTURE_RESERVATIONS warning:** If audit reports this, it means `night_event_reservations` has no future rows. Night-reservations cron must run before T-60 of the earliest upcoming match. Trigger via Railway "Run Now" on `contur3-night-reservations-cron`.
 
 **FORBIDDEN_RESERVATION_ANCHORS warning:** If `future_forbidden_count > 0` and `future_valid_executable_count = 0`, the verdict is `BLUE_MODEL_NO_GO_FORBIDDEN_RESERVATION_MARKETS`. Deploy the planner fix, then run forceRebuild.
+
+### Valid Market Admission Audit (P0 gate)
+
+```bash
+npm run contur3:reservation-admission-audit
+```
+
+One-command proof that valid markets (spread/moneyline/total) are admitted into the reservation planner. Run before any overnight session when reservations are missing. Outputs funnel matrix with per-candidate reject reasons and event group samples.
+
+**Root cause stages reported:**
+
+| Stage | Meaning |
+|---|---|
+| `ADMISSION_OK` | Valid executable anchors exist in future event groups — proceed |
+| `VALID_MARKETS_FILTERED_BEFORE_RESERVATION` | Valid markets blocked upstream — check rejection histogram (MISSING_GAME_START / UNKNOWN_SCOPE / LOW_SCORE / BAD_BUCKET) |
+| `SIGNALS_MISSING` | No signal rows at all |
+
+**Key blockers to check in rejection histogram:**
+
+- `MISSING_GAME_START` — `diagnostics.gameStartIso` missing or null for WC rows; check if stored as `game_start_iso` (snake_case) instead
+- `UNKNOWN_SCOPE` — market can't be classified as WC/SOCCER; likely missing country pair text in identity fields
+- `BAD_BUCKET_COV_PRICE` — entry_price in 0.44–0.58 AND coverage 50–74 together; signal model issue
+- `SHADOW_FALLBACK_INCOMPLETE` — shadow-strategic-sports-v1 row missing `condition_id` / `selected_token_id` / game start
+
+**Allowed anchor markets (must admit):**
+- Full-match winner/moneyline: "Team A vs Team B: Winner", "Match Winner"
+- Full-match spread: "Spread: Team A (-1.5)", "Team A vs Team B: Spread Team A -1.5"
+- Full-match total goals: "Team A vs Team B: Total Goals Over 2.5"
+
+**Forbidden anchor markets (must reject at reservation stage):**
+- Halftime/1H: any halftime, half-time, first half, 1st half
+- Corners: any O/U corners, total corners
+- Props: exact score, goalscorer, anytime scorer, player props, outrights
+
+### Funnel Stages (complete)
+
+```
+SIGNALS_MISSING
+  → VALID_MARKETS_FILTERED_BEFORE_RESERVATION   (upstream filter in buildFireModelCandidates)
+      → RESERVATIONS_MISSING                    (forceRebuild needed or cron not run)
+          → RESERVATIONS_FORBIDDEN_MARKET_ANCHORS (all reservations are corners/halftime/props)
+              → REBALANCE_NO_EXECUTABLE_MARKET   (rebalance found no due TIER1 live-eligible market)
+                  → QUEUE_READY_BUT_IRELAND_NO_ORDER (Ireland not consuming queue)
+                      → ORDERS_SENT
+```
 
 ### Roadmap (P1 migration — durable audit)
 

@@ -158,6 +158,51 @@ After forceRebuild fix (commit b37b6d5), reservation planner created RESERVED ro
 ### Roadmap
 
 **P1:** Durable Supabase battle audit with `trace_id` column in `night_event_reservations` and `event_execution_queue` — links each reservation to its rebalance queue row and order event. Currently battle log is local JSONL only.
+
+---
+
+## 2026-06-24 (session 2) — Positive Admission Audit + Hardened Funnel Diagnostics
+
+**Validated by:** Claude Code (Sonnet 4.6), session 2026-06-24-2
+
+### Incident Classification
+
+**Positive admission risk after forbidden-anchor fix (ea8f444):**
+
+After ea8f444 blocked corners/halftime/props as reservation anchors, a new risk class appeared:
+valid full-match markets (spread/moneyline/total goals) might themselves be blocked BEFORE reaching
+the reservation planner — e.g., by MISSING_GAME_START, UNKNOWN_SCOPE, BAD_BUCKET_COV_PRICE, or
+shadow row fallback failures. The audit/diagnostic layer was not distinguishing this from
+RESERVATIONS_MISSING, leading to an ambiguous NO_GO verdict.
+
+### Changes Applied
+
+| File | Change |
+|---|---|
+| `scripts/contur3/reservation-admission-audit.mjs` | NEW — positive admission audit script. Queries generated_signal_pairs, mirrors buildFireModelCandidates filter logic, classifies each candidate, groups by event, reports rejection histogram and future_valid_executable_event_count. |
+| `scripts/contur3/verify-live-market-guards.mjs` | Extended to 26 test cases. Added 6 positive admission cases (pair spread, pair moneyline, pair total goals, pair winner, single-team spread resolved from eventTitle) and outright winner block. |
+| `scripts/contur3/why-no-bets-last-night.mjs` | Added `VALID_MARKETS_FILTERED_BEFORE_RESERVATION` root cause stage. Distinguishes from RESERVATIONS_MISSING when football signals exist but 0 reservations. |
+| `scripts/contur3/run-overnight-battle-audit.mjs` | Added `BLUE_MODEL_NO_GO_VALID_MARKETS_FILTERED` verdict. Detects football signals present + 0 reservations case. |
+| `package.json` | Added `contur3:reservation-admission-audit` script. |
+| `docs/ops/BLUE_MODEL_DAILY_RUNBOOK.md` | Added complete funnel stage map, valid-market admission audit section, full GO/NO_GO table with all 8 verdicts. |
+
+### No Code Patch in buildFireModelCandidates / nightEventReservations
+
+**Reason:** Code analysis confirms positive admission logic is already correct for valid markets.
+`deriveMatchFamilyKey` already resolves single-team spreads via `diagnostics.eventTitle`.
+`isForbiddenAnchorMarket` (ea8f444) correctly allows spread/moneyline/total.
+Audit script will prove admission when run with Supabase access.
+
+Known risk to verify at runtime: if production signals store game start as `game_start_iso`
+(snake_case) instead of `gameStartIso` (camelCase), `MISSING_GAME_START` would block all WC rows.
+The audit script checks BOTH field name variants.
+
+### Key Rule
+
+**Complete funnel verification required before declaring ARMED_WAITING:**
+1. `future_valid_executable_event_count > 0` (from reservation-admission-audit)
+2. `future_valid_executable_reservations > 0` (from overnight-battle-audit)
+3. No forbidden active queue rows
 - stdout/stderr captured and saved in JSON report
 
 **Operator action required:**
