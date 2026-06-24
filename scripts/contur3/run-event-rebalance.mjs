@@ -81,6 +81,9 @@ async function main() {
   }
 
   const ok = (body.ok ?? false) === true;
+  const expiredCount = body.expired_count ?? body.expiredCount ?? null;
+  const futureValidReservationsCount = body.future_valid_reservations_count ?? null;
+  const scheduleGapRisk = (expiredCount ?? 0) > 0;
   const report = {
     timestamp,
     endpoint: ENDPOINT,
@@ -89,6 +92,9 @@ async function main() {
     due_count: body.due_count ?? body.dueCount ?? null,
     queued_count: body.queued_count ?? body.queuedCount ?? null,
     skipped_count: body.skipped_count ?? body.skippedCount ?? null,
+    expired_count: expiredCount,
+    future_valid_reservations_count: futureValidReservationsCount,
+    rebalance_schedule_gap_risk: scheduleGapRisk,
     next_due_iso: body.next_due_iso ?? body.nextDueIso ?? null,
     outcomes: body.outcomes ?? null,
     body,
@@ -105,6 +111,9 @@ async function main() {
     due_count: report.due_count,
     queued_count: report.queued_count,
     skipped_count: report.skipped_count,
+    expired_count: expiredCount,
+    future_valid_reservations_count: futureValidReservationsCount,
+    rebalance_schedule_gap_risk: scheduleGapRisk,
     next_due_iso: report.next_due_iso,
     diagnostic_report_path: logPath,
     verdict: ok ? 'REBALANCE_OK' : 'REBALANCE_FAIL',
@@ -115,7 +124,12 @@ async function main() {
   console.log(`due_count:            ${report.due_count}`);
   console.log(`queued_count:         ${report.queued_count}`);
   console.log(`skipped_count:        ${report.skipped_count}`);
+  console.log(`expired_count:        ${expiredCount}`);
+  console.log(`future_valid_res:     ${futureValidReservationsCount}`);
   console.log(`next_due_iso:         ${report.next_due_iso}`);
+  if (scheduleGapRisk) {
+    console.warn(`REBALANCE_SCHEDULE_GAP_RISK: expired_count=${expiredCount} reservations expired before rebalance ran — verify Railway cron schedule (canonical: * * * * *)`);
+  }
   console.log(`diagnostic_report_path: ${logPath}`);
 
   if (!res.ok || !report.ok) {

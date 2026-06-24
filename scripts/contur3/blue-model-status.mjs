@@ -140,6 +140,9 @@ async function main() {
       due_count: rebalanceBody.due_count ?? rebalanceBody.dueCount ?? null,
       queued_count: rebalanceBody.queued_count ?? rebalanceBody.queuedCount ?? null,
       skipped_count: rebalanceBody.skipped_count ?? rebalanceBody.skippedCount ?? null,
+      expired_count: rebalanceBody.expired_count ?? rebalanceBody.expiredCount ?? null,
+      future_valid_reservations_count: rebalanceBody.future_valid_reservations_count ?? null,
+      rebalance_schedule_gap_risk: (rebalanceBody.expired_count ?? 0) > 0,
       next_due_iso: rebalanceBody.next_due_iso ?? rebalanceBody.nextDueIso ?? null,
     },
     errors,
@@ -168,6 +171,11 @@ async function main() {
   console.log(`next_due_reservation: ${report.next_due_reservation != null ? JSON.stringify(report.next_due_reservation, null, 2) : 'MISSING'}`);
   console.log(`ireland_contract:     ${report.ireland_contract != null ? JSON.stringify(report.ireland_contract, null, 2) : 'MISSING'}`);
   console.log(`rebalance dryRun ok:  ${report.rebalance_dry_run.ok}`);
+  console.log(`expired_count:        ${report.rebalance_dry_run.expired_count}`);
+  console.log(`future_valid_res:     ${report.rebalance_dry_run.future_valid_reservations_count}`);
+  if (report.rebalance_dry_run.rebalance_schedule_gap_risk) {
+    console.warn(`REBALANCE_SCHEDULE_GAP_RISK: expired_count=${report.rebalance_dry_run.expired_count} — verify Railway cron (canonical: * * * * *)`);
+  }
   if (errors.length) console.log(`errors:               ${errors.join('; ')}`);
   console.log(`diagnostic_report_path: ${logPath}`);
   console.log('');

@@ -214,6 +214,47 @@ Email is a **monitoring rail**, not an execution gate. Ireland watcher is unaffe
 
 ---
 
+## 2026-06-24 (session 3) — Continuous Rebalance Window Hardening
+
+**Validated by:** Claude Code (Sonnet 4.6), session 2026-06-24-3
+
+### Risk Classification
+
+**Event-rebalance-cron schedule gaps cause MISSED_REBALANCE_WINDOW.**
+
+If the Railway cron for `contur3-event-rebalance-cron` runs only in certain daypart windows (e.g., every 5 min during pre-kickoff hours only), reservations expire without being queued. The `isDueForRebalance()` function has a T-70..T-5 window — a 65-minute gap is enough for one missed run to cause a full session blackout if the cron does not fire during that window.
+
+### Changes Applied
+
+| File | Change |
+|---|---|
+| `lib/executor/nightWindow.ts` | `REBALANCE_MINUTES_BEFORE_START`: 60 → 70. `LATEST_ENTRY_MINUTES_BEFORE`: 5 → 3. Due window is now T-70..T-3. Updated `isDueForRebalance` docstring. Added process schedule rule comment. |
+| `lib/executor/eventExecutionQueue.ts` | Added `due_window_state: "BEFORE_WINDOW"` to `NextDueReservation` interface. Added `future_valid_reservations_count` to `RebalanceRunResult` interface and both return points. Updated header comment. |
+| `scripts/contur3/run-event-rebalance.mjs` | Reads `expired_count` + `future_valid_reservations_count` from API response. Emits `REBALANCE_SCHEDULE_GAP_RISK` warning if `expired_count > 0`. Both added to battle log. |
+| `scripts/contur3/blue-model-status.mjs` | Added `expired_count`, `future_valid_reservations_count`, `rebalance_schedule_gap_risk` to `rebalance_dry_run` report block. Prints `REBALANCE_SCHEDULE_GAP_RISK` warning when detected. |
+| `scripts/contur3/run-overnight-battle-audit.mjs` | Added `missedRebalanceCount` (EXPIRED reservations). Added new verdict `BLUE_MODEL_NO_GO_REBALANCE_DUE_BUT_NO_QUEUE` with `rootCauseStage = MISSED_REBALANCE_WINDOW`. Added `missed_rebalance_count` + `rebalance_schedule_gap_risk` to battle log. |
+| `scripts/contur3/why-no-bets-last-night.mjs` | Added `MISSED_REBALANCE_WINDOW` root cause (before `REBALANCE_QUEUE_MISSING`). Triggers when reservations exist, queue is empty, and EXPIRED reservations exist. |
+| `scripts/contur3/rebalance-window-audit.mjs` | NEW — standalone audit. Queries all reservations, classifies each as BEFORE_WINDOW / IN_WINDOW / EXPIRED. Detects schedule gaps. Outputs JSON+MD. Exit 1 if gap risk. |
+| `package.json` | Added `contur3:rebalance-window-audit` script. |
+| `docs/ops/BLUE_MODEL_DAILY_RUNBOOK.md` | Added canonical cron schedule (`* * * * *`), T-70/T-3 rule, process vs. business window principle table, `MISSED_REBALANCE_WINDOW` funnel stage, `BLUE_MODEL_NO_GO_REBALANCE_DUE_BUT_NO_QUEUE` verdict, rebalance window audit section, updated pipeline diagram. |
+
+### Key Rules Added
+
+**Process schedule ≠ business entry window (LOCKED PRINCIPLE):**
+- Process schedule: continuous 24/7 — Railway cron must be `* * * * *`
+- Business entry window: T-70m to T-3m, enforced by `isDueForRebalance()` in code
+
+If cron fires outside a game's T-70..T-3 window → `isDueForRebalance()` returns false → rebalance runs safely with 0 due events. No duplicate queue rows (idempotency via `alreadyQueued` set).
+
+If cron has daypart gaps → reservations in that window expire → `MISSED_REBALANCE_WINDOW` → `BLUE_MODEL_NO_GO_REBALANCE_DUE_BUT_NO_QUEUE`.
+
+### Operator Action Required
+
+1. In Railway → `contur3-event-rebalance-cron` → Settings → Cron Schedule: set to `* * * * *`
+2. Verify by running `npm run contur3:rebalance-window-audit` and confirming verdict `BEFORE_WINDOW_OK` or `IN_WINDOW_REBALANCE_EXPECTED` (not `REBALANCE_SCHEDULE_GAP_RISK`)
+
+---
+
 ## 2026-06-23 — Live-priority ledger: Supabase source fix (session 4)
 
 **Validated by:** Claude Code (Sonnet 4.6), session 2026-06-23

@@ -15,11 +15,13 @@ export const NIGHT_PLAN_ANCHOR_HOUR_MINSK = 17; // plan is built ~17:00 Minsk
 export const NIGHT_OPERATION_END_HOUR_MINSK = 8; // operational window ends 08:00 Minsk
 export const NIGHT_PLAN_HORIZON_HOURS = 18; // planning horizon from the run instant
 
-// Per-event entry timing (preserves existing planner policy).
-export const REBALANCE_MINUTES_BEFORE_START = 60; // open rebalance at T-60m
-export const REBALANCE_LATE_MINUTES_BEFORE_START = 30; // still rebalance until T-30m
+// Per-event entry timing (LOCKED policy).
+// Process schedule: continuous 24/7 (canonical Railway cron: * * * * *).
+// Business entry window: T-70m to T-3m enforced in code, NOT in cron schedule.
+export const REBALANCE_MINUTES_BEFORE_START = 70; // open rebalance at T-70m
+export const REBALANCE_LATE_MINUTES_BEFORE_START = 30; // legacy constant — kept for reference
 export const PREFERRED_ENTRY_MINUTES_BEFORE = 45; // preferred entry at T-45m
-export const LATEST_ENTRY_MINUTES_BEFORE = 5; // last safe entry at T-5m
+export const LATEST_ENTRY_MINUTES_BEFORE = 3;     // last safe queue creation at T-3m
 
 function minskParts(ms: number): { y: number; mo: number; d: number; h: number } {
   const shifted = new Date(ms + MINSK_UTC_OFFSET_HOURS * 3_600_000);
@@ -100,9 +102,8 @@ export function isWithinHorizon(gameStartMs: number, win: NightWindow, nowMs: nu
 }
 
 /**
- * True when an event is due for rebalance: now is within [T-60, T-30] before start,
- * i.e. event starts in (REBALANCE_LATE, REBALANCE] minutes. We keep rebalancing
- * until T-LATEST_ENTRY so a late run still queues a market before kickoff.
+ * True when an event is due for rebalance: now is within [T-70, T-3] before start.
+ * Process schedule is continuous 24/7; this function enforces the business entry window.
  */
 export function isDueForRebalance(gameStartMs: number, nowMs: number): boolean {
   const minutesToStart = (gameStartMs - nowMs) / 60_000;

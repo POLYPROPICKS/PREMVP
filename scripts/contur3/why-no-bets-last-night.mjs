@@ -131,6 +131,8 @@ async function main() {
   if (resErr) { console.error(`reservations query error: ${resErr.message}`); process.exit(1); }
 
   const reservationCount = (reservationRows ?? []).length;
+  const expiredReservations = (reservationRows ?? []).filter(r => r.status === 'EXPIRED');
+  const missedRebalanceCount = expiredReservations.length;
   const futureReservations = (reservationRows ?? []).filter(r => r.game_start_iso && new Date(r.game_start_iso) > new Date());
   const wcFootballReservations = (reservationRows ?? []).filter(r => r.strategic_scope === 'WC' || r.strategic_scope === 'SOCCER');
 
@@ -218,6 +220,9 @@ async function main() {
     // Signals exist but no reservations — could be valid markets filtered before reaching reservation planner
     rootCauseStage = 'VALID_MARKETS_FILTERED_BEFORE_RESERVATION';
     rootCauseReason = `${footballWcCount} WC/football signals exist but 0 reservations created — valid markets may be blocked by MISSING_GAME_START / UNKNOWN_SCOPE / weak key. Run npm run contur3:reservation-admission-audit`;
+  } else if (reservationCount > 0 && queueTotal === 0 && missedRebalanceCount > 0) {
+    rootCauseStage = 'MISSED_REBALANCE_WINDOW';
+    rootCauseReason = `${missedRebalanceCount} reservation(s) expired as MISSED_REBALANCE_WINDOW before rebalance queued them — rebalance cron did not poll during T-70 to T-3 window. Verify Railway cron schedule (canonical: * * * * *)`;
   } else if (reservationCount > 0 && queueTotal === 0) {
     rootCauseStage = 'REBALANCE_QUEUE_MISSING';
     rootCauseReason = `${reservationCount} reservations existed but event_execution_queue had 0 rows — rebalance did not run or found no due events`;

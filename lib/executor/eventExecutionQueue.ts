@@ -2,10 +2,13 @@
 //
 // Contur3 per-event REBALANCE → single-market execution queue.
 //
-// For each reserved event due for rebalance (T-60 .. T-30 before start), this loads
+// For each reserved event due for rebalance (T-70 .. T-3 before start), this loads
 // all current markets for that one event, applies the executable policy (Tier1 only,
 // no halftime, stake $7), selects exactly ONE best market, and writes one READY row
 // into event_execution_queue. The reservation is then marked QUEUED (or SKIPPED).
+//
+// Process schedule: continuous 24/7 (canonical Railway cron: * * * * *).
+// Business entry window: T-70m to T-3m enforced by isDueForRebalance() — NOT by cron.
 //
 // This module NEVER places orders and NEVER pulls a broad executable universe for
 // Ireland — Ireland reads only the queue via /api/executor/queue.
@@ -270,6 +273,7 @@ export interface NextDueReservation {
   rebalance_starts_iso: string;
   rebalance_ends_iso: string;
   next_check_after_seconds: number;
+  due_window_state: "BEFORE_WINDOW" | "IN_WINDOW" | "EXPIRED";
 }
 
 export interface RebalanceRunResult {
@@ -279,6 +283,7 @@ export interface RebalanceRunResult {
   skipped_count: number;
   already_queued_count: number;
   expired_count: number;
+  future_valid_reservations_count: number;
   outcomes: RebalanceOutcome[];
   wrote: boolean;
   next_due_reservations: NextDueReservation[];
@@ -331,6 +336,7 @@ export async function runEventRebalance(
       rebalance_starts_iso: new Date(rebalanceStartsMs).toISOString(),
       rebalance_ends_iso: new Date(rebalanceEndsMs).toISOString(),
       next_check_after_seconds: Math.max(0, Math.ceil((rebalanceStartsMs - nowMs) / 1000)),
+      due_window_state: "BEFORE_WINDOW" as const,
     };
   });
   const next_check_after_seconds: number | null =
@@ -356,6 +362,7 @@ export async function runEventRebalance(
       skipped_count: 0,
       already_queued_count: 0,
       expired_count: expired.length,
+      future_valid_reservations_count: upcoming.length,
       outcomes,
       wrote: write,
       next_due_reservations,
@@ -472,6 +479,7 @@ export async function runEventRebalance(
     skipped_count: skipped,
     already_queued_count: already,
     expired_count: expired.length,
+    future_valid_reservations_count: upcoming.length,
     outcomes,
     wrote: write,
     next_due_reservations,

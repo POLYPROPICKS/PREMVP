@@ -308,6 +308,17 @@ async function main() {
     }
   }
 
+  // ── H1b. Count EXPIRED reservations (MISSED_REBALANCE_WINDOW) ───────────────
+  const missedRebalanceReservations = reservationRows.filter(r => r.status === 'EXPIRED');
+  const missedRebalanceCount = missedRebalanceReservations.length;
+  if (missedRebalanceCount > 0) {
+    console.warn(`\nMISSED_REBALANCE_WINDOW: ${missedRebalanceCount} reservation(s) expired without being queued:`);
+    for (const r of missedRebalanceReservations) {
+      console.warn(`  EXPIRED: ${r.event_title ?? r.match_family_key} | start=${r.game_start_iso} | reason=${r.selection_reason ?? 'n/a'}`);
+    }
+    console.warn(`  ACTION: Verify Railway cron for contur3-event-rebalance-cron (canonical: * * * * *)`);
+  }
+
   // ── H2. Classify future reservations by anchor type ─────────────────────────
   const futureReservationsCount = futureReservations.length;
   const futureForbiddenReservations = futureReservations.filter(
@@ -463,9 +474,16 @@ async function main() {
       rootCauseReason = `${futureReservationsCount} future reservation(s) exist but ALL have forbidden market anchors (corners/halftime/props) — forceRebuild needed; reservation planner must be updated to block these anchors`;
       errors.push(rootCauseReason);
     } else if (hasFutureReservations && !hasQueueReady && queueRows.length === 0) {
-      verdict = 'BLUE_MODEL_NO_GO_REBALANCE_QUEUE_MISSING';
-      rootCauseStage = 'REBALANCE_QUEUE_MISSING';
-      rootCauseReason = `future_reservations=${futureReservations.length} but event_execution_queue has 0 rows — rebalance has not run or produced 0 READY rows`;
+      if (missedRebalanceCount > 0) {
+        verdict = 'BLUE_MODEL_NO_GO_REBALANCE_DUE_BUT_NO_QUEUE';
+        rootCauseStage = 'MISSED_REBALANCE_WINDOW';
+        rootCauseReason = `${missedRebalanceCount} reservation(s) expired as MISSED_REBALANCE_WINDOW before rebalance queued them — Railway cron has gaps. Canonical schedule: * * * * * (every 1 min, continuous 24/7)`;
+        errors.push(rootCauseReason);
+      } else {
+        verdict = 'BLUE_MODEL_NO_GO_REBALANCE_QUEUE_MISSING';
+        rootCauseStage = 'REBALANCE_QUEUE_MISSING';
+        rootCauseReason = `future_reservations=${futureReservations.length} but event_execution_queue has 0 rows — rebalance has not run or produced 0 READY rows`;
+      }
     } else if (endpointPending) {
       if (hasFutureReservations || hasSignals) {
         verdict = 'BLUE_MODEL_ARMED_WAITING';
@@ -822,6 +840,8 @@ ${forbiddenActiveRows.length > 0
     upcoming_signals_total: upcomingCandidates.length + shadowPlanningCount,
     live_orders_24h: liveOrders.length,
     forbidden_active_count: forbiddenActiveRows.length,
+    missed_rebalance_count: missedRebalanceCount,
+    rebalance_schedule_gap_risk: missedRebalanceCount > 0,
     next_due_iso: nextDueIso,
     root_cause_stage: rootCauseStage,
     root_cause_reason: rootCauseReason,

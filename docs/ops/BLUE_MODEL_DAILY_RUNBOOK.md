@@ -1,6 +1,6 @@
 # Blue_model / Contur3 Daily Operations Runbook
 
-**Last updated:** 2026-06-24 (reservation anchor guard + positive admission audit)
+**Last updated:** 2026-06-24 (reservation anchor guard + positive admission audit + continuous rebalance window)
 **Canonical pipeline:** signal-cache → night_event_reservations → event_execution_queue → Ireland watcher
 
 ---
@@ -12,7 +12,7 @@ signal-cache-cron
     └─► generated_signal_pairs (Supabase)
             └─► night-event-reservations cron (16:35 Minsk)
                     └─► night_event_reservations (Supabase)
-                            └─► event-rebalance-cron (every 5 min in windows)
+                            └─► event-rebalance-cron (continuous 24/7 — * * * * *)
                                     └─► event_execution_queue (Supabase)
                                             └─► /api/executor/queue  ← Ireland watcher reads HERE
 ```
@@ -29,7 +29,7 @@ It does NOT call night-reservations or rebalance directly.
 | Throughout day | `signal-cache-cron` refreshes `generated_signal_pairs` |
 | ~16:35 | `contur3-night-reservations-cron` runs → populates `night_event_reservations` |
 | ~17:00 | Planning window — verify with `npm run contur3:blue-status` |
-| Pre-kickoff windows | `contur3-event-rebalance-cron` runs every 5 min → fills `event_execution_queue` |
+| Continuous 24/7 | `contur3-event-rebalance-cron` polls every 1 min → fills `event_execution_queue` when events enter T-70..T-3 window |
 | Execution | Ireland watcher polls `/api/executor/queue` and fires orders |
 
 ---
@@ -45,6 +45,23 @@ node scripts/contur3/run-night-reservations.mjs
 ```
 node scripts/contur3/run-event-rebalance.mjs
 ```
+
+**Canonical Railway cron schedule for `contur3-event-rebalance-cron`:**
+```
+* * * * *
+```
+(every 1 minute — continuous 24/7)
+
+**CRITICAL PRINCIPLE — Process schedule vs. business entry window:**
+
+| Concept | Rule |
+|---|---|
+| **Process schedule** | Continuous 24/7. Railway cron MUST be `* * * * *`. Do NOT restrict to daypart windows. |
+| **Business entry window** | T-70m to T-3m before each game start. Enforced in code by `isDueForRebalance()` in `nightWindow.ts`. |
+
+`isDueForRebalance()` returns true only when a reservation is between T-70m and T-3m from game start.
+If the cron fires outside an event's window, the rebalance safely does nothing (no due reservations found).
+Daypart-restricted cron schedules cause `MISSED_REBALANCE_WINDOW` — reservations expire before they are queued.
 
 **Ops report email cron** (`ops-report-email-cron`):
 ```
@@ -109,6 +126,9 @@ npm run contur3:ops-report-email
 
 # Market guard regression test (run after any change to executor queue logic)
 npm run contur3:verify-live-market-guards
+
+# Rebalance window audit (check for MISSED_REBALANCE_WINDOW / schedule gaps)
+npm run contur3:rebalance-window-audit
 ```
 
 ### IMPORTANT: Local status must be run from PREMVP repo
@@ -139,6 +159,7 @@ That repo has no PREMVP scripts — "Missing script: contur3:blue-status" is exp
 | `BLUE_MODEL_NO_GO_RESERVATIONS_MISSING` | Signals exist, 0 future reservations | Run forceRebuild on night-reservations-cron |
 | `BLUE_MODEL_NO_GO_FORBIDDEN_RESERVATION_MARKETS` | future_reservations > 0 but ALL have forbidden anchors | Deploy planner fix + forceRebuild |
 | `BLUE_MODEL_NO_GO_REBALANCE_QUEUE_MISSING` | Valid reservations but 0 queue rows | Check rebalance cron timing |
+| `BLUE_MODEL_NO_GO_REBALANCE_DUE_BUT_NO_QUEUE` | Reservations expired as MISSED_REBALANCE_WINDOW | Fix Railway cron → `* * * * *` |
 | `BLUE_MODEL_NO_GO_FORBIDDEN_ACTIVE_QUEUE` | READY/CLAIMED/SENT queue rows have forbidden markets | Emergency stop + investigate |
 
 ---
@@ -239,10 +260,37 @@ SIGNALS_MISSING
   → VALID_MARKETS_FILTERED_BEFORE_RESERVATION   (upstream filter in buildFireModelCandidates)
       → RESERVATIONS_MISSING                    (forceRebuild needed or cron not run)
           → RESERVATIONS_FORBIDDEN_MARKET_ANCHORS (all reservations are corners/halftime/props)
-              → REBALANCE_NO_EXECUTABLE_MARKET   (rebalance found no due TIER1 live-eligible market)
-                  → QUEUE_READY_BUT_IRELAND_NO_ORDER (Ireland not consuming queue)
-                      → ORDERS_SENT
+              → MISSED_REBALANCE_WINDOW          (reservations expired before rebalance ran — cron gap)
+                  → REBALANCE_NO_EXECUTABLE_MARKET   (rebalance found no due TIER1 live-eligible market)
+                      → QUEUE_READY_BUT_IRELAND_NO_ORDER (Ireland not consuming queue)
+                          → ORDERS_SENT
 ```
+
+### Rebalance Window Audit
+
+```bash
+npm run contur3:rebalance-window-audit
+```
+
+Checks whether all reservations have a valid rebalance window ahead. Run when `BLUE_MODEL_NO_GO_REBALANCE_DUE_BUT_NO_QUEUE` or `MISSED_REBALANCE_WINDOW` is detected.
+
+**Verdicts:**
+
+| Verdict | Meaning | Action |
+|---|---|---|
+| `BEFORE_WINDOW_OK` | All reservations have a future T-70..T-3 window | No action |
+| `IN_WINDOW_REBALANCE_EXPECTED` | Event(s) currently in T-70..T-3 — rebalance should run | Verify cron fired or run manually |
+| `REBALANCE_SCHEDULE_GAP_RISK` | Reservations expired without being queued | Fix Railway cron → `* * * * *` |
+
+**Canonical cron schedule (LOCKED):**
+```
+* * * * *
+```
+Set in Railway → contur3-event-rebalance-cron → Settings → Cron Schedule.
+
+**Root cause stages reported:**
+- `MISSED_REBALANCE_WINDOW` — reservation expired (status=EXPIRED, reason=MISSED_REBALANCE_WINDOW) before rebalance ran
+- `REBALANCE_SCHEDULE_GAP_RISK` — any expired count > 0 indicates a cron gap
 
 ### Roadmap (P1 migration — durable audit)
 
