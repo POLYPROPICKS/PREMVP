@@ -55,15 +55,16 @@ async function main() {
 
   console.log(`POST ${BASE_URL}${ENDPOINT}`);
 
+  // forceRebuild must be a URL query param — route.ts reads searchParams, not the body.
   let res;
   try {
-    res = await fetch(`${BASE_URL}${ENDPOINT}`, {
+    res = await fetch(`${BASE_URL}${ENDPOINT}?forceRebuild=CEO_APPROVED`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'x-executor-secret': secret,
       },
-      body: JSON.stringify({ forceRebuild: 'CEO_APPROVED' }),
+      body: JSON.stringify({}),
     });
   } catch (err) {
     const report = { timestamp, error: String(err), endpoint: ENDPOINT };

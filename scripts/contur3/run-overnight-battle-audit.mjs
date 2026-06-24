@@ -298,22 +298,25 @@ async function main() {
     }
   }
 
-  // ── I. Upcoming candidates from generated_signal_pairs (score-filtered, expires_at future) ──
+  // ── I. Upcoming candidates from generated_signal_pairs ──────────────────────
+  // Uses signal_confidence_num (the column the planner reads), NOT the score column
+  // (which may be NULL for shadow-strategic-sports-v1 planning rows).
   let upcomingCandidates = [];
   let upcomingError = null;
-  const next12hIso = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
 
   if (supabase) {
-    console.log(`Querying generated_signal_pairs (score>=72, not expired, limit=50)...`);
+    console.log(`Querying generated_signal_pairs (signal_confidence_num>=50, not expired, limit=50)...`);
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
       const { data, error } = await supabase
         .from('generated_signal_pairs')
-        .select('event_slug,market_slug,score,expires_at,diagnostics,signal_confidence_num')
-        .gte('score', 72)
+        .select('event_slug,market_slug,expires_at,diagnostics,signal_confidence_num,metric_formula_version')
+        .gte('signal_confidence_num', 50)
         .gte('expires_at', new Date().toISOString())
-        .order('score', { ascending: false })
+        .is('signal_result', null)
+        .not('selected_token_id', 'is', null)
+        .order('signal_confidence_num', { ascending: false })
         .limit(50)
         .abortSignal(controller.signal);
       clearTimeout(timeout);
@@ -322,7 +325,7 @@ async function main() {
         console.warn(`generated_signal_pairs error: ${error.message}`);
       } else {
         upcomingCandidates = data ?? [];
-        console.log(`upcoming high-score signal pairs (score>=72, not expired): ${upcomingCandidates.length}`);
+        console.log(`upcoming signal pairs (signal_confidence_num>=50, not expired): ${upcomingCandidates.length}`);
       }
     } catch (err) {
       upcomingError = `TIMEOUT_OR_ABORT: ${err}`;
@@ -330,53 +333,132 @@ async function main() {
     }
   }
 
-  // ── I. Final verdict ──
+  // Also count shadow-strategic-sports-v1 planning rows (signal_confidence_num IS NULL)
+  let shadowPlanningCount = 0;
+  let shadowPlanningError = null;
+  if (supabase) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const { data: shadowData, error: shadowErr } = await supabase
+        .from('generated_signal_pairs')
+        .select('event_slug,market_slug,expires_at,diagnostics,metric_formula_version')
+        .eq('metric_formula_version', 'shadow-strategic-sports-v1')
+        .is('signal_confidence_num', null)
+        .is('signal_result', null)
+        .gte('expires_at', new Date().toISOString())
+        .not('selected_token_id', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(50)
+        .abortSignal(controller.signal);
+      clearTimeout(timeout);
+      if (shadowErr) {
+        shadowPlanningError = shadowErr.message;
+      } else {
+        shadowPlanningCount = (shadowData ?? []).length;
+        console.log(`shadow-strategic-sports-v1 planning rows (not expired): ${shadowPlanningCount}`);
+      }
+    } catch (err) {
+      shadowPlanningError = `TIMEOUT_OR_ABORT: ${err}`;
+    }
+  }
+
+  // ── I. Final verdict + root-cause stage ──────────────────────────────────────
   let verdict;
+  let rootCauseStage = null;   // SIGNALS_MISSING | RESERVATIONS_MISSING | REBALANCE_QUEUE_MISSING |
+                               // IRELAND_NOT_CONSUMING_QUEUE | ORDERS_NOT_CONFIRMED | MARKET_GUARD_BLOCKED | OK
+  let rootCauseReason = null;
   const errors = [];
 
   if (queueDbError) errors.push(`queue_db_error: ${queueDbError}`);
   if (orderEventsError) errors.push(`order_events_error: ${orderEventsError}`);
   if (reservationsError) errors.push(`reservations_error: ${reservationsError}`);
 
+  const totalAvailableSignals = upcomingCandidates.length + shadowPlanningCount;
+
   if (forbiddenActiveRows.length > 0) {
     verdict = 'BLUE_MODEL_NO_GO_FORBIDDEN_ACTIVE_QUEUE';
-  } else if (endpointPending && !supabase) {
+    rootCauseStage = 'MARKET_GUARD_BLOCKED';
+    rootCauseReason = `${forbiddenActiveRows.length} forbidden READY/CLAIMED/SENT rows in execution queue`;
+  } else if (!supabase && endpointPending) {
     verdict = 'BLUE_MODEL_RUNTIME_PENDING';
+    rootCauseStage = null;
+    rootCauseReason = 'No Supabase env or executor secret — cannot assess';
   } else if (queueResult && !queueResult.ok) {
     verdict = 'BLUE_MODEL_NO_GO_DB_OR_ENDPOINT_FAILURE';
+    rootCauseStage = 'REBALANCE_QUEUE_MISSING';
+    rootCauseReason = `Queue endpoint HTTP ${queueResult.status}`;
   } else if (queueSource && queueSource !== 'event_execution_queue') {
     verdict = 'BLUE_MODEL_NO_GO_QUEUE_CONTRACT_BROKEN';
-    errors.push(`queue_source=${queueSource} expected=event_execution_queue`);
+    rootCauseStage = 'REBALANCE_QUEUE_MISSING';
+    rootCauseReason = `queue_source=${queueSource} expected=event_execution_queue`;
+    errors.push(rootCauseReason);
   } else if (irelandContract && irelandContract.do_not_rank === false) {
     verdict = 'BLUE_MODEL_NO_GO_QUEUE_CONTRACT_BROKEN';
-    errors.push('ireland_contract.do_not_rank=false');
-  } else if (endpointPending) {
-    // Supabase-only assessment
-    if (activeReservations.length > 0 || upcomingCandidates.length > 0) {
-      verdict = 'BLUE_MODEL_ARMED_WAITING';
-    } else {
-      verdict = 'BLUE_MODEL_RUNTIME_PENDING';
-    }
-  } else if (candidateCount >= 1) {
-    // Check if all endpoint candidates are allowed core
-    const forbiddenFromEndpoint = candidates.filter(c => {
-      const t = c.market_title ?? c.market_slug ?? '';
-      return classifyMarketTitle(t) !== 'ALLOWED_CORE';
-    });
-    if (forbiddenFromEndpoint.length > 0) {
-      verdict = 'BLUE_MODEL_NO_GO_FORBIDDEN_ACTIVE_QUEUE';
-    } else {
-      verdict = 'BLUE_MODEL_GO_READY';
-    }
-  } else if (candidateCount === 0 && nextDueIso) {
-    verdict = 'BLUE_MODEL_ARMED_WAITING';
-  } else if (candidateCount === 0 && activeReservations.length > 0) {
-    verdict = 'BLUE_MODEL_ARMED_WAITING';
+    rootCauseStage = 'IRELAND_NOT_CONSUMING_QUEUE';
+    rootCauseReason = 'ireland_contract.do_not_rank=false';
+    errors.push(rootCauseReason);
   } else {
-    verdict = 'BLUE_MODEL_ARMED_WAITING';
+    // Supabase-driven funnel diagnosis (works with or without executor secret)
+    const hasSignals = supabase && totalAvailableSignals > 0;
+    const hasFutureReservations = futureReservations.length > 0;
+    const hasQueueReady = supabase && queueRows.filter(r => r.status === 'READY').length > 0;
+    const hasLiveOrders = liveOrders.length > 0;
+
+    if (!hasSignals && supabase) {
+      verdict = 'BLUE_MODEL_NO_GO_SIGNALS_MISSING';
+      rootCauseStage = 'SIGNALS_MISSING';
+      rootCauseReason = `No signal candidates (signal_confidence_num>=50 or shadow) found not-expired in generated_signal_pairs`;
+    } else if (hasSignals && !hasFutureReservations) {
+      verdict = 'BLUE_MODEL_NO_GO_RESERVATIONS_MISSING';
+      rootCauseStage = 'RESERVATIONS_MISSING';
+      rootCauseReason = `${totalAvailableSignals} signals available but future_reservations=0 — night-reservations cron did not produce reservations (forceRebuild may be needed)`;
+    } else if (hasFutureReservations && !hasQueueReady && queueRows.length === 0) {
+      verdict = 'BLUE_MODEL_NO_GO_REBALANCE_QUEUE_MISSING';
+      rootCauseStage = 'REBALANCE_QUEUE_MISSING';
+      rootCauseReason = `future_reservations=${futureReservations.length} but event_execution_queue has 0 rows — rebalance has not run or produced 0 READY rows`;
+    } else if (endpointPending) {
+      if (hasFutureReservations || hasSignals) {
+        verdict = 'BLUE_MODEL_ARMED_WAITING';
+        rootCauseStage = 'OK';
+        rootCauseReason = 'Reservations or signals exist — awaiting rebalance window';
+      } else {
+        verdict = 'BLUE_MODEL_RUNTIME_PENDING';
+        rootCauseStage = null;
+        rootCauseReason = 'No executor secret for endpoint checks — Supabase shows no signals or reservations';
+      }
+    } else if (candidateCount >= 1) {
+      const forbiddenFromEndpoint = candidates.filter(c => {
+        const t = c.market_title ?? c.market_slug ?? '';
+        return classifyMarketTitle(t) !== 'ALLOWED_CORE';
+      });
+      if (forbiddenFromEndpoint.length > 0) {
+        verdict = 'BLUE_MODEL_NO_GO_FORBIDDEN_ACTIVE_QUEUE';
+        rootCauseStage = 'MARKET_GUARD_BLOCKED';
+        rootCauseReason = `${forbiddenFromEndpoint.length} forbidden candidates in live queue endpoint`;
+      } else {
+        verdict = 'BLUE_MODEL_GO_READY';
+        rootCauseStage = 'OK';
+        rootCauseReason = `${candidateCount} READY candidates in queue`;
+      }
+    } else if (candidateCount === 0 && (nextDueIso || activeReservations.length > 0)) {
+      verdict = 'BLUE_MODEL_ARMED_WAITING';
+      rootCauseStage = 'OK';
+      rootCauseReason = `0 queue candidates now — awaiting rebalance window (next_due: ${nextDueIso ?? 'see reservations'})`;
+    } else if (liveOrders.length > 0) {
+      verdict = 'BLUE_MODEL_ARMED_WAITING';
+      rootCauseStage = 'OK';
+      rootCauseReason = `${liveOrders.length} live orders confirmed in last 24h`;
+    } else {
+      verdict = 'BLUE_MODEL_ARMED_WAITING';
+      rootCauseStage = 'OK';
+      rootCauseReason = 'Awaiting rebalance window or signal ingestion';
+    }
   }
 
   console.log(`\nVERDICT: ${verdict}`);
+  console.log(`ROOT_CAUSE_STAGE: ${rootCauseStage ?? 'N/A'}`);
+  console.log(`ROOT_CAUSE_REASON: ${rootCauseReason ?? 'N/A'}`);
   if (errors.length) {
     for (const e of errors) console.warn(`  ERROR: ${e}`);
   }
@@ -391,6 +473,8 @@ async function main() {
   const report = {
     generated_at: generatedAt,
     verdict,
+    root_cause_stage: rootCauseStage,
+    root_cause_reason: rootCauseReason,
     git_commit: gitCommit,
     origin_commit: originCommit,
     base_url: BASE_URL,
@@ -495,13 +579,18 @@ async function main() {
         selection_reason: r.selection_reason,
       })),
     },
-    upcoming_signal_pairs_score72: {
-      total: upcomingCandidates.length,
-      error: upcomingError,
+    upcoming_signal_pairs: {
+      // Uses signal_confidence_num>=50 (the column the planner uses, not 'score').
+      // shadow-strategic-sports-v1 rows with signal_confidence_num IS NULL are counted separately.
+      total_scored: upcomingCandidates.length,
+      total_shadow_planning: shadowPlanningCount,
+      total_available: upcomingCandidates.length + shadowPlanningCount,
+      error: upcomingError ?? shadowPlanningError,
       candidates: upcomingCandidates.slice(0, 20).map(c => ({
         event_slug: c.event_slug,
         market_slug: c.market_slug,
-        score: c.score,
+        signal_confidence_num: c.signal_confidence_num,
+        metric_formula_version: c.metric_formula_version,
         expires_at: c.expires_at,
         game_start_iso: c.diagnostics?.game_start_iso ?? null,
         market_classification: classifyMarketTitle(c.market_slug),
@@ -539,8 +628,10 @@ async function main() {
     : '  (нет активных резерваций)';
 
   const upcomingBlock = upcomingCandidates.length > 0
-    ? upcomingCandidates.slice(0, 10).map(c => `  - ${c.event_slug ?? c.market_slug} | expires: ${c.expires_at} | score=${c.score} | class=${classifyMarketTitle(c.market_slug)}`).join('\n')
-    : '  (нет кандидатов score>=72 не истёкших)';
+    ? upcomingCandidates.slice(0, 10).map(c => `  - ${c.event_slug ?? c.market_slug} | expires: ${c.expires_at} | conf=${c.signal_confidence_num} | ver=${c.metric_formula_version} | class=${classifyMarketTitle(c.market_slug)}`).join('\n')
+    : shadowPlanningCount > 0
+      ? `  (нет scored-кандидатов signal_confidence_num>=50; shadow-strategic-sports-v1 planning rows: ${shadowPlanningCount})`
+      : '  (нет кандидатов signal_confidence_num>=50 и нет shadow-planning rows не истёкших)';
 
   const futureResBlock = (futureReservations ?? []).length > 0
     ? futureReservations.map(r => `  - ${r.event_title ?? r.match_family_key} | старт: ${r.game_start_iso} | статус: ${r.status}`).join('\n')
@@ -552,6 +643,8 @@ async function main() {
 
 **Сгенерировано:** ${generatedAt}
 **Вердикт:** \`${verdict}\`
+**ROOT_CAUSE_STAGE:** \`${rootCauseStage ?? 'N/A'}\`
+**ROOT_CAUSE_REASON:** ${rootCauseReason ?? 'N/A'}
 **git commit:** \`${gitCommit.slice(0, 10)}\`
 **origin/main:** \`${originCommit.slice(0, 10)}\`
 
@@ -601,7 +694,9 @@ ${reservationBlock}
 
 ${futureResBlock}
 
-## G. Ближайшие кандидаты (score>=72, не истёкшие)
+## G. Ближайшие кандидаты (signal_confidence_num>=50, не истёкшие)
+
+Scored: ${upcomingCandidates.length} | Shadow-planning: ${shadowPlanningCount} | Итого: ${upcomingCandidates.length + shadowPlanningCount}
 
 ${upcomingBlock}
 
@@ -647,10 +742,14 @@ ${forbiddenActiveRows.length > 0
     active_reservations: activeReservations.length,
     future_reservations: (futureReservations ?? []).length,
     no_future_reservations_warning: noFutureReservationsFlag && (futureReservations ?? []).length === 0,
-    upcoming_signal_pairs_score72: upcomingCandidates.length,
+    upcoming_signals_scored: upcomingCandidates.length,
+    upcoming_signals_shadow: shadowPlanningCount,
+    upcoming_signals_total: upcomingCandidates.length + shadowPlanningCount,
     live_orders_24h: liveOrders.length,
     forbidden_active_count: forbiddenActiveRows.length,
     next_due_iso: nextDueIso,
+    root_cause_stage: rootCauseStage,
+    root_cause_reason: rootCauseReason,
     diagnostic_report_path: jsonPath,
     verdict,
     errors,
