@@ -5,27 +5,6 @@
 import { useState } from 'react';
 import styles from './WhoWeAreSection.module.css';
 
-const PORTRAITS = [
-  {
-    src:    '/section-assets/who-we-are/portraits/artem-k-headshot.webp',
-    name:   'Artem K.',
-    school: 'MIT',
-    field:  'Quantitative Finance',
-  },
-  {
-    src:    '/section-assets/who-we-are/portraits/david-t-headshot.webp',
-    name:   'David T.',
-    school: 'Stanford',
-    field:  'Economics',
-  },
-  {
-    src:    '/section-assets/who-we-are/portraits/emily-c-headshot.webp',
-    name:   'Emily C.',
-    school: 'Harvard',
-    field:  'Applied Mathematics',
-  },
-] as const;
-
 const PILLARS = [
   { title: 'Analyze', sub: 'PhD-level market modeling',        icon: '/section-assets/who-we-are/icons/analyze-bars.svg'   },
   { title: 'Risk',    sub: 'Lineups, injury, timing pressure',  icon: '/section-assets/who-we-are/icons/risk-shield.svg'    },
@@ -94,35 +73,7 @@ export default function WhoWeAreSection() {
           PhDs who analyze, bet, and build systems to find edge early.
         </p>
 
-        {/* ── 2. Portrait row ── */}
-        <div className={styles.portraits} role="list">
-          {PORTRAITS.map(({ src, name, school, field }) => (
-            <div key={name} className={styles.card} role="listitem">
-              <div className={styles.cardImgWrap}>
-                <img
-                  src={src}
-                  alt={`${name} PhD`}
-                  className={styles.cardImg}
-                  draggable={false}
-                />
-              </div>
-              <div className={styles.cardTxt}>
-                <div className={styles.cardName}>
-                  {name}, PhD
-                  <img
-                    src="/section-assets/who-we-are/icons/academic-cap.svg"
-                    alt="" aria-hidden="true"
-                    className={styles.capBadge}
-                  />
-                </div>
-                <div className={styles.cardSchool}>{school}</div>
-                <div className={styles.cardField}>{field}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* ── 3. Manifesto block ── */}
+        {/* ── 2. Manifesto block ── */}
         <div className={styles.manifest}>
           <div className={styles.eyebrow}>NOT ANOTHER PICKS PAGE</div>
           <h3 className={styles.headline}>A market signal lab built by bettors.</h3>
