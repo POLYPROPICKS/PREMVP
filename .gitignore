@@ -52,7 +52,9 @@ debug-v2.json
 railway-config*.json
 railway-env*.json
 landing-check.json 
-*.json 
+*.json
+# Founder status snapshots are runtime artifacts (MODE A producer output)
+reports/morning/latest_founder_status_snapshot.md
 normalize-dump.txt
 recon-css.txt
 recon-full.txt

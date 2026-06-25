@@ -182,3 +182,54 @@ All of the following are **committed and in current HEAD ancestry** (verified):
 | `Ops: write battle postmortem artifact after every run` | persist one MD/JSON summary per run |
 
 **Do not claim success without order/ledger proof.**
+
+---
+
+## 11. Founder-visibility / cron decoupling (2026-06-25)
+
+**Problem.** Two crons silently failed and the founder received no report:
+- `signal-resolve-cron` → `DB select failed: canceling statement due to statement timeout`
+  (unbounded `signal_result is null` backlog SELECT sorted by `created_at`).
+- `ops-report-email-cron` → `morning:model-report` raised
+  `DB_STRICT_CORPUS_RPC_MISSING: canceling statement due to statement timeout`,
+  and the dispatcher threw on the first nonzero exit (`stdio: "inherit"`),
+  so a single heavy-job timeout killed the whole founder email.
+
+**New architecture (two modes).**
+
+- **MODE A — producer/materializer** (`npm run ops:precompute-founder-status`,
+  `scripts/build-founder-status-snapshot.ts`). Runs the bounded lightweight
+  Contur3 probe ahead of delivery and writes
+  `reports/morning/latest_founder_status_snapshot.{json,md}` (runtime artifacts,
+  gitignored). Never sends email; never runs the heavy strict-corpus model.
+- **MODE B — email delivery** (`scripts/founder-email-dispatcher.ts`). Now:
+  1. captures child output and classifies **DB-timeout** failures vs real bugs;
+  2. treats resolver DB timeouts as **WARN**, not fatal;
+  3. on `morning:model-report` timeout, builds a **DEGRADED** report from the
+     lightweight probe + latest snapshot and still delivers it
+     (`MORNING_MODEL_TIMEOUT_DEGRADED_REPORT`);
+  4. supports `--use-latest-snapshot` to skip heavy jobs and deliver the
+     precomputed snapshot — the target cron path
+     (`npm run ops-report-email-cron:snapshot`).
+
+  Fatal remains: missing recipient/provider on real send, non-timeout code
+  exceptions, and "no snapshot AND lightweight probe also failed".
+
+**Snapshot freshness rule.** ≤2h OK · 2–6h WARN (still send) · >6h
+DEGRADED_STALE (still report) · missing → DEGRADED_NO_SNAPSHOT (run probe).
+
+**Resolver bounded-scan mitigation.** `resolve-signals.ts` gained opt-in
+`--max-age-days` / `--created-after`. `resolve:signals:cron` now passes
+`--max-age-days=30` so the planner only sorts the recent unresolved window;
+`resolve:signals:cron-deep` preserves the old unbounded sweep for backfill.
+
+**Recommended Railway cron wiring.**
+1. Schedule `ops:precompute-founder-status` ~15 min before each report.
+2. Point `ops-report-email-cron` at `--use-latest-snapshot` for delivery.
+
+### Remaining TODO
+- `IS_MODEL_KPI_SOURCE_MISSING`: snapshot reports Fire KPI freshness from the
+  latest `modeling/fire_runs` artifact timestamp only; no dedicated IS-model KPI
+  source is wired into the snapshot yet.
+- Root-cause the `generated_signal_pairs` index so the deep resolver sweep can
+  run without a date window.
