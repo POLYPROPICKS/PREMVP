@@ -58,6 +58,21 @@ export interface RawPlanningDiagnostics {
   // Which versions were queried vs. which had zero DB rows returned.
   versions_queried: string[];
   versions_with_zero_db_rows: string[];
+  // Contur3 full-match admission accounting (mirrors the canonical funnel monitor taxonomy).
+  // Every live-allowed full-match raw row is recorded as admitted or rejected-with-exact-reason
+  // so RAW_ALLOWED_FULLMATCH_GT0_BUILDER_FULLMATCH_EQ0 traces to a concrete cause, never a silent drop.
+  fullmatch_market_class_counts: Record<string, number>;
+  raw_allowed_fullmatch_rows: number;
+  raw_forbidden_rows: number;
+  fullmatch_admitted_count: number;
+  fullmatch_rejected_by_reason: Record<string, number>;
+  // Compact per-fixture trace for allowed full-match raw rows that did NOT become a candidate.
+  missing_fullmatch_fixtures: Array<{
+    match_family_key: string;
+    identity: string;
+    market_class: string;
+    reject_reason: string;
+  }>;
 }
 
 export interface FireModelCandidate {
@@ -196,6 +211,59 @@ const PURE_VOLUME_RE = /^\s*\$[\d,.]+\s*[KkMmBb]?\s*$/;
 // Single-team spread title without an opponent: "spread: norway (-1.5)", "spread: argentina (+0.5)".
 // These MUST NOT become independent STRONG/MEDIUM event families — mark WEAK pending resolution.
 const SINGLE_TEAM_SPREAD_RE = /^spread:\s*([\w][\w\s'-]*?)\s*\([+-]?\d+\.?\d*\)\s*$/i;
+
+// ── Contur3 full-match admission taxonomy ──────────────────────────────────
+// Mirrors classifyMarket in scripts/contur3/lib/contur3LiveFunnelMonitor.mjs
+// (same normalization: strip all non-alphanumerics; same regexes; forbidden wins)
+// so the builder's per-row admission accounting agrees with the canonical funnel
+// monitor. Used ONLY for diagnostics — it does not change admission decisions.
+const FM_FORBIDDEN_HALFTIME_RE = /halftime|halftimeresult|firsthalf|1sthalf|secondhalf|2ndhalf/;
+const FM_FORBIDDEN_CORNERS_RE = /corner/;
+const FM_FORBIDDEN_EXACTSCORE_RE = /exactscore|correctscore/;
+const FM_FORBIDDEN_GOALSCORER_RE = /goalscorer|anytimescorer|firstscorer|lastscorer|scorer/;
+const FM_FORBIDDEN_PROPS_RE = /playerprop|bookings|cards|btts|bothteamstoscore/;
+const FM_FORBIDDEN_FUTURES_RE = /outright|future|towinoutright|winnergroup/;
+const FM_ESPORTS_RE = /esports|cs2|csgo|dota|leagueoflegends|valorant|counterstrike/;
+const FM_ALLOWED_MONEYLINE_RE = /moneyline|matchwinner|towin|matchresult|winner|drawnobet|\bdraw\b|1x2/;
+const FM_ALLOWED_SPREAD_RE = /spread|handicap|asianhandicap/;
+const FM_ALLOWED_TOTAL_RE = /totalgoals|overunder|\bou\b|total|over|under/;
+
+export type FullmatchMarketClass =
+  | "allowed_fullmatch_moneyline"
+  | "allowed_fullmatch_spread"
+  | "allowed_fullmatch_total"
+  | "forbidden_halftime"
+  | "forbidden_corners"
+  | "forbidden_exact_score"
+  | "forbidden_goalscorer"
+  | "forbidden_props"
+  | "forbidden_futures"
+  | "esports_non_policy"
+  | "unknown";
+
+// Classify a row's identity text into the canonical market class. Forbidden wins.
+export function classifyFullmatchMarket(identityText: string): FullmatchMarketClass {
+  const t = identityText.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  if (FM_FORBIDDEN_HALFTIME_RE.test(t)) return "forbidden_halftime";
+  if (FM_FORBIDDEN_CORNERS_RE.test(t)) return "forbidden_corners";
+  if (FM_FORBIDDEN_EXACTSCORE_RE.test(t)) return "forbidden_exact_score";
+  if (FM_FORBIDDEN_GOALSCORER_RE.test(t)) return "forbidden_goalscorer";
+  if (FM_FORBIDDEN_PROPS_RE.test(t)) return "forbidden_props";
+  if (FM_FORBIDDEN_FUTURES_RE.test(t)) return "forbidden_futures";
+  if (FM_ESPORTS_RE.test(t)) return "esports_non_policy";
+  if (FM_ALLOWED_MONEYLINE_RE.test(t)) return "allowed_fullmatch_moneyline";
+  if (FM_ALLOWED_SPREAD_RE.test(t)) return "allowed_fullmatch_spread";
+  if (FM_ALLOWED_TOTAL_RE.test(t)) return "allowed_fullmatch_total";
+  return "unknown";
+}
+
+function isAllowedFullmatchMarketClass(cls: FullmatchMarketClass): boolean {
+  return (
+    cls === "allowed_fullmatch_moneyline" ||
+    cls === "allowed_fullmatch_spread" ||
+    cls === "allowed_fullmatch_total"
+  );
+}
 
 // Returns true for strings like "$25K matched activity", "Live market activity",
 // or bare volume labels like "$25K". These are UI activity labels, not market titles.
@@ -725,6 +793,12 @@ export async function buildFireModelCandidates(
         dropped_by_formula_version_and_reason: {},
         versions_queried: [...versions],
         versions_with_zero_db_rows: [],
+        fullmatch_market_class_counts: {},
+        raw_allowed_fullmatch_rows: 0,
+        raw_forbidden_rows: 0,
+        fullmatch_admitted_count: 0,
+        fullmatch_rejected_by_reason: {},
+        missing_fullmatch_fixtures: [],
       }
     : null;
 
@@ -740,6 +814,12 @@ export async function buildFireModelCandidates(
     }
 
     const diag: Record<string, unknown> = row.diagnostics ?? {};
+    // Full-match admission tracking (assigned once identityText is derived below).
+    // Every live-allowed full-match raw row is then accounted as admitted (on push)
+    // or rejected with the exact reason captured here.
+    let fmMarketClass: FullmatchMarketClass = "unknown";
+    let fmIsAllowedFullmatch = false;
+    let fmIdentityForTrace = "";
     const rejectReason = (r: string) => {
       if (rawDiag) {
         rawDiag.rejected_before_planning_by_reason[r] =
@@ -750,6 +830,21 @@ export async function buildFireModelCandidates(
         }
         rawDiag.dropped_by_formula_version_and_reason[ver][r] =
           (rawDiag.dropped_by_formula_version_and_reason[ver][r] ?? 0) + 1;
+        // Exact-reason accounting for live-allowed full-match raw rows that drop out.
+        if (fmIsAllowedFullmatch) {
+          rawDiag.fullmatch_rejected_by_reason[r] =
+            (rawDiag.fullmatch_rejected_by_reason[r] ?? 0) + 1;
+          if (rawDiag.missing_fullmatch_fixtures.length < 25) {
+            rawDiag.missing_fullmatch_fixtures.push({
+              match_family_key:
+                (typeof row.event_slug === "string" && row.event_slug.trim()) ||
+                (typeof row.condition_id === "string" ? row.condition_id : "no_event"),
+              identity: fmIdentityForTrace.slice(0, 120),
+              market_class: fmMarketClass,
+              reject_reason: r,
+            });
+          }
+        }
       }
     };
     const planningFallbackRow =
@@ -768,6 +863,17 @@ export async function buildFireModelCandidates(
         ? diag.gameStartIso
         : null;
     const { text: identityText, activityLabelDetected } = buildIdentityText(row, planningMode);
+    // Classify the raw market once so the builder agrees with the canonical funnel monitor
+    // and so each live-allowed full-match raw row is accounted as admitted / rejected.
+    fmMarketClass = classifyFullmatchMarket(identityText);
+    fmIsAllowedFullmatch = isAllowedFullmatchMarketClass(fmMarketClass);
+    fmIdentityForTrace = identityText;
+    if (rawDiag) {
+      rawDiag.fullmatch_market_class_counts[fmMarketClass] =
+        (rawDiag.fullmatch_market_class_counts[fmMarketClass] ?? 0) + 1;
+      if (fmIsAllowedFullmatch) rawDiag.raw_allowed_fullmatch_rows += 1;
+      if (fmMarketClass.startsWith("forbidden_")) rawDiag.raw_forbidden_rows += 1;
+    }
     let score = typeof row.signal_confidence_num === "number" ? row.signal_confidence_num : null;
     let coverage = baseCoverage;
     const entryPrice = typeof row.entry_price_num === "number" ? row.entry_price_num : null;
@@ -1111,6 +1217,9 @@ export async function buildFireModelCandidates(
       },
     });
 
+    if (rawDiag && fmIsAllowedFullmatch) {
+      rawDiag.fullmatch_admitted_count += 1;
+    }
     if (rawDiag && (strategicScope === "WC" || strategicScope === "SOCCER")) {
       rawDiag.wc_soccer_candidate_count += 1;
     }
