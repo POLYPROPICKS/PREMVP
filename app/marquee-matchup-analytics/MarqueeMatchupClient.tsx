@@ -312,14 +312,7 @@ export default function MarqueeMatchupClient() {
               alex_ceo@polypropicks.com
             </a>
           </p>
-          <p className={styles.legalRow}>
-            <Link href="/privacy-policy" className={styles.flink}>Privacy Policy</Link>
-            <span aria-hidden="true"> · </span>
-            <Link href="/terms-of-use" className={styles.flink}>Terms of Use</Link>
-            <span aria-hidden="true"> · </span>
-            <Link href="/legal" className={styles.flink}>Legal</Link>
-          </p>
-          <p className={styles.compliance}>Reply STOP to opt out. Reply HELP for help.</p>
+          <p className={styles.compliance}>Reply HELP for help. Reply STOP to opt out.</p>
         </footer>
       </section>
     </main>

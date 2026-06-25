@@ -8,8 +8,8 @@ const PRESS_LOGOS = [
   { label: 'Barstool Sports', style: 'barstool' },
   { label: 'LINEUPS',         style: 'lineups'  },
   { label: 'PRESS WIRE',      style: 'presswire'},
-  { label: 'Casino Reports',  style: 'casino'   },
-  { label: 'Betting News',    style: 'betnews'  },
+  { label: 'Sports Media Review',  style: 'casino'   },
+  { label: 'Sports Briefing Desk', style: 'betnews'  },
   { label: 'nola.com',        style: 'nola'     },
   { label: 'XCLS',            style: 'xcls'     },
 ] as const;
