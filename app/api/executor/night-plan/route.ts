@@ -437,6 +437,13 @@ export async function GET(request: NextRequest) {
               versions_queried: rawDiagnostics.versions_queried,
               versions_with_zero_db_rows: rawDiagnostics.versions_with_zero_db_rows,
               total_db_rows: rawDiagnostics.total_db_rows,
+              // Contur3 full-match admission accounting (RAW_ALLOWED_FULLMATCH_GT0_BUILDER_FULLMATCH_EQ0 trace).
+              fullmatch_market_class_counts: rawDiagnostics.fullmatch_market_class_counts,
+              raw_allowed_fullmatch_rows: rawDiagnostics.raw_allowed_fullmatch_rows,
+              raw_forbidden_rows: rawDiagnostics.raw_forbidden_rows,
+              fullmatch_admitted_count: rawDiagnostics.fullmatch_admitted_count,
+              fullmatch_rejected_by_reason: rawDiagnostics.fullmatch_rejected_by_reason,
+              missing_fullmatch_fixtures: rawDiagnostics.missing_fullmatch_fixtures,
             }
           : {}),
       },
