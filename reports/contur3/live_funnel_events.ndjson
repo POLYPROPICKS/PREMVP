@@ -1,0 +1,3 @@
+{"generated_at":"2026-06-25T18:24:34.461Z","machine_verdict":"STOPPED_DB_ENV_MISSING","hard_anomaly_count":1,"reserved":null,"missing":null,"queued":null,"head":"f886053c81841a8484adf7f8672fcf6253725076"}
+{"generated_at":"2026-06-25T18:24:34.716Z","machine_verdict":"STOPPED_DB_ENV_MISSING","hard_anomaly_count":1,"reserved":null,"missing":null,"queued":null,"head":"f886053c81841a8484adf7f8672fcf6253725076"}
+{"generated_at":"2026-06-25T18:24:34.973Z","machine_verdict":"STOPPED_DB_ENV_MISSING","hard_anomaly_count":1,"reserved":null,"missing":null,"queued":null,"head":"f886053c81841a8484adf7f8672fcf6253725076"}

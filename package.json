@@ -67,7 +67,11 @@
     "contur3:funnel-trace-audit": "node scripts/contur3/funnel-trace-audit.mjs",
     "contur3:battle-stage-gate": "node scripts/contur3/battle-stage-gate.mjs",
     "contur3:reservation-capacity-audit": "node scripts/contur3/reservation-capacity-audit.mjs",
-    "contur3:reservation-tier-probe": "tsx scripts/contur3/reservation-capacity-audit.tier-probe.ts"
+    "contur3:reservation-tier-probe": "tsx scripts/contur3/reservation-capacity-audit.tier-probe.ts",
+    "contur3:live-funnel-log": "node scripts/contur3/live-funnel-log.mjs",
+    "contur3:g2-log": "node scripts/contur3/g2-log.mjs",
+    "contur3:preflight24h": "node scripts/contur3/preflight24h.mjs",
+    "contur3:battle-ready": "node scripts/contur3/battle-ready.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",

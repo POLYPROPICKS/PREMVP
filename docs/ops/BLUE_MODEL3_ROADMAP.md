@@ -269,3 +269,27 @@ best full-match score/coverage to decide:
 
 No producer/builder logic changed in this commit (read-only diagnostics only);
 the 5 working reservations are untouched.
+
+## 14. CONTUR3 24H LOG-FIRST RULE (canonical)
+
+Before diagnosing or patching Contur3 / night reservations / event rebalance /
+Ireland execution, inspect the last-24h canonical live funnel log:
+
+- Read `reports/contur3/live_funnel_latest.md` (and `live_funnel_latest.json`).
+- If missing OR older than 30 minutes during an active battle window, rerun:
+  `npm run contur3:live-funnel-log`
+- If the log is missing entirely, **creating/fixing the logging layer is P0**
+  before any new diagnosis.
+
+No Claude / Cascade / ChatGPT answer may claim readiness without referencing:
+latest log path, `generated_at`, `machine_verdict`, `hard_anomaly_count`,
+next due (Minsk), queue count, Ireland status.
+
+Every suspicious situation must be written to the log with an anomaly code and a
+recommended next command. One final `*_latest` log must always exist even if many
+timestamped logs exist — the founder should never have to infer state from
+scattered one-off scripts.
+
+The single source of funnel definitions (normalization, market classification,
+pagination, schema) is `scripts/contur3/lib/contur3LiveFunnelMonitor.mjs`.
+Companion commands: `contur3:g2-log`, `contur3:preflight24h`, `contur3:battle-ready`.
