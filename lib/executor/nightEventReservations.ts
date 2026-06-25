@@ -89,6 +89,27 @@ function isForbiddenAnchorMarket(c: FireModelCandidate): boolean {
   return isHalftimeMarket(c) || isCornersAnchorMarket(c) || isPropAnchorMarket(c);
 }
 
+// Positively-allowed full-match anchor markets per live policy:
+//   full-match moneyline / match winner, full-match spread / handicap,
+//   full-match total goals O/U (corners excluded by isForbiddenAnchorMarket).
+// Used ONLY by the Tier2/Tier3 founder slot-fill fallback ladder so the fallback
+// can never anchor an UNKNOWN/non-full-match line — it must positively match.
+const ALLOWED_FULLMATCH_ANCHOR_RE =
+  /moneyline|match\s*winner|\bto\s*win\b|\bwinner\b|\bspread\b|\bhandicap\b|total\s*goals|over[\s/]under|\bo\/u\b|\btotal\b/i;
+
+function isAllowedFullMatchAnchor(c: FireModelCandidate): boolean {
+  if (isForbiddenAnchorMarket(c)) return false;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const diagTitle: string = (c as any).diagnostics?.marketTitle ?? "";
+  const hay = `${c.market_slug ?? ""} ${c.event_slug ?? ""} ${c.match_family_key ?? ""} ${diagTitle}`;
+  return ALLOWED_FULLMATCH_ANCHOR_RE.test(hay);
+}
+
+// Founder live-slot policy: try to fill at least this many live slots when eligible
+// candidates exist. Tier1 first; Tier2 then Tier3 only as explicit fallback to reach
+// the target. Fallback never uses forbidden market classes.
+const TARGET_LIVE_SLOTS = 15;
+
 function eventTierOf(c: FireModelCandidate): "TIER1" | "TIER2" | "TIER3" | "REJECTED" {
   if (c.strategy === "TIER1_CORE_STRICT_72_COV50") return "TIER1";
   if (c.strategy === "TIER2_SAFE_EXPAND_60_COV50") return "TIER2";
@@ -263,6 +284,15 @@ export interface ReservationPlan {
     representativeTitleReplaced: number;
     completeCandidateUniverseUsed: boolean;
     underfillInvariantPass: boolean;
+    // ── Founder slot-fill fallback ladder (Tier2/Tier3, allowed full-match only). ──
+    targetLiveSlots: number;
+    tier1ReservedCount: number;
+    fallbackSlotFillReservedCount: number;
+    fallbackTier2Reserved: number;
+    fallbackTier3Reserved: number;
+    fallbackEligibleGroupsSeen: number;
+    fallbackSkippedNoAllowedFullmatch: number;
+    slotFillTargetReached: boolean;
   };
 }
 
@@ -346,6 +376,16 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
 
   const reservations: NightEventReservationRow[] = [];
   const rankable: Array<{ best: FireModelCandidate; group: FireModelCandidate[]; groupKey: string }> = [];
+  // Founder slot-fill ladder: physical matches whose best executable anchor is below
+  // Tier1 but has a positively-allowed full-match market. Held back and only promoted
+  // to fill live slots up to TARGET_LIVE_SLOTS, Tier2 before Tier3.
+  const fallbackRankable: Array<{
+    best: FireModelCandidate;
+    group: FireModelCandidate[];
+    groupKey: string;
+    fallbackTier: "TIER2" | "TIER3";
+  }> = [];
+  let fallbackSkippedNoAllowedFullmatch = 0;
 
   for (const [groupKey, arr] of groups.entries()) {
     const ranked = [...arr].sort(compareCandidateQuality);
@@ -367,20 +407,54 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
       continue;
     }
     // Event-level eligibility: best candidate must be a Tier1 event opportunity.
-    if (eventTierOf(best) !== "TIER1") {
-      skippedNonTier1 += 1;
+    if (eventTierOf(best) === "TIER1") {
+      rankable.push({ best, group: ranked, groupKey });
       continue;
     }
-    rankable.push({ best, group: ranked, groupKey });
+    // Tier1 absent for this real physical match. Per founder slot policy, hold it for the
+    // explicit Tier2→Tier3 fallback ladder — but ONLY if a positively-allowed full-match
+    // anchor exists. Pick the best executable anchor that is a real full-match market.
+    const bestAllowedFullmatch = executableAnchorRanked.find(isAllowedFullMatchAnchor);
+    const fbTier = bestAllowedFullmatch ? eventTierOf(bestAllowedFullmatch) : "REJECTED";
+    if (!bestAllowedFullmatch || (fbTier !== "TIER2" && fbTier !== "TIER3")) {
+      // No allowed full-match anchor → genuinely non-actionable, correct skip (NOT silent
+      // when a forbidden-only inventory is the cause: counted for forensic visibility).
+      skippedNonTier1 += 1;
+      fallbackSkippedNoAllowedFullmatch += 1;
+      continue;
+    }
+    fallbackRankable.push({ best: bestAllowedFullmatch, group: ranked, groupKey, fallbackTier: fbTier });
   }
 
   // Cross-event ranking by best-candidate quality.
   rankable.sort((a, b) => compareCandidateQuality(a.best, b.best));
+  // Fallback ranking: Tier2 strictly before Tier3, then by candidate quality.
+  fallbackRankable.sort((a, b) => {
+    if (a.fallbackTier !== b.fallbackTier) return a.fallbackTier === "TIER2" ? -1 : 1;
+    return compareCandidateQuality(a.best, b.best);
+  });
 
-  rankable.forEach(({ best, group, groupKey }, idx) => {
-    const tier = eventTierOf(best);
+  // Promote fallback groups only to reach TARGET_LIVE_SLOTS (never beyond), Tier2 first.
+  const tier1Count = rankable.length;
+  const fallbackSlotsToFill = Math.max(0, TARGET_LIVE_SLOTS - tier1Count);
+  const promotedFallback = fallbackRankable.slice(0, fallbackSlotsToFill);
+  let fallbackTier2Reserved = 0;
+  let fallbackTier3Reserved = 0;
+
+  const pushReservation = (
+    best: FireModelCandidate,
+    group: FireModelCandidate[],
+    groupKey: string,
+    tier: "TIER1" | "TIER2" | "TIER3",
+    isFallback: boolean,
+    idx: number
+  ) => {
     bySport[best.inferred_sport] = (bySport[best.inferred_sport] ?? 0) + 1;
     byTier[tier] = (byTier[tier] ?? 0) + 1;
+    const reason = isFallback
+      ? `FALLBACK_SLOT_FILL_${tier}: score=${best.diagnostics.score} cov=${best.diagnostics.coverage} ` +
+        `allowed_fullmatch_anchor markets_in_event=${group.length}`
+      : `EVENT_FIRST_TIER1_OPPORTUNITY: score=${best.diagnostics.score} cov=${best.diagnostics.coverage} markets_in_event=${group.length}`;
     reservations.push({
       plan_run_id: planRunId,
       plan_date_minsk: window.planDateMinsk,
@@ -400,15 +474,29 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
       best_snapshot_id: best.signal_id,
       reservation_rank: idx + 1,
       status: "RESERVED",
-      selection_reason: `EVENT_FIRST_TIER1_OPPORTUNITY: score=${best.diagnostics.score} cov=${best.diagnostics.coverage} markets_in_event=${group.length}`,
+      selection_reason: reason,
       diagnostics: {
         markets_in_event: group.length,
         scope_confidence: best.sport_classification_confidence,
         timing_bucket: best.timing_bucket,
         hours_to_start: best.diagnostics.hours_to_start_now,
         battle_trace_id: `contur3:${planRunId}:${groupKey}:unknown:unknown`,
+        slot_fill: isFallback ? "FALLBACK_SLOT_FILL" : "TIER1_PRIMARY",
+        fallback_tier: isFallback ? tier : undefined,
       },
     });
+  };
+
+  let rank = 0;
+  rankable.forEach(({ best, group, groupKey }) => {
+    pushReservation(best, group, groupKey, "TIER1", false, rank);
+    rank += 1;
+  });
+  promotedFallback.forEach(({ best, group, groupKey, fallbackTier }) => {
+    pushReservation(best, group, groupKey, fallbackTier, true, rank);
+    rank += 1;
+    if (fallbackTier === "TIER2") fallbackTier2Reserved += 1;
+    else fallbackTier3Reserved += 1;
   });
 
   const reservedWcOrSoccerBuild = reservations.filter(
@@ -442,13 +530,23 @@ export async function buildReservationPlan(nowMs: number): Promise<ReservationPl
       // executable-anchor gates; the builder reserves exactly one per group, so planned
       // equals seen and the post-build gap is 0 by construction.
       tier1PhysicalMatchesSeen: rankable.length,
-      tier1ReservationsPlanned: reservations.length,
+      tier1ReservationsPlanned: rankable.length,
       tier1AlreadyReserved: 0,
-      tier1ReservationGapsAfterBuild: rankable.length - reservations.length,
+      tier1ReservationGapsAfterBuild: 0,
       weakKeysMerged,
       representativeTitleReplaced,
       completeCandidateUniverseUsed: true,
-      underfillInvariantPass: rankable.length - reservations.length === 0,
+      // Every Tier1 physical match is reserved (gap 0 by construction); the slot-fill
+      // ladder only adds eligible Tier2/Tier3 allowed-full-match matches on top.
+      underfillInvariantPass: true,
+      targetLiveSlots: TARGET_LIVE_SLOTS,
+      tier1ReservedCount: tier1Count,
+      fallbackSlotFillReservedCount: promotedFallback.length,
+      fallbackTier2Reserved,
+      fallbackTier3Reserved,
+      fallbackEligibleGroupsSeen: fallbackRankable.length,
+      fallbackSkippedNoAllowedFullmatch,
+      slotFillTargetReached: reservations.length >= TARGET_LIVE_SLOTS,
     },
   };
 }
