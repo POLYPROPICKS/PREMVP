@@ -277,18 +277,86 @@ export interface NextDueReservation {
   due_window_state: "BEFORE_WINDOW" | "IN_WINDOW" | "EXPIRED";
 }
 
+/**
+ * Per-reservation classification so a due_count=0 run still explains WHY each
+ * active reservation is not due. This satisfies the non-negotiable invariant:
+ * "due_count=0 is not enough — it must print why each active reservation is not due."
+ */
+export interface ReservationClassification {
+  match_family_key: string;
+  event_title: string | null;
+  game_start_iso: string;
+  status: string;
+  // Exact reason an active reservation is or is not selectable by the due filter.
+  state:
+    | "DUE_NOW"
+    | "NOT_DUE_YET"
+    | "EXPIRED"
+    | "INVALID_START";
+  seconds_until_due: number | null; // seconds until rebalance window opens (>=0 when NOT_DUE_YET)
+  rebalance_starts_iso: string | null;
+  rebalance_ends_iso: string | null;
+}
+
 export interface RebalanceRunResult {
   rebalance_run_id: string;
+  active_reservations_count: number;
   due_count: number;
   queued_count: number;
   skipped_count: number;
   already_queued_count: number;
   expired_count: number;
   future_valid_reservations_count: number;
+  // True when reservations were due but none reached the queue — a hard battle failure.
+  fail_due_reservations_not_queued: boolean;
   outcomes: RebalanceOutcome[];
+  // Full per-active-reservation reason table (every RESERVED/REBALANCE_PENDING row).
+  reservation_classification: ReservationClassification[];
   wrote: boolean;
   next_due_reservations: NextDueReservation[];
   next_check_after_seconds: number | null;
+}
+
+/** Classify every active reservation against the due window — pure, no DB. */
+function classifyReservations(
+  all: NightEventReservationRow[],
+  nowMs: number
+): ReservationClassification[] {
+  return all
+    .map((r) => {
+      const startMs = Date.parse(r.game_start_iso);
+      if (!Number.isFinite(startMs)) {
+        return {
+          match_family_key: r.match_family_key,
+          event_title: r.event_title ?? null,
+          game_start_iso: r.game_start_iso,
+          status: r.status,
+          state: "INVALID_START" as const,
+          seconds_until_due: null,
+          rebalance_starts_iso: null,
+          rebalance_ends_iso: null,
+        };
+      }
+      const rebalanceStartsMs = startMs - REBALANCE_MINUTES_BEFORE_START * 60_000;
+      const rebalanceEndsMs = startMs - LATEST_ENTRY_MINUTES_BEFORE * 60_000;
+      const minutesToStart = (startMs - nowMs) / 60_000;
+      let state: ReservationClassification["state"];
+      if (minutesToStart <= LATEST_ENTRY_MINUTES_BEFORE) state = "EXPIRED";
+      else if (minutesToStart <= REBALANCE_MINUTES_BEFORE_START) state = "DUE_NOW";
+      else state = "NOT_DUE_YET";
+      return {
+        match_family_key: r.match_family_key,
+        event_title: r.event_title ?? null,
+        game_start_iso: r.game_start_iso,
+        status: r.status,
+        state,
+        seconds_until_due:
+          state === "NOT_DUE_YET" ? Math.max(0, Math.ceil((rebalanceStartsMs - nowMs) / 1000)) : 0,
+        rebalance_starts_iso: new Date(rebalanceStartsMs).toISOString(),
+        rebalance_ends_iso: new Date(rebalanceEndsMs).toISOString(),
+      };
+    })
+    .sort((a, b) => Date.parse(a.game_start_iso) - Date.parse(b.game_start_iso));
 }
 
 /**
@@ -327,7 +395,8 @@ export async function runEventRebalance(
       return Number.isFinite(startMs) && minutesToStart > REBALANCE_MINUTES_BEFORE_START;
     })
     .sort((a, b) => Date.parse(a.game_start_iso) - Date.parse(b.game_start_iso));
-  const next_due_reservations: NextDueReservation[] = upcoming.slice(0, 3).map((r) => {
+  const reservation_classification = classifyReservations(all, nowMs);
+  const next_due_reservations: NextDueReservation[] = upcoming.slice(0, 10).map((r) => {
     const startMs = Date.parse(r.game_start_iso);
     const rebalanceStartsMs = startMs - REBALANCE_MINUTES_BEFORE_START * 60_000;
     const rebalanceEndsMs = startMs - LATEST_ENTRY_MINUTES_BEFORE * 60_000;
@@ -358,13 +427,16 @@ export async function runEventRebalance(
   if (due.length === 0) {
     return {
       rebalance_run_id: rebalanceRunId,
+      active_reservations_count: all.length,
       due_count: 0,
       queued_count: 0,
       skipped_count: 0,
       already_queued_count: 0,
       expired_count: expired.length,
       future_valid_reservations_count: upcoming.length,
+      fail_due_reservations_not_queued: false,
       outcomes,
+      reservation_classification,
       wrote: write,
       next_due_reservations,
       next_check_after_seconds,
@@ -473,15 +545,23 @@ export async function runEventRebalance(
     });
   }
 
+  // Hard failure: reservations were due but none reached the queue and none were
+  // already queued. SKIPPED rows carry an exact reason; zero queued+already with a
+  // positive due count means the queue stage silently produced nothing.
+  const fail_due_reservations_not_queued = due.length > 0 && queued === 0 && already === 0;
+
   return {
     rebalance_run_id: rebalanceRunId,
+    active_reservations_count: all.length,
     due_count: due.length,
     queued_count: queued,
     skipped_count: skipped,
     already_queued_count: already,
     expired_count: expired.length,
     future_valid_reservations_count: upcoming.length,
+    fail_due_reservations_not_queued,
     outcomes,
+    reservation_classification,
     wrote: write,
     next_due_reservations,
     next_check_after_seconds,
@@ -511,11 +591,14 @@ export async function persistRebalanceDiagnostics(
       rebalance_run_id: result.rebalance_run_id,
       commit,
       context: opts?.context || "runEventRebalance",
+      active_reservations_count: result.active_reservations_count,
       due_count: result.due_count,
       queued_count: result.queued_count,
       skipped_count: result.skipped_count,
       already_queued_count: result.already_queued_count,
       expired_count: result.expired_count,
+      future_valid_reservations_count: result.future_valid_reservations_count,
+      fail_due_reservations_not_queued: result.fail_due_reservations_not_queued,
       wrote: result.wrote,
       outcomes_summary: {
         total: result.outcomes.length,
@@ -530,8 +613,10 @@ export async function persistRebalanceDiagnostics(
         queued_event: o.queue_row?.event_title ?? null,
         skipped_candidate_count: o.blocked_candidates?.length ?? 0,
       })),
-      next_due_reservations: result.next_due_reservations.slice(0, 3),
+      next_due_reservations: result.next_due_reservations.slice(0, 10),
       next_check_after_seconds: result.next_check_after_seconds,
+      // Full per-active-reservation reason table — answers "why due_count=0".
+      reservation_classification: result.reservation_classification,
     };
 
     await writeFile(filePath, JSON.stringify(payload, null, 2), "utf-8");

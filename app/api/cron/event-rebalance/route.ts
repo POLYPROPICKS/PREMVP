@@ -31,15 +31,21 @@ async function handle(request: NextRequest) {
         dry_run: dryRun,
         rebalance_diagnostics_version: "blocked-candidates-v2",
         rebalance_run_id: result.rebalance_run_id,
+        active_reservations_count: result.active_reservations_count,
         due_count: result.due_count,
         queued_count: result.queued_count,
         skipped_count: result.skipped_count,
         already_queued_count: result.already_queued_count,
         expired_count: result.expired_count,
+        future_valid_reservations_count: result.future_valid_reservations_count,
+        // Hard failure surface: due reservations existed but none reached the queue.
+        fail_due_reservations_not_queued: result.fail_due_reservations_not_queued,
         diagnostic_report_path: diagResult.path,
         next_due_iso: result.next_due_reservations[0]?.rebalance_starts_iso ?? null,
         next_check_after_seconds: result.next_check_after_seconds,
         next_due_reservations: result.next_due_reservations,
+        // Per-active-reservation reason table so due_count=0 always explains itself.
+        reservation_classification: result.reservation_classification,
         outcomes: result.outcomes.map((o) => ({
           match_family_key: o.match_family_key,
           result: o.result,

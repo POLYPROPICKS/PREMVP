@@ -69,6 +69,27 @@ const rawLimit = (() => {
   return Number.isFinite(n) ? Math.min(Math.max(n, 1), 500) : 25;
 })();
 
+// Bounded-scan mitigation for cron statement timeouts. The backlog SELECT
+// filters `signal_result is null` and orders by created_at; without a date
+// window the planner sorts the entire unresolved history and intermittently
+// hits "canceling statement due to statement timeout". Opt-in only — default
+// behavior (no window) is unchanged so manual deep sweeps still see all rows.
+const maxAgeDays = (() => {
+  const arg = process.argv.find((a) => a.startsWith("--max-age-days="));
+  if (!arg) return null;
+  const n = parseInt(arg.split("=")[1], 10);
+  return Number.isFinite(n) && n > 0 ? n : null;
+})();
+const createdAfterArg = (() => {
+  const arg = process.argv.find((a) => a.startsWith("--created-after="));
+  return arg ? arg.split("=").slice(1).join("=") : null;
+})();
+function resolveCreatedAfter(): string | null {
+  if (createdAfterArg) return createdAfterArg;
+  if (maxAgeDays != null) return new Date(Date.now() - maxAgeDays * 86_400_000).toISOString();
+  return null;
+}
+
 // In write mode, default maxUpdates = 1 to prevent accidental bulk writes.
 // In dry-run mode, this value is logged but has no effect.
 const maxUpdates = (() => {
@@ -419,6 +440,14 @@ async function main() {
 
   if (ONLY_EXPIRED) {
     query = query.lt("expires_at", expiredCutoff);
+  }
+
+  // Bounded-scan window: caps how far back the planner must sort, preventing
+  // the statement timeout on the unbounded unresolved backlog.
+  const createdAfter = resolveCreatedAfter();
+  if (createdAfter) {
+    query = query.gte("created_at", createdAfter);
+    console.log(`[resolve-signals] BOUNDED_SCAN created_after=${createdAfter}`);
   }
 
   if (orderMode === "oldest") {
