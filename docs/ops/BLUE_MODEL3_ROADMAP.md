@@ -233,3 +233,39 @@ DEGRADED_STALE (still report) · missing → DEGRADED_NO_SNAPSHOT (run probe).
   source is wired into the snapshot yet.
 - Root-cause the `generated_signal_pairs` index so the deep resolver sweep can
   run without a date window.
+
+---
+
+## 12. Curaçao reservation underfill — admission analysis (2026-06-25)
+
+Production proof (capacity-audit + tier-probe) for the 6-fixture FIFA slate:
+5/6 reserved; **Curaçao vs Côte d'Ivoire** missing despite 109 raw allowed
+full-match signal rows.
+
+**Code-traced mechanism (not a producer bug):**
+- `buildFireModelCandidates.ts` emits a candidate per signal row only if
+  `score≥50 & coverage≥25` (`computeTier`; guards `LOW_SCORE`<50, `LOW_COVERAGE`<25
+  at lines 805-806). `score = signal_confidence_num`, `coverage = diagnostics.dataCoverage`
+  — **per row**, not aggregated across the match family.
+- The producer (`nightEventReservations.ts:355,370`) filters forbidden anchors
+  (halftime/corners/props) then reserves a group only if its best non-forbidden
+  candidate is **TIER1** (`score≥72 & cov≥50`).
+- The prod tier-probe found Curaçao's only emitted candidates were 2 **halftime**
+  TIER1 rows. Therefore **no full-match Curaçao row reached even Tier3** — else it
+  would have been emitted, and any full-match TIER1 row would have been reserved.
+- The producer is correctly refusing to anchor a live reservation on a halftime
+  market. Reserving Curaçao from sub-Tier1 full-match rows would **weaken the live
+  scoring policy** (forbidden).
+
+**Open question (resolved by one prod run):** are the 109 full-match rows
+genuinely sub-threshold (correct skip) or suppressed by a wrong guard
+(`FOOTBALL_NO_SIDE`, `BAD_BUCKET_COV_PRICE`, etc.)? The enhanced
+`contur3:reservation-tier-probe` LAYER B prints the per-row admission histogram +
+best full-match score/coverage to decide:
+
+- `WOULD_BE_TIER1 > 0` in LAYER B but absent in LAYER A → **real builder bug**, fix exact guard.
+- all `LOW_SCORE` / `TIER_BELOW_THRESHOLD` → correct skip → **PRODUCER_PATCH_BLOCKED_NO_SAFE_ALLOWED_CANDIDATE**.
+- `FOOTBALL_NO_SIDE` dominating → targeted side-mapping fix.
+
+No producer/builder logic changed in this commit (read-only diagnostics only);
+the 5 working reservations are untouched.
