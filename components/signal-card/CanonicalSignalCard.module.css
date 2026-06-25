@@ -127,7 +127,7 @@
   gap: 6px;
   overflow: hidden;
   border-radius: 17px;
-  min-height: 118px;
+  min-height: 148px;
 }
 
 .lockableSignalAreaContent {
@@ -147,17 +147,17 @@
   inset: 0;
   z-index: 4;
   overflow: hidden;
-  border: 1px solid rgba(239, 255, 102, 0.46);
+  border: 1px solid rgba(239, 255, 102, 0.28);
   border-radius: 17px;
   background:
-    radial-gradient(circle at 70% 18%, rgba(239, 255, 102, 0.17), transparent 35%),
-    radial-gradient(circle at 28% 62%, rgba(126, 255, 176, 0.10), transparent 45%),
-    linear-gradient(135deg, rgba(5, 17, 25, 0.82), rgba(3, 11, 17, 0.70));
+    radial-gradient(circle at 70% 18%, rgba(239, 255, 102, 0.11), transparent 35%),
+    radial-gradient(circle at 28% 62%, rgba(126, 255, 176, 0.07), transparent 45%),
+    linear-gradient(135deg, rgba(5, 17, 25, 0.88), rgba(3, 11, 17, 0.78));
   backdrop-filter: blur(14px);
   box-shadow:
-    0 0 18px rgba(239, 255, 102, 0.12),
-    inset 0 0 24px rgba(94, 219, 255, 0.06),
-    inset 0 0 36px rgba(239, 255, 102, 0.045);
+    0 0 12px rgba(239, 255, 102, 0.07),
+    inset 0 0 18px rgba(94, 219, 255, 0.04),
+    inset 0 0 28px rgba(239, 255, 102, 0.03);
 }
 
 .premiumLockPreview {
@@ -168,8 +168,8 @@
   grid-template-columns: 1fr 0.75fr 1fr;
   align-items: center;
   gap: 10px;
-  opacity: 0.22;
-  filter: blur(5px);
+  opacity: 0.30;
+  filter: blur(4px);
   transform: scale(1.02);
   pointer-events: none;
 }
@@ -258,28 +258,28 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 9px;
+  gap: 8px;
   text-align: center;
-  padding: 12px 16px;
+  padding: 14px 16px;
 }
 
 .premiumLockPill {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 13px;
+  padding: 4px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(239, 255, 102, 0.72);
-  background: rgba(2, 10, 15, 0.74);
+  border: 1px solid rgba(239, 255, 102, 0.52);
+  background: rgba(2, 10, 15, 0.82);
   color: #efff66;
   font-size: 10px;
   line-height: 1;
-  font-weight: 900;
-  letter-spacing: 0.18em;
+  font-weight: 700;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
   box-shadow:
-    0 0 14px rgba(239, 255, 102, 0.16),
-    inset 0 0 10px rgba(239, 255, 102, 0.04);
+    0 0 8px rgba(239, 255, 102, 0.10),
+    inset 0 0 6px rgba(239, 255, 102, 0.03);
 }
 
 .premiumLockCrown {
@@ -290,16 +290,16 @@
 
 .premiumLockTitle {
   color: #f5f7fb;
-  font-size: clamp(18px, 5.4vw, 23px);
-  line-height: 1.04;
-  font-weight: 850;
-  letter-spacing: -0.035em;
+  font-size: clamp(16px, 4.2vw, 18px);
+  line-height: 1.12;
+  font-weight: 650;
+  letter-spacing: -0.02em;
   text-shadow: 0 0 16px rgba(245, 247, 251, 0.13);
 }
 
 .premiumLockSubtitle {
-  color: rgba(219, 245, 174, 0.94);
-  font-size: clamp(12px, 3.5vw, 14px);
+  color: rgba(219, 245, 174, 0.78);
+  font-size: clamp(11px, 3vw, 13px);
   line-height: 1.2;
   font-weight: 650;
 }
