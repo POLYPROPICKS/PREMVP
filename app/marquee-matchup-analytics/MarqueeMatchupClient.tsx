@@ -193,9 +193,6 @@ function GameIcon({ kind }: { kind: IconKey }) {
   }
 }
 
-const ARROW = (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>
-);
 
 export default function MarqueeMatchupClient() {
   const [games, setGames] = useState<MarqueeMatchup[] | null>(null);
@@ -248,7 +245,9 @@ export default function MarqueeMatchupClient() {
           </div>
         </header>
 
-        <h1 className={styles.hero}>Your marquee matchup analytics are ready</h1>
+        <h1 className={styles.hero}>
+          Your Marquee Matchup<br />analytics &amp; insights are Ready
+        </h1>
         <p className={styles.sub}>
           Game-day context and event activity summaries in one concise preview.
         </p>
@@ -276,16 +275,12 @@ export default function MarqueeMatchupClient() {
                   Analytics available
                 </p>
               </div>
-              <span className={styles.chev} aria-hidden="true">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 6l6 6-6 6" /></svg>
-              </span>
             </li>
           ))}
         </ul>
 
         <Link href="/?source=sms_marquee_matchup_analytics" className={styles.cta}>
-          <span>View Matchup Analytics</span>
-          {ARROW}
+          <span>View Matchup Insights</span>
         </Link>
         <p className={styles.microcopy}>Takes under a minute.</p>
 
@@ -304,16 +299,6 @@ export default function MarqueeMatchupClient() {
           </div>
         </div>
 
-        <footer className={styles.footer}>
-          <p>PolyProPicks is operated by Benefitpoint Alexander Grushin.</p>
-          <p>
-            Support:{" "}
-            <a href="mailto:alex_ceo@polypropicks.com" className={styles.flink}>
-              alex_ceo@polypropicks.com
-            </a>
-          </p>
-          <p className={styles.compliance}>Reply HELP for help. Reply STOP to opt out.</p>
-        </footer>
       </section>
     </main>
   );
