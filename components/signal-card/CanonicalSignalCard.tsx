@@ -16,7 +16,7 @@ export type CanonicalSignalCardProps = {
   /**
    * Opt-in premium gate for the public homepage. When true, the actionable
    * signal area (Recommended Position + Odds/Expected Profit) is blurred and
-   * covered with a "Premium Access Only" overlay. Defaults to false so all
+   * covered with a "Premium Signal Locked" overlay. Defaults to false so all
    * existing consumers (incl. /premium) remain fully unlocked.
    */
   lockSignalArea?: boolean;
@@ -258,8 +258,15 @@ export default function CanonicalSignalCard({ signal, diagnostics, footer, lockS
         </div>
 
         {lockSignalArea ? (
-          <div className={styles.premiumAccessOverlay} aria-label="Premium Access Only">
-            <span>Premium Access Only</span>
+          <div className={styles.premiumLockOverlay} aria-label="Premium Signal Locked">
+            <div className={styles.premiumLockContent}>
+              <div className={styles.premiumLockPill}>
+                <span className={styles.premiumLockCrown} aria-hidden="true">♛</span>
+                <span>PREMIUM</span>
+              </div>
+              <div className={styles.premiumLockTitle}>Premium Signal Locked</div>
+              <div className={styles.premiumLockSubtitle}>Unlock position, odds &amp; profit</div>
+            </div>
           </div>
         ) : null}
       </div>
