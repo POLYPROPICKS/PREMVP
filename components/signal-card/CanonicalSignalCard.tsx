@@ -259,9 +259,29 @@ export default function CanonicalSignalCard({ signal, diagnostics, footer, lockS
 
         {lockSignalArea ? (
           <div className={styles.premiumLockOverlay} aria-label="Premium Signal Locked">
+            <div className={styles.premiumLockPreview} aria-hidden="true">
+              <div className={styles.previewLeft}>
+                <span className={styles.previewLabel}>Recommended Position</span>
+                <span className={styles.previewTeamLine}>
+                  <span className={styles.previewFlag} />
+                  <span className={styles.previewTeam}>Venezuela</span>
+                </span>
+              </div>
+
+              <div className={styles.previewCenter}>
+                <span className={styles.previewGhostBlock} />
+                <span className={styles.previewGhostBlockSmall} />
+              </div>
+
+              <div className={styles.previewRight}>
+                <span className={styles.previewLabel}>Expected Profit</span>
+                <span className={styles.previewProfit}>+128%</span>
+              </div>
+            </div>
+
             <div className={styles.premiumLockContent}>
               <div className={styles.premiumLockPill}>
-                <span className={styles.premiumLockCrown} aria-hidden="true">♛</span>
+                <span className={styles.premiumLockCrown} aria-hidden="true">♕</span>
                 <span>PREMIUM</span>
               </div>
               <div className={styles.premiumLockTitle}>Premium Signal Locked</div>
