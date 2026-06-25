@@ -13,6 +13,13 @@ export type CanonicalSignalCardProps = {
     currentPrice?: number | null;
   };
   footer?: ReactNode;
+  /**
+   * Opt-in premium gate for the public homepage. When true, the actionable
+   * signal area (Recommended Position + Odds/Expected Profit) is blurred and
+   * covered with a "Premium Access Only" overlay. Defaults to false so all
+   * existing consumers (incl. /premium) remain fully unlocked.
+   */
+  lockSignalArea?: boolean;
 };
 
 // ── Trust-metric helpers (copied from accepted public card) ──────────────────
@@ -107,7 +114,7 @@ function getTrustMetricIconSrc(label: string): string {
 
 // ── Component ────────────────────────────────────────────────────────────────
 
-export default function CanonicalSignalCard({ signal, diagnostics, footer }: CanonicalSignalCardProps) {
+export default function CanonicalSignalCard({ signal, diagnostics, footer, lockSignalArea = false }: CanonicalSignalCardProps) {
   const orderedTrustMetrics = getOrderedTrustMetrics(signal.metrics);
 
   const probability = Math.max(0, Math.min(100, Number(signal.winProbability) || 0));
@@ -209,6 +216,14 @@ export default function CanonicalSignalCard({ signal, diagnostics, footer }: Can
         </div>
       </div>
       <h1 className={styles.eventTitle}>{signal.eventTitle}</h1>
+      {/* 3+4 · Lockable actionable signal area (Recommended Position + Odds/Profit) */}
+      <div className={styles.lockableSignalArea}>
+        <div
+          className={`${styles.lockableSignalAreaContent} ${
+            lockSignalArea ? styles.lockableSignalAreaContentLocked : ""
+          }`}
+          aria-hidden={lockSignalArea ? true : undefined}
+        >
       {/* 3 · Recommended Position */}
       <div className={styles.recommendedPosition}>
         <svg className={styles.posTarget} viewBox="0 0 24 24" fill="none" stroke="#8bff4d" strokeWidth="1.2" aria-hidden="true">
@@ -239,6 +254,14 @@ export default function CanonicalSignalCard({ signal, diagnostics, footer }: Can
           <div className={styles.cellBig}>+${profitDollars}</div>
           <div className={styles.cellSub}><span>per $100 stake</span></div>
         </div>
+      </div>
+        </div>
+
+        {lockSignalArea ? (
+          <div className={styles.premiumAccessOverlay} aria-label="Premium Access Only">
+            <span>Premium Access Only</span>
+          </div>
+        ) : null}
       </div>
 
       {/* 5 · Market Signal Score / Recommended Action */}

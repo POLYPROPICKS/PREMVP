@@ -415,6 +415,7 @@ export default function ReconstructionPage() {
               renderCard={(signal, onCtaClick) => (
                 <CanonicalSignalCard
                   signal={signal}
+                  lockSignalArea={activeFilter !== "live"}
                   footer={
                     <>
                       <button className={styles.cta} onClick={onCtaClick}>
