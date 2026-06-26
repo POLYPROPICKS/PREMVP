@@ -47,6 +47,26 @@ function addHours(hours: number): string {
   return new Date(Date.now() + hours * 3_600_000).toISOString();
 }
 
+// Whop webhook secrets are issued with a `ws_` prefix, but standardwebhooks
+// (used inside @whop/sdk) only strips `whsec_` and otherwise base64-decodes the
+// raw string — a `ws_…` value contains `_`, which is not in the base64 alphabet,
+// producing "Base64Coder: incorrect characters for decoding". Strip the `ws_`
+// prefix so the remaining base64 secret decodes correctly. Verification stays on.
+function normalizeWhopWebhookSecret(secret: string): {
+  value: string;
+  prefix: string;
+  stripped: boolean;
+} {
+  const trimmed = secret.trim();
+  if (trimmed.startsWith("ws_")) {
+    return { value: trimmed.slice(3), prefix: "ws", stripped: true };
+  }
+  if (trimmed.startsWith("whsec_")) {
+    return { value: trimmed, prefix: "whsec", stripped: false };
+  }
+  return { value: trimmed, prefix: "none", stripped: false };
+}
+
 // Maps internal ignore reasons to the stable diagnostic taxonomy used in logs.
 function rejectionCategory(reason: string): string {
   if (reason.includes("company")) return "invalid_company";
@@ -99,9 +119,16 @@ export async function POST(request: Request) {
   // ── SDK verification ──
   let event: Record<string, unknown>;
   try {
+    const normalizedSecret = normalizeWhopWebhookSecret(
+      process.env.WHOP_WEBHOOK_SECRET!
+    );
+    // Sanitized — prefix + flag only, never the secret value.
+    console.log(
+      `whop_webhook_secret_normalized prefix=${normalizedSecret.prefix} stripped=${normalizedSecret.stripped}`
+    );
     const client = new Whop({
       apiKey: process.env.WHOP_API_KEY,
-      webhookKey: process.env.WHOP_WEBHOOK_SECRET,
+      webhookKey: normalizedSecret.value,
     });
     const unwrapped = client.webhooks.unwrap(rawBody, { headers: headerMap });
     if (!isRecord(unwrapped)) throw new Error("non-object payload");
