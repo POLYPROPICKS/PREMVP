@@ -47,6 +47,18 @@ function addHours(hours: number): string {
   return new Date(Date.now() + hours * 3_600_000).toISOString();
 }
 
+// Maps internal ignore reasons to the stable diagnostic taxonomy used in logs.
+function rejectionCategory(reason: string): string {
+  if (reason.includes("company")) return "invalid_company";
+  if (reason.includes("product")) return "invalid_product";
+  if (reason.startsWith("status_not_access_valid")) return "unsupported_status";
+  if (reason === "missing_checkoutSessionId")
+    return "missing_checkout_session_id";
+  if (reason.startsWith("missing_")) return "missing_metadata";
+  if (reason === "plan_not_enabled") return "invalid_product";
+  return "rejected_other";
+}
+
 // ── Route handler ──────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
@@ -95,12 +107,32 @@ export async function POST(request: Request) {
     if (!isRecord(unwrapped)) throw new Error("non-object payload");
     event = unwrapped as Record<string, unknown>;
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "";
-    if (
-      msg.toLowerCase().includes("verification") ||
-      msg.toLowerCase().includes("signature") ||
-      msg.toLowerCase().includes("webhook")
-    ) {
+    const errName = err instanceof Error ? err.name : "UnknownError";
+    const errMsg = err instanceof Error ? err.message : "unknown";
+    // Sanitized diagnostic only — never log raw body, header values, secret, or email.
+    // This is the single line that makes the real cause of a rejected webhook
+    // visible in production logs (previously this branch logged nothing).
+    console.error(
+      `whop_webhook_unwrap_failed name=${errName} msg=${errMsg} id=${
+        headerMap["webhook-id"] ?? "none"
+      }`
+    );
+    // standardwebhooks raises WebhookVerificationError for ALL verification
+    // failures: signature mismatch ("No matching signature found"), bad headers
+    // ("Invalid Signature Headers"), and timestamp tolerance ("Message timestamp
+    // too old"/"too new"). The previous keyword heuristic only matched
+    // signature/webhook/verification, so the timestamp-tolerance cases leaked
+    // out as a misleading 400 INVALID_WEBHOOK_PAYLOAD. Classify every
+    // verification failure as 401 and reserve 400 for genuinely malformed
+    // (non-JSON) bodies. Verification itself is NOT weakened — failures reject.
+    const isVerification =
+      errName === "WebhookVerificationError" ||
+      errMsg.toLowerCase().includes("verification") ||
+      errMsg.toLowerCase().includes("signature") ||
+      errMsg.toLowerCase().includes("timestamp") ||
+      errMsg.toLowerCase().includes("required headers") ||
+      errMsg.toLowerCase().includes("webhook");
+    if (isVerification) {
       return jsonError("INVALID_WEBHOOK_SIGNATURE", 401);
     }
     return jsonError("INVALID_WEBHOOK_PAYLOAD", 400);
@@ -281,6 +313,14 @@ export async function POST(request: Request) {
   else if (!plan || !plan.enabled) ignoreReason = "plan_not_enabled";
 
   if (ignoreReason) {
+    // Sanitized diagnostic — reason + ids only, never email or payload.
+    console.warn(
+      `whop_webhook_rejected category=${rejectionCategory(
+        ignoreReason
+      )} reason=${ignoreReason} id=${providerEventId} plan=${
+        internalPlanId ?? "none"
+      } product=${incomingProductId ?? "none"}`
+    );
     await supabaseAdmin
       .from("payment_events")
       .update({
@@ -353,13 +393,25 @@ export async function POST(request: Request) {
     if (bySession) existingId = bySession.id;
   }
 
+  let entitlementError: string | null = null;
   if (existingId) {
-    await supabaseAdmin
+    const { error: updErr } = await supabaseAdmin
       .from("user_entitlements")
       .update(entitlementRow)
       .eq("id", existingId);
+    if (updErr) entitlementError = updErr.message;
   } else {
-    await supabaseAdmin.from("user_entitlements").insert(entitlementRow);
+    const { error: insErr } = await supabaseAdmin
+      .from("user_entitlements")
+      .insert(entitlementRow);
+    if (insErr) entitlementError = insErr.message;
+  }
+
+  if (entitlementError) {
+    // Sanitized — Whop event/membership ids only, no email or payload.
+    console.error(
+      `whop_webhook_entitlement_upsert_failed id=${providerEventId} membership=${membershipId} msg=${entitlementError}`
+    );
   }
 
   // ── Update checkout_sessions ──
@@ -380,8 +432,9 @@ export async function POST(request: Request) {
   await supabaseAdmin
     .from("payment_events")
     .update({
-      processing_status: "processed",
+      processing_status: entitlementError ? "error" : "processed",
       processed_at: new Date().toISOString(),
+      error: entitlementError ?? null,
       checkout_session_id: isUuidLike(metaCheckoutSessionId)
         ? metaCheckoutSessionId
         : null,
@@ -391,9 +444,13 @@ export async function POST(request: Request) {
     .eq("provider", "whop")
     .eq("provider_event_id", providerEventId);
 
+  // Return 200 in both cases: the event was received and recorded idempotently.
+  // On entitlement failure we report processed:false (already logged above) so
+  // a duplicate redelivery does not re-grant access, and the row is flagged
+  // "error" for reconciliation rather than triggering an infinite retry loop.
   return NextResponse.json({
     received: true,
-    processed: true,
+    processed: !entitlementError,
     eventType: "membership.activated",
   });
 }
