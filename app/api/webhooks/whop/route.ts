@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 import Whop from "@whop/sdk";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getPlanById, getWhopProductIdForPlan } from "@/lib/payments/planCatalog";
@@ -65,6 +66,54 @@ function normalizeWhopWebhookSecret(secret: string): {
     return { value: trimmed, prefix: "whsec", stripped: false };
   }
   return { value: trimmed, prefix: "none", stripped: false };
+}
+
+// Strict fallback verifier for Whop's current `ws_…` webhook secrets.
+// These are NOT standardwebhooks `whsec_` base64 keys: Whop signs with the raw
+// secret string (ws_ prefix included) as the UTF-8 HMAC-SHA256 key, base64 of the
+// digest, over `${id}.${timestamp}.${rawBody}` — identical envelope to the Standard
+// Webhooks spec but a non-base64 key. This rejects unsigned/tampered/stale payloads
+// exactly like the SDK; it does NOT weaken verification.
+function verifyWsRawSignature(
+  rawBody: string,
+  headers: Record<string, string>,
+  secret: string,
+  toleranceSeconds = 300
+): { ok: boolean; reason: string } {
+  const webhookId = headers["webhook-id"];
+  const webhookTimestamp = headers["webhook-timestamp"];
+  const webhookSignature = headers["webhook-signature"];
+  if (!webhookId || !webhookTimestamp || !webhookSignature) {
+    return { ok: false, reason: "missing_headers" };
+  }
+
+  const ts = parseInt(webhookTimestamp, 10);
+  if (Number.isNaN(ts)) return { ok: false, reason: "bad_timestamp" };
+  const now = Math.floor(Date.now() / 1000);
+  if (Math.abs(now - ts) > toleranceSeconds) {
+    return { ok: false, reason: "timestamp_out_of_tolerance" };
+  }
+
+  const signedPayload = `${webhookId}.${webhookTimestamp}.${rawBody}`;
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(signedPayload, "utf8")
+    .digest("base64");
+  const expectedBuf = Buffer.from(expected);
+
+  // Header is space-separated "v1,<base64sig>" entries. Accept only v1.
+  for (const entry of webhookSignature.split(" ")) {
+    const [version, sig] = entry.split(",");
+    if (version !== "v1" || !sig) continue;
+    const sigBuf = Buffer.from(sig);
+    if (
+      sigBuf.length === expectedBuf.length &&
+      crypto.timingSafeEqual(sigBuf, expectedBuf)
+    ) {
+      return { ok: true, reason: "match" };
+    }
+  }
+  return { ok: false, reason: "no_matching_signature" };
 }
 
 // Maps internal ignore reasons to the stable diagnostic taxonomy used in logs.
@@ -136,33 +185,51 @@ export async function POST(request: Request) {
   } catch (err) {
     const errName = err instanceof Error ? err.name : "UnknownError";
     const errMsg = err instanceof Error ? err.message : "unknown";
+    const eventId = headerMap["webhook-id"] ?? "none";
     // Sanitized diagnostic only — never log raw body, header values, secret, or email.
-    // This is the single line that makes the real cause of a rejected webhook
-    // visible in production logs (previously this branch logged nothing).
     console.error(
-      `whop_webhook_unwrap_failed name=${errName} msg=${errMsg} id=${
-        headerMap["webhook-id"] ?? "none"
-      }`
+      `whop_webhook_sdk_unwrap_failed name=${errName} msg=${errMsg} id=${eventId}`
     );
-    // standardwebhooks raises WebhookVerificationError for ALL verification
-    // failures: signature mismatch ("No matching signature found"), bad headers
-    // ("Invalid Signature Headers"), and timestamp tolerance ("Message timestamp
-    // too old"/"too new"). The previous keyword heuristic only matched
-    // signature/webhook/verification, so the timestamp-tolerance cases leaked
-    // out as a misleading 400 INVALID_WEBHOOK_PAYLOAD. Classify every
-    // verification failure as 401 and reserve 400 for genuinely malformed
-    // (non-JSON) bodies. Verification itself is NOT weakened — failures reject.
-    const isVerification =
-      errName === "WebhookVerificationError" ||
-      errMsg.toLowerCase().includes("verification") ||
-      errMsg.toLowerCase().includes("signature") ||
-      errMsg.toLowerCase().includes("timestamp") ||
-      errMsg.toLowerCase().includes("required headers") ||
-      errMsg.toLowerCase().includes("webhook");
-    if (isVerification) {
-      return jsonError("INVALID_WEBHOOK_SIGNATURE", 401);
+
+    // Strict fallback for Whop's `ws_…` webhook secrets, which the SDK's
+    // standardwebhooks verifier cannot consume (it base64-decodes the key).
+    // Verify with the raw secret as the HMAC key. Only runs for ws_ secrets;
+    // a failed match still rejects with 401 — verification is NOT weakened.
+    const rawSecret = (process.env.WHOP_WEBHOOK_SECRET ?? "").trim();
+    if (rawSecret.startsWith("ws_")) {
+      const result = verifyWsRawSignature(rawBody, headerMap, rawSecret);
+      if (!result.ok) {
+        console.warn(
+          `whop_webhook_ws_raw_verify_failed reason=${result.reason} id=${eventId}`
+        );
+        return jsonError("INVALID_WEBHOOK_SIGNATURE", 401);
+      }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(rawBody);
+      } catch {
+        return jsonError("INVALID_WEBHOOK_PAYLOAD", 400);
+      }
+      if (!isRecord(parsed)) {
+        return jsonError("INVALID_WEBHOOK_PAYLOAD", 400);
+      }
+      console.log(`whop_webhook_ws_raw_verify_success id=${eventId}`);
+      event = parsed;
+    } else {
+      // Non-ws secret: classify SDK verification failures as 401 and reserve
+      // 400 for genuinely malformed (non-JSON) bodies.
+      const isVerification =
+        errName === "WebhookVerificationError" ||
+        errMsg.toLowerCase().includes("verification") ||
+        errMsg.toLowerCase().includes("signature") ||
+        errMsg.toLowerCase().includes("timestamp") ||
+        errMsg.toLowerCase().includes("required headers") ||
+        errMsg.toLowerCase().includes("webhook");
+      if (isVerification) {
+        return jsonError("INVALID_WEBHOOK_SIGNATURE", 401);
+      }
+      return jsonError("INVALID_WEBHOOK_PAYLOAD", 400);
     }
-    return jsonError("INVALID_WEBHOOK_PAYLOAD", 400);
   }
 
   const eventType = getString(event, "type") ?? "unknown";
