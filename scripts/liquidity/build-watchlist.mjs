@@ -75,7 +75,15 @@ export async function runBuildWatchlist() {
   const volumeChecked = familyPassed.length;
   const volumePassed = familyPassed.filter((c) => isVolumeGatePassed(c.volumeGate));
 
-  const familyCapped = enforcePerSportFamilyCaps(volumePassed, {
+  // Source table has no volume column, so a missing source volume is DEFERRED to
+  // live orderbook capture (volumeGateDb === "deferred"), not rejected. Eligible
+  // for capture = family SUPPORTED AND (volume passed OR deferred). Below-threshold
+  // / stale volume stays a hard reject. Caps/limits below are preserved.
+  const eligible = familyPassed.filter(
+    (c) => c.volumeGateDb === "passed" || c.volumeGateDb === "deferred",
+  );
+
+  const familyCapped = enforcePerSportFamilyCaps(eligible, {
     sportFamilyTokenLimit,
     unknownFamilyLimit,
   });
@@ -88,11 +96,41 @@ export async function runBuildWatchlist() {
 
   const upsert = await repo.upsertWatchlistRows(rows);
   const upserted = upsert.status === "OK" ? upsert.data : 0;
-  const rejected = candidates.length - volumePassed.length;
+  const rejected = candidates.length - eligible.length;
+
+  // Actionable diagnostic counters (no secrets/env): distinguish each blocker.
+  const selectedTokenPresent = candidates.length;
+  const missingMarketType = deduped.filter(
+    (c) => c.marketFamilyGate === "EXCLUDED_MISSING_MARKET_TYPE",
+  ).length;
+  const volumeDeferred = familyPassed.filter((c) => c.volumeGateDb === "deferred").length;
+  const volumeRejected = familyPassed.filter((c) => c.volumeGateDb === "rejected").length;
 
   log(
     `LIQUIDITY_WATCHLIST_BUILD_SUMMARY source_rows=${sourceRows.length} candidates=${candidates.length} family_pass=${familyPassed.length} volume_checked=${volumeChecked} volume_pass=${volumePassed.length} active_upserted=${upserted} rejected=${rejected} db_status=${upsert.status}`,
   );
+  log(
+    `LIQUIDITY_WATCHLIST_BUILD_DETAIL selected_token_present=${selectedTokenPresent} family_supported=${familyPassed.length} missing_market_type=${missingMarketType} volume_pass=${volumePassed.length} volume_deferred=${volumeDeferred} volume_rejected=${volumeRejected} eligible_for_capture=${eligible.length} active_upserted=${upserted}`,
+  );
+
+  // Explain the dominant blocker when nothing was activated.
+  if (upserted === 0) {
+    const blocker =
+      candidates.length === 0
+        ? "no_selected_token"
+        : familyPassed.length === 0
+        ? missingMarketType > 0
+          ? "no_supported_market_type"
+          : "no_supported_market_type"
+        : eligible.length === 0
+        ? volumeDeferred === 0 && volumeRejected > 0
+          ? "source_volume_below_threshold"
+          : "no_eligible_after_gates"
+        : upsert.status !== "OK"
+        ? `write_failed:${upsert.status}`
+        : "unknown";
+    log(`LIQUIDITY_WATCHLIST_BLOCKER reason=${blocker} db_status=${upsert.status}`);
+  }
 
   // Per-sport gate summary.
   const bySport = new Map();

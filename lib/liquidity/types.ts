@@ -37,7 +37,10 @@ export type MarketFamilyGateStatus =
   | "EXCLUDED_PROP"
   | "EXCLUDED_EXACT_SCORE"
   | "EXCLUDED_NOVELTY_POLITICS"
-  | "EXCLUDED_UNKNOWN_FAMILY";
+  | "EXCLUDED_UNKNOWN_FAMILY"
+  // Row carried no nested/explicit market type/subtype to gate on. The broad
+  // `market_family` source column ('Sports'/'Esports') is NOT used for gating.
+  | "EXCLUDED_MISSING_MARKET_TYPE";
 
 /** Internal volume gate enum (mapped to DB 'passed'/'rejected'/'unknown'). */
 export type VolumeGateStatus =
@@ -51,8 +54,13 @@ export type VolumeGateStatus =
 /** Scope of the volume figure used for the gate. */
 export type VolumeScope = "market_level" | "event_level_not_market_level";
 
-/** DB-facing gate status string stored on rows. */
-export type GateStatusDb = "passed" | "rejected" | "unknown";
+/**
+ * DB-facing gate status string stored on rows. `deferred` = the gate could not
+ * be decided from source data and is intentionally validated later (e.g. source
+ * has no volume column, so the market-level volume check is deferred to live
+ * orderbook capture). Stored in a free-text column (no CHECK constraint).
+ */
+export type GateStatusDb = "passed" | "rejected" | "unknown" | "deferred";
 
 /** DB-facing snapshot status string. */
 export type SnapshotStatus = "ok" | "partial" | "failed";
@@ -128,6 +136,12 @@ export interface WatchlistCandidate {
   normalizedSport: NormalizedSport;
   sportSource: string | null;
 
+  /** Broad source category from the `market_family` column (e.g. 'Esports'). */
+  rawSourceCategory: string | null;
+  /** Resolved fine market type used for gating (nested marketType/subtype). */
+  marketType: string | null;
+  marketTypeSource: string | null;
+  /** Kept for backward-compat: the string actually fed to the family gate. */
   rawMarketFamily: string | null;
   normalizedMarketFamily: MarketFamily;
   marketFamilyGate: MarketFamilyGateStatus;
@@ -138,12 +152,15 @@ export interface WatchlistCandidate {
   league: string | null;
   matchFamilyKey: string | null;
   gameStartIso: string | null;
+  selectedPrice: number | null;
 
   volumeUsd: number | null;
   volumeSource: string | null;
   volumeScope: VolumeScope | null;
   volumeGate: VolumeGateStatus;
   volumeGateReason: string | null;
+  /** DB-facing volume disposition: passed | rejected | deferred (missing source). */
+  volumeGateDb: GateStatusDb;
 
   /** Higher = preferred when deduping/ranking. */
   priorityScore: number;

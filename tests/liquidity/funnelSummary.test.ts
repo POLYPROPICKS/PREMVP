@@ -26,8 +26,25 @@ function baseInputs(overrides: Partial<FunnelInputs> = {}): FunnelInputs {
   };
 }
 
+// Align fixtures to the real generated_signal_research_snapshots schema: the
+// fine market type lives in nested diagnostics, not the broad market_family
+// column. A `market_family` shorthand here is relocated into
+// diagnostics.researchContext.marketType (merged with any volume diagnostics).
 function src(o: Record<string, unknown>): Record<string, unknown> {
-  return { condition_id: "c", selected_token_id: "t", ...o };
+  const { market_family, diagnostics, ...rest } = o as Record<string, unknown>;
+  const diag: Record<string, unknown> =
+    diagnostics && typeof diagnostics === "object" && !Array.isArray(diagnostics)
+      ? { ...(diagnostics as Record<string, unknown>) }
+      : {};
+  if (market_family !== undefined) {
+    const rc =
+      diag.researchContext && typeof diag.researchContext === "object"
+        ? { ...(diag.researchContext as Record<string, unknown>) }
+        : {};
+    rc.marketType = market_family;
+    diag.researchContext = rc;
+  }
+  return { condition_id: "c", selected_token_id: "t", diagnostics: diag, ...rest };
 }
 
 test("summarizeLiquidityFunnel24h aggregates gates by sport and family", () => {
@@ -46,8 +63,8 @@ test("summarizeLiquidityFunnel24h aggregates gates by sport and family", () => {
   assert.equal(summary.familyGatePass, 3); // moneyline x2 + total; prop excluded
   assert.equal(summary.volumePass, 2); // NBA moneyline + weirdsport moneyline (>=10000)
   assert.equal(summary.sourceRowsBySport["basketball"], 2);
-  assert.ok(summary.rejectedMarketFamilies["excluded_prop:player_prop"] >= 1);
-  assert.ok(summary.volumeRejectionReasons["volume_below_threshold"] >= 1);
+  assert.ok((summary.rejectedMarketFamilies["excluded_prop:player_prop"] ?? 0) >= 1);
+  assert.ok((summary.volumeRejectionReasons["volume_below_threshold"] ?? 0) >= 1);
   const nbaMl = summarizeSportFamilyLiquidityFunnel24h(summary, "basketball", "moneyline");
   assert.equal(nbaMl.sourceRows, 1);
   assert.equal(nbaMl.volumeGate.pass, 1);

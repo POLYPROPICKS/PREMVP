@@ -41,8 +41,13 @@ export async function runCaptureSnapshots() {
 
   // Only capture for tokens that passed BOTH the market-family gate and the
   // hard volume gate. Never fetch/store books for unsupported/low-volume markets.
+  // Capture for family-passed tokens whose volume gate is passed OR deferred.
+  // "deferred" = source had no volume column; the live orderbook IS the volume/
+  // liquidity check, so these must reach capture. Hard-rejected volume is skipped.
   const watchlistRows = active.data.filter(
-    (r) => r.market_family_gate_status === "passed" && r.volume_gate_status === "passed",
+    (r) =>
+      r.market_family_gate_status === "passed" &&
+      (r.volume_gate_status === "passed" || r.volume_gate_status === "deferred"),
   );
   const tokenIds = watchlistRows.map((r) => r.token_id);
   const results = await fetchOrderBooksConcurrent(tokenIds, concurrency);

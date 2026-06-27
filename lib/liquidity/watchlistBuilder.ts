@@ -19,10 +19,13 @@ import {
   isVolumeGatePassed,
   marketFamilyGateToDb,
   normalizeSport,
-  volumeGateToDb,
 } from "./marketGates";
 import { normalizeTokenId } from "./orderbookMath";
 import type {
+  GateStatusDb,
+  MarketFamily,
+  MarketFamilyGateStatus,
+  NormalizedSport,
   VolumeScope,
   WatchlistCandidate,
   WatchlistRow,
@@ -116,6 +119,144 @@ export function extractMarketVolumeUsd(
   return { volumeUsd: null, source: null, scope: null };
 }
 
+/**
+ * Resolve the fine market type used for liquidity-family gating. The broad
+ * `market_family` source column ('Sports'/'Esports') is intentionally NOT a
+ * source here — it is a category, not a market type. Precedence:
+ *   1. diagnostics.researchContext.marketType
+ *   2. diagnostics.fireModel.rawFeatureHints.marketType
+ *   3. diagnostics.researchContext.marketSubtype
+ *   4. diagnostics.fireModel.rawFeatureHints.marketSubtype
+ *   5. explicit top-level market_type/market_subtype columns (other variants)
+ */
+export function extractMarketType(
+  row: SourceResearchRow,
+): { marketType: string | null; source: string | null } {
+  const diag = asRecord(row.diagnostics);
+  const rc = diag ? asRecord(diag.researchContext) : null;
+  const fm = diag ? asRecord(diag.fireModel) : null;
+  const hints = fm ? asRecord(fm.rawFeatureHints) : null;
+
+  const ordered: Array<[string | null, string]> = [
+    [rc ? firstString(rc.marketType) : null, "researchContext.marketType"],
+    [hints ? firstString(hints.marketType) : null, "fireModel.rawFeatureHints.marketType"],
+    [rc ? firstString(rc.marketSubtype) : null, "researchContext.marketSubtype"],
+    [hints ? firstString(hints.marketSubtype) : null, "fireModel.rawFeatureHints.marketSubtype"],
+    [
+      firstString(row.market_type, row.marketType, row.market_subtype, row.marketSubtype),
+      "source_column",
+    ],
+  ];
+  for (const [val, source] of ordered) {
+    if (val) return { marketType: val, source };
+  }
+  return { marketType: null, source: null };
+}
+
+/** Primary CLOB token id from the real schema (`selected_token_id`). */
+export function extractSelectedTokenId(row: SourceResearchRow): string | null {
+  return normalizeTokenId(
+    row.selected_token_id ?? row.selectedTokenId ?? row.token_id ?? row.tokenId,
+  );
+}
+
+/** Game start time from the real schema (`game_start_iso`). */
+export function extractGameStart(row: SourceResearchRow): string | null {
+  return firstString(row.game_start_iso, row.gameStartIso, row.game_start, row.start_time);
+}
+
+/**
+ * Derive the supported liquidity family from a nested market type. A null/empty
+ * market type is an explicit `missing_market_type` rejection, never a silent
+ * UNKNOWN family.
+ */
+export function deriveLiquidityFamily(marketType: string | null): {
+  family: MarketFamily;
+  status: MarketFamilyGateStatus;
+  reason: string | null;
+} {
+  if (!marketType) {
+    return { family: "UNKNOWN", status: "EXCLUDED_MISSING_MARKET_TYPE", reason: "missing_market_type" };
+  }
+  const gate = computeMarketFamilyGate(marketType);
+  return {
+    family: gate.family,
+    status: gate.status,
+    reason: gate.status === "SUPPORTED" ? null : familyGateReason(gate.status),
+  };
+}
+
+function familyGateReason(status: MarketFamilyGateStatus): string {
+  switch (status) {
+    case "EXCLUDED_MISSING_MARKET_TYPE":
+      return "missing_market_type";
+    case "EXCLUDED_OUTRIGHT_FUTURE":
+      return "outright_or_future";
+    case "EXCLUDED_PROP":
+      return "prop_market";
+    case "EXCLUDED_EXACT_SCORE":
+      return "exact_score";
+    case "EXCLUDED_NOVELTY_POLITICS":
+      return "novelty_or_politics";
+    case "EXCLUDED_UNKNOWN_FAMILY":
+      return "unsupported_market_type";
+    default:
+      return "unsupported_market_type";
+  }
+}
+
+/** Normalized intermediate aligned to the real research-snapshot schema. */
+export interface LiquiditySource {
+  conditionId: string | null;
+  selectedTokenId: string | null;
+  opposingTokenId: string | null;
+  eventSlug: string | null;
+  selectedOutcome: string | null;
+  league: string | null;
+  normalizedSport: NormalizedSport;
+  sportSource: string | null;
+  rawSourceCategory: string | null;
+  marketType: string | null;
+  marketTypeSource: string | null;
+  gameStartIso: string | null;
+  selectedPrice: number | null;
+}
+
+/** Pure mapping from a raw research-snapshot row to the liquidity source shape. */
+export function mapResearchSnapshotToLiquiditySource(
+  row: SourceResearchRow,
+): LiquiditySource {
+  const league = firstString(row.league, row.league_name);
+  const rawSourceCategory = firstString(row.market_family);
+  // Sport is derived from league (no `sport` column); explicit sport supported
+  // only as a fallback for other source variants.
+  const normalizedSport = normalizeSport(firstString(row.sport) ?? league ?? rawSourceCategory);
+  const sportSource = firstString(row.sport)
+    ? "source_sport"
+    : league
+    ? "league_derived"
+    : rawSourceCategory
+    ? "category_derived"
+    : null;
+  const { marketType, source: marketTypeSource } = extractMarketType(row);
+
+  return {
+    conditionId: firstString(row.condition_id, row.conditionId, row.market_id, row.marketId),
+    selectedTokenId: extractSelectedTokenId(row),
+    opposingTokenId: firstString(row.opposing_token_id, row.opposingTokenId),
+    eventSlug: firstString(row.event_slug, row.eventSlug),
+    selectedOutcome: firstString(row.selected_outcome, row.selectedOutcome),
+    league,
+    normalizedSport,
+    sportSource,
+    rawSourceCategory,
+    marketType,
+    marketTypeSource,
+    gameStartIso: extractGameStart(row),
+    selectedPrice: firstNumber(row.selected_price_num, row.selected_price, row.selectedPrice),
+  };
+}
+
 export interface BuildCandidateOptions {
   minVolumeUsd?: number;
 }
@@ -130,60 +271,64 @@ export function buildWatchlistCandidate(
   row: SourceResearchRow,
   options: BuildCandidateOptions = {},
 ): WatchlistCandidate | null {
-  const tokenId = normalizeTokenId(
-    row.selected_token_id ?? row.token_id ?? row.tokenId ?? row.selectedTokenId,
-  );
-  const conditionId = firstString(row.condition_id, row.conditionId, row.market_id, row.marketId);
-  if (!tokenId || !conditionId) return null;
+  const src = mapResearchSnapshotToLiquiditySource(row);
+  if (!src.selectedTokenId || !src.conditionId) return null;
 
   const minVolume = options.minVolumeUsd ?? DEFAULT_MIN_MARKET_VOLUME_USD;
 
-  // No `sport` column in research snapshots — derive from league, with explicit
-  // sport field as a fallback for other source variants.
-  const rawSport = firstString(row.sport, row.league, row.category);
-  const league = firstString(row.league, row.league_name);
-  const normalizedSport = normalizeSport(firstString(row.sport) ?? league ?? rawSport);
-  const sportSource = firstString(row.sport) ? "source_sport" : league ? "league_derived" : null;
-
-  const rawMarketFamily = firstString(row.market_family, row.market_type, row.marketType);
-  const familyGate = computeMarketFamilyGate(rawMarketFamily);
-  const isOutrightOrFuture = detectOutrightOrFuture(rawMarketFamily);
-  const isProp = detectPropMarket(rawMarketFamily);
+  // Gate the liquidity family on the resolved nested market type, never on the
+  // broad `market_family` category column.
+  const familyGate = deriveLiquidityFamily(src.marketType);
+  const isOutrightOrFuture = detectOutrightOrFuture(src.marketType);
+  const isProp = detectPropMarket(src.marketType);
 
   const { volumeUsd, source: volumeSource, scope: volumeScope } = extractMarketVolumeUsd(row);
   const volumeGate = computeMarketVolumeGate({ volumeUsd, volumeScope }, minVolume);
 
-  const gameStartIso = firstString(row.game_start_iso, row.game_start, row.start_time);
+  // DB-facing volume disposition: source has no volume column, so a missing
+  // figure is DEFERRED to live orderbook capture (not a hard reject). A present
+  // figure below threshold / stale / invalid is still a hard reject.
+  const volumeGateDb: GateStatusDb = isVolumeGatePassed(volumeGate.status)
+    ? "passed"
+    : volumeUsd === null || volumeUsd === undefined
+    ? "deferred"
+    : "rejected";
 
   let priorityScore = volumeUsd && volumeUsd > 0 ? Math.log10(volumeUsd + 1) : 0;
   if (familyGate.status === "SUPPORTED") priorityScore += 2;
-  if (normalizedSport !== "UNKNOWN") priorityScore += 1;
+  if (src.normalizedSport !== "UNKNOWN") priorityScore += 1;
   if (isVolumeGatePassed(volumeGate.status)) priorityScore += 1;
+  else if (volumeGateDb === "deferred") priorityScore += 0.5;
 
   return {
-    conditionId,
-    tokenId,
-    opposingTokenId: firstString(row.opposing_token_id, row.opposingTokenId),
-    eventSlug: firstString(row.event_slug, row.eventSlug),
+    conditionId: src.conditionId,
+    tokenId: src.selectedTokenId,
+    opposingTokenId: src.opposingTokenId,
+    eventSlug: src.eventSlug,
     marketSlug: firstString(row.market_slug, row.marketSlug),
-    selectedOutcome: firstString(row.selected_outcome, row.selectedOutcome),
-    rawSport,
-    normalizedSport,
-    sportSource,
-    rawMarketFamily,
+    selectedOutcome: src.selectedOutcome,
+    rawSport: firstString(row.sport) ?? src.league ?? src.rawSourceCategory,
+    normalizedSport: src.normalizedSport,
+    sportSource: src.sportSource,
+    rawSourceCategory: src.rawSourceCategory,
+    marketType: src.marketType,
+    marketTypeSource: src.marketTypeSource,
+    rawMarketFamily: src.marketType,
     normalizedMarketFamily: familyGate.family,
     marketFamilyGate: familyGate.status,
-    marketFamilyGateReason: familyGate.status === "SUPPORTED" ? null : familyGate.status,
+    marketFamilyGateReason: familyGate.reason,
     isOutrightOrFuture,
     isProp,
-    league,
+    league: src.league,
     matchFamilyKey: firstString(row.match_family_key, row.matchFamilyKey),
-    gameStartIso,
+    gameStartIso: src.gameStartIso,
+    selectedPrice: src.selectedPrice,
     volumeUsd,
     volumeSource,
     volumeScope: volumeGate.scope,
     volumeGate: volumeGate.status,
     volumeGateReason: isVolumeGatePassed(volumeGate.status) ? null : volumeGate.status,
+    volumeGateDb,
     priorityScore,
     sourceTable: firstString(row.source_table) ?? "generated_signal_research_snapshots",
     sourceRowId: firstString(row.id, row.row_id),
@@ -238,9 +383,9 @@ export function toWatchlistRow(
     source_sport: c.rawSport,
     normalized_sport: c.normalizedSport,
     sport_source: c.sportSource,
-    source_market_family: c.rawMarketFamily,
+    source_market_family: c.rawSourceCategory,
     normalized_market_family: c.normalizedMarketFamily,
-    market_family_source: c.rawMarketFamily ? "source_market_family" : null,
+    market_family_source: c.marketTypeSource,
     market_family_gate_status: marketFamilyGateToDb(c.marketFamilyGate),
     market_family_gate_reason: c.marketFamilyGateReason,
     is_supported_p0_market_family: c.marketFamilyGate === "SUPPORTED",
@@ -251,7 +396,7 @@ export function toWatchlistRow(
     game_start_iso: c.gameStartIso,
     market_volume_usd: c.volumeUsd,
     market_volume_source: c.volumeSource,
-    volume_gate_status: volumeGateToDb(c.volumeGate),
+    volume_gate_status: c.volumeGateDb,
     volume_gate_threshold_usd: minVolumeUsd,
     volume_gate_reason: c.volumeGateReason,
     minutes_to_start_at_insert: minutesToStartAtInsert,
@@ -260,10 +405,15 @@ export function toWatchlistRow(
     reason: null,
     diagnostics: {
       sport_source: c.sportSource,
+      source_category: c.rawSourceCategory,
+      market_type: c.marketType,
+      market_type_source: c.marketTypeSource,
+      selected_price: c.selectedPrice,
       volume_source: c.volumeSource,
       volume_scope: c.volumeScope,
       market_family_gate: c.marketFamilyGate,
       volume_gate: c.volumeGate,
+      volume_gate_db: c.volumeGateDb,
     },
   };
 }
