@@ -339,6 +339,10 @@ export type DbStatus = "OK" | "DB_ENV_MISSING" | "SCHEMA_MISSING";
 /** Machine-readable contour health verdict. */
 export type MachineVerdict =
   | "OK_CAPTURING"
+  // Live capture + snapshots + baseline (single-snapshot) simulations succeeded,
+  // but no real entry->exit history exists yet and source volume is deferred to
+  // live capture. A healthy foundation state, not a failure.
+  | "OK_BASELINE_CAPTURE"
   | "DB_ENV_MISSING"
   | "SCHEMA_MISSING"
   | "DEGRADED_NO_WATCHLIST"
@@ -400,6 +404,12 @@ export interface LiquidityFunnelSummary {
   snapshotFailed: number;
   snapshotSuccessRate: number | null;
   simulations: number;
+  /** Simulations from real two-snapshot entry->exit pairs (entry != exit time). */
+  entryExitSimulations: number;
+  /** Simulations from single-snapshot baseline self-pairs (entry == exit). */
+  baselineSimulations: number;
+  /** True when family-supported markets had no source volume (deferred to capture). */
+  sourceVolumeDeferred: boolean;
   executable5pct: number;
   executable10pct: number;
   executable15pct: number;

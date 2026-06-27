@@ -84,6 +84,10 @@ export async function runFunnelLog() {
   log(
     `LIQUIDITY_POOL_FUNNEL_SUMMARY verdict=${verdict} source_rows=${summary.sourceRows} sports=${summary.sportsCovered} volume_checked=${summary.volumeChecked} volume_pass=${summary.volumePass} volume_rejected=${summary.volumeRejected} active_tokens=${summary.activeWatchlistTokens} book_attempts=${summary.bookAttempts} snapshots_written=${summary.snapshotsWritten} simulations=${summary.simulations} executable_5pct=${summary.executable5pct} executable_10pct=${summary.executable10pct} executable_15pct=${summary.executable15pct} failures=${summary.failures}`,
   );
+  // Additive detail so the baseline-vs-real and source-volume state are explicit.
+  log(
+    `LIQUIDITY_POOL_FUNNEL_DETAIL entry_exit_simulations=${summary.entryExitSimulations} baseline_simulations=${summary.baselineSimulations} source_volume=${summary.sourceVolumeDeferred ? "deferred" : "present"} real_entry_exit=${summary.entryExitSimulations > 0 ? "yes" : "pending_history"}`,
+  );
 
   // Per-sport gate lines.
   for (const sport of Object.keys(summary.sourceRowsBySport).sort()) {

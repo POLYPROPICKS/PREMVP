@@ -208,6 +208,8 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
   let executable5 = 0;
   let executable10 = 0;
   let executable15 = 0;
+  let entryExitSimulations = 0;
+  let baselineSimulations = 0;
   for (const sim of inputs.simulationRows) {
     const sport = sim.normalized_sport;
     const key = SF(sport, sim.normalized_market_family);
@@ -215,6 +217,13 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
     const bf = (simulationSummaryBySportFamily[key] ??= emptySimBreakdown());
     bs.simulations += 1;
     bf.simulations += 1;
+    // A real entry->exit pair has distinct entry/exit capture times; a baseline
+    // self-pair uses the same snapshot for entry and exit.
+    if (sim.entry_captured_at && sim.exit_captured_at && sim.entry_captured_at !== sim.exit_captured_at) {
+      entryExitSimulations += 1;
+    } else {
+      baselineSimulations += 1;
+    }
     if (sim.executable_5pct_boolean) {
       bs.executable5pct += 1;
       bf.executable5pct += 1;
@@ -267,6 +276,11 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
     snapshotFailed,
     snapshotSuccessRate,
     simulations: inputs.simulationRows.length,
+    entryExitSimulations,
+    baselineSimulations,
+    // Family-supported markets exist but none passed the (source) volume gate:
+    // volume is absent in the source schema and deferred to live capture.
+    sourceVolumeDeferred: familyGatePass > 0 && volumePass === 0,
     executable5pct: executable5,
     executable10pct: executable10,
     executable15pct: executable15,
@@ -392,6 +406,26 @@ const SPORT_CONCENTRATION_THRESHOLD = 0.85;
 export function computeMachineVerdict(summary: LiquidityFunnelSummary): MachineVerdict {
   if (summary.dbStatus === "DB_ENV_MISSING") return "DB_ENV_MISSING";
   if (summary.dbStatus === "SCHEMA_MISSING") return "SCHEMA_MISSING";
+
+  // Contour reached live capture + simulation. Source volume is intentionally
+  // deferred to live orderbook capture, so a missing source-volume figure is a
+  // warning (retained in volume* fields + sourceVolumeDeferred), NOT a hard
+  // failure once active tokens, snapshots, and simulations all exist.
+  if (
+    summary.activeWatchlistTokens > 0 &&
+    summary.snapshotsWritten > 0 &&
+    summary.simulations > 0
+  ) {
+    if (
+      summary.snapshotSuccessRate !== null &&
+      summary.snapshotSuccessRate < LOW_SNAPSHOT_SUCCESS_THRESHOLD
+    ) {
+      return "DEGRADED_LOW_SNAPSHOT_SUCCESS";
+    }
+    // Real entry->exit history present -> full capturing verdict; otherwise the
+    // foundation is healthy on baseline self-pairs, awaiting entry/exit history.
+    return summary.entryExitSimulations > 0 ? "OK_CAPTURING" : "OK_BASELINE_CAPTURE";
+  }
 
   if (
     summary.sourceRows > 0 &&
@@ -606,6 +640,8 @@ function nextAction(verdict: MachineVerdict): string {
   switch (verdict) {
     case "OK_CAPTURING":
       return "Contour healthy. Continue scheduled capture; review executable opportunities.";
+    case "OK_BASELINE_CAPTURE":
+      return "Foundation healthy on baseline self-pairs. Source volume deferred to live capture. Schedule repeat captures across phases (prematch->live) to build real entry/exit history.";
     case "DB_ENV_MISSING":
       return "Set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in the run environment, then re-run.";
     case "SCHEMA_MISSING":

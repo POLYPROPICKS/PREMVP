@@ -230,6 +230,82 @@ function okSim(): SimulationRow {
   };
 }
 
+// A single-snapshot baseline self-pair: entry and exit are the SAME snapshot,
+// so entry_captured_at === exit_captured_at and no executable edge is claimed.
+function baselineSim(): SimulationRow {
+  return {
+    ...okSim(),
+    entry_captured_at: WINDOW_START,
+    exit_captured_at: WINDOW_START,
+    exit_reason: "baseline_same_snapshot",
+    net_return_pct: -2,
+    gross_return_pct: -2,
+    executable_5pct_boolean: false,
+    executable_10pct_boolean: false,
+    executable_15pct_boolean: false,
+    diagnostics: { baseline: true },
+  };
+}
+
+// Test A: live capture + snapshots + baseline simulation succeeded, volume is
+// deferred (source rows carry no volume) -> NOT a failure verdict.
+test("VERDICT: baseline contour success is OK_BASELINE_CAPTURE, not DEGRADED_VOLUME_SOURCE_MISSING", () => {
+  const summary = summarizeLiquidityFunnel24h(
+    baseInputs({
+      sourceRows: [src({ condition_id: "a", selected_token_id: "a", league: "NBA", market_family: "moneyline" })], // no volume
+      watchlistRows: [watch()],
+      snapshotRows: [okSnapshot()],
+      simulationRows: [baselineSim()],
+    }),
+  );
+  assert.equal(summary.entryExitSimulations, 0);
+  assert.equal(summary.baselineSimulations, 1);
+  assert.equal(summary.sourceVolumeDeferred, true);
+  assert.equal(computeMachineVerdict(summary), "OK_BASELINE_CAPTURE");
+});
+
+// Test B: no active tokens (or no snapshots) stays a degraded failure.
+test("VERDICT: no active watchlist stays DEGRADED_NO_WATCHLIST", () => {
+  const noActive = summarizeLiquidityFunnel24h(
+    baseInputs({
+      sourceRows: [src({ league: "NBA", market_family: "moneyline", diagnostics: { market_volume_usd: 50000 } })],
+      watchlistRows: [],
+      snapshotRows: [],
+      simulationRows: [],
+    }),
+  );
+  assert.equal(computeMachineVerdict(noActive), "DEGRADED_NO_WATCHLIST");
+
+  const noSnapshots = summarizeLiquidityFunnel24h(
+    baseInputs({
+      sourceRows: [src({ condition_id: "a", selected_token_id: "a", league: "NBA", market_family: "moneyline", diagnostics: { market_volume_usd: 50000 } })],
+      watchlistRows: [watch()],
+      snapshotRows: [],
+      simulationRows: [],
+    }),
+  );
+  assert.equal(computeMachineVerdict(noSnapshots), "DEGRADED_NO_SNAPSHOTS");
+});
+
+// Test C: working contour without source volume keeps the volume warning visible.
+test("VERDICT: source volume missing remains a visible warning, not the primary verdict", () => {
+  const summary = summarizeLiquidityFunnel24h(
+    baseInputs({
+      sourceRows: [src({ condition_id: "a", selected_token_id: "a", league: "NBA", market_family: "moneyline" })],
+      watchlistRows: [watch()],
+      snapshotRows: [okSnapshot()],
+      simulationRows: [baselineSim()],
+    }),
+  );
+  // Honest volume warning fields preserved...
+  assert.ok(summary.volumeChecked > 0);
+  assert.equal(summary.volumePass, 0);
+  assert.ok((summary.volumeRejectionReasons["volume_missing"] ?? 0) >= 1);
+  assert.equal(summary.sourceVolumeDeferred, true);
+  // ...but it is not the primary verdict when the contour actually worked.
+  assert.notEqual(computeMachineVerdict(summary), "DEGRADED_VOLUME_SOURCE_MISSING");
+});
+
 test("computeMachineVerdict OK_CAPTURING on a full healthy funnel", () => {
   const summary = summarizeLiquidityFunnel24h(
     baseInputs({
