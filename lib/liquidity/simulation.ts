@@ -38,6 +38,8 @@ export const EXIT_PHASES: ReadonlySet<PhaseBucket> = new Set<PhaseBucket>([
 export interface EntryExitPair {
   entry: SnapshotRow;
   exit: SnapshotRow;
+  /** True when entry === exit (single-snapshot instantaneous round-trip baseline). */
+  baseline?: boolean;
 }
 
 function isUsable(s: SnapshotRow): boolean {
@@ -88,6 +90,81 @@ export function selectEntryExitPairs(
       Date.parse(a.entry.captured_at) - Date.parse(b.entry.captured_at),
   );
   return pairs.slice(0, Math.max(0, limit));
+}
+
+export interface SimulationSelection {
+  /** Candidate pairs to simulate: real entry/exit pairs first, then baselines. */
+  pairs: EntryExitPair[];
+  /** Distinct token ids present in the snapshot window (any status). */
+  tokensSeen: number;
+  /** Tokens with at least one usable snapshot (non-empty book, not failed). */
+  usableTokens: number;
+  /** Tokens that produced a real two-snapshot entry->exit pair. */
+  entryExitPairs: number;
+  /** Tokens simulated via a single-snapshot baseline (produced rows). */
+  baselineSingletons: number;
+  /** Usable tokens lacking a real entry->exit pair (only one usable snapshot). */
+  insufficientSnapshotHistory: number;
+  /** Tokens whose snapshots had no usable book at all. */
+  noUsableBook: number;
+}
+
+/**
+ * Select simulation candidates from a snapshot window. Real entry->exit pairs are
+ * preferred; usable tokens lacking such a pair (the MVP captures one snapshot per
+ * token per run) fall back to a single-snapshot baseline self-pair (instantaneous
+ * round-trip on the SAME captured book — real data, never a fabricated edge).
+ * Returns explicit diagnostics so a zero outcome is never silent.
+ */
+export function selectSimulationCandidates(
+  snapshots: SnapshotRow[],
+  limit: number = DEFAULT_SIMULATION_LIMIT,
+): SimulationSelection {
+  const byToken = new Map<string, SnapshotRow[]>();
+  for (const s of snapshots) {
+    const arr = byToken.get(s.token_id) ?? [];
+    arr.push(s);
+    byToken.set(s.token_id, arr);
+  }
+  const tokensSeen = byToken.size;
+
+  const realPairs = selectEntryExitPairs(snapshots, limit);
+  const tokensWithRealPair = new Set(realPairs.map((p) => p.entry.token_id));
+
+  let usableTokens = 0;
+  let noUsableBook = 0;
+  let insufficientSnapshotHistory = 0;
+  const baselinePairs: EntryExitPair[] = [];
+
+  for (const [tokenId, arr] of byToken) {
+    const usable = arr.filter(isUsable);
+    if (usable.length === 0) {
+      noUsableBook += 1;
+      continue;
+    }
+    usableTokens += 1;
+    if (tokensWithRealPair.has(tokenId)) continue;
+
+    insufficientSnapshotHistory += 1;
+    const latest = usable
+      .slice()
+      .sort((a, b) => Date.parse(a.captured_at) - Date.parse(b.captured_at))[usable.length - 1];
+    baselinePairs.push({ entry: latest, exit: latest, baseline: true });
+  }
+
+  // Real pairs first, then fill remaining capacity with baselines.
+  const remaining = Math.max(0, limit - realPairs.length);
+  const baselineUsed = baselinePairs.slice(0, remaining);
+
+  return {
+    pairs: [...realPairs, ...baselineUsed],
+    tokensSeen,
+    usableTokens,
+    entryExitPairs: realPairs.length,
+    baselineSingletons: baselineUsed.length,
+    insufficientSnapshotHistory,
+    noUsableBook,
+  };
 }
 
 function bookFromSnapshot(s: SnapshotRow): ParsedOrderBook {
@@ -179,11 +256,18 @@ export function buildEntryExitSimulation(
     exit_market_volume_usd: exit.market_volume_usd,
     volume_gate_threshold_usd: entry.volume_gate_threshold_usd,
     market_family_gate_status: entry.market_family_gate_status,
-    exit_reason: exitPossible ? "executable_exit" : "insufficient_exit_depth",
+    exit_reason: pair.baseline
+      ? exitPossible
+        ? "baseline_same_snapshot"
+        : "baseline_insufficient_depth"
+      : exitPossible
+      ? "executable_exit"
+      : "insufficient_exit_depth",
     model_version: "liquidity_pool_mvp_v1",
     diagnostics: {
       entry_phase: entry.phase_bucket,
       exit_phase: exit.phase_bucket,
+      baseline: !!pair.baseline,
       shares,
       proceeds_usd: proceeds,
     },

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   buildEntryExitSimulation,
   selectEntryExitPairs,
+  selectSimulationCandidates,
   summarizeSimulationFlags,
 } from "../../lib/liquidity/simulation";
 import type { OrderBookLevel, SnapshotRow } from "../../lib/liquidity/types";
@@ -121,6 +122,64 @@ test("buildEntryExitSimulation not executable on thin exit book or loss", () => 
   assert.equal(sim.exit_possible_boolean, false);
   assert.equal(sim.executable_5pct_boolean, false);
   assert.equal(sim.exit_reason, "insufficient_exit_depth");
+});
+
+// REGRESSION: the MVP captures ONE snapshot per token per run, so no token has
+// an entry->later-exit pair. Previously selectEntryExitPairs returned [] and the
+// summary showed tokens=0 simulations=0 silently. The candidate selector must
+// surface tokensSeen>0 + insufficientSnapshotHistory>0 and still produce a
+// single-snapshot baseline so simulations is not a silent zero.
+test("REGRESSION: single snapshot per token yields baseline candidates + explicit diagnostics", () => {
+  const sel = selectSimulationCandidates([
+    snap({ token_id: "a", phase_bucket: "T_1H", captured_at: "2026-06-26T10:00:00.000Z" }),
+    snap({ token_id: "b", phase_bucket: "T_2H", captured_at: "2026-06-26T09:00:00.000Z" }),
+  ]);
+  assert.equal(sel.tokensSeen, 2);
+  assert.equal(sel.usableTokens, 2);
+  assert.equal(sel.entryExitPairs, 0); // no token had a 2-snapshot pair
+  assert.equal(sel.insufficientSnapshotHistory, 2);
+  assert.equal(sel.baselineSingletons, 2);
+  assert.equal(sel.pairs.length, 2); // still produces real candidates, not zero
+  assert.ok(sel.pairs.every((p) => p.baseline === true && p.entry === p.exit));
+});
+
+test("selectSimulationCandidates prefers real entry/exit pairs over baseline", () => {
+  const sel = selectSimulationCandidates([
+    snap({ token_id: "a", phase_bucket: "T_1H", captured_at: "2026-06-26T10:00:00.000Z" }),
+    snap({ token_id: "a", phase_bucket: "T_5M", captured_at: "2026-06-26T10:55:00.000Z" }),
+    snap({ token_id: "b", phase_bucket: "T_1H", captured_at: "2026-06-26T10:00:00.000Z" }),
+  ]);
+  assert.equal(sel.entryExitPairs, 1); // token a paired
+  assert.equal(sel.insufficientSnapshotHistory, 1); // token b singleton
+  assert.equal(sel.baselineSingletons, 1);
+  assert.equal(sel.pairs.length, 2);
+  const real = sel.pairs.find((p) => !p.baseline)!;
+  assert.equal(real.entry.token_id, "a");
+});
+
+test("tokens with no usable book are counted, not simulated", () => {
+  const sel = selectSimulationCandidates([
+    snap({ token_id: "z", snapshot_status: "failed", book_levels_json: { bids: [], asks: [] }, best_bid: null, best_ask: null }),
+  ]);
+  assert.equal(sel.tokensSeen, 1);
+  assert.equal(sel.usableTokens, 0);
+  assert.equal(sel.noUsableBook, 1);
+  assert.equal(sel.pairs.length, 0);
+});
+
+test("baseline single-snapshot simulation uses real book and fabricates no executable", () => {
+  // Same snapshot round-trip: buy ask 0.51, sell into bid 0.50 -> net negative.
+  const s = snap({
+    token_id: "base",
+    book_levels_json: { bids: [{ price: 0.5, size: 10000 }], asks: [{ price: 0.51, size: 10000 }] },
+    best_bid: 0.5,
+    best_ask: 0.51,
+  });
+  const sim = buildEntryExitSimulation({ entry: s, exit: s, baseline: true }, "run-1", 10);
+  assert.equal(sim.exit_reason, "baseline_same_snapshot");
+  assert.equal(sim.diagnostics.baseline, true);
+  assert.ok(sim.net_return_pct! < 0); // honest: instant round-trip loses the spread
+  assert.equal(sim.executable_5pct_boolean, false);
 });
 
 test("summarizeSimulationFlags aggregates executable counts", () => {
