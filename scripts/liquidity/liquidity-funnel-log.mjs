@@ -12,6 +12,7 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 // Dynamic import (see build-watchlist.mjs) for TS named exports under tsx.
 const { SupabaseLiquidityRepo } = await import("../../lib/liquidity/supabaseLiquidityRepo.ts");
 const {
@@ -108,7 +109,7 @@ export async function runFunnelLog() {
   return { verdict, reportDir: REPORT_DIR };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   runFunnelLog().catch((err) => {
     log(`LIQUIDITY_POOL_FUNNEL_ERROR ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);

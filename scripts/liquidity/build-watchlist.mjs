@@ -13,6 +13,7 @@
  *
  * Run via tsx: npm run liquidity:build-watchlist
  */
+import { pathToFileURL } from "node:url";
 // Dynamic import: an .mjs entry importing TypeScript named exports requires the
 // dynamic form under tsx (static `.ts` imports do not expose named bindings).
 const { SupabaseLiquidityRepo } = await import("../../lib/liquidity/supabaseLiquidityRepo.ts");
@@ -127,7 +128,7 @@ export async function runBuildWatchlist() {
   return { status: upsert.status, upserted };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   runBuildWatchlist().catch((err) => {
     log(`LIQUIDITY_WATCHLIST_BUILD_ERROR ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);

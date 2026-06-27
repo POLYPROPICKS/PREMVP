@@ -9,6 +9,7 @@
  *
  * Run via tsx: npm run liquidity:mvp
  */
+import { pathToFileURL } from "node:url";
 import { runBuildWatchlist } from "./build-watchlist.mjs";
 import { runCaptureSnapshots } from "./capture-snapshots.mjs";
 import { runEntryExitSimulations } from "./run-entry-exit-simulations.mjs";
@@ -42,7 +43,7 @@ export async function runLiquidityPoolMvp() {
   return { verdict };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   runLiquidityPoolMvp().catch((err) => {
     log(`LIQUIDITY_MVP_FATAL ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);

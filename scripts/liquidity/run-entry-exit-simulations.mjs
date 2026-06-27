@@ -8,6 +8,7 @@
  *
  * Run via tsx: npm run liquidity:simulate
  */
+import { pathToFileURL } from "node:url";
 // Dynamic import (see build-watchlist.mjs) for TS named exports under tsx.
 const { SupabaseLiquidityRepo } = await import("../../lib/liquidity/supabaseLiquidityRepo.ts");
 const { buildEntryExitSimulation, selectEntryExitPairs, summarizeSimulationFlags } = await import(
@@ -59,7 +60,7 @@ export async function runEntryExitSimulations() {
   return { status: verdict, simulations: flags.simulations };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   runEntryExitSimulations().catch((err) => {
     log(`LIQUIDITY_SIMULATION_ERROR ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);

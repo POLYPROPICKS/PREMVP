@@ -8,6 +8,7 @@
  *
  * Run via tsx: npm run liquidity:capture-snapshots
  */
+import { pathToFileURL } from "node:url";
 // Dynamic import (see build-watchlist.mjs) for TS named exports under tsx.
 const { SupabaseLiquidityRepo } = await import("../../lib/liquidity/supabaseLiquidityRepo.ts");
 const { fetchOrderBooksConcurrent } = await import("../../lib/liquidity/polymarketClient.ts");
@@ -69,7 +70,7 @@ export async function runCaptureSnapshots() {
   return { status: verdict, inserted };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
   runCaptureSnapshots().catch((err) => {
     log(`LIQUIDITY_SNAPSHOT_CAPTURE_ERROR ${err instanceof Error ? err.message : String(err)}`);
     process.exit(1);
