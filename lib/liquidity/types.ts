@@ -1,10 +1,10 @@
 // LIQUIDITY_MODEL — shared types for the read-only Polymarket liquidity/price
 // microstructure monitoring contour.
 //
-// This module is pure type declarations only. No runtime side effects, no I/O,
-// no Supabase, no trading auth. It is safe to import from anywhere (lib, scripts,
-// tests). Tables referenced here are created manually by the operator; code must
-// degrade gracefully (DB_ENV_MISSING / SCHEMA_MISSING) when they are absent.
+// Pure type declarations only. Row shapes mirror the operator-applied migration
+// supabase/migrations/20260626_liquidity_pool_mvp_foundation.sql. Code must
+// degrade gracefully (DB_ENV_MISSING / SCHEMA_MISSING) when the tables/env are
+// absent. No I/O, no Supabase, no trading auth.
 
 // ---------------------------------------------------------------------------
 // Sport / market family taxonomy
@@ -30,7 +30,7 @@ export type NormalizedSport =
 /** Supported P0 market families plus the UNKNOWN sentinel. */
 export type MarketFamily = "moneyline" | "spread" | "total" | "UNKNOWN";
 
-/** Outcome of the market-family gate (applied before the volume gate). */
+/** Internal market-family gate enum (mapped to DB 'passed'/'rejected'/...). */
 export type MarketFamilyGateStatus =
   | "SUPPORTED"
   | "EXCLUDED_OUTRIGHT_FUTURE"
@@ -39,7 +39,7 @@ export type MarketFamilyGateStatus =
   | "EXCLUDED_NOVELTY_POLITICS"
   | "EXCLUDED_UNKNOWN_FAMILY";
 
-/** Outcome of the hard market-level volume gate. */
+/** Internal volume gate enum (mapped to DB 'passed'/'rejected'/'unknown'). */
 export type VolumeGateStatus =
   | "PASS"
   | "PASS_EVENT_LEVEL"
@@ -51,15 +51,11 @@ export type VolumeGateStatus =
 /** Scope of the volume figure used for the gate. */
 export type VolumeScope = "market_level" | "event_level_not_market_level";
 
-/** Result of an orderbook snapshot capture attempt. */
-export type SnapshotStatus =
-  | "OK"
-  | "PARTIAL"
-  | "EMPTY_BOOK"
-  | "FETCH_FAILED"
-  | "PARSE_FAILED"
-  | "TIMEOUT"
-  | "HTTP_ERROR";
+/** DB-facing gate status string stored on rows. */
+export type GateStatusDb = "passed" | "rejected" | "unknown";
+
+/** DB-facing snapshot status string. */
+export type SnapshotStatus = "ok" | "partial" | "failed";
 
 /** Phase relative to game start, derived from minutes-to-start. */
 export type PhaseBucket =
@@ -112,7 +108,7 @@ export interface FetchOrderBookResult {
 }
 
 // ---------------------------------------------------------------------------
-// Watchlist / snapshot / simulation rows
+// Watchlist candidate / rows
 // ---------------------------------------------------------------------------
 
 /**
@@ -121,91 +117,200 @@ export interface FetchOrderBookResult {
  * explain every drop.
  */
 export interface WatchlistCandidate {
+  conditionId: string;
   tokenId: string;
-  marketId: string | null;
-  eventId: string | null;
-  question: string | null;
-  normalizedSport: NormalizedSport;
+  opposingTokenId: string | null;
+  eventSlug: string | null;
+  marketSlug: string | null;
+  selectedOutcome: string | null;
+
   rawSport: string | null;
-  normalizedMarketFamily: MarketFamily;
+  normalizedSport: NormalizedSport;
+  sportSource: string | null;
+
   rawMarketFamily: string | null;
+  normalizedMarketFamily: MarketFamily;
   marketFamilyGate: MarketFamilyGateStatus;
+  marketFamilyGateReason: string | null;
+  isOutrightOrFuture: boolean;
+  isProp: boolean;
+
+  league: string | null;
+  matchFamilyKey: string | null;
+  gameStartIso: string | null;
+
   volumeUsd: number | null;
+  volumeSource: string | null;
   volumeScope: VolumeScope | null;
   volumeGate: VolumeGateStatus;
-  gameStartIso: string | null;
+  volumeGateReason: string | null;
+
   /** Higher = preferred when deduping/ranking. */
   priorityScore: number;
   sourceTable: string | null;
   sourceRowId: string | null;
+  sourceFormulaVersion: string | null;
+  sourceScope: string | null;
 }
 
-/** Row destined for market_tracking_watchlist (operator-managed table). */
+/** Row destined for public.market_tracking_watchlist. */
 export interface WatchlistRow {
-  token_id: string;
-  market_id: string | null;
-  event_id: string | null;
-  question: string | null;
-  normalized_sport: NormalizedSport;
-  normalized_market_family: MarketFamily;
-  market_family_gate: MarketFamilyGateStatus;
-  volume_usd: number | null;
-  volume_scope: VolumeScope | null;
-  volume_gate: VolumeGateStatus;
-  game_start_iso: string | null;
-  priority_score: number;
   source_table: string | null;
   source_row_id: string | null;
+  source_formula_version: string | null;
+  source_scope: string | null;
+
+  condition_id: string;
+  token_id: string;
+  opposing_token_id: string | null;
+  event_slug: string | null;
+  market_slug: string | null;
+  selected_outcome: string | null;
+
+  source_sport: string | null;
+  normalized_sport: NormalizedSport;
+  sport_source: string | null;
+
+  source_market_family: string | null;
+  normalized_market_family: MarketFamily;
+  market_family_source: string | null;
+  market_family_gate_status: GateStatusDb;
+  market_family_gate_reason: string | null;
+  is_supported_p0_market_family: boolean;
+  is_outright_or_future: boolean;
+  is_prop_market: boolean;
+
+  league: string | null;
+  match_family_key: string | null;
+  game_start_iso: string | null;
+
+  market_volume_usd: number | null;
+  market_volume_source: string | null;
+  volume_gate_status: GateStatusDb;
+  volume_gate_threshold_usd: number;
+  volume_gate_reason: string | null;
+  minutes_to_start_at_insert: number | null;
+
+  tracking_priority: number;
+  tracking_status: string;
+  reason: string | null;
+  diagnostics: Record<string, unknown>;
 }
 
-/** Row destined for market_price_liquidity_snapshots. */
+// ---------------------------------------------------------------------------
+// Snapshot rows
+// ---------------------------------------------------------------------------
+
+/** Row destined for public.market_price_liquidity_snapshots. */
 export interface SnapshotRow {
-  token_id: string;
-  market_id: string | null;
-  normalized_sport: NormalizedSport;
-  normalized_market_family: MarketFamily;
   captured_at: string;
+  source: string;
+  snapshot_reason: string;
+  snapshot_status: SnapshotStatus;
+
+  condition_id: string;
+  token_id: string;
+  opposing_token_id: string | null;
+  event_slug: string | null;
+  market_slug: string | null;
+  selected_outcome: string | null;
+
+  normalized_sport: NormalizedSport;
+  league: string | null;
+  normalized_market_family: MarketFamily;
+  match_family_key: string | null;
   game_start_iso: string | null;
   minutes_to_start: number | null;
   phase_bucket: PhaseBucket;
-  status: SnapshotStatus;
-  failure_code: string | null;
+
+  market_volume_usd: number | null;
+  volume_gate_status: GateStatusDb;
+  volume_gate_threshold_usd: number;
+  market_family_gate_status: GateStatusDb;
+
   best_bid: number | null;
   best_ask: number | null;
   mid_price: number | null;
-  spread: number | null;
+  implied_decimal_odds_mid: number | null;
+  implied_decimal_odds_bid: number | null;
+  implied_decimal_odds_ask: number | null;
+
+  spread_abs: number | null;
   spread_bps: number | null;
-  bid_depth_1pct_usd: number | null;
-  ask_depth_1pct_usd: number | null;
-  bid_depth_2pct_usd: number | null;
-  ask_depth_2pct_usd: number | null;
-  bid_depth_5pct_usd: number | null;
-  ask_depth_5pct_usd: number | null;
-  latency_ms: number | null;
-  bids: OrderBookLevel[];
-  asks: OrderBookLevel[];
+
+  bid_depth_total: number | null;
+  ask_depth_total: number | null;
+  bid_depth_1pct: number | null;
+  bid_depth_2pct: number | null;
+  bid_depth_5pct: number | null;
+  ask_depth_1pct: number | null;
+  ask_depth_2pct: number | null;
+  ask_depth_5pct: number | null;
+
+  exit_sellable_usd_1pct: number | null;
+  exit_sellable_usd_2pct: number | null;
+  exit_sellable_usd_5pct: number | null;
+  entry_buyable_usd_1pct: number | null;
+  entry_buyable_usd_2pct: number | null;
+  entry_buyable_usd_5pct: number | null;
+
+  book_levels_json: { bids: OrderBookLevel[]; asks: OrderBookLevel[] };
+  api_latency_ms: number | null;
+  failure_reason: string | null;
+  diagnostics: Record<string, unknown>;
 }
 
-/** Row destined for market_entry_exit_simulations. */
+// ---------------------------------------------------------------------------
+// Simulation rows
+// ---------------------------------------------------------------------------
+
+/** Row destined for public.market_entry_exit_simulations. */
 export interface SimulationRow {
+  simulation_run_id: string;
+  condition_id: string;
   token_id: string;
-  market_id: string | null;
+  opposing_token_id: string | null;
+  event_slug: string | null;
+  market_slug: string | null;
+
   normalized_sport: NormalizedSport;
+  league: string | null;
   normalized_market_family: MarketFamily;
-  simulated_at: string;
-  phase_bucket: PhaseBucket;
+  match_family_key: string | null;
+  selected_outcome: string | null;
+  game_start_iso: string | null;
+
+  entry_captured_at: string;
+  exit_captured_at: string;
+  entry_phase_bucket: PhaseBucket | null;
+  exit_phase_bucket: PhaseBucket | null;
+
+  entry_best_ask: number | null;
+  entry_best_bid: number | null;
+  entry_mid_price: number | null;
+  exit_best_bid: number | null;
+  exit_best_ask: number | null;
+  exit_mid_price: number | null;
+
   stake_usd: number;
-  entry_price: number | null;
-  shares: number | null;
-  exit_proceeds_5pct_usd: number | null;
-  exit_proceeds_10pct_usd: number | null;
-  exit_proceeds_15pct_usd: number | null;
-  net_return_5pct_pct: number | null;
-  net_return_10pct_pct: number | null;
-  net_return_15pct_pct: number | null;
-  executable_5pct: boolean;
-  executable_10pct: boolean;
-  executable_15pct: boolean;
+  gross_return_pct: number | null;
+  estimated_slippage_pct: number | null;
+  estimated_fee_pct: number;
+  net_return_pct: number | null;
+  exit_liquidity_usd: number | null;
+  exit_possible_boolean: boolean;
+  executable_5pct_boolean: boolean;
+  executable_10pct_boolean: boolean;
+  executable_15pct_boolean: boolean;
+
+  entry_market_volume_usd: number | null;
+  exit_market_volume_usd: number | null;
+  volume_gate_threshold_usd: number;
+  market_family_gate_status: GateStatusDb | null;
+
+  exit_reason: string | null;
+  model_version: string;
+  diagnostics: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -229,11 +334,7 @@ export type MachineVerdict =
   | "DEGRADED_UNKNOWN_SPORT_DOMINANT"
   | "DEGRADED_SPORT_CONCENTRATION";
 
-/** A keyed count map, e.g. { soccer: 12, basketball: 3 }. */
-export type CountBySport = Partial<Record<string, number>>;
-
-/** Per-(sport|family) keyed bucket, key format "sport::family". */
-export type CountBySportFamily = Partial<Record<string, number>>;
+export type CountMap = Partial<Record<string, number>>;
 
 export interface VolumeGateBreakdown {
   checked: number;
@@ -293,36 +394,41 @@ export interface LiquidityFunnelSummary {
   topSportShare: number | null;
 
   // By-sport breakdowns
-  sourceRowsBySport: CountBySport;
-  candidateRowsBySport: CountBySport;
+  sourceRowsBySport: CountMap;
+  candidateRowsBySport: CountMap;
   marketFamilyGateBySport: Partial<Record<string, MarketFamilyGateBreakdown>>;
   volumeGateBySport: Partial<Record<string, VolumeGateBreakdown>>;
-  activeWatchlistBySport: CountBySport;
+  activeWatchlistBySport: CountMap;
+  snapshotSuccessBySport: CountMap;
+  simulationSummaryBySport: Partial<Record<string, SimulationSummaryBreakdown>>;
+  executableOpportunitiesBySport: CountMap;
 
   // By sport+family breakdowns
-  sourceRowsBySportFamily: CountBySportFamily;
+  sourceRowsBySportFamily: CountMap;
   volumeGateBySportFamily: Partial<Record<string, VolumeGateBreakdown>>;
-  activeWatchlistBySportFamily: CountBySportFamily;
-  snapshotSuccessBySportFamily: CountBySportFamily;
+  activeWatchlistBySportFamily: CountMap;
+  snapshotSuccessBySportFamily: CountMap;
   simulationSummaryBySportFamily: Partial<Record<string, SimulationSummaryBreakdown>>;
-  executableOpportunitiesBySportFamily: CountBySportFamily;
+  executableOpportunitiesBySportFamily: CountMap;
 
   // Diagnostics
-  rejectedMarketFamilies: Partial<Record<string, number>>;
-  failureReasons: Partial<Record<string, number>>;
-  phaseBucketCoverage: Partial<Record<string, number>>;
+  rejectedMarketFamilies: CountMap;
+  volumeRejectionReasons: CountMap;
+  failureReasons: CountMap;
+  phaseBucketCoverage: CountMap;
   topExamples: FunnelExample[];
 }
 
 /** A representative example row for the report's "Top 20" section. */
 export interface FunnelExample {
   tokenId: string;
+  conditionId: string;
   normalizedSport: NormalizedSport;
   normalizedMarketFamily: MarketFamily;
-  question: string | null;
   bestBid: number | null;
   bestAsk: number | null;
   spreadBps: number | null;
+  exitPossible: boolean | null;
+  netReturnPct: number | null;
   executable5pct: boolean | null;
-  netReturn5pctPct: number | null;
 }

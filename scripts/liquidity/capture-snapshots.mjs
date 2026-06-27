@@ -38,7 +38,11 @@ export async function runCaptureSnapshots() {
     return { status: active.status, inserted: 0 };
   }
 
-  const watchlistRows = active.data;
+  // Only capture for tokens that passed BOTH the market-family gate and the
+  // hard volume gate. Never fetch/store books for unsupported/low-volume markets.
+  const watchlistRows = active.data.filter(
+    (r) => r.market_family_gate_status === "passed" && r.volume_gate_status === "passed",
+  );
   const tokenIds = watchlistRows.map((r) => r.token_id);
   const results = await fetchOrderBooksConcurrent(tokenIds, concurrency);
 
@@ -50,8 +54,8 @@ export async function runCaptureSnapshots() {
   for (let i = 0; i < watchlistRows.length; i++) {
     const payload = buildSnapshotInsertPayload(watchlistRows[i], results[i], { capturedAt });
     snapshots.push(payload);
-    if (payload.status === "OK") ok += 1;
-    else if (payload.status === "PARTIAL") partial += 1;
+    if (payload.snapshot_status === "ok") ok += 1;
+    else if (payload.snapshot_status === "partial") partial += 1;
     else failed += 1;
   }
 

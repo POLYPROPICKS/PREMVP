@@ -1,10 +1,13 @@
 // LIQUIDITY_MODEL — pure snapshot payload construction + failure classification.
 // No I/O. The capture script supplies fetch results; this turns them into
-// SnapshotRow payloads with computed microstructure metrics.
+// SnapshotRow payloads (matching market_price_liquidity_snapshots) with computed
+// microstructure metrics. Failure rows are recorded with status='failed'.
 
 import {
+  computeBuyableUsdAtSlippage,
   computeDepthWithinPct,
   computeMidPrice,
+  computeSellableUsdAtSlippage,
   computeSpread,
   computeSpreadBps,
   getBestBidAsk,
@@ -18,41 +21,47 @@ import type {
 } from "./types";
 
 /**
- * Classify a fetch result into a SnapshotStatus + stable failure code.
- * OK = both sides present. PARTIAL = exactly one side present.
- * EMPTY_BOOK = fetch ok but no levels at all.
+ * Classify a fetch result into a DB SnapshotStatus + stable failure code.
+ * ok = both sides present. partial = exactly one side (or empty) but fetched.
+ * failed = transport/HTTP/parse/timeout failure.
  */
 export function classifySnapshotFailure(result: FetchOrderBookResult): {
   status: SnapshotStatus;
-  failureCode: string | null;
+  failureReason: string | null;
 } {
   if (!result.ok) {
-    if (result.errorCode === "TIMEOUT") return { status: "TIMEOUT", failureCode: "timeout" };
+    if (result.errorCode === "TIMEOUT") return { status: "failed", failureReason: "timeout" };
     if (result.errorCode === "PARSE_FAILED") {
-      return { status: "PARSE_FAILED", failureCode: "parse_failed" };
+      return { status: "failed", failureReason: "parse_failed" };
     }
     if (typeof result.httpStatus === "number" && result.httpStatus >= 400) {
-      return { status: "HTTP_ERROR", failureCode: `http_${result.httpStatus}` };
+      return { status: "failed", failureReason: `http_${result.httpStatus}` };
     }
-    return { status: "FETCH_FAILED", failureCode: result.errorCode ?? "fetch_failed" };
+    return { status: "failed", failureReason: result.errorCode ?? "fetch_failed" };
   }
   const book = result.book;
   if (!book || (book.bids.length === 0 && book.asks.length === 0)) {
-    return { status: "EMPTY_BOOK", failureCode: "empty_book" };
+    return { status: "partial", failureReason: "empty_book" };
   }
   if (book.bids.length === 0 || book.asks.length === 0) {
-    return { status: "PARTIAL", failureCode: "one_sided_book" };
+    return { status: "partial", failureReason: "one_sided_book" };
   }
-  return { status: "OK", failureCode: null };
+  return { status: "ok", failureReason: null };
+}
+
+function impliedDecimalOdds(price: number | null): number | null {
+  if (price === null || !(price > 0)) return null;
+  return 1 / price;
 }
 
 export interface SnapshotBuildContext {
   capturedAt: string;
+  snapshotReason?: string;
 }
 
 /**
  * Build a SnapshotRow from a watchlist row + fetch result. Always returns a row
- * (failure rows are recorded with status/failure_code and null metrics) so the
+ * (failed rows carry status='failed' + failure_reason and null metrics) so the
  * funnel report can account for every fetch attempt.
  */
 export function buildSnapshotInsertPayload(
@@ -60,41 +69,73 @@ export function buildSnapshotInsertPayload(
   result: FetchOrderBookResult,
   ctx: SnapshotBuildContext,
 ): SnapshotRow {
-  const { status, failureCode } = classifySnapshotFailure(result);
+  const { status, failureReason } = classifySnapshotFailure(result);
   const book = result.book ?? null;
 
   const minutesToStart = computeMinutesToStart(ctx.capturedAt, watchlistRow.game_start_iso);
   const phaseBucket = classifyPhaseBucket(minutesToStart);
 
   const { bestBid, bestAsk } = getBestBidAsk(book);
+  const mid = computeMidPrice(book);
   const depth1 = computeDepthWithinPct(book, 0.01);
   const depth2 = computeDepthWithinPct(book, 0.02);
   const depth5 = computeDepthWithinPct(book, 0.05);
 
+  const bids = book?.bids ?? [];
+  const asks = book?.asks ?? [];
+  const bidDepthTotal = bids.reduce((sum, l) => sum + l.price * l.size, 0);
+  const askDepthTotal = asks.reduce((sum, l) => sum + l.price * l.size, 0);
+
   return {
-    token_id: watchlistRow.token_id,
-    market_id: watchlistRow.market_id,
-    normalized_sport: watchlistRow.normalized_sport,
-    normalized_market_family: watchlistRow.normalized_market_family,
     captured_at: ctx.capturedAt,
+    source: "polymarket",
+    snapshot_reason: ctx.snapshotReason ?? "scheduled",
+    snapshot_status: status,
+    condition_id: watchlistRow.condition_id,
+    token_id: watchlistRow.token_id,
+    opposing_token_id: watchlistRow.opposing_token_id,
+    event_slug: watchlistRow.event_slug,
+    market_slug: watchlistRow.market_slug,
+    selected_outcome: watchlistRow.selected_outcome,
+    normalized_sport: watchlistRow.normalized_sport,
+    league: watchlistRow.league,
+    normalized_market_family: watchlistRow.normalized_market_family,
+    match_family_key: watchlistRow.match_family_key,
     game_start_iso: watchlistRow.game_start_iso,
     minutes_to_start: minutesToStart,
     phase_bucket: phaseBucket,
-    status,
-    failure_code: failureCode,
+    market_volume_usd: watchlistRow.market_volume_usd,
+    volume_gate_status: watchlistRow.volume_gate_status,
+    volume_gate_threshold_usd: watchlistRow.volume_gate_threshold_usd,
+    market_family_gate_status: watchlistRow.market_family_gate_status,
     best_bid: bestBid,
     best_ask: bestAsk,
-    mid_price: computeMidPrice(book),
-    spread: computeSpread(book),
+    mid_price: mid,
+    implied_decimal_odds_mid: impliedDecimalOdds(mid),
+    implied_decimal_odds_bid: impliedDecimalOdds(bestBid),
+    implied_decimal_odds_ask: impliedDecimalOdds(bestAsk),
+    spread_abs: computeSpread(book),
     spread_bps: computeSpreadBps(book),
-    bid_depth_1pct_usd: depth1.bidDepthUsd,
-    ask_depth_1pct_usd: depth1.askDepthUsd,
-    bid_depth_2pct_usd: depth2.bidDepthUsd,
-    ask_depth_2pct_usd: depth2.askDepthUsd,
-    bid_depth_5pct_usd: depth5.bidDepthUsd,
-    ask_depth_5pct_usd: depth5.askDepthUsd,
-    latency_ms: Number.isFinite(result.latencyMs) ? result.latencyMs : null,
-    bids: book?.bids ?? [],
-    asks: book?.asks ?? [],
+    bid_depth_total: status === "failed" ? null : bidDepthTotal,
+    ask_depth_total: status === "failed" ? null : askDepthTotal,
+    bid_depth_1pct: depth1.bidDepthUsd,
+    bid_depth_2pct: depth2.bidDepthUsd,
+    bid_depth_5pct: depth5.bidDepthUsd,
+    ask_depth_1pct: depth1.askDepthUsd,
+    ask_depth_2pct: depth2.askDepthUsd,
+    ask_depth_5pct: depth5.askDepthUsd,
+    exit_sellable_usd_1pct: computeSellableUsdAtSlippage(bids, 0.01),
+    exit_sellable_usd_2pct: computeSellableUsdAtSlippage(bids, 0.02),
+    exit_sellable_usd_5pct: computeSellableUsdAtSlippage(bids, 0.05),
+    entry_buyable_usd_1pct: computeBuyableUsdAtSlippage(asks, 0.01),
+    entry_buyable_usd_2pct: computeBuyableUsdAtSlippage(asks, 0.02),
+    entry_buyable_usd_5pct: computeBuyableUsdAtSlippage(asks, 0.05),
+    book_levels_json: { bids, asks },
+    api_latency_ms: Number.isFinite(result.latencyMs) ? result.latencyMs : null,
+    failure_reason: failureReason,
+    diagnostics: {
+      http_status: result.httpStatus ?? null,
+      error_code: result.errorCode ?? null,
+    },
   };
 }

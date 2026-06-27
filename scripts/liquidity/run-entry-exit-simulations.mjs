@@ -43,10 +43,10 @@ export async function runEntryExitSimulations() {
     return { status: snapshots.status, simulations: 0 };
   }
 
-  const inputs = selectEntryExitPairs(snapshots.data, simulationLimit);
-  const simulatedAt = new Date().toISOString();
-  const rows = inputs.map((input) =>
-    buildEntryExitSimulation(input, stakeUsd, simulatedAt),
+  const pairs = selectEntryExitPairs(snapshots.data, simulationLimit);
+  const simulationRunId = globalThis.crypto.randomUUID();
+  const rows = pairs.map((pair) =>
+    buildEntryExitSimulation(pair, simulationRunId, stakeUsd),
   );
 
   const insert = await repo.insertSimulationRows(rows);

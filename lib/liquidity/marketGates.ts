@@ -8,6 +8,7 @@
 // Only after all gates pass may an orderbook be fetched/stored.
 
 import type {
+  GateStatusDb,
   MarketFamily,
   MarketFamilyGateStatus,
   NormalizedSport,
@@ -317,6 +318,16 @@ export function computeMarketVolumeGate(
 /** Convenience boolean for a volume gate status. */
 export function isVolumeGatePassed(status: VolumeGateStatus): boolean {
   return status === "PASS" || status === "PASS_EVENT_LEVEL";
+}
+
+/** Map the internal family gate enum to the DB-facing gate status string. */
+export function marketFamilyGateToDb(status: MarketFamilyGateStatus): GateStatusDb {
+  return status === "SUPPORTED" ? "passed" : "rejected";
+}
+
+/** Map the internal volume gate enum to the DB-facing gate status string. */
+export function volumeGateToDb(status: VolumeGateStatus): GateStatusDb {
+  return isVolumeGatePassed(status) ? "passed" : "rejected";
 }
 
 /** Map a failed volume gate status to a stable diagnostic reason code. */

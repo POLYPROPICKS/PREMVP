@@ -2,7 +2,7 @@
 // renderers (markdown + json). No I/O. The funnel-log script supplies inputs.
 
 import {
-  computeMarketFamilyGate,
+  classifyVolumeGateFailure,
   isVolumeGatePassed,
   normalizeSport,
 } from "./marketGates";
@@ -63,6 +63,10 @@ function emptyFamilyBreakdown(): MarketFamilyGateBreakdown {
   };
 }
 
+function emptySimBreakdown(): SimulationSummaryBreakdown {
+  return { simulations: 0, executable5pct: 0, executable10pct: 0, executable15pct: 0 };
+}
+
 function tallyVolume(b: VolumeGateBreakdown, status: string): void {
   b.checked += 1;
   switch (status) {
@@ -117,6 +121,7 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
   const sourceRowsBySportFamily: Record<string, number> = {};
   const volumeGateBySportFamily: Record<string, VolumeGateBreakdown> = {};
   const rejectedMarketFamilies: Record<string, number> = {};
+  const volumeRejectionReasons: Record<string, number> = {};
 
   let candidateRows = 0;
   let familyGatePass = 0;
@@ -126,7 +131,9 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
 
   for (const raw of inputs.sourceRows) {
     const candidate = buildWatchlistCandidate(raw, { minVolumeUsd: inputs.minVolumeUsd });
-    const sport = candidate ? candidate.normalizedSport : normalizeSport(raw.sport ?? raw.league);
+    const sport = candidate
+      ? candidate.normalizedSport
+      : normalizeSport((raw.sport ?? raw.league) as unknown);
     inc(sourceRowsBySport, sport);
 
     if (!candidate) continue;
@@ -141,21 +148,26 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
 
     if (candidate.marketFamilyGate === "SUPPORTED") {
       familyGatePass += 1;
-      // Volume gate only meaningful for family-supported candidates.
       const volB = (volumeGateBySport[sport] ??= emptyVolumeBreakdown());
       tallyVolume(volB, candidate.volumeGate);
       const volBF = (volumeGateBySportFamily[key] ??= emptyVolumeBreakdown());
       tallyVolume(volBF, candidate.volumeGate);
       volumeChecked += 1;
-      if (isVolumeGatePassed(candidate.volumeGate)) volumePass += 1;
-      else volumeRejected += 1;
+      if (isVolumeGatePassed(candidate.volumeGate)) {
+        volumePass += 1;
+      } else {
+        volumeRejected += 1;
+        inc(volumeRejectionReasons, classifyVolumeGateFailure(candidate.volumeGate));
+      }
     } else {
-      const reason = familyReason(candidate.marketFamilyGate, candidate.rawMarketFamily);
+      const reason = candidate.rawMarketFamily
+        ? `${candidate.marketFamilyGate.toLowerCase()}:${candidate.rawMarketFamily}`
+        : candidate.marketFamilyGate.toLowerCase();
       inc(rejectedMarketFamilies, reason);
     }
   }
 
-  // Watchlist coverage (active tokens that actually passed all gates).
+  // Watchlist coverage.
   const activeWatchlistBySport: Record<string, number> = {};
   const activeWatchlistBySportFamily: Record<string, number> = {};
   for (const w of inputs.watchlistRows) {
@@ -164,6 +176,7 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
   }
 
   // Snapshot quality.
+  const snapshotSuccessBySport: Record<string, number> = {};
   const snapshotSuccessBySportFamily: Record<string, number> = {};
   const failureReasons: Record<string, number> = {};
   const phaseBucketCoverage: Record<string, number> = {};
@@ -172,15 +185,14 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
   let snapshotFailed = 0;
   for (const s of inputs.snapshotRows) {
     inc(phaseBucketCoverage, s.phase_bucket);
-    if (s.status === "OK") {
-      snapshotOk += 1;
-      inc(snapshotSuccessBySportFamily, SF(s.normalized_sport, s.normalized_market_family));
-    } else if (s.status === "PARTIAL") {
-      snapshotPartial += 1;
+    if (s.snapshot_status === "ok" || s.snapshot_status === "partial") {
+      if (s.snapshot_status === "ok") snapshotOk += 1;
+      else snapshotPartial += 1;
+      inc(snapshotSuccessBySport, s.normalized_sport);
       inc(snapshotSuccessBySportFamily, SF(s.normalized_sport, s.normalized_market_family));
     } else {
       snapshotFailed += 1;
-      inc(failureReasons, s.failure_code ?? s.status);
+      inc(failureReasons, s.failure_reason ?? "failed");
     }
   }
   const snapshotsWritten = inputs.snapshotRows.length;
@@ -189,31 +201,35 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
     snapshotsWritten > 0 ? (snapshotOk + snapshotPartial) / snapshotsWritten : null;
 
   // Simulation summary.
+  const simulationSummaryBySport: Record<string, SimulationSummaryBreakdown> = {};
   const simulationSummaryBySportFamily: Record<string, SimulationSummaryBreakdown> = {};
+  const executableOpportunitiesBySport: Record<string, number> = {};
   const executableOpportunitiesBySportFamily: Record<string, number> = {};
   let executable5 = 0;
   let executable10 = 0;
   let executable15 = 0;
   for (const sim of inputs.simulationRows) {
-    const key = SF(sim.normalized_sport, sim.normalized_market_family);
-    const b = (simulationSummaryBySportFamily[key] ??= {
-      simulations: 0,
-      executable5pct: 0,
-      executable10pct: 0,
-      executable15pct: 0,
-    });
-    b.simulations += 1;
-    if (sim.executable_5pct) {
-      b.executable5pct += 1;
+    const sport = sim.normalized_sport;
+    const key = SF(sport, sim.normalized_market_family);
+    const bs = (simulationSummaryBySport[sport] ??= emptySimBreakdown());
+    const bf = (simulationSummaryBySportFamily[key] ??= emptySimBreakdown());
+    bs.simulations += 1;
+    bf.simulations += 1;
+    if (sim.executable_5pct_boolean) {
+      bs.executable5pct += 1;
+      bf.executable5pct += 1;
       executable5 += 1;
+      inc(executableOpportunitiesBySport, sport);
       inc(executableOpportunitiesBySportFamily, key);
     }
-    if (sim.executable_10pct) {
-      b.executable10pct += 1;
+    if (sim.executable_10pct_boolean) {
+      bs.executable10pct += 1;
+      bf.executable10pct += 1;
       executable10 += 1;
     }
-    if (sim.executable_15pct) {
-      b.executable15pct += 1;
+    if (sim.executable_15pct_boolean) {
+      bs.executable15pct += 1;
+      bf.executable15pct += 1;
       executable15 += 1;
     }
   }
@@ -263,6 +279,9 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
     marketFamilyGateBySport,
     volumeGateBySport,
     activeWatchlistBySport,
+    snapshotSuccessBySport,
+    simulationSummaryBySport,
+    executableOpportunitiesBySport,
     sourceRowsBySportFamily,
     volumeGateBySportFamily,
     activeWatchlistBySportFamily,
@@ -270,15 +289,11 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
     simulationSummaryBySportFamily,
     executableOpportunitiesBySportFamily,
     rejectedMarketFamilies,
+    volumeRejectionReasons,
     failureReasons,
     phaseBucketCoverage,
     topExamples,
   };
-}
-
-function familyReason(status: string, rawFamily: string | null): string {
-  const base = status.toLowerCase();
-  return rawFamily ? `${base}:${rawFamily}` : base;
 }
 
 function buildTopExamples(
@@ -289,22 +304,23 @@ function buildTopExamples(
   for (const sim of simulations) simByToken.set(sim.token_id, sim);
 
   const usable = snapshots
-    .filter((s) => s.status === "OK" || s.status === "PARTIAL")
-    .sort((a, b) => (b.bid_depth_5pct_usd ?? 0) - (a.bid_depth_5pct_usd ?? 0))
+    .filter((s) => s.snapshot_status === "ok" || s.snapshot_status === "partial")
+    .sort((a, b) => (b.bid_depth_5pct ?? 0) - (a.bid_depth_5pct ?? 0))
     .slice(0, 20);
 
   return usable.map((s) => {
     const sim = simByToken.get(s.token_id);
     return {
       tokenId: s.token_id,
+      conditionId: s.condition_id,
       normalizedSport: s.normalized_sport,
       normalizedMarketFamily: s.normalized_market_family,
-      question: null,
       bestBid: s.best_bid,
       bestAsk: s.best_ask,
       spreadBps: s.spread_bps,
-      executable5pct: sim ? sim.executable_5pct : null,
-      netReturn5pctPct: sim ? sim.net_return_5pct_pct : null,
+      exitPossible: sim ? sim.exit_possible_boolean : null,
+      netReturnPct: sim ? sim.net_return_pct : null,
+      executable5pct: sim ? sim.executable_5pct_boolean : null,
     };
   });
 }
@@ -320,6 +336,9 @@ export function summarizeSportLiquidityFunnel24h(
   familyGate: MarketFamilyGateBreakdown;
   volumeGate: VolumeGateBreakdown;
   activeWatchlist: number;
+  snapshotSuccess: number;
+  simulation: SimulationSummaryBreakdown;
+  executableOpportunities: number;
 } {
   return {
     sport,
@@ -328,6 +347,9 @@ export function summarizeSportLiquidityFunnel24h(
     familyGate: summary.marketFamilyGateBySport[sport] ?? emptyFamilyBreakdown(),
     volumeGate: summary.volumeGateBySport[sport] ?? emptyVolumeBreakdown(),
     activeWatchlist: summary.activeWatchlistBySport[sport] ?? 0,
+    snapshotSuccess: summary.snapshotSuccessBySport[sport] ?? 0,
+    simulation: summary.simulationSummaryBySport[sport] ?? emptySimBreakdown(),
+    executableOpportunities: summary.executableOpportunitiesBySport[sport] ?? 0,
   };
 }
 
@@ -354,12 +376,7 @@ export function summarizeSportFamilyLiquidityFunnel24h(
     volumeGate: summary.volumeGateBySportFamily[key] ?? emptyVolumeBreakdown(),
     activeWatchlist: summary.activeWatchlistBySportFamily[key] ?? 0,
     snapshotSuccess: summary.snapshotSuccessBySportFamily[key] ?? 0,
-    simulation: summary.simulationSummaryBySportFamily[key] ?? {
-      simulations: 0,
-      executable5pct: 0,
-      executable10pct: 0,
-      executable15pct: 0,
-    },
+    simulation: summary.simulationSummaryBySportFamily[key] ?? emptySimBreakdown(),
     executableOpportunities: summary.executableOpportunitiesBySportFamily[key] ?? 0,
   };
 }
@@ -376,7 +393,6 @@ export function computeMachineVerdict(summary: LiquidityFunnelSummary): MachineV
   if (summary.dbStatus === "DB_ENV_MISSING") return "DB_ENV_MISSING";
   if (summary.dbStatus === "SCHEMA_MISSING") return "SCHEMA_MISSING";
 
-  // Sport-mix integrity checks (only meaningful with source rows).
   if (
     summary.sourceRows > 0 &&
     summary.unknownSportShare !== null &&
@@ -385,13 +401,24 @@ export function computeMachineVerdict(summary: LiquidityFunnelSummary): MachineV
     return "DEGRADED_UNKNOWN_SPORT_DOMINANT";
   }
 
-  if (summary.volumeChecked > 0 && summary.volumePass === 0) {
-    return "DEGRADED_NO_VOLUME_ELIGIBLE";
-  }
-
   // Volume-source completely absent for family-supported candidates.
   if (summary.familyGatePass > 0 && summary.volumeChecked === 0) {
     return "DEGRADED_VOLUME_SOURCE_MISSING";
+  }
+
+  // All volume checks failed because volume was missing/stale (source problem).
+  if (
+    summary.volumeChecked > 0 &&
+    summary.volumePass === 0 &&
+    (summary.volumeRejectionReasons.volume_missing ?? 0) +
+      (summary.volumeRejectionReasons.volume_stale ?? 0) >=
+      summary.volumeChecked
+  ) {
+    return "DEGRADED_VOLUME_SOURCE_MISSING";
+  }
+
+  if (summary.volumeChecked > 0 && summary.volumePass === 0) {
+    return "DEGRADED_NO_VOLUME_ELIGIBLE";
   }
 
   if (summary.activeWatchlistTokens === 0) return "DEGRADED_NO_WATCHLIST";
@@ -435,7 +462,7 @@ function fmtPct(v: number | null): string {
 }
 
 function fmtNum(v: number | null): string {
-  return v === null ? "n/a" : String(v);
+  return v === null ? "n/a" : typeof v === "number" ? String(Number(v.toFixed(4))) : String(v);
 }
 
 /** Render the canonical markdown funnel report. */
@@ -470,7 +497,9 @@ export function renderLiquidityFunnelMarkdown(
   L.push(`unknown_sport_share: ${fmtPct(summary.unknownSportShare)}`);
   L.push(`top_sport_share: ${fmtPct(summary.topSportShare)}`);
   for (const [sport, n] of sortedEntries(summary.sourceRowsBySport)) {
-    L.push(`- ${sport}: source=${n} candidates=${summary.candidateRowsBySport[sport] ?? 0} active=${summary.activeWatchlistBySport[sport] ?? 0}`);
+    L.push(
+      `- ${sport}: source=${n} candidates=${summary.candidateRowsBySport[sport] ?? 0} active=${summary.activeWatchlistBySport[sport] ?? 0}`,
+    );
   }
   L.push("");
 
@@ -478,15 +507,18 @@ export function renderLiquidityFunnelMarkdown(
   L.push(`family_gate_pass: ${summary.familyGatePass}`);
   for (const [sport, b] of Object.entries(summary.marketFamilyGateBySport)) {
     if (!b) continue;
-    L.push(`- ${sport}: supported=${b.supported} outright/future=${b.excludedOutrightFuture} prop=${b.excludedProp} exact_score=${b.excludedExactScore} novelty/politics=${b.excludedNoveltyPolitics} unknown=${b.excludedUnknownFamily}`);
+    L.push(
+      `- ${sport}: supported=${b.supported} outright/future=${b.excludedOutrightFuture} prop=${b.excludedProp} exact_score=${b.excludedExactScore} novelty/politics=${b.excludedNoveltyPolitics} unknown=${b.excludedUnknownFamily}`,
+    );
   }
   L.push("");
 
   L.push("## 6. Volume Gate");
-  L.push(`volume_checked: ${summary.volumeChecked} volume_pass: ${summary.volumePass} volume_rejected: ${summary.volumeRejected}`);
-  for (const [sport, b] of Object.entries(summary.volumeGateBySport)) {
-    if (!b) continue;
-    L.push(`- ${sport}: checked=${b.checked} pass=${b.pass} event_level=${b.passEventLevel} below=${b.failBelowThreshold} missing=${b.failMissing} stale=${b.failStale} unknown=${b.failUnknown}`);
+  L.push(
+    `volume_checked: ${summary.volumeChecked} volume_pass: ${summary.volumePass} volume_rejected: ${summary.volumeRejected}`,
+  );
+  for (const [reason, n] of sortedEntries(summary.volumeRejectionReasons)) {
+    L.push(`- reject ${reason}: ${n}`);
   }
   L.push("");
 
@@ -517,7 +549,7 @@ export function renderLiquidityFunnelMarkdown(
   L.push("");
 
   L.push("## 12. Liquidity Depth Summary");
-  L.push(`(per-token depth metrics are stored on snapshot rows; see JSON for breakdowns)`);
+  L.push("(per-token depth metrics are stored on snapshot rows; see JSON for breakdowns)");
   L.push("");
 
   L.push("## 13. Entry/Exit Simulation Summary");
@@ -529,7 +561,9 @@ export function renderLiquidityFunnelMarkdown(
   L.push("");
 
   L.push("## 14. Executable Opportunities");
-  L.push(`executable_5pct: ${summary.executable5pct} executable_10pct: ${summary.executable10pct} executable_15pct: ${summary.executable15pct}`);
+  L.push(
+    `executable_5pct: ${summary.executable5pct} executable_10pct: ${summary.executable10pct} executable_15pct: ${summary.executable15pct}`,
+  );
   for (const [key, n] of sortedEntries(summary.executableOpportunitiesBySportFamily)) {
     L.push(`- ${key}: ${n}`);
   }
@@ -542,26 +576,26 @@ export function renderLiquidityFunnelMarkdown(
   }
   L.push("");
 
-  L.push("## 16. Rejected Market Families");
-  if (Object.keys(summary.rejectedMarketFamilies).length === 0) L.push("(none)");
+  L.push("## 16. UNKNOWN Sport / Family Quarantine");
+  L.push(`unknown_sport_source_rows: ${summary.sourceRowsBySport.UNKNOWN ?? 0}`);
+  L.push(`unknown_sport_active: ${summary.activeWatchlistBySport.UNKNOWN ?? 0}`);
+  L.push("rejected_market_families:");
+  if (Object.keys(summary.rejectedMarketFamilies).length === 0) L.push("- (none)");
   for (const [reason, n] of sortedEntries(summary.rejectedMarketFamilies)) {
     L.push(`- ${reason}: ${n}`);
   }
   L.push("");
 
-  L.push("## 17. UNKNOWN Sport / Family Quarantine");
-  L.push(`unknown_sport_source_rows: ${summary.sourceRowsBySport.UNKNOWN ?? 0}`);
-  L.push(`unknown_sport_active: ${summary.activeWatchlistBySport.UNKNOWN ?? 0}`);
-  L.push("");
-
-  L.push("## 18. Top 20 Examples");
+  L.push("## 17. Top 20 Examples");
   if (summary.topExamples.length === 0) L.push("(none)");
   for (const ex of summary.topExamples) {
-    L.push(`- ${ex.tokenId} [${ex.normalizedSport}/${ex.normalizedMarketFamily}] bid=${fmtNum(ex.bestBid)} ask=${fmtNum(ex.bestAsk)} spread_bps=${fmtNum(ex.spreadBps)} exec5=${ex.executable5pct === null ? "n/a" : ex.executable5pct} ret5=${fmtNum(ex.netReturn5pctPct)}`);
+    L.push(
+      `- ${ex.tokenId} [${ex.normalizedSport}/${ex.normalizedMarketFamily}] bid=${fmtNum(ex.bestBid)} ask=${fmtNum(ex.bestAsk)} spread_bps=${fmtNum(ex.spreadBps)} exit_possible=${ex.exitPossible === null ? "n/a" : ex.exitPossible} net_ret=${fmtNum(ex.netReturnPct)} exec5=${ex.executable5pct === null ? "n/a" : ex.executable5pct}`,
+    );
   }
   L.push("");
 
-  L.push("## 19. Next Action");
+  L.push("## 18. Next Action");
   L.push(nextAction(verdict));
   L.push("");
 
@@ -575,15 +609,15 @@ function nextAction(verdict: MachineVerdict): string {
     case "DB_ENV_MISSING":
       return "Set SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY in the run environment, then re-run.";
     case "SCHEMA_MISSING":
-      return "Operator must create the market_tracking_watchlist / snapshots / simulations tables, then re-run.";
+      return "Apply supabase/migrations/20260626_liquidity_pool_mvp_foundation.sql, then re-run.";
     case "DEGRADED_NO_WATCHLIST":
       return "No gated tokens. Check source rows, sport/family normalization, and volume threshold.";
     case "DEGRADED_NO_VOLUME_ELIGIBLE":
       return "No market passed the volume gate. Verify market-level volume availability and threshold.";
     case "DEGRADED_VOLUME_SOURCE_MISSING":
-      return "Family-supported markets lack volume data. Confirm volume_usd is populated on source rows.";
+      return "Family-supported markets lack volume data. Populate market_volume_usd / diagnostics volume on source rows.";
     case "DEGRADED_UNKNOWN_SPORT_DOMINANT":
-      return "UNKNOWN sport dominates. Extend sport normalization aliases before trusting coverage.";
+      return "UNKNOWN sport dominates. Extend league->sport normalization aliases.";
     case "DEGRADED_SPORT_CONCENTRATION":
       return "Coverage concentrated in one sport. Confirm source diversity / per-sport caps.";
     case "DEGRADED_NO_SNAPSHOTS":
@@ -593,7 +627,7 @@ function nextAction(verdict: MachineVerdict): string {
     case "DEGRADED_NO_LIQUIDITY":
       return "Snapshots captured but no usable liquidity. Verify token ids and book parsing.";
     case "DEGRADED_NO_SIMULATIONS":
-      return "Snapshots present but no simulations produced. Check simulation selection.";
+      return "Snapshots present but no entry/exit pairs yet. Need >=2 snapshots per token across phases.";
     default:
       return "Review funnel stages.";
   }
@@ -607,7 +641,7 @@ export function renderLiquidityFunnelJson(
 ): Record<string, unknown> {
   return {
     generated_at: generatedAt,
-    machine_verdict: verdict,
+    verdict,
     db_status: summary.dbStatus,
     window: { start: summary.windowStartIso, end: summary.windowEndIso },
     totals: {
@@ -634,17 +668,20 @@ export function renderLiquidityFunnelJson(
       top_sport_share: summary.topSportShare,
     },
     source_rows_by_sport: summary.sourceRowsBySport,
-    candidate_rows_by_sport: summary.candidateRowsBySport,
+    source_rows_by_sport_family: summary.sourceRowsBySportFamily,
     market_family_gate_by_sport: summary.marketFamilyGateBySport,
     volume_gate_by_sport: summary.volumeGateBySport,
-    active_watchlist_by_sport: summary.activeWatchlistBySport,
-    source_rows_by_sport_family: summary.sourceRowsBySportFamily,
     volume_gate_by_sport_family: summary.volumeGateBySportFamily,
+    active_watchlist_by_sport: summary.activeWatchlistBySport,
     active_watchlist_by_sport_family: summary.activeWatchlistBySportFamily,
+    snapshot_success_by_sport: summary.snapshotSuccessBySport,
     snapshot_success_by_sport_family: summary.snapshotSuccessBySportFamily,
+    simulation_summary_by_sport: summary.simulationSummaryBySport,
     simulation_summary_by_sport_family: summary.simulationSummaryBySportFamily,
+    executable_opportunities_by_sport: summary.executableOpportunitiesBySport,
     executable_opportunities_by_sport_family: summary.executableOpportunitiesBySportFamily,
     rejected_market_families: summary.rejectedMarketFamilies,
+    volume_rejection_reasons: summary.volumeRejectionReasons,
     failure_reasons: summary.failureReasons,
     phase_bucket_coverage: summary.phaseBucketCoverage,
     top_examples: summary.topExamples,

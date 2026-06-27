@@ -1,7 +1,7 @@
 // LIQUIDITY_MODEL — Supabase repository for the read-only liquidity contour.
 //
 // IMPORTANT:
-//   - This module NEVER creates schema. Tables are created manually by the
+//   - NEVER creates schema. Tables are created via the migration applied by the
 //     operator. Code assumes they exist and degrades gracefully.
 //   - Missing env => DB_ENV_MISSING (no throw, no secret printed).
 //   - Missing table / undefined-table errors => SCHEMA_MISSING.
@@ -10,11 +10,7 @@
 // We do NOT import lib/supabase/server.ts because that module throws at import
 // time when env is absent; this contour must fail soft instead.
 
-import type {
-  SimulationRow,
-  SnapshotRow,
-  WatchlistRow,
-} from "./types";
+import type { SimulationRow, SnapshotRow, WatchlistRow } from "./types";
 import type { SourceResearchRow } from "./watchlistBuilder";
 
 export type RepoStatus = "OK" | "DB_ENV_MISSING" | "SCHEMA_MISSING" | "ERROR";
@@ -24,16 +20,15 @@ export interface RepoResult<T> {
   data: T;
   errorCode?: string;
   errorMessage?: string;
+  sourceTableUsed?: string;
 }
 
 const WATCHLIST_TABLE = "market_tracking_watchlist";
 const SNAPSHOT_TABLE = "market_price_liquidity_snapshots";
 const SIMULATION_TABLE = "market_entry_exit_simulations";
-const SOURCE_TABLE = "generated_signal_research_snapshots";
+const SOURCE_TABLE_PRIMARY = "generated_signal_research_snapshots";
+const SOURCE_TABLE_FALLBACK = "generated_signal_pairs";
 
-// Minimal structural typing for the supabase-js surface we use, without
-// pulling `any` into a lint-checked file. Chainable filters return the builder;
-// terminal operations resolve to a PostgREST-style { data, error } result.
 interface PostgrestError {
   code?: string;
   message?: string;
@@ -45,6 +40,7 @@ interface QueryBuilder {
   insert: (rows: unknown[]) => PostgrestResponse<unknown>;
   upsert: (rows: unknown[], options?: { onConflict?: string }) => PostgrestResponse<unknown>;
   gte: (column: string, value: string) => QueryBuilder;
+  lte: (column: string, value: string) => QueryBuilder;
   order: (column: string, options?: { ascending?: boolean }) => QueryBuilder;
   limit: (count: number) => PostgrestResponse<unknown>;
 }
@@ -57,10 +53,8 @@ function hasDbEnv(): boolean {
   return Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
-/** PostgREST undefined-table / missing-relation error signature. */
-function isSchemaMissing(error: { code?: string; message?: string } | null): boolean {
+function isSchemaMissing(error: PostgrestError | null): boolean {
   if (!error) return false;
-  // 42P01 = undefined_table; PGRST205 = table not found in schema cache.
   if (error.code === "42P01" || error.code === "PGRST205") return true;
   const msg = (error.message || "").toLowerCase();
   return (
@@ -68,6 +62,15 @@ function isSchemaMissing(error: { code?: string; message?: string } | null): boo
     msg.includes("could not find the table") ||
     msg.includes("schema cache")
   );
+}
+
+export interface SourceWindow {
+  /** Forward window for upcoming matches (preferred). */
+  gameStartGteIso?: string;
+  gameStartLteIso?: string;
+  /** Backward fallback / funnel accounting window on created_at. */
+  createdGteIso?: string;
+  limit?: number;
 }
 
 export class SupabaseLiquidityRepo {
@@ -83,7 +86,6 @@ export class SupabaseLiquidityRepo {
     }
   }
 
-  /** Lazily construct the Supabase client. Returns null when env is missing. */
   private async getClient(): Promise<SupabaseLike | null> {
     if (this.clientInit) return this.client;
     this.clientInit = true;
@@ -109,42 +111,75 @@ export class SupabaseLiquidityRepo {
     };
   }
 
-  private classify<T>(error: { code?: string; message?: string }, empty: T): RepoResult<T> {
+  private classify<T>(error: PostgrestError, empty: T): RepoResult<T> {
     if (isSchemaMissing(error)) {
       return {
         status: "SCHEMA_MISSING",
         data: empty,
         errorCode: "SCHEMA_MISSING",
-        errorMessage: "Target table not found (operator must create schema)",
+        errorMessage: "Target table not found (operator must apply migration)",
       };
     }
     return {
       status: "ERROR",
       data: empty,
       errorCode: error.code || "DB_ERROR",
-      // Pass through PostgREST message only; never any secret/env value.
       errorMessage: error.message || "Unknown database error",
     };
   }
 
-  /** Read source research rows in the given window for watchlist building. */
-  async getSourceRowsForWatchlist(windowStartIso: string): Promise<RepoResult<SourceResearchRow[]>> {
+  private async readSourceTable(
+    client: SupabaseLike,
+    table: string,
+    window: SourceWindow,
+  ): PostgrestResponse<unknown> {
+    const limit = window.limit ?? 5000;
+    // Prefer the forward game_start window if provided.
+    if (window.gameStartGteIso && window.gameStartLteIso) {
+      return client
+        .from(table)
+        .select("*")
+        .gte("game_start_iso", window.gameStartGteIso)
+        .lte("game_start_iso", window.gameStartLteIso)
+        .limit(limit);
+    }
+    const createdGte = window.createdGteIso ?? new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+    return client.from(table).select("*").gte("created_at", createdGte).limit(limit);
+  }
+
+  /** Read source rows, preferring the research snapshots table, then pairs. */
+  async getSourceRowsForWatchlist(window: SourceWindow): Promise<RepoResult<SourceResearchRow[]>> {
     const client = await this.getClient();
     if (!client) return this.envMissing<SourceResearchRow[]>([]);
+
     try {
-      const { data, error } = await client
-        .from(SOURCE_TABLE)
-        .select("*")
-        .gte("created_at", windowStartIso)
-        .limit(5000);
-      if (error) return this.classify<SourceResearchRow[]>(error, []);
-      return { status: "OK", data: (data as SourceResearchRow[]) ?? [] };
+      const primary = await this.readSourceTable(client, SOURCE_TABLE_PRIMARY, window);
+      if (!primary.error) {
+        return {
+          status: "OK",
+          data: (primary.data as SourceResearchRow[]) ?? [],
+          sourceTableUsed: SOURCE_TABLE_PRIMARY,
+        };
+      }
+      if (!isSchemaMissing(primary.error)) {
+        return this.classify<SourceResearchRow[]>(primary.error, []);
+      }
+      // Primary missing — try fallback table.
+      const fallback = await this.readSourceTable(client, SOURCE_TABLE_FALLBACK, window);
+      if (!fallback.error) {
+        return {
+          status: "OK",
+          data: (fallback.data as SourceResearchRow[]) ?? [],
+          sourceTableUsed: SOURCE_TABLE_FALLBACK,
+        };
+      }
+      return this.classify<SourceResearchRow[]>(fallback.error, []);
     } catch (err) {
       return this.classify<SourceResearchRow[]>(toErr(err), []);
     }
   }
 
-  /** Upsert watchlist rows on token_id. */
+  /** Upsert watchlist rows on (condition_id, token_id). */
   async upsertWatchlistRows(rows: WatchlistRow[]): Promise<RepoResult<number>> {
     const client = await this.getClient();
     if (!client) return this.envMissing<number>(0);
@@ -152,7 +187,7 @@ export class SupabaseLiquidityRepo {
     try {
       const { error } = await client
         .from(WATCHLIST_TABLE)
-        .upsert(rows, { onConflict: "token_id" });
+        .upsert(rows, { onConflict: "condition_id,token_id" });
       if (error) return this.classify<number>(error, 0);
       return { status: "OK", data: rows.length };
     } catch (err) {
@@ -168,7 +203,7 @@ export class SupabaseLiquidityRepo {
       const { data, error } = await client
         .from(WATCHLIST_TABLE)
         .select("*")
-        .order("priority_score", { ascending: false })
+        .order("tracking_priority", { ascending: false })
         .limit(limit);
       if (error) return this.classify<WatchlistRow[]>(error, []);
       return { status: "OK", data: (data as WatchlistRow[]) ?? [] };
@@ -177,7 +212,7 @@ export class SupabaseLiquidityRepo {
     }
   }
 
-  /** Insert snapshot rows (including failure rows). */
+  /** Insert snapshot rows (append-only, including failure rows). */
   async insertSnapshotRows(rows: SnapshotRow[]): Promise<RepoResult<number>> {
     const client = await this.getClient();
     if (!client) return this.envMissing<number>(0);
@@ -191,7 +226,7 @@ export class SupabaseLiquidityRepo {
     }
   }
 
-  /** Read snapshots in the window for simulation. */
+  /** Read snapshots in the backward window for simulation. */
   async getSnapshotsForSimulation(windowStartIso: string): Promise<RepoResult<SnapshotRow[]>> {
     const client = await this.getClient();
     if (!client) return this.envMissing<SnapshotRow[]>([]);
@@ -200,7 +235,7 @@ export class SupabaseLiquidityRepo {
         .from(SNAPSHOT_TABLE)
         .select("*")
         .gte("captured_at", windowStartIso)
-        .limit(10000);
+        .limit(20000);
       if (error) return this.classify<SnapshotRow[]>(error, []);
       return { status: "OK", data: (data as SnapshotRow[]) ?? [] };
     } catch (err) {
@@ -240,9 +275,9 @@ export class SupabaseLiquidityRepo {
     const client = await this.getClient();
     if (!client) return this.envMissing(empty);
 
-    const source = await this.getSourceRowsForWatchlist(windowStartIso);
+    const source = await this.getSourceRowsForWatchlist({ createdGteIso: windowStartIso });
     if (source.status === "SCHEMA_MISSING") return { status: "SCHEMA_MISSING", data: empty };
-    const watchlist = await this.getActiveWatchlistRows(1000);
+    const watchlist = await this.getActiveWatchlistRows(2000);
     if (watchlist.status === "SCHEMA_MISSING") return { status: "SCHEMA_MISSING", data: empty };
     const snapshots = await this.getSnapshotsForSimulation(windowStartIso);
     if (snapshots.status === "SCHEMA_MISSING") return { status: "SCHEMA_MISSING", data: empty };
@@ -252,8 +287,8 @@ export class SupabaseLiquidityRepo {
       const { data, error } = await client
         .from(SIMULATION_TABLE)
         .select("*")
-        .gte("simulated_at", windowStartIso)
-        .limit(10000);
+        .gte("created_at", windowStartIso)
+        .limit(20000);
       if (error && isSchemaMissing(error)) return { status: "SCHEMA_MISSING", data: empty };
       if (!error) simulationRows = (data as SimulationRow[]) ?? [];
     } catch {
@@ -272,9 +307,9 @@ export class SupabaseLiquidityRepo {
   }
 }
 
-function toErr(err: unknown): { code?: string; message?: string } {
+function toErr(err: unknown): PostgrestError {
   if (err && typeof err === "object") {
-    const e = err as { code?: string; message?: string };
+    const e = err as PostgrestError;
     return { code: e.code, message: e.message };
   }
   return { message: String(err) };
