@@ -42,10 +42,15 @@ export type MarketFamilyGateStatus =
   // `market_family` source column ('Sports'/'Esports') is NOT used for gating.
   | "EXCLUDED_MISSING_MARKET_TYPE";
 
-/** Internal volume gate enum (mapped to DB 'passed'/'rejected'/'unknown'). */
+/**
+ * Internal volume gate enum. Only PASS (concrete market-level volume >=
+ * threshold) counts as a real pass. EVENT_VOLUME_ONLY means the only volume
+ * figure available is event-level, which is NOT proof of concrete market/
+ * condition liquidity and therefore does NOT pass the market-level gate.
+ */
 export type VolumeGateStatus =
   | "PASS"
-  | "PASS_EVENT_LEVEL"
+  | "EVENT_VOLUME_ONLY"
   | "FAIL_BELOW_THRESHOLD"
   | "FAIL_MISSING_VOLUME"
   | "FAIL_STALE_VOLUME"
@@ -360,11 +365,29 @@ export type CountMap = Partial<Record<string, number>>;
 export interface VolumeGateBreakdown {
   checked: number;
   pass: number;
-  passEventLevel: number;
+  eventVolumeOnly: number;
   failBelowThreshold: number;
   failMissing: number;
   failStale: number;
   failUnknown: number;
+}
+
+/**
+ * Honest market-level volume disposition for the funnel summary line.
+ * - marketVolumeChecked: family-supported candidates whose volume was evaluated.
+ * - marketVolumePass: concrete market-level volume >= threshold (the ONLY pass).
+ * - eventVolumeOnly: only event-level volume present (not market-level proof).
+ * - volumeDeferred: no market-level volume in source -> deferred to live capture.
+ * - volumeMissing: same source rows as deferred (no volume figure at all).
+ * - volumeRejected: proven insufficient/invalid (below threshold / stale / bad).
+ */
+export interface VolumeDisposition {
+  marketVolumeChecked: number;
+  marketVolumePass: number;
+  eventVolumeOnly: number;
+  volumeDeferred: number;
+  volumeMissing: number;
+  volumeRejected: number;
 }
 
 export interface MarketFamilyGateBreakdown {
@@ -396,6 +419,8 @@ export interface LiquidityFunnelSummary {
   volumeChecked: number;
   volumePass: number;
   volumeRejected: number;
+  /** Honest market-level volume disposition breakdown. */
+  volumeDisposition: VolumeDisposition;
   activeWatchlistTokens: number;
   bookAttempts: number;
   snapshotsWritten: number;

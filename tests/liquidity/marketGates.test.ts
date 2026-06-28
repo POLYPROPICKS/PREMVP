@@ -11,6 +11,7 @@ import {
   isVolumeGatePassed,
   normalizeMarketFamily,
   normalizeSport,
+  volumeGateToDb,
 } from "../../lib/liquidity/marketGates";
 import type { WatchlistCandidate } from "../../lib/liquidity/types";
 
@@ -72,11 +73,22 @@ test("computeMarketVolumeGate hard threshold", () => {
     computeMarketVolumeGate({ volumeUsd: 50000, volumeAgeMinutes: 5000 }).status,
     "FAIL_STALE_VOLUME",
   );
+  // Event-level volume must NOT pass the market-level gate, even above threshold.
   const ev = computeMarketVolumeGate({ volumeUsd: 50000, volumeScope: "event_level_not_market_level" });
-  assert.equal(ev.status, "PASS_EVENT_LEVEL");
-  assert.equal(isVolumeGatePassed(ev.status), true);
+  assert.equal(ev.status, "EVENT_VOLUME_ONLY");
+  assert.equal(ev.passed, false);
+  assert.equal(isVolumeGatePassed(ev.status), false);
+  assert.equal(classifyVolumeGateFailure("EVENT_VOLUME_ONLY"), "event_volume_only");
   assert.equal(isVolumeGatePassed("FAIL_BELOW_THRESHOLD"), false);
   assert.equal(classifyVolumeGateFailure("FAIL_BELOW_THRESHOLD"), "volume_below_threshold");
+});
+
+test("volumeGateToDb: only market-level passes; event/missing deferred; bad rejected", () => {
+  assert.equal(volumeGateToDb("PASS"), "passed");
+  assert.equal(volumeGateToDb("EVENT_VOLUME_ONLY"), "deferred");
+  assert.equal(volumeGateToDb("FAIL_MISSING_VOLUME"), "deferred");
+  assert.equal(volumeGateToDb("FAIL_BELOW_THRESHOLD"), "rejected");
+  assert.equal(volumeGateToDb("FAIL_STALE_VOLUME"), "rejected");
 });
 
 function cand(overrides: Partial<WatchlistCandidate>): WatchlistCandidate {

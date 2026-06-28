@@ -77,6 +77,8 @@
     "liquidity:simulate": "tsx scripts/liquidity/run-entry-exit-simulations.mjs",
     "liquidity:funnel-log": "tsx scripts/liquidity/liquidity-funnel-log.mjs",
     "liquidity:mvp": "tsx scripts/liquidity/run-liquidity-pool-mvp.mjs",
+    "liquidity:auto-capture": "tsx scripts/liquidity/run-liquidity-auto-capture.mjs",
+    "liquidity:auto-capture:plan": "tsx scripts/liquidity/run-liquidity-auto-capture.mjs --plan --days 7",
     "test:liquidity": "node --import tsx --test tests/liquidity/*.test.ts"
   },
   "dependencies": {

@@ -44,7 +44,7 @@ function emptyVolumeBreakdown(): VolumeGateBreakdown {
   return {
     checked: 0,
     pass: 0,
-    passEventLevel: 0,
+    eventVolumeOnly: 0,
     failBelowThreshold: 0,
     failMissing: 0,
     failStale: 0,
@@ -73,8 +73,8 @@ function tallyVolume(b: VolumeGateBreakdown, status: string): void {
     case "PASS":
       b.pass += 1;
       break;
-    case "PASS_EVENT_LEVEL":
-      b.passEventLevel += 1;
+    case "EVENT_VOLUME_ONLY":
+      b.eventVolumeOnly += 1;
       break;
     case "FAIL_BELOW_THRESHOLD":
       b.failBelowThreshold += 1;
@@ -128,6 +128,11 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
   let volumeChecked = 0;
   let volumePass = 0;
   let volumeRejected = 0;
+  // Honest market-level volume disposition counters.
+  let volEventOnly = 0;
+  let volMissing = 0;
+  let volBelowThreshold = 0;
+  let volStaleOrInvalid = 0;
 
   for (const raw of inputs.sourceRows) {
     const candidate = buildWatchlistCandidate(raw, { minVolumeUsd: inputs.minVolumeUsd });
@@ -158,6 +163,19 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
       } else {
         volumeRejected += 1;
         inc(volumeRejectionReasons, classifyVolumeGateFailure(candidate.volumeGate));
+        switch (candidate.volumeGate) {
+          case "EVENT_VOLUME_ONLY":
+            volEventOnly += 1;
+            break;
+          case "FAIL_MISSING_VOLUME":
+            volMissing += 1;
+            break;
+          case "FAIL_BELOW_THRESHOLD":
+            volBelowThreshold += 1;
+            break;
+          default:
+            volStaleOrInvalid += 1;
+        }
       }
     } else {
       const reason = candidate.rawMarketFamily
@@ -268,6 +286,17 @@ export function summarizeLiquidityFunnel24h(inputs: FunnelInputs): LiquidityFunn
     volumeChecked,
     volumePass,
     volumeRejected,
+    volumeDisposition: {
+      marketVolumeChecked: volumeChecked,
+      marketVolumePass: volumePass,
+      eventVolumeOnly: volEventOnly,
+      // Missing source market-level volume is deferred to live capture; for the
+      // current source schema (no volume column) deferred == missing.
+      volumeDeferred: volMissing,
+      volumeMissing: volMissing,
+      // Only proven-insufficient/invalid figures count as a hard reject.
+      volumeRejected: volBelowThreshold + volStaleOrInvalid,
+    },
     activeWatchlistTokens: inputs.watchlistRows.length,
     bookAttempts,
     snapshotsWritten,
@@ -548,11 +577,17 @@ export function renderLiquidityFunnelMarkdown(
   L.push("");
 
   L.push("## 6. Volume Gate");
+  const vd = summary.volumeDisposition;
   L.push(
-    `volume_checked: ${summary.volumeChecked} volume_pass: ${summary.volumePass} volume_rejected: ${summary.volumeRejected}`,
+    `market_volume_checked: ${vd.marketVolumeChecked} market_volume_pass: ${vd.marketVolumePass} event_volume_only: ${vd.eventVolumeOnly} volume_deferred: ${vd.volumeDeferred} volume_missing: ${vd.volumeMissing} volume_rejected: ${vd.volumeRejected}`,
   );
+  if (summary.sourceVolumeDeferred) {
+    L.push(
+      "note: source schema has no concrete market-level volume column; gate is in DEFERRED mode (no fake pass, threshold $10000 unchanged).",
+    );
+  }
   for (const [reason, n] of sortedEntries(summary.volumeRejectionReasons)) {
-    L.push(`- reject ${reason}: ${n}`);
+    L.push(`- ${reason}: ${n}`);
   }
   L.push("");
 
@@ -687,6 +722,7 @@ export function renderLiquidityFunnelJson(
       volume_checked: summary.volumeChecked,
       volume_pass: summary.volumePass,
       volume_rejected: summary.volumeRejected,
+      volume_disposition: summary.volumeDisposition,
       active_watchlist_tokens: summary.activeWatchlistTokens,
       book_attempts: summary.bookAttempts,
       snapshots_written: summary.snapshotsWritten,

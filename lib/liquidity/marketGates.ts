@@ -306,18 +306,21 @@ export function computeMarketVolumeGate(
   ) {
     return { status: "FAIL_STALE_VOLUME", passed: false, effectiveVolumeUsd: volumeUsd, scope };
   }
+  if (scope === "event_level_not_market_level") {
+    // Event-level volume is NOT proof of concrete market/condition liquidity and
+    // must never count as a market-level pass — even when above threshold.
+    return { status: "EVENT_VOLUME_ONLY", passed: false, effectiveVolumeUsd: volumeUsd, scope };
+  }
   if (volumeUsd < minVolumeUsd) {
     return { status: "FAIL_BELOW_THRESHOLD", passed: false, effectiveVolumeUsd: volumeUsd, scope };
-  }
-  if (scope === "event_level_not_market_level") {
-    return { status: "PASS_EVENT_LEVEL", passed: true, effectiveVolumeUsd: volumeUsd, scope };
   }
   return { status: "PASS", passed: true, effectiveVolumeUsd: volumeUsd, scope };
 }
 
-/** Convenience boolean for a volume gate status. */
+/** Convenience boolean for a volume gate status. Only concrete market-level
+ * volume passes; event-level/missing/below-threshold all return false. */
 export function isVolumeGatePassed(status: VolumeGateStatus): boolean {
-  return status === "PASS" || status === "PASS_EVENT_LEVEL";
+  return status === "PASS";
 }
 
 /** Map the internal family gate enum to the DB-facing gate status string. */
@@ -325,24 +328,32 @@ export function marketFamilyGateToDb(status: MarketFamilyGateStatus): GateStatus
   return status === "SUPPORTED" ? "passed" : "rejected";
 }
 
-/** Map the internal volume gate enum to the DB-facing gate status string. */
+/**
+ * Map the internal volume gate enum to the DB-facing gate status string.
+ * Only concrete market-level volume is `passed`. Missing source volume and
+ * event-level-only volume are `deferred` (validated later / not market-level
+ * proof). Below-threshold / stale / invalid are `rejected`.
+ */
 export function volumeGateToDb(status: VolumeGateStatus): GateStatusDb {
-  return isVolumeGatePassed(status) ? "passed" : "rejected";
+  if (status === "PASS") return "passed";
+  if (status === "EVENT_VOLUME_ONLY" || status === "FAIL_MISSING_VOLUME") return "deferred";
+  return "rejected";
 }
 
-/** Map a failed volume gate status to a stable diagnostic reason code. */
+/** Map a volume gate status to a stable diagnostic reason code. */
 export function classifyVolumeGateFailure(status: VolumeGateStatus): string {
   switch (status) {
     case "FAIL_BELOW_THRESHOLD":
       return "volume_below_threshold";
     case "FAIL_MISSING_VOLUME":
       return "volume_missing";
+    case "EVENT_VOLUME_ONLY":
+      return "event_volume_only";
     case "FAIL_STALE_VOLUME":
       return "volume_stale";
     case "FAIL_UNKNOWN":
       return "volume_unknown";
     case "PASS":
-    case "PASS_EVENT_LEVEL":
       return "volume_pass";
     default:
       return "volume_unknown";

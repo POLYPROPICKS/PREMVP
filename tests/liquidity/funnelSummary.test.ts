@@ -95,6 +95,27 @@ test("computeMachineVerdict flags missing volume source vs no-eligible vs no-wat
   assert.equal(computeMachineVerdict(noWatchlist), "DEGRADED_NO_WATCHLIST");
 });
 
+test("volumeDisposition is honest: market-level passes, event-level/missing do not", () => {
+  const summary = summarizeLiquidityFunnel24h(
+    baseInputs({
+      sourceRows: [
+        src({ condition_id: "m", selected_token_id: "m", league: "NBA", market_family: "moneyline", diagnostics: { market_volume_usd: 50000 } }), // pass
+        src({ condition_id: "e", selected_token_id: "e", league: "NBA", market_family: "moneyline", diagnostics: { event_volume_usd: 80000 } }), // event-only
+        src({ condition_id: "x", selected_token_id: "x", league: "NBA", market_family: "moneyline" }), // missing
+        src({ condition_id: "b", selected_token_id: "b", league: "NBA", market_family: "moneyline", diagnostics: { market_volume_usd: 100 } }), // below threshold
+      ],
+    }),
+  );
+  const vd = summary.volumeDisposition;
+  assert.equal(vd.marketVolumeChecked, 4);
+  assert.equal(vd.marketVolumePass, 1); // only the concrete market-level >= 10k
+  assert.equal(vd.eventVolumeOnly, 1); // event-level never counts as pass
+  assert.equal(vd.volumeMissing, 1);
+  assert.equal(vd.volumeDeferred, 1);
+  assert.equal(vd.volumeRejected, 1); // below threshold only
+  assert.equal(summary.volumePass, 1); // event-level no longer inflates volume_pass
+});
+
 function watch(): WatchlistRow {
   return {
     source_table: null,
