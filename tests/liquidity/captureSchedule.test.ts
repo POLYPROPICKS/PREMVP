@@ -1,10 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { pathToFileURL } from "node:url";
 import {
   buildLiquidityCapturePlan,
   formatInTimezone,
   getLiquidityCaptureCadence,
   isLiquidityCaptureDue,
+  isMainModule,
+  renderDueSummaryLine,
+  renderEventLine,
+  renderOnceSummaryLine,
+  renderPlanSummaryLine,
   resolveEventEndMs,
   SOCCER_DEFAULT_DURATION_MIN,
 } from "../../lib/liquidity/captureSchedule";
@@ -114,6 +120,63 @@ test("RSA-CAN plan: windows at the expected UTC/Minsk times", () => {
   assert.equal(e.eventStartUtc, START);
   assert.equal(e.eventStartMinsk, "2026-06-28 22:00");
   assert.equal(e.due, true);
+});
+
+test("REGRESSION: isMainModule matches the entry point where naive file:// concat fails", () => {
+  // A path with a space: file URLs percent-encode it, so the old guard
+  // (`import.meta.url === 'file://' + argv1`) mismatched and the runner exited
+  // silently. Windows drive-letter/backslash paths fail the same way.
+  const p = "/home/user/my project/run-liquidity-auto-capture.mjs";
+  const url = pathToFileURL(p).href; // file:///home/user/my%20project/...
+  assert.equal(isMainModule(url, p), true);
+  assert.notEqual(url, `file://${p}`); // the old comparison would have been false -> silent
+  assert.equal(isMainModule(undefined, p), false);
+  assert.equal(isMainModule(url, undefined), false);
+});
+
+test("render* helpers emit the required LIQUIDITY_AUTO_CAPTURE_* line formats", () => {
+  const plan = buildLiquidityCapturePlan(
+    [
+      {
+        key: "fifwc-rsa-can-2026-06-28",
+        eventSlug: "fifwc-rsa-can-2026-06-28",
+        gameStartIso: START,
+        sport: "soccer",
+        lastCaptureAt: null,
+      },
+    ],
+    "2026-06-28T07:00:00.000Z",
+    { days: 7 },
+  );
+
+  assert.match(
+    renderPlanSummaryLine(plan, "OK"),
+    /^LIQUIDITY_AUTO_CAPTURE_PLAN_SUMMARY days=7 events=1 due_windows=1 now_utc=2026-06-28T07:00:00\.000Z now_minsk=2026-06-28 10:00 db_status=OK$/,
+  );
+  const ev = renderEventLine(plan.entries[0]);
+  assert.match(ev, /^LIQUIDITY_AUTO_CAPTURE_EVENT event=fifwc-rsa-can-2026-06-28 /);
+  assert.match(ev, /start_utc=2026-06-28T19:00:00\.000Z start_minsk=2026-06-28 22:00 /);
+  assert.match(ev, /first_capture_utc=\S+ first_capture_minsk=2026-06-28 10:00 /);
+  assert.match(ev, /due=true$/);
+  assert.match(
+    renderDueSummaryLine(plan),
+    /^LIQUIDITY_AUTO_CAPTURE_DUE_SUMMARY due_now=1 next_due_utc=\S+ action=plan_only$/,
+  );
+  assert.equal(
+    renderOnceSummaryLine({
+      action: "run",
+      reason: "full_capped_run_for_due_window",
+      dueCount: 1,
+      watchlist: 60,
+      snapshots: 156,
+      simulations: 156,
+    }),
+    "LIQUIDITY_AUTO_CAPTURE_ONCE_SUMMARY action=run reason=full_capped_run_for_due_window due_count=1 watchlist=60 snapshots=156 simulations=156",
+  );
+  assert.equal(
+    renderOnceSummaryLine({ action: "none", reason: "db_env_missing", dueCount: 0 }),
+    "LIQUIDITY_AUTO_CAPTURE_ONCE_SUMMARY action=none reason=db_env_missing due_count=0 watchlist=0 snapshots=0 simulations=0",
+  );
 });
 
 test("buildLiquidityCapturePlan excludes events beyond the horizon", () => {

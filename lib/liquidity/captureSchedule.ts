@@ -13,6 +13,8 @@
 // Default in-play duration for football/soccer = 130 minutes unless an explicit
 // end/close time is supplied.
 
+import { pathToFileURL } from "node:url";
+
 export type CapturePhase =
   | "not_started_window"
   | "pre12_to_pre2"
@@ -311,4 +313,84 @@ export function buildLiquidityCapturePlan(
     dueEvents: entries.filter((e) => e.due).length,
     entries,
   };
+}
+
+// ---------------------------------------------------------------------------
+// CLI entry-point detection + machine-readable output lines (pure, testable)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cross-platform "is this module the process entry point?" check. The naive
+ * `import.meta.url === 'file://' + process.argv[1]` comparison silently fails on
+ * Windows (drive letter + backslashes) and on any POSIX path with spaces/special
+ * chars (file URLs percent-encode them), so the runner never executes and exits
+ * with no output. pathToFileURL produces the correctly-encoded URL to compare.
+ */
+export function isMainModule(
+  importMetaUrl: string | undefined,
+  argv1: string | undefined,
+): boolean {
+  if (!importMetaUrl || !argv1) return false;
+  try {
+    return importMetaUrl === pathToFileURL(argv1).href;
+  } catch {
+    return false;
+  }
+}
+
+function tz(ms: number | null, timezone?: string): string {
+  return formatInTimezone(ms, timezone) ?? "none";
+}
+
+/** `LIQUIDITY_AUTO_CAPTURE_PLAN_SUMMARY ...` line. */
+export function renderPlanSummaryLine(plan: CapturePlan, dbStatus: string): string {
+  const nowMs = Date.parse(plan.nowUtc);
+  return (
+    `LIQUIDITY_AUTO_CAPTURE_PLAN_SUMMARY days=${plan.windowDays} events=${plan.totalEvents} ` +
+    `due_windows=${plan.dueEvents} now_utc=${plan.nowUtc} now_minsk=${tz(nowMs)} db_status=${dbStatus}`
+  );
+}
+
+/** `LIQUIDITY_AUTO_CAPTURE_EVENT ...` line for one planned event. */
+export function renderEventLine(entry: CapturePlanEntry): string {
+  return (
+    `LIQUIDITY_AUTO_CAPTURE_EVENT event=${entry.eventSlug ?? entry.key} ` +
+    `start_utc=${entry.eventStartUtc ?? "none"} start_minsk=${entry.eventStartMinsk ?? "none"} ` +
+    `first_capture_utc=${entry.nextDueUtc ?? "none"} first_capture_minsk=${entry.nextDueMinsk ?? "none"} ` +
+    `phase=${entry.phase} cadence_min=${entry.cadenceMinutes ?? "none"} due=${entry.due}`
+  );
+}
+
+/** `LIQUIDITY_AUTO_CAPTURE_DUE_SUMMARY ...` line. */
+export function renderDueSummaryLine(plan: CapturePlan, action = "plan_only"): string {
+  let nextDueMs: number | null = null;
+  for (const e of plan.entries) {
+    const ms = e.nextDueUtc ? Date.parse(e.nextDueUtc) : null;
+    if (ms !== null && (nextDueMs === null || ms < nextDueMs)) nextDueMs = ms;
+  }
+  const nextDueUtc = nextDueMs === null ? "none" : new Date(nextDueMs).toISOString();
+  return `LIQUIDITY_AUTO_CAPTURE_DUE_SUMMARY due_now=${plan.dueEvents} next_due_utc=${nextDueUtc} action=${action}`;
+}
+
+export interface OnceSummaryFields {
+  action: "run" | "none" | "error";
+  reason: string;
+  dueCount: number;
+  watchlist?: number;
+  snapshots?: number;
+  simulations?: number;
+}
+
+/** `LIQUIDITY_AUTO_CAPTURE_ONCE_SUMMARY ...` line. */
+export function renderOnceSummaryLine(f: OnceSummaryFields): string {
+  return (
+    `LIQUIDITY_AUTO_CAPTURE_ONCE_SUMMARY action=${f.action} reason=${f.reason} ` +
+    `due_count=${f.dueCount} watchlist=${f.watchlist ?? 0} snapshots=${f.snapshots ?? 0} ` +
+    `simulations=${f.simulations ?? 0}`
+  );
+}
+
+/** `LIQUIDITY_AUTO_CAPTURE_ERROR_SUMMARY ...` line (message is pre-sanitized). */
+export function renderErrorSummaryLine(action: string, code: string, message: string): string {
+  return `LIQUIDITY_AUTO_CAPTURE_ERROR_SUMMARY action=${action} error=${code} message=${message}`;
 }
