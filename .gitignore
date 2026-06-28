@@ -55,6 +55,9 @@ landing-check.json
 *.json
 # Founder status snapshots are runtime artifacts (MODE A producer output)
 reports/morning/latest_founder_status_snapshot.md
+# Liquidity funnel reports are runtime artifacts; keep the dir via .gitkeep only
+reports/liquidity_pool/*.md
+!reports/liquidity_pool/.gitkeep
 normalize-dump.txt
 recon-css.txt
 recon-full.txt

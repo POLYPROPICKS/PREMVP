@@ -71,7 +71,13 @@
     "contur3:live-funnel-log": "node scripts/contur3/live-funnel-log.mjs",
     "contur3:g2-log": "node scripts/contur3/g2-log.mjs",
     "contur3:preflight24h": "node scripts/contur3/preflight24h.mjs",
-    "contur3:battle-ready": "node scripts/contur3/battle-ready.mjs"
+    "contur3:battle-ready": "node scripts/contur3/battle-ready.mjs",
+    "liquidity:build-watchlist": "tsx scripts/liquidity/build-watchlist.mjs",
+    "liquidity:capture-snapshots": "tsx scripts/liquidity/capture-snapshots.mjs",
+    "liquidity:simulate": "tsx scripts/liquidity/run-entry-exit-simulations.mjs",
+    "liquidity:funnel-log": "tsx scripts/liquidity/liquidity-funnel-log.mjs",
+    "liquidity:mvp": "tsx scripts/liquidity/run-liquidity-pool-mvp.mjs",
+    "test:liquidity": "node --import tsx --test tests/liquidity/*.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
