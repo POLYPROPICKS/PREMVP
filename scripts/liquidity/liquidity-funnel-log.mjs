@@ -88,6 +88,11 @@ export async function runFunnelLog() {
   log(
     `LIQUIDITY_POOL_FUNNEL_DETAIL entry_exit_simulations=${summary.entryExitSimulations} baseline_simulations=${summary.baselineSimulations} source_volume=${summary.sourceVolumeDeferred ? "deferred" : "present"} real_entry_exit=${summary.entryExitSimulations > 0 ? "yes" : "pending_history"}`,
   );
+  // Honest market-level volume disposition (no fake pass; event-level != pass).
+  const vd = summary.volumeDisposition;
+  log(
+    `LIQUIDITY_VOLUME_GATE_SUMMARY market_volume_checked=${vd.marketVolumeChecked} market_volume_pass=${vd.marketVolumePass} event_volume_only=${vd.eventVolumeOnly} volume_deferred=${vd.volumeDeferred} volume_missing=${vd.volumeMissing} volume_rejected=${vd.volumeRejected}`,
+  );
 
   // Per-sport gate lines.
   for (const sport of Object.keys(summary.sourceRowsBySport).sort()) {

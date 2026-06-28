@@ -19,6 +19,7 @@ import {
   isVolumeGatePassed,
   marketFamilyGateToDb,
   normalizeSport,
+  volumeGateToDb,
 } from "./marketGates";
 import { normalizeTokenId } from "./orderbookMath";
 import type {
@@ -285,14 +286,10 @@ export function buildWatchlistCandidate(
   const { volumeUsd, source: volumeSource, scope: volumeScope } = extractMarketVolumeUsd(row);
   const volumeGate = computeMarketVolumeGate({ volumeUsd, volumeScope }, minVolume);
 
-  // DB-facing volume disposition: source has no volume column, so a missing
-  // figure is DEFERRED to live orderbook capture (not a hard reject). A present
-  // figure below threshold / stale / invalid is still a hard reject.
-  const volumeGateDb: GateStatusDb = isVolumeGatePassed(volumeGate.status)
-    ? "passed"
-    : volumeUsd === null || volumeUsd === undefined
-    ? "deferred"
-    : "rejected";
+  // DB-facing volume disposition: only concrete market-level volume passes.
+  // Missing source volume and event-level-only volume are DEFERRED to live
+  // capture (not a hard reject); below-threshold / stale / invalid are rejected.
+  const volumeGateDb: GateStatusDb = volumeGateToDb(volumeGate.status);
 
   let priorityScore = volumeUsd && volumeUsd > 0 ? Math.log10(volumeUsd + 1) : 0;
   if (familyGate.status === "SUPPORTED") priorityScore += 2;
