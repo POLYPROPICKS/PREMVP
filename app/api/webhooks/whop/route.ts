@@ -3,6 +3,8 @@ import crypto from "crypto";
 import Whop from "@whop/sdk";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { getPlanById, getWhopProductIdForPlan } from "@/lib/payments/planCatalog";
+import { captureServerEvents } from "@/lib/analytics/serverCapture";
+import { PPP_EVENTS, webhookEvents } from "@/lib/analytics/events";
 
 export const runtime = "nodejs";
 
@@ -272,6 +274,14 @@ export async function POST(request: Request) {
     return jsonError("PAYMENT_EVENT_INSERT_FAILED", 500);
   }
 
+  // Analytics: a verified, recorded webhook. Fail-open — never blocks processing.
+  // Activation/entitlement events are emitted only from the confirmed success
+  // path below (payment-truth rule), never here on mere receipt.
+  await captureServerEvents([PPP_EVENTS.PAYMENT_WEBHOOK_RECEIVED], {
+    distinctId: providerEventId,
+    properties: { eventType },
+  });
+
   // ── Deactivation events ──
   const isDeactivation =
     eventType === "membership.deactivated" ||
@@ -537,6 +547,18 @@ export async function POST(request: Request) {
     })
     .eq("provider", "whop")
     .eq("provider_event_id", providerEventId);
+
+  // Analytics: payment activation is the single source of payment truth — these
+  // events fire ONLY when membership.activated was processed and entitlement was
+  // granted without error. Fail-open; never blocks the webhook response.
+  const activationEvents = webhookEvents({
+    eventType: "membership.activated",
+    processed: !entitlementError,
+  }).filter((e) => e !== PPP_EVENTS.PAYMENT_WEBHOOK_RECEIVED);
+  await captureServerEvents(activationEvents, {
+    distinctId: userIdentifier,
+    properties: { plan: internalPlanId, membershipId },
+  });
 
   // Return 200 in both cases: the event was received and recorded idempotently.
   // On entitlement failure we report processed:false (already logged above) so

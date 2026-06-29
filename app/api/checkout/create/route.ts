@@ -5,6 +5,8 @@ import {
   getWhopProductIdForPlan,
 } from "@/lib/payments/planCatalog";
 import { createWhopCheckoutConfiguration } from "@/lib/payments/whopCheckout";
+import { captureServerEvent } from "@/lib/analytics/serverCapture";
+import { PPP_EVENTS } from "@/lib/analytics/events";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -128,6 +130,13 @@ export async function POST(request: Request) {
 
   const checkoutSessionId: string = sessionRow.id;
 
+  // Analytics: checkout initiated (server-side, fail-open). This is intent, not
+  // payment — `purchase`/activation is emitted only by the confirmed webhook.
+  await captureServerEvent(PPP_EVENTS.CHECKOUT_START, {
+    distinctId: leadIntentId,
+    properties: { plan: plan.internalPlanId, source },
+  });
+
   const checkoutMetadata = {
     internalPlanId: plan.internalPlanId,
     leadIntentId,
@@ -206,6 +215,12 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+
+  // Analytics: redirecting the buyer to the Whop-hosted checkout (fail-open).
+  await captureServerEvent(PPP_EVENTS.WHOP_CHECKOUT_REDIRECT, {
+    distinctId: leadIntentId,
+    properties: { plan: plan.internalPlanId, checkoutSessionId, source },
+  });
 
   return NextResponse.json(
     {

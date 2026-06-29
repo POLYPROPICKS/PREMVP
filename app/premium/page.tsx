@@ -14,6 +14,8 @@ import PremiumSignalCard from "./PremiumSignalCard";
 import styles from "./Premium.module.css";
 import ResolvedSignalsCarousel from "@/components/resolved-signals/ResolvedSignalsCarousel";
 import { FOUNDER_PREVIEW_SESSION_ID } from "@/app/api/auth/founder-premium-preview/route";
+import { captureServerEvent } from "@/lib/analytics/serverCapture";
+import { PPP_EVENTS } from "@/lib/analytics/events";
 
 export const dynamic = "force-dynamic";
 
@@ -149,6 +151,9 @@ export default async function PremiumPage({
   const token = cookieStore.get("ppp_session")?.value ?? null;
 
   if (!token) {
+    await captureServerEvent(PPP_EVENTS.PREMIUM_ACCESS_BLOCKED, {
+      properties: { reason: "no_session" },
+    });
     const restoreStatus = typeof resolvedParams.restore === "string" ? resolvedParams.restore : null;
     const showForm = restoreStatus !== "requested" && restoreStatus !== "provider-missing";
     return (
@@ -222,6 +227,9 @@ export default async function PremiumPage({
     sessionActivePlan = payload.activePlan;
     sessionAccessUntil = payload.accessUntil;
   } catch {
+    await captureServerEvent(PPP_EVENTS.PREMIUM_ACCESS_BLOCKED, {
+      properties: { reason: "invalid_session" },
+    });
     return (
       <div className={styles.page}>
         <div className={styles.restoreCard}>
@@ -241,6 +249,10 @@ export default async function PremiumPage({
     : await revalidateEntitlement(sessionCheckoutId);
 
   if (!entitlement) {
+    await captureServerEvent(PPP_EVENTS.PREMIUM_ACCESS_BLOCKED, {
+      distinctId: sessionCheckoutId,
+      properties: { reason: "entitlement_expired" },
+    });
     return (
       <div className={styles.page}>
         <div className={styles.restoreCard}>
@@ -254,6 +266,11 @@ export default async function PremiumPage({
 
   const activePlan = entitlement.activePlan ?? sessionActivePlan;
   const accessUntil = entitlement.accessUntil ?? sessionAccessUntil;
+
+  await captureServerEvent(PPP_EVENTS.PREMIUM_FEED_VIEW, {
+    distinctId: sessionCheckoutId,
+    properties: { plan: activePlan, founderPreview: isFounderPreview },
+  });
 
   const activeFilter = parseFilter(resolvedParams.filter);
   const rawFeedPairs = await loadFeedPairs();
