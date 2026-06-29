@@ -50,9 +50,18 @@ function isUsable(s: SnapshotRow): boolean {
 }
 
 /**
- * Select entry/exit snapshot pairs per token: each entry-phase snapshot is
- * paired with the latest later exit-phase snapshot. Bounded by `limit`,
- * deterministic order (token, then entry capture time).
+ * Select one real entry->exit snapshot pair per token from accumulated history.
+ *
+ * A real pair exists whenever a token has >= 2 usable snapshots at DISTINCT
+ * captured_at times: entry = earliest usable, exit = latest usable (captured
+ * strictly after entry). Pairing is purely time-based — it does NOT require the
+ * snapshots to fall into specific pre-game/in-play phase buckets (the previous
+ * phase-set restriction produced 0 real pairs in production because a token's
+ * snapshots were typically all in the same pre-game bucket within the window).
+ *
+ * Bounded: exactly one pair per token (earliest->latest), so 2 or 80 snapshots
+ * both yield a single pair — no Cartesian explosion. Deterministic order
+ * (token id, then entry capture time), capped at `limit`.
  */
 export function selectEntryExitPairs(
   snapshots: SnapshotRow[],
@@ -68,20 +77,16 @@ export function selectEntryExitPairs(
 
   const pairs: EntryExitPair[] = [];
   for (const arr of byToken.values()) {
-    const entries = arr
-      .filter((s) => ENTRY_PHASES.has(s.phase_bucket))
+    const sorted = arr
+      .slice()
       .sort((a, b) => Date.parse(a.captured_at) - Date.parse(b.captured_at));
-    const exits = arr
-      .filter((s) => EXIT_PHASES.has(s.phase_bucket))
-      .sort((a, b) => Date.parse(a.captured_at) - Date.parse(b.captured_at));
-    for (const entry of entries) {
-      const entryT = Date.parse(entry.captured_at);
-      let bestExit: SnapshotRow | null = null;
-      for (const exit of exits) {
-        if (Date.parse(exit.captured_at) > entryT) bestExit = exit; // latest wins
-      }
-      if (bestExit) pairs.push({ entry, exit: bestExit });
-    }
+    const entry = sorted[0];
+    const exit = sorted[sorted.length - 1];
+    // Require two snapshots at distinct capture times (never pair a snapshot
+    // with itself — that is a baseline, handled separately).
+    if (!entry || !exit) continue;
+    if (Date.parse(exit.captured_at) <= Date.parse(entry.captured_at)) continue;
+    pairs.push({ entry, exit });
   }
 
   pairs.sort(
@@ -232,6 +237,8 @@ export function buildEntryExitSimulation(
     match_family_key: entry.match_family_key,
     selected_outcome: entry.selected_outcome,
     game_start_iso: entry.game_start_iso,
+    entry_snapshot_id: entry.id ?? null,
+    exit_snapshot_id: exit.id ?? null,
     entry_captured_at: entry.captured_at,
     exit_captured_at: exit.captured_at,
     entry_phase_bucket: entry.phase_bucket,

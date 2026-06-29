@@ -225,6 +225,8 @@ export interface WatchlistRow {
 
 /** Row destined for public.market_price_liquidity_snapshots. */
 export interface SnapshotRow {
+  /** DB primary key. Absent on insert payloads, present on rows read back. */
+  id?: string | null;
   captured_at: string;
   source: string;
   snapshot_reason: string;
@@ -302,6 +304,9 @@ export interface SimulationRow {
   selected_outcome: string | null;
   game_start_iso: string | null;
 
+  /** DB ids of the entry/exit snapshots. Equal for single-snapshot baselines. */
+  entry_snapshot_id: string | null;
+  exit_snapshot_id: string | null;
   entry_captured_at: string;
   exit_captured_at: string;
   entry_phase_bucket: PhaseBucket | null;

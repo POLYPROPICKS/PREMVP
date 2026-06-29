@@ -221,6 +221,8 @@ function okSim(): SimulationRow {
     match_family_key: null,
     selected_outcome: null,
     game_start_iso: null,
+    entry_snapshot_id: "snap-entry",
+    exit_snapshot_id: "snap-exit",
     entry_captured_at: WINDOW_START,
     exit_captured_at: WINDOW_END,
     entry_phase_bucket: "T_1H",
