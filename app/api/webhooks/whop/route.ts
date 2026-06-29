@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import { getPlanById, getWhopProductIdForPlan } from "@/lib/payments/planCatalog";
 import { captureServerEvents } from "@/lib/analytics/serverCapture";
 import { PPP_EVENTS, webhookEvents } from "@/lib/analytics/events";
+import { sanitizeDistinctId } from "@/lib/analytics/identity";
 
 export const runtime = "nodejs";
 
@@ -548,6 +549,27 @@ export async function POST(request: Request) {
     .eq("provider", "whop")
     .eq("provider_event_id", providerEventId);
 
+  // Attribution: tie payment events back to the buyer's browser PostHog person
+  // using the distinct id stored at checkout in checkout_sessions.metadata. This
+  // is an existing JSON field — no schema change, no payment-behavior change.
+  // Fail-open: any lookup error simply falls back to the server identifier.
+  let analyticsDistinctId: string | null = null;
+  if (isUuidLike(metaCheckoutSessionId)) {
+    try {
+      const { data: sessionRow } = await supabaseAdmin
+        .from("checkout_sessions")
+        .select("metadata")
+        .eq("id", metaCheckoutSessionId)
+        .maybeSingle();
+      const meta = isRecord(sessionRow?.metadata) ? sessionRow!.metadata : null;
+      analyticsDistinctId = meta
+        ? sanitizeDistinctId(meta["analyticsDistinctId"])
+        : null;
+    } catch {
+      analyticsDistinctId = null;
+    }
+  }
+
   // Analytics: payment activation is the single source of payment truth — these
   // events fire ONLY when membership.activated was processed and entitlement was
   // granted without error. Fail-open; never blocks the webhook response.
@@ -556,8 +578,14 @@ export async function POST(request: Request) {
     processed: !entitlementError,
   }).filter((e) => e !== PPP_EVENTS.PAYMENT_WEBHOOK_RECEIVED);
   await captureServerEvents(activationEvents, {
-    distinctId: userIdentifier,
-    properties: { plan: internalPlanId, membershipId },
+    distinctId: analyticsDistinctId ?? userIdentifier,
+    properties: {
+      plan: internalPlanId,
+      internal_plan_id: internalPlanId,
+      membershipId,
+      checkout_provider: "whop",
+      identity_stitched: Boolean(analyticsDistinctId),
+    },
   });
 
   // Return 200 in both cases: the event was received and recorded idempotently.

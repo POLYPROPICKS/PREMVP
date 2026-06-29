@@ -157,10 +157,15 @@ export default function ReconstructionPage() {
   const handleActivePairIndexChange = useCallback((nextIndex: number) => {
     const nextPair = candidatePairs[nextIndex];
     if (nextPair) {
+      trackClientEvent(PPP_EVENTS.SIGNAL_CARD_CLICK, {
+        signal_id: nextPair.premiumSignal?.id,
+        league: nextPair.premiumSignal?.league,
+        is_premium_locked: activeFilter !== 'live',
+      });
       setActivePairId(nextPair.id);
       setActiveEvidenceIndex(0);
     }
-  }, [candidatePairs]);
+  }, [candidatePairs, activeFilter]);
 
   const handleEvidenceIndexChange = useCallback((nextIndex: number) => {
     setActiveEvidenceIndex(nextIndex);
@@ -198,6 +203,8 @@ export default function ReconstructionPage() {
   }, [allPairs]);
 
   const handleCtaClick = useCallback(() => {
+    // Premium card unlock CTA — fire before opening the paywall.
+    trackClientEvent(PPP_EVENTS.PREMIUM_CARD_CLICK, { source_surface: 'premium_card_cta' });
     setIsPassOfferModalOpen(true);
   }, []);
 
@@ -218,6 +225,8 @@ export default function ReconstructionPage() {
   }, []);
 
   const handleLockedFeedAttempt = useCallback(() => {
+    // Clicking/swiping a locked (peek) signal card — fire before opening paywall.
+    trackClientEvent(PPP_EVENTS.LOCKED_SIGNAL_CLICK, { source_surface: 'locked_feed' });
     setIsPassOfferModalOpen(true);
   }, []);
 
@@ -429,7 +438,16 @@ export default function ReconstructionPage() {
                         {premiumCtaLabel ?? "Unlock All Live Signals"}
                       </button>
                       <p className={styles.ctaSubline}>
-                        <a className={styles.ctaSublineLink} href="/referral">
+                        <a
+                          className={styles.ctaSublineLink}
+                          href="/referral"
+                          onClick={() =>
+                            trackClientEvent(PPP_EVENTS.REFERRAL_CTA_CLICK, {
+                              source_surface: 'landing_card_subline',
+                              cta_label: "Can't pay? Get $30 Credit",
+                            })
+                          }
+                        >
                           Can&apos;t pay? Get $30 Credit for inviting a friend →
                         </a>
                       </p>

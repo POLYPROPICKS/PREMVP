@@ -2,8 +2,9 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import styles from './PassOfferModal.module.css';
-import { trackClientEvent } from '@/lib/analytics/posthogClient';
-import { PPP_EVENTS } from '@/lib/analytics/events';
+import { trackClientEvent, getDistinctId } from '@/lib/analytics/posthogClient';
+import { PPP_EVENTS, planSwitchEvents } from '@/lib/analytics/events';
+import { DISTINCT_ID_HEADER } from '@/lib/analytics/identity';
 import SignalWeekResultsCard from '../signal-week-results/SignalWeekResultsCard';
 import type { WeekResultsCard } from '../signal-week-results/types';
 
@@ -81,6 +82,7 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
   const currentPlan = useMemo(() => getPlan(selectedPlan), [selectedPlan]);
 
   const resetAndClose = useCallback(() => {
+    trackClientEvent(PPP_EVENTS.PAYWALL_CLOSE, { plan: selectedPlan, view: currentView });
     setCurrentView('offer');
     setEmail('');
     setEmailError('');
@@ -88,7 +90,7 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
     setCheckoutLoading(false);
     setCheckoutError(null);
     onClose();
-  }, [onClose]);
+  }, [onClose, selectedPlan, currentView]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -170,14 +172,21 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
 
     try {
       const leadIntentId = generateLeadIntentId();
+      // Identity stitching: pass the browser PostHog distinct id so the server
+      // checkout events land on the same person. Fail-open if analytics blocked.
+      const distinctId = getDistinctId();
       const response = await fetch('/api/checkout/create', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(distinctId ? { [DISTINCT_ID_HEADER]: distinctId } : {}),
+        },
         body: JSON.stringify({
           internalPlanId,
           leadIntentId,
           source: 'pass_offer_modal',
           email: normalizedEmail,
+          ...(distinctId ? { analyticsDistinctId: distinctId } : {}),
         }),
       });
 
@@ -249,8 +258,17 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
                     type="button"
                     className={`${styles.planCard} ${isSelected ? styles.selectedPlan : ''}`}
                     onClick={() => {
+                      const previousPlan = selectedPlan;
                       setSelectedPlan(plan.id);
-                      trackClientEvent(PPP_EVENTS.PLAN_SELECTED, { plan: plan.id });
+                      // Pure helper decides selection vs switch (tested).
+                      for (const ev of planSwitchEvents(previousPlan, plan.id)) {
+                        trackClientEvent(
+                          ev,
+                          ev === PPP_EVENTS.PLAN_SWITCH
+                            ? { from_plan: previousPlan, to_plan: plan.id }
+                            : { plan: plan.id }
+                        );
+                      }
                     }}
                     aria-pressed={isSelected}
                   >

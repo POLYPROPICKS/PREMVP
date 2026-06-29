@@ -56,3 +56,16 @@ export function trackClientEvent(
     // Fail open.
   }
 }
+
+// Current PostHog distinct id for browser→server identity stitching. Returns
+// null when analytics is unconfigured/unavailable so callers stay fail-open.
+export function getDistinctId(): string | null {
+  if (typeof window === 'undefined') return null;
+  if (!resolveToken()) return null;
+  try {
+    const id = posthog.get_distinct_id?.();
+    return typeof id === 'string' && id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
+}

@@ -26,6 +26,22 @@ export const PPP_EVENTS = {
   ENTITLEMENT_GRANTED: "ppp_entitlement_granted",
   PREMIUM_FEED_VIEW: "ppp_premium_feed_view",
   PREMIUM_ACCESS_BLOCKED: "ppp_premium_access_blocked",
+
+  // ── Hardening: interaction + referral surfaces (PR: funnel hardening) ──────
+  SIGNAL_CARD_CLICK: "ppp_signal_card_click",
+  LOCKED_SIGNAL_CLICK: "ppp_locked_signal_click",
+  PREMIUM_CARD_CLICK: "ppp_premium_card_click",
+  PAYWALL_CLOSE: "ppp_paywall_close",
+  PLAN_SWITCH: "ppp_plan_switch",
+  REFERRAL_CTA_CLICK: "ppp_referral_cta_click",
+  REFERRAL_PAGE_VIEW: "ppp_referral_page_view",
+  REFERRAL_TAB_SELECTED: "ppp_referral_tab_selected",
+  REFERRAL_LINK_CREATE_START: "ppp_referral_link_create_start",
+  REFERRAL_LINK_CREATED: "ppp_referral_link_created",
+  REFERRAL_LINK_CREATE_FAILED: "ppp_referral_link_create_failed",
+  REFERRAL_DASHBOARD_CHECK_START: "ppp_referral_dashboard_check_start",
+  REFERRAL_DASHBOARD_VIEW: "ppp_referral_dashboard_view",
+  REFERRAL_DASHBOARD_CHECK_FAILED: "ppp_referral_dashboard_check_failed",
 } as const;
 
 export type PppEventName = (typeof PPP_EVENTS)[keyof typeof PPP_EVENTS];
@@ -88,6 +104,20 @@ export function webhookEvents(
   const events: PppEventName[] = [PPP_EVENTS.PAYMENT_WEBHOOK_RECEIVED];
   if (input.eventType === "membership.activated" && input.processed) {
     events.push(PPP_EVENTS.PAYMENT_ACTIVATED, PPP_EVENTS.ENTITLEMENT_GRANTED);
+  }
+  return events;
+}
+
+// Selecting a plan inside the paywall always records a selection; switching to a
+// DIFFERENT plan than the current one additionally records a plan switch. Pure
+// so the weekly↔monthly switch rule is tested independently of the React modal.
+export function planSwitchEvents(
+  fromPlan: string,
+  toPlan: string
+): readonly PppEventName[] {
+  const events: PppEventName[] = [PPP_EVENTS.PLAN_SELECTED];
+  if (fromPlan !== toPlan) {
+    events.push(PPP_EVENTS.PLAN_SWITCH);
   }
   return events;
 }

@@ -8,24 +8,47 @@ import {
   mapLegacyEvent,
   checkoutReturnEvents,
   webhookEvents,
+  planSwitchEvents,
 } from "../../lib/analytics/events";
 
-test("canonical event contract has the exact expected names", () => {
-  assert.deepEqual([...PPP_EVENT_NAMES].sort(), [
-    "ppp_checkout_return",
-    "ppp_checkout_start",
-    "ppp_entitlement_granted",
-    "ppp_free_signal_view",
+test("event contract has exactly the canonical + hardening event names", () => {
+  const canonical = [
     "ppp_landing_view",
+    "ppp_free_signal_view",
     "ppp_lead_cta_click",
-    "ppp_payment_activated",
-    "ppp_payment_webhook_received",
     "ppp_paywall_view",
     "ppp_plan_selected",
-    "ppp_premium_access_blocked",
-    "ppp_premium_feed_view",
+    "ppp_checkout_start",
     "ppp_whop_checkout_redirect",
-  ]);
+    "ppp_checkout_return",
+    "ppp_payment_webhook_received",
+    "ppp_payment_activated",
+    "ppp_entitlement_granted",
+    "ppp_premium_feed_view",
+    "ppp_premium_access_blocked",
+  ];
+  const hardening = [
+    "ppp_signal_card_click",
+    "ppp_locked_signal_click",
+    "ppp_premium_card_click",
+    "ppp_paywall_close",
+    "ppp_plan_switch",
+    "ppp_referral_cta_click",
+    "ppp_referral_page_view",
+    "ppp_referral_tab_selected",
+    "ppp_referral_link_create_start",
+    "ppp_referral_link_created",
+    "ppp_referral_link_create_failed",
+    "ppp_referral_dashboard_check_start",
+    "ppp_referral_dashboard_view",
+    "ppp_referral_dashboard_check_failed",
+  ];
+  const expected = [...canonical, ...hardening].sort();
+  assert.deepEqual([...PPP_EVENT_NAMES].sort(), expected);
+  // All canonical events from PR #15 must still be present (no regression).
+  for (const name of canonical) {
+    assert.ok(isPppEventName(name), `${name} missing from contract`);
+  }
 });
 
 test("every canonical event is ppp_-namespaced and recognized", () => {
@@ -78,6 +101,23 @@ test("payment activation only fires for a processed membership.activated webhook
   // Other event types never activate, even if processed.
   const other = webhookEvents({ eventType: "membership.deactivated", processed: true });
   assert.deepEqual([...other], [PPP_EVENTS.PAYMENT_WEBHOOK_RECEIVED]);
+});
+
+test("plan switch fires only when the plan actually changes (weekly↔monthly)", () => {
+  // Switching weekly → monthly records selection + switch.
+  assert.deepEqual([...planSwitchEvents("7day", "monthly")], [
+    PPP_EVENTS.PLAN_SELECTED,
+    PPP_EVENTS.PLAN_SWITCH,
+  ]);
+  // Switching monthly → weekly also records both.
+  assert.deepEqual([...planSwitchEvents("monthly", "7day")], [
+    PPP_EVENTS.PLAN_SELECTED,
+    PPP_EVENTS.PLAN_SWITCH,
+  ]);
+  // Re-selecting the same plan records selection only — no switch.
+  assert.deepEqual([...planSwitchEvents("monthly", "monthly")], [
+    PPP_EVENTS.PLAN_SELECTED,
+  ]);
 });
 
 test("no webhook path ever emits a bare `purchase` event", () => {
