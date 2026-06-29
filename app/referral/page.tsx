@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import styles from "./Referral.module.css";
+import { trackClientEvent } from "@/lib/analytics/posthogClient";
+import { PPP_EVENTS } from "@/lib/analytics/events";
+import { referralEmailProps } from "@/lib/analytics/properties";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 type CreateResult = { ok: true; refCode: string; referralLink: string; status: "existing" | "created" };
@@ -38,6 +41,18 @@ const SHARE_TEXT = "I'm inviting you to join the PolyProPicks free-week invite l
 export default function ReferralPage() {
   const [tab, setTab]                     = useState<"create" | "dashboard">("create");
 
+  // Referral page viewed (once per mount). Fail-open.
+  useEffect(() => {
+    trackClientEvent(PPP_EVENTS.REFERRAL_PAGE_VIEW, { source_page: "referral" });
+  }, []);
+
+  function selectTab(next: "create" | "dashboard") {
+    if (next !== tab) {
+      trackClientEvent(PPP_EVENTS.REFERRAL_TAB_SELECTED, { tab: next });
+    }
+    setTab(next);
+  }
+
   // Create flow
   const [createEmail, setCreateEmail]     = useState("");
   const [createLoading, setCreateLoading] = useState(false);
@@ -63,18 +78,33 @@ export default function ReferralPage() {
     const trimmed = createEmail.trim();
     if (!isValidEmail(trimmed)) { setCreateError("Please enter a valid email address."); return; }
     setCreateLoading(true);
+    // Analytics: link-create started. Only presence of an email, never the value.
+    trackClientEvent(PPP_EVENTS.REFERRAL_LINK_CREATE_START, {
+      source_page: "referral",
+      ...referralEmailProps(trimmed),
+    });
     try {
       const res = await fetch("/api/referrals/create", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: trimmed, source: "referral_page" }),
       });
       const data = await res.json();
-      if (!data.ok) { setCreateError("Something went wrong. Please try again."); return; }
+      if (!data.ok) {
+        setCreateError("Something went wrong. Please try again.");
+        trackClientEvent(PPP_EVENTS.REFERRAL_LINK_CREATE_FAILED, { reason: "api_error" });
+        return;
+      }
       setCreateResult(data as CreateResult);
+      trackClientEvent(PPP_EVENTS.REFERRAL_LINK_CREATED, {
+        referral_flow_step: (data as CreateResult).status,
+      });
       // Auto-load dashboard for the new link
       await fetchDashboard({ refCode: (data as CreateResult).refCode, link: (data as CreateResult).referralLink });
       setTab("dashboard");
-    } catch { setCreateError("Network error. Please try again."); }
+    } catch {
+      setCreateError("Network error. Please try again.");
+      trackClientEvent(PPP_EVENTS.REFERRAL_LINK_CREATE_FAILED, { reason: "network_error" });
+    }
     finally   { setCreateLoading(false); }
   }
 
@@ -87,6 +117,11 @@ export default function ReferralPage() {
     if (!raw) { setCheckError("Enter your email or referral code."); return; }
     setCheckLoading(true);
     const isEmail = raw.includes("@");
+    // Analytics: dashboard check started. Capture input type only, never the value.
+    trackClientEvent(PPP_EVENTS.REFERRAL_DASHBOARD_CHECK_START, {
+      input_type: isEmail ? "email" : "ref_code",
+      has_email: isEmail,
+    });
     const body = isEmail ? { email: raw } : { refCode: raw };
     await fetchDashboard(body);
     setCheckLoading(false);
@@ -100,14 +135,27 @@ export default function ReferralPage() {
         body: JSON.stringify(apiBody),
       });
       const data: StatusResult = await res.json();
-      if (!data.ok) { setCheckError("Something went wrong. Please try again."); return; }
+      if (!data.ok) {
+        setCheckError("Something went wrong. Please try again.");
+        trackClientEvent(PPP_EVENTS.REFERRAL_DASHBOARD_CHECK_FAILED, { reason: "api_error" });
+        return;
+      }
       if (!data.hasReferralLink || !data.dashboard) {
-        setDashNotFound(true); setDashboard(null); return;
+        setDashNotFound(true); setDashboard(null);
+        trackClientEvent(PPP_EVENTS.REFERRAL_DASHBOARD_CHECK_FAILED, { reason: "not_found" });
+        return;
       }
       setDashboard(data.dashboard);
       setDashRefCode(data.refCode ?? null);
       setDashLink(data.referralLink ?? preLink ?? null);
-    } catch { setCheckError("Network error. Please try again."); }
+      trackClientEvent(PPP_EVENTS.REFERRAL_DASHBOARD_VIEW, {
+        verified_paid_referrals: data.dashboard.verifiedPaidReferralCount,
+        referred_leads: data.dashboard.referredLeadCount,
+      });
+    } catch {
+      setCheckError("Network error. Please try again.");
+      trackClientEvent(PPP_EVENTS.REFERRAL_DASHBOARD_CHECK_FAILED, { reason: "network_error" });
+    }
   }
 
   async function copyDashLink() {
@@ -134,9 +182,9 @@ export default function ReferralPage() {
         {/* Segmented tabs */}
         <div className={styles.tabs}>
           <button className={tab === "create" ? styles.tabActive : styles.tabInactive}
-            onClick={() => setTab("create")} type="button">Create Link</button>
+            onClick={() => selectTab("create")} type="button">Create Link</button>
           <button className={tab === "dashboard" ? styles.tabActive : styles.tabInactive}
-            onClick={() => setTab("dashboard")} type="button">My Dashboard</button>
+            onClick={() => selectTab("dashboard")} type="button">My Dashboard</button>
         </div>
 
         {/* Hero */}
@@ -164,7 +212,7 @@ export default function ReferralPage() {
                   {createLoading ? "Creating link…" : "Create My Referral Link"}
                 </button>
                 <button className={styles.switchTabLink} type="button"
-                  onClick={() => setTab("dashboard")}>Check existing dashboard instead →</button>
+                  onClick={() => selectTab("dashboard")}>Check existing dashboard instead →</button>
               </form>
             ) : (
               <div className={styles.successCard}>
@@ -230,7 +278,7 @@ export default function ReferralPage() {
                   {checkLoading ? "Checking…" : "Check My Dashboard"}
                 </button>
                 <button className={styles.switchTabLink} type="button"
-                  onClick={() => setTab("create")}>Create a new link instead →</button>
+                  onClick={() => selectTab("create")}>Create a new link instead →</button>
               </form>
             )}
 
@@ -238,7 +286,7 @@ export default function ReferralPage() {
               <div className={styles.notFoundCard}>
                 <p className={styles.notFoundText}>No referral link found. Create your link first.</p>
                 <button className={styles.switchTabLink} type="button"
-                  onClick={() => { setDashNotFound(false); setTab("create"); }}>
+                  onClick={() => { setDashNotFound(false); selectTab("create"); }}>
                   Create a new link →
                 </button>
               </div>

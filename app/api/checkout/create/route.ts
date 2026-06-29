@@ -7,6 +7,7 @@ import {
 import { createWhopCheckoutConfiguration } from "@/lib/payments/whopCheckout";
 import { captureServerEvent } from "@/lib/analytics/serverCapture";
 import { PPP_EVENTS } from "@/lib/analytics/events";
+import { resolveDistinctId } from "@/lib/analytics/identity";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -16,6 +17,7 @@ type CreateCheckoutBody = {
   leadIntentId?: unknown;
   source?: unknown;
   email?: unknown;
+  analyticsDistinctId?: unknown;
 };
 
 export async function POST(request: Request) {
@@ -104,6 +106,14 @@ export async function POST(request: Request) {
       ? body.email.trim()
       : null;
 
+  // Browser PostHog distinct id for identity stitching (body field or header).
+  // Safe non-PII string; null when absent. Persisted in checkout_sessions
+  // metadata so the Whop webhook can attribute payment events to the same person.
+  const analyticsDistinctId = resolveDistinctId({
+    body: body as Record<string, unknown>,
+    headers: request.headers,
+  });
+
   // --- insert checkout_sessions BEFORE provider call ---
   const { data: sessionRow, error: sessionInsertError } = await supabaseAdmin
     .from("checkout_sessions")
@@ -115,7 +125,12 @@ export async function POST(request: Request) {
       provider_product_id: productId,
       status: "created",
       email,
-      metadata: { internalPlanId: plan.internalPlanId, leadIntentId, source },
+      metadata: {
+        internalPlanId: plan.internalPlanId,
+        leadIntentId,
+        source,
+        ...(analyticsDistinctId ? { analyticsDistinctId } : {}),
+      },
     })
     .select("id")
     .single();
@@ -132,9 +147,18 @@ export async function POST(request: Request) {
 
   // Analytics: checkout initiated (server-side, fail-open). This is intent, not
   // payment — `purchase`/activation is emitted only by the confirmed webhook.
+  // Use the browser distinct id when provided so this lands on the same person
+  // as the client events; fall back to leadIntentId otherwise.
   await captureServerEvent(PPP_EVENTS.CHECKOUT_START, {
-    distinctId: leadIntentId,
-    properties: { plan: plan.internalPlanId, source },
+    distinctId: analyticsDistinctId ?? leadIntentId,
+    properties: {
+      plan: plan.internalPlanId,
+      internal_plan_id: plan.internalPlanId,
+      source,
+      source_surface: source,
+      checkout_provider: "whop",
+      identity_stitched: Boolean(analyticsDistinctId),
+    },
   });
 
   const checkoutMetadata = {
@@ -142,6 +166,7 @@ export async function POST(request: Request) {
     leadIntentId,
     checkoutSessionId,
     source,
+    ...(analyticsDistinctId ? { analyticsDistinctId } : {}),
   };
 
   // --- call Whop provider ---
@@ -218,8 +243,16 @@ export async function POST(request: Request) {
 
   // Analytics: redirecting the buyer to the Whop-hosted checkout (fail-open).
   await captureServerEvent(PPP_EVENTS.WHOP_CHECKOUT_REDIRECT, {
-    distinctId: leadIntentId,
-    properties: { plan: plan.internalPlanId, checkoutSessionId, source },
+    distinctId: analyticsDistinctId ?? leadIntentId,
+    properties: {
+      plan: plan.internalPlanId,
+      internal_plan_id: plan.internalPlanId,
+      checkoutSessionId,
+      source,
+      source_surface: source,
+      checkout_provider: "whop",
+      identity_stitched: Boolean(analyticsDistinctId),
+    },
   });
 
   return NextResponse.json(
