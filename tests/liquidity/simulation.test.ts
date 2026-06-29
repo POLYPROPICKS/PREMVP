@@ -76,24 +76,93 @@ test("selectEntryExitPairs pairs an entry-phase snapshot with a later exit-phase
   assert.equal(pairs[0].exit.phase_bucket, "T_5M");
 });
 
-test("selectEntryExitPairs requires exit after entry and respects the cap", () => {
-  // exit captured BEFORE entry -> no valid pair.
-  const none = selectEntryExitPairs([
-    snap({ token_id: "a", phase_bucket: "T_1H", captured_at: "2026-06-26T11:00:00.000Z" }),
-    snap({ token_id: "a", phase_bucket: "T_5M", captured_at: "2026-06-26T10:00:00.000Z" }),
+test("selectEntryExitPairs is time-based: earliest=entry, latest=exit; cap respected", () => {
+  // A single snapshot -> no pair (baseline territory, handled by selector).
+  const single = selectEntryExitPairs([
+    snap({ token_id: "a", captured_at: "2026-06-26T11:00:00.000Z" }),
   ]);
-  assert.equal(none.length, 0);
+  assert.equal(single.length, 0);
+
+  // Two distinct times -> exactly one pair, entry = earliest regardless of phase.
+  const pair = selectEntryExitPairs([
+    snap({ token_id: "a", phase_bucket: "T_12H_PLUS", captured_at: "2026-06-26T10:00:00.000Z" }),
+    snap({ token_id: "a", phase_bucket: "T_6H", captured_at: "2026-06-26T13:00:00.000Z" }),
+  ]);
+  assert.equal(pair.length, 1);
+  assert.equal(pair[0].entry.captured_at, "2026-06-26T10:00:00.000Z");
+  assert.equal(pair[0].exit.captured_at, "2026-06-26T13:00:00.000Z");
 
   const capped = selectEntryExitPairs(
     [
-      snap({ token_id: "a", phase_bucket: "T_1H", captured_at: "2026-06-26T10:00:00.000Z" }),
-      snap({ token_id: "a", phase_bucket: "T_5M", captured_at: "2026-06-26T10:55:00.000Z" }),
-      snap({ token_id: "b", phase_bucket: "T_1H", captured_at: "2026-06-26T10:00:00.000Z" }),
-      snap({ token_id: "b", phase_bucket: "T_5M", captured_at: "2026-06-26T10:55:00.000Z" }),
+      snap({ token_id: "a", captured_at: "2026-06-26T10:00:00.000Z" }),
+      snap({ token_id: "a", captured_at: "2026-06-26T10:55:00.000Z" }),
+      snap({ token_id: "b", captured_at: "2026-06-26T10:00:00.000Z" }),
+      snap({ token_id: "b", captured_at: "2026-06-26T10:55:00.000Z" }),
     ],
     1,
   );
   assert.equal(capped.length, 1);
+});
+
+// REGRESSION (production: 275 tokens with 2+ snapshot minutes still made 0 real
+// pairs because the old selector required pre-game ENTRY + in-play EXIT phase
+// buckets that the capture window rarely spanned). Pairing must be time-based.
+test("REGRESSION: same pre-game phase across snapshots still yields a real pair", () => {
+  const sel = selectSimulationCandidates([
+    // Both snapshots are T_12H_PLUS (game far out) -> old code: 0 pairs.
+    snap({ token_id: "deep", phase_bucket: "T_12H_PLUS", captured_at: "2026-06-28T09:21:30.000Z", id: "s1" }),
+    snap({ token_id: "deep", phase_bucket: "T_12H_PLUS", captured_at: "2026-06-29T05:00:56.000Z", id: "s2" }),
+  ]);
+  assert.equal(sel.entryExitPairs, 1);
+  assert.equal(sel.baselineSingletons, 0);
+  assert.equal(sel.insufficientSnapshotHistory, 0);
+  const real = sel.pairs.find((p) => !p.baseline)!;
+  assert.equal(real.entry.id, "s1");
+  assert.equal(real.exit.id, "s2");
+});
+
+test("three snapshots produce exactly one bounded pair (no Cartesian explosion)", () => {
+  const pairs = selectEntryExitPairs([
+    snap({ token_id: "t3", captured_at: "2026-06-28T10:00:00.000Z", id: "a" }),
+    snap({ token_id: "t3", captured_at: "2026-06-28T12:00:00.000Z", id: "b" }),
+    snap({ token_id: "t3", captured_at: "2026-06-28T14:00:00.000Z", id: "c" }),
+  ]);
+  assert.equal(pairs.length, 1);
+  assert.equal(pairs[0].entry.id, "a"); // earliest
+  assert.equal(pairs[0].exit.id, "c"); // latest
+});
+
+test("real pair persists distinct snapshot ids, ordered times, and a net return", () => {
+  const entry = snap({
+    token_id: "p",
+    captured_at: "2026-06-28T10:00:00.000Z",
+    id: "entry-id",
+    book_levels_json: { bids: [{ price: 0.49, size: 100 }], asks: [{ price: 0.5, size: 10000 }] },
+    best_ask: 0.5,
+  });
+  const exit = snap({
+    token_id: "p",
+    captured_at: "2026-06-28T14:00:00.000Z",
+    id: "exit-id",
+    book_levels_json: { bids: [{ price: 0.6, size: 10000 }], asks: [{ price: 0.62, size: 100 }] },
+    best_bid: 0.6,
+  });
+  const sim = buildEntryExitSimulation({ entry, exit }, "run-1", 10);
+  assert.equal(sim.entry_snapshot_id, "entry-id");
+  assert.equal(sim.exit_snapshot_id, "exit-id");
+  assert.notEqual(sim.entry_snapshot_id, sim.exit_snapshot_id);
+  assert.ok(Date.parse(sim.entry_captured_at) < Date.parse(sim.exit_captured_at));
+  assert.equal(typeof sim.net_return_pct, "number");
+  assert.equal(sim.exit_possible_boolean, true);
+});
+
+test("real pair with no exit liquidity is not executable", () => {
+  const entry = snap({ token_id: "p", captured_at: "2026-06-28T10:00:00.000Z", id: "e", best_ask: 0.5, book_levels_json: { bids: [], asks: [{ price: 0.5, size: 10000 }] } });
+  const exit = snap({ token_id: "p", captured_at: "2026-06-28T14:00:00.000Z", id: "x", best_bid: null, book_levels_json: { bids: [], asks: [{ price: 0.55, size: 10 }] } });
+  const sim = buildEntryExitSimulation({ entry, exit }, "run-1", 10);
+  assert.equal(sim.exit_possible_boolean, false);
+  assert.equal(sim.executable_5pct_boolean, false);
+  assert.equal(sim.exit_reason, "insufficient_exit_depth");
 });
 
 test("buildEntryExitSimulation marks executable when exit fills with profit", () => {
