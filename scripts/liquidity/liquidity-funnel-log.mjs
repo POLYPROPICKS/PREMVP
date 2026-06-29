@@ -21,6 +21,9 @@ const {
   renderLiquidityFunnelMarkdown,
   renderLiquidityFunnelJson,
 } = await import("../../lib/liquidity/funnelSummary.ts");
+const { summarizeFailureBuckets, renderFailureBucketsLine } = await import(
+  "../../lib/liquidity/failureBuckets.ts"
+);
 
 function envInt(name, def) {
   const raw = process.env[name];
@@ -92,6 +95,17 @@ export async function runFunnelLog() {
   const vd = summary.volumeDisposition;
   log(
     `LIQUIDITY_VOLUME_GATE_SUMMARY market_volume_checked=${vd.marketVolumeChecked} market_volume_pass=${vd.marketVolumePass} event_volume_only=${vd.eventVolumeOnly} volume_deferred=${vd.volumeDeferred} volume_missing=${vd.volumeMissing} volume_rejected=${vd.volumeRejected}`,
+  );
+  // Canonical failure-reason buckets so 404 dominance is visible at a glance and
+  // a DEGRADED snapshot verdict is explained (not hidden).
+  const failureReasonList = [];
+  for (const [reason, count] of Object.entries(summary.failureReasons)) {
+    for (let i = 0; i < (count ?? 0); i++) failureReasonList.push(reason);
+  }
+  const failureBucketSummary = summarizeFailureBuckets(failureReasonList);
+  log(renderFailureBucketsLine(failureBucketSummary.counts));
+  log(
+    `LIQUIDITY_SNAPSHOT_FAILURE_TOP total_failures=${failureBucketSummary.totalFailures} top_reason=${failureBucketSummary.topReason}`,
   );
 
   // Per-sport gate lines.

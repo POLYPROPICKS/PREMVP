@@ -41,8 +41,17 @@ interface QueryBuilder {
   upsert: (rows: unknown[], options?: { onConflict?: string }) => PostgrestResponse<unknown>;
   gte: (column: string, value: string) => QueryBuilder;
   lte: (column: string, value: string) => QueryBuilder;
+  in: (column: string, values: readonly string[]) => QueryBuilder;
   order: (column: string, options?: { ascending?: boolean }) => QueryBuilder;
   limit: (count: number) => PostgrestResponse<unknown>;
+}
+
+/** Minimal recent-snapshot projection used by repeated-404 suppression. */
+export interface RecentSnapshotProjection {
+  token_id: string;
+  captured_at: string;
+  snapshot_status: string;
+  failure_reason: string | null;
 }
 
 interface SupabaseLike {
@@ -223,6 +232,33 @@ export class SupabaseLiquidityRepo {
       return { status: "OK", data: rows.length };
     } catch (err) {
       return this.classify<number>(toErr(err), 0);
+    }
+  }
+
+  /**
+   * Batched read of recent snapshot status/failure history for a set of tokens,
+   * used by repeated-http_404 capture suppression. Selects only the columns the
+   * suppression rule needs (no book payloads). Empty token list => OK with [].
+   */
+  async getRecentSnapshotsByToken(
+    tokenIds: string[],
+    sinceIso: string,
+    limit = 20000,
+  ): Promise<RepoResult<RecentSnapshotProjection[]>> {
+    const client = await this.getClient();
+    if (!client) return this.envMissing<RecentSnapshotProjection[]>([]);
+    if (tokenIds.length === 0) return { status: "OK", data: [] };
+    try {
+      const { data, error } = await client
+        .from(SNAPSHOT_TABLE)
+        .select("token_id,captured_at,snapshot_status,failure_reason")
+        .in("token_id", tokenIds)
+        .gte("captured_at", sinceIso)
+        .limit(limit);
+      if (error) return this.classify<RecentSnapshotProjection[]>(error, []);
+      return { status: "OK", data: (data as RecentSnapshotProjection[]) ?? [] };
+    } catch (err) {
+      return this.classify<RecentSnapshotProjection[]>(toErr(err), []);
     }
   }
 
