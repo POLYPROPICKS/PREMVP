@@ -2,6 +2,8 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import styles from './PassOfferModal.module.css';
+import { trackClientEvent } from '@/lib/analytics/posthogClient';
+import { PPP_EVENTS } from '@/lib/analytics/events';
 import SignalWeekResultsCard from '../signal-week-results/SignalWeekResultsCard';
 import type { WeekResultsCard } from '../signal-week-results/types';
 
@@ -121,6 +123,7 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
       setIsSubmitting(false);
       setCheckoutLoading(false);
       setCheckoutError(null);
+      trackClientEvent(PPP_EVENTS.PAYWALL_VIEW);
     }
   }, [isOpen]);
 
@@ -245,7 +248,10 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
                     key={plan.id}
                     type="button"
                     className={`${styles.planCard} ${isSelected ? styles.selectedPlan : ''}`}
-                    onClick={() => setSelectedPlan(plan.id)}
+                    onClick={() => {
+                      setSelectedPlan(plan.id);
+                      trackClientEvent(PPP_EVENTS.PLAN_SELECTED, { plan: plan.id });
+                    }}
                     aria-pressed={isSelected}
                   >
                     <span className={styles.radio} aria-hidden="true">
@@ -269,7 +275,14 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
             </section>
 
             <section className={styles.actionArea}>
-              <button type="button" className={styles.primaryCta} onClick={() => setCurrentView('reserve')}>
+              <button
+                type="button"
+                className={styles.primaryCta}
+                onClick={() => {
+                  trackClientEvent(PPP_EVENTS.LEAD_CTA_CLICK, { plan: selectedPlan });
+                  setCurrentView('reserve');
+                }}
+              >
                 {primaryCta}
               </button>
             </section>

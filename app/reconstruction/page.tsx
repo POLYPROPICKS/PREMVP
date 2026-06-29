@@ -20,6 +20,8 @@ import SignalWeekResultsCard from '@/components/signal-week-results/SignalWeekRe
 import type { WeekResultsCard } from '@/components/signal-week-results/types';
 import PassOfferModal from '@/components/modals/PassOfferModal';
 import ResolvedSignalsCarousel from '@/components/resolved-signals/ResolvedSignalsCarousel';
+import { trackClientEvent } from '@/lib/analytics/posthogClient';
+import { PPP_EVENTS } from '@/lib/analytics/events';
 import TestimonialsSection from '@/components/testimonials/TestimonialsSection';
 import HowItWorksSection from '@/components/how-it-works/HowItWorksSection';
 import WhoWeAreSection from '@/components/who-we-are/WhoWeAreSection';
@@ -162,6 +164,11 @@ export default function ReconstructionPage() {
 
   const handleEvidenceIndexChange = useCallback((nextIndex: number) => {
     setActiveEvidenceIndex(nextIndex);
+  }, []);
+
+  useEffect(() => {
+    // Landing free-signal feed viewed (once per mount). Fail-open.
+    trackClientEvent(PPP_EVENTS.FREE_SIGNAL_VIEW);
   }, []);
 
   useEffect(() => {

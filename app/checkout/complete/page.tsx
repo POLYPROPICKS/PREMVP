@@ -2,6 +2,8 @@
 
 import { FormEvent, Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import { trackClientEvent } from '@/lib/analytics/posthogClient';
+import { PPP_EVENTS } from '@/lib/analytics/events';
 import styles from './CheckoutComplete.module.css';
 
 type EntitlementResult = {
@@ -97,6 +99,13 @@ function CheckoutCompleteInner() {
   }
 
   useEffect(() => {
+    // Returning from Whop checkout. This is NOT a payment confirmation, so we
+    // emit only the return event — never `purchase`/activation. Payment truth
+    // comes exclusively from the server-side Whop webhook.
+    trackClientEvent(PPP_EVENTS.CHECKOUT_RETURN, {
+      status: rawStatus || 'unknown',
+      cancelled: isCancelled,
+    });
     if (checkoutSessionId && !isCancelled) {
       checkBySessionId(checkoutSessionId);
     }
