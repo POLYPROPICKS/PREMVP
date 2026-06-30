@@ -201,13 +201,23 @@ interface PaywallChartPoint {
   label: string;
 }
 
+interface LedgerRow {
+  date: string;
+  eventTitle: string;
+  status: "Hit" | "Miss";
+  returnLabel: string;
+  returnPct: number;
+  resolvedAt: string;
+  metricFormulaVersion: string | null;
+}
+
 interface WeekResultsCard {
   cardType: "signal-week-results";
   schemaVersion: "week-results-v1";
-  window: { label: "Past 7 days"; days: 7; startedAt: string; endedAt: string };
+  window: { label: string; days: number; startedAt: string; endedAt: string };
   title: string;
   subtitle: string;
-  selectionRule: "last_7d_highest_activity_max_7_max_2_loss_no_push";
+  selectionRule: string;
   sampleSizeStatus: "empty" | "early" | "active" | "enough_data";
   showPerformanceClaim: boolean;
   totalStats: {
@@ -227,6 +237,10 @@ interface WeekResultsCard {
     maxDisplayed: 7;
     maxLosses: 2;
   };
+  ledgerPreview: LedgerRow[];
+  ledgerPreviewLabel: string;
+  ledgerAll: LedgerRow[];
+  ledgerAllLabel: string;
   frontendHints: {
     primaryMetric: string;
     compactFields: string[];
@@ -270,17 +284,18 @@ interface WeekResultsCard {
   };
 }
 
-function buildEmptyWeekResultsCard(totalRowsScanned = 0): WeekResultsCard {
+function buildEmptyWeekResultsCard(totalRowsScanned = 0, days = 7): WeekResultsCard {
   const now = new Date();
   const generatedAt = now.toISOString();
-  const startedAt = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const startedAt = new Date(now.getTime() - days * 24 * 60 * 60 * 1000).toISOString();
+  const windowLabel = `Past ${days} days`;
   return {
     cardType: "signal-week-results",
     schemaVersion: "week-results-v1",
-    window: { label: "Past 7 days", days: 7, startedAt, endedAt: generatedAt },
+    window: { label: windowLabel, days, startedAt, endedAt: generatedAt },
     title: "Signals tracked this week",
     subtitle: "Real tracking, not a performance guarantee",
-    selectionRule: "last_7d_highest_activity_max_7_max_2_loss_no_push",
+    selectionRule: `last_${days}d_highest_activity_max_7_max_2_loss_no_push`,
     sampleSizeStatus: "empty",
     showPerformanceClaim: false,
     totalStats: {
@@ -297,6 +312,10 @@ function buildEmptyWeekResultsCard(totalRowsScanned = 0): WeekResultsCard {
       displayedCount: 0, displayedWon: 0, displayedLost: 0, displayedPush: 0,
       winRatioLabel: "No results yet", maxDisplayed: 7, maxLosses: 2,
     },
+    ledgerPreview: [],
+    ledgerPreviewLabel: "Showing selected 0 of 0 resolved calls",
+    ledgerAll: [],
+    ledgerAllLabel: "Showing all 0 resolved calls",
     featuredResult: null,
     miniResults: [],
     paywallChart: {
@@ -305,7 +324,7 @@ function buildEmptyWeekResultsCard(totalRowsScanned = 0): WeekResultsCard {
       source: "displayed_subset",
       displayMode: "single_cumulative_line",
       yUnit: "return_pct",
-      windowLabel: "Past 7 days",
+      windowLabel,
       finalReturnPct: null,
       points: [],
     },
@@ -400,7 +419,7 @@ export async function GET(request: Request) {
           }),
         },
         signals: [],
-        weekResultsCard: buildEmptyWeekResultsCard(0),
+        weekResultsCard: buildEmptyWeekResultsCard(0, isLatestMode ? windowDays : 7),
       },
       { headers: { "Cache-Control": "no-store" } }
     );
@@ -508,14 +527,15 @@ export async function GET(request: Request) {
   }
 
   // ── WeekResultsCard computation ───────────────────────────────────────────
-  // Uses allSignals (full deduped set) with in-memory 7-day window filter.
-  // Completely independent of carousel signals subset above.
+  // Uses allSignals (full deduped set) with dynamic window filter.
+  const weekWindowDays = isLatestMode ? windowDays : 7;
+  const weekLabel = `Past ${weekWindowDays} days`;
   const weekNow = new Date();
-  const weekCutoff = new Date(weekNow.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const weekCutoff = new Date(weekNow.getTime() - weekWindowDays * 24 * 60 * 60 * 1000);
   const weekStartedAt = weekCutoff.toISOString();
   const weekEndedAt = weekNow.toISOString();
 
-  // All deduped resolved signals within 7-day window (includes push for totalStats)
+  // All deduped resolved signals within window (includes push for totalStats)
   const weekAll = allSignals.filter((s) => new Date(s.resolvedAt) >= weekCutoff);
 
   // totalStats — all resolved in window (push included)
@@ -612,13 +632,62 @@ export async function GET(request: Request) {
       ? paywallPoints[paywallPoints.length - 1].cumulativeReturnPct
       : null;
 
+  // ── Ledger computation ────────────────────────────────────────────────────
+  function toRow(s: ResolvedSignal): LedgerRow {
+    return {
+      date: s.resolvedAt.slice(0, 10),
+      eventTitle: s.eventTitle,
+      status: s.result === "won" ? "Hit" : "Miss",
+      returnLabel: returnLabel(s.result, s.returnPct),
+      returnPct: s.result === "won" ? (s.returnPct ?? 0) : -100,
+      resolvedAt: s.resolvedAt,
+      metricFormulaVersion: s.metricFormulaVersion,
+    };
+  }
+
+  const weekWonLost = weekAll
+    .filter((s) => s.result === "won" || s.result === "lost")
+    .sort((a, b) => new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime());
+
+  const ledgerAll: LedgerRow[] = weekWonLost.map(toRow);
+
+  // Build selected preview: target ratio of hits/misses, interleaved
+  const previewMaxRows = weekWindowDays >= 14 ? 14 : 10;
+  const targetHits = weekWindowDays >= 14 ? 8 : 6;
+  const targetMisses = weekWindowDays >= 14 ? 6 : 4;
+  const allHits = weekWonLost.filter((s) => s.result === "won");
+  const allMisses = weekWonLost.filter((s) => s.result === "lost");
+  let selectedHits = allHits.slice(0, targetHits);
+  let selectedMisses = allMisses.slice(0, targetMisses);
+  // Backfill if not enough of one type
+  const remaining = previewMaxRows - selectedHits.length - selectedMisses.length;
+  if (remaining > 0) {
+    if (selectedHits.length < targetHits) {
+      selectedMisses = allMisses.slice(0, Math.min(allMisses.length, selectedMisses.length + remaining));
+    } else {
+      selectedHits = allHits.slice(0, Math.min(allHits.length, selectedHits.length + remaining));
+    }
+  }
+  // Interleave hit, miss, hit, miss...
+  const interleavedPreview: LedgerRow[] = [];
+  const maxIdxPrev = Math.max(selectedHits.length, selectedMisses.length);
+  for (let i = 0; i < maxIdxPrev && interleavedPreview.length < previewMaxRows; i++) {
+    if (i < selectedHits.length) interleavedPreview.push(toRow(selectedHits[i]));
+    if (interleavedPreview.length < previewMaxRows && i < selectedMisses.length) {
+      interleavedPreview.push(toRow(selectedMisses[i]));
+    }
+  }
+  const ledgerPreview: LedgerRow[] = interleavedPreview;
+  const ledgerPreviewLabel = `Showing selected ${ledgerPreview.length} of ${ledgerAll.length} resolved calls`;
+  const ledgerAllLabel = `Showing all ${ledgerAll.length} resolved calls`;
+
   const weekResultsCard: WeekResultsCard = {
     cardType: "signal-week-results",
     schemaVersion: "week-results-v1",
-    window: { label: "Past 7 days", days: 7, startedAt: weekStartedAt, endedAt: weekEndedAt },
+    window: { label: weekLabel, days: weekWindowDays, startedAt: weekStartedAt, endedAt: weekEndedAt },
     title: "Signals tracked this week",
     subtitle: "Real tracking, not a performance guarantee",
-    selectionRule: "last_7d_highest_activity_max_7_max_2_loss_no_push",
+    selectionRule: `last_${weekWindowDays}d_highest_activity_max_7_max_2_loss_no_push`,
     sampleSizeStatus,
     showPerformanceClaim: false,
     totalStats: {
@@ -638,6 +707,10 @@ export async function GET(request: Request) {
       maxDisplayed: 7,
       maxLosses: 2,
     },
+    ledgerPreview,
+    ledgerPreviewLabel,
+    ledgerAll,
+    ledgerAllLabel,
     featuredResult: featured
       ? {
           id: featured.id,
@@ -660,7 +733,7 @@ export async function GET(request: Request) {
       source: "displayed_subset",
       displayMode: "single_cumulative_line",
       yUnit: "return_pct",
-      windowLabel: "Past 7 days",
+      windowLabel: weekLabel,
       finalReturnPct: paywallFinalReturn,
       points: paywallPoints,
     },
