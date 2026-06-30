@@ -259,8 +259,8 @@
 }
 .ledgerRow {
   display: grid;
-  grid-template-columns: 42px minmax(0, 1fr) 50px 58px 46px;
-  gap: 6px;
+  grid-template-columns: 46px minmax(0, 1fr) 58px 54px;
+  gap: 8px;
   align-items: center;
   padding: 9px 0;
   border-bottom: 1px solid rgba(40,70,100,0.22);
@@ -325,6 +325,36 @@
 .retPos { color: var(--g); }
 .retNeg { color: var(--r); }
 .retMuted { color: rgba(160,185,210,0.6); }
+
+/* ── Ledger loading / empty states (real-data-only, no fake fallback rows) ── */
+.ledgerLoadingRow { pointer-events: none; }
+.skBar {
+  height: 11px;
+  border-radius: 5px;
+  background: linear-gradient(90deg, rgba(60,90,120,0.18), rgba(90,130,165,0.30), rgba(60,90,120,0.18));
+  background-size: 200% 100%;
+  animation: wtSkeleton 1.3s ease-in-out infinite;
+}
+@keyframes wtSkeleton {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.ledgerEmpty {
+  padding: 18px 0;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--mut);
+}
+
+/* ── Chart empty / loading placeholder ── */
+.chartEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 120px;
+  font-size: 12.5px;
+  color: var(--mut);
+}
 
 /* ── Methodology panel (static, expanded) ── */
 .methodCard {
@@ -391,8 +421,8 @@
 /* ── Narrow-width hardening (≤360px) ── */
 @media (max-width: 360px) {
   .ledgerRow {
-    grid-template-columns: 38px minmax(0, 1fr) 44px 52px 42px;
-    gap: 4px;
+    grid-template-columns: 40px minmax(0, 1fr) 52px 48px;
+    gap: 5px;
     font-size: 11px;
   }
   .statusPill { padding: 3px 6px; font-size: 9.5px; }

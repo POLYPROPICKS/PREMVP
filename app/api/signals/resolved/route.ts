@@ -97,6 +97,13 @@ function returnLabel(result: string, returnPct: number | null): string {
   return "—";
 }
 
+/** Short calendar label (UTC) for a resolved timestamp, e.g. "Jun 24". */
+function formatLedgerDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
 /** Extract best market activity proxy from diagnostics/premium_signal.
  *  Priority: totalVolume > volume > recentTradeCash > maxTradeCash >
  *            selectedTradeCount > totalTradeCount > snapshotRows */
@@ -257,6 +264,16 @@ interface WeekResultsCard {
     finalReturnPct: number | null;
     points: PaywallChartPoint[];
   };
+  // Real resolved-row ledger preview (won/lost only) for the selected window.
+  ledgerPreview: Array<{
+    date: string;
+    eventTitle: string;
+    status: "Hit" | "Miss";
+    returnLabel: string;
+    resolvedAt: string;
+    metricFormulaVersion: string | null;
+  }>;
+  ledgerPreviewLabel: string;
   diagnostics: {
     source: "generated_signal_pairs";
     dedupeKey: "condition_id:selected_outcome";
@@ -299,6 +316,8 @@ function buildEmptyWeekResultsCard(totalRowsScanned = 0): WeekResultsCard {
     },
     featuredResult: null,
     miniResults: [],
+    ledgerPreview: [],
+    ledgerPreviewLabel: "Showing latest 0 of 0 resolved calls",
     paywallChart: {
       chartType: "cumulative-return",
       title: "Cumulative P&L",
@@ -511,7 +530,10 @@ export async function GET(request: Request) {
   // Uses allSignals (full deduped set) with in-memory 7-day window filter.
   // Completely independent of carousel signals subset above.
   const weekNow = new Date();
-  const weekCutoff = new Date(weekNow.getTime() - 7 * 24 * 60 * 60 * 1000);
+  // Latest mode drives the proof window from the requested `days` (7D / 14D tabs);
+  // all other callers keep the original fixed 7-day window.
+  const weekWindowDays = isLatestMode ? windowDays : 7;
+  const weekCutoff = new Date(weekNow.getTime() - weekWindowDays * 24 * 60 * 60 * 1000);
   const weekStartedAt = weekCutoff.toISOString();
   const weekEndedAt = weekNow.toISOString();
 
@@ -537,6 +559,38 @@ export async function GET(request: Request) {
     totalWon + totalLost > 0
       ? Math.round((totalWon / (totalWon + totalLost)) * 100)
       : null;
+
+  // ── ledgerPreview: real resolved rows (won/lost), recent-first, ~5-6 Hit per 10 ──
+  const PREVIEW_MAX = 10;
+  const PREVIEW_TARGET_WON = 6;
+  const ledgerEligible = weekAll
+    .filter((s) => s.result === "won" || s.result === "lost")
+    .sort((a, b) => new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime());
+
+  const previewSelected = [
+    ...ledgerEligible.filter((s) => s.result === "won").slice(0, PREVIEW_TARGET_WON),
+    ...ledgerEligible.filter((s) => s.result === "lost").slice(0, PREVIEW_MAX - PREVIEW_TARGET_WON),
+  ];
+  // Backfill with remaining recent rows if the target ratio cannot be met from real data.
+  if (previewSelected.length < PREVIEW_MAX) {
+    const chosen = new Set(previewSelected.map((s) => s.id));
+    for (const s of ledgerEligible) {
+      if (previewSelected.length >= PREVIEW_MAX) break;
+      if (!chosen.has(s.id)) { previewSelected.push(s); chosen.add(s.id); }
+    }
+  }
+  const ledgerPreview = previewSelected
+    .sort((a, b) => new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime())
+    .slice(0, PREVIEW_MAX)
+    .map((s) => ({
+      date: formatLedgerDate(s.resolvedAt),
+      eventTitle: s.eventTitle,
+      status: (s.result === "won" ? "Hit" : "Miss") as "Hit" | "Miss",
+      returnLabel: returnLabel(s.result, s.returnPct),
+      resolvedAt: s.resolvedAt,
+      metricFormulaVersion: s.metricFormulaVersion,
+    }));
+  const ledgerPreviewLabel = `Showing latest ${ledgerPreview.length} of ${totalResolved} resolved calls`;
 
   // displayedSubset: exclude push, sort activity desc → resolvedAt desc, max 7, max 1 loss
   const weekEligible = weekAll.filter((s) => !PUSH_RESULTS.has(s.result));
@@ -654,6 +708,8 @@ export async function GET(request: Request) {
         }
       : null,
     miniResults: weekMiniResults,
+    ledgerPreview,
+    ledgerPreviewLabel,
     paywallChart: {
       chartType: "cumulative-return",
       title: "Cumulative P&L",

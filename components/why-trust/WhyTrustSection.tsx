@@ -1,144 +1,100 @@
 'use client';
 
 // components/why-trust/WhyTrustSection.tsx
-// Verified Track Record — client component · 7D/14D toggle · curated sample data
-// Mobile-first marketing/sample section. Inline SVG only, no fetch, no backend.
+// Verified Track Record — client component · 7D/14D toggle · REAL resolved-signal data.
+// Fetches /api/signals/resolved (mode=latest) for both windows; no curated/fake rows.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import styles from './WhyTrustSection.module.css';
 
 // ── Types ───────────────────────────────────────────────────────────────────────
 
 type TrackWindow = '7D' | '14D';
-
-type LedgerStatus = 'Hit' | 'Miss' | 'Pending' | 'No Bet';
-type LedgerAction = 'WATCH' | 'ENTER' | 'SKIP';
-
-type LedgerRow = {
-  date: string;
-  match: string;
-  action: LedgerAction;
-  status: LedgerStatus;
-  ret: string;
-};
+type LedgerStatus = 'Hit' | 'Miss';
 
 type ChartPoint = { day: string; value: number };
 
-type Dataset = {
-  chart: ChartPoint[];
-  ledger: LedgerRow[];
+// Subset of /api/signals/resolved → weekResultsCard that this section consumes.
+type ApiLedgerRow = {
+  date: string;
+  eventTitle: string;
+  status: LedgerStatus;
+  returnLabel: string;
+  resolvedAt: string;
+  metricFormulaVersion: string | null;
 };
 
-// ── Curated sample datasets (static, per tracking window) ────────────────────────
-
-const DATA_7D: Dataset = {
-  chart: [
-    { day: 'Day 1', value: 0 },
-    { day: 'Day 2', value: -2.1 },
-    { day: 'Day 3', value: 1.8 },
-    { day: 'Day 4', value: 4.5 },
-    { day: 'Day 5', value: 9.2 },
-    { day: 'Day 6', value: 13.7 },
-    { day: 'Day 7', value: 18.4 },
-  ],
-  ledger: [
-    { date: 'Jun 24', match: 'Brazil vs England',        action: 'ENTER', status: 'Hit',     ret: '+$72'  },
-    { date: 'Jun 24', match: 'Lakers vs Celtics',        action: 'ENTER', status: 'Hit',     ret: '+$61'  },
-    { date: 'Jun 23', match: 'PSG vs Bayern',            action: 'ENTER', status: 'Miss',    ret: '-$100' },
-    { date: 'Jun 23', match: 'Yankees vs Astros',        action: 'SKIP',  status: 'No Bet',  ret: '—'     },
-    { date: 'Jun 22', match: 'Real Madrid vs Barcelona', action: 'WATCH', status: 'Pending', ret: '—'     },
-    { date: 'Jun 22', match: 'Maple Leafs vs Rangers',   action: 'ENTER', status: 'Hit',     ret: '+$83'  },
-    { date: 'Jun 21', match: 'Chiefs vs Bills',          action: 'ENTER', status: 'Miss',    ret: '-$100' },
-    { date: 'Jun 21', match: 'Inter vs Juventus',        action: 'WATCH', status: 'Pending', ret: '—'     },
-  ],
+type ApiCard = {
+  totalStats: {
+    resolvedCount: number;
+    wonCount: number;
+    lostCount: number;
+    totalReturnPct: number | null;
+  };
+  paywallChart: {
+    points: Array<{ index: number; cumulativeReturnPct: number }>;
+    finalReturnPct: number | null;
+  };
+  ledgerPreview: ApiLedgerRow[];
+  ledgerPreviewLabel: string;
 };
 
-const DATA_14D: Dataset = {
-  chart: [
-    { day: 'D1',  value: 0 },
-    { day: 'D3',  value: -3.2 },
-    { day: 'D5',  value: -1.1 },
-    { day: 'D7',  value: 3.4 },
-    { day: 'D9',  value: 7.8 },
-    { day: 'D11', value: 12.1 },
-    { day: 'D13', value: 18.9 },
-    { day: 'D14', value: 24.6 },
-  ],
-  ledger: [
-    { date: 'Jun 24', match: 'Brazil vs England',        action: 'ENTER', status: 'Hit',     ret: '+$72'  },
-    { date: 'Jun 24', match: 'Lakers vs Celtics',        action: 'ENTER', status: 'Hit',     ret: '+$61'  },
-    { date: 'Jun 23', match: 'PSG vs Bayern',            action: 'ENTER', status: 'Miss',    ret: '-$100' },
-    { date: 'Jun 23', match: 'Yankees vs Astros',        action: 'SKIP',  status: 'No Bet',  ret: '—'     },
-    { date: 'Jun 22', match: 'Real Madrid vs Barcelona', action: 'ENTER', status: 'Hit',     ret: '+$74'  },
-    { date: 'Jun 22', match: 'Maple Leafs vs Rangers',   action: 'ENTER', status: 'Miss',    ret: '-$100' },
-    { date: 'Jun 21', match: 'Chiefs vs Bills',          action: 'ENTER', status: 'Hit',     ret: '+$83'  },
-    { date: 'Jun 21', match: 'Inter vs Juventus',        action: 'ENTER', status: 'Miss',    ret: '-$100' },
-    { date: 'Jun 20', match: 'Arsenal vs Chelsea',       action: 'ENTER', status: 'Hit',     ret: '+$67'  },
-    { date: 'Jun 19', match: 'Dodgers vs Mets',          action: 'ENTER', status: 'Hit',     ret: '+$79'  },
-    { date: 'Jun 18', match: 'Oilers vs Stars',          action: 'ENTER', status: 'Miss',    ret: '-$100' },
-    { date: 'Jun 17', match: 'France vs Germany',        action: 'WATCH', status: 'Pending', ret: '—'     },
-  ],
-};
+type WindowState = { loading: boolean; error: boolean; data: ApiCard | null };
 
-const DATASETS: Record<TrackWindow, Dataset> = {
-  '7D': DATA_7D,
-  '14D': DATA_14D,
-};
+const WINDOW_DAYS: Record<TrackWindow, number> = { '7D': 7, '14D': 14 };
 
 const METHODOLOGY_RULES: string[] = [
   'Predictions are locked before the event settles.',
-  'Pending calls are not counted as wins.',
+  'Wins and losses are tracked across the selected window.',
   'Performance is normalized using a flat $100 stake model.',
   'Losses remain visible in the selected window.',
   'Market context uses price movement, flow proxies, and risk filters.',
   'Past performance does not guarantee future results.',
 ];
 
-// ── Derivations (metrics computed from the selected dataset) ─────────────────────
+// ── Derivations ───────────────────────────────────────────────────────────────
 
 function formatPct(value: number): string {
-  const sign = value > 0 ? '+' : value < 0 ? '' : '';
+  const sign = value > 0 ? '+' : '';
   return `${sign}${value.toFixed(1)}%`;
 }
 
-function chartEndValue(ds: Dataset): number {
-  return ds.chart[ds.chart.length - 1].value;
+type Metric = { label: string; value: string; sub?: string; accent?: boolean };
+
+const PLACEHOLDER_METRICS: Metric[] = [
+  { label: 'Net Return', value: '—', sub: 'Flat $100 stake model', accent: true },
+  { label: 'Signals Tracked', value: '—' },
+  { label: 'Wins', value: '—' },
+  { label: 'Losses', value: '—' },
+];
+
+function deriveMetrics(card: ApiCard): Metric[] {
+  const ts = card.totalStats;
+  return [
+    {
+      label: 'Net Return',
+      value: ts.totalReturnPct == null ? '—' : formatPct(ts.totalReturnPct),
+      sub: 'Flat $100 stake model',
+      accent: true,
+    },
+    { label: 'Signals Tracked', value: String(ts.resolvedCount) },
+    { label: 'Wins', value: String(ts.wonCount) },
+    { label: 'Losses', value: String(ts.lostCount) },
+  ];
 }
 
-function deriveMetrics(ds: Dataset): Array<{ label: string; value: string; sub?: string; accent?: boolean }> {
-  const signalsTracked = ds.ledger.length;
-  const resolved = ds.ledger.filter((r) => r.status === 'Hit' || r.status === 'Miss').length;
-  const pending = ds.ledger.filter((r) => r.status === 'Pending').length;
+function toChartPoints(card: ApiCard): ChartPoint[] {
+  const pts = card.paywallChart?.points ?? [];
+  if (pts.length === 0) return [];
   return [
-    { label: 'Net Return', value: formatPct(chartEndValue(ds)), sub: 'Flat $100 stake model', accent: true },
-    { label: 'Signals Tracked', value: String(signalsTracked) },
-    { label: 'Resolved', value: String(resolved) },
-    { label: 'Pending', value: String(pending) },
+    { day: 'Start', value: 0 },
+    ...pts.map((p) => ({ day: `#${p.index}`, value: p.cumulativeReturnPct })),
   ];
 }
 
 // ── Chart geometry ────────────────────────────────────────────────────────────────
 
-const CHART = {
-  vbW: 320,
-  vbH: 184,
-  left: 44,
-  right: 306,
-  top: 18,
-  bottom: 150,
-  vMax: 30,
-  vMin: -15,
-};
-
-function chartX(index: number, count: number): number {
-  const { left, right } = CHART;
-  return left + (index / (count - 1)) * (right - left);
-}
-
-function chartY(value: number): number {
-  const { top, bottom, vMax, vMin } = CHART;
-  return top + ((vMax - value) / (vMax - vMin)) * (bottom - top);
-}
+const CHART = { vbW: 320, vbH: 184, left: 44, right: 306, top: 18, bottom: 150 };
 
 // ── Sub-components ───────────────────────────────────────────────────────────────
 
@@ -174,13 +130,23 @@ function ClockIcon({ className }: { className?: string }) {
 
 function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
   const count = points.length;
-  const linePoints = points.map((p, i) => `${chartX(i, count)},${chartY(p.value)}`).join(' ');
-  const areaPoints = `${chartX(0, count)},${CHART.bottom} ${linePoints} ${chartX(count - 1, count)},${CHART.bottom}`;
-  const yLabels = [30, 15, 0, -15];
-  const endIndex = count - 1;
-  const endX = chartX(endIndex, count);
-  const endY = chartY(points[endIndex].value);
-  const endLabel = formatPct(points[endIndex].value);
+  const { left, right, top, bottom } = CHART;
+
+  // Dynamic vertical domain so real returns never overflow the canvas.
+  const vals = points.map((p) => p.value);
+  const vMax = Math.max(Math.max(0, ...vals) + 4, 4);
+  const vMin = Math.min(Math.min(0, ...vals) - 4, -4);
+
+  const x = (i: number) => left + (i / (count - 1)) * (right - left);
+  const y = (v: number) => top + ((vMax - v) / (vMax - vMin)) * (bottom - top);
+
+  const linePoints = points.map((p, i) => `${x(i)},${y(p.value)}`).join(' ');
+  const areaPoints = `${x(0)},${bottom} ${linePoints} ${x(count - 1)},${bottom}`;
+  const yLabels = [0, 1, 2, 3].map((k) => Math.round(vMax - (k / 3) * (vMax - vMin)));
+  const endIdx = count - 1;
+  const endX = x(endIdx);
+  const endY = y(points[endIdx].value);
+  const endLabel = formatPct(points[endIdx].value);
 
   return (
     <svg viewBox={`0 0 ${CHART.vbW} ${CHART.vbH}`} className={styles.chartSvg} role="img" aria-label="Cumulative return chart">
@@ -193,19 +159,19 @@ function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
 
       {/* dashed horizontal grid + y labels */}
       {yLabels.map((v) => {
-        const y = chartY(v);
+        const gy = y(v);
         return (
           <g key={v}>
             <line
-              x1={CHART.left}
-              y1={y}
-              x2={CHART.right}
-              y2={y}
+              x1={left}
+              y1={gy}
+              x2={right}
+              y2={gy}
               stroke="rgba(150,200,225,0.14)"
               strokeWidth="1"
               strokeDasharray="3,4"
             />
-            <text x={CHART.left - 8} y={y + 3.5} fontSize="10" fill="rgba(160,200,225,0.62)" textAnchor="end">
+            <text x={left - 8} y={gy + 3.5} fontSize="10" fill="rgba(160,200,225,0.62)" textAnchor="end">
               {v}%
             </text>
           </g>
@@ -225,14 +191,7 @@ function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
 
       {/* points */}
       {points.map((p, i) => (
-        <circle key={p.day} cx={chartX(i, count)} cy={chartY(p.value)} r="3.2" fill="#0a1320" stroke="#5eeab4" strokeWidth="2" />
-      ))}
-
-      {/* x labels */}
-      {points.map((p, i) => (
-        <text key={`x-${p.day}`} x={chartX(i, count)} y={CHART.bottom + 22} fontSize="10" fill="rgba(160,200,225,0.62)" textAnchor="middle">
-          {p.day}
-        </text>
+        <circle key={p.day} cx={x(i)} cy={y(p.value)} r="3.2" fill="#0a1320" stroke="#5eeab4" strokeWidth="2" />
       ))}
 
       {/* endpoint pill */}
@@ -247,10 +206,7 @@ function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
 }
 
 function statusClass(status: LedgerStatus): string {
-  if (status === 'Hit') return styles.stHit;
-  if (status === 'Miss') return styles.stMiss;
-  if (status === 'No Bet') return styles.stNoBet;
-  return styles.stPending;
+  return status === 'Hit' ? styles.stHit : styles.stMiss;
 }
 
 function returnClass(ret: string): string {
@@ -267,8 +223,37 @@ function MethodologyNum({ n }: { n: number }) {
 
 export default function WhyTrustSection() {
   const [active, setActive] = useState<TrackWindow>('7D');
-  const dataset = DATASETS[active];
-  const metrics = deriveMetrics(dataset);
+  const [store, setStore] = useState<Record<TrackWindow, WindowState>>({
+    '7D': { loading: true, error: false, data: null },
+    '14D': { loading: true, error: false, data: null },
+  });
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async (w: TrackWindow) => {
+      try {
+        const res = await fetch(
+          `/api/signals/resolved?mode=latest&days=${WINDOW_DAYS[w]}&limit=25`,
+          { cache: 'no-store' }
+        );
+        const json = await res.json();
+        const card = json?.weekResultsCard as ApiCard | undefined;
+        if (!res.ok || !json?.ok || !card) throw new Error('bad response');
+        if (!cancelled) setStore((p) => ({ ...p, [w]: { loading: false, error: false, data: card } }));
+      } catch {
+        if (!cancelled) setStore((p) => ({ ...p, [w]: { loading: false, error: true, data: null } }));
+      }
+    };
+    load('7D');
+    load('14D');
+    return () => { cancelled = true; };
+  }, []);
+
+  const cur = store[active];
+  const card = cur.data;
+  const metrics = card ? deriveMetrics(card) : PLACEHOLDER_METRICS;
+  const chartPoints = card ? toChartPoints(card) : [];
+  const ledger = card?.ledgerPreview ?? [];
 
   return (
     <section className={styles.section} aria-label="Verified track record">
@@ -281,7 +266,7 @@ export default function WhyTrustSection() {
             Every single prediction is locked and timestamped before the market settles.
           </p>
           <p className={styles.leadAccent}>
-            Wins, losses, and pending calls stay visible across the selected tracking window.
+            Wins and losses stay visible across the selected tracking window.
           </p>
           <div className={styles.introDivider} />
           <div className={styles.introFooter}>
@@ -318,12 +303,6 @@ export default function WhyTrustSection() {
           ))}
         </div>
 
-        {/* Updated row */}
-        <div className={styles.updatedRow}>
-          <ClockIcon className={styles.updatedIcon} />
-          <span>Updated 12 minutes ago</span>
-        </div>
-
         {/* Cumulative Return chart card */}
         <div className={styles.chartCard}>
           <div className={styles.chartTitle}>Cumulative Return</div>
@@ -331,7 +310,13 @@ export default function WhyTrustSection() {
             <span className={styles.chartSubDot} aria-hidden="true" />
             Flat $100 per resolved signal
           </div>
-          <CumulativeReturnChart points={dataset.chart} />
+          {chartPoints.length >= 2 ? (
+            <CumulativeReturnChart points={chartPoints} />
+          ) : (
+            <div className={styles.chartEmpty}>
+              {cur.loading ? 'Loading tracking data…' : cur.error ? 'Tracking data unavailable' : 'Tracking in progress'}
+            </div>
+          )}
           <div className={styles.chartDisclaimer}>Performance does not guarantee future results.</div>
         </div>
 
@@ -339,28 +324,42 @@ export default function WhyTrustSection() {
         <div className={styles.ledgerCard}>
           <div className={styles.ledgerHead}>
             <div className={styles.ledgerTitle}>Recent Signal Ledger</div>
-            <span className={styles.ledgerViewAll}>View all</span>
+            {card && <span className={styles.ledgerViewAll}>{card.ledgerPreviewLabel}</span>}
           </div>
 
           <div className={styles.ledgerTable} role="table">
             <div className={`${styles.ledgerRow} ${styles.ledgerColHead}`} role="row">
               <span className={styles.colDate}>Date</span>
               <span className={styles.colMatch}>Match</span>
-              <span className={styles.colAction}>Action</span>
               <span className={styles.colStatus}>Status</span>
               <span className={styles.colReturn}>Return</span>
             </div>
-            {dataset.ledger.map((row) => (
-              <div key={`${row.date}-${row.match}`} className={styles.ledgerRow} role="row">
-                <span className={styles.colDate}>{row.date}</span>
-                <span className={styles.colMatch} title={row.match}>{row.match}</span>
-                <span className={`${styles.colAction} ${row.action === 'ENTER' ? styles.actEnter : styles.actMuted}`}>{row.action}</span>
-                <span className={styles.colStatus}>
-                  <span className={`${styles.statusPill} ${statusClass(row.status)}`}>{row.status}</span>
-                </span>
-                <span className={`${styles.colReturn} ${returnClass(row.ret)}`}>{row.ret}</span>
+
+            {cur.loading ? (
+              [0, 1, 2, 3].map((i) => (
+                <div key={`sk-${i}`} className={`${styles.ledgerRow} ${styles.ledgerLoadingRow}`} role="row" aria-hidden="true">
+                  <span className={styles.skBar} />
+                  <span className={styles.skBar} />
+                  <span className={styles.skBar} />
+                  <span className={styles.skBar} />
+                </div>
+              ))
+            ) : ledger.length === 0 ? (
+              <div className={styles.ledgerEmpty} role="row">
+                {cur.error ? 'Tracking data unavailable' : 'Tracking in progress'}
               </div>
-            ))}
+            ) : (
+              ledger.map((row) => (
+                <div key={`${row.resolvedAt}-${row.eventTitle}`} className={styles.ledgerRow} role="row">
+                  <span className={styles.colDate}>{row.date}</span>
+                  <span className={styles.colMatch} title={row.eventTitle}>{row.eventTitle}</span>
+                  <span className={styles.colStatus}>
+                    <span className={`${styles.statusPill} ${statusClass(row.status)}`}>{row.status}</span>
+                  </span>
+                  <span className={`${styles.colReturn} ${returnClass(row.returnLabel)}`}>{row.returnLabel}</span>
+                </div>
+              ))
+            )}
           </div>
         </div>
 
@@ -399,8 +398,8 @@ export default function WhyTrustSection() {
             <div className={styles.methodMetaCell}>
               <ClockIcon className={styles.methodMetaIcon} />
               <div>
-                <div className={styles.methodMetaLabel}>Last sync</div>
-                <div className={styles.methodMetaValue}>12 minutes ago</div>
+                <div className={styles.methodMetaLabel}>Tracking window</div>
+                <div className={styles.methodMetaValue}>{active === '7D' ? 'Past 7 days' : 'Past 14 days'}</div>
               </div>
             </div>
           </div>
