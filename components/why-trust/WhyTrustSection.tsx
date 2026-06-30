@@ -119,15 +119,6 @@ function ShieldBadge() {
   );
 }
 
-function ClockIcon({ className }: { className?: string }) {
-  return (
-    <svg viewBox="0 0 24 24" className={className} aria-hidden="true">
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" fill="none" />
-      <path d="M12 7v5l3.2 2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" fill="none" />
-    </svg>
-  );
-}
-
 function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
   const count = points.length;
   const { left, right, top, bottom } = CHART;
@@ -382,26 +373,6 @@ export default function WhyTrustSection() {
                 <span className={styles.methodText}>{rule}</span>
               </div>
             ))}
-          </div>
-
-          <div className={styles.methodMetaDivider} />
-          <div className={styles.methodMeta}>
-            <div className={styles.methodMetaCell}>
-              <svg viewBox="0 0 24 24" className={styles.methodMetaIcon} aria-hidden="true">
-                <path d="M5 19V10M10 19V5M15 19v-6M20 19V8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" fill="none" />
-              </svg>
-              <div>
-                <div className={styles.methodMetaLabel}>Formula version</div>
-                <div className={styles.methodMetaValue}>trusted signal score v1.1</div>
-              </div>
-            </div>
-            <div className={styles.methodMetaCell}>
-              <ClockIcon className={styles.methodMetaIcon} />
-              <div>
-                <div className={styles.methodMetaLabel}>Tracking window</div>
-                <div className={styles.methodMetaValue}>{active === '7D' ? 'Past 7 days' : 'Past 14 days'}</div>
-              </div>
-            </div>
           </div>
         </div>
       </div>

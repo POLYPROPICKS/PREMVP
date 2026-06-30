@@ -97,11 +97,17 @@ function returnLabel(result: string, returnPct: number | null): string {
   return "—";
 }
 
-/** Short calendar label (UTC) for a resolved timestamp, e.g. "Jun 24". */
+/** Short calendar label (UTC) for a resolved timestamp, e.g. "Jun 24".
+ *  Manual UTC formatting — avoids any ICU/locale runtime dependency that can
+ *  throw under minimal-ICU Node runtimes. */
+const LEDGER_MONTHS = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 function formatLedgerDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+  return `${LEDGER_MONTHS[d.getUTCMonth()]} ${d.getUTCDate()}`;
 }
 
 /** Extract best market activity proxy from diagnostics/premium_signal.
@@ -358,6 +364,32 @@ export async function GET(request: Request) {
     ? Math.min(Math.max(rawLimit, MIN_LIMIT), isLatestMode ? LATEST_MAX_CARDS : MAX_LIMIT)
     : DEFAULT_LIMIT;
 
+  // Top-level error boundary: convert any unexpected throw into a handled,
+  // diagnosable 500 instead of an opaque crash. Logs SAFE context only
+  // (days, limit, message) — never env values, secrets, tokens or PII.
+  try {
+    return await buildResolved(isLatestMode, windowDays, limit);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[signals/resolved] Unhandled route error", {
+      days: windowDays,
+      limit,
+      message,
+    });
+    return NextResponse.json(
+      { ok: false, error: "RESOLVED_ROUTE_ERROR", detail: message },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+}
+
+// Core handler. All resolved-signal computation lives here; GET wraps it in the
+// try/catch error boundary above so unexpected failures stay diagnosable.
+async function buildResolved(
+  isLatestMode: boolean,
+  windowDays: number,
+  limit: number
+): Promise<NextResponse> {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !supabaseServiceKey) {
