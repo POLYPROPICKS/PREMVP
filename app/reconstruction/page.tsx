@@ -25,6 +25,7 @@ import { PPP_EVENTS } from '@/lib/analytics/events';
 import TestimonialsSection from '@/components/testimonials/TestimonialsSection';
 import HowItWorksSection from '@/components/how-it-works/HowItWorksSection';
 import WhoWeAreSection from '@/components/who-we-are/WhoWeAreSection';
+import WhyTrustSection from '@/components/why-trust/WhyTrustSection';
 import FooterSection from '@/components/footer/FooterSection';
 import ReferralNudgeSheet from '@/components/referral/ReferralNudgeSheet';
 import CanonicalSignalCard from '@/components/signal-card/CanonicalSignalCard';
@@ -468,9 +469,7 @@ export default function ReconstructionPage() {
 
       <HowItWorksSection onCtaClick={handleLockedFeedAttempt} />
 
-      <section style={{ maxWidth: 420, margin: '0 auto', padding: '24px 16px' }}>
-        <SignalWeekResultsCard data={weekCard} loading={weekCardLoading} />
-      </section>
+      <WhyTrustSection />
 
       <WhoWeAreSection />
 
