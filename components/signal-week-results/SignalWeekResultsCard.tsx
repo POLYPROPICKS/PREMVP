@@ -106,7 +106,10 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
     );
   }
 
-  const rows = data.trackRecordDisplayTable.rows;
+  const table = data.trackRecordDisplayTable as unknown;
+  const rows: TrackRecordRow[] = Array.isArray(table)
+    ? table
+    : ((table as { rows?: TrackRecordRow[] } | null | undefined)?.rows ?? []);
   const isPositive = data.projectedRoiPct >= 0;
   const retLabel = `${isPositive ? '+' : ''}${data.projectedRoiPct}%`;
 
@@ -336,7 +339,11 @@ function TopCarouselCard({ data, loading }: { data: WeekResultsCard | null; load
 
   const isPos = data.projectedRoiPct >= 0;
   const retLabel = `${isPos ? '+' : ''}${data.projectedRoiPct}%`;
-  const displayRows = data.trackRecordDisplayTable.rows.slice(0, 7);
+  const table = data.trackRecordDisplayTable as unknown;
+  const tableRows: TrackRecordRow[] = Array.isArray(table)
+    ? table
+    : ((table as { rows?: TrackRecordRow[] } | null | undefined)?.rows ?? []);
+  const displayRows = tableRows.slice(0, 7);
 
   return (
     <div className={styles.cardTopCarousel}>

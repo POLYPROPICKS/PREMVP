@@ -10,6 +10,7 @@ import type { WeekResultsCard, TrackRecordRow } from "@/components/signal-week-r
 export const dynamic = "force-dynamic";
 
 const INTERNAL_FETCH_LIMIT = 200;
+const TRACK_FETCH_LIMIT = 3000;
 const DEFAULT_LIMIT = 10;
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 25;
@@ -523,7 +524,7 @@ export async function GET(request: Request) {
     // Exclude shadow research rows; preserve legacy rows where metric_formula_version IS NULL.
     .or("metric_formula_version.is.null,metric_formula_version.not.like.shadow-%")
     .order("created_at", { ascending: false })
-    .limit(INTERNAL_FETCH_LIMIT);
+    .limit(TRACK_FETCH_LIMIT);
 
   if (trackQueryError) {
     return NextResponse.json(

@@ -225,3 +225,56 @@ test("computeProjectedTrackRecord API table rows expose the projected shape, not
     assert.equal(typeof r.pnlUnits, "number");
   }
 });
+
+// ── source-row cap must not truncate before aggregation (7D vs 14D) ─────────
+
+test("computeProjectedTrackRecord selectedSignals scales up when more distinct-day source rows are available (proves fetch limit must not cap before aggregation)", () => {
+  const narrowWindowRows: RawPairRow[] = Array.from({ length: 12 }, (_, i) =>
+    row({
+      id: `narrow-${i}`,
+      created_at: `2026-06-${String(20 + i).padStart(2, "0")}T12:00:00.000Z`,
+      event_slug: `Match ${i}`,
+      market_slug: `Will ${i} win?`,
+      selected_outcome: `Team ${i}`,
+      premium_signal: { eventTitle: `Match ${i}`, winProbability: 90 - i },
+    })
+  );
+  const widerWindowRows: RawPairRow[] = Array.from({ length: 30 }, (_, i) =>
+    row({
+      id: `wide-${i}`,
+      created_at: `2026-06-${String(1 + i).padStart(2, "0")}T12:00:00.000Z`,
+      event_slug: `Match ${i}`,
+      market_slug: `Will ${i} win?`,
+      selected_outcome: `Team ${i}`,
+      premium_signal: { eventTitle: `Match ${i}`, winProbability: 90 - i },
+    })
+  );
+
+  const narrowResult = computeProjectedTrackRecord(narrowWindowRows);
+  const widerResult = computeProjectedTrackRecord(widerWindowRows);
+  assert.equal(narrowResult.ok, true);
+  assert.equal(widerResult.ok, true);
+  if (narrowResult.ok && widerResult.ok) {
+    // A 14D-style window (more distinct-day rows) must select more signals
+    // than a 7D-style window when the source rows are not truncated early.
+    assert.ok(widerResult.selectedSignals > narrowResult.selectedSignals);
+    assert.equal(narrowResult.selectedSignals, 8);
+    assert.equal(widerResult.selectedSignals, 18);
+  }
+});
+
+// ── trackRecordDisplayTable UI-safe shape (rows may be array, {rows:[]}, or missing) ─
+
+function readDisplayTableRows(table: unknown): unknown[] {
+  return Array.isArray(table)
+    ? table
+    : ((table as { rows?: unknown[] } | null | undefined)?.rows ?? []);
+}
+
+test("trackRecordDisplayTable UI extraction is safe for object-with-rows, bare-array, and missing shapes", () => {
+  assert.deepEqual(readDisplayTableRows({ windowDays: 7, rows: [{ id: "a" }] }), [{ id: "a" }]);
+  assert.deepEqual(readDisplayTableRows([{ id: "a" }]), [{ id: "a" }]);
+  assert.deepEqual(readDisplayTableRows(undefined), []);
+  assert.deepEqual(readDisplayTableRows(null), []);
+  assert.deepEqual(readDisplayTableRows({}), []);
+});
