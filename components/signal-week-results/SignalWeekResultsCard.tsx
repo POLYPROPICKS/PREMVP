@@ -1,7 +1,7 @@
 'use client';
 
 import styles from './SignalWeekResultsCard.module.css';
-import type { WeekResultsCard } from './types';
+import type { WeekResultsCard, TrackRecordRow } from './types';
 
 interface Props {
   data: WeekResultsCard | null;
@@ -21,12 +21,6 @@ interface VisPt {
   x: number;
   y: number;
   cumRet: number;
-  result: 'won' | 'lost' | 'baseline';
-}
-
-interface Segment {
-  d: string;
-  result: 'won' | 'lost';
 }
 
 interface FuturePt {
@@ -34,20 +28,29 @@ interface FuturePt {
   y: number;
 }
 
-function fmtRet(v: number): string {
-  const r = Math.round(v * 10) / 10;
-  return (r >= 0 ? '+' : '') + r + '%';
+function fmtUsd(v: number): string {
+  const r = Math.round(v * 100) / 100;
+  return (r >= 0 ? '+$' : '-$') + Math.abs(r).toFixed(2);
 }
 
-function buildChart(apiPts: WeekResultsCard['paywallChart']['points']): {
+function buildChart(rows: TrackRecordRow[]): {
   pts: VisPt[];
   zeroY: number;
-  segments: Segment[];
+  segments: string[];
   futurePts: FuturePt[];
 } {
+  // Chronological order (oldest first) for a left-to-right cumulative line.
+  const chronological = [...rows].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+  );
+
+  let running = 0;
   const raw = [
-    { cumRet: 0, result: 'baseline' as const },
-    ...apiPts.map((p) => ({ cumRet: p.cumulativeReturnPct, result: p.result })),
+    { cumRet: 0 },
+    ...chronological.map((r) => {
+      running = Math.round((running + r.projectedReturnUsd) * 100) / 100;
+      return { cumRet: running };
+    }),
   ];
 
   const vals = raw.map((p) => p.cumRet);
@@ -58,7 +61,7 @@ function buildChart(apiPts: WeekResultsCard['paywallChart']['points']): {
   const dMax = rawMax + rng * MARGIN;
   const dRng = dMax - dMin;
 
-  const futureCount = apiPts.length > 0 && apiPts.length < 3 ? 2 : 0;
+  const futureCount = chronological.length > 0 && chronological.length < 3 ? 2 : 0;
   const slotCount = Math.max(2, raw.length + futureCount);
 
   const toX = (i: number) => PAD_X + (i / (slotCount - 1)) * (SVG_W - PAD_X * 2);
@@ -69,17 +72,13 @@ function buildChart(apiPts: WeekResultsCard['paywallChart']['points']): {
     x: toX(i),
     y: toY(p.cumRet),
     cumRet: p.cumRet,
-    result: p.result,
   }));
 
-  const segments: Segment[] = [];
+  const segments: string[] = [];
   for (let i = 1; i < pts.length; i += 1) {
     const prev = pts[i - 1];
     const cur = pts[i];
-    segments.push({
-      d: `M${prev.x.toFixed(1)} ${prev.y.toFixed(1)} L${cur.x.toFixed(1)} ${cur.y.toFixed(1)}`,
-      result: cur.result === 'lost' ? 'lost' : 'won',
-    });
+    segments.push(`M${prev.x.toFixed(1)} ${prev.y.toFixed(1)} L${cur.x.toFixed(1)} ${cur.y.toFixed(1)}`);
   }
 
   const zeroY = toY(0);
@@ -107,16 +106,14 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
     );
   }
 
-  const { paywallChart, displayedStats } = data;
-  const apiPts = paywallChart.points;
-  const finalRet = paywallChart.finalReturnPct;
-  const isPositive = finalRet !== null && finalRet >= 0;
-  const retLabel = finalRet !== null ? fmtRet(finalRet) : null;
+  const rows = data.trackRecordDisplayTable.rows;
+  const isPositive = data.projectedRoiPct >= 0;
+  const retLabel = `${isPositive ? '+' : ''}${data.projectedRoiPct}%`;
 
-  const hasChart = apiPts.length > 0;
+  const hasChart = rows.length > 0;
   const { pts: visPts, zeroY, segments, futurePts } = hasChart
-    ? buildChart(apiPts)
-    : { pts: [] as VisPt[], zeroY: SVG_H / 2, segments: [] as Segment[], futurePts: [] as FuturePt[] };
+    ? buildChart(rows)
+    : { pts: [] as VisPt[], zeroY: SVG_H / 2, segments: [] as string[], futurePts: [] as FuturePt[] };
 
   const finalVisPt = visPts.length > 0 ? visPts[visPts.length - 1] : null;
   const innerPts = visPts.slice(1);
@@ -128,8 +125,8 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
   const xPct = (x: number) => `${((x / SVG_W) * 100).toFixed(1)}%`;
   const yPct = (y: number) => `${((y / SVG_H) * 100).toFixed(1)}%`;
 
-  const chipPts = apiPts.slice(0, MAX_CHIPS);
-  const placeholders = Math.max(0, 3 - chipPts.length);
+  const chipRows = rows.slice(0, MAX_CHIPS);
+  const placeholders = Math.max(0, 3 - chipRows.length);
 
   const wrapCls = [styles.chartWrap, variant === 'paywall' ? styles.chartWrapPaywall : '']
     .join(' ')
@@ -140,26 +137,34 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
       <div className={styles.topRow}>
         <span className={styles.topLive}>
           <span className={styles.liveDot} aria-hidden="true" />
-          PAST 7 DAYS
+          {data.window.label.toUpperCase()}
         </span>
       </div>
 
       <div className={styles.heroRow}>
         <div className={styles.heroLeft}>
-          <span className={styles.heroMetric}>
-            {displayedStats.displayedWon}/{displayedStats.displayedCount}
-          </span>
-          <span className={styles.heroSub}>WON</span>
+          <span className={styles.heroMetric}>{data.selectedSignals}</span>
+          <span className={styles.heroSub}>PUBLISHED</span>
         </div>
 
-        {retLabel !== null && (
-          <div className={styles.heroRight}>
-            <span className={styles.heroLabel}>CUMULATIVE P&amp;L</span>
-            <span className={[styles.heroVal, isPositive ? styles.heroValPos : styles.heroValNeg].join(' ')}>
-              {retLabel}
-            </span>
-          </div>
-        )}
+        <div className={styles.heroRight}>
+          <span className={styles.heroLabel}>PROJECTED RETURN</span>
+          <span className={[styles.heroVal, isPositive ? styles.heroValPos : styles.heroValNeg].join(' ')}>
+            {retLabel}
+          </span>
+        </div>
+      </div>
+
+      <div className={styles.heroRow}>
+        <div className={styles.heroLeft}>
+          <span className={styles.heroMetric}>{data.projectedWinRatePct}%</span>
+          <span className={styles.heroSub}>PROJECTED RATE</span>
+        </div>
+
+        <div className={styles.heroRight}>
+          <span className={styles.heroLabel}>AVG ODDS</span>
+          <span className={styles.heroVal}>{data.avgDecimalOdds.toFixed(2)}</span>
+        </div>
       </div>
 
       <div className={wrapCls}>
@@ -181,15 +186,8 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
                 className={styles.zeroLine}
               />
 
-              {segments.map((seg, i) => (
-                <path
-                  key={i}
-                  d={seg.d}
-                  className={[
-                    styles.returnLine,
-                    seg.result === 'lost' ? styles.lossLine : styles.recoveryLine,
-                  ].join(' ')}
-                />
+              {segments.map((d, i) => (
+                <path key={i} d={d} className={[styles.returnLine, styles.recoveryLine].join(' ')} />
               ))}
 
               {futurePts.map((p, i) => (
@@ -206,7 +204,7 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
                     cx={p.x.toFixed(1)}
                     cy={p.y.toFixed(1)}
                     r={i === visPts.length - 1 ? '3.4' : '3.0'}
-                    className={p.result === 'lost' ? styles.lossDot : styles.endDot}
+                    className={styles.endDot}
                   />
                 );
               })}
@@ -224,7 +222,7 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
                   top: yPct(Math.min(minVisPt.y + 8, SVG_H - 8)),
                 }}
               >
-                {Math.round(minVisPt.cumRet)}%
+                {fmtUsd(minVisPt.cumRet)}
               </span>
             )}
 
@@ -240,7 +238,7 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
               </span>
             )}
 
-            {finalVisPt && retLabel !== null && (
+            {finalVisPt && (
               <span
                 className={[styles.finalLabel, isPositive ? styles.finalLabelPos : styles.finalLabelNeg].join(' ')}
                 style={{
@@ -248,7 +246,7 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
                   top: yPct(Math.max(finalVisPt.y - 13, 0)),
                 }}
               >
-                {retLabel}
+                {fmtUsd(finalVisPt.cumRet)}
               </span>
             )}
           </>
@@ -256,12 +254,9 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
       </div>
 
       <div className={styles.chipsRow}>
-        {chipPts.map((p, i) => (
-          <span
-            key={i}
-            className={[styles.chip, p.result === 'won' ? styles.chipWon : styles.chipLost].join(' ')}
-          >
-            {p.result === 'won' ? '✓' : '✕'} {p.label}
+        {chipRows.map((r, i) => (
+          <span key={i} className={[styles.chip, styles.chipWon].join(' ')}>
+            {r.pick} · Published · {fmtUsd(r.projectedReturnUsd)}
           </span>
         ))}
         {Array.from({ length: placeholders }).map((_, i) => (
@@ -276,20 +271,18 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
 
 // ── Top-carousel variant ────────────────────────────────────────────────────
 
-function TopCarouselRing({ won, count }: { won: number; count: number }) {
+function TopCarouselRing({ rate }: { rate: number }) {
   const r = 25;
   const cx = 32;
   const cy = 32;
   const circ = 2 * Math.PI * r;
-  const safeCount = Math.max(count, 1);
-  const wonFrac = Math.max(0, Math.min(1, won / safeCount));
-  const wonDash = circ * wonFrac;
-  const lostDash = circ * (1 - wonFrac);
+  const frac = Math.max(0, Math.min(1, rate / 100));
+  const dash = circ * frac;
 
   return (
     <svg width="64" height="64" viewBox="0 0 64 64" className={styles.tcRing} aria-hidden="true">
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="4" />
-      {won > 0 && (
+      {rate > 0 && (
         <circle
           cx={cx}
           cy={cy}
@@ -297,24 +290,10 @@ function TopCarouselRing({ won, count }: { won: number; count: number }) {
           fill="none"
           stroke="#74ff4f"
           strokeWidth="5.4"
-          strokeDasharray={`${wonDash.toFixed(2)} ${circ.toFixed(2)}`}
+          strokeDasharray={`${dash.toFixed(2)} ${circ.toFixed(2)}`}
           strokeLinecap="round"
           transform={`rotate(-90 ${cx} ${cy})`}
           style={{ filter: 'drop-shadow(0 0 5px rgba(116,255,79,0.75))' }}
-        />
-      )}
-      {won < count && count > 0 && (
-        <circle
-          cx={cx}
-          cy={cy}
-          r={r}
-          fill="none"
-          stroke="#ff3355"
-          strokeWidth="4.2"
-          strokeDasharray={`${lostDash.toFixed(2)} ${circ.toFixed(2)}`}
-          strokeLinecap="round"
-          transform={`rotate(${(-90 + 360 * wonFrac).toFixed(2)} ${cx} ${cy})`}
-          style={{ opacity: 0.82, filter: 'drop-shadow(0 0 4px rgba(255,51,85,0.48))' }}
         />
       )}
       <text
@@ -327,7 +306,7 @@ function TopCarouselRing({ won, count }: { won: number; count: number }) {
         letterSpacing="-0.05em"
         fontFamily="system-ui, -apple-system, sans-serif"
       >
-        {won}/{count}
+        {Math.round(rate)}%
       </text>
       <text
         x={cx}
@@ -339,7 +318,7 @@ function TopCarouselRing({ won, count }: { won: number; count: number }) {
         letterSpacing="0.11em"
         fontFamily="system-ui, -apple-system, sans-serif"
       >
-        WON
+        PROJECTED
       </text>
     </svg>
   );
@@ -355,19 +334,14 @@ function TopCarouselCard({ data, loading }: { data: WeekResultsCard | null; load
     );
   }
 
-  const { paywallChart, displayedStats } = data;
-  const won = displayedStats.displayedWon;
-  const count = displayedStats.displayedCount;
-  const finalRet = paywallChart.finalReturnPct;
-  const isPos = finalRet === null || finalRet >= 0;
-  const retLabel = finalRet !== null ? fmtRet(finalRet) : null;
-
-  const displayChips = paywallChart.points.slice(0, 7);
+  const isPos = data.projectedRoiPct >= 0;
+  const retLabel = `${isPos ? '+' : ''}${data.projectedRoiPct}%`;
+  const displayRows = data.trackRecordDisplayTable.rows.slice(0, 7);
 
   return (
     <div className={styles.cardTopCarousel}>
       <div className={styles.tcBody}>
-        <TopCarouselRing won={won} count={count} />
+        <TopCarouselRing rate={data.projectedWinRatePct} />
 
         <div className={styles.tcCopy}>
           <div className={styles.tcTopLine}>
@@ -376,32 +350,24 @@ function TopCarouselCard({ data, loading }: { data: WeekResultsCard | null; load
                 <span className={styles.tcLiveDot} aria-hidden="true" />
                 LIVE TRACKING
               </span>
-              <span className={styles.tcPeriodPill}>Past 7 days</span>
+              <span className={styles.tcPeriodPill}>{data.window.label}</span>
             </div>
           </div>
 
           <div className={styles.tcMetricLine}>
-            <span className={styles.tcReturnLabel}>CUMULATIVE TOTAL RETURN</span>
-            {retLabel !== null && (
-              <span className={[styles.tcReturn, !isPos ? styles.tcReturnNeg : ''].join(' ').trim()}>
-                {retLabel}
-              </span>
-            )}
+            <span className={styles.tcReturnLabel}>PROJECTED RETURN</span>
+            <span className={[styles.tcReturn, !isPos ? styles.tcReturnNeg : ''].join(' ').trim()}>
+              {retLabel}
+            </span>
           </div>
         </div>
       </div>
 
-      {displayChips.length > 0 && (
+      {displayRows.length > 0 && (
         <div className={styles.tcChipsRow}>
-          {displayChips.map((pt, i) => (
-            <span
-              key={i}
-              className={[
-                styles.tcChip,
-                pt.result === 'won' ? styles.tcChipWon : styles.tcChipLost,
-              ].join(' ')}
-            >
-              {pt.label}
+          {displayRows.map((r, i) => (
+            <span key={i} className={[styles.tcChip, styles.tcChipWon].join(' ')}>
+              {r.pick} · {fmtUsd(r.projectedReturnUsd)}
             </span>
           ))}
         </div>

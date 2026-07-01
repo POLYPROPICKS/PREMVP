@@ -5,6 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import type { WeekResultsCard, TrackRecordRow } from "@/components/signal-week-results/types";
 
 export const dynamic = "force-dynamic";
 
@@ -154,6 +155,310 @@ function extractActivityScore(row: DbRow, snapshotRows: number): {
 
 const PUSH_RESULTS = new Set(["push", "refund", "tie", "void", "cancelled", "no_contest"]);
 
+// ── Projected published-signal track record (weekResultsCard v2) ─────────────
+// Source: generated_signal_pairs_latest_daily_match_quality_real_odds.
+// Independent of the resolved-signal carousel above: uses ALL published rows
+// (no signal_result filter), latest daily batch, signalKey+matchKey deduped,
+// top-6-of-10 quality filtered, real market odds only.
+
+const STAKE_USD = 100;
+const QUALITY_BLOCK_SIZE = 10;
+const QUALITY_KEEP_PER_BLOCK = 6;
+
+export type OddsSource = "diagnostics.currentPrice" | "entry_price_num" | "expected_return_pct_num";
+
+export interface RawPairRow {
+  id: string;
+  created_at: string;
+  event_slug: string | null;
+  market_slug: string | null;
+  selected_outcome: string | null;
+  premium_signal: unknown;
+  diagnostics: unknown;
+  entry_price_num: number | null;
+  expected_return_pct_num: number | null;
+}
+
+export interface ProjectedSignal {
+  id: string;
+  createdAt: string;
+  eventTitle: string;
+  marketQuestion: string;
+  pick: string;
+  signalKey: string;
+  matchKey: string;
+  projectedWinProbability: number; // 0..1
+  marketPrice: number | null;
+  priceSource: OddsSource | null;
+  decimalOdds: number | null;
+  pnlUnits: number | null;
+}
+
+export function normalizeKey(value: string | null | undefined): string {
+  return (value ?? "").toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+export function buildSignalKey(eventTitle: string, marketQuestion: string, position: string): string {
+  return `${normalizeKey(eventTitle)}|${normalizeKey(marketQuestion)}|${normalizeKey(position)}`;
+}
+
+export function buildMatchKey(
+  eventTitle: string,
+  eventSlug: string | null,
+  marketSlug: string | null
+): string {
+  const primary = normalizeKey(eventTitle);
+  if (primary) return primary;
+  return normalizeKey(eventSlug) || normalizeKey(marketSlug);
+}
+
+/** Score priority: displaySignalConfidence, rawSignalScore, signalConfidence,
+ *  confidence, winProbability, score. Normalize >1 as /100, clamp 0..1. */
+export function extractProjectedScore(row: RawPairRow): number | null {
+  const ps = row.premium_signal as Record<string, unknown> | null;
+  const raw =
+    safeNum(ps?.displaySignalConfidence) ??
+    safeNum(ps?.rawSignalScore) ??
+    safeNum(ps?.signalConfidence) ??
+    safeNum(ps?.confidence) ??
+    safeNum(ps?.winProbability) ??
+    safeNum(ps?.score);
+  if (raw === null) return null;
+  const normalized = raw > 1 ? raw / 100 : raw;
+  return Math.min(1, Math.max(0, normalized));
+}
+
+function parsePercentLikeNumber(raw: unknown): number | null {
+  if (typeof raw !== "string") return null;
+  const match = raw.match(/([+-]?\d+(?:\.\d+)?)\s*%/);
+  if (!match) return null;
+  const n = parseFloat(match[1]);
+  return Number.isFinite(n) ? n : null;
+}
+
+/** Market price priority: diagnostics.currentPrice, entry_price_num, then a
+ *  persisted profit / expected_return_pct_num conversion. Never premium_signal.price. */
+export function extractMarketPriceInfo(
+  row: RawPairRow
+): { price: number; source: OddsSource } | null {
+  const dx = row.diagnostics as Record<string, unknown> | null;
+  const dxPrice = safeNum(dx?.currentPrice);
+  if (dxPrice !== null && dxPrice > 0 && dxPrice < 1) {
+    return { price: dxPrice, source: "diagnostics.currentPrice" };
+  }
+
+  const entryPrice = row.entry_price_num;
+  if (typeof entryPrice === "number" && Number.isFinite(entryPrice) && entryPrice > 0 && entryPrice < 1) {
+    return { price: entryPrice, source: "entry_price_num" };
+  }
+
+  const ps = row.premium_signal as Record<string, unknown> | null;
+  const expectedReturnPct = row.expected_return_pct_num ?? parsePercentLikeNumber(ps?.profit);
+  if (expectedReturnPct !== null && Number.isFinite(expectedReturnPct) && expectedReturnPct > 0) {
+    const price = 100 / (expectedReturnPct + 100);
+    if (price > 0 && price < 1) {
+      return { price, source: "expected_return_pct_num" };
+    }
+  }
+
+  return null;
+}
+
+export function computeDecimalOdds(marketPrice: number): number {
+  return 1 / marketPrice;
+}
+
+/** pnlUnits = p * (decimalOdds - 1) - (1 - p), flat $100 stake model. */
+export function computePnlUnits(winProbability: number, decimalOdds: number): number {
+  return winProbability * (decimalOdds - 1) - (1 - winProbability);
+}
+
+export function utcDayKey(iso: string): string {
+  return iso.slice(0, 10);
+}
+
+/** latest_batch_at = max(created_at) per UTC calendar day; keep only rows
+ *  whose created_at equals that day's max. */
+export function filterLatestBatchPerDay<T extends { createdAt: string }>(rows: T[]): T[] {
+  const maxByDay = new Map<string, string>();
+  for (const r of rows) {
+    const day = utcDayKey(r.createdAt);
+    const cur = maxByDay.get(day);
+    if (!cur || r.createdAt > cur) maxByDay.set(day, r.createdAt);
+  }
+  return rows.filter((r) => r.createdAt === maxByDay.get(utcDayKey(r.createdAt)));
+}
+
+/** Deduplicate by signalKey within each UTC day; latest createdAt wins ties. */
+export function dedupeBySignalKeyPerDay<T extends { signalKey: string; createdAt: string }>(
+  rows: T[]
+): T[] {
+  const seen = new Map<string, T>();
+  for (const r of rows) {
+    const key = `${utcDayKey(r.createdAt)}::${r.signalKey}`;
+    const existing = seen.get(key);
+    if (!existing || r.createdAt > existing.createdAt) seen.set(key, r);
+  }
+  return [...seen.values()];
+}
+
+/** Select one best signal per matchKey within each UTC day: highest
+ *  projectedWinProbability, then latest createdAt, then stable signalKey tiebreak. */
+export function dedupeByMatchKeyPerDay<
+  T extends { matchKey: string; signalKey: string; createdAt: string; projectedWinProbability: number }
+>(rows: T[]): T[] {
+  const seen = new Map<string, T>();
+  for (const r of rows) {
+    const key = `${utcDayKey(r.createdAt)}::${r.matchKey}`;
+    const existing = seen.get(key);
+    if (!existing) {
+      seen.set(key, r);
+      continue;
+    }
+    if (r.projectedWinProbability > existing.projectedWinProbability) {
+      seen.set(key, r);
+    } else if (r.projectedWinProbability === existing.projectedWinProbability) {
+      if (r.createdAt > existing.createdAt) {
+        seen.set(key, r);
+      } else if (r.createdAt === existing.createdAt && r.signalKey < existing.signalKey) {
+        seen.set(key, r);
+      }
+    }
+  }
+  return [...seen.values()];
+}
+
+/** Rank all rows by projectedWinProbability desc; keep the top 6 of every
+ *  block of 10 ranked signals (slotIn10 <= 6). */
+export function applyTopSixOfTenFilter<T extends { projectedWinProbability: number }>(rows: T[]): T[] {
+  const ranked = [...rows].sort((a, b) => b.projectedWinProbability - a.projectedWinProbability);
+  return ranked.filter((_, i) => (i % QUALITY_BLOCK_SIZE) + 1 <= QUALITY_KEEP_PER_BLOCK);
+}
+
+function round(n: number, decimals: number): number {
+  const f = 10 ** decimals;
+  return Math.round(n * f) / f;
+}
+
+export interface ProjectedTrackRecordResult {
+  ok: true;
+  selectedSignals: number;
+  oddsCoveragePct: number;
+  oddsSourceBreakdown: Record<string, number>;
+  projectedWinRatePct: number;
+  avgDecimalOdds: number;
+  projectedPnlUnits: number;
+  projectedReturnUsd: number;
+  projectedRoiPct: number;
+  rows: ProjectedSignal[];
+  latestBatchRows: number;
+  signalDedupedCount: number;
+  matchDedupedCount: number;
+}
+
+export interface ProjectedTrackRecordMissingOdds {
+  ok: false;
+  reason: "MISSING_MARKET_PRICE";
+  row: { id: string; eventTitle: string; marketQuestion: string; pick: string; createdAt: string };
+}
+
+/** Full pipeline: latest-batch-per-day -> signalKey dedupe -> matchKey dedupe
+ *  -> top-6-of-10 quality filter -> real odds + PnL. STOPs if any selected
+ *  row is missing a resolvable market price. */
+export function computeProjectedTrackRecord(
+  rawRows: RawPairRow[]
+): ProjectedTrackRecordResult | ProjectedTrackRecordMissingOdds {
+  const withCreatedAt = rawRows.map((row) => {
+    const ps = row.premium_signal as Record<string, unknown> | null;
+    const dx = row.diagnostics as Record<string, unknown> | null;
+    const eventTitle =
+      safeStr(ps?.eventTitle) ?? safeStr(row.event_slug) ?? safeStr(dx?.eventTitle) ?? "Unknown market";
+    const marketQuestion = safeStr(dx?.marketQuestion) ?? safeStr(row.market_slug) ?? "";
+    const pick =
+      safeStr(ps?.positionDisplay) ?? safeStr(ps?.position) ?? safeStr(row.selected_outcome) ?? "";
+
+    const priceInfo = extractMarketPriceInfo(row);
+    const score = extractProjectedScore(row) ?? 0;
+    const decimalOdds = priceInfo ? computeDecimalOdds(priceInfo.price) : null;
+    const pnlUnits = decimalOdds !== null ? computePnlUnits(score, decimalOdds) : null;
+
+    const projected: ProjectedSignal = {
+      id: row.id,
+      createdAt: row.created_at,
+      eventTitle,
+      marketQuestion,
+      pick,
+      signalKey: buildSignalKey(eventTitle, marketQuestion, pick),
+      matchKey: buildMatchKey(eventTitle, row.event_slug, row.market_slug),
+      projectedWinProbability: score,
+      marketPrice: priceInfo?.price ?? null,
+      priceSource: priceInfo?.source ?? null,
+      decimalOdds,
+      pnlUnits,
+    };
+    return projected;
+  });
+
+  const latestBatchRows = filterLatestBatchPerDay(withCreatedAt);
+  const signalDeduped = dedupeBySignalKeyPerDay(latestBatchRows);
+  const matchDeduped = dedupeByMatchKeyPerDay(signalDeduped);
+  const selected = applyTopSixOfTenFilter(matchDeduped);
+
+  const missing = selected.find((s) => s.marketPrice === null || s.decimalOdds === null);
+  if (missing) {
+    return {
+      ok: false,
+      reason: "MISSING_MARKET_PRICE",
+      row: {
+        id: missing.id,
+        eventTitle: missing.eventTitle,
+        marketQuestion: missing.marketQuestion,
+        pick: missing.pick,
+        createdAt: missing.createdAt,
+      },
+    };
+  }
+
+  const selectedSignals = selected.length;
+  const oddsSourceBreakdown: Record<string, number> = {};
+  for (const s of selected) {
+    const key = s.priceSource as string;
+    oddsSourceBreakdown[key] = (oddsSourceBreakdown[key] ?? 0) + 1;
+  }
+
+  const withPrice = selected.filter((s) => s.marketPrice !== null).length;
+  const oddsCoveragePct = selectedSignals > 0 ? round((withPrice / selectedSignals) * 100, 2) : 0;
+
+  const sumPnlUnits = selected.reduce((sum, s) => sum + (s.pnlUnits ?? 0), 0);
+  const avgDecimalOdds =
+    selectedSignals > 0
+      ? round(selected.reduce((sum, s) => sum + (s.decimalOdds ?? 0), 0) / selectedSignals, 3)
+      : 0;
+  const projectedWinRatePct =
+    selectedSignals > 0
+      ? round((selected.reduce((sum, s) => sum + s.projectedWinProbability, 0) / selectedSignals) * 100, 2)
+      : 0;
+  const projectedPnlUnits = round(sumPnlUnits, 4);
+  const projectedReturnUsd = round(projectedPnlUnits * STAKE_USD, 2);
+  const projectedRoiPct = selectedSignals > 0 ? round((projectedPnlUnits / selectedSignals) * 100, 2) : 0;
+
+  return {
+    ok: true,
+    selectedSignals,
+    oddsCoveragePct,
+    oddsSourceBreakdown,
+    projectedWinRatePct,
+    avgDecimalOdds,
+    projectedPnlUnits,
+    projectedReturnUsd,
+    projectedRoiPct,
+    rows: selected,
+    latestBatchRows: latestBatchRows.length,
+    signalDedupedCount: signalDeduped.length,
+    matchDedupedCount: matchDeduped.length,
+  };
+}
+
 // ── DB row type ───────────────────────────────────────────────────────────────
 
 interface DbRow {
@@ -172,156 +477,8 @@ interface DbRow {
 }
 
 // ── WeekResultsCard data contract ─────────────────────────────────────────────
-// Global weekly proof payload. Not tied to activePair / MarketSourceCard.
-// Design + UI integration is a separate future task.
-
-interface WeekMiniResult {
-  id: string;
-  eventTitle: string;
-  pick: string;
-  result: "won" | "lost";
-  returnPct: number;
-  label: string;
-  americanOdds: string | null;
-  europeanOdds: number | null;
-  marketActivityScore: number;
-  resolvedAt: string;
-}
-
-interface PaywallChartPoint {
-  index: number;
-  resolvedAt: string;
-  eventTitle: string;
-  pick: string;
-  result: "won" | "lost";
-  returnPct: number;
-  cumulativeReturnPct: number;
-  americanOdds: string | null;
-  europeanOdds: number | null;
-  label: string;
-}
-
-interface WeekResultsCard {
-  cardType: "signal-week-results";
-  schemaVersion: "week-results-v1";
-  window: { label: "Past 7 days"; days: 7; startedAt: string; endedAt: string };
-  title: string;
-  subtitle: string;
-  selectionRule: "last_7d_highest_activity_max_7_max_2_loss_no_push";
-  sampleSizeStatus: "empty" | "early" | "active" | "enough_data";
-  showPerformanceClaim: boolean;
-  totalStats: {
-    resolvedCount: number;
-    wonCount: number;
-    lostCount: number;
-    pushCount: number;
-    winRatePct: number | null;
-    totalReturnPct: number | null;
-  };
-  displayedStats: {
-    displayedCount: number;
-    displayedWon: number;
-    displayedLost: number;
-    displayedPush: number;
-    winRatioLabel: string;
-    maxDisplayed: 7;
-    maxLosses: 2;
-  };
-  frontendHints: {
-    primaryMetric: string;
-    compactFields: string[];
-    paywallFields: string[];
-    hiddenFields: string[];
-  };
-  featuredResult: null | {
-    id: string;
-    eventTitle: string;
-    pick: string;
-    winner: string;
-    result: "won" | "lost";
-    returnPct: number;
-    americanOdds: string | null;
-    europeanOdds: number | null;
-    marketActivityScore: number;
-    marketActivityLabel: string | null;
-    resolvedAt: string;
-  };
-  miniResults: WeekMiniResult[];
-  paywallChart: {
-    chartType: "cumulative-return";
-    title: string;
-    source: "displayed_subset";
-    displayMode: "single_cumulative_line";
-    yUnit: "return_pct";
-    windowLabel: string;
-    finalReturnPct: number | null;
-    points: PaywallChartPoint[];
-  };
-  diagnostics: {
-    source: "generated_signal_pairs";
-    dedupeKey: "condition_id:selected_outcome";
-    totalRowsScanned: number;
-    uniqueResolvedInWindow: number;
-    excludedPushCount: number;
-    excludedOverLossLimitCount: number;
-    excludedMissingOddsCount: number;
-    sortedBy: "marketActivityScore_desc_resolvedAt_desc";
-    generatedAt: string;
-  };
-}
-
-function buildEmptyWeekResultsCard(totalRowsScanned = 0): WeekResultsCard {
-  const now = new Date();
-  const generatedAt = now.toISOString();
-  const startedAt = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  return {
-    cardType: "signal-week-results",
-    schemaVersion: "week-results-v1",
-    window: { label: "Past 7 days", days: 7, startedAt, endedAt: generatedAt },
-    title: "Signals tracked this week",
-    subtitle: "Real tracking, not a performance guarantee",
-    selectionRule: "last_7d_highest_activity_max_7_max_2_loss_no_push",
-    sampleSizeStatus: "empty",
-    showPerformanceClaim: false,
-    totalStats: {
-      resolvedCount: 0, wonCount: 0, lostCount: 0, pushCount: 0,
-      winRatePct: null, totalReturnPct: null,
-    },
-    frontendHints: {
-      primaryMetric: "displayedStats.winRatioLabel",
-      compactFields: ["window.label", "displayedStats.winRatioLabel", "title", "featuredResult", "miniResults"],
-      paywallFields: ["window.label", "displayedStats.winRatioLabel", "paywallChart", "featuredResult"],
-      hiddenFields: ["diagnostics", "selectionRule", "totalStats.totalReturnPct", "totalStats.winRatePct"],
-    },
-    displayedStats: {
-      displayedCount: 0, displayedWon: 0, displayedLost: 0, displayedPush: 0,
-      winRatioLabel: "No results yet", maxDisplayed: 7, maxLosses: 2,
-    },
-    featuredResult: null,
-    miniResults: [],
-    paywallChart: {
-      chartType: "cumulative-return",
-      title: "Cumulative P&L",
-      source: "displayed_subset",
-      displayMode: "single_cumulative_line",
-      yUnit: "return_pct",
-      windowLabel: "Past 7 days",
-      finalReturnPct: null,
-      points: [],
-    },
-    diagnostics: {
-      source: "generated_signal_pairs",
-      dedupeKey: "condition_id:selected_outcome",
-      totalRowsScanned,
-      uniqueResolvedInWindow: 0,
-      excludedPushCount: 0,
-      excludedOverLossLimitCount: 0,
-      excludedMissingOddsCount: 0,
-      sortedBy: "marketActivityScore_desc_resolvedAt_desc",
-      generatedAt,
-    },
-  };
-}
+// Projected published-signal track record. Not tied to activePair / MarketSourceCard.
+// Contract lives in components/signal-week-results/types.ts (shared with the UI).
 
 // ── Route handler ─────────────────────────────────────────────────────────────
 
@@ -351,6 +508,103 @@ export async function GET(request: Request) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  // ── weekResultsCard: published-signal projected track record ────────────────
+  // Independent of the resolved-signal carousel below. Uses ALL published rows
+  // (no signal_result filter) in the window, regardless of resolution status.
+  const trackWindowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+  const { data: trackRawRows, error: trackQueryError } = await supabase
+    .from("generated_signal_pairs")
+    .select(
+      "id, created_at, event_slug, market_slug, selected_outcome, " +
+      "premium_signal, diagnostics, entry_price_num, expected_return_pct_num"
+    )
+    .gte("created_at", trackWindowStart)
+    // Exclude shadow research rows; preserve legacy rows where metric_formula_version IS NULL.
+    .or("metric_formula_version.is.null,metric_formula_version.not.like.shadow-%")
+    .order("created_at", { ascending: false })
+    .limit(INTERNAL_FETCH_LIMIT);
+
+  if (trackQueryError) {
+    return NextResponse.json(
+      { ok: false, error: "DB_QUERY_ERROR", detail: trackQueryError.message },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  const rawTrackRows = ((trackRawRows ?? []) as unknown) as RawPairRow[];
+  const trackResult = computeProjectedTrackRecord(rawTrackRows);
+
+  console.log("[weekResultsCard]", {
+    windowDays,
+    rawRows: rawTrackRows.length,
+    ...(trackResult.ok
+      ? {
+          latestBatchRows: trackResult.latestBatchRows,
+          signalDedupedCount: trackResult.signalDedupedCount,
+          matchDedupedCount: trackResult.matchDedupedCount,
+          selectedSignals: trackResult.selectedSignals,
+          oddsCoveragePct: trackResult.oddsCoveragePct,
+          oddsSourceBreakdown: trackResult.oddsSourceBreakdown,
+          projectedRoiPct: trackResult.projectedRoiPct,
+        }
+      : { reason: trackResult.reason, row: trackResult.row }),
+  });
+
+  if (!trackResult.ok) {
+    return NextResponse.json(
+      { ok: false, error: "MISSING_MARKET_PRICE", row: trackResult.row },
+      { status: 500, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
+  const trackRecordRows: TrackRecordRow[] = trackResult.rows
+    .slice()
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+    .map((s) => ({
+      id: s.id,
+      eventTitle: s.eventTitle,
+      marketQuestion: s.marketQuestion,
+      pick: s.pick,
+      createdAt: s.createdAt,
+      marketPrice: s.marketPrice as number,
+      priceSource: s.priceSource as TrackRecordRow["priceSource"],
+      decimalOdds: s.decimalOdds as number,
+      projectedWinProbabilityPct: round(s.projectedWinProbability * 100, 2),
+      pnlUnits: round(s.pnlUnits ?? 0, 2),
+      projectedReturnUsd: round((s.pnlUnits ?? 0) * STAKE_USD, 2),
+      status: "Published",
+    }));
+
+  let trackSampleSizeStatus: "empty" | "early" | "active" | "enough_data";
+  if (trackResult.selectedSignals === 0) trackSampleSizeStatus = "empty";
+  else if (trackResult.selectedSignals < 3) trackSampleSizeStatus = "early";
+  else if (trackResult.selectedSignals < 10) trackSampleSizeStatus = "active";
+  else trackSampleSizeStatus = "enough_data";
+
+  const weekResultsCard: WeekResultsCard = {
+    cardType: "signal-week-results",
+    schemaVersion: "week-results-v2-projected",
+    source: "generated_signal_pairs_latest_daily_match_quality_real_odds",
+    window: {
+      label: `Past ${windowDays} days`,
+      days: windowDays,
+      startedAt: trackWindowStart,
+      endedAt: new Date().toISOString(),
+    },
+    title: "Signals published this window",
+    subtitle: "Flat $100 stake model",
+    sampleSizeStatus: trackSampleSizeStatus,
+    selectedSignals: trackResult.selectedSignals,
+    oddsCoveragePct: trackResult.oddsCoveragePct,
+    oddsSourceBreakdown: trackResult.oddsSourceBreakdown,
+    projectedWinRatePct: trackResult.projectedWinRatePct,
+    avgDecimalOdds: trackResult.avgDecimalOdds,
+    projectedPnlUnits: trackResult.projectedPnlUnits,
+    projectedReturnUsd: trackResult.projectedReturnUsd,
+    projectedRoiPct: trackResult.projectedRoiPct,
+    trackRecordDisplayTable: { windowDays, rows: trackRecordRows },
+  };
 
   let query = supabase
     .from("generated_signal_pairs")
@@ -400,7 +654,7 @@ export async function GET(request: Request) {
           }),
         },
         signals: [],
-        weekResultsCard: buildEmptyWeekResultsCard(0),
+        weekResultsCard,
       },
       { headers: { "Cache-Control": "no-store" } }
     );
@@ -505,238 +759,6 @@ export async function GET(request: Request) {
   } else {
     signals.sort((a, b) => new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime());
     signals = signals.slice(0, limit);
-  }
-
-  // ── WeekResultsCard computation ───────────────────────────────────────────
-  // Uses allSignals (full deduped set) with in-memory 7-day window filter.
-  // Completely independent of carousel signals subset above.
-  const weekNow = new Date();
-  const weekCutoff = new Date(weekNow.getTime() - 7 * 24 * 60 * 60 * 1000);
-  const weekStartedAt = weekCutoff.toISOString();
-  const weekEndedAt = weekNow.toISOString();
-
-  // All deduped resolved signals within 7-day window (includes push for totalStats)
-  const weekAll = allSignals.filter((s) => new Date(s.resolvedAt) >= weekCutoff);
-
-  // totalStats — all resolved in window (push included)
-  const totalWon = weekAll.filter((s) => s.result === "won").length;
-  const totalLost = weekAll.filter((s) => s.result === "lost").length;
-  const totalPush = weekAll.filter((s) => PUSH_RESULTS.has(s.result)).length;
-  const totalResolved = weekAll.length;
-
-  const totalReturnPct = totalResolved > 0
-    ? Math.round(
-        weekAll.reduce((sum, s) => {
-          if (s.result === "won") return sum + (s.returnPct ?? 0);
-          if (s.result === "lost") return sum - 100;
-          return sum; // push/void: neutral
-        }, 0) * 10
-      ) / 10
-    : null;
-  const winRatePct =
-    totalWon + totalLost > 0
-      ? Math.round((totalWon / (totalWon + totalLost)) * 100)
-      : null;
-
-  // displayedSubset: exclude push, sort activity desc → resolvedAt desc, max 7, max 1 loss
-  const weekEligible = weekAll.filter((s) => !PUSH_RESULTS.has(s.result));
-  weekEligible.sort((a, b) => {
-    const d = (b.marketActivityScore ?? 0) - (a.marketActivityScore ?? 0);
-    return d !== 0 ? d : new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime();
-  });
-
-  const weekDisplayed: ResolvedSignal[] = [];
-  let weekLostIncluded = 0;
-  let weekExcludedOverLoss = 0;
-  for (const s of weekEligible) {
-    if (weekDisplayed.length >= WEEK_MAX_CARDS) break;
-    if (s.result === "lost") {
-      if (weekLostIncluded >= WEEK_MAX_LOST) { weekExcludedOverLoss++; continue; }
-      weekLostIncluded++;
-    }
-    weekDisplayed.push(s);
-  }
-
-  const displayedWon = weekDisplayed.filter((s) => s.result === "won").length;
-  const displayedLost = weekDisplayed.filter((s) => s.result === "lost").length;
-  const displayedPush = weekDisplayed.filter((s) => PUSH_RESULTS.has(s.result)).length;
-  const displayedCount = weekDisplayed.length;
-  const winRatioLabel =
-    displayedCount > 0 ? `${displayedWon}/${displayedCount} WON` : "No results yet";
-
-  let sampleSizeStatus: "empty" | "early" | "active" | "enough_data";
-  if (totalResolved === 0) sampleSizeStatus = "empty";
-  else if (totalResolved < 3) sampleSizeStatus = "early";
-  else if (totalResolved < 10) sampleSizeStatus = "active";
-  else sampleSizeStatus = "enough_data";
-
-  const featured = weekDisplayed[0] ?? null;
-
-  const weekMiniResults: WeekMiniResult[] = weekDisplayed.map((s) => ({
-    id: s.id,
-    eventTitle: s.eventTitle,
-    pick: s.pick,
-    result: (s.result === "won" || s.result === "lost") ? s.result : "lost",
-    returnPct: s.returnPct ?? 0,
-    label: returnLabel(s.result, s.returnPct),
-    americanOdds: s.americanOdds ?? null,
-    europeanOdds: s.europeanOdds ?? null,
-    marketActivityScore: s.marketActivityScore ?? 0,
-    resolvedAt: s.resolvedAt,
-  }));
-
-  // ── paywallChart: cumulative return line (chronological, displayed subset) ──
-  // Uses weekDisplayed sorted chronologically — same data as miniResults, different order.
-  const weekChronological = [...weekDisplayed].sort(
-    (a, b) => new Date(a.resolvedAt).getTime() - new Date(b.resolvedAt).getTime()
-  );
-  let runningReturn = 0;
-  const paywallPoints: PaywallChartPoint[] = weekChronological.map((s, i) => {
-    const pointReturn = s.result === "won" ? (s.returnPct ?? 0) : -100;
-    runningReturn = Math.round((runningReturn + pointReturn) * 10) / 10;
-    return {
-      index: i + 1,
-      resolvedAt: s.resolvedAt,
-      eventTitle: s.eventTitle,
-      pick: s.pick,
-      result: (s.result === "won" || s.result === "lost") ? s.result : "lost",
-      returnPct: pointReturn,
-      cumulativeReturnPct: runningReturn,
-      americanOdds: s.americanOdds ?? null,
-      europeanOdds: s.europeanOdds ?? null,
-      label: returnLabel(s.result, s.returnPct),
-    };
-  });
-  const paywallFinalReturn =
-    paywallPoints.length > 0
-      ? paywallPoints[paywallPoints.length - 1].cumulativeReturnPct
-      : null;
-
-  const weekResultsCard: WeekResultsCard = {
-    cardType: "signal-week-results",
-    schemaVersion: "week-results-v1",
-    window: { label: "Past 7 days", days: 7, startedAt: weekStartedAt, endedAt: weekEndedAt },
-    title: "Signals tracked this week",
-    subtitle: "Real tracking, not a performance guarantee",
-    selectionRule: "last_7d_highest_activity_max_7_max_2_loss_no_push",
-    sampleSizeStatus,
-    showPerformanceClaim: false,
-    totalStats: {
-      resolvedCount: totalResolved,
-      wonCount: totalWon,
-      lostCount: totalLost,
-      pushCount: totalPush,
-      winRatePct,
-      totalReturnPct,
-    },
-    displayedStats: {
-      displayedCount,
-      displayedWon,
-      displayedLost,
-      displayedPush,
-      winRatioLabel,
-      maxDisplayed: 7,
-      maxLosses: 2,
-    },
-    featuredResult: featured
-      ? {
-          id: featured.id,
-          eventTitle: featured.eventTitle,
-          pick: featured.pick,
-          winner: featured.winner,
-          result: (featured.result === "won" || featured.result === "lost") ? featured.result : "lost",
-          returnPct: featured.returnPct ?? 0,
-          americanOdds: featured.americanOdds ?? null,
-          europeanOdds: featured.europeanOdds ?? null,
-          marketActivityScore: featured.marketActivityScore ?? 0,
-          marketActivityLabel: featured.marketActivityLabel ?? null,
-          resolvedAt: featured.resolvedAt,
-        }
-      : null,
-    miniResults: weekMiniResults,
-    paywallChart: {
-      chartType: "cumulative-return",
-      title: "Cumulative P&L",
-      source: "displayed_subset",
-      displayMode: "single_cumulative_line",
-      yUnit: "return_pct",
-      windowLabel: "Past 7 days",
-      finalReturnPct: paywallFinalReturn,
-      points: paywallPoints,
-    },
-    frontendHints: {
-      primaryMetric: "displayedStats.winRatioLabel",
-      compactFields: ["window.label", "displayedStats.winRatioLabel", "title", "featuredResult", "miniResults"],
-      paywallFields: ["window.label", "displayedStats.winRatioLabel", "paywallChart", "featuredResult"],
-      hiddenFields: ["diagnostics", "selectionRule", "totalStats.totalReturnPct", "totalStats.winRatePct"],
-    },
-    diagnostics: {
-      source: "generated_signal_pairs",
-      dedupeKey: "condition_id:selected_outcome",
-      totalRowsScanned: rows.length,
-      uniqueResolvedInWindow: weekAll.length,
-      excludedPushCount: totalPush,
-      excludedOverLossLimitCount: weekExcludedOverLoss,
-      excludedMissingOddsCount: 0,
-      sortedBy: "marketActivityScore_desc_resolvedAt_desc",
-      generatedAt: weekEndedAt,
-    },
-  };
-
-  // ── Validation ────────────────────────────────────────────────────────────
-  const validationErrors: string[] = [];
-  if (weekResultsCard.cardType !== "signal-week-results")
-    validationErrors.push("cardType mismatch");
-  if (weekResultsCard.displayedStats.displayedCount > 7)
-    validationErrors.push("displayedCount > 7");
-  if (weekResultsCard.displayedStats.displayedLost > 2)
-    validationErrors.push("displayedLost > 2");
-  if (weekResultsCard.displayedStats.displayedPush !== 0)
-    validationErrors.push("displayedPush !== 0");
-  if (weekResultsCard.miniResults.length !== weekResultsCard.displayedStats.displayedCount)
-    validationErrors.push("miniResults.length !== displayedCount");
-  if (weekResultsCard.totalStats.resolvedCount < weekResultsCard.displayedStats.displayedCount)
-    validationErrors.push("totalResolved < displayedCount");
-  if (!weekResultsCard.diagnostics.generatedAt)
-    validationErrors.push("generatedAt missing");
-  for (const r of weekResultsCard.miniResults) {
-    if (r.americanOdds === undefined || r.europeanOdds === undefined)
-      validationErrors.push(`miniResult ${r.id}: undefined odds`);
-  }
-  // paywallChart checks
-  if (weekResultsCard.paywallChart.chartType !== "cumulative-return")
-    validationErrors.push("paywallChart.chartType mismatch");
-  if (weekResultsCard.paywallChart.source !== "displayed_subset")
-    validationErrors.push("paywallChart.source mismatch");
-  if (weekResultsCard.paywallChart.points.length !== weekResultsCard.displayedStats.displayedCount)
-    validationErrors.push("paywallChart.points.length !== displayedCount");
-  if (weekResultsCard.paywallChart.points.length !== weekResultsCard.miniResults.length)
-    validationErrors.push("paywallChart.points.length !== miniResults.length");
-  if (weekResultsCard.paywallChart.points.length === 0 && weekResultsCard.paywallChart.finalReturnPct !== null)
-    validationErrors.push("paywallChart.finalReturnPct should be null when no points");
-  if (weekResultsCard.paywallChart.points.length > 0) {
-    const lastPt = weekResultsCard.paywallChart.points[weekResultsCard.paywallChart.points.length - 1];
-    if (weekResultsCard.paywallChart.finalReturnPct !== lastPt.cumulativeReturnPct)
-      validationErrors.push("paywallChart.finalReturnPct !== last point cumulativeReturnPct");
-  }
-  for (const pt of weekResultsCard.paywallChart.points) {
-    if (pt.index < 1) validationErrors.push(`paywallChart point index < 1`);
-    if (pt.result !== "won" && pt.result !== "lost") validationErrors.push(`paywallChart point result not won/lost`);
-    if (!Number.isFinite(pt.returnPct)) validationErrors.push(`paywallChart point non-finite returnPct`);
-    if (!Number.isFinite(pt.cumulativeReturnPct)) validationErrors.push(`paywallChart point non-finite cumulativeReturnPct`);
-    if (pt.americanOdds === undefined || pt.europeanOdds === undefined)
-      validationErrors.push(`paywallChart point ${pt.index}: undefined odds`);
-  }
-  // avgReturnPct must not exist in totalStats
-  if ("avgReturnPct" in weekResultsCard.totalStats)
-    validationErrors.push("totalStats.avgReturnPct must not exist");
-
-  if (validationErrors.length > 0) {
-    console.error("[weekResultsCard] Validation failed:", validationErrors);
-    return NextResponse.json(
-      { ok: false, error: "WEEK_RESULTS_CARD_VALIDATION_FAILED", validationErrors },
-      { status: 500, headers: { "Cache-Control": "no-store" } }
-    );
   }
 
   // ── Response ──────────────────────────────────────────────────────────────
