@@ -1,269 +1,171 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  buildSignalKey,
-  buildMatchKey,
-  extractProjectedScore,
-  extractMarketPriceInfo,
-  computeDecimalOdds,
-  computePnlUnits,
-  filterLatestBatchPerDay,
-  dedupeBySignalKeyPerDay,
-  dedupeByMatchKeyPerDay,
-  applyTopSixOfTenFilter,
-  computeProjectedTrackRecord,
-  type RawPairRow,
+  computeDisplaySignalsSummary,
+  mapDisplaySignalRowToTrackRecordRow,
+  type DisplaySignalRow,
 } from "../../app/api/signals/resolved/route";
 
-function row(overrides: Partial<RawPairRow> = {}): RawPairRow {
+function displayRow(overrides: Partial<DisplaySignalRow> = {}): DisplaySignalRow {
   return {
-    id: "id-1",
-    created_at: "2026-06-25T12:00:00.000Z",
-    event_slug: "Team A vs Team B",
-    market_slug: "Will Team A win?",
-    selected_outcome: "Team A",
-    premium_signal: { eventTitle: "Team A vs Team B", winProbability: 60 },
-    diagnostics: { currentPrice: 0.5 },
-    entry_price_num: null,
-    expected_return_pct_num: null,
+    window_days: 7,
+    source_model: "model-v1",
+    score_rank: 1,
+    event_title: "Team A vs Team B",
+    market_question: "Will Team A win?",
+    position: "Team A",
+    american_odds: "+150",
+    decimal_odds: 2.5,
+    odds_source_path: "diagnostics.currentPrice",
+    projected_win_rate_pct: 60,
+    projected_pnl_units: 0.2,
+    projected_return_usd: 20,
+    projected_roi_pct_per_signal: 20,
+    status: "Published",
+    action: "ENTER",
+    return_label: "+$20",
+    batch_day: "2026-06-25",
     ...overrides,
   };
 }
 
-// ── signalKey / matchKey ────────────────────────────────────────────────────
+// ── summary aggregation from display table rows ─────────────────────────────
 
-test("buildSignalKey normalizes case/whitespace and combines eventTitle+marketQuestion+position", () => {
-  const a = buildSignalKey("  Team A  vs Team B ", "Will Team A Win?", "Team A");
-  const b = buildSignalKey("team a vs team b", "will team a win?", "team a");
-  assert.equal(a, b);
-  assert.equal(a, "team a vs team b|will team a win?|team a");
-});
-
-test("buildMatchKey uses eventTitle only, ignores marketQuestion, falls back to event_slug/market_slug", () => {
-  assert.equal(buildMatchKey("Team A vs Team B", null, null), "team a vs team b");
-  assert.equal(buildMatchKey("", "slug-event", null), "slug-event");
-  assert.equal(buildMatchKey("", null, "slug-market"), "slug-market");
-});
-
-// ── score normalization / priority ──────────────────────────────────────────
-
-test("extractProjectedScore follows priority order and normalizes >1 as /100", () => {
-  const withDisplay = row({ premium_signal: { displaySignalConfidence: 72, winProbability: 10 } });
-  assert.equal(extractProjectedScore(withDisplay), 0.72);
-
-  const withRaw = row({ premium_signal: { rawSignalScore: 55 } });
-  assert.equal(extractProjectedScore(withRaw), 0.55);
-
-  const fractionAlready = row({ premium_signal: { confidence: 0.4 } });
-  assert.equal(extractProjectedScore(fractionAlready), 0.4);
-
-  const clamped = row({ premium_signal: { score: 150 } });
-  assert.equal(extractProjectedScore(clamped), 1);
-
-  const none = row({ premium_signal: {} });
-  assert.equal(extractProjectedScore(none), null);
-});
-
-// ── market price extraction ─────────────────────────────────────────────────
-
-test("extractMarketPriceInfo prefers diagnostics.currentPrice", () => {
-  const r = row({ diagnostics: { currentPrice: 0.42 }, entry_price_num: 0.9 });
-  const info = extractMarketPriceInfo(r);
-  assert.deepEqual(info, { price: 0.42, source: "diagnostics.currentPrice" });
-});
-
-test("extractMarketPriceInfo falls back to entry_price_num when diagnostics.currentPrice missing", () => {
-  const r = row({ diagnostics: {}, entry_price_num: 0.33 });
-  const info = extractMarketPriceInfo(r);
-  assert.deepEqual(info, { price: 0.33, source: "entry_price_num" });
-});
-
-test("extractMarketPriceInfo falls back to expected_return_pct_num conversion", () => {
-  const r = row({ diagnostics: {}, entry_price_num: null, expected_return_pct_num: 100 });
-  const info = extractMarketPriceInfo(r);
-  assert.ok(info);
-  assert.equal(info!.source, "expected_return_pct_num");
-  assert.equal(Math.round(info!.price * 100) / 100, 0.5);
-});
-
-test("extractMarketPriceInfo ignores premium_signal.price string and returns null when nothing usable", () => {
-  const r = row({
-    diagnostics: {},
-    entry_price_num: null,
-    expected_return_pct_num: null,
-    premium_signal: { price: "$1.99" },
-  });
-  assert.equal(extractMarketPriceInfo(r), null);
-});
-
-// ── odds / PnL math ──────────────────────────────────────────────────────────
-
-test("computeDecimalOdds = 1 / marketPrice", () => {
-  assert.equal(computeDecimalOdds(0.5), 2);
-  assert.equal(Math.round(computeDecimalOdds(0.4) * 1000) / 1000, 2.5);
-});
-
-test("computePnlUnits matches p*(decimalOdds-1) - (1-p) with $100 stake model", () => {
-  const p = 0.6;
-  const decimalOdds = 2;
-  const pnl = computePnlUnits(p, decimalOdds);
-  assert.equal(Math.round(pnl * 100) / 100, 0.2); // 0.6*1 - 0.4 = 0.2
-  assert.equal(Math.round(pnl * 100 * 100) / 100, 20); // *$100 stake => $20
-});
-
-// ── latest batch per day ─────────────────────────────────────────────────────
-
-test("filterLatestBatchPerDay keeps only the max created_at rows per UTC day", () => {
-  const rows = [
-    { createdAt: "2026-06-24T09:00:00.000Z" },
-    { createdAt: "2026-06-24T14:00:00.000Z" }, // latest batch for this day
-    { createdAt: "2026-06-25T08:00:00.000Z" },
+test("computeDisplaySignalsSummary aggregates selectedSignals, odds coverage, and averages from all rows", () => {
+  const rows: DisplaySignalRow[] = [
+    displayRow({ score_rank: 1, projected_win_rate_pct: 60, decimal_odds: 2, projected_pnl_units: 0.2, projected_return_usd: 20, projected_roi_pct_per_signal: 20 }),
+    displayRow({ score_rank: 2, projected_win_rate_pct: 50, decimal_odds: 3, projected_pnl_units: -1, projected_return_usd: -100, projected_roi_pct_per_signal: -100 }),
   ];
-  const kept = filterLatestBatchPerDay(rows);
-  assert.equal(kept.length, 2);
-  assert.ok(kept.some((r) => r.createdAt === "2026-06-24T14:00:00.000Z"));
-  assert.ok(!kept.some((r) => r.createdAt === "2026-06-24T09:00:00.000Z"));
+  const summary = computeDisplaySignalsSummary(rows);
+
+  assert.equal(summary.selectedSignals, 2);
+  assert.equal(summary.oddsCoveragePct, 100);
+  assert.deepEqual(summary.oddsSourceBreakdown, { "diagnostics.currentPrice": 2 });
+  assert.equal(summary.projectedWinRatePct, 55);
+  assert.equal(summary.avgDecimalOdds, 2.5);
+  assert.equal(summary.projectedPnlUnits, -0.8);
+  assert.equal(summary.projectedReturnUsd, -80);
+  assert.equal(summary.projectedRoiPct, -40);
 });
 
-// ── signalKey dedupe ─────────────────────────────────────────────────────────
-
-test("dedupeBySignalKeyPerDay collapses duplicate signalKey within the same day", () => {
-  const rows = [
-    { signalKey: "k1", createdAt: "2026-06-24T14:00:00.000Z" },
-    { signalKey: "k1", createdAt: "2026-06-24T14:00:00.000Z" },
-    { signalKey: "k2", createdAt: "2026-06-24T14:00:00.000Z" },
+test("computeDisplaySignalsSummary reports partial odds coverage when some rows are missing odds", () => {
+  const rows: DisplaySignalRow[] = [
+    displayRow({ score_rank: 1, decimal_odds: 2, odds_source_path: "diagnostics.currentPrice" }),
+    displayRow({ score_rank: 2, decimal_odds: null, odds_source_path: null }),
   ];
-  const deduped = dedupeBySignalKeyPerDay(rows);
-  assert.equal(deduped.length, 2);
+  const summary = computeDisplaySignalsSummary(rows);
+  assert.equal(summary.oddsCoveragePct, 50);
 });
 
-// ── matchKey dedupe (best per match) ────────────────────────────────────────
-
-test("dedupeByMatchKeyPerDay keeps the highest projectedWinProbability per match", () => {
-  const rows = [
-    { matchKey: "m1", signalKey: "a", createdAt: "2026-06-24T14:00:00.000Z", projectedWinProbability: 0.5 },
-    { matchKey: "m1", signalKey: "b", createdAt: "2026-06-24T14:00:00.000Z", projectedWinProbability: 0.8 },
-  ];
-  const deduped = dedupeByMatchKeyPerDay(rows);
-  assert.equal(deduped.length, 1);
-  assert.equal(deduped[0].signalKey, "b");
+test("computeDisplaySignalsSummary returns zeroed summary for an empty row set (no crash)", () => {
+  const summary = computeDisplaySignalsSummary([]);
+  assert.equal(summary.selectedSignals, 0);
+  assert.equal(summary.oddsCoveragePct, 0);
+  assert.deepEqual(summary.oddsSourceBreakdown, {});
+  assert.equal(summary.projectedWinRatePct, 0);
+  assert.equal(summary.avgDecimalOdds, 0);
+  assert.equal(summary.projectedPnlUnits, 0);
+  assert.equal(summary.projectedReturnUsd, 0);
+  assert.equal(summary.projectedRoiPct, 0);
 });
 
-test("dedupeByMatchKeyPerDay breaks ties by latest createdAt then stable signalKey", () => {
-  const rows = [
-    { matchKey: "m1", signalKey: "zzz", createdAt: "2026-06-24T10:00:00.000Z", projectedWinProbability: 0.5 },
-    { matchKey: "m1", signalKey: "aaa", createdAt: "2026-06-24T10:00:00.000Z", projectedWinProbability: 0.5 },
-  ];
-  const deduped = dedupeByMatchKeyPerDay(rows);
-  assert.equal(deduped.length, 1);
-  assert.equal(deduped[0].signalKey, "aaa");
-});
+// ── selectedSignals must use the full table row set, not a limited ledger ───
 
-// ── quality filter: top 6 of every 10 ───────────────────────────────────────
-
-test("applyTopSixOfTenFilter keeps top 6 of each ranked block of 10", () => {
-  const rows = Array.from({ length: 20 }, (_, i) => ({ projectedWinProbability: 1 - i * 0.01 }));
-  const kept = applyTopSixOfTenFilter(rows);
-  assert.equal(kept.length, 12); // 6 kept per 10-row block, 2 blocks
-});
-
-// ── full pipeline / STOP behavior ───────────────────────────────────────────
-
-test("computeProjectedTrackRecord STOPs when a selected row has no resolvable market price", () => {
-  const rows: RawPairRow[] = [
-    row({
-      id: "bad-1",
-      diagnostics: {},
-      entry_price_num: null,
-      expected_return_pct_num: null,
-      premium_signal: { eventTitle: "X", winProbability: 90, price: "$1.99" },
-    }),
-  ];
-  const result = computeProjectedTrackRecord(rows);
-  assert.equal(result.ok, false);
-  if (!result.ok) {
-    assert.equal(result.reason, "MISSING_MARKET_PRICE");
-  }
-});
-
-test("computeProjectedTrackRecord reports 100% odds coverage and no old resolved ROI shape", () => {
-  const rows: RawPairRow[] = [
-    row({
-      id: "a",
-      event_slug: "Match A",
-      market_slug: "Will A win?",
-      selected_outcome: "A",
-      premium_signal: { eventTitle: "Match A", winProbability: 60 },
-    }),
-    row({
-      id: "b",
-      event_slug: "Match B",
-      market_slug: "Will B win?",
-      selected_outcome: "B",
-      premium_signal: { eventTitle: "Match B", winProbability: 55 },
-    }),
-  ];
-  const result = computeProjectedTrackRecord(rows);
-  assert.equal(result.ok, true);
-  if (result.ok) {
-    assert.equal(result.oddsCoveragePct, 100);
-    assert.equal(result.selectedSignals, 2);
-    assert.ok(!("totalReturnPct" in result));
-    assert.notEqual(result.projectedRoiPct, -1766);
-  }
-});
-
-test("computeProjectedTrackRecord API table rows expose the projected shape, not won/lost", () => {
-  const rows: RawPairRow[] = [row({ id: "a" })];
-  const result = computeProjectedTrackRecord(rows);
-  assert.equal(result.ok, true);
-  if (result.ok) {
-    const [r] = result.rows;
-    assert.ok(!("result" in r));
-    assert.equal(typeof r.projectedWinProbability, "number");
-    assert.equal(typeof r.decimalOdds, "number");
-    assert.equal(typeof r.pnlUnits, "number");
-  }
-});
-
-// ── source-row cap must not truncate before aggregation (7D vs 14D) ─────────
-
-test("computeProjectedTrackRecord selectedSignals scales up when more distinct-day source rows are available (proves fetch limit must not cap before aggregation)", () => {
-  const narrowWindowRows: RawPairRow[] = Array.from({ length: 12 }, (_, i) =>
-    row({
-      id: `narrow-${i}`,
-      created_at: `2026-06-${String(20 + i).padStart(2, "0")}T12:00:00.000Z`,
-      event_slug: `Match ${i}`,
-      market_slug: `Will ${i} win?`,
-      selected_outcome: `Team ${i}`,
-      premium_signal: { eventTitle: `Match ${i}`, winProbability: 90 - i },
-    })
+test("selectedSignals reflects the total table row count regardless of any ledger display limit", () => {
+  const rows: DisplaySignalRow[] = Array.from({ length: 12 }, (_, i) =>
+    displayRow({ score_rank: i + 1, batch_day: `2026-06-${String(20 + i).padStart(2, "0")}` })
   );
-  const widerWindowRows: RawPairRow[] = Array.from({ length: 30 }, (_, i) =>
-    row({
-      id: `wide-${i}`,
-      created_at: `2026-06-${String(1 + i).padStart(2, "0")}T12:00:00.000Z`,
-      event_slug: `Match ${i}`,
-      market_slug: `Will ${i} win?`,
-      selected_outcome: `Team ${i}`,
-      premium_signal: { eventTitle: `Match ${i}`, winProbability: 90 - i },
+  const summary = computeDisplaySignalsSummary(rows);
+  const ledgerRows = rows.slice(0, 7).map(mapDisplaySignalRowToTrackRecordRow);
+
+  assert.equal(summary.selectedSignals, 12);
+  assert.equal(ledgerRows.length, 7);
+});
+
+// ── 7D vs 14D windows must differ when the underlying rows differ ──────────
+
+test("7D and 14D window summaries differ when their display-table rows differ", () => {
+  const rows7d: DisplaySignalRow[] = [
+    displayRow({ score_rank: 1, window_days: 7, projected_win_rate_pct: 60 }),
+    displayRow({ score_rank: 2, window_days: 7, projected_win_rate_pct: 55 }),
+  ];
+  const rows14d: DisplaySignalRow[] = [
+    displayRow({ score_rank: 1, window_days: 14, projected_win_rate_pct: 60 }),
+    displayRow({ score_rank: 2, window_days: 14, projected_win_rate_pct: 55 }),
+    displayRow({ score_rank: 3, window_days: 14, projected_win_rate_pct: 70 }),
+    displayRow({ score_rank: 4, window_days: 14, projected_win_rate_pct: 65 }),
+  ];
+
+  const summary7d = computeDisplaySignalsSummary(rows7d);
+  const summary14d = computeDisplaySignalsSummary(rows14d);
+
+  assert.notEqual(summary7d.selectedSignals, summary14d.selectedSignals);
+  assert.equal(summary7d.selectedSignals, 2);
+  assert.equal(summary14d.selectedSignals, 4);
+});
+
+// ── row mapping: UI-facing TrackRecordRow shape ─────────────────────────────
+
+test("mapDisplaySignalRowToTrackRecordRow maps display-table columns to the UI row shape", () => {
+  const row = mapDisplaySignalRowToTrackRecordRow(
+    displayRow({
+      score_rank: 3,
+      batch_day: "2026-06-28",
+      event_title: "Lakers vs Celtics",
+      market_question: "Will Lakers win?",
+      position: "Lakers",
+      return_label: "+$54",
+      action: "ENTER",
+      source_model: "model-v2",
     })
   );
 
-  const narrowResult = computeProjectedTrackRecord(narrowWindowRows);
-  const widerResult = computeProjectedTrackRecord(widerWindowRows);
-  assert.equal(narrowResult.ok, true);
-  assert.equal(widerResult.ok, true);
-  if (narrowResult.ok && widerResult.ok) {
-    // A 14D-style window (more distinct-day rows) must select more signals
-    // than a 7D-style window when the source rows are not truncated early.
-    assert.ok(widerResult.selectedSignals > narrowResult.selectedSignals);
-    assert.equal(narrowResult.selectedSignals, 8);
-    assert.equal(widerResult.selectedSignals, 18);
-  }
+  assert.equal(row.id, "2026-06-28-3");
+  assert.equal(row.eventTitle, "Lakers vs Celtics");
+  assert.equal(row.marketQuestion, "Will Lakers win?");
+  assert.equal(row.pick, "Lakers");
+  assert.equal(row.status, "Published");
+  assert.equal(row.returnLabel, "+$54");
+  assert.equal(row.action, "ENTER");
+  assert.equal(row.sourceModel, "model-v2");
+  assert.notEqual(row.returnLabel, undefined);
 });
 
-// ── trackRecordDisplayTable UI-safe shape (rows may be array, {rows:[]}, or missing) ─
+test("mapDisplaySignalRowToTrackRecordRow falls back safely when odds/return fields are null", () => {
+  const row = mapDisplaySignalRowToTrackRecordRow(
+    displayRow({ decimal_odds: null, american_odds: null, return_label: null, projected_pnl_units: null, projected_return_usd: null, projected_roi_pct_per_signal: null, projected_win_rate_pct: null })
+  );
+  assert.equal(row.decimalOdds, 0);
+  assert.equal(row.americanOdds, null);
+  assert.equal(row.returnLabel, "—");
+  assert.equal(row.pnlUnits, 0);
+  assert.equal(row.projectedReturnUsd, 0);
+  assert.equal(row.projectedRoiPctPerSignal, 0);
+  assert.equal(row.projectedWinProbabilityPct, 0);
+});
+
+// ── no old resolved-ROI shape / stale demo values ───────────────────────────
+
+test("summary never produces the old stale resolved-ROI values", () => {
+  const rows: DisplaySignalRow[] = [
+    displayRow({ score_rank: 1 }),
+    displayRow({ score_rank: 2 }),
+  ];
+  const summary = computeDisplaySignalsSummary(rows);
+  assert.notEqual(summary.projectedRoiPct, -1766);
+  assert.notEqual(summary.selectedSignals, 36);
+  assert.ok(!("won" in summary));
+  assert.ok(!("lost" in summary));
+});
+
+test("mapped rows never carry the old won/lost resolved-signal shape", () => {
+  const row = mapDisplaySignalRowToTrackRecordRow(displayRow());
+  assert.ok(!("result" in row));
+  assert.ok(!("winner" in row));
+  assert.equal(row.status, "Published");
+});
+
+// ── trackRecordDisplayTable is `{ rows: [...] }` and UI extraction is shape-safe ──
 
 function readDisplayTableRows(table: unknown): unknown[] {
   return Array.isArray(table)
@@ -271,7 +173,15 @@ function readDisplayTableRows(table: unknown): unknown[] {
     : ((table as { rows?: unknown[] } | null | undefined)?.rows ?? []);
 }
 
-test("trackRecordDisplayTable UI extraction is safe for object-with-rows, bare-array, and missing shapes", () => {
+test("trackRecordDisplayTable is an object with a rows array", () => {
+  const rows = [displayRow()].map(mapDisplaySignalRowToTrackRecordRow);
+  const table = { windowDays: 7, rows };
+  assert.ok(!Array.isArray(table));
+  assert.ok(Array.isArray(table.rows));
+  assert.deepEqual(readDisplayTableRows(table), rows);
+});
+
+test("UI row extraction is safe for object-with-rows, bare-array, and missing/empty shapes", () => {
   assert.deepEqual(readDisplayTableRows({ windowDays: 7, rows: [{ id: "a" }] }), [{ id: "a" }]);
   assert.deepEqual(readDisplayTableRows([{ id: "a" }]), [{ id: "a" }]);
   assert.deepEqual(readDisplayTableRows(undefined), []);

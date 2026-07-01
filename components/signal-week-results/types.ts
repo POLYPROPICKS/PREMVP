@@ -1,9 +1,8 @@
-// Projected published-signal track record contract.
-// Source: generated_signal_pairs_latest_daily_match_quality_real_odds
-// (latest daily batch, signalKey+matchKey deduped, top-6-of-10 quality filtered,
-// real market odds only — no resolved won/lost ledger, no fixed/model odds).
-
-export type OddsSource = 'diagnostics.currentPrice' | 'entry_price_num' | 'expected_return_pct_num';
+// Published-signal track record contract.
+// Source: public.track_record_display_signals — the accepted physical display
+// table (one row per published, pre-scored signal per window_days/batch_day).
+// No resolved won/lost ledger, no fixed/model odds, no runtime aggregation
+// over generated_signal_pairs.
 
 export interface TrackRecordRow {
   id: string;
@@ -11,13 +10,18 @@ export interface TrackRecordRow {
   marketQuestion: string;
   pick: string;
   createdAt: string;
-  marketPrice: number;
-  priceSource: OddsSource;
   decimalOdds: number;
+  americanOdds: string | null;
+  oddsSourcePath: string | null;
   projectedWinProbabilityPct: number;
   pnlUnits: number;
   projectedReturnUsd: number;
+  projectedRoiPctPerSignal: number;
   status: 'Published';
+  action: string | null;
+  returnLabel: string;
+  scoreRank: number;
+  sourceModel: string | null;
 }
 
 export interface TrackRecordDisplayTable {
@@ -28,7 +32,7 @@ export interface TrackRecordDisplayTable {
 export interface WeekResultsCard {
   cardType: 'signal-week-results';
   schemaVersion: 'week-results-v2-projected';
-  source: 'generated_signal_pairs_latest_daily_match_quality_real_odds';
+  source: 'track_record_display_signals';
   window: { label: string; days: number; startedAt: string; endedAt: string };
   title: string;
   subtitle: string;

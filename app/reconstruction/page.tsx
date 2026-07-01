@@ -468,6 +468,10 @@ export default function ReconstructionPage() {
 
       <HowItWorksSection onCtaClick={handleLockedFeedAttempt} />
 
+      <section style={{ maxWidth: 420, margin: '0 auto', padding: '24px 16px' }}>
+        <SignalWeekResultsCard data={weekCard} loading={weekCardLoading} />
+      </section>
+
       <WhoWeAreSection />
 
       <FooterSection />

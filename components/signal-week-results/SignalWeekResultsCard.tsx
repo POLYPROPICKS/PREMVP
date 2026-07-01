@@ -259,7 +259,7 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
       <div className={styles.chipsRow}>
         {chipRows.map((r, i) => (
           <span key={i} className={[styles.chip, styles.chipWon].join(' ')}>
-            {r.pick} · Published · {fmtUsd(r.projectedReturnUsd)}
+            {r.pick} · Published · {r.returnLabel}
           </span>
         ))}
         {Array.from({ length: placeholders }).map((_, i) => (
@@ -374,7 +374,7 @@ function TopCarouselCard({ data, loading }: { data: WeekResultsCard | null; load
         <div className={styles.tcChipsRow}>
           {displayRows.map((r, i) => (
             <span key={i} className={[styles.tcChip, styles.tcChipWon].join(' ')}>
-              {r.pick} · {fmtUsd(r.projectedReturnUsd)}
+              {r.pick} · {r.returnLabel}
             </span>
           ))}
         </div>

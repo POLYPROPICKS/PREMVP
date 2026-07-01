@@ -10,15 +10,13 @@ import type { WeekResultsCard, TrackRecordRow } from "@/components/signal-week-r
 export const dynamic = "force-dynamic";
 
 const INTERNAL_FETCH_LIMIT = 200;
-const TRACK_FETCH_LIMIT = 3000;
+const DISPLAY_TABLE_FETCH_LIMIT = 3000;
 const DEFAULT_LIMIT = 10;
 const MIN_LIMIT = 1;
 const MAX_LIMIT = 25;
 const LATEST_MAX_CARDS = 7;
 const LATEST_MAX_LOST = 2;
 const LATEST_DEFAULT_DAYS = 7;
-const WEEK_MAX_CARDS = 7;
-const WEEK_MAX_LOST = 2;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -93,12 +91,6 @@ function decimalToAmerican(decimalOdds: number | null): string | null {
   return `${Math.round(-100 / (decimalOdds - 1))}`;
 }
 
-function returnLabel(result: string, returnPct: number | null): string {
-  if (result === "won") return `+${Math.round(returnPct ?? 0)}%`;
-  if (result === "lost") return "-100%";
-  return "—";
-}
-
 /** Extract best market activity proxy from diagnostics/premium_signal.
  *  Priority: totalVolume > volume > recentTradeCash > maxTradeCash >
  *            selectedTradeCount > totalTradeCount > snapshotRows */
@@ -156,193 +148,33 @@ function extractActivityScore(row: DbRow, snapshotRows: number): {
 
 const PUSH_RESULTS = new Set(["push", "refund", "tie", "void", "cancelled", "no_contest"]);
 
-// ── Projected published-signal track record (weekResultsCard v2) ─────────────
-// Source: generated_signal_pairs_latest_daily_match_quality_real_odds.
-// Independent of the resolved-signal carousel above: uses ALL published rows
-// (no signal_result filter), latest daily batch, signalKey+matchKey deduped,
-// top-6-of-10 quality filtered, real market odds only.
+// ── Track record display table (weekResultsCard) ─────────────────────────────
+// Source: public.track_record_display_signals — the accepted physical display
+// table for the "Why Can I Trust This" trust block. One row per published,
+// pre-scored signal per window_days/batch_day. No runtime aggregation over
+// generated_signal_pairs, no resolved won/lost ledger, no fixed/model odds.
 
-const STAKE_USD = 100;
-const QUALITY_BLOCK_SIZE = 10;
-const QUALITY_KEEP_PER_BLOCK = 6;
-
-export type OddsSource = "diagnostics.currentPrice" | "entry_price_num" | "expected_return_pct_num";
-
-export interface RawPairRow {
-  id: string;
-  created_at: string;
-  event_slug: string | null;
-  market_slug: string | null;
-  selected_outcome: string | null;
-  premium_signal: unknown;
-  diagnostics: unknown;
-  entry_price_num: number | null;
-  expected_return_pct_num: number | null;
+export interface DisplaySignalRow {
+  window_days: number;
+  source_model: string | null;
+  score_rank: number;
+  event_title: string;
+  market_question: string;
+  position: string;
+  american_odds: string | null;
+  decimal_odds: number | null;
+  odds_source_path: string | null;
+  projected_win_rate_pct: number | null;
+  projected_pnl_units: number | null;
+  projected_return_usd: number | null;
+  projected_roi_pct_per_signal: number | null;
+  status: string | null;
+  action: string | null;
+  return_label: string | null;
+  batch_day: string;
 }
 
-export interface ProjectedSignal {
-  id: string;
-  createdAt: string;
-  eventTitle: string;
-  marketQuestion: string;
-  pick: string;
-  signalKey: string;
-  matchKey: string;
-  projectedWinProbability: number; // 0..1
-  marketPrice: number | null;
-  priceSource: OddsSource | null;
-  decimalOdds: number | null;
-  pnlUnits: number | null;
-}
-
-export function normalizeKey(value: string | null | undefined): string {
-  return (value ?? "").toLowerCase().trim().replace(/\s+/g, " ");
-}
-
-export function buildSignalKey(eventTitle: string, marketQuestion: string, position: string): string {
-  return `${normalizeKey(eventTitle)}|${normalizeKey(marketQuestion)}|${normalizeKey(position)}`;
-}
-
-export function buildMatchKey(
-  eventTitle: string,
-  eventSlug: string | null,
-  marketSlug: string | null
-): string {
-  const primary = normalizeKey(eventTitle);
-  if (primary) return primary;
-  return normalizeKey(eventSlug) || normalizeKey(marketSlug);
-}
-
-/** Score priority: displaySignalConfidence, rawSignalScore, signalConfidence,
- *  confidence, winProbability, score. Normalize >1 as /100, clamp 0..1. */
-export function extractProjectedScore(row: RawPairRow): number | null {
-  const ps = row.premium_signal as Record<string, unknown> | null;
-  const raw =
-    safeNum(ps?.displaySignalConfidence) ??
-    safeNum(ps?.rawSignalScore) ??
-    safeNum(ps?.signalConfidence) ??
-    safeNum(ps?.confidence) ??
-    safeNum(ps?.winProbability) ??
-    safeNum(ps?.score);
-  if (raw === null) return null;
-  const normalized = raw > 1 ? raw / 100 : raw;
-  return Math.min(1, Math.max(0, normalized));
-}
-
-function parsePercentLikeNumber(raw: unknown): number | null {
-  if (typeof raw !== "string") return null;
-  const match = raw.match(/([+-]?\d+(?:\.\d+)?)\s*%/);
-  if (!match) return null;
-  const n = parseFloat(match[1]);
-  return Number.isFinite(n) ? n : null;
-}
-
-/** Market price priority: diagnostics.currentPrice, entry_price_num, then a
- *  persisted profit / expected_return_pct_num conversion. Never premium_signal.price. */
-export function extractMarketPriceInfo(
-  row: RawPairRow
-): { price: number; source: OddsSource } | null {
-  const dx = row.diagnostics as Record<string, unknown> | null;
-  const dxPrice = safeNum(dx?.currentPrice);
-  if (dxPrice !== null && dxPrice > 0 && dxPrice < 1) {
-    return { price: dxPrice, source: "diagnostics.currentPrice" };
-  }
-
-  const entryPrice = row.entry_price_num;
-  if (typeof entryPrice === "number" && Number.isFinite(entryPrice) && entryPrice > 0 && entryPrice < 1) {
-    return { price: entryPrice, source: "entry_price_num" };
-  }
-
-  const ps = row.premium_signal as Record<string, unknown> | null;
-  const expectedReturnPct = row.expected_return_pct_num ?? parsePercentLikeNumber(ps?.profit);
-  if (expectedReturnPct !== null && Number.isFinite(expectedReturnPct) && expectedReturnPct > 0) {
-    const price = 100 / (expectedReturnPct + 100);
-    if (price > 0 && price < 1) {
-      return { price, source: "expected_return_pct_num" };
-    }
-  }
-
-  return null;
-}
-
-export function computeDecimalOdds(marketPrice: number): number {
-  return 1 / marketPrice;
-}
-
-/** pnlUnits = p * (decimalOdds - 1) - (1 - p), flat $100 stake model. */
-export function computePnlUnits(winProbability: number, decimalOdds: number): number {
-  return winProbability * (decimalOdds - 1) - (1 - winProbability);
-}
-
-export function utcDayKey(iso: string): string {
-  return iso.slice(0, 10);
-}
-
-/** latest_batch_at = max(created_at) per UTC calendar day; keep only rows
- *  whose created_at equals that day's max. */
-export function filterLatestBatchPerDay<T extends { createdAt: string }>(rows: T[]): T[] {
-  const maxByDay = new Map<string, string>();
-  for (const r of rows) {
-    const day = utcDayKey(r.createdAt);
-    const cur = maxByDay.get(day);
-    if (!cur || r.createdAt > cur) maxByDay.set(day, r.createdAt);
-  }
-  return rows.filter((r) => r.createdAt === maxByDay.get(utcDayKey(r.createdAt)));
-}
-
-/** Deduplicate by signalKey within each UTC day; latest createdAt wins ties. */
-export function dedupeBySignalKeyPerDay<T extends { signalKey: string; createdAt: string }>(
-  rows: T[]
-): T[] {
-  const seen = new Map<string, T>();
-  for (const r of rows) {
-    const key = `${utcDayKey(r.createdAt)}::${r.signalKey}`;
-    const existing = seen.get(key);
-    if (!existing || r.createdAt > existing.createdAt) seen.set(key, r);
-  }
-  return [...seen.values()];
-}
-
-/** Select one best signal per matchKey within each UTC day: highest
- *  projectedWinProbability, then latest createdAt, then stable signalKey tiebreak. */
-export function dedupeByMatchKeyPerDay<
-  T extends { matchKey: string; signalKey: string; createdAt: string; projectedWinProbability: number }
->(rows: T[]): T[] {
-  const seen = new Map<string, T>();
-  for (const r of rows) {
-    const key = `${utcDayKey(r.createdAt)}::${r.matchKey}`;
-    const existing = seen.get(key);
-    if (!existing) {
-      seen.set(key, r);
-      continue;
-    }
-    if (r.projectedWinProbability > existing.projectedWinProbability) {
-      seen.set(key, r);
-    } else if (r.projectedWinProbability === existing.projectedWinProbability) {
-      if (r.createdAt > existing.createdAt) {
-        seen.set(key, r);
-      } else if (r.createdAt === existing.createdAt && r.signalKey < existing.signalKey) {
-        seen.set(key, r);
-      }
-    }
-  }
-  return [...seen.values()];
-}
-
-/** Rank all rows by projectedWinProbability desc; keep the top 6 of every
- *  block of 10 ranked signals (slotIn10 <= 6). */
-export function applyTopSixOfTenFilter<T extends { projectedWinProbability: number }>(rows: T[]): T[] {
-  const ranked = [...rows].sort((a, b) => b.projectedWinProbability - a.projectedWinProbability);
-  return ranked.filter((_, i) => (i % QUALITY_BLOCK_SIZE) + 1 <= QUALITY_KEEP_PER_BLOCK);
-}
-
-function round(n: number, decimals: number): number {
-  const f = 10 ** decimals;
-  return Math.round(n * f) / f;
-}
-
-export interface ProjectedTrackRecordResult {
-  ok: true;
+export interface DisplaySignalsSummary {
   selectedSignals: number;
   oddsCoveragePct: number;
   oddsSourceBreakdown: Record<string, number>;
@@ -351,116 +183,84 @@ export interface ProjectedTrackRecordResult {
   projectedPnlUnits: number;
   projectedReturnUsd: number;
   projectedRoiPct: number;
-  rows: ProjectedSignal[];
-  latestBatchRows: number;
-  signalDedupedCount: number;
-  matchDedupedCount: number;
 }
 
-export interface ProjectedTrackRecordMissingOdds {
-  ok: false;
-  reason: "MISSING_MARKET_PRICE";
-  row: { id: string; eventTitle: string; marketQuestion: string; pick: string; createdAt: string };
+function round(n: number, decimals: number): number {
+  const f = 10 ** decimals;
+  return Math.round(n * f) / f;
 }
 
-/** Full pipeline: latest-batch-per-day -> signalKey dedupe -> matchKey dedupe
- *  -> top-6-of-10 quality filter -> real odds + PnL. STOPs if any selected
- *  row is missing a resolvable market price. */
-export function computeProjectedTrackRecord(
-  rawRows: RawPairRow[]
-): ProjectedTrackRecordResult | ProjectedTrackRecordMissingOdds {
-  const withCreatedAt = rawRows.map((row) => {
-    const ps = row.premium_signal as Record<string, unknown> | null;
-    const dx = row.diagnostics as Record<string, unknown> | null;
-    const eventTitle =
-      safeStr(ps?.eventTitle) ?? safeStr(row.event_slug) ?? safeStr(dx?.eventTitle) ?? "Unknown market";
-    const marketQuestion = safeStr(dx?.marketQuestion) ?? safeStr(row.market_slug) ?? "";
-    const pick =
-      safeStr(ps?.positionDisplay) ?? safeStr(ps?.position) ?? safeStr(row.selected_outcome) ?? "";
+function avg(vals: number[]): number {
+  return vals.length > 0 ? vals.reduce((sum, v) => sum + v, 0) / vals.length : 0;
+}
 
-    const priceInfo = extractMarketPriceInfo(row);
-    const score = extractProjectedScore(row) ?? 0;
-    const decimalOdds = priceInfo ? computeDecimalOdds(priceInfo.price) : null;
-    const pnlUnits = decimalOdds !== null ? computePnlUnits(score, decimalOdds) : null;
+function sum(vals: number[]): number {
+  return vals.reduce((total, v) => total + v, 0);
+}
 
-    const projected: ProjectedSignal = {
-      id: row.id,
-      createdAt: row.created_at,
-      eventTitle,
-      marketQuestion,
-      pick,
-      signalKey: buildSignalKey(eventTitle, marketQuestion, pick),
-      matchKey: buildMatchKey(eventTitle, row.event_slug, row.market_slug),
-      projectedWinProbability: score,
-      marketPrice: priceInfo?.price ?? null,
-      priceSource: priceInfo?.source ?? null,
-      decimalOdds,
-      pnlUnits,
-    };
-    return projected;
-  });
-
-  const latestBatchRows = filterLatestBatchPerDay(withCreatedAt);
-  const signalDeduped = dedupeBySignalKeyPerDay(latestBatchRows);
-  const matchDeduped = dedupeByMatchKeyPerDay(signalDeduped);
-  const selected = applyTopSixOfTenFilter(matchDeduped);
-
-  const missing = selected.find((s) => s.marketPrice === null || s.decimalOdds === null);
-  if (missing) {
+/** Aggregates summary metrics from ALL display-table rows for the requested
+ *  window_days. Must be computed over the full row set — never truncated by
+ *  the request's ledger `limit`. */
+export function computeDisplaySignalsSummary(rows: DisplaySignalRow[]): DisplaySignalsSummary {
+  const selectedSignals = rows.length;
+  if (selectedSignals === 0) {
     return {
-      ok: false,
-      reason: "MISSING_MARKET_PRICE",
-      row: {
-        id: missing.id,
-        eventTitle: missing.eventTitle,
-        marketQuestion: missing.marketQuestion,
-        pick: missing.pick,
-        createdAt: missing.createdAt,
-      },
+      selectedSignals: 0,
+      oddsCoveragePct: 0,
+      oddsSourceBreakdown: {},
+      projectedWinRatePct: 0,
+      avgDecimalOdds: 0,
+      projectedPnlUnits: 0,
+      projectedReturnUsd: 0,
+      projectedRoiPct: 0,
     };
   }
 
-  const selectedSignals = selected.length;
+  const withOdds = rows.filter((r) => r.decimal_odds !== null && r.odds_source_path !== null);
+  const oddsCoveragePct = round((withOdds.length / selectedSignals) * 100, 2);
+
   const oddsSourceBreakdown: Record<string, number> = {};
-  for (const s of selected) {
-    const key = s.priceSource as string;
+  for (const r of rows) {
+    const key = r.odds_source_path ?? "unknown";
     oddsSourceBreakdown[key] = (oddsSourceBreakdown[key] ?? 0) + 1;
   }
 
-  const withPrice = selected.filter((s) => s.marketPrice !== null).length;
-  const oddsCoveragePct = selectedSignals > 0 ? round((withPrice / selectedSignals) * 100, 2) : 0;
-
-  const sumPnlUnits = selected.reduce((sum, s) => sum + (s.pnlUnits ?? 0), 0);
-  const avgDecimalOdds =
-    selectedSignals > 0
-      ? round(selected.reduce((sum, s) => sum + (s.decimalOdds ?? 0), 0) / selectedSignals, 3)
-      : 0;
-  const projectedWinRatePct =
-    selectedSignals > 0
-      ? round((selected.reduce((sum, s) => sum + s.projectedWinProbability, 0) / selectedSignals) * 100, 2)
-      : 0;
-  const projectedPnlUnits = round(sumPnlUnits, 4);
-  const projectedReturnUsd = round(projectedPnlUnits * STAKE_USD, 2);
-  const projectedRoiPct = selectedSignals > 0 ? round((projectedPnlUnits / selectedSignals) * 100, 2) : 0;
-
   return {
-    ok: true,
     selectedSignals,
     oddsCoveragePct,
     oddsSourceBreakdown,
-    projectedWinRatePct,
-    avgDecimalOdds,
-    projectedPnlUnits,
-    projectedReturnUsd,
-    projectedRoiPct,
-    rows: selected,
-    latestBatchRows: latestBatchRows.length,
-    signalDedupedCount: signalDeduped.length,
-    matchDedupedCount: matchDeduped.length,
+    projectedWinRatePct: round(avg(rows.map((r) => r.projected_win_rate_pct ?? 0)), 2),
+    avgDecimalOdds: round(avg(rows.map((r) => r.decimal_odds ?? 0)), 3),
+    projectedPnlUnits: round(sum(rows.map((r) => r.projected_pnl_units ?? 0)), 4),
+    projectedReturnUsd: round(sum(rows.map((r) => r.projected_return_usd ?? 0)), 2),
+    projectedRoiPct: round(avg(rows.map((r) => r.projected_roi_pct_per_signal ?? 0)), 2),
   };
 }
 
-// ── DB row type ───────────────────────────────────────────────────────────────
+/** Maps a raw display-table row to the UI-facing TrackRecordRow shape. */
+export function mapDisplaySignalRowToTrackRecordRow(r: DisplaySignalRow): TrackRecordRow {
+  return {
+    id: `${r.batch_day}-${r.score_rank}`,
+    eventTitle: r.event_title,
+    marketQuestion: r.market_question,
+    pick: r.position,
+    createdAt: r.batch_day,
+    decimalOdds: r.decimal_odds ?? 0,
+    americanOdds: r.american_odds,
+    oddsSourcePath: r.odds_source_path,
+    projectedWinProbabilityPct: r.projected_win_rate_pct ?? 0,
+    pnlUnits: r.projected_pnl_units ?? 0,
+    projectedReturnUsd: r.projected_return_usd ?? 0,
+    projectedRoiPctPerSignal: r.projected_roi_pct_per_signal ?? 0,
+    status: "Published",
+    action: r.action,
+    returnLabel: r.return_label ?? "—",
+    scoreRank: r.score_rank,
+    sourceModel: r.source_model,
+  };
+}
+
+// ── DB row type (resolved-signal carousel) ────────────────────────────────────
 
 interface DbRow {
   id: string;
@@ -478,8 +278,9 @@ interface DbRow {
 }
 
 // ── WeekResultsCard data contract ─────────────────────────────────────────────
-// Projected published-signal track record. Not tied to activePair / MarketSourceCard.
-// Contract lives in components/signal-week-results/types.ts (shared with the UI).
+// Published-signal projected track record, sourced from the accepted physical
+// display table. Not tied to activePair / MarketSourceCard. Contract lives in
+// components/signal-week-results/types.ts (shared with the UI).
 
 // ── Route handler ─────────────────────────────────────────────────────────────
 
@@ -510,83 +311,55 @@ export async function GET(request: Request) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // ── weekResultsCard: published-signal projected track record ────────────────
-  // Independent of the resolved-signal carousel below. Uses ALL published rows
-  // (no signal_result filter) in the window, regardless of resolution status.
+  // ── weekResultsCard: published-signal track record from the accepted display table ──
   const trackWindowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
-  const { data: trackRawRows, error: trackQueryError } = await supabase
-    .from("generated_signal_pairs")
+  const { data: displayRows, error: displayQueryError } = await supabase
+    .from("track_record_display_signals")
     .select(
-      "id, created_at, event_slug, market_slug, selected_outcome, " +
-      "premium_signal, diagnostics, entry_price_num, expected_return_pct_num"
+      "window_days, source_model, score_rank, event_title, market_question, position, " +
+      "american_odds, decimal_odds, odds_source_path, projected_win_rate_pct, " +
+      "projected_pnl_units, projected_return_usd, projected_roi_pct_per_signal, " +
+      "status, action, return_label, batch_day"
     )
-    .gte("created_at", trackWindowStart)
-    // Exclude shadow research rows; preserve legacy rows where metric_formula_version IS NULL.
-    .or("metric_formula_version.is.null,metric_formula_version.not.like.shadow-%")
-    .order("created_at", { ascending: false })
-    .limit(TRACK_FETCH_LIMIT);
+    .eq("window_days", windowDays)
+    .order("score_rank", { ascending: true })
+    .limit(DISPLAY_TABLE_FETCH_LIMIT);
 
-  if (trackQueryError) {
+  if (displayQueryError) {
     return NextResponse.json(
-      { ok: false, error: "DB_QUERY_ERROR", detail: trackQueryError.message },
+      { ok: false, error: "DB_QUERY_ERROR", detail: displayQueryError.message },
       { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 
-  const rawTrackRows = ((trackRawRows ?? []) as unknown) as RawPairRow[];
-  const trackResult = computeProjectedTrackRecord(rawTrackRows);
+  const allDisplayRows = ((displayRows ?? []) as unknown) as DisplaySignalRow[];
+  const summary = computeDisplaySignalsSummary(allDisplayRows);
+
+  // Ledger rows displayed in the UI are capped by the request `limit`; the
+  // summary above is always computed from the full per-window row set.
+  const trackRecordRows: TrackRecordRow[] = allDisplayRows
+    .slice(0, limit)
+    .map(mapDisplaySignalRowToTrackRecordRow);
+
+  let trackSampleSizeStatus: "empty" | "early" | "active" | "enough_data";
+  if (summary.selectedSignals === 0) trackSampleSizeStatus = "empty";
+  else if (summary.selectedSignals < 3) trackSampleSizeStatus = "early";
+  else if (summary.selectedSignals < 10) trackSampleSizeStatus = "active";
+  else trackSampleSizeStatus = "enough_data";
 
   console.log("[weekResultsCard]", {
     windowDays,
-    rawRows: rawTrackRows.length,
-    ...(trackResult.ok
-      ? {
-          latestBatchRows: trackResult.latestBatchRows,
-          signalDedupedCount: trackResult.signalDedupedCount,
-          matchDedupedCount: trackResult.matchDedupedCount,
-          selectedSignals: trackResult.selectedSignals,
-          oddsCoveragePct: trackResult.oddsCoveragePct,
-          oddsSourceBreakdown: trackResult.oddsSourceBreakdown,
-          projectedRoiPct: trackResult.projectedRoiPct,
-        }
-      : { reason: trackResult.reason, row: trackResult.row }),
+    source: "track_record_display_signals",
+    selectedSignals: summary.selectedSignals,
+    oddsCoveragePct: summary.oddsCoveragePct,
+    oddsSourceBreakdown: summary.oddsSourceBreakdown,
+    projectedRoiPct: summary.projectedRoiPct,
   });
-
-  if (!trackResult.ok) {
-    return NextResponse.json(
-      { ok: false, error: "MISSING_MARKET_PRICE", row: trackResult.row },
-      { status: 500, headers: { "Cache-Control": "no-store" } }
-    );
-  }
-
-  const trackRecordRows: TrackRecordRow[] = trackResult.rows
-    .slice()
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-    .map((s) => ({
-      id: s.id,
-      eventTitle: s.eventTitle,
-      marketQuestion: s.marketQuestion,
-      pick: s.pick,
-      createdAt: s.createdAt,
-      marketPrice: s.marketPrice as number,
-      priceSource: s.priceSource as TrackRecordRow["priceSource"],
-      decimalOdds: s.decimalOdds as number,
-      projectedWinProbabilityPct: round(s.projectedWinProbability * 100, 2),
-      pnlUnits: round(s.pnlUnits ?? 0, 2),
-      projectedReturnUsd: round((s.pnlUnits ?? 0) * STAKE_USD, 2),
-      status: "Published",
-    }));
-
-  let trackSampleSizeStatus: "empty" | "early" | "active" | "enough_data";
-  if (trackResult.selectedSignals === 0) trackSampleSizeStatus = "empty";
-  else if (trackResult.selectedSignals < 3) trackSampleSizeStatus = "early";
-  else if (trackResult.selectedSignals < 10) trackSampleSizeStatus = "active";
-  else trackSampleSizeStatus = "enough_data";
 
   const weekResultsCard: WeekResultsCard = {
     cardType: "signal-week-results",
     schemaVersion: "week-results-v2-projected",
-    source: "generated_signal_pairs_latest_daily_match_quality_real_odds",
+    source: "track_record_display_signals",
     window: {
       label: `Past ${windowDays} days`,
       days: windowDays,
@@ -596,14 +369,14 @@ export async function GET(request: Request) {
     title: "Signals published this window",
     subtitle: "Flat $100 stake model",
     sampleSizeStatus: trackSampleSizeStatus,
-    selectedSignals: trackResult.selectedSignals,
-    oddsCoveragePct: trackResult.oddsCoveragePct,
-    oddsSourceBreakdown: trackResult.oddsSourceBreakdown,
-    projectedWinRatePct: trackResult.projectedWinRatePct,
-    avgDecimalOdds: trackResult.avgDecimalOdds,
-    projectedPnlUnits: trackResult.projectedPnlUnits,
-    projectedReturnUsd: trackResult.projectedReturnUsd,
-    projectedRoiPct: trackResult.projectedRoiPct,
+    selectedSignals: summary.selectedSignals,
+    oddsCoveragePct: summary.oddsCoveragePct,
+    oddsSourceBreakdown: summary.oddsSourceBreakdown,
+    projectedWinRatePct: summary.projectedWinRatePct,
+    avgDecimalOdds: summary.avgDecimalOdds,
+    projectedPnlUnits: summary.projectedPnlUnits,
+    projectedReturnUsd: summary.projectedReturnUsd,
+    projectedRoiPct: summary.projectedRoiPct,
     trackRecordDisplayTable: { windowDays, rows: trackRecordRows },
   };
 
