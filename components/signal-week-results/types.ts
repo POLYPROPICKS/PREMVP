@@ -18,6 +18,7 @@ export interface TrackRecordRow {
   projectedReturnUsd: number;
   projectedRoiPctPerSignal: number;
   status: 'Published';
+  displayStatus: 'Hit' | 'Miss' | 'Pending';
   action: string | null;
   returnLabel: string;
   scoreRank: number;
@@ -27,6 +28,12 @@ export interface TrackRecordRow {
 export interface TrackRecordDisplayTable {
   windowDays: number;
   rows: TrackRecordRow[];
+}
+
+export interface ReturnCurvePoint {
+  index: number;
+  cumulativePnlUnits: number;
+  cumulativeRoiPct: number;
 }
 
 export interface WeekResultsCard {
@@ -45,5 +52,12 @@ export interface WeekResultsCard {
   projectedPnlUnits: number;
   projectedReturnUsd: number;
   projectedRoiPct: number;
+  netReturnPct: number;
+  signalsTracked: number;
+  resolvedCount: number;
+  pendingCount: number;
+  winsCount: number;
+  lossesCount: number;
+  returnCurve: ReturnCurvePoint[];
   trackRecordDisplayTable: TrackRecordDisplayTable;
 }

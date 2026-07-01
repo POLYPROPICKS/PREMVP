@@ -5,7 +5,7 @@
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import type { WeekResultsCard, TrackRecordRow } from "@/components/signal-week-results/types";
+import type { WeekResultsCard, TrackRecordRow, ReturnCurvePoint } from "@/components/signal-week-results/types";
 
 export const dynamic = "force-dynamic";
 
@@ -183,6 +183,40 @@ export interface DisplaySignalsSummary {
   projectedPnlUnits: number;
   projectedReturnUsd: number;
   projectedRoiPct: number;
+  winsCount: number;
+  lossesCount: number;
+  resolvedCount: number;
+  pendingCount: number;
+}
+
+/** Hit = positive projected return, Miss = negative, Pending = null/undefined/exactly zero. */
+export function deriveDisplayStatus(projectedReturnUsd: number | null | undefined): "Hit" | "Miss" | "Pending" {
+  if (projectedReturnUsd === null || projectedReturnUsd === undefined || projectedReturnUsd === 0) return "Pending";
+  return projectedReturnUsd > 0 ? "Hit" : "Miss";
+}
+
+/** Formats a row return for the ledger. No +$0 / -$0 spam on true-zero/missing values. */
+export function formatReturnLabel(projectedReturnUsd: number | null | undefined): string {
+  if (projectedReturnUsd === null || projectedReturnUsd === undefined || projectedReturnUsd === 0) return "—";
+  const rounded = Math.round(Math.abs(projectedReturnUsd));
+  return projectedReturnUsd > 0 ? `+$${rounded}` : `-$${rounded}`;
+}
+
+/** Computes the cumulative return curve from ALL rows ordered by score_rank.
+ *  Final point's cumulativeRoiPct rounds to the same value as projectedRoiPct. */
+export function computeReturnCurve(rows: DisplaySignalRow[]): ReturnCurvePoint[] {
+  const ordered = [...rows].sort((a, b) => a.score_rank - b.score_rank);
+  const totalRows = ordered.length;
+  if (totalRows === 0) return [];
+  let cumulativePnlUnits = 0;
+  return ordered.map((r, i) => {
+    cumulativePnlUnits = round(cumulativePnlUnits + (r.projected_pnl_units ?? 0), 4);
+    return {
+      index: i,
+      cumulativePnlUnits,
+      cumulativeRoiPct: round((cumulativePnlUnits / totalRows) * 100, 2),
+    };
+  });
 }
 
 function round(n: number, decimals: number): number {
@@ -213,8 +247,17 @@ export function computeDisplaySignalsSummary(rows: DisplaySignalRow[]): DisplayS
       projectedPnlUnits: 0,
       projectedReturnUsd: 0,
       projectedRoiPct: 0,
+      winsCount: 0,
+      lossesCount: 0,
+      resolvedCount: 0,
+      pendingCount: 0,
     };
   }
+
+  const winsCount = rows.filter((r) => deriveDisplayStatus(r.projected_return_usd) === "Hit").length;
+  const lossesCount = rows.filter((r) => deriveDisplayStatus(r.projected_return_usd) === "Miss").length;
+  const resolvedCount = winsCount + lossesCount;
+  const pendingCount = selectedSignals - resolvedCount;
 
   const withOdds = rows.filter((r) => r.decimal_odds !== null && r.odds_source_path !== null);
   const oddsCoveragePct = round((withOdds.length / selectedSignals) * 100, 2);
@@ -234,6 +277,10 @@ export function computeDisplaySignalsSummary(rows: DisplaySignalRow[]): DisplayS
     projectedPnlUnits: round(sum(rows.map((r) => r.projected_pnl_units ?? 0)), 4),
     projectedReturnUsd: round(sum(rows.map((r) => r.projected_return_usd ?? 0)), 2),
     projectedRoiPct: round(avg(rows.map((r) => r.projected_roi_pct_per_signal ?? 0)), 2),
+    winsCount,
+    lossesCount,
+    resolvedCount,
+    pendingCount,
   };
 }
 
@@ -253,8 +300,9 @@ export function mapDisplaySignalRowToTrackRecordRow(r: DisplaySignalRow): TrackR
     projectedReturnUsd: r.projected_return_usd ?? 0,
     projectedRoiPctPerSignal: r.projected_roi_pct_per_signal ?? 0,
     status: "Published",
+    displayStatus: deriveDisplayStatus(r.projected_return_usd),
     action: r.action,
-    returnLabel: r.return_label ?? "—",
+    returnLabel: formatReturnLabel(r.projected_return_usd),
     scoreRank: r.score_rank,
     sourceModel: r.source_model,
   };
@@ -334,6 +382,7 @@ export async function GET(request: Request) {
 
   const allDisplayRows = ((displayRows ?? []) as unknown) as DisplaySignalRow[];
   const summary = computeDisplaySignalsSummary(allDisplayRows);
+  const returnCurve = computeReturnCurve(allDisplayRows);
 
   // Ledger rows displayed in the UI are capped by the request `limit`; the
   // summary above is always computed from the full per-window row set.
@@ -377,6 +426,13 @@ export async function GET(request: Request) {
     projectedPnlUnits: summary.projectedPnlUnits,
     projectedReturnUsd: summary.projectedReturnUsd,
     projectedRoiPct: summary.projectedRoiPct,
+    netReturnPct: summary.projectedRoiPct,
+    signalsTracked: summary.selectedSignals,
+    resolvedCount: summary.resolvedCount,
+    pendingCount: summary.pendingCount,
+    winsCount: summary.winsCount,
+    lossesCount: summary.lossesCount,
+    returnCurve,
     trackRecordDisplayTable: { windowDays, rows: trackRecordRows },
   };
 

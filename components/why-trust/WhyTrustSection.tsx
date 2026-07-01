@@ -8,7 +8,7 @@
 
 import { useEffect, useState } from 'react';
 import styles from './WhyTrustSection.module.css';
-import type { WeekResultsCard, TrackRecordRow } from '@/components/signal-week-results/types';
+import type { WeekResultsCard, TrackRecordRow, ReturnCurvePoint } from '@/components/signal-week-results/types';
 
 // ── Types ───────────────────────────────────────────────────────────────────────
 
@@ -18,12 +18,12 @@ type WindowState = { loading: boolean; error: boolean; data: WeekResultsCard | n
 const WINDOW_DAYS: Record<TrackWindow, number> = { '7D': 7, '14D': 14 };
 
 const METHODOLOGY_RULES: string[] = [
-  'Signals are locked and scored before the market resolves.',
-  'Performance reflects a flat $100 stake per published signal.',
-  'Metrics are aggregated across every published signal in the selected window.',
-  'Return and win-rate figures are projected from entry odds, not resolved outcomes.',
+  'Every signal is timestamped before the market settles — then tracked in a public ledger.',
+  'Performance reflects a flat $100 stake per resolved signal.',
+  'No cherry-picking. Wins, losses, and pending signals stay visible.',
+  'Transparent tracking beats cherry-picked screenshots.',
   'Odds are sourced directly from Polymarket at signal publish time.',
-  'Past performance does not guarantee future results.',
+  'Performance does not guarantee future results.',
 ];
 
 // ── Derivations ───────────────────────────────────────────────────────────────
@@ -33,31 +33,26 @@ function fmtPct(value: number): string {
   return `${sign}${value.toFixed(1)}%`;
 }
 
-function fmtUsd(value: number): string {
-  const r = Math.round(value * 100) / 100;
-  return (r >= 0 ? '+$' : '-$') + Math.abs(r).toFixed(2);
-}
-
 type Metric = { label: string; value: string; sub?: string; accent?: boolean };
 
 const PLACEHOLDER_METRICS: Metric[] = [
-  { label: 'Projected Return', value: '—', sub: 'Flat $100 stake model', accent: true },
-  { label: 'Signals Published', value: '—' },
-  { label: 'Projected Rate', value: '—' },
-  { label: 'Avg Odds', value: '—' },
+  { label: 'Net Return', value: '—', sub: 'Flat $100 per resolved signal', accent: true },
+  { label: 'Signals Tracked', value: '—' },
+  { label: 'Resolved', value: '—' },
+  { label: 'Pending', value: '—' },
 ];
 
 function deriveMetrics(card: WeekResultsCard): Metric[] {
   return [
     {
-      label: 'Projected Return',
-      value: fmtPct(card.projectedRoiPct),
-      sub: 'Flat $100 stake model',
+      label: 'Net Return',
+      value: fmtPct(card.netReturnPct),
+      sub: 'Flat $100 per resolved signal',
       accent: true,
     },
-    { label: 'Signals Published', value: String(card.selectedSignals) },
-    { label: 'Projected Rate', value: `${card.projectedWinRatePct.toFixed(1)}%` },
-    { label: 'Avg Odds', value: card.avgDecimalOdds.toFixed(2) },
+    { label: 'Signals Tracked', value: String(card.signalsTracked) },
+    { label: 'Resolved', value: String(card.resolvedCount) },
+    { label: 'Pending', value: String(card.pendingCount) },
   ];
 }
 
@@ -68,20 +63,13 @@ function getRows(card: WeekResultsCard): TrackRecordRow[] {
     : ((table as { rows?: TrackRecordRow[] } | null | undefined)?.rows ?? []);
 }
 
-type ChartPoint = { day: string; cumUsd: number };
+type ChartPoint = { day: string; cumPct: number };
 
-function toChartPoints(rows: TrackRecordRow[]): ChartPoint[] {
-  if (rows.length === 0) return [];
-  const chronological = [...rows].sort(
-    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-  );
-  let running = 0;
+function toChartPoints(returnCurve: ReturnCurvePoint[]): ChartPoint[] {
+  if (returnCurve.length === 0) return [];
   return [
-    { day: 'Start', cumUsd: 0 },
-    ...chronological.map((r, i) => {
-      running = Math.round((running + r.projectedReturnUsd) * 100) / 100;
-      return { day: `#${i + 1}`, cumUsd: running };
-    }),
+    { day: 'Start', cumPct: 0 },
+    ...returnCurve.map((p) => ({ day: `#${p.index + 1}`, cumPct: p.cumulativeRoiPct })),
   ];
 }
 
@@ -116,20 +104,20 @@ function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
   const count = points.length;
   const { left, right, top, bottom } = CHART;
 
-  const vals = points.map((p) => p.cumUsd);
+  const vals = points.map((p) => p.cumPct);
   const vMax = Math.max(Math.max(0, ...vals) + 4, 4);
   const vMin = Math.min(Math.min(0, ...vals) - 4, -4);
 
   const x = (i: number) => left + (i / (count - 1)) * (right - left);
   const y = (v: number) => top + ((vMax - v) / (vMax - vMin)) * (bottom - top);
 
-  const linePoints = points.map((p, i) => `${x(i)},${y(p.cumUsd)}`).join(' ');
+  const linePoints = points.map((p, i) => `${x(i)},${y(p.cumPct)}`).join(' ');
   const areaPoints = `${x(0)},${bottom} ${linePoints} ${x(count - 1)},${bottom}`;
   const yLabels = [0, 1, 2, 3].map((k) => Math.round(vMax - (k / 3) * (vMax - vMin)));
   const endIdx = count - 1;
   const endX = x(endIdx);
-  const endY = y(points[endIdx].cumUsd);
-  const endLabel = fmtUsd(points[endIdx].cumUsd);
+  const endY = y(points[endIdx].cumPct);
+  const endLabel = fmtPct(points[endIdx].cumPct);
 
   return (
     <svg viewBox={`0 0 ${CHART.vbW} ${CHART.vbH}`} className={styles.chartSvg} role="img" aria-label="Cumulative return chart">
@@ -154,7 +142,7 @@ function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
               strokeDasharray="3,4"
             />
             <text x={left - 8} y={gy + 3.5} fontSize="10" fill="rgba(160,200,225,0.62)" textAnchor="end">
-              ${v}
+              {v}%
             </text>
           </g>
         );
@@ -171,7 +159,7 @@ function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
       />
 
       {points.map((p, i) => (
-        <circle key={p.day} cx={x(i)} cy={y(p.cumUsd)} r="3.2" fill="#0a1320" stroke="#5eeab4" strokeWidth="2" />
+        <circle key={p.day} cx={x(i)} cy={y(p.cumPct)} r="3.2" fill="#0a1320" stroke="#5eeab4" strokeWidth="2" />
       ))}
 
       <g>
@@ -188,6 +176,18 @@ function returnClass(ret: string): string {
   if (ret.startsWith('+')) return styles.retPos;
   if (ret.startsWith('-')) return styles.retNeg;
   return styles.retMuted;
+}
+
+function fmtDate(isoDay: string): string {
+  const d = new Date(`${isoDay}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return isoDay;
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+}
+
+function statusPillClass(status: TrackRecordRow['displayStatus']): string {
+  if (status === 'Hit') return styles.stHit;
+  if (status === 'Miss') return styles.stMiss;
+  return styles.stPending;
 }
 
 function MethodologyNum({ n }: { n: number }) {
@@ -228,7 +228,7 @@ export default function WhyTrustSection() {
   const card = cur.data;
   const metrics = card ? deriveMetrics(card) : PLACEHOLDER_METRICS;
   const rows = card ? getRows(card) : [];
-  const chartPoints = toChartPoints(rows);
+  const chartPoints = toChartPoints(card?.returnCurve ?? []);
 
   return (
     <section className={styles.section} aria-label="Why can I trust this">
@@ -237,17 +237,17 @@ export default function WhyTrustSection() {
           <ShieldBadge />
           <h2 className={styles.title}>Why Can I Trust This?</h2>
           <p className={styles.lead}>
-            Every published signal is locked and timestamped before the market settles.
+            Every signal is timestamped before the market settles — then tracked in a public ledger.
           </p>
           <p className={styles.leadAccent}>
-            Projected performance stays visible across the selected tracking window.
+            No cherry-picking. Wins, losses, and pending signals stay visible.
           </p>
           <div className={styles.introDivider} />
           <div className={styles.introFooter}>
             <svg viewBox="0 0 24 24" className={styles.introFooterIcon} aria-hidden="true">
               <path d="M12 2.8 19 5.7v5.1c0 5-3 8.7-7 10.4-4-1.7-7-5.4-7-10.4V5.7L12 2.8Z" stroke="currentColor" strokeWidth="1.6" fill="none" />
             </svg>
-            <span>A structured performance view built for fast signal review.</span>
+            <span>Transparent tracking beats cherry-picked screenshots.</span>
           </div>
         </div>
 
@@ -279,7 +279,7 @@ export default function WhyTrustSection() {
           <div className={styles.chartTitle}>Cumulative Return</div>
           <div className={styles.chartSub}>
             <span className={styles.chartSubDot} aria-hidden="true" />
-            Flat $100 per published signal
+            Flat $100 per resolved signal
           </div>
           {chartPoints.length >= 2 ? (
             <CumulativeReturnChart points={chartPoints} />
@@ -321,10 +321,10 @@ export default function WhyTrustSection() {
             ) : (
               rows.map((row) => (
                 <div key={row.id} className={styles.ledgerRow} role="row">
-                  <span className={styles.colDate}>{row.createdAt}</span>
+                  <span className={styles.colDate}>{fmtDate(row.createdAt)}</span>
                   <span className={styles.colMatch} title={row.eventTitle}>{row.eventTitle}</span>
                   <span className={styles.colStatus}>
-                    <span className={`${styles.statusPill} ${styles.stPublished}`}>{row.status}</span>
+                    <span className={`${styles.statusPill} ${statusPillClass(row.displayStatus)}`}>{row.displayStatus}</span>
                   </span>
                   <span className={`${styles.colReturn} ${returnClass(row.returnLabel)}`}>{row.returnLabel}</span>
                 </div>

@@ -1,8 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import {
   computeDisplaySignalsSummary,
   mapDisplaySignalRowToTrackRecordRow,
+  deriveDisplayStatus,
+  formatReturnLabel,
+  computeReturnCurve,
   type DisplaySignalRow,
 } from "../../app/api/signals/resolved/route";
 
@@ -46,6 +51,10 @@ test("computeDisplaySignalsSummary aggregates selectedSignals, odds coverage, an
   assert.equal(summary.projectedPnlUnits, -0.8);
   assert.equal(summary.projectedReturnUsd, -80);
   assert.equal(summary.projectedRoiPct, -40);
+  assert.equal(summary.winsCount, 1);
+  assert.equal(summary.lossesCount, 1);
+  assert.equal(summary.resolvedCount, 2);
+  assert.equal(summary.pendingCount, 0);
 });
 
 test("computeDisplaySignalsSummary reports partial odds coverage when some rows are missing odds", () => {
@@ -67,6 +76,86 @@ test("computeDisplaySignalsSummary returns zeroed summary for an empty row set (
   assert.equal(summary.projectedPnlUnits, 0);
   assert.equal(summary.projectedReturnUsd, 0);
   assert.equal(summary.projectedRoiPct, 0);
+  assert.equal(summary.winsCount, 0);
+  assert.equal(summary.lossesCount, 0);
+  assert.equal(summary.resolvedCount, 0);
+  assert.equal(summary.pendingCount, 0);
+});
+
+// ── Hit/Miss/Pending display-status derivation ──────────────────────────────
+
+test("deriveDisplayStatus: positive projected return is Hit", () => {
+  assert.equal(deriveDisplayStatus(72), "Hit");
+});
+
+test("deriveDisplayStatus: negative projected return is Miss", () => {
+  assert.equal(deriveDisplayStatus(-100), "Miss");
+});
+
+test("deriveDisplayStatus: null, undefined, and exact zero are Pending", () => {
+  assert.equal(deriveDisplayStatus(null), "Pending");
+  assert.equal(deriveDisplayStatus(undefined), "Pending");
+  assert.equal(deriveDisplayStatus(0), "Pending");
+});
+
+// ── Return label formatting: no +$0 / -$0 spam ──────────────────────────────
+
+test("formatReturnLabel: positive/negative values format as +$N / -$N", () => {
+  assert.equal(formatReturnLabel(72.4), "+$72");
+  assert.equal(formatReturnLabel(-100), "-$100");
+});
+
+test("formatReturnLabel: zero/null/undefined never render +$0 or -$0", () => {
+  assert.equal(formatReturnLabel(0), "—");
+  assert.equal(formatReturnLabel(null), "—");
+  assert.equal(formatReturnLabel(undefined), "—");
+});
+
+// ── resolvedCount/pendingCount derived from ALL rows, not a limited ledger ──
+
+test("resolvedCount and pendingCount are derived from the full row set", () => {
+  const rows: DisplaySignalRow[] = [
+    displayRow({ score_rank: 1, projected_return_usd: 20 }),
+    displayRow({ score_rank: 2, projected_return_usd: -50 }),
+    displayRow({ score_rank: 3, projected_return_usd: 0 }),
+    displayRow({ score_rank: 4, projected_return_usd: null }),
+  ];
+  const summary = computeDisplaySignalsSummary(rows);
+  assert.equal(summary.winsCount, 1);
+  assert.equal(summary.lossesCount, 1);
+  assert.equal(summary.resolvedCount, 2);
+  assert.equal(summary.pendingCount, 2);
+});
+
+// ── returnCurve: computed from ALL rows, final point matches projectedRoiPct ─
+
+test("computeReturnCurve produces a running total and final point matches projectedRoiPct", () => {
+  const rows: DisplaySignalRow[] = [
+    displayRow({ score_rank: 1, projected_pnl_units: 0.2, projected_roi_pct_per_signal: 20 }),
+    displayRow({ score_rank: 2, projected_pnl_units: -1, projected_roi_pct_per_signal: -100 }),
+  ];
+  const curve = computeReturnCurve(rows);
+  const summary = computeDisplaySignalsSummary(rows);
+
+  assert.equal(curve.length, 2);
+  assert.equal(curve[0].cumulativePnlUnits, 0.2);
+  assert.equal(curve[1].cumulativePnlUnits, -0.8);
+  const finalPoint = curve[curve.length - 1];
+  assert.equal(Math.round(finalPoint.cumulativeRoiPct), Math.round(summary.projectedRoiPct));
+});
+
+test("computeReturnCurve orders points by score_rank regardless of input order", () => {
+  const rows: DisplaySignalRow[] = [
+    displayRow({ score_rank: 2, projected_pnl_units: 1 }),
+    displayRow({ score_rank: 1, projected_pnl_units: 0.5 }),
+  ];
+  const curve = computeReturnCurve(rows);
+  assert.equal(curve[0].cumulativePnlUnits, 0.5);
+  assert.equal(curve[1].cumulativePnlUnits, 1.5);
+});
+
+test("computeReturnCurve returns an empty array for no rows", () => {
+  assert.deepEqual(computeReturnCurve([]), []);
 });
 
 // ── selectedSignals must use the full table row set, not a limited ledger ───
@@ -114,7 +203,7 @@ test("mapDisplaySignalRowToTrackRecordRow maps display-table columns to the UI r
       event_title: "Lakers vs Celtics",
       market_question: "Will Lakers win?",
       position: "Lakers",
-      return_label: "+$54",
+      projected_return_usd: 54,
       action: "ENTER",
       source_model: "model-v2",
     })
@@ -125,6 +214,7 @@ test("mapDisplaySignalRowToTrackRecordRow maps display-table columns to the UI r
   assert.equal(row.marketQuestion, "Will Lakers win?");
   assert.equal(row.pick, "Lakers");
   assert.equal(row.status, "Published");
+  assert.equal(row.displayStatus, "Hit");
   assert.equal(row.returnLabel, "+$54");
   assert.equal(row.action, "ENTER");
   assert.equal(row.sourceModel, "model-v2");
@@ -138,6 +228,7 @@ test("mapDisplaySignalRowToTrackRecordRow falls back safely when odds/return fie
   assert.equal(row.decimalOdds, 0);
   assert.equal(row.americanOdds, null);
   assert.equal(row.returnLabel, "—");
+  assert.equal(row.displayStatus, "Pending");
   assert.equal(row.pnlUnits, 0);
   assert.equal(row.projectedReturnUsd, 0);
   assert.equal(row.projectedRoiPctPerSignal, 0);
@@ -187,4 +278,32 @@ test("UI row extraction is safe for object-with-rows, bare-array, and missing/em
   assert.deepEqual(readDisplayTableRows(undefined), []);
   assert.deepEqual(readDisplayTableRows(null), []);
   assert.deepEqual(readDisplayTableRows({}), []);
+});
+
+// ── WhyTrustSection: approved visible labels present, replaced labels absent ─
+
+const whyTrustSource = fs.readFileSync(
+  path.join(__dirname, "../../components/why-trust/WhyTrustSection.tsx"),
+  "utf8"
+);
+
+test("WhyTrustSection uses the approved visible labels", () => {
+  for (const label of [
+    "Net Return",
+    "Signals Tracked",
+    "Resolved",
+    "Pending",
+    "Cumulative Return",
+    "Recent Signal Ledger",
+    "How we track signals",
+    "Flat $100 per resolved signal",
+  ]) {
+    assert.ok(whyTrustSource.includes(label), `expected label "${label}" in WhyTrustSection`);
+  }
+});
+
+test("WhyTrustSection does not use the replaced labels", () => {
+  for (const label of ["Projected Return", "Signals Published", "Projected Rate", "Avg Odds", "Published"]) {
+    assert.ok(!whyTrustSource.includes(label), `unexpected replaced label "${label}" in WhyTrustSection`);
+  }
 });
