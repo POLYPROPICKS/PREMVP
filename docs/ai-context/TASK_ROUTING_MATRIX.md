@@ -1,124 +1,80 @@
 # TASK_ROUTING_MATRIX.md — PolyProPicks Task Routing
 
----
-
-## Token Economy Routing — 2026-05-15
-
-- ChatGPT compresses and formats the task into a bounded execution spec
-- Claude Code receives only the bounded spec — no project history, no broad roadmap
-- Research, architecture decisions, and roadmap planning stay in ChatGPT or scarce Claude Chat sessions
-- Claude Code executes the final bounded prompt only
-- Claude Code does not receive context it doesn't need to execute the patch
-
----
-
-<!-- ACTIVATION POINT: Before every task — determines who executes and in what format -->
+<!-- ACTIVATION POINT: Before every task — determines executor + response format -->
 <!-- TOKEN LOADING RULE: Load at task start. Tier 1. -->
-<!-- OWNER: Claude Chat (applies rules); Founder (approves routing) -->
-<!-- MONITORING CHECK: Every response must state EXECUTION MODE explicitly -->
 <!-- REQUIRED OUTPUT FIELD: TASK CLASSIFICATION + EXECUTION MODE in every response -->
-<!-- STOP/REJECT CONDITION: If task type is ambiguous — classify as inspect-only before proceeding -->
+<!-- STOP/REJECT: ambiguous task type → classify inspect-only first -->
 
 ## 1. Decision rule summary
 
 ```
-≤5 simple git/build/curl commands           → Direct CMD
->5 commands OR multi-step verification      → Claude Code block
-Source uncertain + patch planned            → inspect-only FIRST
-UI/CSS work                                 → inspect-only FIRST, then patch
-Product/visual decision                     → Founder only
-Payment/auth architecture                   → Claude Chat review + Founder approval
-Push/deploy                                 → Founder only (explicit approval)
-Any code edit                               → Claude Code (not founder manual)
+≤5 simple git/build/curl commands       → Direct CMD
+>5 commands OR multi-step verification  → Claude Code block
+Source uncertain + patch planned        → inspect-only FIRST
+UI/CSS work                             → inspect-only FIRST, then patch
+Product/visual decision                 → Founder only
+Payment/auth architecture               → Claude Chat review + Founder approval
+Push/deploy                             → Founder explicit approval always; Claude Code may execute when prompt authorizes
+Any code edit                           → Claude Code (never founder manual)
 ```
 
 ## 2. Routing table
 
 | Task type | Direct CMD | Claude Code | Claude Chat | Founder only | Notes |
 |---|:---:|:---:|:---:|:---:|---|
-| `git status --short` | ✓ | | | | 1 command |
-| `git log --oneline -5` | ✓ | | | | 1 command |
-| `git branch --show-current` | ✓ | | | | 1 command |
-| `npm run build` | ✓ | | | | 1 command |
-| `git diff --stat` / `--check` | ✓ | | | | 1–2 commands |
-| Simple curl to one endpoint | ✓ | | | | 1 command |
-| git add + commit (non-visual, authorized) | | ✓ | | ✓ approval | Claude Code commits when prompt authorizes + Gate 1 PASS |
-| git add + commit (UI/visual task) | ✓ | | | ✓ approval | Founder runs CMD after Gate 2 visual acceptance |
-| git push | | ✓ (when authorized) | | ✓ | Founder explicit approval always; Claude Code may execute when prompt authorizes |
-| Source file inspection (uncertain) | | ✓ inspect-only | | | inspect-only mode — no edits |
+| `git status/log/branch`, `npm run build`, `git diff --stat/--check`, single curl | ✓ | | | | ≤1–2 commands each |
+| git commit (non-visual, authorized) | | ✓ | | ✓ approval | Commits when prompt authorizes + Gate 1 PASS |
+| git commit (UI/visual task) | ✓ | | | ✓ approval | Founder runs after Gate 2 visual acceptance |
+| git push | | ✓ (when authorized) | | ✓ | Founder explicit approval always |
+| Source inspection (uncertain) | | ✓ inspect-only | | | No edits |
 | Single-file exact patch | | ✓ | ✓ plan | | Claude Chat plans, Claude Code executes |
-| Multi-file patch | | ✓ | ✓ plan | | Must have explicit allowed_files[] per zone |
-| CSS/UI debugging | | ✓ inspect first | ✓ | | ALWAYS inspect active selectors before patch |
-| API response debugging | | ✓ | | | Cache vs fresh — cacheStatus required |
+| Multi-file patch | | ✓ | ✓ plan | | Explicit `allowed_files[]` per zone required |
+| CSS/UI debugging | | ✓ inspect first | ✓ | | Inspect active selectors before patch |
+| API response debugging | | ✓ | | | Cache vs fresh — `cacheStatus` required |
 | TypeScript/type inspection | | ✓ inspect-only | | | Find source-of-truth type file first |
 | Architecture review | | | ✓ | | Chat-only unless source files needed |
 | Payment/auth architecture | | | ✓ | ✓ approval | High-risk; Founder decision required |
-| Visual acceptance | | | | ✓ | Browser/screenshot only — not Claude judgment |
+| Visual acceptance | | | | ✓ | Browser/screenshot only, not Claude judgment |
 | Product/copy/pricing decisions | | | | ✓ | Business decision — not automatable |
-| Context handoff | | | ✓ | | Claude Chat prepares using CONTEXT_HANDOFF_TEMPLATE |
-| Claude Code prompt writing | | | ✓ | | Claude Chat produces prompt; Founder pastes |
-| Monitoring-agent audit | | | ✓ | | Claude Chat runs RULE_COMPLIANCE_MONITOR_AGENT |
-| Artifact update (docs) | | | ✓ | | Claude Chat updates /docs/ai-context/ content |
-| Build + diff + commit flow (>5 cmds) | | ✓ | | ✓ approval | Claude Code executes commit when prompt authorizes + Gate 1 PASS |
+| Context handoff / prompt writing / monitoring audit / docs artifact update | | | ✓ | | Claude Chat prepares/executes |
 | Production verification | ✓ curl | | | ✓ decision | Separate from local build check |
 | Railway/Supabase config changes | | | | ✓ | Founder only; env-deploy scope |
-| Regression check (multiple routes) | | ✓ | | | Inspect + curl in Claude Code block |
+| Regression check (multiple routes) | | ✓ | | | Inspect + curl in one Claude Code block |
 
 ## 3. Zone rules
 
 ```
-UI/frontend task    → allowed: components/, app/globals.css, CSS modules
-                    → forbidden: lib/feed/, app/api/, Supabase
-
-Backend/feed task   → allowed: lib/feed/, app/api/feed/
-                    → forbidden: components/, CSS files, payment
-
-Payment/auth task   → allowed: only explicitly scoped files
-                    → forbidden: UI, feed, unrelated Supabase tables
-
-Docs/context task   → allowed: /docs/ai-context/
-                    → forbidden: all source files, no commits mixed with source
+UI/frontend   → allowed: components/, app/globals.css, CSS modules   forbidden: lib/feed/, app/api/, Supabase
+Backend/feed  → allowed: lib/feed/, app/api/feed/                    forbidden: components/, CSS, payment
+Payment/auth  → allowed: only explicitly scoped files                forbidden: UI, feed, unrelated Supabase
+Docs/context  → allowed: /docs/ai-context/                           forbidden: all source files; no commits mixed with source
 ```
-
-**Zone mixing = STOP.** If backend task starts requiring CSS changes → stop, split task.
+**Zone mixing = STOP.** If a backend task starts requiring CSS changes → stop, split the task.
 
 ## 4. Escalation path
 
 ```
-CMD → fails or ambiguous         → Claude Code inspect-only
-Claude Code inspect → no patch   → Claude Chat analysis
-Claude Code patch → fails once   → Direct-source check (not another broad prompt)
-Direct-source check → still fail → Founder decision + explicit scope reset
-Product/visual boundary reached  → Founder only
+CMD fails/ambiguous             → Claude Code inspect-only
+Claude Code inspect, no patch   → Claude Chat analysis
+Claude Code patch fails once    → Direct-source check (not another broad prompt)
+Direct-source check still fails → Founder decision + explicit scope reset
+Product/visual boundary reached → Founder only
 ```
 
 ## 5. Direct-source check rule
 
 After ONE failed Claude Code attempt:
-
 ```
 Direct-source option check:
 [continue with Claude Code / request files for direct review / provide full-file replacement]
 because [specific reason].
 ```
-
 Do NOT send another broad "fix it" prompt after one failure.
 
 ## 6. Founder workload rule
 
-Founder should run ≤2 CMD commands per task cycle.
-If more are needed → package as Claude Code block.
-Founder never manually edits source files.
-Founder never interprets raw build logs — Claude provides verdict.
+Founder runs ≤2 CMD commands per task cycle; more than that → package as a Claude Code block. Founder never manually edits source files or interprets raw build logs — Claude provides the verdict.
 
-## 7. Claude-Code Autopilot Operator Mode — 2026-05-21
+## 7. Claude-Code Autopilot Operator Mode
 
-Default mode: Claude Code handles patch + verify + commit for non-visual tasks when explicitly authorized.
-
-```
-Non-visual task (authorized)  → Claude Code: patch + verify + commit. Founder: review proof package only.
-UI/visual task                 → Claude Code: patch + verify. Founder: Gate 2 acceptance + commit authorization.
-Push/deploy                    → Explicit founder authorization required. Claude Code may execute when prompt authorizes.
-Railway/Supabase               → Founder only (manual external gate).
-CMD to founder                 → Reserved for: visual checks, Railway/Supabase gates, production verification, emergency recovery.
-```
+Default: Claude Code handles patch + verify + commit for non-visual tasks when the prompt explicitly authorizes it (authorization pattern and Gate rules: `CLAUDE_CODE_EXECUTION_PROTOCOL.md §8`). UI/visual tasks: patch + verify only, commit requires founder Gate 2 acceptance. Railway/Supabase: founder-only manual gate. CMD to founder is reserved for visual checks, Railway/Supabase gates, production verification, and emergency recovery.
