@@ -33,6 +33,13 @@ function fmtPct(value: number): string {
   return `${sign}${value.toFixed(1)}%`;
 }
 
+/** Dollar headline for Net Return — total PNL across all $100 stakes, not avg ROI%. */
+function fmtUsdSigned(value: number): string {
+  const rounded = Math.round(Math.abs(value));
+  if (rounded === 0) return '$0';
+  return value > 0 ? `+$${rounded}` : `-$${rounded}`;
+}
+
 type Metric = { label: string; value: string; sub?: string; accent?: boolean };
 
 const PLACEHOLDER_METRICS: Metric[] = [
@@ -46,8 +53,8 @@ function deriveMetrics(card: WeekResultsCard): Metric[] {
   return [
     {
       label: 'Net Return',
-      value: fmtPct(card.netReturnPct),
-      sub: 'Flat $100 per resolved signal',
+      value: fmtUsdSigned(card.netProfitUsd),
+      sub: `${card.signalsTracked} x $100 stake model · ${fmtPct(card.netReturnPct)}`,
       accent: true,
     },
     { label: 'Signals Tracked', value: String(card.signalsTracked) },
@@ -63,13 +70,13 @@ function getRows(card: WeekResultsCard): TrackRecordRow[] {
     : ((table as { rows?: TrackRecordRow[] } | null | undefined)?.rows ?? []);
 }
 
-type ChartPoint = { day: string; cumPct: number };
+type ChartPoint = { day: string; cumUsd: number };
 
 function toChartPoints(returnCurve: ReturnCurvePoint[]): ChartPoint[] {
   if (returnCurve.length === 0) return [];
   return [
-    { day: 'Start', cumPct: 0 },
-    ...returnCurve.map((p) => ({ day: `#${p.index + 1}`, cumPct: p.cumulativeRoiPct })),
+    { day: 'Start', cumUsd: 0 },
+    ...returnCurve.map((p) => ({ day: `#${p.index + 1}`, cumUsd: p.cumulativeProfitUsd })),
   ];
 }
 
@@ -104,20 +111,20 @@ function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
   const count = points.length;
   const { left, right, top, bottom } = CHART;
 
-  const vals = points.map((p) => p.cumPct);
+  const vals = points.map((p) => p.cumUsd);
   const vMax = Math.max(Math.max(0, ...vals) + 4, 4);
   const vMin = Math.min(Math.min(0, ...vals) - 4, -4);
 
   const x = (i: number) => left + (i / (count - 1)) * (right - left);
   const y = (v: number) => top + ((vMax - v) / (vMax - vMin)) * (bottom - top);
 
-  const linePoints = points.map((p, i) => `${x(i)},${y(p.cumPct)}`).join(' ');
+  const linePoints = points.map((p, i) => `${x(i)},${y(p.cumUsd)}`).join(' ');
   const areaPoints = `${x(0)},${bottom} ${linePoints} ${x(count - 1)},${bottom}`;
   const yLabels = [0, 1, 2, 3].map((k) => Math.round(vMax - (k / 3) * (vMax - vMin)));
   const endIdx = count - 1;
   const endX = x(endIdx);
-  const endY = y(points[endIdx].cumPct);
-  const endLabel = fmtPct(points[endIdx].cumPct);
+  const endY = y(points[endIdx].cumUsd);
+  const endLabel = fmtUsdSigned(points[endIdx].cumUsd);
 
   return (
     <svg viewBox={`0 0 ${CHART.vbW} ${CHART.vbH}`} className={styles.chartSvg} role="img" aria-label="Cumulative return chart">
@@ -142,7 +149,7 @@ function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
               strokeDasharray="3,4"
             />
             <text x={left - 8} y={gy + 3.5} fontSize="10" fill="rgba(160,200,225,0.62)" textAnchor="end">
-              {v}%
+              {fmtUsdSigned(v)}
             </text>
           </g>
         );
@@ -159,7 +166,7 @@ function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
       />
 
       {points.map((p, i) => (
-        <circle key={p.day} cx={x(i)} cy={y(p.cumPct)} r="3.2" fill="#0a1320" stroke="#5eeab4" strokeWidth="2" />
+        <circle key={p.day} cx={x(i)} cy={y(p.cumUsd)} r="3.2" fill="#0a1320" stroke="#5eeab4" strokeWidth="2" />
       ))}
 
       <g>

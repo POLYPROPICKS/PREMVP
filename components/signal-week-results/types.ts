@@ -34,6 +34,10 @@ export interface ReturnCurvePoint {
   index: number;
   cumulativePnlUnits: number;
   cumulativeRoiPct: number;
+  /** Dollar-true cumulative PnL at this point, flat-$100-stake model. */
+  cumulativeProfitUsd: number;
+  /** cumulativeProfitUsd / ((index + 1) * stakeUsd) * 100 — aligned with netReturnPct. */
+  cumulativeReturnPct: number;
 }
 
 export interface WeekResultsCard {
@@ -52,6 +56,13 @@ export interface WeekResultsCard {
   projectedPnlUnits: number;
   projectedReturnUsd: number;
   projectedRoiPct: number;
+  /** Flat stake per signal in the $100-stake model (currently always 100). */
+  stakeUsd: number;
+  /** signalsTracked * stakeUsd. */
+  totalStakeUsd: number;
+  /** sum(projected_return_usd) — the dollar headline for "Net Return". */
+  netProfitUsd: number;
+  /** netProfitUsd / totalStakeUsd * 100 — secondary context only, never the headline. */
   netReturnPct: number;
   signalsTracked: number;
   resolvedCount: number;

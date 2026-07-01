@@ -17,6 +17,8 @@ const MAX_LIMIT = 25;
 const LATEST_MAX_CARDS = 7;
 const LATEST_MAX_LOST = 2;
 const LATEST_DEFAULT_DAYS = 7;
+const STAKE_USD = 100;
+const DISPLAY_RETURN_EPSILON_USD = 0.5;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -183,38 +185,52 @@ export interface DisplaySignalsSummary {
   projectedPnlUnits: number;
   projectedReturnUsd: number;
   projectedRoiPct: number;
+  stakeUsd: number;
+  totalStakeUsd: number;
+  netProfitUsd: number;
   winsCount: number;
   lossesCount: number;
   resolvedCount: number;
   pendingCount: number;
 }
 
-/** Hit = positive projected return, Miss = negative, Pending = null/undefined/exactly zero. */
+/** Hit = projected return at least DISPLAY_RETURN_EPSILON_USD, Miss = at most
+ *  -DISPLAY_RETURN_EPSILON_USD, Pending = null/undefined/within the epsilon band
+ *  (guards against floating-point noise like 3.6e-15 reading as a false Hit). */
 export function deriveDisplayStatus(projectedReturnUsd: number | null | undefined): "Hit" | "Miss" | "Pending" {
-  if (projectedReturnUsd === null || projectedReturnUsd === undefined || projectedReturnUsd === 0) return "Pending";
+  if (projectedReturnUsd === null || projectedReturnUsd === undefined) return "Pending";
+  if (Math.abs(projectedReturnUsd) < DISPLAY_RETURN_EPSILON_USD) return "Pending";
   return projectedReturnUsd > 0 ? "Hit" : "Miss";
 }
 
-/** Formats a row return for the ledger. No +$0 / -$0 spam on true-zero/missing values. */
+/** Formats a row return for the ledger. No +$0 / -$0 spam on true-zero/near-zero/missing values. */
 export function formatReturnLabel(projectedReturnUsd: number | null | undefined): string {
-  if (projectedReturnUsd === null || projectedReturnUsd === undefined || projectedReturnUsd === 0) return "—";
+  if (projectedReturnUsd === null || projectedReturnUsd === undefined) return "—";
+  if (Math.abs(projectedReturnUsd) < DISPLAY_RETURN_EPSILON_USD) return "—";
   const rounded = Math.round(Math.abs(projectedReturnUsd));
   return projectedReturnUsd > 0 ? `+$${rounded}` : `-$${rounded}`;
 }
 
 /** Computes the cumulative return curve from ALL rows ordered by score_rank.
- *  Final point's cumulativeRoiPct rounds to the same value as projectedRoiPct. */
+ *  Final point's cumulativeRoiPct rounds to the same value as projectedRoiPct.
+ *  cumulativeProfitUsd/cumulativeReturnPct are the dollar-true series used by
+ *  the trust-block chart (aligned with the $100-stake netProfitUsd/netReturnPct
+ *  headline, not the odds-scaled pnlUnits series). */
 export function computeReturnCurve(rows: DisplaySignalRow[]): ReturnCurvePoint[] {
   const ordered = [...rows].sort((a, b) => a.score_rank - b.score_rank);
   const totalRows = ordered.length;
   if (totalRows === 0) return [];
   let cumulativePnlUnits = 0;
+  let cumulativeProfitUsd = 0;
   return ordered.map((r, i) => {
     cumulativePnlUnits = round(cumulativePnlUnits + (r.projected_pnl_units ?? 0), 4);
+    cumulativeProfitUsd = round(cumulativeProfitUsd + (r.projected_return_usd ?? 0), 2);
     return {
       index: i,
       cumulativePnlUnits,
       cumulativeRoiPct: round((cumulativePnlUnits / totalRows) * 100, 2),
+      cumulativeProfitUsd,
+      cumulativeReturnPct: round((cumulativeProfitUsd / ((i + 1) * STAKE_USD)) * 100, 2),
     };
   });
 }
@@ -234,7 +250,14 @@ function sum(vals: number[]): number {
 
 /** Aggregates summary metrics from ALL display-table rows for the requested
  *  window_days. Must be computed over the full row set — never truncated by
- *  the request's ledger `limit`. */
+ *  the request's ledger `limit`.
+ *
+ *  netProfitUsd/totalStakeUsd/netReturnPct implement the flat-$100-stake
+ *  business formula: totalStakeUsd = selectedSignals * stakeUsd,
+ *  netProfitUsd = sum(projected_return_usd), netReturnPct = netProfitUsd /
+ *  totalStakeUsd * 100. projectedReturnUsd/projectedRoiPct are kept equal to
+ *  netProfitUsd/netReturnPct for backward compatibility with existing
+ *  consumers of this summary. */
 export function computeDisplaySignalsSummary(rows: DisplaySignalRow[]): DisplaySignalsSummary {
   const selectedSignals = rows.length;
   if (selectedSignals === 0) {
@@ -247,6 +270,9 @@ export function computeDisplaySignalsSummary(rows: DisplaySignalRow[]): DisplayS
       projectedPnlUnits: 0,
       projectedReturnUsd: 0,
       projectedRoiPct: 0,
+      stakeUsd: STAKE_USD,
+      totalStakeUsd: 0,
+      netProfitUsd: 0,
       winsCount: 0,
       lossesCount: 0,
       resolvedCount: 0,
@@ -268,6 +294,10 @@ export function computeDisplaySignalsSummary(rows: DisplaySignalRow[]): DisplayS
     oddsSourceBreakdown[key] = (oddsSourceBreakdown[key] ?? 0) + 1;
   }
 
+  const totalStakeUsd = selectedSignals * STAKE_USD;
+  const netProfitUsd = round(sum(rows.map((r) => r.projected_return_usd ?? 0)), 2);
+  const netReturnPct = round((netProfitUsd / totalStakeUsd) * 100, 2);
+
   return {
     selectedSignals,
     oddsCoveragePct,
@@ -275,8 +305,11 @@ export function computeDisplaySignalsSummary(rows: DisplaySignalRow[]): DisplayS
     projectedWinRatePct: round(avg(rows.map((r) => r.projected_win_rate_pct ?? 0)), 2),
     avgDecimalOdds: round(avg(rows.map((r) => r.decimal_odds ?? 0)), 3),
     projectedPnlUnits: round(sum(rows.map((r) => r.projected_pnl_units ?? 0)), 4),
-    projectedReturnUsd: round(sum(rows.map((r) => r.projected_return_usd ?? 0)), 2),
-    projectedRoiPct: round(avg(rows.map((r) => r.projected_roi_pct_per_signal ?? 0)), 2),
+    projectedReturnUsd: netProfitUsd,
+    projectedRoiPct: netReturnPct,
+    stakeUsd: STAKE_USD,
+    totalStakeUsd,
+    netProfitUsd,
     winsCount,
     lossesCount,
     resolvedCount,
@@ -426,6 +459,9 @@ export async function GET(request: Request) {
     projectedPnlUnits: summary.projectedPnlUnits,
     projectedReturnUsd: summary.projectedReturnUsd,
     projectedRoiPct: summary.projectedRoiPct,
+    stakeUsd: summary.stakeUsd,
+    totalStakeUsd: summary.totalStakeUsd,
+    netProfitUsd: summary.netProfitUsd,
     netReturnPct: summary.projectedRoiPct,
     signalsTracked: summary.selectedSignals,
     resolvedCount: summary.resolvedCount,

@@ -131,8 +131,8 @@ test("resolvedCount and pendingCount are derived from the full row set", () => {
 
 test("computeReturnCurve produces a running total and final point matches projectedRoiPct", () => {
   const rows: DisplaySignalRow[] = [
-    displayRow({ score_rank: 1, projected_pnl_units: 0.2, projected_roi_pct_per_signal: 20 }),
-    displayRow({ score_rank: 2, projected_pnl_units: -1, projected_roi_pct_per_signal: -100 }),
+    displayRow({ score_rank: 1, projected_pnl_units: 0.2, projected_roi_pct_per_signal: 20, projected_return_usd: 20 }),
+    displayRow({ score_rank: 2, projected_pnl_units: -1, projected_roi_pct_per_signal: -100, projected_return_usd: -100 }),
   ];
   const curve = computeReturnCurve(rows);
   const summary = computeDisplaySignalsSummary(rows);
@@ -280,6 +280,85 @@ test("UI row extraction is safe for object-with-rows, bare-array, and missing/em
   assert.deepEqual(readDisplayTableRows({}), []);
 });
 
+// ── netProfitUsd / totalStakeUsd / netReturnPct: the $100-stake business formula ─
+
+test("computeDisplaySignalsSummary: netProfitUsd = sum(projected_return_usd), totalStakeUsd = signalsTracked * 100", () => {
+  const rows: DisplaySignalRow[] = [
+    displayRow({ score_rank: 1, projected_return_usd: 115 }),
+    displayRow({ score_rank: 2, projected_return_usd: 130 }),
+    displayRow({ score_rank: 3, projected_return_usd: -45 }),
+  ];
+  const summary = computeDisplaySignalsSummary(rows);
+
+  assert.equal(summary.stakeUsd, 100);
+  assert.equal(summary.totalStakeUsd, 300);
+  assert.equal(summary.netProfitUsd, 200);
+});
+
+test("computeDisplaySignalsSummary: netReturnPct (projectedRoiPct) = netProfitUsd / totalStakeUsd * 100", () => {
+  const rows: DisplaySignalRow[] = Array.from({ length: 47 }, (_, i) =>
+    displayRow({ score_rank: i + 1, projected_return_usd: i === 0 ? 300.51 : 0 })
+  );
+  const summary = computeDisplaySignalsSummary(rows);
+
+  assert.equal(summary.totalStakeUsd, 4700);
+  assert.equal(summary.netProfitUsd, 300.51);
+  const expectedPct = round2(summary.netProfitUsd / summary.totalStakeUsd * 100);
+  assert.equal(summary.projectedRoiPct, expectedPct);
+  assert.equal(summary.projectedReturnUsd, summary.netProfitUsd);
+});
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+// ── Pending epsilon: floating-point noise must never read as a false Hit ────
+
+test("deriveDisplayStatus: tiny floating-point PNL (3.6e-15) is Pending, not a false Hit", () => {
+  assert.equal(deriveDisplayStatus(3.6e-15), "Pending");
+  assert.equal(deriveDisplayStatus(-3.6e-15), "Pending");
+});
+
+test("formatReturnLabel: tiny floating-point PNL (3.6e-15) renders as em dash, never +$0/-$0", () => {
+  assert.equal(formatReturnLabel(3.6e-15), "—");
+  assert.equal(formatReturnLabel(-3.6e-15), "—");
+});
+
+test("deriveDisplayStatus/formatReturnLabel: values under the $0.5 epsilon are Pending / em dash", () => {
+  assert.equal(deriveDisplayStatus(0.49), "Pending");
+  assert.equal(deriveDisplayStatus(-0.49), "Pending");
+  assert.equal(formatReturnLabel(0.49), "—");
+  assert.equal(deriveDisplayStatus(0.5), "Hit");
+  assert.equal(formatReturnLabel(0.5), "+$1");
+});
+
+// ── API source remains the accepted physical display table ─────────────────
+
+const routeSource = fs.readFileSync(
+  path.join(__dirname, "../../app/api/signals/resolved/route.ts"),
+  "utf8"
+);
+
+test("weekResultsCard source stays track_record_display_signals (no runtime generated_signal_pairs aggregation)", () => {
+  assert.ok(routeSource.includes('source: "track_record_display_signals"'));
+  assert.ok(routeSource.includes('.from("track_record_display_signals")'));
+});
+
+// ── returnCurve: dollar-true cumulative series feeds the chart ─────────────
+
+test("computeReturnCurve: cumulativeProfitUsd sums projected_return_usd and cumulativeReturnPct matches the netReturnPct formula", () => {
+  const rows: DisplaySignalRow[] = [
+    displayRow({ score_rank: 1, projected_return_usd: 20 }),
+    displayRow({ score_rank: 2, projected_return_usd: -100 }),
+  ];
+  const curve = computeReturnCurve(rows);
+  assert.equal(curve[0].cumulativeProfitUsd, 20);
+  assert.equal(curve[1].cumulativeProfitUsd, -80);
+  const finalPoint = curve[curve.length - 1];
+  const summary = computeDisplaySignalsSummary(rows);
+  assert.equal(finalPoint.cumulativeReturnPct, summary.projectedRoiPct);
+});
+
 // ── WhyTrustSection: approved visible labels present, replaced labels absent ─
 
 const whyTrustSource = fs.readFileSync(
@@ -306,4 +385,33 @@ test("WhyTrustSection does not use the replaced labels", () => {
   for (const label of ["Projected Return", "Signals Published", "Projected Rate", "Avg Odds", "Published"]) {
     assert.ok(!whyTrustSource.includes(label), `unexpected replaced label "${label}" in WhyTrustSection`);
   }
+});
+
+// ── Net Return headline must be dollars (netProfitUsd), percent secondary only ─
+
+test("WhyTrustSection derives the Net Return headline value from netProfitUsd (dollars), not netReturnPct alone", () => {
+  assert.ok(
+    whyTrustSource.includes("fmtUsdSigned(card.netProfitUsd)"),
+    "Net Return main value must be formatted from card.netProfitUsd"
+  );
+  assert.ok(
+    whyTrustSource.includes("card.netReturnPct"),
+    "netReturnPct must still appear as secondary subtext context"
+  );
+});
+
+test("WhyTrustSection chart badge/series are dollar-based (cumulativeProfitUsd), not percent-only", () => {
+  assert.ok(whyTrustSource.includes("cumulativeProfitUsd"));
+  assert.ok(whyTrustSource.includes("fmtUsdSigned(points[endIdx].cumUsd)"));
+});
+
+// ── no old resolved-ROI ledger values survive in the projected model ────────
+
+test("summary never produces the old stale resolved-ROI ledger counts (36 tracked / 8 wins / 28 losses)", () => {
+  const rows: DisplaySignalRow[] = [displayRow({ score_rank: 1 }), displayRow({ score_rank: 2 })];
+  const summary = computeDisplaySignalsSummary(rows);
+  assert.notEqual(summary.selectedSignals, 36);
+  assert.notEqual(summary.winsCount, 8);
+  assert.notEqual(summary.lossesCount, 28);
+  assert.notEqual(summary.projectedRoiPct, -1766);
 });
