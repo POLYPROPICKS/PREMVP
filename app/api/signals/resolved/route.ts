@@ -730,8 +730,12 @@ export async function GET(request: Request) {
   const windowDays = Number.isFinite(rawDays) && rawDays > 0 ? rawDays : LATEST_DEFAULT_DAYS;
 
   const rawLimit = parseInt(searchParams.get("limit") ?? String(DEFAULT_LIMIT), 10);
+  // Ledger rows (weekResultsCard.trackRecordDisplayTable/resolvedLedger) are always
+  // clamped against MAX_LIMIT — never against LATEST_MAX_CARDS, which only bounds
+  // the separate `signals` carousel array below. A ledger request of limit=25 must
+  // not be silently clamped down to the 7-card carousel cap.
   const limit = Number.isFinite(rawLimit)
-    ? Math.min(Math.max(rawLimit, MIN_LIMIT), isLatestMode ? LATEST_MAX_CARDS : MAX_LIMIT)
+    ? Math.min(Math.max(rawLimit, MIN_LIMIT), MAX_LIMIT)
     : DEFAULT_LIMIT;
 
   const supabaseUrl = process.env.SUPABASE_URL;

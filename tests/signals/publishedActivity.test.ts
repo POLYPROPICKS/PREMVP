@@ -326,6 +326,49 @@ test("limit slices ledger rows but summary/curve use the full table row set for 
   assert.ok(summaryLine !== -1, "summary must be computed from the unsliced window row set");
 });
 
+test("ledger limit clamp uses MAX_LIMIT (25), not the 7-card carousel cap, even in mode=latest", () => {
+  const limitBlockStart = routeSource.indexOf("const rawLimit = parseInt");
+  const limitBlockEnd = routeSource.indexOf(";", routeSource.indexOf("Math.min(Math.max(rawLimit"));
+  const limitBlock = routeSource.slice(limitBlockStart, limitBlockEnd);
+  assert.ok(
+    !limitBlock.includes("isLatestMode ? LATEST_MAX_CARDS : MAX_LIMIT"),
+    "ledger `limit` must not be clamped to the carousel's LATEST_MAX_CARDS in latest mode"
+  );
+  assert.ok(limitBlock.includes("MAX_LIMIT"), "ledger limit must still be clamped against MAX_LIMIT");
+});
+
+test("orderedForLedger.slice(0, limit) can yield up to 25 ledger rows when the window has enough rows", () => {
+  const rows: WindowResultRow[] = Array.from({ length: 47 }, (_, i) =>
+    windowResultRow({ source_row_id: `row-${i}`, score_rank: i + 1 })
+  );
+  const limit = 25;
+  const ledgerRows = rows.slice(0, limit).map(mapWindowResultRowToTrackRecordRow);
+  assert.equal(ledgerRows.length, 25);
+  const summary = computeWindowResultsSummary(rows);
+  assert.equal(summary.signalsTracked, 47, "summary must not be truncated by the ledger limit");
+});
+
+test("nullable fields (entry_price_num, decimal_odds, real_pnl_usd, resolved_at, score_rank) do not crash ledger mapping", () => {
+  const pendingRow = windowResultRow({
+    signal_result: null,
+    display_status: "Pending",
+    is_resolved: false,
+    resolved_at: null,
+    entry_price_num: null,
+    decimal_odds: null,
+    real_pnl_usd: null,
+    score_rank: null,
+    return_label: "—",
+  });
+  assert.doesNotThrow(() => mapWindowResultRowToLedgerRow(pendingRow));
+  assert.doesNotThrow(() => mapWindowResultRowToTrackRecordRow(pendingRow));
+});
+
+test("API source remains track_record_window_results regardless of ledger limit value", () => {
+  assert.ok(routeSource.includes("source: WINDOW_RESULTS_SOURCE"));
+  assert.ok(!routeSource.includes('source: RESOLVED_RESULTS_SOURCE'));
+});
+
 // ── safe logging: fields present, no raw rows / secrets ─────────────────────
 
 test("safe log includes required fields and never logs secrets/env/raw rows", () => {

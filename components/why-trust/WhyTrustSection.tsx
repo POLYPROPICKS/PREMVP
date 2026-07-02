@@ -98,7 +98,9 @@ function toChartPoints(returnCurve: ReturnCurvePoint[]): ChartPoint[] {
 
 // ── Chart geometry ────────────────────────────────────────────────────────────────
 
-const CHART = { vbW: 320, vbH: 184, left: 44, right: 306, top: 18, bottom: 150 };
+// `right` leaves room so the final-value badge (56px wide, centered ~26px past
+// the last point) never extends past vbW — badge right edge = right + 26.
+const CHART = { vbW: 320, vbH: 184, left: 44, right: 280, top: 18, bottom: 150 };
 
 // ── Sub-components ───────────────────────────────────────────────────────────────
 
@@ -207,7 +209,7 @@ function returnClass(ret: string): string {
 }
 
 function fmtDate(isoDay: string): string {
-  const d = new Date(`${isoDay}T00:00:00Z`);
+  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(isoDay) ? `${isoDay}T00:00:00Z` : isoDay);
   if (Number.isNaN(d.getTime())) return isoDay;
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 }
