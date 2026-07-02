@@ -20,6 +20,15 @@ const DEDUPE_STRICT = process.argv.includes("--dedupe-strict");
 // resolve before generic backlog. Do not remove or bypass this without an
 // equivalent priority queue for executed condition_id::token_id keys.
 const PRIORITY_LIVE_LEDGER = process.argv.includes("--priority-live-ledger");
+// Targeted mode: prioritize expired unresolved rows currently shown in
+// public.track_record_display_signals so trust-record rows resolve without
+// waiting behind the full generic backlog (tens of thousands of rows deep).
+// Read-only lookup against the display table; never fabricates outcomes —
+// eligible rows still go through the same fetchGammaMarketByConditionId /
+// resolveSignalOutcome path as the generic and live-priority queues.
+const PRIORITY_TRACK_RECORD_DISPLAY = process.argv.includes(
+  "--priority-track-record-display",
+);
 
 type ResolverOrderMode = "newest" | "oldest";
 
@@ -135,6 +144,112 @@ function applyPendingResolutionQuerySpec(baseQuery: any, spec: PendingResolution
   }
 
   return query.limit(spec.limit);
+}
+
+// ---- Track-record display priority spec -----------------------------------
+// track_record_display_signals is not a table this repo owns/migrates — it
+// is read-only from the resolver's perspective. source_row_id points at
+// generated_signal_pairs.id. This is a two-phase lookup (display rows, then
+// eligible pairs by id) rather than a single joined query, because Supabase
+// PostgREST embeds require a declared FK relationship this repo cannot
+// assume exists for source_row_id.
+
+export const TRACK_RECORD_DISPLAY_SELECT_COLUMNS =
+  "source_row_id, window_days, score_rank";
+
+export interface TrackRecordPriorityCandidate {
+  id: string;
+  window_days: number | null;
+  score_rank: number | null;
+  expires_at: string | null;
+  created_at: string | null;
+}
+
+/**
+ * Pure sort — testable without a DB round-trip. Matches TASK B ordering:
+ * window_days desc, score_rank asc (nulls last), expires_at asc, created_at
+ * asc, id asc.
+ */
+export function sortTrackRecordPriorityCandidates<T extends TrackRecordPriorityCandidate>(
+  rows: T[],
+): T[] {
+  return [...rows].sort((a, b) => {
+    const windowDiff = (b.window_days ?? -Infinity) - (a.window_days ?? -Infinity);
+    if (windowDiff !== 0) return windowDiff;
+
+    const aRank = a.score_rank ?? Number.POSITIVE_INFINITY;
+    const bRank = b.score_rank ?? Number.POSITIVE_INFINITY;
+    if (aRank !== bRank) return aRank - bRank;
+
+    const aExpires = a.expires_at ? Date.parse(a.expires_at) : Number.POSITIVE_INFINITY;
+    const bExpires = b.expires_at ? Date.parse(b.expires_at) : Number.POSITIVE_INFINITY;
+    if (aExpires !== bExpires) return aExpires - bExpires;
+
+    const aCreated = a.created_at ? Date.parse(a.created_at) : Number.POSITIVE_INFINITY;
+    const bCreated = b.created_at ? Date.parse(b.created_at) : Number.POSITIVE_INFINITY;
+    if (aCreated !== bCreated) return aCreated - bCreated;
+
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+export interface TrackRecordEligibilityQuerySpec {
+  select: string;
+  ids: string[];
+  filters: {
+    resolvedAtIsNull: true;
+    signalResultNotWonLost: true;
+    conditionIdNotNull: true;
+    selectedTokenIdNotNull: true;
+    entryPriceNumNotNull: true;
+    metricFormulaVersionNotNull: true;
+    expiresAtLte: string;
+    createdAtGte: string;
+  };
+}
+
+/**
+ * Eligibility filter for generated_signal_pairs rows referenced by
+ * track_record_display_signals.source_row_id. Deliberately narrower than the
+ * generic pending-resolution spec: `resolved_at is null` (not just
+ * `signal_result is null`) and `signal_result` allows null OR a non-terminal
+ * value, per TASK B — never treats an already-settled won/lost row as
+ * pending again.
+ */
+export function buildTrackRecordEligibilityQuerySpec(opts: {
+  ids: string[];
+  nowIso: string;
+  createdAfter: string;
+}): TrackRecordEligibilityQuerySpec {
+  return {
+    select: PENDING_RESOLUTION_SELECT_COLUMNS,
+    ids: opts.ids,
+    filters: {
+      resolvedAtIsNull: true,
+      signalResultNotWonLost: true,
+      conditionIdNotNull: true,
+      selectedTokenIdNotNull: true,
+      entryPriceNumNotNull: true,
+      metricFormulaVersionNotNull: true,
+      expiresAtLte: opts.nowIso,
+      createdAtGte: opts.createdAfter,
+    },
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyTrackRecordEligibilityQuerySpec(baseQuery: any, spec: TrackRecordEligibilityQuerySpec) {
+  return baseQuery
+    .select(spec.select)
+    .in("id", spec.ids)
+    .is("resolved_at", null)
+    .or("signal_result.is.null,signal_result.not.in.(won,lost)")
+    .not("condition_id", "is", null)
+    .not("selected_token_id", "is", null)
+    .not("entry_price_num", "is", null)
+    .not("metric_formula_version", "is", null)
+    .lte("expires_at", spec.filters.expiresAtLte)
+    .gte("created_at", spec.filters.createdAtGte);
 }
 
 const rawLimit = (() => {
@@ -332,6 +447,7 @@ async function main() {
     `[resolve-signals] === START mode=${mode} limit=${rawLimit} maxUpdates=${maxUpdatesLabel}` +
       ` order=${orderMode} onlyExpired=${ONLY_EXPIRED} dedupeStrict=${DEDUPE_STRICT}` +
       ` priorityLiveLedger=${PRIORITY_LIVE_LEDGER}` +
+      ` priorityTrackRecordDisplay=${PRIORITY_TRACK_RECORD_DISPLAY}` +
       `${ONLY_EXPIRED ? ` expiredCutoff=${expiredCutoff}` : ""} ===`,
   );
 
@@ -492,6 +608,245 @@ async function main() {
             livePriorityMissingInPairs,
             livePriorityErrors,
             livePriorityRowsUpdated,
+          },
+        });
+      } else {
+        console.log("[resolve-signals] Dry-run mode — job_runs not written.");
+      }
+      return;
+    }
+  }
+
+  let trackRecordLoaded = 0;
+  let trackRecordEligible = 0;
+  let trackRecordUpdated = 0;
+  let trackRecordUnresolved = 0;
+  let trackRecordErrors = 0;
+  let trackRecordRowsUpdated = 0;
+
+  if (PRIORITY_TRACK_RECORD_DISPLAY) {
+    const nowIso = new Date().toISOString();
+    const trackRecordCreatedAfter =
+      createdAfterArg ?? new Date(Date.now() - (maxAgeDays ?? 30) * 86_400_000).toISOString();
+
+    const { data: displayRows, error: displayError } = await supabase
+      .from("track_record_display_signals")
+      .select(TRACK_RECORD_DISPLAY_SELECT_COLUMNS)
+      .limit(1000);
+
+    if (displayError) {
+      trackRecordErrors++;
+      console.error(
+        `[resolve-signals] TRACK_RECORD_PRIORITY_QUERY_FAILED: ${displayError.message}`,
+      );
+      if (WRITE_MODE) {
+        await tryWriteResolverJobRun({
+          status: "error",
+          finishedAt: new Date().toISOString(),
+          errorMessage: displayError.message,
+          extra: { phase: "track-record-display-select" },
+        });
+      }
+      process.exit(1);
+    }
+
+    const displayCandidates = ((displayRows ?? []) as unknown) as Array<{
+      source_row_id: string;
+      window_days: number | null;
+      score_rank: number | null;
+    }>;
+    trackRecordLoaded = displayCandidates.length;
+
+    const idsToCheck = [...new Set(displayCandidates.map((d) => d.source_row_id))];
+
+    if (idsToCheck.length === 0) {
+      console.log("[resolve-signals] TRACK_RECORD_PRIORITY_LOADED count=0");
+    } else {
+      const eligibilitySpec = buildTrackRecordEligibilityQuerySpec({
+        ids: idsToCheck,
+        nowIso,
+        createdAfter: trackRecordCreatedAfter,
+      });
+
+      const { data: eligibleRows, error: eligibleError } = await applyTrackRecordEligibilityQuerySpec(
+        supabase.from("generated_signal_pairs"),
+        eligibilitySpec,
+      );
+
+      if (eligibleError) {
+        trackRecordErrors++;
+        console.error(
+          `[resolve-signals] TRACK_RECORD_PRIORITY_ELIGIBILITY_QUERY_FAILED: ${eligibleError.message}`,
+        );
+        if (WRITE_MODE) {
+          await tryWriteResolverJobRun({
+            status: "error",
+            finishedAt: new Date().toISOString(),
+            errorMessage: eligibleError.message,
+            extra: { phase: "track-record-eligibility-select" },
+          });
+        }
+        process.exit(1);
+      }
+
+      const eligiblePairs = ((eligibleRows ?? []) as unknown) as ResolverRow[];
+      const displayById = new Map(displayCandidates.map((d) => [d.source_row_id, d]));
+
+      const candidates: TrackRecordPriorityCandidate[] = eligiblePairs.map((row) => ({
+        id: row.id,
+        window_days: displayById.get(row.id)?.window_days ?? null,
+        score_rank: displayById.get(row.id)?.score_rank ?? null,
+        expires_at: row.expires_at,
+        created_at: row.created_at,
+      }));
+
+      const sortedCandidates = sortTrackRecordPriorityCandidates(candidates).slice(0, rawLimit);
+      const sortedIds = new Set(sortedCandidates.map((c) => c.id));
+      const pairsById = new Map(eligiblePairs.map((row) => [row.id, row]));
+      const trackRecordRows = sortedCandidates
+        .map((c) => pairsById.get(c.id))
+        .filter((r): r is ResolverRow => Boolean(r));
+
+      trackRecordEligible = trackRecordRows.length;
+
+      console.log(
+        `[resolve-signals] TRACK_RECORD_PRIORITY_LOADED count=${trackRecordLoaded}` +
+          ` eligible=${trackRecordEligible}` +
+          ` first_score_rank=${sortedCandidates[0]?.score_rank ?? "n/a"}` +
+          ` last_score_rank=${sortedCandidates[sortedCandidates.length - 1]?.score_rank ?? "n/a"}` +
+          ` first_expires_at=${sortedCandidates[0]?.expires_at ?? "n/a"}` +
+          ` last_expires_at=${sortedCandidates[sortedCandidates.length - 1]?.expires_at ?? "n/a"}`,
+      );
+
+      const trackRecordStrictRows = DEDUPE_STRICT
+        ? Array.from(
+            trackRecordRows
+              .reduce<Map<string, ResolverRow>>((acc, row) => {
+                const key = strictKey(row);
+                if (!acc.has(key)) acc.set(key, row);
+                return acc;
+              }, new Map())
+              .values(),
+          )
+        : trackRecordRows;
+
+      for (const row of trackRecordStrictRows) {
+        if (WRITE_MODE && trackRecordUpdated >= maxUpdates) {
+          console.log(
+            `[resolve-signals] TRACK_RECORD_PRIORITY max updates reached (${maxUpdates}) — stopping priority writes`,
+          );
+          break;
+        }
+
+        const conditionId = row.condition_id as string;
+        const selectedTokenId = row.selected_token_id as string | null;
+        const entryPriceNum = row.entry_price_num as number | null;
+        const rowLabel = `[${row.id}] ${row.event_slug ?? conditionId}`;
+
+        const market = await fetchGammaMarketByConditionId(conditionId);
+        const outcome = resolveSignalOutcome({
+          conditionId,
+          selectedTokenId,
+          entryPriceNum,
+          market,
+        });
+
+        if (outcome.resolverState !== "resolved_candidate") {
+          trackRecordUnresolved++;
+          console.log(
+            `[resolve-signals] TRACK_RECORD_PRIORITY_SKIP ${rowLabel}` +
+              ` state=${outcome.resolverState} reason=${outcome.skipReason}`,
+          );
+          continue;
+        }
+
+        if (!WRITE_MODE) {
+          trackRecordUnresolved++;
+          console.log(
+            `[resolve-signals] TRACK_RECORD_PRIORITY_WOULD ${rowLabel}` +
+              ` result=${outcome.signalResult}` +
+              ` return=${outcome.realizedReturnPct}%` +
+              ` winner=${outcome.candidateWinningOutcome}`,
+          );
+          continue;
+        }
+
+        const resolvedAt = new Date().toISOString();
+        let updateQuery = supabase
+          .from("generated_signal_pairs")
+          .update({
+            signal_result: outcome.signalResult,
+            resolved_at: resolvedAt,
+            winning_outcome: outcome.candidateWinningOutcome,
+            realized_return_pct: outcome.realizedReturnPct,
+          })
+          .is("signal_result", null);
+
+        if (DEDUPE_STRICT) {
+          updateQuery = updateQuery
+            .eq("condition_id", conditionId)
+            .eq("selected_token_id", selectedTokenId as string);
+        } else {
+          updateQuery = updateQuery.eq("id", row.id as string);
+        }
+
+        const { data: updatedRows, error: updateError } = await updateQuery.select("id");
+
+        if (updateError) {
+          trackRecordErrors++;
+          console.error(
+            `[resolve-signals] TRACK_RECORD_PRIORITY_ERROR ${rowLabel} update failed: ${updateError.message}`,
+          );
+          continue;
+        }
+
+        const affectedRows = updatedRows?.length ?? 0;
+        if (affectedRows > 0) {
+          trackRecordRowsUpdated += affectedRows;
+          trackRecordUpdated++;
+          console.log(
+            `[resolve-signals] TRACK_RECORD_PRIORITY_WRITE ${rowLabel}` +
+              ` rows=${affectedRows}` +
+              ` result=${outcome.signalResult}` +
+              ` return=${outcome.realizedReturnPct}%` +
+              ` winner=${outcome.candidateWinningOutcome}`,
+          );
+        } else {
+          trackRecordUnresolved++;
+          console.log(
+            `[resolve-signals] TRACK_RECORD_PRIORITY_NOOP ${rowLabel} reason=Already resolved or update matched 0 rows`,
+          );
+        }
+      }
+
+      console.log(
+        `[resolve-signals] TRACK_RECORD_PRIORITY_SUMMARY` +
+          ` loaded=${trackRecordLoaded}` +
+          ` eligible=${trackRecordEligible}` +
+          ` selected=${sortedIds.size}` +
+          ` updated=${trackRecordUpdated}` +
+          ` unresolved=${trackRecordUnresolved}` +
+          ` errors=${trackRecordErrors}` +
+          ` rows_updated=${trackRecordRowsUpdated}`,
+      );
+    }
+
+    if (!ONLY_EXPIRED && !HAS_EXPLICIT_ORDER) {
+      const finishedAt = new Date().toISOString();
+      if (WRITE_MODE) {
+        await tryWriteResolverJobRun({
+          status: "success",
+          updatedCount: trackRecordRowsUpdated,
+          skippedCount: trackRecordUnresolved + trackRecordErrors,
+          finishedAt,
+          extra: {
+            priorityTrackRecordDisplay: PRIORITY_TRACK_RECORD_DISPLAY,
+            trackRecordLoaded,
+            trackRecordEligible,
+            trackRecordUpdated,
+            trackRecordUnresolved,
+            trackRecordErrors,
+            trackRecordRowsUpdated,
           },
         });
       } else {
