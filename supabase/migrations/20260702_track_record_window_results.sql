@@ -369,7 +369,12 @@ deduped AS (
     shown_at DESC,
     source_row_id
 ),
-targets AS (
+-- Funnel/readiness counts only (raw_shown_rows, unique_matches,
+-- resolved_unique_rows, pending_unique_rows, is_ready). No win/loss target
+-- sizing here — wins/losses/net_pnl below are aggregated straight from the
+-- already-inserted track_record_window_results rows (see the LEFT JOIN),
+-- never recomputed from strict buckets.
+summary_counts AS (
   SELECT
     w.window_days,
     (SELECT count(*) FROM shown s WHERE s.window_days = w.window_days)::int AS raw_shown_rows,
@@ -400,7 +405,7 @@ SELECT
        THEN round(coalesce(i.net_pnl, 0) / (i.rows_count * 100) * 100, 2)
        ELSE 0 END,
   now()
-FROM targets t
+FROM summary_counts t
 LEFT JOIN (
   SELECT window_days,
     count(*)::int AS rows_count,
