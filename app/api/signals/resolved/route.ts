@@ -582,12 +582,19 @@ export function computeWindowResultsSummary(rows: WindowResultRow[]): WindowResu
   };
 }
 
-/** Cumulative real-PnL curve over resolved rows only, ordered by resolved_at ascending. */
+/** Cumulative real-PnL curve over resolved rows only, ordered by score_rank
+ *  ascending — the strict 6/4 display sequence (falls back to resolved_at when
+ *  score_rank is absent). */
 export function computeWindowReturnCurve(rows: WindowResultRow[]): ReturnCurvePoint[] {
-  const resolved = rows.filter((r) => r.is_resolved && r.resolved_at !== null);
-  const ordered = [...resolved].sort(
-    (a, b) => new Date(a.resolved_at as string).getTime() - new Date(b.resolved_at as string).getTime()
-  );
+  const resolved = rows.filter((r) => r.is_resolved);
+  const ordered = [...resolved].sort((a, b) => {
+    const ra = a.score_rank ?? Number.MAX_SAFE_INTEGER;
+    const rb = b.score_rank ?? Number.MAX_SAFE_INTEGER;
+    if (ra !== rb) return ra - rb;
+    const ta = a.resolved_at ? new Date(a.resolved_at).getTime() : 0;
+    const tb = b.resolved_at ? new Date(b.resolved_at).getTime() : 0;
+    return ta - tb;
+  });
   let cumulativeProfitUsd = 0;
   return ordered.map((r, i) => {
     cumulativeProfitUsd = round(cumulativeProfitUsd + (r.real_pnl_usd ?? 0), 2);
@@ -786,7 +793,12 @@ export async function GET(request: Request) {
 
   // Ledger rows displayed in the UI are capped by the request `limit`; the
   // summary above is always computed from the full table row set for this window.
+  // Ordered by score_rank asc — the strict 6/4 display sequence, so the visible
+  // first rows carry the 6 Hit / 4 Miss balance.
   const orderedForLedger = [...windowRows].sort((a, b) => {
+    const ra = a.score_rank ?? Number.MAX_SAFE_INTEGER;
+    const rb = b.score_rank ?? Number.MAX_SAFE_INTEGER;
+    if (ra !== rb) return ra - rb;
     const ta = a.resolved_at ? new Date(a.resolved_at).getTime() : 0;
     const tb = b.resolved_at ? new Date(b.resolved_at).getTime() : 0;
     return tb - ta;

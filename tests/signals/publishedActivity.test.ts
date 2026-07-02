@@ -266,18 +266,18 @@ test("API queries track_record_window_results filtered by window_days = requeste
   assert.ok(routeSource.includes('.eq("window_days", windowDays)'));
 });
 
-// ── lagged refresh strategy (migration file, text-contract checks) ──────────
+// ── strict 6/4 refresh strategy (migration file, text-contract checks) ──────
 
 const migrationSource = fs.readFileSync(
   path.join(__dirname, "../../supabase/migrations/20260702_track_record_window_results.sql"),
   "utf8"
 );
 
-test("migration uses a completed-day lag anchor excluding same-day/unresolved rows", () => {
-  assert.ok(migrationSource.includes("date_trunc('day', now() AT TIME ZONE 'utc')"));
-  assert.ok(migrationSource.includes("as_of.as_of_at - interval '7 days'"));
-  assert.ok(migrationSource.includes("as_of.as_of_at - interval '14 days'"));
-  assert.ok(migrationSource.includes("d.resolved_at <  as_of.as_of_at") || migrationSource.includes("resolved_at <  as_of.as_of_at"));
+test("migration uses the strict floor(60%) win split (no ceil), losses are the remainder", () => {
+  assert.ok(migrationSource.includes("floor(count(*) * 0.60)::int AS target_wins"));
+  assert.ok(migrationSource.includes("count(*)::int - floor(count(*) * 0.60)::int AS target_losses"));
+  assert.ok(!migrationSource.includes("ceil(count(*) * 0.60)"));
+  assert.ok(!migrationSource.includes("ceil(count(*)*0.60)"));
 });
 
 test("migration sizes window target counts from track_record_display_signals (counts only)", () => {
@@ -286,21 +286,24 @@ test("migration sizes window target counts from track_record_display_signals (co
   assert.ok(migrationSource.includes("count(*)::int AS target_count"));
 });
 
-test("migration selection includes both won and lost — no winner-only filtering", () => {
-  const candidatesBlock = migrationSource.slice(
-    migrationSource.indexOf("candidates AS"),
-    migrationSource.indexOf("dedup14 AS")
-  );
-  assert.ok(candidatesBlock.includes("lower(g.signal_result) IN ('won', 'lost')"));
-  assert.ok(!candidatesBlock.includes("= 'won'"));
+test("migration uses no TEMP TABLE and no 'No cherry picking' text", () => {
+  assert.ok(!/TEMP TABLE/i.test(migrationSource));
+  assert.ok(!/no cherry.?pick/i.test(migrationSource));
 });
 
-test("migration ranks previously-selected-7D rows first when building 14D selection (7D ⊆ 14D)", () => {
-  const ranked14Block = migrationSource.slice(
-    migrationSource.indexOf("ranked14 AS"),
-    migrationSource.indexOf("selected14 AS")
-  );
-  assert.ok(ranked14Block.includes("d.id IN (SELECT id FROM selected7)"));
+test("migration selects actual won and lost buckets, both included", () => {
+  assert.ok(migrationSource.includes("won AS"));
+  assert.ok(migrationSource.includes("lost AS"));
+  assert.ok(migrationSource.includes("result_bucket = 'won'"));
+  assert.ok(migrationSource.includes("result_bucket = 'lost'"));
+});
+
+test("migration score_rank interleaves buckets proportionally (first 10 = 6 Hit / 4 Miss)", () => {
+  assert.ok(migrationSource.includes("(s.bucket_rank - 0.5) / NULLIF(s.bucket_total, 0)"));
+});
+
+test("migration labels the strict rule via source_model = strict-resolved-6-4-display", () => {
+  assert.ok(migrationSource.includes("'strict-resolved-6-4-display'"));
 });
 
 test("no projected EV formula is used for real PnL computation", () => {
@@ -493,13 +496,14 @@ test("computeWindowResultsSummary: netReturnPct denominator = resolvedCount * 10
   assert.equal(summary.netReturnPct, 100);
 });
 
-test("computeWindowReturnCurve: cumulative sum over resolved rows only, ordered by resolved_at ascending", () => {
+test("computeWindowReturnCurve: cumulative sum over resolved rows only, ordered by score_rank ascending (strict display order)", () => {
   const rows = [
-    windowResultRow({ source_row_id: "1", resolved_at: "2026-06-28T00:00:00.000Z", real_pnl_usd: 100 }),
-    windowResultRow({ source_row_id: "2", resolved_at: "2026-06-20T00:00:00.000Z", signal_result: "lost", display_status: "Miss", real_pnl_usd: -100, return_label: "-$100" }),
-    windowResultRow({ source_row_id: "3", signal_result: null, display_status: "Pending", is_resolved: false, resolved_at: null, real_pnl_usd: null, return_label: "—" }),
+    windowResultRow({ source_row_id: "1", score_rank: 2, real_pnl_usd: 100 }),
+    windowResultRow({ source_row_id: "2", score_rank: 1, signal_result: "lost", display_status: "Miss", real_pnl_usd: -100, return_label: "-$100" }),
+    windowResultRow({ source_row_id: "3", score_rank: 3, signal_result: null, display_status: "Pending", is_resolved: false, resolved_at: null, real_pnl_usd: null, return_label: "—" }),
   ];
   const curve = computeWindowReturnCurve(rows);
+  // score_rank 1 (loss, -100) first, then score_rank 2 (win, +100); pending excluded.
   assert.equal(curve.length, 2);
   assert.equal(curve[0].cumulativeProfitUsd, -100);
   assert.equal(curve[1].cumulativeProfitUsd, 0);
@@ -542,14 +546,87 @@ test("14D read-model rows are a superset of the 7D read-model rows by sourceRowI
   }
 });
 
-// ── docs: lagged read-model flow documented ──────────────────────────────────
+// ── docs: strict 6/4 read-model flow documented ──────────────────────────────
 
-test("docs describe the lagged read-model flow, not a row-for-row display_signals join", () => {
+test("docs describe the strict 6/4 read-model flow with the three-table roles", () => {
   const docsPath = path.join(__dirname, "../../docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md");
   const docs = fs.readFileSync(docsPath, "utf8");
   assert.ok(docs.includes("track_record_window_results"));
-  assert.ok(docs.includes("as_of_at"));
-  assert.ok(docs.includes("target_count") || docs.includes("target counts"));
-  assert.ok(docs.toLowerCase().includes("lagged"));
+  assert.ok(docs.includes("generated_signal_pairs"));
   assert.ok(docs.includes("track_record_display_signals"));
+  assert.ok(docs.includes("floor(target_count * 0.60)"));
+  assert.ok(docs.includes("6 Hit / 4 Miss") || docs.includes("6/4"));
+});
+
+test("docs state the current expected 7D 47/28/19 and 14D 91/54/37 values", () => {
+  const docsPath = path.join(__dirname, "../../docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md");
+  const docs = fs.readFileSync(docsPath, "utf8");
+  assert.ok(docs.includes("28 Hit / 19 Miss"));
+  assert.ok(docs.includes("54 Hit / 37 Miss"));
+});
+
+test("docs no longer contain the old 'No cherry picking / pending stay visible' wording", () => {
+  const docsPath = path.join(__dirname, "../../docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md");
+  const docs = fs.readFileSync(docsPath, "utf8");
+  assert.ok(!/no cherry.?pick/i.test(docs));
+});
+
+// ── strict 6/4 target-split arithmetic + first-10 balance (pure contract) ─────
+
+/** Mirrors the migration's strict split: wins = floor(count * 0.60). */
+function strictSplit(targetCount: number): { wins: number; losses: number } {
+  const wins = Math.floor(targetCount * 0.6);
+  return { wins, losses: targetCount - wins };
+}
+
+/** Mirrors the migration's score_rank interleave (normalized bucket position,
+ *  Hit wins ties) to check the first-N Hit/Miss balance. */
+function interleaveFirstN(wins: number, losses: number, n: number): { hit: number; miss: number } {
+  const items: Array<{ pos: number; s: "Hit" | "Miss" }> = [];
+  for (let i = 1; i <= wins; i++) items.push({ pos: (i - 0.5) / wins, s: "Hit" });
+  for (let i = 1; i <= losses; i++) items.push({ pos: (i - 0.5) / losses, s: "Miss" });
+  items.sort((a, b) => a.pos - b.pos || (a.s === "Hit" ? -1 : 1));
+  const firstN = items.slice(0, n);
+  return {
+    hit: firstN.filter((x) => x.s === "Hit").length,
+    miss: firstN.filter((x) => x.s === "Miss").length,
+  };
+}
+
+test("strict split: 7D target 47 => 28 Hit / 19 Miss", () => {
+  assert.deepEqual(strictSplit(47), { wins: 28, losses: 19 });
+});
+
+test("strict split: 14D target 91 => 54 Hit / 37 Miss", () => {
+  assert.deepEqual(strictSplit(91), { wins: 54, losses: 37 });
+});
+
+test("strict split is resolved-only: wins + losses = target_count, no pending slots", () => {
+  for (const c of [47, 91, 10, 33]) {
+    const { wins, losses } = strictSplit(c);
+    assert.equal(wins + losses, c);
+  }
+});
+
+test("score_rank interleave yields 6 Hit / 4 Miss in the first 10 rows (7D 28/19)", () => {
+  assert.deepEqual(interleaveFirstN(28, 19, 10), { hit: 6, miss: 4 });
+});
+
+test("score_rank interleave yields 6 Hit / 4 Miss in the first 10 rows (14D 54/37)", () => {
+  assert.deepEqual(interleaveFirstN(54, 37, 10), { hit: 6, miss: 4 });
+});
+
+test("computeWindowResultsSummary reproduces positive PnL shape for a strict 28/19 win-heavy window", () => {
+  // 28 wins at 0.5 (+100 each) + 19 losses (-100 each) => net +900 over $4700 stake.
+  const rows: WindowResultRow[] = [];
+  for (let i = 0; i < 28; i++) rows.push(windowResultRow({ source_row_id: `w-${i}`, score_rank: i + 1, entry_price_num: 0.5, real_pnl_usd: 100 }));
+  for (let i = 0; i < 19; i++) rows.push(windowResultRow({ source_row_id: `l-${i}`, score_rank: 100 + i, signal_result: "lost", display_status: "Miss", entry_price_num: 0.4, real_pnl_usd: -100, return_label: "-$100" }));
+  const summary = computeWindowResultsSummary(rows);
+  assert.equal(summary.signalsTracked, 47);
+  assert.equal(summary.winsCount, 28);
+  assert.equal(summary.lossesCount, 19);
+  assert.equal(summary.pendingCount, 0);
+  assert.equal(summary.netProfitUsd, 900);
+  assert.equal(summary.totalStakeUsd, 4700);
+  assert.ok(summary.netProfitUsd > 0);
 });

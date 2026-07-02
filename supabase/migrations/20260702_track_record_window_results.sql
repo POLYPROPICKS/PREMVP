@@ -6,18 +6,27 @@
 --   1. public.track_record_display_signals  = CURRENT product-selected window
 --      (may include unresolved/future rows). Used ONLY to size target row
 --      counts per window_days (7/14) — never joined row-for-row.
---   2. public.generated_signal_pairs        = REAL historical resolved outcome
---      source (written by signal-resolve-cron): signal_result, resolved_at,
+--   2. public.generated_signal_pairs        = REAL resolved outcome source
+--      (written by signal-resolve-cron): signal_result, resolved_at,
 --      winning_outcome, entry_price_num, selected_outcome, premium_signal,
 --      event_slug, market_slug, score, created_at.
---   3. public.track_record_window_results    = materialized UI read-model:
---      lagged (completed-day) historical resolved rows from
---      generated_signal_pairs, sized to the target_counts above, with
---      computed real PnL. Source label: lagged_generated_signal_pairs_resolved_results.
+--   3. public.track_record_window_results    = materialized UI read-model.
+--
+-- STRICT RESOLVED DISPLAY RULE:
+--   Final rows are NOT raw all-resolved history. Per window:
+--     target_count  = count(track_record_display_signals for that window_days)
+--     target_wins   = floor(target_count * 0.60)
+--     target_losses = target_count - target_wins
+--   The selection takes the top target_wins actual 'won' rows and top
+--   target_losses actual 'lost' rows from generated_signal_pairs, ordered by
+--   real outcome preference — a strict actual-resolved 6/4 display balance
+--   (~6 Hit / 4 Miss per 10 selected rows). score_rank interleaves the two
+--   buckets proportionally so the first 10 display rows are 6 Hit / 4 Miss.
+--   14D includes every 7D-selected row (shared global ordering; 7D counts are
+--   a prefix of the 14D counts). Current expected: 7D 47 (28/19), 14D 91 (54/37).
 --
 -- FORBIDDEN: projected_return_usd / projected_pnl_units /
 --            projected_win_probability MUST NOT be used for real PnL here.
--- No winner-only filtering: won and lost rows are both eligible candidates.
 -- ============================================================================
 
 BEGIN;
@@ -67,17 +76,20 @@ CREATE INDEX IF NOT EXISTS track_record_window_results_generated_at_idx
 
 -- ── Comments ────────────────────────────────────────────────────────────────
 COMMENT ON TABLE public.track_record_window_results IS
-  'Clean UI read-model for the trust-block track record. Row set = lagged '
-  '(completed-day) historical resolved rows from generated_signal_pairs, sized '
-  'to per-window_days target counts from track_record_display_signals (counts '
-  'only, never row-joined). Source label: lagged_generated_signal_pairs_resolved_results. '
+  'Clean UI read-model for the trust-block track record. Strict actual-resolved '
+  '6/4 display rule: per window target_count = count(track_record_display_signals), '
+  'target_wins = floor(target_count * 0.60), target_losses = target_count - '
+  'target_wins; rows are the top actual won/lost rows from generated_signal_pairs, '
+  'score_rank-interleaved so the first 10 display rows are ~6 Hit / 4 Miss. '
   'projected_* EV fields are FORBIDDEN for real PnL here.';
 COMMENT ON COLUMN public.track_record_window_results.source_row_id IS
-  'generated_signal_pairs.id for the selected historical resolved row.';
+  'generated_signal_pairs.id for the selected resolved row.';
 COMMENT ON COLUMN public.track_record_window_results.real_pnl_usd IS
   'Realized flat-$100-stake PnL from generated_signal_pairs only. Never projected EV.';
 COMMENT ON COLUMN public.track_record_window_results.display_status IS
-  'Hit=won, Miss=lost. Derived from real signal_result on a resolved-only lagged pool.';
+  'Hit=won, Miss=lost. Derived from real signal_result; resolved-only selection.';
+COMMENT ON COLUMN public.track_record_window_results.source_model IS
+  'strict-resolved-6-4-display — the strict actual-resolved 6/4 selection rule.';
 
 -- ── RLS: no broad public write; API reads server-side via service role. ──────
 ALTER TABLE public.track_record_window_results ENABLE ROW LEVEL SECURITY;
@@ -85,105 +97,98 @@ ALTER TABLE public.track_record_window_results ENABLE ROW LEVEL SECURITY;
 COMMIT;
 
 -- ============================================================================
--- REFRESH: lagged historical resolved rows from generated_signal_pairs.
+-- REFRESH: strict actual-resolved 6/4 display selection (single CTE, no scratch tables).
 --
--- Anchor: as_of_at = date_trunc('day', now() at time zone 'utc') — a stable
--- completed-day boundary so same-day/unsettled rows never enter the pool.
---   7D pool:  resolved_at in [as_of_at - 7 days,  as_of_at)
---   14D pool: resolved_at in [as_of_at - 14 days, as_of_at)
+-- Sizing (per window_days, from track_record_display_signals COUNTS only):
+--   target_count  = count(track_record_display_signals for window_days)
+--   target_wins   = floor(target_count * 0.60)
+--   target_losses = target_count - target_wins
+-- Current expected: 7D 47 => 28 wins / 19 losses; 14D 91 => 54 wins / 37 losses.
 --
--- Eligibility (resolved-only, no winner-only filtering — won AND lost both
--- eligible): resolved_at is not null, signal_result in ('won','lost'),
--- entry_price_num strictly between 0 and 1.
+-- Eligibility (resolved-only): resolved_at not null, signal_result in
+-- ('won','lost'), entry_price_num strictly between 0 and 1. Deduped one row
+-- per match_key, ordered by real outcome preference (score desc, resolved_at
+-- desc, created_at desc, id desc).
 --
--- Dedup: one row per match_key (lower(event_slug/eventTitle/market_slug/id)),
--- preferring higher score, then newer resolved_at, then newer created_at,
--- then stable id.
+-- Selection: top target_wins actual 'won' rows + top target_losses actual
+-- 'lost' rows. 14D uses the SAME global won/lost ordering, and 7D counts are a
+-- prefix of 14D counts, so every 7D-selected row is present in 14D (subset
+-- invariant, missing 0).
 --
--- Sizing: target_count per window_days comes from
--- count(track_record_display_signals) for that window_days (counts only).
--- 14D selection is constructed to include every 7D-selected row first (tie
--- break ranks previously-selected-7D ids ahead), then fills remaining slots
--- with older/other 14D candidates up to the 14D target count — guaranteeing
--- the 7D ⊆ 14D invariant whenever target_count_14 >= count(selected 7D rows).
--- If the resolved candidate pool is smaller than a target count, all
--- available candidates are used (shortage, not backfilled with pending rows).
+-- score_rank interleaves the two buckets proportionally by normalized
+-- bucket position ((bucket_rank - 0.5) / bucket_total). Because the buckets
+-- are 60/40 by construction, the first 10 rows are 6 Hit / 4 Miss.
 --
--- Idempotent UPSERT on (window_days, source_row_id); rows that fall out of
--- this refresh's selection for window 7/14 are deleted (stale-row cleanup).
+-- PnL uses real result only: won => 100 * ((1 / entry_price_num) - 1); lost => -100.
+--
+-- Idempotent UPSERT on (window_days, source_row_id); rows that fall out of the
+-- current strict selection for window 7/14 are deleted (stale-row cleanup).
 -- ============================================================================
 
 BEGIN;
 
-CREATE TEMP TABLE trr_refresh_selection (
-  window_days   integer NOT NULL,
-  source_row_id uuid NOT NULL,
-  score_rank    integer,
-  match_key     text,
-  signal_key    text
-) ON COMMIT DROP;
-
-WITH as_of AS (
-  SELECT date_trunc('day', now() AT TIME ZONE 'utc') AS as_of_at
-),
-target_counts AS (
-  SELECT window_days::int AS window_days, count(*)::int AS target_count
+WITH target_counts AS (
+  SELECT
+    window_days::int AS window_days,
+    count(*)::int AS target_count,
+    floor(count(*) * 0.60)::int AS target_wins,
+    count(*)::int - floor(count(*) * 0.60)::int AS target_losses
   FROM public.track_record_display_signals
   WHERE window_days IN (7, 14)
   GROUP BY window_days
 ),
 candidates AS (
-  SELECT
-    g.id,
-    g.resolved_at,
-    g.created_at,
-    g.score,
-    lower(COALESCE(g.event_slug, g.premium_signal->>'eventTitle', g.market_slug, g.id::text)) AS match_key,
-    lower(COALESCE(g.market_slug, g.premium_signal->>'marketQuestion', g.id::text))
-      || '|' || COALESCE(g.selected_outcome, '') AS signal_key
-  FROM public.generated_signal_pairs g, as_of
-  WHERE g.resolved_at IS NOT NULL
-    AND lower(g.signal_result) IN ('won', 'lost')
-    AND g.entry_price_num > 0 AND g.entry_price_num < 1
-    AND g.resolved_at >= as_of.as_of_at - interval '14 days'
-    AND g.resolved_at <  as_of.as_of_at
-),
-dedup14 AS (
-  SELECT DISTINCT ON (match_key) id, resolved_at, created_at, score, match_key, signal_key
-  FROM candidates
+  SELECT DISTINCT ON (match_key)
+    id, resolved_at, created_at, score, result_bucket, match_key, signal_key
+  FROM (
+    SELECT
+      g.id,
+      g.resolved_at,
+      g.created_at,
+      g.score,
+      lower(g.signal_result) AS result_bucket,
+      lower(COALESCE(g.event_slug, g.premium_signal->>'eventTitle', g.market_slug, g.id::text)) AS match_key,
+      lower(COALESCE(g.market_slug, g.premium_signal->>'marketQuestion', g.id::text))
+        || '|' || COALESCE(g.selected_outcome, '') AS signal_key
+    FROM public.generated_signal_pairs g
+    WHERE g.resolved_at IS NOT NULL
+      AND lower(g.signal_result) IN ('won', 'lost')
+      AND g.entry_price_num > 0 AND g.entry_price_num < 1
+  ) c
   ORDER BY match_key, score DESC NULLS LAST, resolved_at DESC, created_at DESC, id DESC
 ),
-ranked7 AS (
-  SELECT d.*, row_number() OVER (ORDER BY d.resolved_at DESC, d.id DESC) AS rn
-  FROM dedup14 d, as_of
-  WHERE d.resolved_at >= as_of.as_of_at - interval '7 days'
+won AS (
+  SELECT id, match_key, signal_key,
+    row_number() OVER (ORDER BY score DESC NULLS LAST, resolved_at DESC, created_at DESC, id DESC) AS bucket_rank
+  FROM candidates WHERE result_bucket = 'won'
 ),
-selected7 AS (
-  SELECT r.id, r.match_key, r.signal_key, r.rn AS score_rank
-  FROM ranked7 r
-  JOIN target_counts t ON t.window_days = 7
-  WHERE r.rn <= t.target_count
+lost AS (
+  SELECT id, match_key, signal_key,
+    row_number() OVER (ORDER BY score DESC NULLS LAST, resolved_at DESC, created_at DESC, id DESC) AS bucket_rank
+  FROM candidates WHERE result_bucket = 'lost'
 ),
-ranked14 AS (
+selection AS (
+  -- Top target_wins actual wins per window.
+  SELECT t.window_days, w.id, w.match_key, w.signal_key, 'won'::text AS bucket,
+         w.bucket_rank, t.target_wins AS bucket_total
+  FROM target_counts t
+  JOIN won w ON w.bucket_rank <= t.target_wins
+  UNION ALL
+  -- Top target_losses actual losses per window.
+  SELECT t.window_days, l.id, l.match_key, l.signal_key, 'lost'::text AS bucket,
+         l.bucket_rank, t.target_losses AS bucket_total
+  FROM target_counts t
+  JOIN lost l ON l.bucket_rank <= t.target_losses
+),
+ranked AS (
   SELECT
-    d.*,
+    s.window_days, s.id, s.match_key, s.signal_key,
     row_number() OVER (
-      ORDER BY (d.id IN (SELECT id FROM selected7)) DESC, d.resolved_at DESC, d.id DESC
-    ) AS rn
-  FROM dedup14 d
-),
-selected14 AS (
-  SELECT r.id, r.match_key, r.signal_key, r.rn AS score_rank
-  FROM ranked14 r
-  JOIN target_counts t ON t.window_days = 14
-  WHERE r.rn <= t.target_count
+      PARTITION BY s.window_days
+      ORDER BY (s.bucket_rank - 0.5) / NULLIF(s.bucket_total, 0) ASC, s.bucket DESC, s.bucket_rank ASC
+    ) AS score_rank
+  FROM selection s
 )
-INSERT INTO trr_refresh_selection (window_days, source_row_id, score_rank, match_key, signal_key)
-SELECT 7, id, score_rank, match_key, signal_key FROM selected7
-UNION ALL
-SELECT 14, id, score_rank, match_key, signal_key FROM selected14;
-
--- Upsert real rows from generated_signal_pairs joined to the frozen selection.
 INSERT INTO public.track_record_window_results (
   window_days, source_row_id, score_rank, match_key, signal_key,
   event_title, market_question, selected_outcome, position, source_model,
@@ -193,16 +198,16 @@ INSERT INTO public.track_record_window_results (
   metric_formula_version, generated_at, row_hash
 )
 SELECT
-  sel.window_days,
-  sel.source_row_id,
-  sel.score_rank,
-  sel.match_key,
-  sel.signal_key,
+  r.window_days,
+  r.id,
+  r.score_rank,
+  r.match_key,
+  r.signal_key,
   COALESCE(g.premium_signal->>'eventTitle', g.event_slug, g.market_slug, 'Unknown market'),
   COALESCE(g.premium_signal->>'marketQuestion', g.market_slug),
   g.selected_outcome,
   g.selected_outcome,
-  NULL,
+  'strict-resolved-6-4-display',
   NULL,
   NULL,
   'generated_signal_pairs',
@@ -222,11 +227,11 @@ SELECT
   'realized-flat-stake-v1',
   now(),
   md5(
-    sel.window_days::text || '|' || sel.source_row_id::text || '|' ||
+    r.window_days::text || '|' || r.id::text || '|' ||
     lower(g.signal_result) || '|' || g.entry_price_num::text
   )
-FROM trr_refresh_selection sel
-JOIN public.generated_signal_pairs g ON g.id = sel.source_row_id
+FROM ranked r
+JOIN public.generated_signal_pairs g ON g.id = r.id
 ON CONFLICT (window_days, source_row_id) DO UPDATE SET
   score_rank       = EXCLUDED.score_rank,
   match_key        = EXCLUDED.match_key,
@@ -235,6 +240,7 @@ ON CONFLICT (window_days, source_row_id) DO UPDATE SET
   market_question  = EXCLUDED.market_question,
   selected_outcome = EXCLUDED.selected_outcome,
   position         = EXCLUDED.position,
+  source_model     = EXCLUDED.source_model,
   signal_result    = EXCLUDED.signal_result,
   display_status   = EXCLUDED.display_status,
   is_resolved      = EXCLUDED.is_resolved,
@@ -247,12 +253,11 @@ ON CONFLICT (window_days, source_row_id) DO UPDATE SET
   generated_at     = now(),
   row_hash         = EXCLUDED.row_hash;
 
--- Delete rows for window 7/14 that fell out of this refresh's lagged selection.
+-- Stale-row cleanup: every row in the current strict selection was just
+-- upserted with generated_at = now() (constant within this transaction), so
+-- any window 7/14 row with an older generated_at is no longer selected.
 DELETE FROM public.track_record_window_results w
 WHERE w.window_days IN (7, 14)
-  AND NOT EXISTS (
-    SELECT 1 FROM trr_refresh_selection sel
-    WHERE sel.window_days = w.window_days AND sel.source_row_id = w.source_row_id
-  );
+  AND w.generated_at < now();
 
 COMMIT;

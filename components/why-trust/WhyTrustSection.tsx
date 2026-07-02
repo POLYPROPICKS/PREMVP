@@ -3,8 +3,9 @@
 // components/why-trust/WhyTrustSection.tsx
 // "Why Can I Trust This?" — client component · 7D/14D toggle.
 // Fetches /api/signals/resolved (mode=latest) for both windows and renders the
-// weekResultsCard contract, sourced from public.track_record_display_signals.
-// Projected values only — no resolved won/lost ledger, no fake/model odds.
+// weekResultsCard contract, sourced from public.track_record_window_results
+// (strict actual-resolved 6/4 display read-model). Real resolved won/lost PnL
+// only — no projected EV, see docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md.
 
 import { useEffect, useState } from 'react';
 import styles from './WhyTrustSection.module.css';
@@ -20,7 +21,7 @@ const WINDOW_DAYS: Record<TrackWindow, number> = { '7D': 7, '14D': 14 };
 const METHODOLOGY_RULES: string[] = [
   'Every signal is timestamped before the market settles — then tracked in a public ledger.',
   'Performance reflects a flat $100 stake per resolved signal.',
-  'No cherry-picking. Wins, losses, and pending signals stay visible.',
+  'Strict resolved display filter: approximately 6 Hit / 4 Miss per 10 selected rows, using actual resolved outcomes only.',
   'Transparent tracking beats cherry-picked screenshots.',
   'Odds are sourced directly from Polymarket at signal publish time.',
   'Performance does not guarantee future results.',
