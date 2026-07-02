@@ -528,9 +528,37 @@ export function computeRealReturnCurve(rows: RealResolvedRow[]): ReturnCurvePoin
 
 export const WINDOW_RESULTS_SOURCE = "track_record_window_results" as const;
 
+export type TrackRecordStatus = "ready" | "insufficient_history";
+
+/** TS mirror of SQL public.track_record_normalize_match_key: lowercased team
+ *  matchup with sport prefix and series/market suffix removed. Keeps team
+ *  names — never collapses Dota/Valorant titles into a bare sport label. */
+export function normalizeMatchKey(rawTitle: string | null | undefined): string {
+  let s = (rawTitle ?? "").trim().toLowerCase();
+  if (/^[^:]{1,40}:\s+.*\svs\.?\s/.test(s)) s = s.replace(/^[^:]{1,40}:\s+/, "");
+  s = s.replace(/\s+-\s+.*$/, "");
+  s = s.replace(/\s*\([^)]*\)\s*$/, "");
+  return s.trim();
+}
+
+export interface WindowSummaryRow {
+  window_days: number;
+  status: TrackRecordStatus;
+  raw_shown_rows: number;
+  unique_matches: number;
+  resolved_unique_rows: number;
+  pending_unique_rows: number;
+  wins_count: number;
+  losses_count: number;
+  net_pnl_usd: number;
+  net_return_pct: number;
+}
+
 export interface WindowResultRow {
   window_days: number;
   source_row_id: string;
+  shown_batch_day: string | null;
+  normalized_match_key: string | null;
   score_rank: number | null;
   match_key: string | null;
   signal_key: string | null;
@@ -612,6 +640,8 @@ export interface WindowResultLedgerRow {
   sourceRowId: string;
   windowDays: number;
   scoreRank: number | null;
+  shownBatchDay: string | null;
+  normalizedMatchKey: string | null;
   resolvedAt: string | null;
   eventTitle: string;
   marketQuestion: string | null;
@@ -633,6 +663,8 @@ export function mapWindowResultRowToLedgerRow(r: WindowResultRow): WindowResultL
     sourceRowId: r.source_row_id,
     windowDays: r.window_days,
     scoreRank: r.score_rank,
+    shownBatchDay: r.shown_batch_day,
+    normalizedMatchKey: r.normalized_match_key,
     resolvedAt: r.resolved_at,
     eventTitle: r.event_title,
     marketQuestion: r.market_question,
@@ -758,25 +790,47 @@ export async function GET(request: Request) {
   const trackWindowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
 
   const WINDOW_RESULTS_SELECT =
-    "window_days, source_row_id, score_rank, match_key, signal_key, event_title, " +
+    "window_days, source_row_id, score_rank, shown_batch_day, normalized_match_key, " +
+    "match_key, signal_key, event_title, " +
     "market_question, selected_outcome, signal_result, display_status, is_resolved, " +
     "resolved_at, winning_outcome, entry_price_num, decimal_odds, real_pnl_usd, return_label";
 
-  const { data: windowRowsRaw, error: windowQueryError } = await supabase
-    .from("track_record_window_results")
-    .select(WINDOW_RESULTS_SELECT)
-    .eq("window_days", windowDays)
-    .order("score_rank", { ascending: true })
-    .limit(DISPLAY_TABLE_FETCH_LIMIT);
+  const [windowResultsRes, windowSummaryRes] = await Promise.all([
+    supabase
+      .from("track_record_window_results")
+      .select(WINDOW_RESULTS_SELECT)
+      .eq("window_days", windowDays)
+      .order("score_rank", { ascending: true })
+      .limit(DISPLAY_TABLE_FETCH_LIMIT),
+    supabase
+      .from("track_record_window_summary")
+      .select(
+        "window_days, status, raw_shown_rows, unique_matches, resolved_unique_rows, " +
+        "pending_unique_rows, wins_count, losses_count, net_pnl_usd, net_return_pct"
+      )
+      .eq("window_days", windowDays)
+      .maybeSingle(),
+  ]);
 
-  if (windowQueryError) {
+  if (windowResultsRes.error) {
     return NextResponse.json(
-      { ok: false, error: "DB_QUERY_ERROR", detail: windowQueryError.message },
+      { ok: false, error: "DB_QUERY_ERROR", detail: windowResultsRes.error.message },
       { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 
-  const windowRows = ((windowRowsRaw ?? []) as unknown) as WindowResultRow[];
+  const windowSummary = (windowSummaryRes.data as WindowSummaryRow | null) ?? null;
+  // Missing summary row = the shown-history refresh has not produced enough
+  // resolved rows (or has never run) — always the honest fallback, never a
+  // positive PnL fabricated from other sources.
+  const trackStatus: TrackRecordStatus =
+    windowSummary?.status === "ready" ? "ready" : "insufficient_history";
+
+  // Result rows exist only for ready windows; ignore any stale rows otherwise.
+  const windowRows =
+    trackStatus === "ready"
+      ? (((windowResultsRes.data ?? []) as unknown) as WindowResultRow[])
+      : [];
 
   // 14D superset proof: only meaningful when the wider window was requested.
   let supersetMissingCount = 0;
@@ -792,8 +846,24 @@ export async function GET(request: Request) {
     ).length;
   }
 
-  const summary = computeWindowResultsSummary(windowRows);
+  const rowsSummary = computeWindowResultsSummary(windowRows);
   const returnCurve = computeWindowReturnCurve(windowRows);
+
+  // Funnel counts come from the summary table (full shown-history funnel);
+  // PnL comes from the ready-window result rows only. insufficient_history
+  // always reports zero PnL — never a positive Net Return.
+  const rawShownRows = windowSummary?.raw_shown_rows ?? 0;
+  const uniqueMatches = windowSummary?.unique_matches ?? 0;
+  const summary = {
+    signalsTracked: trackStatus === "ready" ? rowsSummary.signalsTracked : uniqueMatches,
+    resolvedCount: windowSummary?.resolved_unique_rows ?? rowsSummary.resolvedCount,
+    pendingCount: windowSummary?.pending_unique_rows ?? rowsSummary.pendingCount,
+    winsCount: trackStatus === "ready" ? rowsSummary.winsCount : 0,
+    lossesCount: trackStatus === "ready" ? rowsSummary.lossesCount : 0,
+    netProfitUsd: trackStatus === "ready" ? rowsSummary.netProfitUsd : 0,
+    totalStakeUsd: trackStatus === "ready" ? rowsSummary.totalStakeUsd : 0,
+    netReturnPct: trackStatus === "ready" ? rowsSummary.netReturnPct : 0,
+  };
 
   // Ledger rows displayed in the UI are capped by the request `limit`; the
   // summary above is always computed from the full table row set for this window.
@@ -823,8 +893,11 @@ export async function GET(request: Request) {
   // Safe structured log — counts and aggregates only, never raw rows/env/secrets.
   console.log("[weekResultsCard]", {
     source: WINDOW_RESULTS_SOURCE,
+    status: trackStatus,
     windowDays,
     tableRows: windowRows.length,
+    rawShownRows,
+    uniqueMatches,
     resolvedRows: summary.resolvedCount,
     pendingRows: summary.pendingCount,
     winsCount: summary.winsCount,
@@ -840,6 +913,9 @@ export async function GET(request: Request) {
     cardType: "signal-week-results",
     schemaVersion: "week-results-v3-resolved",
     source: WINDOW_RESULTS_SOURCE,
+    status: trackStatus,
+    rawShownRows,
+    uniqueMatches,
     window: {
       label: `Past ${windowDays} days`,
       days: windowDays,

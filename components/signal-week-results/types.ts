@@ -1,8 +1,8 @@
 // Real resolved track record contract.
-// Source: public.track_record_window_results — the materialized lagged read-model
-// (pre-selected/pre-joined from generated_signal_pairs, resolved-only, sized by
-// track_record_display_signals counts). See
-// docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md.
+// Source: public.track_record_window_results — the materialized read-model built
+// from actually shown signals (track_record_shown_signal_history) joined to their
+// own resolved outcomes in generated_signal_pairs, deduped one row per match,
+// resolved-only. See docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md.
 // Never source Hit/Miss/PnL from a projected EV formula.
 
 export interface TrackRecordRow {
@@ -45,6 +45,13 @@ export interface WeekResultsCard {
   cardType: 'signal-week-results';
   schemaVersion: 'week-results-v3-resolved';
   source: 'track_record_window_results';
+  /** ready = enough resolved shown-history rows; insufficient_history = show
+   *  the honest tracking state, never a positive Net Return. */
+  status?: 'ready' | 'insufficient_history';
+  /** Raw shown/display-selected rows persisted for this window. */
+  rawShownRows?: number;
+  /** Shown rows after one-match-one-signal dedup. */
+  uniqueMatches?: number;
   window: { label: string; days: number; startedAt: string; endedAt: string };
   title: string;
   subtitle: string;

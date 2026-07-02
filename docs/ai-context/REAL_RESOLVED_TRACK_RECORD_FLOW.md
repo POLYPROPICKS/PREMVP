@@ -1,140 +1,134 @@
-# Real Resolved Track Record Flow
+# Real Resolved Track Record Flow (shown-history)
 
-## 0. Strict resolved-display read-model (canonical flow)
+## 0. Final funnel (canonical)
 
-The trust-block track record is built from a **strict actual-resolved
-read-model** — not raw all-resolved history, and not a row-for-row join of the
-current selected universe. Do not conflate the roles below:
-
-| Stage | Table | Role |
-| --- | --- | --- |
-| Target counts only | `public.track_record_display_signals` | The current product-selected 7D/14D window. **May contain unresolved/future rows.** Used ONLY to size target row counts per `window_days` (count only — never row-joined). |
-| Real resolved outcomes | `public.generated_signal_pairs` | Resolver (`signal-resolve-cron`) writes real results: `signal_result`, `resolved_at`, `winning_outcome`, `entry_price_num`, `selected_outcome`, `premium_signal`, `event_slug`, `market_slug`, `score`, `created_at`. The only source of real resolved outcomes. |
-| Final UI read-model | `public.track_record_window_results` | Materialized strict 6/4 selection of actual won/lost rows from `generated_signal_pairs`, sized to the target counts above, with computed real PnL. **The API reads only this table.** |
-
-**Strict resolved display rule** (per window):
-```
-target_count  = count(track_record_display_signals for that window_days)
-target_wins   = floor(target_count * 0.60)
-target_losses = target_count - target_wins
-```
-The selection takes the top `target_wins` actual `won` rows and the top
-`target_losses` actual `lost` rows from `generated_signal_pairs`, ranked by real
-outcome preference (`score` desc → `resolved_at` desc → `created_at` desc →
-stable `id`). `score_rank` interleaves the two buckets proportionally, so the
-first 10 display rows are ~6 Hit / 4 Miss (using actual resolved outcomes only).
-
-**Current expected values:**
-- 7D: `target_count` 47 → 28 Hit / 19 Miss, pending 0.
-- 14D: `target_count` 91 → 54 Hit / 37 Miss, pending 0.
-
-**Eligibility (resolved-only):** `resolved_at is not null`, `signal_result in
-('won','lost')`, `entry_price_num` strictly between 0 and 1. Deduped one row per
-`match_key` (`lower(event_slug/eventTitle/market_slug/id)`).
-
-**14D ⊇ 7D invariant:** both windows draw from the same global won/lost ordering;
-7D win/loss counts are a prefix of the 14D win/loss counts, so every 7D-selected
-row is present in 14D (missing 0).
-
-- `track_record_window_results.display_status` (`Hit`/`Miss`) comes from the real
-  `signal_result` only. Selection is resolved-only, so `pending = 0`.
-- `projected_return_usd` / `projected_pnl_units` / `projected_win_probability` are
-  **FORBIDDEN** for real PnL.
-- The API `limit` affects **ledger rows only**, never summary metrics.
-  `signalsTracked` equals the table row count for the window, not the ledger limit.
-- Source label: `track_record_window_results` (API `weekResultsCard.source`);
-  `source_model = 'strict-resolved-6-4-display'`.
-
-Real PnL (flat $100 stake), computed once at refresh time:
+The trust-block track record is built ONLY from signals that were actually
+selected/shown by the live/display pipeline, joined to their own resolved
+outcomes:
 
 ```
+shown/live signals (track_record_display_signals)
+  → persist shown history (track_record_shown_signal_history, upsert by source_row_id)
+  → join actual result by source_row_id → generated_signal_pairs.id
+  → normalize + dedup: 1 normalized_match_key = 1 final signal
+  → resolved-only (signal_result in ('won','lost'), resolved_at not null, entry_price_num > 0)
+  → strict 6/4 only if enough resolved rows
+  → track_record_window_results + track_record_window_summary → API → UI
+```
+
+**FORBIDDEN:** using global/random resolved `generated_signal_pairs` rows to
+fill shortages or manufacture a positive PnL. If the shown history does not
+have enough resolved rows, the window is `insufficient_history` and the UI
+shows the honest tracking state — no positive Net Return, no fabricated chart.
+
+## 1. Table roles
+
+| Table | Role |
+| --- | --- |
+| `public.track_record_display_signals` | CURRENT live/display-selected rows. Refreshed — old rows disappear. Source of shown rows only; never a results/PnL source. |
+| `public.track_record_shown_signal_history` | Append/upsert persistence of every shown row (`source_row_id` unique = `generated_signal_pairs.id`, `shown_batch_day`, `normalized_match_key`). The ONLY valid shown-signal source. |
+| `public.generated_signal_pairs` | Real resolved outcomes written by `signal-resolve-cron`: `signal_result`, `resolved_at`, `winning_outcome`, `entry_price_num`, `score`. Joined per shown row by `source_row_id` — never sampled globally. |
+| `public.track_record_window_results` | Final read-model rows — exist ONLY for ready windows. |
+| `public.track_record_window_summary` | Per-window funnel counts + `status` (`ready` / `insufficient_history`). |
+
+## 2. Dedup rule
+
+`1 normalized_match_key = 1 final signal`. Normalization keeps team names —
+it never collapses Dota/Valorant titles into a bare sport label:
+
+- `Valorant: Team Vitality vs Karmine Corp (BO3) - Esports World Cup Group B` → `team vitality vs karmine corp`
+- `Dota 2: LGD Gaming vs Virtus.pro - Game 1 Winner` → `lgd gaming vs virtus.pro`
+- `Argentina vs. Cabo Verde - More Markets` → `argentina vs. cabo verde`
+
+SQL: `public.track_record_normalize_match_key(text)`; TS mirror:
+`normalizeMatchKey` in `app/api/signals/resolved/route.ts`.
+
+Best row per match: `display_score_rank` asc nulls last → generated `score`
+desc nulls last → `shown_at` desc → `source_row_id` stable tie-break.
+
+## 3. Window logic
+
+Completed-day anchor: `anchor_date = date_trunc('day', now() at time zone 'utc')::date`.
+7D: `shown_batch_day >= anchor_date - 7 days AND < anchor_date`; 14D likewise
+with 14 days. 14D includes all eligible 7D source rows plus older rows
+(superset by construction).
+
+## 4. Resolved-only performance + PnL
+
+Only rows with `signal_result in ('won','lost') AND resolved_at IS NOT NULL
+AND entry_price_num > 0` enter PnL and the final ledger. Pending rows are
+counted in the summary but never create PnL.
+
+```
+stake_usd = 100 (unless stored otherwise)
 won:  real_pnl_usd = 100 * ((1 / entry_price_num) - 1)
 lost: real_pnl_usd = -100
 ```
 
-**Refresh path:** `supabase/migrations/20260702_track_record_window_results.sql`
-(create table + idempotent UPSERT refresh on `unique(window_days, source_row_id)`,
-plus a `generated_at`-guarded stale-row cleanup). Re-run the refresh block after
-each resolver cron cycle.
+`projected_return_usd` / `projected_pnl_units` / `projected_win_probability`
+are FORBIDDEN as realized results.
 
-**Test command:** `node --import tsx --test tests/signals/publishedActivity.test.ts`
+## 5. Strict 6/4 after resolved-only
 
-**Latest resolved signals component:** `components/why-trust/WhyTrustSection.tsx`
-(sole trust-block consumer of resolved results as of this writing; see §5).
+Applied ONLY after shown-history → actual result → dedup → resolved-only:
 
-## 1. Resolver
+```
+target_count  = largest resolved-unique count satisfiable by actual won/lost buckets
+target_wins   = floor(target_count * 0.60)
+target_losses = target_count - target_wins
+```
 
-Railway cron service: `signal-resolve-cron` (every 6h UTC, `0 */6 * * *`). Writes resolution
-results directly onto rows in `public.generated_signal_pairs`.
+No fill from global `generated_signal_pairs`. `score_rank` interleaves the two
+buckets proportionally, so the first 10 display rows are ~6 Hit / 4 Miss
+(actual resolved outcomes only). Source label:
+`source_model = 'shown-history-strict-resolved-6-4'`.
 
-## 2. Real resolved source table
+## 6. Readiness thresholds / insufficient_history fallback
 
-`public.generated_signal_pairs` — the only valid source for real (non-projected)
-Hit/Miss/PnL performance.
+- 7D `ready` if resolved unique shown rows >= 20
+- 14D `ready` if resolved unique shown rows >= 40
 
-Result columns used by the trust block:
-- `signal_result` (`'won' | 'lost'`, filter: not null / in `('won','lost')`)
-- `resolved_at` (filter: not null; window filtering)
-- `winning_outcome`
-- `realized_return_pct` (informational; not used in the $100-flat-stake formula)
-- `entry_price_num` (filter: `> 0 and < 1`)
-- `selected_outcome`, `created_at`, `premium_signal`, `market_slug`, `event_slug`
+(Chosen as ~2–3x the 10-row display page so the 6/4 split is meaningful and a
+single day's resolutions can't flip the status.) Below threshold:
+`status = insufficient_history`, `track_record_window_results` holds no rows
+for the window, summary PnL is 0, and the UI shows: tracking is live, raw
+shown rows, unique matches, resolved so far, pending so far.
 
-## 3. Invalid source for real PnL
-
-`public.track_record_display_signals` — contains unresolved `Published` projected rows
-with near-zero `projected_return_usd`, and (as the current selected universe) may be
-entirely unresolved/future. Never use it to derive Hit/Miss/Pending or real PnL, and
-never join it row-for-row into `track_record_window_results` — use it only for
-`window_days` target *counts* (see §0). It remains valid only for the legacy
-projected-EV display functions (`computeDisplaySignalsSummary`,
-`mapDisplaySignalRowToTrackRecordRow`) that are no longer wired into `weekResultsCard`.
-
-## 4. API
+## 7. API
 
 `GET /api/signals/resolved?mode=latest&days=<7|14>&limit=<n>`
 
-Source (read-model): `public.track_record_window_results` (see §0). The API queries
-`.eq("window_days", days)` and reads all matching rows; summary metrics
-(`computeWindowResultsSummary`) are computed over the full row set for that window and
-are never truncated by the ledger `limit`. The API never re-derives selection or PnL
-from `generated_signal_pairs` or `track_record_display_signals` directly — that work
-happens once at refresh time in the migration's REFRESH block.
+Reads ONLY `track_record_window_results` + `track_record_window_summary`. It
+never computes the final summary from global `generated_signal_pairs`, raw
+`track_record_display_signals`, or projected fields. `weekResultsCard` exposes
+`source`, `status`, `rawShownRows`, `uniqueMatches`, `resolvedCount`,
+`pendingCount`, `winsCount`, `lossesCount`, `netProfitUsd`, `totalStakeUsd`,
+`netReturnPct`, `returnCurve`, ledger rows with proof fields (`sourceRowId`,
+`shownBatchDay`, `resolvedAt`, `normalizedMatchKey`, `signalResult`,
+`realPnlUsd`). `limit` affects ledger rows only, never summary metrics.
 
-## 5. UI consumers
+## 8. Compact SQL verification workflow
 
-- `components/why-trust/WhyTrustSection.tsx` — reads `weekResultsCard` fields
-  (`netProfitUsd`, `signalsTracked`, `resolvedCount`, `pendingCount`, `returnCurve`,
-  `trackRecordDisplayTable.rows[].displayStatus/returnLabel`).
-- No standalone "Resolved Signals Section" component exists in the repo as of this
-  writing; `WhyTrustSection` is the sole trust-block consumer of resolved results.
+1. Run the refresh blocks in
+   `supabase/migrations/20260702_track_record_window_results.sql`
+   (idempotent: history upsert → per-window rebuild → summary upsert).
+2. Run `supabase/migrations/preview_track_record_shown_history_flow.sql`
+   in the Supabase SQL Editor — compact readable sections `01_SUMMARY`,
+   `02_DATES`, `03_DUPLICATES_TOP`, `04_TOP_ROWS` (with `audit_flag`).
+3. Re-run after each display refresh / resolver cron cycle.
 
-## 6. Real PnL formula (flat $100 stake)
+## 9. Current limitation
 
-```
-won:  realPnlUsd = 100 * ((1 / entry_price_num) - 1)
-lost: realPnlUsd = -100
-```
+Current display rows may all be pending: the last audit found 7D 47 raw shown
+rows (~44 unique matches) and 14D 91 raw (~87 unique) with **0 resolved rows
+for exact source_row_id**. Until actual shown rows resolve, both windows
+correctly report `insufficient_history`. The earlier global-source numbers
+(7D 47 rows 28 Hit / 19 Miss +$1031.89; 14D 91 rows 54 Hit / 37 Miss
++$1959.75) came from the WRONG source (global resolved rows) and are a rough
+future benchmark only — never force them.
 
-No projected EV formula (`p * (odds - 1) - (1 - p)`), no `winProbability`, no
-`projected_return_usd` / `projected_pnl_units` in this path.
-
-## 7. 14D superset 7D invariant
-
-Enforced at refresh time (see §0), not at API read time: both windows draw from
-the same global won/lost ordering, and 7D win/loss counts are a prefix of the 14D
-win/loss counts, so every 7D `source_row_id` is present in the 14D rows (verified
-missing 0). The API's `supersetMissingCount` safe-log field (when `days=14`)
-reports any 7D rows missing from the 14D read-model rows as a live proof check.
-
-## 8. Test command
+## 10. Test command
 
 ```
 node --import tsx --test tests/signals/publishedActivity.test.ts
 ```
-
-## 9. Warning
-
-Never derive Hit/Miss/Pending/PnL from projected EV or from
-`track_record_display_signals`. Real performance = `generated_signal_pairs` resolved
-rows only.

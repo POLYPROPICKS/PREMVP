@@ -18,6 +18,7 @@ import {
   computeWindowReturnCurve,
   mapWindowResultRowToLedgerRow,
   mapWindowResultRowToTrackRecordRow,
+  normalizeMatchKey,
   type ResolvedPairRow,
   type RealResolvedRow,
   type WindowResultRow,
@@ -28,6 +29,8 @@ function windowResultRow(overrides: Partial<WindowResultRow> = {}): WindowResult
     window_days: 7,
     source_row_id: "11111111-1111-1111-1111-111111111111",
     score_rank: 1,
+    shown_batch_day: "2026-06-27",
+    normalized_match_key: "team a vs team b",
     match_key: "team-a-vs-team-b-event",
     signal_key: "team-a-vs-team-b|Team A",
     event_title: "Team A vs Team B",
@@ -266,7 +269,7 @@ test("API queries track_record_window_results filtered by window_days = requeste
   assert.ok(routeSource.includes('.eq("window_days", windowDays)'));
 });
 
-// ── strict 6/4 refresh strategy (migration file, text-contract checks) ──────
+// ── shown-history refresh strategy (migration file, text-contract checks) ────
 
 const migrationSource = fs.readFileSync(
   path.join(__dirname, "../../supabase/migrations/20260702_track_record_window_results.sql"),
@@ -274,36 +277,105 @@ const migrationSource = fs.readFileSync(
 );
 
 test("migration uses the strict floor(60%) win split (no ceil), losses are the remainder", () => {
-  assert.ok(migrationSource.includes("floor(count(*) * 0.60)::int AS target_wins"));
-  assert.ok(migrationSource.includes("count(*)::int - floor(count(*) * 0.60)::int AS target_losses"));
-  assert.ok(!migrationSource.includes("ceil(count(*) * 0.60)"));
-  assert.ok(!migrationSource.includes("ceil(count(*)*0.60)"));
+  assert.ok(migrationSource.includes("floor(target_count * 0.60)::int                       AS target_wins"));
+  assert.ok(migrationSource.includes("target_count - floor(target_count * 0.60)::int        AS target_losses"));
+  assert.ok(!/ceil\(/i.test(migrationSource));
 });
 
-test("migration sizes window target counts from track_record_display_signals (counts only)", () => {
-  assert.ok(migrationSource.includes("target_counts AS"));
-  assert.ok(migrationSource.includes("FROM public.track_record_display_signals"));
-  assert.ok(migrationSource.includes("count(*)::int AS target_count"));
+test("migration persists shown rows into track_record_shown_signal_history and windows from it", () => {
+  assert.ok(migrationSource.includes("INSERT INTO public.track_record_shown_signal_history"));
+  assert.ok(migrationSource.includes("FROM public.track_record_display_signals d"));
+  assert.ok(migrationSource.includes("JOIN public.track_record_shown_signal_history h"));
+  assert.ok(migrationSource.includes("shown_batch_day >= a.anchor_date - make_interval(days => w.window_days)"));
+  assert.ok(migrationSource.includes("h.shown_batch_day <  a.anchor_date"));
 });
 
-test("migration uses no TEMP TABLE and no 'No cherry picking' text", () => {
-  assert.ok(!/TEMP TABLE/i.test(migrationSource));
-  assert.ok(!/no cherry.?pick/i.test(migrationSource));
+test("migration never fills from global generated_signal_pairs — every join is per shown source_row_id", () => {
+  const joins = (migrationSource.match(/^[^\n-]*public\.generated_signal_pairs[^\n]*$/gm) ?? [])
+    .filter((line) => /FROM|JOIN/i.test(line));
+  assert.ok(joins.length > 0, "expected joins to generated_signal_pairs");
+  for (const j of joins) {
+    assert.ok(
+      j.includes("LEFT JOIN public.generated_signal_pairs g ON g.id = s.source_row_id"),
+      `generated_signal_pairs must only be joined by shown source_row_id, got: ${j}`
+    );
+  }
 });
 
-test("migration selects actual won and lost buckets, both included", () => {
-  assert.ok(migrationSource.includes("won AS"));
-  assert.ok(migrationSource.includes("lost AS"));
+test("migration applies strict 6/4 only after the resolved-only filter over deduped shown rows", () => {
+  assert.ok(migrationSource.includes("resolved_ranked AS"));
+  assert.ok(migrationSource.includes("WHERE d.is_resolved_row"));
+  assert.ok(migrationSource.includes("DISTINCT ON (window_days, normalized_match_key)"));
   assert.ok(migrationSource.includes("result_bucket = 'won'"));
   assert.ok(migrationSource.includes("result_bucket = 'lost'"));
+});
+
+test("migration gates result rows on readiness thresholds (7D>=20, 14D>=40) with insufficient_history fallback", () => {
+  assert.ok(migrationSource.includes("(VALUES (7, 20), (14, 40))"));
+  assert.ok(migrationSource.includes("'insufficient_history'"));
+  assert.ok(migrationSource.includes("t.is_ready"));
+});
+
+test("migration uses no TEMP TABLE, no 'No cherry picking' text, and no projected_* realized results", () => {
+  assert.ok(!/TEMP TABLE/i.test(migrationSource));
+  assert.ok(!/no cherry.?pick/i.test(migrationSource));
+  assert.ok(!/projected_return_usd\s*[,)]?\s*AS\s*real/i.test(migrationSource));
 });
 
 test("migration score_rank interleaves buckets proportionally (first 10 = 6 Hit / 4 Miss)", () => {
   assert.ok(migrationSource.includes("(s.bucket_rank - 0.5) / NULLIF(s.bucket_total, 0)"));
 });
 
-test("migration labels the strict rule via source_model = strict-resolved-6-4-display", () => {
-  assert.ok(migrationSource.includes("'strict-resolved-6-4-display'"));
+test("migration labels the rule via source_model = shown-history-strict-resolved-6-4", () => {
+  assert.ok(migrationSource.includes("'shown-history-strict-resolved-6-4'"));
+});
+
+// ── normalized match key: keeps teams, drops sport prefix / suffix ───────────
+
+test("normalizeMatchKey keeps team names for Valorant titles", () => {
+  assert.equal(
+    normalizeMatchKey("Valorant: Team Vitality vs Karmine Corp (BO3) - Esports World Cup Group B"),
+    "team vitality vs karmine corp"
+  );
+});
+
+test("normalizeMatchKey keeps team names for Dota 2 titles", () => {
+  assert.equal(
+    normalizeMatchKey("Dota 2: LGD Gaming vs Virtus.pro - Game 1 Winner"),
+    "lgd gaming vs virtus.pro"
+  );
+});
+
+test("normalizeMatchKey strips market suffix from football titles", () => {
+  assert.equal(
+    normalizeMatchKey("Argentina vs. Cabo Verde - More Markets"),
+    "argentina vs. cabo verde"
+  );
+});
+
+test("normalizeMatchKey never collapses to a bare sport label", () => {
+  const a = normalizeMatchKey("Dota 2: LGD Gaming vs Virtus.pro - Game 1 Winner");
+  const b = normalizeMatchKey("Dota 2: Team Spirit vs Tundra - Game 2 Winner");
+  assert.notEqual(a, b);
+  assert.notEqual(a, "dota 2");
+});
+
+// ── API status contract: insufficient_history, never fabricated PnL ──────────
+
+test("API derives status from track_record_window_summary and defaults to insufficient_history", () => {
+  assert.ok(routeSource.includes('.from("track_record_window_summary")'));
+  assert.ok(routeSource.includes('windowSummary?.status === "ready" ? "ready" : "insufficient_history"'));
+});
+
+test("API zeroes PnL and drops result rows when status is not ready (no positive Net Return)", () => {
+  assert.ok(routeSource.includes('trackStatus === "ready" ? rowsSummary.netProfitUsd : 0'));
+  assert.ok(routeSource.includes('trackStatus === "ready"\n      ? (((windowResultsRes.data ?? []) as unknown) as WindowResultRow[])\n      : []'));
+});
+
+test("weekResultsCard exposes status, rawShownRows and uniqueMatches", () => {
+  assert.ok(routeSource.includes("status: trackStatus"));
+  assert.ok(routeSource.includes("rawShownRows,"));
+  assert.ok(routeSource.includes("uniqueMatches,"));
 });
 
 test("no projected EV formula is used for real PnL computation", () => {
@@ -322,7 +394,7 @@ test("limit slices ledger rows but summary/curve use the full table row set for 
   const ledgerBlock = routeSource.slice(ledgerBlockStart, ledgerBlockEnd);
   assert.ok(ledgerBlock.includes(".slice(0, limit)"));
 
-  const summaryLine = routeSource.indexOf("const summary = computeWindowResultsSummary(windowRows)");
+  const summaryLine = routeSource.indexOf("const rowsSummary = computeWindowResultsSummary(windowRows)");
   assert.ok(summaryLine !== -1, "summary must be computed from the unsliced window row set");
 });
 
@@ -378,6 +450,9 @@ test("safe log includes required fields and never logs secrets/env/raw rows", ()
 
   for (const field of [
     "source",
+    "status",
+    "rawShownRows",
+    "uniqueMatches",
     "windowDays",
     "tableRows",
     "resolvedRows",
@@ -437,6 +512,19 @@ test("WhyTrustSection does not use the replaced labels", () => {
   for (const label of ["Projected Return", "Signals Published", "Projected Rate", "Avg Odds"]) {
     assert.ok(!whyTrustSource.includes(label), `unexpected replaced label "${label}" in WhyTrustSection`);
   }
+});
+
+test("WhyTrustSection no longer contains the 'No cherry-picking' copy", () => {
+  assert.ok(!/no cherry.?pick/i.test(whyTrustSource));
+});
+
+test("WhyTrustSection shows the honest insufficient_history state and gates the strict 6/4 claim", () => {
+  assert.ok(whyTrustSource.includes("insufficient_history"));
+  assert.ok(whyTrustSource.includes("Shown signals are being tracked until enough results resolve"));
+  assert.ok(whyTrustSource.includes("deriveTrackingMetrics"));
+  assert.ok(whyTrustSource.includes("Strict resolved display filter: approximately 6 Hit / 4 Miss per 10 selected rows, using actual resolved outcomes only."));
+  // The strict 6/4 methodology claim is used only when the window is ready.
+  assert.ok(whyTrustSource.includes("insufficient ? [] : [STRICT_FILTER_RULE]"));
 });
 
 test("WhyTrustSection derives the Net Return headline value from netProfitUsd (dollars), not netReturnPct alone", () => {
@@ -555,7 +643,8 @@ test("computeWindowReturnCurve: cumulative sum over resolved rows only, ordered 
 test("mapWindowResultRowToLedgerRow exposes all required proof fields", () => {
   const ledgerRow = mapWindowResultRowToLedgerRow(windowResultRow());
   for (const field of [
-    "sourceRowId", "windowDays", "scoreRank", "resolvedAt", "eventTitle", "marketQuestion",
+    "sourceRowId", "windowDays", "scoreRank", "shownBatchDay", "normalizedMatchKey",
+    "resolvedAt", "eventTitle", "marketQuestion",
     "selectedOutcome", "winningOutcome", "signalResult", "displayStatus", "entryPrice",
     "decimalOdds", "realPnlUsd", "returnLabel", "matchKey", "signalKey",
   ] as const) {

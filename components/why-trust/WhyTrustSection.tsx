@@ -18,14 +18,20 @@ type WindowState = { loading: boolean; error: boolean; data: WeekResultsCard | n
 
 const WINDOW_DAYS: Record<TrackWindow, number> = { '7D': 7, '14D': 14 };
 
-const METHODOLOGY_RULES: string[] = [
-  'Every signal is timestamped before the market settles — then tracked in a public ledger.',
-  'Performance reflects a flat $100 stake per resolved signal.',
-  'Strict resolved display filter: approximately 6 Hit / 4 Miss per 10 selected rows, using actual resolved outcomes only.',
-  'Transparent tracking beats cherry-picked screenshots.',
-  'Odds are sourced directly from Polymarket at signal publish time.',
-  'Performance does not guarantee future results.',
-];
+const STRICT_FILTER_RULE =
+  'Strict resolved display filter: approximately 6 Hit / 4 Miss per 10 selected rows, using actual resolved outcomes only.';
+
+function methodologyRules(insufficient: boolean): string[] {
+  return [
+    'Every signal is timestamped before the market settles — then tracked in a public ledger.',
+    'Performance reflects a flat $100 stake per resolved signal.',
+    // The strict 6/4 claim is shown only once the window has enough resolved rows.
+    ...(insufficient ? [] : [STRICT_FILTER_RULE]),
+    'Transparent tracking beats cherry-picked screenshots.',
+    'Odds are sourced directly from Polymarket at signal publish time.',
+    'Performance does not guarantee future results.',
+  ];
+}
 
 // ── Derivations ───────────────────────────────────────────────────────────────
 
@@ -56,6 +62,17 @@ const PLACEHOLDER_METRICS: Metric[] = [
   { label: 'Resolved', value: '—' },
   { label: 'Pending', value: '—' },
 ];
+
+/** Honest tracking-state tiles for status=insufficient_history — real funnel
+ *  counts only, no Net Return, no fabricated PnL. */
+function deriveTrackingMetrics(card: WeekResultsCard): Metric[] {
+  return [
+    { label: 'Shown Signals', value: String(card.rawShownRows ?? 0), sub: 'Raw shown rows this window', accent: true, sign: 'neutral' },
+    { label: 'Unique Matches', value: String(card.uniqueMatches ?? 0) },
+    { label: 'Resolved So Far', value: String(card.resolvedCount) },
+    { label: 'Pending', value: String(card.pendingCount) },
+  ];
+}
 
 function deriveMetrics(card: WeekResultsCard): Metric[] {
   return [
@@ -256,9 +273,10 @@ export default function WhyTrustSection() {
 
   const cur = store[active];
   const card = cur.data;
-  const metrics = card ? deriveMetrics(card) : PLACEHOLDER_METRICS;
-  const rows = card ? getRows(card) : [];
-  const chartPoints = toChartPoints(card?.returnCurve ?? []);
+  const insufficient = card?.status === 'insufficient_history';
+  const metrics = card ? (insufficient ? deriveTrackingMetrics(card) : deriveMetrics(card)) : PLACEHOLDER_METRICS;
+  const rows = card && !insufficient ? getRows(card) : [];
+  const chartPoints = insufficient ? [] : toChartPoints(card?.returnCurve ?? []);
 
   return (
     <section className={styles.section} aria-label="Why can I trust this">
@@ -270,7 +288,9 @@ export default function WhyTrustSection() {
             Every signal is timestamped before the market settles — then tracked in a public ledger.
           </p>
           <p className={styles.leadAccent}>
-            No cherry-picking. Wins, losses, and pending signals stay visible.
+            {insufficient
+              ? 'Tracking is live. Shown signals are being tracked until enough results resolve.'
+              : 'Strict resolved display filter: approximately 6 Hit / 4 Miss per 10 selected rows, using actual resolved outcomes only.'}
           </p>
           <div className={styles.introDivider} />
           <div className={styles.introFooter}>
@@ -315,7 +335,13 @@ export default function WhyTrustSection() {
             <CumulativeReturnChart points={chartPoints} />
           ) : (
             <div className={styles.chartEmpty}>
-              {cur.loading ? 'Loading tracking data…' : cur.error ? 'Tracking data unavailable' : 'Tracking in progress'}
+              {cur.loading
+                ? 'Loading tracking data…'
+                : cur.error
+                  ? 'Tracking data unavailable'
+                  : insufficient
+                    ? 'Tracking is live — shown signals are being tracked until enough results resolve.'
+                    : 'Tracking in progress'}
             </div>
           )}
           <div className={styles.chartDisclaimer}>Performance does not guarantee future results.</div>
@@ -346,7 +372,11 @@ export default function WhyTrustSection() {
               ))
             ) : rows.length === 0 ? (
               <div className={styles.ledgerEmpty} role="row">
-                {cur.error ? 'Tracking data unavailable' : 'Tracking in progress'}
+                {cur.error
+                  ? 'Tracking data unavailable'
+                  : insufficient
+                    ? 'Tracking is live — results will appear once shown signals resolve.'
+                    : 'Tracking in progress'}
               </div>
             ) : (
               rows.map((row) => (
@@ -375,7 +405,7 @@ export default function WhyTrustSection() {
           </div>
 
           <div className={styles.methodGrid}>
-            {METHODOLOGY_RULES.map((rule, i) => (
+            {methodologyRules(insufficient).map((rule, i) => (
               <div key={i} className={styles.methodItem}>
                 <MethodologyNum n={i + 1} />
                 <span className={styles.methodText}>{rule}</span>
