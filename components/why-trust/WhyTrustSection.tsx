@@ -40,10 +40,17 @@ function fmtUsdSigned(value: number): string {
   return value > 0 ? `+$${rounded}` : `-$${rounded}`;
 }
 
-type Metric = { label: string; value: string; sub?: string; accent?: boolean };
+type SignState = 'positive' | 'negative' | 'neutral';
+type Metric = { label: string; value: string; sub?: string; accent?: boolean; sign?: SignState };
+
+function signOf(value: number): SignState {
+  if (value > 0) return 'positive';
+  if (value < 0) return 'negative';
+  return 'neutral';
+}
 
 const PLACEHOLDER_METRICS: Metric[] = [
-  { label: 'Net Return', value: '—', sub: 'Flat $100 per resolved signal', accent: true },
+  { label: 'Net Return', value: '—', sub: 'Flat $100 per resolved signal', accent: true, sign: 'neutral' },
   { label: 'Signals Tracked', value: '—' },
   { label: 'Resolved', value: '—' },
   { label: 'Pending', value: '—' },
@@ -56,11 +63,19 @@ function deriveMetrics(card: WeekResultsCard): Metric[] {
       value: fmtUsdSigned(card.netProfitUsd),
       sub: `${card.signalsTracked} x $100 stake model · ${fmtPct(card.netReturnPct)}`,
       accent: true,
+      sign: signOf(card.netProfitUsd),
     },
     { label: 'Signals Tracked', value: String(card.signalsTracked) },
     { label: 'Resolved', value: String(card.resolvedCount) },
     { label: 'Pending', value: String(card.pendingCount) },
   ];
+}
+
+function metricValueClass(m: Metric): string {
+  if (!m.accent) return styles.metricValue;
+  if (m.sign === 'negative') return `${styles.metricValue} ${styles.metricValueRisk}`;
+  if (m.sign === 'neutral') return `${styles.metricValue} ${styles.metricValueNeutral}`;
+  return `${styles.metricValue} ${styles.metricValueAccent}`;
 }
 
 function getRows(card: WeekResultsCard): TrackRecordRow[] {
@@ -125,13 +140,18 @@ function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
   const endX = x(endIdx);
   const endY = y(points[endIdx].cumUsd);
   const endLabel = fmtUsdSigned(points[endIdx].cumUsd);
+  const endNegative = points[endIdx].cumUsd < 0;
+  const lineColor = endNegative ? '#ff5d6c' : '#5eeab4';
+  const badgeFill = endNegative ? 'rgba(255,93,108,0.16)' : 'rgba(94,234,180,0.16)';
+  const badgeStroke = endNegative ? 'rgba(255,93,108,0.55)' : 'rgba(94,234,180,0.55)';
+  const badgeText = endNegative ? '#ff9aa3' : '#7bf3c4';
 
   return (
     <svg viewBox={`0 0 ${CHART.vbW} ${CHART.vbH}`} className={styles.chartSvg} role="img" aria-label="Cumulative return chart">
       <defs>
         <linearGradient id="wtChartFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="rgba(94,234,180,0.30)" />
-          <stop offset="100%" stopColor="rgba(94,234,180,0.02)" />
+          <stop offset="0%" stopColor={endNegative ? 'rgba(255,93,108,0.30)' : 'rgba(94,234,180,0.30)'} />
+          <stop offset="100%" stopColor={endNegative ? 'rgba(255,93,108,0.02)' : 'rgba(94,234,180,0.02)'} />
         </linearGradient>
       </defs>
 
@@ -159,19 +179,19 @@ function CumulativeReturnChart({ points }: { points: ChartPoint[] }) {
       <polyline
         points={linePoints}
         fill="none"
-        stroke="#5eeab4"
+        stroke={lineColor}
         strokeWidth="2.4"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
 
       {points.map((p, i) => (
-        <circle key={p.day} cx={x(i)} cy={y(p.cumUsd)} r="3.2" fill="#0a1320" stroke="#5eeab4" strokeWidth="2" />
+        <circle key={p.day} cx={x(i)} cy={y(p.cumUsd)} r="3.2" fill="#0a1320" stroke={lineColor} strokeWidth="2" />
       ))}
 
       <g>
-        <rect x={endX - 30} y={endY - 26} width="56" height="18" rx="9" fill="rgba(94,234,180,0.16)" stroke="rgba(94,234,180,0.55)" strokeWidth="1" />
-        <text x={endX - 2} y={endY - 13} fontSize="11" fontWeight="700" fill="#7bf3c4" textAnchor="middle">
+        <rect x={endX - 30} y={endY - 26} width="56" height="18" rx="9" fill={badgeFill} stroke={badgeStroke} strokeWidth="1" />
+        <text x={endX - 2} y={endY - 13} fontSize="11" fontWeight="700" fill={badgeText} textAnchor="middle">
           {endLabel}
         </text>
       </g>
@@ -276,7 +296,7 @@ export default function WhyTrustSection() {
           {metrics.map((m) => (
             <div key={m.label} className={styles.metricCard}>
               <div className={styles.metricLabel}>{m.label}</div>
-              <div className={`${styles.metricValue} ${m.accent ? styles.metricValueAccent : ''}`}>{m.value}</div>
+              <div className={metricValueClass(m)}>{m.value}</div>
               {m.sub && <div className={styles.metricSub}>{m.sub}</div>}
             </div>
           ))}

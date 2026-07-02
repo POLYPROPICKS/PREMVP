@@ -1,8 +1,9 @@
 // Real resolved track record contract.
-// Source: public.generated_signal_pairs — resolved rows only (signal_result in
-// won/lost, resolved_at set). See docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md.
-// Never source Hit/Miss/PnL from public.track_record_display_signals (unresolved
-// "Published" projections) or a projected EV formula.
+// Source: public.track_record_window_results — the materialized lagged read-model
+// (pre-selected/pre-joined from generated_signal_pairs, resolved-only, sized by
+// track_record_display_signals counts). See
+// docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md.
+// Never source Hit/Miss/PnL from a projected EV formula.
 
 export interface TrackRecordRow {
   id: string;
@@ -43,7 +44,7 @@ export interface ReturnCurvePoint {
 export interface WeekResultsCard {
   cardType: 'signal-week-results';
   schemaVersion: 'week-results-v3-resolved';
-  source: 'generated_signal_pairs_resolved_results';
+  source: 'track_record_window_results';
   window: { label: string; days: number; startedAt: string; endedAt: string };
   title: string;
   subtitle: string;

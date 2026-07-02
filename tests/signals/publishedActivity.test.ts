@@ -13,9 +13,38 @@ import {
   computeRealReturnCurve,
   mapRealResolvedRowToTrackRecordRow,
   RESOLVED_RESULTS_SOURCE,
+  WINDOW_RESULTS_SOURCE,
+  computeWindowResultsSummary,
+  computeWindowReturnCurve,
+  mapWindowResultRowToLedgerRow,
+  mapWindowResultRowToTrackRecordRow,
   type ResolvedPairRow,
   type RealResolvedRow,
+  type WindowResultRow,
 } from "../../app/api/signals/resolved/route";
+
+function windowResultRow(overrides: Partial<WindowResultRow> = {}): WindowResultRow {
+  return {
+    window_days: 7,
+    source_row_id: "11111111-1111-1111-1111-111111111111",
+    score_rank: 1,
+    match_key: "team-a-vs-team-b-event",
+    signal_key: "team-a-vs-team-b|Team A",
+    event_title: "Team A vs Team B",
+    market_question: "Will Team A win?",
+    selected_outcome: "Team A",
+    signal_result: "won",
+    display_status: "Hit",
+    is_resolved: true,
+    resolved_at: "2026-06-28T12:00:00.000Z",
+    winning_outcome: "Team A",
+    entry_price_num: 0.5,
+    decimal_odds: 2,
+    real_pnl_usd: 100,
+    return_label: "+$100",
+    ...overrides,
+  };
+}
 
 function resolvedPairRow(overrides: Partial<ResolvedPairRow> = {}): ResolvedPairRow {
   return {
@@ -210,8 +239,9 @@ test("14D selection includes every 7D selected sourceRowId", () => {
 
 // ── source contract ────────────────────────────────────────────────────────
 
-test("RESOLVED_RESULTS_SOURCE is generated_signal_pairs_resolved_results", () => {
+test("RESOLVED_RESULTS_SOURCE constant retained (legacy pure-fn helpers), WINDOW_RESULTS_SOURCE is the API source", () => {
   assert.equal(RESOLVED_RESULTS_SOURCE, "generated_signal_pairs_resolved_results");
+  assert.equal(WINDOW_RESULTS_SOURCE, "track_record_window_results");
 });
 
 const routeSource = fs.readFileSync(
@@ -219,16 +249,58 @@ const routeSource = fs.readFileSync(
   "utf8"
 );
 
-test("weekResultsCard source is generated_signal_pairs_resolved_results, not the display table", () => {
-  assert.ok(routeSource.includes("source: RESOLVED_RESULTS_SOURCE"));
-  assert.ok(routeSource.includes('.from("generated_signal_pairs")'));
+test("weekResultsCard source is track_record_window_results, and the API reads only that table", () => {
+  assert.ok(routeSource.includes("source: WINDOW_RESULTS_SOURCE"));
+  assert.ok(routeSource.includes('.from("track_record_window_results")'));
 });
 
-test("track_record_display_signals is never used as the real-performance source in weekResultsCard construction", () => {
-  const weekResultsCardBlockStart = routeSource.indexOf("const weekResultsCard: WeekResultsCard");
+test("weekResultsCard construction never queries generated_signal_pairs or track_record_display_signals directly", () => {
+  const weekResultsCardBlockStart = routeSource.indexOf("// ── weekResultsCard: read-model");
   const weekResultsCardBlockEnd = routeSource.indexOf("let query = supabase");
   const block = routeSource.slice(weekResultsCardBlockStart, weekResultsCardBlockEnd);
-  assert.ok(!block.includes("track_record_display_signals"));
+  assert.ok(!block.includes('.from("generated_signal_pairs")'));
+  assert.ok(!block.includes('.from("track_record_display_signals")'));
+});
+
+test("API queries track_record_window_results filtered by window_days = requested days", () => {
+  assert.ok(routeSource.includes('.eq("window_days", windowDays)'));
+});
+
+// ── lagged refresh strategy (migration file, text-contract checks) ──────────
+
+const migrationSource = fs.readFileSync(
+  path.join(__dirname, "../../supabase/migrations/20260702_track_record_window_results.sql"),
+  "utf8"
+);
+
+test("migration uses a completed-day lag anchor excluding same-day/unresolved rows", () => {
+  assert.ok(migrationSource.includes("date_trunc('day', now() AT TIME ZONE 'utc')"));
+  assert.ok(migrationSource.includes("as_of.as_of_at - interval '7 days'"));
+  assert.ok(migrationSource.includes("as_of.as_of_at - interval '14 days'"));
+  assert.ok(migrationSource.includes("d.resolved_at <  as_of.as_of_at") || migrationSource.includes("resolved_at <  as_of.as_of_at"));
+});
+
+test("migration sizes window target counts from track_record_display_signals (counts only)", () => {
+  assert.ok(migrationSource.includes("target_counts AS"));
+  assert.ok(migrationSource.includes("FROM public.track_record_display_signals"));
+  assert.ok(migrationSource.includes("count(*)::int AS target_count"));
+});
+
+test("migration selection includes both won and lost — no winner-only filtering", () => {
+  const candidatesBlock = migrationSource.slice(
+    migrationSource.indexOf("candidates AS"),
+    migrationSource.indexOf("dedup14 AS")
+  );
+  assert.ok(candidatesBlock.includes("lower(g.signal_result) IN ('won', 'lost')"));
+  assert.ok(!candidatesBlock.includes("= 'won'"));
+});
+
+test("migration ranks previously-selected-7D rows first when building 14D selection (7D ⊆ 14D)", () => {
+  const ranked14Block = migrationSource.slice(
+    migrationSource.indexOf("ranked14 AS"),
+    migrationSource.indexOf("selected14 AS")
+  );
+  assert.ok(ranked14Block.includes("d.id IN (SELECT id FROM selected7)"));
 });
 
 test("no projected EV formula is used for real PnL computation", () => {
@@ -241,14 +313,14 @@ test("no projected EV formula is used for real PnL computation", () => {
 
 // ── limit affects ledger rows only ───────────────────────────────────────────
 
-test("limit slices ledger rows but summary/curve use the full selected set (contract check)", () => {
+test("limit slices ledger rows but summary/curve use the full table row set for the window (contract check)", () => {
   const ledgerBlockStart = routeSource.indexOf("const trackRecordRows: TrackRecordRow[]");
-  const ledgerBlockEnd = routeSource.indexOf(";", routeSource.indexOf(".map(mapRealResolvedRowToTrackRecordRow)"));
+  const ledgerBlockEnd = routeSource.indexOf(";", routeSource.indexOf(".map(mapWindowResultRowToTrackRecordRow)"));
   const ledgerBlock = routeSource.slice(ledgerBlockStart, ledgerBlockEnd);
   assert.ok(ledgerBlock.includes(".slice(0, limit)"));
 
-  const summaryLine = routeSource.indexOf("const summary = computeRealResolvedSummary(selectedForWindow)");
-  assert.ok(summaryLine !== -1, "summary must be computed from the unsliced selected row set");
+  const summaryLine = routeSource.indexOf("const summary = computeWindowResultsSummary(windowRows)");
+  assert.ok(summaryLine !== -1, "summary must be computed from the unsliced window row set");
 });
 
 // ── safe logging: fields present, no raw rows / secrets ─────────────────────
@@ -261,13 +333,16 @@ test("safe log includes required fields and never logs secrets/env/raw rows", ()
   for (const field of [
     "source",
     "windowDays",
-    "rawResolvedRows",
-    "selectedRows",
+    "tableRows",
+    "resolvedRows",
+    "pendingRows",
     "winsCount",
     "lossesCount",
-    "pendingCount",
+    "ledgerLimit",
+    "ledgerRows",
     "netProfitUsd",
     "netReturnPct",
+    "supersetMissingCount",
   ]) {
     assert.ok(logBlock.includes(field), `expected safe log field "${field}"`);
   }
@@ -326,4 +401,155 @@ test("WhyTrustSection derives the Net Return headline value from netProfitUsd (d
 test("WhyTrustSection chart badge/series are dollar-based (cumulativeProfitUsd), not percent-only", () => {
   assert.ok(whyTrustSource.includes("cumulativeProfitUsd"));
   assert.ok(whyTrustSource.includes("fmtUsdSigned(points[endIdx].cumUsd)"));
+});
+
+test("WhyTrustSection uses risk (red) styling for negative netProfitUsd, not the green accent class", () => {
+  assert.ok(whyTrustSource.includes("metricValueRisk"));
+  assert.ok(whyTrustSource.includes("signOf(card.netProfitUsd)"));
+  assert.ok(whyTrustSource.includes("m.sign === 'negative'"));
+});
+
+test("WhyTrustSection chart end badge/line follow the same sign styling as the cumulative total", () => {
+  assert.ok(whyTrustSource.includes("endNegative"));
+  assert.ok(whyTrustSource.includes("lineColor"));
+});
+
+// ── computeWindowResultsSummary / computeWindowReturnCurve / ledger mapping ──
+
+test("computeWindowResultsSummary: signalsTracked = table row count for the window, not a ledger limit", () => {
+  const rows = Array.from({ length: 47 }, (_, i) =>
+    windowResultRow({ source_row_id: `row-${i}`, score_rank: i + 1 })
+  );
+  const summary = computeWindowResultsSummary(rows);
+  assert.equal(summary.signalsTracked, 47);
+});
+
+test("computeWindowResultsSummary: 14D target of 91 rows can produce signalsTracked 91", () => {
+  const rows = Array.from({ length: 91 }, (_, i) =>
+    windowResultRow({ window_days: 14, source_row_id: `row-${i}`, score_rank: i + 1 })
+  );
+  const summary = computeWindowResultsSummary(rows);
+  assert.equal(summary.signalsTracked, 91);
+});
+
+test("computeWindowResultsSummary: pendingCount = signalsTracked - resolvedCount, wins and losses both counted", () => {
+  const rows: WindowResultRow[] = [
+    windowResultRow({ source_row_id: "1", signal_result: "won", display_status: "Hit", is_resolved: true, entry_price_num: 0.5, real_pnl_usd: 100, return_label: "+$100" }),
+    windowResultRow({ source_row_id: "2", signal_result: "lost", display_status: "Miss", is_resolved: true, entry_price_num: 0.4, real_pnl_usd: -100, return_label: "-$100" }),
+    windowResultRow({ source_row_id: "3", signal_result: null, display_status: "Pending", is_resolved: false, resolved_at: null, entry_price_num: null, decimal_odds: null, real_pnl_usd: null, return_label: "—" }),
+  ];
+  const summary = computeWindowResultsSummary(rows);
+  assert.equal(summary.signalsTracked, 3);
+  assert.equal(summary.resolvedCount, 2);
+  assert.equal(summary.pendingCount, 1);
+  assert.equal(summary.winsCount, 1);
+  assert.equal(summary.lossesCount, 1);
+});
+
+test("computeWindowResultsSummary: won at entry_price_num=0.5 contributes +$100 to netProfitUsd", () => {
+  const rows = [windowResultRow({ entry_price_num: 0.5, real_pnl_usd: 100 })];
+  assert.equal(computeWindowResultsSummary(rows).netProfitUsd, 100);
+});
+
+test("computeWindowResultsSummary: won at entry_price_num=0.25 contributes +$300 to netProfitUsd", () => {
+  const rows = [windowResultRow({ entry_price_num: 0.25, real_pnl_usd: 300, return_label: "+$300" })];
+  assert.equal(computeWindowResultsSummary(rows).netProfitUsd, 300);
+});
+
+test("computeWindowResultsSummary: lost contributes -$100 to netProfitUsd", () => {
+  const rows = [windowResultRow({ signal_result: "lost", display_status: "Miss", entry_price_num: 0.4, real_pnl_usd: -100, return_label: "-$100" })];
+  assert.equal(computeWindowResultsSummary(rows).netProfitUsd, -100);
+});
+
+test("computeWindowResultsSummary: pending row has null realPnlUsd and does not affect netProfitUsd", () => {
+  const rows = [
+    windowResultRow({ source_row_id: "1", real_pnl_usd: 100 }),
+    windowResultRow({ source_row_id: "2", signal_result: null, display_status: "Pending", is_resolved: false, resolved_at: null, entry_price_num: null, decimal_odds: null, real_pnl_usd: null, return_label: "—" }),
+  ];
+  const summary = computeWindowResultsSummary(rows);
+  assert.equal(summary.netProfitUsd, 100);
+  assert.equal(summary.pendingCount, 1);
+});
+
+test("computeWindowResultsSummary: netProfitUsd sums only resolved real PnL (won + lost mix)", () => {
+  const rows = [
+    windowResultRow({ source_row_id: "1", entry_price_num: 0.25, real_pnl_usd: 300, return_label: "+$300" }),
+    windowResultRow({ source_row_id: "2", signal_result: "lost", display_status: "Miss", entry_price_num: 0.4, real_pnl_usd: -100, return_label: "-$100" }),
+  ];
+  const summary = computeWindowResultsSummary(rows);
+  assert.equal(summary.netProfitUsd, 200);
+  assert.equal(summary.totalStakeUsd, 200);
+  assert.equal(summary.netReturnPct, 100);
+});
+
+test("computeWindowResultsSummary: netReturnPct denominator = resolvedCount * 100 (pending rows excluded from stake)", () => {
+  const rows = [
+    windowResultRow({ source_row_id: "1", real_pnl_usd: 100 }),
+    windowResultRow({ source_row_id: "2", signal_result: null, display_status: "Pending", is_resolved: false, resolved_at: null, entry_price_num: null, decimal_odds: null, real_pnl_usd: null, return_label: "—" }),
+  ];
+  const summary = computeWindowResultsSummary(rows);
+  assert.equal(summary.resolvedCount, 1);
+  assert.equal(summary.totalStakeUsd, 100);
+  assert.equal(summary.netReturnPct, 100);
+});
+
+test("computeWindowReturnCurve: cumulative sum over resolved rows only, ordered by resolved_at ascending", () => {
+  const rows = [
+    windowResultRow({ source_row_id: "1", resolved_at: "2026-06-28T00:00:00.000Z", real_pnl_usd: 100 }),
+    windowResultRow({ source_row_id: "2", resolved_at: "2026-06-20T00:00:00.000Z", signal_result: "lost", display_status: "Miss", real_pnl_usd: -100, return_label: "-$100" }),
+    windowResultRow({ source_row_id: "3", signal_result: null, display_status: "Pending", is_resolved: false, resolved_at: null, real_pnl_usd: null, return_label: "—" }),
+  ];
+  const curve = computeWindowReturnCurve(rows);
+  assert.equal(curve.length, 2);
+  assert.equal(curve[0].cumulativeProfitUsd, -100);
+  assert.equal(curve[1].cumulativeProfitUsd, 0);
+});
+
+test("mapWindowResultRowToLedgerRow exposes all required proof fields", () => {
+  const ledgerRow = mapWindowResultRowToLedgerRow(windowResultRow());
+  for (const field of [
+    "sourceRowId", "windowDays", "scoreRank", "resolvedAt", "eventTitle", "marketQuestion",
+    "selectedOutcome", "winningOutcome", "signalResult", "displayStatus", "entryPrice",
+    "decimalOdds", "realPnlUsd", "returnLabel", "matchKey", "signalKey",
+  ] as const) {
+    assert.ok(field in ledgerRow, `expected ledger proof field "${field}"`);
+  }
+  assert.equal(ledgerRow.sourceRowId, "11111111-1111-1111-1111-111111111111");
+  assert.equal(ledgerRow.windowDays, 7);
+});
+
+test("mapWindowResultRowToTrackRecordRow: pending row is Pending with realPnlUsd 0 base and '—' returnLabel", () => {
+  const row = mapWindowResultRowToTrackRecordRow(
+    windowResultRow({ signal_result: null, display_status: "Pending", is_resolved: false, resolved_at: null, entry_price_num: null, decimal_odds: null, real_pnl_usd: null, return_label: "—" })
+  );
+  assert.equal(row.displayStatus, "Pending");
+  assert.equal(row.status, "Published");
+  assert.equal(row.returnLabel, "—");
+});
+
+test("14D read-model rows are a superset of the 7D read-model rows by sourceRowId (fixture-level contract)", () => {
+  const sevenDay = [
+    windowResultRow({ window_days: 7, source_row_id: "a" }),
+    windowResultRow({ window_days: 7, source_row_id: "b" }),
+  ];
+  const fourteenDay = [
+    ...sevenDay.map((r) => ({ ...r, window_days: 14 })),
+    windowResultRow({ window_days: 14, source_row_id: "c" }),
+  ];
+  const fourteenIds = new Set(fourteenDay.map((r) => r.source_row_id));
+  for (const row of sevenDay) {
+    assert.ok(fourteenIds.has(row.source_row_id), `${row.source_row_id} missing from 14D superset`);
+  }
+});
+
+// ── docs: lagged read-model flow documented ──────────────────────────────────
+
+test("docs describe the lagged read-model flow, not a row-for-row display_signals join", () => {
+  const docsPath = path.join(__dirname, "../../docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md");
+  const docs = fs.readFileSync(docsPath, "utf8");
+  assert.ok(docs.includes("track_record_window_results"));
+  assert.ok(docs.includes("as_of_at"));
+  assert.ok(docs.includes("target_count") || docs.includes("target counts"));
+  assert.ok(docs.toLowerCase().includes("lagged"));
+  assert.ok(docs.includes("track_record_display_signals"));
 });
