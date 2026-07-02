@@ -15,10 +15,9 @@
 --   5. Resolved-only: signal_result in ('won','lost'), resolved_at not null,
 --      entry_price_num > 0. Pending rows are tracked in the summary but NEVER
 --      create PnL.
---   6. Strict 6/4 applied ONLY over resolved unique shown rows:
---      target_wins = floor(target_count * 0.60), losses = remainder, where
---      target_count is the largest resolved-row count satisfiable by the
---      actual won/lost buckets. NO fill from global generated_signal_pairs.
+--   6. Uses ALL actual resolved unique shown rows for ready windows. No
+--      synthetic 6/4 (or any other) balancing, no dropped wins/losses to hit
+--      a target ratio. NO fill from global generated_signal_pairs.
 --   7. Readiness thresholds: 7D ready if resolved unique rows >= 20,
 --      14D ready if resolved unique rows >= 40. Below threshold the window is
 --      status = 'insufficient_history': summary counts only, NO result rows,
@@ -141,9 +140,9 @@ COMMENT ON TABLE public.track_record_window_results IS
   'Final trust-block read-model. Rows exist ONLY for ready windows and come '
   'exclusively from shown-history rows joined to their own actual resolved '
   'outcome (generated_signal_pairs by source_row_id), deduped one row per '
-  'normalized_match_key, resolved-only, then strict floor-60% 6/4 selection. '
-  'Never filled from global generated_signal_pairs rows. projected_* fields '
-  'are FORBIDDEN as realized results.';
+  'normalized_match_key, resolved-only. Uses all actual resolved unique shown '
+  'rows. No synthetic balancing. No global fill. projected_* fields are '
+  'FORBIDDEN as realized results.';
 COMMENT ON COLUMN public.track_record_window_results.source_row_id IS
   'track_record_shown_signal_history.source_row_id = generated_signal_pairs.id.';
 COMMENT ON COLUMN public.track_record_window_results.real_pnl_usd IS
@@ -216,7 +215,7 @@ ON CONFLICT (source_row_id) DO UPDATE SET
 -- unspecified, so purge+insert must not share one statement).
 DELETE FROM public.track_record_window_results WHERE window_days IN (7, 14);
 
--- STEPS 3–7 — join actual results, dedup, resolved-only, strict 6/4 rows.
+-- STEPS 3–7 — join actual results, dedup, resolved-only, all resolved rows.
 WITH anchor AS (
   SELECT date_trunc('day', now() AT TIME ZONE 'utc')::date AS anchor_date
 ),
@@ -266,61 +265,29 @@ counts AS (
     (SELECT count(*) FROM shown s WHERE s.window_days = w.window_days)::int AS raw_shown_rows,
     count(d.*)::int                                                        AS unique_matches,
     count(*) FILTER (WHERE d.is_resolved_row)::int                         AS resolved_unique_rows,
-    count(*) FILTER (WHERE NOT coalesce(d.is_resolved_row, false))::int    AS pending_unique_rows,
-    count(*) FILTER (WHERE d.is_resolved_row AND d.result_bucket = 'won')::int  AS wins_available,
-    count(*) FILTER (WHERE d.is_resolved_row AND d.result_bucket = 'lost')::int AS losses_available
+    count(*) FILTER (WHERE NOT coalesce(d.is_resolved_row, false))::int    AS pending_unique_rows
   FROM windows w
   LEFT JOIN deduped d ON d.window_days = w.window_days
   GROUP BY w.window_days, w.min_resolved
 ),
--- STEP 7 — strict 6/4 sizing from AVAILABLE resolved unique rows only:
--- largest target_count whose floor-60%/remainder split fits the actual
--- won/lost buckets. Never filled from global generated_signal_pairs.
-sizing AS (
-  SELECT
-    c.*,
-    coalesce((
-      SELECT max(n) FROM generate_series(1, greatest(c.resolved_unique_rows, 1)) n
-      WHERE floor(n * 0.60) <= c.wins_available
-        AND n - floor(n * 0.60) <= c.losses_available
-    ), 0)::int AS target_count,
-    (c.resolved_unique_rows >= c.min_resolved) AS is_ready
-  FROM counts c
-),
-targets AS (
-  SELECT *,
-    floor(target_count * 0.60)::int                       AS target_wins,
-    target_count - floor(target_count * 0.60)::int        AS target_losses
-  FROM sizing
-),
-resolved_ranked AS (
-  SELECT d.*,
-    row_number() OVER (
-      PARTITION BY d.window_days, d.result_bucket
-      ORDER BY d.display_score_rank ASC NULLS LAST,
-               d.generated_score DESC NULLS LAST,
-               d.shown_at DESC,
-               d.source_row_id
-    ) AS bucket_rank
-  FROM deduped d
-  WHERE d.is_resolved_row
-),
-selection AS (
-  SELECT r.*, t.target_wins, t.target_losses,
-    CASE WHEN r.result_bucket = 'won' THEN t.target_wins ELSE t.target_losses END AS bucket_total
-  FROM resolved_ranked r
-  JOIN targets t ON t.window_days = r.window_days AND t.is_ready
-  WHERE (r.result_bucket = 'won'  AND r.bucket_rank <= t.target_wins)
-     OR (r.result_bucket = 'lost' AND r.bucket_rank <= t.target_losses)
-),
+-- STEP 7 — ALL resolved unique shown rows for ready windows. No synthetic
+-- 6/4 balancing, no dropped wins/losses, no fill from global
+-- generated_signal_pairs — every resolved unique shown row is included.
 final_rows AS (
-  SELECT s.*,
+  SELECT
+    d.*,
     row_number() OVER (
-      PARTITION BY s.window_days
-      ORDER BY (s.bucket_rank - 0.5) / NULLIF(s.bucket_total, 0) ASC,
-               s.result_bucket DESC, s.bucket_rank ASC
+      PARTITION BY d.window_days
+      ORDER BY
+        d.display_score_rank ASC NULLS LAST,
+        d.generated_score DESC NULLS LAST,
+        d.shown_at DESC,
+        d.source_row_id
     ) AS final_rank
-  FROM selection s
+  FROM deduped d
+  JOIN counts c ON c.window_days = d.window_days
+  WHERE d.is_resolved_row
+    AND c.resolved_unique_rows >= c.min_resolved
 )
 INSERT INTO public.track_record_window_results (
     window_days, source_row_id, score_rank, match_key, signal_key,
@@ -340,7 +307,7 @@ INSERT INTO public.track_record_window_results (
     f.market_question,
     f.selected_outcome,
     f.selected_outcome,
-    'shown-history-strict-resolved-6-4',
+    'shown-history-all-resolved',
     'generated_signal_pairs',
     f.result_bucket,
     CASE WHEN f.result_bucket = 'won' THEN 'Hit' ELSE 'Miss' END,

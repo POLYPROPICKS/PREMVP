@@ -276,10 +276,11 @@ const migrationSource = fs.readFileSync(
   "utf8"
 );
 
-test("migration uses the strict floor(60%) win split (no ceil), losses are the remainder", () => {
-  assert.ok(migrationSource.includes("floor(target_count * 0.60)::int                       AS target_wins"));
-  assert.ok(migrationSource.includes("target_count - floor(target_count * 0.60)::int        AS target_losses"));
-  assert.ok(!/ceil\(/i.test(migrationSource));
+test("migration does not force a target win/loss split — no floor(60%) sizing logic", () => {
+  assert.ok(!/target_wins/i.test(migrationSource));
+  assert.ok(!/target_losses/i.test(migrationSource));
+  assert.ok(!/target_count/i.test(migrationSource));
+  assert.ok(!/floor\([a-z_]*\s*\*\s*0\.60\)/i.test(migrationSource));
 });
 
 test("migration persists shown rows into track_record_shown_signal_history and windows from it", () => {
@@ -302,12 +303,19 @@ test("migration never fills from global generated_signal_pairs — every join is
   }
 });
 
-test("migration applies strict 6/4 only after the resolved-only filter over deduped shown rows", () => {
-  assert.ok(migrationSource.includes("resolved_ranked AS"));
+test("migration's final_rows selects ALL resolved deduped rows for ready windows, filtered only by is_resolved_row + readiness", () => {
+  assert.ok(migrationSource.includes("final_rows AS ("));
+  assert.ok(migrationSource.includes("FROM deduped d"));
+  assert.ok(migrationSource.includes("JOIN counts c ON c.window_days = d.window_days"));
   assert.ok(migrationSource.includes("WHERE d.is_resolved_row"));
+  assert.ok(migrationSource.includes("AND c.resolved_unique_rows >= c.min_resolved"));
   assert.ok(migrationSource.includes("DISTINCT ON (window_days, normalized_match_key)"));
-  assert.ok(migrationSource.includes("result_bucket = 'won'"));
-  assert.ok(migrationSource.includes("result_bucket = 'lost'"));
+});
+
+test("migration no longer selects/drops rows by won/lost bucket — no per-bucket rank or bucket-based WHERE", () => {
+  assert.ok(!migrationSource.includes("bucket_rank"));
+  assert.ok(!migrationSource.includes("bucket_total"));
+  assert.ok(!/WHERE \(r\.result_bucket/.test(migrationSource));
 });
 
 test("migration gates result rows on readiness thresholds (7D>=20, 14D>=40) with insufficient_history fallback", () => {
@@ -322,12 +330,9 @@ test("migration uses no TEMP TABLE, no 'No cherry picking' text, and no projecte
   assert.ok(!/projected_return_usd\s*[,)]?\s*AS\s*real/i.test(migrationSource));
 });
 
-test("migration score_rank interleaves buckets proportionally (first 10 = 6 Hit / 4 Miss)", () => {
-  assert.ok(migrationSource.includes("(s.bucket_rank - 0.5) / NULLIF(s.bucket_total, 0)"));
-});
-
-test("migration labels the rule via source_model = shown-history-strict-resolved-6-4", () => {
-  assert.ok(migrationSource.includes("'shown-history-strict-resolved-6-4'"));
+test("migration labels the rule via source_model = shown-history-all-resolved", () => {
+  assert.ok(migrationSource.includes("'shown-history-all-resolved'"));
+  assert.ok(!migrationSource.includes("'shown-history-strict-resolved-6-4'"));
 });
 
 // ── normalized match key: keeps teams, drops sport prefix / suffix ───────────
@@ -518,13 +523,18 @@ test("WhyTrustSection no longer contains the 'No cherry-picking' copy", () => {
   assert.ok(!/no cherry.?pick/i.test(whyTrustSource));
 });
 
-test("WhyTrustSection shows the honest insufficient_history state and gates the strict 6/4 claim", () => {
+test("WhyTrustSection shows the honest insufficient_history state and gates the resolved-track-record claim", () => {
   assert.ok(whyTrustSource.includes("insufficient_history"));
   assert.ok(whyTrustSource.includes("Shown signals are being tracked until enough results resolve"));
   assert.ok(whyTrustSource.includes("deriveTrackingMetrics"));
-  assert.ok(whyTrustSource.includes("Strict resolved display filter: approximately 6 Hit / 4 Miss per 10 selected rows, using actual resolved outcomes only."));
-  // The strict 6/4 methodology claim is used only when the window is ready.
-  assert.ok(whyTrustSource.includes("insufficient ? [] : [STRICT_FILTER_RULE]"));
+  assert.ok(whyTrustSource.includes("Resolved track record from actual shown signals only. No global fill, no projected PnL."));
+  // The resolved-track-record claim is used only when the window is ready.
+  assert.ok(whyTrustSource.includes("insufficient ? [] : [RESOLVED_TRACK_RECORD_RULE]"));
+});
+
+test("WhyTrustSection no longer claims a strict 6/4 (or any forced) Hit/Miss ratio", () => {
+  assert.ok(!/6 Hit \/ 4 Miss/i.test(whyTrustSource));
+  assert.ok(!/STRICT_FILTER_RULE/.test(whyTrustSource));
 });
 
 test("WhyTrustSection derives the Net Return headline value from netProfitUsd (dollars), not netReturnPct alone", () => {
@@ -678,23 +688,27 @@ test("14D read-model rows are a superset of the 7D read-model rows by sourceRowI
   }
 });
 
-// ── docs: strict 6/4 read-model flow documented ──────────────────────────────
+// ── docs: all-resolved read-model flow documented ────────────────────────────
 
-test("docs describe the strict 6/4 read-model flow with the three-table roles", () => {
+test("docs describe the all-resolved read-model flow with the three-table roles, no forced split", () => {
   const docsPath = path.join(__dirname, "../../docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md");
   const docs = fs.readFileSync(docsPath, "utf8");
   assert.ok(docs.includes("track_record_window_results"));
   assert.ok(docs.includes("generated_signal_pairs"));
   assert.ok(docs.includes("track_record_display_signals"));
-  assert.ok(docs.includes("floor(target_count * 0.60)"));
-  assert.ok(docs.includes("6 Hit / 4 Miss") || docs.includes("6/4"));
+  assert.ok(docs.includes("No synthetic balancing"));
+  assert.ok(docs.includes("shown-history-all-resolved"));
+  assert.ok(!docs.includes("floor(target_count * 0.60)"));
 });
 
-test("docs state the current expected 7D 47/28/19 and 14D 91/54/37 values", () => {
+test("docs state the current expected 7D insufficient_history / 14D 44 resolved (29 win, 15 loss) values", () => {
   const docsPath = path.join(__dirname, "../../docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md");
   const docs = fs.readFileSync(docsPath, "utf8");
-  assert.ok(docs.includes("28 Hit / 19 Miss"));
-  assert.ok(docs.includes("54 Hit / 37 Miss"));
+  assert.ok(docs.includes("resolved_unique_rows = 44"));
+  assert.ok(docs.includes("wins_count = 29"));
+  assert.ok(docs.includes("losses_count = 15"));
+  assert.ok(docs.includes("+364.46"));
+  assert.ok(docs.includes("+8.28"));
 });
 
 test("docs no longer contain the old 'No cherry picking / pending stay visible' wording", () => {
@@ -703,62 +717,60 @@ test("docs no longer contain the old 'No cherry picking / pending stay visible' 
   assert.ok(!/no cherry.?pick/i.test(docs));
 });
 
-// ── strict 6/4 target-split arithmetic + first-10 balance (pure contract) ─────
+// ── all-resolved read-model: no forced split, actual distribution (pure contract) ─
 
-/** Mirrors the migration's strict split: wins = floor(count * 0.60). */
-function strictSplit(targetCount: number): { wins: number; losses: number } {
-  const wins = Math.floor(targetCount * 0.6);
-  return { wins, losses: targetCount - wins };
-}
-
-/** Mirrors the migration's score_rank interleave (normalized bucket position,
- *  Hit wins ties) to check the first-N Hit/Miss balance. */
-function interleaveFirstN(wins: number, losses: number, n: number): { hit: number; miss: number } {
-  const items: Array<{ pos: number; s: "Hit" | "Miss" }> = [];
-  for (let i = 1; i <= wins; i++) items.push({ pos: (i - 0.5) / wins, s: "Hit" });
-  for (let i = 1; i <= losses; i++) items.push({ pos: (i - 0.5) / losses, s: "Miss" });
-  items.sort((a, b) => a.pos - b.pos || (a.s === "Hit" ? -1 : 1));
-  const firstN = items.slice(0, n);
-  return {
-    hit: firstN.filter((x) => x.s === "Hit").length,
-    miss: firstN.filter((x) => x.s === "Miss").length,
-  };
-}
-
-test("strict split: 7D target 47 => 28 Hit / 19 Miss", () => {
-  assert.deepEqual(strictSplit(47), { wins: 28, losses: 19 });
-});
-
-test("strict split: 14D target 91 => 54 Hit / 37 Miss", () => {
-  assert.deepEqual(strictSplit(91), { wins: 54, losses: 37 });
-});
-
-test("strict split is resolved-only: wins + losses = target_count, no pending slots", () => {
-  for (const c of [47, 91, 10, 33]) {
-    const { wins, losses } = strictSplit(c);
-    assert.equal(wins + losses, c);
-  }
-});
-
-test("score_rank interleave yields 6 Hit / 4 Miss in the first 10 rows (7D 28/19)", () => {
-  assert.deepEqual(interleaveFirstN(28, 19, 10), { hit: 6, miss: 4 });
-});
-
-test("score_rank interleave yields 6 Hit / 4 Miss in the first 10 rows (14D 54/37)", () => {
-  assert.deepEqual(interleaveFirstN(54, 37, 10), { hit: 6, miss: 4 });
-});
-
-test("computeWindowResultsSummary reproduces positive PnL shape for a strict 28/19 win-heavy window", () => {
-  // 28 wins at 0.5 (+100 each) + 19 losses (-100 each) => net +900 over $4700 stake.
+test("all resolved unique shown rows are included when the readiness threshold is met — no target count caps the row set", () => {
+  // 44 resolved rows (29 win / 15 loss) is the actual PR #23 production shape —
+  // not a 6/4 (60/40) ratio. All 44 must be tracked, none dropped to fit a ratio.
   const rows: WindowResultRow[] = [];
-  for (let i = 0; i < 28; i++) rows.push(windowResultRow({ source_row_id: `w-${i}`, score_rank: i + 1, entry_price_num: 0.5, real_pnl_usd: 100 }));
-  for (let i = 0; i < 19; i++) rows.push(windowResultRow({ source_row_id: `l-${i}`, score_rank: 100 + i, signal_result: "lost", display_status: "Miss", entry_price_num: 0.4, real_pnl_usd: -100, return_label: "-$100" }));
+  for (let i = 0; i < 29; i++) rows.push(windowResultRow({ window_days: 14, source_row_id: `w-${i}`, score_rank: i + 1, entry_price_num: 0.5, real_pnl_usd: 100 }));
+  for (let i = 0; i < 15; i++) rows.push(windowResultRow({ window_days: 14, source_row_id: `l-${i}`, score_rank: 100 + i, signal_result: "lost", display_status: "Miss", entry_price_num: 0.4, real_pnl_usd: -100, return_label: "-$100" }));
   const summary = computeWindowResultsSummary(rows);
-  assert.equal(summary.signalsTracked, 47);
-  assert.equal(summary.winsCount, 28);
-  assert.equal(summary.lossesCount, 19);
+  assert.equal(summary.signalsTracked, 44);
+  assert.equal(summary.winsCount, 29);
+  assert.equal(summary.lossesCount, 15);
   assert.equal(summary.pendingCount, 0);
-  assert.equal(summary.netProfitUsd, 900);
-  assert.equal(summary.totalStakeUsd, 4700);
-  assert.ok(summary.netProfitUsd > 0);
+});
+
+test("wins are not dropped to force a 6/4 (60/40) ratio — 29/15 (~66% win rate) is preserved as-is", () => {
+  const winRatio = 29 / (29 + 15);
+  assert.ok(Math.abs(winRatio - 0.6) > 0.05, "fixture must not coincidentally match the old forced 60% ratio");
+  const rows: WindowResultRow[] = [];
+  for (let i = 0; i < 29; i++) rows.push(windowResultRow({ window_days: 14, source_row_id: `w-${i}`, score_rank: i + 1, entry_price_num: 0.5, real_pnl_usd: 100 }));
+  for (let i = 0; i < 15; i++) rows.push(windowResultRow({ window_days: 14, source_row_id: `l-${i}`, score_rank: 100 + i, signal_result: "lost", display_status: "Miss", entry_price_num: 0.4, real_pnl_usd: -100, return_label: "-$100" }));
+  const summary = computeWindowResultsSummary(rows);
+  // 29 wins at +$100, 15 losses at -$100 => net +$1400 over $4400 stake.
+  assert.equal(summary.netProfitUsd, 1400);
+  assert.equal(summary.totalStakeUsd, 4400);
+  assert.ok(summary.netProfitUsd > 0, "actual resolved distribution must not be forced negative by a synthetic selection stage");
+});
+
+test("14D summary can show a non-6/4 actual result distribution (29 win / 15 loss, ~66% not 60%)", () => {
+  const rows: WindowResultRow[] = [];
+  for (let i = 0; i < 29; i++) rows.push(windowResultRow({ window_days: 14, source_row_id: `w-${i}`, score_rank: i + 1, entry_price_num: 0.5, real_pnl_usd: 100 }));
+  for (let i = 0; i < 15; i++) rows.push(windowResultRow({ window_days: 14, source_row_id: `l-${i}`, score_rank: 100 + i, signal_result: "lost", display_status: "Miss", entry_price_num: 0.4, real_pnl_usd: -100, return_label: "-$100" }));
+  const summary = computeWindowResultsSummary(rows);
+  assert.equal(summary.winsCount + summary.lossesCount, 44);
+  assert.notEqual(summary.winsCount, Math.floor(44 * 0.6), "wins must reflect the actual resolved count, not a forced floor(60%) target");
+});
+
+test("projected fields are never used to compute realized PnL (no projected_return_usd / projected_win_probability in the summary path)", () => {
+  const fnStart = routeSource.indexOf("export function computeWindowResultsSummary");
+  const fnEnd = routeSource.indexOf("\n}", fnStart);
+  const fnBody = routeSource.slice(fnStart, fnEnd);
+  assert.ok(!fnBody.includes("projected_return_usd"));
+  assert.ok(!fnBody.includes("projected_pnl_units"));
+  assert.ok(!fnBody.includes("projected_win_probability"));
+});
+
+test("insufficient_history still shows no positive PnL even with rows present in the table (contract: summary must gate on status, not row presence)", () => {
+  assert.ok(routeSource.includes('trackStatus === "ready" ? rowsSummary.netProfitUsd : 0'));
+  const rows: WindowResultRow[] = [
+    windowResultRow({ window_days: 7, source_row_id: "1", entry_price_num: 0.5, real_pnl_usd: 100 }),
+  ];
+  const summary = computeWindowResultsSummary(rows);
+  // Table-level aggregation would show +100, but the API only trusts this
+  // value when trackStatus === "ready" (see route.ts contract above) —
+  // insufficient_history windows must render 0, never this raw aggregate.
+  assert.equal(summary.netProfitUsd, 100);
 });

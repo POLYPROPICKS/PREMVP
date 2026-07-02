@@ -4,8 +4,9 @@
 // "Why Can I Trust This?" — client component · 7D/14D toggle.
 // Fetches /api/signals/resolved (mode=latest) for both windows and renders the
 // weekResultsCard contract, sourced from public.track_record_window_results
-// (strict actual-resolved 6/4 display read-model). Real resolved won/lost PnL
-// only — no projected EV, see docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md.
+// (all actual-resolved shown rows — no synthetic balancing, no global fill).
+// Real resolved won/lost PnL only — no projected EV, see
+// docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md.
 
 import { useEffect, useState } from 'react';
 import styles from './WhyTrustSection.module.css';
@@ -18,15 +19,15 @@ type WindowState = { loading: boolean; error: boolean; data: WeekResultsCard | n
 
 const WINDOW_DAYS: Record<TrackWindow, number> = { '7D': 7, '14D': 14 };
 
-const STRICT_FILTER_RULE =
-  'Strict resolved display filter: approximately 6 Hit / 4 Miss per 10 selected rows, using actual resolved outcomes only.';
+const RESOLVED_TRACK_RECORD_RULE =
+  'Resolved track record from actual shown signals only. No global fill, no projected PnL.';
 
 function methodologyRules(insufficient: boolean): string[] {
   return [
     'Every signal is timestamped before the market settles — then tracked in a public ledger.',
     'Performance reflects a flat $100 stake per resolved signal.',
-    // The strict 6/4 claim is shown only once the window has enough resolved rows.
-    ...(insufficient ? [] : [STRICT_FILTER_RULE]),
+    // This claim is shown only once the window has enough resolved rows.
+    ...(insufficient ? [] : [RESOLVED_TRACK_RECORD_RULE]),
     'Transparent tracking beats cherry-picked screenshots.',
     'Odds are sourced directly from Polymarket at signal publish time.',
     'Performance does not guarantee future results.',
@@ -290,7 +291,7 @@ export default function WhyTrustSection() {
           <p className={styles.leadAccent}>
             {insufficient
               ? 'Tracking is live. Shown signals are being tracked until enough results resolve.'
-              : 'Strict resolved display filter: approximately 6 Hit / 4 Miss per 10 selected rows, using actual resolved outcomes only.'}
+              : 'Resolved track record from actual shown signals only. No global fill, no projected PnL.'}
           </p>
           <div className={styles.introDivider} />
           <div className={styles.introFooter}>

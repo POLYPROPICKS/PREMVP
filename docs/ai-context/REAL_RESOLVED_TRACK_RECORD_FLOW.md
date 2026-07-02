@@ -12,7 +12,7 @@ shown/live signals (track_record_display_signals)
   → join actual result by source_row_id → generated_signal_pairs.id
   → normalize + dedup: 1 normalized_match_key = 1 final signal
   → resolved-only (signal_result in ('won','lost'), resolved_at not null, entry_price_num > 0)
-  → strict 6/4 only if enough resolved rows
+  → all resolved unique shown rows, once enough have resolved
   → track_record_window_results + track_record_window_summary → API → UI
 ```
 
@@ -68,27 +68,23 @@ lost: real_pnl_usd = -100
 `projected_return_usd` / `projected_pnl_units` / `projected_win_probability`
 are FORBIDDEN as realized results.
 
-## 5. Strict 6/4 after resolved-only
+## 5. All resolved unique shown rows (no synthetic balancing)
 
 Applied ONLY after shown-history → actual result → dedup → resolved-only:
+every deduped row with `is_resolved_row = true` is included, once the window
+has met its readiness threshold. There is no target win/loss count, no
+floor-60% split, and no dropping of wins or losses to hit a ratio — the
+displayed Hit/Miss mix is whatever the actual resolved outcomes are.
 
-```
-target_count  = largest resolved-unique count satisfiable by actual won/lost buckets
-target_wins   = floor(target_count * 0.60)
-target_losses = target_count - target_wins
-```
-
-No fill from global `generated_signal_pairs`. `score_rank` interleaves the two
-buckets proportionally, so the first 10 display rows are ~6 Hit / 4 Miss
-(actual resolved outcomes only). Source label:
-`source_model = 'shown-history-strict-resolved-6-4'`.
+Uses all actual resolved unique shown rows. No synthetic balancing. No
+global fill. Source label: `source_model = 'shown-history-all-resolved'`.
 
 ## 6. Readiness thresholds / insufficient_history fallback
 
 - 7D `ready` if resolved unique shown rows >= 20
 - 14D `ready` if resolved unique shown rows >= 40
 
-(Chosen as ~2–3x the 10-row display page so the 6/4 split is meaningful and a
+(Chosen as ~2–3x the 10-row display page so the sample is meaningful and a
 single day's resolutions can't flip the status.) Below threshold:
 `status = insufficient_history`, `track_record_window_results` holds no rows
 for the window, summary PnL is 0, and the UI shows: tracking is live, raw
@@ -117,15 +113,24 @@ never computes the final summary from global `generated_signal_pairs`, raw
    `02_DATES`, `03_DUPLICATES_TOP`, `04_TOP_ROWS` (with `audit_flag`).
 3. Re-run after each display refresh / resolver cron cycle.
 
-## 9. Current limitation
+## 9. Current state (post resolver-priority run, PR #23)
 
-Current display rows may all be pending: the last audit found 7D 47 raw shown
-rows (~44 unique matches) and 14D 91 raw (~87 unique) with **0 resolved rows
-for exact source_row_id**. Until actual shown rows resolve, both windows
-correctly report `insufficient_history`. The earlier global-source numbers
-(7D 47 rows 28 Hit / 19 Miss +$1031.89; 14D 91 rows 54 Hit / 37 Miss
-+$1959.75) came from the WRONG source (global resolved rows) and are a rough
-future benchmark only — never force them.
+After `--priority-track-record-display` resolved the previously-starved
+shown rows (see the resolver-timeout doc from PR #23), actual production
+numbers from the shown-history flow are:
+
+- 7D: `insufficient_history`, `resolved_unique_rows = 0` (7D's shown rows
+  have not independently crossed the 20-resolved threshold yet).
+- 14D: `ready`, `resolved_unique_rows = 44`, `wins_count = 29`,
+  `losses_count = 15`, `net_pnl_usd ≈ +364.46`, `net_return_pct ≈ +8.28`.
+
+This is the actual resolved distribution (29/15 ≈ 66% win rate) — it is
+**not** a 6/4 (60/40) split, and it is not forced to be. Before this fix, a
+strict-6/4 selection stage was dropping 7 winning rows from the 14D window to
+fit a 22-win/15-loss target, which fabricated a negative summary
+(-$430.63 / -11.64%) from real data. The correct, honest read is the positive
++$364.46 / +8.28% figure above, because it uses every actual resolved unique
+shown row instead of a synthetically balanced subset.
 
 ## 10. Test command
 
