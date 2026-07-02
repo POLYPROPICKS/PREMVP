@@ -57,7 +57,7 @@ export default function ResolvedSignalsCarousel({ variant = 'landing' }: Resolve
 
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/signals/resolved?mode=latest&days=7&limit=7')
+    fetch('/api/signals/resolved?mode=latest&days=14&limit=7')
       .then((r) => r.json())
       .then((json) => {
         if (cancelled) return;
@@ -122,7 +122,7 @@ export default function ResolvedSignalsCarousel({ variant = 'landing' }: Resolve
       {!isPremium && (
         <div className={styles.header}>
           <div className={styles.headerTitle}>Latest resolved signals</div>
-          <div className={styles.headerSubtitle}>Tracking is live · last 7 days</div>
+          <div className={styles.headerSubtitle}>Tracking is live · last 14 days</div>
         </div>
       )}
 
