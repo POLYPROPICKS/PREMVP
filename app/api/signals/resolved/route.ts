@@ -341,6 +341,206 @@ export function mapDisplaySignalRowToTrackRecordRow(r: DisplaySignalRow): TrackR
   };
 }
 
+// ── Real resolved track record (generated_signal_pairs) ──────────────────────
+// Source of truth for the WhyTrust trust-block PnL: public.generated_signal_pairs.
+// Only rows with resolved_at set, signal_result in ('won','lost'), and a valid
+// entry_price_num (0,1) are eligible. NEVER derive Hit/Miss/PnL from
+// public.track_record_display_signals (unresolved "Published" projections) or
+// from any projected EV formula — see docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md.
+
+export const RESOLVED_RESULTS_SOURCE = "generated_signal_pairs_resolved_results" as const;
+
+export interface ResolvedPairRow {
+  id: string;
+  resolved_at: string;
+  created_at: string;
+  signal_result: "won" | "lost";
+  winning_outcome: string | null;
+  selected_outcome: string | null;
+  entry_price_num: number;
+  premium_signal: unknown;
+  market_slug: string | null;
+  event_slug: string | null;
+  score?: number | null;
+}
+
+export interface RealResolvedRow {
+  sourceRowId: string;
+  resolvedAt: string;
+  createdAt: string;
+  eventTitle: string;
+  marketQuestion: string;
+  selectedOutcome: string;
+  winningOutcome: string;
+  signalResult: "won" | "lost";
+  displayStatus: "Hit" | "Miss";
+  entryPrice: number;
+  decimalOdds: number;
+  realPnlUsd: number;
+  returnLabel: string;
+  score: number | null;
+  signalKey: string;
+  matchKey: string;
+}
+
+/** Flat-$100-stake real PnL. won: 100 * ((1 / entry_price_num) - 1); lost: -100. */
+export function computeRealPnlUsd(signalResult: "won" | "lost", entryPriceNum: number): number {
+  if (signalResult === "won") return 100 * (1 / entryPriceNum - 1);
+  return -100;
+}
+
+export function formatRealReturnLabel(realPnlUsd: number): string {
+  const rounded = Math.round(Math.abs(realPnlUsd));
+  return realPnlUsd >= 0 ? `+$${rounded}` : `-$${rounded}`;
+}
+
+function realEventTitle(r: ResolvedPairRow): string {
+  const ps = r.premium_signal as Record<string, unknown> | null;
+  return safeStr(ps?.eventTitle) ?? safeStr(r.event_slug) ?? safeStr(r.market_slug) ?? "Unknown market";
+}
+
+function realMarketQuestion(r: ResolvedPairRow): string {
+  const ps = r.premium_signal as Record<string, unknown> | null;
+  return safeStr(ps?.marketQuestion) ?? safeStr(r.market_slug) ?? "Unknown market";
+}
+
+/** Stable dedupe key: market/question + selected outcome, falling back to row id. */
+export function buildSignalKey(r: ResolvedPairRow): string {
+  const ps = r.premium_signal as Record<string, unknown> | null;
+  const marketPart = safeStr(r.market_slug) ?? safeStr(ps?.marketQuestion);
+  const outcomePart = safeStr(r.selected_outcome);
+  if (!marketPart && !outcomePart) return `id:${r.id}`;
+  return `${marketPart ?? ""}::${outcomePart ?? ""}`;
+}
+
+/** Stable match key grouping the same real-world event across rows. */
+export function buildMatchKey(r: ResolvedPairRow): string {
+  return safeStr(r.event_slug) ?? realEventTitle(r);
+}
+
+/** Maps one raw resolved-pair row to the UI/API-facing real-resolved row shape. */
+export function mapResolvedPairRow(r: ResolvedPairRow): RealResolvedRow {
+  const realPnlUsd = round(computeRealPnlUsd(r.signal_result, r.entry_price_num), 2);
+  return {
+    sourceRowId: r.id,
+    resolvedAt: r.resolved_at,
+    createdAt: r.created_at,
+    eventTitle: realEventTitle(r),
+    marketQuestion: realMarketQuestion(r),
+    selectedOutcome: r.selected_outcome ?? "",
+    winningOutcome: r.winning_outcome ?? "",
+    signalResult: r.signal_result,
+    displayStatus: r.signal_result === "won" ? "Hit" : "Miss",
+    entryPrice: r.entry_price_num,
+    decimalOdds: round(1 / r.entry_price_num, 3),
+    realPnlUsd,
+    returnLabel: formatRealReturnLabel(realPnlUsd),
+    score: r.score ?? null,
+    signalKey: buildSignalKey(r),
+    matchKey: buildMatchKey(r),
+  };
+}
+
+/** Deterministic one-row-per-match selection: prefer higher score, then newer
+ *  resolved_at, then newer created_at, then stable id. Does not truncate — the
+ *  request `limit` only applies to ledger rows downstream, never to selection. */
+export function selectResolvedRows(rows: RealResolvedRow[]): RealResolvedRow[] {
+  const byMatch = new Map<string, RealResolvedRow>();
+  for (const row of rows) {
+    const existing = byMatch.get(row.matchKey);
+    if (!existing) {
+      byMatch.set(row.matchKey, row);
+      continue;
+    }
+    if (isBetterResolvedRow(row, existing)) byMatch.set(row.matchKey, row);
+  }
+  return Array.from(byMatch.values());
+}
+
+function isBetterResolvedRow(a: RealResolvedRow, b: RealResolvedRow): boolean {
+  const scoreA = a.score ?? -Infinity;
+  const scoreB = b.score ?? -Infinity;
+  if (scoreA !== scoreB) return scoreA > scoreB;
+  const resolvedA = new Date(a.resolvedAt).getTime();
+  const resolvedB = new Date(b.resolvedAt).getTime();
+  if (resolvedA !== resolvedB) return resolvedA > resolvedB;
+  const createdA = new Date(a.createdAt).getTime();
+  const createdB = new Date(b.createdAt).getTime();
+  if (createdA !== createdB) return createdA > createdB;
+  return a.sourceRowId > b.sourceRowId;
+}
+
+export interface RealResolvedSummary {
+  signalsTracked: number;
+  selectedSignals: number;
+  resolvedCount: number;
+  pendingCount: number;
+  winsCount: number;
+  lossesCount: number;
+  netProfitUsd: number;
+  totalStakeUsd: number;
+  netReturnPct: number;
+}
+
+export function computeRealResolvedSummary(rows: RealResolvedRow[]): RealResolvedSummary {
+  const winsCount = rows.filter((r) => r.signalResult === "won").length;
+  const lossesCount = rows.filter((r) => r.signalResult === "lost").length;
+  const resolvedCount = winsCount + lossesCount;
+  const netProfitUsd = round(sum(rows.map((r) => r.realPnlUsd)), 2);
+  const totalStakeUsd = resolvedCount * STAKE_USD;
+  const netReturnPct = totalStakeUsd > 0 ? round((netProfitUsd / totalStakeUsd) * 100, 2) : 0;
+  return {
+    signalsTracked: rows.length,
+    selectedSignals: rows.length,
+    resolvedCount,
+    pendingCount: 0,
+    winsCount,
+    lossesCount,
+    netProfitUsd,
+    totalStakeUsd,
+    netReturnPct,
+  };
+}
+
+/** Cumulative real-PnL curve, ordered by resolved_at ascending. */
+export function computeRealReturnCurve(rows: RealResolvedRow[]): ReturnCurvePoint[] {
+  const ordered = [...rows].sort((a, b) => new Date(a.resolvedAt).getTime() - new Date(b.resolvedAt).getTime());
+  let cumulativeProfitUsd = 0;
+  return ordered.map((r, i) => {
+    cumulativeProfitUsd = round(cumulativeProfitUsd + r.realPnlUsd, 2);
+    return {
+      index: i,
+      cumulativePnlUnits: round(cumulativeProfitUsd / STAKE_USD, 4),
+      cumulativeRoiPct: round((cumulativeProfitUsd / ((i + 1) * STAKE_USD)) * 100, 2),
+      cumulativeProfitUsd,
+      cumulativeReturnPct: round((cumulativeProfitUsd / ((i + 1) * STAKE_USD)) * 100, 2),
+    };
+  });
+}
+
+export function mapRealResolvedRowToTrackRecordRow(r: RealResolvedRow): TrackRecordRow {
+  return {
+    id: r.sourceRowId,
+    eventTitle: r.eventTitle,
+    marketQuestion: r.marketQuestion,
+    pick: r.selectedOutcome,
+    createdAt: r.resolvedAt,
+    decimalOdds: r.decimalOdds,
+    americanOdds: decimalToAmerican(r.decimalOdds),
+    oddsSourcePath: "generated_signal_pairs.entry_price_num",
+    projectedWinProbabilityPct: 0,
+    pnlUnits: round(r.realPnlUsd / STAKE_USD, 4),
+    projectedReturnUsd: r.realPnlUsd,
+    projectedRoiPctPerSignal: round((r.realPnlUsd / STAKE_USD) * 100, 2),
+    status: "Resolved",
+    displayStatus: r.displayStatus,
+    action: null,
+    returnLabel: r.returnLabel,
+    scoreRank: 0,
+    sourceModel: null,
+  };
+}
+
 // ── DB row type (resolved-signal carousel) ────────────────────────────────────
 
 interface DbRow {
@@ -392,36 +592,52 @@ export async function GET(request: Request) {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  // ── weekResultsCard: published-signal track record from the accepted display table ──
+  // ── weekResultsCard: REAL resolved track record from generated_signal_pairs ──
+  // Never sourced from track_record_display_signals / projected EV — see
+  // docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md.
   const trackWindowStart = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
-  const { data: displayRows, error: displayQueryError } = await supabase
-    .from("track_record_display_signals")
+
+  // 14D-first selection, 7D derived as a subset — guarantees the 7D⊆14D invariant.
+  const wideWindowDays = Math.max(windowDays, 14);
+  const wideCutoff = new Date(Date.now() - wideWindowDays * 24 * 60 * 60 * 1000).toISOString();
+
+  const { data: resolvedPairRows, error: resolvedQueryError } = await supabase
+    .from("generated_signal_pairs")
     .select(
-      "window_days, source_model, score_rank, event_title, market_question, position, " +
-      "american_odds, decimal_odds, odds_source_path, projected_win_rate_pct, " +
-      "projected_pnl_units, projected_return_usd, projected_roi_pct_per_signal, " +
-      "status, action, return_label, batch_day"
+      "id, resolved_at, created_at, signal_result, winning_outcome, selected_outcome, " +
+      "entry_price_num, premium_signal, market_slug, event_slug"
     )
-    .eq("window_days", windowDays)
-    .order("score_rank", { ascending: true })
+    .not("resolved_at", "is", null)
+    .in("signal_result", ["won", "lost"])
+    .gt("entry_price_num", 0)
+    .lt("entry_price_num", 1)
+    .gte("resolved_at", wideCutoff)
+    .order("resolved_at", { ascending: false })
     .limit(DISPLAY_TABLE_FETCH_LIMIT);
 
-  if (displayQueryError) {
+  if (resolvedQueryError) {
     return NextResponse.json(
-      { ok: false, error: "DB_QUERY_ERROR", detail: displayQueryError.message },
+      { ok: false, error: "DB_QUERY_ERROR", detail: resolvedQueryError.message },
       { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 
-  const allDisplayRows = ((displayRows ?? []) as unknown) as DisplaySignalRow[];
-  const summary = computeDisplaySignalsSummary(allDisplayRows);
-  const returnCurve = computeReturnCurve(allDisplayRows);
+  const rawResolvedRows = ((resolvedPairRows ?? []) as unknown) as ResolvedPairRow[];
+  const mappedResolvedRows = rawResolvedRows.map(mapResolvedPairRow);
+
+  const windowCutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+  const selectedWide = selectResolvedRows(mappedResolvedRows);
+  const selectedForWindow = selectedWide.filter((r) => r.resolvedAt >= windowCutoff);
+
+  const summary = computeRealResolvedSummary(selectedForWindow);
+  const returnCurve = computeRealReturnCurve(selectedForWindow);
 
   // Ledger rows displayed in the UI are capped by the request `limit`; the
-  // summary above is always computed from the full per-window row set.
-  const trackRecordRows: TrackRecordRow[] = allDisplayRows
+  // summary above is always computed from the full selected row set.
+  const trackRecordRows: TrackRecordRow[] = [...selectedForWindow]
+    .sort((a, b) => new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime())
     .slice(0, limit)
-    .map(mapDisplaySignalRowToTrackRecordRow);
+    .map(mapRealResolvedRowToTrackRecordRow);
 
   let trackSampleSizeStatus: "empty" | "early" | "active" | "enough_data";
   if (summary.selectedSignals === 0) trackSampleSizeStatus = "empty";
@@ -429,41 +645,51 @@ export async function GET(request: Request) {
   else if (summary.selectedSignals < 10) trackSampleSizeStatus = "active";
   else trackSampleSizeStatus = "enough_data";
 
+  // Safe structured log — counts and aggregates only, never raw rows/env/secrets.
   console.log("[weekResultsCard]", {
+    source: RESOLVED_RESULTS_SOURCE,
     windowDays,
-    source: "track_record_display_signals",
-    selectedSignals: summary.selectedSignals,
-    oddsCoveragePct: summary.oddsCoveragePct,
-    oddsSourceBreakdown: summary.oddsSourceBreakdown,
-    projectedRoiPct: summary.projectedRoiPct,
+    rawResolvedRows: rawResolvedRows.length,
+    selectedRows: summary.selectedSignals,
+    winsCount: summary.winsCount,
+    lossesCount: summary.lossesCount,
+    pendingCount: summary.pendingCount,
+    netProfitUsd: summary.netProfitUsd,
+    netReturnPct: summary.netReturnPct,
   });
 
   const weekResultsCard: WeekResultsCard = {
     cardType: "signal-week-results",
-    schemaVersion: "week-results-v2-projected",
-    source: "track_record_display_signals",
+    schemaVersion: "week-results-v3-resolved",
+    source: RESOLVED_RESULTS_SOURCE,
     window: {
       label: `Past ${windowDays} days`,
       days: windowDays,
       startedAt: trackWindowStart,
       endedAt: new Date().toISOString(),
     },
-    title: "Signals published this window",
+    title: "Resolved signals this window",
     subtitle: "Flat $100 stake model",
     sampleSizeStatus: trackSampleSizeStatus,
     selectedSignals: summary.selectedSignals,
-    oddsCoveragePct: summary.oddsCoveragePct,
-    oddsSourceBreakdown: summary.oddsSourceBreakdown,
-    projectedWinRatePct: summary.projectedWinRatePct,
-    avgDecimalOdds: summary.avgDecimalOdds,
-    projectedPnlUnits: summary.projectedPnlUnits,
-    projectedReturnUsd: summary.projectedReturnUsd,
-    projectedRoiPct: summary.projectedRoiPct,
-    stakeUsd: summary.stakeUsd,
+    oddsCoveragePct: summary.selectedSignals > 0 ? 100 : 0,
+    oddsSourceBreakdown: summary.selectedSignals > 0
+      ? { "generated_signal_pairs.entry_price_num": summary.selectedSignals }
+      : {},
+    projectedWinRatePct: summary.resolvedCount > 0
+      ? round((summary.winsCount / summary.resolvedCount) * 100, 2)
+      : 0,
+    avgDecimalOdds: selectedForWindow.length > 0
+      ? round(avg(selectedForWindow.map((r) => r.decimalOdds)), 3)
+      : 0,
+    projectedPnlUnits: round(summary.netProfitUsd / STAKE_USD, 4),
+    projectedReturnUsd: summary.netProfitUsd,
+    projectedRoiPct: summary.netReturnPct,
+    stakeUsd: STAKE_USD,
     totalStakeUsd: summary.totalStakeUsd,
     netProfitUsd: summary.netProfitUsd,
-    netReturnPct: summary.projectedRoiPct,
-    signalsTracked: summary.selectedSignals,
+    netReturnPct: summary.netReturnPct,
+    signalsTracked: summary.signalsTracked,
     resolvedCount: summary.resolvedCount,
     pendingCount: summary.pendingCount,
     winsCount: summary.winsCount,

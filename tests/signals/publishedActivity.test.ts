@@ -3,360 +3,291 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import {
-  computeDisplaySignalsSummary,
-  mapDisplaySignalRowToTrackRecordRow,
-  deriveDisplayStatus,
-  formatReturnLabel,
-  computeReturnCurve,
-  type DisplaySignalRow,
+  computeRealPnlUsd,
+  formatRealReturnLabel,
+  mapResolvedPairRow,
+  buildSignalKey,
+  buildMatchKey,
+  selectResolvedRows,
+  computeRealResolvedSummary,
+  computeRealReturnCurve,
+  mapRealResolvedRowToTrackRecordRow,
+  RESOLVED_RESULTS_SOURCE,
+  type ResolvedPairRow,
+  type RealResolvedRow,
 } from "../../app/api/signals/resolved/route";
 
-function displayRow(overrides: Partial<DisplaySignalRow> = {}): DisplaySignalRow {
+function resolvedPairRow(overrides: Partial<ResolvedPairRow> = {}): ResolvedPairRow {
   return {
-    window_days: 7,
-    source_model: "model-v1",
-    score_rank: 1,
-    event_title: "Team A vs Team B",
-    market_question: "Will Team A win?",
-    position: "Team A",
-    american_odds: "+150",
-    decimal_odds: 2.5,
-    odds_source_path: "diagnostics.currentPrice",
-    projected_win_rate_pct: 60,
-    projected_pnl_units: 0.2,
-    projected_return_usd: 20,
-    projected_roi_pct_per_signal: 20,
-    status: "Published",
-    action: "ENTER",
-    return_label: "+$20",
-    batch_day: "2026-06-25",
+    id: "row-1",
+    resolved_at: "2026-06-28T12:00:00.000Z",
+    created_at: "2026-06-25T12:00:00.000Z",
+    signal_result: "won",
+    winning_outcome: "Team A",
+    selected_outcome: "Team A",
+    entry_price_num: 0.5,
+    premium_signal: { eventTitle: "Team A vs Team B", marketQuestion: "Will Team A win?" },
+    market_slug: "team-a-vs-team-b",
+    event_slug: "team-a-vs-team-b-event",
+    score: null,
     ...overrides,
   };
 }
 
-// ── summary aggregation from display table rows ─────────────────────────────
+// ── Real PnL formula: flat $100 stake, no projected EV ──────────────────────
 
-test("computeDisplaySignalsSummary aggregates selectedSignals, odds coverage, and averages from all rows", () => {
-  const rows: DisplaySignalRow[] = [
-    displayRow({ score_rank: 1, projected_win_rate_pct: 60, decimal_odds: 2, projected_pnl_units: 0.2, projected_return_usd: 20, projected_roi_pct_per_signal: 20 }),
-    displayRow({ score_rank: 2, projected_win_rate_pct: 50, decimal_odds: 3, projected_pnl_units: -1, projected_return_usd: -100, projected_roi_pct_per_signal: -100 }),
-  ];
-  const summary = computeDisplaySignalsSummary(rows);
-
-  assert.equal(summary.selectedSignals, 2);
-  assert.equal(summary.oddsCoveragePct, 100);
-  assert.deepEqual(summary.oddsSourceBreakdown, { "diagnostics.currentPrice": 2 });
-  assert.equal(summary.projectedWinRatePct, 55);
-  assert.equal(summary.avgDecimalOdds, 2.5);
-  assert.equal(summary.projectedPnlUnits, -0.8);
-  assert.equal(summary.projectedReturnUsd, -80);
-  assert.equal(summary.projectedRoiPct, -40);
-  assert.equal(summary.winsCount, 1);
-  assert.equal(summary.lossesCount, 1);
-  assert.equal(summary.resolvedCount, 2);
-  assert.equal(summary.pendingCount, 0);
+test("computeRealPnlUsd: won at entry_price_num=0.5 => +$100", () => {
+  assert.equal(computeRealPnlUsd("won", 0.5), 100);
 });
 
-test("computeDisplaySignalsSummary reports partial odds coverage when some rows are missing odds", () => {
-  const rows: DisplaySignalRow[] = [
-    displayRow({ score_rank: 1, decimal_odds: 2, odds_source_path: "diagnostics.currentPrice" }),
-    displayRow({ score_rank: 2, decimal_odds: null, odds_source_path: null }),
-  ];
-  const summary = computeDisplaySignalsSummary(rows);
-  assert.equal(summary.oddsCoveragePct, 50);
+test("computeRealPnlUsd: won at entry_price_num=0.25 => +$300", () => {
+  assert.equal(computeRealPnlUsd("won", 0.25), 300);
 });
 
-test("computeDisplaySignalsSummary returns zeroed summary for an empty row set (no crash)", () => {
-  const summary = computeDisplaySignalsSummary([]);
-  assert.equal(summary.selectedSignals, 0);
-  assert.equal(summary.oddsCoveragePct, 0);
-  assert.deepEqual(summary.oddsSourceBreakdown, {});
-  assert.equal(summary.projectedWinRatePct, 0);
-  assert.equal(summary.avgDecimalOdds, 0);
-  assert.equal(summary.projectedPnlUnits, 0);
-  assert.equal(summary.projectedReturnUsd, 0);
-  assert.equal(summary.projectedRoiPct, 0);
-  assert.equal(summary.winsCount, 0);
-  assert.equal(summary.lossesCount, 0);
-  assert.equal(summary.resolvedCount, 0);
-  assert.equal(summary.pendingCount, 0);
+test("computeRealPnlUsd: lost => -$100 regardless of entry price", () => {
+  assert.equal(computeRealPnlUsd("lost", 0.4), -100);
+  assert.equal(computeRealPnlUsd("lost", 0.9), -100);
 });
 
-// ── Hit/Miss/Pending display-status derivation ──────────────────────────────
-
-test("deriveDisplayStatus: positive projected return is Hit", () => {
-  assert.equal(deriveDisplayStatus(72), "Hit");
+test("formatRealReturnLabel: positive/negative format as +$N / -$N", () => {
+  assert.equal(formatRealReturnLabel(100), "+$100");
+  assert.equal(formatRealReturnLabel(-100), "-$100");
 });
 
-test("deriveDisplayStatus: negative projected return is Miss", () => {
-  assert.equal(deriveDisplayStatus(-100), "Miss");
-});
+// ── mapResolvedPairRow: row mapping ──────────────────────────────────────────
 
-test("deriveDisplayStatus: null, undefined, and exact zero are Pending", () => {
-  assert.equal(deriveDisplayStatus(null), "Pending");
-  assert.equal(deriveDisplayStatus(undefined), "Pending");
-  assert.equal(deriveDisplayStatus(0), "Pending");
-});
-
-// ── Return label formatting: no +$0 / -$0 spam ──────────────────────────────
-
-test("formatReturnLabel: positive/negative values format as +$N / -$N", () => {
-  assert.equal(formatReturnLabel(72.4), "+$72");
-  assert.equal(formatReturnLabel(-100), "-$100");
-});
-
-test("formatReturnLabel: zero/null/undefined never render +$0 or -$0", () => {
-  assert.equal(formatReturnLabel(0), "—");
-  assert.equal(formatReturnLabel(null), "—");
-  assert.equal(formatReturnLabel(undefined), "—");
-});
-
-// ── resolvedCount/pendingCount derived from ALL rows, not a limited ledger ──
-
-test("resolvedCount and pendingCount are derived from the full row set", () => {
-  const rows: DisplaySignalRow[] = [
-    displayRow({ score_rank: 1, projected_return_usd: 20 }),
-    displayRow({ score_rank: 2, projected_return_usd: -50 }),
-    displayRow({ score_rank: 3, projected_return_usd: 0 }),
-    displayRow({ score_rank: 4, projected_return_usd: null }),
-  ];
-  const summary = computeDisplaySignalsSummary(rows);
-  assert.equal(summary.winsCount, 1);
-  assert.equal(summary.lossesCount, 1);
-  assert.equal(summary.resolvedCount, 2);
-  assert.equal(summary.pendingCount, 2);
-});
-
-// ── returnCurve: computed from ALL rows, final point matches projectedRoiPct ─
-
-test("computeReturnCurve produces a running total and final point matches projectedRoiPct", () => {
-  const rows: DisplaySignalRow[] = [
-    displayRow({ score_rank: 1, projected_pnl_units: 0.2, projected_roi_pct_per_signal: 20, projected_return_usd: 20 }),
-    displayRow({ score_rank: 2, projected_pnl_units: -1, projected_roi_pct_per_signal: -100, projected_return_usd: -100 }),
-  ];
-  const curve = computeReturnCurve(rows);
-  const summary = computeDisplaySignalsSummary(rows);
-
-  assert.equal(curve.length, 2);
-  assert.equal(curve[0].cumulativePnlUnits, 0.2);
-  assert.equal(curve[1].cumulativePnlUnits, -0.8);
-  const finalPoint = curve[curve.length - 1];
-  assert.equal(Math.round(finalPoint.cumulativeRoiPct), Math.round(summary.projectedRoiPct));
-});
-
-test("computeReturnCurve orders points by score_rank regardless of input order", () => {
-  const rows: DisplaySignalRow[] = [
-    displayRow({ score_rank: 2, projected_pnl_units: 1 }),
-    displayRow({ score_rank: 1, projected_pnl_units: 0.5 }),
-  ];
-  const curve = computeReturnCurve(rows);
-  assert.equal(curve[0].cumulativePnlUnits, 0.5);
-  assert.equal(curve[1].cumulativePnlUnits, 1.5);
-});
-
-test("computeReturnCurve returns an empty array for no rows", () => {
-  assert.deepEqual(computeReturnCurve([]), []);
-});
-
-// ── selectedSignals must use the full table row set, not a limited ledger ───
-
-test("selectedSignals reflects the total table row count regardless of any ledger display limit", () => {
-  const rows: DisplaySignalRow[] = Array.from({ length: 12 }, (_, i) =>
-    displayRow({ score_rank: i + 1, batch_day: `2026-06-${String(20 + i).padStart(2, "0")}` })
-  );
-  const summary = computeDisplaySignalsSummary(rows);
-  const ledgerRows = rows.slice(0, 7).map(mapDisplaySignalRowToTrackRecordRow);
-
-  assert.equal(summary.selectedSignals, 12);
-  assert.equal(ledgerRows.length, 7);
-});
-
-// ── 7D vs 14D windows must differ when the underlying rows differ ──────────
-
-test("7D and 14D window summaries differ when their display-table rows differ", () => {
-  const rows7d: DisplaySignalRow[] = [
-    displayRow({ score_rank: 1, window_days: 7, projected_win_rate_pct: 60 }),
-    displayRow({ score_rank: 2, window_days: 7, projected_win_rate_pct: 55 }),
-  ];
-  const rows14d: DisplaySignalRow[] = [
-    displayRow({ score_rank: 1, window_days: 14, projected_win_rate_pct: 60 }),
-    displayRow({ score_rank: 2, window_days: 14, projected_win_rate_pct: 55 }),
-    displayRow({ score_rank: 3, window_days: 14, projected_win_rate_pct: 70 }),
-    displayRow({ score_rank: 4, window_days: 14, projected_win_rate_pct: 65 }),
-  ];
-
-  const summary7d = computeDisplaySignalsSummary(rows7d);
-  const summary14d = computeDisplaySignalsSummary(rows14d);
-
-  assert.notEqual(summary7d.selectedSignals, summary14d.selectedSignals);
-  assert.equal(summary7d.selectedSignals, 2);
-  assert.equal(summary14d.selectedSignals, 4);
-});
-
-// ── row mapping: UI-facing TrackRecordRow shape ─────────────────────────────
-
-test("mapDisplaySignalRowToTrackRecordRow maps display-table columns to the UI row shape", () => {
-  const row = mapDisplaySignalRowToTrackRecordRow(
-    displayRow({
-      score_rank: 3,
-      batch_day: "2026-06-28",
-      event_title: "Lakers vs Celtics",
-      market_question: "Will Lakers win?",
-      position: "Lakers",
-      projected_return_usd: 54,
-      action: "ENTER",
-      source_model: "model-v2",
-    })
-  );
-
-  assert.equal(row.id, "2026-06-28-3");
-  assert.equal(row.eventTitle, "Lakers vs Celtics");
-  assert.equal(row.marketQuestion, "Will Lakers win?");
-  assert.equal(row.pick, "Lakers");
-  assert.equal(row.status, "Published");
+test("mapResolvedPairRow maps generated_signal_pairs columns to the real-resolved row shape", () => {
+  const row = mapResolvedPairRow(resolvedPairRow({ entry_price_num: 0.5, signal_result: "won" }));
+  assert.equal(row.sourceRowId, "row-1");
+  assert.equal(row.eventTitle, "Team A vs Team B");
+  assert.equal(row.marketQuestion, "Will Team A win?");
+  assert.equal(row.selectedOutcome, "Team A");
+  assert.equal(row.winningOutcome, "Team A");
+  assert.equal(row.signalResult, "won");
   assert.equal(row.displayStatus, "Hit");
-  assert.equal(row.returnLabel, "+$54");
-  assert.equal(row.action, "ENTER");
-  assert.equal(row.sourceModel, "model-v2");
-  assert.notEqual(row.returnLabel, undefined);
+  assert.equal(row.entryPrice, 0.5);
+  assert.equal(row.decimalOdds, 2);
+  assert.equal(row.realPnlUsd, 100);
+  assert.equal(row.returnLabel, "+$100");
 });
 
-test("mapDisplaySignalRowToTrackRecordRow falls back safely when odds/return fields are null", () => {
-  const row = mapDisplaySignalRowToTrackRecordRow(
-    displayRow({ decimal_odds: null, american_odds: null, return_label: null, projected_pnl_units: null, projected_return_usd: null, projected_roi_pct_per_signal: null, projected_win_rate_pct: null })
-  );
-  assert.equal(row.decimalOdds, 0);
-  assert.equal(row.americanOdds, null);
-  assert.equal(row.returnLabel, "—");
-  assert.equal(row.displayStatus, "Pending");
-  assert.equal(row.pnlUnits, 0);
-  assert.equal(row.projectedReturnUsd, 0);
-  assert.equal(row.projectedRoiPctPerSignal, 0);
-  assert.equal(row.projectedWinProbabilityPct, 0);
+test("mapResolvedPairRow falls back event/market title from slugs when premium_signal is missing", () => {
+  const row = mapResolvedPairRow(resolvedPairRow({ premium_signal: null }));
+  assert.equal(row.eventTitle, "team-a-vs-team-b-event");
+  assert.equal(row.marketQuestion, "team-a-vs-team-b");
 });
 
-// ── no old resolved-ROI shape / stale demo values ───────────────────────────
+test("mapResolvedPairRow: lost row displayStatus is Miss", () => {
+  const row = mapResolvedPairRow(resolvedPairRow({ signal_result: "lost" }));
+  assert.equal(row.displayStatus, "Miss");
+  assert.equal(row.realPnlUsd, -100);
+});
 
-test("summary never produces the old stale resolved-ROI values", () => {
-  const rows: DisplaySignalRow[] = [
-    displayRow({ score_rank: 1 }),
-    displayRow({ score_rank: 2 }),
+// ── de-duplication: signalKey / matchKey / selection ─────────────────────────
+
+test("buildSignalKey and buildMatchKey are stable per market/event", () => {
+  const row = resolvedPairRow();
+  assert.equal(buildSignalKey(row), "team-a-vs-team-b::Team A");
+  assert.equal(buildMatchKey(row), "team-a-vs-team-b-event");
+});
+
+test("buildSignalKey falls back to id when there is no market/question/outcome to key on", () => {
+  const row = resolvedPairRow({
+    market_slug: null,
+    selected_outcome: null,
+    premium_signal: null,
+    event_slug: null,
+  });
+  assert.equal(buildSignalKey(row), "id:row-1");
+});
+
+test("selectResolvedRows keeps one row per matchKey, preferring higher score", () => {
+  const a = mapResolvedPairRow(resolvedPairRow({ id: "a", score: 1 } as Partial<ResolvedPairRow>));
+  const b = mapResolvedPairRow(resolvedPairRow({ id: "b", score: 5 } as Partial<ResolvedPairRow>));
+  const selected = selectResolvedRows([a, b]);
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].sourceRowId, "b");
+});
+
+test("selectResolvedRows prefers newer resolved_at when scores are equal/absent", () => {
+  const older = mapResolvedPairRow(resolvedPairRow({ id: "older", resolved_at: "2026-06-20T00:00:00.000Z" }));
+  const newer = mapResolvedPairRow(resolvedPairRow({ id: "newer", resolved_at: "2026-06-28T00:00:00.000Z" }));
+  const selected = selectResolvedRows([older, newer]);
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].sourceRowId, "newer");
+});
+
+test("selectResolvedRows keeps distinct matches separate", () => {
+  const a = mapResolvedPairRow(resolvedPairRow({ id: "a", event_slug: "event-a" }));
+  const b = mapResolvedPairRow(resolvedPairRow({ id: "b", event_slug: "event-b" }));
+  const selected = selectResolvedRows([a, b]);
+  assert.equal(selected.length, 2);
+});
+
+// ── summary aggregation ───────────────────────────────────────────────────────
+
+test("computeRealResolvedSummary: netProfitUsd = sum(realPnlUsd)", () => {
+  const rows: RealResolvedRow[] = [
+    mapResolvedPairRow(resolvedPairRow({ id: "1", signal_result: "won", entry_price_num: 0.5, event_slug: "e1" })),
+    mapResolvedPairRow(resolvedPairRow({ id: "2", signal_result: "lost", event_slug: "e2" })),
   ];
-  const summary = computeDisplaySignalsSummary(rows);
-  assert.notEqual(summary.projectedRoiPct, -1766);
-  assert.notEqual(summary.selectedSignals, 36);
-  assert.ok(!("won" in summary));
-  assert.ok(!("lost" in summary));
+  const summary = computeRealResolvedSummary(rows);
+  assert.equal(summary.netProfitUsd, 0);
+  assert.equal(summary.winsCount, 1);
+  assert.equal(summary.lossesCount, 1);
+  assert.equal(summary.resolvedCount, 2);
 });
 
-test("mapped rows never carry the old won/lost resolved-signal shape", () => {
-  const row = mapDisplaySignalRowToTrackRecordRow(displayRow());
-  assert.ok(!("result" in row));
-  assert.ok(!("winner" in row));
-  assert.equal(row.status, "Published");
-});
-
-// ── trackRecordDisplayTable is `{ rows: [...] }` and UI extraction is shape-safe ──
-
-function readDisplayTableRows(table: unknown): unknown[] {
-  return Array.isArray(table)
-    ? table
-    : ((table as { rows?: unknown[] } | null | undefined)?.rows ?? []);
-}
-
-test("trackRecordDisplayTable is an object with a rows array", () => {
-  const rows = [displayRow()].map(mapDisplaySignalRowToTrackRecordRow);
-  const table = { windowDays: 7, rows };
-  assert.ok(!Array.isArray(table));
-  assert.ok(Array.isArray(table.rows));
-  assert.deepEqual(readDisplayTableRows(table), rows);
-});
-
-test("UI row extraction is safe for object-with-rows, bare-array, and missing/empty shapes", () => {
-  assert.deepEqual(readDisplayTableRows({ windowDays: 7, rows: [{ id: "a" }] }), [{ id: "a" }]);
-  assert.deepEqual(readDisplayTableRows([{ id: "a" }]), [{ id: "a" }]);
-  assert.deepEqual(readDisplayTableRows(undefined), []);
-  assert.deepEqual(readDisplayTableRows(null), []);
-  assert.deepEqual(readDisplayTableRows({}), []);
-});
-
-// ── netProfitUsd / totalStakeUsd / netReturnPct: the $100-stake business formula ─
-
-test("computeDisplaySignalsSummary: netProfitUsd = sum(projected_return_usd), totalStakeUsd = signalsTracked * 100", () => {
-  const rows: DisplaySignalRow[] = [
-    displayRow({ score_rank: 1, projected_return_usd: 115 }),
-    displayRow({ score_rank: 2, projected_return_usd: 130 }),
-    displayRow({ score_rank: 3, projected_return_usd: -45 }),
+test("computeRealResolvedSummary: netReturnPct = netProfitUsd / (resolvedCount * 100) * 100", () => {
+  const rows: RealResolvedRow[] = [
+    mapResolvedPairRow(resolvedPairRow({ id: "1", signal_result: "won", entry_price_num: 0.25, event_slug: "e1" })),
+    mapResolvedPairRow(resolvedPairRow({ id: "2", signal_result: "lost", event_slug: "e2" })),
   ];
-  const summary = computeDisplaySignalsSummary(rows);
-
-  assert.equal(summary.stakeUsd, 100);
-  assert.equal(summary.totalStakeUsd, 300);
+  const summary = computeRealResolvedSummary(rows);
+  // wins: +$300, losses: -$100 => net $200 over $200 stake => 100%
   assert.equal(summary.netProfitUsd, 200);
+  assert.equal(summary.totalStakeUsd, 200);
+  assert.equal(summary.netReturnPct, 100);
 });
 
-test("computeDisplaySignalsSummary: netReturnPct (projectedRoiPct) = netProfitUsd / totalStakeUsd * 100", () => {
-  const rows: DisplaySignalRow[] = Array.from({ length: 47 }, (_, i) =>
-    displayRow({ score_rank: i + 1, projected_return_usd: i === 0 ? 300.51 : 0 })
-  );
-  const summary = computeDisplaySignalsSummary(rows);
-
-  assert.equal(summary.totalStakeUsd, 4700);
-  assert.equal(summary.netProfitUsd, 300.51);
-  const expectedPct = round2(summary.netProfitUsd / summary.totalStakeUsd * 100);
-  assert.equal(summary.projectedRoiPct, expectedPct);
-  assert.equal(summary.projectedReturnUsd, summary.netProfitUsd);
+test("computeRealResolvedSummary: pendingCount is always 0 (resolved-only section, not derived from projected PnL)", () => {
+  const summary = computeRealResolvedSummary([]);
+  assert.equal(summary.pendingCount, 0);
+  assert.equal(summary.signalsTracked, 0);
+  assert.equal(summary.netProfitUsd, 0);
 });
 
-function round2(n: number): number {
-  return Math.round(n * 100) / 100;
-}
+// ── returnCurve ────────────────────────────────────────────────────────────
 
-// ── Pending epsilon: floating-point noise must never read as a false Hit ────
-
-test("deriveDisplayStatus: tiny floating-point PNL (3.6e-15) is Pending, not a false Hit", () => {
-  assert.equal(deriveDisplayStatus(3.6e-15), "Pending");
-  assert.equal(deriveDisplayStatus(-3.6e-15), "Pending");
+test("computeRealReturnCurve: cumulative sum ordered by resolved_at ascending", () => {
+  const rows: RealResolvedRow[] = [
+    mapResolvedPairRow(resolvedPairRow({ id: "1", resolved_at: "2026-06-28T00:00:00.000Z", signal_result: "won", entry_price_num: 0.5, event_slug: "e1" })),
+    mapResolvedPairRow(resolvedPairRow({ id: "2", resolved_at: "2026-06-20T00:00:00.000Z", signal_result: "lost", event_slug: "e2" })),
+  ];
+  const curve = computeRealReturnCurve(rows);
+  assert.equal(curve.length, 2);
+  assert.equal(curve[0].cumulativeProfitUsd, -100);
+  assert.equal(curve[1].cumulativeProfitUsd, 0);
 });
 
-test("formatReturnLabel: tiny floating-point PNL (3.6e-15) renders as em dash, never +$0/-$0", () => {
-  assert.equal(formatReturnLabel(3.6e-15), "—");
-  assert.equal(formatReturnLabel(-3.6e-15), "—");
+// ── row mapping to UI TrackRecordRow shape ───────────────────────────────────
+
+test("mapRealResolvedRowToTrackRecordRow never uses Published as ledger status", () => {
+  const row = mapRealResolvedRowToTrackRecordRow(mapResolvedPairRow(resolvedPairRow()));
+  assert.equal(row.status, "Resolved");
+  assert.ok(row.displayStatus === "Hit" || row.displayStatus === "Miss");
 });
 
-test("deriveDisplayStatus/formatReturnLabel: values under the $0.5 epsilon are Pending / em dash", () => {
-  assert.equal(deriveDisplayStatus(0.49), "Pending");
-  assert.equal(deriveDisplayStatus(-0.49), "Pending");
-  assert.equal(formatReturnLabel(0.49), "—");
-  assert.equal(deriveDisplayStatus(0.5), "Hit");
-  assert.equal(formatReturnLabel(0.5), "+$1");
+// ── 14D superset 7D invariant ─────────────────────────────────────────────────
+
+test("14D selection includes every 7D selected sourceRowId", () => {
+  const now = Date.now();
+  const daysAgo = (n: number) => new Date(now - n * 24 * 60 * 60 * 1000).toISOString();
+
+  const all: ResolvedPairRow[] = [
+    resolvedPairRow({ id: "a", resolved_at: daysAgo(2), event_slug: "e-a" }),
+    resolvedPairRow({ id: "b", resolved_at: daysAgo(5), event_slug: "e-b" }),
+    resolvedPairRow({ id: "c", resolved_at: daysAgo(10), event_slug: "e-c" }),
+    resolvedPairRow({ id: "d", resolved_at: daysAgo(13), event_slug: "e-d" }),
+  ];
+
+  const mapped = all.map(mapResolvedPairRow);
+  const selectedWide = selectResolvedRows(mapped);
+
+  const cutoff7 = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const cutoff14 = new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+  const selected7d = selectedWide.filter((r) => r.resolvedAt >= cutoff7);
+  const selected14d = selectedWide.filter((r) => r.resolvedAt >= cutoff14);
+
+  const ids14d = new Set(selected14d.map((r) => r.sourceRowId));
+  for (const row of selected7d) {
+    assert.ok(ids14d.has(row.sourceRowId), `${row.sourceRowId} missing from 14D superset`);
+  }
+  assert.equal(selected7d.length, 2);
+  assert.equal(selected14d.length, 4);
 });
 
-// ── API source remains the accepted physical display table ─────────────────
+// ── source contract ────────────────────────────────────────────────────────
+
+test("RESOLVED_RESULTS_SOURCE is generated_signal_pairs_resolved_results", () => {
+  assert.equal(RESOLVED_RESULTS_SOURCE, "generated_signal_pairs_resolved_results");
+});
 
 const routeSource = fs.readFileSync(
   path.join(__dirname, "../../app/api/signals/resolved/route.ts"),
   "utf8"
 );
 
-test("weekResultsCard source stays track_record_display_signals (no runtime generated_signal_pairs aggregation)", () => {
-  assert.ok(routeSource.includes('source: "track_record_display_signals"'));
-  assert.ok(routeSource.includes('.from("track_record_display_signals")'));
+test("weekResultsCard source is generated_signal_pairs_resolved_results, not the display table", () => {
+  assert.ok(routeSource.includes("source: RESOLVED_RESULTS_SOURCE"));
+  assert.ok(routeSource.includes('.from("generated_signal_pairs")'));
 });
 
-// ── returnCurve: dollar-true cumulative series feeds the chart ─────────────
+test("track_record_display_signals is never used as the real-performance source in weekResultsCard construction", () => {
+  const weekResultsCardBlockStart = routeSource.indexOf("const weekResultsCard: WeekResultsCard");
+  const weekResultsCardBlockEnd = routeSource.indexOf("let query = supabase");
+  const block = routeSource.slice(weekResultsCardBlockStart, weekResultsCardBlockEnd);
+  assert.ok(!block.includes("track_record_display_signals"));
+});
 
-test("computeReturnCurve: cumulativeProfitUsd sums projected_return_usd and cumulativeReturnPct matches the netReturnPct formula", () => {
-  const rows: DisplaySignalRow[] = [
-    displayRow({ score_rank: 1, projected_return_usd: 20 }),
-    displayRow({ score_rank: 2, projected_return_usd: -100 }),
-  ];
-  const curve = computeReturnCurve(rows);
-  assert.equal(curve[0].cumulativeProfitUsd, 20);
-  assert.equal(curve[1].cumulativeProfitUsd, -80);
-  const finalPoint = curve[curve.length - 1];
-  const summary = computeDisplaySignalsSummary(rows);
-  assert.equal(finalPoint.cumulativeReturnPct, summary.projectedRoiPct);
+test("no projected EV formula is used for real PnL computation", () => {
+  const fnStart = routeSource.indexOf("export function computeRealPnlUsd");
+  const fnEnd = routeSource.indexOf("\n}", fnStart);
+  const fnBody = routeSource.slice(fnStart, fnEnd);
+  assert.ok(!fnBody.includes("winProbability"));
+  assert.ok(!fnBody.includes("odds - 1"));
+});
+
+// ── limit affects ledger rows only ───────────────────────────────────────────
+
+test("limit slices ledger rows but summary/curve use the full selected set (contract check)", () => {
+  const ledgerBlockStart = routeSource.indexOf("const trackRecordRows: TrackRecordRow[]");
+  const ledgerBlockEnd = routeSource.indexOf(";", routeSource.indexOf(".map(mapRealResolvedRowToTrackRecordRow)"));
+  const ledgerBlock = routeSource.slice(ledgerBlockStart, ledgerBlockEnd);
+  assert.ok(ledgerBlock.includes(".slice(0, limit)"));
+
+  const summaryLine = routeSource.indexOf("const summary = computeRealResolvedSummary(selectedForWindow)");
+  assert.ok(summaryLine !== -1, "summary must be computed from the unsliced selected row set");
+});
+
+// ── safe logging: fields present, no raw rows / secrets ─────────────────────
+
+test("safe log includes required fields and never logs secrets/env/raw rows", () => {
+  const logStart = routeSource.indexOf('console.log("[weekResultsCard]"');
+  const logEnd = routeSource.indexOf("});", logStart);
+  const logBlock = routeSource.slice(logStart, logEnd);
+
+  for (const field of [
+    "source",
+    "windowDays",
+    "rawResolvedRows",
+    "selectedRows",
+    "winsCount",
+    "lossesCount",
+    "pendingCount",
+    "netProfitUsd",
+    "netReturnPct",
+  ]) {
+    assert.ok(logBlock.includes(field), `expected safe log field "${field}"`);
+  }
+
+  for (const forbidden of ["SUPABASE_SERVICE_ROLE_KEY", "supabaseServiceKey", "process.env", "JSON.stringify(rows)"]) {
+    assert.ok(!logBlock.includes(forbidden), `unexpected unsafe token "${forbidden}" in safe log`);
+  }
+});
+
+// ── docs file ─────────────────────────────────────────────────────────────
+
+test("docs file exists and documents the resolved source table and PnL formula", () => {
+  const docsPath = path.join(__dirname, "../../docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md");
+  assert.ok(fs.existsSync(docsPath), "expected docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md to exist");
+  const docs = fs.readFileSync(docsPath, "utf8");
+  assert.ok(docs.includes("generated_signal_pairs"));
+  assert.ok(docs.includes("track_record_display_signals"));
+  assert.ok(docs.includes("signal_result"));
+  assert.ok(docs.includes("resolved_at"));
+  assert.ok(docs.includes("entry_price_num"));
 });
 
 // ── WhyTrustSection: approved visible labels present, replaced labels absent ─
@@ -382,36 +313,17 @@ test("WhyTrustSection uses the approved visible labels", () => {
 });
 
 test("WhyTrustSection does not use the replaced labels", () => {
-  for (const label of ["Projected Return", "Signals Published", "Projected Rate", "Avg Odds", "Published"]) {
+  for (const label of ["Projected Return", "Signals Published", "Projected Rate", "Avg Odds"]) {
     assert.ok(!whyTrustSource.includes(label), `unexpected replaced label "${label}" in WhyTrustSection`);
   }
 });
 
-// ── Net Return headline must be dollars (netProfitUsd), percent secondary only ─
-
 test("WhyTrustSection derives the Net Return headline value from netProfitUsd (dollars), not netReturnPct alone", () => {
-  assert.ok(
-    whyTrustSource.includes("fmtUsdSigned(card.netProfitUsd)"),
-    "Net Return main value must be formatted from card.netProfitUsd"
-  );
-  assert.ok(
-    whyTrustSource.includes("card.netReturnPct"),
-    "netReturnPct must still appear as secondary subtext context"
-  );
+  assert.ok(whyTrustSource.includes("fmtUsdSigned(card.netProfitUsd)"));
+  assert.ok(whyTrustSource.includes("card.netReturnPct"));
 });
 
 test("WhyTrustSection chart badge/series are dollar-based (cumulativeProfitUsd), not percent-only", () => {
   assert.ok(whyTrustSource.includes("cumulativeProfitUsd"));
   assert.ok(whyTrustSource.includes("fmtUsdSigned(points[endIdx].cumUsd)"));
-});
-
-// ── no old resolved-ROI ledger values survive in the projected model ────────
-
-test("summary never produces the old stale resolved-ROI ledger counts (36 tracked / 8 wins / 28 losses)", () => {
-  const rows: DisplaySignalRow[] = [displayRow({ score_rank: 1 }), displayRow({ score_rank: 2 })];
-  const summary = computeDisplaySignalsSummary(rows);
-  assert.notEqual(summary.selectedSignals, 36);
-  assert.notEqual(summary.winsCount, 8);
-  assert.notEqual(summary.lossesCount, 28);
-  assert.notEqual(summary.projectedRoiPct, -1766);
 });

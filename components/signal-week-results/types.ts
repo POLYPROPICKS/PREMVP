@@ -1,8 +1,8 @@
-// Published-signal track record contract.
-// Source: public.track_record_display_signals — the accepted physical display
-// table (one row per published, pre-scored signal per window_days/batch_day).
-// No resolved won/lost ledger, no fixed/model odds, no runtime aggregation
-// over generated_signal_pairs.
+// Real resolved track record contract.
+// Source: public.generated_signal_pairs — resolved rows only (signal_result in
+// won/lost, resolved_at set). See docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md.
+// Never source Hit/Miss/PnL from public.track_record_display_signals (unresolved
+// "Published" projections) or a projected EV formula.
 
 export interface TrackRecordRow {
   id: string;
@@ -17,7 +17,7 @@ export interface TrackRecordRow {
   pnlUnits: number;
   projectedReturnUsd: number;
   projectedRoiPctPerSignal: number;
-  status: 'Published';
+  status: 'Published' | 'Resolved';
   displayStatus: 'Hit' | 'Miss' | 'Pending';
   action: string | null;
   returnLabel: string;
@@ -42,8 +42,8 @@ export interface ReturnCurvePoint {
 
 export interface WeekResultsCard {
   cardType: 'signal-week-results';
-  schemaVersion: 'week-results-v2-projected';
-  source: 'track_record_display_signals';
+  schemaVersion: 'week-results-v3-resolved';
+  source: 'generated_signal_pairs_resolved_results';
   window: { label: string; days: number; startedAt: string; endedAt: string };
   title: string;
   subtitle: string;
