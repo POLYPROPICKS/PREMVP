@@ -189,7 +189,7 @@ INSERT INTO public.track_record_shown_signal_history (
   normalized_match_key
 )
 SELECT DISTINCT ON (d.source_row_id)
-  d.source_row_id,
+  d.source_row_id::uuid,
   d.batch_day,
   now(),
   d.event_title,
