@@ -62,6 +62,81 @@ function strictKey(row: Pick<ResolverRow, "condition_id" | "selected_token_id">)
   return `${row.condition_id}::${row.selected_token_id ?? ""}`;
 }
 
+// ---- Pending-resolution query spec -----------------------------------------
+// Extracted so the eligibility filters + order are unit-testable without a DB
+// round-trip, and so logging always reflects exactly what was queried.
+
+export const PENDING_RESOLUTION_SELECT_COLUMNS =
+  "id, created_at, expires_at, event_slug, condition_id, selected_outcome, selected_token_id, entry_price_num";
+
+export interface PendingResolutionQuerySpec {
+  select: string;
+  filters: {
+    signalResultIsNull: true;
+    conditionIdNotNull: true;
+    selectedTokenIdNotNull: true;
+    entryPriceNumNotNull: true;
+    metricFormulaVersionNotNull: true;
+    expiresAtLt: string | null;
+    createdAtGte: string | null;
+  };
+  order: Array<{ column: string; ascending: boolean; nullsFirst?: boolean }>;
+  limit: number;
+}
+
+export function buildPendingResolutionQuerySpec(opts: {
+  onlyExpired: boolean;
+  expiredCutoff: string;
+  createdAfter: string | null;
+  orderMode: ResolverOrderMode;
+  limit: number;
+}): PendingResolutionQuerySpec {
+  return {
+    select: PENDING_RESOLUTION_SELECT_COLUMNS,
+    filters: {
+      signalResultIsNull: true,
+      conditionIdNotNull: true,
+      selectedTokenIdNotNull: true,
+      entryPriceNumNotNull: true,
+      metricFormulaVersionNotNull: true,
+      expiresAtLt: opts.onlyExpired ? opts.expiredCutoff : null,
+      createdAtGte: opts.createdAfter,
+    },
+    order:
+      opts.orderMode === "oldest"
+        ? [
+            { column: "expires_at", ascending: true, nullsFirst: false },
+            { column: "created_at", ascending: true },
+            { column: "id", ascending: true },
+          ]
+        : [
+            { column: "created_at", ascending: false },
+            { column: "id", ascending: false },
+          ],
+    limit: opts.limit,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyPendingResolutionQuerySpec(baseQuery: any, spec: PendingResolutionQuerySpec) {
+  let query = baseQuery
+    .select(spec.select)
+    .is("signal_result", null)
+    .not("condition_id", "is", null)
+    .not("selected_token_id", "is", null)
+    .not("entry_price_num", "is", null)
+    .not("metric_formula_version", "is", null);
+
+  if (spec.filters.expiresAtLt) query = query.lt("expires_at", spec.filters.expiresAtLt);
+  if (spec.filters.createdAtGte) query = query.gte("created_at", spec.filters.createdAtGte);
+
+  for (const o of spec.order) {
+    query = query.order(o.column, { ascending: o.ascending, nullsFirst: o.nullsFirst });
+  }
+
+  return query.limit(spec.limit);
+}
+
 const rawLimit = (() => {
   const arg = process.argv.find((a) => a.startsWith("--limit="));
   if (!arg) return 25;
@@ -426,48 +501,54 @@ async function main() {
     }
   }
 
-  // Select unresolved rows with required snapshot fields
-  let query = supabase
-    .from("generated_signal_pairs")
-    .select(
-      "id, created_at, expires_at, event_slug, condition_id, selected_outcome, selected_token_id, entry_price_num"
-    )
-    .is("signal_result", null)
-    .not("condition_id", "is", null)
-    .not("selected_token_id", "is", null)
-    .not("entry_price_num", "is", null)
-    .not("metric_formula_version", "is", null);
-
-  if (ONLY_EXPIRED) {
-    query = query.lt("expires_at", expiredCutoff);
-  }
-
-  // Bounded-scan window: caps how far back the planner must sort, preventing
-  // the statement timeout on the unbounded unresolved backlog.
+  // Select unresolved rows with required snapshot fields. Filters/order are
+  // built from the same spec used by the regression test and by the partial
+  // index (see supabase/migrations/20260702_generated_signal_pairs_pending_resolution_index.sql)
+  // so the query plan, the test, and the index all describe one contract.
   const createdAfter = resolveCreatedAfter();
-  if (createdAfter) {
-    query = query.gte("created_at", createdAfter);
-    console.log(`[resolve-signals] BOUNDED_SCAN created_after=${createdAfter}`);
-  }
+  const querySpec = buildPendingResolutionQuerySpec({
+    onlyExpired: ONLY_EXPIRED,
+    expiredCutoff,
+    createdAfter,
+    orderMode,
+    limit: rawLimit,
+  });
 
-  if (orderMode === "oldest") {
-    query = query
-      .order("expires_at", { ascending: true, nullsFirst: false })
-      .order("created_at", { ascending: true });
-  } else {
-    query = query.order("created_at", { ascending: false });
-  }
+  console.log(
+    `[resolve-signals] SELECT_MODE onlyExpired=${ONLY_EXPIRED} order=${orderMode}` +
+      ` maxAgeDays=${maxAgeDays ?? "none"} limit=${rawLimit} maxUpdates=${maxUpdatesLabel}` +
+      ` dedupeStrict=${DEDUPE_STRICT}`,
+  );
+  console.log(
+    `[resolve-signals] created_after=${createdAfter ?? "none"}` +
+      ` expired_cutoff=${querySpec.filters.expiresAtLt ?? "none"}`,
+  );
 
-  const { data: rows, error: selectError } = await query.limit(rawLimit);
+  const selectStartedAt = Date.now();
+  const { data: rows, error: selectError } = await applyPendingResolutionQuerySpec(
+    supabase.from("generated_signal_pairs"),
+    querySpec,
+  );
+  const selectElapsedMs = Date.now() - selectStartedAt;
 
   if (selectError) {
-    console.error("[resolve-signals] DB select failed:", selectError.message);
+    console.error(
+      `[resolve-signals] DB select failed after ${selectElapsedMs}ms: ${selectError.message}` +
+        ` filters=${JSON.stringify(querySpec.filters)} order=${JSON.stringify(querySpec.order)}` +
+        ` limit=${querySpec.limit}`,
+    );
     if (WRITE_MODE) {
       await tryWriteResolverJobRun({
         status: "error",
         finishedAt: new Date().toISOString(),
         errorMessage: selectError.message,
-        extra: { phase: "db-select" },
+        extra: {
+          phase: "db-select",
+          selectElapsedMs,
+          filters: querySpec.filters,
+          order: querySpec.order,
+          limit: querySpec.limit,
+        },
       });
     }
     process.exit(1);
@@ -475,6 +556,11 @@ async function main() {
 
   const selectedRows = ((rows ?? []) as unknown) as ResolverRow[];
   const selectedCount = selectedRows.length;
+  console.log(
+    `[resolve-signals] SELECT_OK count=${selectedCount} elapsed_ms=${selectElapsedMs}` +
+      ` first_expires_at=${selectedRows[0]?.expires_at ?? "n/a"}` +
+      ` last_expires_at=${selectedRows[selectedRows.length - 1]?.expires_at ?? "n/a"}`,
+  );
   const strictRows = DEDUPE_STRICT
     ? Array.from(
         selectedRows
@@ -689,30 +775,34 @@ async function main() {
   }
 }
 
-main().catch(async (err) => {
-  console.error("[resolve-signals] Fatal error:", err);
-  // Best-effort job_runs write on fatal throw (write-mode only)
-  if (WRITE_MODE) {
-    try {
-      const { writeJobRun: wjr } = await import(
-        "../lib/feed/cacheGeneratedSignals"
-      );
-      const tFatal = new Date().toISOString();
-      await wjr({
-        source: "resolver",
-        formulaVersion: "resolver-v1",
-        startedAt: tFatal, // startedAt inaccessible here — use current time as sentinel
-        finishedAt: tFatal,
-        status: "error",
-        generatedCount: 0,
-        rejectedCount: 0,
-        durationMs: 0,
-        errorMessage: err instanceof Error ? err.message : String(err),
-        diagnostics: { writeMode: true, fatal: true },
-      });
-    } catch {
-      // non-fatal: never let job_runs failure mask the real error
+// Guard so `tests/signals/*` can import the query-spec helpers above without
+// triggering the CLI entrypoint (main() reads live env vars / hits Supabase).
+if (require.main === module) {
+  main().catch(async (err) => {
+    console.error("[resolve-signals] Fatal error:", err);
+    // Best-effort job_runs write on fatal throw (write-mode only)
+    if (WRITE_MODE) {
+      try {
+        const { writeJobRun: wjr } = await import(
+          "../lib/feed/cacheGeneratedSignals"
+        );
+        const tFatal = new Date().toISOString();
+        await wjr({
+          source: "resolver",
+          formulaVersion: "resolver-v1",
+          startedAt: tFatal, // startedAt inaccessible here — use current time as sentinel
+          finishedAt: tFatal,
+          status: "error",
+          generatedCount: 0,
+          rejectedCount: 0,
+          durationMs: 0,
+          errorMessage: err instanceof Error ? err.message : String(err),
+          diagnostics: { writeMode: true, fatal: true },
+        });
+      } catch {
+        // non-fatal: never let job_runs failure mask the real error
+      }
     }
-  }
-  process.exit(1);
-});
+    process.exit(1);
+  });
+}
