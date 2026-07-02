@@ -106,40 +106,6 @@
 }
 .introFooterIcon { width: 16px; height: 16px; flex: 0 0 16px; color: var(--g); }
 
-/* ── Segmented control (7D / 14D) ── */
-.segControl {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px;
-  padding: 6px;
-  border-radius: 14px;
-  background: rgba(6,16,30,0.7);
-  border: 1px solid rgba(24,231,255,0.14);
-}
-.seg {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 100%;
-  text-align: center;
-  padding: 11px 0;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  background: transparent;
-  font-family: inherit;
-  font-size: 15px;
-  font-weight: 800;
-  color: var(--mut);
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
-}
-.segActive {
-  color: #d8ffe9;
-  background: rgba(94,234,180,0.10);
-  border: 1px solid rgba(94,234,180,0.55);
-  box-shadow: 0 0 16px rgba(94,234,180,0.22), inset 0 0 12px rgba(94,234,180,0.10);
-}
-
 /* ── 2×2 metrics ── */
 .metricsGrid {
   display: grid;

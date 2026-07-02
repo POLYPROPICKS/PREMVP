@@ -1,8 +1,8 @@
 'use client';
 
 // components/why-trust/WhyTrustSection.tsx
-// "Why Can I Trust This?" — client component · 7D/14D toggle.
-// Fetches /api/signals/resolved (mode=latest) for both windows and renders the
+// "Why Can I Trust This?" — client component · fixed 14-day window.
+// Fetches /api/signals/resolved (mode=latest, days=14) and renders the
 // weekResultsCard contract, sourced from public.track_record_window_results
 // (all actual-resolved shown rows — no synthetic balancing, no global fill).
 // Real resolved won/lost PnL only — no projected EV, see
@@ -14,10 +14,10 @@ import type { WeekResultsCard, TrackRecordRow, ReturnCurvePoint } from '@/compon
 
 // ── Types ───────────────────────────────────────────────────────────────────────
 
-type TrackWindow = '7D' | '14D';
 type WindowState = { loading: boolean; error: boolean; data: WeekResultsCard | null };
 
-const WINDOW_DAYS: Record<TrackWindow, number> = { '7D': 7, '14D': 14 };
+// Production trust block is 14-day only — no window switcher, no 7D state.
+const TRACK_WINDOW_DAYS = 14;
 
 const RESOLVED_TRACK_RECORD_RULE =
   'Resolved track record from actual shown signals only. No global fill, no projected PnL.';
@@ -245,34 +245,27 @@ function MethodologyNum({ n }: { n: number }) {
 // ── Main section ────────────────────────────────────────────────────────────────
 
 export default function WhyTrustSection() {
-  const [active, setActive] = useState<TrackWindow>('7D');
-  const [store, setStore] = useState<Record<TrackWindow, WindowState>>({
-    '7D': { loading: true, error: false, data: null },
-    '14D': { loading: true, error: false, data: null },
-  });
+  const [cur, setCur] = useState<WindowState>({ loading: true, error: false, data: null });
 
   useEffect(() => {
     let cancelled = false;
-    const load = async (w: TrackWindow) => {
+    (async () => {
       try {
         const res = await fetch(
-          `/api/signals/resolved?mode=latest&days=${WINDOW_DAYS[w]}&limit=25`,
+          `/api/signals/resolved?mode=latest&days=${TRACK_WINDOW_DAYS}&limit=25`,
           { cache: 'no-store' }
         );
         const json = await res.json();
         const card = json?.weekResultsCard as WeekResultsCard | undefined;
         if (!res.ok || !json?.ok || !card) throw new Error('bad response');
-        if (!cancelled) setStore((p) => ({ ...p, [w]: { loading: false, error: false, data: card } }));
+        if (!cancelled) setCur({ loading: false, error: false, data: card });
       } catch {
-        if (!cancelled) setStore((p) => ({ ...p, [w]: { loading: false, error: true, data: null } }));
+        if (!cancelled) setCur({ loading: false, error: true, data: null });
       }
-    };
-    load('7D');
-    load('14D');
+    })();
     return () => { cancelled = true; };
   }, []);
 
-  const cur = store[active];
   const card = cur.data;
   const insufficient = card?.status === 'insufficient_history';
   const metrics = card ? (insufficient ? deriveTrackingMetrics(card) : deriveMetrics(card)) : PLACEHOLDER_METRICS;
@@ -300,20 +293,6 @@ export default function WhyTrustSection() {
             </svg>
             <span>Transparent tracking beats cherry-picked screenshots.</span>
           </div>
-        </div>
-
-        <div className={styles.segControl} role="group" aria-label="Tracking window">
-          {(['7D', '14D'] as TrackWindow[]).map((w) => (
-            <button
-              key={w}
-              type="button"
-              className={`${styles.seg} ${active === w ? styles.segActive : ''}`}
-              aria-pressed={active === w}
-              onClick={() => setActive(w)}
-            >
-              {w}
-            </button>
-          ))}
         </div>
 
         <div className={styles.metricsGrid}>
