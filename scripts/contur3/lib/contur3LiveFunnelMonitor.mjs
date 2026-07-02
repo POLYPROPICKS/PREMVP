@@ -30,7 +30,11 @@ import fs from 'fs';
 import path from 'path';
 import { execSync } from 'child_process';
 
-export const REPORT_DIR = path.join(process.cwd(), 'reports', 'contur3');
+// Report hygiene: generated logs default to a git-ignored path so diagnostics
+// never dirty the working tree (INVARIANTS §10.5). Override: CONTUR3_REPORT_DIR.
+// The old tracked reports/contur3 stays frozen as historical artifacts.
+export const REPORT_DIR = process.env.CONTUR3_REPORT_DIR
+  || path.join(process.cwd(), 'var', 'reports', 'contur3');
 
 // Mirrors nightWindow.ts — UTC-only math for the due window.
 export const REBALANCE_MINUTES_BEFORE_START = 70;
@@ -176,11 +180,18 @@ export function gitInfo() {
     try { return execSync(cmd, { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim(); }
     catch { return null; }
   };
+  // Deployment hash: proves WHICH commit is actually running (DEPLOYMENT_MISMATCH guard).
+  // Railway exposes the deployed commit; when absent this is an honest measurement gap,
+  // never silently treated as "matches repo".
+  const deployHash = process.env.RAILWAY_GIT_COMMIT_SHA || null;
+  const head = safe('git rev-parse HEAD');
   return {
-    head: safe('git rev-parse HEAD'),
+    head,
     branch: safe('git rev-parse --abbrev-ref HEAD'),
     commit_subject: safe('git log -1 --pretty=%s'),
     origin_main: safe('git rev-parse origin/main'),
+    deployment_commit_hash: deployHash ?? 'MEASUREMENT_MISSING:RAILWAY_GIT_COMMIT_SHA_ABSENT',
+    deployment_matches_repo: deployHash && head ? deployHash === head : null,
   };
 }
 
@@ -273,6 +284,21 @@ export async function collectFunnel(opts = {}) {
     summary: {},
     anomalies: [],
     next_actions: [],
+    // Honest measurement gaps (INVARIANTS §10.1): a missing measurement is
+    // reported as MEASUREMENT_MISSING with an exact reason, never as zero.
+    builder_admission: {
+      status: 'MEASUREMENT_MISSING',
+      reason: 'BUILDER_DIAGNOSTICS_ONLY_VIA_NIGHT_PLAN_ROUTE_NOT_DB',
+      detail: 'fullmatch admitted/rejected accounting (canonical lib/contur3/taxonomy.ts) is computed inside '
+        + 'buildFireModelCandidates and surfaced via GET /api/executor/night-plan raw diagnostics; this read-only '
+        + 'monitor does not call that route because it appends audit/order rows. Follow-up: expose the accounting read-only.',
+    },
+    price_check: {
+      status: 'MEASUREMENT_MISSING',
+      reason: 'PRICE_LIQUIDITY_RECHECK_NOT_IMPLEMENTED',
+      detail: 'runEventRebalance queues due reservations from the reserved entry_price/max_entry_price without a live '
+        + 'price/liquidity re-check; implementing that re-check is a pending founder decision (CONTUR3_NEXT_PATCH_DESIGN_BRIEF).',
+    },
   };
 
   if (!env.has_supabase_url || !env.has_service_role) {
@@ -406,8 +432,8 @@ export async function collectFunnel(opts = {}) {
       due_state: ds,
       event_execution_queue_rows: queue.length,
       executor_api_visible: queue.length > 0 ? true : null,
-      order_events: orderRows.filter((od) => (od.match_family_key ?? '') === (res?.match_family_key ?? ' ')).length,
-      audit_events: auditRows.filter((ad) => (ad.match_family_key ?? '') === (res?.match_family_key ?? ' ')).length,
+      order_events: orderRows.filter((od) => (od.match_family_key ?? '') === (res?.match_family_key ?? '\u0000')).length,
+      audit_events: auditRows.filter((ad) => (ad.match_family_key ?? '') === (res?.match_family_key ?? '\u0000')).length,
       sample_slugs: g.sample_slugs,
       verdict,
     });
@@ -533,6 +559,7 @@ export function renderMarkdown(j) {
   L.push(`Minsk now: ${j.windows?.minsk_now}`);
   L.push(`Branch: ${j.git?.branch}  HEAD: ${j.git?.head?.slice(0, 7)}  (${j.git?.commit_subject ?? ''})`);
   L.push(`origin/main: ${j.git?.origin_main?.slice(0, 7)}`);
+  L.push(`Deployment: ${j.git?.deployment_commit_hash}  matches_repo: ${j.git?.deployment_matches_repo}`);
   L.push(`Window: ${j.windows?.from_utc} .. ${j.windows?.to_utc} (lookback ${j.windows?.lookback_hours}h / next ${j.windows?.next_hours}h)`);
   L.push('');
   L.push(`## MACHINE VERDICT: ${s.machine_verdict ?? 'UNKNOWN'}`);
@@ -564,6 +591,14 @@ export function renderMarkdown(j) {
   for (const f of j.fixtures ?? []) {
     L.push(`| ${f.display_match} | ${f.raw_rows} | ${f.raw_allowed_fullmatch_rows} | ${f.builder_forbidden_candidates} | ${f.reservation_status} | ${f.due_state} | ${f.event_execution_queue_rows} | ${f.executor_api_visible} | ${f.order_events} | ${f.fallback_used} | ${f.verdict} |`);
   }
+  L.push('');
+  L.push('## Builder admission accounting');
+  L.push(`- status: **${j.builder_admission?.status ?? 'UNKNOWN'}** (${j.builder_admission?.reason ?? '-'})`);
+  L.push(`  - ${j.builder_admission?.detail ?? ''}`);
+  L.push('');
+  L.push('## Price/liquidity re-check (last hour before start)');
+  L.push(`- status: **${j.price_check?.status ?? 'UNKNOWN'}** (${j.price_check?.reason ?? '-'})`);
+  L.push(`  - ${j.price_check?.detail ?? ''}`);
   L.push('');
   L.push('## Anomalies');
   if (!(j.anomalies ?? []).length) L.push('_none_');

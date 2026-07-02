@@ -84,3 +84,6 @@ visual-runs/
 /public/market-source-portraits/normalized/multi-02.webp
 # NOTE: manifest.json and accepted normalized/*.webp are committed (tracked)
 #       and remain tracked despite ignore rules above.
+
+# Contur3 generated diagnostics/logs (canonical monitor output) — never track
+var/

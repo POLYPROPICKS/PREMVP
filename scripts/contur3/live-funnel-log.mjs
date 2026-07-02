@@ -2,10 +2,11 @@
 /**
  * Contur3 — canonical live-funnel log (READ-ONLY).
  *
- * One command, one canonical log. Generates:
- *   reports/contur3/live_funnel_latest.md / .json
- *   reports/contur3/live_funnel_<timestamp>.md / .json
- *   reports/contur3/live_funnel_events.ndjson (append-only)
+ * One command, one canonical log. Generates (git-ignored by default;
+ * override dir with CONTUR3_REPORT_DIR):
+ *   var/reports/contur3/live_funnel_latest.md / .json
+ *   var/reports/contur3/live_funnel_<timestamp>.md / .json
+ *   var/reports/contur3/live_funnel_events.ndjson (append-only)
  *
  * SELECT only. Never writes DB, never queues, never places orders.
  *
