@@ -705,6 +705,46 @@ export function mapWindowResultRowToTrackRecordRow(r: WindowResultRow): TrackRec
   };
 }
 
+export interface CarouselResolvedSignal {
+  id: string;
+  eventTitle: string;
+  pick: string;
+  winner: string;
+  result: string;
+  returnPct: number | null;
+  europeanOdds: number | null;
+  americanOdds: string | null;
+  signalConfidence: number | null;
+  trustMetrics: { smartMoney: number | null; whaleVsPublicMoney: number | null; preEventScoreAI: number | null };
+  marketActivityScore: number | null;
+  marketActivityLabel: string | null;
+  resolvedAt: string;
+}
+
+/** Maps one track_record_window_results row to the legacy carousel signal
+ *  shape consumed by ResolvedSignalsCarousel / PassOfferModal / the
+ *  reconstruction page (`GET /api/signals/resolved` `signals` field). Reads
+ *  the SAME read-model row as weekResultsCard — never a second live query
+ *  against generated_signal_pairs. signalConfidence/trustMetrics/
+ *  marketActivityScore have no equivalent in the read-model and are null. */
+export function mapWindowResultRowToCarouselSignal(r: WindowResultRow): CarouselResolvedSignal {
+  return {
+    id: r.source_row_id,
+    eventTitle: r.event_title,
+    pick: r.selected_outcome ?? "",
+    winner: r.winning_outcome ?? "",
+    result: r.signal_result ?? "",
+    returnPct: r.real_pnl_usd !== null ? round((r.real_pnl_usd / STAKE_USD) * 100, 2) : null,
+    europeanOdds: r.decimal_odds,
+    americanOdds: decimalToAmerican(r.decimal_odds),
+    signalConfidence: null,
+    trustMetrics: { smartMoney: null, whaleVsPublicMoney: null, preEventScoreAI: null },
+    marketActivityScore: null,
+    marketActivityLabel: null,
+    resolvedAt: r.resolved_at ?? "",
+  };
+}
+
 export function mapRealResolvedRowToTrackRecordRow(r: RealResolvedRow): TrackRecordRow {
   return {
     id: r.sourceRowId,
@@ -952,149 +992,19 @@ export async function GET(request: Request) {
     trackRecordDisplayTable: { windowDays, rows: trackRecordRows },
   };
 
-  let query = supabase
-    .from("generated_signal_pairs")
-    .select(
-      "id, created_at, resolved_at, condition_id, selected_outcome, winning_outcome, " +
-      "signal_result, realized_return_pct, metric_formula_version, entry_price_num, " +
-      "premium_signal, diagnostics"
-    )
-    .not("signal_result", "is", null)
-    // Exclude shadow research rows; preserve legacy rows where metric_formula_version IS NULL.
-    .or("metric_formula_version.is.null,metric_formula_version.not.like.shadow-%")
-    .order("resolved_at", { ascending: false })
-    .limit(INTERNAL_FETCH_LIMIT);
+  // ── signals: legacy carousel array (ResolvedSignalsCarousel / PassOfferModal /
+  // reconstruction page) — sourced from the SAME read-model rows as
+  // weekResultsCard above, never a second live query against
+  // generated_signal_pairs. For insufficient_history, windowRows (and
+  // therefore orderedForLedger) is already [], so signals is correctly empty
+  // — no legacy fallback rows, no mixed old/global data in the response.
+  const carouselSignals = orderedForLedger.map(mapWindowResultRowToCarouselSignal);
 
+  let signals = carouselSignals;
   if (isLatestMode) {
-    const cutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
-    query = query.gte("resolved_at", cutoff);
-  }
-
-  const { data: rows, error: queryError } = await query;
-
-  if (queryError) {
-    return NextResponse.json(
-      { ok: false, error: "DB_QUERY_ERROR", detail: queryError.message },
-      { status: 500, headers: { "Cache-Control": "no-store" } }
-    );
-  }
-
-  if (!rows || rows.length === 0) {
-    return NextResponse.json(
-      {
-        ok: true,
-        generatedAt: new Date().toISOString(),
-        summary: {
-          uniqueResolved: 0, snapshotRows: 0,
-          won: 0, lost: 0, push: 0,
-          sampleSizeStatus: "early",
-          showPerformanceClaim: false,
-          message: "Tracking is live. Early sample, not performance guarantee.",
-          ...(isLatestMode && {
-            latestMode: true,
-            windowDays,
-            maxCards: LATEST_MAX_CARDS,
-            maxLost: LATEST_MAX_LOST,
-            excludePush: true,
-            selectionRule: "last_7d_highest_activity_max_two_loss",
-          }),
-        },
-        signals: [],
-        weekResultsCard,
-        resolvedLedger: ledgerProofRows,
-      },
-      { headers: { "Cache-Control": "no-store" } }
-    );
-  }
-
-  // ── Dedupe by condition_id + selected_outcome ─────────────────────────────
-  const groups = new Map<string, DbRow[]>();
-  for (const raw of (rows as unknown) as DbRow[]) {
-    const key = `${raw.condition_id ?? ""}::${raw.selected_outcome ?? ""}`;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(raw);
-  }
-
-  // ── Build deduplicated signal list ─────────────────────────────────────────
-  interface ResolvedSignal {
-    id: string;
-    conditionId: string;
-    eventTitle: string;
-    pick: string;
-    winner: string;
-    result: string;
-    returnPct: number | null;
-    entryPrice: number | null;
-    europeanOdds: number | null;
-    americanOdds: string | null;
-    signalConfidence: number | null;
-    trustMetrics: { smartMoney: number | null; whaleVsPublicMoney: number | null; preEventScoreAI: number | null };
-    snapshotRows: number;
-    marketActivityScore: number | null;
-    marketActivityLabel: string | null;
-    firstSignalCreatedAt: string;
-    lastSignalCreatedAt: string;
-    resolvedAt: string;
-    metricFormulaVersion: string | null;
-  }
-
-  const allSignals: ResolvedSignal[] = [];
-  let wonCount = 0, lostCount = 0, pushCount = 0;
-
-  for (const [, group] of groups) {
-    group.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    const rep = group[0];
-    const lastRow = group[group.length - 1];
-
-    const resolvedAt =
-      group.map((r) => r.resolved_at).filter(Boolean).sort().reverse()[0] ??
-      rep.resolved_at ?? rep.created_at;
-
-    const result = rep.signal_result ?? "unknown";
-    if (result === "won") wonCount++;
-    else if (result === "lost") lostCount++;
-    else pushCount++;
-
-    const decOdds = europeanOdds(rep.entry_price_num ?? null);
-    const { score: actScore, label: actLabel } = extractActivityScore(rep, group.length);
-
-    allSignals.push({
-      id: rep.id,
-      conditionId: rep.condition_id ?? "",
-      eventTitle: extractEventTitle(rep),
-      pick: rep.selected_outcome ?? "",
-      winner: rep.winning_outcome ?? "",
-      result,
-      returnPct: rep.realized_return_pct ?? null,
-      entryPrice: rep.entry_price_num ?? null,
-      europeanOdds: decOdds,
-      americanOdds: decimalToAmerican(decOdds),
-      signalConfidence: extractConfidence(rep),
-      trustMetrics: extractTrustMetrics(rep),
-      snapshotRows: group.length,
-      marketActivityScore: actScore,
-      marketActivityLabel: actLabel,
-      firstSignalCreatedAt: rep.created_at,
-      lastSignalCreatedAt: lastRow.created_at,
-      resolvedAt,
-      metricFormulaVersion: rep.metric_formula_version ?? null,
-    });
-  }
-
-  // ── Latest-mode carousel subset ───────────────────────────────────────────
-  let signals = allSignals;
-
-  if (isLatestMode) {
-    signals = signals.filter((s) => !PUSH_RESULTS.has(s.result));
-    signals.sort((a, b) => {
-      const scoreDiff = (b.marketActivityScore ?? 0) - (a.marketActivityScore ?? 0);
-      if (scoreDiff !== 0) return scoreDiff;
-      return new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime();
-    });
-
-    const selected: ResolvedSignal[] = [];
+    const selected: typeof carouselSignals = [];
     let lostIncluded = 0;
-    for (const s of signals) {
+    for (const s of carouselSignals) {
       if (selected.length >= LATEST_MAX_CARDS) break;
       if (s.result === "lost") {
         if (lostIncluded >= LATEST_MAX_LOST) continue;
@@ -1104,31 +1014,40 @@ export async function GET(request: Request) {
     }
     signals = selected;
   } else {
-    signals.sort((a, b) => new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime());
-    signals = signals.slice(0, limit);
+    signals = carouselSignals.slice(0, limit);
   }
 
   // ── Response ──────────────────────────────────────────────────────────────
+  // Top-level `summary` is derived entirely from the read-model values already
+  // computed above (windowSummary / summary / trackStatus / rawShownRows) —
+  // never recomputed from a second live query. Field names are kept for
+  // backward compatibility with existing consumers; the values are the
+  // read-model's, not a legacy recompute. No `selectionRule` field: the old
+  // highest-activity/max-2-loss carousel selection no longer applies — the
+  // read-model rows are already the single source of truth, ordered by
+  // score_rank.
   return NextResponse.json(
     {
       ok: true,
       generatedAt: new Date().toISOString(),
       summary: {
-        uniqueResolved: allSignals.length,
-        snapshotRows: rows.length,
-        won: wonCount,
-        lost: lostCount,
-        push: pushCount,
-        sampleSizeStatus: "early",
-        showPerformanceClaim: false,
-        message: "Tracking is live. Early sample, not performance guarantee.",
+        uniqueResolved: summary.resolvedCount,
+        snapshotRows: rawShownRows,
+        won: summary.winsCount,
+        lost: summary.lossesCount,
+        push: 0,
+        sampleSizeStatus: trackSampleSizeStatus,
+        showPerformanceClaim: trackStatus === "ready",
+        message:
+          trackStatus === "ready"
+            ? "Resolved track record from actual shown signals only. No global fill, no projected PnL."
+            : "Tracking is live. Shown signals are being tracked until enough results resolve.",
         ...(isLatestMode && {
           latestMode: true,
           windowDays,
           maxCards: LATEST_MAX_CARDS,
           maxLost: LATEST_MAX_LOST,
           excludePush: true,
-          selectionRule: "last_7d_highest_activity_max_two_loss",
         }),
       },
       signals,

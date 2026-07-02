@@ -18,6 +18,7 @@ import {
   computeWindowReturnCurve,
   mapWindowResultRowToLedgerRow,
   mapWindowResultRowToTrackRecordRow,
+  mapWindowResultRowToCarouselSignal,
   normalizeMatchKey,
   type ResolvedPairRow,
   type RealResolvedRow,
@@ -773,4 +774,119 @@ test("insufficient_history still shows no positive PnL even with rows present in
   // value when trackStatus === "ready" (see route.ts contract above) —
   // insufficient_history windows must render 0, never this raw aggregate.
   assert.equal(summary.netProfitUsd, 100);
+});
+
+// ── /api/signals/resolved: single read-model source, no legacy live query ──
+
+test("route.ts no longer queries generated_signal_pairs live inside GET — signals/summary are read-model-only", () => {
+  assert.ok(
+    !routeSource.includes('.from("generated_signal_pairs")'),
+    "a second live generated_signal_pairs query would re-introduce mixed legacy/read-model data in the same response"
+  );
+});
+
+test("route.ts top-level summary has no legacy selectionRule field", () => {
+  assert.ok(
+    !routeSource.includes("selectionRule:"),
+    "selectionRule described the removed highest-activity/max-2-loss carousel selection — must not appear in the read-model-only response"
+  );
+});
+
+test("route.ts signals array is built from orderedForLedger via mapWindowResultRowToCarouselSignal (the same rows as weekResultsCard)", () => {
+  assert.ok(routeSource.includes("orderedForLedger.map(mapWindowResultRowToCarouselSignal)"));
+});
+
+test("route.ts top-level summary fields are assigned from read-model values (summary.resolvedCount/winsCount/lossesCount, rawShownRows), not a legacy recompute", () => {
+  const summaryBlockStart = routeSource.indexOf("summary: {", routeSource.indexOf("return NextResponse.json"));
+  const summaryBlockEnd = routeSource.indexOf("},", summaryBlockStart);
+  const block = routeSource.slice(summaryBlockStart, summaryBlockEnd);
+  assert.ok(block.includes("uniqueResolved: summary.resolvedCount"));
+  assert.ok(block.includes("snapshotRows: rawShownRows"));
+  assert.ok(block.includes("won: summary.winsCount"));
+  assert.ok(block.includes("lost: summary.lossesCount"));
+});
+
+test("mapWindowResultRowToCarouselSignal maps a resolved won row to the legacy ApiResolvedSignal shape with correct returnPct/odds", () => {
+  const row = windowResultRow({
+    source_row_id: "row-won",
+    event_title: "Team A vs Team B",
+    selected_outcome: "Team A",
+    winning_outcome: "Team A",
+    signal_result: "won",
+    display_status: "Hit",
+    is_resolved: true,
+    resolved_at: "2026-06-28T00:00:00.000Z",
+    entry_price_num: 0.5,
+    decimal_odds: 2,
+    real_pnl_usd: 100,
+    return_label: "+$100",
+  });
+  const signal = mapWindowResultRowToCarouselSignal(row);
+  assert.equal(signal.id, "row-won");
+  assert.equal(signal.eventTitle, "Team A vs Team B");
+  assert.equal(signal.pick, "Team A");
+  assert.equal(signal.winner, "Team A");
+  assert.equal(signal.result, "won");
+  assert.equal(signal.returnPct, 100);
+  assert.equal(signal.europeanOdds, 2);
+  assert.equal(signal.americanOdds, "+100");
+  assert.equal(signal.resolvedAt, "2026-06-28T00:00:00.000Z");
+});
+
+test("mapWindowResultRowToCarouselSignal maps a resolved lost row to returnPct=-100", () => {
+  const row = windowResultRow({
+    signal_result: "lost",
+    display_status: "Miss",
+    entry_price_num: 0.4,
+    real_pnl_usd: -100,
+    return_label: "-$100",
+  });
+  const signal = mapWindowResultRowToCarouselSignal(row);
+  assert.equal(signal.result, "lost");
+  assert.equal(signal.returnPct, -100);
+});
+
+test("14D ready: signals/ledger both come from the same 44-row (29 win / 15 loss) read-model set — no legacy uniqueResolved=10/won=4/lost=6 shape", () => {
+  const rows: WindowResultRow[] = [];
+  for (let i = 0; i < 29; i++) rows.push(windowResultRow({ window_days: 14, source_row_id: `w-${i}`, score_rank: i + 1, entry_price_num: 0.5, real_pnl_usd: 100 }));
+  for (let i = 0; i < 15; i++) rows.push(windowResultRow({ window_days: 14, source_row_id: `l-${i}`, score_rank: 100 + i, signal_result: "lost", display_status: "Miss", entry_price_num: 0.4, real_pnl_usd: -100, return_label: "-$100" }));
+
+  const summary = computeWindowResultsSummary(rows);
+  const carouselSignals = rows.map(mapWindowResultRowToCarouselSignal);
+
+  // read-model-derived top-level summary fields the route now assigns:
+  assert.equal(summary.resolvedCount, 44);
+  assert.equal(summary.winsCount, 29);
+  assert.equal(summary.lossesCount, 15);
+  assert.notEqual(summary.resolvedCount, 10, "must not match the old legacy uniqueResolved=10 shape");
+  assert.notEqual(summary.winsCount, 4, "must not match the old legacy won=4 shape");
+  assert.notEqual(summary.lossesCount, 6, "must not match the old legacy lost=6 shape");
+
+  // signals array carries the same 44 rows the ledger/summary are built from.
+  assert.equal(carouselSignals.length, 44);
+  assert.equal(carouselSignals.filter((s) => s.result === "won").length, 29);
+  assert.equal(carouselSignals.filter((s) => s.result === "lost").length, 15);
+});
+
+test("7D insufficient_history: no legacy fallback rows and zero PnL (route.ts contract: windowRows = [] when not ready)", () => {
+  assert.ok(routeSource.includes('trackStatus === "ready"\n      ? (((windowResultsRes.data ?? []) as unknown) as WindowResultRow[])\n      : []'));
+  // With windowRows = [], orderedForLedger and carouselSignals are also [].
+  const rows: WindowResultRow[] = [];
+  const summary = computeWindowResultsSummary(rows);
+  const carouselSignals = rows.map(mapWindowResultRowToCarouselSignal);
+  assert.equal(summary.resolvedCount, 0);
+  assert.equal(summary.winsCount, 0);
+  assert.equal(summary.lossesCount, 0);
+  assert.equal(summary.netProfitUsd, 0);
+  assert.equal(carouselSignals.length, 0);
+});
+
+test("limit affects signals/ledger rows only — top-level summary counts are computed from the full window row set", () => {
+  const rows: WindowResultRow[] = Array.from({ length: 44 }, (_, i) =>
+    windowResultRow({ window_days: 14, source_row_id: `row-${i}`, score_rank: i + 1, real_pnl_usd: i < 29 ? 100 : -100, signal_result: i < 29 ? "won" : "lost", display_status: i < 29 ? "Hit" : "Miss" })
+  );
+  const summary = computeWindowResultsSummary(rows);
+  const limitedSignals = rows.slice(0, 25).map(mapWindowResultRowToCarouselSignal);
+  assert.equal(summary.resolvedCount, 44, "summary must reflect all 44 rows regardless of ledger limit");
+  assert.equal(limitedSignals.length, 25, "signals/ledger rows are capped by limit");
 });
