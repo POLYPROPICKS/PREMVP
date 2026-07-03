@@ -149,7 +149,6 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
   // Modal proof card is width-constrained: show whole-percent figures so the
   // hero metrics never overlap the paired stat. Other variants keep full precision.
   const roiDisplay = variant === 'paywall' ? Math.round(data.projectedRoiPct) : data.projectedRoiPct;
-  const winRateDisplay = variant === 'paywall' ? Math.round(data.projectedWinRatePct) : data.projectedWinRatePct;
   const retLabel = `${isPositive ? '+' : ''}${roiDisplay}%`;
 
   const hasChart = rows.length > 0;
@@ -185,27 +184,15 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
 
       <div className={styles.heroRow}>
         <div className={styles.heroLeft}>
-          <span className={styles.heroMetric}>{data.selectedSignals}</span>
-          <span className={styles.heroSub}>PUBLISHED</span>
+          <span className={styles.heroMetric}>{data.winsCount}/{data.resolvedCount}</span>
+          <span className={styles.heroSub}>WON</span>
         </div>
 
         <div className={styles.heroRight}>
-          <span className={styles.heroLabel}>PROJECTED RETURN</span>
+          <span className={styles.heroLabel}>CUMULATIVE P&amp;L</span>
           <span className={[styles.heroVal, isPositive ? styles.heroValPos : styles.heroValNeg].join(' ')}>
             {retLabel}
           </span>
-        </div>
-      </div>
-
-      <div className={styles.heroRow}>
-        <div className={styles.heroLeft}>
-          <span className={styles.heroMetric}>{winRateDisplay}%</span>
-          <span className={styles.heroSub}>PROJECTED RATE</span>
-        </div>
-
-        <div className={styles.heroRight}>
-          <span className={styles.heroLabel}>AVG ODDS</span>
-          <span className={styles.heroVal}>{data.avgDecimalOdds.toFixed(2)}</span>
         </div>
       </div>
 
@@ -296,11 +283,20 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
       </div>
 
       <div className={styles.chipsRow}>
-        {chipRows.map((r, i) => (
-          <span key={i} className={[styles.chip, styles.chipWon].join(' ')}>
-            {r.pick} · Published · {r.returnLabel}
-          </span>
-        ))}
+        {chipRows.map((r, i) => {
+          const safePick = r.pick && r.pick !== 'Published' ? r.pick : null;
+          return (
+            <span
+              key={i}
+              className={[styles.chip, r.displayStatus === 'Hit' ? styles.chipWon : styles.chipLost].join(' ')}
+            >
+              {safePick ? <span className={styles.chipPick}>{safePick}</span> : null}
+              <span className={styles.chipReturn}>
+                {r.displayStatus === 'Hit' ? '✓' : '✕'} {r.returnLabel}
+              </span>
+            </span>
+          );
+        })}
         {Array.from({ length: placeholders }).map((_, i) => (
           <span key={`ph-${i}`} className={[styles.chip, styles.chipMore].join(' ')}>
             {i === 0 ? 'no data yet' : 'future'}
@@ -313,18 +309,19 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
 
 // ── Top-carousel variant ────────────────────────────────────────────────────
 
-function TopCarouselRing({ rate }: { rate: number }) {
+function TopCarouselRing({ won, count }: { won: number; count: number }) {
   const r = 25;
   const cx = 32;
   const cy = 32;
   const circ = 2 * Math.PI * r;
-  const frac = Math.max(0, Math.min(1, rate / 100));
+  const safeCount = Math.max(count, 1);
+  const frac = Math.max(0, Math.min(1, won / safeCount));
   const dash = circ * frac;
 
   return (
     <svg width="64" height="64" viewBox="0 0 64 64" className={styles.tcRing} aria-hidden="true">
       <circle cx={cx} cy={cy} r={r} fill="none" stroke="rgba(255,255,255,0.09)" strokeWidth="4" />
-      {rate > 0 && (
+      {won > 0 && (
         <circle
           cx={cx}
           cy={cy}
@@ -348,7 +345,7 @@ function TopCarouselRing({ rate }: { rate: number }) {
         letterSpacing="-0.05em"
         fontFamily="system-ui, -apple-system, sans-serif"
       >
-        {Math.round(rate)}%
+        {won}/{count}
       </text>
       <text
         x={cx}
@@ -360,7 +357,7 @@ function TopCarouselRing({ rate }: { rate: number }) {
         letterSpacing="0.11em"
         fontFamily="system-ui, -apple-system, sans-serif"
       >
-        PROJECTED
+        WON
       </text>
     </svg>
   );
@@ -383,7 +380,7 @@ function TopCarouselCard({ data, loading }: { data: WeekResultsCard | null; load
   return (
     <div className={styles.cardTopCarousel}>
       <div className={styles.tcBody}>
-        <TopCarouselRing rate={data.projectedWinRatePct} />
+        <TopCarouselRing won={data.winsCount} count={data.resolvedCount} />
 
         <div className={styles.tcCopy}>
           <div className={styles.tcTopLine}>
@@ -397,7 +394,7 @@ function TopCarouselCard({ data, loading }: { data: WeekResultsCard | null; load
           </div>
 
           <div className={styles.tcMetricLine}>
-            <span className={styles.tcReturnLabel}>PROJECTED RETURN</span>
+            <span className={styles.tcReturnLabel}>CUMULATIVE TOTAL RETURN</span>
             <span className={[styles.tcReturn, !isPos ? styles.tcReturnNeg : ''].join(' ').trim()}>
               {retLabel}
             </span>
@@ -408,8 +405,11 @@ function TopCarouselCard({ data, loading }: { data: WeekResultsCard | null; load
       {displayRows.length > 0 && (
         <div className={styles.tcChipsRow}>
           {displayRows.map((r, i) => (
-            <span key={i} className={[styles.tcChip, styles.tcChipWon].join(' ')}>
-              {r.pick} · {r.returnLabel}
+            <span
+              key={i}
+              className={[styles.tcChip, r.displayStatus === 'Hit' ? styles.tcChipWon : styles.tcChipLost].join(' ')}
+            >
+              {r.displayStatus === 'Hit' ? '✓' : '✕'} {r.pick} · {r.returnLabel}
             </span>
           ))}
         </div>

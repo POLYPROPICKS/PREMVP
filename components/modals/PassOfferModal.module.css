@@ -185,41 +185,52 @@
     0 10px 28px rgba(0, 0, 0, 0.24);
 }
 
-.benefits {
+.benefitsList {
   flex: 0 0 auto;
+  background: rgba(6, 12, 26, 0.72);
+  border: 1px solid rgba(24, 231, 255, 0.14);
+  border-radius: 14px;
+  padding: 12px 14px 13px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  padding: 0 2px;
+  flex-direction: column;
+  gap: 0;
 }
 
-.benefitChip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  height: 24px;
-  padding: 0 9px;
-  border-radius: 6px;
-  background: rgba(0, 212, 255, 0.055);
-  border: 1px solid rgba(0, 212, 255, 0.14);
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 11px;
-  font-weight: 500;
+.benefitsTitle {
+  font-size: 10px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(100, 232, 255, 0.72);
+  margin-bottom: 9px;
   line-height: 1;
-  white-space: nowrap;
 }
 
-.benefitChipWide {
-  flex: 1 1 auto;
+.benefitRow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
 }
 
-.benefitDot {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: #00d4ff;
-  box-shadow: 0 0 5px rgba(0, 212, 255, 0.62);
-  flex: 0 0 auto;
+.benefitRow:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.benefitCheck {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: #18e7ff;
+}
+
+.benefitText {
+  font-size: clamp(11px, 3vw, 12.5px);
+  font-weight: 500;
+  color: rgba(210, 235, 250, 0.82);
+  line-height: 1.3;
 }
 
 .plans {
@@ -501,11 +512,11 @@
     padding: 10px 14px 8px;
   }
 
-  .benefits {
-    gap: 3px 8px;
+  .benefitsList {
+    padding: 10px 12px 11px;
   }
 
-  .benefits div {
+  .benefitText {
     font-size: 10px;
     line-height: 1.22;
   }
