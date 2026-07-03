@@ -207,6 +207,17 @@ export function reservationIdentityOf(res) {
 const PAIR_KEY_RE = /^pair:([\w-]+)-vs-([\w-]+):(\d{4}-\d{2}-\d{2})$/;
 const VS_SPLIT_RE = /\s+vs\.?\s+/i;
 
+// Child-market / listing suffixes appended after the second team name in
+// group display/title text (e.g. "Argentina vs. Cabo Verde - More Markets",
+// "Colombia vs. Ghana - Second Half"). These must be stripped before the
+// vs-split so the second team's normalized token doesn't absorb the suffix
+// and silently break the team-pair signature join against reservations.
+const GROUP_TITLE_SUFFIX_RE = /\s*[-–—:]\s*(more\s*markets|second\s*half|2nd\s*half|first\s*half|1st\s*half|half\s*time|halftime)(\s*result)?\s*$/i;
+
+function stripGroupTitleSuffix(text) {
+  return (text ?? '').replace(GROUP_TITLE_SUFFIX_RE, '').trim();
+}
+
 function teamPairSigFromNames(rawA, rawB) {
   const a = norm(rawA);
   const b = norm(rawB);
@@ -216,7 +227,8 @@ function teamPairSigFromNames(rawA, rawB) {
 
 // Free-text "Team A vs Team B" (event_slug/event_title/etc.) -> order-independent signature.
 export function teamPairSigFromText(text) {
-  const parts = (text ?? '').split(VS_SPLIT_RE);
+  const cleaned = stripGroupTitleSuffix(text);
+  const parts = cleaned.split(VS_SPLIT_RE);
   if (parts.length < 2) return null;
   return teamPairSigFromNames(parts[0], parts.slice(1).join(' vs '));
 }
