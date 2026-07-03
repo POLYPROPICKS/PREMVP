@@ -1,5 +1,10 @@
 ﻿import { supabaseAdmin } from "@/lib/supabase/server";
 import { createHash } from "crypto";
+import {
+  classifyMarketText,
+  isAllowedFullMatchMarketClass,
+  type MarketClass,
+} from "@/lib/contur3/taxonomy";
 
 const POLICY_VERSION = "battle-sm-guard-v1-20260615";
 const LIVE_POLICY_VERSION = "live-risk-guard-v1";
@@ -58,6 +63,22 @@ export interface RawPlanningDiagnostics {
   // Which versions were queried vs. which had zero DB rows returned.
   versions_queried: string[];
   versions_with_zero_db_rows: string[];
+  // Contur3 full-match admission accounting (canonical taxonomy: lib/contur3/taxonomy.ts).
+  // Diagnostics ONLY — admission decisions are unchanged. Invariant (INVARIANTS §7):
+  // raw_allowed_fullmatch_rows === fullmatch_admitted_count + Σ fullmatch_rejected_by_reason,
+  // so RAW_ALLOWED_FULLMATCH_GT0_BUILDER_FULLMATCH_EQ0 traces to exact reasons, never a silent drop.
+  fullmatch_market_class_counts: Record<string, number>;
+  raw_allowed_fullmatch_rows: number;
+  raw_forbidden_rows: number;
+  fullmatch_admitted_count: number;
+  fullmatch_rejected_by_reason: Record<string, number>;
+  // Compact per-row trace for allowed full-match raw rows that did NOT become a candidate.
+  missing_fullmatch_fixtures: Array<{
+    event_key: string;
+    identity: string;
+    market_class: string;
+    reject_reason: string;
+  }>;
 }
 
 export interface FireModelCandidate {
@@ -725,6 +746,12 @@ export async function buildFireModelCandidates(
         dropped_by_formula_version_and_reason: {},
         versions_queried: [...versions],
         versions_with_zero_db_rows: [],
+        fullmatch_market_class_counts: {},
+        raw_allowed_fullmatch_rows: 0,
+        raw_forbidden_rows: 0,
+        fullmatch_admitted_count: 0,
+        fullmatch_rejected_by_reason: {},
+        missing_fullmatch_fixtures: [],
       }
     : null;
 
@@ -740,6 +767,12 @@ export async function buildFireModelCandidates(
     }
 
     const diag: Record<string, unknown> = row.diagnostics ?? {};
+    // Canonical market class of this raw row (assigned once identityText is derived
+    // below). Every live-allowed full-match raw row is then accounted as admitted
+    // (on candidate push) or rejected with the exact reason captured here.
+    let fmMarketClass: MarketClass = "unknown";
+    let fmIsAllowedFullmatch = false;
+    let fmIdentityForTrace = "";
     const rejectReason = (r: string) => {
       if (rawDiag) {
         rawDiag.rejected_before_planning_by_reason[r] =
@@ -750,6 +783,21 @@ export async function buildFireModelCandidates(
         }
         rawDiag.dropped_by_formula_version_and_reason[ver][r] =
           (rawDiag.dropped_by_formula_version_and_reason[ver][r] ?? 0) + 1;
+        // Exact-reason accounting for live-allowed full-match raw rows that drop out.
+        if (fmIsAllowedFullmatch) {
+          rawDiag.fullmatch_rejected_by_reason[r] =
+            (rawDiag.fullmatch_rejected_by_reason[r] ?? 0) + 1;
+          if (rawDiag.missing_fullmatch_fixtures.length < 25) {
+            rawDiag.missing_fullmatch_fixtures.push({
+              event_key:
+                (typeof row.event_slug === "string" && row.event_slug.trim()) ||
+                (typeof row.condition_id === "string" ? row.condition_id : "no_event"),
+              identity: fmIdentityForTrace.slice(0, 120),
+              market_class: fmMarketClass,
+              reject_reason: r,
+            });
+          }
+        }
       }
     };
     const planningFallbackRow =
@@ -768,6 +816,18 @@ export async function buildFireModelCandidates(
         ? diag.gameStartIso
         : null;
     const { text: identityText, activityLabelDetected } = buildIdentityText(row, planningMode);
+    // Classify the raw market once with the canonical taxonomy so the builder,
+    // queue and monitor agree, and so each live-allowed full-match raw row is
+    // accounted as admitted / rejected (diagnostics only, no decision change).
+    fmMarketClass = classifyMarketText(identityText);
+    fmIsAllowedFullmatch = isAllowedFullMatchMarketClass(fmMarketClass);
+    fmIdentityForTrace = identityText;
+    if (rawDiag) {
+      rawDiag.fullmatch_market_class_counts[fmMarketClass] =
+        (rawDiag.fullmatch_market_class_counts[fmMarketClass] ?? 0) + 1;
+      if (fmIsAllowedFullmatch) rawDiag.raw_allowed_fullmatch_rows += 1;
+      if (fmMarketClass.startsWith("forbidden_")) rawDiag.raw_forbidden_rows += 1;
+    }
     let score = typeof row.signal_confidence_num === "number" ? row.signal_confidence_num : null;
     let coverage = baseCoverage;
     const entryPrice = typeof row.entry_price_num === "number" ? row.entry_price_num : null;
@@ -1111,6 +1171,9 @@ export async function buildFireModelCandidates(
       },
     });
 
+    if (rawDiag && fmIsAllowedFullmatch) {
+      rawDiag.fullmatch_admitted_count += 1;
+    }
     if (rawDiag && (strategicScope === "WC" || strategicScope === "SOCCER")) {
       rawDiag.wc_soccer_candidate_count += 1;
     }
