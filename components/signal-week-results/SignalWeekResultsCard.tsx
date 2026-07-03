@@ -288,7 +288,7 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
             key={i}
             className={[styles.chip, r.displayStatus === 'Hit' ? styles.chipWon : styles.chipLost].join(' ')}
           >
-            {r.displayStatus === 'Hit' ? '✓' : '✕'} {r.pick} · Published · {r.returnLabel}
+            {r.displayStatus === 'Hit' ? '✓' : '✕'} {r.pick} · {r.returnLabel}
           </span>
         ))}
         {Array.from({ length: placeholders }).map((_, i) => (
