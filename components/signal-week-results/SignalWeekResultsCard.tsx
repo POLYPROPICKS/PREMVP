@@ -99,9 +99,15 @@ function cardRows(data: WeekResultsCard): TrackRecordRow[] {
 
 /** True when the card carries real renderable proof. Guards against the broken
  *  zero-state (+0% / 0% rate / avg odds 0.00) when the window has no usable
- *  data — those requests render the tracking fallback instead. */
+ *  data — those requests render the tracking fallback instead.
+ *  A backend-declared `status: 'ready'` is authoritative (it is only ever set
+ *  once real resolved rows exist) and is trusted directly rather than
+ *  re-derived from resolvedCount/avgDecimalOdds — those can be legitimately
+ *  0 (e.g. partial odds coverage) on an otherwise-ready card, which used to
+ *  cause a ready card to fall through to the "loading" placeholder. */
 function hasUsableProof(data: WeekResultsCard | null): boolean {
   if (!data) return false;
+  if (data.status === 'ready') return cardRows(data).length > 0;
   if (data.status === 'insufficient_history') return false;
   return cardRows(data).length > 0 && data.resolvedCount > 0 && data.avgDecimalOdds > 0;
 }
