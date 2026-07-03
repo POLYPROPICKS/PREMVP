@@ -8,6 +8,14 @@ import { DISTINCT_ID_HEADER } from '@/lib/analytics/identity';
 import SignalWeekResultsCard from '../signal-week-results/SignalWeekResultsCard';
 import type { WeekResultsCard } from '../signal-week-results/types';
 
+const BENEFITS: string[] = [
+  'Signals 2–4h before odds move',
+  'Live Polymarket whale-flow evidence',
+  'Injury + lineup risk layer',
+  'Sharp market consensus checks',
+  'ENTER · SKIP · WAIT per market',
+];
+
 type InternalPlanId = 'premium_7day_weekly' | 'premium_monthly';
 
 function toInternalPlanId(planId: PlanId): InternalPlanId | null {
@@ -243,14 +251,6 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
               <SignalWeekResultsCard data={weekCard} loading={weekCardLoading} variant="paywall" />
             </section>
 
-            <section className={styles.benefits} aria-label="Premium benefits">
-              <span className={styles.benefitChip}><span className={styles.benefitDot} />ENTER · SKIP · WAIT per market</span>
-              <span className={styles.benefitChip}><span className={styles.benefitDot} />Signals 2–4h before odds move</span>
-              <span className={styles.benefitChip}><span className={styles.benefitDot} />Injury + lineup risk layer</span>
-              <span className={styles.benefitChip}><span className={styles.benefitDot} />Live Polymarket whale-flow evidence</span>
-              <span className={[styles.benefitChip, styles.benefitChipWide].join(' ')}><span className={styles.benefitDot} />Sharp market consensus checks</span>
-            </section>
-
             <section className={styles.plans} aria-label="Select premium plan">
               {plans.map((plan) => {
                 const isSelected = selectedPlan === plan.id;
@@ -293,6 +293,19 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
                   </button>
                 );
               })}
+            </section>
+
+            <section className={styles.benefitsList} aria-label="Premium benefits">
+              <div className={styles.benefitsTitle}>What do I get?</div>
+              {BENEFITS.map((txt) => (
+                <div key={txt} className={styles.benefitRow}>
+                  <svg className={styles.benefitCheck} viewBox="0 0 14 14" aria-hidden="true">
+                    <circle cx="7" cy="7" r="6.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                    <path d="M4 7l2.2 2.2L10 4.8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
+                  </svg>
+                  <span className={styles.benefitText}>{txt}</span>
+                </div>
+              ))}
             </section>
 
             <section className={styles.actionArea}>
