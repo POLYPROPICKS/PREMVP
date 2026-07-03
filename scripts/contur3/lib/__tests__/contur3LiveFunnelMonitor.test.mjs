@@ -86,6 +86,80 @@ test('reservation matching still finds an exact event-level match', () => {
   assert.ok(match, 'exact event-level match must be found');
 });
 
+test('reservation with match_family_key pair:argentina-vs-caboverde matches the Argentina vs Cabo Verde physical group', () => {
+  const signals = [
+    {
+      event_slug: 'argentina-vs-cabo-verde',
+      event_title: 'Argentina vs Cabo Verde',
+      market_slug: 'argentina-vs-cabo-verde-moneyline',
+      selected_outcome: 'Argentina',
+    },
+  ];
+  const groups = groupSignalsByPhysicalMatch(signals);
+  const [group] = groups.values();
+  const reservations = [
+    {
+      match_family_key: 'pair:argentina-vs-caboverde:2026-07-03',
+      event_title: null,
+      game_start_iso: '2026-07-03T18:00:00Z',
+      status: 'RESERVED',
+    },
+  ];
+  const match = findReservationForGroup(group, reservations);
+  assert.ok(match, 'must resolve the reservation via match_family_key team-pair identity, not report NONE');
+});
+
+test('reservation with match_family_key pair:colombia-vs-ghana matches the Colombia vs Ghana physical group', () => {
+  const signals = [
+    {
+      event_slug: 'colombia-vs-ghana',
+      event_title: 'Colombia vs Ghana',
+      market_slug: 'colombia-vs-ghana-total-goals',
+      selected_outcome: 'Over',
+    },
+  ];
+  const groups = groupSignalsByPhysicalMatch(signals);
+  const [group] = groups.values();
+  const reservations = [
+    {
+      match_family_key: 'pair:colombia-vs-ghana:2026-07-04',
+      event_title: null,
+      game_start_iso: '2026-07-04T18:00:00Z',
+      status: 'RESERVED',
+    },
+  ];
+  const match = findReservationForGroup(group, reservations);
+  assert.ok(match, 'must resolve the reservation via match_family_key team-pair identity, not report NONE');
+});
+
+test('two distinct pair:* reservations both resolve to distinct groups (no cross-match, no undercount)', () => {
+  const signals = [
+    { event_slug: 'argentina-vs-cabo-verde', event_title: 'Argentina vs Cabo Verde', market_slug: 'argentina-vs-cabo-verde-moneyline', selected_outcome: 'Argentina' },
+    { event_slug: 'colombia-vs-ghana', event_title: 'Colombia vs Ghana', market_slug: 'colombia-vs-ghana-total-goals', selected_outcome: 'Over' },
+  ];
+  const groups = [...groupSignalsByPhysicalMatch(signals).values()];
+  assert.equal(groups.length, 2);
+  const reservations = [
+    { match_family_key: 'pair:argentina-vs-caboverde:2026-07-03', game_start_iso: '2026-07-03T18:00:00Z', status: 'RESERVED' },
+    { match_family_key: 'pair:colombia-vs-ghana:2026-07-04', game_start_iso: '2026-07-04T18:00:00Z', status: 'RESERVED' },
+  ];
+  const matches = groups.map((g) => findReservationForGroup(g, reservations));
+  assert.ok(matches[0] && matches[1], 'both groups must find a reservation');
+  assert.notEqual(matches[0], matches[1], 'each group must match its own reservation, not the same one');
+});
+
+test('reservation matching via match_family_key still rejects an unrelated pair (no fuzzy join)', () => {
+  const signals = [
+    { event_slug: 'argentina-vs-cabo-verde', event_title: 'Argentina vs Cabo Verde', market_slug: 'argentina-vs-cabo-verde-moneyline', selected_outcome: 'Argentina' },
+  ];
+  const [group] = [...groupSignalsByPhysicalMatch(signals).values()];
+  const reservations = [
+    { match_family_key: 'pair:brazil-vs-serbia:2026-07-03', game_start_iso: '2026-07-03T18:00:00Z', status: 'RESERVED' },
+  ];
+  const match = findReservationForGroup(group, reservations);
+  assert.equal(match, undefined, 'must not match an unrelated pair: reservation');
+});
+
 test('futures/outright "MSI 2026 Winner" style markets are not classified as allowed full-match moneyline', () => {
   const cls = classifyMarket(norm('MSI 2026 Winner'));
   assert.notEqual(cls, 'allowed_fullmatch_moneyline');
