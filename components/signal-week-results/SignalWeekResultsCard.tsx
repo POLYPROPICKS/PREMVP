@@ -376,29 +376,6 @@ function TopCarouselCard({ data, loading }: { data: WeekResultsCard | null; load
     );
   }
 
-  if (!hasUsableProof(data)) {
-    return (
-      <div className={styles.cardTopCarousel}>
-        <div className={styles.tcBody}>
-          <div className={styles.tcCopy}>
-            <div className={styles.tcTopLine}>
-              <div className={styles.tcMetaPills}>
-                <span className={styles.tcLivePill}>
-                  <span className={styles.tcLiveDot} aria-hidden="true" />
-                  LIVE TRACKING
-                </span>
-                <span className={styles.tcPeriodPill}>{data.window.label}</span>
-              </div>
-            </div>
-            <div className={styles.tcMetricLine}>
-              <span className={styles.tcReturnLabel}>Signal history loading…</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const isPos = data.projectedRoiPct >= 0;
   const retLabel = `${isPos ? '+' : ''}${data.projectedRoiPct}%`;
   const displayRows = cardRows(data).slice(0, 7);
