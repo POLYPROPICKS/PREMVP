@@ -9,10 +9,40 @@
   font-feature-settings: "tnum";
 }
 
+/* Matches the real content-box height of PassOfferModal .chartCard
+   (flex-basis 184px/174px minus its padding+border), not an arbitrary value.
+   The previous 214px overshot that box, which was the root cause of the
+   clipped chart / overlapping hero metrics on the paywall proof card. */
 .cardPaywall {
-  height: 214px;
-  min-height: 214px;
-  max-height: 214px;
+  height: 154px;
+  min-height: 154px;
+  max-height: 154px;
+  gap: 4px;
+}
+
+.cardPaywall .heroRow {
+  gap: 8px;
+}
+
+.cardPaywall .heroLeft {
+  gap: 5px;
+}
+
+.cardPaywall .heroMetric {
+  font-size: clamp(20px, 6vw, 24px);
+}
+
+.cardPaywall .heroSub {
+  font-size: 9px;
+  margin-bottom: 1px;
+}
+
+.cardPaywall .heroLabel {
+  font-size: 8px;
+}
+
+.cardPaywall .heroVal {
+  font-size: 16px;
 }
 
 .topRow {
@@ -132,8 +162,8 @@
 }
 
 .chartWrapPaywall {
-  flex: 0 0 76px;
-  height: 76px;
+  flex: 0 0 52px;
+  height: 52px;
 }
 
 .chartSvg {
