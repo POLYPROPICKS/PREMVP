@@ -8,6 +8,7 @@ import {
   groupSignalsByPhysicalMatch,
   findReservationForGroup,
   tableStatus,
+  teamPairSigFromText,
 } from '../contur3LiveFunnelMonitor.mjs';
 
 test('event-level grouping merges child-market rows into ONE physical match, not pseudo-groups', () => {
@@ -183,4 +184,61 @@ test('a genuinely healthy table read reports OK status', () => {
   const status = tableStatus('night_event_reservations', okResult);
   assert.equal(status.status, 'OK');
   assert.equal(status.rows, 1);
+});
+
+test('"- More Markets" suffix group title still resolves its pair:* reservation (Argentina vs. Cabo Verde)', () => {
+  const signals = [
+    {
+      event_slug: 'argentina-vs-cabo-verde',
+      event_title: 'Argentina vs. Cabo Verde - More Markets',
+      market_slug: 'argentina-vs-cabo-verde-total-goals',
+      selected_outcome: 'Over',
+    },
+  ];
+  const [group] = [...groupSignalsByPhysicalMatch(signals).values()];
+  const reservations = [
+    { match_family_key: 'pair:argentina-vs-cabo-verde:2026-07-03', game_start_iso: '2026-07-03T18:00:00Z', status: 'RESERVED' },
+  ];
+  const match = findReservationForGroup(group, reservations);
+  assert.ok(match, 'must resolve the reservation for a "- More Markets" suffixed group title, not report NONE');
+});
+
+test('"- More Markets" suffix group title still resolves its pair:* reservation (Colombia vs. Ghana)', () => {
+  const signals = [
+    {
+      event_slug: 'colombia-vs-ghana',
+      event_title: 'Colombia vs. Ghana - More Markets',
+      market_slug: 'colombia-vs-ghana-spread',
+      selected_outcome: 'Colombia -1',
+    },
+  ];
+  const [group] = [...groupSignalsByPhysicalMatch(signals).values()];
+  const reservations = [
+    { match_family_key: 'pair:colombia-vs-ghana:2026-07-04', game_start_iso: '2026-07-04T18:00:00Z', status: 'RESERVED' },
+  ];
+  const match = findReservationForGroup(group, reservations);
+  assert.ok(match, 'must resolve the reservation for a "- More Markets" suffixed group title, not report NONE');
+});
+
+test('halftime/second-half suffix and punctuation/dot variants normalize to the same team-pair signature', () => {
+  assert.equal(teamPairSigFromText('Argentina vs. Cabo Verde - More Markets'), teamPairSigFromText('Argentina vs Cabo Verde'));
+  assert.equal(teamPairSigFromText('Colombia vs. Ghana - Second Half'), teamPairSigFromText('Colombia vs Ghana'));
+  assert.equal(teamPairSigFromText('Colombia vs. Ghana - Halftime Result'), teamPairSigFromText('Colombia vs Ghana'));
+});
+
+test('"- More Markets" suffix does not cause a cross-match with an unrelated pair reservation', () => {
+  const signals = [
+    {
+      event_slug: 'argentina-vs-cabo-verde',
+      event_title: 'Argentina vs. Cabo Verde - More Markets',
+      market_slug: 'argentina-vs-cabo-verde-moneyline',
+      selected_outcome: 'Argentina',
+    },
+  ];
+  const [group] = [...groupSignalsByPhysicalMatch(signals).values()];
+  const reservations = [
+    { match_family_key: 'pair:brazil-vs-serbia:2026-07-03', game_start_iso: '2026-07-03T18:00:00Z', status: 'RESERVED' },
+  ];
+  const match = findReservationForGroup(group, reservations);
+  assert.equal(match, undefined, 'must not match an unrelated pair: reservation');
 });
