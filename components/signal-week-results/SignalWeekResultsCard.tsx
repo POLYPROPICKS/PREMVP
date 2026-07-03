@@ -140,7 +140,11 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
 
   const rows: TrackRecordRow[] = cardRows(data);
   const isPositive = data.projectedRoiPct >= 0;
-  const retLabel = `${isPositive ? '+' : ''}${data.projectedRoiPct}%`;
+  // Modal proof card is width-constrained: show whole-percent figures so the
+  // hero metrics never overlap the paired stat. Other variants keep full precision.
+  const roiDisplay = variant === 'paywall' ? Math.round(data.projectedRoiPct) : data.projectedRoiPct;
+  const winRateDisplay = variant === 'paywall' ? Math.round(data.projectedWinRatePct) : data.projectedWinRatePct;
+  const retLabel = `${isPositive ? '+' : ''}${roiDisplay}%`;
 
   const hasChart = rows.length > 0;
   const { pts: visPts, zeroY, segments, futurePts } = hasChart
@@ -189,7 +193,7 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
 
       <div className={styles.heroRow}>
         <div className={styles.heroLeft}>
-          <span className={styles.heroMetric}>{data.projectedWinRatePct}%</span>
+          <span className={styles.heroMetric}>{winRateDisplay}%</span>
           <span className={styles.heroSub}>PROJECTED RATE</span>
         </div>
 
