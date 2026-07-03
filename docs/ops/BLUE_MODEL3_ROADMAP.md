@@ -275,11 +275,15 @@ the 5 working reservations are untouched.
 Before diagnosing or patching Contur3 / night reservations / event rebalance /
 Ireland execution, inspect the last-24h canonical live funnel log:
 
-- Read `reports/contur3/live_funnel_latest.md` (and `live_funnel_latest.json`).
+- Read `var/reports/contur3/live_funnel_latest.md` (and
+  `live_funnel_latest.json`; default output dir, override with
+  `CONTUR3_REPORT_DIR`).
 - If missing OR older than 30 minutes during an active battle window, rerun:
   `npm run contur3:live-funnel-log`
 - If the log is missing entirely, **creating/fixing the logging layer is P0**
   before any new diagnosis.
+- Tracked `reports/contur3/*` are historical/stale unless explicitly
+  regenerated there via override — do not treat them as fresh evidence.
 
 No Claude / Cascade / ChatGPT answer may claim readiness without referencing:
 latest log path, `generated_at`, `machine_verdict`, `hard_anomaly_count`,

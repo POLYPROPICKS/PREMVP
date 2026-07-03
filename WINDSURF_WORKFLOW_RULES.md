@@ -5,10 +5,13 @@
 Cascade/Windsurf must start every Contur3 / night-reservation / event-rebalance /
 Ireland investigation by reading or running the canonical live funnel log:
 
-- Read `reports/contur3/live_funnel_latest.md` (+ `.json`).
+- Read `var/reports/contur3/live_funnel_latest.md` (+ `.json`; default output
+  dir, override with `CONTUR3_REPORT_DIR`).
 - If missing or older than 30 minutes during an active battle window:
   `npm run contur3:live-funnel-log`.
 - If the log does not exist, fixing the logging layer is **P0** before diagnosis.
+- Tracked `reports/contur3/*` are historical/stale unless explicitly
+  regenerated there via override — do not treat them as fresh evidence.
 
 No readiness claim without referencing: latest log path, `generated_at`,
 `machine_verdict`, `hard_anomaly_count`, next due (Minsk), queue count, Ireland

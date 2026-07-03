@@ -5,7 +5,8 @@
 Before any Contur3 / night-reservation / event-rebalance / Ireland answer claims
 readiness, this gate MUST pass:
 
-1. `reports/contur3/live_funnel_latest.md` exists.
+1. `var/reports/contur3/live_funnel_latest.md` exists (default output dir;
+   override with `CONTUR3_REPORT_DIR`).
 2. It is fresh (≤ 30 minutes old during an active battle window). If stale, run
    `npm run contur3:live-funnel-log`.
 3. The answer references: latest log path, `generated_at`, `machine_verdict`,
@@ -14,7 +15,9 @@ readiness, this gate MUST pass:
    explicitly explains every P0 anomaly with its recommended command.
 
 If the log is missing, **creating/fixing the logging layer is P0** and no
-readiness claim is permitted until it exists.
+readiness claim is permitted until it exists. Tracked `reports/contur3/*` are
+historical/stale unless explicitly regenerated there via override; they do not
+satisfy this gate.
 
 ## General build/proof gates
 
