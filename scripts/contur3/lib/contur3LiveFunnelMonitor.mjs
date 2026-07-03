@@ -197,6 +197,56 @@ export function reservationIdentityOf(res) {
   return { key, fixture: hit ? hit.fx : null };
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Team-pair identity — exact stable join between a physical-match group and a
+// night_event_reservations row when the fixture is not in the hardcoded
+// FIXTURES list. Mirrors lib/executor/nightEventReservations.ts pair:a-vs-b:date
+// canonicalization so the monitor and the reservation planner agree on
+// identity without any fuzzy substring/prefix comparison.
+// ──────────────────────────────────────────────────────────────────────────
+const PAIR_KEY_RE = /^pair:([\w-]+)-vs-([\w-]+):(\d{4}-\d{2}-\d{2})$/;
+const VS_SPLIT_RE = /\s+vs\.?\s+/i;
+
+function teamPairSigFromNames(rawA, rawB) {
+  const a = norm(rawA);
+  const b = norm(rawB);
+  if (!a || !b) return null;
+  return [a, b].sort().join('--');
+}
+
+// Free-text "Team A vs Team B" (event_slug/event_title/etc.) -> order-independent signature.
+export function teamPairSigFromText(text) {
+  const parts = (text ?? '').split(VS_SPLIT_RE);
+  if (parts.length < 2) return null;
+  return teamPairSigFromNames(parts[0], parts.slice(1).join(' vs '));
+}
+
+// Canonical match_family_key ("pair:<team-a>-vs-<team-b>:<date>") -> order-independent
+// signature. Team tokens are hyphen-joined multi-word names (e.g. "cabo-verde");
+// hyphens are turned back into spaces before normalizing so this stays comparable
+// with free-text titles derived via teamPairSigFromText.
+export function teamPairSigFromMatchFamilyKey(key) {
+  const m = (key ?? '').match(PAIR_KEY_RE);
+  if (!m) return null;
+  return teamPairSigFromNames(m[1].replace(/-/g, ' '), m[2].replace(/-/g, ' '));
+}
+
+// Reservation team-pair signature: prefer the canonical match_family_key
+// (stable, produced by the same builder/planner pipeline); fall back to
+// free-text event_title/event_slug only when match_family_key is absent
+// or not a pair:* key.
+export function reservationTeamPairSig(res) {
+  return teamPairSigFromMatchFamilyKey(res.match_family_key)
+    ?? teamPairSigFromText(res.event_title)
+    ?? teamPairSigFromText(res.event_slug);
+}
+
+// Group team-pair signature, derived the same way as eventIdentityOf's text
+// source so it's comparable against reservationTeamPairSig.
+export function groupTeamPairSig(group) {
+  return teamPairSigFromText(group.display_match);
+}
+
 // Group raw signal rows into physical-match groups keyed by event identity
 // only. classifyMarket still runs on the FULL text (including market_slug /
 // selected_outcome) so market classification stays accurate; only the
@@ -227,12 +277,26 @@ export function groupSignalsByPhysicalMatch(signals) {
 // Exact/event-level reservation matching. Replaces the old fuzzy
 // `includes(key.slice(0, 12))` prefix join, which could match an unrelated
 // event that merely shared its first 12 normalized characters.
+//
+// Join order (all exact, none fuzzy/substring):
+//   1. Known FIXTURES list (diacritic-stable team-variant matching).
+//   2. Team-pair signature: group's "Team A vs Team B" text against the
+//      reservation's canonical match_family_key (pair:a-vs-b:date), falling
+//      back to the reservation's own free-text title/slug. This is the exact
+//      identity the reservation planner produces for any WC fixture that
+//      isn't in the hardcoded FIXTURES list.
+//   3. Legacy exact event-identity key equality (unkeyed groups).
 export function findReservationForGroup(group, reservations) {
   if (group.fixture) {
     return reservations.find((r) => {
       const { fixture } = reservationIdentityOf(r);
       return fixture === group.fixture || fixture?.id === group.fixture.id;
     });
+  }
+  const groupSig = groupTeamPairSig(group);
+  if (groupSig) {
+    const bySig = reservations.find((r) => reservationTeamPairSig(r) === groupSig);
+    if (bySig) return bySig;
   }
   return reservations.find((r) => reservationIdentityOf(r).key === group.key);
 }
@@ -450,6 +514,9 @@ export async function collectFunnel(opts = {}) {
     const res = findReservationForGroup(g, reservations);
     const queue = fx ? fixtureQueue(fx) : [];
     const reservationStatus = res ? (res.status ?? 'RESERVED') : 'NONE';
+    const reservationJoinMethod = !res
+      ? 'NONE'
+      : fx ? 'FIXTURE_LIST' : (groupTeamPairSig(g) && groupTeamPairSig(g) === reservationTeamPairSig(res)) ? 'TEAM_PAIR_SIGNATURE' : 'EVENT_IDENTITY_KEY';
     const ds = res ? dueState(res.game_start_iso, nowMs) : 'NO_RESERVATION';
     const fallbackUsed = !!(res && /FALLBACK|TIER2|TIER3/i.test(`${res.strategy ?? ''} ${res.tier ?? ''} ${res.reason ?? ''}`));
 
@@ -476,6 +543,9 @@ export async function collectFunnel(opts = {}) {
       admission_histogram: g.class_hist,
       reservation_status: reservationStatus,
       reservation_id: res?.id ?? res?.match_family_key ?? null,
+      reservation_id_present: !!res?.id,
+      reservation_match_key: res ? (res.match_family_key ?? groupTeamPairSig(g) ?? key) : null,
+      reservation_join_method: reservationJoinMethod,
       fallback_used: fallbackUsed,
       due_minsk: res?.game_start_iso ? minskString(new Date(res.game_start_iso)) : null,
       due_state: ds,
