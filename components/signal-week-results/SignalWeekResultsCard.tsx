@@ -283,14 +283,20 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
       </div>
 
       <div className={styles.chipsRow}>
-        {chipRows.map((r, i) => (
-          <span
-            key={i}
-            className={[styles.chip, r.displayStatus === 'Hit' ? styles.chipWon : styles.chipLost].join(' ')}
-          >
-            {r.displayStatus === 'Hit' ? '✓' : '✕'} {r.returnLabel}
-          </span>
-        ))}
+        {chipRows.map((r, i) => {
+          const safePick = r.pick && r.pick !== 'Published' ? r.pick : null;
+          return (
+            <span
+              key={i}
+              className={[styles.chip, r.displayStatus === 'Hit' ? styles.chipWon : styles.chipLost].join(' ')}
+            >
+              {safePick ? <span className={styles.chipPick}>{safePick}</span> : null}
+              <span className={styles.chipReturn}>
+                {r.displayStatus === 'Hit' ? '✓' : '✕'} {r.returnLabel}
+              </span>
+            </span>
+          );
+        })}
         {Array.from({ length: placeholders }).map((_, i) => (
           <span key={`ph-${i}`} className={[styles.chip, styles.chipMore].join(' ')}>
             {i === 0 ? 'no data yet' : 'future'}
