@@ -107,7 +107,7 @@ const FORBIDDEN_CORNERS_RE = /corner/;
 const FORBIDDEN_EXACTSCORE_RE = /exactscore|correctscore/;
 const FORBIDDEN_GOALSCORER_RE = /goalscorer|anytimescorer|firstscorer|lastscorer|scorer/;
 const FORBIDDEN_PROPS_RE = /playerprop|bookings|cards|btts|bothteamstoscore/;
-const FORBIDDEN_FUTURES_RE = /outright|future|towinoutright|winnergroup/;
+const FORBIDDEN_FUTURES_RE = /outright|future|towinoutright|winnergroup|\d{4}winner|winner\d{4}|tournamentwinner|championshipwinner|leaguewinner/;
 const ESPORTS_RE = /esports|cs2|csgo|dota|leagueoflegends|valorant|counterstrike/;
 const ALLOWED_MONEYLINE_RE = /moneyline|matchwinner|towin|matchresult|winner|drawnobet|\bdraw\b|1x2/;
 const ALLOWED_SPREAD_RE = /spread|handicap|asianhandicap/;
@@ -170,6 +170,88 @@ export function fixtureOf(textNorm) {
     if (teamMatch(textNorm, fx.teams[0]) || teamMatch(textNorm, fx.teams[1])) return { fx, kind: 'SINGLE' };
   }
   return null;
+}
+
+// Event-level identity for physical-match grouping. Deliberately excludes
+// market_slug / selected_outcome so child-market rows (halftime, corners,
+// second-half, ...) for the same real event fold into the SAME group instead
+// of spawning pseudo physical matches.
+export function eventIdentityOf(source) {
+  const text = `${source.event_slug ?? ''} ${source.event_title ?? ''}`;
+  const tn = norm(text);
+  const hit = fixtureOf(tn);
+  const key = hit ? norm(hit.fx.id) : (tn.slice(0, 40) || 'unkeyed');
+  const label = hit ? hit.fx.id : (source.event_title ?? source.event_slug ?? key);
+  return { key, label, fixture: hit ? hit.fx : null };
+}
+
+// Same event-level identity, computed from a reservation row's fields
+// (event_title / match_family_key / event_slug — no market-level fields
+// exist on reservations, but this keeps the key derivation symmetric with
+// eventIdentityOf so equality comparisons are exact, not fuzzy).
+export function reservationIdentityOf(res) {
+  const text = `${res.event_title ?? ''} ${res.match_family_key ?? ''} ${res.event_slug ?? ''}`;
+  const tn = norm(text);
+  const hit = fixtureOf(tn);
+  const key = hit ? norm(hit.fx.id) : (tn.slice(0, 40) || 'unkeyed');
+  return { key, fixture: hit ? hit.fx : null };
+}
+
+// Group raw signal rows into physical-match groups keyed by event identity
+// only. classifyMarket still runs on the FULL text (including market_slug /
+// selected_outcome) so market classification stays accurate; only the
+// grouping key excludes market-level fields.
+export function groupSignalsByPhysicalMatch(signals) {
+  const groups = new Map();
+  for (const s of signals) {
+    const { key, label, fixture } = eventIdentityOf(s);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        physical_match_key: key, display_match: label, fixture,
+        raw_rows: 0, raw_allowed_fullmatch_rows: 0, builder_forbidden_candidates: 0,
+        class_hist: {}, sample_slugs: [],
+      });
+    }
+    const g = groups.get(key);
+    const classifyText = `${s.event_slug ?? ''} ${s.market_slug ?? ''} ${s.selected_outcome ?? ''} ${s.event_title ?? ''}`;
+    const cls = classifyMarket(norm(classifyText));
+    g.raw_rows += 1;
+    g.class_hist[cls] = (g.class_hist[cls] ?? 0) + 1;
+    if (isAllowedFullmatchClass(cls)) g.raw_allowed_fullmatch_rows += 1;
+    if (isForbiddenClass(cls)) g.builder_forbidden_candidates += 1;
+    if (g.sample_slugs.length < 4) g.sample_slugs.push(s.market_slug ?? s.event_slug ?? '');
+  }
+  return groups;
+}
+
+// Exact/event-level reservation matching. Replaces the old fuzzy
+// `includes(key.slice(0, 12))` prefix join, which could match an unrelated
+// event that merely shared its first 12 normalized characters.
+export function findReservationForGroup(group, reservations) {
+  if (group.fixture) {
+    return reservations.find((r) => {
+      const { fixture } = reservationIdentityOf(r);
+      return fixture === group.fixture || fixture?.id === group.fixture.id;
+    });
+  }
+  return reservations.find((r) => reservationIdentityOf(r).key === group.key);
+}
+
+// Safe classification of a table read result. Column/relation shape
+// mismatches (e.g. job_runs missing an expected column) degrade to an
+// explicit measurement-gap status instead of polluting the report as a hard
+// runtime anomaly.
+export function tableStatus(name, result) {
+  if (result.ok) return { status: 'OK', rows: result.rows.length, error: null };
+  const msg = result.error ?? '';
+  if (/does not exist|column|relation|undefined/i.test(msg)) {
+    return {
+      status: name === 'job_runs' ? 'MEASUREMENT_MISSING' : 'TABLE_SHAPE_MISMATCH',
+      rows: 0,
+      error: msg,
+    };
+  }
+  return { status: 'ERROR', rows: 0, error: msg };
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -341,7 +423,8 @@ export async function collectFunnel(opts = {}) {
   reads.job_runs = await selectAll(supabase, 'job_runs', (q) => q.gte('created_at', fromUtc));
 
   for (const [name, r] of Object.entries(reads)) {
-    base.tables[name] = { ok: r.ok, rows: r.rows.length, error: r.ok ? null : r.error };
+    const ts = tableStatus(name, r);
+    base.tables[name] = { ok: r.ok, rows: r.ok ? r.rows.length : 0, error: r.ok ? null : r.error, status: ts.status };
   }
 
   const signals = reads.generated_signal_pairs.rows;
@@ -350,44 +433,10 @@ export async function collectFunnel(opts = {}) {
   const orderRows = reads.executor_order_events.ok ? reads.executor_order_events.rows : [];
   const auditRows = reads.executor_audit_events.ok ? reads.executor_audit_events.rows : [];
 
-  // ── Group raw signals by physical match (fixture-aware, diacritic-stable) ──
-  const groups = new Map(); // key -> aggregate
-  function ensureGroup(key, label) {
-    if (!groups.has(key)) {
-      groups.set(key, {
-        physical_match_key: key, display_match: label,
-        raw_rows: 0, raw_allowed_fullmatch_rows: 0, builder_forbidden_candidates: 0,
-        class_hist: {}, sample_slugs: [],
-      });
-    }
-    return groups.get(key);
-  }
-
-  for (const s of signals) {
-    const text = `${s.event_slug ?? ''} ${s.market_slug ?? ''} ${s.selected_outcome ?? ''} ${s.event_title ?? ''}`;
-    const tn = norm(text);
-    const hit = fixtureOf(tn);
-    const key = hit ? norm(hit.fx.id) : tn.slice(0, 40) || 'unkeyed';
-    const label = hit ? hit.fx.id : (s.event_title ?? s.event_slug ?? key);
-    const g = ensureGroup(key, label);
-    g.raw_rows += 1;
-    const cls = classifyMarket(tn);
-    g.class_hist[cls] = (g.class_hist[cls] ?? 0) + 1;
-    if (isAllowedFullmatchClass(cls)) g.raw_allowed_fullmatch_rows += 1;
-    if (isForbiddenClass(cls)) g.builder_forbidden_candidates += 1;
-    if (g.sample_slugs.length < 4) g.sample_slugs.push(s.market_slug ?? s.event_slug ?? '');
-  }
+  // ── Group raw signals by physical match (event-level identity only) ──
+  const groups = groupSignalsByPhysicalMatch(signals);
 
   // ── Join reservation / queue / order per physical match ──
-  function reservationFor(key) {
-    return reservations.find((r) => norm(`${r.event_title ?? ''} ${r.match_family_key ?? ''} ${r.event_slug ?? ''}`).includes(key.slice(0, 12)) || key.includes(norm(`${r.match_family_key ?? ''}`).slice(0, 12)));
-  }
-  function fixtureReservation(fx) {
-    return reservations.find((r) => {
-      const tn = norm(`${r.event_title ?? ''} ${r.match_family_key ?? ''} ${r.event_slug ?? ''}`);
-      return teamMatch(tn, fx.teams[0]) && teamMatch(tn, fx.teams[1]);
-    });
-  }
   function fixtureQueue(fx) {
     return queueRows.filter((r) => {
       const tn = norm(`${r.event_title ?? ''} ${r.match_family_key ?? ''} ${r.event_slug ?? ''}`);
@@ -397,8 +446,8 @@ export async function collectFunnel(opts = {}) {
 
   const fixtures = [];
   for (const [key, g] of groups) {
-    const fx = FIXTURES.find((f) => norm(f.id) === key);
-    const res = fx ? fixtureReservation(fx) : reservationFor(key);
+    const fx = g.fixture;
+    const res = findReservationForGroup(g, reservations);
     const queue = fx ? fixtureQueue(fx) : [];
     const reservationStatus = res ? (res.status ?? 'RESERVED') : 'NONE';
     const ds = res ? dueState(res.game_start_iso, nowMs) : 'NO_RESERVATION';
@@ -491,7 +540,8 @@ export function detectAnomalies(base, fixtures, reads) {
     out.push({ code, severity, fixture, stage, evidence, recommended_command });
 
   for (const [name, r] of Object.entries(reads)) {
-    if (!r.ok && !/does not exist|relation|undefined/i.test(r.error ?? '')) {
+    const ts = tableStatus(name, r);
+    if (ts.status === 'ERROR') {
       push('DB_TABLE_MISSING', 'P1', null, 'source', `${name}: ${r.error}`, 'Verify table name / RLS on Railway.');
     }
   }
