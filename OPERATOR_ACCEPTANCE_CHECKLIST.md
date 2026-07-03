@@ -12,7 +12,7 @@ npm run contur3:preflight24h
 ```
 
 Accept only if:
-- [ ] `reports/contur3/live_funnel_latest.md` regenerated (fresh `generated_at`).
+- [ ] `var/reports/contur3/live_funnel_latest.md` regenerated (fresh `generated_at`; default output dir, override with `CONTUR3_REPORT_DIR`).
 - [ ] `machine_verdict` recorded.
 - [ ] `hard_anomaly_count` reviewed; every P0 has a recommended command.
 

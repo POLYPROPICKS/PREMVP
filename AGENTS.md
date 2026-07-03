@@ -121,7 +121,7 @@ For `/premium` production-only UI patches: do NOT request founder visual accepta
 
 ## 11. CONTUR3 24H log-first rule (canonical)
 
-Before diagnosing/patching Contur3 / night reservations / event rebalance / Ireland execution, read the last-24h canonical live funnel log: `reports/contur3/live_funnel_latest.md` (+ `.json`). If missing or older than 30 minutes during an active battle window, run `npm run contur3:live-funnel-log`; if missing entirely, fixing the logging layer is P0 before any new diagnosis.
+Before diagnosing/patching Contur3 / night reservations / event rebalance / Ireland execution, read the last-24h canonical live funnel log: `var/reports/contur3/live_funnel_latest.md` (+ `.json`; override output dir with `CONTUR3_REPORT_DIR`). If missing or older than 30 minutes during an active battle window, run `npm run contur3:live-funnel-log`; if missing entirely, fixing the logging layer is P0 before any new diagnosis. Tracked `reports/contur3/*` files are historical/stale unless explicitly regenerated there via override — do not treat them as fresh evidence.
 
 No readiness claim without referencing: latest log path, `generated_at`, `machine_verdict`, `hard_anomaly_count`, next due (Minsk), queue count, Ireland status. Every suspicious situation gets an anomaly code + recommended next command in the log; one final `*_latest` log must always exist.
 
