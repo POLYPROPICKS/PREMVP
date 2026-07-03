@@ -90,9 +90,41 @@ function buildChart(rows: TrackRecordRow[]): {
   return { pts, zeroY, segments, futurePts };
 }
 
+function cardRows(data: WeekResultsCard): TrackRecordRow[] {
+  const table = data.trackRecordDisplayTable as unknown;
+  return Array.isArray(table)
+    ? table
+    : ((table as { rows?: TrackRecordRow[] } | null | undefined)?.rows ?? []);
+}
+
+/** True when the card carries real renderable proof. Guards against the broken
+ *  zero-state (+0% / 0% rate / avg odds 0.00) when the window has no usable
+ *  data — those requests render the tracking fallback instead. */
+function hasUsableProof(data: WeekResultsCard | null): boolean {
+  if (!data) return false;
+  if (data.status === 'insufficient_history') return false;
+  return cardRows(data).length > 0 && data.resolvedCount > 0 && data.avgDecimalOdds > 0;
+}
+
 export default function SignalWeekResultsCard({ data, loading = false, variant = 'compact' }: Props) {
   if (variant === 'top-carousel') {
     return <TopCarouselCard data={data} loading={loading} />;
+  }
+
+  if (!loading && data && !hasUsableProof(data)) {
+    return (
+      <div className={[styles.card, variant === 'paywall' ? styles.cardPaywall : ''].join(' ').trim()}>
+        <div className={styles.topRow}>
+          <span className={styles.topLive}>
+            <span className={styles.liveDot} aria-hidden="true" />
+            TRACKING LIVE
+          </span>
+        </div>
+        <div className={styles.chartWrap}>
+          <div className={styles.noData}>Signal history loading…</div>
+        </div>
+      </div>
+    );
   }
 
   if (loading || !data) {
@@ -106,10 +138,7 @@ export default function SignalWeekResultsCard({ data, loading = false, variant =
     );
   }
 
-  const table = data.trackRecordDisplayTable as unknown;
-  const rows: TrackRecordRow[] = Array.isArray(table)
-    ? table
-    : ((table as { rows?: TrackRecordRow[] } | null | undefined)?.rows ?? []);
+  const rows: TrackRecordRow[] = cardRows(data);
   const isPositive = data.projectedRoiPct >= 0;
   const retLabel = `${isPositive ? '+' : ''}${data.projectedRoiPct}%`;
 
@@ -337,13 +366,32 @@ function TopCarouselCard({ data, loading }: { data: WeekResultsCard | null; load
     );
   }
 
+  if (!hasUsableProof(data)) {
+    return (
+      <div className={styles.cardTopCarousel}>
+        <div className={styles.tcBody}>
+          <div className={styles.tcCopy}>
+            <div className={styles.tcTopLine}>
+              <div className={styles.tcMetaPills}>
+                <span className={styles.tcLivePill}>
+                  <span className={styles.tcLiveDot} aria-hidden="true" />
+                  LIVE TRACKING
+                </span>
+                <span className={styles.tcPeriodPill}>{data.window.label}</span>
+              </div>
+            </div>
+            <div className={styles.tcMetricLine}>
+              <span className={styles.tcReturnLabel}>Signal history loading…</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const isPos = data.projectedRoiPct >= 0;
   const retLabel = `${isPos ? '+' : ''}${data.projectedRoiPct}%`;
-  const table = data.trackRecordDisplayTable as unknown;
-  const tableRows: TrackRecordRow[] = Array.isArray(table)
-    ? table
-    : ((table as { rows?: TrackRecordRow[] } | null | undefined)?.rows ?? []);
-  const displayRows = tableRows.slice(0, 7);
+  const displayRows = cardRows(data).slice(0, 7);
 
   return (
     <div className={styles.cardTopCarousel}>

@@ -43,8 +43,11 @@ export interface ReturnCurvePoint {
 
 export interface WeekResultsCard {
   cardType: 'signal-week-results';
-  schemaVersion: 'week-results-v3-resolved';
-  source: 'track_record_window_results';
+  schemaVersion: 'week-results-v3-resolved' | 'week-results-v1-legacy-proof';
+  /** track_record_window_results = read-model (WhyTrust 14D block);
+   *  generated_signal_pairs_legacy_7d_proof = restored pre-PR#22 7D proof for
+   *  the paywall/top-feed consumers. */
+  source: 'track_record_window_results' | 'generated_signal_pairs_legacy_7d_proof';
   /** ready = enough resolved shown-history rows; insufficient_history = show
    *  the honest tracking state, never a positive Net Return. */
   status?: 'ready' | 'insufficient_history';
