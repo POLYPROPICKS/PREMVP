@@ -20,6 +20,9 @@ import {
   mapWindowResultRowToTrackRecordRow,
   mapWindowResultRowToCarouselSignal,
   normalizeMatchKey,
+  buildLegacySevenDayProofFromRows,
+  LEGACY_SEVEN_DAY_PROOF_SOURCE,
+  type DbRow as LegacyDbRow,
   type ResolvedPairRow,
   type RealResolvedRow,
   type WindowResultRow,
@@ -778,17 +781,23 @@ test("insufficient_history still shows no positive PnL even with rows present in
 
 // ── /api/signals/resolved: single read-model source, no legacy live query ──
 
-test("route.ts no longer queries generated_signal_pairs live inside GET — signals/summary are read-model-only", () => {
-  assert.ok(
-    !routeSource.includes('.from("generated_signal_pairs")'),
-    "a second live generated_signal_pairs query would re-introduce mixed legacy/read-model data in the same response"
-  );
+test("route.ts queries generated_signal_pairs live only inside the isolated legacy 7D proof block", () => {
+  // Exactly one live query, and only after the gated legacy block starts —
+  // the read-model weekResultsCard section above it stays free of legacy data.
+  const occurrences = routeSource.split('.from("generated_signal_pairs")').length - 1;
+  assert.equal(occurrences, 1, "generated_signal_pairs may only be queried once, for the legacy 7D proof");
+  const legacyBlockStart = routeSource.indexOf("// ── Legacy 7D proof (mode=latest&days=7 only)");
+  const queryIndex = routeSource.indexOf('.from("generated_signal_pairs")');
+  assert.ok(legacyBlockStart > 0 && queryIndex > legacyBlockStart, "legacy query must live inside the gated legacy block");
 });
 
-test("route.ts top-level summary has no legacy selectionRule field", () => {
+test("route.ts selectionRule appears only in the legacy 7D proof contract, never in the read-model card/summary", () => {
+  const legacyBuilderStart = routeSource.indexOf("// ── Legacy 7D proof (generated_signal_pairs)");
+  assert.ok(legacyBuilderStart > 0);
+  const beforeLegacy = routeSource.slice(0, legacyBuilderStart);
   assert.ok(
-    !routeSource.includes("selectionRule:"),
-    "selectionRule described the removed highest-activity/max-2-loss carousel selection — must not appear in the read-model-only response"
+    !beforeLegacy.includes("selectionRule"),
+    "selectionRule must not appear in the read-model sections of the route"
   );
 });
 
@@ -796,10 +805,12 @@ test("route.ts signals array is built from orderedForLedger via mapWindowResultR
   assert.ok(routeSource.includes("orderedForLedger.map(mapWindowResultRowToCarouselSignal)"));
 });
 
-test("route.ts top-level summary fields are assigned from read-model values (summary.resolvedCount/winsCount/lossesCount, rawShownRows), not a legacy recompute", () => {
-  const summaryBlockStart = routeSource.indexOf("summary: {", routeSource.indexOf("return NextResponse.json"));
-  const summaryBlockEnd = routeSource.indexOf("},", summaryBlockStart);
-  const block = routeSource.slice(summaryBlockStart, summaryBlockEnd);
+test("route.ts non-legacy top-level summary fields are assigned from read-model values (summary.resolvedCount/winsCount/lossesCount, rawShownRows), not a legacy recompute", () => {
+  // The legacy branch (mode=latest&days=7) uses legacyProof.summary; every
+  // other request keeps the read-model summary values.
+  const responseStart = routeSource.indexOf("return NextResponse.json", routeSource.indexOf("// ── Response"));
+  const block = routeSource.slice(responseStart);
+  assert.ok(block.includes("? legacyProof.summary"));
   assert.ok(block.includes("uniqueResolved: summary.resolvedCount"));
   assert.ok(block.includes("snapshotRows: rawShownRows"));
   assert.ok(block.includes("won: summary.winsCount"));
@@ -889,4 +900,116 @@ test("limit affects signals/ledger rows only — top-level summary counts are co
   const limitedSignals = rows.slice(0, 25).map(mapWindowResultRowToCarouselSignal);
   assert.equal(summary.resolvedCount, 44, "summary must reflect all 44 rows regardless of ledger limit");
   assert.equal(limitedSignals.length, 25, "signals/ledger rows are capped by limit");
+});
+
+// ── Legacy 7D proof contract (restored after PR #22 regression) ──────────────
+// PR #22 routed the days=7 consumers (PassOfferModal, reconstruction top-feed
+// card) to the read-model, which has no ready 7D window — the UI rendered
+// +0% / 0% rate / avg odds 0.00. The legacy generated_signal_pairs proof is
+// restored as an isolated builder driving only top-level summary/signals and
+// legacyWeekResultsCard for mode=latest&days=7.
+
+function legacyDbRow(overrides: Partial<LegacyDbRow> = {}): LegacyDbRow {
+  return {
+    id: "gsp-1",
+    created_at: "2026-06-28T10:00:00.000Z",
+    resolved_at: "2026-06-29T12:00:00.000Z",
+    condition_id: "cond-1",
+    selected_outcome: "Team A",
+    winning_outcome: "Team A",
+    signal_result: "won",
+    realized_return_pct: 80,
+    metric_formula_version: null,
+    entry_price_num: 0.5,
+    premium_signal: { eventTitle: "Team A vs Team B" },
+    diagnostics: { totalVolume: 5000 },
+    ...overrides,
+  };
+}
+
+test("legacy 7D proof: builder returns usable top-level summary/signals from generated_signal_pairs rows", () => {
+  const rows = [
+    legacyDbRow(),
+    legacyDbRow({ id: "gsp-2", condition_id: "cond-2", selected_outcome: "Team C", winning_outcome: "Team D", signal_result: "lost", realized_return_pct: null, entry_price_num: 0.4, resolved_at: "2026-06-28T12:00:00.000Z" }),
+  ];
+  const proof = buildLegacySevenDayProofFromRows(rows, 7);
+  assert.equal(proof.source, LEGACY_SEVEN_DAY_PROOF_SOURCE);
+  assert.equal(proof.summary.source, "generated_signal_pairs_legacy_7d_proof");
+  assert.equal(proof.summary.selectionRule, "last_7d_highest_activity_max_two_loss");
+  assert.equal(proof.summary.uniqueResolved, 2);
+  assert.equal(proof.summary.won, 1);
+  assert.equal(proof.summary.lost, 1);
+  assert.equal(proof.signals.length, 2);
+  assert.equal(proof.signals[0].marketActivityScore, 5000);
+  // Old consumer signal shape fields are present again.
+  assert.ok("trustMetrics" in proof.signals[0]);
+  assert.ok("signalConfidence" in proof.signals[0]);
+});
+
+test("legacy 7D proof: card carries real non-zero metrics (no +0% / 0.00 avg odds regression)", () => {
+  const rows = [
+    legacyDbRow(),
+    legacyDbRow({ id: "gsp-2", condition_id: "cond-2", signal_result: "lost", realized_return_pct: null, entry_price_num: 0.4, resolved_at: "2026-06-28T12:00:00.000Z" }),
+  ];
+  const proof = buildLegacySevenDayProofFromRows(rows, 7);
+  const card = proof.card;
+  assert.ok(card, "card must exist when usable rows exist");
+  assert.equal(card.source, LEGACY_SEVEN_DAY_PROOF_SOURCE);
+  assert.equal(card.schemaVersion, "week-results-v1-legacy-proof");
+  assert.equal(card.window.days, 7);
+  assert.ok(card.avgDecimalOdds > 0, "avg odds must be real, not 0.00");
+  assert.equal(card.avgDecimalOdds, 2.25); // avg(2, 2.5)
+  assert.equal(card.winsCount, 1);
+  assert.equal(card.lossesCount, 1);
+  assert.equal(card.projectedWinRatePct, 50);
+  // Cumulative proof like the pre-PR#22 paywall chart: +80% then -100% = -20%.
+  assert.equal(card.projectedRoiPct, -20);
+  assert.equal(card.netProfitUsd, -20);
+  assert.equal(card.trackRecordDisplayTable.rows.length, 2);
+  assert.equal(card.trackRecordDisplayTable.rows[0].returnLabel, "-100%");
+  assert.equal(card.trackRecordDisplayTable.rows[1].returnLabel, "+80%");
+});
+
+test("legacy 7D proof: no rows => null card and empty signals, never fabricated zeros", () => {
+  const proof = buildLegacySevenDayProofFromRows([], 7);
+  assert.equal(proof.card, null);
+  assert.equal(proof.signals.length, 0);
+  assert.equal(proof.summary.uniqueResolved, 0);
+  assert.equal(proof.summary.sampleSizeStatus, "empty");
+  assert.equal(proof.summary.showPerformanceClaim, false);
+});
+
+test("legacy 7D proof: push results excluded and losses capped at 2 in displayed signals", () => {
+  const rows = [
+    legacyDbRow({ id: "p1", condition_id: "c-p", signal_result: "push" }),
+    ...Array.from({ length: 4 }, (_, i) =>
+      legacyDbRow({ id: `l${i}`, condition_id: `c-l${i}`, signal_result: "lost", realized_return_pct: null })
+    ),
+    legacyDbRow({ id: "w1", condition_id: "c-w1" }),
+  ];
+  const proof = buildLegacySevenDayProofFromRows(rows, 7);
+  assert.equal(proof.signals.filter((s) => s.result === "lost").length, 2);
+  assert.equal(proof.signals.filter((s) => s.result === "push").length, 0);
+});
+
+test("route: legacy proof is isolated — only mode=latest&days=7, weekResultsCard never reassigned from legacy", () => {
+  assert.ok(routeSource.includes("isLatestMode && windowDays === LEGACY_PROOF_WINDOW_DAYS"));
+  // Legacy card ships under its own key; weekResultsCard field stays unconditional read-model.
+  assert.ok(routeSource.includes("legacyWeekResultsCard: legacyProof.card"));
+  assert.ok(!/weekResultsCard\s*[:=]\s*legacyProof/.test(routeSource), "weekResultsCard must never be fed from legacyProof");
+});
+
+test("route: no selectionRule inside the read-model weekResultsCard block", () => {
+  const start = routeSource.indexOf("const weekResultsCard: WeekResultsCard = {");
+  const end = routeSource.indexOf("// ── Legacy 7D proof (mode=latest&days=7 only)");
+  assert.ok(start > 0 && end > start);
+  const block = routeSource.slice(start, end);
+  assert.ok(!block.includes("selectionRule"), "read-model weekResultsCard must not carry selectionRule");
+});
+
+test("route: legacy generated_signal_pairs query lives below the read-model block (existing weekResultsCard purity test stays meaningful)", () => {
+  const readModelStart = routeSource.indexOf("// ── weekResultsCard: read-model");
+  const legacyQueryStart = routeSource.indexOf("let query = supabase");
+  assert.ok(readModelStart > 0);
+  assert.ok(legacyQueryStart > readModelStart, "legacy query must come after the read-model block");
 });

@@ -770,7 +770,7 @@ export function mapRealResolvedRowToTrackRecordRow(r: RealResolvedRow): TrackRec
 
 // ── DB row type (resolved-signal carousel) ────────────────────────────────────
 
-interface DbRow {
+export interface DbRow {
   id: string;
   created_at: string;
   resolved_at: string | null;
@@ -789,6 +789,274 @@ interface DbRow {
 // Published-signal projected track record, sourced from the accepted physical
 // display table. Not tied to activePair / MarketSourceCard. Contract lives in
 // components/signal-week-results/types.ts (shared with the UI).
+
+// ── Legacy 7D proof (generated_signal_pairs) ──────────────────────────────────
+// Backward-compatible proof contract for the pre-existing days=7 consumers
+// (PassOfferModal paywall card, reconstruction top-feed card). Restored from
+// the pre-PR#22 route: dedupe generated_signal_pairs by condition_id +
+// selected_outcome, exclude push, sort by market activity, max 7 cards, max 2
+// losses. Drives ONLY the top-level `summary`/`signals` and the separate
+// `legacyWeekResultsCard` field for mode=latest&days=7 requests. It never
+// feeds `weekResultsCard`, which stays sourced from the read-model above.
+
+export const LEGACY_SEVEN_DAY_PROOF_SOURCE = "generated_signal_pairs_legacy_7d_proof" as const;
+export const LEGACY_PROOF_WINDOW_DAYS = 7;
+
+function legacyReturnLabel(result: string, returnPct: number | null): string {
+  if (result === "won") return `+${Math.round(returnPct ?? 0)}%`;
+  if (result === "lost") return "-100%";
+  return "—";
+}
+
+export interface LegacyResolvedSignal {
+  id: string;
+  conditionId: string;
+  eventTitle: string;
+  pick: string;
+  winner: string;
+  result: string;
+  returnPct: number | null;
+  entryPrice: number | null;
+  europeanOdds: number | null;
+  americanOdds: string | null;
+  signalConfidence: number | null;
+  trustMetrics: { smartMoney: number | null; whaleVsPublicMoney: number | null; preEventScoreAI: number | null };
+  snapshotRows: number;
+  marketActivityScore: number | null;
+  marketActivityLabel: string | null;
+  firstSignalCreatedAt: string;
+  lastSignalCreatedAt: string;
+  resolvedAt: string;
+  metricFormulaVersion: string | null;
+}
+
+export interface LegacySevenDayProof {
+  source: typeof LEGACY_SEVEN_DAY_PROOF_SOURCE;
+  summary: {
+    uniqueResolved: number;
+    snapshotRows: number;
+    won: number;
+    lost: number;
+    push: number;
+    sampleSizeStatus: "empty" | "early" | "active" | "enough_data";
+    showPerformanceClaim: boolean;
+    message: string;
+    latestMode: true;
+    windowDays: number;
+    maxCards: number;
+    maxLost: number;
+    excludePush: true;
+    selectionRule: "last_7d_highest_activity_max_two_loss";
+    source: typeof LEGACY_SEVEN_DAY_PROOF_SOURCE;
+  };
+  signals: LegacyResolvedSignal[];
+  card: WeekResultsCard | null;
+}
+
+/** Pure legacy builder over raw generated_signal_pairs rows (already filtered
+ *  to resolved, non-shadow, inside the requested window by the caller).
+ *  Returns the old top-level summary/signals contract plus a card the current
+ *  SignalWeekResultsCard component can render. When no usable rows exist the
+ *  card is null — safe fallback, never fabricated zeros. */
+export function buildLegacySevenDayProofFromRows(
+  rows: DbRow[],
+  windowDays: number
+): LegacySevenDayProof {
+  // Dedupe by condition_id + selected_outcome (pre-PR#22 behavior).
+  const groups = new Map<string, DbRow[]>();
+  for (const raw of rows) {
+    const key = `${raw.condition_id ?? ""}::${raw.selected_outcome ?? ""}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push(raw);
+  }
+
+  const allSignals: LegacyResolvedSignal[] = [];
+  let wonCount = 0, lostCount = 0, pushCount = 0;
+
+  for (const [, group] of groups) {
+    group.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    const rep = group[0];
+    const lastRow = group[group.length - 1];
+
+    const resolvedAt =
+      group.map((r) => r.resolved_at).filter(Boolean).sort().reverse()[0] ??
+      rep.resolved_at ?? rep.created_at;
+
+    const result = rep.signal_result ?? "unknown";
+    if (result === "won") wonCount++;
+    else if (result === "lost") lostCount++;
+    else pushCount++;
+
+    const decOdds = europeanOdds(rep.entry_price_num ?? null);
+    const { score: actScore, label: actLabel } = extractActivityScore(rep, group.length);
+
+    allSignals.push({
+      id: rep.id,
+      conditionId: rep.condition_id ?? "",
+      eventTitle: extractEventTitle(rep),
+      pick: rep.selected_outcome ?? "",
+      winner: rep.winning_outcome ?? "",
+      result,
+      returnPct: rep.realized_return_pct ?? null,
+      entryPrice: rep.entry_price_num ?? null,
+      europeanOdds: decOdds,
+      americanOdds: decimalToAmerican(decOdds),
+      signalConfidence: extractConfidence(rep),
+      trustMetrics: extractTrustMetrics(rep),
+      snapshotRows: group.length,
+      marketActivityScore: actScore,
+      marketActivityLabel: actLabel,
+      firstSignalCreatedAt: rep.created_at,
+      lastSignalCreatedAt: lastRow.created_at,
+      resolvedAt,
+      metricFormulaVersion: rep.metric_formula_version ?? null,
+    });
+  }
+
+  // Latest-mode carousel subset: no push, highest activity first, max 7, max 2 losses.
+  const eligible = allSignals.filter((s) => !PUSH_RESULTS.has(s.result));
+  eligible.sort((a, b) => {
+    const scoreDiff = (b.marketActivityScore ?? 0) - (a.marketActivityScore ?? 0);
+    if (scoreDiff !== 0) return scoreDiff;
+    return new Date(b.resolvedAt).getTime() - new Date(a.resolvedAt).getTime();
+  });
+  const displayed: LegacyResolvedSignal[] = [];
+  let lostIncluded = 0;
+  for (const s of eligible) {
+    if (displayed.length >= LATEST_MAX_CARDS) break;
+    if (s.result === "lost") {
+      if (lostIncluded >= LATEST_MAX_LOST) continue;
+      lostIncluded++;
+    }
+    displayed.push(s);
+  }
+
+  let sampleSizeStatus: "empty" | "early" | "active" | "enough_data";
+  const totalResolved = allSignals.length;
+  if (totalResolved === 0) sampleSizeStatus = "empty";
+  else if (totalResolved < 3) sampleSizeStatus = "early";
+  else if (totalResolved < 10) sampleSizeStatus = "active";
+  else sampleSizeStatus = "enough_data";
+
+  const summary: LegacySevenDayProof["summary"] = {
+    uniqueResolved: allSignals.length,
+    snapshotRows: rows.length,
+    won: wonCount,
+    lost: lostCount,
+    push: pushCount,
+    sampleSizeStatus,
+    showPerformanceClaim: false,
+    message: "Tracking is live. Early sample, not performance guarantee.",
+    latestMode: true,
+    windowDays,
+    maxCards: LATEST_MAX_CARDS,
+    maxLost: LATEST_MAX_LOST,
+    excludePush: true,
+    selectionRule: "last_7d_highest_activity_max_two_loss",
+    source: LEGACY_SEVEN_DAY_PROOF_SOURCE,
+  };
+
+  // Card: cumulative real-return proof over the displayed subset, chronological
+  // (same data the pre-PR#22 paywallChart drew). $100-stake: a won signal's
+  // realized_return_pct maps 1:1 to dollars, a loss is -$100.
+  const displayedWonLost = displayed.filter((s) => s.result === "won" || s.result === "lost");
+  if (displayedWonLost.length === 0) {
+    return { source: LEGACY_SEVEN_DAY_PROOF_SOURCE, summary, signals: displayed, card: null };
+  }
+
+  const chronological = [...displayedWonLost].sort(
+    (a, b) => new Date(a.resolvedAt).getTime() - new Date(b.resolvedAt).getTime()
+  );
+  const signalUsd = (s: LegacyResolvedSignal): number =>
+    s.result === "won" ? round(s.returnPct ?? 0, 2) : -100;
+
+  const cardWon = chronological.filter((s) => s.result === "won").length;
+  const cardLost = chronological.length - cardWon;
+  const netProfitUsd = round(sum(chronological.map(signalUsd)), 2);
+  const totalStakeUsd = chronological.length * STAKE_USD;
+  const netReturnPct = round((netProfitUsd / totalStakeUsd) * 100, 2);
+  // Old paywall proof headline: cumulative return over the displayed subset.
+  const cumulativeReturnPct = round(
+    chronological.reduce((acc, s) => acc + (s.result === "won" ? (s.returnPct ?? 0) : -100), 0),
+    1
+  );
+  const oddsVals = chronological
+    .map((s) => s.europeanOdds)
+    .filter((v): v is number => v !== null && v > 0);
+  const avgDecimalOdds = oddsVals.length > 0 ? round(avg(oddsVals), 3) : 0;
+  const winRatePct = round((cardWon / chronological.length) * 100, 2);
+
+  let cumulativeProfitUsd = 0;
+  const returnCurve: ReturnCurvePoint[] = chronological.map((s, i) => {
+    cumulativeProfitUsd = round(cumulativeProfitUsd + signalUsd(s), 2);
+    return {
+      index: i,
+      cumulativePnlUnits: round(cumulativeProfitUsd / STAKE_USD, 4),
+      cumulativeRoiPct: round((cumulativeProfitUsd / ((i + 1) * STAKE_USD)) * 100, 2),
+      cumulativeProfitUsd,
+      cumulativeReturnPct: round((cumulativeProfitUsd / ((i + 1) * STAKE_USD)) * 100, 2),
+    };
+  });
+
+  const tableRows: TrackRecordRow[] = chronological.map((s, i) => ({
+    id: s.id,
+    eventTitle: s.eventTitle,
+    marketQuestion: s.eventTitle,
+    pick: s.pick,
+    createdAt: s.resolvedAt,
+    decimalOdds: s.europeanOdds ?? 0,
+    americanOdds: s.americanOdds,
+    oddsSourcePath: "generated_signal_pairs.entry_price_num",
+    projectedWinProbabilityPct: s.signalConfidence ?? 0,
+    pnlUnits: round(signalUsd(s) / STAKE_USD, 4),
+    projectedReturnUsd: signalUsd(s),
+    projectedRoiPctPerSignal: round((signalUsd(s) / STAKE_USD) * 100, 2),
+    status: "Resolved",
+    displayStatus: s.result === "won" ? "Hit" : "Miss",
+    action: null,
+    returnLabel: legacyReturnLabel(s.result, s.returnPct),
+    scoreRank: i + 1,
+    sourceModel: null,
+  }));
+
+  const nowIso = new Date().toISOString();
+  const card: WeekResultsCard = {
+    cardType: "signal-week-results",
+    schemaVersion: "week-results-v1-legacy-proof",
+    source: LEGACY_SEVEN_DAY_PROOF_SOURCE,
+    status: "ready",
+    window: {
+      label: `Past ${windowDays} days`,
+      days: windowDays,
+      startedAt: new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString(),
+      endedAt: nowIso,
+    },
+    title: "Signals tracked this week",
+    subtitle: "Real tracking, not a performance guarantee",
+    sampleSizeStatus,
+    selectedSignals: chronological.length,
+    oddsCoveragePct: round((oddsVals.length / chronological.length) * 100, 2),
+    oddsSourceBreakdown: { "generated_signal_pairs.entry_price_num": oddsVals.length },
+    projectedWinRatePct: winRatePct,
+    avgDecimalOdds,
+    projectedPnlUnits: round(netProfitUsd / STAKE_USD, 4),
+    projectedReturnUsd: netProfitUsd,
+    projectedRoiPct: cumulativeReturnPct,
+    stakeUsd: STAKE_USD,
+    totalStakeUsd,
+    netProfitUsd,
+    netReturnPct,
+    signalsTracked: chronological.length,
+    resolvedCount: chronological.length,
+    pendingCount: 0,
+    winsCount: cardWon,
+    lossesCount: cardLost,
+    returnCurve,
+    trackRecordDisplayTable: { windowDays, rows: tableRows },
+  };
+
+  return { source: LEGACY_SEVEN_DAY_PROOF_SOURCE, summary, signals: displayed, card };
+}
 
 // ── Route handler ─────────────────────────────────────────────────────────────
 
@@ -992,6 +1260,54 @@ export async function GET(request: Request) {
     trackRecordDisplayTable: { windowDays, rows: trackRecordRows },
   };
 
+  // ── Legacy 7D proof (mode=latest&days=7 only) ─────────────────────────────
+  // Pre-existing consumers (PassOfferModal, reconstruction top-feed card) keep
+  // the pre-PR#22 generated_signal_pairs contract. Isolated from the
+  // read-model weekResultsCard above — it only drives the top-level
+  // `summary`/`signals` and the separate `legacyWeekResultsCard` field.
+  let legacyProof: LegacySevenDayProof | null = null;
+  if (isLatestMode && windowDays === LEGACY_PROOF_WINDOW_DAYS) {
+    const legacyCutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
+    let query = supabase
+      .from("generated_signal_pairs")
+      .select(
+        "id, created_at, resolved_at, condition_id, selected_outcome, winning_outcome, " +
+        "signal_result, realized_return_pct, metric_formula_version, entry_price_num, " +
+        "premium_signal, diagnostics"
+      )
+      .not("signal_result", "is", null)
+      // Exclude shadow research rows; preserve legacy rows where metric_formula_version IS NULL.
+      .or("metric_formula_version.is.null,metric_formula_version.not.like.shadow-%")
+      .gte("resolved_at", legacyCutoff)
+      .order("resolved_at", { ascending: false })
+      .limit(INTERNAL_FETCH_LIMIT);
+
+    const { data: legacyRows, error: legacyError } = await query;
+    if (legacyError) {
+      // Legacy proof is additive — never fail the read-model response over it.
+      console.error("[legacySevenDayProof] DB_QUERY_ERROR", {
+        source: LEGACY_SEVEN_DAY_PROOF_SOURCE,
+        windowDays,
+        message: legacyError.message,
+      });
+    } else {
+      legacyProof = buildLegacySevenDayProofFromRows(
+        ((legacyRows ?? []) as unknown) as DbRow[],
+        windowDays
+      );
+      console.log("[legacySevenDayProof]", {
+        source: LEGACY_SEVEN_DAY_PROOF_SOURCE,
+        windowDays,
+        rowsScanned: legacyProof.summary.snapshotRows,
+        uniqueResolved: legacyProof.summary.uniqueResolved,
+        won: legacyProof.summary.won,
+        lost: legacyProof.summary.lost,
+        displayedSignals: legacyProof.signals.length,
+        hasCard: legacyProof.card !== null,
+      });
+    }
+  }
+
   // ── signals: legacy carousel array (ResolvedSignalsCarousel / PassOfferModal /
   // reconstruction page) — sourced from the SAME read-model rows as
   // weekResultsCard above, never a second live query against
@@ -1026,32 +1342,39 @@ export async function GET(request: Request) {
   // highest-activity/max-2-loss carousel selection no longer applies — the
   // read-model rows are already the single source of truth, ordered by
   // score_rank.
+  // For mode=latest&days=7 the top-level summary/signals carry the restored
+  // legacy generated_signal_pairs proof (pre-PR#22 contract), and the legacy
+  // card ships under `legacyWeekResultsCard`. `weekResultsCard` itself always
+  // stays the read-model contract, for every request.
   return NextResponse.json(
     {
       ok: true,
       generatedAt: new Date().toISOString(),
-      summary: {
-        uniqueResolved: summary.resolvedCount,
-        snapshotRows: rawShownRows,
-        won: summary.winsCount,
-        lost: summary.lossesCount,
-        push: 0,
-        sampleSizeStatus: trackSampleSizeStatus,
-        showPerformanceClaim: trackStatus === "ready",
-        message:
-          trackStatus === "ready"
-            ? "Resolved track record from actual shown signals only. No global fill, no projected PnL."
-            : "Tracking is live. Shown signals are being tracked until enough results resolve.",
-        ...(isLatestMode && {
-          latestMode: true,
-          windowDays,
-          maxCards: LATEST_MAX_CARDS,
-          maxLost: LATEST_MAX_LOST,
-          excludePush: true,
-        }),
-      },
-      signals,
+      summary: legacyProof
+        ? legacyProof.summary
+        : {
+            uniqueResolved: summary.resolvedCount,
+            snapshotRows: rawShownRows,
+            won: summary.winsCount,
+            lost: summary.lossesCount,
+            push: 0,
+            sampleSizeStatus: trackSampleSizeStatus,
+            showPerformanceClaim: trackStatus === "ready",
+            message:
+              trackStatus === "ready"
+                ? "Resolved track record from actual shown signals only. No global fill, no projected PnL."
+                : "Tracking is live. Shown signals are being tracked until enough results resolve.",
+            ...(isLatestMode && {
+              latestMode: true,
+              windowDays,
+              maxCards: LATEST_MAX_CARDS,
+              maxLost: LATEST_MAX_LOST,
+              excludePush: true,
+            }),
+          },
+      signals: legacyProof ? legacyProof.signals : signals,
       weekResultsCard,
+      ...(legacyProof && { legacyWeekResultsCard: legacyProof.card }),
       resolvedLedger: ledgerProofRows,
     },
     { headers: { "Cache-Control": "no-store" } }

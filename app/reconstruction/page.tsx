@@ -386,7 +386,10 @@ export default function ReconstructionPage() {
     fetch('/api/signals/resolved?mode=latest&days=7&limit=7')
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
-        const card = json?.weekResultsCard;
+        // Restored legacy 7D proof (generated_signal_pairs) is preferred for
+        // the top-feed proof card; the read-model weekResultsCard is only a
+        // fallback here.
+        const card = json?.legacyWeekResultsCard ?? json?.weekResultsCard;
         if (card?.cardType === 'signal-week-results') {
           setWeekCard(card as WeekResultsCard);
         }
