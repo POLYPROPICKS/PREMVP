@@ -122,6 +122,144 @@ export function admissionVerdict(row: any): string {
   return "TIER_BELOW_THRESHOLD";
 }
 
+// ── LAYER C: builder-candidate -> reservation-planner explanation (DIAGNOSTIC_MIRROR) ──
+//
+// Explains, per fixture, why a builder candidate that Layer A/B show as present did or
+// did not become a night_event_reservations row. Read-only: uses `isWithinHorizon` and
+// `NightWindow` from lib/executor/nightWindow.ts (pure, no side effects) and inspects the
+// already-built ReservationPlan.reservations array (buildReservationPlan is pure — no DB
+// writes). The Tier1/allowed-fullmatch/weak-identity checks below are a DIAGNOSTIC_MIRROR
+// of the planner's internal group-key/anchor logic (those helpers are not exported), not a
+// re-implementation of its exact cap/dedupe behavior.
+export type LayerCStatus =
+  | "BUILDER_CANDIDATE_PLANNER_SELECTED"
+  | "BUILDER_CANDIDATE_OUT_OF_RESERVATION_WINDOW"
+  | "BUILDER_CANDIDATE_REJECTED_BY_PLANNER_CAP_OR_DEDUPE"
+  | "BUILDER_CANDIDATE_WEAK_IDENTITY"
+  | "BUILDER_CANDIDATE_NO_SAFE_ALLOWED_FULLMATCH"
+  | "BUILDER_CANDIDATE_UNKNOWN_PLANNER_GAP";
+
+export interface LayerCResult {
+  status: LayerCStatus;
+  reason: string;
+  inReservationWindow: boolean | "unknown";
+  wouldSelectForReservation: boolean;
+  existingReservationMatch: boolean;
+  bestCandidate: any | null;
+}
+
+function pickBestCandidate(hits: any[]): any | null {
+  if (hits.length === 0) return null;
+  return [...hits].sort((a, b) => {
+    const as = typeof a.diagnostics?.score === "number" ? a.diagnostics.score : -1;
+    const bs = typeof b.diagnostics?.score === "number" ? b.diagnostics.score : -1;
+    if (bs !== as) return bs - as;
+    const ac = typeof a.diagnostics?.coverage === "number" ? a.diagnostics.coverage : -1;
+    const bc = typeof b.diagnostics?.coverage === "number" ? b.diagnostics.coverage : -1;
+    return bc - ac;
+  })[0];
+}
+
+export function classifyLayerC(args: {
+  fx: FixtureSpec;
+  hits: any[];
+  tier1Allowed: any[];
+  window: { horizonEndMs: number };
+  nowMs: number;
+  reservations: any[];
+}): LayerCResult {
+  const { fx, hits, tier1Allowed, window, nowMs, reservations } = args;
+  const best = pickBestCandidate(hits);
+
+  if (!best) {
+    return {
+      status: "BUILDER_CANDIDATE_NO_SAFE_ALLOWED_FULLMATCH",
+      reason: "SOURCE_MATCH_NOT_FOUND: builder produced 0 candidates matching this fixture text pattern",
+      inReservationWindow: "unknown",
+      wouldSelectForReservation: false,
+      existingReservationMatch: false,
+      bestCandidate: null,
+    };
+  }
+
+  const startIso = best.diagnostics?.game_start_iso ?? null;
+  const startMs = startIso ? Date.parse(startIso) : NaN;
+  const inWindow: boolean | "unknown" =
+    !Number.isFinite(startMs) ? "unknown" : startMs > nowMs && startMs <= window.horizonEndMs;
+
+  const existingReservationMatch = reservations.some((r) => {
+    const tn = norm(`${r.event_title ?? ""} ${r.match_family_key ?? ""}`);
+    return matchesFixture(tn, fx);
+  });
+
+  if (existingReservationMatch) {
+    return {
+      status: "BUILDER_CANDIDATE_PLANNER_SELECTED",
+      reason: "A matching night_event_reservations row exists for this fixture.",
+      inReservationWindow: inWindow,
+      wouldSelectForReservation: true,
+      existingReservationMatch,
+      bestCandidate: best,
+    };
+  }
+
+  if (inWindow === false) {
+    return {
+      status: "BUILDER_CANDIDATE_OUT_OF_RESERVATION_WINDOW",
+      reason: `best candidate start ${startIso} is outside the current reservation horizon (ends ${new Date(window.horizonEndMs).toISOString()})`,
+      inReservationWindow: inWindow,
+      wouldSelectForReservation: false,
+      existingReservationMatch,
+      bestCandidate: best,
+    };
+  }
+
+  const bestIsTier1Allowed = tier1Allowed.length > 0;
+  const isWeakIdentity = /^WEAK_/.test(String(best.match_family_key ?? ""));
+
+  if (bestIsTier1Allowed && inWindow === true) {
+    return {
+      status: "BUILDER_CANDIDATE_REJECTED_BY_PLANNER_CAP_OR_DEDUPE",
+      reason: "candidate is a Tier1 allowed-fullmatch, in-window, but no matching reservation row exists — likely planner cap/dedupe/slot-fill limit (DIAGNOSTIC_MIRROR, not exact re-implementation).",
+      inReservationWindow: inWindow,
+      wouldSelectForReservation: true,
+      existingReservationMatch,
+      bestCandidate: best,
+    };
+  }
+
+  if (isWeakIdentity && !bestIsTier1Allowed) {
+    return {
+      status: "BUILDER_CANDIDATE_WEAK_IDENTITY",
+      reason: "best candidate is a weak single-team identity key and not a Tier1 allowed-fullmatch candidate.",
+      inReservationWindow: inWindow,
+      wouldSelectForReservation: false,
+      existingReservationMatch,
+      bestCandidate: best,
+    };
+  }
+
+  if (!bestIsTier1Allowed) {
+    return {
+      status: "BUILDER_CANDIDATE_NO_SAFE_ALLOWED_FULLMATCH",
+      reason: "in-window candidates exist but none is a Tier1 allowed-fullmatch candidate; correct skip, not a builder bug.",
+      inReservationWindow: inWindow,
+      wouldSelectForReservation: false,
+      existingReservationMatch,
+      bestCandidate: best,
+    };
+  }
+
+  return {
+    status: "BUILDER_CANDIDATE_UNKNOWN_PLANNER_GAP",
+    reason: "candidate is in-window and Tier1 allowed-fullmatch but no explanation matched — requires manual review.",
+    inReservationWindow: inWindow,
+    wouldSelectForReservation: true,
+    existingReservationMatch,
+    bestCandidate: best,
+  };
+}
+
 async function main() {
   const { loadEnvConfig } = await import("@next/env");
   loadEnvConfig(process.cwd());
@@ -130,6 +268,7 @@ async function main() {
   const { buildFireModelCandidates } = await import("../../lib/executor/buildFireModelCandidates");
   const { candidates } = await buildFireModelCandidates(100_000, "all", true);
   console.log(`\n=== LAYER A: builder candidate universe (size ${candidates.length}) ===`);
+  const fixtureHits = new Map<string, { hits: any[]; t1Allowed: any[] }>();
   for (const fx of FIXTURES) {
     const hits = candidates.filter((c) => {
       const tn = norm(`${c.event_slug ?? ""} ${c.market_slug ?? ""} ${c.match_family_key} ${c.canonical_event_key ?? ""}`);
@@ -139,6 +278,7 @@ async function main() {
       (c) => c.strategy === "TIER1_CORE_STRICT_72_COV50" &&
         marketClass(`${c.market_slug ?? ""} ${c.event_slug ?? ""}`) === "ALLOWED_FULLMATCH",
     );
+    fixtureHits.set(fx.id, { hits, t1Allowed });
     console.log(`\n--- ${fx.id} --- candidates=${hits.length} tier1_allowed_fullmatch=${t1Allowed.length}`);
     console.log(`  requested_fixture: ${fx.id}`);
     console.log(`  matched_event_titles_sample: ${JSON.stringify(hits.slice(0, 10).map((c) => c.event_slug ?? c.match_family_key ?? ""))}`);
@@ -151,6 +291,34 @@ async function main() {
         mismatch_warning: mismatchWarning(tn, fx),
       }));
     }
+  }
+
+  // ── LAYER C: planner explanation (builder candidates -> reservation planner) ──
+  // buildReservationPlan is PURE (no DB writes, no fs writes) — safe read-only reuse.
+  const { buildReservationPlan } = await import("../../lib/executor/nightEventReservations");
+  const nowMs = Date.now();
+  const plan = await buildReservationPlan(nowMs);
+  console.log(`\n=== LAYER C: builder candidate -> reservation planner explanation (plan_run_id=${plan.plan_run_id}) ===`);
+  for (const fx of FIXTURES) {
+    const { hits, t1Allowed } = fixtureHits.get(fx.id)!;
+    const layerC = classifyLayerC({ fx, hits, tier1Allowed: t1Allowed, window: plan.window, nowMs, reservations: plan.reservations });
+    const bc = layerC.bestCandidate;
+    console.log(`\n--- ${fx.id} ---`);
+    console.log("  " + JSON.stringify({
+      requested_fixture: fx.id,
+      builder_candidates_count: hits.length,
+      tier1_allowed_fullmatch: t1Allowed.length,
+      best_candidate: bc ? {
+        market: bc.market_slug, start: bc.diagnostics?.game_start_iso, mfk: bc.match_family_key,
+        strategy: bc.strategy, score: bc.diagnostics?.score, coverage: bc.diagnostics?.coverage,
+        market_class: marketClass(`${bc.market_slug ?? ""} ${bc.event_slug ?? ""}`),
+      } : null,
+      layer_c_planner_status: layerC.status,
+      layer_c_reason: layerC.reason,
+      in_reservation_window: layerC.inReservationWindow,
+      would_select_for_reservation: layerC.wouldSelectForReservation,
+      existing_reservation_match: layerC.existingReservationMatch,
+    }));
   }
 
   // ── LAYER B: raw generated_signal_pairs admission analysis ──
