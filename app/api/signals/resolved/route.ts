@@ -587,16 +587,6 @@ export interface WindowResultsSummary {
   netReturnPct: number;
 }
 
-/** Whether the fetched read-model rows for this window should drive the
- *  displayed summary/chart/ledger values. `track_record_window_summary.status`
- *  is an honest readiness label for the funnel/tracking-state copy, but it
- *  must never erase real resolved rows the read-model already returned —
- *  a window can be "insufficient_history" for its aggregate classification
- *  while still carrying real resolved rows worth rendering. */
-export function hasRenderableWindowRows(rows: WindowResultRow[]): boolean {
-  return rows.length > 0;
-}
-
 /** Aggregates over ALL rows for the requested window_days — never truncated by
  *  the request `limit`, which only slices ledger rows downstream. */
 export function computeWindowResultsSummary(rows: WindowResultRow[]): WindowResultsSummary {
@@ -1144,11 +1134,11 @@ export async function GET(request: Request) {
   const trackStatus: TrackRecordStatus =
     windowSummary?.status === "ready" ? "ready" : "insufficient_history";
 
-  // Rows come straight from the read-model table for this window. `trackStatus`
-  // stays an honest label for the tracking-state copy, but it must not erase
-  // real resolved rows the read-model already returned (see hasRenderableWindowRows).
-  const windowRows = (((windowResultsRes.data ?? []) as unknown) as WindowResultRow[]);
-  const hasRows = hasRenderableWindowRows(windowRows);
+  // Result rows exist only for ready windows; ignore any stale rows otherwise.
+  const windowRows =
+    trackStatus === "ready"
+      ? (((windowResultsRes.data ?? []) as unknown) as WindowResultRow[])
+      : [];
 
   // 14D superset proof: only meaningful when the wider window was requested.
   let supersetMissingCount = 0;
@@ -1168,19 +1158,19 @@ export async function GET(request: Request) {
   const returnCurve = computeWindowReturnCurve(windowRows);
 
   // Funnel counts come from the summary table (full shown-history funnel);
-  // PnL comes from the read-model result rows whenever the read-model
-  // actually returned rows for this window — never fabricated when it didn't.
+  // PnL comes from the ready-window result rows only. insufficient_history
+  // always reports zero PnL — never a positive Net Return.
   const rawShownRows = windowSummary?.raw_shown_rows ?? 0;
   const uniqueMatches = windowSummary?.unique_matches ?? 0;
   const summary = {
-    signalsTracked: hasRows ? rowsSummary.signalsTracked : uniqueMatches,
+    signalsTracked: trackStatus === "ready" ? rowsSummary.signalsTracked : uniqueMatches,
     resolvedCount: windowSummary?.resolved_unique_rows ?? rowsSummary.resolvedCount,
     pendingCount: windowSummary?.pending_unique_rows ?? rowsSummary.pendingCount,
-    winsCount: hasRows ? rowsSummary.winsCount : 0,
-    lossesCount: hasRows ? rowsSummary.lossesCount : 0,
-    netProfitUsd: hasRows ? rowsSummary.netProfitUsd : 0,
-    totalStakeUsd: hasRows ? rowsSummary.totalStakeUsd : 0,
-    netReturnPct: hasRows ? rowsSummary.netReturnPct : 0,
+    winsCount: trackStatus === "ready" ? rowsSummary.winsCount : 0,
+    lossesCount: trackStatus === "ready" ? rowsSummary.lossesCount : 0,
+    netProfitUsd: trackStatus === "ready" ? rowsSummary.netProfitUsd : 0,
+    totalStakeUsd: trackStatus === "ready" ? rowsSummary.totalStakeUsd : 0,
+    netReturnPct: trackStatus === "ready" ? rowsSummary.netReturnPct : 0,
   };
 
   // Ledger rows displayed in the UI are capped by the request `limit`; the

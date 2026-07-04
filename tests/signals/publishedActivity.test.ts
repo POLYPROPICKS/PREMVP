@@ -376,10 +376,9 @@ test("API derives status from track_record_window_summary and defaults to insuff
   assert.ok(routeSource.includes('windowSummary?.status === "ready" ? "ready" : "insufficient_history"'));
 });
 
-test("API keeps read-model rows and PnL even when status is not ready, as long as the read-model actually returned rows (July 4 fix: status no longer erases real resolved rows)", () => {
-  assert.ok(routeSource.includes("hasRows ? rowsSummary.netProfitUsd : 0"));
-  assert.ok(routeSource.includes("const windowRows = (((windowResultsRes.data ?? []) as unknown) as WindowResultRow[]);"));
-  assert.ok(!routeSource.includes('trackStatus === "ready"\n      ? (((windowResultsRes.data ?? []) as unknown) as WindowResultRow[])\n      : []'));
+test("API zeroes PnL and drops result rows when status is not ready (no positive Net Return)", () => {
+  assert.ok(routeSource.includes('trackStatus === "ready" ? rowsSummary.netProfitUsd : 0'));
+  assert.ok(routeSource.includes('trackStatus === "ready"\n      ? (((windowResultsRes.data ?? []) as unknown) as WindowResultRow[])\n      : []'));
 });
 
 test("weekResultsCard exposes status, rawShownRows and uniqueMatches", () => {
@@ -783,15 +782,15 @@ test("projected fields are never used to compute realized PnL (no projected_retu
   assert.ok(!fnBody.includes("projected_win_probability"));
 });
 
-test("insufficient_history with real resolved rows still surfaces the actual PnL (contract: summary gates on row presence, not the status label)", () => {
-  assert.ok(routeSource.includes("hasRows ? rowsSummary.netProfitUsd : 0"));
+test("insufficient_history still shows no positive PnL even with rows present in the table (contract: summary must gate on status, not row presence)", () => {
+  assert.ok(routeSource.includes('trackStatus === "ready" ? rowsSummary.netProfitUsd : 0'));
   const rows: WindowResultRow[] = [
     windowResultRow({ window_days: 7, source_row_id: "1", entry_price_num: 0.5, real_pnl_usd: 100 }),
   ];
   const summary = computeWindowResultsSummary(rows);
-  // The read-model already returned a real resolved row — the July 4 fix
-  // means this value is trusted (hasRows === true) regardless of whether
-  // track_record_window_summary.status is "ready" or "insufficient_history".
+  // Table-level aggregation would show +100, but the API only trusts this
+  // value when trackStatus === "ready" (see route.ts contract above) —
+  // insufficient_history windows must render 0, never this raw aggregate.
   assert.equal(summary.netProfitUsd, 100);
 });
 
@@ -895,9 +894,9 @@ test("14D ready: signals/ledger both come from the same 44-row (29 win / 15 loss
   assert.equal(carouselSignals.filter((s) => s.result === "lost").length, 15);
 });
 
-test("7D insufficient_history: an empty read-model fetch still yields zero PnL/rows (windowRows only empty when the query actually returned nothing)", () => {
-  assert.ok(routeSource.includes("const windowRows = (((windowResultsRes.data ?? []) as unknown) as WindowResultRow[]);"));
-  // With windowRows = [] (an actually-empty read-model fetch), orderedForLedger and carouselSignals are also [].
+test("7D insufficient_history: no legacy fallback rows and zero PnL (route.ts contract: windowRows = [] when not ready)", () => {
+  assert.ok(routeSource.includes('trackStatus === "ready"\n      ? (((windowResultsRes.data ?? []) as unknown) as WindowResultRow[])\n      : []'));
+  // With windowRows = [], orderedForLedger and carouselSignals are also [].
   const rows: WindowResultRow[] = [];
   const summary = computeWindowResultsSummary(rows);
   const carouselSignals = rows.map(mapWindowResultRowToCarouselSignal);
