@@ -48,6 +48,39 @@ npm run resolve:signals:live-priority; npm run resolve:signals:cron
 
 Do not replace this with the generic resolver alone.
 
+Status: **to configure/verify** — no Railway cron config exists in this repo
+proving the above command is actually wired into a scheduled job. Do not
+treat it as already live in production until a Railway config or deploy log
+confirms it.
+
+## Track-Record Read-Model Chain (WhyTrust)
+
+The WhyTrust trust-block read-model (`track_record_window_results` /
+`track_record_window_summary`) is a separate downstream consumer of this
+resolver pipeline and is not automatically fresh just because steps 1-2 above
+ran. The expected daily chain must also include, in order, after step 2:
+
+3. Priority track-record-display resolver pass:
+
+   ```bash
+   npm run resolve:signals -- --write --priority-track-record-display --dedupe-strict --limit=200 --max-updates=100
+   ```
+
+4. Track-record window read-model refresh:
+
+   ```bash
+   npm run refresh:track-record:write
+   ```
+
+Both are also available combined as `npm run track-record:daily:write`. See
+`docs/operations/TRACK_RECORD_REFRESH_RUNBOOK.md` for the full data-flow,
+report path, and founder-approval boundary for write execution.
+
+Status: **to configure/verify** — as with the Railway resolver command above,
+no Railway/cron config in this repo proves `track-record:daily:write` is
+scheduled in production. Do not claim it is deployed until proven by a
+Railway config or deploy log.
+
 ## Required Verification
 
 After the resolver pipeline, run:
