@@ -1,7 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  hasRenderableWindowRows,
   computeWindowResultsSummary,
   computeWindowReturnCurve,
   mapWindowResultRowToTrackRecordRow,
@@ -37,15 +36,6 @@ function windowResultRow(overrides: Partial<WindowResultRow> = {}): WindowResult
     ...overrides,
   };
 }
-
-test("hasRenderableWindowRows: true when the read-model returned resolved rows, regardless of summary status", () => {
-  const rows = [windowResultRow(), windowResultRow({ source_row_id: "row-2", display_status: "Miss", signal_result: "lost", real_pnl_usd: -100 })];
-  assert.equal(hasRenderableWindowRows(rows), true);
-});
-
-test("hasRenderableWindowRows: false only when the read-model query actually returned nothing", () => {
-  assert.equal(hasRenderableWindowRows([]), false);
-});
 
 test("computeWindowResultsSummary: real resolved/win/loss counts and PnL are derived straight from rows (no status gate)", () => {
   const rows = [

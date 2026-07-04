@@ -104,13 +104,12 @@ function cardRows(data: WeekResultsCard): TrackRecordRow[] {
  *  once real resolved rows exist) and is trusted directly rather than
  *  re-derived from resolvedCount/avgDecimalOdds — those can be legitimately
  *  0 (e.g. partial odds coverage) on an otherwise-ready card, which used to
- *  cause a ready card to fall through to the "loading" placeholder.
- *  `status: 'insufficient_history'` no longer forces the loading fallback by
- *  itself — a tracking-live window with real resolved rows is still usable. */
+ *  cause a ready card to fall through to the "loading" placeholder. */
 function hasUsableProof(data: WeekResultsCard | null): boolean {
   if (!data) return false;
   if (data.status === 'ready') return cardRows(data).length > 0;
-  return cardRows(data).length > 0 && data.resolvedCount > 0;
+  if (data.status === 'insufficient_history') return false;
+  return cardRows(data).length > 0 && data.resolvedCount > 0 && data.avgDecimalOdds > 0;
 }
 
 export default function SignalWeekResultsCard({ data, loading = false, variant = 'compact' }: Props) {
