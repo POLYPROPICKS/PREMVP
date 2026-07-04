@@ -1265,8 +1265,15 @@ export async function GET(request: Request) {
   // the pre-PR#22 generated_signal_pairs contract. Isolated from the
   // read-model weekResultsCard above — it only drives the top-level
   // `summary`/`signals` and the separate `legacyWeekResultsCard` field.
+  // isSevenDayLatestWindow keeps the exact pre-existing 7-day-only proof gate
+  // (summary/card contract, untouched). needsLegacyFallback additionally covers
+  // any other Latest window (e.g. days=14) whose read-model produced zero rows —
+  // Latest must not depend on track_record_window_results being populated; it
+  // reuses this SAME single generated_signal_pairs query for its `signals` only.
+  const isSevenDayLatestWindow = isLatestMode && windowDays === LEGACY_PROOF_WINDOW_DAYS;
+  const needsLegacyFallback = isLatestMode && windowDays !== LEGACY_PROOF_WINDOW_DAYS && windowRows.length === 0;
   let legacyProof: LegacySevenDayProof | null = null;
-  if (isLatestMode && windowDays === LEGACY_PROOF_WINDOW_DAYS) {
+  if (isSevenDayLatestWindow || needsLegacyFallback) {
     const legacyCutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
     let query = supabase
       .from("generated_signal_pairs")
@@ -1333,6 +1340,14 @@ export async function GET(request: Request) {
     signals = carouselSignals.slice(0, limit);
   }
 
+  // ── Legacy signals fallback for Latest outside the 7-day proof window ──────
+  // needsLegacyFallback already fetched legacyProof above when the read-model
+  // had zero rows for this window — reuse its `signals` here so Latest never
+  // renders empty waiting on WhyTrust/read-model refresh.
+  if (needsLegacyFallback && legacyProof) {
+    signals = legacyProof.signals;
+  }
+
   // ── Response ──────────────────────────────────────────────────────────────
   // Top-level `summary` is derived entirely from the read-model values already
   // computed above (windowSummary / summary / trackStatus / rawShownRows) —
@@ -1350,7 +1365,7 @@ export async function GET(request: Request) {
     {
       ok: true,
       generatedAt: new Date().toISOString(),
-      summary: legacyProof
+      summary: isSevenDayLatestWindow && legacyProof
         ? legacyProof.summary
         : {
             uniqueResolved: summary.resolvedCount,
@@ -1374,7 +1389,7 @@ export async function GET(request: Request) {
           },
       signals: legacyProof ? legacyProof.signals : signals,
       weekResultsCard,
-      ...(legacyProof && { legacyWeekResultsCard: legacyProof.card }),
+      ...(isSevenDayLatestWindow && legacyProof && { legacyWeekResultsCard: legacyProof.card }),
       resolvedLedger: ledgerProofRows,
     },
     { headers: { "Cache-Control": "no-store" } }
