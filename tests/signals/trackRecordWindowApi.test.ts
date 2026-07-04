@@ -4,6 +4,8 @@ import {
   computeWindowResultsSummary,
   computeWindowReturnCurve,
   mapWindowResultRowToTrackRecordRow,
+  mapWindowResultRowToCarouselSignal,
+  hasRenderableWindowRows,
   type WindowResultRow,
 } from "../../app/api/signals/resolved/route";
 
@@ -71,4 +73,30 @@ test("mapWindowResultRowToTrackRecordRow: falls back to resolved_at when shown_b
   const row = windowResultRow({ shown_batch_day: null, resolved_at: "2026-07-02T00:00:00.000Z" });
   const mapped = mapWindowResultRowToTrackRecordRow(row);
   assert.equal(mapped.createdAt, "2026-07-02T00:00:00.000Z");
+});
+
+test("hasRenderableWindowRows: true whenever the read-model returned real rows, regardless of trackStatus label", () => {
+  const rows = [windowResultRow({ source_row_id: "row-1" })];
+  assert.equal(hasRenderableWindowRows(rows), true);
+});
+
+test("hasRenderableWindowRows: false only when the read-model returned no rows at all", () => {
+  assert.equal(hasRenderableWindowRows([]), false);
+});
+
+test("Latest Resolved carousel: signals.length > 0 when real track_record_window_results rows exist, even if window is not yet 'ready' (regression for PR #42 revert of PR #41)", () => {
+  const rows = [
+    windowResultRow({ source_row_id: "row-1" }),
+    windowResultRow({ source_row_id: "row-2", display_status: "Miss", signal_result: "lost", real_pnl_usd: -100 }),
+  ];
+  // Simulate the route's windowRows derivation: it must not force [] just
+  // because track_record_window_summary.status is not "ready" — only the
+  // absence of real rows should ever empty the carousel signals array.
+  const trackStatus: "ready" | "insufficient_history" = "insufficient_history";
+  const windowRows = hasRenderableWindowRows(rows) ? rows : [];
+  assert.notEqual(trackStatus, "ready", "sanity: this test simulates the non-ready case");
+  assert.ok(windowRows.length > 0, "windowRows must not be emptied when real rows exist");
+
+  const carouselSignals = windowRows.map(mapWindowResultRowToCarouselSignal);
+  assert.ok(carouselSignals.length > 0, "Latest Resolved carousel signals must not be empty when real resolved rows exist");
 });
