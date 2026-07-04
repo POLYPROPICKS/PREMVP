@@ -216,7 +216,9 @@ export function buildPreviewRows(
 
 /** Cumulative real-PnL curve over the given rows, oldest first. */
 function computeCurve(rows: TrackRecordRow[]): ReturnCurvePoint[] {
-  const ordered = [...rows].sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1));
+  const ordered = [...rows].sort((a, b) =>
+    a.createdAt === b.createdAt ? (a.id < b.id ? -1 : 1) : (a.createdAt < b.createdAt ? -1 : 1)
+  );
   let cumulativeProfitUsd = 0;
   return ordered.map((r, i) => {
     cumulativeProfitUsd = round(cumulativeProfitUsd + r.projectedReturnUsd, 2);
@@ -274,7 +276,9 @@ export function buildWhyTrustWeekResultsCard(input: BuildCardInput): WhyTrustWee
   const lossesCount = status === "ready" ? summary?.losses_count ?? 0 : 0;
   const totalStakeUsd = status === "ready" ? resolvedCount * STAKE_USD : 0;
 
-  const returnCurve = status === "ready" ? computeCurve(ledgerRows) : [];
+  // Curve is built from the SAME rows shown in the ledger (real resolved rows
+  // in both detail modes) — rendering it never upgrades status or headline PnL.
+  const returnCurve = computeCurve(ledgerRows);
 
   let sampleSizeStatus: WeekResultsCard["sampleSizeStatus"];
   if (signalsTracked === 0) sampleSizeStatus = "empty";

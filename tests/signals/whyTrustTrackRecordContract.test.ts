@@ -168,6 +168,56 @@ test("contract: honest preview rows when track_record_window_results is empty", 
   assert.equal(card.netProfitUsd, 0);
 });
 
+// ── 5. Return curve from the same preview ledger rows ────────────────────────
+
+test("contract: preview ledger rows produce a cumulative returnCurve while insufficient_history", async () => {
+  const mod = await import("../../app/api/why-trust/track-record/route");
+
+  const preview = mod.buildPreviewRows(
+    [
+      historyRow(),
+      historyRow({
+        source_row_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        event_title: "Team C vs Team D",
+        normalized_match_key: "team c vs team d",
+        shown_batch_day: "2026-06-26",
+      }),
+    ],
+    [
+      pairRow(), // won at 0.5 → +$100
+      pairRow({
+        id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
+        signal_result: "lost",
+        winning_outcome: "Team D",
+        entry_price_num: 0.4,
+      }), // lost → -$100
+    ]
+  );
+
+  const card = mod.buildWhyTrustWeekResultsCard({
+    windowDays: 14,
+    limit: 25,
+    summary: summaryRow(),
+    windowRows: [],
+    previewRows: preview,
+  });
+
+  // Curve is built from the SAME rows shown in the ledger — no other source.
+  const rows = card.trackRecordDisplayTable.rows;
+  assert.ok(card.returnCurve.length > 0, "returnCurve must be non-empty for preview rows");
+  assert.equal(card.returnCurve.length, rows.length);
+  const sumRows = rows.reduce((s: number, r: { projectedReturnUsd: number }) => s + r.projectedReturnUsd, 0);
+  const last = card.returnCurve[card.returnCurve.length - 1];
+  assert.equal(last.cumulativeProfitUsd, sumRows);
+  // Curve is chronological ascending: first point is the oldest row.
+  assert.equal(card.returnCurve[0].index, 0);
+  // Honest state is preserved — curve never upgrades status or headline PnL.
+  assert.equal(card.status, "insufficient_history");
+  assert.equal(card.source, "why_trust_track_record");
+  assert.equal(card.netProfitUsd, 0);
+  assert.equal(card.netReturnPct, 0);
+});
+
 test("contract: status never upgraded to ready without a ready summary", async () => {
   const mod = await import("../../app/api/why-trust/track-record/route");
   const card = mod.buildWhyTrustWeekResultsCard({

@@ -275,7 +275,9 @@ export default function WhyTrustSection() {
   // preview from shown history) — safe to render the ledger even while the
   // window status is still insufficient_history.
   const rows = card ? getRows(card) : [];
-  const chartPoints = insufficient ? [] : toChartPoints(card?.returnCurve ?? []);
+  // Curve mirrors the same real resolved rows as the ledger — safe to render
+  // while the window status is still insufficient_history.
+  const chartPoints = toChartPoints(card?.returnCurve ?? []);
 
   return (
     <section className={styles.section} aria-label="Why can I trust this">
