@@ -2,9 +2,11 @@
 
 // components/why-trust/WhyTrustSection.tsx
 // "Why Can I Trust This?" — client component · fixed 14-day window.
-// Fetches /api/signals/resolved (mode=latest, days=14) and renders the
-// weekResultsCard contract, sourced from public.track_record_window_results
-// (all actual-resolved shown rows — no synthetic balancing, no global fill).
+// Fetches the ISOLATED WhyTrust-only endpoint /api/why-trust/track-record
+// (days=14) and renders the weekResultsCard contract, sourced from
+// public.track_record_window_summary + track_record_window_results, with an
+// honest resolved-preview ledger from track_record_shown_signal_history when
+// the results read-model is still empty (no synthetic balancing, no global fill).
 // Real resolved won/lost PnL only — no projected EV, see
 // docs/ai-context/REAL_RESOLVED_TRACK_RECORD_FLOW.md.
 
@@ -252,7 +254,7 @@ export default function WhyTrustSection() {
     (async () => {
       try {
         const res = await fetch(
-          `/api/signals/resolved?mode=latest&days=${TRACK_WINDOW_DAYS}&limit=25`,
+          `/api/why-trust/track-record?days=${TRACK_WINDOW_DAYS}&limit=25`,
           { cache: 'no-store' }
         );
         const json = await res.json();
@@ -269,8 +271,13 @@ export default function WhyTrustSection() {
   const card = cur.data;
   const insufficient = card?.status === 'insufficient_history';
   const metrics = card ? (insufficient ? deriveTrackingMetrics(card) : deriveMetrics(card)) : PLACEHOLDER_METRICS;
-  const rows = card && !insufficient ? getRows(card) : [];
-  const chartPoints = insufficient ? [] : toChartPoints(card?.returnCurve ?? []);
+  // Isolated endpoint returns only real resolved rows (read-model or honest
+  // preview from shown history) — safe to render the ledger even while the
+  // window status is still insufficient_history.
+  const rows = card ? getRows(card) : [];
+  // Curve mirrors the same real resolved rows as the ledger — safe to render
+  // while the window status is still insufficient_history.
+  const chartPoints = toChartPoints(card?.returnCurve ?? []);
 
   return (
     <section className={styles.section} aria-label="Why can I trust this">
