@@ -269,8 +269,14 @@ export default function WhyTrustSection() {
   const card = cur.data;
   const insufficient = card?.status === 'insufficient_history';
   const metrics = card ? (insufficient ? deriveTrackingMetrics(card) : deriveMetrics(card)) : PLACEHOLDER_METRICS;
-  const rows = card && !insufficient ? getRows(card) : [];
-  const chartPoints = insufficient ? [] : toChartPoints(card?.returnCurve ?? []);
+  // Chart/ledger visibility is keyed on actual resolved rows, not the
+  // `status` readiness label — a tracking-live window can already carry
+  // real resolved rows worth rendering (status only gates the stat tiles
+  // above and the copy below).
+  const cardRows = card ? getRows(card) : [];
+  const hasResolvedRows = !!card && card.resolvedCount > 0 && cardRows.length > 0;
+  const rows = hasResolvedRows ? cardRows : [];
+  const chartPoints = hasResolvedRows ? toChartPoints(card?.returnCurve ?? []) : [];
 
   return (
     <section className={styles.section} aria-label="Why can I trust this">
