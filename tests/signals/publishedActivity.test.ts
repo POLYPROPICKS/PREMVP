@@ -677,6 +677,21 @@ test("mapWindowResultRowToTrackRecordRow: pending row is Pending with realPnlUsd
   assert.equal(row.returnLabel, "—");
 });
 
+test("mapWindowResultRowToTrackRecordRow: createdAt uses shown_batch_day, not resolved_at", () => {
+  const row = mapWindowResultRowToTrackRecordRow(
+    windowResultRow({ shown_batch_day: "2026-06-18", resolved_at: "2026-07-02T12:00:00.000Z" })
+  );
+  assert.equal(row.createdAt, "2026-06-18");
+  assert.notEqual(row.createdAt, "2026-07-02T12:00:00.000Z");
+});
+
+test("mapWindowResultRowToTrackRecordRow: createdAt falls back to resolved_at when shown_batch_day is null", () => {
+  const row = mapWindowResultRowToTrackRecordRow(
+    windowResultRow({ shown_batch_day: null, resolved_at: "2026-07-02T12:00:00.000Z" })
+  );
+  assert.equal(row.createdAt, "2026-07-02T12:00:00.000Z");
+});
+
 test("14D read-model rows are a superset of the 7D read-model rows by sourceRowId (fixture-level contract)", () => {
   const sevenDay = [
     windowResultRow({ window_days: 7, source_row_id: "a" }),

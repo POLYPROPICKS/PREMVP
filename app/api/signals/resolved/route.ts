@@ -688,7 +688,7 @@ export function mapWindowResultRowToTrackRecordRow(r: WindowResultRow): TrackRec
     eventTitle: r.event_title,
     marketQuestion: r.market_question ?? "",
     pick: r.selected_outcome ?? "",
-    createdAt: r.resolved_at ?? "",
+    createdAt: r.shown_batch_day ?? r.resolved_at ?? "",
     decimalOdds: r.decimal_odds ?? 0,
     americanOdds: decimalToAmerican(r.decimal_odds),
     oddsSourcePath: "track_record_window_results.decimal_odds",
