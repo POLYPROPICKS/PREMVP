@@ -6,6 +6,12 @@
 
 ---
 
+## 2026-07-04 — Work_tru_PPP04July
+
+Stable working model checkpoint: Top Weekly restored, Latest Resolved restored, WhyTrust isolated endpoint restored with ledger + returnCurve from real preview rows. See WORK_TRU_PPP04JULY.md and WORK_TRU_PPP04JULY_FUNNEL_LOG.md.
+
+---
+
 ## ✅ CONTUR3 — CANONICAL NIGHT EVENT RESERVATION / EXECUTION PIPELINE — 2026-06-22
 
 **Scope:** backend executor pipeline. Public formula, scoring, landing/feed UI — НЕ изменены.
