@@ -15,6 +15,7 @@
     "refresh:track-record": "tsx scripts/refresh-track-record-window-results.ts",
     "refresh:track-record:write": "tsx scripts/refresh-track-record-window-results.ts --write",
     "track-record:daily:write": "npm run resolve:signals -- --write --priority-track-record-display --dedupe-strict --limit=200 --max-updates=100 && npm run refresh:track-record:write",
+    "track-record:display:materialize": "tsx scripts/materialize-track-record-display.ts",
     "verify:resolver-pipeline": "tsx scripts/verify-resolver-pipeline.ts",
     "verify:live-contour": "tsx scripts/verify-live-contour.ts",
     "audit:sports-sources": "tsx scripts/audit-polymarket-sports-sources.ts",
