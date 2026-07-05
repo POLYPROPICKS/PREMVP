@@ -48,7 +48,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
 }
 
 const SOURCE_SELECT =
-  "id, created_at, expires_at, event_slug, market_slug, condition_id, " +
+  "id, created_at, generated_at, expires_at, event_title, market_question, " +
+  "event_slug, market_slug, condition_id, " +
   "selected_outcome, entry_price_num, score, signal_confidence_num, " +
   "metric_formula_version, premium_signal";
 

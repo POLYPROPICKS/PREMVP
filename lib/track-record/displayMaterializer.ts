@@ -20,7 +20,10 @@ export interface GeneratedPairPremiumSignalSubset {
 export interface GeneratedPairSourceRow {
   id: string;
   created_at: string;
+  generated_at?: string | null;
   expires_at: string | null;
+  event_title?: string | null;
+  market_question?: string | null;
   event_slug: string | null;
   market_slug: string | null;
   condition_id: string | null;
@@ -78,6 +81,68 @@ export const ODDS_SOURCE_PATH = "generated_signal_pairs.entry_price_num";
 
 export type FreshnessVerdict = "FRESH" | "NO_FRESH_GENERATED_SIGNAL_PAIRS";
 
+// market_slug value that marks a non-displayable placeholder row.
+const PLACEHOLDER_MARKET_SLUG = "live market activity";
+
+// Accepts pct-style (59 → 0.59) and fraction-style (0.535) inputs seen in
+// production generated_signal_pairs; anything outside (0, 100] is junk.
+export function normalizeProbability(
+  value: number | null | undefined
+): number | null {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return null;
+  }
+  if (value > 0 && value <= 1) return value;
+  if (value > 1 && value <= 100) return value / 100;
+  return null;
+}
+
+function cleanText(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function isPlaceholderSlug(slug: string | null): boolean {
+  return slug !== null && slug.toLowerCase() === PLACEHOLDER_MARKET_SLUG;
+}
+
+function readableMarketSlug(row: GeneratedPairSourceRow): string | null {
+  const slug = cleanText(row.market_slug);
+  if (slug === null || isPlaceholderSlug(slug)) return null;
+  return slug;
+}
+
+function deriveEventTitle(row: GeneratedPairSourceRow): string | null {
+  const direct =
+    cleanText(row.event_title) ?? cleanText(row.premium_signal?.eventTitle);
+  if (direct !== null) return direct;
+  const slugTitle = cleanText(row.event_slug);
+  if (slugTitle !== null && !isPlaceholderSlug(slugTitle)) return slugTitle;
+  const readable = readableMarketSlug(row);
+  if (readable === null) return null;
+  return cleanText(readable.split(":")[0]);
+}
+
+function deriveMarketQuestion(row: GeneratedPairSourceRow): string | null {
+  return cleanText(row.market_question) ?? readableMarketSlug(row);
+}
+
+function hasValidEntryPrice(row: GeneratedPairSourceRow): boolean {
+  const p = row.entry_price_num;
+  return typeof p === "number" && Number.isFinite(p) && p > 0 && p < 1;
+}
+
+// Quality guard: only rows with readable display text, an outcome, and a
+// valid 0..1 entry price are materialized.
+export function isDisplayableSourceRow(row: GeneratedPairSourceRow): boolean {
+  if (cleanText(row.selected_outcome) === null) return false;
+  if (!hasValidEntryPrice(row)) return false;
+  if (deriveEventTitle(row) === null) return false;
+  if (deriveMarketQuestion(row) === null) return false;
+  return true;
+}
+
 // Mirrors public.track_record_normalize_match_key(): lowercase, strip
 // non-alphanumerics to spaces, collapse whitespace.
 export function normalizeMatchKey(rawTitle: string | null): string | null {
@@ -90,15 +155,17 @@ export function normalizeMatchKey(rawTitle: string | null): string | null {
 }
 
 export function assessSourceFreshness(input: {
-  sourceRows: Array<Pick<GeneratedPairSourceRow, "created_at">>;
+  sourceRows: Array<Pick<GeneratedPairSourceRow, "created_at" | "generated_at">>;
   nowIso: string;
   maxAgeHours?: number;
 }): { fresh: boolean; verdict: FreshnessVerdict; latestGeneratedAt: string | null } {
   const maxAgeHours = input.maxAgeHours ?? DEFAULT_MAX_SOURCE_AGE_HOURS;
   let latest: string | null = null;
   for (const row of input.sourceRows) {
-    if (!row.created_at) continue;
-    if (latest === null || row.created_at > latest) latest = row.created_at;
+    // Prefer generated_at (often NULL in prod), fall back to created_at.
+    const ts = row.generated_at ?? row.created_at;
+    if (!ts) continue;
+    if (latest === null || ts > latest) latest = ts;
   }
   if (latest === null) {
     return { fresh: false, verdict: "NO_FRESH_GENERATED_SIGNAL_PAIRS", latestGeneratedAt: null };
@@ -150,21 +217,25 @@ export function buildDisplayRows(input: {
   const stakeUsd = input.stakeUsd ?? DEFAULT_STAKE_USD;
   const batchDay = input.nowIso.slice(0, 10);
 
-  const ranked = [...input.sourceRows].sort(compareSourceRows).slice(0, limit);
+  const ranked = [...input.sourceRows]
+    .filter(isDisplayableSourceRow)
+    .sort(compareSourceRows)
+    .slice(0, limit);
 
   return ranked.map((row, index) => {
     const scoreRank = index + 1;
-    const eventTitle = row.premium_signal?.eventTitle ?? row.event_slug ?? null;
+    const eventTitle = deriveEventTitle(row);
     const matchKey = normalizeMatchKey(eventTitle);
     const selectedOutcome = row.selected_outcome ?? null;
     const marketPrice = row.entry_price_num;
     const decimalOdds = toDecimalOdds(marketPrice);
     const projectedPnlUnits = decimalOdds === null ? null : round2(decimalOdds - 1);
-    const winProbability =
-      row.signal_confidence_num ?? row.premium_signal?.winProbability ?? null;
+    const winProbability = normalizeProbability(
+      row.signal_confidence_num ?? row.premium_signal?.winProbability
+    );
 
     return {
-      generated_at: row.created_at,
+      generated_at: row.generated_at ?? row.created_at,
       window_days: windowDays,
       source_model: row.metric_formula_version,
       source_row_id: row.id,
@@ -174,14 +245,15 @@ export function buildDisplayRows(input: {
       block_10: Math.ceil(scoreRank / 10),
       slot_in_10: ((scoreRank - 1) % 10) + 1,
       event_title: eventTitle,
-      market_question: row.market_slug ?? null,
+      market_question: deriveMarketQuestion(row),
       position: row.premium_signal?.position ?? selectedOutcome,
       selected_outcome: selectedOutcome,
       signal_key:
         matchKey !== null ? `${matchKey}|${selectedOutcome ?? ""}` : null,
       match_key: matchKey,
       projected_win_probability: winProbability,
-      projected_win_rate_pct: winProbability,
+      projected_win_rate_pct:
+        winProbability === null ? null : round2(winProbability * 100),
       market_price: marketPrice,
       decimal_odds: round2(decimalOdds),
       american_odds: toAmericanOdds(decimalOdds),

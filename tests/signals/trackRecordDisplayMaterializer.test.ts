@@ -4,6 +4,7 @@ import {
   assessSourceFreshness,
   buildDisplayRows,
   filterAlreadyMaterialized,
+  normalizeProbability,
   runDisplayMaterializer,
   type GeneratedPairSourceRow,
   type MaterializerDeps,
@@ -215,4 +216,121 @@ test("write mode inserts only missing rows (idempotent rerun inserts 0)", async 
   assert.equal(second.insertedCount, 0);
   assert.equal(second.skippedExistingCount, 1);
   assert.equal(state.insertCalls, 1);
+});
+
+test("freshness prefers generated_at and falls back to created_at", () => {
+  // generated_at fresh, created_at stale → fresh.
+  const byGenerated = assessSourceFreshness({
+    sourceRows: [
+      { generated_at: "2026-07-05T06:00:00.000Z", created_at: "2026-07-01T00:00:00.000Z" },
+    ],
+    nowIso: NOW_ISO,
+    maxAgeHours: 36,
+  });
+  assert.equal(byGenerated.fresh, true);
+  assert.equal(byGenerated.latestGeneratedAt, "2026-07-05T06:00:00.000Z");
+
+  // generated_at null → created_at fallback keeps row fresh.
+  const byCreated = assessSourceFreshness({
+    sourceRows: [{ generated_at: null, created_at: "2026-07-05T02:00:00.000Z" }],
+    nowIso: NOW_ISO,
+    maxAgeHours: 36,
+  });
+  assert.equal(byCreated.fresh, true);
+});
+
+test("normalizeProbability handles pct-style, fraction-style, and junk", () => {
+  assert.equal(normalizeProbability(59), 0.59);
+  assert.equal(normalizeProbability(0.535), 0.535);
+  assert.equal(normalizeProbability(1), 1);
+  assert.equal(normalizeProbability(100), 1);
+  assert.equal(normalizeProbability(0), null);
+  assert.equal(normalizeProbability(101), null);
+  assert.equal(normalizeProbability(-5), null);
+  assert.equal(normalizeProbability(null), null);
+  assert.equal(normalizeProbability(undefined), null);
+});
+
+test("projected probabilities are normalized: 0..1 and 0..100", () => {
+  const pct = buildDisplayRows({
+    sourceRows: [makeSourceRow({ signal_confidence_num: 59 })],
+    nowIso: NOW_ISO,
+  })[0];
+  assert.equal(pct.projected_win_probability, 0.59);
+  assert.equal(pct.projected_win_rate_pct, 59);
+
+  const frac = buildDisplayRows({
+    sourceRows: [makeSourceRow({ signal_confidence_num: 0.535 })],
+    nowIso: NOW_ISO,
+  })[0];
+  assert.equal(frac.projected_win_probability, 0.535);
+  assert.equal(frac.projected_win_rate_pct, 53.5);
+});
+
+test("quality guard rejects placeholder 'Live market activity' rows", () => {
+  const rows = buildDisplayRows({
+    sourceRows: [
+      makeSourceRow({
+        event_title: null,
+        market_question: null,
+        event_slug: null,
+        market_slug: "Live market activity",
+        premium_signal: null,
+      }),
+    ],
+    nowIso: NOW_ISO,
+  });
+  assert.equal(rows.length, 0);
+});
+
+test("quality guard rejects rows without selected_outcome or valid entry price", () => {
+  assert.equal(
+    buildDisplayRows({
+      sourceRows: [makeSourceRow({ selected_outcome: null })],
+      nowIso: NOW_ISO,
+    }).length,
+    0
+  );
+  for (const bad of [null, 0, 1, 1.2, -0.3]) {
+    assert.equal(
+      buildDisplayRows({
+        sourceRows: [makeSourceRow({ entry_price_num: bad })],
+        nowIso: NOW_ISO,
+      }).length,
+      0,
+      `entry_price_num=${bad} must be rejected`
+    );
+  }
+});
+
+test("derives event_title and market_question from readable market_slug", () => {
+  const row = buildDisplayRows({
+    sourceRows: [
+      makeSourceRow({
+        event_title: null,
+        market_question: null,
+        event_slug: null,
+        market_slug: "Brazil vs. Norway: O/U 9.5 Total Corners",
+        premium_signal: null,
+      }),
+    ],
+    nowIso: NOW_ISO,
+  })[0];
+  assert.ok(row, "row must be materialized");
+  assert.equal(row.event_title, "Brazil vs. Norway");
+  assert.equal(row.market_question, "Brazil vs. Norway: O/U 9.5 Total Corners");
+});
+
+test("prefers real source event_title/market_question columns when present", () => {
+  const row = buildDisplayRows({
+    sourceRows: [
+      makeSourceRow({
+        event_title: "Real Event",
+        market_question: "Real question?",
+      }),
+    ],
+    nowIso: NOW_ISO,
+  })[0];
+  assert.equal(row.event_title, "Real Event");
+  assert.equal(row.market_question, "Real question?");
 });
