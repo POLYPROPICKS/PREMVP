@@ -357,6 +357,52 @@ test("materializes and stays fresh when generated_at column is absent from sourc
   assert.equal(row.generated_at, dbReadRow.created_at);
 });
 
+test("every materialized row carries a non-null created_at defaulting to nowIso", () => {
+  const rows = buildDisplayRows({
+    sourceRows: [makeSourceRow({ id: "row-1" }), makeSourceRow({ id: "row-2" })],
+    nowIso: NOW_ISO,
+  });
+  assert.ok(rows.length > 0, "rows must be materialized");
+  for (const row of rows) {
+    assert.ok(row.created_at, "created_at must be non-null");
+    assert.equal(row.created_at, NOW_ISO);
+  }
+});
+
+test("created_at equals the injected materialization timestamp when provided", () => {
+  const MATERIALIZED_AT = "2026-07-05T09:30:00.000Z";
+  const rows = buildDisplayRows({
+    sourceRows: [makeSourceRow()],
+    nowIso: NOW_ISO,
+    materializedAt: MATERIALIZED_AT,
+  });
+  assert.equal(rows[0].created_at, MATERIALIZED_AT);
+  // created_at is materialization time, distinct from source generated_at.
+  assert.notEqual(rows[0].created_at, rows[0].generated_at);
+});
+
+test("write-path insert payload includes non-null created_at", async () => {
+  const MATERIALIZED_AT = "2026-07-05T09:45:00.000Z";
+  const source = [makeSourceRow({ id: "row-1" })];
+  const captured: Array<{ created_at: string }> = [];
+  const deps: MaterializerDeps = {
+    fetchFreshSourceRows: async () => source,
+    fetchExistingDisplayKeys: async () => [],
+    insertDisplayRows: async (rows) => {
+      captured.push(...rows);
+      return rows.length;
+    },
+  };
+  const result = await runDisplayMaterializer(deps, {
+    nowIso: NOW_ISO,
+    write: true,
+    materializedAt: MATERIALIZED_AT,
+  });
+  assert.equal(result.verdict, "WRITE_OK");
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].created_at, MATERIALIZED_AT);
+});
+
 test("source select never names optional non-guaranteed display columns", () => {
   // Regression guard: a fixed column list breaks with "column ... does not
   // exist" the moment production generated_signal_pairs lacks one of these
