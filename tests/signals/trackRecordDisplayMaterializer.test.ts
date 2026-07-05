@@ -65,10 +65,7 @@ test("builds display rows with correct batch_day/rank/block/slot/source_row_id",
   assert.equal(display[0].market_price, 0.5);
   assert.equal(display[0].decimal_odds, 2);
   assert.equal(display[0].american_odds, 100);
-  assert.equal(
-    display[0].odds_source_path,
-    "generated_signal_pairs.entry_price_num"
-  );
+  assert.equal(display[0].odds_source_path, "entry_price_num");
   assert.equal(display[0].stake_usd, 100);
   assert.equal(display[0].projected_pnl_units, 1);
   assert.equal(display[0].projected_return_usd, 100);
@@ -401,6 +398,36 @@ test("write-path insert payload includes non-null created_at", async () => {
   assert.equal(result.verdict, "WRITE_OK");
   assert.equal(captured.length, 1);
   assert.equal(captured[0].created_at, MATERIALIZED_AT);
+});
+
+test("odds_source_path matches the production CHECK constraint value", () => {
+  // The production track_record_display_signals_odds_source_path_check only
+  // permits bare "entry_price_num"; a dotted path violates the constraint.
+  const rows = buildDisplayRows({
+    sourceRows: [makeSourceRow({ id: "row-1" }), makeSourceRow({ id: "row-2" })],
+    nowIso: NOW_ISO,
+  });
+  assert.ok(rows.length > 0, "rows must be materialized");
+  for (const row of rows) {
+    assert.equal(row.odds_source_path, "entry_price_num");
+  }
+});
+
+test("write-path payload carries only the allowed odds_source_path", async () => {
+  const source = [makeSourceRow({ id: "row-1" })];
+  const captured: Array<{ odds_source_path: string }> = [];
+  const deps: MaterializerDeps = {
+    fetchFreshSourceRows: async () => source,
+    fetchExistingDisplayKeys: async () => [],
+    insertDisplayRows: async (rows) => {
+      captured.push(...rows);
+      return rows.length;
+    },
+  };
+  const result = await runDisplayMaterializer(deps, { nowIso: NOW_ISO, write: true });
+  assert.equal(result.verdict, "WRITE_OK");
+  assert.equal(captured.length, 1);
+  assert.equal(captured[0].odds_source_path, "entry_price_num");
 });
 
 test("source select never names optional non-guaranteed display columns", () => {

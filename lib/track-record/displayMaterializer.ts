@@ -80,7 +80,10 @@ export const DEFAULT_WINDOW_DAYS = 14;
 export const DEFAULT_LIMIT = 25;
 export const DEFAULT_MAX_SOURCE_AGE_HOURS = 36;
 export const DEFAULT_STAKE_USD = 100;
-export const ODDS_SOURCE_PATH = "generated_signal_pairs.entry_price_num";
+// Must exactly match a value allowed by the production CHECK constraint
+// track_record_display_signals_odds_source_path_check. Rows built from the
+// generated_signal_pairs.entry_price_num market price use "entry_price_num".
+export const ODDS_SOURCE_PATH = "entry_price_num";
 
 export type FreshnessVerdict = "FRESH" | "NO_FRESH_GENERATED_SIGNAL_PAIRS";
 
