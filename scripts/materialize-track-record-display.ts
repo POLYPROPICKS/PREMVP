@@ -47,13 +47,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
   };
 }
 
-// generated_at is not a physical column on generated_signal_pairs in
-// production; created_at is the only real source timestamp.
-const SOURCE_SELECT =
-  "id, created_at, expires_at, event_title, market_question, " +
-  "event_slug, market_slug, condition_id, " +
-  "selected_outcome, entry_price_num, score, signal_confidence_num, " +
-  "metric_formula_version, premium_signal";
+// Select all physical columns instead of an explicit field list: optional
+// display fields (generated_at, event_title, market_question, etc.) are not
+// guaranteed to exist on generated_signal_pairs in production, and a fixed
+// column list breaks with "column ... does not exist" every time one of
+// them is absent. The mapper in displayMaterializer.ts already tolerates
+// missing/undefined optional fields and falls back to created_at/market_slug.
+export const SOURCE_SELECT = "*";
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -148,8 +148,11 @@ async function main(): Promise<void> {
   }
 }
 
-main().catch((err: unknown) => {
-  const message = err instanceof Error ? err.message : String(err);
-  console.error("[materialize-display] FAILED:", message);
-  process.exitCode = 1;
-});
+// Only run when executed directly (tsx/node), not when imported by tests.
+if (require.main === module) {
+  main().catch((err: unknown) => {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[materialize-display] FAILED:", message);
+    process.exitCode = 1;
+  });
+}
