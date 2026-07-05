@@ -334,3 +334,24 @@ test("prefers real source event_title/market_question columns when present", () 
   assert.equal(row.event_title, "Real Event");
   assert.equal(row.market_question, "Real question?");
 });
+
+test("materializes and stays fresh when generated_at column is absent from source (DB-read shape)", () => {
+  // Mirrors production: generated_signal_pairs has no physical generated_at
+  // column, so DB-read source rows never carry that field at all.
+  const { generated_at, ...dbReadRow } = makeSourceRow();
+  assert.equal("generated_at" in dbReadRow, false);
+
+  const freshness = assessSourceFreshness({
+    sourceRows: [dbReadRow as GeneratedPairSourceRow],
+    nowIso: NOW_ISO,
+    maxAgeHours: 36,
+  });
+  assert.equal(freshness.fresh, true);
+
+  const row = buildDisplayRows({
+    sourceRows: [dbReadRow as GeneratedPairSourceRow],
+    nowIso: NOW_ISO,
+  })[0];
+  assert.ok(row, "row must be materialized");
+  assert.equal(row.generated_at, dbReadRow.created_at);
+});

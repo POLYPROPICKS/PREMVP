@@ -47,8 +47,10 @@ export function parseArgs(argv: string[]): ParsedArgs {
   };
 }
 
+// generated_at is not a physical column on generated_signal_pairs in
+// production; created_at is the only real source timestamp.
 const SOURCE_SELECT =
-  "id, created_at, generated_at, expires_at, event_title, market_question, " +
+  "id, created_at, expires_at, event_title, market_question, " +
   "event_slug, market_slug, condition_id, " +
   "selected_outcome, entry_price_num, score, signal_confidence_num, " +
   "metric_formula_version, premium_signal";
