@@ -9,6 +9,7 @@ import {
   type GeneratedPairSourceRow,
   type MaterializerDeps,
 } from "../../lib/track-record/displayMaterializer";
+import { SOURCE_SELECT } from "../../scripts/materialize-track-record-display";
 
 const NOW_ISO = "2026-07-05T08:00:00.000Z";
 
@@ -354,4 +355,52 @@ test("materializes and stays fresh when generated_at column is absent from sourc
   })[0];
   assert.ok(row, "row must be materialized");
   assert.equal(row.generated_at, dbReadRow.created_at);
+});
+
+test("source select never names optional non-guaranteed display columns", () => {
+  // Regression guard: a fixed column list breaks with "column ... does not
+  // exist" the moment production generated_signal_pairs lacks one of these
+  // optional fields. select("*") avoids that class of failure entirely.
+  for (const forbidden of ["generated_at", "event_title", "market_question"]) {
+    assert.equal(
+      SOURCE_SELECT.includes(forbidden),
+      false,
+      `SOURCE_SELECT must not name optional column "${forbidden}"`
+    );
+  }
+});
+
+test("materializes from a minimal DB-read row lacking generated_at/event_title/market_question", () => {
+  // Mirrors a production select("*") result where only guaranteed columns
+  // are present: no generated_at, no event_title, no market_question.
+  const minimalRow = {
+    id: "row-minimal",
+    created_at: "2026-07-05T02:00:00.000Z",
+    expires_at: null,
+    event_slug: null,
+    market_slug: "Brazil vs. Norway: O/U 9.5 Total Corners",
+    condition_id: "0xabc",
+    selected_outcome: "Over",
+    entry_price_num: 0.5,
+    score: 80,
+    signal_confidence_num: 62,
+    metric_formula_version: "v2-lite-growth-safe",
+    premium_signal: null,
+  } as GeneratedPairSourceRow;
+  assert.equal("generated_at" in minimalRow, false);
+  assert.equal("event_title" in minimalRow, false);
+  assert.equal("market_question" in minimalRow, false);
+
+  const freshness = assessSourceFreshness({
+    sourceRows: [minimalRow],
+    nowIso: NOW_ISO,
+    maxAgeHours: 36,
+  });
+  assert.equal(freshness.fresh, true);
+
+  const row = buildDisplayRows({ sourceRows: [minimalRow], nowIso: NOW_ISO })[0];
+  assert.ok(row, "row must be materialized");
+  assert.equal(row.event_title, "Brazil vs. Norway");
+  assert.equal(row.market_question, "Brazil vs. Norway: O/U 9.5 Total Corners");
+  assert.equal(row.generated_at, minimalRow.created_at);
 });
