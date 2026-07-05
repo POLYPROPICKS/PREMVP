@@ -37,6 +37,9 @@ export interface GeneratedPairSourceRow {
 
 // Row shape for public.track_record_display_signals (existing columns only).
 export interface TrackRecordDisplayRow {
+  // Row materialization time. The DB column is NOT NULL with no usable
+  // default in practice, so the insert payload must always carry it.
+  created_at: string;
   generated_at: string;
   window_days: number;
   source_model: string | null;
@@ -211,11 +214,15 @@ export function buildDisplayRows(input: {
   windowDays?: number;
   limit?: number;
   stakeUsd?: number;
+  // Row materialization timestamp written to created_at. Defaults to nowIso;
+  // tests can inject a fixed value to prove the payload carries it.
+  materializedAt?: string;
 }): TrackRecordDisplayRow[] {
   const windowDays = input.windowDays ?? DEFAULT_WINDOW_DAYS;
   const limit = input.limit ?? DEFAULT_LIMIT;
   const stakeUsd = input.stakeUsd ?? DEFAULT_STAKE_USD;
   const batchDay = input.nowIso.slice(0, 10);
+  const materializedAt = input.materializedAt ?? input.nowIso;
 
   const ranked = [...input.sourceRows]
     .filter(isDisplayableSourceRow)
@@ -235,6 +242,7 @@ export function buildDisplayRows(input: {
     );
 
     return {
+      created_at: materializedAt,
       generated_at: row.generated_at ?? row.created_at,
       window_days: windowDays,
       source_model: row.metric_formula_version,
@@ -299,6 +307,8 @@ export interface MaterializerOptions {
   windowDays?: number;
   limit?: number;
   maxAgeHours?: number;
+  // Row materialization timestamp for created_at. Defaults to nowIso.
+  materializedAt?: string;
 }
 
 export type MaterializerVerdict =
@@ -353,6 +363,7 @@ export async function runDisplayMaterializer(
     nowIso,
     windowDays,
     limit: options.limit,
+    materializedAt: options.materializedAt ?? nowIso,
   });
   const existing = await deps.fetchExistingDisplayKeys(batchDay, windowDays);
   const toInsert = filterAlreadyMaterialized(candidates, existing);
