@@ -10,6 +10,44 @@ import {
   type MaterializerDeps,
 } from "../../lib/track-record/displayMaterializer";
 import { SOURCE_SELECT } from "../../scripts/materialize-track-record-display";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
+test("package.json exposes Railway-safe daily display write script", () => {
+  const pkgPath = fileURLToPath(
+    new URL("../../package.json", import.meta.url)
+  );
+  const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+    scripts?: Record<string, string>;
+  };
+  const scripts = pkg.scripts ?? {};
+
+  const dailyDisplay = scripts["track-record:display:daily:write"];
+  assert.ok(
+    dailyDisplay,
+    "track-record:display:daily:write script must exist"
+  );
+  assert.match(dailyDisplay, /track-record:display:materialize -- --write/);
+  assert.match(dailyDisplay, /refresh:track-record:write/);
+
+  // Must NOT use the old resolver path.
+  assert.equal(
+    dailyDisplay.includes("priority-track-record-display"),
+    false,
+    "daily display script must not use the old resolver flag"
+  );
+  const oldDaily = scripts["track-record:daily:write"] ?? "";
+  assert.notEqual(
+    dailyDisplay,
+    oldDaily,
+    "daily display script must not equal the old daily:write script"
+  );
+  assert.equal(
+    dailyDisplay.includes("track-record:daily:write"),
+    false,
+    "daily display script must not call the old daily:write script"
+  );
+});
 
 const NOW_ISO = "2026-07-05T08:00:00.000Z";
 
