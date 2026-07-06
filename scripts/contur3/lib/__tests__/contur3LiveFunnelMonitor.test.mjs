@@ -14,6 +14,10 @@ import {
   classifyReservationTiming,
   RAILWAY_SAFE_COMMANDS,
   TIER_PROBE_RUNNER_NOTE,
+  findQueueRowsForReservation,
+  queueEntryWindowState,
+  classifyQueueLifecycle,
+  SKIPPED_NO_EXECUTABLE_MARKET_REASON,
 } from '../contur3LiveFunnelMonitor.mjs';
 
 function baseFixture(overrides = {}) {
@@ -336,4 +340,144 @@ test('"- More Markets" suffix does not cause a cross-match with an unrelated pai
   ];
   const match = findReservationForGroup(group, reservations);
   assert.equal(match, undefined, 'must not match an unrelated pair: reservation');
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Queue lifecycle visibility (Contur3 queue observability hotfix)
+// ──────────────────────────────────────────────────────────────────────────
+const QNOW = Date.parse('2026-07-06T12:00:00Z');
+
+function queuedReservation(overrides = {}) {
+  return {
+    id: 'res-1',
+    match_family_key: 'pair:portugal-vs-spain:2026-07-06',
+    event_title: 'Portugal vs. Spain: Both Teams to Score',
+    game_start_iso: '2026-07-06T13:00:00Z', // starts in 60m -> entry window open
+    status: 'QUEUED',
+    ...overrides,
+  };
+}
+
+function readyQueueRow(overrides = {}) {
+  return {
+    reservation_id: 'res-1',
+    match_family_key: 'pair:portugal-vs-spain:2026-07-06',
+    event_title: 'Portugal vs Spain',
+    game_start_iso: '2026-07-06T13:00:00Z',
+    status: 'READY',
+    ...overrides,
+  };
+}
+
+test('1) READY queue row inside entry window is classified actionable', () => {
+  const res = queuedReservation();
+  const rows = findQueueRowsForReservation(res, [readyQueueRow()]);
+  assert.equal(rows.length, 1);
+  assert.equal(classifyQueueLifecycle(res, rows, QNOW), 'QUEUE_READY_ACTIONABLE');
+
+  const fixtures = [baseFixture({
+    reservation_status: 'QUEUED',
+    due_state: 'DUE_NOW',
+    event_execution_queue_rows: 1,
+    executor_api_visible: true,
+    queue_verdict: 'QUEUE_READY_ACTIONABLE',
+  })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  assert.equal(anomalies.some((a) => a.code === 'DUE_RESERVATION_NOT_QUEUED'), false);
+  assert.equal(anomalies.some((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING'), false);
+});
+
+test('2) READY queue row after entry window closed is created-but-not-actionable, not missing', () => {
+  const res = queuedReservation({ game_start_iso: '2026-07-06T11:00:00Z' }); // kicked off 1h ago
+  const row = readyQueueRow({ game_start_iso: '2026-07-06T11:00:00Z' });
+  const rows = findQueueRowsForReservation(res, [row]);
+  assert.equal(rows.length, 1, 'queue row created earlier must still be found after kickoff');
+  assert.equal(queueEntryWindowState(row, res, QNOW), 'CLOSED');
+  assert.equal(classifyQueueLifecycle(res, rows, QNOW), 'QUEUE_READY_ENTRY_WINDOW_CLOSED');
+
+  const fixtures = [baseFixture({
+    reservation_status: 'QUEUED',
+    due_state: 'EXPIRED',
+    event_execution_queue_rows: 1,
+    executor_api_visible: true,
+    queue_verdict: 'QUEUE_READY_ENTRY_WINDOW_CLOSED',
+    order_events: 0,
+  })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  assert.equal(anomalies.some((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING'), false);
+  assert.equal(anomalies.some((a) => a.code === 'DUE_RESERVATION_NOT_QUEUED'), false);
+});
+
+test('3) QUEUED reservation with no queue row is P0 missing queue', () => {
+  const res = queuedReservation();
+  assert.equal(findQueueRowsForReservation(res, []).length, 0);
+  assert.equal(classifyQueueLifecycle(res, [], QNOW), 'QUEUED_RESERVATION_QUEUE_ROW_MISSING');
+
+  const fixtures = [baseFixture({
+    reservation_status: 'QUEUED',
+    due_state: 'DUE_NOW',
+    event_execution_queue_rows: 0,
+    queue_verdict: 'QUEUED_RESERVATION_QUEUE_ROW_MISSING',
+  })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  const hit = anomalies.find((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING');
+  assert.ok(hit, 'QUEUED reservation without a queue row must raise the missing-queue anomaly');
+  assert.equal(hit.severity, 'P0');
+});
+
+test('4) Due reservation not queued remains due rebalance required', () => {
+  const res = queuedReservation({ status: 'RESERVED' });
+  assert.equal(classifyQueueLifecycle(res, [], QNOW), 'NOT_QUEUED_YET');
+
+  const fixtures = [baseFixture({
+    reservation_status: 'RESERVED',
+    due_state: 'DUE_NOW',
+    event_execution_queue_rows: 0,
+    queue_verdict: 'NOT_QUEUED_YET',
+  })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  assert.ok(anomalies.some((a) => a.code === 'DUE_RESERVATION_NOT_QUEUED' && a.severity === 'P0'));
+});
+
+test('5) SKIPPED no executable tier1 market is not queue missing', () => {
+  const res = queuedReservation({
+    status: 'SKIPPED',
+    selection_reason: `${SKIPPED_NO_EXECUTABLE_MARKET_REASON}: no tier1 anchor at rebalance`,
+  });
+  assert.equal(classifyQueueLifecycle(res, [], QNOW), 'SKIPPED_NO_EXECUTABLE_MARKET');
+
+  const fixtures = [baseFixture({
+    reservation_status: 'SKIPPED',
+    due_state: 'DUE_NOW',
+    event_execution_queue_rows: 0,
+    queue_verdict: 'SKIPPED_NO_EXECUTABLE_MARKET',
+  })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  assert.equal(anomalies.some((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING'), false);
+  assert.equal(anomalies.some((a) => a.code === 'DUE_RESERVATION_NOT_QUEUED'), false);
+});
+
+test('6) Stable identifier matching beats title mismatch', () => {
+  // reservation_id join wins even when titles differ completely
+  const res = queuedReservation({ event_title: 'Portugal vs. Spain: Both Teams to Score' });
+  const rowById = readyQueueRow({ event_title: 'Portugal v Spain (BTTS)', match_family_key: null });
+  assert.equal(findQueueRowsForReservation(res, [rowById]).length, 1, 'reservation_id must match despite title mismatch');
+
+  // match_family_key join when reservation_id absent on the queue row
+  const rowByMfk = readyQueueRow({ reservation_id: null, event_title: 'Totally Different Title' });
+  assert.equal(findQueueRowsForReservation(res, [rowByMfk]).length, 1, 'match_family_key must match despite title mismatch');
+
+  // unrelated row must NOT match
+  const unrelated = readyQueueRow({ reservation_id: 'res-999', match_family_key: 'pair:brazil-vs-serbia:2026-07-06', event_title: 'Brazil vs Serbia' });
+  assert.equal(findQueueRowsForReservation(res, [unrelated]).length, 0);
+});
+
+test('queueEntryWindowState prefers latest_entry_iso over derived T-3', () => {
+  const res = queuedReservation();
+  const openRow = readyQueueRow({ latest_entry_iso: '2026-07-06T12:30:00Z' });
+  assert.equal(queueEntryWindowState(openRow, res, QNOW), 'OPEN');
+  const closedRow = readyQueueRow({ latest_entry_iso: '2026-07-06T11:30:00Z' });
+  assert.equal(queueEntryWindowState(closedRow, res, QNOW), 'CLOSED');
+  const noTiming = readyQueueRow({ game_start_iso: null });
+  assert.equal(queueEntryWindowState(noTiming, { ...res, game_start_iso: null }, QNOW), 'UNKNOWN');
 });
