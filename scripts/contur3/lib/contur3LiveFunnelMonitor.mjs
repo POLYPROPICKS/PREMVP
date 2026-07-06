@@ -332,6 +332,87 @@ export function findReservationForGroup(group, reservations) {
   return reservations.find((r) => reservationIdentityOf(r).key === group.key);
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Queue lifecycle visibility. A queue row created before kickoff must never
+// be reported as "queued=0 / missing" just because the entry window has
+// since closed — the monitor must distinguish "queue created and actionable
+// now", "queue created but execution window missed", and "queue row truly
+// missing for a QUEUED reservation".
+// ──────────────────────────────────────────────────────────────────────────
+export const SKIPPED_NO_EXECUTABLE_MARKET_REASON = 'NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE';
+
+function queueRowTeamPairSig(q) {
+  return teamPairSigFromMatchFamilyKey(q.match_family_key)
+    ?? teamPairSigFromText(q.event_title)
+    ?? teamPairSigFromText(q.event_slug);
+}
+
+// Stable-identifier queue matching for one reservation, in strict preference
+// order: reservation_id > match_family_key > condition_id/token_id >
+// team-pair signature derived from title/slug (fallback only). Never a raw
+// substring join on event title text.
+export function findQueueRowsForReservation(res, queueRows) {
+  if (!res || !Array.isArray(queueRows) || queueRows.length === 0) return [];
+  const resId = res.id ?? null;
+  if (resId != null) {
+    const byId = queueRows.filter((q) => (q.reservation_id ?? null) === resId);
+    if (byId.length) return byId;
+  }
+  const mfk = res.match_family_key ?? null;
+  if (mfk) {
+    const byMfk = queueRows.filter((q) => (q.match_family_key ?? null) === mfk);
+    if (byMfk.length) return byMfk;
+  }
+  const stableIds = [res.condition_id, res.token_id].filter(Boolean);
+  if (stableIds.length) {
+    const byIds = queueRows.filter((q) => stableIds.includes(q.condition_id) || stableIds.includes(q.token_id));
+    if (byIds.length) return byIds;
+  }
+  const sig = reservationTeamPairSig(res);
+  if (sig) {
+    const bySig = queueRows.filter((q) => queueRowTeamPairSig(q) === sig);
+    if (bySig.length) return bySig;
+  }
+  return [];
+}
+
+// Entry-window state for a queue row: prefer the row's own latest_entry_iso;
+// otherwise derive T-3 from game_start_iso (queue row first, reservation as
+// fallback). UNKNOWN when no timing can be resolved — never guessed OPEN.
+export function queueEntryWindowState(queueRow, res, nowMs) {
+  const latestMs = Date.parse(queueRow?.latest_entry_iso ?? '');
+  if (Number.isFinite(latestMs)) return nowMs <= latestMs ? 'OPEN' : 'CLOSED';
+  const startMs = Date.parse(queueRow?.game_start_iso ?? res?.game_start_iso ?? '');
+  if (!Number.isFinite(startMs)) return 'UNKNOWN';
+  return nowMs <= startMs - LATEST_ENTRY_MINUTES_BEFORE * 60_000 ? 'OPEN' : 'CLOSED';
+}
+
+// Reservation-centric queue lifecycle verdict. This is the truth table the
+// summary/anomalies key off:
+//   QUEUE_READY_ACTIONABLE            — READY row exists, entry window open
+//   QUEUE_READY_ENTRY_WINDOW_CLOSED   — READY row exists, window already closed
+//                                       (queue was created; executor did not
+//                                       consume it before close — NOT missing)
+//   QUEUED_RESERVATION_QUEUE_ROW_MISSING — reservation QUEUED, no row (real P0)
+//   SKIPPED_NO_EXECUTABLE_MARKET      — terminal skip, not a queue gap
+//   NOT_QUEUED_YET                    — reservation exists, not queued
+//   QUEUE_ROW_PRESENT                 — row exists in a non-READY status
+export function classifyQueueLifecycle(res, matchedQueueRows, nowMs) {
+  if (!res) return 'NO_RESERVATION';
+  const status = `${res.status ?? ''}`.toUpperCase();
+  if (status === 'SKIPPED' && `${res.selection_reason ?? ''}`.includes(SKIPPED_NO_EXECUTABLE_MARKET_REASON)) {
+    return 'SKIPPED_NO_EXECUTABLE_MARKET';
+  }
+  const rows = matchedQueueRows ?? [];
+  if (rows.length === 0) {
+    return status === 'QUEUED' ? 'QUEUED_RESERVATION_QUEUE_ROW_MISSING' : 'NOT_QUEUED_YET';
+  }
+  const ready = rows.filter((q) => `${q.status ?? ''}`.toUpperCase() === 'READY');
+  if (ready.some((q) => queueEntryWindowState(q, res, nowMs) === 'OPEN')) return 'QUEUE_READY_ACTIONABLE';
+  if (ready.length) return 'QUEUE_READY_ENTRY_WINDOW_CLOSED';
+  return 'QUEUE_ROW_PRESENT';
+}
+
 // Safe classification of a table read result. Column/relation shape
 // mismatches (e.g. job_runs missing an expected column) degrade to an
 // explicit measurement-gap status instead of polluting the report as a hard
@@ -564,7 +645,11 @@ export async function collectFunnel(opts = {}) {
   for (const [key, g] of groups) {
     const fx = g.fixture;
     const res = findReservationForGroup(g, reservations);
-    const queue = fx ? fixtureQueue(fx) : [];
+    // Stable-identifier queue matching first; legacy FIXTURES team-text
+    // matching only as a fallback for known fixtures without a reservation join.
+    let queue = res ? findQueueRowsForReservation(res, queueRows) : [];
+    if (!queue.length && fx) queue = fixtureQueue(fx);
+    const queueVerdict = classifyQueueLifecycle(res, queue, nowMs);
     const reservationStatus = res ? (res.status ?? 'RESERVED') : 'NONE';
     const reservationJoinMethod = !res
       ? 'NONE'
@@ -613,6 +698,10 @@ export async function collectFunnel(opts = {}) {
       due_minsk: res?.game_start_iso ? minskString(new Date(res.game_start_iso)) : null,
       due_state: ds,
       event_execution_queue_rows: queue.length,
+      queue_verdict: queueVerdict,
+      queue_created: queue.length > 0,
+      queue_actionable: queueVerdict === 'QUEUE_READY_ACTIONABLE',
+      queue_entry_window_closed: queueVerdict === 'QUEUE_READY_ENTRY_WINDOW_CLOSED',
       executor_api_visible: queue.length > 0 ? true : null,
       order_events: orderRows.filter((od) => (od.match_family_key ?? '') === (res?.match_family_key ?? '\u0000')).length,
       audit_events: auditRows.filter((ad) => (ad.match_family_key ?? '') === (res?.match_family_key ?? '\u0000')).length,
@@ -629,6 +718,10 @@ export async function collectFunnel(opts = {}) {
   const fallbackReserved = fixtures.filter((f) => f.fallback_used).length;
   const dueNow = fixtures.filter((f) => f.due_state === 'DUE_NOW').length;
   const queued = fixtures.reduce((n, f) => n + f.event_execution_queue_rows, 0);
+  const queueCreated = fixtures.filter((f) => f.queue_created).length;
+  const queueActionable = fixtures.filter((f) => f.queue_actionable).length;
+  const queueWindowClosed = fixtures.filter((f) => f.queue_entry_window_closed).length;
+  const skippedNoMarket = fixtures.filter((f) => f.queue_verdict === 'SKIPPED_NO_EXECUTABLE_MARKET').length;
   const apiVisible = fixtures.filter((f) => f.executor_api_visible === true).length;
   const orders = fixtures.reduce((n, f) => n + f.order_events, 0);
   const missing = fixtures.filter((f) => f.verdict === 'TRUE_MISSING_RESERVATION_HAS_ALLOWED_FULLMATCH');
@@ -641,7 +734,15 @@ export async function collectFunnel(opts = {}) {
   if (missing.length > 0) machineVerdict = 'RESERVATION_UNDERFILL';
   else if (queued > 0 && apiVisible > 0 && orders === 0) machineVerdict = 'QUEUE_READY_IRELAND_MANUAL_START_REQUIRED';
   else if (orders > 0) machineVerdict = 'ORDER_LEDGER_PRESENT';
-  else if (dueNow > 0 && queued === 0) machineVerdict = 'DUE_REBALANCE_REQUIRED';
+  else if (fixtures.some((f) => f.due_state === 'DUE_NOW'
+    && f.event_execution_queue_rows === 0
+    && f.reservation_status !== 'QUEUED'
+    && f.queue_verdict !== 'SKIPPED_NO_EXECUTABLE_MARKET')) machineVerdict = 'DUE_REBALANCE_REQUIRED';
+  else if (queueCreated > 0 && queueActionable === 0 && queueWindowClosed > 0 && orders === 0) {
+    // Queue rows were created but the entry window closed with no order event:
+    // executor consume did not happen before close. This is NOT "queued=0".
+    machineVerdict = 'QUEUE_CREATED_EXECUTOR_NOT_RUN_BEFORE_CLOSE';
+  }
   else if (reservedCount > 0 && dueNow === 0) machineVerdict = 'RESERVED_WAITING_FOR_DUE';
   else if (reservedCount === 0 && fixtures.some((f) => f.raw_allowed_fullmatch_rows > 0)) machineVerdict = 'SOURCE_TO_BUILDER_BROKEN';
   else machineVerdict = 'BATTLE_CONTOUR_READY_FOR_DUE_WINDOW';
@@ -654,6 +755,10 @@ export async function collectFunnel(opts = {}) {
     target_live_slots: TARGET_LIVE_SLOTS,
     due_now: dueNow,
     queued,
+    queue_created: queueCreated,
+    queue_actionable: queueActionable,
+    queue_entry_window_closed: queueWindowClosed,
+    skipped_no_executable_market: skippedNoMarket,
     executor_api_visible: apiVisible,
     orders,
     hard_anomaly_count: base.anomalies.filter((a) => a.severity === 'P0').length,
@@ -709,7 +814,20 @@ export function detectAnomalies(base, fixtures, reads) {
           `npm run contur3:reservation-tier-probe (${TIER_PROBE_RUNNER_NOTE})`);
       }
     }
-    if (f.due_state === 'DUE_NOW' && f.event_execution_queue_rows === 0) {
+    // Queue lifecycle truthfulness:
+    //   - QUEUED reservation with NO matching queue row = real P0 gap.
+    //   - Due-but-not-queued applies only to reservations that are neither
+    //     already QUEUED nor terminally SKIPPED for lack of an executable
+    //     market — those two must never fire a false rebalance/missing P0.
+    const skippedNoMarket = f.queue_verdict === 'SKIPPED_NO_EXECUTABLE_MARKET'
+      || f.reservation_status === 'SKIPPED';
+    if (f.reservation_status === 'QUEUED' && f.event_execution_queue_rows === 0) {
+      push('QUEUED_RESERVATION_QUEUE_ROW_MISSING', 'P0', f.display_match, 'queue',
+        'reservation status is QUEUED but no matching event_execution_queue row was found by stable identifiers.',
+        RAILWAY_SAFE_COMMANDS.eventRebalance);
+    }
+    if (f.due_state === 'DUE_NOW' && f.event_execution_queue_rows === 0
+      && f.reservation_status !== 'QUEUED' && !skippedNoMarket) {
       push('DUE_RESERVATION_NOT_QUEUED', 'P0', f.display_match, 'rebalance',
         'reservation is DUE_NOW but not present in event_execution_queue.',
         RAILWAY_SAFE_COMMANDS.eventRebalance);
@@ -742,6 +860,8 @@ export function nextActions(base) {
         + `If builder admission itself is suspect, also run 'npm run contur3:reservation-tier-probe' first — ${TIER_PROBE_RUNNER_NOTE}`,
     ],
     DUE_REBALANCE_REQUIRED: ['Railway', RAILWAY_SAFE_COMMANDS.eventRebalance, 'A reservation is due now but not queued.'],
+    QUEUE_CREATED_EXECUTOR_NOT_RUN_BEFORE_CLOSE: ['Railway', RAILWAY_SAFE_COMMANDS.liveFunnelLog,
+      'Queue row(s) were created but the entry window closed with zero order/audit events — executor consume did not happen before close. Investigate executor consume path; do NOT re-run rebalance.'],
     QUEUE_READY_IRELAND_MANUAL_START_REQUIRED: ['Ireland', 'see reports/contur3/ireland_manual_command_pack_latest.md', 'Queue is ready and API-visible; Ireland monitor must be started (dry/fail-closed).'],
     RESERVED_WAITING_FOR_DUE: ['Railway', `${RAILWAY_SAFE_COMMANDS.liveFunnelLog} (re-check near due window)`, 'Reservations exist; wait for the due window.'],
     SOURCE_TO_BUILDER_BROKEN: ['Railway', 'npm run contur3:reservation-tier-probe', `Allowed raw rows are not becoming reservations — inspect builder admission. ${TIER_PROBE_RUNNER_NOTE}`],
@@ -793,10 +913,10 @@ export function renderMarkdown(j) {
   for (const [k, v] of Object.entries(s)) L.push(`| ${k} | ${v} |`);
   L.push('');
   L.push('## Per physical match (source -> builder -> reservation -> queue -> order)');
-  L.push('| match | raw | allowed_fm | forbidden | reserved | due | queue | api | orders | fallback | verdict |');
-  L.push('|---|---|---|---|---|---|---|---|---|---|---|');
+  L.push('| match | raw | allowed_fm | forbidden | reserved | due | queue | queue_verdict | api | orders | fallback | verdict |');
+  L.push('|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const f of j.fixtures ?? []) {
-    L.push(`| ${f.display_match} | ${f.raw_rows} | ${f.raw_allowed_fullmatch_rows} | ${f.builder_forbidden_candidates} | ${f.reservation_status} | ${f.due_state} | ${f.event_execution_queue_rows} | ${f.executor_api_visible} | ${f.order_events} | ${f.fallback_used} | ${f.verdict} |`);
+    L.push(`| ${f.display_match} | ${f.raw_rows} | ${f.raw_allowed_fullmatch_rows} | ${f.builder_forbidden_candidates} | ${f.reservation_status} | ${f.due_state} | ${f.event_execution_queue_rows} | ${f.queue_verdict ?? '-'} | ${f.executor_api_visible} | ${f.order_events} | ${f.fallback_used} | ${f.verdict} |`);
   }
   L.push('');
   L.push('## Builder admission accounting');
@@ -927,7 +1047,7 @@ export function writeReports(j, { write = true, json = true, g2 = false } = {}) 
 export function printConsoleMarkers(j, written = []) {
   const s = j.summary ?? {};
   console.log('CONTUR3_LIVE_FUNNEL_LOG_START');
-  console.log(`CONTUR3_LIVE_FUNNEL_SUMMARY verdict=${s.machine_verdict} reserved=${s.reserved_physical_matches} missing=${s.missing_physical_matches} due_now=${s.due_now} queued=${s.queued} api=${s.executor_api_visible} orders=${s.orders}`);
+  console.log(`CONTUR3_LIVE_FUNNEL_SUMMARY verdict=${s.machine_verdict} reserved=${s.reserved_physical_matches} missing=${s.missing_physical_matches} due_now=${s.due_now} queued=${s.queued} queue_created=${s.queue_created} queue_actionable=${s.queue_actionable} queue_window_closed=${s.queue_entry_window_closed} api=${s.executor_api_visible} orders=${s.orders}`);
   const p0 = (j.anomalies ?? []).filter((a) => a.severity === 'P0');
   console.log(`CONTUR3_LIVE_FUNNEL_ANOMALIES p0=${p0.length} total=${(j.anomalies ?? []).length} codes=${(j.anomalies ?? []).map((a) => a.code).join(',') || '-'}`);
   const na = (j.next_actions ?? [])[0];
