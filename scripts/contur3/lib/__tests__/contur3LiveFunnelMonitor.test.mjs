@@ -9,7 +9,26 @@ import {
   findReservationForGroup,
   tableStatus,
   teamPairSigFromText,
+  detectAnomalies,
+  nextActions,
+  classifyReservationTiming,
+  RAILWAY_SAFE_COMMANDS,
+  TIER_PROBE_RUNNER_NOTE,
 } from '../contur3LiveFunnelMonitor.mjs';
+
+function baseFixture(overrides = {}) {
+  return {
+    display_match: 'Test Match',
+    raw_allowed_fullmatch_rows: 1,
+    builder_forbidden_candidates: 0,
+    reservation_status: 'NONE',
+    reservation_timing: 'ACTIONABLE',
+    due_state: 'NO_RESERVATION',
+    event_execution_queue_rows: 0,
+    executor_api_visible: null,
+    ...overrides,
+  };
+}
 
 test('event-level grouping merges child-market rows into ONE physical match, not pseudo-groups', () => {
   const signals = [
@@ -224,6 +243,82 @@ test('halftime/second-half suffix and punctuation/dot variants normalize to the 
   assert.equal(teamPairSigFromText('Argentina vs. Cabo Verde - More Markets'), teamPairSigFromText('Argentina vs Cabo Verde'));
   assert.equal(teamPairSigFromText('Colombia vs. Ghana - Second Half'), teamPairSigFromText('Colombia vs Ghana'));
   assert.equal(teamPairSigFromText('Colombia vs. Ghana - Halftime Result'), teamPairSigFromText('Colombia vs Ghana'));
+});
+
+test('A) expired allowed full-match underfill is not P0', () => {
+  const fixtures = [baseFixture({ reservation_timing: 'EXPIRED' })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  assert.equal(
+    anomalies.some((a) => a.code === 'RAW_ALLOWED_FULLMATCH_GT0_NO_RESERVATION' && a.severity === 'P0'),
+    false,
+    'an expired match must never raise a P0 reservation-underfill anomaly',
+  );
+});
+
+test('B) out-of-horizon allowed full-match underfill is not P0', () => {
+  const fixtures = [baseFixture({ reservation_timing: 'OUT_OF_HORIZON' })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  assert.equal(
+    anomalies.some((a) => a.code === 'RAW_ALLOWED_FULLMATCH_GT0_NO_RESERVATION' && a.severity === 'P0'),
+    false,
+    'a future out-of-horizon match must never raise a P0 reservation-underfill anomaly',
+  );
+});
+
+test('C) actionable allowed full-match underfill is P0', () => {
+  const fixtures = [baseFixture({ reservation_timing: 'ACTIONABLE' })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  assert.equal(
+    anomalies.some((a) => a.code === 'RAW_ALLOWED_FULLMATCH_GT0_NO_RESERVATION' && a.severity === 'P0'),
+    true,
+    'a currently actionable missing reservation must still raise P0',
+  );
+});
+
+test('D) unknown-timing allowed full-match underfill downgrades to P1, not silently dropped', () => {
+  const fixtures = [baseFixture({ reservation_timing: 'UNKNOWN_TIMING' })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  const hit = anomalies.find((a) => a.code === 'RAW_ALLOWED_FULLMATCH_GT0_NO_RESERVATION_UNKNOWN_TIMING');
+  assert.ok(hit, 'unknown timing must still be reported, not dropped');
+  assert.equal(hit.severity, 'P1');
+  assert.equal(
+    anomalies.some((a) => a.code === 'RAW_ALLOWED_FULLMATCH_GT0_NO_RESERVATION' && a.severity === 'P0'),
+    false,
+    'unknown timing must not also raise the P0 variant',
+  );
+});
+
+test('classifyReservationTiming resolves EXPIRED / OUT_OF_HORIZON / ACTIONABLE / UNKNOWN_TIMING correctly', () => {
+  const now = Date.parse('2026-07-06T12:00:00Z');
+  assert.equal(classifyReservationTiming(null, now), 'UNKNOWN_TIMING');
+  assert.equal(classifyReservationTiming('not-a-date', now), 'UNKNOWN_TIMING');
+  assert.equal(classifyReservationTiming('2026-07-06T12:01:00Z', now), 'EXPIRED');
+  assert.equal(classifyReservationTiming('2026-07-08T12:00:00Z', now, 12), 'OUT_OF_HORIZON');
+  assert.equal(classifyReservationTiming('2026-07-06T18:00:00Z', now, 12), 'ACTIONABLE');
+});
+
+test('E) RESERVATION_UNDERFILL next_action includes a direct node Railway-safe command for the .mjs runner', () => {
+  const actions = nextActions({ summary: { machine_verdict: 'RESERVATION_UNDERFILL' } });
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].command, RAILWAY_SAFE_COMMANDS.nightReservations);
+  assert.match(actions[0].command, /^node scripts\/contur3\/.*\.mjs$/, 'must be a direct node invocation, not npm run');
+});
+
+test('F) compound RESERVATION_UNDERFILL guidance keeps the tier-probe (non-.mjs) step separate from the direct node step', () => {
+  const actions = nextActions({ summary: { machine_verdict: 'RESERVATION_UNDERFILL' } });
+  assert.equal(actions[0].command, RAILWAY_SAFE_COMMANDS.nightReservations, 'the primary command must be the direct-node form');
+  assert.match(actions[0].why, /reservation-tier-probe/, 'the tier-probe follow-up must still be surfaced in guidance');
+  assert.match(actions[0].why, /tsx/, 'the tier-probe caveat (tsx runner, not a node script) must be disclosed');
+});
+
+test('G) TS tier-probe guidance does not claim npx alone is Railway-safe', () => {
+  assert.match(TIER_PROBE_RUNNER_NOTE, /tsx/);
+  assert.doesNotMatch(
+    TIER_PROBE_RUNNER_NOTE.replace(/only Railway-safe if tsx is confirmed present.*?assume it is\./, ''),
+    /npx.*Railway-safe/i,
+    'must not assert npx is unconditionally Railway-safe',
+  );
+  assert.match(TIER_PROBE_RUNNER_NOTE, /only Railway-safe if tsx is confirmed present/i);
 });
 
 test('"- More Markets" suffix does not cause a cross-match with an unrelated pair reservation', () => {

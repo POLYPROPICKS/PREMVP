@@ -85,6 +85,22 @@ export function dueState(gameStartIso, nowMs) {
   return 'NOT_DUE_YET';
 }
 
+// Classifies whether a candidate physical match's own kickoff timing makes a
+// missing-reservation gap ACTIONABLE right now, or whether it's stale
+// (EXPIRED), too far ahead to act on yet (OUT_OF_HORIZON), or simply not
+// known (UNKNOWN_TIMING — no game_start_iso could be resolved for this
+// group). Anomaly severity must key off this, not raw row counts alone:
+// a P0 that fires for an already-kicked-off or unknown-timing match is noise
+// that trains operators to ignore the monitor.
+export function classifyReservationTiming(gameStartIso, nowMs, nextHours = 12) {
+  if (!gameStartIso) return 'UNKNOWN_TIMING';
+  const startMs = Date.parse(gameStartIso);
+  if (!Number.isFinite(startMs)) return 'UNKNOWN_TIMING';
+  if (startMs - nowMs <= LATEST_ENTRY_MINUTES_BEFORE * 60_000) return 'EXPIRED';
+  if (startMs - nowMs > nextHours * 3_600_000) return 'OUT_OF_HORIZON';
+  return 'ACTIONABLE';
+}
+
 // ──────────────────────────────────────────────────────────────────────────
 // Normalization + market classification (CANONICAL — reused everywhere)
 // ──────────────────────────────────────────────────────────────────────────
@@ -271,7 +287,7 @@ export function groupSignalsByPhysicalMatch(signals) {
       groups.set(key, {
         physical_match_key: key, display_match: label, fixture,
         raw_rows: 0, raw_allowed_fullmatch_rows: 0, builder_forbidden_candidates: 0,
-        class_hist: {}, sample_slugs: [],
+        class_hist: {}, sample_slugs: [], game_start_iso: null,
       });
     }
     const g = groups.get(key);
@@ -281,6 +297,9 @@ export function groupSignalsByPhysicalMatch(signals) {
     g.class_hist[cls] = (g.class_hist[cls] ?? 0) + 1;
     if (isAllowedFullmatchClass(cls)) g.raw_allowed_fullmatch_rows += 1;
     if (isForbiddenClass(cls)) g.builder_forbidden_candidates += 1;
+    if (!g.game_start_iso && (s.game_start_iso || s.event_start_iso)) {
+      g.game_start_iso = s.game_start_iso ?? s.event_start_iso;
+    }
     if (g.sample_slugs.length < 4) g.sample_slugs.push(s.market_slug ?? s.event_slug ?? '');
   }
   return groups;
@@ -329,6 +348,27 @@ export function tableStatus(name, result) {
   }
   return { status: 'ERROR', rows: 0, error: msg };
 }
+
+// ──────────────────────────────────────────────────────────────────────────
+// Railway-safe command surfaces. `npm run <alias>` depends on npm resolving
+// devDependencies/scripts inside the Railway image; the underlying .mjs
+// runners have no such dependency, so the direct `node <path>` form is the
+// one that stays safe even if the npm script alias is ever removed or
+// misconfigured. The TS tier-probe is the one exception: it is not a plain
+// Node entrypoint and requires the `tsx` package runner to execute — do not
+// present `npx tsx ...` as unconditionally "Railway-safe" without that caveat.
+// ──────────────────────────────────────────────────────────────────────────
+export const RAILWAY_SAFE_COMMANDS = {
+  nightReservations: 'node scripts/contur3/run-night-reservations.mjs',
+  eventRebalance: 'node scripts/contur3/run-event-rebalance.mjs',
+  liveFunnelLog: 'node scripts/contur3/live-funnel-log.mjs',
+  battleReady: 'node scripts/contur3/battle-ready.mjs',
+};
+
+export const TIER_PROBE_RUNNER_NOTE =
+  'reservation-tier-probe is a TypeScript entrypoint (reservation-capacity-audit.tier-probe.ts) run via the tsx '
+  + 'package runner (npm run contur3:reservation-tier-probe); it has no direct `node` form, and `npx` is only '
+  + 'Railway-safe if tsx is confirmed present in the deployed image — do not assume it is.';
 
 // ──────────────────────────────────────────────────────────────────────────
 // Git + env context (no secret values, only presence booleans)
@@ -470,11 +510,11 @@ export async function collectFunnel(opts = {}) {
     base.anomalies.push({
       code: 'EXECUTOR_SECRET_MISSING', severity: 'P0', fixture: null, stage: 'source',
       evidence: 'SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY absent in this execution context.',
-      recommended_command: 'Run on Railway /app where Supabase read env is present: npm run contur3:live-funnel-log',
+      recommended_command: `Run on Railway /app where Supabase read env is present: ${RAILWAY_SAFE_COMMANDS.liveFunnelLog}`,
     });
     base.next_actions.push({
       when: 'now', where: 'Railway',
-      command: 'npm run contur3:live-funnel-log',
+      command: RAILWAY_SAFE_COMMANDS.liveFunnelLog,
       why: 'Generate the canonical DB-backed funnel log; local context has no Supabase env.',
     });
     base.db_available = false;
@@ -531,11 +571,21 @@ export async function collectFunnel(opts = {}) {
       : fx ? 'FIXTURE_LIST' : (groupTeamPairSig(g) && groupTeamPairSig(g) === reservationTeamPairSig(res)) ? 'TEAM_PAIR_SIGNATURE' : 'EVENT_IDENTITY_KEY';
     const ds = res ? dueState(res.game_start_iso, nowMs) : 'NO_RESERVATION';
     const fallbackUsed = !!(res && /FALLBACK|TIER2|TIER3/i.test(`${res.strategy ?? ''} ${res.tier ?? ''} ${res.reason ?? ''}`));
+    // Timing of the underlying game for a group with NO reservation is only
+    // knowable from the raw signal row's own game_start_iso (if present).
+    // This gates whether a missing reservation is an actionable P0 gap right
+    // now, vs a stale/expired or not-yet-in-horizon row that must not alarm.
+    const reservationTiming = res
+      ? classifyReservationTiming(res.game_start_iso, nowMs, o.nextHours)
+      : classifyReservationTiming(g.game_start_iso, nowMs, o.nextHours);
 
     let verdict;
     if (res && queue.length) verdict = 'RESERVED_AND_QUEUED';
     else if (res) verdict = 'RESERVED_OK';
-    else if (g.raw_allowed_fullmatch_rows > 0) verdict = 'TRUE_MISSING_RESERVATION_HAS_ALLOWED_FULLMATCH';
+    else if (g.raw_allowed_fullmatch_rows > 0 && reservationTiming === 'ACTIONABLE') verdict = 'TRUE_MISSING_RESERVATION_HAS_ALLOWED_FULLMATCH';
+    else if (g.raw_allowed_fullmatch_rows > 0 && reservationTiming === 'EXPIRED') verdict = 'MISSING_RESERVATION_EXPIRED_NOT_ACTIONABLE';
+    else if (g.raw_allowed_fullmatch_rows > 0 && reservationTiming === 'OUT_OF_HORIZON') verdict = 'MISSING_RESERVATION_OUT_OF_HORIZON_NOT_ACTIONABLE';
+    else if (g.raw_allowed_fullmatch_rows > 0 && reservationTiming === 'UNKNOWN_TIMING') verdict = 'MISSING_RESERVATION_UNKNOWN_TIMING_NEEDS_REVIEW';
     else if (g.builder_forbidden_candidates > 0) verdict = 'ONLY_FORBIDDEN_MARKETS_NO_ANCHOR';
     else if (g.raw_rows === 0) verdict = 'NO_SIGNAL_ROWS';
     else verdict = 'SIGNALS_PRESENT_CLASS_UNKNOWN';
@@ -558,6 +608,7 @@ export async function collectFunnel(opts = {}) {
       reservation_id_present: !!res?.id,
       reservation_match_key: res ? (res.match_family_key ?? groupTeamPairSig(g) ?? key) : null,
       reservation_join_method: reservationJoinMethod,
+      reservation_timing: reservationTiming,
       fallback_used: fallbackUsed,
       due_minsk: res?.game_start_iso ? minskString(new Date(res.game_start_iso)) : null,
       due_state: ds,
@@ -629,20 +680,39 @@ export function detectAnomalies(base, fixtures, reads) {
   }
 
   for (const f of fixtures) {
+    // P0 for a missing reservation is gated on whether the underlying match
+    // timing is currently ACTIONABLE. Expired / out-of-horizon rows are not
+    // an operator-facing gap right now (the window already closed, or hasn't
+    // opened yet); unknown timing is a genuine measurement gap, not a hard
+    // anomaly, so it downgrades to P1 rather than being silently dropped.
+    const timing = f.reservation_timing ?? 'UNKNOWN_TIMING';
     if (f.raw_allowed_fullmatch_rows > 0 && f.reservation_status === 'NONE') {
-      push('RAW_ALLOWED_FULLMATCH_GT0_NO_RESERVATION', 'P0', f.display_match, 'reservation',
-        `raw_allowed_fullmatch=${f.raw_allowed_fullmatch_rows} but no reservation row.`,
-        'npm run contur3:reservation-tier-probe (prove builder tier) then contur3:night-reservations');
+      if (timing === 'ACTIONABLE') {
+        push('RAW_ALLOWED_FULLMATCH_GT0_NO_RESERVATION', 'P0', f.display_match, 'reservation',
+          `raw_allowed_fullmatch=${f.raw_allowed_fullmatch_rows} but no reservation row (timing=ACTIONABLE).`,
+          RAILWAY_SAFE_COMMANDS.nightReservations);
+      } else if (timing === 'UNKNOWN_TIMING') {
+        push('RAW_ALLOWED_FULLMATCH_GT0_NO_RESERVATION_UNKNOWN_TIMING', 'P1', f.display_match, 'reservation',
+          `raw_allowed_fullmatch=${f.raw_allowed_fullmatch_rows}, no reservation row, and game start timing could not be resolved — verify manually, do not treat as a confirmed gap.`,
+          RAILWAY_SAFE_COMMANDS.nightReservations);
+      }
+      // EXPIRED / OUT_OF_HORIZON: not actionable right now — no anomaly.
     }
     if (f.raw_allowed_fullmatch_rows > 0 && f.builder_forbidden_candidates > 0 && f.reservation_status === 'NONE') {
-      push('RAW_ALLOWED_FULLMATCH_GT0_BUILDER_FULLMATCH_EQ0', 'P0', f.display_match, 'builder',
-        `allowed full-match raw rows exist but only forbidden candidates emitted (${f.builder_forbidden_candidates}).`,
-        'npm run contur3:reservation-tier-probe');
+      if (timing === 'ACTIONABLE') {
+        push('RAW_ALLOWED_FULLMATCH_GT0_BUILDER_FULLMATCH_EQ0', 'P0', f.display_match, 'builder',
+          `allowed full-match raw rows exist but only forbidden candidates emitted (${f.builder_forbidden_candidates}).`,
+          `npm run contur3:reservation-tier-probe (${TIER_PROBE_RUNNER_NOTE})`);
+      } else if (timing === 'UNKNOWN_TIMING') {
+        push('RAW_ALLOWED_FULLMATCH_GT0_BUILDER_FULLMATCH_EQ0_UNKNOWN_TIMING', 'P1', f.display_match, 'builder',
+          `allowed full-match raw rows with only forbidden candidates (${f.builder_forbidden_candidates}) and unknown game timing — verify manually.`,
+          `npm run contur3:reservation-tier-probe (${TIER_PROBE_RUNNER_NOTE})`);
+      }
     }
     if (f.due_state === 'DUE_NOW' && f.event_execution_queue_rows === 0) {
       push('DUE_RESERVATION_NOT_QUEUED', 'P0', f.display_match, 'rebalance',
         'reservation is DUE_NOW but not present in event_execution_queue.',
-        'npm run contur3:event-rebalance');
+        RAILWAY_SAFE_COMMANDS.eventRebalance);
     }
     if (f.event_execution_queue_rows > 0 && f.executor_api_visible !== true) {
       push('QUEUE_NOT_VISIBLE_TO_EXECUTOR_API', 'P1', f.display_match, 'executor_api',
@@ -661,18 +731,23 @@ export function detectAnomalies(base, fixtures, reads) {
   return out;
 }
 
-function nextActions(base) {
+export function nextActions(base) {
   const v = base.summary?.machine_verdict;
   const actions = [];
   const map = {
-    RESERVATION_UNDERFILL: ['Railway', 'npm run contur3:reservation-tier-probe && npm run contur3:night-reservations', 'Allowed full-match anchors exist without reservation — re-run reservation planning.'],
-    DUE_REBALANCE_REQUIRED: ['Railway', 'npm run contur3:event-rebalance', 'A reservation is due now but not queued.'],
+    RESERVATION_UNDERFILL: [
+      'Railway',
+      RAILWAY_SAFE_COMMANDS.nightReservations,
+      `Allowed full-match anchors exist without reservation — re-run reservation planning directly (node, Railway-safe). `
+        + `If builder admission itself is suspect, also run 'npm run contur3:reservation-tier-probe' first — ${TIER_PROBE_RUNNER_NOTE}`,
+    ],
+    DUE_REBALANCE_REQUIRED: ['Railway', RAILWAY_SAFE_COMMANDS.eventRebalance, 'A reservation is due now but not queued.'],
     QUEUE_READY_IRELAND_MANUAL_START_REQUIRED: ['Ireland', 'see reports/contur3/ireland_manual_command_pack_latest.md', 'Queue is ready and API-visible; Ireland monitor must be started (dry/fail-closed).'],
-    RESERVED_WAITING_FOR_DUE: ['Railway', 'npm run contur3:live-funnel-log (re-check near due window)', 'Reservations exist; wait for the due window.'],
-    SOURCE_TO_BUILDER_BROKEN: ['Railway', 'npm run contur3:reservation-tier-probe', 'Allowed raw rows are not becoming reservations — inspect builder admission.'],
-    BATTLE_CONTOUR_READY_FOR_DUE_WINDOW: ['Railway', 'npm run contur3:battle-ready', 'Re-confirm readiness before the next due window.'],
+    RESERVED_WAITING_FOR_DUE: ['Railway', `${RAILWAY_SAFE_COMMANDS.liveFunnelLog} (re-check near due window)`, 'Reservations exist; wait for the due window.'],
+    SOURCE_TO_BUILDER_BROKEN: ['Railway', 'npm run contur3:reservation-tier-probe', `Allowed raw rows are not becoming reservations — inspect builder admission. ${TIER_PROBE_RUNNER_NOTE}`],
+    BATTLE_CONTOUR_READY_FOR_DUE_WINDOW: ['Railway', RAILWAY_SAFE_COMMANDS.battleReady, 'Re-confirm readiness before the next due window.'],
     ORDER_LEDGER_PRESENT: ['Local', 'review executor_order_events / audit', 'Orders observed — reconcile ledger.'],
-    STOPPED_DB_ENV_MISSING: ['Railway', 'npm run contur3:live-funnel-log', 'No DB env locally — run where Supabase read env exists.'],
+    STOPPED_DB_ENV_MISSING: ['Railway', RAILWAY_SAFE_COMMANDS.liveFunnelLog, 'No DB env locally — run where Supabase read env exists.'],
   };
   const m = map[v];
   if (m) actions.push({ when: 'now', where: m[0], command: m[1], why: m[2] });
