@@ -28,14 +28,32 @@ test("package.json exposes Railway-safe daily display write script", () => {
     "track-record:display:daily:write script must exist"
   );
   assert.match(dailyDisplay, /track-record:display:materialize -- --write/);
+  assert.match(
+    dailyDisplay,
+    /resolve:signals -- --write --priority-track-record-display/
+  );
+  assert.match(dailyDisplay, /--dedupe-strict/);
+  assert.match(dailyDisplay, /--limit=200/);
+  assert.match(dailyDisplay, /--max-updates=100/);
   assert.match(dailyDisplay, /refresh:track-record:write/);
 
-  // Must NOT use the old resolver path.
-  assert.equal(
-    dailyDisplay.includes("priority-track-record-display"),
-    false,
-    "daily display script must not use the old resolver flag"
+  // Ordering: materialize → resolve → refresh.
+  const materializeIdx = dailyDisplay.indexOf(
+    "track-record:display:materialize -- --write"
   );
+  const resolveIdx = dailyDisplay.indexOf(
+    "resolve:signals -- --write --priority-track-record-display"
+  );
+  const refreshIdx = dailyDisplay.indexOf("refresh:track-record:write");
+  assert.ok(
+    materializeIdx >= 0 && materializeIdx < resolveIdx,
+    "materializer step must appear before resolver step"
+  );
+  assert.ok(
+    resolveIdx < refreshIdx,
+    "resolver step must appear before refresh step"
+  );
+
   const oldDaily = scripts["track-record:daily:write"] ?? "";
   assert.notEqual(
     dailyDisplay,
