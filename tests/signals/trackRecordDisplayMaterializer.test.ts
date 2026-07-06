@@ -486,6 +486,168 @@ test("write-path payload carries only the allowed odds_source_path", async () =>
   assert.equal(captured[0].odds_source_path, "entry_price_num");
 });
 
+test("same-day cap: existing count at limit plans/inserts 0 with OK verdict", async () => {
+  const source = Array.from({ length: 30 }, (_, i) =>
+    makeSourceRow({ id: `fresh-${String(i).padStart(2, "0")}` })
+  );
+  const existing = Array.from({ length: 25 }, (_, i) => ({
+    batch_day: "2026-07-05",
+    window_days: 14,
+    source_row_id: `earlier-${i}`,
+  }));
+  const state = { insertCalls: 0 };
+  const deps: MaterializerDeps = {
+    fetchFreshSourceRows: async () => source,
+    fetchExistingDisplayKeys: async () => existing,
+    insertDisplayRows: async (rows) => {
+      state.insertCalls += 1;
+      return rows.length;
+    },
+  };
+
+  const dry = await runDisplayMaterializer(deps, { nowIso: NOW_ISO });
+  assert.equal(dry.verdict, "DRY_RUN_OK");
+  assert.equal(dry.plannedCount, 0);
+  assert.equal(dry.existingCountForBatchWindow, 25);
+  assert.equal(dry.remainingCapacity, 0);
+
+  const write = await runDisplayMaterializer(deps, {
+    nowIso: NOW_ISO,
+    write: true,
+  });
+  assert.equal(write.verdict, "WRITE_OK");
+  assert.equal(write.plannedCount, 0);
+  assert.equal(write.insertedCount, 0);
+  assert.equal(state.insertCalls, 0, "insert must never be called at full cap");
+});
+
+test("same-day cap: partial capacity 23/25 plans and inserts only 2 rows", async () => {
+  const source = Array.from({ length: 30 }, (_, i) =>
+    makeSourceRow({ id: `fresh-${String(i).padStart(2, "0")}` })
+  );
+  const existing = Array.from({ length: 23 }, (_, i) => ({
+    batch_day: "2026-07-05",
+    window_days: 14,
+    source_row_id: `earlier-${i}`,
+  }));
+  const inserted: string[] = [];
+  const deps: MaterializerDeps = {
+    fetchFreshSourceRows: async () => source,
+    fetchExistingDisplayKeys: async () => existing,
+    insertDisplayRows: async (rows) => {
+      inserted.push(...rows.map((r) => r.source_row_id));
+      return rows.length;
+    },
+  };
+
+  const result = await runDisplayMaterializer(deps, {
+    nowIso: NOW_ISO,
+    write: true,
+    limit: 25,
+  });
+  assert.equal(result.existingCountForBatchWindow, 23);
+  assert.equal(result.remainingCapacity, 2);
+  assert.equal(result.plannedCount, 2);
+  assert.equal(result.insertedCount, 2);
+  assert.equal(inserted.length, 2);
+});
+
+test("same-day cap: no existing rows still caps at default 25", async () => {
+  const source = Array.from({ length: 40 }, (_, i) =>
+    makeSourceRow({ id: `fresh-${String(i).padStart(2, "0")}` })
+  );
+  const harness = makeDeps(source);
+  const result = await runDisplayMaterializer(harness.deps, {
+    nowIso: NOW_ISO,
+  });
+  assert.equal(result.existingCountForBatchWindow, 0);
+  assert.equal(result.remainingCapacity, 25);
+  assert.equal(result.plannedCount, 25);
+  assert.equal(result.candidateCountAfterQualityFilter, 40);
+});
+
+test("selection prefers near-expiry candidates over far-future ones", () => {
+  const farFuture = makeSourceRow({
+    id: "far-future",
+    expires_at: "2026-09-01T00:00:00.000Z",
+    score: 99,
+  });
+  const nearExpiry = makeSourceRow({
+    id: "near-expiry",
+    expires_at: "2026-07-05T20:00:00.000Z",
+    score: 40,
+  });
+  const rows = buildDisplayRows({
+    sourceRows: [farFuture, nearExpiry],
+    nowIso: NOW_ISO,
+  });
+  assert.equal(rows[0].source_row_id, "near-expiry");
+  assert.equal(rows[1].source_row_id, "far-future");
+});
+
+test("selection with limit drops far-future rows before near-expiry rows", () => {
+  const sourceRows = [
+    makeSourceRow({ id: "far-1", expires_at: "2026-10-01T00:00:00.000Z", score: 95 }),
+    makeSourceRow({ id: "near-1", expires_at: "2026-07-06T00:00:00.000Z", score: 30 }),
+    makeSourceRow({ id: "near-2", expires_at: "2026-07-07T00:00:00.000Z", score: 20 }),
+  ];
+  const rows = buildDisplayRows({ sourceRows, nowIso: NOW_ISO, limit: 2 });
+  assert.deepEqual(
+    rows.map((r) => r.source_row_id),
+    ["near-1", "near-2"]
+  );
+});
+
+test("resolver-identity-complete candidates outrank identity-incomplete ones", () => {
+  const noIdentity = makeSourceRow({
+    id: "no-condition",
+    condition_id: null,
+    expires_at: "2026-07-05T12:00:00.000Z",
+    score: 99,
+  });
+  const nullToken = makeSourceRow({
+    id: "null-token",
+    selected_token_id: null,
+    expires_at: "2026-07-05T12:00:00.000Z",
+    score: 99,
+  });
+  const complete = makeSourceRow({
+    id: "complete",
+    selected_token_id: "token-1",
+    expires_at: "2026-08-30T00:00:00.000Z",
+    score: 10,
+  });
+  const rows = buildDisplayRows({
+    sourceRows: [noIdentity, nullToken, complete],
+    nowIso: NOW_ISO,
+  });
+  assert.equal(rows[0].source_row_id, "complete");
+});
+
+test("null expires_at sorts after dated expires_at among equal-quality rows", () => {
+  const undated = makeSourceRow({ id: "undated", expires_at: null, score: 99 });
+  const dated = makeSourceRow({
+    id: "dated",
+    expires_at: "2026-07-09T00:00:00.000Z",
+    score: 10,
+  });
+  const rows = buildDisplayRows({ sourceRows: [undated, dated], nowIso: NOW_ISO });
+  assert.deepEqual(
+    rows.map((r) => r.source_row_id),
+    ["dated", "undated"]
+  );
+});
+
+test("result exposes selected expires_at range diagnostics", async () => {
+  const harness = makeDeps([
+    makeSourceRow({ id: "a", expires_at: "2026-07-06T00:00:00.000Z" }),
+    makeSourceRow({ id: "b", expires_at: "2026-07-10T00:00:00.000Z" }),
+  ]);
+  const result = await runDisplayMaterializer(harness.deps, { nowIso: NOW_ISO });
+  assert.equal(result.selectedMinExpiresAt, "2026-07-06T00:00:00.000Z");
+  assert.equal(result.selectedMaxExpiresAt, "2026-07-10T00:00:00.000Z");
+});
+
 test("source select never names optional non-guaranteed display columns", () => {
   // Regression guard: a fixed column list breaks with "column ... does not
   // exist" the moment production generated_signal_pairs lacks one of these

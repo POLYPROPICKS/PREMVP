@@ -27,6 +27,10 @@ export interface GeneratedPairSourceRow {
   event_slug: string | null;
   market_slug: string | null;
   condition_id: string | null;
+  // Optional: not guaranteed to exist as a physical column in production
+  // (source rows are read with select("*")). undefined = column absent,
+  // null = column present but empty.
+  selected_token_id?: string | null;
   selected_outcome: string | null;
   entry_price_num: number | null;
   score: number | null;
@@ -201,9 +205,39 @@ function round2(n: number | null): number | null {
   return n === null ? null : Math.round(n * 100) / 100;
 }
 
-// Deterministic ranking: score desc (nulls last), then created_at desc,
-// then id asc as the total tiebreaker.
+// Resolver identity completeness: rows the priority resolver can actually
+// resolve need condition_id, entry_price_num, and metric_formula_version.
+// selected_token_id is only checked when the field is present on the row
+// (undefined = column absent from the select("*") read, not a defect).
+export function hasResolverIdentity(row: GeneratedPairSourceRow): boolean {
+  if (cleanText(row.condition_id) === null) return false;
+  if (!hasValidEntryPrice(row)) return false;
+  if (cleanText(row.metric_formula_version) === null) return false;
+  if (row.selected_token_id !== undefined && cleanText(row.selected_token_id) === null) {
+    return false;
+  }
+  return true;
+}
+
+function expiresAtMs(row: GeneratedPairSourceRow): number {
+  if (!row.expires_at) return Number.POSITIVE_INFINITY;
+  const ms = new Date(row.expires_at).getTime();
+  return Number.isFinite(ms) ? ms : Number.POSITIVE_INFINITY;
+}
+
+// Deterministic pending-reducing ranking:
+// 1. resolver-identity-complete rows first;
+// 2. expires_at ascending (near-expiry / resolve-ready before far-future;
+//    null/invalid expires_at sorts last);
+// 3. score desc (nulls last) as tiebreaker;
+// 4. created_at desc, then id asc as the total tiebreaker.
 function compareSourceRows(a: GeneratedPairSourceRow, b: GeneratedPairSourceRow): number {
+  const aIdentity = hasResolverIdentity(a) ? 0 : 1;
+  const bIdentity = hasResolverIdentity(b) ? 0 : 1;
+  if (aIdentity !== bIdentity) return aIdentity - bIdentity;
+  const aExpires = expiresAtMs(a);
+  const bExpires = expiresAtMs(b);
+  if (aExpires !== bExpires) return aExpires - bExpires;
   const aScore = a.score ?? Number.NEGATIVE_INFINITY;
   const bScore = b.score ?? Number.NEGATIVE_INFINITY;
   if (aScore !== bScore) return bScore - aScore;
@@ -329,6 +363,12 @@ export interface MaterializerResult {
   skippedExistingCount: number;
   insertedCount: number;
   dryRun: boolean;
+  // Same-day cap + selection diagnostics.
+  existingCountForBatchWindow: number;
+  remainingCapacity: number;
+  candidateCountAfterQualityFilter: number;
+  selectedMinExpiresAt: string | null;
+  selectedMaxExpiresAt: string | null;
 }
 
 export async function runDisplayMaterializer(
@@ -358,23 +398,46 @@ export async function runDisplayMaterializer(
       skippedExistingCount: 0,
       insertedCount: 0,
       dryRun: !write,
+      existingCountForBatchWindow: 0,
+      remainingCapacity: 0,
+      candidateCountAfterQualityFilter: 0,
+      selectedMinExpiresAt: null,
+      selectedMaxExpiresAt: null,
     };
   }
+
+  const limit = options.limit ?? DEFAULT_LIMIT;
+  const existing = await deps.fetchExistingDisplayKeys(batchDay, windowDays);
+  const existingCountForBatchWindow = existing.length;
+  // Same-day cap: display rows already materialized for this
+  // (batch_day, window_days) consume today's capacity, so a repeated run
+  // can never push the batch past `limit` rows total.
+  const remainingCapacity = Math.max(0, limit - existingCountForBatchWindow);
+  const candidateCountAfterQualityFilter =
+    sourceRows.filter(isDisplayableSourceRow).length;
 
   const candidates = buildDisplayRows({
     sourceRows,
     nowIso,
     windowDays,
-    limit: options.limit,
+    limit,
     materializedAt: options.materializedAt ?? nowIso,
   });
-  const existing = await deps.fetchExistingDisplayKeys(batchDay, windowDays);
-  const toInsert = filterAlreadyMaterialized(candidates, existing);
+  const notYetMaterialized = filterAlreadyMaterialized(candidates, existing);
+  const toInsert = notYetMaterialized.slice(0, remainingCapacity);
 
   let insertedCount = 0;
   if (write && toInsert.length > 0) {
     insertedCount = await deps.insertDisplayRows(toInsert);
   }
+
+  const expiresBySourceId = new Map(
+    sourceRows.map((row) => [row.id, row.expires_at ?? null])
+  );
+  const selectedExpires = toInsert
+    .map((row) => expiresBySourceId.get(row.source_row_id) ?? null)
+    .filter((ts): ts is string => ts !== null)
+    .sort();
 
   return {
     verdict: write ? "WRITE_OK" : "DRY_RUN_OK",
@@ -386,5 +449,10 @@ export async function runDisplayMaterializer(
     skippedExistingCount: candidates.length - toInsert.length,
     insertedCount,
     dryRun: !write,
+    existingCountForBatchWindow,
+    remainingCapacity,
+    candidateCountAfterQualityFilter,
+    selectedMinExpiresAt: selectedExpires[0] ?? null,
+    selectedMaxExpiresAt: selectedExpires[selectedExpires.length - 1] ?? null,
   };
 }

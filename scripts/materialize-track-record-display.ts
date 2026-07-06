@@ -141,6 +141,11 @@ async function main(): Promise<void> {
     plannedCount: result.plannedCount,
     skippedExistingCount: result.skippedExistingCount,
     insertedCount: result.insertedCount,
+    existingCountForBatchWindow: result.existingCountForBatchWindow,
+    remainingCapacity: result.remainingCapacity,
+    candidateCountAfterQualityFilter: result.candidateCountAfterQualityFilter,
+    selectedMinExpiresAt: result.selectedMinExpiresAt,
+    selectedMaxExpiresAt: result.selectedMaxExpiresAt,
   });
 
   if (result.verdict === "NO_FRESH_GENERATED_SIGNAL_PAIRS") {
