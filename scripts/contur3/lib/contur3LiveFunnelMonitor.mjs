@@ -413,6 +413,32 @@ export function classifyQueueLifecycle(res, matchedQueueRows, nowMs) {
   return 'QUEUE_ROW_PRESENT';
 }
 
+// Consumer-handoff diagnosis for one fixture: separates "Ireland consumer must
+// start NOW" (READY + API-visible + entry window still open) from "consumer
+// missed the window" (READY + API-visible + window closed + zero orders).
+// Never blames the consumer when the queue was not API-visible, when orders
+// exist, or when the reservation is a terminal no-market skip. Pure/read-only.
+export function classifyConsumerHandoff({ queueVerdict, apiVisible, orders }) {
+  const orderCount = orders ?? 0;
+  const none = { state: 'NOT_APPLICABLE', action_required: false, window_missed: false, code: null };
+  if (orderCount > 0) return { ...none, state: 'ORDERS_PRESENT' };
+  if (queueVerdict === 'QUEUE_READY_ACTIONABLE') {
+    if (apiVisible === true) {
+      return { state: 'CONSUMER_START_REQUIRED_NOW', action_required: true, window_missed: false, code: 'CONSUMER_START_REQUIRED_NOW' };
+    }
+    return { state: 'EXECUTOR_API_NOT_VISIBLE_FOR_READY_QUEUE', action_required: true, window_missed: false, code: 'EXECUTOR_API_NOT_VISIBLE_FOR_READY_QUEUE' };
+  }
+  if (queueVerdict === 'QUEUE_READY_ENTRY_WINDOW_CLOSED') {
+    if (apiVisible === true) {
+      return { state: 'CONSUMER_MISSED_QUEUE_WINDOW', action_required: false, window_missed: true, code: 'CONSUMER_MISSED_QUEUE_WINDOW' };
+    }
+    return { state: 'EXECUTOR_API_NOT_VISIBLE_FOR_READY_QUEUE', action_required: false, window_missed: true, code: 'EXECUTOR_API_NOT_VISIBLE_FOR_READY_QUEUE' };
+  }
+  return none;
+}
+
+export const IRELAND_MANUAL_PACK_COMMAND = 'see reports/contur3/ireland_manual_command_pack_latest.md (start Ireland monitor dry/fail-closed; live orders need founder approval)';
+
 // Safe classification of a table read result. Column/relation shape
 // mismatches (e.g. job_runs missing an expected column) degrade to an
 // explicit measurement-gap status instead of polluting the report as a hard
@@ -708,6 +734,18 @@ export async function collectFunnel(opts = {}) {
       sample_slugs: g.sample_slugs,
       verdict,
     });
+    {
+      const fx2 = fixtures[fixtures.length - 1];
+      const handoff = classifyConsumerHandoff({
+        queueVerdict: fx2.queue_verdict,
+        apiVisible: fx2.executor_api_visible,
+        orders: fx2.order_events,
+      });
+      fx2.consumer_handoff_state = handoff.state;
+      fx2.consumer_action_required = handoff.action_required;
+      fx2.consumer_window_missed = handoff.window_missed;
+      fx2.consumer_diagnostic_code = handoff.code;
+    }
   }
 
   // Sort: known fixtures first, then by raw rows desc.
@@ -761,6 +799,8 @@ export async function collectFunnel(opts = {}) {
     skipped_no_executable_market: skippedNoMarket,
     executor_api_visible: apiVisible,
     orders,
+    consumer_start_required_now: fixtures.filter((f) => f.consumer_diagnostic_code === 'CONSUMER_START_REQUIRED_NOW').length,
+    consumer_missed_queue_window: fixtures.filter((f) => f.consumer_diagnostic_code === 'CONSUMER_MISSED_QUEUE_WINDOW').length,
     hard_anomaly_count: base.anomalies.filter((a) => a.severity === 'P0').length,
     machine_verdict: machineVerdict,
   };
@@ -831,6 +871,22 @@ export function detectAnomalies(base, fixtures, reads) {
       push('DUE_RESERVATION_NOT_QUEUED', 'P0', f.display_match, 'rebalance',
         'reservation is DUE_NOW but not present in event_execution_queue.',
         RAILWAY_SAFE_COMMANDS.eventRebalance);
+    }
+    // Consumer-handoff diagnostics: explicit start-now vs missed-window codes.
+    // P1 (operational/manual layer), never P0 — the pipeline itself delivered.
+    const handoff = classifyConsumerHandoff({
+      queueVerdict: f.queue_verdict,
+      apiVisible: f.executor_api_visible,
+      orders: f.order_events,
+    });
+    if (handoff.code === 'CONSUMER_START_REQUIRED_NOW') {
+      push('CONSUMER_START_REQUIRED_NOW', 'P1', f.display_match, 'consumer',
+        'READY queue row is API-visible and the entry window is OPEN with zero orders — Ireland/manual consumer must be started NOW (dry/fail-closed).',
+        IRELAND_MANUAL_PACK_COMMAND);
+    } else if (handoff.code === 'CONSUMER_MISSED_QUEUE_WINDOW') {
+      push('CONSUMER_MISSED_QUEUE_WINDOW', 'P1', f.display_match, 'consumer',
+        'READY queue row was API-visible but the entry window closed with zero order/audit activity — the consumer was not running (or did not consume) before close.',
+        IRELAND_MANUAL_PACK_COMMAND);
     }
     if (f.event_execution_queue_rows > 0 && f.executor_api_visible !== true) {
       push('QUEUE_NOT_VISIBLE_TO_EXECUTOR_API', 'P1', f.display_match, 'executor_api',
@@ -1047,7 +1103,7 @@ export function writeReports(j, { write = true, json = true, g2 = false } = {}) 
 export function printConsoleMarkers(j, written = []) {
   const s = j.summary ?? {};
   console.log('CONTUR3_LIVE_FUNNEL_LOG_START');
-  console.log(`CONTUR3_LIVE_FUNNEL_SUMMARY verdict=${s.machine_verdict} reserved=${s.reserved_physical_matches} missing=${s.missing_physical_matches} due_now=${s.due_now} queued=${s.queued} queue_created=${s.queue_created} queue_actionable=${s.queue_actionable} queue_window_closed=${s.queue_entry_window_closed} api=${s.executor_api_visible} orders=${s.orders}`);
+  console.log(`CONTUR3_LIVE_FUNNEL_SUMMARY verdict=${s.machine_verdict} reserved=${s.reserved_physical_matches} missing=${s.missing_physical_matches} due_now=${s.due_now} queued=${s.queued} queue_created=${s.queue_created} queue_actionable=${s.queue_actionable} queue_window_closed=${s.queue_entry_window_closed} api=${s.executor_api_visible} orders=${s.orders} consumer_start_now=${s.consumer_start_required_now} consumer_missed=${s.consumer_missed_queue_window}`);
   const p0 = (j.anomalies ?? []).filter((a) => a.severity === 'P0');
   console.log(`CONTUR3_LIVE_FUNNEL_ANOMALIES p0=${p0.length} total=${(j.anomalies ?? []).length} codes=${(j.anomalies ?? []).map((a) => a.code).join(',') || '-'}`);
   const na = (j.next_actions ?? [])[0];

@@ -18,6 +18,7 @@ import {
   queueEntryWindowState,
   classifyQueueLifecycle,
   SKIPPED_NO_EXECUTABLE_MARKET_REASON,
+  classifyConsumerHandoff,
 } from '../contur3LiveFunnelMonitor.mjs';
 
 function baseFixture(overrides = {}) {
@@ -480,4 +481,104 @@ test('queueEntryWindowState prefers latest_entry_iso over derived T-3', () => {
   assert.equal(queueEntryWindowState(closedRow, res, QNOW), 'CLOSED');
   const noTiming = readyQueueRow({ game_start_iso: null });
   assert.equal(queueEntryWindowState(noTiming, { ...res, game_start_iso: null }, QNOW), 'UNKNOWN');
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Consumer handoff diagnostics (Ireland start-now vs missed-window)
+// ──────────────────────────────────────────────────────────────────────────
+test('H1) READY + API-visible + window OPEN + orders=0 raises CONSUMER_START_REQUIRED_NOW, not P0 missing-queue', () => {
+  const fixtures = [baseFixture({
+    reservation_status: 'QUEUED',
+    due_state: 'DUE_NOW',
+    event_execution_queue_rows: 1,
+    executor_api_visible: true,
+    queue_verdict: 'QUEUE_READY_ACTIONABLE',
+    order_events: 0,
+  })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  const hit = anomalies.find((a) => a.code === 'CONSUMER_START_REQUIRED_NOW');
+  assert.ok(hit, 'actionable READY queue with no consumer must say: start Ireland consumer NOW');
+  assert.notEqual(hit.severity, 'P0', 'manual/operational start is not a pipeline P0');
+  assert.match(hit.recommended_command, /ireland_manual_command_pack/i);
+  assert.equal(anomalies.some((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING'), false);
+  assert.equal(anomalies.some((a) => a.code === 'DUE_RESERVATION_NOT_QUEUED'), false);
+});
+
+test('H2) READY + API-visible + window CLOSED + orders=0 raises CONSUMER_MISSED_QUEUE_WINDOW', () => {
+  const fixtures = [baseFixture({
+    reservation_status: 'QUEUED',
+    due_state: 'EXPIRED',
+    event_execution_queue_rows: 1,
+    executor_api_visible: true,
+    queue_verdict: 'QUEUE_READY_ENTRY_WINDOW_CLOSED',
+    order_events: 0,
+  })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  assert.ok(anomalies.some((a) => a.code === 'CONSUMER_MISSED_QUEUE_WINDOW'),
+    'API-visible READY rows with closed window and 0 orders must be reported as consumer missed the window');
+  assert.equal(anomalies.some((a) => a.code === 'CONSUMER_START_REQUIRED_NOW'), false);
+  assert.equal(anomalies.some((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING'), false);
+  assert.equal(anomalies.some((a) => a.code === 'DUE_RESERVATION_NOT_QUEUED'), false);
+});
+
+test('H3) orders present suppress consumer start/missed diagnostics', () => {
+  const fixtures = [baseFixture({
+    reservation_status: 'QUEUED',
+    due_state: 'EXPIRED',
+    event_execution_queue_rows: 1,
+    executor_api_visible: true,
+    queue_verdict: 'QUEUE_READY_ENTRY_WINDOW_CLOSED',
+    order_events: 2,
+  })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  assert.equal(anomalies.some((a) => a.code === 'CONSUMER_MISSED_QUEUE_WINDOW'), false);
+  assert.equal(anomalies.some((a) => a.code === 'CONSUMER_START_REQUIRED_NOW'), false);
+});
+
+test('H4) no API visibility must not claim Ireland missed the queue — it is an API-visibility issue', () => {
+  const fixtures = [baseFixture({
+    reservation_status: 'QUEUED',
+    due_state: 'EXPIRED',
+    event_execution_queue_rows: 1,
+    executor_api_visible: false,
+    queue_verdict: 'QUEUE_READY_ENTRY_WINDOW_CLOSED',
+    order_events: 0,
+  })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  assert.equal(anomalies.some((a) => a.code === 'CONSUMER_MISSED_QUEUE_WINDOW'), false,
+    'must not blame the consumer when the queue was never API-visible');
+  assert.equal(anomalies.some((a) => a.code === 'CONSUMER_START_REQUIRED_NOW'), false);
+  assert.ok(anomalies.some((a) => a.code === 'QUEUE_NOT_VISIBLE_TO_EXECUTOR_API'),
+    'existing API-visibility anomaly must still point at the executor queue route');
+});
+
+test('H5) SKIPPED_NO_EXECUTABLE_MARKET never raises consumer diagnostics', () => {
+  const fixtures = [baseFixture({
+    reservation_status: 'SKIPPED',
+    due_state: 'DUE_NOW',
+    event_execution_queue_rows: 0,
+    queue_verdict: 'SKIPPED_NO_EXECUTABLE_MARKET',
+    order_events: 0,
+  })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {});
+  assert.equal(anomalies.some((a) => a.code === 'CONSUMER_START_REQUIRED_NOW'), false);
+  assert.equal(anomalies.some((a) => a.code === 'CONSUMER_MISSED_QUEUE_WINDOW'), false);
+});
+
+test('H6) classifyConsumerHandoff pure-state truth table', () => {
+  assert.deepEqual(
+    classifyConsumerHandoff({ queueVerdict: 'QUEUE_READY_ACTIONABLE', apiVisible: true, orders: 0 }),
+    { state: 'CONSUMER_START_REQUIRED_NOW', action_required: true, window_missed: false, code: 'CONSUMER_START_REQUIRED_NOW' });
+  assert.deepEqual(
+    classifyConsumerHandoff({ queueVerdict: 'QUEUE_READY_ENTRY_WINDOW_CLOSED', apiVisible: true, orders: 0 }),
+    { state: 'CONSUMER_MISSED_QUEUE_WINDOW', action_required: false, window_missed: true, code: 'CONSUMER_MISSED_QUEUE_WINDOW' });
+  assert.equal(
+    classifyConsumerHandoff({ queueVerdict: 'QUEUE_READY_ENTRY_WINDOW_CLOSED', apiVisible: true, orders: 1 }).code,
+    null, 'orders present must clear the diagnostic');
+  assert.equal(
+    classifyConsumerHandoff({ queueVerdict: 'QUEUE_READY_ENTRY_WINDOW_CLOSED', apiVisible: false, orders: 0 }).code,
+    'EXECUTOR_API_NOT_VISIBLE_FOR_READY_QUEUE', 'no API visibility must not be blamed on the consumer');
+  assert.equal(
+    classifyConsumerHandoff({ queueVerdict: 'SKIPPED_NO_EXECUTABLE_MARKET', apiVisible: null, orders: 0 }).code,
+    null, 'terminal skip is not a consumer issue');
 });
