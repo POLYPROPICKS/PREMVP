@@ -562,6 +562,20 @@ export function parseArgs(argv = process.argv.slice(2)) {
 // ──────────────────────────────────────────────────────────────────────────
 // Core collection
 // ──────────────────────────────────────────────────────────────────────────
+// executor_order_events rows written before the match_family_key column was
+// backfilled at top level may still carry it nested inside the snapshot JSON
+// captured at order build time; fall back through those shapes so
+// reconciled/legacy order rows are not silently dropped from the order count.
+export function getOrderMatchFamilyKey(orderRow) {
+  return (
+    orderRow?.match_family_key
+    ?? orderRow?.candidate_snapshot_json?.match_family_key
+    ?? orderRow?.raw_event_json?.candidate_snapshot_json?.match_family_key
+    ?? orderRow?.raw_event_json?.raw_event_json?.candidate_snapshot_json?.match_family_key
+    ?? ''
+  );
+}
+
 export async function collectFunnel(opts = {}) {
   const o = { lookbackHours: 24, nextHours: 12, g2Days: 2, ...opts };
   const nowMs = Date.now();
@@ -729,7 +743,7 @@ export async function collectFunnel(opts = {}) {
       queue_actionable: queueVerdict === 'QUEUE_READY_ACTIONABLE',
       queue_entry_window_closed: queueVerdict === 'QUEUE_READY_ENTRY_WINDOW_CLOSED',
       executor_api_visible: queue.length > 0 ? true : null,
-      order_events: orderRows.filter((od) => (od.match_family_key ?? '') === (res?.match_family_key ?? '\u0000')).length,
+      order_events: orderRows.filter((od) => getOrderMatchFamilyKey(od) === (res?.match_family_key ?? '\u0000')).length,
       audit_events: auditRows.filter((ad) => (ad.match_family_key ?? '') === (res?.match_family_key ?? '\u0000')).length,
       sample_slugs: g.sample_slugs,
       verdict,
