@@ -19,6 +19,7 @@ import {
   classifyQueueLifecycle,
   SKIPPED_NO_EXECUTABLE_MARKET_REASON,
   classifyConsumerHandoff,
+  getOrderMatchFamilyKey,
 } from '../contur3LiveFunnelMonitor.mjs';
 
 function baseFixture(overrides = {}) {
@@ -581,4 +582,36 @@ test('H6) classifyConsumerHandoff pure-state truth table', () => {
   assert.equal(
     classifyConsumerHandoff({ queueVerdict: 'SKIPPED_NO_EXECUTABLE_MARKET', apiVisible: null, orders: 0 }).code,
     null, 'terminal skip is not a consumer issue');
+});
+
+test('getOrderMatchFamilyKey falls back to nested candidate_snapshot_json when top-level match_family_key is absent', () => {
+  const reservationKey = 'pair:switzerland-vs-colombia:2026-07-07';
+
+  const topLevelRow = { match_family_key: reservationKey };
+  assert.equal(getOrderMatchFamilyKey(topLevelRow), reservationKey, 'existing top-level match_family_key must be preserved');
+
+  const nestedSnapshotRow = { candidate_snapshot_json: { match_family_key: reservationKey } };
+  assert.equal(getOrderMatchFamilyKey(nestedSnapshotRow), reservationKey);
+
+  const nestedRawEventRow = { raw_event_json: { candidate_snapshot_json: { match_family_key: reservationKey } } };
+  assert.equal(getOrderMatchFamilyKey(nestedRawEventRow), reservationKey);
+
+  const doubleNestedRawEventRow = {
+    raw_event_json: { raw_event_json: { candidate_snapshot_json: { match_family_key: reservationKey } } },
+  };
+  assert.equal(getOrderMatchFamilyKey(doubleNestedRawEventRow), reservationKey);
+
+  assert.equal(getOrderMatchFamilyKey({}), '', 'row with no match_family_key anywhere returns empty string');
+});
+
+test('order_events count recovers a reconciled order row whose match_family_key only exists nested in candidate_snapshot_json', () => {
+  const reservationKey = 'pair:switzerland-vs-colombia:2026-07-07';
+  const res = { match_family_key: reservationKey };
+  const orderRows = [
+    { id: '11679851-0a1b-44f0-a0bf-77abd9228853', success: true, order_status: 'matched', candidate_snapshot_json: { match_family_key: reservationKey } },
+    { id: 'unrelated', success: true, order_status: 'matched', match_family_key: 'pair:portugal-vs-spain:2026-07-06' },
+  ];
+
+  const count = orderRows.filter((od) => getOrderMatchFamilyKey(od) === (res?.match_family_key ?? 'SENTINEL_NO_RESERVATION')).length;
+  assert.equal(count, 1, 'reconciled row with nested match_family_key must be counted as an order');
 });
