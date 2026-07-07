@@ -4,9 +4,8 @@ import {
   QUEUE_SCHEMA_VERSION,
   QUEUE_EXECUTION_MODE,
   QUEUE_SOURCE,
-  EXECUTABLE_STAKE_USD,
+  mapQueueRowToIrelandCandidate,
   type EventExecutionQueueRow,
-  type IrelandQueueCandidate,
 } from "@/lib/executor/executorQueueTypes";
 import { REBALANCE_MINUTES_BEFORE_START } from "@/lib/executor/nightWindow";
 
@@ -17,6 +16,10 @@ import { REBALANCE_MINUTES_BEFORE_START } from "@/lib/executor/nightWindow";
 // ordered by preferred_entry_iso asc, then queued_at asc. It does NOT rank by strategy, does
 // NOT call buildFireModelCandidates, does NOT rebalance, and never returns Tier2/Tier3/halftime
 // (those can never enter the queue upstream). Ireland mechanically consumes this list.
+//
+// Stake/price source of truth: each candidate's stake_usd/max_stake_usd and
+// max_entry_price/price_cap come straight from the queue row (computed by
+// buildFireModelCandidates), never from a hardcoded constant.
 
 export const dynamic = "force-dynamic";
 
@@ -25,42 +28,6 @@ const DEFAULT_CAP = 15;
 function envCap(): number {
   const raw = parseInt(process.env.EXECUTOR_QUEUE_MAX_CANDIDATES ?? "", 10);
   return Number.isFinite(raw) && raw > 0 ? raw : DEFAULT_CAP;
-}
-
-function toCandidate(row: EventExecutionQueueRow, nowMs: number): IrelandQueueCandidate {
-  const preferredMs = Date.parse(row.preferred_entry_iso);
-  const entryState: IrelandQueueCandidate["entry_state"] =
-    Number.isFinite(preferredMs) && preferredMs <= nowMs ? "IN_WINDOW" : "PENDING_WINDOW";
-  return {
-    candidate_id: row.id ?? `${row.plan_run_id}:${row.match_family_key}`,
-    order_key: row.order_key ?? `${row.condition_id}:${row.token_id}:${row.side}`,
-    idempotency_key: row.idempotency_key ?? null,
-    plan_run_id: row.plan_run_id,
-    rebalance_run_id: row.rebalance_run_id,
-    reservation_id: row.reservation_id ?? null,
-    match_family_key: row.match_family_key,
-    event_slug: row.event_slug,
-    event_id: row.event_slug,
-    event_title: row.event_title,
-    sport: row.sport ?? null,
-    condition_id: row.condition_id,
-    token_id: row.token_id,
-    side: row.side,
-    market_slug: row.market_slug,
-    market_title: row.market_title ?? null,
-    market_family: row.market_family,
-    score: row.score,
-    coverage: row.coverage,
-    tier: row.tier,
-    stake_usd: row.stake_usd ?? EXECUTABLE_STAKE_USD,
-    max_stake_usd: EXECUTABLE_STAKE_USD,
-    preferred_entry_iso: row.preferred_entry_iso,
-    latest_entry_iso: row.latest_entry_iso,
-    game_start_iso: row.game_start_iso,
-    entry_state: entryState,
-    selection_rank: row.selection_rank,
-    is_executable: true,
-  };
 }
 
 export async function GET(request: NextRequest) {
@@ -89,7 +56,7 @@ export async function GET(request: NextRequest) {
     if (error) throw new Error(error.message);
 
     const rows = (data ?? []) as EventExecutionQueueRow[];
-    let candidates = rows.map((r) => toCandidate(r, nowMs));
+    let candidates = rows.map((r) => mapQueueRowToIrelandCandidate(r, nowMs));
     if (!includeUpcoming) {
       candidates = candidates.filter((c) => c.entry_state === "IN_WINDOW");
     }
@@ -126,7 +93,9 @@ export async function GET(request: NextRequest) {
         plan_run_id: planRunId,
         generated_at_iso: nowIso,
         max_candidate_count: cap,
-        max_stake_usd: EXECUTABLE_STAKE_USD,
+        // Batch-level ceiling informational only — the enforceable cap per candidate
+        // is candidate.max_stake_usd (dynamic, source of truth = queue row).
+        max_stake_usd: candidates.length > 0 ? Math.max(...candidates.map((c) => c.max_stake_usd)) : 0,
         one_position_per_event: true,
         include_upcoming: includeUpcoming,
         candidate_count: candidates.length,

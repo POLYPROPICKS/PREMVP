@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
+import {
+  validateOrderEventAgainstQueueRow,
+  type EventExecutionQueueRow,
+  type OrderEventSubmission,
+} from "@/lib/executor/executorQueueTypes";
 
 // Keys whose name (case-insensitive, normalised) triggers value removal
 const BANNED_SUBSTRINGS = [
@@ -143,6 +148,60 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "Missing required field: at least one of idempotency_key, clob_order_id" },
       { status: 400 }
+    );
+  }
+
+  // PREMVP source-of-truth enforcement: without idempotency_key we cannot look up
+  // the queue row this event claims to belong to, so we fail safe and reject
+  // rather than silently record an unverifiable stake/price/identity claim.
+  const idempotencyKey = str(raw.idempotency_key);
+  if (!idempotencyKey) {
+    return NextResponse.json(
+      { error: "REJECTED_MISSING_IDEMPOTENCY_KEY_FOR_QUEUE_VALIDATION" },
+      { status: 400 }
+    );
+  }
+
+  const { data: queueRow, error: queueLookupError } = await supabaseAdmin
+    .from("event_execution_queue")
+    .select("*")
+    .eq("idempotency_key", idempotencyKey)
+    .maybeSingle();
+
+  if (queueLookupError) {
+    console.error("[executor/order-events] Queue lookup error:", queueLookupError.message);
+    return NextResponse.json({ error: "QUEUE_LOOKUP_FAILED" }, { status: 500 });
+  }
+  if (!queueRow) {
+    return NextResponse.json(
+      { error: "REJECTED_QUEUE_ROW_NOT_FOUND_FOR_IDEMPOTENCY_KEY" },
+      { status: 409 }
+    );
+  }
+
+  const submission: OrderEventSubmission = {
+    idempotency_key: idempotencyKey,
+    token_id: str(raw.token_id),
+    condition_id: str(raw.condition_id),
+    side: str(raw.side ?? raw.selected_side),
+    market_slug: str(raw.market_slug),
+    submitted_size: num(raw.submitted_size ?? raw.stake_usd),
+    submitted_price: num(raw.submitted_price),
+  };
+
+  const validation = validateOrderEventAgainstQueueRow(
+    submission,
+    queueRow as EventExecutionQueueRow
+  );
+  if (!validation.ok) {
+    console.error(
+      `[executor/order-events] REJECTED mismatch reason=${validation.reason} ` +
+        `idempotency_key=${idempotencyKey} queue_token=${(queueRow as EventExecutionQueueRow).token_id} ` +
+        `queue_stake=${(queueRow as EventExecutionQueueRow).stake_usd}`
+    );
+    return NextResponse.json(
+      { error: "REJECTED_QUEUE_POLICY_MISMATCH", reason: validation.reason },
+      { status: 409 }
     );
   }
 
