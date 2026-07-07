@@ -25,7 +25,6 @@ import {
   LATEST_ENTRY_MINUTES_BEFORE,
 } from "./nightWindow";
 import {
-  EXECUTABLE_STAKE_USD,
   EXECUTABLE_TIER,
   type EventExecutionQueueRow,
   type NightEventReservationRow,
@@ -126,10 +125,16 @@ function isExecutableMarket(c: FireModelCandidate): {
   if (!c.condition_id) return { executable: false, rejectReason: "MISSING_CONDITION_ID" };
   if (!c.token_id) return { executable: false, rejectReason: "MISSING_TOKEN_ID" };
   if (!c.side) return { executable: false, rejectReason: "MISSING_SIDE" };
+  if (!Number.isFinite(c.stake_usd) || c.stake_usd <= 0) {
+    return { executable: false, rejectReason: "INVALID_STAKE_USD" };
+  }
   return { executable: true, rejectReason: null };
 }
 
-function buildQueueRow(
+// Exported (pure, no DB) so the stake/price propagation policy can be unit-tested
+// directly: the queue row must carry the candidate's OWN computed stake_usd —
+// never a hardcoded fallback constant.
+export function buildQueueRow(
   reservation: NightEventReservationRow,
   best: FireModelCandidate,
   rebalanceRunId: string
@@ -158,7 +163,10 @@ function buildQueueRow(
     score: best.diagnostics.score,
     coverage: best.diagnostics.coverage,
     tier: EXECUTABLE_TIER,
-    stake_usd: EXECUTABLE_STAKE_USD,
+    // PREMVP source of truth: use the candidate's own computed stake (never the
+    // legacy hardcoded constant). isExecutableMarket() already rejects any
+    // candidate with a non-positive/non-finite stake before it can reach here.
+    stake_usd: best.stake_usd,
     preferred_entry_iso: preferredEntryIso(new Date(best.diagnostics.game_start_iso).getTime()),
     latest_entry_iso: latestEntryIso(new Date(best.diagnostics.game_start_iso).getTime()),
     selection_rank: 1,
