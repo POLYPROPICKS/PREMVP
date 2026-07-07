@@ -138,3 +138,80 @@ test("market_slug mismatch is rejected", () => {
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.reason, "MARKET_SLUG_MISMATCH");
 });
+
+test("missing submitted_size is rejected (fail-safe, not silently allowed)", () => {
+  const result = validateOrderEventAgainstQueueRow(
+    baseSubmission({ submitted_size: null }),
+    baseQueueRow()
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.reason, "MISSING_SUBMITTED_SIZE");
+});
+
+test("missing submitted_price is rejected (fail-safe, not silently allowed)", () => {
+  const result = validateOrderEventAgainstQueueRow(
+    baseSubmission({ submitted_price: null }),
+    baseQueueRow()
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.reason, "MISSING_SUBMITTED_PRICE");
+});
+
+test("queue row missing max_entry_price rejects validation (no cap to enforce)", () => {
+  const result = validateOrderEventAgainstQueueRow(
+    baseSubmission(),
+    baseQueueRow({ diagnostics: {} })
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.reason, "QUEUE_MAX_ENTRY_PRICE_MISSING");
+});
+
+test("missing condition_id is rejected when queue row has condition_id", () => {
+  const result = validateOrderEventAgainstQueueRow(
+    baseSubmission({ condition_id: null }),
+    baseQueueRow()
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.reason, "CONDITION_ID_MISMATCH");
+});
+
+test("missing side is rejected when queue row has side", () => {
+  const result = validateOrderEventAgainstQueueRow(
+    baseSubmission({ side: null }),
+    baseQueueRow()
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.reason, "SIDE_MISMATCH");
+});
+
+test("missing market_slug is rejected when queue row has market_slug", () => {
+  const result = validateOrderEventAgainstQueueRow(
+    baseSubmission({ market_slug: null }),
+    baseQueueRow()
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.reason, "MARKET_SLUG_MISMATCH");
+});
+
+test("non-positive submitted_size is rejected", () => {
+  const result = validateOrderEventAgainstQueueRow(
+    baseSubmission({ submitted_size: 0 }),
+    baseQueueRow()
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.reason, "MISSING_SUBMITTED_SIZE");
+});
+
+test("non-positive submitted_price is rejected", () => {
+  const result = validateOrderEventAgainstQueueRow(
+    baseSubmission({ submitted_price: 0 }),
+    baseQueueRow()
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.reason, "MISSING_SUBMITTED_PRICE");
+});
+
+test("full valid event with all required fields passes", () => {
+  const result = validateOrderEventAgainstQueueRow(baseSubmission(), baseQueueRow());
+  assert.equal(result.ok, true);
+});

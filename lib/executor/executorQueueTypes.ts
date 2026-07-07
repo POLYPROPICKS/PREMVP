@@ -196,10 +196,15 @@ export type OrderEventValidationResult =
 
 /**
  * Enforces the founder-approved execution-boundary policy:
- *   - identity (token_id/condition_id/side/market_slug) must match the queue row
- *   - submitted stake must be <= queue row stake_usd (consumer may spend less, never more)
- *   - submitted price must be <= queue row max_entry_price (consumer may get a better
- *     price, never pay above the PREMVP cap)
+ *   - identity (token_id/condition_id/side/market_slug) must match the queue row;
+ *     if the queue row has a value for a field, the submission must report it too
+ *   - submitted stake is mandatory, must be finite/positive, and <= queue row
+ *     stake_usd (consumer may spend less, never more)
+ *   - queue row must carry a max_entry_price to validate against (no cap = no
+ *     safe execution boundary, so validation fails closed)
+ *   - submitted price is mandatory, must be finite/positive, and <= queue row
+ *     max_entry_price (consumer may get a better price, never pay above the cap)
+ * Missing/unreported fields are treated as fail-safe rejections, not silent passes.
  */
 export function validateOrderEventAgainstQueueRow(
   submitted: OrderEventSubmission,
@@ -208,28 +213,37 @@ export function validateOrderEventAgainstQueueRow(
   if (submitted.token_id !== queueRow.token_id) {
     return { ok: false, reason: "TOKEN_ID_MISMATCH" };
   }
-  if (submitted.condition_id !== null && submitted.condition_id !== queueRow.condition_id) {
+  if (queueRow.condition_id !== null && submitted.condition_id !== queueRow.condition_id) {
     return { ok: false, reason: "CONDITION_ID_MISMATCH" };
   }
-  if (submitted.side !== null && submitted.side !== queueRow.side) {
+  if (queueRow.side !== null && submitted.side !== queueRow.side) {
     return { ok: false, reason: "SIDE_MISMATCH" };
   }
-  if (
-    submitted.market_slug !== null &&
-    queueRow.market_slug !== null &&
-    submitted.market_slug !== queueRow.market_slug
-  ) {
+  if (queueRow.market_slug !== null && submitted.market_slug !== queueRow.market_slug) {
     return { ok: false, reason: "MARKET_SLUG_MISMATCH" };
   }
-  if (submitted.submitted_size !== null && submitted.submitted_size > queueRow.stake_usd) {
+  if (
+    submitted.submitted_size === null ||
+    !Number.isFinite(submitted.submitted_size) ||
+    submitted.submitted_size <= 0
+  ) {
+    return { ok: false, reason: "MISSING_SUBMITTED_SIZE" };
+  }
+  if (submitted.submitted_size > queueRow.stake_usd) {
     return { ok: false, reason: "STAKE_EXCEEDS_QUEUE_MAX" };
   }
   const maxEntryPrice = extractMaxEntryPrice(queueRow.diagnostics ?? {});
+  if (maxEntryPrice === null) {
+    return { ok: false, reason: "QUEUE_MAX_ENTRY_PRICE_MISSING" };
+  }
   if (
-    maxEntryPrice !== null &&
-    submitted.submitted_price !== null &&
-    submitted.submitted_price > maxEntryPrice
+    submitted.submitted_price === null ||
+    !Number.isFinite(submitted.submitted_price) ||
+    submitted.submitted_price <= 0
   ) {
+    return { ok: false, reason: "MISSING_SUBMITTED_PRICE" };
+  }
+  if (submitted.submitted_price > maxEntryPrice) {
     return { ok: false, reason: "PRICE_EXCEEDS_QUEUE_MAX" };
   }
   return { ok: true };
