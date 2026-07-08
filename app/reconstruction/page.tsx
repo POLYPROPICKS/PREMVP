@@ -388,11 +388,11 @@ export default function ReconstructionPage() {
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
         // Promotional trust gate: never render the ungated broad
-        // weekResultsCard aggregate on this promotional surface. Prefer the
-        // curated legacy 7D proof card, or a card derived from the SAME
-        // curated Latest Resolved `signals` set, only when it clears the
-        // >=60% winners / non-negative PnL gate. Otherwise render the
-        // existing neutral/live-tracking state (no card set).
+        // weekResultsCard aggregate on this promotional surface. Only the
+        // curated legacy 7D proof card is eligible, and only when its
+        // headline matches its own rows and it clears the >=60% winners /
+        // non-negative PnL gate. Otherwise render the existing
+        // neutral/live-tracking state (no card set).
         const legacyCard: WeekResultsCard | null =
           json?.legacyWeekResultsCard?.cardType === 'signal-week-results'
             ? (json.legacyWeekResultsCard as WeekResultsCard)
@@ -514,6 +514,7 @@ export default function ReconstructionPage() {
       {isPassOfferModalOpen && (
         <PassOfferModal
           isOpen={isPassOfferModalOpen}
+          proofCard={weekCard}
           onClose={handlePassOfferClose}
           onReserve={handleReservePass}
           onPremiumReserve={handlePremiumReserve}

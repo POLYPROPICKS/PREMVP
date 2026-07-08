@@ -7,6 +7,7 @@ import { PPP_EVENTS, planSwitchEvents } from '@/lib/analytics/events';
 import { DISTINCT_ID_HEADER } from '@/lib/analytics/identity';
 import SignalWeekResultsCard from '../signal-week-results/SignalWeekResultsCard';
 import type { WeekResultsCard } from '../signal-week-results/types';
+import { selectHomepageTopTrustCard } from '@/lib/track-record/promotionalTrustGate';
 
 const BENEFITS: string[] = [
   'Signals 2–4h before odds move',
@@ -36,6 +37,10 @@ type ViewState = 'offer' | 'reserve' | 'reserved';
 
 interface PassOfferModalProps {
   isOpen: boolean;
+  /** Gated proof card already selected by the host page — when provided, the
+   *  modal renders the SAME card as the page's top proof card and never
+   *  fetches an independent resolved source. */
+  proofCard?: WeekResultsCard | null;
   onClose: () => void;
   onReserve: (planId: PlanId) => void;
   onPremiumReserve: (data: {
@@ -76,7 +81,7 @@ function getPlan(planId: PlanId) {
   return plans.find((plan) => plan.id === planId) ?? plans[0];
 }
 
-export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumReserve }: PassOfferModalProps) {
+export default function PassOfferModal({ isOpen, proofCard, onClose, onReserve, onPremiumReserve }: PassOfferModalProps) {
   const [selectedPlan, setSelectedPlan] = useState<PlanId>('7day');
   const [currentView, setCurrentView] = useState<ViewState>('offer');
   const [email, setEmail] = useState('');
@@ -140,21 +145,37 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
   useEffect(() => {
     if (!isOpen) return;
     if (weekCard) return;
+    // When the host page already selected a gated proof card, reuse it so the
+    // paywall and top card always show the SAME proof data — no independent
+    // resolved fetch, no chance of divergent aggregates.
+    if (proofCard) {
+      setWeekCard(proofCard);
+      return;
+    }
     setWeekCardLoading(true);
     fetch('/api/signals/resolved?mode=latest&days=7&limit=7')
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
-        // Restored legacy 7D proof (generated_signal_pairs) is preferred for
-        // this paywall card; the read-model weekResultsCard stays the WhyTrust
-        // 14D contract and is only a fallback here.
-        const card = json?.legacyWeekResultsCard ?? json?.weekResultsCard;
-        if (card?.cardType === 'signal-week-results') {
-          setWeekCard(card as WeekResultsCard);
+        // Promotional trust gate: only the curated legacy 7D proof card is
+        // eligible, and only when its headline matches its own rows and it
+        // clears the >=60% winners / non-negative PnL gate. The broad
+        // read-model weekResultsCard aggregate is never shown here.
+        const legacyCard: WeekResultsCard | null =
+          json?.legacyWeekResultsCard?.cardType === 'signal-week-results'
+            ? (json.legacyWeekResultsCard as WeekResultsCard)
+            : null;
+        const card = selectHomepageTopTrustCard({
+          legacyCard,
+          weekResultsCardTemplate: null,
+          curatedSignals: [],
+        });
+        if (card) {
+          setWeekCard(card);
         }
       })
       .catch(() => {})
       .finally(() => setWeekCardLoading(false));
-  }, [isOpen, weekCard]);
+  }, [isOpen, weekCard, proofCard]);
 
   if (!isOpen) return null;
 

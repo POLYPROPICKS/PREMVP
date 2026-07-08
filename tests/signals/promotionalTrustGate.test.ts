@@ -2,12 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   isPromotionalTrustMetricUsable,
+  isInternallyConsistentProofCard,
   selectHomepageTopTrustCard,
   buildQualifiedResolvedDisplaySet,
   buildQualifiedCumulativeReturnCurve,
   type QualifiedCurveRow,
 } from "@/lib/track-record/promotionalTrustGate";
-import type { WeekResultsCard } from "@/components/signal-week-results/types";
+import type { TrackRecordRow, WeekResultsCard } from "@/components/signal-week-results/types";
 
 function makeRows(winnerCount: number, nonWinnerCount: number): QualifiedCurveRow[] {
   const rows: QualifiedCurveRow[] = [];
@@ -51,6 +52,51 @@ function makeCard(overrides: Partial<WeekResultsCard>): WeekResultsCard {
     trackRecordDisplayTable: { windowDays: 7, rows: [] },
     ...overrides,
   };
+}
+
+function makeTableRow(id: string, displayStatus: "Hit" | "Miss", projectedReturnUsd: number): TrackRecordRow {
+  return {
+    id,
+    eventTitle: `Event ${id}`,
+    marketQuestion: `Question ${id}`,
+    pick: "Yes",
+    createdAt: "2026-07-05T00:00:00Z",
+    decimalOdds: 1.9,
+    americanOdds: null,
+    oddsSourcePath: null,
+    projectedWinProbabilityPct: 60,
+    pnlUnits: projectedReturnUsd / 100,
+    projectedReturnUsd,
+    projectedRoiPctPerSignal: projectedReturnUsd,
+    status: "Resolved",
+    displayStatus,
+    action: null,
+    returnLabel: `${projectedReturnUsd}`,
+    scoreRank: 1,
+    sourceModel: null,
+  };
+}
+
+/** Internally consistent 5W/2L legacy card: headline counts, chips rows and
+ *  net PnL all come from the SAME 7 rows. */
+function makeConsistentLegacyCard(): WeekResultsCard {
+  const rows = [
+    makeTableRow("r1", "Hit", 80),
+    makeTableRow("r2", "Hit", 70),
+    makeTableRow("r3", "Miss", -100),
+    makeTableRow("r4", "Hit", 90),
+    makeTableRow("r5", "Hit", 60),
+    makeTableRow("r6", "Miss", -100),
+    makeTableRow("r7", "Hit", 75),
+  ];
+  const netProfitUsd = rows.reduce((s, r) => s + r.projectedReturnUsd, 0);
+  return makeCard({
+    resolvedCount: 7,
+    winsCount: 5,
+    lossesCount: 2,
+    netProfitUsd,
+    trackRecordDisplayTable: { windowDays: 7, rows },
+  });
 }
 
 test("isPromotionalTrustMetricUsable rejects below 60 percent winners", () => {
@@ -125,12 +171,21 @@ test("selectHomepageTopTrustCard does not use weekResultsCard's own negative agg
   assert.equal(result, null);
 });
 
-test("selectHomepageTopTrustCard can derive a promotable card from curated latest resolved signals when gate passes", () => {
-  const weekResultsCard = makeCard({ resolvedCount: 46, winsCount: 26, netProfitUsd: -71 });
+test("selectHomepageTopTrustCard never derives a card from curated signals + broad template (template rows cannot leak into a derived headline)", () => {
+  const broadTemplate = makeCard({
+    resolvedCount: 49,
+    winsCount: 26,
+    lossesCount: 23,
+    netProfitUsd: 100,
+    trackRecordDisplayTable: {
+      windowDays: 14,
+      rows: [makeTableRow("t1", "Miss", -100), makeTableRow("t2", "Miss", -100), makeTableRow("t3", "Hit", 40)],
+    },
+  });
 
   const result = selectHomepageTopTrustCard({
     legacyCard: null,
-    weekResultsCardTemplate: weekResultsCard,
+    weekResultsCardTemplate: broadTemplate,
     curatedSignals: [
       { result: "won", returnPct: 40 },
       { result: "won", returnPct: 25 },
@@ -142,14 +197,11 @@ test("selectHomepageTopTrustCard can derive a promotable card from curated lates
     ],
   });
 
-  assert.notEqual(result, null);
-  assert.equal(result!.winsCount, 6);
-  assert.equal(result!.resolvedCount, 7);
-  assert.ok(result!.netProfitUsd >= 0);
+  assert.equal(result, null);
 });
 
-test("selectHomepageTopTrustCard prefers a promotable legacyCard over deriving from curated signals", () => {
-  const legacyCard = makeCard({ resolvedCount: 7, winsCount: 6, netProfitUsd: 120 });
+test("selectHomepageTopTrustCard accepts an internally consistent promotable legacyCard", () => {
+  const legacyCard = makeConsistentLegacyCard();
   const weekResultsCard = makeCard({ resolvedCount: 46, winsCount: 26, netProfitUsd: -71 });
 
   const result = selectHomepageTopTrustCard({
@@ -159,9 +211,21 @@ test("selectHomepageTopTrustCard prefers a promotable legacyCard over deriving f
   });
 
   assert.equal(result, legacyCard);
+  assert.equal(result!.resolvedCount, cardRowsOf(result!).length);
+  assert.equal(result!.winsCount, cardRowsOf(result!).filter((r) => r.displayStatus === "Hit").length);
+  assert.equal(result!.lossesCount, cardRowsOf(result!).filter((r) => r.displayStatus !== "Hit").length);
+  assert.equal(
+    result!.netProfitUsd,
+    cardRowsOf(result!).reduce((s, r) => s + r.projectedReturnUsd, 0)
+  );
 });
 
-test("selectHomepageTopTrustCard rejects a legacyCard that itself fails the gate, then tries curated signals", () => {
+function cardRowsOf(card: WeekResultsCard): TrackRecordRow[] {
+  const table = card.trackRecordDisplayTable as { rows?: TrackRecordRow[] } | undefined;
+  return table?.rows ?? [];
+}
+
+test("selectHomepageTopTrustCard rejects a legacyCard that fails the gate and never falls back to anything else", () => {
   const legacyCard = makeCard({ resolvedCount: 5, winsCount: 1, netProfitUsd: -300 });
   const weekResultsCard = makeCard({ resolvedCount: 46, winsCount: 26, netProfitUsd: -71 });
 
@@ -175,9 +239,68 @@ test("selectHomepageTopTrustCard rejects a legacyCard that itself fails the gate
     ],
   });
 
-  assert.notEqual(result, null);
-  assert.notEqual(result, legacyCard);
-  assert.equal(result!.winsCount, 3);
+  assert.equal(result, null);
+});
+
+test("broad 26/49 aggregate is never accepted as promotional proof, even with a healthy-looking net PnL", () => {
+  const broadCard = makeCard({
+    source: "track_record_window_results",
+    schemaVersion: "week-results-v3-resolved",
+    resolvedCount: 49,
+    winsCount: 26,
+    lossesCount: 23,
+    netProfitUsd: 50,
+  });
+
+  // As the legacy slot: headline (26/49) does not match its rows → rejected.
+  assert.equal(
+    selectHomepageTopTrustCard({ legacyCard: broadCard, weekResultsCardTemplate: null, curatedSignals: [] }),
+    null
+  );
+  // As the template slot: never used as a source at all.
+  assert.equal(
+    selectHomepageTopTrustCard({ legacyCard: null, weekResultsCardTemplate: broadCard, curatedSignals: [] }),
+    null
+  );
+});
+
+test("internally inconsistent 5/7 headline over non-matching rows is rejected", () => {
+  const rows = [
+    makeTableRow("r1", "Hit", 80),
+    makeTableRow("r2", "Miss", -100),
+    makeTableRow("r3", "Miss", -100),
+    makeTableRow("r4", "Hit", 90),
+    makeTableRow("r5", "Miss", -100),
+    makeTableRow("r6", "Miss", -100),
+    makeTableRow("r7", "Hit", 75),
+  ]; // 3 Hit / 4 Miss
+  const inconsistentCard = makeCard({
+    resolvedCount: 7,
+    winsCount: 5,
+    lossesCount: 2,
+    netProfitUsd: 356.44,
+    trackRecordDisplayTable: { windowDays: 7, rows },
+  });
+
+  assert.equal(isInternallyConsistentProofCard(inconsistentCard), false);
+  assert.equal(
+    selectHomepageTopTrustCard({
+      legacyCard: inconsistentCard,
+      weekResultsCardTemplate: null,
+      curatedSignals: [],
+    }),
+    null
+  );
+});
+
+test("isInternallyConsistentProofCard rejects a card with no rows and requires netProfitUsd to equal sum of row returns", () => {
+  assert.equal(isInternallyConsistentProofCard(makeCard({ resolvedCount: 7, winsCount: 5 })), false);
+
+  const consistent = makeConsistentLegacyCard();
+  assert.equal(isInternallyConsistentProofCard(consistent), true);
+
+  const wrongNet = { ...consistent, netProfitUsd: consistent.netProfitUsd + 10 };
+  assert.equal(isInternallyConsistentProofCard(wrongNet), false);
 });
 
 test("buildQualifiedResolvedDisplaySet builds 14W 9L from 25-row pool", () => {

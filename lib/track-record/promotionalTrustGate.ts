@@ -42,64 +42,61 @@ export interface CuratedTrustSignal {
 export interface SelectHomepageTopTrustCardInput {
   /** Restored legacy 7D proof card, or null when no displayable rows exist. */
   legacyCard: WeekResultsCard | null;
-  /** Template metadata (window/title/etc.) used only when deriving a card
-   *  from curated signals — its own winsCount/resolvedCount/netProfitUsd are
-   *  NEVER read as the promotional aggregate; that would reintroduce the
-   *  ungated broad weekResultsCard fallback this helper exists to remove. */
+  /** Broad read-model card — accepted for shape compatibility but NEVER used
+   *  as a promotional source: neither its aggregate nor its rows may leak
+   *  into the promotional card (that reintroduces the ungated broad
+   *  weekResultsCard fallback this helper exists to remove). */
   weekResultsCardTemplate: WeekResultsCard | null;
-  /** The SAME curated Latest Resolved row set rendered by
-   *  ResolvedSignalsCarousel (API's top-level `signals` field). */
+  /** Curated Latest Resolved row set (API's top-level `signals` field) —
+   *  accepted for shape compatibility; no card is derived from it because a
+   *  derived headline cannot render matching chips/chart rows. */
   curatedSignals: CuratedTrustSignal[];
 }
 
-function curatedGateInput(signals: CuratedTrustSignal[]): PromotionalTrustGateInput {
-  const resolved = signals.filter((s) => s.result === "won" || s.result === "lost");
-  const winsCount = resolved.filter((s) => s.result === "won").length;
-  const netProfitUsd = resolved.reduce((sum, s) => sum + (s.returnPct ?? 0), 0);
-  return { resolvedCount: resolved.length, winsCount, netProfitUsd };
+function cardTableRows(card: WeekResultsCard): Array<{
+  displayStatus?: string;
+  projectedReturnUsd?: number;
+}> {
+  const table = card.trackRecordDisplayTable as unknown;
+  if (Array.isArray(table)) return table;
+  const rows = (table as { rows?: unknown } | null | undefined)?.rows;
+  return Array.isArray(rows) ? rows : [];
 }
 
-/** Builds a WeekResultsCard-shaped aggregate from curated signals only,
- *  reusing non-numeric template metadata (window/title/subtitle) so the UI
- *  contract stays intact. Numeric aggregate fields are derived from the
- *  curated row set — never copied from the broad weekResultsCard template. */
-function deriveCardFromCuratedSignals(
-  signals: CuratedTrustSignal[],
-  template: WeekResultsCard
-): WeekResultsCard {
-  const gate = curatedGateInput(signals);
-  const netReturnPct =
-    gate.resolvedCount > 0 ? Math.round((gate.netProfitUsd / (gate.resolvedCount * 100)) * 10000) / 100 : 0;
-  return {
-    ...template,
-    selectedSignals: gate.resolvedCount,
-    signalsTracked: gate.resolvedCount,
-    resolvedCount: gate.resolvedCount,
-    pendingCount: 0,
-    winsCount: gate.winsCount,
-    lossesCount: gate.resolvedCount - gate.winsCount,
-    netProfitUsd: gate.netProfitUsd,
-    netReturnPct,
-    projectedReturnUsd: gate.netProfitUsd,
-    projectedRoiPct: netReturnPct,
-    totalStakeUsd: gate.resolvedCount * 100,
-    status: "ready",
-  };
+/** True only when the card's headline aggregate is derivable from its OWN
+ *  visible rows: resolvedCount === rows.length, winsCount === Hit rows,
+ *  lossesCount === non-Hit rows, and netProfitUsd === sum of the rows'
+ *  projectedReturnUsd (within $0.01 rounding). A card whose headline (e.g.
+ *  5/7) does not match its chips/chart rows is never promotable — that class
+ *  of mismatch is exactly what this check exists to reject. */
+export function isInternallyConsistentProofCard(card: WeekResultsCard): boolean {
+  const rows = cardTableRows(card);
+  if (rows.length === 0) return false;
+  const hits = rows.filter((r) => r.displayStatus === "Hit").length;
+  if (card.resolvedCount !== rows.length) return false;
+  if (card.winsCount !== hits) return false;
+  if (card.lossesCount !== rows.length - hits) return false;
+  const rowNet = rows.reduce((sum, r) => sum + (r.projectedReturnUsd ?? 0), 0);
+  if (!Number.isFinite(card.netProfitUsd)) return false;
+  return Math.abs(card.netProfitUsd - rowNet) <= 0.01;
 }
 
 /** Selects the safe homepage top-trust-card source. Never falls back to an
- *  ungated broad weekResultsCard aggregate:
- *  1. legacyCard, if present and it passes the promotional gate.
- *  2. Otherwise, a card derived from the SAME curated Latest Resolved
- *     `signals` set, if that set passes the gate.
- *  3. Otherwise null — caller renders the existing neutral/live-tracking state. */
+ *  ungated broad weekResultsCard aggregate, and never derives a headline from
+ *  one row set while rendering chips/chart from another (that produced the
+ *  "5/7 headline over mismatched chips" regression):
+ *  1. legacyCard, if present, internally consistent with its own rows, and it
+ *     passes the promotional gate.
+ *  2. Otherwise null — caller renders the existing neutral/live-tracking
+ *     state, never a broad aggregate or a template-derived hybrid. */
 export function selectHomepageTopTrustCard(
   input: SelectHomepageTopTrustCardInput
 ): WeekResultsCard | null {
-  const { legacyCard, weekResultsCardTemplate, curatedSignals } = input;
+  const { legacyCard } = input;
 
   if (
     legacyCard &&
+    isInternallyConsistentProofCard(legacyCard) &&
     isPromotionalTrustMetricUsable({
       resolvedCount: legacyCard.resolvedCount,
       winsCount: legacyCard.winsCount,
@@ -107,11 +104,6 @@ export function selectHomepageTopTrustCard(
     })
   ) {
     return legacyCard;
-  }
-
-  const curatedGate = curatedGateInput(curatedSignals);
-  if (weekResultsCardTemplate && isPromotionalTrustMetricUsable(curatedGate)) {
-    return deriveCardFromCuratedSignals(curatedSignals, weekResultsCardTemplate);
   }
 
   return null;
