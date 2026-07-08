@@ -4,14 +4,15 @@
 
 # Contur3 — PREMVP Production Closeout (order-monitoring hardening)
 
-Last updated: 2026-07-08T06:58:00Z
+Last updated: 2026-07-08T07:12:00Z
 
 ## Status
 
-**`CODE_READY / IRELAND_AUDIT_UNVERIFIED_IN_THIS_REPO / RAILWAY_VERIFY_PENDING / LIVE_NO_GO`**
+**`CODE_READY / IRELAND_EXTERNAL_EVIDENCE_RECEIVED_NOT_PREMVP_LOCAL / RAILWAY_VERIFY_PENDING / LIVE_NO_GO_UNTIL_RAILWAY_VERIFY_AND_FOUNDER_APPROVAL`**
 
-See "Ireland audit — verification note" below for why `IRELAND_AUDIT_PASS`
-cannot be recorded as-is.
+See "Ireland audit — cross-repo external evidence" below for the Ireland
+executor's own reported evidence and why it is not, and is not expected to
+be, verifiable directly from PREMVP git.
 
 ## Release record
 
@@ -97,34 +98,74 @@ existed with no classification.
 
 Full detail: `reports/contur3/contur3_fubble_review_20260708T064339Z.md`.
 
-## Ireland audit — verification note
+## Ireland audit — cross-repo external evidence
 
-A prior task prompt asserted the following as "current verified state":
+Ireland runs as a **separate local executor repo/environment**, distinct
+from PREMVP. Its commit hashes are not expected to resolve inside PREMVP
+git history, and a prior verification pass in this document that checked
+`git cat-file -t <hash>` against PREMVP and reported "not found" was
+checking the wrong repository for that kind of evidence — technically
+accurate for PREMVP-local verification, but the wrong bar to hold
+cross-repo evidence to. This section corrects that framing.
 
-- Ireland batch consumer commit `900f8ead70025d82ae7afd0c3f9c50a308470af`
-- Ireland final audit commit `6a3a0781deab19c0782f7ee134cb1c382d71aa5e`
-- Report `reports/contur3/ireland_batch_consumer_final_20260708T064627Z.md`
-- Claims: dry-run batch PASS (selected 0, attempted 0, no live flags),
-  `py_compile` PASS, one-shot self-test PASS, batch self-test PASS,
-  hard-stop preserved, duplicate guard preserved.
+**Ireland-side evidence, as reported by the Ireland/Codex executor
+session** (operator-relayed; this is external evidence PREMVP did not and
+cannot directly execute or verify from its own git):
 
-**None of these could be confirmed against this repository.** Checked via
-`git cat-file -t <hash>` for both commits (both `fatal: Not a valid object
-name`), a direct path check for the report file (does not exist), and
-`git log --all --oneline` across every branch/tag for any Ireland-audit
-commit (no match — the only Ireland-related history found is the
-pre-existing `queue-only endpoint` / `battle monitoring scripts` /
-`Ireland live executor contour 1 runbook` line of work, unrelated to the
-claimed audit).
+- Ireland executor `git log --oneline -4`:
+  ```
+  4e11509 Executor: record Ireland cross-repo evidence manifest
+  6a3a078 Executor: record Contur3 batch consumer final audit
+  900f8fe Executor: add controlled Contur3 batch consumer
+  5e8f539 Executor: parse one-shot CLOB order response
+  ```
+- Reported verdict block (`IRELAND_CROSS_REPO_EVIDENCE_FINAL`):
+  - VERDICT: PASS
+  - HEAD: `4e11509f5d5c2df4c82a9252aea9251cae809327`
+  - BATCH_COMMIT: `900f8fead70025d82ae7afd0c3f9c50a308470af`
+  - AUDIT_COMMIT: `6a3a0781deab19c0782f7ee134cb1c382d71aa5e`
+  - MANIFEST_PATH (Ireland-repo-local):
+    `reports/contur3/ireland_cross_repo_evidence_manifest_20260708T070956Z.md`
+  - REPORT_PATH (Ireland-repo-local):
+    `reports/contur3/ireland_batch_consumer_final_20260708T064627Z.md`
+  - DRY_RUN_JSON (Ireland-repo-local):
+    `reports/contur3/ireland_batch_dry_run_latest.json`
+  - PY_COMPILE: PASS
+  - BATCH_SELF_TEST: PASS
+  - DIFF_CHECK: PASS
+  - GIT_STATUS: clean
+  - COMMIT_HASH: `4e11509f5d5c2df4c82a9252aea9251cae809327`
+  - Dry-run batch: PASS — selected 0, attempted 0, no live flags
+  - Safety: no live: yes / no orders: yes / no POST: yes / no secrets: yes
+  - Cross-repo note (Ireland's own words): "Ireland repo has no remote;
+    commits are external evidence for PREMVP and are not expected to
+    resolve inside PREMVP git."
+  - Ireland's own next action: "Cite manifest path and commit hash in
+    PREMVP closeout; do not run live without PREMVP Railway verify +
+    founder live approval."
 
-Per the repo's own source-of-truth hierarchy (git output beats prompt
-narrative) this is recorded as **unverified, not as PASS**. It may reflect
-work done in a different session/branch/repo state not reachable from
-here, or it may be inaccurate task framing — either way it must not be
-written into this closeout as a confirmed fact. If the Ireland audit was
-genuinely completed elsewhere, the owning session/commit needs to be
-identified and cross-checked before this document can claim
-`IRELAND_AUDIT_PASS`.
+**Minor hash-transcription note:** the operator screenshot shows
+`BATCH_COMMIT: 900f8fead70025d82ae7afd0c3f9c50a308470af`, one character
+off from the `900f8ead70025d82ae7afd0c3f9c50a308470af` cited in the prior
+PREMVP task prompt/handoff report. Recorded verbatim from the screenshot
+above; flagging the discrepancy rather than silently picking one, since
+neither is independently verifiable from PREMVP.
+
+**What PREMVP can and cannot confirm about this:**
+- PREMVP git correctly reports these commit hashes as absent from its own
+  history — that is expected and not a discrepancy, since Ireland is a
+  separate repo with no shared remote.
+- PREMVP has **not independently re-run** `py_compile`, the batch
+  self-test, or the dry-run against the Ireland codebase — this section
+  records what Ireland self-reported, not an independently reproduced
+  result. If independent PREMVP-side reproduction is ever required, it
+  would need direct access to the Ireland repo/environment, which this
+  session does not have.
+- This evidence, even taken at face value, only covers Ireland's
+  **dry-run/self-test** posture (selected 0, attempted 0, no live flags).
+  It does not by itself establish that a live order is safe to place — that
+  still requires the PREMVP Railway verify gate below **and** explicit
+  founder live approval, per Ireland's own stated next action.
 
 ## Safety proof (this session and the PR-merge session)
 
@@ -145,8 +186,11 @@ identified and cross-checked before this document can claim
   (Not yet `LEVEL_1_PRODUCTION_VERIFIED` — PREMVP code is merged and
   locally proven correct, but the live-funnel-log / queue-probe /
   Switzerland-Colombia-visibility checks above have not been run against
-  production. Ireland-side audit claims are additionally unverified in
-  this repo — see the note above.)
+  production. Ireland has separately self-reported dry-run/self-test
+  evidence — see "Ireland audit — cross-repo external evidence" above —
+  but that does not substitute for the PREMVP Railway verify gate, and
+  live is not authorized on the strength of Ireland's dry-run evidence
+  alone.)
 
 ## Roadmap to Level 2 (semi-automatic scheduled contour)
 
@@ -172,7 +216,9 @@ still no unattended live execution):
 
 ## Remaining gaps before operatorless live
 
-- Railway production verify (P0, this closeout).
+- Railway production verify for PREMVP (P0, this closeout — the only
+  remaining PREMVP-side P0 before controlled live; Ireland-side readiness
+  is externally self-reported and out of PREMVP's scope to verify).
 - No CI pipeline configured on this repo — all gating is manual protocol
   discipline; a scheduled/semi-automatic system (Level 2) should not be
   built on top of an unverified manual-only gate.
@@ -198,15 +244,13 @@ Confirm the summary exposes `orders_accepted` / `orders_rejected` /
 Switzerland/Colombia order visibility question is answered one way or the
 other (visible+accepted, or explicitly out-of-lookback).
 
-Separately: **founder to confirm/locate the Ireland batch-consumer audit**
-referenced above (commits `900f8ead7...` / `6a3a0781d...`, report
-`ireland_batch_consumer_final_20260708T064627Z.md`) — none resolve in this
-repository from this session. If that work exists in another repo/branch/
-worktree, point a future session at it so this document can be corrected
-to `IRELAND_AUDIT_PASS` with a verifiable commit reference; do not treat
-it as done until then.
+Ireland-side: no PREMVP action required to "resolve" the Ireland evidence
+— it is expected to live outside PREMVP git by design. The only remaining
+requirement before live is unchanged from Ireland's own stated next
+action: PREMVP Railway verify (above) **and** explicit founder live
+approval. Do not run live on Ireland's dry-run/self-test evidence alone.
 
-No new Contur3 feature work should start until this Level 1 verification
-is closed. If live execution is planned imminently, the Ireland-audit
-discrepancy above must be resolved first — do not proceed to live on the
-strength of an unverifiable audit claim.
+No new Contur3 feature work should start until Level 1 PREMVP verification
+is closed. Live execution additionally requires explicit founder approval
+on top of that — this document records external evidence, it does not
+grant live authorization.
