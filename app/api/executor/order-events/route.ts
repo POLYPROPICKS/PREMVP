@@ -207,6 +207,8 @@ export async function POST(request: NextRequest) {
 
   const s = sanitize(raw) as Record<string, unknown>;
 
+  const queueRowTyped = queueRow as EventExecutionQueueRow;
+
   const record: Record<string, unknown> = {
     // identity / routing
     event_type:               str(s.event_type),
@@ -217,6 +219,13 @@ export async function POST(request: NextRequest) {
     idempotency_key:          str(s.idempotency_key),
     clob_order_id:            str(s.clob_order_id),
     transaction_hashes:       s.transaction_hashes ?? null,
+
+    // fixture/queue linkage — sourced from the verified queue row (not the
+    // untrusted client payload) so downstream funnel monitoring can join
+    // order events to reservations without nested-JSON archaeology.
+    match_family_key:         str(queueRowTyped.match_family_key) ?? str(s.match_family_key),
+    reservation_id:           queueRowTyped.reservation_id ?? null,
+    queue_id:                 queueRowTyped.id ?? null,
 
     // signal linkage
     signal_id:                str(s.signal_id),

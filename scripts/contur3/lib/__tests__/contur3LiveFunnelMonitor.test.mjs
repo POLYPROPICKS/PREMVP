@@ -19,6 +19,14 @@ import {
   classifyQueueLifecycle,
   SKIPPED_NO_EXECUTABLE_MARKET_REASON,
   classifyConsumerHandoff,
+  getOrderMatchFamilyKey,
+  getOrderId,
+  getTransactionHashes,
+  isAcceptedOrderEvent,
+  isRejectedOrderEvent,
+  isUnconfirmedOrderEvent,
+  classifyOrderEvent,
+  orderEventMatchesReservation,
 } from '../contur3LiveFunnelMonitor.mjs';
 
 function baseFixture(overrides = {}) {
@@ -581,4 +589,129 @@ test('H6) classifyConsumerHandoff pure-state truth table', () => {
   assert.equal(
     classifyConsumerHandoff({ queueVerdict: 'SKIPPED_NO_EXECUTABLE_MARKET', apiVisible: null, orders: 0 }).code,
     null, 'terminal skip is not a consumer issue');
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Order-event classification + nested match-key / idempotency-fallback join
+// ──────────────────────────────────────────────────────────────────────────
+
+test('I1) getOrderMatchFamilyKey resolves top-level match_family_key', () => {
+  assert.equal(
+    getOrderMatchFamilyKey({ match_family_key: 'pair:switzerland-vs-colombia:2026-07-08' }),
+    'pair:switzerland-vs-colombia:2026-07-08');
+});
+
+test('I2) getOrderMatchFamilyKey falls back to candidate_snapshot_json', () => {
+  assert.equal(
+    getOrderMatchFamilyKey({ candidate_snapshot_json: { match_family_key: 'pair:a-vs-b:2026-07-08' } }),
+    'pair:a-vs-b:2026-07-08');
+});
+
+test('I3) getOrderMatchFamilyKey falls back to raw_event_json.candidate_snapshot_json', () => {
+  assert.equal(
+    getOrderMatchFamilyKey({ raw_event_json: { candidate_snapshot_json: { match_family_key: 'pair:c-vs-d:2026-07-08' } } }),
+    'pair:c-vs-d:2026-07-08');
+});
+
+test('I4) getOrderMatchFamilyKey falls back to doubly-nested raw_event_json.raw_event_json.candidate_snapshot_json', () => {
+  assert.equal(
+    getOrderMatchFamilyKey({ raw_event_json: { raw_event_json: { candidate_snapshot_json: { match_family_key: 'pair:e-vs-f:2026-07-08' } } } }),
+    'pair:e-vs-f:2026-07-08');
+});
+
+test('I5) getOrderMatchFamilyKey returns null when nothing resolves', () => {
+  assert.equal(getOrderMatchFamilyKey({}), null);
+  assert.equal(getOrderMatchFamilyKey(null), null);
+});
+
+test('I6) getOrderId / getTransactionHashes read top-level and raw_event_json fallback', () => {
+  assert.equal(getOrderId({ clob_order_id: 'ord-1' }), 'ord-1');
+  assert.equal(getOrderId({ raw_event_json: { clob_order_id: 'ord-2' } }), 'ord-2');
+  assert.deepEqual(getTransactionHashes({ transaction_hashes: ['0xabc'] }), ['0xabc']);
+  assert.deepEqual(getTransactionHashes({ transaction_hashes: '0xabc' }), ['0xabc']);
+  assert.deepEqual(getTransactionHashes({}), []);
+});
+
+test('I7) classifyOrderEvent: success=true is ACCEPTED', () => {
+  assert.equal(classifyOrderEvent({ success: true }), 'ACCEPTED');
+  assert.equal(isAcceptedOrderEvent({ success: true }), true);
+});
+
+test('I8) classifyOrderEvent: order_status=matched/filled/open/accepted is ACCEPTED', () => {
+  for (const status of ['matched', 'filled', 'open', 'accepted']) {
+    assert.equal(classifyOrderEvent({ order_status: status }), 'ACCEPTED', status);
+  }
+});
+
+test('I9) classifyOrderEvent: clob_order_id or transaction_hashes alone is ACCEPTED', () => {
+  assert.equal(classifyOrderEvent({ clob_order_id: 'ord-1' }), 'ACCEPTED');
+  assert.equal(classifyOrderEvent({ transaction_hashes: ['0xabc'] }), 'ACCEPTED');
+});
+
+test('I10) classifyOrderEvent: explicit rejection wins (REJECTED)', () => {
+  assert.equal(classifyOrderEvent({ success: false }), 'REJECTED');
+  assert.equal(classifyOrderEvent({ order_status: 'rejected' }), 'REJECTED');
+  assert.equal(classifyOrderEvent({ order_status: 'failed' }), 'REJECTED');
+  assert.equal(classifyOrderEvent({ order_status: 'error' }), 'REJECTED');
+  assert.equal(classifyOrderEvent({ order_status: 'cancelled' }), 'REJECTED');
+  assert.equal(classifyOrderEvent({ error_message: 'boom' }), 'REJECTED');
+});
+
+test('I11) classifyOrderEvent: ambiguous event with no signals is UNCONFIRMED, never REJECTED', () => {
+  assert.equal(classifyOrderEvent({ event_type: 'order_submitted' }), 'UNCONFIRMED');
+  assert.equal(isRejectedOrderEvent({ event_type: 'order_submitted' }), false);
+  assert.equal(isUnconfirmedOrderEvent({ event_type: 'order_submitted' }), true);
+});
+
+test('I12) orderEventMatchesReservation: nested match_family_key join', () => {
+  const res = { id: 'res-1', match_family_key: 'pair:switzerland-vs-colombia:2026-07-08' };
+  const order = { raw_event_json: { candidate_snapshot_json: { match_family_key: 'pair:switzerland-vs-colombia:2026-07-08' } } };
+  assert.equal(orderEventMatchesReservation(order, res, []), true);
+});
+
+test('I13) orderEventMatchesReservation: idempotency_key -> queue -> reservation_id fallback', () => {
+  const res = { id: 'res-1', match_family_key: 'pair:switzerland-vs-colombia:2026-07-08' };
+  const queueRows = [{ idempotency_key: 'idem-1', reservation_id: 'res-1', match_family_key: null }];
+  const order = { idempotency_key: 'idem-1' }; // no match_family_key anywhere on the order itself
+  assert.equal(orderEventMatchesReservation(order, res, queueRows), true);
+});
+
+test('I14) orderEventMatchesReservation: idempotency_key -> queue -> match_family_key fallback', () => {
+  const res = { id: 'res-1', match_family_key: 'pair:switzerland-vs-colombia:2026-07-08' };
+  const queueRows = [{ idempotency_key: 'idem-1', reservation_id: null, match_family_key: 'pair:switzerland-vs-colombia:2026-07-08' }];
+  const order = { idempotency_key: 'idem-1' };
+  assert.equal(orderEventMatchesReservation(order, res, queueRows), true);
+});
+
+test('I15) orderEventMatchesReservation: unrelated order does not falsely match', () => {
+  const res = { id: 'res-1', match_family_key: 'pair:switzerland-vs-colombia:2026-07-08' };
+  const order = { match_family_key: 'pair:brazil-vs-serbia:2026-07-08' };
+  assert.equal(orderEventMatchesReservation(order, res, []), false);
+  assert.equal(orderEventMatchesReservation({ idempotency_key: 'idem-nowhere' }, res, []), false);
+});
+
+test('I16) Switzerland/Colombia reconciled-row fixture: orders=1, orders_accepted=1', () => {
+  // Mirrors the manually reconciled real order row: success=true, order_status=matched,
+  // clob_order_id + transaction_hashes present, match_family_key only nested (legacy row
+  // recorded before route-level top-level match_family_key hardening).
+  const res = { id: 'res-1', match_family_key: 'pair:switzerland-vs-colombia:2026-07-08' };
+  const reconciledOrder = {
+    success: true,
+    order_status: 'matched',
+    clob_order_id: 'clob-real-1',
+    transaction_hashes: ['0xreal'],
+    submitted_price: 0.35,
+    submitted_size: 20,
+    making_amount: 7,
+    taking_amount: 20,
+    raw_event_json: { candidate_snapshot_json: { match_family_key: 'pair:switzerland-vs-colombia:2026-07-08' } },
+  };
+  const unrelatedOrder = { success: true, match_family_key: 'pair:brazil-vs-serbia:2026-07-08' };
+  const orderRows = [reconciledOrder, unrelatedOrder];
+
+  const matched = orderRows.filter((od) => orderEventMatchesReservation(od, res, []));
+  assert.equal(matched.length, 1, 'must count exactly the Switzerland/Colombia order, not the unrelated one');
+  assert.equal(matched.filter(isAcceptedOrderEvent).length, 1);
+  assert.equal(matched.filter(isRejectedOrderEvent).length, 0);
+  assert.equal(matched.filter(isUnconfirmedOrderEvent).length, 0);
 });
