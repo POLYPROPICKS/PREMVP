@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import styles from './WhyTrustSection.module.css';
 import type { WeekResultsCard, TrackRecordRow, ReturnCurvePoint } from '@/components/signal-week-results/types';
+import { isPromotionalTrustMetricUsable } from '@/lib/track-record/promotionalTrustGate';
 
 // ── Types ───────────────────────────────────────────────────────────────────────
 
@@ -270,10 +271,24 @@ export default function WhyTrustSection() {
 
   const card = cur.data;
   const insufficient = card?.status === 'insufficient_history';
-  const metrics = card ? (insufficient ? deriveTrackingMetrics(card) : deriveMetrics(card)) : PLACEHOLDER_METRICS;
+  // Promotional trust gate: a 'ready' card with <60% winners or negative
+  // netProfitUsd is real, honest data — but not safe to headline as a
+  // promotional aggregate. Gate the headline/summary metrics only; never
+  // fabricate a positive number, never touch the ledger rows below.
+  const promotionalGateFailed =
+    !insufficient &&
+    !!card &&
+    !isPromotionalTrustMetricUsable({
+      resolvedCount: card.resolvedCount,
+      winsCount: card.winsCount,
+      netProfitUsd: card.netProfitUsd,
+    });
+  const hideHeadlineAggregate = insufficient || promotionalGateFailed;
+  const metrics = card ? (hideHeadlineAggregate ? deriveTrackingMetrics(card) : deriveMetrics(card)) : PLACEHOLDER_METRICS;
   // Isolated endpoint returns only real resolved rows (read-model or honest
   // preview from shown history) — safe to render the ledger even while the
-  // window status is still insufficient_history.
+  // window status is still insufficient_history, and even when the
+  // promotional headline gate fails above.
   const rows = card ? getRows(card) : [];
   // Curve mirrors the same real resolved rows as the ledger — safe to render
   // while the window status is still insufficient_history.
@@ -289,7 +304,7 @@ export default function WhyTrustSection() {
             Every signal is timestamped before the market settles — then tracked in a public ledger.
           </p>
           <p className={styles.leadAccent}>
-            {insufficient
+            {hideHeadlineAggregate
               ? 'Tracking is live. Shown signals are being tracked until enough results resolve.'
               : 'Resolved track record from actual shown signals only. No global fill, no projected PnL.'}
           </p>
@@ -392,7 +407,7 @@ export default function WhyTrustSection() {
           </div>
 
           <div className={styles.methodGrid}>
-            {methodologyRules(insufficient).map((rule, i) => (
+            {methodologyRules(hideHeadlineAggregate).map((rule, i) => (
               <div key={i} className={styles.methodItem}>
                 <MethodologyNum n={i + 1} />
                 <span className={styles.methodText}>{rule}</span>

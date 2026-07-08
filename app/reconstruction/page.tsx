@@ -18,6 +18,7 @@ import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
 import SignalWeekResultsCard from '@/components/signal-week-results/SignalWeekResultsCard';
 import type { WeekResultsCard } from '@/components/signal-week-results/types';
+import { selectHomepageTopTrustCard, type CuratedTrustSignal } from '@/lib/track-record/promotionalTrustGate';
 import PassOfferModal from '@/components/modals/PassOfferModal';
 import ResolvedSignalsCarousel from '@/components/resolved-signals/ResolvedSignalsCarousel';
 import { trackClientEvent } from '@/lib/analytics/posthogClient';
@@ -386,12 +387,29 @@ export default function ReconstructionPage() {
     fetch('/api/signals/resolved?mode=latest&days=7&limit=7')
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
-        // Restored legacy 7D proof (generated_signal_pairs) is preferred for
-        // the top-feed proof card; the read-model weekResultsCard is only a
-        // fallback here.
-        const card = json?.legacyWeekResultsCard ?? json?.weekResultsCard;
-        if (card?.cardType === 'signal-week-results') {
-          setWeekCard(card as WeekResultsCard);
+        // Promotional trust gate: never render the ungated broad
+        // weekResultsCard aggregate on this promotional surface. Prefer the
+        // curated legacy 7D proof card, or a card derived from the SAME
+        // curated Latest Resolved `signals` set, only when it clears the
+        // >=60% winners / non-negative PnL gate. Otherwise render the
+        // existing neutral/live-tracking state (no card set).
+        const legacyCard: WeekResultsCard | null =
+          json?.legacyWeekResultsCard?.cardType === 'signal-week-results'
+            ? (json.legacyWeekResultsCard as WeekResultsCard)
+            : null;
+        const weekResultsCardTemplate: WeekResultsCard | null =
+          json?.weekResultsCard?.cardType === 'signal-week-results'
+            ? (json.weekResultsCard as WeekResultsCard)
+            : null;
+        const curatedSignals: CuratedTrustSignal[] = Array.isArray(json?.signals) ? json.signals : [];
+
+        const card = selectHomepageTopTrustCard({
+          legacyCard,
+          weekResultsCardTemplate,
+          curatedSignals,
+        });
+        if (card) {
+          setWeekCard(card);
         }
       })
       .catch(() => {})

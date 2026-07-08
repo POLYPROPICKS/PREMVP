@@ -2,6 +2,7 @@
 
 import styles from './SignalWeekResultsCard.module.css';
 import type { WeekResultsCard, TrackRecordRow } from './types';
+import { isPromotionalTrustMetricUsable } from '@/lib/track-record/promotionalTrustGate';
 
 interface Props {
   data: WeekResultsCard | null;
@@ -364,7 +365,19 @@ function TopCarouselRing({ won, count }: { won: number; count: number }) {
 }
 
 function TopCarouselCard({ data, loading }: { data: WeekResultsCard | null; loading: boolean }) {
-  if (loading || !data) {
+  // Defense in depth: even if this card is ever called directly with an
+  // ungated (e.g. broad weekResultsCard) source, never render a below-60%-
+  // winners or negative-PnL aggregate here — fall back to the same neutral
+  // state used while loading/absent.
+  const promotable =
+    !!data &&
+    isPromotionalTrustMetricUsable({
+      resolvedCount: data.resolvedCount,
+      winsCount: data.winsCount,
+      netProfitUsd: data.netProfitUsd,
+    });
+
+  if (loading || !data || !promotable) {
     return (
       <div className={styles.tcSkeleton}>
         <div className={styles.tcSkeletonBody} />
