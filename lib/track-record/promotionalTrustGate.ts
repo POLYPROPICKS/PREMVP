@@ -132,6 +132,11 @@ export interface QualifiedCurveRow {
   id: string;
   isWinner: boolean;
   returnUsd: number;
+  /** Best available chronological/source-order fields — optional, used only
+   *  to order the graph plot AFTER selection. Selection itself never reads
+   *  these. */
+  createdAt?: string;
+  sourceOrder?: number;
 }
 
 export interface QualifiedGraphOptions {
@@ -193,15 +198,44 @@ export function buildQualifiedResolvedDisplaySet<T extends { isWinner: boolean }
   return selected;
 }
 
+/** Deterministic chronological comparator for already-selected graph rows:
+ *  earliest `createdAt` first; ties broken by `sourceOrder`, then by the
+ *  original selection index, then by `id`. Never reorders across selection —
+ *  only orders the fixed selected set for plotting. */
+function compareChronological(
+  a: QualifiedCurveRow,
+  aIdx: number,
+  b: QualifiedCurveRow,
+  bIdx: number
+): number {
+  const aDate = a.createdAt ?? "";
+  const bDate = b.createdAt ?? "";
+  if (aDate !== bDate) return aDate < bDate ? -1 : 1;
+
+  const aOrder = a.sourceOrder ?? aIdx;
+  const bOrder = b.sourceOrder ?? bIdx;
+  if (aOrder !== bOrder) return aOrder - bOrder;
+
+  if (aIdx !== bIdx) return aIdx - bIdx;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
 /** Cumulative return curve computed from the qualified graph-row subset only
  *  (see buildQualifiedResolvedDisplaySet). Returns are taken as-is from the
- *  selected rows — never fabricated or re-derived. */
+ *  selected rows — never fabricated or re-derived. The selected rows are
+ *  plotted in chronological order (not the 6W:4L bucket-selection order) so
+ *  the curve reads as an organic time series instead of a sawtooth; the
+ *  selected row set and the final cumulative total are unaffected by this
+ *  reordering. */
 export function buildQualifiedCumulativeReturnCurve(
   rows: QualifiedCurveRow[],
   options?: QualifiedGraphOptions & { stakeUsd?: number }
 ): QualifiedReturnCurvePoint[] {
   const stakeUsd = options?.stakeUsd ?? 100;
-  const selected = buildQualifiedResolvedDisplaySet(rows, options);
+  const selected = buildQualifiedResolvedDisplaySet(rows, options)
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => compareChronological(a.r, a.i, b.r, b.i))
+    .map(({ r }) => r);
 
   let cumulativeProfitUsd = 0;
   return selected.map((r, i) => {

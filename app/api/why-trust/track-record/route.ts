@@ -302,6 +302,8 @@ export function buildWhyTrustWeekResultsCard(input: BuildCardInput): WhyTrustWee
           id: r.id,
           isWinner: r.displayStatus === "Hit",
           returnUsd: r.projectedReturnUsd,
+          createdAt: r.createdAt,
+          sourceOrder: r.scoreRank,
         }))
       )
     : computeCurve(ledgerRows);

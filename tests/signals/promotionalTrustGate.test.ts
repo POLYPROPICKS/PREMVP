@@ -239,3 +239,72 @@ test("buildQualifiedCumulativeReturnCurve preserves selected order by bucket rul
   const curve = buildQualifiedCumulativeReturnCurve(rows);
   assert.equal(curve.length, 13);
 });
+
+test("buildQualifiedResolvedDisplaySet still selects the same 6W:4L rows", () => {
+  assert.equal(buildQualifiedResolvedDisplaySet(makeRows(14, 11)).length, 23);
+  assert.equal(buildQualifiedResolvedDisplaySet(makeRows(26, 20)).length, 43);
+  assert.equal(buildQualifiedResolvedDisplaySet(makeRows(27, 19)).length, 45);
+});
+
+test("buildQualifiedCumulativeReturnCurve plots selected rows chronologically, not bucket order", () => {
+  const rows: QualifiedCurveRow[] = [
+    { id: "W1", isWinner: true, returnUsd: 40, createdAt: "2026-01-01" },
+    { id: "W2", isWinner: true, returnUsd: 41, createdAt: "2026-01-03" },
+    { id: "W3", isWinner: true, returnUsd: 42, createdAt: "2026-01-05" },
+    { id: "W4", isWinner: true, returnUsd: 43, createdAt: "2026-01-07" },
+    { id: "W5", isWinner: true, returnUsd: 44, createdAt: "2026-01-09" },
+    { id: "W6", isWinner: true, returnUsd: 45, createdAt: "2026-01-10" },
+    { id: "L1", isWinner: false, returnUsd: -100, createdAt: "2026-01-02" },
+    { id: "L2", isWinner: false, returnUsd: -101, createdAt: "2026-01-04" },
+    { id: "L3", isWinner: false, returnUsd: -102, createdAt: "2026-01-06" },
+    { id: "L4", isWinner: false, returnUsd: -103, createdAt: "2026-01-08" },
+  ];
+
+  // Bucket-selection order is W1..W6,L1..L4 (one full block, no tail); the
+  // chronological plot order interleaves them by createdAt instead.
+  const curve = buildQualifiedCumulativeReturnCurve(rows);
+  const expectedCumulative = [40, -60, -19, -120, -78, -180, -137, -240, -196, -151];
+  assert.deepEqual(
+    curve.map((p) => p.cumulativeProfitUsd),
+    expectedCumulative
+  );
+});
+
+test("chronological plotting keeps same selected IDs and same final cumulative value", () => {
+  const rows = makeRows(8, 6).map((r, i) => ({ ...r, createdAt: `2026-01-${String(30 - i).padStart(2, "0")}` }));
+
+  const selected = buildQualifiedResolvedDisplaySet(rows);
+  const curve = buildQualifiedCumulativeReturnCurve(rows);
+
+  assert.equal(curve.length, selected.length);
+  const expectedFinal = selected.reduce((s, r) => s + r.returnUsd, 0);
+  assert.equal(curve[curve.length - 1].cumulativeProfitUsd, round2(expectedFinal));
+});
+
+function round2(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
+test("same-day rows use deterministic tie-breaker (sourceOrder, then id)", () => {
+  const rows: QualifiedCurveRow[] = [
+    { id: "W6", isWinner: true, returnUsd: 45, createdAt: "2026-01-01", sourceOrder: 6 },
+    { id: "W1", isWinner: true, returnUsd: 40, createdAt: "2026-01-01", sourceOrder: 1 },
+    { id: "W3", isWinner: true, returnUsd: 42, createdAt: "2026-01-01", sourceOrder: 3 },
+    { id: "W2", isWinner: true, returnUsd: 41, createdAt: "2026-01-01", sourceOrder: 2 },
+    { id: "W5", isWinner: true, returnUsd: 44, createdAt: "2026-01-01", sourceOrder: 5 },
+    { id: "W4", isWinner: true, returnUsd: 43, createdAt: "2026-01-01", sourceOrder: 4 },
+    { id: "L1", isWinner: false, returnUsd: -100, createdAt: "2026-01-01", sourceOrder: 10 },
+    { id: "L2", isWinner: false, returnUsd: -101, createdAt: "2026-01-01", sourceOrder: 11 },
+    { id: "L3", isWinner: false, returnUsd: -102, createdAt: "2026-01-01", sourceOrder: 12 },
+    { id: "L4", isWinner: false, returnUsd: -103, createdAt: "2026-01-01", sourceOrder: 13 },
+  ];
+
+  const curve = buildQualifiedCumulativeReturnCurve(rows);
+  assert.equal(curve.length, 10);
+  // All same createdAt → order must follow sourceOrder ascending regardless
+  // of input array order.
+  const expectedFinal = rows.reduce((s, r) => s + r.returnUsd, 0);
+  assert.equal(curve[curve.length - 1].cumulativeProfitUsd, round2(expectedFinal));
+  assert.equal(curve[0].cumulativeProfitUsd, 40);
+  assert.equal(curve[1].cumulativeProfitUsd, 81);
+});
