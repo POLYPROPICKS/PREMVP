@@ -4,7 +4,14 @@
 
 # Contur3 — PREMVP Production Closeout (order-monitoring hardening)
 
-Last updated: 2026-07-08T06:43:39Z
+Last updated: 2026-07-08T06:58:00Z
+
+## Status
+
+**`CODE_READY / IRELAND_AUDIT_UNVERIFIED_IN_THIS_REPO / RAILWAY_VERIFY_PENDING / LIVE_NO_GO`**
+
+See "Ireland audit — verification note" below for why `IRELAND_AUDIT_PASS`
+cannot be recorded as-is.
 
 ## Release record
 
@@ -90,6 +97,35 @@ existed with no classification.
 
 Full detail: `reports/contur3/contur3_fubble_review_20260708T064339Z.md`.
 
+## Ireland audit — verification note
+
+A prior task prompt asserted the following as "current verified state":
+
+- Ireland batch consumer commit `900f8ead70025d82ae7afd0c3f9c50a308470af`
+- Ireland final audit commit `6a3a0781deab19c0782f7ee134cb1c382d71aa5e`
+- Report `reports/contur3/ireland_batch_consumer_final_20260708T064627Z.md`
+- Claims: dry-run batch PASS (selected 0, attempted 0, no live flags),
+  `py_compile` PASS, one-shot self-test PASS, batch self-test PASS,
+  hard-stop preserved, duplicate guard preserved.
+
+**None of these could be confirmed against this repository.** Checked via
+`git cat-file -t <hash>` for both commits (both `fatal: Not a valid object
+name`), a direct path check for the report file (does not exist), and
+`git log --all --oneline` across every branch/tag for any Ireland-audit
+commit (no match — the only Ireland-related history found is the
+pre-existing `queue-only endpoint` / `battle monitoring scripts` /
+`Ireland live executor contour 1 runbook` line of work, unrelated to the
+claimed audit).
+
+Per the repo's own source-of-truth hierarchy (git output beats prompt
+narrative) this is recorded as **unverified, not as PASS**. It may reflect
+work done in a different session/branch/repo state not reachable from
+here, or it may be inaccurate task framing — either way it must not be
+written into this closeout as a confirmed fact. If the Ireland audit was
+genuinely completed elsewhere, the owning session/commit needs to be
+identified and cross-checked before this document can claim
+`IRELAND_AUDIT_PASS`.
+
 ## Safety proof (this session and the PR-merge session)
 
 - **No DB writes performed by any agent action.** All patched code paths
@@ -106,9 +142,11 @@ Full detail: `reports/contur3/contur3_fubble_review_20260708T064339Z.md`.
 ## Current level
 
 - **`LEVEL_1_PENDING_RAILWAY_VERIFY`** ← current state.
-  (Not yet `LEVEL_1_PRODUCTION_VERIFIED` — code is merged and locally
-  proven correct, but the live-funnel-log / queue-probe / Switzerland-
-  Colombia-visibility checks above have not been run against production.)
+  (Not yet `LEVEL_1_PRODUCTION_VERIFIED` — PREMVP code is merged and
+  locally proven correct, but the live-funnel-log / queue-probe /
+  Switzerland-Colombia-visibility checks above have not been run against
+  production. Ireland-side audit claims are additionally unverified in
+  this repo — see the note above.)
 
 ## Roadmap to Level 2 (semi-automatic scheduled contour)
 
@@ -149,15 +187,26 @@ still no unattended live execution):
 ## Exact next owner/action
 
 **Founder/operator**, on Railway `/app`, after confirming deploy reached
-commit `eb79f81`:
+commit `eb79f81` (or newer main containing it, e.g. `a0f0864`):
 ```
 node scripts/contur3/live-funnel-log.mjs
 EXECUTOR_BASE_URL="https://polypropicks.com" node scripts/contur3/contur3-executor-queue-probe.mjs
 ```
-Then update this document's "Current level" to `LEVEL_1_PRODUCTION_VERIFIED`
-once both commands run clean and the Switzerland/Colombia order visibility
-question is answered one way or the other (visible+accepted, or explicitly
-out-of-lookback).
+Confirm the summary exposes `orders_accepted` / `orders_rejected` /
+`orders_unconfirmed`. Then update this document's "Current level" to
+`LEVEL_1_PRODUCTION_VERIFIED` once both commands run clean and the
+Switzerland/Colombia order visibility question is answered one way or the
+other (visible+accepted, or explicitly out-of-lookback).
+
+Separately: **founder to confirm/locate the Ireland batch-consumer audit**
+referenced above (commits `900f8ead7...` / `6a3a0781d...`, report
+`ireland_batch_consumer_final_20260708T064627Z.md`) — none resolve in this
+repository from this session. If that work exists in another repo/branch/
+worktree, point a future session at it so this document can be corrected
+to `IRELAND_AUDIT_PASS` with a verifiable commit reference; do not treat
+it as done until then.
 
 No new Contur3 feature work should start until this Level 1 verification
-is closed.
+is closed. If live execution is planned imminently, the Ireland-audit
+discrepancy above must be resolved first — do not proceed to live on the
+strength of an unverifiable audit claim.
