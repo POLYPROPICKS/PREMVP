@@ -333,6 +333,99 @@ export function findReservationForGroup(group, reservations) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────
+// Order-event field extraction + accepted/rejected/unconfirmed classification.
+// `match_family_key` is stored top-level for every new order event (route
+// hardening), but historical/manually-reconciled rows may only carry it
+// nested inside candidate_snapshot_json (possibly itself nested inside
+// raw_event_json, when the whole sanitised payload was echoed back).
+// ──────────────────────────────────────────────────────────────────────────
+export function getOrderMatchFamilyKey(orderRow) {
+  if (!orderRow || typeof orderRow !== 'object') return null;
+  const candidates = [
+    orderRow.match_family_key,
+    orderRow.candidate_snapshot_json?.match_family_key,
+    orderRow.raw_event_json?.match_family_key,
+    orderRow.raw_event_json?.candidate_snapshot_json?.match_family_key,
+    orderRow.raw_event_json?.raw_event_json?.candidate_snapshot_json?.match_family_key,
+  ];
+  for (const c of candidates) {
+    if (typeof c === 'string' && c.length > 0) return c;
+  }
+  return null;
+}
+
+export function getOrderId(orderRow) {
+  if (!orderRow) return null;
+  return orderRow.clob_order_id
+    ?? orderRow.order_id
+    ?? orderRow.raw_event_json?.clob_order_id
+    ?? orderRow.raw_event_json?.order_id
+    ?? null;
+}
+
+export function getTransactionHashes(orderRow) {
+  const raw = orderRow?.transaction_hashes ?? orderRow?.raw_event_json?.transaction_hashes ?? null;
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.filter(Boolean);
+  if (typeof raw === 'string') return raw.length ? [raw] : [];
+  return [];
+}
+
+const REJECTED_ORDER_STATUSES = new Set(['rejected', 'failed', 'error', 'cancelled']);
+const ACCEPTED_ORDER_STATUSES = new Set(['matched', 'filled', 'open', 'accepted']);
+
+export function isRejectedOrderEvent(orderRow) {
+  if (!orderRow) return false;
+  if (orderRow.error_message) return true;
+  if (orderRow.success === false) return true;
+  const status = `${orderRow.order_status ?? ''}`.toLowerCase();
+  return REJECTED_ORDER_STATUSES.has(status);
+}
+
+// Ambiguous success must never be reported as rejected: an event only counts
+// as accepted proof when it carries an explicit success/status signal or
+// hard order-placement evidence (clob id / tx hash).
+export function isAcceptedOrderEvent(orderRow) {
+  if (!orderRow || isRejectedOrderEvent(orderRow)) return false;
+  if (orderRow.success === true) return true;
+  const status = `${orderRow.order_status ?? ''}`.toLowerCase();
+  if (ACCEPTED_ORDER_STATUSES.has(status)) return true;
+  if (getOrderId(orderRow)) return true;
+  if (getTransactionHashes(orderRow).length > 0) return true;
+  return false;
+}
+
+export function isUnconfirmedOrderEvent(orderRow) {
+  if (!orderRow) return false;
+  return !isRejectedOrderEvent(orderRow) && !isAcceptedOrderEvent(orderRow);
+}
+
+export function classifyOrderEvent(orderRow) {
+  if (isRejectedOrderEvent(orderRow)) return 'REJECTED';
+  if (isAcceptedOrderEvent(orderRow)) return 'ACCEPTED';
+  return 'UNCONFIRMED';
+}
+
+// Join order to reservation: prefer the (nested-fallback-aware) match_family_key
+// equality; fall back to idempotency_key -> queue row -> reservation_id /
+// match_family_key when the order event's own match_family_key could not be
+// resolved at all (oldest legacy rows).
+export function orderEventMatchesReservation(orderRow, res, queueRows) {
+  if (!orderRow || !res) return false;
+  const mfk = getOrderMatchFamilyKey(orderRow);
+  if (mfk) return mfk === res.match_family_key;
+  const idem = orderRow.idempotency_key ?? null;
+  if (idem && Array.isArray(queueRows)) {
+    const q = queueRows.find((qr) => qr.idempotency_key === idem);
+    if (q) {
+      if (q.reservation_id != null && res.id != null && q.reservation_id === res.id) return true;
+      if (q.match_family_key && q.match_family_key === res.match_family_key) return true;
+    }
+  }
+  return false;
+}
+
+// ──────────────────────────────────────────────────────────────────────────
 // Queue lifecycle visibility. A queue row created before kickoff must never
 // be reported as "queued=0 / missing" just because the entry window has
 // since closed — the monitor must distinguish "queue created and actionable
@@ -729,11 +822,28 @@ export async function collectFunnel(opts = {}) {
       queue_actionable: queueVerdict === 'QUEUE_READY_ACTIONABLE',
       queue_entry_window_closed: queueVerdict === 'QUEUE_READY_ENTRY_WINDOW_CLOSED',
       executor_api_visible: queue.length > 0 ? true : null,
-      order_events: orderRows.filter((od) => (od.match_family_key ?? '') === (res?.match_family_key ?? '\u0000')).length,
+      order_events: 0,
+      orders_accepted: 0,
+      orders_rejected: 0,
+      orders_unconfirmed: 0,
+      orders_with_clob_id: 0,
+      orders_with_tx_hash: 0,
       audit_events: auditRows.filter((ad) => (ad.match_family_key ?? '') === (res?.match_family_key ?? '\u0000')).length,
       sample_slugs: g.sample_slugs,
       verdict,
     });
+    {
+      const matchedOrders = res
+        ? orderRows.filter((od) => orderEventMatchesReservation(od, res, queueRows))
+        : [];
+      const fx1 = fixtures[fixtures.length - 1];
+      fx1.order_events = matchedOrders.length;
+      fx1.orders_accepted = matchedOrders.filter(isAcceptedOrderEvent).length;
+      fx1.orders_rejected = matchedOrders.filter(isRejectedOrderEvent).length;
+      fx1.orders_unconfirmed = matchedOrders.filter(isUnconfirmedOrderEvent).length;
+      fx1.orders_with_clob_id = matchedOrders.filter((od) => !!getOrderId(od)).length;
+      fx1.orders_with_tx_hash = matchedOrders.filter((od) => getTransactionHashes(od).length > 0).length;
+    }
     {
       const fx2 = fixtures[fixtures.length - 1];
       const handoff = classifyConsumerHandoff({
@@ -762,6 +872,11 @@ export async function collectFunnel(opts = {}) {
   const skippedNoMarket = fixtures.filter((f) => f.queue_verdict === 'SKIPPED_NO_EXECUTABLE_MARKET').length;
   const apiVisible = fixtures.filter((f) => f.executor_api_visible === true).length;
   const orders = fixtures.reduce((n, f) => n + f.order_events, 0);
+  const ordersAccepted = fixtures.reduce((n, f) => n + f.orders_accepted, 0);
+  const ordersRejected = fixtures.reduce((n, f) => n + f.orders_rejected, 0);
+  const ordersUnconfirmed = fixtures.reduce((n, f) => n + f.orders_unconfirmed, 0);
+  const ordersWithClobId = fixtures.reduce((n, f) => n + f.orders_with_clob_id, 0);
+  const ordersWithTxHash = fixtures.reduce((n, f) => n + f.orders_with_tx_hash, 0);
   const missing = fixtures.filter((f) => f.verdict === 'TRUE_MISSING_RESERVATION_HAS_ALLOWED_FULLMATCH');
 
   base.fixtures = fixtures;
@@ -799,6 +914,11 @@ export async function collectFunnel(opts = {}) {
     skipped_no_executable_market: skippedNoMarket,
     executor_api_visible: apiVisible,
     orders,
+    orders_accepted: ordersAccepted,
+    orders_rejected: ordersRejected,
+    orders_unconfirmed: ordersUnconfirmed,
+    orders_with_clob_id: ordersWithClobId,
+    orders_with_tx_hash: ordersWithTxHash,
     consumer_start_required_now: fixtures.filter((f) => f.consumer_diagnostic_code === 'CONSUMER_START_REQUIRED_NOW').length,
     consumer_missed_queue_window: fixtures.filter((f) => f.consumer_diagnostic_code === 'CONSUMER_MISSED_QUEUE_WINDOW').length,
     hard_anomaly_count: base.anomalies.filter((a) => a.severity === 'P0').length,
@@ -1103,7 +1223,7 @@ export function writeReports(j, { write = true, json = true, g2 = false } = {}) 
 export function printConsoleMarkers(j, written = []) {
   const s = j.summary ?? {};
   console.log('CONTUR3_LIVE_FUNNEL_LOG_START');
-  console.log(`CONTUR3_LIVE_FUNNEL_SUMMARY verdict=${s.machine_verdict} reserved=${s.reserved_physical_matches} missing=${s.missing_physical_matches} due_now=${s.due_now} queued=${s.queued} queue_created=${s.queue_created} queue_actionable=${s.queue_actionable} queue_window_closed=${s.queue_entry_window_closed} api=${s.executor_api_visible} orders=${s.orders} consumer_start_now=${s.consumer_start_required_now} consumer_missed=${s.consumer_missed_queue_window}`);
+  console.log(`CONTUR3_LIVE_FUNNEL_SUMMARY verdict=${s.machine_verdict} reserved=${s.reserved_physical_matches} missing=${s.missing_physical_matches} due_now=${s.due_now} queued=${s.queued} queue_created=${s.queue_created} queue_actionable=${s.queue_actionable} queue_window_closed=${s.queue_entry_window_closed} api=${s.executor_api_visible} orders=${s.orders} orders_accepted=${s.orders_accepted} orders_unconfirmed=${s.orders_unconfirmed} orders_rejected=${s.orders_rejected} consumer_start_now=${s.consumer_start_required_now} consumer_missed=${s.consumer_missed_queue_window}`);
   const p0 = (j.anomalies ?? []).filter((a) => a.severity === 'P0');
   console.log(`CONTUR3_LIVE_FUNNEL_ANOMALIES p0=${p0.length} total=${(j.anomalies ?? []).length} codes=${(j.anomalies ?? []).map((a) => a.code).join(',') || '-'}`);
   const na = (j.next_actions ?? [])[0];
