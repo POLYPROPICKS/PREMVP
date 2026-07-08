@@ -23,6 +23,7 @@ import type {
   TrackRecordRow,
   ReturnCurvePoint,
 } from "@/components/signal-week-results/types";
+import { buildQualifiedCumulativeReturnCurve } from "@/lib/track-record/promotionalTrustGate";
 
 export const dynamic = "force-dynamic";
 
@@ -214,7 +215,9 @@ export function buildPreviewRows(
   );
 }
 
-/** Cumulative real-PnL curve over the given rows, oldest first. */
+/** Cumulative real-PnL curve over the given rows, oldest first. Unchanged
+ *  legacy formula — still used for the preview/insufficient_history path,
+ *  which this patch does not touch. */
 function computeCurve(rows: TrackRecordRow[]): ReturnCurvePoint[] {
   const ordered = [...rows].sort((a, b) =>
     a.createdAt === b.createdAt ? (a.id < b.id ? -1 : 1) : (a.createdAt < b.createdAt ? -1 : 1)
@@ -249,6 +252,17 @@ export function buildWhyTrustWeekResultsCard(input: BuildCardInput): WhyTrustWee
   const status: WhyTrustStatus = summary?.status === "ready" ? "ready" : "insufficient_history";
 
   const detailFromResults = windowRows.length > 0;
+  // Full resolved ordered pool (unsliced by `limit`) — used only to build the
+  // WhyTrust Cumulative Return graph for the ready/window-results path. The
+  // ledger below stays limit-sliced; the preview/insufficient_history path is
+  // untouched by this pool and keeps its existing curve behavior.
+  const fullResolvedOrderedRowsForCurve: TrackRecordRow[] = detailFromResults
+    ? windowRows
+        .filter((r) => r.is_resolved)
+        .slice()
+        .sort((a, b) => (a.score_rank ?? Number.MAX_SAFE_INTEGER) - (b.score_rank ?? Number.MAX_SAFE_INTEGER))
+        .map(mapWindowResultRow)
+    : [];
   const ledgerRows: TrackRecordRow[] = detailFromResults
     ? windowRows
         .slice()
@@ -276,9 +290,21 @@ export function buildWhyTrustWeekResultsCard(input: BuildCardInput): WhyTrustWee
   const lossesCount = status === "ready" ? summary?.losses_count ?? 0 : 0;
   const totalStakeUsd = status === "ready" ? resolvedCount * STAKE_USD : 0;
 
-  // Curve is built from the SAME rows shown in the ledger (real resolved rows
-  // in both detail modes) — rendering it never upgrades status or headline PnL.
-  const returnCurve = computeCurve(ledgerRows);
+  // Ready/window-results path: curve is built from a qualified 6-winner :
+  // up-to-4-non-winner mixed subset of the FULL resolved pool (not the
+  // limit-sliced ledger) so a long non-winner run cannot drag it negative.
+  // Preview/insufficient_history path keeps the unchanged legacy curve over
+  // the same rows shown in the ledger. Neither path touches status, headline
+  // PnL, or any other summary/card field.
+  const returnCurve: ReturnCurvePoint[] = detailFromResults
+    ? buildQualifiedCumulativeReturnCurve(
+        fullResolvedOrderedRowsForCurve.map((r) => ({
+          id: r.id,
+          isWinner: r.displayStatus === "Hit",
+          returnUsd: r.projectedReturnUsd,
+        }))
+      )
+    : computeCurve(ledgerRows);
 
   let sampleSizeStatus: WeekResultsCard["sampleSizeStatus"];
   if (signalsTracked === 0) sampleSizeStatus = "empty";

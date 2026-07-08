@@ -3,8 +3,22 @@ import assert from "node:assert/strict";
 import {
   isPromotionalTrustMetricUsable,
   selectHomepageTopTrustCard,
+  buildQualifiedResolvedDisplaySet,
+  buildQualifiedCumulativeReturnCurve,
+  type QualifiedCurveRow,
 } from "@/lib/track-record/promotionalTrustGate";
 import type { WeekResultsCard } from "@/components/signal-week-results/types";
+
+function makeRows(winnerCount: number, nonWinnerCount: number): QualifiedCurveRow[] {
+  const rows: QualifiedCurveRow[] = [];
+  for (let i = 0; i < winnerCount; i++) {
+    rows.push({ id: `w${i}`, isWinner: true, returnUsd: 40 });
+  }
+  for (let i = 0; i < nonWinnerCount; i++) {
+    rows.push({ id: `l${i}`, isWinner: false, returnUsd: -100 });
+  }
+  return rows;
+}
 
 function makeCard(overrides: Partial<WeekResultsCard>): WeekResultsCard {
   return {
@@ -164,4 +178,64 @@ test("selectHomepageTopTrustCard rejects a legacyCard that itself fails the gate
   assert.notEqual(result, null);
   assert.notEqual(result, legacyCard);
   assert.equal(result!.winsCount, 3);
+});
+
+test("buildQualifiedResolvedDisplaySet builds 14W 9L from 25-row pool", () => {
+  const rows = makeRows(14, 11);
+  const selected = buildQualifiedResolvedDisplaySet(rows);
+  assert.equal(selected.length, 23);
+  assert.equal(selected.filter((r) => r.isWinner).length, 14);
+  assert.equal(selected.filter((r) => !r.isWinner).length, 9);
+});
+
+test("buildQualifiedResolvedDisplaySet builds 26W 17L from 46-row pool with 26 winners and 20 non-winners", () => {
+  const rows = makeRows(26, 20);
+  const selected = buildQualifiedResolvedDisplaySet(rows);
+  assert.equal(selected.length, 43);
+  assert.equal(selected.filter((r) => r.isWinner).length, 26);
+  assert.equal(selected.filter((r) => !r.isWinner).length, 17);
+});
+
+test("buildQualifiedResolvedDisplaySet builds 27W 18L from 46-row pool with 27 winners and 19 non-winners", () => {
+  const rows = makeRows(27, 19);
+  const selected = buildQualifiedResolvedDisplaySet(rows);
+  assert.equal(selected.length, 45);
+  assert.equal(selected.filter((r) => r.isWinner).length, 27);
+  assert.equal(selected.filter((r) => !r.isWinner).length, 18);
+});
+
+test("buildQualifiedResolvedDisplaySet never adds a loser-only tail when no winners remain", () => {
+  const rows = makeRows(0, 30);
+  const selected = buildQualifiedResolvedDisplaySet(rows);
+  assert.equal(selected.length, 0);
+});
+
+test("buildQualifiedCumulativeReturnCurve uses actual returns from selected rows only", () => {
+  const rows: QualifiedCurveRow[] = [
+    ...Array.from({ length: 6 }, (_, i) => ({ id: `w${i}`, isWinner: true, returnUsd: 40 })),
+    { id: "l0", isWinner: false, returnUsd: -100 },
+    { id: "l1", isWinner: false, returnUsd: -100 },
+    { id: "l2", isWinner: false, returnUsd: -100 },
+    { id: "l3", isWinner: false, returnUsd: -100 },
+    // excluded from the graph: 5th non-winner in a block of only 6 winners
+    { id: "l4", isWinner: false, returnUsd: -100000 },
+  ];
+
+  const curve = buildQualifiedCumulativeReturnCurve(rows);
+  assert.equal(curve.length, 10);
+  const finalPoint = curve[curve.length - 1];
+  assert.equal(finalPoint.cumulativeProfitUsd, 6 * 40 - 4 * 100);
+});
+
+test("buildQualifiedCumulativeReturnCurve preserves selected order by bucket rule", () => {
+  const rows = makeRows(8, 6);
+  const selected = buildQualifiedResolvedDisplaySet(rows);
+  const ids = selected.map((r) => r.id);
+  assert.deepEqual(ids, [
+    "w0", "w1", "w2", "w3", "w4", "w5", "l0", "l1", "l2", "l3",
+    "w6", "w7", "l4",
+  ]);
+
+  const curve = buildQualifiedCumulativeReturnCurve(rows);
+  assert.equal(curve.length, 13);
 });

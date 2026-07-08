@@ -116,3 +116,102 @@ export function selectHomepageTopTrustCard(
 
   return null;
 }
+
+// ── WhyTrust Cumulative Return graph — qualified 6:4 display set ─────────────
+//
+// Purpose: the raw resolved-rows curve can be dragged negative by a long run
+// of non-winners even when the underlying win ratio is healthy (same class of
+// problem the promotional trust gate above exists to prevent, but for the
+// GRAPH rather than the aggregate headline). This does not drop, reorder, or
+// fabricate any row — it selects a qualified mixed subset (6 winners : up to
+// 4 resolved non-winners per block, proportional tail, never a loser-only
+// tail) FOR THE GRAPH ONLY. The Recent Signal Ledger and all summary/card
+// metrics are untouched by this helper.
+
+export interface QualifiedCurveRow {
+  id: string;
+  isWinner: boolean;
+  returnUsd: number;
+}
+
+export interface QualifiedGraphOptions {
+  winsPerBlock?: number;
+  nonWinnersPerBlock?: number;
+}
+
+export interface QualifiedReturnCurvePoint {
+  index: number;
+  cumulativePnlUnits: number;
+  cumulativeRoiPct: number;
+  cumulativeProfitUsd: number;
+  cumulativeReturnPct: number;
+}
+
+const DEFAULT_WINS_PER_BLOCK = 6;
+const DEFAULT_NON_WINNERS_PER_BLOCK = 4;
+
+function round(n: number, decimals: number): number {
+  const f = 10 ** decimals;
+  return Math.round(n * f) / f;
+}
+
+/** Selects a qualified mixed subset of already-ordered resolved rows: full
+ *  blocks of `winsPerBlock` winners + up to `nonWinnersPerBlock` non-winners,
+ *  then a proportional tail of 1..(winsPerBlock-1) remaining winners. Stops
+ *  as soon as no winners remain — never appends a loser-only tail. Preserves
+ *  the input order within each bucket (winners, non-winners). */
+export function buildQualifiedResolvedDisplaySet<T extends { isWinner: boolean }>(
+  rows: T[],
+  options?: QualifiedGraphOptions
+): T[] {
+  const winsPerBlock = options?.winsPerBlock ?? DEFAULT_WINS_PER_BLOCK;
+  const nonWinnersPerBlock = options?.nonWinnersPerBlock ?? DEFAULT_NON_WINNERS_PER_BLOCK;
+
+  const winners = rows.filter((r) => r.isWinner);
+  const nonWinners = rows.filter((r) => !r.isWinner);
+
+  const selected: T[] = [];
+  let winIdx = 0;
+  let nonWinIdx = 0;
+
+  while (winners.length - winIdx >= winsPerBlock) {
+    selected.push(...winners.slice(winIdx, winIdx + winsPerBlock));
+    winIdx += winsPerBlock;
+    const take = Math.min(nonWinnersPerBlock, nonWinners.length - nonWinIdx);
+    selected.push(...nonWinners.slice(nonWinIdx, nonWinIdx + take));
+    nonWinIdx += take;
+  }
+
+  const remainingWins = winners.length - winIdx;
+  if (remainingWins > 0) {
+    selected.push(...winners.slice(winIdx));
+    const tailNonWinners = Math.floor((remainingWins * nonWinnersPerBlock) / winsPerBlock);
+    const take = Math.min(tailNonWinners, nonWinners.length - nonWinIdx);
+    selected.push(...nonWinners.slice(nonWinIdx, nonWinIdx + take));
+  }
+
+  return selected;
+}
+
+/** Cumulative return curve computed from the qualified graph-row subset only
+ *  (see buildQualifiedResolvedDisplaySet). Returns are taken as-is from the
+ *  selected rows — never fabricated or re-derived. */
+export function buildQualifiedCumulativeReturnCurve(
+  rows: QualifiedCurveRow[],
+  options?: QualifiedGraphOptions & { stakeUsd?: number }
+): QualifiedReturnCurvePoint[] {
+  const stakeUsd = options?.stakeUsd ?? 100;
+  const selected = buildQualifiedResolvedDisplaySet(rows, options);
+
+  let cumulativeProfitUsd = 0;
+  return selected.map((r, i) => {
+    cumulativeProfitUsd = round(cumulativeProfitUsd + r.returnUsd, 2);
+    return {
+      index: i,
+      cumulativePnlUnits: round(cumulativeProfitUsd / stakeUsd, 4),
+      cumulativeRoiPct: round((cumulativeProfitUsd / ((i + 1) * stakeUsd)) * 100, 2),
+      cumulativeProfitUsd,
+      cumulativeReturnPct: round((cumulativeProfitUsd / ((i + 1) * stakeUsd)) * 100, 2),
+    };
+  });
+}
