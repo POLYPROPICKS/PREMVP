@@ -1,4 +1,4 @@
-# Strategy Scripts — Rules and Read-Only Reuse Pattern (Phase 3C.2 / 3D.2A / 3D.2H)
+# Strategy Scripts — Rules and Read-Only Reuse Pattern (Phase 3C.2 / 3D.2A / 3D.2H / 3D.2I)
 
 This directory contains a local, read-only strategy comparison CLI (Phase
 3D.2H) plus docs defining the rules future strategy scripts must follow. It
@@ -14,9 +14,7 @@ node --import tsx scripts/modeling/strategies/run-readonly-comparison.ts \
 
 - `--input <path>` (required): a local JSON file containing an array of row
   objects. There is no database read here -- the caller must already have
-  exported/prepared this file (e.g. from a `generated_signal_pairs` export;
-  the exact export format is a separate future spec, not defined by this
-  CLI).
+  exported/prepared this file.
 - `--required-only` (default): runs only declarations with
   `requiredForComparison: true`. Today that means
   `FORMULA_TRUSTED_INITIAL_V1_1_ALL` runs by default.
@@ -25,6 +23,8 @@ node --import tsx scripts/modeling/strategies/run-readonly-comparison.ts \
   silently skipped -- they appear in the output with a non-null `error`).
 - `--strategy <id[,id2]>`: runs only the named strategy id(s), overriding the
   required/all-ready selection.
+- `--input-format <loose|generated_signal_pairs>` (default `loose`): see
+  below.
 
 Output is a single JSON object printed to stdout (per-strategy
 `strategyId`/`status`/`requiredForComparison`/`inputRows`/`selectedRows`/
@@ -38,11 +38,43 @@ environment variable and imports no database client. See
 `lib/modeling/strategyComparison.ts` for the underlying pure comparison
 function.
 
-**Next phase after this:** DQA-R4 (outcome-resolution quirk in
-`onePerMatchBacktest.ts`'s `outcome()`, documented in the Phase 3D.2D plan)
-or a local `generated_signal_pairs` export format spec -- ROI/PnL comparison
-work should only start after the input dataset is DQA-clean and this export
-format is defined.
+## Local generated_signal_pairs export contract (Phase 3D.2I)
+
+```
+node --import tsx scripts/modeling/strategies/run-readonly-comparison.ts \
+  --input ./export.json --required-only \
+  --input-format generated_signal_pairs
+```
+
+Passing `--input-format generated_signal_pairs` runs the rows through
+`validateGeneratedSignalPairsExportRows()`
+(`lib/modeling/generatedSignalPairsExportContract.ts`) in addition to the
+normal strategy comparison, and adds an `inputValidation` object to the
+output with:
+
+- `totalRows` / `rowsWithFormulaVersion` / `rowsMissingFormulaVersion` --
+  whether formula-version filtering (e.g.
+  `FORMULA_TRUSTED_INITIAL_V1_1_ALL`) can work on this export at all.
+- `rowsWithScore` / `rowsWithCoverage` / `rowsWithEventGroupCandidate` --
+  whether future score/coverage/one-event-grouping strategies would have the
+  fields they need on this export.
+- `outcomeQuirkRiskRows` -- rows whose result is a win label
+  (win/won/hit/correct/yes) but that have neither a valid entry price nor a
+  valid realized return. These are the rows that would silently lose their
+  "won" resolution under `lib/modeling/onePerMatchBacktest.ts`'s current
+  `outcome()` logic (the Phase 3D.2D-documented quirk). **This flag only
+  detects the risk -- it does not fix the quirk, and it does not filter or
+  alter any row.**
+- `notes` -- plain-language summary of the above.
+
+This is structural validation only: no rows are ever rejected, filtered, or
+modified as a result of running with `--input-format generated_signal_pairs`
+-- the strategy comparison itself runs identically either way.
+
+**Next phase after this:** DQA-R4 -- actually inspecting/fixing the
+`outcome()` quirk that this contract only detects. ROI/PnL comparison work
+should only start after the input dataset is confirmed DQA-clean via that
+future task.
 
 ## Strategy declarations (Phase 3D.2A)
 

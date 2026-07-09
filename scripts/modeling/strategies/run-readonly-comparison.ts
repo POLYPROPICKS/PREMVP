@@ -1,5 +1,5 @@
 #!/usr/bin/env -S node --import tsx
-// Read-only local strategy comparison CLI (Phase 3D.2H).
+// Read-only local strategy comparison CLI (Phase 3D.2H / 3D.2I).
 //
 // Reads rows from a local JSON file (--input) and strategy declaration JSON
 // files from ./declarations, runs runStrategyComparison() from
@@ -14,7 +14,8 @@
 //
 // Usage:
 //   node --import tsx scripts/modeling/strategies/run-readonly-comparison.ts \
-//     --input ./path/to/rows.json --required-only
+//     --input ./path/to/rows.json --required-only \
+//     --input-format generated_signal_pairs
 //
 //   --input <path>       Required. Path to a local JSON file containing an
 //                         array of row objects.
@@ -26,22 +27,39 @@
 //                         comparator this CLI does not provide).
 //   --strategy <id[,id2]> Run only the named strategyId(s). Repeatable or
 //                         comma-separated. Overrides --required-only/--all-ready.
+//   --input-format <fmt>  "loose" (default) or "generated_signal_pairs". In
+//                         generated_signal_pairs mode, the rows are also run
+//                         through validateGeneratedSignalPairsExportRows()
+//                         from lib/modeling/generatedSignalPairsExportContract.ts
+//                         and the resulting diagnostics are included in the
+//                         output as `inputValidation`. This is structural
+//                         validation only -- no rows are rejected, filtered,
+//                         or fixed as a result.
 
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { runStrategyComparison } from "../../../lib/modeling/strategyComparison";
 import type { StrategyDeclaration } from "../../../lib/modeling/strategyEvaluator";
+import {
+  validateGeneratedSignalPairsExportRows,
+  type ExportRow,
+  type GeneratedSignalPairsExportDiagnostics,
+} from "../../../lib/modeling/generatedSignalPairsExportContract";
 
 const DECLARATIONS_DIR = path.resolve(__dirname, "declarations");
+
+const SUPPORTED_INPUT_FORMATS = ["loose", "generated_signal_pairs"] as const;
+type InputFormat = (typeof SUPPORTED_INPUT_FORMATS)[number];
 
 interface ParsedArgs {
   input: string | null;
   allReady: boolean;
   strategyIds: string[];
+  inputFormat: InputFormat;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
-  const args: ParsedArgs = { input: null, allReady: false, strategyIds: [] };
+  const args: ParsedArgs = { input: null, allReady: false, strategyIds: [], inputFormat: "loose" };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--input") {
@@ -60,6 +78,16 @@ function parseArgs(argv: string[]): ParsedArgs {
           .map((s) => s.trim())
           .filter(Boolean),
       );
+    } else if (arg === "--input-format") {
+      const value = argv[i + 1] ?? "";
+      i += 1;
+      if ((SUPPORTED_INPUT_FORMATS as readonly string[]).includes(value)) {
+        args.inputFormat = value as InputFormat;
+      } else {
+        fail(
+          `invalid --input-format "${value}" (supported: ${SUPPORTED_INPUT_FORMATS.join(", ")})`,
+        );
+      }
     }
   }
   return args;
@@ -114,7 +142,14 @@ function main(): void {
     strategyIds: args.strategyIds.length > 0 ? args.strategyIds : undefined,
   });
 
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  let inputValidation: GeneratedSignalPairsExportDiagnostics | undefined;
+  if (args.inputFormat === "generated_signal_pairs") {
+    inputValidation = validateGeneratedSignalPairsExportRows(rows as ExportRow[]);
+  }
+
+  const output = inputValidation ? { ...result, inputValidation } : result;
+
+  process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 }
 
 main();

@@ -124,3 +124,95 @@ test("CLI --all-ready includes strategies beyond just requiredForComparison ones
     },
   );
 });
+
+test("CLI with --input-format generated_signal_pairs includes inputValidation in output", async () => {
+  await withTempInputFile(
+    [
+      { id: "a", formula_version: "trusted-initial-formula-v1.1" },
+      { id: "b", signal_result: "won" }, // outcome quirk risk: no entry_price_num/realized_return_pct
+    ],
+    (inputPath) => {
+      const result = runCli([
+        "--input",
+        inputPath,
+        "--required-only",
+        "--input-format",
+        "generated_signal_pairs",
+      ]);
+
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.ok(parsed.inputValidation, "expected inputValidation in CLI output");
+      assert.equal(parsed.inputValidation.totalRows, 2);
+      assert.equal(parsed.inputValidation.rowsWithFormulaVersion, 1);
+      assert.equal(parsed.inputValidation.outcomeQuirkRiskRows, 1);
+    },
+  );
+});
+
+test("CLI --input-format generated_signal_pairs still includes FORMULA_TRUSTED_INITIAL_V1_1_ALL in required comparison", async () => {
+  await withTempInputFile(
+    [{ id: "a", formula_version: "trusted-initial-formula-v1.1" }],
+    (inputPath) => {
+      const result = runCli([
+        "--input",
+        inputPath,
+        "--required-only",
+        "--input-format",
+        "generated_signal_pairs",
+      ]);
+
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.ok(
+        parsed.strategies.some((s: { strategyId: string }) => s.strategyId === "FORMULA_TRUSTED_INITIAL_V1_1_ALL"),
+      );
+    },
+  );
+});
+
+test("CLI --input-format generated_signal_pairs output still has no ROI/PnL/profit fields", async () => {
+  await withTempInputFile(
+    [{ id: "a", formula_version: "trusted-initial-formula-v1.1", signal_result: "won" }],
+    (inputPath) => {
+      const result = runCli([
+        "--input",
+        inputPath,
+        "--required-only",
+        "--input-format",
+        "generated_signal_pairs",
+      ]);
+
+      assert.equal(result.status, 0, result.stderr);
+      const lower = result.stdout.toLowerCase();
+      assert.ok(!lower.includes("\"roi\""));
+      assert.ok(!lower.includes("\"pnl\""));
+      assert.ok(!lower.includes("profit"));
+    },
+  );
+});
+
+test("CLI default --input-format loose does not include inputValidation", async () => {
+  await withTempInputFile(
+    [{ id: "a", formula_version: "trusted-initial-formula-v1.1" }],
+    (inputPath) => {
+      const result = runCli(["--input", inputPath, "--required-only"]);
+
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.inputValidation, undefined);
+    },
+  );
+});
+
+test("CLI exits non-zero for an invalid --input-format value", async () => {
+  await withTempInputFile(
+    [{ id: "a", formula_version: "trusted-initial-formula-v1.1" }],
+    (inputPath) => {
+      const result = runCli(["--input", inputPath, "--input-format", "not-a-real-format"]);
+
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /input-format/);
+    },
+  );
+});
