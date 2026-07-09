@@ -126,7 +126,10 @@
       "sourcePaths": [],
       "evidenceSnippets": [],
       "confidence": "LOW",
-      "notes": ["Full computation logic not read line-by-line during Phase 3C.1; do not assume behavior beyond the name."]
+      "notes": [
+        "Full computation logic not read line-by-line during Phase 3C.1; do not assume behavior beyond the name.",
+        "Phase 3D.2G: a founder-mandated comparison WRAPPER over this formula version exists as strategy FORMULA_TRUSTED_INITIAL_V1_1_ALL (see that entry). This raw entry remains a FORMULA_MODEL and is NOT itself a ready strategy."
+      ]
     },
     {
       "rawName": "v2-lite-growth-safe",
@@ -407,6 +410,28 @@
       "lineVerified": true,
       "declarationPath": "scripts/modeling/strategies/declarations/score_ge_72_family.json",
       "notes": ["Ice1 frozen-CSV script only.", "Phase 3D.1 line-verified as part of SCORE_GE_72_FAMILY declaration."]
+    },
+    {
+      "rawName": "FORMULA::trusted-initial-formula-v1.1",
+      "normalizedName": "FORMULA_TRUSTED_INITIAL_V1_1_ALL",
+      "category": "STRATEGY_POLICY",
+      "roleStatus": "founder mandatory comparison / shadow formula-version cohort",
+      "reproducibilityStatus": "HAS_DECLARATION",
+      "oneMatchModeSupported": "NO",
+      "selectionUnit": "all rows",
+      "requiredForComparison": true,
+      "filters": { "formulaVersionEquals": "trusted-initial-formula-v1.1" },
+      "sourcePaths": ["lib/feed/types.ts", "scripts/modeling/strategies/declarations/trusted_initial_formula_v1_1_all.json"],
+      "evidenceSnippets": ["export const FORMULA_VERSION = \"trusted-initial-formula-v1.1\" as const; (lib/feed/types.ts:5)"],
+      "confidence": "HIGH",
+      "lineVerified": true,
+      "declarationPath": "scripts/modeling/strategies/declarations/trusted_initial_formula_v1_1_all.json",
+      "notes": [
+        "Phase 3D.2G founder override: promoted as a mandatory-comparison READY wrapper strategy.",
+        "Wrapper strategy over a formula version -- selects rows whose formula-version field equals trusted-initial-formula-v1.1. The raw formula itself remains classified as a FORMULA_MODEL (see the separate trusted-initial-formula-v1.1 entry) and is NOT reimplemented here.",
+        "requiredForComparison: future read-only comparison runners must include this by default.",
+        "NOT live-approved: no live promotion without fresh 7D/14D + DQA-clean comparison + founder approval."
+      ]
     },
     {
       "rawName": "CHAMPION_CURRENT",

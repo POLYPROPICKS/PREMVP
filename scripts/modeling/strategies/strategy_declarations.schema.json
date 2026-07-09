@@ -30,6 +30,10 @@
       "type": "string",
       "description": "Declaration version, e.g. phase-3d-2a-2026-07."
     },
+    "requiredForComparison": {
+      "type": "boolean",
+      "description": "If true, a future read-only comparison runner must include this strategy by default. Does NOT imply live promotion."
+    },
     "status": {
       "type": "string",
       "enum": ["READY_TO_NORMALIZE", "BLOCKED_SOURCE_CONFLICT", "MISSING_SCRIPT", "CONTRACT_STUB"]
@@ -84,7 +88,8 @@
         "tier": { "type": ["object", "null"] },
         "timingWindow": { "type": ["object", "array", "null"] },
         "volumeLiquidity": { "type": ["object", "null"] },
-        "priceBucketExclusions": { "type": ["array", "null"] }
+        "priceBucketExclusions": { "type": ["array", "null"] },
+        "formulaVersionEquals": { "type": ["string", "null"] }
       },
       "additionalProperties": false
     },
@@ -104,10 +109,13 @@
     },
     "readWriteSafety": {
       "type": "object",
-      "required": ["readOnly"],
+      "description": "Read/write safety facts. Either the compact {readOnly, notes} form or the explicit {dbReads, dbWrites, fileWrites, notes} form is accepted.",
       "properties": {
         "readOnly": { "type": "boolean" },
-        "notes": { "type": "string" }
+        "dbReads": { "type": "boolean" },
+        "dbWrites": { "type": "boolean" },
+        "fileWrites": { "type": "boolean" },
+        "notes": { "type": ["string", "array"] }
       }
     },
     "knownRisks": {

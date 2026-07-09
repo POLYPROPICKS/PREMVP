@@ -1,0 +1,41 @@
+{
+  "strategyId": "FORMULA_TRUSTED_INITIAL_V1_1_ALL",
+  "version": "phase-3d-2g-founder-override",
+  "status": "READY_TO_NORMALIZE",
+  "requiredForComparison": true,
+  "sourceType": "LIVE_DB",
+  "datasetSource": "generated_signal_pairs",
+  "selectionUnit": "all rows",
+  "oneMatchModeSupported": "NO",
+  "canonicalDedupKey": null,
+  "stakeMode": "none_in_evaluator",
+  "dateMode": "caller_supplied",
+  "filters": {
+    "formulaVersionEquals": "trusted-initial-formula-v1.1"
+  },
+  "evidence": [
+    {
+      "path": "lib/feed/types.ts",
+      "lines": "5",
+      "snippet": "export const FORMULA_VERSION = \"trusted-initial-formula-v1.1\" as const;",
+      "note": "The formula-version string this wrapper cohorts on is a real, line-verified production constant."
+    }
+  ],
+  "readWriteSafety": {
+    "dbReads": false,
+    "dbWrites": false,
+    "fileWrites": false,
+    "notes": [
+      "Declaration only. Evaluator works on caller-supplied in-memory rows; it reads no database, writes no database, and writes no files."
+    ]
+  },
+  "knownRisks": [
+    "Founder performance evidence (strong 30D) is a screenshot/chat artifact, not a committed July 8 repo report -- no July-8-dated model report exists in this repo.",
+    "Fresh 7D/14D verification is still required before promotion beyond read-only comparison.",
+    "This strategy is a formula-version cohort wrapper (select rows whose formula version equals trusted-initial-formula-v1.1), NOT a reimplementation of the internal formula algorithm."
+  ],
+  "promotionBlockedReasons": [
+    "No live promotion without a DQA-clean read-only comparison over 7D/14D/30D.",
+    "No live promotion without explicit founder approval."
+  ]
+}

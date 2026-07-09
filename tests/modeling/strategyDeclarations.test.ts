@@ -15,6 +15,7 @@ const DECLARATION_PATHS = {
   primary: "scripts/modeling/strategies/declarations/primary_v1_avoid_nba_nhl_cov_cap.json",
   alt1: "scripts/modeling/strategies/declarations/alt1_one_per_event_best_coverage.json",
   scoreGe72: "scripts/modeling/strategies/declarations/score_ge_72_family.json",
+  trustedFormula: "scripts/modeling/strategies/declarations/trusted_initial_formula_v1_1_all.json",
 };
 
 const REQUIRED_FIELDS = [
@@ -43,7 +44,7 @@ test("strategy_declarations schema file exists", () => {
   );
 });
 
-test("all four declaration files exist", () => {
+test("all declaration files exist", () => {
   for (const relPath of Object.values(DECLARATION_PATHS)) {
     assert.ok(existsSync(path.join(ROOT, relPath)), `expected ${relPath} to exist`);
   }
@@ -142,6 +143,56 @@ test("registry JSON points READY declarations to actual declarationPath files", 
       `declarationPath for ${rawName} must point to an existing file`,
     );
   }
+});
+
+test("FORMULA_TRUSTED_INITIAL_V1_1_ALL declaration is a mandatory-comparison formula-version wrapper", () => {
+  const declaration = readJson(DECLARATION_PATHS.trustedFormula) as {
+    strategyId: string;
+    status: string;
+    requiredForComparison?: boolean;
+    selectionUnit: string;
+    filters: { formulaVersionEquals?: string };
+  };
+
+  assert.equal(declaration.strategyId, "FORMULA_TRUSTED_INITIAL_V1_1_ALL");
+  assert.equal(declaration.status, "READY_TO_NORMALIZE");
+  assert.equal(declaration.requiredForComparison, true);
+  assert.equal(declaration.selectionUnit, "all rows");
+  assert.equal(declaration.filters.formulaVersionEquals, "trusted-initial-formula-v1.1");
+});
+
+test("registry marks FORMULA_TRUSTED_INITIAL_V1_1_ALL as ready wrapper, but raw formula stays FORMULA_MODEL", () => {
+  const registry = readJson("modeling/model_registry/model_strategy_registry.json") as {
+    entries: Array<{
+      rawName: string;
+      normalizedName?: string;
+      category?: string;
+      requiredForComparison?: boolean;
+      lineVerified?: boolean;
+      declarationPath?: string;
+    }>;
+  };
+
+  const wrapper = registry.entries.find(
+    (e) => e.normalizedName === "FORMULA_TRUSTED_INITIAL_V1_1_ALL",
+  );
+  assert.ok(wrapper, "expected a registry entry for the FORMULA_TRUSTED_INITIAL_V1_1_ALL wrapper");
+  assert.equal(wrapper?.category, "STRATEGY_POLICY");
+  assert.equal(wrapper?.requiredForComparison, true);
+  assert.equal(wrapper?.lineVerified, true);
+  assert.ok(wrapper?.declarationPath, "expected declarationPath on the wrapper entry");
+  assert.ok(
+    existsSync(path.join(ROOT, wrapper!.declarationPath!)),
+    "wrapper declarationPath must point to an existing file",
+  );
+
+  // The raw formula model entry must remain classified as a FORMULA_MODEL,
+  // not silently reclassified into a strategy policy.
+  const rawFormula = registry.entries.find(
+    (e) => e.rawName === "trusted-initial-formula-v1.1",
+  );
+  assert.ok(rawFormula, "expected the raw formula-model entry to still exist");
+  assert.equal(rawFormula?.category, "FORMULA_MODEL");
 });
 
 test("ALT2/ALT3/ALT_SM registry entries are not marked READY_TO_NORMALIZE", () => {

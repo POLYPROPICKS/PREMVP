@@ -220,3 +220,91 @@ test("isRowSelectedByFilters and applyStrategyFilters are directly usable pure b
   assert.equal(passed.length, 1);
   assert.equal(rejectedByFilter.scoreThreshold, 1);
 });
+
+const TRUSTED_FORMULA = "trusted-initial-formula-v1.1";
+
+function trustedFormulaDeclaration(): StrategyDeclaration {
+  return baselineDeclaration({
+    strategyId: "FORMULA_TRUSTED_INITIAL_V1_1_ALL",
+    selectionUnit: "all rows",
+    filters: { formulaVersionEquals: TRUSTED_FORMULA },
+  });
+}
+
+test("14. formulaVersionEquals selects rows via formula_version field", () => {
+  const rows: EvaluatorRow[] = [
+    { id: "a", formula_version: TRUSTED_FORMULA },
+    { id: "b", formula_version: "some-other-formula" },
+  ];
+  const result = evaluateStrategyDeclaration(rows, trustedFormulaDeclaration());
+
+  assert.deepEqual(result.selectedRows.map((r) => r.id), ["a"]);
+  assert.equal(result.diagnostics.rejectedByFilter.formulaVersionEquals, 1);
+});
+
+test("15. formulaVersionEquals selects rows via metric_formula_version field", () => {
+  const rows: EvaluatorRow[] = [
+    { id: "a", metric_formula_version: TRUSTED_FORMULA },
+    { id: "b", metric_formula_version: "other" },
+  ];
+  const result = evaluateStrategyDeclaration(rows, trustedFormulaDeclaration());
+
+  assert.deepEqual(result.selectedRows.map((r) => r.id), ["a"]);
+});
+
+test("16. formulaVersionEquals selects rows via formulaVersion field", () => {
+  const rows: EvaluatorRow[] = [
+    { id: "a", formulaVersion: TRUSTED_FORMULA },
+    { id: "b", formulaVersion: "other" },
+  ];
+  const result = evaluateStrategyDeclaration(rows, trustedFormulaDeclaration());
+
+  assert.deepEqual(result.selectedRows.map((r) => r.id), ["a"]);
+});
+
+test("17. formulaVersionEquals selects rows via diagnostics.formulaVersion (object and JSON-string)", () => {
+  const rows: EvaluatorRow[] = [
+    { id: "a", diagnostics: { formulaVersion: TRUSTED_FORMULA } },
+    { id: "b", diagnostics: { formulaVersion: "other" } },
+    { id: "c", diagnostics: JSON.stringify({ formula_version: TRUSTED_FORMULA }) },
+    { id: "d", diagnostics: "not valid json {{{" },
+  ];
+  const result = evaluateStrategyDeclaration(rows, trustedFormulaDeclaration());
+
+  assert.deepEqual(result.selectedRows.map((r) => r.id), ["a", "c"]);
+});
+
+test("18. formulaVersionEquals rejects non-matching formula versions", () => {
+  const rows: EvaluatorRow[] = [
+    { id: "a", formula_version: "v2-lite-growth-safe" },
+    { id: "b", metric_formula_version: "shadow-strategic-sports-v1" },
+    { id: "c" },
+  ];
+  const result = evaluateStrategyDeclaration(rows, trustedFormulaDeclaration());
+
+  assert.equal(result.selectedRows.length, 0);
+  assert.equal(result.diagnostics.rejectedByFilter.formulaVersionEquals, 3);
+});
+
+test("19. formulaVersionEquals is an exact string match, not a substring match", () => {
+  const rows: EvaluatorRow[] = [
+    { id: "exact", formula_version: TRUSTED_FORMULA },
+    { id: "prefix", formula_version: "trusted-initial-formula-v1.10" },
+    { id: "suffix", formula_version: "x-trusted-initial-formula-v1.1" },
+  ];
+  const result = evaluateStrategyDeclaration(rows, trustedFormulaDeclaration());
+
+  assert.deepEqual(result.selectedRows.map((r) => r.id), ["exact"]);
+});
+
+test("20. formulaVersionEquals does not mutate input rows", () => {
+  const rows: EvaluatorRow[] = [
+    { id: "a", diagnostics: { formulaVersion: TRUSTED_FORMULA } },
+    { id: "b", formula_version: "other" },
+  ];
+  const snapshot = JSON.parse(JSON.stringify(rows));
+
+  evaluateStrategyDeclaration(rows, trustedFormulaDeclaration());
+
+  assert.deepEqual(rows, snapshot);
+});

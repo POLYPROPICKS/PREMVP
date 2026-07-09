@@ -1,4 +1,4 @@
-# Model Strategy Registry — Phase 3C.2 / 3D.1 / 3D.2A
+# Model Strategy Registry — Phase 3C.2 / 3D.1 / 3D.2A / 3D.2G
 
 ## Purpose
 
@@ -11,6 +11,27 @@ Companion machine-readable file: `modeling/model_registry/model_strategy_registr
 
 Source evidence: Phase 3C.1 inspect report (branch
 `claude/dqa-r1-baseline-verify-itidmp`, HEAD `fe6f87e`).
+
+## Founder mandatory comparison strategy (Phase 3D.2G)
+
+- **`FORMULA_TRUSTED_INITIAL_V1_1_ALL`** (rawName `FORMULA::trusted-initial-formula-v1.1`)
+  — a founder-mandated, mandatory-comparison strategy declaration
+  (`requiredForComparison: true`,
+  `scripts/modeling/strategies/declarations/trusted_initial_formula_v1_1_all.json`).
+
+It is a **formula-version cohort wrapper**, not a reimplementation of the
+internal formula algorithm: it selects all rows whose formula-version field
+equals `trusted-initial-formula-v1.1` (`selectionUnit: "all rows"`,
+`filters.formulaVersionEquals`). The raw formula itself remains classified as
+a `FORMULA_MODEL` in the separate `trusted-initial-formula-v1.1` registry
+entry, which is untouched by this promotion.
+
+Future read-only comparison runners **must include** this strategy by default
+because of its `requiredForComparison: true` flag. It is **not live-approved**:
+per its `promotionBlockedReasons`, no live promotion may happen without fresh
+7D/14D windows, a DQA-clean read-only comparison, and explicit founder
+approval. The founder's strong-30D performance evidence is a screenshot/chat
+artifact — no July-8-dated model report exists in this repo (Phase 3D.2F).
 
 ## Phase 3D.1 line-verification update
 

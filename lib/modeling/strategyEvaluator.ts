@@ -46,6 +46,7 @@ export interface StrategyFilters {
   coverageCap?: { excludedBucket: PriceBucket } | null;
   timingWindow?: { excludedHoursUntilStart: { min: number; max: number } } | null;
   priceBucketExclusions?: PriceBucket[] | null;
+  formulaVersionEquals?: string | null;
   [key: string]: unknown;
 }
 
@@ -119,6 +120,58 @@ const PRICE_FIELD_ALIASES = ["entryPrice", "entry_price", "entry_price_num"] as 
 const LEAGUE_FIELD_ALIASES = ["league", "sport", "sport_key", "event_league"] as const;
 const HOURS_UNTIL_START_FIELD_ALIASES = ["hoursUntilStart", "hours_until_start"] as const;
 
+// Top-level row fields that may carry a formula-version string.
+const FORMULA_VERSION_TOP_FIELD_ALIASES = [
+  "formula_version",
+  "metric_formula_version",
+  "formulaVersion",
+  "formula_feature_version",
+] as const;
+
+// Keys read directly off a `diagnostics` object (no arbitrary deep/text scan).
+const FORMULA_VERSION_DIAGNOSTICS_KEYS = [
+  "formulaVersion",
+  "formula_version",
+  "metricFormulaVersion",
+] as const;
+
+/**
+ * Resolves the row's formula-version string from any supported field. Reads
+ * only known top-level aliases and known keys off a `diagnostics` object. If
+ * `diagnostics` is a string, it is parsed with a guarded JSON.parse; a parse
+ * failure is ignored silently (no logging, no payload exposure). Returns the
+ * first non-empty string found, or null.
+ */
+function getFormulaVersionField(row: EvaluatorRow): string | null {
+  const topLevel = getStringField(row, FORMULA_VERSION_TOP_FIELD_ALIASES);
+  if (topLevel !== null) return topLevel;
+
+  const diagnostics = row.diagnostics;
+  let diagnosticsObj: Record<string, unknown> | null = null;
+  if (diagnostics && typeof diagnostics === "object" && !Array.isArray(diagnostics)) {
+    diagnosticsObj = diagnostics as Record<string, unknown>;
+  } else if (typeof diagnostics === "string" && diagnostics.trim() !== "") {
+    try {
+      const parsed = JSON.parse(diagnostics);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        diagnosticsObj = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Malformed diagnostics string: ignore, do not log the payload.
+      diagnosticsObj = null;
+    }
+  }
+
+  if (diagnosticsObj) {
+    for (const key of FORMULA_VERSION_DIAGNOSTICS_KEYS) {
+      const value = diagnosticsObj[key];
+      if (typeof value === "string" && value.trim() !== "") return value;
+    }
+  }
+
+  return null;
+}
+
 function insideBucket(coverage: number, price: number, bucket: PriceBucket): boolean {
   return (
     coverage >= bucket.coverageMin &&
@@ -172,6 +225,13 @@ function checkTimingWindow(
   return hours >= window.min && hours < window.max ? "reject" : "pass";
 }
 
+function checkFormulaVersionEquals(row: EvaluatorRow, expected: string): FilterCheckResult {
+  const actual = getFormulaVersionField(row);
+  if (actual === null) return "reject";
+  // Exact string equality only -- never substring/prefix matching.
+  return actual === expected ? "pass" : "reject";
+}
+
 /**
  * Checks a single row against every populated filter in `filters`. Returns
  * true only if the row passes all active filters. Pure, no mutation.
@@ -195,6 +255,9 @@ export function isRowSelectedByFilters(row: EvaluatorRow, filters: StrategyFilte
   if (filters.timingWindow && filters.timingWindow.excludedHoursUntilStart) {
     const timingResult = checkTimingWindow(row, filters.timingWindow.excludedHoursUntilStart);
     if (timingResult === "reject") return false;
+  }
+  if (typeof filters.formulaVersionEquals === "string") {
+    if (checkFormulaVersionEquals(row, filters.formulaVersionEquals) !== "pass") return false;
   }
   return true;
 }
@@ -220,6 +283,7 @@ export function applyStrategyFilters<T extends EvaluatorRow>(
   const hasPriceBucketExclusions =
     Array.isArray(filters.priceBucketExclusions) && filters.priceBucketExclusions.length > 0;
   const hasTimingWindow = Boolean(filters.timingWindow && filters.timingWindow.excludedHoursUntilStart);
+  const hasFormulaVersionEquals = typeof filters.formulaVersionEquals === "string";
 
   for (const row of rows) {
     let rowPasses = true;
@@ -275,6 +339,14 @@ export function applyStrategyFilters<T extends EvaluatorRow>(
         rowPasses = false;
       } else if (outcome === "missing-timing-field") {
         missingTimingField += 1;
+      }
+    }
+
+    if (hasFormulaVersionEquals) {
+      const outcome = checkFormulaVersionEquals(row, filters.formulaVersionEquals as string);
+      if (outcome !== "pass") {
+        rejectedByFilter.formulaVersionEquals = (rejectedByFilter.formulaVersionEquals ?? 0) + 1;
+        rowPasses = false;
       }
     }
 

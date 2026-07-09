@@ -25,6 +25,21 @@ READY_TO_NORMALIZE`):
 - `scripts/modeling/strategies/declarations/alt1_one_per_event_best_coverage.json`
 - `scripts/modeling/strategies/declarations/score_ge_72_family.json`
 
+### Mandatory comparison declarations (Phase 3D.2G)
+
+- `scripts/modeling/strategies/declarations/trusted_initial_formula_v1_1_all.json`
+  — `FORMULA_TRUSTED_INITIAL_V1_1_ALL`, a founder-mandated declaration with
+  `requiredForComparison: true`.
+
+This is a **formula-version cohort wrapper**, not a live strategy and not a
+reimplementation of the internal formula algorithm: it selects all rows whose
+formula-version field equals `trusted-initial-formula-v1.1` (via
+`filters.formulaVersionEquals`, matched exactly against `formula_version` /
+`metric_formula_version` / `formulaVersion` / `diagnostics.formulaVersion` /
+`diagnostics.formula_version`). A future read-only comparison runner **must
+include `requiredForComparison` strategies by default**. It is **not
+live-approved** — see its `promotionBlockedReasons`.
+
 Blocked strategies pending founder decision (Phase 3D.1 found source
 conflicts between the strategy's name and its actual implementation — see
 `modeling/model_registry/model_strategy_registry.md` Phase 3D.1 section for
