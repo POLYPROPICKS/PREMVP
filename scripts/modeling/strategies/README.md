@@ -39,6 +39,31 @@ from `lib/modeling/onePerMatchBacktest.ts` into a standalone, side-effect-free
 module — not a database backtest run. No strategy declaration in this
 directory authorizes running a backtest or querying live data.
 
+## Phase 3D.2B: pure event group selection helper
+
+`lib/modeling/eventGroupSelection.ts` is a pure, side-effect-free helper
+extracted from the fallback-chain logic in
+`lib/modeling/onePerMatchBacktest.ts`'s internal `eventGroup()` function. It
+exports `EVENT_GROUP_KEY_FIELD_PRIORITY`, `buildEventGroupKey`,
+`groupRowsByEventGroup`, and `selectFirstPerEventGroup`. It:
+
+- does not run strategies or backtests;
+- does not read from or write to any database;
+- does not persist anything to disk;
+- takes a caller-supplied ranking comparator rather than embedding any
+  strategy-specific score/coverage logic itself.
+
+It is **not yet wired into** `lib/modeling/onePerMatchBacktest.ts` or any
+strategy declaration -- this phase only introduces the standalone, tested
+module. A future runner should use this helper (not a re-implementation of
+the fallback chain) for any one-event/one-match selection, so that the
+canonical dedup key stays in one place instead of drifting across scripts.
+
+`ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH`, `ALT3_V1_AVOID_NBA_NHL`, and
+`ALT_SM_GUARD` / `ALT_SM_GUARD_ON_PRIMARY` remain blocked pending founder
+decision (see the "Blocked strategies" list above) -- this phase does not
+change their status.
+
 ## Rules for future strategy scripts
 
 1. **Read-only by default.** A strategy script's selection/scoring logic
