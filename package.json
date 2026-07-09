@@ -85,7 +85,8 @@
     "liquidity:auto-capture": "tsx scripts/liquidity/run-liquidity-auto-capture.mjs",
     "liquidity:auto-capture:plan": "tsx scripts/liquidity/run-liquidity-auto-capture.mjs --plan --days 7",
     "test:liquidity": "node --import tsx --test tests/liquidity/*.test.ts",
-    "test:analytics": "node --import tsx --test tests/analytics/*.test.ts"
+    "test:analytics": "node --import tsx --test tests/analytics/*.test.ts",
+    "test:modeling": "node --import tsx --test tests/modeling/*.test.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.105.1",
