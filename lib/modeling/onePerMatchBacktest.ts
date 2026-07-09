@@ -2,6 +2,7 @@ import ExcelJS from "exceljs";
 import { createHash } from "crypto";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { buildEventGroupKey } from "./eventGroupSelection";
 
 export type BacktestRawRow = Record<string, unknown>;
 
@@ -183,30 +184,6 @@ function getPath(row: BacktestRawRow, keys: string[]): unknown {
   return null;
 }
 
-function normalizeText(v: string): string {
-  return v.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
-}
-
-function isWeakKey(v: string): boolean {
-  return /^weak_|^WEAK_|condition_id|matched-activity|\$\d+/i.test(v);
-}
-
-function eventGroup(row: BacktestRawRow): { key: string; source: string } {
-  const matchFamily = str(getPath(row, ["match_family_key", "matchFamilyKey"]));
-  if (matchFamily && !isWeakKey(matchFamily)) return { key: `match:${normalizeText(matchFamily)}`, source: "match_family_key" };
-  const canonical = str(getPath(row, ["canonical_event_key", "canonicalEventKey"]));
-  if (canonical) return { key: `canonical:${normalizeText(canonical)}`, source: "canonical_event_key" };
-  const parent = str(getPath(row, ["parent_event_key", "parentEventKey"]));
-  if (parent) return { key: `parent:${normalizeText(parent)}`, source: "parent_event_key" };
-  const eventSlug = str(getPath(row, ["event_slug", "event_key", "eventSlug", "eventKey"]));
-  if (eventSlug && !/^\$\d+k?\s+matched/i.test(eventSlug)) return { key: `slug:${normalizeText(eventSlug)}`, source: "event_slug" };
-  const eventTitle = str(getPath(row, ["event_title", "eventTitle", "title", "question"]));
-  if (eventTitle) return { key: `title:${normalizeText(eventTitle)}`, source: "event_title" };
-  const market = str(getPath(row, ["market_slug", "marketSlug"]));
-  if (market && !/^\$\d+k?\s+matched/i.test(market)) return { key: `market:${normalizeText(market)}`, source: "market_slug_fallback" };
-  return { key: `condition:${str(getPath(row, ["condition_id", "conditionId"]))}`, source: "condition_fallback" };
-}
-
 function tierOf(row: BacktestRawRow, score: number | null, coverage: number | null): string {
   const explicit = str(getPath(row, ["tier", "strategy"]));
   if (/TIER1/i.test(explicit)) return "TIER1";
@@ -243,7 +220,7 @@ function normalizePick(row: BacktestRawRow): NormalizedPick | null {
   const entryPrice = num(getPath(row, ["entry_price_num", "entry_price", "entryPrice"]));
   const out = outcome(row, entryPrice);
   if (out.won === null && out.returnPct === null) return null;
-  const group = eventGroup(row);
+  const group = buildEventGroupKey(row);
   const stake = num(getPath(row, ["stake_usd", "stakeUsd"])) ?? 10;
   const tier = tierOf(row, score, coverage);
   return {
