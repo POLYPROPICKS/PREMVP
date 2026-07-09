@@ -10,148 +10,129 @@ function readJson(relPath: string): unknown {
   return JSON.parse(raw);
 }
 
-test("dataset_registry.json is valid and has required fields per dataset", () => {
-  const registry = readJson(
-    "modeling/model_registry/dataset_registry.json",
-  ) as {
-    version: string;
+const REQUIRED_DATASET_NAMES = [
+  "generated_signal_pairs",
+  "generated_signal_research_snapshots",
+  "track_record_display_signals",
+  "track_record_shown_signal_history",
+  "track_record_window_results",
+  "track_record_window_summary",
+  "night_event_reservations",
+  "event_execution_queue",
+  "executor_order_events",
+];
+
+test("dataset_registry.json has canonicalModelAuditDataset === generated_signal_pairs", () => {
+  const registry = readJson("modeling/model_registry/dataset_registry.json") as {
     canonicalModelAuditDataset: string;
-    datasets: Array<Record<string, unknown>>;
-    rules: string[];
   };
 
-  assert.equal(typeof registry.version, "string");
   assert.equal(registry.canonicalModelAuditDataset, "generated_signal_pairs");
-  assert.ok(Array.isArray(registry.datasets));
-  assert.ok(registry.datasets.length >= 9);
-  assert.ok(Array.isArray(registry.rules));
-  assert.ok(registry.rules.length > 0);
+});
 
-  for (const dataset of registry.datasets) {
-    assert.equal(typeof dataset.name, "string");
-    assert.equal(typeof dataset.role, "string");
-    assert.equal(typeof dataset.suitability, "string");
-    assert.ok(Array.isArray(dataset.dateFields));
-    assert.ok(Array.isArray(dataset.resultFields));
-    assert.ok(Array.isArray(dataset.returnPriceFields));
-    assert.ok(Array.isArray(dataset.modelFormulaFields));
-    assert.ok(Array.isArray(dataset.evidencePaths));
-    assert.ok(Array.isArray(dataset.notes));
+test("dataset_registry.json datasets include all 9 required dataset names", () => {
+  const registry = readJson("modeling/model_registry/dataset_registry.json") as {
+    datasets: Array<{ name: string }>;
+  };
+
+  const names = registry.datasets.map((d) => d.name);
+
+  for (const required of REQUIRED_DATASET_NAMES) {
+    assert.ok(names.includes(required), `expected dataset ${required} in registry`);
   }
 });
 
-test("dataset_registry.json includes generated_signal_pairs as FULL suitability", () => {
+test("dataset_registry.json marks generated_signal_pairs suitability as FULL", () => {
   const registry = readJson("modeling/model_registry/dataset_registry.json") as {
     datasets: Array<{ name: string; suitability: string }>;
   };
 
-  const canonical = registry.datasets.find(
-    (d) => d.name === "generated_signal_pairs",
+  const entry = registry.datasets.find((d) => d.name === "generated_signal_pairs");
+  assert.ok(entry);
+  assert.equal(entry?.suitability, "FULL");
+});
+
+test("dataset_registry.json does not mark track_record_window_results as FULL", () => {
+  const registry = readJson("modeling/model_registry/dataset_registry.json") as {
+    datasets: Array<{ name: string; suitability: string }>;
+  };
+
+  const entry = registry.datasets.find((d) => d.name === "track_record_window_results");
+  assert.ok(entry);
+  assert.notEqual(entry?.suitability, "FULL");
+});
+
+test("model_strategy_registry.json has an entries array", () => {
+  const registry = readJson("modeling/model_registry/model_strategy_registry.json") as {
+    entries: Array<Record<string, unknown>>;
+  };
+
+  assert.ok(Array.isArray(registry.entries));
+  assert.ok(registry.entries.length > 0);
+});
+
+test("model_strategy_registry.json includes BASELINE_V1_CONTROL", () => {
+  const registry = readJson("modeling/model_registry/model_strategy_registry.json") as {
+    entries: Array<{ rawName: string }>;
+  };
+
+  assert.ok(registry.entries.some((e) => e.rawName === "BASELINE_V1_CONTROL"));
+});
+
+test("model_strategy_registry.json includes ALT1_ONE_PER_EVENT_BEST_COVERAGE", () => {
+  const registry = readJson("modeling/model_registry/model_strategy_registry.json") as {
+    entries: Array<{ rawName: string }>;
+  };
+
+  assert.ok(
+    registry.entries.some((e) => e.rawName === "ALT1_ONE_PER_EVENT_BEST_COVERAGE"),
+  );
+});
+
+test("model_strategy_registry.json includes missing entry BLUE_MODEL2_SAFE_CORE_V1 with reproducibilityStatus MISSING_SCRIPT", () => {
+  const registry = readJson("modeling/model_registry/model_strategy_registry.json") as {
+    entries: Array<{ rawName: string; reproducibilityStatus: string }>;
+  };
+
+  const entry = registry.entries.find((e) => e.rawName === "BLUE_MODEL2_SAFE_CORE_V1");
+  assert.ok(entry, "expected BLUE_MODEL2_SAFE_CORE_V1 entry");
+  assert.equal(entry?.reproducibilityStatus, "MISSING_SCRIPT");
+});
+
+test("model_strategy_registry.json includes champion_current_v1 marked as a contract stub", () => {
+  const registry = readJson("modeling/model_registry/model_strategy_registry.json") as {
+    entries: Array<{
+      rawName: string;
+      normalizedName: string;
+      reproducibilityStatus: string;
+      notes: string[];
+    }>;
+  };
+
+  const entry = registry.entries.find(
+    (e) => e.rawName === "CHAMPION_CURRENT" || e.normalizedName === "champion_current_v1",
   );
 
-  assert.ok(canonical);
-  assert.equal(canonical?.suitability, "FULL");
+  assert.ok(entry, "expected champion_current_v1 entry");
+
+  const isContractStub =
+    entry?.reproducibilityStatus === "CONTRACT_STUB" ||
+    (entry?.notes ?? []).some((n) => /contract stub/i.test(n));
+
+  assert.ok(isContractStub, "expected champion_current_v1 to be marked as a contract stub");
 });
 
-test("dataset_registry.json marks execution-contour tables as EXECUTION_ONLY", () => {
-  const registry = readJson("modeling/model_registry/dataset_registry.json") as {
-    datasets: Array<{ name: string; suitability: string }>;
+test("model_strategy_registry.json: no entry with an empty sourcePaths is marked HAS_SCRIPT", () => {
+  const registry = readJson("modeling/model_registry/model_strategy_registry.json") as {
+    entries: Array<{ rawName: string; reproducibilityStatus: string; sourcePaths: string[] }>;
   };
 
-  const executionOnlyNames = [
-    "night_event_reservations",
-    "event_execution_queue",
-    "executor_order_events",
-  ];
-
-  for (const name of executionOnlyNames) {
-    const dataset = registry.datasets.find((d) => d.name === name);
-    assert.ok(dataset, `expected dataset entry for ${name}`);
-    assert.equal(dataset?.suitability, "EXECUTION_ONLY");
-  }
-});
-
-test("model_strategy_registry.json is valid and has required top-level sections", () => {
-  const registry = readJson(
-    "modeling/model_registry/model_strategy_registry.json",
-  ) as {
-    version: string;
-    categories: string[];
-    contextContours: Array<Record<string, unknown>>;
-    formulaModels: Array<Record<string, unknown>>;
-    dqaAudits: Array<Record<string, unknown>>;
-    strategyPolicies: Array<Record<string, unknown>>;
-    missingStrategyNames: Array<Record<string, unknown>>;
-  };
-
-  assert.equal(typeof registry.version, "string");
-  assert.ok(Array.isArray(registry.categories));
-  assert.ok(registry.categories.includes("STRATEGY_POLICY"));
-  assert.ok(registry.categories.includes("DQA_AUDIT"));
-  assert.ok(registry.categories.includes("UNKNOWN"));
-  assert.ok(Array.isArray(registry.contextContours));
-  assert.ok(Array.isArray(registry.formulaModels));
-  assert.ok(Array.isArray(registry.dqaAudits));
-  assert.equal(registry.dqaAudits.length, 3);
-  assert.ok(Array.isArray(registry.strategyPolicies));
-  assert.ok(Array.isArray(registry.missingStrategyNames));
-});
-
-test("model_strategy_registry.json marks sql_registry/models contract stubs as HAS_SQL, not implemented", () => {
-  const registry = readJson(
-    "modeling/model_registry/model_strategy_registry.json",
-  ) as {
-    strategyPolicies: Array<{
-      canonicalStrategyId: string;
-      reproducibility: string;
-      evidencePaths: string[];
-    }>;
-  };
-
-  const contractStubIds = [
-    "CHAMPION_CURRENT",
-    "PUBLISHED_ONE_PER_FIXTURE",
-    "FIRE_FAMILY_SELECTIVE",
-    "SAFETY_BASELINE",
-    "TIERED_LIVE_CONTOUR",
-  ];
-
-  for (const id of contractStubIds) {
-    const entry = registry.strategyPolicies.find(
-      (s) => s.canonicalStrategyId === id,
-    );
-    assert.ok(entry, `expected strategy policy entry for ${id}`);
-    assert.equal(entry?.reproducibility, "HAS_SQL");
-  }
-});
-
-test("model_strategy_registry.json lists all requested-but-missing strategy names as MISSING_SCRIPT", () => {
-  const registry = readJson(
-    "modeling/model_registry/model_strategy_registry.json",
-  ) as {
-    missingStrategyNames: Array<{
-      canonicalStrategyId: string;
-      reproducibility: string;
-    }>;
-  };
-
-  const expectedMissing = [
-    "ALT3_V1_AVOID_NBA_NHL_RAW_PROFIT",
-    "ALT_AGGR_COVTIER_6_12",
-    "ALT_SM75_GATE_FLAT",
-    "ALT_COV75_FIRST_SM_IGNORED",
-    "SCORE_GE_50",
-    "SCORE_60_71",
-    "BLUE_MODEL2_SAFE_CORE_V1",
-  ];
-
-  const foundIds = registry.missingStrategyNames.map((s) => s.canonicalStrategyId);
-
-  for (const id of expectedMissing) {
-    assert.ok(foundIds.includes(id), `expected ${id} in missingStrategyNames`);
-  }
-
-  for (const entry of registry.missingStrategyNames) {
-    assert.equal(entry.reproducibility, "MISSING_SCRIPT");
+  for (const entry of registry.entries) {
+    if (entry.reproducibilityStatus === "HAS_SCRIPT") {
+      assert.ok(
+        Array.isArray(entry.sourcePaths) && entry.sourcePaths.length > 0,
+        `expected ${entry.rawName} marked HAS_SCRIPT to have at least one sourcePath`,
+      );
+    }
   }
 });

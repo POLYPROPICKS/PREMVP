@@ -12,99 +12,118 @@ Companion machine-readable file: `modeling/model_registry/model_strategy_registr
 Source evidence: Phase 3C.1 inspect report (branch
 `claude/dqa-r1-baseline-verify-itidmp`, HEAD `fe6f87e`).
 
-## Categories
+## Definitions
 
-- `CONTEXT_CONTOUR` — a named project/roadmap phase or execution contour
-  (FireModel, Contur3, Blue_model2, etc.), not itself an executable model.
-- `FORMULA_MODEL` — a named PnL/return calculation formula or scoring
-  version key.
-- `STRATEGY_POLICY` — a named selection/filter policy applied to candidates.
-- `EXECUTION_POLICY` — a named live-execution behavior (fallback tiers,
-  contour routing).
-- `DATASET_ARTIFACT` — a named SQL registry contract describing a dataset
-  view/model definition.
-- `DQA_AUDIT` — one of the DQA-R1/R2/R3 pure audit modules.
-- `UNKNOWN` — name requested/expected but not found anywhere in the repo.
+- **Context contour** — a named project/roadmap phase or execution
+  environment (e.g. `FireModel`, `Contur3`, `Blue_model2`/`BLUE_MODEL3`,
+  `Ice1`). A context contour is never itself an executable formula or
+  selection rule — it is the umbrella label under which formulas, strategies,
+  and execution policies exist.
+- **Formula model** — a named PnL/return calculation or scoring version key
+  (e.g. `realized-flat-stake-v1`, `trusted-initial-formula-v1.1`). A formula
+  model answers "how is the return/score number computed?", not "which rows
+  are selected?".
+- **Strategy policy** — a named selection/filter rule applied to a set of
+  candidate rows to decide which ones are bet on and how (e.g.
+  `BASELINE_V1_CONTROL`, `ALT1_ONE_PER_EVENT_BEST_COVERAGE`). A strategy
+  policy consumes a dataset and (usually) a formula model, and answers
+  "which rows, filtered how, staked how?".
+- **Execution policy** — a named live-execution behavior governing how an
+  already-selected strategy is routed to real orders (e.g.
+  `TIERED_LIVE_CONTOUR`'s tier fallback). Execution policy is downstream of
+  strategy policy and is not itself a scoring or selection rule.
 
-## Important registry truth (do not overstate reproducibility)
+These four are distinct and must not be conflated: a context contour is not
+a formula model; a formula model is not a strategy policy; a strategy policy
+is not an execution policy. Mislabeling any of these in future work will
+produce false claims of reproducibility.
 
-- `modeling/sql_registry/models/*.sql` files are **CONTRACT_STUB** files —
-  each contains only metadata comments plus a placeholder
-  `select '<sql_id>' as sql_id;`. They are NOT full executable strategy
-  logic. Do not label them as implemented executable strategies.
-- `scripts/modeling/analyze-ice1-freeze.py` is safe to reuse for backtest
-  patterns because it reads a frozen local CSV (`ICE1_MODEL_INPUT_PATH`), not
-  a live DB.
-- `scripts/modeling/one-per-match-backtest.ts` reads `generated_signal_pairs`
-  from the DB and has a persist/write path (`persistOnePerMatchBacktest`), so
-  it is NOT safe to reuse as a read-only runner as-is.
-- `lib/modeling/onePerMatchBacktest.ts` mixes pure backtest functions
-  (`runOnePerMatchBacktestFromRows`) with persist/write functions
-  (`persistOnePerMatchBacktest`, `writeOnePerMatchSummary`) in the same
-  module; the pure function can be reused, but the module needs a refactor
-  to separate read-only logic from write logic before it can be a safe
-  backtest primitive.
-- `scripts/fire-model/queryRunner.ts` is a good example of the read-only,
-  registry-bound query pattern (`runRegisteredQuery`) — a reasonable model
-  for how future strategy comparison runners should read data.
+## Contract-stub warning
 
-## Context Contours
+`modeling/sql_registry/models/*.sql` files (`champion_current_v1.sql`,
+`published_one_per_fixture_v1.sql`, `fire_family_selective_v1.sql`,
+`safety_baseline_v1.sql`, `tiered_live_contour_v1.sql`) are
+**CONTRACT_STUB** files — each contains only metadata comments (`sql_id`,
+`purpose`, `source_tables`, `output_grain`, `expected_columns`) plus a
+placeholder `select '<sql_id>' as sql_id;`. They are **NOT** full executable
+strategy logic. Do not label them as implemented executable strategies, and
+do not promote a strategy to live/primary status based on a contract stub
+alone — see `scripts/modeling/strategies/README.md` promotion rule.
 
-| raw_name | category | status | evidence | notes |
-|---|---|---|---|---|
-| FireModel / FIREMODEL | CONTEXT_CONTOUR | baseline framework/research family | `modeling/fire_model_registry.json:1`; `modeling/sql_registry/README.md:1`; `scripts/firemodel1-*.ts` | Umbrella framework name for the modeling registry + FireModel1 script family. |
-| Contur3 | CONTEXT_CONTOUR | live execution contour | `scripts/contur3/*`; `docs/operations/CONTUR3_*` | Live execution contour, not a modeling dataset or formula. |
-| Blue_model2 | CONTEXT_CONTOUR | superseded | `docs/ops/BLUE_MODEL2_ROADMAP.md:1` | "Blue_model2 — Contur3 Producer Roadmap". |
-| BLUE_MODEL3 | CONTEXT_CONTOUR | current/superseding roadmap | `docs/ops/BLUE_MODEL3_ROADMAP.md:4,30` | Explicitly supersedes Blue_model2 scope. |
-| Ice1 | CONTEXT_CONTOUR | frozen research sprint | `scripts/modeling/analyze-ice1-freeze.py:714` | Frozen CSV-based research sprint, not live. |
-| Ice1_M_Roadmap | UNKNOWN | not found | — | Requested name not present anywhere in the repo. |
-| Model_Review_Class1 | UNKNOWN | roadmap label only | — | Used as a task-routing label in agent prompts; not a repo artifact. |
+## One-match dedup gap
 
-## Formula Models
+Multiple tables/scripts appear to represent "one row per match/event"
+deduplication, but under different field names with no confirmed single
+canonical key:
 
-| raw_name | category | status | evidence | notes |
-|---|---|---|---|---|
-| trusted-initial-formula-v1.1 | FORMULA_MODEL | status unknown, grep-hit only | repo-wide grep hits | Full computation logic not read line-by-line during Phase 3C.1; do not assume behavior beyond the name. |
-| v2-lite-growth-safe | FORMULA_MODEL | status unknown, grep-hit only | repo-wide grep hits | Same caveat as above. |
-| shadow-strategic-sports-v1 | FORMULA_MODEL | shadow/research, grep-hit only | repo-wide grep hits | Same caveat as above. |
-| shadow-firemodel1_1_research_v0 | FORMULA_MODEL | shadow/research, grep-hit only | repo-wide grep hits | Same caveat as above. |
-| realized-flat-stake-v1 | FORMULA_MODEL | live default for display window results | `supabase/migrations/20260702_track_record_window_results.sql` (`metric_formula_version DEFAULT 'realized-flat-stake-v1'`) | The only formula key confirmed live/default in this repo. |
+- `match_family_key` (used in `night_event_reservations`,
+  `event_execution_queue`, `lib/modeling/onePerMatchBacktest.ts`)
+- `event_group_key` (used in `lib/modeling/onePerMatchBacktest.ts`)
+- `normalized_match_key` (used in `track_record_shown_signal_history`,
+  `track_record_window_results`)
 
-## DQA Audits
+Whether these three keys are guaranteed to agree on the same physical
+match/event across all tables has not been verified. This is an open gap:
+any strategy claiming `oneMatchModeSupported: YES` must state which of these
+keys it actually uses, and that key's cross-table consistency should be
+checked (ideally via a future DQA rule) before being trusted for
+one-per-match dedup guarantees.
 
-| raw_name | category | status | evidence |
-|---|---|---|---|
-| DQA-R1 (resultFieldConsistency) | DQA_AUDIT | baseline, live in repo | `lib/modeling/datasetAudit/resultFieldConsistency.ts`; `modeling/sql_registry/dataset_audits/02_result_field_consistency.sql` |
-| DQA-R2 (returnFormulaConsistency) | DQA_AUDIT | baseline, live in repo | `lib/modeling/datasetAudit/returnFormulaConsistency.ts`; `modeling/sql_registry/dataset_audits/03_return_formula_sanity.sql` |
-| DQA-R3 (dateModeConsistency) | DQA_AUDIT | baseline, live in repo | `lib/modeling/datasetAudit/dateModeConsistency.ts`; `modeling/sql_registry/dataset_audits/04_date_mode_created_vs_resolved.sql` |
+## Model Name Taxonomy
 
-## Strategy Policies (found with source evidence)
+| raw_name | category | role/status | reproducibility | evidence path | confidence |
+|---|---|---|---|---|---|
+| FireModel / FIREMODEL | CONTEXT_CONTOUR | baseline framework/research family | DOC_ONLY | `modeling/fire_model_registry.json:1`; `modeling/sql_registry/README.md:1` | HIGH |
+| Contur3 | CONTEXT_CONTOUR | live execution contour | HAS_SCRIPT | `scripts/contur3/*`; `docs/operations/CONTUR3_*` | HIGH |
+| Blue_model2 | CONTEXT_CONTOUR | superseded | DOC_ONLY | `docs/ops/BLUE_MODEL2_ROADMAP.md:1` | HIGH |
+| BLUE_MODEL3 | CONTEXT_CONTOUR | current/superseding roadmap | DOC_ONLY | `docs/ops/BLUE_MODEL3_ROADMAP.md:4,30` | HIGH |
+| Ice1 | CONTEXT_CONTOUR | frozen research sprint | HAS_SCRIPT | `scripts/modeling/analyze-ice1-freeze.py:714` | HIGH |
+| Ice1_M_Roadmap | UNKNOWN | not found | MISSING_SCRIPT | — | HIGH |
+| Model_Review_Class1 | UNKNOWN | roadmap label only | DOC_ONLY | — | MEDIUM |
+| trusted-initial-formula-v1.1 | FORMULA_MODEL | unknown, grep-hit only | UNKNOWN | repo-wide grep hits | LOW |
+| v2-lite-growth-safe | FORMULA_MODEL | unknown, grep-hit only | UNKNOWN | repo-wide grep hits | LOW |
+| shadow-strategic-sports-v1 | FORMULA_MODEL | shadow/research, grep-hit only | UNKNOWN | repo-wide grep hits | LOW |
+| shadow-firemodel1_1_research_v0 | FORMULA_MODEL | shadow/research, grep-hit only | UNKNOWN | repo-wide grep hits | LOW |
+| realized-flat-stake-v1 | FORMULA_MODEL | live default for display window results | HAS_SQL | `supabase/migrations/20260702_track_record_window_results.sql` | HIGH |
+| DQA-R1 (resultFieldConsistency) | DQA_AUDIT | baseline, live in repo | HAS_SCRIPT | `lib/modeling/datasetAudit/resultFieldConsistency.ts` | HIGH |
+| DQA-R2 (returnFormulaConsistency) | DQA_AUDIT | baseline, live in repo | HAS_SCRIPT | `lib/modeling/datasetAudit/returnFormulaConsistency.ts` | HIGH |
+| DQA-R3 (dateModeConsistency) | DQA_AUDIT | baseline, live in repo | HAS_SCRIPT | `lib/modeling/datasetAudit/dateModeConsistency.ts` | HIGH |
+| CHAMPION_CURRENT | STRATEGY_POLICY | live (by name) | CONTRACT_STUB | `modeling/sql_registry/models/champion_current_v1.sql` | HIGH |
+| PUBLISHED_ONE_PER_FIXTURE | STRATEGY_POLICY | challenger | CONTRACT_STUB | `modeling/sql_registry/models/published_one_per_fixture_v1.sql` | HIGH |
+| FIRE_FAMILY_SELECTIVE | STRATEGY_POLICY | shadow | CONTRACT_STUB | `modeling/sql_registry/models/fire_family_selective_v1.sql` | HIGH |
+| SAFETY_BASELINE | STRATEGY_POLICY | baseline | CONTRACT_STUB | `modeling/sql_registry/models/safety_baseline_v1.sql` | HIGH |
+| TIERED_LIVE_CONTOUR | EXECUTION_POLICY | live | CONTRACT_STUB | `modeling/sql_registry/models/tiered_live_contour_v1.sql` | HIGH |
 
-| canonical_strategy_id | category | reproducibility | evidence | notes |
-|---|---|---|---|---|
-| BASELINE_V1_CONTROL | STRATEGY_POLICY | HAS_SCRIPT | `scripts/morning-model-report.ts:653,930,1342,1698` | Aliases: "0", "FLAT_ALL". |
-| PRIMARY_V1_AVOID_NBA_NHL_COV_CAP | STRATEGY_POLICY | HAS_SCRIPT | `scripts/morning-model-report.ts:654,931,1245,1291,1331` | — |
-| ALT_SM_GUARD / ALT_SM_GUARD_ON_PRIMARY / ALT_SM_GUARD_ON_PRIMARY_APPROX | STRATEGY_POLICY | HAS_SCRIPT | `scripts/firemodel1-decision-board.ts:197`; `scripts/modeling/analyze-ice1-freeze.py:390,663` | Bare `ALT_SM_GUARD` without suffix not found standalone; always appears with `_ON_PRIMARY[_APPROX]`. |
-| ALT1_ONE_PER_EVENT_BEST_COVERAGE | STRATEGY_POLICY | HAS_SCRIPT | `scripts/morning-model-report.ts:655`; `scripts/modeling/analyze-ice1-freeze.py:392,436,664` | — |
-| ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH | STRATEGY_POLICY | HAS_SCRIPT | `scripts/morning-model-report.ts:656,933` | — |
-| ALT3_V1_AVOID_NBA_NHL | STRATEGY_POLICY | HAS_SCRIPT | `scripts/morning-model-report.ts:657,934,1334` | — |
-| SCORE_GE_72_AVOID_6_24H | STRATEGY_POLICY | HAS_SCRIPT | `scripts/modeling/analyze-ice1-freeze.py:364` | Ice1 frozen-CSV script only. |
-| SCORE_GE_72_AVOID_3_12H_LEGACY | STRATEGY_POLICY | HAS_SCRIPT | `scripts/modeling/analyze-ice1-freeze.py:368` | Ice1 frozen-CSV script only. |
-| COVERAGE_GE_75_SCORE_GE_72 | STRATEGY_POLICY | HAS_SCRIPT | `scripts/modeling/analyze-ice1-freeze.py:370,373` | Ice1 frozen-CSV script only. |
-| CHAMPION_CURRENT / champion_current_v1 | STRATEGY_POLICY | HAS_SQL (contract stub only) | `modeling/sql_registry/models/champion_current_v1.sql` | No executable selection logic present, only contract metadata. |
-| PUBLISHED_ONE_PER_FIXTURE / published_one_per_fixture_v1 | STRATEGY_POLICY | HAS_SQL (contract stub only) | `modeling/sql_registry/models/published_one_per_fixture_v1.sql` | Same caveat. |
-| FIRE_FAMILY_SELECTIVE / fire_family_selective_v1 | STRATEGY_POLICY | HAS_SQL (contract stub only) | `modeling/sql_registry/models/fire_family_selective_v1.sql` | Same caveat. |
-| SAFETY_BASELINE / safety_baseline_v1 | STRATEGY_POLICY | HAS_SQL (contract stub only) | `modeling/sql_registry/models/safety_baseline_v1.sql` | Same caveat. |
-| TIERED_LIVE_CONTOUR / tiered_live_contour_v1 | EXECUTION_POLICY | HAS_SQL (contract stub only) | `modeling/sql_registry/models/tiered_live_contour_v1.sql` | Execution-tier fallback policy, not a scoring strategy. |
+## Strategy Registry Draft
 
-## Strategy Policies (requested, NOT found — MISSING_SCRIPT)
+| canonical_strategy_id | aliases | category | one_match_mode | selection_unit | filters (name-derived unless noted) | source path | reproducibility |
+|---|---|---|---|---|---|---|---|
+| BASELINE_V1_CONTROL | "0", "FLAT_ALL" | STRATEGY_POLICY | UNKNOWN | all rows | none (control group) | `scripts/morning-model-report.ts` | HAS_SCRIPT |
+| PRIMARY_V1_AVOID_NBA_NHL_COV_CAP | — | STRATEGY_POLICY | UNKNOWN | unknown | avoid NBA/NHL, coverage cap | `scripts/morning-model-report.ts` | HAS_SCRIPT |
+| ALT_SM_GUARD_ON_PRIMARY | ALT_SM_GUARD, ALT_SM_GUARD_ON_PRIMARY_APPROX | STRATEGY_POLICY | UNKNOWN | unknown | smart-money guard | `scripts/firemodel1-decision-board.ts`, `scripts/modeling/analyze-ice1-freeze.py` | HAS_SCRIPT |
+| ALT1_ONE_PER_EVENT_BEST_COVERAGE | — | STRATEGY_POLICY | YES (name-derived, key not verified) | one per event | best-coverage selection | `scripts/morning-model-report.ts`, `scripts/modeling/analyze-ice1-freeze.py` | HAS_SCRIPT |
+| ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH | — | STRATEGY_POLICY | UNKNOWN | unknown | exclude high smart-money flow | `scripts/morning-model-report.ts` | HAS_SCRIPT |
+| ALT3_V1_AVOID_NBA_NHL | — | STRATEGY_POLICY | UNKNOWN | unknown | avoid NBA/NHL | `scripts/morning-model-report.ts` | HAS_SCRIPT |
+| SCORE_GE_72_AVOID_6_24H | — | STRATEGY_POLICY | UNKNOWN | unknown | score>=72, 6-24h avoid window | `scripts/modeling/analyze-ice1-freeze.py` | HAS_SCRIPT (frozen CSV only) |
+| SCORE_GE_72_AVOID_3_12H_LEGACY | — | STRATEGY_POLICY | UNKNOWN | unknown | score>=72, 3-12h avoid window (legacy) | `scripts/modeling/analyze-ice1-freeze.py` | HAS_SCRIPT (frozen CSV only) |
+| COVERAGE_GE_75_SCORE_GE_72 | — | STRATEGY_POLICY | UNKNOWN | unknown | score>=72, coverage>=75 | `scripts/modeling/analyze-ice1-freeze.py` | HAS_SCRIPT (frozen CSV only) |
+| CHAMPION_CURRENT | champion_current_v1 | STRATEGY_POLICY | UNKNOWN | unknown | none encoded (stub) | `modeling/sql_registry/models/champion_current_v1.sql` | CONTRACT_STUB |
+| PUBLISHED_ONE_PER_FIXTURE | published_one_per_fixture_v1 | STRATEGY_POLICY | YES (name-derived) | one per match | none encoded (stub) | `modeling/sql_registry/models/published_one_per_fixture_v1.sql` | CONTRACT_STUB |
+| FIRE_FAMILY_SELECTIVE | fire_family_selective_v1 | STRATEGY_POLICY | UNKNOWN | unknown | none encoded (stub) | `modeling/sql_registry/models/fire_family_selective_v1.sql` | CONTRACT_STUB |
+| SAFETY_BASELINE | safety_baseline_v1 | STRATEGY_POLICY | NO | all rows | none encoded (stub) | `modeling/sql_registry/models/safety_baseline_v1.sql` | CONTRACT_STUB |
+| TIERED_LIVE_CONTOUR | tiered_live_contour_v1 | EXECUTION_POLICY | UNKNOWN | unknown | Tier1/2/3 fallback (name-derived) | `modeling/sql_registry/models/tiered_live_contour_v1.sql` | CONTRACT_STUB |
 
-| canonical_strategy_id | category | reproducibility | notes |
-|---|---|---|---|
-| ALT3_V1_AVOID_NBA_NHL_RAW_PROFIT | UNKNOWN | MISSING_SCRIPT | Not found anywhere in the repo. A differently-named sibling (`ALT3_FLAT10_RAW_PROFIT_APPROX`) exists but is not the same identifier. |
-| ALT_AGGR_COVTIER_6_12 | UNKNOWN | MISSING_SCRIPT | Not found anywhere in the repo. |
-| ALT_SM75_GATE_FLAT | UNKNOWN | MISSING_SCRIPT | Not found anywhere in the repo. |
-| ALT_COV75_FIRST_SM_IGNORED | UNKNOWN | MISSING_SCRIPT | Not found anywhere in the repo. |
-| SCORE_GE_50 | UNKNOWN | MISSING_SCRIPT | Not found anywhere in the repo. |
-| SCORE_60_71 | UNKNOWN | MISSING_SCRIPT | Not found anywhere in the repo. |
-| BLUE_MODEL2_SAFE_CORE_V1 | UNKNOWN | MISSING_SCRIPT | Not found anywhere in the repo. |
+## Missing Strategy List
+
+The following names were explicitly searched for and are **NOT FOUND**
+anywhere in the repository. They must not be treated as implemented until a
+script or SQL contract is added:
+
+- `ALT3_V1_AVOID_NBA_NHL_RAW_PROFIT` (a differently-named sibling,
+  `ALT3_FLAT10_RAW_PROFIT_APPROX`, exists but is not the same identifier)
+- `ALT_AGGR_COVTIER_6_12`
+- `ALT_SM75_GATE_FLAT`
+- `ALT_COV75_FIRST_SM_IGNORED`
+- `SCORE_GE_50`
+- `SCORE_60_71`
+- `BLUE_MODEL2_SAFE_CORE_V1`

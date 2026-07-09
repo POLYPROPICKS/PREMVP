@@ -1,7 +1,7 @@
 {
   "version": "phase-3c-2026-07",
   "sourceEvidence": "Phase 3C.1 inspect report, branch claude/dqa-r1-baseline-verify-itidmp, HEAD fe6f87e",
-  "categories": [
+  "taxonomyCategories": [
     "CONTEXT_CONTOUR",
     "FORMULA_MODEL",
     "STRATEGY_POLICY",
@@ -10,289 +10,535 @@
     "DQA_AUDIT",
     "UNKNOWN"
   ],
-  "registryTruths": [
-    "modeling/sql_registry/models/*.sql files are CONTRACT_STUB only (metadata comments plus a placeholder select statement), not full executable strategy logic.",
-    "scripts/modeling/analyze-ice1-freeze.py reads a frozen local CSV, not a live DB, so it is safe to reuse as a backtest pattern.",
-    "scripts/modeling/one-per-match-backtest.ts reads generated_signal_pairs from the DB and has a persist/write path (persistOnePerMatchBacktest), so it is not safe to reuse as a read-only runner as-is.",
-    "lib/modeling/onePerMatchBacktest.ts mixes pure backtest functions with persist/write functions in the same module and needs a refactor before reuse as a read-only backtest primitive.",
-    "scripts/fire-model/queryRunner.ts is a good example of the read-only, registry-bound query pattern (runRegisteredQuery)."
-  ],
-  "contextContours": [
+  "entries": [
     {
       "rawName": "FireModel",
-      "aliases": ["FIREMODEL"],
+      "normalizedName": "FireModel",
       "category": "CONTEXT_CONTOUR",
-      "status": "baseline framework/research family",
-      "evidencePaths": [
+      "roleStatus": "baseline framework/research family",
+      "reproducibilityStatus": "DOC_ONLY",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [
         "modeling/fire_model_registry.json",
         "modeling/sql_registry/README.md",
         "scripts/firemodel1-*.ts"
-      ]
+      ],
+      "evidenceSnippets": ["\"framework\": \"FireModel\" (modeling/fire_model_registry.json:1)"],
+      "confidence": "HIGH",
+      "notes": ["Umbrella framework name, not itself an executable model."]
     },
     {
       "rawName": "Contur3",
-      "aliases": [],
+      "normalizedName": "Contur3",
       "category": "CONTEXT_CONTOUR",
-      "status": "live execution contour",
-      "evidencePaths": ["scripts/contur3/*", "docs/operations/CONTUR3_*"]
+      "roleStatus": "live execution contour",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": ["scripts/contur3/*", "docs/operations/CONTUR3_*"],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": ["Execution contour, not a scoring/formula model."]
     },
     {
       "rawName": "Blue_model2",
-      "aliases": [],
+      "normalizedName": "Blue_model2",
       "category": "CONTEXT_CONTOUR",
-      "status": "superseded",
-      "evidencePaths": ["docs/ops/BLUE_MODEL2_ROADMAP.md"]
+      "roleStatus": "superseded",
+      "reproducibilityStatus": "DOC_ONLY",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": ["docs/ops/BLUE_MODEL2_ROADMAP.md"],
+      "evidenceSnippets": ["\"Blue_model2 — Contur3 Producer Roadmap\" (docs/ops/BLUE_MODEL2_ROADMAP.md:1)"],
+      "confidence": "HIGH",
+      "notes": []
     },
     {
       "rawName": "BLUE_MODEL3",
-      "aliases": [],
+      "normalizedName": "BLUE_MODEL3",
       "category": "CONTEXT_CONTOUR",
-      "status": "current, supersedes Blue_model2",
-      "evidencePaths": ["docs/ops/BLUE_MODEL3_ROADMAP.md"]
+      "roleStatus": "current, supersedes Blue_model2",
+      "reproducibilityStatus": "DOC_ONLY",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": ["docs/ops/BLUE_MODEL3_ROADMAP.md"],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": []
     },
     {
       "rawName": "Ice1",
-      "aliases": [],
+      "normalizedName": "Ice1",
       "category": "CONTEXT_CONTOUR",
-      "status": "frozen research sprint",
-      "evidencePaths": ["scripts/modeling/analyze-ice1-freeze.py"]
+      "roleStatus": "frozen research sprint",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": ["scripts/modeling/analyze-ice1-freeze.py"],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": ["Reads a frozen local CSV, not live DB."]
     },
     {
       "rawName": "Ice1_M_Roadmap",
-      "aliases": [],
+      "normalizedName": "Ice1_M_Roadmap",
       "category": "UNKNOWN",
-      "status": "NOT_FOUND",
-      "evidencePaths": []
+      "roleStatus": "unknown",
+      "reproducibilityStatus": "MISSING_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": ["Not found anywhere in the repo."]
     },
     {
       "rawName": "Model_Review_Class1",
-      "aliases": [],
+      "normalizedName": "Model_Review_Class1",
       "category": "UNKNOWN",
-      "status": "roadmap label, not repo artifact",
-      "evidencePaths": []
-    }
-  ],
-  "formulaModels": [
+      "roleStatus": "roadmap label only",
+      "reproducibilityStatus": "DOC_ONLY",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "MEDIUM",
+      "notes": ["Used as a task-routing label in agent prompts; not a repo artifact."]
+    },
     {
       "rawName": "trusted-initial-formula-v1.1",
+      "normalizedName": "trusted-initial-formula-v1.1",
       "category": "FORMULA_MODEL",
-      "status": "unknown, grep-hit only",
-      "evidencePaths": []
+      "roleStatus": "unknown, grep-hit only",
+      "reproducibilityStatus": "UNKNOWN",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "LOW",
+      "notes": ["Full computation logic not read line-by-line during Phase 3C.1; do not assume behavior beyond the name."]
     },
     {
       "rawName": "v2-lite-growth-safe",
+      "normalizedName": "v2-lite-growth-safe",
       "category": "FORMULA_MODEL",
-      "status": "unknown, grep-hit only",
-      "evidencePaths": []
+      "roleStatus": "unknown, grep-hit only",
+      "reproducibilityStatus": "UNKNOWN",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "LOW",
+      "notes": []
     },
     {
       "rawName": "shadow-strategic-sports-v1",
+      "normalizedName": "shadow-strategic-sports-v1",
       "category": "FORMULA_MODEL",
-      "status": "shadow/research, grep-hit only",
-      "evidencePaths": []
+      "roleStatus": "shadow/research, grep-hit only",
+      "reproducibilityStatus": "UNKNOWN",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "LOW",
+      "notes": []
     },
     {
       "rawName": "shadow-firemodel1_1_research_v0",
+      "normalizedName": "shadow-firemodel1_1_research_v0",
       "category": "FORMULA_MODEL",
-      "status": "shadow/research, grep-hit only",
-      "evidencePaths": []
+      "roleStatus": "shadow/research, grep-hit only",
+      "reproducibilityStatus": "UNKNOWN",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "LOW",
+      "notes": []
     },
     {
       "rawName": "realized-flat-stake-v1",
+      "normalizedName": "realized-flat-stake-v1",
       "category": "FORMULA_MODEL",
-      "status": "live default for display window results",
-      "evidencePaths": ["supabase/migrations/20260702_track_record_window_results.sql"]
-    }
-  ],
-  "dqaAudits": [
+      "roleStatus": "live default for display window results",
+      "reproducibilityStatus": "HAS_SQL",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": { "stakeMode": "flat" },
+      "sourcePaths": ["supabase/migrations/20260702_track_record_window_results.sql"],
+      "evidenceSnippets": ["metric_formula_version DEFAULT 'realized-flat-stake-v1'"],
+      "confidence": "HIGH",
+      "notes": ["The only formula key confirmed live/default in this repo."]
+    },
     {
       "rawName": "DQA-R1",
       "normalizedName": "resultFieldConsistency",
       "category": "DQA_AUDIT",
-      "status": "baseline, live in repo",
-      "evidencePaths": [
+      "roleStatus": "baseline, live in repo",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [
         "lib/modeling/datasetAudit/resultFieldConsistency.ts",
         "modeling/sql_registry/dataset_audits/02_result_field_consistency.sql"
-      ]
+      ],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": []
     },
     {
       "rawName": "DQA-R2",
       "normalizedName": "returnFormulaConsistency",
       "category": "DQA_AUDIT",
-      "status": "baseline, live in repo",
-      "evidencePaths": [
+      "roleStatus": "baseline, live in repo",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [
         "lib/modeling/datasetAudit/returnFormulaConsistency.ts",
         "modeling/sql_registry/dataset_audits/03_return_formula_sanity.sql"
-      ]
+      ],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": []
     },
     {
       "rawName": "DQA-R3",
       "normalizedName": "dateModeConsistency",
       "category": "DQA_AUDIT",
-      "status": "baseline, live in repo",
-      "evidencePaths": [
+      "roleStatus": "baseline, live in repo",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [
         "lib/modeling/datasetAudit/dateModeConsistency.ts",
         "modeling/sql_registry/dataset_audits/04_date_mode_created_vs_resolved.sql"
-      ]
-    }
-  ],
-  "strategyPolicies": [
-    {
-      "canonicalStrategyId": "BASELINE_V1_CONTROL",
-      "aliases": ["0", "FLAT_ALL"],
-      "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SCRIPT",
-      "evidencePaths": ["scripts/morning-model-report.ts"]
+      ],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": []
     },
     {
-      "canonicalStrategyId": "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP",
-      "aliases": [],
+      "rawName": "BASELINE_V1_CONTROL",
+      "normalizedName": "BASELINE_V1_CONTROL",
       "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SCRIPT",
-      "evidencePaths": ["scripts/morning-model-report.ts"]
+      "roleStatus": "baseline/control",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "all rows",
+      "filters": {},
+      "sourcePaths": ["scripts/morning-model-report.ts"],
+      "evidenceSnippets": ["[\"0\", \"BASELINE_V1_CONTROL\", \"FLAT_ALL\"] (scripts/morning-model-report.ts:653)"],
+      "confidence": "HIGH",
+      "notes": ["Aliases: \"0\", \"FLAT_ALL\"."]
     },
     {
-      "canonicalStrategyId": "ALT_SM_GUARD_ON_PRIMARY",
-      "aliases": ["ALT_SM_GUARD", "ALT_SM_GUARD_ON_PRIMARY_APPROX"],
+      "rawName": "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP",
+      "normalizedName": "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP",
       "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SCRIPT",
-      "evidencePaths": [
+      "roleStatus": "primary",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": { "avoidLeagues": ["NBA", "NHL"], "coverageThreshold": "cap (name-derived, not line-verified)" },
+      "sourcePaths": ["scripts/morning-model-report.ts"],
+      "evidenceSnippets": [],
+      "confidence": "MEDIUM",
+      "notes": ["Filters inferred from name only, not confirmed by line-by-line read."]
+    },
+    {
+      "rawName": "ALT_SM_GUARD_ON_PRIMARY",
+      "normalizedName": "ALT_SM_GUARD_ON_PRIMARY",
+      "category": "STRATEGY_POLICY",
+      "roleStatus": "alternative",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": { "smartMoneyGuard": true },
+      "sourcePaths": [
         "scripts/firemodel1-decision-board.ts",
         "scripts/modeling/analyze-ice1-freeze.py"
       ],
-      "notes": "Bare ALT_SM_GUARD without suffix not found standalone."
+      "evidenceSnippets": [],
+      "confidence": "MEDIUM",
+      "notes": ["Aliases: ALT_SM_GUARD, ALT_SM_GUARD_ON_PRIMARY_APPROX. Bare ALT_SM_GUARD without suffix not found standalone."]
     },
     {
-      "canonicalStrategyId": "ALT1_ONE_PER_EVENT_BEST_COVERAGE",
-      "aliases": [],
+      "rawName": "ALT1_ONE_PER_EVENT_BEST_COVERAGE",
+      "normalizedName": "ALT1_ONE_PER_EVENT_BEST_COVERAGE",
       "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SCRIPT",
-      "evidencePaths": [
+      "roleStatus": "alternative",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "YES",
+      "selectionUnit": "one per event",
+      "filters": { "selection": "best coverage" },
+      "sourcePaths": [
         "scripts/morning-model-report.ts",
         "scripts/modeling/analyze-ice1-freeze.py"
-      ]
+      ],
+      "evidenceSnippets": [],
+      "confidence": "MEDIUM",
+      "notes": ["one-match/one-per-event mode inferred from name; not line-verified against a shared dedup key."]
     },
     {
-      "canonicalStrategyId": "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH",
-      "aliases": [],
+      "rawName": "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH",
+      "normalizedName": "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH",
       "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SCRIPT",
-      "evidencePaths": ["scripts/morning-model-report.ts"]
+      "roleStatus": "alternative",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": { "smartMoneyGuard": "exclude high" },
+      "sourcePaths": ["scripts/morning-model-report.ts"],
+      "evidenceSnippets": [],
+      "confidence": "MEDIUM",
+      "notes": []
     },
     {
-      "canonicalStrategyId": "ALT3_V1_AVOID_NBA_NHL",
-      "aliases": [],
+      "rawName": "ALT3_V1_AVOID_NBA_NHL",
+      "normalizedName": "ALT3_V1_AVOID_NBA_NHL",
       "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SCRIPT",
-      "evidencePaths": ["scripts/morning-model-report.ts"]
+      "roleStatus": "alternative",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": { "avoidLeagues": ["NBA", "NHL"] },
+      "sourcePaths": ["scripts/morning-model-report.ts"],
+      "evidenceSnippets": [],
+      "confidence": "MEDIUM",
+      "notes": []
     },
     {
-      "canonicalStrategyId": "SCORE_GE_72_AVOID_6_24H",
-      "aliases": [],
+      "rawName": "SCORE_GE_72_AVOID_6_24H",
+      "normalizedName": "SCORE_GE_72_AVOID_6_24H",
       "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SCRIPT",
-      "evidencePaths": ["scripts/modeling/analyze-ice1-freeze.py"],
-      "notes": "Ice1 frozen-CSV script only."
+      "roleStatus": "research",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": { "scoreThreshold": ">=72", "hoursBeforeStart": "6-24h avoid window (name-derived)" },
+      "sourcePaths": ["scripts/modeling/analyze-ice1-freeze.py"],
+      "evidenceSnippets": [],
+      "confidence": "MEDIUM",
+      "notes": ["Ice1 frozen-CSV script only, not a live DB strategy."]
     },
     {
-      "canonicalStrategyId": "SCORE_GE_72_AVOID_3_12H_LEGACY",
-      "aliases": [],
+      "rawName": "SCORE_GE_72_AVOID_3_12H_LEGACY",
+      "normalizedName": "SCORE_GE_72_AVOID_3_12H_LEGACY",
       "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SCRIPT",
-      "evidencePaths": ["scripts/modeling/analyze-ice1-freeze.py"],
-      "notes": "Ice1 frozen-CSV script only."
+      "roleStatus": "research, legacy",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": { "scoreThreshold": ">=72", "hoursBeforeStart": "3-12h avoid window (name-derived)" },
+      "sourcePaths": ["scripts/modeling/analyze-ice1-freeze.py"],
+      "evidenceSnippets": [],
+      "confidence": "MEDIUM",
+      "notes": ["Ice1 frozen-CSV script only."]
     },
     {
-      "canonicalStrategyId": "COVERAGE_GE_75_SCORE_GE_72",
-      "aliases": [],
+      "rawName": "COVERAGE_GE_75_SCORE_GE_72",
+      "normalizedName": "COVERAGE_GE_75_SCORE_GE_72",
       "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SCRIPT",
-      "evidencePaths": ["scripts/modeling/analyze-ice1-freeze.py"],
-      "notes": "Ice1 frozen-CSV script only."
+      "roleStatus": "research",
+      "reproducibilityStatus": "HAS_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": { "scoreThreshold": ">=72", "coverageThreshold": ">=75" },
+      "sourcePaths": ["scripts/modeling/analyze-ice1-freeze.py"],
+      "evidenceSnippets": [],
+      "confidence": "MEDIUM",
+      "notes": ["Ice1 frozen-CSV script only."]
     },
     {
-      "canonicalStrategyId": "CHAMPION_CURRENT",
-      "aliases": ["champion_current_v1"],
+      "rawName": "CHAMPION_CURRENT",
+      "normalizedName": "champion_current_v1",
       "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SQL",
-      "evidencePaths": ["modeling/sql_registry/models/champion_current_v1.sql"],
-      "notes": "Contract stub only; no executable selection logic present."
+      "roleStatus": "live (by name)",
+      "reproducibilityStatus": "CONTRACT_STUB",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": ["modeling/sql_registry/models/champion_current_v1.sql"],
+      "evidenceSnippets": ["select 'champion_current_v1' as sql_id; (placeholder only)"],
+      "confidence": "HIGH",
+      "notes": ["No executable selection logic present, only contract metadata and a placeholder select."]
     },
     {
-      "canonicalStrategyId": "PUBLISHED_ONE_PER_FIXTURE",
-      "aliases": ["published_one_per_fixture_v1"],
+      "rawName": "PUBLISHED_ONE_PER_FIXTURE",
+      "normalizedName": "published_one_per_fixture_v1",
       "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SQL",
-      "evidencePaths": ["modeling/sql_registry/models/published_one_per_fixture_v1.sql"],
-      "notes": "Contract stub only."
+      "roleStatus": "challenger",
+      "reproducibilityStatus": "CONTRACT_STUB",
+      "oneMatchModeSupported": "YES",
+      "selectionUnit": "one per match",
+      "filters": {},
+      "sourcePaths": ["modeling/sql_registry/models/published_one_per_fixture_v1.sql"],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": ["One-per-fixture is asserted by name only; no executable dedup logic present in this contract stub."]
     },
     {
-      "canonicalStrategyId": "FIRE_FAMILY_SELECTIVE",
-      "aliases": ["fire_family_selective_v1"],
+      "rawName": "FIRE_FAMILY_SELECTIVE",
+      "normalizedName": "fire_family_selective_v1",
       "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SQL",
-      "evidencePaths": ["modeling/sql_registry/models/fire_family_selective_v1.sql"],
-      "notes": "Contract stub only."
+      "roleStatus": "shadow",
+      "reproducibilityStatus": "CONTRACT_STUB",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": ["modeling/sql_registry/models/fire_family_selective_v1.sql"],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": []
     },
     {
-      "canonicalStrategyId": "SAFETY_BASELINE",
-      "aliases": ["safety_baseline_v1"],
+      "rawName": "SAFETY_BASELINE",
+      "normalizedName": "safety_baseline_v1",
       "category": "STRATEGY_POLICY",
-      "reproducibility": "HAS_SQL",
-      "evidencePaths": ["modeling/sql_registry/models/safety_baseline_v1.sql"],
-      "notes": "Contract stub only."
+      "roleStatus": "baseline",
+      "reproducibilityStatus": "CONTRACT_STUB",
+      "oneMatchModeSupported": "NO",
+      "selectionUnit": "all rows",
+      "filters": {},
+      "sourcePaths": ["modeling/sql_registry/models/safety_baseline_v1.sql"],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": []
     },
     {
-      "canonicalStrategyId": "TIERED_LIVE_CONTOUR",
-      "aliases": ["tiered_live_contour_v1"],
+      "rawName": "TIERED_LIVE_CONTOUR",
+      "normalizedName": "tiered_live_contour_v1",
       "category": "EXECUTION_POLICY",
-      "reproducibility": "HAS_SQL",
-      "evidencePaths": ["modeling/sql_registry/models/tiered_live_contour_v1.sql"],
-      "notes": "Contract stub only; execution-tier fallback policy, not a scoring strategy."
+      "roleStatus": "live",
+      "reproducibilityStatus": "CONTRACT_STUB",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": { "tierFilter": "Tier1/2/3 fallback (name-derived)" },
+      "sourcePaths": ["modeling/sql_registry/models/tiered_live_contour_v1.sql"],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": ["Execution-tier fallback policy, not a scoring strategy."]
+    },
+    {
+      "rawName": "ALT3_V1_AVOID_NBA_NHL_RAW_PROFIT",
+      "normalizedName": "ALT3_V1_AVOID_NBA_NHL_RAW_PROFIT",
+      "category": "UNKNOWN",
+      "roleStatus": "unknown",
+      "reproducibilityStatus": "MISSING_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": ["Not found anywhere in the repo. A differently-named sibling (ALT3_FLAT10_RAW_PROFIT_APPROX) exists but is not the same identifier."]
+    },
+    {
+      "rawName": "ALT_AGGR_COVTIER_6_12",
+      "normalizedName": "ALT_AGGR_COVTIER_6_12",
+      "category": "UNKNOWN",
+      "roleStatus": "unknown",
+      "reproducibilityStatus": "MISSING_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": ["Not found anywhere in the repo."]
+    },
+    {
+      "rawName": "ALT_SM75_GATE_FLAT",
+      "normalizedName": "ALT_SM75_GATE_FLAT",
+      "category": "UNKNOWN",
+      "roleStatus": "unknown",
+      "reproducibilityStatus": "MISSING_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": ["Not found anywhere in the repo."]
+    },
+    {
+      "rawName": "ALT_COV75_FIRST_SM_IGNORED",
+      "normalizedName": "ALT_COV75_FIRST_SM_IGNORED",
+      "category": "UNKNOWN",
+      "roleStatus": "unknown",
+      "reproducibilityStatus": "MISSING_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": ["Not found anywhere in the repo."]
+    },
+    {
+      "rawName": "SCORE_GE_50",
+      "normalizedName": "SCORE_GE_50",
+      "category": "UNKNOWN",
+      "roleStatus": "unknown",
+      "reproducibilityStatus": "MISSING_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": ["Not found anywhere in the repo."]
+    },
+    {
+      "rawName": "SCORE_60_71",
+      "normalizedName": "SCORE_60_71",
+      "category": "UNKNOWN",
+      "roleStatus": "unknown",
+      "reproducibilityStatus": "MISSING_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": ["Not found anywhere in the repo."]
+    },
+    {
+      "rawName": "BLUE_MODEL2_SAFE_CORE_V1",
+      "normalizedName": "BLUE_MODEL2_SAFE_CORE_V1",
+      "category": "UNKNOWN",
+      "roleStatus": "unknown",
+      "reproducibilityStatus": "MISSING_SCRIPT",
+      "oneMatchModeSupported": "UNKNOWN",
+      "selectionUnit": "unknown",
+      "filters": {},
+      "sourcePaths": [],
+      "evidenceSnippets": [],
+      "confidence": "HIGH",
+      "notes": ["Not found anywhere in the repo."]
     }
   ],
-  "missingStrategyNames": [
-    {
-      "canonicalStrategyId": "ALT3_V1_AVOID_NBA_NHL_RAW_PROFIT",
-      "category": "UNKNOWN",
-      "reproducibility": "MISSING_SCRIPT",
-      "notes": "Not found anywhere in the repo. A differently-named sibling (ALT3_FLAT10_RAW_PROFIT_APPROX) exists but is not the same identifier."
-    },
-    {
-      "canonicalStrategyId": "ALT_AGGR_COVTIER_6_12",
-      "category": "UNKNOWN",
-      "reproducibility": "MISSING_SCRIPT",
-      "notes": "Not found anywhere in the repo."
-    },
-    {
-      "canonicalStrategyId": "ALT_SM75_GATE_FLAT",
-      "category": "UNKNOWN",
-      "reproducibility": "MISSING_SCRIPT",
-      "notes": "Not found anywhere in the repo."
-    },
-    {
-      "canonicalStrategyId": "ALT_COV75_FIRST_SM_IGNORED",
-      "category": "UNKNOWN",
-      "reproducibility": "MISSING_SCRIPT",
-      "notes": "Not found anywhere in the repo."
-    },
-    {
-      "canonicalStrategyId": "SCORE_GE_50",
-      "category": "UNKNOWN",
-      "reproducibility": "MISSING_SCRIPT",
-      "notes": "Not found anywhere in the repo."
-    },
-    {
-      "canonicalStrategyId": "SCORE_60_71",
-      "category": "UNKNOWN",
-      "reproducibility": "MISSING_SCRIPT",
-      "notes": "Not found anywhere in the repo."
-    },
-    {
-      "canonicalStrategyId": "BLUE_MODEL2_SAFE_CORE_V1",
-      "category": "UNKNOWN",
-      "reproducibility": "MISSING_SCRIPT",
-      "notes": "Not found anywhere in the repo."
-    }
+  "gaps": [
+    "7 requested strategy/policy names not found anywhere in the repo: ALT3_V1_AVOID_NBA_NHL_RAW_PROFIT, ALT_AGGR_COVTIER_6_12, ALT_SM75_GATE_FLAT, ALT_COV75_FIRST_SM_IGNORED, SCORE_GE_50, SCORE_60_71, BLUE_MODEL2_SAFE_CORE_V1.",
+    "modeling/sql_registry/models/*.sql files (CHAMPION_CURRENT, PUBLISHED_ONE_PER_FIXTURE, FIRE_FAMILY_SELECTIVE, SAFETY_BASELINE, TIERED_LIVE_CONTOUR) are CONTRACT_STUB only — metadata plus a placeholder select, no executable filter/JOIN logic.",
+    "One-match dedup key is not standardized across sources: match_family_key, event_group_key, and normalized_match_key all appear to represent a similar concept in different tables/scripts, but no single canonical dedup key has been confirmed.",
+    "Formula models trusted-initial-formula-v1.1, v2-lite-growth-safe, shadow-strategic-sports-v1, shadow-firemodel1_1_research_v0 are grep-hit only; their full computation logic has not been read line-by-line, so their filters/oneMatchModeSupported/selectionUnit remain UNKNOWN."
   ]
 }

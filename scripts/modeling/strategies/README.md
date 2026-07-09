@@ -1,61 +1,80 @@
-# Strategy Scripts — Read-Only Reuse Pattern (Phase 3C.2)
+# Strategy Scripts — Rules and Read-Only Reuse Pattern (Phase 3C.2)
 
 This directory does not yet contain a strategy runner implementation.
-This README documents the pattern future strategy comparison scripts should
-follow, based on what Phase 3C.1 inspect found in the existing codebase. It
+This README is docs-only: it defines the rules future strategy scripts must
+follow, and documents the reuse pattern found in the existing codebase. It
 does not implement anything itself.
 
-## The core problem this pattern solves
+## Rules for future strategy scripts
 
-Several existing modules mix pure, read-only backtest/scoring logic with
-persist/write logic in the same file or function. That makes them unsafe to
-reuse directly for read-only strategy comparison, because calling them can
-have side effects (writing to the DB or to local report artifacts) that a
-comparison run should not trigger.
+1. **Read-only by default.** A strategy script's selection/scoring logic
+   must not write to the database or persist any artifact as a side effect
+   of computing a selection. If a strategy needs to publish/persist a
+   result, that must be a separate, explicitly-invoked step, not something
+   that happens automatically when the selection function runs.
+2. **Every strategy must declare, at minimum:**
+   - `dataset` — which table/dataset it reads from (per
+     `modeling/model_registry/dataset_registry.md`)
+   - `formula model` — which return/PnL/score formula key it uses (per
+     `modeling/model_registry/model_strategy_registry.md`)
+   - `filters` — score thresholds, coverage thresholds/caps, league
+     avoid-lists, smart-money guards, market class/tier filters,
+     volume/liquidity filters, hours-before-start filters
+   - `one-match key` — which field it uses for one-per-match/one-per-event
+     dedup (see the "One-match dedup gap" note in
+     `model_strategy_registry.md` — do not assume `match_family_key`,
+     `event_group_key`, and `normalized_match_key` are interchangeable
+     without checking)
+   - `stake mode` — flat stake, proportional, or other
+   - `date mode` — which date field (`created_at` vs `resolved_at`) anchors
+     its window/selection logic
+3. **No strategy can be promoted to live/primary status while its
+   `reproducibilityStatus` is `MISSING_SCRIPT`, `DOC_ONLY`, or
+   `CONTRACT_STUB`.** Only `HAS_SCRIPT` or `HAS_SQL` (with real, non-stub
+   executable logic) are eligible for promotion consideration. See
+   `modeling/model_registry/model_strategy_registry.json` for current status
+   per strategy.
+4. **Separate pure selection/backtest logic from persist/write logic.**
+   Reference example in this repo: `lib/modeling/onePerMatchBacktest.ts`
+   mixes the pure function `runOnePerMatchBacktestFromRows` with write
+   functions (`persistOnePerMatchBacktest`, `writeOnePerMatchSummary`) in
+   the same module — this is the pattern to avoid. A new strategy script
+   should keep its selection function callable with zero side effects, and
+   put any persistence in a distinctly named, separately invoked function.
+5. **DQA must run before strategy comparison.** Run DQA-R1
+   (`resultFieldConsistency`), DQA-R2 (`returnFormulaConsistency`), and
+   DQA-R3 (`dateModeConsistency`) from `lib/modeling/datasetAudit/*.ts`
+   against the input rows before applying any strategy filter or comparing
+   strategies against each other. If any audit reports
+   `hasBlockingViolations: true`, stop and resolve the data-quality issue
+   before trusting a strategy comparison built on that data.
 
 ## Reference examples found in the repo
 
-- `lib/modeling/onePerMatchBacktest.ts` — contains a pure function,
-  `runOnePerMatchBacktestFromRows`, alongside write functions
-  (`persistOnePerMatchBacktest`, `writeOnePerMatchSummary`) in the same
-  module. The pure function can in principle be reused for read-only
-  comparison, but the module as a whole needs a refactor to cleanly separate
-  the read-only computation from the write path before it should be treated
-  as a safe backtest primitive.
+- `lib/modeling/onePerMatchBacktest.ts` — contains the pure function
+  `runOnePerMatchBacktestFromRows` alongside write functions in the same
+  module (see rule 4 above). The pure function can in principle be reused,
+  but the module as a whole needs a refactor before it is a safe backtest
+  primitive.
 - `scripts/modeling/one-per-match-backtest.ts` — the CLI entrypoint that
   fetches `generated_signal_pairs` and always calls the persist step. Not
   safe to reuse as a read-only runner as-is.
 - `scripts/modeling/analyze-ice1-freeze.py` — reads a frozen local CSV
   (`ICE1_MODEL_INPUT_PATH`), not a live DB, and only writes local report
-  markdown files. This is a safe pattern for backtest-style analysis because
-  it has no live DB write path.
+  markdown files. Safe pattern for backtest-style analysis because it has no
+  live DB write path.
 - `scripts/fire-model/queryRunner.ts` (`runRegisteredQuery`) — reads via a
-  registry-bound, read-only Supabase REST query. This is a good reference
-  pattern for how a future strategy comparison runner should source its
-  data: a registered query contract (see `modeling/sql_registry/`), not an
-  ad-hoc query.
-
-## Recommended shape for a future strategy runner (not implemented here)
-
-1. Read input rows via a registered, read-only query contract (pattern:
-   `scripts/fire-model/queryRunner.ts`), sourced from `generated_signal_pairs`
-   per `modeling/model_registry/dataset_registry.md`.
-2. Run DQA-R1/R2/R3 (`lib/modeling/datasetAudit/*.ts`) against the input
-   rows before applying any strategy filter, and stop/flag if
-   `hasBlockingViolations` is true.
-3. Apply a strategy filter/selection function that takes rows in and returns
-   rows out, with no side effects (no persist, no file write) — modeled on
-   `runOnePerMatchBacktestFromRows`'s pure computation, not its calling
-   script's persist step.
-4. Only after computation is complete, optionally hand the result to a
-   separate, explicitly-named write/report step — never mix that into the
-   same function as the selection logic.
+  registry-bound, read-only Supabase REST query. Good reference pattern for
+  how a future strategy comparison runner should source its data: a
+  registered query contract (see `modeling/sql_registry/`), not an ad-hoc
+  query.
 
 ## What is registered so far
 
 See `modeling/model_registry/model_strategy_registry.md` and
 `model_strategy_registry.json` for the full list of known strategy policy
-names, their category, and their current reproducibility status
-(`HAS_SCRIPT` / `HAS_SQL` contract-stub-only / `MISSING_SCRIPT`). Several
-`modeling/sql_registry/models/*.sql` files are contract stubs only — they
-document intent but contain no executable selection logic yet.
+names, their category, and their current `reproducibilityStatus`
+(`HAS_SCRIPT` / `HAS_SQL` / `CONTRACT_STUB` / `DOC_ONLY` / `MISSING_SCRIPT`
+/ `UNKNOWN`). Several `modeling/sql_registry/models/*.sql` files are
+`CONTRACT_STUB` — they document intent but contain no executable selection
+logic yet, and per rule 3 above must not be promoted.
