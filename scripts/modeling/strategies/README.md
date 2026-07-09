@@ -71,10 +71,30 @@ This is structural validation only: no rows are ever rejected, filtered, or
 modified as a result of running with `--input-format generated_signal_pairs`
 -- the strategy comparison itself runs identically either way.
 
-**Next phase after this:** DQA-R4 -- actually inspecting/fixing the
-`outcome()` quirk that this contract only detects. ROI/PnL comparison work
-should only start after the input dataset is confirmed DQA-clean via that
-future task.
+## DQA-R4: outcome resolution consistency audit (Phase 3D.2J)
+
+`lib/modeling/datasetAudit/outcomeResolutionConsistency.ts`
+(`auditOutcomeResolutionConsistency`) is the formal DQA audit for the same
+outcome-resolution quirk that the export contract above only flags
+informally via `outcomeQuirkRiskRows`. It counts win/loss-labelled rows,
+which win rows have a valid entry price or realized return, and which
+win-labelled rows have neither (`winWithoutPriceOrReturnCount`) --
+`hasBlockingViolations` is true whenever that count is greater than zero.
+
+**DQA-R4 detects this outcome quirk risk. It does not fix outcome behavior**
+-- `lib/modeling/onePerMatchBacktest.ts`'s `outcome()` function is untouched
+by this audit and by this whole phase. Advisory SQL contract:
+`modeling/sql_registry/dataset_audits/05_outcome_resolution_consistency.sql`.
+
+**ROI/PnL comparison work is blocked** until DQA-R1 (`resultFieldConsistency`),
+DQA-R2 (`returnFormulaConsistency`), DQA-R3 (`dateModeConsistency`), and
+DQA-R4 (`outcomeResolutionConsistency`) all report no blocking violations on
+the real dataset in question, or a blocking violation is explicitly accepted
+by the founder with a documented reason. The local comparison CLI's
+`--input-format generated_signal_pairs` flag surfaces the same
+outcome-quirk risk at the individual-export level for a quick local sanity
+check; DQA-R4 is the formal, registry-tracked audit that governs promotion
+decisions.
 
 ## Strategy declarations (Phase 3D.2A)
 
