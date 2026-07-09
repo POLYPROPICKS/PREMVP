@@ -44,6 +44,10 @@ interface PassOfferModalProps {
     planName: string;
     planPrice: string;
   }) => void;
+  /** Canonical proof card built by the page from the Latest Resolved Signals
+   *  funnel. This modal never fetches resolved data itself. */
+  proofCard?: WeekResultsCard | null;
+  proofCardLoading?: boolean;
 }
 
 const plans: Array<{
@@ -76,7 +80,14 @@ function getPlan(planId: PlanId) {
   return plans.find((plan) => plan.id === planId) ?? plans[0];
 }
 
-export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumReserve }: PassOfferModalProps) {
+export default function PassOfferModal({
+  isOpen,
+  onClose,
+  onReserve,
+  onPremiumReserve,
+  proofCard = null,
+  proofCardLoading = false,
+}: PassOfferModalProps) {
   const [selectedPlan, setSelectedPlan] = useState<PlanId>('7day');
   const [currentView, setCurrentView] = useState<ViewState>('offer');
   const [email, setEmail] = useState('');
@@ -84,8 +95,6 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState(false);
   const [checkoutError, setCheckoutError] = useState<string | null>(null);
-  const [weekCard, setWeekCard] = useState<WeekResultsCard | null>(null);
-  const [weekCardLoading, setWeekCardLoading] = useState(false);
 
   const currentPlan = useMemo(() => getPlan(selectedPlan), [selectedPlan]);
 
@@ -136,25 +145,6 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
       trackClientEvent(PPP_EVENTS.PAYWALL_VIEW);
     }
   }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    if (weekCard) return;
-    setWeekCardLoading(true);
-    fetch('/api/signals/resolved?mode=latest&days=7&limit=7')
-      .then((r) => (r.ok ? r.json() : null))
-      .then((json) => {
-        // Restored legacy 7D proof (generated_signal_pairs) is preferred for
-        // this paywall card; the read-model weekResultsCard stays the WhyTrust
-        // 14D contract and is only a fallback here.
-        const card = json?.legacyWeekResultsCard ?? json?.weekResultsCard;
-        if (card?.cardType === 'signal-week-results') {
-          setWeekCard(card as WeekResultsCard);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setWeekCardLoading(false));
-  }, [isOpen, weekCard]);
 
   if (!isOpen) return null;
 
@@ -248,7 +238,7 @@ export default function PassOfferModal({ isOpen, onClose, onReserve, onPremiumRe
             </section>
 
             <section className={styles.chartCard} aria-label="Past 7 days signal chart">
-              <SignalWeekResultsCard data={weekCard} loading={weekCardLoading} variant="paywall" />
+              <SignalWeekResultsCard data={proofCard} loading={proofCardLoading} variant="paywall" />
             </section>
 
             <section className={styles.plans} aria-label="Select premium plan">

@@ -5,7 +5,9 @@ import {
   selectHomepageTopTrustCard,
   buildQualifiedResolvedDisplaySet,
   buildQualifiedCumulativeReturnCurve,
+  buildCanonicalProofCard,
   type QualifiedCurveRow,
+  type CanonicalProofSignal,
 } from "@/lib/track-record/promotionalTrustGate";
 import type { WeekResultsCard } from "@/components/signal-week-results/types";
 
@@ -284,6 +286,111 @@ test("chronological plotting keeps same selected IDs and same final cumulative v
 function round2(n: number): number {
   return Math.round(n * 100) / 100;
 }
+
+// ── buildCanonicalProofCard — canonical Latest Resolved proof card ───────────
+
+function makeProofSignal(overrides: Partial<CanonicalProofSignal> & { id: string }): CanonicalProofSignal {
+  return {
+    eventTitle: `Event ${overrides.id}`,
+    pick: "Team A",
+    result: "won",
+    returnPct: 40,
+    europeanOdds: 1.4,
+    americanOdds: "-250",
+    resolvedAt: "2026-07-01T00:00:00Z",
+    ...overrides,
+  };
+}
+
+function threeWinsTwoLosses(): CanonicalProofSignal[] {
+  return [
+    makeProofSignal({ id: "w1", result: "won", returnPct: 80, resolvedAt: "2026-07-01T00:00:00Z" }),
+    makeProofSignal({ id: "l1", result: "lost", returnPct: -100, resolvedAt: "2026-07-02T00:00:00Z" }),
+    makeProofSignal({ id: "w2", result: "won", returnPct: 90, resolvedAt: "2026-07-03T00:00:00Z" }),
+    makeProofSignal({ id: "l2", result: "lost", returnPct: -100, resolvedAt: "2026-07-04T00:00:00Z" }),
+    makeProofSignal({ id: "w3", result: "won", returnPct: 70, resolvedAt: "2026-07-05T00:00:00Z" }),
+  ];
+}
+
+test("buildCanonicalProofCard builds a valid 3W/2L positive card from exact selected rows", () => {
+  const rows = threeWinsTwoLosses();
+  const card = buildCanonicalProofCard(rows);
+
+  assert.notEqual(card, null);
+  assert.equal(card!.resolvedCount, 5);
+  assert.equal(card!.winsCount, 3);
+  assert.equal(card!.lossesCount, 2);
+  assert.equal(card!.signalsTracked, 5);
+  assert.equal(card!.trackRecordDisplayTable.rows.length, 5);
+
+  // PnL equals the sum of the exact rows: 80 + 90 + 70 - 100 - 100 = 40.
+  assert.equal(card!.netProfitUsd, 40);
+  assert.equal(
+    card!.netProfitUsd,
+    rows.reduce((s, r) => s + (r.returnPct ?? 0), 0)
+  );
+  assert.equal(card!.projectedReturnUsd, 40);
+
+  // Chips: 3 green (Hit) / 2 red (non-Hit).
+  const table = card!.trackRecordDisplayTable.rows;
+  assert.equal(table.filter((r) => r.displayStatus === "Hit").length, 3);
+  assert.equal(table.filter((r) => r.displayStatus !== "Hit").length, 2);
+
+  // Return curve is built from the same rows and ends at the same PnL.
+  assert.equal(card!.returnCurve.length, 5);
+  assert.equal(card!.returnCurve[card!.returnCurve.length - 1].cumulativeProfitUsd, 40);
+});
+
+test("buildCanonicalProofCard rejects negative total return", () => {
+  const rows = threeWinsTwoLosses().map((r) =>
+    r.result === "won" ? { ...r, returnPct: 30 } : r
+  );
+  // 30*3 - 100*2 = -110 → rejected even though wins > losses.
+  assert.equal(buildCanonicalProofCard(rows), null);
+});
+
+test("buildCanonicalProofCard rejects fewer than 5 rows", () => {
+  assert.equal(buildCanonicalProofCard(threeWinsTwoLosses().slice(0, 4)), null);
+  assert.equal(buildCanonicalProofCard([]), null);
+});
+
+test("buildCanonicalProofCard rejects wins <= losses", () => {
+  const rows = [
+    makeProofSignal({ id: "w1", result: "won", returnPct: 300 }),
+    makeProofSignal({ id: "w2", result: "won", returnPct: 300 }),
+    makeProofSignal({ id: "l1", result: "lost", returnPct: -100 }),
+    makeProofSignal({ id: "l2", result: "lost", returnPct: -100 }),
+    makeProofSignal({ id: "l3", result: "lost", returnPct: -100 }),
+  ];
+  // Positive PnL (+200) but 2W/3L → rejected.
+  assert.equal(buildCanonicalProofCard(rows), null);
+});
+
+test("buildCanonicalProofCard rejects non-won/lost rows so push/void can never count as proof", () => {
+  const rows = [...threeWinsTwoLosses(), makeProofSignal({ id: "p1", result: "push", returnPct: 0 })];
+  assert.equal(buildCanonicalProofCard(rows), null);
+});
+
+test("buildCanonicalProofCard never leaks a broad 26/49-style aggregate — counts always equal the input rows", () => {
+  const card = buildCanonicalProofCard(threeWinsTwoLosses());
+  assert.notEqual(card, null);
+  assert.notEqual(card!.resolvedCount, 49);
+  assert.notEqual(card!.winsCount, 26);
+  assert.equal(card!.resolvedCount, card!.winsCount + card!.lossesCount);
+  assert.equal(card!.selectedSignals, card!.trackRecordDisplayTable.rows.length);
+  assert.equal(card!.pendingCount, 0);
+});
+
+test("buildCanonicalProofCard table and curve contain only the input row ids (no template rows leak)", () => {
+  const rows = threeWinsTwoLosses();
+  const card = buildCanonicalProofCard(rows);
+  const inputIds = new Set(rows.map((r) => r.id));
+  for (const tableRow of card!.trackRecordDisplayTable.rows) {
+    assert.ok(inputIds.has(tableRow.id));
+  }
+  assert.equal(card!.trackRecordDisplayTable.rows.length, inputIds.size);
+  assert.equal(card!.returnCurve.length, rows.length);
+});
 
 test("same-day rows use deterministic tie-breaker (sourceOrder, then id)", () => {
   const rows: QualifiedCurveRow[] = [

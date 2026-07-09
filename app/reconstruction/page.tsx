@@ -18,9 +18,9 @@ import MarketSourceCarousel from '@/components/carousels/MarketSourceCarousel';
 import PremiumEventCarousel from '@/components/carousels/PremiumEventCarousel';
 import SignalWeekResultsCard from '@/components/signal-week-results/SignalWeekResultsCard';
 import type { WeekResultsCard } from '@/components/signal-week-results/types';
-import { selectHomepageTopTrustCard, type CuratedTrustSignal } from '@/lib/track-record/promotionalTrustGate';
+import { buildCanonicalProofCard } from '@/lib/track-record/promotionalTrustGate';
 import PassOfferModal from '@/components/modals/PassOfferModal';
-import ResolvedSignalsCarousel from '@/components/resolved-signals/ResolvedSignalsCarousel';
+import ResolvedSignalsCarousel, { applyClientFilter, type ApiResolvedSignal } from '@/components/resolved-signals/ResolvedSignalsCarousel';
 import { trackClientEvent } from '@/lib/analytics/posthogClient';
 import { PPP_EVENTS } from '@/lib/analytics/events';
 import TestimonialsSection from '@/components/testimonials/TestimonialsSection';
@@ -103,6 +103,7 @@ export default function ReconstructionPage() {
   const [showReferralNudge, setShowReferralNudge] = useState(false);
   const [weekCard, setWeekCard] = useState<WeekResultsCard | null>(null);
   const [weekCardLoading, setWeekCardLoading] = useState(false);
+  const [canonicalProofSignals, setCanonicalProofSignals] = useState<ApiResolvedSignal[]>([]);
 
   const candidatePairs = useMemo(() => {
     if (activeFilter === "live") return allPairs;
@@ -381,36 +382,21 @@ export default function ReconstructionPage() {
     fetchFeed();
   }, []);
 
-  // Fetch weekly resolved proof card for top carousel (global, fetched once on mount)
+  // Canonical proof flow: ONE fetch of the working Latest Resolved Signals
+  // funnel (14D window). The same applyClientFilter-selected rows feed the
+  // top proof card, the PassOfferModal paywall card, and the Latest Resolved
+  // Signals carousel — never the broad aggregate, never the legacy 7D call.
   useEffect(() => {
     setWeekCardLoading(true);
-    fetch('/api/signals/resolved?mode=latest&days=7&limit=7')
+    fetch('/api/signals/resolved?mode=latest&days=14&limit=7')
       .then((r) => (r.ok ? r.json() : null))
       .then((json) => {
-        // Promotional trust gate: never render the ungated broad
-        // weekResultsCard aggregate on this promotional surface. Prefer the
-        // curated legacy 7D proof card, or a card derived from the SAME
-        // curated Latest Resolved `signals` set, only when it clears the
-        // >=60% winners / non-negative PnL gate. Otherwise render the
-        // existing neutral/live-tracking state (no card set).
-        const legacyCard: WeekResultsCard | null =
-          json?.legacyWeekResultsCard?.cardType === 'signal-week-results'
-            ? (json.legacyWeekResultsCard as WeekResultsCard)
-            : null;
-        const weekResultsCardTemplate: WeekResultsCard | null =
-          json?.weekResultsCard?.cardType === 'signal-week-results'
-            ? (json.weekResultsCard as WeekResultsCard)
-            : null;
-        const curatedSignals: CuratedTrustSignal[] = Array.isArray(json?.signals) ? json.signals : [];
-
-        const card = selectHomepageTopTrustCard({
-          legacyCard,
-          weekResultsCardTemplate,
-          curatedSignals,
-        });
-        if (card) {
-          setWeekCard(card);
-        }
+        const rawSignals: ApiResolvedSignal[] = Array.isArray(json?.signals) ? json.signals : [];
+        const selected = applyClientFilter(rawSignals);
+        setCanonicalProofSignals(selected);
+        // buildCanonicalProofCard rejects (<5 rows, wins<=losses, PnL<=0) by
+        // returning null — Gate 2 risk state, never a fake/broad proof card.
+        setWeekCard(buildCanonicalProofCard(selected));
       })
       .catch(() => {})
       .finally(() => setWeekCardLoading(false));
@@ -484,7 +470,7 @@ export default function ReconstructionPage() {
         </div>
       </section>
 
-      <ResolvedSignalsCarousel />
+      <ResolvedSignalsCarousel signals={canonicalProofSignals} loading={weekCardLoading} />
 
       <TestimonialsSection />
 
@@ -517,6 +503,8 @@ export default function ReconstructionPage() {
           onClose={handlePassOfferClose}
           onReserve={handleReservePass}
           onPremiumReserve={handlePremiumReserve}
+          proofCard={weekCard}
+          proofCardLoading={weekCardLoading}
         />
       )}
 

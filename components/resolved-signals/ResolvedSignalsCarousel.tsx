@@ -29,8 +29,10 @@ export interface ApiResolvedSignal {
   resolvedAt: string;
 }
 
-/** Client-side safety filter: mirrors API rules in case API changes. */
-function applyClientFilter(raw: ApiResolvedSignal[]): ApiResolvedSignal[] {
+/** Client-side safety filter: mirrors API rules in case API changes.
+ *  Canonical filtering function — the same selection used for the top proof
+ *  card, the paywall proof card, and the Latest Resolved Signals preview. */
+export function applyClientFilter(raw: ApiResolvedSignal[]): ApiResolvedSignal[] {
   const filtered = raw.filter((s) => !PUSH_RESULTS.has(s.result));
   const out: ApiResolvedSignal[] = [];
   let lostCount = 0;
@@ -47,33 +49,48 @@ function applyClientFilter(raw: ApiResolvedSignal[]): ApiResolvedSignal[] {
 
 interface ResolvedSignalsCarouselProps {
   variant?: 'landing' | 'premium';
+  /** Canonical pre-filtered rows supplied by the page. When present, the
+   *  carousel renders exactly these rows and never fetches internally. */
+  signals?: ApiResolvedSignal[];
+  loading?: boolean;
 }
 
-export default function ResolvedSignalsCarousel({ variant = 'landing' }: ResolvedSignalsCarouselProps) {
+export default function ResolvedSignalsCarousel({
+  variant = 'landing',
+  signals: providedSignals,
+  loading = false,
+}: ResolvedSignalsCarouselProps) {
   const isPremium = variant === 'premium';
-  const [signals, setSignals] = useState<ApiResolvedSignal[]>([]);
-  const [status, setStatus] = useState<'loading' | 'ok' | 'empty' | 'error'>('loading');
+  const hasProvidedSignals = providedSignals !== undefined;
+  const [fetchedSignals, setFetchedSignals] = useState<ApiResolvedSignal[]>([]);
+  const [fetchStatus, setFetchStatus] = useState<'loading' | 'ok' | 'empty' | 'error'>('loading');
   const carouselRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (hasProvidedSignals) return;
     let cancelled = false;
     fetch('/api/signals/resolved?mode=latest&days=14&limit=7')
       .then((r) => r.json())
       .then((json) => {
         if (cancelled) return;
         if (!json.ok || !Array.isArray(json.signals)) {
-          setStatus('error');
+          setFetchStatus('error');
           return;
         }
         const safe = applyClientFilter(json.signals as ApiResolvedSignal[]);
-        setSignals(safe);
-        setStatus(safe.length > 0 ? 'ok' : 'empty');
+        setFetchedSignals(safe);
+        setFetchStatus(safe.length > 0 ? 'ok' : 'empty');
       })
       .catch(() => {
-        if (!cancelled) setStatus('error');
+        if (!cancelled) setFetchStatus('error');
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [hasProvidedSignals]);
+
+  const signals = hasProvidedSignals ? providedSignals : fetchedSignals;
+  const status: 'loading' | 'ok' | 'empty' | 'error' = hasProvidedSignals
+    ? (loading ? 'loading' : signals.length > 0 ? 'ok' : 'empty')
+    : fetchStatus;
 
   // Desktop / pointer-fine timed auto-scroll. Re-runs once cards mount.
   useEffect(() => {
