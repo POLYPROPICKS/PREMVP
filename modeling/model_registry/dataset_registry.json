@@ -1,0 +1,108 @@
+{
+  "registry_version": "Model_Review_Class1.dataset_registry.v1",
+  "canonical_full_model_dataset": "public.generated_signal_pairs",
+  "forbidden_full_model_datasets": [
+    "public.track_record_window_results",
+    "public.track_record_display_signals",
+    "public.track_record_shown_signal_history",
+    "public.track_record_window_summary"
+  ],
+  "canonical_value_domains": {
+    "signal_result": ["won", "lost", null]
+  },
+  "date_modes": {
+    "created_in_window": {
+      "field": "created_at",
+      "meaning": "Rows generated inside the window, regardless of when they resolve."
+    },
+    "resolved_in_window": {
+      "field": "resolved_at",
+      "meaning": "Rows resolved inside the window, regardless of when they were generated."
+    },
+    "created_then_eventually_resolved": {
+      "field": "created_at",
+      "meaning": "Rows generated inside the window and later resolved; requires explicit resolution cutoff."
+    }
+  },
+  "dedup_modes": {
+    "all_rows": {
+      "meaning": "Every resolved row counts independently."
+    },
+    "strict_market_token": {
+      "key": "condition_id::selected_token_id",
+      "meaning": "One row per selected token within condition."
+    },
+    "one_event": {
+      "key": "event_slug or canonical_event_key",
+      "meaning": "One pick per event."
+    },
+    "one_physical_match": {
+      "key": "match_family_key ladder",
+      "meaning": "One unique sporting match equals one pick."
+    }
+  },
+  "required_before_model_comparison": [
+    "dataset source",
+    "date mode",
+    "result field",
+    "dedup mode",
+    "stake mode",
+    "return formula",
+    "formula/model field",
+    "sport/league extraction method"
+  ],
+  "tables": {
+    "public.generated_signal_pairs": {
+      "role": "full candidate/resolved model audit dataset",
+      "model_audit_suitability": "PRIMARY",
+      "execution_audit_suitability": "INPUT_CONTEXT_ONLY",
+      "date_fields": ["created_at", "resolved_at"],
+      "result_fields": ["signal_result", "winning_outcome", "selected_outcome"],
+      "return_fields": ["entry_price_num", "realized_return_pct"],
+      "score_fields": ["score", "signal_confidence_num", "pre_event_score_num"],
+      "model_fields": ["formula_version", "metric_formula_version", "source"],
+      "identity_fields": ["event_slug", "market_slug", "condition_id", "selected_token_id"],
+      "diagnostic_fields": ["diagnostics", "premium_signal", "market_source", "market_sources"]
+    },
+    "public.generated_signal_research_snapshots": {
+      "role": "research/unresolved candidate universe",
+      "model_audit_suitability": "RESEARCH_ONLY",
+      "execution_audit_suitability": "NO"
+    },
+    "public.track_record_display_signals": {
+      "role": "display/read-model slice",
+      "model_audit_suitability": "FORBIDDEN_FULL_MODEL_AUDIT",
+      "execution_audit_suitability": "NO"
+    },
+    "public.track_record_shown_signal_history": {
+      "role": "display/read-model slice",
+      "model_audit_suitability": "FORBIDDEN_FULL_MODEL_AUDIT",
+      "execution_audit_suitability": "NO"
+    },
+    "public.track_record_window_results": {
+      "role": "small realized display/read-model slice",
+      "model_audit_suitability": "FORBIDDEN_FULL_MODEL_AUDIT",
+      "execution_audit_suitability": "NO"
+    },
+    "public.track_record_window_summary": {
+      "role": "display/read-model summary slice",
+      "model_audit_suitability": "FORBIDDEN_FULL_MODEL_AUDIT",
+      "execution_audit_suitability": "NO"
+    },
+    "public.night_event_reservations": {
+      "role": "execution scheduling/reservation state",
+      "model_audit_suitability": "NO",
+      "execution_audit_suitability": "CONTEXT_ONLY"
+    },
+    "public.event_execution_queue": {
+      "role": "execution queue state",
+      "model_audit_suitability": "NO",
+      "execution_audit_suitability": "CONTEXT_ONLY"
+    },
+    "public.executor_order_events": {
+      "role": "live order ledger",
+      "model_audit_suitability": "REALIZED_EXECUTION_ONLY",
+      "execution_audit_suitability": "YES"
+    }
+  }
+}
