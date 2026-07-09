@@ -1,0 +1,134 @@
+{
+  "version": "phase-3c-2026-07",
+  "sourceEvidence": "Phase 3C.1 inspect report, branch claude/dqa-r1-baseline-verify-itidmp, HEAD fe6f87e",
+  "canonicalModelAuditDataset": "generated_signal_pairs",
+  "datasets": [
+    {
+      "name": "generated_signal_pairs",
+      "role": "canonical full generated/resolved model audit source",
+      "suitability": "FULL",
+      "dateFields": ["created_at", "resolved_at"],
+      "resultFields": ["signal_result", "winning_outcome"],
+      "returnPriceFields": ["entry_price_num", "decimal_odds", "real_pnl_usd", "realized_return_pct"],
+      "modelFormulaFields": ["metric_formula_version", "formula_version", "score"],
+      "evidencePaths": [
+        "app/api/signals/resolved/route.ts",
+        "supabase/migrations/20260525_signal_pairs_metric_formula_version.sql"
+      ],
+      "notes": ["Source of truth for model audit and DQA."]
+    },
+    {
+      "name": "generated_signal_research_snapshots",
+      "role": "broad research candidate snapshot, mostly unresolved/pre-decision",
+      "suitability": "PARTIAL",
+      "dateFields": ["created_at", "snapshot_at"],
+      "resultFields": [],
+      "returnPriceFields": ["entry_price"],
+      "modelFormulaFields": ["score", "coverage"],
+      "evidencePaths": [
+        "modeling/sql_registry/datasets/all_sports_research_candidates_v1.sql"
+      ],
+      "notes": ["Not a direct ROI source without join/resolution against generated_signal_pairs."]
+    },
+    {
+      "name": "track_record_display_signals",
+      "role": "current live/display-selected rows, refreshed/ephemeral",
+      "suitability": "DISPLAY_ONLY",
+      "dateFields": [],
+      "resultFields": [],
+      "returnPriceFields": [],
+      "modelFormulaFields": ["source_model", "score_rank"],
+      "evidencePaths": [
+        "supabase/migrations/20260702_track_record_window_results.sql"
+      ],
+      "notes": ["Not a full model audit source; rows disappear on refresh."]
+    },
+    {
+      "name": "track_record_shown_signal_history",
+      "role": "persistent shown-signal history",
+      "suitability": "PARTIAL",
+      "dateFields": ["shown_at", "created_at", "updated_at"],
+      "resultFields": ["selected_outcome"],
+      "returnPriceFields": ["stake_usd"],
+      "modelFormulaFields": ["display_source_model"],
+      "evidencePaths": [
+        "supabase/migrations/20260702_track_record_window_results.sql"
+      ],
+      "notes": ["Needs join to a resolved source (generated_signal_pairs) for the actual win/loss result."]
+    },
+    {
+      "name": "track_record_window_results",
+      "role": "realized read-model/window result for trust-block/display windows",
+      "suitability": "DISPLAY_ONLY_OR_PARTIAL_DISPLAY_REALIZED",
+      "dateFields": ["resolved_at"],
+      "resultFields": ["signal_result", "display_status", "is_resolved"],
+      "returnPriceFields": ["entry_price_num", "decimal_odds", "real_pnl_usd", "return_label"],
+      "modelFormulaFields": ["metric_formula_version"],
+      "formulaKey": "realized-flat-stake-v1",
+      "criticalRule": "projected_return_usd/projected_pnl_units/projected_win_probability MUST NOT be used as realized results.",
+      "evidencePaths": [
+        "supabase/migrations/20260702_track_record_window_results.sql"
+      ],
+      "notes": ["Not a canonical full dataset despite having resolved-looking fields."]
+    },
+    {
+      "name": "track_record_window_summary",
+      "role": "aggregate window summary (7D/14D)",
+      "suitability": "DISPLAY_ONLY",
+      "dateFields": [],
+      "resultFields": ["wins_count", "losses_count"],
+      "returnPriceFields": ["net_pnl_usd", "net_return_pct"],
+      "modelFormulaFields": [],
+      "evidencePaths": [
+        "supabase/migrations/20260702_track_record_window_results.sql"
+      ],
+      "notes": ["Aggregate only, not row-level."]
+    },
+    {
+      "name": "night_event_reservations",
+      "role": "frozen night plan/reservation contour",
+      "suitability": "EXECUTION_ONLY",
+      "dateFields": ["reserved_at", "game_start_iso"],
+      "resultFields": [],
+      "returnPriceFields": [],
+      "modelFormulaFields": ["event_score", "strategic_scope"],
+      "evidencePaths": [
+        "supabase/migrations/20260622_night_reservation_execution_queue.sql"
+      ],
+      "notes": ["Contur3 execution-contour table, not a modeling dataset."]
+    },
+    {
+      "name": "event_execution_queue",
+      "role": "per-event execution queue; Ireland reads only this table via the executor queue API",
+      "suitability": "EXECUTION_ONLY",
+      "dateFields": ["queued_at", "preferred_entry_iso", "latest_entry_iso"],
+      "resultFields": ["status"],
+      "returnPriceFields": ["stake_usd"],
+      "modelFormulaFields": ["score", "coverage", "tier"],
+      "evidencePaths": [
+        "supabase/migrations/20260622_night_reservation_execution_queue.sql"
+      ],
+      "notes": ["Execution-contour table, not a modeling dataset."]
+    },
+    {
+      "name": "executor_order_events",
+      "role": "execution/order audit ledger",
+      "suitability": "EXECUTION_ONLY",
+      "dateFields": ["created_at"],
+      "resultFields": ["status", "reason"],
+      "returnPriceFields": ["stake_usd"],
+      "modelFormulaFields": [],
+      "evidencePaths": [
+        "modeling/sql_registry/datasets/execution_ledger_v1.sql"
+      ],
+      "notes": ["GAP: CREATE TABLE not found in supabase/migrations during Phase 3C.1 inspect — schema source unconfirmed."]
+    }
+  ],
+  "rules": [
+    "The canonical full model-audit source is generated_signal_pairs.",
+    "track_record_* tables are display/read-model layers, not full dataset substitutes for generated_signal_pairs.",
+    "Execution-contour tables (night_event_reservations, event_execution_queue, executor_order_events) are not model audit sources.",
+    "DQA-R1/R2/R3 must run before backtest, before strategy comparison, and before live promotion.",
+    "projected_return_usd/projected_pnl_units/projected_win_probability MUST NOT be used as realized results anywhere downstream."
+  ]
+}
