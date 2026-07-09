@@ -216,3 +216,164 @@ test("CLI exits non-zero for an invalid --input-format value", async () => {
     },
   );
 });
+
+const DQA_R4_FIXTURE_ROWS = [
+  // win, valid entry price -- not at risk
+  { id: "a", formula_version: "trusted-initial-formula-v1.1", signal_result: "won", entry_price_num: 0.5 },
+  // win, missing both entry price and realized return -- at risk (blocking)
+  { id: "b", formula_version: "trusted-initial-formula-v1.1", signal_result: "won" },
+  // loss, no entry price -- diagnostic only, not blocking
+  { id: "c", signal_result: "lost" },
+  // no result label at all
+  { id: "d" },
+];
+
+test("CLI with --include-dqa-r4 and generated_signal_pairs format includes top-level dqaR4", async () => {
+  await withTempInputFile(DQA_R4_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--include-dqa-r4",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.ok(parsed.dqaR4, "expected top-level dqaR4 in CLI output");
+  });
+});
+
+test("dqaR4.totalRows equals input row count", async () => {
+  await withTempInputFile(DQA_R4_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--include-dqa-r4",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.dqaR4.totalRows, 4);
+  });
+});
+
+test("dqaR4.winWithoutPriceOrReturnCount counts win rows missing both valid entry price and realized return", async () => {
+  await withTempInputFile(DQA_R4_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--include-dqa-r4",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.dqaR4.winWithoutPriceOrReturnCount, 1);
+  });
+});
+
+test("dqaR4.hasBlockingViolations is true when blocking rows exist", async () => {
+  await withTempInputFile(DQA_R4_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--include-dqa-r4",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.dqaR4.hasBlockingViolations, true);
+  });
+});
+
+test("--include-dqa-r4 still includes inputValidation from the generated_signal_pairs contract", async () => {
+  await withTempInputFile(DQA_R4_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--include-dqa-r4",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.ok(parsed.inputValidation, "expected inputValidation to still be present");
+    assert.equal(parsed.inputValidation.totalRows, 4);
+  });
+});
+
+test("--include-dqa-r4 still includes FORMULA_TRUSTED_INITIAL_V1_1_ALL in strategy comparison", async () => {
+  await withTempInputFile(DQA_R4_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--include-dqa-r4",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.ok(
+      parsed.strategies.some((s: { strategyId: string }) => s.strategyId === "FORMULA_TRUSTED_INITIAL_V1_1_ALL"),
+    );
+  });
+});
+
+test("--include-dqa-r4 output still has no ROI/PnL/profit keys", async () => {
+  await withTempInputFile(DQA_R4_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--include-dqa-r4",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const lower = result.stdout.toLowerCase();
+    assert.ok(!lower.includes("\"roi\""));
+    assert.ok(!lower.includes("\"pnl\""));
+    assert.ok(!lower.includes("profit"));
+  });
+});
+
+test("without --include-dqa-r4, output does not include dqaR4", async () => {
+  await withTempInputFile(DQA_R4_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.dqaR4, undefined);
+  });
+});
+
+test("--include-dqa-r4 without --input-format generated_signal_pairs exits non-zero", async () => {
+  await withTempInputFile(DQA_R4_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli(["--input", inputPath, "--required-only", "--include-dqa-r4"]);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /generated_signal_pairs/);
+    assert.equal(result.stdout.trim(), "");
+  });
+});

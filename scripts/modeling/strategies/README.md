@@ -96,6 +96,26 @@ outcome-quirk risk at the individual-export level for a quick local sanity
 check; DQA-R4 is the formal, registry-tracked audit that governs promotion
 decisions.
 
+### Optional DQA-R4 output in the local CLI (Phase 3D.2K)
+
+```
+node --import tsx scripts/modeling/strategies/run-readonly-comparison.ts \
+  --input ./export.json --required-only \
+  --input-format generated_signal_pairs --include-dqa-r4
+```
+
+Passing `--include-dqa-r4` (requires `--input-format generated_signal_pairs`
+-- the CLI exits non-zero otherwise) runs
+`auditOutcomeResolutionConsistency()` over the same input rows and adds a
+top-level `dqaR4` object to the output, alongside the existing
+`inputValidation` and `strategies` sections. `dqaR4` is audit-only: it does
+not change which rows any strategy selects, and it does not touch
+`lib/modeling/onePerMatchBacktest.ts`'s outcome-resolution logic. When
+`dqaR4.hasBlockingViolations` is `true`, that means win-labelled rows exist
+in this export that would silently resolve as unresolved under the current
+`outcome()` logic -- ROI/PnL comparison should not proceed on this dataset
+until that risk is fixed or explicitly accepted by the founder.
+
 ## Strategy declarations (Phase 3D.2A)
 
 Schema: `scripts/modeling/strategies/strategy_declarations.schema.json`

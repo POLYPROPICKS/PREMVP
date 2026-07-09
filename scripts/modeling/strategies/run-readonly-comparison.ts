@@ -1,5 +1,5 @@
 #!/usr/bin/env -S node --import tsx
-// Read-only local strategy comparison CLI (Phase 3D.2H / 3D.2I).
+// Read-only local strategy comparison CLI (Phase 3D.2H / 3D.2I / 3D.2K).
 //
 // Reads rows from a local JSON file (--input) and strategy declaration JSON
 // files from ./declarations, runs runStrategyComparison() from
@@ -11,11 +11,12 @@
 //   - import Next.js app code
 //   - compute ROI/PnL
 //   - write any file or database record
+//   - fix any outcome-resolution behavior (DQA-R4 below is audit-only)
 //
 // Usage:
 //   node --import tsx scripts/modeling/strategies/run-readonly-comparison.ts \
 //     --input ./path/to/rows.json --required-only \
-//     --input-format generated_signal_pairs
+//     --input-format generated_signal_pairs --include-dqa-r4
 //
 //   --input <path>       Required. Path to a local JSON file containing an
 //                         array of row objects.
@@ -35,6 +36,13 @@
 //                         output as `inputValidation`. This is structural
 //                         validation only -- no rows are rejected, filtered,
 //                         or fixed as a result.
+//   --include-dqa-r4       Also run auditOutcomeResolutionConsistency() from
+//                         lib/modeling/datasetAudit/outcomeResolutionConsistency.ts
+//                         and include the result as top-level `dqaR4` in the
+//                         output. Requires --input-format generated_signal_pairs
+//                         (the CLI exits non-zero otherwise). Audit-only: it
+//                         never changes outcome-resolution behavior or strategy
+//                         selection.
 
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -45,6 +53,11 @@ import {
   type ExportRow,
   type GeneratedSignalPairsExportDiagnostics,
 } from "../../../lib/modeling/generatedSignalPairsExportContract";
+import {
+  auditOutcomeResolutionConsistency,
+  type OutcomeResolutionAuditRow,
+  type OutcomeResolutionAuditSummary,
+} from "../../../lib/modeling/datasetAudit/outcomeResolutionConsistency";
 
 const DECLARATIONS_DIR = path.resolve(__dirname, "declarations");
 
@@ -56,10 +69,17 @@ interface ParsedArgs {
   allReady: boolean;
   strategyIds: string[];
   inputFormat: InputFormat;
+  includeDqaR4: boolean;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
-  const args: ParsedArgs = { input: null, allReady: false, strategyIds: [], inputFormat: "loose" };
+  const args: ParsedArgs = {
+    input: null,
+    allReady: false,
+    strategyIds: [],
+    inputFormat: "loose",
+    includeDqaR4: false,
+  };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--input") {
@@ -88,8 +108,15 @@ function parseArgs(argv: string[]): ParsedArgs {
           `invalid --input-format "${value}" (supported: ${SUPPORTED_INPUT_FORMATS.join(", ")})`,
         );
       }
+    } else if (arg === "--include-dqa-r4") {
+      args.includeDqaR4 = true;
     }
   }
+
+  if (args.includeDqaR4 && args.inputFormat !== "generated_signal_pairs") {
+    fail("--include-dqa-r4 requires --input-format generated_signal_pairs");
+  }
+
   return args;
 }
 
@@ -147,7 +174,16 @@ function main(): void {
     inputValidation = validateGeneratedSignalPairsExportRows(rows as ExportRow[]);
   }
 
-  const output = inputValidation ? { ...result, inputValidation } : result;
+  let dqaR4: OutcomeResolutionAuditSummary | undefined;
+  if (args.includeDqaR4) {
+    dqaR4 = auditOutcomeResolutionConsistency(rows as OutcomeResolutionAuditRow[]);
+  }
+
+  const output = {
+    ...result,
+    ...(inputValidation ? { inputValidation } : {}),
+    ...(dqaR4 ? { dqaR4 } : {}),
+  };
 
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);
 }
