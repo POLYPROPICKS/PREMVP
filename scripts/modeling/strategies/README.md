@@ -1,9 +1,48 @@
-# Strategy Scripts — Rules and Read-Only Reuse Pattern (Phase 3C.2 / 3D.2A)
+# Strategy Scripts — Rules and Read-Only Reuse Pattern (Phase 3C.2 / 3D.2A / 3D.2H)
 
-This directory does not yet contain a strategy runner implementation.
-This README is docs-only: it defines the rules future strategy scripts must
-follow, and documents the reuse pattern found in the existing codebase. It
-does not implement anything itself.
+This directory contains a local, read-only strategy comparison CLI (Phase
+3D.2H) plus docs defining the rules future strategy scripts must follow. It
+does not contain a live strategy runner, a backtest, or anything that reads
+the database or computes ROI/PnL.
+
+## Read-only local comparison runner (Phase 3D.2H)
+
+```
+node --import tsx scripts/modeling/strategies/run-readonly-comparison.ts \
+  --input ./path/to/export.json --required-only
+```
+
+- `--input <path>` (required): a local JSON file containing an array of row
+  objects. There is no database read here -- the caller must already have
+  exported/prepared this file (e.g. from a `generated_signal_pairs` export;
+  the exact export format is a separate future spec, not defined by this
+  CLI).
+- `--required-only` (default): runs only declarations with
+  `requiredForComparison: true`. Today that means
+  `FORMULA_TRUSTED_INITIAL_V1_1_ALL` runs by default.
+- `--all-ready`: runs every loaded `READY_TO_NORMALIZE` declaration (one-event
+  declarations without a caller-supplied comparator are still refused, not
+  silently skipped -- they appear in the output with a non-null `error`).
+- `--strategy <id[,id2]>`: runs only the named strategy id(s), overriding the
+  required/all-ready selection.
+
+Output is a single JSON object printed to stdout (per-strategy
+`strategyId`/`status`/`requiredForComparison`/`inputRows`/`selectedRows`/
+`rejectedByFilter`/`error`). Errors go to stderr only; the process exits
+non-zero on invalid args or an unreadable/invalid `--input` file.
+
+**This is explicitly NOT a backtest, NOT ROI/PnL, and NOT live execution.**
+It computes selection counts only -- how many input rows each strategy's
+filters would keep, given rows the caller already has in hand. It reads no
+environment variable and imports no database client. See
+`lib/modeling/strategyComparison.ts` for the underlying pure comparison
+function.
+
+**Next phase after this:** DQA-R4 (outcome-resolution quirk in
+`onePerMatchBacktest.ts`'s `outcome()`, documented in the Phase 3D.2D plan)
+or a local `generated_signal_pairs` export format spec -- ROI/PnL comparison
+work should only start after the input dataset is DQA-clean and this export
+format is defined.
 
 ## Strategy declarations (Phase 3D.2A)
 
