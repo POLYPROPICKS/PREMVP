@@ -1,0 +1,70 @@
+{
+  "strategyId": "SCORE_GE_72_FAMILY",
+  "version": "phase-3d-2a-2026-07",
+  "status": "READY_TO_NORMALIZE",
+  "sourceType": "FROZEN_CSV_AND_LIVE_DB",
+  "datasetSource": "generated_signal_pairs (TypeScript fallback equivalents) / Ice1 frozen CSV (Python implementation)",
+  "selectionUnit": "all rows unless the specific variant is a one-per-event variant",
+  "oneMatchModeSupported": "NO",
+  "canonicalDedupKey": null,
+  "stakeMode": "flat_10",
+  "dateMode": "none",
+  "filters": {
+    "scoreThreshold": 72,
+    "coverageThreshold": null,
+    "timingWindow": null
+  },
+  "variants": [
+    "SCORE_GE_72_AVOID_6_24H",
+    "SCORE_GE_72_AVOID_3_12H_LEGACY",
+    "COVERAGE_GE_75_SCORE_GE_72"
+  ],
+  "evidence": [
+    {
+      "path": "scripts/modeling/analyze-ice1-freeze.py",
+      "lines": "364",
+      "snippet": "SCORE_GE_72",
+      "note": "Base score>=72 predicate."
+    },
+    {
+      "path": "scripts/modeling/analyze-ice1-freeze.py",
+      "lines": "368",
+      "note": "SCORE_GE_72_AVOID_6_24H variant: not avoid_6_24(r), where avoid_6_24 = 6 <= r.hours < 24 (see lines 272-273)."
+    },
+    {
+      "path": "scripts/modeling/analyze-ice1-freeze.py",
+      "lines": "370",
+      "note": "SCORE_GE_72_AVOID_3_12H_LEGACY variant: not avoid_3_12(r), where avoid_3_12 = 3 <= r.hours < 12 (see lines 276-277)."
+    },
+    {
+      "path": "scripts/modeling/analyze-ice1-freeze.py",
+      "lines": "373",
+      "snippet": "r.coverage >= 75 and r.score >= 72",
+      "note": "COVERAGE_GE_75_SCORE_GE_72 variant: coverage>=75 AND score>=72."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "634",
+      "note": "TypeScript live-DB fallback equivalent for SCORE_GE_72_AVOID_6_24H."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "637",
+      "note": "TypeScript live-DB fallback equivalent labeled COVERAGE_75_SCORE_GE_72 for COVERAGE_GE_75_SCORE_GE_72."
+    },
+    {
+      "path": "scripts/modeling/analyze-ice1-freeze.py",
+      "lines": "310",
+      "note": "Flat $10 stake used in metrics()/pnl10 computation, applied uniformly across policy variants, not policy-specific."
+    }
+  ],
+  "readWriteSafety": {
+    "readOnly": true,
+    "notes": "Python script documents 'mode: local analysis only; no DB, no curl' and writes only local .md/.csv report artifacts. TypeScript fallback equivalents read live DB via Supabase RPC and only write report artifacts."
+  },
+  "knownRisks": [
+    "None of the base SCORE_GE_72* predicates themselves perform one-per-event/one-per-match deduplication; only the separately named ONE_PER_EVENT_* variants (covered by ALT1's declaration) apply grouping. Treating this family as automatically one-match-safe would be incorrect.",
+    "The Python and TypeScript implementations of the same nominal variant (e.g. SCORE_GE_72_AVOID_6_24H) are separate, independently maintained code paths reading different data sources (frozen CSV vs live DB); they have not been cross-validated to produce identical row sets on the same underlying data."
+  ],
+  "promotionBlockedReasons": []
+}

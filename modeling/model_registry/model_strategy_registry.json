@@ -1,6 +1,7 @@
 {
-  "version": "phase-3c-2026-07",
-  "sourceEvidence": "Phase 3C.1 inspect report, branch claude/dqa-r1-baseline-verify-itidmp, HEAD fe6f87e",
+  "version": "phase-3d-2a-2026-07",
+  "sourceEvidence": "Phase 3C.1 inspect report (HEAD fe6f87e) + Phase 3D.1 line-verification (HEAD 91afca8), branch claude/dqa-r1-baseline-verify-itidmp",
+  "phase3d1LineVerificationNote": "Phase 3D.1 line-verified BASELINE_V1_CONTROL, PRIMARY_V1_AVOID_NBA_NHL_COV_CAP, ALT1_ONE_PER_EVENT_BEST_COVERAGE, and the SCORE_GE_72 family against actual source code (not just grep hits). ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH, ALT3_V1_AVOID_NBA_NHL, and ALT_SM_GUARD_ON_PRIMARY were found to have source conflicts (implementation does not match name) and are marked status: BLOCKED_SOURCE_CONFLICT, not promoted to READY_TO_NORMALIZE declarations.",
   "taxonomyCategories": [
     "CONTEXT_CONTOUR",
     "FORMULA_MODEL",
@@ -240,13 +241,18 @@
       "category": "STRATEGY_POLICY",
       "roleStatus": "baseline/control",
       "reproducibilityStatus": "HAS_SCRIPT",
-      "oneMatchModeSupported": "UNKNOWN",
+      "oneMatchModeSupported": "NO",
       "selectionUnit": "all rows",
       "filters": {},
       "sourcePaths": ["scripts/morning-model-report.ts"],
-      "evidenceSnippets": ["[\"0\", \"BASELINE_V1_CONTROL\", \"FLAT_ALL\"] (scripts/morning-model-report.ts:653)"],
+      "evidenceSnippets": [
+        "[\"0\", \"BASELINE_V1_CONTROL\", \"FLAT_ALL\"] (scripts/morning-model-report.ts:653)",
+        "{ name: \"FLAT_ALL\", filter: () => true } (scripts/morning-model-report.ts:631)"
+      ],
       "confidence": "HIGH",
-      "notes": ["Aliases: \"0\", \"FLAT_ALL\"."]
+      "lineVerified": true,
+      "declarationPath": "scripts/modeling/strategies/declarations/baseline_v1_control.json",
+      "notes": ["Aliases: \"0\", \"FLAT_ALL\".", "Phase 3D.1 line-verified: no filter predicate, flat $10 stake, no dedup."]
     },
     {
       "rawName": "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP",
@@ -254,13 +260,24 @@
       "category": "STRATEGY_POLICY",
       "roleStatus": "primary",
       "reproducibilityStatus": "HAS_SCRIPT",
-      "oneMatchModeSupported": "UNKNOWN",
-      "selectionUnit": "unknown",
-      "filters": { "avoidLeagues": ["NBA", "NHL"], "coverageThreshold": "cap (name-derived, not line-verified)" },
+      "oneMatchModeSupported": "YES",
+      "selectionUnit": "one per event",
+      "filters": {
+        "scoreThreshold": 72,
+        "avoidLeagues": ["NBA", "NHL"],
+        "coverageCap": { "excludedBucket": { "coverageMin": 50, "coverageMax": 74, "priceMin": 0.44, "priceMax": 0.58 } },
+        "timingWindow": { "excludedHoursUntilStart": { "min": 6, "max": 24 } }
+      },
       "sourcePaths": ["scripts/morning-model-report.ts"],
-      "evidenceSnippets": [],
-      "confidence": "MEDIUM",
-      "notes": ["Filters inferred from name only, not confirmed by line-by-line read."]
+      "evidenceSnippets": [
+        "score72 = picks.filter((pick) => (pick.score ?? -1) >= 72) (scripts/morning-model-report.ts:2083)",
+        "NBA_NHL_RE = /\\bnba\\b|basketball|\\bnhl\\b|ice[\\s-]?hockey|\\bhockey\\b/i (scripts/morning-model-report.ts:1868)",
+        "counterfactualBadBucket: coverage 50-74 && price 0.44-0.58 (scripts/morning-model-report.ts:2022-2024)"
+      ],
+      "confidence": "HIGH",
+      "lineVerified": true,
+      "declarationPath": "scripts/modeling/strategies/declarations/primary_v1_avoid_nba_nhl_cov_cap.json",
+      "notes": ["Phase 3D.1 line-verified against the counterfactual reconstruction in scripts/morning-model-report.ts.", "Source explicitly labels this reconstruction APPROX / NEEDS_EXACT_RECON (line 931) -- not certified identical to any live production rule."]
     },
     {
       "rawName": "ALT_SM_GUARD_ON_PRIMARY",
@@ -270,14 +287,20 @@
       "reproducibilityStatus": "HAS_SCRIPT",
       "oneMatchModeSupported": "UNKNOWN",
       "selectionUnit": "unknown",
+      "status": "BLOCKED_SOURCE_CONFLICT",
       "filters": { "smartMoneyGuard": true },
       "sourcePaths": [
         "scripts/firemodel1-decision-board.ts",
         "scripts/modeling/analyze-ice1-freeze.py"
       ],
-      "evidenceSnippets": [],
+      "evidenceSnippets": [
+        "\"Next live model policy: ALT_SM_GUARD_ON_PRIMARY ($300 bank, exposure $160-$220)\" (scripts/firemodel1-decision-board.ts:197) -- a console.log label, not an implemented filter"
+      ],
       "confidence": "MEDIUM",
-      "notes": ["Aliases: ALT_SM_GUARD, ALT_SM_GUARD_ON_PRIMARY_APPROX. Bare ALT_SM_GUARD without suffix not found standalone."]
+      "notes": [
+        "Aliases: ALT_SM_GUARD, ALT_SM_GUARD_ON_PRIMARY_APPROX. Bare ALT_SM_GUARD without suffix not found standalone.",
+        "Phase 3D.1: bare ALT_SM_GUARD is not implemented anywhere; ALT_SM_GUARD_ON_PRIMARY (no _APPROX suffix) in scripts/firemodel1-decision-board.ts:197 is a plain text log label with no executable logic tied to it. NOT promoted to READY_TO_NORMALIZE -- blocked pending founder decision on which name/implementation is canonical."
+      ]
     },
     {
       "rawName": "ALT1_ONE_PER_EVENT_BEST_COVERAGE",
@@ -287,14 +310,19 @@
       "reproducibilityStatus": "HAS_SCRIPT",
       "oneMatchModeSupported": "YES",
       "selectionUnit": "one per event",
-      "filters": { "selection": "best coverage" },
+      "filters": { "scoreThreshold": 72, "selection": "best coverage (ranking key, not a cutoff)" },
       "sourcePaths": [
         "scripts/morning-model-report.ts",
         "scripts/modeling/analyze-ice1-freeze.py"
       ],
-      "evidenceSnippets": [],
-      "confidence": "MEDIUM",
-      "notes": ["one-match/one-per-event mode inferred from name; not line-verified against a shared dedup key."]
+      "evidenceSnippets": [
+        "TS: selectCounterfactualOnePerEvent(score72, \"coverage\") groups by eventGroupKey (scripts/morning-model-report.ts:2090,2015-2020)",
+        "Python: one_per_event(rows, 72, \"coverage\") groups by (r.event_key or r.condition_id) (scripts/modeling/analyze-ice1-freeze.py:432-433,344-355)"
+      ],
+      "confidence": "HIGH",
+      "lineVerified": true,
+      "declarationPath": "scripts/modeling/strategies/declarations/alt1_one_per_event_best_coverage.json",
+      "notes": ["Phase 3D.1 line-verified. TS and Python implementations use DIFFERENT dedup fallback keys (eventGroupKey vs event_key/condition_id) -- must be unified before a live runner reuses this strategy."]
     },
     {
       "rawName": "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH",
@@ -304,11 +332,15 @@
       "reproducibilityStatus": "HAS_SCRIPT",
       "oneMatchModeSupported": "UNKNOWN",
       "selectionUnit": "unknown",
+      "status": "BLOCKED_SOURCE_CONFLICT",
       "filters": { "smartMoneyGuard": "exclude high" },
-      "sourcePaths": ["scripts/morning-model-report.ts"],
-      "evidenceSnippets": [],
-      "confidence": "MEDIUM",
-      "notes": []
+      "sourcePaths": ["scripts/morning-model-report.ts", "scripts/modeling/analyze-ice1-freeze.py"],
+      "evidenceSnippets": [
+        "TS fallback FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH_APPROX only checks signal_confidence_num>=65, no smart-money exclusion (scripts/morning-model-report.ts:641)",
+        "Python predicate checks score>=65 AND smart_money<85 (scripts/modeling/analyze-ice1-freeze.py:395)"
+      ],
+      "confidence": "HIGH",
+      "notes": ["Phase 3D.1: TS 'APPROX' fallback does NOT implement the smart-money exclusion its name claims -- only the Python version does. NOT promoted to READY_TO_NORMALIZE -- blocked pending founder decision on which implementation is canonical."]
     },
     {
       "rawName": "ALT3_V1_AVOID_NBA_NHL",
@@ -318,11 +350,15 @@
       "reproducibilityStatus": "HAS_SCRIPT",
       "oneMatchModeSupported": "UNKNOWN",
       "selectionUnit": "unknown",
+      "status": "BLOCKED_SOURCE_CONFLICT",
       "filters": { "avoidLeagues": ["NBA", "NHL"] },
-      "sourcePaths": ["scripts/morning-model-report.ts"],
-      "evidenceSnippets": [],
-      "confidence": "MEDIUM",
-      "notes": []
+      "sourcePaths": ["scripts/morning-model-report.ts", "scripts/modeling/analyze-ice1-freeze.py"],
+      "evidenceSnippets": [
+        "TS counterfactual applies NBA_NHL_RE exclusion (scripts/morning-model-report.ts:2086)",
+        "Python ALT3_FLAT10_RAW_PROFIT_APPROX predicate only checks score>=65, no NBA/NHL exclusion despite the name (scripts/modeling/analyze-ice1-freeze.py:391)"
+      ],
+      "confidence": "HIGH",
+      "notes": ["Phase 3D.1: Python fallback does NOT filter NBA/NHL despite its name -- only the TS counterfactual path does. NOT promoted to READY_TO_NORMALIZE -- blocked pending founder decision on which implementation is canonical."]
     },
     {
       "rawName": "SCORE_GE_72_AVOID_6_24H",
@@ -330,13 +366,15 @@
       "category": "STRATEGY_POLICY",
       "roleStatus": "research",
       "reproducibilityStatus": "HAS_SCRIPT",
-      "oneMatchModeSupported": "UNKNOWN",
-      "selectionUnit": "unknown",
-      "filters": { "scoreThreshold": ">=72", "hoursBeforeStart": "6-24h avoid window (name-derived)" },
+      "oneMatchModeSupported": "NO",
+      "selectionUnit": "all rows",
+      "filters": { "scoreThreshold": 72, "timingWindow": { "excludedHoursUntilStart": { "min": 6, "max": 24 } } },
       "sourcePaths": ["scripts/modeling/analyze-ice1-freeze.py"],
-      "evidenceSnippets": [],
-      "confidence": "MEDIUM",
-      "notes": ["Ice1 frozen-CSV script only, not a live DB strategy."]
+      "evidenceSnippets": ["not avoid_6_24(r), avoid_6_24 = 6 <= r.hours < 24 (scripts/modeling/analyze-ice1-freeze.py:272-273,368)"],
+      "confidence": "HIGH",
+      "lineVerified": true,
+      "declarationPath": "scripts/modeling/strategies/declarations/score_ge_72_family.json",
+      "notes": ["Ice1 frozen-CSV script only, not a live DB strategy.", "Phase 3D.1 line-verified as part of SCORE_GE_72_FAMILY declaration."]
     },
     {
       "rawName": "SCORE_GE_72_AVOID_3_12H_LEGACY",
@@ -344,13 +382,15 @@
       "category": "STRATEGY_POLICY",
       "roleStatus": "research, legacy",
       "reproducibilityStatus": "HAS_SCRIPT",
-      "oneMatchModeSupported": "UNKNOWN",
-      "selectionUnit": "unknown",
-      "filters": { "scoreThreshold": ">=72", "hoursBeforeStart": "3-12h avoid window (name-derived)" },
+      "oneMatchModeSupported": "NO",
+      "selectionUnit": "all rows",
+      "filters": { "scoreThreshold": 72, "timingWindow": { "excludedHoursUntilStart": { "min": 3, "max": 12 } } },
       "sourcePaths": ["scripts/modeling/analyze-ice1-freeze.py"],
-      "evidenceSnippets": [],
-      "confidence": "MEDIUM",
-      "notes": ["Ice1 frozen-CSV script only."]
+      "evidenceSnippets": ["not avoid_3_12(r), avoid_3_12 = 3 <= r.hours < 12 (scripts/modeling/analyze-ice1-freeze.py:276-277,370)"],
+      "confidence": "HIGH",
+      "lineVerified": true,
+      "declarationPath": "scripts/modeling/strategies/declarations/score_ge_72_family.json",
+      "notes": ["Ice1 frozen-CSV script only.", "Phase 3D.1 line-verified as part of SCORE_GE_72_FAMILY declaration."]
     },
     {
       "rawName": "COVERAGE_GE_75_SCORE_GE_72",
@@ -358,13 +398,15 @@
       "category": "STRATEGY_POLICY",
       "roleStatus": "research",
       "reproducibilityStatus": "HAS_SCRIPT",
-      "oneMatchModeSupported": "UNKNOWN",
-      "selectionUnit": "unknown",
-      "filters": { "scoreThreshold": ">=72", "coverageThreshold": ">=75" },
+      "oneMatchModeSupported": "NO",
+      "selectionUnit": "all rows",
+      "filters": { "scoreThreshold": 72, "coverageThreshold": 75 },
       "sourcePaths": ["scripts/modeling/analyze-ice1-freeze.py"],
-      "evidenceSnippets": [],
-      "confidence": "MEDIUM",
-      "notes": ["Ice1 frozen-CSV script only."]
+      "evidenceSnippets": ["r.coverage >= 75 and r.score >= 72 (scripts/modeling/analyze-ice1-freeze.py:373)"],
+      "confidence": "HIGH",
+      "lineVerified": true,
+      "declarationPath": "scripts/modeling/strategies/declarations/score_ge_72_family.json",
+      "notes": ["Ice1 frozen-CSV script only.", "Phase 3D.1 line-verified as part of SCORE_GE_72_FAMILY declaration."]
     },
     {
       "rawName": "CHAMPION_CURRENT",
@@ -537,8 +579,10 @@
   ],
   "gaps": [
     "7 requested strategy/policy names not found anywhere in the repo: ALT3_V1_AVOID_NBA_NHL_RAW_PROFIT, ALT_AGGR_COVTIER_6_12, ALT_SM75_GATE_FLAT, ALT_COV75_FIRST_SM_IGNORED, SCORE_GE_50, SCORE_60_71, BLUE_MODEL2_SAFE_CORE_V1.",
-    "modeling/sql_registry/models/*.sql files (CHAMPION_CURRENT, PUBLISHED_ONE_PER_FIXTURE, FIRE_FAMILY_SELECTIVE, SAFETY_BASELINE, TIERED_LIVE_CONTOUR) are CONTRACT_STUB only — metadata plus a placeholder select, no executable filter/JOIN logic.",
-    "One-match dedup key is not standardized across sources: match_family_key, event_group_key, and normalized_match_key all appear to represent a similar concept in different tables/scripts, but no single canonical dedup key has been confirmed.",
-    "Formula models trusted-initial-formula-v1.1, v2-lite-growth-safe, shadow-strategic-sports-v1, shadow-firemodel1_1_research_v0 are grep-hit only; their full computation logic has not been read line-by-line, so their filters/oneMatchModeSupported/selectionUnit remain UNKNOWN."
+    "modeling/sql_registry/models/*.sql files (CHAMPION_CURRENT, PUBLISHED_ONE_PER_FIXTURE, FIRE_FAMILY_SELECTIVE, SAFETY_BASELINE, TIERED_LIVE_CONTOUR) are CONTRACT_STUB only — metadata plus a placeholder select, no executable filter/JOIN logic. Confirmed by Phase 3D.1: none of these five have a runtime adapter branch in scripts/fire-model/queryRunner.ts.",
+    "One-match dedup key is not standardized across sources: match_family_key, event_group_key, and normalized_match_key all appear to represent a similar concept in different tables/scripts. Phase 3D.1 recommends event_group_key (lib/modeling/onePerMatchBacktest.ts:194-208 fallback chain) as the canonical Phase 3D key, but this has not yet been cross-validated against normalized_match_key/match_family_key on real data.",
+    "Formula models trusted-initial-formula-v1.1, v2-lite-growth-safe, shadow-strategic-sports-v1, shadow-firemodel1_1_research_v0 are grep-hit only; their full computation logic has not been read line-by-line, so their filters/oneMatchModeSupported/selectionUnit remain UNKNOWN.",
+    "Phase 3D.1 found ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH and ALT3_V1_AVOID_NBA_NHL each have TWO independent implementations (TypeScript live-DB fallback vs Python frozen-CSV predicate) that DISAGREE with each other and with the strategy's own name -- these are blocked pending a founder decision on which implementation is canonical, not simply unverified.",
+    "ALT1_ONE_PER_EVENT_BEST_COVERAGE's TypeScript and Python implementations use different one-per-event dedup fallback keys (eventGroupKey vs event_key/condition_id) -- this strategy is promoted to READY_TO_NORMALIZE for declaration purposes, but the dedup-key mismatch must be resolved before any live runner reuses it."
   ]
 }

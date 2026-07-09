@@ -1,0 +1,91 @@
+{
+  "strategyId": "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP",
+  "version": "phase-3d-2a-2026-07",
+  "status": "READY_TO_NORMALIZE",
+  "sourceType": "LIVE_DB",
+  "datasetSource": "generated_signal_pairs",
+  "selectionUnit": "one per event",
+  "oneMatchModeSupported": "YES",
+  "canonicalDedupKey": "event_group_key",
+  "stakeMode": "flat_10",
+  "dateMode": "none",
+  "filters": {
+    "scoreThreshold": 72,
+    "avoidLeagues": ["NBA", "NHL"],
+    "coverageCap": {
+      "excludedBucket": {
+        "coverageMin": 50,
+        "coverageMax": 74,
+        "priceMin": 0.44,
+        "priceMax": 0.58
+      }
+    },
+    "timingWindow": {
+      "excludedHoursUntilStart": { "min": 6, "max": 24 },
+      "note": "avoid_6_24h: rows with hoursUntilStart in [6, 24) are excluded"
+    }
+  },
+  "evidence": [
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "2082-2093",
+      "note": "buildCounterfactualPolicies defines the Primary COV_CAP counterfactual simulation."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "2015-2020",
+      "snippet": "const groups = new Map<string, CounterfactualPick[]>(); for (const row of rows) groups.set(row.eventGroupKey, [...]); return [...groups.values()].map((xs) => [...xs].sort(cmp)[0]);",
+      "note": "selectCounterfactualOnePerEvent groups by eventGroupKey and takes the top-ranked pick per group."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "2083",
+      "snippet": "score72 = picks.filter((pick) => (pick.score ?? -1) >= 72)",
+      "note": "Score threshold >=72."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "1868",
+      "snippet": "NBA_NHL_RE = /\\bnba\\b|basketball|\\bnhl\\b|ice[\\s-]?hockey|\\bhockey\\b/i",
+      "note": "NBA/NHL avoid regex, applied against league/event_slug/event_key/market_slug."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "2085",
+      "snippet": "score72.filter((pick) => !counterfactualTimingGuard(pick) && !counterfactualBadBucket(pick) && !counterfactualNbaNhl(pick))",
+      "note": "Combined filter application: timing guard, bad-bucket exclusion, and NBA/NHL exclusion."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "2022-2024",
+      "snippet": "pick.coverage >= 50 && pick.coverage <= 74 && pick.entryPrice >= 0.44 && pick.entryPrice <= 0.58",
+      "note": "counterfactualBadBucket defines the excluded coverage/price bucket (the 'cov cap' behavior)."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "2026-2028",
+      "snippet": "pick.hoursUntilStart >= 6 && pick.hoursUntilStart < 24",
+      "note": "counterfactualTimingGuard defines the avoid_6_24h timing exclusion."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "1914-1922",
+      "note": "counterfactualEventGroup derives eventGroupKey from event_slug/event_key, then event_title/title/question, then market_slug, then condition_id."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "931",
+      "snippet": "\"APPROX / NEEDS_EXACT_RECON\"",
+      "note": "Source explicitly labels this reconstruction as approximate, not an exact match to any live production rule."
+    }
+  ],
+  "readWriteSafety": {
+    "readOnly": true,
+    "notes": "Only writes report artifacts (ExcelJS workbook / CSV); no Supabase insert/upsert/update/delete calls found in this code path."
+  },
+  "knownRisks": [
+    "Source explicitly marks this reconstruction as APPROX / NEEDS_EXACT_RECON (scripts/morning-model-report.ts:931) -- it is a counterfactual reconstruction of an intended policy, not verified to be byte-for-byte identical to any live production selection rule.",
+    "loadCounterfactualRows sources from the current generated corpus, not the frozen historical CSV used by the Ice1 Python analysis -- results are not directly comparable across the two pipelines without further reconciliation."
+  ],
+  "promotionBlockedReasons": []
+}

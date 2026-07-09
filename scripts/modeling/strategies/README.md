@@ -1,9 +1,43 @@
-# Strategy Scripts — Rules and Read-Only Reuse Pattern (Phase 3C.2)
+# Strategy Scripts — Rules and Read-Only Reuse Pattern (Phase 3C.2 / 3D.2A)
 
 This directory does not yet contain a strategy runner implementation.
 This README is docs-only: it defines the rules future strategy scripts must
 follow, and documents the reuse pattern found in the existing codebase. It
 does not implement anything itself.
+
+## Strategy declarations (Phase 3D.2A)
+
+Schema: `scripts/modeling/strategies/strategy_declarations.schema.json`
+
+**Declarations are not runners.** A declaration file under
+`scripts/modeling/strategies/declarations/*.json` is a read-only contract
+that documents, with exact source-line evidence, what a strategy's filters,
+dedup key, stake mode, and data source actually are in the current
+codebase. Declarations do not execute anything, do not read from the
+database, and are not a substitute for the strategy runner planned in a
+later phase.
+
+First normalized declarations (Phase 3D.1 line-verified, `status:
+READY_TO_NORMALIZE`):
+
+- `scripts/modeling/strategies/declarations/baseline_v1_control.json`
+- `scripts/modeling/strategies/declarations/primary_v1_avoid_nba_nhl_cov_cap.json`
+- `scripts/modeling/strategies/declarations/alt1_one_per_event_best_coverage.json`
+- `scripts/modeling/strategies/declarations/score_ge_72_family.json`
+
+Blocked strategies pending founder decision (Phase 3D.1 found source
+conflicts between the strategy's name and its actual implementation — see
+`modeling/model_registry/model_strategy_registry.md` Phase 3D.1 section for
+details — these do NOT have declaration files yet):
+
+- `ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH`
+- `ALT3_V1_AVOID_NBA_NHL`
+- `ALT_SM_GUARD` / `ALT_SM_GUARD_ON_PRIMARY`
+
+The next phase (Phase 3D.2B) is pure `event_group_key` helper extraction
+from `lib/modeling/onePerMatchBacktest.ts` into a standalone, side-effect-free
+module — not a database backtest run. No strategy declaration in this
+directory authorizes running a backtest or querying live data.
 
 ## Rules for future strategy scripts
 

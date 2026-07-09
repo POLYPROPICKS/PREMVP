@@ -1,0 +1,129 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "strategy_declarations.schema.json",
+  "title": "Strategy Declaration",
+  "description": "Read-only, non-executable contract describing a line-verified (or explicitly blocked/missing) strategy. A declaration is documentation of source-code facts, not a runner and not executable strategy logic itself.",
+  "type": "object",
+  "required": [
+    "strategyId",
+    "version",
+    "status",
+    "sourceType",
+    "datasetSource",
+    "selectionUnit",
+    "oneMatchModeSupported",
+    "canonicalDedupKey",
+    "stakeMode",
+    "dateMode",
+    "filters",
+    "evidence",
+    "readWriteSafety",
+    "knownRisks",
+    "promotionBlockedReasons"
+  ],
+  "properties": {
+    "strategyId": {
+      "type": "string",
+      "description": "Canonical strategy identifier, matching model_strategy_registry rawName/canonicalStrategyId."
+    },
+    "version": {
+      "type": "string",
+      "description": "Declaration version, e.g. phase-3d-2a-2026-07."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["READY_TO_NORMALIZE", "BLOCKED_SOURCE_CONFLICT", "MISSING_SCRIPT", "CONTRACT_STUB"]
+    },
+    "sourceType": {
+      "type": "string",
+      "enum": [
+        "LIVE_DB",
+        "FROZEN_CSV",
+        "LOCAL_ARTIFACT",
+        "CONTRACT_STUB",
+        "DOC_ONLY",
+        "MISSING",
+        "LIVE_DB_AND_FROZEN_CSV",
+        "FROZEN_CSV_AND_LIVE_DB"
+      ]
+    },
+    "datasetSource": {
+      "type": "string",
+      "description": "Dataset name(s) this strategy reads from, per modeling/model_registry/dataset_registry.md."
+    },
+    "selectionUnit": {
+      "type": "string",
+      "enum": ["all rows", "one per event", "one per match", "one per fixture", "unknown"]
+    },
+    "oneMatchModeSupported": {
+      "type": "string",
+      "enum": ["YES", "NO", "UNKNOWN"]
+    },
+    "canonicalDedupKey": {
+      "type": ["string", "null"],
+      "description": "The dedup key field used for one-match/one-event selection, or null if selectionUnit is 'all rows'."
+    },
+    "stakeMode": {
+      "type": "string",
+      "description": "e.g. flat_10, proportional, unknown."
+    },
+    "dateMode": {
+      "type": "string",
+      "description": "Which date field anchors this strategy's window/selection logic (e.g. created_at, resolved_at, none)."
+    },
+    "filters": {
+      "type": "object",
+      "description": "Only line-verified filters may be populated. Omit or leave empty for filters not confirmed by source reading.",
+      "properties": {
+        "scoreThreshold": { "type": ["number", "null"] },
+        "coverageThreshold": { "type": ["number", "null"] },
+        "coverageCap": { "type": ["object", "null"] },
+        "avoidLeagues": { "type": "array", "items": { "type": "string" } },
+        "smartMoneyGuard": { "type": ["object", "boolean", "null"] },
+        "marketClass": { "type": ["object", "null"] },
+        "tier": { "type": ["object", "null"] },
+        "timingWindow": { "type": ["object", "array", "null"] },
+        "volumeLiquidity": { "type": ["object", "null"] },
+        "priceBucketExclusions": { "type": ["array", "null"] }
+      },
+      "additionalProperties": false
+    },
+    "evidence": {
+      "type": "array",
+      "description": "Exact file:line citations and short snippets backing every field above.",
+      "items": {
+        "type": "object",
+        "required": ["path", "note"],
+        "properties": {
+          "path": { "type": "string" },
+          "lines": { "type": "string" },
+          "snippet": { "type": "string" },
+          "note": { "type": "string" }
+        }
+      }
+    },
+    "readWriteSafety": {
+      "type": "object",
+      "required": ["readOnly"],
+      "properties": {
+        "readOnly": { "type": "boolean" },
+        "notes": { "type": "string" }
+      }
+    },
+    "knownRisks": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "promotionBlockedReasons": {
+      "type": "array",
+      "description": "Empty for READY_TO_NORMALIZE. Populated for BLOCKED_SOURCE_CONFLICT/MISSING_SCRIPT/CONTRACT_STUB.",
+      "items": { "type": "string" }
+    },
+    "variants": {
+      "type": "array",
+      "description": "Optional: for family declarations covering multiple named variants.",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true
+}

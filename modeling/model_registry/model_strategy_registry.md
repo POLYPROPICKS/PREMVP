@@ -1,4 +1,4 @@
-# Model Strategy Registry — Phase 3C.2
+# Model Strategy Registry — Phase 3C.2 / 3D.1 / 3D.2A
 
 ## Purpose
 
@@ -11,6 +11,48 @@ Companion machine-readable file: `modeling/model_registry/model_strategy_registr
 
 Source evidence: Phase 3C.1 inspect report (branch
 `claude/dqa-r1-baseline-verify-itidmp`, HEAD `fe6f87e`).
+
+## Phase 3D.1 line-verification update
+
+Phase 3D.1 line-verified (read actual source lines, not just grep hits) four
+strategies against their implementing code:
+
+- `BASELINE_V1_CONTROL`
+- `PRIMARY_V1_AVOID_NBA_NHL_COV_CAP`
+- `ALT1_ONE_PER_EVENT_BEST_COVERAGE`
+- `SCORE_GE_72` family (`SCORE_GE_72_AVOID_6_24H`, `SCORE_GE_72_AVOID_3_12H_LEGACY`,
+  `COVERAGE_GE_75_SCORE_GE_72`)
+
+These four now have `lineVerified: true` and a `declarationPath` pointing at
+a read-only JSON declaration under `scripts/modeling/strategies/declarations/`
+(see Phase 3D.2A section below).
+
+Line-verification also surfaced **source conflicts** (implementation
+disagrees with the strategy's own name) for three strategies previously
+marked `confidence: MEDIUM` / name-derived:
+
+- `ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH` — the TypeScript "APPROX"
+  fallback does NOT implement the smart-money exclusion its name claims;
+  only the Python implementation does.
+- `ALT3_V1_AVOID_NBA_NHL` — the Python fallback predicate does NOT filter
+  NBA/NHL despite its name; only the TypeScript counterfactual path does.
+- `ALT_SM_GUARD_ON_PRIMARY` — the bare `ALT_SM_GUARD` name is not
+  implemented anywhere; `ALT_SM_GUARD_ON_PRIMARY` without the `_APPROX`
+  suffix is only a text label inside a `console.log`, not executable logic.
+
+These three are marked `status: BLOCKED_SOURCE_CONFLICT` in the JSON
+registry and are **not** promoted to `READY_TO_NORMALIZE` declarations.
+Resolving which implementation (or neither) is canonical requires a founder
+decision, not further source reading alone.
+
+## Phase 3D.2A: strategy declarations (this phase)
+
+Read-only, non-executable strategy declarations now exist for the four
+line-verified strategies above, under
+`scripts/modeling/strategies/declarations/`, validated against
+`scripts/modeling/strategies/strategy_declarations.schema.json`. See
+`scripts/modeling/strategies/README.md` for the declaration rules and the
+list of blocked strategies pending founder decision.
 
 ## Definitions
 

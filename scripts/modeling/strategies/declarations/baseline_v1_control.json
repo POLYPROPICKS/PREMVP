@@ -1,0 +1,47 @@
+{
+  "strategyId": "BASELINE_V1_CONTROL",
+  "version": "phase-3d-2a-2026-07",
+  "status": "READY_TO_NORMALIZE",
+  "sourceType": "LIVE_DB",
+  "datasetSource": "generated_signal_pairs",
+  "selectionUnit": "all rows",
+  "oneMatchModeSupported": "NO",
+  "canonicalDedupKey": null,
+  "stakeMode": "flat_10",
+  "dateMode": "none",
+  "filters": {},
+  "evidence": [
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "631",
+      "snippet": "{ name: \"FLAT_ALL\", filter: () => true }",
+      "note": "The FLAT_ALL fallback policy backing BASELINE_V1_CONTROL applies no filter predicate at all."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "653",
+      "snippet": "[\"0\", \"BASELINE_V1_CONTROL\", \"FLAT_ALL\"]",
+      "note": "BASELINE_V1_CONTROL is registered as an alias of the FLAT_ALL fallback policy."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "534",
+      "snippet": "fallbackPnl(row, 10)",
+      "note": "Flat $10 stake is used for PnL computation across fallback policies including BASELINE_V1_CONTROL."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "258-284",
+      "snippet": "supabaseAdmin.rpc(\"get_morning_strict_resolved_corpus_count\"/\"..._page\")",
+      "note": "fetchAllResolvedRows sources from the live resolved corpus (generated_signal_pairs) via Supabase RPC."
+    }
+  ],
+  "readWriteSafety": {
+    "readOnly": true,
+    "notes": "Only writes report artifacts (CSV/ExcelJS workbook) via the surrounding report script; the BASELINE_V1_CONTROL filter/policy itself has no DB write path."
+  },
+  "knownRisks": [
+    "This declaration documents the FLAT_ALL/BASELINE_V1_CONTROL predicate found in scripts/morning-model-report.ts only; it does not certify that this file or any other implementation is a runner-safe module."
+  ],
+  "promotionBlockedReasons": []
+}

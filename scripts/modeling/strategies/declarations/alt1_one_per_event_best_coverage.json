@@ -1,0 +1,60 @@
+{
+  "strategyId": "ALT1_ONE_PER_EVENT_BEST_COVERAGE",
+  "version": "phase-3d-2a-2026-07",
+  "status": "READY_TO_NORMALIZE",
+  "sourceType": "LIVE_DB_AND_FROZEN_CSV",
+  "datasetSource": "generated_signal_pairs (TypeScript path) / Ice1 frozen CSV historical artifact (Python path)",
+  "selectionUnit": "one per event",
+  "oneMatchModeSupported": "YES",
+  "canonicalDedupKey": "event_group_key",
+  "stakeMode": "flat_10",
+  "dateMode": "none",
+  "filters": {
+    "scoreThreshold": 72,
+    "coverageThreshold": null
+  },
+  "evidence": [
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "2090",
+      "note": "TS counterfactual policy 'ALT1 Best Coverage', built via selectCounterfactualOnePerEvent(score72, \"coverage\")."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "2008-2013",
+      "note": "compareCounterfactualCoverage ranks candidates by [coverage, score, smartMoney, priceOk, -createdAt, stableId] descending; coverage is a ranking/sort key, not a cutoff threshold."
+    },
+    {
+      "path": "scripts/modeling/analyze-ice1-freeze.py",
+      "lines": "432-433",
+      "snippet": "selected = one_per_event(rows, 72, \"coverage\")",
+      "note": "Python path routes the ONE_PER_EVENT_SCORE_GE_72_BEST_COVERAGE policy through a dedicated one_per_event() helper rather than a plain predicate."
+    },
+    {
+      "path": "scripts/modeling/analyze-ice1-freeze.py",
+      "lines": "344-355",
+      "snippet": "groups[r.event_key or r.condition_id].append(r) ... sorted(xs, key=lambda r: (r.coverage or -1, r.score or -1, -(r.price or 9)), reverse=True)[0]",
+      "note": "Python one_per_event() groups by (r.event_key or r.condition_id), a DIFFERENT fallback chain than the TypeScript eventGroupKey chain."
+    },
+    {
+      "path": "scripts/morning-model-report.ts",
+      "lines": "1914-1922",
+      "note": "TypeScript eventGroupKey derivation chain: event_slug/event_key -> event_title/title/question -> market_slug -> condition_id (prefixed)."
+    },
+    {
+      "path": "scripts/modeling/analyze-ice1-freeze.py",
+      "lines": "13",
+      "snippet": "INPUT = Path(os.environ.get(\"ICE1_MODEL_INPUT_PATH\") or (BASE/\"input\"/\"ice1_resolved_now_freeze_2026_06_17_0800_minsk.csv\"))",
+      "note": "Python path reads a frozen local CSV, not a live DB query."
+    }
+  ],
+  "readWriteSafety": {
+    "readOnly": true,
+    "notes": "Python script explicitly documents 'mode: local analysis only; no DB, no curl' and writes only local markdown/CSV report artifacts. TypeScript path only writes report artifacts (ExcelJS/CSV), no DB writes found."
+  },
+  "knownRisks": [
+    "The TypeScript implementation and the Python implementation use DIFFERENT dedup fallback keys for one-per-event selection: TypeScript groups by eventGroupKey (event_slug/event_key -> event_title -> market_slug -> condition_id), while Python groups by (r.event_key or r.condition_id). Applying both implementations to the same input data could select different rows per event, producing divergent results that must be unified before any live runner reuses this strategy.",
+    "The Python path reads a historically frozen CSV snapshot while the TypeScript path reads the current live corpus -- results from the two are not directly comparable without cross-validation."
+  ],
+  "promotionBlockedReasons": []
+}
