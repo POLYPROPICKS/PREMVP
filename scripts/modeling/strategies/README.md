@@ -599,3 +599,40 @@ Notes:
 - **No manual fallback or Supabase cell copy required.** Both runners are
   fully automated; the clipboard workflow (Phase 3D.2Oa) remains available
   only as a last-resort fallback, not part of the normal operator path.
+
+## Phase 3E.2i — corpus / formula-cohort audit
+
+`audit-generated-signal-pairs-corpus.ts` answers the model-review
+questions about the local export corpus -- read-only, deterministic, no
+Supabase query, no ROI/PnL:
+
+```
+node --import tsx scripts\modeling\strategies\audit-generated-signal-pairs-corpus.ts ^
+  --input modeling\local_exports\generated_signal_pairs_export.json ^
+  --output modeling\local_exports\generated_signal_pairs_corpus_audit.json
+```
+
+- `--input` defaults to the canonical local export; `--output` to
+  `modeling/local_exports/generated_signal_pairs_corpus_audit.json` (a
+  git-ignored generated file); `--trusted-formula-version` defaults to the
+  value read from the canonical strategy declaration
+  (`declarations/trusted_initial_formula_v1_1_all.json`
+  `filters.formulaVersionEquals`), not a duplicated literal.
+- The report covers: raw vs strict-deduped date ranges (min/max resolved_at
+  + inclusive calendar days), the trusted-formula cohort's selected/rejected
+  split and date range, `formulaVersionBreakdown` and a separate
+  `metricFormulaVersionBreakdown` (the two lineage fields are never merged),
+  market / sporting-event / strict-signal cardinality, and the
+  signals-per-event distribution.
+- **Identity semantics**: a *sporting event/match* (grouped via the existing
+  `buildEventGroupKey` fallback chain) is distinct from a *market*
+  (`condition_id`) which is distinct from a *strict market/outcome signal*
+  (`condition_id + token_id`). Two markets of one match (e.g. a moneyline and
+  a totals market of Barcelona–Real) count as **one event, two markets, two
+  strict signals** -- different markets are never collapsed just because they
+  share a match.
+- The pure `auditGeneratedSignalPairsCorpus(rows, options)` function reuses
+  the canonical strict-dedup projection, strict-dedup-key / formula-version
+  extraction, and event-group fallback helpers; it reads no fs/env/network
+  and never mutates its input. Generated audit JSON is git-ignored and must
+  never be committed.
