@@ -126,3 +126,34 @@ ROI state: NOT_COMPUTED | BLOCKED_BY_DQA | BLOCKED_BY_DUPLICATES | VALID_LOCAL_O
 - `VALID_LOCAL_ONLY` -- ROI computed on a DQA-clean, duplicate-clean local
   export using the tested Phase 3E.1 formula. Still not a production/live
   claim, and still not a guarantee of future performance.
+
+## Phase 3D.2N: strict dedup projection policy
+
+The first real local export was found `BLOCKED_BY_DUPLICATES`
+(66 unique strict keys across 5000 raw rows, 4934 duplicates, 0 rows
+missing a strict key, DQA-R4 clean). A strict duplicate-projection policy
+now exists to make progress possible without silently changing default
+behavior:
+
+- `lib/modeling/generatedSignalPairsDedupPolicy.ts`
+  (`projectGeneratedSignalPairsStrictDedup`) collapses rows to one per
+  strict dedup key (`condition_id` + `token_id`, reusing
+  `getStrictDedupKeyForExportRow` from the export contract -- no
+  reimplementation of key parsing).
+- **The default CLI behavior remains raw rows.** Nothing is deduplicated
+  unless the caller explicitly passes `--dedup-policy
+  strict_latest_created_before_resolved`.
+- **Selection policy**: for each strict key, prefer the row with the latest
+  `created_at` that is still `<= resolved_at`; if no candidate satisfies
+  that, fall back to the latest `created_at` overall (counted separately as
+  `keysWithNoCreatedAtBeforeResolved`); ties break on lexicographically
+  larger `id`, then on original row order (deterministic, stable).
+- This is a **projection**, not a mutation: the original row array passed
+  to the module is never changed. The CLI, when the flag is present, runs
+  the strategy comparison (and DQA-R4, if `--include-dqa-r4` is also
+  passed) against the projected (deduped) rows, while `inputValidation`
+  keeps reporting on the raw rows unchanged.
+- **This is still not ROI.** Deduplication only makes the row count honest
+  for selection counting. ROI/PnL work (Phase 3E.1+) can only proceed once
+  the dedup projection is applied (or duplicates are otherwise resolved)
+  *and* the DQA audits report clean on the resulting rows.

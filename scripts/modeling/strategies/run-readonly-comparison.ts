@@ -1,5 +1,5 @@
 #!/usr/bin/env -S node --import tsx
-// Read-only local strategy comparison CLI (Phase 3D.2H / 3D.2I / 3D.2K).
+// Read-only local strategy comparison CLI (Phase 3D.2H / 3D.2I / 3D.2K / 3D.2N).
 //
 // Reads rows from a local JSON file (--input) and strategy declaration JSON
 // files from ./declarations, runs runStrategyComparison() from
@@ -12,11 +12,13 @@
 //   - compute ROI/PnL
 //   - write any file or database record
 //   - fix any outcome-resolution behavior (DQA-R4 below is audit-only)
+//   - deduplicate rows by default (dedup is opt-in via --dedup-policy)
 //
 // Usage:
 //   node --import tsx scripts/modeling/strategies/run-readonly-comparison.ts \
 //     --input ./path/to/rows.json --required-only \
-//     --input-format generated_signal_pairs --include-dqa-r4
+//     --input-format generated_signal_pairs --include-dqa-r4 \
+//     --dedup-policy strict_latest_created_before_resolved
 //
 //   --input <path>       Required. Path to a local JSON file containing an
 //                         array of row objects.
@@ -42,7 +44,21 @@
 //                         output. Requires --input-format generated_signal_pairs
 //                         (the CLI exits non-zero otherwise). Audit-only: it
 //                         never changes outcome-resolution behavior or strategy
-//                         selection.
+//                         selection. When combined with --dedup-policy, DQA-R4
+//                         runs against the deduped rows.
+//   --dedup-policy <name>  Optional. Currently only
+//                         "strict_latest_created_before_resolved" is
+//                         supported. Requires --input-format
+//                         generated_signal_pairs (the CLI exits non-zero
+//                         otherwise). When present, runs
+//                         projectGeneratedSignalPairsStrictDedup() from
+//                         lib/modeling/generatedSignalPairsDedupPolicy.ts,
+//                         includes the projection diagnostics as top-level
+//                         `dedupProjection`, and runs the strategy
+//                         comparison (and DQA-R4, if requested) on the
+//                         deduped rows instead of the raw rows. Without
+//                         this flag, the default/loose behavior is
+//                         unchanged: strategies always run on raw rows.
 
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
@@ -58,11 +74,19 @@ import {
   type OutcomeResolutionAuditRow,
   type OutcomeResolutionAuditSummary,
 } from "../../../lib/modeling/datasetAudit/outcomeResolutionConsistency";
+import {
+  projectGeneratedSignalPairsStrictDedup,
+  STRICT_DEDUP_POLICY_NAME,
+  type GeneratedSignalPairsDedupProjection,
+} from "../../../lib/modeling/generatedSignalPairsDedupPolicy";
 
 const DECLARATIONS_DIR = path.resolve(__dirname, "declarations");
 
 const SUPPORTED_INPUT_FORMATS = ["loose", "generated_signal_pairs"] as const;
 type InputFormat = (typeof SUPPORTED_INPUT_FORMATS)[number];
+
+const SUPPORTED_DEDUP_POLICIES = [STRICT_DEDUP_POLICY_NAME] as const;
+type DedupPolicy = (typeof SUPPORTED_DEDUP_POLICIES)[number];
 
 interface ParsedArgs {
   input: string | null;
@@ -70,6 +94,7 @@ interface ParsedArgs {
   strategyIds: string[];
   inputFormat: InputFormat;
   includeDqaR4: boolean;
+  dedupPolicy: DedupPolicy | null;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -79,6 +104,7 @@ function parseArgs(argv: string[]): ParsedArgs {
     strategyIds: [],
     inputFormat: "loose",
     includeDqaR4: false,
+    dedupPolicy: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -110,11 +136,25 @@ function parseArgs(argv: string[]): ParsedArgs {
       }
     } else if (arg === "--include-dqa-r4") {
       args.includeDqaR4 = true;
+    } else if (arg === "--dedup-policy") {
+      const value = argv[i + 1] ?? "";
+      i += 1;
+      if ((SUPPORTED_DEDUP_POLICIES as readonly string[]).includes(value)) {
+        args.dedupPolicy = value as DedupPolicy;
+      } else {
+        fail(
+          `invalid --dedup-policy "${value}" (supported: ${SUPPORTED_DEDUP_POLICIES.join(", ")})`,
+        );
+      }
     }
   }
 
   if (args.includeDqaR4 && args.inputFormat !== "generated_signal_pairs") {
     fail("--include-dqa-r4 requires --input-format generated_signal_pairs");
+  }
+
+  if (args.dedupPolicy && args.inputFormat !== "generated_signal_pairs") {
+    fail("--dedup-policy requires --input-format generated_signal_pairs");
   }
 
   return args;
@@ -164,24 +204,38 @@ function main(): void {
 
   const requiredOnly = args.strategyIds.length > 0 ? false : !args.allReady;
 
-  const result = runStrategyComparison(rows as Record<string, unknown>[], declarations, {
-    requiredOnly,
-    strategyIds: args.strategyIds.length > 0 ? args.strategyIds : undefined,
-  });
-
   let inputValidation: GeneratedSignalPairsExportDiagnostics | undefined;
   if (args.inputFormat === "generated_signal_pairs") {
     inputValidation = validateGeneratedSignalPairsExportRows(rows as ExportRow[]);
   }
 
+  let dedupProjection: GeneratedSignalPairsDedupProjection | undefined;
+  let comparisonRows = rows as Record<string, unknown>[];
+  if (args.dedupPolicy) {
+    dedupProjection = projectGeneratedSignalPairsStrictDedup(rows as ExportRow[]);
+    comparisonRows = dedupProjection.dedupedRows;
+  }
+
+  const result = runStrategyComparison(comparisonRows, declarations, {
+    requiredOnly,
+    strategyIds: args.strategyIds.length > 0 ? args.strategyIds : undefined,
+  });
+
   let dqaR4: OutcomeResolutionAuditSummary | undefined;
   if (args.includeDqaR4) {
-    dqaR4 = auditOutcomeResolutionConsistency(rows as OutcomeResolutionAuditRow[]);
+    dqaR4 = auditOutcomeResolutionConsistency(comparisonRows as OutcomeResolutionAuditRow[]);
   }
+
+  // dedupProjection is exposed as diagnostics only -- dedupedRows (raw row
+  // payloads) is never included in CLI output.
+  const dedupProjectionDiagnostics = dedupProjection
+    ? (({ dedupedRows: _dedupedRows, ...diagnostics }) => diagnostics)(dedupProjection)
+    : undefined;
 
   const output = {
     ...result,
     ...(inputValidation ? { inputValidation } : {}),
+    ...(dedupProjectionDiagnostics ? { dedupProjection: dedupProjectionDiagnostics } : {}),
     ...(dqaR4 ? { dqaR4 } : {}),
   };
 

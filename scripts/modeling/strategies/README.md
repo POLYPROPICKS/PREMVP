@@ -79,9 +79,39 @@ This is structural validation only: no rows are ever rejected, filtered, or
 modified as a result of running with `--input-format generated_signal_pairs`
 -- the strategy comparison itself runs identically either way.
 
-**Next phase:** Phase 3D.2M -- the first real local `generated_signal_pairs`
-export run, applying this spec and this duplicate-detection output against
-an actual export file.
+## Strict dedup projection policy (Phase 3D.2N)
+
+```
+node --import tsx scripts/modeling/strategies/run-readonly-comparison.ts \
+  --input ./export.json --required-only \
+  --input-format generated_signal_pairs --include-dqa-r4 \
+  --dedup-policy strict_latest_created_before_resolved
+```
+
+The first real local export was `BLOCKED_BY_DUPLICATES` (66 unique strict
+keys out of 5000 raw rows). `--dedup-policy strict_latest_created_before_resolved`
+runs `projectGeneratedSignalPairsStrictDedup()`
+(`lib/modeling/generatedSignalPairsDedupPolicy.ts`) and adds a top-level
+`dedupProjection` diagnostics object (no raw row payloads) to the output:
+
+- `inputValidation` (when `--input-format generated_signal_pairs` is used)
+  is always computed on the **raw** rows, regardless of `--dedup-policy`.
+- `dedupProjection` reports the projection diagnostics: `rawRows`,
+  `dedupRows`, `uniqueStrictDedupKeys`, `droppedDuplicateRows`,
+  `rowsMissingStrictDedupKey`, `keysWithDuplicates`,
+  `rowsCreatedAfterResolved`, `keysWithNoCreatedAtBeforeResolved`,
+  `hasDuplicateStrictKeyRisk`.
+- `strategies` (and `dqaR4`, if `--include-dqa-r4` is also passed) run on
+  the **deduped** rows only when `--dedup-policy` is present. Without the
+  flag, the default/loose behavior is unchanged -- strategies always run on
+  raw rows.
+- ROI is still not computed anywhere in this stack.
+
+`--dedup-policy` requires `--input-format generated_signal_pairs` (the CLI
+exits non-zero otherwise), same as `--include-dqa-r4`.
+
+**Next phase:** Phase 3D.2O -- rerun the real local export with the dedup
+projection applied and report the resulting dataset counts.
 
 ## DQA-R4: outcome resolution consistency audit (Phase 3D.2J)
 

@@ -377,3 +377,208 @@ test("--include-dqa-r4 without --input-format generated_signal_pairs exits non-z
     assert.equal(result.stdout.trim(), "");
   });
 });
+
+const DEDUP_FIXTURE_ROWS = [
+  // duplicate strict key c1/t1, two candidates before resolved_at
+  {
+    id: "dup-older",
+    formula_version: "trusted-initial-formula-v1.1",
+    condition_id: "c1",
+    token_id: "t1",
+    created_at: "2026-07-01T00:00:00.000Z",
+    resolved_at: "2026-07-05T00:00:00.000Z",
+    signal_result: "won",
+    entry_price_num: 0.5,
+  },
+  {
+    id: "dup-newer",
+    formula_version: "trusted-initial-formula-v1.1",
+    condition_id: "c1",
+    token_id: "t1",
+    created_at: "2026-07-02T00:00:00.000Z",
+    resolved_at: "2026-07-05T00:00:00.000Z",
+    signal_result: "won",
+    entry_price_num: 0.5,
+  },
+  // separate key, non-trusted formula
+  {
+    id: "other",
+    formula_version: "v2-lite-growth-safe",
+    condition_id: "c2",
+    token_id: "t1",
+    created_at: "2026-07-01T00:00:00.000Z",
+    signal_result: "won",
+    entry_price_num: 0.5,
+  },
+];
+
+test("default CLI without --dedup-policy still compares raw rows", async () => {
+  await withTempInputFile(DEDUP_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.dedupProjection, undefined);
+    assert.equal(parsed.strategies[0].inputRows, 3);
+  });
+});
+
+test("CLI with --dedup-policy strict_latest_created_before_resolved includes dedupProjection", async () => {
+  await withTempInputFile(DEDUP_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--dedup-policy",
+      "strict_latest_created_before_resolved",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.ok(parsed.dedupProjection, "expected top-level dedupProjection in CLI output");
+    assert.equal(parsed.dedupProjection.rawRows, 3);
+    assert.equal(parsed.dedupProjection.dedupRows, 2);
+  });
+});
+
+test("with dedup flag, strategy comparison inputRows equals dedupRows", async () => {
+  await withTempInputFile(DEDUP_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--dedup-policy",
+      "strict_latest_created_before_resolved",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.strategies[0].inputRows, parsed.dedupProjection.dedupRows);
+  });
+});
+
+test("trusted formula selectedRows after dedup reflects deduped rows, not raw rows", async () => {
+  await withTempInputFile(DEDUP_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--dedup-policy",
+      "strict_latest_created_before_resolved",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    const trusted = parsed.strategies.find(
+      (s: { strategyId: string }) => s.strategyId === "FORMULA_TRUSTED_INITIAL_V1_1_ALL",
+    );
+    assert.ok(trusted);
+    // 2 trusted-formula rows collapse to 1 after dedup; the non-trusted row
+    // is filtered by formulaVersionEquals either way.
+    assert.equal(trusted.selectedRows, 1);
+  });
+});
+
+test("inputValidation still reports raw duplicate risk regardless of dedup flag", async () => {
+  await withTempInputFile(DEDUP_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--dedup-policy",
+      "strict_latest_created_before_resolved",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.inputValidation.totalRows, 3);
+    assert.equal(parsed.inputValidation.duplicateStrictKeyRows, 1);
+  });
+});
+
+test("dqaR4, when included alongside dedup flag, runs against deduped rows", async () => {
+  await withTempInputFile(DEDUP_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--include-dqa-r4",
+      "--dedup-policy",
+      "strict_latest_created_before_resolved",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.dqaR4.totalRows, parsed.dedupProjection.dedupRows);
+  });
+});
+
+test("--dedup-policy without --input-format generated_signal_pairs exits non-zero", async () => {
+  await withTempInputFile(DEDUP_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--dedup-policy",
+      "strict_latest_created_before_resolved",
+    ]);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /generated_signal_pairs/);
+    assert.equal(result.stdout.trim(), "");
+  });
+});
+
+test("invalid --dedup-policy value exits non-zero", async () => {
+  await withTempInputFile(DEDUP_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--dedup-policy",
+      "not-a-real-policy",
+    ]);
+
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /dedup-policy/);
+  });
+});
+
+test("dedup projection output contains no ROI/PnL/profit keys", async () => {
+  await withTempInputFile(DEDUP_FIXTURE_ROWS, (inputPath) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--include-dqa-r4",
+      "--dedup-policy",
+      "strict_latest_created_before_resolved",
+    ]);
+
+    assert.equal(result.status, 0, result.stderr);
+    const lower = result.stdout.toLowerCase();
+    assert.ok(!lower.includes("\"roi\""));
+    assert.ok(!lower.includes("\"pnl\""));
+    assert.ok(!lower.includes("profit"));
+  });
+});
