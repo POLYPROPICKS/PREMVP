@@ -124,17 +124,39 @@ scripts\modeling\strategies\run-3d2o-from-supabase.cmd
 
 This single command:
 
-1. Reads the latest resolved `generated_signal_pairs` rows directly from
-   Supabase, read-only (`select *`, `resolved_at is not null`, ordered by
-   `resolved_at` descending, limited to 5000 rows by default).
-2. Normalizes schema drift in code (e.g. `selected_token_id` /
+1. Asks Supabase for the exact count of resolved `generated_signal_pairs`
+   rows (`resolved_at is not null`), read-only.
+2. Fetches **all** available resolved rows by paginated `.range()` reads
+   (`select *`, ordered by `resolved_at` descending) -- there is no default
+   dataset cap.
+3. Normalizes schema drift in code (e.g. `selected_token_id` /
    `diagnostics.selectedTokenId` -> `token_id`, `diagnostics.entryPrice` ->
    `entry_price_num`, `pre_event_score_num` -> `score`).
-3. Writes `modeling\local_exports\generated_signal_pairs_export.json`.
-4. Runs the existing read-only dedup comparison CLI
+4. Writes `modeling\local_exports\generated_signal_pairs_export.json`.
+5. Runs the existing read-only dedup comparison CLI
    (`--input-format generated_signal_pairs --include-dqa-r4 --dedup-policy
    strict_latest_created_before_resolved`).
-5. Writes and prints `modeling\local_exports\3d2o_dedup_report.json`.
+6. Writes and prints `modeling\local_exports\3d2o_dedup_report.json`.
+
+**Dataset completeness contract (Phase 3D.2P):**
+
+- `--page-size` (default 1000) is a **transport batch size only** -- it
+  controls how many rows are fetched per Supabase request, not how many
+  rows are fetched in total. The preferred runner always uses it this way.
+- `--max-rows` (and the deprecated alias `--limit`) is a **debug-only cap**.
+  It must never be added to the default operator runner
+  (`run-3d2o-from-supabase.cmd`), and any export produced with it is marked
+  `exportMode: "DEBUG_CAPPED"` / `exportCompleteness:
+  "INTENTIONALLY_CAPPED"` in the exporter summary -- it must not be used
+  for a model-review or ROI gate.
+- The exporter summary always reports `availableResolvedRows`,
+  `fetchedRows`, `pagesFetched`, and `exportCompleteness`
+  (`"COMPLETE" | "INTENTIONALLY_CAPPED" | "INCOMPLETE"`).
+  **`exportCompleteness` must be `"COMPLETE"` before any ROI/model-review
+  gate treats the export as the full dataset.** An `"INCOMPLETE"` export
+  (fetched fewer rows than available, with no explicit cap) means the fetch
+  stalled or the server returned less than expected -- re-run before
+  trusting counts from it.
 
 - **No clipboard/cell-copy required.** The founder does not touch Supabase's
   SQL Editor UI or the clipboard at all for this workflow.

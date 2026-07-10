@@ -24,8 +24,8 @@ set "REPORT_FILE=modeling\local_exports\3d2o_dedup_report.json"
 
 if not exist "modeling\local_exports" mkdir "modeling\local_exports"
 
-echo Reading resolved generated_signal_pairs rows from Supabase (read-only)...
-node --import tsx scripts\modeling\strategies\export-generated-signal-pairs-from-supabase.ts --output "%EXPORT_FILE%" --limit 5000
+echo Reading ALL resolved generated_signal_pairs rows from Supabase (read-only, paginated, no dataset cap)...
+node --import tsx scripts\modeling\strategies\export-generated-signal-pairs-from-supabase.ts --output "%EXPORT_FILE%" --page-size 1000
 if errorlevel 1 (
   echo ERROR: Supabase export failed. See the message above.
   goto :fail

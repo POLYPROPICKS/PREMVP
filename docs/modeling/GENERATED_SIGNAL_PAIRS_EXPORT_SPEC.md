@@ -165,10 +165,35 @@ reads the latest resolved `generated_signal_pairs` rows directly from
 Supabase and writes the local JSON export this spec's CLI commands expect,
 with no clipboard step and no manual file editing.
 
-- **Data path**: `select *` on `public.generated_signal_pairs`, filtered to
-  `resolved_at is not null`, ordered by `resolved_at` descending, limited to
-  5000 rows by default (`--limit` overrides). Read-only -- no insert,
+- **Data path**: exact read-only count (`select("*", { count: "exact", head:
+  true })`) of `public.generated_signal_pairs` rows with `resolved_at is not
+  null`, then **all** of those rows fetched via paginated `.range()` reads
+  (`select *`, ordered by `resolved_at` descending). Read-only -- no insert,
   update, delete, upsert, or rpc call exists anywhere in this module.
+
+### Hidden dataset caps are forbidden in the model review path (Phase 3D.2P)
+
+- There is **no default row cap**. `--page-size` (default 1000) is a
+  transport batch size only -- it must never be read as a dataset limit.
+- `--max-rows` (and the deprecated alias `--limit`) is an **explicit
+  debug-only cap**. Any export produced with it is marked `exportMode:
+  "DEBUG_CAPPED"` / `exportCompleteness: "INTENTIONALLY_CAPPED"` and **must
+  not** be used to satisfy a model-review or ROI gate -- it is a sample,
+  not a census.
+- The preferred operator runner (`run-3d2o-from-supabase.cmd`) never passes
+  `--max-rows`/`--limit`.
+- The exporter always reports `availableResolvedRows` (exact count from
+  Supabase) alongside `fetchedRows` (rows actually written to the local
+  export), so a partial fetch is never silently indistinguishable from a
+  full one.
+- **ROI is blocked unless `exportCompleteness === "COMPLETE"`** (or the
+  export is explicitly documented elsewhere as sample-only research, not a
+  model-review input). An `"INCOMPLETE"` export -- `fetchedRows <
+  availableResolvedRows` with no explicit cap -- means full-dataset
+  coverage was not proven for that run; re-run before trusting any count
+  derived from it. This directly prevents a repeat of the prior
+  under-capture/partial-dataset failure mode this workstream exists to
+  avoid.
 - **Normalization**: schema drift (e.g. `selected_token_id` /
   `diagnostics.selectedTokenId` for `token_id`, `diagnostics.entryPrice` for
   `entry_price_num`, `pre_event_score_num` for `score`) is resolved in code,
