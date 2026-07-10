@@ -39,6 +39,240 @@ import {
 
 const MISSING_VERSION_BUCKET = "(none)";
 
+// ---- Event-identity evidence gate (Phase 3E.2j Commit B) ----
+//
+// Strict market/outcome dedup (condition_id + token_id) is never altered
+// by this section. A match with two markets (e.g. moneyline and
+// total-goals) remains two strict signals and two markets -- it is only
+// treated as one sporting event when the identity evidence below actually
+// supports it. Confidence is classified from which field-priority tier
+// supplied the identity, mirroring the same 7-field fallback chain and
+// alias set already established in eventGroupSelection.ts /
+// generatedSignalPairsExportContract.ts (EVENT_GROUP_CANDIDATE_FIELDS):
+// match_family_key > canonical_event_key > parent_event_key (STRONG),
+// event_slug > event_title (MEDIUM), market_slug > condition_id (WEAK).
+// Only alias field names already confirmed present in those two files are
+// read here -- no speculative diagnostics alias is invented.
+
+export type EventIdentitySourceField =
+  | "match_family_key"
+  | "canonical_event_key"
+  | "parent_event_key"
+  | "event_slug"
+  | "event_title"
+  | "market_slug"
+  | "condition_id"
+  | null;
+
+export type EventIdentitySourceLocation = "top_level" | "diagnostics" | null;
+
+export type EventIdentityConfidenceClass = "STRONG" | "MEDIUM" | "WEAK" | "MISSING" | "CONFLICT";
+
+export interface EventIdentityCandidate {
+  field: EventIdentitySourceField;
+  value: string;
+  location: "top_level" | "diagnostics";
+}
+
+export interface EventIdentityEvidence {
+  eventKey: string | null;
+  sourceField: EventIdentitySourceField;
+  sourceLocation: EventIdentitySourceLocation;
+  confidenceClass: EventIdentityConfidenceClass;
+  candidates: EventIdentityCandidate[];
+}
+
+interface IdentityFieldSpec {
+  field: EventIdentitySourceField;
+  topLevelKeys: string[];
+  diagnosticsKeys: string[];
+  keyPrefix: string;
+}
+
+const STRONG_FIELD_SPECS: IdentityFieldSpec[] = [
+  { field: "match_family_key", topLevelKeys: ["match_family_key"], diagnosticsKeys: ["matchFamilyKey"], keyPrefix: "match" },
+  { field: "canonical_event_key", topLevelKeys: ["canonical_event_key"], diagnosticsKeys: ["canonicalEventKey"], keyPrefix: "canonical" },
+  { field: "parent_event_key", topLevelKeys: ["parent_event_key"], diagnosticsKeys: ["parentEventKey"], keyPrefix: "parent" },
+];
+
+const MEDIUM_FIELD_SPECS: IdentityFieldSpec[] = [
+  { field: "event_slug", topLevelKeys: ["event_slug"], diagnosticsKeys: ["eventSlug"], keyPrefix: "slug" },
+  { field: "event_title", topLevelKeys: ["event_title"], diagnosticsKeys: ["eventTitle"], keyPrefix: "title" },
+];
+
+const WEAK_FIELD_SPECS: IdentityFieldSpec[] = [
+  { field: "market_slug", topLevelKeys: ["market_slug"], diagnosticsKeys: ["marketSlug"], keyPrefix: "market" },
+  { field: "condition_id", topLevelKeys: ["condition_id"], diagnosticsKeys: ["conditionId"], keyPrefix: "condition" },
+];
+
+function identityNormalizeText(value: string): string {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function readIdentityField(
+  row: Record<string, unknown>,
+  spec: IdentityFieldSpec,
+): { value: string; location: "top_level" | "diagnostics" } | null {
+  for (const key of spec.topLevelKeys) {
+    const value = row[key];
+    if ((typeof value === "string" || typeof value === "number") && String(value).trim() !== "") {
+      return { value: String(value).trim(), location: "top_level" };
+    }
+  }
+  const diagnostics = row.diagnostics;
+  if (diagnostics && typeof diagnostics === "object" && !Array.isArray(diagnostics)) {
+    const obj = diagnostics as Record<string, unknown>;
+    for (const key of spec.diagnosticsKeys) {
+      const value = obj[key];
+      if ((typeof value === "string" || typeof value === "number") && String(value).trim() !== "") {
+        return { value: String(value).trim(), location: "diagnostics" };
+      }
+    }
+  }
+  return null;
+}
+
+function resolveTierEvidence(
+  row: Record<string, unknown>,
+  specs: IdentityFieldSpec[],
+  confidenceClass: "STRONG" | "MEDIUM" | "WEAK",
+  candidates: EventIdentityCandidate[],
+): { evidence: Partial<EventIdentityEvidence>; present: boolean } {
+  const found: Array<{ spec: IdentityFieldSpec; value: string; location: "top_level" | "diagnostics" }> = [];
+  for (const spec of specs) {
+    const result = readIdentityField(row, spec);
+    if (result !== null) {
+      candidates.push({ field: spec.field, value: result.value, location: result.location });
+      found.push({ spec, value: result.value, location: result.location });
+    }
+  }
+  if (found.length === 0) {
+    return { evidence: {}, present: false };
+  }
+  const distinctNormalized = new Set(found.map((f) => identityNormalizeText(f.value)));
+  if (distinctNormalized.size > 1) {
+    return {
+      evidence: { eventKey: null, sourceField: null, sourceLocation: null, confidenceClass: "CONFLICT" },
+      present: true,
+    };
+  }
+  const winner = found[0];
+  return {
+    evidence: {
+      eventKey: `${winner.spec.keyPrefix}:${identityNormalizeText(winner.value)}`,
+      sourceField: winner.spec.field,
+      sourceLocation: winner.location,
+      confidenceClass,
+    },
+    present: true,
+  };
+}
+
+/**
+ * Extracts structured event-identity evidence for a single row: which
+ * field supplied the identity, at what confidence tier, from where
+ * (top-level vs diagnostics), plus every raw candidate found -- so a
+ * caller can see a CONFLICT rather than have one silently hidden. Never
+ * mutates its input, no fs/env/network, deterministic.
+ */
+export function extractEventIdentityEvidence(row: Record<string, unknown>): EventIdentityEvidence {
+  const candidates: EventIdentityCandidate[] = [];
+
+  const strong = resolveTierEvidence(row, STRONG_FIELD_SPECS, "STRONG", candidates);
+  if (strong.present) {
+    return { candidates, ...strong.evidence } as EventIdentityEvidence;
+  }
+
+  const medium = resolveTierEvidence(row, MEDIUM_FIELD_SPECS, "MEDIUM", candidates);
+  if (medium.present) {
+    return { candidates, ...medium.evidence } as EventIdentityEvidence;
+  }
+
+  const weak = resolveTierEvidence(row, WEAK_FIELD_SPECS, "WEAK", candidates);
+  if (weak.present) {
+    return { candidates, ...weak.evidence } as EventIdentityEvidence;
+  }
+
+  return { eventKey: null, sourceField: null, sourceLocation: null, confidenceClass: "MISSING", candidates };
+}
+
+export interface EventIdentityEvidenceSummary {
+  rowsByConfidenceClass: Record<EventIdentityConfidenceClass, number>;
+  rowsBySourceField: Record<string, number>;
+  rowsBySourceLocation: Record<string, number>;
+  conflictRows: number;
+  identityReadyRows: number;
+  workingEventCount: number;
+  strongIdentityEventCount: number;
+  mediumOrBetterEventCount: number;
+  weakFallbackEventCount: number;
+  oneEventComparatorReady: false;
+  status: "NEEDS_FOUNDER_POLICY";
+  blockingReasons: string[];
+}
+
+/**
+ * Aggregates per-row identity evidence into corpus-level counts. Does not
+ * invent a readiness threshold: `oneEventComparatorReady` is always
+ * `false` with `status: "NEEDS_FOUNDER_POLICY"` unless/until an existing
+ * project contract defines one -- none currently exists in this repo.
+ */
+export function buildEventIdentityEvidenceSummary(
+  evidences: readonly EventIdentityEvidence[],
+): EventIdentityEvidenceSummary {
+  const rowsByConfidenceClass: Record<EventIdentityConfidenceClass, number> = {
+    STRONG: 0,
+    MEDIUM: 0,
+    WEAK: 0,
+    MISSING: 0,
+    CONFLICT: 0,
+  };
+  const rowsBySourceField: Record<string, number> = {};
+  const rowsBySourceLocation: Record<string, number> = {};
+  const strongEventKeys = new Set<string>();
+  const mediumOrBetterEventKeys = new Set<string>();
+  const weakEventKeys = new Set<string>();
+
+  for (const evidence of evidences) {
+    rowsByConfidenceClass[evidence.confidenceClass] += 1;
+    const fieldBucket = evidence.sourceField ?? MISSING_VERSION_BUCKET;
+    rowsBySourceField[fieldBucket] = (rowsBySourceField[fieldBucket] ?? 0) + 1;
+    const locationBucket = evidence.sourceLocation ?? MISSING_VERSION_BUCKET;
+    rowsBySourceLocation[locationBucket] = (rowsBySourceLocation[locationBucket] ?? 0) + 1;
+
+    if (evidence.confidenceClass === "STRONG" && evidence.eventKey !== null) {
+      strongEventKeys.add(evidence.eventKey);
+      mediumOrBetterEventKeys.add(evidence.eventKey);
+    } else if (evidence.confidenceClass === "MEDIUM" && evidence.eventKey !== null) {
+      mediumOrBetterEventKeys.add(evidence.eventKey);
+    } else if (evidence.confidenceClass === "WEAK" && evidence.eventKey !== null) {
+      weakEventKeys.add(evidence.eventKey);
+    }
+  }
+
+  const identityReadyRows = rowsByConfidenceClass.STRONG + rowsByConfidenceClass.MEDIUM;
+  const workingEventCount = mediumOrBetterEventKeys.size + weakEventKeys.size;
+
+  return {
+    rowsByConfidenceClass,
+    rowsBySourceField,
+    rowsBySourceLocation,
+    conflictRows: rowsByConfidenceClass.CONFLICT,
+    identityReadyRows,
+    workingEventCount,
+    strongIdentityEventCount: strongEventKeys.size,
+    mediumOrBetterEventCount: mediumOrBetterEventKeys.size,
+    weakFallbackEventCount: weakEventKeys.size,
+    oneEventComparatorReady: false,
+    status: "NEEDS_FOUNDER_POLICY",
+    blockingReasons: ["no_project_defined_readiness_threshold"],
+  };
+}
+
 export interface CoverageSummary {
   minResolvedAt: string | null;
   maxResolvedAt: string | null;
@@ -93,6 +327,7 @@ export interface CorpusAuditReport {
     priority: string[];
     fallbackUsage: Record<string, number>;
   };
+  eventIdentityEvidence: EventIdentityEvidenceSummary;
 }
 
 export interface AuditOptions {
@@ -286,6 +521,9 @@ export function auditGeneratedSignalPairsCorpus(
   const perEventCounts = Array.from(eventSignalCounts.values()).sort((a, b) => a - b);
   const eventsWithMoreThanOneSignal = perEventCounts.filter((c) => c > 1).length;
 
+  const identityEvidences = dedupedRows.map((row) => extractEventIdentityEvidence(row as Record<string, unknown>));
+  const eventIdentityEvidence = buildEventIdentityEvidenceSummary(identityEvidences);
+
   return {
     schemaVersion: 1,
     sourceRows,
@@ -325,6 +563,7 @@ export function auditGeneratedSignalPairsCorpus(
       priority: [...EVENT_GROUP_KEY_FIELD_PRIORITY],
       fallbackUsage,
     },
+    eventIdentityEvidence,
   };
 }
 
