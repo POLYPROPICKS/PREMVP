@@ -124,12 +124,15 @@ scripts\modeling\strategies\run-3d2o-from-supabase.cmd
 
 This single command:
 
-1. Asks the Supabase PostgREST REST endpoint for the exact count of
-   resolved `generated_signal_pairs` rows (`resolved_at is not null`),
-   read-only.
-2. Fetches **all** available resolved rows by paginated `Range`-header GET
-   requests (`select=*`, ordered by `resolved_at` descending) -- there is
-   no default dataset cap.
+1. Captures `exportCutoffResolvedAt` (the current time) once, at export
+   start.
+2. Fetches **all** resolved rows (`resolved_at is not null` and
+   `resolved_at <= exportCutoffResolvedAt`, ordered by `resolved_at`
+   descending) by paginated `Range`-header GET requests (`select=*`) --
+   there is no default dataset cap, and, as of Phase 3E.2b, no exact-count
+   request either. Completeness is proven by exhaustive pagination: the
+   exporter keeps fetching until a page comes back shorter than the
+   requested page size, or empty.
 3. Normalizes schema drift in code (e.g. `selected_token_id` /
    `diagnostics.selectedTokenId` -> `token_id`, `diagnostics.entryPrice` ->
    `entry_price_num`, `pre_event_score_num` -> `score`).
@@ -146,16 +149,26 @@ This single command:
 
 **Windows-safe transport (Phase 3E.2a):** the exporter reads via a plain
 read-only GET request against Supabase's PostgREST REST endpoint (using the
-platform `fetch`, with a `Range` header for pagination and `Prefer:
-count=exact` for the row count) instead of the `@supabase/supabase-js`
-client's count/head-select path. The client's count/head path was observed
-to crash on Windows with a native libuv assertion failure
-(`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`) -- a
-runtime/platform issue, not a query logic bug. The REST/`fetch` transport
-has no equivalent failure mode. No manual fallback or Supabase cell copy is
-required because of this change -- the one-command workflow is unaffected.
+platform `fetch`, with a `Range` header for pagination) instead of the
+`@supabase/supabase-js` client's count/head-select path. The client's
+count/head path was observed to crash on Windows with a native libuv
+assertion failure (`Assertion failed: !(handle->flags &
+UV_HANDLE_CLOSING)`) -- a runtime/platform issue, not a query logic bug.
+The REST/`fetch` transport has no equivalent failure mode. No manual
+fallback or Supabase cell copy is required because of this change -- the
+one-command workflow is unaffected.
 
-**Dataset completeness contract (Phase 3D.2P):**
+**No count dependency (Phase 3E.2b):** a real founder run showed that even
+the REST exact-count request itself is fragile (an HTTP 500 was observed
+from a real Supabase project on that request). The default exporter no
+longer makes any row-count request at all. Instead of comparing
+`fetchedRows` against a pre-fetched total, completeness is proven by
+**pagination-until-exhaustion**: the exporter pages through
+`resolved_at <= exportCutoffResolvedAt` until a page comes back shorter
+than `pageSize` or empty, which is the only way the server can say "there
+is nothing left."
+
+**Dataset completeness contract (Phase 3D.2P, updated 3E.2b):**
 
 - `--page-size` (default 1000) is a **transport batch size only** -- it
   controls how many rows are fetched per Supabase request, not how many
@@ -166,14 +179,17 @@ required because of this change -- the one-command workflow is unaffected.
   `exportMode: "DEBUG_CAPPED"` / `exportCompleteness:
   "INTENTIONALLY_CAPPED"` in the exporter summary -- it must not be used
   for a model-review or ROI gate.
-- The exporter summary always reports `availableResolvedRows`,
-  `fetchedRows`, `pagesFetched`, and `exportCompleteness`
-  (`"COMPLETE" | "INTENTIONALLY_CAPPED" | "INCOMPLETE"`).
-  **`exportCompleteness` must be `"COMPLETE"` before any ROI/model-review
-  gate treats the export as the full dataset.** An `"INCOMPLETE"` export
-  (fetched fewer rows than available, with no explicit cap) means the fetch
-  stalled or the server returned less than expected -- re-run before
-  trusting counts from it.
+- The exporter summary reports `fetchedRows`, `pageSize`, `pagesFetched`,
+  `exportMode` (`"FULL_RESOLVED_BY_EXHAUSTION" | "DEBUG_CAPPED"`),
+  `exportCompleteness` (`"COMPLETE_BY_EXHAUSTION" | "INTENTIONALLY_CAPPED"`),
+  `completionProof` (`"LAST_PAGE_SHORT" | "EMPTY_PAGE" | null` -- `null`
+  only in `DEBUG_CAPPED` mode, where completeness is not claimed),
+  `exportCutoffResolvedAt` (the ISO timestamp captured at export start),
+  and `missingRows` (always `0` -- there is no longer a pre-fetched total
+  to compute a gap against; `completionProof` is the completeness signal
+  instead).
+  **`exportCompleteness` must be `"COMPLETE_BY_EXHAUSTION"` before any
+  ROI/model-review gate treats the export as the full dataset.**
 
 - **No clipboard/cell-copy required.** The founder does not touch Supabase's
   SQL Editor UI or the clipboard at all for this workflow.

@@ -351,3 +351,43 @@ gaps this phase closes:
   workflow (`run-3e2-roi-from-supabase.cmd` / `run-3d2o-from-supabase.cmd`)
   is unaffected -- founders still run a single command with no clipboard,
   no cell copy, and no manual file editing.
+
+## Phase 3E.2b — pagination-until-exhaustion, no count dependency
+
+A real founder run showed that even the REST exact-count request itself
+(`Prefer: count=exact`) is fragile -- it returned an HTTP 500 from a real
+Supabase project, a second Windows/Supabase-side failure mode after the
+`@supabase/supabase-js` client's count/head path (Phase 3E.2a). The default
+exporter now makes **no row-count request of any kind**.
+
+- **Cutoff, not count**: at export start, the exporter captures
+  `exportCutoffResolvedAt = new Date().toISOString()` once. Every page
+  request filters to `resolved_at IS NOT NULL AND resolved_at <=
+  exportCutoffResolvedAt`, ordered by `resolved_at` descending. This keeps
+  the row set stable across the whole paginated fetch -- a row resolving
+  after the export started can never appear mid-stream and shift
+  pagination out from under the run.
+- **Exhaustion is the completeness proof**: pages are fetched by `Range:
+  0-999`, `1000-1999`, etc. (`pageSize`, default 1000) until a page comes
+  back shorter than `pageSize` (`completionProof: "LAST_PAGE_SHORT"`) or an
+  empty page (`completionProof: "EMPTY_PAGE"`, needed when the total row
+  count happens to be an exact multiple of `pageSize`). There is no
+  pre-fetched total to compare `fetchedRows` against -- the short/empty
+  final page **is** the proof.
+- **Updated summary contract**: `exportMode` is now
+  `"FULL_RESOLVED_BY_EXHAUSTION"` by default (`"DEBUG_CAPPED"` with
+  `--max-rows`); `exportCompleteness` is `"COMPLETE_BY_EXHAUSTION"` by
+  default (`"INTENTIONALLY_CAPPED"` with `--max-rows`); `missingRows` is
+  always `0` (there is no gap to compute without a count); `completionProof`
+  is `null` only in `DEBUG_CAPPED` mode, where the exporter never claims
+  exhaustion.
+- **`--max-rows` remains debug-only**: it still stops the fetch at an
+  explicit row cap rather than by exhaustion, and is still never used by
+  the default operator runners.
+- **Compatibility note**: this changes the exact `exportCompleteness` /
+  `exportMode` string values from Phase 3D.2P/3E.2a
+  (`"COMPLETE"`/`"FULL_RESOLVED"`) to the exhaustion-based values above.
+  Any downstream consumer that checks for the literal old strings (e.g. a
+  gate in `run-readonly-comparison.ts`) needs its own update to recognize
+  the new values -- that update is out of scope for this phase and must be
+  done separately before relying on the gated ROI path end-to-end.

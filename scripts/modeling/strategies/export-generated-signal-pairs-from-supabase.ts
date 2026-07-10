@@ -1,23 +1,33 @@
 #!/usr/bin/env -S node --import tsx
 // Automated read-only Supabase export runner for generated_signal_pairs
 // (Phase 3D.2Ob, dataset-completeness hardened in Phase 3D.2P, transport
-// hardened for Windows in Phase 3E.2a).
+// hardened for Windows in Phase 3E.2a, count dependency removed in Phase
+// 3E.2b).
 //
 // Reads ALL resolved generated_signal_pairs rows directly from Supabase by
-// default (read-only exact count + paginated select over the PostgREST
-// REST API), normalizes schema drift in code, and writes a local JSON
+// default (paginated GET reads over the PostgREST REST API, no exact-count
+// request), normalizes schema drift in code, and writes a local JSON
 // export file in the same shape the existing dedup comparison CLI
 // (run-readonly-comparison.ts) expects.
 //
 // Transport: this module talks to Supabase's PostgREST REST endpoint
 // directly via the platform `fetch` (GET requests only, with a Range
-// header for pagination and Prefer: count=exact for the row count). It
-// deliberately does NOT depend on the @supabase/supabase-js client's
-// count/head select path -- that path was observed to crash on Windows
-// with a native libuv assertion failure
-// (`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`), which is a
-// runtime/platform issue outside this module's control, not a query logic
-// bug. A plain GET request has no equivalent failure mode.
+// header for pagination). It deliberately does NOT depend on the
+// @supabase/supabase-js client's count/head select path -- that path was
+// observed to crash on Windows with a native libuv assertion failure. As
+// of Phase 3E.2b it also does NOT make any request for an exact row total
+// at all: that request path returned an HTTP 500 in a real founder run,
+// another Windows/Supabase-side failure mode outside this module's
+// control. Completeness is instead proven by exhaustive pagination: the
+// exporter fetches page after page until the server returns a page shorter
+// than the requested page size, or an empty page -- that is the proof the
+// dataset was fully consumed, not a pre-fetched total to compare against.
+//
+// To keep the row set stable across the whole paginated fetch (rows can
+// resolve mid-export), the exporter captures `exportCutoffResolvedAt` (the
+// current time) once at the start and filters every page to
+// `resolved_at <= exportCutoffResolvedAt`, so a row resolving after the
+// export started never appears mid-stream and shifts pagination.
 //
 // There is no default dataset cap. `pageSize` is a transport batch size
 // only (default 1000) -- it does not limit the total number of rows
@@ -180,85 +190,49 @@ export interface ExportGeneratedSignalPairsOptions {
   env?: NodeJS.ProcessEnv;
 }
 
-export type ExportMode = "FULL_RESOLVED" | "DEBUG_CAPPED";
-export type ExportCompleteness = "COMPLETE" | "INTENTIONALLY_CAPPED" | "INCOMPLETE";
+export type ExportMode = "FULL_RESOLVED_BY_EXHAUSTION" | "DEBUG_CAPPED";
+export type ExportCompleteness = "COMPLETE_BY_EXHAUSTION" | "INTENTIONALLY_CAPPED";
+
+export type CompletionProof = "LAST_PAGE_SHORT" | "EMPTY_PAGE" | null;
 
 export interface ExportGeneratedSignalPairsResult {
   outputPath: string;
-  availableResolvedRows: number;
   fetchedRows: number;
-  targetRows: number;
   pageSize: number;
   pagesFetched: number;
   exportMode: ExportMode;
   exportCompleteness: ExportCompleteness;
+  completionProof: CompletionProof;
+  exportCutoffResolvedAt: string;
   missingRows: number;
   requestedMaxRows?: number;
 }
 
-function buildRestUrl(baseUrl: string): string {
+function buildRestUrl(baseUrl: string, cutoffResolvedAt: string): string {
   const trimmedBase = baseUrl.replace(/\/+$/, "");
-  const params = new URLSearchParams({
-    select: "*",
-    resolved_at: "not.is.null",
-    order: "resolved_at.desc",
-  });
+  const params = new URLSearchParams();
+  params.set("select", "*");
+  params.append("resolved_at", "not.is.null");
+  params.append("resolved_at", `lte.${cutoffResolvedAt}`);
+  params.set("order", "resolved_at.desc");
   return `${trimmedBase}/rest/v1/${TABLE_NAME}?${params.toString()}`;
 }
 
 /**
- * Fetches the exact count of resolved rows via a read-only GET against the
- * PostgREST REST endpoint (Range: 0-0, Prefer: count=exact), parsing the
- * total from the Content-Range response header. Never reads the response
- * body of the count request. Throws a safe Error (status code only, no
- * response body) if the request fails or the header is missing/invalid.
- */
-async function fetchResolvedRowCount(
-  fetchImpl: FetchLike,
-  config: SupabaseReadConfig,
-): Promise<number> {
-  const response = await fetchImpl(buildRestUrl(config.url), {
-    method: "GET",
-    headers: {
-      apikey: config.key,
-      Authorization: `Bearer ${config.key}`,
-      Accept: "application/json",
-      Prefer: "count=exact",
-      "Range-Unit": "items",
-      Range: "0-0",
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
-  }
-
-  const contentRange = response.headers.get("Content-Range") ?? response.headers.get("content-range");
-  if (!contentRange) {
-    throw new Error("missing Content-Range header");
-  }
-
-  const match = /\/(\d+)$/.exec(contentRange);
-  if (!match) {
-    throw new Error("invalid Content-Range header");
-  }
-
-  return Number(match[1]);
-}
-
-/**
- * Fetches one page of resolved rows via a read-only GET against the
- * PostgREST REST endpoint (Range: from-to). Throws a safe Error (status
- * code only, no response body) if the request fails or the body is not a
- * JSON array.
+ * Fetches one page of resolved rows (resolved_at not null, resolved_at <=
+ * the export cutoff, ordered by resolved_at descending) via a read-only
+ * GET against the PostgREST REST endpoint (Range: from-to). Throws a safe
+ * Error (status code only, no response body) if the request fails or the
+ * body is not a JSON array.
  */
 async function fetchResolvedRowPage(
   fetchImpl: FetchLike,
   config: SupabaseReadConfig,
+  cutoffResolvedAt: string,
   from: number,
   to: number,
 ): Promise<unknown[]> {
-  const response = await fetchImpl(buildRestUrl(config.url), {
+  const response = await fetchImpl(buildRestUrl(config.url, cutoffResolvedAt), {
     method: "GET",
     headers: {
       apikey: config.key,
@@ -282,16 +256,19 @@ async function fetchResolvedRowPage(
 }
 
 /**
- * Fetches ALL resolved generated_signal_pairs rows by default (read-only
- * exact count, then paginated GET reads over the REST API, resolved_at not
- * null, ordered by resolved_at descending), normalizes each row, and
+ * Fetches ALL resolved generated_signal_pairs rows by default (no
+ * exact-count request -- paginated GET reads over the REST API,
+ * resolved_at not null and resolved_at <= a cutoff captured at export
+ * start, ordered by resolved_at descending), normalizes each row, and
  * writes the result as a JSON array to `outputPath`. Never writes to the
  * database.
  *
- * With no `maxRows`, `targetRows` is the exact available resolved-row
- * count and the export is reported COMPLETE only if every row was fetched.
- * With `maxRows`, the export is explicitly marked DEBUG_CAPPED /
- * INTENTIONALLY_CAPPED and must not be treated as a full dataset.
+ * With no `maxRows`, the exporter pages until it receives a page shorter
+ * than `pageSize` or an empty page -- that is the proof of exhaustive
+ * completeness (`completionProof`), since there is no pre-fetched total to
+ * compare against. With `maxRows`, the export is explicitly marked
+ * DEBUG_CAPPED / INTENTIONALLY_CAPPED and must not be treated as a full
+ * dataset.
  */
 export async function exportGeneratedSignalPairsFromSupabase(
   options: ExportGeneratedSignalPairsOptions = {},
@@ -310,28 +287,21 @@ export async function exportGeneratedSignalPairsFromSupabase(
     throw new Error(`Export failed (config): ${message}`);
   }
 
-  let availableResolvedRows: number;
-  try {
-    availableResolvedRows = await fetchResolvedRowCount(fetchImpl, config);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "unknown error";
-    throw new Error(`Export failed (count): ${message}`);
-  }
-
-  const targetRows =
-    maxRows !== undefined ? Math.min(maxRows, availableResolvedRows) : availableResolvedRows;
+  // Captured once, at export start, so a row resolving mid-export never
+  // shifts the paginated result set out from under this run.
+  const exportCutoffResolvedAt = new Date().toISOString();
 
   const normalizedRows: Record<string, unknown>[] = [];
   let pagesFetched = 0;
+  let completionProof: CompletionProof = null;
 
-  while (normalizedRows.length < targetRows) {
+  while (maxRows === undefined || normalizedRows.length < maxRows) {
     const from = normalizedRows.length;
-    const remaining = targetRows - from;
-    const to = from + Math.min(pageSize, remaining) - 1;
+    const to = maxRows !== undefined ? Math.min(from + pageSize, maxRows) - 1 : from + pageSize - 1;
 
     let pageRows: unknown[];
     try {
-      pageRows = await fetchResolvedRowPage(fetchImpl, config, from, to);
+      pageRows = await fetchResolvedRowPage(fetchImpl, config, exportCutoffResolvedAt, from, to);
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown error";
       throw new Error(`Export failed (page ${pagesFetched + 1}): ${message}`);
@@ -342,9 +312,18 @@ export async function exportGeneratedSignalPairsFromSupabase(
       normalizedRows.push(normalizeGeneratedSignalPairRow(row as Record<string, unknown>));
     }
 
+    if (maxRows !== undefined) {
+      // Debug-capped mode stops purely by size cap -- it never claims
+      // exhaustion proof.
+      continue;
+    }
+
     if (pageRows.length === 0) {
-      // Server returned no more rows -- stop even if targetRows was not
-      // reached, so the loop cannot spin forever on a stalled stream.
+      completionProof = "EMPTY_PAGE";
+      break;
+    }
+    if (pageRows.length < pageSize) {
+      completionProof = "LAST_PAGE_SHORT";
       break;
     }
   }
@@ -361,30 +340,20 @@ export async function exportGeneratedSignalPairsFromSupabase(
   }
 
   const fetchedRows = normalizedRows.length;
-  const exportMode: ExportMode = maxRows !== undefined ? "DEBUG_CAPPED" : "FULL_RESOLVED";
-
-  let exportCompleteness: ExportCompleteness;
-  if (maxRows !== undefined) {
-    exportCompleteness = "INTENTIONALLY_CAPPED";
-  } else if (fetchedRows >= availableResolvedRows) {
-    exportCompleteness = "COMPLETE";
-  } else {
-    exportCompleteness = "INCOMPLETE";
-  }
-
-  const missingRows =
-    exportMode === "DEBUG_CAPPED" ? 0 : Math.max(0, availableResolvedRows - fetchedRows);
+  const exportMode: ExportMode = maxRows !== undefined ? "DEBUG_CAPPED" : "FULL_RESOLVED_BY_EXHAUSTION";
+  const exportCompleteness: ExportCompleteness =
+    maxRows !== undefined ? "INTENTIONALLY_CAPPED" : "COMPLETE_BY_EXHAUSTION";
 
   const summary: ExportGeneratedSignalPairsResult = {
     outputPath,
-    availableResolvedRows,
     fetchedRows,
-    targetRows,
     pageSize,
     pagesFetched,
     exportMode,
     exportCompleteness,
-    missingRows,
+    completionProof: maxRows !== undefined ? null : completionProof,
+    exportCutoffResolvedAt,
+    missingRows: 0,
     ...(maxRows !== undefined ? { requestedMaxRows: maxRows } : {}),
   };
 
