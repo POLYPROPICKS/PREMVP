@@ -34,8 +34,9 @@ test("A2: duplicate bundle IDs are rejected", () => {
   assert.throws(() => validateExecutableFunnelClassifier(clone), /duplicate bundle/i);
 });
 
-test("A3: every alias resolves to exactly one canonical target", () => {
+test("A3: every non-ambiguous alias resolves to exactly one canonical target", () => {
   for (const alias of registry.aliases) {
+    if (alias.relationship === "AMBIGUOUS_HISTORICAL_ALIAS") continue;
     const resolved = resolveAlias(registry, alias.rawName);
     assert.equal(resolved.length, 1, `alias ${alias.rawName} must resolve to exactly one bundle`);
   }
@@ -153,19 +154,23 @@ test("A15: historical and normalized stake policies remain separate", () => {
   }
 });
 
-test("A16: ALT1 remains blocked by event identity contract", () => {
-  const b = getBundle(registry, "ALT1_ONE_PER_EVENT_BEST_COVERAGE");
-  assert.equal(b!.runStatus, "BLOCKED_EVENT_IDENTITY_CONTRACT");
+test("A16: ALT1's normalized canonical variant is blocked/limited by event identity, never promoted to exact", () => {
+  const b = getBundle(registry, "ALT1_CANONICAL_EVENT_GROUPING");
+  assert.equal(b!.runStatus, "READY_EXPLORATORY_WITH_IDENTITY_LIMITATION");
 });
 
-test("A17: ALT2 remains blocked by source conflict", () => {
-  const b = getBundle(registry, "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH");
-  assert.equal(b!.runStatus, "BLOCKED_SOURCE_CONFLICT");
+test("A17: ALT2's two normalized variants disagree by design -- neither silently wins", () => {
+  const ts = getBundle(registry, "ALT2_TS_SCORE_GE_65");
+  const py = getBundle(registry, "ALT2_PY_SCORE_GE_65_SM_LT_85");
+  assert.notEqual(ts!.orderedFunnel.length === py!.orderedFunnel.length &&
+    JSON.stringify(ts!.orderedFunnel) === JSON.stringify(py!.orderedFunnel), true);
 });
 
-test("A18: ALT3 remains blocked by source conflict", () => {
-  const b = getBundle(registry, "ALT3_V1_AVOID_NBA_NHL");
-  assert.equal(b!.runStatus, "BLOCKED_SOURCE_CONFLICT");
+test("A18: ALT3's two normalized variants disagree by design -- neither silently wins", () => {
+  const ts = getBundle(registry, "ALT3_TS_SCORE_GE_65_EXCLUDE_NBA_NHL");
+  const py = getBundle(registry, "ALT3_PY_SCORE_GE_65");
+  assert.notEqual(ts!.orderedFunnel.length === py!.orderedFunnel.length &&
+    JSON.stringify(ts!.orderedFunnel) === JSON.stringify(py!.orderedFunnel), true);
 });
 
 test("A19: MODEL_A resolves to ALT_SM_GUARD_ON_PRIMARY", () => {
@@ -229,6 +234,7 @@ test("A24: current run statuses use approved values only", () => {
     "BLOCKED_SOURCE_CONFLICT", "BLOCKED_MISSING_FIELD", "BLOCKED_MISSING_FORMULA",
     "RELATED_BUT_NOT_IDENTICAL", "CONTRACT_STUB_ONLY", "LABEL_ONLY", "UNRESOLVED",
     "VERIFIED_EXECUTABLE", "VERIFIED_ALIAS",
+    "READY_EXPLORATORY_WITH_IDENTITY_LIMITATION", "AMBIGUOUS_ALIAS_NOT_EXECUTABLE",
   ]);
   for (const bundle of registry.bundles) {
     assert.ok(APPROVED.has(bundle.runStatus), `bundle ${bundle.bundleId} status ${bundle.runStatus} not approved`);
@@ -260,4 +266,153 @@ test("A28: enums exported match the schema's approved values", () => {
   assert.ok(APPROVED_SOURCE_CLASSES.includes("SQL_CONTRACT_STUB"));
   assert.ok(APPROVED_LINEAGE_CONFIDENCE.includes("HEAD_NATIVE"));
   assert.ok(APPROVED_LINEAGE_CONFIDENCE.includes("UNVERIFIED_SIBLING_BRANCH_CONTENT_MATCH"));
+});
+
+// ---- Phase 3E.3A-2: normalize historical variants, resolve minimum blockers ----
+
+test("B1: ALT1 old ID cannot execute directly", () => {
+  const old = getBundle(registry, "ALT1_ONE_PER_EVENT_BEST_COVERAGE");
+  assert.ok(old);
+  assert.equal(old!.runStatus, "AMBIGUOUS_ALIAS_NOT_EXECUTABLE");
+  assert.equal(old!.orderedFunnel.length, 0);
+});
+
+test("B2: ALT1 old ID resolves to exactly two explicit variants", () => {
+  const resolved = resolveAlias(registry, "ALT1_ONE_PER_EVENT_BEST_COVERAGE");
+  assert.deepEqual(
+    [...resolved].sort(),
+    ["ALT1_CANONICAL_EVENT_GROUPING", "ALT1_PY_EVENT_KEY_VARIANT"].sort(),
+  );
+});
+
+test("B3: canonical ALT1 variant uses the existing canonical event-group helper", () => {
+  const b = getBundle(registry, "ALT1_CANONICAL_EVENT_GROUPING");
+  assert.ok(b);
+  const groupStep = b!.orderedFunnel.find((s) => s.action === "GROUP");
+  assert.ok(groupStep);
+  assert.ok(groupStep!.sourceEvidence.some((e) => e.symbol?.includes("buildEventGroupKey") || e.symbol?.includes("eventGroupSelection")));
+});
+
+test("B4: canonical ALT1 variant carries an explicit exploratory identity limitation", () => {
+  const b = getBundle(registry, "ALT1_CANONICAL_EVENT_GROUPING");
+  assert.equal(b!.runStatus, "READY_EXPLORATORY_WITH_IDENTITY_LIMITATION");
+  assert.ok(b!.plainLanguageBlocker && /exploratory|исследователь/i.test(b!.plainLanguageBlocker));
+});
+
+test("B5: Python ALT1 variant preserves event_key -> condition_id fallback exactly", () => {
+  const b = getBundle(registry, "ALT1_PY_EVENT_KEY_VARIANT");
+  assert.ok(b);
+  const groupStep = b!.orderedFunnel.find((s) => s.action === "GROUP");
+  assert.ok(groupStep);
+  assert.deepEqual(groupStep!.exactRule, { fallbackChain: ["event_key", "condition_id"] });
+});
+
+test("B6: ALT2 old ID cannot execute directly", () => {
+  const old = getBundle(registry, "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH");
+  assert.equal(old!.runStatus, "AMBIGUOUS_ALIAS_NOT_EXECUTABLE");
+  assert.equal(old!.orderedFunnel.length, 0);
+});
+
+test("B7: ALT2 TS variant has no smart-money predicate anywhere in its funnel", () => {
+  const b = getBundle(registry, "ALT2_TS_SCORE_GE_65");
+  assert.ok(b);
+  assert.ok(!b!.orderedFunnel.some((s) => s.field === "smart_money_score_num"));
+});
+
+test("B8: ALT2 Python variant requires smart money missing or < 85", () => {
+  const b = getBundle(registry, "ALT2_PY_SCORE_GE_65_SM_LT_85");
+  const step = b!.orderedFunnel.find((s) => s.field === "smart_money_score_num");
+  assert.ok(step);
+  assert.deepEqual(step!.exactRule, { rule: "smart_money is None or smart_money < 85" });
+});
+
+test("B9: ALT3 old ID cannot execute directly", () => {
+  const old = getBundle(registry, "ALT3_V1_AVOID_NBA_NHL");
+  assert.equal(old!.runStatus, "AMBIGUOUS_ALIAS_NOT_EXECUTABLE");
+  assert.equal(old!.orderedFunnel.length, 0);
+});
+
+test("B10: ALT3 TS variant excludes NBA/NHL", () => {
+  const b = getBundle(registry, "ALT3_TS_SCORE_GE_65_EXCLUDE_NBA_NHL");
+  assert.ok(b!.orderedFunnel.some((s) => s.action === "EXCLUDE" && s.field === "league"));
+});
+
+test("B11: ALT3 Python variant does not exclude NBA/NHL", () => {
+  const b = getBundle(registry, "ALT3_PY_SCORE_GE_65");
+  assert.ok(!b!.orderedFunnel.some((s) => s.action === "EXCLUDE" && s.field === "league"));
+});
+
+test("B12: MODEL_A remains an exact verified alias of ALT_SM_GUARD_ON_PRIMARY", () => {
+  assert.deepEqual(resolveAlias(registry, "MODEL_A"), ["ALT_SM_GUARD_ON_PRIMARY"]);
+  assert.equal(getBundle(registry, "MODEL_A")!.runStatus, "VERIFIED_ALIAS");
+});
+
+test("B13: soft smart-money stake guard remains distinct from hard exclusion", () => {
+  const guard = getBundle(registry, "ALT_SM_GUARD_ON_PRIMARY");
+  const approx = getBundle(registry, "ALT_SM_GUARD_ON_PRIMARY_APPROX");
+  const guardStep = guard!.orderedFunnel.find((s) => s.field === "smart_money_score_num");
+  const approxStep = approx!.orderedFunnel.find((s) => s.field === "smart_money_score_num");
+  assert.equal(guardStep!.action, "STAKE");
+  assert.equal(approxStep!.action, "EXCLUDE");
+});
+
+test("B14: PRIMARY remains RUNNABLE_APPROX_ONLY, not upgraded to exact", () => {
+  assert.equal(getBundle(registry, "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP")!.runStatus, "RUNNABLE_APPROX_ONLY");
+});
+
+test("B15: SQL stubs remain non-executable", () => {
+  for (const id of ["CHAMPION_CURRENT", "PUBLISHED_ONE_PER_FIXTURE", "FIRE_FAMILY_SELECTIVE", "SAFETY_BASELINE", "TIERED_LIVE_CONTOUR"]) {
+    assert.equal(getBundle(registry, id)!.runStatus, "CONTRACT_STUB_ONLY");
+  }
+});
+
+test("B16: no historical variant bundle was deleted -- all pre-existing bundle ids remain present", () => {
+  const PRE_EXISTING = [
+    "BASELINE_V1_CONTROL", "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP", "ALT1_ONE_PER_EVENT_BEST_COVERAGE",
+    "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH", "ALT3_V1_AVOID_NBA_NHL", "ALT_SM_GUARD_ON_PRIMARY",
+    "MODEL_A", "ALT_SM_GUARD_ON_PRIMARY_APPROX", "CHAMPION_CURRENT", "PUBLISHED_ONE_PER_FIXTURE",
+    "FIRE_FAMILY_SELECTIVE", "SAFETY_BASELINE", "TIERED_LIVE_CONTOUR", "FIRE_MODEL_1_LOCKED",
+  ];
+  for (const id of PRE_EXISTING) {
+    assert.ok(getBundle(registry, id), `pre-existing bundle ${id} must not be deleted`);
+  }
+});
+
+test("B17: each new executable variant has contiguous ordered funnel steps", () => {
+  for (const id of [
+    "ALT1_CANONICAL_EVENT_GROUPING", "ALT1_PY_EVENT_KEY_VARIANT", "ALT2_TS_SCORE_GE_65",
+    "ALT2_PY_SCORE_GE_65_SM_LT_85", "ALT3_TS_SCORE_GE_65_EXCLUDE_NBA_NHL", "ALT3_PY_SCORE_GE_65",
+  ]) {
+    const b = getBundle(registry, id);
+    assert.ok(b, `variant ${id} must exist`);
+    b!.orderedFunnel.forEach((s, i) => assert.equal(s.step, i + 1));
+  }
+});
+
+test("B18: each exact rule step in the new variants has source evidence", () => {
+  for (const id of [
+    "ALT1_CANONICAL_EVENT_GROUPING", "ALT1_PY_EVENT_KEY_VARIANT", "ALT2_TS_SCORE_GE_65",
+    "ALT2_PY_SCORE_GE_65_SM_LT_85", "ALT3_TS_SCORE_GE_65_EXCLUDE_NBA_NHL", "ALT3_PY_SCORE_GE_65",
+  ]) {
+    const b = getBundle(registry, id);
+    for (const step of b!.orderedFunnel) {
+      if (step.exactRule !== null) {
+        assert.ok(step.sourceEvidence.length > 0, `${id} step ${step.step} exactRule needs sourceEvidence`);
+      }
+    }
+  }
+});
+
+test("B19: no predicate is inferred from the bundle name alone -- TS/Python variants differ where source differs", () => {
+  const tsAlt2 = getBundle(registry, "ALT2_TS_SCORE_GE_65");
+  const pyAlt2 = getBundle(registry, "ALT2_PY_SCORE_GE_65_SM_LT_85");
+  // Same family name root, but the TS variant's funnel must NOT contain the
+  // smart-money predicate implied by "SMARTMONEY_HIGH" in the old shared name.
+  assert.notDeepEqual(tsAlt2!.orderedFunnel, pyAlt2!.orderedFunnel);
+});
+
+test("B20: registry output is deterministic after normalization", () => {
+  const a = validateExecutableFunnelClassifier(structuredClone(registry));
+  const b = validateExecutableFunnelClassifier(structuredClone(registry));
+  assert.deepEqual(a, b);
 });

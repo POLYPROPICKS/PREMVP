@@ -3,98 +3,235 @@
   "generatedFrom": {
     "headCommit": "bd9a5e6",
     "provenancePolicy": "CURRENT_SOURCE_FIRST",
-    "consolidatesPhases": ["3E.3A-0", "3E.3A-0B", "3E.3A-0D"],
+    "consolidatesPhases": [
+      "3E.3A-0",
+      "3E.3A-0B",
+      "3E.3A-0D"
+    ],
     "note": "Read-only consolidation of completed forensic passes. No algorithm is modified; no source conflict is resolved; blocked bundles remain blocked."
   },
   "formulaModels": [
     {
       "formulaModelId": "V2_LITE_GROWTH_SAFE",
       "metricFormulaVersion": "v2-lite-growth-safe",
-      "generationLineage": ["trusted-initial-formula-v1.1"],
+      "generationLineage": [
+        "trusted-initial-formula-v1.1"
+      ],
       "producingFunction": "generateLandingCardPair",
       "sourcePath": "lib/feed/buildLandingCards.ts",
       "sourceClass": "CURRENT_EXECUTABLE",
       "lineageConfidence": "HEAD_NATIVE",
       "inputs": [
-        { "field": "oddsFit", "role": "DIRECT_FORMULA_COMPONENT", "directWeight": 0.35, "source": "computed inline from selectedOutcome.price (buildLandingCards.ts oddsFit block)" },
-        { "field": "smart_money_score_num", "role": "DIRECT_FORMULA_COMPONENT", "directWeight": 0.25, "source": "smartMoneyVal computed inline from maxTradeCash/recentTradeCash; persisted as smart_money_score_num" },
-        { "field": "whale_public_score_num", "role": "DIRECT_FORMULA_COMPONENT", "directWeight": 0.15, "source": "pubWhaleVal computed inline from avg trade size + maxTradeCash; persisted as whale_public_score_num" },
-        { "field": "pre_event_score_num", "role": "DIRECT_FORMULA_COMPONENT", "directWeight": 0.2, "source": "preEventVal computed inline (nested formula below); persisted as pre_event_score_num" },
-        { "field": "dataCoverage", "role": "DIRECT_FORMULA_COMPONENT_PLUS_NESTED", "directWeight": 0.05, "source": "diagnostics.dataCoverage; also contributes 0.10 inside preEventVal" }
+        {
+          "field": "oddsFit",
+          "role": "DIRECT_FORMULA_COMPONENT",
+          "directWeight": 0.35,
+          "source": "computed inline from selectedOutcome.price (buildLandingCards.ts oddsFit block)"
+        },
+        {
+          "field": "smart_money_score_num",
+          "role": "DIRECT_FORMULA_COMPONENT",
+          "directWeight": 0.25,
+          "source": "smartMoneyVal computed inline from maxTradeCash/recentTradeCash; persisted as smart_money_score_num"
+        },
+        {
+          "field": "whale_public_score_num",
+          "role": "DIRECT_FORMULA_COMPONENT",
+          "directWeight": 0.15,
+          "source": "pubWhaleVal computed inline from avg trade size + maxTradeCash; persisted as whale_public_score_num"
+        },
+        {
+          "field": "pre_event_score_num",
+          "role": "DIRECT_FORMULA_COMPONENT",
+          "directWeight": 0.2,
+          "source": "preEventVal computed inline (nested formula below); persisted as pre_event_score_num"
+        },
+        {
+          "field": "dataCoverage",
+          "role": "DIRECT_FORMULA_COMPONENT_PLUS_NESTED",
+          "directWeight": 0.05,
+          "source": "diagnostics.dataCoverage; also contributes 0.10 inside preEventVal"
+        }
       ],
       "calculationSteps": [
         {
           "output": "preEventVal",
           "expression": "clamp(0.40*oddsFit + 0.30*momentum + 0.20*liquidity + 0.10*dataCoverage, 45, 90)",
           "contributions": [
-            { "input": "oddsFit", "weight": 0.4 },
-            { "input": "momentum", "weight": 0.3 },
-            { "input": "liquidity", "weight": 0.2 },
-            { "input": "dataCoverage", "weight": 0.1 }
+            {
+              "input": "oddsFit",
+              "weight": 0.4
+            },
+            {
+              "input": "momentum",
+              "weight": 0.3
+            },
+            {
+              "input": "liquidity",
+              "weight": 0.2
+            },
+            {
+              "input": "dataCoverage",
+              "weight": 0.1
+            }
           ]
         },
         {
           "output": "signalV2Raw",
           "expression": "0.35*oddsFit + 0.25*smartMoneyVal + 0.15*pubWhaleVal + 0.20*preEventVal + 0.05*dataCoverage",
           "contributions": [
-            { "input": "oddsFit", "weight": 0.35 },
-            { "input": "smart_money_score_num", "weight": 0.25 },
-            { "input": "whale_public_score_num", "weight": 0.15 },
-            { "input": "pre_event_score_num", "weight": 0.2 },
-            { "input": "dataCoverage", "weight": 0.05 }
+            {
+              "input": "oddsFit",
+              "weight": 0.35
+            },
+            {
+              "input": "smart_money_score_num",
+              "weight": 0.25
+            },
+            {
+              "input": "whale_public_score_num",
+              "weight": 0.15
+            },
+            {
+              "input": "pre_event_score_num",
+              "weight": 0.2
+            },
+            {
+              "input": "dataCoverage",
+              "weight": 0.05
+            }
           ]
         },
         {
           "output": "finalSignalV2",
           "expression": "roundNumber(clamp(signalV2Raw, 52, calibratedSignalCap))",
-          "contributions": [{ "input": "signalV2Raw", "weight": 1 }]
+          "contributions": [
+            {
+              "input": "signalV2Raw",
+              "weight": 1
+            }
+          ]
         }
       ],
-      "outputs": ["signal_confidence_num", "premium_signal.winProbability", "score"],
+      "outputs": [
+        "signal_confidence_num",
+        "premium_signal.winProbability",
+        "score"
+      ],
       "capsAndFloors": [
-        { "name": "lowerFloor", "plainLanguage": "Итоговый score не может быть ниже 52.", "value": 52 },
-        { "name": "baseCap", "plainLanguage": "Базовый потолок score равен 95.", "value": 95 },
-        { "name": "coverageCapUnder50", "plainLanguage": "Если data coverage ниже 50, потолок опускается до 64.", "value": 64 },
-        { "name": "coverageCapUnder75", "plainLanguage": "Если data coverage от 50 до 74, потолок опускается до 75.", "value": 75 },
-        { "name": "noTradeDataCap", "plainLanguage": "Если нет данных о сделках, потолок опускается до 68.", "value": 68 },
-        { "name": "oddsBandCap", "plainLanguage": "Итоговый потолок = min(потолок по покрытию, потолок по odds-band калибровке getOddsBandCalibration).", "value": "min(signalCap, oddsBand.max)" }
+        {
+          "name": "lowerFloor",
+          "plainLanguage": "Итоговый score не может быть ниже 52.",
+          "value": 52
+        },
+        {
+          "name": "baseCap",
+          "plainLanguage": "Базовый потолок score равен 95.",
+          "value": 95
+        },
+        {
+          "name": "coverageCapUnder50",
+          "plainLanguage": "Если data coverage ниже 50, потолок опускается до 64.",
+          "value": 64
+        },
+        {
+          "name": "coverageCapUnder75",
+          "plainLanguage": "Если data coverage от 50 до 74, потолок опускается до 75.",
+          "value": 75
+        },
+        {
+          "name": "noTradeDataCap",
+          "plainLanguage": "Если нет данных о сделках, потолок опускается до 68.",
+          "value": 68
+        },
+        {
+          "name": "oddsBandCap",
+          "plainLanguage": "Итоговый потолок = min(потолок по покрытию, потолок по odds-band калибровке getOddsBandCalibration).",
+          "value": "min(signalCap, oddsBand.max)"
+        }
       ],
       "tests": [
-        { "path": "lib/feed/buildLandingCards.ts", "symbol": "signalV2Raw", "commit": "f45b77c", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "UNVERIFIED_SIBLING_BRANCH_CONTENT_MATCH", "note": "Identical formula text first appears on non-ancestor sibling branch commit f45b77c (2026-05-25). Current content is CURRENT_EXECUTABLE at HEAD; its incremental authorship trail is NOT a HEAD ancestor." }
+        {
+          "path": "lib/feed/buildLandingCards.ts",
+          "symbol": "signalV2Raw",
+          "commit": "f45b77c",
+          "sourceClass": "CURRENT_EXECUTABLE",
+          "lineageConfidence": "UNVERIFIED_SIBLING_BRANCH_CONTENT_MATCH",
+          "note": "Identical formula text first appears on non-ancestor sibling branch commit f45b77c (2026-05-25). Current content is CURRENT_EXECUTABLE at HEAD; its incremental authorship trail is NOT a HEAD ancestor."
+        }
       ]
     },
     {
       "formulaModelId": "SPORTS_SHADOW_WINPROB",
       "metricFormulaVersion": "shadow-strategic-sports-v1",
-      "generationLineage": ["shadow-strategic-sports-v1"],
+      "generationLineage": [
+        "shadow-strategic-sports-v1"
+      ],
       "producingFunction": "buildSportsLandingCards",
       "sourcePath": "lib/feed/buildSportsLandingCards.ts",
       "sourceClass": "CURRENT_EXECUTABLE",
       "lineageConfidence": "HEAD_NATIVE",
       "inputs": [
-        { "field": "price", "role": "DIRECT_FORMULA_COMPONENT", "directWeight": null, "source": "selected.price" },
-        { "field": "volumeScore", "role": "DIRECT_FORMULA_COMPONENT", "directWeight": null, "source": "computed from volume" }
+        {
+          "field": "price",
+          "role": "DIRECT_FORMULA_COMPONENT",
+          "directWeight": null,
+          "source": "selected.price"
+        },
+        {
+          "field": "volumeScore",
+          "role": "DIRECT_FORMULA_COMPONENT",
+          "directWeight": null,
+          "source": "computed from volume"
+        }
       ],
       "calculationSteps": [
         {
           "output": "winProbability",
           "expression": "clamp(round(52 + (1-price)*25 + volumeScore), 52, 89)",
-          "contributions": [{ "input": "price", "weight": 1 }, { "input": "volumeScore", "weight": 1 }]
+          "contributions": [
+            {
+              "input": "price",
+              "weight": 1
+            },
+            {
+              "input": "volumeScore",
+              "weight": 1
+            }
+          ]
         }
       ],
-      "outputs": ["premium_signal.winProbability"],
+      "outputs": [
+        "premium_signal.winProbability"
+      ],
       "capsAndFloors": [
-        { "name": "lowerFloor", "plainLanguage": "winProbability не ниже 52.", "value": 52 },
-        { "name": "upperCap", "plainLanguage": "winProbability не выше 89.", "value": 89 }
+        {
+          "name": "lowerFloor",
+          "plainLanguage": "winProbability не ниже 52.",
+          "value": 52
+        },
+        {
+          "name": "upperCap",
+          "plainLanguage": "winProbability не выше 89.",
+          "value": 89
+        }
       ],
       "tests": [
-        { "path": "lib/feed/buildSportsLandingCards.ts", "symbol": "winProbability", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE", "note": "In this pipeline smart_money/whale/pre_event are decorative offsets computed AFTER winProbability (winProbability+3 / 50+winProbability/4 / winProbability+7), never fed back into the score." }
+        {
+          "path": "lib/feed/buildSportsLandingCards.ts",
+          "symbol": "winProbability",
+          "sourceClass": "CURRENT_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE",
+          "note": "In this pipeline smart_money/whale/pre_event are decorative offsets computed AFTER winProbability (winProbability+3 / 50+winProbability/4 / winProbability+7), never fed back into the score."
+        }
       ]
     },
     {
       "formulaModelId": "TRUSTED_INITIAL_V1_1_DEAD_HELPERS",
       "metricFormulaVersion": "trusted-initial-formula-v1.1",
-      "generationLineage": ["trusted-initial-formula-v1.1"],
+      "generationLineage": [
+        "trusted-initial-formula-v1.1"
+      ],
       "producingFunction": "computeSmartMoneyProxy / computePublicVsWhaleProxy / computePreEventScoreAI",
       "sourcePath": "lib/feed/scorePolymarket.ts",
       "sourceClass": "DEAD_UNREACHABLE_CODE",
@@ -104,7 +241,13 @@
       "outputs": [],
       "capsAndFloors": [],
       "tests": [
-        { "path": "lib/feed/scorePolymarket.ts", "symbol": "computePreEventScoreAI", "sourceClass": "DEAD_UNREACHABLE_CODE", "lineageConfidence": "UNRESOLVED", "note": "Defined but zero call sites repo-wide (verified by grep in Phase 3E.3A-0B). NOT the live formula. Creation commit not found anywhere in reachable history." }
+        {
+          "path": "lib/feed/scorePolymarket.ts",
+          "symbol": "computePreEventScoreAI",
+          "sourceClass": "DEAD_UNREACHABLE_CODE",
+          "lineageConfidence": "UNRESOLVED",
+          "note": "Defined but zero call sites repo-wide (verified by grep in Phase 3E.3A-0B). NOT the live formula. Creation commit not found anywhere in reachable history."
+        }
       ]
     }
   ],
@@ -112,21 +255,112 @@
     {
       "bundleId": "BASELINE_V1_CONTROL",
       "plainLanguageName": "Контрольная базовая модель: берёт все сигналы без фильтров.",
-      "aliases": ["FLAT_ALL"],
-      "formulaModelId": "V2_LITE_GROWTH_SAFE",
-      "historicalInput": { "source": "morning-model-report.ts fetchAllResolvedRows via RPC", "dedup": "none in the FLAT_ALL fallback path" },
-      "normalizedCurrentInput": { "rawSnapshots": 42088, "dedupPolicy": "strict_latest_created_before_resolved", "retainedRows": 1657 },
-      "orderedFunnel": [
-        { "step": 1, "action": "INPUT", "plainLanguage": "Взять все канонические строки после строгой дедупликации.", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "fetchAllResolvedRows", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 2, "action": "KEEP", "plainLanguage": "Оставить каждую строку — фильтра нет (filter: () => true).", "field": null, "exactRule": { "predicate": "() => true" }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "FLAT_ALL filter", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "NOT_APPLICABLE", "executionStatus": "VERIFIED" },
-        { "step": 3, "action": "STAKE", "plainLanguage": "Историческая ставка: фиксированные $10 на строку.", "field": null, "exactRule": { "unit": "USD", "amount": 10 }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "fallbackPnl(row, 10)", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "NOT_APPLICABLE", "executionStatus": "VERIFIED" },
-        { "step": 4, "action": "OUTPUT", "plainLanguage": "Вернуть все строки как выбранные.", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "policyMetrics", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "NOT_APPLICABLE", "executionStatus": "VERIFIED" }
+      "aliases": [
+        "FLAT_ALL"
       ],
-      "historicalStakePolicy": { "unit": "FLAT_10_USD", "plainLanguage": "Фиксированная историческая ставка $10 (не переписывать под нормализованную)." },
-      "normalizedEvaluationStakePolicy": { "unit": "FLAT_1_UNIT", "plainLanguage": "Канонический ROI: 1 единица на ставку." },
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "source": "morning-model-report.ts fetchAllResolvedRows via RPC",
+        "dedup": "none in the FLAT_ALL fallback path"
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять все канонические строки после строгой дедупликации.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "fetchAllResolvedRows",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "KEEP",
+          "plainLanguage": "Оставить каждую строку — фильтра нет (filter: () => true).",
+          "field": null,
+          "exactRule": {
+            "predicate": "() => true"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "FLAT_ALL filter",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "STAKE",
+          "plainLanguage": "Историческая ставка: фиксированные $10 на строку.",
+          "field": null,
+          "exactRule": {
+            "unit": "USD",
+            "amount": 10
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "fallbackPnl(row, 10)",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 4,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть все строки как выбранные.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "policyMetrics",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "FLAT_10_USD",
+        "plainLanguage": "Фиксированная историческая ставка $10 (не переписывать под нормализованную)."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
       "requiredFields": [],
       "sourceAgreement": "SINGLE_SOURCE",
-      "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "FLAT_ALL / BASELINE_V1_CONTROL", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }],
+      "sourceEvidence": [
+        {
+          "path": "scripts/morning-model-report.ts",
+          "symbol": "FLAT_ALL / BASELINE_V1_CONTROL",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
       "lineageConfidence": "HEAD_NATIVE",
       "runStatus": "READY_EXACT",
       "plainLanguageBlocker": null
@@ -134,28 +368,277 @@
     {
       "bundleId": "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP",
       "plainLanguageName": "Основная модель: сигнал >=72, без NBA/NHL, с исключением плохого диапазона покрытия/цены и тайминга, один сигнал на событие.",
-      "aliases": ["Primary COV_CAP"],
-      "formulaModelId": "V2_LITE_GROWTH_SAFE",
-      "historicalInput": { "source": "morning-model-report.ts counterfactual engine (loadCounterfactualRows)", "dedup": "condition_id::selected_token_id, most recent by resolvedAt" },
-      "normalizedCurrentInput": { "rawSnapshots": 42088, "dedupPolicy": "strict_latest_created_before_resolved", "retainedRows": 1657 },
-      "orderedFunnel": [
-        { "step": 1, "action": "INPUT", "plainLanguage": "Взять дедуплицированные строки (условие + токен, самая свежая).", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "dedupeCounterfactualRows", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 2, "action": "CALCULATE", "plainLanguage": "Прочитать готовый confidence-score (signal_confidence_num).", "field": "signal_confidence_num", "exactRule": { "aliasChain": ["signal_confidence_num", "score", "final_score", "confidence"] }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "normalizeCounterfactualPick", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 3, "action": "REQUIRE", "plainLanguage": "Оставить только сигналы с confidence не ниже 72.", "field": "signal_confidence_num", "exactRule": { "operator": ">=", "value": 72 }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "score72", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 4, "action": "EXCLUDE", "plainLanguage": "Исключить матчи NBA и NHL по текстовому совпадению лиги.", "field": "league", "exactRule": { "regex": "\\bnba\\b|basketball|\\bnhl\\b|ice[\\s-]?hockey|\\bhockey\\b" }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "counterfactualNbaNhl", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS", "executionStatus": "VERIFIED_WITH_LIMITATION" },
-        { "step": 5, "action": "EXCLUDE", "plainLanguage": "Исключить строки, у которых покрытие 50–74 И цена входа 0.44–0.58 одновременно.", "field": "data_coverage_num+entry_price_num", "exactRule": { "coverageMin": 50, "coverageMax": 74, "priceMin": 0.44, "priceMax": 0.58 }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "counterfactualBadBucket", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS", "executionStatus": "VERIFIED_WITH_LIMITATION" },
-        { "step": 6, "action": "EXCLUDE", "plainLanguage": "Исключить строки, у которых до старта матча от 6 до 24 часов.", "field": "hours_until_start_num", "exactRule": { "operator": "in_range", "min": 6, "max": 24 }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "counterfactualTimingGuard", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS", "executionStatus": "VERIFIED_WITH_LIMITATION" },
-        { "step": 7, "action": "GROUP", "plainLanguage": "Сгруппировать в одно событие по цепочке: event_slug/event_key → event_title → market_slug → condition_id.", "field": "eventGroupKey", "exactRule": { "fallbackChain": ["event_slug", "event_key", "event_title", "market_slug", "condition_id"] }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "counterfactualEventGroup", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 8, "action": "ORDER", "plainLanguage": "Внутри события отсортировать: score, затем coverage, затем smart money, затем ценовой диапазон, затем свежесть, затем стабильный id.", "field": null, "exactRule": { "tuple": ["score", "coverage", "smartMoney", "priceOk(0.25-0.65)", "-createdAt", "stableId"], "direction": "desc" }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "compareCounterfactualStandard", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 9, "action": "KEEP", "plainLanguage": "Оставить первого кандидата в каждом событии.", "field": null, "exactRule": { "keep": "first_per_group" }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "selectCounterfactualOnePerEvent", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 10, "action": "STAKE", "plainLanguage": "Историческая ставка: эквивалент $10 на строку.", "field": null, "exactRule": { "unit": "USD", "amount": 10 }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "pnl10", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "NOT_APPLICABLE", "executionStatus": "VERIFIED" },
-        { "step": 11, "action": "OUTPUT", "plainLanguage": "Вернуть по одному выбранному сигналу на событие.", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "counterfactualMetric", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "NOT_APPLICABLE", "executionStatus": "VERIFIED" }
+      "aliases": [
+        "Primary COV_CAP"
       ],
-      "historicalStakePolicy": { "unit": "FLAT_10_USD", "plainLanguage": "Историческая ставка $10-эквивалент." },
-      "normalizedEvaluationStakePolicy": { "unit": "FLAT_1_UNIT", "plainLanguage": "Канонический ROI: 1 единица на ставку." },
-      "requiredFields": ["signal_confidence_num", "data_coverage_num", "entry_price_num", "hours_until_start_num", "league", "eventGroupKey"],
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "source": "morning-model-report.ts counterfactual engine (loadCounterfactualRows)",
+        "dedup": "condition_id::selected_token_id, most recent by resolvedAt"
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять дедуплицированные строки (условие + токен, самая свежая).",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "dedupeCounterfactualRows",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "CALCULATE",
+          "plainLanguage": "Прочитать готовый confidence-score (signal_confidence_num).",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "aliasChain": [
+              "signal_confidence_num",
+              "score",
+              "final_score",
+              "confidence"
+            ]
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "normalizeCounterfactualPick",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только сигналы с confidence не ниже 72.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 72
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "score72",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 4,
+          "action": "EXCLUDE",
+          "plainLanguage": "Исключить матчи NBA и NHL по текстовому совпадению лиги.",
+          "field": "league",
+          "exactRule": {
+            "regex": "\\bnba\\b|basketball|\\bnhl\\b|ice[\\s-]?hockey|\\bhockey\\b"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "counterfactualNbaNhl",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS",
+          "executionStatus": "VERIFIED_WITH_LIMITATION"
+        },
+        {
+          "step": 5,
+          "action": "EXCLUDE",
+          "plainLanguage": "Исключить строки, у которых покрытие 50–74 И цена входа 0.44–0.58 одновременно.",
+          "field": "data_coverage_num+entry_price_num",
+          "exactRule": {
+            "coverageMin": 50,
+            "coverageMax": 74,
+            "priceMin": 0.44,
+            "priceMax": 0.58
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "counterfactualBadBucket",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS",
+          "executionStatus": "VERIFIED_WITH_LIMITATION"
+        },
+        {
+          "step": 6,
+          "action": "EXCLUDE",
+          "plainLanguage": "Исключить строки, у которых до старта матча от 6 до 24 часов.",
+          "field": "hours_until_start_num",
+          "exactRule": {
+            "operator": "in_range",
+            "min": 6,
+            "max": 24
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "counterfactualTimingGuard",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS",
+          "executionStatus": "VERIFIED_WITH_LIMITATION"
+        },
+        {
+          "step": 7,
+          "action": "GROUP",
+          "plainLanguage": "Сгруппировать в одно событие по цепочке: event_slug/event_key → event_title → market_slug → condition_id.",
+          "field": "eventGroupKey",
+          "exactRule": {
+            "fallbackChain": [
+              "event_slug",
+              "event_key",
+              "event_title",
+              "market_slug",
+              "condition_id"
+            ]
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "counterfactualEventGroup",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 8,
+          "action": "ORDER",
+          "plainLanguage": "Внутри события отсортировать: score, затем coverage, затем smart money, затем ценовой диапазон, затем свежесть, затем стабильный id.",
+          "field": null,
+          "exactRule": {
+            "tuple": [
+              "score",
+              "coverage",
+              "smartMoney",
+              "priceOk(0.25-0.65)",
+              "-createdAt",
+              "stableId"
+            ],
+            "direction": "desc"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "compareCounterfactualStandard",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 9,
+          "action": "KEEP",
+          "plainLanguage": "Оставить первого кандидата в каждом событии.",
+          "field": null,
+          "exactRule": {
+            "keep": "first_per_group"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "selectCounterfactualOnePerEvent",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 10,
+          "action": "STAKE",
+          "plainLanguage": "Историческая ставка: эквивалент $10 на строку.",
+          "field": null,
+          "exactRule": {
+            "unit": "USD",
+            "amount": 10
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "pnl10",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 11,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть по одному выбранному сигналу на событие.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "counterfactualMetric",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "FLAT_10_USD",
+        "plainLanguage": "Историческая ставка $10-эквивалент."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
+      "requiredFields": [
+        "signal_confidence_num",
+        "data_coverage_num",
+        "entry_price_num",
+        "hours_until_start_num",
+        "league",
+        "eventGroupKey"
+      ],
       "sourceAgreement": "SINGLE_SOURCE_SELF_LABELLED_APPROX",
-      "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "buildCounterfactualPolicies (SIM_PARTIAL_RULE_RECONSTRUCTED, APPROX / NEEDS_EXACT_RECON)", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }],
+      "sourceEvidence": [
+        {
+          "path": "scripts/morning-model-report.ts",
+          "symbol": "buildCounterfactualPolicies (SIM_PARTIAL_RULE_RECONSTRUCTED, APPROX / NEEDS_EXACT_RECON)",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
       "lineageConfidence": "HEAD_NATIVE",
       "runStatus": "RUNNABLE_APPROX_ONLY",
       "plainLanguageBlocker": "Исходный код сам помечает эту реконструкцию как приблизительную (SIM_PARTIAL_RULE_RECONSTRUCTED / APPROX). Правила запускаются, но не доказано, что они байт-в-байт совпадают с исторически работавшей боевой моделью."
@@ -163,95 +646,334 @@
     {
       "bundleId": "ALT1_ONE_PER_EVENT_BEST_COVERAGE",
       "plainLanguageName": "Альтернатива 1: один сигнал на событие, побеждает наибольшее покрытие.",
-      "aliases": ["ALT1 Best Coverage"],
-      "formulaModelId": "V2_LITE_GROWTH_SAFE",
-      "historicalInput": { "tsSource": "morning-model-report.ts selectCounterfactualOnePerEvent(score72, 'coverage')", "pythonSource": "analyze-ice1-freeze.py one_per_event(rows, 72, 'coverage') на замороженном CSV" },
-      "normalizedCurrentInput": { "rawSnapshots": 42088, "dedupPolicy": "strict_latest_created_before_resolved", "retainedRows": 1657 },
-      "orderedFunnel": [
-        { "step": 1, "action": "INPUT", "plainLanguage": "Взять дедуплицированные строки (TS) или замороженный CSV-снимок (Python).", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "loadCounterfactualRows", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 2, "action": "REQUIRE", "plainLanguage": "Оставить только сигналы с confidence не ниже 72.", "field": "signal_confidence_num", "exactRule": { "operator": ">=", "value": 72 }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "score72", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 3, "action": "GROUP", "plainLanguage": "Сгруппировать события. TS: цепочка event_slug/event_key→title→market_slug→condition_id. Python: только event_key, иначе condition_id. Это РАЗНЫЕ ключи — источник конфликта.", "field": "eventGroupKey", "exactRule": { "tsKey": "eventGroupKey fallback chain", "pythonKey": "event_key or condition_id" }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "counterfactualEventGroup", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }, { "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "one_per_event", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "BLOCKED" },
-        { "step": 4, "action": "ORDER", "plainLanguage": "Отсортировать по покрытию по убыванию; confidence — только тай-брейк, не порог.", "field": "data_coverage_num", "exactRule": { "tuple": ["coverage", "score", "smartMoney", "priceOk", "-createdAt", "stableId"], "direction": "desc" }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "compareCounterfactualCoverage", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 5, "action": "KEEP", "plainLanguage": "Оставить первого кандидата в каждом событии.", "field": null, "exactRule": { "keep": "first_per_group" }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "selectCounterfactualOnePerEvent", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 6, "action": "STAKE", "plainLanguage": "Историческая ставка: эквивалент $10 (TS).", "field": null, "exactRule": { "unit": "USD", "amount": 10 }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "pnl10", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "NOT_APPLICABLE", "executionStatus": "VERIFIED" },
-        { "step": 7, "action": "OUTPUT", "plainLanguage": "Вернуть по одному сигналу на событие (но выбор может отличаться между TS и Python).", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "counterfactualMetric", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "NOT_APPLICABLE", "executionStatus": "BLOCKED" }
+      "aliases": [
+        "ALT1 Best Coverage"
       ],
-      "historicalStakePolicy": { "unit": "FLAT_10_USD", "plainLanguage": "Историческая ставка $10-эквивалент (TS)." },
-      "normalizedEvaluationStakePolicy": { "unit": "FLAT_1_UNIT", "plainLanguage": "Канонический ROI: 1 единица на ставку." },
-      "requiredFields": ["signal_confidence_num", "data_coverage_num", "eventGroupKey"],
+      "formulaModelId": null,
+      "historicalInput": {
+        "tsSource": "morning-model-report.ts selectCounterfactualOnePerEvent(score72, 'coverage')",
+        "pythonSource": "analyze-ice1-freeze.py one_per_event(rows, 72, 'coverage') на замороженном CSV"
+      },
+      "normalizedCurrentInput": null,
+      "orderedFunnel": [],
+      "historicalStakePolicy": null,
+      "normalizedEvaluationStakePolicy": null,
+      "requiredFields": [],
       "sourceAgreement": "MULTI_SOURCE_CONFLICTING",
-      "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "TS eventGroupKey chain", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }, { "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "python event_key or condition_id", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }],
+      "sourceEvidence": [
+        {
+          "path": "scripts/morning-model-report.ts",
+          "symbol": "TS eventGroupKey chain",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        },
+        {
+          "path": "scripts/modeling/analyze-ice1-freeze.py",
+          "symbol": "python event_key or condition_id",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
       "lineageConfidence": "HEAD_NATIVE",
-      "runStatus": "BLOCKED_EVENT_IDENTITY_CONTRACT",
-      "plainLanguageBlocker": "TS-код и Python-код по-разному определяют, что считать «одним событием» (цепочка ключей против event_key/condition_id), поэтому на одних и тех же данных они выбирают разного победителя. Нужно решение основателя, какой ключ группировки считать каноническим, прежде чем запускать нормализованную репродукцию."
+      "runStatus": "AMBIGUOUS_ALIAS_NOT_EXECUTABLE",
+      "plainLanguageBlocker": "Не запускается напрямую: под этим старым именем найдены две разные реализации."
     },
     {
       "bundleId": "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH",
       "plainLanguageName": "Альтернатива 2: чистый поток, исключить высокие smart money.",
-      "aliases": ["FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH_APPROX"],
-      "formulaModelId": "V2_LITE_GROWTH_SAFE",
-      "historicalInput": { "tsSource": "morning-model-report.ts fallback filter", "pythonSource": "analyze-ice1-freeze.py FLOW_CLEAN filter" },
-      "normalizedCurrentInput": { "rawSnapshots": 42088, "dedupPolicy": "strict_latest_created_before_resolved", "retainedRows": 1657 },
-      "orderedFunnel": [
-        { "step": 1, "action": "INPUT", "plainLanguage": "Взять дедуплицированные строки.", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "buildFallbackPolicyRows", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 2, "action": "REQUIRE", "plainLanguage": "Оставить только сигналы с confidence не ниже 65.", "field": "signal_confidence_num", "exactRule": { "operator": ">=", "value": 65 }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "FLOW_CLEAN filter", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 3, "action": "EXCLUDE", "plainLanguage": "Исключить строки с smart money >= 85 — ЕСТЬ только в Python-версии; TS-версия с тем же именем этой проверки НЕ делает. Источник конфликта.", "field": "smart_money_score_num", "exactRule": { "pythonRule": "smart_money is None or smart_money < 85", "tsRule": "отсутствует" }, "sourceEvidence": [{ "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH_APPROX", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }, { "path": "scripts/morning-model-report.ts", "symbol": "FLOW_CLEAN (no smart-money check)", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "BLOCKED" },
-        { "step": 4, "action": "OUTPUT", "plainLanguage": "Вернуть прошедшие строки (число различается между TS и Python).", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "policyMetrics", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "NOT_APPLICABLE", "executionStatus": "BLOCKED" }
+      "aliases": [
+        "FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH_APPROX"
       ],
-      "historicalStakePolicy": { "unit": "FLAT_10_USD", "plainLanguage": "Историческая ставка $10-эквивалент." },
-      "normalizedEvaluationStakePolicy": { "unit": "FLAT_1_UNIT", "plainLanguage": "Канонический ROI: 1 единица на ставку." },
-      "requiredFields": ["signal_confidence_num", "smart_money_score_num"],
+      "formulaModelId": null,
+      "historicalInput": {
+        "tsSource": "morning-model-report.ts fallback filter",
+        "pythonSource": "analyze-ice1-freeze.py FLOW_CLEAN filter"
+      },
+      "normalizedCurrentInput": null,
+      "orderedFunnel": [],
+      "historicalStakePolicy": null,
+      "normalizedEvaluationStakePolicy": null,
+      "requiredFields": [],
       "sourceAgreement": "MULTI_SOURCE_CONFLICTING",
-      "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "FLOW_CLEAN (TS, no SM check)", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }, { "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "FLOW_CLEAN (Python, SM<85)", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }],
+      "sourceEvidence": [
+        {
+          "path": "scripts/morning-model-report.ts",
+          "symbol": "FLOW_CLEAN (TS, no SM check)",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        },
+        {
+          "path": "scripts/modeling/analyze-ice1-freeze.py",
+          "symbol": "FLOW_CLEAN (Python, SM<85)",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
       "lineageConfidence": "HEAD_NATIVE",
-      "runStatus": "BLOCKED_SOURCE_CONFLICT",
-      "plainLanguageBlocker": "Имя правила обещает исключение высоких smart money, но TS-реализация этой проверки вообще не делает — её выполняет только отдельная Python-реализация того же имени. Два источника расходятся; нужно решение, какая версия каноническая."
+      "runStatus": "AMBIGUOUS_ALIAS_NOT_EXECUTABLE",
+      "plainLanguageBlocker": "Не запускается напрямую: под этим старым именем найдены две разные реализации."
     },
     {
       "bundleId": "ALT3_V1_AVOID_NBA_NHL",
       "plainLanguageName": "Альтернатива 3: избегать NBA и NHL.",
-      "aliases": ["ALT3_FLAT10_RAW_PROFIT_APPROX"],
-      "formulaModelId": "V2_LITE_GROWTH_SAFE",
-      "historicalInput": { "tsSource": "morning-model-report.ts alt3 = score65.filter(!counterfactualNbaNhl)", "pythonSource": "analyze-ice1-freeze.py ALT3 score>=65 (no NBA/NHL)" },
-      "normalizedCurrentInput": { "rawSnapshots": 42088, "dedupPolicy": "strict_latest_created_before_resolved", "retainedRows": 1657 },
-      "orderedFunnel": [
-        { "step": 1, "action": "INPUT", "plainLanguage": "Взять дедуплицированные строки.", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "loadCounterfactualRows", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 2, "action": "REQUIRE", "plainLanguage": "Оставить только сигналы с confidence не ниже 65.", "field": "signal_confidence_num", "exactRule": { "operator": ">=", "value": 65 }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "score65", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 3, "action": "EXCLUDE", "plainLanguage": "Исключить NBA/NHL — ЕСТЬ только в TS-версии; Python-версия того же имени этой проверки НЕ делает. Источник конфликта.", "field": "league", "exactRule": { "tsRule": "regex NBA/NHL exclude", "pythonRule": "отсутствует" }, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "counterfactualNbaNhl", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }, { "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "ALT3 (no NBA/NHL)", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS", "executionStatus": "BLOCKED" },
-        { "step": 4, "action": "OUTPUT", "plainLanguage": "Вернуть прошедшие строки (число различается между TS и Python).", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "policyMetrics", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "NOT_APPLICABLE", "executionStatus": "BLOCKED" }
+      "aliases": [
+        "ALT3_FLAT10_RAW_PROFIT_APPROX"
       ],
-      "historicalStakePolicy": { "unit": "FLAT_10_USD", "plainLanguage": "Историческая ставка $10-эквивалент." },
-      "normalizedEvaluationStakePolicy": { "unit": "FLAT_1_UNIT", "plainLanguage": "Канонический ROI: 1 единица на ставку." },
-      "requiredFields": ["signal_confidence_num", "league"],
+      "formulaModelId": null,
+      "historicalInput": {
+        "tsSource": "morning-model-report.ts alt3 = score65.filter(!counterfactualNbaNhl)",
+        "pythonSource": "analyze-ice1-freeze.py ALT3 score>=65 (no NBA/NHL)"
+      },
+      "normalizedCurrentInput": null,
+      "orderedFunnel": [],
+      "historicalStakePolicy": null,
+      "normalizedEvaluationStakePolicy": null,
+      "requiredFields": [],
       "sourceAgreement": "MULTI_SOURCE_CONFLICTING",
-      "sourceEvidence": [{ "path": "scripts/morning-model-report.ts", "symbol": "ALT3 (TS, NBA/NHL exclude present)", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }, { "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "ALT3 (Python, no NBA/NHL)", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }],
+      "sourceEvidence": [
+        {
+          "path": "scripts/morning-model-report.ts",
+          "symbol": "ALT3 (TS, NBA/NHL exclude present)",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        },
+        {
+          "path": "scripts/modeling/analyze-ice1-freeze.py",
+          "symbol": "ALT3 (Python, no NBA/NHL)",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
       "lineageConfidence": "HEAD_NATIVE",
-      "runStatus": "BLOCKED_SOURCE_CONFLICT",
-      "plainLanguageBlocker": "Имя правила обещает избегать NBA и NHL, но это делает только TS-реализация; Python-реализация того же имени оставляет матчи NBA и NHL. Нужно решение, какая версия каноническая."
+      "runStatus": "AMBIGUOUS_ALIAS_NOT_EXECUTABLE",
+      "plainLanguageBlocker": "Не запускается напрямую: под этим старым именем найдены две разные реализации."
     },
     {
       "bundleId": "ALT_SM_GUARD_ON_PRIMARY",
       "plainLanguageName": "Основная модель со «стражем smart money»: при высоком smart money ставка уменьшается вдвое.",
-      "aliases": ["MODEL_A", "Primary SM Guard"],
-      "formulaModelId": "V2_LITE_GROWTH_SAFE",
-      "historicalInput": { "source": "firemodel1-model-stack-compare.ts filterA + getStake_primary (lib/executor/modelingData.ts)" },
-      "normalizedCurrentInput": { "rawSnapshots": 42088, "dedupPolicy": "strict_latest_created_before_resolved", "retainedRows": 1657 },
-      "orderedFunnel": [
-        { "step": 1, "action": "INPUT", "plainLanguage": "Взять дедуплицированные строки модели.", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "lib/executor/modelingData.ts", "symbol": "ModelRow", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 2, "action": "REQUIRE", "plainLanguage": "Оставить только разрешённые строки (isAllowed).", "field": null, "exactRule": { "predicate": "isAllowed(r)" }, "sourceEvidence": [{ "path": "scripts/firemodel1-model-stack-compare.ts", "symbol": "filterA/isAllowed", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 3, "action": "EXCLUDE", "plainLanguage": "Исключить NBA/NHL.", "field": "league", "exactRule": { "predicate": "!isNbaOrNhl(r)" }, "sourceEvidence": [{ "path": "scripts/firemodel1-model-stack-compare.ts", "symbol": "isNbaOrNhl", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS", "executionStatus": "VERIFIED_WITH_LIMITATION" },
-        { "step": 4, "action": "EXCLUDE", "plainLanguage": "Исключить плохой диапазон покрытия/цены (bad bucket).", "field": "data_coverage_num+entry_price_num", "exactRule": { "predicate": "!isBadBucket(r)" }, "sourceEvidence": [{ "path": "scripts/firemodel1-model-stack-compare.ts", "symbol": "isBadBucket", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS", "executionStatus": "VERIFIED_WITH_LIMITATION" },
-        { "step": 5, "action": "REQUIRE", "plainLanguage": "Оставить только сигналы с confidence не ниже 72.", "field": "signal_confidence_num", "exactRule": { "operator": ">=", "value": 72 }, "sourceEvidence": [{ "path": "scripts/firemodel1-model-stack-compare.ts", "symbol": "getScore(r) >= 72", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 6, "action": "REQUIRE", "plainLanguage": "Оставить только строки с покрытием не ниже 50.", "field": "data_coverage_num", "exactRule": { "operator": ">=", "value": 50 }, "sourceEvidence": [{ "path": "scripts/firemodel1-model-stack-compare.ts", "symbol": "getCov(r) >= 50", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS", "executionStatus": "VERIFIED_WITH_LIMITATION" },
-        { "step": 7, "action": "EXCLUDE", "plainLanguage": "Исключить строки с signal_result равным VOID.", "field": "signal_result", "exactRule": { "operator": "!=", "value": "VOID" }, "sourceEvidence": [{ "path": "scripts/firemodel1-model-stack-compare.ts", "symbol": "r.signal_result !== 'VOID'", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 8, "action": "STAKE", "plainLanguage": "Ставка: базовая величина, но если smart money >= 75 — уменьшить вдвое; киберспорт ограничить 5, общий потолок 10. Это ВНЕШНЯЯ политика ставки, а не часть формулы score.", "field": "smart_money_score_num", "exactRule": { "base": "getStake_primary base", "halveWhen": { "field": "smart_money_score_num", "operator": ">=", "value": 75 }, "esportsCap": 5, "globalCap": 10 }, "sourceEvidence": [{ "path": "lib/executor/modelingData.ts", "symbol": "getStake_primary", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 9, "action": "OUTPUT", "plainLanguage": "Вернуть прошедшие строки со ставкой.", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/firemodel1-model-stack-compare.ts", "symbol": "MODEL_A output", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "NOT_APPLICABLE", "executionStatus": "VERIFIED" }
+      "aliases": [
+        "MODEL_A",
+        "Primary SM Guard"
       ],
-      "historicalStakePolicy": { "unit": "TIERED_SM_GUARD", "plainLanguage": "Базовая ставка, уменьшается вдвое при smart money >= 75, киберспорт <= 5, потолок 10." },
-      "normalizedEvaluationStakePolicy": { "unit": "FLAT_1_UNIT", "plainLanguage": "Канонический ROI: 1 единица на ставку (историческую tiered-ставку не переписывать)." },
-      "requiredFields": ["signal_confidence_num", "data_coverage_num", "smart_money_score_num", "signal_result", "league", "entry_price_num"],
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "source": "firemodel1-model-stack-compare.ts filterA + getStake_primary (lib/executor/modelingData.ts)"
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять дедуплицированные строки модели.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "lib/executor/modelingData.ts",
+              "symbol": "ModelRow",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только разрешённые строки (isAllowed).",
+          "field": null,
+          "exactRule": {
+            "predicate": "isAllowed(r)"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/firemodel1-model-stack-compare.ts",
+              "symbol": "filterA/isAllowed",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "EXCLUDE",
+          "plainLanguage": "Исключить NBA/NHL.",
+          "field": "league",
+          "exactRule": {
+            "predicate": "!isNbaOrNhl(r)"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/firemodel1-model-stack-compare.ts",
+              "symbol": "isNbaOrNhl",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS",
+          "executionStatus": "VERIFIED_WITH_LIMITATION"
+        },
+        {
+          "step": 4,
+          "action": "EXCLUDE",
+          "plainLanguage": "Исключить плохой диапазон покрытия/цены (bad bucket).",
+          "field": "data_coverage_num+entry_price_num",
+          "exactRule": {
+            "predicate": "!isBadBucket(r)"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/firemodel1-model-stack-compare.ts",
+              "symbol": "isBadBucket",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS",
+          "executionStatus": "VERIFIED_WITH_LIMITATION"
+        },
+        {
+          "step": 5,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только сигналы с confidence не ниже 72.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 72
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/firemodel1-model-stack-compare.ts",
+              "symbol": "getScore(r) >= 72",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 6,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только строки с покрытием не ниже 50.",
+          "field": "data_coverage_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 50
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/firemodel1-model-stack-compare.ts",
+              "symbol": "getCov(r) >= 50",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS",
+          "executionStatus": "VERIFIED_WITH_LIMITATION"
+        },
+        {
+          "step": 7,
+          "action": "EXCLUDE",
+          "plainLanguage": "Исключить строки с signal_result равным VOID.",
+          "field": "signal_result",
+          "exactRule": {
+            "operator": "!=",
+            "value": "VOID"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/firemodel1-model-stack-compare.ts",
+              "symbol": "r.signal_result !== 'VOID'",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 8,
+          "action": "STAKE",
+          "plainLanguage": "Ставка: базовая величина, но если smart money >= 75 — уменьшить вдвое; киберспорт ограничить 5, общий потолок 10. Это ВНЕШНЯЯ политика ставки, а не часть формулы score.",
+          "field": "smart_money_score_num",
+          "exactRule": {
+            "base": "getStake_primary base",
+            "halveWhen": {
+              "field": "smart_money_score_num",
+              "operator": ">=",
+              "value": 75
+            },
+            "esportsCap": 5,
+            "globalCap": 10
+          },
+          "sourceEvidence": [
+            {
+              "path": "lib/executor/modelingData.ts",
+              "symbol": "getStake_primary",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 9,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть прошедшие строки со ставкой.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/firemodel1-model-stack-compare.ts",
+              "symbol": "MODEL_A output",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "TIERED_SM_GUARD",
+        "plainLanguage": "Базовая ставка, уменьшается вдвое при smart money >= 75, киберспорт <= 5, потолок 10."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку (историческую tiered-ставку не переписывать)."
+      },
+      "requiredFields": [
+        "signal_confidence_num",
+        "data_coverage_num",
+        "smart_money_score_num",
+        "signal_result",
+        "league",
+        "entry_price_num"
+      ],
       "sourceAgreement": "SINGLE_SOURCE",
-      "sourceEvidence": [{ "path": "scripts/firemodel1-model-stack-compare.ts", "symbol": "MODEL_A / filterA / stakeA", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }, { "path": "lib/executor/modelingData.ts", "symbol": "getStake_primary", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }],
+      "sourceEvidence": [
+        {
+          "path": "scripts/firemodel1-model-stack-compare.ts",
+          "symbol": "MODEL_A / filterA / stakeA",
+          "sourceClass": "CURRENT_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        },
+        {
+          "path": "lib/executor/modelingData.ts",
+          "symbol": "getStake_primary",
+          "sourceClass": "CURRENT_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
       "lineageConfidence": "HEAD_NATIVE",
       "runStatus": "VERIFIED_EXECUTABLE",
       "plainLanguageBlocker": null
@@ -259,18 +981,64 @@
     {
       "bundleId": "MODEL_A",
       "plainLanguageName": "Внутреннее имя MODEL_A — то же самое, что ALT_SM_GUARD_ON_PRIMARY.",
-      "aliases": ["ALT_SM_GUARD_ON_PRIMARY"],
-      "formulaModelId": "V2_LITE_GROWTH_SAFE",
-      "historicalInput": { "source": "псевдоним ALT_SM_GUARD_ON_PRIMARY" },
-      "normalizedCurrentInput": { "rawSnapshots": 42088, "dedupPolicy": "strict_latest_created_before_resolved", "retainedRows": 1657 },
-      "orderedFunnel": [
-        { "step": 1, "action": "STAKE", "plainLanguage": "MODEL_A — это внутренняя метка для той же связки filterA + getStake_primary, что и ALT_SM_GUARD_ON_PRIMARY (уменьшение ставки вдвое при smart money >= 75).", "field": "smart_money_score_num", "exactRule": { "aliasOf": "ALT_SM_GUARD_ON_PRIMARY", "halveWhen": { "field": "smart_money_score_num", "operator": ">=", "value": 75 } }, "sourceEvidence": [{ "path": "scripts/firemodel1-model-stack-compare.ts", "symbol": "MODEL_A = filterA + stakeA", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" }
+      "aliases": [
+        "ALT_SM_GUARD_ON_PRIMARY"
       ],
-      "historicalStakePolicy": { "unit": "TIERED_SM_GUARD", "plainLanguage": "Как у ALT_SM_GUARD_ON_PRIMARY." },
-      "normalizedEvaluationStakePolicy": { "unit": "FLAT_1_UNIT", "plainLanguage": "Канонический ROI: 1 единица на ставку." },
-      "requiredFields": ["smart_money_score_num"],
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "source": "псевдоним ALT_SM_GUARD_ON_PRIMARY"
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "STAKE",
+          "plainLanguage": "MODEL_A — это внутренняя метка для той же связки filterA + getStake_primary, что и ALT_SM_GUARD_ON_PRIMARY (уменьшение ставки вдвое при smart money >= 75).",
+          "field": "smart_money_score_num",
+          "exactRule": {
+            "aliasOf": "ALT_SM_GUARD_ON_PRIMARY",
+            "halveWhen": {
+              "field": "smart_money_score_num",
+              "operator": ">=",
+              "value": 75
+            }
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/firemodel1-model-stack-compare.ts",
+              "symbol": "MODEL_A = filterA + stakeA",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "TIERED_SM_GUARD",
+        "plainLanguage": "Как у ALT_SM_GUARD_ON_PRIMARY."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
+      "requiredFields": [
+        "smart_money_score_num"
+      ],
       "sourceAgreement": "SINGLE_SOURCE",
-      "sourceEvidence": [{ "path": "scripts/firemodel1-model-stack-compare.ts", "symbol": "MODEL_A", "sourceClass": "CURRENT_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }],
+      "sourceEvidence": [
+        {
+          "path": "scripts/firemodel1-model-stack-compare.ts",
+          "symbol": "MODEL_A",
+          "sourceClass": "CURRENT_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
       "lineageConfidence": "HEAD_NATIVE",
       "runStatus": "VERIFIED_ALIAS",
       "plainLanguageBlocker": null
@@ -280,21 +1048,150 @@
       "plainLanguageName": "Приблизительный Python-родственник SM-guard: похож по духу, но пороги другие.",
       "aliases": [],
       "formulaModelId": "V2_LITE_GROWTH_SAFE",
-      "historicalInput": { "source": "analyze-ice1-freeze.py ALT_SM_GUARD_ON_PRIMARY_APPROX (замороженный CSV)" },
-      "normalizedCurrentInput": { "rawSnapshots": 42088, "dedupPolicy": "strict_latest_created_before_resolved", "retainedRows": 1657 },
+      "historicalInput": {
+        "source": "analyze-ice1-freeze.py ALT_SM_GUARD_ON_PRIMARY_APPROX (замороженный CSV)"
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
       "orderedFunnel": [
-        { "step": 1, "action": "INPUT", "plainLanguage": "Взять строки из замороженного CSV.", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "frozen CSV", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 2, "action": "REQUIRE", "plainLanguage": "Оставить сигналы с confidence не ниже 65 (в TS-версии порог 72 — отличие).", "field": "signal_confidence_num", "exactRule": { "operator": ">=", "value": 65 }, "sourceEvidence": [{ "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "score >= 65", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 3, "action": "REQUIRE", "plainLanguage": "Оставить строки с покрытием не ниже 50.", "field": "data_coverage_num", "exactRule": { "operator": ">=", "value": 50 }, "sourceEvidence": [{ "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "coverage >= 50", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS", "executionStatus": "VERIFIED" },
-        { "step": 4, "action": "EXCLUDE", "plainLanguage": "Исключить строки с smart money >= 85 как жёсткий фильтр (в TS-версии это уменьшение ставки, а не исключение — отличие).", "field": "smart_money_score_num", "exactRule": { "rule": "smart_money is None or smart_money < 85" }, "sourceEvidence": [{ "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "smart_money < 85", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE", "executionStatus": "VERIFIED" },
-        { "step": 5, "action": "EXCLUDE", "plainLanguage": "Исключить плохой диапазон покрытия/цены (bad_bucket).", "field": "data_coverage_num+entry_price_num", "exactRule": { "predicate": "not bad_bucket(r)" }, "sourceEvidence": [{ "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "bad_bucket", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS", "executionStatus": "VERIFIED" },
-        { "step": 6, "action": "OUTPUT", "plainLanguage": "Вернуть прошедшие строки.", "field": null, "exactRule": null, "sourceEvidence": [{ "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "policy output", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }], "currentDatasetAvailability": "NOT_APPLICABLE", "executionStatus": "VERIFIED" }
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять строки из замороженного CSV.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "frozen CSV",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить сигналы с confidence не ниже 65 (в TS-версии порог 72 — отличие).",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 65
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "score >= 65",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить строки с покрытием не ниже 50.",
+          "field": "data_coverage_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 50
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "coverage >= 50",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 4,
+          "action": "EXCLUDE",
+          "plainLanguage": "Исключить строки с smart money >= 85 как жёсткий фильтр (в TS-версии это уменьшение ставки, а не исключение — отличие).",
+          "field": "smart_money_score_num",
+          "exactRule": {
+            "rule": "smart_money is None or smart_money < 85"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "smart_money < 85",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 5,
+          "action": "EXCLUDE",
+          "plainLanguage": "Исключить плохой диапазон покрытия/цены (bad_bucket).",
+          "field": "data_coverage_num+entry_price_num",
+          "exactRule": {
+            "predicate": "not bad_bucket(r)"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "bad_bucket",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 6,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть прошедшие строки.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "policy output",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        }
       ],
-      "historicalStakePolicy": { "unit": "FLAT_10_USD", "plainLanguage": "Историческая ставка $10-эквивалент." },
-      "normalizedEvaluationStakePolicy": { "unit": "FLAT_1_UNIT", "plainLanguage": "Канонический ROI: 1 единица на ставку." },
-      "requiredFields": ["signal_confidence_num", "data_coverage_num", "smart_money_score_num"],
+      "historicalStakePolicy": {
+        "unit": "FLAT_10_USD",
+        "plainLanguage": "Историческая ставка $10-эквивалент."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
+      "requiredFields": [
+        "signal_confidence_num",
+        "data_coverage_num",
+        "smart_money_score_num"
+      ],
       "sourceAgreement": "RELATED_NOT_IDENTICAL",
-      "sourceEvidence": [{ "path": "scripts/modeling/analyze-ice1-freeze.py", "symbol": "ALT_SM_GUARD_ON_PRIMARY_APPROX", "sourceClass": "HISTORICAL_EXECUTABLE", "lineageConfidence": "HEAD_NATIVE" }],
+      "sourceEvidence": [
+        {
+          "path": "scripts/modeling/analyze-ice1-freeze.py",
+          "symbol": "ALT_SM_GUARD_ON_PRIMARY_APPROX",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
       "lineageConfidence": "HEAD_NATIVE",
       "runStatus": "RELATED_BUT_NOT_IDENTICAL",
       "plainLanguageBlocker": "Тематически связан с ALT_SM_GUARD_ON_PRIMARY (тоже опирается на smart money и покрытие), но пороги другие (score 65 против 72; жёсткое исключение smart money < 85 против уменьшения ставки при >= 75). Нельзя считать той же самой моделью."
@@ -311,7 +1208,14 @@
       "normalizedEvaluationStakePolicy": null,
       "requiredFields": [],
       "sourceAgreement": "SINGLE_SOURCE",
-      "sourceEvidence": [{ "path": "modeling/sql_registry/models/champion_current_v1.sql", "symbol": "champion_current_v1", "sourceClass": "SQL_CONTRACT_STUB", "lineageConfidence": "DECLARATION_ONLY" }],
+      "sourceEvidence": [
+        {
+          "path": "modeling/sql_registry/models/champion_current_v1.sql",
+          "symbol": "champion_current_v1",
+          "sourceClass": "SQL_CONTRACT_STUB",
+          "lineageConfidence": "DECLARATION_ONLY"
+        }
+      ],
       "lineageConfidence": "DECLARATION_ONLY",
       "runStatus": "CONTRACT_STUB_ONLY",
       "plainLanguageBlocker": "Существует только как заготовка SQL-контракта, без исполняемых предикатов отбора. Не является боевой моделью."
@@ -328,7 +1232,14 @@
       "normalizedEvaluationStakePolicy": null,
       "requiredFields": [],
       "sourceAgreement": "SINGLE_SOURCE",
-      "sourceEvidence": [{ "path": "modeling/sql_registry/models/published_one_per_fixture_v1.sql", "symbol": "published_one_per_fixture_v1", "sourceClass": "SQL_CONTRACT_STUB", "lineageConfidence": "DECLARATION_ONLY" }],
+      "sourceEvidence": [
+        {
+          "path": "modeling/sql_registry/models/published_one_per_fixture_v1.sql",
+          "symbol": "published_one_per_fixture_v1",
+          "sourceClass": "SQL_CONTRACT_STUB",
+          "lineageConfidence": "DECLARATION_ONLY"
+        }
+      ],
       "lineageConfidence": "DECLARATION_ONLY",
       "runStatus": "CONTRACT_STUB_ONLY",
       "plainLanguageBlocker": "Существует только как заготовка SQL-контракта, без исполняемых предикатов отбора."
@@ -345,7 +1256,14 @@
       "normalizedEvaluationStakePolicy": null,
       "requiredFields": [],
       "sourceAgreement": "SINGLE_SOURCE",
-      "sourceEvidence": [{ "path": "modeling/sql_registry/models/fire_family_selective_v1.sql", "symbol": "fire_family_selective_v1", "sourceClass": "SQL_CONTRACT_STUB", "lineageConfidence": "DECLARATION_ONLY" }],
+      "sourceEvidence": [
+        {
+          "path": "modeling/sql_registry/models/fire_family_selective_v1.sql",
+          "symbol": "fire_family_selective_v1",
+          "sourceClass": "SQL_CONTRACT_STUB",
+          "lineageConfidence": "DECLARATION_ONLY"
+        }
+      ],
       "lineageConfidence": "DECLARATION_ONLY",
       "runStatus": "CONTRACT_STUB_ONLY",
       "plainLanguageBlocker": "Существует только как заготовка SQL-контракта, без исполняемых предикатов отбора."
@@ -362,7 +1280,14 @@
       "normalizedEvaluationStakePolicy": null,
       "requiredFields": [],
       "sourceAgreement": "SINGLE_SOURCE",
-      "sourceEvidence": [{ "path": "modeling/sql_registry/models/safety_baseline_v1.sql", "symbol": "safety_baseline_v1", "sourceClass": "SQL_CONTRACT_STUB", "lineageConfidence": "DECLARATION_ONLY" }],
+      "sourceEvidence": [
+        {
+          "path": "modeling/sql_registry/models/safety_baseline_v1.sql",
+          "symbol": "safety_baseline_v1",
+          "sourceClass": "SQL_CONTRACT_STUB",
+          "lineageConfidence": "DECLARATION_ONLY"
+        }
+      ],
       "lineageConfidence": "DECLARATION_ONLY",
       "runStatus": "CONTRACT_STUB_ONLY",
       "plainLanguageBlocker": "Существует только как заготовка SQL-контракта, без исполняемых предикатов отбора."
@@ -379,7 +1304,14 @@
       "normalizedEvaluationStakePolicy": null,
       "requiredFields": [],
       "sourceAgreement": "SINGLE_SOURCE",
-      "sourceEvidence": [{ "path": "modeling/sql_registry/models/tiered_live_contour_v1.sql", "symbol": "tiered_live_contour_v1", "sourceClass": "SQL_CONTRACT_STUB", "lineageConfidence": "DECLARATION_ONLY" }],
+      "sourceEvidence": [
+        {
+          "path": "modeling/sql_registry/models/tiered_live_contour_v1.sql",
+          "symbol": "tiered_live_contour_v1",
+          "sourceClass": "SQL_CONTRACT_STUB",
+          "lineageConfidence": "DECLARATION_ONLY"
+        }
+      ],
       "lineageConfidence": "DECLARATION_ONLY",
       "runStatus": "CONTRACT_STUB_ONLY",
       "plainLanguageBlocker": "Существует только как заготовка SQL-контракта, без исполняемых предикатов отбора."
@@ -387,7 +1319,9 @@
     {
       "bundleId": "FIRE_MODEL_1_LOCKED",
       "plainLanguageName": "FireModel1 LOCKED — статусная метка в логе, без отдельной исполняемой логики отбора.",
-      "aliases": ["FireModel1 LOCKED"],
+      "aliases": [
+        "FireModel1 LOCKED"
+      ],
       "formulaModelId": null,
       "historicalInput": {},
       "normalizedCurrentInput": null,
@@ -396,21 +1330,938 @@
       "normalizedEvaluationStakePolicy": null,
       "requiredFields": [],
       "sourceAgreement": "SINGLE_SOURCE",
-      "sourceEvidence": [{ "path": "scripts/firemodel1-decision-board.ts", "symbol": "FireModel1 LOCKED (log label)", "sourceClass": "DOC_SPEC", "lineageConfidence": "UNRESOLVED" }],
+      "sourceEvidence": [
+        {
+          "path": "scripts/firemodel1-decision-board.ts",
+          "symbol": "FireModel1 LOCKED (log label)",
+          "sourceClass": "DOC_SPEC",
+          "lineageConfidence": "UNRESOLVED"
+        }
+      ],
       "lineageConfidence": "UNRESOLVED",
       "runStatus": "LABEL_ONLY",
       "plainLanguageBlocker": "Встречается только как статусная метка в логе/доске решений, без собственной исполняемой логики отбора, отдельной от MODEL_A."
+    },
+    {
+      "bundleId": "ALT1_CANONICAL_EVENT_GROUPING",
+      "plainLanguageName": "ALT1 (исследовательский вариант): один сигнал на рабочую группу событий по каноническому helper'у, побеждает наибольшее покрытие.",
+      "aliases": [],
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "note": "Реконструкция на основе TS eventGroupKey; нормализована под канонический eventGroupSelection helper."
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять дедуплицированные строки канонического корпуса.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "lib/modeling/generatedSignalPairsDedupPolicy.ts",
+              "symbol": "projectGeneratedSignalPairsStrictDedup",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только сигналы с confidence не ниже 72.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 72
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "score72",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "GROUP",
+          "plainLanguage": "Сгруппировать строки в рабочие группы событий, используя канонический helper приоритетной цепочки полей.",
+          "field": "eventGroupKey",
+          "exactRule": {
+            "helper": "buildEventGroupKey"
+          },
+          "sourceEvidence": [
+            {
+              "path": "lib/modeling/eventGroupSelection.ts",
+              "symbol": "buildEventGroupKey",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED_WITH_LIMITATION"
+        },
+        {
+          "step": 4,
+          "action": "ORDER",
+          "plainLanguage": "Внутри группы отсортировать по покрытию по убыванию.",
+          "field": "data_coverage_num",
+          "exactRule": {
+            "direction": "desc"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "compareCounterfactualCoverage",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS",
+          "executionStatus": "VERIFIED_WITH_LIMITATION"
+        },
+        {
+          "step": 5,
+          "action": "ORDER",
+          "plainLanguage": "Затем отсортировать по score по убыванию.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "direction": "desc"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "compareCounterfactualCoverage",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 6,
+          "action": "ORDER",
+          "plainLanguage": "Применить существующий детерминированный тай-брейк (smart money, ценовой диапазон, свежесть, стабильный id).",
+          "field": null,
+          "exactRule": {
+            "tuple": [
+              "smartMoney",
+              "priceOk(0.25-0.65)",
+              "-createdAt",
+              "stableId"
+            ]
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "compareCounterfactualCoverage",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 7,
+          "action": "KEEP",
+          "plainLanguage": "Оставить первую строку в каждой рабочей группе событий.",
+          "field": null,
+          "exactRule": {
+            "keep": "first_per_group"
+          },
+          "sourceEvidence": [
+            {
+              "path": "lib/modeling/eventGroupSelection.ts",
+              "symbol": "selectFirstPerEventGroup",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 8,
+          "action": "STAKE",
+          "plainLanguage": "Историческая ставка: эквивалент $10 на строку.",
+          "field": null,
+          "exactRule": {
+            "unit": "USD",
+            "amount": 10
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "pnl10",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 9,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть по одной выбранной строке на рабочую группу событий.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "lib/modeling/eventGroupSelection.ts",
+              "symbol": "selectFirstPerEventGroup",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "FLAT_10_USD",
+        "plainLanguage": "Историческая ставка $10-эквивалент."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
+      "requiredFields": [
+        "signal_confidence_num",
+        "data_coverage_num",
+        "eventGroupKey"
+      ],
+      "sourceAgreement": "NORMALIZED_CANONICAL_VARIANT",
+      "sourceEvidence": [
+        {
+          "path": "lib/modeling/eventGroupSelection.ts",
+          "symbol": "buildEventGroupKey",
+          "sourceClass": "CURRENT_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
+      "lineageConfidence": "HEAD_NATIVE",
+      "runStatus": "READY_EXPLORATORY_WITH_IDENTITY_LIMITATION",
+      "plainLanguageBlocker": "Группировка по event_slug (MEDIUM confidence) допустима только для исследовательской (exploratory) оценки, недостаточна для продакшн-продвижения модели."
+    },
+    {
+      "bundleId": "ALT1_PY_EVENT_KEY_VARIANT",
+      "plainLanguageName": "ALT1 (исторический Python-вариант): один сигнал на событие по полю event_key с откатом на condition_id.",
+      "aliases": [],
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "source": "analyze-ice1-freeze.py one_per_event(rows, 72, 'coverage'), группировка (r.event_key or r.condition_id)"
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять строки замороженного CSV / канонического корпуса.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "frozen CSV",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только сигналы с confidence не ниже 72.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 72
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "one_per_event",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "GROUP",
+          "plainLanguage": "Сгруппировать строго по полю event_key; если оно отсутствует — откат на condition_id. Это НЕ канонический eventGroupKey helper — сохранён как есть.",
+          "field": "event_key",
+          "exactRule": {
+            "fallbackChain": [
+              "event_key",
+              "condition_id"
+            ]
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "one_per_event",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "MISSING",
+          "executionStatus": "BLOCKED"
+        },
+        {
+          "step": 4,
+          "action": "ORDER",
+          "plainLanguage": "Отсортировать по покрытию, затем по score, затем по цене (полностью Python-специфичный тай-брейк).",
+          "field": "data_coverage_num",
+          "exactRule": {
+            "tuple": [
+              "coverage",
+              "score",
+              "-price"
+            ],
+            "direction": "desc"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "one_per_event",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS",
+          "executionStatus": "VERIFIED_WITH_LIMITATION"
+        },
+        {
+          "step": 5,
+          "action": "KEEP",
+          "plainLanguage": "Оставить первую строку в каждой группе.",
+          "field": null,
+          "exactRule": {
+            "keep": "first_per_group"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "one_per_event",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "MISSING",
+          "executionStatus": "BLOCKED"
+        },
+        {
+          "step": 6,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть по одной строке на группу (заблокировано на каноническом корпусе).",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "one_per_event",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "MISSING",
+          "executionStatus": "BLOCKED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "FLAT_10_USD",
+        "plainLanguage": "Историческая ставка $10-эквивалент."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
+      "requiredFields": [
+        "signal_confidence_num",
+        "data_coverage_num",
+        "event_key"
+      ],
+      "sourceAgreement": "NORMALIZED_HISTORICAL_VARIANT",
+      "sourceEvidence": [
+        {
+          "path": "scripts/modeling/analyze-ice1-freeze.py",
+          "symbol": "one_per_event",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
+      "lineageConfidence": "HEAD_NATIVE",
+      "runStatus": "BLOCKED_MISSING_FIELD",
+      "plainLanguageBlocker": "Поле event_key физически отсутствует в 27-колоночном каноническом экспорте (есть только event_slug) — Python-вариант нельзя честно запустить на каноническом корпусе без изобретения данных."
+    },
+    {
+      "bundleId": "ALT2_TS_SCORE_GE_65",
+      "plainLanguageName": "ALT2 (TS-вариант): confidence >= 65, без проверки smart money.",
+      "aliases": [],
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "source": "morning-model-report.ts FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH_APPROX filter (TS)"
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять дедуплицированные строки.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "buildFallbackPolicyRows",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только сигналы с confidence не ниже 65.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 65
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "FLOW_CLEAN filter (TS)",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "KEEP",
+          "plainLanguage": "Оставить все подходящие строки — проверки smart money в TS-версии нет.",
+          "field": null,
+          "exactRule": {
+            "keep": "all_eligible"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "FLOW_CLEAN filter (TS)",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 4,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть все прошедшие строки.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "policyMetrics",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "FLAT_10_USD",
+        "plainLanguage": "Историческая ставка $10-эквивалент."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
+      "requiredFields": [
+        "signal_confidence_num"
+      ],
+      "sourceAgreement": "NORMALIZED_HISTORICAL_VARIANT",
+      "sourceEvidence": [
+        {
+          "path": "scripts/morning-model-report.ts",
+          "symbol": "FLOW_CLEAN (TS, no SM check)",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
+      "lineageConfidence": "HEAD_NATIVE",
+      "runStatus": "VERIFIED_EXECUTABLE",
+      "plainLanguageBlocker": null
+    },
+    {
+      "bundleId": "ALT2_PY_SCORE_GE_65_SM_LT_85",
+      "plainLanguageName": "ALT2 (Python-вариант): confidence >= 65 И smart money отсутствует или < 85.",
+      "aliases": [],
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "source": "analyze-ice1-freeze.py FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH_APPROX (Python)"
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять строки замороженного CSV / канонического корпуса.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "frozen CSV",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только сигналы с confidence не ниже 65.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 65
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "score >= 65",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить строки, где smart money отсутствует или меньше 85.",
+          "field": "smart_money_score_num",
+          "exactRule": {
+            "rule": "smart_money is None or smart_money < 85"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "smart_money < 85",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 4,
+          "action": "KEEP",
+          "plainLanguage": "Оставить все подходящие строки.",
+          "field": null,
+          "exactRule": {
+            "keep": "all_eligible"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "FLOW_CLEAN filter (Python)",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 5,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть все прошедшие строки.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "policy output",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "FLAT_10_USD",
+        "plainLanguage": "Историческая ставка $10-эквивалент."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
+      "requiredFields": [
+        "signal_confidence_num",
+        "smart_money_score_num"
+      ],
+      "sourceAgreement": "NORMALIZED_HISTORICAL_VARIANT",
+      "sourceEvidence": [
+        {
+          "path": "scripts/modeling/analyze-ice1-freeze.py",
+          "symbol": "FLOW_CLEAN (Python, SM<85)",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
+      "lineageConfidence": "HEAD_NATIVE",
+      "runStatus": "VERIFIED_EXECUTABLE",
+      "plainLanguageBlocker": null
+    },
+    {
+      "bundleId": "ALT3_TS_SCORE_GE_65_EXCLUDE_NBA_NHL",
+      "plainLanguageName": "ALT3 (TS-вариант): confidence >= 65, исключить NBA и NHL.",
+      "aliases": [],
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "source": "morning-model-report.ts alt3 = score65.filter(!counterfactualNbaNhl) (TS)"
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять дедуплицированные строки.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "loadCounterfactualRows",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только сигналы с confidence не ниже 65.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 65
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "score65",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "EXCLUDE",
+          "plainLanguage": "Исключить матчи NBA и NHL по текстовому совпадению лиги (точная TS-нормализация).",
+          "field": "league",
+          "exactRule": {
+            "regex": "\\bnba\\b|basketball|\\bnhl\\b|ice[\\s-]?hockey|\\bhockey\\b"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "counterfactualNbaNhl",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS",
+          "executionStatus": "VERIFIED_WITH_LIMITATION"
+        },
+        {
+          "step": 4,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть все прошедшие строки.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "policyMetrics",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "FLAT_10_USD",
+        "plainLanguage": "Историческая ставка $10-эквивалент."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
+      "requiredFields": [
+        "signal_confidence_num",
+        "league"
+      ],
+      "sourceAgreement": "NORMALIZED_HISTORICAL_VARIANT",
+      "sourceEvidence": [
+        {
+          "path": "scripts/morning-model-report.ts",
+          "symbol": "ALT3 (TS, NBA/NHL exclude present)",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
+      "lineageConfidence": "HEAD_NATIVE",
+      "runStatus": "VERIFIED_EXECUTABLE",
+      "plainLanguageBlocker": null
+    },
+    {
+      "bundleId": "ALT3_PY_SCORE_GE_65",
+      "plainLanguageName": "ALT3 (Python-вариант): confidence >= 65, без исключения NBA/NHL.",
+      "aliases": [],
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "source": "analyze-ice1-freeze.py ALT3_FLAT10_RAW_PROFIT_APPROX (Python, no NBA/NHL check)"
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять строки замороженного CSV / канонического корпуса.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "frozen CSV",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только сигналы с confidence не ниже 65.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 65
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "ALT3 (Python, no NBA/NHL)",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "KEEP",
+          "plainLanguage": "Оставить все подходящие строки — исключения NBA/NHL в Python-версии нет.",
+          "field": null,
+          "exactRule": {
+            "keep": "all_eligible"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "ALT3 (Python, no NBA/NHL)",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 4,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть все прошедшие строки.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/modeling/analyze-ice1-freeze.py",
+              "symbol": "policy output",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "FLAT_10_USD",
+        "plainLanguage": "Историческая ставка $10-эквивалент."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
+      "requiredFields": [
+        "signal_confidence_num"
+      ],
+      "sourceAgreement": "NORMALIZED_HISTORICAL_VARIANT",
+      "sourceEvidence": [
+        {
+          "path": "scripts/modeling/analyze-ice1-freeze.py",
+          "symbol": "ALT3 (Python, no NBA/NHL)",
+          "sourceClass": "HISTORICAL_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
+      "lineageConfidence": "HEAD_NATIVE",
+      "runStatus": "VERIFIED_EXECUTABLE",
+      "plainLanguageBlocker": null
     }
   ],
   "aliases": [
-    { "rawName": "MODEL_A", "canonicalTarget": "ALT_SM_GUARD_ON_PRIMARY", "relationship": "VERIFIED_ALIAS" },
-    { "rawName": "ALT_SM_GUARD_ON_PRIMARY_APPROX", "canonicalTarget": "ALT_SM_GUARD_ON_PRIMARY", "relationship": "RELATED_BUT_NOT_IDENTICAL" }
+    {
+      "rawName": "MODEL_A",
+      "canonicalTarget": "ALT_SM_GUARD_ON_PRIMARY",
+      "relationship": "VERIFIED_ALIAS"
+    },
+    {
+      "rawName": "ALT_SM_GUARD_ON_PRIMARY_APPROX",
+      "canonicalTarget": "ALT_SM_GUARD_ON_PRIMARY",
+      "relationship": "RELATED_BUT_NOT_IDENTICAL"
+    },
+    {
+      "rawName": "ALT1_ONE_PER_EVENT_BEST_COVERAGE",
+      "relationship": "AMBIGUOUS_HISTORICAL_ALIAS",
+      "canonicalTargets": [
+        "ALT1_CANONICAL_EVENT_GROUPING",
+        "ALT1_PY_EVENT_KEY_VARIANT"
+      ]
+    },
+    {
+      "rawName": "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH",
+      "relationship": "AMBIGUOUS_HISTORICAL_ALIAS",
+      "canonicalTargets": [
+        "ALT2_TS_SCORE_GE_65",
+        "ALT2_PY_SCORE_GE_65_SM_LT_85"
+      ]
+    },
+    {
+      "rawName": "ALT3_V1_AVOID_NBA_NHL",
+      "relationship": "AMBIGUOUS_HISTORICAL_ALIAS",
+      "canonicalTargets": [
+        "ALT3_TS_SCORE_GE_65_EXCLUDE_NBA_NHL",
+        "ALT3_PY_SCORE_GE_65"
+      ]
+    }
   ],
   "unresolvedDecisions": [
-    { "id": "ALT1_EVENT_KEY", "plainLanguage": "Какой ключ группировки события считать каноническим для ALT1 — цепочку eventGroupKey (TS) или event_key/condition_id (Python)?", "affects": ["ALT1_ONE_PER_EVENT_BEST_COVERAGE"] },
-    { "id": "ALT2_SM_PREDICATE", "plainLanguage": "Какую реализацию ALT2 считать канонической — TS (без проверки smart money) или Python (smart money < 85)?", "affects": ["ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH"] },
-    { "id": "ALT3_NBA_NHL_PREDICATE", "plainLanguage": "Какую реализацию ALT3 считать канонической — TS (исключает NBA/NHL) или Python (не исключает)?", "affects": ["ALT3_V1_AVOID_NBA_NHL"] },
-    { "id": "SQL_CONTRACT_FIDELITY", "plainLanguage": "Верны ли SQL-заготовки (champion_current и т.д.) исходным TS-определениям — не сверялось.", "affects": ["CHAMPION_CURRENT", "PUBLISHED_ONE_PER_FIXTURE", "FIRE_FAMILY_SELECTIVE", "SAFETY_BASELINE", "TIERED_LIVE_CONTOUR"] },
-    { "id": "TRUSTED_V1_1_ORIGIN", "plainLanguage": "Где был создан computeSmartMoneyProxy/computePreEventScoreAI (мёртвый код trusted-initial-formula-v1.1) — коммит не найден в достижимой истории.", "affects": ["TRUSTED_INITIAL_V1_1_DEAD_HELPERS"] }
+    {
+      "id": "ALT1_EVENT_KEY",
+      "plainLanguage": "Какой ключ группировки события считать каноническим для ALT1 — цепочку eventGroupKey (TS) или event_key/condition_id (Python)?",
+      "affects": [
+        "ALT1_ONE_PER_EVENT_BEST_COVERAGE"
+      ]
+    },
+    {
+      "id": "ALT2_SM_PREDICATE",
+      "plainLanguage": "Какую реализацию ALT2 считать канонической — TS (без проверки smart money) или Python (smart money < 85)?",
+      "affects": [
+        "ALT2_FLOW_CLEAN_EXCLUDE_SMARTMONEY_HIGH"
+      ]
+    },
+    {
+      "id": "ALT3_NBA_NHL_PREDICATE",
+      "plainLanguage": "Какую реализацию ALT3 считать канонической — TS (исключает NBA/NHL) или Python (не исключает)?",
+      "affects": [
+        "ALT3_V1_AVOID_NBA_NHL"
+      ]
+    },
+    {
+      "id": "SQL_CONTRACT_FIDELITY",
+      "plainLanguage": "Верны ли SQL-заготовки (champion_current и т.д.) исходным TS-определениям — не сверялось.",
+      "affects": [
+        "CHAMPION_CURRENT",
+        "PUBLISHED_ONE_PER_FIXTURE",
+        "FIRE_FAMILY_SELECTIVE",
+        "SAFETY_BASELINE",
+        "TIERED_LIVE_CONTOUR"
+      ]
+    },
+    {
+      "id": "TRUSTED_V1_1_ORIGIN",
+      "plainLanguage": "Где был создан computeSmartMoneyProxy/computePreEventScoreAI (мёртвый код trusted-initial-formula-v1.1) — коммит не найден в достижимой истории.",
+      "affects": [
+        "TRUSTED_INITIAL_V1_1_DEAD_HELPERS"
+      ]
+    }
   ]
 }

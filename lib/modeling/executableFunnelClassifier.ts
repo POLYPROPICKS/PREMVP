@@ -64,6 +64,8 @@ export const APPROVED_RUN_STATUSES = [
   "UNRESOLVED",
   "VERIFIED_EXECUTABLE",
   "VERIFIED_ALIAS",
+  "READY_EXPLORATORY_WITH_IDENTITY_LIMITATION",
+  "AMBIGUOUS_ALIAS_NOT_EXECUTABLE",
 ] as const;
 export type RunStatus = (typeof APPROVED_RUN_STATUSES)[number];
 
@@ -156,8 +158,13 @@ export interface BundleRecord {
 
 export interface AliasRecord {
   rawName: string;
-  canonicalTarget: string;
-  relationship: "VERIFIED_ALIAS" | "RELATED_BUT_NOT_IDENTICAL";
+  // Present for VERIFIED_ALIAS / RELATED_BUT_NOT_IDENTICAL (single target).
+  canonicalTarget?: string;
+  // Present for AMBIGUOUS_HISTORICAL_ALIAS: the old name maps to two or more
+  // materially different executable variants -- it is never silently
+  // collapsed to one of them.
+  canonicalTargets?: string[];
+  relationship: "VERIFIED_ALIAS" | "RELATED_BUT_NOT_IDENTICAL" | "AMBIGUOUS_HISTORICAL_ALIAS";
 }
 
 export interface ExecutableFunnelClassifier {
@@ -230,16 +237,36 @@ export function validateExecutableFunnelClassifier(
 
     // SQL contract stubs may never carry an executable run status.
     const isStub = bundle.sourceEvidence.some((e) => e.sourceClass === "SQL_CONTRACT_STUB");
-    const EXECUTABLE = ["READY_EXACT", "RUNNABLE_APPROX_ONLY", "VERIFIED_EXECUTABLE"];
+    const EXECUTABLE = ["READY_EXACT", "RUNNABLE_APPROX_ONLY", "VERIFIED_EXECUTABLE", "READY_EXPLORATORY_WITH_IDENTITY_LIMITATION"];
     if (isStub && EXECUTABLE.includes(bundle.runStatus)) {
       throw new Error(`executable funnel classifier: SQL stub ${bundle.bundleId} cannot have executable status`);
     }
+
+    // An ambiguous historical alias placeholder must never carry an
+    // executable funnel of its own -- it exists only to point at the
+    // explicit variants that replaced it.
+    if (bundle.runStatus === "AMBIGUOUS_ALIAS_NOT_EXECUTABLE" && bundle.orderedFunnel.length !== 0) {
+      throw new Error(`executable funnel classifier: ambiguous alias bundle ${bundle.bundleId} must not carry an executable funnel`);
+    }
   }
 
-  // Aliases must resolve to exactly one existing bundle.
+  // Aliases must resolve to exactly one canonical target, OR (for an
+  // explicitly ambiguous historical alias) to two or more explicit variant
+  // bundle ids -- never zero, and never a silent single collapse.
   for (const alias of registry.aliases) {
-    if (!seenBundleIds.has(alias.canonicalTarget)) {
-      throw new Error(`executable funnel classifier: alias ${alias.rawName} targets unknown bundle ${alias.canonicalTarget}`);
+    if (alias.relationship === "AMBIGUOUS_HISTORICAL_ALIAS") {
+      if (!Array.isArray(alias.canonicalTargets) || alias.canonicalTargets.length < 2) {
+        throw new Error(`executable funnel classifier: ambiguous alias ${alias.rawName} must list two or more canonicalTargets`);
+      }
+      for (const target of alias.canonicalTargets) {
+        if (!seenBundleIds.has(target)) {
+          throw new Error(`executable funnel classifier: alias ${alias.rawName} targets unknown bundle ${target}`);
+        }
+      }
+    } else {
+      if (!alias.canonicalTarget || !seenBundleIds.has(alias.canonicalTarget)) {
+        throw new Error(`executable funnel classifier: alias ${alias.rawName} targets unknown bundle ${alias.canonicalTarget}`);
+      }
     }
   }
 
@@ -296,8 +323,11 @@ export function getBundle(
 export function resolveAlias(registry: ExecutableFunnelClassifier, rawName: string): string[] {
   const directBundle = registry.bundles.find((b) => b.bundleId === rawName);
   const alias = registry.aliases.find((a) => a.rawName === rawName);
-  if (alias && alias.relationship === "VERIFIED_ALIAS") {
+  if (alias && alias.relationship === "VERIFIED_ALIAS" && alias.canonicalTarget) {
     return [alias.canonicalTarget];
+  }
+  if (alias && alias.relationship === "AMBIGUOUS_HISTORICAL_ALIAS" && alias.canonicalTargets) {
+    return [...alias.canonicalTargets];
   }
   if (directBundle) return [directBundle.bundleId];
   if (alias) return [alias.rawName];
