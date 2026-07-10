@@ -250,3 +250,35 @@ CLI commands expect.
   a one-off for this phase. See `scripts/modeling/strategies/README.md`
   "Phase 3D.2Oa" section for the exact Windows one-command workflow
   (`run-3d2o-from-clipboard.cmd`).
+
+## Phase 3E.1 — ROI/PnL pure contract
+
+`lib/modeling/roiPnlContract.ts` defines the pure ROI/PnL math contract
+(`classifyResolvedOutcome`, `computeRowReturnPct`,
+`computeFlatStakeRoiSummary`) for local modeling rows, with a dedicated
+test suite (`tests/modeling/roiPnlContract.test.ts`).
+
+- **ROI is not computed from the real dataset in Phase 3E.1.** This phase
+  ships and tests the math only, against synthetic rows. No local export
+  file (real or otherwise) is read by this module or its tests.
+- **The contract is pure and tested**: no fs/env/DB/network access, no
+  non-deterministic input, no mutation of input rows, no import of the
+  legacy mixed backtest module's outcome-normalization helpers (which
+  contain a documented quirk this contract must not inherit).
+- **This module does not gate itself.** It defines return/PnL/ROI math
+  only -- it does not decide whether a dataset is complete, deduplicated,
+  or otherwise fit for a real ROI claim.
+- **A real ROI run (Phase 3E.2+) requires all of the following on the input
+  rows before any ROI/PnL figure from this contract is trusted**:
+  - `exportCompleteness === "COMPLETE"` (see the automated Supabase export
+    workflow above -- no `INCOMPLETE` or `INTENTIONALLY_CAPPED` export).
+  - the strict dedup projection (`strict_latest_created_before_resolved`)
+    applied.
+  - `rowsMissingStrictDedupKey === 0` on the projected rows, or the gap
+    explicitly explained.
+  - DQA-R1/R2/R3/R4 all report no blocking violations
+    (`hasBlockingViolations === false`).
+  - the target strategy's `selectedRows > 0`.
+- **No ROI/profit claim may be made from a partial sample.** A
+  `computeFlatStakeRoiSummary()` result computed outside the gates above is
+  local research output only, not a validated performance figure.

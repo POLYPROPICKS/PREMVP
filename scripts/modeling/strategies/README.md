@@ -428,3 +428,21 @@ names, their category, and their current `reproducibilityStatus`
 / `UNKNOWN`). Several `modeling/sql_registry/models/*.sql` files are
 `CONTRACT_STUB` — they document intent but contain no executable selection
 logic yet, and per rule 3 above must not be promoted.
+
+## Phase 3E.1 — ROI contract status
+
+- A **pure ROI/PnL module exists**: `lib/modeling/roiPnlContract.ts`
+  (`classifyResolvedOutcome`, `computeRowReturnPct`,
+  `computeFlatStakeRoiSummary`), tested in
+  `tests/modeling/roiPnlContract.test.ts` against synthetic rows only.
+- **CLI integration is intentionally not done yet.** `run-readonly-comparison.ts`
+  does not call this module, and no `--include-roi`-style flag exists.
+- **Real local ROI comparison is Phase 3E.2** — wiring this contract into
+  the read-only comparison CLI behind the completeness/dedup/DQA/selection
+  gates described in `docs/modeling/GENERATED_SIGNAL_PAIRS_EXPORT_SPEC.md`
+  "Phase 3E.1 — ROI/PnL pure contract".
+- **Do not run or claim performance manually from the exported JSON.**
+  Before Phase 3E.2 lands, there is no sanctioned path from a local export
+  file to an ROI figure -- any ROI/PnL number produced by hand-running this
+  module against `modeling/local_exports/generated_signal_pairs_export.json`
+  is not a validated or reportable result.
