@@ -113,7 +113,53 @@ exits non-zero otherwise), same as `--include-dqa-r4`.
 **Next phase:** Phase 3D.2O -- rerun the real local export with the dedup
 projection applied and report the resulting dataset counts.
 
-## Phase 3D.2Oa — Operator local export materializer
+## Phase 3D.2Ob — One-command Supabase export runner (preferred)
+
+Preferred founder workflow -- no clipboard, no cell-copy, no manual file
+editing:
+
+```
+scripts\modeling\strategies\run-3d2o-from-supabase.cmd
+```
+
+This single command:
+
+1. Reads the latest resolved `generated_signal_pairs` rows directly from
+   Supabase, read-only (`select *`, `resolved_at is not null`, ordered by
+   `resolved_at` descending, limited to 5000 rows by default).
+2. Normalizes schema drift in code (e.g. `selected_token_id` /
+   `diagnostics.selectedTokenId` -> `token_id`, `diagnostics.entryPrice` ->
+   `entry_price_num`, `pre_event_score_num` -> `score`).
+3. Writes `modeling\local_exports\generated_signal_pairs_export.json`.
+4. Runs the existing read-only dedup comparison CLI
+   (`--input-format generated_signal_pairs --include-dqa-r4 --dedup-policy
+   strict_latest_created_before_resolved`).
+5. Writes and prints `modeling\local_exports\3d2o_dedup_report.json`.
+
+- **No clipboard/cell-copy required.** The founder does not touch Supabase's
+  SQL Editor UI or the clipboard at all for this workflow.
+- **Generated files are git-ignored** (`modeling/local_exports/.gitignore`)
+  -- local operator working files, never committed.
+- **Requires local Supabase read env/config**: `SUPABASE_URL` and
+  `SUPABASE_SERVICE_ROLE_KEY` (the same convention `lib/supabase/server.ts`
+  uses), available to the process (e.g. via `.env.local`, already the repo
+  convention -- this script does not create or edit any env file).
+- **Does not write to the database.** Read-only `select` only -- no insert,
+  update, delete, upsert, or rpc calls.
+- **Does not compute ROI.** Same read-only `run-readonly-comparison.ts` used
+  throughout this workstream -- selection counts, dedup diagnostics, and
+  DQA-R4 audit output only.
+- Produces the same Phase 3D.2O report shape as the clipboard workflow
+  below.
+
+If Supabase env/config access is unavailable in the founder's shell, fall
+back to the clipboard workflow (Phase 3D.2Oa) below.
+
+## Phase 3D.2Oa — Operator local export materializer (fallback only)
+
+**Fallback only if env/config access is unavailable** -- prefer Phase
+3D.2Ob (`run-3d2o-from-supabase.cmd`) above when Supabase read env/config is
+available.
 
 Founder workflow (no repo edits, no `git pull` timing issues, no manually
 recreating `tmp_generated_signal_pairs_export.json`):

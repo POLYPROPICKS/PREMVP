@@ -158,7 +158,45 @@ behavior:
   the dedup projection is applied (or duplicates are otherwise resolved)
   *and* the DQA audits report clean on the resulting rows.
 
-## Local materialization workflow (Phase 3D.2Oa)
+## Automated read-only Supabase export workflow (Phase 3D.2Ob, preferred)
+
+`scripts/modeling/strategies/export-generated-signal-pairs-from-supabase.ts`
+reads the latest resolved `generated_signal_pairs` rows directly from
+Supabase and writes the local JSON export this spec's CLI commands expect,
+with no clipboard step and no manual file editing.
+
+- **Data path**: `select *` on `public.generated_signal_pairs`, filtered to
+  `resolved_at is not null`, ordered by `resolved_at` descending, limited to
+  5000 rows by default (`--limit` overrides). Read-only -- no insert,
+  update, delete, upsert, or rpc call exists anywhere in this module.
+- **Normalization**: schema drift (e.g. `selected_token_id` /
+  `diagnostics.selectedTokenId` for `token_id`, `diagnostics.entryPrice` for
+  `entry_price_num`, `pre_event_score_num` for `score`) is resolved in code,
+  per row, without mutating the source row. No ROI/PnL/profit field is
+  computed or added -- fields like `real_pnl_usd` / `realized_return_pct`
+  are only passed through if already present on the source row.
+- **Output path**: `modeling/local_exports/generated_signal_pairs_export.json`
+  by default (overridable with `--output`), same path and shape as the
+  Phase 3D.2Oa materializer's output.
+- **Report path**: `modeling/local_exports/3d2o_dedup_report.json`, produced
+  the same way as Phase 3D.2Oa -- piping through
+  `run-readonly-comparison.ts` with `--input-format generated_signal_pairs
+  --include-dqa-r4 --dedup-policy strict_latest_created_before_resolved`.
+- **Env/config caveat**: requires `SUPABASE_URL` and
+  `SUPABASE_SERVICE_ROLE_KEY` (the existing `lib/supabase/server.ts`
+  convention) to be available to the process. No env value is ever logged;
+  a missing-config error names only the missing variable names. This module
+  never creates or edits any `.env*` file.
+- **No manual cell copy in the preferred workflow**: see
+  `scripts/modeling/strategies/README.md` "Phase 3D.2Ob" section for the
+  one-command Windows workflow (`run-3d2o-from-supabase.cmd`). The
+  clipboard-based Phase 3D.2Oa workflow remains available as a fallback only
+  when Supabase env/config access is unavailable.
+- **ROI remains `NOT_COMPUTED`**: this exporter changes only how the local
+  export file is produced, not how it is used -- the same ROI discipline
+  above applies unchanged.
+
+## Local materialization workflow (Phase 3D.2Oa, fallback)
 
 `scripts/modeling/strategies/materialize-generated-signal-pairs-export.ts`
 turns raw text copied from Supabase into the local JSON file this spec's
