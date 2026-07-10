@@ -209,6 +209,31 @@ the export fails safely (`KEYSET_CURSOR_FIELDS_MISSING` /
   **`exportCompleteness` must be `"COMPLETE_BY_EXHAUSTION"` before any
   ROI/model-review gate treats the export as the full dataset.**
 
+**Explicit SELECT and canonical filter encoding (Phase 3E.2e):** the
+exporter no longer sends `select=*`. It sends an explicit column allowlist
+(`EXPORT_SELECT_FIELDS` in the exporter source) covering every field read
+by normalization, strict dedup, DQA-R4, the trusted-formula strategy
+filter, and the pure ROI contract. The cutoff filter is now one canonical
+`and=(resolved_at.not.is.null,resolved_at.lte.<cutoff>)` parameter instead
+of two duplicate `resolved_at` query keys, built safely with
+`URLSearchParams`. On a failed request, the exporter reports a bounded
+(≤800 characters), redacted diagnostic -- HTTP status plus, if the
+response body is valid PostgREST-shaped JSON, its `code`/`message`/
+`details`/`hint` fields -- with any JWT/bearer/apikey/URL-looking substring
+redacted and no raw response body or credential ever surfaced.
+
+**Truthful Windows fail-fast (Phase 3E.2e):** a real founder run showed
+`%ERRORLEVEL%` is not reliable after the exporter exits -- a native libuv
+teardown assertion has been observed to interfere with Windows exit-code
+propagation, even when the exporter itself correctly detected and reported
+its failure. Both runners now delete all stale artifacts (export file,
+summary file, and a success sentinel) before invoking the exporter, pass
+`--sentinel-output` so the exporter writes the sentinel only after the
+export (and summary, if requested) finish writing successfully, and
+require every expected artifact to exist before proceeding -- they no
+longer claim "exporter reported success" based on a clean errorlevel
+alone.
+
 - **No clipboard/cell-copy required.** The founder does not touch Supabase's
   SQL Editor UI or the clipboard at all for this workflow.
 - **Generated files are git-ignored** (`modeling/local_exports/.gitignore`)

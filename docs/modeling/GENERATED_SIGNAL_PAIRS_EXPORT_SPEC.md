@@ -481,3 +481,53 @@ was requested.
   the exporter with the exact same CLI flags as before (`--output`,
   `--summary-output`, `--page-size`) -- founders use the same one-command
   workflow.
+
+## Phase 3E.2e — explicit SELECT, canonical filter, safe errors, truthful fail-fast
+
+A real founder run reproduced the SQL equivalent of the exporter's first
+page directly against Supabase and it succeeded (returning a UUID-shaped
+`id`), while the REST request itself failed with HTTP 500 -- and
+separately, the Windows CMD runner showed `%ERRORLEVEL%=0` after that
+failure due to a native libuv teardown assertion interfering with exit-code
+propagation. This phase hardens the query shape and the runner's
+success signal without changing keyset semantics, the fixed cutoff, dedup,
+DQA, strategy filtering, or ROI math.
+
+- **Explicit SELECT allowlist**: `select=*` is replaced with
+  `EXPORT_SELECT_FIELDS` (exported, testable, joined via `buildSelectParam()`)
+  -- every field read by normalization, strict dedup, DQA-R4, the
+  trusted-formula strategy filter, or the pure ROI contract, plus
+  `winning_outcome`/`selected_outcome` (read and passed through by the
+  normalizer itself, so dropping them would silently regress the export
+  even though no other consumer needs them today).
+- **Canonical cutoff filter**: the two duplicate `resolved_at` query keys
+  (`not.is.null` / `lte.<cutoff>`) are replaced with one explicit
+  `and=(resolved_at.not.is.null,resolved_at.lte.<cutoff>)` filter, built
+  with `URLSearchParams`. The composite keyset `or=(...)` cursor filter on
+  cursor pages is unchanged and still combines with the `and` filter via
+  PostgREST's implicit AND across top-level query parameters.
+- **UUID cursor safety**: the keyset cursor's `id` field is validated only
+  as a non-empty string -- there is no lexical/numeric reinterpretation of
+  `id` in application code. Postgres/PostgREST owns the actual `<`
+  ordering semantics for whatever type the column is (confirmed UUID-shaped
+  in the real founder database).
+- **Safe, bounded PostgREST error diagnostics**: a failed request's error
+  message is capped at 800 characters and includes the HTTP status plus,
+  if the response body parses as PostgREST's standard error JSON shape,
+  its `code`/`message`/`details`/`hint` fields. JWT-shaped strings,
+  `Bearer <token>`, `apikey=`/`authorization=` pairs, and bare URLs are
+  redacted before any of this is included. A non-JSON error body is
+  reported only as a short bounded fragment, never dumped in full. A
+  successful response body (row data) is never included in any error path.
+- **Truthful Windows fail-fast**: both `run-3e2-roi-from-supabase.cmd` and
+  `run-3d2o-from-supabase.cmd` delete all stale artifacts (export file,
+  summary file where applicable, and a success sentinel) before invoking
+  the exporter, pass `--sentinel-output` so the exporter writes the
+  sentinel only after the export (and summary) finish writing, and require
+  every expected artifact to exist -- they no longer say "exporter
+  reported success" based on `%ERRORLEVEL%` alone, since that signal has
+  been observed to be unreliable on Windows independent of the exporter's
+  own correct error handling.
+- **CLI interface**: unchanged except one new optional flag,
+  `--sentinel-output <path>`, fully backward compatible (omitting it
+  changes nothing else).

@@ -8,6 +8,8 @@ import {
   normalizeGeneratedSignalPairRow,
   exportGeneratedSignalPairsFromSupabase,
   resolveSupabaseReadConfig,
+  EXPORT_SELECT_FIELDS,
+  buildSelectParam,
 } from "../../scripts/modeling/strategies/export-generated-signal-pairs-from-supabase";
 
 const SOURCE_PATH = path.join(
@@ -58,6 +60,7 @@ function makeFakeResponse(opts: {
   status?: number;
   headers?: FakeHeadersInit;
   json?: () => Promise<unknown>;
+  text?: () => Promise<string>;
 }) {
   const headers = opts.headers ?? {};
   return {
@@ -73,7 +76,16 @@ function makeFakeResponse(opts: {
       },
     },
     json: opts.json ?? (async () => []),
+    text: opts.text ?? (async () => (opts.json ? JSON.stringify(await opts.json()) : "")),
   };
+}
+
+// Parses the canonical `and=(resolved_at.not.is.null,resolved_at.lte.<cutoff>)`
+// filter this transport uses instead of duplicate `resolved_at` query keys.
+function parseCutoffFromAndFilter(andValue: string | null): string | null {
+  if (!andValue) return null;
+  const match = /resolved_at\.lte\.([^,)]+)/.exec(andValue);
+  return match ? match[1] : null;
 }
 
 interface FakeFetchCall {
@@ -107,9 +119,7 @@ function makeFakeFetch(options: FakeFetchOptions) {
     calls.push({ url, init: init ?? {} });
     const parsedUrl = new URL(url);
     const limit = Number(parsedUrl.searchParams.get("limit"));
-    const resolvedAtValues = parsedUrl.searchParams.getAll("resolved_at");
-    const lteEntry = resolvedAtValues.find((v) => v.startsWith("lte."));
-    const cutoff = lteEntry ? lteEntry.slice("lte.".length) : null;
+    const cutoff = parseCutoffFromAndFilter(parsedUrl.searchParams.get("and"));
     const cursor = parseCursorFromOrFilter(parsedUrl.searchParams.get("or"));
 
     let filtered = cutoff ? options.rows.filter((r) => r.resolved_at <= cutoff) : options.rows;
@@ -250,7 +260,7 @@ test("K2. page 2 does not send Range: 1000-1999 or any offset-based equivalent",
   });
 });
 
-test("K3. first request contains resolved_at not-null, cutoff, order resolved_at.desc,id.desc, limit=1000, no cursor", async () => {
+test("K3. first request contains a single canonical and-cutoff filter, order resolved_at.desc,id.desc, limit=1000, no cursor", async () => {
   const rows = generateDescendingRows(5, CUTOFF);
   const { fetchImpl, calls } = makeFakeFetch({ rows });
   await withTempDir(async (outputPath) => {
@@ -261,8 +271,11 @@ test("K3. first request contains resolved_at not-null, cutoff, order resolved_at
       pageSize: 1000,
     });
     const first = new URL(calls[0].url);
-    assert.equal(first.searchParams.getAll("resolved_at")[0], "not.is.null");
-    assert.match(first.searchParams.getAll("resolved_at")[1], /^lte\./);
+    const andValue = first.searchParams.get("and");
+    assert.ok(andValue, "expected a canonical and=(...) cutoff filter");
+    assert.match(andValue as string, /resolved_at\.not\.is\.null/);
+    assert.match(andValue as string, /resolved_at\.lte\./);
+    assert.equal(first.searchParams.getAll("resolved_at").length, 0, "no duplicate resolved_at query keys");
     assert.equal(first.searchParams.get("order"), "resolved_at.desc,id.desc");
     assert.equal(first.searchParams.get("limit"), "1000");
     assert.equal(first.searchParams.get("or"), null, "first page must not carry a cursor filter");
@@ -536,7 +549,7 @@ test("K15. repeated/non-advancing cursor produces CURSOR_DID_NOT_ADVANCE and doe
   });
 });
 
-test("K16. failed keyset request includes safe page/mode diagnostics without secret or body leakage", async () => {
+test("K16. failed keyset request includes safe page/mode diagnostics and never leaks credentials (Patch C: a bounded PostgREST message field is expected, not a leak)", async () => {
   const rows = generateDescendingRows(10, CUTOFF);
   const { fetchImpl } = makeFakeFetch({
     rows,
@@ -544,7 +557,7 @@ test("K16. failed keyset request includes safe page/mode diagnostics without sec
       makeFakeResponse({
         ok: false,
         status: 500,
-        json: async () => ({ message: "raw-supabase-error-body-should-not-leak" }),
+        text: async () => JSON.stringify({ message: "a short bounded postgrest message" }),
       }),
   });
   await withTempDir(async (outputPath) => {
@@ -556,7 +569,6 @@ test("K16. failed keyset request includes safe page/mode diagnostics without sec
         assert.match(error.message, /500/);
         assert.match(error.message, /KEYSET_RESOLVED_AT_ID/);
         assert.match(error.message, /first-page/);
-        assert.doesNotMatch(error.message, /raw-supabase-error-body-should-not-leak/);
         assert.doesNotMatch(error.message, /fake-service-role-key/);
         return true;
       },
@@ -758,5 +770,375 @@ test("S5. without summaryOutputPath, no sidecar behavior changes the returned su
     });
     assert.equal(result.fetchedRows, 2);
     assert.equal(result.exportCompleteness, "COMPLETE_BY_EXHAUSTION");
+  });
+});
+
+// ---- Phase 3E.2e: explicit select allowlist (Patch A) ----
+
+const REQUIRED_DOWNSTREAM_FIELDS = [
+  // normalization
+  "id",
+  "condition_id",
+  "token_id",
+  "selected_token_id",
+  "created_at",
+  "resolved_at",
+  "formula_version",
+  "metric_formula_version",
+  "score",
+  "signal_score",
+  "pre_event_score_num",
+  "coverage",
+  "coverage_score",
+  "signal_result",
+  "result",
+  "outcome_status",
+  "winning_outcome",
+  "selected_outcome",
+  "entry_price_num",
+  "entry_price",
+  "realized_return_pct",
+  "real_pnl_usd",
+  "match_family_key",
+  "canonical_event_key",
+  "parent_event_key",
+  "event_slug",
+  "event_title",
+  "market_slug",
+  "league",
+  "hours_until_start",
+  "diagnostics",
+];
+
+test("A1. default query does not use select=*", async () => {
+  const rows = generateDescendingRows(3, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath });
+    const first = new URL(calls[0].url);
+    assert.notEqual(first.searchParams.get("select"), "*");
+  });
+});
+
+test("A2. exact explicit select allowlist is present on every request", async () => {
+  const rows = generateDescendingRows(1500, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 1000,
+    });
+    assert.ok(calls.length >= 2);
+    for (const call of calls) {
+      const url = new URL(call.url);
+      assert.equal(url.searchParams.get("select"), EXPORT_SELECT_FIELDS.join(","));
+    }
+  });
+});
+
+test("A3. all downstream-required fields are included in the select allowlist", () => {
+  for (const field of REQUIRED_DOWNSTREAM_FIELDS) {
+    assert.ok(
+      (EXPORT_SELECT_FIELDS as readonly string[]).includes(field),
+      `expected EXPORT_SELECT_FIELDS to include "${field}"`,
+    );
+  }
+});
+
+test("A4. buildSelectParam() returns the comma-joined allowlist", () => {
+  assert.equal(buildSelectParam(), EXPORT_SELECT_FIELDS.join(","));
+});
+
+test("A5. normalization still works with an explicit-select-shaped row (no extra unselected fields)", () => {
+  const row: Record<string, unknown> = {};
+  for (const field of EXPORT_SELECT_FIELDS) {
+    row[field] = field === "diagnostics" ? { entryPrice: 0.2 } : `value-${field}`;
+  }
+  const normalized = normalizeGeneratedSignalPairRow(row);
+  assert.equal(normalized.id, "value-id");
+  assert.equal(normalized.condition_id, "value-condition_id");
+});
+
+// ---- Phase 3E.2e: canonical and-filter encoding (Patch B) ----
+
+test("B1. duplicate resolved_at query keys are absent", async () => {
+  const rows = generateDescendingRows(1500, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 1000,
+    });
+    for (const call of calls) {
+      const url = new URL(call.url);
+      assert.equal(url.searchParams.getAll("resolved_at").length, 0);
+    }
+  });
+});
+
+test("B2. cursor page preserves both the canonical and-cutoff filter and the composite or-cursor filter", async () => {
+  const rows = generateDescendingRows(1500, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 1000,
+    });
+    const second = new URL(calls[1].url);
+    assert.ok(second.searchParams.get("and"), "cursor page must still carry the cutoff filter");
+    assert.ok(second.searchParams.get("or"), "cursor page must still carry the cursor filter");
+  });
+});
+
+test("B3. order remains resolved_at.desc,id.desc and limit is preserved with the new filter encoding", async () => {
+  const rows = generateDescendingRows(5, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 250,
+    });
+    const first = new URL(calls[0].url);
+    assert.equal(first.searchParams.get("order"), "resolved_at.desc,id.desc");
+    assert.equal(first.searchParams.get("limit"), "250");
+  });
+});
+
+test("B4. UUID-shaped cursor ids are passed through verbatim, not lexically reinterpreted", async () => {
+  const uuidRows: FakeKeysetRow[] = [
+    makeKeysetRow("2026-07-10T00:00:02.000Z", "3f9e1c2a-1111-4a11-8a11-abcdefabcdef"),
+    makeKeysetRow("2026-07-10T00:00:01.000Z", "1a2b3c4d-2222-4a11-8a11-abcdefabcdef"),
+    makeKeysetRow("2026-07-10T00:00:00.000Z", "0f0e0d0c-3333-4a11-8a11-abcdefabcdef"),
+  ];
+  const { fetchImpl, calls } = makeFakeFetch({ rows: uuidRows });
+  await withTempDir(async (outputPath) => {
+    const result = await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 1,
+    });
+    assert.equal(result.fetchedRows, 3);
+    const second = new URL(calls[1].url);
+    const orValue = second.searchParams.get("or") as string;
+    assert.match(orValue, /id\.lt\.3f9e1c2a-1111-4a11-8a11-abcdefabcdef/);
+  });
+});
+
+// ---- Phase 3E.2e: safe PostgREST error diagnostics (Patch C) ----
+
+test("C1. safe JSON PostgREST error includes code/message/hint", async () => {
+  const rows = generateDescendingRows(5, CUTOFF);
+  const { fetchImpl } = makeFakeFetch({
+    rows,
+    pageOverride: () =>
+      makeFakeResponse({
+        ok: false,
+        status: 500,
+        text: async () =>
+          JSON.stringify({
+            code: "42883",
+            message: "operator does not exist: uuid < unknown",
+            details: null,
+            hint: "No operator matches the given name and argument types.",
+          }),
+      }),
+  });
+  await withTempDir(async (outputPath) => {
+    await assert.rejects(
+      () => exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /postgrestCode=42883/);
+        assert.match(error.message, /operator does not exist/);
+        assert.match(error.message, /No operator matches/);
+        return true;
+      },
+    );
+  });
+});
+
+test("C2. diagnostics are bounded to a safe maximum length", async () => {
+  const rows = generateDescendingRows(5, CUTOFF);
+  const hugeMessage = "x".repeat(5000);
+  const { fetchImpl } = makeFakeFetch({
+    rows,
+    pageOverride: () =>
+      makeFakeResponse({
+        ok: false,
+        status: 500,
+        text: async () => JSON.stringify({ code: "XXXXX", message: hugeMessage }),
+      }),
+  });
+  await withTempDir(async (outputPath) => {
+    await assert.rejects(
+      () => exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        // The whole error, including the "Export failed (...)" prefix, must
+        // stay well short of a full 5000-char dump.
+        assert.ok(error.message.length < 1200, `error message too long: ${error.message.length}`);
+        return true;
+      },
+    );
+  });
+});
+
+test("C3. token/authorization-like values are redacted from error diagnostics", async () => {
+  const rows = generateDescendingRows(5, CUTOFF);
+  const fakeJwt =
+    "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.4Adcj3UFYzPUVaVF43FmMab6RlaQD8A9V8wFzzht-KQ";
+  const { fetchImpl } = makeFakeFetch({
+    rows,
+    pageOverride: () =>
+      makeFakeResponse({
+        ok: false,
+        status: 401,
+        text: async () =>
+          JSON.stringify({ message: `Invalid token: Bearer ${fakeJwt}`, hint: `apikey=${fakeJwt}` }),
+      }),
+  });
+  await withTempDir(async (outputPath) => {
+    await assert.rejects(
+      () => exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.doesNotMatch(error.message, new RegExp(fakeJwt.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+        assert.doesNotMatch(error.message, /fake-service-role-key/);
+        return true;
+      },
+    );
+  });
+});
+
+test("C4. successful response body is never logged in an error path (non-JSON error body is bounded, not dumped raw)", async () => {
+  const rows = generateDescendingRows(5, CUTOFF);
+  const hugeHtml = `<html><body>${"a".repeat(3000)}</body></html>`;
+  const { fetchImpl } = makeFakeFetch({
+    rows,
+    pageOverride: () =>
+      makeFakeResponse({
+        ok: false,
+        status: 502,
+        text: async () => hugeHtml,
+      }),
+  });
+  await withTempDir(async (outputPath) => {
+    await assert.rejects(
+      () => exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.ok(error.message.length < 1200);
+        assert.match(error.message, /502/);
+        return true;
+      },
+    );
+  });
+});
+
+test("C5. error diagnostics include page number, page context, and paginationMode", async () => {
+  const rows = generateDescendingRows(5, CUTOFF);
+  const { fetchImpl } = makeFakeFetch({
+    rows,
+    pageOverride: () => makeFakeResponse({ ok: false, status: 500, text: async () => "" }),
+  });
+  await withTempDir(async (outputPath) => {
+    await assert.rejects(
+      () => exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /page 1/);
+        assert.match(error.message, /first-page/);
+        assert.match(error.message, /paginationMode=KEYSET_RESOLVED_AT_ID/);
+        return true;
+      },
+    );
+  });
+});
+
+// ---- Phase 3E.2e: success sentinel (Patch D support) ----
+
+test("D1. exporter writes a success sentinel file only after export and summary writes complete", async () => {
+  const rows = generateDescendingRows(3, CUTOFF);
+  const { fetchImpl } = makeFakeFetch({ rows });
+  const dir = mkdtempSync(path.join(tmpdir(), "supabase-export-test-"));
+  const outputPath = path.join(dir, "export.json");
+  const summaryPath = path.join(dir, "summary.json");
+  const sentinelPath = path.join(dir, "sentinel.json");
+  try {
+    await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      summaryOutputPath: summaryPath,
+      sentinelOutputPath: sentinelPath,
+    });
+    const sentinel = JSON.parse(readFileSync(sentinelPath, "utf8"));
+    assert.equal(sentinel.status, "SUCCESS");
+    assert.equal(typeof sentinel.schemaVersion, "number");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("D2. without sentinelOutputPath, no sentinel file behavior changes anything else", async () => {
+  const rows = generateDescendingRows(2, CUTOFF);
+  const { fetchImpl } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    const result = await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+    });
+    assert.equal(result.fetchedRows, 2);
+  });
+});
+
+test("D3. sentinel contains no secrets", async () => {
+  const rows = generateDescendingRows(1, CUTOFF);
+  const { fetchImpl } = makeFakeFetch({ rows });
+  const dir = mkdtempSync(path.join(tmpdir(), "supabase-export-test-"));
+  const outputPath = path.join(dir, "export.json");
+  const sentinelPath = path.join(dir, "sentinel.json");
+  try {
+    await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      sentinelOutputPath: sentinelPath,
+    });
+    const raw = readFileSync(sentinelPath, "utf8");
+    assert.doesNotMatch(raw, /fake-service-role-key/);
+    assert.doesNotMatch(raw, /condition_id/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// ---- Existing keyset boundary/completeness tests must still pass unchanged ----
+
+test("K24. existing keyset boundary and completeness behavior is unaffected by Patch A/B/C/D", async () => {
+  const rows = generateDescendingRows(2500, CUTOFF);
+  const { fetchImpl } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    const result = await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 1000,
+    });
+    assert.equal(result.fetchedRows, 2500);
+    assert.equal(result.pagesFetched, 3);
+    assert.equal(result.completionProof, "LAST_PAGE_SHORT");
+    assert.equal(result.exportCompleteness, "COMPLETE_BY_EXHAUSTION");
+    assert.equal(result.paginationMode, "KEYSET_RESOLVED_AT_ID");
   });
 });

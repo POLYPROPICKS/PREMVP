@@ -13,6 +13,17 @@ REM depends on is missing. It also clears any stale prior report before
 REM running the comparison, so a failed run can never leave behind a report
 REM file that looks like a fresh success.
 REM
+REM Phase 3E.2e hardening: a real Windows run showed that %ERRORLEVEL% is
+REM NOT reliable after the exporter process exits -- a native libuv
+REM teardown assertion has been observed to interfere with exit-code
+REM propagation on Windows, even though the exporter itself correctly
+REM detected and reported its own failure. This runner therefore does NOT
+REM treat a clean errorlevel as proof of success. Success requires both the
+REM export file and a success sentinel the exporter writes only after the
+REM export finishes writing. Stale copies of both are deleted before the
+REM exporter runs, so a failed run can never be mistaken for success by
+REM reusing a leftover file from a previous successful run.
+REM
 REM Requires local Supabase read env/config (SUPABASE_URL and
 REM SUPABASE_SERVICE_ROLE_KEY, or the .env.local equivalents already used by
 REM this repo) to be available to the process.
@@ -26,23 +37,32 @@ REM scripts\modeling\strategies\ -> scripts\modeling\ -> scripts\ -> root).
 cd /d "%~dp0..\..\.."
 
 set "EXPORT_FILE=modeling\local_exports\generated_signal_pairs_export.json"
+set "SENTINEL_FILE=modeling\local_exports\generated_signal_pairs_export_sentinel.json"
 set "REPORT_FILE=modeling\local_exports\3d2o_dedup_report.json"
 
 if not exist "modeling\local_exports" mkdir "modeling\local_exports"
 
-REM Clear any stale prior report before this run, so a failure below can
-REM never leave behind a report file that looks like a fresh success.
+REM Clear any stale prior artifacts before this run, so a failure below can
+REM never be mistaken for success by reusing a leftover file from an
+REM earlier run.
+del /q "%EXPORT_FILE%" 2>nul
+del /q "%SENTINEL_FILE%" 2>nul
 del /q "%REPORT_FILE%" 2>nul
 
 echo Reading ALL resolved generated_signal_pairs rows from Supabase (read-only, paginated, no dataset cap)...
-node --import tsx scripts\modeling\strategies\export-generated-signal-pairs-from-supabase.ts --output "%EXPORT_FILE%" --page-size 1000
+node --import tsx scripts\modeling\strategies\export-generated-signal-pairs-from-supabase.ts --output "%EXPORT_FILE%" --sentinel-output "%SENTINEL_FILE%" --page-size 1000
 if errorlevel 1 (
   echo ERROR: Supabase export failed. See the message above.
   goto :fail
 )
 
 if not exist "%EXPORT_FILE%" (
-  echo ERROR: exporter reported success but %EXPORT_FILE% is missing.
+  echo ERROR: exporter did not produce a complete success artifact set -- %EXPORT_FILE% is missing.
+  goto :fail
+)
+
+if not exist "%SENTINEL_FILE%" (
+  echo ERROR: exporter did not produce a complete success artifact set -- %SENTINEL_FILE% is missing.
   goto :fail
 )
 

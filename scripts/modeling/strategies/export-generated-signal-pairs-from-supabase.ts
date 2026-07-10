@@ -75,7 +75,59 @@ type FetchLike = (
   status: number;
   headers: { get(name: string): string | null };
   json(): Promise<unknown>;
+  text(): Promise<string>;
 }>;
+
+/**
+ * Explicit column allowlist for the export SELECT (Phase 3E.2e). Replaces
+ * `select=*` -- every field here is read by at least one downstream
+ * consumer: normalization (this file), strict dedup
+ * (generatedSignalPairsDedupPolicy.ts / generatedSignalPairsExportContract.ts),
+ * DQA-R4 (outcomeResolutionConsistency.ts), the trusted-formula strategy
+ * filter (strategyEvaluator.ts), or the pure ROI contract
+ * (roiPnlContract.ts). `winning_outcome` and `selected_outcome` are read
+ * and passed through by the normalizer itself (no downstream consumer
+ * needs them beyond that), so they stay in the allowlist to avoid silently
+ * dropping fields the normalizer already exposes today.
+ */
+export const EXPORT_SELECT_FIELDS = [
+  "id",
+  "condition_id",
+  "token_id",
+  "selected_token_id",
+  "created_at",
+  "resolved_at",
+  "formula_version",
+  "metric_formula_version",
+  "score",
+  "signal_score",
+  "pre_event_score_num",
+  "coverage",
+  "coverage_score",
+  "signal_result",
+  "result",
+  "outcome_status",
+  "winning_outcome",
+  "selected_outcome",
+  "entry_price_num",
+  "entry_price",
+  "realized_return_pct",
+  "real_pnl_usd",
+  "match_family_key",
+  "canonical_event_key",
+  "parent_event_key",
+  "event_slug",
+  "event_title",
+  "market_slug",
+  "league",
+  "hours_until_start",
+  "diagnostics",
+] as const;
+
+/** Builds the PostgREST `select=` param value from EXPORT_SELECT_FIELDS. */
+export function buildSelectParam(): string {
+  return EXPORT_SELECT_FIELDS.join(",");
+}
 
 const DEFAULT_OUTPUT_PATH = path.join(
   "modeling",
@@ -200,6 +252,16 @@ export interface ExportGeneratedSignalPairsOptions {
    * (Phase 3E.2) to prove export completeness without re-querying.
    */
   summaryOutputPath?: string;
+  /**
+   * Optional path to write a small success-sentinel file, written only
+   * after the export (and summary, if requested) have both finished
+   * writing successfully. Exists because Windows CMD callers cannot fully
+   * rely on `%ERRORLEVEL%` after this process exits (a native libuv
+   * teardown assertion has been observed to interfere with exit-code
+   * propagation on Windows). The sentinel contains no secrets and no row
+   * data -- only a stable status marker and schema version.
+   */
+  sentinelOutputPath?: string;
   /** Transport batch size only. Does NOT cap the dataset. Default 1000. */
   pageSize?: number;
   /** Explicit debug-only cap on total rows fetched. Never a default. */
@@ -287,6 +349,16 @@ export function buildKeysetCursorFilter(cursor: KeysetCursor): string {
   return `(resolved_at.lt.${cursor.resolvedAt},and(resolved_at.eq.${cursor.resolvedAt},id.lt.${cursor.id}))`;
 }
 
+/**
+ * Builds the single canonical `and=(resolved_at.not.is.null,resolved_at.lte.<cutoff>)`
+ * filter that replaces the previous duplicate `resolved_at` query keys.
+ * Both conditions are ANDed together explicitly instead of relying on
+ * repeated-key AND semantics.
+ */
+function buildCutoffFilter(cutoffResolvedAt: string): string {
+  return `(resolved_at.not.is.null,resolved_at.lte.${cutoffResolvedAt})`;
+}
+
 function buildRestUrl(
   baseUrl: string,
   cutoffResolvedAt: string,
@@ -295,15 +367,87 @@ function buildRestUrl(
 ): string {
   const trimmedBase = baseUrl.replace(/\/+$/, "");
   const params = new URLSearchParams();
-  params.set("select", "*");
-  params.append("resolved_at", "not.is.null");
-  params.append("resolved_at", `lte.${cutoffResolvedAt}`);
+  params.set("select", buildSelectParam());
+  params.set("and", buildCutoffFilter(cutoffResolvedAt));
   params.set("order", "resolved_at.desc,id.desc");
   params.set("limit", String(limit));
   if (cursor) {
     params.set("or", buildKeysetCursorFilter(cursor));
   }
   return `${trimmedBase}/rest/v1/${TABLE_NAME}?${params.toString()}`;
+}
+
+const MAX_DIAGNOSTIC_LENGTH = 800;
+
+function truncateSafe(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
+
+/**
+ * Redacts anything that looks like a secret/credential from error
+ * diagnostic text: JWT-shaped strings (three dot-separated base64url
+ * segments), "Bearer <token>" sequences, "apikey=<value>"-style pairs, and
+ * bare URLs (which could embed a host or path we don't want to surface).
+ */
+function redactSensitive(text: string): string {
+  return text
+    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, "[REDACTED_JWT]")
+    .replace(/bearer\s+\S+/gi, "Bearer [REDACTED]")
+    .replace(/apikey[=:]\s*\S+/gi, "apikey=[REDACTED]")
+    .replace(/authorization[=:]\s*\S+/gi, "authorization=[REDACTED]")
+    .replace(/https?:\/\/\S+/gi, "[REDACTED_URL]");
+}
+
+function isPlainErrorBody(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function pickStringField(value: Record<string, unknown>, key: string): string | undefined {
+  const field = value[key];
+  return typeof field === "string" && field.trim() !== "" ? field : undefined;
+}
+
+/**
+ * Builds a bounded, redacted diagnostic string for a non-OK PostgREST
+ * response: HTTP status, plus (if the body is valid JSON with PostgREST's
+ * standard shape) `code`/`message`/`details`/`hint` fields. Falls back to a
+ * short redacted text fragment if the body is not JSON. Never includes the
+ * full raw response body, request URL, or credential values, and is
+ * capped at MAX_DIAGNOSTIC_LENGTH characters total.
+ */
+async function buildSafePostgrestErrorDetail(response: { status: number; text(): Promise<string> }): Promise<string> {
+  let bodyText = "";
+  try {
+    bodyText = await response.text();
+  } catch {
+    bodyText = "";
+  }
+
+  const redactedBody = redactSensitive(bodyText);
+
+  let parsed: unknown = null;
+  try {
+    parsed = redactedBody.trim() === "" ? null : JSON.parse(redactedBody);
+  } catch {
+    parsed = null;
+  }
+
+  if (isPlainErrorBody(parsed)) {
+    const parts = [`HTTP ${response.status}`];
+    const code = pickStringField(parsed, "code");
+    const message = pickStringField(parsed, "message");
+    const details = pickStringField(parsed, "details");
+    const hint = pickStringField(parsed, "hint");
+    if (code) parts.push(`postgrestCode=${code}`);
+    if (message) parts.push(`message=${message}`);
+    if (details) parts.push(`details=${details}`);
+    if (hint) parts.push(`hint=${hint}`);
+    return truncateSafe(parts.join("; "), MAX_DIAGNOSTIC_LENGTH);
+  }
+
+  const fragment = truncateSafe(redactedBody, 200);
+  const withFragment = fragment ? `HTTP ${response.status}; body=${fragment}` : `HTTP ${response.status}`;
+  return truncateSafe(withFragment, MAX_DIAGNOSTIC_LENGTH);
 }
 
 /**
@@ -313,8 +457,8 @@ function buildRestUrl(
  * after `cursor`) via a read-only GET against the PostgREST REST endpoint.
  * No OFFSET, no Range header: this is pure keyset/seek pagination, which
  * never re-scans skipped rows and has no deep-offset degradation mode.
- * Throws a safe Error (status code only, no response body) if the request
- * fails or the body is not a JSON array.
+ * Throws a safe, bounded, redacted Error if the request fails or the body
+ * is not a JSON array -- never the raw response body, URL, or credentials.
  */
 async function fetchResolvedRowPage(
   fetchImpl: FetchLike,
@@ -333,7 +477,8 @@ async function fetchResolvedRowPage(
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status}`);
+    const detail = await buildSafePostgrestErrorDetail(response);
+    throw new Error(detail);
   }
 
   const data = await response.json();
@@ -370,6 +515,7 @@ export async function exportGeneratedSignalPairsFromSupabase(
 ): Promise<ExportGeneratedSignalPairsResult> {
   const outputPath = options.outputPath ?? DEFAULT_OUTPUT_PATH;
   const summaryOutputPath = options.summaryOutputPath;
+  const sentinelOutputPath = options.sentinelOutputPath;
   const pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
   const maxRows = options.maxRows;
   const fetchImpl = options.fetchImpl ?? (fetch as unknown as FetchLike);
@@ -488,12 +634,31 @@ export async function exportGeneratedSignalPairsFromSupabase(
     }
   }
 
+  if (sentinelOutputPath) {
+    try {
+      const sentinelDir = path.dirname(sentinelOutputPath);
+      if (!existsSync(sentinelDir)) {
+        mkdirSync(sentinelDir, { recursive: true });
+      }
+      // Written only after the export (and summary, if requested) have
+      // both finished writing above -- reaching this line is itself proof
+      // of success. Contains only a stable status marker and schema
+      // version, never row data or secrets.
+      const sentinel = { schemaVersion: 1, status: "SUCCESS" as const };
+      writeFileSync(sentinelOutputPath, `${JSON.stringify(sentinel, null, 2)}\n`, "utf8");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
+      throw new Error(`Export failed (write): ${message}`);
+    }
+  }
+
   return summary;
 }
 
 interface ParsedArgs {
   output: string;
   summaryOutput?: string;
+  sentinelOutput?: string;
   pageSize: number;
   maxRows?: number;
 }
@@ -507,6 +672,9 @@ function parseArgs(argv: string[]): ParsedArgs {
       i += 1;
     } else if (arg === "--summary-output") {
       args.summaryOutput = argv[i + 1];
+      i += 1;
+    } else if (arg === "--sentinel-output") {
+      args.sentinelOutput = argv[i + 1];
       i += 1;
     } else if (arg === "--page-size") {
       const value = Number(argv[i + 1]);
@@ -545,6 +713,7 @@ async function main(): Promise<void> {
     const result = await exportGeneratedSignalPairsFromSupabase({
       outputPath: args.output,
       summaryOutputPath: args.summaryOutput,
+      sentinelOutputPath: args.sentinelOutput,
       pageSize: args.pageSize,
       maxRows: args.maxRows,
     });
