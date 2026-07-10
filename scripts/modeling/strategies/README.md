@@ -168,7 +168,25 @@ longer makes any row-count request at all. Instead of comparing
 than `pageSize` or empty, which is the only way the server can say "there
 is nothing left."
 
-**Dataset completeness contract (Phase 3D.2P, updated 3E.2b):**
+**Keyset pagination, not OFFSET (Phase 3E.2d):** a real founder run also
+failed deep into a paginated sweep (`Export failed (page 20): HTTP 500`) --
+deep OFFSET/`Range`-based pagination is a known Postgres/PostgREST
+performance and failure mode at scale, independent of the count-request
+issue above. The exporter no longer uses OFFSET or a `Range` header at
+all. It uses composite **keyset (seek) pagination** on `resolved_at DESC,
+id DESC`: the first page has no cursor; every page after that carries a
+cursor built from the *last row of the previous page* and filters to rows
+strictly after it in that same order (`resolved_at < lastResolvedAt OR
+(resolved_at = lastResolvedAt AND id < lastId)`). This never re-scans
+skipped rows and has no "deep offset" degradation mode. `resolved_at`
+alone is never used as the cursor, so rows sharing a `resolved_at` value
+are still traversed correctly (via the `id DESC` tiebreak) instead of
+being skipped or duplicated across a page boundary. If a full page's last
+row is missing valid cursor fields, or the next cursor fails to advance,
+the export fails safely (`KEYSET_CURSOR_FIELDS_MISSING` /
+`CURSOR_DID_NOT_ADVANCE`) instead of looping or silently under-reporting.
+
+**Dataset completeness contract (Phase 3D.2P, updated 3E.2b/3E.2d):**
 
 - `--page-size` (default 1000) is a **transport batch size only** -- it
   controls how many rows are fetched per Supabase request, not how many
@@ -185,9 +203,9 @@ is nothing left."
   `completionProof` (`"LAST_PAGE_SHORT" | "EMPTY_PAGE" | null` -- `null`
   only in `DEBUG_CAPPED` mode, where completeness is not claimed),
   `exportCutoffResolvedAt` (the ISO timestamp captured at export start),
-  and `missingRows` (always `0` -- there is no longer a pre-fetched total
-  to compute a gap against; `completionProof` is the completeness signal
-  instead).
+  `paginationMode` (always `"KEYSET_RESOLVED_AT_ID"`), and `missingRows`
+  (always `0` -- there is no longer a pre-fetched total to compute a gap
+  against; `completionProof` is the completeness signal instead).
   **`exportCompleteness` must be `"COMPLETE_BY_EXHAUSTION"` before any
   ROI/model-review gate treats the export as the full dataset.**
 

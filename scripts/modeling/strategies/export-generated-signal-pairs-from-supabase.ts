@@ -2,7 +2,7 @@
 // Automated read-only Supabase export runner for generated_signal_pairs
 // (Phase 3D.2Ob, dataset-completeness hardened in Phase 3D.2P, transport
 // hardened for Windows in Phase 3E.2a, count dependency removed in Phase
-// 3E.2b).
+// 3E.2b, keyset pagination in Phase 3E.2d).
 //
 // Reads ALL resolved generated_signal_pairs rows directly from Supabase by
 // default (paginated GET reads over the PostgREST REST API, no exact-count
@@ -11,17 +11,33 @@
 // (run-readonly-comparison.ts) expects.
 //
 // Transport: this module talks to Supabase's PostgREST REST endpoint
-// directly via the platform `fetch` (GET requests only, with a Range
-// header for pagination). It deliberately does NOT depend on the
-// @supabase/supabase-js client's count/head select path -- that path was
-// observed to crash on Windows with a native libuv assertion failure. As
-// of Phase 3E.2b it also does NOT make any request for an exact row total
-// at all: that request path returned an HTTP 500 in a real founder run,
-// another Windows/Supabase-side failure mode outside this module's
-// control. Completeness is instead proven by exhaustive pagination: the
-// exporter fetches page after page until the server returns a page shorter
-// than the requested page size, or an empty page -- that is the proof the
-// dataset was fully consumed, not a pre-fetched total to compare against.
+// directly via the platform `fetch` (GET requests only). It deliberately
+// does NOT depend on the @supabase/supabase-js client's count/head select
+// path -- that path was observed to crash on Windows with a native libuv
+// assertion failure. As of Phase 3E.2b it also does NOT make any request
+// for an exact row total at all: that request path returned an HTTP 500 in
+// a real founder run, another Windows/Supabase-side failure mode outside
+// this module's control.
+//
+// Pagination (Phase 3E.2d, KEYSET_RESOLVED_AT_ID): a real founder run also
+// failed deep in an offset/Range-based pagination sweep
+// (`Export failed (page 20): HTTP 500`) -- deep OFFSET pagination is a
+// known Postgres/PostgREST performance/failure mode at scale. The exporter
+// no longer uses OFFSET or a Range header at all. Instead it uses
+// composite keyset pagination on `resolved_at DESC, id DESC`: each page
+// after the first carries a cursor built from the last row of the
+// previous page, filtering to rows strictly after that row in the same
+// stable order (`resolved_at < lastResolvedAt OR (resolved_at =
+// lastResolvedAt AND id < lastId)`). This never re-scans skipped rows and
+// has no "deep offset" degradation mode. `resolved_at` alone is never used
+// as the cursor -- rows sharing a `resolved_at` value are only
+// disambiguated by the `id DESC` tiebreak, so a same-timestamp group can
+// never be partially skipped or duplicated across a page boundary.
+//
+// Completeness is proven by exhaustive pagination: the exporter fetches
+// page after page until the server returns a page shorter than the
+// requested page size, or an empty page -- that is the proof the dataset
+// was fully consumed, not a pre-fetched total to compare against.
 //
 // To keep the row set stable across the whole paginated fetch (rows can
 // resolve mid-export), the exporter captures `exportCutoffResolvedAt` (the
@@ -38,7 +54,8 @@
 //
 // This module does NOT:
 //   - write to the database (no insert/update/delete/upsert/rpc; GET only)
-//   - log environment variable values or raw row payloads
+//   - log environment variable values, authorization headers, response
+//     bodies, or raw row/cursor payloads
 //   - compute ROI/PnL/profit
 //   - install any package (uses the platform `fetch` and the existing
 //     SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY env convention from
@@ -195,6 +212,8 @@ export type ExportCompleteness = "COMPLETE_BY_EXHAUSTION" | "INTENTIONALLY_CAPPE
 
 export type CompletionProof = "LAST_PAGE_SHORT" | "EMPTY_PAGE" | null;
 
+export type PaginationMode = "KEYSET_RESOLVED_AT_ID";
+
 export interface ExportGeneratedSignalPairsResult {
   outputPath: string;
   fetchedRows: number;
@@ -204,42 +223,112 @@ export interface ExportGeneratedSignalPairsResult {
   exportCompleteness: ExportCompleteness;
   completionProof: CompletionProof;
   exportCutoffResolvedAt: string;
+  paginationMode: PaginationMode;
   missingRows: number;
   requestedMaxRows?: number;
 }
 
-function buildRestUrl(baseUrl: string, cutoffResolvedAt: string): string {
+/** The composite keyset cursor: the (resolved_at, id) pair of the last row of a page. */
+export interface KeysetCursor {
+  resolvedAt: string;
+  id: string;
+}
+
+function isPlainObjectRow(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFiniteTimestamp(value: string): boolean {
+  return value.trim() !== "" && Number.isFinite(new Date(value).getTime());
+}
+
+/**
+ * Extracts a valid keyset cursor from the last row of a fetched page. A
+ * page's last row (per `order=resolved_at.desc,id.desc`) is the row with
+ * the smallest (resolved_at, id) in that page -- the correct anchor for
+ * "everything strictly after this point" on the next page. Returns null if
+ * the last row is missing, or its `resolved_at`/`id` fields are absent,
+ * empty, or (for `resolved_at`) not a parseable timestamp -- the caller
+ * treats a null result as a hard stop, never a silent skip.
+ */
+export function extractKeysetCursor(rows: readonly unknown[]): KeysetCursor | null {
+  if (rows.length === 0) return null;
+  const lastRow = rows[rows.length - 1];
+  if (!isPlainObjectRow(lastRow)) return null;
+
+  const resolvedAtRaw = lastRow.resolved_at;
+  if (typeof resolvedAtRaw !== "string" || !isFiniteTimestamp(resolvedAtRaw)) return null;
+
+  const idRaw = lastRow.id;
+  let id: string | null = null;
+  if (typeof idRaw === "string" && idRaw.trim() !== "") {
+    id = idRaw;
+  } else if (typeof idRaw === "number" && Number.isFinite(idRaw)) {
+    id = String(idRaw);
+  }
+  if (id === null) return null;
+
+  return { resolvedAt: resolvedAtRaw, id };
+}
+
+function keysetCursorsEqual(a: KeysetCursor, b: KeysetCursor): boolean {
+  return a.resolvedAt === b.resolvedAt && a.id === b.id;
+}
+
+/**
+ * Builds the composite `or=(...)` PostgREST filter for "strictly after"
+ * `cursor` in `resolved_at DESC, id DESC` order:
+ *   resolved_at < cursor.resolvedAt
+ *   OR (resolved_at = cursor.resolvedAt AND id < cursor.id)
+ * This is what makes same-`resolved_at` groups traverse safely via the
+ * `id DESC` tiebreak instead of ever using `resolved_at` alone as a cursor.
+ */
+export function buildKeysetCursorFilter(cursor: KeysetCursor): string {
+  return `(resolved_at.lt.${cursor.resolvedAt},and(resolved_at.eq.${cursor.resolvedAt},id.lt.${cursor.id}))`;
+}
+
+function buildRestUrl(
+  baseUrl: string,
+  cutoffResolvedAt: string,
+  cursor: KeysetCursor | null,
+  limit: number,
+): string {
   const trimmedBase = baseUrl.replace(/\/+$/, "");
   const params = new URLSearchParams();
   params.set("select", "*");
   params.append("resolved_at", "not.is.null");
   params.append("resolved_at", `lte.${cutoffResolvedAt}`);
-  params.set("order", "resolved_at.desc");
+  params.set("order", "resolved_at.desc,id.desc");
+  params.set("limit", String(limit));
+  if (cursor) {
+    params.set("or", buildKeysetCursorFilter(cursor));
+  }
   return `${trimmedBase}/rest/v1/${TABLE_NAME}?${params.toString()}`;
 }
 
 /**
  * Fetches one page of resolved rows (resolved_at not null, resolved_at <=
- * the export cutoff, ordered by resolved_at descending) via a read-only
- * GET against the PostgREST REST endpoint (Range: from-to). Throws a safe
- * Error (status code only, no response body) if the request fails or the
- * body is not a JSON array.
+ * the export cutoff, ordered by resolved_at DESC, id DESC, limited to
+ * `limit`, and -- for every page after the first -- filtered to strictly
+ * after `cursor`) via a read-only GET against the PostgREST REST endpoint.
+ * No OFFSET, no Range header: this is pure keyset/seek pagination, which
+ * never re-scans skipped rows and has no deep-offset degradation mode.
+ * Throws a safe Error (status code only, no response body) if the request
+ * fails or the body is not a JSON array.
  */
 async function fetchResolvedRowPage(
   fetchImpl: FetchLike,
   config: SupabaseReadConfig,
   cutoffResolvedAt: string,
-  from: number,
-  to: number,
+  cursor: KeysetCursor | null,
+  limit: number,
 ): Promise<unknown[]> {
-  const response = await fetchImpl(buildRestUrl(config.url, cutoffResolvedAt), {
+  const response = await fetchImpl(buildRestUrl(config.url, cutoffResolvedAt, cursor, limit), {
     method: "GET",
     headers: {
       apikey: config.key,
       Authorization: `Bearer ${config.key}`,
       Accept: "application/json",
-      "Range-Unit": "items",
-      Range: `${from}-${to}`,
     },
   });
 
@@ -257,11 +346,10 @@ async function fetchResolvedRowPage(
 
 /**
  * Fetches ALL resolved generated_signal_pairs rows by default (no
- * exact-count request -- paginated GET reads over the REST API,
- * resolved_at not null and resolved_at <= a cutoff captured at export
- * start, ordered by resolved_at descending), normalizes each row, and
- * writes the result as a JSON array to `outputPath`. Never writes to the
- * database.
+ * exact-count request -- keyset-paginated GET reads over the REST API,
+ * `resolved_at DESC, id DESC`, resolved_at not null and resolved_at <= a
+ * cutoff captured at export start), normalizes each row, and writes the
+ * result as a JSON array to `outputPath`. Never writes to the database.
  *
  * With no `maxRows`, the exporter pages until it receives a page shorter
  * than `pageSize` or an empty page -- that is the proof of exhaustive
@@ -269,6 +357,13 @@ async function fetchResolvedRowPage(
  * compare against. With `maxRows`, the export is explicitly marked
  * DEBUG_CAPPED / INTENTIONALLY_CAPPED and must not be treated as a full
  * dataset.
+ *
+ * Pagination never uses OFFSET/Range: each page after the first carries a
+ * composite `(resolved_at, id)` cursor built from the previous page's last
+ * row. If a full page's last row is missing valid cursor fields, or if the
+ * next cursor fails to advance past the current one (which would loop
+ * forever re-fetching the same rows), the export fails safely instead of
+ * silently mis-reporting completeness.
  */
 export async function exportGeneratedSignalPairsFromSupabase(
   options: ExportGeneratedSignalPairsOptions = {},
@@ -294,17 +389,21 @@ export async function exportGeneratedSignalPairsFromSupabase(
   const normalizedRows: Record<string, unknown>[] = [];
   let pagesFetched = 0;
   let completionProof: CompletionProof = null;
+  let cursor: KeysetCursor | null = null;
 
   while (maxRows === undefined || normalizedRows.length < maxRows) {
-    const from = normalizedRows.length;
-    const to = maxRows !== undefined ? Math.min(from + pageSize, maxRows) - 1 : from + pageSize - 1;
+    const limit = maxRows !== undefined ? Math.min(pageSize, maxRows - normalizedRows.length) : pageSize;
+    const isFirstPage = cursor === null;
+    const pageNumber = pagesFetched + 1;
 
     let pageRows: unknown[];
     try {
-      pageRows = await fetchResolvedRowPage(fetchImpl, config, exportCutoffResolvedAt, from, to);
+      pageRows = await fetchResolvedRowPage(fetchImpl, config, exportCutoffResolvedAt, cursor, limit);
     } catch (error) {
       const message = error instanceof Error ? error.message : "unknown error";
-      throw new Error(`Export failed (page ${pagesFetched + 1}): ${message}`);
+      throw new Error(
+        `Export failed (page ${pageNumber}, ${isFirstPage ? "first-page" : "cursor-page"}, paginationMode=KEYSET_RESOLVED_AT_ID): ${message}`,
+      );
     }
 
     pagesFetched += 1;
@@ -312,20 +411,36 @@ export async function exportGeneratedSignalPairsFromSupabase(
       normalizedRows.push(normalizeGeneratedSignalPairRow(row as Record<string, unknown>));
     }
 
-    if (maxRows !== undefined) {
-      // Debug-capped mode stops purely by size cap -- it never claims
-      // exhaustion proof.
-      continue;
-    }
-
     if (pageRows.length === 0) {
-      completionProof = "EMPTY_PAGE";
+      if (maxRows === undefined) completionProof = "EMPTY_PAGE";
       break;
     }
-    if (pageRows.length < pageSize) {
+
+    const isShortPage = pageRows.length < limit;
+
+    if (maxRows !== undefined) {
+      if (normalizedRows.length >= maxRows) break;
+      if (isShortPage) break; // ran out of data before the cap -- capped mode never claims exhaustion proof.
+    } else if (isShortPage) {
       completionProof = "LAST_PAGE_SHORT";
       break;
     }
+
+    // We are about to fetch another page -- the current page's last row
+    // must yield a valid, advancing keyset cursor, or pagination cannot
+    // safely continue.
+    const nextCursor = extractKeysetCursor(pageRows);
+    if (!nextCursor) {
+      throw new Error(
+        `Export failed (page ${pageNumber}, paginationMode=KEYSET_RESOLVED_AT_ID): KEYSET_CURSOR_FIELDS_MISSING`,
+      );
+    }
+    if (cursor && keysetCursorsEqual(cursor, nextCursor)) {
+      throw new Error(
+        `Export failed (page ${pageNumber}, paginationMode=KEYSET_RESOLVED_AT_ID): CURSOR_DID_NOT_ADVANCE`,
+      );
+    }
+    cursor = nextCursor;
   }
 
   try {
@@ -353,6 +468,7 @@ export async function exportGeneratedSignalPairsFromSupabase(
     exportCompleteness,
     completionProof: maxRows !== undefined ? null : completionProof,
     exportCutoffResolvedAt,
+    paginationMode: "KEYSET_RESOLVED_AT_ID",
     missingRows: 0,
     ...(maxRows !== undefined ? { requestedMaxRows: maxRows } : {}),
   };

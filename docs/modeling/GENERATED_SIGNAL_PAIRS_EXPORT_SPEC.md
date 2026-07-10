@@ -421,3 +421,63 @@ This is still a **local model-audit metric, not a product claim** -- the
 gate only decides whether the input dataset is trustworthy enough for a
 local ROI figure to be computed at all, not whether that figure should be
 presented as validated performance.
+
+## Phase 3E.2d — keyset pagination (resolved_at DESC, id DESC)
+
+A real founder run failed mid-export with `Export failed (page 20): HTTP
+500` -- earlier pages succeeded, so deep OFFSET/`Range`-based pagination
+(the transport used through Phase 3E.2b) is considered unsafe for a
+full-corpus export. This is a distinct failure mode from the count-request
+fragility fixed in Phase 3E.2b: it is Postgres/PostgREST degrading (or
+outright failing) on a deep-OFFSET scan, independent of whether a count
+was requested.
+
+- **Fixed cutoff, stable order**: exactly as before, one
+  `exportCutoffResolvedAt` is captured at export start and used for every
+  page (`resolved_at IS NOT NULL AND resolved_at <=
+  exportCutoffResolvedAt`). The order is now `resolved_at.desc,id.desc`
+  (previously `resolved_at.desc` alone).
+- **No OFFSET, ever**: the first page has no cursor. Every page after that
+  carries a composite cursor -- the `(resolved_at, id)` pair of the last
+  row of the *previous* page -- and filters to rows strictly after that
+  point in the same order:
+  `resolved_at < lastResolvedAt OR (resolved_at = lastResolvedAt AND id <
+  lastId)`, encoded as a PostgREST `or=(...)` filter via `URLSearchParams`.
+  This never re-scans or skips over previously-seen rows, and has no
+  "the deeper the page, the slower/more failure-prone the query" mode --
+  each page is an independent, bounded seek from a known point, not a scan
+  from the start of the result set.
+- **Page-boundary integrity**: `resolved_at` is never used alone as the
+  cursor. Rows sharing an identical `resolved_at` are only disambiguated by
+  the `id DESC` tiebreak, so a same-timestamp group can never be partially
+  skipped (rows silently missing from the export) or duplicated
+  (`realized_return_pct`/selection double-counted) across a page boundary.
+- **Cursor field safety**: after fetching a full page that the exporter is
+  about to use as the source of the next cursor, the last row must have a
+  finite/non-empty `resolved_at` and a non-empty `id`. If not, the export
+  fails with `KEYSET_CURSOR_FIELDS_MISSING` and does **not** report
+  completeness -- a row with a null/missing `resolved_at` or `id` is a
+  reason to stop and investigate, not to guess.
+- **Cursor progress safety**: if the cursor computed from a new page is
+  identical to the cursor that produced it, the export fails with
+  `CURSOR_DID_NOT_ADVANCE` instead of looping -- this is the one condition
+  that could otherwise cause an infinite re-fetch of the same rows.
+- **Safe error diagnostics**: a failed page request's error message
+  includes only the page number, the HTTP status, `paginationMode:
+  KEYSET_RESOLVED_AT_ID`, and whether the request was the first page or a
+  cursor page. It never includes the `apikey`/`Authorization` header
+  values, the raw response body, the full raw cursor values, or row
+  payloads.
+- **Updated summary contract**: the exporter summary now always includes
+  `paginationMode: "KEYSET_RESOLVED_AT_ID"` alongside the existing Phase
+  3E.2b fields (`fetchedRows`, `pageSize`, `pagesFetched`, `exportMode`,
+  `exportCompleteness`, `completionProof`, `exportCutoffResolvedAt`,
+  `missingRows`). `--max-rows` (debug-only) is unaffected in meaning --
+  it still reports `exportMode: "DEBUG_CAPPED"` /
+  `exportCompleteness: "INTENTIONALLY_CAPPED"` and never claims
+  `COMPLETE_BY_EXHAUSTION`.
+- **Runner interface unchanged**: this is a transport-only change.
+  `run-3e2-roi-from-supabase.cmd` and `run-3d2o-from-supabase.cmd` invoke
+  the exporter with the exact same CLI flags as before (`--output`,
+  `--summary-output`, `--page-size`) -- founders use the same one-command
+  workflow.
