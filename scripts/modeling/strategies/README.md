@@ -113,6 +113,61 @@ exits non-zero otherwise), same as `--include-dqa-r4`.
 **Next phase:** Phase 3D.2O -- rerun the real local export with the dedup
 projection applied and report the resulting dataset counts.
 
+## Phase 3D.2Oa — Operator local export materializer
+
+Founder workflow (no repo edits, no `git pull` timing issues, no manually
+recreating `tmp_generated_signal_pairs_export.json`):
+
+1. Run the schema-safe Supabase query that produces the
+   `generated_signal_pairs_export` result.
+2. Copy either just the `generated_signal_pairs_export` cell, or the whole
+   Supabase JSON wrapper result, to the clipboard.
+3. Run:
+   ```
+   scripts\modeling\strategies\run-3d2o-from-clipboard.cmd
+   ```
+4. The report appears at:
+   ```
+   modeling\local_exports\3d2o_dedup_report.json
+   ```
+   and is also printed to the console at the end of the run.
+
+This creates three local files under `modeling/local_exports/`:
+`supabase_clipboard_raw.txt` (raw clipboard capture),
+`generated_signal_pairs_export.json` (normalized row array), and
+`3d2o_dedup_report.json` (the read-only comparison + dedup + DQA-R4 report).
+
+- **These files are intentionally git-ignored** (`modeling/local_exports/.gitignore`)
+  -- they are local operator working files, not repo artifacts, and must
+  never be committed.
+- **This does not query Supabase.** The `.cmd` only reads the clipboard
+  (already-copied text) and local files; it never opens a database
+  connection.
+- **This does not compute ROI.** The final step is the same read-only
+  `run-readonly-comparison.ts` used throughout this workstream --
+  selection counts, dedup diagnostics, and DQA-R4 audit output only.
+- This only prepares Phase 3D.2O dataset counts (the first real local
+  export run) for inspection -- it is not itself Phase 3D.2O.
+
+Manual equivalent (Node CLI, useful for non-Windows or scripted runs):
+
+```
+node --import tsx scripts/modeling/strategies/materialize-generated-signal-pairs-export.ts \
+  --input <path-to-raw-clipboard-or-file> \
+  --output modeling/local_exports/generated_signal_pairs_export.json
+
+node --import tsx scripts/modeling/strategies/run-readonly-comparison.ts \
+  --input modeling/local_exports/generated_signal_pairs_export.json \
+  --required-only --input-format generated_signal_pairs --include-dqa-r4 \
+  --dedup-policy strict_latest_created_before_resolved \
+  > modeling/local_exports/3d2o_dedup_report.json
+```
+
+The materializer accepts either a plain JSON array of rows, or a Supabase
+SQL-editor "wrapper" result (an object, or single-element array of an
+object, with a `generated_signal_pairs_export` field holding the row array
+as a JSON string or an already-parsed array).
+
 ## DQA-R4: outcome resolution consistency audit (Phase 3D.2J)
 
 `lib/modeling/datasetAudit/outcomeResolutionConsistency.ts`

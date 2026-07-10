@@ -157,3 +157,33 @@ behavior:
   for selection counting. ROI/PnL work (Phase 3E.1+) can only proceed once
   the dedup projection is applied (or duplicates are otherwise resolved)
   *and* the DQA audits report clean on the resulting rows.
+
+## Local materialization workflow (Phase 3D.2Oa)
+
+`scripts/modeling/strategies/materialize-generated-signal-pairs-export.ts`
+turns raw text copied from Supabase into the local JSON file this spec's
+CLI commands expect.
+
+- **Accepted input formats**: a plain JSON array of row objects, or a
+  Supabase SQL-editor "wrapper" result -- an object (or a single-element
+  array containing one object) with a `generated_signal_pairs_export`
+  field, whose value is either the row array already, or a JSON string that
+  parses to the row array.
+- **Output path**: `modeling/local_exports/generated_signal_pairs_export.json`
+  by default (overridable with `--output`).
+- **Report path**: `modeling/local_exports/3d2o_dedup_report.json`, produced
+  by piping the existing `run-readonly-comparison.ts` CLI (with
+  `--input-format generated_signal_pairs --include-dqa-r4 --dedup-policy
+  strict_latest_created_before_resolved`) to that file.
+- **No DB/env/live**: the materializer only reads local text (a file or
+  stdin) and writes a local JSON file. It never imports a database client,
+  never reads `process.env`, and never performs a network request.
+- **Generated files are git-ignored**: everything under
+  `modeling/local_exports/` except `.gitignore` itself is excluded from
+  version control -- these are local operator working files, regenerated on
+  demand, not repo artifacts.
+- **Used for Phase 3D.2O and later local re-runs**: this materializer is
+  the reusable on-ramp for every future local export/comparison cycle, not
+  a one-off for this phase. See `scripts/modeling/strategies/README.md`
+  "Phase 3D.2Oa" section for the exact Windows one-command workflow
+  (`run-3d2o-from-clipboard.cmd`).
