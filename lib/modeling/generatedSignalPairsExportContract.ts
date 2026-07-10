@@ -20,6 +20,10 @@ export interface GeneratedSignalPairsExportDiagnostics {
   rowsWithCoverage: number;
   rowsWithEventGroupCandidate: number;
   outcomeQuirkRiskRows: number;
+  uniqueStrictDedupKeys: number;
+  duplicateStrictKeyRows: number;
+  rowsMissingStrictDedupKey: number;
+  hasDuplicateStrictKeyRisk: boolean;
   notes: string[];
 }
 
@@ -87,6 +91,34 @@ const WIN_LABELS = new Set(["win", "won", "hit", "correct", "yes"]);
 const ENTRY_PRICE_FIELDS = ["entry_price_num", "entryPrice", "entry_price"] as const;
 
 const REALIZED_RETURN_FIELDS = ["realized_return_pct", "realizedReturnPct"] as const;
+
+const CONDITION_ID_FIELDS = ["condition_id", "conditionId"] as const;
+
+const TOKEN_ID_FIELDS = ["token_id", "tokenId"] as const;
+
+function getIdentityField(row: ExportRow, keys: readonly string[]): string | null {
+  for (const key of keys) {
+    const value = row[key];
+    if (typeof value !== "string" && typeof value !== "number") continue;
+    const trimmed = String(value).trim();
+    if (trimmed !== "") return trimmed;
+  }
+  return null;
+}
+
+/**
+ * Computes the strict dedup key (condition_id + token_id) used by
+ * lib/modeling/onePerMatchBacktest.ts's strictKey() to collapse duplicate
+ * rows for the same signal. Returns null if either identity field is
+ * missing or blank after String(...).trim(). The returned key is an
+ * internal format only (never exposes the raw row payload).
+ */
+export function getStrictDedupKeyForExportRow(row: ExportRow): string | null {
+  const condition = getIdentityField(row, CONDITION_ID_FIELDS);
+  const token = getIdentityField(row, TOKEN_ID_FIELDS);
+  if (condition === null || token === null) return null;
+  return `${condition}::${token}`;
+}
 
 /**
  * Resolves a row's formula-version string from any supported field,
@@ -177,6 +209,9 @@ export function validateGeneratedSignalPairsExportRows(
   let rowsWithCoverage = 0;
   let rowsWithEventGroupCandidate = 0;
   let outcomeQuirkRiskRows = 0;
+  let rowsMissingStrictDedupKey = 0;
+
+  const strictKeySeenCount = new Map<string, number>();
 
   for (const row of rows) {
     if (getFormulaVersionForExportRow(row) !== null) rowsWithFormulaVersion += 1;
@@ -184,7 +219,20 @@ export function validateGeneratedSignalPairsExportRows(
     if (hasCoverageField(row)) rowsWithCoverage += 1;
     if (hasEventGroupCandidate(row)) rowsWithEventGroupCandidate += 1;
     if (detectOutcomeQuirkRisk(row)) outcomeQuirkRiskRows += 1;
+
+    const strictKey = getStrictDedupKeyForExportRow(row);
+    if (strictKey === null) {
+      rowsMissingStrictDedupKey += 1;
+    } else {
+      strictKeySeenCount.set(strictKey, (strictKeySeenCount.get(strictKey) ?? 0) + 1);
+    }
   }
+
+  let duplicateStrictKeyRows = 0;
+  for (const count of strictKeySeenCount.values()) {
+    if (count > 1) duplicateStrictKeyRows += count - 1;
+  }
+  const uniqueStrictDedupKeys = strictKeySeenCount.size;
 
   const notes: string[] = [];
   if (outcomeQuirkRiskRows > 0) {
@@ -197,6 +245,16 @@ export function validateGeneratedSignalPairsExportRows(
       `${rows.length - rowsWithFormulaVersion} row(s) have no recognizable formula-version field; formula-version filtering (e.g. FORMULA_TRUSTED_INITIAL_V1_1_ALL) will reject them.`,
     );
   }
+  if (duplicateStrictKeyRows > 0) {
+    notes.push(
+      `${duplicateStrictKeyRows} row(s) share a strict dedup key (condition_id + token_id) with an earlier row in this export -- rows are NOT deduplicated here. Duplicates must be resolved before any ROI/PnL comparison to avoid inflated selection/ROI counts.`,
+    );
+  }
+  if (rowsMissingStrictDedupKey > 0) {
+    notes.push(
+      `${rowsMissingStrictDedupKey} row(s) are missing condition_id and/or token_id and cannot be checked for strict-key duplication.`,
+    );
+  }
 
   return {
     totalRows: rows.length,
@@ -206,6 +264,10 @@ export function validateGeneratedSignalPairsExportRows(
     rowsWithCoverage,
     rowsWithEventGroupCandidate,
     outcomeQuirkRiskRows,
+    uniqueStrictDedupKeys,
+    duplicateStrictKeyRows,
+    rowsMissingStrictDedupKey,
+    hasDuplicateStrictKeyRisk: duplicateStrictKeyRows > 0,
     notes,
   };
 }

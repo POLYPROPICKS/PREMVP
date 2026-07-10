@@ -65,11 +65,23 @@ output with:
   `outcome()` logic (the Phase 3D.2D-documented quirk). **This flag only
   detects the risk -- it does not fix the quirk, and it does not filter or
   alter any row.**
+- `uniqueStrictDedupKeys` / `duplicateStrictKeyRows` /
+  `rowsMissingStrictDedupKey` / `hasDuplicateStrictKeyRisk` (Phase 3D.2L) --
+  duplicate detection on the strict dedup key (`condition_id` + `token_id`,
+  the same identity pair `onePerMatchBacktest.ts`'s `strictKey()` uses).
+  **This only detects duplicates -- the CLI still does not deduplicate any
+  row.** See `docs/modeling/GENERATED_SIGNAL_PAIRS_EXPORT_SPEC.md` for the
+  full export spec: duplicates block ROI/PnL work until resolved or
+  explicitly accepted by the founder.
 - `notes` -- plain-language summary of the above.
 
 This is structural validation only: no rows are ever rejected, filtered, or
 modified as a result of running with `--input-format generated_signal_pairs`
 -- the strategy comparison itself runs identically either way.
+
+**Next phase:** Phase 3D.2M -- the first real local `generated_signal_pairs`
+export run, applying this spec and this duplicate-detection output against
+an actual export file.
 
 ## DQA-R4: outcome resolution consistency audit (Phase 3D.2J)
 

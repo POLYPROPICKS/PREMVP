@@ -7,6 +7,7 @@ import {
   hasCoverageField,
   hasEventGroupCandidate,
   detectOutcomeQuirkRisk,
+  getStrictDedupKeyForExportRow,
   type ExportRow,
 } from "../../lib/modeling/generatedSignalPairsExportContract";
 
@@ -155,4 +156,109 @@ test("totalRows matches input row count", () => {
   const rows: ExportRow[] = [{ id: "a" }, { id: "b" }, { id: "c" }];
   const diagnostics = validateGeneratedSignalPairsExportRows(rows);
   assert.equal(diagnostics.totalRows, 3);
+});
+
+test("detects duplicate strict dedup keys by condition_id + token_id", () => {
+  const rows: ExportRow[] = [
+    { id: "A", condition_id: "c1", token_id: "t1" },
+    { id: "B", condition_id: "c1", token_id: "t1" },
+    { id: "C", condition_id: "c2", token_id: "t1" },
+  ];
+  const diagnostics = validateGeneratedSignalPairsExportRows(rows);
+
+  assert.equal(diagnostics.duplicateStrictKeyRows, 1);
+  assert.equal(diagnostics.uniqueStrictDedupKeys, 2);
+});
+
+test("counts additional duplicate rows past the first occurrence", () => {
+  const rows: ExportRow[] = [
+    { id: "A", condition_id: "c1", token_id: "t1" },
+    { id: "B", condition_id: "c1", token_id: "t1" },
+    { id: "C", condition_id: "c1", token_id: "t1" },
+  ];
+  const diagnostics = validateGeneratedSignalPairsExportRows(rows);
+
+  assert.equal(diagnostics.duplicateStrictKeyRows, 2);
+  assert.equal(diagnostics.uniqueStrictDedupKeys, 1);
+});
+
+test("counts rows missing strict dedup key as rowsMissingStrictDedupKey", () => {
+  const rows: ExportRow[] = [
+    { id: "a", condition_id: "c1", token_id: "t1" },
+    { id: "b", condition_id: "c1" }, // missing token
+    { id: "c", token_id: "t1" }, // missing condition
+    { id: "d" }, // missing both
+  ];
+  const diagnostics = validateGeneratedSignalPairsExportRows(rows);
+
+  assert.equal(diagnostics.rowsMissingStrictDedupKey, 3);
+});
+
+test("does not count rows with same condition_id but different token_id as duplicate", () => {
+  const rows: ExportRow[] = [
+    { id: "a", condition_id: "c1", token_id: "t1" },
+    { id: "b", condition_id: "c1", token_id: "t2" },
+  ];
+  const diagnostics = validateGeneratedSignalPairsExportRows(rows);
+
+  assert.equal(diagnostics.duplicateStrictKeyRows, 0);
+  assert.equal(diagnostics.uniqueStrictDedupKeys, 2);
+});
+
+test("supports camelCase aliases conditionId/tokenId for strict dedup key", () => {
+  const row: ExportRow = { conditionId: "c1", tokenId: "t1" };
+  assert.equal(getStrictDedupKeyForExportRow(row), "c1::t1");
+
+  const rows: ExportRow[] = [
+    { id: "a", conditionId: "c1", tokenId: "t1" },
+    { id: "b", condition_id: "c1", token_id: "t1" },
+  ];
+  const diagnostics = validateGeneratedSignalPairsExportRows(rows);
+  assert.equal(diagnostics.duplicateStrictKeyRows, 1);
+});
+
+test("getStrictDedupKeyForExportRow returns null when condition or token is missing/blank", () => {
+  assert.equal(getStrictDedupKeyForExportRow({ condition_id: "c1" }), null);
+  assert.equal(getStrictDedupKeyForExportRow({ token_id: "t1" }), null);
+  assert.equal(getStrictDedupKeyForExportRow({ condition_id: "  ", token_id: "t1" }), null);
+  assert.equal(getStrictDedupKeyForExportRow({}), null);
+});
+
+test("hasDuplicateStrictKeyRisk is true when duplicateStrictKeyRows > 0", () => {
+  const duplicateRows: ExportRow[] = [
+    { id: "a", condition_id: "c1", token_id: "t1" },
+    { id: "b", condition_id: "c1", token_id: "t1" },
+  ];
+  assert.equal(validateGeneratedSignalPairsExportRows(duplicateRows).hasDuplicateStrictKeyRisk, true);
+
+  const cleanRows: ExportRow[] = [
+    { id: "a", condition_id: "c1", token_id: "t1" },
+    { id: "b", condition_id: "c2", token_id: "t1" },
+  ];
+  assert.equal(validateGeneratedSignalPairsExportRows(cleanRows).hasDuplicateStrictKeyRisk, false);
+});
+
+test("duplicate diagnostics fields contain no ROI/PnL/profit keys", () => {
+  const rows: ExportRow[] = [
+    { id: "a", condition_id: "c1", token_id: "t1" },
+    { id: "b", condition_id: "c1", token_id: "t1" },
+  ];
+  const diagnostics = validateGeneratedSignalPairsExportRows(rows);
+
+  const serialized = JSON.stringify(diagnostics).toLowerCase();
+  assert.ok(!serialized.includes("\"roi\""));
+  assert.ok(!serialized.includes("\"pnl\""));
+  assert.ok(!serialized.includes("profit"));
+});
+
+test("duplicate detection does not mutate input rows", () => {
+  const rows: ExportRow[] = [
+    { id: "a", condition_id: "c1", token_id: "t1" },
+    { id: "b", condition_id: "c1", token_id: "t1" },
+  ];
+  const snapshot = JSON.parse(JSON.stringify(rows));
+
+  validateGeneratedSignalPairsExportRows(rows);
+
+  assert.deepEqual(rows, snapshot);
 });
