@@ -902,3 +902,138 @@ test("ROI-15. default CLI without --include-roi output is unchanged (no roiGate)
     }
   });
 });
+
+// ---- Phase 3E.2b compat: exhaustion-based export completeness ----
+
+const EXHAUSTION_SUMMARY_OVERRIDES = {
+  exportMode: "FULL_RESOLVED_BY_EXHAUSTION",
+  exportCompleteness: "COMPLETE_BY_EXHAUSTION",
+  completionProof: "LAST_PAGE_SHORT",
+  exportCutoffResolvedAt: "2026-07-10T00:00:00.000Z",
+  pageSize: 1000,
+  pagesFetched: 1,
+};
+
+test("ROI-16. exhaustion summary with completionProof LAST_PAGE_SHORT and valid cutoff returns roiGate READY", async () => {
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, EXHAUSTION_SUMMARY_OVERRIDES, ({ inputPath, summaryPath }) => {
+    const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.roiGate.status, "READY");
+    const trusted = parsed.strategies.find(
+      (s: { strategyId: string }) => s.strategyId === "FORMULA_TRUSTED_INITIAL_V1_1_ALL",
+    );
+    assert.ok(trusted.roi, "expected roi summary on trusted strategy");
+  });
+});
+
+test("ROI-17. exhaustion summary with completionProof EMPTY_PAGE and valid cutoff also returns roiGate READY", async () => {
+  await withTempInputAndSummary(
+    ROI_HAPPY_ROWS,
+    { ...EXHAUSTION_SUMMARY_OVERRIDES, completionProof: "EMPTY_PAGE" },
+    ({ inputPath, summaryPath }) => {
+      const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.roiGate.status, "READY");
+    },
+  );
+});
+
+test("ROI-18. COMPLETE_BY_EXHAUSTION without completionProof is BLOCKED", async () => {
+  const { completionProof: _drop, ...withoutProof } = EXHAUSTION_SUMMARY_OVERRIDES;
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, withoutProof, ({ inputPath, summaryPath }) => {
+    const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.roiGate.status, "BLOCKED");
+    assert.ok(parsed.roiGate.reasons.includes("EXPORT_COMPLETENESS_PROOF_MISSING"));
+  });
+});
+
+test("ROI-19. COMPLETE_BY_EXHAUSTION with invalid completionProof is BLOCKED", async () => {
+  await withTempInputAndSummary(
+    ROI_HAPPY_ROWS,
+    { ...EXHAUSTION_SUMMARY_OVERRIDES, completionProof: "SOMETHING_ELSE" },
+    ({ inputPath, summaryPath }) => {
+      const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.roiGate.status, "BLOCKED");
+      assert.ok(parsed.roiGate.reasons.includes("EXPORT_COMPLETENESS_PROOF_MISSING"));
+    },
+  );
+});
+
+test("ROI-20. COMPLETE_BY_EXHAUSTION without exportCutoffResolvedAt is BLOCKED", async () => {
+  const { exportCutoffResolvedAt: _drop, ...withoutCutoff } = EXHAUSTION_SUMMARY_OVERRIDES;
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, withoutCutoff, ({ inputPath, summaryPath }) => {
+    const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.roiGate.status, "BLOCKED");
+    assert.ok(parsed.roiGate.reasons.includes("EXPORT_CUTOFF_MISSING"));
+  });
+});
+
+test("ROI-21. DEBUG_CAPPED / INTENTIONALLY_CAPPED export summary is BLOCKED", async () => {
+  await withTempInputAndSummary(
+    ROI_HAPPY_ROWS,
+    {
+      exportMode: "DEBUG_CAPPED",
+      exportCompleteness: "INTENTIONALLY_CAPPED",
+      completionProof: null,
+      exportCutoffResolvedAt: "2026-07-10T00:00:00.000Z",
+      requestedMaxRows: 4,
+    },
+    ({ inputPath, summaryPath }) => {
+      const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.roiGate.status, "BLOCKED");
+      assert.ok(parsed.roiGate.reasons.includes("EXPORT_INTENTIONALLY_CAPPED"));
+      for (const s of parsed.strategies) {
+        assert.equal(s.roi, undefined);
+      }
+    },
+  );
+});
+
+test("ROI-22. INCOMPLETE (unrecognized) exportCompleteness value is BLOCKED", async () => {
+  await withTempInputAndSummary(
+    ROI_HAPPY_ROWS,
+    { exportCompleteness: "INCOMPLETE", exportMode: "FULL_RESOLVED_BY_EXHAUSTION" },
+    ({ inputPath, summaryPath }) => {
+      const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.roiGate.status, "BLOCKED");
+      assert.ok(parsed.roiGate.reasons.includes("EXPORT_NOT_COMPLETE"));
+    },
+  );
+});
+
+test("ROI-23. legacy summary shape (exportCompleteness: COMPLETE) remains accepted for backward compatibility", async () => {
+  await withTempInputAndSummary(
+    ROI_HAPPY_ROWS,
+    { exportMode: "FULL_RESOLVED", exportCompleteness: "COMPLETE" },
+    ({ inputPath, summaryPath }) => {
+      const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.roiGate.status, "READY");
+    },
+  );
+});
+
+test("ROI-24. exhaustion-blocked output still contains no guaranteed/profit/marketing claim fields", async () => {
+  const { completionProof: _drop, ...withoutProof } = EXHAUSTION_SUMMARY_OVERRIDES;
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, withoutProof, ({ inputPath, summaryPath }) => {
+    const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+    assert.equal(result.status, 0, result.stderr);
+    const lower = result.stdout.toLowerCase();
+    assert.ok(!lower.includes("guarantee"));
+    assert.ok(!lower.includes("profit"));
+    assert.ok(!lower.includes("marketing"));
+  });
+});

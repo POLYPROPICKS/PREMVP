@@ -518,12 +518,27 @@ Notes:
   report (no ROI). `run-3e2-roi-from-supabase.cmd` is the **gated ROI
   audit** report. Both are read-only, both fail fast, and both use the
   Windows-safe REST export transport.
-- ROI is computed only when `roiGate.status === "READY"` -- i.e. the export
-  is `COMPLETE` with `missingRows === 0`, the export summary's `fetchedRows`
-  matches the analyzed rows, the strict dedup projection has no rows missing
-  a strict key, DQA-R4 is non-blocking, and at least one strategy selected
-  rows. Otherwise `roiGate.status === "BLOCKED"` with machine-readable
-  `reasons`, and **no per-strategy ROI is emitted**.
+- ROI is computed only when `roiGate.status === "READY"`. The gate accepts
+  **either** completeness shape the exporter can produce (Phase 3E.2b
+  compat):
+  - **legacy exact-count complete**: `exportCompleteness === "COMPLETE"`
+    with `missingRows === 0`; or
+  - **exhaustion complete** (current exporter default):
+    `exportCompleteness === "COMPLETE_BY_EXHAUSTION"`, `exportMode ===
+    "FULL_RESOLVED_BY_EXHAUSTION"`, a valid `completionProof`
+    (`"LAST_PAGE_SHORT"` or `"EMPTY_PAGE"`), and a non-empty
+    `exportCutoffResolvedAt`, with `missingRows === 0`.
+
+  Either way, the export summary's `fetchedRows` must match the analyzed
+  rows, the strict dedup projection must have no rows missing a strict key,
+  DQA-R4 must be non-blocking, and at least one strategy must have selected
+  rows. A `DEBUG_CAPPED` / `INTENTIONALLY_CAPPED` export summary is always
+  blocked (`EXPORT_INTENTIONALLY_CAPPED`) -- a debug-capped export never
+  satisfies the ROI gate. Otherwise `roiGate.status === "BLOCKED"` with
+  machine-readable `reasons` (e.g. `EXPORT_NOT_COMPLETE`,
+  `EXPORT_COMPLETENESS_PROOF_MISSING`, `EXPORT_CUTOFF_MISSING`,
+  `EXPORT_FETCHED_ROWS_MISMATCH`, `EXPORT_INTENTIONALLY_CAPPED`), and **no
+  per-strategy ROI is emitted**.
 - ROI is computed on the **selected deduped rows only**, never on raw
   duplicates; selected row objects are never emitted in the output.
 - **No DB writes. No deploy. No product/profit claims.** ROI here is a local

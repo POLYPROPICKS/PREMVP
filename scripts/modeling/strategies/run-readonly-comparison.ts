@@ -201,6 +201,67 @@ function fail(message: string): never {
   process.exit(1);
 }
 
+const VALID_COMPLETION_PROOFS = new Set(["LAST_PAGE_SHORT", "EMPTY_PAGE"]);
+
+/**
+ * Pure gate over an export summary sidecar's completeness claim. Accepts
+ * either shape produced by export-generated-signal-pairs-from-supabase.ts:
+ *   - legacy exact-count complete (Phase 3D.2P/3E.2a):
+ *     exportCompleteness === "COMPLETE" and missingRows === 0
+ *   - exhaustion complete (Phase 3E.2b): exportCompleteness ===
+ *     "COMPLETE_BY_EXHAUSTION", exportMode === "FULL_RESOLVED_BY_EXHAUSTION",
+ *     a valid completionProof ("LAST_PAGE_SHORT" | "EMPTY_PAGE"), a
+ *     non-empty exportCutoffResolvedAt string, and missingRows === 0.
+ * Both shapes additionally require fetchedRows === inputValidationTotalRows.
+ * Anything else (DEBUG_CAPPED/INTENTIONALLY_CAPPED, an unreadable summary,
+ * an unrecognized exportCompleteness value, or a mismatched row count) is
+ * blocked with machine-readable reasons. Never mutates its input.
+ */
+function evaluateExportCompletenessForRoi(
+  exportSummary: Record<string, unknown> | null,
+  inputValidationTotalRows: number | undefined,
+): { ok: boolean; reasons: string[] } {
+  const reasons: string[] = [];
+
+  if (!exportSummary) {
+    return { ok: false, reasons: ["export_summary_unreadable"] };
+  }
+
+  const completeness = exportSummary.exportCompleteness;
+  const isLegacyComplete = completeness === "COMPLETE";
+  const isExhaustionComplete = completeness === "COMPLETE_BY_EXHAUSTION";
+
+  if (!isLegacyComplete && !isExhaustionComplete) {
+    reasons.push("EXPORT_NOT_COMPLETE");
+  }
+
+  if (isExhaustionComplete) {
+    if (exportSummary.exportMode !== "FULL_RESOLVED_BY_EXHAUSTION") {
+      reasons.push("EXPORT_NOT_COMPLETE");
+    }
+    if (!VALID_COMPLETION_PROOFS.has(exportSummary.completionProof as string)) {
+      reasons.push("EXPORT_COMPLETENESS_PROOF_MISSING");
+    }
+    if (typeof exportSummary.exportCutoffResolvedAt !== "string" || exportSummary.exportCutoffResolvedAt === "") {
+      reasons.push("EXPORT_CUTOFF_MISSING");
+    }
+  }
+
+  if (exportSummary.exportMode === "DEBUG_CAPPED" || completeness === "INTENTIONALLY_CAPPED") {
+    reasons.push("EXPORT_INTENTIONALLY_CAPPED");
+  }
+
+  if (exportSummary.missingRows !== 0) {
+    reasons.push("missing_rows");
+  }
+
+  if (exportSummary.fetchedRows !== inputValidationTotalRows) {
+    reasons.push("EXPORT_FETCHED_ROWS_MISMATCH");
+  }
+
+  return { ok: reasons.length === 0, reasons };
+}
+
 function main(): void {
   const args = parseArgs(process.argv.slice(2));
 
@@ -285,21 +346,10 @@ function main(): void {
       fail(`failed to read/parse --export-summary file: ${message}`);
     }
 
-    const reasons: string[] = [];
-
-    if (!exportSummary) {
-      reasons.push("export_summary_unreadable");
-    }
-    if (exportSummary && exportSummary.exportCompleteness !== "COMPLETE") {
-      reasons.push("export_not_complete");
-    }
-    if (exportSummary && exportSummary.missingRows !== 0) {
-      reasons.push("missing_rows");
-    }
     const inputTotal = inputValidation ? inputValidation.totalRows : undefined;
-    if (!exportSummary || exportSummary.fetchedRows !== inputTotal) {
-      reasons.push("fetched_rows_mismatch");
-    }
+    const completenessCheck = evaluateExportCompletenessForRoi(exportSummary, inputTotal);
+    const reasons: string[] = [...completenessCheck.reasons];
+
     if (!dedupProjection) {
       reasons.push("no_dedup_projection");
     } else if (dedupProjection.rowsMissingStrictDedupKey !== 0) {

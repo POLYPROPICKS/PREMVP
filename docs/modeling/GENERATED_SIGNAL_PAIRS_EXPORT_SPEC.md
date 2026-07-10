@@ -384,10 +384,40 @@ exporter now makes **no row-count request of any kind**.
 - **`--max-rows` remains debug-only**: it still stops the fetch at an
   explicit row cap rather than by exhaustion, and is still never used by
   the default operator runners.
-- **Compatibility note**: this changes the exact `exportCompleteness` /
-  `exportMode` string values from Phase 3D.2P/3E.2a
-  (`"COMPLETE"`/`"FULL_RESOLVED"`) to the exhaustion-based values above.
-  Any downstream consumer that checks for the literal old strings (e.g. a
-  gate in `run-readonly-comparison.ts`) needs its own update to recognize
-  the new values -- that update is out of scope for this phase and must be
-  done separately before relying on the gated ROI path end-to-end.
+- **Compatibility note (resolved in Phase 3E.2b-compat, see below)**: this
+  changed the exact `exportCompleteness` / `exportMode` string values from
+  Phase 3D.2P/3E.2a (`"COMPLETE"`/`"FULL_RESOLVED"`) to the exhaustion-based
+  values above. The ROI gate in `run-readonly-comparison.ts` initially still
+  checked only the literal old string and would have blocked every
+  exhaustion-complete export; that gap is closed below.
+
+## Phase 3E.2b-compat — ROI gate accepts exhaustion-complete exports
+
+`run-readonly-comparison.ts`'s `--include-roi` gate now recognizes both
+completeness shapes the exporter can produce, via a pure helper
+(`evaluateExportCompletenessForRoi`):
+
+- **Legacy exact-count complete** (Phase 3D.2P/3E.2a):
+  `exportCompleteness === "COMPLETE"` with `missingRows === 0`.
+- **Exhaustion complete** (Phase 3E.2b, current exporter default):
+  `exportCompleteness === "COMPLETE_BY_EXHAUSTION"`, `exportMode ===
+  "FULL_RESOLVED_BY_EXHAUSTION"`, a valid `completionProof`
+  (`"LAST_PAGE_SHORT"` or `"EMPTY_PAGE"` -- any other value, including
+  missing/null, is rejected), and a non-empty `exportCutoffResolvedAt`
+  string, with `missingRows === 0`.
+
+Either shape still requires the export summary's `fetchedRows` to match
+`inputValidation.totalRows` on the analyzed rows. A `DEBUG_CAPPED` /
+`INTENTIONALLY_CAPPED` export summary is unconditionally blocked
+(`EXPORT_INTENTIONALLY_CAPPED`) regardless of which shape it otherwise
+resembles -- a debug-capped export can never satisfy the ROI gate. Blocked
+reasons are machine-readable strings (`EXPORT_NOT_COMPLETE`,
+`EXPORT_COMPLETENESS_PROOF_MISSING`, `EXPORT_CUTOFF_MISSING`,
+`EXPORT_FETCHED_ROWS_MISMATCH`, `EXPORT_INTENTIONALLY_CAPPED`, plus the
+existing dedup/DQA-R4/selection reasons); when blocked, no per-strategy ROI
+is computed and no raw rows are ever emitted.
+
+This is still a **local model-audit metric, not a product claim** -- the
+gate only decides whether the input dataset is trustworthy enough for a
+local ROI figure to be computed at all, not whether that figure should be
+presented as validated performance.
