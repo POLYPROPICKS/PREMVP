@@ -435,14 +435,52 @@ logic yet, and per rule 3 above must not be promoted.
   (`classifyResolvedOutcome`, `computeRowReturnPct`,
   `computeFlatStakeRoiSummary`), tested in
   `tests/modeling/roiPnlContract.test.ts` against synthetic rows only.
-- **CLI integration is intentionally not done yet.** `run-readonly-comparison.ts`
-  does not call this module, and no `--include-roi`-style flag exists.
-- **Real local ROI comparison is Phase 3E.2** — wiring this contract into
-  the read-only comparison CLI behind the completeness/dedup/DQA/selection
-  gates described in `docs/modeling/GENERATED_SIGNAL_PAIRS_EXPORT_SPEC.md`
-  "Phase 3E.1 — ROI/PnL pure contract".
-- **Do not run or claim performance manually from the exported JSON.**
-  Before Phase 3E.2 lands, there is no sanctioned path from a local export
-  file to an ROI figure -- any ROI/PnL number produced by hand-running this
-  module against `modeling/local_exports/generated_signal_pairs_export.json`
-  is not a validated or reportable result.
+- **CLI integration lands in Phase 3E.2 (below).** The contract itself is
+  math only and does not gate anything.
+- **Do not run or claim performance manually from the exported JSON.** The
+  only sanctioned path from a local export to an ROI figure is the gated
+  `--include-roi` CLI (Phase 3E.2) -- any ROI/PnL number produced by
+  hand-running this module against
+  `modeling/local_exports/generated_signal_pairs_export.json` is not a
+  validated or reportable result.
+
+## Phase 3E.2 — one-command gated ROI report
+
+Preferred one-command gated ROI audit (no clipboard, no manual file
+editing):
+
+```
+scripts\modeling\strategies\run-3e2-roi-from-supabase.cmd
+```
+
+This command:
+
+1. Runs the full read-only Supabase export (all resolved rows, paginated,
+   no cap) **and** writes an export summary sidecar.
+2. Runs `run-readonly-comparison.ts` with `--include-roi` behind the full
+   gate set (`--input-format generated_signal_pairs --include-dqa-r4
+   --dedup-policy strict_latest_created_before_resolved --export-summary`).
+3. Writes and prints the gated ROI report.
+
+Generated (git-ignored) outputs under `modeling/local_exports/`:
+
+- `generated_signal_pairs_export.json` — the full resolved export.
+- `generated_signal_pairs_export_summary.json` — completeness summary
+  sidecar (counts only, no rows).
+- `3e2_roi_report.json` — the gated ROI audit report.
+
+Notes:
+
+- The old `run-3d2o-from-supabase.cmd` remains the **dataset / DQA / dedup**
+  report (no ROI). `run-3e2-roi-from-supabase.cmd` is the **gated ROI
+  audit** report. Both are read-only.
+- ROI is computed only when `roiGate.status === "READY"` -- i.e. the export
+  is `COMPLETE` with `missingRows === 0`, the export summary's `fetchedRows`
+  matches the analyzed rows, the strict dedup projection has no rows missing
+  a strict key, DQA-R4 is non-blocking, and at least one strategy selected
+  rows. Otherwise `roiGate.status === "BLOCKED"` with machine-readable
+  `reasons`, and **no per-strategy ROI is emitted**.
+- ROI is computed on the **selected deduped rows only**, never on raw
+  duplicates; selected row objects are never emitted in the output.
+- **No DB writes. No deploy. No product/profit claims.** ROI here is a local
+  model-audit metric only.

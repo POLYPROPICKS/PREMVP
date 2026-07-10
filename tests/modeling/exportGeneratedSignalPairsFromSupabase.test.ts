@@ -387,3 +387,111 @@ test("resolveSupabaseReadConfig succeeds with SUPABASE_URL + SUPABASE_SERVICE_RO
   assert.equal(config.url, "https://example.supabase.co");
   assert.equal(config.key, "key");
 });
+
+// ---- Phase 3E.2: export summary sidecar ----
+
+test("S1. exporter supports summaryOutputPath and writes a sidecar summary file", async () => {
+  const { client } = makeFakeClient({ availableResolvedRows: 3 });
+  const dir = mkdtempSync(path.join(tmpdir(), "supabase-export-test-"));
+  const outputPath = path.join(dir, "export.json");
+  const summaryPath = path.join(dir, "summary.json");
+  try {
+    await exportGeneratedSignalPairsFromSupabase({
+      client: client as never,
+      outputPath,
+      summaryOutputPath: summaryPath,
+      pageSize: 1000,
+    });
+    const summary = JSON.parse(readFileSync(summaryPath, "utf8"));
+    assert.equal(summary.availableResolvedRows, 3);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("S2. summary file contains the full compact summary shape", async () => {
+  const { client } = makeFakeClient({ availableResolvedRows: 2500 });
+  const dir = mkdtempSync(path.join(tmpdir(), "supabase-export-test-"));
+  const outputPath = path.join(dir, "export.json");
+  const summaryPath = path.join(dir, "summary.json");
+  try {
+    await exportGeneratedSignalPairsFromSupabase({
+      client: client as never,
+      outputPath,
+      summaryOutputPath: summaryPath,
+      pageSize: 1000,
+    });
+    const summary = JSON.parse(readFileSync(summaryPath, "utf8"));
+    for (const key of [
+      "outputPath",
+      "availableResolvedRows",
+      "fetchedRows",
+      "targetRows",
+      "pageSize",
+      "pagesFetched",
+      "exportMode",
+      "exportCompleteness",
+      "missingRows",
+    ]) {
+      assert.ok(key in summary, `expected summary key ${key}`);
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("S3. summary file contains no raw rows", async () => {
+  const { client } = makeFakeClient({ availableResolvedRows: 3 });
+  const dir = mkdtempSync(path.join(tmpdir(), "supabase-export-test-"));
+  const outputPath = path.join(dir, "export.json");
+  const summaryPath = path.join(dir, "summary.json");
+  try {
+    await exportGeneratedSignalPairsFromSupabase({
+      client: client as never,
+      outputPath,
+      summaryOutputPath: summaryPath,
+      pageSize: 1000,
+    });
+    const raw = readFileSync(summaryPath, "utf8");
+    assert.doesNotMatch(raw, /condition_id/);
+    assert.doesNotMatch(raw, /token_id/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("S4. summary output directory is created if missing", async () => {
+  const { client } = makeFakeClient({ availableResolvedRows: 1 });
+  const dir = mkdtempSync(path.join(tmpdir(), "supabase-export-test-"));
+  const outputPath = path.join(dir, "export.json");
+  const summaryPath = path.join(dir, "nested", "deep", "summary.json");
+  try {
+    await exportGeneratedSignalPairsFromSupabase({
+      client: client as never,
+      outputPath,
+      summaryOutputPath: summaryPath,
+      pageSize: 1000,
+    });
+    const summary = JSON.parse(readFileSync(summaryPath, "utf8"));
+    assert.equal(summary.fetchedRows, 1);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("S5. without summaryOutputPath, no sidecar behavior changes the returned summary", async () => {
+  const { client } = makeFakeClient({ availableResolvedRows: 2 });
+  const dir = mkdtempSync(path.join(tmpdir(), "supabase-export-test-"));
+  const outputPath = path.join(dir, "export.json");
+  try {
+    const result = await exportGeneratedSignalPairsFromSupabase({
+      client: client as never,
+      outputPath,
+      pageSize: 1000,
+    });
+    assert.equal(result.fetchedRows, 2);
+    assert.equal(result.exportCompleteness, "COMPLETE");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

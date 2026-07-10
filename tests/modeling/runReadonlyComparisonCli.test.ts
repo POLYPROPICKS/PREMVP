@@ -582,3 +582,323 @@ test("dedup projection output contains no ROI/PnL/profit keys", async () => {
     assert.ok(!lower.includes("profit"));
   });
 });
+
+// ---- Phase 3E.2: gated ROI integration ----
+
+async function withTempInputAndSummary<T>(
+  rows: unknown[],
+  summaryOverrides: Record<string, unknown>,
+  fn: (paths: { inputPath: string; summaryPath: string }) => Promise<T> | T,
+): Promise<T> {
+  const dir = await mkdtemp(path.join(tmpdir(), "readonly-roi-cli-test-"));
+  try {
+    const inputPath = path.join(dir, "rows.json");
+    const summaryPath = path.join(dir, "summary.json");
+    await writeFile(inputPath, JSON.stringify(rows), "utf8");
+    const summary = {
+      outputPath: inputPath,
+      availableResolvedRows: rows.length,
+      fetchedRows: rows.length,
+      targetRows: rows.length,
+      pageSize: 1000,
+      pagesFetched: 1,
+      exportMode: "FULL_RESOLVED",
+      exportCompleteness: "COMPLETE",
+      missingRows: 0,
+      ...summaryOverrides,
+    };
+    await writeFile(summaryPath, JSON.stringify(summary), "utf8");
+    return await fn({ inputPath, summaryPath });
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+}
+
+// Happy-path fixture: one duplicate trusted win (dedup keeps latest), one
+// trusted loss, one non-trusted row rejected by the formula filter.
+const ROI_HAPPY_ROWS = [
+  {
+    id: "dup-older",
+    formula_version: "trusted-initial-formula-v1.1",
+    condition_id: "c1",
+    token_id: "t1",
+    created_at: "2026-07-01T00:00:00.000Z",
+    resolved_at: "2026-07-05T00:00:00.000Z",
+    signal_result: "won",
+    entry_price_num: 0.4,
+    realized_return_pct: 150,
+  },
+  {
+    id: "dup-newer",
+    formula_version: "trusted-initial-formula-v1.1",
+    condition_id: "c1",
+    token_id: "t1",
+    created_at: "2026-07-02T00:00:00.000Z",
+    resolved_at: "2026-07-05T00:00:00.000Z",
+    signal_result: "won",
+    entry_price_num: 0.4,
+    realized_return_pct: 150,
+  },
+  {
+    id: "trusted-loss",
+    formula_version: "trusted-initial-formula-v1.1",
+    condition_id: "c2",
+    token_id: "t2",
+    created_at: "2026-07-01T00:00:00.000Z",
+    resolved_at: "2026-07-05T00:00:00.000Z",
+    signal_result: "lost",
+    entry_price_num: 0.5,
+  },
+  {
+    id: "non-trusted",
+    formula_version: "v2-lite-growth-safe",
+    condition_id: "c3",
+    token_id: "t3",
+    created_at: "2026-07-01T00:00:00.000Z",
+    resolved_at: "2026-07-05T00:00:00.000Z",
+    signal_result: "won",
+    entry_price_num: 0.5,
+  },
+];
+
+const ROI_FULL_FLAGS = [
+  "--required-only",
+  "--input-format",
+  "generated_signal_pairs",
+  "--include-dqa-r4",
+  "--dedup-policy",
+  "strict_latest_created_before_resolved",
+  "--include-roi",
+];
+
+test("ROI-1. --include-roi without --export-summary exits non-zero", async () => {
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, {}, ({ inputPath }) => {
+    const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /export-summary/);
+  });
+});
+
+test("ROI-2. --include-roi without --input-format generated_signal_pairs exits non-zero", async () => {
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, {}, ({ inputPath, summaryPath }) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--include-dqa-r4",
+      "--dedup-policy",
+      "strict_latest_created_before_resolved",
+      "--include-roi",
+      "--export-summary",
+      summaryPath,
+    ]);
+    assert.notEqual(result.status, 0);
+  });
+});
+
+test("ROI-3. --include-roi without strict dedup policy exits non-zero", async () => {
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, {}, ({ inputPath, summaryPath }) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--include-dqa-r4",
+      "--include-roi",
+      "--export-summary",
+      summaryPath,
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /dedup/);
+  });
+});
+
+test("ROI-4. --include-roi without --include-dqa-r4 exits non-zero", async () => {
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, {}, ({ inputPath, summaryPath }) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--dedup-policy",
+      "strict_latest_created_before_resolved",
+      "--include-roi",
+      "--export-summary",
+      summaryPath,
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /dqa-r4/i);
+  });
+});
+
+test("ROI-5. exportCompleteness not COMPLETE returns blocked gate, no per-strategy ROI", async () => {
+  await withTempInputAndSummary(
+    ROI_HAPPY_ROWS,
+    { exportCompleteness: "INCOMPLETE", missingRows: 5 },
+    ({ inputPath, summaryPath }) => {
+      const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.roiGate.status, "BLOCKED");
+      for (const s of parsed.strategies) {
+        assert.equal(s.roi, undefined);
+      }
+    },
+  );
+});
+
+test("ROI-6. missingRows > 0 returns blocked gate", async () => {
+  await withTempInputAndSummary(
+    ROI_HAPPY_ROWS,
+    { missingRows: 3 },
+    ({ inputPath, summaryPath }) => {
+      const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.roiGate.status, "BLOCKED");
+    },
+  );
+});
+
+test("ROI-7. fetchedRows != inputValidation.totalRows returns blocked gate", async () => {
+  await withTempInputAndSummary(
+    ROI_HAPPY_ROWS,
+    { fetchedRows: 999, availableResolvedRows: 999 },
+    ({ inputPath, summaryPath }) => {
+      const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+      assert.equal(result.status, 0, result.stderr);
+      const parsed = JSON.parse(result.stdout);
+      assert.equal(parsed.roiGate.status, "BLOCKED");
+    },
+  );
+});
+
+test("ROI-8. dedupProjection.rowsMissingStrictDedupKey > 0 returns blocked gate", async () => {
+  const rowsWithMissingKey = [
+    ...ROI_HAPPY_ROWS,
+    // trusted row lacking a strict dedup key (no condition_id/token_id)
+    { id: "no-key", formula_version: "trusted-initial-formula-v1.1", signal_result: "won", realized_return_pct: 100 },
+  ];
+  await withTempInputAndSummary(rowsWithMissingKey, {}, ({ inputPath, summaryPath }) => {
+    const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.roiGate.status, "BLOCKED");
+  });
+});
+
+test("ROI-9. DQA-R4 blocking returns blocked gate", async () => {
+  const rowsWithBlockingDqa = [
+    ...ROI_HAPPY_ROWS,
+    // trusted win missing both entry price and realized return -> DQA-R4 blocking
+    {
+      id: "dqa-block",
+      formula_version: "trusted-initial-formula-v1.1",
+      condition_id: "c9",
+      token_id: "t9",
+      created_at: "2026-07-01T00:00:00.000Z",
+      resolved_at: "2026-07-05T00:00:00.000Z",
+      signal_result: "won",
+    },
+  ];
+  await withTempInputAndSummary(rowsWithBlockingDqa, {}, ({ inputPath, summaryPath }) => {
+    const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.roiGate.status, "BLOCKED");
+  });
+});
+
+test("ROI-10. selectedRows=0 returns blocked/no-valid-strategy state", async () => {
+  const noTrustedRows = [
+    {
+      id: "only-non-trusted",
+      formula_version: "v2-lite-growth-safe",
+      condition_id: "c1",
+      token_id: "t1",
+      created_at: "2026-07-01T00:00:00.000Z",
+      resolved_at: "2026-07-05T00:00:00.000Z",
+      signal_result: "won",
+      entry_price_num: 0.5,
+    },
+  ];
+  await withTempInputAndSummary(noTrustedRows, {}, ({ inputPath, summaryPath }) => {
+    const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.roiGate.status, "BLOCKED");
+  });
+});
+
+test("ROI-11. happy path: roiGate READY and per-strategy roi summary present", async () => {
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, {}, ({ inputPath, summaryPath }) => {
+    const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.roiGate.status, "READY");
+    const trusted = parsed.strategies.find(
+      (s: { strategyId: string }) => s.strategyId === "FORMULA_TRUSTED_INITIAL_V1_1_ALL",
+    );
+    assert.ok(trusted.roi, "expected roi summary on trusted strategy");
+    assert.ok(["READY", "NO_VALID_BETS", "BLOCKED_BY_INVALID_ROWS"].includes(trusted.roi.roiState));
+  });
+});
+
+test("ROI-12. ROI computes on selected deduped rows only, not raw duplicates", async () => {
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, {}, ({ inputPath, summaryPath }) => {
+    const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    const trusted = parsed.strategies.find(
+      (s: { strategyId: string }) => s.strategyId === "FORMULA_TRUSTED_INITIAL_V1_1_ALL",
+    );
+    // 2 raw trusted-win duplicates collapse to 1; plus 1 trusted loss = 2 valid bets
+    assert.equal(trusted.selectedRows, 2);
+    assert.equal(trusted.roi.validBetCount, 2);
+    assert.equal(trusted.roi.winCount, 1);
+    assert.equal(trusted.roi.lossCount, 1);
+  });
+});
+
+test("ROI-13. output contains no selected raw row arrays", async () => {
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, {}, ({ inputPath, summaryPath }) => {
+    const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.doesNotMatch(result.stdout, /dup-newer/);
+    assert.doesNotMatch(result.stdout, /selectedRowObjects/);
+  });
+});
+
+test("ROI-14. output contains no guaranteed/profit/marketing claim fields", async () => {
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, {}, ({ inputPath, summaryPath }) => {
+    const result = runCli(["--input", inputPath, ...ROI_FULL_FLAGS, "--export-summary", summaryPath]);
+    assert.equal(result.status, 0, result.stderr);
+    const lower = result.stdout.toLowerCase();
+    assert.ok(!lower.includes("guarantee"));
+    assert.ok(!lower.includes("profit"));
+    assert.ok(!lower.includes("marketing"));
+  });
+});
+
+test("ROI-15. default CLI without --include-roi output is unchanged (no roiGate)", async () => {
+  await withTempInputAndSummary(ROI_HAPPY_ROWS, {}, ({ inputPath }) => {
+    const result = runCli([
+      "--input",
+      inputPath,
+      "--required-only",
+      "--input-format",
+      "generated_signal_pairs",
+      "--include-dqa-r4",
+      "--dedup-policy",
+      "strict_latest_created_before_resolved",
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    const parsed = JSON.parse(result.stdout);
+    assert.equal(parsed.roiGate, undefined);
+    for (const s of parsed.strategies) {
+      assert.equal(s.roi, undefined);
+    }
+  });
+});

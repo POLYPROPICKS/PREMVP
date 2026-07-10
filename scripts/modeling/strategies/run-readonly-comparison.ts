@@ -62,8 +62,12 @@
 
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
-import { runStrategyComparison } from "../../../lib/modeling/strategyComparison";
-import type { StrategyDeclaration } from "../../../lib/modeling/strategyEvaluator";
+import {
+  runStrategyComparison,
+  runStrategyComparisonWithSelectedRows,
+} from "../../../lib/modeling/strategyComparison";
+import type { StrategyDeclaration, EvaluatorRow } from "../../../lib/modeling/strategyEvaluator";
+import { computeFlatStakeRoiSummary } from "../../../lib/modeling/roiPnlContract";
 import {
   validateGeneratedSignalPairsExportRows,
   type ExportRow,
@@ -95,6 +99,8 @@ interface ParsedArgs {
   inputFormat: InputFormat;
   includeDqaR4: boolean;
   dedupPolicy: DedupPolicy | null;
+  includeRoi: boolean;
+  exportSummary: string | null;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
@@ -105,6 +111,8 @@ function parseArgs(argv: string[]): ParsedArgs {
     inputFormat: "loose",
     includeDqaR4: false,
     dedupPolicy: null,
+    includeRoi: false,
+    exportSummary: null,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -136,6 +144,11 @@ function parseArgs(argv: string[]): ParsedArgs {
       }
     } else if (arg === "--include-dqa-r4") {
       args.includeDqaR4 = true;
+    } else if (arg === "--include-roi") {
+      args.includeRoi = true;
+    } else if (arg === "--export-summary") {
+      args.exportSummary = argv[i + 1] ?? null;
+      i += 1;
     } else if (arg === "--dedup-policy") {
       const value = argv[i + 1] ?? "";
       i += 1;
@@ -155,6 +168,21 @@ function parseArgs(argv: string[]): ParsedArgs {
 
   if (args.dedupPolicy && args.inputFormat !== "generated_signal_pairs") {
     fail("--dedup-policy requires --input-format generated_signal_pairs");
+  }
+
+  if (args.includeRoi) {
+    if (args.inputFormat !== "generated_signal_pairs") {
+      fail("--include-roi requires --input-format generated_signal_pairs");
+    }
+    if (args.dedupPolicy !== STRICT_DEDUP_POLICY_NAME) {
+      fail(`--include-roi requires --dedup-policy ${STRICT_DEDUP_POLICY_NAME}`);
+    }
+    if (!args.includeDqaR4) {
+      fail("--include-roi requires --include-dqa-r4");
+    }
+    if (!args.exportSummary) {
+      fail("--include-roi requires --export-summary <path>");
+    }
   }
 
   return args;
@@ -216,10 +244,14 @@ function main(): void {
     comparisonRows = dedupProjection.dedupedRows;
   }
 
-  const result = runStrategyComparison(comparisonRows, declarations, {
-    requiredOnly,
-    strategyIds: args.strategyIds.length > 0 ? args.strategyIds : undefined,
-  });
+  const { result, selectedRowsByStrategyId } = runStrategyComparisonWithSelectedRows(
+    comparisonRows as EvaluatorRow[],
+    declarations,
+    {
+      requiredOnly,
+      strategyIds: args.strategyIds.length > 0 ? args.strategyIds : undefined,
+    },
+  );
 
   let dqaR4: OutcomeResolutionAuditSummary | undefined;
   if (args.includeDqaR4) {
@@ -232,11 +264,88 @@ function main(): void {
     ? (({ dedupedRows: _dedupedRows, ...diagnostics }) => diagnostics)(dedupProjection)
     : undefined;
 
+  // Phase 3E.2: gated ROI. All prerequisite flags are enforced in parseArgs,
+  // so when includeRoi is set, inputFormat/dedupPolicy/includeDqaR4/exportSummary
+  // are all present. ROI is computed only if every gate passes, and only on
+  // the selected deduped rows -- never on raw duplicates, never output as raw
+  // rows.
+  let roiGate: Record<string, unknown> | undefined;
+  let strategiesOutput: unknown[] = result.strategies as unknown[];
+
+  if (args.includeRoi) {
+    let exportSummary: Record<string, unknown> | null = null;
+    try {
+      const rawSummary = readFileSync(args.exportSummary as string, "utf8");
+      const parsedSummary = JSON.parse(rawSummary);
+      if (parsedSummary && typeof parsedSummary === "object" && !Array.isArray(parsedSummary)) {
+        exportSummary = parsedSummary as Record<string, unknown>;
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
+      fail(`failed to read/parse --export-summary file: ${message}`);
+    }
+
+    const reasons: string[] = [];
+
+    if (!exportSummary) {
+      reasons.push("export_summary_unreadable");
+    }
+    if (exportSummary && exportSummary.exportCompleteness !== "COMPLETE") {
+      reasons.push("export_not_complete");
+    }
+    if (exportSummary && exportSummary.missingRows !== 0) {
+      reasons.push("missing_rows");
+    }
+    const inputTotal = inputValidation ? inputValidation.totalRows : undefined;
+    if (!exportSummary || exportSummary.fetchedRows !== inputTotal) {
+      reasons.push("fetched_rows_mismatch");
+    }
+    if (!dedupProjection) {
+      reasons.push("no_dedup_projection");
+    } else if (dedupProjection.rowsMissingStrictDedupKey !== 0) {
+      reasons.push("rows_missing_strict_dedup_key");
+    }
+    if (!dqaR4) {
+      reasons.push("no_dqa_r4");
+    } else if (dqaR4.hasBlockingViolations) {
+      reasons.push("dqa_r4_blocking");
+    }
+    const anySelected = result.strategies.some((s) => s.selectedRows > 0);
+    if (!anySelected) {
+      reasons.push("no_strategy_selected_rows");
+    }
+
+    const status = reasons.length === 0 ? "READY" : "BLOCKED";
+
+    roiGate = {
+      requested: true,
+      status,
+      reasons,
+      exportCompleteness: exportSummary ? exportSummary.exportCompleteness : null,
+      fetchedRows: exportSummary ? exportSummary.fetchedRows : null,
+      inputRows: inputTotal ?? null,
+      dedupRows: dedupProjection ? dedupProjection.dedupRows : null,
+    };
+
+    if (status === "READY") {
+      strategiesOutput = result.strategies.map((summary) => {
+        if (summary.error !== null || summary.selectedRows === 0) {
+          return summary;
+        }
+        const selected = selectedRowsByStrategyId[summary.strategyId] ?? [];
+        const roi = computeFlatStakeRoiSummary(selected, { strict: true, stakeUnits: 1 });
+        return { ...summary, roi };
+      });
+    }
+  }
+
   const output = {
     ...result,
+    strategies: strategiesOutput,
     ...(inputValidation ? { inputValidation } : {}),
     ...(dedupProjectionDiagnostics ? { dedupProjection: dedupProjectionDiagnostics } : {}),
     ...(dqaR4 ? { dqaR4 } : {}),
+    ...(roiGate ? { roiGate } : {}),
   };
 
   process.stdout.write(`${JSON.stringify(output, null, 2)}\n`);

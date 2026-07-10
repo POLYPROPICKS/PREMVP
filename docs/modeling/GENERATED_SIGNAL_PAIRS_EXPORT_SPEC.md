@@ -282,3 +282,38 @@ test suite (`tests/modeling/roiPnlContract.test.ts`).
 - **No ROI/profit claim may be made from a partial sample.** A
   `computeFlatStakeRoiSummary()` result computed outside the gates above is
   local research output only, not a validated performance figure.
+
+## Phase 3E.2 — gated local ROI comparison
+
+Phase 3E.2 wires the pure ROI/PnL contract (Phase 3E.1) into the read-only
+comparison CLI (`run-readonly-comparison.ts`) behind explicit gates.
+
+- **ROI can be computed only by the CLI with `--include-roi`.** There is no
+  other sanctioned path from a local export to an ROI figure.
+- **`--include-roi` requires all of**: `--input-format
+  generated_signal_pairs`, `--dedup-policy
+  strict_latest_created_before_resolved`, `--include-dqa-r4`, and
+  `--export-summary <path>` (the sidecar written by the exporter's
+  `--summary-output`). Missing any of these exits non-zero before any ROI is
+  computed.
+- **The CLI reads the export summary from a local file only** -- it never
+  queries the database, reads `process.env`, or performs a network request.
+- **Gate conditions** (all must hold for `roiGate.status === "READY"`):
+  - `exportSummary.exportCompleteness === "COMPLETE"`
+  - `exportSummary.missingRows === 0`
+  - `exportSummary.fetchedRows === inputValidation.totalRows` (the export
+    that produced the summary is the export being analyzed)
+  - the strict dedup projection exists and
+    `dedupProjection.rowsMissingStrictDedupKey === 0`
+  - DQA-R4 ran and `dqaR4.hasBlockingViolations === false`
+  - at least one strategy has `selectedRows > 0`
+- **If any gate fails**, the output carries top-level `roiGate.status =
+  "BLOCKED"` with a machine-readable `reasons` array, and **no per-strategy
+  ROI is computed** -- there is no fake zero-ROI fallback.
+- **If the gate passes**, ROI is computed per selected strategy via
+  `computeFlatStakeRoiSummary(selectedRows, { strict: true, stakeUnits: 1 })`
+  on the **selected deduped rows only** -- never on raw duplicate rows. The
+  selected row objects are never emitted in the CLI output.
+- **ROI here is a local model-audit metric, not a product claim.** No
+  ROI/profit claim may be made from a partial or incomplete export, and the
+  gate is what enforces that at the tooling level.

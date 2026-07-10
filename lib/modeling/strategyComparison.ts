@@ -71,21 +71,35 @@ function selectDeclarations(
   return [...declarations];
 }
 
+export interface StrategyComparisonWithSelectedRowsResult<T extends EvaluatorRow> {
+  result: StrategyComparisonResult;
+  /**
+   * Selected row objects per strategyId, for internal callers that need the
+   * actual rows (e.g. the CLI's gated ROI computation). This is deliberately
+   * kept out of the public StrategyComparisonResult so the default JSON
+   * output never carries raw row payloads. Only strategies that evaluated
+   * without error have an entry here.
+   */
+  selectedRowsByStrategyId: Record<string, T[]>;
+}
+
 /**
- * Runs every selected strategy declaration against `rows` and returns a
- * per-strategy comparison summary. By default only declarations flagged
- * requiredForComparison === true are run (currently
- * FORMULA_TRUSTED_INITIAL_V1_1_ALL). A declaration that refuses to run
- * (non-READY status, or one-event selection missing a comparator) is
- * reported with a safe error message (strategyId + status only, never row
- * data) instead of throwing out of this function.
+ * Core comparison: runs every selected strategy declaration against `rows`
+ * and returns both the per-strategy summary and the selected row objects
+ * per strategyId. A declaration that refuses to run (non-READY status, or
+ * one-event selection missing a comparator) is reported with a safe error
+ * message (strategyId + status only, never row data) instead of throwing.
+ *
+ * The selected rows are for internal use only (see field docs) -- callers
+ * that just want the JSON-safe summary should use runStrategyComparison.
  */
-export function runStrategyComparison<T extends EvaluatorRow>(
+export function runStrategyComparisonWithSelectedRows<T extends EvaluatorRow>(
   rows: readonly T[],
   declarations: readonly StrategyDeclaration[],
   options?: StrategyComparisonOptions<T>,
-): StrategyComparisonResult {
+): StrategyComparisonWithSelectedRowsResult<T> {
   const selected = selectDeclarations(declarations, options as StrategyComparisonOptions<EvaluatorRow> | undefined);
+  const selectedRowsByStrategyId: Record<string, T[]> = {};
 
   const strategies: StrategyComparisonSummary[] = selected.map((declaration) => {
     const requiredForComparison = declaration.requiredForComparison === true;
@@ -93,6 +107,7 @@ export function runStrategyComparison<T extends EvaluatorRow>(
       const evaluation = evaluateStrategyDeclaration(rows, declaration, {
         compareRows: options?.compareRows,
       });
+      selectedRowsByStrategyId[declaration.strategyId] = evaluation.selectedRows;
       return {
         strategyId: declaration.strategyId,
         status: declaration.status,
@@ -117,8 +132,31 @@ export function runStrategyComparison<T extends EvaluatorRow>(
   });
 
   return {
-    totalInputRows: rows.length,
-    selectedStrategyCount: strategies.length,
-    strategies,
+    result: {
+      totalInputRows: rows.length,
+      selectedStrategyCount: strategies.length,
+      strategies,
+    },
+    selectedRowsByStrategyId,
   };
+}
+
+/**
+ * Runs every selected strategy declaration against `rows` and returns a
+ * per-strategy comparison summary. By default only declarations flagged
+ * requiredForComparison === true are run (currently
+ * FORMULA_TRUSTED_INITIAL_V1_1_ALL). A declaration that refuses to run
+ * (non-READY status, or one-event selection missing a comparator) is
+ * reported with a safe error message (strategyId + status only, never row
+ * data) instead of throwing out of this function.
+ *
+ * This is the public, JSON-safe entrypoint: it returns only counts, never
+ * row payloads.
+ */
+export function runStrategyComparison<T extends EvaluatorRow>(
+  rows: readonly T[],
+  declarations: readonly StrategyDeclaration[],
+  options?: StrategyComparisonOptions<T>,
+): StrategyComparisonResult {
+  return runStrategyComparisonWithSelectedRows(rows, declarations, options).result;
 }

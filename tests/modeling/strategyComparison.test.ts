@@ -162,3 +162,61 @@ test("empty declaration selection returns empty strategies array with diagnostic
   assert.equal(result.selectedStrategyCount, 0);
   assert.equal(result.totalInputRows, 1);
 });
+
+// ---- Phase 3E.2: selected-row access helper (internal CLI ROI use) ----
+
+test("runStrategyComparisonWithSelectedRows exposes selected row objects matching selectedRows count", () => {
+  const { runStrategyComparisonWithSelectedRows } = require("../../lib/modeling/strategyComparison");
+  const trustedFormula = readDeclaration("trusted_initial_formula_v1_1_all.json");
+  const rows: EvaluatorRow[] = [
+    { id: "a", formula_version: "trusted-initial-formula-v1.1" },
+    { id: "b", formula_version: "v2-lite-growth-safe" },
+    { id: "c", metric_formula_version: "trusted-initial-formula-v1.1" },
+  ];
+
+  const { result, selectedRowsByStrategyId } = runStrategyComparisonWithSelectedRows(rows, [trustedFormula]);
+
+  const summary = result.strategies.find(
+    (s: { strategyId: string }) => s.strategyId === "FORMULA_TRUSTED_INITIAL_V1_1_ALL",
+  );
+  assert.ok(summary);
+  assert.equal(summary.selectedRows, 2);
+  const selected = selectedRowsByStrategyId["FORMULA_TRUSTED_INITIAL_V1_1_ALL"];
+  assert.ok(Array.isArray(selected));
+  assert.equal(selected.length, 2);
+});
+
+test("runStrategyComparisonWithSelectedRows keeps rejectedByFilter counts unchanged", () => {
+  const { runStrategyComparisonWithSelectedRows } = require("../../lib/modeling/strategyComparison");
+  const trustedFormula = readDeclaration("trusted_initial_formula_v1_1_all.json");
+  const rows: EvaluatorRow[] = [
+    { id: "a", formula_version: "trusted-initial-formula-v1.1" },
+    { id: "b", formula_version: "v2-lite-growth-safe" },
+  ];
+
+  const { result } = runStrategyComparisonWithSelectedRows(rows, [trustedFormula]);
+  const summary = result.strategies.find(
+    (s: { strategyId: string }) => s.strategyId === "FORMULA_TRUSTED_INITIAL_V1_1_ALL",
+  );
+  assert.equal(summary.rejectedByFilter.formulaVersionEquals, 1);
+});
+
+test("runStrategyComparison public result shape is unchanged (no selected row arrays)", () => {
+  const trustedFormula = readDeclaration("trusted_initial_formula_v1_1_all.json");
+  const rows: EvaluatorRow[] = [{ id: "a", formula_version: "trusted-initial-formula-v1.1" }];
+
+  const result = runStrategyComparison(rows, [trustedFormula]);
+  const serialized = JSON.stringify(result);
+  assert.doesNotMatch(serialized, /selectedRowsByStrategyId/);
+  // per-strategy summary carries only a numeric selectedRows count, not an array
+  assert.equal(typeof result.strategies[0].selectedRows, "number");
+});
+
+test("runStrategyComparisonWithSelectedRows does not mutate input rows", () => {
+  const { runStrategyComparisonWithSelectedRows } = require("../../lib/modeling/strategyComparison");
+  const trustedFormula = readDeclaration("trusted_initial_formula_v1_1_all.json");
+  const rows: EvaluatorRow[] = [{ id: "a", formula_version: "trusted-initial-formula-v1.1" }];
+  const snapshot = JSON.stringify(rows);
+  runStrategyComparisonWithSelectedRows(rows, [trustedFormula]);
+  assert.equal(JSON.stringify(rows), snapshot);
+});

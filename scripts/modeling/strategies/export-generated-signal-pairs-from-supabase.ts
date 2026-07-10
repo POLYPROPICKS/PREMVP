@@ -144,6 +144,13 @@ export function resolveSupabaseReadConfig(env: NodeJS.ProcessEnv = process.env):
 export interface ExportGeneratedSignalPairsOptions {
   client?: SupabaseClient;
   outputPath?: string;
+  /**
+   * Optional path to write a compact summary sidecar (the same object this
+   * function returns, minus nothing sensitive -- it contains only counts and
+   * mode strings, never row payloads). Used by the gated ROI comparison
+   * (Phase 3E.2) to prove export completeness without re-querying.
+   */
+  summaryOutputPath?: string;
   /** Transport batch size only. Does NOT cap the dataset. Default 1000. */
   pageSize?: number;
   /** Explicit debug-only cap on total rows fetched. Never a default. */
@@ -188,6 +195,7 @@ export async function exportGeneratedSignalPairsFromSupabase(
   options: ExportGeneratedSignalPairsOptions = {},
 ): Promise<ExportGeneratedSignalPairsResult> {
   const outputPath = options.outputPath ?? DEFAULT_OUTPUT_PATH;
+  const summaryOutputPath = options.summaryOutputPath;
   const pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
   const maxRows = options.maxRows;
 
@@ -264,7 +272,7 @@ export async function exportGeneratedSignalPairsFromSupabase(
   const missingRows =
     exportMode === "DEBUG_CAPPED" ? 0 : Math.max(0, availableResolvedRows - fetchedRows);
 
-  return {
+  const summary: ExportGeneratedSignalPairsResult = {
     outputPath,
     availableResolvedRows,
     fetchedRows,
@@ -276,10 +284,23 @@ export async function exportGeneratedSignalPairsFromSupabase(
     missingRows,
     ...(maxRows !== undefined ? { requestedMaxRows: maxRows } : {}),
   };
+
+  if (summaryOutputPath) {
+    const summaryDir = path.dirname(summaryOutputPath);
+    if (!existsSync(summaryDir)) {
+      mkdirSync(summaryDir, { recursive: true });
+    }
+    // The summary object contains only counts and mode strings -- no row
+    // payloads -- so this sidecar never leaks row data.
+    writeFileSync(summaryOutputPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+  }
+
+  return summary;
 }
 
 interface ParsedArgs {
   output: string;
+  summaryOutput?: string;
   pageSize: number;
   maxRows?: number;
 }
@@ -290,6 +311,9 @@ function parseArgs(argv: string[]): ParsedArgs {
     const arg = argv[i];
     if (arg === "--output") {
       args.output = argv[i + 1] ?? DEFAULT_OUTPUT_PATH;
+      i += 1;
+    } else if (arg === "--summary-output") {
+      args.summaryOutput = argv[i + 1];
       i += 1;
     } else if (arg === "--page-size") {
       const value = Number(argv[i + 1]);
@@ -327,6 +351,7 @@ async function main(): Promise<void> {
   try {
     const result = await exportGeneratedSignalPairsFromSupabase({
       outputPath: args.output,
+      summaryOutputPath: args.summaryOutput,
       pageSize: args.pageSize,
       maxRows: args.maxRows,
     });
