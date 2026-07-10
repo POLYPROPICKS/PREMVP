@@ -209,11 +209,21 @@ the export fails safely (`KEYSET_CURSOR_FIELDS_MISSING` /
   **`exportCompleteness` must be `"COMPLETE_BY_EXHAUSTION"` before any
   ROI/model-review gate treats the export as the full dataset.**
 
-**Explicit SELECT and canonical filter encoding (Phase 3E.2e):** the
-exporter no longer sends `select=*`. It sends an explicit column allowlist
-(`EXPORT_SELECT_FIELDS` in the exporter source) covering every field read
-by normalization, strict dedup, DQA-R4, the trusted-formula strategy
-filter, and the pure ROI contract. The cutoff filter is now one canonical
+**Explicit SELECT and canonical filter encoding (Phase 3E.2e, physical
+schema in 3E.2f):** the exporter no longer sends `select=*`. **Physical
+Supabase source schema != normalized export compatibility schema** -- the
+live REST `select=` uses `GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS` (the
+exact 27 columns verified against `information_schema.columns` on the real
+table), which is a separate, narrower list from
+`NORMALIZER_COMPAT_FIELDS` (every field name `normalizeGeneratedSignalPairRow()`
+understands, including legacy/offline-fixture aliases like `token_id`,
+`signal_score`, `coverage`, `result`, `outcome_status`, `entry_price` that
+do **not** exist as physical columns today). A real founder REST probe
+failed with `HTTP 400 postgrestCode=42703: column
+generated_signal_pairs.token_id does not exist` because an earlier version
+of this exporter selected the broader compat list directly -- an alias
+must never be added to the live REST select unless it physically exists;
+it stays normalization-only otherwise. The cutoff filter is now one canonical
 `and=(resolved_at.not.is.null,resolved_at.lte.<cutoff>)` parameter instead
 of two duplicate `resolved_at` query keys, built safely with
 `URLSearchParams`. On a failed request, the exporter reports a bounded

@@ -8,7 +8,7 @@ import {
   normalizeGeneratedSignalPairRow,
   exportGeneratedSignalPairsFromSupabase,
   resolveSupabaseReadConfig,
-  EXPORT_SELECT_FIELDS,
+  GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS,
   buildSelectParam,
 } from "../../scripts/modeling/strategies/export-generated-signal-pairs-from-supabase";
 
@@ -820,7 +820,7 @@ test("A1. default query does not use select=*", async () => {
   });
 });
 
-test("A2. exact explicit select allowlist is present on every request", async () => {
+test("A2. exact physical-schema select allowlist is present on every request (not the broader normalizer compat list)", async () => {
   const rows = generateDescendingRows(1500, CUTOFF);
   const { fetchImpl, calls } = makeFakeFetch({ rows });
   await withTempDir(async (outputPath) => {
@@ -833,32 +833,214 @@ test("A2. exact explicit select allowlist is present on every request", async ()
     assert.ok(calls.length >= 2);
     for (const call of calls) {
       const url = new URL(call.url);
-      assert.equal(url.searchParams.get("select"), EXPORT_SELECT_FIELDS.join(","));
+      assert.equal(url.searchParams.get("select"), GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS.join(","));
     }
   });
 });
 
-test("A3. all downstream-required fields are included in the select allowlist", () => {
-  for (const field of REQUIRED_DOWNSTREAM_FIELDS) {
-    assert.ok(
-      (EXPORT_SELECT_FIELDS as readonly string[]).includes(field),
-      `expected EXPORT_SELECT_FIELDS to include "${field}"`,
-    );
+test("A3. the fields structurally required by dedup, DQA-R4, the trusted-formula strategy, and ROI are all physically selected", () => {
+  const physical = new Set(GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS as readonly string[]);
+  // Fields with no genuine live-data substitute -- if any of these were
+  // missing from the physical schema, the corresponding downstream
+  // consumer would have no way to function at all on real Supabase rows.
+  // (Redundant alias-only inputs like signal_score/coverage_score/result/
+  // outcome_status/entry_price are intentionally NOT required here -- see
+  // P3 -- because normalizer's primary physical-backed field already
+  // covers each: score/coverage via pre_event_score_num, signal_result via
+  // signal_result itself, entry_price_num directly.)
+  const structurallyRequired = [
+    "id",
+    "condition_id",
+    "selected_token_id", // -> normalized token_id
+    "created_at",
+    "resolved_at",
+    "formula_version",
+    "metric_formula_version",
+    "signal_result",
+    "entry_price_num",
+    "realized_return_pct",
+    "winning_outcome",
+  ];
+  for (const field of structurallyRequired) {
+    assert.ok(physical.has(field), `expected "${field}" to be physically selected`);
   }
 });
 
-test("A4. buildSelectParam() returns the comma-joined allowlist", () => {
-  assert.equal(buildSelectParam(), EXPORT_SELECT_FIELDS.join(","));
+test("A4. buildSelectParam() returns the comma-joined physical-schema allowlist", () => {
+  assert.equal(buildSelectParam(), GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS.join(","));
 });
 
-test("A5. normalization still works with an explicit-select-shaped row (no extra unselected fields)", () => {
+test("A5. normalization still works with a physical-schema-shaped row (no extra unselected fields)", () => {
   const row: Record<string, unknown> = {};
-  for (const field of EXPORT_SELECT_FIELDS) {
+  for (const field of GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS) {
     row[field] = field === "diagnostics" ? { entryPrice: 0.2 } : `value-${field}`;
   }
   const normalized = normalizeGeneratedSignalPairRow(row);
   assert.equal(normalized.id, "value-id");
   assert.equal(normalized.condition_id, "value-condition_id");
+  // selected_token_id is physical; token_id is not -- normalizer must still
+  // produce a token_id from the physical selected_token_id field.
+  assert.equal(normalized.token_id, "value-selected_token_id");
+});
+
+// ---- Phase 3E.2f: physical-schema REST select vs normalizer compat layer ----
+
+test("P1. REST select contains only the 27 verified physical columns", async () => {
+  const rows = generateDescendingRows(3, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath });
+    const selectValue = new URL(calls[0].url).searchParams.get("select") as string;
+    const selectedFields = selectValue.split(",");
+    assert.equal(selectedFields.length, 27);
+    assert.deepEqual(selectedFields, [...GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS]);
+  });
+});
+
+test("P2. token_id is not included in the REST SELECT", async () => {
+  const rows = generateDescendingRows(3, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath });
+    const selectedFields = (new URL(calls[0].url).searchParams.get("select") as string).split(",");
+    assert.ok(!selectedFields.includes("token_id"));
+  });
+});
+
+test("P3. other absent aliases are not included in the REST SELECT", async () => {
+  const rows = generateDescendingRows(3, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath });
+    const selectedFields = (new URL(calls[0].url).searchParams.get("select") as string).split(",");
+    for (const absentField of [
+      "signal_score",
+      "coverage",
+      "coverage_score",
+      "result",
+      "outcome_status",
+      "entry_price",
+      "real_pnl_usd",
+      "match_family_key",
+      "canonical_event_key",
+      "parent_event_key",
+      "event_title",
+      "league",
+      "hours_until_start",
+    ]) {
+      assert.ok(!selectedFields.includes(absentField), `expected "${absentField}" to be absent from REST select`);
+    }
+  });
+});
+
+test("P4. selected_token_id is included in the REST SELECT", async () => {
+  const rows = generateDescendingRows(3, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath });
+    const selectedFields = (new URL(calls[0].url).searchParams.get("select") as string).split(",");
+    assert.ok(selectedFields.includes("selected_token_id"));
+  });
+});
+
+test("P5. score, pre_event_score_num, entry_price_num, signal_result, winning_outcome, realized_return_pct are included", async () => {
+  const rows = generateDescendingRows(3, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath });
+    const selectedFields = (new URL(calls[0].url).searchParams.get("select") as string).split(",");
+    for (const requiredField of [
+      "score",
+      "pre_event_score_num",
+      "entry_price_num",
+      "signal_result",
+      "winning_outcome",
+      "realized_return_pct",
+    ]) {
+      assert.ok(selectedFields.includes(requiredField), `expected "${requiredField}" to be present in REST select`);
+    }
+  });
+});
+
+test("P6. normalizer still accepts fixture input containing legacy aliases such as token_id", () => {
+  const row = { id: "a", condition_id: "c1", token_id: "legacy-token-value" };
+  const normalized = normalizeGeneratedSignalPairRow(row);
+  assert.equal(normalized.token_id, "legacy-token-value");
+});
+
+test("P7. normalizer still maps selected_token_id into canonical token identity", () => {
+  const row = { id: "a", condition_id: "c1", selected_token_id: "physical-token-value" };
+  const normalized = normalizeGeneratedSignalPairRow(row);
+  assert.equal(normalized.token_id, "physical-token-value");
+});
+
+test("P8. keyset query shape (order, limit, cursor) is unchanged by the physical-schema select", async () => {
+  const rows = generateDescendingRows(1500, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 1000,
+    });
+    const first = new URL(calls[0].url);
+    assert.equal(first.searchParams.get("order"), "resolved_at.desc,id.desc");
+    assert.equal(first.searchParams.get("limit"), "1000");
+    assert.equal(first.searchParams.get("or"), null);
+    const second = new URL(calls[1].url);
+    assert.ok(second.searchParams.get("or"));
+  });
+});
+
+test("P9. canonical and-cutoff filter is unchanged by the physical-schema select", async () => {
+  const rows = generateDescendingRows(3, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath });
+    const andValue = new URL(calls[0].url).searchParams.get("and") as string;
+    assert.match(andValue, /resolved_at\.not\.is\.null/);
+    assert.match(andValue, /resolved_at\.lte\./);
+  });
+});
+
+test("P10. safe PostgREST diagnostics remain unchanged", async () => {
+  const rows = generateDescendingRows(5, CUTOFF);
+  const { fetchImpl } = makeFakeFetch({
+    rows,
+    pageOverride: () =>
+      makeFakeResponse({
+        ok: false,
+        status: 400,
+        text: async () =>
+          JSON.stringify({ code: "42703", message: "column generated_signal_pairs.token_id does not exist" }),
+      }),
+  });
+  await withTempDir(async (outputPath) => {
+    await assert.rejects(
+      () => exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /postgrestCode=42703/);
+        assert.match(error.message, /does not exist/);
+        return true;
+      },
+    );
+  });
+});
+
+test("P11. no count, offset, or select=* regression", async () => {
+  const rows = generateDescendingRows(3, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath });
+    for (const call of calls) {
+      const url = new URL(call.url);
+      assert.notEqual(url.searchParams.get("select"), "*");
+      assert.equal(url.searchParams.get("offset"), null);
+      assert.equal(url.searchParams.get("Prefer"), null);
+    }
+  });
 });
 
 // ---- Phase 3E.2e: canonical and-filter encoding (Patch B) ----

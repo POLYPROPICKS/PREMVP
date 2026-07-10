@@ -79,18 +79,65 @@ type FetchLike = (
 }>;
 
 /**
- * Explicit column allowlist for the export SELECT (Phase 3E.2e). Replaces
- * `select=*` -- every field here is read by at least one downstream
- * consumer: normalization (this file), strict dedup
- * (generatedSignalPairsDedupPolicy.ts / generatedSignalPairsExportContract.ts),
- * DQA-R4 (outcomeResolutionConsistency.ts), the trusted-formula strategy
- * filter (strategyEvaluator.ts), or the pure ROI contract
- * (roiPnlContract.ts). `winning_outcome` and `selected_outcome` are read
- * and passed through by the normalizer itself (no downstream consumer
- * needs them beyond that), so they stay in the allowlist to avoid silently
- * dropping fields the normalizer already exposes today.
+ * Physical Supabase source schema for `generated_signal_pairs` (Phase
+ * 3E.2f). This is NOT the same thing as the normalizer's compatibility
+ * schema below -- it is exactly the 27 columns that exist on the live
+ * table today (verified against `information_schema.columns` after a real
+ * founder REST probe failed with `HTTP 400 postgrestCode=42703: column
+ * generated_signal_pairs.token_id does not exist`). This list, not a
+ * broader "everything a normalizer alias might read" list, is what the
+ * live REST `select=` parameter must use -- selecting a column that
+ * doesn't physically exist fails the whole request, it doesn't just leave
+ * a field empty.
+ *
+ * Notably: `token_id` is NOT physical (only `selected_token_id` is);
+ * `signal_score`, `coverage`, `coverage_score`, `result`,
+ * `outcome_status`, `entry_price`, `real_pnl_usd`, `match_family_key`,
+ * `canonical_event_key`, `parent_event_key`, `event_title`, `league`, and
+ * `hours_until_start` are NOT physical either -- they are normalizer-only
+ * aliases with no live column backing them today. Any of those appearing
+ * in the REST `select=` would reproduce the same 42703 failure.
  */
-export const EXPORT_SELECT_FIELDS = [
+export const GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS = [
+  "id",
+  "source",
+  "formula_version",
+  "event_slug",
+  "market_slug",
+  "condition_id",
+  "selected_outcome",
+  "premium_signal",
+  "market_source",
+  "diagnostics",
+  "score",
+  "created_at",
+  "expires_at",
+  "market_sources",
+  "selected_token_id",
+  "entry_price_num",
+  "signal_confidence_num",
+  "expected_return_pct_num",
+  "trust_metrics",
+  "smart_money_score_num",
+  "whale_public_score_num",
+  "pre_event_score_num",
+  "signal_result",
+  "resolved_at",
+  "winning_outcome",
+  "realized_return_pct",
+  "metric_formula_version",
+] as const;
+
+/**
+ * The normalizer's broader compatibility schema: every field name
+ * `normalizeGeneratedSignalPairRow()` below understands, including
+ * legacy/offline-fixture aliases (`token_id`, `signal_score`, `coverage`,
+ * `result`, `outcome_status`, `entry_price`, ...) that do NOT need to
+ * exist as physical Supabase columns. This exists purely for
+ * documentation/testing of the compatibility layer -- it is never sent to
+ * the live REST API (see GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS for that).
+ */
+export const NORMALIZER_COMPAT_FIELDS = [
   "id",
   "condition_id",
   "token_id",
@@ -124,9 +171,13 @@ export const EXPORT_SELECT_FIELDS = [
   "diagnostics",
 ] as const;
 
-/** Builds the PostgREST `select=` param value from EXPORT_SELECT_FIELDS. */
+/**
+ * Builds the PostgREST `select=` param value for the live REST request --
+ * the physical-schema allowlist only, never the broader normalizer
+ * compatibility list.
+ */
 export function buildSelectParam(): string {
-  return EXPORT_SELECT_FIELDS.join(",");
+  return GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS.join(",");
 }
 
 const DEFAULT_OUTPUT_PATH = path.join(

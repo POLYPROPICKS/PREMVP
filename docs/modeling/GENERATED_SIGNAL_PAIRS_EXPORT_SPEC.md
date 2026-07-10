@@ -531,3 +531,52 @@ DQA, strategy filtering, or ROI math.
 - **CLI interface**: unchanged except one new optional flag,
   `--sentinel-output <path>`, fully backward compatible (omitting it
   changes nothing else).
+
+## Phase 3E.2f — physical-schema REST select
+
+A real founder REST probe against the live table failed with `HTTP 400
+postgrestCode=42703: column generated_signal_pairs.token_id does not
+exist`. `information_schema.columns` was queried against the real
+Supabase table to get the ground truth. **Physical Supabase source schema
+!= normalized export compatibility schema.** These are now two
+deliberately separate, non-conflated concepts in the exporter source:
+
+- **`GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS`** (27 columns) -- the live
+  REST `select=` allowlist, used only by `buildSelectParam()`. Verified
+  against the real table:
+  ```
+  id, source, formula_version, event_slug, market_slug, condition_id,
+  selected_outcome, premium_signal, market_source, diagnostics, score,
+  created_at, expires_at, market_sources, selected_token_id,
+  entry_price_num, signal_confidence_num, expected_return_pct_num,
+  trust_metrics, smart_money_score_num, whale_public_score_num,
+  pre_event_score_num, signal_result, resolved_at, winning_outcome,
+  realized_return_pct, metric_formula_version
+  ```
+- **`NORMALIZER_COMPAT_FIELDS`** -- the broader set of field names
+  `normalizeGeneratedSignalPairRow()` understands, including
+  legacy/offline-fixture aliases (`token_id`, `signal_score`, `coverage`,
+  `coverage_score`, `result`, `outcome_status`, `entry_price`,
+  `real_pnl_usd`, `match_family_key`, `canonical_event_key`,
+  `parent_event_key`, `event_title`, `league`, `hours_until_start`) that do
+  **not** exist as physical columns on the live table today. This list is
+  documentation/test-only -- it is never sent to the live REST API.
+- **An alias must not be added to the live REST select unless it
+  physically exists.** `token_id` is the clearest example: it is not a
+  physical column, only `selected_token_id` is -- the normalizer still
+  maps `selected_token_id` (or, for offline fixtures, a literal `token_id`
+  field) into the canonical `token_id` output key, but the REST request
+  itself only ever asks for `selected_token_id`.
+- **The normalizer's compatibility layer is unchanged.** Offline fixtures,
+  old local exports, and schema-drift aliases (`token_id`,
+  `diagnostics.selectedTokenId`, `diagnostics.entryPrice`, `signal_score`,
+  `pre_event_score_num`, ...) are still accepted and normalized exactly as
+  before -- only the live REST `select=` parameter narrowed to what
+  actually exists physically. Fields that are alias-only (no physical
+  backing) simply come back `undefined`/absent from live Supabase rows,
+  same as they always did before `select=*` was ever narrowed -- this is
+  not a new gap, just a now-explicit one.
+- **No new JSON parsing introduced.** `premium_signal`, `market_source`,
+  `market_sources`, and `trust_metrics` are selected (they are physical
+  columns) but not parsed or used for any new logic in this phase --
+  they are passed through raw only if a future phase needs them.
