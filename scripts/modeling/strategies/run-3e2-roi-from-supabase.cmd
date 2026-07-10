@@ -9,6 +9,12 @@ REM Supabase env/config, writes local git-ignored files under
 REM modeling\local_exports\, and computes ROI ONLY if every completeness /
 REM dedup / DQA-R4 / selection gate passes.
 REM
+REM Phase 3E.2a hardening: this runner fails fast -- it will not run the
+REM ROI comparison step if the exporter failed, or if the export/summary
+REM files it depends on are missing. It also clears any stale prior report
+REM before running the comparison, so a failed run can never leave behind a
+REM report file that looks like a fresh success.
+REM
 REM Requires local Supabase read env/config (SUPABASE_URL and
 REM SUPABASE_SERVICE_ROLE_KEY, or the .env.local equivalents already used by
 REM this repo) to be available to the process.
@@ -27,6 +33,10 @@ set "REPORT_FILE=modeling\local_exports\3e2_roi_report.json"
 
 if not exist "modeling\local_exports" mkdir "modeling\local_exports"
 
+REM Clear any stale prior report before this run, so a failure below can
+REM never leave behind a report file that looks like a fresh success.
+del /q "%REPORT_FILE%" 2>nul
+
 echo Reading ALL resolved generated_signal_pairs rows from Supabase (read-only, paginated, no dataset cap)...
 node --import tsx scripts\modeling\strategies\export-generated-signal-pairs-from-supabase.ts --output "%EXPORT_FILE%" --summary-output "%SUMMARY_FILE%" --page-size 1000
 if errorlevel 1 (
@@ -34,10 +44,21 @@ if errorlevel 1 (
   goto :fail
 )
 
+if not exist "%EXPORT_FILE%" (
+  echo ERROR: exporter reported success but %EXPORT_FILE% is missing.
+  goto :fail
+)
+
+if not exist "%SUMMARY_FILE%" (
+  echo ERROR: exporter reported success but %SUMMARY_FILE% is missing.
+  goto :fail
+)
+
 echo Running gated ROI comparison...
 node --import tsx scripts\modeling\strategies\run-readonly-comparison.ts --input "%EXPORT_FILE%" --required-only --input-format generated_signal_pairs --include-dqa-r4 --dedup-policy strict_latest_created_before_resolved --include-roi --export-summary "%SUMMARY_FILE%" > "%REPORT_FILE%"
 if errorlevel 1 (
   echo ERROR: gated ROI comparison run failed. See the message above.
+  del /q "%REPORT_FILE%" 2>nul
   goto :fail
 )
 

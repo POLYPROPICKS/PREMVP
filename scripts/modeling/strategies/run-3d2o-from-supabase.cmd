@@ -7,6 +7,12 @@ REM values, and does NOT compute ROI/PnL. It only reads generated_signal_pairs
 REM (read-only select) via the repo's existing Supabase env/config and writes
 REM local, git-ignored files under modeling\local_exports\.
 REM
+REM Phase 3E.2a hardening: this runner fails fast -- it will not run the
+REM dedup comparison step if the exporter failed, or if the export file it
+REM depends on is missing. It also clears any stale prior report before
+REM running the comparison, so a failed run can never leave behind a report
+REM file that looks like a fresh success.
+REM
 REM Requires local Supabase read env/config (SUPABASE_URL and
 REM SUPABASE_SERVICE_ROLE_KEY, or the .env.local equivalents already used by
 REM this repo) to be available to the process.
@@ -24,6 +30,10 @@ set "REPORT_FILE=modeling\local_exports\3d2o_dedup_report.json"
 
 if not exist "modeling\local_exports" mkdir "modeling\local_exports"
 
+REM Clear any stale prior report before this run, so a failure below can
+REM never leave behind a report file that looks like a fresh success.
+del /q "%REPORT_FILE%" 2>nul
+
 echo Reading ALL resolved generated_signal_pairs rows from Supabase (read-only, paginated, no dataset cap)...
 node --import tsx scripts\modeling\strategies\export-generated-signal-pairs-from-supabase.ts --output "%EXPORT_FILE%" --page-size 1000
 if errorlevel 1 (
@@ -31,10 +41,16 @@ if errorlevel 1 (
   goto :fail
 )
 
+if not exist "%EXPORT_FILE%" (
+  echo ERROR: exporter reported success but %EXPORT_FILE% is missing.
+  goto :fail
+)
+
 echo Running read-only dedup comparison...
 node --import tsx scripts\modeling\strategies\run-readonly-comparison.ts --input "%EXPORT_FILE%" --required-only --input-format generated_signal_pairs --include-dqa-r4 --dedup-policy strict_latest_created_before_resolved > "%REPORT_FILE%"
 if errorlevel 1 (
   echo ERROR: comparison run failed. See the message above.
+  del /q "%REPORT_FILE%" 2>nul
   goto :fail
 )
 

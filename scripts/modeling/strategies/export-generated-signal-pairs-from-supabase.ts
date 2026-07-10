@@ -1,11 +1,23 @@
 #!/usr/bin/env -S node --import tsx
 // Automated read-only Supabase export runner for generated_signal_pairs
-// (Phase 3D.2Ob, dataset-completeness hardened in Phase 3D.2P).
+// (Phase 3D.2Ob, dataset-completeness hardened in Phase 3D.2P, transport
+// hardened for Windows in Phase 3E.2a).
 //
 // Reads ALL resolved generated_signal_pairs rows directly from Supabase by
-// default (read-only count + paginated select), normalizes schema drift in
-// code, and writes a local JSON export file in the same shape the existing
-// dedup comparison CLI (run-readonly-comparison.ts) expects.
+// default (read-only exact count + paginated select over the PostgREST
+// REST API), normalizes schema drift in code, and writes a local JSON
+// export file in the same shape the existing dedup comparison CLI
+// (run-readonly-comparison.ts) expects.
+//
+// Transport: this module talks to Supabase's PostgREST REST endpoint
+// directly via the platform `fetch` (GET requests only, with a Range
+// header for pagination and Prefer: count=exact for the row count). It
+// deliberately does NOT depend on the @supabase/supabase-js client's
+// count/head select path -- that path was observed to crash on Windows
+// with a native libuv assertion failure
+// (`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`), which is a
+// runtime/platform issue outside this module's control, not a query logic
+// bug. A plain GET request has no equivalent failure mode.
 //
 // There is no default dataset cap. `pageSize` is a transport batch size
 // only (default 1000) -- it does not limit the total number of rows
@@ -15,19 +27,28 @@
 // for a full dataset in a downstream ROI/model-review gate.
 //
 // This module does NOT:
-//   - write to the database (no insert/update/delete/upsert/rpc)
+//   - write to the database (no insert/update/delete/upsert/rpc; GET only)
 //   - log environment variable values or raw row payloads
 //   - compute ROI/PnL/profit
-//   - install any package (uses the repo's existing @supabase/supabase-js
-//     dependency and the existing SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
-//     env convention from lib/supabase/server.ts)
+//   - install any package (uses the platform `fetch` and the existing
+//     SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY env convention from
+//     lib/supabase/server.ts)
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { loadEnvConfig } from "@next/env";
-import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
 const TABLE_NAME = "generated_signal_pairs";
+
+type FetchLike = (
+  url: string,
+  init?: { method?: string; headers?: Record<string, string> },
+) => Promise<{
+  ok: boolean;
+  status: number;
+  headers: { get(name: string): string | null };
+  json(): Promise<unknown>;
+}>;
 
 const DEFAULT_OUTPUT_PATH = path.join(
   "modeling",
@@ -142,7 +163,8 @@ export function resolveSupabaseReadConfig(env: NodeJS.ProcessEnv = process.env):
 }
 
 export interface ExportGeneratedSignalPairsOptions {
-  client?: SupabaseClient;
+  /** Injectable fetch implementation, for tests. Defaults to the platform fetch. */
+  fetchImpl?: FetchLike;
   outputPath?: string;
   /**
    * Optional path to write a compact summary sidecar (the same object this
@@ -174,17 +196,97 @@ export interface ExportGeneratedSignalPairsResult {
   requestedMaxRows?: number;
 }
 
-function extractErrorMessage(error: unknown): string {
-  return typeof error === "object" && error !== null && "message" in error
-    ? String((error as { message: unknown }).message)
-    : "unknown Supabase read error";
+function buildRestUrl(baseUrl: string): string {
+  const trimmedBase = baseUrl.replace(/\/+$/, "");
+  const params = new URLSearchParams({
+    select: "*",
+    resolved_at: "not.is.null",
+    order: "resolved_at.desc",
+  });
+  return `${trimmedBase}/rest/v1/${TABLE_NAME}?${params.toString()}`;
+}
+
+/**
+ * Fetches the exact count of resolved rows via a read-only GET against the
+ * PostgREST REST endpoint (Range: 0-0, Prefer: count=exact), parsing the
+ * total from the Content-Range response header. Never reads the response
+ * body of the count request. Throws a safe Error (status code only, no
+ * response body) if the request fails or the header is missing/invalid.
+ */
+async function fetchResolvedRowCount(
+  fetchImpl: FetchLike,
+  config: SupabaseReadConfig,
+): Promise<number> {
+  const response = await fetchImpl(buildRestUrl(config.url), {
+    method: "GET",
+    headers: {
+      apikey: config.key,
+      Authorization: `Bearer ${config.key}`,
+      Accept: "application/json",
+      Prefer: "count=exact",
+      "Range-Unit": "items",
+      Range: "0-0",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const contentRange = response.headers.get("Content-Range") ?? response.headers.get("content-range");
+  if (!contentRange) {
+    throw new Error("missing Content-Range header");
+  }
+
+  const match = /\/(\d+)$/.exec(contentRange);
+  if (!match) {
+    throw new Error("invalid Content-Range header");
+  }
+
+  return Number(match[1]);
+}
+
+/**
+ * Fetches one page of resolved rows via a read-only GET against the
+ * PostgREST REST endpoint (Range: from-to). Throws a safe Error (status
+ * code only, no response body) if the request fails or the body is not a
+ * JSON array.
+ */
+async function fetchResolvedRowPage(
+  fetchImpl: FetchLike,
+  config: SupabaseReadConfig,
+  from: number,
+  to: number,
+): Promise<unknown[]> {
+  const response = await fetchImpl(buildRestUrl(config.url), {
+    method: "GET",
+    headers: {
+      apikey: config.key,
+      Authorization: `Bearer ${config.key}`,
+      Accept: "application/json",
+      "Range-Unit": "items",
+      Range: `${from}-${to}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  if (!Array.isArray(data)) {
+    throw new Error("response body was not a JSON array");
+  }
+
+  return data;
 }
 
 /**
  * Fetches ALL resolved generated_signal_pairs rows by default (read-only
- * exact count, then paginated `.range()` reads, resolved_at not null,
- * ordered by resolved_at descending), normalizes each row, and writes the
- * result as a JSON array to `outputPath`. Never writes to the database.
+ * exact count, then paginated GET reads over the REST API, resolved_at not
+ * null, ordered by resolved_at descending), normalizes each row, and
+ * writes the result as a JSON array to `outputPath`. Never writes to the
+ * database.
  *
  * With no `maxRows`, `targetRows` is the exact available resolved-row
  * count and the export is reported COMPLETE only if every row was fetched.
@@ -198,24 +300,24 @@ export async function exportGeneratedSignalPairsFromSupabase(
   const summaryOutputPath = options.summaryOutputPath;
   const pageSize = options.pageSize ?? DEFAULT_PAGE_SIZE;
   const maxRows = options.maxRows;
+  const fetchImpl = options.fetchImpl ?? (fetch as unknown as FetchLike);
 
-  const client =
-    options.client ??
-    (() => {
-      const config = resolveSupabaseReadConfig(options.env ?? process.env);
-      return createClient(config.url, config.key, { auth: { persistSession: false } });
-    })();
-
-  const countResult = await client
-    .from(TABLE_NAME)
-    .select("*", { count: "exact", head: true })
-    .not("resolved_at", "is", null);
-
-  if (countResult.error) {
-    throw new Error(`Supabase read failed (count): ${extractErrorMessage(countResult.error)}`);
+  let config: SupabaseReadConfig;
+  try {
+    config = resolveSupabaseReadConfig(options.env ?? process.env);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    throw new Error(`Export failed (config): ${message}`);
   }
 
-  const availableResolvedRows = countResult.count ?? 0;
+  let availableResolvedRows: number;
+  try {
+    availableResolvedRows = await fetchResolvedRowCount(fetchImpl, config);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    throw new Error(`Export failed (count): ${message}`);
+  }
+
   const targetRows =
     maxRows !== undefined ? Math.min(maxRows, availableResolvedRows) : availableResolvedRows;
 
@@ -227,19 +329,15 @@ export async function exportGeneratedSignalPairsFromSupabase(
     const remaining = targetRows - from;
     const to = from + Math.min(pageSize, remaining) - 1;
 
-    const { data, error } = await client
-      .from(TABLE_NAME)
-      .select("*")
-      .not("resolved_at", "is", null)
-      .order("resolved_at", { ascending: false })
-      .range(from, to);
-
-    if (error) {
-      throw new Error(`Supabase read failed (page ${pagesFetched + 1}): ${extractErrorMessage(error)}`);
+    let pageRows: unknown[];
+    try {
+      pageRows = await fetchResolvedRowPage(fetchImpl, config, from, to);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
+      throw new Error(`Export failed (page ${pagesFetched + 1}): ${message}`);
     }
 
     pagesFetched += 1;
-    const pageRows = Array.isArray(data) ? data : [];
     for (const row of pageRows) {
       normalizedRows.push(normalizeGeneratedSignalPairRow(row as Record<string, unknown>));
     }
@@ -251,11 +349,16 @@ export async function exportGeneratedSignalPairsFromSupabase(
     }
   }
 
-  const dir = path.dirname(outputPath);
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
+  try {
+    const dir = path.dirname(outputPath);
+    if (!existsSync(dir)) {
+      mkdirSync(dir, { recursive: true });
+    }
+    writeFileSync(outputPath, `${JSON.stringify(normalizedRows, null, 2)}\n`, "utf8");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown error";
+    throw new Error(`Export failed (write): ${message}`);
   }
-  writeFileSync(outputPath, `${JSON.stringify(normalizedRows, null, 2)}\n`, "utf8");
 
   const fetchedRows = normalizedRows.length;
   const exportMode: ExportMode = maxRows !== undefined ? "DEBUG_CAPPED" : "FULL_RESOLVED";
@@ -286,13 +389,18 @@ export async function exportGeneratedSignalPairsFromSupabase(
   };
 
   if (summaryOutputPath) {
-    const summaryDir = path.dirname(summaryOutputPath);
-    if (!existsSync(summaryDir)) {
-      mkdirSync(summaryDir, { recursive: true });
+    try {
+      const summaryDir = path.dirname(summaryOutputPath);
+      if (!existsSync(summaryDir)) {
+        mkdirSync(summaryDir, { recursive: true });
+      }
+      // The summary object contains only counts and mode strings -- no row
+      // payloads -- so this sidecar never leaks row data.
+      writeFileSync(summaryOutputPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown error";
+      throw new Error(`Export failed (write): ${message}`);
     }
-    // The summary object contains only counts and mode strings -- no row
-    // payloads -- so this sidecar never leaks row data.
-    writeFileSync(summaryOutputPath, `${JSON.stringify(summary, null, 2)}\n`, "utf8");
   }
 
   return summary;

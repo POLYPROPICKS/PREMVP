@@ -124,19 +124,36 @@ scripts\modeling\strategies\run-3d2o-from-supabase.cmd
 
 This single command:
 
-1. Asks Supabase for the exact count of resolved `generated_signal_pairs`
-   rows (`resolved_at is not null`), read-only.
-2. Fetches **all** available resolved rows by paginated `.range()` reads
-   (`select *`, ordered by `resolved_at` descending) -- there is no default
-   dataset cap.
+1. Asks the Supabase PostgREST REST endpoint for the exact count of
+   resolved `generated_signal_pairs` rows (`resolved_at is not null`),
+   read-only.
+2. Fetches **all** available resolved rows by paginated `Range`-header GET
+   requests (`select=*`, ordered by `resolved_at` descending) -- there is
+   no default dataset cap.
 3. Normalizes schema drift in code (e.g. `selected_token_id` /
    `diagnostics.selectedTokenId` -> `token_id`, `diagnostics.entryPrice` ->
    `entry_price_num`, `pre_event_score_num` -> `score`).
 4. Writes `modeling\local_exports\generated_signal_pairs_export.json`.
-5. Runs the existing read-only dedup comparison CLI
+5. **Fails fast** if the export step failed or the export file is missing
+   -- it will not proceed to comparison on a broken/partial export (Phase
+   3E.2a).
+6. Runs the existing read-only dedup comparison CLI
    (`--input-format generated_signal_pairs --include-dqa-r4 --dedup-policy
    strict_latest_created_before_resolved`).
-6. Writes and prints `modeling\local_exports\3d2o_dedup_report.json`.
+7. Writes and prints `modeling\local_exports\3d2o_dedup_report.json`. Any
+   stale report from a previous run is deleted before this step, so a
+   failed run never leaves behind a report that looks like a fresh success.
+
+**Windows-safe transport (Phase 3E.2a):** the exporter reads via a plain
+read-only GET request against Supabase's PostgREST REST endpoint (using the
+platform `fetch`, with a `Range` header for pagination and `Prefer:
+count=exact` for the row count) instead of the `@supabase/supabase-js`
+client's count/head-select path. The client's count/head path was observed
+to crash on Windows with a native libuv assertion failure
+(`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`) -- a
+runtime/platform issue, not a query logic bug. The REST/`fetch` transport
+has no equivalent failure mode. No manual fallback or Supabase cell copy is
+required because of this change -- the one-command workflow is unaffected.
 
 **Dataset completeness contract (Phase 3D.2P):**
 
@@ -175,13 +192,16 @@ This single command:
   below.
 
 If Supabase env/config access is unavailable in the founder's shell, fall
-back to the clipboard workflow (Phase 3D.2Oa) below.
+back to the clipboard workflow (Phase 3D.2Oa) below. **This clipboard
+fallback should not be used in the normal operator path** -- it exists only
+for the rare case where env/config access genuinely is not available.
 
 ## Phase 3D.2Oa — Operator local export materializer (fallback only)
 
 **Fallback only if env/config access is unavailable** -- prefer Phase
 3D.2Ob (`run-3d2o-from-supabase.cmd`) above when Supabase read env/config is
-available.
+available. Do not use this clipboard/cell-copy path as the default
+workflow.
 
 Founder workflow (no repo edits, no `git pull` timing issues, no manually
 recreating `tmp_generated_signal_pairs_export.json`):
@@ -456,11 +476,18 @@ scripts\modeling\strategies\run-3e2-roi-from-supabase.cmd
 This command:
 
 1. Runs the full read-only Supabase export (all resolved rows, paginated,
-   no cap) **and** writes an export summary sidecar.
-2. Runs `run-readonly-comparison.ts` with `--include-roi` behind the full
+   no cap, via the Windows-safe REST transport) **and** writes an export
+   summary sidecar.
+2. **Fails fast** if the export step failed, or if the export file or
+   summary sidecar is missing -- it will not run the ROI comparison on a
+   broken/partial export (Phase 3E.2a).
+3. Runs `run-readonly-comparison.ts` with `--include-roi` behind the full
    gate set (`--input-format generated_signal_pairs --include-dqa-r4
    --dedup-policy strict_latest_created_before_resolved --export-summary`).
-3. Writes and prints the gated ROI report.
+4. Writes and prints the gated ROI report. Any stale report from a
+   previous run is deleted before this step (and again if the comparison
+   step itself fails), so a failed run never leaves behind a report that
+   looks like a fresh success.
 
 Generated (git-ignored) outputs under `modeling/local_exports/`:
 
@@ -473,7 +500,8 @@ Notes:
 
 - The old `run-3d2o-from-supabase.cmd` remains the **dataset / DQA / dedup**
   report (no ROI). `run-3e2-roi-from-supabase.cmd` is the **gated ROI
-  audit** report. Both are read-only.
+  audit** report. Both are read-only, both fail fast, and both use the
+  Windows-safe REST export transport.
 - ROI is computed only when `roiGate.status === "READY"` -- i.e. the export
   is `COMPLETE` with `missingRows === 0`, the export summary's `fetchedRows`
   matches the analyzed rows, the strict dedup projection has no rows missing
@@ -484,3 +512,6 @@ Notes:
   duplicates; selected row objects are never emitted in the output.
 - **No DB writes. No deploy. No product/profit claims.** ROI here is a local
   model-audit metric only.
+- **No manual fallback or Supabase cell copy required.** Both runners are
+  fully automated; the clipboard workflow (Phase 3D.2Oa) remains available
+  only as a last-resort fallback, not part of the normal operator path.

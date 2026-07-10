@@ -317,3 +317,37 @@ comparison CLI (`run-readonly-comparison.ts`) behind explicit gates.
 - **ROI here is a local model-audit metric, not a product claim.** No
   ROI/profit claim may be made from a partial or incomplete export, and the
   gate is what enforces that at the tooling level.
+
+## Phase 3E.2a — Windows-safe export transport and fail-fast runners
+
+A real founder run of `run-3e2-roi-from-supabase.cmd` failed during the
+count step with a native Windows libuv crash
+(`Assertion failed: !(handle->flags & UV_HANDLE_CLOSING), file
+src\win\async.c, line 76`) from the `@supabase/supabase-js` client's
+count/head-select path, and the runner incorrectly proceeded into the ROI
+comparison step afterward (which then failed separately on a missing
+export summary file). This is not a valid ROI result, and it exposed two
+gaps this phase closes:
+
+- **Exporter transport**: `export-generated-signal-pairs-from-supabase.ts`
+  no longer depends on the `@supabase/supabase-js` client for its default
+  count/data path. It uses a read-only GET request against Supabase's
+  PostgREST REST endpoint directly (the platform `fetch`, with `Prefer:
+  count=exact` / `Range-Unit: items` / `Range: 0-0` for the count, and
+  `Range: <from>-<to>` for each page), parsing the total row count from the
+  `Content-Range` response header. This removes the Windows-specific
+  crash surface entirely -- a plain GET request has no equivalent failure
+  mode. The env convention (`SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY`),
+  CLI flags, normalization, and completeness-summary contract are all
+  unchanged.
+- **Runner fail-fast**: both `run-3d2o-from-supabase.cmd` and
+  `run-3e2-roi-from-supabase.cmd` now check the exporter's exit code
+  **and** verify the export file (and, for the ROI runner, the export
+  summary sidecar) actually exist before running any comparison step. Any
+  stale report file from a previous run is deleted before a new comparison
+  runs (and again if the comparison itself fails), so a failed run can
+  never leave behind a report that reads like a fresh success.
+- **No manual fallback required by this change.** The one-command operator
+  workflow (`run-3e2-roi-from-supabase.cmd` / `run-3d2o-from-supabase.cmd`)
+  is unaffected -- founders still run a single command with no clipboard,
+  no cell copy, and no manual file editing.
