@@ -127,6 +127,11 @@ export interface HistoricalFunnelVariantResult {
   workingEventGroups?: number;
   status: "COMPLETED" | "BLOCKED";
   limitationFlags: string[];
+  // The final selected row objects (original references from the input). A
+  // downstream consumer (the comparison engine) uses these to compute
+  // ROI/PnL/equity via the canonical roiPnlContract -- so it never has to
+  // re-implement the funnel selection logic. Never a mutated copy.
+  selectedRows: Row[];
 }
 
 function applyRequire(rows: Row[], field: string | null, rule: Record<string, unknown> | null): Row[] {
@@ -258,13 +263,13 @@ export function evaluateHistoricalFunnelVariant(
       // BASELINE / other KEEP-all steps: no-op, current already narrowed by
       // prior REQUIRE/EXCLUDE steps.
     } else if (step.action === "STAKE") {
-      if (bundle.bundleId === "ALT_SM_GUARD_ON_PRIMARY" || bundle.bundleId === "MODEL_A") {
-        // Soft guard: attaches stake metadata, never removes a row.
-        current = current.map((r) => ({ ...r, __evaluatedStake: stakePrimary(r) }));
-      }
+      // Soft guard (ALT_SM_GUARD_ON_PRIMARY / MODEL_A): the stake formula
+      // stakePrimary() would halve the stake at smart money >= 75, but it
+      // never removes a row from selection -- so `current` is unchanged here.
       // Historical/normalized stake amounts are declarative (see the
       // registry's historicalStakePolicy/normalizedEvaluationStakePolicy);
       // this adapter never computes ROI/PnL from them.
+      void stakePrimary;
     }
     // INPUT / OUTPUT steps are structural bookends; INPUT already seeded
     // `current`, OUTPUT reports the final `current` length below.
@@ -287,6 +292,7 @@ export function evaluateHistoricalFunnelVariant(
     ...(workingEventGroups !== undefined ? { workingEventGroups } : {}),
     status: blocked ? "BLOCKED" : "COMPLETED",
     limitationFlags,
+    selectedRows: current,
   };
 }
 

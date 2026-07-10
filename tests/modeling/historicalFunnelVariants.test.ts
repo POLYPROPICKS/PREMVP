@@ -184,3 +184,12 @@ test("C18: no ROI formula is duplicated -- result has no ROI/PnL fields", () => 
   assert.ok(!("roiPct" in result));
   assert.ok(!("totalPnlUnits" in result));
 });
+
+test("C19: selectedRows exposes the final row objects and matches outputRows without mutating input", () => {
+  const rows = [makeRow({ signal_confidence_num: 80 }), makeRow({ signal_confidence_num: 10 })];
+  const result = evaluateHistoricalFunnelVariant(rows, classifier, "ALT2_TS_SCORE_GE_65");
+  assert.equal(result.selectedRows.length, result.outputRows);
+  assert.equal(result.selectedRows.length, 1);
+  // The selected row is the original object reference (identity preserved).
+  assert.ok(result.selectedRows.every((r) => rows.includes(r as (typeof rows)[number])));
+});
