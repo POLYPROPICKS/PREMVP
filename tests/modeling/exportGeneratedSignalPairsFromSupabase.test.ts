@@ -10,6 +10,8 @@ import {
   resolveSupabaseReadConfig,
   GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS,
   buildSelectParam,
+  buildSameTimestampRestUrl,
+  buildOlderTimestampsRestUrl,
 } from "../../scripts/modeling/strategies/export-generated-signal-pairs-from-supabase";
 
 const SOURCE_PATH = path.join(
@@ -80,62 +82,83 @@ function makeFakeResponse(opts: {
   };
 }
 
-// Parses the canonical `and=(resolved_at.not.is.null,resolved_at.lte.<cutoff>)`
+// Parses the canonical `and=(resolved_at.not.is.null,resolved_at.lte.<cutoff>[,resolved_at.lt.<older>])`
 // filter this transport uses instead of duplicate `resolved_at` query keys.
-function parseCutoffFromAndFilter(andValue: string | null): string | null {
+function parseLteFromAndFilter(andValue: string | null): string | null {
   if (!andValue) return null;
   const match = /resolved_at\.lte\.([^,)]+)/.exec(andValue);
   return match ? match[1] : null;
 }
 
+function parseLtResolvedFromAndFilter(andValue: string | null): string | null {
+  if (!andValue) return null;
+  const match = /resolved_at\.lt\.([^,)]+)/.exec(andValue);
+  return match ? match[1] : null;
+}
+
+function parsePrefixedValue(value: string | null, prefix: string): string | null {
+  if (!value) return null;
+  return value.startsWith(prefix) ? value.slice(prefix.length) : null;
+}
+
+type RequestKind = "first-page" | "same-timestamp" | "older-timestamps";
+
 interface FakeFetchCall {
   url: string;
   init: { method?: string; headers?: Record<string, string> };
-}
-
-function parseCursorFromOrFilter(orValue: string | null): { resolvedAt: string; id: string } | null {
-  if (!orValue) return null;
-  const match = /resolved_at\.lt\.([^,]+),and\(resolved_at\.eq\.([^,]+),id\.lt\.([^)]+)\)/.exec(orValue);
-  if (!match) return null;
-  return { resolvedAt: match[1], id: match[3] };
-}
-
-interface FakeFetchOptions {
-  rows: FakeKeysetRow[];
-  pageOverride?: (ctx: {
-    pageNumber: number;
-    isFirstPage: boolean;
-    limit: number;
-  }) => ReturnType<typeof makeFakeResponse> | null;
+  requestKind: RequestKind;
 }
 
 // Simulates a PostgREST-style keyset-paginated endpoint operating over an
-// already resolved_at-DESC,id-DESC-sorted dataset: applies the cutoff
-// filter, the composite `or` cursor filter (if present), and `limit`.
-function makeFakeFetch(options: FakeFetchOptions) {
+// already resolved_at-DESC,id-DESC-sorted dataset. Phase 3E.2h split
+// keyset: a logical page after the first is composed of up to two physical
+// requests --
+//   - same-timestamp tail: resolved_at=eq.<cursorTs> & id=lt.<cursorId>,
+//     order=id.desc
+//   - older-timestamps: and=(cutoff...,resolved_at.lt.<cursorTs>),
+//     order=resolved_at.desc,id.desc
+// The first logical page is a single request (no cursor).
+function makeFakeFetch(options: {
+  rows: FakeKeysetRow[];
+  pageOverride?: (ctx: {
+    callNumber: number;
+    requestKind: RequestKind;
+    limit: number;
+  }) => ReturnType<typeof makeFakeResponse> | null;
+}) {
   const calls: FakeFetchCall[] = [];
 
   const fetchImpl = async (url: string, init?: { method?: string; headers?: Record<string, string> }) => {
-    calls.push({ url, init: init ?? {} });
     const parsedUrl = new URL(url);
     const limit = Number(parsedUrl.searchParams.get("limit"));
-    const cutoff = parseCutoffFromAndFilter(parsedUrl.searchParams.get("and"));
-    const cursor = parseCursorFromOrFilter(parsedUrl.searchParams.get("or"));
+    const eqResolvedAt = parsePrefixedValue(parsedUrl.searchParams.get("resolved_at"), "eq.");
+    const idLt = parsePrefixedValue(parsedUrl.searchParams.get("id"), "lt.");
+    const andValue = parsedUrl.searchParams.get("and");
+    const lte = parseLteFromAndFilter(andValue);
+    const ltResolved = parseLtResolvedFromAndFilter(andValue);
 
-    let filtered = cutoff ? options.rows.filter((r) => r.resolved_at <= cutoff) : options.rows;
-    if (cursor) {
-      filtered = filtered.filter(
-        (r) => r.resolved_at < cursor.resolvedAt || (r.resolved_at === cursor.resolvedAt && r.id < cursor.id),
+    let requestKind: RequestKind;
+    let filtered: FakeKeysetRow[];
+    if (eqResolvedAt !== null) {
+      requestKind = "same-timestamp";
+      filtered = options.rows.filter(
+        (r) => r.resolved_at === eqResolvedAt && (idLt === null || r.id < idLt),
       );
+    } else if (ltResolved !== null) {
+      requestKind = "older-timestamps";
+      filtered = options.rows.filter(
+        (r) => (lte === null || r.resolved_at <= lte) && r.resolved_at < ltResolved,
+      );
+    } else {
+      requestKind = "first-page";
+      filtered = lte === null ? options.rows : options.rows.filter((r) => r.resolved_at <= lte);
     }
+
+    calls.push({ url, init: init ?? {}, requestKind });
     const page = filtered.slice(0, limit);
 
     if (options.pageOverride) {
-      const overridden = options.pageOverride({
-        pageNumber: calls.length,
-        isFirstPage: cursor === null,
-        limit,
-      });
+      const overridden = options.pageOverride({ callNumber: calls.length, requestKind, limit });
       if (overridden) return overridden;
     }
 
@@ -282,7 +305,7 @@ test("K3. first request contains a single canonical and-cutoff filter, order res
   });
 });
 
-test("K4. second request contains the correctly encoded composite or cursor filter", async () => {
+test("K4. no logical page (first or cursor) ever uses a composite PostgREST or= filter", async () => {
   const rows = generateDescendingRows(1500, CUTOFF);
   const { fetchImpl, calls } = makeFakeFetch({ rows });
   await withTempDir(async (outputPath) => {
@@ -293,18 +316,14 @@ test("K4. second request contains the correctly encoded composite or cursor filt
       pageSize: 1000,
     });
     assert.ok(calls.length >= 2);
-    const second = new URL(calls[1].url);
-    const orValue = second.searchParams.get("or");
-    assert.ok(orValue, "expected an or= cursor filter on the second request");
-    // The cursor must be built from the last row of page 1 (row index 999).
-    const lastRowOfPage1 = rows[999];
-    assert.match(orValue as string, new RegExp(`resolved_at\\.lt\\.${lastRowOfPage1.resolved_at.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-    assert.match(orValue as string, new RegExp(`id\\.lt\\.${lastRowOfPage1.id}`));
+    for (const call of calls) {
+      assert.equal(new URL(call.url).searchParams.get("or"), null, "no request may carry an or= cursor filter");
+    }
   });
 });
 
-test("K5. URL-level assertion proves both cursor branches: older resolved_at, and same resolved_at + lower id", async () => {
-  const rows = generateDescendingRows(1500, CUTOFF);
+test("K5. cursor page is split into a same-timestamp request then an older-timestamps request", async () => {
+  const rows = generateDescendingRows(1500, CUTOFF); // all distinct timestamps
   const { fetchImpl, calls } = makeFakeFetch({ rows });
   await withTempDir(async (outputPath) => {
     await exportGeneratedSignalPairsFromSupabase({
@@ -313,11 +332,22 @@ test("K5. URL-level assertion proves both cursor branches: older resolved_at, an
       outputPath,
       pageSize: 1000,
     });
-    const second = new URL(calls[1].url);
-    const orValue = second.searchParams.get("or") as string;
-    assert.match(orValue, /resolved_at\.lt\./, "must include the older-resolved_at branch");
-    assert.match(orValue, /and\(resolved_at\.eq\./, "must include the same-resolved_at branch");
-    assert.match(orValue, /id\.lt\./, "same-resolved_at branch must compare id");
+    assert.equal(calls[0].requestKind, "first-page");
+    // With all-distinct timestamps, the same-timestamp tail is empty, so
+    // the second logical page issues Request A (empty) then Request B.
+    assert.equal(calls[1].requestKind, "same-timestamp");
+    assert.equal(calls[2].requestKind, "older-timestamps");
+    const cursorRow = rows[999]; // last row of the first logical page
+    const sameTs = new URL(calls[1].url);
+    assert.equal(sameTs.searchParams.get("resolved_at"), `eq.${cursorRow.resolved_at}`);
+    assert.equal(sameTs.searchParams.get("id"), `lt.${cursorRow.id}`);
+    assert.equal(sameTs.searchParams.get("order"), "id.desc");
+    const older = new URL(calls[2].url);
+    const andValue = older.searchParams.get("and") as string;
+    assert.match(andValue, new RegExp(`resolved_at\\.lt\\.${cursorRow.resolved_at.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.match(andValue, /resolved_at\.not\.is\.null/);
+    assert.match(andValue, /resolved_at\.lte\./);
+    assert.equal(older.searchParams.get("order"), "resolved_at.desc,id.desc");
   });
 });
 
@@ -465,7 +495,7 @@ test("K13. debug --max-rows remains intentionally capped and never reports compl
   });
 });
 
-test("K13b. debug --max-rows spanning multiple pages still uses keyset cursors correctly", { timeout: 5000 }, async () => {
+test("K13b. debug --max-rows spanning multiple logical pages still uses split keyset requests correctly", { timeout: 5000 }, async () => {
   const rows = generateDescendingRows(2500, CUTOFF);
   const { fetchImpl, calls } = makeFakeFetch({ rows });
   await withTempDir(async (outputPath) => {
@@ -477,9 +507,13 @@ test("K13b. debug --max-rows spanning multiple pages still uses keyset cursors c
       maxRows: 2500,
     });
     assert.equal(result.fetchedRows, 2500);
-    assert.equal(calls.length, 3);
-    assert.ok(calls[1].url.includes("or="));
-    assert.ok(calls[2].url.includes("or="));
+    // No request ever uses a composite or= filter, and cursor pages are
+    // split into same-timestamp + older-timestamps requests.
+    for (const call of calls) {
+      assert.equal(new URL(call.url).searchParams.get("or"), null);
+    }
+    assert.ok(calls.some((c) => c.requestKind === "same-timestamp"));
+    assert.ok(calls.some((c) => c.requestKind === "older-timestamps"));
   });
 });
 
@@ -488,9 +522,9 @@ test("K14. missing cursor fields produce KEYSET_CURSOR_FIELDS_MISSING and do not
   const { fetchImpl } = makeFakeFetch({
     rows,
     pageOverride: (ctx) => {
-      if (ctx.pageNumber === 1) {
-        // First page: return a full page, but strip resolved_at/id from
-        // the last row so no valid cursor can be extracted.
+      if (ctx.callNumber === 1) {
+        // First logical page: return a full page, but strip resolved_at/id
+        // from the last row so no valid cursor can be extracted.
         const page = rows.slice(0, ctx.limit).map((r) => ({ ...r }));
         (page[page.length - 1] as Record<string, unknown>).resolved_at = "";
         (page[page.length - 1] as Record<string, unknown>).id = "";
@@ -523,9 +557,10 @@ test("K15. repeated/non-advancing cursor produces CURSOR_DID_NOT_ADVANCE and doe
   const { fetchImpl } = makeFakeFetch({
     rows,
     pageOverride: (ctx) => {
-      if (ctx.pageNumber >= 2) {
-        // Every subsequent page returns the identical first page again --
-        // simulates a cursor filter that failed to narrow the result set.
+      if (ctx.callNumber >= 2) {
+        // Every subsequent request returns the identical first page again --
+        // the same-timestamp request comes back "full", so the merged
+        // logical page's cursor never advances past the first page's tail.
         return makeFakeResponse({ ok: true, status: 200, json: async () => firstPage });
       }
       return null;
@@ -988,8 +1023,10 @@ test("P8. keyset query shape (order, limit, cursor) is unchanged by the physical
     assert.equal(first.searchParams.get("order"), "resolved_at.desc,id.desc");
     assert.equal(first.searchParams.get("limit"), "1000");
     assert.equal(first.searchParams.get("or"), null);
-    const second = new URL(calls[1].url);
-    assert.ok(second.searchParams.get("or"));
+    // The second logical page is split; the same-timestamp request carries
+    // resolved_at=eq/id=lt, never a composite or= filter.
+    assert.equal(calls[1].requestKind, "same-timestamp");
+    assert.equal(new URL(calls[1].url).searchParams.get("or"), null);
   });
 });
 
@@ -1057,12 +1094,19 @@ test("B1. duplicate resolved_at query keys are absent", async () => {
     });
     for (const call of calls) {
       const url = new URL(call.url);
-      assert.equal(url.searchParams.getAll("resolved_at").length, 0);
+      // No request ever carries DUPLICATE resolved_at keys. The
+      // same-timestamp request legitimately carries exactly one
+      // `resolved_at=eq.` key; cutoff-based requests carry zero (the
+      // resolved_at predicates live inside the single `and` param).
+      assert.ok(
+        url.searchParams.getAll("resolved_at").length <= 1,
+        `expected at most one resolved_at key, got ${url.searchParams.getAll("resolved_at").length}`,
+      );
     }
   });
 });
 
-test("B2. cursor page preserves both the canonical and-cutoff filter and the composite or-cursor filter", async () => {
+test("B2. cursor page's older-timestamps request preserves the canonical and-cutoff filter (with an extra resolved_at.lt) and no or=", async () => {
   const rows = generateDescendingRows(1500, CUTOFF);
   const { fetchImpl, calls } = makeFakeFetch({ rows });
   await withTempDir(async (outputPath) => {
@@ -1072,9 +1116,14 @@ test("B2. cursor page preserves both the canonical and-cutoff filter and the com
       outputPath,
       pageSize: 1000,
     });
-    const second = new URL(calls[1].url);
-    assert.ok(second.searchParams.get("and"), "cursor page must still carry the cutoff filter");
-    assert.ok(second.searchParams.get("or"), "cursor page must still carry the cursor filter");
+    const olderCall = calls.find((c) => c.requestKind === "older-timestamps");
+    assert.ok(olderCall, "expected an older-timestamps request");
+    const older = new URL(olderCall!.url);
+    const andValue = older.searchParams.get("and") as string;
+    assert.match(andValue, /resolved_at\.not\.is\.null/);
+    assert.match(andValue, /resolved_at\.lte\./);
+    assert.match(andValue, /resolved_at\.lt\./);
+    assert.equal(older.searchParams.get("or"), null);
   });
 });
 
@@ -1109,9 +1158,12 @@ test("B4. UUID-shaped cursor ids are passed through verbatim, not lexically rein
       pageSize: 1,
     });
     assert.equal(result.fetchedRows, 3);
-    const second = new URL(calls[1].url);
-    const orValue = second.searchParams.get("or") as string;
-    assert.match(orValue, /id\.lt\.3f9e1c2a-1111-4a11-8a11-abcdefabcdef/);
+    // The same-timestamp request for logical page 2 carries the UUID cursor
+    // id verbatim in id=lt.<uuid>, with no lexical reinterpretation.
+    const sameTsCall = calls.find((c) => c.requestKind === "same-timestamp");
+    assert.ok(sameTsCall);
+    const sameTs = new URL(sameTsCall!.url);
+    assert.equal(sameTs.searchParams.get("id"), "lt.3f9e1c2a-1111-4a11-8a11-abcdefabcdef");
   });
 });
 
@@ -1322,5 +1374,230 @@ test("K24. existing keyset boundary and completeness behavior is unaffected by P
     assert.equal(result.completionProof, "LAST_PAGE_SHORT");
     assert.equal(result.exportCompleteness, "COMPLETE_BY_EXHAUSTION");
     assert.equal(result.paginationMode, "KEYSET_RESOLVED_AT_ID");
+  });
+});
+
+// ---- Phase 3E.2h: split keyset cursor queries ----
+
+test("SK1. second logical page issues no composite or= query on any of its physical requests", async () => {
+  const rows = generateDescendingRows(2000, CUTOFF);
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 1000,
+    });
+    for (const call of calls) {
+      assert.equal(new URL(call.url).searchParams.get("or"), null);
+    }
+  });
+});
+
+test("SK2. buildSameTimestampRestUrl uses resolved_at=eq, id=lt, order=id.desc, physical select, limit", () => {
+  const url = new URL(
+    buildSameTimestampRestUrl("https://example.supabase.co", { resolvedAt: "2026-07-10T00:00:00.000Z", id: "abc-123" }, 500),
+  );
+  assert.equal(url.searchParams.get("resolved_at"), "eq.2026-07-10T00:00:00.000Z");
+  assert.equal(url.searchParams.get("id"), "lt.abc-123");
+  assert.equal(url.searchParams.get("order"), "id.desc");
+  assert.equal(url.searchParams.get("limit"), "500");
+  assert.equal(url.searchParams.get("select"), GENERATED_SIGNAL_PAIRS_PHYSICAL_FIELDS.join(","));
+  assert.equal(url.searchParams.get("or"), null);
+});
+
+test("SK3. buildOlderTimestampsRestUrl uses cutoff + resolved_at.lt in one and, order resolved_at.desc,id.desc, no or", () => {
+  const url = new URL(
+    buildOlderTimestampsRestUrl(
+      "https://example.supabase.co",
+      "2026-07-10T12:00:00.000Z",
+      { resolvedAt: "2026-07-10T00:00:00.000Z", id: "abc-123" },
+      400,
+    ),
+  );
+  const andValue = url.searchParams.get("and") as string;
+  assert.match(andValue, /resolved_at\.not\.is\.null/);
+  assert.match(andValue, /resolved_at\.lte\.2026-07-10T12:00:00\.000Z/);
+  assert.match(andValue, /resolved_at\.lt\.2026-07-10T00:00:00\.000Z/);
+  assert.equal(url.searchParams.get("order"), "resolved_at.desc,id.desc");
+  assert.equal(url.searchParams.get("limit"), "400");
+  assert.equal(url.searchParams.get("or"), null);
+  assert.equal(url.searchParams.get("resolved_at"), null, "cutoff+lt must be a single and, not a top-level resolved_at key");
+});
+
+test("SK4. older-timestamps request limit equals the remaining logical-page capacity after the same-timestamp tail", async () => {
+  // A shared-timestamp group of 3 rows sits at the head, then distinct
+  // older rows. pageSize 5: logical page 1 = [group0,group1,group2,old0,old1].
+  const shared = CUTOFF.toISOString();
+  const rows: FakeKeysetRow[] = [
+    makeKeysetRow(shared, "000900"),
+    makeKeysetRow(shared, "000800"),
+    makeKeysetRow(shared, "000700"),
+  ];
+  for (let i = 0; i < 6; i++) {
+    rows.push(makeKeysetRow(new Date(CUTOFF.getTime() - 1000 * (i + 1)).toISOString(), String(500 - i).padStart(4, "0")));
+  }
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 5,
+    });
+    // Logical page 2 cursor is old1 (a distinct timestamp), so its Request A
+    // (same-timestamp) returns 0 rows and Request B must ask for the full
+    // remaining 5.
+    const older = calls.find((c) => c.requestKind === "older-timestamps");
+    assert.ok(older);
+    // Find the same-timestamp request immediately preceding it in page 2.
+    assert.equal(new URL(older!.url).searchParams.get("limit"), "5");
+  });
+});
+
+test("SK5. a same-timestamp request that fills the logical page skips the older-timestamps request", async () => {
+  // 12 rows all sharing one timestamp; pageSize 4 -> every logical page is
+  // fully satisfied by the same-timestamp request, so the older request is
+  // never issued until the group is exhausted.
+  const shared = CUTOFF.toISOString();
+  const rows: FakeKeysetRow[] = [];
+  for (let i = 0; i < 12; i++) {
+    rows.push(makeKeysetRow(shared, String(900 - i).padStart(4, "0")));
+  }
+  const { fetchImpl, calls } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    const result = await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 4,
+    });
+    assert.equal(result.fetchedRows, 12);
+    // Logical page 1 = first-page (4). Pages 2 and 3 are same-timestamp
+    // requests that each return a full 4 -> no older request until page 4's
+    // same-timestamp request returns 0 and the older request confirms the
+    // end.
+    const sameTsFullPages = calls.filter((c) => c.requestKind === "same-timestamp");
+    assert.ok(sameTsFullPages.length >= 2);
+    // At least the two full interior logical pages must not have triggered
+    // an older request between them.
+    const kinds = calls.map((c) => c.requestKind);
+    // first-page, same-timestamp(full), same-timestamp(full), same-timestamp(empty), older(end)
+    assert.equal(kinds[0], "first-page");
+    assert.equal(kinds[1], "same-timestamp");
+    assert.equal(kinds[2], "same-timestamp");
+  });
+});
+
+test("SK6. an equal-timestamp group spanning multiple logical pages has no gaps or duplicates", async () => {
+  // 10 rows sharing one timestamp, split across pageSize 3.
+  const shared = CUTOFF.toISOString();
+  const rows: FakeKeysetRow[] = [];
+  for (let i = 0; i < 10; i++) {
+    rows.push(makeKeysetRow(shared, String(9000 - i).padStart(5, "0")));
+  }
+  const { fetchImpl } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    const result = await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 3,
+    });
+    assert.equal(result.fetchedRows, 10);
+    const written = JSON.parse(readFileSync(outputPath, "utf8")) as Array<{ id: string }>;
+    const writtenIds = written.map((r) => r.id);
+    assert.equal(new Set(writtenIds).size, 10, "no duplicates");
+    assert.deepEqual(writtenIds, rows.map((r) => r.id), "canonical id.desc order preserved");
+  });
+});
+
+test("SK7. transition from a same-timestamp group to older timestamps preserves canonical global order", async () => {
+  const shared = CUTOFF.toISOString();
+  const rows: FakeKeysetRow[] = [
+    makeKeysetRow(shared, "000500"),
+    makeKeysetRow(shared, "000400"),
+    makeKeysetRow(new Date(CUTOFF.getTime() - 1000).toISOString(), "000999"),
+    makeKeysetRow(new Date(CUTOFF.getTime() - 2000).toISOString(), "000888"),
+  ];
+  const { fetchImpl } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 2,
+    });
+    const written = JSON.parse(readFileSync(outputPath, "utf8")) as Array<{ id: string }>;
+    assert.deepEqual(written.map((r) => r.id), ["000500", "000400", "000999", "000888"]);
+  });
+});
+
+test("SK8. UUID cursor is passed verbatim in both split requests", async () => {
+  // Ordered resolved_at DESC, id DESC: the two shared-timestamp rows are in
+  // descending id order (bbbb before aaaa), then a strictly older row.
+  const uuidRows: FakeKeysetRow[] = [
+    makeKeysetRow(CUTOFF.toISOString(), "bbbbbbbb-2222-4a11-8a11-abcdefabcdef"),
+    makeKeysetRow(CUTOFF.toISOString(), "aaaaaaaa-1111-4a11-8a11-abcdefabcdef"),
+    makeKeysetRow(new Date(CUTOFF.getTime() - 1000).toISOString(), "cccccccc-3333-4a11-8a11-abcdefabcdef"),
+  ];
+  const { fetchImpl, calls } = makeFakeFetch({ rows: uuidRows });
+  await withTempDir(async (outputPath) => {
+    const result = await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 1,
+    });
+    assert.equal(result.fetchedRows, 3);
+    const sameTs = calls.find((c) => c.requestKind === "same-timestamp");
+    assert.ok(sameTs);
+    assert.match(new URL(sameTs!.url).searchParams.get("id") as string, /^lt\.[0-9a-f-]+$/);
+    const older = calls.find((c) => c.requestKind === "older-timestamps");
+    assert.ok(older);
+    assert.match(new URL(older!.url).searchParams.get("and") as string, /resolved_at\.lt\.20\d\d-/);
+  });
+});
+
+test("SK9. completion proofs remain correct under split keyset (short final logical page)", async () => {
+  const rows = generateDescendingRows(2500, CUTOFF);
+  const { fetchImpl } = makeFakeFetch({ rows });
+  await withTempDir(async (outputPath) => {
+    const result = await exportGeneratedSignalPairsFromSupabase({
+      fetchImpl: fetchImpl as never,
+      env: FAKE_ENV,
+      outputPath,
+      pageSize: 1000,
+    });
+    assert.equal(result.fetchedRows, 2500);
+    assert.equal(result.completionProof, "LAST_PAGE_SHORT");
+    assert.equal(result.exportCompleteness, "COMPLETE_BY_EXHAUSTION");
+  });
+});
+
+test("SK10. safe error names the split request kind (same-timestamp vs older-timestamps)", async () => {
+  const rows = generateDescendingRows(2500, CUTOFF);
+  const { fetchImpl } = makeFakeFetch({
+    rows,
+    pageOverride: (ctx) => {
+      // Fail only the same-timestamp request of logical page 2.
+      if (ctx.requestKind === "same-timestamp") {
+        return makeFakeResponse({ ok: false, status: 500, text: async () => JSON.stringify({ code: "XX000", message: "boom" }) });
+      }
+      return null;
+    },
+  });
+  await withTempDir(async (outputPath) => {
+    await assert.rejects(
+      () => exportGeneratedSignalPairsFromSupabase({ fetchImpl: fetchImpl as never, env: FAKE_ENV, outputPath, pageSize: 1000 }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.match(error.message, /same-timestamp/);
+        assert.match(error.message, /paginationMode=KEYSET_RESOLVED_AT_ID/);
+        assert.match(error.message, /page 2/);
+        return true;
+      },
+    );
   });
 });

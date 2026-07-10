@@ -19,20 +19,28 @@
 // a real founder run, another Windows/Supabase-side failure mode outside
 // this module's control.
 //
-// Pagination (Phase 3E.2d, KEYSET_RESOLVED_AT_ID): a real founder run also
-// failed deep in an offset/Range-based pagination sweep
-// (`Export failed (page 20): HTTP 500`) -- deep OFFSET pagination is a
-// known Postgres/PostgREST performance/failure mode at scale. The exporter
-// no longer uses OFFSET or a Range header at all. Instead it uses
-// composite keyset pagination on `resolved_at DESC, id DESC`: each page
-// after the first carries a cursor built from the last row of the
-// previous page, filtering to rows strictly after that row in the same
-// stable order (`resolved_at < lastResolvedAt OR (resolved_at =
-// lastResolvedAt AND id < lastId)`). This never re-scans skipped rows and
-// has no "deep offset" degradation mode. `resolved_at` alone is never used
-// as the cursor -- rows sharing a `resolved_at` value are only
-// disambiguated by the `id DESC` tiebreak, so a same-timestamp group can
-// never be partially skipped or duplicated across a page boundary.
+// Pagination (Phase 3E.2d KEYSET_RESOLVED_AT_ID, split into two
+// index-friendly requests in Phase 3E.2h): a real founder run failed deep
+// in an offset/Range-based pagination sweep (`Export failed (page 20):
+// HTTP 500`) -- deep OFFSET pagination is a known Postgres/PostgREST
+// performance/failure mode at scale. The exporter no longer uses OFFSET or
+// a Range header at all. It keyset-paginates on `resolved_at DESC, id
+// DESC`, but instead of a single composite `or=(...)` cursor filter
+// (`resolved_at < c OR (resolved_at = c AND id < cId)`) -- which forced the
+// planner onto an expensive OR/composite path -- each logical page after
+// the first is served by up to two simpler, index-friendly requests:
+//   1. same-timestamp tail: `resolved_at = cursorResolvedAt AND id <
+//      cursorId`, ordered `id DESC` -- drains the remainder of the cursor's
+//      timestamp group;
+//   2. older timestamps (only if request 1 came back short): `resolved_at <
+//      cursorResolvedAt` (bounded by the cutoff), ordered `resolved_at
+//      DESC, id DESC`, limited to the remaining logical-page capacity.
+// Their concatenation is one logical page in canonical global order. This
+// never re-scans skipped rows and has no "deep offset" degradation mode.
+// `resolved_at` alone is never used as the cursor -- rows sharing a
+// `resolved_at` value are disambiguated by the `id DESC` tiebreak inside
+// request 1, so a same-timestamp group can never be partially skipped or
+// duplicated across a page boundary.
 //
 // Completeness is proven by exhaustive pagination: the exporter fetches
 // page after page until the server returns a page shorter than the
@@ -389,43 +397,75 @@ function keysetCursorsEqual(a: KeysetCursor, b: KeysetCursor): boolean {
 }
 
 /**
- * Builds the composite `or=(...)` PostgREST filter for "strictly after"
- * `cursor` in `resolved_at DESC, id DESC` order:
- *   resolved_at < cursor.resolvedAt
- *   OR (resolved_at = cursor.resolvedAt AND id < cursor.id)
- * This is what makes same-`resolved_at` groups traverse safely via the
- * `id DESC` tiebreak instead of ever using `resolved_at` alone as a cursor.
+ * Builds the single canonical `and=(resolved_at.not.is.null,resolved_at.lte.<cutoff>)`
+ * cutoff filter (plus, for the older-timestamps request, an extra
+ * `resolved_at.lt.<cursorResolvedAt>` predicate). All conditions are ANDed
+ * together explicitly in one param instead of relying on repeated-key AND
+ * semantics.
  */
-export function buildKeysetCursorFilter(cursor: KeysetCursor): string {
-  return `(resolved_at.lt.${cursor.resolvedAt},and(resolved_at.eq.${cursor.resolvedAt},id.lt.${cursor.id}))`;
+function buildCutoffFilter(cutoffResolvedAt: string, olderThanResolvedAt?: string): string {
+  const predicates = [`resolved_at.not.is.null`, `resolved_at.lte.${cutoffResolvedAt}`];
+  if (olderThanResolvedAt !== undefined) {
+    predicates.push(`resolved_at.lt.${olderThanResolvedAt}`);
+  }
+  return `(${predicates.join(",")})`;
+}
+
+function trimBase(baseUrl: string): string {
+  return baseUrl.replace(/\/+$/, "");
 }
 
 /**
- * Builds the single canonical `and=(resolved_at.not.is.null,resolved_at.lte.<cutoff>)`
- * filter that replaces the previous duplicate `resolved_at` query keys.
- * Both conditions are ANDed together explicitly instead of relying on
- * repeated-key AND semantics.
+ * First-logical-page request URL (no cursor): all resolved rows up to the
+ * fixed cutoff, ordered resolved_at DESC, id DESC, limited to `limit`.
  */
-function buildCutoffFilter(cutoffResolvedAt: string): string {
-  return `(resolved_at.not.is.null,resolved_at.lte.${cutoffResolvedAt})`;
-}
-
-function buildRestUrl(
-  baseUrl: string,
-  cutoffResolvedAt: string,
-  cursor: KeysetCursor | null,
-  limit: number,
-): string {
-  const trimmedBase = baseUrl.replace(/\/+$/, "");
+function buildFirstPageRestUrl(baseUrl: string, cutoffResolvedAt: string, limit: number): string {
   const params = new URLSearchParams();
   params.set("select", buildSelectParam());
   params.set("and", buildCutoffFilter(cutoffResolvedAt));
   params.set("order", "resolved_at.desc,id.desc");
   params.set("limit", String(limit));
-  if (cursor) {
-    params.set("or", buildKeysetCursorFilter(cursor));
-  }
-  return `${trimmedBase}/rest/v1/${TABLE_NAME}?${params.toString()}`;
+  return `${trimBase(baseUrl)}/rest/v1/${TABLE_NAME}?${params.toString()}`;
+}
+
+/**
+ * Phase 3E.2h split keyset -- Request A (same-timestamp tail). Fetches the
+ * remaining rows that share the cursor's `resolved_at`, strictly after the
+ * cursor's `id` in `id DESC` order. This is a single-column equality +
+ * range seek: `resolved_at = cursor.resolvedAt AND id < cursor.id`,
+ * ordered by `id DESC`. It never touches the composite index's leading
+ * column with a range, so it stays index-friendly, and it uses no
+ * composite `or=(...)` filter.
+ */
+export function buildSameTimestampRestUrl(baseUrl: string, cursor: KeysetCursor, limit: number): string {
+  const params = new URLSearchParams();
+  params.set("select", buildSelectParam());
+  params.set("resolved_at", `eq.${cursor.resolvedAt}`);
+  params.set("id", `lt.${cursor.id}`);
+  params.set("order", "id.desc");
+  params.set("limit", String(limit));
+  return `${trimBase(baseUrl)}/rest/v1/${TABLE_NAME}?${params.toString()}`;
+}
+
+/**
+ * Phase 3E.2h split keyset -- Request B (older timestamps). Fetches rows
+ * with a strictly older `resolved_at` than the cursor (still bounded by the
+ * fixed cutoff), ordered resolved_at DESC, id DESC. All resolved_at
+ * predicates (not-null, <= cutoff, < cursor) live in one canonical `and`
+ * param; there is no composite `or=(...)` filter.
+ */
+export function buildOlderTimestampsRestUrl(
+  baseUrl: string,
+  cutoffResolvedAt: string,
+  cursor: KeysetCursor,
+  limit: number,
+): string {
+  const params = new URLSearchParams();
+  params.set("select", buildSelectParam());
+  params.set("and", buildCutoffFilter(cutoffResolvedAt, cursor.resolvedAt));
+  params.set("order", "resolved_at.desc,id.desc");
+  params.set("limit", String(limit));
+  return `${trimBase(baseUrl)}/rest/v1/${TABLE_NAME}?${params.toString()}`;
 }
 
 const MAX_DIAGNOSTIC_LENGTH = 800;
@@ -501,24 +541,23 @@ async function buildSafePostgrestErrorDetail(response: { status: number; text():
   return truncateSafe(withFragment, MAX_DIAGNOSTIC_LENGTH);
 }
 
+type RequestKind = "first-page" | "same-timestamp" | "older-timestamps";
+
 /**
- * Fetches one page of resolved rows (resolved_at not null, resolved_at <=
- * the export cutoff, ordered by resolved_at DESC, id DESC, limited to
- * `limit`, and -- for every page after the first -- filtered to strictly
- * after `cursor`) via a read-only GET against the PostgREST REST endpoint.
- * No OFFSET, no Range header: this is pure keyset/seek pagination, which
- * never re-scans skipped rows and has no deep-offset degradation mode.
- * Throws a safe, bounded, redacted Error if the request fails or the body
- * is not a JSON array -- never the raw response body, URL, or credentials.
+ * Executes one physical read-only GET against the PostgREST endpoint and
+ * returns its rows. On failure, throws an Error already formatted with the
+ * logical page number, the request kind, the pagination mode, and a safe,
+ * bounded, redacted PostgREST diagnostic -- never the raw response body,
+ * request URL, or credentials.
  */
-async function fetchResolvedRowPage(
+async function fetchOnePhysicalRequest(
   fetchImpl: FetchLike,
   config: SupabaseReadConfig,
-  cutoffResolvedAt: string,
-  cursor: KeysetCursor | null,
-  limit: number,
+  url: string,
+  requestKind: RequestKind,
+  pageNumber: number,
 ): Promise<unknown[]> {
-  const response = await fetchImpl(buildRestUrl(config.url, cutoffResolvedAt, cursor, limit), {
+  const response = await fetchImpl(url, {
     method: "GET",
     headers: {
       apikey: config.key,
@@ -529,15 +568,87 @@ async function fetchResolvedRowPage(
 
   if (!response.ok) {
     const detail = await buildSafePostgrestErrorDetail(response);
-    throw new Error(detail);
+    throw new Error(
+      `Export failed (page ${pageNumber}, ${requestKind}, paginationMode=KEYSET_RESOLVED_AT_ID): ${detail}`,
+    );
   }
 
   const data = await response.json();
   if (!Array.isArray(data)) {
-    throw new Error("response body was not a JSON array");
+    throw new Error(
+      `Export failed (page ${pageNumber}, ${requestKind}, paginationMode=KEYSET_RESOLVED_AT_ID): response body was not a JSON array`,
+    );
   }
 
   return data;
+}
+
+/**
+ * Fetches one logical page of resolved rows (Phase 3E.2h split keyset).
+ *
+ * The first logical page (cursor === null) is a single request:
+ * resolved_at not null, resolved_at <= cutoff, ordered resolved_at DESC,
+ * id DESC, limited to `limit`.
+ *
+ * Every logical page after the first is composed of up to two index-friendly
+ * physical requests forming one logical page:
+ *   - Request A (same-timestamp tail): the remaining rows sharing the
+ *     cursor's resolved_at, id < cursor.id, ordered id DESC, limited to the
+ *     full logical `limit`. If this fills the logical page, Request B is
+ *     skipped entirely.
+ *   - Request B (older timestamps), only if Request A came back short:
+ *     rows with resolved_at strictly older than the cursor (bounded by the
+ *     cutoff), ordered resolved_at DESC, id DESC, limited to the remaining
+ *     logical-page capacity (`limit - sameTimestampRows.length`).
+ * The merged result is `sameTimestampRows ++ olderTimestampRows`, which is
+ * in canonical global resolved_at DESC, id DESC order because every
+ * same-timestamp row (at cursor.resolvedAt) sorts strictly before every
+ * older-timestamp row. No composite `or=(...)` filter and no OFFSET/Range
+ * is ever used.
+ */
+async function fetchLogicalPage(
+  fetchImpl: FetchLike,
+  config: SupabaseReadConfig,
+  cutoffResolvedAt: string,
+  cursor: KeysetCursor | null,
+  limit: number,
+  pageNumber: number,
+): Promise<unknown[]> {
+  if (cursor === null) {
+    return fetchOnePhysicalRequest(
+      fetchImpl,
+      config,
+      buildFirstPageRestUrl(config.url, cutoffResolvedAt, limit),
+      "first-page",
+      pageNumber,
+    );
+  }
+
+  const sameTimestampRows = await fetchOnePhysicalRequest(
+    fetchImpl,
+    config,
+    buildSameTimestampRestUrl(config.url, cursor, limit),
+    "same-timestamp",
+    pageNumber,
+  );
+
+  // If the same-timestamp tail filled the whole logical page, we must not
+  // advance to older timestamps yet -- the rest of that same-timestamp
+  // group is served by the next logical page's same-timestamp request.
+  if (sameTimestampRows.length >= limit) {
+    return sameTimestampRows;
+  }
+
+  const remaining = limit - sameTimestampRows.length;
+  const olderTimestampRows = await fetchOnePhysicalRequest(
+    fetchImpl,
+    config,
+    buildOlderTimestampsRestUrl(config.url, cutoffResolvedAt, cursor, remaining),
+    "older-timestamps",
+    pageNumber,
+  );
+
+  return [...sameTimestampRows, ...olderTimestampRows];
 }
 
 /**
@@ -554,12 +665,13 @@ async function fetchResolvedRowPage(
  * DEBUG_CAPPED / INTENTIONALLY_CAPPED and must not be treated as a full
  * dataset.
  *
- * Pagination never uses OFFSET/Range: each page after the first carries a
- * composite `(resolved_at, id)` cursor built from the previous page's last
- * row. If a full page's last row is missing valid cursor fields, or if the
- * next cursor fails to advance past the current one (which would loop
- * forever re-fetching the same rows), the export fails safely instead of
- * silently mis-reporting completeness.
+ * Pagination never uses OFFSET/Range: each logical page after the first is
+ * built from a `(resolved_at, id)` cursor via the two split, index-friendly
+ * requests in fetchLogicalPage (same-timestamp tail, then older timestamps)
+ * -- never a composite `or=(...)` filter. If a logical page's last row is
+ * missing valid cursor fields, or if the next cursor fails to advance past
+ * the current one (which would loop forever re-fetching the same rows), the
+ * export fails safely instead of silently mis-reporting completeness.
  */
 export async function exportGeneratedSignalPairsFromSupabase(
   options: ExportGeneratedSignalPairsOptions = {},
@@ -590,18 +702,11 @@ export async function exportGeneratedSignalPairsFromSupabase(
 
   while (maxRows === undefined || normalizedRows.length < maxRows) {
     const limit = maxRows !== undefined ? Math.min(pageSize, maxRows - normalizedRows.length) : pageSize;
-    const isFirstPage = cursor === null;
     const pageNumber = pagesFetched + 1;
 
-    let pageRows: unknown[];
-    try {
-      pageRows = await fetchResolvedRowPage(fetchImpl, config, exportCutoffResolvedAt, cursor, limit);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "unknown error";
-      throw new Error(
-        `Export failed (page ${pageNumber}, ${isFirstPage ? "first-page" : "cursor-page"}, paginationMode=KEYSET_RESOLVED_AT_ID): ${message}`,
-      );
-    }
+    // fetchLogicalPage throws errors already formatted with page number /
+    // request kind / paginationMode, so no re-wrapping is needed here.
+    const pageRows = await fetchLogicalPage(fetchImpl, config, exportCutoffResolvedAt, cursor, limit, pageNumber);
 
     pagesFetched += 1;
     for (const row of pageRows) {
