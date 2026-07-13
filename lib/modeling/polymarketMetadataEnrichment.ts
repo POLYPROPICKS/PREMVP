@@ -31,7 +31,7 @@ export interface FetchResponseLike {
 
 export type FetchImpl = (url: string, init?: { signal?: AbortSignal }) => Promise<FetchResponseLike>;
 
-export type IdentityKind = "event_slug" | "market_slug";
+export type IdentityKind = "event_slug" | "market_slug" | "condition_id";
 
 export interface MetadataIdentity {
   kind: IdentityKind;
@@ -44,6 +44,7 @@ function getStr(row: Row, key: string): string | null {
 }
 
 const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+const CONDITION_ID_PATTERN = /^0x[a-fA-F0-9]{64}$/;
 
 /**
  * Validates that `value` is a genuine Polymarket URL-style slug: lowercase
@@ -58,17 +59,33 @@ export function isValidPolymarketSlug(value: unknown): value is string {
   return SLUG_PATTERN.test(trimmed);
 }
 
+/**
+ * Validates that `value` is a well-formed Polymarket condition id: a
+ * 0x-prefixed 32-byte (64 hex char) hash. Case is accepted on input and
+ * normalized to lowercase by the caller for deterministic keys.
+ */
+export function isValidConditionId(value: unknown): value is string {
+  return typeof value === "string" && CONDITION_ID_PATTERN.test(value);
+}
+
 function getValidSlug(row: Row, key: string): string | null {
   const v = row[key];
   return isValidPolymarketSlug(v) ? v : null;
 }
 
+function getDiagnostics(row: Row): Record<string, unknown> | undefined {
+  const d = row["diagnostics"];
+  return d && typeof d === "object" && !Array.isArray(d) ? (d as Record<string, unknown>) : undefined;
+}
+
 /**
  * Collects unique metadata identities from `rows`, deterministic order.
- * Priority per row: valid top-level event_slug, then valid top-level
- * market_slug, then valid diagnostics.marketSlug (emitted as kind
- * "market_slug"). Rows with none of these contribute no identity. Never
- * slugifies or infers values from title text. Pure, no fs/env/network.
+ * Priority per row (one best identity per row): valid top-level event_slug,
+ * then valid top-level market_slug, then valid diagnostics.marketSlug
+ * (emitted as kind "market_slug"), then valid top-level condition_id, then
+ * valid diagnostics.conditionId (both emitted as kind "condition_id",
+ * normalized to lowercase). Rows with none of these contribute no identity.
+ * Never slugifies or infers values from title text. Pure, no fs/env/network.
  */
 export function collectUniqueMetadataIdentities(rows: readonly Row[]): MetadataIdentity[] {
   const seen = new Set<string>();
@@ -76,6 +93,7 @@ export function collectUniqueMetadataIdentities(rows: readonly Row[]): MetadataI
   for (const row of rows) {
     const eventSlug = getValidSlug(row, "event_slug");
     const marketSlug = getValidSlug(row, "market_slug");
+    const diagnostics = getDiagnostics(row);
     let kind: IdentityKind | null = null;
     let value: string | null = null;
     if (eventSlug !== null) {
@@ -84,16 +102,15 @@ export function collectUniqueMetadataIdentities(rows: readonly Row[]): MetadataI
     } else if (marketSlug !== null) {
       kind = "market_slug";
       value = marketSlug;
-    } else {
-      const diagnostics = row["diagnostics"];
-      const diagnosticsSlug =
-        diagnostics && typeof diagnostics === "object"
-          ? (diagnostics as Record<string, unknown>)["marketSlug"]
-          : undefined;
-      if (isValidPolymarketSlug(diagnosticsSlug)) {
-        kind = "market_slug";
-        value = diagnosticsSlug;
-      }
+    } else if (diagnostics && isValidPolymarketSlug(diagnostics["marketSlug"])) {
+      kind = "market_slug";
+      value = diagnostics["marketSlug"] as string;
+    } else if (isValidConditionId(row["condition_id"])) {
+      kind = "condition_id";
+      value = (row["condition_id"] as string).toLowerCase();
+    } else if (diagnostics && isValidConditionId(diagnostics["conditionId"])) {
+      kind = "condition_id";
+      value = (diagnostics["conditionId"] as string).toLowerCase();
     }
     if (kind === null || value === null) continue;
     const dedupeKey = `${kind}::${value}`;
@@ -129,6 +146,8 @@ export interface OfficialMarketMetadata {
   title?: string;
   question?: string;
   marketType?: string;
+  sportsMarketType?: string;
+  conditionId?: string;
   category?: string;
   subcategory?: string;
   tags?: unknown[];
@@ -138,6 +157,8 @@ export type UnresolvedReason =
   | "MISSING_EVENT_IDENTITY"
   | "OFFICIAL_EVENT_NOT_FOUND"
   | "OFFICIAL_MARKET_NOT_FOUND"
+  | "AMBIGUOUS_CONDITION_ID_RESPONSE"
+  | "INVALID_MARKET_RESPONSE"
   | "NO_SPORT_TAG"
   | "NO_COMPETITION_TAG"
   | "NO_MARKET_TYPE_FIELD"
@@ -160,6 +181,8 @@ export interface RequestSummary {
   failureCount: number;
   retryCount: number;
   cachedReuseCount: number;
+  /** Total unique identities requested, broken down by identity kind. */
+  byIdentityKind?: Record<IdentityKind, number>;
 }
 
 export interface MetadataEnrichmentSnapshot {
@@ -173,6 +196,12 @@ export interface MetadataEnrichmentSnapshot {
   tagsById: Record<string, { id: string; label?: string; [k: string]: unknown }>;
   eventsBySlug: Record<string, OfficialEventMetadata>;
   marketsBySlug: Record<string, OfficialMarketMetadata>;
+  /**
+   * Markets resolved by condition id (Phase 3E.8D.3B), keyed by normalized
+   * lowercase condition id. Optional for backward compatibility with
+   * pre-3E.8D.3B snapshots that never had this field.
+   */
+  marketsByConditionId?: Record<string, OfficialMarketMetadata>;
   unresolvedIdentities: UnresolvedIdentity[];
   requestSummary: RequestSummary;
   snapshotHash: string;
@@ -218,6 +247,72 @@ async function fetchJsonWithRetry(
     await new Promise((resolve) => setTimeout(resolve, retryDelayMs * 2 ** (attempt - 1)));
   }
   return { ok: false, status: lastStatus };
+}
+
+export type ConditionLookupResult =
+  | { ok: true; market: OfficialMarketMetadata }
+  | {
+      ok: false;
+      reason: "OFFICIAL_MARKET_NOT_FOUND" | "AMBIGUOUS_CONDITION_ID_RESPONSE" | "INVALID_MARKET_RESPONSE" | "FETCH_ERROR";
+      status?: number;
+    };
+
+export interface ConditionLookupOptions {
+  maxAttempts?: number;
+  timeoutMs?: number;
+  retryDelayMs?: number;
+}
+
+/**
+ * Resolves a single official market by condition id via the Gamma
+ * `GET /markets?condition_ids=<id>` endpoint, which returns an array of zero
+ * or more market objects. Selects the record whose `conditionId` exactly
+ * matches (case-insensitively) the requested id -- never inferring a match
+ * from title or array position. Zero exact matches -> OFFICIAL_MARKET_NOT_FOUND;
+ * more than one exact match -> AMBIGUOUS_CONDITION_ID_RESPONSE; a non-array
+ * response, or a non-empty array whose records all lack a `conditionId`
+ * field -> INVALID_MARKET_RESPONSE. Pure transport via the injected fetch;
+ * never logs raw payloads or secrets.
+ */
+export async function fetchMarketMetadataByConditionId(
+  fetchImpl: FetchImpl,
+  conditionId: string,
+  options: ConditionLookupOptions = {},
+): Promise<ConditionLookupResult> {
+  const maxAttempts = options.maxAttempts ?? MAX_ATTEMPTS;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
+  const normalized = conditionId.toLowerCase();
+
+  const url = `${GAMMA_BASE}/markets?condition_ids=${encodeURIComponent(conditionId)}`;
+  const result = await fetchJsonWithRetry(fetchImpl, url, maxAttempts, timeoutMs, retryDelayMs);
+  if (!result.ok) {
+    return {
+      ok: false,
+      reason: result.status === 404 ? "OFFICIAL_MARKET_NOT_FOUND" : "FETCH_ERROR",
+      status: result.status || undefined,
+    };
+  }
+
+  const body = result.body;
+  if (!Array.isArray(body)) {
+    return { ok: false, reason: "INVALID_MARKET_RESPONSE" };
+  }
+
+  const withConditionId = body.filter(
+    (m): m is Record<string, unknown> =>
+      m !== null && typeof m === "object" && typeof (m as Record<string, unknown>).conditionId === "string",
+  );
+  // A non-empty array whose records all lack a conditionId field is a
+  // contract violation, not a legitimate "not found".
+  if (body.length > 0 && withConditionId.length === 0) {
+    return { ok: false, reason: "INVALID_MARKET_RESPONSE" };
+  }
+
+  const exact = withConditionId.filter((m) => (m.conditionId as string).toLowerCase() === normalized);
+  if (exact.length === 0) return { ok: false, reason: "OFFICIAL_MARKET_NOT_FOUND" };
+  if (exact.length > 1) return { ok: false, reason: "AMBIGUOUS_CONDITION_ID_RESPONSE" };
+  return { ok: true, market: exact[0] as OfficialMarketMetadata };
 }
 
 async function mapWithConcurrency<T, R>(
@@ -294,6 +389,7 @@ export async function buildMetadataEnrichmentSnapshot(options: BuildSnapshotOpti
     `${GAMMA_BASE}/tags`,
     `${GAMMA_BASE}/events/slug/{slug}`,
     `${GAMMA_BASE}/markets/slug/{slug}`,
+    `${GAMMA_BASE}/markets?condition_ids={conditionId}`,
   ];
 
   let successCount = 0;
@@ -320,17 +416,54 @@ export async function buildMetadataEnrichmentSnapshot(options: BuildSnapshotOpti
   const identities = collectUniqueMetadataIdentities(rows);
   const eventsBySlug: MetadataEnrichmentSnapshot["eventsBySlug"] = resumeFrom ? { ...resumeFrom.eventsBySlug } : {};
   const marketsBySlug: MetadataEnrichmentSnapshot["marketsBySlug"] = resumeFrom ? { ...resumeFrom.marketsBySlug } : {};
+  const marketsByConditionId: Record<string, OfficialMarketMetadata> = resumeFrom?.marketsByConditionId
+    ? { ...resumeFrom.marketsByConditionId }
+    : {};
   const resumedUnresolved = new Map((resumeFrom?.unresolvedIdentities ?? []).map((u) => [`${u.kind}::${u.value}`, u]));
 
+  const byIdentityKind: Record<IdentityKind, number> = { event_slug: 0, market_slug: 0, condition_id: 0 };
+  for (const identity of identities) byIdentityKind[identity.kind] += 1;
+
   const unresolvedIdentities: UnresolvedIdentity[] = [];
+
+  // Cross-index a condition-resolved market under its own valid slug too,
+  // but never overwrite an existing slug record that resolved to a
+  // materially different condition id.
+  function crossIndexBySlug(market: OfficialMarketMetadata): void {
+    if (!isValidPolymarketSlug(market.slug)) return;
+    const existing = marketsBySlug[market.slug as string];
+    if (existing) {
+      const existingCid = typeof existing.conditionId === "string" ? existing.conditionId.toLowerCase() : undefined;
+      const incomingCid = typeof market.conditionId === "string" ? market.conditionId.toLowerCase() : undefined;
+      if (existingCid !== undefined && incomingCid !== undefined && existingCid !== incomingCid) return; // conflict: keep existing
+    }
+    marketsBySlug[market.slug as string] = market;
+  }
 
   await mapWithConcurrency(identities, concurrency, async (identity) => {
     const cacheKey = `${identity.kind}::${identity.value}`;
     const alreadyResolved =
-      identity.kind === "event_slug" ? eventsBySlug[identity.value] !== undefined : marketsBySlug[identity.value] !== undefined;
+      identity.kind === "event_slug"
+        ? eventsBySlug[identity.value] !== undefined
+        : identity.kind === "market_slug"
+          ? marketsBySlug[identity.value] !== undefined
+          : marketsByConditionId[identity.value] !== undefined;
     if (alreadyResolved && !resumedUnresolved.has(cacheKey)) {
       cachedReuseCount += 1;
       successCount += 1;
+      return;
+    }
+
+    if (identity.kind === "condition_id") {
+      const lookup = await fetchMarketMetadataByConditionId(fetchImpl, identity.value, { maxAttempts, timeoutMs, retryDelayMs });
+      if (lookup.ok) {
+        successCount += 1;
+        marketsByConditionId[identity.value] = lookup.market;
+        crossIndexBySlug(lookup.market);
+        return;
+      }
+      failureCount += 1;
+      unresolvedIdentities.push({ kind: identity.kind, value: identity.value, reason: lookup.reason, httpStatus: lookup.status });
       return;
     }
 
@@ -368,6 +501,7 @@ export async function buildMetadataEnrichmentSnapshot(options: BuildSnapshotOpti
     failureCount,
     retryCount,
     cachedReuseCount,
+    byIdentityKind,
   };
 
   const snapshotForHash = {
@@ -378,6 +512,7 @@ export async function buildMetadataEnrichmentSnapshot(options: BuildSnapshotOpti
     tagsById,
     eventsBySlug,
     marketsBySlug,
+    marketsByConditionId,
     unresolvedIdentities,
   };
 
@@ -392,6 +527,7 @@ export async function buildMetadataEnrichmentSnapshot(options: BuildSnapshotOpti
     tagsById,
     eventsBySlug,
     marketsBySlug,
+    marketsByConditionId,
     unresolvedIdentities,
     requestSummary,
     snapshotHash: await sha256Hex(stableStringify(snapshotForHash)),

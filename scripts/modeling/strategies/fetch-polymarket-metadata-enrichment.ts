@@ -109,6 +109,10 @@ export async function runFetchPolymarketMetadataCli(
           status: snapshot.status,
           retrievedAt: snapshot.retrievedAt,
           requestSummary: snapshot.requestSummary,
+          marketsBySlugCount: Object.keys(snapshot.marketsBySlug).length,
+          marketsByConditionIdCount: snapshot.marketsByConditionId
+            ? Object.keys(snapshot.marketsByConditionId).length
+            : 0,
         },
         null,
         2,
@@ -116,8 +120,19 @@ export async function runFetchPolymarketMetadataCli(
       "utf8",
     );
 
+    const byKind = snapshot.requestSummary.byIdentityKind;
+    const kindLine = byKind
+      ? `identities by kind: event_slug=${byKind.event_slug}, market_slug=${byKind.market_slug}, condition_id=${byKind.condition_id}\n`
+      : "";
+    const marketsByConditionIdCount = snapshot.marketsByConditionId
+      ? Object.keys(snapshot.marketsByConditionId).length
+      : 0;
     log(
-      `Wrote metadata enrichment snapshot to ${args.output}\nWrote manifest to ${args.manifest}\nstatus: ${snapshot.status}\nsuccess/failure/retry: ${snapshot.requestSummary.successCount}/${snapshot.requestSummary.failureCount}/${snapshot.requestSummary.retryCount}\n`,
+      `Wrote metadata enrichment snapshot to ${args.output}\nWrote manifest to ${args.manifest}\nstatus: ${snapshot.status}\n` +
+        `success/failure/retry: ${snapshot.requestSummary.successCount}/${snapshot.requestSummary.failureCount}/${snapshot.requestSummary.retryCount}\n` +
+        `totalIdentities: ${snapshot.requestSummary.totalIdentities}\n` +
+        kindLine +
+        `marketsBySlug: ${Object.keys(snapshot.marketsBySlug).length}, marketsByConditionId: ${marketsByConditionIdCount}\n`,
     );
     return 0;
   } catch (error) {

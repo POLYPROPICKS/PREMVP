@@ -11,6 +11,8 @@ import {
   buildMetadataEnrichmentSnapshot,
   validateMetadataSnapshot,
   isValidPolymarketSlug,
+  isValidConditionId,
+  fetchMarketMetadataByConditionId,
   MAX_CONCURRENCY,
   MAX_ATTEMPTS,
 } from "../../lib/modeling/polymarketMetadataEnrichment";
@@ -442,15 +444,314 @@ test("Q13: real corpus identity counts match the diagnosed shape (461 valid diag
   assert.equal(populatedDiagnosticsMarket, 481);
   assert.equal(validDiagnosticsMarket, 461);
 
+  // With condition_id fallback (Phase 3E.8D.3B), rows without a valid slug
+  // but with a valid condition_id now emit a condition_id identity. Every
+  // dedup row on this corpus has a valid condition_id, so every row emits
+  // exactly one identity: a market_slug for the 461 slug-bearing rows, a
+  // condition_id for the remaining 1,389.
   const identities = collectUniqueMetadataIdentities(dedupRows);
-  assert.ok(identities.every((i) => i.kind === "market_slug"));
-  assert.ok(identities.length > 0 && identities.length <= 461);
+  const marketSlugIdentities = identities.filter((i) => i.kind === "market_slug");
+  const conditionIdIdentities = identities.filter((i) => i.kind === "condition_id");
+  assert.ok(identities.every((i) => i.kind === "market_slug" || i.kind === "condition_id"));
+  assert.ok(marketSlugIdentities.length > 0 && marketSlugIdentities.length <= 461);
+  assert.ok(conditionIdIdentities.length > 0);
+  // condition_id identities are normalized lowercase 0x-prefixed 32-byte hashes
+  assert.ok(conditionIdIdentities.every((i) => /^0x[0-9a-f]{64}$/.test(i.value)));
 
   const rowsWithIdentity = dedupRows.filter((r: Record<string, unknown>) => {
     const d = r.diagnostics as Record<string, unknown> | undefined;
-    return isValidPolymarketSlug(r.event_slug) || isValidPolymarketSlug(r.market_slug) || (d && isValidPolymarketSlug(d.marketSlug));
+    return (
+      isValidPolymarketSlug(r.event_slug) ||
+      isValidPolymarketSlug(r.market_slug) ||
+      (d && isValidPolymarketSlug(d.marketSlug)) ||
+      isValidConditionId(r.condition_id) ||
+      (d && isValidConditionId(d.conditionId))
+    );
   }).length;
   const rowsWithNoIdentity = dedupRows.length - rowsWithIdentity;
-  assert.equal(rowsWithIdentity, 461);
-  assert.equal(rowsWithNoIdentity, 1389);
+  assert.equal(rowsWithIdentity, 1850);
+  assert.equal(rowsWithNoIdentity, 0);
+});
+
+// ---- Phase 3E.8D.3B: resolve markets by condition_id ----
+
+const CID_A = "0x" + "a".repeat(64);
+const CID_B = "0x" + "b".repeat(64);
+const CID_MIXED = "0x" + "AbCdEf".repeat(10) + "abcd";
+
+function globalsOnly(url: string) {
+  if (url.endsWith("/sports") || url.endsWith("/sports/market-types") || url.endsWith("/tags")) {
+    return { ok: true, status: 200, json: async () => [] };
+  }
+  return null;
+}
+
+test("R1: a valid top-level condition_id is collected when no valid slug exists", () => {
+  const rows = [{ id: "x1", event_slug: "Title Only", market_slug: "$30K matched activity", condition_id: CID_A }];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.deepEqual(identities, [{ kind: "condition_id", value: CID_A }]);
+});
+
+test("R2: diagnostics.conditionId is used as a fallback when top-level condition_id is absent", () => {
+  const rows = [{ id: "x1", event_slug: "Title", diagnostics: { conditionId: CID_A } }];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.deepEqual(identities, [{ kind: "condition_id", value: CID_A }]);
+});
+
+test("R3: a valid slug remains preferred over condition_id", () => {
+  const rows = [{ id: "x1", event_slug: "Title", market_slug: "team-a-team-b-moneyline", condition_id: CID_A }];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.deepEqual(identities, [{ kind: "market_slug", value: "team-a-team-b-moneyline" }]);
+});
+
+test("R3b: diagnostics.marketSlug remains preferred over condition_id", () => {
+  const rows = [{ id: "x1", event_slug: "Title", diagnostics: { marketSlug: "val-a-b-2026-07-13", conditionId: CID_A } }];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.deepEqual(identities, [{ kind: "market_slug", value: "val-a-b-2026-07-13" }]);
+});
+
+test("R4: duplicate condition_ids across rows deduplicate to one identity", () => {
+  const rows = [
+    { id: "x1", event_slug: "T1", condition_id: CID_A },
+    { id: "x2", event_slug: "T2", condition_id: CID_A },
+  ];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.equal(identities.length, 1);
+  assert.deepEqual(identities[0], { kind: "condition_id", value: CID_A });
+});
+
+test("R5: condition_ids are normalized to lowercase", () => {
+  const rows = [{ id: "x1", event_slug: "T", condition_id: CID_MIXED }];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.equal(identities.length, 1);
+  assert.equal(identities[0].kind, "condition_id");
+  assert.equal(identities[0].value, CID_MIXED.toLowerCase());
+});
+
+test("R6: a malformed condition_id is rejected and yields no identity", () => {
+  assert.equal(isValidConditionId("0x123"), false);
+  assert.equal(isValidConditionId("not-a-hash"), false);
+  assert.equal(isValidConditionId("0x" + "g".repeat(64)), false);
+  assert.equal(isValidConditionId("a".repeat(64)), false); // missing 0x
+  const rows = [{ id: "x1", event_slug: "T", condition_id: "0x123" }];
+  assert.equal(collectUniqueMetadataIdentities(rows).length, 0);
+});
+
+test("R6b: a well-formed condition_id passes validation", () => {
+  assert.equal(isValidConditionId(CID_A), true);
+  assert.equal(isValidConditionId(CID_MIXED), true);
+});
+
+test("R7: title fields are never used as a condition-id identity", () => {
+  const rows = [{ id: "x1", event_slug: "France vs Morocco", market_slug: "Match Winner (Full Time)" }];
+  assert.equal(collectUniqueMetadataIdentities(rows).length, 0);
+});
+
+test("R8: the condition-id request URL contains the encoded condition_ids param", async () => {
+  const seen: string[] = [];
+  const fetchImpl = async (url: string) => {
+    seen.push(url);
+    const g = globalsOnly(url);
+    if (g) return g;
+    return { ok: true, status: 200, json: async () => [{ conditionId: CID_A, slug: "m-a", marketType: "moneyline" }] };
+  };
+  await fetchMarketMetadataByConditionId(fetchImpl as any, CID_A, {});
+  assert.ok(seen.some((u) => u.includes("/markets?") && u.includes("condition_ids=" + encodeURIComponent(CID_A))));
+});
+
+test("R9: an array response with an exact condition match succeeds", async () => {
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => [{ conditionId: CID_A, slug: "m-a", marketType: "moneyline" }] });
+  const res = await fetchMarketMetadataByConditionId(fetchImpl as any, CID_A, {});
+  assert.equal(res.ok, true);
+  assert.equal((res as any).market.conditionId, CID_A);
+});
+
+test("R10: an empty array yields OFFICIAL_MARKET_NOT_FOUND", async () => {
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => [] });
+  const res = await fetchMarketMetadataByConditionId(fetchImpl as any, CID_A, {});
+  assert.equal(res.ok, false);
+  assert.equal((res as any).reason, "OFFICIAL_MARKET_NOT_FOUND");
+});
+
+test("R11: an array of only unrelated markets yields OFFICIAL_MARKET_NOT_FOUND", async () => {
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => [{ conditionId: CID_B, slug: "other" }] });
+  const res = await fetchMarketMetadataByConditionId(fetchImpl as any, CID_A, {});
+  assert.equal(res.ok, false);
+  assert.equal((res as any).reason, "OFFICIAL_MARKET_NOT_FOUND");
+});
+
+test("R12: multiple records with exactly one exact match selects the exact match", async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => [
+      { conditionId: CID_B, slug: "other" },
+      { conditionId: CID_A, slug: "m-a", marketType: "moneyline" },
+    ],
+  });
+  const res = await fetchMarketMetadataByConditionId(fetchImpl as any, CID_A, {});
+  assert.equal(res.ok, true);
+  assert.equal((res as any).market.slug, "m-a");
+});
+
+test("R12b: case-insensitive exact match selects the record", async () => {
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => [{ conditionId: CID_MIXED, slug: "m-mixed" }] });
+  const res = await fetchMarketMetadataByConditionId(fetchImpl as any, CID_MIXED.toLowerCase(), {});
+  assert.equal(res.ok, true);
+  assert.equal((res as any).market.slug, "m-mixed");
+});
+
+test("R13: ambiguous duplicate exact matches yield AMBIGUOUS_CONDITION_ID_RESPONSE", async () => {
+  const fetchImpl = async () => ({
+    ok: true,
+    status: 200,
+    json: async () => [
+      { conditionId: CID_A, slug: "m-a1" },
+      { conditionId: CID_A, slug: "m-a2" },
+    ],
+  });
+  const res = await fetchMarketMetadataByConditionId(fetchImpl as any, CID_A, {});
+  assert.equal(res.ok, false);
+  assert.equal((res as any).reason, "AMBIGUOUS_CONDITION_ID_RESPONSE");
+});
+
+test("R14: a non-array response is rejected as a validation error", async () => {
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => ({ conditionId: CID_A }) });
+  const res = await fetchMarketMetadataByConditionId(fetchImpl as any, CID_A, {});
+  assert.equal(res.ok, false);
+  assert.equal((res as any).reason, "INVALID_MARKET_RESPONSE");
+});
+
+test("R15: a non-empty array whose markets all lack conditionId is a validation error", async () => {
+  const fetchImpl = async () => ({ ok: true, status: 200, json: async () => [{ slug: "m-a", marketType: "moneyline" }] });
+  const res = await fetchMarketMetadataByConditionId(fetchImpl as any, CID_A, {});
+  assert.equal(res.ok, false);
+  assert.equal((res as any).reason, "INVALID_MARKET_RESPONSE");
+});
+
+test("R16: a successful condition lookup is indexed in marketsByConditionId", async () => {
+  const rows = [{ id: "x1", event_slug: "Title", condition_id: CID_A }];
+  const fetchImpl = async (url: string) => {
+    const g = globalsOnly(url);
+    if (g) return g;
+    return { ok: true, status: 200, json: async () => [{ conditionId: CID_A, slug: "m-a", marketType: "moneyline" }] };
+  };
+  const snap = await buildMetadataEnrichmentSnapshot({ rows, corpusHash: "h", fetchImpl: fetchImpl as any });
+  assert.ok(snap.marketsByConditionId);
+  assert.ok(snap.marketsByConditionId![CID_A]);
+  assert.equal(snap.marketsByConditionId![CID_A].slug, "m-a");
+  assert.equal(snap.requestSummary.successCount, 1);
+});
+
+test("R17: a returned valid slug is also indexed into marketsBySlug", async () => {
+  const rows = [{ id: "x1", event_slug: "Title", condition_id: CID_A }];
+  const fetchImpl = async (url: string) => {
+    const g = globalsOnly(url);
+    if (g) return g;
+    return { ok: true, status: 200, json: async () => [{ conditionId: CID_A, slug: "val-a-b-2026", marketType: "moneyline" }] };
+  };
+  const snap = await buildMetadataEnrichmentSnapshot({ rows, corpusHash: "h", fetchImpl: fetchImpl as any });
+  assert.ok(snap.marketsBySlug["val-a-b-2026"]);
+});
+
+test("R18: a condition lookup never overwrites a conflicting existing marketsBySlug record", async () => {
+  const rows = [
+    { id: "x1", market_slug: "shared-slug", condition_id: CID_B },
+    { id: "x2", event_slug: "Title", condition_id: CID_A },
+  ];
+  const fetchImpl = async (url: string) => {
+    const g = globalsOnly(url);
+    if (g) return g;
+    if (url.includes("/markets/slug/shared-slug")) return { ok: true, status: 200, json: async () => ({ slug: "shared-slug", conditionId: CID_B, marketType: "totals" }) };
+    // condition lookup for CID_A returns a market that also claims slug "shared-slug" but a different conditionId
+    return { ok: true, status: 200, json: async () => [{ conditionId: CID_A, slug: "shared-slug", marketType: "moneyline" }] };
+  };
+  const snap = await buildMetadataEnrichmentSnapshot({ rows, corpusHash: "h", fetchImpl: fetchImpl as any });
+  // the original slug-resolved record (CID_B) must not be overwritten by the condition lookup (CID_A)
+  assert.equal(snap.marketsBySlug["shared-slug"].conditionId ?? CID_B, snap.marketsBySlug["shared-slug"].conditionId ?? CID_B);
+  assert.equal((snap.marketsBySlug["shared-slug"] as any).marketType, "totals");
+  // but the condition lookup is still recorded under its own condition id
+  assert.ok(snap.marketsByConditionId![CID_A]);
+});
+
+test("R19: successful condition entries are reused from a resumed snapshot (no refetch)", async () => {
+  const rows = [{ id: "x1", event_slug: "Title", condition_id: CID_A }];
+  let conditionCalls = 0;
+  const fetchImpl = async (url: string) => {
+    const g = globalsOnly(url);
+    if (g) return g;
+    conditionCalls += 1;
+    return { ok: true, status: 200, json: async () => [{ conditionId: CID_A, slug: "m-a" }] };
+  };
+  const first = await buildMetadataEnrichmentSnapshot({ rows, corpusHash: "h", fetchImpl: fetchImpl as any });
+  assert.equal(conditionCalls, 1);
+  const second = await buildMetadataEnrichmentSnapshot({ rows, corpusHash: "h", fetchImpl: fetchImpl as any, resumeFrom: first });
+  assert.equal(conditionCalls, 1); // not refetched
+  assert.equal(second.requestSummary.cachedReuseCount, 1);
+});
+
+test("R20: a failed condition entry can be resumed and resolved on a later run", async () => {
+  const rows = [{ id: "x1", event_slug: "Title", condition_id: CID_A }];
+  const failing = async (url: string) => {
+    const g = globalsOnly(url);
+    if (g) return g;
+    return { ok: false, status: 503, json: async () => ({}) };
+  };
+  const working = async (url: string) => {
+    const g = globalsOnly(url);
+    if (g) return g;
+    return { ok: true, status: 200, json: async () => [{ conditionId: CID_A, slug: "m-a" }] };
+  };
+  const first = await buildMetadataEnrichmentSnapshot({ rows, corpusHash: "h", fetchImpl: failing as any, maxAttempts: 1 });
+  assert.equal(first.marketsByConditionId![CID_A], undefined);
+  const second = await buildMetadataEnrichmentSnapshot({ rows, corpusHash: "h", fetchImpl: working as any, resumeFrom: first });
+  assert.ok(second.marketsByConditionId![CID_A]);
+});
+
+test("R21: the snapshot hash is deterministic for the same condition inputs", async () => {
+  const rows = [{ id: "x1", event_slug: "Title", condition_id: CID_A }];
+  const fetchImpl = async (url: string) => {
+    const g = globalsOnly(url);
+    if (g) return g;
+    return { ok: true, status: 200, json: async () => [{ conditionId: CID_A, slug: "m-a" }] };
+  };
+  const a = await buildMetadataEnrichmentSnapshot({ rows, corpusHash: "h", fetchImpl: fetchImpl as any });
+  const b = await buildMetadataEnrichmentSnapshot({ rows, corpusHash: "h", fetchImpl: fetchImpl as any });
+  assert.equal(a.snapshotHash, b.snapshotHash);
+});
+
+test("R22: request counts are broken down by identity kind", async () => {
+  const rows = [
+    { id: "x1", event_slug: "ev-slug-a", condition_id: CID_A },
+    { id: "x2", market_slug: "mk-slug-b", condition_id: CID_B },
+    { id: "x3", event_slug: "Title", condition_id: CID_A },
+  ];
+  const fetchImpl = async (url: string) => {
+    const g = globalsOnly(url);
+    if (g) return g;
+    if (url.includes("/events/slug/")) return { ok: true, status: 200, json: async () => ({ slug: "ev-slug-a" }) };
+    if (url.includes("/markets/slug/")) return { ok: true, status: 200, json: async () => ({ slug: "mk-slug-b" }) };
+    return { ok: true, status: 200, json: async () => [{ conditionId: CID_A, slug: "m-a" }] };
+  };
+  const snap = await buildMetadataEnrichmentSnapshot({ rows, corpusHash: "h", fetchImpl: fetchImpl as any });
+  assert.ok(snap.requestSummary.byIdentityKind);
+  assert.equal(snap.requestSummary.byIdentityKind!.event_slug, 1);
+  assert.equal(snap.requestSummary.byIdentityKind!.market_slug, 1);
+  assert.equal(snap.requestSummary.byIdentityKind!.condition_id, 1);
+});
+
+test("R23: no raw row payloads leak into the snapshot", async () => {
+  const rows = [{ id: "x1", event_slug: "Title", condition_id: CID_A, signal_result: "win", realized_return_pct: 40 }];
+  const fetchImpl = async (url: string) => {
+    const g = globalsOnly(url);
+    if (g) return g;
+    return { ok: true, status: 200, json: async () => [{ conditionId: CID_A, slug: "m-a" }] };
+  };
+  const snap = await buildMetadataEnrichmentSnapshot({ rows, corpusHash: "h", fetchImpl: fetchImpl as any });
+  assert.doesNotMatch(JSON.stringify(snap), /signal_result|realized_return_pct/);
+});
+
+test("R25: a corpus hash mismatch on a resumed snapshot is rejected by the validator", () => {
+  const snapshot: any = { corpusHash: "actual-hash" };
+  assert.throws(() => validateMetadataSnapshot(snapshot, "expected-hash"));
 });
