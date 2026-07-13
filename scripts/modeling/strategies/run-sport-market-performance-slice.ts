@@ -17,6 +17,7 @@ import { loadExecutableFunnelClassifier } from "../../../lib/modeling/executable
 import { projectGeneratedSignalPairsStrictDedup } from "../../../lib/modeling/generatedSignalPairsDedupPolicy";
 import type { ExportRow } from "../../../lib/modeling/generatedSignalPairsExportContract";
 import { validateRowLevelInput } from "./run-historical-funnel-comparison";
+import type { MetadataEnrichmentSnapshot } from "../../../lib/modeling/polymarketMetadataEnrichment";
 
 const DEFAULT_INPUT = path.join("modeling", "local_exports", "generated_signal_pairs_export.json");
 const DEFAULT_OUTPUT = path.join("modeling", "local_exports", "sport_market_performance_slice.json");
@@ -26,15 +27,17 @@ interface ParsedArgs {
   input: string;
   output: string;
   expectHash: string | null;
+  metadata: string | null;
 }
 
 function parseArgs(argv: string[]): ParsedArgs {
-  const args: ParsedArgs = { input: DEFAULT_INPUT, output: DEFAULT_OUTPUT, expectHash: EXPECTED_CORPUS_SHA256 };
+  const args: ParsedArgs = { input: DEFAULT_INPUT, output: DEFAULT_OUTPUT, expectHash: EXPECTED_CORPUS_SHA256, metadata: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--input") args.input = argv[++i] ?? args.input;
     else if (a === "--output") args.output = argv[++i] ?? args.output;
     else if (a === "--no-hash-check") args.expectHash = null;
+    else if (a === "--metadata") args.metadata = argv[++i] ?? null;
   }
   return args;
 }
@@ -68,11 +71,18 @@ export function runSportMarketPerformanceSliceCli(
 
     const classifier = loadExecutableFunnelClassifier();
 
+    let metadataSnapshot: MetadataEnrichmentSnapshot | undefined;
+    if (args.metadata) {
+      ensureFile(args.metadata, "metadata enrichment snapshot");
+      metadataSnapshot = JSON.parse(readFileSync(args.metadata, "utf8")) as MetadataEnrichmentSnapshot;
+    }
+
     const rawSlice = buildSportMarketPerformanceSlice({
       rows: dedupRows,
       classifier,
       candidateIds: [...ANALYZED_MODEL_IDS],
       expectedCorpusSha256: args.expectHash ?? undefined,
+      metadataSnapshot,
     });
 
     // Never write raw row references into the persisted artifact.

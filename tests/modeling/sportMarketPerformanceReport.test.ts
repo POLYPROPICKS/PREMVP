@@ -87,3 +87,25 @@ test("W9: report generation performs no fs/env/network access", () => {
 test("W10: LOW_SAMPLE and UNKNOWN segments remain visible in the tables", () => {
   assert.ok(html.includes("LOW_SAMPLE") || html.includes("MODERATE_SAMPLE") || html.includes("ROBUST_SAMPLE"));
 });
+
+// ---- Phase 3E.8D: V2 classification renders through the report unchanged ----
+
+import { buildSportMarketPerformanceSlice as buildSliceV2, ANALYZED_MODEL_IDS as ANALYZED_IDS_V2 } from "../../lib/modeling/sportMarketPerformanceSlice";
+import { loadExecutableFunnelClassifier as loadClassifierV2 } from "../../lib/modeling/executableFunnelClassifier";
+import type { MetadataEnrichmentSnapshot } from "../../lib/modeling/polymarketMetadataEnrichment";
+
+test("W11: report renders correctly with a V2 metadata-enriched slice (sport labels come from official evidence)", () => {
+  const classifierV2 = loadClassifierV2();
+  const snapshot: MetadataEnrichmentSnapshot = {
+    schemaVersion: 1, status: "PARTIAL", corpusHash: "abc", retrievedAt: "2026-07-13T00:00:00Z",
+    officialSources: [], sportsMetadata: [], validSportsMarketTypes: [], tagsById: {},
+    eventsBySlug: { "epl-team1-vs-team2": { slug: "epl-team1-vs-team2", sport: "Soccer" } },
+    marketsBySlug: {}, unresolvedIdentities: [],
+    requestSummary: { totalIdentities: 0, successCount: 0, failureCount: 0, retryCount: 0, cachedReuseCount: 0 },
+    snapshotHash: "hash",
+  };
+  const slice = buildSliceV2({ rows: corpus(), classifier: classifierV2, candidateIds: [...ANALYZED_IDS_V2], metadataSnapshot: snapshot });
+  const v2Html = renderSportMarketPerformanceReport({ slice });
+  assert.ok(v2Html.length > 500);
+  assert.doesNotMatch(v2Html, /"signal_result":|"realized_return_pct":/);
+});

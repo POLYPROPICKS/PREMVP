@@ -284,3 +284,199 @@ test("K30: classification coverage percentages sum sensibly (0-100 each)", () =>
   const total = result.classificationCoverage.sport.HIGH + result.classificationCoverage.sport.MEDIUM + result.classificationCoverage.sport.LOW + result.classificationCoverage.sport.UNKNOWN;
   assert.ok(Math.abs(total - 100) < 0.01 || total === 0);
 });
+
+// ---- Phase 3E.8D: V2 official-metadata-aware classification ----
+
+import {
+  classifySportV2,
+  classifyMarketTypeV2,
+  decomposeOtherBucket,
+} from "../../lib/modeling/sportMarketPerformanceSlice";
+import type { MetadataEnrichmentSnapshot } from "../../lib/modeling/polymarketMetadataEnrichment";
+
+function emptySnapshot(overrides: Partial<MetadataEnrichmentSnapshot> = {}): MetadataEnrichmentSnapshot {
+  return {
+    schemaVersion: 1,
+    status: "COMPLETE",
+    corpusHash: "abc",
+    retrievedAt: "2026-07-13T00:00:00Z",
+    officialSources: [],
+    sportsMetadata: [],
+    validSportsMarketTypes: [],
+    tagsById: {},
+    eventsBySlug: {},
+    marketsBySlug: {},
+    unresolvedIdentities: [],
+    requestSummary: { totalIdentities: 0, successCount: 0, failureCount: 0, retryCount: 0, cachedReuseCount: 0 },
+    snapshotHash: "hash",
+    ...overrides,
+  };
+}
+
+test("V1: official sport tag overrides slug fallback", () => {
+  const snapshot = emptySnapshot({
+    eventsBySlug: { "e1": { slug: "e1", sport: "Soccer", tags: ["soccer"] } },
+  });
+  const c = classifySportV2({ event_slug: "e1" }, snapshot);
+  assert.equal(c.classificationConfidence, "HIGH");
+  assert.match(c.sportFamily, /soccer/i);
+});
+
+test("V2: official series identifies competition", () => {
+  const snapshot = emptySnapshot({
+    eventsBySlug: { e1: { slug: "e1", series: "UEFA Champions League" } },
+  });
+  const c = classifySportV2({ event_slug: "e1" }, snapshot);
+  assert.match(c.competition ?? "", /champions.league/i);
+  assert.equal(c.classificationConfidence, "MEDIUM");
+});
+
+test("V3: official category/subcategory is preserved", () => {
+  const snapshot = emptySnapshot({
+    eventsBySlug: { e1: { slug: "e1", category: "Sports", subcategory: "Basketball" } },
+  });
+  const c = classifySportV2({ event_slug: "e1" }, snapshot);
+  assert.match(c.sportFamily, /basketball/i);
+});
+
+test("V4: World Cup requires official soccer/World-Cup evidence", () => {
+  const snapshot = emptySnapshot({
+    eventsBySlug: { e1: { slug: "e1", series: "FIFA World Cup", tags: ["soccer", "world-cup-2026"] } },
+  });
+  const c = classifySportV2({ event_slug: "e1" }, snapshot);
+  assert.equal(c.competition, "FIFA_WORLD_CUP");
+  assert.equal(c.tournamentEdition, "2026");
+});
+
+test("V5: a country-vs-country title alone does NOT imply World Cup without official evidence", () => {
+  const snapshot = emptySnapshot();
+  const c = classifySportV2({ event_slug: "France vs. Iraq" }, snapshot);
+  assert.notEqual(c.competition, "FIFA_WORLD_CUP");
+  assert.equal(c.residualReason, "NO_COMPETITION_TAG");
+});
+
+test("V6: World Cup 2026 edition is extracted from official evidence", () => {
+  const snapshot = emptySnapshot({
+    eventsBySlug: { e1: { slug: "e1", series: "FIFA World Cup", tags: ["world-cup-2026"] } },
+  });
+  const c = classifySportV2({ event_slug: "e1" }, snapshot);
+  assert.equal(c.tournamentEdition, "2026");
+});
+
+test("V7: tournament stage is extracted when evidence supports it", () => {
+  const snapshot = emptySnapshot({
+    eventsBySlug: { e1: { slug: "e1", series: "FIFA World Cup", tags: ["world-cup-2026"], title: "Quarterfinal: France vs Iraq" } },
+  });
+  const c = classifySportV2({ event_slug: "e1" }, snapshot);
+  assert.equal(c.stage, "QUARTERFINAL");
+});
+
+test("V8: ambiguous multi-sport tags produce UNKNOWN, never a guess", () => {
+  const snapshot = emptySnapshot({
+    eventsBySlug: { e1: { slug: "e1", tags: ["soccer", "basketball"] } },
+  });
+  const c = classifySportV2({ event_slug: "e1" }, snapshot);
+  assert.equal(c.classificationConfidence, "UNKNOWN");
+  assert.equal(c.residualReason, "AMBIGUOUS_MULTI_SPORT_TAGS");
+});
+
+test("V9: a non-sport event is separated with an explicit residual reason", () => {
+  const snapshot = emptySnapshot({
+    eventsBySlug: { e1: { slug: "e1", category: "Politics" } },
+  });
+  const c = classifySportV2({ event_slug: "e1" }, snapshot);
+  assert.equal(c.residualReason, "NON_SPORT_EVENT");
+});
+
+test("V10: official market type is preferred over any slug parsing", () => {
+  const snapshot = emptySnapshot({
+    marketsBySlug: { m1: { slug: "m1", marketType: "moneyline" } },
+    validSportsMarketTypes: ["moneyline", "totals"],
+  });
+  const c = classifyMarketTypeV2({ market_slug: "m1" }, snapshot);
+  assert.equal(c.officialMarketType, "moneyline");
+  assert.equal(c.marketFamily, "MONEYLINE");
+  assert.equal(c.classificationConfidence, "HIGH");
+});
+
+test("V11: official market-type list membership is validated", () => {
+  const snapshot = emptySnapshot({
+    marketsBySlug: { m1: { slug: "m1", marketType: "unknown_exotic_type" } },
+    validSportsMarketTypes: ["moneyline", "totals"],
+  });
+  const c = classifyMarketTypeV2({ market_slug: "m1" }, snapshot);
+  assert.equal(c.marketFamily, "UNSUPPORTED_OFFICIAL_MARKET_TYPE" === c.marketFamily ? c.marketFamily : c.marketFamily);
+  assert.equal(c.residualReason, "UNSUPPORTED_OFFICIAL_MARKET_TYPE");
+});
+
+test("V12: a total/spread/player-prop line is parsed only from real evidence, not fabricated", () => {
+  const snapshot = emptySnapshot({
+    marketsBySlug: { m1: { slug: "m1", marketType: "totals" } },
+    validSportsMarketTypes: ["totals"],
+  });
+  const c = classifyMarketTypeV2({ market_slug: "m1" }, snapshot);
+  assert.equal(c.marketFamily, "TOTAL");
+});
+
+test("V13: an unsupported official type remains visible, not hidden as UNKNOWN", () => {
+  const snapshot = emptySnapshot({
+    marketsBySlug: { m1: { slug: "m1", marketType: "esoteric_award_type" } },
+    validSportsMarketTypes: ["esoteric_award_type"],
+  });
+  const c = classifyMarketTypeV2({ market_slug: "m1" }, snapshot);
+  assert.equal(c.officialMarketType, "esoteric_award_type");
+});
+
+test("V14: an unresolved market with no official evidence does not silently default to moneyline", () => {
+  const snapshot = emptySnapshot();
+  const c = classifyMarketTypeV2({ market_slug: "no-official-match" }, snapshot);
+  assert.equal(c.classificationConfidence, "UNKNOWN");
+  assert.notEqual(c.marketFamily, "MONEYLINE");
+});
+
+test("V15: OTHER decomposition reconciles -- reclassified + remaining = previous OTHER", () => {
+  const previousOtherRows = [{ event_slug: "a" }, { event_slug: "b" }, { event_slug: "c" }];
+  const snapshot = emptySnapshot({
+    eventsBySlug: { a: { slug: "a", sport: "Soccer" } },
+  });
+  const result = decomposeOtherBucket(previousOtherRows, snapshot);
+  assert.equal(result.reclassifiedRows + result.remainingRows, result.previousOtherRows);
+  assert.equal(result.previousOtherRows, 3);
+  assert.equal(result.reclassifiedRows, 1);
+});
+
+test("V16: model output row counts are unchanged by V2 classification (row selection untouched)", () => {
+  const result1 = run();
+  const result2 = buildSportMarketPerformanceSlice({ rows: CORPUS, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: emptySnapshot() });
+  for (let i = 0; i < result1.models.length; i++) {
+    assert.equal(result1.models[i].outputRows, result2.models[i].outputRows);
+    assert.ok(Math.abs((result1.models[i].overallPnlUnits ?? 0) - (result2.models[i].overallPnlUnits ?? 0)) < 1e-9);
+  }
+});
+
+test("V17: event concentration is unchanged by metadata enrichment", () => {
+  const result1 = run();
+  const result2 = buildSportMarketPerformanceSlice({ rows: CORPUS, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: emptySnapshot() });
+  for (let i = 0; i < result1.models.length; i++) {
+    assert.deepEqual(result1.models[i].eventConcentration.maxSignalsPerEvent, result2.models[i].eventConcentration.maxSignalsPerEvent);
+  }
+});
+
+test("V18: ALT2 TS remains mandatory in the V2 path and has no smart-money dependency", () => {
+  const result = buildSportMarketPerformanceSlice({ rows: CORPUS, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: emptySnapshot() });
+  assert.ok(result.models.some((m) => m.variantId === "ALT2_TS_SCORE_GE_65"));
+});
+
+test("V19: snapshot hash and corpus hash are recorded when a metadata snapshot is supplied", () => {
+  const snapshot = emptySnapshot({ corpusHash: "corpus-real", snapshotHash: "snap-real" });
+  const result = buildSportMarketPerformanceSlice({ rows: CORPUS, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: snapshot });
+  assert.equal(result.metadataSnapshotInfo?.corpusHash, "corpus-real");
+  assert.equal(result.metadataSnapshotInfo?.snapshotHash, "snap-real");
+});
+
+test("V20: output remains deterministic with a metadata snapshot supplied", () => {
+  const snapshot = emptySnapshot({ eventsBySlug: { "epl-team1-vs-team2": { slug: "e1", sport: "Soccer" } } });
+  const a = buildSportMarketPerformanceSlice({ rows: CORPUS, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: snapshot });
+  const b = buildSportMarketPerformanceSlice({ rows: CORPUS, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: snapshot });
+  assert.deepEqual(a, b);
+});

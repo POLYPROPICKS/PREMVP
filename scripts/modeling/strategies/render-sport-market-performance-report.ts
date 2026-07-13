@@ -22,7 +22,7 @@ function parseArgs(argv: string[]): ParsedArgs {
   const args: ParsedArgs = { slice: DEFAULT_SLICE, output: DEFAULT_OUTPUT };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a === "--slice") args.slice = argv[++i] ?? args.slice;
+    if (a === "--slice" || a === "--input") args.slice = argv[++i] ?? args.slice;
     else if (a === "--output") args.output = argv[++i] ?? args.output;
   }
   return args;
