@@ -11,6 +11,12 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   evaluateHistoricalFunnelVariant,
+  getScoreValue,
+  getCoverageValue,
+  getSmartMoneyValue,
+  getHoursUntilStartValue,
+  isAllowedFormulaVersion,
+  ALLOWED_METRIC_FORMULA_VERSIONS,
 } from "../../lib/modeling/historicalFunnelVariants";
 import { loadExecutableFunnelClassifier } from "../../lib/modeling/executableFunnelClassifier";
 
@@ -84,7 +90,7 @@ test("C6: ALT1 Python variant is blocked (event_key missing from canonical corpu
 
 test("C7: MODEL_A halves stake metadata for smart money >= 75 without removing the row", () => {
   const rows = [
-    makeRow({ signal_confidence_num: 80, diagnostics: { dataCoverage: 80 }, smart_money_score_num: 90, signal_result: "win" }),
+    makeRow({ metric_formula_version: "v2-lite-growth-safe", signal_confidence_num: 80, diagnostics: { dataCoverage: 80 }, smart_money_score_num: 90, signal_result: "win" }),
   ];
   const result = evaluateHistoricalFunnelVariant(rows, classifier, "ALT_SM_GUARD_ON_PRIMARY");
   assert.equal(result.outputRows, 1);
@@ -94,8 +100,8 @@ test("C7: MODEL_A halves stake metadata for smart money >= 75 without removing t
 });
 
 test("C8: MODEL_A does not remove the row solely due to high smart money", () => {
-  const highSm = makeRow({ signal_confidence_num: 80, diagnostics: { dataCoverage: 80 }, smart_money_score_num: 95, signal_result: "win" });
-  const lowSm = makeRow({ signal_confidence_num: 80, diagnostics: { dataCoverage: 80 }, smart_money_score_num: 10, signal_result: "win" });
+  const highSm = makeRow({ metric_formula_version: "v2-lite-growth-safe", signal_confidence_num: 80, diagnostics: { dataCoverage: 80 }, smart_money_score_num: 95, signal_result: "win" });
+  const lowSm = makeRow({ metric_formula_version: "v2-lite-growth-safe", signal_confidence_num: 80, diagnostics: { dataCoverage: 80 }, smart_money_score_num: 10, signal_result: "win" });
   const result = evaluateHistoricalFunnelVariant([highSm, lowSm], classifier, "ALT_SM_GUARD_ON_PRIMARY");
   assert.equal(result.outputRows, 2);
 });
@@ -192,4 +198,151 @@ test("C19: selectedRows exposes the final row objects and matches outputRows wit
   assert.equal(result.selectedRows.length, 1);
   // The selected row is the original object reference (identity preserved).
   assert.ok(result.selectedRows.every((r) => rows.includes(r as (typeof rows)[number])));
+});
+
+// ---- Phase 3E.4B: export-to-evaluator field adapters ----
+
+const ALLOWED_VERSION = ALLOWED_METRIC_FORMULA_VERSIONS[0];
+
+test("F1: score alias -- a row carrying only `score` passes REQUIRE score >= 65", () => {
+  const rows = [{ condition_id: "c1", token_id: "t1", score: 80, signal_result: "win", realized_return_pct: 40 }];
+  const result = evaluateHistoricalFunnelVariant(rows, classifier, "ALT2_TS_SCORE_GE_65");
+  assert.equal(result.outputRows, 1);
+});
+
+test("F2: signal_confidence_num has priority over score", () => {
+  assert.equal(getScoreValue({ signal_confidence_num: 90, score: 10 }), 90);
+});
+
+test("F3: signal_score fallback works", () => {
+  assert.equal(getScoreValue({ signal_score: 55 }), 55);
+});
+
+test("F4: pre_event_score_num is the last fallback only", () => {
+  assert.equal(getScoreValue({ pre_event_score_num: 44 }), 44);
+  assert.equal(getScoreValue({ score: 70, pre_event_score_num: 44 }), 70);
+});
+
+test("F5: missing score is distinguishable from a numeric zero", () => {
+  assert.equal(getScoreValue({}), null);
+  assert.equal(getScoreValue({ signal_confidence_num: 0 }), 0);
+});
+
+test("F6: an invalid string score does not become zero (rejected as missing)", () => {
+  assert.equal(getScoreValue({ signal_confidence_num: "80" }), null);
+});
+
+test("F7: diagnostics.dataCoverage = 72 passes coverage >= 50", () => {
+  assert.equal(getCoverageValue({ diagnostics: { dataCoverage: 72 } }), 72);
+});
+
+test("F8: missing coverage does not silently pass (null, not 0)", () => {
+  assert.equal(getCoverageValue({}), null);
+  assert.equal(getCoverageValue({ diagnostics: {} }), null);
+});
+
+test("F9: invalid coverage unit/value is rejected explicitly", () => {
+  assert.equal(getCoverageValue({ diagnostics: { dataCoverage: "72" } }), null);
+  assert.equal(getCoverageValue({ diagnostics: { dataCoverage: 150 } }), null);
+  assert.equal(getCoverageValue({ diagnostics: { dataCoverage: -5 } }), null);
+});
+
+test("F10: diagnostics.gameStartIso plus created_at derives 8 hours", () => {
+  const row = { created_at: "2024-01-01T00:00:00Z", diagnostics: { gameStartIso: "2024-01-01T08:00:00Z" } };
+  assert.equal(getHoursUntilStartValue(row), 8);
+});
+
+test("F11: derived 8 hours triggers the historical 6-24h timing exclusion in PRIMARY", () => {
+  const inWindow = {
+    condition_id: "c1", token_id: "t1", signal_confidence_num: 80, entry_price_num: 0.7,
+    signal_result: "win", realized_return_pct: 40,
+    created_at: "2024-01-01T00:00:00Z",
+    diagnostics: { dataCoverage: 80, gameStartIso: "2024-01-01T08:00:00Z" },
+  };
+  const result = evaluateHistoricalFunnelVariant([inWindow], classifier, "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP");
+  assert.equal(result.outputRows, 0);
+});
+
+test("F12: invalid timing input is explicit (null)", () => {
+  assert.equal(getHoursUntilStartValue({ created_at: "bad", diagnostics: { gameStartIso: "2024-01-01T08:00:00Z" } }), null);
+  assert.equal(getHoursUntilStartValue({ created_at: "2024-01-01T00:00:00Z", diagnostics: {} }), null);
+});
+
+test("F13: an allowed metric_formula_version passes the isAllowed REQUIRE", () => {
+  const row = {
+    condition_id: "c1", token_id: "t1", metric_formula_version: ALLOWED_VERSION,
+    signal_confidence_num: 80, entry_price_num: 0.7, signal_result: "win", realized_return_pct: 40,
+    diagnostics: { dataCoverage: 80 },
+  };
+  const result = evaluateHistoricalFunnelVariant([row], classifier, "ALT_SM_GUARD_ON_PRIMARY");
+  assert.equal(result.outputRows, 1);
+});
+
+test("F14: a disallowed formula version is removed by isAllowed REQUIRE", () => {
+  const row = {
+    condition_id: "c1", token_id: "t1", metric_formula_version: "totally-unknown-version",
+    signal_confidence_num: 80, entry_price_num: 0.7, signal_result: "win", realized_return_pct: 40,
+    diagnostics: { dataCoverage: 80 },
+  };
+  const result = evaluateHistoricalFunnelVariant([row], classifier, "ALT_SM_GUARD_ON_PRIMARY");
+  assert.equal(result.outputRows, 0);
+});
+
+test("F15: a missing formula version follows the declared policy (fail-closed removal)", () => {
+  assert.equal(isAllowedFormulaVersion({}), false);
+  const row = {
+    condition_id: "c1", token_id: "t1",
+    signal_confidence_num: 80, entry_price_num: 0.7, signal_result: "win", realized_return_pct: 40,
+    diagnostics: { dataCoverage: 80 },
+  };
+  const result = evaluateHistoricalFunnelVariant([row], classifier, "ALT_SM_GUARD_ON_PRIMARY");
+  assert.equal(result.outputRows, 0);
+});
+
+test("F16: smart-money adapter reads the top-level exported location; absent = historical fail-open", () => {
+  assert.equal(getSmartMoneyValue({ smart_money_score_num: 90 }), 90);
+  assert.equal(getSmartMoneyValue({}), null);
+});
+
+test("F17: MODEL_A soft stake rule still does not remove rows solely due to high smart money", () => {
+  const base = {
+    metric_formula_version: ALLOWED_VERSION, signal_confidence_num: 80,
+    entry_price_num: 0.7, signal_result: "win", realized_return_pct: 40,
+    diagnostics: { dataCoverage: 80 },
+  };
+  const rows = [
+    { ...base, condition_id: "c1", token_id: "t1", smart_money_score_num: 95 },
+    { ...base, condition_id: "c2", token_id: "t2", smart_money_score_num: 10 },
+  ];
+  const result = evaluateHistoricalFunnelVariant(rows, classifier, "ALT_SM_GUARD_ON_PRIMARY");
+  assert.equal(result.outputRows, 2);
+});
+
+test("F18: _APPROX hard smart-money exclusion remains separate (removes sm>=85)", () => {
+  const base = {
+    signal_confidence_num: 70, entry_price_num: 0.7, signal_result: "win", realized_return_pct: 40,
+    diagnostics: { dataCoverage: 80 },
+  };
+  const rows = [
+    { ...base, condition_id: "c1", token_id: "t1", smart_money_score_num: 90 },
+    { ...base, condition_id: "c2", token_id: "t2", smart_money_score_num: 10 },
+  ];
+  const result = evaluateHistoricalFunnelVariant(rows, classifier, "ALT_SM_GUARD_ON_PRIMARY_APPROX");
+  assert.equal(result.outputRows, 1);
+});
+
+test("F19: existing ALT2/ALT3 TS-vs-Python divergence remains unchanged", () => {
+  const smRows = [
+    { condition_id: "c1", token_id: "t1", signal_confidence_num: 70, smart_money_score_num: 90, signal_result: "win", realized_return_pct: 40, diagnostics: { dataCoverage: 80 } },
+    { condition_id: "c2", token_id: "t2", signal_confidence_num: 70, smart_money_score_num: 10, signal_result: "win", realized_return_pct: 40, diagnostics: { dataCoverage: 80 } },
+  ];
+  const ts = evaluateHistoricalFunnelVariant(smRows, classifier, "ALT2_TS_SCORE_GE_65");
+  const py = evaluateHistoricalFunnelVariant(smRows, classifier, "ALT2_PY_SCORE_GE_65_SM_LT_85");
+  assert.equal(ts.outputRows, 2);
+  assert.equal(py.outputRows, 1);
+});
+
+test("F20: this module contains no formula arithmetic (no v2-lite weighted-sum literals)", () => {
+  const src = require("node:fs").readFileSync(require.resolve("../../lib/modeling/historicalFunnelVariants.ts"), "utf8");
+  assert.doesNotMatch(src, /0\.35\s*\*|0\.25\s*\*\s*smart|signalV2Raw/);
 });

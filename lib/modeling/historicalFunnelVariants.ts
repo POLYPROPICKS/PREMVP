@@ -45,51 +45,126 @@ function isEsports(row: Row): boolean {
   return ESPORTS_RE.test(mref(row));
 }
 
-function getScore(row: Row): number {
-  const value = row.signal_confidence_num;
-  return typeof value === "number" ? value : 0;
+// The exact permitted metric_formula_version values, re-hosted verbatim from
+// lib/executor/modelingData.ts ALLOWED_VERSIONS (that module cannot be
+// imported here -- it eagerly builds a Supabase client at load). These are
+// concrete permitted values, never a bundle name.
+export const ALLOWED_METRIC_FORMULA_VERSIONS: readonly string[] = [
+  "v2-lite-growth-safe",
+  "shadow-firemodel1_1_research_v0",
+];
+
+function finiteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-function getCoverage(row: Row): number {
+function diagnosticsOf(row: Row): Record<string, unknown> | null {
   const diagnostics = row.diagnostics;
   if (diagnostics && typeof diagnostics === "object" && !Array.isArray(diagnostics)) {
-    const value = (diagnostics as Record<string, unknown>).dataCoverage;
-    if (typeof value === "number") return value;
-  }
-  return 0;
-}
-
-function getEntryPrice(row: Row): number | null {
-  const value = row.entry_price_num;
-  return typeof value === "number" ? value : null;
-}
-
-function getSmartMoney(row: Row): number | null {
-  const value = row.smart_money_score_num;
-  return typeof value === "number" ? value : null;
-}
-
-function getHoursUntilStart(row: Row): number | null {
-  const diagnostics = row.diagnostics;
-  if (diagnostics && typeof diagnostics === "object" && !Array.isArray(diagnostics)) {
-    const value = (diagnostics as Record<string, unknown>).hoursUntilStart;
-    if (typeof value === "number") return value;
+    return diagnostics as Record<string, unknown>;
   }
   return null;
 }
 
+/**
+ * Export-to-evaluator score adapter. Reads the first FINITE numeric value in
+ * the semantic priority order signal_confidence_num -> score -> signal_score
+ * -> pre_event_score_num (the export normalizer emits `score`/`signal_score`/
+ * `pre_event_score_num` but drops `signal_confidence_num`). Returns null for a
+ * missing OR invalid field (numeric strings are rejected, not coerced), so a
+ * calling REQUIRE can distinguish a real 0 from an absent score and fail
+ * closed rather than treating missing as 0.
+ */
+export function getScoreValue(row: Row): number | null {
+  return (
+    finiteNumber(row.signal_confidence_num) ??
+    finiteNumber(row.score) ??
+    finiteNumber(row.signal_score) ??
+    finiteNumber(row.pre_event_score_num)
+  );
+}
+
+/**
+ * Coverage adapter. Reads ONLY diagnostics.dataCoverage (the top-level
+ * `coverage`/`coverage_score` aliases are dead -- no physical column backs
+ * them). Requires a finite number in the expected 0-100 unit; anything else
+ * (missing, string, out of range) is null so a REQUIRE fails closed rather
+ * than silently reading 0.
+ */
+export function getCoverageValue(row: Row): number | null {
+  const diagnostics = diagnosticsOf(row);
+  if (!diagnostics) return null;
+  const value = finiteNumber(diagnostics.dataCoverage);
+  if (value === null || value < 0 || value > 100) return null;
+  return value;
+}
+
+function getEntryPrice(row: Row): number | null {
+  return finiteNumber(row.entry_price_num);
+}
+
+/**
+ * Smart-money adapter. Reads the exact exported top-level location
+ * smart_money_score_num. When absent, returns null; the historical predicates
+ * (Python `smart_money is None or smart_money < 85`, and the MODEL_A stake
+ * guard) already define the missing case explicitly (fail-open), so this is
+ * never a silent conversion -- callers keep their documented missing handling.
+ */
+export function getSmartMoneyValue(row: Row): number | null {
+  return finiteNumber(row.smart_money_score_num);
+}
+
+/**
+ * Timing adapter. Derives hours-until-start from the exported historical
+ * timestamps diagnostics.gameStartIso and created_at: (gameStartIso -
+ * created_at) / 3_600_000. Never uses wall-clock time. Returns null if either
+ * timestamp is absent or unparseable.
+ */
+export function getHoursUntilStartValue(row: Row): number | null {
+  const diagnostics = diagnosticsOf(row);
+  const startIso = diagnostics && typeof diagnostics.gameStartIso === "string" ? diagnostics.gameStartIso : null;
+  const createdAt = typeof row.created_at === "string" ? row.created_at : null;
+  if (startIso === null || createdAt === null) return null;
+  const startMs = Date.parse(startIso);
+  const createdMs = Date.parse(createdAt);
+  if (Number.isNaN(startMs) || Number.isNaN(createdMs)) return null;
+  return (startMs - createdMs) / 3_600_000;
+}
+
+/**
+ * Formula-version eligibility. True only when metric_formula_version is one of
+ * the exact permitted values; a missing/unknown version is false (fail-closed
+ * removal), matching modelingData.ts isAllowed.
+ */
+export function isAllowedFormulaVersion(row: Row): boolean {
+  const version = row.metric_formula_version;
+  return typeof version === "string" && ALLOWED_METRIC_FORMULA_VERSIONS.includes(version);
+}
+
+// Numeric-with-zero-fallback views used only by the diagnostic stake formula
+// and the bad-bucket predicate, where a missing value behaves as it did in the
+// original modelingData helpers (getScore/getCov default to 0). Gating REQUIRE
+// steps use the nullable getScoreValue/getCoverageValue instead.
+function getScoreOrZero(row: Row): number {
+  return getScoreValue(row) ?? 0;
+}
+
+function getCoverageOrZero(row: Row): number {
+  return getCoverageValue(row) ?? 0;
+}
+
 /** Bad coverage/price bucket: exact bounds from modelingData.ts isBadBucket. */
 function isBadBucket(row: Row): boolean {
-  const cov = getCoverage(row);
+  const cov = getCoverageValue(row);
   const ep = getEntryPrice(row);
-  return ep !== null && cov >= 50 && cov <= 74 && ep >= 0.44 && ep <= 0.58;
+  return ep !== null && cov !== null && cov >= 50 && cov <= 74 && ep >= 0.44 && ep <= 0.58;
 }
 
 /** MODEL_A stake formula: exact constants from modelingData.ts getStake_primary. */
 function stakePrimary(row: Row): number {
-  const sc = getScore(row);
-  const cov = getCoverage(row);
-  const sm = getSmartMoney(row);
+  const sc = getScoreOrZero(row);
+  const cov = getCoverageOrZero(row);
+  const sm = getSmartMoneyValue(row);
   const esports = isEsports(row);
   let base = 0;
   if (sc >= 72 && cov >= 75) base = 10;
@@ -135,15 +210,27 @@ export interface HistoricalFunnelVariantResult {
 }
 
 function applyRequire(rows: Row[], field: string | null, rule: Record<string, unknown> | null): Row[] {
+  // Formula-version eligibility REQUIRE (field: null, predicate isAllowed(r)).
+  if (field === null && rule && rule.predicate === "isAllowed(r)") {
+    return rows.filter((r) => isAllowedFormulaVersion(r));
+  }
   if (field === "signal_confidence_num" && rule?.operator === ">=") {
-    return rows.filter((r) => getScore(r) >= (rule.value as number));
+    // Missing/invalid score fails closed (removed), never read as 0.
+    return rows.filter((r) => {
+      const s = getScoreValue(r);
+      return s !== null && s >= (rule.value as number);
+    });
   }
   if (field === "data_coverage_num" && rule?.operator === ">=") {
-    return rows.filter((r) => getCoverage(r) >= (rule.value as number));
+    // Missing/invalid coverage fails closed (removed), never read as 0.
+    return rows.filter((r) => {
+      const c = getCoverageValue(r);
+      return c !== null && c >= (rule.value as number);
+    });
   }
   if (field === "smart_money_score_num" && rule && typeof rule.rule === "string") {
     return rows.filter((r) => {
-      const sm = getSmartMoney(r);
+      const sm = getSmartMoneyValue(r);
       return sm === null || sm < 85;
     });
   }
@@ -159,7 +246,7 @@ function applyExclude(rows: Row[], field: string | null): Row[] {
   }
   if (field === "hours_until_start_num") {
     return rows.filter((r) => {
-      const hrs = getHoursUntilStart(r);
+      const hrs = getHoursUntilStartValue(r);
       return hrs === null || !(hrs >= 6 && hrs < 24);
     });
   }
@@ -170,7 +257,7 @@ function applyExclude(rows: Row[], field: string | null): Row[] {
     // Hard exclusion (as opposed to the soft stake-halving guard applied at
     // the STAKE step): smart money missing is treated as passing.
     return rows.filter((r) => {
-      const sm = getSmartMoney(r);
+      const sm = getSmartMoneyValue(r);
       return sm === null || sm < 85;
     });
   }
@@ -216,9 +303,9 @@ export function evaluateHistoricalFunnelVariant(
   function flushOrder(): void {
     for (const field of pendingOrderFields) {
       if (field === "signal_confidence_num") {
-        current = [...current].sort((a, b) => getScore(b) - getScore(a));
+        current = [...current].sort((a, b) => getScoreOrZero(b) - getScoreOrZero(a));
       } else if (field === "data_coverage_num") {
-        current = [...current].sort((a, b) => getCoverage(b) - getCoverage(a));
+        current = [...current].sort((a, b) => getCoverageOrZero(b) - getCoverageOrZero(a));
       }
     }
     pendingOrderFields = [];
