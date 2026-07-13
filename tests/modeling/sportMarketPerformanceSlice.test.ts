@@ -291,6 +291,7 @@ import {
   classifySportV2,
   classifyMarketTypeV2,
   decomposeOtherBucket,
+  normalizeValidSportsMarketTypes,
 } from "../../lib/modeling/sportMarketPerformanceSlice";
 import type { MetadataEnrichmentSnapshot } from "../../lib/modeling/polymarketMetadataEnrichment";
 
@@ -654,4 +655,126 @@ test("Y18: sport and market-type segment counts reconcile to each model's output
     assert.equal(sportSum, m.outputRows);
     assert.equal(marketSum, m.outputRows);
   }
+});
+
+// ---- Phase 3E.8D.3C.1: normalize official sports market types response ----
+
+const CID_Z = "0x" + "c".repeat(64);
+
+test("Z1: normalize accepts a legacy array of strings", () => {
+  const s = normalizeValidSportsMarketTypes(["moneyline", "totals"]);
+  assert.ok(s.has("moneyline"));
+  assert.ok(s.has("totals"));
+});
+
+test("Z2: normalize accepts the official wrapper object with a marketTypes array", () => {
+  const s = normalizeValidSportsMarketTypes({ $schema: "x", marketTypes: ["moneyline", "round_handicap_game_2"] });
+  assert.ok(s.has("moneyline"));
+  assert.ok(s.has("round_handicap_game_2"));
+});
+
+test("Z3: marketTypes string entries are trimmed and lowercased", () => {
+  const s = normalizeValidSportsMarketTypes({ marketTypes: ["  Moneyline  ", "TOTALS"] });
+  assert.ok(s.has("moneyline"));
+  assert.ok(s.has("totals"));
+});
+
+test("Z4: marketTypes object entries are normalized from the proven name/type/slug field", () => {
+  const s = normalizeValidSportsMarketTypes({
+    marketTypes: [{ name: "Moneyline" }, { type: "totals" }, { slug: "round_handicap_game_2" }],
+  });
+  assert.ok(s.has("moneyline"));
+  assert.ok(s.has("totals"));
+  assert.ok(s.has("round_handicap_game_2"));
+});
+
+test("Z5: malformed entries are ignored safely", () => {
+  const s = normalizeValidSportsMarketTypes({ marketTypes: ["moneyline", null, 42, {}, { unrelated: "x" }, ""] });
+  assert.ok(s.has("moneyline"));
+  assert.equal(s.size, 1);
+});
+
+test("Z6: a missing marketTypes array returns an empty registry, not a throw", () => {
+  assert.doesNotThrow(() => normalizeValidSportsMarketTypes({ $schema: "x" }));
+  assert.equal(normalizeValidSportsMarketTypes({ $schema: "x" }).size, 0);
+});
+
+test("Z7: an unknown shape returns an empty registry, not a throw", () => {
+  assert.doesNotThrow(() => normalizeValidSportsMarketTypes("nonsense"));
+  assert.equal(normalizeValidSportsMarketTypes("nonsense").size, 0);
+  assert.equal(normalizeValidSportsMarketTypes(null).size, 0);
+  assert.equal(normalizeValidSportsMarketTypes(undefined).size, 0);
+});
+
+test("Z8: classifyMarketTypeV2 does not throw when validSportsMarketTypes is the wrapper object", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_Z]: { slug: "m", conditionId: CID_Z, sportsMarketType: "round_handicap_game_2" } },
+    validSportsMarketTypes: { $schema: "x", marketTypes: ["round_handicap_game_2", "moneyline"] } as any,
+  });
+  assert.doesNotThrow(() => classifyMarketTypeV2({ condition_id: CID_Z }, snapshot));
+  const c = classifyMarketTypeV2({ condition_id: CID_Z }, snapshot);
+  assert.equal(c.marketFamily, "HANDICAP");
+  assert.equal(c.periodScope, "GAME_2");
+});
+
+test("Z9: round_handicap_game_2 remains HANDICAP under the wrapper registry", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_Z]: { slug: "m", conditionId: CID_Z, sportsMarketType: "round_handicap_game_2" } },
+    validSportsMarketTypes: { marketTypes: [{ slug: "round_handicap_game_2" }] } as any,
+  });
+  assert.equal(classifyMarketTypeV2({ condition_id: CID_Z }, snapshot).marketFamily, "HANDICAP");
+});
+
+test("Z10: official moneyline remains MONEYLINE under the wrapper registry", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_Z]: { slug: "m", conditionId: CID_Z, sportsMarketType: "moneyline" } },
+    validSportsMarketTypes: { marketTypes: ["moneyline"] } as any,
+  });
+  assert.equal(classifyMarketTypeV2({ condition_id: CID_Z }, snapshot).marketFamily, "MONEYLINE");
+});
+
+test("Z11: official totals remains TOTAL under the wrapper registry", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_Z]: { slug: "m", conditionId: CID_Z, sportsMarketType: "totals" } },
+    validSportsMarketTypes: { marketTypes: ["totals"] } as any,
+  });
+  assert.equal(classifyMarketTypeV2({ condition_id: CID_Z }, snapshot).marketFamily, "TOTAL");
+});
+
+test("Z12: no metadata still preserves fallback behavior (UNKNOWN, never moneyline)", () => {
+  const snapshot = emptySnapshot({ validSportsMarketTypes: { marketTypes: ["moneyline"] } as any });
+  const c = classifyMarketTypeV2({ market_slug: "no-official-match" }, snapshot);
+  assert.equal(c.classificationConfidence, "UNKNOWN");
+  assert.notEqual(c.marketFamily, "MONEYLINE");
+});
+
+test("Z13: model counts, PnL, ROI, and event concentration are unchanged under a wrapper registry", () => {
+  const rows = corpus();
+  const base = buildSportMarketPerformanceSlice({ rows, classifier, candidateIds: [...ANALYZED_MODEL_IDS] });
+  const snap = emptySnapshot({
+    marketsByConditionId: { [CID_Z]: { slug: "m", conditionId: CID_Z, sportsMarketType: "moneyline" } },
+    validSportsMarketTypes: { $schema: "x", marketTypes: ["moneyline", "totals"] } as any,
+  });
+  const enriched = buildSportMarketPerformanceSlice({ rows, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: snap });
+  for (let i = 0; i < base.models.length; i++) {
+    assert.equal(enriched.models[i].outputRows, base.models[i].outputRows);
+    assert.equal(enriched.models[i].overallPnlUnits, base.models[i].overallPnlUnits);
+    assert.equal(enriched.models[i].overallRoiPct, base.models[i].overallRoiPct);
+    assert.deepEqual(enriched.models[i].eventConcentration, base.models[i].eventConcentration);
+  }
+});
+
+test("Z14: output is deterministic under a wrapper registry", () => {
+  const rows = corpus();
+  const snap = emptySnapshot({ validSportsMarketTypes: { marketTypes: ["moneyline"] } as any });
+  const a = buildSportMarketPerformanceSlice({ rows, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: snap });
+  const b = buildSportMarketPerformanceSlice({ rows, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: snap });
+  assert.deepEqual(a, b);
+});
+
+test("Z15: normalize does not mutate its input", () => {
+  const input = { $schema: "x", marketTypes: ["Moneyline", "TOTALS"] };
+  const snapshot = JSON.parse(JSON.stringify(input));
+  normalizeValidSportsMarketTypes(input);
+  assert.deepEqual(input, snapshot);
 });

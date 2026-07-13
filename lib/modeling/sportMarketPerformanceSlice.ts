@@ -517,6 +517,39 @@ const SPORTS_MARKET_TYPE_BASE_FAMILY: Record<string, string> = {
 };
 
 /**
+ * Normalizes the official `/sports/market-types` registry into a Set of
+ * lowercase type identifiers, accepting both the legacy `string[]` shape and
+ * the real official wrapper `{ $schema?, marketTypes: [...] }`. Object entries
+ * are read from `name` -> `type` -> `slug` (the exact precedence the
+ * production `fetchSportsMarketTypes` parser proves). Malformed/unknown shapes
+ * yield an empty Set (no throw); an empty Set means "no restriction" at the
+ * call site. Does not mutate its input.
+ */
+export function normalizeValidSportsMarketTypes(value: unknown): Set<string> {
+  const out = new Set<string>();
+  let entries: unknown[] = [];
+  if (Array.isArray(value)) {
+    entries = value;
+  } else if (value && typeof value === "object" && Array.isArray((value as Record<string, unknown>).marketTypes)) {
+    entries = (value as Record<string, unknown>).marketTypes as unknown[];
+  }
+  for (const entry of entries) {
+    let text: unknown = null;
+    if (typeof entry === "string") {
+      text = entry;
+    } else if (entry && typeof entry === "object") {
+      const o = entry as Record<string, unknown>;
+      text = o.name ?? o.type ?? o.slug ?? null;
+    }
+    if (typeof text === "string") {
+      const normalized = text.trim().toLowerCase();
+      if (normalized !== "") out.add(normalized);
+    }
+  }
+  return out;
+}
+
+/**
  * Splits a Gamma sportsMarketType/marketType token into a base type plus an
  * optional period scope suffix (e.g. `round_handicap_game_2` ->
  * { base: "round_handicap", periodScope: "GAME_2" }). No suffix -> null scope.
@@ -545,8 +578,8 @@ export function classifyMarketTypeV2(row: Row, snapshot: MetadataEnrichmentSnaps
     const { base, periodScope } = parseSportsMarketType(lower);
     const family =
       OFFICIAL_MARKET_TYPE_FAMILY[lower] ?? SPORTS_MARKET_TYPE_BASE_FAMILY[base] ?? OFFICIAL_MARKET_TYPE_FAMILY[base];
-    const isValidOfficialType =
-      snapshot.validSportsMarketTypes.length === 0 || snapshot.validSportsMarketTypes.includes(rawType);
+    const validTypes = normalizeValidSportsMarketTypes(snapshot.validSportsMarketTypes);
+    const isValidOfficialType = validTypes.size === 0 || validTypes.has(lower);
 
     if (!family || !isValidOfficialType) {
       return {
