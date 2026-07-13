@@ -26,6 +26,14 @@ import {
   type ManifestInputs,
   type SkippedVariantRecord,
 } from "../../../lib/modeling/evaluationRunManifest";
+import {
+  projectGeneratedSignalPairsStrictDedup,
+  STRICT_DEDUP_POLICY_NAME,
+} from "../../../lib/modeling/generatedSignalPairsDedupPolicy";
+import {
+  getStrictDedupKeyForExportRow,
+  type ExportRow,
+} from "../../../lib/modeling/generatedSignalPairsExportContract";
 
 // Requested set = locked execution set plus the excluded ids (so nothing
 // silently disappears from the visible result and manifest).
@@ -82,6 +90,21 @@ export function validateRowLevelInput(parsed: unknown): RowLevelValidation {
 
 function sha256(text: string): string {
   return createHash("sha256").update(text).digest("hex");
+}
+
+/**
+ * Deterministic hash of the deduplicated corpus content: the retained rows in
+ * a canonical order (by strict dedup key), JSON-serialized. Two different raw
+ * snapshots that dedup to the same retained rows produce the same hash; a raw
+ * file re-ordering does not change it.
+ */
+function dedupCorpusHash(dedupRows: Record<string, unknown>[]): string {
+  const ordered = [...dedupRows].sort((a, b) => {
+    const ak = getStrictDedupKeyForExportRow(a as ExportRow) ?? "";
+    const bk = getStrictDedupKeyForExportRow(b as ExportRow) ?? "";
+    return ak < bk ? -1 : ak > bk ? 1 : 0;
+  });
+  return sha256(JSON.stringify(ordered));
 }
 
 function readGit(args: string[]): string {
@@ -158,7 +181,33 @@ export function runHistoricalFunnelComparisonCli(
     if (!rowCheck.ok) {
       throw new Error(`input validation failed (${args.input}): ${rowCheck.reason}`);
     }
-    const rows = rowCheck.rows!;
+    const rawRows = rowCheck.rows!;
+
+    // Apply the canonical strict dedup BEFORE any funnel execution. The raw
+    // export is one row per snapshot; the funnels evaluate exactly one row per
+    // (condition_id + token_id) signal.
+    const projection = projectGeneratedSignalPairsStrictDedup(rawRows as ExportRow[]);
+    const dedupRows = projection.dedupedRows as Record<string, unknown>[];
+
+    // Validate the dedup output before comparison.
+    if (dedupRows.length === 0) {
+      throw new Error(`dedup produced zero rows from ${rawRows.length} raw rows (${args.input})`);
+    }
+    if (dedupRows.length > rawRows.length) {
+      throw new Error(`dedup retained more rows (${dedupRows.length}) than raw (${rawRows.length})`);
+    }
+    const seenKeys = new Set<string>();
+    for (const row of dedupRows) {
+      const key = getStrictDedupKeyForExportRow(row as ExportRow);
+      if (key === null) {
+        throw new Error("dedup output contains a row without condition/token identity");
+      }
+      if (seenKeys.has(key)) {
+        throw new Error("dedup output still contains a duplicate condition+token key");
+      }
+      seenKeys.add(key);
+    }
+    const duplicateRowsRemoved = rawRows.length - dedupRows.length;
 
     const classifierRaw = readFileSync(args.classifier, "utf8");
     let classifier: ExecutableFunnelClassifier;
@@ -171,9 +220,13 @@ export function runHistoricalFunnelComparisonCli(
     }
 
     const requested = args.variants.length > 0 ? args.variants : [...DEFAULT_REQUESTED];
-    const comparison = compareHistoricalFunnelVariants({ rows, classifier, requestedVariantIds: requested });
+    // Every variant receives the SAME dedup row array.
+    const comparison = compareHistoricalFunnelVariants({ rows: dedupRows, classifier, requestedVariantIds: requested });
 
-    const inputSha = sha256(inputRaw);
+    // The comparison input hash is the dedup CORPUS hash (content of the
+    // retained rows in a canonical key order), not a hash of the raw file --
+    // so two raw snapshots that dedup to the same corpus share a hash.
+    const inputSha = dedupCorpusHash(dedupRows);
     const classifierSha = sha256(classifierRaw);
 
     const skipped: SkippedVariantRecord[] = comparison.executions
@@ -188,10 +241,17 @@ export function runHistoricalFunnelComparisonCli(
       gitBranch: readGit(["rev-parse", "--abbrev-ref", "HEAD"]),
       inputArtifactPath: args.input,
       inputSha256: inputSha,
-      inputRowCount: rows.length,
+      inputRowCount: dedupRows.length,
       inputFirstResolvedAt: comparison.corpus.firstResolvedAt,
       inputLastResolvedAt: comparison.corpus.lastResolvedAt,
-      dedupPolicy: "strict_latest_created_before_resolved",
+      dedupPolicy: STRICT_DEDUP_POLICY_NAME,
+      rawInputRowCount: rawRows.length,
+      deduplicatedInputRowCount: dedupRows.length,
+      duplicateRowsRemoved,
+      dedupApplied: true,
+      dedupIdentityFields: ["condition_id", "token_id"],
+      dedupOrderingField: "created_at",
+      dedupResolutionBoundaryField: "resolved_at",
       classifierPath: args.classifier,
       classifierSha256: classifierSha,
       classifierSchemaVersion: classifier.schemaVersion,

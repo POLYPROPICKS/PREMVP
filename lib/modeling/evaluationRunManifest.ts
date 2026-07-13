@@ -31,6 +31,15 @@ export interface ManifestInputs {
   inputFirstResolvedAt: string | null;
   inputLastResolvedAt: string | null;
   dedupPolicy: string;
+  // Strict-dedup proof (Phase 3E.4B): the runner applies the canonical
+  // projection before comparison and records exactly what it did.
+  rawInputRowCount: number;
+  deduplicatedInputRowCount: number;
+  duplicateRowsRemoved: number;
+  dedupApplied: boolean;
+  dedupIdentityFields: string[];
+  dedupOrderingField: string;
+  dedupResolutionBoundaryField: string;
   classifierPath: string;
   classifierSha256: string;
   classifierSchemaVersion: number;

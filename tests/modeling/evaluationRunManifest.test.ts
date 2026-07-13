@@ -25,6 +25,13 @@ function baseInputs(): ManifestInputs {
     inputFirstResolvedAt: "2026-05-01T00:00:00Z",
     inputLastResolvedAt: "2026-06-16T00:00:00Z",
     dedupPolicy: "strict_latest_created_before_resolved",
+    rawInputRowCount: 49400,
+    deduplicatedInputRowCount: 1657,
+    duplicateRowsRemoved: 47743,
+    dedupApplied: true,
+    dedupIdentityFields: ["condition_id", "token_id"],
+    dedupOrderingField: "created_at",
+    dedupResolutionBoundaryField: "resolved_at",
     classifierPath: "modeling/model_registry/executable_funnel_classifier.json",
     classifierSha256: "b".repeat(64),
     classifierSchemaVersion: 1,
@@ -91,7 +98,10 @@ test("M8: manifest records skipped variants and reasons", () => {
 test("M9: manifest contains no raw rows", () => {
   const m = buildEvaluationRunManifest(baseInputs());
   const serialized = JSON.stringify(m);
-  assert.doesNotMatch(serialized, /"signal_result"|"realized_return_pct"|"condition_id"/);
+  // Raw row payloads carry result/return values; the manifest may name the
+  // dedup identity FIELDS (condition_id/token_id) as metadata, which is not a
+  // raw row, so only row-value keys are forbidden here.
+  assert.doesNotMatch(serialized, /"signal_result":|"realized_return_pct":|"entry_price_num":/);
 });
 
 test("M10: manifest contains no env values / tokens / supabase urls", () => {
@@ -105,4 +115,20 @@ test("M11: runId is stable regardless of requested-variant array identity but no
   const b = computeRunId({ ...baseInputs(), requestedVariantIds: ["ALT2_TS_SCORE_GE_65", "BASELINE_V1_CONTROL"] });
   // Order is part of the run definition, so a different order is a different run.
   assert.notEqual(a, b);
+});
+
+test("M12: manifest records raw, dedup, and removed counts plus dedupApplied", () => {
+  const m = buildEvaluationRunManifest(baseInputs());
+  assert.equal(m.rawInputRowCount, 49400);
+  assert.equal(m.deduplicatedInputRowCount, 1657);
+  assert.equal(m.duplicateRowsRemoved, 47743);
+  assert.equal(m.dedupApplied, true);
+  assert.deepEqual(m.dedupIdentityFields, ["condition_id", "token_id"]);
+  assert.equal(m.dedupOrderingField, "created_at");
+  assert.equal(m.dedupResolutionBoundaryField, "resolved_at");
+});
+
+test("M13: duplicateRowsRemoved equals raw minus dedup", () => {
+  const m = buildEvaluationRunManifest(baseInputs());
+  assert.equal(m.duplicateRowsRemoved, m.rawInputRowCount - m.deduplicatedInputRowCount);
 });

@@ -48,6 +48,8 @@ function manifest() {
     inputSha256: inputSha, inputRowCount: 3,
     inputFirstResolvedAt: comparison.corpus.firstResolvedAt, inputLastResolvedAt: comparison.corpus.lastResolvedAt,
     dedupPolicy: "strict_latest_created_before_resolved",
+    rawInputRowCount: 3, deduplicatedInputRowCount: 3, duplicateRowsRemoved: 0, dedupApplied: true,
+    dedupIdentityFields: ["condition_id", "token_id"], dedupOrderingField: "created_at", dedupResolutionBoundaryField: "resolved_at",
     classifierPath: "modeling/model_registry/executable_funnel_classifier.json",
     classifierSha256: classifierSha, classifierSchemaVersion: 1,
     comparisonEngineVersion: comparison.comparisonEngineVersion,
