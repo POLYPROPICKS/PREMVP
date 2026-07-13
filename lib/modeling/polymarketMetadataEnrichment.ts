@@ -284,7 +284,12 @@ export async function fetchMarketMetadataByConditionId(
   const retryDelayMs = options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS;
   const normalized = conditionId.toLowerCase();
 
-  const url = `${GAMMA_BASE}/markets?condition_ids=${encodeURIComponent(conditionId)}`;
+  // Historical markets are closed, and Gamma's /markets defaults to active
+  // markets only -- so closed=true is required or every historical condition
+  // id returns an empty array. condition_ids stays a single encoded value
+  // (not condition_ids[], not a JSON array).
+  const params = new URLSearchParams({ condition_ids: normalized, closed: "true" });
+  const url = `${GAMMA_BASE}/markets?${params.toString()}`;
   const result = await fetchJsonWithRetry(fetchImpl, url, maxAttempts, timeoutMs, retryDelayMs);
   if (!result.ok) {
     return {

@@ -556,7 +556,14 @@ test("R8: the condition-id request URL contains the encoded condition_ids param"
     return { ok: true, status: 200, json: async () => [{ conditionId: CID_A, slug: "m-a", marketType: "moneyline" }] };
   };
   await fetchMarketMetadataByConditionId(fetchImpl as any, CID_A, {});
-  assert.ok(seen.some((u) => u.includes("/markets?") && u.includes("condition_ids=" + encodeURIComponent(CID_A))));
+  const marketUrl = seen.find((u) => u.includes("/markets?"));
+  assert.ok(marketUrl, "expected a /markets request");
+  // condition_ids param name unchanged, not condition_ids[], no JSON-array serialization
+  assert.ok(marketUrl!.includes("condition_ids=" + encodeURIComponent(CID_A)));
+  assert.ok(!marketUrl!.includes("condition_ids[]"));
+  assert.ok(!marketUrl!.includes("%5B") && !marketUrl!.includes("["));
+  // closed markets must be included -- historical markets are closed
+  assert.ok(marketUrl!.includes("closed=true"), `expected closed=true in ${marketUrl}`);
 });
 
 test("R9: an array response with an exact condition match succeeds", async () => {
