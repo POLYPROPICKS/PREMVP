@@ -21,6 +21,7 @@ import type {
   OfficialEventMetadata,
   OfficialMarketMetadata,
 } from "./polymarketMetadataEnrichment";
+import { isValidConditionId, isValidPolymarketSlug } from "./polymarketMetadataEnrichment";
 
 type Row = Record<string, unknown>;
 
@@ -173,9 +174,43 @@ function lookupEventMetadata(row: Row, snapshot: MetadataEnrichmentSnapshot): Of
   return null;
 }
 
+function getDiag(row: Row): Record<string, unknown> | undefined {
+  const d = row["diagnostics"];
+  return d && typeof d === "object" && !Array.isArray(d) ? (d as Record<string, unknown>) : undefined;
+}
+
+/**
+ * Resolves a row's normalized (lowercase) condition id from the top-level
+ * `condition_id` or `diagnostics.conditionId`, or null when neither is a
+ * well-formed condition id.
+ */
+function normalizedConditionId(row: Row): string | null {
+  if (isValidConditionId(row["condition_id"])) return (row["condition_id"] as string).toLowerCase();
+  const d = getDiag(row);
+  if (d && isValidConditionId(d["conditionId"])) return (d["conditionId"] as string).toLowerCase();
+  return null;
+}
+
+/**
+ * Looks up official market metadata for a row (Phase 3E.8D.3C), priority:
+ * 1) valid condition_id / diagnostics.conditionId -> marketsByConditionId
+ * (normalized lowercase key); 2) valid diagnostics.marketSlug -> marketsBySlug;
+ * 3) valid top-level market_slug -> marketsBySlug. Display-title fields never
+ * hit because they fail slug validation. Backward compatible with snapshots
+ * lacking marketsByConditionId.
+ */
 function lookupMarketMetadata(row: Row, snapshot: MetadataEnrichmentSnapshot): OfficialMarketMetadata | null {
+  const byConditionId = snapshot.marketsByConditionId;
+  const cid = normalizedConditionId(row);
+  if (cid && byConditionId && byConditionId[cid]) return byConditionId[cid];
+
+  const d = getDiag(row);
+  if (d && isValidPolymarketSlug(d["marketSlug"]) && snapshot.marketsBySlug[d["marketSlug"] as string]) {
+    return snapshot.marketsBySlug[d["marketSlug"] as string];
+  }
+
   const slug = getStr(row, "market_slug");
-  if (slug !== null && snapshot.marketsBySlug[slug]) return snapshot.marketsBySlug[slug];
+  if (slug !== null && isValidPolymarketSlug(slug) && snapshot.marketsBySlug[slug]) return snapshot.marketsBySlug[slug];
   return null;
 }
 
@@ -194,6 +229,89 @@ function matchSportKeyword(text: string): string | null {
     if (re.test(text)) return key;
   }
   return null;
+}
+
+// Bounded slug-prefix -> sport map, derived only from prefixes observed in
+// the real corpus (val-, dota2-, fifwc-, nhl-, bk*). Lowest-priority sport
+// evidence: used only when official tags/category name no sport.
+const SLUG_PREFIX_SPORT: Array<[RegExp, string]> = [
+  [/^val-/i, "ESPORTS"],
+  [/^dota2-/i, "ESPORTS"],
+  [/^(lol|csgo|cs2)-/i, "ESPORTS"],
+  [/^fifwc-/i, "SOCCER"],
+  [/^nhl-/i, "HOCKEY"],
+  [/^bk/i, "BASKETBALL"],
+];
+
+function matchSlugPrefixSport(slug: string): string | null {
+  for (const [re, key] of SLUG_PREFIX_SPORT) {
+    if (re.test(slug)) return key;
+  }
+  return null;
+}
+
+/**
+ * Sport/competition classification from official MARKET metadata (Phase
+ * 3E.8D.3C), used only when no official EVENT metadata is available. Evidence
+ * priority: official market tags -> category/subcategory -> sportsMarketType
+ * keyword -> bounded slug prefix (LOW). World Cup is assigned only for SOCCER
+ * with an official world-cup tag or an fifwc- slug -- never from a title.
+ * Returns null when no evidence supports any sport.
+ */
+function classifySportFromMarket(market: OfficialMarketMetadata): SportClassificationV2 | null {
+  const tagTexts = (market.tags ?? []).map((t) => String(t));
+  const matchedFromTags = new Set(tagTexts.map(matchSportKeyword).filter((s): s is string => s !== null));
+  if (matchedFromTags.size > 1) {
+    return {
+      sportFamily: "UNKNOWN", sport: null, competition: null, tournament: null, tournamentEdition: null, stage: null,
+      classificationConfidence: "UNKNOWN", classificationEvidence: "ambiguous_official_market_tags",
+      residualReason: "AMBIGUOUS_MULTI_SPORT_TAGS",
+    };
+  }
+
+  const slug = typeof market.slug === "string" ? market.slug : "";
+  const sportsMarketType = typeof market.sportsMarketType === "string" ? market.sportsMarketType : "";
+
+  let sport: string | null =
+    [...matchedFromTags][0] ??
+    (market.category ? matchSportKeyword(market.category) : null) ??
+    (market.subcategory ? matchSportKeyword(market.subcategory) : null) ??
+    (sportsMarketType ? matchSportKeyword(sportsMarketType) : null);
+  let evidence = "official_market_tag_or_category";
+  let confidence: ClassificationConfidence = "HIGH";
+
+  if (!sport) {
+    const prefixSport = matchSlugPrefixSport(slug);
+    if (prefixSport) {
+      sport = prefixSport;
+      evidence = "official_market_slug_prefix";
+      confidence = "LOW";
+    }
+  }
+
+  if (!sport) return null;
+
+  let competition: string | null = null;
+  let tournamentEdition: string | null = null;
+  const hasWorldCupTag = tagTexts.some((t) => /world-?cup/i.test(t));
+  const isFifwcSlug = /^fifwc-/i.test(slug);
+  if (sport === "SOCCER" && (hasWorldCupTag || isFifwcSlug)) {
+    competition = "FIFA_WORLD_CUP";
+    const editionMatch = tagTexts.join(" ").match(/world-?cup-?(\d{4})/i) ?? slug.match(/(\d{4})/);
+    tournamentEdition = editionMatch ? editionMatch[1] : isFifwcSlug ? "2026" : null;
+  }
+
+  return {
+    sportFamily: sport,
+    sport,
+    competition,
+    tournament: competition,
+    tournamentEdition,
+    stage: null,
+    classificationConfidence: confidence,
+    classificationEvidence: evidence,
+    residualReason: null,
+  };
 }
 
 const WORLD_CUP_STAGE_PATTERNS: Array<[RegExp, string]> = [
@@ -310,7 +428,16 @@ export function classifySportV2(row: Row, snapshot: MetadataEnrichmentSnapshot):
     };
   }
 
-  // No official event metadata at all for this identity.
+  // No official EVENT metadata -- fall back to official MARKET metadata
+  // (Phase 3E.8D.3C), which is what the historical corpus actually resolves
+  // (markets by condition id, not events).
+  const market = lookupMarketMetadata(row, snapshot);
+  if (market) {
+    const fromMarket = classifySportFromMarket(market);
+    if (fromMarket) return fromMarket;
+  }
+
+  // No official event or market metadata at all for this identity.
   return {
     sportFamily: "UNKNOWN", sport: null, competition: null, tournament: null, tournamentEdition: null, stage: null,
     classificationConfidence: "UNKNOWN", classificationEvidence: "no_official_event_metadata",
@@ -348,39 +475,97 @@ const OFFICIAL_MARKET_TYPE_FAMILY: Record<string, string> = {
   award: "AWARD_OR_STAT_LEADER",
 };
 
+// Base-token -> locked-family map for Gamma `sportsMarketType` values, keyed
+// only from the vocabulary that actually appears in the real corpus. Extends
+// OFFICIAL_MARKET_TYPE_FAMILY with the compound sports market bases; never
+// collapses an unmapped base to moneyline.
+const SPORTS_MARKET_TYPE_BASE_FAMILY: Record<string, string> = {
+  moneyline: "MONEYLINE",
+  child_moneyline: "MONEYLINE",
+  three_way_moneyline: "THREE_WAY_MONEYLINE",
+  draw_no_bet: "DRAW_NO_BET",
+  esports_match_result: "MONEYLINE",
+  round_handicap: "HANDICAP",
+  map_handicap: "HANDICAP",
+  handicap: "HANDICAP",
+  spread: "SPREAD",
+  spreads: "SPREAD",
+  total: "TOTAL",
+  totals: "TOTAL",
+  round_over_under: "TOTAL",
+  over_under: "TOTAL",
+  first_half_totals: "TOTAL",
+  total_corners: "TOTAL",
+  total_games: "TOTAL",
+  team_total: "TEAM_TOTAL",
+  team_totals: "TEAM_TOTAL",
+  soccer_team_totals: "TEAM_TOTAL",
+  both_teams_to_score: "BOTH_TEAMS_TO_SCORE",
+  soccer_halftime_result: "HALF_FULL_TIME",
+  halftime_result: "HALF_FULL_TIME",
+  half_full_time: "HALF_FULL_TIME",
+  soccer_second_half_result: "HALF_FULL_TIME",
+  soccer_extra_time: "HALF_FULL_TIME",
+  soccer_player_goals: "PLAYER_PROP",
+  player_goals: "PLAYER_PROP",
+  player_prop: "PLAYER_PROP",
+  correct_score: "CORRECT_SCORE",
+  qualification: "QUALIFICATION_OR_ADVANCEMENT",
+  tournament_winner: "TOURNAMENT_WINNER",
+  series_winner: "SERIES_WINNER",
+  award: "AWARD_OR_STAT_LEADER",
+};
+
 /**
- * Market-type classification, evidence-priority order: explicit official
- * marketType field, validated against the official /sports/market-types
- * list membership -> official market tags/template (not implemented without
- * evidence) -> UNKNOWN. Never defaults an unresolved market to moneyline --
- * that heuristic exists only in the V1 slug-based classifier, not here.
+ * Splits a Gamma sportsMarketType/marketType token into a base type plus an
+ * optional period scope suffix (e.g. `round_handicap_game_2` ->
+ * { base: "round_handicap", periodScope: "GAME_2" }). No suffix -> null scope.
+ */
+function parseSportsMarketType(lower: string): { base: string; periodScope: string | null } {
+  const m = lower.match(/^(.*?)_(game|map|set|period|quarter|half)_(\d+)$/);
+  if (m) return { base: m[1], periodScope: `${m[2].toUpperCase()}_${m[3]}` };
+  return { base: lower, periodScope: null };
+}
+
+/**
+ * Market-type classification, evidence-priority order: official market type
+ * (`marketType`, or `sportsMarketType` when marketType is absent), parsed for
+ * a period scope and mapped to a locked family; validated against the
+ * official /sports/market-types list when present. Unmapped/invalid official
+ * types remain visible as UNSUPPORTED_OFFICIAL_MARKET_TYPE. Never defaults an
+ * unresolved market to moneyline -- that heuristic exists only in the V1
+ * slug-based classifier, not here.
  */
 export function classifyMarketTypeV2(row: Row, snapshot: MetadataEnrichmentSnapshot): MarketClassificationV2 {
   const market = lookupMarketMetadata(row, snapshot);
+  const rawType = market ? market.marketType ?? market.sportsMarketType ?? null : null;
 
-  if (market && market.marketType) {
-    const normalizedKey = market.marketType.toLowerCase();
-    const isKnownFamily = Object.prototype.hasOwnProperty.call(OFFICIAL_MARKET_TYPE_FAMILY, normalizedKey);
-    const isValidOfficialType = snapshot.validSportsMarketTypes.length === 0 || snapshot.validSportsMarketTypes.includes(market.marketType);
+  if (market && rawType) {
+    const lower = rawType.toLowerCase();
+    const { base, periodScope } = parseSportsMarketType(lower);
+    const family =
+      OFFICIAL_MARKET_TYPE_FAMILY[lower] ?? SPORTS_MARKET_TYPE_BASE_FAMILY[base] ?? OFFICIAL_MARKET_TYPE_FAMILY[base];
+    const isValidOfficialType =
+      snapshot.validSportsMarketTypes.length === 0 || snapshot.validSportsMarketTypes.includes(rawType);
 
-    if (!isValidOfficialType || !isKnownFamily) {
+    if (!family || !isValidOfficialType) {
       return {
-        officialMarketType: market.marketType,
+        officialMarketType: rawType,
         marketFamily: "UNSUPPORTED_OFFICIAL_MARKET_TYPE",
         marketSubtype: null,
         participantScope: null,
-        periodScope: null,
+        periodScope,
         classificationConfidence: "LOW",
         residualReason: "UNSUPPORTED_OFFICIAL_MARKET_TYPE",
       };
     }
 
     return {
-      officialMarketType: market.marketType,
-      marketFamily: OFFICIAL_MARKET_TYPE_FAMILY[normalizedKey],
+      officialMarketType: rawType,
+      marketFamily: family,
       marketSubtype: null,
-      participantScope: normalizedKey.includes("player") ? "PLAYER" : normalizedKey.includes("team") ? "TEAM" : "MATCH",
-      periodScope: null,
+      participantScope: lower.includes("player") ? "PLAYER" : lower.includes("team") ? "TEAM" : "MATCH",
+      periodScope,
       classificationConfidence: "HIGH",
       residualReason: null,
     };
@@ -753,6 +938,10 @@ export function buildSportMarketPerformanceSlice(options: BuildOptions): SportMa
       return { label: c.sportKey, confidence: c.classificationConfidence };
     });
     const marketTypeBreakdown = bucketByLabel(selected, (row) => {
+      if (metadataSnapshot) {
+        const c = classifyMarketTypeV2(row, metadataSnapshot);
+        return { label: c.marketFamily, confidence: c.classificationConfidence };
+      }
       const c = classifyMarketType(row);
       return { label: c.marketKey, confidence: c.classificationConfidence };
     });

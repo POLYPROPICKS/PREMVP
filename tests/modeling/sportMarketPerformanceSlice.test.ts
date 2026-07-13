@@ -480,3 +480,178 @@ test("V20: output remains deterministic with a metadata snapshot supplied", () =
   const b = buildSportMarketPerformanceSlice({ rows: CORPUS, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: snapshot });
   assert.deepEqual(a, b);
 });
+
+// ---- Phase 3E.8D.3C: condition metadata wired into V2 classification ----
+
+const CID_A = "0x" + "a".repeat(64);
+const CID_UP = "0x" + "A".repeat(64);
+const CID_B = "0x" + "b".repeat(64);
+
+test("Y1: a valid condition_id resolves market metadata from marketsByConditionId", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_A]: { slug: "val-a", conditionId: CID_A, marketType: "moneyline" } },
+    validSportsMarketTypes: ["moneyline"],
+  });
+  const c = classifyMarketTypeV2({ condition_id: CID_A }, snapshot);
+  assert.equal(c.officialMarketType, "moneyline");
+  assert.equal(c.marketFamily, "MONEYLINE");
+});
+
+test("Y2: an uppercase condition_id resolves the lowercase snapshot key", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_A]: { slug: "val-a", conditionId: CID_A, marketType: "moneyline" } },
+  });
+  const c = classifyMarketTypeV2({ condition_id: CID_UP }, snapshot);
+  assert.equal(c.marketFamily, "MONEYLINE");
+});
+
+test("Y3: diagnostics.conditionId resolves metadata when top-level condition_id is absent", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_A]: { slug: "val-a", conditionId: CID_A, marketType: "totals" } },
+  });
+  const c = classifyMarketTypeV2({ diagnostics: { conditionId: CID_A } }, snapshot);
+  assert.equal(c.marketFamily, "TOTAL");
+});
+
+test("Y4: condition metadata is preferred over a display-title market_slug", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_A]: { slug: "val-a", conditionId: CID_A, marketType: "moneyline" } },
+  });
+  const c = classifyMarketTypeV2({ condition_id: CID_A, market_slug: "Map 2 Winner: A vs B" }, snapshot);
+  assert.equal(c.marketFamily, "MONEYLINE");
+});
+
+test("Y5: diagnostics.marketSlug remains a secondary fallback when no condition match", () => {
+  const snapshot = emptySnapshot({
+    marketsBySlug: { "val-a-b-2026": { slug: "val-a-b-2026", marketType: "totals" } },
+  });
+  const c = classifyMarketTypeV2({ diagnostics: { marketSlug: "val-a-b-2026" } }, snapshot);
+  assert.equal(c.marketFamily, "TOTAL");
+});
+
+test("Y6: missing condition metadata safely returns UNKNOWN (no throw)", () => {
+  const snapshot = emptySnapshot();
+  assert.doesNotThrow(() => classifyMarketTypeV2({ condition_id: CID_B }, snapshot));
+  const c = classifyMarketTypeV2({ condition_id: CID_B }, snapshot);
+  assert.equal(c.classificationConfidence, "UNKNOWN");
+});
+
+test("Y7: sport V2 classifies from market metadata when eventsBySlug is empty", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_A]: { slug: "val-a", conditionId: CID_A, category: "Esports", tags: ["esports"] } },
+  });
+  const c = classifySportV2({ condition_id: CID_A }, snapshot);
+  assert.equal(c.sportFamily, "ESPORTS");
+});
+
+test("Y8: Valorant market metadata produces ESPORTS", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_A]: { slug: "val-srb-adg-2026-06-18", conditionId: CID_A, tags: ["esports"] } },
+  });
+  const c = classifySportV2({ condition_id: CID_A }, snapshot);
+  assert.equal(c.sportFamily, "ESPORTS");
+});
+
+test("Y9: a fifwc- market with official soccer/World-Cup evidence yields SOCCER / FIFA_WORLD_CUP / 2026", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: {
+      [CID_A]: { slug: "fifwc-fra-mar-2026-07-13-moneyline", conditionId: CID_A, category: "Sports", tags: ["soccer", "world-cup-2026"] },
+    },
+  });
+  const c = classifySportV2({ condition_id: CID_A }, snapshot);
+  assert.equal(c.sport, "SOCCER");
+  assert.equal(c.competition, "FIFA_WORLD_CUP");
+  assert.equal(c.tournamentEdition, "2026");
+});
+
+test("Y10: a country matchup with no official metadata does not imply World Cup", () => {
+  const snapshot = emptySnapshot();
+  const c = classifySportV2({ event_slug: "France vs. Morocco", condition_id: CID_B }, snapshot);
+  assert.notEqual(c.competition, "FIFA_WORLD_CUP");
+});
+
+test("Y11: sportsMarketType round_handicap_game_2 does NOT collapse to moneyline", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_A]: { slug: "val-a", conditionId: CID_A, sportsMarketType: "round_handicap_game_2" } },
+  });
+  const c = classifyMarketTypeV2({ condition_id: CID_A }, snapshot);
+  assert.notEqual(c.marketFamily, "MONEYLINE");
+  assert.ok(c.marketFamily === "HANDICAP" || c.marketFamily === "SPREAD");
+  assert.equal(c.periodScope, "GAME_2");
+});
+
+test("Y12: official moneyline still maps to MONEYLINE", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_A]: { slug: "m", conditionId: CID_A, sportsMarketType: "moneyline" } },
+  });
+  const c = classifyMarketTypeV2({ condition_id: CID_A }, snapshot);
+  assert.equal(c.marketFamily, "MONEYLINE");
+});
+
+test("Y13: official totals maps to TOTAL", () => {
+  const snapshot = emptySnapshot({
+    marketsByConditionId: { [CID_A]: { slug: "m", conditionId: CID_A, sportsMarketType: "round_over_under_game_1" } },
+  });
+  const c = classifyMarketTypeV2({ condition_id: CID_A }, snapshot);
+  assert.equal(c.marketFamily, "TOTAL");
+  assert.equal(c.periodScope, "GAME_1");
+});
+
+test("Y14: official spreads maps to SPREAD and map_handicap to HANDICAP", () => {
+  const s1 = emptySnapshot({ marketsByConditionId: { [CID_A]: { slug: "m", conditionId: CID_A, sportsMarketType: "spreads" } } });
+  assert.equal(classifyMarketTypeV2({ condition_id: CID_A }, s1).marketFamily, "SPREAD");
+  const s2 = emptySnapshot({ marketsByConditionId: { [CID_A]: { slug: "m", conditionId: CID_A, sportsMarketType: "map_handicap" } } });
+  assert.equal(classifyMarketTypeV2({ condition_id: CID_A }, s2).marketFamily, "HANDICAP");
+});
+
+test("Y15: market-type breakdown uses the V2 classifier when a snapshot is supplied", () => {
+  // give every row a real resolvable condition id + metadata
+  const rows2 = corpus().map((r, i) => ({ ...r, condition_id: "0x" + (i + 1).toString(16).padStart(64, "0") }));
+  const byCond: Record<string, any> = {};
+  for (let i = 0; i < rows2.length; i++) byCond[(rows2[i] as any).condition_id] = { slug: "m" + i, conditionId: (rows2[i] as any).condition_id, sportsMarketType: "round_handicap_game_2" };
+  const snap2 = emptySnapshot({ marketsByConditionId: byCond });
+  const slice = buildSportMarketPerformanceSlice({ rows: rows2, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: snap2 });
+  const anyModel = slice.models.find((m) => m.outputRows > 0)!;
+  const labels = anyModel.marketTypeBreakdown.map((s) => s.label);
+  assert.ok(labels.includes("HANDICAP"));
+  assert.ok(!labels.includes("MATCH_WINNER_OR_MONEYLINE"));
+});
+
+test("Y16: sport breakdown uses the V2 classifier when a snapshot is supplied", () => {
+  const rows2 = corpus().map((r, i) => ({ ...r, condition_id: "0x" + (i + 1).toString(16).padStart(64, "0") }));
+  const byCond: Record<string, any> = {};
+  for (let i = 0; i < rows2.length; i++) byCond[(rows2[i] as any).condition_id] = { slug: "val-" + i, conditionId: (rows2[i] as any).condition_id, category: "Esports", tags: ["esports"] };
+  const snap = emptySnapshot({ marketsByConditionId: byCond });
+  const slice = buildSportMarketPerformanceSlice({ rows: rows2, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: snap });
+  const anyModel = slice.models.find((m) => m.outputRows > 0)!;
+  assert.ok(anyModel.sportBreakdown.map((s) => s.label).includes("ESPORTS"));
+});
+
+test("Y17: enriching classification never changes model membership, PnL, ROI, or event concentration", () => {
+  const rows = corpus();
+  const base = buildSportMarketPerformanceSlice({ rows, classifier, candidateIds: [...ANALYZED_MODEL_IDS] });
+  const snap = emptySnapshot({
+    marketsByConditionId: { [CID_A]: { slug: "val-a", conditionId: CID_A, sportsMarketType: "moneyline" } },
+  });
+  const enriched = buildSportMarketPerformanceSlice({ rows, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: snap });
+  for (let i = 0; i < base.models.length; i++) {
+    assert.equal(enriched.models[i].outputRows, base.models[i].outputRows);
+    assert.equal(enriched.models[i].overallPnlUnits, base.models[i].overallPnlUnits);
+    assert.equal(enriched.models[i].overallRoiPct, base.models[i].overallRoiPct);
+    assert.deepEqual(enriched.models[i].eventConcentration, base.models[i].eventConcentration);
+  }
+});
+
+test("Y18: sport and market-type segment counts reconcile to each model's output rows", () => {
+  const rows2 = corpus().map((r, i) => ({ ...r, condition_id: "0x" + (i + 1).toString(16).padStart(64, "0") }));
+  const byCond: Record<string, any> = {};
+  for (let i = 0; i < rows2.length; i++) byCond[(rows2[i] as any).condition_id] = { slug: "val-" + i, conditionId: (rows2[i] as any).condition_id, sportsMarketType: "moneyline", category: "Esports", tags: ["esports"] };
+  const snap = emptySnapshot({ marketsByConditionId: byCond });
+  const slice = buildSportMarketPerformanceSlice({ rows: rows2, classifier, candidateIds: [...ANALYZED_MODEL_IDS], metadataSnapshot: snap });
+  for (const m of slice.models) {
+    const sportSum = m.sportBreakdown.reduce((a, s) => a + s.metrics.signals, 0);
+    const marketSum = m.marketTypeBreakdown.reduce((a, s) => a + s.metrics.signals, 0);
+    assert.equal(sportSum, m.outputRows);
+    assert.equal(marketSum, m.outputRows);
+  }
+});
