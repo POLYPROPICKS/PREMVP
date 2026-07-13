@@ -43,18 +43,39 @@ function getStr(row: Row, key: string): string | null {
   return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
 }
 
+const SLUG_PATTERN = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
 /**
- * Collects unique metadata identities from `rows`, deterministic order,
- * event_slug preferred over market_slug per row. Rows with neither field
- * contribute no identity (they will surface as MISSING_EVENT_IDENTITY
- * downstream). Pure, no fs/env/network.
+ * Validates that `value` is a genuine Polymarket URL-style slug: lowercase
+ * ASCII letters, digits, and hyphens only, no whitespace/colon/parentheses,
+ * no leading/trailing hyphen. Rejects human-readable display titles.
+ */
+export function isValidPolymarketSlug(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const trimmed = value.trim();
+  if (trimmed === "") return false;
+  if (trimmed !== value) return false;
+  return SLUG_PATTERN.test(trimmed);
+}
+
+function getValidSlug(row: Row, key: string): string | null {
+  const v = row[key];
+  return isValidPolymarketSlug(v) ? v : null;
+}
+
+/**
+ * Collects unique metadata identities from `rows`, deterministic order.
+ * Priority per row: valid top-level event_slug, then valid top-level
+ * market_slug, then valid diagnostics.marketSlug (emitted as kind
+ * "market_slug"). Rows with none of these contribute no identity. Never
+ * slugifies or infers values from title text. Pure, no fs/env/network.
  */
 export function collectUniqueMetadataIdentities(rows: readonly Row[]): MetadataIdentity[] {
   const seen = new Set<string>();
   const identities: MetadataIdentity[] = [];
   for (const row of rows) {
-    const eventSlug = getStr(row, "event_slug");
-    const marketSlug = getStr(row, "market_slug");
+    const eventSlug = getValidSlug(row, "event_slug");
+    const marketSlug = getValidSlug(row, "market_slug");
     let kind: IdentityKind | null = null;
     let value: string | null = null;
     if (eventSlug !== null) {
@@ -63,6 +84,16 @@ export function collectUniqueMetadataIdentities(rows: readonly Row[]): MetadataI
     } else if (marketSlug !== null) {
       kind = "market_slug";
       value = marketSlug;
+    } else {
+      const diagnostics = row["diagnostics"];
+      const diagnosticsSlug =
+        diagnostics && typeof diagnostics === "object"
+          ? (diagnostics as Record<string, unknown>)["marketSlug"]
+          : undefined;
+      if (isValidPolymarketSlug(diagnosticsSlug)) {
+        kind = "market_slug";
+        value = diagnosticsSlug;
+      }
     }
     if (kind === null || value === null) continue;
     const dedupeKey = `${kind}::${value}`;

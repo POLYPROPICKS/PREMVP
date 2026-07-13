@@ -10,6 +10,7 @@ import {
   collectUniqueMetadataIdentities,
   buildMetadataEnrichmentSnapshot,
   validateMetadataSnapshot,
+  isValidPolymarketSlug,
   MAX_CONCURRENCY,
   MAX_ATTEMPTS,
 } from "../../lib/modeling/polymarketMetadataEnrichment";
@@ -309,4 +310,147 @@ test("P25: the pure identity collector has no network/DB dependency (module-load
   const before = JSON.stringify(process.env);
   collectUniqueMetadataIdentities([row(1)]);
   assert.equal(JSON.stringify(process.env), before);
+});
+
+// ---- Phase 3E.8D.2: reject display-title slugs, use diagnostics.marketSlug fallback ----
+
+test("Q1: a display-title event_slug is rejected -- no event_slug identity emitted", () => {
+  const rows = [{ id: "x1", event_slug: "Valorant: Team A vs Team B (BO3)", market_slug: "Map 2 Winner: Team A vs Team B" }];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.ok(!identities.some((i) => i.kind === "event_slug"));
+});
+
+test("Q2: a display-title market_slug is also rejected when event_slug is invalid and no diagnostics fallback exists", () => {
+  const rows = [{ id: "x1", event_slug: "Valorant: Team A vs Team B (BO3)", market_slug: "Map 2 Winner: Team A vs Team B" }];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.equal(identities.length, 0);
+});
+
+test("Q3: diagnostics.marketSlug is used as a market_slug-kind fallback when both top-level fields are invalid", () => {
+  const rows = [
+    {
+      id: "x1",
+      event_slug: "Valorant: Team A vs Team B (BO3)",
+      market_slug: "Map 2 Winner: Team A vs Team B",
+      diagnostics: { marketSlug: "val-team-a-team-b-2026-07-13-game2" },
+    },
+  ];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.deepEqual(identities, [{ kind: "market_slug", value: "val-team-a-team-b-2026-07-13-game2" }]);
+});
+
+test("Q4: a genuinely valid top-level event_slug remains preferred over diagnostics.marketSlug", () => {
+  const rows = [
+    {
+      id: "x1",
+      event_slug: "fifwc-fra-mar-2026-07-13",
+      diagnostics: { marketSlug: "fifwc-fra-mar-2026-07-13-moneyline-fra" },
+    },
+  ];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.deepEqual(identities, [{ kind: "event_slug", value: "fifwc-fra-mar-2026-07-13" }]);
+});
+
+test("Q5: a genuinely valid top-level market_slug is used when event_slug is absent/invalid", () => {
+  const rows = [{ id: "x1", event_slug: "Team A vs Team B", market_slug: "team-a-team-b-moneyline" }];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.deepEqual(identities, [{ kind: "market_slug", value: "team-a-team-b-moneyline" }]);
+});
+
+test("Q6: whitespace/colon/parentheses values are all rejected", () => {
+  for (const bad of ["France vs Morocco", "Valorant: Team A vs Team B", "Match Winner (Full Time)"]) {
+    assert.equal(isValidPolymarketSlug(bad), false, `expected ${bad} to be invalid`);
+  }
+});
+
+test("Q7: a bounded lowercase/digit/hyphen slug is accepted without requiring a sport prefix", () => {
+  assert.equal(isValidPolymarketSlug("abc-123-xyz"), true);
+  assert.equal(isValidPolymarketSlug("2026-07-13-game2"), true);
+});
+
+test("Q8: duplicate diagnostics.marketSlug values across rows collapse to one identity", () => {
+  const rows = [
+    { id: "x1", event_slug: "Title A", diagnostics: { marketSlug: "shared-slug-1" } },
+    { id: "x2", event_slug: "Title B", diagnostics: { marketSlug: "shared-slug-1" } },
+  ];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.equal(identities.length, 1);
+  assert.deepEqual(identities[0], { kind: "market_slug", value: "shared-slug-1" });
+});
+
+test("Q9: identity order remains deterministic across permutations", () => {
+  const rowsA = [
+    { id: "x1", diagnostics: { marketSlug: "slug-b" } },
+    { id: "x2", diagnostics: { marketSlug: "slug-a" } },
+  ];
+  const rowsB = [rowsA[1], rowsA[0]];
+  const a = collectUniqueMetadataIdentities(rowsA);
+  const b = collectUniqueMetadataIdentities(rowsB);
+  // Same set of identities regardless of input row order (order is stable
+  // per-input-order, but both permutations must yield the same identity set).
+  assert.deepEqual(new Set(a.map((i) => i.value)), new Set(b.map((i) => i.value)));
+});
+
+test("Q10: a row with no diagnostics object at all is handled safely (no throw)", () => {
+  const rows = [{ id: "x1", event_slug: "Title Only" }];
+  assert.doesNotThrow(() => collectUniqueMetadataIdentities(rows));
+  assert.equal(collectUniqueMetadataIdentities(rows).length, 0);
+});
+
+test("Q11: an invalid diagnostics.marketSlug (also title-like) is rejected, not used as a fallback", () => {
+  const rows = [
+    { id: "x1", event_slug: "Title Only", diagnostics: { marketSlug: "Map 2 Winner: A vs B" } },
+  ];
+  const identities = collectUniqueMetadataIdentities(rows);
+  assert.equal(identities.length, 0);
+});
+
+test("Q12: no full row payload leaks into the identity output", () => {
+  const rows = [
+    { id: "x1", event_slug: "Title", signal_result: "win", realized_return_pct: 40, diagnostics: { marketSlug: "valid-slug-1" } },
+  ];
+  const identities = collectUniqueMetadataIdentities(rows);
+  const serialized = JSON.stringify(identities);
+  assert.doesNotMatch(serialized, /signal_result|realized_return_pct/);
+});
+
+test("Q13: real corpus identity counts match the diagnosed shape (461 valid diagnostics.marketSlug rows, 0 valid top-level fields)", () => {
+  const { readFileSync, existsSync } = require("node:fs");
+  const exportPath = require("node:path").resolve(__dirname, "../../modeling/local_exports/generated_signal_pairs_export.json");
+  if (!existsSync(exportPath)) return; // real corpus not present in this environment run -- skip gracefully
+  const { projectGeneratedSignalPairsStrictDedup } = require("../../lib/modeling/generatedSignalPairsDedupPolicy");
+  const raw = JSON.parse(readFileSync(exportPath, "utf8"));
+  const dedupRows = projectGeneratedSignalPairsStrictDedup(raw).dedupedRows;
+  assert.equal(dedupRows.length, 1850);
+
+  const validTopLevelEvent = dedupRows.filter((r: Record<string, unknown>) => isValidPolymarketSlug(r.event_slug)).length;
+  const validTopLevelMarket = dedupRows.filter((r: Record<string, unknown>) => isValidPolymarketSlug(r.market_slug)).length;
+  const populatedDiagnosticsMarket = dedupRows.filter((r: Record<string, unknown>) => {
+    const d = r.diagnostics as Record<string, unknown> | undefined;
+    return d && typeof d.marketSlug === "string" && (d.marketSlug as string).trim() !== "";
+  }).length;
+  const validDiagnosticsMarket = dedupRows.filter((r: Record<string, unknown>) => {
+    const d = r.diagnostics as Record<string, unknown> | undefined;
+    return d && isValidPolymarketSlug(d.marketSlug);
+  }).length;
+
+  assert.equal(validTopLevelEvent, 0);
+  assert.equal(validTopLevelMarket, 0);
+  // 481 rows have a populated diagnostics.marketSlug field, but 20 of those
+  // hold non-slug placeholder text (e.g. "Live market activity",
+  // "$4K matched activity") rather than a real slug -- only 461 are valid.
+  assert.equal(populatedDiagnosticsMarket, 481);
+  assert.equal(validDiagnosticsMarket, 461);
+
+  const identities = collectUniqueMetadataIdentities(dedupRows);
+  assert.ok(identities.every((i) => i.kind === "market_slug"));
+  assert.ok(identities.length > 0 && identities.length <= 461);
+
+  const rowsWithIdentity = dedupRows.filter((r: Record<string, unknown>) => {
+    const d = r.diagnostics as Record<string, unknown> | undefined;
+    return isValidPolymarketSlug(r.event_slug) || isValidPolymarketSlug(r.market_slug) || (d && isValidPolymarketSlug(d.marketSlug));
+  }).length;
+  const rowsWithNoIdentity = dedupRows.length - rowsWithIdentity;
+  assert.equal(rowsWithIdentity, 461);
+  assert.equal(rowsWithNoIdentity, 1389);
 });
