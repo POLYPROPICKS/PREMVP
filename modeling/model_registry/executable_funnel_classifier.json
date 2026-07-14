@@ -2185,6 +2185,483 @@
       "lineageConfidence": "HEAD_NATIVE",
       "runStatus": "VERIFIED_EXECUTABLE",
       "plainLanguageBlocker": null
+    },
+    {
+      "bundleId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "plainLanguageName": "ALT4 (гипотеза батча 1): ALT2 (confidence >= 65) плюс исключение esports.",
+      "aliases": [],
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "note": "Founder-approved Phase 4B batch-1 hypothesis derived from ALT2 sport decomposition (esports N=233, ROI=-2.0483%). Base comparator: ALT2_TS_SCORE_GE_65."
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять дедуплицированные строки.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "lib/modeling/generatedSignalPairsDedupPolicy.ts",
+              "symbol": "projectGeneratedSignalPairsStrictDedup",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только сигналы с confidence не ниже 65.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 65
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "FLOW_CLEAN filter (TS)",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "EXCLUDE",
+          "plainLanguage": "Исключить строки, классифицированные как esports.",
+          "field": "sport_esports",
+          "exactRule": {
+            "predicate": "!isEsports(r)"
+          },
+          "sourceEvidence": [
+            {
+              "path": "lib/modeling/historicalFunnelVariants.ts",
+              "symbol": "isEsports (re-hosted ESPORTS_RE)",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 4,
+          "action": "KEEP",
+          "plainLanguage": "Оставить все прошедшие строки.",
+          "field": null,
+          "exactRule": {
+            "keep": "all_eligible"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "FLOW_CLEAN filter (TS)",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 5,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть все прошедшие строки.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "policyMetrics",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "FLAT_10_USD",
+        "plainLanguage": "Историческая ставка $10-эквивалент."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
+      "requiredFields": [
+        "signal_confidence_num"
+      ],
+      "sourceAgreement": "NORMALIZED_HISTORICAL_VARIANT",
+      "sourceEvidence": [
+        {
+          "path": "lib/modeling/historicalFunnelVariants.ts",
+          "symbol": "isEsports (re-hosted ESPORTS_RE)",
+          "sourceClass": "CURRENT_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
+      "lineageConfidence": "HEAD_NATIVE",
+      "runStatus": "VERIFIED_EXECUTABLE",
+      "plainLanguageBlocker": null
+    },
+    {
+      "bundleId": "ALT5_TS_SCORE_GE_65_TENNIS_ONLY",
+      "plainLanguageName": "ALT5 (гипотеза батча 1): ALT2 (confidence >= 65), только tennis.",
+      "aliases": [],
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "note": "Founder-approved Phase 4B batch-1 hypothesis derived from ALT2 sport decomposition (tennis N=54, ROI=+27.353%). Base comparator: ALT2_TS_SCORE_GE_65."
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять дедуплицированные строки.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "lib/modeling/generatedSignalPairsDedupPolicy.ts",
+              "symbol": "projectGeneratedSignalPairsStrictDedup",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только сигналы с confidence не ниже 65.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 65
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "FLOW_CLEAN filter (TS)",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только строки, классифицированные как tennis.",
+          "field": "sport_tennis",
+          "exactRule": {
+            "predicate": "isTennis(r)"
+          },
+          "sourceEvidence": [
+            {
+              "path": "lib/modeling/historicalFunnelVariants.ts",
+              "symbol": "isTennis (re-hosted from sportMarketPerformanceSlice.ts SPORT_PATTERNS)",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 4,
+          "action": "KEEP",
+          "plainLanguage": "Оставить все прошедшие строки.",
+          "field": null,
+          "exactRule": {
+            "keep": "all_eligible"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "FLOW_CLEAN filter (TS)",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 5,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть все прошедшие строки.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "policyMetrics",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "FLAT_10_USD",
+        "plainLanguage": "Историческая ставка $10-эквивалент."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
+      "requiredFields": [
+        "signal_confidence_num"
+      ],
+      "sourceAgreement": "NORMALIZED_HISTORICAL_VARIANT",
+      "sourceEvidence": [
+        {
+          "path": "lib/modeling/historicalFunnelVariants.ts",
+          "symbol": "isTennis (re-hosted from sportMarketPerformanceSlice.ts SPORT_PATTERNS)",
+          "sourceClass": "CURRENT_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
+      "lineageConfidence": "HEAD_NATIVE",
+      "runStatus": "VERIFIED_EXECUTABLE",
+      "plainLanguageBlocker": null
+    },
+    {
+      "bundleId": "ALT6_TS_SCORE_GE_65_CANONICAL_EVENT_GROUPING",
+      "plainLanguageName": "ALT6 (гипотеза батча 1): ALT2 (confidence >= 65) плюс каноническая группировка событий (один сигнал на рабочую группу).",
+      "aliases": [],
+      "formulaModelId": "V2_LITE_GROWTH_SAFE",
+      "historicalInput": {
+        "note": "Founder-approved Phase 4B batch-1 hypothesis: base comparator ALT2_TS_SCORE_GE_65, adds the same canonical event-grouping keep-first behavior already used by ALT1_CANONICAL_EVENT_GROUPING (same helper, same tie-break, threshold stays >=65)."
+      },
+      "normalizedCurrentInput": {
+        "rawSnapshots": 42088,
+        "dedupPolicy": "strict_latest_created_before_resolved",
+        "retainedRows": 1657
+      },
+      "orderedFunnel": [
+        {
+          "step": 1,
+          "action": "INPUT",
+          "plainLanguage": "Взять дедуплицированные строки канонического корпуса.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "lib/modeling/generatedSignalPairsDedupPolicy.ts",
+              "symbol": "projectGeneratedSignalPairsStrictDedup",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 2,
+          "action": "REQUIRE",
+          "plainLanguage": "Оставить только сигналы с confidence не ниже 65.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "operator": ">=",
+            "value": 65
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "FLOW_CLEAN filter (TS)",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 3,
+          "action": "GROUP",
+          "plainLanguage": "Сгруппировать строки в рабочие группы событий, используя канонический helper приоритетной цепочки полей.",
+          "field": "eventGroupKey",
+          "exactRule": {
+            "helper": "buildEventGroupKey"
+          },
+          "sourceEvidence": [
+            {
+              "path": "lib/modeling/eventGroupSelection.ts",
+              "symbol": "buildEventGroupKey",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED_WITH_LIMITATION"
+        },
+        {
+          "step": 4,
+          "action": "ORDER",
+          "plainLanguage": "Внутри группы отсортировать по покрытию по убыванию.",
+          "field": "data_coverage_num",
+          "exactRule": {
+            "direction": "desc"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "compareCounterfactualCoverage",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE_VIA_DIAGNOSTICS",
+          "executionStatus": "VERIFIED_WITH_LIMITATION"
+        },
+        {
+          "step": 5,
+          "action": "ORDER",
+          "plainLanguage": "Затем отсортировать по score по убыванию.",
+          "field": "signal_confidence_num",
+          "exactRule": {
+            "direction": "desc"
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "compareCounterfactualCoverage",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 6,
+          "action": "ORDER",
+          "plainLanguage": "Применить существующий детерминированный тай-брейк (smart money, ценовой диапазон, свежесть, стабильный id).",
+          "field": null,
+          "exactRule": {
+            "tuple": [
+              "smartMoney",
+              "priceOk(0.25-0.65)",
+              "-createdAt",
+              "stableId"
+            ]
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "compareCounterfactualCoverage",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 7,
+          "action": "KEEP",
+          "plainLanguage": "Оставить первую строку в каждой рабочей группе событий.",
+          "field": null,
+          "exactRule": {
+            "keep": "first_per_group"
+          },
+          "sourceEvidence": [
+            {
+              "path": "lib/modeling/eventGroupSelection.ts",
+              "symbol": "selectFirstPerEventGroup",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "AVAILABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 8,
+          "action": "STAKE",
+          "plainLanguage": "Историческая ставка: эквивалент $10 на строку.",
+          "field": null,
+          "exactRule": {
+            "unit": "USD",
+            "amount": 10
+          },
+          "sourceEvidence": [
+            {
+              "path": "scripts/morning-model-report.ts",
+              "symbol": "policyMetrics",
+              "sourceClass": "HISTORICAL_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        },
+        {
+          "step": 9,
+          "action": "OUTPUT",
+          "plainLanguage": "Вернуть по одной выбранной строке на рабочую группу событий.",
+          "field": null,
+          "exactRule": null,
+          "sourceEvidence": [
+            {
+              "path": "lib/modeling/eventGroupSelection.ts",
+              "symbol": "selectFirstPerEventGroup",
+              "sourceClass": "CURRENT_EXECUTABLE",
+              "lineageConfidence": "HEAD_NATIVE"
+            }
+          ],
+          "currentDatasetAvailability": "NOT_APPLICABLE",
+          "executionStatus": "VERIFIED"
+        }
+      ],
+      "historicalStakePolicy": {
+        "unit": "FLAT_10_USD",
+        "plainLanguage": "Историческая ставка $10-эквивалент."
+      },
+      "normalizedEvaluationStakePolicy": {
+        "unit": "FLAT_1_UNIT",
+        "plainLanguage": "Канонический ROI: 1 единица на ставку."
+      },
+      "requiredFields": [
+        "signal_confidence_num",
+        "data_coverage_num",
+        "eventGroupKey"
+      ],
+      "sourceAgreement": "NORMALIZED_CANONICAL_VARIANT",
+      "sourceEvidence": [
+        {
+          "path": "lib/modeling/eventGroupSelection.ts",
+          "symbol": "buildEventGroupKey",
+          "sourceClass": "CURRENT_EXECUTABLE",
+          "lineageConfidence": "HEAD_NATIVE"
+        }
+      ],
+      "lineageConfidence": "HEAD_NATIVE",
+      "runStatus": "READY_EXPLORATORY_WITH_IDENTITY_LIMITATION",
+      "plainLanguageBlocker": "Группировка по event_slug (MEDIUM confidence) допустима только для исследовательской (exploratory) оценки, недостаточна для продакшн-продвижения модели. Порог confidence остаётся >=65 (не >=72, как в ALT1) — намеренное единственное изменение измерения."
     }
   ],
   "aliases": [

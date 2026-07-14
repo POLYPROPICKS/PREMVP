@@ -31,6 +31,19 @@ import type {
 
 export const SCORECARD_GENERATOR_VERSION = "3E.6-model-scorecard-v1" as const;
 
+// Phase 4B: the first bounded historical hypothesis batch. LOCKED_EXECUTION_SET
+// itself (the original 9, defined in historicalFunnelComparison.ts) is never
+// modified -- these three are requested and rendered alongside it. Each is
+// exactly one bounded change from base comparator ALT2_TS_SCORE_GE_65.
+export const HYPOTHESIS_BATCH_1_IDS = [
+  "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+  "ALT5_TS_SCORE_GE_65_TENNIS_ONLY",
+  "ALT6_TS_SCORE_GE_65_CANONICAL_EVENT_GROUPING",
+] as const;
+
+/** The full model order the scorecard requires and renders: locked 9 + batch 1 (3) = 12. */
+export const SCORECARD_MODEL_ORDER: readonly string[] = [...LOCKED_EXECUTION_SET, ...HYPOTHESIS_BATCH_1_IDS];
+
 // Fixed, prominent frozen comparators. Order is locked and never sorted.
 export const FROZEN_COMPARATOR_IDS = [
   "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP",
@@ -225,7 +238,12 @@ function invalidCount(m: VariantMetrics): number {
 
 // ---- validation ----
 
-function validateAndIndex(comparison: ComparisonWithHash): Map<string, VariantExecution> {
+interface ValidatedComparison {
+  byId: Map<string, VariantExecution>;
+  requiredOrder: readonly string[];
+}
+
+function validateAndIndex(comparison: ComparisonWithHash): ValidatedComparison {
   if (!comparison || !Array.isArray(comparison.executions)) {
     throw new ScorecardValidationError("comparison has no executions array");
   }
@@ -244,21 +262,29 @@ function validateAndIndex(comparison: ComparisonWithHash): Map<string, VariantEx
     byId.set(exec.variantId, exec);
   }
 
-  // Every locked model must remain present (blocked/skipped included) -- no
-  // candidate may silently disappear.
-  for (const id of LOCKED_EXECUTION_SET) {
+  // Backward-compatible required order: a comparison artifact predating
+  // Phase 4B carries only the original locked 9 and must keep validating
+  // exactly as before. Once ANY batch-1 hypothesis is present, all 12 become
+  // required (a partial batch is a fail-closed inconsistency, not silently
+  // accepted).
+  const hasAnyBatch1Id = HYPOTHESIS_BATCH_1_IDS.some((id) => byId.has(id));
+  const requiredOrder = hasAnyBatch1Id ? SCORECARD_MODEL_ORDER : LOCKED_EXECUTION_SET;
+
+  // Every model in the required order must remain present (blocked/skipped
+  // included) -- no candidate may silently disappear.
+  for (const id of requiredOrder) {
     if (!byId.has(id)) {
       throw new ScorecardValidationError(`locked model ${id} is missing from the comparison`);
     }
   }
 
-  // Executed locked models must appear in the exact locked order.
+  // Executed required models must appear in the exact required order.
   const executedLockedOrder = comparison.executions
-    .filter((e) => e.evaluationStatus === "EXECUTED" && LOCKED_EXECUTION_SET.includes(e.variantId))
+    .filter((e) => e.evaluationStatus === "EXECUTED" && requiredOrder.includes(e.variantId))
     .map((e) => e.variantId);
-  const expectedOrder = LOCKED_EXECUTION_SET.filter((id) => byId.get(id)?.evaluationStatus === "EXECUTED");
+  const expectedOrder = requiredOrder.filter((id) => byId.get(id)?.evaluationStatus === "EXECUTED");
   if (executedLockedOrder.join("|") !== expectedOrder.join("|")) {
-    throw new ScorecardValidationError("executed model order diverges from the locked execution set");
+    throw new ScorecardValidationError("executed model order diverges from the required scorecard model order");
   }
 
   // Frozen comparators must be present AND executed with metrics.
@@ -290,7 +316,7 @@ function validateAndIndex(comparison: ComparisonWithHash): Map<string, VariantEx
     }
   }
 
-  return byId;
+  return { byId, requiredOrder };
 }
 
 function validateManifest(comparison: ComparisonWithHash, manifest: EvaluationRunManifest): void {
@@ -498,16 +524,16 @@ function buildHypothesisReadiness(
  */
 export function buildHistoricalModelScorecard(inputs: ScorecardInputs): HistoricalModelScorecard {
   const { comparison, manifest, performanceSlice } = inputs;
-  const byId = validateAndIndex(comparison);
+  const { byId, requiredOrder } = validateAndIndex(comparison);
   if (manifest) validateManifest(comparison, manifest);
   if (performanceSlice) validatePerformanceSlice(byId, performanceSlice);
 
-  const orderedExecutions = LOCKED_EXECUTION_SET.map((id) => byId.get(id)!);
+  const orderedExecutions = requiredOrder.map((id) => byId.get(id)!);
   const models = orderedExecutions.map(modelRow);
   const executedRows = models.filter((m) => m.executed);
 
   const executedCount = executedRows.length;
-  const blockedOrSkippedCount = LOCKED_EXECUTION_SET.length - executedCount;
+  const blockedOrSkippedCount = requiredOrder.length - executedCount;
 
   const executive: ScorecardExecutive = {
     headline: "CANONICAL HISTORICAL MODEL COMPARISON",

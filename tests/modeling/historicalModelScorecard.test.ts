@@ -15,6 +15,8 @@ import {
   buildHistoricalModelScorecardArtifacts,
   ScorecardValidationError,
   SCORECARD_GENERATOR_VERSION,
+  SCORECARD_MODEL_ORDER,
+  HYPOTHESIS_BATCH_1_IDS,
 } from "../../lib/modeling/historicalModelScorecard";
 import {
   LOCKED_EXECUTION_SET,
@@ -101,10 +103,14 @@ const PER_VARIANT: Record<string, VariantMetrics> = {
   ALT3_PY_SCORE_GE_65: metrics({ outputRows: 620, wins: 300, losses: 310, flatUnitPnl: 3.2 }),
   ALT_SM_GUARD_ON_PRIMARY: metrics({ outputRows: 290, wins: 160, losses: 120, flatUnitPnl: 18 }),
   ALT_SM_GUARD_ON_PRIMARY_APPROX: metrics({ outputRows: 288, wins: 158, losses: 122, flatUnitPnl: 17.5 }),
+  // Phase 4B batch-1 hypotheses (base comparator: ALT2_TS_SCORE_GE_65).
+  ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS: metrics({ outputRows: 877, wins: 440, losses: 400, flatUnitPnl: 62.1 }),
+  ALT5_TS_SCORE_GE_65_TENNIS_ONLY: metrics({ outputRows: 54, wins: 34, losses: 18, flatUnitPnl: 14.7706 }),
+  ALT6_TS_SCORE_GE_65_CANONICAL_EVENT_GROUPING: metrics({ outputRows: 788, wins: 400, losses: 350, flatUnitPnl: 40.2 }),
 };
 
 function baseComparison(overrides: Partial<ComparisonResult> = {}): ComparisonWithHash {
-  const executions: VariantExecution[] = LOCKED_EXECUTION_SET.map((id) => executed(id, PER_VARIANT[id]));
+  const executions: VariantExecution[] = SCORECARD_MODEL_ORDER.map((id) => executed(id, PER_VARIANT[id]));
   const result: ComparisonWithHash = {
     corpus: {
       inputRows: 1850,
@@ -144,8 +150,8 @@ const MANIFEST = {
   classifierSha256: CLASSIFIER_HASH,
   classifierSchemaVersion: 1,
   comparisonEngineVersion: COMPARISON_ENGINE_VERSION,
-  requestedVariantIds: [...LOCKED_EXECUTION_SET],
-  executedVariantIds: [...LOCKED_EXECUTION_SET],
+  requestedVariantIds: [...SCORECARD_MODEL_ORDER],
+  executedVariantIds: [...SCORECARD_MODEL_ORDER],
   skippedVariantsAndReasons: [],
   normalizedStakePolicy: { unit: "FLAT_1_UNIT", plainLanguage: "1 unit" },
   roiContractSource: "lib/modeling/roiPnlContract.ts",
@@ -178,11 +184,12 @@ test("E3: raw row count is null without a manifest and 49400 with one", () => {
 
 test("E4: corpus + classifier hashes and executed/blocked counts are exposed", () => {
   const c = baseComparison();
-  c.executions[c.executions.length - 1] = blocked("ALT_SM_GUARD_ON_PRIMARY_APPROX");
+  const smApproxIndex = c.executions.findIndex((e) => e.variantId === "ALT_SM_GUARD_ON_PRIMARY_APPROX");
+  c.executions[smApproxIndex] = blocked("ALT_SM_GUARD_ON_PRIMARY_APPROX");
   const s = buildHistoricalModelScorecard({ comparison: c });
   assert.equal(s.executive.corpusHash, CORPUS_HASH);
   assert.equal(s.executive.classifierHash, CLASSIFIER_HASH);
-  assert.equal(s.executive.executedModelCount, LOCKED_EXECUTION_SET.length - 1);
+  assert.equal(s.executive.executedModelCount, SCORECARD_MODEL_ORDER.length - 1);
   assert.equal(s.executive.blockedOrSkippedModelCount, 1);
 });
 
@@ -211,7 +218,7 @@ test("F6: a missing frozen comparator fails closed", () => {
 
 test("M7: all nine locked models are retained in locked order", () => {
   const s = buildHistoricalModelScorecard({ comparison: baseComparison() });
-  assert.deepEqual(s.models.map((m) => m.variantId), [...LOCKED_EXECUTION_SET]);
+  assert.deepEqual(s.models.map((m) => m.variantId), [...SCORECARD_MODEL_ORDER]);
 });
 
 test("M8: blocked/skipped statuses are retained, not omitted", () => {
@@ -290,7 +297,7 @@ test("G16: all required chart series exist and use fixed model order", () => {
     assert.ok(s.charts[id as keyof typeof s.charts], `missing chart ${id}`);
   }
   // pnl bars only cover executed models, in locked order
-  const executedOrder = LOCKED_EXECUTION_SET.filter((id) => PER_VARIANT[id]);
+  const executedOrder = SCORECARD_MODEL_ORDER.filter((id) => PER_VARIANT[id]);
   assert.deepEqual(s.charts.pnlBars.points.map((p) => p.label), executedOrder);
 });
 

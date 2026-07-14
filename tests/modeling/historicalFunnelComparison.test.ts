@@ -309,3 +309,50 @@ test("E6: equity ending PnL equals the canonical flat-stake total PnL", () => {
   // win 0.40 unit + loss -1 unit = -0.60 unit.
   assert.ok(Math.abs(m.endingPnl - -0.6) < 1e-9);
 });
+
+// ---- Phase 4B: batch-1 hypotheses run through the unmodified comparison engine ----
+//
+// LOCKED_EXECUTION_SET itself (the original 9) is untouched by this batch --
+// the three new candidates are requested explicitly alongside it, proving the
+// existing engine needs no rewrite to execute them.
+
+const BATCH_1_IDS = [
+  "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+  "ALT5_TS_SCORE_GE_65_TENNIS_ONLY",
+  "ALT6_TS_SCORE_GE_65_CANONICAL_EVENT_GROUPING",
+];
+
+test("N30: LOCKED_EXECUTION_SET (the original 9) is unchanged by this batch", () => {
+  assert.equal(LOCKED_EXECUTION_SET.length, 9);
+  for (const id of BATCH_1_IDS) {
+    assert.ok(!LOCKED_EXECUTION_SET.includes(id), `${id} must not silently enter the locked set`);
+  }
+});
+
+test("N31: requesting the original 9 plus the 3 new candidates executes all 12 in order", () => {
+  const requested = [...LOCKED_EXECUTION_SET, ...BATCH_1_IDS];
+  const result = compareHistoricalFunnelVariants({ rows: corpus(), classifier, requestedVariantIds: requested });
+  assert.equal(result.executions.length, 12);
+  assert.deepEqual(result.executions.map((e) => e.variantId), requested);
+  for (const id of BATCH_1_IDS) {
+    const exec = result.executions.find((e) => e.variantId === id);
+    assert.ok(exec, `${id} missing from executions`);
+    assert.equal(exec!.evaluationStatus, "EXECUTED");
+    assert.ok(exec!.metrics, `${id} produced no metrics`);
+  }
+});
+
+test("N32: the original 9 models' metrics on the regression fixture are unchanged by adding the batch", () => {
+  const before = compareHistoricalFunnelVariants({ rows: corpus(), classifier, requestedVariantIds: [...LOCKED_EXECUTION_SET] });
+  const after = compareHistoricalFunnelVariants({
+    rows: corpus(),
+    classifier,
+    requestedVariantIds: [...LOCKED_EXECUTION_SET, ...BATCH_1_IDS],
+  });
+  for (const id of LOCKED_EXECUTION_SET) {
+    const b = before.executions.find((e) => e.variantId === id)!;
+    const a = after.executions.find((e) => e.variantId === id)!;
+    assert.deepEqual(a.metrics, b.metrics, id);
+    assert.equal(a.evaluationStatus, b.evaluationStatus, id);
+  }
+});

@@ -346,3 +346,125 @@ test("F20: this module contains no formula arithmetic (no v2-lite weighted-sum l
   const src = require("node:fs").readFileSync(require.resolve("../../lib/modeling/historicalFunnelVariants.ts"), "utf8");
   assert.doesNotMatch(src, /0\.35\s*\*|0\.25\s*\*\s*smart|signalV2Raw/);
 });
+
+// ---- Phase 4B: bounded historical hypothesis batch 1 (ALT4/ALT5/ALT6) ----
+//
+// Base comparator for all three: ALT2_TS_SCORE_GE_65 (score >= 65, keep all).
+// Each candidate changes exactly one dimension.
+
+test("G21: ALT4 keeps score-qualified non-esports rows and excludes esports", () => {
+  const rows = [
+    makeRow({ signal_confidence_num: 70, event_slug: "esports-cs2-navi-vs-g2" }),
+    makeRow({ signal_confidence_num: 70, market_slug: "valorant-champions-final" }),
+    makeRow({ signal_confidence_num: 70, event_slug: "atp-tennis-final" }),
+    makeRow({ signal_confidence_num: 70, event_slug: "epl-arsenal-chelsea" }),
+    makeRow({ signal_confidence_num: 50, event_slug: "esports-dota-ti-final" }),
+  ];
+  const result = evaluateHistoricalFunnelVariant(rows, classifier, "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS");
+  assert.equal(result.outputRows, 2);
+  const eventSlugs = result.selectedRows.map((r) => r.event_slug).sort();
+  assert.deepEqual(eventSlugs, ["atp-tennis-final", "epl-arsenal-chelsea"]);
+});
+
+test("G22: ALT4 is not equivalent to ALT3 (NBA/NHL exclusion is unaffected)", () => {
+  const rows = [
+    makeRow({ signal_confidence_num: 70, event_slug: "nba-lakers-celtics" }),
+    makeRow({ signal_confidence_num: 70, event_slug: "esports-cs2-navi-vs-g2" }),
+  ];
+  const alt3 = evaluateHistoricalFunnelVariant(rows, classifier, "ALT3_TS_SCORE_GE_65_EXCLUDE_NBA_NHL");
+  const alt4 = evaluateHistoricalFunnelVariant(rows, classifier, "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS");
+  // ALT3 removes the NBA row, keeps esports; ALT4 removes esports, keeps NBA.
+  assert.equal(alt3.outputRows, 1);
+  assert.equal(alt3.selectedRows[0].event_slug, "esports-cs2-navi-vs-g2");
+  assert.equal(alt4.outputRows, 1);
+  assert.equal(alt4.selectedRows[0].event_slug, "nba-lakers-celtics");
+});
+
+test("G23: ALT5 keeps only score-qualified tennis rows", () => {
+  const rows = [
+    makeRow({ signal_confidence_num: 70, event_slug: "atp-tennis-final" }),
+    makeRow({ signal_confidence_num: 70, market_slug: "wta-open-final" }),
+    makeRow({ signal_confidence_num: 70, event_slug: "epl-arsenal-chelsea" }),
+    makeRow({ signal_confidence_num: 50, event_slug: "atp-tennis-semifinal" }),
+  ];
+  const result = evaluateHistoricalFunnelVariant(rows, classifier, "ALT5_TS_SCORE_GE_65_TENNIS_ONLY");
+  assert.equal(result.outputRows, 2);
+  for (const r of result.selectedRows) {
+    assert.match(String(r.event_slug ?? r.market_slug), /tennis|wta|atp/i);
+  }
+});
+
+test("G24: ALT5 has no existing tennis-only equivalent (ALT2 baseline keeps non-tennis too)", () => {
+  const rows = [
+    makeRow({ signal_confidence_num: 70, event_slug: "atp-tennis-final" }),
+    makeRow({ signal_confidence_num: 70, event_slug: "epl-arsenal-chelsea" }),
+  ];
+  const alt2 = evaluateHistoricalFunnelVariant(rows, classifier, "ALT2_TS_SCORE_GE_65");
+  const alt5 = evaluateHistoricalFunnelVariant(rows, classifier, "ALT5_TS_SCORE_GE_65_TENNIS_ONLY");
+  assert.equal(alt2.outputRows, 2);
+  assert.equal(alt5.outputRows, 1);
+});
+
+test("G25: ALT6 keeps exactly one row per working event group (max signals per event = 1)", () => {
+  const rows = [
+    makeRow({ signal_confidence_num: 70, match_family_key: "barca-real-2026", diagnostics: { dataCoverage: 60 } }),
+    makeRow({ signal_confidence_num: 90, match_family_key: "barca-real-2026", diagnostics: { dataCoverage: 90 } }),
+    makeRow({ signal_confidence_num: 66, match_family_key: "barca-real-2026", diagnostics: { dataCoverage: 40 } }),
+    makeRow({ signal_confidence_num: 66, event_slug: "epl-arsenal-chelsea" }),
+  ];
+  const result = evaluateHistoricalFunnelVariant(rows, classifier, "ALT6_TS_SCORE_GE_65_CANONICAL_EVENT_GROUPING");
+  assert.equal(result.workingEventGroups, 2);
+  assert.equal(result.outputRows, 2);
+  // Same canonical winner as ALT1's grouping: highest coverage wins within the group.
+  const barcaRow = result.selectedRows.find((r) => r.match_family_key === "barca-real-2026");
+  assert.ok(barcaRow);
+  assert.equal((barcaRow!.diagnostics as Record<string, unknown>).dataCoverage, 90);
+});
+
+test("G26: ALT6 input permutation does not change the selected winner", () => {
+  const a = makeRow({ signal_confidence_num: 70, match_family_key: "ev-x", diagnostics: { dataCoverage: 60 } });
+  const b = makeRow({ signal_confidence_num: 90, match_family_key: "ev-x", diagnostics: { dataCoverage: 90 } });
+  const c = makeRow({ signal_confidence_num: 66, match_family_key: "ev-x", diagnostics: { dataCoverage: 40 } });
+  const forward = evaluateHistoricalFunnelVariant([a, b, c], classifier, "ALT6_TS_SCORE_GE_65_CANONICAL_EVENT_GROUPING");
+  const reversed = evaluateHistoricalFunnelVariant([c, b, a], classifier, "ALT6_TS_SCORE_GE_65_CANONICAL_EVENT_GROUPING");
+  assert.equal(forward.outputRows, 1);
+  assert.equal(reversed.outputRows, 1);
+  assert.equal(
+    (forward.selectedRows[0].diagnostics as Record<string, unknown>).dataCoverage,
+    (reversed.selectedRows[0].diagnostics as Record<string, unknown>).dataCoverage,
+  );
+  assert.equal((forward.selectedRows[0].diagnostics as Record<string, unknown>).dataCoverage, 90);
+});
+
+test("G27: ALT6 is not equivalent to ALT1 (score threshold stays >=65, not >=72)", () => {
+  const rows = [makeRow({ signal_confidence_num: 68, match_family_key: "ev-y" })];
+  const alt1 = evaluateHistoricalFunnelVariant(rows, classifier, "ALT1_CANONICAL_EVENT_GROUPING");
+  const alt6 = evaluateHistoricalFunnelVariant(rows, classifier, "ALT6_TS_SCORE_GE_65_CANONICAL_EVENT_GROUPING");
+  assert.equal(alt1.outputRows, 0); // below ALT1's 72 threshold
+  assert.equal(alt6.outputRows, 1); // above ALT6's/ALT2's 65 threshold
+});
+
+test("G28: the original 9 model definitions are unaffected by the batch-1 additions", () => {
+  const rows = [
+    makeRow({ signal_confidence_num: 70, event_slug: "esports-cs2-navi-vs-g2" }),
+    makeRow({ signal_confidence_num: 70, event_slug: "atp-tennis-final" }),
+    makeRow({ signal_confidence_num: 70, event_slug: "epl-arsenal-chelsea" }),
+  ];
+  for (const id of [
+    "BASELINE_V1_CONTROL",
+    "PRIMARY_V1_AVOID_NBA_NHL_COV_CAP",
+    "ALT1_CANONICAL_EVENT_GROUPING",
+    "ALT2_TS_SCORE_GE_65",
+    "ALT2_PY_SCORE_GE_65_SM_LT_85",
+    "ALT3_TS_SCORE_GE_65_EXCLUDE_NBA_NHL",
+    "ALT3_PY_SCORE_GE_65",
+    "ALT_SM_GUARD_ON_PRIMARY",
+    "ALT_SM_GUARD_ON_PRIMARY_APPROX",
+  ]) {
+    // ALT2 (score>=65, keep all) must still keep all three fixture rows.
+    const result = evaluateHistoricalFunnelVariant(rows, classifier, id);
+    assert.ok(result.status === "COMPLETED" || result.status === "BLOCKED", `unexpected status for ${id}`);
+  }
+  const alt2Regression = evaluateHistoricalFunnelVariant(rows, classifier, "ALT2_TS_SCORE_GE_65");
+  assert.equal(alt2Regression.outputRows, 3);
+});

@@ -30,6 +30,11 @@ type Row = Record<string, unknown>;
 
 const NBA_NHL_RE = /\bnba\b|basketball|\bnhl\b|ice[\s-]?hockey/i;
 const ESPORTS_RE = /esport|cs2|valorant|dota|league[\s-]of[\s-]legend|counter[\s-]strike/i;
+// Re-hosted verbatim from lib/modeling/sportMarketPerformanceSlice.ts's
+// SPORT_PATTERNS tennis entry (Phase 4B batch-1) -- same re-hosting
+// precedent as NBA_NHL_RE/ESPORTS_RE above: no new heuristic, the identical
+// pattern already used by the canonical sport decomposition.
+const TENNIS_RE = /\btennis\b|\batp\b|\bwta\b/i;
 
 function mref(row: Row): string {
   const marketSlug = typeof row.market_slug === "string" ? row.market_slug : "";
@@ -43,6 +48,10 @@ function isNbaOrNhl(row: Row): boolean {
 
 function isEsports(row: Row): boolean {
   return ESPORTS_RE.test(mref(row));
+}
+
+function isTennis(row: Row): boolean {
+  return TENNIS_RE.test(mref(row));
 }
 
 // The exact permitted metric_formula_version values, re-hosted verbatim from
@@ -221,6 +230,11 @@ function applyRequire(rows: Row[], field: string | null, rule: Record<string, un
       return s !== null && s >= (rule.value as number);
     });
   }
+  // Phase 4B ALT5: single-dimension inclusion filter, reuses isTennis (same
+  // re-hosted-predicate pattern as isNbaOrNhl/isEsports below).
+  if (field === "sport_tennis") {
+    return rows.filter((r) => isTennis(r));
+  }
   if (field === "data_coverage_num" && rule?.operator === ">=") {
     // Missing/invalid coverage fails closed (removed), never read as 0.
     return rows.filter((r) => {
@@ -240,6 +254,11 @@ function applyRequire(rows: Row[], field: string | null, rule: Record<string, un
 function applyExclude(rows: Row[], field: string | null): Row[] {
   if (field === "league") {
     return rows.filter((r) => !isNbaOrNhl(r));
+  }
+  // Phase 4B ALT4: single-dimension exclusion, reuses isEsports (existing
+  // predicate, no new heuristic).
+  if (field === "sport_esports") {
+    return rows.filter((r) => !isEsports(r));
   }
   if (field === "data_coverage_num+entry_price_num") {
     return rows.filter((r) => !isBadBucket(r));
@@ -342,7 +361,10 @@ export function evaluateHistoricalFunnelVariant(
       }
     } else if (step.action === "KEEP") {
       flushOrder();
-      if (bundle.bundleId === "ALT1_CANONICAL_EVENT_GROUPING") {
+      // Phase 4B ALT6: identical keep-first-per-canonical-group behavior as
+      // ALT1_CANONICAL_EVENT_GROUPING -- same helper, same tie-break, no new
+      // event key or ranking rule.
+      if (bundle.bundleId === "ALT1_CANONICAL_EVENT_GROUPING" || bundle.bundleId === "ALT6_TS_SCORE_GE_65_CANONICAL_EVENT_GROUPING") {
         const groups = groupRowsByEventGroup(current);
         current = Array.from(groups.values()).map((group) => group[0]);
         workingEventGroups = groups.size;
