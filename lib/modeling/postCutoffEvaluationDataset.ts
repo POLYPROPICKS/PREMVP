@@ -2,8 +2,13 @@
 //
 // Composes the 3E.8E.2A/2B boundary into a dataset layer carrying every field
 // PRIMARY/ALT2/ALT1 and the ROI/event-group contracts actually read: cutoff
-// filter -> full evaluation projection -> exact-duplicate collapse (throwing
-// on any same-key divergence across the projected fields) -> deterministic
+// filter -> canonical historical strict-dedup projection
+// (strict_latest_created_before_resolved, reused verbatim from
+// generatedSignalPairsDedupPolicy -- physical generated-signal rows are NOT
+// automatically independent resolved observations; the live table stores many
+// physical rows per resolved market) -> full evaluation projection ->
+// exact-duplicate collapse (throwing on any same-key divergence that survives
+// strict dedup, e.g. case-divergent condition ids) -> deterministic
 // sort + SHA-256 content hash -> a lossless adapter back to the exact row
 // shape the frozen evaluators expect. Does NOT run model evaluation, compute
 // forward metrics, or select a model. Pure: no fs/network/env/Supabase,
@@ -35,6 +40,10 @@ import {
   getUtcWeekBucket,
 } from "./postCutoffObservation";
 import { buildEventGroupKey } from "./eventGroupSelection";
+import {
+  projectGeneratedSignalPairsStrictDedup,
+  STRICT_DEDUP_POLICY_NAME,
+} from "./generatedSignalPairsDedupPolicy";
 
 export interface ForwardEventIdentity {
   matchFamilyKey: string | null;
@@ -72,6 +81,12 @@ export interface PostCutoffEvaluationDataset {
   schemaVersion: 1;
   cutoffResolvedAtExclusive: string;
   inputRowCount: number;
+  /** Post-cutoff rows before strict dedup (raw physical rows in the window). */
+  postCutoffRowCount: number;
+  /** The canonical historical dedup policy applied before projection. */
+  strictDedupPolicy: typeof STRICT_DEDUP_POLICY_NAME;
+  /** Physical rows dropped by the strict-dedup projection (not observations). */
+  strictDedupDroppedRowCount: number;
   eligibleRowCount: number;
   uniqueObservationCount: number;
   exactDuplicateCount: number;
@@ -297,6 +312,9 @@ function canonicalPayload(dataset: Omit<PostCutoffEvaluationDataset, "datasetHas
     schemaVersion: dataset.schemaVersion,
     cutoffResolvedAtExclusive: dataset.cutoffResolvedAtExclusive,
     inputRowCount: dataset.inputRowCount,
+    postCutoffRowCount: dataset.postCutoffRowCount,
+    strictDedupPolicy: dataset.strictDedupPolicy,
+    strictDedupDroppedRowCount: dataset.strictDedupDroppedRowCount,
     eligibleRowCount: dataset.eligibleRowCount,
     uniqueObservationCount: dataset.uniqueObservationCount,
     exactDuplicateCount: dataset.exactDuplicateCount,
@@ -306,9 +324,13 @@ function canonicalPayload(dataset: Omit<PostCutoffEvaluationDataset, "datasetHas
 
 /**
  * Builds the deterministic post-cutoff evaluation dataset from candidate
- * export rows. Filters by the exclusive cutoff, projects each eligible row,
- * collapses exact duplicates (throwing EvaluationConflictError on any
- * same-key divergence), sorts deterministically, and emits a content-hashed
+ * export rows. Filters by the exclusive cutoff, applies the canonical
+ * historical strict-dedup projection (one row per condition_id + token_id,
+ * preferring the latest created_at <= resolved_at -- physical
+ * generated-signal rows are not automatically independent resolved
+ * observations), projects each surviving row, collapses exact duplicates
+ * (throwing EvaluationConflictError on any same-key divergence that remains
+ * after strict dedup), sorts deterministically, and emits a content-hashed
  * dataset. Input rows are never mutated; a malformed cutoff throws.
  */
 export function buildPostCutoffEvaluationDataset(
@@ -317,12 +339,13 @@ export function buildPostCutoffEvaluationDataset(
 ): PostCutoffEvaluationDataset {
   const inputRowCount = rows.length;
   const postCutoffRows = filterPostCutoffResolvedRows(rows, cutoff);
+  const strictDedup = projectGeneratedSignalPairsStrictDedup(postCutoffRows);
 
   const byKey = new Map<string, ForwardEvaluationObservation>();
   let eligibleRowCount = 0;
   let exactDuplicateCount = 0;
 
-  for (const row of postCutoffRows) {
+  for (const row of strictDedup.dedupedRows) {
     const observation = projectForwardEvaluationObservation(row);
     if (observation === null) continue;
     eligibleRowCount += 1;
@@ -346,6 +369,9 @@ export function buildPostCutoffEvaluationDataset(
     schemaVersion: 1,
     cutoffResolvedAtExclusive: cutoff,
     inputRowCount,
+    postCutoffRowCount: strictDedup.rawRows,
+    strictDedupPolicy: STRICT_DEDUP_POLICY_NAME,
+    strictDedupDroppedRowCount: strictDedup.droppedDuplicateRows,
     eligibleRowCount,
     uniqueObservationCount: byKey.size,
     exactDuplicateCount,

@@ -156,55 +156,66 @@ test("C18: an exact duplicate collapses to one observation", () => {
   assert.equal(d.uniqueObservationCount, 1);
 });
 
-test("C19: exactDuplicateCount increments", () => {
+test("C19: strict-dedup drop counts are recorded for an exact duplicate", () => {
   const d = buildPostCutoffEvaluationDataset([rawRow(1), rawRow(1)]);
-  assert.equal(d.exactDuplicateCount, 1);
-  assert.equal(d.eligibleRowCount, 2);
+  assert.equal(d.strictDedupDroppedRowCount, 1);
+  assert.equal(d.eligibleRowCount, 1);
+  assert.equal(d.exactDuplicateCount, 0);
 });
 
-test("C20: a score conflict throws EvaluationConflictError", () => {
-  assert.throws(() => buildPostCutoffEvaluationDataset([rawRow(1), rawRow(1, { signal_confidence_num: 99 })]), EvaluationConflictError);
+// Same-strict-key divergent physical rows are resolved by the canonical
+// historical strict-dedup projection (see R50+), so they no longer reach the
+// conflict detector. The fail-closed conflict path is now exercised by rows
+// that SURVIVE strict dedup with the same lowercased observation key:
+// case-divergent condition ids (distinct case-sensitive strict keys).
+
+function caseTwin(overrides: Record<string, unknown>): Record<string, unknown>[] {
+  return [rawRow(1, { condition_id: "0xCOND1" }), rawRow(1, { condition_id: "0xcond1", id: "id-1b", ...overrides })];
+}
+
+test("C20: a post-dedup score conflict throws EvaluationConflictError", () => {
+  assert.throws(() => buildPostCutoffEvaluationDataset(caseTwin({ signal_confidence_num: 99 })), EvaluationConflictError);
 });
 
-test("C21: a result conflict throws", () => {
-  assert.throws(() => buildPostCutoffEvaluationDataset([rawRow(1), rawRow(1, { signal_result: "loss" })]), EvaluationConflictError);
+test("C21: a post-dedup result conflict throws", () => {
+  assert.throws(() => buildPostCutoffEvaluationDataset(caseTwin({ signal_result: "loss" })), EvaluationConflictError);
 });
 
-test("C22: an entry-price conflict throws", () => {
-  assert.throws(() => buildPostCutoffEvaluationDataset([rawRow(1), rawRow(1, { entry_price_num: 0.9 })]), EvaluationConflictError);
+test("C22: a post-dedup entry-price conflict throws", () => {
+  assert.throws(() => buildPostCutoffEvaluationDataset(caseTwin({ entry_price_num: 0.9 })), EvaluationConflictError);
 });
 
-test("C23: a coverage conflict throws", () => {
+test("C23: a post-dedup coverage conflict throws", () => {
   assert.throws(
-    () => buildPostCutoffEvaluationDataset([rawRow(1), rawRow(1, { diagnostics: { dataCoverage: 10, gameStartIso: "2026-07-12T06:00:00.000Z" } })]),
+    () => buildPostCutoffEvaluationDataset(caseTwin({ diagnostics: { dataCoverage: 10, gameStartIso: "2026-07-12T06:00:00.000Z" } })),
     EvaluationConflictError,
   );
 });
 
-test("C24: a timing conflict throws", () => {
+test("C24: a post-dedup timing conflict throws", () => {
   assert.throws(
-    () => buildPostCutoffEvaluationDataset([rawRow(1), rawRow(1, { created_at: "2020-01-01T00:00:00.000Z" })]),
+    () => buildPostCutoffEvaluationDataset(caseTwin({ created_at: "2020-01-01T00:00:00.000Z" })),
     EvaluationConflictError,
   );
 });
 
-test("C25: a formula-version conflict throws", () => {
+test("C25: a post-dedup formula-version conflict throws", () => {
   assert.throws(
-    () => buildPostCutoffEvaluationDataset([rawRow(1), rawRow(1, { metric_formula_version: "shadow-firemodel1_1_research_v0" })]),
+    () => buildPostCutoffEvaluationDataset(caseTwin({ metric_formula_version: "shadow-firemodel1_1_research_v0" })),
     EvaluationConflictError,
   );
 });
 
-test("C26: an event-group conflict throws", () => {
+test("C26: a post-dedup event-group conflict throws", () => {
   assert.throws(
-    () => buildPostCutoffEvaluationDataset([rawRow(1), rawRow(1, { event_slug: "totally-different-event" })]),
+    () => buildPostCutoffEvaluationDataset(caseTwin({ event_slug: "totally-different-event" })),
     EvaluationConflictError,
   );
 });
 
 test("C27: conflictingFields are sorted", () => {
   try {
-    buildPostCutoffEvaluationDataset([rawRow(1), rawRow(1, { signal_confidence_num: 5, entry_price_num: 0.99 })]);
+    buildPostCutoffEvaluationDataset(caseTwin({ signal_confidence_num: 5, entry_price_num: 0.99 }));
     assert.fail("expected throw");
   } catch (e) {
     const fields = (e as EvaluationConflictError).conflictingFields;
@@ -215,7 +226,7 @@ test("C27: conflictingFields are sorted", () => {
 
 test("C28: the conflict error contains no raw row", () => {
   try {
-    buildPostCutoffEvaluationDataset([rawRow(1), rawRow(1, { signal_confidence_num: 5 })]);
+    buildPostCutoffEvaluationDataset(caseTwin({ signal_confidence_num: 5 }));
     assert.fail("expected throw");
   } catch (e) {
     const msg = (e as Error).message;
@@ -374,4 +385,101 @@ test("A45: the event-group key from the original row equals the event-group key 
 test("L0: the dataset embeds the locked default cutoff", () => {
   const d = buildPostCutoffEvaluationDataset([rawRow(1)]);
   assert.equal(d.cutoffResolvedAtExclusive, POST_CUTOFF_RESOLVED_AT_EXCLUSIVE);
+});
+
+// ---- Strict-dedup parity regression (production 680-row collision case) ----
+//
+// The real forward export produced many physical generated_signal_pairs rows
+// per resolved market (same condition_id + token_id + resolved_at, distinct
+// physical ids, divergent created_at/score/entry price/timing). Physical rows
+// are NOT automatically independent resolved observations: the dataset must
+// apply the canonical historical strict-dedup projection
+// (strict_latest_created_before_resolved) before evaluation, exactly like the
+// historical corpus pipeline.
+
+function dupRow(id: string, createdAt: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return rawRow(1, {
+    id,
+    created_at: createdAt,
+    ...overrides,
+  });
+}
+
+const DUP_A = dupRow("id-dup-a", "2026-07-12T01:00:00.000Z", {
+  signal_confidence_num: 55,
+  entry_price_num: 0.4,
+  diagnostics: { dataCoverage: 60, gameStartIso: "2026-07-12T05:00:00.000Z" },
+});
+const DUP_B = dupRow("id-dup-b", "2026-07-12T03:00:00.000Z", {
+  signal_confidence_num: 70,
+  entry_price_num: 0.5,
+  diagnostics: { dataCoverage: 70, gameStartIso: "2026-07-12T06:00:00.000Z" },
+});
+const DUP_C = dupRow("id-dup-c", "2026-07-12T05:00:00.000Z", {
+  signal_confidence_num: 88,
+  entry_price_num: 0.65,
+  diagnostics: { dataCoverage: 90, gameStartIso: "2026-07-12T07:00:00.000Z" },
+});
+// created after resolved_at -- must lose to any before-resolved candidate.
+const DUP_LATE = dupRow("id-dup-late", "2026-07-14T00:00:00.000Z", {
+  signal_confidence_num: 99,
+  entry_price_num: 0.9,
+});
+
+test("R50: divergent physical duplicates for one strict key do not throw", () => {
+  const d = buildPostCutoffEvaluationDataset([DUP_A, DUP_B, DUP_C]);
+  assert.equal(d.uniqueObservationCount, 1);
+});
+
+test("R51: the canonical winner is the latest created_at <= resolved_at", () => {
+  const d = buildPostCutoffEvaluationDataset([DUP_A, DUP_B, DUP_C, DUP_LATE]);
+  assert.equal(d.observations.length, 1);
+  assert.equal(d.observations[0].sourceId, "id-dup-c");
+  assert.equal(d.observations[0].score, 88);
+});
+
+test("R52: input permutations select the same winner and dataset hash", () => {
+  const d1 = buildPostCutoffEvaluationDataset([DUP_A, DUP_B, DUP_C, DUP_LATE]);
+  const d2 = buildPostCutoffEvaluationDataset([DUP_LATE, DUP_C, DUP_A, DUP_B]);
+  const d3 = buildPostCutoffEvaluationDataset([DUP_B, DUP_LATE, DUP_A, DUP_C]);
+  assert.equal(d1.observations[0].sourceId, "id-dup-c");
+  assert.equal(d2.observations[0].sourceId, "id-dup-c");
+  assert.equal(d3.observations[0].sourceId, "id-dup-c");
+  assert.equal(d1.datasetHash, d2.datasetHash);
+  assert.equal(d1.datasetHash, d3.datasetHash);
+});
+
+test("R53: non-selected physical rows never become separate observations", () => {
+  const d = buildPostCutoffEvaluationDataset([DUP_A, DUP_B, DUP_C, DUP_LATE, rawRow(2)]);
+  assert.equal(d.uniqueObservationCount, 2);
+  const ids = d.observations.map((o) => o.sourceId).sort();
+  assert.deepEqual(ids, ["id-2", "id-dup-c"]);
+});
+
+test("R54: rows still conflicting after strict dedup fail closed", () => {
+  // Case-divergent condition ids are DIFFERENT strict dedup keys (the strict
+  // key is case-sensitive) but the SAME lowercased observation key -- the one
+  // genuine post-dedup collision that must keep throwing.
+  const a = rawRow(1, { condition_id: "0xCOND1", signal_confidence_num: 10 });
+  const b = rawRow(1, { condition_id: "0xcond1", signal_confidence_num: 99 });
+  assert.throws(() => buildPostCutoffEvaluationDataset([a, b]), EvaluationConflictError);
+});
+
+test("R55: strict dedup never mutates the input rows", () => {
+  const input = [DUP_A, DUP_B, DUP_C, DUP_LATE];
+  const snapshot = JSON.stringify(input);
+  buildPostCutoffEvaluationDataset(input);
+  assert.equal(JSON.stringify(input), snapshot);
+});
+
+test("R56: the frozen observation key contract is unchanged", () => {
+  const d = buildPostCutoffEvaluationDataset([DUP_A, DUP_B, DUP_C]);
+  assert.equal(d.observations[0].observationKey, `0xcond1::tok-1::${AFTER1}`);
+});
+
+test("R57: dedup provenance counts are recorded on the dataset", () => {
+  const d = buildPostCutoffEvaluationDataset([DUP_A, DUP_B, DUP_C, DUP_LATE, rawRow(2)]);
+  assert.equal(d.strictDedupPolicy, "strict_latest_created_before_resolved");
+  assert.equal(d.postCutoffRowCount, 5);
+  assert.equal(d.strictDedupDroppedRowCount, 3);
 });
