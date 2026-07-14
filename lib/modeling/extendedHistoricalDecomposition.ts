@@ -38,6 +38,17 @@ type Row = ExportRow;
 
 export const DECOMPOSITION_ENGINE_VERSION = "4A.2-extended-decomposition-v1" as const;
 
+/**
+ * Decomposition dimensions excluded from global cross-model/evidence
+ * ranking pools because they are a deterministic mirror of another
+ * dimension already counted there. impliedOddsBands is a 1:1 function of
+ * priceBands (see impliedOddsBandOf) -- counting both as independent
+ * findings would double-count the same rows. Price is the canonical
+ * dimension; implied odds remains a derived secondary label in detail
+ * tables only.
+ */
+export const EVIDENCE_MIRROR_DIMENSIONS = ["impliedOddsBands"] as const;
+
 // ---- immutable bucket contracts ----
 
 export const SCORE_BANDS = [
@@ -877,21 +888,44 @@ function availabilityTable(matrix: DimensionAvailability[]): string {
   return `<table><thead><tr><th>Dimension</th><th>Status</th><th>Covered</th><th>%</th><th>Confidence</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-function strongestSegments(model: ModelDecomposition): string {
+/**
+ * Global evidence pool for one model's strongest-segment lists. Excludes
+ * impliedOddsBands entirely -- it is a deterministic 1:1 mirror of
+ * priceBands (see impliedOddsBandOf), so counting both would double-count
+ * the same underlying rows as two independent findings. Price remains the
+ * canonical dimension here; the full implied-odds detail table is rendered
+ * separately (bucketTable), just excluded from this ranking pool.
+ */
+function evidencePool(model: ModelDecomposition): Array<{ dim: string; bucket: string; m: DecompositionSegmentMetrics }> {
+  return extractEvidencePool(model);
+}
+
+/** Exported so the dashboard layer reuses the exact same mirror-exclusion rule instead of reimplementing it. */
+export function extractEvidencePool(model: ModelDecomposition): Array<{ dim: string; bucket: string; m: DecompositionSegmentMetrics }> {
   const all: Array<{ dim: string; bucket: string; m: DecompositionSegmentMetrics }> = [];
   for (const [dim, buckets] of Object.entries(model.decompositions)) {
+    if ((EVIDENCE_MIRROR_DIMENSIONS as readonly string[]).includes(dim)) continue;
     for (const b of buckets) if (b.metrics.observations > 0) all.push({ dim, bucket: b.bucket, m: b.metrics });
   }
-  const byPnl = [...all].sort((a, b) => (b.m.flatUnitPnl ?? 0) - (a.m.flatUnitPnl ?? 0));
+  return all;
+}
+
+function strongestSegments(model: ModelDecomposition): string {
+  const all = evidencePool(model);
+  // Positive segments: flatUnitPnl > 0 only. Negative segments: flatUnitPnl
+  // < 0 only. Zero-PnL segments are excluded from both -- a positive (even
+  // barely positive) segment must never appear in the negative list.
+  const positive = all.filter((e) => (e.m.flatUnitPnl ?? 0) > 0).sort((a, b) => (b.m.flatUnitPnl ?? 0) - (a.m.flatUnitPnl ?? 0));
+  const negative = all.filter((e) => (e.m.flatUnitPnl ?? 0) < 0).sort((a, b) => (a.m.flatUnitPnl ?? 0) - (b.m.flatUnitPnl ?? 0));
   const row = (e: { dim: string; bucket: string; m: DecompositionSegmentMetrics }) => {
     const warn = e.m.sampleClass === "LOW" || e.m.sampleClass === "INSUFFICIENT";
     return `<tr class="${warn ? "warn-sample" : ""}"><td>${escapeHtml(e.dim)} / ${escapeHtml(e.bucket)}</td><td>${fmtInt(e.m.observations)}</td><td>${fmt(e.m.flatUnitPnl)}</td><td>${fmt(e.m.flatUnitRoi)}</td><td>${escapeHtml(e.m.sampleClass)}${warn ? ' <span class="warn-tag">⚠ small sample</span>' : ""}</td></tr>`;
   };
-  const top = byPnl.slice(0, 5).map(row).join("");
-  const bottom = byPnl.slice(-5).reverse().map(row).join("");
+  const top = positive.slice(0, 5).map(row).join("");
+  const bottom = negative.slice(0, 5).map(row).join("");
   return (
-    `<h3>Strongest positive segments (by PnL)</h3><table><thead><tr><th>Segment</th><th>N</th><th>PnL</th><th>ROI%</th><th>Sample</th></tr></thead><tbody>${top}</tbody></table>` +
-    `<h3>Strongest negative segments (by PnL)</h3><table><thead><tr><th>Segment</th><th>N</th><th>PnL</th><th>ROI%</th><th>Sample</th></tr></thead><tbody>${bottom}</tbody></table>`
+    `<h3>Strongest positive segments (by PnL)</h3><table><thead><tr><th>Segment</th><th>N</th><th>PnL</th><th>ROI%</th><th>Sample</th></tr></thead><tbody>${top || '<tr><td colspan="5" class="muted">none</td></tr>'}</tbody></table>` +
+    `<h3>Strongest negative segments (by PnL)</h3><table><thead><tr><th>Segment</th><th>N</th><th>PnL</th><th>ROI%</th><th>Sample</th></tr></thead><tbody>${bottom || '<tr><td colspan="5" class="muted">none</td></tr>'}</tbody></table>`
   );
 }
 
