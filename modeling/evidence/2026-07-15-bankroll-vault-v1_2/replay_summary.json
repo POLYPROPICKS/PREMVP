@@ -1,0 +1,17 @@
+{
+  "resultLabel": "THEORETICAL_GROSS_HISTORICAL_REPLAY",
+  "baseCandidateSelectedObservations": 549,
+  "baseCandidateSelectionHash": "084b2f2d14a3fe62cbfecab88dee1a9979ffd3af10420d253504fe64a8296019",
+  "t90QualifiedObservations": 362,
+  "strongSportingMatchQualifiedRows": 0,
+  "strongSportingMatchGroups": 0,
+  "executedSportingMatchGroups": 0,
+  "rowsRejectedNoStrongSportingMatchKey": 362,
+  "eventGroupKeySourceCounts": { "match_family_key": 0, "canonical_event_key": 0, "parent_event_key": 0 },
+  "selectedObservations": 0,
+  "grossTheoreticalPnl": 0,
+  "grossTheoreticalRoi": null,
+  "postOverlaySelectionHash": "a03f2ecaaf3502afa004ad6fe5710b79af7a0a41f405c1ec3b844d7f42c39fe2",
+  "endingActiveBankroll": 50,
+  "endingVaultBankroll": 50
+}

@@ -1,0 +1,16 @@
+{
+  "row_count": 49400,
+  "fields": {
+    "condition_id": 49400, "created_at": 49400, "diagnostics": 49400, "entry_price_num": 49400,
+    "event_slug": 49400, "formula_version": 49400, "id": 49400, "market_slug": 49400,
+    "metric_formula_version": 48753, "pre_event_score_num": 27904, "realized_return_pct": 49400,
+    "resolved_at": 49400, "score": 27904, "selected_outcome": 49400, "signal_result": 49400,
+    "token_id": 49400, "winning_outcome": 49400
+  },
+  "identity_field_coverage": { "match_family_key": 0, "canonical_event_key": 0, "parent_event_key": 0 },
+  "diagnostics": {
+    "rows_with_object": 49400,
+    "identity_relevant_keys": ["gameStartIso", "marketFamily", "marketSlug", "marketTitle", "marketType", "outcomeName", "selectedOutcome"]
+  },
+  "profile_rule": "Coverage means non-null, non-undefined, non-empty top-level values. No absent identity field is inferred."
+}

@@ -1,0 +1,14 @@
+{
+  "artifact": "generated_signal_pairs_export.json",
+  "source_path": "C:\\WORK\\KalshiProPulse\\sipropicks-premvp1-1\\modeling\\local_exports\\generated_signal_pairs_export.json",
+  "immutable_snapshot_path": "C:\\WORK\\KalshiProPulse\\modeling-snapshots\\2026-07-15_b2f5dfb5963e\\generated_signal_pairs_export.json",
+  "source_commit_at_snapshot_copy": "ed1528fa13a9649f6abb94d80eab071cfcc0c191",
+  "source_export_command": "not recoverable from the JSON artifact or its filesystem metadata",
+  "row_count": 49400,
+  "file_size_bytes": 110875797,
+  "sha256": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+  "top_level_shape": "array",
+  "created_at_range": { "min": "2026-05-21T20:11:13.430468+00:00", "max": "2026-07-12T11:33:47.452393+00:00" },
+  "resolved_at_range": { "min": "2026-05-25T20:14:21.214+00:00", "max": "2026-07-13T06:04:05.701+00:00" },
+  "attribution": "Local export copied byte-for-byte from the named sibling working tree on 2026-07-15; raw corpus is not committed to normal Git."
+}
