@@ -113,10 +113,12 @@ function emptyReasons<T extends string>(reasons: readonly T[]): Record<T, Export
   return result;
 }
 
-export function buildExecutionWaterfall(rawRows: readonly ExportRow[], classifier: ExecutableFunnelClassifier): ExecutionWaterfallResult {
+export type WaterfallModelPolicyId = "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M" | "B2_TIMING_WITHIN_120M" | "B2_PRICE_FLOOR_030";
+export function buildExecutionWaterfall(rawRows: readonly ExportRow[], classifier: ExecutableFunnelClassifier, modelPolicyId: WaterfallModelPolicyId = "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M"): ExecutionWaterfallResult {
+  const passesModel = (row: ExportRow): boolean => modelPolicyId === "B2_TIMING_WITHIN_120M" ? passesTimingWithin120m(row) : modelPolicyId === "B2_PRICE_FLOOR_030" ? passesPriceFloor(row) : passesPriceFloor(row) && passesTimingWithin120m(row);
   const deduped = projectGeneratedSignalPairsStrictDedup([...rawRows]).dedupedRows;
   const alt4 = evaluateHistoricalFunnelVariant(deduped, classifier, BASE_COMPARATOR_ID).selectedRows as ExportRow[];
-  const baseRows = alt4.filter((r) => passesPriceFloor(r) && passesTimingWithin120m(r));
+  const baseRows = alt4.filter(passesModel);
   const rawByIdentity = new Map<string, ExportRow[]>();
   for (const row of rawRows) {
     const key = identity(row); if (!key) continue;
@@ -136,8 +138,8 @@ export function buildExecutionWaterfall(rawRows: readonly ExportRow[], classifie
     const score = getScoreValue(snap);
     if (score === null || score < 65) reasonRows.T90_SNAPSHOT_SCORE_REJECTED.push(snap);
     else if (isEsports(snap)) reasonRows.T90_SNAPSHOT_ESPORTS_REJECTED.push(snap);
-    else if (!passesPriceFloor(snap)) reasonRows.T90_SNAPSHOT_PRICE_REJECTED.push(snap);
-    else if (!passesTimingWithin120m(snap)) reasonRows.T90_SNAPSHOT_TIMING_REJECTED.push(snap);
+    else if (modelPolicyId !== "B2_TIMING_WITHIN_120M" && !passesPriceFloor(snap)) reasonRows.T90_SNAPSHOT_PRICE_REJECTED.push(snap);
+    else if (modelPolicyId !== "B2_PRICE_FLOOR_030" && !passesTimingWithin120m(snap)) reasonRows.T90_SNAPSHOT_TIMING_REJECTED.push(snap);
     else if (!(evaluateHistoricalFunnelVariant([snap], classifier, BASE_COMPARATOR_ID).selectedRows.length === 1)) reasonRows.OTHER_EXACT_BASE_CONTRACT_REJECTION.push(snap);
     else { reasonRows.QUALIFIED.push(snap); baseQualified.push(snap); }
   }
@@ -148,7 +150,7 @@ export function buildExecutionWaterfall(rawRows: readonly ExportRow[], classifie
     if (eligible[0]) t90Snapshots.push(eligible[0]);
   }
   const qualified = (evaluateHistoricalFunnelVariant(t90Snapshots, classifier, BASE_COMPARATOR_ID).selectedRows as ExportRow[])
-    .filter((r) => passesPriceFloor(r) && passesTimingWithin120m(r));
+    .filter(passesModel);
   const baseByIdentity = new Map(baseRows.map((r) => [identity(r)!, r]));
   const t90ByIdentity = new Map(qualified.map((r) => [identity(r)!, r]));
   const retainedIds = [...baseByIdentity.keys()].filter((key) => t90ByIdentity.has(key)).sort();
