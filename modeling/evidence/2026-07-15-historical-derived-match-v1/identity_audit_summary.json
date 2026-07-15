@@ -1,0 +1,11 @@
+{
+  "algorithmVersion": "HISTORICAL_DERIVED_MATCH_KEY_V1",
+  "inputSha256": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+  "totalRows": 49400,
+  "highConfidenceRows": 15988,
+  "uniquelyLinkedRows": 8014,
+  "ambiguousRejectedRows": 25398,
+  "derivedMatchGroups": 494,
+  "derivedMatchCollisionCount": 0,
+  "fullAuditSha256": "94bedae3e573fb6ec3b2b2d2523115bfed63d82dab857c4bdc600f3b88deb239"
+}

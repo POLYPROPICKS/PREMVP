@@ -1,0 +1,22 @@
+{
+  "baseCandidateSelectedObservations": 549,
+  "baseCandidateSelectionHash": "084b2f2d14a3fe62cbfecab88dee1a9979ffd3af10420d253504fe64a8296019",
+  "t90QualifiedObservations": 362,
+  "derivedMatchGroups": 271,
+  "selectedObservations": 177,
+  "executedSportingMatchGroups": 177,
+  "wins": 94,
+  "losses": 83,
+  "grossTheoreticalPnl": 69.46874342,
+  "grossTheoreticalRoi": 20.10681091,
+  "maximumActiveBankrollDrawdown": 43.74003827,
+  "maximumTotalCapitalDrawdown": 40.35199895,
+  "longestLosingStreak": 6,
+  "maximumSimultaneousPositions": 22,
+  "maximumOpenExposurePct": 52.03531144,
+  "maximumAcceptedSignalsInOneUtcDay": 16,
+  "endingActiveBankroll": 84.73437171,
+  "endingVaultBankroll": 84.73437171,
+  "endingTotalCapital": 169.46874342,
+  "postOverlaySelectionHash": "2005fa7a8b3164f7ef73a25f963332f47a1f4308f2cf2efcdd74da44f2dab1c7"
+}

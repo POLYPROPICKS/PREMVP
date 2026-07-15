@@ -1,0 +1,11 @@
+{
+  "inputSha256": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+  "classifierSha256": "ec47640740fbf5a8789ee023fdb41298cde947dcda9e1109af3fc0905305f24f",
+  "replayJsonSha256": "5a0f17ff8db10cfa24fb281bbffdbc26ede45bc0485a1f71a2023c67be10aa67",
+  "fullManifestFileSha256": "6e98ee5344e0df4fc6bfeced0257b07a15785b71d2b8c37f02c5f3a59f42f8c7",
+  "engineVersion": "3B-bankroll-vault-replay-v1.3",
+  "simulationVersion": "BANKROLL_VAULT_REPLAY_V1_3",
+  "modelPolicyId": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+  "selectionOverlayVersion": "T90_HISTORICAL_DERIVED_MATCH_V1",
+  "bankrollPolicyVersion": "ACTIVE50_VAULT50_STAKE_MAX3_OPEN80_POS30_DAY100_V1"
+}

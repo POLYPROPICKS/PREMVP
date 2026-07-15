@@ -52,6 +52,14 @@ The first full resolved export after the local source patch is frozen at `C:\WOR
 
 Verdict: `HISTORICAL_ROWS_REQUIRE_PROVIDER_KEY_BACKFILL`. The existing historical rows predate persisted `diagnostics.canonicalEventKey`; no automatic backfill was attempted. New rows gain the key only after deployment of `33fb074` and a subsequent generation run. A historical reconstruction requires time-aligned provider payload archives; any Supabase update remains founder-gated.
 
+## Frozen historical-derived replay v1
+
+Commit `dd5215c` adds the isolated, opt-in `HISTORICAL_DERIVED_MATCH_KEY_V1` overlay. It is enabled only by `--match-identity-mode historical-derived-v1`; the default remains `strong-provider-only`. Provider keys retain priority. The historical helper reads only frozen-export fields (`event_slug`, `event_title`, `market_slug`, `diagnostics.marketTitle`, `diagnostics.marketSlug`, and `diagnostics.gameStartIso`), requires a participant pair plus exact start time for high-confidence identity, permits a one-sided row only when it links to exactly one pair at the same start, and otherwise fails closed. It does not alter model, T−90, ranking, bankroll/vault, eSports, provider plumbing, database data, or live execution.
+
+The immutable 49,400-row corpus is `C:\WORK\KalshiProPulse\modeling-snapshots\2026-07-15_b2f5dfb5963e\generated_signal_pairs_export.json`, SHA-256 `b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45`. Its full audit is outside Git at `historical-derived-match-v1\historical_match_identity_audit.json`, SHA-256 `94bedae3e573fb6ec3b2b2d2523115bfed63d82dab857c4bdc600f3b88deb239`: 15,988 high-confidence rows, 8,014 uniquely linked rows, 25,398 ambiguous rejected rows, 494 derived groups, and zero collisions.
+
+Replay v1.3 uses simulation `BANKROLL_VAULT_REPLAY_V1_3` and overlay `T90_HISTORICAL_DERIVED_MATCH_V1`. On the same frozen corpus: 362 T−90-qualified rows; 262 high-confidence rows; 47 uniquely linked rows; 53 ambiguous rejected rows; 271 derived/qualified groups; zero collisions; 177 bankroll-accepted executions; 94 wins; 83 losses; gross theoretical PnL 69.46874342; gross theoretical ROI 20.10681091%; ending active/vault balances 84.73437171 each. Replay JSON SHA-256 is `5a0f17ff8db10cfa24fb281bbffdbc26ede45bc0485a1f71a2023c67be10aa67`; manifest file SHA-256 is `6e98ee5344e0df4fc6bfeced0257b07a15785b71d2b8c37f02c5f3a59f42f8c7`.
+
 ## TDD map
 
 `tests/modeling/bankrollVaultReplay.test.ts` covers constants; T90-1..3 raw snapshot selection; exact B2A/eSports preservation; strong-key one-per-match and fail-closed cases; key-source accounting; ranking; uniqueness; bankroll limits and vault conservation; invalid settlement fields; theoretical label; determinism. `tests/modeling/historicalFunnelVariants.test.ts` covers C1..C19 classifier behavior, F1..F20 value extraction and fail policies, G21..G28 variants, and H1..H6 independent eSports detection.
