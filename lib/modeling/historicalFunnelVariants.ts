@@ -29,7 +29,14 @@ type Row = Record<string, unknown>;
 // ---- Re-hosted canonical predicates (exact constants from lib/executor/modelingData.ts) ----
 
 const NBA_NHL_RE = /\bnba\b|basketball|\bnhl\b|ice[\s-]?hockey/i;
-const ESPORTS_RE = /esport|cs2|valorant|dota|league[\s-]of[\s-]legend|counter[\s-]strike/i;
+// Phase 3B.3 patch: widened from the original re-hosted constant (which
+// missed real-corpus abbreviations like lol-/lcs-/lec-/lck- slugs -- proven
+// by the D1.1-style eSports audit). Token abbreviations are matched with
+// \b word boundaries (hyphens/spaces already count as boundaries) so they
+// never match arbitrary substrings inside unrelated words (e.g.
+// "lollapalooza" or "legacy contest series" must NOT match).
+const ESPORTS_TOKEN_RE = /\b(esports?|lol|lcs|lec|lck|cs2|valorant|dota)\b/i;
+const ESPORTS_PHRASE_RE = /league[\s-]of[\s-]legends?|counter[\s-]strike/i;
 // Re-hosted verbatim from lib/modeling/sportMarketPerformanceSlice.ts's
 // SPORT_PATTERNS tennis entry (Phase 4B batch-1) -- same re-hosting
 // precedent as NBA_NHL_RE/ESPORTS_RE above: no new heuristic, the identical
@@ -46,8 +53,31 @@ function isNbaOrNhl(row: Row): boolean {
   return NBA_NHL_RE.test(mref(row));
 }
 
-function isEsports(row: Row): boolean {
-  return ESPORTS_RE.test(mref(row));
+function matchesEsportsText(text: string): boolean {
+  return ESPORTS_TOKEN_RE.test(text) || ESPORTS_PHRASE_RE.test(text);
+}
+
+/**
+ * Canonical eSports fail-closed predicate (Phase 3B.3). Independently
+ * exclusive on two evidence sources: (1) explicit sport/category/league
+ * metadata fields, read verbatim with no slug text required -- so
+ * sport="esports" or league="LCS" excludes even when the slug looks clean;
+ * (2) slug/title text (market_slug/event_slug/event_title/market_title),
+ * matched by whole token (lol/lcs/lec/lck/cs2/valorant/dota/esport(s)) or
+ * exact phrase (league-of-legends, counter-strike) -- never an arbitrary
+ * substring inside an unrelated word.
+ */
+export function isEsports(row: Row): boolean {
+  const explicitFields = [row.sport, row.sport_name, row.category, row.league, row.league_name];
+  for (const field of explicitFields) {
+    if (typeof field === "string" && field.trim() !== "" && matchesEsportsText(field.toLowerCase())) return true;
+  }
+  const textFields = [row.market_slug, row.event_slug, row.event_title, row.market_title];
+  const text = textFields
+    .filter((f): f is string => typeof f === "string")
+    .join(" ")
+    .toLowerCase();
+  return matchesEsportsText(text);
 }
 
 function isTennis(row: Row): boolean {

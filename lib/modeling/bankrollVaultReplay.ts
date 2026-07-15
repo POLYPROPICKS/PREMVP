@@ -13,11 +13,10 @@
 // Pure: no fs/env/network/Supabase, no mutation of input, no forward data.
 
 import { createHash } from "node:crypto";
-import { evaluateHistoricalFunnelVariant, getScoreValue, getCoverageValue, getHoursUntilStartValue } from "./historicalFunnelVariants";
+import { evaluateHistoricalFunnelVariant, getScoreValue, getCoverageValue, isEsports } from "./historicalFunnelVariants";
 import { getStrictDedupKeyForExportRow, type ExportRow } from "./generatedSignalPairsExportContract";
 import { BASE_COMPARATOR_ID, passesPriceFloor, passesTimingWithin120m } from "./boundedRoutingExperiments";
 import { getEntryPriceValue, computeSelectionHash } from "./scoreComponentAnalysis";
-import { buildEventGroupKey } from "./eventGroupSelection";
 import { classifyResolvedOutcome } from "./roiPnlContract";
 import { computeSegmentMetrics } from "./extendedHistoricalDecomposition";
 import { projectGeneratedSignalPairsStrictDedup } from "./generatedSignalPairsDedupPolicy";
@@ -25,20 +24,17 @@ import type { ExecutableFunnelClassifier } from "./executableFunnelClassifier";
 
 type Row = ExportRow;
 
-export const BANKROLL_VAULT_REPLAY_ENGINE_VERSION = "3B-bankroll-vault-replay-v1.1" as const;
+export const BANKROLL_VAULT_REPLAY_ENGINE_VERSION = "3B-bankroll-vault-replay-v1.2" as const;
 
 // ---------------------------------------------------------- version identifiers
 
 export const MODEL_POLICY_ID = "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M" as const;
-export const SELECTION_OVERLAY_VERSION = "T90_ONE_SPORTING_MATCH_SCORE_COVERAGE_V1" as const;
+export const SELECTION_OVERLAY_VERSION = "T90_STRONG_MATCH_SCORE_COVERAGE_V1" as const;
 export const BANKROLL_POLICY_VERSION = "ACTIVE50_VAULT50_STAKE_MAX3_OPEN80_POS30_DAY100_V1" as const;
 
 // ---------------------------------------------------------- frozen policy constants
 
 const T90_DECISION_OFFSET_HOURS = 1.5; // decisionAt = eventStart - 90 minutes
-const T90_WINDOW_LOWER_HOURS = 1.5; // eventStart - 120 minutes
-const T90_WINDOW_UPPER_HOURS = 2.0; // eventStart - 90 minutes (== decisionAt)
-
 const MAX_ACCEPTED_SIGNALS_PER_UTC_DAY = 100;
 const MAX_CONCURRENT_POSITIONS = 30;
 const MAX_OPEN_EXPOSURE_FRACTION = 0.8;
@@ -49,6 +45,7 @@ export const REJECTION_REASONS = [
   "NO_T90_SNAPSHOT",
   "BASE_MODEL_REJECTED",
   "EVENT_RANKED_OUT",
+  "NO_STRONG_SPORTING_MATCH_KEY",
   "DAILY_CAP_REJECTED",
   "CONCURRENT_POSITION_CAP_REJECTED",
   "OPEN_EXPOSURE_CAP_REJECTED",
@@ -86,8 +83,36 @@ interface CandidateSnapshot {
   row: Row;
   observationId: string;
   identity: string;
-  hoursUntilStart: number;
   createdAtMs: number;
+}
+
+// ---------------------------------------------------------- strong sporting-match key
+
+export type StrongSportingMatchKeySource = "match_family_key" | "canonical_event_key" | "parent_event_key";
+
+/**
+ * Fix 3: execution-level sporting-match identity uses ONLY the three
+ * strongest existing fields, in this exact priority -- never event_slug/
+ * event_title/market_slug/condition_id as an execution-level fallback (those
+ * are per-market, not per-match, and would let multiple markets of the same
+ * real sporting match each receive their own key). A row without any of
+ * these three fields has no defensible sporting-match identity and cannot be
+ * executed (NO_STRONG_SPORTING_MATCH_KEY).
+ */
+function strongSportingMatchKeyOf(row: Row): { key: string; source: StrongSportingMatchKeySource } | null {
+  const matchFamily = row.match_family_key;
+  if (typeof matchFamily === "string" && matchFamily.trim() !== "") {
+    return { key: `match:${matchFamily.trim().toLowerCase()}`, source: "match_family_key" };
+  }
+  const canonical = row.canonical_event_key;
+  if (typeof canonical === "string" && canonical.trim() !== "") {
+    return { key: `canonical:${canonical.trim().toLowerCase()}`, source: "canonical_event_key" };
+  }
+  const parent = row.parent_event_key;
+  if (typeof parent === "string" && parent.trim() !== "") {
+    return { key: `parent:${parent.trim().toLowerCase()}`, source: "parent_event_key" };
+  }
+  return null;
 }
 
 // ---------------------------------------------------------- ranking
@@ -160,7 +185,7 @@ export interface BankrollVaultReplayInput {
 
 export interface BankrollVaultReplayResult {
   engineVersion: typeof BANKROLL_VAULT_REPLAY_ENGINE_VERSION;
-  simulationVersion: "BANKROLL_VAULT_REPLAY_V1_1";
+  simulationVersion: "BANKROLL_VAULT_REPLAY_V1_2";
   modelPolicyId: typeof MODEL_POLICY_ID;
   selectionOverlayVersion: typeof SELECTION_OVERLAY_VERSION;
   bankrollPolicyVersion: typeof BANKROLL_POLICY_VERSION;
@@ -184,7 +209,15 @@ export interface BankrollVaultReplayResult {
   t90QualifiedObservations: number;
   qualifiedSportingMatchGroups: number;
   executedSportingMatchGroups: number;
+  // Independent diagnostic: runs the canonical exported isEsports predicate
+  // directly over the final accepted rows -- not a tautological membership
+  // check against an already-esports-filtered set.
   acceptedEsportsObservations: number;
+
+  strongSportingMatchQualifiedRows: number;
+  strongSportingMatchGroups: number;
+  rowsRejectedNoStrongSportingMatchKey: number;
+  eventGroupKeySourceCounts: Record<StrongSportingMatchKeySource, number>;
 
   postOverlaySelectionHash: string;
 
@@ -252,46 +285,93 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
   // so its selectedObservations/selectionHash/wins/losses/PnL/ROI/
   // workingEventGroups are byte-identical to the accepted B2A run.
   const alt4Selected = evaluateHistoricalFunnelVariant(dedupedRows, classifier, BASE_COMPARATOR_ID).selectedRows;
-  const alt4SelectedIds = new Set(alt4Selected.map(observationIdOf));
   const baseCandidateRows = alt4Selected.filter((r) => passesPriceFloor(r) && passesTimingWithin120m(r));
   const baseCandidateMetrics = computeSegmentMetrics(baseCandidateRows);
   const baseCandidateSelectionHash = computeSelectionHash(baseCandidateRows.map(observationIdOf));
 
-  // ---- 3. T-90 overlay: filters the already-selected base candidate rows ----
-  // (never re-picks among raw duplicate snapshots -- strict dedup already
-  // chose the one representative row per identity). No field recorded after
-  // decisionAt can affect this filter since it only inspects each row's own
-  // gameStartIso/created_at, and resolved_at is never read here.
-  const t90QualifiedRows: Row[] = [];
-  for (const row of baseCandidateRows) {
-    const hours = getHoursUntilStartValue(row);
-    if (hours === null) {
+  // ---- 3. TRUE T-90 raw-snapshot selection (Fix 1) ----
+  // For every strict signal identity, group the RAW (non-deduped) rows and
+  // select the latest raw snapshot with created_at <= decisionAt
+  // (eventStart - 90 minutes), computed from that identity's own
+  // diagnostics.gameStartIso. Strict dedup's global latest-created-before-
+  // resolved policy is NEVER applied before this step -- a later, post-
+  // decisionAt raw snapshot for the same identity can never displace an
+  // earlier valid pre-decision one, because rows recorded after decisionAt
+  // are excluded from consideration entirely before the "latest" pick runs.
+  // resolved_at is never read here. Tie-break: created_at DESC, then
+  // observationId ASC.
+  interface RawSnapshotCandidate {
+    row: Row;
+    observationId: string;
+    createdAtMs: number;
+    decisionAtMs: number | null;
+  }
+  const byIdentity = new Map<string, RawSnapshotCandidate[]>();
+  for (const row of rawRows) {
+    const identity = strictIdentityOf(row);
+    if (identity === null) continue;
+    const createdAtMs = typeof row.created_at === "string" ? Date.parse(row.created_at) : NaN;
+    if (!Number.isFinite(createdAtMs)) continue;
+    const startIso = (row.diagnostics as Record<string, unknown> | undefined)?.gameStartIso;
+    const startMs = typeof startIso === "string" ? Date.parse(startIso) : NaN;
+    const decisionAtMs = Number.isFinite(startMs) ? startMs - T90_DECISION_OFFSET_HOURS * 3_600_000 : null;
+    const candidate: RawSnapshotCandidate = { row, observationId: observationIdOf(row), createdAtMs, decisionAtMs };
+    const arr = byIdentity.get(identity);
+    if (arr) arr.push(candidate);
+    else byIdentity.set(identity, [candidate]);
+  }
+
+  const t90Selected = new Map<string, CandidateSnapshot>();
+  for (const [identity, snaps] of byIdentity) {
+    const withValidStart = snaps.filter((s) => s.decisionAtMs !== null);
+    if (withValidStart.length === 0) {
       rejectedByReason.NO_VALID_EVENT_START += 1;
       continue;
     }
-    if (hours < T90_WINDOW_LOWER_HOURS || hours > T90_WINDOW_UPPER_HOURS) {
+    const eligible = withValidStart.filter((s) => s.createdAtMs <= s.decisionAtMs!);
+    if (eligible.length === 0) {
       rejectedByReason.NO_T90_SNAPSHOT += 1;
       continue;
     }
-    t90QualifiedRows.push(row);
+    const best = [...eligible].sort((a, b) => {
+      if (a.createdAtMs !== b.createdAtMs) return b.createdAtMs - a.createdAtMs; // DESC
+      return a.observationId.localeCompare(b.observationId); // ASC
+    })[0];
+    t90Selected.set(identity, { row: best.row, observationId: best.observationId, identity, createdAtMs: best.createdAtMs });
   }
-  // Every strict-deduped row that the unmodified base candidate (ALT4 +
-  // price>=0.30 + timing<120m) did not select -- includes eSports rows,
-  // since ALT4's own EXCLUDE_ESPORTS step already removed them upstream.
-  const baseCandidateRowIds = new Set(baseCandidateRows.map(observationIdOf));
-  for (const row of dedupedRows) {
-    if (!baseCandidateRowIds.has(observationIdOf(row))) rejectedByReason.BASE_MODEL_REJECTED += 1;
+
+  // ---- canonical model eligibility on the T-90-selected snapshots ----
+  const t90SnapshotRows = [...t90Selected.values()].map((s) => s.row);
+  const alt4OnT90 = evaluateHistoricalFunnelVariant(t90SnapshotRows, classifier, BASE_COMPARATOR_ID).selectedRows;
+  const t90QualifiedRows = alt4OnT90.filter((r) => passesPriceFloor(r) && passesTimingWithin120m(r));
+  const t90QualifiedIds = new Set(t90QualifiedRows.map(observationIdOf));
+  for (const snap of t90Selected.values()) {
+    if (!t90QualifiedIds.has(snap.observationId)) rejectedByReason.BASE_MODEL_REJECTED += 1;
   }
 
   function toSnapshot(row: Row): CandidateSnapshot {
-    const hours = getHoursUntilStartValue(row)!;
-    const createdAtMs = typeof row.created_at === "string" ? Date.parse(row.created_at) : NaN;
-    return { row, observationId: observationIdOf(row), identity: strictIdentityOf(row) ?? observationIdOf(row), hoursUntilStart: hours, createdAtMs };
+    const identity = strictIdentityOf(row) ?? observationIdOf(row);
+    return t90Selected.get(identity) ?? { row, observationId: observationIdOf(row), identity, createdAtMs: Date.parse(String(row.created_at)) };
   }
 
-  // ---- 4. one-sporting-match ranking (canonical event grouping, reused verbatim) ----
+  // ---- 4. one-strong-sporting-match ranking (Fix 3) ----
+  // Execution-level grouping uses ONLY match_family_key -> canonical_event_key
+  // -> parent_event_key -- never event_slug/event_title/market_slug/
+  // condition_id as a fallback (those identify a market, not a match).
+  const eventGroupKeySourceCounts: Record<StrongSportingMatchKeySource, number> = {
+    match_family_key: 0,
+    canonical_event_key: 0,
+    parent_event_key: 0,
+  };
   const candidates: RankedCandidate[] = [];
+  let rowsRejectedNoStrongSportingMatchKey = 0;
   for (const row of t90QualifiedRows) {
+    const strongKey = strongSportingMatchKeyOf(row);
+    if (strongKey === null) {
+      rejectedByReason.NO_STRONG_SPORTING_MATCH_KEY += 1;
+      rowsRejectedNoStrongSportingMatchKey += 1;
+      continue;
+    }
     const score = getScoreValue(row);
     const coverage = getCoverageValue(row);
     const price = getEntryPriceValue(row);
@@ -300,8 +380,10 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
       rejectedByReason.EVENT_RANKED_OUT += 1;
       continue;
     }
-    candidates.push({ snapshot: toSnapshot(row), eventKey: buildEventGroupKey(row).key, finalScore: score, dataCoverage: coverage, entryPrice: price });
+    eventGroupKeySourceCounts[strongKey.source] += 1;
+    candidates.push({ snapshot: toSnapshot(row), eventKey: strongKey.key, finalScore: score, dataCoverage: coverage, entryPrice: price });
   }
+  const strongSportingMatchQualifiedRows = candidates.length;
 
   const byEvent = new Map<string, RankedCandidate[]>();
   for (const c of candidates) {
@@ -316,6 +398,7 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
     rejectedByReason.EVENT_RANKED_OUT += sorted.length - 1;
   }
   const qualifiedSportingMatchGroups = byEvent.size;
+  const strongSportingMatchGroups = byEvent.size;
   const executedSportingMatchGroups = winners.length;
   if (executedSportingMatchGroups !== qualifiedSportingMatchGroups) {
     throw new Error("bankroll vault replay: invariant violated -- executedSportingMatchGroups must equal qualifiedSportingMatchGroups");
@@ -327,6 +410,7 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
 
   // ---- decision-time ordering: frozen ranking tuple ----
   const orderedWinners = [...winners].sort(RANK_ORDER);
+  const winnerRowById = new Map(winners.map((w) => [w.snapshot.observationId, w.snapshot.row]));
 
   // ---- prevalidate resolved_at / entry price / result for each winner ----
   interface PreparedDecision {
@@ -627,7 +711,7 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
 
   return {
     engineVersion: BANKROLL_VAULT_REPLAY_ENGINE_VERSION,
-    simulationVersion: "BANKROLL_VAULT_REPLAY_V1_1",
+    simulationVersion: "BANKROLL_VAULT_REPLAY_V1_2",
     modelPolicyId: MODEL_POLICY_ID,
     selectionOverlayVersion: SELECTION_OVERLAY_VERSION,
     bankrollPolicyVersion: BANKROLL_POLICY_VERSION,
@@ -645,7 +729,18 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
     t90QualifiedObservations: t90QualifiedRows.length,
     qualifiedSportingMatchGroups,
     executedSportingMatchGroups,
-    acceptedEsportsObservations: executedIds.filter((id) => !alt4SelectedIds.has(id)).length,
+    // Independent: runs the canonical exported isEsports predicate directly
+    // over the final accepted rows' own data -- not a subset-membership
+    // tautology.
+    acceptedEsportsObservations: executedIds.filter((id) => {
+      const row = winnerRowById.get(id);
+      return row !== undefined && isEsports(row);
+    }).length,
+
+    strongSportingMatchQualifiedRows,
+    strongSportingMatchGroups,
+    rowsRejectedNoStrongSportingMatchKey,
+    eventGroupKeySourceCounts,
 
     postOverlaySelectionHash,
 

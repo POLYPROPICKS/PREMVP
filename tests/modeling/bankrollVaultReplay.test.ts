@@ -41,8 +41,13 @@ function row(
     resolvedHoursAfterStart?: number | null;
     eventSlug?: string;
     marketSlug?: string;
-    matchFamilyKey?: string;
+    // Explicit `null` means "no strong sporting-match key" (Fix 3 test
+    // fixture); undefined defaults to a per-fixture-unique strong key so
+    // every other test keeps exercising one signal per (already-unique)
+    // sporting match without needing to restate it everywhere.
+    matchFamilyKey?: string | null;
     league?: string;
+    sport?: string;
   },
 ): Record<string, unknown> {
   const startMs = Date.parse(opts.startIso);
@@ -69,7 +74,8 @@ function row(
     realized_return_pct: win ? 40 : -100,
     diagnostics: { dataCoverage: opts.coverage ?? 80, gameStartIso: opts.startIso },
   };
-  if (opts.matchFamilyKey) row.match_family_key = opts.matchFamilyKey;
+  if (opts.sport !== undefined) row.sport = opts.sport;
+  if (opts.matchFamilyKey !== null) row.match_family_key = opts.matchFamilyKey ?? slug;
   return row;
 }
 
@@ -86,15 +92,16 @@ function t90Row(n: number, opts: Omit<Parameters<typeof row>[1], "hoursBeforeSta
 
 test("engine constants and version identifiers", () => {
   assert.equal(typeof BANKROLL_VAULT_REPLAY_ENGINE_VERSION, "string");
-  assert.equal(BANKROLL_VAULT_REPLAY_ENGINE_VERSION, "3B-bankroll-vault-replay-v1.1");
+  assert.equal(BANKROLL_VAULT_REPLAY_ENGINE_VERSION, "3B-bankroll-vault-replay-v1.2");
   assert.equal(MODEL_POLICY_ID, "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M");
-  assert.equal(SELECTION_OVERLAY_VERSION, "T90_ONE_SPORTING_MATCH_SCORE_COVERAGE_V1");
+  assert.equal(SELECTION_OVERLAY_VERSION, "T90_STRONG_MATCH_SCORE_COVERAGE_V1");
   assert.equal(BANKROLL_POLICY_VERSION, "ACTIVE50_VAULT50_STAKE_MAX3_OPEN80_POS30_DAY100_V1");
   for (const r of [
     "NO_VALID_EVENT_START",
     "NO_T90_SNAPSHOT",
     "BASE_MODEL_REJECTED",
     "EVENT_RANKED_OUT",
+    "NO_STRONG_SPORTING_MATCH_KEY",
     "DAILY_CAP_REJECTED",
     "CONCURRENT_POSITION_CAP_REJECTED",
     "OPEN_EXPOSURE_CAP_REJECTED",
@@ -104,6 +111,51 @@ test("engine constants and version identifiers", () => {
   ]) {
     assert.ok(REJECTION_REASONS.includes(r as (typeof REJECTION_REASONS)[number]), `missing reason ${r}`);
   }
+});
+
+// ----------------------------------------------- T90-1/T90-2: true snapshot
+
+test("T90-1: a later post-T-90 raw snapshot never displaces an earlier valid pre-T-90 snapshot", () => {
+  const start = iso("02", 20);
+  const decisionAtMs = Date.parse(start) - 1.5 * 3_600_000;
+  const earlyValidMs = decisionAtMs - 5 * 60_000; // 5 min before decisionAt -- valid
+  const lateInvalidMs = decisionAtMs + 5 * 60_000; // 5 min AFTER decisionAt -- must never be picked
+  const rows = [
+    { ...t90Row(1, { startIso: start, score: 70, price: 0.5, eventSlug: "evt-later-snap", matchFamilyKey: "evt-later-snap" }), id: "id-00001", created_at: new Date(earlyValidMs).toISOString() },
+    { ...t90Row(1, { startIso: start, score: 95, price: 0.5, eventSlug: "evt-later-snap", matchFamilyKey: "evt-later-snap" }), id: "id-00002", created_at: new Date(lateInvalidMs).toISOString() },
+  ];
+  const result = runBankrollVaultReplay({ rawRows: rows, classifier, insuranceBankroll: 100 });
+  // The engine must use the EARLY valid snapshot's own finalScore (60), not
+  // the later post-decisionAt snapshot's score (95) -- provable via the
+  // decision ledger's recorded finalScore for the executed identity.
+  const decision = result.decisionLedger.find((d) => d.identity === "cond-1::tok-1");
+  assert.ok(decision, "the identity must still execute using its valid pre-T-90 snapshot");
+  assert.equal(decision!.finalScore, 70);
+});
+
+test("T90-2: the latest eligible raw snapshot at or before decisionAt is selected among several", () => {
+  const start = iso("02", 20);
+  const decisionAtMs = Date.parse(start) - 1.5 * 3_600_000;
+  const rows = [
+    { ...t90Row(1, { startIso: start, score: 10, price: 0.5, eventSlug: "evt-pick-latest", matchFamilyKey: "evt-pick-latest" }), id: "id-00001", created_at: new Date(decisionAtMs - 20 * 60_000).toISOString() },
+    { ...t90Row(1, { startIso: start, score: 77, price: 0.5, eventSlug: "evt-pick-latest", matchFamilyKey: "evt-pick-latest" }), id: "id-00002", created_at: new Date(decisionAtMs - 5 * 60_000).toISOString() },
+    { ...t90Row(1, { startIso: start, score: 20, price: 0.5, eventSlug: "evt-pick-latest", matchFamilyKey: "evt-pick-latest" }), id: "id-00003", created_at: new Date(decisionAtMs - 40 * 60_000).toISOString() },
+  ];
+  const result = runBankrollVaultReplay({ rawRows: rows, classifier, insuranceBankroll: 100 });
+  const decision = result.decisionLedger.find((d) => d.identity === "cond-1::tok-1");
+  assert.ok(decision);
+  assert.equal(decision!.finalScore, 77); // the latest-created eligible snapshot (id-00002, 5 min before decisionAt)
+});
+
+test("T90-3: identities with no pre-decisionAt snapshot are rejected NO_T90_SNAPSHOT", () => {
+  const start = iso("02", 20);
+  const decisionAtMs = Date.parse(start) - 1.5 * 3_600_000;
+  const rows = [
+    { ...t90Row(1, { startIso: start, score: 80, price: 0.5, eventSlug: "evt-no-t90", matchFamilyKey: "evt-no-t90" }), id: "id-00001", created_at: new Date(decisionAtMs + 10 * 60_000).toISOString() },
+  ];
+  const result = runBankrollVaultReplay({ rawRows: rows, classifier, insuranceBankroll: 100 });
+  assert.equal(result.decisionLedger.length, 0);
+  assert.ok(result.rejectedByReason.NO_T90_SNAPSHOT >= 1);
 });
 
 // -------------------------------------------------- 1 & 2: exact base reuse
@@ -199,6 +251,31 @@ test("3: three markets on one canonical sporting match produce exactly one execu
   assert.ok(result.rejectedByReason.EVENT_RANKED_OUT >= 2);
   // The winner must be the highest finalScore (id-00001, score 80).
   assert.equal(forMatch[0].observationId, "id-00001");
+});
+
+test("3b: three market-specific slugs without any strong key are all rejected NO_STRONG_SPORTING_MATCH_KEY", () => {
+  const start = iso("02", 20);
+  const rows = [
+    t90Row(1, { startIso: start, score: 80, price: 0.5, eventSlug: "korea-vs-czechia-match-winner", matchFamilyKey: null }),
+    t90Row(2, { startIso: start, score: 75, price: 0.45, eventSlug: "korea-vs-czechia-over-under-2-5", matchFamilyKey: null }),
+    t90Row(3, { startIso: start, score: 65, price: 0.4, eventSlug: "korea-vs-czechia-total-corners-8-5", matchFamilyKey: null }),
+  ];
+  const result = runBankrollVaultReplay({ rawRows: rows, classifier, insuranceBankroll: 100 });
+  assert.equal(result.decisionLedger.length, 0);
+  assert.equal(result.rejectedByReason.NO_STRONG_SPORTING_MATCH_KEY, 3);
+  assert.equal(result.rowsRejectedNoStrongSportingMatchKey, 3);
+});
+
+test("3c: eventGroupKeySourceCounts reflects only match_family_key/canonical_event_key/parent_event_key", () => {
+  const start = iso("02", 20);
+  const rows = [
+    t90Row(1, { startIso: start, score: 80, price: 0.5, eventSlug: "evt-src-a", matchFamilyKey: "match-a" }),
+    { ...t90Row(2, { startIso: start, score: 75, price: 0.5, eventSlug: "evt-src-b", matchFamilyKey: null }), canonical_event_key: "canon-b" },
+  ];
+  const result = runBankrollVaultReplay({ rawRows: rows, classifier, insuranceBankroll: 100 });
+  assert.equal(result.eventGroupKeySourceCounts.match_family_key, 1);
+  assert.equal(result.eventGroupKeySourceCounts.canonical_event_key, 1);
+  assert.equal(result.eventGroupKeySourceCounts.parent_event_key, 0);
 });
 
 // ------------------------------------------------------------- 4. ranking
@@ -331,6 +408,19 @@ test("7e: bankroll invariant active + vault = total capital", () => {
 });
 
 // ------------------------------------------------------------- misc
+
+test("8: final accepted rows contain zero independently detected eSports rows, on realistic slugs", () => {
+  const start = iso("02", 20);
+  const rows = [
+    t90Row(1, { startIso: start, score: 80, price: 0.5, eventSlug: "epl-control-8", matchFamilyKey: "epl-control-8" }),
+    t90Row(2, { startIso: start, score: 90, price: 0.5, eventSlug: "lol-flyquest-vs-sentinels-bo5-lcs-playoffs", matchFamilyKey: "lol-flyquest-vs-sentinels" }),
+    t90Row(3, { startIso: start, score: 90, price: 0.5, eventSlug: "team-a-vs-team-b", sport: "esports", matchFamilyKey: "team-a-vs-team-b" }),
+  ];
+  const result = runBankrollVaultReplay({ rawRows: rows, classifier, insuranceBankroll: 100 });
+  assert.equal(result.acceptedEsportsObservations, 0);
+  assert.equal(result.decisionLedger.length, 1);
+  assert.equal(result.decisionLedger[0].identity, "cond-1::tok-1");
+});
 
 test("missing/invalid resolved_at cannot be executed", () => {
   const start = iso("02", 20);

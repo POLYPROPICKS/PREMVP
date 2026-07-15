@@ -16,6 +16,7 @@ import {
   getSmartMoneyValue,
   getHoursUntilStartValue,
   isAllowedFormulaVersion,
+  isEsports,
   ALLOWED_METRIC_FORMULA_VERSIONS,
 } from "../../lib/modeling/historicalFunnelVariants";
 import { loadExecutableFunnelClassifier } from "../../lib/modeling/executableFunnelClassifier";
@@ -467,4 +468,52 @@ test("G28: the original 9 model definitions are unaffected by the batch-1 additi
   }
   const alt2Regression = evaluateHistoricalFunnelVariant(rows, classifier, "ALT2_TS_SCORE_GE_65");
   assert.equal(alt2Regression.outputRows, 3);
+});
+
+// ---- Phase 3B.3 patch: widened canonical eSports fail-closed coverage ----
+//
+// isEsports now inspects explicit metadata fields (sport/sport_name/category/
+// league/league_name) independently of slug text, and recognizes token
+// abbreviations (lol/lcs/lec/lck) as whole tokens (not arbitrary substrings)
+// across market_slug/event_slug/event_title/market_title.
+
+test("H1: sport=esports independently excludes even with no slug evidence", () => {
+  assert.equal(isEsports(makeRow({ sport: "esports" })), true);
+});
+
+test("H2: league=LCS independently excludes even with no slug evidence", () => {
+  assert.equal(isEsports(makeRow({ league: "LCS" })), true);
+});
+
+test("H3: realistic lol- slugs are recognized as esports", () => {
+  assert.equal(isEsports(makeRow({ event_slug: "lol-flyquest-vs-sentinels-bo5-lcs-playoffs" })), true);
+  assert.equal(isEsports(makeRow({ event_slug: "lol-nongshim-red-force-vs-dplus-kia-bo3-lc" })), true);
+});
+
+test("H4: lol/lcs/lec/lck match as tokens, not substrings inside unrelated words", () => {
+  assert.equal(isEsports(makeRow({ event_slug: "lollapalooza-festival-attendance" })), false);
+  assert.equal(isEsports(makeRow({ event_title: "Legacy Contest Series finals" })), false);
+  assert.equal(isEsports(makeRow({ event_slug: "lol-worlds-final" })), true);
+  assert.equal(isEsports(makeRow({ event_slug: "team-a-vs-team-b-lck-spring" })), true);
+});
+
+test("H5: ALT4 rejects rows via explicit metadata even with a clean-looking slug", () => {
+  const rows = [
+    makeRow({ signal_confidence_num: 70, event_slug: "team-a-vs-team-b", sport: "esports" }),
+    makeRow({ signal_confidence_num: 70, event_slug: "epl-arsenal-chelsea" }),
+  ];
+  const result = evaluateHistoricalFunnelVariant(rows, classifier, "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS");
+  assert.equal(result.outputRows, 1);
+  assert.equal(result.selectedRows[0].event_slug, "epl-arsenal-chelsea");
+});
+
+test("H6: ALT4 rejects realistic lol-/lcs- corpus slugs", () => {
+  const rows = [
+    makeRow({ signal_confidence_num: 70, event_slug: "lol-flyquest-vs-sentinels-bo5-lcs-playoffs" }),
+    makeRow({ signal_confidence_num: 70, event_slug: "lol-nongshim-red-force-vs-dplus-kia-bo3-lc" }),
+    makeRow({ signal_confidence_num: 70, event_slug: "epl-arsenal-chelsea" }),
+  ];
+  const result = evaluateHistoricalFunnelVariant(rows, classifier, "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS");
+  assert.equal(result.outputRows, 1);
+  assert.equal(result.selectedRows[0].event_slug, "epl-arsenal-chelsea");
 });
