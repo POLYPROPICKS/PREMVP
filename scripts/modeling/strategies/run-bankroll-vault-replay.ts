@@ -145,6 +145,13 @@ export function runBankrollVaultReplayCli(
 
     const result = runBankrollVaultReplay({ rawRows, classifier, insuranceBankroll: args.insuranceBankroll });
 
+    // Fail closed: any eSports row that reached execution would mean the
+    // unmodified ALT4 EXCLUDE_ESPORTS bundle was bypassed -- never write an
+    // artifact in that case.
+    if (result.acceptedEsportsObservations !== 0) {
+      throw new Error(`invariant violated: acceptedEsportsObservations = ${result.acceptedEsportsObservations} (expected 0)`);
+    }
+
     if (args.mode === "dry-run") {
       log(
         `${JSON.stringify(
@@ -152,7 +159,10 @@ export function runBankrollVaultReplayCli(
             mode: "dry-run",
             resultLabel: result.resultLabel,
             selectedObservations: result.selectedObservations,
-            canonicalEventGroups: result.canonicalEventGroups,
+            baseCandidateSelectedObservations: result.baseCandidateSelectedObservations,
+            baseCandidateSelectionHash: result.baseCandidateSelectionHash,
+            executedSportingMatchGroups: result.executedSportingMatchGroups,
+            acceptedEsportsObservations: result.acceptedEsportsObservations,
             grossTheoreticalPnl: result.grossTheoreticalPnl,
             grossTheoreticalRoi: result.grossTheoreticalRoi,
             postOverlaySelectionHash: result.postOverlaySelectionHash,

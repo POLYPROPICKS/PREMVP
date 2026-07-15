@@ -16,19 +16,21 @@ import { createHash } from "node:crypto";
 import { evaluateHistoricalFunnelVariant, getScoreValue, getCoverageValue, getHoursUntilStartValue } from "./historicalFunnelVariants";
 import { getStrictDedupKeyForExportRow, type ExportRow } from "./generatedSignalPairsExportContract";
 import { BASE_COMPARATOR_ID, passesPriceFloor, passesTimingWithin120m } from "./boundedRoutingExperiments";
-import { getEntryPriceValue } from "./scoreComponentAnalysis";
+import { getEntryPriceValue, computeSelectionHash } from "./scoreComponentAnalysis";
 import { buildEventGroupKey } from "./eventGroupSelection";
 import { classifyResolvedOutcome } from "./roiPnlContract";
+import { computeSegmentMetrics } from "./extendedHistoricalDecomposition";
+import { projectGeneratedSignalPairsStrictDedup } from "./generatedSignalPairsDedupPolicy";
 import type { ExecutableFunnelClassifier } from "./executableFunnelClassifier";
 
 type Row = ExportRow;
 
-export const BANKROLL_VAULT_REPLAY_ENGINE_VERSION = "3B-bankroll-vault-replay-v1" as const;
+export const BANKROLL_VAULT_REPLAY_ENGINE_VERSION = "3B-bankroll-vault-replay-v1.1" as const;
 
 // ---------------------------------------------------------- version identifiers
 
 export const MODEL_POLICY_ID = "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M" as const;
-export const SELECTION_OVERLAY_VERSION = "T90_ONE_PER_EVENT_SCORE_COVERAGE_V1" as const;
+export const SELECTION_OVERLAY_VERSION = "T90_ONE_SPORTING_MATCH_SCORE_COVERAGE_V1" as const;
 export const BANKROLL_POLICY_VERSION = "ACTIVE50_VAULT50_STAKE_MAX3_OPEN80_POS30_DAY100_V1" as const;
 
 // ---------------------------------------------------------- frozen policy constants
@@ -78,7 +80,7 @@ function utcDayOf(iso: string): string {
   return iso.slice(0, 10);
 }
 
-// ---------------------------------------------------------- 1. T-90 snapshot selection
+// ---------------------------------------------------------- candidate snapshot
 
 interface CandidateSnapshot {
   row: Row;
@@ -88,49 +90,7 @@ interface CandidateSnapshot {
   createdAtMs: number;
 }
 
-/**
- * For every strict signal identity, selects the latest snapshot whose
- * created_at falls in [eventStart-120m, eventStart-90m] (i.e. hoursUntilStart
- * in [1.5, 2.0]). Tie-break: created_at DESC, then observationId ASC. No
- * field recorded after decisionAt can affect this pick -- only rows already
- * inside the window are ever considered. resolved_at is never read here.
- */
-function selectT90Snapshots(rows: readonly Row[]): {
-  selected: Map<string, CandidateSnapshot>;
-  noValidStart: Set<string>;
-} {
-  const byIdentity = new Map<string, CandidateSnapshot[]>();
-  const noValidStart = new Set<string>();
-
-  for (const row of rows) {
-    const identity = strictIdentityOf(row);
-    if (identity === null) continue;
-    const hours = getHoursUntilStartValue(row);
-    if (hours === null) {
-      noValidStart.add(identity);
-      continue;
-    }
-    if (hours < T90_WINDOW_LOWER_HOURS || hours > T90_WINDOW_UPPER_HOURS) continue;
-    const createdAtMs = typeof row.created_at === "string" ? Date.parse(row.created_at) : NaN;
-    if (!Number.isFinite(createdAtMs)) continue;
-    const snap: CandidateSnapshot = { row, observationId: observationIdOf(row), identity, hoursUntilStart: hours, createdAtMs };
-    const arr = byIdentity.get(identity);
-    if (arr) arr.push(snap);
-    else byIdentity.set(identity, [snap]);
-  }
-
-  const selected = new Map<string, CandidateSnapshot>();
-  for (const [identity, snaps] of byIdentity) {
-    const best = [...snaps].sort((a, b) => {
-      if (a.createdAtMs !== b.createdAtMs) return b.createdAtMs - a.createdAtMs; // DESC
-      return a.observationId.localeCompare(b.observationId); // ASC
-    })[0];
-    selected.set(identity, best);
-  }
-  return { selected, noValidStart };
-}
-
-// ---------------------------------------------------------- 2+3. base model + ranking
+// ---------------------------------------------------------- ranking
 
 interface RankedCandidate {
   snapshot: CandidateSnapshot;
@@ -200,7 +160,7 @@ export interface BankrollVaultReplayInput {
 
 export interface BankrollVaultReplayResult {
   engineVersion: typeof BANKROLL_VAULT_REPLAY_ENGINE_VERSION;
-  simulationVersion: "BANKROLL_VAULT_REPLAY_V1";
+  simulationVersion: "BANKROLL_VAULT_REPLAY_V1_1";
   modelPolicyId: typeof MODEL_POLICY_ID;
   selectionOverlayVersion: typeof SELECTION_OVERLAY_VERSION;
   bankrollPolicyVersion: typeof BANKROLL_POLICY_VERSION;
@@ -210,10 +170,25 @@ export interface BankrollVaultReplayResult {
     candidateId: typeof MODEL_POLICY_ID;
     selectedObservations: number;
   };
+  // Exact, unmodified B2A base-candidate metrics -- reused verbatim, never
+  // locally recomputed. On the canonical real corpus these must equal the
+  // frozen B2A values (560 / 0f9368b7... / 278 / 282 / 82.5912 / 14.748429 / 407).
+  baseCandidateSelectedObservations: number;
+  baseCandidateSelectionHash: string;
+  baseCandidateWins: number;
+  baseCandidateLosses: number;
+  baseCandidateFlatUnitPnl: number | null;
+  baseCandidateFlatUnitRoi: number | null;
+  baseCandidateWorkingEventGroups: number;
+
+  t90QualifiedObservations: number;
+  qualifiedSportingMatchGroups: number;
+  executedSportingMatchGroups: number;
+  acceptedEsportsObservations: number;
+
   postOverlaySelectionHash: string;
 
   selectedObservations: number;
-  canonicalEventGroups: number;
   wins: number;
   losses: number;
   invalidExcluded: number;
@@ -264,41 +239,59 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
     REJECTION_REASONS.map((r) => [r, 0]),
   ) as Record<RejectionReason, number>;
 
-  // ---- 1. T-90 snapshot selection (canonical strict identity, no future data) ----
-  const { selected, noValidStart } = selectT90Snapshots(rawRows);
-  rejectedByReason.NO_VALID_EVENT_START += noValidStart.size;
+  // ---- 1. canonical strict dedup (reused verbatim, not reimplemented) ----
+  const dedup = projectGeneratedSignalPairsStrictDedup([...rawRows]);
+  const dedupedRows = dedup.dedupedRows;
 
-  // Identities with a valid event start but no in-window snapshot.
-  const allIdentities = new Set<string>();
-  for (const row of rawRows) {
-    const identity = strictIdentityOf(row);
-    if (identity !== null && getHoursUntilStartValue(row) !== null) allIdentities.add(identity);
-  }
-  for (const identity of allIdentities) {
-    if (!selected.has(identity) && !noValidStart.has(identity)) {
-      rejectedByReason.NO_T90_SNAPSHOT += 1;
-    }
-  }
-
-  const t90Rows = [...selected.values()].map((s) => s.row);
-
-  // ---- 2. base candidate (ALT4 + price>=0.30 + timing<120m), unmodified ----
-  const alt4Selected = evaluateHistoricalFunnelVariant(t90Rows, classifier, BASE_COMPARATOR_ID).selectedRows;
+  // ---- 2. exact existing B2A base-candidate selector, verbatim ----
+  // B2_PRICE_FLOOR_030_TIMING_WITHIN_120M = ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS
+  // (score>=65, eSports excluded by the unmodified classifier bundle) AND
+  // entry price >= 0.30 AND 0 <= hoursUntilStart < 2. This reuses
+  // evaluateHistoricalFunnelVariant + the exact exported price/timing
+  // predicates -- the exact same call B2A itself makes for this candidate --
+  // so its selectedObservations/selectionHash/wins/losses/PnL/ROI/
+  // workingEventGroups are byte-identical to the accepted B2A run.
+  const alt4Selected = evaluateHistoricalFunnelVariant(dedupedRows, classifier, BASE_COMPARATOR_ID).selectedRows;
   const alt4SelectedIds = new Set(alt4Selected.map(observationIdOf));
-  const baseAccepted = alt4Selected.filter((r) => passesPriceFloor(r) && passesTimingWithin120m(r));
-  const baseAcceptedIds = new Set(baseAccepted.map(observationIdOf));
+  const baseCandidateRows = alt4Selected.filter((r) => passesPriceFloor(r) && passesTimingWithin120m(r));
+  const baseCandidateMetrics = computeSegmentMetrics(baseCandidateRows);
+  const baseCandidateSelectionHash = computeSelectionHash(baseCandidateRows.map(observationIdOf));
 
-  for (const snap of selected.values()) {
-    if (!alt4SelectedIds.has(snap.observationId) || !baseAcceptedIds.has(snap.observationId)) {
-      rejectedByReason.BASE_MODEL_REJECTED += 1;
+  // ---- 3. T-90 overlay: filters the already-selected base candidate rows ----
+  // (never re-picks among raw duplicate snapshots -- strict dedup already
+  // chose the one representative row per identity). No field recorded after
+  // decisionAt can affect this filter since it only inspects each row's own
+  // gameStartIso/created_at, and resolved_at is never read here.
+  const t90QualifiedRows: Row[] = [];
+  for (const row of baseCandidateRows) {
+    const hours = getHoursUntilStartValue(row);
+    if (hours === null) {
+      rejectedByReason.NO_VALID_EVENT_START += 1;
+      continue;
     }
+    if (hours < T90_WINDOW_LOWER_HOURS || hours > T90_WINDOW_UPPER_HOURS) {
+      rejectedByReason.NO_T90_SNAPSHOT += 1;
+      continue;
+    }
+    t90QualifiedRows.push(row);
+  }
+  // Every strict-deduped row that the unmodified base candidate (ALT4 +
+  // price>=0.30 + timing<120m) did not select -- includes eSports rows,
+  // since ALT4's own EXCLUDE_ESPORTS step already removed them upstream.
+  const baseCandidateRowIds = new Set(baseCandidateRows.map(observationIdOf));
+  for (const row of dedupedRows) {
+    if (!baseCandidateRowIds.has(observationIdOf(row))) rejectedByReason.BASE_MODEL_REJECTED += 1;
   }
 
-  // ---- 3. one-signal-per-event ranking ----
+  function toSnapshot(row: Row): CandidateSnapshot {
+    const hours = getHoursUntilStartValue(row)!;
+    const createdAtMs = typeof row.created_at === "string" ? Date.parse(row.created_at) : NaN;
+    return { row, observationId: observationIdOf(row), identity: strictIdentityOf(row) ?? observationIdOf(row), hoursUntilStart: hours, createdAtMs };
+  }
+
+  // ---- 4. one-sporting-match ranking (canonical event grouping, reused verbatim) ----
   const candidates: RankedCandidate[] = [];
-  for (const row of baseAccepted) {
-    const identity = strictIdentityOf(row)!;
-    const snap = selected.get(identity)!;
+  for (const row of t90QualifiedRows) {
     const score = getScoreValue(row);
     const coverage = getCoverageValue(row);
     const price = getEntryPriceValue(row);
@@ -307,7 +300,7 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
       rejectedByReason.EVENT_RANKED_OUT += 1;
       continue;
     }
-    candidates.push({ snapshot: snap, eventKey: buildEventGroupKey(row).key, finalScore: score, dataCoverage: coverage, entryPrice: price });
+    candidates.push({ snapshot: toSnapshot(row), eventKey: buildEventGroupKey(row).key, finalScore: score, dataCoverage: coverage, entryPrice: price });
   }
 
   const byEvent = new Map<string, RankedCandidate[]>();
@@ -322,7 +315,15 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
     winners.push(sorted[0]);
     rejectedByReason.EVENT_RANKED_OUT += sorted.length - 1;
   }
-  const canonicalEventGroups = byEvent.size;
+  const qualifiedSportingMatchGroups = byEvent.size;
+  const executedSportingMatchGroups = winners.length;
+  if (executedSportingMatchGroups !== qualifiedSportingMatchGroups) {
+    throw new Error("bankroll vault replay: invariant violated -- executedSportingMatchGroups must equal qualifiedSportingMatchGroups");
+  }
+  const executedEventKeys = winners.map((w) => w.eventKey);
+  if (new Set(executedEventKeys).size !== executedEventKeys.length) {
+    throw new Error("bankroll vault replay: invariant violated -- duplicate executed sporting-match key");
+  }
 
   // ---- decision-time ordering: frozen ranking tuple ----
   const orderedWinners = [...winners].sort(RANK_ORDER);
@@ -626,17 +627,29 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
 
   return {
     engineVersion: BANKROLL_VAULT_REPLAY_ENGINE_VERSION,
-    simulationVersion: "BANKROLL_VAULT_REPLAY_V1",
+    simulationVersion: "BANKROLL_VAULT_REPLAY_V1_1",
     modelPolicyId: MODEL_POLICY_ID,
     selectionOverlayVersion: SELECTION_OVERLAY_VERSION,
     bankrollPolicyVersion: BANKROLL_POLICY_VERSION,
     resultLabel: "THEORETICAL_GROSS_HISTORICAL_REPLAY",
 
-    preOverlayBaseline: { candidateId: MODEL_POLICY_ID, selectedObservations: baseAccepted.length },
+    preOverlayBaseline: { candidateId: MODEL_POLICY_ID, selectedObservations: baseCandidateRows.length },
+    baseCandidateSelectedObservations: baseCandidateRows.length,
+    baseCandidateSelectionHash,
+    baseCandidateWins: baseCandidateMetrics.wins,
+    baseCandidateLosses: baseCandidateMetrics.losses,
+    baseCandidateFlatUnitPnl: baseCandidateMetrics.flatUnitPnl,
+    baseCandidateFlatUnitRoi: baseCandidateMetrics.flatUnitRoi,
+    baseCandidateWorkingEventGroups: baseCandidateMetrics.workingEventGroups,
+
+    t90QualifiedObservations: t90QualifiedRows.length,
+    qualifiedSportingMatchGroups,
+    executedSportingMatchGroups,
+    acceptedEsportsObservations: executedIds.filter((id) => !alt4SelectedIds.has(id)).length,
+
     postOverlaySelectionHash,
 
     selectedObservations,
-    canonicalEventGroups,
     wins,
     losses,
     invalidExcluded,
