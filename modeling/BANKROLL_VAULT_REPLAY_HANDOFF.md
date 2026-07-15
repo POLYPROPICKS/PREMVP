@@ -69,3 +69,11 @@ The shrinking control `ACTIVE50_VAULT50_STAKE_MAX3_OPEN80_POS30_DAY100_V1` is re
 `tests/modeling/bankrollVaultReplay.test.ts` covers constants; T90-1..3 raw snapshot selection; exact B2A/eSports preservation; strong-key one-per-match and fail-closed cases; key-source accounting; ranking; uniqueness; bankroll limits and vault conservation; invalid settlement fields; theoretical label; determinism. `tests/modeling/historicalFunnelVariants.test.ts` covers C1..C19 classifier behavior, F1..F20 value extraction and fail policies, G21..G28 variants, and H1..H6 independent eSports detection.
 
 The task-provided historical targeted result is **99/99 PASS**. The directly reproducible current core pair (`bankrollVaultReplay` plus `historicalFunnelVariants`) is **74/74 PASS**; no 99-test command was recoverable from source. TypeScript: PASS. Build is `BUILD_ENV_ONLY` only when `SUPABASE_URL` is absent; it is not a source/type failure.
+
+## Final PnL freeze candidate
+
+The exact-rescue v2 audit recovered 0 of the 53 T-90 ambiguous rows and retained all 53 fail-closed with `NO_UNIQUE_EXACT_SLUG_START_LINK`; collision count is zero and 271 defensible matches remain. The fixed-cycle capacity audit reconciles 212 executions (210 full, one 70%, one 50%) plus exactly 59 terminal rejects: 51 `POSITION_LIMIT` and 8 `OPEN_EXPOSURE_LIMIT`; none could execute even at 30% in the historical state.
+
+Four stake policies were compared under the founder 3% cycle-active cap. `FIXED_CYCLE_MAX3_V1` won the declared rule with bootstrap median ending capital 246.07063993, canonical PnL 146.45102873, and maximum total-capital drawdown 29.21517498. The empirical-Bayes PnL-first candidate completed with 212 executions, PnL 47.75692048 and drawdown 9.31996822, but did not win. Vault was recalculated on the winner; `A0.9_T1.25_R0.75_S0.5` was selected (terminal active 112.44376081, vault 134.00726792, total 246.45102873; bootstrap median 249.61382984, p10 195.13869775, p90 drawdown 27.00454481).
+
+This is a candidate only. Founder must accept one model/stake/vault combination before an atomic freeze commit and any Ireland inspect-only review.
