@@ -233,6 +233,11 @@ export function normalizeGeneratedSignalPairRow(row: Record<string, unknown>): R
 
   const coverage = firstDefined(row.coverage, row.coverage_score);
 
+  const canonicalEventKey = firstDefined(
+    row.canonical_event_key,
+    diagnostics ? diagnostics.canonicalEventKey : undefined,
+  );
+
   const normalized: Record<string, unknown> = {
     id: row.id,
     condition_id: row.condition_id,
@@ -255,7 +260,7 @@ export function normalizeGeneratedSignalPairRow(row: Record<string, unknown>): R
     realized_return_pct: row.realized_return_pct,
     real_pnl_usd: row.real_pnl_usd,
     match_family_key: row.match_family_key,
-    canonical_event_key: row.canonical_event_key,
+    canonical_event_key: canonicalEventKey,
     parent_event_key: row.parent_event_key,
     event_slug: row.event_slug,
     event_title: row.event_title,

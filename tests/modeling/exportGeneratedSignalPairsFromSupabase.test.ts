@@ -224,6 +224,39 @@ test("N7. no mutation of source rows", () => {
   assert.equal(JSON.stringify(row), snapshot);
 });
 
+test("N8. exports diagnostics.canonicalEventKey as canonical_event_key", () => {
+  const normalized = normalizeGeneratedSignalPairRow({
+    id: "a",
+    diagnostics: { canonicalEventKey: "gamma-event-123" },
+  });
+  assert.equal(normalized.canonical_event_key, "gamma-event-123");
+});
+
+test("N9. several markets from one provider event retain the same canonical key", () => {
+  const rows = [
+    { id: "a", market_slug: "winner", diagnostics: { canonicalEventKey: "gamma-event-123" } },
+    { id: "b", market_slug: "totals", diagnostics: { canonicalEventKey: "gamma-event-123" } },
+  ].map(normalizeGeneratedSignalPairRow);
+  assert.equal(rows[0].canonical_event_key, "gamma-event-123");
+  assert.equal(rows[0].canonical_event_key, rows[1].canonical_event_key);
+});
+
+test("N10. missing diagnostics provider id remains fail-closed", () => {
+  const normalized = normalizeGeneratedSignalPairRow({ id: "a", market_slug: "winner", condition_id: "cond" });
+  assert.equal("canonical_event_key" in normalized, false);
+});
+
+test("N11. canonical event export is deterministic and does not change existing fields", () => {
+  const source = { id: "a", condition_id: "c1", selected_token_id: "t1", market_slug: "winner", diagnostics: { canonicalEventKey: "gamma-event-123" } };
+  const first = normalizeGeneratedSignalPairRow(source);
+  const second = normalizeGeneratedSignalPairRow(source);
+  assert.deepEqual(first, second);
+  assert.equal(first.id, "a");
+  assert.equal(first.condition_id, "c1");
+  assert.equal(first.token_id, "t1");
+  assert.equal(first.market_slug, "winner");
+});
+
 test("resolveSupabaseReadConfig succeeds with SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY", () => {
   const env = {
     SUPABASE_URL: "https://example.supabase.co",

@@ -54,6 +54,14 @@ import {
   getConfidenceLabel,
 } from "./scorePolymarket";
 
+/**
+ * Preserves the provider's own event identity verbatim. No slug, condition,
+ * market, or team-name fallback is allowed.
+ */
+export function canonicalProviderEventKeyFromEvent<T extends object>(event: T & { readonly id?: unknown }): string | null {
+  return safeString(event.id) ?? null;
+}
+
 // ── Odds-calibrated display calibration ───────────────────────────────────────
 // Maps European selectedOdds to max display confidence, label and default action.
 // Raw formula score is preserved in formulaAudit; only displayed value is capped.
@@ -119,6 +127,7 @@ function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket
   return {
     event,
     market,
+    canonicalProviderEventKey: safeString(sample.gameId) ?? null,
     rejectionReasons: [],
     warnings: [],
     isSportsRelated: true,
@@ -177,6 +186,7 @@ function researchNestedMarketToCandidate(rm: ResearchNestedMarket): {
     candidate: {
       event,
       market,
+      canonicalProviderEventKey: safeString(rm.eventId) ?? null,
       rejectionReasons: [],
       warnings: ["wide-research-forced-token"],
       isSportsRelated: true,
@@ -195,6 +205,7 @@ function researchNestedMarketToCandidate(rm: ResearchNestedMarket): {
 interface CandidateMarket {
   event: PolymarketRawEvent;
   market: PolymarketRawMarket;
+  canonicalProviderEventKey?: string | null;
   rejectionReasons: string[];
   warnings: string[];
   isSportsRelated: boolean;
@@ -574,6 +585,7 @@ function extractCandidateMarkets(events: PolymarketRawEvent[]): CandidateMarket[
       candidates.push({
         event,
         market,
+        canonicalProviderEventKey: canonicalProviderEventKeyFromEvent(event),
         rejectionReasons,
         warnings,
         isSportsRelated: sportsCheck.isSports,
@@ -685,6 +697,7 @@ async function enrichMarket(
   market: PolymarketRawMarket,
   initialWarnings: string[] = [],
   forcedOutcome?: ForcedOutcomeSelection,
+  canonicalProviderEventKey?: string | null,
 ): Promise<EnrichedMarket | null> {
   const parentMeta = getParentMeta(market);
   const selectedOutcome = selectOutcome(market, forcedOutcome);
@@ -700,6 +713,7 @@ async function enrichMarket(
 
   const warnings: string[] = [...initialWarnings];
   const diagnostics: LandingCardDiagnostics = {
+    canonicalEventKey: canonicalProviderEventKey ?? null,
     conditionId: safeString(market.conditionId) ?? null,
     selectedTokenId: selectedOutcome.tokenId,
     selectedOutcome: selectedOutcome.name,
@@ -1742,7 +1756,7 @@ async function buildUpcomingPairs(
 
     // Unified enrichment — fetches price history / trades / holders just like
     // qualified cards, so trust metrics vary per real market diagnostics.
-    const enriched = await enrichMarket(candidate.event, candidate.market, candidate.warnings);
+    const enriched = await enrichMarket(candidate.event, candidate.market, candidate.warnings, undefined, candidate.canonicalProviderEventKey);
     if (!enriched) continue;
     // minDataCoverage gate intentionally NOT applied for upcoming candidates:
     // coverage is naturally low pre-event. computeBandedSignalScore's actionable
@@ -2361,7 +2375,7 @@ export async function buildLandingCards(options?: {
       }
 
       // Enrich with API data (pass initial warnings)
-      const enriched = await enrichMarket(candidate.event, candidate.market, candidate.warnings);
+      const enriched = await enrichMarket(candidate.event, candidate.market, candidate.warnings, undefined, candidate.canonicalProviderEventKey);
 
       if (!enriched) {
         if (!productCapReached) {
@@ -2544,6 +2558,7 @@ export async function buildLandingCards(options?: {
           adapted.candidate.market,
           adapted.candidate.warnings,
           adapted.forcedOutcome,
+          adapted.candidate.canonicalProviderEventKey,
         );
         if (!enrichedResearch) continue;
 

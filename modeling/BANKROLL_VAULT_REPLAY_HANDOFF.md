@@ -36,6 +36,16 @@ Against the immutable `b2f5df…1869be45` corpus, the v1.2 replay artifact SHA-2
 
 Ireland remains blocked and is out of scope. The next work is provenance-only: diagnose reusable sporting-match identity candidates without changing bankroll, T−90, ranking, eSports, or base-model behavior.
 
+## Canonical provider match identity preservation
+
+The upstream stable identity is Gamma/Polymarket event payload field `event.id` (`PolymarketRawEvent.id`). `canonicalProviderEventKeyFromEvent()` in `lib/feed/buildLandingCards.ts` accepts only that provider field and fails closed; it never derives identity from `market_slug`, `condition_id`, or team names. `extractCandidateMarkets()` attaches the value to `CandidateMarket.canonicalProviderEventKey`, and `enrichMarket()` writes it as `LandingCardDiagnostics.canonicalEventKey`.
+
+`writeGeneratedSignalPairs()` in `lib/feed/cacheGeneratedSignals.ts` already persists the complete diagnostics object into the existing `generated_signal_pairs.diagnostics` JSON column. No database migration is required. `normalizeGeneratedSignalPairRow()` in `scripts/modeling/strategies/export-generated-signal-pairs-from-supabase.ts` maps `diagnostics.canonicalEventKey` to exported top-level `canonical_event_key`, while preserving an existing top-level value first and omitting the field when both sources are absent.
+
+Changed files for this contract are `lib/feed/types.ts`, `lib/feed/buildLandingCards.ts`, `scripts/modeling/strategies/export-generated-signal-pairs-from-supabase.ts`, `tests/modeling/providerMatchIdentityMapping.test.ts`, and `tests/modeling/exportGeneratedSignalPairsFromSupabase.test.ts`. Tests prove shared keys across several markets, separation across provider events, market-slug independence, fail-closed missing IDs, and deterministic preservation of existing export fields.
+
+The complete pre-patch diagnostic is retained outside Git at `C:\WORK\KalshiProPulse\modeling-snapshots\2026-07-15_b2f5dfb5963e\sporting_match_identity_diagnostic.json`, SHA-256 `d052c48b9bc28b7abb5415f2efa01373d85f6fb102db35f4b98dcbc68998d424`.
+
 ## TDD map
 
 `tests/modeling/bankrollVaultReplay.test.ts` covers constants; T90-1..3 raw snapshot selection; exact B2A/eSports preservation; strong-key one-per-match and fail-closed cases; key-source accounting; ranking; uniqueness; bankroll limits and vault conservation; invalid settlement fields; theoretical label; determinism. `tests/modeling/historicalFunnelVariants.test.ts` covers C1..C19 classifier behavior, F1..F20 value extraction and fail policies, G21..G28 variants, and H1..H6 independent eSports detection.

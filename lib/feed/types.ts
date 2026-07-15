@@ -53,6 +53,8 @@ export interface MarketSource {
 }
 
 export interface LandingCardDiagnostics {
+  /** Stable Gamma/Polymarket event.id shared by all markets in one provider event. */
+  canonicalEventKey?: string | null;
   conditionId: string | null;
   selectedTokenId: string | null;
   selectedOutcome: string;
