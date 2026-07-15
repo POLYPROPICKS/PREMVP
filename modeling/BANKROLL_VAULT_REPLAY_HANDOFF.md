@@ -60,6 +60,10 @@ The immutable 49,400-row corpus is `C:\WORK\KalshiProPulse\modeling-snapshots\20
 
 Replay v1.3 uses simulation `BANKROLL_VAULT_REPLAY_V1_3` and overlay `T90_HISTORICAL_DERIVED_MATCH_V1`. On the same frozen corpus: 362 T−90-qualified rows; 262 high-confidence rows; 47 uniquely linked rows; 53 ambiguous rejected rows; 271 derived/qualified groups; zero collisions; 177 bankroll-accepted executions; 94 wins; 83 losses; gross theoretical PnL 69.46874342; gross theoretical ROI 20.10681091%; ending active/vault balances 84.73437171 each. Replay JSON SHA-256 is `5a0f17ff8db10cfa24fb281bbffdbc26ede45bc0485a1f71a2023c67be10aa67`; manifest file SHA-256 is `6e98ee5344e0df4fc6bfeced0257b07a15785b71d2b8c37f02c5f3a59f42f8c7`.
 
+## Stake/vault optimization v1 — pending founder freeze
+
+The shrinking control `ACTIVE50_VAULT50_STAKE_MAX3_OPEN80_POS30_DAY100_V1` is retained only as comparator. Founder cap is 3% of UTC-cycle reference active equity (free active cash plus unresolved cost basis; vault excluded). `ROBUST_LCB_TIERED_MAX3_V1` uses only outcomes resolved before each decision, Wilson one-sided 90% `qLower`, conservative Kelly, and downward `0/30/50/70/100%` tiers. The selected constrained vault grid row is `A0.75_T1.75_R0.75_S0.25`, selected by the declared 2%-median/p10/p90-drawdown/simplicity objective over 2,000 fixed-seed UTC-day bootstrap samples. Full artifacts remain outside Git under `stake-vault-optimization-v1`; compact evidence is in `modeling/evidence/2026-07-15-stake-vault-optimization-v1`. Final model/selection/risk freeze remains pending founder acceptance.
+
 ## TDD map
 
 `tests/modeling/bankrollVaultReplay.test.ts` covers constants; T90-1..3 raw snapshot selection; exact B2A/eSports preservation; strong-key one-per-match and fail-closed cases; key-source accounting; ranking; uniqueness; bankroll limits and vault conservation; invalid settlement fields; theoretical label; determinism. `tests/modeling/historicalFunnelVariants.test.ts` covers C1..C19 classifier behavior, F1..F20 value extraction and fail policies, G21..G28 variants, and H1..H6 independent eSports detection.
