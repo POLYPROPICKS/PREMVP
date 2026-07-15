@@ -46,6 +46,12 @@ Changed files for this contract are `lib/feed/types.ts`, `lib/feed/buildLandingC
 
 The complete pre-patch diagnostic is retained outside Git at `C:\WORK\KalshiProPulse\modeling-snapshots\2026-07-15_b2f5dfb5963e\sporting_match_identity_diagnostic.json`, SHA-256 `d052c48b9bc28b7abb5415f2efa01373d85f6fb102db35f4b98dcbc68998d424`.
 
+## Provider-key v2 export evidence
+
+The first full resolved export after the local source patch is frozen at `C:\WORK\KalshiProPulse\modeling-snapshots\2026-07-15-provider-key-v2_04819301273a`; input SHA-256 `04819301273ae802736c4146470e20d77002f57d808e61bd470b1ed5ed14c6f1`. It contains 51,157 rows, with 0 `canonical_event_key` values. Replay confirms 370 T−90-qualified rows, 370 `NO_STRONG_SPORTING_MATCH_KEY` rejections, zero selected observations, and zero accepted eSports rows.
+
+Verdict: `HISTORICAL_ROWS_REQUIRE_PROVIDER_KEY_BACKFILL`. The existing historical rows predate persisted `diagnostics.canonicalEventKey`; no automatic backfill was attempted. New rows gain the key only after deployment of `33fb074` and a subsequent generation run. A historical reconstruction requires time-aligned provider payload archives; any Supabase update remains founder-gated.
+
 ## TDD map
 
 `tests/modeling/bankrollVaultReplay.test.ts` covers constants; T90-1..3 raw snapshot selection; exact B2A/eSports preservation; strong-key one-per-match and fail-closed cases; key-source accounting; ranking; uniqueness; bankroll limits and vault conservation; invalid settlement fields; theoretical label; determinism. `tests/modeling/historicalFunnelVariants.test.ts` covers C1..C19 classifier behavior, F1..F20 value extraction and fail policies, G21..G28 variants, and H1..H6 independent eSports detection.

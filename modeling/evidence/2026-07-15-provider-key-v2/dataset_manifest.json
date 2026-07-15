@@ -1,0 +1,11 @@
+{
+  "source_branch": "codex/model-auto-preserve-provider-match-id",
+  "source_commit": "33fb074faf129da2ae4582835f782db26ea9d526",
+  "export_timestamp": "2026-07-15T14:48:27.397Z",
+  "row_count": 51157,
+  "file_size_bytes": 114285032,
+  "sha256": "04819301273ae802736c4146470e20d77002f57d808e61bd470b1ed5ed14c6f1",
+  "canonical_event_key_coverage_pct": 0,
+  "export_mode": "FULL_RESOLVED_BY_EXHAUSTION",
+  "completion_proof": "LAST_PAGE_SHORT"
+}

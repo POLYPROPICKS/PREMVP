@@ -1,0 +1,10 @@
+{
+  "inputSha256": "04819301273ae802736c4146470e20d77002f57d808e61bd470b1ed5ed14c6f1",
+  "classifierSha256": "ec47640740fbf5a8789ee023fdb41298cde947dcda9e1109af3fc0905305f24f",
+  "jsonSha256": "c99b472087c71685fe664fb168d526493e2aa1ff38e97f0ddcdd1d1625f2872d",
+  "simulationVersion": "BANKROLL_VAULT_REPLAY_V1_2",
+  "modelPolicyId": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+  "selectionOverlayVersion": "T90_STRONG_MATCH_SCORE_COVERAGE_V1",
+  "bankrollPolicyVersion": "ACTIVE50_VAULT50_STAKE_MAX3_OPEN80_POS30_DAY100_V1",
+  "generatedAt": "2026-07-15T14:50:30.512Z"
+}
