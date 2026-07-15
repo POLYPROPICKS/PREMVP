@@ -4,7 +4,7 @@ import { projectGeneratedSignalPairsStrictDedup } from "./generatedSignalPairsDe
 import { evaluateHistoricalFunnelVariant, getCoverageValue, getHoursUntilStartValue, getScoreValue, isEsports } from "./historicalFunnelVariants";
 import { BASE_COMPARATOR_ID, passesPriceFloor, passesTimingWithin120m } from "./boundedRoutingExperiments";
 import { getEntryPriceValue } from "./scoreComponentAnalysis";
-import { buildHistoricalSportingMatchIdentityIndex } from "./historicalSportingMatchIdentity";
+import { buildHistoricalMatchIdentityRecovery, type HistoricalIdentityRecoveryAudit } from "./historicalMatchIdentityRecovery";
 import { computeRowReturnPct } from "./roiPnlContract";
 import { runBankrollVaultReplay } from "./bankrollVaultReplay";
 import type { ExecutableFunnelClassifier } from "./executableFunnelClassifier";
@@ -57,6 +57,7 @@ export interface ExecutionWaterfallResult {
   derivedSportingMatchGroups: number;
   marketsRankedOutInsideMatches: number;
   rowsRejectedNoMatchIdentity: number;
+  identityRecoveryAudit: HistoricalIdentityRecoveryAudit;
   groupSizeDistribution: Record<string, number>;
   largestGroups: Array<{ matchKey: string; markets: number }>;
   selectedWinners: Array<{ matchKey: string; observationId: string }>;
@@ -186,7 +187,8 @@ export function buildExecutionWaterfall(rawRows: readonly ExportRow[], classifie
       if (retainedAnalysis.representativeExamples.length < 10) retainedAnalysis.representativeExamples.push({ identity: key, latestObservationId: id(latest), t90ObservationId: id(t90) });
     }
   }
-  const matchIndex = buildHistoricalSportingMatchIdentityIndex(rawRows);
+  const recoveredIdentity = buildHistoricalMatchIdentityRecovery(rawRows, qualified);
+  const matchIndex = recoveredIdentity.index;
   const groups = new Map<string, ExportRow[]>();
   let rowsRejectedNoMatchIdentity = 0;
   for (const row of qualified) {
@@ -223,7 +225,7 @@ export function buildExecutionWaterfall(rawRows: readonly ExportRow[], classifie
   return {
     version: EXECUTION_WATERFALL_VERSION, rawSnapshots: rawRows.length, strictSignalIdentities: deduped.length,
     baseModelRows: baseRows.length, t90QualifiedRows: qualified.length, derivedSportingMatchGroups: groups.size,
-    marketsRankedOutInsideMatches: rankedOut.length, rowsRejectedNoMatchIdentity, groupSizeDistribution: distribution,
+    marketsRankedOutInsideMatches: rankedOut.length, rowsRejectedNoMatchIdentity, identityRecoveryAudit: recoveredIdentity.audit, groupSizeDistribution: distribution,
     largestGroups: [...groups].map(([matchKey, rows]) => ({ matchKey, markets: rows.length })).sort((a,b)=>b.markets-a.markets||a.matchKey.localeCompare(b.matchKey)).slice(0,20),
     selectedWinners: winners.map((w) => ({ matchKey: w.matchKey, observationId: w.observationId })),
     controlExecuted: policyRows.EXECUTED.length, controlRejected: winners.length - policyRows.EXECUTED.length,
