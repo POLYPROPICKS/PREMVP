@@ -19,6 +19,11 @@ import {
 } from "../../../lib/modeling/bankrollVaultReplay";
 import { loadExecutableFunnelClassifier, type ExecutableFunnelClassifier } from "../../../lib/modeling/executableFunnelClassifier";
 import type { ExportRow } from "../../../lib/modeling/generatedSignalPairsExportContract";
+import {
+  assertHistoricalSportingMatchIdentityAuditSafe,
+  auditHistoricalSportingMatchIdentityV1,
+} from "../../../lib/modeling/historicalSportingMatchIdentity";
+import type { MatchIdentityMode } from "../../../lib/modeling/bankrollVaultReplay";
 
 const DEFAULT_INPUT = path.join("modeling", "local_exports", "generated_signal_pairs_export.json");
 const DEFAULT_CLASSIFIER = path.join("modeling", "model_registry", "executable_funnel_classifier.json");
@@ -27,6 +32,7 @@ const DEFAULT_INSURANCE_BANKROLL = 100;
 
 const JSON_FILENAME = "bankroll_vault_replay.json";
 const MANIFEST_FILENAME = "bankroll_vault_replay_manifest.json";
+const HISTORICAL_AUDIT_FILENAME = "historical_match_identity_audit.json";
 
 export type BankrollVaultReplayCliMode = "dry-run" | "write";
 
@@ -36,15 +42,17 @@ export interface BankrollVaultReplayArgs {
   classifier: string;
   outputRoot: string;
   insuranceBankroll: number;
+  matchIdentityMode: MatchIdentityMode;
 }
 
-const KNOWN_FLAGS = new Set(["--input", "--classifier", "--output-root", "--insurance-bankroll", "--write-artifacts", "--dry-run"]);
+const KNOWN_FLAGS = new Set(["--input", "--classifier", "--output-root", "--insurance-bankroll", "--match-identity-mode", "--write-artifacts", "--dry-run"]);
 
 export function parseBankrollVaultReplayArgs(argv: string[]): BankrollVaultReplayArgs {
   let input = DEFAULT_INPUT;
   let classifier = DEFAULT_CLASSIFIER;
   let outputRoot = DEFAULT_OUTPUT_ROOT;
   let insuranceBankroll = DEFAULT_INSURANCE_BANKROLL;
+  let matchIdentityMode: MatchIdentityMode = "strong-provider-only";
   let sawWrite = false;
   let sawDryRun = false;
 
@@ -69,12 +77,17 @@ export function parseBankrollVaultReplayArgs(argv: string[]): BankrollVaultRepla
       const parsed = Number(value);
       if (!Number.isFinite(parsed) || parsed <= 0) throw new Error(`--insurance-bankroll must be a positive finite number: ${value}`);
       insuranceBankroll = parsed;
+    } else if (arg === "--match-identity-mode") {
+      if (value !== "strong-provider-only" && value !== "historical-derived-v1") {
+        throw new Error(`invalid --match-identity-mode: ${value}`);
+      }
+      matchIdentityMode = value;
     }
   }
 
   if (sawWrite && sawDryRun) throw new Error("--dry-run and --write-artifacts cannot be used together");
 
-  return { mode: sawWrite ? "write" : "dry-run", input, classifier, outputRoot, insuranceBankroll };
+  return { mode: sawWrite ? "write" : "dry-run", input, classifier, outputRoot, insuranceBankroll, matchIdentityMode };
 }
 
 function ensureFile(p: string, label: string): void {
@@ -143,7 +156,20 @@ export function runBankrollVaultReplayCli(
         ? sha256(readFileSync(path.join("modeling", "model_registry", "executable_funnel_classifier.json"), "utf8"))
         : sha256(classifierRaw);
 
-    const result = runBankrollVaultReplay({ rawRows, classifier, insuranceBankroll: args.insuranceBankroll });
+    const historicalAudit = args.matchIdentityMode === "historical-derived-v1"
+      ? auditHistoricalSportingMatchIdentityV1(rawRows)
+      : null;
+    if (historicalAudit) assertHistoricalSportingMatchIdentityAuditSafe(historicalAudit);
+    if (historicalAudit && args.mode === "write") {
+      atomicWrite(path.join(path.dirname(args.outputRoot), HISTORICAL_AUDIT_FILENAME), `${JSON.stringify({ inputSha256: sha256(inputRaw), ...historicalAudit }, null, 2)}\n`);
+    }
+
+    const result = runBankrollVaultReplay({
+      rawRows,
+      classifier,
+      insuranceBankroll: args.insuranceBankroll,
+      matchIdentityMode: args.matchIdentityMode,
+    });
 
     // Fail closed: any eSports row that reached execution would mean the
     // unmodified ALT4 EXCLUDE_ESPORTS bundle was bypassed -- never write an

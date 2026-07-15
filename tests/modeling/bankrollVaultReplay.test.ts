@@ -92,7 +92,7 @@ function t90Row(n: number, opts: Omit<Parameters<typeof row>[1], "hoursBeforeSta
 
 test("engine constants and version identifiers", () => {
   assert.equal(typeof BANKROLL_VAULT_REPLAY_ENGINE_VERSION, "string");
-  assert.equal(BANKROLL_VAULT_REPLAY_ENGINE_VERSION, "3B-bankroll-vault-replay-v1.2");
+  assert.equal(BANKROLL_VAULT_REPLAY_ENGINE_VERSION, "3B-bankroll-vault-replay-v1.3");
   assert.equal(MODEL_POLICY_ID, "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M");
   assert.equal(SELECTION_OVERLAY_VERSION, "T90_STRONG_MATCH_SCORE_COVERAGE_V1");
   assert.equal(BANKROLL_POLICY_VERSION, "ACTIVE50_VAULT50_STAKE_MAX3_OPEN80_POS30_DAY100_V1");
@@ -264,6 +264,30 @@ test("3b: three market-specific slugs without any strong key are all rejected NO
   assert.equal(result.decisionLedger.length, 0);
   assert.equal(result.rejectedByReason.NO_STRONG_SPORTING_MATCH_KEY, 3);
   assert.equal(result.rowsRejectedNoStrongSportingMatchKey, 3);
+});
+
+test("3b historical opt-in: derived pair identity groups several markets while default remains fail-closed", () => {
+  const start = iso("02", 20);
+  const rows = [
+    t90Row(1, { startIso: start, score: 80, price: 0.5, eventSlug: "Alpha vs Beta - match winner", matchFamilyKey: null }),
+    t90Row(2, { startIso: start, score: 75, price: 0.45, eventSlug: "Beta vs Alpha - total goals", matchFamilyKey: null }),
+  ];
+  const defaultResult = runBankrollVaultReplay({ rawRows: rows, classifier, insuranceBankroll: 100 });
+  assert.equal(defaultResult.selectedObservations, 0);
+  assert.equal(defaultResult.historicalMatchIdentityMode, "strong-provider-only");
+
+  const historicalResult = runBankrollVaultReplay({
+    rawRows: rows,
+    classifier,
+    insuranceBankroll: 100,
+    matchIdentityMode: "historical-derived-v1",
+  });
+  assert.equal(historicalResult.qualifiedSportingMatchGroups, 1);
+  assert.equal(historicalResult.selectedObservations, 1);
+  assert.equal(historicalResult.highConfidenceRows, 2);
+  assert.equal(historicalResult.derivedMatchGroups, 1);
+  assert.equal(historicalResult.derivedMatchCollisionCount, 0);
+  assert.equal(historicalResult.selectionOverlayVersion, "T90_HISTORICAL_DERIVED_MATCH_V1");
 });
 
 test("3c: eventGroupKeySourceCounts reflects only match_family_key/canonical_event_key/parent_event_key", () => {

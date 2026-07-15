@@ -21,15 +21,20 @@ import { classifyResolvedOutcome } from "./roiPnlContract";
 import { computeSegmentMetrics } from "./extendedHistoricalDecomposition";
 import { projectGeneratedSignalPairsStrictDedup } from "./generatedSignalPairsDedupPolicy";
 import type { ExecutableFunnelClassifier } from "./executableFunnelClassifier";
+import {
+  buildHistoricalSportingMatchIdentityIndex,
+  type HistoricalMatchIdentityConfidence,
+} from "./historicalSportingMatchIdentity";
 
 type Row = ExportRow;
 
-export const BANKROLL_VAULT_REPLAY_ENGINE_VERSION = "3B-bankroll-vault-replay-v1.2" as const;
+export const BANKROLL_VAULT_REPLAY_ENGINE_VERSION = "3B-bankroll-vault-replay-v1.3" as const;
 
 // ---------------------------------------------------------- version identifiers
 
 export const MODEL_POLICY_ID = "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M" as const;
 export const SELECTION_OVERLAY_VERSION = "T90_STRONG_MATCH_SCORE_COVERAGE_V1" as const;
+export const HISTORICAL_SELECTION_OVERLAY_VERSION = "T90_HISTORICAL_DERIVED_MATCH_V1" as const;
 export const BANKROLL_POLICY_VERSION = "ACTIVE50_VAULT50_STAKE_MAX3_OPEN80_POS30_DAY100_V1" as const;
 
 // ---------------------------------------------------------- frozen policy constants
@@ -181,13 +186,16 @@ export interface BankrollVaultReplayInput {
   rawRows: readonly Row[];
   classifier: ExecutableFunnelClassifier;
   insuranceBankroll: number;
+  matchIdentityMode?: MatchIdentityMode;
 }
+
+export type MatchIdentityMode = "strong-provider-only" | "historical-derived-v1";
 
 export interface BankrollVaultReplayResult {
   engineVersion: typeof BANKROLL_VAULT_REPLAY_ENGINE_VERSION;
-  simulationVersion: "BANKROLL_VAULT_REPLAY_V1_2";
+  simulationVersion: "BANKROLL_VAULT_REPLAY_V1_3";
   modelPolicyId: typeof MODEL_POLICY_ID;
-  selectionOverlayVersion: typeof SELECTION_OVERLAY_VERSION;
+  selectionOverlayVersion: typeof SELECTION_OVERLAY_VERSION | typeof HISTORICAL_SELECTION_OVERLAY_VERSION;
   bankrollPolicyVersion: typeof BANKROLL_POLICY_VERSION;
   resultLabel: "THEORETICAL_GROSS_HISTORICAL_REPLAY";
 
@@ -218,6 +226,13 @@ export interface BankrollVaultReplayResult {
   strongSportingMatchGroups: number;
   rowsRejectedNoStrongSportingMatchKey: number;
   eventGroupKeySourceCounts: Record<StrongSportingMatchKeySource, number>;
+  historicalMatchIdentityMode: MatchIdentityMode;
+  highConfidenceRows: number;
+  uniquelyLinkedRows: number;
+  ambiguousRejectedRows: number;
+  derivedMatchGroups: number;
+  derivedMatchCollisionCount: number;
+  derivedMatchKeySourceCounts: Record<Extract<HistoricalMatchIdentityConfidence, "HIGH_PAIR_START" | "UNIQUE_SAME_START_LINK">, number>;
 
   postOverlaySelectionHash: string;
 
@@ -264,6 +279,10 @@ interface OpenPosition {
 
 export function runBankrollVaultReplay(input: BankrollVaultReplayInput): BankrollVaultReplayResult {
   const { rawRows, classifier, insuranceBankroll } = input;
+  const historicalMatchIdentityMode = input.matchIdentityMode ?? "strong-provider-only";
+  const selectionOverlayVersion = historicalMatchIdentityMode === "historical-derived-v1"
+    ? HISTORICAL_SELECTION_OVERLAY_VERSION
+    : SELECTION_OVERLAY_VERSION;
   if (!Number.isFinite(insuranceBankroll) || insuranceBankroll <= 0) {
     throw new Error("bankroll vault replay: insuranceBankroll must be a positive finite number");
   }
@@ -363,11 +382,24 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
     canonical_event_key: 0,
     parent_event_key: 0,
   };
+  const historicalIndex = historicalMatchIdentityMode === "historical-derived-v1"
+    ? buildHistoricalSportingMatchIdentityIndex(rawRows)
+    : null;
+  if (historicalIndex && historicalIndex.derivedMatchCollisionCount !== 0) {
+    throw new Error(`bankroll vault replay: historical match identity collision count ${historicalIndex.derivedMatchCollisionCount}`);
+  }
+  const derivedMatchKeySourceCounts = { HIGH_PAIR_START: 0, UNIQUE_SAME_START_LINK: 0 };
+  let highConfidenceRows = 0;
+  let uniquelyLinkedRows = 0;
+  let ambiguousRejectedRows = 0;
   const candidates: RankedCandidate[] = [];
   let rowsRejectedNoStrongSportingMatchKey = 0;
   for (const row of t90QualifiedRows) {
     const strongKey = strongSportingMatchKeyOf(row);
-    if (strongKey === null) {
+    const historicalEvidence = strongKey === null ? historicalIndex?.byObservationId.get(observationIdOf(row)) : undefined;
+    const eventKey = strongKey?.key ?? historicalEvidence?.key ?? null;
+    if (eventKey === null) {
+      if (historicalIndex) ambiguousRejectedRows += 1;
       rejectedByReason.NO_STRONG_SPORTING_MATCH_KEY += 1;
       rowsRejectedNoStrongSportingMatchKey += 1;
       continue;
@@ -380,8 +412,15 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
       rejectedByReason.EVENT_RANKED_OUT += 1;
       continue;
     }
-    eventGroupKeySourceCounts[strongKey.source] += 1;
-    candidates.push({ snapshot: toSnapshot(row), eventKey: strongKey.key, finalScore: score, dataCoverage: coverage, entryPrice: price });
+    if (strongKey) eventGroupKeySourceCounts[strongKey.source] += 1;
+    else if (historicalEvidence?.confidence === "HIGH_PAIR_START") {
+      highConfidenceRows += 1;
+      derivedMatchKeySourceCounts.HIGH_PAIR_START += 1;
+    } else if (historicalEvidence?.confidence === "UNIQUE_SAME_START_LINK") {
+      uniquelyLinkedRows += 1;
+      derivedMatchKeySourceCounts.UNIQUE_SAME_START_LINK += 1;
+    }
+    candidates.push({ snapshot: toSnapshot(row), eventKey, finalScore: score, dataCoverage: coverage, entryPrice: price });
   }
   const strongSportingMatchQualifiedRows = candidates.length;
 
@@ -399,9 +438,10 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
   }
   const qualifiedSportingMatchGroups = byEvent.size;
   const strongSportingMatchGroups = byEvent.size;
-  const executedSportingMatchGroups = winners.length;
-  if (executedSportingMatchGroups !== qualifiedSportingMatchGroups) {
-    throw new Error("bankroll vault replay: invariant violated -- executedSportingMatchGroups must equal qualifiedSportingMatchGroups");
+  const derivedMatchGroups = new Set(candidates.filter((c) => c.eventKey.startsWith("historical:v1:")).map((c) => c.eventKey)).size;
+  const rankedSportingMatchGroups = winners.length;
+  if (rankedSportingMatchGroups !== qualifiedSportingMatchGroups) {
+    throw new Error("bankroll vault replay: invariant violated -- ranked sporting-match groups must equal qualified sporting-match groups");
   }
   const executedEventKeys = winners.map((w) => w.eventKey);
   if (new Set(executedEventKeys).size !== executedEventKeys.length) {
@@ -694,13 +734,14 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
   const grossTheoreticalRoi = totalStaked > 0 ? round8((grossTheoreticalPnl / totalStaked) * 100) : null;
 
   const selectedObservations = decisionLedger.filter((d) => d.accepted).length;
+  const executedSportingMatchGroups = selectedObservations;
   const invalidExcluded = rejectedByReason.INVALID_RESOLVED_AT + rejectedByReason.INVALID_ENTRY_PRICE + rejectedByReason.INVALID_RESULT;
 
   const executedIds = decisionLedger.filter((d) => d.accepted).map((d) => d.observationId);
   const postOverlaySelectionHash = createHash("sha256")
     .update([...executedIds].sort().join(" "))
     .update("|")
-    .update(SELECTION_OVERLAY_VERSION)
+    .update(selectionOverlayVersion)
     .digest("hex");
 
   const endingTotalCapital = round8(activeBankroll + vaultBankroll);
@@ -711,9 +752,9 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
 
   return {
     engineVersion: BANKROLL_VAULT_REPLAY_ENGINE_VERSION,
-    simulationVersion: "BANKROLL_VAULT_REPLAY_V1_2",
+    simulationVersion: "BANKROLL_VAULT_REPLAY_V1_3",
     modelPolicyId: MODEL_POLICY_ID,
-    selectionOverlayVersion: SELECTION_OVERLAY_VERSION,
+    selectionOverlayVersion,
     bankrollPolicyVersion: BANKROLL_POLICY_VERSION,
     resultLabel: "THEORETICAL_GROSS_HISTORICAL_REPLAY",
 
@@ -741,6 +782,13 @@ export function runBankrollVaultReplay(input: BankrollVaultReplayInput): Bankrol
     strongSportingMatchGroups,
     rowsRejectedNoStrongSportingMatchKey,
     eventGroupKeySourceCounts,
+    historicalMatchIdentityMode,
+    highConfidenceRows,
+    uniquelyLinkedRows,
+    ambiguousRejectedRows,
+    derivedMatchGroups,
+    derivedMatchCollisionCount: historicalIndex?.derivedMatchCollisionCount ?? 0,
+    derivedMatchKeySourceCounts,
 
     postOverlaySelectionHash,
 
