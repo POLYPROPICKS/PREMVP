@@ -36,7 +36,6 @@ import {
   serializeBoundedRoutingJson,
   renderBoundedRoutingHtml,
   buildBoundedRoutingManifest,
-  BASE_COMPARATOR_ID,
   type BoundedRoutingResult,
 } from "./boundedRoutingExperiments";
 import {
@@ -117,10 +116,14 @@ export function runPipelineStages(input: RunPipelineStagesInput): PipelineStageR
     requestedVariantIds: variantIds,
   });
   const a2 = buildExtendedHistoricalDashboard({ decomposition: a1 });
+  // B1 must see the full canonical model set (not ALT4 alone) so its
+  // uniqueCohorts can detect B1 exact cohort aliases across all 12 models --
+  // an ALT4-only evidence set silently drops that alias/duplicate evidence
+  // for C1 even though B2A candidate selection itself never depends on it.
   const b1 = buildScoreComponentAnalysis({
     rawRows: input.rawRows,
     classifier: input.classifier,
-    requestedVariantIds: [BASE_COMPARATOR_ID],
+    requestedVariantIds: variantIds,
   });
   const b2a = buildBoundedRoutingExperiments({ rawRows: input.rawRows, classifier: input.classifier, evidence: b1 });
   const c1 = buildHypothesisRegistry({ decomposition: a1, dashboard: a2, components: b1, experiments: b2a });
@@ -132,6 +135,18 @@ export function runPipelineStages(input: RunPipelineStagesInput): PipelineStageR
 
 // ------------------------------------------------------------- packet types
 
+/**
+ * ACTUAL_ARTIFACT_SHA256: contentHash/jsonSha256/htmlSha256/manifestSha256
+ * are real sha256 hashes of that stage's own written artifacts.
+ * COMPOSITE_UPSTREAM_LINEAGE: those same fields instead carry a deterministic
+ * hash of the five verified upstream stage contentHashes -- used ONLY for the
+ * D1_PACKET self-row, since the packet's own bytes cannot hash themselves.
+ * The packet's actual json/html sha256 always live in the top-level
+ * historical_research_packet_manifest.json (jsonSha256/htmlSha256/artifactSha256s).
+ */
+export const HASH_SEMANTICS = ["ACTUAL_ARTIFACT_SHA256", "COMPOSITE_UPSTREAM_LINEAGE"] as const;
+export type HashSemantics = (typeof HASH_SEMANTICS)[number];
+
 export interface StageArtifactSummary {
   stageId: PipelineStageId;
   engineVersion: string;
@@ -140,6 +155,7 @@ export interface StageArtifactSummary {
   jsonSha256: string;
   htmlSha256: string;
   manifestSha256: string;
+  hashSemantics: HashSemantics;
   artifactNames: string[];
 }
 
@@ -275,11 +291,11 @@ export function buildFullPipeline(input: RunPipelineStagesInput): FullPipelineAr
   )}\n`;
 
   const stageResults: StageArtifactSummary[] = [
-    { stageId: "STAGE_A1_DECOMPOSITION", engineVersion: stages.a1.engineVersion, status: "PASS", contentHash: stages.a1.contentHash, jsonSha256: sha256(a1Json), htmlSha256: sha256(a1Html), manifestSha256: sha256(a1Manifest), artifactNames: STAGE_ARTIFACT_NAMES.STAGE_A1_DECOMPOSITION },
-    { stageId: "STAGE_A2_DASHBOARD", engineVersion: stages.a2.engineVersion, status: "PASS", contentHash: stages.a2.contentHash, jsonSha256: sha256(a2Json), htmlSha256: sha256(a2Html), manifestSha256: sha256(a2Manifest), artifactNames: STAGE_ARTIFACT_NAMES.STAGE_A2_DASHBOARD },
-    { stageId: "STAGE_B1_COMPONENTS", engineVersion: stages.b1.engineVersion, status: "PASS", contentHash: stages.b1.contentHash, jsonSha256: sha256(b1Json), htmlSha256: sha256(b1Html), manifestSha256: sha256(b1Manifest), artifactNames: STAGE_ARTIFACT_NAMES.STAGE_B1_COMPONENTS },
-    { stageId: "STAGE_B2A_EXPERIMENTS", engineVersion: stages.b2a.engineVersion, status: "PASS", contentHash: stages.b2a.contentHash, jsonSha256: sha256(b2aJson), htmlSha256: sha256(b2aHtml), manifestSha256: sha256(b2aManifest), artifactNames: STAGE_ARTIFACT_NAMES.STAGE_B2A_EXPERIMENTS },
-    { stageId: "STAGE_C1_REGISTRY", engineVersion: stages.c1.engineVersion, status: "PASS", contentHash: stages.c1.contentHash, jsonSha256: sha256(c1Json), htmlSha256: sha256(c1Html), manifestSha256: sha256(c1Manifest), artifactNames: STAGE_ARTIFACT_NAMES.STAGE_C1_REGISTRY },
+    { stageId: "STAGE_A1_DECOMPOSITION", engineVersion: stages.a1.engineVersion, status: "PASS", contentHash: stages.a1.contentHash, jsonSha256: sha256(a1Json), htmlSha256: sha256(a1Html), manifestSha256: sha256(a1Manifest), hashSemantics: "ACTUAL_ARTIFACT_SHA256", artifactNames: STAGE_ARTIFACT_NAMES.STAGE_A1_DECOMPOSITION },
+    { stageId: "STAGE_A2_DASHBOARD", engineVersion: stages.a2.engineVersion, status: "PASS", contentHash: stages.a2.contentHash, jsonSha256: sha256(a2Json), htmlSha256: sha256(a2Html), manifestSha256: sha256(a2Manifest), hashSemantics: "ACTUAL_ARTIFACT_SHA256", artifactNames: STAGE_ARTIFACT_NAMES.STAGE_A2_DASHBOARD },
+    { stageId: "STAGE_B1_COMPONENTS", engineVersion: stages.b1.engineVersion, status: "PASS", contentHash: stages.b1.contentHash, jsonSha256: sha256(b1Json), htmlSha256: sha256(b1Html), manifestSha256: sha256(b1Manifest), hashSemantics: "ACTUAL_ARTIFACT_SHA256", artifactNames: STAGE_ARTIFACT_NAMES.STAGE_B1_COMPONENTS },
+    { stageId: "STAGE_B2A_EXPERIMENTS", engineVersion: stages.b2a.engineVersion, status: "PASS", contentHash: stages.b2a.contentHash, jsonSha256: sha256(b2aJson), htmlSha256: sha256(b2aHtml), manifestSha256: sha256(b2aManifest), hashSemantics: "ACTUAL_ARTIFACT_SHA256", artifactNames: STAGE_ARTIFACT_NAMES.STAGE_B2A_EXPERIMENTS },
+    { stageId: "STAGE_C1_REGISTRY", engineVersion: stages.c1.engineVersion, status: "PASS", contentHash: stages.c1.contentHash, jsonSha256: sha256(c1Json), htmlSha256: sha256(c1Html), manifestSha256: sha256(c1Manifest), hashSemantics: "ACTUAL_ARTIFACT_SHA256", artifactNames: STAGE_ARTIFACT_NAMES.STAGE_C1_REGISTRY },
   ];
 
   const stageLineage: StageLineageEntry[] = [
@@ -358,6 +374,7 @@ export function buildFullPipeline(input: RunPipelineStagesInput): FullPipelineAr
     jsonSha256: d1CompositeHash,
     htmlSha256: d1CompositeHash,
     manifestSha256: d1CompositeHash,
+    hashSemantics: "COMPOSITE_UPSTREAM_LINEAGE",
     artifactNames: PACKET_ARTIFACT_NAMES,
   });
   stageLineage.push({
@@ -488,7 +505,7 @@ export function renderHistoricalResearchPacketHtml(result: HistoricalResearchPac
   const stageRows = c.stageResults
     .map(
       (s) =>
-        `<tr><td>${esc(s.stageId)}</td><td>${esc(s.engineVersion)}</td><td><strong>${esc(s.status)}</strong></td><td><code>${s.contentHash.slice(0, 16)}</code></td></tr>`,
+        `<tr><td>${esc(s.stageId)}</td><td>${esc(s.engineVersion)}</td><td><strong>${esc(s.status)}</strong></td><td><code>${s.contentHash.slice(0, 16)}</code></td><td>${s.hashSemantics === "COMPOSITE_UPSTREAM_LINEAGE" ? "composite of upstream contentHashes (not an actual artifact hash -- see packet manifest for real json/html sha256)" : esc(s.hashSemantics)}</td></tr>`,
     )
     .join("");
 
@@ -541,7 +558,7 @@ pre{white-space:pre-wrap;background:#eee;padding:8px;border-radius:6px;font-size
 <h1>Historical Research Packet</h1>
 
 <h2>Pipeline Stage Status</h2>
-<table><tr><th>stage</th><th>engine</th><th>status</th><th>contentHash</th></tr>${stageRows}</table>
+<table><tr><th>stage</th><th>engine</th><th>status</th><th>contentHash</th><th>hash semantics</th></tr>${stageRows}</table>
 
 <h2>Corpus and Classifier Provenance</h2>
 <p>raw ${c.corpusSummary.rawRowCount} → strict-dedup ${c.corpusSummary.strictDedupRowCount} (${esc(c.corpusSummary.strictDedupPolicy)}) · classifierSha256 <code>${c.classifierProvenance.classifierSha256.slice(0, 16)}</code> · pipelineContentHash <code>${c.contentHash.slice(0, 16)}</code></p>

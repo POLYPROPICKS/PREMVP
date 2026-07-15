@@ -8,6 +8,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   PIPELINE_SCHEMA_VERSION,
   PIPELINE_ENGINE_VERSION,
@@ -17,9 +18,16 @@ import {
   serializeHistoricalResearchPacketJson,
   renderHistoricalResearchPacketHtml,
   buildHistoricalResearchPacketManifest,
+  type PipelineStageId,
 } from "../../lib/modeling/historicalResearchPipeline";
 import { loadExecutableFunnelClassifier } from "../../lib/modeling/executableFunnelClassifier";
-import { CANDIDATE_IDS } from "../../lib/modeling/boundedRoutingExperiments";
+import { CANDIDATE_IDS, BASE_COMPARATOR_ID, buildBoundedRoutingExperiments } from "../../lib/modeling/boundedRoutingExperiments";
+import { buildScoreComponentAnalysis } from "../../lib/modeling/scoreComponentAnalysis";
+import { SCORECARD_MODEL_ORDER } from "../../lib/modeling/historicalModelScorecard";
+
+function sha256(text: string): string {
+  return createHash("sha256").update(text).digest("hex");
+}
 
 const classifier = loadExecutableFunnelClassifier();
 
@@ -74,6 +82,111 @@ test("raw corpus rows are not mutated across the pipeline", () => {
   const snapshot = JSON.stringify(CORPUS);
   runPipelineStages({ rawRows: CORPUS, classifier });
   assert.equal(JSON.stringify(CORPUS), snapshot);
+});
+
+// ------------------------------------------------------- D1.2 regression: B1 evidence wiring
+//
+// Proven defect (D1.1 inspection): the pipeline built B1 with
+// requestedVariantIds: [BASE_COMPARATOR_ID] only, so B1's uniqueCohorts never
+// saw the other 11 canonical models and could never detect that some of them
+// select identical rows (B1 exact cohort aliases). That silently dropped
+// C1's alias/duplicate evidence (modelAliases=[], registrySummary.duplicates=0)
+// even though the standalone B1/C1 CLIs -- which use SCORECARD_MODEL_ORDER --
+// correctly report the real alias relationships.
+
+test("D1.2: B1 is invoked with the full canonical SCORECARD_MODEL_ORDER, not ALT4 only", () => {
+  const stages = runPipelineStages({ rawRows: CORPUS, classifier });
+  assert.deepEqual(stages.b1.corpusSummary.requestedVariantIds, [...SCORECARD_MODEL_ORDER]);
+});
+
+test("D1.2: B1 exact cohort aliases survive into C1 (modelAliases non-empty, duplicates > 0)", () => {
+  const stages = runPipelineStages({ rawRows: CORPUS, classifier });
+  // With the full 12-model variant set, this synthetic corpus is known (from
+  // the D1.1 inspection run) to collapse several bundles into shared
+  // selections -- most notably ALT2_TS_SCORE_GE_65's cohort, whose alias set
+  // includes ALT2_PY_SCORE_GE_65_SM_LT_85 and ALT3_PY_SCORE_GE_65 (the exact
+  // canonical alias group cited in the D1.1 defect report). The precise
+  // total alias count depends on corpus shape (fully reproduced only against
+  // the real 49,400-row canonical corpus); what must hold on any full-order
+  // wiring is that the alias evidence is no longer silently empty.
+  assert.ok(stages.c1.modelAliases.length > 0, "modelAliases must not be empty once B1 sees all 12 models");
+  assert.ok(stages.c1.registrySummary.duplicates > 0, "registrySummary.duplicates must not be zero once aliases are detected");
+  // On this synthetic fixture, ALT2_TS_SCORE_GE_65 lands in the same exact
+  // cohort as its two known aliases -- the cohort's canonical anchor is
+  // whichever of the group is earliest in SCORECARD_MODEL_ORDER, so look up
+  // the group containing ALT2_TS_SCORE_GE_65 rather than assuming it is the
+  // canonical id itself.
+  const alt2Group = stages.c1.modelAliases.find(
+    (a) => a.canonicalModelId === "ALT2_TS_SCORE_GE_65" || a.aliasModelIds.includes("ALT2_TS_SCORE_GE_65"),
+  );
+  assert.ok(alt2Group, "the ALT2_TS_SCORE_GE_65 exact cohort must be present");
+  const groupMembers = [alt2Group!.canonicalModelId, ...alt2Group!.aliasModelIds];
+  assert.ok(groupMembers.includes("ALT2_PY_SCORE_GE_65_SM_LT_85"));
+  assert.ok(groupMembers.includes("ALT3_PY_SCORE_GE_65"));
+});
+
+test("D1.2: B2A candidate metrics are unaffected by the B1 variant-set wiring fix", () => {
+  const beforeFixStages = {
+    a1: undefined as unknown,
+  };
+  void beforeFixStages;
+  // Directly reconstruct the "before" behavior (ALT4-only B1 evidence) and
+  // compare its B2A candidate metrics against the pipeline's current
+  // (post-fix) full-order wiring -- they must be byte-identical, since B2A
+  // candidate selection depends only on ALT4's own selection plus the price/
+  // timing filters, never on which variants B1 happened to evaluate.
+  const stages = runPipelineStages({ rawRows: CORPUS, classifier });
+  const b1Alt4Only = buildScoreComponentAnalysis({ rawRows: CORPUS, classifier, requestedVariantIds: [BASE_COMPARATOR_ID] });
+  const b2aFromAlt4Only = buildBoundedRoutingExperiments({ rawRows: CORPUS, classifier, evidence: b1Alt4Only });
+
+  assert.deepEqual(
+    stages.b2a.candidateMetrics.map((m) => ({
+      candidateId: m.id,
+      selectedObservations: m.selectedObservations,
+      wins: m.wins,
+      losses: m.losses,
+      flatUnitPnl: m.flatUnitPnl,
+      flatUnitRoi: m.flatUnitRoi,
+      maximumDrawdownUnits: m.maximumDrawdownUnits,
+      longestLosingStreak: m.longestLosingStreak,
+      selectionHash: m.selectionHash,
+    })),
+    b2aFromAlt4Only.candidateMetrics.map((m) => ({
+      candidateId: m.id,
+      selectedObservations: m.selectedObservations,
+      wins: m.wins,
+      losses: m.losses,
+      flatUnitPnl: m.flatUnitPnl,
+      flatUnitRoi: m.flatUnitRoi,
+      maximumDrawdownUnits: m.maximumDrawdownUnits,
+      longestLosingStreak: m.longestLosingStreak,
+      selectionHash: m.selectionHash,
+    })),
+  );
+  assert.deepEqual(
+    stages.b2a.triage.map((t) => ({ candidateId: t.candidateId, status: t.status })),
+    b2aFromAlt4Only.triage.map((t) => ({ candidateId: t.candidateId, status: t.status })),
+  );
+});
+
+test("D1.2: stage results carry explicit hashSemantics; D1 self-row is COMPOSITE_UPSTREAM_LINEAGE", () => {
+  const artifacts = buildFullPipeline({ rawRows: CORPUS, classifier });
+  const packet = artifacts.packet.result;
+  const upstreamIds: PipelineStageId[] = ["STAGE_A1_DECOMPOSITION", "STAGE_A2_DASHBOARD", "STAGE_B1_COMPONENTS", "STAGE_B2A_EXPERIMENTS", "STAGE_C1_REGISTRY"];
+  for (const stageId of upstreamIds) {
+    const row = packet.stageResults.find((s) => s.stageId === stageId)!;
+    assert.equal(row.hashSemantics, "ACTUAL_ARTIFACT_SHA256");
+  }
+  const d1Row = packet.stageResults.find((s) => s.stageId === "STAGE_D1_PACKET")!;
+  assert.equal(d1Row.hashSemantics, "COMPOSITE_UPSTREAM_LINEAGE");
+
+  // The top-level manifest remains the source of truth for actual packet bytes.
+  const manifest = buildHistoricalResearchPacketManifest(artifacts, { inputSha256: "a".repeat(64), classifierSha256: "b".repeat(64) });
+  assert.equal(manifest.jsonSha256, sha256(artifacts.packet.json));
+  assert.equal(manifest.htmlSha256, sha256(artifacts.packet.html));
+
+  const html = renderHistoricalResearchPacketHtml(packet);
+  assert.match(html, /composite/i);
 });
 
 // ------------------------------------------------------------- lineage
