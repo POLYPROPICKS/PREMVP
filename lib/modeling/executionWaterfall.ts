@@ -114,12 +114,14 @@ function emptyReasons<T extends string>(reasons: readonly T[]): Record<T, Export
   return result;
 }
 
-export type WaterfallModelPolicyId = "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M" | "B2_TIMING_WITHIN_120M" | "B2_PRICE_FLOOR_030";
+export type WaterfallModelPolicyId = "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M" | "B2_TIMING_WITHIN_120M" | "B2_PRICE_FLOOR_030" | "ALT2_TS_SCORE_GE_65";
 export function buildExecutionWaterfall(rawRows: readonly ExportRow[], classifier: ExecutableFunnelClassifier, modelPolicyId: WaterfallModelPolicyId = "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M"): ExecutionWaterfallResult {
-  const passesModel = (row: ExportRow): boolean => modelPolicyId === "B2_TIMING_WITHIN_120M" ? passesTimingWithin120m(row) : modelPolicyId === "B2_PRICE_FLOOR_030" ? passesPriceFloor(row) : passesPriceFloor(row) && passesTimingWithin120m(row);
+  const isAlt2 = modelPolicyId === "ALT2_TS_SCORE_GE_65";
+  const sourceVariantId = isAlt2 ? "ALT2_TS_SCORE_GE_65" : BASE_COMPARATOR_ID;
+  const passesModel = (row: ExportRow): boolean => isAlt2 || (modelPolicyId === "B2_TIMING_WITHIN_120M" ? passesTimingWithin120m(row) : modelPolicyId === "B2_PRICE_FLOOR_030" ? passesPriceFloor(row) : passesPriceFloor(row) && passesTimingWithin120m(row));
   const deduped = projectGeneratedSignalPairsStrictDedup([...rawRows]).dedupedRows;
-  const alt4 = evaluateHistoricalFunnelVariant(deduped, classifier, BASE_COMPARATOR_ID).selectedRows as ExportRow[];
-  const baseRows = alt4.filter(passesModel);
+  const sourceRows = evaluateHistoricalFunnelVariant(deduped, classifier, sourceVariantId).selectedRows as ExportRow[];
+  const baseRows = sourceRows.filter(passesModel);
   const rawByIdentity = new Map<string, ExportRow[]>();
   for (const row of rawRows) {
     const key = identity(row); if (!key) continue;
@@ -138,10 +140,10 @@ export function buildExecutionWaterfall(rawRows: readonly ExportRow[], classifie
     const snap = eligible[0];
     const score = getScoreValue(snap);
     if (score === null || score < 65) reasonRows.T90_SNAPSHOT_SCORE_REJECTED.push(snap);
-    else if (isEsports(snap)) reasonRows.T90_SNAPSHOT_ESPORTS_REJECTED.push(snap);
-    else if (modelPolicyId !== "B2_TIMING_WITHIN_120M" && !passesPriceFloor(snap)) reasonRows.T90_SNAPSHOT_PRICE_REJECTED.push(snap);
-    else if (modelPolicyId !== "B2_PRICE_FLOOR_030" && !passesTimingWithin120m(snap)) reasonRows.T90_SNAPSHOT_TIMING_REJECTED.push(snap);
-    else if (!(evaluateHistoricalFunnelVariant([snap], classifier, BASE_COMPARATOR_ID).selectedRows.length === 1)) reasonRows.OTHER_EXACT_BASE_CONTRACT_REJECTION.push(snap);
+    else if (!isAlt2 && isEsports(snap)) reasonRows.T90_SNAPSHOT_ESPORTS_REJECTED.push(snap);
+    else if (!isAlt2 && modelPolicyId !== "B2_TIMING_WITHIN_120M" && !passesPriceFloor(snap)) reasonRows.T90_SNAPSHOT_PRICE_REJECTED.push(snap);
+    else if (!isAlt2 && modelPolicyId !== "B2_PRICE_FLOOR_030" && !passesTimingWithin120m(snap)) reasonRows.T90_SNAPSHOT_TIMING_REJECTED.push(snap);
+    else if (!(evaluateHistoricalFunnelVariant([snap], classifier, sourceVariantId).selectedRows.length === 1)) reasonRows.OTHER_EXACT_BASE_CONTRACT_REJECTION.push(snap);
     else { reasonRows.QUALIFIED.push(snap); baseQualified.push(snap); }
   }
   const t90Snapshots: ExportRow[] = [];
@@ -150,7 +152,7 @@ export function buildExecutionWaterfall(rawRows: readonly ExportRow[], classifie
       .sort((a, b) => createdMs(b)! - createdMs(a)! || id(a).localeCompare(id(b)));
     if (eligible[0]) t90Snapshots.push(eligible[0]);
   }
-  const qualified = (evaluateHistoricalFunnelVariant(t90Snapshots, classifier, BASE_COMPARATOR_ID).selectedRows as ExportRow[])
+  const qualified = (evaluateHistoricalFunnelVariant(t90Snapshots, classifier, sourceVariantId).selectedRows as ExportRow[])
     .filter(passesModel);
   const baseByIdentity = new Map(baseRows.map((r) => [identity(r)!, r]));
   const t90ByIdentity = new Map(qualified.map((r) => [identity(r)!, r]));
@@ -167,9 +169,9 @@ export function buildExecutionWaterfall(rawRows: readonly ExportRow[], classifie
     let reason: EntrantReason;
     if (score === null || price === null || coverage === null || startMs(latest) === null) reason = "LATEST_INVALID_OR_MISSING_FIELD";
     else if (score < 65) reason = "LATEST_SCORE_REJECTED";
-    else if (isEsports(latest)) reason = "LATEST_ESPORTS_REJECTED";
-    else if (!passesPriceFloor(latest)) reason = "LATEST_PRICE_REJECTED";
-    else if (!passesTimingWithin120m(latest)) reason = "LATEST_TIMING_REJECTED";
+    else if (!isAlt2 && isEsports(latest)) reason = "LATEST_ESPORTS_REJECTED";
+    else if (!isAlt2 && !passesPriceFloor(latest)) reason = "LATEST_PRICE_REJECTED";
+    else if (!isAlt2 && !passesTimingWithin120m(latest)) reason = "LATEST_TIMING_REJECTED";
     else reason = "OTHER_EXACT_BASE_REJECTION";
     entrantRows[reason].push(latest);
     entrantDetails.push({ identity: key, t90ObservationId: id(t90), latestObservationId: id(latest), t90CreatedAt: String(t90.created_at), latestCreatedAt: String(latest.created_at), t90Price: getEntryPriceValue(t90), latestPrice: price, t90Score: getScoreValue(t90), latestScore: score, t90Coverage: getCoverageValue(t90), latestCoverage: coverage, exactEntrantReason: reason });

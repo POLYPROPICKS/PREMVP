@@ -45,3 +45,18 @@ test("duplicate market attribution is explicitly non-independent", () => {
   assert.equal(result.duplicateMarketCounterfactual.label, "NON-INDEPENDENT COUNTERFACTUAL");
   assert.equal(result.duplicateMarketCounterfactual.includedInCanonicalTotal, false);
 });
+
+test("all frozen finalist model filters reproduce exact T90 and one-match cohorts", () => {
+  const rows = JSON.parse(readFileSync(frozen, "utf8"));
+  const classifier = loadExecutableFunnelClassifier();
+  const expected = {
+    B2_PRICE_FLOOR_030_TIMING_WITHIN_120M: [549, 362, 271, 53],
+    B2_TIMING_WITHIN_120M: [570, 377, 276, 59],
+    B2_PRICE_FLOOR_030: [822, 594, 318, 129],
+    ALT2_TS_SCORE_GE_65: [1110, 889, 334, 400],
+  } as const;
+  for (const [model, counts] of Object.entries(expected)) {
+    const result = buildExecutionWaterfall(rows, classifier, model as keyof typeof expected);
+    assert.deepEqual([result.baseModelRows, result.t90QualifiedRows, result.executionCandidates.length, result.rowsRejectedNoMatchIdentity], counts, model);
+  }
+});
