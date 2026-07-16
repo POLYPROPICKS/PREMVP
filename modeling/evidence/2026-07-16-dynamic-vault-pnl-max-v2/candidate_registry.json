@@ -1,0 +1,221 @@
+{
+  "stageA": [
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T25_P25_R0.25_S0_C0.1",
+      "triggerProfitU": 25,
+      "principalTargetU": 25,
+      "principalRecoveryRate": 0.25,
+      "postRecoverySkimRate": 0,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T25_P25_R0.25_S0.05_C0.1",
+      "triggerProfitU": 25,
+      "principalTargetU": 25,
+      "principalRecoveryRate": 0.25,
+      "postRecoverySkimRate": 0.05,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T25_P25_R0.5_S0_C0.1",
+      "triggerProfitU": 25,
+      "principalTargetU": 25,
+      "principalRecoveryRate": 0.5,
+      "postRecoverySkimRate": 0,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T25_P25_R0.5_S0.05_C0.1",
+      "triggerProfitU": 25,
+      "principalTargetU": 25,
+      "principalRecoveryRate": 0.5,
+      "postRecoverySkimRate": 0.05,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T25_P25_R1_S0_C0.1",
+      "triggerProfitU": 25,
+      "principalTargetU": 25,
+      "principalRecoveryRate": 1,
+      "postRecoverySkimRate": 0,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T25_P25_R1_S0.05_C0.1",
+      "triggerProfitU": 25,
+      "principalTargetU": 25,
+      "principalRecoveryRate": 1,
+      "postRecoverySkimRate": 0.05,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T25_P50_R0.25_S0_C0.1",
+      "triggerProfitU": 25,
+      "principalTargetU": 50,
+      "principalRecoveryRate": 0.25,
+      "postRecoverySkimRate": 0,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T25_P50_R0.25_S0.05_C0.1",
+      "triggerProfitU": 25,
+      "principalTargetU": 50,
+      "principalRecoveryRate": 0.25,
+      "postRecoverySkimRate": 0.05,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T25_P50_R0.5_S0_C0.1",
+      "triggerProfitU": 25,
+      "principalTargetU": 50,
+      "principalRecoveryRate": 0.5,
+      "postRecoverySkimRate": 0,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T25_P50_R0.5_S0.05_C0.1",
+      "triggerProfitU": 25,
+      "principalTargetU": 50,
+      "principalRecoveryRate": 0.5,
+      "postRecoverySkimRate": 0.05,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T25_P50_R1_S0_C0.1",
+      "triggerProfitU": 25,
+      "principalTargetU": 50,
+      "principalRecoveryRate": 1,
+      "postRecoverySkimRate": 0,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T25_P50_R1_S0.05_C0.1",
+      "triggerProfitU": 25,
+      "principalTargetU": 50,
+      "principalRecoveryRate": 1,
+      "postRecoverySkimRate": 0.05,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T50_P25_R0.25_S0_C0.1",
+      "triggerProfitU": 50,
+      "principalTargetU": 25,
+      "principalRecoveryRate": 0.25,
+      "postRecoverySkimRate": 0,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T50_P25_R0.25_S0.05_C0.1",
+      "triggerProfitU": 50,
+      "principalTargetU": 25,
+      "principalRecoveryRate": 0.25,
+      "postRecoverySkimRate": 0.05,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T50_P25_R0.5_S0_C0.1",
+      "triggerProfitU": 50,
+      "principalTargetU": 25,
+      "principalRecoveryRate": 0.5,
+      "postRecoverySkimRate": 0,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T50_P25_R0.5_S0.05_C0.1",
+      "triggerProfitU": 50,
+      "principalTargetU": 25,
+      "principalRecoveryRate": 0.5,
+      "postRecoverySkimRate": 0.05,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T50_P25_R1_S0_C0.1",
+      "triggerProfitU": 50,
+      "principalTargetU": 25,
+      "principalRecoveryRate": 1,
+      "postRecoverySkimRate": 0,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T50_P25_R1_S0.05_C0.1",
+      "triggerProfitU": 50,
+      "principalTargetU": 25,
+      "principalRecoveryRate": 1,
+      "postRecoverySkimRate": 0.05,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T50_P50_R0.25_S0_C0.1",
+      "triggerProfitU": 50,
+      "principalTargetU": 50,
+      "principalRecoveryRate": 0.25,
+      "postRecoverySkimRate": 0,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T50_P50_R0.25_S0.05_C0.1",
+      "triggerProfitU": 50,
+      "principalTargetU": 50,
+      "principalRecoveryRate": 0.25,
+      "postRecoverySkimRate": 0.05,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T50_P50_R0.5_S0_C0.1",
+      "triggerProfitU": 50,
+      "principalTargetU": 50,
+      "principalRecoveryRate": 0.5,
+      "postRecoverySkimRate": 0,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T50_P50_R0.5_S0.05_C0.1",
+      "triggerProfitU": 50,
+      "principalTargetU": 50,
+      "principalRecoveryRate": 0.5,
+      "postRecoverySkimRate": 0.05,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T50_P50_R1_S0_C0.1",
+      "triggerProfitU": 50,
+      "principalTargetU": 50,
+      "principalRecoveryRate": 1,
+      "postRecoverySkimRate": 0,
+      "transferCapPctOfActiveReference": 0.1
+    },
+    {
+      "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+      "id": "PRV2_T50_P50_R1_S0.05_C0.1",
+      "triggerProfitU": 50,
+      "principalTargetU": 50,
+      "principalRecoveryRate": 1,
+      "postRecoverySkimRate": 0.05,
+      "transferCapPctOfActiveReference": 0.1
+    }
+  ],
+  "stageB": []
+}

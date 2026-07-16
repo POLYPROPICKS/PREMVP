@@ -107,3 +107,7 @@ The bounded four-arm package `modeling/evidence/2026-07-16-final-fixed-vs-dynami
 ## Final Dynamic-aware Vault frontier
 
 The bounded seven-arm package `modeling/evidence/2026-07-16-final-dynamic-aware-vault` preserves the original PRIMARY, 231 intended IDs and Dynamic Active 3% contract. Development-only volatility target is `0.0341769`; confirmation uses the canonical locked 23/11 block split. No protected policy passed all predeclared confirmation gates, so `DYNAMIC_NO_VAULT` remains the winner and status is `NO_DYNAMIC_VAULT_PASSED_PREDECLARED_GATES`. Full-history control remains 169.32412195u PnL, 33.96564534u maximum fall and 43.85905932u CVaR95 maximum fall. Ireland remains blocked pending founder decision and atomic freeze.
+
+## Dynamic Vault PnL Maximization V2
+
+The bounded V2 package `modeling/evidence/2026-07-16-dynamic-vault-pnl-max-v2` evaluated the exact 24-candidate Principal Recovery Stage A using 22 chronological next-block evaluations after 12 prior blocks. No Stage A candidate improved both walk-forward maximum fall and CVaR95 relative to Dynamic No-Vault, so no parent was eligible and Stage B correctly remained empty. Status is `NO_V2_CANDIDATE_MET_MINIMUM_PROTECTED_GROWTH_CONTRACT`; Dynamic No-Vault is not promoted as a protected winner. The top Pareto protected shadow `PRV2_T25_P50_R1_S0.05_C0.1` has full-history PnL 121.85057149u and ending Vault 52.34252857u, but fails the walk-forward risk constraints. Founder review is required; freeze and Ireland remain blocked.

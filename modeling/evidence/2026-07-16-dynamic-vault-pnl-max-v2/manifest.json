@@ -1,0 +1,19 @@
+{
+  "datasetSha256": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+  "inputExecutionIdsSha256": "99f22a9bb8db0a2ff7bddd8e72f87a097fdb136f1a242a300ccb0e8740d0fcca",
+  "selectionHash": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b",
+  "artifactHashes": {
+    "registry": "39ee9940c5546bf784e2d945b8dc76b7824c5c099bebb28c0412c9ccf5382230",
+    "stageA": "5d7bc814ba36a8caa832642904528b07296325a212967d68f0ab2b84e8751963",
+    "stageB": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "walkForward": "60df0121645d178c44cb775c5f1b1ef73b10fe2a3bf4011b2baa2c79989eaa5e",
+    "fullHistory": "6f3e30149301e1e2a9e8a16fcd59e59bbf183ae7cd8ace781bfcdfb6e9037601",
+    "pareto": "fedae92c08547f68fb2de005d21d908ab6c9d31e80842badceb572ad8a01008f",
+    "winner": "e1fc4daa7f6395e2917afeb80bbe1f25c6946e65a781daf07ea55f37fdd4cce8",
+    "transfers": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "curves": "b7d9dfb9f965190138706734cf439fbaca098c1d83044e0f36490671b767120e",
+    "report": "6e229dcf73ba4ca6ff366c87e33866705f929cc399effada05c1ebad71aacaa2",
+    "dashboard": "db256783ad7fa81b18df51e2473d0b8d0db1e754fa2d6c4ca6091be88639899e"
+  },
+  "manifestSha256": "7bf1df9d7b908af1c766df1ad6f5b2dab9a0444e765ea115f1268c8f49fbc8a9"
+}

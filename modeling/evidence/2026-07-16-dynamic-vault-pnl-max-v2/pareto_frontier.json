@@ -1,0 +1,13 @@
+[
+  {
+    "id": "PRV2_T25_P50_R1_S0.05_C0.1",
+    "pnl": 21.159405250000002,
+    "maximumFall": 7.5,
+    "cvar": 20.24329845,
+    "endingVault": 52.34252857,
+    "capitalValid": true,
+    "noFutureLeakage": true,
+    "skips": 0,
+    "fullPnl": 121.85057149
+  }
+]
