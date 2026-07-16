@@ -1,0 +1,8 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { buildPrincipalRecoveryStageA, buildPrincipalRecoveryStageB, principalRecoveryTarget, selectPrincipalRecoveryWinner } from "../../lib/modeling/dynamicPrincipalRecoveryVault";
+
+test("Stage A is the exact predeclared 24-candidate Cartesian product",()=>{const rows=buildPrincipalRecoveryStageA();assert.equal(rows.length,24);assert.equal(new Set(rows.map(row=>row.id)).size,24);assert.ok(rows.every(row=>row.transferCapPctOfActiveReference===.1));});
+test("principal target is zero before trigger, capped, monotonic, and skims only after completion",()=>{const policy={triggerProfitU:50,principalTargetU:50,principalRecoveryRate:1,postRecoverySkimRate:.05};assert.equal(principalRecoveryTarget(policy,49),0);assert.equal(principalRecoveryTarget(policy,75),25);assert.equal(principalRecoveryTarget(policy,100),50);assert.equal(principalRecoveryTarget(policy,120),51);});
+test("Stage B is bounded to eight deduplicated candidates",()=>{const parents=buildPrincipalRecoveryStageA().slice(0,3);const rows=buildPrincipalRecoveryStageB(parents);assert.ok(rows.length<=8);assert.equal(new Set(rows.map(row=>row.id)).size,rows.length);});
+test("winner maximizes PnL after constraints and old 80/15/10 gates do not apply",()=>{const control={pnl:50,maximumFall:20,cvar:30,endingVault:0,capitalValid:true,noFutureLeakage:true,skips:0,fullPnl:100};const candidate={id:"A",pnl:51,maximumFall:19,cvar:29,endingVault:25,capitalValid:true,noFutureLeakage:true,skips:0,fullPnl:60};const better={...candidate,id:"B",pnl:55,fullPnl:65};assert.equal(selectPrincipalRecoveryWinner([candidate,better],control,40).winner?.id,"B");});
