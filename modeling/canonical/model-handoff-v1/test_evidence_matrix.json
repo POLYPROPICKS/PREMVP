@@ -1,0 +1,1 @@
+[{"contract":"corpus/registry hashes","coverage":"DETERMINISTIC HASH","test":"canonicalModelHandoff.test.ts"},{"contract":"identity/execution separation","coverage":"DIRECT UNIT","test":"canonicalModelHandoff.test.ts"},{"contract":"chart lineage/offline renderer","coverage":"REGRESSION","test":"canonicalModelHandoff.test.ts"}]

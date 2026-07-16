@@ -123,3 +123,7 @@ FOUNDER ACCEPTANCE: `APPROVED`.
 - Canonical source: `lib/modeling/bankrollProfileRegistry.ts`.
 - Evidence: `modeling/evidence/2026-07-16-bankroll-profiles-atomic-freeze`.
 - Next: PREMVP integration against the frozen registry. Ireland remains blocked.
+
+## Canonical model handoff V1
+
+The canonical handoff separates the 231-member lexicographically serialized identity set (membership SHA `99f22a9b...`) from the immutable Fixed/Dynamic ledger replay sequence (order SHA `5457240a...`). The legacy `locked_signal_sequence.json` remains only for backward compatibility and must not be interpreted as execution order. Canonical contracts, source/test/evidence mapping, deterministic chart lineage, verifier, and the self-contained offline dashboard live in `modeling/canonical/model-handoff-v1`. PREMVP integration and Ireland remain blocked pending Founder Gate 2A.
