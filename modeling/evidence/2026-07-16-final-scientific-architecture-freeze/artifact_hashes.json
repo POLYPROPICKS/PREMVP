@@ -1,0 +1,19 @@
+{
+  "capital_policy_frontier.json": "c9d1d49f544fc3d15bd3ff18b230c8b82826f6b2f37d0dd3adc1188d70e88712",
+  "final_model_stake_matrix.json": "4da29747c52acb275ea94c3b6e083f100947f6315b09b8cbb3abe0fee4b421b2",
+  "final_selection.json": "2055af6d27fc038261a3be8a46c97d312b14decf6a732e1f6be25e1a0b0a725a",
+  "founder_report_ru.md": "1de0b8ea9d557d8c9a48d24bf275c322de849d4e1b3ee0058aaf76602b95e7d4",
+  "freeze_registry.json": "8463fc8acdfe9fc030ac6717e64eddbc2ff5d2dddda0a7d07c4da19bf08f843d",
+  "manifest.json": "63b9bd8cdb0f3acdf7ab10daf2a9566beb89106f6109fe5f8938fd12f7694156",
+  "oracle_PRIMARY_block_length_input.json": "63fac2f53c05e2ea47dde18d9920d7186115e67f198205bc650b1869049cbbf3",
+  "oracle_PRIMARY_block_length_output.json": "2771cd701ab31f92cd023292d66ec294c354b07831e461886dac64133d4fd6ac",
+  "oracle_PRIMARY_spa_input.json": "9049309cdf9f3eae6c5a80f708045a232f9490ae183132e6b95bbba0dbf7aec7",
+  "oracle_PRIMARY_spa_output.json": "688141e1810080bd0dd695eefe25bcf8950887f5a83a37f38c8ee3a0a4f1ab0b",
+  "oracle_SENSITIVITY_block_length_input.json": "541f4a74cf061f14799a72ffea1a5915c1950c01316e3a8796a46c6e1c8fed78",
+  "oracle_SENSITIVITY_block_length_output.json": "f6c7a7df4ddbe0505d8f9fd734b53ad07324fa1d4d76dd7ba42751ac1a12db2b",
+  "oracle_SENSITIVITY_spa_input.json": "9d05bf6cb8e29b88bac82e7d7770d30156211fab7ca664f4ee486d1403006ef1",
+  "oracle_SENSITIVITY_spa_output.json": "7e06d408f9c17eda7c5c0f8f5de7cedccc082cb6f46a0511563e4f31a7f69104",
+  "scientific_architecture_dashboard.html": "152cc40877c7516642f676ae1ba11a941cf510959cd4dd4e3ddc73031c72c56f",
+  "winner_capital_curve.json": "4d0dc1a323be5183f178a763abb2f94bcf7f7a3059eae197843ff28aabde763e",
+  "winner_execution_ledger.json": "b88eec40bfc68c90968897637cb72c2be51ba148401497245293a1ff2346254f"
+}

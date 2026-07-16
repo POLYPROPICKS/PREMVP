@@ -1,0 +1,239 @@
+{
+  "PNL_MAX": {
+    "model": "B2_TIMING_WITHIN_120M",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + hours_until_start in [0,120] at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": true,
+    "stakePolicy": "FIXED_100",
+    "operationScenario": "NIGHT_ONLY",
+    "capacity": {
+      "maxOpenPositions": 36,
+      "maxOpenExposurePct": 0.8,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": true
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 36,
+        "maxOpenExposurePct": 0.8,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": true
+      },
+      "eligibleMatches": 50,
+      "executedMatches": 45,
+      "skippedPositions": 5,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 5,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 0,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 24,
+      "losses": 21,
+      "totalStaked": 4500,
+      "netPnl": 1364.53467215,
+      "roi": 30.32299271,
+      "endingActive": 11364.53467215,
+      "endingVault": 0,
+      "endingTotal": 11364.53467215,
+      "minimumTotal": 9800,
+      "maximumFallFromTotalPeak": 321.52765544,
+      "maximumFallFromActivePeak": 321.52765544,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 226.28419439,
+        "2026-06-20": 1131.17621204,
+        "2026-06-19": 3.19144568,
+        "2026-07-05": 165.92582675,
+        "2026-07-07": 15.05376344,
+        "2026-07-09": -100,
+        "2026-07-10": -164.70588235,
+        "2026-06-21": 27.86885246,
+        "2026-06-22": -100,
+        "2026-07-11": 159.74025974
+      },
+      "transfers": [],
+      "executionLedgerHash": "1a3027409fa6983ac603c09d16723012433f4b1e75f20585dc201cd88aed57a7",
+      "capitalCurveHash": "5ab3e72559607c78f8038c17e93cf58e5f0a834039ecf1c29b06862d9558234d",
+      "risk": {
+        "p10EndingCapital": 10008.51719696,
+        "medianEndingCapital": 11239.47042216,
+        "p90EndingCapital": 12829.43570973,
+        "cvar95TerminalLoss": 370.196287,
+        "cvar95MaximumFall": 609.29271625,
+        "probabilityBelowInitial": 0.09745
+      }
+    },
+    "selectionHash": "08b8b329b41d4727dbf88f76e9517c142c28e69fcd5764de9d9b9a757b56fa2f",
+    "executionLedgerHash": "1a3027409fa6983ac603c09d16723012433f4b1e75f20585dc201cd88aed57a7",
+    "capitalCurveHash": "5ab3e72559607c78f8038c17e93cf58e5f0a834039ecf1c29b06862d9558234d"
+  },
+  "RISK_MIN": {
+    "model": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + entry_price>=0.30 + hours_until_start in [0,120] at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "PRIMARY",
+    "eligibleForFinalSelection": true,
+    "stakePolicy": "FIXED_100",
+    "operationScenario": "24X7",
+    "capacity": {
+      "maxOpenPositions": 36,
+      "maxOpenExposurePct": 0.8,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": true
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 36,
+        "maxOpenExposurePct": 0.8,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": false
+      },
+      "eligibleMatches": 49,
+      "executedMatches": 48,
+      "skippedPositions": 1,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 0,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 1,
+        "EXPOSURE_LIMIT": 0,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 25,
+      "losses": 23,
+      "totalStaked": 4800,
+      "netPnl": 1157.99668909,
+      "roi": 24.12493102,
+      "endingActive": 11157.99668909,
+      "endingVault": 0,
+      "endingTotal": 11157.99668909,
+      "minimumTotal": 9800,
+      "maximumFallFromTotalPeak": 321.52765544,
+      "maximumFallFromActivePeak": 321.52765544,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 126.28419439,
+        "2026-06-20": 792.19316119,
+        "2026-06-19": 235.63651347,
+        "2026-07-05": 165.92582675,
+        "2026-07-06": -100,
+        "2026-07-07": 15.05376344,
+        "2026-07-09": -100,
+        "2026-07-10": -164.70588235,
+        "2026-06-21": 27.86885246,
+        "2026-07-11": 159.74025974
+      },
+      "transfers": [],
+      "executionLedgerHash": "b122b93384e0d0e63d14d621db0f1023eaac19558b4c1be059388bee16960e31",
+      "capitalCurveHash": "7e4907f6916ff47f363ac979ad5897ebb999dec92477db97f74351a14c7ded56",
+      "risk": {
+        "p10EndingCapital": 10149.08329212,
+        "medianEndingCapital": 11078.01607514,
+        "p90EndingCapital": 12237.89894348,
+        "cvar95TerminalLoss": 272.83251789,
+        "cvar95MaximumFall": 584.53317581,
+        "probabilityBelowInitial": 0.06295
+      }
+    },
+    "selectionHash": "5559644edeee9fcc9e9c674fdec22376f7f9848aa5556c6d80e9f8d2559e9942",
+    "executionLedgerHash": "b122b93384e0d0e63d14d621db0f1023eaac19558b4c1be059388bee16960e31",
+    "capitalCurveHash": "7e4907f6916ff47f363ac979ad5897ebb999dec92477db97f74351a14c7ded56"
+  },
+  "SCIENTIFIC_FINAL_WINNER": {
+    "model": "B2_TIMING_WITHIN_120M",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + hours_until_start in [0,120] at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": true,
+    "stakePolicy": "FIXED_100",
+    "operationScenario": "NIGHT_ONLY",
+    "capacity": {
+      "maxOpenPositions": 36,
+      "maxOpenExposurePct": 0.8,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": true
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 36,
+        "maxOpenExposurePct": 0.8,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": true
+      },
+      "eligibleMatches": 50,
+      "executedMatches": 45,
+      "skippedPositions": 5,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 5,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 0,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 24,
+      "losses": 21,
+      "totalStaked": 4500,
+      "netPnl": 1364.53467215,
+      "roi": 30.32299271,
+      "endingActive": 11364.53467215,
+      "endingVault": 0,
+      "endingTotal": 11364.53467215,
+      "minimumTotal": 9800,
+      "maximumFallFromTotalPeak": 321.52765544,
+      "maximumFallFromActivePeak": 321.52765544,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 226.28419439,
+        "2026-06-20": 1131.17621204,
+        "2026-06-19": 3.19144568,
+        "2026-07-05": 165.92582675,
+        "2026-07-07": 15.05376344,
+        "2026-07-09": -100,
+        "2026-07-10": -164.70588235,
+        "2026-06-21": 27.86885246,
+        "2026-06-22": -100,
+        "2026-07-11": 159.74025974
+      },
+      "transfers": [],
+      "executionLedgerHash": "1a3027409fa6983ac603c09d16723012433f4b1e75f20585dc201cd88aed57a7",
+      "capitalCurveHash": "5ab3e72559607c78f8038c17e93cf58e5f0a834039ecf1c29b06862d9558234d",
+      "risk": {
+        "p10EndingCapital": 10008.51719696,
+        "medianEndingCapital": 11239.47042216,
+        "p90EndingCapital": 12829.43570973,
+        "cvar95TerminalLoss": 370.196287,
+        "cvar95MaximumFall": 609.29271625,
+        "probabilityBelowInitial": 0.09745
+      }
+    },
+    "selectionHash": "08b8b329b41d4727dbf88f76e9517c142c28e69fcd5764de9d9b9a757b56fa2f",
+    "executionLedgerHash": "1a3027409fa6983ac603c09d16723012433f4b1e75f20585dc201cd88aed57a7",
+    "capitalCurveHash": "5ab3e72559607c78f8038c17e93cf58e5f0a834039ecf1c29b06862d9558234d"
+  }
+}

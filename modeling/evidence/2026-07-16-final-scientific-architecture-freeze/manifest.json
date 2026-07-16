@@ -1,0 +1,23 @@
+{
+  "version": "FINAL_SCIENTIFIC_ARCHITECTURE_FREEZE_V1",
+  "datasetSha256": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+  "oracle": {
+    "version": "8.0.0",
+    "commit": "ee08e4293285b1ab78b56bfc067877b7ebd4bbc5",
+    "evidenceManifestFileSha256": "061a6784cbbb9f516bf57693f3fd67fd9c5758dec23b6bfb4dc32da879d61d80"
+  },
+  "artifactHashes": {
+    "capital_policy_frontier": "c9d1d49f544fc3d15bd3ff18b230c8b82826f6b2f37d0dd3adc1188d70e88712",
+    "final_model_stake_matrix": "4da29747c52acb275ea94c3b6e083f100947f6315b09b8cbb3abe0fee4b421b2",
+    "winner_execution_ledger": "b88eec40bfc68c90968897637cb72c2be51ba148401497245293a1ff2346254f",
+    "winner_capital_curve": "4d0dc1a323be5183f178a763abb2f94bcf7f7a3059eae197843ff28aabde763e",
+    "final_selection": "2055af6d27fc038261a3be8a46c97d312b14decf6a732e1f6be25e1a0b0a725a",
+    "founder_report_ru": "1de0b8ea9d557d8c9a48d24bf275c322de849d4e1b3ee0058aaf76602b95e7d4",
+    "dashboard": "152cc40877c7516642f676ae1ba11a941cf510959cd4dd4e3ddc73031c72c56f"
+  },
+  "capitalPolicyLockHash": "b9a6d98f9cfec26a638b8ae1da6784213267fb06c7b3a5fad29991bc4fbfed52",
+  "selectionHash": "08b8b329b41d4727dbf88f76e9517c142c28e69fcd5764de9d9b9a757b56fa2f",
+  "executionLedgerHash": "1a3027409fa6983ac603c09d16723012433f4b1e75f20585dc201cd88aed57a7",
+  "capitalCurveHash": "5ab3e72559607c78f8038c17e93cf58e5f0a834039ecf1c29b06862d9558234d",
+  "manifestSha256": "0e5c4c6df01a6d3f7d851df9df5a4dbdff86ab14e9b62ecaac9f0cd7bb478878"
+}

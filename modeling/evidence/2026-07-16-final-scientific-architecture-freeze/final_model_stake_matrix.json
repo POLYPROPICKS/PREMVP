@@ -1,0 +1,4653 @@
+[
+  {
+    "model": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + entry_price>=0.30 + hours_until_start in [0,120] at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "PRIMARY",
+    "eligibleForFinalSelection": true,
+    "stakePolicy": "FIXED_100",
+    "operationScenario": "24X7",
+    "capacity": {
+      "maxOpenPositions": 36,
+      "maxOpenExposurePct": 0.8,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": true
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 36,
+        "maxOpenExposurePct": 0.8,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": false
+      },
+      "eligibleMatches": 49,
+      "executedMatches": 48,
+      "skippedPositions": 1,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 0,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 1,
+        "EXPOSURE_LIMIT": 0,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 25,
+      "losses": 23,
+      "totalStaked": 4800,
+      "netPnl": 1157.99668909,
+      "roi": 24.12493102,
+      "endingActive": 11157.99668909,
+      "endingVault": 0,
+      "endingTotal": 11157.99668909,
+      "minimumTotal": 9800,
+      "maximumFallFromTotalPeak": 321.52765544,
+      "maximumFallFromActivePeak": 321.52765544,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 126.28419439,
+        "2026-06-20": 792.19316119,
+        "2026-06-19": 235.63651347,
+        "2026-07-05": 165.92582675,
+        "2026-07-06": -100,
+        "2026-07-07": 15.05376344,
+        "2026-07-09": -100,
+        "2026-07-10": -164.70588235,
+        "2026-06-21": 27.86885246,
+        "2026-07-11": 159.74025974
+      },
+      "transfers": [],
+      "executionLedgerHash": "b122b93384e0d0e63d14d621db0f1023eaac19558b4c1be059388bee16960e31",
+      "capitalCurveHash": "7e4907f6916ff47f363ac979ad5897ebb999dec92477db97f74351a14c7ded56",
+      "risk": {
+        "p10EndingCapital": 10149.08329212,
+        "medianEndingCapital": 11078.01607514,
+        "p90EndingCapital": 12237.89894348,
+        "cvar95TerminalLoss": 272.83251789,
+        "cvar95MaximumFall": 584.53317581,
+        "probabilityBelowInitial": 0.06295
+      }
+    },
+    "selectionHash": "5559644edeee9fcc9e9c674fdec22376f7f9848aa5556c6d80e9f8d2559e9942",
+    "executionLedgerHash": "b122b93384e0d0e63d14d621db0f1023eaac19558b4c1be059388bee16960e31",
+    "capitalCurveHash": "7e4907f6916ff47f363ac979ad5897ebb999dec92477db97f74351a14c7ded56",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 4022.87585999,
+        "maximumFall": 843.15045193,
+        "executedMatches": 174
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 4022.87585999,
+        "maximumFall": 843.15045193,
+        "executedMatches": 174
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 4022.87585999,
+        "maximumFall": 843.15045193,
+        "executedMatches": 174
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 4022.87585999,
+        "maximumFall": 843.15045193,
+        "executedMatches": 174
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 4022.87585999,
+        "maximumFall": 843.15045193,
+        "executedMatches": 174
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 4051.09054944,
+        "maximumFall": 843.15045193,
+        "executedMatches": 186
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 4051.09054944,
+        "maximumFall": 843.15045193,
+        "executedMatches": 186
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 4051.09054944,
+        "maximumFall": 843.15045193,
+        "executedMatches": 186
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 4051.09054944,
+        "maximumFall": 843.15045193,
+        "executedMatches": 186
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 4051.09054944,
+        "maximumFall": 843.15045193,
+        "executedMatches": 186
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 3861.61686523,
+        "maximumFall": 948.75447872,
+        "executedMatches": 190
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 3861.61686523,
+        "maximumFall": 948.75447872,
+        "executedMatches": 190
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 3861.61686523,
+        "maximumFall": 948.75447872,
+        "executedMatches": 190
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 3861.61686523,
+        "maximumFall": 948.75447872,
+        "executedMatches": 190
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 3861.61686523,
+        "maximumFall": 948.75447872,
+        "executedMatches": 190
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 3862.32098039,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 195
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 3862.32098039,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 195
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 3862.32098039,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 195
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 3862.32098039,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 195
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 3862.32098039,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 195
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 3603.28483581,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 200
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 3603.28483581,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 200
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 3603.28483581,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 200
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 3603.28483581,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 200
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 3603.28483581,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 200
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 3585.26339103,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 210
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 3585.26339103,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 210
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 3585.26339103,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 210
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 3585.26339103,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 210
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 3585.26339103,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 210
+      }
+    ]
+  },
+  {
+    "model": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + entry_price>=0.30 + hours_until_start in [0,120] at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "PRIMARY",
+    "eligibleForFinalSelection": false,
+    "stakePolicy": "DYNAMIC_ACTIVE_3PCT",
+    "operationScenario": "24X7",
+    "capacity": {
+      "maxOpenPositions": 40,
+      "maxOpenExposurePct": 0.95,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": false
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 40,
+        "maxOpenExposurePct": 0.95,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": false,
+        "stakePolicy": "DYNAMIC_ACTIVE_3PCT"
+      },
+      "eligibleMatches": 49,
+      "executedMatches": 43,
+      "skippedPositions": 6,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 0,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 6,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 23,
+      "losses": 20,
+      "totalStaked": 13064.68879529,
+      "netPnl": 3259.07415895,
+      "roi": 24.94567004,
+      "endingActive": 13259.07415895,
+      "endingVault": 0,
+      "endingTotal": 13259.07415895,
+      "minimumTotal": 9400,
+      "maximumFallFromTotalPeak": 964.58296632,
+      "maximumFallFromActivePeak": 964.58296632,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 378.85258318,
+        "2026-06-20": 2235.83874283,
+        "2026-06-19": 706.90954041,
+        "2026-07-05": 487.2458488,
+        "2026-07-06": -308.27018307,
+        "2026-07-07": 46.40626412,
+        "2026-07-09": -321.3343216,
+        "2026-07-10": -529.25652969,
+        "2026-07-11": 562.68221397
+      },
+      "transfers": [],
+      "executionLedgerHash": "b35472bc3d7388fde3a65dba51a5b0beb880f853847ed08dfb1ef8b600762447",
+      "capitalCurveHash": "b682cf7c385ee9c4e80e5f35820335a947b65f4d09ca935afc515b71f1027ce7",
+      "risk": {
+        "p10EndingCapital": 10318.19454628,
+        "medianEndingCapital": 13050.49780118,
+        "p90EndingCapital": 16394.78308515,
+        "cvar95TerminalLoss": 992.92628827,
+        "cvar95MaximumFall": 1897.59896126,
+        "probabilityBelowInitial": 0.0736
+      }
+    },
+    "selectionHash": "dfe5c2b3744e24f7a2877857775504a7536b5d1448e037deed03d5549aebe0c7",
+    "executionLedgerHash": "b35472bc3d7388fde3a65dba51a5b0beb880f853847ed08dfb1ef8b600762447",
+    "capitalCurveHash": "b682cf7c385ee9c4e80e5f35820335a947b65f4d09ca935afc515b71f1027ce7",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 19533.18163016,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 173
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 20803.113851,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 174
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 20803.113851,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 174
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 20803.113851,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 174
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 20803.113851,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 174
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 16743.08744229,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 174
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 20262.02525094,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 180
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 16531.9427141,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 182
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 21122.34092288,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 186
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 21122.34092288,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 186
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 16743.08744229,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 174
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 20262.02525094,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 180
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 16531.9427141,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 182
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 21207.10704447,
+        "maximumFall": 7020.85949437,
+        "executedMatches": 188
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 20230.82888937,
+        "maximumFall": 7997.13764947,
+        "executedMatches": 189
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 16743.08744229,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 174
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 20262.02525094,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 180
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 16531.9427141,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 182
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 21207.10704447,
+        "maximumFall": 7020.85949437,
+        "executedMatches": 188
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 18152.0156526,
+        "maximumFall": 8973.41580457,
+        "executedMatches": 189
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 16743.08744229,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 174
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 20262.02525094,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 180
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 16531.9427141,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 182
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 21207.10704447,
+        "maximumFall": 7020.85949437,
+        "executedMatches": 188
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 18152.0156526,
+        "maximumFall": 8973.41580457,
+        "executedMatches": 189
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 16743.08744229,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 174
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 20262.02525094,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 180
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 16531.9427141,
+        "maximumFall": 6793.12907111,
+        "executedMatches": 182
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 21207.10704447,
+        "maximumFall": 7020.85949437,
+        "executedMatches": 188
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 18152.0156526,
+        "maximumFall": 8973.41580457,
+        "executedMatches": 189
+      }
+    ]
+  },
+  {
+    "model": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + entry_price>=0.30 + hours_until_start in [0,120] at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "PRIMARY",
+    "eligibleForFinalSelection": true,
+    "stakePolicy": "FIXED_100",
+    "operationScenario": "NIGHT_ONLY",
+    "capacity": {
+      "maxOpenPositions": 36,
+      "maxOpenExposurePct": 0.8,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": true
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 36,
+        "maxOpenExposurePct": 0.8,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": true
+      },
+      "eligibleMatches": 49,
+      "executedMatches": 44,
+      "skippedPositions": 5,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 5,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 0,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 23,
+      "losses": 21,
+      "totalStaked": 4400,
+      "netPnl": 1125.5516213,
+      "roi": 25.58071867,
+      "endingActive": 11125.5516213,
+      "endingVault": 0,
+      "endingTotal": 11125.5516213,
+      "minimumTotal": 9800,
+      "maximumFallFromTotalPeak": 321.52765544,
+      "maximumFallFromActivePeak": 321.52765544,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 226.28419439,
+        "2026-06-20": 892.19316119,
+        "2026-06-19": 3.19144568,
+        "2026-07-05": 165.92582675,
+        "2026-07-07": 15.05376344,
+        "2026-07-09": -100,
+        "2026-07-10": -164.70588235,
+        "2026-06-21": 27.86885246,
+        "2026-06-22": -100,
+        "2026-07-11": 159.74025974
+      },
+      "transfers": [],
+      "executionLedgerHash": "b14b1838b854360d35aefef65ac3ea21626d42e3f9ef712a0d1ced7e86a7a89e",
+      "capitalCurveHash": "917abc5bcc99d3c57a291fe11be5accd80b7f798e8150851c491bfae56050886",
+      "risk": {
+        "p10EndingCapital": 10006.82763507,
+        "medianEndingCapital": 11020.49646083,
+        "p90EndingCapital": 12334.15193931,
+        "cvar95TerminalLoss": 370.23057096,
+        "cvar95MaximumFall": 609.29271625,
+        "probabilityBelowInitial": 0.0978
+      }
+    },
+    "selectionHash": "7f21c6e7d15a1b291072b995d03e17267adbb41985f7c5a7c751d121d0a356dc",
+    "executionLedgerHash": "b14b1838b854360d35aefef65ac3ea21626d42e3f9ef712a0d1ced7e86a7a89e",
+    "capitalCurveHash": "917abc5bcc99d3c57a291fe11be5accd80b7f798e8150851c491bfae56050886",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 2709.60556856,
+        "maximumFall": 976.96825849,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 2709.60556856,
+        "maximumFall": 976.96825849,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 2709.60556856,
+        "maximumFall": 976.96825849,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 2709.60556856,
+        "maximumFall": 976.96825849,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 2709.60556856,
+        "maximumFall": 976.96825849,
+        "executedMatches": 166
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 3048.3465738,
+        "maximumFall": 1083.1538255,
+        "executedMatches": 177
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 3048.3465738,
+        "maximumFall": 1083.1538255,
+        "executedMatches": 177
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 3048.3465738,
+        "maximumFall": 1083.1538255,
+        "executedMatches": 177
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 3048.3465738,
+        "maximumFall": 1083.1538255,
+        "executedMatches": 177
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 3048.3465738,
+        "maximumFall": 1083.1538255,
+        "executedMatches": 177
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 2908.08683354,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 181
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 2908.08683354,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 181
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 2908.08683354,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 181
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 2908.08683354,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 181
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 2908.08683354,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 181
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 2649.05068896,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 186
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 2649.05068896,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 186
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 2649.05068896,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 186
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 2649.05068896,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 186
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 2649.05068896,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 186
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 2579.35722453,
+        "maximumFall": 1314.56641912,
+        "executedMatches": 191
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 2579.35722453,
+        "maximumFall": 1314.56641912,
+        "executedMatches": 191
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 2579.35722453,
+        "maximumFall": 1314.56641912,
+        "executedMatches": 191
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 2579.35722453,
+        "maximumFall": 1314.56641912,
+        "executedMatches": 191
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 2579.35722453,
+        "maximumFall": 1314.56641912,
+        "executedMatches": 191
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 2799.74324623,
+        "maximumFall": 1163.37360572,
+        "executedMatches": 201
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 2799.74324623,
+        "maximumFall": 1163.37360572,
+        "executedMatches": 201
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 2799.74324623,
+        "maximumFall": 1163.37360572,
+        "executedMatches": 201
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 2799.74324623,
+        "maximumFall": 1163.37360572,
+        "executedMatches": 201
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 2799.74324623,
+        "maximumFall": 1163.37360572,
+        "executedMatches": 201
+      }
+    ]
+  },
+  {
+    "model": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + entry_price>=0.30 + hours_until_start in [0,120] at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "PRIMARY",
+    "eligibleForFinalSelection": false,
+    "stakePolicy": "DYNAMIC_ACTIVE_3PCT",
+    "operationScenario": "NIGHT_ONLY",
+    "capacity": {
+      "maxOpenPositions": 36,
+      "maxOpenExposurePct": 0.95,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": false
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 36,
+        "maxOpenExposurePct": 0.95,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": true,
+        "stakePolicy": "DYNAMIC_ACTIVE_3PCT"
+      },
+      "eligibleMatches": 49,
+      "executedMatches": 42,
+      "skippedPositions": 7,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 5,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 2,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 23,
+      "losses": 19,
+      "totalStaked": 12939.96000072,
+      "netPnl": 4021.83114991,
+      "roi": 31.08070774,
+      "endingActive": 14021.83114991,
+      "endingVault": 0,
+      "endingTotal": 14021.83114991,
+      "minimumTotal": 9400,
+      "maximumFallFromTotalPeak": 999.28835829,
+      "maximumFallFromActivePeak": 999.28835829,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 678.85258318,
+        "2026-06-20": 2676.57948357,
+        "2026-06-19": 9.57433705,
+        "2026-07-05": 524.11825475,
+        "2026-07-07": 49.91806543,
+        "2026-07-09": -333.09611943,
+        "2026-07-10": -548.62890259,
+        "2026-06-21": 383.60655738,
+        "2026-07-11": 580.90689057
+      },
+      "transfers": [],
+      "executionLedgerHash": "c2002436cc7db3f111aa8c864136ea7c10b2e99681b07f4d117c869f5f42504c",
+      "capitalCurveHash": "78c466d943b5395009be1a5db436836bf74a00982072c5ef17d063870b5b656d",
+      "risk": {
+        "p10EndingCapital": 10701.17070589,
+        "medianEndingCapital": 13743.25098744,
+        "p90EndingCapital": 17582.13042402,
+        "cvar95TerminalLoss": 548.37739978,
+        "cvar95MaximumFall": 1673.4074288,
+        "probabilityBelowInitial": 0.04435
+      }
+    },
+    "selectionHash": "27ce7d84a980ae3ae02fc265457b92e6179ee27f6090500e269db269de506ed7",
+    "executionLedgerHash": "c2002436cc7db3f111aa8c864136ea7c10b2e99681b07f4d117c869f5f42504c",
+    "capitalCurveHash": "78c466d943b5395009be1a5db436836bf74a00982072c5ef17d063870b5b656d",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 11696.71731864,
+        "maximumFall": 6903.34890178,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 11833.4854277,
+        "maximumFall": 6195.13758995,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 11833.4854277,
+        "maximumFall": 6195.13758995,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 11833.4854277,
+        "maximumFall": 6195.13758995,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 11833.4854277,
+        "maximumFall": 6195.13758995,
+        "executedMatches": 166
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 12239.28133642,
+        "maximumFall": 7063.59827183,
+        "executedMatches": 166
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 10847.17124447,
+        "maximumFall": 7653.13412579,
+        "executedMatches": 168
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 12509.71238487,
+        "maximumFall": 8861.84726584,
+        "executedMatches": 175
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 14332.98037485,
+        "maximumFall": 7165.87823018,
+        "executedMatches": 177
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 14332.98037485,
+        "maximumFall": 7165.87823018,
+        "executedMatches": 177
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 12239.28133642,
+        "maximumFall": 7063.59827183,
+        "executedMatches": 166
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 10847.17124447,
+        "maximumFall": 7653.13412579,
+        "executedMatches": 168
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 12509.71238487,
+        "maximumFall": 8861.84726584,
+        "executedMatches": 175
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 12478.42388453,
+        "maximumFall": 8893.13576618,
+        "executedMatches": 177
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 12994.35795372,
+        "maximumFall": 8861.84726584,
+        "executedMatches": 179
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 12239.28133642,
+        "maximumFall": 7063.59827183,
+        "executedMatches": 166
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 10847.17124447,
+        "maximumFall": 7653.13412579,
+        "executedMatches": 168
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 12509.71238487,
+        "maximumFall": 8861.84726584,
+        "executedMatches": 175
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 12478.42388453,
+        "maximumFall": 8893.13576618,
+        "executedMatches": 177
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 12994.35795372,
+        "maximumFall": 8861.84726584,
+        "executedMatches": 179
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 12239.28133642,
+        "maximumFall": 7063.59827183,
+        "executedMatches": 166
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 10847.17124447,
+        "maximumFall": 7653.13412579,
+        "executedMatches": 168
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 12509.71238487,
+        "maximumFall": 8861.84726584,
+        "executedMatches": 175
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 12478.42388453,
+        "maximumFall": 8893.13576618,
+        "executedMatches": 177
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 12994.35795372,
+        "maximumFall": 8861.84726584,
+        "executedMatches": 179
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 12239.28133642,
+        "maximumFall": 7063.59827183,
+        "executedMatches": 166
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 10847.17124447,
+        "maximumFall": 7653.13412579,
+        "executedMatches": 168
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 12509.71238487,
+        "maximumFall": 8861.84726584,
+        "executedMatches": 175
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 12478.42388453,
+        "maximumFall": 8893.13576618,
+        "executedMatches": 177
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 12994.35795372,
+        "maximumFall": 8861.84726584,
+        "executedMatches": 179
+      }
+    ]
+  },
+  {
+    "model": "B2_TIMING_WITHIN_120M",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + hours_until_start in [0,120] at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": true,
+    "stakePolicy": "FIXED_100",
+    "operationScenario": "24X7",
+    "capacity": {
+      "maxOpenPositions": 40,
+      "maxOpenExposurePct": 0.8,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": true
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 40,
+        "maxOpenExposurePct": 0.8,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": false
+      },
+      "eligibleMatches": 50,
+      "executedMatches": 50,
+      "skippedPositions": 0,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 0,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 0,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 26,
+      "losses": 24,
+      "totalStaked": 5000,
+      "netPnl": 1296.97973994,
+      "roi": 25.9395948,
+      "endingActive": 11296.97973994,
+      "endingVault": 0,
+      "endingTotal": 11296.97973994,
+      "minimumTotal": 9800,
+      "maximumFallFromTotalPeak": 321.52765544,
+      "maximumFallFromActivePeak": 321.52765544,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 126.28419439,
+        "2026-06-20": 1031.17621204,
+        "2026-06-19": 235.63651347,
+        "2026-07-05": 165.92582675,
+        "2026-07-06": -100,
+        "2026-07-07": 15.05376344,
+        "2026-07-09": -100,
+        "2026-07-10": -164.70588235,
+        "2026-06-21": 27.86885246,
+        "2026-06-22": -100,
+        "2026-07-11": 159.74025974
+      },
+      "transfers": [],
+      "executionLedgerHash": "0696f86c2e6661b69757a9acab0d882a0fa7fd1e7e2e2d1c4d74bc592eab6fae",
+      "capitalCurveHash": "f39ae50c6e41a80baae1fa99ce5bb2e7d2f9469216b2a039ed5a5606fedc9dd5",
+      "risk": {
+        "p10EndingCapital": 10027.74655361,
+        "medianEndingCapital": 11175.29645449,
+        "p90EndingCapital": 12672.96531407,
+        "cvar95TerminalLoss": 411.19417274,
+        "cvar95MaximumFall": 676.34351398,
+        "probabilityBelowInitial": 0.0923
+      }
+    },
+    "selectionHash": "0ce55f6f70f4b71f4b2ac5f53bdcb8070de0d50d44a13e8a812293fc344a1414",
+    "executionLedgerHash": "0696f86c2e6661b69757a9acab0d882a0fa7fd1e7e2e2d1c4d74bc592eab6fae",
+    "capitalCurveHash": "f39ae50c6e41a80baae1fa99ce5bb2e7d2f9469216b2a039ed5a5606fedc9dd5",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 3789.99038729,
+        "maximumFall": 943.15045193,
+        "executedMatches": 173
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 3789.99038729,
+        "maximumFall": 943.15045193,
+        "executedMatches": 173
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 3789.99038729,
+        "maximumFall": 943.15045193,
+        "executedMatches": 173
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 3789.99038729,
+        "maximumFall": 943.15045193,
+        "executedMatches": 173
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 3789.99038729,
+        "maximumFall": 943.15045193,
+        "executedMatches": 173
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 3979.5472845,
+        "maximumFall": 943.15045193,
+        "executedMatches": 188
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 3979.5472845,
+        "maximumFall": 943.15045193,
+        "executedMatches": 188
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 3979.5472845,
+        "maximumFall": 943.15045193,
+        "executedMatches": 188
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 3979.5472845,
+        "maximumFall": 943.15045193,
+        "executedMatches": 188
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 3979.5472845,
+        "maximumFall": 943.15045193,
+        "executedMatches": 188
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 4339.58296693,
+        "maximumFall": 943.15045193,
+        "executedMatches": 192
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 4339.58296693,
+        "maximumFall": 943.15045193,
+        "executedMatches": 192
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 4339.58296693,
+        "maximumFall": 943.15045193,
+        "executedMatches": 192
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 4339.58296693,
+        "maximumFall": 943.15045193,
+        "executedMatches": 192
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 4339.58296693,
+        "maximumFall": 943.15045193,
+        "executedMatches": 192
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 4080.54682235,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 197
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 4080.54682235,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 197
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 4080.54682235,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 197
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 4080.54682235,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 197
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 4080.54682235,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 197
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 3840.28708209,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 202
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 3840.28708209,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 202
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 3840.28708209,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 202
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 3840.28708209,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 202
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 3840.28708209,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 202
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 3764.72203004,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 212
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 3764.72203004,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 212
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 3764.72203004,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 212
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 3764.72203004,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 212
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 3764.72203004,
+        "maximumFall": 1048.75447872,
+        "executedMatches": 212
+      }
+    ]
+  },
+  {
+    "model": "B2_TIMING_WITHIN_120M",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + hours_until_start in [0,120] at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": false,
+    "stakePolicy": "DYNAMIC_ACTIVE_3PCT",
+    "operationScenario": "24X7",
+    "capacity": {
+      "maxOpenPositions": 40,
+      "maxOpenExposurePct": 1,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": false
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 40,
+        "maxOpenExposurePct": 1,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": false,
+        "stakePolicy": "DYNAMIC_ACTIVE_3PCT"
+      },
+      "eligibleMatches": 50,
+      "executedMatches": 45,
+      "skippedPositions": 5,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 0,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 5,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 25,
+      "losses": 20,
+      "totalStaked": 13826.75085678,
+      "netPnl": 4412.06568302,
+      "roi": 31.90963465,
+      "endingActive": 14412.06568302,
+      "endingVault": 0,
+      "endingTotal": 14412.06568302,
+      "minimumTotal": 9400,
+      "maximumFallFromTotalPeak": 1004.58297024,
+      "maximumFallFromActivePeak": 1004.58297024,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 378.85258318,
+        "2026-06-20": 3393.52863611,
+        "2026-06-19": 706.90954041,
+        "2026-07-05": 509.18493034,
+        "2026-07-06": -322.15057774,
+        "2026-07-07": 48.4957859,
+        "2026-07-09": -334.86099008,
+        "2026-07-10": -551.53574837,
+        "2026-07-11": 583.64152327
+      },
+      "transfers": [],
+      "executionLedgerHash": "4948da6af04c1cd8a419410dafe353ab13b61f2b11244fed99b1aa4177b0fde9",
+      "capitalCurveHash": "f458057690b1dc3f22fde55a6ffccaf1673595c05b875abb0bf8811bf223c205",
+      "risk": {
+        "p10EndingCapital": 10329.86491853,
+        "medianEndingCapital": 14035.02657666,
+        "p90EndingCapital": 18857.84848113,
+        "cvar95TerminalLoss": 1055.78615408,
+        "cvar95MaximumFall": 1981.21868674,
+        "probabilityBelowInitial": 0.07495
+      }
+    },
+    "selectionHash": "6355739af6d5485f306aef6785758766a4ff460293bbf9d00cb130d099ea720e",
+    "executionLedgerHash": "4948da6af04c1cd8a419410dafe353ab13b61f2b11244fed99b1aa4177b0fde9",
+    "capitalCurveHash": "f458057690b1dc3f22fde55a6ffccaf1673595c05b875abb0bf8811bf223c205",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 21223.43817003,
+        "maximumFall": 7169.97672728,
+        "executedMatches": 174
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 18314.3394323,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 173
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 18314.3394323,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 173
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 18314.3394323,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 173
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 18314.3394323,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 173
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 18278.41367244,
+        "maximumFall": 7169.97672728,
+        "executedMatches": 175
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 16617.44726216,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 177
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 20221.91472926,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 183
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 18361.25182086,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 185
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 20115.72172853,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 188
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 18278.41367244,
+        "maximumFall": 7169.97672728,
+        "executedMatches": 175
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 16617.44726216,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 177
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 18147.24733244,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 183
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 16401.16404996,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 185
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 24579.19374115,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 191
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 18278.41367244,
+        "maximumFall": 7169.97672728,
+        "executedMatches": 175
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 16617.44726216,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 177
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 18147.24733244,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 183
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 16401.16404996,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 185
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 22449.65604463,
+        "maximumFall": 8004.14542521,
+        "executedMatches": 191
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 18278.41367244,
+        "maximumFall": 7169.97672728,
+        "executedMatches": 175
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 16617.44726216,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 177
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 18147.24733244,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 183
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 16401.16404996,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 185
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 22449.65604463,
+        "maximumFall": 8004.14542521,
+        "executedMatches": 191
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 18278.41367244,
+        "maximumFall": 7169.97672728,
+        "executedMatches": 175
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 16617.44726216,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 177
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 18147.24733244,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 183
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 16401.16404996,
+        "maximumFall": 7988.80995174,
+        "executedMatches": 185
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 22449.65604463,
+        "maximumFall": 8004.14542521,
+        "executedMatches": 191
+      }
+    ]
+  },
+  {
+    "model": "B2_TIMING_WITHIN_120M",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + hours_until_start in [0,120] at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": true,
+    "stakePolicy": "FIXED_100",
+    "operationScenario": "NIGHT_ONLY",
+    "capacity": {
+      "maxOpenPositions": 36,
+      "maxOpenExposurePct": 0.8,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": true
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 36,
+        "maxOpenExposurePct": 0.8,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": true
+      },
+      "eligibleMatches": 50,
+      "executedMatches": 45,
+      "skippedPositions": 5,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 5,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 0,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 24,
+      "losses": 21,
+      "totalStaked": 4500,
+      "netPnl": 1364.53467215,
+      "roi": 30.32299271,
+      "endingActive": 11364.53467215,
+      "endingVault": 0,
+      "endingTotal": 11364.53467215,
+      "minimumTotal": 9800,
+      "maximumFallFromTotalPeak": 321.52765544,
+      "maximumFallFromActivePeak": 321.52765544,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 226.28419439,
+        "2026-06-20": 1131.17621204,
+        "2026-06-19": 3.19144568,
+        "2026-07-05": 165.92582675,
+        "2026-07-07": 15.05376344,
+        "2026-07-09": -100,
+        "2026-07-10": -164.70588235,
+        "2026-06-21": 27.86885246,
+        "2026-06-22": -100,
+        "2026-07-11": 159.74025974
+      },
+      "transfers": [],
+      "executionLedgerHash": "1a3027409fa6983ac603c09d16723012433f4b1e75f20585dc201cd88aed57a7",
+      "capitalCurveHash": "5ab3e72559607c78f8038c17e93cf58e5f0a834039ecf1c29b06862d9558234d",
+      "risk": {
+        "p10EndingCapital": 10008.51719696,
+        "medianEndingCapital": 11239.47042216,
+        "p90EndingCapital": 12829.43570973,
+        "cvar95TerminalLoss": 370.196287,
+        "cvar95MaximumFall": 609.29271625,
+        "probabilityBelowInitial": 0.09745
+      }
+    },
+    "selectionHash": "08b8b329b41d4727dbf88f76e9517c142c28e69fcd5764de9d9b9a757b56fa2f",
+    "executionLedgerHash": "1a3027409fa6983ac603c09d16723012433f4b1e75f20585dc201cd88aed57a7",
+    "capitalCurveHash": "5ab3e72559607c78f8038c17e93cf58e5f0a834039ecf1c29b06862d9558234d",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 2709.60556856,
+        "maximumFall": 976.96825849,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 2709.60556856,
+        "maximumFall": 976.96825849,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 2709.60556856,
+        "maximumFall": 976.96825849,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 2709.60556856,
+        "maximumFall": 976.96825849,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 2709.60556856,
+        "maximumFall": 976.96825849,
+        "executedMatches": 166
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 3076.80330886,
+        "maximumFall": 1083.1538255,
+        "executedMatches": 178
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 3076.80330886,
+        "maximumFall": 1083.1538255,
+        "executedMatches": 178
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 3076.80330886,
+        "maximumFall": 1083.1538255,
+        "executedMatches": 178
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 3076.80330886,
+        "maximumFall": 1083.1538255,
+        "executedMatches": 178
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 3076.80330886,
+        "maximumFall": 1083.1538255,
+        "executedMatches": 178
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 2887.32962465,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 182
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 2887.32962465,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 182
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 2887.32962465,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 182
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 2887.32962465,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 182
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 2887.32962465,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 182
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 2647.06988439,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 187
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 2647.06988439,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 187
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 2647.06988439,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 187
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 2647.06988439,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 187
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 2647.06988439,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 187
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 2818.34027538,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 192
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 2818.34027538,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 192
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 2818.34027538,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 192
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 2818.34027538,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 192
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 2818.34027538,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 192
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 2818.9460773,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 202
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 2818.9460773,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 202
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 2818.9460773,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 202
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 2818.9460773,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 202
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 2818.9460773,
+        "maximumFall": 1283.1538255,
+        "executedMatches": 202
+      }
+    ]
+  },
+  {
+    "model": "B2_TIMING_WITHIN_120M",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + hours_until_start in [0,120] at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": false,
+    "stakePolicy": "DYNAMIC_ACTIVE_3PCT",
+    "operationScenario": "NIGHT_ONLY",
+    "capacity": {
+      "maxOpenPositions": 36,
+      "maxOpenExposurePct": 0.95,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": false
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 36,
+        "maxOpenExposurePct": 0.95,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": true,
+        "stakePolicy": "DYNAMIC_ACTIVE_3PCT"
+      },
+      "eligibleMatches": 50,
+      "executedMatches": 42,
+      "skippedPositions": 8,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 5,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 3,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 24,
+      "losses": 18,
+      "totalStaked": 12939.96000072,
+      "netPnl": 5038.78030245,
+      "roi": 38.93968994,
+      "endingActive": 15038.78030245,
+      "endingVault": 0,
+      "endingTotal": 15038.78030245,
+      "minimumTotal": 9400,
+      "maximumFallFromTotalPeak": 999.28835829,
+      "maximumFallFromActivePeak": 999.28835829,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 678.85258318,
+        "2026-06-20": 3393.52863611,
+        "2026-06-19": 9.57433705,
+        "2026-07-05": 524.11825475,
+        "2026-07-07": 49.91806543,
+        "2026-07-09": -333.09611943,
+        "2026-07-10": -548.62890259,
+        "2026-06-21": 683.60655738,
+        "2026-07-11": 580.90689057
+      },
+      "transfers": [],
+      "executionLedgerHash": "b46fa52c00183e73d2d2b2991df095bf6b59aa603f3b9aaaccd73f01cf542385",
+      "capitalCurveHash": "556e13b6976bdaf674daf34332c3f2b7aca48d6e0a97b05a2e449bac2e50cfb3",
+      "risk": {
+        "p10EndingCapital": 10993.74622506,
+        "medianEndingCapital": 14687.73450629,
+        "p90EndingCapital": 19392.22297955,
+        "cvar95TerminalLoss": 427.08868816,
+        "cvar95MaximumFall": 1660.14346397,
+        "probabilityBelowInitial": 0.0333
+      }
+    },
+    "selectionHash": "095ca7e4409276241ab69a6f936329e715bd69262eed8c9a5b7b4fabaf17b8ab",
+    "executionLedgerHash": "b46fa52c00183e73d2d2b2991df095bf6b59aa603f3b9aaaccd73f01cf542385",
+    "capitalCurveHash": "556e13b6976bdaf674daf34332c3f2b7aca48d6e0a97b05a2e449bac2e50cfb3",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 11544.33315412,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 164
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 11843.05408388,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 11907.29785808,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 11907.29785808,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 166
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 11907.29785808,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 166
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 12082.33376625,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 164
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 10860.0538963,
+        "maximumFall": 7544.75338582,
+        "executedMatches": 168
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 12390.62661482,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 172
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 14802.05155178,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 178
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 14802.05155178,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 178
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 12082.33376625,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 164
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 10860.0538963,
+        "maximumFall": 7544.75338582,
+        "executedMatches": 168
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 12390.62661482,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 172
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 14766.85923295,
+        "maximumFall": 7613.56910325,
+        "executedMatches": 178
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 13092.53854869,
+        "maximumFall": 8450.72944538,
+        "executedMatches": 180
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 12082.33376625,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 164
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 10860.0538963,
+        "maximumFall": 7544.75338582,
+        "executedMatches": 168
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 12390.62661482,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 172
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 14766.85923295,
+        "maximumFall": 7613.56910325,
+        "executedMatches": 178
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 13092.53854869,
+        "maximumFall": 8450.72944538,
+        "executedMatches": 180
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 12082.33376625,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 164
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 10860.0538963,
+        "maximumFall": 7544.75338582,
+        "executedMatches": 168
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 12390.62661482,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 172
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 14766.85923295,
+        "maximumFall": 7613.56910325,
+        "executedMatches": 178
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 13092.53854869,
+        "maximumFall": 8450.72944538,
+        "executedMatches": 180
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 12082.33376625,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 164
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 10860.0538963,
+        "maximumFall": 7544.75338582,
+        "executedMatches": 168
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 12390.62661482,
+        "maximumFall": 6885.8519482,
+        "executedMatches": 172
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 14766.85923295,
+        "maximumFall": 7613.56910325,
+        "executedMatches": 178
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 13092.53854869,
+        "maximumFall": 8450.72944538,
+        "executedMatches": 180
+      }
+    ]
+  },
+  {
+    "model": "B2_PRICE_FLOOR_030",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + entry_price>=0.30 at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": false,
+    "stakePolicy": "FIXED_100",
+    "operationScenario": "24X7",
+    "capacity": {
+      "maxOpenPositions": 30,
+      "maxOpenExposurePct": 0.8,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": true
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 30,
+        "maxOpenExposurePct": 0.8,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": false
+      },
+      "eligibleMatches": 60,
+      "executedMatches": 44,
+      "skippedPositions": 16,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 0,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 16,
+        "EXPOSURE_LIMIT": 0,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 21,
+      "losses": 23,
+      "totalStaked": 4400,
+      "netPnl": 398.25485559,
+      "roi": 9.05124672,
+      "endingActive": 10398.25485559,
+      "endingVault": 0,
+      "endingTotal": 10398.25485559,
+      "minimumTotal": 9760.3803082,
+      "maximumFallFromTotalPeak": 486.28223853,
+      "maximumFallFromActivePeak": 486.28223853,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 46.66254673,
+        "2026-06-19": 246.16282926,
+        "2026-06-20": 329.41551202,
+        "2026-07-05": 65.92582675,
+        "2026-07-06": -100,
+        "2026-07-07": 15.05376344,
+        "2026-07-09": -100,
+        "2026-07-10": -264.70588235,
+        "2026-07-11": 159.74025974
+      },
+      "transfers": [],
+      "executionLedgerHash": "812867e3b65b93821a2f87168fa89b8287f047e61325a918bb82fe005378881d",
+      "capitalCurveHash": "a88f6f68ff5b0459ccc5838b436e94ff610e61dbd4e98214dca3c537e5c3a50e",
+      "risk": {
+        "p10EndingCapital": 9718.18824842,
+        "medianEndingCapital": 10394.52932635,
+        "p90EndingCapital": 11068.10772091,
+        "cvar95TerminalLoss": 686.81638588,
+        "cvar95MaximumFall": 884.63893368,
+        "probabilityBelowInitial": 0.22975
+      }
+    },
+    "selectionHash": "ad620fceffc0b2de753d3263a54ae04b22bfb9dd9e8e0de1918d354278217473",
+    "executionLedgerHash": "812867e3b65b93821a2f87168fa89b8287f047e61325a918bb82fe005378881d",
+    "capitalCurveHash": "a88f6f68ff5b0459ccc5838b436e94ff610e61dbd4e98214dca3c537e5c3a50e",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 2430.33049135,
+        "maximumFall": 1328.25221021,
+        "executedMatches": 158
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 2430.33049135,
+        "maximumFall": 1328.25221021,
+        "executedMatches": 158
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 2430.33049135,
+        "maximumFall": 1328.25221021,
+        "executedMatches": 158
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 2430.33049135,
+        "maximumFall": 1328.25221021,
+        "executedMatches": 158
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 2430.33049135,
+        "maximumFall": 1328.25221021,
+        "executedMatches": 158
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 2398.50457632,
+        "maximumFall": 1360.07812524,
+        "executedMatches": 172
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 2398.50457632,
+        "maximumFall": 1360.07812524,
+        "executedMatches": 172
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 2398.50457632,
+        "maximumFall": 1360.07812524,
+        "executedMatches": 172
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 2398.50457632,
+        "maximumFall": 1360.07812524,
+        "executedMatches": 172
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 2398.50457632,
+        "maximumFall": 1360.07812524,
+        "executedMatches": 172
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 2008.85811167,
+        "maximumFall": 1758.05792322,
+        "executedMatches": 180
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 2008.85811167,
+        "maximumFall": 1758.05792322,
+        "executedMatches": 180
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 2008.85811167,
+        "maximumFall": 1758.05792322,
+        "executedMatches": 180
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 2008.85811167,
+        "maximumFall": 1758.05792322,
+        "executedMatches": 180
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 2008.85811167,
+        "maximumFall": 1758.05792322,
+        "executedMatches": 180
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 1983.75768073,
+        "maximumFall": 1794.60524061,
+        "executedMatches": 189
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 1983.75768073,
+        "maximumFall": 1794.60524061,
+        "executedMatches": 189
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 1983.75768073,
+        "maximumFall": 1794.60524061,
+        "executedMatches": 189
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 1983.75768073,
+        "maximumFall": 1794.60524061,
+        "executedMatches": 189
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 1983.75768073,
+        "maximumFall": 1794.60524061,
+        "executedMatches": 189
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 1726.21443958,
+        "maximumFall": 1868.38071627,
+        "executedMatches": 203
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 1726.21443958,
+        "maximumFall": 1868.38071627,
+        "executedMatches": 203
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 1726.21443958,
+        "maximumFall": 1868.38071627,
+        "executedMatches": 203
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 1726.21443958,
+        "maximumFall": 1868.38071627,
+        "executedMatches": 203
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 1726.21443958,
+        "maximumFall": 1868.38071627,
+        "executedMatches": 203
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 1945.30784661,
+        "maximumFall": 2109.16442432,
+        "executedMatches": 215
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 1945.30784661,
+        "maximumFall": 2109.16442432,
+        "executedMatches": 215
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 1945.30784661,
+        "maximumFall": 2109.16442432,
+        "executedMatches": 215
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 1945.30784661,
+        "maximumFall": 2109.16442432,
+        "executedMatches": 215
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 1945.30784661,
+        "maximumFall": 2109.16442432,
+        "executedMatches": 215
+      }
+    ]
+  },
+  {
+    "model": "B2_PRICE_FLOOR_030",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + entry_price>=0.30 at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": false,
+    "stakePolicy": "DYNAMIC_ACTIVE_3PCT",
+    "operationScenario": "24X7",
+    "capacity": {
+      "maxOpenPositions": 30,
+      "maxOpenExposurePct": 0.85,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": false
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 30,
+        "maxOpenExposurePct": 0.85,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": false,
+        "stakePolicy": "DYNAMIC_ACTIVE_3PCT"
+      },
+      "eligibleMatches": 60,
+      "executedMatches": 42,
+      "skippedPositions": 18,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 0,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 18,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 19,
+      "losses": 23,
+      "totalStaked": 12702.53652447,
+      "netPnl": 231.85986944,
+      "roi": 1.8253037,
+      "endingActive": 10231.85986944,
+      "endingVault": 0,
+      "endingTotal": 10231.85986944,
+      "minimumTotal": 9288.27246915,
+      "maximumFallFromTotalPeak": 1451.71517106,
+      "maximumFallFromActivePeak": 1451.71517106,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 139.98764021,
+        "2026-06-19": 738.48848778,
+        "2026-06-20": 59.34065934,
+        "2026-07-05": 195.42671541,
+        "2026-07-06": -302.2970292,
+        "2026-07-07": 45.50707966,
+        "2026-07-09": -315.51338682,
+        "2026-07-10": -835.18249452,
+        "2026-07-11": 506.10219758
+      },
+      "transfers": [],
+      "executionLedgerHash": "b31b3fc745369f7da4ad2adaf0ce6294cf6788150b8f402048cf4bf65388b139",
+      "capitalCurveHash": "c6bd5f4bb1e7b02b5cc37c1f4e8878ec917053455011fc48154d041de47665c5",
+      "risk": {
+        "p10EndingCapital": 8510.28836252,
+        "medianEndingCapital": 10258.89932342,
+        "p90EndingCapital": 11922.33316107,
+        "cvar95TerminalLoss": 2572.58728072,
+        "cvar95MaximumFall": 2929.09911217,
+        "probabilityBelowInitial": 0.425
+      }
+    },
+    "selectionHash": "95c4e54df6b371008a4328c981ac2602f60adfa84d6f09a29db3667421fee383",
+    "executionLedgerHash": "b31b3fc745369f7da4ad2adaf0ce6294cf6788150b8f402048cf4bf65388b139",
+    "capitalCurveHash": "c6bd5f4bb1e7b02b5cc37c1f4e8878ec917053455011fc48154d041de47665c5",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 8978.60696568,
+        "maximumFall": 8554.77680054,
+        "executedMatches": 143
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 10488.70019183,
+        "maximumFall": 8114.15112156,
+        "executedMatches": 152
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 9171.85722885,
+        "maximumFall": 9370.30699694,
+        "executedMatches": 154
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 9258.79842516,
+        "maximumFall": 9370.30699694,
+        "executedMatches": 156
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 8681.26047826,
+        "maximumFall": 9370.30699694,
+        "executedMatches": 157
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 8978.60696568,
+        "maximumFall": 8554.77680054,
+        "executedMatches": 143
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 8916.11227932,
+        "maximumFall": 7939.49515622,
+        "executedMatches": 152
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 8954.92843953,
+        "maximumFall": 8638.43306727,
+        "executedMatches": 154
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 9671.97393411,
+        "maximumFall": 8991.21525688,
+        "executedMatches": 165
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 6316.96123726,
+        "maximumFall": 11605.21034699,
+        "executedMatches": 168
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 8978.60696568,
+        "maximumFall": 8554.77680054,
+        "executedMatches": 143
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 8916.11227932,
+        "maximumFall": 7939.49515622,
+        "executedMatches": 152
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 8954.92843953,
+        "maximumFall": 8638.43306727,
+        "executedMatches": 154
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 7100.4210642,
+        "maximumFall": 10473.7475164,
+        "executedMatches": 166
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 4349.63516962,
+        "maximumFall": 12505.97226592,
+        "executedMatches": 161
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 8978.60696568,
+        "maximumFall": 8554.77680054,
+        "executedMatches": 143
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 8916.11227932,
+        "maximumFall": 7939.49515622,
+        "executedMatches": 152
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 8954.92843953,
+        "maximumFall": 8638.43306727,
+        "executedMatches": 154
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 7100.4210642,
+        "maximumFall": 10473.7475164,
+        "executedMatches": 166
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 4349.63516962,
+        "maximumFall": 12505.97226592,
+        "executedMatches": 161
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 8978.60696568,
+        "maximumFall": 8554.77680054,
+        "executedMatches": 143
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 8916.11227932,
+        "maximumFall": 7939.49515622,
+        "executedMatches": 152
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 8954.92843953,
+        "maximumFall": 8638.43306727,
+        "executedMatches": 154
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 7100.4210642,
+        "maximumFall": 10473.7475164,
+        "executedMatches": 166
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 4349.63516962,
+        "maximumFall": 12505.97226592,
+        "executedMatches": 161
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 8978.60696568,
+        "maximumFall": 8554.77680054,
+        "executedMatches": 143
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 8916.11227932,
+        "maximumFall": 7939.49515622,
+        "executedMatches": 152
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 8954.92843953,
+        "maximumFall": 8638.43306727,
+        "executedMatches": 154
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 7100.4210642,
+        "maximumFall": 10473.7475164,
+        "executedMatches": 166
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 4349.63516962,
+        "maximumFall": 12505.97226592,
+        "executedMatches": 161
+      }
+    ]
+  },
+  {
+    "model": "B2_PRICE_FLOOR_030",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + entry_price>=0.30 at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": false,
+    "stakePolicy": "FIXED_100",
+    "operationScenario": "NIGHT_ONLY",
+    "capacity": {
+      "maxOpenPositions": 30,
+      "maxOpenExposurePct": 0.8,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": true
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 30,
+        "maxOpenExposurePct": 0.8,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": true
+      },
+      "eligibleMatches": 60,
+      "executedMatches": 42,
+      "skippedPositions": 18,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 6,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 12,
+        "EXPOSURE_LIMIT": 0,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 21,
+      "losses": 21,
+      "totalStaked": 4200,
+      "netPnl": 703.05032504,
+      "roi": 16.73929345,
+      "endingActive": 10703.05032504,
+      "endingVault": 0,
+      "endingTotal": 10703.05032504,
+      "minimumTotal": 9760.3803082,
+      "maximumFallFromTotalPeak": 586.28223853,
+      "maximumFallFromActivePeak": 586.28223853,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 146.66254673,
+        "2026-06-20": 566.65604926,
+        "2026-06-19": 13.71776147,
+        "2026-07-05": 65.92582675,
+        "2026-07-07": 15.05376344,
+        "2026-07-09": -100,
+        "2026-07-10": -164.70588235,
+        "2026-07-11": 159.74025974
+      },
+      "transfers": [],
+      "executionLedgerHash": "2de38b230c192aa82ebf7aaba873f751544dc592155fc26ef97f86a233973ed9",
+      "capitalCurveHash": "16af31aaadcedde594451495687d1a0de1581ca69f07cb27f1ac20d08e3677b2",
+      "risk": {
+        "p10EndingCapital": 9957.97063196,
+        "medianEndingCapital": 10645.05361823,
+        "p90EndingCapital": 11508.99966585,
+        "cvar95TerminalLoss": 346.61825464,
+        "cvar95MaximumFall": 537.36064513,
+        "probabilityBelowInitial": 0.116
+      }
+    },
+    "selectionHash": "c04f05b090272687115adbeab9d0e70ce84912dd7a2f0ac5dae4a1689b913565",
+    "executionLedgerHash": "2de38b230c192aa82ebf7aaba873f751544dc592155fc26ef97f86a233973ed9",
+    "capitalCurveHash": "16af31aaadcedde594451495687d1a0de1581ca69f07cb27f1ac20d08e3677b2",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 2179.3196476,
+        "maximumFall": 1141.22556746,
+        "executedMatches": 151
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 2179.3196476,
+        "maximumFall": 1141.22556746,
+        "executedMatches": 151
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 2179.3196476,
+        "maximumFall": 1141.22556746,
+        "executedMatches": 151
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 2179.3196476,
+        "maximumFall": 1141.22556746,
+        "executedMatches": 151
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 2179.3196476,
+        "maximumFall": 1141.22556746,
+        "executedMatches": 151
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 1018.65416929,
+        "maximumFall": 2129.32831421,
+        "executedMatches": 169
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 1018.65416929,
+        "maximumFall": 2129.32831421,
+        "executedMatches": 169
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 1018.65416929,
+        "maximumFall": 2129.32831421,
+        "executedMatches": 169
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 1018.65416929,
+        "maximumFall": 2129.32831421,
+        "executedMatches": 169
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 1018.65416929,
+        "maximumFall": 2129.32831421,
+        "executedMatches": 169
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 765.80359172,
+        "maximumFall": 2345.32470654,
+        "executedMatches": 176
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 765.80359172,
+        "maximumFall": 2345.32470654,
+        "executedMatches": 176
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 765.80359172,
+        "maximumFall": 2345.32470654,
+        "executedMatches": 176
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 765.80359172,
+        "maximumFall": 2345.32470654,
+        "executedMatches": 176
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 765.80359172,
+        "maximumFall": 2345.32470654,
+        "executedMatches": 176
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 848.986636,
+        "maximumFall": 2278.66578633,
+        "executedMatches": 187
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 848.986636,
+        "maximumFall": 2278.66578633,
+        "executedMatches": 187
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 848.986636,
+        "maximumFall": 2278.66578633,
+        "executedMatches": 187
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 848.986636,
+        "maximumFall": 2278.66578633,
+        "executedMatches": 187
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 848.986636,
+        "maximumFall": 2278.66578633,
+        "executedMatches": 187
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 1075.86358639,
+        "maximumFall": 2237.70193091,
+        "executedMatches": 194
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 1075.86358639,
+        "maximumFall": 2237.70193091,
+        "executedMatches": 194
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 1075.86358639,
+        "maximumFall": 2237.70193091,
+        "executedMatches": 194
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 1075.86358639,
+        "maximumFall": 2237.70193091,
+        "executedMatches": 194
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 1075.86358639,
+        "maximumFall": 2237.70193091,
+        "executedMatches": 194
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 496.91621797,
+        "maximumFall": 2614.21208029,
+        "executedMatches": 204
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 496.91621797,
+        "maximumFall": 2614.21208029,
+        "executedMatches": 204
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 496.91621797,
+        "maximumFall": 2614.21208029,
+        "executedMatches": 204
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 496.91621797,
+        "maximumFall": 2614.21208029,
+        "executedMatches": 204
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 496.91621797,
+        "maximumFall": 2614.21208029,
+        "executedMatches": 204
+      }
+    ]
+  },
+  {
+    "model": "B2_PRICE_FLOOR_030",
+    "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + entry_price>=0.30 at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": false,
+    "stakePolicy": "DYNAMIC_ACTIVE_3PCT",
+    "operationScenario": "NIGHT_ONLY",
+    "capacity": {
+      "maxOpenPositions": 30,
+      "maxOpenExposurePct": 0.85,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": false
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 30,
+        "maxOpenExposurePct": 0.85,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": true,
+        "stakePolicy": "DYNAMIC_ACTIVE_3PCT"
+      },
+      "eligibleMatches": 60,
+      "executedMatches": 40,
+      "skippedPositions": 20,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 6,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 14,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 19,
+      "losses": 21,
+      "totalStaked": 12041.84194774,
+      "netPnl": 1138.76361854,
+      "roi": 9.45672285,
+      "endingActive": 11138.76361854,
+      "endingVault": 0,
+      "endingTotal": 11138.76361854,
+      "minimumTotal": 9288.27246915,
+      "maximumFallFromTotalPeak": 1751.71517106,
+      "maximumFallFromActivePeak": 1751.71517106,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-18": 439.98764021,
+        "2026-06-20": 688.24653607,
+        "2026-06-19": 41.15328442,
+        "2026-07-05": 195.42671541,
+        "2026-07-07": 45.50707966,
+        "2026-07-09": -303.66224159,
+        "2026-07-10": -500.14957438,
+        "2026-07-11": 532.25417874
+      },
+      "transfers": [],
+      "executionLedgerHash": "cde659562cdea9d92ee1df42cd4b5b285120090d3dcfce423241d937227ba6dd",
+      "capitalCurveHash": "2a4a48d7a04fef54948f902062a5565333e44ab801f2fe0bc3615c49c68ef4f7",
+      "risk": {
+        "p10EndingCapital": 9707.52550963,
+        "medianEndingCapital": 11131.43386482,
+        "p90EndingCapital": 12570.00172745,
+        "cvar95TerminalLoss": 1113.09545474,
+        "cvar95MaximumFall": 1634.67120651,
+        "probabilityBelowInitial": 0.15455
+      }
+    },
+    "selectionHash": "5ebf04fce17b5864e168e46cb8e0a65c30b15bfd365bf9285ed529237582eba3",
+    "executionLedgerHash": "cde659562cdea9d92ee1df42cd4b5b285120090d3dcfce423241d937227ba6dd",
+    "capitalCurveHash": "2a4a48d7a04fef54948f902062a5565333e44ab801f2fe0bc3615c49c68ef4f7",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 9259.27983105,
+        "maximumFall": 5831.09243021,
+        "executedMatches": 151
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 9469.39283804,
+        "maximumFall": 5643.69943841,
+        "executedMatches": 151
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 9469.39283804,
+        "maximumFall": 5643.69943841,
+        "executedMatches": 151
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 9469.39283804,
+        "maximumFall": 5643.69943841,
+        "executedMatches": 151
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 9469.39283804,
+        "maximumFall": 5643.69943841,
+        "executedMatches": 151
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 6220.9754125,
+        "maximumFall": 8286.28568148,
+        "executedMatches": 153
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 5015.92391454,
+        "maximumFall": 9471.06451559,
+        "executedMatches": 155
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 5502.91427912,
+        "maximumFall": 8462.13529347,
+        "executedMatches": 161
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 4458.7664531,
+        "maximumFall": 9504.17944179,
+        "executedMatches": 165
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 5476.34069063,
+        "maximumFall": 9727.56646494,
+        "executedMatches": 171
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 6220.9754125,
+        "maximumFall": 8286.28568148,
+        "executedMatches": 153
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 5015.92391454,
+        "maximumFall": 9471.06451559,
+        "executedMatches": 155
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 5502.91427912,
+        "maximumFall": 8462.13529347,
+        "executedMatches": 161
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 4458.7664531,
+        "maximumFall": 9504.17944179,
+        "executedMatches": 165
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 4116.81796423,
+        "maximumFall": 10378.86583153,
+        "executedMatches": 171
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 6220.9754125,
+        "maximumFall": 8286.28568148,
+        "executedMatches": 153
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 5015.92391454,
+        "maximumFall": 9471.06451559,
+        "executedMatches": 155
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 5502.91427912,
+        "maximumFall": 8462.13529347,
+        "executedMatches": 161
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 4458.7664531,
+        "maximumFall": 9504.17944179,
+        "executedMatches": 165
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 4116.81796423,
+        "maximumFall": 10378.86583153,
+        "executedMatches": 171
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 6220.9754125,
+        "maximumFall": 8286.28568148,
+        "executedMatches": 153
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 5015.92391454,
+        "maximumFall": 9471.06451559,
+        "executedMatches": 155
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 5502.91427912,
+        "maximumFall": 8462.13529347,
+        "executedMatches": 161
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 4458.7664531,
+        "maximumFall": 9504.17944179,
+        "executedMatches": 165
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 4116.81796423,
+        "maximumFall": 10378.86583153,
+        "executedMatches": 171
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 6220.9754125,
+        "maximumFall": 8286.28568148,
+        "executedMatches": 153
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 5015.92391454,
+        "maximumFall": 9471.06451559,
+        "executedMatches": 155
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 5502.91427912,
+        "maximumFall": 8462.13529347,
+        "executedMatches": 161
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 4458.7664531,
+        "maximumFall": 9504.17944179,
+        "executedMatches": 165
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 4116.81796423,
+        "maximumFall": 10378.86583153,
+        "executedMatches": 171
+      }
+    ]
+  },
+  {
+    "model": "ALT2_TS_SCORE_GE_65",
+    "filterContract": "ALT2_TS_SCORE_GE_65 exact frozen registry at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": false,
+    "stakePolicy": "FIXED_100",
+    "operationScenario": "24X7",
+    "capacity": {
+      "maxOpenPositions": 30,
+      "maxOpenExposurePct": 0.8,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": true
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 30,
+        "maxOpenExposurePct": 0.8,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": false
+      },
+      "eligibleMatches": 51,
+      "executedMatches": 46,
+      "skippedPositions": 5,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 0,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 5,
+        "EXPOSURE_LIMIT": 0,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 22,
+      "losses": 24,
+      "totalStaked": 4600,
+      "netPnl": 534.15017781,
+      "roi": 11.61196039,
+      "endingActive": 10534.15017781,
+      "endingVault": 0,
+      "endingTotal": 10534.15017781,
+      "minimumTotal": 9588.99866035,
+      "maximumFallFromTotalPeak": 413.02154167,
+      "maximumFallFromActivePeak": 413.02154167,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-20": 711.97338097,
+        "2026-06-19": 246.16282926,
+        "2026-07-05": 65.92582675,
+        "2026-07-06": -100,
+        "2026-07-07": -84.94623656,
+        "2026-07-09": -100,
+        "2026-07-10": -264.70588235,
+        "2026-07-12": -100,
+        "2026-07-11": 159.74025974
+      },
+      "transfers": [],
+      "executionLedgerHash": "596a54d351f0ae95daa0eeb663e26d1af7dcb3411145fe4e065be27ac9e03995",
+      "capitalCurveHash": "07b3bbe9a98ea69edc9699bb39b2f494b5c4ba68e4d76ff63276b77f15cfd17e",
+      "risk": {
+        "p10EndingCapital": 9520.70046388,
+        "medianEndingCapital": 10478.31249189,
+        "p90EndingCapital": 11632.5461283,
+        "cvar95TerminalLoss": 921.17614137,
+        "cvar95MaximumFall": 1070.62080957,
+        "probabilityBelowInitial": 0.2768
+      }
+    },
+    "selectionHash": "f33411bf9c0df55cd75a57fbfc579261cebec4dffbfcd7cc69301231d74a3bfc",
+    "executionLedgerHash": "596a54d351f0ae95daa0eeb663e26d1af7dcb3411145fe4e065be27ac9e03995",
+    "capitalCurveHash": "07b3bbe9a98ea69edc9699bb39b2f494b5c4ba68e4d76ff63276b77f15cfd17e",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 2135.50773902,
+        "maximumFall": 1617.85068746,
+        "executedMatches": 167
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 2135.50773902,
+        "maximumFall": 1617.85068746,
+        "executedMatches": 167
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 2135.50773902,
+        "maximumFall": 1617.85068746,
+        "executedMatches": 167
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 2135.50773902,
+        "maximumFall": 1617.85068746,
+        "executedMatches": 167
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 2135.50773902,
+        "maximumFall": 1617.85068746,
+        "executedMatches": 167
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 2074.57327335,
+        "maximumFall": 1681.17945756,
+        "executedMatches": 183
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 2074.57327335,
+        "maximumFall": 1681.17945756,
+        "executedMatches": 183
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 2074.57327335,
+        "maximumFall": 1681.17945756,
+        "executedMatches": 183
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 2074.57327335,
+        "maximumFall": 1681.17945756,
+        "executedMatches": 183
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 2074.57327335,
+        "maximumFall": 1681.17945756,
+        "executedMatches": 183
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 1822.41390881,
+        "maximumFall": 1933.3388221,
+        "executedMatches": 192
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 1822.41390881,
+        "maximumFall": 1933.3388221,
+        "executedMatches": 192
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 1822.41390881,
+        "maximumFall": 1933.3388221,
+        "executedMatches": 192
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 1822.41390881,
+        "maximumFall": 1933.3388221,
+        "executedMatches": 192
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 1822.41390881,
+        "maximumFall": 1933.3388221,
+        "executedMatches": 192
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 1626.59460466,
+        "maximumFall": 2276.0717065,
+        "executedMatches": 203
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 1626.59460466,
+        "maximumFall": 2276.0717065,
+        "executedMatches": 203
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 1626.59460466,
+        "maximumFall": 2276.0717065,
+        "executedMatches": 203
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 1626.59460466,
+        "maximumFall": 2276.0717065,
+        "executedMatches": 203
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 1626.59460466,
+        "maximumFall": 2276.0717065,
+        "executedMatches": 203
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 1193.52424687,
+        "maximumFall": 2628.92228407,
+        "executedMatches": 214
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 1193.52424687,
+        "maximumFall": 2628.92228407,
+        "executedMatches": 214
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 1193.52424687,
+        "maximumFall": 2628.92228407,
+        "executedMatches": 214
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 1193.52424687,
+        "maximumFall": 2628.92228407,
+        "executedMatches": 214
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 1193.52424687,
+        "maximumFall": 2628.92228407,
+        "executedMatches": 214
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 1381.36201932,
+        "maximumFall": 2584.4453232,
+        "executedMatches": 231
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 1381.36201932,
+        "maximumFall": 2584.4453232,
+        "executedMatches": 231
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 1381.36201932,
+        "maximumFall": 2584.4453232,
+        "executedMatches": 231
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 1381.36201932,
+        "maximumFall": 2584.4453232,
+        "executedMatches": 231
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 1381.36201932,
+        "maximumFall": 2584.4453232,
+        "executedMatches": 231
+      }
+    ]
+  },
+  {
+    "model": "ALT2_TS_SCORE_GE_65",
+    "filterContract": "ALT2_TS_SCORE_GE_65 exact frozen registry at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": false,
+    "stakePolicy": "DYNAMIC_ACTIVE_3PCT",
+    "operationScenario": "24X7",
+    "capacity": {
+      "maxOpenPositions": 30,
+      "maxOpenExposurePct": 0.8,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": false
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 30,
+        "maxOpenExposurePct": 0.8,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": false,
+        "stakePolicy": "DYNAMIC_ACTIVE_3PCT"
+      },
+      "eligibleMatches": 51,
+      "executedMatches": 42,
+      "skippedPositions": 9,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 0,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 9,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 20,
+      "losses": 22,
+      "totalStaked": 12378.32610386,
+      "netPnl": 1525.18552406,
+      "roi": 12.3214198,
+      "endingActive": 11525.18552406,
+      "endingVault": 0,
+      "endingTotal": 11525.18552406,
+      "minimumTotal": 8592.68408736,
+      "maximumFallFromTotalPeak": 1413.3765187,
+      "maximumFallFromActivePeak": 1413.3765187,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-20": 1963.6004548,
+        "2026-06-19": 738.48848778,
+        "2026-07-05": 180.79142632,
+        "2026-07-06": -279.65834132,
+        "2026-07-07": -237.55923618,
+        "2026-07-09": -285.0618701,
+        "2026-07-10": -754.5755385,
+        "2026-07-12": -324.53896679,
+        "2026-07-11": 523.69910805
+      },
+      "transfers": [],
+      "executionLedgerHash": "cee17516a05f1465908b26d3b47a24137b6319b2bd93086cce297d2ba4925aea",
+      "capitalCurveHash": "b33cf70e3714dfe9289c805b3e7fa4dd22a7d716ee877bf4fc49362fedeb5ae6",
+      "risk": {
+        "p10EndingCapital": 8656.57918456,
+        "medianEndingCapital": 11388.46113355,
+        "p90EndingCapital": 14612.80035477,
+        "cvar95TerminalLoss": 2634.80443136,
+        "cvar95MaximumFall": 3078.01427084,
+        "probabilityBelowInitial": 0.27165
+      }
+    },
+    "selectionHash": "e4d4a9942f0878aee6a4898cb2117c023402c55520e8abe2fd1caf08d26da4be",
+    "executionLedgerHash": "cee17516a05f1465908b26d3b47a24137b6319b2bd93086cce297d2ba4925aea",
+    "capitalCurveHash": "b33cf70e3714dfe9289c805b3e7fa4dd22a7d716ee877bf4fc49362fedeb5ae6",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 9027.15291561,
+        "maximumFall": 9382.7965939,
+        "executedMatches": 153
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 6577.80465696,
+        "maximumFall": 11204.38275723,
+        "executedMatches": 157
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 5326.88534317,
+        "maximumFall": 12455.30207102,
+        "executedMatches": 159
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 7113.80784227,
+        "maximumFall": 10729.63998793,
+        "executedMatches": 165
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 6528.46563968,
+        "maximumFall": 11253.72177451,
+        "executedMatches": 166
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 9027.15291561,
+        "maximumFall": 9382.7965939,
+        "executedMatches": 153
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 5938.3904263,
+        "maximumFall": 11844.12668069,
+        "executedMatches": 160
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 6461.20084277,
+        "maximumFall": 11320.98657142,
+        "executedMatches": 166
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 8676.52865211,
+        "maximumFall": 10897.60871031,
+        "executedMatches": 179
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 8754.66242459,
+        "maximumFall": 10844.73366288,
+        "executedMatches": 179
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 9027.15291561,
+        "maximumFall": 9382.7965939,
+        "executedMatches": 153
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 5938.3904263,
+        "maximumFall": 11844.12668069,
+        "executedMatches": 160
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 6461.20084277,
+        "maximumFall": 11320.98657142,
+        "executedMatches": 166
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 8676.52865211,
+        "maximumFall": 10897.60871031,
+        "executedMatches": 179
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 3885.08999931,
+        "maximumFall": 13897.09741488,
+        "executedMatches": 174
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 9027.15291561,
+        "maximumFall": 9382.7965939,
+        "executedMatches": 153
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 5938.3904263,
+        "maximumFall": 11844.12668069,
+        "executedMatches": 160
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 6461.20084277,
+        "maximumFall": 11320.98657142,
+        "executedMatches": 166
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 8676.52865211,
+        "maximumFall": 10897.60871031,
+        "executedMatches": 179
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 3885.08999931,
+        "maximumFall": 13897.09741488,
+        "executedMatches": 174
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 9027.15291561,
+        "maximumFall": 9382.7965939,
+        "executedMatches": 153
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 5938.3904263,
+        "maximumFall": 11844.12668069,
+        "executedMatches": 160
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 6461.20084277,
+        "maximumFall": 11320.98657142,
+        "executedMatches": 166
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 8676.52865211,
+        "maximumFall": 10897.60871031,
+        "executedMatches": 179
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 3885.08999931,
+        "maximumFall": 13897.09741488,
+        "executedMatches": 174
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 9027.15291561,
+        "maximumFall": 9382.7965939,
+        "executedMatches": 153
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 5938.3904263,
+        "maximumFall": 11844.12668069,
+        "executedMatches": 160
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 6461.20084277,
+        "maximumFall": 11320.98657142,
+        "executedMatches": 166
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 8676.52865211,
+        "maximumFall": 10897.60871031,
+        "executedMatches": 179
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 3885.08999931,
+        "maximumFall": 13897.09741488,
+        "executedMatches": 174
+      }
+    ]
+  },
+  {
+    "model": "ALT2_TS_SCORE_GE_65",
+    "filterContract": "ALT2_TS_SCORE_GE_65 exact frozen registry at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": false,
+    "stakePolicy": "FIXED_100",
+    "operationScenario": "NIGHT_ONLY",
+    "capacity": {
+      "maxOpenPositions": 30,
+      "maxOpenExposurePct": 0.8,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": true
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 30,
+        "maxOpenExposurePct": 0.8,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": true
+      },
+      "eligibleMatches": 51,
+      "executedMatches": 43,
+      "skippedPositions": 8,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 6,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 2,
+        "EXPOSURE_LIMIT": 0,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 20,
+      "losses": 23,
+      "totalStaked": 4300,
+      "netPnl": 401.70511002,
+      "roi": 9.3419793,
+      "endingActive": 10401.70511002,
+      "endingVault": 0,
+      "endingTotal": 10401.70511002,
+      "minimumTotal": 9588.99866035,
+      "maximumFallFromTotalPeak": 413.02154167,
+      "maximumFallFromActivePeak": 413.02154167,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-20": 811.97338097,
+        "2026-06-19": 13.71776147,
+        "2026-07-05": 65.92582675,
+        "2026-07-07": 15.05376344,
+        "2026-07-09": -100,
+        "2026-07-10": -164.70588235,
+        "2026-06-21": -300,
+        "2026-07-12": -100,
+        "2026-07-11": 159.74025974
+      },
+      "transfers": [],
+      "executionLedgerHash": "66ed198c85d109e20f62a80c5903dfc63d64c6c2137989ddbf3567c1797bd955",
+      "capitalCurveHash": "c8926de72602ff0756401c39f92028563b11432188cce494b1f15f3e10e1b08e",
+      "risk": {
+        "p10EndingCapital": 9329.46728709,
+        "medianEndingCapital": 10325.05090265,
+        "p90EndingCapital": 11612.34248902,
+        "cvar95TerminalLoss": 1107.69157574,
+        "cvar95MaximumFall": 1225.77718177,
+        "probabilityBelowInitial": 0.3598
+      }
+    },
+    "selectionHash": "fc07f19f945ac113b33610d4b6a0059a0d6cc0a14d939ff29fa216dba5d848cd",
+    "executionLedgerHash": "66ed198c85d109e20f62a80c5903dfc63d64c6c2137989ddbf3567c1797bd955",
+    "capitalCurveHash": "c8926de72602ff0756401c39f92028563b11432188cce494b1f15f3e10e1b08e",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 1978.8327719,
+        "maximumFall": 1141.22556746,
+        "executedMatches": 160
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 1978.8327719,
+        "maximumFall": 1141.22556746,
+        "executedMatches": 160
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 1978.8327719,
+        "maximumFall": 1141.22556746,
+        "executedMatches": 160
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 1978.8327719,
+        "maximumFall": 1141.22556746,
+        "executedMatches": 160
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 1978.8327719,
+        "maximumFall": 1141.22556746,
+        "executedMatches": 160
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 918.16729359,
+        "maximumFall": 2104.60921309,
+        "executedMatches": 177
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 918.16729359,
+        "maximumFall": 2104.60921309,
+        "executedMatches": 177
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 918.16729359,
+        "maximumFall": 2104.60921309,
+        "executedMatches": 177
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 918.16729359,
+        "maximumFall": 2104.60921309,
+        "executedMatches": 177
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 918.16729359,
+        "maximumFall": 2104.60921309,
+        "executedMatches": 177
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 975.84303181,
+        "maximumFall": 2057.45979066,
+        "executedMatches": 183
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 975.84303181,
+        "maximumFall": 2057.45979066,
+        "executedMatches": 183
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 975.84303181,
+        "maximumFall": 2057.45979066,
+        "executedMatches": 183
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 975.84303181,
+        "maximumFall": 2057.45979066,
+        "executedMatches": 183
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 975.84303181,
+        "maximumFall": 2057.45979066,
+        "executedMatches": 183
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 859.02607609,
+        "maximumFall": 2155.96688723,
+        "executedMatches": 196
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 859.02607609,
+        "maximumFall": 2155.96688723,
+        "executedMatches": 196
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 859.02607609,
+        "maximumFall": 2155.96688723,
+        "executedMatches": 196
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 859.02607609,
+        "maximumFall": 2155.96688723,
+        "executedMatches": 196
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 859.02607609,
+        "maximumFall": 2155.96688723,
+        "executedMatches": 196
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 653.15448847,
+        "maximumFall": 2412.98282979,
+        "executedMatches": 203
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 653.15448847,
+        "maximumFall": 2412.98282979,
+        "executedMatches": 203
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 653.15448847,
+        "maximumFall": 2412.98282979,
+        "executedMatches": 203
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 653.15448847,
+        "maximumFall": 2412.98282979,
+        "executedMatches": 203
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 653.15448847,
+        "maximumFall": 2412.98282979,
+        "executedMatches": 203
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 506.95565806,
+        "maximumFall": 2612.98282979,
+        "executedMatches": 213
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 506.95565806,
+        "maximumFall": 2612.98282979,
+        "executedMatches": 213
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 506.95565806,
+        "maximumFall": 2612.98282979,
+        "executedMatches": 213
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 506.95565806,
+        "maximumFall": 2612.98282979,
+        "executedMatches": 213
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 506.95565806,
+        "maximumFall": 2612.98282979,
+        "executedMatches": 213
+      }
+    ]
+  },
+  {
+    "model": "ALT2_TS_SCORE_GE_65",
+    "filterContract": "ALT2_TS_SCORE_GE_65 exact frozen registry at T-90",
+    "capitalPolicy": {
+      "family": "NO_VAULT_FIXED100",
+      "id": "NO_VAULT_FIXED100"
+    },
+    "capitalPolicyLockSource": "SENSITIVITY",
+    "eligibleForFinalSelection": false,
+    "stakePolicy": "DYNAMIC_ACTIVE_3PCT",
+    "operationScenario": "NIGHT_ONLY",
+    "capacity": {
+      "maxOpenPositions": 30,
+      "maxOpenExposurePct": 0.85,
+      "maxAcceptedPerOperatingDay": 100,
+      "developmentCeilingPassed": false
+    },
+    "confirmation": {
+      "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+      "policy": {
+        "family": "NO_VAULT_FIXED100",
+        "id": "NO_VAULT_FIXED100"
+      },
+      "capacity": {
+        "maxOpenPositions": 30,
+        "maxOpenExposurePct": 0.85,
+        "maxAcceptedPerOperatingDay": 100,
+        "operationWindowOnly": true,
+        "stakePolicy": "DYNAMIC_ACTIVE_3PCT"
+      },
+      "eligibleMatches": 51,
+      "executedMatches": 41,
+      "skippedPositions": 10,
+      "skipReasons": {
+        "WINDOW_EXCLUDED": 6,
+        "DAILY_LIMIT": 0,
+        "POSITION_LIMIT": 0,
+        "EXPOSURE_LIMIT": 4,
+        "INSUFFICIENT_ACTIVE_CAPACITY": 0
+      },
+      "wins": 20,
+      "losses": 21,
+      "totalStaked": 12260.60344689,
+      "netPnl": 1830.93963339,
+      "roi": 14.93351972,
+      "endingActive": 11830.93963339,
+      "endingVault": 0,
+      "endingTotal": 11830.93963339,
+      "minimumTotal": 8766.99598105,
+      "maximumFallFromTotalPeak": 1239.06462501,
+      "maximumFallFromActivePeak": 1239.06462501,
+      "invalidCapitalStates": 0,
+      "blockPnl": {
+        "2026-06-20": 2435.92014291,
+        "2026-06-19": 41.15328442,
+        "2026-07-05": 189.50828563,
+        "2026-07-07": 44.12891366,
+        "2026-07-09": -294.46593673,
+        "2026-07-10": -485.00271932,
+        "2026-07-12": -324.1962399,
+        "2026-07-11": 523.89390272,
+        "2026-06-21": -300
+      },
+      "transfers": [],
+      "executionLedgerHash": "0bfdb4eba1cae76dd42e76ba4e2dacf8367c50f93024bc58e460d02589209795",
+      "capitalCurveHash": "61ba993b60bc8526c48ced05d2763e5842f44133284f38bcc4f340ca561b7e03",
+      "risk": {
+        "p10EndingCapital": 8776.32782804,
+        "medianEndingCapital": 11599.11079804,
+        "p90EndingCapital": 15218.87967346,
+        "cvar95TerminalLoss": 2090.67828223,
+        "cvar95MaximumFall": 2342.46304156,
+        "probabilityBelowInitial": 0.27375
+      }
+    },
+    "selectionHash": "997a09427a02d437a329c027fef75b47d4a80ec9098f792ff8d5fc596c3e1157",
+    "executionLedgerHash": "0bfdb4eba1cae76dd42e76ba4e2dacf8367c50f93024bc58e460d02589209795",
+    "capitalCurveHash": "61ba993b60bc8526c48ced05d2763e5842f44133284f38bcc4f340ca561b7e03",
+    "developmentCapacityFrontier": [
+      {
+        "positions": 30,
+        "exposure": 0.8,
+        "pnl": 3996.99187518,
+        "maximumFall": 9260.33009638,
+        "executedMatches": 146
+      },
+      {
+        "positions": 30,
+        "exposure": 0.85,
+        "pnl": 8440.63085747,
+        "maximumFall": 5521.8980424,
+        "executedMatches": 160
+      },
+      {
+        "positions": 30,
+        "exposure": 0.9,
+        "pnl": 8440.63085747,
+        "maximumFall": 5521.8980424,
+        "executedMatches": 160
+      },
+      {
+        "positions": 30,
+        "exposure": 0.95,
+        "pnl": 8440.63085747,
+        "maximumFall": 5521.8980424,
+        "executedMatches": 160
+      },
+      {
+        "positions": 30,
+        "exposure": 1,
+        "pnl": 8440.63085747,
+        "maximumFall": 5521.8980424,
+        "executedMatches": 160
+      },
+      {
+        "positions": 36,
+        "exposure": 0.8,
+        "pnl": 3996.99187518,
+        "maximumFall": 9260.33009638,
+        "executedMatches": 146
+      },
+      {
+        "positions": 36,
+        "exposure": 0.85,
+        "pnl": 7554.12663203,
+        "maximumFall": 7697.03832425,
+        "executedMatches": 163
+      },
+      {
+        "positions": 36,
+        "exposure": 0.9,
+        "pnl": 6298.61683178,
+        "maximumFall": 8890.8506662,
+        "executedMatches": 165
+      },
+      {
+        "positions": 36,
+        "exposure": 0.95,
+        "pnl": 5311.54795396,
+        "maximumFall": 9905.34958133,
+        "executedMatches": 169
+      },
+      {
+        "positions": 36,
+        "exposure": 1,
+        "pnl": 2010.69221343,
+        "maximumFall": 11815.85667189,
+        "executedMatches": 170
+      },
+      {
+        "positions": 40,
+        "exposure": 0.8,
+        "pnl": 3996.99187518,
+        "maximumFall": 9260.33009638,
+        "executedMatches": 146
+      },
+      {
+        "positions": 40,
+        "exposure": 0.85,
+        "pnl": 7554.12663203,
+        "maximumFall": 7697.03832425,
+        "executedMatches": 163
+      },
+      {
+        "positions": 40,
+        "exposure": 0.9,
+        "pnl": 6298.61683178,
+        "maximumFall": 8890.8506662,
+        "executedMatches": 165
+      },
+      {
+        "positions": 40,
+        "exposure": 0.95,
+        "pnl": 5311.54795396,
+        "maximumFall": 9905.34958133,
+        "executedMatches": 169
+      },
+      {
+        "positions": 40,
+        "exposure": 1,
+        "pnl": 3042.87923104,
+        "maximumFall": 10278.39988208,
+        "executedMatches": 175
+      },
+      {
+        "positions": 45,
+        "exposure": 0.8,
+        "pnl": 3996.99187518,
+        "maximumFall": 9260.33009638,
+        "executedMatches": 146
+      },
+      {
+        "positions": 45,
+        "exposure": 0.85,
+        "pnl": 7554.12663203,
+        "maximumFall": 7697.03832425,
+        "executedMatches": 163
+      },
+      {
+        "positions": 45,
+        "exposure": 0.9,
+        "pnl": 6298.61683178,
+        "maximumFall": 8890.8506662,
+        "executedMatches": 165
+      },
+      {
+        "positions": 45,
+        "exposure": 0.95,
+        "pnl": 5311.54795396,
+        "maximumFall": 9905.34958133,
+        "executedMatches": 169
+      },
+      {
+        "positions": 45,
+        "exposure": 1,
+        "pnl": 3042.87923104,
+        "maximumFall": 10278.39988208,
+        "executedMatches": 175
+      },
+      {
+        "positions": 50,
+        "exposure": 0.8,
+        "pnl": 3996.99187518,
+        "maximumFall": 9260.33009638,
+        "executedMatches": 146
+      },
+      {
+        "positions": 50,
+        "exposure": 0.85,
+        "pnl": 7554.12663203,
+        "maximumFall": 7697.03832425,
+        "executedMatches": 163
+      },
+      {
+        "positions": 50,
+        "exposure": 0.9,
+        "pnl": 6298.61683178,
+        "maximumFall": 8890.8506662,
+        "executedMatches": 165
+      },
+      {
+        "positions": 50,
+        "exposure": 0.95,
+        "pnl": 5311.54795396,
+        "maximumFall": 9905.34958133,
+        "executedMatches": 169
+      },
+      {
+        "positions": 50,
+        "exposure": 1,
+        "pnl": 3042.87923104,
+        "maximumFall": 10278.39988208,
+        "executedMatches": 175
+      },
+      {
+        "positions": 60,
+        "exposure": 0.8,
+        "pnl": 3996.99187518,
+        "maximumFall": 9260.33009638,
+        "executedMatches": 146
+      },
+      {
+        "positions": 60,
+        "exposure": 0.85,
+        "pnl": 7554.12663203,
+        "maximumFall": 7697.03832425,
+        "executedMatches": 163
+      },
+      {
+        "positions": 60,
+        "exposure": 0.9,
+        "pnl": 6298.61683178,
+        "maximumFall": 8890.8506662,
+        "executedMatches": 165
+      },
+      {
+        "positions": 60,
+        "exposure": 0.95,
+        "pnl": 5311.54795396,
+        "maximumFall": 9905.34958133,
+        "executedMatches": 169
+      },
+      {
+        "positions": 60,
+        "exposure": 1,
+        "pnl": 3042.87923104,
+        "maximumFall": 10278.39988208,
+        "executedMatches": 175
+      }
+    ]
+  }
+]

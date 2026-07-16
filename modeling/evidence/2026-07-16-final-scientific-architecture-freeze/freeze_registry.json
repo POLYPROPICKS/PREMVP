@@ -1,0 +1,58 @@
+{
+  "status": [
+    "HISTORICAL_ARCHITECTURE_FROZEN",
+    "IRELAND_PARITY_PENDING",
+    "FORWARD_VALIDATION_PENDING",
+    "NOT_LIVE"
+  ],
+  "datasetSha256": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+  "signalModel": "B2_TIMING_WITHIN_120M",
+  "signalModelVersion": "B2_TIMING_WITHIN_120M",
+  "filterContract": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS + hours_until_start in [0,120] at T-90",
+  "t90Contract": "T90_RAW_SNAPSHOT_AT_OR_BEFORE_DECISION",
+  "historicalMatchIdentityVersion": "HISTORICAL_DERIVED_MATCH_KEY_V2_EXACT_RESCUE",
+  "oneMatchSelectionRanking": "score DESC, coverage DESC, price ASC, created_at DESC, observationId ASC",
+  "capitalPolicy": {
+    "family": "NO_VAULT_FIXED100",
+    "id": "NO_VAULT_FIXED100"
+  },
+  "capitalPolicyLockHash": "b9a6d98f9cfec26a638b8ae1da6784213267fb06c7b3a5fad29991bc4fbfed52",
+  "stakePolicy": "FIXED_100",
+  "stakeReferenceSchedule": "FIXED_100",
+  "operationScenario": "NIGHT_ONLY",
+  "capacityPolicy": {
+    "maxOpenPositions": 36,
+    "maxOpenExposurePct": 0.8,
+    "maxAcceptedPerOperatingDay": 100,
+    "developmentCeilingPassed": true
+  },
+  "settlementContract": "SETTLE_SAME_TIMESTAMP_BATCH_THEN_POLICY_THEN_ENTRY_BATCH_V1",
+  "riskDefinitions": {
+    "maximumFall": "absolute USD fall from previous settled Total peak",
+    "cvar95": "mean worst 5% stationary-bootstrap maximum fall",
+    "drawdownCeilingUnits": 40.35199895,
+    "unitValueUsd": 100,
+    "drawdownCeilingUsd": 4035.199895
+  },
+  "oracle": {
+    "package": "arch",
+    "version": "8.0.0",
+    "commit": "ee08e4293285b1ab78b56bfc067877b7ebd4bbc5",
+    "evidenceManifestFileSha256": "061a6784cbbb9f516bf57693f3fd67fd9c5758dec23b6bfb4dc32da879d61d80",
+    "bootstrap": "stationary",
+    "reps": 20000,
+    "seed": 20260716,
+    "studentize": true,
+    "nested": false,
+    "blockLength": "approved automatic b_sb rounded up for integer API block_size",
+    "decisionPvalue": "consistent",
+    "corroborationPvalue": "upper",
+    "reportOnlyPvalue": "lower"
+  },
+  "selectionHash": "08b8b329b41d4727dbf88f76e9517c142c28e69fcd5764de9d9b9a757b56fa2f",
+  "executionLedgerHash": "1a3027409fa6983ac603c09d16723012433f4b1e75f20585dc201cd88aed57a7",
+  "capitalCurveHash": "5ab3e72559607c78f8038c17e93cf58e5f0a834039ecf1c29b06862d9558234d",
+  "evidenceManifestHash": "0e5c4c6df01a6d3f7d851df9df5a4dbdff86ab14e9b62ecaac9f0cd7bb478878",
+  "evidenceManifestArtifactSha256": "63b9bd8cdb0f3acdf7ab10daf2a9566beb89106f6109fe5f8938fd12f7694156",
+  "freezeRegistryHash": "24ab93276a41869e18b975e42365f74a94a430757744d7e4282accec6ef5a8a0"
+}

@@ -87,3 +87,9 @@ The 1,024-map nonzero price-band search did not beat all-100 on the untouched te
 ## Statistical reference oracle
 
 The multiple-testing blocker is isolated in `modeling/evidence/2026-07-16-statistical-reference-oracle`. `arch==8.0.0` under Python 3.12.10 defines deterministic fixtures for corrected stationary-bootstrap block length and Hansen SPA. Approved convention: explicit stationary block size, 20,000 replications, seed `20260716`, `studentize=true`, `nested=false`; `consistent` is the decision p-value, `upper` is conservative White-style corroboration from the same engine, and `lower` is report-only. This validates procedure outputs only, not profitability, and does not resume or alter capital-policy modeling.
+
+## Final scientific historical architecture freeze
+
+The bounded package is `modeling/evidence/2026-07-16-final-scientific-architecture-freeze`. Development/confirmation separation, oracle-backed policy comparison, fixed-vs-dynamic sizing, 24×7/night-only scenarios, capacity locking, and deterministic freeze hashes are complete. Both Phase A sequences retain `NO_VAULT_FIXED100`; SPA consistent values are `0.5864` and `0.3873`, so no protected policy qualifies to replace control.
+
+The historical winner is `B2_TIMING_WITHIN_120M + NO_VAULT_FIXED100 + FIXED_100 + NIGHT_ONLY + positions36/exposure80%/accepted100`. Confirmation: 45 executions, PnL $1,364.53467215, ROI 30.32299271%, ending Total $11,364.53467215, minimum Total $9,800, maximum fall $321.52765544, CVaR95 maximum fall $609.29271625, probability below initial `0.09745`. Status is historical-only: Ireland parity and forward validation remain pending; it is not live approval.
