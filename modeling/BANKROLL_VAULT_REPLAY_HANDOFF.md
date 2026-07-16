@@ -99,3 +99,7 @@ The historical winner is `B2_TIMING_WITHIN_120M + NO_VAULT_FIXED100 + FIXED_100 
 The bounded package `modeling/evidence/2026-07-16-final-vault-on-locked-primary` uses only the locked original PRIMARY `B2_PRICE_FLOOR_030_TIMING_WITHIN_120M` sequence: exactly 231 sorted IDs, SHA-256 `99f22a9bb8db0a2ff7bddd8e72f87a097fdb136f1a242a300ccb0e8740d0fcca`. It evaluates 25 existing Vault-policy grid entries with a 50u initial total bank, 0u Vault, a fixed 1u stake ($100), and no model reselection or dynamic sizing.
 
 The deterministic balanced candidate is `CPPI_0.4_0.5`: 198 executions, 33 Vault risk-budget skips, PnL 51.89997402u, ending Active 61.13998441u, Vault 40.75998961u, Total 101.89997402u, maximum fall 6.43150453u, and bootstrap CVaR95 maximum fall 10.15154317u. The no-Vault fixed-1u control is 231 executions and 52.68123377u PnL with CVaR95 maximum fall 10.44355089u. This is historical pseudo-out-of-sample evidence only and awaits founder acceptance; Ireland remains blocked.
+
+## Locked fixed-versus-dynamic profile records
+
+The bounded four-arm package `modeling/evidence/2026-07-16-final-fixed-vs-dynamic-locked-vault` preserves the same 231 intended IDs and locked `CPPI_0.4_0.5` policy. `FIXED_BASELINE_V1` is CAPITAL_VALID: 198 executions, 51.89997402u PnL, 40.75998961u ending Vault, and 6.43150453u maximum total fall. `DYNAMIC_GROWTH_V1` is also CAPITAL_VALID, but has 153 executions, 32.01226315u PnL, 38.23460928u Vault, and 17.52205252u maximum total fall. These are recorded profiles, not a signal model or Vault-policy selection.

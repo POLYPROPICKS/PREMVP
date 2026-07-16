@@ -1,0 +1,245 @@
+<!doctype html><meta charset=utf-8><title>Four arm comparison</title><pre>{
+  "version": "LOCKED_FIXED_VS_DYNAMIC_V1",
+  "datasetSha256": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+  "inputExecutionIdsSha256": "99f22a9bb8db0a2ff7bddd8e72f87a097fdb136f1a242a300ccb0e8740d0fcca",
+  "primary": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+  "lockedVault": {
+    "family": "ONE_WAY_RATCHETED_CPPI",
+    "id": "CPPI_0.4_0.5",
+    "alpha": 0.4,
+    "multiplier": 0.5
+  },
+  "unitContract": {
+    "unitUsd": 100,
+    "initialTotal": 50,
+    "operationWindowOnly": false,
+    "maxOpenPositions": 36,
+    "maxOpenExposurePct": 1
+  },
+  "profiles": [
+    {
+      "id": "FIXED_1U_NO_VAULT",
+      "selectionHash": "b38a684028da3d2f6e4ec821cb152aa06b1310097fd05e6d3a2e36c554c77acf",
+      "maximumConcurrentPositions": 36,
+      "maximumLockedPrincipal": 36,
+      "capitalValid": true,
+      "replay": {
+        "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+        "policy": {
+          "family": "NO_VAULT_FIXED100",
+          "id": "NO_VAULT_FIXED100"
+        },
+        "capacity": {
+          "maxOpenPositions": 36,
+          "maxOpenExposurePct": 1,
+          "maxAcceptedPerOperatingDay": 100,
+          "operationWindowOnly": false,
+          "stakePolicy": "FIXED_100",
+          "initialTotalCapital": 50,
+          "fixedStake": 1
+        },
+        "eligibleMatches": 231,
+        "executedMatches": 231,
+        "skippedPositions": 0,
+        "skipReasons": {
+          "WINDOW_EXCLUDED": 0,
+          "DAILY_LIMIT": 0,
+          "POSITION_LIMIT": 0,
+          "EXPOSURE_LIMIT": 0,
+          "INSUFFICIENT_ACTIVE_CAPACITY": 0
+        },
+        "wins": 122,
+        "losses": 109,
+        "totalStaked": 231,
+        "netPnl": 52.68123377,
+        "roi": 22.8057289,
+        "endingActive": 102.68123377,
+        "endingVault": 0,
+        "endingTotal": 102.68123377,
+        "minimumTotal": 50,
+        "maximumFallFromTotalPeak": 8.43150453,
+        "maximumFallFromActivePeak": 8.43150453,
+        "invalidCapitalStates": 0,
+        "executionLedgerHash": "03b5f02dac58fc92106f782338b09bf21ecca42bbfb85d199f7a47c2ee7da6ff",
+        "capitalCurveHash": "f5ea503793562a6cf1bb991bb82660133a9597489e1f1cf55762a3eac92e07ba"
+      },
+      "risk": {
+        "p10EndingCapital": 79.53032635,
+        "medianEndingCapital": 102.2671563,
+        "p90EndingCapital": 126.80134324,
+        "cvar95TerminalLoss": 0.04448864,
+        "cvar95MaximumFall": 10.4466375,
+        "probabilityBelowInitial": 0.0009
+      }
+    },
+    {
+      "id": "FIXED_1U_CPPI_0.4_0.5",
+      "selectionHash": "45c206020ae2d17112da550180bb4e9ad18dbe6093fd6a2b542b7836f4f38120",
+      "maximumConcurrentPositions": 27,
+      "maximumLockedPrincipal": 27,
+      "capitalValid": true,
+      "replay": {
+        "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+        "policy": {
+          "family": "ONE_WAY_RATCHETED_CPPI",
+          "id": "CPPI_0.4_0.5",
+          "alpha": 0.4,
+          "multiplier": 0.5
+        },
+        "capacity": {
+          "maxOpenPositions": 36,
+          "maxOpenExposurePct": 1,
+          "maxAcceptedPerOperatingDay": 100,
+          "operationWindowOnly": false,
+          "stakePolicy": "FIXED_100",
+          "initialTotalCapital": 50,
+          "fixedStake": 1
+        },
+        "eligibleMatches": 231,
+        "executedMatches": 198,
+        "skippedPositions": 33,
+        "skipReasons": {
+          "WINDOW_EXCLUDED": 0,
+          "DAILY_LIMIT": 0,
+          "POSITION_LIMIT": 0,
+          "EXPOSURE_LIMIT": 33,
+          "INSUFFICIENT_ACTIVE_CAPACITY": 0
+        },
+        "wins": 108,
+        "losses": 90,
+        "totalStaked": 198,
+        "netPnl": 51.89997402,
+        "roi": 26.21210809,
+        "endingActive": 61.13998441,
+        "endingVault": 40.75998961,
+        "endingTotal": 101.89997402,
+        "minimumTotal": 50,
+        "maximumFallFromTotalPeak": 6.43150453,
+        "maximumFallFromActivePeak": 6.43150453,
+        "invalidCapitalStates": 0,
+        "executionLedgerHash": "159a75f3a24b0763430316515af268e05d5553444ab4e368011fe18e997acc1e",
+        "capitalCurveHash": "85be614ebcbf4488b809955ce2e68ebb3424c598284cbfffb65d2a4a74610c2b"
+      },
+      "risk": {
+        "p10EndingCapital": 79.93075334,
+        "medianEndingCapital": 101.47720265,
+        "p90EndingCapital": 124.59452288,
+        "cvar95TerminalLoss": 0.02391477,
+        "cvar95MaximumFall": 9.92765355,
+        "probabilityBelowInitial": 0.0004
+      }
+    },
+    {
+      "id": "DYNAMIC_ACTIVE_3PCT_NO_VAULT",
+      "selectionHash": "cd4ac00e1dcc8e06a8962a842a345fbf49327ce76747f20aff1666fb410e5ce5",
+      "maximumConcurrentPositions": 36,
+      "maximumLockedPrincipal": 160.05864944,
+      "capitalValid": true,
+      "replay": {
+        "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+        "policy": {
+          "family": "NO_VAULT_FIXED100",
+          "id": "NO_VAULT_FIXED100"
+        },
+        "capacity": {
+          "maxOpenPositions": 36,
+          "maxOpenExposurePct": 1,
+          "maxAcceptedPerOperatingDay": 100,
+          "operationWindowOnly": false,
+          "stakePolicy": "DYNAMIC_ACTIVE_3PCT",
+          "initialTotalCapital": 50,
+          "fixedStake": 1
+        },
+        "eligibleMatches": 231,
+        "executedMatches": 230,
+        "skippedPositions": 1,
+        "skipReasons": {
+          "WINDOW_EXCLUDED": 0,
+          "DAILY_LIMIT": 0,
+          "POSITION_LIMIT": 0,
+          "EXPOSURE_LIMIT": 1,
+          "INSUFFICIENT_ACTIVE_CAPACITY": 0
+        },
+        "wins": 122,
+        "losses": 108,
+        "totalStaked": 831.60819495,
+        "netPnl": 169.32412195,
+        "roi": 20.36104538,
+        "endingActive": 219.32412195,
+        "endingVault": 0,
+        "endingTotal": 219.32412195,
+        "minimumTotal": 50,
+        "maximumFallFromTotalPeak": 33.96564534,
+        "maximumFallFromActivePeak": 33.96564534,
+        "invalidCapitalStates": 0,
+        "executionLedgerHash": "0d3fd8f7f5457334b90c155bc9cb4e6eaa5914c0a830bf29844821dbc5e56bf0",
+        "capitalCurveHash": "9803499ee5b55cd20ec7293c42b43453c37da979020b0c95dc0b17d9520bcc8c"
+      },
+      "risk": {
+        "p10EndingCapital": 143.1564926,
+        "medianEndingCapital": 218.0017141,
+        "p90EndingCapital": 298.74151204,
+        "cvar95TerminalLoss": 0.2630237,
+        "cvar95MaximumFall": 43.85905932,
+        "probabilityBelowInitial": 0.00125
+      }
+    },
+    {
+      "id": "DYNAMIC_ACTIVE_3PCT_CPPI_0.4_0.5",
+      "selectionHash": "9eb2d8d41461eddfccd363ef67b34568c396ac4a41b20fb80d19af803de4c575",
+      "maximumConcurrentPositions": 18,
+      "maximumLockedPrincipal": 27.01045318,
+      "capitalValid": true,
+      "replay": {
+        "version": "SCIENTIFIC_CAPITAL_ARCHITECTURE_V1",
+        "policy": {
+          "family": "ONE_WAY_RATCHETED_CPPI",
+          "id": "CPPI_0.4_0.5",
+          "alpha": 0.4,
+          "multiplier": 0.5
+        },
+        "capacity": {
+          "maxOpenPositions": 36,
+          "maxOpenExposurePct": 1,
+          "maxAcceptedPerOperatingDay": 100,
+          "operationWindowOnly": false,
+          "stakePolicy": "DYNAMIC_ACTIVE_3PCT",
+          "initialTotalCapital": 50,
+          "fixedStake": 1
+        },
+        "eligibleMatches": 231,
+        "executedMatches": 153,
+        "skippedPositions": 78,
+        "skipReasons": {
+          "WINDOW_EXCLUDED": 0,
+          "DAILY_LIMIT": 0,
+          "POSITION_LIMIT": 0,
+          "EXPOSURE_LIMIT": 78,
+          "INSUFFICIENT_ACTIVE_CAPACITY": 0
+        },
+        "wins": 79,
+        "losses": 74,
+        "totalStaked": 198.07746542,
+        "netPnl": 32.01226315,
+        "roi": 16.16148666,
+        "endingActive": 43.77765387,
+        "endingVault": 38.23460928,
+        "endingTotal": 82.01226315,
+        "minimumTotal": 50,
+        "maximumFallFromTotalPeak": 17.52205252,
+        "maximumFallFromActivePeak": 17.52205252,
+        "invalidCapitalStates": 0,
+        "executionLedgerHash": "48fb0dd0c7d497c46ca07ba6a6e54588915ba2b9a50b3f541ffb295a079344f7",
+        "capitalCurveHash": "59ceb13990f9486f5685163071e9d9b9aab40cb9dae5ceade460e3ea387d284e"
+      },
+      "risk": {
+        "p10EndingCapital": 50.68320519,
+        "medianEndingCapital": 81.54088809,
+        "p90EndingCapital": 113.47781472,
+        "cvar95TerminalLoss": 17.04041253,
+        "cvar95MaximumFall": 33.83464556,
+        "probabilityBelowInitial": 0.09475
+      }
+    }
+  ]
+}</pre>
