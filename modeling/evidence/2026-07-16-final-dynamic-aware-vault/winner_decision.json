@@ -1,0 +1,118 @@
+{
+  "control": {
+    "id": "DYNAMIC_NO_VAULT",
+    "pnl": 18.19783449,
+    "maximumFall": 5.42681092,
+    "cvar95MaximumFall": 10.92938307,
+    "endingVault": 0,
+    "skipped": 0,
+    "capitalValid": true,
+    "noFutureLeakage": true
+  },
+  "eligible": [
+    {
+      "row": {
+        "id": "DYNAMIC_NO_VAULT",
+        "pnl": 18.19783449,
+        "maximumFall": 5.42681092,
+        "cvar95MaximumFall": 10.92938307,
+        "endingVault": 0,
+        "skipped": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": false
+    },
+    {
+      "row": {
+        "id": "BUFFER_10_LOCK_010_CAP_0025",
+        "pnl": 18.19652334,
+        "maximumFall": 5.42681092,
+        "cvar95MaximumFall": 10.92942897,
+        "endingVault": 0.81965233,
+        "skipped": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": false
+    },
+    {
+      "row": {
+        "id": "BUFFER_10_LOCK_020_CAP_005",
+        "pnl": 18.19521218,
+        "maximumFall": 5.42681092,
+        "cvar95MaximumFall": 10.92947486,
+        "endingVault": 1.63904244,
+        "skipped": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": false
+    },
+    {
+      "row": {
+        "id": "BUFFER_25_LOCK_020_CAP_005",
+        "pnl": 18.19783449,
+        "maximumFall": 5.42681092,
+        "cvar95MaximumFall": 10.92938307,
+        "endingVault": 0,
+        "skipped": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": false
+    },
+    {
+      "row": {
+        "id": "BUFFER_50_LOCK_025_CAP_005",
+        "pnl": 18.19783449,
+        "maximumFall": 5.42681092,
+        "cvar95MaximumFall": 10.92938307,
+        "endingVault": 0,
+        "skipped": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": false
+    },
+    {
+      "row": {
+        "id": "VOL_TARGET_14_BUFFER_10_CAP_005",
+        "pnl": 18.19783449,
+        "maximumFall": 5.42681092,
+        "cvar95MaximumFall": 10.92938307,
+        "endingVault": 0.3093456,
+        "skipped": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": false
+    },
+    {
+      "row": {
+        "id": "LOW_FLOOR_CPPI_DYNAMIC_CONTROL",
+        "pnl": 16.37843592,
+        "maximumFall": 4.88412984,
+        "cvar95MaximumFall": 9.71990717,
+        "endingVault": 6.63784359,
+        "skipped": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": false
+    }
+  ],
+  "winner": {
+    "id": "DYNAMIC_NO_VAULT",
+    "pnl": 18.19783449,
+    "maximumFall": 5.42681092,
+    "cvar95MaximumFall": 10.92938307,
+    "endingVault": 0,
+    "skipped": 0,
+    "capitalValid": true,
+    "noFutureLeakage": true
+  },
+  "winnerId": "DYNAMIC_NO_VAULT",
+  "status": "NO_DYNAMIC_VAULT_PASSED_PREDECLARED_GATES",
+  "closestProtectedShadow": "BUFFER_25_LOCK_020_CAP_005"
+}

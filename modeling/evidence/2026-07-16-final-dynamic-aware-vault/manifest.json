@@ -1,0 +1,15 @@
+{
+  "datasetSha256": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+  "inputExecutionIdsSha256": "99f22a9bb8db0a2ff7bddd8e72f87a097fdb136f1a242a300ccb0e8740d0fcca",
+  "policyRegistryHash": "15a455feac256538c90132d06682e7f9e645ec5d9d2780a88bf54cb18af409e1",
+  "selectionHash": "76b6d6ffb725a6f049202162a60b1d1c9f08db0aa77d2fa6936801c8529ceb5f",
+  "artifactHashes": {
+    "results": "3066103fda86e60994b0a178eb3d08fa985272560d7eee51fef308ab1e35aaca",
+    "curves": "0567e44a8dd70af483c1fffa4c00b587ebf4815b9309f8d51ee74bea35fa5f34",
+    "transfers": "68c4680caa40d3d2ecd26c8888a4d66fa8c4952aa86165473eacddc66fd11093",
+    "winner": "c11e59f432b1b90c185aed801a52f19735f53cef12da865279229d657e490d77",
+    "report": "98f7c6ba3ebbdb999e2ee167309dd25ea3cfb0d5cb7ac6926039092845a514fe",
+    "dashboard": "0804489403ef7202800f0fd9abef35b95c9f2b5458e21fe88d9a4b55a4491faa"
+  },
+  "manifestSha256": "519e7a55235635d1c6808558e987a96adf8d56d1062b48f57d970d7e9b23925b"
+}

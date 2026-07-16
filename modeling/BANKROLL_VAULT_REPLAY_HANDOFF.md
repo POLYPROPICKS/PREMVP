@@ -103,3 +103,7 @@ The deterministic balanced candidate is `CPPI_0.4_0.5`: 198 executions, 33 Vault
 ## Locked fixed-versus-dynamic profile records
 
 The bounded four-arm package `modeling/evidence/2026-07-16-final-fixed-vs-dynamic-locked-vault` preserves the same 231 intended IDs and locked `CPPI_0.4_0.5` policy. `FIXED_BASELINE_V1` is CAPITAL_VALID: 198 executions, 51.89997402u PnL, 40.75998961u ending Vault, and 6.43150453u maximum total fall. `DYNAMIC_GROWTH_V1` is also CAPITAL_VALID, but has 153 executions, 32.01226315u PnL, 38.23460928u Vault, and 17.52205252u maximum total fall. These are recorded profiles, not a signal model or Vault-policy selection.
+
+## Final Dynamic-aware Vault frontier
+
+The bounded seven-arm package `modeling/evidence/2026-07-16-final-dynamic-aware-vault` preserves the original PRIMARY, 231 intended IDs and Dynamic Active 3% contract. Development-only volatility target is `0.0341769`; confirmation uses the canonical locked 23/11 block split. No protected policy passed all predeclared confirmation gates, so `DYNAMIC_NO_VAULT` remains the winner and status is `NO_DYNAMIC_VAULT_PASSED_PREDECLARED_GATES`. Full-history control remains 169.32412195u PnL, 33.96564534u maximum fall and 43.85905932u CVaR95 maximum fall. Ireland remains blocked pending founder decision and atomic freeze.

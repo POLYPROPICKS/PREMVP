@@ -1,0 +1,1702 @@
+{
+  "DYNAMIC_NO_VAULT": [],
+  "BUFFER_10_LOCK_010_CAP_0025": [
+    {
+      "atIso": "2026-05-31T00:01:50.252Z",
+      "cycleId": "2026-05-30",
+      "amount": 0.15781266,
+      "cycleReference": 54.63323974,
+      "targetVault": 0.15781266,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-05-31T06:04:00.707Z",
+      "cycleId": "2026-05-30",
+      "amount": 0.18857279,
+      "cycleReference": 54.63323974,
+      "targetVault": 0.34638545,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-05-31T06:04:01.418Z",
+      "cycleId": "2026-05-30",
+      "amount": 0.06713965,
+      "cycleReference": 54.63323974,
+      "targetVault": 0.4135251,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-05-31T06:04:11.191Z",
+      "cycleId": "2026-05-30",
+      "amount": 0.22174667,
+      "cycleReference": 54.63323974,
+      "targetVault": 0.63527177,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-01T06:03:21.943Z",
+      "cycleId": "2026-05-31",
+      "amount": 0.07034179,
+      "cycleReference": 64.07844878,
+      "targetVault": 0.70561356,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-01T06:03:26.838Z",
+      "cycleId": "2026-05-31",
+      "amount": 0.19631945,
+      "cycleReference": 64.07844878,
+      "targetVault": 0.90193301,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-02T00:03:03.144Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.18936616,
+      "cycleReference": 66.19504361,
+      "targetVault": 1.09129917,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-02T06:03:35.938Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.29174853,
+      "cycleReference": 66.19504361,
+      "targetVault": 1.3830477,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-02T06:03:36.283Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.3608096,
+      "cycleReference": 66.19504361,
+      "targetVault": 1.7438573,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-02T12:01:58.466Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.00394771,
+      "cycleReference": 66.19504361,
+      "targetVault": 1.74780501,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T00:01:24.103Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.45099056,
+      "cycleReference": 75.73024508,
+      "targetVault": 2.19879557,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T06:04:19.843Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.33377405,
+      "cycleReference": 75.73024508,
+      "targetVault": 2.53256962,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T06:04:32.875Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.1065833,
+      "cycleReference": 75.73024508,
+      "targetVault": 2.63915292,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T06:04:34.231Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.2613915,
+      "cycleReference": 75.73024508,
+      "targetVault": 2.90054442,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T06:04:35.478Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.43133313,
+      "cycleReference": 75.73024508,
+      "targetVault": 3.33187755,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T19:31:41.481Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.11283491,
+      "cycleReference": 88.16437887,
+      "targetVault": 3.44471246,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T00:03:08.779Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.36525243,
+      "cycleReference": 88.16437887,
+      "targetVault": 3.80996489,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T00:03:12.696Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.35784365,
+      "cycleReference": 88.16437887,
+      "targetVault": 4.16780854,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T12:01:14.072Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.14442425,
+      "cycleReference": 88.16437887,
+      "targetVault": 4.31223279,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T12:01:18.935Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.32987347,
+      "cycleReference": 88.16437887,
+      "targetVault": 4.64210626,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T00:01:07.290Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.09538601,
+      "cycleReference": 97.42259876,
+      "targetVault": 4.73749227,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T00:01:10.437Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.3362651,
+      "cycleReference": 97.42259876,
+      "targetVault": 5.07375737,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T00:01:11.503Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.32303283,
+      "cycleReference": 97.42259876,
+      "targetVault": 5.3967902,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T06:02:48.544Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.36451377,
+      "cycleReference": 97.42259876,
+      "targetVault": 5.76130397,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T06:02:58.120Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.0059044,
+      "cycleReference": 97.42259876,
+      "targetVault": 5.76720837,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-06T12:02:50.185Z",
+      "cycleId": "2026-06-05",
+      "amount": 0.0944085,
+      "cycleReference": 103.13684141,
+      "targetVault": 5.86161687,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-06T12:02:56.371Z",
+      "cycleId": "2026-06-05",
+      "amount": 0.35598845,
+      "cycleReference": 103.13684141,
+      "targetVault": 6.21760532,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T00:03:47.326Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.16788326,
+      "cycleReference": 112.86434264,
+      "targetVault": 6.38548858,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T00:03:48.381Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.08369716,
+      "cycleReference": 112.86434264,
+      "targetVault": 6.46918574,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T00:03:48.708Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.40556747,
+      "cycleReference": 112.86434264,
+      "targetVault": 6.87475321,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:01:49.044Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.05097099,
+      "cycleReference": 112.86434264,
+      "targetVault": 6.9257242,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:01:53.751Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.40556747,
+      "cycleReference": 112.86434264,
+      "targetVault": 7.33129167,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:01:59.717Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.35953693,
+      "cycleReference": 112.86434264,
+      "targetVault": 7.6908286,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:02:00.409Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.34543329,
+      "cycleReference": 112.86434264,
+      "targetVault": 8.03626189,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-13T12:01:18.797Z",
+      "cycleId": "2026-06-12",
+      "amount": 0.12677819,
+      "cycleReference": 120.10376545,
+      "targetVault": 8.16304008,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T00:02:49.251Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.18140917,
+      "cycleReference": 133.46736074,
+      "targetVault": 8.34444925,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T00:02:49.570Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.49937788,
+      "cycleReference": 133.46736074,
+      "targetVault": 8.84382713,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T00:02:53.876Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.58824503,
+      "cycleReference": 133.46736074,
+      "targetVault": 9.43207216,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T06:05:27.280Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.18878727,
+      "cycleReference": 133.46736074,
+      "targetVault": 9.62085943,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T08:07:45.844Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.54172047,
+      "cycleReference": 133.46736074,
+      "targetVault": 10.1625799,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-18T20:36:58.851Z",
+      "cycleId": "2026-06-18",
+      "amount": 0.02568385,
+      "cycleReference": 147.16902178,
+      "targetVault": 10.18826375,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-18T20:37:00.331Z",
+      "cycleId": "2026-06-18",
+      "amount": 0.11950343,
+      "cycleReference": 147.16902178,
+      "targetVault": 10.30776718,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-18T20:37:17.943Z",
+      "cycleId": "2026-06-18",
+      "amount": 0.04043343,
+      "cycleReference": 147.16902178,
+      "targetVault": 10.34820061,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-06T08:14:50.831Z",
+      "cycleId": "2026-07-05",
+      "amount": 0.10488941,
+      "cycleReference": 146.8717544,
+      "targetVault": 10.45309002,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-07T18:01:23.559Z",
+      "cycleId": "2026-07-07",
+      "amount": 0.51134555,
+      "cycleReference": 154.07781017,
+      "targetVault": 10.96443557,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-08T06:02:55.799Z",
+      "cycleId": "2026-07-07",
+      "amount": 0.03893001,
+      "cycleReference": 154.07781017,
+      "targetVault": 11.00336558,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-08T20:30:15.027Z",
+      "cycleId": "2026-07-08",
+      "amount": 0.06958353,
+      "cycleReference": 154.40795593,
+      "targetVault": 11.07294911,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-11T12:02:25.265Z",
+      "cycleId": "2026-07-10",
+      "amount": 0.13505575,
+      "cycleReference": 159.65654198,
+      "targetVault": 11.20800486,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-11T12:02:26.059Z",
+      "cycleId": "2026-07-10",
+      "amount": 0.52175145,
+      "cycleReference": 159.65654198,
+      "targetVault": 11.72975631,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-11T12:02:28.874Z",
+      "cycleId": "2026-07-10",
+      "amount": 0.3914003,
+      "cycleReference": 159.65654198,
+      "targetVault": 12.12115661,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T12:04:56.495Z",
+      "cycleId": "2026-07-11",
+      "amount": 0.72543572,
+      "cycleReference": 169.09040946,
+      "targetVault": 12.84659233,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T18:02:40.188Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.51164617,
+      "cycleReference": 180.73579262,
+      "targetVault": 13.3582385,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T18:02:43.294Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.63994182,
+      "cycleReference": 180.73579262,
+      "targetVault": 13.99818032,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T20:30:37.122Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.37472572,
+      "cycleReference": 180.73579262,
+      "targetVault": 14.37290604,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-13T00:01:09.440Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.48144231,
+      "cycleReference": 180.73579262,
+      "targetVault": 14.85434835,
+      "reason": "BUFFERED_PROFIT"
+    }
+  ],
+  "BUFFER_10_LOCK_020_CAP_005": [
+    {
+      "atIso": "2026-05-31T00:01:50.252Z",
+      "cycleId": "2026-05-30",
+      "amount": 0.31562531,
+      "cycleReference": 54.63323974,
+      "targetVault": 0.31562531,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-05-31T06:04:00.707Z",
+      "cycleId": "2026-05-30",
+      "amount": 0.37714559,
+      "cycleReference": 54.63323974,
+      "targetVault": 0.6927709,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-05-31T06:04:01.418Z",
+      "cycleId": "2026-05-30",
+      "amount": 0.13427929,
+      "cycleReference": 54.63323974,
+      "targetVault": 0.82705019,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-05-31T06:04:11.191Z",
+      "cycleId": "2026-05-30",
+      "amount": 0.44349336,
+      "cycleReference": 54.63323974,
+      "targetVault": 1.27054355,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-01T06:03:21.943Z",
+      "cycleId": "2026-05-31",
+      "amount": 0.13603905,
+      "cycleReference": 63.443177,
+      "targetVault": 1.4065826,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-01T06:03:26.838Z",
+      "cycleId": "2026-05-31",
+      "amount": 0.39263889,
+      "cycleReference": 63.443177,
+      "targetVault": 1.79922149,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-02T00:03:03.144Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.37497759,
+      "cycleReference": 65.29359066,
+      "targetVault": 2.17419908,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-02T06:03:35.938Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.57555091,
+      "cycleReference": 65.29359066,
+      "targetVault": 2.74974999,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-02T06:03:36.283Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.7117921,
+      "cycleReference": 65.29359066,
+      "targetVault": 3.46154209,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-02T12:01:58.466Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.00778789,
+      "cycleReference": 65.29359066,
+      "targetVault": 3.46932998,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T00:01:24.103Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.87991196,
+      "cycleReference": 73.87731994,
+      "targetVault": 4.34924194,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T06:04:19.843Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.6512149,
+      "cycleReference": 73.87731994,
+      "targetVault": 5.00045684,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T06:04:32.875Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.20795097,
+      "cycleReference": 73.87731994,
+      "targetVault": 5.20840781,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T06:04:34.231Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.50999182,
+      "cycleReference": 73.87731994,
+      "targetVault": 5.71839963,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T06:04:35.478Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.84155904,
+      "cycleReference": 73.87731994,
+      "targetVault": 6.55995867,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T19:31:41.481Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.22014826,
+      "cycleReference": 84.46190797,
+      "targetVault": 6.78010693,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T00:03:08.779Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.69982723,
+      "cycleReference": 84.46190797,
+      "targetVault": 7.47993416,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T00:03:12.696Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.68563196,
+      "cycleReference": 84.46190797,
+      "targetVault": 8.16556612,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T12:01:14.072Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.27671829,
+      "cycleReference": 84.46190797,
+      "targetVault": 8.44228441,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T12:01:18.935Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.63204079,
+      "cycleReference": 84.46190797,
+      "targetVault": 9.0743252,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T00:01:07.290Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.16959776,
+      "cycleReference": 92.12388889,
+      "targetVault": 9.24392296,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T00:01:10.437Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.63595201,
+      "cycleReference": 92.12388889,
+      "targetVault": 9.87987497,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T00:01:11.503Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.61092684,
+      "cycleReference": 92.12388889,
+      "targetVault": 10.49080181,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T06:02:48.544Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.68937652,
+      "cycleReference": 92.12388889,
+      "targetVault": 11.18017833,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T06:02:58.120Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.01116653,
+      "cycleReference": 92.12388889,
+      "targetVault": 11.19134486,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-06T12:02:50.185Z",
+      "cycleId": "2026-06-05",
+      "amount": 0.15871373,
+      "cycleReference": 96.47422943,
+      "targetVault": 11.35005859,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-06T12:02:56.371Z",
+      "cycleId": "2026-06-05",
+      "amount": 0.66598339,
+      "cycleReference": 96.47422943,
+      "targetVault": 12.01604198,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T00:03:47.326Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.31066425,
+      "cycleReference": 105.16994104,
+      "targetVault": 12.32670623,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T00:03:48.381Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.15598238,
+      "cycleReference": 105.16994104,
+      "targetVault": 12.48268861,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T00:03:48.708Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.75583672,
+      "cycleReference": 105.16994104,
+      "targetVault": 13.23852533,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:01:49.044Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.0949922,
+      "cycleReference": 105.16994104,
+      "targetVault": 13.33351753,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:01:53.751Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.75583672,
+      "cycleReference": 105.16994104,
+      "targetVault": 14.08935425,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:01:59.717Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.67005179,
+      "cycleReference": 105.16994104,
+      "targetVault": 14.75940604,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:02:00.409Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.64376752,
+      "cycleReference": 105.16994104,
+      "targetVault": 15.40317356,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-13T12:01:18.797Z",
+      "cycleId": "2026-06-12",
+      "amount": 0.22405362,
+      "cycleReference": 110.3393535,
+      "targetVault": 15.62722718,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T00:02:49.251Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.33244796,
+      "cycleReference": 122.50890874,
+      "targetVault": 15.95967514,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T00:02:49.570Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.91675206,
+      "cycleReference": 122.50890874,
+      "targetVault": 16.8764272,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T00:02:53.876Z",
+      "cycleId": "2026-06-13",
+      "amount": 1.07989335,
+      "cycleReference": 122.50890874,
+      "targetVault": 17.95632055,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T06:05:27.280Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.34657345,
+      "cycleReference": 122.50890874,
+      "targetVault": 18.302894,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T08:07:45.844Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.99448409,
+      "cycleReference": 122.50890874,
+      "targetVault": 19.29737809,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-18T20:36:58.851Z",
+      "cycleId": "2026-06-18",
+      "amount": 0.07893839,
+      "cycleReference": 133.19720353,
+      "targetVault": 19.37631648,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-18T20:37:00.331Z",
+      "cycleId": "2026-06-18",
+      "amount": 0.22271281,
+      "cycleReference": 133.19720353,
+      "targetVault": 19.59902929,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-18T20:37:17.943Z",
+      "cycleId": "2026-06-18",
+      "amount": 0.06540374,
+      "cycleReference": 133.19720353,
+      "targetVault": 19.66443303,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-06T08:14:50.831Z",
+      "cycleId": "2026-07-05",
+      "amount": 0.1524145,
+      "cycleReference": 132.80887776,
+      "targetVault": 19.81684753,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-07T18:01:23.559Z",
+      "cycleId": "2026-07-07",
+      "amount": 0.92469731,
+      "cycleReference": 139.2673901,
+      "targetVault": 20.74154484,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-08T06:02:55.799Z",
+      "cycleId": "2026-07-07",
+      "amount": 0.07068004,
+      "cycleReference": 139.2673901,
+      "targetVault": 20.81222488,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-08T20:30:15.027Z",
+      "cycleId": "2026-07-08",
+      "amount": 0.1257899,
+      "cycleReference": 139.0708778,
+      "targetVault": 20.93801478,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-11T12:02:25.265Z",
+      "cycleId": "2026-07-10",
+      "amount": 0.24786714,
+      "cycleReference": 143.7520591,
+      "targetVault": 21.18588192,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-11T12:02:26.059Z",
+      "cycleId": "2026-07-10",
+      "amount": 0.94351492,
+      "cycleReference": 143.7520591,
+      "targetVault": 22.12939684,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-11T12:02:28.874Z",
+      "cycleId": "2026-07-10",
+      "amount": 0.707793,
+      "cycleReference": 143.7520591,
+      "targetVault": 22.83718984,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T12:04:56.495Z",
+      "cycleId": "2026-07-11",
+      "amount": 1.31784095,
+      "cycleReference": 151.34875938,
+      "targetVault": 24.15503079,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T18:02:40.188Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.92524093,
+      "cycleReference": 161.2463278,
+      "targetVault": 25.08027172,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T18:02:43.294Z",
+      "cycleId": "2026-07-12",
+      "amount": 1.15724579,
+      "cycleReference": 161.2463278,
+      "targetVault": 26.23751751,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T20:30:37.122Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.66288429,
+      "cycleReference": 161.2463278,
+      "targetVault": 26.9004018,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-13T00:01:09.440Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.87062144,
+      "cycleReference": 161.2463278,
+      "targetVault": 27.77102324,
+      "reason": "BUFFERED_PROFIT"
+    }
+  ],
+  "BUFFER_25_LOCK_020_CAP_005": [
+    {
+      "atIso": "2026-06-02T06:03:36.283Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.51397869,
+      "cycleReference": 67.10114111,
+      "targetVault": 0.51397869,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-02T12:01:58.466Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.00800349,
+      "cycleReference": 67.10114111,
+      "targetVault": 0.52198218,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T00:01:24.103Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.91815175,
+      "cycleReference": 77.08792873,
+      "targetVault": 1.44013393,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T06:04:19.843Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.67951582,
+      "cycleReference": 77.08792873,
+      "targetVault": 2.11964975,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T06:04:32.875Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.21698824,
+      "cycleReference": 77.08792873,
+      "targetVault": 2.33663799,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T06:04:34.231Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.53215538,
+      "cycleReference": 77.08792873,
+      "targetVault": 2.86879337,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T06:04:35.478Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.87813205,
+      "cycleReference": 77.08792873,
+      "targetVault": 3.74692542,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-03T19:31:41.481Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.2297156,
+      "cycleReference": 88.13250869,
+      "targetVault": 3.97664102,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T00:03:08.779Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.73024079,
+      "cycleReference": 88.13250869,
+      "targetVault": 4.70688181,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T00:03:12.696Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.7154286,
+      "cycleReference": 88.13250869,
+      "targetVault": 5.42231041,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T12:01:14.072Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.28874409,
+      "cycleReference": 88.13250869,
+      "targetVault": 5.7110545,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T12:01:18.935Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.65950844,
+      "cycleReference": 88.13250869,
+      "targetVault": 6.37056294,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T00:01:07.290Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.17696824,
+      "cycleReference": 96.12746896,
+      "targetVault": 6.54753118,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T00:01:10.437Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.66358963,
+      "cycleReference": 96.12746896,
+      "targetVault": 7.21112081,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T00:01:11.503Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.6374769,
+      "cycleReference": 96.12746896,
+      "targetVault": 7.84859771,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T06:02:48.544Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.71933589,
+      "cycleReference": 96.12746896,
+      "targetVault": 8.5679336,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T06:02:58.120Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.01165181,
+      "cycleReference": 96.12746896,
+      "targetVault": 8.57958541,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-06T12:02:50.185Z",
+      "cycleId": "2026-06-05",
+      "amount": 0.16561122,
+      "cycleReference": 100.66686944,
+      "targetVault": 8.74519663,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-06T12:02:56.371Z",
+      "cycleId": "2026-06-05",
+      "amount": 0.69492613,
+      "cycleReference": 100.66686944,
+      "targetVault": 9.44012276,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T00:03:47.326Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.32416529,
+      "cycleReference": 109.74048494,
+      "targetVault": 9.76428805,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T00:03:48.381Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.16276117,
+      "cycleReference": 109.74048494,
+      "targetVault": 9.92704922,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T00:03:48.708Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.78868436,
+      "cycleReference": 109.74048494,
+      "targetVault": 10.71573358,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:01:49.044Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.09912044,
+      "cycleReference": 109.74048494,
+      "targetVault": 10.81485402,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:01:53.751Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.78868437,
+      "cycleReference": 109.74048494,
+      "targetVault": 11.60353839,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:01:59.717Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.69917133,
+      "cycleReference": 109.74048494,
+      "targetVault": 12.30270972,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:02:00.409Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.67174479,
+      "cycleReference": 109.74048494,
+      "targetVault": 12.97445451,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-13T12:01:18.797Z",
+      "cycleId": "2026-06-12",
+      "amount": 0.23379069,
+      "cycleReference": 115.13455312,
+      "targetVault": 13.2082452,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T00:02:49.251Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.3468957,
+      "cycleReference": 127.83298081,
+      "targetVault": 13.5551409,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T00:02:49.570Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.95659287,
+      "cycleReference": 127.83298081,
+      "targetVault": 14.51173377,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T00:02:53.876Z",
+      "cycleId": "2026-06-13",
+      "amount": 1.12682405,
+      "cycleReference": 127.83298081,
+      "targetVault": 15.63855782,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T06:05:27.280Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.36163507,
+      "cycleReference": 127.83298081,
+      "targetVault": 16.00019289,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T08:07:45.844Z",
+      "cycleId": "2026-06-13",
+      "amount": 1.03770302,
+      "cycleReference": 127.83298081,
+      "targetVault": 17.03789591,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-18T20:36:58.851Z",
+      "cycleId": "2026-06-18",
+      "amount": 0.09587064,
+      "cycleReference": 139.05328291,
+      "targetVault": 17.13376655,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-18T20:37:00.331Z",
+      "cycleId": "2026-06-18",
+      "amount": 0.23239161,
+      "cycleReference": 139.05328291,
+      "targetVault": 17.36615816,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-18T20:37:17.943Z",
+      "cycleId": "2026-06-18",
+      "amount": 0.0682461,
+      "cycleReference": 139.05328291,
+      "targetVault": 17.43440426,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-06T08:14:50.831Z",
+      "cycleId": "2026-07-05",
+      "amount": 0.16030365,
+      "cycleReference": 138.63804558,
+      "targetVault": 17.59470791,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-07T18:01:23.559Z",
+      "cycleId": "2026-07-07",
+      "amount": 0.9652955,
+      "cycleReference": 145.37883164,
+      "targetVault": 18.56000341,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-08T06:02:55.799Z",
+      "cycleId": "2026-07-07",
+      "amount": 0.07380117,
+      "cycleReference": 145.37883164,
+      "targetVault": 18.63380458,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-08T20:30:15.027Z",
+      "cycleId": "2026-07-08",
+      "amount": 0.13130992,
+      "cycleReference": 145.17385339,
+      "targetVault": 18.7651145,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-11T12:02:25.265Z",
+      "cycleId": "2026-07-10",
+      "amount": 0.25876719,
+      "cycleReference": 150.06045798,
+      "targetVault": 19.02388169,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-11T12:02:26.059Z",
+      "cycleId": "2026-07-10",
+      "amount": 0.98493928,
+      "cycleReference": 150.06045798,
+      "targetVault": 20.00882097,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-11T12:02:28.874Z",
+      "cycleId": "2026-07-10",
+      "amount": 0.73886816,
+      "cycleReference": 150.06045798,
+      "targetVault": 20.74768913,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T12:04:56.495Z",
+      "cycleId": "2026-07-11",
+      "amount": 1.37572884,
+      "cycleReference": 157.99075653,
+      "targetVault": 22.12341797,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T18:02:40.188Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.96586299,
+      "cycleReference": 168.32298682,
+      "targetVault": 23.08928096,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T18:02:43.294Z",
+      "cycleId": "2026-07-12",
+      "amount": 1.20805386,
+      "cycleReference": 168.32298682,
+      "targetVault": 24.29733482,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T20:30:37.122Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.69196031,
+      "cycleReference": 168.32298682,
+      "targetVault": 24.98929513,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-13T00:01:09.440Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.90884547,
+      "cycleReference": 168.32298682,
+      "targetVault": 25.8981406,
+      "reason": "BUFFERED_PROFIT"
+    }
+  ],
+  "BUFFER_50_LOCK_025_CAP_005": [
+    {
+      "atIso": "2026-06-04T00:03:12.696Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.63593738,
+      "cycleReference": 91.97605675,
+      "targetVault": 0.63593738,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T12:01:14.072Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.37667064,
+      "cycleReference": 91.97605675,
+      "targetVault": 1.01260802,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-04T12:01:18.935Z",
+      "cycleId": "2026-06-03",
+      "amount": 0.86033784,
+      "cycleReference": 91.97605675,
+      "targetVault": 1.87294586,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T00:01:07.290Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.24113826,
+      "cycleReference": 101.07413829,
+      "targetVault": 2.11408412,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T00:01:10.437Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.872172,
+      "cycleReference": 101.07413829,
+      "targetVault": 2.98625612,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T00:01:11.503Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.83785141,
+      "cycleReference": 101.07413829,
+      "targetVault": 3.82410753,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T06:02:48.544Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.94544068,
+      "cycleReference": 101.07413829,
+      "targetVault": 4.76954821,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-05T06:02:58.120Z",
+      "cycleId": "2026-06-04",
+      "amount": 0.01531426,
+      "cycleReference": 101.07413829,
+      "targetVault": 4.78486247,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-06T12:02:50.185Z",
+      "cycleId": "2026-06-05",
+      "amount": 0.20379556,
+      "cycleReference": 105.25791495,
+      "targetVault": 4.98865803,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-06T12:02:56.371Z",
+      "cycleId": "2026-06-05",
+      "amount": 0.90827395,
+      "cycleReference": 105.25791495,
+      "targetVault": 5.89693198,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T00:03:47.326Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.42144224,
+      "cycleReference": 114.53305848,
+      "targetVault": 6.31837422,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T00:03:48.381Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.21233658,
+      "cycleReference": 114.53305848,
+      "targetVault": 6.5307108,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T00:03:48.708Z",
+      "cycleId": "2026-06-06",
+      "amount": 1.02890961,
+      "cycleReference": 114.53305848,
+      "targetVault": 7.55962041,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:01:49.044Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.12931152,
+      "cycleReference": 114.53305848,
+      "targetVault": 7.68893193,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:01:53.751Z",
+      "cycleId": "2026-06-06",
+      "amount": 1.02890962,
+      "cycleReference": 114.53305848,
+      "targetVault": 8.71784155,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:01:59.717Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.91213183,
+      "cycleReference": 114.53305848,
+      "targetVault": 9.62997338,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-07T06:02:00.409Z",
+      "cycleId": "2026-06-06",
+      "amount": 0.87635143,
+      "cycleReference": 114.53305848,
+      "targetVault": 10.50632481,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-13T12:01:18.797Z",
+      "cycleId": "2026-06-12",
+      "amount": 0.29669341,
+      "cycleReference": 119.30508453,
+      "targetVault": 10.80301822,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T00:02:49.251Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.44877434,
+      "cycleReference": 132.40905467,
+      "targetVault": 11.25179256,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T00:02:49.570Z",
+      "cycleId": "2026-06-13",
+      "amount": 1.23854537,
+      "cycleReference": 132.40905467,
+      "targetVault": 12.49033793,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T00:02:53.876Z",
+      "cycleId": "2026-06-13",
+      "amount": 1.45895161,
+      "cycleReference": 132.40905467,
+      "targetVault": 13.94928954,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T06:05:27.280Z",
+      "cycleId": "2026-06-13",
+      "amount": 0.46822579,
+      "cycleReference": 132.40905467,
+      "targetVault": 14.41751533,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-14T08:07:45.844Z",
+      "cycleId": "2026-06-13",
+      "amount": 1.34356247,
+      "cycleReference": 132.40905467,
+      "targetVault": 15.7610778,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-18T20:36:58.851Z",
+      "cycleId": "2026-06-18",
+      "amount": 0.14148967,
+      "cycleReference": 143.04765041,
+      "targetVault": 15.90256747,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-18T20:37:00.331Z",
+      "cycleId": "2026-06-18",
+      "amount": 0.30317575,
+      "cycleReference": 143.04765041,
+      "targetVault": 16.20574322,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-06-18T20:37:17.943Z",
+      "cycleId": "2026-06-18",
+      "amount": 0.08226698,
+      "cycleReference": 143.04765041,
+      "targetVault": 16.2880102,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-06T08:14:50.831Z",
+      "cycleId": "2026-07-05",
+      "amount": 0.18114335,
+      "cycleReference": 142.49549895,
+      "targetVault": 16.46915355,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-07T18:01:23.559Z",
+      "cycleId": "2026-07-07",
+      "amount": 1.24018399,
+      "cycleReference": 149.40746065,
+      "targetVault": 17.70933754,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-08T06:02:55.799Z",
+      "cycleId": "2026-07-07",
+      "amount": 0.09493302,
+      "cycleReference": 149.40746065,
+      "targetVault": 17.80427056,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-08T20:30:15.027Z",
+      "cycleId": "2026-07-08",
+      "amount": 0.16868584,
+      "cycleReference": 148.93058785,
+      "targetVault": 17.9729564,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-11T12:02:25.265Z",
+      "cycleId": "2026-07-10",
+      "amount": 0.3348254,
+      "cycleReference": 153.9188692,
+      "targetVault": 18.3077818,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-11T12:02:26.059Z",
+      "cycleId": "2026-07-10",
+      "amount": 1.26542176,
+      "cycleReference": 153.9188692,
+      "targetVault": 19.57320356,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-11T12:02:28.874Z",
+      "cycleId": "2026-07-10",
+      "amount": 0.94927664,
+      "cycleReference": 153.9188692,
+      "targetVault": 20.5224802,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T12:04:56.495Z",
+      "cycleId": "2026-07-11",
+      "amount": 1.77139841,
+      "cycleReference": 161.56744059,
+      "targetVault": 22.29387861,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T18:02:40.188Z",
+      "cycleId": "2026-07-12",
+      "amount": 1.24091309,
+      "cycleReference": 171.84528817,
+      "targetVault": 23.5347917,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T18:02:43.294Z",
+      "cycleId": "2026-07-12",
+      "amount": 1.55207297,
+      "cycleReference": 171.84528817,
+      "targetVault": 25.08686467,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-12T20:30:37.122Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.87920884,
+      "cycleReference": 171.84528817,
+      "targetVault": 25.96607351,
+      "reason": "BUFFERED_PROFIT"
+    },
+    {
+      "atIso": "2026-07-13T00:01:09.440Z",
+      "cycleId": "2026-07-12",
+      "amount": 1.16765861,
+      "cycleReference": 171.84528817,
+      "targetVault": 27.13373212,
+      "reason": "BUFFERED_PROFIT"
+    }
+  ],
+  "VOL_TARGET_14_BUFFER_10_CAP_005": [
+    {
+      "atIso": "2026-06-01T06:03:20.335Z",
+      "cycleId": "2026-05-31",
+      "amount": 0.09517948,
+      "cycleReference": 64.71372055,
+      "targetVault": 0.09517948,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-01T06:03:21.196Z",
+      "cycleId": "2026-05-31",
+      "amount": 0.02762313,
+      "cycleReference": 64.71372055,
+      "targetVault": 0.12280261,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-01T12:04:04.685Z",
+      "cycleId": "2026-05-31",
+      "amount": 0.02251708,
+      "cycleReference": 64.71372055,
+      "targetVault": 0.14531969,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-02T00:03:03.144Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.21265659,
+      "cycleReference": 66.95582142,
+      "targetVault": 0.35797628,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-02T06:03:35.938Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.21301235,
+      "cycleReference": 66.95582142,
+      "targetVault": 0.57098863,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-02T06:03:36.283Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.04976228,
+      "cycleReference": 66.95582142,
+      "targetVault": 0.62075091,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-02T06:03:36.625Z",
+      "cycleId": "2026-06-01",
+      "amount": 0.25702747,
+      "cycleReference": 66.95582142,
+      "targetVault": 0.87777838,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-03T06:04:20.184Z",
+      "cycleId": "2026-06-02",
+      "amount": 0.39949527,
+      "cycleReference": 76.71772009,
+      "targetVault": 1.27727365,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-06T06:04:18.965Z",
+      "cycleId": "2026-06-05",
+      "amount": 0.6785435,
+      "cycleReference": 108.44323684,
+      "targetVault": 1.95581715,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-08T06:00:56.083Z",
+      "cycleId": "2026-06-07",
+      "amount": 0.22780274,
+      "cycleReference": 137.24917212,
+      "targetVault": 2.18361989,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-08T06:01:03.577Z",
+      "cycleId": "2026-06-07",
+      "amount": 0.36876207,
+      "cycleReference": 137.24917212,
+      "targetVault": 2.55238196,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-08T06:01:05.649Z",
+      "cycleId": "2026-06-07",
+      "amount": 0.46417705,
+      "cycleReference": 137.24917212,
+      "targetVault": 3.01655901,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-09T00:02:33.762Z",
+      "cycleId": "2026-06-08",
+      "amount": 0.85549011,
+      "cycleReference": 120.61478025,
+      "targetVault": 3.87204912,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-06-09T06:01:38.092Z",
+      "cycleId": "2026-06-08",
+      "amount": 0.26589971,
+      "cycleReference": 120.61478025,
+      "targetVault": 4.13794883,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-07-12T18:02:40.188Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.39521546,
+      "cycleReference": 194.57882788,
+      "targetVault": 4.53316429,
+      "reason": "VOLATILITY_TARGET"
+    },
+    {
+      "atIso": "2026-07-12T18:02:43.294Z",
+      "cycleId": "2026-07-12",
+      "amount": 0.29274749,
+      "cycleReference": 194.57882788,
+      "targetVault": 4.82591178,
+      "reason": "VOLATILITY_TARGET"
+    }
+  ],
+  "LOW_FLOOR_CPPI_DYNAMIC_CONTROL": []
+}

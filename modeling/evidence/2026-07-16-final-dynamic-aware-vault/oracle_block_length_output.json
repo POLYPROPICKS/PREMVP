@@ -1,0 +1,10 @@
+{
+  "source": "committed locked-primary oracle",
+  "approvedValue": "b_sb",
+  "b_sb": 1.3676145479683348,
+  "blockSize": 2,
+  "runtime": {
+    "arch": "8.0.0"
+  },
+  "immutableSourceOutputSha256": "604d7b3652a476c82d3725a574b30c5d89f0018c725ab01fd4f70d73ced78464"
+}
