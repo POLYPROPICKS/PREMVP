@@ -93,3 +93,9 @@ The multiple-testing blocker is isolated in `modeling/evidence/2026-07-16-statis
 The bounded package is `modeling/evidence/2026-07-16-final-scientific-architecture-freeze`. Development/confirmation separation, oracle-backed policy comparison, fixed-vs-dynamic sizing, 24×7/night-only scenarios, capacity locking, and deterministic freeze hashes are complete. Both Phase A sequences retain `NO_VAULT_FIXED100`; SPA consistent values are `0.5864` and `0.3873`, so no protected policy qualifies to replace control.
 
 The historical winner is `B2_TIMING_WITHIN_120M + NO_VAULT_FIXED100 + FIXED_100 + NIGHT_ONLY + positions36/exposure80%/accepted100`. Confirmation: 45 executions, PnL $1,364.53467215, ROI 30.32299271%, ending Total $11,364.53467215, minimum Total $9,800, maximum fall $321.52765544, CVaR95 maximum fall $609.29271625, probability below initial `0.09745`. Status is historical-only: Ireland parity and forward validation remain pending; it is not live approval.
+
+## Final Vault frontier on locked original PRIMARY
+
+The bounded package `modeling/evidence/2026-07-16-final-vault-on-locked-primary` uses only the locked original PRIMARY `B2_PRICE_FLOOR_030_TIMING_WITHIN_120M` sequence: exactly 231 sorted IDs, SHA-256 `99f22a9bb8db0a2ff7bddd8e72f87a097fdb136f1a242a300ccb0e8740d0fcca`. It evaluates 25 existing Vault-policy grid entries with a 50u initial total bank, 0u Vault, a fixed 1u stake ($100), and no model reselection or dynamic sizing.
+
+The deterministic balanced candidate is `CPPI_0.4_0.5`: 198 executions, 33 Vault risk-budget skips, PnL 51.89997402u, ending Active 61.13998441u, Vault 40.75998961u, Total 101.89997402u, maximum fall 6.43150453u, and bootstrap CVaR95 maximum fall 10.15154317u. The no-Vault fixed-1u control is 231 executions and 52.68123377u PnL with CVaR95 maximum fall 10.44355089u. This is historical pseudo-out-of-sample evidence only and awaits founder acceptance; Ireland remains blocked.
