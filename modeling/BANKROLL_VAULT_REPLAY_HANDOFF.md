@@ -111,3 +111,15 @@ The bounded seven-arm package `modeling/evidence/2026-07-16-final-dynamic-aware-
 ## Dynamic Vault PnL Maximization V2
 
 The bounded V2 package `modeling/evidence/2026-07-16-dynamic-vault-pnl-max-v2` evaluated the exact 24-candidate Principal Recovery Stage A using 22 chronological next-block evaluations after 12 prior blocks. No Stage A candidate improved both walk-forward maximum fall and CVaR95 relative to Dynamic No-Vault, so no parent was eligible and Stage B correctly remained empty. Status is `NO_V2_CANDIDATE_MET_MINIMUM_PROTECTED_GROWTH_CONTRACT`; Dynamic No-Vault is not promoted as a protected winner. The top Pareto protected shadow `PRV2_T25_P50_R1_S0.05_C0.1` has full-history PnL 121.85057149u and ending Vault 52.34252857u, but fails the walk-forward risk constraints. Founder review is required; freeze and Ireland remain blocked.
+
+## Atomic Bankroll Profiles Freeze V1
+
+FOUNDER ACCEPTANCE: `APPROVED`.
+
+- Fixed profile: `FIXED_SAFE_V1` (`FIXED_1U` + `CPPI_0.4_0.5`).
+- Dynamic profile: `DYNAMIC_PROTECTED_GROWTH_V1` (`DYNAMIC_ACTIVE_3PCT` + `PRV2_T25_P50_R1_S0.05_C0.1`).
+- Atomic freeze: `V1`.
+- Production default: `NOT SELECTED`; callers must provide an explicit approved profile ID.
+- Canonical source: `lib/modeling/bankrollProfileRegistry.ts`.
+- Evidence: `modeling/evidence/2026-07-16-bankroll-profiles-atomic-freeze`.
+- Next: PREMVP integration against the frozen registry. Ireland remains blocked.
