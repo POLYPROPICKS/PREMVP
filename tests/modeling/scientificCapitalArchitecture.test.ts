@@ -42,6 +42,13 @@ test("fixed $100 stake, settlement batching and capital reconciliation are exact
   assert.equal(replay.invalidCapitalStates, 0);
 });
 
+test("explicit unit scale preserves fixed-1u and a 50u initial bankroll", () => {
+  const replay = replayScientificCapitalPolicy([row("u", "2026-01-01T10:00:00Z", "2026-01-01T11:00:00Z", .5, "WIN")], noVault, { maxOpenPositions: 231, maxOpenExposurePct: 1, initialTotalCapital: 50, fixedStake: 1 });
+  assert.equal(replay.ledger[0].stake, 1);
+  assert.equal(replay.totalStaked, 1);
+  assert.equal(replay.endingTotal, 51);
+});
+
 test("settlement policy application batches equal timestamps but preserves distinct settlement timestamps", () => {
   const policy: ScientificCapitalPolicy = { family: "HIGH_WATERMARK_DRAWDOWN_FLOOR", id: "HWM_0.20", alpha: .2 };
   const replay = replayScientificCapitalPolicy([

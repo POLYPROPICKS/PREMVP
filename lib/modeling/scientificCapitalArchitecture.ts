@@ -13,7 +13,7 @@ export type ScientificCapitalPolicy =
   | { family: "HIGH_WATERMARK_DRAWDOWN_FLOOR"; id: string; alpha: number }
   | { family: "ONE_WAY_RATCHETED_CPPI"; id: string; alpha: number; multiplier: number };
 
-export interface ScientificCapacity { maxOpenPositions: number; maxOpenExposurePct: number; maxAcceptedPerOperatingDay?: number; operationWindowOnly?: boolean; stakePolicy?: "FIXED_100" | "DYNAMIC_ACTIVE_3PCT" }
+export interface ScientificCapacity { maxOpenPositions: number; maxOpenExposurePct: number; maxAcceptedPerOperatingDay?: number; operationWindowOnly?: boolean; stakePolicy?: "FIXED_100" | "DYNAMIC_ACTIVE_3PCT"; initialTotalCapital?: number; fixedStake?: number }
 export interface CapitalLedgerRow { observationId: string; decisionAtIso: string; resolvedAtIso: string; operatingDay: string; stake: number; entryPrice: number; result: "win" | "loss"; netPnl: number; terminalReason: "EXECUTED_FULL" | "WINDOW_EXCLUDED" | "DAILY_LIMIT" | "POSITION_LIMIT" | "EXPOSURE_LIMIT" | "INSUFFICIENT_ACTIVE_CAPACITY" }
 export interface CapitalCurvePoint { atIso: string; freeActive: number; openPrincipal: number; active: number; vault: number; total: number; fallFromTotalPeak: number; fallFromActivePeak: number }
 export interface CapitalTransfer { atIso: string; amount: number; reason: "INITIAL_STATIC" | "HIGH_WATERMARK_RATCHET" | "CPPI_FLOOR_RATCHET" }
@@ -97,17 +97,20 @@ function validatePolicy(policy: ScientificCapitalPolicy): void {
 export function replayScientificCapitalPolicy(candidates: readonly ExecutionCandidate[], policy: ScientificCapitalPolicy, capacity: ScientificCapacity): ScientificCapitalReplay {
   validatePolicy(policy);
   const dailyLimit = capacity.maxAcceptedPerOperatingDay ?? 100;
+  const initialTotalCapital = capacity.initialTotalCapital ?? STARTING_CAPITAL_USD;
+  const fixedStake = capacity.fixedStake ?? FIXED_STAKE_USD;
   if (!Number.isInteger(capacity.maxOpenPositions) || capacity.maxOpenPositions <= 0 || !Number.isFinite(capacity.maxOpenExposurePct) || capacity.maxOpenExposurePct <= 0 || capacity.maxOpenExposurePct > 1 || !Number.isInteger(dailyLimit) || dailyLimit <= 0) throw new Error("invalid capacity");
+  if (!Number.isFinite(initialTotalCapital) || initialTotalCapital <= 0 || !Number.isFinite(fixedStake) || fixedStake <= 0) throw new Error("invalid capital scale");
   if (new Set(candidates.map((candidate) => candidate.observationId)).size !== candidates.length) throw new Error("duplicate observationId in execution candidates");
   const ordered = [...candidates].sort((a, b) => Date.parse(a.decisionAtIso) - Date.parse(b.decisionAtIso) || b.finalScore - a.finalScore || b.dataCoverage - a.dataCoverage || a.entryPrice - b.entryPrice || a.observationId.localeCompare(b.observationId));
   const stakePolicy = capacity.stakePolicy ?? "FIXED_100";
-  const stakeSchedule = createStakeReferenceSchedule("MINSK_NIGHT_FIXED_MAX3_V1", STARTING_CAPITAL_USD);
-  let free = STARTING_CAPITAL_USD;
+  const stakeSchedule = createStakeReferenceSchedule("MINSK_NIGHT_FIXED_MAX3_V1", initialTotalCapital);
+  let free = initialTotalCapital;
   let vault = 0;
-  let settledHigh = STARTING_CAPITAL_USD;
-  let totalPeak = STARTING_CAPITAL_USD;
-  let activePeak = STARTING_CAPITAL_USD;
-  let minimumTotal = STARTING_CAPITAL_USD;
+  let settledHigh = initialTotalCapital;
+  let totalPeak = initialTotalCapital;
+  let activePeak = initialTotalCapital;
+  let minimumTotal = initialTotalCapital;
   let maxTotalFall = 0;
   let maxActiveFall = 0;
   let invalid = 0;
@@ -125,9 +128,9 @@ export function replayScientificCapitalPolicy(candidates: readonly ExecutionCand
       transfers.push({ atIso, amount: moved, reason });
     }
   };
-  if (policy.family === "STATIC_CAPITAL_FLOOR") transfer(policy.alpha * STARTING_CAPITAL_USD, "INITIAL", "INITIAL_STATIC");
-  if (policy.family === "HIGH_WATERMARK_DRAWDOWN_FLOOR") transfer(policy.alpha * STARTING_CAPITAL_USD, "INITIAL", "HIGH_WATERMARK_RATCHET");
-  if (policy.family === "ONE_WAY_RATCHETED_CPPI") transfer(policy.alpha * STARTING_CAPITAL_USD, "INITIAL", "CPPI_FLOOR_RATCHET");
+  if (policy.family === "STATIC_CAPITAL_FLOOR") transfer(policy.alpha * initialTotalCapital, "INITIAL", "INITIAL_STATIC");
+  if (policy.family === "HIGH_WATERMARK_DRAWDOWN_FLOOR") transfer(policy.alpha * initialTotalCapital, "INITIAL", "HIGH_WATERMARK_RATCHET");
+  if (policy.family === "ONE_WAY_RATCHETED_CPPI") transfer(policy.alpha * initialTotalCapital, "INITIAL", "CPPI_FLOOR_RATCHET");
   activePeak = free;
   const point = (atIso: string) => {
     const openPrincipal = round(open.reduce((sum, item) => sum + item.stake, 0));
@@ -184,7 +187,7 @@ export function replayScientificCapitalPolicy(candidates: readonly ExecutionCand
       const active = free + open.reduce((sum, item) => sum + item.stake, 0);
       const exposure = open.reduce((sum, item) => sum + item.stake, 0);
       const cycleReference = stakePolicy === "DYNAMIC_ACTIVE_3PCT" ? stakeSchedule.referenceFor(at, active) : active;
-      const requestedStake = stakePolicy === "DYNAMIC_ACTIVE_3PCT" ? round(.03 * cycleReference) : FIXED_STAKE_USD;
+      const requestedStake = stakePolicy === "DYNAMIC_ACTIVE_3PCT" ? round(.03 * cycleReference) : fixedStake;
       let reason: CapitalLedgerRow["terminalReason"] = "EXECUTED_FULL";
       if (capacity.operationWindowOnly && !isInsideMinskOperationalWindow(at)) reason = "WINDOW_EXCLUDED";
       else if (acceptedToday >= dailyLimit) reason = "DAILY_LIMIT";
@@ -227,12 +230,13 @@ export function selectFinalArchitectureCells<T extends FinalArchitectureCell>(ce
   return { pnlMax, riskMin, scientificWinner };
 }
 
-export function bootstrapCapitalRisk(blockPnl: readonly number[], blockLength: number, samples = 20_000, seed = 20260716): BootstrapRiskSummary {
+export function bootstrapCapitalRisk(blockPnl: readonly number[], blockLength: number, samples = 20_000, seed = 20260716, initialTotalCapital = STARTING_CAPITAL_USD): BootstrapRiskSummary {
   if (!blockPnl.length || !blockPnl.every(Number.isFinite) || !Number.isInteger(blockLength) || blockLength <= 0 || !Number.isInteger(samples) || samples <= 0) throw new Error("invalid bootstrap input");
+  if (!Number.isFinite(initialTotalCapital) || initialTotalCapital <= 0) throw new Error("invalid bootstrap initial capital");
   let state = seed >>> 0; const random = () => { state += 0x6d2b79f5; let value = state; value = Math.imul(value ^ value >>> 15, value | 1); value ^= value + Math.imul(value ^ value >>> 7, value | 61); return ((value ^ value >>> 14) >>> 0) / 4294967296; };
   const terminals: number[] = [], falls: number[] = [], terminalLosses: number[] = []; const restartProbability = 1 / blockLength;
-  for (let sample = 0; sample < samples; sample++) { let index = Math.floor(random() * blockPnl.length), capital = STARTING_CAPITAL_USD, peak = capital, maximumFall = 0; for (let draw = 0; draw < blockPnl.length; draw++) { if (draw === 0 || random() < restartProbability) index = Math.floor(random() * blockPnl.length); else index = (index + 1) % blockPnl.length; capital += blockPnl[index]; peak = Math.max(peak, capital); maximumFall = Math.max(maximumFall, peak - capital); } terminals.push(round(capital)); falls.push(round(maximumFall)); terminalLosses.push(round(Math.max(0, STARTING_CAPITAL_USD - capital))); }
+  for (let sample = 0; sample < samples; sample++) { let index = Math.floor(random() * blockPnl.length), capital = initialTotalCapital, peak = capital, maximumFall = 0; for (let draw = 0; draw < blockPnl.length; draw++) { if (draw === 0 || random() < restartProbability) index = Math.floor(random() * blockPnl.length); else index = (index + 1) % blockPnl.length; capital += blockPnl[index]; peak = Math.max(peak, capital); maximumFall = Math.max(maximumFall, peak - capital); } terminals.push(round(capital)); falls.push(round(maximumFall)); terminalLosses.push(round(Math.max(0, initialTotalCapital - capital))); }
   const sorted = (values: readonly number[]) => [...values].sort((a, b) => a - b), percentile = (values: readonly number[], q: number) => sorted(values)[Math.floor((values.length - 1) * q)];
   const tailMean = (values: readonly number[]) => { const ordered = sorted(values), start = Math.floor(ordered.length * .95), tail = ordered.slice(start); return round(tail.reduce((sum, value) => sum + value, 0) / tail.length); };
-  return { p10EndingCapital: percentile(terminals, .1), medianEndingCapital: percentile(terminals, .5), p90EndingCapital: percentile(terminals, .9), cvar95TerminalLoss: tailMean(terminalLosses), cvar95MaximumFall: tailMean(falls), probabilityBelowInitial: round(terminals.filter((value) => value < STARTING_CAPITAL_USD).length / samples) };
+  return { p10EndingCapital: percentile(terminals, .1), medianEndingCapital: percentile(terminals, .5), p90EndingCapital: percentile(terminals, .9), cvar95TerminalLoss: tailMean(terminalLosses), cvar95MaximumFall: tailMean(falls), probabilityBelowInitial: round(terminals.filter((value) => value < initialTotalCapital).length / samples) };
 }
