@@ -1,0 +1,18 @@
+Python 3.12.10
+arch 8.0.0
+numpy 2.5.1
+pandas 3.0.3
+scipy 1.16.3
+statsmodels 0.14.5
+
+pip freeze:
+arch @ file:///C:/WORK/KalshiProPulse/python-envs/polypropicks-stat-oracle/arch-8.0.0-cp312-cp312-win_amd64.whl#sha256=8b13d261e0a681b3a8a2f9c588ab37a35500bca9f3bbcc6ca1ce2d999322651d
+numpy==2.5.1
+packaging==26.2
+pandas==3.0.3
+patsy==1.0.2
+python-dateutil==2.9.0.post0
+scipy @ file:///C:/WORK/KalshiProPulse/python-envs/polypropicks-stat-oracle/scipy-1.16.3-cp312-cp312-win_amd64.whl#sha256=56edc65510d1331dae01ef9b658d428e33ed48b4f77b1d51caf479a0253f96dc
+six==1.17.0
+statsmodels @ file:///C:/WORK/KalshiProPulse/python-envs/polypropicks-stat-oracle/statsmodels-0.14.5-cp312-cp312-win_amd64.whl#sha256=b2ed065bfbaf8bb214c7201656df840457c2c8c65e1689e3eb09dc7440f9c61c
+tzdata==2026.3

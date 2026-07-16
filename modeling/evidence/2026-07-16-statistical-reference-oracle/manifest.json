@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "oracle": "arch",
+  "oracle_version": "8.0.0",
+  "python": "3.12.10",
+  "fixture_count": 5,
+  "successful_reference_outputs": 4,
+  "expected_official_errors": 1,
+  "bootstrap": "stationary",
+  "reps": 20000,
+  "seed": 20260716,
+  "studentize": true,
+  "nested": false,
+  "decision_pvalue": "consistent",
+  "conservative_corroboration_pvalue": "upper",
+  "report_only_pvalue": "lower",
+  "approved_block_length": "b_sb",
+  "status": "STATISTICAL_REFERENCE_ORACLE_VALIDATED"
+}

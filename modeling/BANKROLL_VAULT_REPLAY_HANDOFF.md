@@ -83,3 +83,7 @@ This is a candidate only. Founder must accept one model/stake/vault combination 
 The final comparator uses `Europe/Minsk` 18:00 reference boundaries. The live-eligible reference winner is `MINSK_NIGHT_FIXED_MAX3_V1`; its maximum remains 3% of realized Active equity captured at the boundary. Enforcing the 18:00–09:00 decision window separately costs 11 executions and 36.78650541 PnL units, so the all-decision scenario remains the candidate pending founder acceptance of that operational trade-off.
 
 The 1,024-map nonzero price-band search did not beat all-100 on the untouched test; all five bands therefore remain 100%. Capacity `36 / 100%` executes 231 of 271 matches with PnL 167.37306991 and drawdown 33.96564534; 39 rows are `POSITION_LIMIT` and one is `EXPOSURE_LIMIT`. `A1_T2_R0.25_S0` is the named MAX_PNL Vault recommendation. The candidate remains non-final until one founder decision.
+
+## Statistical reference oracle
+
+The multiple-testing blocker is isolated in `modeling/evidence/2026-07-16-statistical-reference-oracle`. `arch==8.0.0` under Python 3.12.10 defines deterministic fixtures for corrected stationary-bootstrap block length and Hansen SPA. Approved convention: explicit stationary block size, 20,000 replications, seed `20260716`, `studentize=true`, `nested=false`; `consistent` is the decision p-value, `upper` is conservative White-style corroboration from the same engine, and `lower` is report-only. This validates procedure outputs only, not profitability, and does not resume or alter capital-policy modeling.

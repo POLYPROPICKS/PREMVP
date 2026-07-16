@@ -1,0 +1,5 @@
+{
+  "fixture_id": "A",
+  "status": "expected_error",
+  "error": "official optimal_block_length did not produce positive finite block lengths"
+}

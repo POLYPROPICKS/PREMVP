@@ -1,0 +1,12 @@
+{
+  "expected/fixture_a.json": "c705dd66f9e516ae73741caf8ac1918fd6aa8e38af5db4ff3358358746451a81",
+  "expected/fixture_b.json": "bebcc59e8038667dd8a724832f18e4e3be4808ad49678a60e372544481527ce9",
+  "expected/fixture_c.json": "c17ea99a74b2d7fb2bf857e4808ee3f6f3afc57e4e321f295b22210aeadbea4d",
+  "expected/fixture_d.json": "c0bea5e13a2a8cadc90d33651118f51c558dd6ccccce6649862da2516bf9ccb7",
+  "expected/fixture_e.json": "902dca96f9ded9ba2d22493cde87e77561e94477b3ecbaaaf35fd257fd51d976",
+  "fixtures/fixture_a.json": "6bdb26f4c49525e2c661a9421502bff764b2e73ad57d2cf6207a1a318d377ff9",
+  "fixtures/fixture_b.json": "184bbcb0e65d019899c498e43053ed1babd063489f688e8f6866dfed5c97907b",
+  "fixtures/fixture_c.json": "373f6ec96db61d4e9a999018f7969f21878ae3f23225d740d333837b0b1e2489",
+  "fixtures/fixture_d.json": "c0a289013c7fc4fd170c8b80a7ef896785a5a892d1e712c66f3a70b3bbc578dd",
+  "fixtures/fixture_e.json": "93fad3b93652c75c21de01969d7431cd856647f718d57587354633272694d2ea"
+}
