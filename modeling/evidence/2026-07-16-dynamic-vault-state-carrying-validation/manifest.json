@@ -1,0 +1,24 @@
+{
+  "datasetSha256": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+  "inputExecutionIdsSha256": "99f22a9bb8db0a2ff7bddd8e72f87a097fdb136f1a242a300ccb0e8740d0fcca",
+  "candidateRegistryHash": "e3fc467fe926d9a2af5fad0412e91016250a18d7dcedef5095394faec58a335a",
+  "stateSchemaHash": "3fe78f67f459d5059f15d7bf10ec20f916f3ae8a08237fabb189cc56b001b50e",
+  "artifactHashes": {
+    "stateSchema": "f9552367f2c6d9b06e9fe30b5f4da46bb7968f4a4dc82a0399192004f20885d6",
+    "development": "f7fa88384f323d70dd116fded6836ac750e62f9f59a441dcceaf77ad52ec67df",
+    "confirmation": "5a04e54a08a8aa1d532b4094689e31bcdbcedbd4a7c87f062b06daaf816755a8",
+    "full": "07d954e8de09727a31a497c9a4f59e85f0c3ee14d647a91d0052b8486a5b9677",
+    "boundary": "c47a576d407375421690da1b3800d961770c577d6226eddd31222bbf105fb2f7",
+    "diagnostic": "bf7851854465ab89a270f245be51188b6b313f27cefe93a58922011cb3aad314",
+    "selection": "403c4ecd35c1092d9bdec3097f2e6c97ec71ae8686af066e79e3d27d8c26220c",
+    "curves": "e2ca9b359793bddaee01f53b4ca07032438f89ecfbca9606cc7530e14c0f8eb4",
+    "transfers": "e9e6693a5e4a24d5f55e28ed438eeafb55d95c4b5d481518799b576261c839ed",
+    "decision": "19d5fbee47a8cf212fd4968d966986adf3d5c7ac5453611d1e7133b7ee44b3d3",
+    "report": "dec05b78b0af816f909967767e9d29c23dbb61354b4342818fbaaa632c6999e6",
+    "dashboard": "84125368a3ef2cfd9bd1a8f3863ebc9ced7459f2e0309fc8da389fde3cac66b1",
+    "verification": "dc58e724d3cc6a97ef92226d13528dfd6cc8c3aac9cee7bddf506c7251feb27f",
+    "methodology": "abe388786677f11d9385c2632e29a45a397644b0316844b78d71a0eb69af8eb6"
+  },
+  "decisionStatus": "STATE_CARRYING_VALIDATION_SUPPORTS_PROTECTED_DYNAMIC_CANDIDATE",
+  "manifestSha256": "06053e14606fe988b4b474ab7264fb7d0968a4a348e4cf7cb98dbb4b21ed56a1"
+}

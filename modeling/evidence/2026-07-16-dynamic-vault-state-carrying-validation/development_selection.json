@@ -1,0 +1,351 @@
+{
+  "winner": {
+    "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+    "id": "PRV2_T50_P25_R0.25_S0_C0.1",
+    "triggerProfitU": 50,
+    "principalTargetU": 25,
+    "principalRecoveryRate": 0.25,
+    "postRecoverySkimRate": 0,
+    "transferCapPctOfActiveReference": 0.1
+  },
+  "evaluated": [
+    {
+      "row": {
+        "id": "PRV2_T25_P25_R0.25_S0_C0.1",
+        "pnl": 101.84707158,
+        "maximumFall": 29.10833764,
+        "cvar95": 21.81040593,
+        "endingVault": 20.89001825,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T25_P25_R0.25_S0.05_C0.1",
+        "pnl": 101.84707158,
+        "maximumFall": 29.10833764,
+        "cvar95": 21.81040593,
+        "endingVault": 20.89001825,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T25_P25_R0.5_S0_C0.1",
+        "pnl": 95.62191428,
+        "maximumFall": 25.88069173,
+        "cvar95": 19.38593069,
+        "endingVault": 25,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T25_P25_R0.5_S0.05_C0.1",
+        "pnl": 95.53944516,
+        "maximumFall": 25.77923345,
+        "cvar95": 19.31306441,
+        "endingVault": 26.34175735,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T25_P25_R1_S0_C0.1",
+        "pnl": 93.52836815,
+        "maximumFall": 25.36852492,
+        "cvar95": 18.98375314,
+        "endingVault": 25,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T25_P25_R1_S0.05_C0.1",
+        "pnl": 93.0012245,
+        "maximumFall": 24.94264756,
+        "cvar95": 18.66975939,
+        "endingVault": 27.45991575,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T25_P50_R0.25_S0_C0.1",
+        "pnl": 101.84707158,
+        "maximumFall": 29.10833764,
+        "cvar95": 21.81040593,
+        "endingVault": 20.89001825,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T25_P50_R0.25_S0.05_C0.1",
+        "pnl": 101.84707158,
+        "maximumFall": 29.10833764,
+        "cvar95": 21.81040593,
+        "endingVault": 20.89001825,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T25_P50_R0.5_S0_C0.1",
+        "pnl": 94.80840726,
+        "maximumFall": 24.86610934,
+        "cvar95": 18.65726804,
+        "endingVault": 37.98087717,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T25_P50_R0.5_S0.05_C0.1",
+        "pnl": 94.80840726,
+        "maximumFall": 24.86610934,
+        "cvar95": 18.65726804,
+        "endingVault": 37.98087717,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T25_P50_R1_S0_C0.1",
+        "pnl": 86.45664972,
+        "maximumFall": 20.0297883,
+        "cvar95": 15.36547746,
+        "endingVault": 50,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T25_P50_R1_S0.05_C0.1",
+        "pnl": 86.37246171,
+        "maximumFall": 19.99816041,
+        "cvar95": 15.35392371,
+        "endingVault": 50.83797017,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T50_P25_R0.25_S0_C0.1",
+        "pnl": 106.07203954,
+        "maximumFall": 31.14090496,
+        "cvar95": 23.33337572,
+        "endingVault": 15.7610778,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T50_P25_R0.25_S0.05_C0.1",
+        "pnl": 106.07203954,
+        "maximumFall": 31.14090496,
+        "cvar95": 23.33337572,
+        "endingVault": 15.7610778,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T50_P25_R0.5_S0_C0.1",
+        "pnl": 102.6764326,
+        "maximumFall": 28.53428408,
+        "cvar95": 21.40953325,
+        "endingVault": 25,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T50_P25_R0.5_S0.05_C0.1",
+        "pnl": 102.6764326,
+        "maximumFall": 28.53428408,
+        "cvar95": 21.40953325,
+        "endingVault": 25.4647476,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T50_P25_R1_S0_C0.1",
+        "pnl": 98.70255054,
+        "maximumFall": 26.53753935,
+        "cvar95": 19.88093002,
+        "endingVault": 25,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T50_P25_R1_S0.05_C0.1",
+        "pnl": 98.59808344,
+        "maximumFall": 26.40647273,
+        "cvar95": 19.78679932,
+        "endingVault": 26.49860234,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T50_P50_R0.25_S0_C0.1",
+        "pnl": 106.07203954,
+        "maximumFall": 31.14090496,
+        "cvar95": 23.33337572,
+        "endingVault": 15.7610778,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T50_P50_R0.25_S0.05_C0.1",
+        "pnl": 106.07203954,
+        "maximumFall": 31.14090496,
+        "cvar95": 23.33337572,
+        "endingVault": 15.7610778,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T50_P50_R0.5_S0_C0.1",
+        "pnl": 102.6764326,
+        "maximumFall": 28.53428408,
+        "cvar95": 21.40953325,
+        "endingVault": 29.64747598,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T50_P50_R0.5_S0.05_C0.1",
+        "pnl": 102.6764326,
+        "maximumFall": 28.53428408,
+        "cvar95": 21.40953325,
+        "endingVault": 29.64747598,
+        "additionalSkips": 0,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T50_P50_R1_S0_C0.1",
+        "pnl": 95.89453705,
+        "maximumFall": 24.5010742,
+        "cvar95": 18.65703531,
+        "endingVault": 50,
+        "additionalSkips": 1,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    },
+    {
+      "row": {
+        "id": "PRV2_T50_P50_R1_S0.05_C0.1",
+        "pnl": 95.89453705,
+        "maximumFall": 24.5010742,
+        "cvar95": 18.65703531,
+        "endingVault": 50.09444792,
+        "additionalSkips": 1,
+        "capitalValid": true,
+        "noFutureLeakage": true
+      },
+      "eligible": true
+    }
+  ],
+  "frontier": {
+    "DEVELOPMENT_PNL_MAX_PROTECTED": "PRV2_T50_P25_R0.25_S0_C0.1",
+    "STATE_CARRYING_MIN_TAIL_RISK": "PRV2_T25_P50_R1_S0.05_C0.1",
+    "STATE_CARRYING_MAX_PROTECTION": "PRV2_T25_P50_R1_S0.05_C0.1",
+    "STATE_CARRYING_PARETO_FRONTIER": [
+      "PRV2_T25_P25_R0.5_S0_C0.1",
+      "PRV2_T25_P25_R0.5_S0.05_C0.1",
+      "PRV2_T25_P25_R1_S0_C0.1",
+      "PRV2_T25_P25_R1_S0.05_C0.1",
+      "PRV2_T25_P50_R0.25_S0_C0.1",
+      "PRV2_T25_P50_R0.25_S0.05_C0.1",
+      "PRV2_T25_P50_R0.5_S0.05_C0.1",
+      "PRV2_T25_P50_R1_S0_C0.1",
+      "PRV2_T25_P50_R1_S0.05_C0.1",
+      "PRV2_T50_P25_R0.5_S0_C0.1",
+      "PRV2_T50_P25_R0.5_S0.05_C0.1",
+      "PRV2_T50_P25_R1_S0_C0.1",
+      "PRV2_T50_P25_R1_S0.05_C0.1",
+      "PRV2_T50_P50_R0.25_S0_C0.1",
+      "PRV2_T50_P50_R0.25_S0.05_C0.1",
+      "PRV2_T50_P50_R0.5_S0_C0.1",
+      "PRV2_T50_P50_R0.5_S0.05_C0.1",
+      "PRV2_T50_P50_R1_S0_C0.1",
+      "PRV2_T50_P50_R1_S0.05_C0.1"
+    ]
+  }
+}

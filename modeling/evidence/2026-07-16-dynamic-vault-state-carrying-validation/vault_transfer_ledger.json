@@ -1,0 +1,290 @@
+[
+  {
+    "atIso": "2026-06-04T00:03:12.696Z",
+    "cycleId": "2026-06-03",
+    "amount": 0.63593738,
+    "cycleReference": 91.97605675,
+    "targetVault": 0.63593738,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-04T12:01:14.072Z",
+    "cycleId": "2026-06-03",
+    "amount": 0.37667064,
+    "cycleReference": 91.97605675,
+    "targetVault": 1.01260802,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-04T12:01:18.935Z",
+    "cycleId": "2026-06-03",
+    "amount": 0.86033784,
+    "cycleReference": 91.97605675,
+    "targetVault": 1.87294586,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-05T00:01:07.290Z",
+    "cycleId": "2026-06-04",
+    "amount": 0.24113826,
+    "cycleReference": 101.07413829,
+    "targetVault": 2.11408412,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-05T00:01:10.437Z",
+    "cycleId": "2026-06-04",
+    "amount": 0.872172,
+    "cycleReference": 101.07413829,
+    "targetVault": 2.98625612,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-05T00:01:11.503Z",
+    "cycleId": "2026-06-04",
+    "amount": 0.83785141,
+    "cycleReference": 101.07413829,
+    "targetVault": 3.82410753,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-05T06:02:48.544Z",
+    "cycleId": "2026-06-04",
+    "amount": 0.94544068,
+    "cycleReference": 101.07413829,
+    "targetVault": 4.76954821,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-05T06:02:58.120Z",
+    "cycleId": "2026-06-04",
+    "amount": 0.01531426,
+    "cycleReference": 101.07413829,
+    "targetVault": 4.78486247,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-06T12:02:50.185Z",
+    "cycleId": "2026-06-05",
+    "amount": 0.20379556,
+    "cycleReference": 105.25791495,
+    "targetVault": 4.98865803,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-06T12:02:56.371Z",
+    "cycleId": "2026-06-05",
+    "amount": 0.90827395,
+    "cycleReference": 105.25791495,
+    "targetVault": 5.89693198,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-07T00:03:47.326Z",
+    "cycleId": "2026-06-06",
+    "amount": 0.42144225,
+    "cycleReference": 114.53305848,
+    "targetVault": 6.31837423,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-07T00:03:48.381Z",
+    "cycleId": "2026-06-06",
+    "amount": 0.21233657,
+    "cycleReference": 114.53305848,
+    "targetVault": 6.5307108,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-07T00:03:48.708Z",
+    "cycleId": "2026-06-06",
+    "amount": 1.02890961,
+    "cycleReference": 114.53305848,
+    "targetVault": 7.55962041,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-07T06:01:49.044Z",
+    "cycleId": "2026-06-06",
+    "amount": 0.12931152,
+    "cycleReference": 114.53305848,
+    "targetVault": 7.68893193,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-07T06:01:53.751Z",
+    "cycleId": "2026-06-06",
+    "amount": 1.02890962,
+    "cycleReference": 114.53305848,
+    "targetVault": 8.71784155,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-07T06:01:59.717Z",
+    "cycleId": "2026-06-06",
+    "amount": 0.91213183,
+    "cycleReference": 114.53305848,
+    "targetVault": 9.62997338,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-07T06:02:00.409Z",
+    "cycleId": "2026-06-06",
+    "amount": 0.87635143,
+    "cycleReference": 114.53305848,
+    "targetVault": 10.50632481,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-13T12:01:18.797Z",
+    "cycleId": "2026-06-12",
+    "amount": 0.29669341,
+    "cycleReference": 119.30508453,
+    "targetVault": 10.80301822,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-14T00:02:49.251Z",
+    "cycleId": "2026-06-13",
+    "amount": 0.44877434,
+    "cycleReference": 132.40905467,
+    "targetVault": 11.25179256,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-14T00:02:49.570Z",
+    "cycleId": "2026-06-13",
+    "amount": 1.23854537,
+    "cycleReference": 132.40905467,
+    "targetVault": 12.49033793,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-14T00:02:53.876Z",
+    "cycleId": "2026-06-13",
+    "amount": 1.45895162,
+    "cycleReference": 132.40905467,
+    "targetVault": 13.94928955,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-14T06:05:27.280Z",
+    "cycleId": "2026-06-13",
+    "amount": 0.46822578,
+    "cycleReference": 132.40905467,
+    "targetVault": 14.41751533,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-14T08:07:45.844Z",
+    "cycleId": "2026-06-13",
+    "amount": 1.34356247,
+    "cycleReference": 132.40905467,
+    "targetVault": 15.7610778,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-18T20:36:58.851Z",
+    "cycleId": "2026-06-18",
+    "amount": 0.14148967,
+    "cycleReference": 143.04765041,
+    "targetVault": 15.90256747,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-18T20:37:00.331Z",
+    "cycleId": "2026-06-18",
+    "amount": 0.30317575,
+    "cycleReference": 143.04765041,
+    "targetVault": 16.20574322,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-06-18T20:37:17.943Z",
+    "cycleId": "2026-06-18",
+    "amount": 0.08226698,
+    "cycleReference": 143.04765041,
+    "targetVault": 16.2880102,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-07-06T08:14:50.831Z",
+    "cycleId": "2026-07-05",
+    "amount": 0.18114335,
+    "cycleReference": 142.49549895,
+    "targetVault": 16.46915355,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-07-07T18:01:23.559Z",
+    "cycleId": "2026-07-07",
+    "amount": 1.24018399,
+    "cycleReference": 149.40746065,
+    "targetVault": 17.70933754,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-07-08T06:02:55.799Z",
+    "cycleId": "2026-07-07",
+    "amount": 0.09493302,
+    "cycleReference": 149.40746065,
+    "targetVault": 17.80427056,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-07-08T20:30:15.027Z",
+    "cycleId": "2026-07-08",
+    "amount": 0.16868584,
+    "cycleReference": 148.93058785,
+    "targetVault": 17.9729564,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-07-11T12:02:25.265Z",
+    "cycleId": "2026-07-10",
+    "amount": 0.3348254,
+    "cycleReference": 153.9188692,
+    "targetVault": 18.3077818,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-07-11T12:02:26.059Z",
+    "cycleId": "2026-07-10",
+    "amount": 1.26542176,
+    "cycleReference": 153.9188692,
+    "targetVault": 19.57320356,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-07-11T12:02:28.874Z",
+    "cycleId": "2026-07-10",
+    "amount": 0.94927664,
+    "cycleReference": 153.9188692,
+    "targetVault": 20.5224802,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-07-12T12:04:56.495Z",
+    "cycleId": "2026-07-11",
+    "amount": 1.77139841,
+    "cycleReference": 161.56744059,
+    "targetVault": 22.29387861,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-07-12T18:02:40.188Z",
+    "cycleId": "2026-07-12",
+    "amount": 1.24091309,
+    "cycleReference": 171.84528817,
+    "targetVault": 23.5347917,
+    "reason": "PRINCIPAL_RECOVERY"
+  },
+  {
+    "atIso": "2026-07-12T18:02:43.294Z",
+    "cycleId": "2026-07-12",
+    "amount": 1.4652083,
+    "cycleReference": 171.84528817,
+    "targetVault": 25,
+    "reason": "PRINCIPAL_RECOVERY"
+  }
+]

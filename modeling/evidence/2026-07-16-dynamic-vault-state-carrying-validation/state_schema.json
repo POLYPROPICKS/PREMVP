@@ -1,0 +1,17 @@
+{
+  "version": "DYNAMIC_VAULT_CARRIED_STATE_V1",
+  "fields": [
+    "freeActive",
+    "openPrincipal",
+    "active",
+    "vault",
+    "total",
+    "totalHighWater",
+    "activeHighWater",
+    "peakProfit",
+    "principalRecoveryProgress",
+    "currentStakeReference",
+    "remainingTransferAllowance",
+    "openPositionIds"
+  ]
+}

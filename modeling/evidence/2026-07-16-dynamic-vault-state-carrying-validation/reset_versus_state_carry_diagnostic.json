@@ -1,0 +1,14 @@
+{
+  "reset": {
+    "label": "BLOCK_LOCAL_RESET_DIAGNOSTIC",
+    "selectionEligible": false,
+    "triggerReachedBlocks": 0,
+    "vaultTransfers": 0,
+    "endingVault": 0
+  },
+  "stateCarry": {
+    "triggerReachedBlocks": 15,
+    "vaultTransfers": 29,
+    "endingVault": 52.34252857
+  }
+}
