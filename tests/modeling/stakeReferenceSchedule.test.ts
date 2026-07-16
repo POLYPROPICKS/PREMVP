@@ -1,0 +1,6 @@
+import test from "node:test";import assert from "node:assert/strict";
+import { createStakeReferenceSchedule, isInsideMinskOperationalWindow, minskNightKey } from "../../lib/modeling/stakeReferenceSchedule";
+
+test("Minsk night starts at 18:00 and crosses midnight until 09:00",()=>{assert.equal(minskNightKey(Date.parse("2026-07-15T15:00:00Z")),"2026-07-15");assert.equal(minskNightKey(Date.parse("2026-07-16T05:59:59Z")),"2026-07-15");assert.equal(isInsideMinskOperationalWindow(Date.parse("2026-07-16T06:00:00Z")),false)});
+test("night maximum is immutable through openings and settlements, next night recalculates",()=>{const s=createStakeReferenceSchedule("MINSK_NIGHT_FIXED_MAX3_V1",50);assert.equal(s.maximumStake(Date.parse("2026-07-15T15:00:00Z"),50),1.5);assert.equal(s.maximumStake(Date.parse("2026-07-16T02:00:00Z"),80),1.5);assert.equal(s.maximumStake(Date.parse("2026-07-16T15:00:00Z"),80),2.4)});
+test("global initial maximum stays constant and reports current-cycle comparisons",()=>{const s=createStakeReferenceSchedule("GLOBAL_INITIAL_FIXED_MAX3_V1",50);assert.equal(s.maximumStake(1,50),1.5);assert.equal(s.maximumStake(2,100),1.5);assert.deepEqual(s.globalComparisonCounts(),{exceededCurrentThreePct:0,belowCurrentThreePct:1})});
