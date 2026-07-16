@@ -1,0 +1,7 @@
+{
+  "registrySha256": "5ead4f1079920aa61488ce34c17efee1736524f9dd5a95c747f2dcb487d1bf34",
+  "fixedProfileSha256": "45dc43c26456a3db52ce240e9fc3593ead22db3abe1cea823683c3caf87e520b",
+  "dynamicProfileSha256": "02c0125a5b5bfdeff1a658571df2029faf5e268e3eea226a2da55379139f3b00",
+  "commonSignalContractSha256": "0c8bba19a40f77d42ae5526ecb038d35d222d689d7975b1f7df931980771ab41",
+  "evidenceLineageSha256": "30b55f4c14a7606e8b51c189fba5dd3bc5ffdf145198dd7ca6a6a3ef98cdb887"
+}

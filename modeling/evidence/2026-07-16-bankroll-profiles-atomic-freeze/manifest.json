@@ -1,0 +1,14 @@
+{
+  "freezeVersion": 1,
+  "profileCount": 2,
+  "productionDefaultProfile": null,
+  "registrySha256": "5ead4f1079920aa61488ce34c17efee1736524f9dd5a95c747f2dcb487d1bf34",
+  "artifactHashes": {
+    "bankroll_profiles_v1.json": "62063a904e544338e25984e2353b43487966a96a8536c951d803229d782c828d",
+    "VERIFICATION.md": "4abbc6a4f8792ce198dfbab0331b06905f840ef77ceb261ed1381cdd13deae9f",
+    "founder_report_ru.md": "c5ea0a0e1487d38106de41f62ad669b3d70b65dd5cd5f91c4328918ddd50f101",
+    "hash_inventory.json": "3b09eeb4a2d8ae55b8e4a95b38af2b3d810c4587674c28bd9a6a48a399b60ea1",
+    "source_evidence_lineage.md": "a93830f1cc83b16a5efb7e022719c327f36a8a31230e7d1d9ecd4078fce63920"
+  },
+  "manifestSha256": "069c9c93fe1ccbb8df3847fd8f2795820a96c10336f5967ae12f1ab0f2cfc05b"
+}
