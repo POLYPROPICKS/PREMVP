@@ -16,9 +16,9 @@
     "decision": "19d5fbee47a8cf212fd4968d966986adf3d5c7ac5453611d1e7133b7ee44b3d3",
     "report": "dec05b78b0af816f909967767e9d29c23dbb61354b4342818fbaaa632c6999e6",
     "dashboard": "84125368a3ef2cfd9bd1a8f3863ebc9ced7459f2e0309fc8da389fde3cac66b1",
-    "verification": "dc58e724d3cc6a97ef92226d13528dfd6cc8c3aac9cee7bddf506c7251feb27f",
+    "verification": "85ffcf1bb8c16d961749055cd3e09deeb623b0e6e31124f4a9924047efee847d",
     "methodology": "abe388786677f11d9385c2632e29a45a397644b0316844b78d71a0eb69af8eb6"
   },
   "decisionStatus": "STATE_CARRYING_VALIDATION_SUPPORTS_PROTECTED_DYNAMIC_CANDIDATE",
-  "manifestSha256": "06053e14606fe988b4b474ab7264fb7d0968a4a348e4cf7cb98dbb4b21ed56a1"
+  "manifestSha256": "b9015202b84c539dcde689bc7b3a109ef472c373e8304d22ffe413f95ace9a76"
 }
