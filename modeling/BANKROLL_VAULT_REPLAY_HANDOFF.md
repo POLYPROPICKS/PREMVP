@@ -77,3 +77,9 @@ The exact-rescue v2 audit recovered 0 of the 53 T-90 ambiguous rows and retained
 Four stake policies were compared under the founder 3% cycle-active cap. `FIXED_CYCLE_MAX3_V1` won the declared rule with bootstrap median ending capital 246.07063993, canonical PnL 146.45102873, and maximum total-capital drawdown 29.21517498. The empirical-Bayes PnL-first candidate completed with 212 executions, PnL 47.75692048 and drawdown 9.31996822, but did not win. Vault was recalculated on the winner; `A0.9_T1.25_R0.75_S0.5` was selected (terminal active 112.44376081, vault 134.00726792, total 246.45102873; bootstrap median 249.61382984, p10 195.13869775, p90 drawdown 27.00454481).
 
 This is a candidate only. Founder must accept one model/stake/vault combination before an atomic freeze commit and any Ireland inspect-only review.
+
+## Night/price/capacity/vault final optimization candidate
+
+The final comparator uses `Europe/Minsk` 18:00 reference boundaries. The live-eligible reference winner is `MINSK_NIGHT_FIXED_MAX3_V1`; its maximum remains 3% of realized Active equity captured at the boundary. Enforcing the 18:00–09:00 decision window separately costs 11 executions and 36.78650541 PnL units, so the all-decision scenario remains the candidate pending founder acceptance of that operational trade-off.
+
+The 1,024-map nonzero price-band search did not beat all-100 on the untouched test; all five bands therefore remain 100%. Capacity `36 / 100%` executes 231 of 271 matches with PnL 167.37306991 and drawdown 33.96564534; 39 rows are `POSITION_LIMIT` and one is `EXPOSURE_LIMIT`. `A1_T2_R0.25_S0` is the named MAX_PNL Vault recommendation. The candidate remains non-final until one founder decision.
