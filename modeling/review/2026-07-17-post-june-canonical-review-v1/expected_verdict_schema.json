@@ -1,0 +1,26 @@
+{
+  "reviewerModel": "string",
+  "reviewDate": "YYYY-MM-DD",
+  "reviewedCommit": "git SHA",
+  "datasetHashVerified": "boolean",
+  "subsetHashVerified": "boolean",
+  "calculationChecks": [
+    {
+      "name": "string",
+      "status": "PASS|FAIL|UNRESOLVED",
+      "evidence": "string"
+    }
+  ],
+  "methodologyFindings": [
+    "string"
+  ],
+  "blockingFindings": [
+    "string"
+  ],
+  "nonBlockingFindings": [
+    "string"
+  ],
+  "shadowRecommendation": "string",
+  "productionRecommendation": "string",
+  "finalVerdict": "ACCEPT_POST_JUNE_BASELINE_FOR_SHADOW_REVIEW|ACCEPT_WITH_BLOCKING_CONDITIONS|REJECT_PENDING_DATA_REPAIR|REJECT_MODEL_NOT_PROMOTABLE"
+}

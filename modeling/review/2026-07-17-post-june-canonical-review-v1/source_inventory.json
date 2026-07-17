@@ -1,0 +1,137 @@
+[
+  {
+    "relativePath": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/dataset_freeze_manifest.json",
+    "role": "frozen 49,400-row snapshot manifest",
+    "sha256": "4e169008abe0e64865a26304b35cd38a8d5bd6d66e1e716bee53d0389cc56ec7",
+    "gitTracked": true,
+    "producingBranchCommit": "08760be",
+    "authorityLevel": "highest",
+    "knownLimitation": "byte snapshot; original database re-export is partial"
+  },
+  {
+    "relativePath": "modeling/canonical/model-handoff-v1/canonical_model_contract.json",
+    "role": "frozen model and identity contract",
+    "sha256": "f3f0888a9b5e8909e37d1017c60b06729e45dde210cbf269292cc6ec6f8430c5",
+    "gitTracked": true,
+    "producingBranchCommit": "e878e0e",
+    "authorityLevel": "highest",
+    "knownLimitation": "selector consumes a pre-produced score"
+  },
+  {
+    "relativePath": "modeling/canonical/model-handoff-v1/locked_signal_identity_set.json",
+    "role": "original 231-member identity set",
+    "sha256": "5d650d6f394f61d353fabc501e5c0a4c777599686c472f6b43da39bafa51359d",
+    "gitTracked": true,
+    "producingBranchCommit": "e878e0e",
+    "authorityLevel": "highest",
+    "knownLimitation": "membership is not chronological order"
+  },
+  {
+    "relativePath": "modeling/canonical/model-handoff-v1/locked_execution_sequence.json",
+    "role": "original 231-row replay order",
+    "sha256": "43f9d20c8f6cbfd800b9b510abc5e2aacdf480b93aa1c95b95e2a7b5790b1d49",
+    "gitTracked": true,
+    "producingBranchCommit": "e878e0e",
+    "authorityLevel": "highest",
+    "knownLimitation": "same-time ordering is committed, not inferred"
+  },
+  {
+    "relativePath": "modeling/evidence/2026-07-17-suspicious-growth-temporal-audit-v1/SUSPICIOUS_GROWTH_TEMPORAL_AUDIT_RU.md",
+    "role": "temporal audit explanation and verdict",
+    "sha256": "bb9e7e3af24eddbbf71d52d3e71373cde741be37ab325f46c2e846357eff5221",
+    "gitTracked": true,
+    "producingBranchCommit": "08760be",
+    "authorityLevel": "evidence",
+    "knownLimitation": "early growth requires temporal and attribution scrutiny"
+  },
+  {
+    "relativePath": "modeling/evidence/2026-07-17-suspicious-growth-attribution-repair-v1/attribution_coverage.json",
+    "role": "attribution confidence coverage",
+    "sha256": "faf1504439d82c76461d7d13a22cc34c21f8f138718aa0fb6c5f172a26bf17b1",
+    "gitTracked": true,
+    "producingBranchCommit": "2061356",
+    "authorityLevel": "evidence",
+    "knownLimitation": "no HIGH/MEDIUM trusted coverage"
+  },
+  {
+    "relativePath": "modeling/evidence/2026-07-17-suspicious-growth-attribution-repair-v1/ATTRIBUTION_REPAIR_AND_GROWTH_EXPLANATION_RU.md",
+    "role": "attribution repair explanation and verdict",
+    "sha256": "453afcbb78d35272a7132c64dfc15fbca91a85cc656f9fe3a800c6236bdb5c19",
+    "gitTracked": true,
+    "producingBranchCommit": "2061356",
+    "authorityLevel": "evidence",
+    "knownLimitation": "LOW fields are diagnostic, not canonical metadata"
+  },
+  {
+    "relativePath": "modeling/evidence/2026-07-17-post-june-canonical-freeze-v1/post_june_contract.json",
+    "role": "post-June scope contract",
+    "sha256": "21228531044f4fa1dc3f544429d390ae96dbb42b2e615188e85b08df5fe2966e",
+    "gitTracked": true,
+    "producingBranchCommit": "e878e0e",
+    "authorityLevel": "highest",
+    "knownLimitation": "fixed cutoff; not optimization"
+  },
+  {
+    "relativePath": "modeling/evidence/2026-07-17-post-june-canonical-freeze-v1/post_june9_primary_execution_sequence.json",
+    "role": "124-row membership and order hashes",
+    "sha256": "a32020d3ab0bb1bc7fd773ace53aa6bfb0589dc287dd5b94cb488b69b24c237c",
+    "gitTracked": true,
+    "producingBranchCommit": "e878e0e",
+    "authorityLevel": "highest",
+    "knownLimitation": "subset begins by Minsk local time"
+  },
+  {
+    "relativePath": "modeling/evidence/2026-07-17-post-june-canonical-freeze-v1/fixed_1u_signal_control.json",
+    "role": "flat 1u signal control",
+    "sha256": "257a1b9d08094a19227f1fecb0db24a3b879712fbf3f91a055f5835a9e62b080",
+    "gitTracked": true,
+    "producingBranchCommit": "e878e0e",
+    "authorityLevel": "evidence",
+    "knownLimitation": "gross, before venue-specific costs"
+  },
+  {
+    "relativePath": "modeling/evidence/2026-07-17-post-june-canonical-freeze-v1/execution_cost_sensitivity.json",
+    "role": "generic cost sensitivity",
+    "sha256": "4f18b6eb8ed4dda9885a2f43fdd45d4aa4b1a09db54e60e4e34b12a90d7fa35e",
+    "gitTracked": true,
+    "producingBranchCommit": "e878e0e",
+    "authorityLevel": "evidence",
+    "knownLimitation": "not a venue fee claim"
+  },
+  {
+    "relativePath": "modeling/evidence/2026-07-17-post-june-canonical-freeze-v1/temporal_stability.json",
+    "role": "stability statistics",
+    "sha256": "82d8a7e7093adef641298bec9f4b28b3038ce999c52612cefdb4933024ca41bc",
+    "gitTracked": true,
+    "producingBranchCommit": "e878e0e",
+    "authorityLevel": "evidence",
+    "knownLimitation": "124 observations; not certainty"
+  },
+  {
+    "relativePath": "modeling/evidence/2026-07-17-post-june-canonical-freeze-v1/comparison_summary.json",
+    "role": "fresh-state policy replay summary",
+    "sha256": "bc155a550521e04614080c86c7530675302cab81cb982fca6e7651c443d903fa",
+    "gitTracked": true,
+    "producingBranchCommit": "e878e0e",
+    "authorityLevel": "evidence",
+    "knownLimitation": "policy output is not production approval"
+  },
+  {
+    "relativePath": "modeling/evidence/2026-07-17-post-june-canonical-freeze-v1/freeze_verdict.json",
+    "role": "canonical freeze verdict",
+    "sha256": "e1134d199e1a49b25ae20e854b7a7120d3c5cbc327a3ea2b592261745f2d7959",
+    "gitTracked": true,
+    "producingBranchCommit": "e878e0e",
+    "authorityLevel": "highest",
+    "knownLimitation": "review remains required"
+  },
+  {
+    "relativePath": "modeling/canonical/model-handoff-v1/docs/POLYPROPICKS_POST_JUNE_CANONICAL_WALKTHROUGH_RU_V1.md",
+    "role": "newcomer-readable canonical walkthrough",
+    "sha256": "6e4b80afa6da76583f8396c930142b83f6b11ffc7b5e8426b9b1f09c7e861483",
+    "gitTracked": true,
+    "producingBranchCommit": "this branch",
+    "authorityLevel": "explanatory",
+    "knownLimitation": "does not replace machine evidence"
+  }
+]

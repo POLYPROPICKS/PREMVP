@@ -1,0 +1,10 @@
+{
+  "version": "POST_JUNE_CANONICAL_REVIEW_V1",
+  "files": {
+    "INDEPENDENT_REVIEW_PROMPT_RU.md": "2189d98b3e43266efbca8d5e7a95d0a08e75b5fcb1bc4e9ea4c0269b16210bbd",
+    "REVIEW_BUNDLE_INDEX_RU.md": "f6648d24b2fbff71e39ff04e919a1e9d36be9106043dfa69c54aa1e8f9304efc",
+    "expected_verdict_schema.json": "13419eb0c0d617dec3a752cbcdd1685dfeb1979ef7012f5fa65984605117a091",
+    "review_questions.json": "6f769877a0c60a8375e081ad164bafe900c7e9d404921fe3d4e200a97cdf0fdb",
+    "source_inventory.json": "d6e59202373953671214aa86327f517c18fa1e66612f7aae259ea918973603e9"
+  }
+}
