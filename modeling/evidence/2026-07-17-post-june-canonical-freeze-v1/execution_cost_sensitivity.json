@@ -1,0 +1,40 @@
+{
+  "formula": "costU = stakeU × costBps / 10,000",
+  "primary": [
+    {
+      "costBps": 0,
+      "costU": 0,
+      "netPnl": 16.82674451,
+      "netRoiPct": 13.56995525,
+      "drawdownAfterCost": 5.86500797
+    },
+    {
+      "costBps": 25,
+      "costU": 0.31,
+      "netPnl": 16.51674451,
+      "netRoiPct": 13.31995525,
+      "drawdownAfterCost": 6.17500797
+    },
+    {
+      "costBps": 50,
+      "costU": 0.62,
+      "netPnl": 16.20674451,
+      "netRoiPct": 13.06995525,
+      "drawdownAfterCost": 6.48500797
+    },
+    {
+      "costBps": 100,
+      "costU": 1.24,
+      "netPnl": 15.58674451,
+      "netRoiPct": 12.56995525,
+      "drawdownAfterCost": 7.10500797
+    },
+    {
+      "costBps": 200,
+      "costU": 2.48,
+      "netPnl": 14.34674451,
+      "netRoiPct": 11.56995525,
+      "drawdownAfterCost": 8.34500797
+    }
+  ]
+}

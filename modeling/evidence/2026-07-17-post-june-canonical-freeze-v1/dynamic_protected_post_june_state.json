@@ -1,0 +1,14 @@
+{
+  "executed": 123,
+  "skipped": 1,
+  "totalStaked": 204.53118166,
+  "endingActive": 75,
+  "endingVault": 7.11107514,
+  "endingTotal": 82.11107514,
+  "pnl": 32.11107514,
+  "maximumFall": 11.46632001,
+  "cvar95": 0,
+  "maximumConcurrentPositions": 33,
+  "exposureCeilingViolations": 0,
+  "stateHash": "3c1749769327f84150a9ce0fdebb37c6b957e3dfb9ad3a463c7a1bd7918ffb3c"
+}

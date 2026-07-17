@@ -1,0 +1,2362 @@
+[
+  {
+    "atIso": "INITIAL",
+    "freeActive": 50,
+    "openPrincipal": 0,
+    "active": 50,
+    "vault": 0,
+    "total": 50,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-08T21:05:00.000Z",
+    "freeActive": 48.5,
+    "openPrincipal": 1.5,
+    "active": 50,
+    "vault": 0,
+    "total": 50,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-08T21:10:00.000Z",
+    "freeActive": 47,
+    "openPrincipal": 3,
+    "active": 50,
+    "vault": 0,
+    "total": 50,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-08T21:30:00.000Z",
+    "freeActive": 45.5,
+    "openPrincipal": 4.5,
+    "active": 50,
+    "vault": 0,
+    "total": 50,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-08T21:37:00.000Z",
+    "freeActive": 44,
+    "openPrincipal": 6,
+    "active": 50,
+    "vault": 0,
+    "total": 50,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-08T23:00:00.000Z",
+    "freeActive": 42.5,
+    "openPrincipal": 7.5,
+    "active": 50,
+    "vault": 0,
+    "total": 50,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-09T00:08:00.000Z",
+    "freeActive": 41,
+    "openPrincipal": 9,
+    "active": 50,
+    "vault": 0,
+    "total": 50,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-09T00:10:00.000Z",
+    "freeActive": 39.5,
+    "openPrincipal": 10.5,
+    "active": 50,
+    "vault": 0,
+    "total": 50,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-09T00:15:00.000Z",
+    "freeActive": 38,
+    "openPrincipal": 12,
+    "active": 50,
+    "vault": 0,
+    "total": 50,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-09T00:35:00.000Z",
+    "freeActive": 36.5,
+    "openPrincipal": 13.5,
+    "active": 50,
+    "vault": 0,
+    "total": 50,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-09T06:01:37.386Z",
+    "freeActive": 36.5,
+    "openPrincipal": 12,
+    "active": 48.5,
+    "vault": 0,
+    "total": 48.5,
+    "fallFromTotalPeak": 1.5,
+    "fallFromActivePeak": 1.5
+  },
+  {
+    "atIso": "2026-06-09T06:01:37.754Z",
+    "freeActive": 36.5,
+    "openPrincipal": 10.5,
+    "active": 47,
+    "vault": 0,
+    "total": 47,
+    "fallFromTotalPeak": 3,
+    "fallFromActivePeak": 3
+  },
+  {
+    "atIso": "2026-06-09T06:01:38.092Z",
+    "freeActive": 40.11445783,
+    "openPrincipal": 9,
+    "active": 49.11445783,
+    "vault": 0,
+    "total": 49.11445783,
+    "fallFromTotalPeak": 0.88554217,
+    "fallFromActivePeak": 0.88554217
+  },
+  {
+    "atIso": "2026-06-09T06:01:44.254Z",
+    "freeActive": 43.34026428,
+    "openPrincipal": 7.5,
+    "active": 50.84026428,
+    "vault": 0,
+    "total": 50.84026428,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-09T12:05:11.876Z",
+    "freeActive": 43.34026428,
+    "openPrincipal": 6,
+    "active": 49.34026428,
+    "vault": 0,
+    "total": 49.34026428,
+    "fallFromTotalPeak": 1.5,
+    "fallFromActivePeak": 1.5
+  },
+  {
+    "atIso": "2026-06-09T12:05:26.853Z",
+    "freeActive": 43.34026428,
+    "openPrincipal": 4.5,
+    "active": 47.84026428,
+    "vault": 0,
+    "total": 47.84026428,
+    "fallFromTotalPeak": 3,
+    "fallFromActivePeak": 3
+  },
+  {
+    "atIso": "2026-06-09T13:00:00.000Z",
+    "freeActive": 41.84026428,
+    "openPrincipal": 6,
+    "active": 47.84026428,
+    "vault": 0,
+    "total": 47.84026428,
+    "fallFromTotalPeak": 3,
+    "fallFromActivePeak": 3
+  },
+  {
+    "atIso": "2026-06-09T14:30:00.000Z",
+    "freeActive": 40.34026428,
+    "openPrincipal": 7.5,
+    "active": 47.84026428,
+    "vault": 0,
+    "total": 47.84026428,
+    "fallFromTotalPeak": 3,
+    "fallFromActivePeak": 3
+  },
+  {
+    "atIso": "2026-06-09T21:05:00.000Z",
+    "freeActive": 38.90505635,
+    "openPrincipal": 8.93520793,
+    "active": 47.84026428,
+    "vault": 0,
+    "total": 47.84026428,
+    "fallFromTotalPeak": 3,
+    "fallFromActivePeak": 3
+  },
+  {
+    "atIso": "2026-06-09T21:10:00.000Z",
+    "freeActive": 31.7290167,
+    "openPrincipal": 16.11124758,
+    "active": 47.84026428,
+    "vault": 0,
+    "total": 47.84026428,
+    "fallFromTotalPeak": 3,
+    "fallFromActivePeak": 3
+  },
+  {
+    "atIso": "2026-06-09T21:37:00.000Z",
+    "freeActive": 30.29380877,
+    "openPrincipal": 17.54645551,
+    "active": 47.84026428,
+    "vault": 0,
+    "total": 47.84026428,
+    "fallFromTotalPeak": 3,
+    "fallFromActivePeak": 3
+  },
+  {
+    "atIso": "2026-06-09T21:40:00.000Z",
+    "freeActive": 28.85860084,
+    "openPrincipal": 18.98166344,
+    "active": 47.84026428,
+    "vault": 0,
+    "total": 47.84026428,
+    "fallFromTotalPeak": 3,
+    "fallFromActivePeak": 3
+  },
+  {
+    "atIso": "2026-06-09T22:30:00.000Z",
+    "freeActive": 27.42339291,
+    "openPrincipal": 20.41687137,
+    "active": 47.84026428,
+    "vault": 0,
+    "total": 47.84026428,
+    "fallFromTotalPeak": 3,
+    "fallFromActivePeak": 3
+  },
+  {
+    "atIso": "2026-06-09T23:10:00.000Z",
+    "freeActive": 25.98818498,
+    "openPrincipal": 21.8520793,
+    "active": 47.84026428,
+    "vault": 0,
+    "total": 47.84026428,
+    "fallFromTotalPeak": 3,
+    "fallFromActivePeak": 3
+  },
+  {
+    "atIso": "2026-06-10T00:03:17.399Z",
+    "freeActive": 25.98818498,
+    "openPrincipal": 20.3520793,
+    "active": 46.34026428,
+    "vault": 0,
+    "total": 46.34026428,
+    "fallFromTotalPeak": 4.5,
+    "fallFromActivePeak": 4.5
+  },
+  {
+    "atIso": "2026-06-10T00:03:23.287Z",
+    "freeActive": 29.28488828,
+    "openPrincipal": 18.8520793,
+    "active": 48.13696758,
+    "vault": 0,
+    "total": 48.13696758,
+    "fallFromTotalPeak": 2.7032967,
+    "fallFromActivePeak": 2.7032967
+  },
+  {
+    "atIso": "2026-06-10T00:10:00.000Z",
+    "freeActive": 27.84968035,
+    "openPrincipal": 20.28728723,
+    "active": 48.13696758,
+    "vault": 0,
+    "total": 48.13696758,
+    "fallFromTotalPeak": 2.7032967,
+    "fallFromActivePeak": 2.7032967
+  },
+  {
+    "atIso": "2026-06-10T00:35:00.000Z",
+    "freeActive": 26.41447242,
+    "openPrincipal": 21.72249516,
+    "active": 48.13696758,
+    "vault": 0,
+    "total": 48.13696758,
+    "fallFromTotalPeak": 2.7032967,
+    "fallFromActivePeak": 2.7032967
+  },
+  {
+    "atIso": "2026-06-10T06:03:43.601Z",
+    "freeActive": 29.37366403,
+    "openPrincipal": 20.28728723,
+    "active": 49.66095126,
+    "vault": 0,
+    "total": 49.66095126,
+    "fallFromTotalPeak": 1.17931302,
+    "fallFromActivePeak": 1.17931302
+  },
+  {
+    "atIso": "2026-06-10T06:03:46.462Z",
+    "freeActive": 29.37366403,
+    "openPrincipal": 18.8520793,
+    "active": 48.22574333,
+    "vault": 0,
+    "total": 48.22574333,
+    "fallFromTotalPeak": 2.61452095,
+    "fallFromActivePeak": 2.61452095
+  },
+  {
+    "atIso": "2026-06-10T06:03:55.577Z",
+    "freeActive": 32.91738731,
+    "openPrincipal": 17.41687137,
+    "active": 50.33425868,
+    "vault": 0,
+    "total": 50.33425868,
+    "fallFromTotalPeak": 0.5060056,
+    "fallFromActivePeak": 0.5060056
+  },
+  {
+    "atIso": "2026-06-10T18:15:00.000Z",
+    "freeActive": 31.40735955,
+    "openPrincipal": 18.92689913,
+    "active": 50.33425868,
+    "vault": 0,
+    "total": 50.33425868,
+    "fallFromTotalPeak": 0.5060056,
+    "fallFromActivePeak": 0.5060056
+  },
+  {
+    "atIso": "2026-06-10T18:40:00.000Z",
+    "freeActive": 29.89733179,
+    "openPrincipal": 20.43692689,
+    "active": 50.33425868,
+    "vault": 0,
+    "total": 50.33425868,
+    "fallFromTotalPeak": 0.5060056,
+    "fallFromActivePeak": 0.5060056
+  },
+  {
+    "atIso": "2026-06-10T21:05:00.000Z",
+    "freeActive": 28.38730403,
+    "openPrincipal": 21.94695465,
+    "active": 50.33425868,
+    "vault": 0,
+    "total": 50.33425868,
+    "fallFromTotalPeak": 0.5060056,
+    "fallFromActivePeak": 0.5060056
+  },
+  {
+    "atIso": "2026-06-10T21:10:00.000Z",
+    "freeActive": 26.87727627,
+    "openPrincipal": 23.45698241,
+    "active": 50.33425868,
+    "vault": 0,
+    "total": 50.33425868,
+    "fallFromTotalPeak": 0.5060056,
+    "fallFromActivePeak": 0.5060056
+  },
+  {
+    "atIso": "2026-06-10T21:37:00.000Z",
+    "freeActive": 25.36724851,
+    "openPrincipal": 24.96701017,
+    "active": 50.33425868,
+    "vault": 0,
+    "total": 50.33425868,
+    "fallFromTotalPeak": 0.5060056,
+    "fallFromActivePeak": 0.5060056
+  },
+  {
+    "atIso": "2026-06-10T22:10:00.000Z",
+    "freeActive": 23.85722075,
+    "openPrincipal": 26.47703793,
+    "active": 50.33425868,
+    "vault": 0,
+    "total": 50.33425868,
+    "fallFromTotalPeak": 0.5060056,
+    "fallFromActivePeak": 0.5060056
+  },
+  {
+    "atIso": "2026-06-10T23:00:00.000Z",
+    "freeActive": 22.34719299,
+    "openPrincipal": 27.98706569,
+    "active": 50.33425868,
+    "vault": 0,
+    "total": 50.33425868,
+    "fallFromTotalPeak": 0.5060056,
+    "fallFromActivePeak": 0.5060056
+  },
+  {
+    "atIso": "2026-06-10T23:10:00.000Z",
+    "freeActive": 20.83716523,
+    "openPrincipal": 29.49709345,
+    "active": 50.33425868,
+    "vault": 0,
+    "total": 50.33425868,
+    "fallFromTotalPeak": 0.5060056,
+    "fallFromActivePeak": 0.5060056
+  },
+  {
+    "atIso": "2026-06-10T23:35:00.000Z",
+    "freeActive": 19.32713747,
+    "openPrincipal": 31.00712121,
+    "active": 50.33425868,
+    "vault": 0,
+    "total": 50.33425868,
+    "fallFromTotalPeak": 0.5060056,
+    "fallFromActivePeak": 0.5060056
+  },
+  {
+    "atIso": "2026-06-11T00:01:01.805Z",
+    "freeActive": 19.32713747,
+    "openPrincipal": 29.49709345,
+    "active": 48.82423092,
+    "vault": 0,
+    "total": 48.82423092,
+    "fallFromTotalPeak": 2.01603336,
+    "fallFromActivePeak": 2.01603336
+  },
+  {
+    "atIso": "2026-06-11T00:01:03.269Z",
+    "freeActive": 19.32713747,
+    "openPrincipal": 27.98706569,
+    "active": 47.31420316,
+    "vault": 0,
+    "total": 47.31420316,
+    "fallFromTotalPeak": 3.52606112,
+    "fallFromActivePeak": 3.52606112
+  },
+  {
+    "atIso": "2026-06-11T00:08:00.000Z",
+    "freeActive": 17.81710971,
+    "openPrincipal": 29.49709345,
+    "active": 47.31420316,
+    "vault": 0,
+    "total": 47.31420316,
+    "fallFromTotalPeak": 3.52606112,
+    "fallFromActivePeak": 3.52606112
+  },
+  {
+    "atIso": "2026-06-11T06:02:59.432Z",
+    "freeActive": 17.81710971,
+    "openPrincipal": 27.98706569,
+    "active": 45.8041754,
+    "vault": 0,
+    "total": 45.8041754,
+    "fallFromTotalPeak": 5.03608888,
+    "fallFromActivePeak": 5.03608888
+  },
+  {
+    "atIso": "2026-06-11T06:03:04.327Z",
+    "freeActive": 17.81710971,
+    "openPrincipal": 26.47703793,
+    "active": 44.29414764,
+    "vault": 0,
+    "total": 44.29414764,
+    "fallFromTotalPeak": 6.54611664,
+    "fallFromActivePeak": 6.54611664
+  },
+  {
+    "atIso": "2026-06-11T06:03:06.727Z",
+    "freeActive": 17.81710971,
+    "openPrincipal": 24.96701017,
+    "active": 42.78411988,
+    "vault": 0,
+    "total": 42.78411988,
+    "fallFromTotalPeak": 8.0561444,
+    "fallFromActivePeak": 8.0561444
+  },
+  {
+    "atIso": "2026-06-11T06:03:09.976Z",
+    "freeActive": 20.99611552,
+    "openPrincipal": 23.45698241,
+    "active": 44.45309793,
+    "vault": 0,
+    "total": 44.45309793,
+    "fallFromTotalPeak": 6.38716635,
+    "fallFromActivePeak": 6.38716635
+  },
+  {
+    "atIso": "2026-06-11T10:30:00.000Z",
+    "freeActive": 19.48608776,
+    "openPrincipal": 24.96701017,
+    "active": 44.45309793,
+    "vault": 0,
+    "total": 44.45309793,
+    "fallFromTotalPeak": 6.38716635,
+    "fallFromActivePeak": 6.38716635
+  },
+  {
+    "atIso": "2026-06-11T12:04:42.442Z",
+    "freeActive": 23.03909425,
+    "openPrincipal": 23.45698241,
+    "active": 46.49607666,
+    "vault": 0,
+    "total": 46.49607666,
+    "fallFromTotalPeak": 4.34418762,
+    "fallFromActivePeak": 4.34418762
+  },
+  {
+    "atIso": "2026-06-11T12:04:45.122Z",
+    "freeActive": 23.03909425,
+    "openPrincipal": 21.94695465,
+    "active": 44.9860489,
+    "vault": 0,
+    "total": 44.9860489,
+    "fallFromTotalPeak": 5.85421538,
+    "fallFromActivePeak": 5.85421538
+  },
+  {
+    "atIso": "2026-06-11T12:04:47.698Z",
+    "freeActive": 27.29269357,
+    "openPrincipal": 20.43692689,
+    "active": 47.72962046,
+    "vault": 0,
+    "total": 47.72962046,
+    "fallFromTotalPeak": 3.11064382,
+    "fallFromActivePeak": 3.11064382
+  },
+  {
+    "atIso": "2026-06-11T12:04:48.786Z",
+    "freeActive": 30.3432547,
+    "openPrincipal": 18.92689913,
+    "active": 49.27015383,
+    "vault": 0,
+    "total": 49.27015383,
+    "fallFromTotalPeak": 1.57011045,
+    "fallFromActivePeak": 1.57011045
+  },
+  {
+    "atIso": "2026-06-11T15:40:00.000Z",
+    "freeActive": 27.38704548,
+    "openPrincipal": 21.88310835,
+    "active": 49.27015383,
+    "vault": 0,
+    "total": 49.27015383,
+    "fallFromTotalPeak": 1.57011045,
+    "fallFromActivePeak": 1.57011045
+  },
+  {
+    "atIso": "2026-06-11T16:40:00.000Z",
+    "freeActive": 25.90894087,
+    "openPrincipal": 23.36121296,
+    "active": 49.27015383,
+    "vault": 0,
+    "total": 49.27015383,
+    "fallFromTotalPeak": 1.57011045,
+    "fallFromActivePeak": 1.57011045
+  },
+  {
+    "atIso": "2026-06-11T17:30:00.000Z",
+    "freeActive": 24.43083626,
+    "openPrincipal": 24.83931757,
+    "active": 49.27015383,
+    "vault": 0,
+    "total": 49.27015383,
+    "fallFromTotalPeak": 1.57011045,
+    "fallFromActivePeak": 1.57011045
+  },
+  {
+    "atIso": "2026-06-11T17:40:00.000Z",
+    "freeActive": 22.95273165,
+    "openPrincipal": 26.31742218,
+    "active": 49.27015383,
+    "vault": 0,
+    "total": 49.27015383,
+    "fallFromTotalPeak": 1.57011045,
+    "fallFromActivePeak": 1.57011045
+  },
+  {
+    "atIso": "2026-06-11T18:04:55.335Z",
+    "freeActive": 26.13173746,
+    "openPrincipal": 24.80739442,
+    "active": 50.93913188,
+    "vault": 0,
+    "total": 50.93913188,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-11T21:10:00.000Z",
+    "freeActive": 24.65363285,
+    "openPrincipal": 26.28549903,
+    "active": 50.93913188,
+    "vault": 0,
+    "total": 50.93913188,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-11T22:30:00.000Z",
+    "freeActive": 23.17552824,
+    "openPrincipal": 27.76360364,
+    "active": 50.93913188,
+    "vault": 0,
+    "total": 50.93913188,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-12T00:02:30.283Z",
+    "freeActive": 23.17552824,
+    "openPrincipal": 26.28549903,
+    "active": 49.46102727,
+    "vault": 0,
+    "total": 49.46102727,
+    "fallFromTotalPeak": 1.47810461,
+    "fallFromActivePeak": 1.47810461
+  },
+  {
+    "atIso": "2026-06-12T00:02:31.472Z",
+    "freeActive": 26.82516925,
+    "openPrincipal": 24.80739442,
+    "active": 51.63256367,
+    "vault": 0,
+    "total": 51.63256367,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-12T00:02:35.986Z",
+    "freeActive": 29.87280762,
+    "openPrincipal": 23.32928981,
+    "active": 53.20209743,
+    "vault": 0,
+    "total": 53.20209743,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-12T00:30:00.000Z",
+    "freeActive": 28.39470301,
+    "openPrincipal": 24.80739442,
+    "active": 53.20209743,
+    "vault": 0,
+    "total": 53.20209743,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-12T06:02:06.589Z",
+    "freeActive": 31.95640087,
+    "openPrincipal": 23.32928981,
+    "active": 55.28569068,
+    "vault": 0,
+    "total": 55.28569068,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-12T06:02:15.422Z",
+    "freeActive": 31.95640087,
+    "openPrincipal": 21.8511852,
+    "active": 53.80758607,
+    "vault": 0,
+    "total": 53.80758607,
+    "fallFromTotalPeak": 1.47810461,
+    "fallFromActivePeak": 1.47810461
+  },
+  {
+    "atIso": "2026-06-12T06:02:21.056Z",
+    "freeActive": 31.95640087,
+    "openPrincipal": 20.37308059,
+    "active": 52.32948146,
+    "vault": 0,
+    "total": 52.32948146,
+    "fallFromTotalPeak": 2.95620922,
+    "fallFromActivePeak": 2.95620922
+  },
+  {
+    "atIso": "2026-06-12T08:30:00.000Z",
+    "freeActive": 30.47829626,
+    "openPrincipal": 21.8511852,
+    "active": 52.32948146,
+    "vault": 0,
+    "total": 52.32948146,
+    "fallFromTotalPeak": 2.95620922,
+    "fallFromActivePeak": 2.95620922
+  },
+  {
+    "atIso": "2026-06-12T09:00:00.000Z",
+    "freeActive": 29.00019165,
+    "openPrincipal": 23.32928981,
+    "active": 52.32948146,
+    "vault": 0,
+    "total": 52.32948146,
+    "fallFromTotalPeak": 2.95620922,
+    "fallFromActivePeak": 2.95620922
+  },
+  {
+    "atIso": "2026-06-12T12:04:51.108Z",
+    "freeActive": 29.00019165,
+    "openPrincipal": 21.8511852,
+    "active": 50.85137685,
+    "vault": 0,
+    "total": 50.85137685,
+    "fallFromTotalPeak": 4.43431383,
+    "fallFromActivePeak": 4.43431383
+  },
+  {
+    "atIso": "2026-06-12T16:00:00.000Z",
+    "freeActive": 27.47465034,
+    "openPrincipal": 23.37672651,
+    "active": 50.85137685,
+    "vault": 0,
+    "total": 50.85137685,
+    "fallFromTotalPeak": 4.43431383,
+    "fallFromActivePeak": 4.43431383
+  },
+  {
+    "atIso": "2026-06-12T16:50:00.000Z",
+    "freeActive": 25.94910903,
+    "openPrincipal": 24.90226782,
+    "active": 50.85137685,
+    "vault": 0,
+    "total": 50.85137685,
+    "fallFromTotalPeak": 4.43431383,
+    "fallFromActivePeak": 4.43431383
+  },
+  {
+    "atIso": "2026-06-12T17:30:00.000Z",
+    "freeActive": 24.42356772,
+    "openPrincipal": 26.42780913,
+    "active": 50.85137685,
+    "vault": 0,
+    "total": 50.85137685,
+    "fallFromTotalPeak": 4.43431383,
+    "fallFromActivePeak": 4.43431383
+  },
+  {
+    "atIso": "2026-06-12T18:01:03.115Z",
+    "freeActive": 24.42356772,
+    "openPrincipal": 24.90226782,
+    "active": 49.32583554,
+    "vault": 0,
+    "total": 49.32583554,
+    "fallFromTotalPeak": 5.95985514,
+    "fallFromActivePeak": 5.95985514
+  },
+  {
+    "atIso": "2026-06-12T18:01:31.171Z",
+    "freeActive": 27.37977694,
+    "openPrincipal": 23.42416321,
+    "active": 50.80394015,
+    "vault": 0,
+    "total": 50.80394015,
+    "fallFromTotalPeak": 4.48175053,
+    "fallFromActivePeak": 4.48175053
+  },
+  {
+    "atIso": "2026-06-12T21:15:00.000Z",
+    "freeActive": 25.85423563,
+    "openPrincipal": 24.94970452,
+    "active": 50.80394015,
+    "vault": 0,
+    "total": 50.80394015,
+    "fallFromTotalPeak": 4.48175053,
+    "fallFromActivePeak": 4.48175053
+  },
+  {
+    "atIso": "2026-06-12T21:35:00.000Z",
+    "freeActive": 24.32869432,
+    "openPrincipal": 26.47524583,
+    "active": 50.80394015,
+    "vault": 0,
+    "total": 50.80394015,
+    "fallFromTotalPeak": 4.48175053,
+    "fallFromActivePeak": 4.48175053
+  },
+  {
+    "atIso": "2026-06-12T21:40:00.000Z",
+    "freeActive": 22.80315301,
+    "openPrincipal": 28.00078714,
+    "active": 50.80394015,
+    "vault": 0,
+    "total": 50.80394015,
+    "fallFromTotalPeak": 4.48175053,
+    "fallFromActivePeak": 4.48175053
+  },
+  {
+    "atIso": "2026-06-12T21:45:00.000Z",
+    "freeActive": 21.2776117,
+    "openPrincipal": 29.52632845,
+    "active": 50.80394015,
+    "vault": 0,
+    "total": 50.80394015,
+    "fallFromTotalPeak": 4.48175053,
+    "fallFromActivePeak": 4.48175053
+  },
+  {
+    "atIso": "2026-06-12T22:07:00.000Z",
+    "freeActive": 19.75207039,
+    "openPrincipal": 31.05186976,
+    "active": 50.80394015,
+    "vault": 0,
+    "total": 50.80394015,
+    "fallFromTotalPeak": 4.48175053,
+    "fallFromActivePeak": 4.48175053
+  },
+  {
+    "atIso": "2026-06-12T22:10:00.000Z",
+    "freeActive": 16.70098777,
+    "openPrincipal": 34.10295238,
+    "active": 50.80394015,
+    "vault": 0,
+    "total": 50.80394015,
+    "fallFromTotalPeak": 4.48175053,
+    "fallFromActivePeak": 4.48175053
+  },
+  {
+    "atIso": "2026-06-12T22:40:00.000Z",
+    "freeActive": 13.64990515,
+    "openPrincipal": 37.154035,
+    "active": 50.80394015,
+    "vault": 0,
+    "total": 50.80394015,
+    "fallFromTotalPeak": 4.48175053,
+    "fallFromActivePeak": 4.48175053
+  },
+  {
+    "atIso": "2026-06-12T23:30:00.000Z",
+    "freeActive": 12.12436384,
+    "openPrincipal": 38.67957631,
+    "active": 50.80394015,
+    "vault": 0,
+    "total": 50.80394015,
+    "fallFromTotalPeak": 4.48175053,
+    "fallFromActivePeak": 4.48175053
+  },
+  {
+    "atIso": "2026-06-13T00:00:58.116Z",
+    "freeActive": 12.12436384,
+    "openPrincipal": 37.154035,
+    "active": 49.27839884,
+    "vault": 0,
+    "total": 49.27839884,
+    "fallFromTotalPeak": 6.00729184,
+    "fallFromActivePeak": 6.00729184
+  },
+  {
+    "atIso": "2026-06-13T00:01:04.313Z",
+    "freeActive": 16.0868088,
+    "openPrincipal": 35.62849369,
+    "active": 51.71530249,
+    "vault": 0,
+    "total": 51.71530249,
+    "fallFromTotalPeak": 3.57038819,
+    "fallFromActivePeak": 3.57038819
+  },
+  {
+    "atIso": "2026-06-13T00:45:00.000Z",
+    "freeActive": 14.56126749,
+    "openPrincipal": 37.154035,
+    "active": 51.71530249,
+    "vault": 0,
+    "total": 51.71530249,
+    "fallFromTotalPeak": 3.57038819,
+    "fallFromActivePeak": 3.57038819
+  },
+  {
+    "atIso": "2026-06-13T04:30:00.000Z",
+    "freeActive": 13.03572618,
+    "openPrincipal": 38.67957631,
+    "active": 51.71530249,
+    "vault": 0,
+    "total": 51.71530249,
+    "fallFromTotalPeak": 3.57038819,
+    "fallFromActivePeak": 3.57038819
+  },
+  {
+    "atIso": "2026-06-13T06:00:44.673Z",
+    "freeActive": 16.31646018,
+    "openPrincipal": 37.154035,
+    "active": 53.47049518,
+    "vault": 0,
+    "total": 53.47049518,
+    "fallFromTotalPeak": 1.8151955,
+    "fallFromActivePeak": 1.8151955
+  },
+  {
+    "atIso": "2026-06-13T06:00:52.586Z",
+    "freeActive": 20.27890514,
+    "openPrincipal": 35.62849369,
+    "active": 55.90739883,
+    "vault": 0,
+    "total": 55.90739883,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-13T06:00:58.228Z",
+    "freeActive": 20.27890514,
+    "openPrincipal": 34.10295238,
+    "active": 54.38185752,
+    "vault": 0,
+    "total": 54.38185752,
+    "fallFromTotalPeak": 1.52554131,
+    "fallFromActivePeak": 1.52554131
+  },
+  {
+    "atIso": "2026-06-13T06:00:58.929Z",
+    "freeActive": 20.27890514,
+    "openPrincipal": 32.57741107,
+    "active": 52.85631621,
+    "vault": 0,
+    "total": 52.85631621,
+    "fallFromTotalPeak": 3.05108262,
+    "fallFromActivePeak": 3.05108262
+  },
+  {
+    "atIso": "2026-06-13T06:01:01.097Z",
+    "freeActive": 23.9549083,
+    "openPrincipal": 31.05186976,
+    "active": 55.00677806,
+    "vault": 0,
+    "total": 55.00677806,
+    "fallFromTotalPeak": 0.90062077,
+    "fallFromActivePeak": 0.90062077
+  },
+  {
+    "atIso": "2026-06-13T07:30:00.000Z",
+    "freeActive": 22.42936699,
+    "openPrincipal": 32.57741107,
+    "active": 55.00677806,
+    "vault": 0,
+    "total": 55.00677806,
+    "fallFromTotalPeak": 0.90062077,
+    "fallFromActivePeak": 0.90062077
+  },
+  {
+    "atIso": "2026-06-13T12:01:18.797Z",
+    "freeActive": 25.51126863,
+    "openPrincipal": 31.05186976,
+    "active": 56.56313839,
+    "vault": 0,
+    "total": 56.56313839,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-13T17:30:00.000Z",
+    "freeActive": 23.81437448,
+    "openPrincipal": 32.74876391,
+    "active": 56.56313839,
+    "vault": 0,
+    "total": 56.56313839,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-13T18:02:59.290Z",
+    "freeActive": 23.81437448,
+    "openPrincipal": 31.2232226,
+    "active": 55.03759708,
+    "vault": 0,
+    "total": 55.03759708,
+    "fallFromTotalPeak": 1.52554131,
+    "fallFromActivePeak": 1.52554131
+  },
+  {
+    "atIso": "2026-06-13T18:40:00.000Z",
+    "freeActive": 20.42058618,
+    "openPrincipal": 34.6170109,
+    "active": 55.03759708,
+    "vault": 0,
+    "total": 55.03759708,
+    "fallFromTotalPeak": 1.52554131,
+    "fallFromActivePeak": 1.52554131
+  },
+  {
+    "atIso": "2026-06-13T20:30:00.000Z",
+    "freeActive": 18.72369203,
+    "openPrincipal": 36.31390505,
+    "active": 55.03759708,
+    "vault": 0,
+    "total": 55.03759708,
+    "fallFromTotalPeak": 1.52554131,
+    "fallFromActivePeak": 1.52554131
+  },
+  {
+    "atIso": "2026-06-13T23:00:00.000Z",
+    "freeActive": 17.02679788,
+    "openPrincipal": 38.0107992,
+    "active": 55.03759708,
+    "vault": 0,
+    "total": 55.03759708,
+    "fallFromTotalPeak": 1.52554131,
+    "fallFromActivePeak": 1.52554131
+  },
+  {
+    "atIso": "2026-06-13T23:30:00.000Z",
+    "freeActive": 15.32990373,
+    "openPrincipal": 39.70769335,
+    "active": 55.03759708,
+    "vault": 0,
+    "total": 55.03759708,
+    "fallFromTotalPeak": 1.52554131,
+    "fallFromActivePeak": 1.52554131
+  },
+  {
+    "atIso": "2026-06-14T00:02:49.251Z",
+    "freeActive": 19.32259585,
+    "openPrincipal": 38.0107992,
+    "active": 57.33339505,
+    "vault": 0,
+    "total": 57.33339505,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-14T00:02:49.570Z",
+    "freeActive": 23.13584113,
+    "openPrincipal": 36.31390505,
+    "active": 59.44974618,
+    "vault": 0,
+    "total": 59.44974618,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-14T00:02:53.876Z",
+    "freeActive": 27.32570323,
+    "openPrincipal": 34.6170109,
+    "active": 61.94271413,
+    "vault": 0,
+    "total": 61.94271413,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-14T00:35:00.000Z",
+    "freeActive": 23.93191493,
+    "openPrincipal": 38.0107992,
+    "active": 61.94271413,
+    "vault": 0,
+    "total": 61.94271413,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-14T00:37:00.000Z",
+    "freeActive": 22.23502078,
+    "openPrincipal": 39.70769335,
+    "active": 61.94271413,
+    "vault": 0,
+    "total": 61.94271413,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-14T02:30:00.000Z",
+    "freeActive": 20.53812663,
+    "openPrincipal": 41.4045875,
+    "active": 61.94271413,
+    "vault": 0,
+    "total": 61.94271413,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-14T04:30:00.000Z",
+    "freeActive": 18.84123248,
+    "openPrincipal": 43.10148165,
+    "active": 61.94271413,
+    "vault": 0,
+    "total": 61.94271413,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-14T06:05:16.403Z",
+    "freeActive": 18.84123248,
+    "openPrincipal": 41.4045875,
+    "active": 60.24581998,
+    "vault": 0,
+    "total": 60.24581998,
+    "fallFromTotalPeak": 1.69689415,
+    "fallFromActivePeak": 1.69689415
+  },
+  {
+    "atIso": "2026-06-14T06:05:16.740Z",
+    "freeActive": 18.84123248,
+    "openPrincipal": 39.70769335,
+    "active": 58.54892583,
+    "vault": 0,
+    "total": 58.54892583,
+    "fallFromTotalPeak": 3.3937883,
+    "fallFromActivePeak": 3.3937883
+  },
+  {
+    "atIso": "2026-06-14T06:05:17.933Z",
+    "freeActive": 22.3399833,
+    "openPrincipal": 38.0107992,
+    "active": 60.3507825,
+    "vault": 0,
+    "total": 60.3507825,
+    "fallFromTotalPeak": 1.59193163,
+    "fallFromActivePeak": 1.59193163
+  },
+  {
+    "atIso": "2026-06-14T06:05:27.280Z",
+    "freeActive": 26.42888487,
+    "openPrincipal": 36.31390505,
+    "active": 62.74278992,
+    "vault": 0,
+    "total": 62.74278992,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-14T08:07:45.844Z",
+    "freeActive": 30.42157699,
+    "openPrincipal": 34.6170109,
+    "active": 65.03858789,
+    "vault": 0,
+    "total": 65.03858789,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-06-14T08:58:47.652Z",
+    "freeActive": 30.42157699,
+    "openPrincipal": 32.92011675,
+    "active": 63.34169374,
+    "vault": 0,
+    "total": 63.34169374,
+    "fallFromTotalPeak": 1.69689415,
+    "fallFromActivePeak": 1.69689415
+  },
+  {
+    "atIso": "2026-06-14T14:45:00.000Z",
+    "freeActive": 28.72468284,
+    "openPrincipal": 34.6170109,
+    "active": 63.34169374,
+    "vault": 0,
+    "total": 63.34169374,
+    "fallFromTotalPeak": 1.69689415,
+    "fallFromActivePeak": 1.69689415
+  },
+  {
+    "atIso": "2026-06-14T16:05:00.000Z",
+    "freeActive": 26.82443203,
+    "openPrincipal": 36.51726171,
+    "active": 63.34169374,
+    "vault": 0,
+    "total": 63.34169374,
+    "fallFromTotalPeak": 1.69689415,
+    "fallFromActivePeak": 1.69689415
+  },
+  {
+    "atIso": "2026-06-14T16:07:00.000Z",
+    "freeActive": 24.92418122,
+    "openPrincipal": 38.41751252,
+    "active": 63.34169374,
+    "vault": 0,
+    "total": 63.34169374,
+    "fallFromTotalPeak": 1.69689415,
+    "fallFromActivePeak": 1.69689415
+  },
+  {
+    "atIso": "2026-06-14T16:10:00.000Z",
+    "freeActive": 23.02393041,
+    "openPrincipal": 40.31776333,
+    "active": 63.34169374,
+    "vault": 0,
+    "total": 63.34169374,
+    "fallFromTotalPeak": 1.69689415,
+    "fallFromActivePeak": 1.69689415
+  },
+  {
+    "atIso": "2026-06-14T16:40:00.000Z",
+    "freeActive": 19.22342879,
+    "openPrincipal": 44.11826495,
+    "active": 63.34169374,
+    "vault": 0,
+    "total": 63.34169374,
+    "fallFromTotalPeak": 1.69689415,
+    "fallFromActivePeak": 1.69689415
+  },
+  {
+    "atIso": "2026-06-17T15:30:00.000Z",
+    "freeActive": 17.32317798,
+    "openPrincipal": 46.01851576,
+    "active": 63.34169374,
+    "vault": 0,
+    "total": 63.34169374,
+    "fallFromTotalPeak": 1.69689415,
+    "fallFromActivePeak": 1.69689415
+  },
+  {
+    "atIso": "2026-06-17T16:40:00.000Z",
+    "freeActive": 15.42292717,
+    "openPrincipal": 47.91876657,
+    "active": 63.34169374,
+    "vault": 0,
+    "total": 63.34169374,
+    "fallFromTotalPeak": 1.69689415,
+    "fallFromActivePeak": 1.69689415
+  },
+  {
+    "atIso": "2026-06-18T20:36:47.018Z",
+    "freeActive": 15.42292717,
+    "openPrincipal": 46.48355864,
+    "active": 61.90648581,
+    "vault": 0,
+    "total": 61.90648581,
+    "fallFromTotalPeak": 3.13210208,
+    "fallFromActivePeak": 3.13210208
+  },
+  {
+    "atIso": "2026-06-18T20:37:17.943Z",
+    "freeActive": 18.58082191,
+    "openPrincipal": 44.98355864,
+    "active": 63.56438055,
+    "vault": 0,
+    "total": 63.56438055,
+    "fallFromTotalPeak": 1.47420734,
+    "fallFromActivePeak": 1.47420734
+  },
+  {
+    "atIso": "2026-06-18T21:10:00.000Z",
+    "freeActive": 16.72362734,
+    "openPrincipal": 46.84075321,
+    "active": 63.56438055,
+    "vault": 0,
+    "total": 63.56438055,
+    "fallFromTotalPeak": 1.47420734,
+    "fallFromActivePeak": 1.47420734
+  },
+  {
+    "atIso": "2026-06-18T21:35:00.000Z",
+    "freeActive": 14.86643277,
+    "openPrincipal": 48.69794778,
+    "active": 63.56438055,
+    "vault": 0,
+    "total": 63.56438055,
+    "fallFromTotalPeak": 1.47420734,
+    "fallFromActivePeak": 1.47420734
+  },
+  {
+    "atIso": "2026-06-18T22:00:00.000Z",
+    "freeActive": 13.0092382,
+    "openPrincipal": 50.55514235,
+    "active": 63.56438055,
+    "vault": 0,
+    "total": 63.56438055,
+    "fallFromTotalPeak": 1.47420734,
+    "fallFromActivePeak": 1.47420734
+  },
+  {
+    "atIso": "2026-06-18T23:30:00.000Z",
+    "freeActive": 11.15204363,
+    "openPrincipal": 52.41233692,
+    "active": 63.56438055,
+    "vault": 0,
+    "total": 63.56438055,
+    "fallFromTotalPeak": 1.47420734,
+    "fallFromActivePeak": 1.47420734
+  },
+  {
+    "atIso": "2026-06-19T00:02:32.098Z",
+    "freeActive": 11.15204363,
+    "openPrincipal": 50.91233692,
+    "active": 62.06438055,
+    "vault": 0,
+    "total": 62.06438055,
+    "fallFromTotalPeak": 2.97420734,
+    "fallFromActivePeak": 2.97420734
+  },
+  {
+    "atIso": "2026-06-19T00:02:32.630Z",
+    "freeActive": 11.15204363,
+    "openPrincipal": 49.41233692,
+    "active": 60.56438055,
+    "vault": 0,
+    "total": 60.56438055,
+    "fallFromTotalPeak": 4.47420734,
+    "fallFromActivePeak": 4.47420734
+  },
+  {
+    "atIso": "2026-06-19T00:02:40.736Z",
+    "freeActive": 14.11123524,
+    "openPrincipal": 47.97712899,
+    "active": 62.08836423,
+    "vault": 0,
+    "total": 62.08836423,
+    "fallFromTotalPeak": 2.95022366,
+    "fallFromActivePeak": 2.95022366
+  },
+  {
+    "atIso": "2026-06-19T00:02:42.706Z",
+    "freeActive": 14.11123524,
+    "openPrincipal": 46.54192106,
+    "active": 60.6531563,
+    "vault": 0,
+    "total": 60.6531563,
+    "fallFromTotalPeak": 4.38543159,
+    "fallFromActivePeak": 4.38543159
+  },
+  {
+    "atIso": "2026-06-19T00:02:43.213Z",
+    "freeActive": 17.19770391,
+    "openPrincipal": 45.10671313,
+    "active": 62.30441704,
+    "vault": 0,
+    "total": 62.30441704,
+    "fallFromTotalPeak": 2.73417085,
+    "fallFromActivePeak": 2.73417085
+  },
+  {
+    "atIso": "2026-06-19T00:02:44.249Z",
+    "freeActive": 17.19770391,
+    "openPrincipal": 43.6715052,
+    "active": 60.86920911,
+    "vault": 0,
+    "total": 60.86920911,
+    "fallFromTotalPeak": 4.16937878,
+    "fallFromActivePeak": 4.16937878
+  },
+  {
+    "atIso": "2026-06-19T00:02:45.555Z",
+    "freeActive": 17.19770391,
+    "openPrincipal": 42.23629727,
+    "active": 59.43400118,
+    "vault": 0,
+    "total": 59.43400118,
+    "fallFromTotalPeak": 5.60458671,
+    "fallFromActivePeak": 5.60458671
+  },
+  {
+    "atIso": "2026-06-19T00:02:47.246Z",
+    "freeActive": 20.35200705,
+    "openPrincipal": 40.80108934,
+    "active": 61.15309639,
+    "vault": 0,
+    "total": 61.15309639,
+    "fallFromTotalPeak": 3.8854915,
+    "fallFromActivePeak": 3.8854915
+  },
+  {
+    "atIso": "2026-06-19T00:02:48.894Z",
+    "freeActive": 20.35200705,
+    "openPrincipal": 39.36588141,
+    "active": 59.71788846,
+    "vault": 0,
+    "total": 59.71788846,
+    "fallFromTotalPeak": 5.32069943,
+    "fallFromActivePeak": 5.32069943
+  },
+  {
+    "atIso": "2026-06-19T00:02:52.413Z",
+    "freeActive": 23.25141701,
+    "openPrincipal": 37.93067348,
+    "active": 61.18209049,
+    "vault": 0,
+    "total": 61.18209049,
+    "fallFromTotalPeak": 3.8564974,
+    "fallFromActivePeak": 3.8564974
+  },
+  {
+    "atIso": "2026-06-19T06:01:32.039Z",
+    "freeActive": 23.25141701,
+    "openPrincipal": 36.45256887,
+    "active": 59.70398588,
+    "vault": 0,
+    "total": 59.70398588,
+    "fallFromTotalPeak": 5.33460201,
+    "fallFromActivePeak": 5.33460201
+  },
+  {
+    "atIso": "2026-06-19T07:10:40.538Z",
+    "freeActive": 23.25141701,
+    "openPrincipal": 34.97446426,
+    "active": 58.22588127,
+    "vault": 0,
+    "total": 58.22588127,
+    "fallFromTotalPeak": 6.81270662,
+    "fallFromActivePeak": 6.81270662
+  },
+  {
+    "atIso": "2026-06-19T07:10:52.585Z",
+    "freeActive": 23.25141701,
+    "openPrincipal": 33.27757011,
+    "active": 56.52898712,
+    "vault": 0,
+    "total": 56.52898712,
+    "fallFromTotalPeak": 8.50960077,
+    "fallFromActivePeak": 8.50960077
+  },
+  {
+    "atIso": "2026-06-19T07:10:52.841Z",
+    "freeActive": 23.25141701,
+    "openPrincipal": 31.7520288,
+    "active": 55.00344581,
+    "vault": 0,
+    "total": 55.00344581,
+    "fallFromTotalPeak": 10.03514208,
+    "fallFromActivePeak": 10.03514208
+  },
+  {
+    "atIso": "2026-06-19T07:24:18.410Z",
+    "freeActive": 26.39686301,
+    "openPrincipal": 30.22648749,
+    "active": 56.6233505,
+    "vault": 0,
+    "total": 56.6233505,
+    "fallFromTotalPeak": 8.41523739,
+    "fallFromActivePeak": 8.41523739
+  },
+  {
+    "atIso": "2026-06-19T07:24:19.648Z",
+    "freeActive": 26.39686301,
+    "openPrincipal": 28.70094618,
+    "active": 55.09780919,
+    "vault": 0,
+    "total": 55.09780919,
+    "fallFromTotalPeak": 9.9407787,
+    "fallFromActivePeak": 9.9407787
+  },
+  {
+    "atIso": "2026-06-19T07:24:20.622Z",
+    "freeActive": 26.39686301,
+    "openPrincipal": 27.17540487,
+    "active": 53.57226788,
+    "vault": 0,
+    "total": 53.57226788,
+    "fallFromTotalPeak": 11.46632001,
+    "fallFromActivePeak": 11.46632001
+  },
+  {
+    "atIso": "2026-06-19T07:24:20.825Z",
+    "freeActive": 29.47876465,
+    "openPrincipal": 25.64986356,
+    "active": 55.12862821,
+    "vault": 0,
+    "total": 55.12862821,
+    "fallFromTotalPeak": 9.90995968,
+    "fallFromActivePeak": 9.90995968
+  },
+  {
+    "atIso": "2026-06-19T07:24:21.547Z",
+    "freeActive": 29.47876465,
+    "openPrincipal": 24.12432225,
+    "active": 53.6030869,
+    "vault": 0,
+    "total": 53.6030869,
+    "fallFromTotalPeak": 11.43550099,
+    "fallFromActivePeak": 11.43550099
+  },
+  {
+    "atIso": "2026-06-19T07:29:10.871Z",
+    "freeActive": 33.05117339,
+    "openPrincipal": 22.4274281,
+    "active": 55.47860149,
+    "vault": 0,
+    "total": 55.47860149,
+    "fallFromTotalPeak": 9.5599864,
+    "fallFromActivePeak": 9.5599864
+  },
+  {
+    "atIso": "2026-06-19T07:31:20.154Z",
+    "freeActive": 37.24103549,
+    "openPrincipal": 20.73053395,
+    "active": 57.97156944,
+    "vault": 0,
+    "total": 57.97156944,
+    "fallFromTotalPeak": 7.06701845,
+    "fallFromActivePeak": 7.06701845
+  },
+  {
+    "atIso": "2026-06-19T07:31:21.471Z",
+    "freeActive": 37.24103549,
+    "openPrincipal": 18.83028314,
+    "active": 56.07131863,
+    "vault": 0,
+    "total": 56.07131863,
+    "fallFromTotalPeak": 8.96726926,
+    "fallFromActivePeak": 8.96726926
+  },
+  {
+    "atIso": "2026-06-19T07:31:24.751Z",
+    "freeActive": 41.4174109,
+    "openPrincipal": 16.93003233,
+    "active": 58.34744323,
+    "vault": 0,
+    "total": 58.34744323,
+    "fallFromTotalPeak": 6.69114466,
+    "fallFromActivePeak": 6.69114466
+  },
+  {
+    "atIso": "2026-06-19T07:31:25.032Z",
+    "freeActive": 46.77023008,
+    "openPrincipal": 15.02978152,
+    "active": 61.8000116,
+    "vault": 0,
+    "total": 61.8000116,
+    "fallFromTotalPeak": 3.23857629,
+    "fallFromActivePeak": 3.23857629
+  },
+  {
+    "atIso": "2026-06-19T07:31:25.230Z",
+    "freeActive": 46.77023008,
+    "openPrincipal": 13.12953071,
+    "active": 59.89976079,
+    "vault": 0,
+    "total": 59.89976079,
+    "fallFromTotalPeak": 5.1388271,
+    "fallFromActivePeak": 5.1388271
+  },
+  {
+    "atIso": "2026-06-19T07:31:25.505Z",
+    "freeActive": 46.77023008,
+    "openPrincipal": 11.2292799,
+    "active": 57.99950998,
+    "vault": 0,
+    "total": 57.99950998,
+    "fallFromTotalPeak": 7.03907791,
+    "fallFromActivePeak": 7.03907791
+  },
+  {
+    "atIso": "2026-06-19T08:28:39.027Z",
+    "freeActive": 50.85679096,
+    "openPrincipal": 9.32902909,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-19T12:15:00.000Z",
+    "freeActive": 48.99959639,
+    "openPrincipal": 11.18622366,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-19T17:30:00.000Z",
+    "freeActive": 47.19402179,
+    "openPrincipal": 12.99179826,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-19T20:30:00.000Z",
+    "freeActive": 45.38844719,
+    "openPrincipal": 14.79737286,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-19T21:10:00.000Z",
+    "freeActive": 43.58287259,
+    "openPrincipal": 16.60294746,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-19T21:45:00.000Z",
+    "freeActive": 41.77729799,
+    "openPrincipal": 18.40852206,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-19T22:40:00.000Z",
+    "freeActive": 39.97172339,
+    "openPrincipal": 20.21409666,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-19T22:45:00.000Z",
+    "freeActive": 38.16614879,
+    "openPrincipal": 22.01967126,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-19T23:00:00.000Z",
+    "freeActive": 36.36057419,
+    "openPrincipal": 23.82524586,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-20T00:15:00.000Z",
+    "freeActive": 34.55499959,
+    "openPrincipal": 25.63082046,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-20T00:40:00.000Z",
+    "freeActive": 30.94385039,
+    "openPrincipal": 29.24196966,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-20T01:30:00.000Z",
+    "freeActive": 29.13827579,
+    "openPrincipal": 31.04754426,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-20T08:30:00.000Z",
+    "freeActive": 27.33270119,
+    "openPrincipal": 32.85311886,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-20T11:30:00.000Z",
+    "freeActive": 25.52712659,
+    "openPrincipal": 34.65869346,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-20T15:30:00.000Z",
+    "freeActive": 23.72155199,
+    "openPrincipal": 36.46426806,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-20T15:40:00.000Z",
+    "freeActive": 21.91597739,
+    "openPrincipal": 38.26984266,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-20T16:05:00.000Z",
+    "freeActive": 20.11040279,
+    "openPrincipal": 40.07541726,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-20T18:30:00.000Z",
+    "freeActive": 16.49925359,
+    "openPrincipal": 43.68656646,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-20T18:35:00.000Z",
+    "freeActive": 14.69367899,
+    "openPrincipal": 45.49214106,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-20T21:45:00.000Z",
+    "freeActive": 11.08252979,
+    "openPrincipal": 49.10329026,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-21T00:35:00.000Z",
+    "freeActive": 9.27695519,
+    "openPrincipal": 50.90886486,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-21T00:40:00.000Z",
+    "freeActive": 7.47138059,
+    "openPrincipal": 52.71443946,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-21T02:30:00.000Z",
+    "freeActive": 5.66580599,
+    "openPrincipal": 54.52001406,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-21T14:30:00.000Z",
+    "freeActive": 3.86023139,
+    "openPrincipal": 56.32558866,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-21T17:30:00.000Z",
+    "freeActive": 2.05465679,
+    "openPrincipal": 58.13116326,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-21T20:30:00.000Z",
+    "freeActive": 0.24908219,
+    "openPrincipal": 59.93673786,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-21T23:30:00.000Z",
+    "freeActive": 0.24908219,
+    "openPrincipal": 59.93673786,
+    "active": 60.18582005,
+    "vault": 0,
+    "total": 60.18582005,
+    "fallFromTotalPeak": 4.85276784,
+    "fallFromActivePeak": 4.85276784
+  },
+  {
+    "atIso": "2026-06-24T06:02:39.422Z",
+    "freeActive": 0.24908219,
+    "openPrincipal": 58.03648705,
+    "active": 58.28556924,
+    "vault": 0,
+    "total": 58.28556924,
+    "fallFromTotalPeak": 6.75301865,
+    "fallFromActivePeak": 6.75301865
+  },
+  {
+    "atIso": "2026-06-24T18:04:11.073Z",
+    "freeActive": 4.1589655,
+    "openPrincipal": 56.17929248,
+    "active": 60.33825798,
+    "vault": 0,
+    "total": 60.33825798,
+    "fallFromTotalPeak": 4.70032991,
+    "fallFromActivePeak": 4.70032991
+  },
+  {
+    "atIso": "2026-06-25T00:02:16.184Z",
+    "freeActive": 8.15293232,
+    "openPrincipal": 54.32209791,
+    "active": 62.47503023,
+    "vault": 0,
+    "total": 62.47503023,
+    "fallFromTotalPeak": 2.56355766,
+    "fallFromActivePeak": 2.56355766
+  },
+  {
+    "atIso": "2026-06-25T00:02:18.969Z",
+    "freeActive": 8.15293232,
+    "openPrincipal": 52.46490334,
+    "active": 60.61783566,
+    "vault": 0,
+    "total": 60.61783566,
+    "fallFromTotalPeak": 4.42075223,
+    "fallFromActivePeak": 4.42075223
+  },
+  {
+    "atIso": "2026-06-25T00:02:21.792Z",
+    "freeActive": 8.15293232,
+    "openPrincipal": 50.60770877,
+    "active": 58.76064109,
+    "vault": 0,
+    "total": 58.76064109,
+    "fallFromTotalPeak": 6.2779468,
+    "fallFromActivePeak": 6.2779468
+  },
+  {
+    "atIso": "2026-06-25T00:02:23.728Z",
+    "freeActive": 12.97681432,
+    "openPrincipal": 48.7505142,
+    "active": 61.72732852,
+    "vault": 0,
+    "total": 61.72732852,
+    "fallFromTotalPeak": 3.31125937,
+    "fallFromActivePeak": 3.31125937
+  },
+  {
+    "atIso": "2026-06-25T14:51:47.369Z",
+    "freeActive": 12.97681432,
+    "openPrincipal": 46.9449396,
+    "active": 59.92175392,
+    "vault": 0,
+    "total": 59.92175392,
+    "fallFromTotalPeak": 5.11683397,
+    "fallFromActivePeak": 5.11683397
+  },
+  {
+    "atIso": "2026-06-25T14:51:49.025Z",
+    "freeActive": 12.97681432,
+    "openPrincipal": 45.139365,
+    "active": 58.11617932,
+    "vault": 0,
+    "total": 58.11617932,
+    "fallFromTotalPeak": 6.92240857,
+    "fallFromActivePeak": 6.92240857
+  },
+  {
+    "atIso": "2026-06-26T00:01:12.059Z",
+    "freeActive": 16.62443977,
+    "openPrincipal": 43.3337904,
+    "active": 59.95823017,
+    "vault": 0,
+    "total": 59.95823017,
+    "fallFromTotalPeak": 5.08035772,
+    "fallFromActivePeak": 5.08035772
+  },
+  {
+    "atIso": "2026-06-26T00:01:13.676Z",
+    "freeActive": 16.62443977,
+    "openPrincipal": 41.5282158,
+    "active": 58.15265557,
+    "vault": 0,
+    "total": 58.15265557,
+    "fallFromTotalPeak": 6.88593232,
+    "fallFromActivePeak": 6.88593232
+  },
+  {
+    "atIso": "2026-06-26T00:01:15.968Z",
+    "freeActive": 16.62443977,
+    "openPrincipal": 39.7226412,
+    "active": 56.34708097,
+    "vault": 0,
+    "total": 56.34708097,
+    "fallFromTotalPeak": 8.69150692,
+    "fallFromActivePeak": 8.69150692
+  },
+  {
+    "atIso": "2026-06-26T00:01:16.617Z",
+    "freeActive": 20.42564945,
+    "openPrincipal": 37.9170666,
+    "active": 58.34271605,
+    "vault": 0,
+    "total": 58.34271605,
+    "fallFromTotalPeak": 6.69587184,
+    "fallFromActivePeak": 6.69587184
+  },
+  {
+    "atIso": "2026-06-26T06:03:05.857Z",
+    "freeActive": 25.11545361,
+    "openPrincipal": 36.111492,
+    "active": 61.22694561,
+    "vault": 0,
+    "total": 61.22694561,
+    "fallFromTotalPeak": 3.81164228,
+    "fallFromActivePeak": 3.81164228
+  },
+  {
+    "atIso": "2026-06-26T06:03:06.440Z",
+    "freeActive": 25.11545361,
+    "openPrincipal": 34.3059174,
+    "active": 59.42137101,
+    "vault": 0,
+    "total": 59.42137101,
+    "fallFromTotalPeak": 5.61721688,
+    "fallFromActivePeak": 5.61721688
+  },
+  {
+    "atIso": "2026-06-26T06:03:07.056Z",
+    "freeActive": 28.83828784,
+    "openPrincipal": 32.5003428,
+    "active": 61.33863064,
+    "vault": 0,
+    "total": 61.33863064,
+    "fallFromTotalPeak": 3.69995725,
+    "fallFromActivePeak": 3.69995725
+  },
+  {
+    "atIso": "2026-06-26T06:04:35.844Z",
+    "freeActive": 28.83828784,
+    "openPrincipal": 30.6947682,
+    "active": 59.53305604,
+    "vault": 0,
+    "total": 59.53305604,
+    "fallFromTotalPeak": 5.50553185,
+    "fallFromActivePeak": 5.50553185
+  },
+  {
+    "atIso": "2026-06-28T06:02:45.126Z",
+    "freeActive": 28.83828784,
+    "openPrincipal": 28.8891936,
+    "active": 57.72748144,
+    "vault": 0,
+    "total": 57.72748144,
+    "fallFromTotalPeak": 7.31110645,
+    "fallFromActivePeak": 7.31110645
+  },
+  {
+    "atIso": "2026-06-28T06:02:50.993Z",
+    "freeActive": 28.83828784,
+    "openPrincipal": 27.083619,
+    "active": 55.92190684,
+    "vault": 0,
+    "total": 55.92190684,
+    "fallFromTotalPeak": 9.11668105,
+    "fallFromActivePeak": 9.11668105
+  },
+  {
+    "atIso": "2026-07-01T06:04:48.198Z",
+    "freeActive": 32.89575885,
+    "openPrincipal": 25.2780444,
+    "active": 58.17380325,
+    "vault": 0,
+    "total": 58.17380325,
+    "fallFromTotalPeak": 6.86478464,
+    "fallFromActivePeak": 6.86478464
+  },
+  {
+    "atIso": "2026-07-02T14:07:17.907Z",
+    "freeActive": 37.35396774,
+    "openPrincipal": 23.4724698,
+    "active": 60.82643754,
+    "vault": 0,
+    "total": 60.82643754,
+    "fallFromTotalPeak": 4.21215035,
+    "fallFromActivePeak": 4.21215035
+  },
+  {
+    "atIso": "2026-07-05T18:30:00.000Z",
+    "freeActive": 35.52917461,
+    "openPrincipal": 25.29726293,
+    "active": 60.82643754,
+    "vault": 0,
+    "total": 60.82643754,
+    "fallFromTotalPeak": 4.21215035,
+    "fallFromActivePeak": 4.21215035
+  },
+  {
+    "atIso": "2026-07-05T22:30:00.000Z",
+    "freeActive": 33.70438148,
+    "openPrincipal": 27.12205606,
+    "active": 60.82643754,
+    "vault": 0,
+    "total": 60.82643754,
+    "fallFromTotalPeak": 4.21215035,
+    "fallFromActivePeak": 4.21215035
+  },
+  {
+    "atIso": "2026-07-06T00:00:00.000Z",
+    "freeActive": 31.87958835,
+    "openPrincipal": 28.94684919,
+    "active": 60.82643754,
+    "vault": 0,
+    "total": 60.82643754,
+    "fallFromTotalPeak": 4.21215035,
+    "fallFromActivePeak": 4.21215035
+  },
+  {
+    "atIso": "2026-07-06T08:14:36.214Z",
+    "freeActive": 31.87958835,
+    "openPrincipal": 27.12205606,
+    "active": 59.00164441,
+    "vault": 0,
+    "total": 59.00164441,
+    "fallFromTotalPeak": 6.03694348,
+    "fallFromActivePeak": 6.03694348
+  },
+  {
+    "atIso": "2026-07-06T08:14:44.944Z",
+    "freeActive": 35.64204841,
+    "openPrincipal": 25.29726293,
+    "active": 60.93931134,
+    "vault": 0,
+    "total": 60.93931134,
+    "fallFromTotalPeak": 4.09927655,
+    "fallFromActivePeak": 4.09927655
+  },
+  {
+    "atIso": "2026-07-06T08:14:50.831Z",
+    "freeActive": 40.38177083,
+    "openPrincipal": 23.4724698,
+    "active": 63.85424063,
+    "vault": 0,
+    "total": 63.85424063,
+    "fallFromTotalPeak": 1.18434726,
+    "fallFromActivePeak": 1.18434726
+  },
+  {
+    "atIso": "2026-07-07T14:30:00.000Z",
+    "freeActive": 38.46614361,
+    "openPrincipal": 25.38809702,
+    "active": 63.85424063,
+    "vault": 0,
+    "total": 63.85424063,
+    "fallFromTotalPeak": 1.18434726,
+    "fallFromActivePeak": 1.18434726
+  },
+  {
+    "atIso": "2026-07-07T16:45:00.000Z",
+    "freeActive": 36.55051639,
+    "openPrincipal": 27.30372424,
+    "active": 63.85424063,
+    "vault": 0,
+    "total": 63.85424063,
+    "fallFromTotalPeak": 1.18434726,
+    "fallFromActivePeak": 1.18434726
+  },
+  {
+    "atIso": "2026-07-07T18:01:23.559Z",
+    "freeActive": 40.47567856,
+    "openPrincipal": 25.49814964,
+    "active": 65.9738282,
+    "vault": 0,
+    "total": 65.9738282,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-07T18:30:00.000Z",
+    "freeActive": 38.56005134,
+    "openPrincipal": 27.41377686,
+    "active": 65.9738282,
+    "vault": 0,
+    "total": 65.9738282,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-07T20:35:02.612Z",
+    "freeActive": 38.56005134,
+    "openPrincipal": 25.49814964,
+    "active": 64.05820098,
+    "vault": 0,
+    "total": 64.05820098,
+    "fallFromTotalPeak": 1.91562722,
+    "fallFromActivePeak": 1.91562722
+  },
+  {
+    "atIso": "2026-07-08T06:02:55.799Z",
+    "freeActive": 42.44300747,
+    "openPrincipal": 23.69257504,
+    "active": 66.13558251,
+    "vault": 0,
+    "total": 66.13558251,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-08T20:30:11.938Z",
+    "freeActive": 42.44300747,
+    "openPrincipal": 21.77694782,
+    "active": 64.21995529,
+    "vault": 0,
+    "total": 64.21995529,
+    "fallFromTotalPeak": 1.91562722,
+    "fallFromActivePeak": 1.91562722
+  },
+  {
+    "atIso": "2026-07-08T20:30:15.027Z",
+    "freeActive": 46.5626359,
+    "openPrincipal": 19.8613206,
+    "active": 66.4239565,
+    "vault": 0,
+    "total": 66.4239565,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-09T18:30:00.000Z",
+    "freeActive": 44.5699172,
+    "openPrincipal": 21.8540393,
+    "active": 66.4239565,
+    "vault": 0,
+    "total": 66.4239565,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-10T17:30:00.000Z",
+    "freeActive": 42.5771985,
+    "openPrincipal": 23.846758,
+    "active": 66.4239565,
+    "vault": 0,
+    "total": 66.4239565,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-10T20:33:21.044Z",
+    "freeActive": 42.5771985,
+    "openPrincipal": 21.8540393,
+    "active": 64.4312378,
+    "vault": 0,
+    "total": 64.4312378,
+    "fallFromTotalPeak": 1.9927187,
+    "fallFromActivePeak": 1.9927187
+  },
+  {
+    "atIso": "2026-07-10T21:10:00.000Z",
+    "freeActive": 40.5844798,
+    "openPrincipal": 23.846758,
+    "active": 64.4312378,
+    "vault": 0,
+    "total": 64.4312378,
+    "fallFromTotalPeak": 1.9927187,
+    "fallFromActivePeak": 1.9927187
+  },
+  {
+    "atIso": "2026-07-10T21:40:00.000Z",
+    "freeActive": 38.5917611,
+    "openPrincipal": 25.8394767,
+    "active": 64.4312378,
+    "vault": 0,
+    "total": 64.4312378,
+    "fallFromTotalPeak": 1.9927187,
+    "fallFromActivePeak": 1.9927187
+  },
+  {
+    "atIso": "2026-07-10T21:45:00.000Z",
+    "freeActive": 36.5990424,
+    "openPrincipal": 27.8321954,
+    "active": 64.4312378,
+    "vault": 0,
+    "total": 64.4312378,
+    "fallFromTotalPeak": 1.9927187,
+    "fallFromActivePeak": 1.9927187
+  },
+  {
+    "atIso": "2026-07-11T12:02:25.265Z",
+    "freeActive": 40.94982457,
+    "openPrincipal": 26.0266208,
+    "active": 66.97644537,
+    "vault": 0,
+    "total": 66.97644537,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-11T12:02:26.059Z",
+    "freeActive": 44.91812039,
+    "openPrincipal": 24.2210462,
+    "active": 69.13916659,
+    "vault": 0,
+    "total": 69.13916659,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-11T12:02:27.587Z",
+    "freeActive": 44.91812039,
+    "openPrincipal": 22.4154716,
+    "active": 67.33359199,
+    "vault": 0,
+    "total": 67.33359199,
+    "fallFromTotalPeak": 1.8055746,
+    "fallFromActivePeak": 1.8055746
+  },
+  {
+    "atIso": "2026-07-11T12:02:28.874Z",
+    "freeActive": 50.15166996,
+    "openPrincipal": 20.609897,
+    "active": 70.76156696,
+    "vault": 0,
+    "total": 70.76156696,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-11T19:30:00.000Z",
+    "freeActive": 48.02882295,
+    "openPrincipal": 22.73274401,
+    "active": 70.76156696,
+    "vault": 0,
+    "total": 70.76156696,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-11T20:30:45.350Z",
+    "freeActive": 48.02882295,
+    "openPrincipal": 20.74002531,
+    "active": 68.76884826,
+    "vault": 0,
+    "total": 68.76884826,
+    "fallFromTotalPeak": 1.9927187,
+    "fallFromActivePeak": 1.9927187
+  },
+  {
+    "atIso": "2026-07-11T20:30:46.569Z",
+    "freeActive": 48.02882295,
+    "openPrincipal": 18.74730661,
+    "active": 66.77612956,
+    "vault": 0,
+    "total": 66.77612956,
+    "fallFromTotalPeak": 3.9854374,
+    "fallFromActivePeak": 3.9854374
+  },
+  {
+    "atIso": "2026-07-11T20:30:49.459Z",
+    "freeActive": 48.02882295,
+    "openPrincipal": 16.75458791,
+    "active": 64.78341086,
+    "vault": 0,
+    "total": 64.78341086,
+    "fallFromTotalPeak": 5.9781561,
+    "fallFromActivePeak": 5.9781561
+  },
+  {
+    "atIso": "2026-07-11T20:30:54.487Z",
+    "freeActive": 52.71757283,
+    "openPrincipal": 14.76186921,
+    "active": 67.47944204,
+    "vault": 0,
+    "total": 67.47944204,
+    "fallFromTotalPeak": 3.28212492,
+    "fallFromActivePeak": 3.28212492
+  },
+  {
+    "atIso": "2026-07-12T06:01:35.225Z",
+    "freeActive": 56.68586865,
+    "openPrincipal": 12.95629461,
+    "active": 69.64216326,
+    "vault": 0,
+    "total": 69.64216326,
+    "fallFromTotalPeak": 1.1194037,
+    "fallFromActivePeak": 1.1194037
+  },
+  {
+    "atIso": "2026-07-12T12:04:56.495Z",
+    "freeActive": 62.60578537,
+    "openPrincipal": 11.15072001,
+    "active": 73.75650538,
+    "vault": 0,
+    "total": 73.75650538,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-12T12:05:02.978Z",
+    "freeActive": 62.60578537,
+    "openPrincipal": 9.34514541,
+    "active": 71.95093078,
+    "vault": 0,
+    "total": 71.95093078,
+    "fallFromTotalPeak": 1.8055746,
+    "fallFromActivePeak": 1.8055746
+  },
+  {
+    "atIso": "2026-07-12T18:02:40.188Z",
+    "freeActive": 67.46042919,
+    "openPrincipal": 7.53957081,
+    "active": 75,
+    "vault": 0.87733904,
+    "total": 75.87733904,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-12T18:02:43.294Z",
+    "freeActive": 69.26600379,
+    "openPrincipal": 5.73399621,
+    "active": 75,
+    "vault": 3.52997333,
+    "total": 78.52997333,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-12T18:02:51.240Z",
+    "freeActive": 69.26600379,
+    "openPrincipal": 3.92842161,
+    "active": 73.1944254,
+    "vault": 3.52997333,
+    "total": 76.72439873,
+    "fallFromTotalPeak": 1.8055746,
+    "fallFromActivePeak": 1.8055746
+  },
+  {
+    "atIso": "2026-07-12T20:30:37.122Z",
+    "freeActive": 73.1944254,
+    "openPrincipal": 1.8055746,
+    "active": 75,
+    "vault": 5.11544006,
+    "total": 80.11544006,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "2026-07-13T00:01:09.440Z",
+    "freeActive": 75,
+    "openPrincipal": 0,
+    "active": 75,
+    "vault": 7.11107514,
+    "total": 82.11107514,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  },
+  {
+    "atIso": "FINAL",
+    "freeActive": 75,
+    "openPrincipal": 0,
+    "active": 75,
+    "vault": 7.11107514,
+    "total": 82.11107514,
+    "fallFromTotalPeak": 0,
+    "fallFromActivePeak": 0
+  }
+]

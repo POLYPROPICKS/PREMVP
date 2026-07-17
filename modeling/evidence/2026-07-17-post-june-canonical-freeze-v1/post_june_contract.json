@@ -1,0 +1,7 @@
+{
+  "primary": "decisionAt >= 2026-06-09 Europe/Minsk",
+  "sensitivity": "decisionAt >= 2026-06-08 Europe/Minsk",
+  "preCutoff": "PRESERVED_BUT_QUARANTINED",
+  "reason": "0 HIGH/MEDIUM sport, league and market-family attribution coverage",
+  "modelChanged": false
+}

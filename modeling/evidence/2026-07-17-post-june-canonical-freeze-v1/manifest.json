@@ -1,0 +1,27 @@
+{
+  "version": "POST_JUNE_CANONICAL_FREEZE_MANIFEST_V1",
+  "files": {
+    "POST_JUNE_CANONICAL_FREEZE_RU.md": "cb280d5ebcb45507c9bccb92623bbf39af1722b13428d880760962cccf439027",
+    "comparison_summary.json": "bc155a550521e04614080c86c7530675302cab81cb982fca6e7651c443d903fa",
+    "dynamic_protected_post_june_capital_curve.json": "865e37c2e750cbc9c8918fc967d6fbac96782b05929b1eedc1c2a03a8ec6a6ab",
+    "dynamic_protected_post_june_ledger.json": "fa0d2d384044900190f698b5b13c20f6559249aa1ce32e791214b4d5fe66873e",
+    "dynamic_protected_post_june_state.json": "7fc1928aa4e5364411c6c07e90f5e77df1f080771a1bef2fdcddc1c7937f46a5",
+    "execution_cost_sensitivity.json": "4f18b6eb8ed4dda9885a2f43fdd45d4aa4b1a09db54e60e4e34b12a90d7fa35e",
+    "fixed_1u_signal_control.json": "257a1b9d08094a19227f1fecb0db24a3b879712fbf3f91a055f5835a9e62b080",
+    "fixed_safe_post_june_capital_curve.json": "345cb643e8810836596f379ea5d690d99ffb00f2744f4a3428edf68fc3afc2ce",
+    "fixed_safe_post_june_ledger.json": "9e013baf0390965ced7b89dd6d8cd666939ae4ff99e5d2c97b8b3a682b55e4b1",
+    "freeze_verdict.json": "e1134d199e1a49b25ae20e854b7a7120d3c5cbc327a3ea2b592261745f2d7959",
+    "post_june8_sensitivity_execution_sequence.json": "79f13aa9d19492d45648961797d383ff06a28967f34acb6961885b77de523dc1",
+    "post_june8_sensitivity_ids.json": "4a002d9a26b328df1551d3e15a828a3060c537dcf6c0677f5c4b64dc04d00007",
+    "post_june8_sensitivity_rows.csv": "20dd71cdb403fc0ffa44081d00d2bf17f5d705c3b374dd306509efa6c0b8f6bc",
+    "post_june8_sensitivity_rows.json": "32e8eb267a27c357e1032505b8955cb463922b8856022ccba9a76f9ea2d26b33",
+    "post_june9_primary_execution_sequence.json": "a32020d3ab0bb1bc7fd773ace53aa6bfb0589dc287dd5b94cb488b69b24c237c",
+    "post_june9_primary_ids.json": "de1907af53b94a9613fdfaf1e810123a20e65501a9a02a79fd21f2f7a27285b6",
+    "post_june9_primary_rows.csv": "9de18799cb6437e04465d897ca58739f1d0a7b7743a1ac563bdde9b2db42b605",
+    "post_june9_primary_rows.json": "95c1848fd935275e928a8b952a110b9defff51118e05aa4c35c7806f27a1b61c",
+    "post_june_canonical_pnl.html": "a0f51cf428e6c3ad417232f2eae8dae9f5a02796168598b245065c577770ebb4",
+    "post_june_contract.json": "21228531044f4fa1dc3f544429d390ae96dbb42b2e615188e85b08df5fe2966e",
+    "source_lineage.json": "83cc5c60747cc50e44b7cc2bd93f31a6a2414dd9f563888ea69e12b6ff9ce667",
+    "temporal_stability.json": "82d8a7e7093adef641298bec9f4b28b3038ce999c52612cefdb4933024ca41bc"
+  }
+}
