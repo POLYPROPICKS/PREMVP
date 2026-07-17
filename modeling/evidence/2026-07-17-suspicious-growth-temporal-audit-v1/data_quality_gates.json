@@ -1,0 +1,41 @@
+{
+  "expected": 231,
+  "represented": 231,
+  "unique": 231,
+  "duplicateObservationIds": [],
+  "silentlyDropped": 0,
+  "missingAttribution": {
+    "sport": 231,
+    "league": 231,
+    "marketFamily": 231,
+    "eventStart": 0,
+    "identityConfidence": 231,
+    "historicalDerivedMatchKey": 231
+  },
+  "contradictions": [
+    "64f8f187-1c32-446d-817a-07aee2c5f377",
+    "15b1eb33-2401-4797-9533-1382f9977564",
+    "2d4a7436-27bb-4015-aa30-e82b1eeb9965",
+    "193a734b-ffc2-4a5c-9dab-93919577225f",
+    "cb3d7fcc-85b0-4da5-9517-e67561ae36eb",
+    "827d228c-769f-4231-baa8-1c5850a45562",
+    "a034dbe7-58d7-462d-aa47-65de382d7e1a",
+    "26b06afc-23d5-4820-9dd3-7bc83438af71",
+    "76d673c5-f9e2-4b6f-a60d-12908d96c964",
+    "62b9573a-9a3a-4a41-bc77-aaa376882cb2",
+    "a0b50105-3bec-4075-b4bc-31abc34426df",
+    "99ba1645-9d3f-4864-8de2-17a2b8358cd3",
+    "93bac260-3d5f-4e1f-bd2c-66785d5251e6",
+    "3a296d57-cec6-47bf-947b-4883187bb01f"
+  ],
+  "invalidPrices": [],
+  "impossibleTimestamps": [],
+  "pass": false,
+  "missingIds": [],
+  "hashGates": {
+    "datasetDeclared": true,
+    "registry": true,
+    "identity": true,
+    "sequence": true
+  }
+}

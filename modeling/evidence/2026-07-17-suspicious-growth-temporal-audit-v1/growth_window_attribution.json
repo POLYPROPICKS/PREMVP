@@ -1,0 +1,628 @@
+{
+  "settlementFixed": {
+    "count": 83,
+    "stake": 83,
+    "pnl": 37.12524392,
+    "roiPct": 44.72920954,
+    "wins": 51,
+    "losses": 32
+  },
+  "settlementDynamic": {
+    "count": 83,
+    "stake": 102.3968801,
+    "pnl": 44.03789264,
+    "roiPct": 43.00706486,
+    "wins": 51,
+    "losses": 32
+  },
+  "postJune8Fixed": {
+    "count": 146,
+    "stake": 113,
+    "pnl": 14.75452808,
+    "roiPct": 13.0571045,
+    "wins": 70,
+    "losses": 76
+  },
+  "postJune9Fixed": {
+    "count": 133,
+    "stake": 100,
+    "pnl": 18.53685813,
+    "roiPct": 18.53685813,
+    "wins": 66,
+    "losses": 67
+  },
+  "attribution": [
+    {
+      "dimension": "sport",
+      "value": "NULL",
+      "count": 83,
+      "stake": 83,
+      "pnl": 37.12524392,
+      "roiPct": 44.72920954
+    },
+    {
+      "dimension": "league",
+      "value": "NULL",
+      "count": 83,
+      "stake": 83,
+      "pnl": 37.12524392,
+      "roiPct": 44.72920954
+    },
+    {
+      "dimension": "marketFamily",
+      "value": "NULL",
+      "count": 83,
+      "stake": 83,
+      "pnl": 37.12524392,
+      "roiPct": 44.72920954
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Colorado Rockies vs. Los Angeles Angels",
+      "count": 2,
+      "stake": 2,
+      "pnl": 3.28603721,
+      "roiPct": 164.3018605
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Cleveland Guardians vs. New York Yankees",
+      "count": 2,
+      "stake": 2,
+      "pnl": 3.2514919,
+      "roiPct": 162.574595
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Washington Nationals vs. Arizona Diamondbacks",
+      "count": 2,
+      "stake": 2,
+      "pnl": 2.60744075,
+      "roiPct": 130.3720375
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Pittsburgh Pirates vs. Houston Astros",
+      "count": 2,
+      "stake": 2,
+      "pnl": 2.31905259,
+      "roiPct": 115.9526295
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Knicks vs. Spurs",
+      "count": 1,
+      "stake": 1,
+      "pnl": 2.07692308,
+      "roiPct": 207.692308
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "San Francisco Giants vs. Milwaukee Brewers",
+      "count": 3,
+      "stake": 3,
+      "pnl": 2.06409242,
+      "roiPct": 68.80308067
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Game Handicap: KC (-2.5) vs GIANTX (+2.5)",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.98507463,
+      "roiPct": 198.507463
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Roland Garros ATP: Jakub Mensik vs Joao Fonseca",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.98507463,
+      "roiPct": 198.507463
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Thunder vs. Spurs",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.89855072,
+      "roiPct": 189.855072
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Los Angeles Dodgers vs. Arizona Diamondbacks",
+      "count": 3,
+      "stake": 3,
+      "pnl": 1.71632681,
+      "roiPct": 57.21089367
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Roland Garros ATP: Casper Ruud vs Joao Fonseca",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.66666667,
+      "roiPct": 166.666667
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "World Championships: Canada vs. Finland",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.5974026,
+      "roiPct": 159.74026
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Boston Red Sox vs. Cleveland Guardians: O/U 7.5",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.53164557,
+      "roiPct": 153.164557
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Chicago White Sox vs. Minnesota Twins",
+      "count": 3,
+      "stake": 3,
+      "pnl": 1.50347881,
+      "roiPct": 50.11596033
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Los Angeles Angels vs. Tampa Bay Rays",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.4691358,
+      "roiPct": 146.91358
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Detroit Tigers vs. Tampa Bay Rays",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.4691358,
+      "roiPct": 146.91358
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Set 1 Winner: Berrettini vs Arnaldi",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.38095238,
+      "roiPct": 138.095238
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Spurs vs. Thunder",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.35294118,
+      "roiPct": 135.294118
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Miami Marlins vs. Washington Nationals",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.35294118,
+      "roiPct": 135.294118
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Baltimore Orioles vs. Toronto Blue Jays",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.35294118,
+      "roiPct": 135.294118
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Tyler: Timo Legout vs Andres Andrade",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.29885057,
+      "roiPct": 129.885057
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Boston Red Sox vs. New York Yankees",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.29885057,
+      "roiPct": 129.885057
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Roland Garros ATP: Jakub Mensik vs Andrey Rublev",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.1978022,
+      "roiPct": 119.78022
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Chicago Sky vs. Washington Mystics",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.1978022,
+      "roiPct": 119.78022
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Milwaukee Brewers vs. Colorado Rockies: O/U 10.5",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.1978022,
+      "roiPct": 119.78022
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Toronto Blue Jays vs. Baltimore Orioles",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.15053763,
+      "roiPct": 115.053763
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Philadelphia Phillies vs. Los Angeles Dodgers",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.15053763,
+      "roiPct": 115.053763
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Cleveland Guardians vs. New York Yankees: O/U 8.5",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.15053763,
+      "roiPct": 115.053763
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Seattle Mariners vs. Detroit Tigers",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.15053763,
+      "roiPct": 115.053763
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Cleveland Guardians vs. Texas Rangers",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.15053763,
+      "roiPct": 115.053763
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "New York Mets vs. San Diego Padres",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.15053763,
+      "roiPct": 115.053763
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Canadiens vs. Hurricanes",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.10526316,
+      "roiPct": 110.526316
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Pittsburgh Pirates vs. Atlanta Braves: O/U 8.5",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.06185567,
+      "roiPct": 106.185567
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Cleveland Guardians vs. Texas Rangers: O/U 7.5",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.06185567,
+      "roiPct": 106.185567
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Detroit Tigers vs. Chicago White Sox",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.02020202,
+      "roiPct": 102.020202
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "San Diego Padres vs. Washington Nationals",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.02020202,
+      "roiPct": 102.020202
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Hurricanes vs. Golden Knights",
+      "count": 1,
+      "stake": 1,
+      "pnl": 1.02020202,
+      "roiPct": 102.020202
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Golden Knights vs. Hurricanes",
+      "count": 2,
+      "stake": 2,
+      "pnl": 0.4691358,
+      "roiPct": 23.45679
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "New York Yankees vs. Athletics",
+      "count": 2,
+      "stake": 2,
+      "pnl": 0.40963855,
+      "roiPct": 20.4819275
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Athletics vs. Chicago Cubs",
+      "count": 2,
+      "stake": 2,
+      "pnl": 0.24719101,
+      "roiPct": 12.3595505
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Chicago White Sox vs. Philadelphia Phillies",
+      "count": 2,
+      "stake": 2,
+      "pnl": 0.24719101,
+      "roiPct": 12.3595505
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Kansas City Royals vs. Cincinnati Reds",
+      "count": 2,
+      "stake": 2,
+      "pnl": 0.1978022,
+      "roiPct": 9.89011
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Tampa Bay Rays vs. Miami Marlins",
+      "count": 2,
+      "stake": 2,
+      "pnl": 0.1978022,
+      "roiPct": 9.89011
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Baltimore Orioles vs. Boston Red Sox",
+      "count": 2,
+      "stake": 2,
+      "pnl": 0.10526316,
+      "roiPct": 5.263158
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Kansas City Royals vs. Texas Rangers",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Chicago Cubs vs. St. Louis Cardinals",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Arizona Diamondbacks vs. Seattle Mariners",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Atlanta Braves vs. Cincinnati Reds: O/U 8.5",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Miami Marlins vs. New York Mets",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Milwaukee Brewers vs. Houston Astros",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Knicks vs. Spurs: 1H Moneyline",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Atlanta Dream vs. Indiana Fever",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Kansas City Royals vs. Minnesota Twins",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "San Francisco Giants vs. Chicago Cubs: O/U 10.5",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Cincinnati Reds vs. St. Louis Cardinals",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Dallas Wings vs. Los Angeles Sparks",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Los Angeles Angels vs. Los Angeles Dodgers",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Pittsburgh Pirates vs. Atlanta Braves",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Athletics vs. Houston Astros",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Indiana Fever vs. New York Liberty",
+      "count": 1,
+      "stake": 1,
+      "pnl": -1,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Texas Rangers vs. St. Louis Cardinals",
+      "count": 2,
+      "stake": 2,
+      "pnl": -2,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "New York Mets vs. Seattle Mariners",
+      "count": 2,
+      "stake": 2,
+      "pnl": -2,
+      "roiPct": -100
+    },
+    {
+      "dimension": "eventTitle",
+      "value": "Toronto Blue Jays vs. Atlanta Braves",
+      "count": 2,
+      "stake": 2,
+      "pnl": -2,
+      "roiPct": -100
+    },
+    {
+      "dimension": "entryPriceBand",
+      "value": "0.40–0.49",
+      "count": 67,
+      "stake": 67,
+      "pnl": 24.85155248,
+      "roiPct": 37.09186937
+    },
+    {
+      "dimension": "entryPriceBand",
+      "value": "0.30–0.39",
+      "count": 16,
+      "stake": 16,
+      "pnl": 12.27369144,
+      "roiPct": 76.7105715
+    },
+    {
+      "dimension": "scoreBand",
+      "value": "60-69",
+      "count": 36,
+      "stake": 36,
+      "pnl": 23.0368852,
+      "roiPct": 63.99134778
+    },
+    {
+      "dimension": "scoreBand",
+      "value": "70-79",
+      "count": 47,
+      "stake": 47,
+      "pnl": 14.08835872,
+      "roiPct": 29.97523132
+    },
+    {
+      "dimension": "stakeBand",
+      "value": "1u",
+      "count": 83,
+      "stake": 83,
+      "pnl": 37.12524392,
+      "roiPct": 44.72920954
+    },
+    {
+      "dimension": "lagBand",
+      "value": "<=24h",
+      "count": 83,
+      "stake": 83,
+      "pnl": 37.12524392,
+      "roiPct": 44.72920954
+    },
+    {
+      "dimension": "sourceVersion",
+      "value": "v2-lite-growth-safe",
+      "count": 83,
+      "stake": 83,
+      "pnl": 37.12524392,
+      "roiPct": 44.72920954
+    },
+    {
+      "dimension": "identityConfidence",
+      "value": "NULL",
+      "count": 83,
+      "stake": 83,
+      "pnl": 37.12524392,
+      "roiPct": 44.72920954
+    }
+  ]
+}

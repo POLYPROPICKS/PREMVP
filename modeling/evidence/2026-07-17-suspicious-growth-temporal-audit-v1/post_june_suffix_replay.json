@@ -1,0 +1,75 @@
+{
+  "signalQuality": {
+    "suffix8": {
+      "cutoffEuropeMinsk": "2026-06-08",
+      "count": 126,
+      "wins": 63,
+      "losses": 63,
+      "voidOther": 0,
+      "totalStake": 126,
+      "grossPnl": 19.03913781,
+      "grossRoiPct": 15.11042684,
+      "averagePnl": 0.15110427,
+      "medianPnl": 0,
+      "maximumDrawdown": 5.86500797,
+      "longestLossStreak": 4,
+      "breakEvenExecutionCostBps": 1511.04268367,
+      "policy": "FIXED_1U_NO_COMPOUNDING_NO_VAULT_NO_CAPITAL_SKIP"
+    },
+    "suffix9": {
+      "cutoffEuropeMinsk": "2026-06-09",
+      "count": 124,
+      "wins": 61,
+      "losses": 63,
+      "voidOther": 0,
+      "totalStake": 124,
+      "grossPnl": 16.82674451,
+      "grossRoiPct": 13.56995525,
+      "averagePnl": 0.13569955,
+      "medianPnl": -1,
+      "maximumDrawdown": 5.86500797,
+      "longestLossStreak": 4,
+      "breakEvenExecutionCostBps": 1356.99552498,
+      "policy": "FIXED_1U_NO_COMPOUNDING_NO_VAULT_NO_CAPITAL_SKIP"
+    }
+  },
+  "policySensitivity": {
+    "warning": "Frozen ledger suffix attribution; fresh-bank capital replay is unavailable without reusing forbidden policy internals, so this dimension is explicitly blocked.",
+    "suffix8": {
+      "fixed": {
+        "count": 126,
+        "stake": 93,
+        "pnl": 18.25787803,
+        "roiPct": 19.63212691,
+        "wins": 63,
+        "losses": 63
+      },
+      "dynamic": {
+        "count": 126,
+        "stake": 66.87013214,
+        "pnl": -4.55523467,
+        "roiPct": -6.81206171,
+        "wins": 63,
+        "losses": 63
+      }
+    },
+    "suffix9": {
+      "fixed": {
+        "count": 124,
+        "stake": 91,
+        "pnl": 16.04548473,
+        "roiPct": 17.6324008,
+        "wins": 61,
+        "losses": 63
+      },
+      "dynamic": {
+        "count": 124,
+        "stake": 65.49280158,
+        "pnl": -6.01776093,
+        "roiPct": -9.18843107,
+        "wins": 61,
+        "losses": 63
+      }
+    }
+  }
+}

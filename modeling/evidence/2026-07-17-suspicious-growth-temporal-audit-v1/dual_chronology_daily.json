@@ -1,0 +1,1316 @@
+{
+  "settlement": [
+    {
+      "date": "2026-05-26",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 0,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-05-27",
+      "count": 2,
+      "stakedUnits": 2,
+      "realizedPnl": 0.02020202,
+      "cumulativePnl": 0.02020202,
+      "executionIndexes": [
+        3,
+        2
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 0.02020202,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-05-29",
+      "count": 1,
+      "stakedUnits": 1,
+      "realizedPnl": 1.89855072,
+      "cumulativePnl": 1.91875274,
+      "executionIndexes": [
+        4
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "count": 1,
+      "stakedUnits": 1,
+      "realizedPnl": 1.10526316,
+      "cumulativePnl": 3.0240159,
+      "executionIndexes": [
+        5
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "count": 10,
+      "stakedUnits": 10,
+      "realizedPnl": 6.15039541,
+      "cumulativePnl": 9.17441131,
+      "executionIndexes": [
+        10,
+        8,
+        9,
+        7,
+        6,
+        14,
+        15,
+        13,
+        12,
+        11
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "count": 8,
+      "stakedUnits": 8,
+      "realizedPnl": 1.41631646,
+      "cumulativePnl": 10.59072777,
+      "executionIndexes": [
+        23,
+        18,
+        19,
+        22,
+        20,
+        17,
+        16,
+        21
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "count": 10,
+      "stakedUnits": 10,
+      "realizedPnl": 5.29099102,
+      "cumulativePnl": 15.88171879,
+      "executionIndexes": [
+        25,
+        33,
+        32,
+        34,
+        29,
+        30,
+        31,
+        28,
+        26,
+        27
+      ]
+    },
+    {
+      "date": "2026-06-03",
+      "count": 10,
+      "stakedUnits": 10,
+      "realizedPnl": 7.46908735,
+      "cumulativePnl": 23.35080614,
+      "executionIndexes": [
+        35,
+        42,
+        43,
+        41,
+        40,
+        36,
+        38,
+        37,
+        39,
+        44
+      ]
+    },
+    {
+      "date": "2026-06-04",
+      "count": 11,
+      "stakedUnits": 11,
+      "realizedPnl": 2.88006733,
+      "cumulativePnl": 26.23087347,
+      "executionIndexes": [
+        46,
+        45,
+        55,
+        54,
+        53,
+        52,
+        50,
+        51,
+        49,
+        48,
+        47
+      ]
+    },
+    {
+      "date": "2026-06-05",
+      "count": 9,
+      "stakedUnits": 9,
+      "realizedPnl": 2.34009523,
+      "cumulativePnl": 28.5709687,
+      "executionIndexes": [
+        59,
+        58,
+        57,
+        65,
+        63,
+        64,
+        62,
+        61,
+        60
+      ]
+    },
+    {
+      "date": "2026-06-06",
+      "count": 13,
+      "stakedUnits": 13,
+      "realizedPnl": 3.28944796,
+      "cumulativePnl": 31.86041666,
+      "executionIndexes": [
+        66,
+        78,
+        76,
+        77,
+        75,
+        73,
+        74,
+        72,
+        71,
+        69,
+        70,
+        68,
+        67
+      ]
+    },
+    {
+      "date": "2026-06-07",
+      "count": 10,
+      "stakedUnits": 10,
+      "realizedPnl": 5.28502928,
+      "cumulativePnl": 37.14544594,
+      "executionIndexes": [
+        84,
+        85,
+        83,
+        86,
+        87,
+        92,
+        91,
+        88,
+        90,
+        89
+      ]
+    },
+    {
+      "date": "2026-06-08",
+      "count": 13,
+      "stakedUnits": 13,
+      "realizedPnl": -3.78233005,
+      "cumulativePnl": 33.36311589,
+      "executionIndexes": [
+        103,
+        101,
+        102,
+        99,
+        100,
+        105,
+        104,
+        98,
+        94,
+        93,
+        96,
+        97,
+        95
+      ]
+    },
+    {
+      "date": "2026-06-09",
+      "count": 7,
+      "stakedUnits": 7,
+      "realizedPnl": -0.37796815,
+      "cumulativePnl": 32.98514774,
+      "executionIndexes": [
+        106,
+        112,
+        113,
+        114,
+        111,
+        115,
+        110
+      ]
+    },
+    {
+      "date": "2026-06-10",
+      "count": 5,
+      "stakedUnits": 5,
+      "realizedPnl": 1.72879367,
+      "cumulativePnl": 34.71394141,
+      "executionIndexes": [
+        117,
+        116,
+        129,
+        128,
+        127
+      ]
+    },
+    {
+      "date": "2026-06-11",
+      "count": 11,
+      "stakedUnits": 6,
+      "realizedPnl": 0.94236659,
+      "cumulativePnl": 35.656308,
+      "executionIndexes": [
+        131,
+        130,
+        139,
+        138,
+        137,
+        136,
+        135,
+        134,
+        133,
+        132,
+        140
+      ]
+    },
+    {
+      "date": "2026-06-12",
+      "count": 9,
+      "stakedUnits": 6,
+      "realizedPnl": 0.47149422,
+      "cumulativePnl": 36.12780222,
+      "executionIndexes": [
+        145,
+        144,
+        143,
+        148,
+        147,
+        146,
+        149,
+        152,
+        150
+      ]
+    },
+    {
+      "date": "2026-06-13",
+      "count": 9,
+      "stakedUnits": 4,
+      "realizedPnl": 2.76814225,
+      "cumulativePnl": 38.89594447,
+      "executionIndexes": [
+        153,
+        151,
+        164,
+        163,
+        162,
+        161,
+        159,
+        165,
+        166
+      ]
+    },
+    {
+      "date": "2026-06-14",
+      "count": 9,
+      "stakedUnits": 5,
+      "realizedPnl": 1.88393265,
+      "cumulativePnl": 40.77987712,
+      "executionIndexes": [
+        168,
+        169,
+        167,
+        174,
+        173,
+        175,
+        172,
+        176,
+        171
+      ]
+    },
+    {
+      "date": "2026-06-15",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 40.77987712,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-16",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 40.77987712,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-17",
+      "count": 2,
+      "stakedUnits": 2,
+      "realizedPnl": -2,
+      "cumulativePnl": 38.77987712,
+      "executionIndexes": [
+        0,
+        1
+      ]
+    },
+    {
+      "date": "2026-06-18",
+      "count": 8,
+      "stakedUnits": 8,
+      "realizedPnl": 3.53478089,
+      "cumulativePnl": 42.31465801,
+      "executionIndexes": [
+        24,
+        56,
+        126,
+        79,
+        81,
+        80,
+        82,
+        108
+      ]
+    },
+    {
+      "date": "2026-06-19",
+      "count": 27,
+      "stakedUnits": 18,
+      "realizedPnl": -0.73192483,
+      "cumulativePnl": 41.58273318,
+      "executionIndexes": [
+        109,
+        107,
+        123,
+        121,
+        119,
+        118,
+        120,
+        125,
+        122,
+        124,
+        141,
+        142,
+        170,
+        160,
+        157,
+        155,
+        156,
+        154,
+        158,
+        177,
+        178,
+        181,
+        179,
+        183,
+        182,
+        180,
+        184
+      ]
+    },
+    {
+      "date": "2026-06-20",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 41.58273318,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-21",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 41.58273318,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-22",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 41.58273318,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-23",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 41.58273318,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-24",
+      "count": 2,
+      "stakedUnits": 1,
+      "realizedPnl": 1.10526316,
+      "cumulativePnl": 42.68799634,
+      "executionIndexes": [
+        185,
+        189
+      ]
+    },
+    {
+      "date": "2026-06-25",
+      "count": 6,
+      "stakedUnits": 6,
+      "realizedPnl": -1.25205977,
+      "cumulativePnl": 41.43593657,
+      "executionIndexes": [
+        186,
+        190,
+        188,
+        187,
+        204,
+        207
+      ]
+    },
+    {
+      "date": "2026-06-26",
+      "count": 8,
+      "stakedUnits": 8,
+      "realizedPnl": 0.78472345,
+      "cumulativePnl": 42.22066002,
+      "executionIndexes": [
+        191,
+        192,
+        197,
+        196,
+        194,
+        193,
+        199,
+        195
+      ]
+    },
+    {
+      "date": "2026-06-27",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 42.22066002,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-28",
+      "count": 2,
+      "stakedUnits": 2,
+      "realizedPnl": -2,
+      "cumulativePnl": 40.22066002,
+      "executionIndexes": [
+        200,
+        198
+      ]
+    },
+    {
+      "date": "2026-06-29",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 40.22066002,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-30",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 40.22066002,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-07-01",
+      "count": 1,
+      "stakedUnits": 1,
+      "realizedPnl": 1.24719101,
+      "cumulativePnl": 41.46785103,
+      "executionIndexes": [
+        201
+      ]
+    },
+    {
+      "date": "2026-07-02",
+      "count": 1,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 41.46785103,
+      "executionIndexes": [
+        214
+      ]
+    },
+    {
+      "date": "2026-07-03",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 41.46785103,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-07-04",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 41.46785103,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-07-05",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 41.46785103,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-07-06",
+      "count": 3,
+      "stakedUnits": 3,
+      "realizedPnl": 1.65925827,
+      "cumulativePnl": 43.1271093,
+      "executionIndexes": [
+        221,
+        220,
+        219
+      ]
+    },
+    {
+      "date": "2026-07-07",
+      "count": 2,
+      "stakedUnits": 2,
+      "realizedPnl": 0.17391304,
+      "cumulativePnl": 43.30102234,
+      "executionIndexes": [
+        202,
+        222
+      ]
+    },
+    {
+      "date": "2026-07-08",
+      "count": 3,
+      "stakedUnits": 3,
+      "realizedPnl": 1.30107526,
+      "cumulativePnl": 44.6020976,
+      "executionIndexes": [
+        203,
+        223,
+        224
+      ]
+    },
+    {
+      "date": "2026-07-09",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 44.6020976,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-07-10",
+      "count": 1,
+      "stakedUnits": 1,
+      "realizedPnl": -1,
+      "cumulativePnl": 43.6020976,
+      "executionIndexes": [
+        225
+      ]
+    },
+    {
+      "date": "2026-07-11",
+      "count": 8,
+      "stakedUnits": 7,
+      "realizedPnl": 2.85893265,
+      "cumulativePnl": 46.46103025,
+      "executionIndexes": [
+        211,
+        205,
+        215,
+        206,
+        226,
+        228,
+        227,
+        229
+      ]
+    },
+    {
+      "date": "2026-07-12",
+      "count": 8,
+      "stakedUnits": 5,
+      "realizedPnl": 5.43894377,
+      "cumulativePnl": 51.89997402,
+      "executionIndexes": [
+        209,
+        216,
+        217,
+        208,
+        212,
+        210,
+        218,
+        230
+      ]
+    },
+    {
+      "date": "2026-07-13",
+      "count": 1,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 51.89997402,
+      "executionIndexes": [
+        213
+      ]
+    }
+  ],
+  "decision": [
+    {
+      "date": "2026-05-26",
+      "count": 2,
+      "stakedUnits": 2,
+      "realizedPnl": -2,
+      "cumulativePnl": -2,
+      "executionIndexes": [
+        0,
+        1
+      ]
+    },
+    {
+      "date": "2026-05-27",
+      "count": 2,
+      "stakedUnits": 2,
+      "realizedPnl": 0.02020202,
+      "cumulativePnl": -1.97979798,
+      "executionIndexes": [
+        2,
+        3
+      ]
+    },
+    {
+      "date": "2026-05-28",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": -1.97979798,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-05-29",
+      "count": 1,
+      "stakedUnits": 1,
+      "realizedPnl": 1.89855072,
+      "cumulativePnl": -0.08124726,
+      "executionIndexes": [
+        4
+      ]
+    },
+    {
+      "date": "2026-05-30",
+      "count": 6,
+      "stakedUnits": 6,
+      "realizedPnl": 5.34254121,
+      "cumulativePnl": 5.26129395,
+      "executionIndexes": [
+        5,
+        6,
+        7,
+        8,
+        9,
+        10
+      ]
+    },
+    {
+      "date": "2026-05-31",
+      "count": 13,
+      "stakedUnits": 13,
+      "realizedPnl": 3.32943382,
+      "cumulativePnl": 8.59072777,
+      "executionIndexes": [
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23
+      ]
+    },
+    {
+      "date": "2026-06-01",
+      "count": 2,
+      "stakedUnits": 2,
+      "realizedPnl": 3.39471318,
+      "cumulativePnl": 11.98544095,
+      "executionIndexes": [
+        24,
+        25
+      ]
+    },
+    {
+      "date": "2026-06-02",
+      "count": 10,
+      "stakedUnits": 10,
+      "realizedPnl": 5.29099102,
+      "cumulativePnl": 17.27643197,
+      "executionIndexes": [
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35
+      ]
+    },
+    {
+      "date": "2026-06-03",
+      "count": 11,
+      "stakedUnits": 11,
+      "realizedPnl": 8.21790628,
+      "cumulativePnl": 25.49433825,
+      "executionIndexes": [
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46
+      ]
+    },
+    {
+      "date": "2026-06-04",
+      "count": 13,
+      "stakedUnits": 13,
+      "realizedPnl": 5.68801177,
+      "cumulativePnl": 31.18235002,
+      "executionIndexes": [
+        47,
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59
+      ]
+    },
+    {
+      "date": "2026-06-05",
+      "count": 7,
+      "stakedUnits": 7,
+      "realizedPnl": -2.73260697,
+      "cumulativePnl": 28.44974305,
+      "executionIndexes": [
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66
+      ]
+    },
+    {
+      "date": "2026-06-06",
+      "count": 21,
+      "stakedUnits": 21,
+      "realizedPnl": 6.6948231,
+      "cumulativePnl": 35.14456615,
+      "executionIndexes": [
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87
+      ]
+    },
+    {
+      "date": "2026-06-07",
+      "count": 17,
+      "stakedUnits": 17,
+      "realizedPnl": -1.50247016,
+      "cumulativePnl": 33.64209599,
+      "executionIndexes": [
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        98,
+        99,
+        100,
+        101,
+        102,
+        103,
+        104
+      ]
+    },
+    {
+      "date": "2026-06-08",
+      "count": 2,
+      "stakedUnits": 2,
+      "realizedPnl": 2.2123933,
+      "cumulativePnl": 35.85448929,
+      "executionIndexes": [
+        105,
+        106
+      ]
+    },
+    {
+      "date": "2026-06-09",
+      "count": 11,
+      "stakedUnits": 11,
+      "realizedPnl": -2.13675846,
+      "cumulativePnl": 33.71773083,
+      "executionIndexes": [
+        107,
+        108,
+        109,
+        110,
+        111,
+        112,
+        113,
+        114,
+        115,
+        116,
+        117
+      ]
+    },
+    {
+      "date": "2026-06-10",
+      "count": 14,
+      "stakedUnits": 14,
+      "realizedPnl": -1.03861101,
+      "cumulativePnl": 32.67911982,
+      "executionIndexes": [
+        118,
+        119,
+        120,
+        121,
+        122,
+        123,
+        124,
+        125,
+        126,
+        127,
+        128,
+        129,
+        130,
+        131
+      ]
+    },
+    {
+      "date": "2026-06-11",
+      "count": 14,
+      "stakedUnits": 7,
+      "realizedPnl": 2.00422226,
+      "cumulativePnl": 34.68334208,
+      "executionIndexes": [
+        132,
+        133,
+        134,
+        135,
+        136,
+        137,
+        138,
+        139,
+        140,
+        141,
+        142,
+        143,
+        144,
+        145
+      ]
+    },
+    {
+      "date": "2026-06-12",
+      "count": 8,
+      "stakedUnits": 6,
+      "realizedPnl": 1.00704115,
+      "cumulativePnl": 35.69038323,
+      "executionIndexes": [
+        146,
+        147,
+        148,
+        149,
+        150,
+        151,
+        152,
+        153
+      ]
+    },
+    {
+      "date": "2026-06-13",
+      "count": 17,
+      "stakedUnits": 7,
+      "realizedPnl": 4.01301865,
+      "cumulativePnl": 39.70340188,
+      "executionIndexes": [
+        154,
+        155,
+        156,
+        157,
+        158,
+        159,
+        160,
+        161,
+        162,
+        163,
+        164,
+        165,
+        166,
+        167,
+        168,
+        169,
+        170
+      ]
+    },
+    {
+      "date": "2026-06-14",
+      "count": 13,
+      "stakedUnits": 6,
+      "realizedPnl": 0.72879367,
+      "cumulativePnl": 40.43219555,
+      "executionIndexes": [
+        171,
+        172,
+        173,
+        174,
+        175,
+        176,
+        177,
+        178,
+        179,
+        180,
+        181,
+        182,
+        183
+      ]
+    },
+    {
+      "date": "2026-06-15",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 40.43219555,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-16",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 40.43219555,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-17",
+      "count": 2,
+      "stakedUnits": 1,
+      "realizedPnl": 1.15053763,
+      "cumulativePnl": 41.58273318,
+      "executionIndexes": [
+        184,
+        185
+      ]
+    },
+    {
+      "date": "2026-06-18",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 41.58273318,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-19",
+      "count": 7,
+      "stakedUnits": 7,
+      "realizedPnl": 1.87340541,
+      "cumulativePnl": 43.45613859,
+      "executionIndexes": [
+        186,
+        187,
+        188,
+        189,
+        190,
+        191,
+        192
+      ]
+    },
+    {
+      "date": "2026-06-20",
+      "count": 17,
+      "stakedUnits": 17,
+      "realizedPnl": 6.8049214,
+      "cumulativePnl": 50.26105999,
+      "executionIndexes": [
+        193,
+        194,
+        195,
+        196,
+        197,
+        198,
+        199,
+        200,
+        201,
+        202,
+        203,
+        204,
+        205,
+        206,
+        207,
+        208,
+        209
+      ]
+    },
+    {
+      "date": "2026-06-21",
+      "count": 8,
+      "stakedUnits": 3,
+      "realizedPnl": 1.87877435,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": [
+        210,
+        211,
+        212,
+        213,
+        214,
+        215,
+        216,
+        217
+      ]
+    },
+    {
+      "date": "2026-06-22",
+      "count": 1,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": [
+        218
+      ]
+    },
+    {
+      "date": "2026-06-23",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-24",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-25",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-26",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-27",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-28",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-29",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-06-30",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-07-01",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-07-02",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-07-03",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-07-04",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.13983434,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-07-05",
+      "count": 1,
+      "stakedUnits": 1,
+      "realizedPnl": 1.5974026,
+      "cumulativePnl": 53.73723694,
+      "executionIndexes": [
+        219
+      ]
+    },
+    {
+      "date": "2026-07-06",
+      "count": 2,
+      "stakedUnits": 2,
+      "realizedPnl": 0.06185567,
+      "cumulativePnl": 53.79909261,
+      "executionIndexes": [
+        220,
+        221
+      ]
+    },
+    {
+      "date": "2026-07-07",
+      "count": 3,
+      "stakedUnits": 3,
+      "realizedPnl": -0.84946237,
+      "cumulativePnl": 52.94963024,
+      "executionIndexes": [
+        222,
+        223,
+        224
+      ]
+    },
+    {
+      "date": "2026-07-08",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 52.94963024,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-07-09",
+      "count": 1,
+      "stakedUnits": 1,
+      "realizedPnl": -1,
+      "cumulativePnl": 51.94963024,
+      "executionIndexes": [
+        225
+      ]
+    },
+    {
+      "date": "2026-07-10",
+      "count": 1,
+      "stakedUnits": 1,
+      "realizedPnl": -1,
+      "cumulativePnl": 50.94963024,
+      "executionIndexes": [
+        226
+      ]
+    },
+    {
+      "date": "2026-07-11",
+      "count": 4,
+      "stakedUnits": 4,
+      "realizedPnl": 0.95034378,
+      "cumulativePnl": 51.89997402,
+      "executionIndexes": [
+        227,
+        228,
+        229,
+        230
+      ]
+    },
+    {
+      "date": "2026-07-12",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 51.89997402,
+      "executionIndexes": []
+    },
+    {
+      "date": "2026-07-13",
+      "count": 0,
+      "stakedUnits": 0,
+      "realizedPnl": 0,
+      "cumulativePnl": 51.89997402,
+      "executionIndexes": []
+    }
+  ]
+}

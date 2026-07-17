@@ -1,0 +1,70 @@
+{
+  "full": {
+    "sampleSize": 231,
+    "grossRoiPct": 22.80572893,
+    "meanReturn": 0.22805729,
+    "medianReturn": 1.02020202,
+    "winRate": 0.52813853,
+    "wilson95": [
+      0.46382821,
+      0.59152825
+    ],
+    "bootstrapMean95": [
+      0.07515482,
+      0.38219984
+    ],
+    "bootstrapResamples": 10000,
+    "seed": 20260717
+  },
+  "suspicious": {
+    "sampleSize": 83,
+    "grossRoiPct": 44.72920958,
+    "meanReturn": 0.4472921,
+    "medianReturn": 1.15053763,
+    "winRate": 0.61445783,
+    "wilson95": [
+      0.5068991,
+      0.71189005
+    ],
+    "bootstrapMean95": [
+      0.19532278,
+      0.69414629
+    ],
+    "bootstrapResamples": 10000,
+    "seed": 20260718
+  },
+  "suffix8": {
+    "sampleSize": 126,
+    "grossRoiPct": 15.11042684,
+    "meanReturn": 0.15110427,
+    "medianReturn": 0,
+    "winRate": 0.5,
+    "wilson95": [
+      0.4139959,
+      0.5860041
+    ],
+    "bootstrapMean95": [
+      -0.05186565,
+      0.35625704
+    ],
+    "bootstrapResamples": 10000,
+    "seed": 20260719
+  },
+  "suffix9": {
+    "sampleSize": 124,
+    "grossRoiPct": 13.56995525,
+    "meanReturn": 0.13569955,
+    "medianReturn": -1,
+    "winRate": 0.49193548,
+    "wilson95": [
+      0.40551453,
+      0.57884111
+    ],
+    "bootstrapMean95": [
+      -0.07074083,
+      0.34265196
+    ],
+    "bootstrapResamples": 10000,
+    "seed": 20260720
+  }
+}

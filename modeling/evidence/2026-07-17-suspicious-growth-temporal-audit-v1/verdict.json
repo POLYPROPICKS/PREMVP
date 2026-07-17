@@ -1,0 +1,9 @@
+{
+  "dataTrust": "DATA_TRUST_UNRESOLVED",
+  "temporalStability": "REGIME_DEPENDENT",
+  "freezeReview": "BLOCKED_PENDING_DATA_REPAIR",
+  "failedEvidence": [
+    "metadata attribution coverage incomplete and/or exact join gates failed"
+  ],
+  "confidenceIntervalsCaveat": "Confidence intervals do not correct source-data errors."
+}

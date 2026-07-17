@@ -1,0 +1,19 @@
+{
+  "version": "SUSPICIOUS_GROWTH_TEMPORAL_AUDIT_V1",
+  "timezone": "Europe/Minsk",
+  "seed": 20260717,
+  "bootstrapResamples": 10000,
+  "thresholdOptimization": false,
+  "initialBankU": 50,
+  "unitUsd": 100,
+  "maximumConcurrentPositions": 36,
+  "activeExposureCeilingPct": 100,
+  "profiles": [
+    "FIXED_SAFE_V1",
+    "DYNAMIC_PROTECTED_GROWTH_V1"
+  ],
+  "suffixes": [
+    "2026-06-08",
+    "2026-06-09"
+  ]
+}

@@ -1,0 +1,35 @@
+{
+  "paths": {
+    "dataset": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "identity": "modeling/canonical/model-handoff-v1/locked_signal_identity_set.json",
+    "sequence": "modeling/canonical/model-handoff-v1/locked_execution_sequence.json",
+    "fixed": "modeling/evidence/2026-07-16-final-fixed-vs-dynamic-locked-vault/fixed_profile_ledger.json",
+    "dynamic": "modeling/evidence/2026-07-16-final-fixed-vs-dynamic-locked-vault/dynamic_profile_ledger.json",
+    "curve": "modeling/evidence/2026-07-16-final-fixed-vs-dynamic-locked-vault/dynamic_profile_curve.json"
+  },
+  "declaredHashes": {
+    "dataset": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+    "registry": "5ead4f1079920aa61488ce34c17efee1736524f9dd5a95c747f2dcb487d1bf34",
+    "identitySet": "99f22a9bb8db0a2ff7bddd8e72f87a097fdb136f1a242a300ccb0e8740d0fcca",
+    "executionSequence": "5457240a539e5db189c1b23659678f157b322928105909a5812ce318a9d6b036"
+  },
+  "reproducedCanonicalHashes": {
+    "identitySet": "99f22a9bb8db0a2ff7bddd8e72f87a097fdb136f1a242a300ccb0e8740d0fcca",
+    "executionSequence": "5457240a539e5db189c1b23659678f157b322928105909a5812ce318a9d6b036"
+  },
+  "byteHashes": {
+    "dataset": "153cd28fb98294dd6c3e8cdcb480d77c8b10790d1e04ee7bd856a39cfaaa6a85",
+    "identity": "5d650d6f394f61d353fabc501e5c0a4c777599686c472f6b43da39bafa51359d",
+    "sequence": "43f9d20c8f6cbfd800b9b510abc5e2aacdf480b93aa1c95b95e2a7b5790b1d49",
+    "fixed": "e370e7ded2493888ff39d2dc5df7cb0f69da3c1fcc26014c326e1f6a647e8281",
+    "dynamic": "eae8ab2c977d70f40e287c2b6a92fbb9edb2ef39e359bb2cffbfa1abb1a2b406",
+    "curve": "cd4bbcae9d144d4fb525c198ab28370bc77138f7291a1ed72f13f8b68f0bb321"
+  },
+  "terminalAnchors": {
+    "fixedEndingPnlU": 51.89997402,
+    "dynamicEndingActiveU": 119.50804292,
+    "dynamicEndingVaultU": 52.34252857,
+    "dynamicEndingTotalU": 171.85057149,
+    "dynamicEndingPnlU": 121.85057149
+  }
+}
