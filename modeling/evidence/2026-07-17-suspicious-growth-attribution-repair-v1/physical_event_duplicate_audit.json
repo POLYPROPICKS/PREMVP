@@ -1,0 +1,24 @@
+{
+  "derivedGroups": 215,
+  "multiObservationGroups": 0,
+  "confirmedDistinctMarkets": [],
+  "possibleDuplicateExposure": [],
+  "unresolvedIdentityRows": [
+    "7ee23dc8-eaaf-426f-9a46-75791c5e6e34",
+    "2d4a7436-27bb-4015-aa30-e82b1eeb9965",
+    "1620ebba-7f2f-4ae8-895e-951a37d9109a",
+    "76d673c5-f9e2-4b6f-a60d-12908d96c964",
+    "d497c1e6-c960-4f48-8fa2-63e4126e81ac",
+    "48c6aaec-a5bb-4d8c-a45d-5a0622681eeb",
+    "b856afb3-86ba-4d5d-a7c6-697865b314b7",
+    "1e97178e-84d2-408d-a0f4-34dec32e4e80",
+    "35ec5c62-ba14-4f4e-92a3-98518fb80331",
+    "93bac260-3d5f-4e1f-bd2c-66785d5251e6",
+    "083f9564-896c-41eb-ae22-9b80070f43b4",
+    "3a296d57-cec6-47bf-947b-4883187bb01f",
+    "60253d41-1816-43e2-9997-5c99358a6edc",
+    "40cbd6a5-ea1a-4a41-a40d-826bffa9ca74",
+    "b0c15bb9-ffd0-4e60-a28e-d434a39c9df0",
+    "b53dc355-eb88-4a90-ba9a-ca4d7efdf3cd"
+  ]
+}

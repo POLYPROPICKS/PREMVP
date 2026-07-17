@@ -1,0 +1,25 @@
+{
+  "total": 231,
+  "sport": {
+    "HIGH": 0,
+    "MEDIUM": 0,
+    "LOW": 230,
+    "UNRESOLVED": 1,
+    "NOT_APPLICABLE": 0
+  },
+  "league": {
+    "HIGH": 0,
+    "MEDIUM": 0,
+    "LOW": 230,
+    "UNRESOLVED": 1,
+    "NOT_APPLICABLE": 0
+  },
+  "marketFamily": {
+    "HIGH": 0,
+    "MEDIUM": 0,
+    "LOW": 231,
+    "UNRESOLVED": 0,
+    "NOT_APPLICABLE": 0
+  },
+  "trustedDefinition": "HIGH_OR_MEDIUM"
+}

@@ -1,0 +1,14 @@
+[
+  {
+    "executionIndex": 44,
+    "observationId": "2de140bc-6e53-41af-8c47-1c46e25b7ca9",
+    "sportConfidence": "UNRESOLVED",
+    "leagueConfidence": "UNRESOLVED",
+    "marketFamilyConfidence": "LOW",
+    "warnings": [
+      "UNRECOGNIZED_TITLE_SPORT",
+      "UNRECOGNIZED_LEAGUE",
+      "TITLE_FALLBACK"
+    ]
+  }
+]

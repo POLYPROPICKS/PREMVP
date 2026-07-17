@@ -1,0 +1,82 @@
+{
+  "fixed": [
+    {
+      "segment": "SOCCER",
+      "decisionCount": 29,
+      "executedCount": 29,
+      "wins": 17,
+      "losses": 12,
+      "stake": 29,
+      "pnl": 12.56071231,
+      "maximumSinglePositionContribution": 2.27868852,
+      "roiPct": 43.31280108,
+      "pnlSharePct": 74.64731104,
+      "averageContribution": 0.43312801
+    },
+    {
+      "segment": "BASEBALL",
+      "decisionCount": 75,
+      "executedCount": 75,
+      "wins": 34,
+      "losses": 41,
+      "stake": 75,
+      "pnl": 2.6598476,
+      "maximumSinglePositionContribution": 1.89855072,
+      "roiPct": 3.54646346,
+      "pnlSharePct": 15.80726203,
+      "averageContribution": 0.03546463
+    },
+    {
+      "segment": "TENNIS",
+      "decisionCount": 6,
+      "executedCount": 6,
+      "wins": 4,
+      "losses": 2,
+      "stake": 6,
+      "pnl": 2.42971384,
+      "maximumSinglePositionContribution": 1.17391304,
+      "roiPct": 40.4952306,
+      "pnlSharePct": 14.43959546,
+      "averageContribution": 0.40495231
+    },
+    {
+      "segment": "ESPORTS",
+      "decisionCount": 7,
+      "executedCount": 7,
+      "wins": 4,
+      "losses": 3,
+      "stake": 7,
+      "pnl": 1.92066997,
+      "maximumSinglePositionContribution": 1.5974026,
+      "roiPct": 27.43814248,
+      "pnlSharePct": 11.4143884,
+      "averageContribution": 0.27438142
+    },
+    {
+      "segment": "BASKETBALL",
+      "decisionCount": 5,
+      "executedCount": 5,
+      "wins": 2,
+      "losses": 3,
+      "stake": 5,
+      "pnl": -0.74419921,
+      "maximumSinglePositionContribution": 1.15053763,
+      "roiPct": -14.88398415,
+      "pnlSharePct": -4.42271651,
+      "averageContribution": -0.14883984
+    },
+    {
+      "segment": "ICE HOCKEY",
+      "decisionCount": 2,
+      "executedCount": 2,
+      "wins": 0,
+      "losses": 2,
+      "stake": 2,
+      "pnl": -2,
+      "maximumSinglePositionContribution": -1,
+      "roiPct": -100,
+      "pnlSharePct": -11.88584042,
+      "averageContribution": -1
+    }
+  ]
+}

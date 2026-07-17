@@ -1,0 +1,82 @@
+{
+  "fixed": [
+    {
+      "segment": "TOTAL",
+      "decisionCount": 18,
+      "executedCount": 18,
+      "wins": 12,
+      "losses": 6,
+      "stake": 18,
+      "pnl": 8.39364646,
+      "maximumSinglePositionContribution": 1.5974026,
+      "roiPct": 46.63136923,
+      "pnlSharePct": 49.88277118,
+      "averageContribution": 0.46631369
+    },
+    {
+      "segment": "MONEYLINE",
+      "decisionCount": 89,
+      "executedCount": 89,
+      "wins": 40,
+      "losses": 49,
+      "stake": 89,
+      "pnl": 4.84921988,
+      "maximumSinglePositionContribution": 2.27868852,
+      "roiPct": 5.44856166,
+      "pnlSharePct": 28.8185268,
+      "averageContribution": 0.05448562
+    },
+    {
+      "segment": "HANDICAP",
+      "decisionCount": 6,
+      "executedCount": 6,
+      "wins": 4,
+      "losses": 2,
+      "stake": 6,
+      "pnl": 2.92066997,
+      "maximumSinglePositionContribution": 1.5974026,
+      "roiPct": 48.67783289,
+      "pnlSharePct": 17.35730861,
+      "averageContribution": 0.48677833
+    },
+    {
+      "segment": "SPREAD",
+      "decisionCount": 8,
+      "executedCount": 8,
+      "wins": 4,
+      "losses": 4,
+      "stake": 8,
+      "pnl": 1.55794504,
+      "maximumSinglePositionContribution": 1.4691358,
+      "roiPct": 19.47431302,
+      "pnlSharePct": 9.25874307,
+      "averageContribution": 0.19474313
+    },
+    {
+      "segment": "HALF_FULL_TIME",
+      "decisionCount": 2,
+      "executedCount": 2,
+      "wins": 1,
+      "losses": 1,
+      "stake": 2,
+      "pnl": 0.10526316,
+      "maximumSinglePositionContribution": 1.10526316,
+      "roiPct": 5.26315789,
+      "pnlSharePct": 0.62557055,
+      "averageContribution": 0.05263158
+    },
+    {
+      "segment": "BOTH_TEAMS_TO_SCORE",
+      "decisionCount": 1,
+      "executedCount": 1,
+      "wins": 0,
+      "losses": 1,
+      "stake": 1,
+      "pnl": -1,
+      "maximumSinglePositionContribution": -1,
+      "roiPct": -100,
+      "pnlSharePct": -5.94292021,
+      "averageContribution": -1
+    }
+  ]
+}

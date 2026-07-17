@@ -1,0 +1,110 @@
+{
+  "fixed": [
+    {
+      "segment": "MONEYLINE",
+      "decisionCount": 74,
+      "executedCount": 74,
+      "wins": 45,
+      "losses": 29,
+      "stake": 74,
+      "pnl": 32.13647255,
+      "maximumSinglePositionContribution": 2.07692308,
+      "roiPct": 43.42766561,
+      "pnlSharePct": 86.56232029,
+      "averageContribution": 0.43427666
+    },
+    {
+      "segment": "TOTAL",
+      "decisionCount": 7,
+      "executedCount": 7,
+      "wins": 5,
+      "losses": 2,
+      "stake": 7,
+      "pnl": 4.00369674,
+      "maximumSinglePositionContribution": 1.53164557,
+      "roiPct": 57.19566771,
+      "pnlSharePct": 10.78429747,
+      "averageContribution": 0.57195668
+    },
+    {
+      "segment": "HANDICAP",
+      "decisionCount": 1,
+      "executedCount": 1,
+      "wins": 1,
+      "losses": 0,
+      "stake": 1,
+      "pnl": 1.98507463,
+      "maximumSinglePositionContribution": 1.98507463,
+      "roiPct": 198.507463,
+      "pnlSharePct": 5.34696724,
+      "averageContribution": 1.98507463
+    },
+    {
+      "segment": "HALF_FULL_TIME",
+      "decisionCount": 1,
+      "executedCount": 1,
+      "wins": 0,
+      "losses": 1,
+      "stake": 1,
+      "pnl": -1,
+      "maximumSinglePositionContribution": -1,
+      "roiPct": -100,
+      "pnlSharePct": -2.693585,
+      "averageContribution": -1
+    }
+  ],
+  "dynamic": [
+    {
+      "segment": "MONEYLINE",
+      "decisionCount": 74,
+      "executedCount": 74,
+      "wins": 45,
+      "losses": 29,
+      "stake": 90.69996164,
+      "pnl": 37.57901456,
+      "maximumSinglePositionContribution": 2.93680431,
+      "roiPct": 41.43222762,
+      "pnlSharePct": 85.33336249,
+      "averageContribution": 0.50782452
+    },
+    {
+      "segment": "TOTAL",
+      "decisionCount": 7,
+      "executedCount": 7,
+      "wins": 5,
+      "losses": 2,
+      "stake": 9.35469984,
+      "pnl": 5.68784467,
+      "maximumSinglePositionContribution": 1.83317486,
+      "roiPct": 60.80200078,
+      "pnlSharePct": 12.91579667,
+      "averageContribution": 0.81254924
+    },
+    {
+      "segment": "HANDICAP",
+      "decisionCount": 1,
+      "executedCount": 1,
+      "wins": 1,
+      "losses": 0,
+      "stake": 1.04293943,
+      "pnl": 2.0703126,
+      "maximumSinglePositionContribution": 2.0703126,
+      "roiPct": 198.5074627,
+      "pnlSharePct": 4.70120725,
+      "averageContribution": 2.0703126
+    },
+    {
+      "segment": "HALF_FULL_TIME",
+      "decisionCount": 1,
+      "executedCount": 1,
+      "wins": 0,
+      "losses": 1,
+      "stake": 1.29927919,
+      "pnl": -1.29927919,
+      "maximumSinglePositionContribution": -1.29927919,
+      "roiPct": -100,
+      "pnlSharePct": -2.95036641,
+      "averageContribution": -1.29927919
+    }
+  ]
+}

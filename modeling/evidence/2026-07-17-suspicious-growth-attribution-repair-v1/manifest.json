@@ -1,0 +1,32 @@
+{
+  "version": "HISTORICAL_ATTRIBUTION_REPAIR_MANIFEST_V1",
+  "files": {
+    "ATTRIBUTION_REPAIR_AND_GROWTH_EXPLANATION_RU.md": "453afcbb78d35272a7132c64dfc15fbca91a85cc656f9fe3a800c6236bdb5c19",
+    "attribution_conflicts.json": "37517e5f3dc66819f61f5a7bb8ace1921282415f10551d2defa5c3eb0985b570",
+    "attribution_contract.json": "75a09fca9b41ee09a70e7a374bcf8fdaf2e3e398839cf2caba8c0bd3c2188f9b",
+    "attribution_coverage.json": "faf1504439d82c76461d7d13a22cc34c21f8f138718aa0fb6c5f172a26bf17b1",
+    "early_growth_by_event.csv": "8efc8a1d471d92b53d9b4617c9c89c261e9c06b5fdd3e5d92356348c7142a4c4",
+    "early_growth_by_event.json": "be896683393889eb6044a979d052a0b4971e4a25c2ddd1b156a2ea7263e17c34",
+    "early_growth_by_league.csv": "93e719eb3b5171c876d77af136923a5b472ea1bce5a890dbe147e349eed7216c",
+    "early_growth_by_league.json": "20061cf6b732e160ecff5d6687eb4abba26f785d2d469af0271fcec497d58951",
+    "early_growth_by_market_family.csv": "0432a0053fc18b465c3df40792eb8d59c328c2a4be4412a38c5ed2f36305b826",
+    "early_growth_by_market_family.json": "b606f84b5a64ea0d27bb76ff1f52ac801887f11b891175802871261d93cc2321",
+    "early_growth_by_sport.csv": "648976108ace62be1882a22411f4f10c056daf498f6cd48d372e98cf478be152",
+    "early_growth_by_sport.json": "56118dc8bd9acfd8b856d5e03e13ee1798c2650cf03b0d6c1bf50c3776746438",
+    "physical_event_duplicate_audit.json": "584294c3ea47eecdb0135d632344fd8e9e2e37893d53f008e343b6e74b965a95",
+    "post_june_by_league.csv": "54a88808c8b35b9a89032cca5fd3b8ca2dd84c96254d41a9c160327aaf90a1b7",
+    "post_june_by_league.json": "f99456170906c732418dcd94c8c12ccc49616457968423b55425944c052a19d1",
+    "post_june_by_market_family.csv": "39df39d5862e2670f27e2c9bba50f0e2324c567d1faacbafc737481e587637be",
+    "post_june_by_market_family.json": "9ac91ac8924c581bb0d92eb00e8b1d6e46a696a88fa7ed87aa75646d2a68b946",
+    "post_june_by_sport.csv": "19be1179a13d821e58bd2627c3f958b6a33bed96f258d985ad67b35adede701d",
+    "post_june_by_sport.json": "42bcfeb3546bf5fe8f6470bd977a48d7a480fb3449eb4337780e7e5e19dbc42d",
+    "resolved_231_attribution.csv": "6fda510ef9c5417bcb7c02ad0108c6403205846385e72385dd75c73bb6ac9480",
+    "resolved_231_attribution.json": "2c346126410a89107cef228894b95ae8e9be19fc5c12a7a5d3c8a2fcc7632134",
+    "source_field_inventory.json": "30f41819c44c99877853aaef30eaac50d5a7ebb6c0e8a1f3fe83e571c59dc4ea",
+    "suspicious_growth_attribution_repair.html": "36f3b1a09984d9fe288164bb97c6fbdca5eaaa7496f0c4628e15b75398346574",
+    "unresolved_attribution.json": "7826f7a15efe2dbb8c782688adf2e5ae5ba537f2fc04a92dd929a7ee5e31394f",
+    "updated_data_quality_gates.json": "0800bd5ce77c735c7696f748cab1a5ac8aa28de88dda439615e768470c345b16",
+    "updated_verdict.json": "42ccac5ffb7ac8e8ee8a7dc62e59f83da54bd854ba838a997b69f99647660db3",
+    "window_comparison.json": "1b53f637992ffacea1532e02a55bbae7e64f871163775b9efe26b9c1b1816221"
+  }
+}

@@ -1,0 +1,140 @@
+[
+  {
+    "field": "sport",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 0,
+    "lockedCoverage": 0,
+    "examples": [],
+    "existingResolver": "historicalAttributionRepair title fallback",
+    "sourceConfidence": "ABSENT_IN_LOCKED_ROWS"
+  },
+  {
+    "field": "sports",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 0,
+    "lockedCoverage": 0,
+    "examples": [],
+    "existingResolver": "historicalAttributionRepair title fallback",
+    "sourceConfidence": "ABSENT_IN_LOCKED_ROWS"
+  },
+  {
+    "field": "sportType",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 0,
+    "lockedCoverage": 0,
+    "examples": [],
+    "existingResolver": "historicalAttributionRepair title fallback",
+    "sourceConfidence": "ABSENT_IN_LOCKED_ROWS"
+  },
+  {
+    "field": "league",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 0,
+    "lockedCoverage": 0,
+    "examples": [],
+    "existingResolver": "historicalAttributionRepair title fallback",
+    "sourceConfidence": "ABSENT_IN_LOCKED_ROWS"
+  },
+  {
+    "field": "competition",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 0,
+    "lockedCoverage": 0,
+    "examples": [],
+    "existingResolver": "historicalAttributionRepair title fallback",
+    "sourceConfidence": "ABSENT_IN_LOCKED_ROWS"
+  },
+  {
+    "field": "tournament",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 0,
+    "lockedCoverage": 0,
+    "examples": [],
+    "existingResolver": "historicalAttributionRepair title fallback",
+    "sourceConfidence": "ABSENT_IN_LOCKED_ROWS"
+  },
+  {
+    "field": "series",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 0,
+    "lockedCoverage": 0,
+    "examples": [],
+    "existingResolver": "historicalAttributionRepair title fallback",
+    "sourceConfidence": "ABSENT_IN_LOCKED_ROWS"
+  },
+  {
+    "field": "marketType",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 0,
+    "lockedCoverage": 0,
+    "examples": [],
+    "existingResolver": "sportMarketPerformanceSlice.classifyMarketTypeV2",
+    "sourceConfidence": "ABSENT_IN_LOCKED_ROWS"
+  },
+  {
+    "field": "sportsMarketType",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 0,
+    "lockedCoverage": 0,
+    "examples": [],
+    "existingResolver": "historicalAttributionRepair title fallback",
+    "sourceConfidence": "ABSENT_IN_LOCKED_ROWS"
+  },
+  {
+    "field": "marketFamily",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 0,
+    "lockedCoverage": 0,
+    "examples": [],
+    "existingResolver": "historicalAttributionRepair title fallback",
+    "sourceConfidence": "ABSENT_IN_LOCKED_ROWS"
+  },
+  {
+    "field": "event_slug",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 49400,
+    "lockedCoverage": 231,
+    "examples": [
+      "Minnesota Twins vs. Arizona Diamondbacks",
+      "Will Norway beat England - First Team to Score?",
+      "Egypt — Match Winner",
+      "New York Mets vs. Philadelphia Phillies",
+      "Los Angeles Angels vs. Athletics"
+    ],
+    "existingResolver": "historicalAttributionRepair title fallback",
+    "sourceConfidence": "DIRECT"
+  },
+  {
+    "field": "market_slug",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 49400,
+    "lockedCoverage": 231,
+    "examples": [
+      "$98K matched activity",
+      "$2K matched activity",
+      "$15K matched activity",
+      "$40K matched activity",
+      "$19K matched activity"
+    ],
+    "existingResolver": "historicalAttributionRepair title fallback",
+    "sourceConfidence": "DIRECT"
+  },
+  {
+    "field": "diagnostics.marketType",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 21364,
+    "lockedCoverage": 0,
+    "examples": [],
+    "existingResolver": "sportMarketPerformanceSlice.classifyMarketTypeV2",
+    "sourceConfidence": "ABSENT_IN_LOCKED_ROWS"
+  },
+  {
+    "field": "diagnostics.marketFamily",
+    "sourceArtifact": "modeling/canonical/datasets/2026-07-15-b2f5dfb5963e/generated_signal_pairs_export.json.gz",
+    "corpusCoverage": 19697,
+    "lockedCoverage": 0,
+    "examples": [],
+    "existingResolver": "historicalAttributionRepair title fallback",
+    "sourceConfidence": "ABSENT_IN_LOCKED_ROWS"
+  }
+]

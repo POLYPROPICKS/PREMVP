@@ -1,0 +1,19 @@
+{
+  "version": "HISTORICAL_ATTRIBUTION_REPAIR_V1",
+  "timezone": "Europe/Minsk",
+  "lockedIds": 231,
+  "priority": [
+    "direct frozen field",
+    "existing repository resolver",
+    "deterministic title fallback"
+  ],
+  "confidence": [
+    "HIGH",
+    "MEDIUM",
+    "LOW",
+    "UNRESOLVED",
+    "NOT_APPLICABLE"
+  ],
+  "thresholdOptimization": false,
+  "modelChanged": false
+}

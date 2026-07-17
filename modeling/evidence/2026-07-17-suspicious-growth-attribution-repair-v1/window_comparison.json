@@ -1,0 +1,94 @@
+{
+  "early": {
+    "fixedPnlU": 37.12524392,
+    "dynamicLedgerAttributedPnlU": 44.03789264,
+    "dynamicRequiredAnchorPnlU": 78.00453764
+  },
+  "suffix": {
+    "post8": {
+      "cutoffEuropeMinsk": "2026-06-08",
+      "count": 126,
+      "wins": 63,
+      "losses": 63,
+      "voidOther": 0,
+      "totalStake": 126,
+      "grossPnl": 19.03913781,
+      "grossRoiPct": 15.11042684,
+      "averagePnl": 0.15110427,
+      "medianPnl": 0,
+      "maximumDrawdown": 5.86500797,
+      "longestLossStreak": 4,
+      "breakEvenExecutionCostBps": 1511.04268367,
+      "policy": "FIXED_1U_NO_COMPOUNDING_NO_VAULT_NO_CAPITAL_SKIP"
+    },
+    "post9": {
+      "cutoffEuropeMinsk": "2026-06-09",
+      "count": 124,
+      "wins": 61,
+      "losses": 63,
+      "voidOther": 0,
+      "totalStake": 124,
+      "grossPnl": 16.82674451,
+      "grossRoiPct": 13.56995525,
+      "averagePnl": 0.13569955,
+      "medianPnl": -1,
+      "maximumDrawdown": 5.86500797,
+      "longestLossStreak": 4,
+      "breakEvenExecutionCostBps": 1356.99552498,
+      "policy": "FIXED_1U_NO_COMPOUNDING_NO_VAULT_NO_CAPITAL_SKIP"
+    }
+  },
+  "concentration": {
+    "sport": {
+      "topOnePositivePnlSharePct": 56.27599949,
+      "topThreePositivePnlSharePct": 80.04714798,
+      "herfindahlPositivePnl": 0.3603125
+    },
+    "league": {
+      "topOnePositivePnlSharePct": 53.67062709,
+      "topThreePositivePnlSharePct": 77.2477184,
+      "herfindahlPositivePnl": 0.32703579
+    },
+    "marketFamily": {
+      "topOnePositivePnlSharePct": 84.29184773,
+      "topThreePositivePnlSharePct": 100,
+      "herfindahlPositivePnl": 0.72425056
+    },
+    "topFivePhysicalEventPositiveSharePct": 61.42793164
+  },
+  "verdict": {
+    "earlyGrowthExplanation": "EARLY_GROWTH_DEPENDS_ON_LOW_CONFIDENCE_ATTRIBUTION",
+    "dataTrust": "DATA_TRUST_UNRESOLVED",
+    "modelFreeze": "BLOCKED_PENDING_DATA_REPAIR",
+    "evidence": {
+      "coverage": {
+        "total": 231,
+        "sport": {
+          "HIGH": 0,
+          "MEDIUM": 0,
+          "LOW": 230,
+          "UNRESOLVED": 1,
+          "NOT_APPLICABLE": 0
+        },
+        "league": {
+          "HIGH": 0,
+          "MEDIUM": 0,
+          "LOW": 230,
+          "UNRESOLVED": 1,
+          "NOT_APPLICABLE": 0
+        },
+        "marketFamily": {
+          "HIGH": 0,
+          "MEDIUM": 0,
+          "LOW": 231,
+          "UNRESOLVED": 0,
+          "NOT_APPLICABLE": 0
+        },
+        "trustedDefinition": "HIGH_OR_MEDIUM"
+      },
+      "conflicts": 0,
+      "possibleDuplicateGroups": 0,
+      "dynamicEarlyAnchorReconciles": false
+    }
+  }
+}

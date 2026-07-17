@@ -1,0 +1,57 @@
+{
+  "validation": {
+    "represented": 231,
+    "unique": 231,
+    "duplicateIds": [],
+    "missingIds": [],
+    "canonicalWithoutProvenance": [],
+    "pass": true
+  },
+  "coverage": {
+    "total": 231,
+    "sport": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 230,
+      "UNRESOLVED": 1,
+      "NOT_APPLICABLE": 0
+    },
+    "league": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 230,
+      "UNRESOLVED": 1,
+      "NOT_APPLICABLE": 0
+    },
+    "marketFamily": {
+      "HIGH": 0,
+      "MEDIUM": 0,
+      "LOW": 231,
+      "UNRESOLVED": 0,
+      "NOT_APPLICABLE": 0
+    },
+    "trustedDefinition": "HIGH_OR_MEDIUM"
+  },
+  "conflictCount": 0,
+  "unresolvedRows": 1,
+  "physicalEventDuplicateRisk": 0,
+  "dynamicEarlyAnchor": {
+    "ledgerAttributedPnlU": 44.03789264,
+    "requiredAnchorPnlU": 78.00453764,
+    "reconciles": false
+  },
+  "fixedEarlyAnchor": {
+    "actualPnlU": 37.12524392,
+    "requiredPnlU": 37.12524392,
+    "reconciles": true
+  },
+  "frozenHashes": {
+    "dataset": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+    "registry": "5ead4f1079920aa61488ce34c17efee1736524f9dd5a95c747f2dcb487d1bf34",
+    "identitySet": "99f22a9bb8db0a2ff7bddd8e72f87a097fdb136f1a242a300ccb0e8740d0fcca",
+    "executionSequence": "5457240a539e5db189c1b23659678f157b322928105909a5812ce318a9d6b036"
+  },
+  "resultConsistency": true,
+  "timeConsistency": true,
+  "sourceVersionContinuity": "NO_DIRECT_ATTRIBUTION_FIELDS_IN_LOCKED_ROWS"
+}
