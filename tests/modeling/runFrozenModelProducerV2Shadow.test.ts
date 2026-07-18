@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
+import { tmpdir } from "node:os";
 import { runFrozenModelProducerV2Shadow } from "../../scripts/modeling/strategies/runFrozenModelProducerV2Shadow";
 
 const root = process.cwd();
@@ -10,7 +11,7 @@ const runner = path.join(root, "scripts/modeling/strategies/runFrozenModelProduc
 function runCli(output?: string) { return spawnSync(process.execPath, ["--import", "tsx", runner, ...(output === undefined ? [] : [output])], { cwd: root, encoding: "utf8" }); }
 
 test("shadow runner writes only explicit compact local evidence", () => {
-  const outputDirectory = mkdtempSync(path.join("C:/tmp", "polypropicks-shadow-run-"));
+  const outputDirectory = mkdtempSync(path.join(tmpdir(), "polypropicks-shadow-run-"));
   const output = path.join(outputDirectory, "shadow-output.json");
   try {
     const result = runFrozenModelProducerV2Shadow(process.cwd(), output);
@@ -25,15 +26,15 @@ test("shadow runner writes only explicit compact local evidence", () => {
 test("shadow runner rejects missing, relative, worktree, repository, and frozen output targets", () => {
   assert.throws(() => runFrozenModelProducerV2Shadow(process.cwd(), undefined as never), /output/i);
   assert.throws(() => runFrozenModelProducerV2Shadow(process.cwd(), "shadow-output.json"), /absolute/i);
-  assert.throws(() => runFrozenModelProducerV2Shadow(process.cwd(), "C:/tmp/sipropicks-frozen-model-producer-v2-shadow/shadow-output.json"), /protected|repository|worktree/i);
+  assert.throws(() => runFrozenModelProducerV2Shadow(process.cwd(), path.join(process.cwd(), "modeling/evidence/shadow-output.json")), /protected|repository|worktree/i);
   assert.throws(() => runFrozenModelProducerV2Shadow(process.cwd(), path.join(process.cwd(), "shadow-output.json")), /protected|repository|worktree/i);
   assert.throws(() => runFrozenModelProducerV2Shadow(process.cwd(), path.join(process.cwd(), "modeling/canonical/datasets/shadow-output.json")), /protected|frozen/i);
   assert.throws(() => runFrozenModelProducerV2Shadow(process.cwd(), path.join(process.cwd(), "modeling/canonical/model-handoff-v1/shadow-output.json")), /protected|manifest|frozen/i);
 });
 
 test("shadow runner CLI rejects protected paths without writes and accepts exactly one external file", () => {
-  const temp = mkdtempSync(path.join("C:/tmp", "polypropicks-shadow-cli-"));
-  const cases = [undefined, "relative.json", path.join(root, "shadow-output.json"), path.join(root, "modeling/canonical/datasets/shadow-output.json"), path.join(temp, "..", path.basename(root), "shadow-output.json")];
+  const temp = mkdtempSync(path.join(tmpdir(), "polypropicks-shadow-cli-"));
+  const cases = [undefined, "relative.json", path.join(root, "shadow-output.json"), path.join(root, "modeling/canonical/datasets/shadow-output.json"), path.join(root, "modeling", "..", "shadow-output.json")];
   try {
     for (const output of cases) {
       const target = output && path.isAbsolute(output) ? path.resolve(output) : undefined;
@@ -51,10 +52,10 @@ test("shadow runner CLI rejects protected paths without writes and accepts exact
 });
 
 test("shadow runner fails closed for a junction into the repository", () => {
-  const outputDirectory = mkdtempSync(path.join("C:/tmp", "polypropicks-shadow-link-"));
+  const outputDirectory = mkdtempSync(path.join(tmpdir(), "polypropicks-shadow-link-"));
   const junction = path.join(outputDirectory, "repo-junction");
   try {
-    symlinkSync(process.cwd(), junction, "junction");
+    symlinkSync(process.cwd(), junction, process.platform === "win32" ? "junction" : "dir");
     assert.throws(() => runFrozenModelProducerV2Shadow(process.cwd(), path.join(junction, "shadow-output.json")), /symlink|protected/i);
   } finally {
     rmSync(outputDirectory, { recursive: true, force: true });
