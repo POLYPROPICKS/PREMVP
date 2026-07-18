@@ -66,6 +66,45 @@
 - без live-исполнения;
 - независимый review до интеграции с persistence.
 
+### 2.1 Phase 4B — принято + Forward Snapshot Exporter (checkpoint)
+
+- **Accepted Phase 4B Forward Local Shadow HEAD:**
+  `1a01f2741c55880b3de2896d70717f7ab0ba3725`
+  (независимая acceptance-проверка PASS: reuse канонической модели,
+  fail-closed forward-валидация, append-only journal, exact rerun no-op,
+  exclusive lock, реальный black-box CLI).
+- **Forward Snapshot Exporter (read-only):**
+  - ветка: `claude/phase4b-readonly-snapshot-exporter-v1`
+  - commit: `179594a79ea054f5abaf0802f47b0381ac372a6f`
+  - статус: **implementation checkpoint** — ожидает последующей независимой
+    acceptance.
+  - файлы: `lib/modeling/forwardSnapshotExporter.ts`,
+    `scripts/modeling/strategies/exportForwardLocalShadowSnapshot.ts`,
+    + два теста в `tests/modeling/`.
+- **Проверенная offline-цепочка (без live-сети):**
+
+```
+fake read-only source adapter
+  → real forward snapshot exporter
+  → deterministic snapshot.jsonl + manifest.json
+  → real runForwardLocalShadow CLI
+  → append-only journal
+  → exact rerun no-op (journal byte-identical)
+```
+
+- Source contract: единственная таблица `generated_signal_pairs`;
+  unresolved = `signal_result IS NULL AND resolved_at IS NULL`;
+  as-of = `created_at <= asOf`; keyset-пагинация `(created_at DESC, id DESC)`;
+  переиспользуется `normalizeGeneratedSignalPairRow`. Модельная селекция
+  (score/price/timing/T−90/ranking/one-per-event/post-June) в экспортёр **не**
+  входит — остаётся в waterfall/producer.
+- **Live Supabase export НЕ запускался** (LIVE_SUPABASE_CALLS: 0).
+- Без записей в схему/API/очередь; без миграций; без деплоя; без force-push.
+- **Текущая следующая веха Track B:** founder-approved read-only production
+  snapshot trial (первый реальный, но по-прежнему read-only, прогон экспортёра
+  на проде — только после явного founder Gate).
+- Controlled live остаётся **NO-GO**. Кросс-трековый Sync Gate **без изменений**.
+
 ## 3. Track A — Ireland execution
 
 Владелец:
