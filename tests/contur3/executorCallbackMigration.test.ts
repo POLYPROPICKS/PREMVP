@@ -28,7 +28,7 @@ const sqlWithoutComments = sql
 
 const PROVEN_SOURCE_FIELDS = [
   "event_type", "source", "environment", "idempotency_key", "clob_order_id", "transaction_hashes",
-  "match_family_key", "reservation_id", "signal_id", "candidate_id", "run_id", "market_slug",
+  "signal_id", "candidate_id", "run_id", "market_slug",
   "condition_id", "token_id", "selected_side", "side", "order_status", "success", "dry_run",
   "live_confirm", "submitted_price", "submitted_size", "stake_usd", "making_amount", "taking_amount",
   "observed_best_bid", "observed_best_ask", "observed_price", "observed_spread", "max_entry_price",
@@ -36,6 +36,36 @@ const PROVEN_SOURCE_FIELDS = [
   "executor_version", "model_rule_id", "strategic_scope", "candidate_snapshot_json",
   "response_json_sanitized", "executor_meta", "raw_event_json", "error_message",
 ];
+
+// Founder-proven live information_schema inventory of public.executor_order_events:
+// exactly these 43 columns, no more, no less.
+const AUTHORITATIVE_LIVE_COLUMNS = [
+  "id", "created_at", "event_type", "source", "environment", "idempotency_key",
+  "clob_order_id", "transaction_hashes", "signal_id", "candidate_id", "run_id",
+  "market_slug", "condition_id", "token_id", "selected_side", "side", "order_status",
+  "success", "dry_run", "live_confirm", "submitted_price", "submitted_size", "stake_usd",
+  "making_amount", "taking_amount", "observed_best_bid", "observed_best_ask",
+  "observed_price", "observed_spread", "max_entry_price", "fee_usd", "slippage_usd",
+  "cost_model_version", "fee_notes", "executor_host_country", "executor_version",
+  "model_rule_id", "strategic_scope", "candidate_snapshot_json", "response_json_sanitized",
+  "executor_meta", "raw_event_json", "error_message",
+];
+
+function extractCreateTableBody(): string {
+  const match = sql.match(/create\s+table\s+if\s+not\s+exists\s+public\.executor_order_events\s*\(([\s\S]*?)\n\);/i);
+  if (!match) throw new Error("could not locate executor_order_events CREATE TABLE body");
+  return match[1];
+}
+
+function extractColumnNames(tableBody: string): string[] {
+  return tableBody
+    .split("\n")
+    .map((line) => line.replace(/--.*$/, "").trim())
+    .filter((line) => line.length > 0)
+    .map((line) => line.replace(/,$/, ""))
+    .map((line) => line.split(/\s+/)[0])
+    .filter((token) => token.length > 0);
+}
 
 test("migration file exists in the standard migrations directory", () => {
   assert.ok(readdirSync(migrationsDir).includes(migrationFile));
@@ -110,4 +140,38 @@ test("the migration is additive-only (CREATE TABLE IF NOT EXISTS / CREATE INDEX 
 
 test("the migration file documents that it has NOT been applied", () => {
   assert.match(sql, /NOT APPLIED/i);
+});
+
+test("the executor_order_events CREATE TABLE contains exactly the proven 43-column contract, no more, no less", () => {
+  const body = extractCreateTableBody();
+  const columns = extractColumnNames(body);
+  assert.equal(columns.length, 43, `expected exactly 43 columns, found ${columns.length}: ${columns.join(", ")}`);
+  const columnSet = new Set(columns);
+  for (const col of AUTHORITATIVE_LIVE_COLUMNS) {
+    assert.ok(columnSet.has(col), `missing proven live column: ${col}`);
+  }
+  for (const col of columns) {
+    assert.ok(AUTHORITATIVE_LIVE_COLUMNS.includes(col), `extra column not in the proven live schema: ${col}`);
+  }
+});
+
+test("match_family_key and reservation_id are absent from the CREATE TABLE -- not real live columns", () => {
+  const body = extractCreateTableBody();
+  assert.doesNotMatch(body, /\bmatch_family_key\b/);
+  assert.doesNotMatch(body, /\breservation_id\b/);
+});
+
+test("making_amount and taking_amount are numeric, matching the proven live column type", () => {
+  const body = extractCreateTableBody();
+  assert.match(body, /\bmaking_amount\s+numeric\b/, "making_amount must be numeric");
+  assert.match(body, /\btaking_amount\s+numeric\b/, "taking_amount must be numeric");
+  assert.doesNotMatch(body, /\bmaking_amount\s+text\b/);
+  assert.doesNotMatch(body, /\btaking_amount\s+text\b/);
+});
+
+test("event_type, source, and environment are NOT NULL with the proven live defaults", () => {
+  const body = extractCreateTableBody();
+  assert.match(body, /\bevent_type\s+text\s+not\s+null\s+default\s+'order_event'/i);
+  assert.match(body, /\bsource\s+text\s+not\s+null\s+default\s+'ireland_executor'/i);
+  assert.match(body, /\benvironment\s+text\s+not\s+null\s+default\s+'production'/i);
 });

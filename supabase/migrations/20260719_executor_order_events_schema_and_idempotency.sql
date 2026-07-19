@@ -12,35 +12,28 @@
 -- CREATE TABLE IF NOT EXISTS therefore does not declare a queue_id column
 -- and never adds one.
 --
--- Column list caveat (reported honestly, not fabricated): the founder's
--- live information_schema dump reported 43 columns on the live table but
--- its full text was not available when this migration was authored. The
--- column set below is instead derived from every field the current
--- application source (app/api/executor/order-events/route.ts GET/POST and
--- lib/executor/executorCallbackContract.ts) reads or writes on this table
--- today, which is real, in-repo evidence rather than an invented list. This
--- CREATE TABLE IF NOT EXISTS is a pure no-op if the live table already
--- exists with a different or larger column set — it will not conflict with
--- or truncate any column not listed here.
+-- Column list (corrected): the founder's live information_schema dump was
+-- later provided in full and proved public.executor_order_events has
+-- exactly these 43 columns. match_family_key and reservation_id were an
+-- earlier source-derived approximation and are NOT real live columns —
+-- removed here, and no longer written by the route. The table capture
+-- below is a pure no-op against the already-existing live table; it
+-- exists only to codify the proven live schema for parity/documentation
+-- purposes and will not conflict with or truncate any live column.
 
 create table if not exists public.executor_order_events (
   id uuid primary key default gen_random_uuid(),
   created_at timestamptz not null default now(),
 
   -- identity / routing
-  event_type text,
-  source text,
-  environment text,
+  event_type text not null default 'order_event',
+  source text not null default 'ireland_executor',
+  environment text not null default 'production',
 
   -- dedup keys
   idempotency_key text,
   clob_order_id text,
   transaction_hashes jsonb,
-
-  -- fixture/queue linkage (sourced from the verified queue row server-side;
-  -- queue_id itself was never a real column and is intentionally absent)
-  match_family_key text,
-  reservation_id uuid,
 
   -- signal linkage
   signal_id text,
@@ -64,8 +57,8 @@ create table if not exists public.executor_order_events (
   submitted_price numeric,
   submitted_size numeric,
   stake_usd numeric,
-  making_amount text,
-  taking_amount text,
+  making_amount numeric,
+  taking_amount numeric,
   observed_best_bid numeric,
   observed_best_ask numeric,
   observed_price numeric,

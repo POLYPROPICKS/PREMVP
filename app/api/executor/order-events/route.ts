@@ -172,7 +172,7 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
       if (error) throw new Error(error.message);
       return data ? toStoredOrderEvent(data as Record<string, unknown>) : null;
     },
-    async insertOrderEvent(raw, queueRow): Promise<{ ok: true; row: StoredOrderEvent } | InsertOrderEventFailure> {
+    async insertOrderEvent(raw, _queueRow): Promise<{ ok: true; row: StoredOrderEvent } | InsertOrderEventFailure> {
       const s = sanitize(raw) as Record<string, unknown>;
       const record: Record<string, unknown> = {
         // identity / routing
@@ -185,12 +185,12 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
         clob_order_id: str(s.clob_order_id),
         transaction_hashes: s.transaction_hashes ?? null,
 
-        // fixture/queue linkage — sourced from the verified queue row (not
-        // the untrusted client payload). executor_order_events.queue_id does
-        // not exist in the live schema (confirmed by a live 42703 error and
-        // a full information_schema column dump) and is never written.
-        match_family_key: str(queueRow.match_family_key) ?? str(s.match_family_key),
-        reservation_id: queueRow.reservation_id ?? null,
+        // NOTE: executor_order_events.queue_id, match_family_key, and
+        // reservation_id are NOT real live columns (confirmed by a live
+        // 42703 error and a full founder-provided information_schema
+        // column dump of the exact 43-column live table) and are never
+        // written here. queueRow is still loaded and validated above for
+        // idempotency/policy cross-checks before this insert runs.
 
         // signal linkage
         signal_id: str(s.signal_id),

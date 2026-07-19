@@ -260,3 +260,40 @@ test("13: the route source file no longer inserts queue_id", () => {
   const source = readFileSync(path.join(root, "app/api/executor/order-events/route.ts"), "utf8");
   assert.doesNotMatch(source, /queue_id\s*:/);
 });
+
+test("14: the route source file does not insert match_family_key -- not a real live column", () => {
+  const source = readFileSync(path.join(root, "app/api/executor/order-events/route.ts"), "utf8");
+  assert.doesNotMatch(source, /match_family_key\s*:/);
+});
+
+test("15: the route source file does not insert reservation_id -- not a real live column", () => {
+  const source = readFileSync(path.join(root, "app/api/executor/order-events/route.ts"), "utf8");
+  assert.doesNotMatch(source, /reservation_id\s*:/);
+});
+
+test("16: queue-row lookup and policy validation still occur before any insert is attempted", async () => {
+  const port = makeFakePort([]);
+  let insertCalls = 0;
+  const spyPort: OrderEventDbPort = {
+    ...port,
+    async insertOrderEvent(record, queueRow) {
+      insertCalls += 1;
+      return port.insertOrderEvent(record, queueRow);
+    },
+  };
+  const notFound = await handleOrderEventSubmission(spyPort, validSubmissionRaw());
+  assert.equal(notFound.kind, "REJECTED_QUEUE_ROW_NOT_FOUND");
+  assert.equal(insertCalls, 0, "must not insert when no queue row is found for the idempotency_key");
+
+  const policyPort = makeFakePort();
+  const spyPolicyPort: OrderEventDbPort = {
+    ...policyPort,
+    async insertOrderEvent(record, queueRow) {
+      insertCalls += 1;
+      return policyPort.insertOrderEvent(record, queueRow);
+    },
+  };
+  const mismatch = await handleOrderEventSubmission(spyPolicyPort, validSubmissionRaw({ submitted_size: 999 }));
+  assert.equal(mismatch.kind, "REJECTED_QUEUE_POLICY_MISMATCH");
+  assert.equal(insertCalls, 0, "must not insert when queue policy validation fails");
+});
