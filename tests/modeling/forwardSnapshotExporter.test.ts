@@ -128,6 +128,58 @@ test("5b: a resolved/outcome-bearing source row is rejected before snapshot", as
   await assert.rejects(() => collectForwardRows(leaking2, AS_OF, 10), /FORWARD_EXPORT_ROW_RESOLVED/);
 });
 
+// 5c. real_pnl_usd is realized-PnL settlement data and must be rejected as
+// resolution leakage via the real public exporter path.
+test("5c: a source row carrying real_pnl_usd is rejected before snapshot", async () => {
+  const bad = { ...SOURCE_ROWS[0], real_pnl_usd: 12.34 };
+  const leaking: ForwardSourceAdapter = { async fetchPage() { return [bad]; } };
+  await assert.rejects(() => collectForwardRows(leaking, AS_OF, 10), /FORWARD_EXPORT_ROW_RESOLVED:.*field=real_pnl_usd/);
+});
+
+// 5c-b. real_pnl_usd rejection through the full export leaves zero output,
+// manifest, and temporary files.
+test("5c-b: a full export of a real_pnl_usd-bearing row writes zero output/manifest/temp files", async () => {
+  const dir = tempDir();
+  try {
+    const bad = { ...SOURCE_ROWS[0], real_pnl_usd: 9.99 };
+    const leaking: ForwardSourceAdapter = { async fetchPage(input) { return input.cursor ? [] : [bad]; } };
+    await assert.rejects(
+      () => exportForwardSnapshot({ adapter: leaking, asOfIso: AS_OF, outputPath: path.join(dir, "s.jsonl"), manifestPath: path.join(dir, "m.json"), repositoryRoot: root, sourceCommit: SOURCE_COMMIT }),
+      /FORWARD_EXPORT_ROW_RESOLVED:.*field=real_pnl_usd/,
+    );
+    assert.deepEqual(readdirSync(dir), []);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// 5c-c. winning_outcome is the resolved winning side and must remain rejected.
+test("5c-c: winning_outcome remains rejected as resolution leakage", async () => {
+  const bad = { ...SOURCE_ROWS[0], winning_outcome: "Canadiens" };
+  const leaking: ForwardSourceAdapter = { async fetchPage() { return [bad]; } };
+  await assert.rejects(() => collectForwardRows(leaking, AS_OF, 10), /FORWARD_EXPORT_ROW_RESOLVED:.*field=winning_outcome/);
+});
+
+// 5c-d. selected_outcome is the model's pre-resolution pick (forward decision
+// data): it must be ACCEPTED and PRESERVED in the normalized snapshot. This is
+// a semantic regression lock, expected to pass before and after the patch.
+test("5c-d: selected_outcome is accepted and preserved in the normalized snapshot", async () => {
+  const withPick = { ...SOURCE_ROWS[0], selected_outcome: "Canadiens" };
+  const { rows } = await collectForwardRows(fakeAdapter([withPick]), AS_OF, 10);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].selected_outcome, "Canadiens");
+  // exportable end-to-end with no resolution fields present
+  const dir = tempDir();
+  try {
+    const res = await exportForwardSnapshot({ adapter: fakeAdapter([withPick]), asOfIso: AS_OF, outputPath: path.join(dir, "s.jsonl"), manifestPath: path.join(dir, "m.json"), repositoryRoot: root, sourceCommit: SOURCE_COMMIT });
+    assert.equal(res.rowCount, 1);
+    const line = JSON.parse(readFileSync(path.join(dir, "s.jsonl"), "utf8").trim());
+    assert.equal(line.selected_outcome, "Canadiens");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // 6. Deterministic stable pagination across shared created_at.
 test("6: keyset pagination over rows sharing created_at yields every row exactly once", async () => {
   const shared = SOURCE_ROWS.map((r, i) => ({ ...r, id: `dup-${i}`, created_at: "2026-05-02T00:00:00.000Z" }));

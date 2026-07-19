@@ -63,7 +63,7 @@ export function normalizeAsOfIso(asOf: string): string {
   return new Date(ms).toISOString();
 }
 
-const RESOLUTION_FIELDS = ["resolved_at", "signal_result", "result", "outcome_status", "realized_return_pct", "winning_outcome"] as const;
+const RESOLUTION_FIELDS = ["resolved_at", "signal_result", "result", "outcome_status", "realized_return_pct", "winning_outcome", "real_pnl_usd"] as const;
 
 function isSet(value: unknown): boolean {
   return value !== undefined && value !== null && value !== "";
