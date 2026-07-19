@@ -6,19 +6,14 @@
 //
 // Pure types only — no DB client, no side effects.
 
+import type { QueueStatus } from "./executorCallbackContract";
+export type { QueueStatus };
+
 export type ReservationStatus =
   | "RESERVED"
   | "REBALANCE_PENDING"
   | "QUEUED"
   | "SKIPPED"
-  | "EXPIRED"
-  | "CANCELLED";
-
-export type QueueStatus =
-  | "READY"
-  | "CLAIMED"
-  | "SENT"
-  | "FAILED"
   | "EXPIRED"
   | "CANCELLED";
 

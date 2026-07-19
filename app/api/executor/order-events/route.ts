@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import {
-  validateOrderEventAgainstQueueRow,
-  type EventExecutionQueueRow,
-  type OrderEventSubmission,
-} from "@/lib/executor/executorQueueTypes";
+  handleOrderEventSubmission,
+  type OrderEventDbPort,
+  type StoredOrderEvent,
+  type InsertOrderEventFailure,
+} from "@/lib/executor/executorCallbackContract";
+import type { EventExecutionQueueRow } from "@/lib/executor/executorQueueTypes";
 
 // Keys whose name (case-insensitive, normalised) triggers value removal
 const BANNED_SUBSTRINGS = [
@@ -119,6 +121,152 @@ export async function GET(request: NextRequest) {
   );
 }
 
+function toStoredOrderEvent(row: Record<string, unknown>): StoredOrderEvent {
+  return {
+    id: String(row.id),
+    created_at: String(row.created_at),
+    idempotency_key: typeof row.idempotency_key === "string" ? row.idempotency_key : null,
+    condition_id: typeof row.condition_id === "string" ? row.condition_id : null,
+    token_id: String(row.token_id),
+    side: typeof row.side === "string" ? row.side : null,
+    selected_side: typeof row.selected_side === "string" ? row.selected_side : null,
+    market_slug: typeof row.market_slug === "string" ? row.market_slug : null,
+    submitted_size: typeof row.submitted_size === "number" ? row.submitted_size : null,
+    submitted_price: typeof row.submitted_price === "number" ? row.submitted_price : null,
+    clob_order_id: typeof row.clob_order_id === "string" ? row.clob_order_id : null,
+  };
+}
+
+/**
+ * Wires the real Supabase-backed read/write primitives to the narrow
+ * OrderEventDbPort the pure orchestration in executorCallbackContract.ts
+ * depends on. All business logic lives in handleOrderEventSubmission; this
+ * adapter is intentionally thin infrastructure glue.
+ */
+function createSupabaseOrderEventDbPort(): OrderEventDbPort {
+  return {
+    async findQueueRowByIdempotencyKey(key) {
+      const { data, error } = await supabaseAdmin
+        .from("event_execution_queue")
+        .select("*")
+        .eq("idempotency_key", key)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return (data as EventExecutionQueueRow | null) ?? null;
+    },
+    async findOrderEventByIdempotencyKey(key) {
+      const { data, error } = await supabaseAdmin
+        .from("executor_order_events")
+        .select("*")
+        .eq("idempotency_key", key)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return data ? toStoredOrderEvent(data as Record<string, unknown>) : null;
+    },
+    async findOrderEventByClobOrderId(clobOrderId) {
+      const { data, error } = await supabaseAdmin
+        .from("executor_order_events")
+        .select("*")
+        .eq("clob_order_id", clobOrderId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return data ? toStoredOrderEvent(data as Record<string, unknown>) : null;
+    },
+    async insertOrderEvent(raw, queueRow): Promise<{ ok: true; row: StoredOrderEvent } | InsertOrderEventFailure> {
+      const s = sanitize(raw) as Record<string, unknown>;
+      const record: Record<string, unknown> = {
+        // identity / routing
+        event_type: str(s.event_type),
+        source: str(s.source),
+        environment: str(s.environment),
+
+        // dedup keys
+        idempotency_key: str(s.idempotency_key),
+        clob_order_id: str(s.clob_order_id),
+        transaction_hashes: s.transaction_hashes ?? null,
+
+        // fixture/queue linkage — sourced from the verified queue row (not
+        // the untrusted client payload). executor_order_events.queue_id does
+        // not exist in the live schema (confirmed by a live 42703 error and
+        // a full information_schema column dump) and is never written.
+        match_family_key: str(queueRow.match_family_key) ?? str(s.match_family_key),
+        reservation_id: queueRow.reservation_id ?? null,
+
+        // signal linkage
+        signal_id: str(s.signal_id),
+        candidate_id: str(s.candidate_id),
+        run_id: str(s.run_id),
+
+        // market
+        market_slug: str(s.market_slug),
+        condition_id: str(s.condition_id),
+        token_id: str(s.token_id),
+        selected_side: str(s.selected_side),
+        side: str(s.side),
+
+        // order outcome
+        order_status: str(s.order_status ?? s.status),
+        success: bool(s.success),
+        dry_run: bool(s.dry_run),
+        live_confirm: bool(s.live_confirm),
+
+        // pricing
+        submitted_price: num(s.submitted_price),
+        submitted_size: num(s.submitted_size),
+        stake_usd: num(s.stake_usd),
+        making_amount: str(s.making_amount),
+        taking_amount: str(s.taking_amount),
+        observed_best_bid: num(s.observed_best_bid),
+        observed_best_ask: num(s.observed_best_ask),
+        observed_price: num(s.observed_price),
+        observed_spread: num(s.observed_spread),
+        max_entry_price: num(s.max_entry_price),
+
+        // cost
+        fee_usd: num(s.fee_usd),
+        slippage_usd: num(s.slippage_usd),
+        cost_model_version: str(s.cost_model_version),
+        fee_notes: str(s.fee_notes),
+
+        // executor metadata
+        executor_host_country: str(s.executor_host_country),
+        executor_version: str(s.executor_version),
+        model_rule_id: str(s.model_rule_id),
+        strategic_scope: str(s.strategic_scope),
+
+        // JSON blobs (sanitised before storage)
+        candidate_snapshot_json: s.candidate_snapshot_json ?? null,
+        response_json_sanitized: s.response_json_sanitized ?? null,
+        executor_meta: s.executor_meta ?? null,
+        raw_event_json: s, // full sanitised payload
+
+        // error
+        error_message: str(s.error_message),
+      };
+
+      for (const k of Object.keys(record)) {
+        if (record[k] === null || record[k] === undefined) delete record[k];
+      }
+
+      const { data, error } = await supabaseAdmin
+        .from("executor_order_events")
+        .insert(record)
+        .select("*")
+        .single();
+
+      if (error) {
+        if (error.code === "23505") {
+          const message = error.message.toLowerCase();
+          const code = message.includes("clob_order_id") ? "UNIQUE_VIOLATION_CLOB_ORDER_ID" : "UNIQUE_VIOLATION_IDEMPOTENCY_KEY";
+          return { ok: false, code, message: "duplicate key value violates unique constraint" };
+        }
+        return { ok: false, code: "OTHER", message: error.message };
+      }
+      return { ok: true, row: toStoredOrderEvent(data as Record<string, unknown>) };
+    },
+  };
+}
+
 export async function POST(request: NextRequest) {
   const secret = request.headers.get("x-executor-secret");
   const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
@@ -140,170 +288,38 @@ export async function POST(request: NextRequest) {
 
   const raw = body as Record<string, unknown>;
 
-  // Validate required fields before sanitisation
-  if (!str(raw.token_id)) {
-    return NextResponse.json({ error: "Missing required field: token_id" }, { status: 400 });
-  }
-  if (!str(raw.idempotency_key) && !str(raw.clob_order_id)) {
-    return NextResponse.json(
-      { error: "Missing required field: at least one of idempotency_key, clob_order_id" },
-      { status: 400 }
-    );
+  let outcome;
+  try {
+    outcome = await handleOrderEventSubmission(createSupabaseOrderEventDbPort(), raw);
+  } catch (error) {
+    console.error("[executor/order-events] Unexpected error:", error instanceof Error ? error.message : "unknown");
+    return NextResponse.json({ success: false, error: "DB_ERROR" }, { status: 500 });
   }
 
-  // PREMVP source-of-truth enforcement: without idempotency_key we cannot look up
-  // the queue row this event claims to belong to, so we fail safe and reject
-  // rather than silently record an unverifiable stake/price/identity claim.
-  const idempotencyKey = str(raw.idempotency_key);
-  if (!idempotencyKey) {
-    return NextResponse.json(
-      { error: "REJECTED_MISSING_IDEMPOTENCY_KEY_FOR_QUEUE_VALIDATION" },
-      { status: 400 }
-    );
-  }
-
-  const { data: queueRow, error: queueLookupError } = await supabaseAdmin
-    .from("event_execution_queue")
-    .select("*")
-    .eq("idempotency_key", idempotencyKey)
-    .maybeSingle();
-
-  if (queueLookupError) {
-    console.error("[executor/order-events] Queue lookup error:", queueLookupError.message);
-    return NextResponse.json({ error: "QUEUE_LOOKUP_FAILED" }, { status: 500 });
-  }
-  if (!queueRow) {
-    return NextResponse.json(
-      { error: "REJECTED_QUEUE_ROW_NOT_FOUND_FOR_IDEMPOTENCY_KEY" },
-      { status: 409 }
-    );
-  }
-
-  const submission: OrderEventSubmission = {
-    idempotency_key: idempotencyKey,
-    token_id: str(raw.token_id),
-    condition_id: str(raw.condition_id),
-    side: str(raw.side ?? raw.selected_side),
-    market_slug: str(raw.market_slug),
-    submitted_size: num(raw.submitted_size ?? raw.stake_usd),
-    submitted_price: num(raw.submitted_price),
-  };
-
-  const validation = validateOrderEventAgainstQueueRow(
-    submission,
-    queueRow as EventExecutionQueueRow
-  );
-  if (!validation.ok) {
-    console.error(
-      `[executor/order-events] REJECTED mismatch reason=${validation.reason} ` +
-        `idempotency_key=${idempotencyKey} queue_token=${(queueRow as EventExecutionQueueRow).token_id} ` +
-        `queue_stake=${(queueRow as EventExecutionQueueRow).stake_usd}`
-    );
-    return NextResponse.json(
-      { error: "REJECTED_QUEUE_POLICY_MISMATCH", reason: validation.reason },
-      { status: 409 }
-    );
-  }
-
-  const s = sanitize(raw) as Record<string, unknown>;
-
-  const queueRowTyped = queueRow as EventExecutionQueueRow;
-
-  const record: Record<string, unknown> = {
-    // identity / routing
-    event_type:               str(s.event_type),
-    source:                   str(s.source),
-    environment:              str(s.environment),
-
-    // dedup keys
-    idempotency_key:          str(s.idempotency_key),
-    clob_order_id:            str(s.clob_order_id),
-    transaction_hashes:       s.transaction_hashes ?? null,
-
-    // fixture/queue linkage — sourced from the verified queue row (not the
-    // untrusted client payload) so downstream funnel monitoring can join
-    // order events to reservations without nested-JSON archaeology.
-    match_family_key:         str(queueRowTyped.match_family_key) ?? str(s.match_family_key),
-    reservation_id:           queueRowTyped.reservation_id ?? null,
-    queue_id:                 queueRowTyped.id ?? null,
-
-    // signal linkage
-    signal_id:                str(s.signal_id),
-    candidate_id:             str(s.candidate_id),
-    run_id:                   str(s.run_id),
-
-    // market
-    market_slug:              str(s.market_slug),
-    condition_id:             str(s.condition_id),
-    token_id:                 str(s.token_id),
-    selected_side:            str(s.selected_side),
-    side:                     str(s.side),
-
-    // order outcome
-    order_status:             str(s.order_status ?? s.status),
-    success:                  bool(s.success),
-    dry_run:                  bool(s.dry_run),
-    live_confirm:             bool(s.live_confirm),
-
-    // pricing
-    submitted_price:          num(s.submitted_price),
-    submitted_size:           num(s.submitted_size),
-    stake_usd:                num(s.stake_usd),
-    making_amount:            str(s.making_amount),
-    taking_amount:            str(s.taking_amount),
-    observed_best_bid:        num(s.observed_best_bid),
-    observed_best_ask:        num(s.observed_best_ask),
-    observed_price:           num(s.observed_price),
-    observed_spread:          num(s.observed_spread),
-    max_entry_price:          num(s.max_entry_price),
-
-    // cost
-    fee_usd:                  num(s.fee_usd),
-    slippage_usd:             num(s.slippage_usd),
-    cost_model_version:       str(s.cost_model_version),
-    fee_notes:                str(s.fee_notes),
-
-    // executor metadata
-    executor_host_country:    str(s.executor_host_country),
-    executor_version:         str(s.executor_version),
-    model_rule_id:            str(s.model_rule_id),
-    strategic_scope:          str(s.strategic_scope),
-
-    // JSON blobs (sanitised before storage)
-    candidate_snapshot_json:  s.candidate_snapshot_json ?? null,
-    response_json_sanitized:  s.response_json_sanitized ?? null,
-    executor_meta:            s.executor_meta ?? null,
-    raw_event_json:           s, // full sanitised payload
-
-    // error
-    error_message:            str(s.error_message),
-  };
-
-  // Remove nulls to let DB defaults apply (preserves false / 0)
-  for (const k of Object.keys(record)) {
-    if (record[k] === null || record[k] === undefined) delete record[k];
-  }
-
-  const { data, error } = await supabaseAdmin
-    .from("executor_order_events")
-    .insert(record)
-    .select("id, created_at")
-    .single();
-
-  if (error) {
-    if (error.code === "23505") {
-      // Unique constraint violation → duplicate event, not an error
+  switch (outcome.kind) {
+    case "REJECTED_MISSING_TOKEN_ID":
+      return NextResponse.json({ error: "Missing required field: token_id" }, { status: 400 });
+    case "REJECTED_MISSING_IDEMPOTENCY_KEY":
+      return NextResponse.json({ error: "REJECTED_MISSING_IDEMPOTENCY_KEY_FOR_QUEUE_VALIDATION" }, { status: 400 });
+    case "REJECTED_QUEUE_ROW_NOT_FOUND":
+      return NextResponse.json({ error: "REJECTED_QUEUE_ROW_NOT_FOUND_FOR_IDEMPOTENCY_KEY" }, { status: 409 });
+    case "REJECTED_QUEUE_POLICY_MISMATCH":
+      return NextResponse.json({ error: "REJECTED_QUEUE_POLICY_MISMATCH", reason: outcome.reason }, { status: 409 });
+    case "CONFLICT_IDEMPOTENCY":
+      return NextResponse.json({ success: false, error: "IDEMPOTENCY_CONFLICT" }, { status: 409 });
+    case "CONFLICT_CLOB_ORDER_ID":
+      return NextResponse.json({ success: false, error: "CLOB_ORDER_ID_CONFLICT" }, { status: 409 });
+    case "DB_ERROR":
+      return NextResponse.json({ success: false, error: "DB_ERROR" }, { status: 500 });
+    case "DUPLICATE":
       return NextResponse.json(
-        { success: true, duplicate: true, message: "Event already recorded" },
-        { status: 200 }
+        { success: true, duplicate: true, event_id: outcome.row.id, idempotency_key: outcome.row.idempotency_key, id: outcome.row.id, created_at: outcome.row.created_at },
+        { status: 200 },
       );
-    }
-    console.error("[executor/order-events] Insert error:", error.message);
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+    case "INSERTED":
+      return NextResponse.json(
+        { success: true, duplicate: false, event_id: outcome.row.id, idempotency_key: outcome.row.idempotency_key, id: outcome.row.id, created_at: outcome.row.created_at },
+        { status: 200 },
+      );
   }
-
-  return NextResponse.json(
-    { success: true, duplicate: false, id: data?.id, created_at: data?.created_at },
-    { status: 200 }
-  );
 }
