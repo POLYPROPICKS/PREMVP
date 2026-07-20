@@ -979,47 +979,229 @@ export interface ForceRebuildResult {
   plan_health: PlanHealth;
 }
 
+// ── bounded retry (reads and idempotent deletes ONLY -- never inserts) ─────
+export interface BoundedRetryPolicy {
+  maxAttempts: number;
+  backoffMs: (attempt: number) => number;
+}
+
+export interface StageRetryError extends Error {
+  stage: string;
+  attempts: number;
+}
+
+const DEFAULT_SAFE_RETRY_POLICY: BoundedRetryPolicy = {
+  maxAttempts: 3,
+  backoffMs: (attempt) => Math.min(200 * attempt, 1000),
+};
+
+/**
+ * Retries a read or idempotent-delete operation up to `policy.maxAttempts`
+ * times with bounded backoff. Never used for inserts -- an insert failure is
+ * handled by persistReservationPlanWithReconciliation instead, which reads
+ * back canonical identities rather than blindly repeating the write.
+ */
+async function withBoundedRetry<T>(
+  stage: string,
+  op: () => Promise<T>,
+  policy: BoundedRetryPolicy = DEFAULT_SAFE_RETRY_POLICY,
+  sleep: (ms: number) => Promise<void> = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
+): Promise<T> {
+  let lastMessage = "unknown error";
+  for (let attempt = 1; attempt <= policy.maxAttempts; attempt++) {
+    try {
+      return await op();
+    } catch (err) {
+      lastMessage = err instanceof Error ? err.message : String(err);
+      if (attempt < policy.maxAttempts) {
+        await sleep(policy.backoffMs(attempt));
+      }
+    }
+  }
+  const retryError = new Error(
+    `${stage} failed after ${policy.maxAttempts} attempts: ${sanitizeSchedulerErrorMessage(lastMessage)}`
+  ) as StageRetryError;
+  retryError.stage = stage;
+  retryError.attempts = policy.maxAttempts;
+  throw retryError;
+}
+
+// ── force-rebuild delete boundary (idempotent -- safe to retry) ────────────
+export interface ForceRebuildRepoPort {
+  deleteQueueByPlanRunId(planRunId: string): Promise<{ deletedCount: number }>;
+  deleteReservationsByPlanRunId(planRunId: string): Promise<{ deletedCount: number }>;
+}
+
+export function createSupabaseForceRebuildRepoPort(): ForceRebuildRepoPort {
+  return {
+    async deleteQueueByPlanRunId(planRunId) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data, error } = await supabaseAdmin
+        .from("event_execution_queue")
+        .delete()
+        .eq("plan_run_id", planRunId)
+        .select("id");
+      if (error) throw new Error(`forceRebuild queue delete: ${error.message}`);
+      return { deletedCount: data?.length ?? 0 };
+    },
+    async deleteReservationsByPlanRunId(planRunId) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data, error } = await supabaseAdmin
+        .from("night_event_reservations")
+        .delete()
+        .eq("plan_run_id", planRunId)
+        .select("id");
+      if (error) throw new Error(`forceRebuild reservation delete: ${error.message}`);
+      return { deletedCount: data?.length ?? 0 };
+    },
+  };
+}
+
+export interface AmbiguousInsertError extends Error {
+  stage: string;
+  ambiguous: true;
+}
+
+/**
+ * Persists a reservation plan, but never blindly retries the insert itself.
+ * If persistReservationPlan throws (e.g. a network-shaped error where the
+ * database may have accepted the write despite the client seeing a failure),
+ * this reconciles by reading back the plan_run_id's existing rows and
+ * checking whether every planned reservation identity
+ * (match_family_key + reservation_rank -- the same pair the DB's own
+ * night_event_reservations_plan_event_uniq / *_reservation_rank_uniq
+ * constraints key on) is already present. Only then is the run reported as
+ * successful; otherwise it fails closed with sanitized stage context, and no
+ * second insert is ever attempted.
+ */
+async function persistReservationPlanWithReconciliation(
+  plan: ReservationPlan,
+  repo: ReservationRepoPort
+): Promise<PersistReservationsResult> {
+  try {
+    return await persistReservationPlan(plan, { force: false }, repo);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const existing = await repo.findByPlanRunId(plan.plan_run_id);
+    const reservationIdentity = (r: NightEventReservationRow) => `${r.match_family_key}::${r.reservation_rank}`;
+    const expectedKeys = new Set(plan.reservations.map(reservationIdentity));
+    const presentKeys = new Set(existing.map(reservationIdentity));
+    const allPresent = plan.reservations.length > 0 && [...expectedKeys].every((k) => presentKeys.has(k));
+    if (allPresent) {
+      return {
+        plan_run_id: plan.plan_run_id,
+        already_exists: false,
+        written_count: plan.reservations.length,
+        reserved_count: existing.length,
+        reservations: existing,
+        diagnostics: plan.diagnostics,
+      };
+    }
+    const reconciliationError = new Error(
+      `force_rebuild_insert_reconciliation failed: ${sanitizeSchedulerErrorMessage(msg)}`
+    ) as AmbiguousInsertError;
+    reconciliationError.stage = "force_rebuild_insert_reconciliation";
+    reconciliationError.ambiguous = true;
+    throw reconciliationError;
+  }
+}
+
 /**
  * CEO-approved force rebuild for the current plan_run_id.
  * Deletes event_execution_queue rows AND night_event_reservations rows for this plan,
  * then rebuilds fresh from the current universe.
  * Only touches the two Contur3 tables for the current plan_run_id.
+ *
+ * This is the exact function the production night-reservation cron invokes
+ * (the runner always calls the route with ?forceRebuild=CEO_APPROVED). Reads
+ * and the two idempotent deletes are bounded-retried; the reservation insert
+ * is never blindly retried (see persistReservationPlanWithReconciliation);
+ * job_runs evidence is recorded for both success and terminal failure.
  */
-export async function executeForceRebuild(nowMs: number): Promise<ForceRebuildResult> {
-  const { supabaseAdmin } = await import("@/lib/supabase/server");
+export async function executeForceRebuild(
+  nowMs: number,
+  deps: {
+    fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+    repo?: ReservationRepoPort;
+    forceRebuildRepo?: ForceRebuildRepoPort;
+    jobEvidence?: SchedulerJobEvidencePort;
+    loadPlanStatus?: (planRunId: string, nowMs: number) => Promise<PlanHealth>;
+  } = {}
+): Promise<ForceRebuildResult> {
+  const repo = deps.repo ?? createSupabaseReservationRepoPort();
+  const forceRebuildRepo = deps.forceRebuildRepo ?? createSupabaseForceRebuildRepoPort();
+  const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
+  const loadPlanStatusFn = deps.loadPlanStatus ?? loadPlanStatus;
   const planRunId = buildPlanRunId(nowMs);
+  const startedAt = new Date().toISOString();
 
-  // 1. Delete event_execution_queue rows for this plan_run_id.
-  const { data: deletedQueue, error: queueErr } = await supabaseAdmin
-    .from("event_execution_queue")
-    .delete()
-    .eq("plan_run_id", planRunId)
-    .select("id");
-  if (queueErr) throw new Error(`forceRebuild queue delete: ${queueErr.message}`);
-  const deletedQueueCount = deletedQueue?.length ?? 0;
+  try {
+    // 1. Delete event_execution_queue rows for this plan_run_id (idempotent, retry-safe).
+    const { deletedCount: deletedQueueCount } = await withBoundedRetry("force_rebuild_queue_delete", () =>
+      forceRebuildRepo.deleteQueueByPlanRunId(planRunId)
+    );
 
-  // 2. Delete night_event_reservations rows for this plan_run_id.
-  const { data: deletedRes, error: resErr } = await supabaseAdmin
-    .from("night_event_reservations")
-    .delete()
-    .eq("plan_run_id", planRunId)
-    .select("id");
-  if (resErr) throw new Error(`forceRebuild reservation delete: ${resErr.message}`);
-  const deletedResCount = deletedRes?.length ?? 0;
+    // 2. Delete night_event_reservations rows for this plan_run_id (idempotent, retry-safe).
+    const { deletedCount: deletedResCount } = await withBoundedRetry("force_rebuild_reservation_delete", () =>
+      forceRebuildRepo.deleteReservationsByPlanRunId(planRunId)
+    );
 
-  // 3. Rebuild from current universe.
-  const plan = await buildReservationPlan(nowMs);
-  const persist = await persistReservationPlan(plan, { force: false });
+    // 3. Rebuild from current universe. Candidate-page reads already retry
+    //    internally (fetchAllPlanningRows' own bounded per-page retry+timeout).
+    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates });
 
-  // 4. Read back health of the new plan.
-  const planHealth = await loadPlanStatus(planRunId, nowMs);
+    // 4. Persist -- insert is never blindly retried; an ambiguous failure is
+    //    reconciled by reading back canonical identities, never re-inserted.
+    const persist = await persistReservationPlanWithReconciliation(plan, repo);
 
-  return {
-    plan_run_id: planRunId,
-    deleted_queue_count: deletedQueueCount,
-    deleted_reservation_count: deletedResCount,
-    plan,
-    persist,
-    plan_health: planHealth,
-  };
+    // 5. Read back health of the new plan (read, retry-safe).
+    const planHealth = await withBoundedRetry("force_rebuild_plan_health_read", () =>
+      loadPlanStatusFn(planRunId, nowMs)
+    );
+
+    const finishedAt = new Date().toISOString();
+    await jobEvidence.writeJobRun({
+      source: "night-event-reservations-force-rebuild",
+      formulaVersion: "force-rebuild-v1",
+      startedAt,
+      finishedAt,
+      status: "success",
+      generatedCount: persist.written_count,
+      rejectedCount:
+        plan.diagnostics.skipped_non_tier1_event +
+        plan.diagnostics.skipped_outside_horizon +
+        plan.diagnostics.skipped_no_executable_anchor,
+      durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
+      diagnostics: {
+        plan_run_id: planRunId,
+        deleted_queue_count: deletedQueueCount,
+        deleted_reservation_count: deletedResCount,
+        reserved_count: persist.reserved_count,
+      },
+    });
+
+    return {
+      plan_run_id: planRunId,
+      deleted_queue_count: deletedQueueCount,
+      deleted_reservation_count: deletedResCount,
+      plan,
+      persist,
+      plan_health: planHealth,
+    };
+  } catch (err) {
+    const finishedAt = new Date().toISOString();
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    await jobEvidence.writeJobRun({
+      source: "night-event-reservations-force-rebuild",
+      formulaVersion: "force-rebuild-v1",
+      startedAt,
+      finishedAt,
+      status: "error",
+      generatedCount: 0,
+      rejectedCount: 0,
+      durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
+      errorMessage: sanitizeSchedulerErrorMessage(msg),
+    });
+    throw err;
+  }
 }

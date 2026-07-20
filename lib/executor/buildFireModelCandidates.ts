@@ -1,10 +1,10 @@
-﻿import { supabaseAdmin } from "@/lib/supabase/server";
-import { createHash } from "crypto";
+﻿import { createHash } from "crypto";
 import {
   classifyMarketText,
   isAllowedFullMatchMarketClass,
   type MarketClass,
 } from "@/lib/contur3/taxonomy";
+import { sanitizeSchedulerErrorMessage } from "./schedulerJobEvidence";
 
 const POLICY_VERSION = "battle-sm-guard-v1-20260615";
 const LIVE_POLICY_VERSION = "live-risk-guard-v1";
@@ -172,16 +172,87 @@ const PLANNING_FETCH_CEILING = 200_000; // hard safety ceiling, far above realis
 // paginated scan stays bounded (an unbounded full-history scan hits a statement timeout).
 const PLANNING_LOOKBACK_HOURS = parseInt(process.env.PLANNING_LOOKBACK_HOURS ?? "72", 10);
 
+// Bounded per-page retry policy for fetchAllPlanningRows. A page read is a pure
+// Supabase SELECT -- safe to retry (unlike an insert, which is never blindly
+// retried anywhere in this codebase's Contur3 reservation path). Each retry
+// attempt also carries its own abort timeout via the Supabase query builder's
+// .abortSignal(), the same pattern already used in
+// scripts/contur3/run-overnight-battle-audit.mjs for generated_signal_pairs reads.
+export interface PlanningPageFetchError extends Error {
+  stage: string;
+  page: number;
+  attempts: number;
+}
+
+export interface PaginatedFetchRetryPolicy {
+  maxAttempts: number;
+  backoffMs: (attempt: number) => number;
+  pageTimeoutMs: number;
+}
+
+const DEFAULT_PLANNING_PAGE_RETRY_POLICY: PaginatedFetchRetryPolicy = {
+  maxAttempts: 3,
+  backoffMs: (attempt) => Math.min(200 * attempt, 1000),
+  pageTimeoutMs: 15000,
+};
+
 // Fetch the COMPLETE matching corpus via Supabase .range() pagination (no row cap).
 // Used by planningMode only so the reservation producer sees every Tier1 candidate.
+// Exported so tests can exercise pagination/retry/timeout behavior directly
+// against an injected query builder, without a live Supabase connection.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function fetchAllPlanningRows(buildQuery: () => any): Promise<any[]> {
+export async function fetchAllPlanningRows(
+  buildQuery: () => any,
+  opts: {
+    stage?: string;
+    retryPolicy?: PaginatedFetchRetryPolicy;
+    sleep?: (ms: number) => Promise<void>;
+  } = {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any[]> {
+  const stage = opts.stage ?? "planning_paginated_fetch";
+  const retryPolicy = opts.retryPolicy ?? DEFAULT_PLANNING_PAGE_RETRY_POLICY;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const all: any[] = [];
   let from = 0;
+  let page = 0;
   for (;;) {
-    const { data, error } = await buildQuery().range(from, from + PLANNING_PAGE_SIZE - 1);
-    if (error) throw new Error(`planning paginated query failed: ${error.message}`);
-    const batch = (data ?? []) as any[];
+    page += 1;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let batch: any[] | null = null;
+    let lastMessage = "unknown error";
+    for (let attempt = 1; attempt <= retryPolicy.maxAttempts; attempt++) {
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => controller.abort(), retryPolicy.pageTimeoutMs);
+      try {
+        const { data, error } = await buildQuery()
+          .range(from, from + PLANNING_PAGE_SIZE - 1)
+          .abortSignal(controller.signal);
+        clearTimeout(timeoutHandle);
+        if (!error) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          batch = (data ?? []) as any[];
+          break;
+        }
+        lastMessage = error.message;
+      } catch (err) {
+        clearTimeout(timeoutHandle);
+        lastMessage = err instanceof Error ? err.message : String(err);
+      }
+      if (attempt < retryPolicy.maxAttempts) {
+        await sleep(retryPolicy.backoffMs(attempt));
+      }
+    }
+    if (batch === null) {
+      const planningError = new Error(
+        `${stage} failed: page=${page} attempts=${retryPolicy.maxAttempts} cause=${sanitizeSchedulerErrorMessage(lastMessage)}`
+      ) as PlanningPageFetchError;
+      planningError.stage = stage;
+      planningError.page = page;
+      planningError.attempts = retryPolicy.maxAttempts;
+      throw planningError;
+    }
     all.push(...batch);
     if (batch.length < PLANNING_PAGE_SIZE) break;
     from += PLANNING_PAGE_SIZE;
@@ -642,6 +713,11 @@ export async function buildFireModelCandidates(
   scope = "all",
   planningMode = false
 ): Promise<{ candidates: FireModelCandidate[]; rawDiagnostics: RawPlanningDiagnostics | null }> {
+  // Dynamic import (not a static top-level import) so this module can be
+  // imported -- e.g. to unit-test fetchAllPlanningRows in isolation -- without
+  // eagerly requiring a live/fake SUPABASE_URL at module-load time. Mirrors
+  // the same fix already applied to nightEventReservations.ts/eventExecutionQueue.ts.
+  const { supabaseAdmin } = await import("@/lib/supabase/server");
   const versions = planningMode ? PLANNING_ALLOWED_VERSIONS : ALLOWED_VERSIONS;
   if (!planningMode) {
     console.log("[ireland-executor] TIER1_ONLY guard active");
@@ -671,8 +747,9 @@ export async function buildFireModelCandidates(
 
   let scoredRows: any[];
   if (planningMode) {
-    scoredRows = await fetchAllPlanningRows(() =>
-      buildScoredQuery().gte("created_at", planningLookbackIso)
+    scoredRows = await fetchAllPlanningRows(
+      () => buildScoredQuery().gte("created_at", planningLookbackIso),
+      { stage: "planning_scored_rows_fetch" }
     );
   } else {
     const { data, error } = await buildScoredQuery().limit(LIVE_ROW_LIMIT);
@@ -680,6 +757,11 @@ export async function buildFireModelCandidates(
     scoredRows = (data ?? []) as any[];
   }
 
+  // NOTE: this shadow-rows query is NOT a duplicate of buildScoredQuery() above --
+  // it is deliberately disjoint: scored rows require signal_confidence_num >= 50,
+  // shadow rows require signal_confidence_num IS NULL (not yet scored). Both
+  // paginated fetches are therefore preserved as separate calls; there is no
+  // single snapshot that could serve both without changing candidate eligibility.
   let planningShadowRows: any[] = [];
   if (planningMode) {
     const buildShadowQuery = () =>
@@ -693,8 +775,9 @@ export async function buildFireModelCandidates(
         .not("condition_id", "is", null)
         .is("signal_confidence_num", null)
         .order("created_at", { ascending: false });
-    planningShadowRows = await fetchAllPlanningRows(() =>
-      buildShadowQuery().gte("created_at", planningLookbackIso)
+    planningShadowRows = await fetchAllPlanningRows(
+      () => buildShadowQuery().gte("created_at", planningLookbackIso),
+      { stage: "planning_shadow_rows_fetch" }
     );
   }
 
