@@ -102,7 +102,26 @@ const CONDITION_ID_FIELDS = ["condition_id", "conditionId"] as const;
 // callers of getStrictDedupKeyForExportRow keep resolving historical-format
 // rows exactly as before; current-schema rows now also resolve instead of
 // failing MISSING identity checks.
-const TOKEN_ID_FIELDS = ["token_id", "tokenId", "selected_token_id", "selectedTokenId"] as const;
+const TOKEN_ID_FIELDS = ["selected_token_id", "selectedTokenId", "token_id", "tokenId"] as const;
+
+/**
+ * Resolves token identity in current-source precedence order. Canonical
+ * selected-token fields win over legacy aliases; an empty or malformed scalar
+ * falls through, while an array/object fails closed as an ambiguous identity.
+ */
+export function getCanonicalTokenIdForExportRow(row: ExportRow): string | null {
+  for (const key of TOKEN_ID_FIELDS) {
+    const value = row[key];
+    if (Array.isArray(value) || (value !== null && typeof value === "object")) return null;
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (trimmed !== "") return trimmed;
+      continue;
+    }
+    if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  }
+  return null;
+}
 
 function getIdentityField(row: ExportRow, keys: readonly string[]): string | null {
   for (const key of keys) {
@@ -123,7 +142,7 @@ function getIdentityField(row: ExportRow, keys: readonly string[]): string | nul
  */
 export function getStrictDedupKeyForExportRow(row: ExportRow): string | null {
   const condition = getIdentityField(row, CONDITION_ID_FIELDS);
-  const token = getIdentityField(row, TOKEN_ID_FIELDS);
+  const token = getCanonicalTokenIdForExportRow(row);
   if (condition === null || token === null) return null;
   return `${condition}::${token}`;
 }

@@ -4,7 +4,10 @@ import {
   produceFrozenModelV2ShadowDecisions,
   FROZEN_MODEL_V2_VERSION,
 } from "../../lib/modeling/frozenModelProducerV2Shadow";
-import type { ExportRow } from "../../lib/modeling/generatedSignalPairsExportContract";
+import {
+  getStrictDedupKeyForExportRow,
+  type ExportRow,
+} from "../../lib/modeling/generatedSignalPairsExportContract";
 
 const AS_OF = "2026-07-20T12:00:00.000Z";
 const GAME_START = "2026-07-20T13:00:00.000Z"; // fixed anchor for all boundary math below
@@ -203,6 +206,50 @@ test("current canonical token contract: selected_token_id (Contur3's own field) 
 test("accepted historical exporter contract continues to work: token_id (legacy field) still resolves", () => {
   const result = produceFrozenModelV2ShadowDecisions([baseRow()], AS_OF); // baseRow() uses token_id
   assert.equal(result.acceptedDecisions.length, 1);
+});
+
+test("canonical selected_token_id wins over conflicting legacy token_id in frozen and export identity", () => {
+  const canonicalOnly = baseRow({ token_id: undefined, selected_token_id: "canonical-token" });
+  const conflicting = baseRow({ token_id: "legacy-token", selected_token_id: "canonical-token" });
+  assert.equal(getStrictDedupKeyForExportRow(conflicting), "cond-1::canonical-token");
+  assert.deepEqual(
+    produceFrozenModelV2ShadowDecisions([conflicting], AS_OF).acceptedDecisions,
+    produceFrozenModelV2ShadowDecisions([canonicalOnly], AS_OF).acceptedDecisions,
+  );
+});
+
+test("canonical selectedTokenId wins over conflicting legacy tokenId", () => {
+  const canonicalOnly = baseRow({ token_id: undefined, selectedTokenId: "canonical-camel-token" });
+  const conflicting = baseRow({
+    token_id: undefined,
+    tokenId: "legacy-camel-token",
+    selectedTokenId: "canonical-camel-token",
+  });
+  assert.equal(getStrictDedupKeyForExportRow(conflicting), "cond-1::canonical-camel-token");
+  assert.deepEqual(
+    produceFrozenModelV2ShadowDecisions([conflicting], AS_OF).acceptedDecisions,
+    produceFrozenModelV2ShadowDecisions([canonicalOnly], AS_OF).acceptedDecisions,
+  );
+});
+
+test("canonical snake_case wins over canonical camelCase and both legacy aliases", () => {
+  const row = baseRow({
+    selected_token_id: "canonical-snake",
+    selectedTokenId: "canonical-camel",
+    token_id: "legacy-snake",
+    tokenId: "legacy-camel",
+  });
+  assert.equal(getStrictDedupKeyForExportRow(row), "cond-1::canonical-snake");
+});
+
+test("empty canonical aliases fall through in order while ambiguous token structures fail closed", () => {
+  assert.equal(
+    getStrictDedupKeyForExportRow(baseRow({ selected_token_id: "  ", selectedTokenId: "canonical-camel", token_id: "legacy" })),
+    "cond-1::canonical-camel",
+  );
+  const ambiguous = baseRow({ selected_token_id: ["one", "two"] as unknown as string, token_id: "legacy" });
+  assert.equal(getStrictDedupKeyForExportRow(ambiguous), null);
+  assert.equal(produceFrozenModelV2ShadowDecisions([ambiguous], AS_OF).rejections[0]?.reason, "MISSING_TOKEN_ID");
 });
 
 test("condition_id is never used as token_id: a row with only condition_id (no token_id/selected_token_id anywhere) fails closed as MISSING_TOKEN_ID, not accepted with condition_id borrowed as the token", () => {

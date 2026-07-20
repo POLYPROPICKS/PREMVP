@@ -40,7 +40,10 @@
 // it is never part of the eligible set to begin with).
 
 import type { ExportRow } from "./generatedSignalPairsExportContract";
-import { getStrictDedupKeyForExportRow } from "./generatedSignalPairsExportContract";
+import {
+  getCanonicalTokenIdForExportRow,
+  getStrictDedupKeyForExportRow,
+} from "./generatedSignalPairsExportContract";
 import { getScoreValue, isEsports } from "./historicalFunnelVariants";
 import { buildEventGroupKey } from "./eventGroupSelection";
 import { createHash } from "node:crypto";
@@ -66,7 +69,6 @@ const CONDITION_ID_FIELDS = ["condition_id", "conditionId"] as const;
 // longer rejected as MISSING_TOKEN_ID. condition_id/conditionId are
 // deliberately NOT in this list -- there is no fallback path anywhere in
 // this file that reads a token identity from a condition field.
-const TOKEN_ID_FIELDS = ["token_id", "tokenId", "selected_token_id", "selectedTokenId"] as const;
 const SELECTED_OUTCOME_FIELDS = ["selected_outcome", "selectedOutcome"] as const;
 // Leakage fields: never read for scoring/selection. Only referenced in the
 // type below to document the check; the code never accesses row[leakageField].
@@ -207,7 +209,7 @@ interface RowIdentity {
 function resolveIdentity(row: ExportRow): { identity: RowIdentity } | { reason: FrozenModelV2RejectionReason } {
   const conditionId = getStringField(row, CONDITION_ID_FIELDS);
   if (conditionId === null) return { reason: "MISSING_EVENT_IDENTITY" };
-  const tokenId = getStringField(row, TOKEN_ID_FIELDS);
+  const tokenId = getCanonicalTokenIdForExportRow(row);
   if (tokenId === null) return { reason: "MISSING_TOKEN_ID" };
   const selectedOutcome = getStringField(row, SELECTED_OUTCOME_FIELDS);
   if (selectedOutcome === null) return { reason: "MISSING_SELECTED_OUTCOME" };

@@ -228,6 +228,15 @@ test("shared loader parity: standalone and bridge compute the identical source s
   assert.equal(hashA, hashB, "order-independent, and the standalone runner uses this exact same function -- not a re-derived duplicate");
 });
 
+test("normalized snapshot hash uses canonical selected token identity and ignores conflicting legacy token identity", () => {
+  const common = { condition_id: "cond-1", created_at: "2026-07-20T11:30:00.000Z", id: "row-1" };
+  const hashA = sha256OfNormalizedSnapshot([{ ...common, selected_token_id: "canonical", token_id: "legacy-a" }]);
+  const hashB = sha256OfNormalizedSnapshot([{ ...common, selected_token_id: "canonical", token_id: "legacy-b" }]);
+  const hashCanonicalChanged = sha256OfNormalizedSnapshot([{ ...common, selected_token_id: "canonical-changed", token_id: "legacy-a" }]);
+  assert.equal(hashA, hashB);
+  assert.notEqual(hashA, hashCanonicalChanged);
+});
+
 test("does not import any reservation/queue/Ireland/CLOB module", async () => {
   const fs = await import("node:fs");
   const source = fs.readFileSync(

@@ -51,8 +51,8 @@ import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ExportRow } from "../generatedSignalPairsExportContract";
 import { produceFrozenModelV2ShadowDecisions, FROZEN_MODEL_V2_VERSION } from "../frozenModelProducerV2Shadow";
+import { getCanonicalTokenIdForExportRow, type ExportRow } from "../generatedSignalPairsExportContract";
 import { compareFrozenAndContur3, type Contur3CandidateSlice } from "../frozenExecutionContractBridge";
 
 // Query-level bounded pagination for the ONE shared source snapshot. Page
@@ -182,7 +182,7 @@ export function sha256OfNormalizedSnapshot(rows: readonly Record<string, unknown
   // identically (a page-boundary shuffle in a test double must not change
   // this hash).
   const ids = rows
-    .map((row) => `${String(row.condition_id ?? "")}:${String(row.token_id ?? row.selected_token_id ?? "")}:${String(row.created_at ?? "")}:${String(row.id ?? "")}`)
+    .map((row) => `${String(row.condition_id ?? "")}:${getCanonicalTokenIdForExportRow(row as ExportRow) ?? ""}:${String(row.created_at ?? "")}:${String(row.id ?? "")}`)
     .sort();
   return createHash("sha256").update(JSON.stringify(ids)).digest("hex");
 }
