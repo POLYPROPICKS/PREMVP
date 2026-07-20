@@ -14,7 +14,7 @@
 // Ireland — Ireland reads only the queue via /api/executor/queue.
 
 import { createHash } from "crypto";
-import { buildFireModelCandidates, type FireModelCandidate } from "./buildFireModelCandidates";
+import type { FireModelCandidate } from "./buildFireModelCandidates";
 import { compareCandidateQuality } from "./nightPortfolioPlanner";
 import {
   buildRebalanceRunId,
@@ -29,6 +29,11 @@ import {
   type EventExecutionQueueRow,
   type NightEventReservationRow,
 } from "./executorQueueTypes";
+import {
+  createSupabaseSchedulerJobEvidencePort,
+  sanitizeSchedulerErrorMessage,
+  type SchedulerJobEvidencePort,
+} from "./schedulerJobEvidence";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
@@ -368,25 +373,98 @@ function classifyReservations(
 }
 
 /**
+ * Injectable persistence/read boundary for the rebalance loop. The real
+ * implementation (createSupabaseRebalanceRepoPort) reproduces the exact
+ * reservation/queue reads and writes runEventRebalance always made; tests
+ * inject an in-memory fake instead of a live Supabase connection.
+ */
+export interface RebalanceRepoPort {
+  loadActiveReservations(): Promise<NightEventReservationRow[]>;
+  loadQueuedReservationIds(): Promise<Set<string>>;
+  markReservationsExpired(ids: string[]): Promise<void>;
+  markReservationSkipped(id: string, reason: string): Promise<void>;
+  insertQueueRow(row: EventExecutionQueueRow): Promise<void>;
+  markReservationQueued(id: string, reason: string): Promise<void>;
+}
+
+export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
+  return {
+    async loadActiveReservations() {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data, error } = await supabaseAdmin
+        .from("night_event_reservations")
+        .select("*")
+        .in("status", ["RESERVED", "REBALANCE_PENDING"]);
+      if (error) throw new Error(`reservation due-query failed: ${error.message}`);
+      return (data ?? []) as unknown as NightEventReservationRow[];
+    },
+    async loadQueuedReservationIds() {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data, error } = await supabaseAdmin
+        .from("event_execution_queue")
+        .select("reservation_id, status")
+        .in("status", ["READY", "CLAIMED", "SENT"]);
+      if (error) throw new Error(`queue existing-query failed: ${error.message}`);
+      return new Set(
+        ((data ?? []) as Array<{ reservation_id: string | null }>)
+          .map((q) => q.reservation_id)
+          .filter((v): v is string => Boolean(v))
+      );
+    },
+    async markReservationsExpired(ids) {
+      if (ids.length === 0) return;
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      await supabaseAdmin
+        .from("night_event_reservations")
+        .update({ status: "EXPIRED", selection_reason: "MISSED_REBALANCE_WINDOW" })
+        .in("id", ids);
+    },
+    async markReservationSkipped(id, reason) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      await supabaseAdmin
+        .from("night_event_reservations")
+        .update({ status: "SKIPPED", selection_reason: reason })
+        .eq("id", id);
+    },
+    async insertQueueRow(row) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { error } = await supabaseAdmin.from("event_execution_queue").insert(row);
+      if (error) throw new Error(`queue insert failed: ${error.message}`);
+    },
+    async markReservationQueued(id, reason) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      await supabaseAdmin
+        .from("night_event_reservations")
+        .update({ status: "QUEUED", selection_reason: reason })
+        .eq("id", id);
+    },
+  };
+}
+
+/**
  * Run the per-event rebalance. write=false → pure dry-run (no DB writes).
  * Loads the candidate universe once and selects one market per due reservation.
  */
 export async function runEventRebalance(
   nowMs: number,
-  opts: { write?: boolean } = {}
+  opts: { write?: boolean } = {},
+  deps: {
+    repo?: RebalanceRepoPort;
+    fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+  } = {}
 ): Promise<RebalanceRunResult> {
   const write = opts.write === true;
   const rebalanceRunId = buildRebalanceRunId(nowMs);
-  const { supabaseAdmin } = await import("@/lib/supabase/server");
+  const repo = deps.repo ?? createSupabaseRebalanceRepoPort();
+  const fetchCandidates =
+    deps.fetchCandidates ??
+    (async () => {
+      const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
+      return buildFireModelCandidates(PLAN_POOL, "all", true);
+    });
 
   // Due reservations: active status + start within the rebalance window.
-  const { data: reservationRows, error: resErr } = await supabaseAdmin
-    .from("night_event_reservations")
-    .select("*")
-    .in("status", ["RESERVED", "REBALANCE_PENDING"]);
-  if (resErr) throw new Error(`reservation due-query failed: ${resErr.message}`);
-
-  const all = (reservationRows ?? []) as NightEventReservationRow[];
+  const all = await repo.loadActiveReservations();
   const due = all.filter((r) => {
     const startMs = Date.parse(r.game_start_iso);
     return Number.isFinite(startMs) && isDueForRebalance(startMs, nowMs);
@@ -425,10 +503,7 @@ export async function runEventRebalance(
   if (write && expired.length > 0) {
     const expiredIds = expired.map((r) => r.id).filter((v): v is string => Boolean(v));
     if (expiredIds.length > 0) {
-      await supabaseAdmin
-        .from("night_event_reservations")
-        .update({ status: "EXPIRED", selection_reason: "MISSED_REBALANCE_WINDOW" })
-        .in("id", expiredIds);
+      await repo.markReservationsExpired(expiredIds);
     }
   }
 
@@ -452,19 +527,10 @@ export async function runEventRebalance(
   }
 
   // Existing READY/SENT queue rows so we never double-queue a reservation.
-  const { data: existingQueue, error: qErr } = await supabaseAdmin
-    .from("event_execution_queue")
-    .select("reservation_id, status")
-    .in("status", ["READY", "CLAIMED", "SENT"]);
-  if (qErr) throw new Error(`queue existing-query failed: ${qErr.message}`);
-  const alreadyQueued = new Set(
-    ((existingQueue ?? []) as Array<{ reservation_id: string | null }>)
-      .map((q) => q.reservation_id)
-      .filter((v): v is string => Boolean(v))
-  );
+  const alreadyQueued = await repo.loadQueuedReservationIds();
 
   // Load current markets once; group by event key.
-  const { candidates: universe } = await buildFireModelCandidates(PLAN_POOL, "all", true);
+  const { candidates: universe } = await fetchCandidates();
   const marketsByKey = new Map<string, FireModelCandidate[]>();
   for (const c of universe) {
     const arr = marketsByKey.get(c.match_family_key) ?? [];
@@ -515,11 +581,8 @@ export async function runEventRebalance(
         ? `NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE_SIDE_MISSING: candidate_count=${eventCandidates.length} tier1_count=${tier1Candidates.length} tier1_with_cond_token=${tier1WithCondToken.length} tier1_side_blocked=${tier1SideBlocked.length} examples=${tier1SideBlocked.slice(0, 2).map((c) => c.market_slug ?? c.event_slug ?? "?").join(",")}`
         : `NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE: candidate_count=${eventCandidates.length} tier1_count=${tier1Candidates.length}`;
       skipped += 1;
-      if (write) {
-        await supabaseAdmin
-          .from("night_event_reservations")
-          .update({ status: "SKIPPED", selection_reason: skipReason })
-          .eq("id", reservation.id);
+      if (write && reservation.id) {
+        await repo.markReservationSkipped(reservation.id, skipReason);
       }
       outcomes.push({
         match_family_key: reservation.match_family_key,
@@ -535,12 +598,15 @@ export async function runEventRebalance(
     const row = buildQueueRow(reservation, best, rebalanceRunId);
 
     if (write) {
-      const { error: insErr } = await supabaseAdmin.from("event_execution_queue").insert(row);
-      if (insErr) throw new Error(`queue insert failed (${reservation.match_family_key}): ${insErr.message}`);
-      await supabaseAdmin
-        .from("night_event_reservations")
-        .update({ status: "QUEUED", selection_reason: row.selection_reason })
-        .eq("id", reservation.id);
+      try {
+        await repo.insertQueueRow(row);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new Error(`queue insert failed (${reservation.match_family_key}): ${msg}`);
+      }
+      if (reservation.id) {
+        await repo.markReservationQueued(reservation.id, row.selection_reason ?? "");
+      }
     }
 
     queued += 1;
@@ -574,6 +640,72 @@ export async function runEventRebalance(
     next_due_reservations,
     next_check_after_seconds,
   };
+}
+
+/**
+ * Full rebalance cron orchestration: run the rebalance and record job_runs
+ * evidence for write-mode invocations (success and failure). Dry-run
+ * (write=false) invocations record no job evidence — they are a preview,
+ * not an execution, and perform zero DB writes of any kind, including
+ * job_runs. This is the entry point app/api/cron/event-rebalance/route.ts calls.
+ */
+export async function runEventRebalanceWithEvidence(
+  nowMs: number,
+  opts: { write?: boolean } = {},
+  deps: {
+    repo?: RebalanceRepoPort;
+    fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+    jobEvidence?: SchedulerJobEvidencePort;
+  } = {}
+): Promise<RebalanceRunResult> {
+  const write = opts.write === true;
+  const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
+  const startedAt = new Date().toISOString();
+  try {
+    const result = await runEventRebalance(nowMs, opts, {
+      repo: deps.repo,
+      fetchCandidates: deps.fetchCandidates,
+    });
+    if (write) {
+      const finishedAt = new Date().toISOString();
+      await jobEvidence.writeJobRun({
+        source: "event-rebalance",
+        formulaVersion: "rebalance-v1",
+        startedAt,
+        finishedAt,
+        status:
+          result.due_count === 0 ? "empty" : result.fail_due_reservations_not_queued ? "error" : "success",
+        generatedCount: result.queued_count,
+        rejectedCount: result.skipped_count,
+        durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
+        errorMessage: result.fail_due_reservations_not_queued ? "DUE_RESERVATIONS_NOT_QUEUED" : undefined,
+        diagnostics: {
+          rebalance_run_id: result.rebalance_run_id,
+          due_count: result.due_count,
+          already_queued_count: result.already_queued_count,
+          expired_count: result.expired_count,
+        },
+      });
+    }
+    return result;
+  } catch (err) {
+    if (write) {
+      const finishedAt = new Date().toISOString();
+      const msg = err instanceof Error ? err.message : "Unknown error";
+      await jobEvidence.writeJobRun({
+        source: "event-rebalance",
+        formulaVersion: "rebalance-v1",
+        startedAt,
+        finishedAt,
+        status: "error",
+        generatedCount: 0,
+        rejectedCount: 0,
+        durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
+        errorMessage: sanitizeSchedulerErrorMessage(msg),
+      });
+    }
+    throw err;
+  }
 }
 
 /**

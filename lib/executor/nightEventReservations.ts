@@ -13,8 +13,13 @@
 // Read input only via buildFireModelCandidates (raw universe). No 6h hardcoded
 // eligibility: horizon is governed by nightWindow.ts.
 
-import { buildFireModelCandidates, type FireModelCandidate } from "./buildFireModelCandidates";
+import type { FireModelCandidate } from "./buildFireModelCandidates";
 import { compareCandidateQuality } from "./nightPortfolioPlanner";
+import {
+  createSupabaseSchedulerJobEvidencePort,
+  sanitizeSchedulerErrorMessage,
+  type SchedulerJobEvidencePort,
+} from "./schedulerJobEvidence";
 import {
   resolveNightWindow,
   buildPlanRunId,
@@ -301,10 +306,19 @@ export interface ReservationPlan {
  * Reserves an event when its best candidate is a Tier1 event opportunity within horizon.
  * Market-level halftime/side filtering is deliberately deferred to rebalance.
  */
-export async function buildReservationPlan(nowMs: number): Promise<ReservationPlan> {
+export async function buildReservationPlan(
+  nowMs: number,
+  deps: { fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }> } = {}
+): Promise<ReservationPlan> {
   const window = resolveNightWindow(nowMs);
   const planRunId = buildPlanRunId(nowMs);
-  const { candidates: universe } = await buildFireModelCandidates(PLAN_POOL, "all", true);
+  const fetchCandidates =
+    deps.fetchCandidates ??
+    (async () => {
+      const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
+      return buildFireModelCandidates(PLAN_POOL, "all", true);
+    });
+  const { candidates: universe } = await fetchCandidates();
 
   const bySport: Record<string, number> = {};
   const byTier: Record<string, number> = {};
@@ -561,39 +575,69 @@ export interface PersistReservationsResult {
 }
 
 /**
+ * Injectable persistence boundary for night_event_reservations. The real
+ * implementation (createSupabaseReservationRepoPort) reproduces the exact
+ * read/delete/insert calls persistReservationPlan always made; tests inject
+ * an in-memory fake instead of a live Supabase connection.
+ */
+export interface ReservationRepoPort {
+  findByPlanRunId(planRunId: string): Promise<NightEventReservationRow[]>;
+  deleteByPlanRunId(planRunId: string): Promise<void>;
+  insert(rows: NightEventReservationRow[]): Promise<void>;
+}
+
+export function createSupabaseReservationRepoPort(): ReservationRepoPort {
+  return {
+    async findByPlanRunId(planRunId) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data, error } = await supabaseAdmin
+        .from("night_event_reservations")
+        .select("*")
+        .eq("plan_run_id", planRunId)
+        .order("reservation_rank", { ascending: true });
+      if (error) throw new Error(`reservation read failed: ${error.message}`);
+      return (data ?? []) as unknown as NightEventReservationRow[];
+    },
+    async deleteByPlanRunId(planRunId) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { error } = await supabaseAdmin
+        .from("night_event_reservations")
+        .delete()
+        .eq("plan_run_id", planRunId);
+      if (error) throw new Error(`reservation force-delete failed: ${error.message}`);
+    },
+    async insert(rows) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { error } = await supabaseAdmin.from("night_event_reservations").insert(rows);
+      if (error) throw new Error(`reservation insert failed: ${error.message}`);
+    },
+  };
+}
+
+/**
  * Persist a reservation plan idempotently. If the plan_run_id already has rows and
  * force is false, the existing frozen plan is returned untouched.
  */
 export async function persistReservationPlan(
   plan: ReservationPlan,
-  opts: { force?: boolean } = {}
+  opts: { force?: boolean } = {},
+  repo: ReservationRepoPort = createSupabaseReservationRepoPort()
 ): Promise<PersistReservationsResult> {
-  const { supabaseAdmin } = await import("@/lib/supabase/server");
+  const existing = await repo.findByPlanRunId(plan.plan_run_id);
 
-  const { data: existing, error: readErr } = await supabaseAdmin
-    .from("night_event_reservations")
-    .select("*")
-    .eq("plan_run_id", plan.plan_run_id)
-    .order("reservation_rank", { ascending: true });
-  if (readErr) throw new Error(`reservation read failed: ${readErr.message}`);
-
-  if ((existing?.length ?? 0) > 0 && !opts.force) {
+  if (existing.length > 0 && !opts.force) {
     return {
       plan_run_id: plan.plan_run_id,
       already_exists: true,
       written_count: 0,
-      reserved_count: existing!.length,
-      reservations: existing as unknown as NightEventReservationRow[],
+      reserved_count: existing.length,
+      reservations: existing,
       diagnostics: plan.diagnostics,
     };
   }
 
-  if ((existing?.length ?? 0) > 0 && opts.force) {
-    const { error: delErr } = await supabaseAdmin
-      .from("night_event_reservations")
-      .delete()
-      .eq("plan_run_id", plan.plan_run_id);
-    if (delErr) throw new Error(`reservation force-delete failed: ${delErr.message}`);
+  if (existing.length > 0 && opts.force) {
+    await repo.deleteByPlanRunId(plan.plan_run_id);
   }
 
   if (plan.reservations.length === 0) {
@@ -607,10 +651,7 @@ export async function persistReservationPlan(
     };
   }
 
-  const { error: insErr } = await supabaseAdmin
-    .from("night_event_reservations")
-    .insert(plan.reservations);
-  if (insErr) throw new Error(`reservation insert failed: ${insErr.message}`);
+  await repo.insert(plan.reservations);
 
   return {
     plan_run_id: plan.plan_run_id,
@@ -620,6 +661,66 @@ export async function persistReservationPlan(
     reservations: plan.reservations,
     diagnostics: plan.diagnostics,
   };
+}
+
+/**
+ * Full reservation cron orchestration: build the plan, persist it
+ * idempotently, and record job_runs evidence for both success and failure.
+ * This is the entry point app/api/cron/night-event-reservations/route.ts
+ * calls for its standard (non-status, non-forceRebuild) write path.
+ */
+export async function runReservationCronWithEvidence(
+  nowMs: number,
+  opts: { force?: boolean } = {},
+  deps: {
+    fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+    repo?: ReservationRepoPort;
+    jobEvidence?: SchedulerJobEvidencePort;
+  } = {}
+): Promise<{ plan: ReservationPlan; persisted: PersistReservationsResult }> {
+  const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
+  const startedAt = new Date().toISOString();
+  try {
+    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates });
+    const persisted = deps.repo
+      ? await persistReservationPlan(plan, opts, deps.repo)
+      : await persistReservationPlan(plan, opts);
+    const finishedAt = new Date().toISOString();
+    await jobEvidence.writeJobRun({
+      source: "night-event-reservations",
+      formulaVersion: "reservation-v1",
+      startedAt,
+      finishedAt,
+      status: persisted.written_count > 0 || persisted.already_exists ? "success" : "empty",
+      generatedCount: persisted.written_count,
+      rejectedCount:
+        plan.diagnostics.skipped_non_tier1_event +
+        plan.diagnostics.skipped_outside_horizon +
+        plan.diagnostics.skipped_no_executable_anchor,
+      durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
+      diagnostics: {
+        plan_run_id: persisted.plan_run_id,
+        already_exists: persisted.already_exists,
+        reserved_count: persisted.reserved_count,
+      },
+    });
+    return { plan, persisted };
+  } catch (err) {
+    const finishedAt = new Date().toISOString();
+    const msg = err instanceof Error ? err.message : "Unknown error";
+    await jobEvidence.writeJobRun({
+      source: "night-event-reservations",
+      formulaVersion: "reservation-v1",
+      startedAt,
+      finishedAt,
+      status: "error",
+      generatedCount: 0,
+      rejectedCount: 0,
+      durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
+      errorMessage: sanitizeSchedulerErrorMessage(msg),
+    });
+    throw err;
+  }
 }
 
 /**

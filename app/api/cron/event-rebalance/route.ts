@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runEventRebalance, persistRebalanceDiagnostics } from "@/lib/executor/eventExecutionQueue";
+import { runEventRebalanceWithEvidence, persistRebalanceDiagnostics } from "@/lib/executor/eventExecutionQueue";
 
 // Contur3 per-event rebalance cron (run every 5-10 minutes).
 //   GET/POST /api/cron/event-rebalance          → select one market per due reserved event,
@@ -21,7 +21,7 @@ async function handle(request: NextRequest) {
   const dryRun = searchParams.get("dryRun") === "1";
 
   try {
-    const result = await runEventRebalance(Date.now(), { write: !dryRun });
+    const result = await runEventRebalanceWithEvidence(Date.now(), { write: !dryRun });
     const diagResult = await persistRebalanceDiagnostics(result, {
       context: "event-rebalance-cron",
     });

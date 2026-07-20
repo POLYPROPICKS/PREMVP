@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
-  buildReservationPlan,
-  persistReservationPlan,
   persistReservationPlanDiagnostics,
   loadPlanStatus,
   executeForceRebuild,
+  runReservationCronWithEvidence,
 } from "@/lib/executor/nightEventReservations";
 import {
   buildPlanRunId,
@@ -124,9 +123,10 @@ async function handle(request: NextRequest) {
       );
     }
 
-    // ── Standard create / idempotent path ─────────────────────────────────────
-    const plan = await buildReservationPlan(nowMs);
-    const result = await persistReservationPlan(plan, { force: force || forceCreate });
+    // ── Standard create / idempotent path (records job_runs evidence) ──────────
+    const { plan, persisted: result } = await runReservationCronWithEvidence(nowMs, {
+      force: force || forceCreate,
+    });
 
     // Persist diagnostics (non-fatal if it fails).
     const diagResult = await persistReservationPlanDiagnostics(plan, {
