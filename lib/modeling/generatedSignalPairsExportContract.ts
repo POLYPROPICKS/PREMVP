@@ -94,7 +94,15 @@ const REALIZED_RETURN_FIELDS = ["realized_return_pct", "realizedReturnPct"] as c
 
 const CONDITION_ID_FIELDS = ["condition_id", "conditionId"] as const;
 
-const TOKEN_ID_FIELDS = ["token_id", "tokenId"] as const;
+// "token_id"/"tokenId" is the accepted historical exporter format;
+// "selected_token_id"/"selectedTokenId" is the CURRENT canonical field
+// (Integration Milestone 2B.2) -- proven directly from
+// lib/executor/buildFireModelCandidates.ts's SIGNAL_SELECT_COLS constant and
+// its `row.selected_token_id` reads throughout. Additive only: existing
+// callers of getStrictDedupKeyForExportRow keep resolving historical-format
+// rows exactly as before; current-schema rows now also resolve instead of
+// failing MISSING identity checks.
+const TOKEN_ID_FIELDS = ["token_id", "tokenId", "selected_token_id", "selectedTokenId"] as const;
 
 function getIdentityField(row: ExportRow, keys: readonly string[]): string | null {
   for (const key of keys) {

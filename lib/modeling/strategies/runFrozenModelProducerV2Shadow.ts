@@ -16,6 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExportRow } from "../generatedSignalPairsExportContract";
 import { produceFrozenModelV2ShadowDecisions } from "../frozenModelProducerV2Shadow";
+import { fetchBoundedSnapshot, SNAPSHOT_PAGE_SIZE, sha256OfNormalizedSnapshot } from "./runFrozenExecutionContractBridge";
 
 export interface RunFrozenModelProducerV2ShadowArgs {
   asOf?: string;
@@ -74,24 +75,51 @@ const DEFAULT_SUPABASE_ROW_LIMIT = 5_000;
  * given. Dynamically imports the existing admin Supabase client so that
  * simply importing this module (as tests do) never requires
  * SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY to be set. Never logs or prints the
- * env var values themselves. Always bounded: an explicit --limit is honored;
- * otherwise DEFAULT_SUPABASE_ROW_LIMIT applies so an unbounded full-table
- * select can never happen in production mode.
+ * env var values themselves.
+ *
+ * Integration Milestone 2B.2: reuses fetchBoundedSnapshot (the same bounded,
+ * paginated loader already proven by the frozen/Contur3 compatibility
+ * bridge) instead of a single unpaginated `.select("*").limit(boundedLimit)`
+ * call. A single unpaginated call is silently capped by the
+ * Supabase/PostgREST default response size (1000 rows) regardless of the
+ * requested `.limit()` value -- this was the root cause of the standalone
+ * runner returning inputCount=1000 even when invoked with --limit 5000. The
+ * bridge's loader avoids this by paging in <=1000-row chunks via
+ * `.range()`, stopping exactly at the configured total limit.
  */
-async function loadRowsFromSupabase(limit: number | undefined): Promise<ExportRow[]> {
+async function loadRowsFromSupabase(
+  limit: number | undefined,
+  asOfIso: string,
+): Promise<{ rows: ExportRow[]; sourcePageCount: number }> {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error("FROZEN_RUNNER_NO_FIXTURE_AND_MISSING_SUPABASE_ENV");
   }
-  const { supabaseAdmin } = await import("../../supabase/server");
   const boundedLimit = typeof limit === "number" && Number.isFinite(limit) ? limit : DEFAULT_SUPABASE_ROW_LIMIT;
-  const { data, error } = await supabaseAdmin.from("generated_signal_pairs").select("*").limit(boundedLimit);
-  if (error) throw new Error(`FROZEN_RUNNER_SUPABASE_READ_FAILED:${error.message}`);
-  return (data ?? []) as ExportRow[];
+  const { supabaseAdmin } = await import("../../supabase/server");
+  const rows = await fetchBoundedSnapshot(async (from, pageSize) => {
+    const { data, error } = await supabaseAdmin
+      .from("generated_signal_pairs")
+      .select("*")
+      .lte("created_at", asOfIso)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(`FROZEN_RUNNER_SUPABASE_READ_FAILED:${error.message}`);
+    return { rows: (data ?? []) as Record<string, unknown>[] };
+  }, boundedLimit);
+  return {
+    rows: rows as unknown as ExportRow[],
+    sourcePageCount: Math.ceil(Math.max(rows.length, 1) / SNAPSHOT_PAGE_SIZE),
+  };
 }
 
 export interface RunFrozenModelProducerV2ShadowSummary {
   asOfIso: string;
   modelVersion: string;
+  configuredLimit: number;
+  sourceRowCount: number;
+  sourcePageCount: number;
+  sourceSnapshotSha256: string;
   inputCount: number;
   eligibleCount: number;
   acceptedCount: number;
@@ -111,18 +139,23 @@ export async function runFrozenModelProducerV2Shadow(
   if (parsedLimit !== undefined && (!Number.isFinite(parsedLimit) || parsedLimit <= 0)) {
     throw new Error("FROZEN_RUNNER_INVALID_LIMIT");
   }
+  const configuredLimit = parsedLimit ?? DEFAULT_SUPABASE_ROW_LIMIT;
 
   let rows: ExportRow[];
+  let sourcePageCount: number;
   if (fixture !== undefined && fixture.trim() !== "") {
     if (!existsSync(fixture)) throw new Error("FROZEN_RUNNER_FIXTURE_NOT_FOUND");
     rows = loadFixtureRows(fixture);
+    if (parsedLimit !== undefined) rows = rows.slice(0, parsedLimit);
+    sourcePageCount = Math.ceil(Math.max(rows.length, 1) / SNAPSHOT_PAGE_SIZE);
   } else {
-    rows = await loadRowsFromSupabase(parsedLimit);
-  }
-  if (parsedLimit !== undefined && fixture !== undefined) {
-    rows = rows.slice(0, parsedLimit);
+    const loaded = await loadRowsFromSupabase(parsedLimit, asOf);
+    rows = loaded.rows;
+    sourcePageCount = loaded.sourcePageCount;
   }
 
+  const sourceRowCount = rows.length;
+  const sourceSnapshotSha256 = sha256OfNormalizedSnapshot(rows as unknown as Record<string, unknown>[]);
   const result = produceFrozenModelV2ShadowDecisions(rows, asOf);
 
   // Deterministic serialization: stable key order, no trailing whitespace
@@ -130,6 +163,10 @@ export async function runFrozenModelProducerV2Shadow(
   const artifact = {
     asOfIso: result.asOfIso,
     modelVersion: result.modelVersion,
+    configuredLimit,
+    sourceRowCount,
+    sourcePageCount,
+    sourceSnapshotSha256,
     inputCount: result.inputCount,
     eligibleCount: result.eligibleCount,
     acceptedDecisions: result.acceptedDecisions,
@@ -144,6 +181,10 @@ export async function runFrozenModelProducerV2Shadow(
   return {
     asOfIso: result.asOfIso,
     modelVersion: result.modelVersion,
+    configuredLimit,
+    sourceRowCount,
+    sourcePageCount,
+    sourceSnapshotSha256,
     inputCount: result.inputCount,
     eligibleCount: result.eligibleCount,
     acceptedCount: result.acceptedDecisions.length,

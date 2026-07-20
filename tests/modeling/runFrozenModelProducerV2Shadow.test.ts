@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { runFrozenModelProducerV2Shadow } from "../../lib/modeling/strategies/runFrozenModelProducerV2Shadow";
+import { fetchBoundedSnapshot, sha256OfNormalizedSnapshot } from "../../lib/modeling/strategies/runFrozenExecutionContractBridge";
 
 const AS_OF = "2026-07-20T12:00:00.000Z";
 
@@ -160,17 +161,71 @@ test("repeated runs against the same fixture produce byte-identical artifacts", 
   });
 });
 
-test("production Supabase read path always applies a bounded limit (explicit --limit or a default bound), never an unbounded select", async () => {
+// Integration Milestone 2B.2: the standalone runner previously issued a
+// single unpaginated `.select("*").limit(boundedLimit)` call, which is
+// silently capped at the Supabase/PostgREST default response size (1000
+// rows) regardless of the requested limit -- this was the root cause of
+// inputCount=1000 even when invoked with --limit 5000. It now reuses
+// fetchBoundedSnapshot (the same paginated loader already proven by the
+// frozen/Contur3 compatibility bridge) instead of a second, independent
+// pagination implementation.
+test("production Supabase read path uses the shared bounded paginated loader (fetchBoundedSnapshot), never a single unpaginated select", async () => {
   const fs = await import("node:fs");
   const source = fs.readFileSync(
     new URL("../../lib/modeling/strategies/runFrozenModelProducerV2Shadow.ts", import.meta.url),
     "utf8",
   );
-  // The Supabase query must always chain a .limit(...) call -- there must be
-  // no code path where .select("*") is awaited without a preceding/following
-  // .limit(...) in the same statement.
-  assert.match(source, /supabaseAdmin\.from\("generated_signal_pairs"\)\.select\("\*"\)\.limit\(/);
+  assert.match(source, /import\s*\{[^}]*fetchBoundedSnapshot[^}]*\}\s*from\s*"\.\/runFrozenExecutionContractBridge"/);
   assert.match(source, /DEFAULT_SUPABASE_ROW_LIMIT/);
+  assert.match(source, /\.range\(from, from \+ pageSize - 1\)/);
+  assert.doesNotMatch(
+    source,
+    /supabaseAdmin\.from\("generated_signal_pairs"\)\.select\("\*"\)\.limit\(/,
+    "must never issue a single unpaginated select().limit() call",
+  );
+});
+
+test("standalone pagination bound: with a fake >5000-row source, exactly 5 pages of 1000 are requested, never a 6th", async () => {
+  const calls: Array<{ from: number; pageSize: number }> = [];
+  const buildPage = async (from: number, pageSize: number) => {
+    calls.push({ from, pageSize });
+    const rows: Record<string, unknown>[] = [];
+    for (let i = from; i < Math.min(from + pageSize, 50_000); i++) {
+      rows.push({ id: `row-${i}`, condition_id: `cond-${i}`, created_at: "2026-07-20T11:30:00.000Z" });
+    }
+    return { rows };
+  };
+  const rows = await fetchBoundedSnapshot(buildPage, 5_000);
+  assert.equal(rows.length, 5_000);
+  assert.equal(calls.length, 5);
+  assert.ok(calls.every((c) => c.from < 5_000));
+});
+
+test("standalone pagination bound: explicit --limit 1250 requests 1000 then 250, no third request", async () => {
+  const calls: Array<{ from: number; pageSize: number }> = [];
+  const buildPage = async (from: number, pageSize: number) => {
+    calls.push({ from, pageSize });
+    const rows: Record<string, unknown>[] = [];
+    for (let i = from; i < Math.min(from + pageSize, 50_000); i++) {
+      rows.push({ id: `row-${i}` });
+    }
+    return { rows };
+  };
+  const rows = await fetchBoundedSnapshot(buildPage, 1_250);
+  assert.equal(rows.length, 1_250);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].pageSize, 1_000);
+  assert.equal(calls[1].pageSize, 250);
+});
+
+test("shared loader parity: standalone and bridge compute the identical source snapshot hash for the same rows, via the same exported hash function", () => {
+  const rows = [
+    { condition_id: "cond-1", selected_token_id: "tok-1", created_at: "2026-07-20T11:30:00.000Z", id: "row-1" },
+    { condition_id: "cond-2", selected_token_id: "tok-2", created_at: "2026-07-20T11:15:00.000Z", id: "row-2" },
+  ];
+  const hashA = sha256OfNormalizedSnapshot(rows);
+  const hashB = sha256OfNormalizedSnapshot([...rows].reverse());
+  assert.equal(hashA, hashB, "order-independent, and the standalone runner uses this exact same function -- not a re-derived duplicate");
 });
 
 test("does not import any reservation/queue/Ireland/CLOB module", async () => {

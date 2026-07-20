@@ -182,6 +182,61 @@ test("fails closed on missing identity fields", () => {
   assert.equal(missingOutcome.rejections[0].reason, "MISSING_SELECTED_OUTCOME");
 });
 
+// Integration Milestone 2B.2: current source-contract alignment. The real
+// generated_signal_pairs schema and Contur3's own buildFireModelCandidates.ts
+// query (SIGNAL_SELECT_COLS) both use `selected_token_id` as the canonical
+// token identity column -- proven directly from lib/executor/buildFireModelCandidates.ts's
+// SIGNAL_SELECT_COLS constant and its `row.selected_token_id` reads
+// throughout (identity key, candidate mapping, idempotency key). The frozen
+// model previously only recognized `token_id`/`tokenId` (the accepted
+// historical exporter format), causing every real current-schema row to
+// fail closed as MISSING_TOKEN_ID even when otherwise fully eligible.
+test("current canonical token contract: selected_token_id (Contur3's own field) is recognized and produces a decision when every other gate passes", () => {
+  const result = produceFrozenModelV2ShadowDecisions(
+    [baseRow({ token_id: undefined, selected_token_id: "tok-1" })],
+    AS_OF,
+  );
+  assert.equal(result.acceptedDecisions.length, 1);
+  assert.equal(result.rejections.length, 0);
+});
+
+test("accepted historical exporter contract continues to work: token_id (legacy field) still resolves", () => {
+  const result = produceFrozenModelV2ShadowDecisions([baseRow()], AS_OF); // baseRow() uses token_id
+  assert.equal(result.acceptedDecisions.length, 1);
+});
+
+test("condition_id is never used as token_id: a row with only condition_id (no token_id/selected_token_id anywhere) fails closed as MISSING_TOKEN_ID, not accepted with condition_id borrowed as the token", () => {
+  const result = produceFrozenModelV2ShadowDecisions(
+    [baseRow({ token_id: undefined, selected_token_id: undefined })],
+    AS_OF,
+  );
+  assert.equal(result.acceptedDecisions.length, 0);
+  assert.equal(result.rejections[0].reason, "MISSING_TOKEN_ID");
+  // Defensive: even if condition_id and token_id happened to collide in a
+  // pathological fixture, the decision (if any) must never report a token
+  // identity equal to the condition identity via the condition_id fallback
+  // path -- there is no such fallback path in the implementation, verified
+  // by source inspection (resolveIdentity reads tokenId only from
+  // TOKEN_ID_FIELDS, never from CONDITION_ID_FIELDS or conditionId).
+});
+
+test("ambiguous token value fails closed: a non-string/non-number selected_token_id (e.g. an array of candidate tokens) is not accepted as a token identity", () => {
+  const result = produceFrozenModelV2ShadowDecisions(
+    [baseRow({ token_id: undefined, selected_token_id: ["tok-1", "tok-2"] as unknown as string })],
+    AS_OF,
+  );
+  assert.equal(result.acceptedDecisions.length, 0);
+  assert.equal(result.rejections[0].reason, "MISSING_TOKEN_ID");
+});
+
+test("production incident regression: a realistic current-schema row (selected_token_id, no legacy token_id) that also fails another frozen gate is rejected for THAT reason, not MISSING_TOKEN_ID -- proves the token fix doesn't silently paper over other gates", () => {
+  const belowScore = produceFrozenModelV2ShadowDecisions(
+    [baseRow({ token_id: undefined, selected_token_id: "tok-1", score: 40 })],
+    AS_OF,
+  );
+  assert.equal(belowScore.rejections[0].reason, "SCORE_BELOW_65");
+});
+
 test("rejects unsupported market family", () => {
   const result = produceFrozenModelV2ShadowDecisions([baseRow({ market_type: "SCALAR" })], AS_OF);
   assert.equal(result.rejections[0].reason, "UNSUPPORTED_MARKET");

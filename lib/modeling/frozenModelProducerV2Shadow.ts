@@ -55,7 +55,18 @@ const TIMING_UPPER_HOURS = 2; // 120 minutes
 const T90_OFFSET_MS = 90 * 60_000;
 
 const CONDITION_ID_FIELDS = ["condition_id", "conditionId"] as const;
-const TOKEN_ID_FIELDS = ["token_id", "tokenId"] as const;
+// "token_id"/"tokenId" is the accepted historical exporter format; per
+// Integration Milestone 2B.2, "selected_token_id"/"selectedTokenId" is the
+// CURRENT canonical field -- proven directly from
+// lib/executor/buildFireModelCandidates.ts's SIGNAL_SELECT_COLS constant and
+// its `row.selected_token_id` reads throughout (identity key, candidate
+// mapping, idempotency key: that is the actual generated_signal_pairs
+// column Contur3 queries and relies on). Both are recognized so
+// historical-format fixtures keep working while current-schema rows are no
+// longer rejected as MISSING_TOKEN_ID. condition_id/conditionId are
+// deliberately NOT in this list -- there is no fallback path anywhere in
+// this file that reads a token identity from a condition field.
+const TOKEN_ID_FIELDS = ["token_id", "tokenId", "selected_token_id", "selectedTokenId"] as const;
 const SELECTED_OUTCOME_FIELDS = ["selected_outcome", "selectedOutcome"] as const;
 // Leakage fields: never read for scoring/selection. Only referenced in the
 // type below to document the check; the code never accesses row[leakageField].

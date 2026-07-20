@@ -172,7 +172,11 @@ async function loadLiveSnapshot(
   }, boundedLimit);
 }
 
-function sha256OfNormalizedSnapshot(rows: readonly Record<string, unknown>[]): string {
+// Exported so the standalone frozen-model runner (Integration Milestone
+// 2B.2) can compute its sourceSnapshotSha256 with the exact same
+// implementation, proving shared-loader parity by construction rather than
+// by a re-derived duplicate hash function.
+export function sha256OfNormalizedSnapshot(rows: readonly Record<string, unknown>[]): string {
   // Order-independent: sorted by a stable composite key before hashing, so
   // two snapshots containing the same rows in different orders hash
   // identically (a page-boundary shuffle in a test double must not change
