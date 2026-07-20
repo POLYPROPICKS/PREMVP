@@ -15,7 +15,7 @@ function fixtureRow(overrides: Record<string, unknown> = {}) {
     selected_outcome: "TEAM_A",
     score: 80,
     entry_price_num: 0.5,
-    created_at: "2026-07-20T10:00:00.000Z",
+    created_at: "2026-07-20T11:30:00.000Z", // exactly 90 minutes before game start (T-90 boundary)
     event_slug: "nba-team-a-vs-team-b",
     market_slug: "nba-team-a-vs-team-b-moneyline",
     diagnostics: { gameStartIso: "2026-07-20T13:00:00.000Z" },
@@ -158,6 +158,19 @@ test("repeated runs against the same fixture produce byte-identical artifacts", 
     assert.equal(summaryA.artifactSha256, summaryB.artifactSha256);
     assert.equal(readFileSync(outputPathA, "utf8"), readFileSync(outputPathB, "utf8"));
   });
+});
+
+test("production Supabase read path always applies a bounded limit (explicit --limit or a default bound), never an unbounded select", async () => {
+  const fs = await import("node:fs");
+  const source = fs.readFileSync(
+    new URL("../../lib/modeling/strategies/runFrozenModelProducerV2Shadow.ts", import.meta.url),
+    "utf8",
+  );
+  // The Supabase query must always chain a .limit(...) call -- there must be
+  // no code path where .select("*") is awaited without a preceding/following
+  // .limit(...) in the same statement.
+  assert.match(source, /supabaseAdmin\.from\("generated_signal_pairs"\)\.select\("\*"\)\.limit\(/);
+  assert.match(source, /DEFAULT_SUPABASE_ROW_LIMIT/);
 });
 
 test("does not import any reservation/queue/Ireland/CLOB module", async () => {

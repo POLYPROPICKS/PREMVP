@@ -7,6 +7,21 @@ import {
 import type { ExportRow } from "../../lib/modeling/generatedSignalPairsExportContract";
 
 const AS_OF = "2026-07-20T12:00:00.000Z";
+const GAME_START = "2026-07-20T13:00:00.000Z"; // fixed anchor for all boundary math below
+
+// T-90 eligibility (accepted source: executionWaterfall.ts's T90 resolution)
+// requires created_at <= game_start - 90min. Combined with the timing gate
+// (accepted source: boundedRoutingExperiments.ts's passesTimingWithin120m,
+// 0 <= hoursUntilStart < 2), the effective reachable minutesUntilStart range
+// for any T-90-RESOLVED, ACCEPTED row is [90, 120) -- never 0-89, because a
+// row with minutesUntilStart < 90 is, by construction, not T-90-eligible in
+// the first place (it fails SNAPSHOT_NOT_T90_COMPATIBLE before the timing
+// gate is ever evaluated). This is not a gap in coverage: it is the correct,
+// literal consequence of combining both accepted-source gates faithfully. Do
+// not weaken the T-90 gate to make sub-90-minute rows reach OUTSIDE_120M --
+// that would reintroduce the near-kickoff/in-play leakage defect this repair
+// fixes (see FROZEN_MODEL_V2_SHADOW_FINAL_ACCEPTANCE.md P1-2).
+const T90_BOUNDARY = "2026-07-20T11:30:00.000Z"; // game_start - 90min, exactly
 
 function baseRow(overrides: Partial<ExportRow> = {}): ExportRow {
   return {
@@ -15,20 +30,21 @@ function baseRow(overrides: Partial<ExportRow> = {}): ExportRow {
     selected_outcome: "TEAM_A",
     score: 70,
     entry_price_num: 0.4,
-    created_at: "2026-07-20T10:00:00.000Z",
+    created_at: T90_BOUNDARY,
     event_slug: "nba-team-a-vs-team-b",
     market_slug: "nba-team-a-vs-team-b-moneyline",
-    diagnostics: { gameStartIso: "2026-07-20T13:00:00.000Z" },
+    diagnostics: { gameStartIso: GAME_START },
     ...overrides,
   };
 }
 
-test("accepts a clean eligible row", () => {
+test("accepts a clean eligible row (T-90-exact snapshot, 90 minutes to start)", () => {
   const result = produceFrozenModelV2ShadowDecisions([baseRow()], AS_OF);
   assert.equal(result.acceptedDecisions.length, 1);
   assert.equal(result.rejections.length, 0);
   assert.equal(result.modelVersion, FROZEN_MODEL_V2_VERSION);
   assert.equal(result.acceptedDecisions[0].selectedOutcome, "TEAM_A");
+  assert.equal(result.acceptedDecisions[0].minutesUntilStart, 90);
 });
 
 test("score threshold: 65 accepted, 64 rejected", () => {
@@ -49,20 +65,75 @@ test("price floor: 0.30 accepted, 0.29 rejected", () => {
   assert.equal(at029.rejections[0].reason, "PRICE_BELOW_030");
 });
 
-test("timing window: 120 minutes accepted (inclusive), 121 minutes rejected", () => {
-  const at120 = produceFrozenModelV2ShadowDecisions(
-    [baseRow({ diagnostics: { gameStartIso: "2026-07-20T14:00:00.000Z" } })],
+test("timing upper bound: 119.999 minutes accepted, exactly 120 rejected, 121 rejected", () => {
+  // created_at chosen so the row is its own T-90-eligible snapshot (created
+  // well before game_start - 90min is not needed here -- we only need
+  // created_at <= game_start - 90min, which all three cases below satisfy,
+  // since minutesUntilStart 119.999/120/121 are all >= 90).
+  const at119_999 = produceFrozenModelV2ShadowDecisions(
+    [baseRow({ created_at: "2026-07-20T11:00:00.001Z" })], // 119.999... min before start
     AS_OF,
   );
-  assert.equal(at120.acceptedDecisions.length, 1);
-  assert.equal(at120.acceptedDecisions[0].minutesUntilStart, 120);
+  assert.equal(at119_999.acceptedDecisions.length, 1);
+  assert.ok(at119_999.acceptedDecisions[0].minutesUntilStart < 120);
+  assert.ok(at119_999.acceptedDecisions[0].minutesUntilStart > 119.99);
+
+  const at120 = produceFrozenModelV2ShadowDecisions(
+    [baseRow({ created_at: "2026-07-20T11:00:00.000Z" })], // exactly 120 min before start
+    AS_OF,
+  );
+  assert.equal(at120.acceptedDecisions.length, 0);
+  assert.equal(at120.rejections[0].reason, "OUTSIDE_120M");
 
   const at121 = produceFrozenModelV2ShadowDecisions(
-    [baseRow({ diagnostics: { gameStartIso: "2026-07-20T14:01:00.000Z" } })],
+    [baseRow({ created_at: "2026-07-20T10:59:00.000Z" })], // 121 min before start
     AS_OF,
   );
   assert.equal(at121.acceptedDecisions.length, 0);
   assert.equal(at121.rejections[0].reason, "OUTSIDE_120M");
+});
+
+test("timing lower bound is enforced by T-90 eligibility: a row created less than 90 minutes before start is never T-90-eligible, so it fails closed as SNAPSHOT_NOT_T90_COMPATIBLE (not OUTSIDE_120M) -- it can never reach the timing gate with minutesUntilStart in [0,90)", () => {
+  const near0 = produceFrozenModelV2ShadowDecisions(
+    [baseRow({ created_at: "2026-07-20T12:59:00.000Z" })], // 1 min before start
+    "2026-07-20T13:00:00.000Z", // as-of after the row's own created_at, so it's visible and reaches T-90 resolution
+  );
+  assert.equal(near0.acceptedDecisions.length, 0);
+  assert.equal(near0.rejections[0].reason, "SNAPSHOT_NOT_T90_COMPATIBLE");
+
+  const afterStart = produceFrozenModelV2ShadowDecisions(
+    [baseRow({ created_at: "2026-07-20T13:05:00.000Z" })], // 5 min AFTER start (negative minutesUntilStart)
+    "2026-07-20T13:10:00.000Z", // as-of after the row's own created_at, so it's visible and reaches T-90 resolution
+  );
+  assert.equal(afterStart.acceptedDecisions.length, 0);
+  assert.equal(afterStart.rejections[0].reason, "SNAPSHOT_NOT_T90_COMPATIBLE");
+});
+
+test("T-90 snapshot resolution: latest eligible snapshot wins; one millisecond after the T-90 boundary is ineligible and does not displace the earlier valid snapshot", () => {
+  const earlierValid = baseRow({ created_at: "2026-07-20T11:00:00.000Z", score: 71 }); // 120min before start: T-90 eligible
+  const exactlyAtT90 = baseRow({ created_at: T90_BOUNDARY, score: 80 }); // exactly at T-90: eligible, later than earlierValid
+  const oneMsAfterT90 = baseRow({ created_at: "2026-07-20T11:30:00.001Z", score: 99 }); // 1ms after T-90: INELIGIBLE
+
+  const result = produceFrozenModelV2ShadowDecisions([earlierValid, exactlyAtT90, oneMsAfterT90], AS_OF);
+  assert.equal(result.acceptedDecisions.length, 1);
+  // The winner must be exactlyAtT90 (score 80, minutesUntilStart 90) -- the
+  // latest ELIGIBLE snapshot -- never oneMsAfterT90 (score 99, ineligible),
+  // proving the higher-score-but-ineligible row cannot displace it.
+  assert.equal(result.acceptedDecisions[0].score, 80);
+  assert.equal(result.acceptedDecisions[0].minutesUntilStart, 90);
+});
+
+test("T-90 snapshot resolution is order-independent (shuffled input selects the same snapshot)", () => {
+  const earlierValid = baseRow({ created_at: "2026-07-20T11:00:00.000Z", score: 71 });
+  const exactlyAtT90 = baseRow({ created_at: T90_BOUNDARY, score: 80 });
+  const oneMsAfterT90 = baseRow({ created_at: "2026-07-20T11:30:00.001Z", score: 99 });
+
+  const forward = produceFrozenModelV2ShadowDecisions([earlierValid, exactlyAtT90, oneMsAfterT90], AS_OF);
+  const shuffled = produceFrozenModelV2ShadowDecisions([oneMsAfterT90, earlierValid, exactlyAtT90], AS_OF);
+  const shuffled2 = produceFrozenModelV2ShadowDecisions([exactlyAtT90, oneMsAfterT90, earlierValid], AS_OF);
+
+  assert.deepEqual(forward.acceptedDecisions, shuffled.acceptedDecisions);
+  assert.deepEqual(forward.acceptedDecisions, shuffled2.acceptedDecisions);
 });
 
 test("rejects rows created after the as-of boundary (future data)", () => {
@@ -131,8 +202,8 @@ test("leakage prevention: winning_outcome / real_pnl_usd never change the decisi
 });
 
 test("one-per-event dedup: deterministic tie-break, order-independent", () => {
-  const rowLowScore = baseRow({ token_id: "tok-1", score: 66, created_at: "2026-07-20T10:00:00.000Z" });
-  const rowHighScore = baseRow({ token_id: "tok-2", score: 90, created_at: "2026-07-20T11:00:00.000Z" });
+  const rowLowScore = baseRow({ token_id: "tok-1", score: 66, created_at: T90_BOUNDARY });
+  const rowHighScore = baseRow({ token_id: "tok-2", score: 90, created_at: "2026-07-20T11:15:00.000Z" });
   const rowOtherEvent = baseRow({
     condition_id: "cond-2",
     token_id: "tok-3",
@@ -148,9 +219,14 @@ test("one-per-event dedup: deterministic tie-break, order-independent", () => {
     forward.acceptedDecisions.map((d) => d.decisionId).sort(),
     reversed.acceptedDecisions.map((d) => d.decisionId).sort(),
   );
-  const winnerForEvent1 = forward.acceptedDecisions.find((d) => d.eventKey === rowHighScore.event_slug);
-  assert.ok(winnerForEvent1);
-  assert.equal(winnerForEvent1?.score, 90);
+  // eventKey is the canonical grouping key from eventGroupSelection.ts
+  // (normalized + source-prefixed, e.g. "slug:nba-team-a-vs-team-b"), not the
+  // raw event_slug -- both rows share the same event_slug, so they must
+  // resolve to the same eventKey and only the higher-scoring one survives.
+  const eventKeys = forward.acceptedDecisions.map((d) => d.eventKey);
+  assert.equal(new Set(eventKeys).size, forward.acceptedDecisions.length, "no duplicate eventKeys among accepted decisions");
+  const winnerForEvent1 = forward.acceptedDecisions.find((d) => d.score === 90);
+  assert.ok(winnerForEvent1, "the score-90 row must be the accepted winner for its event");
   const duplicateRejection = forward.rejections.find((r) => r.reason === "DUPLICATE_EVENT_LOWER_RANK");
   assert.ok(duplicateRejection);
 });

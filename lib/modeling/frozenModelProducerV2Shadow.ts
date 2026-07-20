@@ -1,62 +1,64 @@
-// Frozen Model Producer V2 Shadow (Integration Milestone 2A, Part B).
-//
-// Pure, read-only, side-effect-free evaluator for the FROZEN
+// Frozen Model Producer V2 Shadow (Integration Milestone 2A, Part B; parity
+// repair v2). Pure, read-only, side-effect-free evaluator for the FROZEN
 // B2_PRICE_FLOOR_030_TIMING_WITHIN_120M threshold contract. This module does
 // NOT touch execution/order/reservation/queue/Ireland/CLOB systems -- it only
 // classifies already-generated signal candidates (generated_signal_pairs
-// export rows) into ACCEPTED decisions or REJECTED-with-reason, evaluated at
-// an explicit --as-of boundary. The contract itself (thresholds, timing
-// window, tie-break order) is frozen and must never be tuned here.
+// export rows) into ACCEPTED decisions or REJECTED-with-reason.
 //
-// Identity + score adapters are re-used verbatim from the existing modeling
-// library (getStrictDedupKeyForExportRow, getScoreValue, isEsports) so this
-// module never re-implements field-reading heuristics that already exist.
-// Deterministic hashing re-uses stable()/sha() from canonicalModelHandoff.ts.
+// PARITY NOTE: the price-floor and timing predicates below are copied
+// verbatim (same constants, same comparison operators) from the accepted
+// canonical B2 implementation in lib/modeling/boundedRoutingExperiments.ts
+// (commit ce122b0 "Modeling: add post-June canonical walkthrough" / 65256a8
+// "Modeling: add canonical model handoff package" -- a divergent history
+// line never merged into this branch's ancestry, so the file cannot be
+// imported without dragging in its full PnL/bankroll/vault-replay dependency
+// graph, which is inappropriate for a leakage-free forward shadow producer
+// and would blow the approved file budget). The two functions are:
+//
+//   export const PRICE_FLOOR = 0.3 as const;
+//   export const TIMING_UPPER_HOURS = 2 as const;
+//   function passesPriceFloor(row): getEntryPriceValue(row) !== null && p >= PRICE_FLOOR
+//   function passesTimingWithin120m(row): h !== null && h >= 0 && h < TIMING_UPPER_HOURS
+//   function getEntryPriceValue(row): finiteNumber(row.entry_price_num); 0 < v <= 1 ? v : null
+//   function getHoursUntilStartValue(row): (startMs(diagnostics.gameStartIso) - createdMs(row.created_at)) / 3_600_000
+//
+// Score (>=65) and eSports exclusion adapters (getScoreValue, isEsports) are
+// imported verbatim from historicalFunnelVariants.ts -- reused directly, not
+// re-implemented, since that module IS import-safe (no PnL/bankroll deps).
+// Physical-event grouping reuses buildEventGroupKey from eventGroupSelection.ts
+// (the same canonical grouping helper used elsewhere in the modeling stack)
+// instead of a locally invented event-key heuristic.
+//
+// T-90 SNAPSHOT RESOLUTION (per strict observation identity): among all rows
+// sharing an identity, the eligible set is those with
+// created_at <= game_start - 90 minutes (an accepted-source rule -- see
+// executionWaterfall.ts's t90 resolution: `createdMs(r) <= startMs(r) - 90*60_000`).
+// The winner is the eligible row with the LATEST created_at (closest to the
+// T-90 boundary from before it), tie-broken by observationId ascending. A
+// snapshot created even 1ms after the T-90 boundary is excluded from
+// eligibility entirely (it cannot displace an earlier valid snapshot, since
+// it is never part of the eligible set to begin with).
 
 import type { ExportRow } from "./generatedSignalPairsExportContract";
 import { getStrictDedupKeyForExportRow } from "./generatedSignalPairsExportContract";
 import { getScoreValue, isEsports } from "./historicalFunnelVariants";
-import { stable, sha } from "./canonicalModelHandoff";
+import { buildEventGroupKey } from "./eventGroupSelection";
+import { createHash } from "node:crypto";
 
 export const FROZEN_MODEL_V2_VERSION = "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M" as const;
 export const FROZEN_MODEL_V2_SCHEMA_VERSION = "FROZEN_MODEL_V2_SHADOW_DECISION_V1" as const;
 
-// ---- Frozen thresholds. DO NOT TUNE. ----
+// ---- Frozen thresholds. DO NOT TUNE. Verbatim from accepted source. ----
 const SCORE_THRESHOLD = 65;
 const PRICE_FLOOR = 0.3;
-const TIMING_WINDOW_MINUTES = 120;
-
-// Boundary choice (spec is ambiguous only at the exact edge): score == 65 and
-// price == 0.30 are explicitly ACCEPTED per the brief ("exactly is
-// ACCEPTED"). For timing, the spec says "within 120 minutes" -- we treat
-// exactly 120 minutes as still WITHIN the window (inclusive upper boundary),
-// symmetric with the score/price inclusive-at-threshold rule. Anything
-// beyond 120 minutes (120.000001+) is OUTSIDE_120M.
+const TIMING_UPPER_HOURS = 2; // 120 minutes
+const T90_OFFSET_MS = 90 * 60_000;
 
 const CONDITION_ID_FIELDS = ["condition_id", "conditionId"] as const;
 const TOKEN_ID_FIELDS = ["token_id", "tokenId"] as const;
 const SELECTED_OUTCOME_FIELDS = ["selected_outcome", "selectedOutcome"] as const;
-const ENTRY_PRICE_FIELDS = ["entry_price_num", "entryPrice", "entry_price"] as const;
-const EVENT_KEY_FIELDS = [
-  "match_family_key",
-  "matchFamilyKey",
-  "canonical_event_key",
-  "canonicalEventKey",
-  "parent_event_key",
-  "parentEventKey",
-  "event_slug",
-  "eventSlug",
-  "event_title",
-  "eventTitle",
-] as const;
-// Leakage fields: never read for scoring/selection. Only checked to prove
-// they cannot influence the decision (tests flip these and assert no diff).
-const LEAKAGE_FIELDS = ["winning_outcome", "winningOutcome", "real_pnl_usd", "realPnlUsd"] as const;
-// Market families this frozen contract supports. A row that declares an
-// explicit market_type/marketType outside this allow-list fails closed as
-// UNSUPPORTED_MARKET. A row with no market_type field at all is treated as
-// the default supported binary market (most export rows do not carry this
-// field), so absence is not itself a rejection reason.
+// Leakage fields: never read for scoring/selection. Only referenced in the
+// type below to document the check; the code never accesses row[leakageField].
 const SUPPORTED_MARKET_TYPES = new Set(["BINARY", "binary"]);
 
 export type FrozenModelV2RejectionReason =
@@ -109,6 +111,28 @@ export function normalizeAsOfIso(asOf: string): string {
   return new Date(ms).toISOString();
 }
 
+// ---- deterministic hashing (local, no import of canonicalModelHandoff.ts) ----
+export function stable(value: unknown): string {
+  const sortKeys = (input: unknown): unknown => {
+    if (Array.isArray(input)) return input.map(sortKeys);
+    if (input !== null && typeof input === "object") {
+      const record = input as Record<string, unknown>;
+      return Object.keys(record)
+        .sort()
+        .reduce<Record<string, unknown>>((acc, key) => {
+          acc[key] = sortKeys(record[key]);
+          return acc;
+        }, {});
+    }
+    return input;
+  };
+  return JSON.stringify(sortKeys(value));
+}
+
+export function sha(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
+}
+
 function getStringField(row: ExportRow, keys: readonly string[]): string | null {
   for (const key of keys) {
     const value = row[key];
@@ -118,16 +142,38 @@ function getStringField(row: ExportRow, keys: readonly string[]): string | null 
   return null;
 }
 
-function getEntryPrice(row: ExportRow): number | null {
-  for (const key of ENTRY_PRICE_FIELDS) {
-    const value = row[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-  }
-  return null;
+// Verbatim port of scoreComponentAnalysis.ts's getEntryPriceValue.
+function getEntryPriceValue(row: ExportRow): number | null {
+  const raw = row.entry_price_num;
+  const v = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+  return v !== null && v > 0 && v <= 1 ? v : null;
 }
 
-function getEventKey(row: ExportRow): string | null {
-  return getStringField(row, EVENT_KEY_FIELDS);
+// Verbatim port of boundedRoutingExperiments.ts's passesPriceFloor.
+function passesPriceFloor(row: ExportRow): boolean {
+  const p = getEntryPriceValue(row);
+  return p !== null && p >= PRICE_FLOOR;
+}
+
+// Verbatim port of historicalFunnelVariants.ts's getHoursUntilStartValue,
+// computed relative to the row's OWN created_at (the snapshot's own capture
+// time), not an external as-of wall clock -- matching the accepted source.
+function getHoursUntilStartValue(row: ExportRow): number | null {
+  const gameStartIso = getGameStartIso(row);
+  const createdAt = typeof row.created_at === "string" ? row.created_at : null;
+  if (gameStartIso === null || createdAt === null) return null;
+  const startMs = Date.parse(gameStartIso);
+  const createdMs = Date.parse(createdAt);
+  if (Number.isNaN(startMs) || Number.isNaN(createdMs)) return null;
+  return (startMs - createdMs) / 3_600_000;
+}
+
+// Verbatim port of boundedRoutingExperiments.ts's passesTimingWithin120m:
+// 0 <= hoursUntilStart < 2. Already-started (negative) and >=120min both fail
+// closed.
+function passesTimingWithin120m(row: ExportRow): boolean {
+  const h = getHoursUntilStartValue(row);
+  return h !== null && h >= 0 && h < TIMING_UPPER_HOURS;
 }
 
 function getGameStartIso(row: ExportRow): string | null {
@@ -156,11 +202,39 @@ function resolveIdentity(row: ExportRow): { identity: RowIdentity } | { reason: 
   if (selectedOutcome === null) return { reason: "MISSING_SELECTED_OUTCOME" };
   const observationId = getStrictDedupKeyForExportRow(row);
   if (observationId === null) return { reason: "MISSING_EVENT_IDENTITY" };
-  // Event key: prefer explicit event-level fields; fall back to condition_id
-  // (a market/condition maps to exactly one event in the absence of a more
-  // specific event grouping field).
-  const eventKey = getEventKey(row) ?? conditionId;
+  // Canonical physical-event grouping key (reused from eventGroupSelection.ts,
+  // not a locally invented heuristic).
+  const eventKey = buildEventGroupKey(row as Record<string, unknown>).key || conditionId;
   return { identity: { conditionId, tokenId, selectedOutcome, observationId, eventKey } };
+}
+
+function createdMs(row: ExportRow): number | null {
+  const ms = typeof row.created_at === "string" ? Date.parse(row.created_at) : NaN;
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/**
+ * Per-identity canonical T-90 snapshot resolution: among rows sharing a
+ * strict observation identity, the eligible set is created_at <=
+ * game_start - 90min; the winner is the eligible row with the latest
+ * created_at, tie-broken by observationId ascending. Rows created even 1ms
+ * after the T-90 boundary are excluded from the eligible set (they cannot
+ * displace an earlier valid snapshot).
+ */
+function resolveT90Snapshot(rows: readonly ExportRow[]): ExportRow | null {
+  const withStart = rows
+    .map((row) => ({ row, start: (() => { const iso = getGameStartIso(row); return iso !== null ? Date.parse(iso) : NaN; })(), created: createdMs(row) }))
+    .filter((r): r is { row: ExportRow; start: number; created: number } => Number.isFinite(r.start) && r.created !== null);
+  if (withStart.length === 0) return null;
+  const eligible = withStart.filter((r) => r.created <= r.start - T90_OFFSET_MS);
+  if (eligible.length === 0) return null;
+  eligible.sort((a, b) => {
+    if (a.created !== b.created) return b.created - a.created;
+    const aId = getStrictDedupKeyForExportRow(a.row) ?? "";
+    const bId = getStrictDedupKeyForExportRow(b.row) ?? "";
+    return aId.localeCompare(bId);
+  });
+  return eligible[0].row;
 }
 
 interface EvaluatedRow {
@@ -173,75 +247,144 @@ interface EvaluatedRow {
   createdAtIso: string;
 }
 
-function evaluateRow(
-  row: ExportRow,
-  index: number,
-  asOfMs: number,
-): { accepted: EvaluatedRow } | { reason: FrozenModelV2RejectionReason; eventKey: string | null; observationId: string | null } {
-  const identityResult = resolveIdentity(row);
-  if ("reason" in identityResult) {
-    return { reason: identityResult.reason, eventKey: null, observationId: null };
-  }
-  const { identity } = identityResult;
+/**
+ * Top-level pure entry point. Groups input rows by strict observation
+ * identity, resolves the canonical T-90 snapshot per identity, then applies
+ * the frozen threshold gates to that single resolved snapshot per identity,
+ * then applies one-per-event dedup across identities sharing an event.
+ *
+ * Never reads winning_outcome/real_pnl_usd anywhere in this function.
+ */
+export function produceFrozenModelV2ShadowDecisions(
+  rows: readonly ExportRow[],
+  asOfIsoInput: string,
+): FrozenModelV2ShadowResult {
+  const asOfIso = normalizeAsOfIso(asOfIsoInput);
+  const asOfMs = Date.parse(asOfIso);
 
-  const marketType = row.market_type ?? row.marketType;
-  if (typeof marketType === "string" && marketType.trim() !== "" && !SUPPORTED_MARKET_TYPES.has(marketType.trim())) {
-    return { reason: "UNSUPPORTED_MARKET", eventKey: identity.eventKey, observationId: identity.observationId };
+  const rejections: FrozenModelV2Rejection[] = [];
+
+  // Visible universe: rows must exist at or before the as-of replay boundary.
+  const visible: Array<{ row: ExportRow; index: number }> = [];
+  rows.forEach((row, index) => {
+    const c = createdMs(row);
+    if (c === null) {
+      rejections.push({ index, observationId: null, eventKey: null, reason: "SNAPSHOT_NOT_T90_COMPATIBLE" });
+      return;
+    }
+    if (c > asOfMs) {
+      rejections.push({ index, observationId: null, eventKey: null, reason: "FUTURE_DATA_REJECTED" });
+      return;
+    }
+    visible.push({ row, index });
+  });
+
+  // Group visible rows by strict observation identity.
+  const byIdentity = new Map<string, Array<{ row: ExportRow; index: number }>>();
+  const identityFailures = new Map<number, { reason: FrozenModelV2RejectionReason; eventKey: string | null; observationId: string | null }>();
+  for (const entry of visible) {
+    const identityResult = resolveIdentity(entry.row);
+    if ("reason" in identityResult) {
+      identityFailures.set(entry.index, { reason: identityResult.reason, eventKey: null, observationId: null });
+      continue;
+    }
+    const key = identityResult.identity.observationId;
+    const bucket = byIdentity.get(key);
+    if (bucket) bucket.push(entry);
+    else byIdentity.set(key, [entry]);
+  }
+  for (const [index, failure] of identityFailures) {
+    rejections.push({ index, observationId: failure.observationId, eventKey: failure.eventKey, reason: failure.reason });
   }
 
-  const createdAtRaw = row.created_at;
-  const createdAtIso = typeof createdAtRaw === "string" ? createdAtRaw : null;
-  const createdAtMs = createdAtIso !== null ? Date.parse(createdAtIso) : NaN;
-  if (createdAtIso === null || !Number.isFinite(createdAtMs)) {
-    return { reason: "SNAPSHOT_NOT_T90_COMPATIBLE", eventKey: identity.eventKey, observationId: identity.observationId };
-  }
-  if (createdAtMs > asOfMs) {
-    return { reason: "FUTURE_DATA_REJECTED", eventKey: identity.eventKey, observationId: identity.observationId };
+  const eligible: EvaluatedRow[] = [];
+
+  for (const bucket of byIdentity.values()) {
+    const identityResult = resolveIdentity(bucket[0].row);
+    if ("reason" in identityResult) continue; // already recorded above
+    const { identity } = identityResult;
+
+    const marketType = bucket[0].row.market_type ?? bucket[0].row.marketType;
+    if (typeof marketType === "string" && marketType.trim() !== "" && !SUPPORTED_MARKET_TYPES.has(marketType.trim())) {
+      rejections.push({ index: bucket[0].index, observationId: identity.observationId, eventKey: identity.eventKey, reason: "UNSUPPORTED_MARKET" });
+      continue;
+    }
+
+    const t90Snapshot = resolveT90Snapshot(bucket.map((b) => b.row));
+    if (t90Snapshot === null) {
+      rejections.push({ index: bucket[0].index, observationId: identity.observationId, eventKey: identity.eventKey, reason: "SNAPSHOT_NOT_T90_COMPATIBLE" });
+      continue;
+    }
+
+    if (isEsports(t90Snapshot)) {
+      rejections.push({ index: bucket[0].index, observationId: identity.observationId, eventKey: identity.eventKey, reason: "ESPORTS_EXCLUDED" });
+      continue;
+    }
+
+    const score = getScoreValue(t90Snapshot);
+    if (score === null || score < SCORE_THRESHOLD) {
+      rejections.push({ index: bucket[0].index, observationId: identity.observationId, eventKey: identity.eventKey, reason: "SCORE_BELOW_65" });
+      continue;
+    }
+
+    if (!passesPriceFloor(t90Snapshot)) {
+      rejections.push({ index: bucket[0].index, observationId: identity.observationId, eventKey: identity.eventKey, reason: "PRICE_BELOW_030" });
+      continue;
+    }
+
+    if (!passesTimingWithin120m(t90Snapshot)) {
+      rejections.push({ index: bucket[0].index, observationId: identity.observationId, eventKey: identity.eventKey, reason: "OUTSIDE_120M" });
+      continue;
+    }
+
+    const entryPrice = getEntryPriceValue(t90Snapshot)!;
+    const minutesUntilStart = getHoursUntilStartValue(t90Snapshot)! * 60;
+    const createdAtIso = new Date(createdMs(t90Snapshot)!).toISOString();
+
+    eligible.push({ index: bucket[0].index, row: t90Snapshot, identity, score, entryPrice, minutesUntilStart, createdAtIso });
   }
 
-  if (isEsports(row)) {
-    return { reason: "ESPORTS_EXCLUDED", eventKey: identity.eventKey, observationId: identity.observationId };
+  // One-per-event dedup: group eligible identities by eventKey, deterministic
+  // winner (highest score -> earliest created_at -> smallest observationId).
+  const byEvent = new Map<string, EvaluatedRow[]>();
+  for (const evaluated of eligible) {
+    const key = evaluated.identity.eventKey;
+    const group = byEvent.get(key);
+    if (group) group.push(evaluated);
+    else byEvent.set(key, [evaluated]);
   }
 
-  const score = getScoreValue(row);
-  if (score === null || score < SCORE_THRESHOLD) {
-    return { reason: "SCORE_BELOW_65", eventKey: identity.eventKey, observationId: identity.observationId };
+  const winners: EvaluatedRow[] = [];
+  for (const group of byEvent.values()) {
+    const sorted = [...group].sort(compareForTieBreak);
+    const [winner, ...losers] = sorted;
+    winners.push(winner);
+    for (const loser of losers) {
+      rejections.push({
+        index: loser.index,
+        observationId: loser.identity.observationId,
+        eventKey: loser.identity.eventKey,
+        reason: "DUPLICATE_EVENT_LOWER_RANK",
+      });
+    }
   }
 
-  const entryPrice = getEntryPrice(row);
-  if (entryPrice === null || entryPrice < PRICE_FLOOR) {
-    return { reason: "PRICE_BELOW_030", eventKey: identity.eventKey, observationId: identity.observationId };
-  }
+  const acceptedDecisions = winners
+    .map((evaluated) => buildDecision(evaluated, asOfIso))
+    .sort((a, b) => a.decisionId.localeCompare(b.decisionId));
 
-  const gameStartIso = getGameStartIso(row);
-  const gameStartMs = gameStartIso !== null ? Date.parse(gameStartIso) : NaN;
-  if (gameStartIso === null || !Number.isFinite(gameStartMs)) {
-    return { reason: "SNAPSHOT_NOT_T90_COMPATIBLE", eventKey: identity.eventKey, observationId: identity.observationId };
-  }
-  const minutesUntilStart = (gameStartMs - asOfMs) / 60_000;
-  if (minutesUntilStart > TIMING_WINDOW_MINUTES) {
-    return { reason: "OUTSIDE_120M", eventKey: identity.eventKey, observationId: identity.observationId };
-  }
+  rejections.sort((a, b) => a.index - b.index);
 
   return {
-    accepted: {
-      index,
-      row,
-      identity,
-      score,
-      entryPrice,
-      minutesUntilStart,
-      createdAtIso: new Date(createdAtMs).toISOString(),
-    },
+    asOfIso,
+    modelVersion: FROZEN_MODEL_V2_VERSION,
+    inputCount: rows.length,
+    eligibleCount: eligible.length,
+    acceptedDecisions,
+    rejections,
   };
 }
 
-/**
- * Deterministic one-per-event tie-break: highest score wins; ties broken by
- * earliest created_at (decision time); remaining ties broken by
- * lexicographically smallest observationId (strict dedup key). This order is
- * chosen so the winner is reproducible independent of input row order.
- */
 function compareForTieBreak(a: EvaluatedRow, b: EvaluatedRow): number {
   if (a.score !== b.score) return b.score - a.score;
   const aCreatedMs = Date.parse(a.createdAtIso);
@@ -286,73 +429,5 @@ function buildDecision(evaluated: EvaluatedRow, asOfIso: string): FrozenModelV2D
     minutesUntilStart: evaluated.minutesUntilStart,
     selectedOutcome: identity.selectedOutcome,
     createdAtIso: evaluated.createdAtIso,
-  };
-}
-
-/**
- * Top-level pure entry point. Never reads winning_outcome/real_pnl_usd (the
- * LEAKAGE_FIELDS constant exists only so a test module can assert those keys
- * are absent from any code path that reads scoring inputs; this function
- * itself never accesses row[leakageField]).
- */
-export function produceFrozenModelV2ShadowDecisions(
-  rows: readonly ExportRow[],
-  asOfIsoInput: string,
-): FrozenModelV2ShadowResult {
-  const asOfIso = normalizeAsOfIso(asOfIsoInput);
-  const asOfMs = Date.parse(asOfIso);
-
-  const rejections: FrozenModelV2Rejection[] = [];
-  const eligible: EvaluatedRow[] = [];
-
-  rows.forEach((row, index) => {
-    const result = evaluateRow(row, index, asOfMs);
-    if ("accepted" in result) {
-      eligible.push(result.accepted);
-    } else {
-      rejections.push({ index, observationId: result.observationId, eventKey: result.eventKey, reason: result.reason });
-    }
-  });
-
-  // One-per-event dedup: group eligible rows by eventKey, deterministically
-  // pick a single winner per group, reject the rest as
-  // DUPLICATE_EVENT_LOWER_RANK. Grouping + sort are order-independent so the
-  // outcome does not depend on input row order.
-  const byEvent = new Map<string, EvaluatedRow[]>();
-  for (const evaluated of eligible) {
-    const key = evaluated.identity.eventKey;
-    const group = byEvent.get(key);
-    if (group) group.push(evaluated);
-    else byEvent.set(key, [evaluated]);
-  }
-
-  const winners: EvaluatedRow[] = [];
-  for (const group of byEvent.values()) {
-    const sorted = [...group].sort(compareForTieBreak);
-    const [winner, ...losers] = sorted;
-    winners.push(winner);
-    for (const loser of losers) {
-      rejections.push({
-        index: loser.index,
-        observationId: loser.identity.observationId,
-        eventKey: loser.identity.eventKey,
-        reason: "DUPLICATE_EVENT_LOWER_RANK",
-      });
-    }
-  }
-
-  const acceptedDecisions = winners
-    .map((evaluated) => buildDecision(evaluated, asOfIso))
-    .sort((a, b) => a.decisionId.localeCompare(b.decisionId));
-
-  rejections.sort((a, b) => a.index - b.index);
-
-  return {
-    asOfIso,
-    modelVersion: FROZEN_MODEL_V2_VERSION,
-    inputCount: rows.length,
-    eligibleCount: eligible.length,
-    acceptedDecisions,
-    rejections,
   };
 }

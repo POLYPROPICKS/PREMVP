@@ -64,23 +64,27 @@ function loadFixtureRows(fixturePath: string): ExportRow[] {
     });
 }
 
+// Bounded-source-read requirement: production Supabase reads must always be
+// bounded, even when the caller omits --limit. This default is only a safety
+// bound (never used to silently truncate an explicit --limit).
+const DEFAULT_SUPABASE_ROW_LIMIT = 5_000;
+
 /**
  * Optional read-only production data seam. Only invoked when no --fixture is
  * given. Dynamically imports the existing admin Supabase client so that
  * simply importing this module (as tests do) never requires
  * SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY to be set. Never logs or prints the
- * env var values themselves.
+ * env var values themselves. Always bounded: an explicit --limit is honored;
+ * otherwise DEFAULT_SUPABASE_ROW_LIMIT applies so an unbounded full-table
+ * select can never happen in production mode.
  */
 async function loadRowsFromSupabase(limit: number | undefined): Promise<ExportRow[]> {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error("FROZEN_RUNNER_NO_FIXTURE_AND_MISSING_SUPABASE_ENV");
   }
   const { supabaseAdmin } = await import("../../supabase/server");
-  let query = supabaseAdmin.from("generated_signal_pairs").select("*");
-  if (typeof limit === "number" && Number.isFinite(limit)) {
-    query = query.limit(limit);
-  }
-  const { data, error } = await query;
+  const boundedLimit = typeof limit === "number" && Number.isFinite(limit) ? limit : DEFAULT_SUPABASE_ROW_LIMIT;
+  const { data, error } = await supabaseAdmin.from("generated_signal_pairs").select("*").limit(boundedLimit);
   if (error) throw new Error(`FROZEN_RUNNER_SUPABASE_READ_FAILED:${error.message}`);
   return (data ?? []) as ExportRow[];
 }
