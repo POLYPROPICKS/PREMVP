@@ -465,10 +465,19 @@ export async function buildReservationPlan(
   ) => {
     bySport[best.inferred_sport] = (bySport[best.inferred_sport] ?? 0) + 1;
     byTier[tier] = (byTier[tier] ?? 0) + 1;
-    const reason = isFallback
-      ? `FALLBACK_SLOT_FILL_${tier}: score=${best.diagnostics.score} cov=${best.diagnostics.coverage} ` +
-        `allowed_fullmatch_anchor markets_in_event=${group.length}`
-      : `EVENT_FIRST_TIER1_OPPORTUNITY: score=${best.diagnostics.score} cov=${best.diagnostics.coverage} markets_in_event=${group.length}`;
+    // Contract A authoritative decision (CONTRACT_A_V1 selector mode): the
+    // candidate already carries an immutable selector/identity provenance
+    // block in its own diagnostics. Persist it verbatim into the reservation
+    // diagnostics (no new column, no rerank) so rebalance can later locate
+    // the exact authoritative market -- never a Contur3-reranked alternate.
+    const selectorId = best.diagnostics.selector_id;
+    const isContractA = typeof selectorId === "string" && selectorId.trim() !== "";
+    const reason = isContractA
+      ? `CONTRACT_A_AUTHORITATIVE: selector=${selectorId} observation=${best.diagnostics.authoritative_observation_id}`
+      : isFallback
+        ? `FALLBACK_SLOT_FILL_${tier}: score=${best.diagnostics.score} cov=${best.diagnostics.coverage} ` +
+          `allowed_fullmatch_anchor markets_in_event=${group.length}`
+        : `EVENT_FIRST_TIER1_OPPORTUNITY: score=${best.diagnostics.score} cov=${best.diagnostics.coverage} markets_in_event=${group.length}`;
     reservations.push({
       plan_run_id: planRunId,
       plan_date_minsk: window.planDateMinsk,
@@ -497,6 +506,16 @@ export async function buildReservationPlan(
         battle_trace_id: `contur3:${planRunId}:${groupKey}:unknown:unknown`,
         slot_fill: isFallback ? "FALLBACK_SLOT_FILL" : "TIER1_PRIMARY",
         fallback_tier: isFallback ? tier : undefined,
+        ...(isContractA
+          ? {
+              selector_id: selectorId,
+              authoritative_condition_id: best.diagnostics.authoritative_condition_id,
+              authoritative_token_id: best.diagnostics.authoritative_token_id,
+              authoritative_side: best.diagnostics.authoritative_side,
+              authoritative_observation_id: best.diagnostics.authoritative_observation_id,
+              authoritative_event_key: best.diagnostics.authoritative_event_key,
+            }
+          : {}),
       },
     });
   };

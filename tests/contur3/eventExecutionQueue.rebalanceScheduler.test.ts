@@ -262,6 +262,160 @@ test("B6: a dry-run rebalance invocation records zero job_runs evidence", async 
   assert.equal(repo.queueRows.length, 0);
 });
 
+// ── Integration Phase 1: CONTRACT_A_V1 authoritative-market rebalance ──────
+
+const AUTH_SELECTOR_ID = "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M";
+
+function contractAReservation(overrides: Partial<NightEventReservationRow> = {}): NightEventReservationRow {
+  return baseReservation({
+    diagnostics: {
+      selector_id: AUTH_SELECTOR_ID,
+      authoritative_condition_id: "cond-market-A",
+      authoritative_token_id: "tok-market-A",
+      authoritative_side: "Spain",
+      authoritative_observation_id: "obs-esp-arg-1",
+      authoritative_event_key: "pair:argentina-vs-spain:2026-07-19",
+    },
+    ...overrides,
+  });
+}
+
+function marketA(overrides: Partial<FireModelCandidate> = {}): FireModelCandidate {
+  return baseCandidate({
+    condition_id: "cond-market-A",
+    token_id: "tok-market-A",
+    side: "Spain",
+    selected_outcome: "Spain",
+    ...overrides,
+  });
+}
+
+function marketB(overrides: Partial<FireModelCandidate> = {}): FireModelCandidate {
+  return baseCandidate({
+    condition_id: "cond-market-B",
+    token_id: "tok-market-B",
+    side: "Argentina",
+    selected_outcome: "Argentina",
+    diagnostics: {
+      executor_action: "BET_OR_PAPER_GO",
+      paper_only: false,
+      real_trade: false,
+      score: 99, // deliberately higher than market A -- must never win under compareCandidateQuality
+      coverage: 99,
+      smart_money: 99,
+      entry_price: 0.5,
+      game_start_iso: KICKOFF_ISO,
+      hours_to_start_now: 1,
+      fire_model_alias: "FireModel1",
+      version: "v2-lite-growth-safe",
+    },
+    ...overrides,
+  });
+}
+
+test("D1: a CONTRACT_A_V1 reservation queues its exact authoritative market even when an alternate market with a higher compareCandidateQuality score exists for the same event", async () => {
+  const repo = makeFakeRepo([contractAReservation()]);
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [marketB(), marketA()] }) } // B ranked first if compareCandidateQuality were used
+  );
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows.length, 1);
+  assert.equal(repo.queueRows[0].condition_id, "cond-market-A");
+  assert.equal(repo.queueRows[0].token_id, "tok-market-A");
+  assert.equal(repo.queueRows[0].side, "Spain");
+});
+
+test("D2: when the authoritative market is absent, rebalance fails closed -- no READY row, and the alternate market is never substituted", async () => {
+  const repo = makeFakeRepo([contractAReservation()]);
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [marketB()] }) } // market A missing entirely
+  );
+  assert.equal(result.queued_count, 0);
+  assert.equal(result.skipped_count, 1);
+  assert.equal(repo.queueRows.length, 0);
+  assert.equal(repo.skippedCalls.length, 1);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND/);
+});
+
+test("D3: when the authoritative market exists but is not executable (not live-eligible), rebalance fails closed instead of falling back to an executable alternate", async () => {
+  const repo = makeFakeRepo([contractAReservation()]);
+  const nonExecutableA = marketA({ live_eligible: false, live_rejection_reason: "WEAK_IDENTITY_LIVE_BLOCKED" });
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [nonExecutableA, marketB()] }) }
+  );
+  assert.equal(result.queued_count, 0);
+  assert.equal(result.skipped_count, 1);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE/);
+});
+
+test("D4: selector provenance round-trips from reservation diagnostics into the queue row's diagnostics", async () => {
+  const repo = makeFakeRepo([contractAReservation()]);
+  await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [marketA()] }) }
+  );
+  const row = repo.queueRows[0];
+  assert.equal(row.diagnostics.selector_id, AUTH_SELECTOR_ID);
+  assert.equal(row.diagnostics.authoritative_condition_id, "cond-market-A");
+  assert.equal(row.diagnostics.authoritative_token_id, "tok-market-A");
+  assert.equal(row.diagnostics.authoritative_side, "Spain");
+  assert.equal(row.diagnostics.authoritative_observation_id, "obs-esp-arg-1");
+});
+
+test("D5: a reservation with a missing/unknown authoritative identity (selector_id present but fields incomplete) fails closed", async () => {
+  const repo = makeFakeRepo([
+    contractAReservation({ diagnostics: { selector_id: AUTH_SELECTOR_ID } }), // missing authoritative_* fields
+  ]);
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [marketA(), marketB()] }) }
+  );
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE/);
+});
+
+test("D6: a repeated in-window run for a CONTRACT_A_V1 reservation is idempotent -- no duplicate queue row and no identity drift", async () => {
+  const reservations = [contractAReservation()];
+  const repo = makeFakeRepo(reservations);
+  const first = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [marketA(), marketB()] }) }
+  );
+  assert.equal(first.queued_count, 1);
+  reservations[0].status = "REBALANCE_PENDING"; // simulate re-surfacing, mirrors B4
+  const second = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [marketA(), marketB()] }) }
+  );
+  assert.equal(second.already_queued_count, 1);
+  assert.equal(second.queued_count, 0);
+  assert.equal(repo.queueRows.length, 1, "must not insert a second queue row");
+  assert.equal(repo.queueRows[0].condition_id, "cond-market-A", "identity must not drift across re-runs");
+});
+
+test("D7: a default CONTUR3_CURRENT reservation (no selector_id) is unaffected -- compareCandidateQuality still selects the best market", async () => {
+  const repo = makeFakeRepo([baseReservation()]);
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [baseCandidate()] }) }
+  );
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows[0].diagnostics.selector_id, undefined);
+});
+
 test("B7: a failed write-mode rebalance run records sanitized failure evidence and rethrows", async () => {
   const jobEvidence = makeFakeJobEvidence();
   const failingRepo: RebalanceRepoPort = {

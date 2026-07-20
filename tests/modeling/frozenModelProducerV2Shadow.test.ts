@@ -8,6 +8,7 @@ import {
   getStrictDedupKeyForExportRow,
   type ExportRow,
 } from "../../lib/modeling/generatedSignalPairsExportContract";
+import { buildFireModelCandidates } from "../../lib/executor/buildFireModelCandidates";
 
 const AS_OF = "2026-07-20T12:00:00.000Z";
 const GAME_START = "2026-07-20T13:00:00.000Z"; // fixed anchor for all boundary math below
@@ -362,4 +363,58 @@ test("does not import any reservation/queue/Ireland/CLOB module", async () => {
       assert.ok(!line.includes(token), `import line must not reference ${token}: ${line}`);
     }
   }
+});
+
+// ── Integration Phase 1: CONTRACT_A_V1 selector mode (buildFireModelCandidates) ──
+//
+// These tests exercise the authoritative-decision seam: buildFireModelCandidates
+// with selectorMode="CONTRACT_A_V1" must map produceFrozenModelV2ShadowDecisions's
+// own acceptedDecisions verbatim, preserving identity, and must NEVER run
+// Contur3's coverage/tier/bad-bucket predicates against them.
+
+test("CONTRACT_A_V1: an accepted Contract A decision maps to exactly one FireModelCandidate preserving condition_id/token_id/side/observation identity, even though it has no diagnostics.dataCoverage (would fail Contur3's LOW_COVERAGE gate)", async () => {
+  const row = baseRow({ condition_id: "cond-contract-a-1", token_id: "tok-contract-a-1", selected_outcome: "TEAM_A" });
+  const { candidates, rawDiagnostics } = await buildFireModelCandidates(10, "all", true, [row], "CONTRACT_A_V1");
+
+  assert.equal(candidates.length, 1);
+  assert.equal(rawDiagnostics, null);
+  const c = candidates[0];
+  assert.equal(c.condition_id, "cond-contract-a-1");
+  assert.equal(c.token_id, "tok-contract-a-1");
+  assert.equal(c.side, "TEAM_A");
+  assert.equal(c.selected_outcome, "TEAM_A");
+  assert.equal(c.diagnostics.selector_id, FROZEN_MODEL_V2_VERSION);
+  assert.equal(c.diagnostics.authoritative_condition_id, "cond-contract-a-1");
+  assert.equal(c.diagnostics.authoritative_token_id, "tok-contract-a-1");
+  assert.equal(c.diagnostics.authoritative_side, "TEAM_A");
+  assert.equal(
+    c.diagnostics.authoritative_observation_id,
+    getStrictDedupKeyForExportRow(row),
+  );
+  assert.ok(c.live_eligible, "identity-complete Contract A candidate must be live_eligible");
+});
+
+test("CONTRACT_A_V1: default calls (selectorMode omitted) are unaffected -- CONTUR3_CURRENT remains the implicit default", async () => {
+  const row = baseRow();
+  // Without selectorMode, the 5th param defaults to CONTUR3_CURRENT, which runs
+  // through the full scored/shadow eligibility pipeline (requires a live/injected
+  // Supabase-shaped row set, not raw ExportRow); with zero injectedRows-eligible
+  // fields (no metric_formula_version/signal_confidence_num/expires_at), Contur3
+  // finds nothing -- proving CONTRACT_A_V1 was never implicitly activated.
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [row]);
+  assert.equal(candidates.length, 0);
+});
+
+test("CONTRACT_A_V1: an unknown selector mode fails closed instead of silently defaulting", async () => {
+  await assert.rejects(
+    () => buildFireModelCandidates(10, "all", true, [baseRow()], "BOGUS_MODE" as never),
+    /UNKNOWN_SELECTOR_MODE/,
+  );
+});
+
+test("CONTRACT_A_V1: requires the injected-rows seam -- refuses to silently re-derive a different row set", async () => {
+  await assert.rejects(
+    () => buildFireModelCandidates(10, "all", true, undefined, "CONTRACT_A_V1"),
+    /CONTRACT_A_V1_REQUIRES_INJECTED_ROWS/,
+  );
 });

@@ -209,6 +209,76 @@ test("A5: a failed reservation cron run records sanitized failure evidence and r
   assert.doesNotMatch(call.errorMessage as string, /token=SECRETVALUE123/, "secret-shaped query params must be redacted");
 });
 
+// ── Integration Phase 1: CONTRACT_A_V1 authoritative reservation provenance ──
+
+function contractACandidate(overrides: Partial<FireModelCandidate> = {}): FireModelCandidate {
+  return baseCandidate({
+    condition_id: "cond-contract-a-esp-arg",
+    token_id: "tok-contract-a-esp-arg",
+    side: "Spain",
+    selected_outcome: "Spain",
+    diagnostics: {
+      executor_action: "BET_OR_PAPER_GO",
+      paper_only: false,
+      real_trade: false,
+      score: 80,
+      coverage: 100,
+      smart_money: null,
+      entry_price: 0.5,
+      game_start_iso: KICKOFF_ISO,
+      hours_to_start_now: 5,
+      fire_model_alias: "ContractA",
+      version: "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      selector_id: "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      authoritative_condition_id: "cond-contract-a-esp-arg",
+      authoritative_token_id: "tok-contract-a-esp-arg",
+      authoritative_side: "Spain",
+      authoritative_observation_id: "obs-esp-arg-1",
+      authoritative_event_key: "pair:argentina-vs-spain:2026-07-19",
+    },
+    ...overrides,
+  });
+}
+
+test("C1: a CONTRACT_A_V1 authoritative candidate persists selector_id and the exact authoritative identity into reservation diagnostics (no schema change, no rerank)", async () => {
+  const plan = await buildReservationPlan(ANCHOR_NOW_MS, {
+    fetchCandidates: async () => ({ candidates: [contractACandidate()] }),
+  });
+  assert.equal(plan.reservations.length, 1);
+  const r = plan.reservations[0];
+  assert.equal(r.diagnostics.selector_id, "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M");
+  assert.equal(r.diagnostics.authoritative_condition_id, "cond-contract-a-esp-arg");
+  assert.equal(r.diagnostics.authoritative_token_id, "tok-contract-a-esp-arg");
+  assert.equal(r.diagnostics.authoritative_side, "Spain");
+  assert.equal(r.diagnostics.authoritative_observation_id, "obs-esp-arg-1");
+  assert.equal(r.diagnostics.authoritative_event_key, "pair:argentina-vs-spain:2026-07-19");
+  assert.match(r.selection_reason ?? "", /CONTRACT_A_AUTHORITATIVE/);
+});
+
+test("C2: repeated CONTRACT_A_V1 input produces the same reservation identity -- no duplicate reservation on re-persist", async () => {
+  const repo = makeFakeRepo();
+  const plan = await buildReservationPlan(ANCHOR_NOW_MS, {
+    fetchCandidates: async () => ({ candidates: [contractACandidate()] }),
+  });
+  const first = await persistReservationPlan(plan, {}, repo);
+  assert.equal(first.written_count, 1);
+  const second = await persistReservationPlan(plan, {}, repo);
+  assert.equal(second.already_exists, true);
+  assert.equal(second.written_count, 0);
+  assert.equal(repo.store.length, 1);
+  assert.equal(repo.store[0].diagnostics.authoritative_condition_id, "cond-contract-a-esp-arg");
+});
+
+test("C3: default CONTUR3_CURRENT candidates (no selector_id) are unaffected -- no CONTRACT_A_AUTHORITATIVE reason, no authoritative_* diagnostics", async () => {
+  const plan = await buildReservationPlan(ANCHOR_NOW_MS, {
+    fetchCandidates: async () => ({ candidates: [baseCandidate()] }),
+  });
+  const r = plan.reservations[0];
+  assert.equal(r.diagnostics.selector_id, undefined);
+  assert.equal(r.diagnostics.authoritative_condition_id, undefined);
+  assert.doesNotMatch(r.selection_reason ?? "", /CONTRACT_A_AUTHORITATIVE/);
+});
+
 test("A6: an empty planning universe records status=empty, not success, with zero generatedCount", async () => {
   const repo = makeFakeRepo();
   const jobEvidence = makeFakeJobEvidence();

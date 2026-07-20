@@ -149,6 +149,8 @@ export function buildQueueRow(
     .update(`${reservation.plan_run_id}__${orderKey}`)
     .digest("hex")
     .slice(0, 32);
+  const reservationSelectorId = (reservation.diagnostics ?? {}).selector_id;
+  const isContractA = typeof reservationSelectorId === "string" && reservationSelectorId.trim() !== "";
   return {
     reservation_id: reservation.id ?? null,
     plan_run_id: reservation.plan_run_id,
@@ -175,7 +177,9 @@ export function buildQueueRow(
     preferred_entry_iso: preferredEntryIso(new Date(best.diagnostics.game_start_iso).getTime()),
     latest_entry_iso: latestEntryIso(new Date(best.diagnostics.game_start_iso).getTime()),
     selection_rank: 1,
-    selection_reason: `REBALANCE_SINGLE_BEST_MARKET: tier=${EXECUTABLE_TIER} score=${best.diagnostics.score} cov=${best.diagnostics.coverage}`,
+    selection_reason: isContractA
+      ? `CONTRACT_A_AUTHORITATIVE_MARKET: selector=${reservationSelectorId}`
+      : `REBALANCE_SINGLE_BEST_MARKET: tier=${EXECUTABLE_TIER} score=${best.diagnostics.score} cov=${best.diagnostics.coverage}`,
     status: "READY",
     order_key: orderKey,
     idempotency_key: idem,
@@ -186,6 +190,16 @@ export function buildQueueRow(
       entry_price: best.diagnostics.entry_price,
       max_entry_price: best.max_entry_price,
       battle_trace_id: `contur3:${reservation.plan_run_id}:${reservation.match_family_key}:${best.condition_id}:${best.token_id}`,
+      ...(isContractA
+        ? {
+            selector_id: reservationSelectorId,
+            authoritative_condition_id: (reservation.diagnostics ?? {}).authoritative_condition_id,
+            authoritative_token_id: (reservation.diagnostics ?? {}).authoritative_token_id,
+            authoritative_side: (reservation.diagnostics ?? {}).authoritative_side,
+            authoritative_observation_id: (reservation.diagnostics ?? {}).authoritative_observation_id,
+            authoritative_event_key: (reservation.diagnostics ?? {}).authoritative_event_key,
+          }
+        : {}),
     },
   };
 }
@@ -555,6 +569,83 @@ export async function runEventRebalance(
     }
 
     const eventCandidates = marketsByKey.get(reservation.match_family_key) ?? [];
+
+    // Contract A authoritative reservation (CONTRACT_A_V1 selector mode):
+    // the exact winning market was already decided upstream and its
+    // immutable identity was persisted into reservation.diagnostics.
+    // compareCandidateQuality must NEVER substitute a different
+    // condition_id/token_id/side here -- locate the exact authoritative
+    // candidate only, and fail closed (no READY row, no alternate market)
+    // if it is missing or no longer executable.
+    const reservationDiag = reservation.diagnostics ?? {};
+    const reservationSelectorId = reservationDiag.selector_id;
+    if (typeof reservationSelectorId === "string" && reservationSelectorId.trim() !== "") {
+      const authConditionId = reservationDiag.authoritative_condition_id;
+      const authTokenId = reservationDiag.authoritative_token_id;
+      const authSide = reservationDiag.authoritative_side;
+      const identityComplete =
+        typeof authConditionId === "string" &&
+        authConditionId.trim() !== "" &&
+        typeof authTokenId === "string" &&
+        authTokenId.trim() !== "" &&
+        typeof authSide === "string" &&
+        authSide.trim() !== "";
+
+      const authoritativeCandidate = identityComplete
+        ? eventCandidates.find(
+            (c) => c.condition_id === authConditionId && c.token_id === authTokenId && c.side === authSide
+          ) ?? null
+        : null;
+
+      const executableCheck = authoritativeCandidate ? isExecutableMarket(authoritativeCandidate) : null;
+
+      if (!identityComplete || authoritativeCandidate === null || !executableCheck!.executable) {
+        const failReason = !identityComplete
+          ? "CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE"
+          : authoritativeCandidate === null
+            ? "CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND"
+            : `CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE: ${executableCheck!.rejectReason}`;
+        console.log(
+          `[contur3-rebalance] CONTRACT_A_FAIL_CLOSED selector=${reservationSelectorId} ` +
+            `event=${reservation.match_family_key} observation=${reservationDiag.authoritative_observation_id ?? "unknown"} reason=${failReason}`
+        );
+        skipped += 1;
+        if (write && reservation.id) {
+          await repo.markReservationSkipped(reservation.id, failReason);
+        }
+        outcomes.push({
+          match_family_key: reservation.match_family_key,
+          reservation_id: reservation.id ?? null,
+          result: "SKIPPED",
+          reason: failReason,
+          blocked_candidates: eventCandidates.slice(0, 5).map(buildBlockedCandidateDiag),
+        });
+        continue;
+      }
+
+      const row = buildQueueRow(reservation, authoritativeCandidate, rebalanceRunId);
+      if (write) {
+        try {
+          await repo.insertQueueRow(row);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          throw new Error(`queue insert failed (${reservation.match_family_key}): ${msg}`);
+        }
+        if (reservation.id) {
+          await repo.markReservationQueued(reservation.id, row.selection_reason ?? "");
+        }
+      }
+      queued += 1;
+      outcomes.push({
+        match_family_key: reservation.match_family_key,
+        reservation_id: reservation.id ?? null,
+        result: "QUEUED",
+        reason: row.selection_reason ?? "CONTRACT_A_AUTHORITATIVE_MARKET",
+        queue_row: row,
+      });
+      continue;
+    }
+
     const tier1Candidates = eventCandidates.filter((c) => planTierLabel(c) === EXECUTABLE_TIER);
     const tier1WithCondToken = tier1Candidates.filter(
       (c) => Boolean(c.condition_id) && Boolean(c.token_id)

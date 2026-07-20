@@ -5,6 +5,16 @@ import {
   type MarketClass,
 } from "@/lib/contur3/taxonomy";
 import { sanitizeSchedulerErrorMessage } from "./schedulerJobEvidence";
+import {
+  produceFrozenModelV2ShadowDecisions,
+  FROZEN_MODEL_V2_VERSION,
+} from "@/lib/modeling/frozenModelProducerV2Shadow";
+import {
+  getCanonicalTokenIdForExportRow,
+  getStrictDedupKeyForExportRow,
+  type ExportRow,
+} from "@/lib/modeling/generatedSignalPairsExportContract";
+import { EXECUTABLE_STAKE_USD } from "./executorQueueTypes";
 
 const POLICY_VERSION = "battle-sm-guard-v1-20260615";
 const LIVE_POLICY_VERSION = "live-risk-guard-v1";
@@ -12,6 +22,18 @@ const LIVE_POLICY_VERSION = "live-risk-guard-v1";
 // Source-proof: STAKE_5_DRAWDOWN_PROTECT ROI=14.98% MaxDD=$73.56 (P0B 2026-06-22).
 const STAKE_GUARD_POLICY = "P0C_DRAWDOWN_PROTECT_STAKE_GUARD_V1";
 const STAKE_GUARD_MAX_BASE_USD = 7;
+
+// Contract A / Contur3 candidate-source selector (Integration Phase 1).
+// CONTUR3_CURRENT (default) is the existing scored/shadow candidate universe
+// below -- byte-identical to pre-Phase-1 behavior. CONTRACT_A_V1 instead
+// consumes the FROZEN Model V2 shadow producer's own final acceptedDecisions
+// (produceFrozenModelV2ShadowDecisions) verbatim and maps them into the
+// FireModelCandidate shape without ever running Contur3's formula-version/
+// coverage/tier/bad-bucket/scope eligibility predicates against them --
+// those predicates belong to a different, non-authoritative contract and
+// must never re-filter or re-rank an already-decided Contract A winner.
+export type FireModelSelectorMode = "CONTUR3_CURRENT" | "CONTRACT_A_V1";
+const KNOWN_SELECTOR_MODES: readonly FireModelSelectorMode[] = ["CONTUR3_CURRENT", "CONTRACT_A_V1"];
 
 export type StrategicScope = "WC" | "SOCCER" | "MLB" | "ESPORT" | "OTHER" | "UNKNOWN";
 export type IdentityQuality = "STRONG" | "MEDIUM" | "WEAK" | "INVALID";
@@ -145,6 +167,17 @@ export interface FireModelCandidate {
     override_reason?: "FOUNDER_APPROVED_WC_TIER2_SMALL_STAKE";
     max_stake_cap?: 5;
     wc_tier2_override_rejected_reason?: string;
+    // Contract A authoritative-decision provenance (CONTRACT_A_V1 selector
+    // mode only). Present iff this candidate originates from a FROZEN Model
+    // V2 acceptedDecision; absent for CONTUR3_CURRENT candidates. These
+    // fields are immutable -- reservation/rebalance must persist them
+    // verbatim and must never substitute a different market when present.
+    selector_id?: string;
+    authoritative_condition_id?: string;
+    authoritative_token_id?: string;
+    authoritative_side?: string;
+    authoritative_observation_id?: string;
+    authoritative_event_key?: string;
   };
 }
 
@@ -719,12 +752,165 @@ function isWcTier2LiveOverrideCandidate(args: {
 // default call path (injectedRows omitted) is completely unchanged: this
 // parameter does not alter query construction, filters, ordering, or any
 // downstream candidate-construction/ranking/stake/price logic.
+function contractARowIdentity(row: ExportRow): { conditionId: string | null; tokenId: string | null } {
+  const rawConditionId = row.condition_id ?? row.conditionId;
+  const conditionId =
+    typeof rawConditionId === "string" && rawConditionId.trim() !== ""
+      ? rawConditionId.trim()
+      : typeof rawConditionId === "number" && Number.isFinite(rawConditionId)
+        ? String(rawConditionId)
+        : null;
+  return { conditionId, tokenId: getCanonicalTokenIdForExportRow(row) };
+}
+
+function contractATimingBucket(minutesUntilStart: number): TimingBucket {
+  if (minutesUntilStart < 0) return "STARTED_OR_MISSING";
+  if (minutesUntilStart <= 30) return "T_0_30M";
+  if (minutesUntilStart <= 60) return "T_30_60M";
+  if (minutesUntilStart <= 120) return "T_1_2H";
+  if (minutesUntilStart <= 360) return "T_2_6H";
+  return "T_6H_PLUS";
+}
+
+/**
+ * Maps the FROZEN Model V2 shadow producer's own final acceptedDecisions into
+ * the FireModelCandidate shape, preserving condition_id/token_id/side/
+ * observation identity exactly as the producer emitted them. Runs NONE of
+ * Contur3's formula-version/coverage/tier/bad-bucket/scope predicates --
+ * Contract A's own eligibility gates (score/price/timing/eSports/T-90/
+ * identity/binary market type) already ran inside
+ * produceFrozenModelV2ShadowDecisions. injectedRows is the existing approved
+ * bounded-source-row seam (Integration Milestone 2B.1); CONTRACT_A_V1
+ * requires it explicitly (fails closed rather than silently re-deriving a
+ * different row set via a fresh, undocumented query).
+ */
+function buildContractAV1Candidates(
+  limit: number,
+  injectedRows?: readonly Record<string, unknown>[]
+): { candidates: FireModelCandidate[]; rawDiagnostics: RawPlanningDiagnostics | null } {
+  if (injectedRows === undefined) {
+    throw new Error("CONTRACT_A_V1_REQUIRES_INJECTED_ROWS: no bounded source-row seam supplied");
+  }
+  const sourceRows = injectedRows as readonly ExportRow[];
+  const asOfIso = new Date().toISOString();
+  const result = produceFrozenModelV2ShadowDecisions(sourceRows, asOfIso);
+
+  const byObservationId = new Map<string, ExportRow>();
+  for (const row of sourceRows) {
+    const key = getStrictDedupKeyForExportRow(row);
+    if (key !== null && !byObservationId.has(key)) byObservationId.set(key, row);
+  }
+
+  const candidates: Array<Omit<FireModelCandidate, "rank">> = [];
+  for (const decision of result.acceptedDecisions) {
+    const sourceRow = byObservationId.get(decision.observationId);
+    if (sourceRow === undefined) continue; // defensive: should not happen for an accepted decision
+
+    const { conditionId, tokenId } = contractARowIdentity(sourceRow);
+    const side = decision.selectedOutcome;
+    const identityComplete = conditionId !== null && tokenId !== null && side.trim() !== "";
+    const sideMappingStatus: FireModelCandidate["side_mapping_status"] = identityComplete
+      ? "PROVEN_BY_TOKEN_ID"
+      : "UNKNOWN_BLOCKED";
+    const liveRejectionReason = identityComplete
+      ? null
+      : conditionId === null
+        ? "MISSING_CONDITION_ID"
+        : tokenId === null
+          ? "MISSING_TOKEN_ID"
+          : "MISSING_SIDE";
+
+    const createdMs = Date.parse(decision.createdAtIso);
+    const gameStartIso = Number.isFinite(createdMs)
+      ? new Date(createdMs + decision.minutesUntilStart * 60_000).toISOString()
+      : decision.createdAtIso;
+    const hoursToStartNow = decision.minutesUntilStart / 60;
+    const eventSlug = typeof sourceRow.event_slug === "string" ? sourceRow.event_slug : null;
+    const marketSlug = typeof sourceRow.market_slug === "string" ? sourceRow.market_slug : decision.eventKey;
+    const staleAfter = typeof sourceRow.expires_at === "string" ? sourceRow.expires_at : gameStartIso;
+
+    candidates.push({
+      signal_id: decision.observationId,
+      strategy: "TIER1_CORE_STRICT_72_COV50",
+      market_slug: marketSlug,
+      match_family_key: decision.eventKey,
+      match_family_key_source: "event_slug",
+      match_family_key_is_weak: false,
+      event_slug: eventSlug,
+      condition_id: conditionId ?? "",
+      token_id: tokenId ?? "",
+      side,
+      selected_outcome: side,
+      inferred_sport: "unknown",
+      market_family: "contract_a_authoritative",
+      strategic_scope: "OTHER",
+      timing_bucket: contractATimingBucket(decision.minutesUntilStart),
+      identity_quality: identityComplete ? "STRONG" : "INVALID",
+      identity_warning_codes: [],
+      canonical_event_key: decision.eventKey,
+      canonical_market_key: conditionId,
+      activity_label_detected: false,
+      sport_classification_confidence: "HIGH",
+      live_eligible: identityComplete,
+      live_rejection_reason: liveRejectionReason,
+      side_mapping_status: sideMappingStatus,
+      live_block_reason: liveRejectionReason,
+      live_policy_version: LIVE_POLICY_VERSION,
+      paper_eligible: true,
+      max_entry_price: decision.entryPrice,
+      stake_usd: EXECUTABLE_STAKE_USD,
+      max_order_usd: EXECUTABLE_STAKE_USD,
+      max_spread: 0.03,
+      one_order_only: true,
+      executor_mode_allowed: "dry_run_only",
+      first_live_test_allowed: true,
+      stale_after: staleAfter,
+      no_trade_after: gameStartIso,
+      idempotency_key: makeIdempotencyKey(decision.observationId, tokenId ?? ""),
+      model_rule_id: FROZEN_MODEL_V2_VERSION,
+      created_at: decision.createdAtIso,
+      source: `ContractA_${FROZEN_MODEL_V2_VERSION}`,
+      diagnostics: {
+        executor_action: identityComplete ? "BET_OR_PAPER_GO" : "SKIP_STARTED",
+        paper_only: !identityComplete,
+        real_trade: false,
+        score: decision.score,
+        coverage: 100,
+        smart_money: null,
+        entry_price: decision.entryPrice,
+        game_start_iso: gameStartIso,
+        hours_to_start_now: hoursToStartNow,
+        fire_model_alias: "ContractA",
+        version: FROZEN_MODEL_V2_VERSION,
+        selector_id: FROZEN_MODEL_V2_VERSION,
+        authoritative_condition_id: conditionId ?? undefined,
+        authoritative_token_id: tokenId ?? undefined,
+        authoritative_side: side,
+        authoritative_observation_id: decision.observationId,
+        authoritative_event_key: decision.eventKey,
+      },
+    });
+  }
+
+  return {
+    candidates: candidates.slice(0, limit).map((c, i) => ({ ...c, rank: i + 1 })),
+    rawDiagnostics: null,
+  };
+}
+
 export async function buildFireModelCandidates(
   limit: number,
   scope = "all",
   planningMode = false,
-  injectedRows?: readonly Record<string, unknown>[]
+  injectedRows?: readonly Record<string, unknown>[],
+  selectorMode: FireModelSelectorMode = "CONTUR3_CURRENT"
 ): Promise<{ candidates: FireModelCandidate[]; rawDiagnostics: RawPlanningDiagnostics | null }> {
+  if (!KNOWN_SELECTOR_MODES.includes(selectorMode)) {
+    throw new Error(`UNKNOWN_SELECTOR_MODE: ${String(selectorMode)}`);
+  }
+  if (selectorMode === "CONTRACT_A_V1") {
+    return buildContractAV1Candidates(limit, injectedRows);
+  }
   const versions = planningMode ? PLANNING_ALLOWED_VERSIONS : ALLOWED_VERSIONS;
   if (!planningMode) {
     console.log("[ireland-executor] TIER1_ONLY guard active");
