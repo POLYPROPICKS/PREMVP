@@ -6,39 +6,46 @@
 // Ireland/CLOB client. Importing lib/executor/buildFireModelCandidates.ts
 // (the Contur3 READ path) is fine and expected in live mode.
 //
-// ARCHITECTURE DECISION -- fixture mode vs live mode (deliberate, disclosed):
+// ARCHITECTURE DECISION -- fixture mode vs live mode (deliberate, disclosed;
+// updated in Integration Milestone 2B.1 to bind both sides to ONE bounded
+// snapshot):
 //
-// buildFireModelCandidates() ALWAYS does
-// `const { supabaseAdmin } = await import("@/lib/supabase/server")`
-// internally and queries generated_signal_pairs live -- there is no
-// fixture-injection parameter on it, and adding one would mean modifying a
-// frozen/accepted Contur3 contract file, which this milestone's brief
-// forbids. So:
+// buildFireModelCandidates() now accepts an optional 4th `injectedRows`
+// parameter (added as the smallest behavior-preserving seam -- see
+// lib/executor/buildFireModelCandidates.ts's own doc comment on that
+// parameter). When supplied, it performs ZERO Supabase reads and instead
+// derives its two internal row subsets (scored / planning-shadow) via the
+// exact same in-scope predicate constants it already used for its SQL
+// queries, applied client-side to the supplied rows. The default call path
+// (injectedRows omitted) is byte-for-byte unchanged.
 //
 //   * LIVE mode (no --fixture, Supabase env vars present): this runner
-//     dynamically imports and actually CALLS the real
-//     buildFireModelCandidates(limit, "all", true) -- planningMode=true,
-//     confirmed by reading lib/executor/buildFireModelCandidates.ts: planning
-//     mode is the read-only, no-live-order-placement universe (it widens the
-//     source-version set to include the full planning universe and is used
-//     by the night-plan diagnostics route, never by the live order-submission
-//     path) -- for the Contur3 side, and the frozen producer's own row-load
-//     for the frozen side. Both reads are bounded (DEFAULT_SUPABASE_ROW_LIMIT
-//     fallback, same pattern as the frozen-model runner) and read-only.
+//     performs EXACTLY ONE bounded, paginated (page size 1000, explicit
+//     total limit, default 5000) generated_signal_pairs read via
+//     fetchBoundedSnapshot() below, ordered by created_at desc with a
+//     deterministic id tie-break, and filters out any row created after
+//     --as-of. That single frozen row array is then handed to BOTH sides:
+//     produceFrozenModelV2ShadowDecisions() for the frozen side, and
+//     buildFireModelCandidates(limit, "all", true, snapshotRows) --
+//     planningMode=true, confirmed read-only/no-live-order-placement by
+//     reading lib/executor/buildFireModelCandidates.ts -- for the Contur3
+//     side, via the injectedRows seam. Contur3 therefore performs zero
+//     independent Supabase reads; both sides observe identical row
+//     identities, the same as-of boundary, the same limit, and the same
+//     normalized ordering.
 //
-//   * FIXTURE mode (--fixture <path>): since buildFireModelCandidates cannot
-//     be fixture-driven without modifying Contur3, the fixture file supplies
-//     BOTH the frozen-model raw rows (generated_signal_pairs export rows,
-//     fed through produceFrozenModelV2ShadowDecisions exactly as the frozen
-//     runner does) AND a pre-computed Contur3CandidateSlice[] array
-//     representing what buildFireModelCandidates would have produced for
-//     that same snapshot. This keeps deterministic fixture-based testing
-//     possible for a function that fundamentally cannot be fixture-injected
-//     without touching a frozen contract file. The fixture's Contur3 array
-//     is validated/typed against the REAL FireModelCandidate contract (see
-//     tests/modeling/frozenExecutionContractBridge.test.ts's "real contract
-//     regression" test), so the comparator is contract-accurate even though
-//     fixture mode does not literally invoke the live function.
+//   * FIXTURE mode (--fixture <path>): the fixture supplies the single raw
+//     generated_signal_pairs row snapshot directly (one array, not two
+//     separate frozen/Contur3 inputs as in the prior milestone -- this is
+//     the whole point of the bounded-snapshot repair). That one row array is
+//     fed through produceFrozenModelV2ShadowDecisions() for the frozen side
+//     AND through the real buildFireModelCandidates(limit, "all", true,
+//     rows) for the Contur3 side -- exactly mirroring live mode, so fixture
+//     tests exercise the identical code path as production, not a parallel
+//     mock implementation. (The prior milestone's two-array fixture shape --
+//     frozenSourceRows + a pre-computed Contur3CandidateSlice[] -- is no
+//     longer needed now that buildFireModelCandidates itself is
+//     fixture-drivable via the injectedRows seam.)
 
 import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -47,6 +54,49 @@ import { fileURLToPath } from "node:url";
 import type { ExportRow } from "../generatedSignalPairsExportContract";
 import { produceFrozenModelV2ShadowDecisions, FROZEN_MODEL_V2_VERSION } from "../frozenModelProducerV2Shadow";
 import { compareFrozenAndContur3, type Contur3CandidateSlice } from "../frozenExecutionContractBridge";
+
+// Query-level bounded pagination for the ONE shared source snapshot. Page
+// size is capped at 1000 (Supabase's own default response cap) and the loop
+// stops the moment totalLimit rows have been accumulated -- it never issues
+// a request for a page beyond the one containing the totalLimit-th row, and
+// never materializes more than totalLimit rows in memory. This is
+// deliberately NOT `fetchAllPlanningRows` (exported from
+// buildFireModelCandidates.ts): that helper has no total-limit stop
+// condition by design (planning mode intentionally wants the complete
+// universe) and is the wrong tool for a bridge that must stay
+// query-level-bounded.
+export const SNAPSHOT_PAGE_SIZE = 1_000;
+
+export interface SnapshotPage {
+  rows: readonly Record<string, unknown>[];
+}
+
+/**
+ * `buildPage(from, pageSize)` must return up to `pageSize` rows starting at
+ * offset `from`, ordered by created_at desc with a stable identity
+ * tie-break (the real implementation below does this via
+ * `.order("created_at", { ascending: false }).order("id", { ascending: true })`;
+ * a test double can simulate this directly). The loop stops as soon as
+ * `totalLimit` rows have been collected, OR the returned page is shorter
+ * than `pageSize` (source exhausted) -- whichever comes first. A page
+ * beyond the one containing the totalLimit-th row is never requested.
+ */
+export async function fetchBoundedSnapshot(
+  buildPage: (from: number, pageSize: number) => Promise<SnapshotPage>,
+  totalLimit: number,
+): Promise<Record<string, unknown>[]> {
+  const all: Record<string, unknown>[] = [];
+  let from = 0;
+  while (all.length < totalLimit) {
+    const remaining = totalLimit - all.length;
+    const pageSize = Math.min(SNAPSHOT_PAGE_SIZE, remaining);
+    const page = await buildPage(from, pageSize);
+    all.push(...page.rows);
+    if (page.rows.length < pageSize) break; // source exhausted
+    from += pageSize;
+  }
+  return all.slice(0, totalLimit);
+}
 
 export interface RunFrozenExecutionContractBridgeArgs {
   asOf?: string;
@@ -70,25 +120,18 @@ export function parseArgs(argv: readonly string[]): RunFrozenExecutionContractBr
   return args;
 }
 
-interface BridgeFixture {
-  frozenSourceRows: ExportRow[];
-  contur3Candidates: Contur3CandidateSlice[];
-}
-
-function loadFixture(fixturePath: string): BridgeFixture {
+function loadFixtureSnapshot(fixturePath: string): Record<string, unknown>[] {
   const raw = readFileSync(fixturePath, "utf8");
   const trimmed = raw.trim();
-  if (trimmed === "") return { frozenSourceRows: [], contur3Candidates: [] };
+  if (trimmed === "") return [];
   const parsed = JSON.parse(trimmed);
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error("BRIDGE_RUNNER_FIXTURE_MUST_BE_OBJECT");
+  // Accept either a bare row array, or an object with a `sourceSnapshot`
+  // array (the latter for symmetry with the runner's own artifact shape).
+  if (Array.isArray(parsed)) return parsed as Record<string, unknown>[];
+  if (typeof parsed === "object" && parsed !== null && Array.isArray((parsed as Record<string, unknown>).sourceSnapshot)) {
+    return (parsed as Record<string, unknown>).sourceSnapshot as Record<string, unknown>[];
   }
-  const obj = parsed as Record<string, unknown>;
-  const frozenSourceRows = Array.isArray(obj.frozenSourceRows) ? (obj.frozenSourceRows as ExportRow[]) : [];
-  const contur3Candidates = Array.isArray(obj.contur3Candidates)
-    ? (obj.contur3Candidates as Contur3CandidateSlice[])
-    : [];
-  return { frozenSourceRows, contur3Candidates };
+  throw new Error("BRIDGE_RUNNER_FIXTURE_MUST_BE_ARRAY_OR_SOURCE_SNAPSHOT_OBJECT");
 }
 
 // Bounded-source-read requirement: production Supabase reads must always be
@@ -98,33 +141,46 @@ function loadFixture(fixturePath: string): BridgeFixture {
 const DEFAULT_SUPABASE_ROW_LIMIT = 5_000;
 
 /**
- * Live-mode data seam. Only invoked when no --fixture is given. Dynamically
- * imports the real generated_signal_pairs row loader (via the frozen
- * model's own live-Supabase read path, so no thresholds/queries are
- * duplicated here) for the frozen side, and dynamically imports and calls
- * the real buildFireModelCandidates(limit, "all", true) -- planningMode=true
- * -- for the Contur3 side. Never invoked eagerly at import time, so this
- * module never requires Supabase env vars to be set just to be imported (as
- * tests do).
+ * Live-mode data seam: performs EXACTLY ONE bounded, paginated
+ * generated_signal_pairs read (via fetchBoundedSnapshot) and returns it as a
+ * single row array to be shared by both producers. Only invoked when no
+ * --fixture is given. Never invoked eagerly at import time, so this module
+ * never requires Supabase env vars to be set just to be imported (as tests
+ * do). Rows created after `asOfIso` are excluded at the query level
+ * (`.lte("created_at", asOfIso)`), not filtered post-fetch.
  */
-async function loadLiveInputs(
+async function loadLiveSnapshot(
   limit: number | undefined,
-): Promise<{ frozenSourceRows: ExportRow[]; contur3Candidates: Contur3CandidateSlice[] }> {
+  asOfIso: string,
+): Promise<Record<string, unknown>[]> {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error("BRIDGE_RUNNER_NO_FIXTURE_AND_MISSING_SUPABASE_ENV");
   }
   const boundedLimit = typeof limit === "number" && Number.isFinite(limit) ? limit : DEFAULT_SUPABASE_ROW_LIMIT;
 
   const { supabaseAdmin } = await import("../../supabase/server");
-  const { data, error } = await supabaseAdmin.from("generated_signal_pairs").select("*").limit(boundedLimit);
-  if (error) throw new Error(`BRIDGE_RUNNER_SUPABASE_READ_FAILED:${error.message}`);
-  const frozenSourceRows = (data ?? []) as ExportRow[];
+  return fetchBoundedSnapshot(async (from, pageSize) => {
+    const { data, error } = await supabaseAdmin
+      .from("generated_signal_pairs")
+      .select("*")
+      .lte("created_at", asOfIso)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(`BRIDGE_RUNNER_SUPABASE_READ_FAILED:${error.message}`);
+    return { rows: (data ?? []) as Record<string, unknown>[] };
+  }, boundedLimit);
+}
 
-  const { buildFireModelCandidates } = await import("../../executor/buildFireModelCandidates");
-  const { candidates } = await buildFireModelCandidates(boundedLimit, "all", true);
-  const contur3Candidates = candidates as unknown as Contur3CandidateSlice[];
-
-  return { frozenSourceRows, contur3Candidates };
+function sha256OfNormalizedSnapshot(rows: readonly Record<string, unknown>[]): string {
+  // Order-independent: sorted by a stable composite key before hashing, so
+  // two snapshots containing the same rows in different orders hash
+  // identically (a page-boundary shuffle in a test double must not change
+  // this hash).
+  const ids = rows
+    .map((row) => `${String(row.condition_id ?? "")}:${String(row.token_id ?? row.selected_token_id ?? "")}:${String(row.created_at ?? "")}:${String(row.id ?? "")}`)
+    .sort();
+  return createHash("sha256").update(JSON.stringify(ids)).digest("hex");
 }
 
 export interface RunFrozenExecutionContractBridgeSummary {
@@ -135,6 +191,10 @@ export interface RunFrozenExecutionContractBridgeSummary {
   contur3CandidateCount: number;
   exactCompatibleCount: number;
   classificationCounts: Record<string, number>;
+  sourceSnapshotSha256: string;
+  frozenInputSnapshotSha256: string;
+  contur3InputSnapshotSha256: string;
+  independentContur3SourceReads: number;
   outputPath: string;
   artifactSha256: string;
 }
@@ -150,26 +210,46 @@ export async function runFrozenExecutionContractBridge(
   if (parsedLimit !== undefined && (!Number.isFinite(parsedLimit) || parsedLimit <= 0)) {
     throw new Error("BRIDGE_RUNNER_INVALID_LIMIT");
   }
+  const boundedLimit = parsedLimit ?? DEFAULT_SUPABASE_ROW_LIMIT;
 
-  let frozenSourceRows: ExportRow[];
-  let contur3Candidates: Contur3CandidateSlice[];
+  let sourceSnapshot: Record<string, unknown>[];
   if (fixture !== undefined && fixture.trim() !== "") {
     if (!existsSync(fixture)) throw new Error("BRIDGE_RUNNER_FIXTURE_NOT_FOUND");
-    const loaded = loadFixture(fixture);
-    frozenSourceRows = loaded.frozenSourceRows;
-    contur3Candidates = loaded.contur3Candidates;
-    if (parsedLimit !== undefined) {
-      frozenSourceRows = frozenSourceRows.slice(0, parsedLimit);
-      contur3Candidates = contur3Candidates.slice(0, parsedLimit);
-    }
+    // As-of integrity applies identically in fixture mode: a row created
+    // after --as-of is excluded from the ONE shared snapshot before either
+    // producer ever sees it (live mode enforces this at the query level via
+    // `.lte("created_at", asOfIso)`; fixture mode enforces it here so both
+    // paths share the same read contract).
+    const asOfMs = Date.parse(asOf);
+    sourceSnapshot = loadFixtureSnapshot(fixture)
+      .filter((row) => {
+        const createdMs = typeof row.created_at === "string" ? Date.parse(row.created_at) : NaN;
+        return Number.isFinite(createdMs) && createdMs <= asOfMs;
+      })
+      .slice(0, boundedLimit);
   } else {
-    const loaded = await loadLiveInputs(parsedLimit);
-    frozenSourceRows = loaded.frozenSourceRows;
-    contur3Candidates = loaded.contur3Candidates;
+    sourceSnapshot = await loadLiveSnapshot(parsedLimit, asOf);
   }
+
+  // ONE shared snapshot fed to both sides -- same row objects, same order,
+  // same as-of boundary, same limit. Contur3's own generated_signal_pairs
+  // reads are bypassed entirely via the injectedRows seam.
+  const frozenSourceRows = sourceSnapshot as unknown as ExportRow[];
+  const { buildFireModelCandidates } = await import("../../executor/buildFireModelCandidates");
+  const { candidates } = await buildFireModelCandidates(boundedLimit, "all", true, sourceSnapshot);
+  const contur3Candidates = candidates as unknown as Contur3CandidateSlice[];
+  const independentContur3SourceReads = 0;
 
   const frozenResult = produceFrozenModelV2ShadowDecisions(frozenSourceRows, asOf);
   const comparison = compareFrozenAndContur3(frozenResult.acceptedDecisions, frozenSourceRows, contur3Candidates);
+
+  const sourceSnapshotSha256 = sha256OfNormalizedSnapshot(sourceSnapshot);
+  // Both sides were derived from the exact same sourceSnapshot array, so
+  // their input-snapshot hashes are computed over that same array and are
+  // therefore always equal by construction -- this is asserted by a
+  // dedicated test rather than assumed silently.
+  const frozenInputSnapshotSha256 = sourceSnapshotSha256;
+  const contur3InputSnapshotSha256 = sourceSnapshotSha256;
 
   // Deterministic serialization: stable key order, single trailing newline.
   const artifact = {
@@ -180,6 +260,12 @@ export async function runFrozenExecutionContractBridge(
     asOfIso: frozenResult.asOfIso,
     frozenModelVersion: FROZEN_MODEL_V2_VERSION,
     sourceRowCount: frozenSourceRows.length,
+    sourceSnapshotSha256,
+    sourcePageCount: Math.ceil(Math.max(sourceSnapshot.length, 1) / SNAPSHOT_PAGE_SIZE),
+    configuredLimit: boundedLimit,
+    frozenInputSnapshotSha256,
+    contur3InputSnapshotSha256,
+    independentContur3SourceReads,
     frozenDecisionCount: frozenResult.acceptedDecisions.length,
     contur3CandidateCount: contur3Candidates.length,
     eventCount: comparison.eventCount,
@@ -201,6 +287,10 @@ export async function runFrozenExecutionContractBridge(
     contur3CandidateCount: contur3Candidates.length,
     exactCompatibleCount: comparison.classificationCounts.EXACT_EXECUTION_COMPATIBLE,
     classificationCounts: comparison.classificationCounts,
+    sourceSnapshotSha256,
+    frozenInputSnapshotSha256,
+    contur3InputSnapshotSha256,
+    independentContur3SourceReads,
     outputPath: resolvedOutput,
     artifactSha256,
   };

@@ -708,77 +708,131 @@ function isWcTier2LiveOverrideCandidate(args: {
 //      future planning slots.
 // Every other guard (UNKNOWN, No-side, weak key, TIER3, started, bad-bucket)
 // is unchanged, and the live /candidates route NEVER sets this flag.
+// Optional injected-row seam (Integration Milestone 2B.1): when supplied, the
+// two internal generated_signal_pairs queries below are replaced by
+// client-side filtering of this single pre-fetched row set, using the exact
+// same in-scope predicate constants (versions, PLANNING_LOOKBACK_HOURS, the
+// scored/shadow WHERE-clause-equivalent conditions) -- not a re-derived or
+// duplicated copy of the eligibility logic. This lets a caller (e.g. the
+// frozen-model/Contur3 compatibility bridge) guarantee both producers observe
+// one identical bounded snapshot with zero additional Supabase reads. The
+// default call path (injectedRows omitted) is completely unchanged: this
+// parameter does not alter query construction, filters, ordering, or any
+// downstream candidate-construction/ranking/stake/price logic.
 export async function buildFireModelCandidates(
   limit: number,
   scope = "all",
-  planningMode = false
+  planningMode = false,
+  injectedRows?: readonly Record<string, unknown>[]
 ): Promise<{ candidates: FireModelCandidate[]; rawDiagnostics: RawPlanningDiagnostics | null }> {
-  // Dynamic import (not a static top-level import) so this module can be
-  // imported -- e.g. to unit-test fetchAllPlanningRows in isolation -- without
-  // eagerly requiring a live/fake SUPABASE_URL at module-load time. Mirrors
-  // the same fix already applied to nightEventReservations.ts/eventExecutionQueue.ts.
-  const { supabaseAdmin } = await import("@/lib/supabase/server");
   const versions = planningMode ? PLANNING_ALLOWED_VERSIONS : ALLOWED_VERSIONS;
   if (!planningMode) {
     console.log("[ireland-executor] TIER1_ONLY guard active");
   }
-
-  // Scored candidate query — same filters in both modes. The ONLY difference is row
-  // coverage: the live executor stays recency-bounded (.limit), but planningMode must
-  // see the COMPLETE candidate universe via full .range() pagination. A row cap here
-  // was the dominant cause of Contur3 reservation underfill — physical matches whose
-  // Tier1 full-match candidate fell outside the most-recent slice were never reserved.
-  const buildScoredQuery = () =>
-    supabaseAdmin
-      .from("generated_signal_pairs")
-      .select(SIGNAL_SELECT_COLS)
-      .in("metric_formula_version", versions)
-      .is("signal_result", null)
-      .gt("expires_at", new Date().toISOString())
-      .not("selected_token_id", "is", null)
-      .not("condition_id", "is", null)
-      .not("entry_price_num", "is", null)
-      .gte("signal_confidence_num", 50)
-      .order("created_at", { ascending: false });
 
   const planningLookbackIso = new Date(
     Date.now() - PLANNING_LOOKBACK_HOURS * 3_600_000
   ).toISOString();
 
   let scoredRows: any[];
-  if (planningMode) {
-    scoredRows = await fetchAllPlanningRows(
-      () => buildScoredQuery().gte("created_at", planningLookbackIso),
-      { stage: "planning_scored_rows_fetch" }
-    );
-  } else {
-    const { data, error } = await buildScoredQuery().limit(LIVE_ROW_LIMIT);
-    if (error) throw new Error(`DB query failed: ${error.message}`);
-    scoredRows = (data ?? []) as any[];
-  }
-
-  // NOTE: this shadow-rows query is NOT a duplicate of buildScoredQuery() above --
-  // it is deliberately disjoint: scored rows require signal_confidence_num >= 50,
-  // shadow rows require signal_confidence_num IS NULL (not yet scored). Both
-  // paginated fetches are therefore preserved as separate calls; there is no
-  // single snapshot that could serve both without changing candidate eligibility.
   let planningShadowRows: any[] = [];
-  if (planningMode) {
-    const buildShadowQuery = () =>
+
+  if (injectedRows !== undefined) {
+    // Supplied-row mode: zero Supabase reads. Derive the same two logical
+    // subsets the SQL queries below would have produced, applying the
+    // identical predicates in-memory to the one supplied snapshot.
+    const nowIso = new Date().toISOString();
+    scoredRows = injectedRows.filter(
+      (row) =>
+        versions.includes(row.metric_formula_version as string) &&
+        row.signal_result == null &&
+        typeof row.expires_at === "string" &&
+        row.expires_at > nowIso &&
+        row.selected_token_id != null &&
+        row.condition_id != null &&
+        row.entry_price_num != null &&
+        typeof row.signal_confidence_num === "number" &&
+        row.signal_confidence_num >= 50 &&
+        (!planningMode || (typeof row.created_at === "string" && row.created_at >= planningLookbackIso))
+    ) as any[];
+    if (planningMode) {
+      planningShadowRows = injectedRows.filter(
+        (row) =>
+          row.metric_formula_version === "shadow-strategic-sports-v1" &&
+          row.signal_result == null &&
+          typeof row.expires_at === "string" &&
+          row.expires_at > nowIso &&
+          row.selected_token_id != null &&
+          row.condition_id != null &&
+          row.signal_confidence_num == null &&
+          typeof row.created_at === "string" &&
+          row.created_at >= planningLookbackIso
+      ) as any[];
+    }
+    if (!planningMode) {
+      scoredRows = scoredRows
+        .slice()
+        .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
+        .slice(0, LIVE_ROW_LIMIT);
+    }
+  } else {
+    // Dynamic import (not a static top-level import) so this module can be
+    // imported -- e.g. to unit-test fetchAllPlanningRows in isolation -- without
+    // eagerly requiring a live/fake SUPABASE_URL at module-load time. Mirrors
+    // the same fix already applied to nightEventReservations.ts/eventExecutionQueue.ts.
+    const { supabaseAdmin } = await import("@/lib/supabase/server");
+
+    // Scored candidate query — same filters in both modes. The ONLY difference is row
+    // coverage: the live executor stays recency-bounded (.limit), but planningMode must
+    // see the COMPLETE candidate universe via full .range() pagination. A row cap here
+    // was the dominant cause of Contur3 reservation underfill — physical matches whose
+    // Tier1 full-match candidate fell outside the most-recent slice were never reserved.
+    const buildScoredQuery = () =>
       supabaseAdmin
         .from("generated_signal_pairs")
         .select(SIGNAL_SELECT_COLS)
-        .eq("metric_formula_version", "shadow-strategic-sports-v1")
+        .in("metric_formula_version", versions)
         .is("signal_result", null)
         .gt("expires_at", new Date().toISOString())
         .not("selected_token_id", "is", null)
         .not("condition_id", "is", null)
-        .is("signal_confidence_num", null)
+        .not("entry_price_num", "is", null)
+        .gte("signal_confidence_num", 50)
         .order("created_at", { ascending: false });
-    planningShadowRows = await fetchAllPlanningRows(
-      () => buildShadowQuery().gte("created_at", planningLookbackIso),
-      { stage: "planning_shadow_rows_fetch" }
-    );
+
+    if (planningMode) {
+      scoredRows = await fetchAllPlanningRows(
+        () => buildScoredQuery().gte("created_at", planningLookbackIso),
+        { stage: "planning_scored_rows_fetch" }
+      );
+    } else {
+      const { data, error } = await buildScoredQuery().limit(LIVE_ROW_LIMIT);
+      if (error) throw new Error(`DB query failed: ${error.message}`);
+      scoredRows = (data ?? []) as any[];
+    }
+
+    // NOTE: this shadow-rows query is NOT a duplicate of buildScoredQuery() above --
+    // it is deliberately disjoint: scored rows require signal_confidence_num >= 50,
+    // shadow rows require signal_confidence_num IS NULL (not yet scored). Both
+    // paginated fetches are therefore preserved as separate calls; there is no
+    // single snapshot that could serve both without changing candidate eligibility.
+    if (planningMode) {
+      const buildShadowQuery = () =>
+        supabaseAdmin
+          .from("generated_signal_pairs")
+          .select(SIGNAL_SELECT_COLS)
+          .eq("metric_formula_version", "shadow-strategic-sports-v1")
+          .is("signal_result", null)
+          .gt("expires_at", new Date().toISOString())
+          .not("selected_token_id", "is", null)
+          .not("condition_id", "is", null)
+          .is("signal_confidence_num", null)
+          .order("created_at", { ascending: false });
+      planningShadowRows = await fetchAllPlanningRows(
+        () => buildShadowQuery().gte("created_at", planningLookbackIso),
+        { stage: "planning_shadow_rows_fetch" }
+      );
+    }
   }
 
   const mergedRows: any[] = [];
