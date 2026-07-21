@@ -15,6 +15,24 @@ const BASE_URL = 'https://polypropicks.com';
 const ENDPOINT = '/api/cron/event-rebalance';
 const LOG_DIR = path.join(process.cwd(), 'modeling', 'fire_runs', 'contur3-blue-model');
 
+// Controlled one-shot live-intent mode: only ever sent when the operator sets
+// this exact environment marker to this exact fixed value. Any other value
+// is rejected locally before any request is made -- normal scheduled
+// invocation (marker absent) is completely unaffected.
+const CONTROLLED_LIVE_TEST_ID = 'founder-live-order-20260721-001';
+
+function resolveControlledLiveIntent() {
+  const requested = process.env.CONTROLLED_LIVE_TEST_ID;
+  if (requested === undefined) return null;
+  if (requested !== CONTROLLED_LIVE_TEST_ID) {
+    console.error(
+      `CONTROLLED_LIVE_INTENT_ID_MISMATCH: CONTROLLED_LIVE_TEST_ID must be exactly "${CONTROLLED_LIVE_TEST_ID}"`
+    );
+    process.exit(1);
+  }
+  return requested;
+}
+
 function getSecret() {
   const secret =
     process.env.EXECUTOR_CANDIDATES_SECRET ||
@@ -48,16 +66,23 @@ function appendBattleLog(entry) {
 
 async function main() {
   const secret = getSecret();
+  const controlledLiveIntent = resolveControlledLiveIntent();
   const timestamp = nowIso();
   const logPath = path.join(LOG_DIR, `${timestamp}_event_rebalance.json`);
 
   fs.mkdirSync(LOG_DIR, { recursive: true });
 
-  console.log(`POST ${BASE_URL}${ENDPOINT}`);
+  const url = new URL(`${BASE_URL}${ENDPOINT}`);
+  if (controlledLiveIntent !== null) {
+    url.searchParams.set('controlledLiveIntent', controlledLiveIntent);
+    console.log('CONTROLLED_LIVE_INTENT_MODE: sending exact fixed test id only');
+  }
+
+  console.log(`POST ${url.toString()}`);
 
   let res;
   try {
-    res = await fetch(`${BASE_URL}${ENDPOINT}`, {
+    res = await fetch(url.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

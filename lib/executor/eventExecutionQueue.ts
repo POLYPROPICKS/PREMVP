@@ -400,6 +400,11 @@ export interface RebalanceRepoPort {
   markReservationSkipped(id: string, reason: string): Promise<void>;
   insertQueueRow(row: EventExecutionQueueRow): Promise<void>;
   markReservationQueued(id: string, reason: string): Promise<void>;
+  // Optional so existing normal-mode repo fakes (constructed before this method
+  // existed) keep compiling unchanged. Required in practice by the controlled
+  // one-shot live-intent seam, which throws if it is absent (see
+  // runControlledLiveIntent) rather than silently skipping duplicate-safety.
+  findQueueRowsByRebalanceRunId?(rebalanceRunId: string): Promise<EventExecutionQueueRow[]>;
 }
 
 export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
@@ -453,6 +458,148 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
         .update({ status: "QUEUED", selection_reason: reason })
         .eq("id", id);
     },
+    async findQueueRowsByRebalanceRunId(rebalanceRunId) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data, error } = await supabaseAdmin
+        .from("event_execution_queue")
+        .select("*")
+        .eq("rebalance_run_id", rebalanceRunId);
+      if (error) throw new Error(`controlled live intent lookup failed: ${error.message}`);
+      return (data ?? []) as unknown as EventExecutionQueueRow[];
+    },
+  };
+}
+
+export interface DueReservationSelection {
+  outcome: "QUEUED" | "SKIPPED";
+  reason: string;
+  queueRow: EventExecutionQueueRow | null;
+  blockedCandidates?: BlockedCandidateDiag[];
+}
+
+/**
+ * Pure per-reservation market selection (no DB reads/writes). Extracted from
+ * the rebalance loop so the exact same authoritative-candidate-lock logic
+ * backs both the normal scheduled rebalance (runEventRebalance) and the
+ * controlled one-row live-intent seam (runControlledLiveIntent) -- there is
+ * only ever one queue builder / one selection path.
+ */
+function selectQueueRowForDueReservation(
+  reservation: NightEventReservationRow,
+  marketsByKey: Map<string, FireModelCandidate[]>,
+  contractAFinalUniverse: FireModelCandidate[],
+  rebalanceRunId: string
+): DueReservationSelection {
+  const eventCandidates = marketsByKey.get(reservation.match_family_key) ?? [];
+
+  // Contract A authoritative reservation (CONTRACT_A_V1 selector mode):
+  // the exact winning market was already decided upstream and its
+  // immutable identity was persisted into reservation.diagnostics.
+  // compareCandidateQuality must NEVER substitute a different
+  // condition_id/token_id/side here -- locate the exact authoritative
+  // candidate only, and fail closed (no READY row, no alternate market)
+  // if it is missing or no longer executable.
+  const reservationDiag = reservation.diagnostics ?? {};
+  const reservationSelectorId = reservationDiag.selector_id;
+  const isPlanningReservation = reservationDiag.contract_a_stage === "PLANNING" && reservationSelectorId === "CONTRACT_A_PLANNING_V1";
+  const isLegacyAuthoritativeReservation = reservationSelectorId === FROZEN_MODEL_V2_VERSION;
+  if (isPlanningReservation || isLegacyAuthoritativeReservation) {
+    const authoritativeUniverse = isPlanningReservation ? contractAFinalUniverse : eventCandidates;
+    const finalForEvent = isPlanningReservation
+      ? authoritativeUniverse.find((c) =>
+          c.match_family_key === reservation.match_family_key ||
+          (Boolean(reservation.event_slug) && c.event_slug === reservation.event_slug)
+        ) ?? null
+      : null;
+    const authConditionId = isPlanningReservation ? finalForEvent?.condition_id : reservationDiag.authoritative_condition_id;
+    const authTokenId = isPlanningReservation ? finalForEvent?.token_id : reservationDiag.authoritative_token_id;
+    const authSide = isPlanningReservation ? finalForEvent?.side : reservationDiag.authoritative_side;
+    const identityComplete =
+      typeof authConditionId === "string" &&
+      authConditionId.trim() !== "" &&
+      typeof authTokenId === "string" &&
+      authTokenId.trim() !== "" &&
+      typeof authSide === "string" &&
+      authSide.trim() !== "";
+
+    const authoritativeCandidate = isPlanningReservation
+      ? finalForEvent
+      : identityComplete
+      ? eventCandidates.find(
+          (c) => c.condition_id === authConditionId && c.token_id === authTokenId && c.side === authSide
+        ) ?? null
+      : null;
+
+    const executableCheck = authoritativeCandidate ? isExecutableMarket(authoritativeCandidate) : null;
+
+    if (!identityComplete || authoritativeCandidate === null || !executableCheck!.executable) {
+      const failReason = !identityComplete
+        ? "CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE"
+        : authoritativeCandidate === null
+          ? "CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND"
+          : `CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE: ${executableCheck!.rejectReason}`;
+      console.log(
+        `[contur3-rebalance] CONTRACT_A_FAIL_CLOSED selector=${reservationSelectorId} ` +
+          `event=${reservation.match_family_key} observation=${reservationDiag.authoritative_observation_id ?? "unknown"} reason=${failReason}`
+      );
+      return {
+        outcome: "SKIPPED",
+        reason: failReason,
+        queueRow: null,
+        blockedCandidates: eventCandidates.slice(0, 5).map(buildBlockedCandidateDiag),
+      };
+    }
+
+    const authoritativeReservation = isPlanningReservation
+      ? { ...reservation, diagnostics: { ...reservationDiag, selector_id: FROZEN_MODEL_V2_VERSION, contract_a_stage: "FINAL_AUTHORITATIVE", authoritative_condition_id: authConditionId, authoritative_token_id: authTokenId, authoritative_side: authSide, authoritative_observation_id: authoritativeCandidate.diagnostics.authoritative_observation_id, authoritative_event_key: authoritativeCandidate.diagnostics.authoritative_event_key } }
+      : reservation;
+    const row = buildQueueRow(authoritativeReservation, authoritativeCandidate, rebalanceRunId);
+    return {
+      outcome: "QUEUED",
+      reason: row.selection_reason ?? "CONTRACT_A_AUTHORITATIVE_MARKET",
+      queueRow: row,
+    };
+  }
+
+  const tier1Candidates = eventCandidates.filter((c) => planTierLabel(c) === EXECUTABLE_TIER);
+  const tier1WithCondToken = tier1Candidates.filter(
+    (c) => Boolean(c.condition_id) && Boolean(c.token_id)
+  );
+  const tier1SideBlocked = tier1WithCondToken.filter(
+    (c) =>
+      !c.live_eligible &&
+      (c.live_rejection_reason === "SIDE_MAPPING_UNKNOWN_BLOCKED" ||
+        c.live_block_reason === "SIDE_MAPPING_UNKNOWN_BLOCKED")
+  );
+  const eventMarkets = eventCandidates.filter((c) => {
+    const { executable, rejectReason } = isExecutableMarket(c);
+    if (!executable) {
+      console.log(
+        `[contur3-rebalance] CANDIDATE_BLOCKED market=${c.market_slug ?? c.event_slug ?? "?"} reason=${rejectReason}`,
+      );
+    }
+    return executable;
+  }).sort(compareCandidateQuality);
+
+  if (eventMarkets.length === 0) {
+    const isSideMissingBlocker = tier1WithCondToken.length > 0 && tier1SideBlocked.length > 0;
+    const skipReason = isSideMissingBlocker
+      ? `NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE_SIDE_MISSING: candidate_count=${eventCandidates.length} tier1_count=${tier1Candidates.length} tier1_with_cond_token=${tier1WithCondToken.length} tier1_side_blocked=${tier1SideBlocked.length} examples=${tier1SideBlocked.slice(0, 2).map((c) => c.market_slug ?? c.event_slug ?? "?").join(",")}`
+      : `NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE: candidate_count=${eventCandidates.length} tier1_count=${tier1Candidates.length}`;
+    return {
+      outcome: "SKIPPED",
+      reason: skipReason,
+      queueRow: null,
+      blockedCandidates: eventCandidates.slice(0, 5).map(buildBlockedCandidateDiag),
+    };
+  }
+
+  const best = eventMarkets[0];
+  const row = buildQueueRow(reservation, best, rebalanceRunId);
+  return {
+    outcome: "QUEUED",
+    reason: row.selection_reason ?? "REBALANCE_SINGLE_BEST_MARKET",
+    queueRow: row,
   };
 }
 
@@ -579,140 +726,24 @@ export async function runEventRebalance(
       continue;
     }
 
-    const eventCandidates = marketsByKey.get(reservation.match_family_key) ?? [];
+    const selection = selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
 
-    // Contract A authoritative reservation (CONTRACT_A_V1 selector mode):
-    // the exact winning market was already decided upstream and its
-    // immutable identity was persisted into reservation.diagnostics.
-    // compareCandidateQuality must NEVER substitute a different
-    // condition_id/token_id/side here -- locate the exact authoritative
-    // candidate only, and fail closed (no READY row, no alternate market)
-    // if it is missing or no longer executable.
-    const reservationDiag = reservation.diagnostics ?? {};
-    const reservationSelectorId = reservationDiag.selector_id;
-    const isPlanningReservation = reservationDiag.contract_a_stage === "PLANNING" && reservationSelectorId === "CONTRACT_A_PLANNING_V1";
-    const isLegacyAuthoritativeReservation = reservationSelectorId === FROZEN_MODEL_V2_VERSION;
-    if (isPlanningReservation || isLegacyAuthoritativeReservation) {
-      const authoritativeUniverse = isPlanningReservation ? contractAFinalUniverse : eventCandidates;
-      const finalForEvent = isPlanningReservation
-        ? authoritativeUniverse.find((c) =>
-            c.match_family_key === reservation.match_family_key ||
-            (Boolean(reservation.event_slug) && c.event_slug === reservation.event_slug)
-          ) ?? null
-        : null;
-      const authConditionId = isPlanningReservation ? finalForEvent?.condition_id : reservationDiag.authoritative_condition_id;
-      const authTokenId = isPlanningReservation ? finalForEvent?.token_id : reservationDiag.authoritative_token_id;
-      const authSide = isPlanningReservation ? finalForEvent?.side : reservationDiag.authoritative_side;
-      const identityComplete =
-        typeof authConditionId === "string" &&
-        authConditionId.trim() !== "" &&
-        typeof authTokenId === "string" &&
-        authTokenId.trim() !== "" &&
-        typeof authSide === "string" &&
-        authSide.trim() !== "";
-
-      const authoritativeCandidate = isPlanningReservation
-        ? finalForEvent
-        : identityComplete
-        ? eventCandidates.find(
-            (c) => c.condition_id === authConditionId && c.token_id === authTokenId && c.side === authSide
-          ) ?? null
-        : null;
-
-      const executableCheck = authoritativeCandidate ? isExecutableMarket(authoritativeCandidate) : null;
-
-      if (!identityComplete || authoritativeCandidate === null || !executableCheck!.executable) {
-        const failReason = !identityComplete
-          ? "CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE"
-          : authoritativeCandidate === null
-            ? "CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND"
-            : `CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE: ${executableCheck!.rejectReason}`;
-        console.log(
-          `[contur3-rebalance] CONTRACT_A_FAIL_CLOSED selector=${reservationSelectorId} ` +
-            `event=${reservation.match_family_key} observation=${reservationDiag.authoritative_observation_id ?? "unknown"} reason=${failReason}`
-        );
-        skipped += 1;
-        if (write && reservation.id) {
-          await repo.markReservationSkipped(reservation.id, failReason);
-        }
-        outcomes.push({
-          match_family_key: reservation.match_family_key,
-          reservation_id: reservation.id ?? null,
-          result: "SKIPPED",
-          reason: failReason,
-          blocked_candidates: eventCandidates.slice(0, 5).map(buildBlockedCandidateDiag),
-        });
-        continue;
-      }
-
-      const authoritativeReservation = isPlanningReservation
-        ? { ...reservation, diagnostics: { ...reservationDiag, selector_id: FROZEN_MODEL_V2_VERSION, contract_a_stage: "FINAL_AUTHORITATIVE", authoritative_condition_id: authConditionId, authoritative_token_id: authTokenId, authoritative_side: authSide, authoritative_observation_id: authoritativeCandidate.diagnostics.authoritative_observation_id, authoritative_event_key: authoritativeCandidate.diagnostics.authoritative_event_key } }
-        : reservation;
-      const row = buildQueueRow(authoritativeReservation, authoritativeCandidate, rebalanceRunId);
-      if (write) {
-        try {
-          await repo.insertQueueRow(row);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : String(err);
-          throw new Error(`queue insert failed (${reservation.match_family_key}): ${msg}`);
-        }
-        if (reservation.id) {
-          await repo.markReservationQueued(reservation.id, row.selection_reason ?? "");
-        }
-      }
-      queued += 1;
-      outcomes.push({
-        match_family_key: reservation.match_family_key,
-        reservation_id: reservation.id ?? null,
-        result: "QUEUED",
-        reason: row.selection_reason ?? "CONTRACT_A_AUTHORITATIVE_MARKET",
-        queue_row: row,
-      });
-      continue;
-    }
-
-    const tier1Candidates = eventCandidates.filter((c) => planTierLabel(c) === EXECUTABLE_TIER);
-    const tier1WithCondToken = tier1Candidates.filter(
-      (c) => Boolean(c.condition_id) && Boolean(c.token_id)
-    );
-    const tier1SideBlocked = tier1WithCondToken.filter(
-      (c) =>
-        !c.live_eligible &&
-        (c.live_rejection_reason === "SIDE_MAPPING_UNKNOWN_BLOCKED" ||
-          c.live_block_reason === "SIDE_MAPPING_UNKNOWN_BLOCKED")
-    );
-    const eventMarkets = eventCandidates.filter((c) => {
-      const { executable, rejectReason } = isExecutableMarket(c);
-      if (!executable) {
-        console.log(
-          `[contur3-rebalance] CANDIDATE_BLOCKED market=${c.market_slug ?? c.event_slug ?? "?"} reason=${rejectReason}`,
-        );
-      }
-      return executable;
-    }).sort(compareCandidateQuality);
-
-    if (eventMarkets.length === 0) {
-      const isSideMissingBlocker = tier1WithCondToken.length > 0 && tier1SideBlocked.length > 0;
-      const skipReason = isSideMissingBlocker
-        ? `NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE_SIDE_MISSING: candidate_count=${eventCandidates.length} tier1_count=${tier1Candidates.length} tier1_with_cond_token=${tier1WithCondToken.length} tier1_side_blocked=${tier1SideBlocked.length} examples=${tier1SideBlocked.slice(0, 2).map((c) => c.market_slug ?? c.event_slug ?? "?").join(",")}`
-        : `NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE: candidate_count=${eventCandidates.length} tier1_count=${tier1Candidates.length}`;
+    if (selection.outcome === "SKIPPED") {
       skipped += 1;
       if (write && reservation.id) {
-        await repo.markReservationSkipped(reservation.id, skipReason);
+        await repo.markReservationSkipped(reservation.id, selection.reason);
       }
       outcomes.push({
         match_family_key: reservation.match_family_key,
         reservation_id: reservation.id ?? null,
         result: "SKIPPED",
-        reason: skipReason,
-        blocked_candidates: eventCandidates.slice(0, 5).map(buildBlockedCandidateDiag),
+        reason: selection.reason,
+        blocked_candidates: selection.blockedCandidates,
       });
       continue;
     }
 
-    const best = eventMarkets[0];
-    const row = buildQueueRow(reservation, best, rebalanceRunId);
-
+    const row = selection.queueRow!;
     if (write) {
       try {
         await repo.insertQueueRow(row);
@@ -730,7 +761,7 @@ export async function runEventRebalance(
       match_family_key: reservation.match_family_key,
       reservation_id: reservation.id ?? null,
       result: "QUEUED",
-      reason: row.selection_reason ?? "REBALANCE_SINGLE_BEST_MARKET",
+      reason: selection.reason,
       queue_row: row,
     });
   }
@@ -756,6 +787,192 @@ export async function runEventRebalance(
     next_due_reservations,
     next_check_after_seconds,
   };
+}
+
+// ── Controlled one-shot live-intent seam ────────────────────────────────────
+//
+// Adds exactly one narrow, fail-closed mode for creating a single controlled
+// production READY queue row for a fixed, pre-authorized founder test id.
+// It reuses the same due-reservation loading and authoritative-candidate
+// selection (selectQueueRowForDueReservation / buildQueueRow) as the normal
+// scheduled rebalance above -- it can never accept a caller-supplied market
+// identity, stake, or idempotency key, and it writes at most one row.
+
+export const CONTROLLED_LIVE_TEST_ID = "founder-live-order-20260721-001" as const;
+export const CONTROLLED_LIVE_STAKE_CAP_USD = 1 as const;
+export const CONTROLLED_LIVE_MAX_QUEUE_WRITES = 1 as const;
+export const CONTROLLED_LIVE_PROVENANCE = "CONTROLLED_ONE_DOLLAR_TEST_V1" as const;
+
+export type ControlledLiveIntentValidation = { ok: true } | { ok: false; reason: string };
+
+/**
+ * Rejects anything other than the exact fixed controlled test id. There is no
+ * generic arbitrary-test API here -- only this one pre-authorized value is
+ * ever accepted.
+ */
+export function validateControlledLiveIntentRequest(requestedTestId: unknown): ControlledLiveIntentValidation {
+  if (requestedTestId !== CONTROLLED_LIVE_TEST_ID) {
+    return { ok: false, reason: "CONTROLLED_LIVE_INTENT_ID_MISMATCH" };
+  }
+  return { ok: true };
+}
+
+/**
+ * Applies the controlled-mode overrides to an already-selected queue row:
+ * stake is capped (never raised above CONTROLLED_LIVE_STAKE_CAP_USD),
+ * rebalance_run_id carries the fixed test id as a durable correlation
+ * marker, and diagnostics gets an additive provenance flag. condition_id,
+ * token_id, side, and idempotency_key are never touched.
+ */
+export function applyControlledLiveIntentOverrides(row: EventExecutionQueueRow): EventExecutionQueueRow {
+  return {
+    ...row,
+    rebalance_run_id: CONTROLLED_LIVE_TEST_ID,
+    stake_usd: Math.min(row.stake_usd, CONTROLLED_LIVE_STAKE_CAP_USD),
+    diagnostics: {
+      ...row.diagnostics,
+      controlled_live_intent: true,
+      controlled_test_id: CONTROLLED_LIVE_TEST_ID,
+      controlled_provenance: CONTROLLED_LIVE_PROVENANCE,
+    },
+  };
+}
+
+export interface ControlledLiveIntentResult {
+  kind:
+    | "CREATED"
+    | "ALREADY_EXISTS"
+    | "NO_SAFE_CANDIDATE"
+    | "BLOCKED_INVALID_REQUEST"
+    | "BLOCKED_VERIFICATION_FAILED";
+  reason: string;
+  wrote: boolean;
+  queue_row?: EventExecutionQueueRow;
+  matching_row_count?: number;
+}
+
+/**
+ * Controlled one-shot live-intent seam. write=false → pure preview, zero writes.
+ */
+export async function runControlledLiveIntent(
+  nowMs: number,
+  requestedTestId: unknown,
+  opts: { write?: boolean } = {},
+  deps: {
+    repo?: RebalanceRepoPort;
+    fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+    fetchContractAFinalCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+  } = {}
+): Promise<ControlledLiveIntentResult> {
+  const validation = validateControlledLiveIntentRequest(requestedTestId);
+  if (!validation.ok) {
+    return { kind: "BLOCKED_INVALID_REQUEST", reason: validation.reason, wrote: false };
+  }
+
+  const write = opts.write === true;
+  const repo = deps.repo ?? createSupabaseRebalanceRepoPort();
+  const fetchCandidates =
+    deps.fetchCandidates ??
+    (async () => {
+      const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
+      return buildFireModelCandidates(PLAN_POOL, "all", true);
+    });
+  const fetchContractAFinalCandidates =
+    deps.fetchContractAFinalCandidates ??
+    (async () => {
+      const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_V1");
+    });
+
+  if (!repo.findQueueRowsByRebalanceRunId) {
+    throw new Error(
+      "RebalanceRepoPort.findQueueRowsByRebalanceRunId is required for controlled live-intent duplicate-safety checks"
+    );
+  }
+
+  const existing = await repo.findQueueRowsByRebalanceRunId(CONTROLLED_LIVE_TEST_ID);
+  if (existing.length > 0) {
+    return {
+      kind: "ALREADY_EXISTS",
+      reason: "CONTROLLED_LIVE_INTENT_ROW_ALREADY_EXISTS",
+      wrote: false,
+      queue_row: existing[0],
+      matching_row_count: existing.length,
+    };
+  }
+
+  const all = await repo.loadActiveReservations();
+  const due = all
+    .filter((r) => {
+      const startMs = Date.parse(r.game_start_iso);
+      return Number.isFinite(startMs) && isDueForRebalance(startMs, nowMs);
+    })
+    .sort((a, b) => Date.parse(a.game_start_iso) - Date.parse(b.game_start_iso));
+
+  if (due.length === 0) {
+    return { kind: "NO_SAFE_CANDIDATE", reason: "NO_DUE_RESERVATION", wrote: false };
+  }
+
+  const alreadyQueued = await repo.loadQueuedReservationIds();
+  const { candidates: universe } = await fetchCandidates();
+  const hasContractAPlanning = due.some((r) => r.diagnostics?.contract_a_stage === "PLANNING");
+  const contractAFinalUniverse = hasContractAPlanning ? (await fetchContractAFinalCandidates()).candidates : [];
+  const marketsByKey = new Map<string, FireModelCandidate[]>();
+  for (const c of universe) {
+    const arr = marketsByKey.get(c.match_family_key) ?? [];
+    arr.push(c);
+    marketsByKey.set(c.match_family_key, arr);
+  }
+
+  const rebalanceRunId = buildRebalanceRunId(nowMs);
+
+  for (const reservation of due) {
+    if (reservation.id && alreadyQueued.has(reservation.id)) continue;
+    const selection = selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
+    if (selection.outcome !== "QUEUED" || !selection.queueRow) continue;
+
+    const controlledRow = applyControlledLiveIntentOverrides(selection.queueRow);
+
+    if (!write) {
+      return { kind: "CREATED", reason: "DRY_RUN_PREVIEW", wrote: false, queue_row: controlledRow };
+    }
+
+    try {
+      await repo.insertQueueRow(controlledRow);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { kind: "NO_SAFE_CANDIDATE", reason: `CONTROLLED_INSERT_FAILED: ${msg}`, wrote: false };
+    }
+    if (reservation.id) {
+      await repo.markReservationQueued(reservation.id, controlledRow.selection_reason ?? "");
+    }
+
+    // Post-write recheck: this is not a global transactional guarantee -- it
+    // is a best-effort verification against the same repo read path used for
+    // the pre-write duplicate check. Real cross-request exactly-once safety
+    // for a given reservation/market still comes from the existing DB unique
+    // constraints on event_execution_queue (condition_id, token_id, side,
+    // plan_run_id) and (reservation_id, selection_rank).
+    const verify = await repo.findQueueRowsByRebalanceRunId(CONTROLLED_LIVE_TEST_ID);
+    if (verify.length !== CONTROLLED_LIVE_MAX_QUEUE_WRITES) {
+      return {
+        kind: "BLOCKED_VERIFICATION_FAILED",
+        reason: `CONTROLLED_ROW_COUNT_MISMATCH: expected=${CONTROLLED_LIVE_MAX_QUEUE_WRITES} actual=${verify.length}`,
+        wrote: true,
+        matching_row_count: verify.length,
+      };
+    }
+
+    return {
+      kind: "CREATED",
+      reason: controlledRow.selection_reason ?? "CONTROLLED_LIVE_INTENT_QUEUED",
+      wrote: true,
+      queue_row: verify[0],
+      matching_row_count: verify.length,
+    };
+  }
+
+  return { kind: "NO_SAFE_CANDIDATE", reason: "NO_EXECUTABLE_CANDIDATE_FOR_ANY_DUE_RESERVATION", wrote: false };
 }
 
 /**

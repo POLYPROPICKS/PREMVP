@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { runEventRebalanceWithEvidence, persistRebalanceDiagnostics } from "@/lib/executor/eventExecutionQueue";
+import {
+  runEventRebalanceWithEvidence,
+  persistRebalanceDiagnostics,
+  runControlledLiveIntent,
+} from "@/lib/executor/eventExecutionQueue";
 
 // Contur3 per-event rebalance cron (run every 5-10 minutes).
 //   GET/POST /api/cron/event-rebalance          → select one market per due reserved event,
@@ -19,6 +23,38 @@ async function handle(request: NextRequest) {
 
   const { searchParams } = new URL(request.url);
   const dryRun = searchParams.get("dryRun") === "1";
+  const controlledLiveIntent = searchParams.get("controlledLiveIntent");
+
+  // Controlled one-shot live-intent mode: an entirely separate, narrower
+  // branch from the normal scheduled rebalance below. It never touches
+  // runEventRebalanceWithEvidence or job_runs evidence, and it rejects any
+  // value other than the one pre-authorized fixed test id.
+  if (controlledLiveIntent !== null) {
+    try {
+      const result = await runControlledLiveIntent(Date.now(), controlledLiveIntent, { write: !dryRun });
+      const status = result.kind === "BLOCKED_INVALID_REQUEST" ? 400 : 200;
+      return NextResponse.json(
+        {
+          ok: result.kind === "CREATED" || result.kind === "ALREADY_EXISTS",
+          mode: "controlled_live_intent",
+          dry_run: dryRun,
+          kind: result.kind,
+          reason: result.reason,
+          wrote: result.wrote,
+          matching_row_count: result.matching_row_count ?? null,
+          queue_row: result.queue_row ?? null,
+        },
+        { status, headers: { "Cache-Control": "no-store" } }
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      console.error("[cron/event-rebalance] controlled_live_intent error:", msg);
+      return NextResponse.json(
+        { ok: false, mode: "controlled_live_intent", error: msg },
+        { status: 500, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+  }
 
   try {
     const result = await runEventRebalanceWithEvidence(Date.now(), { write: !dryRun });
