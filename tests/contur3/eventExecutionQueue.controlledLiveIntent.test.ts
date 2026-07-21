@@ -152,6 +152,56 @@ function makeFakeRepo(reservations: NightEventReservationRow[]): RebalanceRepoPo
   };
 }
 
+/**
+ * Repo fake that simulates the real Postgres partial unique index
+ * (event_execution_queue_controlled_live_rebalance_run_uniq) at insert time:
+ * a second row sharing a `founder-live-order-` rebalance_run_id is rejected
+ * with a 23505-shaped error, exactly like a live unique-constraint violation.
+ * loadActiveReservations/loadQueuedReservationIds/fetchCandidates are read
+ * once per call and never mutated mid-flight, so the only place two
+ * concurrent invocations can actually collide is this insert -- matching the
+ * real check-then-insert race model.
+ */
+function makeConcurrentAwareRepo(reservations: NightEventReservationRow[]): RebalanceRepoPort & { queueRows: EventExecutionQueueRow[] } {
+  const queueRows: EventExecutionQueueRow[] = [];
+  const queuedReservationIds = new Set<string>();
+  return {
+    queueRows,
+    async loadActiveReservations() {
+      return reservations.filter((r) => r.status === "RESERVED" || r.status === "REBALANCE_PENDING");
+    },
+    async loadQueuedReservationIds() {
+      return new Set(queuedReservationIds);
+    },
+    async markReservationsExpired() {},
+    async markReservationSkipped(id, reason) {
+      const r = reservations.find((x) => x.id === id);
+      if (r) { r.status = "SKIPPED"; r.selection_reason = reason; }
+    },
+    async insertQueueRow(row) {
+      if (
+        row.rebalance_run_id.startsWith("founder-live-order-") &&
+        queueRows.some((r) => r.rebalance_run_id === row.rebalance_run_id)
+      ) {
+        const err = new Error(
+          'duplicate key value violates unique constraint "event_execution_queue_controlled_live_rebalance_run_uniq"'
+        ) as Error & { code: string };
+        err.code = "23505";
+        throw err;
+      }
+      queueRows.push({ ...row, id: row.id ?? `queue-${queueRows.length + 1}` });
+      if (row.reservation_id) queuedReservationIds.add(row.reservation_id);
+    },
+    async markReservationQueued(id, reason) {
+      const r = reservations.find((x) => x.id === id);
+      if (r) { r.status = "QUEUED"; r.selection_reason = reason; }
+    },
+    async findQueueRowsByRebalanceRunId(rebalanceRunId) {
+      return queueRows.filter((r) => r.rebalance_run_id === rebalanceRunId);
+    },
+  };
+}
+
 test("CTL1: controlled mode rejects any id other than the exact fixed test id, with zero repo interaction", async () => {
   const throwingRepo: RebalanceRepoPort = {
     async loadActiveReservations() { throw new Error("must not be called"); },
@@ -431,4 +481,174 @@ test("CTL14: the runner source only applies controlledLiveIntent to the request 
   assert.match(src, /if \(controlledLiveIntent !== null\)/, "controlled query param must be gated behind an explicit non-null check");
   assert.match(src, /url\.searchParams\.set\('controlledLiveIntent', controlledLiveIntent\)/);
   assert.match(src, /const url = new URL\(`\$\{BASE_URL\}\$\{ENDPOINT\}`\)/, "base endpoint construction is unchanged for normal invocation");
+});
+
+// ── Database-enforced atomic lock: closes the cross-reservation check-then-insert race ──
+
+test("CTL-MIGRATION: the new migration adds a partial unique index on rebalance_run_id scoped to controlled founder-live-order- ids only", () => {
+  const migrationPath = path.join(
+    process.cwd(),
+    "supabase",
+    "migrations",
+    "20260721_controlled_live_intent_rebalance_run_id_lock.sql"
+  );
+  const sql = fs.readFileSync(migrationPath, "utf8");
+  const sqlLower = sql.toLowerCase();
+
+  assert.match(
+    sqlLower,
+    /create unique index if not exists\s+event_execution_queue_controlled_live_rebalance_run_uniq/
+  );
+  assert.match(sqlLower, /on public\.event_execution_queue \(rebalance_run_id\)/);
+  assert.match(sqlLower, /where rebalance_run_id like 'founder-live-order-%'/);
+
+  // Destructive-operation guard: no drop/alter/truncate/delete anywhere in the migration.
+  const withoutComments = sql
+    .split("\n")
+    .map((line) => line.replace(/--.*$/, ""))
+    .join("\n")
+    .toLowerCase();
+  assert.doesNotMatch(withoutComments, /\bdrop\b|\balter\b|\btruncate\b|\bdelete\b/);
+});
+
+test("CTL-MIGRATION-SAFETY: normal rebalance_run_id values never match the controlled index predicate prefix", () => {
+  const normalId = buildRebalanceRunId(IN_WINDOW_MS);
+  assert.equal(normalId.startsWith("founder-live-order-"), false);
+  assert.match(normalId, /^rebalance:/);
+});
+
+test("CTL15: two concurrent runControlledLiveIntent calls for different due reservations result in exactly one persisted row -- the simulated database unique index rejects the second insert", async () => {
+  const reservationA = baseReservation({ id: "res-a", match_family_key: "pair:a-vs-b:2026-07-19", event_slug: "a-vs-b" });
+  const reservationB = baseReservation({ id: "res-b", match_family_key: "pair:c-vs-d:2026-07-19", event_slug: "c-vs-d" });
+  const candidateA = baseCandidate({ match_family_key: "pair:a-vs-b:2026-07-19", event_slug: "a-vs-b", condition_id: "cond-a", token_id: "token-a" });
+  const candidateB = baseCandidate({ match_family_key: "pair:c-vs-d:2026-07-19", event_slug: "c-vs-d", condition_id: "cond-b", token_id: "token-b" });
+  const repo = makeConcurrentAwareRepo([reservationA, reservationB]);
+
+  // Both invocations' initial duplicate-reads return empty (nothing has been
+  // inserted yet); each independently selects a DIFFERENT due reservation --
+  // exactly the race modeled in the release review. Only the shared
+  // insertQueueRow (simulating the real Postgres unique index) can catch it.
+  const callA = runControlledLiveIntent(IN_WINDOW_MS, CONTROLLED_LIVE_TEST_ID, { write: true }, {
+    repo,
+    fetchCandidates: async () => ({ candidates: [candidateA] }),
+  });
+  const callB = runControlledLiveIntent(IN_WINDOW_MS, CONTROLLED_LIVE_TEST_ID, { write: true }, {
+    repo,
+    fetchCandidates: async () => ({ candidates: [candidateB] }),
+  });
+
+  const [resultA, resultB] = await Promise.all([callA, callB]);
+
+  assert.equal(repo.queueRows.length, 1, "database-level unique index must allow exactly one persisted controlled row");
+  const outcomes = [resultA.kind, resultB.kind].sort();
+  assert.deepEqual(
+    outcomes,
+    ["ALREADY_EXISTS", "CREATED"],
+    "one invocation wins the insert; the other must recover to ALREADY_EXISTS via the 23505 handler, never a false success and never a second row"
+  );
+});
+
+test("CTL16: a PostgreSQL 23505 unique violation on insert triggers recovery -- re-reads by rebalance_run_id and returns ALREADY_EXISTS without touching the winner", async () => {
+  const reservation = baseReservation();
+  const candidate = baseCandidate();
+  const winnerRow: EventExecutionQueueRow = {
+    ...buildQueueRow(reservation, candidate, "rebalance:winner"),
+    id: "queue-winner",
+    rebalance_run_id: CONTROLLED_LIVE_TEST_ID,
+  };
+
+  let precheckCalls = 0;
+  let insertCalls = 0;
+  const repo: RebalanceRepoPort = {
+    async loadActiveReservations() { return [reservation]; },
+    async loadQueuedReservationIds() { return new Set(); },
+    async markReservationsExpired() {},
+    async markReservationSkipped() {},
+    async insertQueueRow() {
+      insertCalls += 1;
+      const err = new Error(
+        'duplicate key value violates unique constraint "event_execution_queue_controlled_live_rebalance_run_uniq"'
+      ) as Error & { code: string };
+      err.code = "23505";
+      throw err;
+    },
+    async markReservationQueued() {},
+    async findQueueRowsByRebalanceRunId() {
+      precheckCalls += 1;
+      // 1st call = pre-write precheck (TOCTOU gap: not yet visible).
+      // 2nd call = post-conflict recovery re-read (winner now committed elsewhere).
+      return precheckCalls === 1 ? [] : [winnerRow];
+    },
+  };
+
+  const result = await runControlledLiveIntent(
+    IN_WINDOW_MS,
+    CONTROLLED_LIVE_TEST_ID,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+  );
+
+  assert.equal(insertCalls, 1, "must not try another reservation after a 23505 conflict");
+  assert.equal(result.kind, "ALREADY_EXISTS");
+  assert.equal(result.wrote, false);
+  assert.equal(result.queue_row?.id, "queue-winner", "must surface the real winner, never mutate or delete it");
+});
+
+test("CTL17: if the post-conflict recheck finds zero or more than one row, controlled mode fails closed instead of falsely claiming ALREADY_EXISTS", async () => {
+  const reservation = baseReservation();
+  const candidate = baseCandidate();
+  const repo: RebalanceRepoPort = {
+    async loadActiveReservations() { return [reservation]; },
+    async loadQueuedReservationIds() { return new Set(); },
+    async markReservationsExpired() {},
+    async markReservationSkipped() {},
+    async insertQueueRow() {
+      const err = new Error("duplicate key value violates unique constraint") as Error & { code: string };
+      err.code = "23505";
+      throw err;
+    },
+    async markReservationQueued() {},
+    // Both the pre-write precheck AND the post-conflict recheck find nothing --
+    // an inconsistent/ambiguous state that must never be reported as success.
+    async findQueueRowsByRebalanceRunId() { return []; },
+  };
+
+  const result = await runControlledLiveIntent(
+    IN_WINDOW_MS,
+    CONTROLLED_LIVE_TEST_ID,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+  );
+
+  assert.equal(result.kind, "BLOCKED_VERIFICATION_FAILED");
+  assert.equal(result.wrote, false);
+  assert.notEqual(result.kind, "ALREADY_EXISTS");
+  assert.notEqual(result.kind, "CREATED");
+});
+
+test("CTL18: ambiguous retry after a lost response returns ALREADY_EXISTS and creates zero new rows", async () => {
+  const reservation = baseReservation();
+  const candidate = baseCandidate();
+  const repo = makeConcurrentAwareRepo([reservation]);
+
+  const first = await runControlledLiveIntent(
+    IN_WINDOW_MS,
+    CONTROLLED_LIVE_TEST_ID,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+  );
+  assert.equal(first.kind, "CREATED");
+  assert.equal(repo.queueRows.length, 1);
+
+  // Simulate: the caller never saw the first success response (network
+  // dropped) and retries the exact same controlled request.
+  const retry = await runControlledLiveIntent(
+    IN_WINDOW_MS,
+    CONTROLLED_LIVE_TEST_ID,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+  );
+  assert.equal(retry.kind, "ALREADY_EXISTS");
+  assert.equal(retry.wrote, false);
+  assert.equal(repo.queueRows.length, 1, "retry must create zero new rows");
 });
