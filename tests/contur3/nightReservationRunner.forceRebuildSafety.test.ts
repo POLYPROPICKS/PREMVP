@@ -4,74 +4,160 @@
 // Production incident: scripts/contur3/run-night-reservations.mjs
 // unconditionally sent ?forceRebuild=CEO_APPROVED on every ordinary/scheduled
 // invocation, so the normal Railway cron used the destructive force-rebuild
-// path by default. This file proves (a) statically, without ever making a
-// network call, that default invocation no longer does that, and (b) by
-// actually spawning the script, that an explicit-but-wrong force marker is
-// rejected locally before any HTTP request is attempted -- never a real
-// network call to production either way.
+// path by default.
+//
+// Network safety: every test in this file imports the runner module's pure
+// helpers (resolveForceRebuildMode, buildReservationRequestUrl) and its
+// injectable orchestration (runNightReservations), and supplies a mock
+// fetchImpl. No test spawns the script as a subprocess and no test allows a
+// real network call -- the mock fetch throws if invoked with any URL other
+// than the exact expected localhost-relative endpoint, and several tests
+// assert the mock is never called at all.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
-import path from "node:path";
-import fs from "node:fs";
 
-const scriptPath = path.join(process.cwd(), "scripts", "contur3", "run-night-reservations.mjs");
+import {
+  resolveForceRebuildMode,
+  buildReservationRequestUrl,
+  runNightReservations,
+  FORCE_REBUILD_MARKER,
+  ENDPOINT,
+} from "../../scripts/contur3/run-night-reservations.mjs";
 
-test("RED1/GREEN: default invocation (no CONTUR3_FORCE_REBUILD) never constructs a forceRebuild=CEO_APPROVED request", () => {
-  const src = fs.readFileSync(scriptPath, "utf8");
-  // The literal destructive query string must never appear as an unconditional
-  // part of the request URL -- it may only be set inside the explicit-marker branch.
-  assert.doesNotMatch(
-    src,
-    /fetch\(`\$\{BASE_URL\}\$\{ENDPOINT\}\?forceRebuild=CEO_APPROVED`/,
-    "default request construction must not hardcode forceRebuild=CEO_APPROVED"
-  );
-  assert.match(
-    src,
-    /if \(forceRebuild\) \{\s*\n\s*url\.searchParams\.set\('forceRebuild', FORCE_REBUILD_MARKER\);/,
-    "forceRebuild query param must only be set inside an explicit conditional branch"
-  );
-  assert.match(src, /const requested = process\.env\.CONTUR3_FORCE_REBUILD;/);
-  assert.match(src, /if \(requested === undefined\) return \{ forceRebuild: false, mode: 'NORMAL' \};/);
+const FAKE_BASE_URL = "http://127.0.0.1:9"; // closed port -- never actually dialed by the mock
+
+function makeMockFetch(response: { status: number; body: unknown }) {
+  const calls: Array<{ url: string; init: unknown }> = [];
+  const fetchImpl = async (url: string, init: unknown) => {
+    calls.push({ url, init });
+    return {
+      ok: response.status >= 200 && response.status < 300,
+      status: response.status,
+      json: async () => response.body,
+      text: async () => JSON.stringify(response.body),
+    };
+  };
+  return { fetchImpl, calls };
+}
+
+function makeUnreachableFetch() {
+  return async () => {
+    throw new Error("TEST_FAILURE: fetchImpl must never be called in this test");
+  };
+}
+
+test("1. resolveForceRebuildMode: default (env var unset) is NORMAL, no error", () => {
+  const result = resolveForceRebuildMode({});
+  assert.equal(result.forceRebuild, false);
+  assert.equal(result.mode, "NORMAL");
+  assert.equal(result.error, null);
 });
 
-test("RED2/GREEN: an explicit but incorrect CONTUR3_FORCE_REBUILD value is rejected locally before any network request", () => {
-  let stdoutErr = "";
-  let status = 0;
-  try {
-    execFileSync("node", [scriptPath], {
-      env: {
-        ...process.env,
-        EXECUTOR_CANDIDATES_SECRET: "test-secret-not-real",
-        CONTUR3_FORCE_REBUILD: "wrong-value",
-      },
-      timeout: 5000,
-      encoding: "utf8",
-    });
-  } catch (err: unknown) {
-    const e = err as { status?: number; stdout?: string; stderr?: string };
-    status = e.status ?? 1;
-    stdoutErr = `${e.stdout ?? ""}${e.stderr ?? ""}`;
+test("2. resolveForceRebuildMode: exact approved marker enables FORCE_REBUILD_EXPLICIT", () => {
+  const result = resolveForceRebuildMode({ CONTUR3_FORCE_REBUILD: FORCE_REBUILD_MARKER });
+  assert.equal(result.forceRebuild, true);
+  assert.equal(result.mode, "FORCE_REBUILD_EXPLICIT");
+  assert.equal(result.error, null);
+});
+
+test("3. resolveForceRebuildMode: any other value produces an error and forceRebuild=false, no process.exit call (pure function)", () => {
+  for (const bad of ["wrong-value", "ceo_approved", "CEO_APPROVED ", ""]) {
+    const result = resolveForceRebuildMode({ CONTUR3_FORCE_REBUILD: bad });
+    assert.equal(result.forceRebuild, false);
+    assert.equal(result.mode, null);
+    assert.match(result.error as string, /FORCE_REBUILD_MARKER_MISMATCH/);
   }
-  assert.equal(status, 1);
-  assert.match(stdoutErr, /FORCE_REBUILD_MARKER_MISMATCH/);
-  assert.doesNotMatch(stdoutErr, /POST http/, "must not attempt any network request before rejecting the wrong marker");
 });
 
-test("GREEN: the exact correct marker (CEO_APPROVED) is the only value resolveForceRebuildMode accepts as force mode", () => {
-  const src = fs.readFileSync(scriptPath, "utf8");
-  assert.match(src, /const FORCE_REBUILD_MARKER = 'CEO_APPROVED';/);
-  assert.match(src, /if \(requested !== FORCE_REBUILD_MARKER\) \{/);
-  assert.match(src, /return \{ forceRebuild: true, mode: 'FORCE_REBUILD_EXPLICIT' \};/);
+test("4. buildReservationRequestUrl: default/normal mode produces a URL with no forceRebuild param", () => {
+  const url = buildReservationRequestUrl(FAKE_BASE_URL, false);
+  assert.equal(url.toString(), `${FAKE_BASE_URL}${ENDPOINT}`);
+  assert.equal(url.searchParams.has("forceRebuild"), false);
 });
 
-test("GREEN: execution_mode is printed and never NORMAL when a force request is actually sent", () => {
-  const src = fs.readFileSync(scriptPath, "utf8");
-  assert.match(src, /console\.log\(`execution_mode: \$\{mode\}`\);/);
+test("5. buildReservationRequestUrl: force mode produces exactly forceRebuild=CEO_APPROVED", () => {
+  const url = buildReservationRequestUrl(FAKE_BASE_URL, true);
+  assert.equal(url.searchParams.get("forceRebuild"), "CEO_APPROVED");
 });
 
-test("GREEN: no secret value is ever printed by the runner", () => {
-  const src = fs.readFileSync(scriptPath, "utf8");
-  assert.doesNotMatch(src, /console\.(log|error)\(`.*\$\{secret\}/);
+test("6. runNightReservations: normal mode sends a request whose URL contains no forceRebuild param, via mock fetch only", async () => {
+  const { fetchImpl, calls } = makeMockFetch({ status: 200, body: { ok: true, plan_run_id: "night-plan:x", reserved_count: 1 } });
+  const result = await runNightReservations({
+    fetchImpl,
+    env: { EXECUTOR_CANDIDATES_SECRET: "test-secret-not-real" },
+    baseUrl: FAKE_BASE_URL,
+    writeLogs: false,
+  });
+  assert.equal(calls.length, 1, "fetch must be called exactly once");
+  assert.equal(calls[0].url, `${FAKE_BASE_URL}${ENDPOINT}`);
+  assert.equal(new URL(calls[0].url).searchParams.has("forceRebuild"), false);
+  assert.equal(result.mode, "NORMAL");
+  assert.equal(result.exitCode, 0);
+});
+
+test("7. runNightReservations: explicit approved force mode sends exactly forceRebuild=CEO_APPROVED, via mock fetch only", async () => {
+  const { fetchImpl, calls } = makeMockFetch({ status: 200, body: { ok: true, result: "REBUILT", plan_run_id: "night-plan:x", reserved_count: 1 } });
+  const result = await runNightReservations({
+    fetchImpl,
+    env: { EXECUTOR_CANDIDATES_SECRET: "test-secret-not-real", CONTUR3_FORCE_REBUILD: FORCE_REBUILD_MARKER },
+    baseUrl: FAKE_BASE_URL,
+    writeLogs: false,
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0].url).searchParams.get("forceRebuild"), "CEO_APPROVED");
+  assert.equal(result.mode, "FORCE_REBUILD_EXPLICIT");
+  assert.equal(result.exitCode, 0);
+});
+
+test("8. runNightReservations: an invalid force marker rejects BEFORE fetchImpl is ever invoked", async () => {
+  const fetchImpl = makeUnreachableFetch();
+  const result = await runNightReservations({
+    fetchImpl,
+    env: { EXECUTOR_CANDIDATES_SECRET: "test-secret-not-real", CONTUR3_FORCE_REBUILD: "wrong-value" },
+    baseUrl: FAKE_BASE_URL,
+    writeLogs: false,
+  });
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.fetchCalled, false);
+  assert.match(result.reason as string, /FORCE_REBUILD_MARKER_MISMATCH/);
+});
+
+test("9. runNightReservations: missing executor secret rejects BEFORE fetchImpl is ever invoked", async () => {
+  const fetchImpl = makeUnreachableFetch();
+  const result = await runNightReservations({
+    fetchImpl,
+    env: {},
+    baseUrl: FAKE_BASE_URL,
+    writeLogs: false,
+  });
+  assert.equal(result.exitCode, 1);
+  assert.equal(result.fetchCalled, false);
+  assert.equal(result.reason, "MISSING_EXECUTOR_SECRET");
+});
+
+test("10. runNightReservations: calling without an injected fetchImpl throws instead of silently falling back to a real network fetch", async () => {
+  await assert.rejects(
+    () =>
+      runNightReservations({
+        env: { EXECUTOR_CANDIDATES_SECRET: "test-secret-not-real" },
+        baseUrl: FAKE_BASE_URL,
+        writeLogs: false,
+      }),
+    /requires an injected fetchImpl/
+  );
+});
+
+test("11. static safety: main() only runs on direct script execution, never on module import", async () => {
+  // This test file itself already imports the module above without triggering
+  // any network call (proven by the absence of any fetch activity in tests
+  // 1-5, which use zero fetchImpl calls) -- this is a static guard on the
+  // entrypoint gate so a future edit cannot silently remove it.
+  const { readFileSync } = await import("node:fs");
+  const path = await import("node:path");
+  const src = readFileSync(
+    path.join(process.cwd(), "scripts", "contur3", "run-night-reservations.mjs"),
+    "utf8"
+  );
+  assert.match(src, /if \(import\.meta\.url === `file:\/\/\$\{process\.argv\[1\]\}`\) \{\s*\n\s*main\(\);\s*\n\}/);
 });

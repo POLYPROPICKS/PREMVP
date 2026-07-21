@@ -484,6 +484,7 @@ test("9: an empty replacement plan aborts before any delete -- an existing reser
     "the pre-existing reservation must survive an aborted force-rebuild untouched"
   );
   assert.equal(result.persist.written_count, 0);
+  assert.equal(repo.insertCalls, 0, "persistReservationPlanWithReconciliation must never be invoked in the aborted path");
   assert.equal(jobEvidence.calls.length, 1);
   assert.equal(jobEvidence.calls[0].status, "empty");
   const diag = jobEvidence.calls[0].diagnostics as Record<string, unknown>;
