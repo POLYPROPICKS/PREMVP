@@ -8,13 +8,18 @@ proven source/test behavior — **not** a runtime exporter and not a new format.
 | --- | --- |
 | Audited PREMVP source head | `0fcbd0ce47c1269205f618715534bf3ff4619957` |
 | Patch applied on top | `Define PREMVP Ireland execution contract` (numeric-amount coercion repair) |
-| Live-schema audit | **NOT PERFORMED** — no production Supabase credentials and no founder-provided `information_schema` artifact were available to this session. All schema facts below are labelled `SOURCE-CLAIMED`, not `LIVE-PROVEN`. |
+| Schema evidence | `FOUNDER_SCHEMA_ARTIFACT_PROVEN_2026_07_19` — the founder supplied a Supabase snippet CSV export ("Untitled query (70).csv", captured 2026-07-19) covering `event_execution_queue` and `executor_order_events`. This session did not run any live query against production and did not independently re-verify the artifact against the database; the facts below are recorded as **founder-attested**, not as a live audit performed here. |
 | Direct tests | 45/45 GREEN (`tests/contur3/executorOrderEvents.callbackContract.test.ts`, `executorQueueMark.callbackContract.test.ts`, `executorCallbackMigration.test.ts`) |
+| Connected PREMVP↔Ireland delivery | **NOT TESTED.** Nothing in this document or the underlying tests exercises a real network call to or from Ireland. |
 
-Provenance legend: **SOURCE-PROVEN** (asserted by repo source), **TEST-PROVEN**
-(asserted by a passing direct test), **SOURCE-CLAIMED** (documented in source
-comments referencing an earlier live audit, not re-verified here),
-**UNPROVEN/NOT-AUDITED** (requires Stage B live access).
+Provenance legend:
+- **SOURCE-PROVEN** — asserted by reading the repo source directly.
+- **TEST-PROVEN** — asserted by a passing direct automated test in this repo.
+- **FOUNDER_SCHEMA_ARTIFACT_PROVEN** — asserted by the founder-supplied CSV
+  schema export dated 2026-07-19; not independently queried or re-verified by
+  this session against the live database.
+- **NOT_YET_CONNECTED_TESTED** — no end-to-end PREMVP↔Ireland call has been
+  made or tested; behavior across the real network boundary is unproven.
 
 ---
 
@@ -90,7 +95,7 @@ Auth: `x-executor-secret`. Requires `source="ireland_queue_only"` and a
 | `QUEUE_MARK_IDEMPOTENCY` | **PROVEN** | TEST-PROVEN 14+15 |
 | `RESPONSE_AUTHORITY` | **PROVEN** | server-generated ids/statuses; EXECUTED server-verified |
 | `CROSS_ENDPOINT_ORDERING` | **SAFE** (retry-independent) | see below |
-| `LIVE_SCHEMA_COMPATIBILITY` | **NOT-AUDITED** (source-claimed compatible) | no live access this session |
+| `LIVE_SCHEMA_COMPATIBILITY` | **FOUNDER_SCHEMA_ARTIFACT_PROVEN** (compatible against the 2026-07-19 CSV export; not independently re-queried this session) | see §3 |
 
 The two endpoints are independent and retry-safe: `order-events` persists the
 economic event keyed by `idempotency_key`; `queue-mark EXECUTED` refuses to
@@ -104,19 +109,57 @@ Neither endpoint assumes the other committed atomically. (SOURCE/TEST-PROVEN.)
 
 ---
 
-## 3. Live-schema facts (SOURCE-CLAIMED — re-audit required in Stage B)
+## 3. Live-schema facts — `FOUNDER_SCHEMA_ARTIFACT_PROVEN`
 
-Documented in source comments (`order-events/route.ts` L188–193,
-`executorCallbackContract.ts` L14–20) from a prior founder-provided
-43-column `information_schema` dump + a live `42703` error. **Not re-verified
-here:**
+Source: founder-supplied Supabase snippet CSV export ("Untitled query (70).csv"),
+captured 2026-07-19. This is a **founder-attested artifact**, not a live query
+run by this session, and not independently re-verified against production
+here. It corroborates the same conclusion previously documented in source
+comments (`order-events/route.ts` L188–193, `executorCallbackContract.ts`
+L14–20), which trace back to a prior founder-provided 43-column
+`information_schema` dump plus a live `42703` error.
 
-- `executor_order_events.match_family_key` — **absent** (never inserted).
-- `executor_order_events.reservation_id` — **absent** (never inserted).
-- `executor_order_events.queue_id` — **absent** (never inserted).
-- `making_amount`, `taking_amount` — **numeric**.
-- `event_type` NOT NULL default `'order_event'`; `source` NOT NULL default
-  `'ireland_executor'`; `environment` NOT NULL default `'production'`.
+#### `event_execution_queue` — queue-side identifiers (FOUNDER_SCHEMA_ARTIFACT_PROVEN)
+Queue identifiers live **here**, on the queue row, not on `executor_order_events`:
+`id` (uuid, NOT NULL), `reservation_id` (uuid, nullable), `plan_run_id` (text,
+NOT NULL), `rebalance_run_id` (text, NOT NULL), `match_family_key` (text, NOT
+NULL), `game_start_iso` (timestamptz, NOT NULL), `condition_id`/`token_id`/`side`
+(text, NOT NULL), `market_slug` (text, nullable), `tier` (text, NOT NULL),
+`stake_usd` (numeric, NOT NULL), `preferred_entry_iso`/`latest_entry_iso`
+(timestamptz, NOT NULL), `status` (text, NOT NULL, default `READY`), `order_key`
+(text, nullable), `idempotency_key` (text, nullable), `diagnostics` (jsonb, NOT
+NULL, default `{}`), `created_at`/`updated_at` (timestamptz, NOT NULL).
+
+#### `executor_order_events` — 43 columns total (FOUNDER_SCHEMA_ARTIFACT_PROVEN)
+- `id` uuid NOT NULL default `gen_random_uuid()`; `created_at` timestamptz NOT
+  NULL default `now()`.
+- `event_type` text NOT NULL default `'order_event'`; `source` text NOT NULL
+  default `'ireland_executor'`; `environment` text NOT NULL default
+  `'production'`. The route may omit these on submission and let the proven
+  live defaults apply, or send explicit values (SOURCE-PROVEN: values are
+  passed through `str()` and stripped from the insert payload when
+  null/undefined, never forced).
+- `idempotency_key`, `clob_order_id`, `market_slug`, `condition_id` — text,
+  nullable.
+- **`token_id` — text, NOT NULL.** Mandatory at persistence level; the route
+  independently rejects a missing `token_id` before any insert is attempted
+  (TEST-PROVEN 1).
+- `selected_side`, `side`, `order_status` — text, nullable.
+- `success`, `dry_run`, `live_confirm` — boolean, nullable.
+- `submitted_price`, `submitted_size`, `stake_usd` — numeric, nullable.
+- `making_amount`, `taking_amount` — **numeric, nullable.** Must be persisted
+  as numeric JSON values, never string-coerced — a plain `str()` coercion
+  previously discarded JSON-number values silently. Repaired in this
+  checkpoint via `coerceNumericAmount()` (TEST-PROVEN 17–18; SOURCE-PROVEN
+  `lib/executor/executorCallbackContract.ts`).
+- Observed price/liquidity and fee fields (`observed_best_bid`,
+  `observed_best_ask`, `observed_price`, `observed_spread`, `max_entry_price`,
+  `fee_usd`, `slippage_usd`, etc.) — numeric where present.
+- **Absent from `executor_order_events` — must never be inserted:**
+  `queue_id`, `reservation_id`, `match_family_key`. These are queue-side
+  identifiers (see the `event_execution_queue` block above) and have no
+  corresponding column on `executor_order_events`. The route does not insert
+  them (TEST-PROVEN 13–15).
 
 Migration `supabase/migrations/20260719_executor_order_events_schema_and_idempotency.sql`
 is **known to diverge** from the live table and must **not** be applied or
@@ -144,12 +187,22 @@ RED → GREEN captured (TEST-PROVEN 17–18).
 
 ---
 
-## 5. Not audited in this milestone (Stage B scope)
+## 5. Not yet connected/tested (Stage B scope)
 
-- `ORDER_EVENTS_CONTRACT`: live-schema re-audit — **NOT_AUDITED**
-- `QUEUE_MARK_CONTRACT`: live-schema re-audit — **NOT_AUDITED**
-- `LIVE_SCHEMA_CONTRACT`: `information_schema` metadata verification against the
-  live tables — **NOT_AUDITED**
+Schema compatibility is now `FOUNDER_SCHEMA_ARTIFACT_PROVEN` (§3). What remains
+unproven is the **connected** behavior — an actual PREMVP↔Ireland call has
+never been made or tested from this repository:
+
+- `ORDER_EVENTS_CONTRACT`: end-to-end call from a real Ireland client —
+  **NOT_YET_CONNECTED_TESTED**
+- `QUEUE_MARK_CONTRACT`: end-to-end call from a real Ireland client —
+  **NOT_YET_CONNECTED_TESTED**
+- `LIVE_SCHEMA_CONTRACT`: independent live `information_schema` re-query by
+  this session (as opposed to the founder-supplied CSV artifact) —
+  **NOT_YET_CONNECTED_TESTED**
+
+Do not read this document as evidence that connected PREMVP↔Ireland delivery
+has passed. It has not been attempted.
 
 No production reads, writes, migrations, Ireland calls, or CLOB orders occurred
 while producing this document. No secrets or raw production rows are included.
