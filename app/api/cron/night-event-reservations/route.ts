@@ -69,15 +69,19 @@ async function handle(request: NextRequest) {
     }
 
     // ── forceRebuild=CEO_APPROVED: delete queue + reservations + rebuild ──────
+    // (unless the replacement plan is empty, in which case nothing is deleted --
+    // see executeForceRebuild's ABORTED_NO_REPLACEMENT path.)
     if (forceRebuild) {
       const result = await executeForceRebuild(nowMs, { selectorMode: "CONTRACT_A_PLANNING_V1" });
       const diagResult = await persistReservationPlanDiagnostics(result.plan, {
         context: "force-rebuild",
       });
+      const aborted = result.result === "ABORTED_NO_REPLACEMENT";
       return NextResponse.json(
         {
           ok: true,
           force_rebuild: true,
+          result: result.result,
           plan_run_id: result.plan_run_id,
           deleted_queue_count: result.deleted_queue_count,
           deleted_reservation_count: result.deleted_reservation_count,
@@ -90,7 +94,9 @@ async function handle(request: NextRequest) {
           diagnostics: result.plan.diagnostics,
           diagnostic_report_path: diagResult.path,
           founder_action_required: false,
-          note: "Force rebuild complete. event_execution_queue rows for this plan_run_id were deleted and reservations rebuilt.",
+          note: aborted
+            ? "Force rebuild ABORTED: replacement plan was empty. No existing queue/reservation rows were deleted."
+            : "Force rebuild complete. event_execution_queue rows for this plan_run_id were deleted and reservations rebuilt.",
         },
         { status: 200, headers: { "Cache-Control": "no-store" } }
       );

@@ -995,6 +995,10 @@ export async function loadPlanStatus(planRunId: string, nowMs: number): Promise<
 }
 
 export interface ForceRebuildResult {
+  // REBUILT: replacement plan was non-empty; existing rows were deleted and
+  // replaced. ABORTED_NO_REPLACEMENT: replacement plan was empty; nothing was
+  // deleted and the prior reservation (if any) is untouched.
+  result: "REBUILT" | "ABORTED_NO_REPLACEMENT";
   plan_run_id: string;
   deleted_queue_count: number;
   deleted_reservation_count: number;
@@ -1161,19 +1165,68 @@ export async function executeForceRebuild(
   const startedAt = new Date().toISOString();
 
   try {
-    // 1. Delete event_execution_queue rows for this plan_run_id (idempotent, retry-safe).
+    // 1. Build the replacement plan FIRST (PURE -- no DB writes; candidate-page
+    //    reads already retry internally via fetchAllPlanningRows' own bounded
+    //    per-page retry+timeout). The delete below must never run until we
+    //    already know the replacement plan is non-empty -- this closes the
+    //    incident where an empty replacement plan silently deleted a real
+    //    existing reservation with nothing to take its place.
+    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates, selectorMode: deps.selectorMode });
+
+    if (plan.reservations.length === 0) {
+      const planHealth = await withBoundedRetry("force_rebuild_plan_health_read_aborted", () =>
+        loadPlanStatusFn(planRunId, nowMs)
+      );
+      const finishedAt = new Date().toISOString();
+      await jobEvidence.writeJobRun({
+        source: "night-event-reservations-force-rebuild",
+        formulaVersion: "force-rebuild-v1",
+        startedAt,
+        finishedAt,
+        status: "empty",
+        generatedCount: 0,
+        rejectedCount:
+          plan.diagnostics.skipped_non_tier1_event +
+          plan.diagnostics.skipped_outside_horizon +
+          plan.diagnostics.skipped_no_executable_anchor,
+        durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
+        diagnostics: {
+          plan_run_id: planRunId,
+          deleted_queue_count: 0,
+          deleted_reservation_count: 0,
+          reserved_count: 0,
+          aborted_reason: "EMPTY_REPLACEMENT_PLAN",
+        },
+      });
+
+      return {
+        result: "ABORTED_NO_REPLACEMENT",
+        plan_run_id: planRunId,
+        deleted_queue_count: 0,
+        deleted_reservation_count: 0,
+        plan,
+        persist: {
+          plan_run_id: planRunId,
+          already_exists: false,
+          written_count: 0,
+          reserved_count: 0,
+          reservations: [],
+          diagnostics: plan.diagnostics,
+        },
+        plan_health: planHealth,
+      };
+    }
+
+    // 2. Delete event_execution_queue rows for this plan_run_id (idempotent, retry-safe).
+    //    Only reached once the replacement plan above is known to be non-empty.
     const { deletedCount: deletedQueueCount } = await withBoundedRetry("force_rebuild_queue_delete", () =>
       forceRebuildRepo.deleteQueueByPlanRunId(planRunId)
     );
 
-    // 2. Delete night_event_reservations rows for this plan_run_id (idempotent, retry-safe).
+    // 3. Delete night_event_reservations rows for this plan_run_id (idempotent, retry-safe).
     const { deletedCount: deletedResCount } = await withBoundedRetry("force_rebuild_reservation_delete", () =>
       forceRebuildRepo.deleteReservationsByPlanRunId(planRunId)
     );
-
-    // 3. Rebuild from current universe. Candidate-page reads already retry
-    //    internally (fetchAllPlanningRows' own bounded per-page retry+timeout).
-    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates, selectorMode: deps.selectorMode });
 
     // 4. Persist -- insert is never blindly retried; an ambiguous failure is
     //    reconciled by reading back canonical identities, never re-inserted.
@@ -1206,6 +1259,7 @@ export async function executeForceRebuild(
     });
 
     return {
+      result: "REBUILT",
       plan_run_id: planRunId,
       deleted_queue_count: deletedQueueCount,
       deleted_reservation_count: deletedResCount,

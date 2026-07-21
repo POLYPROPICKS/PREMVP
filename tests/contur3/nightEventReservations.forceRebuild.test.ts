@@ -426,3 +426,122 @@ test("8: complete force-rebuild regression -- candidates -> plan -> cleanup -> p
   const source = readFileSync(path.join(process.cwd(), "lib/executor/nightEventReservations.ts"), "utf8");
   assert.doesNotMatch(source, /clob|placeOrder|submitOrder|order-events|queue\/mark/i);
 });
+
+// ── Empty-replacement delete guard: closes the destructive force-rebuild incident ──
+//
+// Production incident: night-plan:2026-07-21:1700-minsk force-rebuilds at
+// 13:38:41Z and 14:03:49Z both deleted the existing reservation
+// (deleted_reservation_count=1 on the first run) and then built a replacement
+// plan with reserved_count=0, leaving night_event_reservations and
+// event_execution_queue at zero rows for the plan with no way to recover the
+// deleted row. The fix: build the replacement plan FIRST (pure, no DB writes)
+// and only delete once it is known to be non-empty.
+
+const fetchNoCandidates = async () => ({ candidates: [] });
+
+test("9: an empty replacement plan aborts before any delete -- an existing reservation is never destroyed with nothing to replace it", async () => {
+  const existing: NightEventReservationRow = {
+    id: "res-existing-1",
+    plan_run_id: "night-plan:2026-07-19:1700-minsk",
+    plan_date_minsk: "2026-07-19",
+    window_start_iso: "2026-07-19T14:00:00.000Z",
+    window_end_iso: "2026-07-20T05:00:00.000Z",
+    match_family_key: "pair:argentina-vs-spain:2026-07-19",
+    event_slug: "fifwc-esp-arg-2026-07-19",
+    event_title: "Argentina vs Spain",
+    sport: "soccer",
+    league: null,
+    strategic_scope: "WC",
+    game_start_iso: KICKOFF_ISO,
+    event_tier: "TIER1",
+    event_score: 80,
+    best_snapshot_id: null,
+    reservation_rank: 1,
+    status: "RESERVED",
+    selection_reason: null,
+    diagnostics: {},
+  };
+  const repo = makeFakeReservationRepo([existing]);
+  const forceRebuildRepo = makeFakeForceRebuildRepo();
+  const jobEvidence = makeFakeJobEvidence();
+
+  const result = await executeForceRebuild(ANCHOR_NOW_MS, {
+    fetchCandidates: fetchNoCandidates, // replacement universe is empty
+    repo,
+    forceRebuildRepo,
+    jobEvidence,
+    loadPlanStatus: fakeLoadPlanStatus,
+  });
+
+  assert.equal(result.result, "ABORTED_NO_REPLACEMENT");
+  assert.equal(result.deleted_queue_count, 0, "no queue delete when the replacement plan is empty");
+  assert.equal(result.deleted_reservation_count, 0, "no reservation delete when the replacement plan is empty");
+  assert.equal(forceRebuildRepo.deleteQueueCalls, 0, "the delete port must never be invoked at all in the aborted path");
+  assert.equal(forceRebuildRepo.deleteReservationCalls, 0);
+  assert.equal(
+    repo.store.some((r) => r.id === "res-existing-1"),
+    true,
+    "the pre-existing reservation must survive an aborted force-rebuild untouched"
+  );
+  assert.equal(result.persist.written_count, 0);
+  assert.equal(jobEvidence.calls.length, 1);
+  assert.equal(jobEvidence.calls[0].status, "empty");
+  const diag = jobEvidence.calls[0].diagnostics as Record<string, unknown>;
+  assert.equal(diag.aborted_reason, "EMPTY_REPLACEMENT_PLAN");
+  assert.equal(diag.deleted_reservation_count, 0);
+});
+
+test("10: a non-empty replacement plan still proceeds through delete-then-persist exactly as before", async () => {
+  const repo = makeFakeReservationRepo();
+  const forceRebuildRepo = makeFakeForceRebuildRepo();
+  const jobEvidence = makeFakeJobEvidence();
+
+  const result = await executeForceRebuild(ANCHOR_NOW_MS, {
+    fetchCandidates: fetchOneCandidate, // non-empty replacement
+    repo,
+    forceRebuildRepo,
+    jobEvidence,
+    loadPlanStatus: fakeLoadPlanStatus,
+  });
+
+  assert.equal(result.result, "REBUILT");
+  assert.equal(forceRebuildRepo.deleteQueueCalls, 1);
+  assert.equal(forceRebuildRepo.deleteReservationCalls, 1);
+  assert.equal(result.persist.written_count, 1);
+  assert.equal(jobEvidence.calls[0].status, "success");
+});
+
+test("11: the funnel diagnostics returned on an empty-replacement abort use the exact existing ReservationPlan stage names -- no new/incompatible reporting subsystem", async () => {
+  const repo = makeFakeReservationRepo();
+  const forceRebuildRepo = makeFakeForceRebuildRepo();
+  const jobEvidence = makeFakeJobEvidence();
+
+  const result = await executeForceRebuild(ANCHOR_NOW_MS, {
+    fetchCandidates: fetchNoCandidates,
+    repo,
+    forceRebuildRepo,
+    jobEvidence,
+    loadPlanStatus: fakeLoadPlanStatus,
+  });
+
+  // Exact existing ReservationPlan.diagnostics stage names must be present --
+  // this is the same object the route already returns as `diagnostics` in the
+  // non-empty case, so a zero-result response is never bare counts.
+  const diag = result.plan.diagnostics;
+  for (const stage of [
+    "universe_size",
+    "event_groups",
+    "canonical_event_groups",
+    "reserved_count",
+    "skipped_outside_horizon",
+    "skipped_weak_key",
+    "skipped_non_tier1_event",
+    "skipped_no_executable_anchor",
+    "market_level_keys_skipped",
+    "tier1PhysicalMatchesSeen",
+    "tier1ReservationsPlanned",
+  ]) {
+    assert.ok(stage in diag, `expected existing diagnostics stage "${stage}" to be present`);
+  }
+  assert.equal(result.persist.diagnostics, result.plan.diagnostics, "persist result carries the same diagnostics object, not a duplicate reporting shape");
+});

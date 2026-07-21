@@ -15,6 +15,25 @@ const BASE_URL = 'https://polypropicks.com';
 const ENDPOINT = '/api/cron/night-event-reservations';
 const LOG_DIR = path.join(process.cwd(), 'modeling', 'fire_runs', 'contur3-blue-model');
 
+// Force rebuild deletes existing reservations/queue rows before replacing
+// them -- it must never be the default. Ordinary/scheduled invocation is
+// always NORMAL (no forceRebuild param). Force mode requires this exact
+// explicit operator marker; any other value is rejected locally before any
+// network request is made.
+const FORCE_REBUILD_MARKER = 'CEO_APPROVED';
+
+function resolveForceRebuildMode() {
+  const requested = process.env.CONTUR3_FORCE_REBUILD;
+  if (requested === undefined) return { forceRebuild: false, mode: 'NORMAL' };
+  if (requested !== FORCE_REBUILD_MARKER) {
+    console.error(
+      `FORCE_REBUILD_MARKER_MISMATCH: CONTUR3_FORCE_REBUILD must be exactly "${FORCE_REBUILD_MARKER}"`
+    );
+    process.exit(1);
+  }
+  return { forceRebuild: true, mode: 'FORCE_REBUILD_EXPLICIT' };
+}
+
 function getSecret() {
   const secret =
     process.env.EXECUTOR_CANDIDATES_SECRET ||
@@ -48,17 +67,25 @@ function appendBattleLog(entry) {
 
 async function main() {
   const secret = getSecret();
+  const { forceRebuild, mode } = resolveForceRebuildMode();
   const timestamp = nowIso();
   const logPath = path.join(LOG_DIR, `${timestamp}_night_reservations.json`);
 
   fs.mkdirSync(LOG_DIR, { recursive: true });
 
-  console.log(`POST ${BASE_URL}${ENDPOINT}`);
+  console.log(`execution_mode: ${mode}`);
 
   // forceRebuild must be a URL query param — route.ts reads searchParams, not the body.
+  const url = new URL(`${BASE_URL}${ENDPOINT}`);
+  if (forceRebuild) {
+    url.searchParams.set('forceRebuild', FORCE_REBUILD_MARKER);
+  }
+
+  console.log(`POST ${url.toString()}`);
+
   let res;
   try {
-    res = await fetch(`${BASE_URL}${ENDPOINT}?forceRebuild=CEO_APPROVED`, {
+    res = await fetch(url.toString(), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -83,9 +110,11 @@ async function main() {
 
   const report = {
     timestamp,
+    execution_mode: mode,
     endpoint: ENDPOINT,
     http_status: res.status,
     ok: body.ok ?? false,
+    result: body.result ?? null,
     plan_run_id: body.plan_run_id ?? null,
     reserved_count: body.reserved_count ?? body.reservedCount ?? null,
     skipped_count: body.skipped_count ?? body.skippedCount ?? null,
@@ -113,6 +142,7 @@ async function main() {
 
   console.log(`http_status:          ${report.http_status}`);
   console.log(`ok:                   ${report.ok}`);
+  console.log(`result:               ${report.result}`);
   console.log(`plan_run_id:          ${report.plan_run_id}`);
   console.log(`reserved_count:       ${report.reserved_count}`);
   console.log(`skipped_count:        ${report.skipped_count}`);
