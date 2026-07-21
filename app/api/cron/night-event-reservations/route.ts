@@ -126,6 +126,7 @@ async function handle(request: NextRequest) {
     // ── Standard create / idempotent path (records job_runs evidence) ──────────
     const { plan, persisted: result } = await runReservationCronWithEvidence(nowMs, {
       force: force || forceCreate,
+      selectorMode: "CONTRACT_A_PLANNING_V1",
     });
 
     // Persist diagnostics (non-fatal if it fails).

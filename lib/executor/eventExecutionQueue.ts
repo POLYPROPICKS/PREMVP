@@ -16,6 +16,7 @@
 import { createHash } from "crypto";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
 import { compareCandidateQuality } from "./nightPortfolioPlanner";
+import { FROZEN_MODEL_V2_VERSION } from "@/lib/modeling/frozenModelProducerV2Shadow";
 import {
   buildRebalanceRunId,
   isDueForRebalance,
@@ -465,6 +466,7 @@ export async function runEventRebalance(
   deps: {
     repo?: RebalanceRepoPort;
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+    fetchContractAFinalCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
   } = {}
 ): Promise<RebalanceRunResult> {
   const write = opts.write === true;
@@ -475,6 +477,12 @@ export async function runEventRebalance(
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
       return buildFireModelCandidates(PLAN_POOL, "all", true);
+    });
+  const fetchContractAFinalCandidates =
+    deps.fetchContractAFinalCandidates ??
+    (async () => {
+      const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_V1");
     });
 
   // Due reservations: active status + start within the rebalance window.
@@ -543,8 +551,11 @@ export async function runEventRebalance(
   // Existing READY/SENT queue rows so we never double-queue a reservation.
   const alreadyQueued = await repo.loadQueuedReservationIds();
 
-  // Load current markets once; group by event key.
+  // Load current markets once; Contract A planning reservations additionally
+  // resolve their final authoritative decision at the due-event boundary.
   const { candidates: universe } = await fetchCandidates();
+  const hasContractAPlanning = due.some((r) => r.diagnostics?.contract_a_stage === "PLANNING");
+  const contractAFinalUniverse = hasContractAPlanning ? (await fetchContractAFinalCandidates()).candidates : [];
   const marketsByKey = new Map<string, FireModelCandidate[]>();
   for (const c of universe) {
     const arr = marketsByKey.get(c.match_family_key) ?? [];
@@ -579,10 +590,16 @@ export async function runEventRebalance(
     // if it is missing or no longer executable.
     const reservationDiag = reservation.diagnostics ?? {};
     const reservationSelectorId = reservationDiag.selector_id;
-    if (typeof reservationSelectorId === "string" && reservationSelectorId.trim() !== "") {
-      const authConditionId = reservationDiag.authoritative_condition_id;
-      const authTokenId = reservationDiag.authoritative_token_id;
-      const authSide = reservationDiag.authoritative_side;
+    const isPlanningReservation = reservationDiag.contract_a_stage === "PLANNING" && reservationSelectorId === "CONTRACT_A_PLANNING_V1";
+    const isLegacyAuthoritativeReservation = reservationSelectorId === FROZEN_MODEL_V2_VERSION;
+    if (isPlanningReservation || isLegacyAuthoritativeReservation) {
+      const authoritativeUniverse = isPlanningReservation ? contractAFinalUniverse : eventCandidates;
+      const finalForEvent = isPlanningReservation
+        ? authoritativeUniverse.find((c) => c.match_family_key === reservation.match_family_key) ?? null
+        : null;
+      const authConditionId = isPlanningReservation ? finalForEvent?.condition_id : reservationDiag.authoritative_condition_id;
+      const authTokenId = isPlanningReservation ? finalForEvent?.token_id : reservationDiag.authoritative_token_id;
+      const authSide = isPlanningReservation ? finalForEvent?.side : reservationDiag.authoritative_side;
       const identityComplete =
         typeof authConditionId === "string" &&
         authConditionId.trim() !== "" &&
@@ -591,7 +608,9 @@ export async function runEventRebalance(
         typeof authSide === "string" &&
         authSide.trim() !== "";
 
-      const authoritativeCandidate = identityComplete
+      const authoritativeCandidate = isPlanningReservation
+        ? finalForEvent
+        : identityComplete
         ? eventCandidates.find(
             (c) => c.condition_id === authConditionId && c.token_id === authTokenId && c.side === authSide
           ) ?? null
@@ -623,7 +642,10 @@ export async function runEventRebalance(
         continue;
       }
 
-      const row = buildQueueRow(reservation, authoritativeCandidate, rebalanceRunId);
+      const authoritativeReservation = isPlanningReservation
+        ? { ...reservation, diagnostics: { ...reservationDiag, selector_id: FROZEN_MODEL_V2_VERSION, contract_a_stage: "FINAL_AUTHORITATIVE", authoritative_condition_id: authConditionId, authoritative_token_id: authTokenId, authoritative_side: authSide, authoritative_observation_id: authoritativeCandidate.diagnostics.authoritative_observation_id, authoritative_event_key: authoritativeCandidate.diagnostics.authoritative_event_key } }
+        : reservation;
+      const row = buildQueueRow(authoritativeReservation, authoritativeCandidate, rebalanceRunId);
       if (write) {
         try {
           await repo.insertQueueRow(row);

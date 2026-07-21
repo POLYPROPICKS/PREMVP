@@ -230,6 +230,7 @@ function contractACandidate(overrides: Partial<FireModelCandidate> = {}): FireMo
       fire_model_alias: "ContractA",
       version: "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
       selector_id: "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      contract_a_stage: "FINAL_AUTHORITATIVE",
       authoritative_condition_id: "cond-contract-a-esp-arg",
       authoritative_token_id: "tok-contract-a-esp-arg",
       authoritative_side: "Spain",

@@ -29,11 +29,14 @@ function contractARow(overrides: Record<string, unknown> = {}) {
     selected_token_id: "tok-preview-1",
     selected_outcome: "TEAM_A",
     score: 80,
+    signal_confidence_num: 80,
+    metric_formula_version: "v2-lite-growth-safe",
+    expires_at: "2026-07-20T00:00:00.000Z",
     entry_price_num: 0.45,
     created_at: created,
-    event_slug: "team-a-vs-team-b-final-2026-07-19",
-    market_slug: "team-a-vs-team-b-final-2026-07-19",
-    diagnostics: { gameStartIso: gameStart },
+    event_slug: "nba-team-a-vs-team-b-final-2026-07-19",
+    market_slug: "nba-team-a-vs-team-b-final-2026-07-19",
+    diagnostics: { gameStartIso: gameStart, dataCoverage: 80 },
     ...rest,
   };
 }

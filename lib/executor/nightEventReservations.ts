@@ -13,7 +13,7 @@
 // Read input only via buildFireModelCandidates (raw universe). No 6h hardcoded
 // eligibility: horizon is governed by nightWindow.ts.
 
-import type { FireModelCandidate } from "./buildFireModelCandidates";
+import type { FireModelCandidate, FireModelSelectorMode } from "./buildFireModelCandidates";
 import { compareCandidateQuality } from "./nightPortfolioPlanner";
 import {
   createSupabaseSchedulerJobEvidencePort,
@@ -308,7 +308,7 @@ export interface ReservationPlan {
  */
 export async function buildReservationPlan(
   nowMs: number,
-  deps: { fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }> } = {}
+  deps: { fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>; selectorMode?: FireModelSelectorMode } = {}
 ): Promise<ReservationPlan> {
   const window = resolveNightWindow(nowMs);
   const planRunId = buildPlanRunId(nowMs);
@@ -316,7 +316,7 @@ export async function buildReservationPlan(
     deps.fetchCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true);
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, deps.selectorMode ?? "CONTUR3_CURRENT");
     });
   const { candidates: universe } = await fetchCandidates();
 
@@ -471,9 +471,12 @@ export async function buildReservationPlan(
     // diagnostics (no new column, no rerank) so rebalance can later locate
     // the exact authoritative market -- never a Contur3-reranked alternate.
     const selectorId = best.diagnostics.selector_id;
-    const isContractA = typeof selectorId === "string" && selectorId.trim() !== "";
-    const reason = isContractA
+    const isContractAFinal = best.diagnostics.contract_a_stage === "FINAL_AUTHORITATIVE";
+    const isContractAPlanning = best.diagnostics.contract_a_stage === "PLANNING";
+    const reason = isContractAFinal
       ? `CONTRACT_A_AUTHORITATIVE: selector=${selectorId} observation=${best.diagnostics.authoritative_observation_id}`
+      : isContractAPlanning
+        ? `CONTRACT_A_PLANNING_EVENT: selector=${selectorId}`
       : isFallback
         ? `FALLBACK_SLOT_FILL_${tier}: score=${best.diagnostics.score} cov=${best.diagnostics.coverage} ` +
           `allowed_fullmatch_anchor markets_in_event=${group.length}`
@@ -506,7 +509,7 @@ export async function buildReservationPlan(
         battle_trace_id: `contur3:${planRunId}:${groupKey}:unknown:unknown`,
         slot_fill: isFallback ? "FALLBACK_SLOT_FILL" : "TIER1_PRIMARY",
         fallback_tier: isFallback ? tier : undefined,
-        ...(isContractA
+        ...(isContractAFinal
           ? {
               selector_id: selectorId,
               authoritative_condition_id: best.diagnostics.authoritative_condition_id,
@@ -516,6 +519,7 @@ export async function buildReservationPlan(
               authoritative_event_key: best.diagnostics.authoritative_event_key,
             }
           : {}),
+        ...(isContractAPlanning ? { selector_id: selectorId, contract_a_stage: "PLANNING" } : {}),
       },
     });
   };
@@ -690,7 +694,7 @@ export async function persistReservationPlan(
  */
 export async function runReservationCronWithEvidence(
   nowMs: number,
-  opts: { force?: boolean } = {},
+  opts: { force?: boolean; selectorMode?: FireModelSelectorMode } = {},
   deps: {
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     repo?: ReservationRepoPort;
@@ -700,7 +704,7 @@ export async function runReservationCronWithEvidence(
   const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
   const startedAt = new Date().toISOString();
   try {
-    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates });
+    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates, selectorMode: opts.selectorMode });
     const persisted = deps.repo
       ? await persistReservationPlan(plan, opts, deps.repo)
       : await persistReservationPlan(plan, opts);

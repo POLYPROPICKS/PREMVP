@@ -412,9 +412,9 @@ test("CONTRACT_A_V1: an unknown selector mode fails closed instead of silently d
   );
 });
 
-test("CONTRACT_A_V1: requires the injected-rows seam -- refuses to silently re-derive a different row set", async () => {
+test("CONTRACT_A_V1: live final-stage loading fails closed when its required source environment is unavailable", async () => {
   await assert.rejects(
     () => buildFireModelCandidates(10, "all", true, undefined, "CONTRACT_A_V1"),
-    /CONTRACT_A_V1_REQUIRES_INJECTED_ROWS/,
+    /SUPABASE_URL/,
   );
 });

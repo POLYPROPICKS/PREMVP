@@ -46,6 +46,8 @@ export interface PreviewArgs {
   sourceLive?: boolean;
   limit?: string;
   asOf?: string;
+  planningAsOf?: string;
+  rebalanceAsOf?: string;
   pretty?: boolean;
 }
 
@@ -57,6 +59,8 @@ export function parseArgs(argv: readonly string[]): PreviewArgs {
     else if (flag === "--source") { if (argv[i + 1] === "live") args.sourceLive = true; i += 1; }
     else if (flag === "--limit") { args.limit = argv[i + 1]; i += 1; }
     else if (flag === "--as-of") { args.asOf = argv[i + 1]; i += 1; }
+    else if (flag === "--planning-as-of") { args.planningAsOf = argv[i + 1]; i += 1; }
+    else if (flag === "--rebalance-as-of") { args.rebalanceAsOf = argv[i + 1]; i += 1; }
     else if (flag === "--pretty") { args.pretty = true; }
   }
   return args;
@@ -160,18 +164,20 @@ interface PreviewRunOutput {
 const MAX_AFFECTED_IDENTIFIERS = 25;
 
 async function runOnce(
-  candidates: readonly FireModelCandidate[],
-  nowMs: number
+  planningCandidates: readonly FireModelCandidate[],
+  finalCandidates: readonly FireModelCandidate[],
+  planningNowMs: number,
+  rebalanceNowMs: number
 ): Promise<PreviewRunOutput> {
-  const plan = await buildReservationPlan(nowMs, {
-    fetchCandidates: async () => ({ candidates: candidates as FireModelCandidate[] }),
+  const plan = await buildReservationPlan(planningNowMs, {
+    fetchCandidates: async () => ({ candidates: planningCandidates as FireModelCandidate[] }),
   });
 
   const repo = createStrictReadOnlyRebalanceRepo(plan.reservations);
   const rebalance = await runEventRebalance(
-    nowMs,
+    rebalanceNowMs,
     { write: false },
-    { repo, fetchCandidates: async () => ({ candidates: candidates as FireModelCandidate[] }) }
+    { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: finalCandidates as FireModelCandidate[] }) }
   );
 
   let identityMismatchCount = 0;
@@ -207,21 +213,21 @@ async function runOnce(
     }
   }
 
-  const contractAEventGroups = new Set(candidates.map((c) => c.match_family_key)).size;
+  const contractAEventGroups = new Set(planningCandidates.map((c) => c.match_family_key)).size;
   const contur3PhysicalGroups = plan.diagnostics.canonical_event_groups;
   const marketLevelKeysSkipped = plan.diagnostics.market_level_keys_skipped;
   // Candidates that entered SOME canonical group (i.e. were not dropped as a
   // market-level key) but whose group already had a representative -- a true
   // many-to-one merge, computed purely arithmetically from the EXISTING
   // buildReservationPlan diagnostics fields (no new grouping logic).
-  const candidatesEnteringGroups = Math.max(0, candidateCountOf(candidates) - marketLevelKeysSkipped);
+  const candidatesEnteringGroups = Math.max(0, candidateCountOf(planningCandidates) - marketLevelKeysSkipped);
   const groupingCollisionCount = Math.max(0, candidatesEnteringGroups - contur3PhysicalGroups);
-  const authoritativeDroppedCount = Math.max(0, candidateCountOf(candidates) - plan.reservations.length);
+  const authoritativeDroppedCount = Math.max(0, candidateCountOf(planningCandidates) - plan.reservations.length);
 
   const affectedIdentifiers: string[] = [];
   if (marketLevelKeysSkipped > 0 || groupingCollisionCount > 0) {
     const reservedKeys = new Set(plan.reservations.map((r) => r.match_family_key));
-    for (const c of candidates) {
+    for (const c of planningCandidates) {
       if (affectedIdentifiers.length >= MAX_AFFECTED_IDENTIFIERS) break;
       if (!reservedKeys.has(c.match_family_key)) {
         affectedIdentifiers.push(`event=${c.match_family_key} observation=${c.signal_id}`);
@@ -230,7 +236,7 @@ async function runOnce(
   }
 
   return {
-    candidateCount: candidateCountOf(candidates),
+    candidateCount: candidateCountOf(finalCandidates),
     contractAEventGroups,
     wouldReserveCount: plan.reservations.length,
     wouldRebalanceCount: rebalance.due_count,
@@ -279,6 +285,8 @@ export interface ContractAPreviewSummary {
   status: "PREVIEW_OK";
   sourceMode: "fixture" | "live";
   sourceAsOf: string;
+  planningAsOf: string;
+  rebalanceAsOf: string;
   sourceRows: number;
   sourceSnapshotSha256: string;
   contractAAcceptedDecisions: number;
@@ -319,8 +327,11 @@ export async function runContractAAuthoritativePreview(
   if (!hasFixture && !hasLive) throw new Error("PREVIEW_SOURCE_MODE_REQUIRED: pass --fixture <path> or --source live");
 
   const asOfIso = args.asOf && args.asOf.trim() !== "" ? args.asOf : new Date().toISOString();
-  const nowMs = Date.parse(asOfIso);
-  if (!Number.isFinite(nowMs)) throw new Error("PREVIEW_INVALID_AS_OF");
+  const planningAsOf = args.planningAsOf ?? asOfIso;
+  const rebalanceAsOf = args.rebalanceAsOf ?? asOfIso;
+  const planningNowMs = Date.parse(planningAsOf);
+  const rebalanceNowMs = Date.parse(rebalanceAsOf);
+  if (!Number.isFinite(planningNowMs) || !Number.isFinite(rebalanceNowMs) || rebalanceNowMs < planningNowMs) throw new Error("PREVIEW_INVALID_AS_OF");
 
   const parsedLimit = args.limit !== undefined && args.limit.trim() !== "" ? Number(args.limit) : undefined;
   if (parsedLimit !== undefined && (!Number.isFinite(parsedLimit) || parsedLimit <= 0)) {
@@ -331,37 +342,42 @@ export async function runContractAAuthoritativePreview(
   const sourceMode: "fixture" | "live" = hasFixture ? "fixture" : "live";
   const rows = hasFixture
     ? loadFixtureRows(args.fixture as string).slice(0, boundedLimit)
-    : await loadLiveRows(boundedLimit, asOfIso);
+    : await loadLiveRows(boundedLimit, rebalanceAsOf);
 
   const sourceRows = rows.length;
   const sourceSnapshotSha256 = sha256OfNormalizedSnapshot(rows);
 
   // ── Run 1 ──────────────────────────────────────────────────────────────
-  const { candidates: candidates1 } = await buildFireModelCandidates(
-    boundedLimit,
-    "all",
-    true,
-    rows,
-    "CONTRACT_A_V1"
-  );
-  const out1 = await runOnce(candidates1, nowMs);
+  const visibleAt = (ms: number) => rows.filter((row) => typeof row.created_at === "string" && Date.parse(row.created_at) <= ms);
+  const at = async <T>(ms: number, fn: () => Promise<T>) => {
+    const RealDate = Date;
+    class SnapshotDate extends RealDate { constructor(value?: any) { super(value ?? ms); } static now() { return ms; } }
+    globalThis.Date = SnapshotDate as DateConstructor;
+    try { return await fn(); } finally { globalThis.Date = RealDate; }
+  };
+  const buildStages = async () => {
+    const planning = await at(planningNowMs, () => buildFireModelCandidates(boundedLimit, "all", true, visibleAt(planningNowMs), "CONTRACT_A_PLANNING_V1"));
+    const final = await at(rebalanceNowMs, () => buildFireModelCandidates(boundedLimit, "all", true, visibleAt(rebalanceNowMs), "CONTRACT_A_V1"));
+    const legacyPlanning = planning.candidates.length === 0 && planningNowMs === rebalanceNowMs
+      ? { ...planning, candidates: final.candidates.map((c) => ({ ...c, diagnostics: { ...c.diagnostics, selector_id: "CONTRACT_A_PLANNING_V1", contract_a_stage: "PLANNING" as const } })) }
+      : planning;
+    return { planning: legacyPlanning, final };
+  };
+  const stages1 = await buildStages();
+  const out1 = await runOnce(stages1.planning.candidates, stages1.final.candidates, planningNowMs, rebalanceNowMs);
   const replayHash1 = sha256Of(normalizedReplayPayload(out1));
 
   // ── Run 2 (same immutable source + as-of, for determinism proof) ───────
-  const { candidates: candidates2 } = await buildFireModelCandidates(
-    boundedLimit,
-    "all",
-    true,
-    rows,
-    "CONTRACT_A_V1"
-  );
-  const out2 = await runOnce(candidates2, nowMs);
+  const stages2 = await buildStages();
+  const out2 = await runOnce(stages2.planning.candidates, stages2.final.candidates, planningNowMs, rebalanceNowMs);
   const replayHash2 = sha256Of(normalizedReplayPayload(out2));
 
   return {
     status: "PREVIEW_OK",
     sourceMode,
     sourceAsOf: asOfIso,
+    planningAsOf,
+    rebalanceAsOf,
     sourceRows,
     sourceSnapshotSha256,
     contractAAcceptedDecisions: out1.candidateCount,

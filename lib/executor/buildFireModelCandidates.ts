@@ -32,8 +32,8 @@ const STAKE_GUARD_MAX_BASE_USD = 7;
 // coverage/tier/bad-bucket/scope eligibility predicates against them --
 // those predicates belong to a different, non-authoritative contract and
 // must never re-filter or re-rank an already-decided Contract A winner.
-export type FireModelSelectorMode = "CONTUR3_CURRENT" | "CONTRACT_A_V1";
-const KNOWN_SELECTOR_MODES: readonly FireModelSelectorMode[] = ["CONTUR3_CURRENT", "CONTRACT_A_V1"];
+export type FireModelSelectorMode = "CONTUR3_CURRENT" | "CONTRACT_A_PLANNING_V1" | "CONTRACT_A_V1";
+const KNOWN_SELECTOR_MODES: readonly FireModelSelectorMode[] = ["CONTUR3_CURRENT", "CONTRACT_A_PLANNING_V1", "CONTRACT_A_V1"];
 
 export type StrategicScope = "WC" | "SOCCER" | "MLB" | "ESPORT" | "OTHER" | "UNKNOWN";
 export type IdentityQuality = "STRONG" | "MEDIUM" | "WEAK" | "INVALID";
@@ -173,6 +173,7 @@ export interface FireModelCandidate {
     // fields are immutable -- reservation/rebalance must persist them
     // verbatim and must never substitute a different market when present.
     selector_id?: string;
+    contract_a_stage?: "PLANNING" | "FINAL_AUTHORITATIVE";
     authoritative_condition_id?: string;
     authoritative_token_id?: string;
     authoritative_side?: string;
@@ -784,14 +785,21 @@ function contractATimingBucket(minutesUntilStart: number): TimingBucket {
  * requires it explicitly (fails closed rather than silently re-deriving a
  * different row set via a fresh, undocumented query).
  */
-function buildContractAV1Candidates(
+async function buildContractAV1Candidates(
   limit: number,
   injectedRows?: readonly Record<string, unknown>[]
-): { candidates: FireModelCandidate[]; rawDiagnostics: RawPlanningDiagnostics | null } {
-  if (injectedRows === undefined) {
-    throw new Error("CONTRACT_A_V1_REQUIRES_INJECTED_ROWS: no bounded source-row seam supplied");
+): Promise<{ candidates: FireModelCandidate[]; rawDiagnostics: RawPlanningDiagnostics | null }> {
+  let sourceRows: readonly ExportRow[];
+  if (injectedRows !== undefined) {
+    sourceRows = injectedRows as readonly ExportRow[];
+  } else {
+    const { supabaseAdmin } = await import("@/lib/supabase/server");
+    const lookbackIso = new Date(Date.now() - PLANNING_LOOKBACK_HOURS * 3_600_000).toISOString();
+    sourceRows = await fetchAllPlanningRows(
+      () => supabaseAdmin.from("generated_signal_pairs").select("*").gte("created_at", lookbackIso).order("created_at", { ascending: false }),
+      { stage: "contract_a_final_rows_fetch" }
+    ) as ExportRow[];
   }
-  const sourceRows = injectedRows as readonly ExportRow[];
   const asOfIso = new Date().toISOString();
   const result = produceFrozenModelV2ShadowDecisions(sourceRows, asOfIso);
 
@@ -883,6 +891,7 @@ function buildContractAV1Candidates(
         fire_model_alias: "ContractA",
         version: FROZEN_MODEL_V2_VERSION,
         selector_id: FROZEN_MODEL_V2_VERSION,
+        contract_a_stage: "FINAL_AUTHORITATIVE",
         authoritative_condition_id: conditionId ?? undefined,
         authoritative_token_id: tokenId ?? undefined,
         authoritative_side: side,
@@ -909,7 +918,7 @@ export async function buildFireModelCandidates(
     throw new Error(`UNKNOWN_SELECTOR_MODE: ${String(selectorMode)}`);
   }
   if (selectorMode === "CONTRACT_A_V1") {
-    return buildContractAV1Candidates(limit, injectedRows);
+    return await buildContractAV1Candidates(limit, injectedRows);
   }
   const versions = planningMode ? PLANNING_ALLOWED_VERSIONS : ALLOWED_VERSIONS;
   if (!planningMode) {
@@ -1520,6 +1529,16 @@ export async function buildFireModelCandidates(
     if (scoreDiff !== 0) return scoreDiff;
     return a.diagnostics.hours_to_start_now - b.diagnostics.hours_to_start_now;
   });
+
+  if (selectorMode === "CONTRACT_A_PLANNING_V1") {
+    for (const candidate of candidates) {
+      candidate.diagnostics = {
+        ...candidate.diagnostics,
+        selector_id: "CONTRACT_A_PLANNING_V1",
+        contract_a_stage: "PLANNING",
+      };
+    }
+  }
 
   // Post-processing: resolve WEAK_SINGLE_TEAM_SPREAD keys into their parent pair groups.
   // Example: "WEAK_SINGLE_TEAM_SPREAD:norway:2026-06-16" → "pair:iraq-vs-norway:2026-06-16"
