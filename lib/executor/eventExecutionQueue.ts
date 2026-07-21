@@ -1166,8 +1166,17 @@ export async function persistRebalanceDiagnostics(
 export const FOUNDER_BATTLE_BATCH_GATE_VALUE = "YES" as const;
 export const FOUNDER_BATTLE_BATCH_DEFAULT_MAX = 4;
 export const FOUNDER_BATTLE_BATCH_ABSOLUTE_MAX = 4;
-export const FOUNDER_BATTLE_BATCH_STAKE_USD = 1 as const;
+// $1.00 nominal rounds to an effective marketable-BUY amount that can land
+// slightly below the exchange's $1 minimum order size after price
+// rounding (observed live: $0.9963, $0.9994 -- both ORDER_REJECTED). $1.10
+// gives enough buffer that the effective amount never falls below $1.
+export const FOUNDER_BATTLE_BATCH_STAKE_USD = 1.1 as const;
+export const FOUNDER_BATTLE_BATCH_STAKE_USD_ENV_ALLOWED = ["1.1", "1.10"] as const;
 export const FOUNDER_BATTLE_BATCH_RUN_ID_PREFIX = "founder-live-order-batch-";
+// Price-cap execution-contract bounds: priceCap = clamp(entry_price_num + 0.10, 0.20, 0.75).
+export const FOUNDER_BATTLE_BATCH_PRICE_CAP_BUFFER = 0.1;
+export const FOUNDER_BATTLE_BATCH_PRICE_CAP_MIN = 0.2;
+export const FOUNDER_BATTLE_BATCH_PRICE_CAP_MAX = 0.75;
 // Statuses that mean "this market identity is already spoken for" -- a fresh
 // batch row must never be created alongside one of these for the same
 // condition_id/token_id/side, even if game_start_iso differs.
@@ -1256,14 +1265,18 @@ export type FounderBattleBatchGateResult = { ok: true; max: number } | { ok: fal
 /**
  * Explicit founder-approved gate, fail closed otherwise. Requires
  * FOUNDER_BATTLE_BATCH_MODE=YES exactly. If FOUNDER_BATTLE_BATCH_STAKE_USD is
- * set to anything other than "1", this is treated as a misconfiguration and
- * blocked -- the stake cap is never configurable upward via env.
+ * set, it must be exactly "1.1" or "1.10" (the fixed safe stake) -- any other
+ * value, including anything larger, is treated as a misconfiguration and
+ * blocked. The stake is never configurable above FOUNDER_BATTLE_BATCH_STAKE_USD.
  */
 export function validateFounderBattleBatchGate(env: Record<string, string | undefined>): FounderBattleBatchGateResult {
   if (env.FOUNDER_BATTLE_BATCH_MODE !== FOUNDER_BATTLE_BATCH_GATE_VALUE) {
     return { ok: false, reason: "FOUNDER_BATTLE_BATCH_GATE_NOT_ENABLED" };
   }
-  if (env.FOUNDER_BATTLE_BATCH_STAKE_USD !== undefined && env.FOUNDER_BATTLE_BATCH_STAKE_USD !== "1") {
+  if (
+    env.FOUNDER_BATTLE_BATCH_STAKE_USD !== undefined &&
+    !(FOUNDER_BATTLE_BATCH_STAKE_USD_ENV_ALLOWED as readonly string[]).includes(env.FOUNDER_BATTLE_BATCH_STAKE_USD)
+  ) {
     return { ok: false, reason: "FOUNDER_BATTLE_BATCH_STAKE_OVERRIDE_NOT_ALLOWED" };
   }
   const rawMax = parseInt(env.FOUNDER_BATTLE_BATCH_MAX ?? "", 10);
@@ -1287,28 +1300,51 @@ export interface BattleBatchCandidate {
   conditionId: string;
   tokenId: string;
   side: string;
+  entryPrice: number;
+}
+
+export interface BattleBatchExclusion {
+  order_key: string | null;
+  reason: string;
+}
+
+export interface BattleBatchSelectionResult {
+  candidates: BattleBatchCandidate[];
+  excluded: BattleBatchExclusion[];
 }
 
 /**
  * Pure selection (no DB I/O): filter, dedupe by (condition_id,
  * selected_token_id, selected_outcome), rank, and cap at max. Never requires
- * exactly one candidate -- returns however many (0 to max) survive.
+ * exactly one candidate -- returns however many (0 to max) survive. A missing
+ * or non-finite entry_price_num is tracked as an explicit exclusion reason
+ * (MISSING_ENTRY_PRICE_FOR_PRICE_CAP) since no safe price_cap can be derived
+ * without a source price -- never silently defaulted to the price-cap ceiling.
  */
 export function selectFounderBattleBatchCandidates(
   rows: RawSignalPairRow[],
   nowMs: number,
   max: number
-): BattleBatchCandidate[] {
+): BattleBatchSelectionResult {
   const MIN_LEAD_MS = 10 * 60_000;
   const MAX_LEAD_MS = 14 * 60 * 60_000;
 
+  const excluded: BattleBatchExclusion[] = [];
   const filtered: BattleBatchCandidate[] = [];
   for (const row of rows) {
     if (row.signal_result !== null && row.signal_result !== undefined) continue;
     if (!row.condition_id || !row.selected_token_id || !row.selected_outcome) continue;
     if (row.metric_formula_version != null && row.metric_formula_version !== "v2-lite-growth-safe") continue;
     if (typeof row.signal_confidence_num !== "number" || row.signal_confidence_num < 60) continue;
-    if (typeof row.entry_price_num !== "number" || row.entry_price_num < 0.2 || row.entry_price_num > 0.75) continue;
+
+    if (typeof row.entry_price_num !== "number" || !Number.isFinite(row.entry_price_num)) {
+      excluded.push({
+        order_key: `${row.condition_id}:${row.selected_token_id}:${row.selected_outcome}`,
+        reason: "MISSING_ENTRY_PRICE_FOR_PRICE_CAP",
+      });
+      continue;
+    }
+    if (row.entry_price_num < 0.2 || row.entry_price_num > 0.75) continue;
 
     const gameStartIso = resolveBattleBatchGameStartIso(row);
     if (!gameStartIso) continue;
@@ -1317,7 +1353,14 @@ export function selectFounderBattleBatchCandidates(
     const leadMs = gameStartMs - nowMs;
     if (leadMs < MIN_LEAD_MS || leadMs > MAX_LEAD_MS) continue;
 
-    filtered.push({ row, gameStartIso, conditionId: row.condition_id, tokenId: row.selected_token_id, side: row.selected_outcome });
+    filtered.push({
+      row,
+      gameStartIso,
+      conditionId: row.condition_id,
+      tokenId: row.selected_token_id,
+      side: row.selected_outcome,
+      entryPrice: row.entry_price_num,
+    });
   }
 
   const seen = new Set<string>();
@@ -1337,27 +1380,43 @@ export function selectFounderBattleBatchCandidates(
     return Date.parse(b.row.created_at) - Date.parse(a.row.created_at);
   });
 
-  return deduped.slice(0, max);
+  return { candidates: deduped.slice(0, max), excluded };
 }
 
-/** Pure row builder (no DB I/O). stake_usd is always the fixed constant, never derived from the candidate. */
+/** Deterministic price ceiling Ireland must never pay above: entry_price_num + buffer, clamped to [0.20, 0.75]. */
+export function computeFounderBattleBatchPriceCap(entryPrice: number): number {
+  return Math.min(
+    FOUNDER_BATTLE_BATCH_PRICE_CAP_MAX,
+    Math.max(FOUNDER_BATTLE_BATCH_PRICE_CAP_MIN, entryPrice + FOUNDER_BATTLE_BATCH_PRICE_CAP_BUFFER)
+  );
+}
+
+/**
+ * Pure row builder (no DB I/O). stake_usd is always the fixed constant, never
+ * derived from the candidate. idempotency_key is salted with the batch run
+ * timestamp (batchRunId) -- unlike a purely condition/token/side-derived key,
+ * this means a later retry (a new invocation, e.g. after a prior row was
+ * rejected by the exchange) computes a NEW idempotency_key rather than being blocked
+ * by the earlier attempt's key. order_key remains condition:token:side only,
+ * and duplicate protection against a still-active identity (READY/CLAIMED/
+ * SENT/EXECUTED) is enforced separately by the orchestrator, not by this key.
+ */
 export function buildFounderBattleBatchQueueRow(
   candidate: BattleBatchCandidate,
   nowMs: number,
-  batchIndex: number
+  batchIndex: number,
+  batchRunId: string
 ): EventExecutionQueueRow {
-  const { row, gameStartIso, conditionId, tokenId, side } = candidate;
+  const { row, gameStartIso, conditionId, tokenId, side, entryPrice } = candidate;
   const gameStartMs = Date.parse(gameStartIso);
   const nowIso = new Date(nowMs).toISOString();
   const latestByGameStart = gameStartMs - 3 * 60_000;
   const latestByCap = nowMs + 90 * 60_000;
   const latestEntryMs = Math.min(latestByGameStart, latestByCap);
   const orderKey = `${conditionId}:${tokenId}:${side}`;
-  // Deterministic from condition/token/side only (no plan_run_id salt) so a
-  // rerun of the batch feeder against the same market always computes the
-  // same idempotency_key regardless of when it runs.
-  const idempotencyKey = createHash("sha256").update(orderKey).digest("hex").slice(0, 32);
-  const rebalanceRunId = `${FOUNDER_BATTLE_BATCH_RUN_ID_PREFIX}${new Date(nowMs).toISOString()}-${batchIndex}`;
+  const idempotencyKey = createHash("sha256").update(`${orderKey}:${batchRunId}`).digest("hex").slice(0, 32);
+  const rebalanceRunId = `${FOUNDER_BATTLE_BATCH_RUN_ID_PREFIX}${batchRunId}-${batchIndex}`;
+  const priceCap = computeFounderBattleBatchPriceCap(entryPrice);
 
   return {
     reservation_id: null,
@@ -1382,7 +1441,7 @@ export function buildFounderBattleBatchQueueRow(
     preferred_entry_iso: nowIso,
     latest_entry_iso: new Date(latestEntryMs).toISOString(),
     selection_rank: batchIndex + 1,
-    selection_reason: `FOUNDER_BATTLE_BATCH: rank=${batchIndex + 1} confidence=${row.signal_confidence_num} entry_price=${row.entry_price_num}`,
+    selection_reason: `FOUNDER_BATTLE_BATCH: rank=${batchIndex + 1} confidence=${row.signal_confidence_num} entry_price=${entryPrice}`,
     status: "READY",
     order_key: orderKey,
     idempotency_key: idempotencyKey,
@@ -1391,6 +1450,9 @@ export function buildFounderBattleBatchQueueRow(
       max_stake_usd: FOUNDER_BATTLE_BATCH_STAKE_USD,
       source_signal_id: row.id,
       gameStartIso,
+      price_cap: priceCap,
+      submitted_price: entryPrice,
+      max_entry_price: priceCap,
     },
   };
 }
@@ -1423,18 +1485,33 @@ export async function runFounderBattleBatch(
   const write = opts.write === true;
   const repo = deps.repo ?? createSupabaseBattleBatchRepoPort();
   const rows = await repo.fetchSignalPairs();
-  const candidates = selectFounderBattleBatchCandidates(rows, nowMs, gate.max);
+  const { candidates, excluded } = selectFounderBattleBatchCandidates(rows, nowMs, gate.max);
+
+  const skipped: Array<{ order_key: string; reason: string }> = excluded.map((e) => ({
+    order_key: e.order_key ?? "",
+    reason: e.reason,
+  }));
 
   if (candidates.length === 0) {
-    return { kind: "NO_SAFE_CANDIDATES", reason: "NO_ELIGIBLE_SIGNAL_PAIRS", wrote_count: 0, skipped_count: 0, created_rows: [], skipped_reasons: [] };
+    return {
+      kind: "NO_SAFE_CANDIDATES",
+      reason: "NO_ELIGIBLE_SIGNAL_PAIRS",
+      wrote_count: 0,
+      skipped_count: skipped.length,
+      created_rows: [],
+      skipped_reasons: skipped,
+    };
   }
 
+  // One batch run id shared by every row created in this invocation -- salts
+  // idempotency_key so a later retry invocation (new nowMs) always computes a
+  // fresh key, never blocked by an earlier attempt's (e.g. rejected) row.
+  const batchRunId = new Date(nowMs).toISOString();
   const created: EventExecutionQueueRow[] = [];
-  const skipped: Array<{ order_key: string; reason: string }> = [];
 
   for (let i = 0; i < candidates.length; i++) {
     const candidate = candidates[i];
-    const row = buildFounderBattleBatchQueueRow(candidate, nowMs, i);
+    const row = buildFounderBattleBatchQueueRow(candidate, nowMs, i, batchRunId);
 
     // Duplicate protection 1: same market identity already queued/executing.
     const blockingExisting = await repo.findBlockingQueueRowByIdentity(candidate.conditionId, candidate.tokenId, candidate.side);

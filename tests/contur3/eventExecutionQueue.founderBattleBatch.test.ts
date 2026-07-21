@@ -15,8 +15,12 @@ import {
   validateFounderBattleBatchGate,
   selectFounderBattleBatchCandidates,
   buildFounderBattleBatchQueueRow,
+  computeFounderBattleBatchPriceCap,
   FOUNDER_BATTLE_BATCH_STAKE_USD,
   FOUNDER_BATTLE_BATCH_RUN_ID_PREFIX,
+  FOUNDER_BATTLE_BATCH_PRICE_CAP_MIN,
+  FOUNDER_BATTLE_BATCH_PRICE_CAP_MAX,
+  FOUNDER_BATTLE_BATCH_BLOCKING_STATUSES,
   type BattleBatchRepoPort,
   type RawSignalPairRow,
 } from "../../lib/executor/eventExecutionQueue";
@@ -80,14 +84,14 @@ test("1: creates 2-4 READY rows from fresh generated_signal_pairs", async () => 
   for (const row of repo.queueRows) assert.equal(row.status, "READY");
 });
 
-test("2: every created row has stake_usd = 1, even though source rows have no stake concept at all", async () => {
+test("2: every created row has stake_usd = 1.10, even though source rows have no stake concept at all", async () => {
   const rows = [signalRow("a"), signalRow("b")];
   const repo = makeFakeRepo(rows);
   const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
 
   assert.equal(result.wrote_count, 2);
   for (const row of repo.queueRows) assert.equal(row.stake_usd, FOUNDER_BATTLE_BATCH_STAKE_USD);
-  assert.equal(FOUNDER_BATTLE_BATCH_STAKE_USD, 1);
+  assert.equal(FOUNDER_BATTLE_BATCH_STAKE_USD, 1.1);
 });
 
 test("3: excludes events that have already started and events within the final 3 minutes", async () => {
@@ -228,9 +232,9 @@ test("8: never selects/reuses old event_execution_queue READY rows as a candidat
 
 test("9: builds rows using only live-schema-compatible event_execution_queue columns", () => {
   const rows = [signalRow("schema-check")];
-  const candidates = selectFounderBattleBatchCandidates(rows, NOW_MS, 4);
+  const { candidates } = selectFounderBattleBatchCandidates(rows, NOW_MS, 4);
   assert.equal(candidates.length, 1);
-  const row = buildFounderBattleBatchQueueRow(candidates[0], NOW_MS, 0);
+  const row = buildFounderBattleBatchQueueRow(candidates[0], NOW_MS, 0, new Date(NOW_MS).toISOString());
 
   const LIVE_COLUMNS = [
     "reservation_id", "plan_run_id", "rebalance_run_id", "match_family_key", "event_title",
@@ -248,20 +252,24 @@ test("9: builds rows using only live-schema-compatible event_execution_queue col
   assert.notEqual(row.rebalance_run_id, "founder-live-order-20260721-001", "must never reuse the single-test CONTROLLED_LIVE_TEST_ID");
 });
 
-test("10: deterministic idempotency_key prevents duplicate batch rerun for the same market", async () => {
+test("10: an active (READY) row for the same market blocks a rerun -- identity-based blocking, independent of idempotency_key salting", async () => {
   const rows = [signalRow("rerun-target")];
   const repo = makeFakeRepo(rows);
 
   const first = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
   assert.equal(first.wrote_count, 1);
   assert.equal(repo.queueRows.length, 1);
+  assert.equal(repo.queueRows[0].status, "READY");
 
   // Rerun the batch feeder later against the exact same underlying market
-  // (same condition/token/side) -- must create zero new rows.
+  // (same condition/token/side) while the first row is still READY -- must
+  // create zero new rows, blocked by the identity check (not idempotency_key,
+  // which now differs across runs by design -- see tests 9b/9c below).
   const second = await runFounderBattleBatch(NOW_MS + 60_000, GATE_ENV_ENABLED, { write: true }, { repo });
   assert.equal(second.wrote_count, 0);
   assert.equal(second.skipped_count, 1);
-  assert.equal(repo.queueRows.length, 1, "a rerun for the same market must never create a duplicate row");
+  assert.equal(second.skipped_reasons[0].reason, "IDENTITY_ALREADY_QUEUED");
+  assert.equal(repo.queueRows.length, 1, "a rerun while the row is still active must never create a duplicate row");
 });
 
 test("11: dry-run mode performs zero writes", async () => {
@@ -311,14 +319,196 @@ test("13: an identity already in a blocking status (READY/CLAIMED/SENT/EXECUTED)
   assert.equal(result.skipped_reasons[0].reason, "IDENTITY_ALREADY_QUEUED");
 });
 
-test("14: static proof -- this module reaches no Ireland/CLOB/callback surface", async () => {
+test("14: static proof -- this module's CODE (not prose comments) reaches no Ireland/CLOB/callback surface", async () => {
   const { readFileSync } = await import("node:fs");
   const path = await import("node:path");
   const source = readFileSync(path.join(process.cwd(), "lib/executor/eventExecutionQueue.ts"), "utf8");
   // Scoped to the battle-batch section only, to avoid false positives from
-  // unrelated code elsewhere in this large shared file.
+  // unrelated code elsewhere in this large shared file. Comments are stripped
+  // first -- this section's prose legitimately explains WHY the stake buffer
+  // exists by referencing "Polymarket CLOB minimum order size", which must
+  // not itself trip a code-reaches-CLOB false positive.
   const sectionStart = source.indexOf("Founder battle batch feeder");
   assert.ok(sectionStart > -1);
-  const section = source.slice(sectionStart);
+  const section = source
+    .slice(sectionStart)
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\/\/.*$/gm, "");
   assert.doesNotMatch(section, /clob|placeOrder|submitOrder|order-events|queue\/mark/i);
+});
+
+// ── Execution-fix regression: min-size buffer, price cap, retry-after-rejection ──
+//
+// Production incident (per prompt): $1.00 nominal stake rounded to an
+// effective marketable-BUY amount slightly below Polymarket CLOB's $1 minimum
+// order size ($0.9963, $0.9994 observed), and the feeder omitted the
+// price-cap execution contract Ireland's order submission expects.
+
+/** Seeds an existing queue row for a given market identity with an arbitrary status, using makeFakeRepo's real (non-mocked) status-filtering logic. */
+function seedExistingRow(repo: ReturnType<typeof makeFakeRepo>, conditionId: string, tokenId: string, side: string, status: string) {
+  // The live status column is `text` (no DB enum), so a downstream mark like
+  // "ORDER_REJECTED" is representable even though it's not one of the
+  // TypeScript QueueStatus literals this codebase's own writers use.
+  repo.queueRows.push({
+    id: `existing-${status}`,
+    reservation_id: null,
+    plan_run_id: "prior-run",
+    rebalance_run_id: "prior-run-id",
+    match_family_key: `battle:${conditionId}`,
+    event_title: null,
+    event_slug: null,
+    sport: null,
+    league: null,
+    game_start_iso: new Date(NOW_MS + 60 * 60_000).toISOString(),
+    condition_id: conditionId,
+    token_id: tokenId,
+    side,
+    market_slug: null,
+    market_title: null,
+    market_family: null,
+    score: null,
+    coverage: null,
+    tier: "TIER1",
+    stake_usd: FOUNDER_BATTLE_BATCH_STAKE_USD,
+    preferred_entry_iso: new Date(NOW_MS).toISOString(),
+    latest_entry_iso: new Date(NOW_MS + 30 * 60_000).toISOString(),
+    selection_rank: 1,
+    selection_reason: "prior attempt",
+    status,
+    order_key: `${conditionId}:${tokenId}:${side}`,
+    idempotency_key: "prior-idempotency-key",
+    diagnostics: {},
+  } as unknown as EventExecutionQueueRow);
+}
+
+test("T1: new rows include diagnostics.price_cap, diagnostics.submitted_price, diagnostics.max_entry_price", async () => {
+  const rows = [signalRow("pricecap", { entry_price_num: 0.4 })];
+  const repo = makeFakeRepo(rows);
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+
+  assert.equal(result.wrote_count, 1);
+  const diag = repo.queueRows[0].diagnostics as Record<string, unknown>;
+  assert.equal(diag.price_cap, 0.5);
+  assert.equal(diag.submitted_price, 0.4);
+  assert.equal(diag.max_entry_price, 0.5);
+});
+
+test("T2: price cap is entry_price_num + 0.10, clamped to a ceiling of 0.75", () => {
+  assert.equal(computeFounderBattleBatchPriceCap(0.4), 0.5);
+  assert.equal(computeFounderBattleBatchPriceCap(0.7), FOUNDER_BATTLE_BATCH_PRICE_CAP_MAX, "0.7 + 0.10 = 0.80 must clamp down to the 0.75 ceiling");
+  assert.equal(computeFounderBattleBatchPriceCap(0.05), FOUNDER_BATTLE_BATCH_PRICE_CAP_MIN, "an implausibly low price still clamps up to the 0.20 floor");
+});
+
+test("T3: a candidate with a missing/non-finite entry_price_num is skipped with MISSING_ENTRY_PRICE_FOR_PRICE_CAP, never silently defaulted", async () => {
+  const rows = [
+    signalRow("no-price", { entry_price_num: null as unknown as number }),
+    signalRow("nan-price", { entry_price_num: Number.NaN }),
+    signalRow("valid-price", { entry_price_num: 0.4 }),
+  ];
+  const repo = makeFakeRepo(rows);
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+
+  assert.equal(result.wrote_count, 1);
+  assert.equal(repo.queueRows[0].condition_id, "cond-valid-price");
+  const priceReasons = result.skipped_reasons.filter((s) => s.reason === "MISSING_ENTRY_PRICE_FOR_PRICE_CAP");
+  assert.equal(priceReasons.length, 2, "both the null and NaN price rows must be explicitly tracked, not silently dropped");
+});
+
+test("T4: an existing row in READY status blocks a new row for the same market", async () => {
+  const rows = [signalRow("blk", { condition_id: "cond-blk", selected_token_id: "token-blk", selected_outcome: "Side-blk" })];
+  const repo = makeFakeRepo(rows);
+  seedExistingRow(repo, "cond-blk", "token-blk", "Side-blk", "READY");
+
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+  assert.equal(result.wrote_count, 0);
+  assert.equal(result.skipped_reasons.some((s) => s.reason === "IDENTITY_ALREADY_QUEUED"), true);
+});
+
+test("T5: an existing row in CLAIMED status blocks a new row for the same market", async () => {
+  const rows = [signalRow("blk", { condition_id: "cond-blk", selected_token_id: "token-blk", selected_outcome: "Side-blk" })];
+  const repo = makeFakeRepo(rows);
+  seedExistingRow(repo, "cond-blk", "token-blk", "Side-blk", "CLAIMED");
+
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+  assert.equal(result.wrote_count, 0);
+  assert.equal(result.skipped_reasons.some((s) => s.reason === "IDENTITY_ALREADY_QUEUED"), true);
+});
+
+test("T6: an existing row in SENT status blocks a new row for the same market", async () => {
+  const rows = [signalRow("blk", { condition_id: "cond-blk", selected_token_id: "token-blk", selected_outcome: "Side-blk" })];
+  const repo = makeFakeRepo(rows);
+  seedExistingRow(repo, "cond-blk", "token-blk", "Side-blk", "SENT");
+
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+  assert.equal(result.wrote_count, 0);
+  assert.equal(result.skipped_reasons.some((s) => s.reason === "IDENTITY_ALREADY_QUEUED"), true);
+});
+
+test("T7: an existing row in EXECUTED status blocks a new row for the same market", async () => {
+  const rows = [signalRow("blk", { condition_id: "cond-blk", selected_token_id: "token-blk", selected_outcome: "Side-blk" })];
+  const repo = makeFakeRepo(rows);
+  seedExistingRow(repo, "cond-blk", "token-blk", "Side-blk", "EXECUTED");
+
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+  assert.equal(result.wrote_count, 0);
+  assert.equal(result.skipped_reasons.some((s) => s.reason === "IDENTITY_ALREADY_QUEUED"), true);
+});
+
+test("T8: an existing row in ORDER_REJECTED status does NOT block a retry row for the same market", async () => {
+  const rows = [signalRow("retry", { condition_id: "cond-retry", selected_token_id: "token-retry", selected_outcome: "Side-retry" })];
+  const repo = makeFakeRepo(rows);
+  seedExistingRow(repo, "cond-retry", "token-retry", "Side-retry", "ORDER_REJECTED");
+  assert.equal(
+    (FOUNDER_BATTLE_BATCH_BLOCKING_STATUSES as readonly string[]).includes("ORDER_REJECTED"),
+    false,
+    "ORDER_REJECTED must not be a blocking status"
+  );
+
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+  assert.equal(result.wrote_count, 1, "a rejected prior attempt must not prevent a corrected retry");
+  assert.equal(repo.queueRows.filter((r) => r.condition_id === "cond-retry").length, 2, "the rejected row and the new retry row both exist");
+});
+
+test("T9: a retry row after a rejection gets a fresh idempotency_key, distinct from the rejected row's key", async () => {
+  const rows = [signalRow("retry2", { condition_id: "cond-retry2", selected_token_id: "token-retry2", selected_outcome: "Side-retry2" })];
+  const repo = makeFakeRepo(rows);
+  seedExistingRow(repo, "cond-retry2", "token-retry2", "Side-retry2", "ORDER_REJECTED");
+  const rejectedKey = repo.queueRows[0].idempotency_key;
+
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+  assert.equal(result.wrote_count, 1);
+  const retryRow = repo.queueRows.find((r) => r.id !== "existing-ORDER_REJECTED");
+  assert.notEqual(retryRow?.idempotency_key, rejectedKey);
+
+  // A second retry at a later time also gets yet another fresh key.
+  const later = await runFounderBattleBatch(NOW_MS + 5 * 60_000, GATE_ENV_ENABLED, { write: true }, { repo: makeFakeRepo(rows) });
+  assert.notEqual(later.created_rows[0]?.idempotency_key, retryRow?.idempotency_key);
+});
+
+test("T10: batch execution is resilient -- a skipped/duplicate candidate does not prevent later candidates in the same batch from being created", async () => {
+  const rows = [
+    signalRow("blocked", { condition_id: "cond-blocked", selected_token_id: "token-blocked", selected_outcome: "Side-blocked" }),
+    signalRow("ok1"),
+    signalRow("ok2"),
+  ];
+  const repo = makeFakeRepo(rows);
+  seedExistingRow(repo, "cond-blocked", "token-blocked", "Side-blocked", "READY");
+
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+  assert.equal(result.wrote_count, 2, "the two unblocked candidates must still be created despite the first being skipped");
+  assert.equal(result.skipped_reasons.some((s) => s.reason === "IDENTITY_ALREADY_QUEUED"), true);
+});
+
+test("T11: FOUNDER_BATTLE_BATCH_STAKE_USD env override above 1.10 fails closed; \"1.1\"/\"1.10\" are accepted (no-op, still 1.10)", async () => {
+  const rows = [signalRow("a")];
+
+  const tooHigh = await runFounderBattleBatch(NOW_MS, { FOUNDER_BATTLE_BATCH_MODE: "YES", FOUNDER_BATTLE_BATCH_STAKE_USD: "1.20" }, { write: true }, { repo: makeFakeRepo(rows) });
+  assert.equal(tooHigh.kind, "BLOCKED_GATE_DISABLED");
+  assert.equal(tooHigh.reason, "FOUNDER_BATTLE_BATCH_STAKE_OVERRIDE_NOT_ALLOWED");
+
+  const exact = await runFounderBattleBatch(NOW_MS, { FOUNDER_BATTLE_BATCH_MODE: "YES", FOUNDER_BATTLE_BATCH_STAKE_USD: "1.1" }, { write: true }, { repo: makeFakeRepo(rows) });
+  assert.equal(exact.kind, "CREATED");
+
+  const exactAlt = await runFounderBattleBatch(NOW_MS, { FOUNDER_BATTLE_BATCH_MODE: "YES", FOUNDER_BATTLE_BATCH_STAKE_USD: "1.10" }, { write: true }, { repo: makeFakeRepo(rows) });
+  assert.equal(exactAlt.kind, "CREATED");
 });
