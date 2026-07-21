@@ -100,6 +100,25 @@ export function projectCanonicalOrderEventPayload(record: Record<string, unknown
   };
 }
 
+/**
+ * Coerce an incoming making_amount/taking_amount value for the proven-numeric
+ * executor_order_events.making_amount / taking_amount columns. Ireland may send
+ * these as JSON numbers (12.5) or as CLOB decimal strings ("12.5"); both are
+ * preserved as a finite number. Empty/absent/non-numeric values return null so
+ * the field is dropped rather than inserting text into a numeric column (a
+ * plain str() coercion silently discarded the JSON-number form entirely).
+ */
+export function coerceNumericAmount(value: unknown): number | null {
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (trimmed === "") return null;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 export function canonicalPayloadsEqual(a: OrderEventCanonicalPayload, b: OrderEventCanonicalPayload): boolean {
   return (
     a.idempotency_key === b.idempotency_key &&

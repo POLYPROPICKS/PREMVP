@@ -16,6 +16,7 @@ import path from "node:path";
 import {
   handleOrderEventSubmission,
   projectCanonicalOrderEventPayload,
+  coerceNumericAmount,
   type OrderEventDbPort,
   type StoredOrderEvent,
   type InsertOrderEventFailure,
@@ -269,6 +270,29 @@ test("14: the route source file does not insert match_family_key -- not a real l
 test("15: the route source file does not insert reservation_id -- not a real live column", () => {
   const source = readFileSync(path.join(root, "app/api/executor/order-events/route.ts"), "utf8");
   assert.doesNotMatch(source, /reservation_id\s*:/);
+});
+
+test("17: coerceNumericAmount preserves numeric amounts for the proven-numeric making/taking columns", () => {
+  // executor_order_events.making_amount / taking_amount are numeric in the
+  // proven live schema. Ireland may legitimately send these as JSON numbers
+  // (12.5) OR as CLOB decimal strings ("12.5"); both must persist. A plain
+  // str() coercion silently drops the JSON-number form.
+  assert.equal(coerceNumericAmount(12.5), 12.5, "a JSON number amount must be preserved");
+  assert.equal(coerceNumericAmount("12.5"), 12.5, "a numeric decimal string must be preserved as a number");
+  assert.equal(coerceNumericAmount("0"), 0, "zero must be preserved, not dropped");
+  assert.equal(coerceNumericAmount(null), null);
+  assert.equal(coerceNumericAmount(undefined), null);
+  assert.equal(coerceNumericAmount(""), null);
+  assert.equal(coerceNumericAmount("not-a-number"), null, "a non-numeric string must not be inserted into a numeric column");
+  assert.equal(coerceNumericAmount(Number.NaN), null);
+});
+
+test("18: the route inserts making_amount/taking_amount via numeric coercion, not str()", () => {
+  const source = readFileSync(path.join(root, "app/api/executor/order-events/route.ts"), "utf8");
+  assert.doesNotMatch(source, /making_amount\s*:\s*str\(/, "making_amount must not be coerced to text");
+  assert.doesNotMatch(source, /taking_amount\s*:\s*str\(/, "taking_amount must not be coerced to text");
+  assert.match(source, /making_amount\s*:\s*coerceNumericAmount\(/);
+  assert.match(source, /taking_amount\s*:\s*coerceNumericAmount\(/);
 });
 
 test("16: queue-row lookup and policy validation still occur before any insert is attempted", async () => {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import {
   handleOrderEventSubmission,
+  coerceNumericAmount,
   type OrderEventDbPort,
   type StoredOrderEvent,
   type InsertOrderEventFailure,
@@ -214,8 +215,8 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
         submitted_price: num(s.submitted_price),
         submitted_size: num(s.submitted_size),
         stake_usd: num(s.stake_usd),
-        making_amount: str(s.making_amount),
-        taking_amount: str(s.taking_amount),
+        making_amount: coerceNumericAmount(s.making_amount),
+        taking_amount: coerceNumericAmount(s.taking_amount),
         observed_best_bid: num(s.observed_best_bid),
         observed_best_ask: num(s.observed_best_ask),
         observed_price: num(s.observed_price),
