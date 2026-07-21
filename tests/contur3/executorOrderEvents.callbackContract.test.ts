@@ -186,15 +186,16 @@ test("5: an identical duplicate submission returns the same canonical row, no se
   assert.equal(port.eventsById.size, 1);
 });
 
-test("4b: a rejected order event (success:false) never marks the queue row EXECUTED, even with a clob_order_id present", async () => {
+test("4b: a rejected order event (success:false) never marks the queue row EXECUTED -- it marks it FAILED instead, even with a clob_order_id present", async () => {
   const port = makeFakePort();
   const outcome = await handleOrderEventSubmission(port, validSubmissionRaw({ success: false, order_status: "REJECTED" }));
   assert.equal(outcome.kind, "INSERTED", "the order event itself is still persisted for audit");
   if (outcome.kind === "INSERTED") {
-    assert.equal(outcome.queueMark.kind, "NOT_ACCEPTED");
+    assert.equal(outcome.queueMark.kind, "FAILED");
   }
   const queueRow = port.queueByIdemKey.get("idem-1");
-  assert.equal(queueRow?.status, "READY", "a rejected order event must never mark the queue row EXECUTED");
+  assert.equal(queueRow?.status, "FAILED", "a rejected order event must never mark the queue row EXECUTED");
+  assert.notEqual(queueRow?.status, "EXECUTED");
 });
 
 test("4c: an order event with no clob_order_id (order was never placed) never marks the queue row EXECUTED", async () => {
@@ -337,4 +338,100 @@ test("16: policy validation (when a queue row exists) still occurs before any in
   const mismatch = await handleOrderEventSubmission(spyPolicyPort, validSubmissionRaw({ submitted_size: 999 }));
   assert.equal(mismatch.kind, "REJECTED_QUEUE_POLICY_MISMATCH");
   assert.equal(insertCalls, 0, "must not insert when queue policy validation fails");
+});
+
+// ── Rejected order events: terminal-mark the queue row FAILED ──────────────
+//
+// Production incident: old founder-battle-batch rows received ORDER_REJECTED
+// callbacks from ireland_batch_queue_consumer, but stayed READY until the
+// founder manually marked them FAILED -- risking a rejected intent remaining
+// active and being re-scanned later.
+
+test("17: an ORDER_REJECTED order-event marks the matching READY queue row FAILED", async () => {
+  const port = makeFakePort();
+  const outcome = await handleOrderEventSubmission(port, validSubmissionRaw({ order_status: "ORDER_REJECTED" }));
+  assert.equal(outcome.kind, "INSERTED");
+  if (outcome.kind === "INSERTED") assert.equal(outcome.queueMark.kind, "FAILED");
+  assert.equal(port.queueByIdemKey.get("idem-1")?.status, "FAILED");
+});
+
+test("18: a rejected order-event stores the rejection reason/error message in queue diagnostics", async () => {
+  const port = makeFakePort();
+  const outcome = await handleOrderEventSubmission(
+    port,
+    validSubmissionRaw({ order_status: "ORDER_REJECTED", error_message: "invalid amount for a marketable BUY order ($0.9963), min size: $1" }),
+  );
+  assert.equal(outcome.kind, "INSERTED");
+  const queueRow = port.queueByIdemKey.get("idem-1");
+  const diag = queueRow?.diagnostics as Record<string, unknown>;
+  assert.equal(diag.queue_mark_result, "ORDER_REJECTED");
+  assert.equal(diag.rejection_reason, "invalid amount for a marketable BUY order ($0.9963), min size: $1");
+  assert.ok(diag.order_event_id, "order_event_id must be recorded when available");
+  if (outcome.kind === "INSERTED") assert.equal(diag.order_event_id, outcome.row.id);
+});
+
+test("19: a duplicate rejected callback is idempotent -- already FAILED means no second update", async () => {
+  const port = makeFakePort();
+  const first = await handleOrderEventSubmission(port, validSubmissionRaw({ order_status: "ORDER_REJECTED", clob_order_id: undefined }));
+  assert.equal(first.kind, "INSERTED");
+  if (first.kind === "INSERTED") assert.equal(first.queueMark.kind, "FAILED");
+  assert.equal(port.queueByIdemKey.get("idem-1")?.status, "FAILED");
+
+  // Same canonical payload -> DUPLICATE, must not re-write or downgrade anything.
+  const second = await handleOrderEventSubmission(port, validSubmissionRaw({ order_status: "ORDER_REJECTED", clob_order_id: undefined }));
+  assert.equal(second.kind, "DUPLICATE");
+  if (second.kind === "DUPLICATE") assert.equal(second.queueMark.kind, "ALREADY_FAILED");
+  assert.equal(port.queueByIdemKey.get("idem-1")?.status, "FAILED");
+});
+
+test("20: a rejected callback never overwrites an already-EXECUTED queue row", async () => {
+  const port = makeFakePort();
+  const accepted = await handleOrderEventSubmission(port, validSubmissionRaw());
+  assert.equal(accepted.kind, "INSERTED");
+  if (accepted.kind === "INSERTED") assert.equal(accepted.queueMark.kind, "EXECUTED");
+  assert.equal(port.queueByIdemKey.get("idem-1")?.status, "EXECUTED");
+
+  // A later, distinct rejected event (different clob_order_id, so it's a
+  // genuinely new economic event, not a duplicate/conflict of the first)
+  // targeting the same idempotency_key/queue row must never downgrade it.
+  const rejectedLater = await handleOrderEventSubmission(
+    port,
+    validSubmissionRaw({ idempotency_key: "idem-1", clob_order_id: "clob-2", order_status: "ORDER_REJECTED" }),
+  );
+  // The conflicting economic payload for the same idempotency_key is itself
+  // rejected as a conflict -- but even so, prove the queue row was never touched.
+  assert.equal(rejectedLater.kind, "CONFLICT_IDEMPOTENCY");
+  assert.equal(port.queueByIdemKey.get("idem-1")?.status, "EXECUTED", "EXECUTED must never be downgraded to FAILED");
+});
+
+test("21: an accepted callback still marks EXECUTED (regression guard for the e83e8e3 fix)", async () => {
+  const port = makeFakePort();
+  const outcome = await handleOrderEventSubmission(port, validSubmissionRaw());
+  assert.equal(outcome.kind, "INSERTED");
+  if (outcome.kind === "INSERTED") assert.equal(outcome.queueMark.kind, "EXECUTED");
+  assert.equal(port.queueByIdemKey.get("idem-1")?.status, "EXECUTED");
+});
+
+test("22: an explicit accepted:false with no clob_order_id still marks the queue row FAILED (no order id required to classify a rejection)", async () => {
+  const port = makeFakePort();
+  const outcome = await handleOrderEventSubmission(port, validSubmissionRaw({ clob_order_id: undefined, accepted: false, reason: "insufficient balance" }));
+  assert.equal(outcome.kind, "INSERTED");
+  if (outcome.kind === "INSERTED") assert.equal(outcome.queueMark.kind, "FAILED");
+  const queueRow = port.queueByIdemKey.get("idem-1");
+  assert.equal(queueRow?.status, "FAILED");
+  assert.equal((queueRow?.diagnostics as Record<string, unknown>).rejection_reason, "insufficient balance");
+});
+
+test("23: a missing queue row for a rejected order-event still persists the event and returns queueMark QUEUE_ROW_NOT_FOUND (not FAILED, nothing to mark)", async () => {
+  const port = makeFakePort([]);
+  const outcome = await handleOrderEventSubmission(port, validSubmissionRaw({ order_status: "ORDER_REJECTED" }));
+  assert.equal(outcome.kind, "INSERTED", "persistence must still succeed even with no matching queue row");
+  if (outcome.kind === "INSERTED") assert.equal(outcome.queueMark.kind, "QUEUE_ROW_NOT_FOUND");
+});
+
+test("24: the rejected-marking code path does not depend on queue_id/reservation_id/match_family_key columns (shared static route guards)", () => {
+  const source = readFileSync(path.join(root, "app/api/executor/order-events/route.ts"), "utf8");
+  assert.doesNotMatch(source, /queue_id\s*:/);
+  assert.doesNotMatch(source, /match_family_key\s*:/);
+  assert.doesNotMatch(source, /reservation_id\s*:/);
 });
