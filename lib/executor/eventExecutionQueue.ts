@@ -595,7 +595,10 @@ export async function runEventRebalance(
     if (isPlanningReservation || isLegacyAuthoritativeReservation) {
       const authoritativeUniverse = isPlanningReservation ? contractAFinalUniverse : eventCandidates;
       const finalForEvent = isPlanningReservation
-        ? authoritativeUniverse.find((c) => c.match_family_key === reservation.match_family_key) ?? null
+        ? authoritativeUniverse.find((c) =>
+            c.match_family_key === reservation.match_family_key ||
+            (Boolean(reservation.event_slug) && c.event_slug === reservation.event_slug)
+          ) ?? null
         : null;
       const authConditionId = isPlanningReservation ? finalForEvent?.condition_id : reservationDiag.authoritative_condition_id;
       const authTokenId = isPlanningReservation ? finalForEvent?.token_id : reservationDiag.authoritative_token_id;

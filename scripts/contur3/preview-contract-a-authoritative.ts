@@ -177,7 +177,7 @@ async function runOnce(
   const rebalance = await runEventRebalance(
     rebalanceNowMs,
     { write: false },
-    { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: finalCandidates as FireModelCandidate[] }) }
+    { repo, fetchCandidates: async () => ({ candidates: planningCandidates as FireModelCandidate[] }), fetchContractAFinalCandidates: async () => ({ candidates: finalCandidates as FireModelCandidate[] }) }
   );
 
   let identityMismatchCount = 0;
@@ -358,10 +358,7 @@ export async function runContractAAuthoritativePreview(
   const buildStages = async () => {
     const planning = await at(planningNowMs, () => buildFireModelCandidates(boundedLimit, "all", true, visibleAt(planningNowMs), "CONTRACT_A_PLANNING_V1"));
     const final = await at(rebalanceNowMs, () => buildFireModelCandidates(boundedLimit, "all", true, visibleAt(rebalanceNowMs), "CONTRACT_A_V1"));
-    const legacyPlanning = planning.candidates.length === 0 && planningNowMs === rebalanceNowMs
-      ? { ...planning, candidates: final.candidates.map((c) => ({ ...c, diagnostics: { ...c.diagnostics, selector_id: "CONTRACT_A_PLANNING_V1", contract_a_stage: "PLANNING" as const } })) }
-      : planning;
-    return { planning: legacyPlanning, final };
+    return { planning, final };
   };
   const stages1 = await buildStages();
   const out1 = await runOnce(stages1.planning.candidates, stages1.final.candidates, planningNowMs, rebalanceNowMs);

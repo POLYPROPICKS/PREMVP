@@ -697,6 +697,7 @@ export async function runReservationCronWithEvidence(
   opts: { force?: boolean; selectorMode?: FireModelSelectorMode } = {},
   deps: {
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+    selectorMode?: FireModelSelectorMode;
     repo?: ReservationRepoPort;
     jobEvidence?: SchedulerJobEvidencePort;
   } = {}
@@ -1145,6 +1146,7 @@ export async function executeForceRebuild(
   nowMs: number,
   deps: {
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+    selectorMode?: FireModelSelectorMode;
     repo?: ReservationRepoPort;
     forceRebuildRepo?: ForceRebuildRepoPort;
     jobEvidence?: SchedulerJobEvidencePort;
@@ -1171,7 +1173,7 @@ export async function executeForceRebuild(
 
     // 3. Rebuild from current universe. Candidate-page reads already retry
     //    internally (fetchAllPlanningRows' own bounded per-page retry+timeout).
-    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates });
+    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates, selectorMode: deps.selectorMode });
 
     // 4. Persist -- insert is never blindly retried; an ambiguous failure is
     //    reconciled by reading back canonical identities, never re-inserted.

@@ -10,6 +10,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import {
   buildReservationPlan,
@@ -291,4 +293,22 @@ test("A6: an empty planning universe records status=empty, not success, with zer
   assert.equal(persisted.written_count, 0);
   assert.equal(jobEvidence.calls[0].status, "empty");
   assert.equal(jobEvidence.calls[0].generatedCount, 0);
+});
+
+test("C4: active production daily entry explicitly selects Contract A planning for standard and force-rebuild paths", () => {
+  const source = readFileSync(fileURLToPath(new URL("../../app/api/cron/night-event-reservations/route.ts", import.meta.url)), "utf8");
+  assert.match(source, /runReservationCronWithEvidence\([\s\S]*selectorMode:\s*"CONTRACT_A_PLANNING_V1"/);
+  assert.match(source, /executeForceRebuild\(nowMs,\s*\{\s*selectorMode:\s*"CONTRACT_A_PLANNING_V1"\s*\}\)/);
+});
+
+test("C5: Contract A planning reserves an event five hours away without persisting false final authority", async () => {
+  const candidate = baseCandidate({
+    diagnostics: { ...baseCandidate().diagnostics, selector_id: "CONTRACT_A_PLANNING_V1", contract_a_stage: "PLANNING" },
+  });
+  const plan = await buildReservationPlan(ANCHOR_NOW_MS, { fetchCandidates: async () => ({ candidates: [candidate] }) });
+  assert.equal(plan.reservations.length, 1);
+  assert.equal(plan.reservations[0].diagnostics.selector_id, "CONTRACT_A_PLANNING_V1");
+  assert.equal(plan.reservations[0].diagnostics.contract_a_stage, "PLANNING");
+  assert.equal(plan.reservations[0].diagnostics.authoritative_condition_id, undefined);
+  assert.equal(plan.reservations[0].diagnostics.authoritative_token_id, undefined);
 });

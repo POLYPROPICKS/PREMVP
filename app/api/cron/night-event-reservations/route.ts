@@ -70,7 +70,7 @@ async function handle(request: NextRequest) {
 
     // ── forceRebuild=CEO_APPROVED: delete queue + reservations + rebuild ──────
     if (forceRebuild) {
-      const result = await executeForceRebuild(nowMs);
+      const result = await executeForceRebuild(nowMs, { selectorMode: "CONTRACT_A_PLANNING_V1" });
       const diagResult = await persistReservationPlanDiagnostics(result.plan, {
         context: "force-rebuild",
       });

@@ -36,7 +36,7 @@ function contractARow(overrides: Record<string, unknown> = {}) {
     created_at: created,
     event_slug: "nba-team-a-vs-team-b-final-2026-07-19",
     market_slug: "nba-team-a-vs-team-b-final-2026-07-19",
-    diagnostics: { gameStartIso: gameStart, dataCoverage: 80 },
+    diagnostics: { gameStartIso: gameStart, dataCoverage: 80, eventTitle: "MLB Yankees vs Mets", marketTitle: "Yankees vs Mets moneyline" },
     ...rest,
   };
 }
@@ -131,7 +131,7 @@ test("TEST6: determinism -- running twice with the same fixture/as-of produces i
   });
 });
 
-test("TEST7: grouping accounting -- market-level-key drop is measured, and no false collision is reported when none occurred", async () => {
+test("TEST7: planning grouping accounting reports normalized physical events without false drops or collisions", async () => {
   const { runContractAAuthoritativePreview } = await import("../../scripts/contur3/preview-contract-a-authoritative");
   const clean = contractARow({
     condition_id: "cond-clean",
@@ -142,15 +142,16 @@ test("TEST7: grouping accounting -- market-level-key drop is measured, and no fa
     selected_token_id: "tok-moneyline",
     event_slug: "chile-vs-peru-moneyline",
     market_slug: "chile-vs-peru-moneyline",
+    diagnostics: { gameStartIso: "2026-07-19T14:45:00.000Z", dataCoverage: 80, eventTitle: "MLB Chile vs Peru", marketTitle: "Chile vs Peru moneyline" },
   });
   await withFixture([clean, marketLevel], async (fixturePath) => {
     const summary = await runContractAAuthoritativePreview(["--fixture", fixturePath, "--as-of", AS_OF]);
     assert.equal(summary.contractAAcceptedDecisions, 2);
     assert.equal(summary.contractAEventGroups, 2);
-    assert.equal(summary.marketLevelKeysSkipped, 1);
-    assert.equal(summary.wouldReserveCount, 1);
+    assert.equal(summary.marketLevelKeysSkipped, 0);
+    assert.equal(summary.wouldReserveCount, 2);
     assert.equal(summary.groupingCollisionCount, 0, "no two distinct Contract A decisions collapsed into one physical key");
-    assert.equal(summary.authoritativeDroppedCount, 1);
+    assert.equal(summary.authoritativeDroppedCount, 0);
   });
 });
 
@@ -203,5 +204,65 @@ test("selector provenance: every accepted decision's selector_id matches the fro
     // FROZEN_MODEL_V2_VERSION is the exact selector id -- proves the runner
     // never hardcodes a duplicate literal.
     assert.equal(FROZEN_MODEL_V2_VERSION, "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M");
+  });
+});
+
+test("two-stage parity: 17:00 planning reserves beyond T-90 and later T-60 resolves exact authoritative READY identity", async () => {
+  const { runContractAAuthoritativePreview } = await import("../../scripts/contur3/preview-contract-a-authoritative");
+  const eventSlug = "mlb-team-a-vs-team-b-2026-07-19";
+  const planning = contractARow({
+    condition_id: "cond-planning",
+    selected_token_id: "tok-planning",
+    event_slug: eventSlug,
+    market_slug: `${eventSlug}-moneyline`,
+    __gameStart: "2026-07-19T19:00:00.000Z",
+    __created: "2026-07-19T13:00:00.000Z",
+  });
+  const finalA = contractARow({
+    condition_id: "cond-final-a",
+    selected_token_id: "tok-final-a",
+    selected_outcome: "TEAM_A",
+    event_slug: eventSlug,
+    market_slug: `${eventSlug}-moneyline-a`,
+    __gameStart: "2026-07-19T19:00:00.000Z",
+    __created: "2026-07-19T17:30:00.000Z",
+  });
+  await withFixture([planning, finalA], async (fixturePath) => {
+    const summary = await runContractAAuthoritativePreview([
+      "--fixture", fixturePath,
+      "--planning-as-of", "2026-07-19T14:00:00.000Z",
+      "--rebalance-as-of", "2026-07-19T18:00:00.000Z",
+    ]);
+    assert.equal(summary.wouldReserveCount, 1);
+    assert.equal(summary.wouldRebalanceCount, 1);
+    assert.equal(summary.wouldReadyCount, 1);
+    assert.equal(summary.identityMismatchCount, 0);
+    assert.equal(summary.alternateSubstitutionCount, 0);
+    assert.equal(summary.deterministicReplay, true);
+    assert.deepEqual(summary.safety, { productionReservationWrites: 0, productionQueueWrites: 0, callbacks: 0, irelandCalls: 0, clobOrders: 0 });
+  });
+});
+
+test("two-stage no substitution: reserved planning market cannot replace a missing final authoritative decision", async () => {
+  const { runContractAAuthoritativePreview } = await import("../../scripts/contur3/preview-contract-a-authoritative");
+  const planningOnly = contractARow({
+    condition_id: "cond-alternate-b",
+    selected_token_id: "tok-alternate-b",
+    event_slug: "mlb-team-c-vs-team-d-2026-07-19",
+    market_slug: "mlb-team-c-vs-team-d-2026-07-19-moneyline",
+    __gameStart: "2026-07-19T19:00:00.000Z",
+    __created: "2026-07-19T13:00:00.000Z",
+  });
+  await withFixture([planningOnly], async (fixturePath) => {
+    const summary = await runContractAAuthoritativePreview([
+      "--fixture", fixturePath,
+      "--planning-as-of", "2026-07-19T14:00:00.000Z",
+      "--rebalance-as-of", "2026-07-19T18:00:00.000Z",
+    ]);
+    assert.equal(summary.wouldReserveCount, 1);
+    assert.equal(summary.wouldReadyCount, 0);
+    assert.equal(summary.alternateSubstitutionCount, 0);
+    assert.equal(summary.failClosedCount, 1);
+    assert.ok(Object.keys(summary.failClosedReasons).some((reason) => reason.includes("CONTRACT_A_AUTHORITATIVE")));
   });
 });
