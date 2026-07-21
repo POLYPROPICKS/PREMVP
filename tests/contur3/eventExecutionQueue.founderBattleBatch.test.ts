@@ -17,6 +17,7 @@ import {
   buildFounderBattleBatchQueueRow,
   computeFounderBattleBatchPriceCap,
   resolveFounderBattleBatchTitle,
+  resolveBattleBatchPhysicalEventKey,
   FOUNDER_BATTLE_BATCH_STAKE_USD,
   FOUNDER_BATTLE_BATCH_RUN_ID_PREFIX,
   FOUNDER_BATTLE_BATCH_PRICE_CAP_MIN,
@@ -605,5 +606,221 @@ test("Title-7: stake, price cap, and max batch size are unaffected by the title 
     assert.equal(row.stake_usd, FOUNDER_BATTLE_BATCH_STAKE_USD);
     const diag = row.diagnostics as Record<string, unknown>;
     assert.ok(typeof diag.price_cap === "number");
+  }
+});
+
+// --- Physical-event dedupe (one queue row per real-world sporting event) ---
+//
+// Production incident: founder battle batch accepted 2 of 4 live orders for
+// the exact same physical event (Dodgers vs Phillies moneyline AND Dodgers
+// vs Phillies O/U 8.5) because condition/token/side dedupe alone does not
+// see two different markets on one match as duplicates. These tests lock in
+// resolveBattleBatchPhysicalEventKey's team-pair collapsing and the
+// selection-level enforcement that keeps only the top-ranked candidate per
+// physical event.
+
+test("PhysEvent-1: two Dodgers rows (different condition/token/side, same match) collapse to one queue row", async () => {
+  const rows = [
+    signalRow("dodgers-ml", {
+      event_slug: "Los Angeles Dodgers vs. Philadelphia Phillies",
+      condition_id: "cond-dodgers-ml",
+      selected_token_id: "token-dodgers-ml",
+      selected_outcome: "Dodgers",
+    }),
+    signalRow("dodgers-ou", {
+      event_slug: "Los Angeles Dodgers vs. Philadelphia Phillies: O/U 8.5",
+      condition_id: "cond-dodgers-ou",
+      selected_token_id: "token-dodgers-ou",
+      selected_outcome: "Over 8.5",
+    }),
+  ];
+  const repo = makeFakeRepo(rows);
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+
+  assert.equal(result.wrote_count, 1);
+  assert.equal(repo.queueRows.length, 1);
+});
+
+test("PhysEvent-2: higher-confidence candidate wins within the same physical event", async () => {
+  const rows = [
+    signalRow("dodgers-low", {
+      event_slug: "Los Angeles Dodgers vs. Philadelphia Phillies",
+      condition_id: "cond-low",
+      selected_token_id: "token-low",
+      selected_outcome: "Dodgers",
+      signal_confidence_num: 65,
+    }),
+    signalRow("dodgers-high", {
+      event_slug: "Los Angeles Dodgers vs. Philadelphia Phillies: O/U 8.5",
+      condition_id: "cond-high",
+      selected_token_id: "token-high",
+      selected_outcome: "Over 8.5",
+      signal_confidence_num: 90,
+    }),
+  ];
+  const repo = makeFakeRepo(rows);
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+
+  assert.equal(result.wrote_count, 1);
+  assert.equal(repo.queueRows[0].condition_id, "cond-high");
+});
+
+test("PhysEvent-3: lower-ranked same-event duplicate is reported as SKIPPED_DUPLICATE_PHYSICAL_EVENT", async () => {
+  const rows = [
+    signalRow("dodgers-low", {
+      event_slug: "Los Angeles Dodgers vs. Philadelphia Phillies",
+      condition_id: "cond-low",
+      selected_token_id: "token-low",
+      selected_outcome: "Dodgers",
+      signal_confidence_num: 65,
+    }),
+    signalRow("dodgers-high", {
+      event_slug: "Los Angeles Dodgers vs. Philadelphia Phillies: O/U 8.5",
+      condition_id: "cond-high",
+      selected_token_id: "token-high",
+      selected_outcome: "Over 8.5",
+      signal_confidence_num: 90,
+    }),
+  ];
+  const repo = makeFakeRepo(rows);
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+
+  const dup = result.skipped_reasons.find((s) => s.reason === "SKIPPED_DUPLICATE_PHYSICAL_EVENT");
+  assert.ok(dup, "expected a SKIPPED_DUPLICATE_PHYSICAL_EVENT skip reason");
+  assert.equal(dup?.order_key, "cond-low:token-low:Dodgers");
+});
+
+test("PhysEvent-4: two genuinely different matches at the same start time are both allowed", async () => {
+  const rows = [
+    signalRow("vikingur", {
+      event_slug: "KF Víkingur vs MH Hapoel Be'er Sheva: 1st Half O/U 1.5",
+      condition_id: "cond-vikingur",
+      selected_token_id: "token-vikingur",
+      selected_outcome: "Over 1.5",
+    }),
+    signalRow("larne", {
+      event_slug: "Larne FC vs FK Crvena zvezda: 1st Half O/U 0.5",
+      condition_id: "cond-larne",
+      selected_token_id: "token-larne",
+      selected_outcome: "Over 0.5",
+    }),
+  ];
+  const repo = makeFakeRepo(rows);
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+
+  assert.equal(result.wrote_count, 2);
+  assert.equal(result.skipped_reasons.some((s) => s.reason === "SKIPPED_DUPLICATE_PHYSICAL_EVENT"), false);
+});
+
+test("PhysEvent-5: market suffixes (O/U 8.5, 1st Half O/U 0.5, 1st Half...) never create separate physical-event groups", async () => {
+  assert.equal(
+    resolveBattleBatchPhysicalEventKey(signalRow("a", { event_slug: "Los Angeles Dodgers vs. Philadelphia Phillies" })),
+    resolveBattleBatchPhysicalEventKey(signalRow("b", { event_slug: "Los Angeles Dodgers vs. Philadelphia Phillies: O/U 8.5" }))
+  );
+  assert.equal(
+    resolveBattleBatchPhysicalEventKey(signalRow("c", { event_slug: "Team A vs Team B: 1st Half O/U 0.5" })),
+    resolveBattleBatchPhysicalEventKey(signalRow("d", { event_slug: "Team A vs Team B: 1st Half Moneyline" }))
+  );
+  assert.notEqual(
+    resolveBattleBatchPhysicalEventKey(
+      signalRow("e", { event_slug: "KF Víkingur vs MH Hapoel Be'er Sheva: 1st Half O/U 1.5" })
+    ),
+    resolveBattleBatchPhysicalEventKey(signalRow("f", { event_slug: "Larne FC vs FK Crvena zvezda: 1st Half O/U 0.5" }))
+  );
+});
+
+test("PhysEvent-6: existing (condition_id, token_id, selected_outcome) identity dedupe still applies before physical-event dedupe", async () => {
+  const rows = [
+    signalRow("dup1", {
+      event_slug: "Team A vs Team B",
+      condition_id: "cond-x",
+      selected_token_id: "token-x",
+      selected_outcome: "Side-X",
+      created_at: "2026-07-21T09:00:00.000Z",
+    }),
+    signalRow("dup2", {
+      event_slug: "Team A vs Team B",
+      condition_id: "cond-x",
+      selected_token_id: "token-x",
+      selected_outcome: "Side-X",
+      created_at: "2026-07-21T11:00:00.000Z",
+    }),
+  ];
+  const repo = makeFakeRepo(rows);
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+
+  assert.equal(result.wrote_count, 1);
+  assert.equal(result.skipped_reasons.some((s) => s.reason === "SKIPPED_DUPLICATE_PHYSICAL_EVENT"), false);
+});
+
+test("PhysEvent-7: max rows remains 4 even when 5 distinct physical events are available", async () => {
+  const rows = [
+    signalRow("p1", { event_slug: "Team A1 vs Team B1", condition_id: "cond-p1", selected_token_id: "token-p1", selected_outcome: "A1" }),
+    signalRow("p2", { event_slug: "Team A2 vs Team B2", condition_id: "cond-p2", selected_token_id: "token-p2", selected_outcome: "A2" }),
+    signalRow("p3", { event_slug: "Team A3 vs Team B3", condition_id: "cond-p3", selected_token_id: "token-p3", selected_outcome: "A3" }),
+    signalRow("p4", { event_slug: "Team A4 vs Team B4", condition_id: "cond-p4", selected_token_id: "token-p4", selected_outcome: "A4" }),
+    signalRow("p5", { event_slug: "Team A5 vs Team B5", condition_id: "cond-p5", selected_token_id: "token-p5", selected_outcome: "A5" }),
+  ];
+  const repo = makeFakeRepo(rows);
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+
+  assert.equal(result.wrote_count, 4);
+});
+
+test("PhysEvent-8: stake_usd and price_cap behavior are unchanged by physical-event dedupe", async () => {
+  const rows = [
+    signalRow("dodgers-ml", {
+      event_slug: "Los Angeles Dodgers vs. Philadelphia Phillies",
+      condition_id: "cond-dodgers-ml",
+      selected_token_id: "token-dodgers-ml",
+      selected_outcome: "Dodgers",
+      entry_price_num: 0.4,
+    }),
+    signalRow("dodgers-ou", {
+      event_slug: "Los Angeles Dodgers vs. Philadelphia Phillies: O/U 8.5",
+      condition_id: "cond-dodgers-ou",
+      selected_token_id: "token-dodgers-ou",
+      selected_outcome: "Over 8.5",
+      entry_price_num: 0.4,
+    }),
+  ];
+  const repo = makeFakeRepo(rows);
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+
+  assert.equal(result.wrote_count, 1);
+  const row = repo.queueRows[0];
+  assert.equal(row.stake_usd, FOUNDER_BATTLE_BATCH_STAKE_USD);
+  const diag = row.diagnostics as Record<string, unknown>;
+  assert.equal(diag.price_cap, computeFounderBattleBatchPriceCap(0.4));
+});
+
+test("PhysEvent-9: rows surviving physical-event dedupe still use only live-schema-compatible event_execution_queue columns", () => {
+  const rows = [
+    signalRow("dodgers-ml", {
+      event_slug: "Los Angeles Dodgers vs. Philadelphia Phillies",
+      condition_id: "cond-dodgers-ml",
+      selected_token_id: "token-dodgers-ml",
+      selected_outcome: "Dodgers",
+    }),
+    signalRow("dodgers-ou", {
+      event_slug: "Los Angeles Dodgers vs. Philadelphia Phillies: O/U 8.5",
+      condition_id: "cond-dodgers-ou",
+      selected_token_id: "token-dodgers-ou",
+      selected_outcome: "Over 8.5",
+    }),
+  ];
+  const { candidates } = selectFounderBattleBatchCandidates(rows, NOW_MS, 4);
+  assert.equal(candidates.length, 1, "physical-event dedupe must run before queue rows are built");
+  const row = buildFounderBattleBatchQueueRow(candidates[0], NOW_MS, 0, new Date(NOW_MS).toISOString());
+
+  const LIVE_COLUMNS = [
+    "reservation_id", "plan_run_id", "rebalance_run_id", "match_family_key", "event_title",
+    "event_slug", "sport", "league", "game_start_iso", "condition_id", "token_id", "side",
+    "market_slug", "market_title", "market_family", "score", "coverage", "tier", "stake_usd",
+    "preferred_entry_iso", "latest_entry_iso", "selection_rank", "selection_reason", "status",
+    "order_key", "idempotency_key", "diagnostics",
+  ];
+  for (const key of Object.keys(row)) {
+    assert.ok(LIVE_COLUMNS.includes(key), `field "${key}" is not a live event_execution_queue column`);
   }
 });

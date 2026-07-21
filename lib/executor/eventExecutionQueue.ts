@@ -1230,6 +1230,52 @@ function normalizeBattleBatchDisplayTitle(text: string): string {
   return text.trim().replace(/\s+/g, " ").replace(/\bvs\.(?=\s|$)/gi, "vs");
 }
 
+function normalizePhysicalEventKeyText(text: string): string {
+  return text.trim().toLowerCase().replace(/\s+/g, " ").replace(/\bvs\.?\b/g, "vs");
+}
+
+/** Strips a trailing market-qualifier suffix like ": O/U 8.5" or ": 1st Half O/U 0.5" -- everything from the first colon onward. */
+function stripMarketSuffix(text: string): string {
+  const idx = text.indexOf(":");
+  return idx === -1 ? text : text.slice(0, idx);
+}
+
+/**
+ * Deterministic physical-event identity key for founder battle batch dedupe
+ * only (a small local helper -- deriveMatchFamilyKey in
+ * buildFireModelCandidates.ts is not exported and operates on a different,
+ * richer candidate pipeline; reusing it would require exporting internals of
+ * an out-of-scope module for a narrower need). Priority:
+ *   1. an explicit canonical key already present in diagnostics, if any
+ *      upstream annotation provides one;
+ *   2. the team-pair prefix (before any ": <market qualifier>" suffix) of
+ *      event_slug or market_slug, when it is prose-like AND actually
+ *      contains a "vs" team-pair pattern -- this is what makes
+ *      "X vs Y: O/U 8.5" and "X vs Y: 1st Half O/U 0.5" collapse to the same
+ *      physical event as bare "X vs Y";
+ *   3. otherwise, a per-row fallback keyed on condition_id (never merged with
+ *      anything else) -- a single-team/market-level title with no team-pair
+ *      pattern (e.g. "Spread: Team (-2.5)") must never be guessed into
+ *      sharing an event with an unrelated market.
+ */
+export function resolveBattleBatchPhysicalEventKey(row: RawSignalPairRow): string {
+  const diag = row.diagnostics ?? {};
+  const explicit =
+    (typeof diag.matchFamilyKey === "string" && diag.matchFamilyKey.trim() !== "" ? diag.matchFamilyKey : null) ??
+    (typeof diag.physicalEventKey === "string" && diag.physicalEventKey.trim() !== "" ? diag.physicalEventKey : null);
+  if (explicit) return normalizePhysicalEventKeyText(explicit);
+
+  for (const candidate of [row.event_slug, row.market_slug]) {
+    if (!isProseLikeTitle(candidate)) continue;
+    const prefix = stripMarketSuffix(candidate).trim();
+    if (/\bvs\.?\b/i.test(prefix)) {
+      return normalizePhysicalEventKeyText(prefix);
+    }
+  }
+
+  return `condition:${row.condition_id ?? row.selected_token_id ?? "unknown"}`;
+}
+
 /**
  * Human-readable title resolution for founder battle batch rows, in priority
  * order: (1) event_slug when it is itself prose-like (some production rows
@@ -1436,7 +1482,26 @@ export function selectFounderBattleBatchCandidates(
     return Date.parse(b.row.created_at) - Date.parse(a.row.created_at);
   });
 
-  return { candidates: deduped.slice(0, max), excluded };
+  // Physical-event dedupe: one row per unique physical event, ever -- keep
+  // only the highest-ranked candidate (the list is already sorted above, so
+  // the first occurrence of a given physical_event_key wins) and report every
+  // lower-ranked same-event candidate as an explicit skip, never silently.
+  const seenPhysicalEventKeys = new Set<string>();
+  const physicalEventDeduped: BattleBatchCandidate[] = [];
+  for (const c of deduped) {
+    const physicalEventKey = resolveBattleBatchPhysicalEventKey(c.row);
+    if (seenPhysicalEventKeys.has(physicalEventKey)) {
+      excluded.push({
+        order_key: `${c.conditionId}:${c.tokenId}:${c.side}`,
+        reason: "SKIPPED_DUPLICATE_PHYSICAL_EVENT",
+      });
+      continue;
+    }
+    seenPhysicalEventKeys.add(physicalEventKey);
+    physicalEventDeduped.push(c);
+  }
+
+  return { candidates: physicalEventDeduped.slice(0, max), excluded };
 }
 
 /** Deterministic price ceiling Ireland must never pay above: entry_price_num + buffer, clamped to [0.20, 0.75]. */
