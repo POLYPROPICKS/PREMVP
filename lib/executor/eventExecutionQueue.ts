@@ -388,6 +388,26 @@ function classifyReservations(
 }
 
 /**
+ * Thrown by insertQueueRow when the database rejects the write with a
+ * PostgreSQL unique_violation (23505) -- e.g. the controlled-live-intent
+ * partial unique index on rebalance_run_id. Callers that need to react to a
+ * real database-enforced conflict (as opposed to any other insert failure)
+ * check `err instanceof QueueInsertConflictError` or `.code === "23505"`.
+ */
+export class QueueInsertConflictError extends Error {
+  code: string;
+  constructor(message: string, code: string) {
+    super(message);
+    this.name = "QueueInsertConflictError";
+    this.code = code;
+  }
+}
+
+function isPostgresUniqueViolation(err: unknown): err is { code: string; message?: string } {
+  return typeof err === "object" && err !== null && "code" in err && (err as { code?: unknown }).code === "23505";
+}
+
+/**
  * Injectable persistence/read boundary for the rebalance loop. The real
  * implementation (createSupabaseRebalanceRepoPort) reproduces the exact
  * reservation/queue reads and writes runEventRebalance always made; tests
@@ -449,7 +469,17 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
     async insertQueueRow(row) {
       const { supabaseAdmin } = await import("@/lib/supabase/server");
       const { error } = await supabaseAdmin.from("event_execution_queue").insert(row);
-      if (error) throw new Error(`queue insert failed: ${error.message}`);
+      if (error) {
+        // Preserve the PostgreSQL error code (23505 = unique_violation) so
+        // callers -- specifically runControlledLiveIntent's conflict
+        // recovery -- can distinguish a real database-enforced duplicate
+        // rejection from any other insert failure. Normal-mode callers only
+        // ever read .message, so this is purely additive.
+        if ((error as { code?: string }).code === "23505") {
+          throw new QueueInsertConflictError(`queue insert failed: ${error.message}`, "23505");
+        }
+        throw new Error(`queue insert failed: ${error.message}`);
+      }
     },
     async markReservationQueued(id, reason) {
       const { supabaseAdmin } = await import("@/lib/supabase/server");
@@ -940,6 +970,29 @@ export async function runControlledLiveIntent(
     try {
       await repo.insertQueueRow(controlledRow);
     } catch (err) {
+      if (isPostgresUniqueViolation(err)) {
+        // The database itself rejected a second controlled row (partial
+        // unique index event_execution_queue_controlled_live_rebalance_run_uniq
+        // on rebalance_run_id) -- this is the real exactly-one authority, not
+        // just the app-level precheck. Do not try another reservation; do not
+        // delete or mutate the winner. Re-read to surface it.
+        const recheck = await repo.findQueueRowsByRebalanceRunId!(CONTROLLED_LIVE_TEST_ID);
+        if (recheck.length === 1) {
+          return {
+            kind: "ALREADY_EXISTS",
+            reason: "CONTROLLED_LIVE_INTENT_UNIQUE_VIOLATION_RECOVERED",
+            wrote: false,
+            queue_row: recheck[0],
+            matching_row_count: 1,
+          };
+        }
+        return {
+          kind: "BLOCKED_VERIFICATION_FAILED",
+          reason: `CONTROLLED_ROW_COUNT_MISMATCH_AFTER_CONFLICT: expected=1 actual=${recheck.length}`,
+          wrote: false,
+          matching_row_count: recheck.length,
+        };
+      }
       const msg = err instanceof Error ? err.message : String(err);
       return { kind: "NO_SAFE_CANDIDATE", reason: `CONTROLLED_INSERT_FAILED: ${msg}`, wrote: false };
     }
@@ -947,12 +1000,11 @@ export async function runControlledLiveIntent(
       await repo.markReservationQueued(reservation.id, controlledRow.selection_reason ?? "");
     }
 
-    // Post-write recheck: this is not a global transactional guarantee -- it
-    // is a best-effort verification against the same repo read path used for
-    // the pre-write duplicate check. Real cross-request exactly-once safety
-    // for a given reservation/market still comes from the existing DB unique
-    // constraints on event_execution_queue (condition_id, token_id, side,
-    // plan_run_id) and (reservation_id, selection_rank).
+    // Post-write recheck: an additional, non-authoritative sanity check --
+    // the database's partial unique index on rebalance_run_id (see the 23505
+    // handling above) is what actually enforces exactly-one across
+    // concurrent/retried invocations. This recheck only guards against a
+    // still-possible logic bug in this function itself.
     const verify = await repo.findQueueRowsByRebalanceRunId(CONTROLLED_LIVE_TEST_ID);
     if (verify.length !== CONTROLLED_LIVE_MAX_QUEUE_WRITES) {
       return {
