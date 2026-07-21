@@ -3,6 +3,7 @@ import {
   runEventRebalanceWithEvidence,
   persistRebalanceDiagnostics,
   runControlledLiveIntent,
+  runFounderBattleBatch,
 } from "@/lib/executor/eventExecutionQueue";
 
 // Contur3 per-event rebalance cron (run every 5-10 minutes).
@@ -24,6 +25,40 @@ async function handle(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const dryRun = searchParams.get("dryRun") === "1";
   const controlledLiveIntent = searchParams.get("controlledLiveIntent");
+  const founderBattleBatch = searchParams.get("founderBattleBatch") === "1";
+
+  // Founder battle batch mode: an entirely separate, narrower branch that
+  // reads generated_signal_pairs directly and creates 2-4 fresh READY rows.
+  // Requires BOTH this explicit request param AND the FOUNDER_BATTLE_BATCH_MODE
+  // env gate -- fails closed otherwise. Never touches Ireland executor code,
+  // never invokes runEventRebalanceWithEvidence/job_runs evidence.
+  if (founderBattleBatch) {
+    try {
+      const result = await runFounderBattleBatch(Date.now(), process.env, { write: !dryRun });
+      const status = result.kind === "BLOCKED_GATE_DISABLED" ? 403 : 200;
+      return NextResponse.json(
+        {
+          ok: result.kind === "CREATED",
+          mode: "founder_battle_batch",
+          dry_run: dryRun,
+          kind: result.kind,
+          reason: result.reason,
+          wrote_count: result.wrote_count,
+          skipped_count: result.skipped_count,
+          created_rows: result.created_rows,
+          skipped_reasons: result.skipped_reasons,
+        },
+        { status, headers: { "Cache-Control": "no-store" } }
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      console.error("[cron/event-rebalance] founder_battle_batch error:", msg);
+      return NextResponse.json(
+        { ok: false, mode: "founder_battle_batch", error: msg },
+        { status: 500, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+  }
 
   // Controlled one-shot live-intent mode: an entirely separate, narrower
   // branch from the normal scheduled rebalance below. It never touches

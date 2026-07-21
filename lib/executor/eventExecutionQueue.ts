@@ -1152,3 +1152,325 @@ export async function persistRebalanceDiagnostics(
     return { path: null, error: msg };
   }
 }
+
+// ── Founder battle batch feeder ─────────────────────────────────────────────
+//
+// Founder-approved batch feeder: reads generated_signal_pairs directly (not
+// buildFireModelCandidates/Contract A) and creates 2-4 fresh READY
+// event_execution_queue rows, each capped at stake_usd=1, for Ireland's batch
+// runner. This is deliberately a separate, narrower selection path from the
+// scheduled rebalance -- it never touches Ireland executor code, never
+// requires exactly one candidate, and fails closed unless both an explicit
+// env gate and an explicit request param are set.
+
+export const FOUNDER_BATTLE_BATCH_GATE_VALUE = "YES" as const;
+export const FOUNDER_BATTLE_BATCH_DEFAULT_MAX = 4;
+export const FOUNDER_BATTLE_BATCH_ABSOLUTE_MAX = 4;
+export const FOUNDER_BATTLE_BATCH_STAKE_USD = 1 as const;
+export const FOUNDER_BATTLE_BATCH_RUN_ID_PREFIX = "founder-live-order-batch-";
+// Statuses that mean "this market identity is already spoken for" -- a fresh
+// batch row must never be created alongside one of these for the same
+// condition_id/token_id/side, even if game_start_iso differs.
+export const FOUNDER_BATTLE_BATCH_BLOCKING_STATUSES = ["READY", "CLAIMED", "SENT", "EXECUTED"] as const;
+
+export interface RawSignalPairRow {
+  id: string;
+  event_slug: string | null;
+  market_slug: string | null;
+  condition_id: string | null;
+  selected_outcome: string | null;
+  selected_token_id: string | null;
+  entry_price_num: number | null;
+  signal_confidence_num: number | null;
+  metric_formula_version: string | null;
+  created_at: string;
+  expires_at: string | null;
+  diagnostics: Record<string, unknown> | null;
+  signal_result: string | null;
+}
+
+export interface BattleBatchRepoPort {
+  fetchSignalPairs(): Promise<RawSignalPairRow[]>;
+  findBlockingQueueRowByIdentity(conditionId: string, tokenId: string, side: string): Promise<EventExecutionQueueRow[]>;
+  findQueueRowByIdempotencyKey(key: string): Promise<EventExecutionQueueRow | null>;
+  insertQueueRow(row: EventExecutionQueueRow): Promise<void>;
+}
+
+export function createSupabaseBattleBatchRepoPort(): BattleBatchRepoPort {
+  return {
+    async fetchSignalPairs() {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data, error } = await supabaseAdmin
+        .from("generated_signal_pairs")
+        .select(
+          "id, event_slug, market_slug, condition_id, selected_outcome, selected_token_id, " +
+          "entry_price_num, signal_confidence_num, metric_formula_version, created_at, expires_at, " +
+          "diagnostics, signal_result"
+        )
+        .is("signal_result", null)
+        .not("condition_id", "is", null)
+        .not("selected_token_id", "is", null)
+        .not("selected_outcome", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (error) throw new Error(`battle batch signal-pair fetch failed: ${error.message}`);
+      return (data ?? []) as unknown as RawSignalPairRow[];
+    },
+    async findBlockingQueueRowByIdentity(conditionId, tokenId, side) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data, error } = await supabaseAdmin
+        .from("event_execution_queue")
+        .select("*")
+        .eq("condition_id", conditionId)
+        .eq("token_id", tokenId)
+        .eq("side", side)
+        .in("status", FOUNDER_BATTLE_BATCH_BLOCKING_STATUSES as unknown as string[]);
+      if (error) throw new Error(`battle batch identity-lookup failed: ${error.message}`);
+      return (data ?? []) as unknown as EventExecutionQueueRow[];
+    },
+    async findQueueRowByIdempotencyKey(key) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data, error } = await supabaseAdmin
+        .from("event_execution_queue")
+        .select("*")
+        .eq("idempotency_key", key)
+        .maybeSingle();
+      if (error) throw new Error(`battle batch idempotency-lookup failed: ${error.message}`);
+      return (data as EventExecutionQueueRow | null) ?? null;
+    },
+    async insertQueueRow(row) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { error } = await supabaseAdmin.from("event_execution_queue").insert(row);
+      if (error) {
+        if ((error as { code?: string }).code === "23505") {
+          throw new QueueInsertConflictError(`battle batch queue insert failed: ${error.message}`, "23505");
+        }
+        throw new Error(`battle batch queue insert failed: ${error.message}`);
+      }
+    },
+  };
+}
+
+export type FounderBattleBatchGateResult = { ok: true; max: number } | { ok: false; reason: string };
+
+/**
+ * Explicit founder-approved gate, fail closed otherwise. Requires
+ * FOUNDER_BATTLE_BATCH_MODE=YES exactly. If FOUNDER_BATTLE_BATCH_STAKE_USD is
+ * set to anything other than "1", this is treated as a misconfiguration and
+ * blocked -- the stake cap is never configurable upward via env.
+ */
+export function validateFounderBattleBatchGate(env: Record<string, string | undefined>): FounderBattleBatchGateResult {
+  if (env.FOUNDER_BATTLE_BATCH_MODE !== FOUNDER_BATTLE_BATCH_GATE_VALUE) {
+    return { ok: false, reason: "FOUNDER_BATTLE_BATCH_GATE_NOT_ENABLED" };
+  }
+  if (env.FOUNDER_BATTLE_BATCH_STAKE_USD !== undefined && env.FOUNDER_BATTLE_BATCH_STAKE_USD !== "1") {
+    return { ok: false, reason: "FOUNDER_BATTLE_BATCH_STAKE_OVERRIDE_NOT_ALLOWED" };
+  }
+  const rawMax = parseInt(env.FOUNDER_BATTLE_BATCH_MAX ?? "", 10);
+  const max =
+    Number.isFinite(rawMax) && rawMax > 0
+      ? Math.min(rawMax, FOUNDER_BATTLE_BATCH_ABSOLUTE_MAX)
+      : FOUNDER_BATTLE_BATCH_DEFAULT_MAX;
+  return { ok: true, max };
+}
+
+function resolveBattleBatchGameStartIso(row: RawSignalPairRow): string | null {
+  const diag = row.diagnostics ?? {};
+  const fromDiag = typeof diag.gameStartIso === "string" ? diag.gameStartIso : null;
+  if (fromDiag) return fromDiag;
+  return typeof row.expires_at === "string" ? row.expires_at : null;
+}
+
+export interface BattleBatchCandidate {
+  row: RawSignalPairRow;
+  gameStartIso: string;
+  conditionId: string;
+  tokenId: string;
+  side: string;
+}
+
+/**
+ * Pure selection (no DB I/O): filter, dedupe by (condition_id,
+ * selected_token_id, selected_outcome), rank, and cap at max. Never requires
+ * exactly one candidate -- returns however many (0 to max) survive.
+ */
+export function selectFounderBattleBatchCandidates(
+  rows: RawSignalPairRow[],
+  nowMs: number,
+  max: number
+): BattleBatchCandidate[] {
+  const MIN_LEAD_MS = 10 * 60_000;
+  const MAX_LEAD_MS = 14 * 60 * 60_000;
+
+  const filtered: BattleBatchCandidate[] = [];
+  for (const row of rows) {
+    if (row.signal_result !== null && row.signal_result !== undefined) continue;
+    if (!row.condition_id || !row.selected_token_id || !row.selected_outcome) continue;
+    if (row.metric_formula_version != null && row.metric_formula_version !== "v2-lite-growth-safe") continue;
+    if (typeof row.signal_confidence_num !== "number" || row.signal_confidence_num < 60) continue;
+    if (typeof row.entry_price_num !== "number" || row.entry_price_num < 0.2 || row.entry_price_num > 0.75) continue;
+
+    const gameStartIso = resolveBattleBatchGameStartIso(row);
+    if (!gameStartIso) continue;
+    const gameStartMs = Date.parse(gameStartIso);
+    if (!Number.isFinite(gameStartMs)) continue;
+    const leadMs = gameStartMs - nowMs;
+    if (leadMs < MIN_LEAD_MS || leadMs > MAX_LEAD_MS) continue;
+
+    filtered.push({ row, gameStartIso, conditionId: row.condition_id, tokenId: row.selected_token_id, side: row.selected_outcome });
+  }
+
+  const seen = new Set<string>();
+  const deduped: BattleBatchCandidate[] = [];
+  for (const c of filtered) {
+    const key = `${c.conditionId}:${c.tokenId}:${c.side}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(c);
+  }
+
+  deduped.sort((a, b) => {
+    const startDiff = Date.parse(a.gameStartIso) - Date.parse(b.gameStartIso);
+    if (startDiff !== 0) return startDiff;
+    const confDiff = (b.row.signal_confidence_num ?? 0) - (a.row.signal_confidence_num ?? 0);
+    if (confDiff !== 0) return confDiff;
+    return Date.parse(b.row.created_at) - Date.parse(a.row.created_at);
+  });
+
+  return deduped.slice(0, max);
+}
+
+/** Pure row builder (no DB I/O). stake_usd is always the fixed constant, never derived from the candidate. */
+export function buildFounderBattleBatchQueueRow(
+  candidate: BattleBatchCandidate,
+  nowMs: number,
+  batchIndex: number
+): EventExecutionQueueRow {
+  const { row, gameStartIso, conditionId, tokenId, side } = candidate;
+  const gameStartMs = Date.parse(gameStartIso);
+  const nowIso = new Date(nowMs).toISOString();
+  const latestByGameStart = gameStartMs - 3 * 60_000;
+  const latestByCap = nowMs + 90 * 60_000;
+  const latestEntryMs = Math.min(latestByGameStart, latestByCap);
+  const orderKey = `${conditionId}:${tokenId}:${side}`;
+  // Deterministic from condition/token/side only (no plan_run_id salt) so a
+  // rerun of the batch feeder against the same market always computes the
+  // same idempotency_key regardless of when it runs.
+  const idempotencyKey = createHash("sha256").update(orderKey).digest("hex").slice(0, 32);
+  const rebalanceRunId = `${FOUNDER_BATTLE_BATCH_RUN_ID_PREFIX}${new Date(nowMs).toISOString()}-${batchIndex}`;
+
+  return {
+    reservation_id: null,
+    plan_run_id: `founder-battle-batch:${new Date(nowMs).toISOString().slice(0, 10)}`,
+    rebalance_run_id: rebalanceRunId,
+    match_family_key: row.event_slug ?? `battle:${conditionId}`,
+    event_title: row.market_slug ?? null,
+    event_slug: row.event_slug ?? null,
+    sport: null,
+    league: null,
+    game_start_iso: gameStartIso,
+    condition_id: conditionId,
+    token_id: tokenId,
+    side,
+    market_slug: row.market_slug ?? null,
+    market_title: row.market_slug ?? null,
+    market_family: null,
+    score: row.signal_confidence_num ?? null,
+    coverage: null,
+    tier: "TIER1",
+    stake_usd: FOUNDER_BATTLE_BATCH_STAKE_USD,
+    preferred_entry_iso: nowIso,
+    latest_entry_iso: new Date(latestEntryMs).toISOString(),
+    selection_rank: batchIndex + 1,
+    selection_reason: `FOUNDER_BATTLE_BATCH: rank=${batchIndex + 1} confidence=${row.signal_confidence_num} entry_price=${row.entry_price_num}`,
+    status: "READY",
+    order_key: orderKey,
+    idempotency_key: idempotencyKey,
+    diagnostics: {
+      founder_battle_batch: true,
+      max_stake_usd: FOUNDER_BATTLE_BATCH_STAKE_USD,
+      source_signal_id: row.id,
+      gameStartIso,
+    },
+  };
+}
+
+export interface FounderBattleBatchResult {
+  kind: "CREATED" | "BLOCKED_GATE_DISABLED" | "NO_SAFE_CANDIDATES";
+  reason: string;
+  wrote_count: number;
+  skipped_count: number;
+  created_rows: EventExecutionQueueRow[];
+  skipped_reasons: Array<{ order_key: string; reason: string }>;
+}
+
+/**
+ * Founder battle batch orchestration. write=false -> pure preview, zero writes.
+ * Never requires exactly one candidate; creates 0-max rows depending on how
+ * many survive selection and duplicate-protection.
+ */
+export async function runFounderBattleBatch(
+  nowMs: number,
+  env: Record<string, string | undefined>,
+  opts: { write?: boolean } = {},
+  deps: { repo?: BattleBatchRepoPort } = {}
+): Promise<FounderBattleBatchResult> {
+  const gate = validateFounderBattleBatchGate(env);
+  if (!gate.ok) {
+    return { kind: "BLOCKED_GATE_DISABLED", reason: gate.reason, wrote_count: 0, skipped_count: 0, created_rows: [], skipped_reasons: [] };
+  }
+
+  const write = opts.write === true;
+  const repo = deps.repo ?? createSupabaseBattleBatchRepoPort();
+  const rows = await repo.fetchSignalPairs();
+  const candidates = selectFounderBattleBatchCandidates(rows, nowMs, gate.max);
+
+  if (candidates.length === 0) {
+    return { kind: "NO_SAFE_CANDIDATES", reason: "NO_ELIGIBLE_SIGNAL_PAIRS", wrote_count: 0, skipped_count: 0, created_rows: [], skipped_reasons: [] };
+  }
+
+  const created: EventExecutionQueueRow[] = [];
+  const skipped: Array<{ order_key: string; reason: string }> = [];
+
+  for (let i = 0; i < candidates.length; i++) {
+    const candidate = candidates[i];
+    const row = buildFounderBattleBatchQueueRow(candidate, nowMs, i);
+
+    // Duplicate protection 1: same market identity already queued/executing.
+    const blockingExisting = await repo.findBlockingQueueRowByIdentity(candidate.conditionId, candidate.tokenId, candidate.side);
+    if (blockingExisting.length > 0) {
+      skipped.push({ order_key: row.order_key ?? "", reason: "IDENTITY_ALREADY_QUEUED" });
+      continue;
+    }
+
+    // Duplicate protection 2: deterministic idempotency_key already exists (any status).
+    const existingByIdempotency = await repo.findQueueRowByIdempotencyKey(row.idempotency_key ?? "");
+    if (existingByIdempotency) {
+      skipped.push({ order_key: row.order_key ?? "", reason: "IDEMPOTENCY_KEY_ALREADY_EXISTS" });
+      continue;
+    }
+
+    if (!write) {
+      created.push(row);
+      continue;
+    }
+
+    try {
+      await repo.insertQueueRow(row);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      skipped.push({ order_key: row.order_key ?? "", reason: `INSERT_FAILED: ${msg}` });
+      continue;
+    }
+    created.push(row);
+  }
+
+  return {
+    kind: "CREATED",
+    reason: write ? "BATCH_WRITTEN" : "DRY_RUN_PREVIEW",
+    wrote_count: write ? created.length : 0,
+    skipped_count: skipped.length,
+    created_rows: created,
+    skipped_reasons: skipped,
+  };
+}
