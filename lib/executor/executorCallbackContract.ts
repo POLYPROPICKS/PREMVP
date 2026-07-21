@@ -155,27 +155,92 @@ export interface OrderEventDbPort {
    * insert can source fixture/queue linkage fields (match_family_key,
    * reservation_id) from trusted server data rather than the untrusted
    * client payload — never from executor_order_events.queue_id, which does
-   * not exist in the live schema. */
-  insertOrderEvent(record: Record<string, unknown>, queueRow: EventExecutionQueueRow): Promise<{ ok: true; row: StoredOrderEvent } | InsertOrderEventFailure>;
+   * not exist in the live schema. Null when no queue row matched the
+   * idempotency_key -- persistence still proceeds (see handleOrderEventSubmission). */
+  insertOrderEvent(record: Record<string, unknown>, queueRow: EventExecutionQueueRow | null): Promise<{ ok: true; row: StoredOrderEvent } | InsertOrderEventFailure>;
+  /** Terminal-marks the queue row EXECUTED once an accepted order event is persisted. */
+  updateQueueRowStatus(queueId: string, patch: { status: QueueStatus; diagnostics: Record<string, unknown> }): Promise<void>;
 }
 
+/** Outcome of the queue terminal-marking side effect triggered by an order-event callback. */
+export type OrderEventQueueMarkOutcome =
+  | { kind: "EXECUTED"; queue_id: string }
+  | { kind: "ALREADY_EXECUTED"; queue_id: string }
+  | { kind: "NOT_ACCEPTED" }
+  | { kind: "QUEUE_ROW_NOT_FOUND" };
+
 export type OrderEventOutcome =
-  | { kind: "INSERTED"; row: StoredOrderEvent }
-  | { kind: "DUPLICATE"; row: StoredOrderEvent }
+  | { kind: "INSERTED"; row: StoredOrderEvent; queueMark: OrderEventQueueMarkOutcome }
+  | { kind: "DUPLICATE"; row: StoredOrderEvent; queueMark: OrderEventQueueMarkOutcome }
   | { kind: "CONFLICT_IDEMPOTENCY" }
   | { kind: "CONFLICT_CLOB_ORDER_ID" }
   | { kind: "REJECTED_MISSING_TOKEN_ID" }
   | { kind: "REJECTED_MISSING_IDEMPOTENCY_KEY" }
-  | { kind: "REJECTED_QUEUE_ROW_NOT_FOUND" }
   | { kind: "REJECTED_QUEUE_POLICY_MISMATCH"; reason: string }
   | { kind: "DB_ERROR"; message: string };
 
+// Rejected/failed order statuses -- an order event carrying one of these (or
+// an explicit success:false) must never terminal-mark the queue row EXECUTED,
+// no matter what clob_order_id/order_id is present.
+const REJECTED_ORDER_STATUSES = new Set(["REJECTED", "ORDER_REJECTED", "FAILED", "CANCELLED", "ERROR"]);
+
+/**
+ * An order event counts as "accepted" only when it carries a real exchange
+ * order identifier AND nothing in the payload signals rejection/failure.
+ * clob_order_id is preferred; order_id/order_hash are accepted equivalents
+ * some Ireland executor versions may send instead.
+ */
+function classifyAcceptedOrderEvent(raw: Record<string, unknown>): { accepted: boolean; clobOrderId: string | null } {
+  const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+  const clobOrderId = str(raw.clob_order_id) ?? str(raw.order_id) ?? str(raw.order_hash);
+  if (!clobOrderId) return { accepted: false, clobOrderId: null };
+  if (raw.success === false) return { accepted: false, clobOrderId };
+  const status = str(raw.order_status)?.toUpperCase() ?? str(raw.status)?.toUpperCase() ?? null;
+  if (status && REJECTED_ORDER_STATUSES.has(status)) return { accepted: false, clobOrderId };
+  return { accepted: true, clobOrderId };
+}
+
+/**
+ * Terminal-marks the queue row EXECUTED when the just-persisted order event
+ * is accepted. Idempotent: an already-EXECUTED row is left untouched (no
+ * duplicate diagnostics write, matching handleQueueMarkExecuted's contract).
+ * Never called with a rejected order event, and never marks EXECUTED if no
+ * queue row was found for the idempotency_key in the first place.
+ */
+async function markQueueExecutedIfAccepted(
+  port: OrderEventDbPort,
+  queueRow: EventExecutionQueueRow | null,
+  storedEvent: StoredOrderEvent,
+  raw: Record<string, unknown>,
+): Promise<OrderEventQueueMarkOutcome> {
+  if (!queueRow) return { kind: "QUEUE_ROW_NOT_FOUND" };
+  const queueId = queueRow.id;
+  if (!queueId) return { kind: "QUEUE_ROW_NOT_FOUND" };
+
+  const { accepted, clobOrderId } = classifyAcceptedOrderEvent(raw);
+  if (!accepted) return { kind: "NOT_ACCEPTED" };
+
+  if (queueRow.status === "EXECUTED") return { kind: "ALREADY_EXECUTED", queue_id: queueId };
+
+  const prevDiag = queueRow.diagnostics ?? {};
+  const newDiag: Record<string, unknown> = {
+    ...prevDiag,
+    clob_order_id: clobOrderId,
+    order_event_id: storedEvent.id,
+  };
+  await port.updateQueueRowStatus(queueId, { status: "EXECUTED", diagnostics: newDiag });
+  return { kind: "EXECUTED", queue_id: queueId };
+}
+
 /**
  * Full order-event submission orchestration: validate -> load the queue row
- * for cross-check -> pre-check for an existing idempotency_key row ->
- * classify duplicate vs conflict -> insert, re-reading the canonical row on a
- * concurrent unique-violation race rather than trusting the pre-check alone.
- * Never touches executor_order_events.queue_id (does not exist live).
+ * for cross-check (if found; a missing queue row no longer blocks
+ * persistence, it only skips policy validation and queue terminal-marking) ->
+ * pre-check for an existing idempotency_key row -> classify duplicate vs
+ * conflict -> insert, re-reading the canonical row on a concurrent
+ * unique-violation race rather than trusting the pre-check alone -> if the
+ * event represents an accepted order, terminal-mark the matching queue row
+ * EXECUTED. Never touches executor_order_events.queue_id (does not exist live).
  */
 export async function handleOrderEventSubmission(
   port: OrderEventDbPort,
@@ -188,27 +253,30 @@ export async function handleOrderEventSubmission(
   if (!idempotencyKey) return { kind: "REJECTED_MISSING_IDEMPOTENCY_KEY" };
 
   const queueRow = await port.findQueueRowByIdempotencyKey(idempotencyKey);
-  if (!queueRow) return { kind: "REJECTED_QUEUE_ROW_NOT_FOUND" };
 
-  const submission: OrderEventSubmission = {
-    idempotency_key: idempotencyKey,
-    token_id: tokenId,
-    condition_id: typeof raw.condition_id === "string" ? raw.condition_id : null,
-    side: typeof (raw.side ?? raw.selected_side) === "string" ? ((raw.side ?? raw.selected_side) as string) : null,
-    market_slug: typeof raw.market_slug === "string" ? raw.market_slug : null,
-    submitted_size: typeof (raw.submitted_size ?? raw.stake_usd) === "number" ? (raw.submitted_size ?? raw.stake_usd) as number : null,
-    submitted_price: typeof raw.submitted_price === "number" ? raw.submitted_price : null,
-  };
-  const validation = validateOrderEventAgainstQueueRow(submission, queueRow);
-  if (!validation.ok) return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: validation.reason };
+  if (queueRow) {
+    const submission: OrderEventSubmission = {
+      idempotency_key: idempotencyKey,
+      token_id: tokenId,
+      condition_id: typeof raw.condition_id === "string" ? raw.condition_id : null,
+      side: typeof (raw.side ?? raw.selected_side) === "string" ? ((raw.side ?? raw.selected_side) as string) : null,
+      market_slug: typeof raw.market_slug === "string" ? raw.market_slug : null,
+      submitted_size: typeof (raw.submitted_size ?? raw.stake_usd) === "number" ? (raw.submitted_size ?? raw.stake_usd) as number : null,
+      submitted_price: typeof raw.submitted_price === "number" ? raw.submitted_price : null,
+    };
+    const validation = validateOrderEventAgainstQueueRow(submission, queueRow);
+    if (!validation.ok) return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: validation.reason };
+  }
 
   const canonical = projectCanonicalOrderEventPayload(raw);
 
   const existingByIdempotency = await port.findOrderEventByIdempotencyKey(idempotencyKey);
   if (existingByIdempotency) {
-    return canonicalPayloadsEqual(canonical, canonicalFromStoredEvent(existingByIdempotency))
-      ? { kind: "DUPLICATE", row: existingByIdempotency }
-      : { kind: "CONFLICT_IDEMPOTENCY" };
+    if (!canonicalPayloadsEqual(canonical, canonicalFromStoredEvent(existingByIdempotency))) {
+      return { kind: "CONFLICT_IDEMPOTENCY" };
+    }
+    const queueMark = await markQueueExecutedIfAccepted(port, queueRow, existingByIdempotency, raw);
+    return { kind: "DUPLICATE", row: existingByIdempotency, queueMark };
   }
 
   if (canonical.clob_order_id) {
@@ -217,15 +285,20 @@ export async function handleOrderEventSubmission(
   }
 
   const insertResult = await port.insertOrderEvent(raw, queueRow);
-  if (insertResult.ok) return { kind: "INSERTED", row: insertResult.row };
+  if (insertResult.ok) {
+    const queueMark = await markQueueExecutedIfAccepted(port, queueRow, insertResult.row, raw);
+    return { kind: "INSERTED", row: insertResult.row, queueMark };
+  }
 
   if (insertResult.code === "UNIQUE_VIOLATION_IDEMPOTENCY_KEY") {
     // Lost the race — re-read the canonical row a concurrent writer inserted.
     const canonicalRow = await port.findOrderEventByIdempotencyKey(idempotencyKey);
     if (!canonicalRow) return { kind: "DB_ERROR", message: "UNIQUE_VIOLATION_BUT_ROW_NOT_FOUND" };
-    return canonicalPayloadsEqual(canonical, canonicalFromStoredEvent(canonicalRow))
-      ? { kind: "DUPLICATE", row: canonicalRow }
-      : { kind: "CONFLICT_IDEMPOTENCY" };
+    if (!canonicalPayloadsEqual(canonical, canonicalFromStoredEvent(canonicalRow))) {
+      return { kind: "CONFLICT_IDEMPOTENCY" };
+    }
+    const queueMark = await markQueueExecutedIfAccepted(port, queueRow, canonicalRow, raw);
+    return { kind: "DUPLICATE", row: canonicalRow, queueMark };
   }
   if (insertResult.code === "UNIQUE_VIOLATION_CLOB_ORDER_ID") return { kind: "CONFLICT_CLOB_ORDER_ID" };
   return { kind: "DB_ERROR", message: insertResult.message };

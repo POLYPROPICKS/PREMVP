@@ -26,6 +26,7 @@ const root = process.cwd();
 
 function baseQueueRow(overrides: Partial<EventExecutionQueueRow> = {}): EventExecutionQueueRow {
   return {
+    id: "queue-1",
     reservation_id: "res-1",
     plan_run_id: "plan-1",
     rebalance_run_id: "rebalance-1",
@@ -73,7 +74,9 @@ function validSubmissionRaw(overrides: Record<string, unknown> = {}): Record<str
   };
 }
 
-function makeFakePort(queueRows: EventExecutionQueueRow[] = [baseQueueRow()]): OrderEventDbPort & { eventsById: Map<string, StoredOrderEvent> } {
+function makeFakePort(
+  queueRows: EventExecutionQueueRow[] = [baseQueueRow()]
+): OrderEventDbPort & { eventsById: Map<string, StoredOrderEvent>; queueByIdemKey: Map<string, EventExecutionQueueRow> } {
   const queueByIdemKey = new Map(queueRows.map((r) => [r.idempotency_key as string, r]));
   const eventsByIdemKey = new Map<string, StoredOrderEvent>();
   const eventsByClob = new Map<string, StoredOrderEvent>();
@@ -81,6 +84,7 @@ function makeFakePort(queueRows: EventExecutionQueueRow[] = [baseQueueRow()]): O
   let nextId = 1;
   return {
     eventsById,
+    queueByIdemKey,
     async findQueueRowByIdempotencyKey(key) {
       return queueByIdemKey.get(key) ?? null;
     },
@@ -89,6 +93,14 @@ function makeFakePort(queueRows: EventExecutionQueueRow[] = [baseQueueRow()]): O
     },
     async findOrderEventByClobOrderId(clobOrderId) {
       return eventsByClob.get(clobOrderId) ?? null;
+    },
+    async updateQueueRowStatus(queueId, patch) {
+      for (const row of queueByIdemKey.values()) {
+        if (row.id === queueId) {
+          row.status = patch.status;
+          row.diagnostics = patch.diagnostics;
+        }
+      }
     },
     async insertOrderEvent(record, _queueRow): Promise<{ ok: true; row: StoredOrderEvent } | InsertOrderEventFailure> {
       const canonical = projectCanonicalOrderEventPayload(record);
@@ -147,17 +159,21 @@ test("3: the insert payload passed to the port never contains queue_id", async (
   assert.equal("queue_id" in seen[0], false);
 });
 
-test("4: first insert returns a canonical event row", async () => {
+test("4: first insert returns a canonical event row and terminal-marks the matching READY queue row EXECUTED (accepted order: has clob_order_id, success not false)", async () => {
   const port = makeFakePort();
   const outcome = await handleOrderEventSubmission(port, validSubmissionRaw());
   assert.equal(outcome.kind, "INSERTED");
   if (outcome.kind === "INSERTED") {
     assert.ok(outcome.row.id);
     assert.equal(outcome.row.idempotency_key, "idem-1");
+    assert.equal(outcome.queueMark.kind, "EXECUTED");
   }
+  const queueRow = port.queueByIdemKey.get("idem-1");
+  assert.equal(queueRow?.status, "EXECUTED");
+  assert.equal((queueRow?.diagnostics as Record<string, unknown>).clob_order_id, "clob-1");
 });
 
-test("5: an identical duplicate submission returns the same canonical row, no second insert", async () => {
+test("5: an identical duplicate submission returns the same canonical row, no second insert, idempotent queue mark (already EXECUTED)", async () => {
   const port = makeFakePort();
   const first = await handleOrderEventSubmission(port, validSubmissionRaw());
   assert.equal(first.kind, "INSERTED");
@@ -165,8 +181,28 @@ test("5: an identical duplicate submission returns the same canonical row, no se
   assert.equal(second.kind, "DUPLICATE");
   if (first.kind === "INSERTED" && second.kind === "DUPLICATE") {
     assert.equal(second.row.id, first.row.id);
+    assert.equal(second.queueMark.kind, "ALREADY_EXECUTED", "repeating an accepted callback must be idempotent, not re-mark or duplicate");
   }
   assert.equal(port.eventsById.size, 1);
+});
+
+test("4b: a rejected order event (success:false) never marks the queue row EXECUTED, even with a clob_order_id present", async () => {
+  const port = makeFakePort();
+  const outcome = await handleOrderEventSubmission(port, validSubmissionRaw({ success: false, order_status: "REJECTED" }));
+  assert.equal(outcome.kind, "INSERTED", "the order event itself is still persisted for audit");
+  if (outcome.kind === "INSERTED") {
+    assert.equal(outcome.queueMark.kind, "NOT_ACCEPTED");
+  }
+  const queueRow = port.queueByIdemKey.get("idem-1");
+  assert.equal(queueRow?.status, "READY", "a rejected order event must never mark the queue row EXECUTED");
+});
+
+test("4c: an order event with no clob_order_id (order was never placed) never marks the queue row EXECUTED", async () => {
+  const port = makeFakePort();
+  const outcome = await handleOrderEventSubmission(port, validSubmissionRaw({ clob_order_id: undefined }));
+  assert.equal(outcome.kind, "INSERTED");
+  if (outcome.kind === "INSERTED") assert.equal(outcome.queueMark.kind, "NOT_ACCEPTED");
+  assert.equal(port.queueByIdemKey.get("idem-1")?.status, "READY");
 });
 
 test("6: a conflicting duplicate (same idempotency_key, different economic payload) is rejected", async () => {
@@ -179,7 +215,7 @@ test("6: a conflicting duplicate (same idempotency_key, different economic paylo
 });
 
 test("7: a clob_order_id collision under a different idempotency_key is rejected", async () => {
-  const port = makeFakePort([baseQueueRow(), baseQueueRow({ idempotency_key: "idem-2", token_id: "token-2", condition_id: "cond-2", side: "Egypt", order_key: "cond-2:token-2:Egypt" })]);
+  const port = makeFakePort([baseQueueRow(), baseQueueRow({ id: "queue-2", idempotency_key: "idem-2", token_id: "token-2", condition_id: "cond-2", side: "Egypt", order_key: "cond-2:token-2:Egypt" })]);
   const first = await handleOrderEventSubmission(port, validSubmissionRaw());
   assert.equal(first.kind, "INSERTED");
   const second = await handleOrderEventSubmission(
@@ -197,10 +233,14 @@ test("8: a queue-policy mismatch (stake exceeds cap) is rejected before insert",
   assert.equal(port.eventsById.size, 0);
 });
 
-test("9: no queue row found for the idempotency_key is rejected", async () => {
+test("9: no queue row found for the idempotency_key does not block order-event persistence, but queueMark reports QUEUE_ROW_NOT_FOUND", async () => {
   const port = makeFakePort([]);
   const outcome = await handleOrderEventSubmission(port, validSubmissionRaw());
-  assert.equal(outcome.kind, "REJECTED_QUEUE_ROW_NOT_FOUND");
+  assert.equal(outcome.kind, "INSERTED", "persistence must still succeed even with no matching queue row");
+  if (outcome.kind === "INSERTED") {
+    assert.equal(outcome.queueMark.kind, "QUEUE_ROW_NOT_FOUND");
+  }
+  assert.equal(port.eventsById.size, 1);
 });
 
 test("10: a concurrent unique-violation race (identical payload) is not trusted from the pre-check alone -- it re-reads the canonical row and returns duplicate", async () => {
@@ -271,7 +311,7 @@ test("15: the route source file does not insert reservation_id -- not a real liv
   assert.doesNotMatch(source, /reservation_id\s*:/);
 });
 
-test("16: queue-row lookup and policy validation still occur before any insert is attempted", async () => {
+test("16: policy validation (when a queue row exists) still occurs before any insert is attempted; a missing queue row no longer blocks insert", async () => {
   const port = makeFakePort([]);
   let insertCalls = 0;
   const spyPort: OrderEventDbPort = {
@@ -282,8 +322,9 @@ test("16: queue-row lookup and policy validation still occur before any insert i
     },
   };
   const notFound = await handleOrderEventSubmission(spyPort, validSubmissionRaw());
-  assert.equal(notFound.kind, "REJECTED_QUEUE_ROW_NOT_FOUND");
-  assert.equal(insertCalls, 0, "must not insert when no queue row is found for the idempotency_key");
+  assert.equal(notFound.kind, "INSERTED", "a missing queue row must not prevent persistence");
+  assert.equal(insertCalls, 1);
+  insertCalls = 0;
 
   const policyPort = makeFakePort();
   const spyPolicyPort: OrderEventDbPort = {

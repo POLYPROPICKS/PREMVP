@@ -1196,6 +1196,62 @@ export interface RawSignalPairRow {
   expires_at: string | null;
   diagnostics: Record<string, unknown> | null;
   signal_result: string | null;
+  premium_signal: Record<string, unknown> | null;
+  market_source: Record<string, unknown> | null;
+}
+
+// Placeholder strings observed in production that must never be preferred as
+// a display title when a better human-readable source exists.
+const GENERIC_BATTLE_BATCH_TITLES = new Set(["live market activity", "market activity", "live event", ""]);
+
+function extractTitleFromJson(value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const obj = value as Record<string, unknown>;
+  const candidates = [obj.title, obj.eventTitle, obj.event_title, obj.marketTitle, obj.market_title, obj.question, obj.name];
+  for (const c of candidates) {
+    if (typeof c === "string" && c.trim().length > 0) return c;
+  }
+  return null;
+}
+
+/** Prose-like: long enough, not a known generic placeholder, and contains a
+ * space -- distinguishes a real human-readable title from an opaque
+ * kebab-case/ID-style slug (e.g. "mlb-lad-phi-2026-07-22" is never chosen as
+ * a display title, even though it is technically non-generic). */
+function isProseLikeTitle(text: string | null | undefined): text is string {
+  if (!text) return false;
+  const trimmed = text.trim();
+  if (trimmed.length < 5) return false;
+  if (GENERIC_BATTLE_BATCH_TITLES.has(trimmed.toLowerCase())) return false;
+  return / /.test(trimmed);
+}
+
+function normalizeBattleBatchDisplayTitle(text: string): string {
+  return text.trim().replace(/\s+/g, " ").replace(/\bvs\.(?=\s|$)/gi, "vs");
+}
+
+/**
+ * Human-readable title resolution for founder battle batch rows, in priority
+ * order: (1) event_slug when it is itself prose-like (some production rows
+ * store a readable title there, not a kebab slug); (2) a title extracted from
+ * premium_signal/market_source JSON blobs; (3) a title from diagnostics
+ * (eventTitle/marketTitle); (4) market_slug, but only when it is not a known
+ * generic placeholder like "Live market activity". Returns null (never the
+ * generic placeholder itself) if nothing better is available.
+ */
+export function resolveFounderBattleBatchTitle(row: RawSignalPairRow): string | null {
+  const candidates: Array<string | null | undefined> = [
+    row.event_slug,
+    extractTitleFromJson(row.premium_signal),
+    extractTitleFromJson(row.market_source),
+    typeof row.diagnostics?.eventTitle === "string" ? (row.diagnostics.eventTitle as string) : null,
+    typeof row.diagnostics?.marketTitle === "string" ? (row.diagnostics.marketTitle as string) : null,
+    row.market_slug,
+  ];
+  for (const candidate of candidates) {
+    if (isProseLikeTitle(candidate)) return normalizeBattleBatchDisplayTitle(candidate);
+  }
+  return null;
 }
 
 export interface BattleBatchRepoPort {
@@ -1214,7 +1270,7 @@ export function createSupabaseBattleBatchRepoPort(): BattleBatchRepoPort {
         .select(
           "id, event_slug, market_slug, condition_id, selected_outcome, selected_token_id, " +
           "entry_price_num, signal_confidence_num, metric_formula_version, created_at, expires_at, " +
-          "diagnostics, signal_result"
+          "diagnostics, signal_result, premium_signal, market_source"
         )
         .is("signal_result", null)
         .not("condition_id", "is", null)
@@ -1417,13 +1473,14 @@ export function buildFounderBattleBatchQueueRow(
   const idempotencyKey = createHash("sha256").update(`${orderKey}:${batchRunId}`).digest("hex").slice(0, 32);
   const rebalanceRunId = `${FOUNDER_BATTLE_BATCH_RUN_ID_PREFIX}${batchRunId}-${batchIndex}`;
   const priceCap = computeFounderBattleBatchPriceCap(entryPrice);
+  const displayTitle = resolveFounderBattleBatchTitle(row);
 
   return {
     reservation_id: null,
     plan_run_id: `founder-battle-batch:${new Date(nowMs).toISOString().slice(0, 10)}`,
     rebalance_run_id: rebalanceRunId,
     match_family_key: row.event_slug ?? `battle:${conditionId}`,
-    event_title: row.market_slug ?? null,
+    event_title: displayTitle,
     event_slug: row.event_slug ?? null,
     sport: null,
     league: null,
@@ -1432,7 +1489,7 @@ export function buildFounderBattleBatchQueueRow(
     token_id: tokenId,
     side,
     market_slug: row.market_slug ?? null,
-    market_title: row.market_slug ?? null,
+    market_title: displayTitle,
     market_family: null,
     score: row.signal_confidence_num ?? null,
     coverage: null,

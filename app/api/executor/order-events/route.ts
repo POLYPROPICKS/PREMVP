@@ -172,6 +172,13 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
       if (error) throw new Error(error.message);
       return data ? toStoredOrderEvent(data as Record<string, unknown>) : null;
     },
+    async updateQueueRowStatus(queueId, patch) {
+      const { error } = await supabaseAdmin
+        .from("event_execution_queue")
+        .update({ status: patch.status, diagnostics: patch.diagnostics, updated_at: new Date().toISOString() })
+        .eq("id", queueId);
+      if (error) throw new Error(error.message);
+    },
     async insertOrderEvent(raw, _queueRow): Promise<{ ok: true; row: StoredOrderEvent } | InsertOrderEventFailure> {
       const s = sanitize(raw) as Record<string, unknown>;
       const record: Record<string, unknown> = {
@@ -301,8 +308,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required field: token_id" }, { status: 400 });
     case "REJECTED_MISSING_IDEMPOTENCY_KEY":
       return NextResponse.json({ error: "REJECTED_MISSING_IDEMPOTENCY_KEY_FOR_QUEUE_VALIDATION" }, { status: 400 });
-    case "REJECTED_QUEUE_ROW_NOT_FOUND":
-      return NextResponse.json({ error: "REJECTED_QUEUE_ROW_NOT_FOUND_FOR_IDEMPOTENCY_KEY" }, { status: 409 });
     case "REJECTED_QUEUE_POLICY_MISMATCH":
       return NextResponse.json({ error: "REJECTED_QUEUE_POLICY_MISMATCH", reason: outcome.reason }, { status: 409 });
     case "CONFLICT_IDEMPOTENCY":
@@ -313,12 +318,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "DB_ERROR" }, { status: 500 });
     case "DUPLICATE":
       return NextResponse.json(
-        { success: true, duplicate: true, event_id: outcome.row.id, idempotency_key: outcome.row.idempotency_key, id: outcome.row.id, created_at: outcome.row.created_at },
+        {
+          success: true,
+          duplicate: true,
+          event_id: outcome.row.id,
+          idempotency_key: outcome.row.idempotency_key,
+          id: outcome.row.id,
+          created_at: outcome.row.created_at,
+          queue_mark: outcome.queueMark,
+        },
         { status: 200 },
       );
     case "INSERTED":
       return NextResponse.json(
-        { success: true, duplicate: false, event_id: outcome.row.id, idempotency_key: outcome.row.idempotency_key, id: outcome.row.id, created_at: outcome.row.created_at },
+        {
+          success: true,
+          duplicate: false,
+          event_id: outcome.row.id,
+          idempotency_key: outcome.row.idempotency_key,
+          id: outcome.row.id,
+          created_at: outcome.row.created_at,
+          queue_mark: outcome.queueMark,
+        },
         { status: 200 },
       );
   }

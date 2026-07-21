@@ -16,6 +16,7 @@ import {
   selectFounderBattleBatchCandidates,
   buildFounderBattleBatchQueueRow,
   computeFounderBattleBatchPriceCap,
+  resolveFounderBattleBatchTitle,
   FOUNDER_BATTLE_BATCH_STAKE_USD,
   FOUNDER_BATTLE_BATCH_RUN_ID_PREFIX,
   FOUNDER_BATTLE_BATCH_PRICE_CAP_MIN,
@@ -44,6 +45,8 @@ function signalRow(id: string, overrides: Partial<RawSignalPairRow> = {}): RawSi
     expires_at: "2026-07-21T20:00:00.000Z",
     diagnostics: { gameStartIso: new Date(NOW_MS + 60 * 60_000).toISOString() }, // +1h, inside 10m-14h window
     signal_result: null,
+    premium_signal: null,
+    market_source: null,
     ...overrides,
   };
 }
@@ -511,4 +514,96 @@ test("T11: FOUNDER_BATTLE_BATCH_STAKE_USD env override above 1.10 fails closed; 
 
   const exactAlt = await runFounderBattleBatch(NOW_MS, { FOUNDER_BATTLE_BATCH_MODE: "YES", FOUNDER_BATTLE_BATCH_STAKE_USD: "1.10" }, { write: true }, { repo: makeFakeRepo(rows) });
   assert.equal(exactAlt.kind, "CREATED");
+});
+
+// ── Bug 2: human-readable battle-batch titles ───────────────────────────────
+//
+// Production issue: event_title/market_title often displayed the generic
+// "Live market activity" placeholder instead of a human-readable event name,
+// even when event_slug/market_slug contained real context.
+
+test("Title-1: a prose-like event_slug becomes the display title instead of a generic placeholder", () => {
+  const row = signalRow("kf", {
+    event_slug: "KF Víkingur vs. MH Hapoel Be'er Sheva: 1st Half O/U 0.5",
+    market_slug: "Live market activity",
+  });
+  assert.equal(resolveFounderBattleBatchTitle(row), "KF Víkingur vs MH Hapoel Be'er Sheva: 1st Half O/U 0.5");
+});
+
+test("Title-2: a prose-like event_slug is preserved as readable", () => {
+  const row = signalRow("larne", {
+    event_slug: "Larne FC vs. FK Crvena zvezda: 1st Half O/U 0.5",
+    market_slug: "Live market activity",
+  });
+  assert.equal(resolveFounderBattleBatchTitle(row), "Larne FC vs FK Crvena zvezda: 1st Half O/U 0.5");
+});
+
+test("Title-3: a full-match row with a kebab-case event_slug falls back to the human-readable market_slug", () => {
+  const row = signalRow("dodgers", {
+    event_slug: "mlb-lad-phi-2026-07-22",
+    market_slug: "Los Angeles Dodgers vs. Philadelphia Phillies",
+  });
+  assert.equal(resolveFounderBattleBatchTitle(row), "Los Angeles Dodgers vs Philadelphia Phillies");
+});
+
+test("Title-4: a generic market_slug ('Live market activity') is used only when no better title exists -- resolves to null, never the generic string itself", () => {
+  const row = signalRow("generic", {
+    event_slug: "evt-generic", // kebab-case, not prose-like
+    market_slug: "Live market activity",
+    diagnostics: { gameStartIso: new Date(NOW_MS + 60 * 60_000).toISOString() },
+    premium_signal: null,
+    market_source: null,
+  });
+  assert.equal(resolveFounderBattleBatchTitle(row), null, "must never return the generic placeholder itself");
+});
+
+test("Title-5: a title from premium_signal/market_source is preferred over a generic market_slug when event_slug is not prose-like", () => {
+  const row = signalRow("premium", {
+    event_slug: "evt-premium",
+    market_slug: "Live market activity",
+    premium_signal: { eventTitle: "Real Madrid vs Barcelona: Full Match" },
+  });
+  assert.equal(resolveFounderBattleBatchTitle(row), "Real Madrid vs Barcelona: Full Match");
+});
+
+test("Title-6: the resolved title is used for BOTH event_title and market_title on the built row, and no live-schema-incompatible fields are produced", () => {
+  const row = signalRow("schema", { event_slug: "Team X vs Team Y: Full Match", market_slug: "Live market activity" });
+  const { candidates } = selectFounderBattleBatchCandidates([row], NOW_MS, 4);
+  assert.equal(candidates.length, 1);
+  const built = buildFounderBattleBatchQueueRow(candidates[0], NOW_MS, 0, new Date(NOW_MS).toISOString());
+
+  assert.equal(built.event_title, "Team X vs Team Y: Full Match");
+  assert.equal(built.market_title, "Team X vs Team Y: Full Match");
+  assert.notEqual(built.event_title, "Live market activity");
+  assert.notEqual(built.market_title, "Live market activity");
+
+  const LIVE_COLUMNS = [
+    "reservation_id", "plan_run_id", "rebalance_run_id", "match_family_key", "event_title",
+    "event_slug", "sport", "league", "game_start_iso", "condition_id", "token_id", "side",
+    "market_slug", "market_title", "market_family", "score", "coverage", "tier", "stake_usd",
+    "preferred_entry_iso", "latest_entry_iso", "selection_rank", "selection_reason", "status",
+    "order_key", "idempotency_key", "diagnostics",
+  ];
+  for (const key of Object.keys(built)) {
+    assert.ok(LIVE_COLUMNS.includes(key), `field "${key}" is not a live event_execution_queue column`);
+  }
+});
+
+test("Title-7: stake, price cap, and max batch size are unaffected by the title fix", async () => {
+  const rows = [
+    signalRow("t1", { event_slug: "Team A vs Team B: Full Match", entry_price_num: 0.4 }),
+    signalRow("t2", { event_slug: "Team C vs Team D: Full Match" }),
+    signalRow("t3", { event_slug: "Team E vs Team F: Full Match" }),
+    signalRow("t4", { event_slug: "Team G vs Team H: Full Match" }),
+    signalRow("t5", { event_slug: "Team I vs Team J: Full Match" }),
+  ];
+  const repo = makeFakeRepo(rows);
+  const result = await runFounderBattleBatch(NOW_MS, GATE_ENV_ENABLED, { write: true }, { repo });
+
+  assert.equal(result.wrote_count, 4, "max batch size remains 4");
+  for (const row of repo.queueRows) {
+    assert.equal(row.stake_usd, FOUNDER_BATTLE_BATCH_STAKE_USD);
+    const diag = row.diagnostics as Record<string, unknown>;
+    assert.ok(typeof diag.price_cap === "number");
+  }
 });
