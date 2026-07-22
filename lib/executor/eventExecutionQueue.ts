@@ -542,6 +542,80 @@ export interface DueReservationSelection {
   blockedCandidates?: BlockedCandidateDiag[];
 }
 
+/** Trim + lowercase a slug for exact (never fuzzy) comparison; empty -> null. */
+function normalizeEventSlugForMatch(slug: string | null | undefined): string | null {
+  if (typeof slug !== "string") return null;
+  const t = slug.trim().toLowerCase();
+  return t === "" ? null : t;
+}
+
+export type PlanningAuthoritativeMatchMethod =
+  | "SOURCE_LINEAGE"
+  | "NORMALIZED_EVENT_SLUG"
+  | "EXACT_MATCH_FAMILY_KEY"
+  | "NONE";
+
+export interface PlanningAuthoritativeMatch {
+  /** The located fresh authoritative final candidate, or null (not found / ambiguous). */
+  candidate: FireModelCandidate | null;
+  method: PlanningAuthoritativeMatchMethod;
+  /** Number of candidates that matched at the winning precedence level; >1 means ambiguous -> failed closed. */
+  ambiguityCount: number;
+  sourceLineagePresent: boolean;
+  slugPresent: boolean;
+}
+
+/**
+ * Locate the fresh CONTRACT_A_V1 authoritative candidate for a
+ * CONTRACT_A_PLANNING_V1 reservation, using ONLY exact (never fuzzy) joins in
+ * strict precedence:
+ *   1. stable source lineage: candidate.generated_signal_pair_id ===
+ *      reservation.best_snapshot_id (both are generated_signal_pairs.id UUIDs,
+ *      proven equivalent identity space) -- the strongest, drift-proof join;
+ *   2. exact normalized event_slug (trim + lowercase both non-empty values) --
+ *      recovers rows whose only divergence is slug casing/whitespace;
+ *   3. existing exact match_family_key equality -- unchanged legacy behavior.
+ * Every level requires a UNIQUE match; more than one candidate at a level is
+ * ambiguous and FAILS CLOSED (returns null) rather than guessing. Never does
+ * team-name / title / date / partial-slug / first-of-many matching, and never
+ * recomputes the model or re-ranks the universe. Pure -- no DB, no I/O.
+ */
+export function findAuthoritativeCandidateForPlanningReservation(
+  reservation: Pick<NightEventReservationRow, "best_snapshot_id" | "event_slug" | "match_family_key">,
+  universe: readonly FireModelCandidate[],
+): PlanningAuthoritativeMatch {
+  const lineageId =
+    typeof reservation.best_snapshot_id === "string" && reservation.best_snapshot_id.trim() !== ""
+      ? reservation.best_snapshot_id.trim()
+      : null;
+  const resSlug = normalizeEventSlugForMatch(reservation.event_slug);
+  const base = { sourceLineagePresent: lineageId !== null, slugPresent: resSlug !== null };
+
+  // 1. exact stable source lineage (unique).
+  if (lineageId) {
+    const m = universe.filter(
+      (c) => typeof c.generated_signal_pair_id === "string" && c.generated_signal_pair_id === lineageId,
+    );
+    if (m.length === 1) return { candidate: m[0], method: "SOURCE_LINEAGE", ambiguityCount: 1, ...base };
+    if (m.length > 1) return { candidate: null, method: "SOURCE_LINEAGE", ambiguityCount: m.length, ...base };
+    // 0 -> fall through
+  }
+
+  // 2. exact normalized event_slug (unique, both non-empty).
+  if (resSlug) {
+    const m = universe.filter((c) => normalizeEventSlugForMatch(c.event_slug) === resSlug);
+    if (m.length === 1) return { candidate: m[0], method: "NORMALIZED_EVENT_SLUG", ambiguityCount: 1, ...base };
+    if (m.length > 1) return { candidate: null, method: "NORMALIZED_EVENT_SLUG", ambiguityCount: m.length, ...base };
+  }
+
+  // 3. existing exact match_family_key equality (unique).
+  const mfk = universe.filter((c) => c.match_family_key === reservation.match_family_key);
+  if (mfk.length === 1) return { candidate: mfk[0], method: "EXACT_MATCH_FAMILY_KEY", ambiguityCount: 1, ...base };
+  if (mfk.length > 1) return { candidate: null, method: "EXACT_MATCH_FAMILY_KEY", ambiguityCount: mfk.length, ...base };
+
+  return { candidate: null, method: "NONE", ambiguityCount: 0, ...base };
+}
+
 /**
  * Pure per-reservation market selection (no DB reads/writes). Extracted from
  * the rebalance loop so the exact same authoritative-candidate-lock logic
@@ -570,12 +644,10 @@ function selectQueueRowForDueReservation(
   const isLegacyAuthoritativeReservation = reservationSelectorId === FROZEN_MODEL_V2_VERSION;
   if (isPlanningReservation || isLegacyAuthoritativeReservation) {
     const authoritativeUniverse = isPlanningReservation ? contractAFinalUniverse : eventCandidates;
-    const finalForEvent = isPlanningReservation
-      ? authoritativeUniverse.find((c) =>
-          c.match_family_key === reservation.match_family_key ||
-          (Boolean(reservation.event_slug) && c.event_slug === reservation.event_slug)
-        ) ?? null
+    const planningMatch = isPlanningReservation
+      ? findAuthoritativeCandidateForPlanningReservation(reservation, authoritativeUniverse)
       : null;
+    const finalForEvent = planningMatch?.candidate ?? null;
     const authConditionId = isPlanningReservation ? finalForEvent?.condition_id : reservationDiag.authoritative_condition_id;
     const authTokenId = isPlanningReservation ? finalForEvent?.token_id : reservationDiag.authoritative_token_id;
     const authSide = isPlanningReservation ? finalForEvent?.side : reservationDiag.authoritative_side;
@@ -603,9 +675,18 @@ function selectQueueRowForDueReservation(
         : authoritativeCandidate === null
           ? "CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND"
           : `CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE: ${executableCheck!.rejectReason}`;
+      // Safe diagnostics only: reservation/selector ids, whether the stable
+      // lineage/slug join keys were present, which exact match method was
+      // attempted, and ambiguity count when a level matched >1 candidate.
+      // Never logs condition/token/side values, secrets, or env.
+      const matchCtx = planningMatch
+        ? ` matchMethod=${planningMatch.method} ambiguity=${planningMatch.ambiguityCount}` +
+          ` sourceLineagePresent=${planningMatch.sourceLineagePresent} slugPresent=${planningMatch.slugPresent}`
+        : "";
       console.log(
         `[contur3-rebalance] CONTRACT_A_FAIL_CLOSED selector=${reservationSelectorId} ` +
-          `event=${reservation.match_family_key} observation=${reservationDiag.authoritative_observation_id ?? "unknown"} reason=${failReason}`
+          `reservation=${reservation.id ?? "unknown"} event=${reservation.match_family_key} ` +
+          `observation=${reservationDiag.authoritative_observation_id ?? "unknown"} reason=${failReason}${matchCtx}`
       );
       return {
         outcome: "SKIPPED",
