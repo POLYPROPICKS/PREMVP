@@ -17,7 +17,7 @@ import {
   type RebalanceRepoPort,
 } from "../../lib/executor/eventExecutionQueue";
 import type { SchedulerJobEvidencePort, SchedulerJobRunInput } from "../../lib/executor/schedulerJobEvidence";
-import type { FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
+import { buildFireModelCandidates, type FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
 import type { EventExecutionQueueRow, NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 
 const KICKOFF_ISO = "2026-07-19T19:00:00.000Z";
@@ -414,6 +414,69 @@ test("D7: a default CONTUR3_CURRENT reservation (no selector_id) is unaffected -
   );
   assert.equal(result.queued_count, 1);
   assert.equal(repo.queueRows[0].diagnostics.selector_id, undefined);
+});
+
+// ── Canonical source-signal lineage: end-to-end through runEventRebalance ──
+
+test("D8: a CONTRACT_A_V1 authoritative queue row carries diagnostics.source_signal_id from the candidate's generated_signal_pair_id, never from the observationId-shaped signal_id", async () => {
+  const repo = makeFakeRepo([contractAReservation()]);
+  const realUuid = "22222222-2222-4222-8222-222222222222";
+  await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    {
+      repo,
+      fetchCandidates: async () => ({
+        candidates: [marketA({ signal_id: "cond-market-A::tok-market-A", generated_signal_pair_id: realUuid }), marketB()],
+      }),
+    }
+  );
+  const row = repo.queueRows[0];
+  assert.equal(row.diagnostics.source_signal_id, realUuid);
+  assert.notEqual(row.diagnostics.source_signal_id, "cond-market-A::tok-market-A");
+});
+
+test("D9: a non-Contract-A queue row carries diagnostics.source_signal_id when the candidate's signal_id is already a real UUID (legacy rebalance path)", async () => {
+  const repo = makeFakeRepo([baseReservation()]);
+  const realUuid = "33333333-3333-4333-8333-333333333333";
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [baseCandidate({ signal_id: realUuid, generated_signal_pair_id: realUuid })] }) }
+  );
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows[0].diagnostics.source_signal_id, realUuid);
+});
+
+// ── Contract A candidate builder: explicit UUID lineage, separate from signal_id ──
+//
+// buildContractAV1Candidates (internal to buildFireModelCandidates.ts) maps
+// produceFrozenModelV2ShadowDecisions's acceptedDecisions into candidates
+// whose signal_id is observationId (condition_id::token_id, per
+// getStrictDedupKeyForExportRow) -- never the source row's real
+// generated_signal_pairs.id. generated_signal_pair_id must carry that real
+// id separately so buildQueueRow can safely stamp
+// diagnostics.source_signal_id without ever writing a composite key into it.
+
+test("Lineage-CA1: a CONTRACT_A_V1 candidate carries generated_signal_pair_id = sourceRow.id, distinct from signal_id = observationId", async () => {
+  const sourceRow = {
+    id: "44444444-4444-4444-8444-444444444444",
+    condition_id: "cond-ca-lineage",
+    token_id: "tok-ca-lineage",
+    selected_outcome: "TEAM_A",
+    score: 70,
+    entry_price_num: 0.4,
+    created_at: "2026-07-20T11:30:00.000Z", // T-90 boundary for a 13:00Z kickoff
+    event_slug: "nba-team-a-vs-team-b",
+    market_slug: "nba-team-a-vs-team-b-moneyline",
+    diagnostics: { gameStartIso: "2026-07-20T13:00:00.000Z" },
+  };
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  const c = candidates[0];
+  assert.equal(c.generated_signal_pair_id, "44444444-4444-4444-8444-444444444444");
+  assert.notEqual(c.signal_id, c.generated_signal_pair_id, "signal_id (observationId) must remain condition_id::token_id, never overloaded with the row UUID");
+  assert.match(c.signal_id, /^cond-ca-lineage::/);
 });
 
 test("B7: a failed write-mode rebalance run records sanitized failure evidence and rethrows", async () => {

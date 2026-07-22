@@ -105,6 +105,12 @@ export interface RawPlanningDiagnostics {
 
 export interface FireModelCandidate {
   signal_id: string;
+  // Real generated_signal_pairs.id UUID, when available -- deliberately
+  // separate from signal_id, which on the Contract A V1 path is
+  // observationId (a `condition_id::token_id` strict-dedup key, NOT a row
+  // UUID). Never conflate the two: only this field is safe to use as
+  // event_execution_queue.diagnostics.source_signal_id.
+  generated_signal_pair_id?: string | null;
   strategy: string;
   rank: number;
   market_slug: string;
@@ -837,8 +843,11 @@ async function buildContractAV1Candidates(
     const marketSlug = typeof sourceRow.market_slug === "string" ? sourceRow.market_slug : decision.eventKey;
     const staleAfter = typeof sourceRow.expires_at === "string" ? sourceRow.expires_at : gameStartIso;
 
+    const contractASourceRowId = typeof sourceRow.id === "string" && sourceRow.id.trim() !== "" ? sourceRow.id : null;
+
     candidates.push({
       signal_id: decision.observationId,
+      generated_signal_pair_id: contractASourceRowId,
       strategy: "TIER1_CORE_STRICT_72_COV50",
       market_slug: marketSlug,
       match_family_key: decision.eventKey,
@@ -1432,6 +1441,7 @@ export async function buildFireModelCandidates(
 
     candidates.push({
       signal_id: row.id,
+      generated_signal_pair_id: typeof row.id === "string" && row.id.trim() !== "" ? row.id : null,
       strategy: tier,
       market_slug: (activityLabelDetected ? null : row.market_slug) || row.event_slug || row.condition_id,
       match_family_key: matchFamilyKey,

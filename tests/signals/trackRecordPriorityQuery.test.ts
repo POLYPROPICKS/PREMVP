@@ -266,3 +266,23 @@ test("LiveLedger-8 (regression, production incident 2026-07-21): 4 EXECUTED + 4 
   assert.equal(spec.filters.signalResultIsNull, true);
   assert.equal(spec.filters.metricFormulaVersionNotNull, true);
 });
+
+test("LiveLedger-9 (canonical Contract A lane, not founder-battle-batch): a queue row with no plan_run_id/battle-batch naming at all is picked up identically -- LiveQueueSourceRow has no plan_run_id field, so extraction is structurally source-path-agnostic", () => {
+  // Deliberately no plan_run_id anywhere in this fixture (unlike battle-batch
+  // rows, which use a "founder-battle-batch:..." prefix) -- LiveQueueSourceRow
+  // itself carries only id/status/updated_at/diagnostics, proving the
+  // resolver's live-priority query cannot distinguish, and does not need to
+  // distinguish, canonical Contract A rows from founder-battle-batch rows.
+  const canonicalId = "99999999-9999-4999-8999-999999999999";
+  const canonicalShapeRow: LiveQueueSourceRow = {
+    id: "queue-canonical-1",
+    status: "EXECUTED",
+    updated_at: "2026-07-22T09:00:00.000Z",
+    diagnostics: {
+      source_signal_id: canonicalId,
+      selector_id: "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      battle_trace_id: "contur3:night-plan:2026-07-22:1700-minsk:pair:team-a-vs-team-b:cond-1:tok-1",
+    },
+  };
+  assert.deepEqual(extractLiveQueueSourceSignalIds([canonicalShapeRow]), [canonicalId]);
+});

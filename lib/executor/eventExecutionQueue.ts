@@ -137,6 +137,27 @@ function isExecutableMarket(c: FireModelCandidate): {
   return { executable: true, rejectReason: null };
 }
 
+const UUID_LIKE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isUuidLike(value: unknown): value is string {
+  return typeof value === "string" && UUID_LIKE_RE.test(value);
+}
+
+/**
+ * Resolves the safe generated_signal_pairs.id to stamp into
+ * diagnostics.source_signal_id for the live-priority resolver. Prefers the
+ * candidate's explicit generated_signal_pair_id (always the real row UUID
+ * when populated). Falls back to signal_id ONLY if it happens to be
+ * UUID-shaped -- signal_id is condition_id::token_id on the Contract A V1
+ * path, never a row id, and must never be written into
+ * diagnostics.source_signal_id. Returns null rather than a non-UUID value.
+ */
+export function resolveQueueSourceSignalId(candidate: Pick<FireModelCandidate, "generated_signal_pair_id" | "signal_id">): string | null {
+  if (isUuidLike(candidate.generated_signal_pair_id)) return candidate.generated_signal_pair_id as string;
+  if (isUuidLike(candidate.signal_id)) return candidate.signal_id;
+  return null;
+}
+
 // Exported (pure, no DB) so the stake/price propagation policy can be unit-tested
 // directly: the queue row must carry the candidate's OWN computed stake_usd —
 // never a hardcoded fallback constant.
@@ -190,6 +211,7 @@ export function buildQueueRow(
       smart_money: best.diagnostics.smart_money,
       entry_price: best.diagnostics.entry_price,
       max_entry_price: best.max_entry_price,
+      source_signal_id: resolveQueueSourceSignalId(best),
       battle_trace_id: `contur3:${reservation.plan_run_id}:${reservation.match_family_key}:${best.condition_id}:${best.token_id}`,
       ...(isContractA
         ? {

@@ -9,7 +9,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildQueueRow } from "../../lib/executor/eventExecutionQueue";
+import { buildQueueRow, resolveQueueSourceSignalId } from "../../lib/executor/eventExecutionQueue";
 import type { FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
 import type { NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 
@@ -114,4 +114,69 @@ test("queue row carries best.stake_usd = 7", () => {
 test("queue row diagnostics preserves max_entry_price for consumer-facing API mapping", () => {
   const row = buildQueueRow(baseReservation(), baseCandidate({ max_entry_price: 0.71 }), "rebalance-1");
   assert.equal((row.diagnostics as Record<string, unknown>).max_entry_price, 0.71);
+});
+
+// ── Canonical source-signal lineage (diagnostics.source_signal_id) ─────────
+//
+// Production audit finding: FireModelCandidate.signal_id is not a single
+// identity space -- on the Contract A V1 path it is
+// observationId=condition_id::token_id (never a generated_signal_pairs.id),
+// while on the non-Contract-A rebalance path it already IS the real row
+// UUID. A naive `source_signal_id: best.signal_id` would silently poison
+// diagnostics.source_signal_id with a non-UUID value for Contract A rows.
+// generated_signal_pair_id is the explicit, separate UUID-only lineage
+// field; resolveQueueSourceSignalId prefers it and only ever falls back to
+// signal_id when signal_id itself happens to be UUID-shaped.
+
+const REAL_UUID = "11111111-1111-4111-8111-111111111111";
+const OBSERVATION_ID = "0xabc::123";
+
+test("Lineage-1: buildQueueRow stamps diagnostics.source_signal_id from generated_signal_pair_id, not signal_id, when both are present", () => {
+  const row = buildQueueRow(
+    baseReservation(),
+    baseCandidate({ generated_signal_pair_id: REAL_UUID, signal_id: OBSERVATION_ID }),
+    "rebalance-1",
+  );
+  const diag = row.diagnostics as Record<string, unknown>;
+  assert.equal(diag.source_signal_id, REAL_UUID);
+  assert.notEqual(diag.source_signal_id, OBSERVATION_ID);
+});
+
+test("Lineage-2: buildQueueRow falls back to signal_id only when it is UUID-like and generated_signal_pair_id is absent", () => {
+  const rowWithUuidSignalId = buildQueueRow(
+    baseReservation(),
+    baseCandidate({ generated_signal_pair_id: undefined, signal_id: REAL_UUID }),
+    "rebalance-1",
+  );
+  assert.equal((rowWithUuidSignalId.diagnostics as Record<string, unknown>).source_signal_id, REAL_UUID);
+
+  const rowWithObservationId = buildQueueRow(
+    baseReservation(),
+    baseCandidate({ generated_signal_pair_id: undefined, signal_id: OBSERVATION_ID }),
+    "rebalance-1",
+  );
+  const diag = rowWithObservationId.diagnostics as Record<string, unknown>;
+  assert.notEqual(diag.source_signal_id, OBSERVATION_ID, "condition_id::token_id must never be written into source_signal_id");
+  assert.equal(diag.source_signal_id, null);
+});
+
+test("Lineage-3: resolveQueueSourceSignalId never returns a non-UUID value, from either field", () => {
+  assert.equal(resolveQueueSourceSignalId({ generated_signal_pair_id: REAL_UUID, signal_id: OBSERVATION_ID }), REAL_UUID);
+  assert.equal(resolveQueueSourceSignalId({ generated_signal_pair_id: null, signal_id: REAL_UUID }), REAL_UUID);
+  assert.equal(resolveQueueSourceSignalId({ generated_signal_pair_id: null, signal_id: OBSERVATION_ID }), null);
+  assert.equal(resolveQueueSourceSignalId({ generated_signal_pair_id: "not-a-uuid", signal_id: OBSERVATION_ID }), null);
+  assert.equal(resolveQueueSourceSignalId({ generated_signal_pair_id: undefined, signal_id: "" }), null);
+});
+
+test("Lineage-4: other diagnostics fields (hours_to_start, max_entry_price, battle_trace_id) are preserved unchanged alongside source_signal_id", () => {
+  const row = buildQueueRow(
+    baseReservation(),
+    baseCandidate({ generated_signal_pair_id: REAL_UUID, max_entry_price: 0.71 }),
+    "rebalance-1",
+  );
+  const diag = row.diagnostics as Record<string, unknown>;
+  assert.equal(diag.source_signal_id, REAL_UUID);
+  assert.equal(diag.max_entry_price, 0.71);
+  assert.ok(typeof diag.battle_trace_id === "string" && (diag.battle_trace_id as string).length > 0);
+  assert.ok("hours_to_start" in diag);
 });
