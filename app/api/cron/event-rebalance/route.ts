@@ -10,10 +10,32 @@ import {
 //   GET/POST /api/cron/event-rebalance          → select one market per due reserved event,
 //                                                  write READY rows to event_execution_queue.
 //   ?dryRun=1                                    → compute outcomes without writing.
+//   ?maxQueueWrites=N (1-5)                      → default canonical branch ONLY (Phase 1 safety
+//                                                  cap). Fails closed with zero queue writes when
+//                                                  the planned queue-row count exceeds N. Never
+//                                                  applies to founderBattleBatch or
+//                                                  controlledLiveIntent -- those are separate
+//                                                  branches entirely and ignore this param.
 //
 // Auth: same x-executor-secret pattern as /api/executor/*. NO live orders, NO Ireland calls.
 
 export const dynamic = "force-dynamic";
+
+const MAX_QUEUE_WRITES_MIN = 1;
+const MAX_QUEUE_WRITES_MAX = 5;
+
+/** Parses ?maxQueueWrites -- absent is valid (null, no cap). Present must be an integer in [1,5]. */
+function parseMaxQueueWrites(raw: string | null): { ok: true; value: number | null } | { ok: false; error: string } {
+  if (raw === null) return { ok: true, value: null };
+  if (!/^-?\d+$/.test(raw.trim())) {
+    return { ok: false, error: `INVALID_MAX_QUEUE_WRITES: must be an integer between ${MAX_QUEUE_WRITES_MIN} and ${MAX_QUEUE_WRITES_MAX}, got "${raw}"` };
+  }
+  const n = parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < MAX_QUEUE_WRITES_MIN || n > MAX_QUEUE_WRITES_MAX) {
+    return { ok: false, error: `INVALID_MAX_QUEUE_WRITES: must be an integer between ${MAX_QUEUE_WRITES_MIN} and ${MAX_QUEUE_WRITES_MAX}, got "${raw}"` };
+  }
+  return { ok: true, value: n };
+}
 
 async function handle(request: NextRequest) {
   const secret = request.headers.get("x-executor-secret");
@@ -91,14 +113,25 @@ async function handle(request: NextRequest) {
     }
   }
 
+  const maxQueueWritesParsed = parseMaxQueueWrites(searchParams.get("maxQueueWrites"));
+  if (!maxQueueWritesParsed.ok) {
+    return NextResponse.json(
+      { ok: false, error: maxQueueWritesParsed.error },
+      { status: 400, headers: { "Cache-Control": "no-store" } }
+    );
+  }
+
   try {
-    const result = await runEventRebalanceWithEvidence(Date.now(), { write: !dryRun });
+    const result = await runEventRebalanceWithEvidence(Date.now(), {
+      write: !dryRun,
+      maxQueueWrites: maxQueueWritesParsed.value,
+    });
     const diagResult = await persistRebalanceDiagnostics(result, {
       context: "event-rebalance-cron",
     });
     return NextResponse.json(
       {
-        ok: true,
+        ok: !result.blocked_by_max_queue_writes,
         dry_run: dryRun,
         rebalance_diagnostics_version: "blocked-candidates-v2",
         rebalance_run_id: result.rebalance_run_id,
@@ -111,6 +144,10 @@ async function handle(request: NextRequest) {
         future_valid_reservations_count: result.future_valid_reservations_count,
         // Hard failure surface: due reservations existed but none reached the queue.
         fail_due_reservations_not_queued: result.fail_due_reservations_not_queued,
+        // Phase 1 canonical safety cap surface.
+        max_queue_writes: result.max_queue_writes,
+        planned_queue_writes: result.planned_queue_writes,
+        blocked_by_max_queue_writes: result.blocked_by_max_queue_writes,
         diagnostic_report_path: diagResult.path,
         next_due_iso: result.next_due_reservations[0]?.rebalance_starts_iso ?? null,
         next_check_after_seconds: result.next_check_after_seconds,
@@ -136,7 +173,13 @@ async function handle(request: NextRequest) {
         founder_action_required: false,
         ireland_autostart_expected: result.queued_count > 0 || result.already_queued_count > 0,
       },
-      { status: 200, headers: { "Cache-Control": "no-store" } }
+      {
+        // Write-mode blocked-by-cap is a real failure to write what was
+        // requested -- non-2xx, distinct from a dry-run preview of the same
+        // condition (which stays 200: it never attempted a write at all).
+        status: result.blocked_by_max_queue_writes && !dryRun ? 409 : 200,
+        headers: { "Cache-Control": "no-store" },
+      }
     );
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown error";

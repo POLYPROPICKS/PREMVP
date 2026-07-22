@@ -365,6 +365,19 @@ export interface RebalanceRunResult {
   wrote: boolean;
   next_due_reservations: NextDueReservation[];
   next_check_after_seconds: number | null;
+  // Phase 1 canonical safety cap (opts.maxQueueWrites on the default
+  // canonical branch only -- never applies to founderBattleBatch or
+  // controlledLiveIntent, which are separate functions entirely).
+  // max_queue_writes is null when no cap was supplied to this run.
+  max_queue_writes: number | null;
+  // Queue rows this run WOULD create, computed by the pure selection pass
+  // before any DB write -- equal to queued_count whenever the cap did not
+  // block the run (including all dry-run calls, which never write anyway).
+  planned_queue_writes: number;
+  // True exactly when max_queue_writes was set and planned_queue_writes
+  // exceeded it. In write mode, a true value here means zero queue rows
+  // were written this run (fail-closed, no partial writes).
+  blocked_by_max_queue_writes: boolean;
 }
 
 /** Classify every active reservation against the due window — pure, no DB. */
@@ -661,7 +674,7 @@ function selectQueueRowForDueReservation(
  */
 export async function runEventRebalance(
   nowMs: number,
-  opts: { write?: boolean } = {},
+  opts: { write?: boolean; maxQueueWrites?: number | null } = {},
   deps: {
     repo?: RebalanceRepoPort;
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
@@ -669,6 +682,7 @@ export async function runEventRebalance(
   } = {}
 ): Promise<RebalanceRunResult> {
   const write = opts.write === true;
+  const maxQueueWrites = typeof opts.maxQueueWrites === "number" ? opts.maxQueueWrites : null;
   const rebalanceRunId = buildRebalanceRunId(nowMs);
   const repo = deps.repo ?? createSupabaseRebalanceRepoPort();
   const fetchCandidates =
@@ -744,6 +758,9 @@ export async function runEventRebalance(
       wrote: write,
       next_due_reservations,
       next_check_after_seconds,
+      max_queue_writes: maxQueueWrites,
+      planned_queue_writes: 0,
+      blocked_by_max_queue_writes: false,
     };
   }
 
@@ -762,58 +779,110 @@ export async function runEventRebalance(
     marketsByKey.set(c.match_family_key, arr);
   }
 
+  // Plan phase (pure -- no DB writes): resolve every due reservation's
+  // outcome via the same selectQueueRowForDueReservation used previously,
+  // so the total number of queue rows this run WOULD create is known
+  // before any write happens. This is what makes maxQueueWrites
+  // enforceable fail-closed instead of only after partial writes.
+  type PlannedAction =
+    | { kind: "ALREADY_QUEUED"; reservation: NightEventReservationRow }
+    | { kind: "SKIPPED"; reservation: NightEventReservationRow; reason: string; blockedCandidates?: BlockedCandidateDiag[] }
+    | { kind: "QUEUE"; reservation: NightEventReservationRow; row: EventExecutionQueueRow; reason: string };
+
+  const plannedActions: PlannedAction[] = [];
+  for (const reservation of due) {
+    if (reservation.id && alreadyQueued.has(reservation.id)) {
+      plannedActions.push({ kind: "ALREADY_QUEUED", reservation });
+      continue;
+    }
+    const selection = selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
+    if (selection.outcome === "SKIPPED") {
+      plannedActions.push({ kind: "SKIPPED", reservation, reason: selection.reason, blockedCandidates: selection.blockedCandidates });
+    } else {
+      plannedActions.push({ kind: "QUEUE", reservation, row: selection.queueRow!, reason: selection.reason });
+    }
+  }
+
+  const plannedQueueWrites = plannedActions.filter((a) => a.kind === "QUEUE").length;
+  const blockedByMaxQueueWrites = maxQueueWrites !== null && plannedQueueWrites > maxQueueWrites;
+
+  if (write && blockedByMaxQueueWrites) {
+    // Fail-closed: zero queue rows written, zero skip/queued reservation
+    // marks written, this run. Never a partial write over the cap.
+    return {
+      rebalance_run_id: rebalanceRunId,
+      active_reservations_count: all.length,
+      due_count: due.length,
+      queued_count: 0,
+      skipped_count: 0,
+      already_queued_count: 0,
+      expired_count: expired.length,
+      future_valid_reservations_count: upcoming.length,
+      fail_due_reservations_not_queued: false,
+      outcomes: [],
+      reservation_classification,
+      wrote: false,
+      next_due_reservations,
+      next_check_after_seconds,
+      max_queue_writes: maxQueueWrites,
+      planned_queue_writes: plannedQueueWrites,
+      blocked_by_max_queue_writes: true,
+    };
+  }
+
+  // Execute phase: replays the planned actions exactly (same order, same
+  // conditionals) -- identical to the pre-cap single-pass loop whenever no
+  // cap blocks the run.
   let queued = 0;
   let skipped = 0;
   let already = 0;
 
-  for (const reservation of due) {
-    if (reservation.id && alreadyQueued.has(reservation.id)) {
+  for (const action of plannedActions) {
+    if (action.kind === "ALREADY_QUEUED") {
       already += 1;
       outcomes.push({
-        match_family_key: reservation.match_family_key,
-        reservation_id: reservation.id ?? null,
+        match_family_key: action.reservation.match_family_key,
+        reservation_id: action.reservation.id ?? null,
         result: "ALREADY_QUEUED",
         reason: "READY_OR_SENT_QUEUE_ROW_EXISTS",
       });
       continue;
     }
 
-    const selection = selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
-
-    if (selection.outcome === "SKIPPED") {
+    if (action.kind === "SKIPPED") {
       skipped += 1;
-      if (write && reservation.id) {
-        await repo.markReservationSkipped(reservation.id, selection.reason);
+      if (write && action.reservation.id) {
+        await repo.markReservationSkipped(action.reservation.id, action.reason);
       }
       outcomes.push({
-        match_family_key: reservation.match_family_key,
-        reservation_id: reservation.id ?? null,
+        match_family_key: action.reservation.match_family_key,
+        reservation_id: action.reservation.id ?? null,
         result: "SKIPPED",
-        reason: selection.reason,
-        blocked_candidates: selection.blockedCandidates,
+        reason: action.reason,
+        blocked_candidates: action.blockedCandidates,
       });
       continue;
     }
 
-    const row = selection.queueRow!;
+    const row = action.row;
     if (write) {
       try {
         await repo.insertQueueRow(row);
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        throw new Error(`queue insert failed (${reservation.match_family_key}): ${msg}`);
+        throw new Error(`queue insert failed (${action.reservation.match_family_key}): ${msg}`);
       }
-      if (reservation.id) {
-        await repo.markReservationQueued(reservation.id, row.selection_reason ?? "");
+      if (action.reservation.id) {
+        await repo.markReservationQueued(action.reservation.id, row.selection_reason ?? "");
       }
     }
 
     queued += 1;
     outcomes.push({
-      match_family_key: reservation.match_family_key,
-      reservation_id: reservation.id ?? null,
+      match_family_key: action.reservation.match_family_key,
+      reservation_id: action.reservation.id ?? null,
       result: "QUEUED",
-      reason: selection.reason,
+      reason: action.reason,
       queue_row: row,
     });
   }
@@ -838,6 +907,13 @@ export async function runEventRebalance(
     wrote: write,
     next_due_reservations,
     next_check_after_seconds,
+    max_queue_writes: maxQueueWrites,
+    planned_queue_writes: plannedQueueWrites,
+    // Only reachable here when NOT (write && blockedByMaxQueueWrites) -- so
+    // a true value at this point means dry-run mode previewing a plan that
+    // WOULD be blocked if run with write=true (no actual writes happened
+    // either way, since write=false skips every repo call above).
+    blocked_by_max_queue_writes: blockedByMaxQueueWrites,
   };
 }
 
@@ -1058,7 +1134,7 @@ export async function runControlledLiveIntent(
  */
 export async function runEventRebalanceWithEvidence(
   nowMs: number,
-  opts: { write?: boolean } = {},
+  opts: { write?: boolean; maxQueueWrites?: number | null } = {},
   deps: {
     repo?: RebalanceRepoPort;
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
@@ -1080,17 +1156,29 @@ export async function runEventRebalanceWithEvidence(
         formulaVersion: "rebalance-v1",
         startedAt,
         finishedAt,
-        status:
-          result.due_count === 0 ? "empty" : result.fail_due_reservations_not_queued ? "error" : "success",
+        status: result.blocked_by_max_queue_writes
+          ? "error"
+          : result.due_count === 0
+            ? "empty"
+            : result.fail_due_reservations_not_queued
+              ? "error"
+              : "success",
         generatedCount: result.queued_count,
         rejectedCount: result.skipped_count,
         durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
-        errorMessage: result.fail_due_reservations_not_queued ? "DUE_RESERVATIONS_NOT_QUEUED" : undefined,
+        errorMessage: result.blocked_by_max_queue_writes
+          ? "MAX_QUEUE_WRITES_EXCEEDED"
+          : result.fail_due_reservations_not_queued
+            ? "DUE_RESERVATIONS_NOT_QUEUED"
+            : undefined,
         diagnostics: {
           rebalance_run_id: result.rebalance_run_id,
           due_count: result.due_count,
           already_queued_count: result.already_queued_count,
           expired_count: result.expired_count,
+          max_queue_writes: result.max_queue_writes,
+          planned_queue_writes: result.planned_queue_writes,
+          blocked_by_max_queue_writes: result.blocked_by_max_queue_writes,
         },
       });
     }

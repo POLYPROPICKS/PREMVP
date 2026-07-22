@@ -10,6 +10,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 import {
   runEventRebalance,
@@ -19,6 +21,8 @@ import {
 import type { SchedulerJobEvidencePort, SchedulerJobRunInput } from "../../lib/executor/schedulerJobEvidence";
 import { buildFireModelCandidates, type FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
 import type { EventExecutionQueueRow, NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
+
+const root = process.cwd();
 
 const KICKOFF_ISO = "2026-07-19T19:00:00.000Z";
 const KICKOFF_MS = Date.parse(KICKOFF_ISO);
@@ -510,4 +514,118 @@ test("B7: a failed write-mode rebalance run records sanitized failure evidence a
   assert.equal(call.source, "event-rebalance");
   assert.ok(call.errorMessage);
   assert.doesNotMatch(call.errorMessage as string, /apikey=SECRETVALUE456/);
+});
+
+// ── Phase 1 canonical safety cap: maxQueueWrites (default branch only) ─────
+//
+// Preflight audit finding: the default canonical rebalance branch has no
+// code-level per-run cap -- if more than 1-2 reservations are due, it
+// queues all of them. maxQueueWrites closes that gap for a controlled
+// Phase 1 batch, fail-closed (no partial writes over the cap), and must
+// never apply to founderBattleBatch or controlledLiveIntent (separate
+// functions entirely -- not touched by this change).
+
+function multiEventFixture(n: number): { reservations: NightEventReservationRow[]; candidates: FireModelCandidate[] } {
+  const reservations: NightEventReservationRow[] = [];
+  const candidates: FireModelCandidate[] = [];
+  for (let i = 1; i <= n; i++) {
+    const key = `pair:team-a${i}-vs-team-b${i}:2026-07-19`;
+    reservations.push(
+      baseReservation({
+        id: `res-${i}`,
+        match_family_key: key,
+        event_slug: `team-a${i}-vs-team-b${i}`,
+      })
+    );
+    candidates.push(
+      baseCandidate({
+        match_family_key: key,
+        event_slug: `team-a${i}-vs-team-b${i}`,
+        condition_id: `cond-${i}`,
+        token_id: `token-${i}`,
+      })
+    );
+  }
+  return { reservations, candidates };
+}
+
+test("Cap-1: dry-run reports a would-be cap breach without writing anything", async () => {
+  const { reservations, candidates } = multiEventFixture(3);
+  const repo = makeFakeRepo(reservations);
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: false, maxQueueWrites: 2 },
+    { repo, fetchCandidates: async () => ({ candidates }) }
+  );
+  assert.equal(result.wrote, false);
+  assert.equal(repo.queueRows.length, 0, "dry-run must never write");
+  assert.equal(result.planned_queue_writes, 3);
+  assert.equal(result.max_queue_writes, 2);
+  assert.equal(result.blocked_by_max_queue_writes, true);
+});
+
+test("Cap-2: write mode blocks before any queue rows are created when planned writes exceed the cap", async () => {
+  const { reservations, candidates } = multiEventFixture(3);
+  const repo = makeFakeRepo(reservations);
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true, maxQueueWrites: 2 },
+    { repo, fetchCandidates: async () => ({ candidates }) }
+  );
+  assert.equal(result.blocked_by_max_queue_writes, true);
+  assert.equal(result.queued_count, 0, "MAX_QUEUE_WRITES_EXCEEDED must block all writes, not partially write");
+  assert.equal(repo.queueRows.length, 0);
+  assert.equal(repo.skippedCalls.length, 0, "no reservation should even be marked skipped when the whole run is blocked");
+  assert.equal(repo.queuedStatusCalls.length, 0);
+  assert.equal(result.wrote, false);
+});
+
+test("Cap-3: write mode allows and writes exactly the planned rows when within the cap", async () => {
+  const { reservations, candidates } = multiEventFixture(2);
+  const repo = makeFakeRepo(reservations);
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true, maxQueueWrites: 2 },
+    { repo, fetchCandidates: async () => ({ candidates }) }
+  );
+  assert.equal(result.blocked_by_max_queue_writes, false);
+  assert.equal(result.queued_count, 2);
+  assert.equal(repo.queueRows.length, 2);
+  assert.equal(result.planned_queue_writes, 2);
+});
+
+test("Cap-4: omitting maxQueueWrites preserves current unlimited behavior", async () => {
+  const { reservations, candidates } = multiEventFixture(3);
+  const repo = makeFakeRepo(reservations);
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates }) }
+  );
+  assert.equal(result.max_queue_writes, null);
+  assert.equal(result.blocked_by_max_queue_writes, false);
+  assert.equal(result.queued_count, 3);
+  assert.equal(repo.queueRows.length, 3);
+});
+
+test("Cap-5 (route-level validation): the event-rebalance route rejects maxQueueWrites=0, 6, and non-numeric values with 400, and never invokes the rebalance function", async () => {
+  const routeSource = readFileSync(path.join(root, "app/api/cron/event-rebalance/route.ts"), "utf8");
+  assert.match(routeSource, /parseMaxQueueWrites/, "route must validate maxQueueWrites before calling runEventRebalanceWithEvidence");
+  assert.match(routeSource, /status:\s*400/, "an invalid maxQueueWrites must be rejected with 400");
+  assert.match(routeSource, /MAX_QUEUE_WRITES_MIN\s*=\s*1/);
+  assert.match(routeSource, /MAX_QUEUE_WRITES_MAX\s*=\s*5/);
+});
+
+test("Cap-6: founderBattleBatch is structurally unaffected -- the route never threads maxQueueWrites into runFounderBattleBatch", () => {
+  const routeSource = readFileSync(path.join(root, "app/api/cron/event-rebalance/route.ts"), "utf8");
+  const founderBlockMatch = routeSource.match(/if \(founderBattleBatch\) \{[\s\S]*?\n  \}\n/);
+  assert.ok(founderBlockMatch, "expected to find the founderBattleBatch branch");
+  assert.doesNotMatch(founderBlockMatch![0], /maxQueueWrites/);
+});
+
+test("Cap-7: controlledLiveIntent is structurally unaffected -- the route never threads maxQueueWrites into runControlledLiveIntent", () => {
+  const routeSource = readFileSync(path.join(root, "app/api/cron/event-rebalance/route.ts"), "utf8");
+  const controlledBlockMatch = routeSource.match(/if \(controlledLiveIntent !== null\) \{[\s\S]*?\n  \}\n/);
+  assert.ok(controlledBlockMatch, "expected to find the controlledLiveIntent branch");
+  assert.doesNotMatch(controlledBlockMatch![0], /maxQueueWrites/);
 });
