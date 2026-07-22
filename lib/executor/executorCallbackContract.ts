@@ -113,6 +113,66 @@ export function canonicalPayloadsEqual(a: OrderEventCanonicalPayload, b: OrderEv
   );
 }
 
+// ── fill/cost normalization ─────────────────────────────────────────────────
+//
+// Root cause (production incident, 2026-07-22): accepted live order
+// callbacks carry fill data (executed_size, filled_price, making_amount,
+// taking_amount) either at the top level in snake_case, or nested inside
+// raw_event_json.raw_response using the raw CLOB response's camelCase names
+// (makingAmount, takingAmount) -- and sometimes as numeric strings rather
+// than JS numbers. The route previously only read the exact top-level
+// snake_case field with a naive typeof check (and, for making_amount /
+// taking_amount, an incorrect str() cast against a `numeric` DB column),
+// so any payload using the nested/camelCase/string-numeric shape left the
+// normalized columns NULL even though raw_event_json plainly had the data.
+
+/** Accepts a JS number or a numeric string and returns a finite JS number, or null. Never accepts NaN/Infinity/non-numeric strings. */
+function numLike(v: unknown): number | null {
+  if (typeof v === "number" && Number.isFinite(v)) return v;
+  if (typeof v === "string" && v.trim() !== "") {
+    const n = Number(v);
+    if (Number.isFinite(n)) return n;
+  }
+  return null;
+}
+
+function nestedObj(v: unknown): Record<string, unknown> | null {
+  return v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
+
+export interface NormalizedOrderEventFillFields {
+  submitted_size: number | null;
+  submitted_price: number | null;
+  making_amount: number | null;
+  taking_amount: number | null;
+  response_json_sanitized: Record<string, unknown> | null;
+}
+
+/**
+ * Derives fill/cost core fields from an already-sanitized callback payload
+ * (banned-key redaction must already have run -- this function does no
+ * redaction of its own, only shaping). Every field falls back through both
+ * the top-level snake_case shape and the nested raw_event_json.raw_response
+ * CLOB-native shape, preferring an explicit top-level value first and never
+ * overwriting it with a derived one. Deliberately does not touch
+ * fee_usd/fee_notes/observed_best_bid/observed_best_ask/observed_spread --
+ * those are never fabricated or derived, only passed through verbatim by
+ * the caller.
+ */
+export function deriveOrderEventFillFields(sanitized: Record<string, unknown>): NormalizedOrderEventFillFields {
+  const rawEventJson = nestedObj(sanitized.raw_event_json);
+  const rawResponse = nestedObj(rawEventJson?.raw_response) ?? nestedObj(sanitized.raw_response);
+
+  const making_amount = numLike(sanitized.making_amount) ?? numLike(rawResponse?.makingAmount);
+  const taking_amount = numLike(sanitized.taking_amount) ?? numLike(rawResponse?.takingAmount);
+  const submitted_size = numLike(sanitized.submitted_size) ?? numLike(sanitized.executed_size) ?? taking_amount;
+  const submitted_price = numLike(sanitized.submitted_price) ?? numLike(sanitized.filled_price);
+
+  const response_json_sanitized = nestedObj(sanitized.response_json_sanitized) ?? rawResponse;
+
+  return { submitted_size, submitted_price, making_amount, taking_amount, response_json_sanitized };
+}
+
 // ── order-event submission orchestration ────────────────────────────────────
 
 export interface StoredOrderEvent {

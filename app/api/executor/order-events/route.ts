@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase/server";
 import {
   handleOrderEventSubmission,
+  deriveOrderEventFillFields,
   type OrderEventDbPort,
   type StoredOrderEvent,
   type InsertOrderEventFailure,
@@ -181,6 +182,10 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
     },
     async insertOrderEvent(raw, _queueRow): Promise<{ ok: true; row: StoredOrderEvent } | InsertOrderEventFailure> {
       const s = sanitize(raw) as Record<string, unknown>;
+      // Fill/cost derivation runs against the already-sanitized payload `s`,
+      // never against raw -- response_json_sanitized must never carry an
+      // unredacted secret through the nested raw_response fallback.
+      const fill = deriveOrderEventFillFields(s);
       const record: Record<string, unknown> = {
         // identity / routing
         event_type: str(s.event_type),
@@ -218,11 +223,11 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
         live_confirm: bool(s.live_confirm),
 
         // pricing
-        submitted_price: num(s.submitted_price),
-        submitted_size: num(s.submitted_size),
+        submitted_price: fill.submitted_price,
+        submitted_size: fill.submitted_size,
         stake_usd: num(s.stake_usd),
-        making_amount: str(s.making_amount),
-        taking_amount: str(s.taking_amount),
+        making_amount: fill.making_amount,
+        taking_amount: fill.taking_amount,
         observed_best_bid: num(s.observed_best_bid),
         observed_best_ask: num(s.observed_best_ask),
         observed_price: num(s.observed_price),
@@ -243,7 +248,7 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
 
         // JSON blobs (sanitised before storage)
         candidate_snapshot_json: s.candidate_snapshot_json ?? null,
-        response_json_sanitized: s.response_json_sanitized ?? null,
+        response_json_sanitized: fill.response_json_sanitized,
         executor_meta: s.executor_meta ?? null,
         raw_event_json: s, // full sanitised payload
 

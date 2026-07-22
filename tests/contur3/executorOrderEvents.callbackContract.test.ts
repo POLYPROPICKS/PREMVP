@@ -16,6 +16,7 @@ import path from "node:path";
 import {
   handleOrderEventSubmission,
   projectCanonicalOrderEventPayload,
+  deriveOrderEventFillFields,
   type OrderEventDbPort,
   type StoredOrderEvent,
   type InsertOrderEventFailure,
@@ -434,4 +435,152 @@ test("24: the rejected-marking code path does not depend on queue_id/reservation
   assert.doesNotMatch(source, /queue_id\s*:/);
   assert.doesNotMatch(source, /match_family_key\s*:/);
   assert.doesNotMatch(source, /reservation_id\s*:/);
+});
+
+// ── Fill/cost normalization (deriveOrderEventFillFields) ───────────────────
+//
+// Production incident, 2026-07-22: 4 accepted EXECUTED rows had
+// clob_order_id/transaction_hashes/submitted_price/stake_usd populated and
+// raw_event_json HAS_CONTENT, but normalized submitted_size, making_amount,
+// taking_amount, and response_json_sanitized all stayed NULL. Root cause:
+// the route only read the exact top-level snake_case field name with a
+// naive typeof check, and for making_amount/taking_amount used str() against
+// a `numeric` DB column (a JS number always fails that check -> null),
+// never falling back to raw_event_json.raw_response's camelCase CLOB
+// response shape (makingAmount/takingAmount) or to executed_size/filled_price.
+
+const LIVE_ACCEPTED_PAYLOAD = {
+  success: true,
+  order_status: "matched",
+  submitted_price: 0.47,
+  filled_price: 0.47,
+  executed_size: 2.34,
+  making_amount: 1.0998,
+  taking_amount: 2.34,
+  fee_usd: null as number | null,
+  fee_notes: "FEE_NOT_RETURNED_BY_EXECUTOR_RESULT",
+  raw_event_json: {
+    raw_response: {
+      status: "matched",
+      success: true,
+      orderID: "0xabc123",
+      makingAmount: "1.0998",
+      takingAmount: "2.34",
+      transactionsHashes: ["0xdeadbeef"],
+    },
+  },
+};
+
+test("Fill-1 (regression, production shape): submitted_size/making_amount/taking_amount/submitted_price all populate from the live accepted payload", () => {
+  const fill = deriveOrderEventFillFields(LIVE_ACCEPTED_PAYLOAD);
+  assert.equal(fill.submitted_size, 2.34);
+  assert.equal(fill.making_amount, 1.0998);
+  assert.equal(fill.taking_amount, 2.34);
+  assert.equal(fill.submitted_price, 0.47);
+  assert.equal(typeof fill.submitted_size, "number");
+  assert.equal(typeof fill.making_amount, "number");
+  assert.equal(typeof fill.taking_amount, "number");
+});
+
+test("Fill-2: response_json_sanitized is populated from raw_event_json.raw_response when not explicitly provided", () => {
+  const fill = deriveOrderEventFillFields(LIVE_ACCEPTED_PAYLOAD);
+  assert.ok(fill.response_json_sanitized);
+  assert.equal(fill.response_json_sanitized?.status, "matched");
+  assert.equal(fill.response_json_sanitized?.orderID, "0xabc123");
+});
+
+test("Fill-3: making_amount/taking_amount fall back to the nested camelCase CLOB response (makingAmount/takingAmount) when only that shape is present, and are coerced to numbers not strings", () => {
+  const payload = {
+    raw_event_json: {
+      raw_response: { makingAmount: "0.55", takingAmount: "1.10" },
+    },
+  };
+  const fill = deriveOrderEventFillFields(payload);
+  assert.equal(fill.making_amount, 0.55);
+  assert.equal(fill.taking_amount, 1.1);
+  assert.equal(typeof fill.making_amount, "number");
+  assert.equal(typeof fill.taking_amount, "number");
+});
+
+test("Fill-4: submitted_size falls back through executed_size then taking_amount then raw_response.takingAmount, in that order", () => {
+  assert.equal(deriveOrderEventFillFields({ submitted_size: 5 }).submitted_size, 5, "explicit submitted_size wins");
+  assert.equal(deriveOrderEventFillFields({ executed_size: 7 }).submitted_size, 7, "falls back to executed_size");
+  assert.equal(deriveOrderEventFillFields({ taking_amount: 9 }).submitted_size, 9, "falls back to taking_amount");
+  assert.equal(
+    deriveOrderEventFillFields({ raw_event_json: { raw_response: { takingAmount: "11" } } }).submitted_size,
+    11,
+    "falls back to nested raw_response.takingAmount",
+  );
+});
+
+test("Fill-5: submitted_price falls back to filled_price only when submitted_price is absent", () => {
+  assert.equal(deriveOrderEventFillFields({ submitted_price: 0.6, filled_price: 0.9 }).submitted_price, 0.6, "explicit submitted_price wins over filled_price");
+  assert.equal(deriveOrderEventFillFields({ filled_price: 0.42 }).submitted_price, 0.42);
+});
+
+test("Fill-6: an explicit non-null top-level value is never overwritten by a derived value", () => {
+  const payload = {
+    submitted_size: 3,
+    making_amount: 2,
+    taking_amount: 4,
+    executed_size: 999,
+    raw_event_json: { raw_response: { makingAmount: "999", takingAmount: "999" } },
+  };
+  const fill = deriveOrderEventFillFields(payload);
+  assert.equal(fill.submitted_size, 3);
+  assert.equal(fill.making_amount, 2);
+  assert.equal(fill.taking_amount, 4);
+});
+
+test("Fill-7: fee_usd/fee_notes/observed_* are never touched or fabricated by fill derivation (not part of its return shape)", () => {
+  const fill = deriveOrderEventFillFields(LIVE_ACCEPTED_PAYLOAD);
+  assert.equal("fee_usd" in fill, false);
+  assert.equal("fee_notes" in fill, false);
+  assert.equal("observed_best_bid" in fill, false);
+  assert.equal("observed_best_ask" in fill, false);
+  assert.equal("observed_spread" in fill, false);
+});
+
+test("Fill-8: missing/garbage fill data yields null, never throws or fabricates a number", () => {
+  assert.deepEqual(deriveOrderEventFillFields({}), {
+    submitted_size: null,
+    submitted_price: null,
+    making_amount: null,
+    taking_amount: null,
+    response_json_sanitized: null,
+  });
+  const garbage = deriveOrderEventFillFields({
+    making_amount: "not-a-number",
+    taking_amount: NaN,
+    raw_event_json: { raw_response: "not-an-object" },
+  });
+  assert.equal(garbage.making_amount, null);
+  assert.equal(garbage.taking_amount, null);
+  assert.equal(garbage.response_json_sanitized, null);
+});
+
+test("Fill-9 (route wiring, static source check): the route uses deriveOrderEventFillFields for making_amount/taking_amount/submitted_size/submitted_price/response_json_sanitized, and no longer str()-casts making_amount/taking_amount against the numeric DB columns", () => {
+  const source = readFileSync(path.join(root, "app/api/executor/order-events/route.ts"), "utf8");
+  assert.match(source, /deriveOrderEventFillFields/);
+  assert.match(source, /making_amount:\s*fill\.making_amount/);
+  assert.match(source, /taking_amount:\s*fill\.taking_amount/);
+  assert.match(source, /submitted_size:\s*fill\.submitted_size/);
+  assert.match(source, /submitted_price:\s*fill\.submitted_price/);
+  assert.match(source, /response_json_sanitized:\s*fill\.response_json_sanitized/);
+  assert.doesNotMatch(source, /making_amount:\s*str\(/);
+  assert.doesNotMatch(source, /taking_amount:\s*str\(/);
+});
+
+test("Fill-10: fee_usd is never inferred -- an explicit null fee_usd in the callback stays null end-to-end through handleOrderEventSubmission (no queue-policy/insert path fabricates it)", async () => {
+  const port = makeFakePort();
+  const outcome = await handleOrderEventSubmission(
+    port,
+    validSubmissionRaw({ ...LIVE_ACCEPTED_PAYLOAD, fee_usd: null }),
+  );
+  assert.equal(outcome.kind, "INSERTED");
+  // handleOrderEventSubmission/StoredOrderEvent do not carry fee_usd at all
+  // (fee_usd is a route-level insert-record field, not part of the shared
+  // canonical/orchestration contract) -- this proves the orchestration layer
+  // never derives or requires a fee value to accept the order event.
+  assert.equal("fee_usd" in (outcome as { row?: StoredOrderEvent }).row!, false);
 });
