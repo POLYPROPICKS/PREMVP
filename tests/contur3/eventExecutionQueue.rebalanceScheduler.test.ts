@@ -16,6 +16,7 @@ import path from "node:path";
 import {
   runEventRebalance,
   runEventRebalanceWithEvidence,
+  findAuthoritativeCandidateForPlanningReservation,
   type RebalanceRepoPort,
 } from "../../lib/executor/eventExecutionQueue";
 import type { SchedulerJobEvidencePort, SchedulerJobRunInput } from "../../lib/executor/schedulerJobEvidence";
@@ -647,4 +648,148 @@ test("Cap-7: controlledLiveIntent is structurally unaffected -- the route never 
   const controlledBlockMatch = routeSource.match(/if \(controlledLiveIntent !== null\) \{[\s\S]*?\n  \}\n/);
   assert.ok(controlledBlockMatch, "expected to find the controlledLiveIntent branch");
   assert.doesNotMatch(controlledBlockMatch![0], /maxQueueWrites/);
+});
+
+// ── Contract A planning → final authoritative identity handoff (incident fix) ─
+//
+// Production incident (night-plan:2026-07-22): a CONTRACT_A_PLANNING_V1
+// reservation for "spread: los angeles angels (-1.5)" was RESERVED at plan
+// time but SKIPPED at final rebalance with
+// CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE, because the old matcher joined
+// the planning reservation to the fresh CONTRACT_A_V1 candidate on
+// match_family_key (different key spaces) OR raw==lowercased event_slug. For a
+// single-team spread with an empty/case-divergent slug both clauses fail. The
+// fix joins on stable source lineage (best_snapshot_id === generated_signal_pair_id),
+// then normalized slug, then exact match_family_key -- exact, never fuzzy.
+
+const LINEAGE_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+function planningReservation(overrides: Partial<NightEventReservationRow> = {}): NightEventReservationRow {
+  return baseReservation({
+    id: "res-la-spread",
+    match_family_key: "WEAK_SINGLE_TEAM_SPREAD:los-angeles-angels:2026-07-19", // un-prefixed weak key
+    event_slug: "", // empty slug — the exact production defect shape
+    best_snapshot_id: LINEAGE_UUID,
+    diagnostics: { selector_id: "CONTRACT_A_PLANNING_V1", contract_a_stage: "PLANNING" },
+    ...overrides,
+  });
+}
+
+function finalAuthoritativeCandidate(overrides: Partial<FireModelCandidate> = {}): FireModelCandidate {
+  return baseCandidate({
+    condition_id: "cond-la-final",
+    token_id: "tok-la-final",
+    side: "Los Angeles Angels",
+    selected_outcome: "Los Angeles Angels",
+    generated_signal_pair_id: LINEAGE_UUID, // same generated_signal_pairs.id as reservation.best_snapshot_id
+    match_family_key: "match:mlb-laa-spread", // PREFIXED final key (different space than planning)
+    event_slug: "MLB-LAA-CWS-2026-07-22", // raw/uppercase (final never lowercases)
+    stake_usd: 1.1,
+    ...overrides,
+  });
+}
+
+test("CA-Handoff-A (lineage recovery, production RED): a planning reservation with empty slug + un-prefixed key QUEUES via source-lineage join to the fresh final candidate", async () => {
+  const repo = makeFakeRepo([planningReservation()]);
+  const final = finalAuthoritativeCandidate();
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    {
+      repo,
+      fetchCandidates: async () => ({ candidates: [] }),
+      fetchContractAFinalCandidates: async () => ({ candidates: [final] }),
+    }
+  );
+  assert.equal(result.queued_count, 1, "planning reservation must locate its final candidate via source lineage and QUEUE");
+  assert.equal(repo.queueRows.length, 1);
+  const row = repo.queueRows[0];
+  assert.equal(row.condition_id, "cond-la-final", "cond copied from FRESH final candidate");
+  assert.equal(row.token_id, "tok-la-final");
+  assert.equal(row.side, "Los Angeles Angels");
+  assert.equal(row.stake_usd, 1.1, "stake stays $1.10");
+  assert.equal((row.diagnostics as Record<string, unknown>).source_signal_id, LINEAGE_UUID, "source_signal_id remains the valid UUID");
+});
+
+test("CA-Handoff-B (normalized slug fallback): planning & final differ only in slug case/whitespace -> exact normalized match", () => {
+  const res = planningReservation({ best_snapshot_id: null, event_slug: "  MLB-LAA-CWS-2026-07-22  ", match_family_key: "unprefixed:key" });
+  const final = finalAuthoritativeCandidate({ generated_signal_pair_id: "different-uuid", event_slug: "mlb-laa-cws-2026-07-22", match_family_key: "match:prefixed" });
+  const m = findAuthoritativeCandidateForPlanningReservation(res, [final]);
+  assert.equal(m.method, "NORMALIZED_EVENT_SLUG");
+  assert.equal(m.candidate, final);
+  assert.equal(m.ambiguityCount, 1);
+});
+
+test("CA-Handoff-C (no unsafe fuzzy match): similar titles/teams but no matching UUID / normalized slug / exact key -> fail closed, no queue row", async () => {
+  // Helper-level: neither candidate shares lineage, slug, or exact key.
+  const res = planningReservation({ best_snapshot_id: "res-uuid", event_slug: "los-angeles-angels-spread", match_family_key: "WEAK:x" });
+  const nearMissA = finalAuthoritativeCandidate({ generated_signal_pair_id: "other-uuid-1", event_slug: "los-angeles-angels-moneyline", match_family_key: "match:a" });
+  const nearMissB = finalAuthoritativeCandidate({ generated_signal_pair_id: "other-uuid-2", event_slug: "los-angeles-dodgers-spread", match_family_key: "match:b" });
+  const m = findAuthoritativeCandidateForPlanningReservation(res, [nearMissA, nearMissB]);
+  assert.equal(m.candidate, null, "must never fuzzy-match on team/title/partial slug");
+  assert.equal(m.method, "NONE");
+
+  // Full path: same shape -> SKIPPED, no queue row.
+  const repo = makeFakeRepo([planningReservation({ best_snapshot_id: "res-uuid", event_slug: "los-angeles-angels-spread" })]);
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [nearMissA, nearMissB] }) }
+  );
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE/);
+});
+
+test("CA-Handoff-C2 (ambiguity fails closed): two final candidates share the same source UUID -> null, never guess", () => {
+  const res = planningReservation();
+  const a = finalAuthoritativeCandidate({ condition_id: "c-a" });
+  const b = finalAuthoritativeCandidate({ condition_id: "c-b" }); // same LINEAGE_UUID
+  const m = findAuthoritativeCandidateForPlanningReservation(res, [a, b]);
+  assert.equal(m.candidate, null);
+  assert.equal(m.method, "SOURCE_LINEAGE");
+  assert.equal(m.ambiguityCount, 2);
+});
+
+test("CA-Handoff-D (final authority preserved): queue row uses the FRESH final candidate's cond/token/side/price, never a stale planning value", async () => {
+  const repo = makeFakeRepo([planningReservation()]);
+  // Final candidate deliberately carries different identity than any planning field.
+  const final = finalAuthoritativeCandidate({ condition_id: "FRESH-cond", token_id: "FRESH-tok", side: "FRESH-side", selected_outcome: "FRESH-side", max_entry_price: 0.51 });
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [final] }) }
+  );
+  assert.equal(result.queued_count, 1);
+  const row = repo.queueRows[0];
+  assert.equal(row.condition_id, "FRESH-cond");
+  assert.equal(row.token_id, "FRESH-tok");
+  assert.equal(row.side, "FRESH-side");
+  assert.equal((row.diagnostics as Record<string, unknown>).max_entry_price, 0.51, "price cap from fresh final candidate");
+});
+
+test("CA-Handoff-E (no regression): a FINAL_AUTHORITATIVE legacy reservation still queues its exact stored authoritative market unchanged", async () => {
+  // Mirrors the pre-existing D1 legacy path (selector = FROZEN_MODEL_V2_VERSION),
+  // which must be entirely unaffected by the planning-branch change.
+  const legacyReservation = baseReservation({
+    id: "res-legacy",
+    diagnostics: {
+      selector_id: "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      authoritative_condition_id: "cond-market-A",
+      authoritative_token_id: "tok-market-A",
+      authoritative_side: "Spain",
+      authoritative_observation_id: "obs-1",
+      authoritative_event_key: "pair:argentina-vs-spain:2026-07-19",
+    },
+  });
+  const repo = makeFakeRepo([legacyReservation]);
+  const marketA = baseCandidate({ condition_id: "cond-market-A", token_id: "tok-market-A", side: "Spain", selected_outcome: "Spain" });
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [marketA] }) }
+  );
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows[0].condition_id, "cond-market-A");
+  assert.equal(repo.queueRows[0].token_id, "tok-market-A");
 });
