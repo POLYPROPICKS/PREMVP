@@ -17,9 +17,12 @@ export type ReservationStatus =
   | "EXPIRED"
   | "CANCELLED";
 
-// Executable policy constants (LOCKED — Tier1 only, $7 stake, no halftime).
+// Executable policy constants (LOCKED — Tier1 only, $1.10 stake, no halftime).
+// Stake is $1.10 for the frozen-model live contour: the smallest size that
+// clears Polymarket's CLOB minimum-order-size rejection (below ~$1 marketable
+// BUY orders are rejected) while keeping per-order exposure minimal.
 export const EXECUTABLE_TIER = "TIER1" as const;
-export const EXECUTABLE_STAKE_USD = 7 as const;
+export const EXECUTABLE_STAKE_USD = 1.1 as const;
 export const QUEUE_SCHEMA_VERSION = "executor-queue-v1" as const;
 export const QUEUE_EXECUTION_MODE = "NIGHT_LIVE_EXECUTION" as const;
 export const QUEUE_SOURCE = "event_execution_queue" as const;

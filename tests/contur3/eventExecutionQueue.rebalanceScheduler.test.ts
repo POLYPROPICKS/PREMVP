@@ -483,6 +483,25 @@ test("Lineage-CA1: a CONTRACT_A_V1 candidate carries generated_signal_pair_id = 
   assert.match(c.signal_id, /^cond-ca-lineage::/);
 });
 
+test("Stake-CA1: a canonical CONTRACT_A_V1 candidate carries stake_usd = 1.10 (frozen-model live contour), sourced from EXECUTABLE_STAKE_USD", async () => {
+  const sourceRow = {
+    id: "55555555-5555-4555-8555-555555555555",
+    condition_id: "cond-ca-stake",
+    token_id: "tok-ca-stake",
+    selected_outcome: "TEAM_A",
+    score: 70,
+    entry_price_num: 0.4,
+    created_at: "2026-07-20T11:30:00.000Z", // T-90 boundary for a 13:00Z kickoff
+    event_slug: "nba-team-a-vs-team-b",
+    market_slug: "nba-team-a-vs-team-b-moneyline",
+    diagnostics: { gameStartIso: "2026-07-20T13:00:00.000Z" },
+  };
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].stake_usd, 1.1, "canonical Contract A stake must be the $1.10 live-contour stake, not $7");
+  assert.equal(candidates[0].max_order_usd, 1.1, "canonical Contract A max_order_usd must also track the $1.10 stake");
+});
+
 test("B7: a failed write-mode rebalance run records sanitized failure evidence and rethrows", async () => {
   const jobEvidence = makeFakeJobEvidence();
   const failingRepo: RebalanceRepoPort = {
