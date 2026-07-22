@@ -21,7 +21,7 @@ import {
 } from "../../lib/executor/eventExecutionQueue";
 import type { SchedulerJobEvidencePort, SchedulerJobRunInput } from "../../lib/executor/schedulerJobEvidence";
 import { buildFireModelCandidates, type FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
-import type { EventExecutionQueueRow, NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
+import { mapQueueRowToIrelandCandidate, type EventExecutionQueueRow, type NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 
 const root = process.cwd();
 
@@ -792,4 +792,187 @@ test("CA-Handoff-E (no regression): a FINAL_AUTHORITATIVE legacy reservation sti
   assert.equal(result.queued_count, 1);
   assert.equal(repo.queueRows[0].condition_id, "cond-market-A");
   assert.equal(repo.queueRows[0].token_id, "tok-market-A");
+});
+
+// ── CANONICAL READY PRODUCER CERTIFICATION (integration, real production fns) ─
+//
+// Drives the ACTUAL production orchestration (runEventRebalance ->
+// selectQueueRowForDueReservation -> findAuthoritativeCandidateForPlanningReservation
+// -> isExecutableMarket -> buildQueueRow) with a Chicago/Detroit-shaped
+// single-team-spread planning reservation, then serializes the built row
+// through the REAL /api/executor/queue serializer (mapQueueRowToIrelandCandidate).
+// No mock reimplementation, no dry-run endpoint, no DB, no writes.
+
+const CHI_UUID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+
+function chicagoPlanningReservation(overrides: Partial<NightEventReservationRow> = {}): NightEventReservationRow {
+  return baseReservation({
+    id: "res-cws-spread",
+    match_family_key: "WEAK_SINGLE_TEAM_SPREAD:chicago-white-sox:2026-07-19",
+    event_slug: "", // empty slug — the production defect shape
+    best_snapshot_id: CHI_UUID,
+    diagnostics: { selector_id: "CONTRACT_A_PLANNING_V1", contract_a_stage: "PLANNING" },
+    ...overrides,
+  });
+}
+
+function chicagoFinalCandidate(overrides: Partial<FireModelCandidate> = {}): FireModelCandidate {
+  return baseCandidate({
+    condition_id: "cond-cws-final",
+    token_id: "tok-cws-final",
+    side: "Chicago White Sox",
+    selected_outcome: "Chicago White Sox",
+    generated_signal_pair_id: CHI_UUID,
+    match_family_key: "match:mlb-cws-spread", // prefixed final key (different space)
+    event_slug: "MLB-CWS-DET-2026-07-22", // raw/uppercase
+    max_entry_price: 0.58,
+    stake_usd: 1.1,
+    ...overrides,
+  });
+}
+
+async function runCanonicalProducer(
+  reservationOverrides: Partial<NightEventReservationRow> = {},
+  finalOverrides: Partial<FireModelCandidate> = {},
+  nowMs: number = IN_WINDOW_MS,
+) {
+  const repo = makeFakeRepo([chicagoPlanningReservation(reservationOverrides)]);
+  const final = chicagoFinalCandidate(finalOverrides);
+  const result = await runEventRebalance(
+    nowMs,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [final] }) },
+  );
+  return { repo, result, final };
+}
+
+test("CERT: canonical READY producer positive acceptance matrix (01-13) via real functions + real /api/executor/queue serializer", async () => {
+  const { repo, result } = await runCanonicalProducer();
+
+  // 12 one physical event -> exactly one queue row
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows.length, 1);
+  const row = repo.queueRows[0];
+  const diag = row.diagnostics as Record<string, unknown>;
+
+  // 01 located by exact source lineage (empty slug + un-prefixed key would fail
+  //    on any other join) -> proves SOURCE_LINEAGE was the path.
+  // 02/03/04 final Contract A cond/token/side used (from the fresh final candidate).
+  assert.equal(row.condition_id, "cond-cws-final");
+  assert.equal(row.token_id, "tok-cws-final");
+  assert.equal(row.side, "Chicago White Sox");
+  // 07 stake_usd = 1.10
+  assert.equal(row.stake_usd, 1.1);
+  // 08 max_entry_price present + numeric
+  assert.equal(typeof diag.max_entry_price, "number");
+  assert.equal(diag.max_entry_price, 0.58);
+  // 09 diagnostics.source_signal_id is a UUID
+  assert.match(String(diag.source_signal_id), /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+  assert.equal(diag.source_signal_id, CHI_UUID);
+  // 10 status emitted is READY
+  assert.equal(row.status, "READY");
+  // 11 idempotency_key present + stable (deterministic sha256 of plan_run_id::order_key)
+  assert.ok(typeof row.idempotency_key === "string" && row.idempotency_key.length > 0);
+
+  // Serialize through the REAL production wire serializer.
+  const wire = mapQueueRowToIrelandCandidate(row, IN_WINDOW_MS);
+  // 02/03/04 preserved on the wire
+  assert.equal(wire.condition_id, "cond-cws-final");
+  assert.equal(wire.token_id, "tok-cws-final");
+  assert.equal(wire.side, "Chicago White Sox");
+  // 05 executable projection (is_executable true) / 06 timing (entry_state)
+  assert.equal(wire.is_executable, true);
+  assert.ok(wire.entry_state === "IN_WINDOW" || wire.entry_state === "PENDING_WINDOW");
+  // 07 stake on wire / 08 max_entry_price + price_cap alias
+  assert.equal(wire.stake_usd, 1.1);
+  assert.equal(wire.max_stake_usd, 1.1);
+  assert.equal(wire.max_entry_price, 0.58);
+  assert.equal(wire.price_cap, 0.58);
+  // 11 idempotency_key on wire
+  assert.equal(wire.idempotency_key, row.idempotency_key);
+});
+
+test("CERT: 11/13 idempotency_key is stable across a duplicate invocation and 13 no second row is created", async () => {
+  const reservation = chicagoPlanningReservation();
+  const repo = makeFakeRepo([reservation]);
+  const finalFn = async () => ({ candidates: [chicagoFinalCandidate()] });
+  const first = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: finalFn });
+  assert.equal(first.queued_count, 1);
+  const firstKey = repo.queueRows[0].idempotency_key;
+
+  // Re-surface the reservation (simulate a race/retry re-read, mirrors B4): it is
+  // active again AND already in the queued set -> alreadyQueued must block a second row.
+  reservation.status = "REBALANCE_PENDING";
+  const second = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: finalFn });
+  assert.equal(second.already_queued_count, 1);
+  assert.equal(second.queued_count, 0);
+  assert.equal(repo.queueRows.length, 1, "duplicate invocation must not create a second queue row");
+  assert.equal(repo.queueRows[0].idempotency_key, firstKey, "idempotency_key stable");
+});
+
+test("CERT: 06/14 a stale (past T-3) reservation cannot become READY -- no queue row, no serialization", async () => {
+  const { repo, result } = await runCanonicalProducer({}, {}, AFTER_WINDOW_MS);
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0, "stale reservation must never produce a READY row");
+});
+
+// ── Negative filter matrix: mutate ONE field, assert the exact fail-closed result.
+
+test("CERT-NEG: identity missing (no lineage, no slug, non-matching key) -> SKIPPED CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE, no row", async () => {
+  const { repo, result } = await runCanonicalProducer(
+    { best_snapshot_id: null, event_slug: "", match_family_key: "WEAK:orphan" },
+    { generated_signal_pair_id: "other-uuid", event_slug: "some-other-slug", match_family_key: "match:other" },
+  );
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE/);
+});
+
+test("CERT-NEG: identity ambiguous (two finals share the source UUID) -> fail closed, IDENTITY_INCOMPLETE, no row", async () => {
+  const repo = makeFakeRepo([chicagoPlanningReservation()]);
+  const a = chicagoFinalCandidate({ condition_id: "c-a" });
+  const b = chicagoFinalCandidate({ condition_id: "c-b" }); // same CHI_UUID
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [a, b] }) });
+  assert.equal(result.queued_count, 0);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE/);
+});
+
+test("CERT-NEG: outside timing window (before T-70) -> not due, no queue row", async () => {
+  const { repo, result } = await runCanonicalProducer({}, {}, BEFORE_WINDOW_MS);
+  assert.equal(result.due_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+});
+
+test("CERT-NEG: non-executable final candidate (missing token_id) -> SKIPPED, not queued", async () => {
+  // Located by lineage, but fails isExecutableMarket -> MARKET_NOT_EXECUTABLE.
+  const { repo, result } = await runCanonicalProducer({}, { token_id: "" });
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_(IDENTITY_INCOMPLETE|MARKET_NOT_EXECUTABLE)/);
+});
+
+test("CERT-NEG: invalid stake (non-positive) on final candidate -> not executable, no queue row", async () => {
+  const { repo, result } = await runCanonicalProducer({}, { stake_usd: 0 });
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+});
+
+test("CERT-NEG: missing source UUID + empty slug (only un-prefixed key, which never matches prefixed final) -> IDENTITY_INCOMPLETE", async () => {
+  const { repo, result } = await runCanonicalProducer({ best_snapshot_id: null });
+  // reservation match_family_key is un-prefixed WEAK...; final is match:... -> no exact key match; slug empty -> no slug match.
+  assert.equal(result.queued_count, 0);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE/);
+});
+
+test("CERT-NEG: queue-route serializer exposes no secret-bearing field (no diagnostics blob, no source_signal_id, no keys/tokens beyond order identity)", async () => {
+  const { repo } = await runCanonicalProducer();
+  const wire = mapQueueRowToIrelandCandidate(repo.queueRows[0], IN_WINDOW_MS);
+  const keys = Object.keys(wire);
+  // The wire payload must not carry the raw diagnostics blob or the internal source_signal_id.
+  assert.equal(keys.includes("diagnostics"), false);
+  assert.equal(keys.includes("source_signal_id"), false);
+  // No field name suggests a secret/credential.
+  for (const k of keys) {
+    assert.doesNotMatch(k, /secret|password|apikey|api_key|private|passphrase|authorization/i);
+  }
 });
