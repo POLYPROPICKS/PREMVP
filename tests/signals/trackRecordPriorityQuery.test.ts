@@ -5,7 +5,13 @@ import {
   buildTrackRecordEligibilityQuerySpec,
   sortTrackRecordPriorityCandidates,
   TRACK_RECORD_DISPLAY_SELECT_COLUMNS,
+  PENDING_RESOLUTION_SELECT_COLUMNS,
   type TrackRecordPriorityCandidate,
+  isUuidLike,
+  extractLiveQueueSourceSignalIds,
+  buildLiveLedgerEligibilityQuerySpec,
+  LIVE_QUEUE_SOURCE_STATUSES,
+  type LiveQueueSourceRow,
 } from "../../scripts/resolve-signals";
 
 // Confirmed-stuck resolver_rank cases from track_record_display_signals SQL
@@ -134,4 +140,129 @@ test("no resolved/future/missing-identity rows are selected", () => {
   assert.equal(isEligible(missingToken), false);
   assert.equal(isEligible(missingFormula), false);
   assert.equal(isEligible(CASE_1_CONCRETE_VALORANT), true);
+});
+
+// --- Live-ledger (event_execution_queue-first) priority resolution --------
+//
+// Production incident, 2026-07-21: founder battle batch had 4 EXECUTED + 4
+// FAILED event_execution_queue rows, all 8 with a valid
+// diagnostics.source_signal_id pointing at generated_signal_pairs.id. The
+// old --priority-live-ledger path only read executor_order_events
+// (dry_run=false, live_confirm/success within 24h) and joined by
+// (condition_id, selected_token_id) — it logged
+// LIVE_PRIORITY_LEDGER_SUPABASE_EMPTY_LAST_24H and matched 0 rows, so those
+// 8 source signals were never reached ahead of the generic backlog (which
+// itself never got that deep). This new path resolves directly from the
+// queue's own diagnostics.source_signal_id, independent of
+// executor_order_events / clob_order_id.
+
+const LIVE_SOURCE_ID = "71133492-e81c-4373-b25a-9b702edd8c85";
+
+test("PhysEvent/LiveLedger-1: EXECUTED queue row with a valid diagnostics.source_signal_id is extracted", () => {
+  const rows: LiveQueueSourceRow[] = [
+    { id: "q1", status: "EXECUTED", updated_at: "2026-07-21T20:00:00.000Z", diagnostics: { source_signal_id: LIVE_SOURCE_ID } },
+  ];
+  assert.deepEqual(extractLiveQueueSourceSignalIds(rows), [LIVE_SOURCE_ID]);
+});
+
+test("LiveLedger-2: FAILED (rejected) queue rows are included too — no clob_order_id or executor_order_events row required", () => {
+  const rows: LiveQueueSourceRow[] = [
+    { id: "q-failed", status: "FAILED", updated_at: "2026-07-21T20:05:00.000Z", diagnostics: { source_signal_id: LIVE_SOURCE_ID } },
+  ];
+  assert.deepEqual(extractLiveQueueSourceSignalIds(rows), [LIVE_SOURCE_ID]);
+  assert.deepEqual([...LIVE_QUEUE_SOURCE_STATUSES], ["EXECUTED", "FAILED"]);
+});
+
+test("LiveLedger-3: invalid/non-UUID source_signal_id values are ignored, not thrown, and don't poison other rows", () => {
+  const otherId = "a1b2c3d4-e5f6-4789-a012-3456789abcde";
+  const rows: LiveQueueSourceRow[] = [
+    { id: "q-bad-1", status: "EXECUTED", updated_at: "2026-07-21T20:00:00.000Z", diagnostics: { source_signal_id: "not-a-uuid" } },
+    { id: "q-bad-2", status: "EXECUTED", updated_at: "2026-07-21T20:00:00.000Z", diagnostics: { source_signal_id: 12345 } },
+    { id: "q-bad-3", status: "EXECUTED", updated_at: "2026-07-21T20:00:00.000Z", diagnostics: {} },
+    { id: "q-bad-4", status: "EXECUTED", updated_at: "2026-07-21T20:00:00.000Z", diagnostics: null },
+    { id: "q-good", status: "EXECUTED", updated_at: "2026-07-21T20:00:00.000Z", diagnostics: { source_signal_id: otherId } },
+  ];
+  assert.deepEqual(extractLiveQueueSourceSignalIds(rows), [otherId]);
+  assert.equal(isUuidLike("not-a-uuid"), false);
+  assert.equal(isUuidLike(12345), false);
+  assert.equal(isUuidLike(otherId), true);
+});
+
+test("LiveLedger-4: a READY/CLAIMED/SENT queue row (not EXECUTED/FAILED) is not treated as a live-priority source", () => {
+  const rows: LiveQueueSourceRow[] = [
+    { id: "q-ready", status: "READY", updated_at: "2026-07-21T20:00:00.000Z", diagnostics: { source_signal_id: LIVE_SOURCE_ID } },
+    { id: "q-claimed", status: "CLAIMED", updated_at: "2026-07-21T20:00:00.000Z", diagnostics: { source_signal_id: LIVE_SOURCE_ID } },
+  ];
+  assert.deepEqual(extractLiveQueueSourceSignalIds(rows), []);
+});
+
+test("LiveLedger-5: repeated queue rows pointing at the same source_signal_id dedupe to one id", () => {
+  const rows: LiveQueueSourceRow[] = [
+    { id: "q1", status: "EXECUTED", updated_at: "2026-07-21T20:00:00.000Z", diagnostics: { source_signal_id: LIVE_SOURCE_ID } },
+    { id: "q2", status: "FAILED", updated_at: "2026-07-21T20:01:00.000Z", diagnostics: { source_signal_id: LIVE_SOURCE_ID } },
+  ];
+  assert.deepEqual(extractLiveQueueSourceSignalIds(rows), [LIVE_SOURCE_ID]);
+});
+
+test("LiveLedger-6: eligibility spec applies normal resolver eligibility (signal_result null + identity + formula-version), scoped to source ids", () => {
+  const spec = buildLiveLedgerEligibilityQuerySpec([LIVE_SOURCE_ID, "other-id"]);
+
+  assert.deepEqual(spec.ids, [LIVE_SOURCE_ID, "other-id"]);
+  assert.equal(spec.filters.signalResultIsNull, true);
+  assert.equal(spec.filters.conditionIdNotNull, true);
+  assert.equal(spec.filters.selectedTokenIdNotNull, true);
+  assert.equal(spec.filters.entryPriceNumNotNull, true);
+  assert.equal(spec.filters.metricFormulaVersionNotNull, true);
+  // Same narrow select used by the generic backlog spec — no
+  // premium_signal/diagnostics blobs during candidate discovery.
+  assert.equal(spec.select, PENDING_RESOLUTION_SELECT_COLUMNS);
+});
+
+test("LiveLedger-7: a row excluded by metric_formula_version IS NULL under the shared eligibility predicate is not resolved", () => {
+  function isEligible(row: {
+    signal_result: string | null;
+    condition_id: string | null;
+    selected_token_id: string | null;
+    entry_price_num: number | null;
+    metric_formula_version: string | null;
+  }): boolean {
+    if (row.signal_result !== null) return false;
+    if (!row.condition_id || !row.selected_token_id) return false;
+    if (row.entry_price_num === null) return false;
+    if (!row.metric_formula_version) return false;
+    return true;
+  }
+
+  const eligibleRow = {
+    signal_result: null,
+    condition_id: "cond-x",
+    selected_token_id: "token-x",
+    entry_price_num: 0.4,
+    metric_formula_version: "v2-lite-growth-safe",
+  };
+  const nullFormulaRow = { ...eligibleRow, metric_formula_version: null };
+
+  assert.equal(isEligible(eligibleRow), true);
+  assert.equal(isEligible(nullFormulaRow), false);
+});
+
+test("LiveLedger-8 (regression, production incident 2026-07-21): 4 EXECUTED + 4 FAILED queue rows with valid source_signal_id all yield a resolvable id set, before-patch would have been 0 via executor_order_events alone", () => {
+  const rows: LiveQueueSourceRow[] = [
+    { id: "q-exec-1", status: "EXECUTED", updated_at: "2026-07-21T21:00:00.000Z", diagnostics: { source_signal_id: "11111111-1111-4111-8111-111111111111" } },
+    { id: "q-exec-2", status: "EXECUTED", updated_at: "2026-07-21T21:01:00.000Z", diagnostics: { source_signal_id: "22222222-2222-4222-8222-222222222222" } },
+    { id: "q-exec-3", status: "EXECUTED", updated_at: "2026-07-21T21:02:00.000Z", diagnostics: { source_signal_id: "33333333-3333-4333-8333-333333333333" } },
+    { id: "q-exec-4", status: "EXECUTED", updated_at: "2026-07-21T21:03:00.000Z", diagnostics: { source_signal_id: "44444444-4444-4444-8444-444444444444" } },
+    { id: "q-fail-1", status: "FAILED", updated_at: "2026-07-21T21:04:00.000Z", diagnostics: { source_signal_id: "55555555-5555-4555-8555-555555555555" } },
+    { id: "q-fail-2", status: "FAILED", updated_at: "2026-07-21T21:05:00.000Z", diagnostics: { source_signal_id: "66666666-6666-4666-8666-666666666666" } },
+    { id: "q-fail-3", status: "FAILED", updated_at: "2026-07-21T21:06:00.000Z", diagnostics: { source_signal_id: "77777777-7777-4777-8777-777777777777" } },
+    { id: "q-fail-4", status: "FAILED", updated_at: "2026-07-21T21:07:00.000Z", diagnostics: { source_signal_id: "88888888-8888-4888-8888-888888888888" } },
+  ];
+
+  const ids = extractLiveQueueSourceSignalIds(rows);
+  assert.equal(ids.length, 8, "all 8 source signals must be selected by the new queue-first path");
+
+  const spec = buildLiveLedgerEligibilityQuerySpec(ids);
+  assert.equal(spec.ids.length, 8);
+  assert.equal(spec.filters.signalResultIsNull, true);
+  assert.equal(spec.filters.metricFormulaVersionNotNull, true);
 });

@@ -252,6 +252,110 @@ function applyTrackRecordEligibilityQuerySpec(baseQuery: any, spec: TrackRecordE
     .gte("created_at", spec.filters.createdAtGte);
 }
 
+// ---- Live queue source-signal priority (event_execution_queue-first) ------
+// Root-cause fix: the pre-existing --priority-live-ledger path only read
+// executor_order_events (dry_run=false, live_confirm/success within 24h) and
+// joined generic_signal_pairs by (condition_id, selected_token_id). That
+// misses rows whose executor_order_events entry is absent, rejected, or
+// simply doesn't set live_confirm/success the way this query expects — the
+// July 21 incident (4 EXECUTED + 4 FAILED event_execution_queue rows, all 8
+// with a valid diagnostics.source_signal_id) reproduced exactly this: the
+// executor_order_events query returned 0 live rows for the window even
+// though event_execution_queue clearly recorded live executions. This new
+// path is authoritative and queue-first: it resolves by
+// event_execution_queue.diagnostics.source_signal_id → generated_signal_pairs.id
+// directly, never requiring a matching executor_order_events row or a
+// clob_order_id (a FAILED/rejected row still needs its source signal
+// reconciled — only the underlying market outcome decides won/lost).
+
+export const LIVE_QUEUE_SOURCE_STATUSES = ["EXECUTED", "FAILED"] as const;
+
+const UUID_LIKE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** UUID-shape guard for diagnostics.source_signal_id — untrusted jsonb, never assumed well-formed. */
+export function isUuidLike(value: unknown): value is string {
+  return typeof value === "string" && UUID_LIKE_RE.test(value);
+}
+
+export interface LiveQueueSourceRow {
+  id: string;
+  status: string | null;
+  updated_at: string | null;
+  diagnostics: Record<string, unknown> | null;
+}
+
+/**
+ * Pure extraction — testable without a DB round-trip. Keeps only
+ * EXECUTED/FAILED rows with a UUID-like diagnostics.source_signal_id,
+ * silently skipping malformed/missing ids (diagnostics is untrusted jsonb,
+ * never throws), and dedupes by source_signal_id.
+ */
+export function extractLiveQueueSourceSignalIds(rows: LiveQueueSourceRow[]): string[] {
+  const ids = new Set<string>();
+  for (const row of rows) {
+    if (!row.status || !(LIVE_QUEUE_SOURCE_STATUSES as readonly string[]).includes(row.status)) continue;
+    const raw = row.diagnostics?.source_signal_id;
+    if (isUuidLike(raw)) ids.add(raw);
+  }
+  return [...ids];
+}
+
+export interface LiveLedgerEligibilityQuerySpec {
+  select: string;
+  ids: string[];
+  filters: {
+    signalResultIsNull: true;
+    conditionIdNotNull: true;
+    selectedTokenIdNotNull: true;
+    entryPriceNumNotNull: true;
+    metricFormulaVersionNotNull: true;
+  };
+}
+
+/** Same core eligibility as buildPendingResolutionQuerySpec, scoped to an explicit id list instead of a date window. */
+export function buildLiveLedgerEligibilityQuerySpec(ids: string[]): LiveLedgerEligibilityQuerySpec {
+  return {
+    select: PENDING_RESOLUTION_SELECT_COLUMNS,
+    ids,
+    filters: {
+      signalResultIsNull: true,
+      conditionIdNotNull: true,
+      selectedTokenIdNotNull: true,
+      entryPriceNumNotNull: true,
+      metricFormulaVersionNotNull: true,
+    },
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function applyLiveLedgerEligibilityQuerySpec(baseQuery: any, spec: LiveLedgerEligibilityQuerySpec) {
+  return baseQuery
+    .select(spec.select)
+    .in("id", spec.ids)
+    .is("signal_result", null)
+    .not("condition_id", "is", null)
+    .not("selected_token_id", "is", null)
+    .not("entry_price_num", "is", null)
+    .not("metric_formula_version", "is", null);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function loadLiveQueueSourceRows(supabase: any, sinceIso: string): Promise<LiveQueueSourceRow[]> {
+  const { data, error } = await supabase
+    .from("event_execution_queue")
+    .select("id, status, updated_at, diagnostics")
+    .in("status", [...LIVE_QUEUE_SOURCE_STATUSES])
+    .not("diagnostics->>source_signal_id", "is", null)
+    .gte("updated_at", sinceIso)
+    .order("updated_at", { ascending: false })
+    .limit(500);
+
+  if (error) {
+    throw new Error(`LIVE_QUEUE_SOURCE_QUERY_FAILED: ${error.message}`);
+  }
+  return ((data ?? []) as unknown) as LiveQueueSourceRow[];
+}
+
 const rawLimit = (() => {
   const arg = process.argv.find((a) => a.startsWith("--limit="));
   if (!arg) return 25;
@@ -459,7 +563,127 @@ async function main() {
   let livePriorityErrors = 0;
   let livePriorityRowsUpdated = 0;
 
+  let liveQueueRowsLoaded = 0;
+  let liveSourceIdsLoaded = 0;
+  let liveSourceRowsMatched = 0;
+  let liveSourceRowsResolved = 0;
+  let liveSourceRowsUnresolved = 0;
+  let liveSourceRowsMissing = 0;
+
   if (PRIORITY_LIVE_LEDGER) {
+    // ── Pass 1: event_execution_queue-first, by diagnostics.source_signal_id.
+    // Authoritative and runs before the executor_order_events-based pass
+    // below — a queue row is money-truth regardless of whether a matching
+    // order-event was written the way that pass expects.
+    const liveQueueSinceIso = new Date(Date.now() - 24 * 3_600_000).toISOString();
+    const liveQueueRows = await loadLiveQueueSourceRows(supabase, liveQueueSinceIso);
+    liveQueueRowsLoaded = liveQueueRows.length;
+    const liveSourceIds = extractLiveQueueSourceSignalIds(liveQueueRows);
+    liveSourceIdsLoaded = liveSourceIds.length;
+
+    if (liveSourceIds.length > 0) {
+      const eligSpec = buildLiveLedgerEligibilityQuerySpec(liveSourceIds);
+      const { data: eligibleRows, error: eligError } = await applyLiveLedgerEligibilityQuerySpec(
+        supabase.from("generated_signal_pairs"),
+        eligSpec,
+      );
+
+      if (eligError) {
+        livePriorityErrors++;
+        console.error(
+          `[resolve-signals] LIVE_QUEUE_SOURCE_ELIGIBILITY_QUERY_FAILED: ${eligError.message}`,
+        );
+      } else {
+        const eligibleRowsTyped = ((eligibleRows ?? []) as unknown) as ResolverRow[];
+        liveSourceRowsMatched = eligibleRowsTyped.length;
+        liveSourceRowsMissing = liveSourceIds.length - eligibleRowsTyped.length;
+
+        for (const row of eligibleRowsTyped) {
+          if (WRITE_MODE && livePriorityResolved >= maxUpdates) {
+            console.log(
+              `[resolve-signals] Max live priority updates reached (${maxUpdates}) — stopping live-queue-source writes`,
+            );
+            break;
+          }
+          if (!row.condition_id || !row.selected_token_id) continue;
+
+          const market = await fetchGammaMarketByConditionId(row.condition_id);
+          const outcome = resolveSignalOutcome({
+            conditionId: row.condition_id,
+            selectedTokenId: row.selected_token_id,
+            entryPriceNum: row.entry_price_num,
+            market,
+          });
+
+          if (outcome.resolverState !== "resolved_candidate") {
+            liveSourceRowsUnresolved++;
+            console.log(
+              `[resolve-signals] LIVE_QUEUE_SOURCE_SKIP id=${row.id}` +
+                ` state=${outcome.resolverState} reason=${outcome.skipReason}`,
+            );
+            continue;
+          }
+
+          if (!WRITE_MODE) {
+            liveSourceRowsUnresolved++;
+            console.log(
+              `[resolve-signals] LIVE_QUEUE_SOURCE_WOULD id=${row.id}` +
+                ` result=${outcome.signalResult}` +
+                ` return=${outcome.realizedReturnPct}%` +
+                ` winner=${outcome.candidateWinningOutcome}`,
+            );
+            continue;
+          }
+
+          const resolvedAt = new Date().toISOString();
+          const { data: updatedRows, error: updateError } = await supabase
+            .from("generated_signal_pairs")
+            .update({
+              signal_result: outcome.signalResult,
+              resolved_at: resolvedAt,
+              winning_outcome: outcome.candidateWinningOutcome,
+              realized_return_pct: outcome.realizedReturnPct,
+            })
+            .eq("id", row.id)
+            .is("signal_result", null)
+            .select("id");
+
+          if (updateError) {
+            livePriorityErrors++;
+            console.error(
+              `[resolve-signals] LIVE_QUEUE_SOURCE_ERROR id=${row.id} update failed: ${updateError.message}`,
+            );
+            continue;
+          }
+
+          const affectedRows = updatedRows?.length ?? 0;
+          livePriorityRowsUpdated += affectedRows;
+          liveSourceRowsResolved++;
+          livePriorityResolved++;
+          console.log(
+            `[resolve-signals] LIVE_QUEUE_SOURCE_WRITE id=${row.id}` +
+              ` rows=${affectedRows}` +
+              ` result=${outcome.signalResult}` +
+              ` return=${outcome.realizedReturnPct}%` +
+              ` winner=${outcome.candidateWinningOutcome}`,
+          );
+        }
+      }
+    }
+
+    console.log(
+      `[resolve-signals] LIVE_QUEUE_SOURCE_SUMMARY` +
+        ` live_queue_rows_loaded=${liveQueueRowsLoaded}` +
+        ` live_source_ids_loaded=${liveSourceIdsLoaded}` +
+        ` live_source_rows_matched=${liveSourceRowsMatched}` +
+        ` live_source_rows_resolved=${liveSourceRowsResolved}` +
+        ` live_source_rows_unresolved=${liveSourceRowsUnresolved}` +
+        ` live_source_rows_missing=${liveSourceRowsMissing}`,
+    );
+
+    // ── Pass 2: existing executor_order_events-based path (unchanged) —
+    // kept as a supplementary source for any live target this repo's
+    // order-events table records that a queue row doesn't (or didn't) carry.
     const targets = await loadPriorityLiveTargets(supabase);
     livePriorityTargetsLoaded = targets.length;
     console.log(
@@ -608,6 +832,12 @@ async function main() {
             livePriorityMissingInPairs,
             livePriorityErrors,
             livePriorityRowsUpdated,
+            liveQueueRowsLoaded,
+            liveSourceIdsLoaded,
+            liveSourceRowsMatched,
+            liveSourceRowsResolved,
+            liveSourceRowsUnresolved,
+            liveSourceRowsMissing,
           },
         });
       } else {
