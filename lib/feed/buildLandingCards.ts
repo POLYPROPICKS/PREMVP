@@ -106,6 +106,7 @@ function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket
   };
 
   (market as unknown as Record<string, unknown>)._parentMeta = {
+    id: sample.gameId || sample.slug,
     title: sample.title,
     slug: sample.slug,
     category: sample.leagueName || "Sports",
@@ -164,6 +165,7 @@ function researchNestedMarketToCandidate(rm: ResearchNestedMarket): {
   };
 
   (market as unknown as Record<string, unknown>)._parentMeta = {
+    id: rm.eventId || eventSlug,
     title: rm.eventTitle || rm.marketQuestion,
     slug: eventSlug,
     category: rm.leagueName || rm.marketFamily || "Sports",
@@ -211,12 +213,14 @@ interface ForcedOutcomeSelection {
 }
 
 interface ParentEventMeta {
+  id?: string;
   title: string;
   slug: string;
   category?: string;
   endDate?: string;
   startDate?: string;
   polymarketEventSlug?: string;
+  sportsMarketType?: string;
 }
 
 interface EnrichedMarket {
@@ -505,6 +509,7 @@ function extractCandidateMarkets(events: PolymarketRawEvent[]): CandidateMarket[
   for (const event of events) {
     // Extract parent event metadata
     const parentMeta: ParentEventMeta = {
+      id: safeString(event.id) || undefined,
       title: safeString(event.title) || safeString(event.description) || "Unknown Event",
       slug: safeString(event.slug) || slugify(safeString(event.title) || "unknown"),
       category: safeString(event.category) || undefined,
@@ -722,6 +727,17 @@ async function enrichMarket(
       event.volume24hr ?? market.volume24hr ?? 0
     ),
     gameStartIso: parentMeta.startDate ?? event.endDate ?? null,
+    providerEventContext: {
+      v: "v1",
+      provider: "polymarket",
+      ...(parentMeta.id ? { eventId: parentMeta.id } : {}),
+      ...(parentMeta.polymarketEventSlug ? { eventSlug: parentMeta.polymarketEventSlug } : {}),
+      ...(parentMeta.title ? { eventTitle: parentMeta.title } : {}),
+      ...(safeString(market.question) ? { marketQuestion: safeString(market.question)! } : {}),
+      ...(parentMeta.category ? { sportFamily: parentMeta.category, league: parentMeta.category } : {}),
+      ...(parentMeta.sportsMarketType ? { game: parentMeta.sportsMarketType } : {}),
+      ...(parentMeta.startDate ?? event.endDate ? { eventStartIso: parentMeta.startDate ?? event.endDate! } : {}),
+    },
   };
 
   // Try to get price movement from Gamma fields as fallback

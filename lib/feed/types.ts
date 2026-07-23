@@ -54,6 +54,18 @@ export interface MarketSource {
 
 export interface LandingCardDiagnostics {
   conditionId: string | null;
+  providerEventContext?: {
+    v: "v1";
+    provider: "polymarket";
+    eventId?: string;
+    eventSlug?: string;
+    eventTitle?: string;
+    marketQuestion?: string;
+    sportFamily?: string;
+    game?: string;
+    league?: string;
+    eventStartIso?: string;
+  };
   selectedTokenId: string | null;
   selectedOutcome: string;
   currentPrice: number | null;

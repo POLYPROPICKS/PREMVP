@@ -121,6 +121,13 @@ export interface FireModelCandidate {
   // true when match_family_key is backed only by condition_id (market-level, not event-level).
   match_family_key_is_weak: boolean;
   event_slug: string | null;
+  providerEventKey?: string | null;
+  providerEventTitle?: string | null;
+  providerMarketQuestion?: string | null;
+  authoritativeSportFamily?: string | null;
+  authoritativeGame?: string | null;
+  authoritativeLeague?: string | null;
+  authoritativeEventStart?: string | null;
   condition_id: string;
   token_id: string;
   side: string;
@@ -351,7 +358,10 @@ function buildIdentityText(
     diag.researchContext && typeof diag.researchContext === "object"
       ? (diag.researchContext as Record<string, unknown>)
       : null;
+  const providerContext = providerContextOf(diag);
   const planningSources: unknown[] = [
+    providerContext?.eventTitle,
+    providerContext?.marketQuestion,
     researchContext?.eventTitle,
     diag.eventTitle,
     researchContext?.eventSlug,
@@ -377,6 +387,31 @@ function buildIdentityText(
     }
   }
   return { text: "", activityLabelDetected };
+}
+
+function providerContextOf(diag: Record<string, unknown>): Record<string, string> | null {
+  const raw = diag.providerEventContext;
+  if (!raw || typeof raw !== "object") return null;
+  const c = raw as Record<string, unknown>;
+  if (c.v !== "v1" || c.provider !== "polymarket") return null;
+  const out: Record<string, string> = {};
+  for (const key of ["eventId", "eventSlug", "eventTitle", "marketQuestion", "sportFamily", "game", "league", "eventStartIso"]) {
+    if (typeof c[key] === "string" && c[key].trim()) out[key] = c[key].trim();
+  }
+  return out;
+}
+
+function providerEventKeyOf(context: Record<string, string> | null, gameStartIso: string): string | null {
+  const identity = context?.eventSlug ?? context?.eventId;
+  const start = context?.eventStartIso ?? gameStartIso;
+  if (!identity || !/^[-a-z0-9_]+$/i.test(identity) || !/^\d{4}-\d{2}-\d{2}T/.test(start)) return null;
+  return `polymarket:${identity.toLowerCase()}:${start.slice(0, 10)}`;
+}
+
+function authoritativeScope(context: Record<string, string> | null): StrategicScope | null {
+  if (!context) return null;
+  const text = `${context.sportFamily ?? ""} ${context.game ?? ""} ${context.league ?? ""}`.toLowerCase();
+  return /esport|\blol\b|valorant|dota|cs2|counter-strike/.test(text) ? "ESPORT" : null;
 }
 
 function safeLower(v: unknown): string {
@@ -1108,6 +1143,7 @@ export async function buildFireModelCandidates(
     }
 
     const diag: Record<string, unknown> = row.diagnostics ?? {};
+    const providerContext = providerContextOf(diag);
     // Canonical market class of this raw row (assigned once identityText is derived
     // below). Every live-allowed full-match raw row is then accounted as admitted
     // (on candidate push) or rejected with the exact reason captured here.
@@ -1228,7 +1264,10 @@ export async function buildFireModelCandidates(
       continue;
     }
 
-    const derivedScope = deriveSportScope(identityText);
+    const authoritative = authoritativeScope(providerContext);
+    const derivedScope = authoritative
+      ? { scope: authoritative, confidence: "HIGH" as const }
+      : deriveSportScope(identityText);
     const { scope: strategicScope, confidence: scopeConfidence } =
       planningMode && derivedScope.scope === "UNKNOWN"
         ? resolvePlanningScope(row, identityText, derivedScope.scope)
@@ -1448,6 +1487,13 @@ export async function buildFireModelCandidates(
       match_family_key_source: matchFamilyKeySource,
       match_family_key_is_weak: matchFamilyKeyIsWeak,
       event_slug: rawEventSlugForCandidate,
+      providerEventKey: providerEventKeyOf(providerContext, gameStartIso),
+      providerEventTitle: providerContext?.eventTitle ?? null,
+      providerMarketQuestion: providerContext?.marketQuestion ?? null,
+      authoritativeSportFamily: providerContext?.sportFamily ?? null,
+      authoritativeGame: providerContext?.game ?? null,
+      authoritativeLeague: providerContext?.league ?? null,
+      authoritativeEventStart: providerContext?.eventStartIso ?? null,
       condition_id: row.condition_id,
       token_id: row.selected_token_id,
       side,

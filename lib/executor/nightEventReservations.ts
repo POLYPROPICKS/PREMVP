@@ -128,6 +128,8 @@ export type FullMatchAnchorDecision =
   | { allowed: false; reason: FullMatchAnchorRejectionReason };
 
 function anchorTitle(c: FireModelCandidate): string {
+  if (typeof c.providerEventTitle === "string" && c.providerEventTitle.trim()) return c.providerEventTitle.trim();
+  if (typeof c.providerMarketQuestion === "string" && c.providerMarketQuestion.trim()) return c.providerMarketQuestion.trim();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const diagnosticTitle: unknown = (c as any).diagnostics?.marketTitle;
   if (typeof diagnosticTitle === "string" && diagnosticTitle.trim()) return diagnosticTitle.trim();
@@ -149,7 +151,10 @@ export function fullMatchAnchorDecision(c: FireModelCandidate): FullMatchAnchorD
   if (ESPORTS_SUBMARKET_RE.test(title)) return { allowed: false, reason: "FULLMATCH_SUBMARKET_REJECTED" };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const diagTitle: string = (c as any).diagnostics?.marketTitle ?? "";
-  const hay = `${c.market_slug ?? ""} ${c.event_slug ?? ""} ${c.match_family_key ?? ""} ${diagTitle}`;
+  const trustedTitle = c.providerEventTitle ?? c.providerMarketQuestion;
+  const hay = typeof trustedTitle === "string" && trustedTitle.trim()
+    ? `${trustedTitle} ${c.match_family_key ?? ""}`
+    : `${c.market_slug ?? ""} ${c.event_slug ?? ""} ${c.match_family_key ?? ""} ${diagTitle}`;
   if (ALLOWED_FULLMATCH_ANCHOR_RE.test(hay)) return { allowed: true };
 
   if (c.inferred_sport !== "esport") return { allowed: false, reason: "FULLMATCH_UNSUPPORTED_SPORT" };
@@ -410,6 +415,9 @@ export async function buildReservationPlan(
   // reserves them). Pure condition-id keys with no canonical identity return null → skip.
   const { repBySig, repByTeamDate, repByTeam } = buildPhysicalMatchIndex(universe);
   const canonicalPhysicalMatchKey = (c: FireModelCandidate): string | null => {
+    // Provider event identity is authoritative when present and already includes
+    // a compatible event date. This collapses title variants before ranking.
+    if (c.providerEventKey) return c.providerEventKey;
     const k = c.match_family_key;
 
     // Any two-team game (pair:* or raw "a vs b", any order) → single representative.
