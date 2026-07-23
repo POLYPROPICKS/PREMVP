@@ -62,7 +62,7 @@ export async function fetchPolymarketActiveEvents(options?: {
   const params = new URLSearchParams({
     active: "true",
     closed: "false",
-    order: "volume_24hr",
+    order: "volume24hr",
     ascending: "false",
     limit: limit.toString(),
     offset: offset.toString(),
