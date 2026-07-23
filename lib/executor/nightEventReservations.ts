@@ -111,12 +111,56 @@ function isForbiddenAnchorMarket(c: FireModelCandidate): boolean {
 const ALLOWED_FULLMATCH_ANCHOR_RE =
   /moneyline|match\s*winner|\bto\s*win\b|\bwinner\b|\bspread\b|\bhandicap\b|total\s*goals|over[\s/]under|\bo\/u\b|\btotal\b/i;
 
-function isAllowedFullMatchAnchor(c: FireModelCandidate): boolean {
-  if (isForbiddenAnchorMarket(c)) return false;
+const ESPORTS_SERIES_TITLE_RE =
+  /^(?:will\s+)?(?:counter-strike|dota\s*2|lol|league\s+of\s+legends|valorant)\s*:\s*(.+?)\s+(?:vs\.?|beat(?:s)?)\s+(.+?)\s*\(\s*bo(?:1|3|5)\s*\)(?:\s*[-?].*)?$/i;
+const ESPORTS_SUBMARKET_RE =
+  /\bmap\s*\d+\b|\brounds?\b|\btotal\s+(?:maps?|rounds?)\b|\b(?:maps?|rounds?)\s+total\b|\bplayer\b|\bkills?\b|\bhandicap\b/i;
+
+export type FullMatchAnchorRejectionReason =
+  | "FULLMATCH_TWO_COMPETITORS_MISSING"
+  | "FULLMATCH_SUBMARKET_REJECTED"
+  | "FULLMATCH_SERIES_MARKER_MISSING"
+  | "FULLMATCH_UNSUPPORTED_SPORT"
+  | "FULLMATCH_IDENTITY_INVALID";
+
+export type FullMatchAnchorDecision =
+  | { allowed: true }
+  | { allowed: false; reason: FullMatchAnchorRejectionReason };
+
+function anchorTitle(c: FireModelCandidate): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const diagnosticTitle: unknown = (c as any).diagnostics?.marketTitle;
+  if (typeof diagnosticTitle === "string" && diagnosticTitle.trim()) return diagnosticTitle.trim();
+  if (typeof c.event_slug === "string" && c.event_slug.trim()) return c.event_slug.trim();
+  return typeof c.market_slug === "string" ? c.market_slug.trim() : "";
+}
+
+function canonicalEsportsSeriesCompetitors(c: FireModelCandidate): { a: string; b: string } | null {
+  const match = anchorTitle(c).match(ESPORTS_SERIES_TITLE_RE);
+  if (!match) return null;
+  const a = normTeam(match[1]);
+  const b = normTeam(match[2]);
+  return a && b && a !== b ? { a, b } : null;
+}
+
+export function fullMatchAnchorDecision(c: FireModelCandidate): FullMatchAnchorDecision {
+  if (isForbiddenAnchorMarket(c)) return { allowed: false, reason: "FULLMATCH_SUBMARKET_REJECTED" };
+  const title = anchorTitle(c);
+  if (ESPORTS_SUBMARKET_RE.test(title)) return { allowed: false, reason: "FULLMATCH_SUBMARKET_REJECTED" };
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const diagTitle: string = (c as any).diagnostics?.marketTitle ?? "";
   const hay = `${c.market_slug ?? ""} ${c.event_slug ?? ""} ${c.match_family_key ?? ""} ${diagTitle}`;
-  return ALLOWED_FULLMATCH_ANCHOR_RE.test(hay);
+  if (ALLOWED_FULLMATCH_ANCHOR_RE.test(hay)) return { allowed: true };
+
+  if (c.inferred_sport !== "esport") return { allowed: false, reason: "FULLMATCH_UNSUPPORTED_SPORT" };
+  if (!/\(\s*bo(?:1|3|5)\s*\)/i.test(title)) return { allowed: false, reason: "FULLMATCH_SERIES_MARKER_MISSING" };
+  return canonicalEsportsSeriesCompetitors(c)
+    ? { allowed: true }
+    : { allowed: false, reason: "FULLMATCH_TWO_COMPETITORS_MISSING" };
+}
+
+export function isAllowedFullMatchAnchor(c: FireModelCandidate): boolean {
+  return fullMatchAnchorDecision(c).allowed;
 }
 
 // Founder live-slot policy: try to fill at least this many live slots when eligible
@@ -173,6 +217,8 @@ function extractTeamsDate(c: FireModelCandidate): { a: string; b: string; date: 
     const b = normTeam(vs[2]);
     if (a && b) return { a, b, date };
   }
+  const esports = canonicalEsportsSeriesCompetitors(c);
+  if (esports) return { ...esports, date };
   return null;
 }
 
@@ -306,6 +352,7 @@ export interface ReservationPlan {
     fallbackTier3Reserved: number;
     fallbackEligibleGroupsSeen: number;
     fallbackSkippedNoAllowedFullmatch: number;
+    fallback_rejection_reasons: Partial<Record<FullMatchAnchorRejectionReason, number>>;
     slotFillTargetReached: boolean;
     r0_trace?: R0PlanningTrace;
   };
@@ -422,6 +469,7 @@ export async function buildReservationPlan(
     fallbackTier: "TIER2" | "TIER3";
   }> = [];
   let fallbackSkippedNoAllowedFullmatch = 0;
+  const fallbackRejectionReasons: Partial<Record<FullMatchAnchorRejectionReason, number>> = {};
 
   for (const [groupKey, arr] of groups.entries()) {
     const ranked = [...arr].sort(compareCandidateQuality);
@@ -450,13 +498,21 @@ export async function buildReservationPlan(
     // Tier1 absent for this real physical match. Per founder slot policy, hold it for the
     // explicit Tier2→Tier3 fallback ladder — but ONLY if a positively-allowed full-match
     // anchor exists. Pick the best executable anchor that is a real full-match market.
-    const bestAllowedFullmatch = executableAnchorRanked.find(isAllowedFullMatchAnchor);
+    const anchorDecisions = executableAnchorRanked.map((candidate) => ({
+      candidate,
+      decision: fullMatchAnchorDecision(candidate),
+    }));
+    const bestAllowedFullmatch = anchorDecisions.find(({ decision }) => decision.allowed)?.candidate;
     const fbTier = bestAllowedFullmatch ? eventTierOf(bestAllowedFullmatch) : "REJECTED";
     if (!bestAllowedFullmatch || (fbTier !== "TIER2" && fbTier !== "TIER3")) {
       // No allowed full-match anchor → genuinely non-actionable, correct skip (NOT silent
       // when a forbidden-only inventory is the cause: counted for forensic visibility).
       skippedNonTier1 += 1;
       fallbackSkippedNoAllowedFullmatch += 1;
+      const rejection = anchorDecisions[0]?.decision;
+      if (rejection && !rejection.allowed) {
+        fallbackRejectionReasons[rejection.reason] = (fallbackRejectionReasons[rejection.reason] ?? 0) + 1;
+      }
       continue;
     }
     fallbackRankable.push({ best: bestAllowedFullmatch, group: ranked, groupKey, fallbackTier: fbTier });
@@ -605,6 +661,7 @@ export async function buildReservationPlan(
       fallbackTier3Reserved,
       fallbackEligibleGroupsSeen: fallbackRankable.length,
       fallbackSkippedNoAllowedFullmatch,
+      fallback_rejection_reasons: fallbackRejectionReasons,
       slotFillTargetReached: reservations.length >= TARGET_LIVE_SLOTS,
       ...(rawDiagnostics
         ? {

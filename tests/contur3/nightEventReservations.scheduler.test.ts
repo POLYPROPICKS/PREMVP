@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   buildReservationPlan,
+  fullMatchAnchorDecision,
   persistReservationPlan,
   runReservationCronWithEvidence,
   type ReservationRepoPort,
@@ -335,4 +336,106 @@ test("R0A: production reservation planning attaches the measured source-to-reser
   assert.equal(trace.stages.find((stage) => stage.stage_name === "source_rows_available")?.output_count, 3);
   assert.equal(trace.stages.find((stage) => stage.stage_name === "distinct_physical_events")?.output_count, 1);
   assert.equal(trace.stages.find((stage) => stage.stage_name === "reservations_created")?.output_count, null);
+});
+
+test("R0A RED: canonical esports BO-series titles are safe fallback anchors and fill the existing target without duplicate events", async () => {
+  const tier1 = ["alpha-vs-beta", "gamma-vs-delta", "epsilon-vs-zeta"].map((pair, index) =>
+    baseCandidate({
+      signal_id: `tier1-${index}`,
+      match_family_key: `pair:${pair}:2026-07-19`,
+      market_slug: `${pair}-moneyline`,
+    })
+  );
+  const esports = [
+    "Counter-Strike: DNK vs WBT (BO1) - ESEA Advanced",
+    "Dota 2: Nemiga Gaming vs Ilbirs Esports (BO3)",
+    "Will Dota 2: Nemiga Gaming beat Ilbirs Esports (BO3)?",
+    "LoL: Blue Otter vs Cupid Esports (BO3)",
+    "Valorant: Evil Geniuses vs Leviatán Esports (BO3)",
+    "Valorant: GIANTX GC vs Twisted Minds Orchid (BO3)",
+    "Valorant: Karmine Corp GC vs ALTERNATE aTTaX Ruby (BO3)",
+    "Counter-Strike: Dark Moon vs Spirit Academy (BO1)",
+    "Counter-Strike: Banger Gang vs VP.Prodigy (BO1)",
+    "Counter-Strike: Strael-Bora vs ReThink (BO1)",
+    "Counter-Strike: ENRAGE vs New Vision (BO1)",
+    "Counter-Strike: OLDBOYS vs MTX (BO1)",
+    "Counter-Strike: Bushido Wildcats vs Privateer (BO1)",
+    "Counter-Strike: Imperial vs BESTIA Academy (BO3)",
+    "Valorant: Team Envy vs MIBR (BO3)",
+    "Counter-Strike: Isurus vs Patins da Ferrari (BO3)",
+    "LoL: Karmine Corp Blue vs TLN Pirates (BO1)",
+    "Dota 2: PuckChamp vs Team Jenz (BO3)",
+    "Valorant: T1 vs VARREL (BO3)",
+  ].map((title, index) =>
+    baseCandidate({
+      signal_id: `esports-${index}`,
+      strategy: "TIER3_MICRO_EXPAND_50_COV25",
+      inferred_sport: "esport",
+      market_slug: title,
+      event_slug: title,
+      match_family_key: `esports-${index}`,
+      canonical_event_key: null,
+      diagnostics: { ...baseCandidate().diagnostics, score: 64, coverage: 25 },
+    })
+  );
+  const cleveland = baseCandidate({
+    signal_id: "cleveland-fallback",
+    strategy: "TIER3_MICRO_EXPAND_50_COV25",
+    inferred_sport: "baseball",
+    market_slug: "Spread: Cleveland Guardians (-2.5)",
+    event_slug: "spread: cleveland guardians (-2.5)",
+    match_family_key: "WEAK_SINGLE_TEAM_SPREAD:cleveland-guardians:2026-07-19",
+    canonical_event_key: null,
+    diagnostics: { ...baseCandidate().diagnostics, score: 59, coverage: 25 },
+  });
+  const plan = await buildReservationPlan(ANCHOR_NOW_MS, {
+    fetchCandidates: async () => ({ candidates: [...tier1, cleveland, ...esports] }),
+  });
+  assert.equal(plan.diagnostics.event_groups, 22, "the equivalent Nemiga title forms must share one physical event");
+  assert.equal(plan.reservations.length, 15, "three Tier1 events plus the existing twelve fallback slots must be selected");
+  assert.equal(new Set(plan.reservations.map((reservation) => reservation.match_family_key)).size, 15);
+  assert.deepEqual(plan.reservations.map((reservation) => reservation.match_family_key), [
+    "pair:alpha-vs-beta:2026-07-19",
+    "pair:gamma-vs-delta:2026-07-19",
+    "pair:epsilon-vs-zeta:2026-07-19",
+    "pair:dnk-vs-wbt:2026-07-19",
+    "pair:nemiga-gaming-vs-ilbirs-esports:2026-07-19",
+    "pair:blue-otter-vs-cupid-esports:2026-07-19",
+    "pair:evil-geniuses-vs-leviat-n-esports:2026-07-19",
+    "pair:giantx-gc-vs-twisted-minds-orchid:2026-07-19",
+    "pair:karmine-corp-gc-vs-alternate-attax-ruby:2026-07-19",
+    "pair:dark-moon-vs-spirit-academy:2026-07-19",
+    "pair:banger-gang-vs-vpprodigy:2026-07-19",
+    "pair:strael-bora-vs-rethink:2026-07-19",
+    "pair:enrage-vs-new-vision:2026-07-19",
+    "pair:oldboys-vs-mtx:2026-07-19",
+    "pair:bushido-wildcats-vs-privateer:2026-07-19",
+  ]);
+  assert.equal(plan.diagnostics.fallbackSkippedNoAllowedFullmatch, 0);
+});
+
+test("R0A: esports full-match recognition accepts only canonical BO-series titles and reports exact rejection reasons", () => {
+  const accepted = baseCandidate({
+    strategy: "TIER3_MICRO_EXPAND_50_COV25",
+    inferred_sport: "esport",
+    market_slug: "Will Dota 2: Nemiga Gaming beat Ilbirs Esports (BO3)?",
+    event_slug: "Will Dota 2: Nemiga Gaming beat Ilbirs Esports (BO3)?",
+  });
+  assert.deepEqual(fullMatchAnchorDecision(accepted), { allowed: true });
+
+  const cases: Array<[string, string, string]> = [
+    ["Map 1 winner: Team A vs Team B", "FULLMATCH_SUBMARKET_REJECTED", "esport"],
+    ["Team A -3.5 rounds", "FULLMATCH_SUBMARKET_REJECTED", "esport"],
+    ["Total maps over 2.5", "FULLMATCH_SUBMARKET_REJECTED", "esport"],
+    ["Player X kills over 15.5", "FULLMATCH_SUBMARKET_REJECTED", "esport"],
+    ["Will Team A win Map 2?", "FULLMATCH_SUBMARKET_REJECTED", "esport"],
+    ["Valorant: Team A vs Team B", "FULLMATCH_SERIES_MARKER_MISSING", "esport"],
+    ["Valorant: Team A (BO3)", "FULLMATCH_TWO_COMPETITORS_MISSING", "esport"],
+    ["Valorant: Team A vs Team A (BO3)", "FULLMATCH_TWO_COMPETITORS_MISSING", "esport"],
+    ["Valorant: Team A vs Team B (BO3)", "FULLMATCH_UNSUPPORTED_SPORT", "baseball"],
+  ];
+  for (const [title, reason, sport] of cases) {
+    const candidate = baseCandidate({ inferred_sport: sport, market_slug: title, event_slug: title });
+    assert.deepEqual(fullMatchAnchorDecision(candidate), { allowed: false, reason }, title);
+  }
 });
