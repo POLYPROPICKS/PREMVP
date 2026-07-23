@@ -213,6 +213,8 @@ test("two-stage parity: 17:00 planning reserves beyond T-90 and later T-60 resol
   const planning = contractARow({
     condition_id: "cond-planning",
     selected_token_id: "tok-planning",
+    score: 64,
+    signal_confidence_num: 64,
     event_slug: eventSlug,
     market_slug: `${eventSlug}-moneyline`,
     __gameStart: "2026-07-19T19:00:00.000Z",
@@ -236,9 +238,36 @@ test("two-stage parity: 17:00 planning reserves beyond T-90 and later T-60 resol
     assert.equal(summary.wouldReserveCount, 1);
     assert.equal(summary.wouldRebalanceCount, 1);
     assert.equal(summary.wouldReadyCount, 1);
+    assert.equal(summary.finalContractARejections.SCORE_BELOW_65, 1);
     assert.equal(summary.identityMismatchCount, 0);
     assert.equal(summary.alternateSubstitutionCount, 0);
     assert.equal(summary.deterministicReplay, true);
+    assert.deepEqual(summary.safety, { productionReservationWrites: 0, productionQueueWrites: 0, callbacks: 0, irelandCalls: 0, clobOrders: 0 });
+  });
+});
+
+test("two-stage score-64 rejection: planning may reserve the event but final Contract A reports SCORE_BELOW_65 and creates zero READY", async () => {
+  const { runContractAAuthoritativePreview } = await import("../../scripts/contur3/preview-contract-a-authoritative");
+  const planningOnly = contractARow({
+    condition_id: "cond-score-64",
+    selected_token_id: "tok-score-64",
+    score: 64,
+    signal_confidence_num: 64,
+    event_slug: "mlb-score-64-vs-threshold-2026-07-19",
+    market_slug: "mlb-score-64-vs-threshold-2026-07-19-moneyline",
+    __gameStart: "2026-07-19T19:00:00.000Z",
+    __created: "2026-07-19T13:00:00.000Z",
+  });
+  await withFixture([planningOnly], async (fixturePath) => {
+    const summary = await runContractAAuthoritativePreview([
+      "--fixture", fixturePath,
+      "--planning-as-of", "2026-07-19T14:00:00.000Z",
+      "--rebalance-as-of", "2026-07-19T18:00:00.000Z",
+    ]);
+    assert.equal(summary.wouldReserveCount, 1);
+    assert.equal(summary.wouldReadyCount, 0);
+    assert.equal(summary.finalContractARejections.SCORE_BELOW_65, 1);
+    assert.equal(summary.alternateSubstitutionCount, 0);
     assert.deepEqual(summary.safety, { productionReservationWrites: 0, productionQueueWrites: 0, callbacks: 0, irelandCalls: 0, clobOrders: 0 });
   });
 });

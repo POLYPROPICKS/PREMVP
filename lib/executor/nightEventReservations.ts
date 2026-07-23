@@ -13,7 +13,16 @@
 // Read input only via buildFireModelCandidates (raw universe). No 6h hardcoded
 // eligibility: horizon is governed by nightWindow.ts.
 
-import type { FireModelCandidate, FireModelSelectorMode } from "./buildFireModelCandidates";
+import type {
+  FireModelCandidate,
+  FireModelSelectorMode,
+  RawPlanningDiagnostics,
+} from "./buildFireModelCandidates";
+import {
+  buildR0PlanningTrace,
+  type R0PlanningTrace,
+  type R0RawPlanningMetrics,
+} from "./r0PlanningTrace";
 import { compareCandidateQuality } from "./nightPortfolioPlanner";
 import {
   createSupabaseSchedulerJobEvidencePort,
@@ -298,8 +307,21 @@ export interface ReservationPlan {
     fallbackEligibleGroupsSeen: number;
     fallbackSkippedNoAllowedFullmatch: number;
     slotFillTargetReached: boolean;
+    r0_trace?: R0PlanningTrace;
   };
 }
+
+type ReservationCandidateFetchResult = {
+  candidates: FireModelCandidate[];
+  rawDiagnostics?: Pick<
+    RawPlanningDiagnostics,
+    | "total_db_rows"
+    | "raw_allowed_fullmatch_rows"
+    | "raw_forbidden_rows"
+    | "fullmatch_admitted_count"
+    | "fullmatch_rejected_by_reason"
+  > | null;
+};
 
 /**
  * Build the frozen event reservation plan (PURE — no DB writes).
@@ -308,7 +330,7 @@ export interface ReservationPlan {
  */
 export async function buildReservationPlan(
   nowMs: number,
-  deps: { fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>; selectorMode?: FireModelSelectorMode } = {}
+  deps: { fetchCandidates?: () => Promise<ReservationCandidateFetchResult>; selectorMode?: FireModelSelectorMode } = {}
 ): Promise<ReservationPlan> {
   const window = resolveNightWindow(nowMs);
   const planRunId = buildPlanRunId(nowMs);
@@ -318,7 +340,7 @@ export async function buildReservationPlan(
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
       return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, deps.selectorMode ?? "CONTUR3_CURRENT");
     });
-  const { candidates: universe } = await fetchCandidates();
+  const { candidates: universe, rawDiagnostics } = await fetchCandidates();
 
   const bySport: Record<string, number> = {};
   const byTier: Record<string, number> = {};
@@ -584,6 +606,26 @@ export async function buildReservationPlan(
       fallbackEligibleGroupsSeen: fallbackRankable.length,
       fallbackSkippedNoAllowedFullmatch,
       slotFillTargetReached: reservations.length >= TARGET_LIVE_SLOTS,
+      ...(rawDiagnostics
+        ? {
+            r0_trace: buildR0PlanningTrace({
+              runId: planRunId,
+              asOfIso: new Date(nowMs).toISOString(),
+              raw: rawDiagnostics as R0RawPlanningMetrics,
+              plan: {
+                universe_size: universe.length,
+                event_groups: groups.size,
+                reserved_count: reservations.length,
+                skipped_outside_horizon: skippedOutsideHorizon,
+                skipped_non_tier1_event: skippedNonTier1,
+                skipped_no_executable_anchor: skippedNoExecutableAnchor,
+                fallbackEligibleGroupsSeen: fallbackRankable.length,
+                fallbackSlotFillReservedCount: promotedFallback.length,
+              },
+              reservationsCreated: null,
+            }),
+          }
+        : {}),
     },
   };
 }
@@ -696,7 +738,7 @@ export async function runReservationCronWithEvidence(
   nowMs: number,
   opts: { force?: boolean; selectorMode?: FireModelSelectorMode } = {},
   deps: {
-    fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+    fetchCandidates?: () => Promise<ReservationCandidateFetchResult>;
     selectorMode?: FireModelSelectorMode;
     repo?: ReservationRepoPort;
     jobEvidence?: SchedulerJobEvidencePort;
@@ -1149,7 +1191,7 @@ async function persistReservationPlanWithReconciliation(
 export async function executeForceRebuild(
   nowMs: number,
   deps: {
-    fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+    fetchCandidates?: () => Promise<ReservationCandidateFetchResult>;
     selectorMode?: FireModelSelectorMode;
     repo?: ReservationRepoPort;
     forceRebuildRepo?: ForceRebuildRepoPort;

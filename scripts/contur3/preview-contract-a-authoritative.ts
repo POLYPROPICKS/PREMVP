@@ -34,7 +34,10 @@ import { buildFireModelCandidates, type FireModelCandidate } from "../../lib/exe
 import { buildReservationPlan } from "../../lib/executor/nightEventReservations";
 import { runEventRebalance, type RebalanceRepoPort } from "../../lib/executor/eventExecutionQueue";
 import type { EventExecutionQueueRow, NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
-import { FROZEN_MODEL_V2_VERSION } from "../../lib/modeling/frozenModelProducerV2Shadow";
+import {
+  FROZEN_MODEL_V2_VERSION,
+  produceFrozenModelV2ShadowDecisions,
+} from "../../lib/modeling/frozenModelProducerV2Shadow";
 import { fetchBoundedSnapshot, sha256OfNormalizedSnapshot } from "../../lib/modeling/strategies/runFrozenExecutionContractBridge";
 
 // Bounded-source-read requirement: mirrors the exact same approved maximum
@@ -296,6 +299,7 @@ export interface ContractAPreviewSummary {
   wouldReadyCount: number;
   failClosedCount: number;
   failClosedReasons: Record<string, number>;
+  finalContractARejections: Record<string, number>;
   identityMismatchCount: number;
   alternateSubstitutionCount: number;
   contractAEventGroups: number;
@@ -357,8 +361,17 @@ export async function runContractAAuthoritativePreview(
   };
   const buildStages = async () => {
     const planning = await at(planningNowMs, () => buildFireModelCandidates(boundedLimit, "all", true, visibleAt(planningNowMs), "CONTRACT_A_PLANNING_V1"));
-    const final = await at(rebalanceNowMs, () => buildFireModelCandidates(boundedLimit, "all", true, visibleAt(rebalanceNowMs), "CONTRACT_A_V1"));
-    return { planning, final };
+    const finalRows = visibleAt(rebalanceNowMs);
+    const final = await at(rebalanceNowMs, () => buildFireModelCandidates(boundedLimit, "all", true, finalRows, "CONTRACT_A_V1"));
+    const finalEvaluation = produceFrozenModelV2ShadowDecisions(
+      finalRows as Parameters<typeof produceFrozenModelV2ShadowDecisions>[0],
+      new Date(rebalanceNowMs).toISOString()
+    );
+    const finalRejectionCounts: Record<string, number> = {};
+    for (const rejection of finalEvaluation.rejections) {
+      finalRejectionCounts[rejection.reason] = (finalRejectionCounts[rejection.reason] ?? 0) + 1;
+    }
+    return { planning, final, finalRejectionCounts };
   };
   const stages1 = await buildStages();
   const out1 = await runOnce(stages1.planning.candidates, stages1.final.candidates, planningNowMs, rebalanceNowMs);
@@ -384,6 +397,7 @@ export async function runContractAAuthoritativePreview(
     wouldReadyCount: out1.wouldReadyCount,
     failClosedCount: out1.failClosedCount,
     failClosedReasons: out1.failClosedReasons,
+    finalContractARejections: stages1.finalRejectionCounts,
     identityMismatchCount: out1.identityMismatchCount,
     alternateSubstitutionCount: out1.alternateSubstitutionCount,
     contractAEventGroups: out1.contractAEventGroups,

@@ -312,3 +312,27 @@ test("C5: Contract A planning reserves an event five hours away without persisti
   assert.equal(plan.reservations[0].diagnostics.authoritative_condition_id, undefined);
   assert.equal(plan.reservations[0].diagnostics.authoritative_token_id, undefined);
 });
+
+test("R0A: production reservation planning attaches the measured source-to-reservation trace", async () => {
+  const plan = await buildReservationPlan(ANCHOR_NOW_MS, {
+    fetchCandidates: async () => ({
+      candidates: [baseCandidate()],
+      rawDiagnostics: {
+        total_db_rows: 3,
+        raw_allowed_fullmatch_rows: 2,
+        raw_forbidden_rows: 1,
+        fullmatch_admitted_count: 1,
+        fullmatch_rejected_by_reason: { LOW_SCORE: 1 },
+      },
+    }),
+  });
+  const trace = (
+    plan.diagnostics as unknown as {
+      r0_trace?: { stages: Array<{ stage_name: string; output_count: number | null }> };
+    }
+  ).r0_trace;
+  assert.ok(trace, "the real buildReservationPlan seam must retain loader measurements");
+  assert.equal(trace.stages.find((stage) => stage.stage_name === "source_rows_available")?.output_count, 3);
+  assert.equal(trace.stages.find((stage) => stage.stage_name === "distinct_physical_events")?.output_count, 1);
+  assert.equal(trace.stages.find((stage) => stage.stage_name === "reservations_created")?.output_count, null);
+});
