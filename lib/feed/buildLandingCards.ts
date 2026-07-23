@@ -34,7 +34,7 @@ import {
   fetchOpenInterestSafe,
 } from "./polymarketClient";
 
-import { discoverSportsMarkets } from "./discoverSportsMarkets";
+import { deriveProviderEsportsGame, discoverSportsMarkets } from "./discoverSportsMarkets";
 import type { SportsDiscoverySample } from "./types";
 
 import {
@@ -78,6 +78,10 @@ function getOddsBandCalibration(selectedOdds: number): OddsBandCalibration {
 function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket | null {
   const primary = sample.primaryMarketRaw;
   if (!primary || !primary.conditionId) return null;
+  const providerEventTitle =
+    sample.leagueName === "Esports" && deriveProviderEsportsGame(primary.question)
+      ? primary.question
+      : sample.title;
 
   const market: PolymarketRawMarket = {
     id: primary.conditionId,
@@ -107,7 +111,7 @@ function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket
 
   (market as unknown as Record<string, unknown>)._parentMeta = {
     id: sample.gameId || sample.slug,
-    title: sample.title,
+    title: providerEventTitle,
     slug: sample.slug,
     category: sample.leagueName || "Sports",
     endDate: sample.resolvedGameTimeIso || undefined,
@@ -692,6 +696,9 @@ async function enrichMarket(
   forcedOutcome?: ForcedOutcomeSelection,
 ): Promise<EnrichedMarket | null> {
   const parentMeta = getParentMeta(market);
+  const providerGame =
+    deriveProviderEsportsGame(parentMeta.title ?? "") ??
+    parentMeta.sportsMarketType;
   const selectedOutcome = selectOutcome(market, forcedOutcome);
 
   if (!selectedOutcome) {
@@ -735,7 +742,7 @@ async function enrichMarket(
       ...(parentMeta.title ? { eventTitle: parentMeta.title } : {}),
       ...(safeString(market.question) ? { marketQuestion: safeString(market.question)! } : {}),
       ...(parentMeta.category ? { sportFamily: parentMeta.category, league: parentMeta.category } : {}),
-      ...(parentMeta.sportsMarketType ? { game: parentMeta.sportsMarketType } : {}),
+      ...(providerGame ? { game: providerGame } : {}),
       ...(parentMeta.startDate ?? event.endDate ? { eventStartIso: parentMeta.startDate ?? event.endDate! } : {}),
     },
   };

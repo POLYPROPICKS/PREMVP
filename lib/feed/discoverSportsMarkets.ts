@@ -42,6 +42,34 @@ const DEFAULT_CONFIG: SportsDiscoveryConfig = {
   formulaVersion: "trusted-initial-formula-v1.1",
 };
 
+const ESPORTS_SERIES_EVENT_RE =
+  /^(?:will\s+)?(?:counter-strike|dota\s*2|lol|league\s+of\s+legends|valorant)\s*:\s*.+?\s+(?:vs\.?|beat(?:s)?)\s+.+?\s*\(\s*bo(?:1|3|5)\s*\)/i;
+const ESPORTS_SUBMARKET_RE =
+  /\b(?:map|game)\s*\d+\b|\brounds?\b|\btotal\b|\bo\/u\b|\bover\/under\b|\bhandicap\b|\bplayer\b|\bkills?\b|\brampage\b|\broshan\b|\bbarracks\b/i;
+
+export function deriveProviderEsportsGame(title: string): string | null {
+  const normalized = title.trim();
+  if (/^dota\s*2\s*:/i.test(normalized)) return "Dota 2";
+  if (/^valorant\s*:/i.test(normalized)) return "Valorant";
+  if (/^(?:lol|league\s+of\s+legends)\s*:/i.test(normalized)) return "LoL";
+  if (/^(?:counter-strike|cs2)\s*:/i.test(normalized)) return "Counter-Strike";
+  return null;
+}
+
+export function selectCanonicalEsportsFullMatchMarket(
+  event: Pick<PolymarketRawEvent, "title" | "markets">
+): NonNullable<PolymarketRawEvent["markets"]>[number] | null {
+  const eventTitle = event.title?.trim() ?? "";
+  if (!deriveProviderEsportsGame(eventTitle) || !ESPORTS_SERIES_EVENT_RE.test(eventTitle)) return null;
+  const markets = Array.isArray(event.markets) ? event.markets : [];
+  const safe = markets.filter((market) => {
+    const question = String(market.question ?? "").trim();
+    const marketType = String(market.sportsMarketType ?? "").toLowerCase();
+    return question === eventTitle && marketType === "moneyline" && !ESPORTS_SUBMARKET_RE.test(question);
+  });
+  return safe.length === 1 ? safe[0] : null;
+}
+
 // Shared slug-prefix → league name resolver.
 // Single source of truth for all prefix-based league resolution.
 // Pass researchExtensions=true to enable additional prefixes for S2 research metadata only;
@@ -815,25 +843,24 @@ export async function discoverSportsMarkets(
       const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
       if (hoursUntil < 0 || hoursUntil > MAX_WINDOW_HOURS) continue;
 
-      // Score each sub-market; pick best by tier then OddsFit (price closest to 0.45)
-      type SubCand = { pm: Record<string, unknown>; nm: SportsMarketCandidate; tier: number; inBandPrice: number };
-      const subCands: SubCand[] = [];
-      for (const m of Array.isArray(event.markets) ? event.markets : []) {
-        const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
-        if (!Array.isArray(nm.outcomePrices) || nm.outcomePrices.length === 0) continue;
-        const idxP = nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= PRIMARY_MIN && p <= PRIMARY_MAX);
-        if (idxP !== -1) {
-          subCands.push({ pm: m as unknown as Record<string, unknown>, nm, tier: 3, inBandPrice: nm.outcomePrices[idxP] });
-          continue;
-        }
-        const idxF = nm.outcomePrices.findIndex((p) => typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX);
-        if (idxF !== -1) {
-          subCands.push({ pm: m as unknown as Record<string, unknown>, nm, tier: 2, inBandPrice: nm.outcomePrices[idxF] });
-        }
-      }
-      if (subCands.length === 0) continue;
-      subCands.sort((a, b) => b.tier - a.tier || Math.abs(a.inBandPrice - 0.45) - Math.abs(b.inBandPrice - 0.45));
-      const best = subCands[0];
+      // Inspect all siblings, but admit only the one canonical BO-series moneyline.
+      // A missing or price-ineligible full-match market never falls back to a submarket.
+      const fullMatch = selectCanonicalEsportsFullMatchMarket(event);
+      if (!fullMatch) continue;
+      const normalized = normalizeSportsMarket({ ...fullMatch });
+      if (!Array.isArray(normalized.outcomePrices) || normalized.outcomePrices.length === 0) continue;
+      const idxP = normalized.outcomePrices.findIndex((p) => typeof p === "number" && p >= PRIMARY_MIN && p <= PRIMARY_MAX);
+      const idxF = idxP === -1
+        ? normalized.outcomePrices.findIndex((p) => typeof p === "number" && p >= FALLBACK_MIN && p <= FALLBACK_MAX)
+        : -1;
+      const selectedIndex = idxP !== -1 ? idxP : idxF;
+      if (selectedIndex === -1) continue;
+      const best = {
+        pm: { ...fullMatch },
+        nm: normalized,
+        tier: idxP !== -1 ? 3 : 2,
+        inBandPrice: normalized.outcomePrices[selectedIndex],
+      };
       const pmTyped = best.pm as { volume?: number; volume24hr?: number };
       const vol = typeof pmTyped.volume === "number" ? pmTyped.volume
         : typeof pmTyped.volume24hr === "number" ? pmTyped.volume24hr

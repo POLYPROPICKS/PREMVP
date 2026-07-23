@@ -362,6 +362,7 @@ export interface PolymarketRawMarket {
   slug: string;
   active: boolean;
   closed: boolean;
+  sportsMarketType?: string | null;
   category?: string;
   endDate?: string;
   outcomes?: PolymarketRawOutcome[] | string; // Can be JSON string
