@@ -1,8 +1,10 @@
 import { sha256 } from "../types";
 import type { InventoryMarket, RawPage } from "../inventory/gammaInventory";
 export type RawObject = { rawObjectId: string; sourceContractId: string; sourceContractHash: string; payloadHash: string; pageIdentity: string; objectPath: string; receivedAt: string; recordCount: number };
+export type WeatherInventoryQuery = Readonly<{ rawObjects: number; venueMarkets: number; contracts: number; attributionCounts: Record<string, number> }>;
 export class FakeWeatherRepository {
-  raw: RawObject[] = []; markets: Array<InventoryMarket & { rawObjectId: string }> = []; contracts: Array<{ rawObjectId: string; conditionId: string; tokenId: string }> = [];
+  private raw: RawObject[] = []; private markets: Array<InventoryMarket & { rawObjectId: string }> = []; private contracts: Array<{ rawObjectId: string; conditionId: string; tokenId: string }> = [];
+  queryWeatherInventory(): WeatherInventoryQuery { const attributionCounts: Record<string, number> = {}; for (const market of this.markets) attributionCounts[market.attributionStatus] = (attributionCounts[market.attributionStatus] ?? 0) + 1; return Object.freeze({ rawObjects: this.raw.length, venueMarkets: this.markets.length, contracts: this.contracts.length, attributionCounts: Object.freeze({ ...attributionCounts }) }); }
   persist(page: RawPage, sourceContractId: string, sourceContractHash: string, receivedAt: string, markets: InventoryMarket[], forceFailure = false) {
     const duplicate = this.raw.find((raw) => raw.pageIdentity === page.pageIdentity && raw.payloadHash === page.payloadHash); if (duplicate) return { outcome: "IDEMPOTENT" as const, rawObject: duplicate };
     if (this.raw.some((raw) => raw.pageIdentity === page.pageIdentity)) return { outcome: "PAGE_CHANGED" as const, rawObject: null };
