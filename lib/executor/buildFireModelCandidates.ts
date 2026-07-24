@@ -15,6 +15,7 @@ import {
   type ExportRow,
 } from "@/lib/modeling/generatedSignalPairsExportContract";
 import { EXECUTABLE_STAKE_USD } from "./executorQueueTypes";
+import { fullMatchAnchorDecision } from "./nightEventReservations";
 
 const POLICY_VERSION = "battle-sm-guard-v1-20260615";
 const LIVE_POLICY_VERSION = "live-risk-guard-v1";
@@ -880,6 +881,41 @@ async function buildContractAV1Candidates(
 
     const contractASourceRowId = typeof sourceRow.id === "string" && sourceRow.id.trim() !== "" ? sourceRow.id : null;
 
+    // Fail-closed market anchor check (R0E): the Contract A final path reuses
+    // the same canonical helpers as planning (isActivityLabelText,
+    // fullMatchAnchorDecision) instead of a parallel classifier. A row whose
+    // market_slug/event_slug is an activity/volume label (e.g. "$52K matched
+    // activity"), or that is a non-full-match submarket (handicap/spread on a
+    // sub-line, corners, halftime, props), must never become queue-eligible
+    // here even when its condition/token/side identity is fully populated.
+    // inferred_sport is hardcoded "unknown" on this path (see below), so the
+    // BO-series esports branch of fullMatchAnchorDecision is probed with a
+    // title-derived sport hint rather than requiring the (always-unknown)
+    // real field -- this preserves valid canonical BO1/BO3/BO5 esports
+    // full-match anchors without globally exempting unknown-sport rows.
+    const activityLabelDetected = isActivityLabelText(marketSlug) || isActivityLabelText(eventSlug);
+    const sourceDiag: Record<string, unknown> =
+      sourceRow.diagnostics && typeof sourceRow.diagnostics === "object"
+        ? (sourceRow.diagnostics as Record<string, unknown>)
+        : {};
+    const sourceProviderContext = providerContextOf(sourceDiag);
+    const anchorProbeTitleHay = `${eventSlug ?? ""} ${marketSlug ?? ""} ${sourceProviderContext?.marketQuestion ?? ""} ${typeof sourceDiag.marketTitle === "string" ? sourceDiag.marketTitle : ""}`;
+    const anchorProbeIsEsportsSeries = /\(\s*bo(?:1|3|5)\s*\)/i.test(anchorProbeTitleHay);
+    const anchorDecision = fullMatchAnchorDecision({
+      market_slug: marketSlug,
+      event_slug: eventSlug,
+      match_family_key: decision.eventKey,
+      inferred_sport: anchorProbeIsEsportsSeries ? "esport" : "unknown",
+      providerMarketQuestion: sourceProviderContext?.marketQuestion ?? null,
+      diagnostics: sourceDiag,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as any);
+    const marketAnchorRejectionReason = activityLabelDetected
+      ? "CONTRACT_A_ACTIVITY_LABEL_MARKET"
+      : !anchorDecision.allowed
+        ? `CONTRACT_A_${anchorDecision.reason}`
+        : null;
+
     candidates.push({
       signal_id: decision.observationId,
       generated_signal_pair_id: contractASourceRowId,
@@ -897,16 +933,16 @@ async function buildContractAV1Candidates(
       market_family: "contract_a_authoritative",
       strategic_scope: "OTHER",
       timing_bucket: contractATimingBucket(decision.minutesUntilStart),
-      identity_quality: identityComplete ? "STRONG" : "INVALID",
+      identity_quality: identityComplete && marketAnchorRejectionReason === null ? "STRONG" : "INVALID",
       identity_warning_codes: [],
       canonical_event_key: decision.eventKey,
       canonical_market_key: conditionId,
-      activity_label_detected: false,
+      activity_label_detected: activityLabelDetected,
       sport_classification_confidence: "HIGH",
-      live_eligible: identityComplete,
-      live_rejection_reason: liveRejectionReason,
+      live_eligible: identityComplete && marketAnchorRejectionReason === null,
+      live_rejection_reason: liveRejectionReason ?? marketAnchorRejectionReason,
       side_mapping_status: sideMappingStatus,
-      live_block_reason: liveRejectionReason,
+      live_block_reason: liveRejectionReason ?? marketAnchorRejectionReason,
       live_policy_version: LIVE_POLICY_VERSION,
       paper_eligible: true,
       max_entry_price: decision.entryPrice,
@@ -923,8 +959,8 @@ async function buildContractAV1Candidates(
       created_at: decision.createdAtIso,
       source: `ContractA_${FROZEN_MODEL_V2_VERSION}`,
       diagnostics: {
-        executor_action: identityComplete ? "BET_OR_PAPER_GO" : "SKIP_STARTED",
-        paper_only: !identityComplete,
+        executor_action: identityComplete && marketAnchorRejectionReason === null ? "BET_OR_PAPER_GO" : "SKIP_STARTED",
+        paper_only: !identityComplete || marketAnchorRejectionReason !== null,
         real_trade: false,
         score: decision.score,
         coverage: 100,
