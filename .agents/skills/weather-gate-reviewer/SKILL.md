@@ -11,12 +11,23 @@ Before delegation, verify both SHAs resolve and differ, the expected branch is a
 
 Select `FULL_BOUNDED_REVIEW` for the first milestone review. Select `TARGETED_DELTA_REVIEW` only when a previous rejected head and exact prior findings are supplied; inspect only the correction delta and prior findings.
 
-Delegate the review to the existing `weather_gate_reviewer` custom agent. The delegated agent is read-only: no file creation or edits, staging, commits, branch changes, push/deploy, secrets/env access, or implementation fixes. Do not perform the independent review in the writer context. If that agent is unavailable, return:
+Delegate the review to the existing `weather_gate_reviewer` custom agent with `reviewer_model: Luna`. The delegation must expose direct runtime evidence of the observed model. The delegated agent is read-only: no file creation or edits, staging, commits, branch changes, push/deploy, secrets/env access, or implementation fixes. Do not perform the independent review in the writer context or substitute the writer model. If the agent is unavailable, return:
 
 ```text
 WEATHER_REVIEW_AUTOMATION_STOP:
 reason: reviewer_agent_unavailable
 next_action: restore or configure weather_gate_reviewer
+```
+
+If Luna routing or its observed runtime model cannot be verified, return:
+
+```text
+WEATHER_REVIEW_AUTOMATION_STOP:
+reason: reviewer_model_not_verifiable
+reviewer_model_requested: Luna
+reviewer_model_observed: NOT_VERIFIABLE
+reviewer_model_verified: FAIL
+next_action: configure Codex delegation metadata that exposes the observed reviewer model
 ```
 
 Use at most 25 relevant files and 3 targeted test commands for a full review; at most 12 files and 2 commands for a delta review. Do not broadly search the repository, load unrelated Markdown, or repeat unaffected suites. If more evidence is required, return `BUDGET_EXCEEDED` with exact additional files, commands, and reason. Keep the reviewer result under 700 words.
@@ -30,6 +41,9 @@ task_classification:
 parent_sha:
 head_sha:
 branch:
+reviewer_model_requested: Luna
+reviewer_model_observed:
+reviewer_model_verified: PASS/FAIL
 delta_exists: PASS/FAIL
 allowed_files: PASS/FAIL
 commit_boundaries: PASS/FAIL
@@ -44,4 +58,4 @@ next_action:
 TOKEN_USAGE: NOT_MEASURED
 ```
 
-On PASS, return the verdict to the Founder without push/deploy. On FAIL or STOP, return exact findings and stop; do not auto-fix or launch another review.
+`verdict: PASS` is forbidden unless `reviewer_model_verified: PASS`. On PASS, return the verdict to the Founder without push/deploy. On FAIL or STOP, return exact findings and stop; do not auto-fix or launch another review. Keep token usage `NOT_MEASURED` unless exact runtime counters are available.
