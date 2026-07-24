@@ -41,17 +41,36 @@ test("nested events remain compatible while malformed flat records fail closed",
   assert.throws(() => validateGammaPage({ markets: [], next_cursor: 1 }, "keyset:cursor"), /GAMMA_ENVELOPE_INVALID/);
 });
 
-test("proof snapshot counts validated flat records separately from downstream accepted markets", async () => {
-  const flatMarkets = Array.from({ length: 10 }, (_, index) => ({ id: `market-${index}`, conditionId: `condition-${index}`, question: "Temperature at KJFK", outcomes: ["Yes"], clobTokenIds: [`token-${index}`] }));
-  const cases = [
-    { body: { markets: flatMarkets, next_cursor: "cursor" }, rawMarkets: 10, acceptedMarkets: 10 },
-    { body: [{ id: "event", markets: flatMarkets.slice(0, 2) }], rawMarkets: 2, acceptedMarkets: 2 },
+test("proof separates raw, identity-valid, and Weather-attributed selection counts", async () => {
+  const flatMarkets = Array.from({ length: 10 }, (_, index) => ({ id: `market-${index}`, conditionId: `condition-${index}`, question: "Politics at KJFK", outcomes: ["Yes", "No"], clobTokenIds: [`token-${index}-yes`, `token-${index}-no`] }));
+  globalThis.fetch = (async () => new Response(JSON.stringify({ markets: flatMarkets, next_cursor: "cursor" }), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+  const proof = await runGammaReadOnlyProof();
+  assert.equal(proof.snapshot.rawMarkets, 10);
+  assert.equal(proof.snapshot.identityValidMarkets, 10);
+  assert.equal(proof.snapshot.identityContracts, 20);
+  assert.equal(proof.snapshot.weatherAttributedMarkets, 0);
+  assert.equal(proof.snapshot.weatherAttributedContracts, 0);
+  assert.equal(proof.snapshot.attributionCounts.REJECTED, 10);
+  assert.equal(proof.traces.find((trace) => trace.stage === "attribution")?.first_rejection_reason, "NON_WEATHER");
+  const report = buildGammaProofReport(proof);
+  assert.match(report.markdown, /Identity-valid markets: 10/);
+  assert.match(report.markdown, /Identity contracts: 20/);
+  assert.match(report.markdown, /Weather-attributed markets: 0/);
+  assert.match(report.markdown, /Weather-attributed contracts: 0/);
+  assert.doesNotMatch(report.markdown, /accepted markets|Raw\/accepted\/contracts/i);
+});
+
+test("malformed encoded identities fail closed with the typed rejection", () => {
+  const malformedCases = [
+    { outcomes: JSON.stringify({ outcome: "Yes" }), clobTokenIds: JSON.stringify(["token"]) },
+    { outcomes: JSON.stringify(["Yes", 2]), clobTokenIds: JSON.stringify(["token-yes", "token-no"]) },
+    { outcomes: JSON.stringify(["Yes", ""]), clobTokenIds: JSON.stringify(["token-yes", "token-no"]) },
+    { outcomes: JSON.stringify(["Yes"]), clobTokenIds: JSON.stringify(["token-yes", "token-no"]) },
   ];
-  for (const sample of cases) {
-    globalThis.fetch = (async () => new Response(JSON.stringify(sample.body), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
-    const proof = await runGammaReadOnlyProof();
-    assert.equal(proof.snapshot.rawMarkets, sample.rawMarkets);
-    assert.equal(proof.snapshot.acceptedMarkets, sample.acceptedMarkets);
+  for (const malformed of malformedCases) {
+    const result = adaptGammaWeatherPage(validateGammaPage({ markets: [{ id: "market", conditionId: "condition", ...malformed }] }, "keyset:malformed"));
+    assert.equal(result.markets.length, 0);
+    assert.equal(result.trace.firstRejectionReason, "MALFORMED_OUTCOMES_OR_TOKENS");
   }
 });
 
@@ -71,7 +90,7 @@ test("proof pipeline validates a real-shaped envelope without DB writes and repo
   globalThis.fetch = (async () => new Response(body, { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
   const proof = await runGammaReadOnlyProof({ now: () => "2026-07-24T00:00:00.000Z" });
   assert.equal(proof.snapshot.rawMarkets, 1);
-  assert.equal(proof.snapshot.contracts, 2);
+  assert.equal(proof.snapshot.identityContracts, 2);
   assert.equal(proof.databaseWrites, 0);
   assert.equal(proof.supabaseAccess, 0);
   const report = buildGammaProofReport(proof);
