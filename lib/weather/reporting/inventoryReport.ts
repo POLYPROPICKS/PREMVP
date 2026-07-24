@@ -1,0 +1,6 @@
+import type { InventoryTrace } from "../inventory/gammaInventory";
+export function inventoryReport(input: { sourceContractId: string; sourceContractHash: string; fixtureSet: string; pageCount: number; rawObjects: number; markets: number; contracts: number; statuses: Record<string, number>; traces: InventoryTrace[]; duplicate: string; rollback: boolean }) {
+  const report = { source_contract: { id: input.sourceContractId, hash: input.sourceContractHash }, fixture_set: input.fixtureSet, page_count: input.pageCount, raw_object_count: input.rawObjects, venue_market_count: input.markets, contract_count: input.contracts, attribution_counts: input.statuses, duplicate_result: input.duplicate, rollback_test_result: input.rollback ? "PASS" : "FAIL", trace_summary: input.traces, limitations: { network_proven: "NO", postgres_proven: "NO", migration_applied: "NO", runtime_proven: "NO" } };
+  const markdown = `# Weather Fixture Inventory\n\n- Source contract: ${report.source_contract.id}\n- Pages/raw/markets/contracts: ${report.page_count}/${report.raw_object_count}/${report.venue_market_count}/${report.contract_count}\n- Duplicate: ${report.duplicate_result}; rollback: ${report.rollback_test_result}\n- network_proven: NO\n- postgres_proven: NO\n- migration_applied: NO\n- runtime_proven: NO\n`;
+  return { json: `${JSON.stringify(report, null, 2)}\n`, markdown };
+}
