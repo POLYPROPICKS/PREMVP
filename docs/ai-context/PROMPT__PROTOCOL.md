@@ -63,5 +63,16 @@ Reduce token waste, prevent repeated context loading, and continue executor work
    - The Founder does not manually edit repository files.
    - Repository changes use bounded executor prompts and atomic commits.
 
+## REVIEW_COST_PROTOCOL
+
+1. Independent review is mandatory for high-risk or milestone programming changes; use Luna by default for bounded review.
+2. Use one full bounded review per milestone. After corrections, use targeted delta-review only.
+3. A delta-review receives the previous rejected HEAD, corrected HEAD, exact blocking findings, exact changed files, and targeted tests only.
+4. Do not reread the full roadmap or unrelated Markdown during delta-review. Do not rerun unaffected build, TypeScript, Liquidity, or other regression suites when writer evidence is retained, relevant files did not change, and Git evidence proves the boundary.
+5. Prefer Git diff, commit boundaries, targeted tests, and explicit stop conditions. Never invent token counts or costs; when exact counters are unavailable, record `TOKEN_USAGE: NOT_MEASURED`.
+6. The operator does not manually edit repo files, protocols, cost logs, or acceptance records. All repo updates use bounded executor prompts and atomic commits.
+7. Route every executor instruction using only `ТЕКУЩИЙ ЧАТ` or `НОВЫЙ ЧАТ`; never tell the Founder to find or remember a prior thread by title.
+8. Recommended delta-review budget: maximum 12 files, maximum two targeted test commands, no broad repo search, and a final response under 500 words. If more scope is required, return `BUDGET_EXCEEDED` with the exact additional evidence required.
+
 ## Weather workspace
 `C:\WORK\KalshiProPulse\sipropicks-weather-model-1`

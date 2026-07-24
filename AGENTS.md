@@ -24,6 +24,7 @@ Tier 4: archive/lessons/handoff docs                       → load only after f
 ```
 
 **PROMPT__PROTOCOL is mandatory.** After a STOP, continue from the verified checkpoint and authorize only the blocked operation. Founder must not manually edit repository files.
+Independent review uses one full review per milestone; corrections use delta-review under `REVIEW_COST_PROTOCOL`. Route executor instructions only through `ТЕКУЩИЙ ЧАТ` or `НОВЫЙ ЧАТ`.
 
 ## 2. Role split
 
