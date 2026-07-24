@@ -1,4 +1,4 @@
-import { attributeWeatherMarkets, validateGammaPage, type InventoryMarket } from "../inventory/gammaInventory";
+import { attributeWeatherMarkets, validateGammaPage, type InventoryMarket, type RawPage } from "../inventory/gammaInventory";
 import { adaptGammaWeatherPage } from "../integrations/gamma/gammaWeatherAdapter";
 import { fetchGammaWeatherPage } from "../integrations/gamma/readOnlyGammaFetch";
 
@@ -6,7 +6,7 @@ type Trace = { stage: string; input_count: number; output_count: number; first_r
 type Snapshot = { rawMarkets: number; acceptedMarkets: number; contracts: number; attributionCounts: Record<string, number>; sampleConditionIds: string[]; sampleTokenIds: string[] };
 export type GammaReadOnlyProof = { requestTimestamp: string; endpoint: string; httpStatus: number; responseBytes: number; responseSha256: string; envelopeType: string; snapshot: Snapshot; traces: Trace[]; databaseWrites: 0; supabaseAccess: 0; limitations: Record<string, "YES" | "NO"> };
 
-const countRawMarkets = (records: Record<string, unknown>[]) => records.reduce((count, event) => count + (Array.isArray(event.markets) ? event.markets.length : 0), 0);
+const countRawGammaMarkets = (page: RawPage) => page.recordForm === "KEYSET_MARKET" ? page.records.length : page.records.reduce((count, event) => count + (Array.isArray(event.markets) ? event.markets.length : 0), 0);
 const snapshot = (rawMarkets: number, markets: InventoryMarket[]): Snapshot => {
   const attributionCounts: Record<string, number> = {}; for (const market of markets) attributionCounts[market.attributionStatus] = (attributionCounts[market.attributionStatus] ?? 0) + 1;
   return { rawMarkets, acceptedMarkets: markets.length, contracts: markets.reduce((count, market) => count + market.outcomes.length, 0), attributionCounts, sampleConditionIds: markets.slice(0, 5).map((market) => market.conditionId), sampleTokenIds: markets.flatMap((market) => market.outcomes.map((outcome) => outcome.tokenId)).slice(0, 10) };
@@ -18,7 +18,7 @@ export async function runGammaReadOnlyProof(options: { now?: () => string; stati
   const page = validateGammaPage(parsed, "gamma:active:0"); traces.push({ stage: "validator", input_count: 1, output_count: page.records.length, first_rejection_reason: null, target_present: page.records.length > 0, elapsed_ms: Date.now() - validatorStarted });
   const identityStarted = Date.now(); const adapted = adaptGammaWeatherPage(page); traces.push({ stage: "identity", input_count: adapted.trace.inputCount, output_count: adapted.trace.outputCount, first_rejection_reason: adapted.trace.firstRejectionReason, target_present: adapted.markets.length > 0, elapsed_ms: Date.now() - identityStarted });
   const attributionStarted = Date.now(); const attributed = attributeWeatherMarkets(adapted.markets, options.stationIds ?? ["KJFK", "KLGA", "KORD", "KDFW", "KDEN", "KLAX"]); traces.push({ stage: "attribution", input_count: attributed.trace.inputCount, output_count: attributed.trace.outputCount, first_rejection_reason: attributed.trace.firstRejectionReason, target_present: attributed.markets.some((market) => market.attributionStatus === "ATTRIBUTED_EXACT"), elapsed_ms: Date.now() - attributionStarted });
-  const readOnlySnapshot = snapshot(countRawMarkets(page.records), attributed.markets); traces.push({ stage: "snapshot", input_count: attributed.markets.length, output_count: readOnlySnapshot.contracts, first_rejection_reason: null, target_present: readOnlySnapshot.contracts > 0, elapsed_ms: 0 });
+  const readOnlySnapshot = snapshot(countRawGammaMarkets(page), attributed.markets); traces.push({ stage: "snapshot", input_count: attributed.markets.length, output_count: readOnlySnapshot.contracts, first_rejection_reason: null, target_present: readOnlySnapshot.contracts > 0, elapsed_ms: 0 });
   return { requestTimestamp: (options.now ?? (() => new Date().toISOString()))(), endpoint: `${fetched.url.origin}${fetched.url.pathname}`, httpStatus: fetched.status, responseBytes: fetched.responseBytes, responseSha256: fetched.sha256, envelopeType: Array.isArray(parsed) ? "array" : "wrapper", snapshot: readOnlySnapshot, traces, databaseWrites: 0, supabaseAccess: 0, limitations: { gamma_network_proven: "YES", gamma_envelope_proven: "YES", condition_identity_proven: attributed.markets.length ? "YES" : "NO", token_identity_proven: readOnlySnapshot.contracts ? "YES" : "NO", postgres_proven: "NO", migration_applied: "NO", database_write_proven: "NO", runtime_proven: "NO" } };
 }
 

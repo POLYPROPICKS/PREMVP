@@ -2,6 +2,8 @@ import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { fetchGammaWeatherPage, GammaFetchError, gammaWeatherUrl, GAMMA_RESPONSE_CAP_BYTES } from "../../lib/weather/integrations/gamma/readOnlyGammaFetch";
 import { buildGammaProofReport, runGammaReadOnlyProof } from "../../lib/weather/reporting/gammaReadOnlyProof";
+import { validateGammaPage } from "../../lib/weather/inventory/gammaInventory";
+import { adaptGammaWeatherPage } from "../../lib/weather/integrations/gamma/gammaWeatherAdapter";
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
@@ -16,6 +18,39 @@ test("default proof request is one cap-preserving Gamma keyset page without retr
   assert.equal(url.searchParams.has("offset"), false);
   assert.equal(url.searchParams.has("after_cursor"), false);
   assert.equal(GAMMA_RESPONSE_CAP_BYTES, 1_048_576);
+});
+
+test("flat keyset wrapper validates and emits authoritative market and token identities", () => {
+  const wrapper = { $schema: "market-keyset", markets: [{ id: "market", conditionId: "condition-flat", question: "Temperature at KJFK", outcomes: ["Yes", "No"], clobTokenIds: ["token-flat-yes", "token-flat-no"] }], next_cursor: "cursor" };
+  const adapted = adaptGammaWeatherPage(validateGammaPage(wrapper, "keyset:0"));
+  assert.equal(adapted.markets.length, 1);
+  assert.equal(adapted.markets[0].conditionId, "condition-flat");
+  assert.deepEqual(adapted.markets[0].outcomes.map((outcome) => outcome.tokenId), ["token-flat-yes", "token-flat-no"]);
+  assert.ok(adapted.markets[0].outcomes.every((outcome) => outcome.canonicalContractId.includes("weather-contract:")));
+});
+
+test("nested events remain compatible while malformed flat records fail closed", () => {
+  const nested = [{ id: "event", markets: [{ id: "market", condition_id: "condition-nested", outcomes: ["Yes"], clobTokenIds: ["token-nested"] }] }];
+  assert.equal(adaptGammaWeatherPage(validateGammaPage(nested, "events:0")).markets.length, 1);
+  const malformed = { markets: [{ id: "market", outcomes: ["Yes"], clobTokenIds: ["token"] }] };
+  const result = adaptGammaWeatherPage(validateGammaPage(malformed, "keyset:bad"));
+  assert.equal(result.markets.length, 0);
+  assert.equal(result.trace.firstRejectionReason, "MISSING_CONDITION_ID");
+  assert.throws(() => validateGammaPage({ markets: [], next_cursor: 1 }, "keyset:cursor"), /GAMMA_ENVELOPE_INVALID/);
+});
+
+test("proof snapshot counts validated flat records separately from downstream accepted markets", async () => {
+  const flatMarkets = Array.from({ length: 10 }, (_, index) => ({ id: `market-${index}`, conditionId: `condition-${index}`, question: "Temperature at KJFK", outcomes: ["Yes"], clobTokenIds: [`token-${index}`] }));
+  const cases = [
+    { body: { markets: flatMarkets, next_cursor: "cursor" }, rawMarkets: 10, acceptedMarkets: 10 },
+    { body: [{ id: "event", markets: flatMarkets.slice(0, 2) }], rawMarkets: 2, acceptedMarkets: 2 },
+  ];
+  for (const sample of cases) {
+    globalThis.fetch = (async () => new Response(JSON.stringify(sample.body), { status: 200, headers: { "content-type": "application/json" } })) as typeof fetch;
+    const proof = await runGammaReadOnlyProof();
+    assert.equal(proof.snapshot.rawMarkets, sample.rawMarkets);
+    assert.equal(proof.snapshot.acceptedMarkets, sample.acceptedMarkets);
+  }
 });
 
 test("read-only Gamma boundary rejects non-2xx, timeout, and oversized bodies", async () => {

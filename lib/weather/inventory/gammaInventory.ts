@@ -3,7 +3,7 @@ import { sha256 } from "../types";
 
 export type AttributionStatus = "ATTRIBUTED_EXACT" | "UNATTRIBUTED" | "AMBIGUOUS" | "REJECTED";
 export type InventoryTrace = { stage: string; inputCount: number; outputCount: number; targetEventPresent: boolean; targetConditionPresent: boolean; targetTokenPresent: boolean; rejectedTargets: number; firstRejectionReason: string | null };
-export type RawPage = { records: Record<string, unknown>[]; pageIdentity: string; payloadHash: string; pagination: string | null };
+export type RawPage = { records: Record<string, unknown>[]; recordForm: "EVENT" | "KEYSET_MARKET"; pageIdentity: string; payloadHash: string; pagination: string | null };
 export type InventoryMarket = { conditionId: string; venueEventId: string | null; venueMarketId: string | null; title: string | null; slug: string | null; active: boolean; closed: boolean; outcomes: Array<{ tokenId: string; canonicalContractId: string; outcome: string; outcomeIndex: number }>; attributionStatus: AttributionStatus; attributionReason: string | null };
 
 const fail = (reason: string): never => { throw new Error(`GAMMA_ENVELOPE_INVALID:${reason}`); };
@@ -11,10 +11,13 @@ const record = (value: unknown): Record<string, unknown> => { if (!value || type
 
 export function validateGammaPage(value: unknown, pageIdentity: string): RawPage {
   const wrapper = Array.isArray(value) ? null : record(value);
-  const records = Array.isArray(value) ? value : wrapper !== null && Array.isArray(wrapper.events) ? wrapper.events : wrapper !== null && Array.isArray(wrapper.data) ? wrapper.data : fail("body_not_array");
+  const hasKeysetMarkets = wrapper !== null && Object.prototype.hasOwnProperty.call(wrapper, "markets");
+  if (hasKeysetMarkets && !Array.isArray(wrapper.markets)) fail("keyset_markets_not_array");
+  if (hasKeysetMarkets && Object.prototype.hasOwnProperty.call(wrapper, "next_cursor") && typeof wrapper.next_cursor !== "string") fail("keyset_cursor_not_string");
+  const records = Array.isArray(value) ? value : wrapper !== null && Array.isArray(wrapper.events) ? wrapper.events : wrapper !== null && Array.isArray(wrapper.data) ? wrapper.data : wrapper !== null && Array.isArray(wrapper.markets) ? wrapper.markets : fail("body_not_array");
   if (!pageIdentity.trim() || !records.every((item) => item && typeof item === "object" && !Array.isArray(item))) fail("partial_records");
   const pagination = wrapper && typeof wrapper.next_cursor === "string" ? wrapper.next_cursor : null;
-  return { records: records as Record<string, unknown>[], pageIdentity, payloadHash: hashCanonicalPayload(value), pagination };
+  return { records: records as Record<string, unknown>[], recordForm: hasKeysetMarkets ? "KEYSET_MARKET" : "EVENT", pageIdentity, payloadHash: hashCanonicalPayload(value), pagination };
 }
 
 function text(value: unknown): string | null { return typeof value === "string" && value.trim() ? value.trim() : null; }
@@ -24,7 +27,7 @@ function tokenValues(value: unknown[]): string[] | null { const tokenIds: string
 export function extractWeatherMarkets(page: RawPage): { markets: InventoryMarket[]; trace: InventoryTrace } {
   const markets: InventoryMarket[] = [];
   let first: string | null = null;
-  for (const event of page.records) for (const marketRaw of values(event.markets)) {
+  for (const event of page.records) for (const marketRaw of page.recordForm === "KEYSET_MARKET" ? [event] : values(event.markets)) {
     const market = record(marketRaw); const conditionId = text(market.condition_id ?? market.conditionId);
     const rawOutcomes = values(market.outcomes); const tokenIds = tokenValues(values(market.clobTokenIds ?? market.clob_token_ids));
     if (!conditionId) { first ||= "MISSING_CONDITION_ID"; continue; }
