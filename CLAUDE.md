@@ -33,6 +33,8 @@ Neither role may: claim "done" without proof, give manual snippet instructions t
 
 Load Tier 2 (project context) only when task-relevant. Do NOT load Tier 4 (lessons/archive) at session start.
 
+**PROMPT CONTINUATION RULE:** For every continuation after STOP, follow `docs/ai-context/PROMPT__PROTOCOL.md`. Do not reload the full project context or repeat the original executor prompt.
+
 **Feed/data/scoring incidents:** follow `P0_FEED_FORENSIC_AUTOMATION_PROTOCOL.md`. No trace table = no patch.
 **Source coverage:** run `npm run audit:sports-sources` — Gamma tag_slug alone is not sufficient for Polymarket sports categories; see `P0_SOURCE_COVERAGE_AUDIT_PROTOCOL.md`.
 

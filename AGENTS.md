@@ -23,6 +23,8 @@ Tier 3: product/tech/source-architecture context docs     → load when task-rel
 Tier 4: archive/lessons/handoff docs                       → load only after failure/recovery/postmortem, never at session start
 ```
 
+**PROMPT__PROTOCOL is mandatory.** After a STOP, continue from the verified checkpoint and authorize only the blocked operation. Founder must not manually edit repository files.
+
 ## 2. Role split
 
 | Agent | Role | Must NOT do |

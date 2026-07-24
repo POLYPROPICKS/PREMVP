@@ -82,6 +82,8 @@ Agents that only inspect GitHub/source files will miss critical product, workflo
 
 Every agent must read or request the relevant files under `/docs/ai-context/` before planning implementation.
 
+Load `PROMPT__PROTOCOL.md` when creating an executor prompt or continuing a task after STOP. Do not reload unrelated Tier 2–4 context for continuation prompts.
+
 ### **`/docs/ai-context/01_PROJECT_CONTEXT_CURRENT.md`**
 
 Purpose:
