@@ -1,0 +1,3 @@
+import { hashSourceContract, type SourceContract } from "../types";
+const semantic = { id: "POLYMARKET_CLOB_TOP_BOOK_V1", venue: "polymarket", apiFamily: "clob", adapterVersion: "1", schemaVersion: "1", timestampSemantics: "capture-time UTC timestamps", paginationContract: "one-book-per-token explicit", retryContract: "future adapter-owned bounded retry", activeClosedContract: "token activity explicit", normalizationBoundary: "adapter emits canonical top book", canonicalSerialization: "weather-canonical-json.v1" };
+export const POLYMARKET_CLOB_TOP_BOOK_V1: Readonly<SourceContract> = Object.freeze({ ...semantic, contractHash: hashSourceContract({ ...semantic, contractHash: "" }) });

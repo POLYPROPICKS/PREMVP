@@ -1,0 +1,3 @@
+import { hashSourceContract, type SourceContract } from "../types";
+const semantic = { id: "POLYMARKET_GAMMA_WEATHER_V1", venue: "polymarket", apiFamily: "gamma", adapterVersion: "1", schemaVersion: "1", timestampSemantics: "venue-published UTC timestamps", paginationContract: "cursor-or-offset explicit", retryContract: "future adapter-owned bounded retry", activeClosedContract: "active and closed state explicit", normalizationBoundary: "adapter emits canonical weather inventory", canonicalSerialization: "weather-canonical-json.v1" };
+export const POLYMARKET_GAMMA_WEATHER_V1: Readonly<SourceContract> = Object.freeze({ ...semantic, contractHash: hashSourceContract({ ...semantic, contractHash: "" }) });
