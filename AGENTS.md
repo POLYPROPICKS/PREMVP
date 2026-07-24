@@ -26,6 +26,8 @@ Tier 4: archive/lessons/handoff docs                       → load only after f
 **PROMPT__PROTOCOL is mandatory.** After a STOP, continue from the verified checkpoint and authorize only the blocked operation. Founder must not manually edit repository files.
 Independent review uses one full review per milestone; corrections use delta-review under `REVIEW_COST_PROTOCOL`. Route executor instructions only through `ТЕКУЩИЙ ЧАТ` or `НОВЫЙ ЧАТ`.
 
+**Weather automated review:** After successful tests and committed Weather programming changes, the writer must invoke `$weather-gate-reviewer` before reporting a milestone Gate PASS. Supply the exact parent and review-head SHAs, task classification, allowed/forbidden files, acceptance checks, targeted tests, writer evidence, prior findings for corrections, and generated-artifact allowlist. Wait for the read-only reviewer verdict. On FAIL/STOP, stop for the Founder and do not auto-fix; on PASS, report the independent verdict. Never push/deploy unless separately authorized.
+
 ## 2. Role split
 
 | Agent | Role | Must NOT do |

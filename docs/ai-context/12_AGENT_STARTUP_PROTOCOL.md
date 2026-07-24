@@ -84,6 +84,8 @@ Every agent must read or request the relevant files under `/docs/ai-context/` be
 
 Load `PROMPT__PROTOCOL.md` when creating an executor prompt or continuing a task after STOP. Load its `REVIEW_COST_PROTOCOL` for independent reviews. During delta-review, do not load unrelated context.
 
+For Weather writer tasks, load the `$weather-gate-reviewer` skill metadata. Invoke it only after reviewable commits and writer gates exist; do not invoke before a review delta exists.
+
 ### **`/docs/ai-context/01_PROJECT_CONTEXT_CURRENT.md`**
 
 Purpose:

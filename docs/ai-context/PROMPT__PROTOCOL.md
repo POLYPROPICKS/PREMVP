@@ -74,5 +74,12 @@ Reduce token waste, prevent repeated context loading, and continue executor work
 7. Route every executor instruction using only `ТЕКУЩИЙ ЧАТ` or `НОВЫЙ ЧАТ`; never tell the Founder to find or remember a prior thread by title.
 8. Recommended delta-review budget: maximum 12 files, maximum two targeted test commands, no broad repo search, and a final response under 500 words. If more scope is required, return `BUDGET_EXCEEDED` with the exact additional evidence required.
 
+## WEATHER_AUTOMATED_REVIEW_PROTOCOL
+
+1. Manual long Weather reviewer prompts are deprecated; use `$weather-gate-reviewer` after reviewable commits and writer gates exist.
+2. Use one full review per milestone and a targeted delta review after corrections.
+3. Automation is supervised: the read-only custom reviewer returns PASS/FAIL/STOP, no automatic fixes occur, and no automatic push/deploy occurs.
+4. The Founder remains the final acceptor.
+
 ## Weather workspace
 `C:\WORK\KalshiProPulse\sipropicks-weather-model-1`

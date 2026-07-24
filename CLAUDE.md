@@ -35,6 +35,7 @@ Load Tier 2 (project context) only when task-relevant. Do NOT load Tier 4 (lesso
 
 **PROMPT CONTINUATION RULE:** For every continuation after STOP, follow `docs/ai-context/PROMPT__PROTOCOL.md`. Do not reload the full project context or repeat the original executor prompt.
 **INDEPENDENT REVIEW RULE:** Independent reviews follow `REVIEW_COST_PROTOCOL` in `docs/ai-context/PROMPT__PROTOCOL.md`; the Founder never manually edits repository files.
+**WEATHER REVIEW RULE:** After committed Weather programming milestones and corrections, `$weather-gate-reviewer` is mandatory. It delegates to the read-only `weather_gate_reviewer` custom agent; the writer cannot self-certify independent review.
 
 **Feed/data/scoring incidents:** follow `P0_FEED_FORENSIC_AUTOMATION_PROTOCOL.md`. No trace table = no patch.
 **Source coverage:** run `npm run audit:sports-sources` — Gamma tag_slug alone is not sufficient for Polymarket sports categories; see `P0_SOURCE_COVERAGE_AUDIT_PROTOCOL.md`.
