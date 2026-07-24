@@ -616,6 +616,80 @@ export function findAuthoritativeCandidateForPlanningReservation(
   return { candidate: null, method: "NONE", ambiguityCount: 0, ...base };
 }
 
+// ── Shared executable-identity contract (R0E reservation/rebalance parity) ──
+//
+// A CONTRACT_A_PLANNING_V1 reservation is only credible if it can survive the
+// final rebalance against the authoritative (CONTRACT_A_V1) universe when the
+// source data is unchanged. Both stages MUST agree on what "executable
+// identity" means, so this single pure predicate encodes that contract:
+//   1. the reservation's stable join keys locate exactly ONE authoritative
+//      candidate (findAuthoritativeCandidateForPlanningReservation);
+//   2. that candidate carries a complete condition_id / token_id / side;
+//   3. that candidate passes isExecutableMarket (tier/live/anchor/stake).
+// Rebalance's own inline planning branch applies these same three checks (see
+// selectQueueRowForDueReservation); planning calls THIS function before it
+// reserves a slot, so a reserved event is executable-by-construction. The
+// eventExecutionQueue.reservationIdentityParity test locks the two in step.
+export type ExecutableIdentityReasonCode =
+  | "EXECUTABLE"
+  | "IDENTITY_SOURCE_MISSING"
+  | "NO_IDENTITY_COMPLETE_REPRESENTATIVE"
+  | "AMBIGUOUS_AUTHORITATIVE_MATCH"
+  | "IDENTITY_INCOMPLETE"
+  | "MARKET_ANCHOR_REJECTED";
+
+export interface ExecutableIdentityDecision {
+  allowed: boolean;
+  condition_id: string | null;
+  token_id: string | null;
+  side: string | null;
+  physical_event_key: string;
+  reason_code: ExecutableIdentityReasonCode;
+  source_stage: "PLANNING" | "REBALANCE";
+  candidate: FireModelCandidate | null;
+  match_method: PlanningAuthoritativeMatchMethod;
+  ambiguity_count: number;
+}
+
+function nonEmptyString(v: unknown): string | null {
+  return typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+}
+
+export function decidePlanningReservationExecutableIdentity(
+  reservation: Pick<NightEventReservationRow, "best_snapshot_id" | "event_slug" | "match_family_key">,
+  authoritativeUniverse: readonly FireModelCandidate[],
+  sourceStage: "PLANNING" | "REBALANCE",
+): ExecutableIdentityDecision {
+  const physical_event_key = reservation.match_family_key;
+  const match = findAuthoritativeCandidateForPlanningReservation(reservation, authoritativeUniverse);
+  const base = {
+    physical_event_key,
+    source_stage: sourceStage,
+    match_method: match.method,
+    ambiguity_count: match.ambiguityCount,
+  };
+  if (match.candidate === null) {
+    const reason_code: ExecutableIdentityReasonCode =
+      match.ambiguityCount > 1
+        ? "AMBIGUOUS_AUTHORITATIVE_MATCH"
+        : !match.sourceLineagePresent && !match.slugPresent
+          ? "IDENTITY_SOURCE_MISSING"
+          : "NO_IDENTITY_COMPLETE_REPRESENTATIVE";
+    return { allowed: false, condition_id: null, token_id: null, side: null, reason_code, candidate: null, ...base };
+  }
+  const c = match.candidate;
+  const condition_id = nonEmptyString(c.condition_id);
+  const token_id = nonEmptyString(c.token_id);
+  const side = nonEmptyString(c.side);
+  if (condition_id === null || token_id === null || side === null) {
+    return { allowed: false, condition_id, token_id, side, reason_code: "IDENTITY_INCOMPLETE", candidate: c, ...base };
+  }
+  if (!isExecutableMarket(c).executable) {
+    return { allowed: false, condition_id, token_id, side, reason_code: "MARKET_ANCHOR_REJECTED", candidate: c, ...base };
+  }
+  return { allowed: true, condition_id, token_id, side, reason_code: "EXECUTABLE", candidate: c, ...base };
+}
+
 /**
  * Pure per-reservation market selection (no DB reads/writes). Extracted from
  * the rebalance loop so the exact same authoritative-candidate-lock logic

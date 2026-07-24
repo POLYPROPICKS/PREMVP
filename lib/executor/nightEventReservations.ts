@@ -40,6 +40,10 @@ import {
   type NightWindow,
 } from "./nightWindow";
 import type { NightEventReservationRow } from "./executorQueueTypes";
+import {
+  decidePlanningReservationExecutableIdentity,
+  type ExecutableIdentityReasonCode,
+} from "./eventExecutionQueue";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
@@ -337,6 +341,10 @@ export interface ReservationPlan {
     skipped_non_tier1_event: number;
     skipped_no_executable_anchor: number;
     skipped_no_fullmatch_anchor: number;
+    // ── R0E reservation/rebalance executable-identity parity (planning only). ──
+    skipped_no_authoritative_identity: number;
+    authoritative_identity_parity_active: boolean;
+    authoritative_identity_rejection_reasons: Partial<Record<ExecutableIdentityReasonCode, number>>;
     market_level_keys_skipped: number;
     market_level_keys_normalized: number;
     // Horizon/WC floor diagnostics exposed after build.
@@ -388,7 +396,11 @@ type ReservationCandidateFetchResult = {
  */
 export async function buildReservationPlan(
   nowMs: number,
-  deps: { fetchCandidates?: () => Promise<ReservationCandidateFetchResult>; selectorMode?: FireModelSelectorMode } = {}
+  deps: {
+    fetchCandidates?: () => Promise<ReservationCandidateFetchResult>;
+    fetchAuthoritativeCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+    selectorMode?: FireModelSelectorMode;
+  } = {}
 ): Promise<ReservationPlan> {
   const window = resolveNightWindow(nowMs);
   const planRunId = buildPlanRunId(nowMs);
@@ -399,6 +411,26 @@ export async function buildReservationPlan(
       return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, deps.selectorMode ?? "CONTUR3_CURRENT");
     });
   const { candidates: universe, rawDiagnostics } = await fetchCandidates();
+
+  // ── R0E reservation/rebalance parity ────────────────────────────────────
+  // In CONTRACT_A_PLANNING_V1 mode, planning must not reserve a physical event
+  // unless it has an identity-complete, executable authoritative (CONTRACT_A_V1)
+  // representative — decided with the SAME contract rebalance applies. This
+  // prevents dead-on-arrival reservations (the production 14x
+  // CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE). Off for legacy selector modes.
+  const authoritativeParityActive = (deps.selectorMode ?? "CONTUR3_CURRENT") === "CONTRACT_A_PLANNING_V1";
+  let authoritativeUniverse: FireModelCandidate[] = [];
+  if (authoritativeParityActive) {
+    const fetchAuthoritative =
+      deps.fetchAuthoritativeCandidates ??
+      (async () => {
+        const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
+        return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_V1");
+      });
+    authoritativeUniverse = (await fetchAuthoritative()).candidates;
+  }
+  let skippedNoAuthoritativeIdentity = 0;
+  const authoritativeIdentityRejectionReasons: Partial<Record<ExecutableIdentityReasonCode, number>> = {};
 
   const bySport: Record<string, number> = {};
   const byTier: Record<string, number> = {};
@@ -515,7 +547,38 @@ export async function buildReservationPlan(
       continue;
     }
     if (ranked[0] !== bestAllowedFullmatch) representativeTitleReplaced += 1;
-    const best = bestAllowedFullmatch;
+    let best = bestAllowedFullmatch;
+
+    // R0E parity gate: when active, the reserved representative must join to an
+    // identity-complete, executable authoritative candidate using the exact
+    // contract rebalance applies. Scan the group's executable anchors in quality
+    // order and pick the first that has one; skip the whole physical event if
+    // none exists (never reserve a dead-on-arrival slot). Continues to the next
+    // group so remaining valid events still fill live slots.
+    if (authoritativeParityActive) {
+      let identityRep: FireModelCandidate | null = null;
+      let lastReason: ExecutableIdentityReasonCode = "NO_IDENTITY_COMPLETE_REPRESENTATIVE";
+      for (const pc of executableAnchorRanked) {
+        const decision = decidePlanningReservationExecutableIdentity(
+          { best_snapshot_id: pc.signal_id, event_slug: pc.event_slug, match_family_key: groupKey },
+          authoritativeUniverse,
+          "PLANNING",
+        );
+        if (decision.allowed) {
+          identityRep = pc;
+          break;
+        }
+        lastReason = decision.reason_code;
+      }
+      if (identityRep === null) {
+        skippedNoAuthoritativeIdentity += 1;
+        authoritativeIdentityRejectionReasons[lastReason] =
+          (authoritativeIdentityRejectionReasons[lastReason] ?? 0) + 1;
+        continue;
+      }
+      best = identityRep;
+    }
+
     const startMs = best.diagnostics.game_start_iso
       ? new Date(best.diagnostics.game_start_iso).getTime()
       : NaN;
@@ -531,7 +594,9 @@ export async function buildReservationPlan(
     // Tier1 absent for this real physical match. Per founder slot policy, hold it for the
     // explicit Tier2→Tier3 fallback ladder — but ONLY if a positively-allowed full-match
     // anchor exists. Pick the best executable anchor that is a real full-match market.
-    const fbTier = eventTierOf(bestAllowedFullmatch);
+    // Fallback tier is read from the reserved representative (identity rep when
+    // the parity gate is active, otherwise the best allowed full-match anchor).
+    const fbTier = eventTierOf(best);
     if (fbTier !== "TIER2" && fbTier !== "TIER3") {
       // No allowed full-match anchor → genuinely non-actionable, correct skip (NOT silent
       // when a forbidden-only inventory is the cause: counted for forensic visibility).
@@ -543,7 +608,7 @@ export async function buildReservationPlan(
       }
       continue;
     }
-    fallbackRankable.push({ best: bestAllowedFullmatch, group: ranked, groupKey, fallbackTier: fbTier });
+    fallbackRankable.push({ best, group: ranked, groupKey, fallbackTier: fbTier });
   }
 
   // Cross-event ranking by best-candidate quality.
@@ -663,6 +728,9 @@ export async function buildReservationPlan(
       skipped_non_tier1_event: skippedNonTier1,
       skipped_no_executable_anchor: skippedNoExecutableAnchor,
       skipped_no_fullmatch_anchor: skippedNoFullmatchAnchor,
+      skipped_no_authoritative_identity: skippedNoAuthoritativeIdentity,
+      authoritative_identity_parity_active: authoritativeParityActive,
+      authoritative_identity_rejection_reasons: authoritativeIdentityRejectionReasons,
       market_level_keys_skipped: marketLevelKeysSkipped,
       market_level_keys_normalized: marketLevelKeysNormalized,
       horizon_end_iso: window.horizonEndIso,
@@ -826,6 +894,7 @@ export async function runReservationCronWithEvidence(
   opts: { force?: boolean; selectorMode?: FireModelSelectorMode } = {},
   deps: {
     fetchCandidates?: () => Promise<ReservationCandidateFetchResult>;
+    fetchAuthoritativeCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     selectorMode?: FireModelSelectorMode;
     repo?: ReservationRepoPort;
     jobEvidence?: SchedulerJobEvidencePort;
@@ -834,7 +903,11 @@ export async function runReservationCronWithEvidence(
   const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
   const startedAt = new Date().toISOString();
   try {
-    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates, selectorMode: opts.selectorMode });
+    const plan = await buildReservationPlan(nowMs, {
+      fetchCandidates: deps.fetchCandidates,
+      fetchAuthoritativeCandidates: deps.fetchAuthoritativeCandidates,
+      selectorMode: opts.selectorMode,
+    });
     const persisted = deps.repo
       ? await persistReservationPlan(plan, opts, deps.repo)
       : await persistReservationPlan(plan, opts);
