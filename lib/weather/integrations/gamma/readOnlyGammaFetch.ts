@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
-const GAMMA_EVENTS_URL = "https://gamma-api.polymarket.com/events";
+const GAMMA_MARKETS_KEYSET_URL = "https://gamma-api.polymarket.com/markets/keyset";
 const DEFAULT_TIMEOUT_MS = 10_000;
-const DEFAULT_MAX_BYTES = 1_000_000;
+export const GAMMA_RESPONSE_CAP_BYTES = 1_048_576;
 
 export class GammaFetchError extends Error {
   constructor(public readonly code: "HTTP_STATUS" | "TIMEOUT" | "RESPONSE_TOO_LARGE" | "CONTENT_TYPE" | "NETWORK", public readonly context: { status?: number; elapsedMs: number; responseBytes?: number }) {
@@ -10,15 +10,14 @@ export class GammaFetchError extends Error {
   }
 }
 
-export function gammaWeatherUrl(limit = 20): URL {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 20) throw new Error("GAMMA_FETCH_INVALID_LIMIT");
-  const url = new URL(GAMMA_EVENTS_URL);
-  url.search = new URLSearchParams({ active: "true", closed: "false", order: "volume24hr", ascending: "false", limit: String(limit), offset: "0" }).toString();
+export function gammaWeatherUrl(): URL {
+  const url = new URL(GAMMA_MARKETS_KEYSET_URL);
+  url.search = new URLSearchParams({ limit: "10", active: "true", closed: "false", ascending: "true" }).toString();
   return url;
 }
 
-export async function fetchGammaWeatherPage(options: { limit?: number; timeoutMs?: number; maxBytes?: number } = {}) {
-  const started = Date.now(); const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS; const maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES; const url = gammaWeatherUrl(options.limit);
+export async function fetchGammaWeatherPage(options: { timeoutMs?: number; maxBytes?: number } = {}) {
+  const started = Date.now(); const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS; const maxBytes = options.maxBytes ?? GAMMA_RESPONSE_CAP_BYTES; const url = gammaWeatherUrl();
   const controller = new AbortController(); const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetch(url, { method: "GET", signal: controller.signal, headers: { accept: "application/json" } });

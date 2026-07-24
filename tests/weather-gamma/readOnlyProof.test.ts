@@ -1,10 +1,22 @@
 import test, { afterEach } from "node:test";
 import assert from "node:assert/strict";
-import { fetchGammaWeatherPage, GammaFetchError } from "../../lib/weather/integrations/gamma/readOnlyGammaFetch";
+import { fetchGammaWeatherPage, GammaFetchError, gammaWeatherUrl, GAMMA_RESPONSE_CAP_BYTES } from "../../lib/weather/integrations/gamma/readOnlyGammaFetch";
 import { buildGammaProofReport, runGammaReadOnlyProof } from "../../lib/weather/reporting/gammaReadOnlyProof";
 
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
+
+test("default proof request is one cap-preserving Gamma keyset page without retry or pagination", () => {
+  const url = gammaWeatherUrl();
+  assert.equal(url.pathname, "/markets/keyset");
+  assert.equal(url.searchParams.get("limit"), "10");
+  assert.equal(url.searchParams.get("active"), "true");
+  assert.equal(url.searchParams.get("closed"), "false");
+  assert.equal(url.searchParams.get("ascending"), "true");
+  assert.equal(url.searchParams.has("offset"), false);
+  assert.equal(url.searchParams.has("after_cursor"), false);
+  assert.equal(GAMMA_RESPONSE_CAP_BYTES, 1_048_576);
+});
 
 test("read-only Gamma boundary rejects non-2xx, timeout, and oversized bodies", async () => {
   globalThis.fetch = (async () => new Response("no", { status: 503 })) as typeof fetch;
