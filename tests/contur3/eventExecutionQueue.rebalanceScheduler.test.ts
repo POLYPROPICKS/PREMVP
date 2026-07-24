@@ -503,6 +503,109 @@ test("Stake-CA1: a canonical CONTRACT_A_V1 candidate carries stake_usd = 1.10 (f
   assert.equal(candidates[0].max_order_usd, 1.1, "canonical Contract A max_order_usd must also track the $1.10 stake");
 });
 
+// ── R0E: fail closed on malformed final Contract A markets ────────────────
+//
+// Production regression: a Contract A candidate whose market_slug/market_title
+// is an activity/volume label ("$52K matched activity") and whose event_slug
+// is a non-full-match submarket ("Game Handicap: KC (-1.5) vs Team Vitality
+// (+1.5)") reached READY in event_execution_queue with sport=unknown,
+// league=null. buildContractAV1Candidates must fail closed on this shape
+// before the row is queue-eligible (live_eligible=false), reusing the same
+// canonical helpers (isActivityLabelText, fullMatchAnchorDecision) the
+// planning path already uses -- not a parallel classifier.
+
+test("Anchor-CA1: the production KC handicap / activity-label candidate is not queue-eligible (live_eligible=false)", async () => {
+  const sourceRow = {
+    id: "66666666-6666-4666-8666-666666666666",
+    condition_id: "cond-ca-kc-handicap",
+    token_id: "tok-ca-kc-handicap",
+    selected_outcome: "Karmine Corp",
+    score: 82,
+    entry_price_num: 0.4,
+    created_at: "2026-07-24T13:30:00.000Z", // T-90 boundary for a 15:00Z kickoff
+    event_slug: "Game Handicap: KC (-1.5) vs Team Vitality (+1.5)",
+    market_slug: "$52K matched activity",
+    diagnostics: { gameStartIso: "2026-07-24T15:00:00.000Z" },
+  };
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  const c = candidates[0];
+  assert.equal(c.live_eligible, false, "the KC handicap / activity-label row must fail closed, never queue-eligible");
+  assert.equal(c.activity_label_detected, true, "$52K matched activity must be detected as an activity label");
+  assert.match(
+    c.live_rejection_reason ?? "",
+    /^CONTRACT_A_ACTIVITY_LABEL_MARKET$/,
+    "rejection reason must identify the activity-label failure mode"
+  );
+});
+
+test("Anchor-CA2: an activity-label market_slug is rejected even when event_slug alone would look like a clean full-match anchor", async () => {
+  const sourceRow = {
+    id: "77777777-7777-4777-8777-777777777777",
+    condition_id: "cond-ca-activity-only",
+    token_id: "tok-ca-activity-only",
+    selected_outcome: "TEAM_A",
+    score: 82,
+    entry_price_num: 0.4,
+    created_at: "2026-07-20T11:30:00.000Z",
+    event_slug: "nba-team-a-vs-team-b-moneyline",
+    market_slug: "$52K matched activity",
+    diagnostics: { gameStartIso: "2026-07-20T13:00:00.000Z" },
+  };
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].live_eligible, false, "market_title/market_slug must never be populated from activity-label text and pass through");
+  assert.equal(candidates[0].activity_label_detected, true);
+});
+
+test("Anchor-CA3: a non-full-match submarket (handicap sub-line) with an authoritative-shaped identity still fails closed even when market_slug is not an activity label", async () => {
+  const sourceRow = {
+    id: "88888888-8888-4888-8888-888888888888",
+    condition_id: "cond-ca-submarket",
+    token_id: "tok-ca-submarket",
+    selected_outcome: "TEAM_A",
+    score: 82,
+    entry_price_num: 0.4,
+    created_at: "2026-07-20T11:30:00.000Z",
+    event_slug: "Game Handicap: KC (-1.5) vs Team Vitality (+1.5)",
+    market_slug: "game-handicap-kc-vs-team-vitality",
+    diagnostics: { gameStartIso: "2026-07-20T13:00:00.000Z" },
+  };
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].live_eligible, false, "a non-full-match submarket must fail closed regardless of missing/unknown authoritative sport context");
+  assert.equal(candidates[0].activity_label_detected, false);
+  assert.match(candidates[0].live_rejection_reason ?? "", /^CONTRACT_A_FULLMATCH_/);
+});
+
+// Note: produceFrozenModelV2ShadowDecisions excludes esports rows entirely
+// upstream of buildContractAV1Candidates (isEsports check in
+// frozenModelProducerV2Shadow.ts), so a BO1/BO3/BO5 esports row never
+// reaches this path regardless of this fix -- the reachable positive case
+// on CONTRACT_A_V1 is a clean full-match anchor such as moneyline/spread.
+// The anchor probe above still special-cases BO-series titles (inferred as
+// "esport" for the fullMatchAnchorDecision call only) as defense-in-depth
+// should that upstream exclusion ever change.
+test("Anchor-CA4: a valid clean full-match moneyline anchor remains queue-eligible (live_eligible=true)", async () => {
+  const sourceRow = {
+    id: "99999999-9999-4999-8999-999999999999",
+    condition_id: "cond-ca-moneyline",
+    token_id: "tok-ca-moneyline",
+    selected_outcome: "TEAM_A",
+    score: 82,
+    entry_price_num: 0.4,
+    created_at: "2026-07-20T11:30:00.000Z",
+    event_slug: "nba-team-a-vs-team-b-moneyline",
+    market_slug: "nba-team-a-vs-team-b-moneyline",
+    diagnostics: { gameStartIso: "2026-07-20T13:00:00.000Z" },
+  };
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].live_eligible, true, "a valid clean full-match anchor must remain queue-eligible after the fail-closed fix");
+  assert.equal(candidates[0].activity_label_detected, false);
+  assert.equal(candidates[0].live_rejection_reason, null);
+});
+
 test("B7: a failed write-mode rebalance run records sanitized failure evidence and rethrows", async () => {
   const jobEvidence = makeFakeJobEvidence();
   const failingRepo: RebalanceRepoPort = {
