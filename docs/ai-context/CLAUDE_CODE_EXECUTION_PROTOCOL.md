@@ -105,7 +105,40 @@ For backend, API, parser, scoring, model, integration, script, reusable utility,
 - Run targeted tests, `npx tsc --noEmit`, and `npm run build` before Gate 1.
 - If no safe test harness exists, STOP and propose the smallest harness; do not fake TDD.
 
-## 9. Invalid response examples (rejected by monitoring agent)
+## 9. Ireland non-interactive runtime prompt policy
+
+- Prompt text cannot override the Codex session approval policy.
+- Before issuing an Ireland runtime inspection prompt, the Codex session must be configured with approval policy `never`.
+- If the session asks for per-command approval, STOP before runtime inspection and return `WRONG_CODEX_APPROVAL_MODE`.
+- Safe read-only commands are pre-authorized:
+  - systemctl is-enabled/is-active/show/status
+  - journalctl
+  - ps/pgrep
+  - ls/stat/cat/head/tail
+  - find and rg/grep only within:
+    - /home/ubuntu/polymarket-executor
+    - /home/ubuntu/polymarket-executor/live
+    - /home/ubuntu/polymarket-executor/data
+  - sqlite3 -readonly
+  - read-only Git commands
+- Founder approval is required before:
+  - file or database writes
+  - service start/stop/restart/enable/disable
+  - process kill
+  - queue mutation
+  - callback replay
+  - CLOB action
+  - secret disclosure
+  - inspection outside the allowed paths
+- Ireland prompts use only Ireland-local instructions.
+- Never require PREMVP Windows Markdown files on Ireland.
+- Never mix PREMVP and Ireland repositories in one executor prompt.
+- Model routing:
+  - Luna: mechanical runtime/status inspection
+  - Terra: bounded implementation
+  - Sol: proven cross-layer or live-money conflict
+
+## 10. Invalid response examples (rejected by monitoring agent)
 
 ❌ "Done." / "Build should pass." / "Acceptance criteria met." / "I fixed the issue."
 ❌ Any response without old/new snippets for code changes
