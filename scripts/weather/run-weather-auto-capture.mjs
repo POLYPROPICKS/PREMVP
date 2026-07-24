@@ -1,0 +1,10 @@
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import gammaModule from "../../lib/weather/source-contracts/polymarketGammaWeather.v1.ts";
+import clobModule from "../../lib/weather/source-contracts/polymarketClobTopBook.v1.ts";
+const { POLYMARKET_GAMMA_WEATHER_V1 } = gammaModule;
+const { POLYMARKET_CLOB_TOP_BOOK_V1 } = clobModule;
+const args = process.argv.slice(2); const plan = args.includes("--plan"); const daysIndex = args.indexOf("--days"); const days = daysIndex === -1 ? 7 : Number(args[daysIndex + 1]);
+if (!plan) throw new Error("NOT_IMPLEMENTED: only --plan is supported"); if (!Number.isInteger(days) || days < 1 || days > 31) throw new Error("--days must be a bounded positive integer");
+const catalog = readFileSync(new URL("../../config/weather/us-daily-max-stations.v1.json", import.meta.url)); const stationCatalogHash = createHash("sha256").update(catalog).digest("hex");
+console.log(`WEATHER_CAPTURE_PLAN_SUMMARY ${JSON.stringify({ plan_only: true, days, network_calls: 0, db_writes: 0, source_contracts: [{ id: POLYMARKET_GAMMA_WEATHER_V1.id, hash: POLYMARKET_GAMMA_WEATHER_V1.contractHash }, { id: POLYMARKET_CLOB_TOP_BOOK_V1.id, hash: POLYMARKET_CLOB_TOP_BOOK_V1.contractHash }], station_catalog_hash: stationCatalogHash, dataset_selection: "NOT_APPLICABLE", gate: "PASS" })}`);

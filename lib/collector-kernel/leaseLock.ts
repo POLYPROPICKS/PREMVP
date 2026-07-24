@@ -1,0 +1,3 @@
+export type LeaseLockStatus = "CLAIMED" | "LOCKED" | "STALE_RECLAIMED" | "INVALID";
+export interface LeaseLockResult { status: LeaseLockStatus; leaseId?: string; expiresAt?: string; }
+export function validateLeaseLockResult(value: LeaseLockResult): Readonly<LeaseLockResult> { if (!value || !["CLAIMED", "LOCKED", "STALE_RECLAIMED", "INVALID"].includes(value.status)) throw new Error("invalid lease status"); if (value.status !== "INVALID" && (!value.leaseId || !value.expiresAt || Number.isNaN(Date.parse(value.expiresAt)))) throw new Error("lease fields required"); return Object.freeze({ ...value }); }

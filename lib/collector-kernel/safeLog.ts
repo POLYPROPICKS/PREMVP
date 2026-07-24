@@ -1,0 +1,2 @@
+const secretKey = /authorization|token|secret|password|private.?key|supabase_service_role_key/i;
+export function sanitizeLogFields(value: unknown): unknown { if (Array.isArray(value)) return value.map(sanitizeLogFields); if (value && typeof value === "object") return Object.fromEntries(Object.entries(value as Record<string, unknown>).map(([key, child]) => [key, secretKey.test(key) || (typeof child === "string" && (/^bearer\s/i.test(child) || /-----BEGIN .*PRIVATE KEY-----/.test(child))) ? "[REDACTED]" : sanitizeLogFields(child)])); return value; }
