@@ -89,7 +89,9 @@
     "weather:auto-capture": "tsx scripts/weather/run-weather-auto-capture.mjs",
     "weather:auto-capture:plan": "tsx scripts/weather/run-weather-auto-capture.mjs --plan",
     "weather:inventory:fixture": "node --import tsx scripts/weather/run-weather-inventory-fixture.mjs",
+    "weather:gamma:prove-readonly": "node --import tsx scripts/weather/run-gamma-readonly-proof.mjs",
     "test:weather": "node --import tsx --test tests/weather/*.test.ts",
+    "test:weather-gamma": "node --import tsx --test tests/weather-gamma/*.test.ts",
     "test:weather-inventory": "node --import tsx --test tests/weather-inventory/*.test.ts",
     "test:collector-kernel": "node --import tsx --test tests/collector-kernel/*.test.ts"
   },
