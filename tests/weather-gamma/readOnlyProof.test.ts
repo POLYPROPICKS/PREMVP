@@ -21,7 +21,7 @@ test("default proof request is one cap-preserving Gamma keyset page without retr
 });
 
 test("flat keyset wrapper validates and emits authoritative market and token identities", () => {
-  const wrapper = { $schema: "market-keyset", markets: [{ id: "market", conditionId: "condition-flat", question: "Temperature at KJFK", outcomes: ["Yes", "No"], clobTokenIds: ["token-flat-yes", "token-flat-no"] }], next_cursor: "cursor" };
+  const wrapper = { $schema: "market-keyset", markets: [{ id: "market", conditionId: "condition-flat", question: "Temperature at KJFK", outcomes: JSON.stringify(["Yes", "No"]), clobTokenIds: JSON.stringify(["token-flat-yes", "token-flat-no"]) }], next_cursor: "cursor" };
   const adapted = adaptGammaWeatherPage(validateGammaPage(wrapper, "keyset:0"));
   assert.equal(adapted.markets.length, 1);
   assert.equal(adapted.markets[0].conditionId, "condition-flat");
@@ -36,6 +36,8 @@ test("nested events remain compatible while malformed flat records fail closed",
   const result = adaptGammaWeatherPage(validateGammaPage(malformed, "keyset:bad"));
   assert.equal(result.markets.length, 0);
   assert.equal(result.trace.firstRejectionReason, "MISSING_CONDITION_ID");
+  const malformedEncoded = { markets: [{ id: "market", conditionId: "condition", outcomes: "not-json", clobTokenIds: JSON.stringify(["token"]) }] };
+  assert.equal(adaptGammaWeatherPage(validateGammaPage(malformedEncoded, "keyset:encoded")).markets.length, 0);
   assert.throws(() => validateGammaPage({ markets: [], next_cursor: 1 }, "keyset:cursor"), /GAMMA_ENVELOPE_INVALID/);
 });
 

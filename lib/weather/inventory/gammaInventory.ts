@@ -22,18 +22,23 @@ export function validateGammaPage(value: unknown, pageIdentity: string): RawPage
 
 function text(value: unknown): string | null { return typeof value === "string" && value.trim() ? value.trim() : null; }
 function values(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
-function tokenValues(value: unknown[]): string[] | null { const tokenIds: string[] = []; for (const tokenCandidate of value) { if (typeof tokenCandidate !== "string") return null; const tokenId = tokenCandidate.trim(); if (!tokenId) return null; tokenIds.push(tokenId); } return tokenIds; }
+function identityValues(value: unknown): string[] | null {
+  const candidates = Array.isArray(value) ? value : typeof value === "string" ? (() => { try { const parsed: unknown = JSON.parse(value); return Array.isArray(parsed) ? parsed : null; } catch { return null; } })() : null;
+  if (!candidates?.length) return null;
+  const normalized: string[] = [];
+  for (const candidate of candidates) { if (typeof candidate !== "string" || !candidate.trim()) return null; normalized.push(candidate.trim()); }
+  return normalized;
+}
 
 export function extractWeatherMarkets(page: RawPage): { markets: InventoryMarket[]; trace: InventoryTrace } {
   const markets: InventoryMarket[] = [];
   let first: string | null = null;
   for (const event of page.records) for (const marketRaw of page.recordForm === "KEYSET_MARKET" ? [event] : values(event.markets)) {
     const market = record(marketRaw); const conditionId = text(market.condition_id ?? market.conditionId);
-    const rawOutcomes = values(market.outcomes); const tokenIds = tokenValues(values(market.clobTokenIds ?? market.clob_token_ids));
+    const rawOutcomes = identityValues(market.outcomes); const tokenIds = identityValues(market.clobTokenIds ?? market.clob_token_ids);
     if (!conditionId) { first ||= "MISSING_CONDITION_ID"; continue; }
-    if (!rawOutcomes.length || tokenIds === null || rawOutcomes.length !== tokenIds.length) { first ||= "MALFORMED_OUTCOMES_OR_TOKENS"; continue; }
-    const outcomes = rawOutcomes.map((outcome, index) => { const tokenId = tokenIds[index]; return { tokenId, canonicalContractId: `weather-contract:${sha256({ conditionId, tokenId })}`, outcome: typeof outcome === "string" ? outcome : text(record(outcome).name) ?? "", outcomeIndex: index }; });
-    if (outcomes.some((outcome) => !outcome.outcome)) { first ||= "MALFORMED_OUTCOMES_OR_TOKENS"; continue; }
+    if (rawOutcomes === null || tokenIds === null || rawOutcomes.length !== tokenIds.length) { first ||= "MALFORMED_OUTCOMES_OR_TOKENS"; continue; }
+    const outcomes = rawOutcomes.map((outcome, index) => { const tokenId = tokenIds[index]; return { tokenId, canonicalContractId: `weather-contract:${sha256({ conditionId, tokenId })}`, outcome, outcomeIndex: index }; });
     markets.push({ conditionId, venueEventId: text(event.id), venueMarketId: text(market.id), title: text(market.question ?? market.title), slug: text(market.slug), active: market.active !== false, closed: market.closed === true, outcomes, attributionStatus: "UNATTRIBUTED", attributionReason: null });
   }
   return { markets, trace: { stage: "identity", inputCount: page.records.length, outputCount: markets.length, targetEventPresent: page.records.some((e) => /KJFK/.test(String(e.title ?? ""))), targetConditionPresent: markets.some((m) => m.conditionId === "cond-kjfk"), targetTokenPresent: markets.some((m) => m.outcomes.some((o) => o.tokenId === "token-kjfk-yes")), rejectedTargets: first ? 1 : 0, firstRejectionReason: first } };
