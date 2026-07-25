@@ -207,46 +207,38 @@ test("selector provenance: every accepted decision's selector_id matches the fro
   });
 });
 
-test("two-stage parity: 17:00 planning reserves beyond T-90 and later T-60 resolves exact authoritative READY identity", async () => {
+// ── R0E canonical identity contract (supersedes the earlier two-stage premise) ─
+//
+// Planning is NARROWED to the authoritative execution universe: it may only
+// reserve a slot for a market that already carries a complete immutable
+// execution identity. A market the final stage would reject (score < 65,
+// outside 120m, incomplete identity) can no longer consume a reservation rank,
+// so "planning reserves it, rebalance discards it" is no longer a valid state.
+
+test("two-stage parity: planning reserves the authoritative identity and the later rebalance resolves the SAME identity to READY", async () => {
   const { runContractAAuthoritativePreview } = await import("../../scripts/contur3/preview-contract-a-authoritative");
-  const eventSlug = "mlb-team-a-vs-team-b-2026-07-19";
-  const planning = contractARow({
-    condition_id: "cond-planning",
-    selected_token_id: "tok-planning",
-    score: 64,
-    signal_confidence_num: 64,
-    event_slug: eventSlug,
-    market_slug: `${eventSlug}-moneyline`,
-    __gameStart: "2026-07-19T19:00:00.000Z",
-    __created: "2026-07-19T13:00:00.000Z",
-  });
-  const finalA = contractARow({
+  const authoritative = contractARow({
     condition_id: "cond-final-a",
     selected_token_id: "tok-final-a",
     selected_outcome: "TEAM_A",
-    event_slug: eventSlug,
-    market_slug: `${eventSlug}-moneyline-a`,
-    __gameStart: "2026-07-19T19:00:00.000Z",
-    __created: "2026-07-19T17:30:00.000Z",
   });
-  await withFixture([planning, finalA], async (fixturePath) => {
+  await withFixture([authoritative], async (fixturePath) => {
     const summary = await runContractAAuthoritativePreview([
       "--fixture", fixturePath,
-      "--planning-as-of", "2026-07-19T14:00:00.000Z",
-      "--rebalance-as-of", "2026-07-19T18:00:00.000Z",
+      "--planning-as-of", "2026-07-19T13:50:00.000Z",
+      "--rebalance-as-of", AS_OF,
     ]);
     assert.equal(summary.wouldReserveCount, 1);
     assert.equal(summary.wouldRebalanceCount, 1);
     assert.equal(summary.wouldReadyCount, 1);
-    assert.equal(summary.finalContractARejections.SCORE_BELOW_65, 1);
-    assert.equal(summary.identityMismatchCount, 0);
+    assert.equal(summary.identityMismatchCount, 0, "planning identity === rebalance identity === queue identity");
     assert.equal(summary.alternateSubstitutionCount, 0);
     assert.equal(summary.deterministicReplay, true);
     assert.deepEqual(summary.safety, { productionReservationWrites: 0, productionQueueWrites: 0, callbacks: 0, irelandCalls: 0, clobOrders: 0 });
   });
 });
 
-test("two-stage score-64 rejection: planning may reserve the event but final Contract A reports SCORE_BELOW_65 and creates zero READY", async () => {
+test("two-stage score-64 rejection: a below-threshold market can no longer consume a reservation slot -- zero reserved, zero READY", async () => {
   const { runContractAAuthoritativePreview } = await import("../../scripts/contur3/preview-contract-a-authoritative");
   const planningOnly = contractARow({
     condition_id: "cond-score-64",
@@ -255,16 +247,14 @@ test("two-stage score-64 rejection: planning may reserve the event but final Con
     signal_confidence_num: 64,
     event_slug: "mlb-score-64-vs-threshold-2026-07-19",
     market_slug: "mlb-score-64-vs-threshold-2026-07-19-moneyline",
-    __gameStart: "2026-07-19T19:00:00.000Z",
-    __created: "2026-07-19T13:00:00.000Z",
   });
   await withFixture([planningOnly], async (fixturePath) => {
     const summary = await runContractAAuthoritativePreview([
       "--fixture", fixturePath,
-      "--planning-as-of", "2026-07-19T14:00:00.000Z",
-      "--rebalance-as-of", "2026-07-19T18:00:00.000Z",
+      "--planning-as-of", "2026-07-19T13:50:00.000Z",
+      "--rebalance-as-of", AS_OF,
     ]);
-    assert.equal(summary.wouldReserveCount, 1);
+    assert.equal(summary.wouldReserveCount, 0, "no identity-complete authoritative market -> no dead-on-arrival reservation");
     assert.equal(summary.wouldReadyCount, 0);
     assert.equal(summary.finalContractARejections.SCORE_BELOW_65, 1);
     assert.equal(summary.alternateSubstitutionCount, 0);
@@ -272,26 +262,33 @@ test("two-stage score-64 rejection: planning may reserve the event but final Con
   });
 });
 
-test("two-stage no substitution: reserved planning market cannot replace a missing final authoritative decision", async () => {
+test("two-stage no substitution: an alternate market for the same physical event never replaces the reserved identity", async () => {
   const { runContractAAuthoritativePreview } = await import("../../scripts/contur3/preview-contract-a-authoritative");
-  const planningOnly = contractARow({
-    condition_id: "cond-alternate-b",
-    selected_token_id: "tok-alternate-b",
-    event_slug: "mlb-team-c-vs-team-d-2026-07-19",
-    market_slug: "mlb-team-c-vs-team-d-2026-07-19-moneyline",
-    __gameStart: "2026-07-19T19:00:00.000Z",
-    __created: "2026-07-19T13:00:00.000Z",
+  const eventSlug = "mlb-team-c-vs-team-d-2026-07-19";
+  const reserved = contractARow({
+    condition_id: "cond-reserved",
+    selected_token_id: "tok-reserved",
+    event_slug: eventSlug,
+    market_slug: `${eventSlug}-moneyline`,
   });
-  await withFixture([planningOnly], async (fixturePath) => {
+  // Same physical event, different token, deliberately higher score.
+  const alternate = contractARow({
+    condition_id: "cond-alternate",
+    selected_token_id: "tok-alternate",
+    selected_outcome: "TEAM_B",
+    score: 95,
+    signal_confidence_num: 95,
+    event_slug: eventSlug,
+    market_slug: `${eventSlug}-spread`,
+  });
+  await withFixture([reserved, alternate], async (fixturePath) => {
     const summary = await runContractAAuthoritativePreview([
       "--fixture", fixturePath,
-      "--planning-as-of", "2026-07-19T14:00:00.000Z",
-      "--rebalance-as-of", "2026-07-19T18:00:00.000Z",
+      "--planning-as-of", "2026-07-19T13:50:00.000Z",
+      "--rebalance-as-of", AS_OF,
     ]);
-    assert.equal(summary.wouldReserveCount, 1);
-    assert.equal(summary.wouldReadyCount, 0);
+    assert.equal(summary.wouldReserveCount, 1, "one physical event -> exactly one reservation");
+    assert.equal(summary.identityMismatchCount, 0, "the queued identity is the reserved identity, never the alternate");
     assert.equal(summary.alternateSubstitutionCount, 0);
-    assert.equal(summary.failClosedCount, 1);
-    assert.ok(Object.keys(summary.failClosedReasons).some((reason) => reason.includes("CONTRACT_A_AUTHORITATIVE")));
   });
 });

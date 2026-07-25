@@ -40,6 +40,13 @@ import {
   type NightWindow,
 } from "./nightWindow";
 import type { NightEventReservationRow } from "./executorQueueTypes";
+import {
+  buildIdentityBattleTraceId,
+  buildPersistedIdentityDiagnostics,
+  selectIdentityCompleteRepresentative,
+  type ExecutableMarketIdentity,
+  type ExecutableMarketIdentityReasonCode,
+} from "./executableMarketIdentity";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
@@ -170,6 +177,27 @@ export function fullMatchAnchorDecision(c: FireModelCandidate): FullMatchAnchorD
 
 export function isAllowedFullMatchAnchor(c: FireModelCandidate): boolean {
   return fullMatchAnchorDecision(c).allowed;
+}
+
+/**
+ * Canonical market-anchor policy used by reservation selection.
+ *
+ * Contract A stage candidates (PLANNING / FINAL_AUTHORITATIVE) were produced by
+ * the authoritative selector, which already ran the SAME canonical helpers
+ * (isActivityLabelText + fullMatchAnchorDecision) and encoded the verdict into
+ * live_eligible / activity_label_detected. Read that verdict instead of
+ * re-deriving it from strings -- but never blanket-allow it: a forbidden
+ * activity-label / non-full-match market (the KC handicap regression) stays
+ * rejected here even though its condition/token/side are fully populated.
+ */
+export function anchorDecisionForCandidate(c: FireModelCandidate): FullMatchAnchorDecision {
+  const stage = c.diagnostics?.contract_a_stage;
+  if (stage === "PLANNING" || stage === "FINAL_AUTHORITATIVE") {
+    if (c.activity_label_detected) return { allowed: false, reason: "FULLMATCH_SUBMARKET_REJECTED" };
+    if (!c.live_eligible) return { allowed: false, reason: "FULLMATCH_IDENTITY_INVALID" };
+    return { allowed: true };
+  }
+  return fullMatchAnchorDecision(c);
 }
 
 // Founder live-slot policy: try to fill at least this many live slots when eligible
@@ -337,6 +365,11 @@ export interface ReservationPlan {
     skipped_non_tier1_event: number;
     skipped_no_executable_anchor: number;
     skipped_no_fullmatch_anchor: number;
+    // R0E identity contract: physical-event groups that had an allowed anchor but
+    // NO identity-complete representation, so they never consumed a slot.
+    skipped_no_identity_complete_representative: number;
+    identity_rejection_reasons: Partial<Record<ExecutableMarketIdentityReasonCode, number>>;
+    identity_complete_count: number;
     market_level_keys_skipped: number;
     market_level_keys_normalized: number;
     // Horizon/WC floor diagnostics exposed after build.
@@ -409,6 +442,11 @@ export async function buildReservationPlan(
   let skippedNonTier1 = 0;
   let skippedNoExecutableAnchor = 0;
   let skippedNoFullmatchAnchor = 0;
+  let skippedNoIdentityCompleteRepresentative = 0;
+  const identityRejectionReasons: Partial<Record<ExecutableMarketIdentityReasonCode, number>> = {};
+  // Resolved immutable identity per physical-event group key, produced BEFORE the
+  // group may consume a reservation slot and persisted verbatim into the row.
+  const identityByGroupKey = new Map<string, ExecutableMarketIdentity>();
   let marketLevelKeysSkipped = 0;
   let marketLevelKeysNormalized = 0;
   let weakKeysMerged = 0;
@@ -422,6 +460,15 @@ export async function buildReservationPlan(
   // reserves them). Pure condition-id keys with no canonical identity return null → skip.
   const { repBySig, repByTeamDate, repByTeam } = buildPhysicalMatchIndex(universe);
   const canonicalPhysicalMatchKey = (c: FireModelCandidate): string | null => {
+    // Contract A physical-event identity is authoritative: the frozen producer
+    // already resolved which physical event this decision belongs to. Use that
+    // ID rather than re-deriving a key from market/event slug text -- otherwise
+    // a legitimately named full-match market ("...-moneyline", "spread: ...")
+    // is misread as a market-level line and silently dropped from planning.
+    const authoritativeEventKey = c.diagnostics?.authoritative_event_key;
+    if (typeof authoritativeEventKey === "string" && authoritativeEventKey.trim() !== "") {
+      return authoritativeEventKey.trim();
+    }
     // Provider event identity is authoritative when present and already includes
     // a compatible event date. This collapses title variants before ranking.
     if (c.providerEventKey) return c.providerEventKey;
@@ -499,11 +546,7 @@ export async function buildReservationPlan(
     }
     const anchorDecisions = executableAnchorRanked.map((candidate) => ({
       candidate,
-      decision:
-        candidate.diagnostics.contract_a_stage === "PLANNING" ||
-        candidate.diagnostics.contract_a_stage === "FINAL_AUTHORITATIVE"
-          ? ({ allowed: true } as FullMatchAnchorDecision)
-          : fullMatchAnchorDecision(candidate),
+      decision: anchorDecisionForCandidate(candidate),
     }));
     const bestAllowedFullmatch = anchorDecisions.find(({ decision }) => decision.allowed)?.candidate;
     if (!bestAllowedFullmatch) {
@@ -514,8 +557,31 @@ export async function buildReservationPlan(
       }
       continue;
     }
-    if (ranked[0] !== bestAllowedFullmatch) representativeTitleReplaced += 1;
-    const best = bestAllowedFullmatch;
+
+    // R0E canonical identity contract: a reservation slot may only be consumed
+    // by a market for which PREMVP has already produced a COMPLETE immutable
+    // execution identity. The representative is the highest-ranked anchor-allowed
+    // candidate of this physical event whose identity resolves -- so a lower-ranked
+    // identity-complete representation deterministically beats an incomplete one,
+    // and a group with no such representation is skipped (never reserved dead).
+    const representative = selectIdentityCompleteRepresentative(executableAnchorRanked, {
+      physicalEventKey: groupKey,
+      sourceStage: "planning.representative_selection",
+      anchorAllowed: (candidate) => anchorDecisionForCandidate(candidate).allowed,
+    });
+    if (representative.selected === null) {
+      const rejection = representative.rejection;
+      const code: ExecutableMarketIdentityReasonCode = rejection.allowed
+        ? "NO_IDENTITY_COMPLETE_REPRESENTATIVE"
+        : rejection.reasonCode;
+      identityRejectionReasons[code] = (identityRejectionReasons[code] ?? 0) + 1;
+      skippedNoIdentityCompleteRepresentative += 1;
+      continue;
+    }
+    if (ranked[0] !== representative.selected.candidate) representativeTitleReplaced += 1;
+    const best = representative.selected.candidate;
+    const identity = representative.selected.identity;
+    identityByGroupKey.set(groupKey, identity);
     const startMs = best.diagnostics.game_start_iso
       ? new Date(best.diagnostics.game_start_iso).getTime()
       : NaN;
@@ -579,6 +645,10 @@ export async function buildReservationPlan(
     const selectorId = best.diagnostics.selector_id;
     const isContractAFinal = best.diagnostics.contract_a_stage === "FINAL_AUTHORITATIVE";
     const isContractAPlanning = best.diagnostics.contract_a_stage === "PLANNING";
+    // Resolved before slot consumption (see the group loop). Present for every
+    // reservation this function can be reached with -- a group without a complete
+    // identity never reaches pushReservation.
+    const identity = identityByGroupKey.get(groupKey)!;
     const reason = isContractAFinal
       ? `CONTRACT_A_AUTHORITATIVE: selector=${selectorId} observation=${best.diagnostics.authoritative_observation_id}`
       : isContractAPlanning
@@ -612,20 +682,17 @@ export async function buildReservationPlan(
         scope_confidence: best.sport_classification_confidence,
         timing_bucket: best.timing_bucket,
         hours_to_start: best.diagnostics.hours_to_start_now,
-        battle_trace_id: `contur3:${planRunId}:${groupKey}:unknown:unknown`,
+        battle_trace_id: buildIdentityBattleTraceId(planRunId, identity),
         slot_fill: isFallback ? "FALLBACK_SLOT_FILL" : "TIER1_PRIMARY",
         fallback_tier: isFallback ? tier : undefined,
-        ...(isContractAFinal
-          ? {
-              selector_id: selectorId,
-              authoritative_condition_id: best.diagnostics.authoritative_condition_id,
-              authoritative_token_id: best.diagnostics.authoritative_token_id,
-              authoritative_side: best.diagnostics.authoritative_side,
-              authoritative_observation_id: best.diagnostics.authoritative_observation_id,
-              authoritative_event_key: best.diagnostics.authoritative_event_key,
-            }
-          : {}),
-        ...(isContractAPlanning ? { selector_id: selectorId, contract_a_stage: "PLANNING" } : {}),
+        // R0E: the exact resolved identity is persisted verbatim for EVERY
+        // reservation -- Contract A final, Contract A planning, and Contur3
+        // alike. Rebalance validates these IDs; it never rediscovers a market
+        // from event_slug / event_title / match_family_key.
+        ...buildPersistedIdentityDiagnostics(identity),
+        ...(selectorId !== undefined ? { selector_id: selectorId } : {}),
+        ...(isContractAFinal ? { contract_a_stage: "FINAL_AUTHORITATIVE" } : {}),
+        ...(isContractAPlanning ? { contract_a_stage: "PLANNING" } : {}),
       },
     });
   };
@@ -663,6 +730,9 @@ export async function buildReservationPlan(
       skipped_non_tier1_event: skippedNonTier1,
       skipped_no_executable_anchor: skippedNoExecutableAnchor,
       skipped_no_fullmatch_anchor: skippedNoFullmatchAnchor,
+      skipped_no_identity_complete_representative: skippedNoIdentityCompleteRepresentative,
+      identity_rejection_reasons: identityRejectionReasons,
+      identity_complete_count: identityByGroupKey.size,
       market_level_keys_skipped: marketLevelKeysSkipped,
       market_level_keys_normalized: marketLevelKeysNormalized,
       horizon_end_iso: window.horizonEndIso,

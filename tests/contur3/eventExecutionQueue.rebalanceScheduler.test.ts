@@ -16,7 +16,6 @@ import path from "node:path";
 import {
   runEventRebalance,
   runEventRebalanceWithEvidence,
-  findAuthoritativeCandidateForPlanningReservation,
   type RebalanceRepoPort,
 } from "../../lib/executor/eventExecutionQueue";
 import type { SchedulerJobEvidencePort, SchedulerJobRunInput } from "../../lib/executor/schedulerJobEvidence";
@@ -753,17 +752,14 @@ test("Cap-7: controlledLiveIntent is structurally unaffected -- the route never 
   assert.doesNotMatch(controlledBlockMatch![0], /maxQueueWrites/);
 });
 
-// ── Contract A planning → final authoritative identity handoff (incident fix) ─
+// ── Contract A planning → final authoritative identity handoff ───────────────
 //
-// Production incident (night-plan:2026-07-22): a CONTRACT_A_PLANNING_V1
-// reservation for "spread: los angeles angels (-1.5)" was RESERVED at plan
-// time but SKIPPED at final rebalance with
-// CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE, because the old matcher joined
-// the planning reservation to the fresh CONTRACT_A_V1 candidate on
-// match_family_key (different key spaces) OR raw==lowercased event_slug. For a
-// single-team spread with an empty/case-divergent slug both clauses fail. The
-// fix joins on stable source lineage (best_snapshot_id === generated_signal_pair_id),
-// then normalized slug, then exact match_family_key -- exact, never fuzzy.
+// SUPERSEDED CONTRACT (night-plan:2026-07-24 incident, R0E identity contract):
+// rebalance no longer REDISCOVERS a market for a planning reservation via
+// source lineage / normalized slug / match_family_key. Planning resolves the
+// immutable execution identity BEFORE the reservation slot is consumed and
+// persists it; rebalance only VALIDATES those exact IDs against the
+// authoritative universe. A string join can no longer select a token.
 
 const LINEAGE_UUID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 
@@ -773,7 +769,20 @@ function planningReservation(overrides: Partial<NightEventReservationRow> = {}):
     match_family_key: "WEAK_SINGLE_TEAM_SPREAD:los-angeles-angels:2026-07-19", // un-prefixed weak key
     event_slug: "", // empty slug — the exact production defect shape
     best_snapshot_id: LINEAGE_UUID,
-    diagnostics: { selector_id: "CONTRACT_A_PLANNING_V1", contract_a_stage: "PLANNING" },
+    diagnostics: {
+      selector_id: "CONTRACT_A_PLANNING_V1",
+      contract_a_stage: "PLANNING",
+      // Immutable identity resolved at planning time and persisted verbatim.
+      authoritative_condition_id: "cond-la-final",
+      authoritative_token_id: "tok-la-final",
+      authoritative_side: "Los Angeles Angels",
+      authoritative_observation_id: "obs-la-final",
+      authoritative_event_key: "pair:chicago-white-sox-vs-los-angeles-angels:2026-07-19",
+      identity_physical_event_key: "pair:chicago-white-sox-vs-los-angeles-angels:2026-07-19",
+      identity_market_type: "TIER1_CORE_STRICT_72_COV50",
+      identity_market_family: "contract_a_authoritative",
+      identity_source_signal_id: LINEAGE_UUID,
+    },
     ...overrides,
   });
 }
@@ -792,7 +801,7 @@ function finalAuthoritativeCandidate(overrides: Partial<FireModelCandidate> = {}
   });
 }
 
-test("CA-Handoff-A (lineage recovery, production RED): a planning reservation with empty slug + un-prefixed key QUEUES via source-lineage join to the fresh final candidate", async () => {
+test("CA-Handoff-A (identity validation): a planning reservation with empty slug + un-prefixed key QUEUES because its PERSISTED identity is found in the authoritative universe", async () => {
   const repo = makeFakeRepo([planningReservation()]);
   const final = finalAuthoritativeCandidate();
   const result = await runEventRebalance(
@@ -804,36 +813,39 @@ test("CA-Handoff-A (lineage recovery, production RED): a planning reservation wi
       fetchContractAFinalCandidates: async () => ({ candidates: [final] }),
     }
   );
-  assert.equal(result.queued_count, 1, "planning reservation must locate its final candidate via source lineage and QUEUE");
+  assert.equal(result.queued_count, 1, "planning reservation must validate its stored identity and QUEUE");
   assert.equal(repo.queueRows.length, 1);
   const row = repo.queueRows[0];
-  assert.equal(row.condition_id, "cond-la-final", "cond copied from FRESH final candidate");
+  assert.equal(row.condition_id, "cond-la-final", "cond copied verbatim from the stored identity");
   assert.equal(row.token_id, "tok-la-final");
   assert.equal(row.side, "Los Angeles Angels");
   assert.equal(row.stake_usd, 1.1, "stake stays $1.10");
   assert.equal((row.diagnostics as Record<string, unknown>).source_signal_id, LINEAGE_UUID, "source_signal_id remains the valid UUID");
 });
 
-test("CA-Handoff-B (normalized slug fallback): planning & final differ only in slug case/whitespace -> exact normalized match", () => {
-  const res = planningReservation({ best_snapshot_id: null, event_slug: "  MLB-LAA-CWS-2026-07-22  ", match_family_key: "unprefixed:key" });
-  const final = finalAuthoritativeCandidate({ generated_signal_pair_id: "different-uuid", event_slug: "mlb-laa-cws-2026-07-22", match_family_key: "match:prefixed" });
-  const m = findAuthoritativeCandidateForPlanningReservation(res, [final]);
-  assert.equal(m.method, "NORMALIZED_EVENT_SLUG");
-  assert.equal(m.candidate, final);
-  assert.equal(m.ambiguityCount, 1);
+test("CA-Handoff-B (no slug rediscovery): the stored identity alone decides -- a slug-only match with different IDs is never selected", async () => {
+  const repo = makeFakeRepo([planningReservation()]);
+  // Same normalized slug as the reservation would have had, but DIFFERENT IDs.
+  const slugTwin = finalAuthoritativeCandidate({
+    condition_id: "cond-OTHER",
+    token_id: "tok-OTHER",
+    side: "Chicago White Sox",
+    selected_outcome: "Chicago White Sox",
+  });
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [slugTwin] }) }
+  );
+  assert.equal(result.queued_count, 0, "a same-slug/different-ID market must never be substituted");
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND: SOURCE_CHANGED_SINCE_PLANNING/);
 });
 
-test("CA-Handoff-C (no unsafe fuzzy match): similar titles/teams but no matching UUID / normalized slug / exact key -> fail closed, no queue row", async () => {
-  // Helper-level: neither candidate shares lineage, slug, or exact key.
-  const res = planningReservation({ best_snapshot_id: "res-uuid", event_slug: "los-angeles-angels-spread", match_family_key: "WEAK:x" });
-  const nearMissA = finalAuthoritativeCandidate({ generated_signal_pair_id: "other-uuid-1", event_slug: "los-angeles-angels-moneyline", match_family_key: "match:a" });
-  const nearMissB = finalAuthoritativeCandidate({ generated_signal_pair_id: "other-uuid-2", event_slug: "los-angeles-dodgers-spread", match_family_key: "match:b" });
-  const m = findAuthoritativeCandidateForPlanningReservation(res, [nearMissA, nearMissB]);
-  assert.equal(m.candidate, null, "must never fuzzy-match on team/title/partial slug");
-  assert.equal(m.method, "NONE");
-
-  // Full path: same shape -> SKIPPED, no queue row.
-  const repo = makeFakeRepo([planningReservation({ best_snapshot_id: "res-uuid", event_slug: "los-angeles-angels-spread" })]);
+test("CA-Handoff-C (no unsafe fuzzy match): similar titles/teams but no candidate carrying the stored IDs -> fail closed, no queue row", async () => {
+  const nearMissA = finalAuthoritativeCandidate({ condition_id: "other-1", token_id: "tok-1", event_slug: "los-angeles-angels-moneyline", match_family_key: "match:a" });
+  const nearMissB = finalAuthoritativeCandidate({ condition_id: "other-2", token_id: "tok-2", event_slug: "los-angeles-dodgers-spread", match_family_key: "match:b" });
+  const repo = makeFakeRepo([planningReservation()]);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true },
@@ -841,34 +853,46 @@ test("CA-Handoff-C (no unsafe fuzzy match): similar titles/teams but no matching
   );
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE/);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND/);
 });
 
-test("CA-Handoff-C2 (ambiguity fails closed): two final candidates share the same source UUID -> null, never guess", () => {
-  const res = planningReservation();
-  const a = finalAuthoritativeCandidate({ condition_id: "c-a" });
-  const b = finalAuthoritativeCandidate({ condition_id: "c-b" }); // same LINEAGE_UUID
-  const m = findAuthoritativeCandidateForPlanningReservation(res, [a, b]);
-  assert.equal(m.candidate, null);
-  assert.equal(m.method, "SOURCE_LINEAGE");
-  assert.equal(m.ambiguityCount, 2);
-});
-
-test("CA-Handoff-D (final authority preserved): queue row uses the FRESH final candidate's cond/token/side/price, never a stale planning value", async () => {
+test("CA-Handoff-C2 (ambiguity fails closed): two final candidates carry the same stored identity -> never guess", async () => {
   const repo = makeFakeRepo([planningReservation()]);
-  // Final candidate deliberately carries different identity than any planning field.
-  const final = finalAuthoritativeCandidate({ condition_id: "FRESH-cond", token_id: "FRESH-tok", side: "FRESH-side", selected_outcome: "FRESH-side", max_entry_price: 0.51 });
+  const a = finalAuthoritativeCandidate({ market_slug: "a" });
+  const b = finalAuthoritativeCandidate({ market_slug: "b" }); // identical IDs
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [final] }) }
+    { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [a, b] }) }
   );
-  assert.equal(result.queued_count, 1);
-  const row = repo.queueRows[0];
-  assert.equal(row.condition_id, "FRESH-cond");
-  assert.equal(row.token_id, "FRESH-tok");
-  assert.equal(row.side, "FRESH-side");
-  assert.equal((row.diagnostics as Record<string, unknown>).max_entry_price, 0.51, "price cap from fresh final candidate");
+  assert.equal(result.queued_count, 0);
+  assert.match(repo.skippedCalls[0].reason, /AMBIGUOUS_IDENTITY_MATCH/);
+});
+
+test("CA-Handoff-D (stored identity is authoritative): fresh price/telemetry is taken from the located candidate, but a candidate with DIFFERENT IDs can never be queued", async () => {
+  // Fresh telemetry on the SAME identity is used.
+  const repoOk = makeFakeRepo([planningReservation()]);
+  const fresh = finalAuthoritativeCandidate({ max_entry_price: 0.51 });
+  const ok = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo: repoOk, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [fresh] }) }
+  );
+  assert.equal(ok.queued_count, 1);
+  assert.equal(repoOk.queueRows[0].condition_id, "cond-la-final");
+  assert.equal((repoOk.queueRows[0].diagnostics as Record<string, unknown>).max_entry_price, 0.51, "price cap from fresh final candidate");
+
+  // Different IDs -> fail closed, never substituted.
+  const repoDrift = makeFakeRepo([planningReservation()]);
+  const drifted = finalAuthoritativeCandidate({ condition_id: "FRESH-cond", token_id: "FRESH-tok", side: "FRESH-side", selected_outcome: "FRESH-side" });
+  const drift = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    { repo: repoDrift, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [drifted] }) }
+  );
+  assert.equal(drift.queued_count, 0);
+  assert.equal(repoDrift.queueRows.length, 0);
+  assert.match(repoDrift.skippedCalls[0].reason, /SOURCE_CHANGED_SINCE_PLANNING/);
 });
 
 test("CA-Handoff-E (no regression): a FINAL_AUTHORITATIVE legacy reservation still queues its exact stored authoritative market unchanged", async () => {
@@ -900,8 +924,8 @@ test("CA-Handoff-E (no regression): a FINAL_AUTHORITATIVE legacy reservation sti
 // ── CANONICAL READY PRODUCER CERTIFICATION (integration, real production fns) ─
 //
 // Drives the ACTUAL production orchestration (runEventRebalance ->
-// selectQueueRowForDueReservation -> findAuthoritativeCandidateForPlanningReservation
-// -> isExecutableMarket -> buildQueueRow) with a Chicago/Detroit-shaped
+// selectQueueRowForDueReservation -> readPersistedExecutableIdentity
+// -> findCandidateForStoredIdentity -> isExecutableMarket -> buildQueueRow) with a Chicago/Detroit-shaped
 // single-team-spread planning reservation, then serializes the built row
 // through the REAL /api/executor/queue serializer (mapQueueRowToIrelandCandidate).
 // No mock reimplementation, no dry-run endpoint, no DB, no writes.
@@ -914,7 +938,19 @@ function chicagoPlanningReservation(overrides: Partial<NightEventReservationRow>
     match_family_key: "WEAK_SINGLE_TEAM_SPREAD:chicago-white-sox:2026-07-19",
     event_slug: "", // empty slug — the production defect shape
     best_snapshot_id: CHI_UUID,
-    diagnostics: { selector_id: "CONTRACT_A_PLANNING_V1", contract_a_stage: "PLANNING" },
+    diagnostics: {
+      selector_id: "CONTRACT_A_PLANNING_V1",
+      contract_a_stage: "PLANNING",
+      authoritative_condition_id: "cond-cws-final",
+      authoritative_token_id: "tok-cws-final",
+      authoritative_side: "Chicago White Sox",
+      authoritative_observation_id: "obs-cws-final",
+      authoritative_event_key: "pair:chicago-white-sox-vs-detroit-tigers:2026-07-19",
+      identity_physical_event_key: "pair:chicago-white-sox-vs-detroit-tigers:2026-07-19",
+      identity_market_type: "TIER1_CORE_STRICT_72_COV50",
+      identity_market_family: "contract_a_authoritative",
+      identity_source_signal_id: CHI_UUID,
+    },
     ...overrides,
   });
 }
@@ -958,9 +994,9 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   const row = repo.queueRows[0];
   const diag = row.diagnostics as Record<string, unknown>;
 
-  // 01 located by exact source lineage (empty slug + un-prefixed key would fail
-  //    on any other join) -> proves SOURCE_LINEAGE was the path.
-  // 02/03/04 final Contract A cond/token/side used (from the fresh final candidate).
+  // 01 located by exact stored-identity validation (empty slug + un-prefixed key
+  //    prove no string join was involved).
+  // 02/03/04 final Contract A cond/token/side used (identical to the stored identity).
   assert.equal(row.condition_id, "cond-cws-final");
   assert.equal(row.token_id, "tok-cws-final");
   assert.equal(row.side, "Chicago White Sox");
@@ -1021,23 +1057,22 @@ test("CERT: 06/14 a stale (past T-3) reservation cannot become READY -- no queue
 
 // ── Negative filter matrix: mutate ONE field, assert the exact fail-closed result.
 
-test("CERT-NEG: identity missing (no lineage, no slug, non-matching key) -> SKIPPED CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE, no row", async () => {
+test("CERT-NEG: no identity persisted on the reservation -> SKIPPED CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE: IDENTITY_NOT_PERSISTED, no row", async () => {
   const { repo, result } = await runCanonicalProducer(
-    { best_snapshot_id: null, event_slug: "", match_family_key: "WEAK:orphan" },
-    { generated_signal_pair_id: "other-uuid", event_slug: "some-other-slug", match_family_key: "match:other" },
+    { diagnostics: { selector_id: "CONTRACT_A_PLANNING_V1", contract_a_stage: "PLANNING" } },
   );
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE/);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE: IDENTITY_NOT_PERSISTED/);
 });
 
-test("CERT-NEG: identity ambiguous (two finals share the source UUID) -> fail closed, IDENTITY_INCOMPLETE, no row", async () => {
+test("CERT-NEG: identity ambiguous (two finals carry the stored IDs) -> fail closed, no row", async () => {
   const repo = makeFakeRepo([chicagoPlanningReservation()]);
-  const a = chicagoFinalCandidate({ condition_id: "c-a" });
-  const b = chicagoFinalCandidate({ condition_id: "c-b" }); // same CHI_UUID
+  const a = chicagoFinalCandidate({ market_slug: "a" });
+  const b = chicagoFinalCandidate({ market_slug: "b" }); // identical stored identity
   const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [a, b] }) });
   assert.equal(result.queued_count, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE/);
+  assert.match(repo.skippedCalls[0].reason, /AMBIGUOUS_IDENTITY_MATCH/);
 });
 
 test("CERT-NEG: outside timing window (before T-70) -> not due, no queue row", async () => {
@@ -1047,11 +1082,11 @@ test("CERT-NEG: outside timing window (before T-70) -> not due, no queue row", a
 });
 
 test("CERT-NEG: non-executable final candidate (missing token_id) -> SKIPPED, not queued", async () => {
-  // Located by lineage, but fails isExecutableMarket -> MARKET_NOT_EXECUTABLE.
+  // The stored token_id no longer exists in the authoritative universe.
   const { repo, result } = await runCanonicalProducer({}, { token_id: "" });
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_(IDENTITY_INCOMPLETE|MARKET_NOT_EXECUTABLE)/);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_MARKET_(NOT_FOUND|NOT_EXECUTABLE)/);
 });
 
 test("CERT-NEG: invalid stake (non-positive) on final candidate -> not executable, no queue row", async () => {
@@ -1060,11 +1095,16 @@ test("CERT-NEG: invalid stake (non-positive) on final candidate -> not executabl
   assert.equal(repo.queueRows.length, 0);
 });
 
-test("CERT-NEG: missing source UUID + empty slug (only un-prefixed key, which never matches prefixed final) -> IDENTITY_INCOMPLETE", async () => {
-  const { repo, result } = await runCanonicalProducer({ best_snapshot_id: null });
-  // reservation match_family_key is un-prefixed WEAK...; final is match:... -> no exact key match; slug empty -> no slug match.
+test("CERT-NEG: partially persisted identity (condition_id only) -> IDENTITY_INCOMPLETE with the exact missing-field code", async () => {
+  const { repo, result } = await runCanonicalProducer({
+    diagnostics: {
+      selector_id: "CONTRACT_A_PLANNING_V1",
+      contract_a_stage: "PLANNING",
+      authoritative_condition_id: "cond-cws-final",
+    },
+  });
   assert.equal(result.queued_count, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE/);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE: TOKEN_ID_MISSING/);
 });
 
 test("CERT-NEG: queue-route serializer exposes no secret-bearing field (no diagnostics blob, no source_signal_id, no keys/tokens beyond order identity)", async () => {

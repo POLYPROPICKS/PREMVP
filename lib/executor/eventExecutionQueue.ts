@@ -35,6 +35,10 @@ import {
   sanitizeSchedulerErrorMessage,
   type SchedulerJobEvidencePort,
 } from "./schedulerJobEvidence";
+import {
+  findCandidateForStoredIdentity,
+  readPersistedExecutableIdentity,
+} from "./executableMarketIdentity";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 
@@ -213,6 +217,12 @@ export function buildQueueRow(
       max_entry_price: best.max_entry_price,
       source_signal_id: resolveQueueSourceSignalId(best),
       battle_trace_id: `contur3:${reservation.plan_run_id}:${reservation.match_family_key}:${best.condition_id}:${best.token_id}`,
+      // R0E parity surface: the identity the Reservation stored, copied verbatim
+      // alongside the executed condition_id/token_id/side columns above so the
+      // planning -> reservation -> rebalance -> queue chain can be compared by ID.
+      identity_physical_event_key: (reservation.diagnostics ?? {}).identity_physical_event_key,
+      identity_market_type: (reservation.diagnostics ?? {}).identity_market_type,
+      identity_market_family: (reservation.diagnostics ?? {}).identity_market_family,
       ...(isContractA
         ? {
             selector_id: reservationSelectorId,
@@ -542,80 +552,6 @@ export interface DueReservationSelection {
   blockedCandidates?: BlockedCandidateDiag[];
 }
 
-/** Trim + lowercase a slug for exact (never fuzzy) comparison; empty -> null. */
-function normalizeEventSlugForMatch(slug: string | null | undefined): string | null {
-  if (typeof slug !== "string") return null;
-  const t = slug.trim().toLowerCase();
-  return t === "" ? null : t;
-}
-
-export type PlanningAuthoritativeMatchMethod =
-  | "SOURCE_LINEAGE"
-  | "NORMALIZED_EVENT_SLUG"
-  | "EXACT_MATCH_FAMILY_KEY"
-  | "NONE";
-
-export interface PlanningAuthoritativeMatch {
-  /** The located fresh authoritative final candidate, or null (not found / ambiguous). */
-  candidate: FireModelCandidate | null;
-  method: PlanningAuthoritativeMatchMethod;
-  /** Number of candidates that matched at the winning precedence level; >1 means ambiguous -> failed closed. */
-  ambiguityCount: number;
-  sourceLineagePresent: boolean;
-  slugPresent: boolean;
-}
-
-/**
- * Locate the fresh CONTRACT_A_V1 authoritative candidate for a
- * CONTRACT_A_PLANNING_V1 reservation, using ONLY exact (never fuzzy) joins in
- * strict precedence:
- *   1. stable source lineage: candidate.generated_signal_pair_id ===
- *      reservation.best_snapshot_id (both are generated_signal_pairs.id UUIDs,
- *      proven equivalent identity space) -- the strongest, drift-proof join;
- *   2. exact normalized event_slug (trim + lowercase both non-empty values) --
- *      recovers rows whose only divergence is slug casing/whitespace;
- *   3. existing exact match_family_key equality -- unchanged legacy behavior.
- * Every level requires a UNIQUE match; more than one candidate at a level is
- * ambiguous and FAILS CLOSED (returns null) rather than guessing. Never does
- * team-name / title / date / partial-slug / first-of-many matching, and never
- * recomputes the model or re-ranks the universe. Pure -- no DB, no I/O.
- */
-export function findAuthoritativeCandidateForPlanningReservation(
-  reservation: Pick<NightEventReservationRow, "best_snapshot_id" | "event_slug" | "match_family_key">,
-  universe: readonly FireModelCandidate[],
-): PlanningAuthoritativeMatch {
-  const lineageId =
-    typeof reservation.best_snapshot_id === "string" && reservation.best_snapshot_id.trim() !== ""
-      ? reservation.best_snapshot_id.trim()
-      : null;
-  const resSlug = normalizeEventSlugForMatch(reservation.event_slug);
-  const base = { sourceLineagePresent: lineageId !== null, slugPresent: resSlug !== null };
-
-  // 1. exact stable source lineage (unique).
-  if (lineageId) {
-    const m = universe.filter(
-      (c) => typeof c.generated_signal_pair_id === "string" && c.generated_signal_pair_id === lineageId,
-    );
-    if (m.length === 1) return { candidate: m[0], method: "SOURCE_LINEAGE", ambiguityCount: 1, ...base };
-    if (m.length > 1) return { candidate: null, method: "SOURCE_LINEAGE", ambiguityCount: m.length, ...base };
-    // 0 -> fall through
-  }
-
-  // 2. exact normalized event_slug (unique, both non-empty).
-  if (resSlug) {
-    const m = universe.filter((c) => normalizeEventSlugForMatch(c.event_slug) === resSlug);
-    if (m.length === 1) return { candidate: m[0], method: "NORMALIZED_EVENT_SLUG", ambiguityCount: 1, ...base };
-    if (m.length > 1) return { candidate: null, method: "NORMALIZED_EVENT_SLUG", ambiguityCount: m.length, ...base };
-  }
-
-  // 3. existing exact match_family_key equality (unique).
-  const mfk = universe.filter((c) => c.match_family_key === reservation.match_family_key);
-  if (mfk.length === 1) return { candidate: mfk[0], method: "EXACT_MATCH_FAMILY_KEY", ambiguityCount: 1, ...base };
-  if (mfk.length > 1) return { candidate: null, method: "EXACT_MATCH_FAMILY_KEY", ambiguityCount: mfk.length, ...base };
-
-  return { candidate: null, method: "NONE", ambiguityCount: 0, ...base };
-}
-
 /**
  * Pure per-reservation market selection (no DB reads/writes). Extracted from
  * the rebalance loop so the exact same authoritative-candidate-lock logic
@@ -644,49 +580,37 @@ function selectQueueRowForDueReservation(
   const isLegacyAuthoritativeReservation = reservationSelectorId === FROZEN_MODEL_V2_VERSION;
   if (isPlanningReservation || isLegacyAuthoritativeReservation) {
     const authoritativeUniverse = isPlanningReservation ? contractAFinalUniverse : eventCandidates;
-    const planningMatch = isPlanningReservation
-      ? findAuthoritativeCandidateForPlanningReservation(reservation, authoritativeUniverse)
-      : null;
-    const finalForEvent = planningMatch?.candidate ?? null;
-    const authConditionId = isPlanningReservation ? finalForEvent?.condition_id : reservationDiag.authoritative_condition_id;
-    const authTokenId = isPlanningReservation ? finalForEvent?.token_id : reservationDiag.authoritative_token_id;
-    const authSide = isPlanningReservation ? finalForEvent?.side : reservationDiag.authoritative_side;
-    const identityComplete =
-      typeof authConditionId === "string" &&
-      authConditionId.trim() !== "" &&
-      typeof authTokenId === "string" &&
-      authTokenId.trim() !== "" &&
-      typeof authSide === "string" &&
-      authSide.trim() !== "";
 
-    const authoritativeCandidate = isPlanningReservation
-      ? finalForEvent
-      : identityComplete
-      ? eventCandidates.find(
-          (c) => c.condition_id === authConditionId && c.token_id === authTokenId && c.side === authSide
-        ) ?? null
+    // R0E canonical contract: rebalance VALIDATES the identity planning already
+    // resolved and persisted. It never re-resolves a market from event_slug,
+    // event_title, match_family_key or source lineage -- a stored identity that
+    // is absent or no longer present in the authoritative universe fails closed
+    // with an exact reason code, and can never be replaced by another token.
+    const stored = readPersistedExecutableIdentity(reservationDiag, "rebalance.stored_identity");
+    const storedMatch = stored.allowed
+      ? findCandidateForStoredIdentity(stored, authoritativeUniverse)
       : null;
-
+    const authoritativeCandidate = storedMatch?.candidate ?? null;
     const executableCheck = authoritativeCandidate ? isExecutableMarket(authoritativeCandidate) : null;
 
-    if (!identityComplete || authoritativeCandidate === null || !executableCheck!.executable) {
-      const failReason = !identityComplete
-        ? "CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE"
+    if (!stored.allowed || authoritativeCandidate === null || !executableCheck!.executable) {
+      const failReason = !stored.allowed
+        ? `CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE: ${stored.reasonCode}`
         : authoritativeCandidate === null
-          ? "CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND"
+          ? `CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND: ${
+              (storedMatch?.ambiguityCount ?? 0) > 1
+                ? "AMBIGUOUS_IDENTITY_MATCH"
+                : "SOURCE_CHANGED_SINCE_PLANNING"
+            }`
           : `CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE: ${executableCheck!.rejectReason}`;
-      // Safe diagnostics only: reservation/selector ids, whether the stable
-      // lineage/slug join keys were present, which exact match method was
-      // attempted, and ambiguity count when a level matched >1 candidate.
-      // Never logs condition/token/side values, secrets, or env.
-      const matchCtx = planningMatch
-        ? ` matchMethod=${planningMatch.method} ambiguity=${planningMatch.ambiguityCount}` +
-          ` sourceLineagePresent=${planningMatch.sourceLineagePresent} slugPresent=${planningMatch.slugPresent}`
-        : "";
+      // Safe diagnostics only: reservation/selector ids, whether an identity was
+      // persisted at all, and the ambiguity count when >1 candidate carried the
+      // stored IDs. Never logs condition/token/side values, secrets, or env.
       console.log(
         `[contur3-rebalance] CONTRACT_A_FAIL_CLOSED selector=${reservationSelectorId} ` +
           `reservation=${reservation.id ?? "unknown"} event=${reservation.match_family_key} ` +
-          `observation=${reservationDiag.authoritative_observation_id ?? "unknown"} reason=${failReason}${matchCtx}`
+          `identity_persisted=${stored.allowed} ambiguity=${storedMatch?.ambiguityCount ?? 0} ` +
+          `universe_size=${authoritativeUniverse.length} reason=${failReason}`
       );
       return {
         outcome: "SKIPPED",
@@ -697,7 +621,14 @@ function selectQueueRowForDueReservation(
     }
 
     const authoritativeReservation = isPlanningReservation
-      ? { ...reservation, diagnostics: { ...reservationDiag, selector_id: FROZEN_MODEL_V2_VERSION, contract_a_stage: "FINAL_AUTHORITATIVE", authoritative_condition_id: authConditionId, authoritative_token_id: authTokenId, authoritative_side: authSide, authoritative_observation_id: authoritativeCandidate.diagnostics.authoritative_observation_id, authoritative_event_key: authoritativeCandidate.diagnostics.authoritative_event_key } }
+      ? {
+          ...reservation,
+          diagnostics: {
+            ...reservationDiag,
+            selector_id: FROZEN_MODEL_V2_VERSION,
+            contract_a_stage: "FINAL_AUTHORITATIVE",
+          },
+        }
       : reservation;
     const row = buildQueueRow(authoritativeReservation, authoritativeCandidate, rebalanceRunId);
     return {
