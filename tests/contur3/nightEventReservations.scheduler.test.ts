@@ -273,14 +273,19 @@ test("C2: repeated CONTRACT_A_V1 input produces the same reservation identity --
   assert.equal(repo.store[0].diagnostics.authoritative_condition_id, "cond-contract-a-esp-arg");
 });
 
-test("C3: default CONTUR3_CURRENT candidates (no selector_id) are unaffected -- no CONTRACT_A_AUTHORITATIVE reason, no authoritative_* diagnostics", async () => {
+test("C3: default CONTUR3_CURRENT candidates (no selector_id) claim no Contract A authority, but still persist their own resolved execution identity", async () => {
   const plan = await buildReservationPlan(ANCHOR_NOW_MS, {
     fetchCandidates: async () => ({ candidates: [baseCandidate()] }),
   });
   const r = plan.reservations[0];
   assert.equal(r.diagnostics.selector_id, undefined);
-  assert.equal(r.diagnostics.authoritative_condition_id, undefined);
+  assert.equal(r.diagnostics.contract_a_stage, undefined);
   assert.doesNotMatch(r.selection_reason ?? "", /CONTRACT_A_AUTHORITATIVE/);
+  // R0E invariant 3: every reservation stores the exact identity it was planned
+  // against -- no reservation may exist without one.
+  assert.equal(r.diagnostics.authoritative_condition_id, "cond-esp-arg");
+  assert.equal(r.diagnostics.authoritative_token_id, "token-esp-arg-spain");
+  assert.equal(r.diagnostics.authoritative_side, "Spain");
 });
 
 test("A6: an empty planning universe records status=empty, not success, with zero generatedCount", async () => {
@@ -302,7 +307,7 @@ test("C4: active production daily entry explicitly selects Contract A planning f
   assert.match(source, /executeForceRebuild\(nowMs,\s*\{\s*selectorMode:\s*"CONTRACT_A_PLANNING_V1"\s*\}\)/);
 });
 
-test("C5: Contract A planning reserves an event five hours away without persisting false final authority", async () => {
+test("C5: Contract A planning reserves an event five hours away, persisting the exact planned identity and no false FINAL_AUTHORITATIVE stage", async () => {
   const candidate = baseCandidate({
     diagnostics: { ...baseCandidate().diagnostics, selector_id: "CONTRACT_A_PLANNING_V1", contract_a_stage: "PLANNING" },
   });
@@ -310,8 +315,10 @@ test("C5: Contract A planning reserves an event five hours away without persisti
   assert.equal(plan.reservations.length, 1);
   assert.equal(plan.reservations[0].diagnostics.selector_id, "CONTRACT_A_PLANNING_V1");
   assert.equal(plan.reservations[0].diagnostics.contract_a_stage, "PLANNING");
-  assert.equal(plan.reservations[0].diagnostics.authoritative_condition_id, undefined);
-  assert.equal(plan.reservations[0].diagnostics.authoritative_token_id, undefined);
+  assert.equal(plan.reservations[0].diagnostics.authoritative_condition_id, "cond-esp-arg");
+  assert.equal(plan.reservations[0].diagnostics.authoritative_token_id, "token-esp-arg-spain");
+  assert.equal(plan.reservations[0].diagnostics.authoritative_side, "Spain");
+  assert.notEqual(plan.reservations[0].diagnostics.contract_a_stage, "FINAL_AUTHORITATIVE");
 });
 
 test("R0A: production reservation planning attaches the measured source-to-reservation trace", async () => {
