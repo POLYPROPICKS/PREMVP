@@ -398,3 +398,27 @@ Preserved the Contur2 producer deployment and Ireland V4 audit state in docs:
 
 ### Pending
 - [ ] CEO one-order pilot checklist only
+
+## Delta entry - 2026-07-25
+
+### R0E canonical immutable execution identity contract
+Incident `night-plan:2026-07-24:1700-minsk` (15 Reservations, 1 QUEUED, 14 SKIPPED with
+`CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE`, `battle_trace_id` ending `unknown:unknown`, 0 orders)
+was root-caused to two boundaries, both now corrected:
+
+- Planning persisted no execution identity for `CONTRACT_A_PLANNING_V1` reservations, so rebalance
+  tried to REDISCOVER a market from `event_slug` / `match_family_key` / source lineage.
+- Planning and rebalance read different universes: planning used the broad Contur3 planning corpus,
+  the final Contract A stage used the frozen-model-V2 authoritative universe.
+
+Founder decision applied (option 1): planning is NARROWED to the authoritative execution universe;
+the live-money universe was NOT broadened. New shared contract in
+`lib/executor/executableMarketIdentity.ts` (`ExecutableMarketIdentityDecision`):
+no complete identity -> no Reservation row; the Reservation stores the exact identity;
+rebalance validates those IDs only; the queue copies them verbatim; strings never select a market
+after identity creation. Persisted in the existing `diagnostics` JSONB column — no schema migration.
+
+### Pending
+- [ ] Operational: at 17:00 Minsk the authoritative universe only contains markets whose T-90
+      snapshot already exists, so plan size is smaller by design. Confirm the reservation cron
+      cadence (or force-rebuild schedule) fills slots as snapshots appear.
