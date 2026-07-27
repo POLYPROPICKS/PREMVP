@@ -95,6 +95,157 @@ export function isForbiddenMarketClass(cls: MarketClass): boolean {
   return cls.startsWith("forbidden_");
 }
 
+// ---------------------------------------------------------------------------
+// EVENT SCOPE — the second, independent axis (R0G).
+//
+// Market class answers "what kind of bet is this?" (winner / spread / total).
+// Event scope answers "over what portion of the event does it settle?".
+// The two must never be conflated: a FULL-MATCH spread is allowed, a FIRST-HALF
+// spread is not, and both carry market_class = allowed_fullmatch_spread.
+//
+// Conflating them is what caused night-plan:2026-07-27 to classify all 25
+// physical events as ANCHOR_FULLMATCH_SUBMARKET_REJECTED -- the planner's own
+// regex list treated the word "handicap" (and "over/under", "player", "rounds")
+// as proof of a partial-event submarket.
+// ---------------------------------------------------------------------------
+
+export type EventScope =
+  | "full_match"
+  | "first_half"
+  | "second_half"
+  | "map_or_round"
+  | "prop_or_other";
+
+const SCOPE_FIRST_HALF_SQ = /firsthalf|1sthalf|halftime|halftimeresult|htresult/;
+const SCOPE_SECOND_HALF_SQ = /secondhalf|2ndhalf/;
+// Partial-event segments: map/game/set/period/quarter/inning N, and rounds.
+const SCOPE_MAP_OR_ROUND_TOKEN =
+  /\b(?:map|game|set|period|quarter|inning|frame)\s*\d+\b|\bmaps?\b|\brounds?\b|\bkills?\b/;
+// A segment word directly qualifying a market class ("game handicap", "map
+// total", "set winner") is a per-segment line even without an explicit number.
+// Fail-closed: "Game Handicap: KC (-1.5) vs Team Vitality (+1.5)" is a per-game
+// handicap inside a series, not the series result.
+const SCOPE_SEGMENT_QUALIFIED_TOKEN =
+  /\b(?:map|game|set|period|quarter|inning|frame)s?\s+(?:handicap|spread|total|totals|line|lines|winner|moneyline|result)\b/;
+const SCOPE_PROP_TOKEN = /\bprops?\b|\bplayer\b|\bbookings?\b|\bcards?\b|\bcorners?\b/;
+
+/**
+ * Classify the portion of the event a market settles over. Pure text analysis
+ * on the canonical tokenizer -- never a substring scan of raw slugs.
+ *
+ * Order matters: an explicit half marker wins over a segment marker, which wins
+ * over a prop marker. Anything with no partial marker at all is a full match --
+ * scope is only ever NARROWED by positive evidence, never guessed.
+ */
+export function classifyEventScope(input: unknown): EventScope {
+  const tokens = tokensOf(input);
+  const joined = tokens.join(" ");
+  const squashed = tokens.join("");
+
+  if (SCOPE_FIRST_HALF_SQ.test(squashed)) return "first_half";
+  if (SCOPE_SECOND_HALF_SQ.test(squashed)) return "second_half";
+  if (SCOPE_MAP_OR_ROUND_TOKEN.test(joined) || SCOPE_SEGMENT_QUALIFIED_TOKEN.test(joined)) {
+    return "map_or_round";
+  }
+  if (SCOPE_PROP_TOKEN.test(joined)) return "prop_or_other";
+  return "full_match";
+}
+
+export function isFullMatchEventScope(scope: EventScope): boolean {
+  return scope === "full_match";
+}
+
+/** Activity/volume labels ("$52K matched activity") are never a market at all. */
+const ACTIVITY_LABEL_RE = /^\s*\$\s*[\d.,]+\s*[kmb]?\s+matched/i;
+
+export function isActivityLabelMarketText(input: unknown): boolean {
+  return ACTIVITY_LABEL_RE.test(String(input ?? "").trim());
+}
+
+export type MarketAnchorReasonCode =
+  | "ACTIVITY_LABEL"
+  | "FORBIDDEN_MARKET_CLASS"
+  | "PARTIAL_EVENT_SCOPE"
+  | "ESPORTS_NON_POLICY"
+  | "UNKNOWN_MARKET_CLASS";
+
+export interface MarketAnchorDecision {
+  market_class: MarketClass;
+  event_scope: EventScope;
+  allowed: boolean;
+  reason_code: MarketAnchorReasonCode | null;
+  /**
+   * Which surface the decision was read from:
+   *   structured    -- the provider's own question/title field
+   *   normalized    -- a normalized event/market title we derived
+   *   text_fallback -- only a slug/key was available
+   */
+  evidence_source: "structured" | "normalized" | "text_fallback";
+}
+
+export interface MarketAnchorInput {
+  /** The provider's own market question -- the strongest available evidence. */
+  providerMarketQuestion?: string | null;
+  /** A normalized market/event title. */
+  marketTitle?: string | null;
+  eventTitle?: string | null;
+  /** Display slugs -- last resort only. */
+  marketSlug?: string | null;
+  eventSlug?: string | null;
+  matchFamilyKey?: string | null;
+}
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string | null {
+  for (const v of values) {
+    if (typeof v === "string" && v.trim() !== "") return v.trim();
+  }
+  return null;
+}
+
+/**
+ * THE canonical market-anchor decision. Planning, the final rebalance and the
+ * tests all consume this one function so a market can never be allowed at one
+ * stage and rejected at another.
+ *
+ * Fail-closed by construction: an unrecognized market class is never allowed,
+ * a forbidden class is never rescued by scope, and a partial event scope is
+ * never rescued by an allowed class.
+ */
+export function resolveMarketAnchorDecision(input: MarketAnchorInput): MarketAnchorDecision {
+  const structured = firstNonEmpty(input.providerMarketQuestion);
+  const normalized = firstNonEmpty(input.marketTitle, input.eventTitle);
+  const fallback = firstNonEmpty(input.marketSlug, input.eventSlug, input.matchFamilyKey);
+
+  const evidence_source: MarketAnchorDecision["evidence_source"] =
+    structured !== null ? "structured" : normalized !== null ? "normalized" : "text_fallback";
+  const primary = structured ?? normalized ?? fallback ?? "";
+
+  // Scope is read across every available surface: a partial marker anywhere is
+  // enough to block, even when the primary surface omits it.
+  const scopeSurfaces = [structured, normalized, fallback].filter((v): v is string => v !== null);
+  const event_scope = scopeSurfaces
+    .map(classifyEventScope)
+    .find((s) => s !== "full_match") ?? "full_match";
+
+  const market_class = classifyMarketText(primary);
+
+  const reject = (reason_code: MarketAnchorReasonCode): MarketAnchorDecision => ({
+    market_class,
+    event_scope,
+    allowed: false,
+    reason_code,
+    evidence_source,
+  });
+
+  if (scopeSurfaces.some(isActivityLabelMarketText)) return reject("ACTIVITY_LABEL");
+  if (isForbiddenMarketClass(market_class)) return reject("FORBIDDEN_MARKET_CLASS");
+  if (market_class === "esports_non_policy") return reject("ESPORTS_NON_POLICY");
+  if (!isFullMatchEventScope(event_scope)) return reject("PARTIAL_EVENT_SCOPE");
+  if (!isAllowedFullMatchMarketClass(market_class)) return reject("UNKNOWN_MARKET_CLASS");
+
+  return { market_class, event_scope, allowed: true, reason_code: null, evidence_source };
+}
+
 export function isAllowedFullMatchMarketClass(cls: MarketClass): boolean {
   return (
     cls === "allowed_fullmatch_moneyline" ||
