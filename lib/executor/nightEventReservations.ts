@@ -416,6 +416,14 @@ function normalizedEventKey(c: FireModelCandidate): string | null {
 export type PlanningFunnelStage =
   | "SOURCE_ROWS"
   | "NORMALIZED_PHYSICAL_EVENTS"
+  // R0H: the gates buildReservationPlan actually applies, in application order.
+  // A zero plan must name the gate that emptied it -- "PLANNING_ELIGIBLE_EVENTS"
+  // conflated the executable-anchor, full-match-anchor and identity gates.
+  | "EXECUTABLE_ANCHOR_ELIGIBLE"
+  | "FULLMATCH_ANCHOR_ELIGIBLE"
+  | "PLANNING_IDENTITY_ELIGIBLE"
+  | "TIMING_ELIGIBLE"
+  | "SLOT_ELIGIBLE"
   | "PLANNING_ELIGIBLE_EVENTS"
   | "RESERVATIONS_CREATED";
 
@@ -449,6 +457,14 @@ export interface ReservationPlan {
     physical_event_groups: number;
     authoritative_candidates: number;
     planning_eligible_events: number;
+    // ── R0H explicit funnel counts, in real gate order ────────────────────────
+    executable_anchor_candidates: number;
+    fullmatch_anchor_candidates: number;
+    planning_identity_candidates: number;
+    timing_eligible_events: number;
+    slot_candidates_considered: number;
+    slot_allocated_count: number;
+    slot_not_allocated_count: number;
     reservations_created: number;
     rejected_by_anchor: number;
     rejected_by_scope: number;
@@ -935,6 +951,18 @@ export async function buildReservationPlan(
       c.diagnostics.authoritative_condition_id.trim() !== ""
   ).length;
 
+  // ── R0H funnel survivor sets, in real gate order ──────────────────────────
+  // Each is the previous survivor set minus exactly what that gate rejected, so
+  // an event dropped upstream is never counted as input to a later stage.
+  const executableAnchorCandidates = Math.max(0, groups.size - skippedNoExecutableAnchor);
+  const fullmatchAnchorCandidates = Math.max(0, executableAnchorCandidates - skippedNoFullmatchAnchor);
+  const planningIdentityCandidates = Math.max(0, fullmatchAnchorCandidates - skippedNoPlanningIdentity);
+  const timingEligibleEvents = Math.max(0, planningIdentityCandidates - skippedOutsideHorizon);
+  const slotCandidatesConsidered = Math.max(0, timingEligibleEvents - skippedNonTier1);
+  const slotNotAllocatedCount = Math.max(0, timingEligibleEvents - skippedNonTier1 - reservations.length);
+
+  // A zero plan must name the exact gate that emptied it. Evaluated in the same
+  // order the gates run, so the FIRST stage to reach zero is the one reported.
   const firstZeroStage: PlanningFunnelStage | null =
     reservations.length > 0
       ? null
@@ -942,9 +970,17 @@ export async function buildReservationPlan(
         ? "SOURCE_ROWS"
         : groups.size === 0
           ? "NORMALIZED_PHYSICAL_EVENTS"
-          : planningIdentityByGroupKey.size === 0
-            ? "PLANNING_ELIGIBLE_EVENTS"
-            : "RESERVATIONS_CREATED";
+          : executableAnchorCandidates === 0
+            ? "EXECUTABLE_ANCHOR_ELIGIBLE"
+            : fullmatchAnchorCandidates === 0
+              ? "FULLMATCH_ANCHOR_ELIGIBLE"
+              : planningIdentityCandidates === 0
+                ? "PLANNING_IDENTITY_ELIGIBLE"
+                : timingEligibleEvents === 0
+                  ? "TIMING_ELIGIBLE"
+                  : slotCandidatesConsidered === 0
+                    ? "SLOT_ELIGIBLE"
+                    : "RESERVATIONS_CREATED";
 
   return {
     plan_run_id: planRunId,
@@ -973,6 +1009,14 @@ export async function buildReservationPlan(
       physical_event_groups: groups.size,
       authoritative_candidates: authoritativeCandidatesAtPlanning,
       planning_eligible_events: planningIdentityByGroupKey.size,
+      // ── R0H explicit funnel counts, in real gate order ──────────────────
+      executable_anchor_candidates: executableAnchorCandidates,
+      fullmatch_anchor_candidates: fullmatchAnchorCandidates,
+      planning_identity_candidates: planningIdentityCandidates,
+      timing_eligible_events: timingEligibleEvents,
+      slot_candidates_considered: slotCandidatesConsidered,
+      slot_allocated_count: reservations.length,
+      slot_not_allocated_count: slotNotAllocatedCount,
       reservations_created: reservations.length,
       rejected_by_anchor: skippedNoFullmatchAnchor + skippedNoExecutableAnchor,
       rejected_by_scope: skippedNonTier1 + skippedOutsideHorizon,
@@ -1032,8 +1076,21 @@ export async function buildReservationPlan(
                 skipped_outside_horizon: skippedOutsideHorizon,
                 skipped_non_tier1_event: skippedNonTier1,
                 skipped_no_executable_anchor: skippedNoExecutableAnchor,
+                // R0H: without these two the slot_eligible residual silently
+                // relabels anchor/identity rejections as SLOT_NOT_ALLOCATED.
+                skipped_no_fullmatch_anchor: skippedNoFullmatchAnchor,
+                skipped_no_planning_identity: skippedNoPlanningIdentity,
                 fallbackEligibleGroupsSeen: fallbackRankable.length,
                 fallbackSlotFillReservedCount: promotedFallback.length,
+                target_live_slots: TARGET_LIVE_SLOTS,
+                tier1_reserved_count: tier1Count,
+                // buildReservationPlan always plans a fresh replacement set; any
+                // pre-existing rows are reconciled by persist/force-rebuild, so
+                // the builder's own existing-slot consumption is zero.
+                existing_reservation_count: 0,
+                quota_by_scope: { ...bySport },
+                target_plan_window_start_iso: window.startIso,
+                target_plan_window_end_iso: window.endIso,
               },
               reservationsCreated: null,
             }),
