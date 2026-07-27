@@ -361,7 +361,7 @@ test("JOB-7: a rejected candidate is reported with an explicit rejection code", 
   assert.equal(jobRun.generatedCount, 0);
   assert.equal(jobRun.status, "empty");
   assert.equal(d.first_rejection_code, "OUTSIDE_HORIZON");
-  assert.equal(d.first_zero_stage, "RESERVATIONS_CREATED");
+  assert.equal(d.first_zero_stage, "TIMING_ELIGIBLE");
   assert.equal((d.rejection_counts_by_code as Record<string, number>).OUTSIDE_HORIZON, 1);
 });
 
