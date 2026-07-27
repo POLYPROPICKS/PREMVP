@@ -391,12 +391,18 @@ export interface ReservationPlan {
     identity_complete_count: number;
     // ── R0F structured planning funnel (a zero plan names its first zero stage) ──
     source_rows: number;
+    rows_after_horizon: number;
     normalized_physical_events: number;
+    physical_event_groups: number;
+    authoritative_candidates: number;
     planning_eligible_events: number;
     reservations_created: number;
     rejected_by_anchor: number;
     rejected_by_scope: number;
     final_identity_available_at_planning: number;
+    /** Every rejection path, keyed by explicit code (pipeline order). */
+    rejection_counts_by_code: Record<string, number>;
+    first_rejection_code: string | null;
     first_zero_stage: PlanningFunnelStage | null;
     market_level_keys_skipped: number;
     market_level_keys_normalized: number;
@@ -472,6 +478,7 @@ export async function buildReservationPlan(
   let skippedNoFullmatchAnchor = 0;
   let skippedNoPlanningIdentity = 0;
   let finalIdentityAvailableAtPlanning = 0;
+  let groupsAfterHorizon = 0;
   const planningRejectionReasons: Partial<Record<PlanningEventIdentityReasonCode, number>> = {};
   // Stage 1 identity: resolved BEFORE a group may consume a reservation slot.
   const planningIdentityByGroupKey = new Map<string, PlanningEventIdentity>();
@@ -643,6 +650,7 @@ export async function buildReservationPlan(
       skippedOutsideHorizon += 1;
       continue;
     }
+    groupsAfterHorizon += 1;
     // Event-level eligibility: best candidate must be a Tier1 event opportunity.
     if (eventTierOf(best) === "TIER1") {
       rankable.push({ best, group: ranked, groupKey });
@@ -779,6 +787,45 @@ export async function buildReservationPlan(
   // immediately attributable to source inventory, grouping, eligibility or
   // slot filling rather than being indistinguishable from a crash.
   const sourceRows = rawDiagnostics?.total_db_rows ?? universe.length;
+
+  // Every rejection path, keyed by an explicit code, in pipeline order. This is
+  // what makes a zero plan self-explanatory from one job_runs row: production
+  // previously reported a bare rejected_count that omitted most of these paths.
+  const rejectionCountsByCode: Record<string, number> = {};
+  const addCode = (code: string, count: number) => {
+    if (count > 0) rejectionCountsByCode[code] = (rejectionCountsByCode[code] ?? 0) + count;
+  };
+  addCode("MARKET_LEVEL_KEY_SKIPPED", marketLevelKeysSkipped);
+  addCode("NO_EXECUTABLE_ANCHOR", skippedNoExecutableAnchor);
+  addCode("NO_FULLMATCH_ANCHOR", skippedNoFullmatchAnchor);
+  addCode("NO_PLANNING_IDENTITY", skippedNoPlanningIdentity);
+  addCode("OUTSIDE_HORIZON", skippedOutsideHorizon);
+  addCode("NOT_TIER1", skippedNonTier1);
+  for (const [reason, count] of Object.entries(planningRejectionReasons)) {
+    addCode(`PLANNING_IDENTITY_${reason}`, count ?? 0);
+  }
+  for (const [reason, count] of Object.entries(fullmatchRejectionReasons)) {
+    addCode(`ANCHOR_${reason}`, count ?? 0);
+  }
+
+  // Pipeline-ordered: the earliest stage that rejected anything this run.
+  const PIPELINE_ORDER = [
+    "MARKET_LEVEL_KEY_SKIPPED",
+    "NO_EXECUTABLE_ANCHOR",
+    "NO_FULLMATCH_ANCHOR",
+    "NO_PLANNING_IDENTITY",
+    "OUTSIDE_HORIZON",
+    "NOT_TIER1",
+  ] as const;
+  const firstRejectionCode: string | null =
+    PIPELINE_ORDER.find((code) => (rejectionCountsByCode[code] ?? 0) > 0) ?? null;
+
+  const authoritativeCandidatesAtPlanning = universe.filter(
+    (c) =>
+      typeof c.diagnostics?.authoritative_condition_id === "string" &&
+      c.diagnostics.authoritative_condition_id.trim() !== ""
+  ).length;
+
   const firstZeroStage: PlanningFunnelStage | null =
     reservations.length > 0
       ? null
@@ -812,12 +859,17 @@ export async function buildReservationPlan(
       identity_complete_count: identityByGroupKey.size,
       // ── R0F planning funnel: a zero plan must name its first zero stage. ──
       source_rows: sourceRows,
+      rows_after_horizon: groupsAfterHorizon,
       normalized_physical_events: groups.size,
+      physical_event_groups: groups.size,
+      authoritative_candidates: authoritativeCandidatesAtPlanning,
       planning_eligible_events: planningIdentityByGroupKey.size,
       reservations_created: reservations.length,
       rejected_by_anchor: skippedNoFullmatchAnchor + skippedNoExecutableAnchor,
       rejected_by_scope: skippedNonTier1 + skippedOutsideHorizon,
       final_identity_available_at_planning: finalIdentityAvailableAtPlanning,
+      rejection_counts_by_code: rejectionCountsByCode,
+      first_rejection_code: firstRejectionCode,
       first_zero_stage: firstZeroStage,
       market_level_keys_skipped: marketLevelKeysSkipped,
       market_level_keys_normalized: marketLevelKeysNormalized,
@@ -1002,12 +1054,10 @@ export async function runReservationCronWithEvidence(
       finishedAt,
       status: persisted.written_count > 0 || persisted.already_exists ? "success" : "empty",
       generatedCount: persisted.written_count,
-      rejectedCount:
-        plan.diagnostics.skipped_non_tier1_event +
-        plan.diagnostics.skipped_outside_horizon +
-        plan.diagnostics.skipped_no_executable_anchor,
+      rejectedCount: planningRejectedCount(plan),
       durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
       diagnostics: {
+        ...buildPlanningJobDiagnostics(plan),
         plan_run_id: persisted.plan_run_id,
         already_exists: persisted.already_exists,
         reserved_count: persisted.reserved_count,
@@ -1030,6 +1080,53 @@ export async function runReservationCronWithEvidence(
     });
     throw err;
   }
+}
+
+
+/**
+ * The planning funnel persisted into job_runs.diagnostics (existing JSONB
+ * column -- no migration). A production run that reports status=empty must be
+ * fully explainable from this one row: every stage count, every rejection code,
+ * the first stage that reached zero and the first rejection that fired.
+ *
+ * Deliberately carries counts and stable code names only -- never provider
+ * payloads, request headers, env values, tokens or condition/token ids.
+ *
+ * NOTE on rejected_count (the legacy scalar column): it is the sum of exactly
+ * three counters (non_tier1 + outside_horizon + no_executable_anchor) and omits
+ * every other rejection path, so it must never be read as "candidates rejected".
+ * rejection_counts_by_code below is the complete picture.
+ */
+export function buildPlanningJobDiagnostics(plan: ReservationPlan): Record<string, unknown> {
+  const d = plan.diagnostics;
+  return {
+    plan_run_id: plan.plan_run_id,
+    source_rows: d.source_rows,
+    rows_after_horizon: d.rows_after_horizon,
+    normalized_physical_events: d.normalized_physical_events,
+    physical_event_groups: d.physical_event_groups,
+    authoritative_candidates: d.authoritative_candidates,
+    planning_eligible_events: d.planning_eligible_events,
+    reservations_created: d.reservations_created,
+    rejected_count: planningRejectedCount(plan),
+    rejection_counts_by_code: d.rejection_counts_by_code,
+    first_zero_stage: d.first_zero_stage,
+    first_rejection_code: d.first_rejection_code,
+    final_identity_available_at_planning: d.final_identity_available_at_planning,
+  };
+}
+
+/**
+ * The legacy job_runs.rejected_count scalar, kept byte-identical to the value
+ * production has always written so historical rows stay comparable. Its exact
+ * (narrow) semantics are documented in buildPlanningJobDiagnostics.
+ */
+export function planningRejectedCount(plan: ReservationPlan): number {
+  return (
+    plan.diagnostics.skipped_non_tier1_event +
+    plan.diagnostics.skipped_outside_horizon +
+    plan.diagnostics.skipped_no_executable_anchor
+  );
 }
 
 /**
@@ -1470,12 +1567,10 @@ export async function executeForceRebuild(
         finishedAt,
         status: "empty",
         generatedCount: 0,
-        rejectedCount:
-          plan.diagnostics.skipped_non_tier1_event +
-          plan.diagnostics.skipped_outside_horizon +
-          plan.diagnostics.skipped_no_executable_anchor,
+        rejectedCount: planningRejectedCount(plan),
         durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
         diagnostics: {
+          ...buildPlanningJobDiagnostics(plan),
           plan_run_id: planRunId,
           deleted_queue_count: 0,
           deleted_reservation_count: 0,
@@ -1530,12 +1625,10 @@ export async function executeForceRebuild(
       finishedAt,
       status: "success",
       generatedCount: persist.written_count,
-      rejectedCount:
-        plan.diagnostics.skipped_non_tier1_event +
-        plan.diagnostics.skipped_outside_horizon +
-        plan.diagnostics.skipped_no_executable_anchor,
+      rejectedCount: planningRejectedCount(plan),
       durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
       diagnostics: {
+        ...buildPlanningJobDiagnostics(plan),
         plan_run_id: planRunId,
         deleted_queue_count: deletedQueueCount,
         deleted_reservation_count: deletedResCount,
