@@ -63,12 +63,15 @@ export interface R0StageTrace extends R0StageRegistryEntry {
   evidence_sha256: string;
 }
 
+export const R0_SLOT_POLICY_VERSION = "r0h-slot-policy-v1" as const;
+
 export interface R0PlanningTrace {
   run_id: string;
   as_of_iso: string;
   registry_version: typeof R0_STAGE_REGISTRY_VERSION;
   stages: R0StageTrace[];
   lineage: R0TargetLineage[];
+  slot_allocation: R0SlotAllocationEvidence;
 }
 
 export interface R0RawPlanningMetrics {
@@ -88,6 +91,58 @@ export interface R0ReservationPlanMetrics {
   skipped_no_executable_anchor: number;
   fallbackEligibleGroupsSeen: number;
   fallbackSlotFillReservedCount: number;
+  // ── R0H slot attribution ──────────────────────────────────────────────────
+  // buildReservationPlan drops a physical event on SIX paths before it can
+  // consume a slot, but the slot_eligible stage originally accounted for only
+  // two of them (NON_TIER1_EVENT, NO_EXECUTABLE_ANCHOR). SLOT_NOT_ALLOCATED is
+  // computed as the residual of that stage, so every event rejected at the
+  // full-match anchor or the planning-identity gate was silently relabelled as
+  // a slot-allocation failure. Production night-plan:2026-07-27:1700-minsk
+  // reported SLOT_NOT_ALLOCATED=33 with zero measured slot pressure for exactly
+  // this reason. These two counters close that hole; both are optional so
+  // existing callers keep their current (now explicitly zero) attribution.
+  skipped_no_fullmatch_anchor?: number;
+  skipped_no_planning_identity?: number;
+  // Slot policy inputs, so a future SLOT_NOT_ALLOCATED is self-explanatory.
+  target_live_slots?: number;
+  tier1_reserved_count?: number;
+  existing_reservation_count?: number;
+  quota_by_scope?: Record<string, number>;
+  target_plan_window_start_iso?: string;
+  target_plan_window_end_iso?: string;
+}
+
+/**
+ * Why a timing-eligible physical event that reached the allocator did not take a
+ * slot. `null` means no event was left unallocated. Only the causes the current
+ * allocator can actually produce are derived here; the remaining members exist so
+ * a future bucketed or de-duplicating allocator can emit them without a registry
+ * version bump.
+ */
+export type R0SlotUnallocatedCause =
+  | "CAPACITY_ZERO"
+  | "CAPACITY_FILLED"
+  | "BUCKET_CAP_ZERO"
+  | "RANKED_BELOW_CUTOFF"
+  | "MISSING_POLICY_FIELD"
+  | "DUPLICATE_EVENT";
+
+export interface R0SlotAllocationEvidence {
+  slot_policy_version: string;
+  slot_capacity_configured: number | null;
+  slot_capacity_effective: number | null;
+  slot_candidates_considered: number;
+  slot_allocated_count: number;
+  slot_unallocated_count: number;
+  slot_remaining_capacity: number | null;
+  slot_existing_reservation_count: number;
+  slot_quota_by_scope: Record<string, number>;
+  slot_allocation_clock_iso: string;
+  slot_target_plan_window_start_iso: string | null;
+  slot_target_plan_window_end_iso: string | null;
+  first_slot_rejection_code: string | null;
+  slot_rejection_counts_by_code: Record<string, number>;
+  slot_unallocated_cause: R0SlotUnallocatedCause | null;
 }
 
 function sha256(value: unknown): string {
@@ -131,12 +186,61 @@ export function buildR0PlanningTrace(input: {
   const physicalEvents = nonNegative(input.plan.event_groups);
   const timingEligible = nonNegative(physicalEvents - input.plan.skipped_outside_horizon);
   const proposed = nonNegative(input.plan.reserved_count);
+  const nonTier1 = nonNegative(input.plan.skipped_non_tier1_event);
+  const noExecutableAnchor = nonNegative(input.plan.skipped_no_executable_anchor);
+  const noFullmatchAnchor = nonNegative(input.plan.skipped_no_fullmatch_anchor ?? 0);
+  const noPlanningIdentity = nonNegative(input.plan.skipped_no_planning_identity ?? 0);
+  // True residual: only events that actually reached the allocator and were not
+  // given a slot. Every named pre-allocation rejection is subtracted first, so
+  // SLOT_NOT_ALLOCATED can no longer absorb an anchor or identity rejection.
   const slotRejected = nonNegative(
-    timingEligible -
-      proposed -
-      input.plan.skipped_non_tier1_event -
-      input.plan.skipped_no_executable_anchor
+    timingEligible - proposed - nonTier1 - noExecutableAnchor - noFullmatchAnchor - noPlanningIdentity
   );
+  const slotRejectionCountsByCode: Record<string, number> = {};
+  for (const [code, count] of [
+    ["NON_TIER1_EVENT", nonTier1],
+    ["NO_EXECUTABLE_ANCHOR", noExecutableAnchor],
+    ["NO_FULLMATCH_ANCHOR", noFullmatchAnchor],
+    ["NO_PLANNING_IDENTITY", noPlanningIdentity],
+    ["SLOT_NOT_ALLOCATED", slotRejected],
+  ] as const) {
+    if (count > 0) slotRejectionCountsByCode[code] = count;
+  }
+  // Pipeline order inside the slot stage: the earliest gate that rejected anything.
+  const firstSlotRejectionCode =
+    (
+      [
+        "NO_EXECUTABLE_ANCHOR",
+        "NO_FULLMATCH_ANCHOR",
+        "NO_PLANNING_IDENTITY",
+        "NON_TIER1_EVENT",
+        "SLOT_NOT_ALLOCATED",
+      ] as const
+    ).find((code) => (slotRejectionCountsByCode[code] ?? 0) > 0) ?? null;
+
+  const capacityConfigured =
+    input.plan.target_live_slots === undefined ? null : nonNegative(input.plan.target_live_slots);
+  const existingReservations = nonNegative(input.plan.existing_reservation_count ?? 0);
+  const capacityEffective =
+    capacityConfigured === null ? null : Math.max(0, capacityConfigured - existingReservations);
+  const remainingCapacity =
+    capacityConfigured === null
+      ? null
+      : Math.max(0, capacityConfigured - existingReservations - proposed);
+  // Candidates that survived every named gate and were genuinely ranked for a slot.
+  const slotCandidatesConsidered = nonNegative(
+    timingEligible - nonTier1 - noExecutableAnchor - noFullmatchAnchor - noPlanningIdentity
+  );
+  const slotUnallocatedCause: R0SlotUnallocatedCause | null =
+    slotRejected === 0
+      ? null
+      : capacityConfigured === null
+        ? "MISSING_POLICY_FIELD"
+        : capacityConfigured === 0
+          ? "CAPACITY_ZERO"
+          : capacityEffective === 0 || remainingCapacity === 0
+            ? "CAPACITY_FILLED"
+            : "RANKED_BELOW_CUTOFF";
   const evidenceRef =
     input.evidenceRef ?? "runtime:buildFireModelCandidates->buildReservationPlan";
   const values: Array<{
@@ -176,8 +280,10 @@ export function buildR0PlanningTrace(input: {
       input_count: timingEligible,
       output_count: proposed,
       rejection_counts: {
-        NON_TIER1_EVENT: nonNegative(input.plan.skipped_non_tier1_event),
-        NO_EXECUTABLE_ANCHOR: nonNegative(input.plan.skipped_no_executable_anchor),
+        NON_TIER1_EVENT: nonTier1,
+        NO_EXECUTABLE_ANCHOR: noExecutableAnchor,
+        NO_FULLMATCH_ANCHOR: noFullmatchAnchor,
+        NO_PLANNING_IDENTITY: noPlanningIdentity,
         SLOT_NOT_ALLOCATED: slotRejected,
       },
       status: "MEASURED",
@@ -205,6 +311,23 @@ export function buildR0PlanningTrace(input: {
       })
     ),
     lineage: input.lineage ?? [],
+    slot_allocation: {
+      slot_policy_version: R0_SLOT_POLICY_VERSION,
+      slot_capacity_configured: capacityConfigured,
+      slot_capacity_effective: capacityEffective,
+      slot_candidates_considered: slotCandidatesConsidered,
+      slot_allocated_count: proposed,
+      slot_unallocated_count: slotRejected,
+      slot_remaining_capacity: remainingCapacity,
+      slot_existing_reservation_count: existingReservations,
+      slot_quota_by_scope: { ...(input.plan.quota_by_scope ?? {}) },
+      slot_allocation_clock_iso: input.asOfIso,
+      slot_target_plan_window_start_iso: input.plan.target_plan_window_start_iso ?? null,
+      slot_target_plan_window_end_iso: input.plan.target_plan_window_end_iso ?? null,
+      first_slot_rejection_code: firstSlotRejectionCode,
+      slot_rejection_counts_by_code: slotRejectionCountsByCode,
+      slot_unallocated_cause: slotUnallocatedCause,
+    },
   };
 }
 

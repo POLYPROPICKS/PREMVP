@@ -1032,8 +1032,21 @@ export async function buildReservationPlan(
                 skipped_outside_horizon: skippedOutsideHorizon,
                 skipped_non_tier1_event: skippedNonTier1,
                 skipped_no_executable_anchor: skippedNoExecutableAnchor,
+                // R0H: without these two the slot_eligible residual silently
+                // relabels anchor/identity rejections as SLOT_NOT_ALLOCATED.
+                skipped_no_fullmatch_anchor: skippedNoFullmatchAnchor,
+                skipped_no_planning_identity: skippedNoPlanningIdentity,
                 fallbackEligibleGroupsSeen: fallbackRankable.length,
                 fallbackSlotFillReservedCount: promotedFallback.length,
+                target_live_slots: TARGET_LIVE_SLOTS,
+                tier1_reserved_count: tier1Count,
+                // buildReservationPlan always plans a fresh replacement set; any
+                // pre-existing rows are reconciled by persist/force-rebuild, so
+                // the builder's own existing-slot consumption is zero.
+                existing_reservation_count: 0,
+                quota_by_scope: { ...bySport },
+                target_plan_window_start_iso: window.startIso,
+                target_plan_window_end_iso: window.endIso,
               },
               reservationsCreated: null,
             }),
