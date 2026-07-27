@@ -118,9 +118,18 @@ export type EventScope =
 
 const SCOPE_FIRST_HALF_SQ = /firsthalf|1sthalf|halftime|halftimeresult|htresult/;
 const SCOPE_SECOND_HALF_SQ = /secondhalf|2ndhalf/;
-// Partial-event segments: map/game/set/period/quarter/inning N, and rounds.
+// Partial-event segments: map/set/period/quarter/inning N, and rounds/maps/kills.
+// "game N" is deliberately NOT here -- it is handled separately below, because
+// it is the only segment word that is also a whole-event identifier.
 const SCOPE_MAP_OR_ROUND_TOKEN =
-  /\b(?:map|game|set|period|quarter|inning|frame)\s*\d+\b|\bmaps?\b|\brounds?\b|\bkills?\b/;
+  /\b(?:map|set|period|quarter|inning|frame)\s*\d+\b|\bmaps?\b|\brounds?\b|\bkills?\b/;
+// "game 2" means a per-game line in a series (esports) but ALSO identifies the
+// second fixture of an MLB doubleheader -- a genuine full match. It is therefore
+// admitted as partial-scope evidence ONLY from a market-title surface, never
+// from an event slug / match-family key, where "…-game-2-…" is the standard
+// doubleheader identifier. A slug can still prove partial scope through the
+// qualified form below ("game handicap", "game total").
+const SCOPE_GAME_NUMBER_TOKEN = /\bgames?\s*\d+\b/;
 // A segment word directly qualifying a market class ("game handicap", "map
 // total", "set winner") is a per-segment line even without an explicit number.
 // Fail-closed: "Game Handicap: KC (-1.5) vs Team Vitality (+1.5)" is a per-game
@@ -138,13 +147,33 @@ const SCOPE_PROP_TOKEN = /\bprops?\b|\bplayer\b|\bbookings?\b|\bcards?\b|\bcorne
  * scope is only ever NARROWED by positive evidence, never guessed.
  */
 export function classifyEventScope(input: unknown): EventScope {
+  return classifyScopeOnSurface(input, "title");
+}
+
+/**
+ * Scope evidence available from an IDENTIFIER surface (event slug, market slug,
+ * match-family key). Identical to the title rules except that a bare "game N"
+ * does not prove partial scope: in a slug it is overwhelmingly the doubleheader
+ * fixture number ("mlb-nyy-bos-game-2-2026-07-27"), which is a full match.
+ * A slug still proves partial scope via halves, other numbered segments, rounds,
+ * props, or the qualified form ("game handicap").
+ */
+export function classifyEventScopeFromIdentifier(input: unknown): EventScope {
+  return classifyScopeOnSurface(input, "identifier");
+}
+
+function classifyScopeOnSurface(input: unknown, surface: "title" | "identifier"): EventScope {
   const tokens = tokensOf(input);
   const joined = tokens.join(" ");
   const squashed = tokens.join("");
 
   if (SCOPE_FIRST_HALF_SQ.test(squashed)) return "first_half";
   if (SCOPE_SECOND_HALF_SQ.test(squashed)) return "second_half";
-  if (SCOPE_MAP_OR_ROUND_TOKEN.test(joined) || SCOPE_SEGMENT_QUALIFIED_TOKEN.test(joined)) {
+  if (
+    SCOPE_MAP_OR_ROUND_TOKEN.test(joined) ||
+    SCOPE_SEGMENT_QUALIFIED_TOKEN.test(joined) ||
+    (surface === "title" && SCOPE_GAME_NUMBER_TOKEN.test(joined))
+  ) {
     return "map_or_round";
   }
   if (SCOPE_PROP_TOKEN.test(joined)) return "prop_or_other";
@@ -220,12 +249,20 @@ export function resolveMarketAnchorDecision(input: MarketAnchorInput): MarketAnc
     structured !== null ? "structured" : normalized !== null ? "normalized" : "text_fallback";
   const primary = structured ?? normalized ?? fallback ?? "";
 
-  // Scope is read across every available surface: a partial marker anywhere is
-  // enough to block, even when the primary surface omits it.
-  const scopeSurfaces = [structured, normalized, fallback].filter((v): v is string => v !== null);
-  const event_scope = scopeSurfaces
-    .map(classifyEventScope)
-    .find((s) => s !== "full_match") ?? "full_match";
+  // Scope is read across every available surface -- a partial marker anywhere is
+  // enough to block -- but each surface is read with its own rules: title
+  // surfaces carry deliberate market wording, identifier surfaces also carry
+  // fixture numbering that must not be mistaken for a segment line.
+  const titleSurfaces = [structured, normalized].filter((v): v is string => v !== null);
+  const identifierSurfaces = [input.marketSlug, input.eventSlug, input.matchFamilyKey]
+    .map((v) => firstNonEmpty(v))
+    .filter((v): v is string => v !== null);
+  const scopeSurfaces = [...titleSurfaces, ...identifierSurfaces];
+  const event_scope =
+    [
+      ...titleSurfaces.map(classifyEventScope),
+      ...identifierSurfaces.map(classifyEventScopeFromIdentifier),
+    ].find((s) => s !== "full_match") ?? "full_match";
 
   const market_class = classifyMarketText(primary);
 

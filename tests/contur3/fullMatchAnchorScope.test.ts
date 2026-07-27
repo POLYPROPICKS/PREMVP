@@ -179,6 +179,63 @@ test("R0G-10: futures/outrights and esports non-policy text stay blocked (previo
   assert.equal(fullMatchAnchorDecision(candidateWithTitle("CS2 major winner")).allowed, false, "esports non-policy");
 });
 
+// ── 3b. Surface-aware scope: a doubleheader identifier is not a partial scope ──
+
+test("R0G-18 (doubleheader): a bare 'game-2' in the EVENT SLUG does not make a full-match moneyline partial", () => {
+  const d = resolveMarketAnchorDecision({
+    marketTitle: "Yankees vs Red Sox moneyline",
+    marketSlug: "mlb-nyy-bos-game-2-2026-07-27",
+    eventSlug: "mlb-nyy-bos-game-2-2026-07-27",
+  });
+  assert.equal(d.allowed, true, `doubleheader game 2 is a real full match -> ${d.reason_code}`);
+  assert.equal(d.event_scope, "full_match");
+  assert.equal(d.market_class, "allowed_fullmatch_moneyline");
+});
+
+test("R0G-19 (doubleheader, planner path): the same shape is an allowed anchor end to end", () => {
+  const c = candidateWithTitle("Yankees vs Red Sox moneyline", {
+    market_slug: "mlb-nyy-bos-game-2-2026-07-27",
+    event_slug: "mlb-nyy-bos-game-2-2026-07-27",
+    match_family_key: "pair:new-york-yankees-vs-boston-red-sox:2026-07-27",
+    inferred_sport: "baseball",
+  });
+  const d = fullMatchAnchorDecision(c);
+  assert.equal(d.allowed, true, `${d.allowed ? "" : d.reason}`);
+});
+
+test("R0G-20: an EXPLICIT partial marker in the market TITLE still blocks", () => {
+  const d = resolveMarketAnchorDecision({
+    marketTitle: "Game 2: Yankees vs Red Sox moneyline",
+    marketSlug: "mlb-nyy-bos-2026-07-27",
+  });
+  assert.equal(d.allowed, false);
+  assert.equal(d.reason_code, "PARTIAL_EVENT_SCOPE");
+  assert.equal(d.event_scope, "map_or_round");
+});
+
+test("R0G-21: every other partial form stays blocked from ANY surface", () => {
+  const blocked: Array<[string, string]> = [
+    ["Set 1 winner", "set"],
+    ["1st quarter spread", "quarter"],
+    ["Map 2 handicap", "map"],
+    ["Game Handicap: KC (-1.5) vs Team Vitality (+1.5)", "qualified game handicap"],
+  ];
+  for (const [text, label] of blocked) {
+    // as a title
+    assert.equal(
+      resolveMarketAnchorDecision({ marketTitle: text }).allowed,
+      false,
+      `${label} must stay blocked as a title: ${text}`
+    );
+    // and as a slug-only identifier
+    assert.equal(
+      resolveMarketAnchorDecision({ marketSlug: text }).allowed,
+      false,
+      `${label} must stay blocked as a slug: ${text}`
+    );
+  }
+});
+
 // ── 4. The structured decision surface ─────────────────────────────────────
 
 test("R0G-11: the canonical decision returns market_class, event_scope, allowed, reason_code and evidence_source", () => {

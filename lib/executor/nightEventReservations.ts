@@ -118,18 +118,12 @@ function isForbiddenAnchorMarket(c: FireModelCandidate): boolean {
   return isHalftimeMarket(c) || isCornersAnchorMarket(c) || isPropAnchorMarket(c);
 }
 
-// Positively-allowed full-match anchor markets per live policy:
-//   full-match moneyline / match winner, full-match spread / handicap,
-//   full-match total goals O/U (corners excluded by isForbiddenAnchorMarket).
-// Used ONLY by the Tier2/Tier3 founder slot-fill fallback ladder so the fallback
-// can never anchor an UNKNOWN/non-full-match line — it must positively match.
-const ALLOWED_FULLMATCH_ANCHOR_RE =
-  /moneyline|match\s*winner|\bto\s*win\b|\bwinner\b|\bspread\b|\bhandicap\b|total\s*goals|over[\s/]under|\bo\/u\b|\btotal\b/i;
-
+// Market-class and event-scope classification now live in the CANONICAL taxonomy
+// (lib/contur3/taxonomy.ts). The former local ALLOWED_FULLMATCH_ANCHOR_RE and
+// ESPORTS_SUBMARKET_RE lists were removed here: both were proven dead after
+// fullMatchAnchorDecision was moved onto that single source of truth.
 const ESPORTS_SERIES_TITLE_RE =
   /^(?:will\s+)?(?:counter-strike|dota\s*2|lol|league\s+of\s+legends|valorant)\s*:\s*(.+?)\s+(?:vs\.?|beat(?:s)?)\s+(.+?)\s*\(\s*bo(?:1|3|5)\s*\)(?:\s*[-?].*)?$/i;
-const ESPORTS_SUBMARKET_RE =
-  /\b(?:map|game)\s*\d+\b|\brounds?\b|\b(?:games?|maps?|rounds?)\s+total\b|\btotal\s+(?:games?|maps?|rounds?)\b|\bo\/u\b|\bover\/under\b|\bplayer\b|\bkills?\b|\bhandicap\b/i;
 
 export type FullMatchAnchorRejectionReason =
   | "FULLMATCH_TWO_COMPETITORS_MISSING"
