@@ -41,6 +41,11 @@ import {
 } from "./nightWindow";
 import type { NightEventReservationRow } from "./executorQueueTypes";
 import {
+  resolveMarketAnchorDecision,
+  type MarketAnchorInput,
+  type MarketAnchorReasonCode,
+} from "@/lib/contur3/taxonomy";
+import {
   buildIdentityBattleTraceId,
   buildPersistedIdentityDiagnostics,
   buildPersistedPlanningIdentityDiagnostics,
@@ -113,18 +118,12 @@ function isForbiddenAnchorMarket(c: FireModelCandidate): boolean {
   return isHalftimeMarket(c) || isCornersAnchorMarket(c) || isPropAnchorMarket(c);
 }
 
-// Positively-allowed full-match anchor markets per live policy:
-//   full-match moneyline / match winner, full-match spread / handicap,
-//   full-match total goals O/U (corners excluded by isForbiddenAnchorMarket).
-// Used ONLY by the Tier2/Tier3 founder slot-fill fallback ladder so the fallback
-// can never anchor an UNKNOWN/non-full-match line — it must positively match.
-const ALLOWED_FULLMATCH_ANCHOR_RE =
-  /moneyline|match\s*winner|\bto\s*win\b|\bwinner\b|\bspread\b|\bhandicap\b|total\s*goals|over[\s/]under|\bo\/u\b|\btotal\b/i;
-
+// Market-class and event-scope classification now live in the CANONICAL taxonomy
+// (lib/contur3/taxonomy.ts). The former local ALLOWED_FULLMATCH_ANCHOR_RE and
+// ESPORTS_SUBMARKET_RE lists were removed here: both were proven dead after
+// fullMatchAnchorDecision was moved onto that single source of truth.
 const ESPORTS_SERIES_TITLE_RE =
   /^(?:will\s+)?(?:counter-strike|dota\s*2|lol|league\s+of\s+legends|valorant)\s*:\s*(.+?)\s+(?:vs\.?|beat(?:s)?)\s+(.+?)\s*\(\s*bo(?:1|3|5)\s*\)(?:\s*[-?].*)?$/i;
-const ESPORTS_SUBMARKET_RE =
-  /\b(?:map|game)\s*\d+\b|\brounds?\b|\b(?:games?|maps?|rounds?)\s+total\b|\btotal\s+(?:games?|maps?|rounds?)\b|\bo\/u\b|\bover\/under\b|\bplayer\b|\bkills?\b|\bhandicap\b/i;
 
 export type FullMatchAnchorRejectionReason =
   | "FULLMATCH_TWO_COMPETITORS_MISSING"
@@ -159,23 +158,77 @@ function canonicalEsportsSeriesCompetitors(c: FireModelCandidate): { a: string; 
   return a && b && a !== b ? { a, b } : null;
 }
 
-export function fullMatchAnchorDecision(c: FireModelCandidate): FullMatchAnchorDecision {
-  if (isForbiddenAnchorMarket(c)) return { allowed: false, reason: "FULLMATCH_SUBMARKET_REJECTED" };
-  const marketTitle = anchorTitle(c);
-  if (ESPORTS_SUBMARKET_RE.test(marketTitle)) return { allowed: false, reason: "FULLMATCH_SUBMARKET_REJECTED" };
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const diagTitle: string = (c as any).diagnostics?.marketTitle ?? "";
-  const trustedTitle = c.providerMarketQuestion;
-  const hay = typeof trustedTitle === "string" && trustedTitle.trim()
-    ? `${trustedTitle} ${c.match_family_key ?? ""}`
-    : `${marketTitle} ${c.market_slug ?? ""} ${c.event_slug ?? ""} ${c.match_family_key ?? ""} ${diagTitle}`;
-  if (ALLOWED_FULLMATCH_ANCHOR_RE.test(hay)) return { allowed: true };
+/**
+ * Map the canonical anchor decision onto this module's existing rejection
+ * reasons, so every downstream counter/diagnostic keeps its stable shape.
+ */
+function anchorReasonForCanonicalCode(
+  code: MarketAnchorReasonCode
+): FullMatchAnchorRejectionReason {
+  switch (code) {
+    case "ACTIVITY_LABEL":
+    case "FORBIDDEN_MARKET_CLASS":
+    case "PARTIAL_EVENT_SCOPE":
+      return "FULLMATCH_SUBMARKET_REJECTED";
+    case "ESPORTS_NON_POLICY":
+      return "FULLMATCH_UNSUPPORTED_SPORT";
+    case "UNKNOWN_MARKET_CLASS":
+    default:
+      return "FULLMATCH_UNSUPPORTED_SPORT";
+  }
+}
 
-  if (c.inferred_sport !== "esport") return { allowed: false, reason: "FULLMATCH_UNSUPPORTED_SPORT" };
-  if (!/\(\s*bo(?:1|3|5)\s*\)/i.test(providerSeriesTitle(c))) return { allowed: false, reason: "FULLMATCH_SERIES_MARKER_MISSING" };
-  return canonicalEsportsSeriesCompetitors(c)
-    ? { allowed: true }
-    : { allowed: false, reason: "FULLMATCH_TWO_COMPETITORS_MISSING" };
+/** The canonical anchor evidence for a candidate (structured fields first). */
+export function candidateAnchorInput(c: FireModelCandidate): MarketAnchorInput {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const diag = ((c as any).diagnostics ?? {}) as Record<string, unknown>;
+  return {
+    providerMarketQuestion: c.providerMarketQuestion ?? null,
+    marketTitle: typeof diag.marketTitle === "string" ? diag.marketTitle : null,
+    eventTitle: c.providerEventTitle ?? (typeof diag.eventTitle === "string" ? diag.eventTitle : null),
+    marketSlug: c.market_slug ?? null,
+    eventSlug: c.event_slug ?? null,
+    matchFamilyKey: c.match_family_key ?? null,
+  };
+}
+
+/**
+ * Full-match anchor eligibility, delegated to the CANONICAL taxonomy
+ * (lib/contur3/taxonomy.ts) rather than a parallel regex list.
+ *
+ * The previous local list conflated market class with event scope: its
+ * ESPORTS_SUBMARKET_RE (containing \bhandicap\b, \bo/u\b, \bover/under\b,
+ * \bplayer\b, \brounds?\b) was applied to EVERY candidate regardless of sport,
+ * so a full-match handicap or over/under market was rejected as a "submarket".
+ * The same list simultaneously ALLOWED genuinely forbidden markets ("Total
+ * cards over 4.5", "Winner group A", "CS2 major winner") because it only
+ * searched for the words total/winner. Both directions are now decided by the
+ * one canonical classifier.
+ *
+ * The canonical esports BO-series full-match allowance is preserved unchanged
+ * and is still gated on inferred_sport === "esport" plus a real BO marker and
+ * two identified competitors.
+ */
+export function fullMatchAnchorDecision(c: FireModelCandidate): FullMatchAnchorDecision {
+  const canonical = resolveMarketAnchorDecision(candidateAnchorInput(c));
+  if (canonical.allowed) return { allowed: true };
+
+  // Canonical esports series exception (unchanged): a real BO1/BO3/BO5 series
+  // between two identified competitors is a full-match anchor for esports.
+  if (
+    c.inferred_sport === "esport" &&
+    canonical.event_scope === "full_match" &&
+    /\(\s*bo(?:1|3|5)\s*\)/i.test(providerSeriesTitle(c))
+  ) {
+    return canonicalEsportsSeriesCompetitors(c)
+      ? { allowed: true }
+      : { allowed: false, reason: "FULLMATCH_TWO_COMPETITORS_MISSING" };
+  }
+  if (c.inferred_sport === "esport" && canonical.event_scope === "full_match") {
+    return { allowed: false, reason: "FULLMATCH_SERIES_MARKER_MISSING" };
+  }
+
+  return { allowed: false, reason: anchorReasonForCanonicalCode(canonical.reason_code!) };
 }
 
 export function isAllowedFullMatchAnchor(c: FireModelCandidate): boolean {
@@ -403,6 +456,17 @@ export interface ReservationPlan {
     /** Every rejection path, keyed by explicit code (pipeline order). */
     rejection_counts_by_code: Record<string, number>;
     first_rejection_code: string | null;
+    // ── R0G full-match anchor evidence (market class vs event scope) ────────
+    groups_with_fullmatch_candidate: number;
+    groups_only_partial_or_prop: number;
+    /** Must stay 0: a valid full-match sibling existed but no representative was allowed. */
+    groups_with_valid_sibling_but_wrong_rep: number;
+    allowed_moneyline_count: number;
+    allowed_spread_count: number;
+    allowed_total_count: number;
+    rejected_partial_count: number;
+    rejected_prop_count: number;
+    rejected_activity_label_count: number;
     first_zero_stage: PlanningFunnelStage | null;
     market_level_keys_skipped: number;
     market_level_keys_normalized: number;
@@ -479,6 +543,18 @@ export async function buildReservationPlan(
   let skippedNoPlanningIdentity = 0;
   let finalIdentityAvailableAtPlanning = 0;
   let groupsAfterHorizon = 0;
+  // ── R0G full-match anchor evidence ────────────────────────────────────────
+  // A future 25 -> 0 run must distinguish "every event genuinely offered only
+  // partial/prop markets" from "the classifier rejected valid siblings".
+  let groupsWithFullmatchCandidate = 0;
+  let groupsOnlyPartialOrProp = 0;
+  let groupsWithValidSiblingButWrongRep = 0;
+  let allowedMoneylineCount = 0;
+  let allowedSpreadCount = 0;
+  let allowedTotalCount = 0;
+  let rejectedPartialCount = 0;
+  let rejectedPropCount = 0;
+  let rejectedActivityLabelCount = 0;
   const planningRejectionReasons: Partial<Record<PlanningEventIdentityReasonCode, number>> = {};
   // Stage 1 identity: resolved BEFORE a group may consume a reservation slot.
   const planningIdentityByGroupKey = new Map<string, PlanningEventIdentity>();
@@ -574,6 +650,32 @@ export async function buildReservationPlan(
 
   for (const [groupKey, arr] of groups.entries()) {
     const ranked = [...arr].sort(compareCandidateQuality);
+    // Canonical per-market evidence for this physical event (market class and
+    // event scope, decided by the single canonical taxonomy).
+    let groupHasFullmatch = false;
+    for (const candidate of ranked) {
+      const canonical = resolveMarketAnchorDecision(candidateAnchorInput(candidate));
+      if (canonical.allowed) {
+        groupHasFullmatch = true;
+        if (canonical.market_class === "allowed_fullmatch_moneyline") allowedMoneylineCount += 1;
+        else if (canonical.market_class === "allowed_fullmatch_spread") allowedSpreadCount += 1;
+        else if (canonical.market_class === "allowed_fullmatch_total") allowedTotalCount += 1;
+        continue;
+      }
+      // Attribute by AXIS, not by which check happened to fire first: any market
+      // that does not settle over the full event is a partial-scope rejection,
+      // even when its market class (e.g. forbidden_halftime) also encodes that.
+      if (canonical.reason_code === "ACTIVITY_LABEL") rejectedActivityLabelCount += 1;
+      else if (
+        canonical.event_scope !== "full_match" ||
+        canonical.market_class === "forbidden_halftime"
+      ) {
+        rejectedPartialCount += 1;
+      } else if (canonical.reason_code === "FORBIDDEN_MARKET_CLASS") rejectedPropCount += 1;
+    }
+    if (groupHasFullmatch) groupsWithFullmatchCandidate += 1;
+    else groupsOnlyPartialOrProp += 1;
+
     // Filter to executable anchors only: halftime/corners/props/exact-score/goalscorer
     // are forbidden as reservation anchors. NEVER fall back to a forbidden market, and
     // never let a forbidden-anchor candidate become the representative title.
@@ -586,6 +688,13 @@ export async function buildReservationPlan(
       candidate,
       decision: anchorDecisionForCandidate(candidate),
     }));
+
+    // A valid full-match market existed but the anchor step still found no
+    // allowed representative -- the exact "classifier discarded a valid
+    // sibling" signature. Must stay 0.
+    if (groupHasFullmatch && !anchorDecisions.some(({ decision }) => decision.allowed)) {
+      groupsWithValidSiblingButWrongRep += 1;
+    }
     const bestAllowedFullmatch = anchorDecisions.find(({ decision }) => decision.allowed)?.candidate;
     if (!bestAllowedFullmatch) {
       skippedNoFullmatchAnchor += 1;
@@ -870,6 +979,15 @@ export async function buildReservationPlan(
       final_identity_available_at_planning: finalIdentityAvailableAtPlanning,
       rejection_counts_by_code: rejectionCountsByCode,
       first_rejection_code: firstRejectionCode,
+      groups_with_fullmatch_candidate: groupsWithFullmatchCandidate,
+      groups_only_partial_or_prop: groupsOnlyPartialOrProp,
+      groups_with_valid_sibling_but_wrong_rep: groupsWithValidSiblingButWrongRep,
+      allowed_moneyline_count: allowedMoneylineCount,
+      allowed_spread_count: allowedSpreadCount,
+      allowed_total_count: allowedTotalCount,
+      rejected_partial_count: rejectedPartialCount,
+      rejected_prop_count: rejectedPropCount,
+      rejected_activity_label_count: rejectedActivityLabelCount,
       first_zero_stage: firstZeroStage,
       market_level_keys_skipped: marketLevelKeysSkipped,
       market_level_keys_normalized: marketLevelKeysNormalized,
