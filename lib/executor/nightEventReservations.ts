@@ -41,6 +41,14 @@ import {
 } from "./nightWindow";
 import type { NightEventReservationRow } from "./executorQueueTypes";
 import {
+  buildFullmatchRejectionEvidence,
+  buildFullmatchRejectionPreview,
+  type FullmatchRejectionCandidateCapture,
+  type FullmatchRejectionEvidenceReport,
+  type FullmatchRejectionGroupCapture,
+  type FullmatchRejectionGroupEvidence,
+} from "./fullmatchRejectionEvidence";
+import {
   resolveMarketAnchorDecision,
   type MarketAnchorInput,
   type MarketAnchorReasonCode,
@@ -432,6 +440,13 @@ export interface ReservationPlan {
   plan_date_minsk: string;
   window: NightWindow;
   reservations: NightEventReservationRow[];
+  /**
+   * R0I: complete bounded evidence for groups the full-match gate rejected.
+   * Deliberately OUTSIDE `diagnostics` -- only the totals and a 3x3 preview
+   * reach job_runs.diagnostics and the HTTP response; the full payload belongs
+   * to the filesystem diagnostic report so the JSONB column is not enlarged.
+   */
+  fullmatch_rejection: FullmatchRejectionEvidenceReport;
   diagnostics: {
     universe_size: number;
     event_groups: number;
@@ -511,6 +526,10 @@ export interface ReservationPlan {
     fallbackSkippedNoAllowedFullmatch: number;
     fallback_rejection_reasons: Partial<Record<FullMatchAnchorRejectionReason, number>>;
     fullmatch_rejection_reasons: Partial<Record<FullMatchAnchorRejectionReason, number>>;
+    // ── R0I bounded full-match rejection evidence (totals + 3x3 preview) ──────
+    fullmatch_rejection_groups_total: number;
+    fullmatch_rejection_candidates_total: number;
+    fullmatch_rejection_evidence_preview: FullmatchRejectionGroupEvidence[];
     slotFillTargetReached: boolean;
     r0_trace?: R0PlanningTrace;
   };
@@ -663,14 +682,23 @@ export async function buildReservationPlan(
   let fallbackSkippedNoAllowedFullmatch = 0;
   const fallbackRejectionReasons: Partial<Record<FullMatchAnchorRejectionReason, number>> = {};
   const fullmatchRejectionReasons: Partial<Record<FullMatchAnchorRejectionReason, number>> = {};
+  // R0I diagnostics: groups rejected by the full-match anchor gate, captured for
+  // the report only. Never read by any admission, ranking or allocation path.
+  const fullmatchRejectedGroups: FullmatchRejectionGroupCapture[] = [];
 
   for (const [groupKey, arr] of groups.entries()) {
     const ranked = [...arr].sort(compareCandidateQuality);
     // Canonical per-market evidence for this physical event (market class and
     // event scope, decided by the single canonical taxonomy).
     let groupHasFullmatch = false;
+    // R0I: buffer the decisions this loop ALREADY makes, so a group later
+    // rejected by the full-match gate can be explained without re-running the
+    // classifier. Purely observational -- nothing below reads this buffer.
+    const groupAnchorCaptures: FullmatchRejectionCandidateCapture[] = [];
     for (const candidate of ranked) {
-      const canonical = resolveMarketAnchorDecision(candidateAnchorInput(candidate));
+      const anchorInput = candidateAnchorInput(candidate);
+      const canonical = resolveMarketAnchorDecision(anchorInput);
+      groupAnchorCaptures.push({ anchorInput, decision: canonical });
       if (canonical.allowed) {
         groupHasFullmatch = true;
         if (canonical.market_class === "allowed_fullmatch_moneyline") allowedMoneylineCount += 1;
@@ -718,6 +746,13 @@ export async function buildReservationPlan(
       if (rejection && !rejection.allowed) {
         fullmatchRejectionReasons[rejection.reason] = (fullmatchRejectionReasons[rejection.reason] ?? 0) + 1;
       }
+      // R0I: this group -- and only a group rejected HERE -- is explained in the
+      // diagnostic report, from the decisions already taken above.
+      fullmatchRejectedGroups.push({
+        physicalEventKey: groupKey,
+        sport: ranked[0]?.inferred_sport ?? null,
+        candidates: groupAnchorCaptures,
+      });
       continue;
     }
 
@@ -982,11 +1017,14 @@ export async function buildReservationPlan(
                     ? "SLOT_ELIGIBLE"
                     : "RESERVATIONS_CREATED";
 
+  const fullmatchRejection = buildFullmatchRejectionEvidence(fullmatchRejectedGroups);
+
   return {
     plan_run_id: planRunId,
     plan_date_minsk: window.planDateMinsk,
     window,
     reservations,
+    fullmatch_rejection: fullmatchRejection,
     diagnostics: {
       universe_size: universe.length,
       event_groups: groups.size,
@@ -1062,6 +1100,11 @@ export async function buildReservationPlan(
       fallbackSkippedNoAllowedFullmatch,
       fallback_rejection_reasons: fallbackRejectionReasons,
       fullmatch_rejection_reasons: fullmatchRejectionReasons,
+      // ── R0I: bounded totals + a 3x3 preview only. The complete evidence is
+      // written to the filesystem diagnostic report, never into this object.
+      fullmatch_rejection_groups_total: fullmatchRejection.fullmatch_rejection_groups_total,
+      fullmatch_rejection_candidates_total: fullmatchRejection.fullmatch_rejection_candidates_total,
+      fullmatch_rejection_evidence_preview: buildFullmatchRejectionPreview(fullmatchRejection),
       slotFillTargetReached: reservations.length >= TARGET_LIVE_SLOTS,
       ...(rawDiagnostics
         ? {
@@ -1288,6 +1331,12 @@ export function buildPlanningJobDiagnostics(plan: ReservationPlan): Record<strin
     first_zero_stage: d.first_zero_stage,
     first_rejection_code: d.first_rejection_code,
     final_identity_available_at_planning: d.final_identity_available_at_planning,
+    // R0I: aggregate counts plus a 3x3 preview, so a status=empty row names what
+    // the full-match gate actually saw. The complete bounded evidence stays in
+    // the filesystem report -- this column is not enlarged with it.
+    fullmatch_rejection_groups_total: d.fullmatch_rejection_groups_total,
+    fullmatch_rejection_candidates_total: d.fullmatch_rejection_candidates_total,
+    fullmatch_rejection_evidence_preview: d.fullmatch_rejection_evidence_preview,
   };
 }
 
@@ -1329,6 +1378,10 @@ export async function persistReservationPlanDiagnostics(
       commit,
       context: opts?.context || "persistReservationPlan",
       diagnostics: plan.diagnostics,
+      // R0I: the complete bounded evidence for every group the full-match gate
+      // rejected. A zero-Reservation night must be explainable from this file
+      // alone -- previously it carried aggregate counts and nothing else.
+      ...plan.fullmatch_rejection,
       reservation_count: plan.reservations.length,
       reserved_events: plan.reservations.map((r) => ({
         rank: r.reservation_rank,
