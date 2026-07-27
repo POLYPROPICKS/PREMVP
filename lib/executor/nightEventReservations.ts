@@ -43,9 +43,12 @@ import type { NightEventReservationRow } from "./executorQueueTypes";
 import {
   buildIdentityBattleTraceId,
   buildPersistedIdentityDiagnostics,
-  selectIdentityCompleteRepresentative,
+  buildPersistedPlanningIdentityDiagnostics,
+  resolveExecutableMarketIdentity,
+  resolvePlanningEventIdentity,
   type ExecutableMarketIdentity,
-  type ExecutableMarketIdentityReasonCode,
+  type PlanningEventIdentity,
+  type PlanningEventIdentityReasonCode,
 } from "./executableMarketIdentity";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
@@ -191,12 +194,20 @@ export function isAllowedFullMatchAnchor(c: FireModelCandidate): boolean {
  * rejected here even though its condition/token/side are fully populated.
  */
 export function anchorDecisionForCandidate(c: FireModelCandidate): FullMatchAnchorDecision {
-  const stage = c.diagnostics?.contract_a_stage;
-  if (stage === "PLANNING" || stage === "FINAL_AUTHORITATIVE") {
-    if (c.activity_label_detected) return { allowed: false, reason: "FULLMATCH_SUBMARKET_REJECTED" };
+  // An activity/volume label is never a market, at any stage.
+  if (c.activity_label_detected) return { allowed: false, reason: "FULLMATCH_SUBMARKET_REJECTED" };
+  // FINAL_AUTHORITATIVE candidates were produced by the authoritative selector,
+  // which already ran the SAME canonical helpers (isActivityLabelText +
+  // fullMatchAnchorDecision) and encoded the verdict into live_eligible. Read
+  // that verdict rather than re-deriving it from strings.
+  if (c.diagnostics?.contract_a_stage === "FINAL_AUTHORITATIVE") {
     if (!c.live_eligible) return { allowed: false, reason: "FULLMATCH_IDENTITY_INVALID" };
     return { allowed: true };
   }
+  // PLANNING-stage candidates come from the broad 17:00 inventory: their
+  // live_eligible flag reflects EXECUTION readiness (side mapping, token
+  // presence) which legitimately is not settled hours before kickoff, so it
+  // must not be used as an anchor verdict here. Classify the market itself.
   return fullMatchAnchorDecision(c);
 }
 
@@ -348,6 +359,13 @@ function normalizedEventKey(c: FireModelCandidate): string | null {
   return null;
 }
 
+/** Stage at which the planning funnel first reached zero (R0F diagnostics). */
+export type PlanningFunnelStage =
+  | "SOURCE_ROWS"
+  | "NORMALIZED_PHYSICAL_EVENTS"
+  | "PLANNING_ELIGIBLE_EVENTS"
+  | "RESERVATIONS_CREATED";
+
 export interface ReservationPlan {
   plan_run_id: string;
   plan_date_minsk: string;
@@ -365,11 +383,21 @@ export interface ReservationPlan {
     skipped_non_tier1_event: number;
     skipped_no_executable_anchor: number;
     skipped_no_fullmatch_anchor: number;
-    // R0E identity contract: physical-event groups that had an allowed anchor but
-    // NO identity-complete representation, so they never consumed a slot.
-    skipped_no_identity_complete_representative: number;
-    identity_rejection_reasons: Partial<Record<ExecutableMarketIdentityReasonCode, number>>;
+    // R0F: physical-event groups with an allowed anchor but no complete
+    // PLANNING identity, so they never consumed a slot.
+    skipped_no_planning_identity: number;
+    planning_rejection_reasons: Partial<Record<PlanningEventIdentityReasonCode, number>>;
+    /** Groups whose authoritative T-90 identity already existed at plan time. */
     identity_complete_count: number;
+    // ── R0F structured planning funnel (a zero plan names its first zero stage) ──
+    source_rows: number;
+    normalized_physical_events: number;
+    planning_eligible_events: number;
+    reservations_created: number;
+    rejected_by_anchor: number;
+    rejected_by_scope: number;
+    final_identity_available_at_planning: number;
+    first_zero_stage: PlanningFunnelStage | null;
     market_level_keys_skipped: number;
     market_level_keys_normalized: number;
     // Horizon/WC floor diagnostics exposed after build.
@@ -442,10 +470,13 @@ export async function buildReservationPlan(
   let skippedNonTier1 = 0;
   let skippedNoExecutableAnchor = 0;
   let skippedNoFullmatchAnchor = 0;
-  let skippedNoIdentityCompleteRepresentative = 0;
-  const identityRejectionReasons: Partial<Record<ExecutableMarketIdentityReasonCode, number>> = {};
-  // Resolved immutable identity per physical-event group key, produced BEFORE the
-  // group may consume a reservation slot and persisted verbatim into the row.
+  let skippedNoPlanningIdentity = 0;
+  let finalIdentityAvailableAtPlanning = 0;
+  const planningRejectionReasons: Partial<Record<PlanningEventIdentityReasonCode, number>> = {};
+  // Stage 1 identity: resolved BEFORE a group may consume a reservation slot.
+  const planningIdentityByGroupKey = new Map<string, PlanningEventIdentity>();
+  // Stage 2 identity: only present when the authoritative T-90 decision already
+  // exists at plan time. Never synthesized.
   const identityByGroupKey = new Map<string, ExecutableMarketIdentity>();
   let marketLevelKeysSkipped = 0;
   let marketLevelKeysNormalized = 0;
@@ -558,30 +589,53 @@ export async function buildReservationPlan(
       continue;
     }
 
-    // R0E canonical identity contract: a reservation slot may only be consumed
-    // by a market for which PREMVP has already produced a COMPLETE immutable
-    // execution identity. The representative is the highest-ranked anchor-allowed
-    // candidate of this physical event whose identity resolves -- so a lower-ranked
-    // identity-complete representation deterministically beats an incomplete one,
-    // and a group with no such representation is skipped (never reserved dead).
-    const representative = selectIdentityCompleteRepresentative(executableAnchorRanked, {
-      physicalEventKey: groupKey,
-      sourceStage: "planning.representative_selection",
-      anchorAllowed: (candidate) => anchorDecisionForCandidate(candidate).allowed,
-    });
-    if (representative.selected === null) {
-      const rejection = representative.rejection;
-      const code: ExecutableMarketIdentityReasonCode = rejection.allowed
-        ? "NO_IDENTITY_COMPLETE_REPRESENTATIVE"
-        : rejection.reasonCode;
-      identityRejectionReasons[code] = (identityRejectionReasons[code] ?? 0) + 1;
-      skippedNoIdentityCompleteRepresentative += 1;
+    // R0F two-stage identity contract. At 17:00 a physical event may be reserved
+    // as soon as it has a complete PLANNING identity -- a real physical event, a
+    // canonical event key, a valid kickoff and an allowed market anchor. The
+    // exact executable identity (condition/token/side) is NOT required here: for
+    // a game hours away the authoritative T-90 decision does not exist yet, and
+    // demanding it empties the whole plan. It is resolved at the T-70..T-3
+    // rebalance through the stable canonical event key persisted below.
+    let planningIdentity: PlanningEventIdentity | null = null;
+    let best: FireModelCandidate | null = null;
+    for (const candidate of executableAnchorRanked) {
+      const decision = resolvePlanningEventIdentity({
+        candidate,
+        physicalEventKey: groupKey,
+        sourceStage: "planning.representative_selection",
+        anchorAllowed: anchorDecisionForCandidate(candidate).allowed,
+        planningSelectorVersion: candidate.diagnostics?.selector_id ?? "CONTUR3_CURRENT",
+      });
+      if (decision.allowed) {
+        const { allowed: _allowed, ...identity } = decision;
+        planningIdentity = identity;
+        best = candidate;
+        break;
+      }
+      planningRejectionReasons[decision.reasonCode] = (planningRejectionReasons[decision.reasonCode] ?? 0) + 1;
+    }
+    if (planningIdentity === null || best === null) {
+      skippedNoPlanningIdentity += 1;
       continue;
     }
-    if (ranked[0] !== representative.selected.candidate) representativeTitleReplaced += 1;
-    const best = representative.selected.candidate;
-    const identity = representative.selected.identity;
-    identityByGroupKey.set(groupKey, identity);
+    if (ranked[0] !== best) representativeTitleReplaced += 1;
+    planningIdentityByGroupKey.set(groupKey, planningIdentity);
+
+    // When this candidate ALREADY carries a complete authoritative execution
+    // identity (a FINAL_AUTHORITATIVE candidate -- i.e. the T-90 decision exists
+    // at plan time), persist it too so the rebalance validates exact IDs
+    // directly instead of re-resolving. Absent identity is never synthesized.
+    const executableDecision = resolveExecutableMarketIdentity({
+      candidate: best,
+      physicalEventKey: groupKey,
+      sourceStage: "planning.executable_identity",
+      anchorAllowed: true,
+    });
+    if (executableDecision.allowed && best.diagnostics?.contract_a_stage === "FINAL_AUTHORITATIVE") {
+      const { allowed: _ok, ...executableIdentity } = executableDecision;
+      identityByGroupKey.set(groupKey, executableIdentity);
+      finalIdentityAvailableAtPlanning += 1;
+    }
     const startMs = best.diagnostics.game_start_iso
       ? new Date(best.diagnostics.game_start_iso).getTime()
       : NaN;
@@ -645,10 +699,12 @@ export async function buildReservationPlan(
     const selectorId = best.diagnostics.selector_id;
     const isContractAFinal = best.diagnostics.contract_a_stage === "FINAL_AUTHORITATIVE";
     const isContractAPlanning = best.diagnostics.contract_a_stage === "PLANNING";
-    // Resolved before slot consumption (see the group loop). Present for every
-    // reservation this function can be reached with -- a group without a complete
-    // identity never reaches pushReservation.
-    const identity = identityByGroupKey.get(groupKey)!;
+    // Stage 1 identity: present for every reservation this function can be
+    // reached with -- a group without a complete planning identity never reaches
+    // pushReservation. Stage 2 identity is present only when the authoritative
+    // T-90 decision already existed at plan time.
+    const planningIdentity = planningIdentityByGroupKey.get(groupKey)!;
+    const identity = identityByGroupKey.get(groupKey) ?? null;
     const reason = isContractAFinal
       ? `CONTRACT_A_AUTHORITATIVE: selector=${selectorId} observation=${best.diagnostics.authoritative_observation_id}`
       : isContractAPlanning
@@ -682,14 +738,19 @@ export async function buildReservationPlan(
         scope_confidence: best.sport_classification_confidence,
         timing_bucket: best.timing_bucket,
         hours_to_start: best.diagnostics.hours_to_start_now,
-        battle_trace_id: buildIdentityBattleTraceId(planRunId, identity),
+        battle_trace_id: identity
+          ? buildIdentityBattleTraceId(planRunId, identity)
+          : `contur3:${planRunId}:${planningIdentity.planningEventKey}:pending-final-identity`,
         slot_fill: isFallback ? "FALLBACK_SLOT_FILL" : "TIER1_PRIMARY",
         fallback_tier: isFallback ? tier : undefined,
-        // R0E: the exact resolved identity is persisted verbatim for EVERY
-        // reservation -- Contract A final, Contract A planning, and Contur3
-        // alike. Rebalance validates these IDs; it never rediscovers a market
-        // from event_slug / event_title / match_family_key.
-        ...buildPersistedIdentityDiagnostics(identity),
+        // R0F stage 1: every reservation persists its structured planning event
+        // identity, so the rebalance can resolve the final market through a
+        // canonical-key join -- never through event_title / event_slug matching.
+        ...buildPersistedPlanningIdentityDiagnostics(planningIdentity),
+        // R0E stage 2: persisted verbatim ONLY when it genuinely exists at plan
+        // time. Its absence is what makes the rebalance resolve it later; it is
+        // never defaulted or synthesized.
+        ...(identity ? buildPersistedIdentityDiagnostics(identity) : {}),
         ...(selectorId !== undefined ? { selector_id: selectorId } : {}),
         ...(isContractAFinal ? { contract_a_stage: "FINAL_AUTHORITATIVE" } : {}),
         ...(isContractAPlanning ? { contract_a_stage: "PLANNING" } : {}),
@@ -713,6 +774,22 @@ export async function buildReservationPlan(
     (r) => r.strategic_scope === "WC" || r.strategic_scope === "SOCCER"
   ).length;
 
+  // R0F: a zero plan is never allowed to be silent -- it must name the exact
+  // stage at which the funnel first reached zero, so an empty night is
+  // immediately attributable to source inventory, grouping, eligibility or
+  // slot filling rather than being indistinguishable from a crash.
+  const sourceRows = rawDiagnostics?.total_db_rows ?? universe.length;
+  const firstZeroStage: PlanningFunnelStage | null =
+    reservations.length > 0
+      ? null
+      : sourceRows === 0
+        ? "SOURCE_ROWS"
+        : groups.size === 0
+          ? "NORMALIZED_PHYSICAL_EVENTS"
+          : planningIdentityByGroupKey.size === 0
+            ? "PLANNING_ELIGIBLE_EVENTS"
+            : "RESERVATIONS_CREATED";
+
   return {
     plan_run_id: planRunId,
     plan_date_minsk: window.planDateMinsk,
@@ -730,9 +807,18 @@ export async function buildReservationPlan(
       skipped_non_tier1_event: skippedNonTier1,
       skipped_no_executable_anchor: skippedNoExecutableAnchor,
       skipped_no_fullmatch_anchor: skippedNoFullmatchAnchor,
-      skipped_no_identity_complete_representative: skippedNoIdentityCompleteRepresentative,
-      identity_rejection_reasons: identityRejectionReasons,
+      skipped_no_planning_identity: skippedNoPlanningIdentity,
+      planning_rejection_reasons: planningRejectionReasons,
       identity_complete_count: identityByGroupKey.size,
+      // ── R0F planning funnel: a zero plan must name its first zero stage. ──
+      source_rows: sourceRows,
+      normalized_physical_events: groups.size,
+      planning_eligible_events: planningIdentityByGroupKey.size,
+      reservations_created: reservations.length,
+      rejected_by_anchor: skippedNoFullmatchAnchor + skippedNoExecutableAnchor,
+      rejected_by_scope: skippedNonTier1 + skippedOutsideHorizon,
+      final_identity_available_at_planning: finalIdentityAvailableAtPlanning,
+      first_zero_stage: firstZeroStage,
       market_level_keys_skipped: marketLevelKeysSkipped,
       market_level_keys_normalized: marketLevelKeysNormalized,
       horizon_end_iso: window.horizonEndIso,

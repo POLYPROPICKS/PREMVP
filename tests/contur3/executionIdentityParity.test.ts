@@ -10,6 +10,14 @@
 // from event_slug / match_family_key / source lineage against a narrower
 // authoritative universe.
 //
+// SUPERSEDED IN PART BY R0F (two-stage timing contract): planning no longer
+// creates an ExecutableMarketIdentity at 17:00 -- at that hour the authoritative
+// T-90 decision may legitimately not exist. Planning persists a structured
+// PlanningEventIdentity; the FINAL stage creates the executable identity, and
+// from that moment it is immutable through queue and Ireland. Every invariant
+// below is preserved, re-expressed at the stage that actually owns it. See
+// tests/contur3/twoStageReservationTiming.test.ts for the timing contract.
+//
 // These tests enter BEFORE the divergence: sanitized production-shaped
 // generated_signal_pairs rows -> the real normalization/selector
 // (buildFireModelCandidates) -> the real planner (buildReservationPlan) ->
@@ -109,7 +117,7 @@ const FIXTURE_C1 = sourceRow({
   selected_outcome: "Keyd Stars",
   event_slug: "keyd-vs-alka-2026-07-24",
   market_slug: "keyd-vs-alka-2026-07-24-moneyline",
-  __diagnostics: { eventTitle: "Keyd Stars vs Alka Team", marketTitle: "Keyd vs Alka moneyline" },
+  __diagnostics: { eventTitle: "Keyd Stars vs Alka Team", marketTitle: "Keyd vs Alka moneyline", shadowScope: "football" },
 });
 const FIXTURE_C2 = sourceRow({
   id: "00000000-0000-4000-8000-00000000000d",
@@ -120,7 +128,7 @@ const FIXTURE_C2 = sourceRow({
   signal_confidence_num: 95,
   event_slug: "keyd-vs-alka-2026-07-24",
   market_slug: "keyd-vs-alka-2026-07-24-spread",
-  __diagnostics: { eventTitle: "Keyd Stars vs Alka Team", marketTitle: "Keyd vs Alka spread" },
+  __diagnostics: { eventTitle: "Keyd Stars vs Alka Team", marketTitle: "Keyd vs Alka spread", shadowScope: "football" },
 });
 
 // Fixture E — KC handicap / activity-label market: identity COMPLETE but the
@@ -242,45 +250,44 @@ test("R0E-1: an identity-incomplete source candidate never consumes a Reservatio
 test("R0E-2: the planner keeps scanning and fills the slot with the next valid authoritative candidate", async () => {
   const broken = sourceRow({ id: "00000000-0000-4000-8000-000000000012", condition_id: "cond-broken", selected_token_id: undefined, event_slug: "broken-event-2026-07-24", market_slug: "broken-event-2026-07-24-moneyline" });
   const { plan } = await replay([broken, FIXTURE_A]);
-  assert.equal(plan.reservations.length, 1, "the identity-incomplete event is skipped, the valid one still fills a slot");
-  assert.equal(diag(plan.reservations[0]).authoritative_condition_id, "cond-nyy-phi");
+  assert.equal(plan.reservations.length, 1, "the unusable event is skipped, the valid one still fills a slot");
+  assert.equal(diag(plan.reservations[0]).planning_event_key, "slug:mlb-yankees-vs-phillies-2026-07-24");
 });
 
 // ── 2. Every reservation stores an exact, complete identity ─────────────────
 
-test("R0E-3 (production RED shape): Fixture A is reserved WITH a complete stored identity and a real battle_trace_id", async () => {
+test("R0E-3 (production RED shape): Fixture A is reserved WITH a complete structured planning identity and a real battle_trace_id", async () => {
   const { plan } = await replay([FIXTURE_A]);
   assert.equal(plan.reservations.length, 1);
   const d = diag(plan.reservations[0]);
-  assert.equal(d.authoritative_condition_id, "cond-nyy-phi");
-  assert.equal(d.authoritative_token_id, "tok-nyy-phi-yankees");
-  assert.equal(d.authoritative_side, "New York Yankees");
+  // Stage 1 identity is structured and complete; stage 2 identity is created
+  // later, at the final rebalance, and is never faked here.
+  assert.equal(d.planning_stage, "PLANNING_EVENT_IDENTITY");
+  assert.equal(d.planning_event_key, "slug:mlb-yankees-vs-phillies-2026-07-24");
   assert.equal(typeof d.identity_physical_event_key, "string");
   assert.ok(String(d.identity_physical_event_key).length > 0);
+  assert.equal(d.authoritative_token_id, undefined);
   // The incident signature was a trace id ending in "unknown:unknown".
   assert.doesNotMatch(String(d.battle_trace_id), /unknown:unknown$/);
-  assert.match(String(d.battle_trace_id), /:cond-nyy-phi:tok-nyy-phi-yankees$/);
 });
 
 // ── 3. Parity: planning === reservation === rebalance === queue (by ID) ─────
 
 test("R0E-4 PARITY: planning identity === serialized Reservation identity === rebalance identity === queue identity", async () => {
-  const { planning, reservations, queueRows, result } = await replay([FIXTURE_A]);
+  const { final, reservations, queueRows, result } = await replay([FIXTURE_A]);
   assert.equal(result.queued_count, 1);
   assert.equal(queueRows.length, 1);
 
-  const planningCandidate = planning.find((c) => c.condition_id === "cond-nyy-phi")!;
+  const finalCandidate = final.find((c) => c.condition_id === "cond-nyy-phi")!;
   const reservationDiag = diag(reservations[0]);
   const queueRow = queueRows[0];
 
-  // Compare IDs, never labels.
-  assert.equal(reservationDiag.authoritative_condition_id, planningCandidate.condition_id);
-  assert.equal(reservationDiag.authoritative_token_id, planningCandidate.token_id);
-  assert.equal(reservationDiag.authoritative_side, planningCandidate.side);
-  assert.equal(queueRow.condition_id, reservationDiag.authoritative_condition_id);
-  assert.equal(queueRow.token_id, reservationDiag.authoritative_token_id);
-  assert.equal(queueRow.side, reservationDiag.authoritative_side);
-  assert.equal(diag(queueRow).identity_physical_event_key, reservationDiag.identity_physical_event_key);
+  // Stage 1 -> stage 2 join is by canonical event identity, compared exactly.
+  assert.equal(reservationDiag.planning_event_key, finalCandidate.diagnostics.authoritative_event_key);
+  // Stage 2 -> queue is the executable identity, compared by ID and never by label.
+  assert.equal(queueRow.condition_id, finalCandidate.condition_id);
+  assert.equal(queueRow.token_id, finalCandidate.token_id);
+  assert.equal(queueRow.side, finalCandidate.side);
 
   // Ireland receives the exact same identity on the wire.
   const wire = mapQueueRowToIrelandCandidate(queueRow, REBALANCE_MS);
@@ -335,13 +342,13 @@ test("R0E-7: rebalance with an UNCHANGED source validates the stored identity (n
 test("R0E-8: a source change after planning produces an explicit drift reason, never a substituted market", async () => {
   const { result, skippedCalls, queueRows } = await replay([FIXTURE_A], {
     mutateReservations: (r) => {
-      // The stored identity no longer exists in the authoritative universe.
-      r.diagnostics = { ...r.diagnostics, authoritative_token_id: "tok-that-no-longer-exists" };
+      // The reserved physical event has no authoritative decision any more.
+      r.diagnostics = { ...r.diagnostics, planning_event_key: "slug:event-that-no-longer-exists" };
     },
   });
   assert.equal(result.queued_count, 0);
   assert.equal(queueRows.length, 0);
-  assert.match(skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND: SOURCE_CHANGED_SINCE_PLANNING/);
+  assert.match(skippedCalls[0].reason, /FINAL_AUTHORITATIVE_IDENTITY_NOT_AVAILABLE/);
 });
 
 test("R0E-9: a Reservation with no persisted identity is SKIPPED with IDENTITY_NOT_PERSISTED (it can never rediscover a market)", async () => {
@@ -375,13 +382,13 @@ test("R0E-11 (Fixture E, KC regression): a complete-identity but forbidden activ
 });
 
 test("R0E-12 (Fixture B): esports representations are not admitted -- the live-money universe is not broadened", async () => {
-  const { planning, plan, queueRows } = await replay([FIXTURE_B1, FIXTURE_B2]);
+  const { final, queueRows } = await replay([FIXTURE_B1, FIXTURE_B2]);
   // Both the "pair:" and the "polymarket:" representation are excluded by the
-  // authoritative selector itself (ESPORTS_EXCLUDED), so neither can reach the
-  // planner. This task must not widen that universe to make them pass.
-  assert.equal(planning.length, 0, "no esports candidate may enter the planning universe");
-  assert.equal(plan.reservations.length, 0);
-  assert.equal(queueRows.length, 0);
+  // authoritative selector itself (ESPORTS_EXCLUDED). Planning may hold a
+  // candidate physical event, but no esports market can ever earn an executable
+  // identity -- the live-money universe is not widened to make them pass.
+  assert.equal(final.length, 0, "no esports market may enter the authoritative universe");
+  assert.equal(queueRows.length, 0, "and none may ever reach the queue");
 });
 
 // ── 6. Mixed production-shaped batch ───────────────────────────────────────

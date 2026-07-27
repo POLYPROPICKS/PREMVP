@@ -36,8 +36,10 @@ import {
   type SchedulerJobEvidencePort,
 } from "./schedulerJobEvidence";
 import {
+  findAuthoritativeCandidateForPlanningEvent,
   findCandidateForStoredIdentity,
   readPersistedExecutableIdentity,
+  readPersistedPlanningEventIdentity,
 } from "./executableMarketIdentity";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
@@ -388,6 +390,22 @@ export interface RebalanceRunResult {
   // exceeded it. In write mode, a true value here means zero queue rows
   // were written this run (fail-closed, no partial writes).
   blocked_by_max_queue_writes: boolean;
+  // ── R0F structured final-stage funnel (no secrets, no provider payloads) ──
+  /** Reservations inside the T-70..T-3 due window this run. */
+  due_reservations: number;
+  /** Size of the authoritative universe consulted for those reservations. */
+  authoritative_candidates: number;
+  /** Due reservations whose structured event identity resolved to a decision. */
+  event_identity_matches: number;
+  queue_rows_created: number;
+  /** First fail-closed reason code this run, or null when nothing was rejected. */
+  first_rejection_code: string | null;
+}
+
+/** Leading reason code of a fail-closed reason string (never the free text). */
+function leadingRejectionCode(reason: string): string {
+  const head = reason.split(":", 1)[0].trim();
+  return head === "" ? reason.trim() : head;
 }
 
 /** Classify every active reservation against the due window — pure, no DB. */
@@ -576,7 +594,10 @@ function selectQueueRowForDueReservation(
   // if it is missing or no longer executable.
   const reservationDiag = reservation.diagnostics ?? {};
   const reservationSelectorId = reservationDiag.selector_id;
-  const isPlanningReservation = reservationDiag.contract_a_stage === "PLANNING" && reservationSelectorId === "CONTRACT_A_PLANNING_V1";
+  const isPlanningReservation =
+    (reservationDiag.contract_a_stage === "PLANNING" && reservationSelectorId === "CONTRACT_A_PLANNING_V1") ||
+    (reservationDiag.planning_stage === "PLANNING_EVENT_IDENTITY" &&
+      reservationSelectorId === "CONTRACT_A_PLANNING_V1");
   const isLegacyAuthoritativeReservation = reservationSelectorId === FROZEN_MODEL_V2_VERSION;
   if (isPlanningReservation || isLegacyAuthoritativeReservation) {
     const authoritativeUniverse = isPlanningReservation ? contractAFinalUniverse : eventCandidates;
@@ -587,29 +608,61 @@ function selectQueueRowForDueReservation(
     // is absent or no longer present in the authoritative universe fails closed
     // with an exact reason code, and can never be replaced by another token.
     const stored = readPersistedExecutableIdentity(reservationDiag, "rebalance.stored_identity");
-    const storedMatch = stored.allowed
-      ? findCandidateForStoredIdentity(stored, authoritativeUniverse)
-      : null;
-    const authoritativeCandidate = storedMatch?.candidate ?? null;
+    const planningIdentity = readPersistedPlanningEventIdentity(reservationDiag);
+
+    // Two resolution modes, in strict precedence -- both exact, neither fuzzy:
+    //  1. The reservation already stores the final ExecutableMarketIdentity
+    //     (the T-90 decision existed at plan time): VALIDATE those exact IDs.
+    //  2. The reservation stores only a PlanningEventIdentity (the normal
+    //     17:00 case): resolve the final decision by EXACT canonical
+    //     event-key equality against the authoritative universe. A unique
+    //     match is required; zero means the T-90 decision still does not
+    //     exist, more than one is an anomaly -- both fail closed.
+    let authoritativeCandidate: FireModelCandidate | null = null;
+    let resolutionMode: "STORED_IDENTITY" | "PLANNING_EVENT_KEY" | "NONE" = "NONE";
+    let matchCount = 0;
+    let identityFailReason: string | null = null;
+
+    if (stored.allowed) {
+      resolutionMode = "STORED_IDENTITY";
+      const m = findCandidateForStoredIdentity(stored, authoritativeUniverse);
+      authoritativeCandidate = m.candidate;
+      matchCount = m.ambiguityCount;
+      if (authoritativeCandidate === null) {
+        identityFailReason = `CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND: ${
+          matchCount > 1 ? "AMBIGUOUS_IDENTITY_MATCH" : "SOURCE_CHANGED_SINCE_PLANNING"
+        }`;
+      }
+    } else if (planningIdentity !== null) {
+      resolutionMode = "PLANNING_EVENT_KEY";
+      const m = findAuthoritativeCandidateForPlanningEvent(planningIdentity, authoritativeUniverse);
+      authoritativeCandidate = m.candidate;
+      matchCount = m.matchCount;
+      if (authoritativeCandidate === null) {
+        identityFailReason =
+          matchCount > 1
+            ? "FINAL_AUTHORITATIVE_IDENTITY_AMBIGUOUS"
+            : "FINAL_AUTHORITATIVE_IDENTITY_NOT_AVAILABLE";
+      }
+    } else {
+      identityFailReason = `CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE: ${
+        stored.allowed ? "IDENTITY_NOT_PERSISTED" : stored.reasonCode
+      }`;
+    }
+
     const executableCheck = authoritativeCandidate ? isExecutableMarket(authoritativeCandidate) : null;
 
-    if (!stored.allowed || authoritativeCandidate === null || !executableCheck!.executable) {
-      const failReason = !stored.allowed
-        ? `CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE: ${stored.reasonCode}`
-        : authoritativeCandidate === null
-          ? `CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND: ${
-              (storedMatch?.ambiguityCount ?? 0) > 1
-                ? "AMBIGUOUS_IDENTITY_MATCH"
-                : "SOURCE_CHANGED_SINCE_PLANNING"
-            }`
-          : `CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE: ${executableCheck!.rejectReason}`;
-      // Safe diagnostics only: reservation/selector ids, whether an identity was
-      // persisted at all, and the ambiguity count when >1 candidate carried the
-      // stored IDs. Never logs condition/token/side values, secrets, or env.
+    if (authoritativeCandidate === null || !executableCheck!.executable) {
+      const failReason =
+        identityFailReason ??
+        `CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE: ${executableCheck!.rejectReason}`;
+      // Safe diagnostics only: reservation/selector ids, which resolution mode
+      // was attempted, and the match count. Never logs condition/token/side
+      // values, provider payloads, secrets, or env.
       console.log(
         `[contur3-rebalance] CONTRACT_A_FAIL_CLOSED selector=${reservationSelectorId} ` +
           `reservation=${reservation.id ?? "unknown"} event=${reservation.match_family_key} ` +
-          `identity_persisted=${stored.allowed} ambiguity=${storedMatch?.ambiguityCount ?? 0} ` +
+          `mode=${resolutionMode} matches=${matchCount} ` +
           `universe_size=${authoritativeUniverse.length} reason=${failReason}`
       );
       return {
@@ -627,6 +680,16 @@ function selectQueueRowForDueReservation(
             ...reservationDiag,
             selector_id: FROZEN_MODEL_V2_VERSION,
             contract_a_stage: "FINAL_AUTHORITATIVE",
+            // The identity created at this stage becomes immutable from here on:
+            // it is copied verbatim into the queue row and reaches Ireland as-is.
+            authoritative_condition_id: authoritativeCandidate.condition_id,
+            authoritative_token_id: authoritativeCandidate.token_id,
+            authoritative_side: authoritativeCandidate.side,
+            authoritative_observation_id:
+              authoritativeCandidate.diagnostics.authoritative_observation_id ?? authoritativeCandidate.signal_id,
+            authoritative_event_key:
+              authoritativeCandidate.diagnostics.authoritative_event_key ?? reservationDiag.planning_event_key,
+            final_identity_resolution_mode: resolutionMode,
           },
         }
       : reservation;
@@ -773,6 +836,11 @@ export async function runEventRebalance(
       max_queue_writes: maxQueueWrites,
       planned_queue_writes: 0,
       blocked_by_max_queue_writes: false,
+      due_reservations: 0,
+      authoritative_candidates: 0,
+      event_identity_matches: 0,
+      queue_rows_created: 0,
+      first_rejection_code: null,
     };
   }
 
@@ -839,6 +907,11 @@ export async function runEventRebalance(
       max_queue_writes: maxQueueWrites,
       planned_queue_writes: plannedQueueWrites,
       blocked_by_max_queue_writes: true,
+      due_reservations: due.length,
+      authoritative_candidates: contractAFinalUniverse.length,
+      event_identity_matches: plannedQueueWrites,
+      queue_rows_created: 0,
+      first_rejection_code: "BLOCKED_BY_MAX_QUEUE_WRITES",
     };
   }
 
@@ -848,6 +921,11 @@ export async function runEventRebalance(
   let queued = 0;
   let skipped = 0;
   let already = 0;
+  // First fail-closed code this run -- the single most useful field when a due
+  // reservation did not reach the queue. Code only, never the free-text detail.
+  const firstSkipped = plannedActions.find((a) => a.kind === "SKIPPED");
+  const firstRejectionCode =
+    firstSkipped && firstSkipped.kind === "SKIPPED" ? leadingRejectionCode(firstSkipped.reason) : null;
 
   for (const action of plannedActions) {
     if (action.kind === "ALREADY_QUEUED") {
@@ -926,6 +1004,11 @@ export async function runEventRebalance(
     // WOULD be blocked if run with write=true (no actual writes happened
     // either way, since write=false skips every repo call above).
     blocked_by_max_queue_writes: blockedByMaxQueueWrites,
+    due_reservations: due.length,
+    authoritative_candidates: contractAFinalUniverse.length,
+    event_identity_matches: plannedActions.filter((a) => a.kind === "QUEUE").length,
+    queue_rows_created: queued,
+    first_rejection_code: firstRejectionCode,
   };
 }
 

@@ -35,7 +35,7 @@ function contractARow(overrides: Record<string, unknown> = {}) {
     entry_price_num: 0.45,
     created_at: created,
     event_slug: "nba-team-a-vs-team-b-final-2026-07-19",
-    market_slug: "nba-team-a-vs-team-b-final-2026-07-19",
+    market_slug: "nba-team-a-vs-team-b-final-2026-07-19-moneyline",
     diagnostics: { gameStartIso: gameStart, dataCoverage: 80, eventTitle: "MLB Yankees vs Mets", marketTitle: "Yankees vs Mets moneyline" },
     ...rest,
   };
@@ -140,7 +140,7 @@ test("TEST7: planning grouping accounting reports normalized physical events wit
   const marketLevel = contractARow({
     condition_id: "cond-moneyline",
     selected_token_id: "tok-moneyline",
-    event_slug: "chile-vs-peru-moneyline",
+    event_slug: "chile-vs-peru",
     market_slug: "chile-vs-peru-moneyline",
     diagnostics: { gameStartIso: "2026-07-19T14:45:00.000Z", dataCoverage: 80, eventTitle: "MLB Chile vs Peru", marketTitle: "Chile vs Peru moneyline" },
   });
@@ -238,7 +238,7 @@ test("two-stage parity: planning reserves the authoritative identity and the lat
   });
 });
 
-test("two-stage score-64 rejection: a below-threshold market can no longer consume a reservation slot -- zero reserved, zero READY", async () => {
+test("two-stage score-64 rejection: planning may reserve the physical event, but the final stage rejects it and creates zero READY", async () => {
   const { runContractAAuthoritativePreview } = await import("../../scripts/contur3/preview-contract-a-authoritative");
   const planningOnly = contractARow({
     condition_id: "cond-score-64",
@@ -254,8 +254,8 @@ test("two-stage score-64 rejection: a below-threshold market can no longer consu
       "--planning-as-of", "2026-07-19T13:50:00.000Z",
       "--rebalance-as-of", AS_OF,
     ]);
-    assert.equal(summary.wouldReserveCount, 0, "no identity-complete authoritative market -> no dead-on-arrival reservation");
-    assert.equal(summary.wouldReadyCount, 0);
+    assert.equal(summary.wouldReserveCount, 1, "the physical event is reservable at 17:00");
+    assert.equal(summary.wouldReadyCount, 0, "but it never earns an executable identity");
     assert.equal(summary.finalContractARejections.SCORE_BELOW_65, 1);
     assert.equal(summary.alternateSubstitutionCount, 0);
     assert.deepEqual(summary.safety, { productionReservationWrites: 0, productionQueueWrites: 0, callbacks: 0, irelandCalls: 0, clobOrders: 0 });

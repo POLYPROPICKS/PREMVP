@@ -1000,30 +1000,6 @@ export async function buildFireModelCandidates(
   if (selectorMode === "CONTRACT_A_V1") {
     return await buildContractAV1Candidates(limit, injectedRows);
   }
-  if (selectorMode === "CONTRACT_A_PLANNING_V1") {
-    // Founder decision (R0E): planning is NARROWED to the authoritative
-    // execution universe rather than the live-money universe being widened to
-    // admit broad Contur3 planning rows. Planning and the final rebalance now
-    // read the SAME produceFrozenModelV2ShadowDecisions universe, so a
-    // reservation can no longer be planned against a market the final stage
-    // would never accept (the planning/rebalance universe drift that produced
-    // 14 dead-on-arrival reservations on night-plan:2026-07-24).
-    //
-    // Only the stage label differs: the candidate keeps its immutable
-    // authoritative_* identity block verbatim.
-    const authoritative = await buildContractAV1Candidates(limit, injectedRows);
-    return {
-      candidates: authoritative.candidates.map((c) => ({
-        ...c,
-        diagnostics: {
-          ...c.diagnostics,
-          selector_id: "CONTRACT_A_PLANNING_V1",
-          contract_a_stage: "PLANNING" as const,
-        },
-      })),
-      rawDiagnostics: authoritative.rawDiagnostics,
-    };
-  }
   const versions = planningMode ? PLANNING_ALLOWED_VERSIONS : ALLOWED_VERSIONS;
   if (!planningMode) {
     console.log("[ireland-executor] TIER1_ONLY guard active");
@@ -1636,6 +1612,23 @@ export async function buildFireModelCandidates(
     rawDiag.versions_with_zero_db_rows = versions.filter(
       v => !rawDiag!.source_counts_by_formula_version[v]
     );
+  }
+
+  if (selectorMode === "CONTRACT_A_PLANNING_V1") {
+    // R0F two-stage timing contract: the 17:00 planning stage reads the BROAD
+    // physical-event inventory, not the final T-90 authoritative universe.
+    // A game several hours away legitimately has no T-90 snapshot yet, so
+    // resolving the final universe here returns nothing and the whole night
+    // plan collapses to zero reservations (production, 2026-07-25/26).
+    // The stamp records which selector planned the event; the exact executable
+    // identity is created later, at the T-70..T-3 rebalance.
+    for (const candidate of candidates) {
+      candidate.diagnostics = {
+        ...candidate.diagnostics,
+        selector_id: "CONTRACT_A_PLANNING_V1",
+        contract_a_stage: "PLANNING",
+      };
+    }
   }
 
   candidates.sort((a, b) => {
