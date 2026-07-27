@@ -56,6 +56,10 @@ test("R0 trace composes exact source-to-reservation stages without treating grou
       ["market_policy_eligible", 8, 6, "MEASURED"],
       ["planning_eligible", 6, 4, "MEASURED"],
       ["distinct_physical_events", 4, 3, "MEASURED"],
+      // R0H: each gate buildReservationPlan applies is its own stage, in order.
+      ["executable_anchor_eligible", 3, 3, "MEASURED"],
+      ["fullmatch_anchor_eligible", 3, 3, "MEASURED"],
+      ["planning_identity_eligible", 3, 3, "MEASURED"],
       ["timing_eligible", 3, 2, "MEASURED"],
       ["slot_eligible", 2, 2, "MEASURED"],
       ["reservations_proposed", 2, 2, "MEASURED"],
@@ -97,10 +101,21 @@ test("R0H: SLOT_NOT_ALLOCATED is a true residual and never absorbs anchor or ide
     reservationsCreated: 0,
   });
 
+  // The rejection is attributed to the gate that actually applied it.
+  const anchor = trace.stages.find((stage) => stage.stage_name === "fullmatch_anchor_eligible")!;
+  assert.equal(anchor.input_count, 33);
+  assert.equal(anchor.output_count, 0);
+  assert.equal(anchor.rejection_counts.NO_FULLMATCH_ANCHOR, 33);
+
+  // Nothing survived it, so every downstream stage must see zero input.
+  const identity = trace.stages.find((stage) => stage.stage_name === "planning_identity_eligible")!;
+  const timing = trace.stages.find((stage) => stage.stage_name === "timing_eligible")!;
   const slot = trace.stages.find((stage) => stage.stage_name === "slot_eligible")!;
-  assert.equal(slot.input_count, 33);
+  assert.equal(identity.input_count, 0);
+  assert.equal(timing.input_count, 0);
+  assert.equal(slot.input_count, 0);
   assert.equal(slot.output_count, 0);
-  assert.equal(slot.rejection_counts.NO_FULLMATCH_ANCHOR, 33);
+  assert.equal(slot.rejection_counts.NO_FULLMATCH_ANCHOR, undefined);
   assert.equal(slot.rejection_counts.SLOT_NOT_ALLOCATED, 0);
 
   assert.equal(trace.slot_allocation.first_slot_rejection_code, "NO_FULLMATCH_ANCHOR");

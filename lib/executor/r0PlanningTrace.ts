@@ -1,6 +1,11 @@
 import { createHash } from "node:crypto";
 
-export const R0_STAGE_REGISTRY_VERSION = "r0a-planning-v1" as const;
+// v2 (R0H): the funnel now names every gate buildReservationPlan actually applies,
+// in the order it applies them. v1 collapsed the executable-anchor, full-match-anchor
+// and planning-identity gates into a single `slot_eligible` stage whose rejection set
+// was a residual, so an event rejected at an upstream gate was still counted as input
+// to the timing and slot stages it never reached.
+export const R0_STAGE_REGISTRY_VERSION = "r0h-planning-v2" as const;
 
 export type R0TransformationKind =
   | "FILTER_1_TO_0_OR_1"
@@ -29,6 +34,12 @@ export const R0_STAGE_REGISTRY: readonly R0StageRegistryEntry[] = [
   ["market_policy_eligible", "normalized_row", "policy_eligible_row", "FILTER_1_TO_0_OR_1"],
   ["planning_eligible", "policy_eligible_row", "planning_candidate", "FILTER_1_TO_0_OR_1"],
   ["distinct_physical_events", "planning_candidate", "physical_event", "GROUP_MANY_TO_1"],
+  // ── The real per-group gate order inside buildReservationPlan ─────────────
+  // Each of these `continue`s out of the loop before the next predicate runs,
+  // so each stage's input is strictly the previous stage's survivor set.
+  ["executable_anchor_eligible", "physical_event", "physical_event", "FILTER_1_TO_0_OR_1"],
+  ["fullmatch_anchor_eligible", "physical_event", "physical_event", "FILTER_1_TO_0_OR_1"],
+  ["planning_identity_eligible", "physical_event", "physical_event", "FILTER_1_TO_0_OR_1"],
   ["timing_eligible", "physical_event", "physical_event", "FILTER_1_TO_0_OR_1"],
   ["slot_eligible", "physical_event", "physical_event", "FILTER_1_TO_0_OR_1"],
   ["reservations_proposed", "physical_event", "reservation", "MAP_1_TO_1"],
@@ -184,35 +195,49 @@ export function buildR0PlanningTrace(input: {
   const policyEligible = nonNegative(input.raw.raw_allowed_fullmatch_rows);
   const planningEligible = nonNegative(input.plan.universe_size);
   const physicalEvents = nonNegative(input.plan.event_groups);
-  const timingEligible = nonNegative(physicalEvents - input.plan.skipped_outside_horizon);
   const proposed = nonNegative(input.plan.reserved_count);
   const nonTier1 = nonNegative(input.plan.skipped_non_tier1_event);
   const noExecutableAnchor = nonNegative(input.plan.skipped_no_executable_anchor);
   const noFullmatchAnchor = nonNegative(input.plan.skipped_no_fullmatch_anchor ?? 0);
   const noPlanningIdentity = nonNegative(input.plan.skipped_no_planning_identity ?? 0);
-  // True residual: only events that actually reached the allocator and were not
-  // given a slot. Every named pre-allocation rejection is subtracted first, so
-  // SLOT_NOT_ALLOCATED can no longer absorb an anchor or identity rejection.
-  const slotRejected = nonNegative(
-    timingEligible - proposed - nonTier1 - noExecutableAnchor - noFullmatchAnchor - noPlanningIdentity
-  );
+  const outsideHorizon = nonNegative(input.plan.skipped_outside_horizon);
+
+  // Survivor set after each real gate, in the order buildReservationPlan applies
+  // them. Every count is the previous survivor set minus exactly the events that
+  // gate rejected -- never a residual over pre-filter inventory.
+  const executableAnchorEligible = nonNegative(physicalEvents - noExecutableAnchor);
+  const fullmatchAnchorEligible = nonNegative(executableAnchorEligible - noFullmatchAnchor);
+  const planningIdentityEligible = nonNegative(fullmatchAnchorEligible - noPlanningIdentity);
+  const timingEligible = nonNegative(planningIdentityEligible - outsideHorizon);
+
+  // SLOT_NOT_ALLOCATED is now a residual over the SLOT STAGE ONLY: events that
+  // passed the executable anchor, the full-match anchor, the planning identity
+  // and the horizon, were rankable under the existing tier policy, and still lost
+  // on real capacity or ranking.
+  const slotRejected = nonNegative(timingEligible - nonTier1 - proposed);
+  // Why the plan reached the allocator with the inventory it did. This spans the
+  // whole path on purpose -- it answers "why was nothing reserved", which an
+  // operator asks about the run, not about one stage. The per-stage attribution
+  // lives on the stages themselves, where each code appears at its own gate.
   const slotRejectionCountsByCode: Record<string, number> = {};
   for (const [code, count] of [
-    ["NON_TIER1_EVENT", nonTier1],
     ["NO_EXECUTABLE_ANCHOR", noExecutableAnchor],
     ["NO_FULLMATCH_ANCHOR", noFullmatchAnchor],
     ["NO_PLANNING_IDENTITY", noPlanningIdentity],
+    ["OUTSIDE_PLANNING_HORIZON", outsideHorizon],
+    ["NON_TIER1_EVENT", nonTier1],
     ["SLOT_NOT_ALLOCATED", slotRejected],
   ] as const) {
     if (count > 0) slotRejectionCountsByCode[code] = count;
   }
-  // Pipeline order inside the slot stage: the earliest gate that rejected anything.
+  // Pipeline order: the earliest gate that rejected anything this run.
   const firstSlotRejectionCode =
     (
       [
         "NO_EXECUTABLE_ANCHOR",
         "NO_FULLMATCH_ANCHOR",
         "NO_PLANNING_IDENTITY",
+        "OUTSIDE_PLANNING_HORIZON",
         "NON_TIER1_EVENT",
         "SLOT_NOT_ALLOCATED",
       ] as const
@@ -228,9 +253,7 @@ export function buildR0PlanningTrace(input: {
       ? null
       : Math.max(0, capacityConfigured - existingReservations - proposed);
   // Candidates that survived every named gate and were genuinely ranked for a slot.
-  const slotCandidatesConsidered = nonNegative(
-    timingEligible - nonTier1 - noExecutableAnchor - noFullmatchAnchor - noPlanningIdentity
-  );
+  const slotCandidatesConsidered = nonNegative(timingEligible - nonTier1);
   const slotUnallocatedCause: R0SlotUnallocatedCause | null =
     slotRejected === 0
       ? null
@@ -272,18 +295,35 @@ export function buildR0PlanningTrace(input: {
     },
     {
       input_count: physicalEvents,
-      output_count: timingEligible,
-      rejection_counts: { OUTSIDE_PLANNING_HORIZON: nonNegative(input.plan.skipped_outside_horizon) },
+      output_count: executableAnchorEligible,
+      rejection_counts: { NO_EXECUTABLE_ANCHOR: noExecutableAnchor },
       status: "MEASURED",
     },
     {
+      input_count: executableAnchorEligible,
+      output_count: fullmatchAnchorEligible,
+      rejection_counts: { NO_FULLMATCH_ANCHOR: noFullmatchAnchor },
+      status: "MEASURED",
+    },
+    {
+      input_count: fullmatchAnchorEligible,
+      output_count: planningIdentityEligible,
+      rejection_counts: { NO_PLANNING_IDENTITY: noPlanningIdentity },
+      status: "MEASURED",
+    },
+    {
+      input_count: planningIdentityEligible,
+      output_count: timingEligible,
+      rejection_counts: { OUTSIDE_PLANNING_HORIZON: outsideHorizon },
+      status: "MEASURED",
+    },
+    {
+      // Only events that survived every upstream gate reach the allocator, so
+      // these two codes are the only ones that can be applied here.
       input_count: timingEligible,
       output_count: proposed,
       rejection_counts: {
         NON_TIER1_EVENT: nonTier1,
-        NO_EXECUTABLE_ANCHOR: noExecutableAnchor,
-        NO_FULLMATCH_ANCHOR: noFullmatchAnchor,
-        NO_PLANNING_IDENTITY: noPlanningIdentity,
         SLOT_NOT_ALLOCATED: slotRejected,
       },
       status: "MEASURED",

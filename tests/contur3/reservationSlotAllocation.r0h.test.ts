@@ -11,21 +11,33 @@
 //   reservations_proposed 0 -> 0
 //
 // That reads as "33 valid events, zero slots" — a capacity failure. It was not.
-// SLOT_NOT_ALLOCATED is a DERIVED RESIDUAL of the slot_eligible stage:
+//
+// The v1 trace collapsed three distinct gates into `slot_eligible` and derived
+// SLOT_NOT_ALLOCATED as a residual over PRE-FILTER inventory:
 //
 //   residual = timing_eligible - proposed - NON_TIER1 - NO_EXECUTABLE_ANCHOR
 //
-// buildReservationPlan drops a physical event on six paths, and the residual
-// subtracted only two of them. Events rejected at the full-match anchor gate
-// (skipped_no_fullmatch_anchor) or the planning-identity gate
-// (skipped_no_planning_identity) were therefore relabelled as slot failures.
-// Both of those gates run BEFORE the horizon check, which is also why
-// skipped_outside_horizon stayed 0 and timing_eligible reported a spurious 33.
+// buildReservationPlan drops a physical event on six paths, and that residual
+// subtracted only two of them, so events rejected at the full-match anchor gate
+// or the planning-identity gate were relabelled as slot failures. Both of those
+// gates run BEFORE the horizon check, which is also why skipped_outside_horizon
+// stayed 0 and timing_eligible reported a spurious 33 survivors it never had.
+//
+// The v2 registry names every gate, in the order buildReservationPlan applies
+// them, so each stage's input is strictly the previous stage's survivor set:
+//
+//   distinct_physical_events
+//   -> executable_anchor_eligible    NO_EXECUTABLE_ANCHOR
+//   -> fullmatch_anchor_eligible     NO_FULLMATCH_ANCHOR
+//   -> planning_identity_eligible    NO_PLANNING_IDENTITY
+//   -> timing_eligible               OUTSIDE_PLANNING_HORIZON
+//   -> slot_eligible                 NON_TIER1_EVENT, SLOT_NOT_ALLOCATED
+//   -> reservations_proposed
 //
 // Slot capacity itself was never zero: TARGET_LIVE_SLOTS = 15, Tier1 primary is
 // uncapped and the Tier2/Tier3 fallback ladder fills up to 15. This suite pins
-// both facts: real capacity still allocates, and a non-slot rejection is never
-// again reported as SLOT_NOT_ALLOCATED.
+// both facts: real capacity still allocates, and SLOT_NOT_ALLOCATED now covers
+// only events that genuinely reached the allocator and lost a slot there.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -146,6 +158,186 @@ function slotEvidence(plan: { diagnostics: Record<string, unknown> }): any {
   return (plan.diagnostics as any).r0_trace.slot_allocation;
 }
 
+/** Every stage from the physical-event grouping down, as [name, input, output]. */
+function funnel(plan: { diagnostics: Record<string, unknown> }): Array<[string, number | null, number | null]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const stages = (plan.diagnostics as any).r0_trace.stages as Array<{
+    stage_name: string;
+    input_count: number | null;
+    output_count: number | null;
+  }>;
+  const from = stages.findIndex((s) => s.stage_name === "distinct_physical_events");
+  return stages.slice(from).map((s) => [s.stage_name, s.input_count, s.output_count]);
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function rejections(plan: { diagnostics: Record<string, unknown> }, stageName: string): any {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const stages = (plan.diagnostics as any).r0_trace.stages as Array<{
+    stage_name: string;
+    rejection_counts: Record<string, number>;
+  }>;
+  return stages.find((s) => s.stage_name === stageName)!.rejection_counts;
+}
+
+// ── 0. Stage order and survivor counts must match the real gate order ───────
+//
+// buildReservationPlan applies its gates in this order, each `continue`-ing out
+// of the per-group loop before the next predicate is evaluated:
+//
+//   groups                                    (line 624)
+//   -> executableAnchorRanked.length === 0    -> NO_EXECUTABLE_ANCHOR   (682)
+//   -> !bestAllowedFullmatch                  -> NO_FULLMATCH_ANCHOR    (698)
+//   -> planningIdentity === null              -> NO_PLANNING_IDENTITY   (733)
+//   -> !isWithinHorizon(...)                  -> OUTSIDE_HORIZON        (755)
+//   -> eventTierOf(best) !== TIER1 && no fb   -> NOT_TIER1              (763)
+//   -> capacity (TARGET_LIVE_SLOTS)           -> SLOT_NOT_ALLOCATED     (794)
+//
+// The trace must report that order, so no event rejected at an upstream gate is
+// ever counted as input to a downstream one.
+
+test("R0H-0 (RED): funnel stages follow the real gate order with true survivor counts", async () => {
+  const plan = await planWith(await physicalEvents(EVENT_COUNT, FORCE_REBUILD_MS));
+  assert.deepEqual(funnel(plan), [
+    ["distinct_physical_events", 33, 33],
+    ["executable_anchor_eligible", 33, 33],
+    ["fullmatch_anchor_eligible", 33, 33],
+    ["planning_identity_eligible", 33, 33],
+    ["timing_eligible", 33, 33],
+    ["slot_eligible", 33, 15],
+    ["reservations_proposed", 15, 15],
+    ["reservations_created", 15, null],
+  ]);
+});
+
+test("R0H-0a (RED, Case A): a full-match anchor rejection zeroes every DOWNSTREAM stage input", async () => {
+  const plan = await planWith(
+    await physicalEvents(EVENT_COUNT, FORCE_REBUILD_MS, (i, c) => ({
+      ...c,
+      market_slug: `Will something happen in game ${i}?`,
+      providerMarketQuestion: `Will something happen in game ${i}?`,
+    }))
+  );
+
+  assert.deepEqual(funnel(plan), [
+    ["distinct_physical_events", 33, 33],
+    ["executable_anchor_eligible", 33, 33],
+    ["fullmatch_anchor_eligible", 33, 0],
+    // Nothing survived the anchor gate, so nothing may be counted downstream.
+    ["planning_identity_eligible", 0, 0],
+    ["timing_eligible", 0, 0],
+    ["slot_eligible", 0, 0],
+    ["reservations_proposed", 0, 0],
+    ["reservations_created", 0, null],
+  ]);
+  assert.equal(rejections(plan, "fullmatch_anchor_eligible").NO_FULLMATCH_ANCHOR, EVENT_COUNT);
+  assert.equal(rejections(plan, "slot_eligible").SLOT_NOT_ALLOCATED, 0);
+  assert.equal(plan.diagnostics.first_zero_stage, "FULLMATCH_ANCHOR_ELIGIBLE");
+});
+
+test("R0H-0b (RED, Case B): a planning-identity rejection zeroes every DOWNSTREAM stage input", async () => {
+  const plan = await planWith(
+    await physicalEvents(EVENT_COUNT, FORCE_REBUILD_MS, (_i, c) => ({
+      ...c,
+      diagnostics: { ...c.diagnostics, game_start_iso: null as unknown as string },
+    }))
+  );
+
+  assert.deepEqual(funnel(plan), [
+    ["distinct_physical_events", 33, 33],
+    ["executable_anchor_eligible", 33, 33],
+    ["fullmatch_anchor_eligible", 33, 33],
+    ["planning_identity_eligible", 33, 0],
+    ["timing_eligible", 0, 0],
+    ["slot_eligible", 0, 0],
+    ["reservations_proposed", 0, 0],
+    ["reservations_created", 0, null],
+  ]);
+  assert.equal(rejections(plan, "planning_identity_eligible").NO_PLANNING_IDENTITY, EVENT_COUNT);
+  assert.equal(rejections(plan, "slot_eligible").SLOT_NOT_ALLOCATED, 0);
+  assert.equal(plan.diagnostics.first_zero_stage, "PLANNING_IDENTITY_ELIGIBLE");
+});
+
+test("R0H-0c (RED, Case C): 33 valid events reach the slot stage and lose only on capacity", async () => {
+  const plan = await planWith(await physicalEvents(EVENT_COUNT, FORCE_REBUILD_MS));
+
+  assert.equal(rejections(plan, "slot_eligible").SLOT_NOT_ALLOCATED, EVENT_COUNT - TARGET_LIVE_SLOTS);
+  assert.equal(rejections(plan, "slot_eligible").NON_TIER1_EVENT, 0);
+  assert.equal(slotEvidence(plan).slot_unallocated_cause, "CAPACITY_FILLED");
+  assert.equal(plan.reservations.length, TARGET_LIVE_SLOTS);
+  assert.equal(plan.diagnostics.first_zero_stage, null);
+});
+
+test("R0H-0d: an executable-anchor rejection zeroes every downstream stage input", async () => {
+  const plan = await planWith(
+    await physicalEvents(EVENT_COUNT, FORCE_REBUILD_MS, (i, c) => ({
+      ...c,
+      market_slug: `Team A${i} vs Team B${i} - 1st Half Winner`,
+    }))
+  );
+
+  assert.deepEqual(funnel(plan), [
+    ["distinct_physical_events", 33, 33],
+    ["executable_anchor_eligible", 33, 0],
+    ["fullmatch_anchor_eligible", 0, 0],
+    ["planning_identity_eligible", 0, 0],
+    ["timing_eligible", 0, 0],
+    ["slot_eligible", 0, 0],
+    ["reservations_proposed", 0, 0],
+    ["reservations_created", 0, null],
+  ]);
+  assert.equal(rejections(plan, "executable_anchor_eligible").NO_EXECUTABLE_ANCHOR, EVENT_COUNT);
+  assert.equal(plan.diagnostics.first_zero_stage, "EXECUTABLE_ANCHOR_ELIGIBLE");
+});
+
+test("R0H-0e: an outside-horizon rejection is attributed to timing_eligible, not to the slot stage", async () => {
+  const farKickoff = new Date(FORCE_REBUILD_MS + 40 * 3_600_000).toISOString();
+  const plan = await planWith(
+    await physicalEvents(EVENT_COUNT, FORCE_REBUILD_MS, (_i, c) => ({
+      ...c,
+      diagnostics: { ...c.diagnostics, game_start_iso: farKickoff },
+    }))
+  );
+
+  assert.deepEqual(funnel(plan), [
+    ["distinct_physical_events", 33, 33],
+    ["executable_anchor_eligible", 33, 33],
+    ["fullmatch_anchor_eligible", 33, 33],
+    ["planning_identity_eligible", 33, 33],
+    ["timing_eligible", 33, 0],
+    ["slot_eligible", 0, 0],
+    ["reservations_proposed", 0, 0],
+    ["reservations_created", 0, null],
+  ]);
+  assert.equal(rejections(plan, "timing_eligible").OUTSIDE_PLANNING_HORIZON, EVENT_COUNT);
+  assert.equal(plan.diagnostics.first_zero_stage, "TIMING_ELIGIBLE");
+});
+
+test("R0H-0f: funnel stage counts are monotonically non-increasing and continuous", async () => {
+  const scenarios = [
+    await physicalEvents(EVENT_COUNT, FORCE_REBUILD_MS),
+    await physicalEvents(EVENT_COUNT, FORCE_REBUILD_MS, (i, c) => ({
+      ...c,
+      market_slug: `Will something happen in game ${i}?`,
+      providerMarketQuestion: `Will something happen in game ${i}?`,
+    })),
+    await physicalEvents(EVENT_COUNT, FORCE_REBUILD_MS, (_i, c) => ({
+      ...c,
+      diagnostics: { ...c.diagnostics, game_start_iso: null as unknown as string },
+    })),
+  ];
+
+  for (const candidates of scenarios) {
+    const stages = funnel(await planWith(candidates));
+    for (let i = 0; i < stages.length - 1; i += 1) {
+      const [name, , output] = stages[i];
+      const [nextName, nextInput] = stages[i + 1];
+      assert.equal(nextInput, output, `${name}.output must equal ${nextName}.input`);
+      assert.ok((output ?? 0) <= (stages[i][1] ?? 0), `${name} must not grow`);
+    }
+  }
+});
+
 // ── 1. The production RED: valid future inventory must take slots ────────────
 
 test("R0H-1 (production RED): 33 valid future physical events allocate approved Reservation slots at a 17:30 force rebuild", async () => {
@@ -181,11 +373,14 @@ test("R0H-2: an anchor rejection is reported as NO_FULLMATCH_ANCHOR, never as SL
   );
 
   assert.equal(plan.diagnostics.skipped_no_fullmatch_anchor, EVENT_COUNT);
+  // The rejection is attributed to its own gate, at the point it actually ran.
+  assert.equal(rejections(plan, "fullmatch_anchor_eligible").NO_FULLMATCH_ANCHOR, EVENT_COUNT);
   const stage = slotStage(plan);
-  assert.equal(stage.input_count, EVENT_COUNT);
+  // The slot stage never saw these events at all -- the exact production
+  // mislabelling this branch removes.
+  assert.equal(stage.input_count, 0);
   assert.equal(stage.output_count, 0);
-  assert.equal(stage.rejection_counts.NO_FULLMATCH_ANCHOR, EVENT_COUNT);
-  // The exact production mislabelling this branch removes.
+  assert.equal(stage.rejection_counts.NO_FULLMATCH_ANCHOR, undefined);
   assert.equal(stage.rejection_counts.SLOT_NOT_ALLOCATED, 0);
 
   const evidence = slotEvidence(plan);
@@ -204,8 +399,10 @@ test("R0H-3: a planning-identity rejection is reported as NO_PLANNING_IDENTITY, 
   );
 
   assert.equal(plan.diagnostics.skipped_no_planning_identity, EVENT_COUNT);
+  assert.equal(rejections(plan, "planning_identity_eligible").NO_PLANNING_IDENTITY, EVENT_COUNT);
   const stage = slotStage(plan);
-  assert.equal(stage.rejection_counts.NO_PLANNING_IDENTITY, EVENT_COUNT);
+  assert.equal(stage.input_count, 0);
+  assert.equal(stage.rejection_counts.NO_PLANNING_IDENTITY, undefined);
   assert.equal(stage.rejection_counts.SLOT_NOT_ALLOCATED, 0);
   assert.equal(slotEvidence(plan).first_slot_rejection_code, "NO_PLANNING_IDENTITY");
   assert.equal(slotEvidence(plan).slot_unallocated_cause, null);
@@ -220,8 +417,10 @@ test("R0H-4: genuine over-supply reports SLOT_NOT_ALLOCATED with cause CAPACITY_
   assert.equal(stage.input_count, EVENT_COUNT);
   assert.equal(stage.output_count, TARGET_LIVE_SLOTS);
   assert.equal(stage.rejection_counts.SLOT_NOT_ALLOCATED, EVENT_COUNT - TARGET_LIVE_SLOTS);
-  assert.equal(stage.rejection_counts.NO_FULLMATCH_ANCHOR, 0);
-  assert.equal(stage.rejection_counts.NO_PLANNING_IDENTITY, 0);
+  // Upstream codes belong to upstream stages and must not appear here.
+  assert.equal(stage.rejection_counts.NO_FULLMATCH_ANCHOR, undefined);
+  assert.equal(stage.rejection_counts.NO_PLANNING_IDENTITY, undefined);
+  assert.deepEqual(Object.keys(stage.rejection_counts).sort(), ["NON_TIER1_EVENT", "SLOT_NOT_ALLOCATED"]);
 
   const evidence = slotEvidence(plan);
   assert.equal(evidence.slot_capacity_configured, TARGET_LIVE_SLOTS);
@@ -317,8 +516,10 @@ test("R0H-10: a forbidden partial-scope anchor stays rejected as NO_EXECUTABLE_A
 
   assert.equal(plan.diagnostics.skipped_no_executable_anchor, EVENT_COUNT);
   assert.equal(plan.reservations.length, 0);
+  assert.equal(rejections(plan, "executable_anchor_eligible").NO_EXECUTABLE_ANCHOR, EVENT_COUNT);
   const stage = slotStage(plan);
-  assert.equal(stage.rejection_counts.NO_EXECUTABLE_ANCHOR, EVENT_COUNT);
+  assert.equal(stage.input_count, 0);
+  assert.equal(stage.rejection_counts.NO_EXECUTABLE_ANCHOR, undefined);
   assert.equal(stage.rejection_counts.SLOT_NOT_ALLOCATED, 0);
   assert.equal(slotEvidence(plan).first_slot_rejection_code, "NO_EXECUTABLE_ANCHOR");
 });
