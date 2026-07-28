@@ -4,6 +4,10 @@ import {
   loadPlanStatus,
   executeForceRebuild,
   runReservationCronWithEvidence,
+  buildReservationPlan,
+  buildCanaryPreview,
+  persistReservationPlan,
+  loadReservations,
 } from "@/lib/executor/nightEventReservations";
 import {
   buildPlanRunId,
@@ -18,6 +22,14 @@ import {
 //   ?forceRebuild=CEO_APPROVED                           → delete queue+reservations, rebuild.
 //   ?forceCreate=CEO_APPROVED                            → bypass daytime creation window guard.
 //   ?force=1                                             → rewrite an existing frozen plan (legacy).
+//   ?canary=CEO_APPROVED&mode=canaryPreview              → read-only, zero writes: bounded preview
+//                                                            of selectable physical-event groups.
+//   ?canary=CEO_APPROVED&targetPhysicalEventKeyHash=...  → create exactly one Reservation for the
+//                                                            one physical-event group matching that
+//                                                            exact hash. Fail-closed (zero writes) on
+//                                                            no match, ambiguous match, or a plan that
+//                                                            already has rows. Uses the existing
+//                                                            write seam (not forceRebuild).
 //
 // Creation window guard: writes are blocked 08:00–16:30 Minsk to prevent accidental
 // stale-plan creation from morning cron misfires. Use forceCreate=CEO_APPROVED to override.
@@ -41,10 +53,117 @@ async function handle(request: NextRequest) {
   const forceRebuild = searchParams.get("forceRebuild") === "CEO_APPROVED";
   const forceCreate = searchParams.get("forceCreate") === "CEO_APPROVED";
   const force = searchParams.get("force") === "1";
+  const canary = searchParams.get("canary");
+  const canaryAuthorized = canary === "CEO_APPROVED";
+  const targetPhysicalEventKeyHash = searchParams.get("targetPhysicalEventKeyHash");
   const nowMs = Date.now();
   const nowIso = new Date(nowMs).toISOString();
 
   try {
+    // ── canary=CEO_APPROVED&mode=canaryPreview: read-only, zero writes ───────
+    if (mode === "canaryPreview") {
+      if (!canaryAuthorized) {
+        return NextResponse.json(
+          {
+            ok: false,
+            canary_mode: true,
+            first_failure_code: "CANARY_TARGET_REJECTED_NO_AUTH",
+            error: "mode=canaryPreview requires canary=CEO_APPROVED",
+          },
+          { status: 400, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+      const plan = await buildReservationPlan(nowMs, { selectorMode: "CONTRACT_A_PLANNING_V1" });
+      const preview_groups = buildCanaryPreview(plan, nowMs);
+      return NextResponse.json(
+        {
+          ok: true,
+          canary_mode: true,
+          read_only: true,
+          preview_groups,
+          generated_at_iso: nowIso,
+        },
+        { status: 200, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
+    // ── canary=CEO_APPROVED&targetPhysicalEventKeyHash=...: exact single-event
+    //    reservation creation via the existing write seam ────────────────────
+    if (targetPhysicalEventKeyHash) {
+      if (!canaryAuthorized) {
+        return NextResponse.json(
+          {
+            ok: false,
+            canary_mode: true,
+            target_event_hash: targetPhysicalEventKeyHash,
+            first_failure_code: "CANARY_TARGET_REJECTED_NO_AUTH",
+            error: "targetPhysicalEventKeyHash requires canary=CEO_APPROVED",
+          },
+          { status: 400, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+      const plan = await buildReservationPlan(nowMs, {
+        selectorMode: "CONTRACT_A_PLANNING_V1",
+        targetPhysicalEventKeyHash,
+      });
+      const matched_event_groups = plan.diagnostics.canary_target_matched_group_count;
+      if (matched_event_groups === 0) {
+        return NextResponse.json(
+          {
+            ok: false,
+            canary_mode: true,
+            target_event_hash: targetPhysicalEventKeyHash,
+            matched_event_groups,
+            reservations_created: 0,
+            first_failure_code: "CANARY_TARGET_NOT_FOUND",
+          },
+          { status: 200, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+      if (matched_event_groups > 1) {
+        return NextResponse.json(
+          {
+            ok: false,
+            canary_mode: true,
+            target_event_hash: targetPhysicalEventKeyHash,
+            matched_event_groups,
+            reservations_created: 0,
+            first_failure_code: "CANARY_TARGET_AMBIGUOUS",
+          },
+          { status: 200, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+      const persisted = await persistReservationPlan(plan, { force: false });
+      if (persisted.already_exists) {
+        return NextResponse.json(
+          {
+            ok: false,
+            canary_mode: true,
+            target_event_hash: targetPhysicalEventKeyHash,
+            matched_event_groups,
+            reservations_created: 0,
+            first_failure_code: "CANARY_PLAN_NOT_EMPTY",
+          },
+          { status: 200, headers: { "Cache-Control": "no-store" } }
+        );
+      }
+      const rows = await loadReservations(plan.plan_run_id);
+      const createdRow = rows.find((r) => r.match_family_key === plan.diagnostics.canary_target_group_key);
+      return NextResponse.json(
+        {
+          ok: true,
+          canary_mode: true,
+          target_event_hash: targetPhysicalEventKeyHash,
+          matched_event_groups,
+          reservations_created: persisted.written_count,
+          target_reservation_id: createdRow?.id ?? null,
+          plan_run_id: plan.plan_run_id,
+          first_failure_code: null,
+        },
+        { status: 200, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     // ── mode=status or dryRun=1: read-only, never writes ─────────────────────
     if (mode === "status" || dryRun) {
       const planRunId = buildPlanRunId(nowMs);

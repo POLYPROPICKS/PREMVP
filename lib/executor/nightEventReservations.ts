@@ -69,6 +69,12 @@ import {
 } from "./executableMarketIdentity";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { createHash } from "crypto";
+
+/** Canonical sha256/16-hex hash of a physical-event group key (canary targeting/preview only). */
+export function hashPhysicalEventKey(key: string): string {
+  return createHash("sha256").update(key).digest("hex").slice(0, 16);
+}
 
 // Planning universe is uncapped: buildFireModelCandidates paginates the full corpus
 // in planningMode, and this ceiling only bounds the final slice. It must be far above
@@ -541,6 +547,10 @@ export interface ReservationPlan {
     fullmatch_rejection_evidence_preview: FullmatchRejectionGroupEvidence[];
     slotFillTargetReached: boolean;
     r0_trace?: R0PlanningTrace;
+    // ── Canary single-event targeting (planning-stage only). ────────────────
+    canary_target_requested: boolean;
+    canary_target_matched_group_count: number;
+    canary_target_group_key: string | null;
   };
 }
 
@@ -563,7 +573,14 @@ type ReservationCandidateFetchResult = {
  */
 export async function buildReservationPlan(
   nowMs: number,
-  deps: { fetchCandidates?: () => Promise<ReservationCandidateFetchResult>; selectorMode?: FireModelSelectorMode } = {}
+  deps: {
+    fetchCandidates?: () => Promise<ReservationCandidateFetchResult>;
+    selectorMode?: FireModelSelectorMode;
+    /** Canary single-event targeting: restrict admission to exactly one physical-event group. */
+    targetPhysicalEventKeyHash?: string;
+    /** Injectable only for deterministic ambiguity testing; production always uses hashPhysicalEventKey. */
+    hashPhysicalEventKey?: (key: string) => string;
+  } = {}
 ): Promise<ReservationPlan> {
   const window = resolveNightWindow(nowMs);
   const planRunId = buildPlanRunId(nowMs);
@@ -700,6 +717,8 @@ export async function buildReservationPlan(
   let structuredEventLevelAnchorCount = 0;
   let planningAnchorRejectedCount = 0;
   const planningAnchorReasonCounts: Record<string, number> = {};
+  // Preview-only attribution: which admitted anchor kind reserved this group.
+  const planningAnchorKindByGroupKey = new Map<string, "EXECUTABLE_MARKET" | "STRUCTURED_FULLMATCH_EVENT">();
 
   for (const [groupKey, arr] of groups.entries()) {
     const ranked = [...arr].sort(compareCandidateQuality);
@@ -805,6 +824,10 @@ export async function buildReservationPlan(
     } else {
       executableFullmatchAnchorCount += 1;
     }
+    planningAnchorKindByGroupKey.set(
+      groupKey,
+      admittedKind === "STRUCTURED_FULLMATCH_EVENT" ? "STRUCTURED_FULLMATCH_EVENT" : "EXECUTABLE_MARKET"
+    );
 
     // R0F two-stage identity contract. At 17:00 a physical event may be reserved
     // as soon as it has a complete PLANNING identity -- a real physical event, a
@@ -899,6 +922,23 @@ export async function buildReservationPlan(
   let fallbackTier2Reserved = 0;
   let fallbackTier3Reserved = 0;
 
+  // ── Canary single-event targeting (planning-stage only; never fuzzy). ────
+  // Applied only after every gate above (anchor admission, planning identity,
+  // timing) has already run: rankable/fallbackRankable are the SAME admitted
+  // sets the normal path uses. When a target hash is requested, normal
+  // TARGET_LIVE_SLOTS slot-fill ranking is bypassed entirely in favor of
+  // selecting the one matching group, so at most one Reservation is created.
+  const canaryTargetHash = deps.targetPhysicalEventKeyHash ?? null;
+  const hashFn = deps.hashPhysicalEventKey ?? hashPhysicalEventKey;
+  let canaryMatchedGroupCount = 0;
+  let canaryTargetGroupKey: string | null = null;
+  if (canaryTargetHash) {
+    const combined = [...rankable, ...fallbackRankable];
+    const matches = combined.filter((g) => hashFn(g.groupKey) === canaryTargetHash);
+    canaryMatchedGroupCount = matches.length;
+    if (matches.length === 1) canaryTargetGroupKey = matches[0].groupKey;
+  }
+
   const pushReservation = (
     best: FireModelCandidate,
     group: FireModelCandidate[],
@@ -961,6 +1001,7 @@ export async function buildReservationPlan(
           : `contur3:${planRunId}:${planningIdentity.planningEventKey}:pending-final-identity`,
         slot_fill: isFallback ? "FALLBACK_SLOT_FILL" : "TIER1_PRIMARY",
         fallback_tier: isFallback ? tier : undefined,
+        planning_anchor_kind: planningAnchorKindByGroupKey.get(groupKey) ?? "EXECUTABLE_MARKET",
         // R0F stage 1: every reservation persists its structured planning event
         // identity, so the rebalance can resolve the final market through a
         // canonical-key join -- never through event_title / event_slug matching.
@@ -977,16 +1018,35 @@ export async function buildReservationPlan(
   };
 
   let rank = 0;
-  rankable.forEach(({ best, group, groupKey }) => {
-    pushReservation(best, group, groupKey, "TIER1", false, rank);
-    rank += 1;
-  });
-  promotedFallback.forEach(({ best, group, groupKey, fallbackTier }) => {
-    pushReservation(best, group, groupKey, fallbackTier, true, rank);
-    rank += 1;
-    if (fallbackTier === "TIER2") fallbackTier2Reserved += 1;
-    else fallbackTier3Reserved += 1;
-  });
+  if (canaryTargetHash) {
+    // Canary mode: at most ONE reservation. Normal slot-fill promotion never
+    // runs; the sole candidate is the exact hash match resolved above (or
+    // none, if zero/ambiguous -- callers read canary_target_matched_group_count).
+    if (canaryTargetGroupKey) {
+      const tier1Match = rankable.find((g) => g.groupKey === canaryTargetGroupKey);
+      if (tier1Match) {
+        pushReservation(tier1Match.best, tier1Match.group, tier1Match.groupKey, "TIER1", false, rank);
+        rank += 1;
+      } else {
+        const fbMatch = fallbackRankable.find((g) => g.groupKey === canaryTargetGroupKey)!;
+        pushReservation(fbMatch.best, fbMatch.group, fbMatch.groupKey, fbMatch.fallbackTier, true, rank);
+        rank += 1;
+        if (fbMatch.fallbackTier === "TIER2") fallbackTier2Reserved += 1;
+        else fallbackTier3Reserved += 1;
+      }
+    }
+  } else {
+    rankable.forEach(({ best, group, groupKey }) => {
+      pushReservation(best, group, groupKey, "TIER1", false, rank);
+      rank += 1;
+    });
+    promotedFallback.forEach(({ best, group, groupKey, fallbackTier }) => {
+      pushReservation(best, group, groupKey, fallbackTier, true, rank);
+      rank += 1;
+      if (fallbackTier === "TIER2") fallbackTier2Reserved += 1;
+      else fallbackTier3Reserved += 1;
+    });
+  }
 
   const reservedWcOrSoccerBuild = reservations.filter(
     (r) => r.strategic_scope === "WC" || r.strategic_scope === "SOCCER"
@@ -1160,6 +1220,9 @@ export async function buildReservationPlan(
       fullmatch_rejection_candidates_total: fullmatchRejection.fullmatch_rejection_candidates_total,
       fullmatch_rejection_evidence_preview: buildFullmatchRejectionPreview(fullmatchRejection),
       slotFillTargetReached: reservations.length >= TARGET_LIVE_SLOTS,
+      canary_target_requested: canaryTargetHash !== null,
+      canary_target_matched_group_count: canaryMatchedGroupCount,
+      canary_target_group_key: canaryTargetGroupKey,
       ...(rawDiagnostics
         ? {
             r0_trace: buildR0PlanningTrace({
@@ -1195,6 +1258,47 @@ export async function buildReservationPlan(
         : {}),
     },
   };
+}
+
+export interface CanaryPreviewGroup {
+  physical_event_key_hash: string;
+  event_title: string;
+  sport: string;
+  game_start_iso: string;
+  minutes_to_start: number;
+  planning_anchor_kind: string;
+  rebalance_window_eligible_now: boolean;
+}
+
+/**
+ * Read-only canary preview, derived from an already-built plan
+ * (buildReservationPlan performs zero writes). Bounded to 20 groups, nearest
+ * start first. Never includes raw physical_event_key, condition_id,
+ * token_id, headers, env values, source payloads or secrets.
+ */
+export function buildCanaryPreview(
+  plan: ReservationPlan,
+  nowMs: number,
+  hashFn: (key: string) => string = hashPhysicalEventKey
+): CanaryPreviewGroup[] {
+  return [...plan.reservations]
+    .sort((a, b) => Date.parse(a.game_start_iso) - Date.parse(b.game_start_iso))
+    .slice(0, 20)
+    .map((r) => {
+      const startMs = Date.parse(r.game_start_iso);
+      const minutesToStart = Number.isFinite(startMs) ? Math.round((startMs - nowMs) / 60_000) : NaN;
+      const diag = (r.diagnostics ?? {}) as Record<string, unknown>;
+      return {
+        physical_event_key_hash: hashFn(r.match_family_key),
+        event_title: r.event_title ?? "unknown",
+        sport: r.sport ?? "unknown",
+        game_start_iso: r.game_start_iso,
+        minutes_to_start: minutesToStart,
+        planning_anchor_kind:
+          typeof diag.planning_anchor_kind === "string" ? diag.planning_anchor_kind : "EXECUTABLE_MARKET",
+        rebalance_window_eligible_now: minutesToStart <= REBALANCE_MINUTES_BEFORE_START,
+      };
+    });
 }
 
 export interface PersistReservationsResult {
@@ -1309,12 +1413,19 @@ export async function runReservationCronWithEvidence(
     selectorMode?: FireModelSelectorMode;
     repo?: ReservationRepoPort;
     jobEvidence?: SchedulerJobEvidencePort;
+    targetPhysicalEventKeyHash?: string;
+    hashPhysicalEventKey?: (key: string) => string;
   } = {}
 ): Promise<{ plan: ReservationPlan; persisted: PersistReservationsResult }> {
   const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
   const startedAt = new Date().toISOString();
   try {
-    const plan = await buildReservationPlan(nowMs, { fetchCandidates: deps.fetchCandidates, selectorMode: opts.selectorMode });
+    const plan = await buildReservationPlan(nowMs, {
+      fetchCandidates: deps.fetchCandidates,
+      selectorMode: opts.selectorMode,
+      targetPhysicalEventKeyHash: deps.targetPhysicalEventKeyHash,
+      hashPhysicalEventKey: deps.hashPhysicalEventKey,
+    });
     const persisted = deps.repo
       ? await persistReservationPlan(plan, opts, deps.repo)
       : await persistReservationPlan(plan, opts);
