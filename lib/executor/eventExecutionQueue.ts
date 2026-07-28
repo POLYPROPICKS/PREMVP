@@ -400,6 +400,11 @@ export interface RebalanceRunResult {
   queue_rows_created: number;
   /** First fail-closed reason code this run, or null when nothing was rejected. */
   first_rejection_code: string | null;
+  // ── Canary identity-targeted rebalance (opts.targetReservationId) ─────────
+  /** Echoes opts.targetReservationId, or null when not in canary mode. */
+  target_reservation_id: string | null;
+  /** True when opts.targetReservationId matched an active, due reservation. */
+  target_reservation_matched: boolean;
 }
 
 /** Leading reason code of a fail-closed reason string (never the free text). */
@@ -749,7 +754,7 @@ function selectQueueRowForDueReservation(
  */
 export async function runEventRebalance(
   nowMs: number,
-  opts: { write?: boolean; maxQueueWrites?: number | null } = {},
+  opts: { write?: boolean; maxQueueWrites?: number | null; targetReservationId?: string | null } = {},
   deps: {
     repo?: RebalanceRepoPort;
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
@@ -775,15 +780,29 @@ export async function runEventRebalance(
 
   // Due reservations: active status + start within the rebalance window.
   const all = await repo.loadActiveReservations();
-  const due = all.filter((r) => {
+  let due = all.filter((r) => {
     const startMs = Date.parse(r.game_start_iso);
     return Number.isFinite(startMs) && isDueForRebalance(startMs, nowMs);
   });
-  const expired = all.filter((r) => {
+  let expired = all.filter((r) => {
     const startMs = Date.parse(r.game_start_iso);
     const minutesToStart = (startMs - nowMs) / 60_000;
     return Number.isFinite(startMs) && minutesToStart <= LATEST_ENTRY_MINUTES_BEFORE;
   });
+
+  // ── Canary identity-targeted rebalance ────────────────────────────────────
+  // Restrict processing to exactly the one requested Reservation id. It must
+  // already be due (same T-70..T-3 timing gate as normal, never bypassed).
+  // Every other active reservation -- due, expired, or upcoming -- is left
+  // completely untouched this run: no expiry mark, no skip mark, no queue write.
+  const targetReservationId = opts.targetReservationId ?? null;
+  let canaryTargetMatched = false;
+  if (targetReservationId) {
+    const matched = due.find((r) => r.id === targetReservationId) ?? null;
+    canaryTargetMatched = matched !== null;
+    due = matched ? [matched] : [];
+    expired = [];
+  }
   const upcoming = all
     .filter((r) => {
       const startMs = Date.parse(r.game_start_iso);
@@ -840,7 +859,9 @@ export async function runEventRebalance(
       authoritative_candidates: 0,
       event_identity_matches: 0,
       queue_rows_created: 0,
-      first_rejection_code: null,
+      first_rejection_code: targetReservationId && !canaryTargetMatched ? "CANARY_RESERVATION_NOT_FOUND" : null,
+      target_reservation_id: targetReservationId,
+      target_reservation_matched: canaryTargetMatched,
     };
   }
 
@@ -912,6 +933,8 @@ export async function runEventRebalance(
       event_identity_matches: plannedQueueWrites,
       queue_rows_created: 0,
       first_rejection_code: "BLOCKED_BY_MAX_QUEUE_WRITES",
+      target_reservation_id: targetReservationId,
+      target_reservation_matched: canaryTargetMatched,
     };
   }
 
@@ -1009,6 +1032,8 @@ export async function runEventRebalance(
     event_identity_matches: plannedActions.filter((a) => a.kind === "QUEUE").length,
     queue_rows_created: queued,
     first_rejection_code: firstRejectionCode,
+    target_reservation_id: targetReservationId,
+    target_reservation_matched: canaryTargetMatched,
   };
 }
 
@@ -1229,7 +1254,7 @@ export async function runControlledLiveIntent(
  */
 export async function runEventRebalanceWithEvidence(
   nowMs: number,
-  opts: { write?: boolean; maxQueueWrites?: number | null } = {},
+  opts: { write?: boolean; maxQueueWrites?: number | null; targetReservationId?: string | null } = {},
   deps: {
     repo?: RebalanceRepoPort;
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;

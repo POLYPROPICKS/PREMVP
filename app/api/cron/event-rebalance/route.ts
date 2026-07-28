@@ -16,6 +16,13 @@ import {
 //                                                  applies to founderBattleBatch or
 //                                                  controlledLiveIntent -- those are separate
 //                                                  branches entirely and ignore this param.
+//   ?canary=CEO_APPROVED&targetReservationId=...  → identity-targeted rebalance: process exactly
+//                                                  one due Reservation via the SAME
+//                                                  runEventRebalanceWithEvidence entrypoint and
+//                                                  final Contract A / exact-market selection as the
+//                                                  normal path below. maxQueueWrites is always
+//                                                  forced to 1. Fails closed (CANARY_RESERVATION_NOT_FOUND)
+//                                                  when the id is unknown or not yet due.
 //
 // Auth: same x-executor-secret pattern as /api/executor/*. NO live orders, NO Ireland calls.
 
@@ -48,6 +55,8 @@ async function handle(request: NextRequest) {
   const dryRun = searchParams.get("dryRun") === "1";
   const controlledLiveIntent = searchParams.get("controlledLiveIntent");
   const founderBattleBatch = searchParams.get("founderBattleBatch") === "1";
+  const canary = searchParams.get("canary");
+  const targetReservationId = searchParams.get("targetReservationId");
 
   // Founder battle batch mode: an entirely separate, narrower branch that
   // reads generated_signal_pairs directly and creates 2-4 fresh READY rows.
@@ -77,6 +86,64 @@ async function handle(request: NextRequest) {
       console.error("[cron/event-rebalance] founder_battle_batch error:", msg);
       return NextResponse.json(
         { ok: false, mode: "founder_battle_batch", error: msg },
+        { status: 500, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+  }
+
+  // Canary identity-targeted rebalance: process exactly one Reservation, via
+  // the SAME production runEventRebalanceWithEvidence entrypoint and the same
+  // final Contract A / exact-market selection as the normal scheduled path
+  // below -- only the due-reservation set fed into it is narrowed to one row.
+  // maxQueueWrites is always forced to 1 here regardless of the request param.
+  if (targetReservationId !== null) {
+    if (canary !== "CEO_APPROVED") {
+      return NextResponse.json(
+        {
+          ok: false,
+          canary_mode: true,
+          target_reservation_id: targetReservationId,
+          first_failure_code: "CANARY_TARGET_REJECTED_NO_AUTH",
+          error: "targetReservationId requires canary=CEO_APPROVED",
+        },
+        { status: 400, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+    try {
+      const result = await runEventRebalanceWithEvidence(Date.now(), {
+        write: !dryRun,
+        maxQueueWrites: 1,
+        targetReservationId,
+      });
+      const first_failure_code = !result.target_reservation_matched
+        ? "CANARY_RESERVATION_NOT_FOUND"
+        : result.first_rejection_code === "BLOCKED_BY_MAX_QUEUE_WRITES"
+          ? "CANARY_FINAL_MARKET_NOT_READY"
+          : result.skipped_count > 0
+            ? "CANARY_FINAL_MARKET_NOT_READY"
+            : null;
+      return NextResponse.json(
+        {
+          ok: result.target_reservation_matched && result.queued_count <= 1,
+          canary_mode: true,
+          dry_run: dryRun,
+          target_reservation_id: targetReservationId,
+          target_reservation_matched: result.target_reservation_matched,
+          queue_writes_attempted: result.due_count,
+          queue_writes_created: result.queued_count,
+          rebalance_run_id: result.rebalance_run_id,
+          due_count: result.due_count,
+          skipped_count: result.skipped_count,
+          outcomes: result.outcomes,
+          first_failure_code,
+        },
+        { status: 200, headers: { "Cache-Control": "no-store" } }
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Unknown error";
+      console.error("[cron/event-rebalance] canary error:", msg);
+      return NextResponse.json(
+        { ok: false, canary_mode: true, target_reservation_id: targetReservationId, error: msg },
         { status: 500, headers: { "Cache-Control": "no-store" } }
       );
     }
