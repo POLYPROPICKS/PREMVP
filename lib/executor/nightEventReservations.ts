@@ -42,6 +42,7 @@ import {
 import type { NightEventReservationRow } from "./executorQueueTypes";
 import {
   resolvePlanningAnchorDecision,
+  isEventLevelMatchupText,
   type PlanningAnchorDecision,
 } from "./planningAnchor";
 import {
@@ -142,6 +143,14 @@ function isForbiddenAnchorMarket(c: FireModelCandidate): boolean {
 // fullMatchAnchorDecision was moved onto that single source of truth.
 const ESPORTS_SERIES_TITLE_RE =
   /^(?:will\s+)?(?:counter-strike|dota\s*2|lol|league\s+of\s+legends|valorant)\s*:\s*(.+?)\s+(?:vs\.?|beat(?:s)?)\s+(.+?)\s*\(\s*bo(?:1|3|5)\s*\)(?:\s*[-?].*)?$/i;
+// A main series-winner matchup with NO recognized game-name prefix at all
+// ("Cloud9 vs LOUD (BO3)") is just as valid full-series evidence as the
+// prefixed form above -- it must not be rejected merely because the provider
+// didn't prefix the title with a game name. Deliberately separate from
+// ESPORTS_SERIES_TITLE_RE (rather than making its prefix group optional) so a
+// title carrying an UNRECOGNIZED colon-prefixed game name is still rejected,
+// instead of being parsed as if the prefix were part of a competitor name.
+const ESPORTS_SERIES_BARE_TITLE_RE = /^(.+?)\s+vs\.?\s+(.+?)\s*\(\s*bo(?:1|3|5)\s*\)$/i;
 
 export type FullMatchAnchorRejectionReason =
   | "FULLMATCH_TWO_COMPETITORS_MISSING"
@@ -169,7 +178,27 @@ function providerSeriesTitle(c: FireModelCandidate): string {
 }
 
 function canonicalEsportsSeriesCompetitors(c: FireModelCandidate): { a: string; b: string } | null {
-  const match = providerSeriesTitle(c).match(ESPORTS_SERIES_TITLE_RE);
+  const title = providerSeriesTitle(c);
+  const match = title.match(ESPORTS_SERIES_TITLE_RE) ?? (!title.includes(":") ? title.match(ESPORTS_SERIES_BARE_TITLE_RE) : null);
+  if (!match) return null;
+  const a = normTeam(match[1]);
+  const b = normTeam(match[2]);
+  return a && b && a !== b ? { a, b } : null;
+}
+
+/**
+ * A bare two-competitor eSports matchup with NO series-length marker at all
+ * ("Cloud9 vs LOUD") -- the same strict "A vs B and nothing else" shape the
+ * baseball event-level planning anchor uses (isEventLevelMatchupText), so any
+ * market wording, score, or segment qualifier after the matchup disqualifies
+ * it identically. Only used together with a stable provider event identity
+ * (event key + start time): a bare matchup with no series marker is never
+ * strong enough evidence on its own.
+ */
+function canonicalEsportsBareMatchupCompetitors(c: FireModelCandidate): { a: string; b: string } | null {
+  const title = providerSeriesTitle(c).trim();
+  if (!isEventLevelMatchupText(title)) return null;
+  const match = title.match(/^(.+?)\s+(?:vs\.?|v\.?)\s+(.+?)$/i);
   if (!match) return null;
   const a = normTeam(match[1]);
   const b = normTeam(match[2]);
@@ -225,24 +254,34 @@ export function candidateAnchorInput(c: FireModelCandidate): MarketAnchorInput {
  *
  * The canonical esports BO-series full-match allowance is preserved unchanged
  * and is still gated on inferred_sport === "esport" plus a real BO marker and
- * two identified competitors.
+ * two identified competitors. Additionally, a bare main series-winner matchup
+ * with NO series-length marker is admitted, but ONLY when the provider's own
+ * structured event context supplies a stable event identity (event key +
+ * start time) -- a bare matchup with neither a BO marker nor provider event
+ * identity stays fail-closed exactly as before.
  */
 export function fullMatchAnchorDecision(c: FireModelCandidate): FullMatchAnchorDecision {
   const canonical = resolveMarketAnchorDecision(candidateAnchorInput(c));
   if (canonical.allowed) return { allowed: true };
 
-  // Canonical esports series exception (unchanged): a real BO1/BO3/BO5 series
-  // between two identified competitors is a full-match anchor for esports.
-  if (
-    c.inferred_sport === "esport" &&
-    canonical.event_scope === "full_match" &&
-    /\(\s*bo(?:1|3|5)\s*\)/i.test(providerSeriesTitle(c))
-  ) {
-    return canonicalEsportsSeriesCompetitors(c)
-      ? { allowed: true }
-      : { allowed: false, reason: "FULLMATCH_TWO_COMPETITORS_MISSING" };
-  }
   if (c.inferred_sport === "esport" && canonical.event_scope === "full_match") {
+    // Canonical esports series exception (unchanged): a real BO1/BO3/BO5
+    // series between two identified competitors is a full-match anchor.
+    if (/\(\s*bo(?:1|3|5)\s*\)/i.test(providerSeriesTitle(c))) {
+      return canonicalEsportsSeriesCompetitors(c)
+        ? { allowed: true }
+        : { allowed: false, reason: "FULLMATCH_TWO_COMPETITORS_MISSING" };
+    }
+    // No series-length marker: admit a bare main-series matchup ONLY with a
+    // stable provider event identity. providerEventKey is derived exclusively
+    // from the provider's own structured event context (never a slug guess or
+    // fuzzy title match) and requires a valid ISO event start time alongside
+    // it -- see providerEventKeyOf in buildFireModelCandidates.ts.
+    if (c.providerEventKey && c.authoritativeEventStart) {
+      return canonicalEsportsBareMatchupCompetitors(c)
+        ? { allowed: true }
+        : { allowed: false, reason: "FULLMATCH_TWO_COMPETITORS_MISSING" };
+    }
     return { allowed: false, reason: "FULLMATCH_SERIES_MARKER_MISSING" };
   }
 
@@ -336,8 +375,15 @@ function extractTeamsDate(c: FireModelCandidate): { a: string; b: string; date: 
     const b = normTeam(vs[2]);
     if (a && b) return { a, b, date };
   }
-  const esports = canonicalEsportsSeriesCompetitors(c);
-  if (esports) return { ...esports, date };
+  // eSports-only: canonicalEsportsBareMatchupCompetitors has no BO-marker
+  // requirement, so gating it on inferred_sport === "esport" is required --
+  // otherwise it would also match plain "A vs B" text for every other sport
+  // and override a candidate's own explicitly-assigned match_family_key with
+  // a re-derived representative key.
+  if (c.inferred_sport === "esport") {
+    const esports = canonicalEsportsSeriesCompetitors(c) ?? canonicalEsportsBareMatchupCompetitors(c);
+    if (esports) return { ...esports, date };
+  }
   return null;
 }
 
