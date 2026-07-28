@@ -41,6 +41,10 @@ import {
 } from "./nightWindow";
 import type { NightEventReservationRow } from "./executorQueueTypes";
 import {
+  resolvePlanningAnchorDecision,
+  type PlanningAnchorDecision,
+} from "./planningAnchor";
+import {
   buildFullmatchRejectionEvidence,
   buildFullmatchRejectionPreview,
   type FullmatchRejectionCandidateCapture,
@@ -527,6 +531,11 @@ export interface ReservationPlan {
     fallback_rejection_reasons: Partial<Record<FullMatchAnchorRejectionReason, number>>;
     fullmatch_rejection_reasons: Partial<Record<FullMatchAnchorRejectionReason, number>>;
     // ── R0I bounded full-match rejection evidence (totals + 3x3 preview) ──────
+    // ── R0J planning-anchor attribution (one count per physical event) ───────
+    executable_fullmatch_anchor_count: number;
+    structured_event_level_anchor_count: number;
+    planning_anchor_rejected_count: number;
+    planning_anchor_reason_counts: Record<string, number>;
     fullmatch_rejection_groups_total: number;
     fullmatch_rejection_candidates_total: number;
     fullmatch_rejection_evidence_preview: FullmatchRejectionGroupEvidence[];
@@ -685,6 +694,12 @@ export async function buildReservationPlan(
   // R0I diagnostics: groups rejected by the full-match anchor gate, captured for
   // the report only. Never read by any admission, ranking or allocation path.
   const fullmatchRejectedGroups: FullmatchRejectionGroupCapture[] = [];
+  // R0J planning-anchor attribution, by the kind of anchor that admitted (or
+  // rejected) the GROUP -- one count per physical event, never per candidate.
+  let executableFullmatchAnchorCount = 0;
+  let structuredEventLevelAnchorCount = 0;
+  let planningAnchorRejectedCount = 0;
+  const planningAnchorReasonCounts: Record<string, number> = {};
 
   for (const [groupKey, arr] of groups.entries()) {
     const ranked = [...arr].sort(compareCandidateQuality);
@@ -732,6 +747,25 @@ export async function buildReservationPlan(
       candidate,
       decision: anchorDecisionForCandidate(candidate),
     }));
+    // R0J: the PLANNING verdict. An already-allowed executable market is
+    // admitted exactly as before; additionally a structured, event-level
+    // full-match matchup for a supported non-eSports sport may reserve a slot
+    // without yet naming its executable market class. The exact market is
+    // resolved and validated at the T-70..T-3 rebalance, which is unchanged.
+    const planningAnchorByCandidate = new Map<FireModelCandidate, PlanningAnchorDecision>();
+    for (const { candidate, decision } of anchorDecisions) {
+      planningAnchorByCandidate.set(
+        candidate,
+        resolvePlanningAnchorDecision({
+          existingAnchorAllowed: decision.allowed,
+          canonical: resolveMarketAnchorDecision(candidateAnchorInput(candidate)),
+          anchorInput: candidateAnchorInput(candidate),
+          sport: candidate.inferred_sport ?? null,
+        })
+      );
+    }
+    const planningAllowed = (c: FireModelCandidate): boolean =>
+      planningAnchorByCandidate.get(c)?.allowed_for_planning === true;
 
     // A valid full-match market existed but the anchor step still found no
     // allowed representative -- the exact "classifier discarded a valid
@@ -739,9 +773,16 @@ export async function buildReservationPlan(
     if (groupHasFullmatch && !anchorDecisions.some(({ decision }) => decision.allowed)) {
       groupsWithValidSiblingButWrongRep += 1;
     }
-    const bestAllowedFullmatch = anchorDecisions.find(({ decision }) => decision.allowed)?.candidate;
+    const bestAllowedFullmatch = anchorDecisions.find(({ candidate }) => planningAllowed(candidate))?.candidate;
     if (!bestAllowedFullmatch) {
       skippedNoFullmatchAnchor += 1;
+      planningAnchorRejectedCount += 1;
+      // The representative's planning reason -- why this physical event could
+      // not anchor at all.
+      const planningReason =
+        planningAnchorByCandidate.get(executableAnchorRanked[0])?.reason_code ?? "REJECTED";
+      planningAnchorReasonCounts[planningReason] =
+        (planningAnchorReasonCounts[planningReason] ?? 0) + 1;
       const rejection = anchorDecisions[0]?.decision;
       if (rejection && !rejection.allowed) {
         fullmatchRejectionReasons[rejection.reason] = (fullmatchRejectionReasons[rejection.reason] ?? 0) + 1;
@@ -754,6 +795,15 @@ export async function buildReservationPlan(
         candidates: groupAnchorCaptures,
       });
       continue;
+    }
+
+    const admittedKind = planningAnchorByCandidate.get(bestAllowedFullmatch)?.anchor_kind;
+    if (admittedKind === "STRUCTURED_FULLMATCH_EVENT") {
+      structuredEventLevelAnchorCount += 1;
+      planningAnchorReasonCounts.PLANNING_EVENT_LEVEL_FULLMATCH =
+        (planningAnchorReasonCounts.PLANNING_EVENT_LEVEL_FULLMATCH ?? 0) + 1;
+    } else {
+      executableFullmatchAnchorCount += 1;
     }
 
     // R0F two-stage identity contract. At 17:00 a physical event may be reserved
@@ -770,7 +820,7 @@ export async function buildReservationPlan(
         candidate,
         physicalEventKey: groupKey,
         sourceStage: "planning.representative_selection",
-        anchorAllowed: anchorDecisionForCandidate(candidate).allowed,
+        anchorAllowed: planningAllowed(candidate),
         planningSelectorVersion: candidate.diagnostics?.selector_id ?? "CONTUR3_CURRENT",
       });
       if (decision.allowed) {
@@ -1102,6 +1152,10 @@ export async function buildReservationPlan(
       fullmatch_rejection_reasons: fullmatchRejectionReasons,
       // ── R0I: bounded totals + a 3x3 preview only. The complete evidence is
       // written to the filesystem diagnostic report, never into this object.
+      executable_fullmatch_anchor_count: executableFullmatchAnchorCount,
+      structured_event_level_anchor_count: structuredEventLevelAnchorCount,
+      planning_anchor_rejected_count: planningAnchorRejectedCount,
+      planning_anchor_reason_counts: planningAnchorReasonCounts,
       fullmatch_rejection_groups_total: fullmatchRejection.fullmatch_rejection_groups_total,
       fullmatch_rejection_candidates_total: fullmatchRejection.fullmatch_rejection_candidates_total,
       fullmatch_rejection_evidence_preview: buildFullmatchRejectionPreview(fullmatchRejection),
@@ -1334,6 +1388,10 @@ export function buildPlanningJobDiagnostics(plan: ReservationPlan): Record<strin
     // R0I: aggregate counts plus a 3x3 preview, so a status=empty row names what
     // the full-match gate actually saw. The complete bounded evidence stays in
     // the filesystem report -- this column is not enlarged with it.
+    executable_fullmatch_anchor_count: d.executable_fullmatch_anchor_count,
+    structured_event_level_anchor_count: d.structured_event_level_anchor_count,
+    planning_anchor_rejected_count: d.planning_anchor_rejected_count,
+    planning_anchor_reason_counts: d.planning_anchor_reason_counts,
     fullmatch_rejection_groups_total: d.fullmatch_rejection_groups_total,
     fullmatch_rejection_candidates_total: d.fullmatch_rejection_candidates_total,
     fullmatch_rejection_evidence_preview: d.fullmatch_rejection_evidence_preview,
