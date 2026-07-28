@@ -262,6 +262,19 @@ export function candidateAnchorInput(c: FireModelCandidate): MarketAnchorInput {
  */
 export function fullMatchAnchorDecision(c: FireModelCandidate): FullMatchAnchorDecision {
   const canonical = resolveMarketAnchorDecision(candidateAnchorInput(c));
+
+  // eSports approved policy admits ONLY the main series winner/moneyline
+  // market class -- never a full-series spread/handicap or total, even
+  // though the sport-agnostic taxonomy layer classifies those exactly like a
+  // genuine full-match spread/total for every other sport (MLB/soccer/tennis
+  // spread and total ARE approved there). This check runs BEFORE the generic
+  // canonical.allowed shortcut below specifically so an already-canonically-
+  // allowed eSports spread/total (e.g. "Series Handicap") cannot slip through
+  // it.
+  if (c.inferred_sport === "esport" && canonical.allowed && canonical.market_class !== "allowed_fullmatch_moneyline") {
+    return { allowed: false, reason: anchorReasonForCanonicalCode("ESPORTS_NON_POLICY") };
+  }
+
   if (canonical.allowed) return { allowed: true };
 
   if (c.inferred_sport === "esport" && canonical.event_scope === "full_match") {

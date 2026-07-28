@@ -244,3 +244,109 @@ test("ESPORTS-5: existing Dota BO3 (game-prefixed) behavior remains admitted, un
   assert.equal(built.candidates.length, 1);
   assert.deepEqual(fullMatchAnchorDecision(built.candidates[0]), { allowed: true });
 });
+
+// ── Market-class guard: only the main series winner/moneyline is ever admitted ─
+//
+// The canonical taxonomy (lib/contur3/taxonomy.ts) is sport-agnostic: a
+// full-match SPREAD or TOTAL market classifies as allowed_fullmatch_spread /
+// allowed_fullmatch_total with event_scope full_match exactly the same way a
+// full-match MONEYLINE does -- that's correct for MLB/soccer/tennis, where
+// spread and total ARE approved market families. For eSports, approved policy
+// admits ONLY the main series winner. Because fullMatchAnchorDecision's first
+// line is `if (canonical.allowed) return { allowed: true }`, a full-series
+// eSports spread/total that ALREADY canonically classifies as allowed would
+// slip through that generic shortcut before ever reaching the eSports-only
+// competitor/provider-identity gating below it -- these tests prove the
+// distinct series-handicap/total-maps market_class is rejected regardless.
+
+test("ESPORTS-19: a main series winner (moneyline market class) is admitted", async () => {
+  const ctx = providerContext("cloud9-loud-guard-ml-2026-07-28", "Cloud9 vs LOUD (BO3)", "Cloud9 vs LOUD — Match Winner", "valorant");
+  const row = esportsRow({
+    id: "guard-moneyline",
+    marketTitle: "Cloud9 vs LOUD — Match Winner",
+    eventTitle: "Cloud9 vs LOUD (BO3)",
+    eventSlug: "esport-guard-moneyline",
+    ctx,
+  });
+  const built = await buildCandidates([row]);
+  assert.equal(built.candidates.length, 1);
+  assert.deepEqual(fullMatchAnchorDecision(built.candidates[0]), { allowed: true });
+});
+
+test("ESPORTS-20: a full-series spread/handicap is rejected, even with a BO marker on the event", async () => {
+  const ctx = providerContext("cloud9-loud-guard-spread-2026-07-28", "Cloud9 vs LOUD (BO3)", "Cloud9 vs LOUD — Series Handicap LOUD +1.5", "valorant");
+  const row = esportsRow({
+    id: "guard-spread",
+    marketTitle: "Cloud9 vs LOUD — Series Handicap LOUD +1.5",
+    eventTitle: "Cloud9 vs LOUD (BO3)",
+    eventSlug: "esport-guard-spread",
+    ctx,
+  });
+  const built = await buildCandidates([row]);
+  assert.equal(built.candidates.length, 1);
+  const d = fullMatchAnchorDecision(built.candidates[0]);
+  assert.equal(d.allowed, false, "a full-series spread must never be admitted for eSports");
+});
+
+test("ESPORTS-21: a full-series total (maps) is rejected, even with a BO marker on the event", async () => {
+  const ctx = providerContext("cloud9-loud-guard-total-2026-07-28", "Cloud9 vs LOUD (BO3)", "Cloud9 vs LOUD — Total Maps Over/Under 2.5", "valorant");
+  const row = esportsRow({
+    id: "guard-total",
+    marketTitle: "Cloud9 vs LOUD — Total Maps Over/Under 2.5",
+    eventTitle: "Cloud9 vs LOUD (BO3)",
+    eventSlug: "esport-guard-total",
+    ctx,
+  });
+  const built = await buildCandidates([row]);
+  assert.equal(built.candidates.length, 1);
+  const d = fullMatchAnchorDecision(built.candidates[0]);
+  assert.equal(d.allowed, false, "a full-series total must never be admitted for eSports");
+});
+
+test("ESPORTS-22: a full-series spread is rejected even with exact provider event ID/start and no BO marker", async () => {
+  const ctx = providerContext("cloud9-loud-guard-spread-nomarker-2026-07-28", "Cloud9 vs LOUD", "Cloud9 vs LOUD — Series Handicap LOUD +1.5", "valorant");
+  const row = esportsRow({
+    id: "guard-spread-nomarker",
+    marketTitle: "Cloud9 vs LOUD — Series Handicap LOUD +1.5",
+    eventTitle: "Cloud9 vs LOUD",
+    eventSlug: "esport-guard-spread-nomarker",
+    ctx,
+  });
+  const built = await buildCandidates([row]);
+  assert.equal(built.candidates.length, 1);
+  assert.ok(built.candidates[0].providerEventKey, "precondition: stable provider identity must be present");
+  const d = fullMatchAnchorDecision(built.candidates[0]);
+  assert.equal(d.allowed, false, "stable provider identity must not rescue a full-series spread");
+});
+
+test("ESPORTS-23: a full-series total is rejected even with exact provider event ID/start and no BO marker", async () => {
+  const ctx = providerContext("cloud9-loud-guard-total-nomarker-2026-07-28", "Cloud9 vs LOUD", "Cloud9 vs LOUD — Total Maps Over/Under 2.5", "valorant");
+  const row = esportsRow({
+    id: "guard-total-nomarker",
+    marketTitle: "Cloud9 vs LOUD — Total Maps Over/Under 2.5",
+    eventTitle: "Cloud9 vs LOUD",
+    eventSlug: "esport-guard-total-nomarker",
+    ctx,
+  });
+  const built = await buildCandidates([row]);
+  assert.equal(built.candidates.length, 1);
+  assert.ok(built.candidates[0].providerEventKey, "precondition: stable provider identity must be present");
+  const d = fullMatchAnchorDecision(built.candidates[0]);
+  assert.equal(d.allowed, false, "stable provider identity must not rescue a full-series total");
+});
+
+test("ESPORTS-24: an exact series score is rejected through the real loader boundary (source row -> normalization -> grouping -> taxonomy -> fullMatchAnchorDecision)", async () => {
+  const ctx = providerContext("cloud9-loud-guard-score-2026-07-28", "Cloud9 vs LOUD (BO3)", "Exact Series Score: Cloud9 vs LOUD 2-1", "valorant");
+  const row = esportsRow({
+    id: "guard-exact-score",
+    marketTitle: "Exact Series Score: Cloud9 vs LOUD 2-1",
+    eventTitle: "Cloud9 vs LOUD (BO3)",
+    eventSlug: "esport-guard-exact-score",
+    ctx,
+  });
+  const built = await buildCandidates([row]);
+  assert.equal(built.candidates.length, 1, "source-shaped row must reach sport normalization and grouping");
+  assert.equal(built.candidates[0].inferred_sport, "esport");
+  const plan = await planWith(built.candidates);
+  assert.equal(plan.reservations.length, 0, "an exact series score must never reserve a slot through the full planning path");
+});
