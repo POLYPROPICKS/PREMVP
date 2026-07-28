@@ -198,7 +198,7 @@ function researchNestedMarketToCandidate(rm: ResearchNestedMarket): {
   };
 }
 
-interface CandidateMarket {
+export interface CandidateMarket {
   event: PolymarketRawEvent;
   market: PolymarketRawMarket;
   rejectionReasons: string[];
@@ -216,7 +216,7 @@ interface ForcedOutcomeSelection {
   selectedPriceNum: number;
 }
 
-interface ParentEventMeta {
+export interface ParentEventMeta {
   id?: string;
   title: string;
   slug: string;
@@ -241,6 +241,228 @@ interface EnrichedMarket {
   gammaPriceChange: number | null; // oneDayPriceChange, oneWeekPriceChange, etc.
   diagnostics: LandingCardDiagnostics;
   warnings: string[];
+}
+
+// ============================================================================
+// Reservation-aware producer pinning (P0)
+//
+// An active RESERVED night_event_reservations row already stores an exact
+// providerEventKey ("polymarket:{eventSlug|eventId}:{startDateYYYY-MM-DD}") at
+// diagnostics.planning_provider_event_id -- the identical composite key
+// buildFireModelCandidates.ts's providerEventKeyOf() computes at Contract A
+// resolution time (lib/executor/buildFireModelCandidates.ts:405-410). Pinning
+// re-derives that same key here, pre-enrichment, from the candidate's
+// market._parentMeta (attached by extractCandidateMarkets/sampleToCandidateMarket
+// before the sort this function runs after) so an exact match never requires a
+// live Gamma fetch or title/fuzzy comparison. A different event id OR a
+// different start date both change this string, so exact string equality is
+// sufficient to reject both "same id different start" and "same title
+// different id" -- no separate field-by-field comparison is required.
+// ============================================================================
+
+export interface RequiredProviderEventPin {
+  /** Verbatim composite key, e.g. "polymarket:mlb-phi-mia-2026-07-28:2026-07-28". */
+  providerEventId: string;
+  /** Reservation's game_start_iso -- diagnostics only, not used for matching (the key already encodes the date). */
+  eventStartIso: string;
+  /** Reservation ids that produced this pin, deduped to one pin per unique providerEventId. */
+  reservationIds: string[];
+}
+
+export interface ProducerPinLoadDiagnostics {
+  active_reservation_pin_count: number;
+  valid_exact_pin_count: number;
+  invalid_pin_reason_counts: Record<string, number>;
+}
+
+export interface ProducerPinApplyDiagnostics {
+  pinned_candidates_found: number;
+  pinned_candidates_not_found: number;
+  pinned_candidates_persisted: number;
+  not_found_provider_event_ids_sample: string[];
+}
+
+const PIN_SLUG_RE = /^[-a-z0-9_]+$/i;
+const PIN_START_RE = /^\d{4}-\d{2}-\d{2}T/;
+
+/**
+ * Mirrors providerEventKeyOf() in lib/executor/buildFireModelCandidates.ts exactly
+ * (identity = eventSlug ?? eventId, start = eventStartIso ?? gameStartIso fallback),
+ * but reads market._parentMeta pre-enrichment instead of the post-enrichment
+ * diagnostics.providerEventContext -- both are populated from the same underlying
+ * sample/event fields, so the computed key is identical either way.
+ */
+export function computeCandidateProviderEventKey(c: CandidateMarket): string | null {
+  const meta = (c.market as unknown as Record<string, unknown>)._parentMeta as ParentEventMeta | undefined;
+  const identity = meta?.polymarketEventSlug ?? meta?.id;
+  const start = meta?.startDate ?? c.event.endDate;
+  if (!identity || !PIN_SLUG_RE.test(identity)) return null;
+  if (!start || !PIN_START_RE.test(start)) return null;
+  return `polymarket:${identity.toLowerCase()}:${start.slice(0, 10)}`;
+}
+
+/**
+ * Pure parser: raw night_event_reservations rows (status/game_start_iso/diagnostics
+ * shape, as returned by Supabase) -> deduped exact pins + structured load diagnostics.
+ * No DB access, no fuzzy matching, no title fallback -- a row missing
+ * diagnostics.planning_provider_event_id is excluded and counted, never guessed.
+ */
+export function extractProviderEventPinsFromReservationRows(
+  rows: Array<{
+    id?: string | null;
+    status?: string | null;
+    game_start_iso?: string | null;
+    diagnostics?: Record<string, unknown> | null;
+  }>
+): { pins: RequiredProviderEventPin[]; diagnostics: ProducerPinLoadDiagnostics } {
+  const invalidReasonCounts: Record<string, number> = {};
+  const bump = (reason: string) => { invalidReasonCounts[reason] = (invalidReasonCounts[reason] ?? 0) + 1; };
+  const byKey = new Map<string, RequiredProviderEventPin>();
+  let activeCount = 0;
+
+  for (const row of rows) {
+    if (row.status !== "RESERVED") { bump("NOT_RESERVED_STATUS"); continue; }
+    activeCount++;
+
+    const startIso = typeof row.game_start_iso === "string" ? row.game_start_iso : null;
+    if (startIso === null || !Number.isFinite(Date.parse(startIso))) {
+      bump("MISSING_GAME_START");
+      continue;
+    }
+
+    const providerEventId = row.diagnostics && typeof row.diagnostics.planning_provider_event_id === "string"
+      ? row.diagnostics.planning_provider_event_id.trim()
+      : "";
+    if (providerEventId === "") {
+      bump("MISSING_PROVIDER_EVENT_ID");
+      continue;
+    }
+    if (!/^polymarket:[-a-z0-9_]+:\d{4}-\d{2}-\d{2}$/i.test(providerEventId)) {
+      bump("MALFORMED_PROVIDER_EVENT_ID");
+      continue;
+    }
+
+    const existing = byKey.get(providerEventId);
+    if (existing) {
+      if (row.id) existing.reservationIds.push(row.id);
+    } else {
+      byKey.set(providerEventId, {
+        providerEventId,
+        eventStartIso: startIso,
+        reservationIds: row.id ? [row.id] : [],
+      });
+    }
+  }
+
+  return {
+    pins: Array.from(byKey.values()),
+    diagnostics: {
+      active_reservation_pin_count: activeCount,
+      valid_exact_pin_count: byKey.size,
+      invalid_pin_reason_counts: invalidReasonCounts,
+    },
+  };
+}
+
+/**
+ * The producer's existing candidate ordering (unchanged extraction of the
+ * previously-inline candidates.sort() comparator): qualified sports events
+ * starting within 24h first, ordered by parent-event volume DESC; then the
+ * 48h-upcoming bucket ordered by start time; everything else by market volume.
+ */
+export function sortCandidatesForProductRanking(candidates: CandidateMarket[]): CandidateMarket[] {
+  return [...candidates].sort((a, b) => {
+    const getGameTime = (c: CandidateMarket): number => {
+      const raw = c.market as unknown as Record<string, unknown>;
+      const gs = raw.gameStartTime ?? raw.game_start_time ?? raw.startDate;
+      if (gs && typeof gs === "string") {
+        const t = new Date(gs).getTime();
+        if (!isNaN(t) && t > Date.now()) return t;
+      }
+      const ed = c.event.endDate;
+      if (ed) {
+        const t = new Date(ed).getTime();
+        if (!isNaN(t) && t > Date.now()) return t;
+      }
+      return Infinity;
+    };
+    const eventVolume = (c: CandidateMarket): number =>
+      Number(c.event.volume24hr ?? c.market.volume24hr ?? 0) || 0;
+    const now = Date.now();
+    const aTime = getGameTime(a);
+    const bTime = getGameTime(b);
+    // Founder hard rule: qualified sports events starting within the next 24h
+    // go first, ordered by aggregate parent-event volume DESC (fallback to
+    // selected-market volume). Everything else keeps existing relative order.
+    const aIn24h = aTime < now + 24 * 60 * 60 * 1000;
+    const bIn24h = bTime < now + 24 * 60 * 60 * 1000;
+    if (aIn24h && !bIn24h) return -1;
+    if (!aIn24h && bIn24h) return 1;
+    if (aIn24h && bIn24h) return eventVolume(b) - eventVolume(a);
+    const aIsUpcoming = aTime < now + 48 * 60 * 60 * 1000;
+    const bIsUpcoming = bTime < now + 48 * 60 * 60 * 1000;
+    if (aIsUpcoming && !bIsUpcoming) return -1;
+    if (!aIsUpcoming && bIsUpcoming) return 1;
+    if (aIsUpcoming && bIsUpcoming) return aTime - bTime;
+    const aVol = safeParseNumber(
+      (a.market as unknown as Record<string, unknown>).volume24hr ?? 0
+    ) ?? 0;
+    const bVol = safeParseNumber(
+      (b.market as unknown as Record<string, unknown>).volume24hr ?? 0
+    ) ?? 0;
+    return bVol - aVol;
+  });
+}
+
+/**
+ * Prioritize, never expand: exact-pinned candidates (in their existing relative
+ * order) move to the front of the already-sorted list; every other candidate
+ * keeps its existing relative order unchanged behind them. With zero pins this
+ * returns the input array unchanged (same reference), so zero-pin behavior is
+ * byte-for-byte identical to pre-pinning output.
+ */
+export function prioritizePinnedCandidates(
+  sorted: CandidateMarket[],
+  pins: RequiredProviderEventPin[]
+): { ordered: CandidateMarket[]; diagnostics: ProducerPinApplyDiagnostics } {
+  if (pins.length === 0) {
+    return {
+      ordered: sorted,
+      diagnostics: {
+        pinned_candidates_found: 0,
+        pinned_candidates_not_found: 0,
+        pinned_candidates_persisted: 0,
+        not_found_provider_event_ids_sample: [],
+      },
+    };
+  }
+
+  const pinKeys = new Set(pins.map((p) => p.providerEventId));
+  const foundKeys = new Set<string>();
+  const pinnedFront: CandidateMarket[] = [];
+  const rest: CandidateMarket[] = [];
+
+  for (const c of sorted) {
+    const key = computeCandidateProviderEventKey(c);
+    if (key !== null && pinKeys.has(key)) {
+      foundKeys.add(key);
+      pinnedFront.push(c);
+    } else {
+      rest.push(c);
+    }
+  }
+
+  const notFoundKeys = [...pinKeys].filter((k) => !foundKeys.has(k));
+
+  return {
+    ordered: [...pinnedFront, ...rest],
+    diagnostics: {
+      pinned_candidates_found: foundKeys.size,
+      pinned_candidates_not_found: notFoundKeys.length,
+      pinned_candidates_persisted: 0, // filled in by caller after the product cap is applied
+      not_found_provider_event_ids_sample: notFoundKeys.slice(0, 3),
+    },
+  };
 }
 
 /**
@@ -2083,7 +2305,9 @@ export async function buildLandingCards(options?: {
   researchLimit?: number;
   researchOddsMin?: number;
   researchOddsMax?: number;
-}): Promise<LandingCardsResponse> {
+  // Reservation-aware producer pinning (P0) — bounded, exact-identity only.
+  requiredProviderEvents?: RequiredProviderEventPin[];
+}): Promise<LandingCardsResponse & { pinDiagnostics?: ProducerPinApplyDiagnostics }> {
   const limit = clamp(options?.limit ?? 4, 1, 15);
   const category = options?.category ?? "sports";
   const minDataCoverage = clamp(options?.minDataCoverage ?? 25, 0, 100);
@@ -2100,6 +2324,13 @@ export async function buildLandingCards(options?: {
   const researchOddsMax = options?.researchOddsMax ?? 4.00;
 
   const researchSnapshots: ResearchEligibleSignalSnapshot[] = [];
+  const requiredProviderEvents = options?.requiredProviderEvents ?? [];
+  let pinApplyDiagnostics: ProducerPinApplyDiagnostics = {
+    pinned_candidates_found: 0,
+    pinned_candidates_not_found: 0,
+    pinned_candidates_persisted: 0,
+    not_found_provider_event_ids_sample: [],
+  };
 
   const rf: ResearchFunnelCounters = {
     candidatesSeen: 0, rejectedPreResearchCandidateReasons: 0, enrichmentNull: 0,
@@ -2277,47 +2508,18 @@ export async function buildLandingCards(options?: {
       candidatesAfterCategoryFilter = candidates.length;
     }
 
-    candidates.sort((a, b) => {
-      const getGameTime = (c: CandidateMarket): number => {
-        const raw = c.market as unknown as Record<string, unknown>;
-        const gs = raw.gameStartTime ?? raw.game_start_time ?? raw.startDate;
-        if (gs && typeof gs === "string") {
-          const t = new Date(gs).getTime();
-          if (!isNaN(t) && t > Date.now()) return t;
-        }
-        const ed = c.event.endDate;
-        if (ed) {
-          const t = new Date(ed).getTime();
-          if (!isNaN(t) && t > Date.now()) return t;
-        }
-        return Infinity;
-      };
-      const eventVolume = (c: CandidateMarket): number =>
-        Number(c.event.volume24hr ?? c.market.volume24hr ?? 0) || 0;
-      const now = Date.now();
-      const aTime = getGameTime(a);
-      const bTime = getGameTime(b);
-      // Founder hard rule: qualified sports events starting within the next 24h
-      // go first, ordered by aggregate parent-event volume DESC (fallback to
-      // selected-market volume). Everything else keeps existing relative order.
-      const aIn24h = aTime < now + 24 * 60 * 60 * 1000;
-      const bIn24h = bTime < now + 24 * 60 * 60 * 1000;
-      if (aIn24h && !bIn24h) return -1;
-      if (!aIn24h && bIn24h) return 1;
-      if (aIn24h && bIn24h) return eventVolume(b) - eventVolume(a);
-      const aIsUpcoming = aTime < now + 48 * 60 * 60 * 1000;
-      const bIsUpcoming = bTime < now + 48 * 60 * 60 * 1000;
-      if (aIsUpcoming && !bIsUpcoming) return -1;
-      if (!aIsUpcoming && bIsUpcoming) return 1;
-      if (aIsUpcoming && bIsUpcoming) return aTime - bTime;
-      const aVol = safeParseNumber(
-        (a.market as unknown as Record<string, unknown>).volume24hr ?? 0
-      ) ?? 0;
-      const bVol = safeParseNumber(
-        (b.market as unknown as Record<string, unknown>).volume24hr ?? 0
-      ) ?? 0;
-      return bVol - aVol;
-    });
+    candidates = sortCandidatesForProductRanking(candidates);
+
+    // Reservation-aware pinning: exact-pinned candidates move to the front of
+    // this already-sorted list; everyone else keeps existing relative order.
+    // No-op (same array reference) when there are no active pins.
+    if (requiredProviderEvents.length > 0) {
+      const prioritized = prioritizePinnedCandidates(candidates, requiredProviderEvents);
+      candidates = prioritized.ordered;
+      pinApplyDiagnostics = prioritized.diagnostics;
+    }
+    const pinnedKeysForPersistCheck = new Set(requiredProviderEvents.map((p) => p.providerEventId));
+    let pinnedCandidatesPersisted = 0;
 
     const pairs: LandingCardPair[] = [];
     const seenPairIds = new Set<string>();
@@ -2486,7 +2688,12 @@ export async function buildLandingCards(options?: {
 
       pairs.push(pair);
       pairsGenerated++;
+      if (pinnedKeysForPersistCheck.size > 0) {
+        const key = computeCandidateProviderEventKey(candidate);
+        if (key !== null && pinnedKeysForPersistCheck.has(key)) pinnedCandidatesPersisted++;
+      }
     }
+    pinApplyDiagnostics = { ...pinApplyDiagnostics, pinned_candidates_persisted: pinnedCandidatesPersisted };
 
     // Include non-sports rejected markets in final rejected list (for category=sports)
     const finalRejected = rejected;
@@ -2758,6 +2965,7 @@ export async function buildLandingCards(options?: {
       } as unknown as import("./types").InspectedMetadata,
       ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
       ...(firemodel11ResearchCandidates.length > 0 ? { firemodel11ResearchCandidates } : {}),
+      ...(requiredProviderEvents.length > 0 ? { pinDiagnostics: pinApplyDiagnostics } : {}),
     };
   } catch (error) {
     // Only return error field for unexpected runtime failures

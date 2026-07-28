@@ -3,7 +3,12 @@
 
 import { randomUUID } from "node:crypto";
 
-import { buildLandingCards, applyStrategicFloor } from "../lib/feed/buildLandingCards";
+import {
+  buildLandingCards,
+  applyStrategicFloor,
+  extractProviderEventPinsFromReservationRows,
+  type RequiredProviderEventPin,
+} from "../lib/feed/buildLandingCards";
 import {
   writeGeneratedSignalPairs,
   writeStrategicShadowPairs,
@@ -27,6 +32,76 @@ const CONFIG = {
   upcomingLimit: 10,
 };
 
+// Matches the producer's existing "upcoming" bucket boundary (candidates.sort()'s
+// aIsUpcoming check in lib/feed/buildLandingCards.ts) -- a Reservation outside this
+// horizon isn't yet inside the population this producer cycle prioritizes anyway.
+const RESERVATION_PIN_HORIZON_MS = 48 * 60 * 60 * 1000;
+
+interface ActiveReservationPinLoadResult {
+  pins: RequiredProviderEventPin[];
+  active_reservation_pin_count: number;
+  valid_exact_pin_count: number;
+  invalid_pin_reason_counts: Record<string, number>;
+  load_failed: boolean;
+  load_error_code: string | null;
+}
+
+/**
+ * Read-only load of active near-term RESERVED reservations, narrowed to the ones
+ * carrying an exact persisted providerEventKey. Never mutates night_event_reservations,
+ * event_execution_queue, or any Reservation/queue/order state -- source-capture read only.
+ */
+async function loadActiveReservationPins(): Promise<ActiveReservationPinLoadResult> {
+  const empty: ActiveReservationPinLoadResult = {
+    pins: [],
+    active_reservation_pin_count: 0,
+    valid_exact_pin_count: 0,
+    invalid_pin_reason_counts: {},
+    load_failed: false,
+    load_error_code: null,
+  };
+
+  try {
+    const { supabaseAdmin } = await import("../lib/supabase/server");
+    const nowIso = new Date().toISOString();
+    const horizonIso = new Date(Date.now() + RESERVATION_PIN_HORIZON_MS).toISOString();
+
+    const { data, error } = await supabaseAdmin
+      .from("night_event_reservations")
+      .select("id, status, game_start_iso, diagnostics")
+      .eq("status", "RESERVED")
+      .gt("game_start_iso", nowIso)
+      .lte("game_start_iso", horizonIso);
+
+    if (error) {
+      console.warn(`[generate-signals] ACTIVE_RESERVATION_PIN_LOAD_FAILED: ${error.message.slice(0, 180)}`);
+      return { ...empty, load_failed: true, load_error_code: "ACTIVE_RESERVATION_PIN_LOAD_FAILED" };
+    }
+
+    const { pins, diagnostics: loadDiag } = extractProviderEventPinsFromReservationRows(
+      (data ?? []) as Array<{
+        id?: string | null;
+        status?: string | null;
+        game_start_iso?: string | null;
+        diagnostics?: Record<string, unknown> | null;
+      }>
+    );
+
+    return {
+      pins,
+      active_reservation_pin_count: loadDiag.active_reservation_pin_count,
+      valid_exact_pin_count: loadDiag.valid_exact_pin_count,
+      invalid_pin_reason_counts: loadDiag.invalid_pin_reason_counts,
+      load_failed: false,
+      load_error_code: null,
+    };
+  } catch (loadErr) {
+    const msg = loadErr instanceof Error ? loadErr.message : String(loadErr);
+    console.warn(`[generate-signals] ACTIVE_RESERVATION_PIN_LOAD_FAILED: ${msg.slice(0, 180)}`);
+    return { ...empty, load_failed: true, load_error_code: "ACTIVE_RESERVATION_PIN_LOAD_FAILED" };
+  }
+}
+
 async function main() {
   const startedAt = new Date().toISOString();
   let status: "success" | "empty" | "error" = "success";
@@ -43,6 +118,16 @@ async function main() {
     const researchSnapshotRunId = randomUUID();
     const researchSnapshotAt = new Date().toISOString();
 
+    // Reservation-aware pinning (P0): read-only, exact-identity only. A load
+    // failure degrades to zero pins but is reported distinctly (load_failed),
+    // never silently treated as "confirmed zero active Reservations".
+    const pinLoad = await loadActiveReservationPins();
+    console.log(
+      `[generate-signals] reservation pins: active=${pinLoad.active_reservation_pin_count} ` +
+        `valid=${pinLoad.valid_exact_pin_count} load_failed=${pinLoad.load_failed} ` +
+        `invalid_reasons=${JSON.stringify(pinLoad.invalid_pin_reason_counts)}`
+    );
+
     // Call sports landing cards generation logic
     const result = await buildLandingCards({
       limit: CONFIG.limit,
@@ -51,6 +136,7 @@ async function main() {
       excludeEnded: CONFIG.excludeEnded,
       includeUpcoming: CONFIG.includeUpcoming,
       upcomingLimit: CONFIG.upcomingLimit,
+      requiredProviderEvents: pinLoad.pins,
       // Research universe options — does not alter product feed behavior
       collectResearchSnapshots: true,
       researchSnapshotRunId,
@@ -80,9 +166,31 @@ async function main() {
       if (title.includes("spread") || title.includes("handicap")) return 1;
       return 2;
     };
+    // Reservation pins already guaranteed a slot inside buildLandingCards's own
+    // 15-item cap (pairs.length <= CONFIG.limit before this point). This second,
+    // separate merge+re-sort against upcomingPairs would otherwise be free to push
+    // a low-volume pinned pair back out of applyStrategicFloor's window below --
+    // so pinned pairs keep the same "exact-pinned-first" priority here, using the
+    // identical composite key formula as buildLandingCards' pin matcher.
+    const pinnedProviderKeys = new Set(pinLoad.pins.map((p) => p.providerEventId));
+    const providerEventKeyOfPair = (pair: any): string | null => {
+      const ctx = pair.diagnostics?.providerEventContext as
+        | { eventId?: string; eventSlug?: string; eventStartIso?: string }
+        | undefined;
+      const identity = ctx?.eventSlug ?? ctx?.eventId;
+      const start = ctx?.eventStartIso ?? pair.diagnostics?.gameStartIso;
+      if (!identity || !/^[-a-z0-9_]+$/i.test(identity)) return null;
+      if (typeof start !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(start)) return null;
+      return `polymarket:${identity.toLowerCase()}:${start.slice(0, 10)}`;
+    };
+    const isPinnedPair = (pair: any): boolean =>
+      pinnedProviderKeys.size > 0 && pinnedProviderKeys.has(providerEventKeyOfPair(pair) ?? "");
     const sortedMergedPairs = mergedPairs
       .map((pair, index) => ({ pair, index }))
       .sort((a, b) => {
+        const ap = isPinnedPair(a.pair);
+        const bp = isPinnedPair(b.pair);
+        if (ap !== bp) return ap ? -1 : 1;
         const aw = isWithin24h(a.pair);
         const bw = isWithin24h(b.pair);
         if (aw !== bw) return aw ? -1 : 1;
@@ -112,6 +220,18 @@ async function main() {
       rejected_count: rejectedCount,
       inspected: result.inspected,
       researchFunnel: result.researchFunnel ?? null,
+      reservationPins: {
+        active_reservation_pin_count: pinLoad.active_reservation_pin_count,
+        valid_exact_pin_count: pinLoad.valid_exact_pin_count,
+        invalid_pin_reason_counts: pinLoad.invalid_pin_reason_counts,
+        load_failed: pinLoad.load_failed,
+        load_error_code: pinLoad.load_error_code,
+        pinned_candidates_found: (result as any).pinDiagnostics?.pinned_candidates_found ?? 0,
+        pinned_candidates_not_found: (result as any).pinDiagnostics?.pinned_candidates_not_found ?? 0,
+        pinned_candidates_persisted: (result as any).pinDiagnostics?.pinned_candidates_persisted ?? 0,
+        not_found_provider_event_ids_sample:
+          (result as any).pinDiagnostics?.not_found_provider_event_ids_sample ?? [],
+      },
       sportsDiscoveryCounts: sportsDiscovery
         ? (sportsDiscovery.counts as Record<string, unknown> | null) ?? null
         : null,
@@ -157,6 +277,11 @@ async function main() {
       });
 
       console.log(`[generate-signals] Cached ${generatedCount} pairs (expires: ${expiresAt})`);
+      const rp = (diagnostics.reservationPins ?? {}) as Record<string, unknown>;
+      console.log(
+        `[generate-signals] reservation pin outcome: found=${rp.pinned_candidates_found ?? 0} ` +
+          `not_found=${rp.pinned_candidates_not_found ?? 0} persisted=${rp.pinned_candidates_persisted ?? 0}`
+      );
     }
 
     let researchWriterAttempted = false;
