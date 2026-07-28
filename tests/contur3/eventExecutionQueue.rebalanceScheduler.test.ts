@@ -605,6 +605,211 @@ test("Anchor-CA4: a valid clean full-match moneyline anchor remains queue-eligib
   assert.equal(candidates[0].live_rejection_reason, null);
 });
 
+// ── P0: an activity-label display market must not discard a real exact market ─
+//
+// Production regression (Cleveland Guardians vs. Cincinnati Reds,
+// polymarket:mlb-cle-cin-2026-07-27:2026-07-28): a fresh source row carried
+// market_slug = "$24K matched activity" -- purely a display/volume label --
+// while diagnostics.providerEventContext supplied the provider's OWN
+// structured, stable event identity (exact eventId, eventStartIso, and
+// eventTitle/marketQuestion matching the physical event) plus a real
+// condition_id/token_id/selected_outcome. The activity-label check was
+// unconditional and discarded this fully-executable market with
+// CONTRACT_A_ACTIVITY_LABEL_MARKET before it ever reached the queue -- even
+// though the SAME canonical taxonomy classifier, fed the provider's own
+// market question instead of the activity label, would have approved it.
+
+function contractAProviderContext(overrides: Record<string, unknown> = {}) {
+  return {
+    v: "v1",
+    provider: "polymarket",
+    eventId: "mlb-cle-cin-2026-07-27",
+    eventSlug: "mlb-cle-cin-2026-07-27",
+    eventTitle: "Cleveland Guardians vs. Cincinnati Reds",
+    marketQuestion: "Cleveland Guardians vs. Cincinnati Reds",
+    game: "moneyline",
+    league: "MLB",
+    eventStartIso: "2026-07-28T17:40:00.000Z",
+    ...overrides,
+  };
+}
+
+function activityLabelSourceRow(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "10101010-1010-4101-8101-101010101010",
+    condition_id: "cond-cle-cin",
+    token_id: "tok-cle-cin",
+    selected_outcome: "Cleveland Guardians",
+    score: 82,
+    entry_price_num: 0.41,
+    created_at: "2026-07-28T16:10:00.000Z", // T-90 boundary for a 17:40Z kickoff
+    event_slug: "mlb-cle-cin-2026-07-27",
+    market_slug: "$24K matched activity",
+    diagnostics: {
+      gameStartIso: "2026-07-28T17:40:00.000Z",
+      providerEventContext: contractAProviderContext(),
+    },
+    ...overrides,
+  };
+}
+
+test("Anchor-CA5 (P0 RED->GREEN): an activity-label display with an exact moneyline provider context and complete IDs is queue-eligible", async () => {
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [activityLabelSourceRow()], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  const c = candidates[0];
+  assert.equal(c.live_eligible, true, "an exact moneyline market behind an activity-label display must be queue-eligible");
+  assert.equal(c.live_rejection_reason, null);
+  assert.equal(c.activity_label_detected, false, "the display label must be replaced by the provider's own market question");
+  assert.equal(
+    c.market_slug,
+    "Cleveland Guardians vs. Cincinnati Reds",
+    "the queue-facing market question must come from providerEventContext, never the activity label"
+  );
+});
+
+test("Anchor-CA6: an activity-label display with an exact approved SPREAD provider context and complete IDs is queue-eligible", async () => {
+  const sourceRow = activityLabelSourceRow({
+    id: "10101010-1010-4101-8101-101010101011",
+    diagnostics: {
+      gameStartIso: "2026-07-28T17:40:00.000Z",
+      providerEventContext: contractAProviderContext({ game: "spread" }),
+    },
+  });
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].live_eligible, true);
+  assert.equal(candidates[0].live_rejection_reason, null);
+});
+
+test("Anchor-CA7: an activity-label display with an exact approved TOTAL provider context and complete IDs is queue-eligible", async () => {
+  const sourceRow = activityLabelSourceRow({
+    id: "10101010-1010-4101-8101-101010101012",
+    diagnostics: {
+      gameStartIso: "2026-07-28T17:40:00.000Z",
+      providerEventContext: contractAProviderContext({ game: "total" }),
+    },
+  });
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].live_eligible, true);
+  assert.equal(candidates[0].live_rejection_reason, null);
+});
+
+test("Anchor-CA8: an activity-label display with NO provider context still fails closed (Anchor-CA1 unchanged)", async () => {
+  const sourceRow = activityLabelSourceRow({
+    id: "10101010-1010-4101-8101-101010101013",
+    diagnostics: { gameStartIso: "2026-07-28T17:40:00.000Z" },
+  });
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].live_eligible, false);
+  assert.equal(candidates[0].activity_label_detected, true);
+  assert.equal(candidates[0].live_rejection_reason, "CONTRACT_A_ACTIVITY_LABEL_MARKET");
+});
+
+test("Anchor-CA9: an activity-label display with provider context missing a stable event id still fails closed", async () => {
+  const sourceRow = activityLabelSourceRow({
+    id: "10101010-1010-4101-8101-101010101014",
+    diagnostics: {
+      gameStartIso: "2026-07-28T17:40:00.000Z",
+      providerEventContext: contractAProviderContext({ eventId: "", eventSlug: "" }),
+    },
+  });
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].live_eligible, false, "missing stable provider event identity must not rescue an activity label");
+  assert.equal(candidates[0].live_rejection_reason, "CONTRACT_A_ACTIVITY_LABEL_MARKET");
+});
+
+test("Anchor-CA10: an activity-label display with provider context missing eventStartIso still fails closed", async () => {
+  const sourceRow = activityLabelSourceRow({
+    id: "10101010-1010-4101-8101-101010101015",
+    diagnostics: {
+      gameStartIso: "2026-07-28T17:40:00.000Z",
+      providerEventContext: contractAProviderContext({ eventStartIso: "" }),
+    },
+  });
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].live_eligible, false, "missing stable provider event start must not rescue an activity label");
+  assert.equal(candidates[0].live_rejection_reason, "CONTRACT_A_ACTIVITY_LABEL_MARKET");
+});
+
+test("Anchor-CA11: an activity-label display with provider context missing marketQuestion still fails closed", async () => {
+  const sourceRow = activityLabelSourceRow({
+    id: "10101010-1010-4101-8101-101010101016",
+    diagnostics: {
+      gameStartIso: "2026-07-28T17:40:00.000Z",
+      providerEventContext: contractAProviderContext({ marketQuestion: "" }),
+    },
+  });
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].live_eligible, false, "missing the provider's own market question must not rescue an activity label");
+  assert.equal(candidates[0].live_rejection_reason, "CONTRACT_A_ACTIVITY_LABEL_MARKET");
+});
+
+test("Anchor-CA12: an activity-label display whose provider context is itself a partial/prop market (map/set/round) still fails closed", async () => {
+  const sourceRow = activityLabelSourceRow({
+    id: "10101010-1010-4101-8101-101010101017",
+    diagnostics: {
+      gameStartIso: "2026-07-28T17:40:00.000Z",
+      providerEventContext: contractAProviderContext({
+        marketQuestion: "Cleveland Guardians vs. Cincinnati Reds - Game 1 Winner",
+        game: "moneyline",
+      }),
+    },
+  });
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].live_eligible, false, "a partial/segment market must never be rescued by the provider-context override");
+});
+
+test("Anchor-CA13: an activity-label display whose provider context is a player prop still fails closed", async () => {
+  const sourceRow = activityLabelSourceRow({
+    id: "10101010-1010-4101-8101-101010101018",
+    diagnostics: {
+      gameStartIso: "2026-07-28T17:40:00.000Z",
+      providerEventContext: contractAProviderContext({
+        marketQuestion: "Player Prop: Total Home Runs Over 1.5",
+        game: "moneyline",
+      }),
+    },
+  });
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].live_eligible, false, "a player prop must never be rescued by the provider-context override");
+});
+
+test("Anchor-CA14: the exact rescued identity (condition_id/token_id/side) reaches the candidate and queue row unchanged, never synthesized", async () => {
+  const sourceRow = activityLabelSourceRow({ id: "10101010-1010-4101-8101-101010101019" });
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  const c = candidates[0];
+  assert.equal(c.condition_id, "cond-cle-cin");
+  assert.equal(c.token_id, "tok-cle-cin");
+  assert.equal(c.side, "Cleveland Guardians");
+});
+
+test("Anchor-CA1 (regression, unchanged): the production KC handicap / activity-label candidate is still not queue-eligible", async () => {
+  const sourceRow = {
+    id: "66666666-6666-4666-8666-666666666666",
+    condition_id: "cond-ca-kc-handicap",
+    token_id: "tok-ca-kc-handicap",
+    selected_outcome: "Karmine Corp",
+    score: 82,
+    entry_price_num: 0.4,
+    created_at: "2026-07-24T13:30:00.000Z",
+    event_slug: "Game Handicap: KC (-1.5) vs Team Vitality (+1.5)",
+    market_slug: "$52K matched activity",
+    diagnostics: { gameStartIso: "2026-07-24T15:00:00.000Z" },
+  };
+  const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].live_eligible, false);
+  assert.equal(candidates[0].live_rejection_reason, "CONTRACT_A_ACTIVITY_LABEL_MARKET");
+});
+
 test("B7: a failed write-mode rebalance run records sanitized failure evidence and rethrows", async () => {
   const jobEvidence = makeFakeJobEvidence();
   const failingRepo: RebalanceRepoPort = {

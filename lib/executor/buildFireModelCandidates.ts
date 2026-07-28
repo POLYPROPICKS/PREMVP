@@ -876,7 +876,7 @@ async function buildContractAV1Candidates(
       : decision.createdAtIso;
     const hoursToStartNow = decision.minutesUntilStart / 60;
     const eventSlug = typeof sourceRow.event_slug === "string" ? sourceRow.event_slug : null;
-    const marketSlug = typeof sourceRow.market_slug === "string" ? sourceRow.market_slug : decision.eventKey;
+    const rawMarketSlug = typeof sourceRow.market_slug === "string" ? sourceRow.market_slug : decision.eventKey;
     const staleAfter = typeof sourceRow.expires_at === "string" ? sourceRow.expires_at : gameStartIso;
 
     const contractASourceRowId = typeof sourceRow.id === "string" && sourceRow.id.trim() !== "" ? sourceRow.id : null;
@@ -893,12 +893,40 @@ async function buildContractAV1Candidates(
     // title-derived sport hint rather than requiring the (always-unknown)
     // real field -- this preserves valid canonical BO1/BO3/BO5 esports
     // full-match anchors without globally exempting unknown-sport rows.
-    const activityLabelDetected = isActivityLabelText(marketSlug) || isActivityLabelText(eventSlug);
     const sourceDiag: Record<string, unknown> =
       sourceRow.diagnostics && typeof sourceRow.diagnostics === "object"
         ? (sourceRow.diagnostics as Record<string, unknown>)
         : {};
     const sourceProviderContext = providerContextOf(sourceDiag);
+
+    // P0: market_slug/event_slug is display/source evidence only -- an
+    // activity/volume label ("$24K matched activity") describes trading
+    // volume, not market identity, and must never be treated as authoritative
+    // over the provider's OWN structured event context. When that context
+    // supplies a stable exact event identity (eventId + eventStartIso, never
+    // a slug guess or fuzzy title match) and its own market question, the
+    // canonical market question fed to the SAME taxonomy classifier used
+    // everywhere else is the provider's marketQuestion (optionally combined
+    // with its market-family field, e.g. "moneyline"/"spread"/"total", so the
+    // classifier can recognize a market family the bare matchup text alone
+    // does not spell out) -- never a second, parallel classifier, and never
+    // the activity label itself.
+    const hasStableProviderEventIdentity =
+      Boolean(sourceProviderContext?.eventId) && Boolean(sourceProviderContext?.eventStartIso);
+    const providerMarketQuestionText =
+      sourceProviderContext?.marketQuestion && sourceProviderContext?.game
+        ? `${sourceProviderContext.marketQuestion} ${sourceProviderContext.game}`
+        : (sourceProviderContext?.marketQuestion ?? null);
+    const rescuedByProviderContext =
+      isActivityLabelText(rawMarketSlug) && hasStableProviderEventIdentity && Boolean(sourceProviderContext?.marketQuestion);
+
+    // The queue-facing market_slug/market_title must come from the provider's
+    // own market question, never the activity label, once rescued -- an
+    // activity label with no rescuing provider context is left exactly as-is
+    // so activityLabelDetected below still correctly flags it.
+    const marketSlug = rescuedByProviderContext ? sourceProviderContext!.marketQuestion! : rawMarketSlug;
+    const activityLabelDetected = isActivityLabelText(marketSlug) || isActivityLabelText(eventSlug);
+
     const anchorProbeTitleHay = `${eventSlug ?? ""} ${marketSlug ?? ""} ${sourceProviderContext?.marketQuestion ?? ""} ${typeof sourceDiag.marketTitle === "string" ? sourceDiag.marketTitle : ""}`;
     const anchorProbeIsEsportsSeries = /\(\s*bo(?:1|3|5)\s*\)/i.test(anchorProbeTitleHay);
     const anchorDecision = fullMatchAnchorDecision({
@@ -906,7 +934,7 @@ async function buildContractAV1Candidates(
       event_slug: eventSlug,
       match_family_key: decision.eventKey,
       inferred_sport: anchorProbeIsEsportsSeries ? "esport" : "unknown",
-      providerMarketQuestion: sourceProviderContext?.marketQuestion ?? null,
+      providerMarketQuestion: providerMarketQuestionText,
       diagnostics: sourceDiag,
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } as any);
