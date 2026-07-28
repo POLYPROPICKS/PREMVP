@@ -36,7 +36,7 @@ const STAKE_GUARD_MAX_BASE_USD = 7;
 export type FireModelSelectorMode = "CONTUR3_CURRENT" | "CONTRACT_A_PLANNING_V1" | "CONTRACT_A_V1";
 const KNOWN_SELECTOR_MODES: readonly FireModelSelectorMode[] = ["CONTUR3_CURRENT", "CONTRACT_A_PLANNING_V1", "CONTRACT_A_V1"];
 
-export type StrategicScope = "WC" | "SOCCER" | "MLB" | "ESPORT" | "OTHER" | "UNKNOWN";
+export type StrategicScope = "WC" | "SOCCER" | "MLB" | "ESPORT" | "TENNIS" | "OTHER" | "UNKNOWN";
 export type IdentityQuality = "STRONG" | "MEDIUM" | "WEAK" | "INVALID";
 export type SportClassificationConfidence = "HIGH" | "MEDIUM" | "LOW" | "NONE";
 
@@ -490,7 +490,7 @@ function deriveSportScope(identityText: string): {
 } {
   if (ESPORTS_RE.test(identityText)) return { scope: "ESPORT", confidence: "HIGH" };
   if (NBA_NHL_RE.test(identityText)) return { scope: "UNKNOWN", confidence: "HIGH" };
-  if (TENNIS_RE.test(identityText)) return { scope: "UNKNOWN", confidence: "HIGH" };
+  if (TENNIS_RE.test(identityText)) return { scope: "TENNIS", confidence: "HIGH" };
   if (WC_EXPLICIT_RE.test(identityText)) return { scope: "WC", confidence: "HIGH" };
   if (MLB_RE.test(identityText)) return { scope: "MLB", confidence: "HIGH" };
   if (SOCCER_RE.test(identityText)) return { scope: "SOCCER", confidence: "HIGH" };
@@ -649,6 +649,7 @@ function inferSportAndFamily(scope: StrategicScope): { sport: string; family: st
     case "SOCCER": return { sport: "soccer",   family: "soccer"    };
     case "MLB":    return { sport: "baseball", family: "mlb"       };
     case "ESPORT": return { sport: "esport",   family: "esport"    };
+    case "TENNIS": return { sport: "tennis",   family: "tennis"    };
     default:       return { sport: "unknown",  family: "other"     };
   }
 }
