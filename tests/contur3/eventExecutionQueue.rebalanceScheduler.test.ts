@@ -32,6 +32,11 @@ const BEFORE_WINDOW_MS = Date.parse("2026-07-19T17:00:00.000Z"); // T-120m
 const IN_WINDOW_MS = Date.parse("2026-07-19T18:00:00.000Z"); // T-60m
 const AFTER_WINDOW_MS = Date.parse("2026-07-19T18:59:00.000Z"); // T-1m
 
+const PARITY_RESERVATION_START = "2026-07-29T16:35:00Z";
+const PARITY_IN_WINDOW_MS = Date.parse("2026-07-29T15:35:00Z");
+const STALE_CANDIDATE_START = "2026-07-27T22:40:00Z";
+const EQUIVALENT_CANDIDATE_START = "2026-07-29T18:35:00+02:00";
+
 function baseReservation(overrides: Partial<NightEventReservationRow> = {}): NightEventReservationRow {
   return {
     id: "res-esp-arg",
@@ -266,6 +271,68 @@ test("B6: a dry-run rebalance invocation records zero job_runs evidence", async 
   assert.equal(repo.queueRows.length, 0);
 });
 
+test("P0 queue-start parity: a stale-only candidate is skipped instead of creating READY", async () => {
+  const reservation = baseReservation({
+    id: "97e7766c-75d4-4d52-9894-196e1f334d22",
+    game_start_iso: PARITY_RESERVATION_START,
+  });
+  const staleCandidate = baseCandidate({
+    diagnostics: { ...baseCandidate().diagnostics, game_start_iso: STALE_CANDIDATE_START },
+  });
+  const repo = makeFakeRepo([reservation]);
+  const result = await runEventRebalance(
+    PARITY_IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [staleCandidate] }) }
+  );
+
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.equal(repo.skippedCalls.length, 1);
+  assert.match(repo.skippedCalls[0].reason, /EXECUTION_EVENT_START_MISMATCH/);
+});
+
+test("P0 queue-start parity: a stale higher-ranked candidate is excluded before the correct occurrence is selected", async () => {
+  const reservation = baseReservation({ game_start_iso: PARITY_RESERVATION_START });
+  const staleHigherRanked = baseCandidate({
+    condition_id: "cond-stale",
+    diagnostics: { ...baseCandidate().diagnostics, game_start_iso: STALE_CANDIDATE_START, score: 99 },
+  });
+  const correctCandidate = baseCandidate({
+    condition_id: "cond-correct",
+    diagnostics: { ...baseCandidate().diagnostics, game_start_iso: PARITY_RESERVATION_START, score: 80 },
+  });
+  const repo = makeFakeRepo([reservation]);
+  const result = await runEventRebalance(
+    PARITY_IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [staleHigherRanked, correctCandidate] }) }
+  );
+
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows.length, 1);
+  assert.equal(repo.queueRows[0].condition_id, "cond-correct");
+});
+
+test("P0 queue-start parity: an equivalent ISO instant queues with timing derived from the Reservation", async () => {
+  const reservation = baseReservation({ game_start_iso: PARITY_RESERVATION_START });
+  const equivalentCandidate = baseCandidate({
+    diagnostics: { ...baseCandidate().diagnostics, game_start_iso: EQUIVALENT_CANDIDATE_START },
+  });
+  const repo = makeFakeRepo([reservation]);
+  const result = await runEventRebalance(
+    PARITY_IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [equivalentCandidate] }) }
+  );
+
+  assert.equal(result.queued_count, 1);
+  assert.equal(repo.queueRows.length, 1);
+  assert.equal(repo.queueRows[0].game_start_iso, PARITY_RESERVATION_START);
+  assert.equal(repo.queueRows[0].preferred_entry_iso, "2026-07-29T15:50:00.000Z");
+  assert.equal(repo.queueRows[0].latest_entry_iso, "2026-07-29T16:32:00.000Z");
+});
+
 // ── Integration Phase 1: CONTRACT_A_V1 authoritative-market rebalance ──────
 
 const AUTH_SELECTOR_ID = "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M";
@@ -357,6 +424,24 @@ test("D3: when the authoritative market exists but is not executable (not live-e
   assert.equal(result.skipped_count, 1);
   assert.equal(repo.queueRows.length, 0);
   assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE/);
+});
+
+test("P0 queue-start parity: the authoritative selection path also rejects a mismatched occurrence", async () => {
+  const reservation = contractAReservation({ game_start_iso: PARITY_RESERVATION_START });
+  const staleAuthoritativeCandidate = marketA({
+    diagnostics: { ...marketA().diagnostics, game_start_iso: STALE_CANDIDATE_START },
+  });
+  const repo = makeFakeRepo([reservation]);
+  const result = await runEventRebalance(
+    PARITY_IN_WINDOW_MS,
+    { write: true },
+    { repo, fetchCandidates: async () => ({ candidates: [staleAuthoritativeCandidate] }) }
+  );
+
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.equal(repo.skippedCalls.length, 1);
+  assert.match(repo.skippedCalls[0].reason, /EXECUTION_EVENT_START_MISMATCH/);
 });
 
 test("D4: selector provenance round-trips from reservation diagnostics into the queue row's diagnostics", async () => {
