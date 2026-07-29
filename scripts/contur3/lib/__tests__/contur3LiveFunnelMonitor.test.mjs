@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 
 import {
   classifyMarket,
@@ -28,6 +29,7 @@ import {
   isUnconfirmedOrderEvent,
   classifyOrderEvent,
   orderEventMatchesReservation,
+  collectFunnel,
 } from '../contur3LiveFunnelMonitor.mjs';
 
 function baseFixture(overrides = {}) {
@@ -495,6 +497,80 @@ test('production regression: queue linkage by reservation_id survives a wrong-da
     [readyQueueRow({ reservation_id: reservation.id })],
     [],
   ).length, 1);
+});
+
+test('linked queue evidence outside the event window does not inflate aggregate queue metrics', async () => {
+  const nowMs = Date.now();
+  const gameStartIso = new Date(nowMs + 60 * 60_000).toISOString();
+  const latestEntryIso = new Date(nowMs + 30 * 60_000).toISOString();
+  const outsideWindowIso = new Date(nowMs - 48 * 60 * 60_000).toISOString();
+  const reservation = queuedReservation({
+    id: 'aggregate-reservation-1',
+    game_start_iso: gameStartIso,
+  });
+  const windowQueueRow = readyQueueRow({
+    id: 'aggregate-window-queue-1',
+    reservation_id: reservation.id,
+    game_start_iso: gameStartIso,
+    latest_entry_iso: latestEntryIso,
+  });
+  const linkedOutsideWindowRow = readyQueueRow({
+    id: 'aggregate-linked-queue-1',
+    reservation_id: reservation.id,
+    game_start_iso: outsideWindowIso,
+    latest_entry_iso: outsideWindowIso,
+  });
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    const table = url.pathname.split('/').pop();
+    let rows = [];
+    if (table === 'generated_signal_pairs') {
+      rows = [{
+        event_slug: 'portugal-vs-spain',
+        event_title: 'Portugal vs Spain',
+        market_slug: 'portugal-vs-spain-moneyline',
+        selected_outcome: 'Portugal',
+        game_start_iso: gameStartIso,
+      }];
+    } else if (table === 'night_event_reservations') {
+      rows = [reservation];
+    } else if (table === 'event_execution_queue') {
+      rows = url.searchParams.has('reservation_id')
+        ? [linkedOutsideWindowRow]
+        : [windowQueueRow];
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(rows));
+  });
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  process.env.SUPABASE_URL = `http://127.0.0.1:${port}`;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
+  try {
+    const report = await collectFunnel({ lookbackHours: 24, nextHours: 12 });
+    const fixture = report.fixtures.find((f) => f.reservation_id === reservation.id);
+
+    assert.ok(fixture, 'the Reservation must be represented in the funnel report');
+    assert.equal(fixture.event_execution_queue_rows, 2,
+      'Reservation linkage must retain both the window and linked evidence rows');
+    assert.equal(fixture.window_event_execution_queue_rows, 1,
+      'only the normal event-window queue row belongs to aggregate metrics');
+    assert.equal(fixture.queue_verdict, 'QUEUE_READY_ACTIONABLE');
+    assert.equal(report.anomalies.some((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING'), false);
+    assert.equal(report.summary.queued, 1);
+    assert.equal(report.summary.queue_created, 1);
+    assert.equal(report.summary.queue_actionable, 1);
+    assert.equal(report.summary.queue_entry_window_closed, 0);
+  } finally {
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousRole === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousRole;
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
 });
 
 test('4) Due reservation not queued remains due rebalance required', () => {
