@@ -753,19 +753,32 @@ export async function collectFunnel(opts = {}) {
   const linkedQueueRead = reportReservationIds.length > 0
     ? await selectAll(supabase, 'event_execution_queue', (q) => q.in('reservation_id', reportReservationIds))
     : { ok: true, rows: [], error: null };
+  reads.linked_queue_evidence = {
+    ok: linkedQueueRead.ok,
+    rows: linkedQueueRead.rows,
+    error: linkedQueueRead.ok ? null : 'LINKED_QUEUE_QUERY_FAILED',
+    reservation_id_count: reportReservationIds.length,
+  };
   reads.executor_order_events = await selectAll(supabase, 'executor_order_events', (q) => q.gte('created_at', fromUtc));
   reads.executor_audit_events = await selectAll(supabase, 'executor_audit_events', (q) => q.gte('created_at', fromUtc));
   reads.job_runs = await selectAll(supabase, 'job_runs', (q) => q.gte('created_at', fromUtc));
 
   for (const [name, r] of Object.entries(reads)) {
+    if (name === 'linked_queue_evidence') continue;
     const ts = tableStatus(name, r);
     base.tables[name] = { ok: r.ok, rows: r.ok ? r.rows.length : 0, error: r.ok ? null : r.error, status: ts.status };
   }
+  base.tables.linked_queue_evidence = {
+    ok: reads.linked_queue_evidence.ok,
+    rows: reads.linked_queue_evidence.ok ? reads.linked_queue_evidence.rows.length : 0,
+    error: reads.linked_queue_evidence.error,
+    status: reads.linked_queue_evidence.ok ? 'OK' : 'ERROR',
+  };
 
   const signals = reads.generated_signal_pairs.rows;
   const reservations = reads.night_event_reservations.rows;
   const queueRows = reads.event_execution_queue.rows;
-  const linkedQueueRows = linkedQueueRead.ok ? linkedQueueRead.rows : [];
+  const linkedQueueRows = linkedQueueRead.rows;
   const orderRows = reads.executor_order_events.ok ? reads.executor_order_events.rows : [];
   const auditRows = reads.executor_audit_events.ok ? reads.executor_audit_events.rows : [];
 
@@ -791,7 +804,10 @@ export async function collectFunnel(opts = {}) {
       ? findQueueRowsForReservationEvidence(res, windowQueue, linkedQueueRows)
       : [];
     if (!queue.length && fx) queue = fixtureQueue(fx);
-    const queueVerdict = classifyQueueLifecycle(res, queue, nowMs);
+    const queueLinkageQueryFailed = !!res && !linkedQueueRead.ok && queue.length === 0;
+    const queueVerdict = queueLinkageQueryFailed
+      ? 'QUEUE_LINKAGE_UNKNOWN'
+      : classifyQueueLifecycle(res, queue, nowMs);
     const reservationStatus = res ? (res.status ?? 'RESERVED') : 'NONE';
     const reservationJoinMethod = !res
       ? 'NONE'
@@ -841,6 +857,7 @@ export async function collectFunnel(opts = {}) {
       due_state: ds,
       event_execution_queue_rows: queue.length,
       window_event_execution_queue_rows: windowQueue.length,
+      queue_linkage_query_status: !res ? 'NOT_APPLICABLE' : linkedQueueRead.ok ? 'SUCCESS' : 'FAILED',
       queue_verdict: queueVerdict,
       queue_created: queue.length > 0,
       queue_actionable: queueVerdict === 'QUEUE_READY_ACTIONABLE',
@@ -908,7 +925,8 @@ export async function collectFunnel(opts = {}) {
 
   let machineVerdict;
   const failedTable = Object.values(base.tables).some((t) => !t.ok && !/does not exist|undefined/.test(t.error ?? ''));
-  if (missing.length > 0) machineVerdict = 'RESERVATION_UNDERFILL';
+  if (!linkedQueueRead.ok) machineVerdict = 'LINKED_QUEUE_QUERY_FAILED';
+  else if (missing.length > 0) machineVerdict = 'RESERVATION_UNDERFILL';
   else if (queued > 0 && apiVisible > 0 && orders === 0) machineVerdict = 'QUEUE_READY_IRELAND_MANUAL_START_REQUIRED';
   else if (orders > 0) machineVerdict = 'ORDER_LEDGER_PRESENT';
   else if (fixtures.some((f) => f.due_state === 'DUE_NOW'
@@ -961,7 +979,15 @@ export function detectAnomalies(base, fixtures, reads) {
   const push = (code, severity, fixture, stage, evidence, recommended_command) =>
     out.push({ code, severity, fixture, stage, evidence, recommended_command });
 
+  const linkedQueueEvidence = reads.linked_queue_evidence;
+  if (linkedQueueEvidence && !linkedQueueEvidence.ok) {
+    push('LINKED_QUEUE_QUERY_FAILED', 'P0', null, 'queue/linkage evidence',
+      `operation=event_execution_queue.reservation_id; reservation_id_count=${linkedQueueEvidence.reservation_id_count ?? 0}`,
+      RAILWAY_SAFE_COMMANDS.liveFunnelLog);
+  }
+
   for (const [name, r] of Object.entries(reads)) {
+    if (name === 'linked_queue_evidence') continue;
     const ts = tableStatus(name, r);
     if (ts.status === 'ERROR') {
       push('DB_TABLE_MISSING', 'P1', null, 'source', `${name}: ${r.error}`, 'Verify table name / RLS on Railway.');
@@ -1005,7 +1031,8 @@ export function detectAnomalies(base, fixtures, reads) {
     //     market — those two must never fire a false rebalance/missing P0.
     const skippedNoMarket = f.queue_verdict === 'SKIPPED_NO_EXECUTABLE_MARKET'
       || f.reservation_status === 'SKIPPED';
-    if (f.reservation_status === 'QUEUED' && f.event_execution_queue_rows === 0) {
+    if (f.reservation_status === 'QUEUED' && f.event_execution_queue_rows === 0
+      && f.queue_linkage_query_status !== 'FAILED') {
       push('QUEUED_RESERVATION_QUEUE_ROW_MISSING', 'P0', f.display_match, 'queue',
         'reservation status is QUEUED but no matching event_execution_queue row was found by stable identifiers.',
         RAILWAY_SAFE_COMMANDS.eventRebalance);

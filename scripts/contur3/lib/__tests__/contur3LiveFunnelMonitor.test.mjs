@@ -435,6 +435,32 @@ test('3) QUEUED reservation with no queue row is P0 missing queue', () => {
   assert.equal(hit.severity, 'P0');
 });
 
+test('linked queue query failure is P0 unknown evidence, not a missing queue row', () => {
+  const fixtures = [baseFixture({
+    reservation_status: 'QUEUED',
+    due_state: 'DUE_NOW',
+    event_execution_queue_rows: 0,
+    queue_linkage_query_status: 'FAILED',
+    queue_verdict: 'QUEUE_LINKAGE_UNKNOWN',
+  })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {
+    linked_queue_evidence: {
+      ok: false,
+      rows: [],
+      error: 'test linked queue query failure',
+      reservation_id_count: 1,
+    },
+  });
+
+  assert.equal(anomalies.some((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING'), false,
+    'a failed linked query means queue existence is unknown, not missing');
+  const hit = anomalies.find((a) => a.code === 'LINKED_QUEUE_QUERY_FAILED');
+  assert.ok(hit, 'linked queue query failure must raise a bounded P0 condition');
+  assert.equal(hit.severity, 'P0');
+  assert.equal(hit.stage, 'queue/linkage evidence');
+  assert.equal(hit.evidence, 'operation=event_execution_queue.reservation_id; reservation_id_count=1');
+});
+
 test('production regression: queue linkage by reservation_id survives a wrong-day row outside the report window', () => {
   const reportNow = Date.parse('2026-07-29T13:17:03.065Z');
   const reservation = queuedReservation({
