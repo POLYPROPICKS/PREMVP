@@ -506,6 +506,19 @@ export function classifyQueueLifecycle(res, matchedQueueRows, nowMs) {
   return 'QUEUE_ROW_PRESENT';
 }
 
+// Queue aggregates remain scoped to the report window, but Reservation->queue
+// existence is immutable FK evidence and must also include rows loaded directly
+// by reservation_id. This prevents a wrong queue game_start_iso from turning an
+// existing row into a false QUEUED_RESERVATION_QUEUE_ROW_MISSING P0.
+export function findQueueRowsForReservationEvidence(res, windowRows, linkedRows) {
+  const byId = new Map();
+  for (const row of [...(windowRows ?? []), ...(linkedRows ?? [])]) {
+    const key = row?.id ?? `${row?.reservation_id ?? ''}:${row?.idempotency_key ?? ''}`;
+    if (!byId.has(key)) byId.set(key, row);
+  }
+  return findQueueRowsForReservation(res, [...byId.values()]);
+}
+
 // Consumer-handoff diagnosis for one fixture: separates "Ireland consumer must
 // start NOW" (READY + API-visible + entry window still open) from "consumer
 // missed the window" (READY + API-visible + window closed + zero orders).
@@ -734,6 +747,12 @@ export async function collectFunnel(opts = {}) {
     q.gte('game_start_iso', fromUtc).lte('game_start_iso', toUtc).order('game_start_iso', { ascending: true }));
   reads.event_execution_queue = await selectAll(supabase, 'event_execution_queue', (q) =>
     q.gte('game_start_iso', fromUtc).lte('game_start_iso', toUtc));
+  const reportReservationIds = reads.night_event_reservations.rows
+    .map((row) => row.id)
+    .filter((id) => typeof id === 'string' && id.length > 0);
+  const linkedQueueRead = reportReservationIds.length > 0
+    ? await selectAll(supabase, 'event_execution_queue', (q) => q.in('reservation_id', reportReservationIds))
+    : { ok: true, rows: [], error: null };
   reads.executor_order_events = await selectAll(supabase, 'executor_order_events', (q) => q.gte('created_at', fromUtc));
   reads.executor_audit_events = await selectAll(supabase, 'executor_audit_events', (q) => q.gte('created_at', fromUtc));
   reads.job_runs = await selectAll(supabase, 'job_runs', (q) => q.gte('created_at', fromUtc));
@@ -746,6 +765,7 @@ export async function collectFunnel(opts = {}) {
   const signals = reads.generated_signal_pairs.rows;
   const reservations = reads.night_event_reservations.rows;
   const queueRows = reads.event_execution_queue.rows;
+  const linkedQueueRows = linkedQueueRead.ok ? linkedQueueRead.rows : [];
   const orderRows = reads.executor_order_events.ok ? reads.executor_order_events.rows : [];
   const auditRows = reads.executor_audit_events.ok ? reads.executor_audit_events.rows : [];
 
@@ -766,7 +786,10 @@ export async function collectFunnel(opts = {}) {
     const res = findReservationForGroup(g, reservations);
     // Stable-identifier queue matching first; legacy FIXTURES team-text
     // matching only as a fallback for known fixtures without a reservation join.
-    let queue = res ? findQueueRowsForReservation(res, queueRows) : [];
+    const windowQueue = res ? findQueueRowsForReservation(res, queueRows) : [];
+    let queue = res
+      ? findQueueRowsForReservationEvidence(res, windowQueue, linkedQueueRows)
+      : [];
     if (!queue.length && fx) queue = fixtureQueue(fx);
     const queueVerdict = classifyQueueLifecycle(res, queue, nowMs);
     const reservationStatus = res ? (res.status ?? 'RESERVED') : 'NONE';
@@ -817,6 +840,7 @@ export async function collectFunnel(opts = {}) {
       due_minsk: res?.game_start_iso ? minskString(new Date(res.game_start_iso)) : null,
       due_state: ds,
       event_execution_queue_rows: queue.length,
+      window_event_execution_queue_rows: windowQueue.length,
       queue_verdict: queueVerdict,
       queue_created: queue.length > 0,
       queue_actionable: queueVerdict === 'QUEUE_READY_ACTIONABLE',
@@ -865,10 +889,10 @@ export async function collectFunnel(opts = {}) {
   const reservedCount = fixtures.filter((f) => f.reservation_status !== 'NONE').length;
   const fallbackReserved = fixtures.filter((f) => f.fallback_used).length;
   const dueNow = fixtures.filter((f) => f.due_state === 'DUE_NOW').length;
-  const queued = fixtures.reduce((n, f) => n + f.event_execution_queue_rows, 0);
-  const queueCreated = fixtures.filter((f) => f.queue_created).length;
-  const queueActionable = fixtures.filter((f) => f.queue_actionable).length;
-  const queueWindowClosed = fixtures.filter((f) => f.queue_entry_window_closed).length;
+  const queued = fixtures.reduce((n, f) => n + f.window_event_execution_queue_rows, 0);
+  const queueCreated = fixtures.filter((f) => f.window_event_execution_queue_rows > 0).length;
+  const queueActionable = fixtures.filter((f) => f.window_event_execution_queue_rows > 0 && f.queue_actionable).length;
+  const queueWindowClosed = fixtures.filter((f) => f.window_event_execution_queue_rows > 0 && f.queue_entry_window_closed).length;
   const skippedNoMarket = fixtures.filter((f) => f.queue_verdict === 'SKIPPED_NO_EXECUTABLE_MARKET').length;
   const apiVisible = fixtures.filter((f) => f.executor_api_visible === true).length;
   const orders = fixtures.reduce((n, f) => n + f.order_events, 0);

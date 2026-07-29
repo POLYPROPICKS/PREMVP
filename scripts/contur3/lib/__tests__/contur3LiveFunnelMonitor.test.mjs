@@ -15,6 +15,7 @@ import {
   RAILWAY_SAFE_COMMANDS,
   TIER_PROBE_RUNNER_NOTE,
   findQueueRowsForReservation,
+  findQueueRowsForReservationEvidence,
   queueEntryWindowState,
   classifyQueueLifecycle,
   SKIPPED_NO_EXECUTABLE_MARKET_REASON,
@@ -432,6 +433,42 @@ test('3) QUEUED reservation with no queue row is P0 missing queue', () => {
   const hit = anomalies.find((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING');
   assert.ok(hit, 'QUEUED reservation without a queue row must raise the missing-queue anomaly');
   assert.equal(hit.severity, 'P0');
+});
+
+test('production regression: queue linkage by reservation_id survives a wrong-day row outside the report window', () => {
+  const reportNow = Date.parse('2026-07-29T13:17:03.065Z');
+  const reservation = queuedReservation({
+    id: 'b034ce00-f601-462c-a052-3a5a04b2fcf2',
+    game_start_iso: '2026-07-28T22:40:00Z',
+  });
+  const wrongDayLinkedRow = readyQueueRow({
+    id: '606fdb02-715b-4aa6-a717-4c8d5e73bf28',
+    reservation_id: reservation.id,
+    queued_at: '2026-07-28T21:30:34.864Z',
+    game_start_iso: '2026-07-27T22:40:00Z',
+    latest_entry_iso: '2026-07-27T22:37:00Z',
+  });
+
+  // The ordinary queue cohort is empty because its game_start_iso predates
+  // the report window start (2026-07-28T13:17:03.065Z).
+  const rows = findQueueRowsForReservationEvidence(reservation, [], [wrongDayLinkedRow]);
+  assert.equal(rows.length, 1);
+  assert.equal(classifyQueueLifecycle(reservation, rows, reportNow), 'QUEUE_READY_ENTRY_WINDOW_CLOSED');
+
+  const anomalies = detectAnomalies({ summary: {} }, [baseFixture({
+    reservation_status: 'QUEUED',
+    due_state: 'EXPIRED',
+    event_execution_queue_rows: rows.length,
+    queue_verdict: 'QUEUE_READY_ENTRY_WINDOW_CLOSED',
+  })], {});
+  assert.equal(anomalies.some((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING'), false);
+
+  assert.equal(findQueueRowsForReservationEvidence(reservation, [], []).length, 0);
+  assert.equal(findQueueRowsForReservationEvidence(
+    reservation,
+    [readyQueueRow({ reservation_id: reservation.id })],
+    [],
+  ).length, 1);
 });
 
 test('4) Due reservation not queued remains due rebalance required', () => {
