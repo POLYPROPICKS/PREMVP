@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import http from 'node:http';
 
 import {
   classifyMarket,
@@ -15,6 +16,7 @@ import {
   RAILWAY_SAFE_COMMANDS,
   TIER_PROBE_RUNNER_NOTE,
   findQueueRowsForReservation,
+  findQueueRowsForReservationEvidence,
   queueEntryWindowState,
   classifyQueueLifecycle,
   SKIPPED_NO_EXECUTABLE_MARKET_REASON,
@@ -27,6 +29,7 @@ import {
   isUnconfirmedOrderEvent,
   classifyOrderEvent,
   orderEventMatchesReservation,
+  collectFunnel,
 } from '../contur3LiveFunnelMonitor.mjs';
 
 function baseFixture(overrides = {}) {
@@ -432,6 +435,142 @@ test('3) QUEUED reservation with no queue row is P0 missing queue', () => {
   const hit = anomalies.find((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING');
   assert.ok(hit, 'QUEUED reservation without a queue row must raise the missing-queue anomaly');
   assert.equal(hit.severity, 'P0');
+});
+
+test('linked queue query failure is P0 unknown evidence, not a missing queue row', () => {
+  const fixtures = [baseFixture({
+    reservation_status: 'QUEUED',
+    due_state: 'DUE_NOW',
+    event_execution_queue_rows: 0,
+    queue_linkage_query_status: 'FAILED',
+    queue_verdict: 'QUEUE_LINKAGE_UNKNOWN',
+  })];
+  const anomalies = detectAnomalies({ summary: {} }, fixtures, {
+    linked_queue_evidence: {
+      ok: false,
+      rows: [],
+      error: 'test linked queue query failure',
+      reservation_id_count: 1,
+    },
+  });
+
+  assert.equal(anomalies.some((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING'), false,
+    'a failed linked query means queue existence is unknown, not missing');
+  const hit = anomalies.find((a) => a.code === 'LINKED_QUEUE_QUERY_FAILED');
+  assert.ok(hit, 'linked queue query failure must raise a bounded P0 condition');
+  assert.equal(hit.severity, 'P0');
+  assert.equal(hit.stage, 'queue/linkage evidence');
+  assert.equal(hit.evidence, 'operation=event_execution_queue.reservation_id; reservation_id_count=1');
+});
+
+test('production regression: queue linkage by reservation_id survives a wrong-day row outside the report window', () => {
+  const reportNow = Date.parse('2026-07-29T13:17:03.065Z');
+  const reservation = queuedReservation({
+    id: 'b034ce00-f601-462c-a052-3a5a04b2fcf2',
+    game_start_iso: '2026-07-28T22:40:00Z',
+  });
+  const wrongDayLinkedRow = readyQueueRow({
+    id: '606fdb02-715b-4aa6-a717-4c8d5e73bf28',
+    reservation_id: reservation.id,
+    queued_at: '2026-07-28T21:30:34.864Z',
+    game_start_iso: '2026-07-27T22:40:00Z',
+    latest_entry_iso: '2026-07-27T22:37:00Z',
+  });
+
+  // The ordinary queue cohort is empty because its game_start_iso predates
+  // the report window start (2026-07-28T13:17:03.065Z).
+  const rows = findQueueRowsForReservationEvidence(reservation, [], [wrongDayLinkedRow]);
+  assert.equal(rows.length, 1);
+  assert.equal(classifyQueueLifecycle(reservation, rows, reportNow), 'QUEUE_READY_ENTRY_WINDOW_CLOSED');
+
+  const anomalies = detectAnomalies({ summary: {} }, [baseFixture({
+    reservation_status: 'QUEUED',
+    due_state: 'EXPIRED',
+    event_execution_queue_rows: rows.length,
+    queue_verdict: 'QUEUE_READY_ENTRY_WINDOW_CLOSED',
+  })], {});
+  assert.equal(anomalies.some((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING'), false);
+
+  assert.equal(findQueueRowsForReservationEvidence(reservation, [], []).length, 0);
+  assert.equal(findQueueRowsForReservationEvidence(
+    reservation,
+    [readyQueueRow({ reservation_id: reservation.id })],
+    [],
+  ).length, 1);
+});
+
+test('linked queue evidence outside the event window does not inflate aggregate queue metrics', async () => {
+  const nowMs = Date.now();
+  const gameStartIso = new Date(nowMs + 60 * 60_000).toISOString();
+  const latestEntryIso = new Date(nowMs + 30 * 60_000).toISOString();
+  const outsideWindowIso = new Date(nowMs - 48 * 60 * 60_000).toISOString();
+  const reservation = queuedReservation({
+    id: 'aggregate-reservation-1',
+    game_start_iso: gameStartIso,
+  });
+  const windowQueueRow = readyQueueRow({
+    id: 'aggregate-window-queue-1',
+    reservation_id: reservation.id,
+    game_start_iso: gameStartIso,
+    latest_entry_iso: latestEntryIso,
+  });
+  const linkedOutsideWindowRow = readyQueueRow({
+    id: 'aggregate-linked-queue-1',
+    reservation_id: reservation.id,
+    game_start_iso: outsideWindowIso,
+    latest_entry_iso: outsideWindowIso,
+  });
+  const server = http.createServer((req, res) => {
+    const url = new URL(req.url, 'http://127.0.0.1');
+    const table = url.pathname.split('/').pop();
+    let rows = [];
+    if (table === 'generated_signal_pairs') {
+      rows = [{
+        event_slug: 'portugal-vs-spain',
+        event_title: 'Portugal vs Spain',
+        market_slug: 'portugal-vs-spain-moneyline',
+        selected_outcome: 'Portugal',
+        game_start_iso: gameStartIso,
+      }];
+    } else if (table === 'night_event_reservations') {
+      rows = [reservation];
+    } else if (table === 'event_execution_queue') {
+      rows = url.searchParams.has('reservation_id')
+        ? [linkedOutsideWindowRow]
+        : [windowQueueRow];
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify(rows));
+  });
+  const previousUrl = process.env.SUPABASE_URL;
+  const previousRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+  process.env.SUPABASE_URL = `http://127.0.0.1:${port}`;
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-service-role-key';
+  try {
+    const report = await collectFunnel({ lookbackHours: 24, nextHours: 12 });
+    const fixture = report.fixtures.find((f) => f.reservation_id === reservation.id);
+
+    assert.ok(fixture, 'the Reservation must be represented in the funnel report');
+    assert.equal(fixture.event_execution_queue_rows, 2,
+      'Reservation linkage must retain both the window and linked evidence rows');
+    assert.equal(fixture.window_event_execution_queue_rows, 1,
+      'only the normal event-window queue row belongs to aggregate metrics');
+    assert.equal(fixture.queue_verdict, 'QUEUE_READY_ACTIONABLE');
+    assert.equal(report.anomalies.some((a) => a.code === 'QUEUED_RESERVATION_QUEUE_ROW_MISSING'), false);
+    assert.equal(report.summary.queued, 1);
+    assert.equal(report.summary.queue_created, 1);
+    assert.equal(report.summary.queue_actionable, 1);
+    assert.equal(report.summary.queue_entry_window_closed, 0);
+  } finally {
+    if (previousUrl === undefined) delete process.env.SUPABASE_URL;
+    else process.env.SUPABASE_URL = previousUrl;
+    if (previousRole === undefined) delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+    else process.env.SUPABASE_SERVICE_ROLE_KEY = previousRole;
+    await new Promise((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
 });
 
 test('4) Due reservation not queued remains due rebalance required', () => {
