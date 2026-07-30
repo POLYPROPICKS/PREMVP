@@ -45,6 +45,10 @@ import {
   type PlanningAnchorDecision,
 } from "./planningAnchor";
 import {
+  isCleanEsportsFullMatchCandidate,
+  resolveEsportsGroupPolicy,
+} from "./esportsGroupPolicy";
+import {
   buildFullmatchRejectionEvidence,
   buildFullmatchRejectionPreview,
   type FullmatchRejectionCandidateCapture,
@@ -54,6 +58,7 @@ import {
 } from "./fullmatchRejectionEvidence";
 import {
   resolveMarketAnchorDecision,
+  type MarketAnchorDecision,
   type MarketAnchorInput,
   type MarketAnchorReasonCode,
 } from "@/lib/contur3/taxonomy";
@@ -729,10 +734,14 @@ export async function buildReservationPlan(
     // rejected by the full-match gate can be explained without re-running the
     // classifier. Purely observational -- nothing below reads this buffer.
     const groupAnchorCaptures: FullmatchRejectionCandidateCapture[] = [];
+    // The canonical decision per candidate, kept so the esports GROUP policy
+    // below can be folded over the same decisions without re-classifying.
+    const canonicalByCandidate = new Map<FireModelCandidate, MarketAnchorDecision>();
     for (const candidate of ranked) {
       const anchorInput = candidateAnchorInput(candidate);
       const canonical = resolveMarketAnchorDecision(anchorInput);
       groupAnchorCaptures.push({ anchorInput, decision: canonical });
+      canonicalByCandidate.set(candidate, canonical);
       if (canonical.allowed) {
         groupHasFullmatch = true;
         if (canonical.market_class === "allowed_fullmatch_moneyline") allowedMoneylineCount += 1;
@@ -783,8 +792,33 @@ export async function buildReservationPlan(
         })
       );
     }
-    const planningAllowed = (c: FireModelCandidate): boolean =>
-      planningAnchorByCandidate.get(c)?.allowed_for_planning === true;
+    // Founder esports full-match policy, decided over the WHOLE physical group
+    // from the canonical decisions already taken above. Two effects, both
+    // confined to inferred_sport === "esport":
+    //   ALLOW  — a group whose every market settles over the whole match/series
+    //            may anchor, even though each market carries the by-sport class
+    //            esports_non_policy.
+    //   REJECT — a group carrying any true sub-event market (Map N, Game N,
+    //            rounds, kills, props) is rejected ENTIRELY; its clean
+    //            whole-match sibling is never harvested out of it.
+    // Non-esports groups return NOT_ESPORTS_GROUP and are untouched.
+    const esportsGroupPolicy = resolveEsportsGroupPolicy({
+      sport: ranked[0]?.inferred_sport ?? null,
+      candidates: groupAnchorCaptures.map((capture) => ({ canonical: capture.decision })),
+    });
+    const esportsMixedScopeBlocked = esportsGroupPolicy.verdict === "REJECT_GROUP_MIXED_SCOPE";
+    const esportsCleanGroupAllowed =
+      esportsGroupPolicy.verdict === "ALLOW_CLEAN_ESPORTS_FULL_MATCH";
+
+    const planningAllowed = (c: FireModelCandidate): boolean => {
+      // Fail-closed: a mixed esports occurrence blocks every candidate in it,
+      // including one the per-candidate anchor would otherwise allow.
+      if (esportsMixedScopeBlocked) return false;
+      if (planningAnchorByCandidate.get(c)?.allowed_for_planning === true) return true;
+      if (!esportsCleanGroupAllowed) return false;
+      const canonical = canonicalByCandidate.get(c);
+      return canonical !== undefined && isCleanEsportsFullMatchCandidate(canonical);
+    };
 
     // A valid full-match market existed but the anchor step still found no
     // allowed representative -- the exact "classifier discarded a valid
@@ -797,9 +831,12 @@ export async function buildReservationPlan(
       skippedNoFullmatchAnchor += 1;
       planningAnchorRejectedCount += 1;
       // The representative's planning reason -- why this physical event could
-      // not anchor at all.
-      const planningReason =
-        planningAnchorByCandidate.get(executableAnchorRanked[0])?.reason_code ?? "REJECTED";
+      // not anchor at all. A mixed esports occurrence is attributed to the GROUP
+      // policy, so it is never confused with a per-candidate ESPORTS_NON_POLICY
+      // or PARTIAL_EVENT_SCOPE rejection.
+      const planningReason = esportsMixedScopeBlocked
+        ? "REJECT_GROUP_MIXED_SCOPE"
+        : planningAnchorByCandidate.get(executableAnchorRanked[0])?.reason_code ?? "REJECTED";
       planningAnchorReasonCounts[planningReason] =
         (planningAnchorReasonCounts[planningReason] ?? 0) + 1;
       const rejection = anchorDecisions[0]?.decision;
