@@ -172,6 +172,7 @@ export function buildQueueRow(
   best: FireModelCandidate,
   rebalanceRunId: string
 ): EventExecutionQueueRow {
+  const reservationStartMs = Date.parse(reservation.game_start_iso);
   const orderKey = `${best.condition_id}:${best.token_id}:${best.side}`;
   const idem = createHash("sha256")
     .update(`${reservation.plan_run_id}__${orderKey}`)
@@ -188,7 +189,7 @@ export function buildQueueRow(
     event_slug: best.event_slug ?? reservation.event_slug,
     sport: best.inferred_sport,
     league: reservation.league,
-    game_start_iso: best.diagnostics.game_start_iso,
+    game_start_iso: reservation.game_start_iso,
     condition_id: best.condition_id,
     token_id: best.token_id,
     side: best.side,
@@ -202,8 +203,8 @@ export function buildQueueRow(
     // legacy hardcoded constant). isExecutableMarket() already rejects any
     // candidate with a non-positive/non-finite stake before it can reach here.
     stake_usd: best.stake_usd,
-    preferred_entry_iso: preferredEntryIso(new Date(best.diagnostics.game_start_iso).getTime()),
-    latest_entry_iso: latestEntryIso(new Date(best.diagnostics.game_start_iso).getTime()),
+    preferred_entry_iso: preferredEntryIso(reservationStartMs),
+    latest_entry_iso: latestEntryIso(reservationStartMs),
     selection_rank: 1,
     selection_reason: isContractA
       ? `CONTRACT_A_AUTHORITATIVE_MARKET: selector=${reservationSelectorId}`
@@ -575,6 +576,19 @@ export interface DueReservationSelection {
   blockedCandidates?: BlockedCandidateDiag[];
 }
 
+function candidateMatchesReservationStart(
+  reservation: NightEventReservationRow,
+  candidate: FireModelCandidate
+): boolean {
+  const reservationStartMs = Date.parse(reservation.game_start_iso);
+  const candidateStartMs = Date.parse(candidate.diagnostics.game_start_iso);
+  return Number.isFinite(reservationStartMs) && Number.isFinite(candidateStartMs) && reservationStartMs === candidateStartMs;
+}
+
+function executionEventStartMismatchReason(): string {
+  return "EXECUTION_EVENT_START_MISMATCH";
+}
+
 /**
  * Pure per-reservation market selection (no DB reads/writes). Extracted from
  * the rebalance loop so the exact same authoritative-candidate-lock logic
@@ -657,10 +671,16 @@ function selectQueueRowForDueReservation(
 
     const executableCheck = authoritativeCandidate ? isExecutableMarket(authoritativeCandidate) : null;
 
-    if (authoritativeCandidate === null || !executableCheck!.executable) {
+    if (
+      authoritativeCandidate === null ||
+      !executableCheck!.executable ||
+      !candidateMatchesReservationStart(reservation, authoritativeCandidate)
+    ) {
       const failReason =
         identityFailReason ??
-        `CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE: ${executableCheck!.rejectReason}`;
+        (authoritativeCandidate !== null && !candidateMatchesReservationStart(reservation, authoritativeCandidate)
+          ? executionEventStartMismatchReason()
+          : `CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE: ${executableCheck!.rejectReason}`);
       // Safe diagnostics only: reservation/selector ids, which resolution mode
       // was attempted, and the match count. Never logs condition/token/side
       // values, provider payloads, secrets, or env.
@@ -706,7 +726,8 @@ function selectQueueRowForDueReservation(
     };
   }
 
-  const tier1Candidates = eventCandidates.filter((c) => planTierLabel(c) === EXECUTABLE_TIER);
+  const startMatchedCandidates = eventCandidates.filter((c) => candidateMatchesReservationStart(reservation, c));
+  const tier1Candidates = startMatchedCandidates.filter((c) => planTierLabel(c) === EXECUTABLE_TIER);
   const tier1WithCondToken = tier1Candidates.filter(
     (c) => Boolean(c.condition_id) && Boolean(c.token_id)
   );
@@ -716,7 +737,7 @@ function selectQueueRowForDueReservation(
       (c.live_rejection_reason === "SIDE_MAPPING_UNKNOWN_BLOCKED" ||
         c.live_block_reason === "SIDE_MAPPING_UNKNOWN_BLOCKED")
   );
-  const eventMarkets = eventCandidates.filter((c) => {
+  const eventMarkets = startMatchedCandidates.filter((c) => {
     const { executable, rejectReason } = isExecutableMarket(c);
     if (!executable) {
       console.log(
@@ -727,6 +748,14 @@ function selectQueueRowForDueReservation(
   }).sort(compareCandidateQuality);
 
   if (eventMarkets.length === 0) {
+    if (eventCandidates.length > 0 && startMatchedCandidates.length === 0) {
+      return {
+        outcome: "SKIPPED",
+        reason: executionEventStartMismatchReason(),
+        queueRow: null,
+        blockedCandidates: eventCandidates.slice(0, 5).map(buildBlockedCandidateDiag),
+      };
+    }
     const isSideMissingBlocker = tier1WithCondToken.length > 0 && tier1SideBlocked.length > 0;
     const skipReason = isSideMissingBlocker
       ? `NO_EXECUTABLE_TIER1_MARKET_AT_REBALANCE_SIDE_MISSING: candidate_count=${eventCandidates.length} tier1_count=${tier1Candidates.length} tier1_with_cond_token=${tier1WithCondToken.length} tier1_side_blocked=${tier1SideBlocked.length} examples=${tier1SideBlocked.slice(0, 2).map((c) => c.market_slug ?? c.event_slug ?? "?").join(",")}`
@@ -740,6 +769,14 @@ function selectQueueRowForDueReservation(
   }
 
   const best = eventMarkets[0];
+  if (!candidateMatchesReservationStart(reservation, best)) {
+    return {
+      outcome: "SKIPPED",
+      reason: executionEventStartMismatchReason(),
+      queueRow: null,
+      blockedCandidates: [buildBlockedCandidateDiag(best)],
+    };
+  }
   const row = buildQueueRow(reservation, best, rebalanceRunId);
   return {
     outcome: "QUEUED",
