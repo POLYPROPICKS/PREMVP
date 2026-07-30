@@ -1,11 +1,14 @@
 // scripts/preview-night-event-reservations.ts
 //
 // Dry-run preview of the Contur3 event-first night reservation plan.
-//   npm exec tsx scripts/preview-night-event-reservations.ts            # dry-run, no writes
-//   npm exec tsx scripts/preview-night-event-reservations.ts --write    # persist (safe env only)
+//   npm exec tsx scripts/preview-night-event-reservations.ts                    # dry-run, no writes
+//   npm exec tsx scripts/preview-night-event-reservations.ts --write            # persist (safe env only)
+//   npm exec tsx scripts/preview-night-event-reservations.ts --all-rejection-evidence  # print all rejected groups
 //
 // Read-only by default. No order placement. The --write flag persists frozen
 // reservations and must only be used against a configured Supabase env.
+// The --all-rejection-evidence flag prints rejected full-match groups and is
+// mutually exclusive with --write.
 //
 // Exits 1 if any reservation contains market-level text in key or title (P0 guard).
 
@@ -17,13 +20,28 @@ const MARKET_LEVEL_FAIL_RE =
 async function main() {
   loadEnvConfig(process.cwd());
   const write = process.argv.includes("--write");
+  const allRejectionEvidence = process.argv.includes("--all-rejection-evidence");
   const force = process.argv.includes("--force");
+
+  if (allRejectionEvidence && write) {
+    console.error("[preview-reservations] operation=argument_validation message=--all-rejection-evidence cannot be combined with --write");
+    process.exit(1);
+  }
 
   const { buildReservationPlan, persistReservationPlan } = await import(
     "../lib/executor/nightEventReservations"
   );
+  const { buildFounderRejectionReport } = await import(
+    "../lib/executor/fullmatchRejectionFounderReport"
+  );
 
   const plan = await buildReservationPlan(Date.now());
+
+  if (allRejectionEvidence) {
+    const report = buildFounderRejectionReport(plan.fullmatch_rejection);
+    console.log(JSON.stringify(report, null, 2));
+    process.exit(0);
+  }
 
   console.log("=== NIGHT EVENT RESERVATION PREVIEW ===");
   console.log(`plan_run_id:    ${plan.plan_run_id}`);
