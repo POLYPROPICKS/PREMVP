@@ -1,6 +1,8 @@
 // Markets-first sports discovery
 // Phase 3.6B — Production-grade markets-first discovery
 
+import { randomUUID } from "node:crypto";
+
 import type {
   SportsMarketCandidate,
   GameGroup,
@@ -336,6 +338,10 @@ export async function discoverSportsMarkets(
 
   // Classify events and flatten nested markets with event context injected
   const keysetMarkets: Record<string, unknown>[] = [];
+  // Raw confirmed-sports events (pre-flatten, pre-augment) captured for the
+  // broad inventory writer below -- the least lossy point at which "provider
+  // sports confirmation and nested event/market availability" both exist.
+  const confirmedSportsEventsForInventory: Record<string, unknown>[] = [];
   let confirmedSportsCount = 0;
 
   for (const ev of keysetResult.events) {
@@ -348,6 +354,7 @@ export async function discoverSportsMarkets(
 
     if (!isConfirmedSports) continue;
     confirmedSportsCount++;
+    confirmedSportsEventsForInventory.push(event);
 
     const eventStartTime = typeof event.startTime === "string" ? event.startTime : undefined;
     const eventId = String(event.id ?? "");
@@ -383,6 +390,40 @@ export async function discoverSportsMarkets(
   }
 
   counts.confirmedSportsEvents48h = confirmedSportsCount;
+
+  // ── Broad sports inventory persistence (P0-A, Option B) ──────────────────
+  // Captures every confirmed-sports event and ALL of its nested markets with
+  // exact provider identity, BEFORE the 24h research horizon, odds corridor,
+  // two-outcome restriction, groupMarketsByGame/primaryMarket selection,
+  // ranking, or product-feed limit run below. Fail-open: a write failure
+  // never changes discoverSportsMarkets's own returned market set.
+  try {
+    const { buildSportsEventMarketInventoryRows, writeSportsEventMarketInventory } =
+      await import("./cacheSportsEventMarketInventory");
+    const { rows: inventoryRows, diagnostics: inventoryDiag } = buildSportsEventMarketInventoryRows(
+      confirmedSportsEventsForInventory,
+      { observedAt: now.toISOString(), snapshotRunId: randomUUID() },
+    );
+    counts.sportsInventoryEventsCaptured = inventoryDiag.eventsSeen;
+    counts.sportsInventoryMarketsCaptured = inventoryDiag.rowsBuilt;
+    counts.sportsInventorySiblingMax = inventoryDiag.maxSiblingMarketCount;
+    counts.sportsInventoryRowsSkippedMissingIdentity =
+      inventoryDiag.rowsSkippedMissingEventId +
+      inventoryDiag.rowsSkippedMissingMarketId +
+      inventoryDiag.rowsSkippedInvalidStart;
+
+    const writeResult = await writeSportsEventMarketInventory(inventoryRows);
+    counts.sportsInventoryWriteFailed = writeResult.failed;
+    if (writeResult.failed) {
+      warnings.push(
+        `SPORTS_INVENTORY_WRITE_FAILED: ${writeResult.errorCode ?? "unknown"} ${writeResult.errorMessage ?? ""}`.trim(),
+      );
+    }
+  } catch (inventoryErr) {
+    counts.sportsInventoryWriteFailed = true;
+    const msg = inventoryErr instanceof Error ? inventoryErr.message.slice(0, 180) : String(inventoryErr);
+    warnings.push(`SPORTS_INVENTORY_WRITE_FAILED: ${msg}`);
+  }
 
   // 3b. Decide whether to use event spine or fall back to flat /markets
   // Spine is used if it returned confirmed sports events without a hard error.

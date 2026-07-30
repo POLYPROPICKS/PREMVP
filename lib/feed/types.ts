@@ -533,6 +533,12 @@ export interface SportsDiscoveryCounts {
   researchExcludedOddsAboveMax?: number;
   researchExcludedOddsInvalid?: number;
   researchMarketsByFamily?: Record<string, number>;
+  // Broad sports inventory diagnostics (P0-A, Option B)
+  sportsInventoryEventsCaptured?: number;
+  sportsInventoryMarketsCaptured?: number;
+  sportsInventorySiblingMax?: number;
+  sportsInventoryRowsSkippedMissingIdentity?: number;
+  sportsInventoryWriteFailed?: boolean;
 }
 
 export interface SportsDiscoverySample {
