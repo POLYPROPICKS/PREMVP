@@ -1,16 +1,97 @@
-// Broad sports event/market inventory — captured immediately after provider
-// sports-tag confirmation and BEFORE any horizon, odds-corridor, outcome-count,
-// grouping, ranking, or product-feed filter.
+// Broad sports event/market inventory — captured from EVERY raw keyset event,
+// BEFORE the sports-confirmation gate and before any horizon, odds-corridor,
+// outcome-count, grouping, ranking, or product-feed filter. Sports confirmation
+// is stored as classification metadata on each row (is_confirmed_sports,
+// sports_confirmation_source), never used to exclude a row from capture.
 //
 // Pure mapper (buildSportsEventMarketInventoryRows): no I/O, no eligibility
 // filtering. Only skips rows missing mandatory exact identity (provider event
 // id, provider market id, valid event start). Everything else is captured
-// verbatim, including props, maps, rounds and 3-way markets.
+// verbatim, including props, maps, rounds, 3-way markets, and events that fail
+// sports confirmation entirely.
 //
 // Writer (writeSportsEventMarketInventory): bounded batched upsert against
 // public.sports_event_market_inventory, keyed on the occurrence-safe unique
 // constraint (provider, provider_event_id, provider_market_id, event_start_iso).
 // Fail-open: callers must treat a failed write as a warning, never an abort.
+//
+// Producer-only opt-in: this module is only ever imported (dynamically) from
+// discoverSportsMarkets.ts when `persistInventory === true`, which only
+// scripts/generate-signals.ts sets. Every other caller (buildLandingCards,
+// buildSportsLandingCards, debug HTTP routes) never touches this module.
+
+export type SportsConfirmationSource =
+  | "specific_sports_tag"
+  | "generic_sports_tag_only"
+  | "no_matching_sports_tag"
+  | "sports_metadata_unavailable"
+  | "unrecognized_event_tag_shape";
+
+export interface SportsConfirmationResult {
+  isConfirmedSports: boolean;
+  source: SportsConfirmationSource;
+}
+
+const GENERIC_SPORTS_TAGS = new Set(["1", "100639"]);
+
+/**
+ * Pure classifier for one raw provider event's sports-confirmation status.
+ * Safely handles both observed provider tag shapes: `string[]` and
+ * `Array<{id?, label?, slug?}>`. Never excludes an event -- callers must
+ * store the result as row metadata, not use it to drop the event from capture.
+ *
+ * Mirrors the exact confirmation boolean used by the existing discovery
+ * filtering loop (specificSportsTagIds when non-empty, else the raw
+ * sportsTagIds fallback) so the stored isConfirmedSports value is identical
+ * to what that loop computes for its own (unchanged) filtering decision.
+ */
+export function classifySportsConfirmation(
+  event: Record<string, unknown>,
+  ctx: {
+    specificSportsTagIds: Set<string>;
+    sportsTagIds: string[];
+    sportsMetadataAvailable: boolean;
+  },
+): SportsConfirmationResult {
+  const rawTags = event.tags;
+  if (!Array.isArray(rawTags)) {
+    return { isConfirmedSports: false, source: "unrecognized_event_tag_shape" };
+  }
+
+  const tagIds: string[] = [];
+  let sawUnrecognizedEntry = false;
+  for (const t of rawTags) {
+    if (typeof t === "string") {
+      tagIds.push(t);
+    } else if (t && typeof t === "object" && "id" in (t as Record<string, unknown>)) {
+      tagIds.push(String((t as Record<string, unknown>).id ?? ""));
+    } else {
+      sawUnrecognizedEntry = true;
+    }
+  }
+
+  if (tagIds.length === 0 && (sawUnrecognizedEntry || rawTags.length > 0)) {
+    return { isConfirmedSports: false, source: "unrecognized_event_tag_shape" };
+  }
+
+  if (!ctx.sportsMetadataAvailable) {
+    return { isConfirmedSports: false, source: "sports_metadata_unavailable" };
+  }
+
+  const hasSpecific = ctx.specificSportsTagIds.size > 0
+    ? tagIds.some((id) => ctx.specificSportsTagIds.has(id))
+    : tagIds.some((id) => ctx.sportsTagIds.includes(id));
+  if (hasSpecific) {
+    return { isConfirmedSports: true, source: "specific_sports_tag" };
+  }
+
+  const hasGenericOnly = tagIds.length > 0 && tagIds.every((id) => GENERIC_SPORTS_TAGS.has(id));
+  if (hasGenericOnly) {
+    return { isConfirmedSports: false, source: "generic_sports_tag_only" };
+  }
+
+  return { isConfirmedSports: false, source: "no_matching_sports_tag" };
+}
 
 export interface SportsInventoryRawMarket {
   id?: unknown;
@@ -34,6 +115,8 @@ export interface SportsInventoryRawEvent {
   startTime?: unknown;
   tags?: unknown;
   markets?: SportsInventoryRawMarket[];
+  isConfirmedSports: boolean;
+  sportsConfirmationSource: SportsConfirmationSource;
 }
 
 export interface SportsEventMarketInventoryRow {
@@ -56,6 +139,8 @@ export interface SportsEventMarketInventoryRow {
   sportsMarketType: string | null;
   volumeUsd: number | null;
   volume24hrUsd: number | null;
+  isConfirmedSports: boolean;
+  sportsConfirmationSource: SportsConfirmationSource;
   siblingMarketCount: number;
   snapshotRunId: string;
   observedAt: string;
@@ -184,6 +269,8 @@ export function buildSportsEventMarketInventoryRows(
         sportsMarketType: nonEmptyString(mkt.sportsMarketType),
         volumeUsd: toFiniteNumber(mkt.volume),
         volume24hrUsd: toFiniteNumber(mkt.volume24hr),
+        isConfirmedSports: ev.isConfirmedSports,
+        sportsConfirmationSource: ev.sportsConfirmationSource,
         siblingMarketCount: 0, // patched below once the event's row count is known
         snapshotRunId: opts.snapshotRunId,
         observedAt: opts.observedAt,
@@ -270,6 +357,8 @@ function toDbRow(row: SportsEventMarketInventoryRow): Record<string, unknown> {
     sports_market_type: row.sportsMarketType,
     volume_usd: row.volumeUsd,
     volume_24hr_usd: row.volume24hrUsd,
+    is_confirmed_sports: row.isConfirmedSports,
+    sports_confirmation_source: row.sportsConfirmationSource,
     sibling_market_count: row.siblingMarketCount,
     snapshot_run_id: row.snapshotRunId,
     last_observed_at: row.observedAt,

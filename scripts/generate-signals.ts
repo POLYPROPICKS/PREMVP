@@ -15,7 +15,7 @@ import {
   writeFireModel1_1ResearchPairs,
   writeJobRun,
 } from "../lib/feed/cacheGeneratedSignals";
-import { collectWcShadowCandidates, collectEsportShadowCandidates, collectNbaNhlShadowCandidates, collectFullLineOutcomeV1Candidates } from "../lib/feed/discoverSportsMarkets";
+import { discoverSportsMarkets, collectWcShadowCandidates, collectEsportShadowCandidates, collectNbaNhlShadowCandidates, collectFullLineOutcomeV1Candidates } from "../lib/feed/discoverSportsMarkets";
 import type { WcShadowEntry } from "../lib/feed/discoverSportsMarkets";
 import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
 import { FORMULA_VERSION } from "../lib/feed/types";
@@ -392,6 +392,33 @@ async function main() {
         : null;
     const rf = result.researchFunnel;
     console.log(`[generate-signals] research funnel: attempted=${rf?.attempted ?? 0} eligible=${rf?.eligible ?? 0} inserted=${researchSnapshotsInserted} exec_ok=${rf?.execFetchOk ?? 0} exec_empty=${rf?.execFetchEmptyBook ?? 0} exec_failed=${rf?.execFetchFailed ?? 0}`);
+
+    // ── Broad sports inventory persistence (P0-A, producer-only opt-in, fail-open) ──
+    // The ONLY caller in the codebase that sets persistInventory: true. Runs a
+    // separate discoverSportsMarkets pass (buildLandingCards's own internal call
+    // above never sets this option, so it stays read-only) so every raw keyset
+    // event -- not just the isConfirmedSports-filtered subset -- is captured with
+    // its sports-confirmation classification before persistence. Never throws;
+    // a write failure is reported in diagnostics and never blocks signal generation.
+    try {
+      const inventoryResult = await discoverSportsMarkets({ persistInventory: true });
+      const sportsInventorySummary = {
+        eventsCaptured: inventoryResult.counts.sportsInventoryEventsCaptured ?? 0,
+        marketsCaptured: inventoryResult.counts.sportsInventoryMarketsCaptured ?? 0,
+        siblingMax: inventoryResult.counts.sportsInventorySiblingMax ?? 0,
+        rowsSkippedMissingIdentity: inventoryResult.counts.sportsInventoryRowsSkippedMissingIdentity ?? 0,
+        writeFailed: inventoryResult.counts.sportsInventoryWriteFailed ?? false,
+      };
+      diagnostics.sportsInventory = sportsInventorySummary;
+      console.log(
+        `[generate-signals] sports inventory: events=${sportsInventorySummary.eventsCaptured} ` +
+          `markets=${sportsInventorySummary.marketsCaptured} write_failed=${sportsInventorySummary.writeFailed}`,
+      );
+    } catch (inventoryErr) {
+      const inventoryMsg = inventoryErr instanceof Error ? inventoryErr.message : String(inventoryErr);
+      console.warn("[generate-signals] sports inventory persistence failed (non-fatal):", inventoryMsg);
+      diagnostics.sportsInventoryWarning = inventoryMsg;
+    }
 
     // ── WC shadow write (fail-open) ─────────────────────────────────────────
     // Collects WC2026 extra-market candidates excluded by PER_EVENT_CAP=1 and

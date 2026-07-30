@@ -492,6 +492,21 @@ export interface SportsDiscoveryConfig {
   platform: string;
   network: string;
   formulaVersion: string;
+  // Producer-only opt-in for broad sports inventory persistence (P0-A).
+  // Defaults to false so every read/HTTP caller (buildLandingCards,
+  // buildSportsLandingCards, debug routes) stays read-only. Only
+  // scripts/generate-signals.ts sets this to true.
+  persistInventory?: boolean;
+  // Test-only dependency injection for the inventory writer's Supabase repo
+  // port. Never set in production code -- production always uses the real
+  // service-role Supabase client. Structurally compatible with
+  // SportsInventoryRepoPort in lib/feed/cacheSportsEventMarketInventory.ts
+  // without importing it here, keeping this file import-free.
+  persistInventoryRepoPort?: {
+    upsertBatch(
+      rows: Record<string, unknown>[],
+    ): Promise<{ error: { message: string; code?: string } | null; count: number | null }>;
+  };
 }
 
 export interface SportsDiscoveryCounts {

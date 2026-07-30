@@ -1,8 +1,10 @@
 -- Broad sports event/market inventory (P0-A — Option B).
--- Captures every confirmed-sports provider event and ALL of its nested
--- markets immediately after discovery, BEFORE the 24h research horizon,
+-- Captures EVERY raw provider keyset event and ALL of its nested markets,
+-- BEFORE the sports-confirmation gate and before the 24h research horizon,
 -- odds corridor, two-outcome restriction, groupMarketsByGame/primaryMarket
--- selection, ranking, or product-feed limit run against it.
+-- selection, ranking, or product-feed limit run against it. Sports
+-- confirmation is stored as row metadata (is_confirmed_sports,
+-- sports_confirmation_source), never used to exclude a row from capture.
 --
 -- This table is inventory only. It carries no eligibility decision and must
 -- never be read as a candidate list -- filtering happens downstream, with
@@ -37,6 +39,13 @@ CREATE TABLE IF NOT EXISTS public.sports_event_market_inventory (
   volume_usd            numeric NULL,
   volume_24hr_usd       numeric NULL,
 
+  -- Sports confirmation is CLASSIFICATION METADATA, not a capture filter.
+  -- A row with is_confirmed_sports = false is still a fully captured event/
+  -- market -- it simply did not match the specific-sports-tag gate that the
+  -- existing product discovery path still uses to filter separately.
+  is_confirmed_sports          boolean NOT NULL,
+  sports_confirmation_source   text NOT NULL,
+
   sibling_market_count  integer NOT NULL,
   snapshot_run_id       uuid NOT NULL,
 
@@ -47,7 +56,18 @@ CREATE TABLE IF NOT EXISTS public.sports_event_market_inventory (
   -- Occurrence-safe identity: one physical occurrence of one provider market
   -- maps to exactly one row. Never merged, never fuzzy-matched.
   CONSTRAINT uq_seminv_provider_event_market_start
-    UNIQUE (provider, provider_event_id, provider_market_id, event_start_iso)
+    UNIQUE (provider, provider_event_id, provider_market_id, event_start_iso),
+
+  CONSTRAINT chk_seminv_confirmation_source
+    CHECK (
+      sports_confirmation_source IN (
+        'specific_sports_tag',
+        'generic_sports_tag_only',
+        'no_matching_sports_tag',
+        'sports_metadata_unavailable',
+        'unrecognized_event_tag_shape'
+      )
+    )
 );
 
 -- Bounded indexes for future planning reads only. No planning code reads

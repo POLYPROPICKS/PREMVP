@@ -42,6 +42,7 @@ const DEFAULT_CONFIG: SportsDiscoveryConfig = {
   platform: "Polymarket",
   network: "Polygon",
   formulaVersion: "trusted-initial-formula-v1.1",
+  persistInventory: false,
 };
 
 const ESPORTS_SERIES_EVENT_RE =
@@ -338,10 +339,6 @@ export async function discoverSportsMarkets(
 
   // Classify events and flatten nested markets with event context injected
   const keysetMarkets: Record<string, unknown>[] = [];
-  // Raw confirmed-sports events (pre-flatten, pre-augment) captured for the
-  // broad inventory writer below -- the least lossy point at which "provider
-  // sports confirmation and nested event/market availability" both exist.
-  const confirmedSportsEventsForInventory: Record<string, unknown>[] = [];
   let confirmedSportsCount = 0;
 
   for (const ev of keysetResult.events) {
@@ -354,7 +351,6 @@ export async function discoverSportsMarkets(
 
     if (!isConfirmedSports) continue;
     confirmedSportsCount++;
-    confirmedSportsEventsForInventory.push(event);
 
     const eventStartTime = typeof event.startTime === "string" ? event.startTime : undefined;
     const eventId = String(event.id ?? "");
@@ -391,38 +387,66 @@ export async function discoverSportsMarkets(
 
   counts.confirmedSportsEvents48h = confirmedSportsCount;
 
-  // ── Broad sports inventory persistence (P0-A, Option B) ──────────────────
-  // Captures every confirmed-sports event and ALL of its nested markets with
-  // exact provider identity, BEFORE the 24h research horizon, odds corridor,
-  // two-outcome restriction, groupMarketsByGame/primaryMarket selection,
-  // ranking, or product-feed limit run below. Fail-open: a write failure
-  // never changes discoverSportsMarkets's own returned market set.
-  try {
-    const { buildSportsEventMarketInventoryRows, writeSportsEventMarketInventory } =
-      await import("./cacheSportsEventMarketInventory");
-    const { rows: inventoryRows, diagnostics: inventoryDiag } = buildSportsEventMarketInventoryRows(
-      confirmedSportsEventsForInventory,
-      { observedAt: now.toISOString(), snapshotRunId: randomUUID() },
-    );
-    counts.sportsInventoryEventsCaptured = inventoryDiag.eventsSeen;
-    counts.sportsInventoryMarketsCaptured = inventoryDiag.rowsBuilt;
-    counts.sportsInventorySiblingMax = inventoryDiag.maxSiblingMarketCount;
-    counts.sportsInventoryRowsSkippedMissingIdentity =
-      inventoryDiag.rowsSkippedMissingEventId +
-      inventoryDiag.rowsSkippedMissingMarketId +
-      inventoryDiag.rowsSkippedInvalidStart;
+  // ── Broad sports inventory persistence (P0-A, Option B) — producer opt-in only ──
+  // Disabled by default (cfg.persistInventory defaults to false via DEFAULT_CONFIG):
+  // when disabled, NOTHING in this block runs -- no dynamic import, no mapper
+  // execution, no Supabase access, no inventory diagnostics/warnings. Only
+  // scripts/generate-signals.ts ever sets persistInventory: true. Every read/HTTP
+  // caller (buildLandingCards, buildSportsLandingCards, debug routes) inherits the
+  // safe default unmodified.
+  //
+  // When enabled, the mapper input is EVERY raw keysetResult.events entry -- not
+  // the isConfirmedSports-filtered subset used by the loop above. Sports
+  // confirmation is computed per event and stored as row metadata
+  // (is_confirmed_sports, sports_confirmation_source); it never excludes an event
+  // from capture. The loop above's own isConfirmedSports filtering is completely
+  // unchanged and continues to govern the existing product discovery path.
+  if (cfg.persistInventory === true && keysetResult.events.length > 0) {
+    try {
+      const { classifySportsConfirmation, buildSportsEventMarketInventoryRows, writeSportsEventMarketInventory } =
+        await import("./cacheSportsEventMarketInventory");
 
-    const writeResult = await writeSportsEventMarketInventory(inventoryRows);
-    counts.sportsInventoryWriteFailed = writeResult.failed;
-    if (writeResult.failed) {
-      warnings.push(
-        `SPORTS_INVENTORY_WRITE_FAILED: ${writeResult.errorCode ?? "unknown"} ${writeResult.errorMessage ?? ""}`.trim(),
+      const rawEventsForInventory = keysetResult.events.map((ev) => {
+        const event = ev as Record<string, unknown>;
+        const confirmation = classifySportsConfirmation(event, {
+          specificSportsTagIds,
+          sportsTagIds,
+          sportsMetadataAvailable: sportsSuccess,
+        });
+        return {
+          ...event,
+          isConfirmedSports: confirmation.isConfirmedSports,
+          sportsConfirmationSource: confirmation.source,
+        };
+      });
+
+      const { rows: inventoryRows, diagnostics: inventoryDiag } = buildSportsEventMarketInventoryRows(
+        rawEventsForInventory,
+        { observedAt: now.toISOString(), snapshotRunId: randomUUID() },
       );
+      counts.sportsInventoryEventsCaptured = inventoryDiag.eventsSeen;
+      counts.sportsInventoryMarketsCaptured = inventoryDiag.rowsBuilt;
+      counts.sportsInventorySiblingMax = inventoryDiag.maxSiblingMarketCount;
+      counts.sportsInventoryRowsSkippedMissingIdentity =
+        inventoryDiag.rowsSkippedMissingEventId +
+        inventoryDiag.rowsSkippedMissingMarketId +
+        inventoryDiag.rowsSkippedInvalidStart;
+
+      const writeResult = await writeSportsEventMarketInventory(
+        inventoryRows,
+        cfg.persistInventoryRepoPort ? { repoPort: cfg.persistInventoryRepoPort } : {},
+      );
+      counts.sportsInventoryWriteFailed = writeResult.failed;
+      if (writeResult.failed) {
+        warnings.push(
+          `SPORTS_INVENTORY_WRITE_FAILED: ${writeResult.errorCode ?? "unknown"} ${writeResult.errorMessage ?? ""}`.trim(),
+        );
+      }
+    } catch (inventoryErr) {
+      counts.sportsInventoryWriteFailed = true;
+      const msg = inventoryErr instanceof Error ? inventoryErr.message.slice(0, 180) : String(inventoryErr);
+      warnings.push(`SPORTS_INVENTORY_WRITE_FAILED: ${msg}`);
     }
-  } catch (inventoryErr) {
-    counts.sportsInventoryWriteFailed = true;
-    const msg = inventoryErr instanceof Error ? inventoryErr.message.slice(0, 180) : String(inventoryErr);
-    warnings.push(`SPORTS_INVENTORY_WRITE_FAILED: ${msg}`);
   }
 
   // 3b. Decide whether to use event spine or fall back to flat /markets
