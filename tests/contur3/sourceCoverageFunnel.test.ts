@@ -26,6 +26,9 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
   analyzeSourceCoverage,
@@ -518,4 +521,88 @@ test("empty input produces a well-formed zero report, not a crash", () => {
   assert.deepEqual(report.coverage_by_sport, []);
   assert.equal(report.largest_loss_stage, null);
   assert.equal(report.surface_selection_loss.recovery_multiple, null);
+});
+
+// ---------------------------------------------------------------------------
+// CLI ENV BOOTSTRAP — regression guard.
+//
+// The coverage CLI reads production Supabase through lib/supabase/server.ts,
+// which throws at MODULE EVALUATION time when SUPABASE_URL /
+// SUPABASE_SERVICE_ROLE_KEY are absent from process.env. A repo .env.local is
+// NOT loaded automatically by `npx tsx`, so a Founder with valid local
+// credentials still got:
+//
+//   Missing required environment variable: SUPABASE_URL
+//   DB_AVAILABLE=false
+//
+// Fix (the pattern already proven by the LC6 reporter,
+// 450f089:scripts/report-live-contour6-runtime.ts:23/167/194): call
+// loadEnvConfig(process.cwd()) BEFORE dynamically importing the Supabase helper.
+//
+// These assertions read the CLI SOURCE rather than executing it, because the
+// property under test is import ORDER — a runtime test would need real
+// credentials, which this suite must never require.
+// ---------------------------------------------------------------------------
+
+const CLI_SOURCE = readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "../../scripts/contur3/source-coverage-funnel.ts"),
+  "utf8"
+);
+
+test("CLI imports loadEnvConfig from @next/env", () => {
+  assert.match(
+    CLI_SOURCE,
+    /import\s*\{\s*loadEnvConfig\s*\}\s*from\s*["']@next\/env["']/,
+    "CLI must use the proven @next/env bootstrap, not a hand-rolled dotenv parser"
+  );
+});
+
+test("loadEnvConfig(process.cwd()) runs BEFORE the Supabase dynamic import", () => {
+  const bootstrapIndex = CLI_SOURCE.indexOf("loadEnvConfig(process.cwd())");
+  const supabaseImportIndex = CLI_SOURCE.indexOf('await import("../../lib/supabase/server")');
+
+  assert.ok(bootstrapIndex !== -1, "CLI must call loadEnvConfig(process.cwd())");
+  assert.ok(supabaseImportIndex !== -1, "CLI must dynamically import lib/supabase/server");
+  assert.ok(
+    bootstrapIndex < supabaseImportIndex,
+    "env must be loaded before lib/supabase/server.ts is evaluated, or the helper throws on missing SUPABASE_URL"
+  );
+});
+
+test("the Supabase helper stays DYNAMICALLY imported (never at module scope)", () => {
+  // A static import would evaluate the helper before loadEnvConfig could run,
+  // reintroducing the exact failure this patch fixes.
+  assert.doesNotMatch(
+    CLI_SOURCE,
+    /^\s*import\s+[^;]*from\s*["'][^"']*lib\/supabase\/server["']/m,
+    "lib/supabase/server must never be statically imported by this CLI"
+  );
+  assert.match(CLI_SOURCE, /await import\("\.\.\/\.\.\/lib\/supabase\/server"\)/);
+});
+
+test("no new env names and no fallback secrets are introduced", () => {
+  const envNames = [...CLI_SOURCE.matchAll(/process\.env\.([A-Z0-9_]+)/g)].map((m) => m[1]);
+  assert.deepEqual(
+    [...new Set(envNames)].sort(),
+    [],
+    "the CLI must read no environment variable directly — lib/supabase/server owns that"
+  );
+  // No inline credential fallbacks of any shape.
+  assert.doesNotMatch(CLI_SOURCE, /SUPABASE_SERVICE_ROLE_KEY\s*(\|\||\?\?|=)/);
+  assert.doesNotMatch(CLI_SOURCE, /SUPABASE_URL\s*(\|\||\?\?|=)/);
+});
+
+test("env bootstrap adds no mutation or write path", () => {
+  assert.doesNotMatch(
+    CLI_SOURCE,
+    /\.(insert|update|delete|upsert|rpc)\(|writeFileSync|appendFileSync|mkdirSync/,
+    "the coverage CLI must remain strictly read-only"
+  );
+  // .env.local is loaded by @next/env, never read or echoed by this script.
+  assert.doesNotMatch(CLI_SOURCE, /readFileSync\([^)]*\.env/);
+});
+
+test("fail-closed reporting contract is preserved", () => {
+  assert.match(CLI_SOURCE, /"DB_AVAILABLE": false|DB_AVAILABLE: false/);
+  assert.match(CLI_SOURCE, /STOP_PRODUCTION_READ_UNAVAILABLE/);
 });

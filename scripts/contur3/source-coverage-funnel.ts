@@ -22,6 +22,8 @@
 
 import { readFileSync } from "node:fs";
 
+import { loadEnvConfig } from "@next/env";
+
 import {
   analyzeSourceCoverage,
   SOURCE_COVERAGE_REPORT_VERSION,
@@ -175,6 +177,15 @@ function toCoverageRow(raw: Record<string, unknown>): CoverageSourceRow {
 }
 
 async function fetchSourceRows(sinceIso: string): Promise<Record<string, unknown>[]> {
+  // Load the repo's .env.local into process.env BEFORE lib/supabase/server.ts is
+  // evaluated — that module throws at import time when SUPABASE_URL /
+  // SUPABASE_SERVICE_ROLE_KEY are missing, and `npx tsx` does not load .env.local
+  // on its own. Same bootstrap the LC6 reporter uses
+  // (450f089:scripts/report-live-contour6-runtime.ts:23/167/194). The helper stays
+  // DYNAMICALLY imported so this ordering is guaranteed by construction; a static
+  // import would evaluate it before this line could run. Nothing here reads or
+  // prints .env.local, and no credential value is ever logged.
+  loadEnvConfig(process.cwd());
   const { supabaseAdmin } = await import("../../lib/supabase/server");
   const all: Record<string, unknown>[] = [];
   let from = 0;
