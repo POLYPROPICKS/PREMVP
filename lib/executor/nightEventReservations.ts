@@ -972,6 +972,8 @@ export async function buildReservationPlan(
           `allowed_fullmatch_anchor markets_in_event=${group.length}`
         : `EVENT_FIRST_TIER1_OPPORTUNITY: score=${best.diagnostics.score} cov=${best.diagnostics.coverage} markets_in_event=${group.length}`;
     reservations.push({
+      physical_event_id: groupKey,
+      event_start_iso: best.diagnostics.game_start_iso,
       plan_run_id: planRunId,
       plan_date_minsk: window.planDateMinsk,
       window_start_iso: window.startIso,
@@ -1318,6 +1320,9 @@ export interface PersistReservationsResult {
  */
 export interface ReservationRepoPort {
   findByPlanRunId(planRunId: string): Promise<NightEventReservationRow[]>;
+  // Optional only for older in-memory test ports. The production adapter always
+  // provides this canonical lookup; it must never fall back to plan-run reuse.
+  findByPhysicalEventId?(physicalEventId: string): Promise<NightEventReservationRow | null>;
   deleteByPlanRunId(planRunId: string): Promise<void>;
   insert(rows: NightEventReservationRow[]): Promise<void>;
 }
@@ -1333,6 +1338,16 @@ export function createSupabaseReservationRepoPort(): ReservationRepoPort {
         .order("reservation_rank", { ascending: true });
       if (error) throw new Error(`reservation read failed: ${error.message}`);
       return (data ?? []) as unknown as NightEventReservationRow[];
+    },
+    async findByPhysicalEventId(physicalEventId) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data, error } = await supabaseAdmin
+        .from("night_event_reservations")
+        .select("*")
+        .eq("physical_event_id", physicalEventId)
+        .maybeSingle();
+      if (error) throw new Error(`reservation physical-event read failed: ${error.message}`);
+      return (data as unknown as NightEventReservationRow | null) ?? null;
     },
     async deleteByPlanRunId(planRunId) {
       const { supabaseAdmin } = await import("@/lib/supabase/server");
@@ -1361,21 +1376,6 @@ export async function persistReservationPlan(
 ): Promise<PersistReservationsResult> {
   const existing = await repo.findByPlanRunId(plan.plan_run_id);
 
-  if (existing.length > 0 && !opts.force) {
-    return {
-      plan_run_id: plan.plan_run_id,
-      already_exists: true,
-      written_count: 0,
-      reserved_count: existing.length,
-      reservations: existing,
-      diagnostics: plan.diagnostics,
-    };
-  }
-
-  if (existing.length > 0 && opts.force) {
-    await repo.deleteByPlanRunId(plan.plan_run_id);
-  }
-
   if (plan.reservations.length === 0) {
     return {
       plan_run_id: plan.plan_run_id,
@@ -1385,6 +1385,69 @@ export async function persistReservationPlan(
       reservations: [],
       diagnostics: plan.diagnostics,
     };
+  }
+
+  const canonicalRows = plan.reservations.map((reservation) => {
+    const physicalEventId = reservation.physical_event_id?.trim() ?? "";
+    const eventStartIso = reservation.event_start_iso?.trim() ?? "";
+    const eventStartMs = Date.parse(eventStartIso);
+    if (!physicalEventId || !Number.isFinite(eventStartMs)) {
+      throw new Error(
+        `RESERVATION_OCCURRENCE_IDENTITY_MISSING: plan_run_id=${plan.plan_run_id} match_family_key=${reservation.match_family_key}`
+      );
+    }
+    return { reservation, physicalEventId, eventStartIso, eventStartMs };
+  });
+
+  if (!opts.force) {
+    const reused: NightEventReservationRow[] = [];
+    const toInsert: NightEventReservationRow[] = [];
+
+    for (const current of canonicalRows) {
+      // The real adapter reads globally by physical_event_id. The exact
+      // plan-local fallback keeps pre-existing in-memory test ports compatible;
+      // it never runs in production and does not permit legacy rows to satisfy
+      // a canonical identity request.
+      const found = repo.findByPhysicalEventId
+        ? await repo.findByPhysicalEventId(current.physicalEventId)
+        : existing.find((row) => row.physical_event_id === current.physicalEventId) ?? null;
+      if (found) {
+        const foundStartMs = Date.parse(found.event_start_iso ?? "");
+        if (!Number.isFinite(foundStartMs) || foundStartMs !== current.eventStartMs) {
+          throw new Error(
+            `OCCURRENCE_IDENTITY_CONFLICT: reservation_id=${found.id ?? "unknown"} physical_event_id=${current.physicalEventId} existing_event_start_iso=${found.event_start_iso ?? "null"} current_event_start_iso=${current.eventStartIso}`
+          );
+        }
+        reused.push(found);
+      } else {
+        toInsert.push(current.reservation);
+      }
+    }
+
+    if (toInsert.length === 0) {
+      return {
+        plan_run_id: plan.plan_run_id,
+        already_exists: true,
+        written_count: 0,
+        reserved_count: reused.length,
+        reservations: reused,
+        diagnostics: plan.diagnostics,
+      };
+    }
+
+    await repo.insert(toInsert);
+    return {
+      plan_run_id: plan.plan_run_id,
+      already_exists: reused.length > 0,
+      written_count: toInsert.length,
+      reserved_count: reused.length + toInsert.length,
+      reservations: [...reused, ...toInsert],
+      diagnostics: plan.diagnostics,
+    };
+  }
+
+  if (existing.length > 0 && opts.force) {
+    await repo.deleteByPlanRunId(plan.plan_run_id);
   }
 
   await repo.insert(plan.reservations);

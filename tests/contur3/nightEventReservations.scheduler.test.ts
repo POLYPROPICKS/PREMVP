@@ -89,6 +89,7 @@ function baseCandidate(overrides: Partial<FireModelCandidate> = {}): FireModelCa
 
 function makeFakeRepo(seed: NightEventReservationRow[] = []): ReservationRepoPort & { store: NightEventReservationRow[]; insertCalls: number; deleteCalls: number } {
   const store = [...seed];
+  let nextReservationId = store.length + 1;
   let insertCalls = 0;
   let deleteCalls = 0;
   return {
@@ -102,6 +103,9 @@ function makeFakeRepo(seed: NightEventReservationRow[] = []): ReservationRepoPor
     async findByPlanRunId(planRunId) {
       return store.filter((r) => r.plan_run_id === planRunId).sort((a, b) => (a.reservation_rank ?? 0) - (b.reservation_rank ?? 0));
     },
+    async findByPhysicalEventId(physicalEventId) {
+      return store.find((r) => r.physical_event_id === physicalEventId) ?? null;
+    },
     async deleteByPlanRunId(planRunId) {
       deleteCalls += 1;
       for (let i = store.length - 1; i >= 0; i--) {
@@ -110,7 +114,7 @@ function makeFakeRepo(seed: NightEventReservationRow[] = []): ReservationRepoPor
     },
     async insert(rows) {
       insertCalls += 1;
-      store.push(...rows);
+      for (const row of rows) store.push({ ...row, id: row.id ?? `reservation-${nextReservationId++}` });
     },
   };
 }
@@ -151,6 +155,70 @@ test("A2: repeated persistReservationPlan for the same plan_run_id is idempotent
   assert.equal(second.written_count, 0);
   assert.equal(repo.insertCalls, 1, "must not insert a second time for the same plan_run_id");
   assert.equal(repo.store.length, 1, "store must still contain exactly one reservation row");
+});
+
+test("LC6 red: a new physical occurrence in the same plan run must not reuse the prior reservation", async () => {
+  const repo = makeFakeRepo();
+  const t1 = KICKOFF_ISO;
+  const t2 = "2026-07-19T21:00:00.000Z";
+  const firstPlan = await buildReservationPlan(ANCHOR_NOW_MS, {
+    fetchCandidates: async () => ({
+      candidates: [baseCandidate({ providerEventKey: "physical-event-p1", diagnostics: { ...baseCandidate().diagnostics, game_start_iso: t1 } })],
+    }),
+  });
+  await persistReservationPlan(firstPlan, {}, repo);
+
+  const secondPlan = await buildReservationPlan(ANCHOR_NOW_MS, {
+    fetchCandidates: async () => ({
+      candidates: [baseCandidate({ providerEventKey: "physical-event-p2", diagnostics: { ...baseCandidate().diagnostics, game_start_iso: t2 } })],
+    }),
+  });
+  const second = await persistReservationPlan(secondPlan, {}, repo);
+
+  assert.equal(second.written_count, 1, "T2 must create a new reservation rather than reuse T1");
+  assert.equal(second.reservations[0].game_start_iso, t2);
+  assert.equal(repo.store.length, 2);
+});
+
+test("LC6: canonical occurrence identity creates R2, reuses R2, and rejects a changed start", async () => {
+  const repo = makeFakeRepo();
+  const t1 = KICKOFF_ISO;
+  const t2 = "2026-07-19T21:00:00.000Z";
+  const t3 = "2026-07-19T22:00:00.000Z";
+  const planFor = async (physicalEventId: string, eventStartIso: string) =>
+    buildReservationPlan(ANCHOR_NOW_MS, {
+      fetchCandidates: async () => ({
+        candidates: [baseCandidate({ providerEventKey: physicalEventId, diagnostics: { ...baseCandidate().diagnostics, game_start_iso: eventStartIso } })],
+      }),
+    });
+
+  const first = await persistReservationPlan(await planFor("physical-event-p1", t1), {}, repo);
+  const second = await persistReservationPlan(await planFor("physical-event-p2", t2), {}, repo);
+  const r1 = repo.store.find((row) => row.physical_event_id === "physical-event-p1")!;
+  const r2 = repo.store.find((row) => row.physical_event_id === "physical-event-p2")!;
+  const rerun = await persistReservationPlan(await planFor("physical-event-p2", t2), {}, repo);
+
+  assert.notEqual(r1.id, r2.id);
+  assert.equal(r2.physical_event_id, "physical-event-p2");
+  assert.equal(r2.event_start_iso, t2);
+  assert.equal(rerun.written_count, 0);
+  assert.equal(rerun.reservations[0].id, r2.id);
+  assert.equal(repo.store.length, 2);
+
+  const conflictingPlan = await planFor("physical-event-p2", t3);
+  await assert.rejects(() => persistReservationPlan(conflictingPlan, {}, repo), /OCCURRENCE_IDENTITY_CONFLICT/);
+  assert.equal(repo.store.find((row) => row.id === r2.id)?.event_start_iso, t2);
+});
+
+test("LC6: missing canonical occurrence identity fails closed before insertion", async () => {
+  const repo = makeFakeRepo();
+  const plan = await buildReservationPlan(ANCHOR_NOW_MS, {
+    fetchCandidates: async () => ({ candidates: [baseCandidate()] }),
+  });
+  plan.reservations[0].physical_event_id = null;
+
+  await assert.rejects(() => persistReservationPlan(plan, {}, repo), /RESERVATION_OCCURRENCE_IDENTITY_MISSING/);
+  assert.equal(repo.insertCalls, 0);
 });
 
 test("A3: dry-run (buildReservationPlan alone, no persistReservationPlan call) produces zero repo writes", async () => {

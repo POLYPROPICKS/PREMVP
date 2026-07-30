@@ -29,6 +29,10 @@ export const QUEUE_SOURCE = "event_execution_queue" as const;
 
 export interface NightEventReservationRow {
   id?: string;
+  // Live Contour 6 canonical occurrence identity. Legacy persisted rows may
+  // omit these fields; every new Reservation write validates both before insert.
+  physical_event_id?: string | null;
+  event_start_iso?: string | null;
   plan_run_id: string;
   plan_date_minsk: string; // YYYY-MM-DD (Minsk)
   reserved_at?: string;

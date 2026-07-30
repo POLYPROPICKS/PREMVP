@@ -18,12 +18,14 @@ const root = process.cwd();
 const migrationsDir = path.join(root, "supabase/migrations");
 const migrationFile = "20260719_executor_order_events_schema_and_idempotency.sql";
 const sql = readFileSync(path.join(migrationsDir, migrationFile), "utf8");
+const occurrenceMigrationFile = "20260730_live_contour6_reservation_occurrence_identity.sql";
+const occurrenceSql = readFileSync(path.join(migrationsDir, occurrenceMigrationFile), "utf8");
 // Strip `--` line comments for statement-level assertions (queue_id absence,
 // destructive-operation checks) so prose explaining the absence of queue_id
 // doesn't itself trip a "does it mention queue_id" check.
 const sqlWithoutComments = sql
   .split("\n")
-  .map((line) => line.replace(/--.*$/, ""))
+  .map((line) => line.replace(/--.*\r?$/, ""))
   .join("\n");
 
 const PROVEN_SOURCE_FIELDS = [
@@ -60,7 +62,7 @@ function extractCreateTableBody(): string {
 function extractColumnNames(tableBody: string): string[] {
   return tableBody
     .split("\n")
-    .map((line) => line.replace(/--.*$/, "").trim())
+    .map((line) => line.replace(/--.*\r?$/, "").trim())
     .filter((line) => line.length > 0)
     .map((line) => line.replace(/,$/, ""))
     .map((line) => line.split(/\s+/)[0])
@@ -69,6 +71,18 @@ function extractColumnNames(tableBody: string): string[] {
 
 test("migration file exists in the standard migrations directory", () => {
   assert.ok(readdirSync(migrationsDir).includes(migrationFile));
+});
+
+test("Live Contour 6 reservation occurrence migration preserves legacy rows and enforces canonical physical identity", () => {
+  assert.ok(readdirSync(migrationsDir).includes(occurrenceMigrationFile));
+  assert.match(occurrenceSql, /add column if not exists\s+physical_event_id\s+text/i);
+  assert.match(occurrenceSql, /add column if not exists\s+event_start_iso\s+timestamptz/i);
+  assert.match(occurrenceSql, /drop constraint if exists\s+night_event_reservations_plan_event_uniq/i);
+  assert.match(occurrenceSql, /create unique index if not exists\s+night_event_reservations_legacy_plan_event_uniq/i);
+  assert.match(occurrenceSql, /where\s+physical_event_id\s+is null/i);
+  assert.match(occurrenceSql, /create unique index if not exists\s+night_event_reservations_physical_event_uniq/i);
+  assert.match(occurrenceSql, /on public\.night_event_reservations \(physical_event_id\)[\s\S]*where physical_event_id is not null/i);
+  assert.doesNotMatch(occurrenceSql, /\bupdate\s+public\.night_event_reservations\b/i);
 });
 
 test("the schema capture contains every field the current application source reads/writes", () => {
