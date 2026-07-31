@@ -2,8 +2,14 @@
 import {
   classifyMarketText,
   isAllowedFullMatchMarketClass,
+  resolveMarketAnchorDecision,
+  type EventScope,
   type MarketClass,
 } from "@/lib/contur3/taxonomy";
+import {
+  resolvePlanningAnchorDecision,
+  type PlanningAnchorKind,
+} from "./planningAnchor";
 import { sanitizeSchedulerErrorMessage } from "./schedulerJobEvidence";
 import {
   produceFrozenModelV2ShadowDecisions,
@@ -15,7 +21,12 @@ import {
   type ExportRow,
 } from "@/lib/modeling/generatedSignalPairsExportContract";
 import { EXECUTABLE_STAKE_USD } from "./executorQueueTypes";
-import { fullMatchAnchorDecision } from "./nightEventReservations";
+import {
+  candidateAnchorInput,
+  fullMatchAnchorDecision,
+  isForbiddenAnchorMarket,
+  marketPolicyFingerprint,
+} from "./nightEventReservations";
 
 const POLICY_VERSION = "battle-sm-guard-v1-20260615";
 const LIVE_POLICY_VERSION = "live-risk-guard-v1";
@@ -95,6 +106,14 @@ export interface RawPlanningDiagnostics {
   raw_forbidden_rows: number;
   fullmatch_admitted_count: number;
   fullmatch_rejected_by_reason: Record<string, number>;
+  // ── Upstream market policy (the gate, not a counter) ──────────────────────
+  // market_policy_eligible + market_policy_rejected === rows that reached the
+  // policy gate, and planning candidates are a strict SUBSET of the eligible
+  // set. The production shape (285 planning candidates from 151 policy-eligible
+  // rows) is arithmetically impossible once this gate is the real filter.
+  market_policy_eligible: number;
+  market_policy_rejected: number;
+  market_policy_rejected_by_reason: Record<string, number>;
   // Compact per-row trace for allowed full-match raw rows that did NOT become a candidate.
   missing_fullmatch_fixtures: Array<{
     event_key: string;
@@ -193,6 +212,118 @@ export interface FireModelCandidate {
     authoritative_side?: string;
     authoritative_observation_id?: string;
     authoritative_event_key?: string;
+    /**
+     * The UPSTREAM market-policy verdict that admitted this candidate.
+     *
+     * Present on every candidate emitted by the CONTRACT_A_PLANNING_V1
+     * selector. Its presence is the planning contract: a downstream consumer
+     * (reservation slot allocation) READS this verdict and must never re-run
+     * market classification on a candidate that carries it.
+     */
+    market_policy?: UpstreamMarketPolicyDecision;
+  };
+}
+
+/**
+ * Version stamp of the upstream market-policy decision. Deliberately equal to
+ * the selector that owns the decision, so a persisted verdict names the stage
+ * that produced it.
+ */
+export const MARKET_POLICY_VERSION = "CONTRACT_A_PLANNING_V1" as const;
+
+/**
+ * The structured market-policy verdict, decided ONCE, upstream of planning.
+ *
+ * Every field comes from the existing canonical classifier
+ * (lib/contur3/taxonomy.ts) plus the existing planning-anchor allowance
+ * (lib/executor/planningAnchor.ts). This is not a second classifier and it
+ * does not widen or narrow the accepted market classes by a single case.
+ */
+export interface UpstreamMarketPolicyDecision {
+  market_class: MarketClass;
+  event_scope: EventScope;
+  allowed: boolean;
+  reason_code: string;
+  anchor_kind: PlanningAnchorKind;
+  decided_by: typeof MARKET_POLICY_VERSION;
+  /**
+   * Fingerprint of the exact market surfaces this verdict was decided from, so
+   * a consumer can tell that the verdict still describes its candidate. See
+   * marketPolicyFingerprint in nightEventReservations.ts.
+   */
+  anchor_fingerprint: string;
+}
+
+/** The surfaces the market-policy decision is read from. */
+export type MarketPolicyProbe = Pick<
+  FireModelCandidate,
+  "market_slug" | "event_slug" | "match_family_key" | "inferred_sport" | "activity_label_detected"
+> & {
+  providerMarketQuestion?: string | null;
+  providerEventTitle?: string | null;
+  diagnostics?: Record<string, unknown>;
+};
+
+/**
+ * THE upstream market policy.
+ *
+ * Before this existed the planning selector computed `fmMarketClass` /
+ * `fmIsAllowedFullmatch` and threw the verdict away into a diagnostics
+ * counter, so a halftime, corners, prop or esports-non-policy row entered
+ * FireModelCandidate[] exactly like a full-match moneyline. Reservation was
+ * left holding the only effective policy gate in the planning path, which is
+ * what the production `NO_FULLMATCH_ANCHOR = 22` actually measured.
+ *
+ * The three checks below are the SAME three the reservation planner applied,
+ * in the same order, so moving them upstream changes which stage decides --
+ * never what is decided:
+ *
+ *   1. an activity/volume label is never a market, at any stage;
+ *   2. a forbidden anchor class (halftime / corners / props) is never an anchor;
+ *   3. otherwise the canonical anchor decision, plus the existing structured
+ *      event-level full-match allowance for supported non-esports sports.
+ */
+export function resolveUpstreamMarketPolicy(probe: MarketPolicyProbe): UpstreamMarketPolicyDecision {
+  // candidateAnchorInput / fullMatchAnchorDecision / isForbiddenAnchorMarket
+  // read only the surfaces MarketPolicyProbe already carries.
+  const candidate = probe as unknown as FireModelCandidate;
+  const anchorInput = candidateAnchorInput(candidate);
+  const canonical = resolveMarketAnchorDecision(anchorInput);
+  const diag = (probe.diagnostics ?? {}) as Record<string, unknown>;
+  const base = {
+    market_class: canonical.market_class,
+    event_scope: canonical.event_scope,
+    decided_by: MARKET_POLICY_VERSION,
+    anchor_fingerprint: marketPolicyFingerprint({
+      providerMarketQuestion: probe.providerMarketQuestion ?? null,
+      providerEventTitle: probe.providerEventTitle ?? null,
+      marketTitle: typeof diag.marketTitle === "string" ? diag.marketTitle : null,
+      market_slug: probe.market_slug ?? null,
+      event_slug: probe.event_slug ?? null,
+      match_family_key: probe.match_family_key ?? null,
+      inferred_sport: probe.inferred_sport ?? null,
+      activity_label_detected: probe.activity_label_detected,
+    }),
+  } as const;
+
+  if (probe.activity_label_detected) {
+    return { ...base, allowed: false, reason_code: "ACTIVITY_LABEL", anchor_kind: "REJECTED" };
+  }
+  if (isForbiddenAnchorMarket(candidate)) {
+    return { ...base, allowed: false, reason_code: "FORBIDDEN_ANCHOR_MARKET", anchor_kind: "REJECTED" };
+  }
+
+  const planning = resolvePlanningAnchorDecision({
+    existingAnchorAllowed: fullMatchAnchorDecision(candidate).allowed,
+    canonical,
+    anchorInput,
+    sport: probe.inferred_sport ?? null,
+  });
+  return {
+    ...base,
+    allowed: planning.allowed_for_planning,
+    reason_code: planning.reason_code,
+    anchor_kind: planning.anchor_kind,
   };
 }
 
@@ -1191,6 +1322,9 @@ export async function buildFireModelCandidates(
         raw_forbidden_rows: 0,
         fullmatch_admitted_count: 0,
         fullmatch_rejected_by_reason: {},
+        market_policy_eligible: 0,
+        market_policy_rejected: 0,
+        market_policy_rejected_by_reason: {},
         missing_fullmatch_fixtures: [],
       }
     : null;
@@ -1542,6 +1676,50 @@ export async function buildFireModelCandidates(
         ? row.event_slug.trim().toLowerCase()
         : null;
 
+    // ── UPSTREAM MARKET POLICY GATE ──────────────────────────────────────────
+    // The last gate before a row becomes a planning candidate, and the FIRST
+    // place market policy is decided. Placed here because it reads the fully
+    // resolved market surfaces (sport, provider question, match family key)
+    // that earlier iterations of the loop have not yet derived.
+    //
+    // Every emitted candidate carries the verdict that admitted it, so
+    // reservation slot allocation consumes a decision instead of re-deriving
+    // one. Rejections keep the existing structured accounting -- the row is
+    // counted, its reason is named, and it never reaches Reservation.
+    // Scoped to planningMode: this is the PLANNING candidate contract. The live
+    // execution path (planningMode === false) keeps its existing gates verbatim.
+    let marketPolicy: UpstreamMarketPolicyDecision | null = null;
+    if (planningMode) {
+      const candidateMarketSlug =
+        (activityLabelDetected ? null : row.market_slug) || row.event_slug || row.condition_id;
+      marketPolicy = resolveUpstreamMarketPolicy({
+        market_slug: candidateMarketSlug,
+        event_slug: rawEventSlugForCandidate,
+        match_family_key: matchFamilyKey,
+        inferred_sport: sport,
+        activity_label_detected: activityLabelDetected,
+        providerMarketQuestion: providerContext?.marketQuestion ?? null,
+        providerEventTitle: providerContext?.eventTitle ?? null,
+        // Deliberately the surfaces the EMITTED candidate will carry, not the
+        // raw source row's: the verdict must describe the candidate that
+        // reservation later receives, or it describes nothing it can be
+        // checked against.
+      });
+      if (rawDiag) {
+        if (marketPolicy.allowed) {
+          rawDiag.market_policy_eligible += 1;
+        } else {
+          rawDiag.market_policy_rejected += 1;
+          rawDiag.market_policy_rejected_by_reason[marketPolicy.reason_code] =
+            (rawDiag.market_policy_rejected_by_reason[marketPolicy.reason_code] ?? 0) + 1;
+        }
+      }
+      if (!marketPolicy.allowed) {
+        rejectReason(`MARKET_POLICY_${marketPolicy.reason_code}`);
+        continue;
+      }
+    }
+
     candidates.push({
       signal_id: row.id,
       generated_signal_pair_id: typeof row.id === "string" && row.id.trim() !== "" ? row.id : null,
@@ -1620,6 +1798,9 @@ export async function buildFireModelCandidates(
               formula_version_source: row.metric_formula_version,
             }
           : {}),
+        // The upstream verdict that admitted this candidate. Reservation READS
+        // this instead of re-running market classification.
+        ...(marketPolicy ? { market_policy: marketPolicy } : {}),
       },
     });
 

@@ -328,7 +328,7 @@ async function planFrom(rows: Record<string, unknown>[]) {
   const plan = await at(PLANNING_MS, () =>
     buildReservationPlan(PLANNING_MS, { fetchCandidates: async () => ({ candidates: planning.candidates }) })
   );
-  return { planning: planning.candidates, plan };
+  return { planning: planning.candidates, plan, raw: planning.rawDiagnostics };
 }
 
 test("R0G-13 (fixture 9): a group whose HIGHEST-scoring market is a blocked first-half line still reserves via its valid full-match sibling", async () => {
@@ -389,7 +389,7 @@ test("R0G-14 (fixture 10): a group of several VALID full-match markets picks one
   );
 });
 
-test("R0G-15 (fixture 11): a group with NO valid sibling reports NO_FULLMATCH_ANCHOR", async () => {
+test("R0G-15 (fixture 11): a market with NO valid sibling is rejected by UPSTREAM market policy", async () => {
   const onlyPartial = sourceRow({
     id: "00000000-0000-4000-8000-00000000000f",
     condition_id: "cond-1h-only",
@@ -397,16 +397,23 @@ test("R0G-15 (fixture 11): a group with NO valid sibling reports NO_FULLMATCH_AN
     market_slug: "Japan vs. Sweden - First Half Result",
     __diagnostics: { marketTitle: "First half result: Japan" },
   });
-  const { plan } = await planFrom([onlyPartial]);
+  const { plan, planning, raw } = await planFrom([onlyPartial]);
+
+  // The safety property is unchanged: nothing is reserved.
   assert.equal(plan.reservations.length, 0);
-  // Either explicit anchor code is acceptable -- what matters is that the run
-  // names one and attributes the group to "only partial/prop markets".
-  assert.match(
-    String(plan.diagnostics.first_rejection_code),
-    /NO_FULLMATCH_ANCHOR|NO_EXECUTABLE_ANCHOR/
+
+  // What MOVED is the attribution. Market policy is now decided upstream, so a
+  // partial-scope market never becomes a planning candidate and reservation
+  // never sees a group to reject. Reservation no longer owns -- and must no
+  // longer claim -- NO_FULLMATCH_ANCHOR for a decision it did not make.
+  assert.equal(planning.length, 0, "a partial-scope market must not become a planning candidate");
+  assert.equal(raw?.market_policy_eligible, 0);
+  assert.equal(raw?.market_policy_rejected, 1);
+  assert.ok(
+    Object.keys(raw?.market_policy_rejected_by_reason ?? {}).length > 0,
+    "the upstream rejection must name an explicit structured reason"
   );
-  assert.equal(plan.diagnostics.groups_only_partial_or_prop, 1);
-  assert.equal(plan.diagnostics.groups_with_fullmatch_candidate, 0);
+  assert.equal(plan.diagnostics.skipped_no_fullmatch_anchor, 0);
   assert.equal(plan.diagnostics.groups_with_valid_sibling_but_wrong_rep, 0);
 });
 
@@ -429,7 +436,7 @@ test("R0G-17: planning diagnostics explain a 25->0 run -- genuinely blocked vs c
     market_slug: "Brazil vs. Argentina - First Half Total",
     __diagnostics: { marketTitle: "First half total over 1.5", eventTitle: "Brazil vs Argentina" },
   });
-  const { plan } = await planFrom([validEvent, partialOnlyEvent]);
+  const { plan, raw } = await planFrom([validEvent, partialOnlyEvent]);
   const d = plan.diagnostics;
   for (const field of [
     "groups_with_fullmatch_candidate",
@@ -445,10 +452,23 @@ test("R0G-17: planning diagnostics explain a 25->0 run -- genuinely blocked vs c
     assert.ok(field in d, `planning diagnostics must expose ${field}`);
   }
   assert.equal(d.groups_with_fullmatch_candidate, 1);
-  assert.equal(d.groups_only_partial_or_prop, 1);
   assert.equal(d.groups_with_valid_sibling_but_wrong_rep, 0, "representative selection must never discard a valid sibling");
   assert.ok(d.allowed_moneyline_count >= 1);
-  assert.ok(d.rejected_partial_count >= 1);
+
+  // The "genuinely blocked" half of the question is now answered UPSTREAM: the
+  // partial-only event is rejected by market policy before planning, so
+  // reservation legitimately sees one group and reports zero partial/prop
+  // groups. The distinction the test exists to draw is intact -- it is read
+  // from the stage that actually makes the decision.
+  assert.equal(d.groups_only_partial_or_prop, 0, "a partial-only event never reaches reservation");
+  assert.equal(raw?.market_policy_eligible, 1);
+  assert.equal(raw?.market_policy_rejected, 1);
+  assert.ok(
+    Object.values(raw?.market_policy_rejected_by_reason ?? {}).some((n) => n >= 1),
+    "the blocked event must be attributable to an explicit upstream reason"
+  );
+  // And reservation still cannot claim a rejection it did not make.
+  assert.equal(d.skipped_no_fullmatch_anchor, 0);
   // No secrets or raw payloads in the aggregate evidence.
   assert.doesNotMatch(JSON.stringify(d), /SUPABASE|SERVICE_ROLE|authorization|api[_-]?key|secret/i);
 });

@@ -54,6 +54,7 @@ import {
 } from "./fullmatchRejectionEvidence";
 import {
   resolveMarketAnchorDecision,
+  type MarketAnchorDecision,
   type MarketAnchorInput,
   type MarketAnchorReasonCode,
 } from "@/lib/contur3/taxonomy";
@@ -132,7 +133,7 @@ function isPropAnchorMarket(c: FireModelCandidate): boolean {
  * Forbidden: halftime/1H, corners, exact score, goalscorer, props, outrights.
  * Allowed: full-match winner/moneyline, spread, full-match total goals.
  */
-function isForbiddenAnchorMarket(c: FireModelCandidate): boolean {
+export function isForbiddenAnchorMarket(c: FireModelCandidate): boolean {
   return isHalftimeMarket(c) || isCornersAnchorMarket(c) || isPropAnchorMarket(c);
 }
 
@@ -265,6 +266,17 @@ export function isAllowedFullMatchAnchor(c: FireModelCandidate): boolean {
  * rejected here even though its condition/token/side are fully populated.
  */
 export function anchorDecisionForCandidate(c: FireModelCandidate): FullMatchAnchorDecision {
+  // ── UPSTREAM AUTHORITY ────────────────────────────────────────────────────
+  // A candidate carrying an explicit upstream market-policy verdict was already
+  // decided by the planning selector, using this exact policy. CONSUME it. Any
+  // re-derivation here would be a second, competing authority -- the defect that
+  // produced NO_FULLMATCH_ANCHOR = 22 against 22 already-planned events.
+  const policy = upstreamMarketPolicyOf(c);
+  if (policy) {
+    return policy.allowed
+      ? { allowed: true }
+      : { allowed: false, reason: "FULLMATCH_SUBMARKET_REJECTED" };
+  }
   // An activity/volume label is never a market, at any stage.
   if (c.activity_label_detected) return { allowed: false, reason: "FULLMATCH_SUBMARKET_REJECTED" };
   // FINAL_AUTHORITATIVE candidates were produced by the authoritative selector,
@@ -280,6 +292,105 @@ export function anchorDecisionForCandidate(c: FireModelCandidate): FullMatchAnch
   // presence) which legitimately is not settled hours before kickoff, so it
   // must not be used as an anchor verdict here. Classify the market itself.
   return fullMatchAnchorDecision(c);
+}
+
+/**
+ * Fingerprint of the exact market surfaces a policy verdict was decided from.
+ *
+ * This is NOT a classification -- it derives no market class, no event scope
+ * and no verdict. It answers one question: does this verdict still describe
+ * this candidate? A consumer that rewrites a candidate's market text after the
+ * planning selector stamped it is holding evidence about a different market,
+ * and a verdict that no longer describes its candidate must not be trusted.
+ *
+ * Production never mutates a candidate between selector and reservation, so
+ * this check is inert there. It exists so the authority boundary is
+ * tamper-evident rather than merely conventional: a stale or hand-edited
+ * verdict fails closed onto the pre-existing classification path instead of
+ * waving an unexamined market through.
+ */
+export function marketPolicyFingerprint(input: {
+  providerMarketQuestion?: string | null;
+  providerEventTitle?: string | null;
+  market_slug?: string | null;
+  event_slug?: string | null;
+  match_family_key?: string | null;
+  inferred_sport?: string | null;
+  activity_label_detected?: boolean;
+  marketTitle?: string | null;
+}): string {
+  const surfaces = [
+    input.providerMarketQuestion ?? "",
+    input.providerEventTitle ?? "",
+    input.marketTitle ?? "",
+    input.market_slug ?? "",
+    input.event_slug ?? "",
+    input.match_family_key ?? "",
+    input.inferred_sport ?? "",
+    input.activity_label_detected ? "1" : "0",
+  ].join(" ");
+  return createHash("sha256").update(surfaces).digest("hex").slice(0, 16);
+}
+
+/** The fingerprint of the candidate as it stands right now. */
+function candidateMarketPolicyFingerprint(c: FireModelCandidate): string {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const diag = ((c as any).diagnostics ?? {}) as Record<string, unknown>;
+  return marketPolicyFingerprint({
+    providerMarketQuestion: c.providerMarketQuestion ?? null,
+    providerEventTitle: c.providerEventTitle ?? null,
+    marketTitle: typeof diag.marketTitle === "string" ? diag.marketTitle : null,
+    market_slug: c.market_slug ?? null,
+    event_slug: c.event_slug ?? null,
+    match_family_key: c.match_family_key ?? null,
+    inferred_sport: c.inferred_sport ?? null,
+    activity_label_detected: c.activity_label_detected,
+  });
+}
+
+/**
+ * The upstream market-policy verdict carried by a planning candidate, or null
+ * when this candidate predates the contract (legacy fixtures, CONTUR3_CURRENT
+ * live path) or when the verdict no longer describes the candidate it is
+ * attached to. Null is what keeps the pre-contract classification path alive;
+ * a present, matching verdict is authoritative and is never re-derived.
+ */
+function upstreamMarketPolicyOf(c: FireModelCandidate) {
+  const policy = c.diagnostics?.market_policy ?? null;
+  if (policy === null) return null;
+  if (policy.anchor_fingerprint !== candidateMarketPolicyFingerprint(c)) return null;
+  return policy;
+}
+
+/** True when the planning selector explicitly APPROVED this candidate. */
+function isUpstreamApproved(c: FireModelCandidate): boolean {
+  return upstreamMarketPolicyOf(c)?.allowed === true;
+}
+
+/** True when the planning selector explicitly REJECTED this candidate. */
+function isUpstreamRejected(c: FireModelCandidate): boolean {
+  return upstreamMarketPolicyOf(c)?.allowed === false;
+}
+
+/**
+ * The canonical anchor evidence for a candidate, WITHOUT re-classifying one
+ * that upstream already decided. For an approved candidate the market class and
+ * event scope are read verbatim from the upstream verdict, so the diagnostic
+ * counters below describe the decision that was actually made rather than a
+ * second opinion this stage has no authority to form.
+ */
+function anchorEvidenceForCandidate(c: FireModelCandidate): MarketAnchorDecision {
+  const policy = upstreamMarketPolicyOf(c);
+  if (policy) {
+    return {
+      market_class: policy.market_class,
+      event_scope: policy.event_scope,
+      allowed: policy.allowed,
+      reason_code: policy.allowed ? null : (policy.reason_code as MarketAnchorReasonCode),
+      evidence_source: "structured",
+    };
+  }
+  return resolveMarketAnchorDecision(candidateAnchorInput(c));
 }
 
 // Founder live-slot policy: try to fill at least this many live slots when eligible
@@ -459,6 +570,19 @@ export interface ReservationPlan {
   fullmatch_rejection: FullmatchRejectionEvidenceReport;
   diagnostics: {
     universe_size: number;
+    // ── Upstream authority boundary ──────────────────────────────────────
+    // What reservation RECEIVED versus what it was allowed to consume. These
+    // make the boundary auditable from one row: reservation can no longer
+    // claim ownership of FULLMATCH_ANCHOR_ELIGIBLE / NO_FULLMATCH_ANCHOR for
+    // input the planning selector already approved.
+    upstream_approved_candidates: number;
+    upstream_rejected_candidates_dropped: number;
+    unique_physical_events: number;
+    duplicate_events_removed: number;
+    // slot_candidates_considered already exists in the R0H funnel block below
+    // and is deliberately NOT duplicated here.
+    slot_allocated: number;
+    slot_remaining: number;
     event_groups: number;
     canonical_event_groups: number;
     reserved_count: number;
@@ -590,7 +714,16 @@ export async function buildReservationPlan(
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
       return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, deps.selectorMode ?? "CONTUR3_CURRENT");
     });
-  const { candidates: universe, rawDiagnostics } = await fetchCandidates();
+  const { candidates: receivedCandidates, rawDiagnostics } = await fetchCandidates();
+
+  // ── UPSTREAM AUTHORITY BOUNDARY ───────────────────────────────────────────
+  // A candidate the planning selector explicitly REJECTED is not planning input
+  // and never becomes reservation input -- not through ranking, not through the
+  // fallback ladder, not through any local classification. Candidates with no
+  // verdict at all predate the contract and keep the pre-existing path.
+  const universe = receivedCandidates.filter((c) => !isUpstreamRejected(c));
+  const upstreamRejectedDropped = receivedCandidates.length - universe.length;
+  const upstreamApprovedCandidates = universe.filter(isUpstreamApproved).length;
 
   const bySport: Record<string, number> = {};
   const byTier: Record<string, number> = {};
@@ -731,7 +864,9 @@ export async function buildReservationPlan(
     const groupAnchorCaptures: FullmatchRejectionCandidateCapture[] = [];
     for (const candidate of ranked) {
       const anchorInput = candidateAnchorInput(candidate);
-      const canonical = resolveMarketAnchorDecision(anchorInput);
+      // Reads the upstream verdict when one exists; classifies only legacy
+      // candidates that carry none.
+      const canonical = anchorEvidenceForCandidate(candidate);
       groupAnchorCaptures.push({ anchorInput, decision: canonical });
       if (canonical.allowed) {
         groupHasFullmatch = true;
@@ -757,7 +892,12 @@ export async function buildReservationPlan(
     // Filter to executable anchors only: halftime/corners/props/exact-score/goalscorer
     // are forbidden as reservation anchors. NEVER fall back to a forbidden market, and
     // never let a forbidden-anchor candidate become the representative title.
-    const executableAnchorRanked = ranked.filter((c) => !isForbiddenAnchorMarket(c));
+    // An upstream-approved candidate already passed this exact class check at
+    // the planning selector; re-running the slug regexes here would be the same
+    // second authority, one gate earlier.
+    const executableAnchorRanked = ranked.filter(
+      (c) => isUpstreamApproved(c) || !isForbiddenAnchorMarket(c)
+    );
     if (executableAnchorRanked.length === 0) {
       skippedNoExecutableAnchor += 1;
       continue;
@@ -773,14 +913,24 @@ export async function buildReservationPlan(
     // resolved and validated at the T-70..T-3 rebalance, which is unchanged.
     const planningAnchorByCandidate = new Map<FireModelCandidate, PlanningAnchorDecision>();
     for (const { candidate, decision } of anchorDecisions) {
+      const policy = upstreamMarketPolicyOf(candidate);
       planningAnchorByCandidate.set(
         candidate,
-        resolvePlanningAnchorDecision({
-          existingAnchorAllowed: decision.allowed,
-          canonical: resolveMarketAnchorDecision(candidateAnchorInput(candidate)),
-          anchorInput: candidateAnchorInput(candidate),
-          sport: candidate.inferred_sport ?? null,
-        })
+        policy
+          ? // Upstream already ran resolvePlanningAnchorDecision to produce this
+            // verdict. Consume its result -- including the anchor kind, so the
+            // STRUCTURED_FULLMATCH_EVENT attribution survives the move upstream.
+            {
+              allowed_for_planning: policy.allowed,
+              anchor_kind: policy.anchor_kind,
+              reason_code: policy.reason_code,
+            }
+          : resolvePlanningAnchorDecision({
+              existingAnchorAllowed: decision.allowed,
+              canonical: resolveMarketAnchorDecision(candidateAnchorInput(candidate)),
+              anchorInput: candidateAnchorInput(candidate),
+              sport: candidate.inferred_sport ?? null,
+            })
       );
     }
     const planningAllowed = (c: FireModelCandidate): boolean =>
@@ -1139,6 +1289,12 @@ export async function buildReservationPlan(
     fullmatch_rejection: fullmatchRejection,
     diagnostics: {
       universe_size: universe.length,
+      upstream_approved_candidates: upstreamApprovedCandidates,
+      upstream_rejected_candidates_dropped: upstreamRejectedDropped,
+      unique_physical_events: groups.size,
+      duplicate_events_removed: Math.max(0, universe.length - groups.size - marketLevelKeysSkipped),
+      slot_allocated: reservations.length,
+      slot_remaining: Math.max(0, TARGET_LIVE_SLOTS - reservations.length),
       event_groups: groups.size,
       canonical_event_groups: groups.size,
       reserved_count: reservations.length,

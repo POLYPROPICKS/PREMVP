@@ -373,19 +373,23 @@ test("JOB-8: a future event that ALREADY has its authoritative identity is reser
   assert.equal(jobRun.status, "success");
 });
 
-test("JOB-9: an unsupported market (corners) is rejected with an explicit anchor code, never reserved", async () => {
-  const { jobRun, store } = await runPlanningCron(RUN_1_MS, [UNSUPPORTED_MARKET]);
+test("JOB-9: an unsupported market (corners) is rejected by UPSTREAM market policy, never reserved", async () => {
+  const { jobRun, store, plan } = await runPlanningCron(RUN_1_MS, [UNSUPPORTED_MARKET]);
+
+  // The safety property is unchanged: a corners market is never reserved.
   assert.equal(store.length, 0);
+
+  // Market policy is now decided before planning, so the corners row never
+  // becomes a candidate and reservation is never asked about it. The run is
+  // still fully attributable -- from the stage that made the decision.
+  assert.equal(plan.diagnostics.universe_size, 0, "a corners market must not be a planning candidate");
+  assert.equal(plan.diagnostics.skipped_no_fullmatch_anchor, 0);
+  assert.equal(plan.diagnostics.skipped_no_executable_anchor, 0);
   const d = jobRun.diagnostics as Record<string, unknown>;
-  const byCode = d.rejection_counts_by_code as Record<string, number>;
-  assert.ok(
-    (byCode.NO_EXECUTABLE_ANCHOR ?? 0) +
-      (byCode.NO_FULLMATCH_ANCHOR ?? 0) +
-      (byCode.MARKET_LEVEL_KEY_SKIPPED ?? 0) >
-      0,
-    "an unsupported market must be attributable to an explicit rejection code"
-  );
-  assert.equal(typeof d.first_rejection_code, "string");
+  // Source rows existed; zero of them survived market policy into a physical
+  // event. Reservation reports the first stage that genuinely reached zero
+  // rather than claiming an anchor rejection it never performed.
+  assert.equal(d.first_zero_stage, "NORMALIZED_PHYSICAL_EVENTS");
 });
 
 test("JOB-10 (KC regression): an activity-label market is never reserved", async () => {

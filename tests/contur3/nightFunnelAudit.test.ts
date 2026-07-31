@@ -68,6 +68,9 @@ function rawDiag(overrides: Partial<RawPlanningDiagnostics> = {}): RawPlanningDi
     raw_forbidden_rows: 0,
     fullmatch_admitted_count: 0,
     fullmatch_rejected_by_reason: {},
+    market_policy_eligible: 0,
+    market_policy_rejected: 0,
+    market_policy_rejected_by_reason: {},
     missing_fullmatch_fixtures: [],
     ...overrides,
   };
