@@ -911,7 +911,7 @@ function getParentMeta(market: PolymarketRawMarket): ParentEventMeta {
  * Always returns an EnrichedMarket if we have valid Gamma data
  * Enrichment failures are warnings, not fatal errors
  */
-async function enrichMarket(
+export async function enrichMarket(
   event: PolymarketRawEvent,
   market: PolymarketRawMarket,
   initialWarnings: string[] = [],
@@ -1181,7 +1181,7 @@ async function enrichMarket(
  * Compute all scores and generate landing card pair
  * Uses fallback scores when enrichment data is missing
  */
-function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | null {
+export function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | null {
   const { parentMeta, market, selectedOutcome, diagnostics } = enriched;
 
   // Banded confidence scoring anchored to selectedOdds

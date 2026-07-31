@@ -635,6 +635,222 @@ export function analyzeSportsInventoryFunnel(
 }
 
 // ---------------------------------------------------------------------------
+// Eligible strict-group extraction (row-level, additive)
+//
+// analyzeSportsInventoryFunnel() above intentionally returns aggregate
+// counts only, never row data. Callers that need the actual rows behind a
+// GROUP_STRICT_FULL_EVENT_PASS group (e.g. a scoring dry run) need a second
+// entry point -- this function reruns the identical stage 0-7 rules (same
+// helpers, same resolveMarketAnchorDecision call, same horizon math) and
+// returns real group/row objects instead of counts. It adds exactly one
+// additional fail-closed rule the funnel report itself does not apply:
+// whole provider events with a reschedule identity ambiguity are excluded
+// entirely, never just measured. This function must stay in lockstep with
+// analyzeSportsInventoryFunnel's stage rules; that function's own test
+// suite is the parity guard against drift.
+// ---------------------------------------------------------------------------
+
+export type EligibleGroupExclusionReason =
+  | "SPORTS_NOT_CONFIRMED"
+  | "SPORT_CONFIRMATION_METADATA_INCONSISTENT"
+  | "IDENTITY_INVALID"
+  | "RESCHEDULE_IDENTITY_AMBIGUOUS"
+  | "SIBLING_INTEGRITY_FAILED"
+  | "GROUP_NOT_STRICT_FULL_EVENT"
+  | "STRUCTURAL_SCORE_INPUT_NOT_READY";
+
+export interface EligibleStrictGroup {
+  groupKey: string;
+  provider: string;
+  providerEventId: string;
+  eventStartIso: string;
+  /** Rows in this physical occurrence group, at least one of which is structurally score-ready. */
+  rows: SportsInventoryFunnelRow[];
+}
+
+export interface SportsInventoryEligibleGroupsResult {
+  eligibleGroups: EligibleStrictGroup[];
+  /** Row-scoped counts (SPORTS_NOT_CONFIRMED, SPORT_CONFIRMATION_METADATA_INCONSISTENT,
+   *  IDENTITY_INVALID) and group-scoped counts (everything else) share one sorted map;
+   *  which scope a reason counts at is fixed by the reason name itself. */
+  excludedReasons: Record<string, number>;
+}
+
+export function computeSportsInventoryEligibleGroups(
+  rows: SportsInventoryFunnelRow[],
+  options: SportsInventoryFunnelOptions,
+): SportsInventoryEligibleGroupsResult {
+  const fixedNowMs = Date.parse(options.fixedNow);
+  const horizonMs = options.horizonHours * 60 * 60 * 1000;
+  const horizonEndMs = fixedNowMs + horizonMs;
+
+  const excludedReasons: Record<string, number> = {};
+
+  // Stage 1: horizon (rows failing this never reach identity/grouping at all).
+  const stage1: SportsInventoryFunnelRow[] = [];
+  for (const row of rows) {
+    const iso = normalizedIso(row.event_start_iso);
+    if (iso === null) continue;
+    const startMs = Date.parse(iso);
+    if (startMs < fixedNowMs || startMs > horizonEndMs) continue;
+    stage1.push(row);
+  }
+
+  // Stage 2: sports confirmation (gate trusts is_confirmed_sports verbatim,
+  // exactly like analyzeSportsInventoryFunnel -- metadata inconsistency is
+  // counted, never used to silently repair the gate decision).
+  const stage2: SportsInventoryFunnelRow[] = [];
+  for (const row of stage1) {
+    const source = row.sports_confirmation_source;
+    const confirmed = row.is_confirmed_sports === true;
+    if (confirmed !== (source === "specific_sports_tag")) {
+      bump(excludedReasons, "SPORT_CONFIRMATION_METADATA_INCONSISTENT");
+    }
+    if (confirmed) {
+      stage2.push(row);
+    } else {
+      bump(excludedReasons, "SPORTS_NOT_CONFIRMED");
+    }
+  }
+
+  // Stage 3: exact identity.
+  interface ExactRow {
+    row: SportsInventoryFunnelRow;
+    provider: string;
+    providerEventId: string;
+    providerMarketId: string;
+    eventStartIso: string;
+    exactKey: string;
+  }
+  const stage3: ExactRow[] = [];
+  for (const row of stage2) {
+    const eventStartIso = normalizedIso(row.event_start_iso);
+    if (
+      !isNonEmptyString(row.provider) ||
+      !isNonEmptyString(row.provider_event_id) ||
+      !isNonEmptyString(row.provider_market_id) ||
+      eventStartIso === null
+    ) {
+      bump(excludedReasons, "IDENTITY_INVALID");
+      continue;
+    }
+    const provider = row.provider as string;
+    const providerEventId = row.provider_event_id as string;
+    const providerMarketId = row.provider_market_id as string;
+    stage3.push({
+      row,
+      provider,
+      providerEventId,
+      providerMarketId,
+      eventStartIso,
+      exactKey: `${provider}::${providerEventId}::${eventStartIso}`,
+    });
+  }
+
+  // Stage 4: reschedule ambiguity -- exclude the whole provider event.
+  const marketIdentityMap = new Map<string, Map<string, ExactRow[]>>();
+  for (const er of stage3) {
+    const identityKey = `${er.provider}::${er.providerEventId}::${er.providerMarketId}`;
+    const byStart = marketIdentityMap.get(identityKey) ?? new Map<string, ExactRow[]>();
+    const bucket = byStart.get(er.eventStartIso) ?? [];
+    bucket.push(er);
+    byStart.set(er.eventStartIso, bucket);
+    marketIdentityMap.set(identityKey, byStart);
+  }
+  const ambiguousProviderEvents = new Set<string>();
+  for (const [identityKey, byStart] of marketIdentityMap) {
+    if (byStart.size > 1) {
+      const [provider, providerEventId] = identityKey.split("::");
+      ambiguousProviderEvents.add(`${provider}::${providerEventId}`);
+    }
+  }
+
+  // Stage 5: physical occurrence grouping, dropping ambiguous provider events wholesale.
+  const groupMap = new Map<string, ExactRow[]>();
+  for (const er of stage3) {
+    const providerEventKey = `${er.provider}::${er.providerEventId}`;
+    if (ambiguousProviderEvents.has(providerEventKey)) continue;
+    const groupKey = `${er.provider}::${er.providerEventId}::${er.eventStartIso}`;
+    const bucket = groupMap.get(groupKey) ?? [];
+    bucket.push(er);
+    groupMap.set(groupKey, bucket);
+  }
+  for (const providerEventKey of ambiguousProviderEvents) {
+    const memberCount = stage3.filter((er) => `${er.provider}::${er.providerEventId}` === providerEventKey).length;
+    if (memberCount > 0) bump(excludedReasons, "RESCHEDULE_IDENTITY_AMBIGUOUS", memberCount);
+  }
+  const groups = [...groupMap.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1));
+
+  // Stage 5b: sibling integrity.
+  const siblingOkGroups: Array<[string, ExactRow[]]> = [];
+  for (const [groupKey, members] of groups) {
+    const maxSiblingStored = members.reduce((max, m) => {
+      const v = m.row.sibling_market_count;
+      return typeof v === "number" && Number.isFinite(v) ? Math.max(max, v) : max;
+    }, 0);
+    if (maxSiblingStored > 0 && maxSiblingStored !== members.length) {
+      bump(excludedReasons, "SIBLING_INTEGRITY_FAILED");
+      continue;
+    }
+    siblingOkGroups.push([groupKey, members]);
+  }
+
+  // Stage 6: strict full-event market policy (identical rule to analyzeSportsInventoryFunnel).
+  const strictGroups: Array<[string, ExactRow[]]> = [];
+  for (const [groupKey, members] of siblingOkGroups) {
+    const decisions = members.map((er) =>
+      resolveMarketAnchorDecision({
+        providerMarketQuestion: er.row.market_question,
+        marketTitle: er.row.market_question,
+        eventTitle: er.row.event_title,
+        marketSlug: er.row.provider_market_slug,
+        eventSlug: er.row.provider_event_slug,
+      }),
+    );
+    const anyAllowed = decisions.some((d) => d.allowed);
+    const allAllowed = anyAllowed && decisions.every((d) => d.allowed);
+    if (!allAllowed) {
+      bump(excludedReasons, "GROUP_NOT_STRICT_FULL_EVENT");
+      continue;
+    }
+    strictGroups.push([groupKey, members]);
+  }
+
+  // Stage 7: structural score readiness -- at least one member row must be ready.
+  const eligibleGroups: EligibleStrictGroup[] = [];
+  for (const [groupKey, members] of strictGroups) {
+    const anyReady = members.some((m) => {
+      const row = m.row;
+      if (!isNonEmptyString(row.condition_id)) return false;
+      const outcomes = toArrayOrNull(row.outcomes);
+      if (!outcomes || outcomes.length < 2) return false;
+      const tokens = toArrayOrNull(row.clob_token_ids);
+      if (!tokens || tokens.length !== outcomes.length) return false;
+      const prices = toArrayOrNull(row.outcome_prices);
+      if (!prices || prices.length !== outcomes.length) return false;
+      return prices.some((p) => {
+        const n = toFiniteNumber(p);
+        return n !== null && n > 0 && n < 1;
+      });
+    });
+    if (!anyReady) {
+      bump(excludedReasons, "STRUCTURAL_SCORE_INPUT_NOT_READY");
+      continue;
+    }
+    const [provider, providerEventId, eventStartIso] = groupKey.split("::");
+    eligibleGroups.push({
+      groupKey,
+      provider,
+      providerEventId,
+      eventStartIso,
+      rows: members.map((m) => m.row),
+    });
+  }
+
+  return { eligibleGroups, excludedReasons: sortedRecord(excludedReasons) };
+}
+
+// ---------------------------------------------------------------------------
 // Read-only paginated loader
 //
 // SELECT-only by construction: the caller supplies a `reader` that performs
