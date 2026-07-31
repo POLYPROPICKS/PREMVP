@@ -23,6 +23,7 @@ import {
   computeSportsInventoryEligibleGroups,
   type SportsInventoryFunnelRow,
 } from "../../lib/reporting/sportsInventoryFunnelReport";
+import { resolveMarketAnchorDecision } from "../../lib/contur3/taxonomy";
 
 const FIXED_NOW = "2026-07-31T00:00:00.000Z";
 const HORIZON_HOURS = 48;
@@ -137,6 +138,33 @@ test("5. only strict groups are sampled", () => {
   assert.equal(groups.eligibleGroups.length, 1);
   assert.equal(groups.eligibleGroups[0].providerEventId, "evt-strict");
   assert.ok((groups.excludedReasons.GROUP_NOT_STRICT_FULL_EVENT ?? 0) >= 1);
+});
+
+test("6. a derivative sibling makes a production-shaped group ineligible", () => {
+  const rows = [
+    row({
+      provider_event_id: "evt-cricket-derivative",
+      provider_market_id: "mkt-cricket-moneyline",
+      market_question: "Upminster to win the match?",
+      sibling_market_count: 2,
+    }),
+    row({
+      provider_event_id: "evt-cricket-derivative",
+      provider_market_id: "mkt-cricket-most-sixes",
+      market_question: "Most Sixes Upminster Winner",
+      sibling_market_count: 2,
+    }),
+  ];
+  const groups = computeSportsInventoryEligibleGroups(rows, { fixedNow: FIXED_NOW, horizonHours: HORIZON_HOURS });
+  assert.equal(groups.eligibleGroups.length, 0);
+  assert.equal(groups.excludedReasons.GROUP_NOT_STRICT_FULL_EVENT, 1);
+});
+
+test("7. first-innings lead is rejected by the canonical event-scope decision", () => {
+  const decision = resolveMarketAnchorDecision({ providerMarketQuestion: "First Innings Lead Winner" });
+  assert.equal(decision.allowed, false);
+  assert.equal(decision.event_scope, "map_or_round");
+  assert.equal(decision.reason_code, "PARTIAL_EVENT_SCOPE");
 });
 
 test("6. confirmed-sports gate is enforced", () => {

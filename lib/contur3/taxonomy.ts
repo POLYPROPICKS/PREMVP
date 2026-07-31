@@ -56,11 +56,13 @@ export function normalizeMarketText(input: unknown): string {
 const FORBIDDEN_HALFTIME_SQ = /halftime|firsthalf|1sthalf|secondhalf|2ndhalf/;
 const FORBIDDEN_CORNERS_SQ = /corner/;
 const FORBIDDEN_EXACTSCORE_SQ = /exactscore|correctscore/;
+const FORBIDDEN_EXACTSCORE_TOKEN = /\b(?:to\s+win|wins)\s+\d+\s*[-:\u2013]\s*\d+\b/;
 const FORBIDDEN_GOALSCORER_SQ = /goalscorer|anytimescorer|firstscorer|lastscorer|scorer/;
-const FORBIDDEN_PROPS_SQ = /playerprop|bookings|bothteamstoscore/;
+const FORBIDDEN_PROPS_SQ =
+  /playerprop|bookings|bothteamstoscore|toss|matchdouble|mostsixes|mostfours|topbatter|topbatsman|topbowler|manofthematch|playerofthematch|highestopeningpartnership|openingpartnership|raceto/;
 const FORBIDDEN_PROPS_TOKEN = /\bbtts\b|\bcards?\b|\bprops?\b/;
 const FORBIDDEN_FUTURES_SQ = /outright|towinoutright|winnergroup/;
-const FORBIDDEN_FUTURES_TOKEN = /\bfutures?\b/;
+const FORBIDDEN_FUTURES_TOKEN = /\bfutures?\b|\bgroup\s+\w+\s+winner\b/;
 const ESPORTS_SQ = /esports|csgo|dota|leagueoflegends|valorant|counterstrike/;
 const ESPORTS_TOKEN = /\bcs2\b/;
 const ALLOWED_MONEYLINE_SQ = /moneyline|matchwinner|towin|matchresult|winner|drawnobet|1x2/;
@@ -77,16 +79,19 @@ export function classifyMarketText(input: unknown): MarketClass {
   const tokens = tokensOf(input);
   const joined = tokens.join(" ");
   const squashed = tokens.join("");
+  const exactScoreText = String(input ?? "").toLowerCase();
 
   if (FORBIDDEN_HALFTIME_SQ.test(squashed)) return "forbidden_halftime";
   if (FORBIDDEN_CORNERS_SQ.test(squashed)) return "forbidden_corners";
-  if (FORBIDDEN_EXACTSCORE_SQ.test(squashed)) return "forbidden_exact_score";
+  if (FORBIDDEN_EXACTSCORE_SQ.test(squashed) || FORBIDDEN_EXACTSCORE_TOKEN.test(exactScoreText)) {
+    return "forbidden_exact_score";
+  }
   if (FORBIDDEN_GOALSCORER_SQ.test(squashed)) return "forbidden_goalscorer";
   if (FORBIDDEN_PROPS_SQ.test(squashed) || FORBIDDEN_PROPS_TOKEN.test(joined)) return "forbidden_props";
   if (FORBIDDEN_FUTURES_SQ.test(squashed) || FORBIDDEN_FUTURES_TOKEN.test(joined)) return "forbidden_futures";
   if (ESPORTS_SQ.test(squashed) || ESPORTS_TOKEN.test(joined)) return "esports_non_policy";
-  if (ALLOWED_MONEYLINE_SQ.test(squashed) || ALLOWED_MONEYLINE_TOKEN.test(joined)) return "allowed_fullmatch_moneyline";
   if (ALLOWED_SPREAD_SQ.test(squashed)) return "allowed_fullmatch_spread";
+  if (ALLOWED_MONEYLINE_SQ.test(squashed) || ALLOWED_MONEYLINE_TOKEN.test(joined)) return "allowed_fullmatch_moneyline";
   if (ALLOWED_TOTAL_SQ.test(squashed) || ALLOWED_TOTAL_TOKEN.test(joined)) return "allowed_fullmatch_total";
   return "unknown";
 }
@@ -135,7 +140,7 @@ const SCOPE_GAME_NUMBER_TOKEN = /\bgames?\s*\d+\b/;
 // Fail-closed: "Game Handicap: KC (-1.5) vs Team Vitality (+1.5)" is a per-game
 // handicap inside a series, not the series result.
 const SCOPE_SEGMENT_QUALIFIED_TOKEN =
-  /\b(?:map|game|set|period|quarter|inning|frame)s?\s+(?:handicap|spread|total|totals|line|lines|winner|moneyline|result)\b/;
+  /\b(?:map|game|set|period|quarter|inning|frame)s?\s+(?:handicap|spread|total|totals|line|lines|winner|moneyline|result|lead)\b/;
 const SCOPE_PROP_TOKEN = /\bprops?\b|\bplayer\b|\bbookings?\b|\bcards?\b|\bcorners?\b/;
 
 /**
