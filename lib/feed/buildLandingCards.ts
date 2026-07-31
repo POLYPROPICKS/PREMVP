@@ -468,7 +468,7 @@ export function prioritizePinnedCandidates(
 /**
  * Safely parse JSON string or return as-is if already array
  */
-function safeParseArray<T>(value: unknown): T[] {
+export function safeParseArray<T>(value: unknown): T[] {
   if (Array.isArray(value)) {
     return value as T[];
   }
@@ -488,7 +488,7 @@ function safeParseArray<T>(value: unknown): T[] {
 /**
  * Safely parse numeric string to number
  */
-function safeParseNumber(value: unknown): number | null {
+export function safeParseNumber(value: unknown): number | null {
   if (value === null || value === undefined) return null;
   if (typeof value === "number") return isNaN(value) ? null : value;
   if (typeof value === "string") {
