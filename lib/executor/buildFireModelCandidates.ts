@@ -125,6 +125,14 @@ export interface RawPlanningDiagnostics {
   market_policy_eligible: number;
   market_policy_rejected: number;
   market_policy_rejected_by_reason: Record<string, number>;
+  model_input_rows_by_raw_provider_sport?: Record<string, number>;
+  accepted_rows_by_raw_provider_sport?: Record<string, number>;
+  rejected_rows_by_raw_provider_sport_and_reason?: Record<string, Record<string, number>>;
+  unsupported_provider_sport_count?: number;
+  rows_missing_structured_provider_sport?: number;
+  rows_using_legacy_text_fallback?: number;
+  provider_sport_alias_normalization_counts?: Record<string, number>;
+  structured_sport_text_conflicts_structured_won?: number;
   // Compact per-row trace for allowed full-match raw rows that did NOT become a candidate.
   missing_fullmatch_fixtures: Array<{
     event_key: string;
@@ -211,6 +219,12 @@ export interface FireModelCandidate {
     override_reason?: "FOUNDER_APPROVED_WC_TIER2_SMALL_STAKE";
     max_stake_cap?: 5;
     wc_tier2_override_rejected_reason?: string;
+    provider_sport_code?: string | null;
+    provider_sport_source?: string;
+    provider_event_id?: string | null;
+    provider_market_id?: string | null;
+    provider_game_id?: string | null;
+    legacy_text_fallback_used?: boolean;
     // Contract A authoritative-decision provenance (CONTRACT_A_V1 selector
     // mode only). Present iff this candidate originates from a FROZEN Model
     // V2 acceptedDecision; absent for CONTUR3_CURRENT candidates. These
@@ -564,9 +578,11 @@ function safeLower(v: unknown): string {
 function resolvePlanningScope(
   row: any,
   identityText: string,
-  derivedScope: StrategicScope
+  derivedScope: StrategicScope,
+  allowTextFallback = true,
 ): { scope: StrategicScope; confidence: SportClassificationConfidence } {
   if (derivedScope !== "UNKNOWN") return { scope: derivedScope, confidence: "HIGH" };
+  if (!allowTextFallback) return { scope: "UNKNOWN", confidence: "NONE" };
   const diag: Record<string, unknown> = row.diagnostics ?? {};
   const shadowScope = safeLower(diag.shadowScope);
   const text = `${identityText} ${safeLower(diag.marketTitle)} ${safeLower(diag.eventTitle)} ${safeLower(diag.question)}`;
@@ -628,14 +644,21 @@ function computePlanningFallbackScore(
 // producer -- never derived from title text) recognized for planning. ufc is
 // an alias of mma per founder instruction; every other value is intentionally
 // absent so an unrecognized or unlisted upstream sport stays fail-closed.
-const EXPANDED_SPORT_SCOPE_BY_SHADOW_SCOPE: Readonly<Record<string, StrategicScope>> = {
+const MODEL_SCOPE_BY_PROVIDER_SPORT_CODE: Readonly<Record<string, StrategicScope>> = {
   basketball: "BASKETBALL",
+  nba: "BASKETBALL",
   hockey: "HOCKEY",
+  nhl: "HOCKEY",
   "ice hockey": "HOCKEY",
+  baseball: "MLB",
+  mlb: "MLB",
   tennis: "TENNIS",
   cricket: "CRICKET",
   mma: "MMA",
   ufc: "MMA",
+  soccer: "SOCCER",
+  football: "SOCCER",
+  esports: "ESPORT",
 };
 
 /**
@@ -646,10 +669,33 @@ const EXPANDED_SPORT_SCOPE_BY_SHADOW_SCOPE: Readonly<Record<string, StrategicSco
  * when the row carries no recognized explicit sport, which is exactly what
  * keeps the caller falling through to the existing text-derived fallback.
  */
-function resolveExplicitUpstreamSportScope(diag: Record<string, unknown>): StrategicScope | null {
-  const shadowScope = safeLower(diag.shadowScope).trim();
-  if (!shadowScope) return null;
-  return EXPANDED_SPORT_SCOPE_BY_SHADOW_SCOPE[shadowScope] ?? null;
+type ModelSportResolution = {
+  scope: StrategicScope;
+  rawProviderSportCode: string | null;
+  source: "providerSportCode" | "shadowScope" | "text";
+  hasStructuredSport: boolean;
+};
+
+function resolveModelSport(diag: Record<string, unknown>, identityText: string): ModelSportResolution {
+  const providerSportCode = safeLower(diag.providerSportCode);
+  if (providerSportCode) {
+    return {
+      scope: MODEL_SCOPE_BY_PROVIDER_SPORT_CODE[providerSportCode] ?? "UNKNOWN",
+      rawProviderSportCode: providerSportCode,
+      source: "providerSportCode",
+      hasStructuredSport: true,
+    };
+  }
+  const shadowScope = safeLower(diag.shadowScope);
+  if (shadowScope) {
+    return {
+      scope: MODEL_SCOPE_BY_PROVIDER_SPORT_CODE[shadowScope] ?? "UNKNOWN",
+      rawProviderSportCode: shadowScope,
+      source: "shadowScope",
+      hasStructuredSport: true,
+    };
+  }
+  return { ...deriveSportScope(identityText), rawProviderSportCode: null, source: "text", hasStructuredSport: false };
 }
 
 /**
@@ -662,9 +708,8 @@ function deriveSportScopeWithUpstreamPriority(
   diag: Record<string, unknown>,
   identityText: string
 ): { scope: StrategicScope; confidence: SportClassificationConfidence } {
-  const explicit = resolveExplicitUpstreamSportScope(diag);
-  if (explicit) return { scope: explicit, confidence: "HIGH" };
-  return deriveSportScope(identityText);
+  const resolved = resolveModelSport(diag, identityText);
+  return { scope: resolved.scope, confidence: resolved.hasStructuredSport ? "HIGH" : resolved.scope === "UNKNOWN" ? "NONE" : "HIGH" };
 }
 
 // Classify sport scope from identity text.
@@ -1385,6 +1430,14 @@ export async function buildFireModelCandidates(
         market_policy_eligible: 0,
         market_policy_rejected: 0,
         market_policy_rejected_by_reason: {},
+        model_input_rows_by_raw_provider_sport: {},
+        accepted_rows_by_raw_provider_sport: {},
+        rejected_rows_by_raw_provider_sport_and_reason: {},
+        unsupported_provider_sport_count: 0,
+        rows_missing_structured_provider_sport: 0,
+        rows_using_legacy_text_fallback: 0,
+        provider_sport_alias_normalization_counts: {},
+        structured_sport_text_conflicts_structured_won: 0,
         missing_fullmatch_fixtures: [],
       }
     : null;
@@ -1401,6 +1454,8 @@ export async function buildFireModelCandidates(
     }
 
     const diag: Record<string, unknown> = row.diagnostics ?? {};
+    const modelSport = resolveModelSport(diag, "");
+    const rawProviderSportCode = modelSport.rawProviderSportCode;
     const providerContext = providerContextOf(diag);
     // Canonical market class of this raw row (assigned once identityText is derived
     // below). Every live-allowed full-match raw row is then accounted as admitted
@@ -1418,6 +1473,12 @@ export async function buildFireModelCandidates(
         }
         rawDiag.dropped_by_formula_version_and_reason[ver][r] =
           (rawDiag.dropped_by_formula_version_and_reason[ver][r] ?? 0) + 1;
+        if (rawProviderSportCode) {
+          const rejectedBySport = rawDiag.rejected_rows_by_raw_provider_sport_and_reason ?? (rawDiag.rejected_rows_by_raw_provider_sport_and_reason = {});
+          const byReason = rejectedBySport[rawProviderSportCode] ?? {};
+          byReason[r] = (byReason[r] ?? 0) + 1;
+          rejectedBySport[rawProviderSportCode] = byReason;
+        }
         // Exact-reason accounting for live-allowed full-match raw rows that drop out.
         if (fmIsAllowedFullmatch) {
           rawDiag.fullmatch_rejected_by_reason[r] =
@@ -1451,6 +1512,29 @@ export async function buildFireModelCandidates(
         ? diag.gameStartIso
         : null;
     const { text: identityText, activityLabelDetected } = buildIdentityText(row, planningMode);
+    const resolvedModelSport = resolveModelSport(diag, identityText);
+    if (rawDiag) {
+      if (resolvedModelSport.rawProviderSportCode) {
+        const raw = resolvedModelSport.rawProviderSportCode;
+        const modelInputs = rawDiag.model_input_rows_by_raw_provider_sport ?? (rawDiag.model_input_rows_by_raw_provider_sport = {});
+        modelInputs[raw] = (modelInputs[raw] ?? 0) + 1;
+        if (MODEL_SCOPE_BY_PROVIDER_SPORT_CODE[raw] && raw !== resolvedModelSport.scope.toLowerCase()) {
+          const aliases = rawDiag.provider_sport_alias_normalization_counts ?? (rawDiag.provider_sport_alias_normalization_counts = {});
+          aliases[raw] = (aliases[raw] ?? 0) + 1;
+        }
+      } else {
+        rawDiag.rows_missing_structured_provider_sport = (rawDiag.rows_missing_structured_provider_sport ?? 0) + 1;
+        rawDiag.rows_using_legacy_text_fallback = (rawDiag.rows_using_legacy_text_fallback ?? 0) + 1;
+      }
+      if (resolvedModelSport.hasStructuredSport && deriveSportScope(identityText).scope !== "UNKNOWN" && deriveSportScope(identityText).scope !== resolvedModelSport.scope) {
+        rawDiag.structured_sport_text_conflicts_structured_won = (rawDiag.structured_sport_text_conflicts_structured_won ?? 0) + 1;
+      }
+    }
+    if (resolvedModelSport.source === "providerSportCode" && resolvedModelSport.scope === "UNKNOWN") {
+      if (rawDiag) rawDiag.unsupported_provider_sport_count = (rawDiag.unsupported_provider_sport_count ?? 0) + 1;
+      rejectReason("UNSUPPORTED_PROVIDER_SPORT");
+      continue;
+    }
     // Classify the raw market once with the canonical taxonomy so the builder,
     // queue and monitor agree, and so each live-allowed full-match raw row is
     // accounted as admitted / rejected (diagnostics only, no decision change).
@@ -1470,8 +1554,7 @@ export async function buildFireModelCandidates(
     let planningScoreSource: string | null = null;
 
     if (planningFallbackRow) {
-      const derivedScopeProbe = deriveSportScopeWithUpstreamPriority(diag, identityText);
-      const planningScope = resolvePlanningScope(row, identityText, derivedScopeProbe.scope);
+      const planningScope = resolvePlanningScope(row, identityText, resolvedModelSport.scope, !resolvedModelSport.hasStructuredSport);
       if (planningScope.scope === "UNKNOWN") {
         if (rawDiag) {
           rawDiag.planning_shadow_rejected_count += 1;
@@ -1523,12 +1606,14 @@ export async function buildFireModelCandidates(
     }
 
     const authoritative = authoritativeScope(providerContext);
-    const derivedScope = authoritative
-      ? { scope: authoritative, confidence: "HIGH" as const }
-      : deriveSportScopeWithUpstreamPriority(diag, identityText);
+    const derivedScope = resolvedModelSport.hasStructuredSport
+      ? { scope: resolvedModelSport.scope, confidence: "HIGH" as const }
+      : authoritative
+        ? { scope: authoritative, confidence: "HIGH" as const }
+        : deriveSportScopeWithUpstreamPriority(diag, identityText);
     const { scope: strategicScope, confidence: scopeConfidence } =
       planningMode && derivedScope.scope === "UNKNOWN"
-        ? resolvePlanningScope(row, identityText, derivedScope.scope)
+        ? resolvePlanningScope(row, identityText, derivedScope.scope, !resolvedModelSport.hasStructuredSport)
         : derivedScope;
 
     if (rawDiag) {
@@ -1841,6 +1926,12 @@ export async function buildFireModelCandidates(
         hours_to_start_now: hoursToStart,
         fire_model_alias: "FireModel1",
         version: row.metric_formula_version,
+        provider_sport_code: rawProviderSportCode,
+        provider_sport_source: safeLower(diag.providerSportSource) || resolvedModelSport.source,
+        provider_event_id: typeof diag.providerEventId === "string" ? diag.providerEventId : null,
+        provider_market_id: typeof diag.providerMarketId === "string" ? diag.providerMarketId : null,
+        provider_game_id: typeof diag.gameId === "string" ? diag.gameId : null,
+        legacy_text_fallback_used: !resolvedModelSport.hasStructuredSport,
         ...(wcTier2OverrideApplied
           ? {
               live_policy_override: "WC_TIER2_68_COV50" as const,
@@ -1873,6 +1964,10 @@ export async function buildFireModelCandidates(
     if (rawDiag && planningFallbackUsed) {
       rawDiag.planning_shadow_included_count += 1;
       rawDiag.fallback_candidate_count += 1;
+    }
+    if (rawDiag && rawProviderSportCode) {
+      const acceptedBySport = rawDiag.accepted_rows_by_raw_provider_sport ?? (rawDiag.accepted_rows_by_raw_provider_sport = {});
+      acceptedBySport[rawProviderSportCode] = (acceptedBySport[rawProviderSportCode] ?? 0) + 1;
     }
   }
 

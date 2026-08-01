@@ -56,6 +56,7 @@ async function at<T>(ms: number, fn: () => Promise<T>): Promise<T> {
 function shadowSportsRow(over: {
   id: string;
   shadowScope: string;
+  providerSportCode?: string;
   eventTitle: string;
   marketQuestion: string;
   eventSlug: string;
@@ -78,6 +79,7 @@ function shadowSportsRow(over: {
     market_slug: over.marketQuestion,
     diagnostics: {
       shadowScope: over.shadowScope,
+      ...(over.providerSportCode === undefined ? {} : { providerSportCode: over.providerSportCode }),
       gameStartIso: over.gameStartIso === undefined ? FUTURE_START_ISO : over.gameStartIso,
       dataCoverage: 60,
       eventTitle: over.eventTitle,
@@ -85,9 +87,101 @@ function shadowSportsRow(over: {
       tier: 1,
       entryPrice: 0.3,
       volumeUsd: 5000,
-    },
+    } as Record<string, unknown>,
   };
 }
+
+test("providerSportCode is the primary structured model input and wins over shadowScope/text", async () => {
+  const row = shadowSportsRow({
+    id: "provider-basketball",
+    providerSportCode: "basketball",
+    shadowScope: "soccer",
+    eventTitle: "World Cup Qualifier: Team Alpha vs. Team Beta",
+    marketQuestion: "World Cup Qualifier: Team Alpha vs. Team Beta - Moneyline",
+    eventSlug: "basketball-alpha-vs-beta-2026-08-02",
+  });
+  const { candidates } = await planningCandidates([row]);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].strategic_scope, "BASKETBALL");
+  assert.equal(candidates[0].diagnostics.provider_sport_code, "basketball");
+  assert.equal(candidates[0].diagnostics.provider_sport_source, "providerSportCode");
+  assert.equal(candidates[0].diagnostics.legacy_text_fallback_used, false);
+});
+
+for (const [providerSportCode, expectedScope] of [
+  ["nba", "BASKETBALL"],
+  ["nhl", "HOCKEY"],
+  ["mlb", "MLB"],
+  ["ufc", "MMA"],
+] as const) {
+  test(`providerSportCode alias ${providerSportCode} normalizes at the model boundary`, async () => {
+    const row = shadowSportsRow({
+      id: `provider-${providerSportCode}`,
+      providerSportCode,
+      shadowScope: "",
+      eventTitle: "Team Alpha vs. Team Beta",
+      marketQuestion: "Team Alpha vs. Team Beta - Moneyline",
+      eventSlug: `${providerSportCode}-alpha-vs-beta-2026-08-02`,
+    });
+    const { candidates } = await planningCandidates([row]);
+    assert.equal(candidates.length, 1);
+    assert.equal(candidates[0].strategic_scope, expectedScope);
+  });
+}
+
+test("unsupported providerSportCode reaches the model and is explicitly rejected", async () => {
+  const row = shadowSportsRow({
+    id: "provider-rugby",
+    providerSportCode: "rugby-sevens",
+    shadowScope: "",
+    eventTitle: "Team Alpha vs. Team Beta",
+    marketQuestion: "Team Alpha vs. Team Beta - Moneyline",
+    eventSlug: "rugby-alpha-vs-beta-2026-08-02",
+  });
+  const { candidates, rawDiagnostics } = await planningCandidates([row]);
+  assert.equal(candidates.length, 0);
+  assert.equal(rawDiagnostics?.rejected_before_planning_by_reason.UNSUPPORTED_PROVIDER_SPORT, 1);
+  assert.equal(rawDiagnostics?.model_input_rows_by_raw_provider_sport?.["rugby-sevens"], 1);
+});
+
+test("provider metadata and each token/outcome lineage survive model admission independently", async () => {
+  const base = shadowSportsRow({
+    id: "lineage-a",
+    providerSportCode: "nba",
+    shadowScope: "",
+    eventTitle: "Team Alpha vs. Team Beta",
+    marketQuestion: "Team Alpha vs. Team Beta - Moneyline",
+    eventSlug: "nba-alpha-vs-beta-2026-08-02",
+  });
+  base.diagnostics = {
+    ...base.diagnostics,
+    providerSportSource: "sports-tag",
+    providerEventId: "event-42",
+    providerMarketId: "market-42",
+    gameId: "game-42",
+  };
+  const second = {
+    ...base,
+    id: "lineage-b",
+    selected_token_id: "tok-lineage-b",
+    selected_outcome: "Team B",
+    entry_price_num: 0.7,
+  };
+  const { candidates } = await planningCandidates([base, second]);
+  assert.equal(candidates.length, 2);
+  assert.deepEqual(candidates.map(c => [c.token_id, c.selected_outcome, c.diagnostics.entry_price]), [
+    ["tok-lineage-a", "Team A", 0.3],
+    ["tok-lineage-b", "Team B", 0.7],
+  ]);
+  assert.deepEqual(candidates[0].diagnostics, {
+    ...candidates[0].diagnostics,
+    provider_sport_code: "nba",
+    provider_sport_source: "sports-tag",
+    provider_event_id: "event-42",
+    provider_market_id: "market-42",
+    provider_game_id: "game-42",
+  });
+});
 
 async function planningCandidates(rows: unknown[]) {
   return at(NOW_MS, () =>
