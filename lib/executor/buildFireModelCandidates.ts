@@ -47,7 +47,18 @@ const STAKE_GUARD_MAX_BASE_USD = 7;
 export type FireModelSelectorMode = "CONTUR3_CURRENT" | "CONTRACT_A_PLANNING_V1" | "CONTRACT_A_V1";
 const KNOWN_SELECTOR_MODES: readonly FireModelSelectorMode[] = ["CONTUR3_CURRENT", "CONTRACT_A_PLANNING_V1", "CONTRACT_A_V1"];
 
-export type StrategicScope = "WC" | "SOCCER" | "MLB" | "ESPORT" | "OTHER" | "UNKNOWN";
+export type StrategicScope =
+  | "WC"
+  | "SOCCER"
+  | "MLB"
+  | "ESPORT"
+  | "BASKETBALL"
+  | "HOCKEY"
+  | "TENNIS"
+  | "CRICKET"
+  | "MMA"
+  | "OTHER"
+  | "UNKNOWN";
 export type IdentityQuality = "STRONG" | "MEDIUM" | "WEAK" | "INVALID";
 export type SportClassificationConfidence = "HIGH" | "MEDIUM" | "LOW" | "NONE";
 
@@ -612,6 +623,50 @@ function computePlanningFallbackScore(
   return { score, coverage, source: "shadow_sports_fallback" };
 }
 
+// Expanded-sports planning boundary (2026-08 correction): explicit, exact
+// upstream sport metadata (diagnostics.shadowScope, as set by the source
+// producer -- never derived from title text) recognized for planning. ufc is
+// an alias of mma per founder instruction; every other value is intentionally
+// absent so an unrecognized or unlisted upstream sport stays fail-closed.
+const EXPANDED_SPORT_SCOPE_BY_SHADOW_SCOPE: Readonly<Record<string, StrategicScope>> = {
+  basketball: "BASKETBALL",
+  hockey: "HOCKEY",
+  "ice hockey": "HOCKEY",
+  tennis: "TENNIS",
+  cricket: "CRICKET",
+  mma: "MMA",
+  ufc: "MMA",
+};
+
+/**
+ * Explicit upstream sport metadata, checked BEFORE any text-derived scope.
+ * Exact (trimmed, lowercased) match only -- no substring/regex probing of
+ * free text, so a title that happens to mention "hockey" in passing can never
+ * masquerade as authoritative sport metadata. Returns null (never a scope)
+ * when the row carries no recognized explicit sport, which is exactly what
+ * keeps the caller falling through to the existing text-derived fallback.
+ */
+function resolveExplicitUpstreamSportScope(diag: Record<string, unknown>): StrategicScope | null {
+  const shadowScope = safeLower(diag.shadowScope).trim();
+  if (!shadowScope) return null;
+  return EXPANDED_SPORT_SCOPE_BY_SHADOW_SCOPE[shadowScope] ?? null;
+}
+
+/**
+ * Sport-scope resolution with upstream-metadata priority: an explicit,
+ * recognized upstream sport wins over any text-derived guess, ambiguous or
+ * not. Falls through to the existing deriveSportScope text classifier,
+ * UNCHANGED, when no explicit sport is present -- this is purely additive.
+ */
+function deriveSportScopeWithUpstreamPriority(
+  diag: Record<string, unknown>,
+  identityText: string
+): { scope: StrategicScope; confidence: SportClassificationConfidence } {
+  const explicit = resolveExplicitUpstreamSportScope(diag);
+  if (explicit) return { scope: explicit, confidence: "HIGH" };
+  return deriveSportScope(identityText);
+}
+
 // Classify sport scope from identity text.
 // Priority: negative guards → explicit WC tokens → MLB → soccer leagues →
 //   WC country-pair + football phrase fallback.
@@ -776,11 +831,16 @@ function extractSelectedOutcome(row: any, diag: Record<string, unknown>): string
 
 function inferSportAndFamily(scope: StrategicScope): { sport: string; family: string } {
   switch (scope) {
-    case "WC":     return { sport: "soccer",   family: "world_cup" };
-    case "SOCCER": return { sport: "soccer",   family: "soccer"    };
-    case "MLB":    return { sport: "baseball", family: "mlb"       };
-    case "ESPORT": return { sport: "esport",   family: "esport"    };
-    default:       return { sport: "unknown",  family: "other"     };
+    case "WC":         return { sport: "soccer",     family: "world_cup" };
+    case "SOCCER":     return { sport: "soccer",     family: "soccer"    };
+    case "MLB":        return { sport: "baseball",   family: "mlb"       };
+    case "ESPORT":     return { sport: "esport",     family: "esport"    };
+    case "BASKETBALL": return { sport: "basketball", family: "basketball" };
+    case "HOCKEY":     return { sport: "hockey",     family: "hockey"    };
+    case "TENNIS":     return { sport: "tennis",     family: "tennis"    };
+    case "CRICKET":    return { sport: "cricket",    family: "cricket"   };
+    case "MMA":        return { sport: "mma",        family: "mma"       };
+    default:           return { sport: "unknown",    family: "other"     };
   }
 }
 
@@ -1410,7 +1470,7 @@ export async function buildFireModelCandidates(
     let planningScoreSource: string | null = null;
 
     if (planningFallbackRow) {
-      const derivedScopeProbe = deriveSportScope(identityText);
+      const derivedScopeProbe = deriveSportScopeWithUpstreamPriority(diag, identityText);
       const planningScope = resolvePlanningScope(row, identityText, derivedScopeProbe.scope);
       if (planningScope.scope === "UNKNOWN") {
         if (rawDiag) {
@@ -1465,7 +1525,7 @@ export async function buildFireModelCandidates(
     const authoritative = authoritativeScope(providerContext);
     const derivedScope = authoritative
       ? { scope: authoritative, confidence: "HIGH" as const }
-      : deriveSportScope(identityText);
+      : deriveSportScopeWithUpstreamPriority(diag, identityText);
     const { scope: strategicScope, confidence: scopeConfidence } =
       planningMode && derivedScope.scope === "UNKNOWN"
         ? resolvePlanningScope(row, identityText, derivedScope.scope)
