@@ -243,6 +243,20 @@ export async function writeStrategicShadowPairs(
         v1EligibilityReason: entry.v1EligibilityReason ?? null,
         marketFamily: entry.marketFamily ?? null,
         gameStartIso: entry.gameStartIso ?? null,
+        // Structured provider-sport contract (commit 1). Raw and open --
+        // never normalized/aliased here; model-boundary normalization is a
+        // separate, later commit.
+        providerSportCode: entry.providerSportCode ?? null,
+        providerSportSource: entry.providerSportSource ?? null,
+        providerSportTagIds: entry.providerSportTagIds ?? null,
+        providerSeriesIds: entry.providerSeriesIds ?? null,
+        providerEventId: entry.providerEventId ?? null,
+        providerMarketId: entry.providerMarketId ?? null,
+        gameId: entry.gameId ?? null,
+        teamAId: entry.teamAId ?? null,
+        teamBId: entry.teamBId ?? null,
+        ambiguousSport: entry.ambiguousSport ?? null,
+        tokenSelectionMethod: entry.tokenSelectionMethod ?? null,
       },
       score: null,
       expires_at: rowExpiresAt,

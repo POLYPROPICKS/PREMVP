@@ -554,6 +554,16 @@ export interface SportsDiscoveryCounts {
   sportsInventorySiblingMax?: number;
   sportsInventoryRowsSkippedMissingIdentity?: number;
   sportsInventoryWriteFailed?: boolean;
+  // Broad structured sports Signal Pair diagnostics (commit 1 of the
+  // provider-sport -> Signal Pair -> model -> Reservation contract).
+  // Reuses the same broad keyset capture as the inventory block above;
+  // never gates on the model sport allowlist.
+  broadSportsRowsProposed?: number;
+  broadSportsRowsBySport?: Record<string, number>;
+  broadSportsRowsSkippedMissingToken?: number;
+  broadSportsRowsAmbiguousSport?: number;
+  broadSportsWriteInserted?: number;
+  broadSportsWriteFailed?: boolean;
 }
 
 export interface SportsDiscoverySample {

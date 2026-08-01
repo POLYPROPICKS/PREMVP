@@ -442,6 +442,62 @@ export async function discoverSportsMarkets(
           `SPORTS_INVENTORY_WRITE_FAILED: ${writeResult.errorCode ?? "unknown"} ${writeResult.errorMessage ?? ""}`.trim(),
         );
       }
+
+      // ── Broad structured sports -> Signal Pair (commit 1) ──────────────
+      // Same reused inventoryRows as above; an additional consumer of the
+      // broad capture result, not a second crawler. Never gates on the
+      // model's supported-sport list -- every structurally confirmed sport
+      // is proposed to the existing Signal Pair writer.
+      try {
+        const gameTeamLookup = new Map<string, { gameId: string | null; teamAId: string | null; teamBId: string | null }>();
+        for (const ev of keysetResult.events) {
+          const event = ev as Record<string, unknown>;
+          const nestedMarkets = Array.isArray(event.markets) ? (event.markets as Record<string, unknown>[]) : [];
+          for (const mkt of nestedMarkets) {
+            const marketId = String(mkt.id ?? "").trim();
+            if (!marketId) continue;
+            gameTeamLookup.set(marketId, {
+              gameId: typeof mkt.gameId === "string" && mkt.gameId ? mkt.gameId : null,
+              teamAId:
+                typeof mkt.teamAID === "string" && mkt.teamAID
+                  ? mkt.teamAID
+                  : typeof mkt.teamAId === "string" && mkt.teamAId
+                    ? mkt.teamAId
+                    : null,
+              teamBId:
+                typeof mkt.teamBID === "string" && mkt.teamBID
+                  ? mkt.teamBID
+                  : typeof mkt.teamBId === "string" && mkt.teamBId
+                    ? mkt.teamBId
+                    : null,
+            });
+          }
+        }
+
+        const sportMeta = buildProviderSportMetadataMap(sportsRaw as unknown[]);
+        const { entries: broadEntries, diagnostics: broadDiag } = buildBroadStructuredSportsShadowEntries(
+          inventoryRows,
+          sportMeta,
+          gameTeamLookup,
+        );
+        counts.broadSportsRowsProposed = broadDiag.rowsProposed;
+        counts.broadSportsRowsBySport = broadDiag.rowsBySport;
+        counts.broadSportsRowsSkippedMissingToken = broadDiag.rowsSkippedMissingToken;
+        counts.broadSportsRowsAmbiguousSport = broadDiag.rowsAmbiguousSport;
+
+        if (broadEntries.length > 0) {
+          const { writeStrategicShadowPairs } = await import("./cacheGeneratedSignals");
+          const broadExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
+          const broadInserted = await writeStrategicShadowPairs(broadEntries, broadExpiresAt);
+          counts.broadSportsWriteInserted = broadInserted;
+        } else {
+          counts.broadSportsWriteInserted = 0;
+        }
+      } catch (broadErr) {
+        counts.broadSportsWriteFailed = true;
+        const msg = broadErr instanceof Error ? broadErr.message.slice(0, 180) : String(broadErr);
+        warnings.push(`BROAD_SPORTS_SIGNAL_PAIR_WRITE_FAILED: ${msg}`);
+      }
     } catch (inventoryErr) {
       counts.sportsInventoryWriteFailed = true;
       const msg = inventoryErr instanceof Error ? inventoryErr.message.slice(0, 180) : String(inventoryErr);
@@ -1253,7 +1309,10 @@ export async function discoverSportsMarkets(
 export interface WcShadowEntry {
   conditionId: string;
   selectedTokenId: string;
-  entryPriceNum: number;
+  // Nullable: the broad structured-sports collector writes identity rows for
+  // sports the model has never scored, so no price-band selection has run.
+  // Every existing targeted collector still always sets a real number here.
+  entryPriceNum: number | null;
   tier: number;
   marketQuestion: string;
   selectedOutcome: string | null;
@@ -1265,7 +1324,11 @@ export interface WcShadowEntry {
   marketType?: string | null;
   marketSlug?: string | null;
   marketTitle?: string | null;
-  shadowScope: "WC2026" | "ESPORT" | "NBA" | "NHL";
+  // Open provider sport code (raw, e.g. "basketball", "nba", "rugby-sevens").
+  // Historically a closed union of the four targeted-collector labels; kept
+  // open so any structurally-returned provider sport can be represented
+  // without the ingestion layer knowing the model's supported-sport list.
+  shadowScope: string;
   shadowReason: string;
   // V1 full-line outcome capture fields
   outcomeName?: string | null;
@@ -1274,6 +1337,190 @@ export interface WcShadowEntry {
   volumeUsd?: number | null;
   v1EligibilityReason?: string | null;
   marketFamily?: string | null;
+  // Structured provider-sport contract (commit 1). Populated only by the
+  // broad structured-sports collector; undefined for legacy targeted rows.
+  providerSportCode?: string | null;
+  providerSportSource?: "structured_sports_tag" | "unclassified" | "ambiguous_multi_tag";
+  providerSportTagIds?: string[];
+  providerSeriesIds?: string[];
+  providerEventId?: string | null;
+  providerMarketId?: string | null;
+  gameId?: string | null;
+  teamAId?: string | null;
+  teamBId?: string | null;
+  ambiguousSport?: boolean;
+  tokenSelectionMethod?: string;
+}
+
+// ── Broad structured sports Signal Pair collector (commit 1) ───────────────
+// Reuses the same broad keyset capture the inventory block below builds
+// (buildSportsEventMarketInventoryRows over EVERY raw keyset event) as the
+// single source for a generic, sport-open Signal Pair adapter. Every field
+// here is structural: tag-id-to-sport-code from /sports metadata, provider
+// event/market/game/team identity from the raw provider objects. No title,
+// slug or market-question text is read for sport classification.
+
+export interface ProviderSportMetadataMap {
+  tagIdToSportCodes: Map<string, Set<string>>;
+  sportCodeToSeriesIds: Map<string, string[]>;
+}
+
+function parseIdList(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value.split(",").map((t) => t.trim()).filter(Boolean);
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => String(v)).map((t) => t.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+/**
+ * Build a tag-id -> provider-sport-code map (and, when source-verifiable, a
+ * sport-code -> series-id list) from the raw /sports metadata payload. Pure,
+ * no I/O. Tolerant of the same shapes fetchSportsMetadata already tolerates
+ * (tags as CSV string or array); unknown/missing fields are simply skipped,
+ * never inferred from text.
+ */
+export function buildProviderSportMetadataMap(sportsRaw: unknown[]): ProviderSportMetadataMap {
+  const tagIdToSportCodes = new Map<string, Set<string>>();
+  const sportCodeToSeriesIds = new Map<string, string[]>();
+  for (const raw of sportsRaw) {
+    if (!raw || typeof raw !== "object") continue;
+    const s = raw as Record<string, unknown>;
+    const codeVal = s.sport ?? s.label ?? s.slug ?? s.id;
+    const code = typeof codeVal === "string" && codeVal.trim() ? codeVal.trim().toLowerCase() : null;
+    if (!code) continue;
+
+    for (const tagId of parseIdList(s.tags)) {
+      if (!tagIdToSportCodes.has(tagId)) tagIdToSportCodes.set(tagId, new Set());
+      tagIdToSportCodes.get(tagId)!.add(code);
+    }
+
+    const seriesIds = parseIdList(s.series);
+    if (seriesIds.length > 0) sportCodeToSeriesIds.set(code, seriesIds);
+  }
+  return { tagIdToSportCodes, sportCodeToSeriesIds };
+}
+
+function extractEventTagIds(rawTags: unknown): string[] {
+  if (!Array.isArray(rawTags)) return [];
+  const ids: string[] = [];
+  for (const t of rawTags) {
+    if (typeof t === "string") ids.push(t);
+    else if (t && typeof t === "object" && "id" in (t as Record<string, unknown>)) {
+      const id = (t as Record<string, unknown>).id;
+      if (id !== undefined && id !== null) ids.push(String(id));
+    }
+  }
+  return ids;
+}
+
+export interface BroadStructuredSportsBuildDiagnostics {
+  rowsConsidered: number;
+  rowsProposed: number;
+  rowsBySport: Record<string, number>;
+  rowsSkippedMissingToken: number;
+  rowsAmbiguousSport: number;
+}
+
+/**
+ * Pure adapter: confirmed-sports inventory rows (already deduped/flattened by
+ * the existing buildSportsEventMarketInventoryRows mapper) -> WcShadowEntry
+ * input for the existing writeStrategicShadowPairs writer. No new crawler, no
+ * new flattening algorithm, no model sport allowlist. Token/price selection
+ * here is identity-only (first available token/outcome) -- it performs no
+ * price-band or market-class eligibility judgment; that remains a model-layer
+ * decision in the next commit.
+ */
+export function buildBroadStructuredSportsShadowEntries(
+  inventoryRows: import("./cacheSportsEventMarketInventory").SportsEventMarketInventoryRow[],
+  sportMeta: ProviderSportMetadataMap,
+  gameTeamLookup: Map<string, { gameId: string | null; teamAId: string | null; teamBId: string | null }>,
+): { entries: WcShadowEntry[]; diagnostics: BroadStructuredSportsBuildDiagnostics } {
+  const diagnostics: BroadStructuredSportsBuildDiagnostics = {
+    rowsConsidered: 0,
+    rowsProposed: 0,
+    rowsBySport: {},
+    rowsSkippedMissingToken: 0,
+    rowsAmbiguousSport: 0,
+  };
+  const entries: WcShadowEntry[] = [];
+
+  for (const row of inventoryRows) {
+    if (!row.isConfirmedSports) continue;
+    diagnostics.rowsConsidered += 1;
+
+    const tagIds = extractEventTagIds(row.providerTags);
+    const matchedCodes = new Set<string>();
+    for (const tagId of tagIds) {
+      const codes = sportMeta.tagIdToSportCodes.get(tagId);
+      if (codes) for (const c of codes) matchedCodes.add(c);
+    }
+
+    let providerSportCode: string | null = null;
+    let providerSportSource: WcShadowEntry["providerSportSource"] = "unclassified";
+    let ambiguousSport = false;
+    if (matchedCodes.size === 1) {
+      providerSportCode = [...matchedCodes][0];
+      providerSportSource = "structured_sports_tag";
+    } else if (matchedCodes.size > 1) {
+      providerSportSource = "ambiguous_multi_tag";
+      ambiguousSport = true;
+      diagnostics.rowsAmbiguousSport += 1;
+    }
+
+    const firstTokenId = typeof row.clobTokenIds[0] === "string" ? (row.clobTokenIds[0] as string) : null;
+    if (!row.conditionId || !firstTokenId) {
+      diagnostics.rowsSkippedMissingToken += 1;
+      continue;
+    }
+    const rawFirstPrice = row.outcomePrices[0];
+    const firstPrice =
+      typeof rawFirstPrice === "number"
+        ? rawFirstPrice
+        : typeof rawFirstPrice === "string" && rawFirstPrice.trim() !== "" && Number.isFinite(Number(rawFirstPrice))
+          ? Number(rawFirstPrice)
+          : null;
+    const firstOutcome = typeof row.outcomes[0] === "string" ? (row.outcomes[0] as string) : null;
+
+    const enrichment = gameTeamLookup.get(row.providerMarketId) ?? { gameId: null, teamAId: null, teamBId: null };
+    const sportKey = providerSportCode ?? (ambiguousSport ? "AMBIGUOUS_MULTI_SPORT" : "UNCLASSIFIED_SPORTS_TAG");
+
+    entries.push({
+      conditionId: row.conditionId,
+      selectedTokenId: firstTokenId,
+      entryPriceNum: firstPrice,
+      tier: 0,
+      marketQuestion: row.marketQuestion ?? row.eventTitle ?? "",
+      selectedOutcome: firstOutcome,
+      eventSlug: row.providerEventSlug ?? row.providerEventId,
+      eventTitle: row.eventTitle ?? row.providerEventSlug ?? row.providerEventId,
+      eventEndIso: row.marketEndIso,
+      gameStartIso: row.eventStartIso,
+      marketType: row.sportsMarketType,
+      marketSlug: row.providerMarketSlug,
+      marketTitle: row.marketQuestion,
+      shadowScope: sportKey,
+      shadowReason: "BROAD_STRUCTURED_SPORTS_V1",
+      volumeUsd: row.volumeUsd,
+      providerSportCode,
+      providerSportSource,
+      providerSportTagIds: tagIds,
+      providerSeriesIds: providerSportCode ? sportMeta.sportCodeToSeriesIds.get(providerSportCode) ?? [] : [],
+      providerEventId: row.providerEventId,
+      providerMarketId: row.providerMarketId,
+      gameId: enrichment.gameId,
+      teamAId: enrichment.teamAId,
+      teamBId: enrichment.teamBId,
+      ambiguousSport,
+      tokenSelectionMethod: "first_outcome_identity_only_no_eligibility_filter",
+    });
+    diagnostics.rowsProposed += 1;
+    diagnostics.rowsBySport[sportKey] = (diagnostics.rowsBySport[sportKey] ?? 0) + 1;
+  }
+
+  return { entries, diagnostics };
 }
 
 /**
