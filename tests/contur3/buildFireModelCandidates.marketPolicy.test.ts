@@ -166,7 +166,7 @@ test("MP-1: only the allowed full-match market becomes a planning candidate", as
 });
 
 test("MP-1b: every blocked class is rejected with a structured upstream reason", async () => {
-  for (const row of [HALFTIME, CORNERS, PROP, ESPORTS_NON_POLICY]) {
+  for (const row of [HALFTIME, CORNERS, PROP]) {
     const { candidates, rawDiagnostics } = await planningCandidates([row]);
     assert.equal(
       candidates.length,
@@ -179,6 +179,19 @@ test("MP-1b: every blocked class is rejected with a structured upstream reason",
       `no structured MARKET_POLICY_* rejection reason for ${row.market_slug}: ${JSON.stringify(reasons)}`
     );
   }
+});
+
+// Esports moved to an EARLIER gate. Product policy excludes esports from the
+// planning path outright -- regardless of market class -- so the row is
+// rejected as ESPORTS_EXCLUDED before market policy is ever consulted. The
+// safety property (never a planning candidate) is unchanged; only the stage
+// that owns the decision moved, and it moved deliberately: market policy CAN
+// approve a full-series esports moneyline, so it could never enforce this rule.
+test("MP-1b-esports: an esports row is rejected by the esports gate, ahead of market policy", async () => {
+  const { candidates, rawDiagnostics } = await planningCandidates([ESPORTS_NON_POLICY]);
+  assert.equal(candidates.length, 0, "an esports market must never become a planning candidate");
+  const reasons = Object.keys(rawDiagnostics?.rejected_before_planning_by_reason ?? {});
+  assert.deepEqual(reasons, ["ESPORTS_EXCLUDED"]);
 });
 
 // ── TEST 1c — the production arithmetic can no longer happen ────────────────
@@ -195,13 +208,22 @@ test("MP-1c: planning_candidates <= market_policy_eligible (285 > 151 is impossi
     `planning candidates (${candidates.length}) exceeded policy-eligible rows ` +
       `(${rawDiagnostics.market_policy_eligible}) -- rejected rows leaked forward`
   );
+  // The esports row is now rejected by the earlier esports gate and therefore
+  // never reaches market policy -- so the market-policy ledger accounts for
+  // every row that REACHED it, which is ALL_ROWS minus that one.
   assert.equal(
     rawDiagnostics.market_policy_eligible + rawDiagnostics.market_policy_rejected,
-    ALL_ROWS.length,
+    ALL_ROWS.length - 1,
     "every source row must be accounted as policy-eligible or policy-rejected"
   );
   assert.equal(rawDiagnostics.market_policy_eligible, 1);
-  assert.equal(rawDiagnostics.market_policy_rejected, 4);
+  // halftime + corners + prop. The esports row never reaches this ledger.
+  assert.equal(rawDiagnostics.market_policy_rejected, 3);
+  assert.equal(
+    (rawDiagnostics.rejected_before_planning_by_reason ?? {}).ESPORTS_EXCLUDED,
+    1,
+    "the esports row must still be accounted for -- at its own, earlier gate"
+  );
 });
 
 // ── TEST 2 — every emitted candidate carries the explicit verdict ───────────

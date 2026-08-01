@@ -285,3 +285,257 @@ test("ES-14: identity and start are read verbatim, never synthesized from title 
   assert.equal(c.condition_id, "cond-bball-identity", "condition_id lineage must be preserved");
   assert.equal(c.token_id, "tok-bball-identity", "token_id lineage must be preserved");
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PART B — EVENT-LEVEL SPORT EVIDENCE + UNCONDITIONAL ESPORTS EXCLUSION
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Production (2026-08, HEAD 373872a): 179 market-policy-eligible rows, 0
+// planning candidates, WEAK_EVENT_IDENTITY = 179.
+//
+// Root cause: buildIdentityText's planningSources array returns the FIRST
+// non-empty surface, and providerContext.marketQuestion sits above
+// diag.eventTitle / row.event_slug. A row whose provider context carries a
+// market question but no event title therefore yields an identityText of
+// "team liquid to win 2-0?" -- and deriveSportScope classifies only THAT,
+// returning UNKNOWN even though row.event_slug says "Dota 2: Team Liquid vs
+// GamerLegion (BO3)". The sport is identifiable; the classifier was simply
+// never shown the surface that identifies it.
+//
+// Second, independent defect: scope ESPORT has NO unconditional rejection
+// before candidate emission. The ES-12 fixture above passes only because its
+// "Map 1 Winner" market is a submarket that market policy rejects -- it never
+// proved esports exclusion. A full-series BO3 moneyline would be ADMITTED.
+// Repairing sport classification therefore REQUIRES adding that gate, or the
+// repair would do nothing but admit esports.
+//
+// Sport classification and physical identity remain different concerns: event
+// title/slug is read ONLY to decide the sport, never to build a
+// physical_event_id, provider event ID, or grouping key.
+
+/**
+ * A production-shaped row whose sport is identifiable ONLY from event-level
+ * surfaces: the provider context carries a market question but NO event
+ * title, and diagnostics.shadowScope is absent. This is the exact shape the
+ * production samples showed.
+ */
+function eventLevelSportRow(over: {
+  id: string;
+  eventTitle: string;
+  marketQuestion: string;
+  eventSlug: string;
+  shadowScope?: string;
+}) {
+  return {
+    id: over.id,
+    condition_id: `cond-${over.id}`,
+    selected_token_id: `tok-${over.id}`,
+    selected_outcome: "Team A",
+    score: null,
+    signal_confidence_num: null,
+    smart_money_score_num: null,
+    entry_price_num: 0.3,
+    metric_formula_version: "shadow-strategic-sports-v1",
+    created_at: "2026-08-01T16:00:00.000Z",
+    expires_at: FUTURE_START_ISO,
+    signal_result: null,
+    event_slug: over.eventSlug,
+    market_slug: over.marketQuestion,
+    diagnostics: {
+      // No shadowScope: the explicit-metadata path must NOT be what rescues
+      // these rows -- the event-level text fallback is what is under test.
+      ...(over.shadowScope ? { shadowScope: over.shadowScope } : {}),
+      gameStartIso: FUTURE_START_ISO,
+      dataCoverage: 60,
+      // Event-level title: the strong surface buildIdentityText skips over.
+      eventTitle: over.eventTitle,
+      marketTitle: over.marketQuestion,
+      tier: 1,
+      entryPrice: 0.3,
+      volumeUsd: 5000,
+      providerEventContext: {
+        v: "v1",
+        provider: "polymarket",
+        // marketQuestion present, eventTitle DELIBERATELY absent -- this is
+        // what makes identityText resolve to the market-level question.
+        marketQuestion: over.marketQuestion,
+        eventStartIso: FUTURE_START_ISO,
+      },
+    },
+  };
+}
+
+// ── A. Event-level sport priority ──────────────────────────────────────────
+
+const EVENT_LEVEL_SPORTS: Array<{ id: string; eventTitle: string; eventSlug: string; scope: string }> = [
+  { id: "el-bball", eventTitle: "NBA: Los Angeles Lakers vs. Boston Celtics", eventSlug: "nba-lal-bos-2026-08-02", scope: "BASKETBALL" },
+  { id: "el-hockey", eventTitle: "NHL: Toronto Maple Leafs vs. Montreal Canadiens", eventSlug: "nhl-tor-mtl-2026-08-02", scope: "HOCKEY" },
+  { id: "el-tennis", eventTitle: "Tennis: Player One vs. Player Two", eventSlug: "tennis-one-vs-two-2026-08-02", scope: "TENNIS" },
+  { id: "el-cricket", eventTitle: "Cricket: India vs. Australia", eventSlug: "cricket-ind-aus-2026-08-02", scope: "CRICKET" },
+  { id: "el-mma", eventTitle: "UFC: Fighter One vs. Fighter Two", eventSlug: "ufc-one-vs-two-2026-08-02", scope: "MMA" },
+];
+
+for (const { id, eventTitle, eventSlug, scope } of EVENT_LEVEL_SPORTS) {
+  test(`ES-B1-${id}: sport resolved from EVENT-LEVEL text when the market question names no sport -> ${scope}`, async () => {
+    const row = eventLevelSportRow({
+      id,
+      eventTitle,
+      eventSlug,
+      // Generic: contains no sport token whatsoever.
+      marketQuestion: "Team Alpha vs. Team Beta - Moneyline",
+    });
+    const { candidates } = await planningCandidates([row]);
+    assert.equal(candidates.length, 1, `${scope} must be resolvable from event-level text alone`);
+    assert.equal(candidates[0].strategic_scope, scope);
+  });
+}
+
+test("ES-B6: explicit diagnostics.shadowScope still outranks event-level text", async () => {
+  const row = eventLevelSportRow({
+    id: "el-priority",
+    // Event-level text says hockey; explicit upstream metadata says basketball.
+    eventTitle: "NHL: Toronto Maple Leafs vs. Montreal Canadiens",
+    eventSlug: "nhl-tor-mtl-2026-08-02",
+    marketQuestion: "Team Alpha vs. Team Beta - Moneyline",
+    shadowScope: "basketball",
+  });
+  const { candidates } = await planningCandidates([row]);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].strategic_scope, "BASKETBALL", "explicit shadowScope must remain the highest-priority sport source");
+});
+
+test("ES-B7: a market question must not override a stronger event-level sport surface", async () => {
+  const row = eventLevelSportRow({
+    id: "el-override",
+    eventTitle: "NBA: Los Angeles Lakers vs. Boston Celtics",
+    eventSlug: "nba-lal-bos-2026-08-02",
+    // Market question mentions a World Cup phrase; event level says basketball.
+    marketQuestion: "World Cup Warmup: Team Alpha vs. Team Beta - Moneyline",
+  });
+  const { candidates } = await planningCandidates([row]);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].strategic_scope, "BASKETBALL", "event-level sport evidence must win over market-question text");
+});
+
+// ── B. Unconditional esports exclusion ─────────────────────────────────────
+
+const FULL_SERIES_ESPORTS: Array<{ id: string; eventTitle: string; eventSlug: string; label: string }> = [
+  { id: "es-dota", eventTitle: "Dota 2: Team Liquid vs GamerLegion (BO3)", eventSlug: "dota2-liquid-vs-gl-2026-08-02", label: "Dota 2" },
+  { id: "es-valorant", eventTitle: "Valorant: Team Alpha vs Team Beta (BO3)", eventSlug: "valorant-alpha-vs-beta-2026-08-02", label: "Valorant" },
+  { id: "es-cs", eventTitle: "Counter-Strike: Team Alpha vs Team Beta (BO3)", eventSlug: "cs2-alpha-vs-beta-2026-08-02", label: "Counter-Strike" },
+];
+
+for (const { id, eventTitle, eventSlug, label } of FULL_SERIES_ESPORTS) {
+  test(`ES-B8-${id}: a FULL-SERIES ${label} market is rejected as ESPORTS_EXCLUDED`, async () => {
+    const row = eventLevelSportRow({
+      id,
+      eventTitle,
+      eventSlug,
+      // A generic full-series moneyline -- market policy would APPROVE this
+      // market class. Only an explicit esports gate can reject it.
+      marketQuestion: "Team Alpha vs. Team Beta - Moneyline",
+    });
+    const { candidates, rawDiagnostics } = await planningCandidates([row]);
+    assert.equal(candidates.length, 0, `${label} must never become a planning candidate`);
+    assert.equal(
+      (rawDiagnostics?.rejected_before_planning_by_reason ?? {}).ESPORTS_EXCLUDED,
+      1,
+      `${label} must be rejected by the explicit esports gate, not incidentally`
+    );
+  });
+}
+
+test("ES-B11: the Map 1 esports fixture is rejected as ESPORTS_EXCLUDED, not merely as a submarket", async () => {
+  const row = eventLevelSportRow({
+    id: "es-map1",
+    eventTitle: "Valorant: Team Alpha vs Team Beta",
+    eventSlug: "valorant-alpha-vs-beta-map1",
+    marketQuestion: "Valorant: Team Alpha vs Team Beta - Map 1 Winner",
+  });
+  const { candidates, rawDiagnostics } = await planningCandidates([row]);
+  assert.equal(candidates.length, 0);
+  assert.equal(
+    (rawDiagnostics?.rejected_before_planning_by_reason ?? {}).ESPORTS_EXCLUDED,
+    1,
+    "the esports gate must fire before market policy, so the reason is esports -- not submarket"
+  );
+});
+
+test("ES-B12: an explicit diagnostics.shadowScope esports value is rejected unconditionally", async () => {
+  const row = eventLevelSportRow({
+    id: "es-explicit",
+    eventTitle: "Team Alpha vs. Team Beta",
+    eventSlug: "series-alpha-vs-beta-2026-08-02",
+    marketQuestion: "Team Alpha vs. Team Beta - Moneyline",
+    shadowScope: "esport",
+  });
+  const { candidates, rawDiagnostics } = await planningCandidates([row]);
+  assert.equal(candidates.length, 0, "an explicitly esports-labelled row must never be admitted");
+  assert.equal((rawDiagnostics?.rejected_before_planning_by_reason ?? {}).ESPORTS_EXCLUDED, 1);
+});
+
+// ── C. Safety regressions for the event-level path ─────────────────────────
+
+test("ES-B18: event-level sport text never becomes physical identity", async () => {
+  const row = eventLevelSportRow({
+    id: "el-identity",
+    eventTitle: "NBA: Los Angeles Lakers vs. Boston Celtics",
+    eventSlug: "nba-lal-bos-2026-08-02",
+    marketQuestion: "Team Alpha vs. Team Beta - Moneyline",
+  });
+  const { candidates } = await planningCandidates([row]);
+  assert.equal(candidates.length, 1);
+  const c = candidates[0];
+  // event_slug is read verbatim from the row; nothing is derived from the title.
+  assert.equal(c.event_slug, "nba-lal-bos-2026-08-02");
+  assert.equal(c.condition_id, "cond-el-identity");
+  assert.equal(c.token_id, "tok-el-identity");
+  assert.equal(c.diagnostics.game_start_iso, FUTURE_START_ISO);
+  // The sport-classification text must not have leaked into any identity field.
+  assert.ok(
+    !c.match_family_key.includes("NBA:"),
+    "the event-level sport title must never appear inside the match family key"
+  );
+});
+
+test("ES-B19: an event-level sport with a missing start still rejects as MISSING_GAME_START", async () => {
+  const row = {
+    ...eventLevelSportRow({
+      id: "el-no-start",
+      eventTitle: "NBA: Los Angeles Lakers vs. Boston Celtics",
+      eventSlug: "nba-lal-bos-no-start",
+      marketQuestion: "Team Alpha vs. Team Beta - Moneyline",
+    }),
+  };
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (row.diagnostics as any).gameStartIso = null;
+  const { candidates, rawDiagnostics } = await planningCandidates([row]);
+  assert.equal(candidates.length, 0);
+  assert.ok((rawDiagnostics?.rejected_before_planning_by_reason ?? {}).MISSING_GAME_START >= 1);
+});
+
+test("ES-B20: an event-level sport with a partial-scope market is still rejected by market policy", async () => {
+  const row = eventLevelSportRow({
+    id: "el-partial",
+    eventTitle: "NBA: Los Angeles Lakers vs. Boston Celtics",
+    eventSlug: "nba-lal-bos-q1",
+    marketQuestion: "Team Alpha vs. Team Beta - 1st Quarter Spread",
+  });
+  const { candidates, rawDiagnostics } = await planningCandidates([row]);
+  assert.equal(candidates.length, 0, "market policy must still reject a partial-scope market");
+  assert.ok(
+    Object.keys(rawDiagnostics?.market_policy_rejected_by_reason ?? {}).length > 0,
+    "the rejection must remain attributable to market policy"
+  );
+});
+
+test("ES-B21: an event-level surface naming no sport stays fail-closed", async () => {
+  const row = eventLevelSportRow({
+    id: "el-nosport",
+    eventTitle: "Team Alpha vs. Team Beta",
+    eventSlug: "unlabeled-alpha-vs-beta-2026-08-02",
+    marketQuestion: "Team Alpha vs. Team Beta - Moneyline",
+  });
+  const { candidates } = await planningCandidates([row]);
+  assert.equal(candidates.length, 0, "no recognizable sport on any surface must stay fail-closed");
+});

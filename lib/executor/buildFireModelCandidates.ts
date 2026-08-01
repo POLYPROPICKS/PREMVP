@@ -457,9 +457,19 @@ const TIER_ORDER: Record<string, number> = {
   TIER3_MICRO_EXPAND_50_COV25: 3,
 };
 
-const NBA_NHL_RE = /\bnba\b|basketball|\bnhl\b|ice[\s-]?hockey/i;
+// Sport-identifying token sets. NBA_NHL_RE was previously ONE combined guard
+// that mapped to UNKNOWN; it is split here so basketball and hockey resolve to
+// their own scopes. The token sets themselves are unchanged, so nothing that
+// matched before stops matching now.
+const BASKETBALL_RE = /\bnba\b|basketball/i;
+const HOCKEY_RE = /\bnhl\b|ice[\s-]?hockey|\bhockey\b/i;
 const ESPORTS_RE = /esport|cs2|valorant|dota|league[\s-]of[\s-]legend|counter[\s-]strike/i;
+// \bset\s+[12]\b is retained from the original guard: it is a partial-market
+// marker on a tennis surface, and keeping it here preserves the negative-guard
+// behaviour that stops WC_COUNTRY_RE misreading player names as countries.
 const TENNIS_RE = /\bset\s+[12]\b|\btennis\b/i;
+const CRICKET_RE = /\bcricket\b/i;
+const MMA_RE = /\bmma\b|\bufc\b|mixed[\s-]martial[\s-]arts/i;
 // \bfifwc\b catches Polymarket FIFA World Cup event slugs (e.g. fifwc-fra-sen-2026-06-16).
 const WC_EXPLICIT_RE = /\bfifwc\b|world[\s-]?cup|wc2026|\bfifa\b/i;
 // WC 2026 participating countries for title-fallback classification.
@@ -636,6 +646,12 @@ const EXPANDED_SPORT_SCOPE_BY_SHADOW_SCOPE: Readonly<Record<string, StrategicSco
   cricket: "CRICKET",
   mma: "MMA",
   ufc: "MMA",
+  // Mapped so an explicitly esports-labelled row resolves to ESPORT and is
+  // then rejected by the unconditional esports gate below -- never so it can
+  // be admitted. Without this it would fall through to text classification and
+  // be rejected for the WRONG reason (UNKNOWN scope) or, worse, not at all.
+  esport: "ESPORT",
+  esports: "ESPORT",
 };
 
 /**
@@ -653,17 +669,69 @@ function resolveExplicitUpstreamSportScope(diag: Record<string, unknown>): Strat
 }
 
 /**
- * Sport-scope resolution with upstream-metadata priority: an explicit,
- * recognized upstream sport wins over any text-derived guess, ambiguous or
- * not. Falls through to the existing deriveSportScope text classifier,
- * UNCHANGED, when no explicit sport is present -- this is purely additive.
+ * Text used ONLY to decide which sport a row belongs to.
+ *
+ * This is deliberately NOT an identity value. It is never returned to the
+ * caller, never stored, and never reaches match_family_key, canonical_event_key,
+ * provider event key or any grouping input -- those continue to come from the
+ * exact ID fields alone. It exists because buildIdentityText returns the FIRST
+ * non-empty surface for a DIFFERENT purpose (market classification), and
+ * providerContext.marketQuestion outranks the event-level surfaces there. A row
+ * whose provider context carries a market question but no event title therefore
+ * produced an identityText like "team liquid to win 2-0?" while row.event_slug
+ * said "Dota 2: Team Liquid vs GamerLegion (BO3)" -- the sport was identifiable
+ * and the classifier was simply never shown the surface that identifies it.
+ *
+ * Only event-level surfaces are joined here, never the market question, so a
+ * market phrase can never outvote the event the market belongs to.
+ */
+function sportClassificationText(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  row: any,
+  diag: Record<string, unknown>
+): string {
+  const providerContext = providerContextOf(diag);
+  const researchContext =
+    diag.researchContext && typeof diag.researchContext === "object"
+      ? (diag.researchContext as Record<string, unknown>)
+      : null;
+  const eventLevelSurfaces: unknown[] = [
+    providerContext?.eventTitle,
+    providerContext?.eventSlug,
+    researchContext?.eventTitle,
+    diag.eventTitle,
+    row.event_slug,
+  ];
+  return eventLevelSurfaces
+    .filter((v): v is string => typeof v === "string" && v.trim() !== "")
+    .join(" ")
+    .toLowerCase();
+}
+
+/**
+ * Sport-scope resolution, in strict source priority:
+ *
+ *   1. explicit normalized diagnostics.shadowScope  (authoritative metadata)
+ *   2. event-level sport surfaces                   (title/slug of the EVENT)
+ *   3. the existing market-level identityText       (unchanged fallback)
+ *
+ * Step 3 is only reached when steps 1 and 2 yield nothing, so this is purely
+ * additive: any row that classified before still classifies the same way.
  */
 function deriveSportScopeWithUpstreamPriority(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  row: any,
   diag: Record<string, unknown>,
   identityText: string
 ): { scope: StrategicScope; confidence: SportClassificationConfidence } {
   const explicit = resolveExplicitUpstreamSportScope(diag);
   if (explicit) return { scope: explicit, confidence: "HIGH" };
+
+  const eventLevelText = sportClassificationText(row, diag);
+  if (eventLevelText) {
+    const eventLevel = deriveSportScope(eventLevelText);
+    if (eventLevel.scope !== "UNKNOWN") return eventLevel;
+  }
   return deriveSportScope(identityText);
 }
 
@@ -675,8 +743,11 @@ function deriveSportScope(identityText: string): {
   confidence: SportClassificationConfidence;
 } {
   if (ESPORTS_RE.test(identityText)) return { scope: "ESPORT", confidence: "HIGH" };
-  if (NBA_NHL_RE.test(identityText)) return { scope: "UNKNOWN", confidence: "HIGH" };
-  if (TENNIS_RE.test(identityText)) return { scope: "UNKNOWN", confidence: "HIGH" };
+  if (BASKETBALL_RE.test(identityText)) return { scope: "BASKETBALL", confidence: "HIGH" };
+  if (HOCKEY_RE.test(identityText)) return { scope: "HOCKEY", confidence: "HIGH" };
+  if (TENNIS_RE.test(identityText)) return { scope: "TENNIS", confidence: "HIGH" };
+  if (CRICKET_RE.test(identityText)) return { scope: "CRICKET", confidence: "HIGH" };
+  if (MMA_RE.test(identityText)) return { scope: "MMA", confidence: "HIGH" };
   if (WC_EXPLICIT_RE.test(identityText)) return { scope: "WC", confidence: "HIGH" };
   if (MLB_RE.test(identityText)) return { scope: "MLB", confidence: "HIGH" };
   if (SOCCER_RE.test(identityText)) return { scope: "SOCCER", confidence: "HIGH" };
@@ -1470,7 +1541,7 @@ export async function buildFireModelCandidates(
     let planningScoreSource: string | null = null;
 
     if (planningFallbackRow) {
-      const derivedScopeProbe = deriveSportScopeWithUpstreamPriority(diag, identityText);
+      const derivedScopeProbe = deriveSportScopeWithUpstreamPriority(row, diag, identityText);
       const planningScope = resolvePlanningScope(row, identityText, derivedScopeProbe.scope);
       if (planningScope.scope === "UNKNOWN") {
         if (rawDiag) {
@@ -1525,7 +1596,7 @@ export async function buildFireModelCandidates(
     const authoritative = authoritativeScope(providerContext);
     const derivedScope = authoritative
       ? { scope: authoritative, confidence: "HIGH" as const }
-      : deriveSportScopeWithUpstreamPriority(diag, identityText);
+      : deriveSportScopeWithUpstreamPriority(row, diag, identityText);
     const { scope: strategicScope, confidence: scopeConfidence } =
       planningMode && derivedScope.scope === "UNKNOWN"
         ? resolvePlanningScope(row, identityText, derivedScope.scope)
@@ -1540,6 +1611,22 @@ export async function buildFireModelCandidates(
 
     // Guard F: UNKNOWN is never live-eligible. Classifier must positively identify scope.
     if (strategicScope === "UNKNOWN") { rejectReason("UNKNOWN_SCOPE"); continue; }
+
+    // ── ESPORTS ARE EXCLUDED FROM THE RESERVATION PLANNING PATH ─────────────
+    // Product policy: no esports event may become a planning candidate,
+    // regardless of its market class. This is deliberately UNCONDITIONAL and
+    // must not be confused with market policy: the canonical taxonomy DOES
+    // allow a full-series BO1/BO3/BO5 esports moneyline/spread/total, so a
+    // market-class check can never enforce this rule. Before this gate existed,
+    // esports were excluded only accidentally -- their sport was misclassified
+    // as UNKNOWN because the classifier was shown the market question instead
+    // of the event title. Repairing that classification is exactly what makes
+    // this explicit gate necessary.
+    //
+    // Placed after scope resolution and before market policy, the pilot/env
+    // scope allowlist, and candidates.push, so it applies to every planning
+    // row on every branch and cannot be re-opened by a caller scope or flag.
+    if (planningMode && strategicScope === "ESPORT") { rejectReason("ESPORTS_EXCLUDED"); continue; }
 
     const isSoccerFamily = strategicScope === "WC" || strategicScope === "SOCCER";
 
