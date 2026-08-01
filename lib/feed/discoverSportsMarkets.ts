@@ -484,6 +484,11 @@ export async function discoverSportsMarkets(
         counts.broadSportsRowsBySport = broadDiag.rowsBySport;
         counts.broadSportsRowsSkippedMissingToken = broadDiag.rowsSkippedMissingToken;
         counts.broadSportsRowsAmbiguousSport = broadDiag.rowsAmbiguousSport;
+        counts.broadSportsOutcomeTuplesConsidered = broadDiag.outcomeTuplesConsidered;
+        counts.broadSportsRowsSkippedMalformedOutcome = broadDiag.rowsSkippedMalformedOutcome;
+        counts.broadSportsRowsSkippedMissingOutcome = broadDiag.rowsSkippedMissingOutcome;
+        counts.broadSportsRowsSkippedMissingPrice = broadDiag.rowsSkippedMissingPrice;
+        counts.broadSportsRowsSkippedIndexMismatch = broadDiag.rowsSkippedIndexMismatch;
 
         if (broadEntries.length > 0) {
           const { writeStrategicShadowPairs } = await import("./cacheGeneratedSignals");
@@ -1422,16 +1427,31 @@ export interface BroadStructuredSportsBuildDiagnostics {
   rowsBySport: Record<string, number>;
   rowsSkippedMissingToken: number;
   rowsAmbiguousSport: number;
+  // Outcome-alignment diagnostics (correction commit)
+  outcomeTuplesConsidered: number;
+  rowsSkippedMalformedOutcome: number;
+  rowsSkippedMissingOutcome: number;
+  rowsSkippedMissingPrice: number;
+  rowsSkippedIndexMismatch: number;
+}
+
+function coercePrice(raw: unknown): number | null {
+  if (typeof raw === "number") return Number.isFinite(raw) ? raw : null;
+  if (typeof raw === "string" && raw.trim() !== "" && Number.isFinite(Number(raw))) return Number(raw);
+  return null;
 }
 
 /**
  * Pure adapter: confirmed-sports inventory rows (already deduped/flattened by
  * the existing buildSportsEventMarketInventoryRows mapper) -> WcShadowEntry
  * input for the existing writeStrategicShadowPairs writer. No new crawler, no
- * new flattening algorithm, no model sport allowlist. Token/price selection
- * here is identity-only (first available token/outcome) -- it performs no
- * price-band or market-class eligibility judgment; that remains a model-layer
- * decision in the next commit.
+ * new flattening algorithm, no model sport allowlist. Iterates every valid
+ * aligned token/outcome/price tuple on the market -- generic over array
+ * length, not hardcoded to two -- so every provider outcome reaches the
+ * writer as its own row. A tuple is only emitted when token, outcome and
+ * price are all present at the same index; nothing is fabricated or
+ * defaulted. This performs no price-band or market-class eligibility
+ * judgment; that remains a model-layer decision in a later commit.
  */
 export function buildBroadStructuredSportsShadowEntries(
   inventoryRows: import("./cacheSportsEventMarketInventory").SportsEventMarketInventoryRow[],
@@ -1444,6 +1464,11 @@ export function buildBroadStructuredSportsShadowEntries(
     rowsBySport: {},
     rowsSkippedMissingToken: 0,
     rowsAmbiguousSport: 0,
+    outcomeTuplesConsidered: 0,
+    rowsSkippedMalformedOutcome: 0,
+    rowsSkippedMissingOutcome: 0,
+    rowsSkippedMissingPrice: 0,
+    rowsSkippedIndexMismatch: 0,
   };
   const entries: WcShadowEntry[] = [];
 
@@ -1470,54 +1495,89 @@ export function buildBroadStructuredSportsShadowEntries(
       diagnostics.rowsAmbiguousSport += 1;
     }
 
-    const firstTokenId = typeof row.clobTokenIds[0] === "string" ? (row.clobTokenIds[0] as string) : null;
-    if (!row.conditionId || !firstTokenId) {
+    if (!row.conditionId) {
       diagnostics.rowsSkippedMissingToken += 1;
       continue;
     }
-    const rawFirstPrice = row.outcomePrices[0];
-    const firstPrice =
-      typeof rawFirstPrice === "number"
-        ? rawFirstPrice
-        : typeof rawFirstPrice === "string" && rawFirstPrice.trim() !== "" && Number.isFinite(Number(rawFirstPrice))
-          ? Number(rawFirstPrice)
-          : null;
-    const firstOutcome = typeof row.outcomes[0] === "string" ? (row.outcomes[0] as string) : null;
+
+    // Never pair mismatched indices: a market whose token/outcome/price
+    // arrays disagree in length is index-unsafe end-to-end, not just at the
+    // first divergent slot -- skip the whole market rather than guess which
+    // entries still line up.
+    const tokenCount = row.clobTokenIds.length;
+    const outcomeCount = row.outcomes.length;
+    const priceCount = row.outcomePrices.length;
+    if (tokenCount === 0) {
+      diagnostics.rowsSkippedMissingToken += 1;
+      continue;
+    }
+    if (tokenCount !== outcomeCount || tokenCount !== priceCount) {
+      diagnostics.rowsSkippedIndexMismatch += 1;
+      continue;
+    }
 
     const enrichment = gameTeamLookup.get(row.providerMarketId) ?? { gameId: null, teamAId: null, teamBId: null };
     const sportKey = providerSportCode ?? (ambiguousSport ? "AMBIGUOUS_MULTI_SPORT" : "UNCLASSIFIED_SPORTS_TAG");
 
-    entries.push({
-      conditionId: row.conditionId,
-      selectedTokenId: firstTokenId,
-      entryPriceNum: firstPrice,
-      tier: 0,
-      marketQuestion: row.marketQuestion ?? row.eventTitle ?? "",
-      selectedOutcome: firstOutcome,
-      eventSlug: row.providerEventSlug ?? row.providerEventId,
-      eventTitle: row.eventTitle ?? row.providerEventSlug ?? row.providerEventId,
-      eventEndIso: row.marketEndIso,
-      gameStartIso: row.eventStartIso,
-      marketType: row.sportsMarketType,
-      marketSlug: row.providerMarketSlug,
-      marketTitle: row.marketQuestion,
-      shadowScope: sportKey,
-      shadowReason: "BROAD_STRUCTURED_SPORTS_V1",
-      volumeUsd: row.volumeUsd,
-      providerSportCode,
-      providerSportSource,
-      providerSportTagIds: tagIds,
-      providerSeriesIds: providerSportCode ? sportMeta.sportCodeToSeriesIds.get(providerSportCode) ?? [] : [],
-      providerEventId: row.providerEventId,
-      providerMarketId: row.providerMarketId,
-      gameId: enrichment.gameId,
-      teamAId: enrichment.teamAId,
-      teamBId: enrichment.teamBId,
-      ambiguousSport,
-      tokenSelectionMethod: "first_outcome_identity_only_no_eligibility_filter",
-    });
-    diagnostics.rowsProposed += 1;
-    diagnostics.rowsBySport[sportKey] = (diagnostics.rowsBySport[sportKey] ?? 0) + 1;
+    let rowsProposedForMarket = 0;
+    for (let idx = 0; idx < tokenCount; idx++) {
+      diagnostics.outcomeTuplesConsidered += 1;
+
+      const tokenId = typeof row.clobTokenIds[idx] === "string" ? (row.clobTokenIds[idx] as string) : null;
+      if (!tokenId) {
+        diagnostics.rowsSkippedMalformedOutcome += 1;
+        continue;
+      }
+      const outcome = typeof row.outcomes[idx] === "string" ? (row.outcomes[idx] as string) : null;
+      if (!outcome) {
+        diagnostics.rowsSkippedMissingOutcome += 1;
+        continue;
+      }
+      const price = coercePrice(row.outcomePrices[idx]);
+      if (price === null) {
+        diagnostics.rowsSkippedMissingPrice += 1;
+        continue;
+      }
+
+      entries.push({
+        conditionId: row.conditionId,
+        selectedTokenId: tokenId,
+        entryPriceNum: price,
+        tier: 0,
+        marketQuestion: row.marketQuestion ?? row.eventTitle ?? "",
+        selectedOutcome: outcome,
+        eventSlug: row.providerEventSlug ?? row.providerEventId,
+        eventTitle: row.eventTitle ?? row.providerEventSlug ?? row.providerEventId,
+        eventEndIso: row.marketEndIso,
+        gameStartIso: row.eventStartIso,
+        marketType: row.sportsMarketType,
+        marketSlug: row.providerMarketSlug,
+        marketTitle: row.marketQuestion,
+        shadowScope: sportKey,
+        shadowReason: "BROAD_STRUCTURED_SPORTS_V1",
+        outcomeName: outcome,
+        tokenIndex: idx,
+        volumeUsd: row.volumeUsd,
+        providerSportCode,
+        providerSportSource,
+        providerSportTagIds: tagIds,
+        providerSeriesIds: providerSportCode ? sportMeta.sportCodeToSeriesIds.get(providerSportCode) ?? [] : [],
+        providerEventId: row.providerEventId,
+        providerMarketId: row.providerMarketId,
+        gameId: enrichment.gameId,
+        teamAId: enrichment.teamAId,
+        teamBId: enrichment.teamBId,
+        ambiguousSport,
+        tokenSelectionMethod: "all_provider_outcomes_no_model_filter",
+      });
+      diagnostics.rowsProposed += 1;
+      rowsProposedForMarket += 1;
+      diagnostics.rowsBySport[sportKey] = (diagnostics.rowsBySport[sportKey] ?? 0) + 1;
+    }
+
+    if (rowsProposedForMarket === 0) {
+      diagnostics.rowsSkippedMissingToken += 1;
+    }
   }
 
   return { entries, diagnostics };

@@ -414,6 +414,28 @@ async function main() {
         `[generate-signals] sports inventory: events=${sportsInventorySummary.eventsCaptured} ` +
           `markets=${sportsInventorySummary.marketsCaptured} write_failed=${sportsInventorySummary.writeFailed}`,
       );
+
+      // Broad structured sports -> Signal Pair write result. A failure here is
+      // caught and swallowed inside discoverSportsMarkets (counts.broadSportsWriteFailed)
+      // so it never throws -- but that must not read as an ordinary zero-row
+      // success. Surface it explicitly in diagnostics and logs.
+      const broadSportsSummary = {
+        rowsProposed: inventoryResult.counts.broadSportsRowsProposed ?? 0,
+        rowsInserted: inventoryResult.counts.broadSportsWriteInserted ?? 0,
+        writeFailed: inventoryResult.counts.broadSportsWriteFailed ?? false,
+        rowsSkippedIndexMismatch: inventoryResult.counts.broadSportsRowsSkippedIndexMismatch ?? 0,
+        rowsSkippedMalformedOutcome: inventoryResult.counts.broadSportsRowsSkippedMalformedOutcome ?? 0,
+      };
+      diagnostics.broadSportsSignalPair = broadSportsSummary;
+      if (broadSportsSummary.writeFailed) {
+        console.warn(
+          `[generate-signals] BROAD_SPORTS_SIGNAL_PAIR_WRITE_FAILED: proposed=${broadSportsSummary.rowsProposed} inserted=${broadSportsSummary.rowsInserted}`,
+        );
+      } else {
+        console.log(
+          `[generate-signals] broad sports signal pair: proposed=${broadSportsSummary.rowsProposed} inserted=${broadSportsSummary.rowsInserted}`,
+        );
+      }
     } catch (inventoryErr) {
       const inventoryMsg = inventoryErr instanceof Error ? inventoryErr.message : String(inventoryErr);
       console.warn("[generate-signals] sports inventory persistence failed (non-fatal):", inventoryMsg);

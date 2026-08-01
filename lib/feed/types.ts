@@ -564,6 +564,14 @@ export interface SportsDiscoveryCounts {
   broadSportsRowsAmbiguousSport?: number;
   broadSportsWriteInserted?: number;
   broadSportsWriteFailed?: boolean;
+  // Outcome-alignment diagnostics (correction commit): per-market provider
+  // token/outcome/price arrays are iterated fully; malformed tuples are
+  // counted here rather than silently dropped or fabricated.
+  broadSportsOutcomeTuplesConsidered?: number;
+  broadSportsRowsSkippedMalformedOutcome?: number;
+  broadSportsRowsSkippedMissingOutcome?: number;
+  broadSportsRowsSkippedMissingPrice?: number;
+  broadSportsRowsSkippedIndexMismatch?: number;
 }
 
 export interface SportsDiscoverySample {

@@ -197,8 +197,17 @@ export async function writeStrategicShadowPairs(
     (existing ?? []).map((r) => `${r.condition_id}::${r.selected_token_id}::${r.metric_formula_version}`)
   );
 
-  const newCandidates = uniqueCandidates.filter(
+  const dedupedCandidates = uniqueCandidates.filter(
     (c) => !existingKeys.has(`${c.conditionId}::${c.selectedTokenId}::shadow-strategic-sports-v1`)
+  );
+  // Never fabricate a side for the broad structured-sports path: it always
+  // sets selectedOutcome from a real provider outcome index, so a null here
+  // means the tuple was malformed and must not be silently defaulted to
+  // "Yes". Legacy targeted collectors (WC2026/ESPORT/NBA/NHL) keep their
+  // pre-existing "Yes" fallback below -- unchanged, to avoid breaking their
+  // established contract.
+  const newCandidates = dedupedCandidates.filter(
+    (c) => c.shadowReason !== "BROAD_STRUCTURED_SPORTS_V1" || c.selectedOutcome != null
   );
   if (newCandidates.length === 0) return 0;
 
@@ -214,7 +223,8 @@ export async function writeStrategicShadowPairs(
       event_slug: entry.eventTitle,
       market_slug: entry.marketQuestion,
       condition_id: entry.conditionId,
-      selected_outcome: entry.selectedOutcome ?? "Yes",
+      selected_outcome:
+        entry.shadowReason === "BROAD_STRUCTURED_SPORTS_V1" ? entry.selectedOutcome : (entry.selectedOutcome ?? "Yes"),
       premium_signal: {
         eventTitle: entry.eventTitle,
         marketQuestion: entry.marketQuestion,
