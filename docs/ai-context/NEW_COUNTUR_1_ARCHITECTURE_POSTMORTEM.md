@@ -1,447 +1,375 @@
-# NEW_COUNTUR_1 — Architecture Postmortem
+# NEW_COUNTUR_1 — Architecture Postmortem (R1)
 
 <!-- TOKEN LOADING RULE: Tier 1. Load with NEW_COUNTUR_1.md for cutover work. -->
-<!-- STATUS: CANONICAL / evidence document. Base SHA 6e593a5d0e66e50941f130f7792f67e487dbb347. -->
+<!-- STATUS: CANONICAL / evidence document — R1. Base SHA 6e593a5d0e66e50941f130f7792f67e487dbb347. -->
 
 Companion to [`NEW_COUNTUR_1.md`](./NEW_COUNTUR_1.md) (the lock) and
 [`NEW_COUNTUR_1_ENGINEERING_GATES.md`](./NEW_COUNTUR_1_ENGINEERING_GATES.md) (the gates).
-Graph: [`NEW_COUNTUR_1.mmd`](./NEW_COUNTUR_1.mmd).
 
-Tags used throughout: **CURRENT SOURCE FACT** · **HISTORICAL INTENT** · **TARGET LOCK** ·
-**NOT VERIFIABLE**.
+**Revision:** R1 (2026-08-02). Corrects the R0 postmortem committed at
+`752fd87a582fadd68db6056180308801f0a045ec`.
+**Every CURRENT SOURCE FACT below was re-verified against tracked source at**
+`6e593a5d0e66e50941f130f7792f67e487dbb347` **in this revision.** No finding was carried over on
+trust from a prior review.
+
+Tags: **CURRENT SOURCE FACT** · **CURRENT DEFECT** · **CORRECTED R1 TARGET** ·
+**FUTURE IMPLEMENTATION REQUIREMENT** · **RUNTIME-ONLY OPERATOR PROOF** · **NOT VERIFIABLE**.
 
 ---
 
 ## 1. Incident summary
 
-The production execution contour ran **two modelling authorities in parallel**, not one model
-followed by orchestration.
+The production contour at `6e593a5d` runs **two modelling authorities** where the architecture
+requires one. The Reservation cron believes it is planning with Contract A; the selector mode it
+passes does not reach the Contract A branch, so the legacy CONTUR3 pipeline decides what is
+reserved and Contract A is invoked hours later inside rebalance.
 
-- The nightly reservation path selected, scored, and ranked candidates with the **legacy CONTUR3
-  pipeline**, then stamped them `selector_id = "CONTRACT_A_PLANNING_V1"`. The label asserted
-  Contract A ownership that the code did not implement.
-- **Contract A proper** ran later and separately, inside rebalance, over a different universe.
-- Consequence: Contract A's accepted decisions were never the input to Reservation. On
-  2026-08-02 the legacy path produced 0 planning candidates and 0 Reservations while the
-  parallel Contract A audit produced 4 accepted decisions that reached nothing.
-
-This is an **ownership** defect, not a threshold defect. No individual rejection-reason fix can
-resolve it.
+R0 identified this correctly. R1 exists because R0's *remedy statement* and four of its supporting
+claims did not survive direct source re-verification, and because three further defects were not
+covered at all.
 
 ---
 
-## 2. User / business impact
+## 2. Defect 1 — dual modelling authority (original finding, upheld)
 
-- Zero terminal business outcomes on the affected nights: 0 Reservations → 0 queue rows →
-  0 orders → no PnL, from a corpus of thousands of source rows.
-- Four genuinely accepted Contract A decisions were discarded silently — the worst impact class,
-  because the model was working and the wiring was not.
-- Diagnostic effort was repeatedly spent on legacy rejection reasons
-  (`GAME_STARTED_OR_INVALID`, `UNKNOWN_SCOPE`, …) that belong to an authority scheduled for
-  retirement, delaying the real fix.
-- Every "fix a reason, re-run" cycle carried live-money risk surface without moving the
-  contour toward a terminal outcome.
+**CURRENT DEFECT.** `app/api/cron/night-event-reservations/route.ts:76`, `:106`, `:194`, `:254`
+pass `selectorMode: "CONTRACT_A_PLANNING_V1"`. `lib/executor/buildFireModelCandidates.ts:1296`
+short-circuits to `buildContractAV1Candidates` for **`CONTRACT_A_V1` only**. `CONTRACT_A_PLANNING_V1`
+therefore falls through the full legacy pipeline — formula-version, coverage, tier, bad-bucket and
+scope predicates — and at `:2023-2037` merely stamps `selector_id` / `contract_a_stage` onto
+candidates the legacy pipeline already produced. Final ordering at `:2041-2047` is the legacy
+tier → score → hours-to-start sort.
 
----
+**CURRENT DEFECT — second ranker.** `compareCandidateQuality` (`nightPortfolioPlanner.ts:421`) is
+applied at `eventExecutionQueue.ts:748` *and* is the primary ranker inside `buildNightPortfolioPlan`
+(`nightPortfolioPlanner.ts:711`, `:727`).
 
-## 3. Detection path
-
-1. Released funnel instrumentation (`lib/executor/nightFunnelAudit.ts`,
-   `scripts/contur3/audit-night-funnel.ts`) made both funnels observable in one read-only run —
-   **CURRENT SOURCE FACT**, and the reason the defect became visible at all.
-2. The instrumentation refused to chain the two funnels: it emits `planning_funnel`,
-   `contract_a_at_plan_time`, and `contract_a_forecast` as separate sections and applies
-   `assertFunnelContinuity` only to the planning funnel (`nightFunnelAudit.ts:733-745`).
-3. The `diag-probe:20260802T085311` run then showed, side by side, a legacy funnel ending at 0
-   and a Contract A funnel ending at 4 — two endpoints that cannot both belong to one chain.
-4. Source inspection confirmed the cause: the "Contract A planning" selector never calls
-   Contract A.
+**Verdict:** R0 was right about this. Upheld without change.
 
 ---
 
-## 4. Production evidence
+## 3. Why "Contract A once before Reservation" was too simplistic
 
-Supplied production evidence, cross-referenced against source where possible.
+R0's remedy — *run Contract A exactly once, before Reservation* — conflated **one authority** with
+**one invocation**.
 
-- Production / `main` SHA: `6e593a5d0e66e50941f130f7792f67e487dbb347`
-- Diagnostic plan: `diag-probe:20260802T085311` — as-of `2026-08-02T08:53:11.000Z`
+**CURRENT SOURCE FACT.** The in-source comment at `buildFireModelCandidates.ts:2023-2030` records
+the exact production consequence of attempting it: at the 17:00 planning stage a game several hours
+away legitimately has no T−90 snapshot yet, so resolving the final authoritative universe there
+returns nothing and the whole night plan collapses to **zero reservations** (production,
+2026-07-25/26). The Contract A adapter consumes the frozen Model V2 shadow producer's accepted
+decisions, which carry `condition_id`/`token_id`/`side` and only exist near T−90.
 
-**Legacy planning path**
+So the complete final Contract A market identity is *produced near the T−70…T−3 execution window*
+and is **not** currently produced as a complete authoritative artifact before daily Reservation.
+R0's rule was not merely inconvenient — it was infeasible against the real data timeline.
 
-| Counter | Value |
+**CORRECTED R1 TARGET.** The invariant is **ONE MODEL OWNER**, expressed as two lifecycle
+artifacts (Planning Decision, Final Identity Decision) under one Contract A authority. See
+`NEW_COUNTUR_1.md` §4 and §23.
+
+---
+
+## 4. Temporal-stage confusion
+
+The underlying error was treating "before Reservation" and "near execution" as *competing
+architectures* rather than *two stages of one*. Symptoms of that confusion in current source:
+
+- The planning stamp (`contract_a_stage: "PLANNING"`) exists, so the two-stage shape was already
+  half-implemented — but only as metadata, with no Contract A decision behind it.
+- `selectQueueRowForDueReservation` (`eventExecutionQueue.ts:599+`) already implements the correct
+  *bounded* final-identity resolution: exact canonical event-key equality against
+  `contractAFinalUniverse`, unique-match-required, fail-closed on zero or many (`:607-640`).
+- But `fetchContractAFinalCandidates` (`:811-812`, `:912`) feeds it via
+  `buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_V1")` (`:815`) — an
+  **unbounded** universe fetch, bounded only after the fact by key matching.
+
+**FUTURE IMPLEMENTATION REQUIREMENT.** Bound the Final Identity Decision **by input**, not by
+post-filter.
+
+---
+
+## 5. Defect 2 — loss of broad sport metadata (not covered by R0)
+
+**CURRENT SOURCE FACT.** Real upstream sport metadata exists and is already handled well on the
+legacy path: `MODEL_SCOPE_BY_PROVIDER_SPORT_CODE` (`buildFireModelCandidates.ts:652-667`) maps 15
+provider sport codes onto nine `StrategicScope` values; `resolveModelSport` (`:688+`) reads
+`diagnostics.providerSportCode` explicitly before any text fallback and fails closed on a
+malformed present value; `provider_sport_code` is recorded into diagnostics (`:1971`) and accepted
+rows are reported by raw provider sport (`:2013-2016`).
+
+*(The prior review reported "approximately ten codes". The exact count is 15. Correction recorded;
+the finding itself stands.)*
+
+**CURRENT DEFECT.** The Contract A adapter destroys it: `inferred_sport: "unknown"` (`:1228`) and
+`strategic_scope: "OTHER"` (`:1230`), hardcoded. The comment at `:1159-1163` acknowledges the
+hardcode and compensates by probing the esports BO-series branch with a *title-derived* hint; a
+single narrow exception at `:1204` sets `"esport"`.
+
+**Blast radius.** `buildQueueRow` sets `sport: best.inferred_sport`
+(`eventExecutionQueue.ts:190`); Reservation sets `sport: best.inferred_sport`
+(`nightEventReservations.ts:1136`) and buckets `bySport[best.inferred_sport]` (`:1100`). A direct
+cutover to `CONTRACT_A_V1` without fixing the mapping collapses per-sport observability and
+Reservation sport metadata into a single `unknown` / `OTHER` bucket — i.e. R0's claim that the
+package "preserves broad sports" was true of the inventory but **false of the Contract A path**.
+
+---
+
+## 6. Defect 3 — source-lineage loss and reconstructed event start (not covered by R0)
+
+**CURRENT DEFECT — lineage silently nulled.** `resolveQueueSourceSignalId`
+(`eventExecutionQueue.ts:161-165`) prefers `generated_signal_pair_id`, falls back to `signal_id`
+only if UUID-shaped, and otherwise **returns `null`**. On the Contract A path `signal_id` is
+`condition_id::token_id`, never a row id — so a candidate without `generated_signal_pair_id` loses
+its source lineage silently instead of failing closed.
+
+**CURRENT DEFECT — two derivations of the same timestamp.**
+
+| Path | Derivation |
 |---|---|
-| Deduped rows | 3228 |
-| Planning-shadow rejects | 416 |
-| Admitted rows | 2812 |
-| Rejected | 2812 |
-| Planning candidates | **0** |
-| Reservations | **0** |
+| Legacy / planning | `diag.gameStartIso`, read from the provider row (`buildFireModelCandidates.ts:1543-1546`). |
+| Contract A | `new Date(createdMs + decision.minutesUntilStart * 60_000).toISOString()` (`:1142-1144`) — **arithmetic reconstruction**. |
 
-Legacy reasons: `GAME_STARTED_OR_INVALID` 2262 · `UNKNOWN_SCOPE` 311 ·
-`MARKET_POLICY_ACTIVITY_LABEL` 228 · `MISSING_GAME_START` 9 · `BAD_BUCKET_COV_PRICE` 2.
+Reservation persists `event_start_iso: best.diagnostics.game_start_iso`
+(`nightEventReservations.ts:1126`); duplicate protection then compares
+`Date.parse(found.event_start_iso)` against the current value at **exact millisecond precision**
+and raises `OCCURRENCE_IDENTITY_CONFLICT` on any difference (`:1571-1574`). Comparing a
+reconstructed value against a provider-sourced one at millisecond precision is a defect regardless
+of which side is "right".
 
-Source cross-reference: `GAME_STARTED_OR_INVALID`, `UNKNOWN_SCOPE`, and `BAD_BUCKET_COV_PRICE`
-are owned by `lib/executor/buildFireModelCandidates.ts` and `lib/executor/nightPortfolioPlanner.ts`
-— **CURRENT SOURCE FACT**. `MARKET_POLICY_ACTIVITY_LABEL` was **not** found anywhere in tracked
-source at the base SHA — **NOT VERIFIABLE**; its owner must be resolved before any counter claim
-depends on it.
+**CURRENT DEFECT — identity dies at the Queue boundary.** `lib/executor/executorQueueTypes.ts`
+declares `physical_event_id` and `event_start_iso` on `NightEventReservationRow` (`:34-35`) only.
+`EventExecutionQueueRow` has neither. R0's identity-continuity claim did not hold across that
+boundary.
 
-**Parallel Contract A audit**
+**CURRENT SOURCE FACT — what is *not* broken.** Contract A lookup is
+unique-match-or-fail-closed; the comment at `eventExecutionQueue.ts:610-614` states that
+`compareCandidateQuality` must never substitute a different `condition_id`/`token_id`/`side`.
+**No intended fuzzy sibling substitution exists on the Contract A path.** That part of the design
+is sound and is KEEP.
 
-| Counter | Value |
+---
+
+## 7. Defect 4 — `/candidates` vs `/queue` dual execution authority (not covered by R0)
+
+**CURRENT DEFECT.** Two production-shaped surfaces can instruct execution:
+
+| Route | Evidence |
 |---|---|
-| Source rows | 8049 |
-| Strict identity groups | 3418 |
-| Rejected | 3414 |
-| Accepted decisions | **4** |
+| `app/api/executor/queue/route.ts` | Reads persisted `event_execution_queue` rows. Correct source. |
+| `app/api/executor/candidates/route.ts` | `buildFireModelCandidates(EVENT_DEDUPE_POOL, scope)` at `:260` with the **default `CONTUR3_CURRENT`** selector; returns `{ ...c, executor_safe: c.live_eligible, ... }` (`:308-318`), i.e. the full candidate including `condition_id`, `token_id`, `side`, `stake_usd`. Requires **no Reservation and no Queue row**. Gated by `EXECUTOR_CANDIDATES_SECRET` (`:204`) — a production secret, not a debug flag. |
 
-Contract A reasons: `ESPORTS_EXCLUDED` 1233 · `SCORE_BELOW_65` 1568 ·
-`SNAPSHOT_NOT_T90_COMPATIBLE` 577 · `OUTSIDE_120M` 36. All four are owned by
-`lib/modeling/frozenModelProducerV2Shadow.ts` — **CURRENT SOURCE FACT**.
+`IRELAND_RUNTIME_CONTRACT.candidate_endpoint = "/api/executor/candidates"`
+(`nightPortfolioPlanner.ts:157`), published to clients at
+`app/api/executor/night-plan/route.ts:380`. The runtime contract still advertises the uncontrolled
+surface as the candidate endpoint.
+
+**RUNTIME-ONLY OPERATOR PROOF.** Which URL the live Ireland poller actually calls is **not
+provable from this repository**. This is why the endpoint cut cannot be closed by code review
+alone.
 
 ---
 
-## 5. Current source caller graph — CURRENT SOURCE FACT
+## 8. Defect 5 — callback-key and venue-field wording errors (not covered by R0)
 
-Everything below is at `6e593a5d`.
+**CURRENT SOURCE FACT.** `app/api/executor/order-events/route.ts` correlates by
+`idempotency_key`: `findQueueRowByIdempotencyKey` (`:150-156`), `findOrderEventByIdempotencyKey`
+(`:158-166`), plus a `clob_order_id` lookup (`:167-175`); the queue row is updated by primary key
+`id` (`:176-182`). Unique-violation handling distinguishes `UNIQUE_VIOLATION_CLOB_ORDER_ID` from
+`UNIQUE_VIOLATION_IDEMPOTENCY_KEY` (`:272`).
 
-**Production reservation path (17:00 Minsk)**
+**CURRENT SOURCE FACT.** The note at `:200-205` records that `executor_order_events.queue_id`,
+`match_family_key` and `reservation_id` are **not real live columns** — confirmed by a live `42703`
+error and a full `information_schema` dump of the exact 43-column live table — and are never
+written.
 
-```
-app/api/cron/night-event-reservations/route.ts:76 / :106 / :194
-  → buildReservationPlan(nowMs, { selectorMode: "CONTRACT_A_PLANNING_V1" })
-  → lib/executor/nightEventReservations.ts:711-715
-      fetchCandidates = () => buildFireModelCandidates(PLAN_POOL, "all", true, undefined, selectorMode)
-  → lib/executor/buildFireModelCandidates.ts:1296
-      if (selectorMode === "CONTRACT_A_V1") → buildContractAV1Candidates   ← NOT TAKEN
-      otherwise → legacy CONTUR3 scored/shadow pipeline                     ← TAKEN
-  → :2023-2037  stamp diagnostics.selector_id = "CONTRACT_A_PLANNING_V1",
-                      diagnostics.contract_a_stage = "PLANNING"
-  → :2040       candidates.sort(tier, score, hours_to_start)                ← legacy ranking
-  → Reservation rows
-```
+**Two wording errors corrected:**
 
-The label is applied *after* legacy filtering, scoring, and ranking have already decided the
-outcome. `CONTRACT_A_PLANNING_V1` is a provenance stamp, not a model invocation.
+1. **Callback key.** Any documentation stating or implying that callbacks correlate by a
+   `queue_id` column on `executor_order_events` is wrong. The key is `idempotency_key`, with an
+   exact-identity cross-check. R1 does **not** require adding a `queue_id` column; current source
+   gives no evidence one is necessary.
+2. **`venue_order_id`.** This field does not exist anywhere in tracked source. Wherever it appears
+   in earlier documentation it is historical wording only. The real external order identifier is
+   `clob_order_id`. It must not appear in any R1 target contract.
 
-**Production rebalance path (T−70…T−3)**
+---
 
-```
-app/api/cron/event-rebalance/route.ts
-  → runEventRebalance (lib/executor/eventExecutionQueue.ts)
-  → :806-809   fetchCandidates            = buildFireModelCandidates(PLAN_POOL,"all",true)          ← legacy universe
-  → :812-816   fetchContractAFinalCandidates = buildFireModelCandidates(..., "CONTRACT_A_V1")       ← MODEL RUNS HERE
-  → :910-912   hasContractAPlanning = due.some(r => r.diagnostics?.contract_a_stage === "PLANNING")
-               contractAFinalUniverse = hasContractAPlanning ? await fetchContractAFinalCandidates() : []
-  → selectQueueRowForDueReservation (:599)
-       planning reservations  → resolve against contractAFinalUniverse (STORED_IDENTITY | PLANNING_EVENT_KEY, both exact)
-       other reservations     → :748  .sort(compareCandidateQuality)                                ← SECOND RANKER
-  → queue row → Ireland
-```
+## 9. `compareCandidateQuality` — the nuance R0 flattened
 
-Identical duplication exists in the controlled live-intent seam
-(`eventExecutionQueue.ts:1159-1170`, `:1202-1204`).
+R0 treated `compareCandidateQuality` as simply "a second ranker to delete". Source shows two
+distinct roles that must be classified separately:
 
-**Proved dual-authority edges**
-
-| # | Edge | Evidence |
+| Role | Location | Classification |
 |---|---|---|
-| E1 | Reservation is fed by the legacy model, not Contract A | `buildFireModelCandidates.ts:1296` routes only `CONTRACT_A_V1` to Contract A; the reservation cron passes `CONTRACT_A_PLANNING_V1` |
-| E2 | Contract A runs inside rebalance | `eventExecutionQueue.ts:815`, `:1169` |
-| E3 | A second ranker runs inside rebalance | `eventExecutionQueue.ts:18` import, `:748` `.sort(compareCandidateQuality)` |
-| E4 | The Contract A label is cosmetic at planning | `buildFireModelCandidates.ts:2023-2037` stamps diagnostics only |
-| E5 | Contract A output → Reservation is unwired | no production caller passes `"CONTRACT_A_V1"` into `buildReservationPlan`; the only non-rebalance `CONTRACT_A_V1` callers are `scripts/contur3/preview-contract-a-authoritative.ts` and tests |
+| Bounded fallback ranker for non-Contract-A reservations, under the planning/legacy-selector guard at `:607-620` | `eventExecutionQueue.ts:748` | `RETIRE_FROM_AUTHORITY` — production authority must reach zero |
+| Primary ranker inside `buildNightPortfolioPlan` | `nightPortfolioPlanner.ts:711`, `:727` | Follows `buildNightPortfolioPlan`'s own classification (§10) |
+| Ranker inside `selectBestCandidateForEventAtRebalance` | `nightPortfolioPlanner.ts:469` | Unreachable — see §10 |
+
+Deleting the symbol outright, as a naive reading of R0 would suggest, would take out a reachable
+non-Contract-A path before parity is proved. The function is retired **from authority** first;
+physical deletion is a later cleanup step.
 
 ---
 
-## 6. Parallel-universe counter problem
+## 10. Defect 6 — dead guard logic and missing price/liquidity refresh (not covered by R0)
 
-The two funnels are not two stages of one chain. They differ in **every** dimension that would
-be required for continuity:
+**CURRENT DEFECT — no fresh price or liquidity check exists in production.**
+A full scan of `lib/executor/eventExecutionQueue.ts` for `liquidity`, `current_price`, `orderbook`,
+`midpoint`, `refreshPrice` and `book` returns **zero matches**. `entry_price` and `max_entry_price`
+appear only as diagnostics copied from the candidate (`:219-220`) — recorded, never re-evaluated
+against a live quote at execution time.
 
-| Dimension | Legacy planning funnel | Contract A audit funnel |
+**CURRENT DEFECT — the one guard that would have caught it is unreachable.**
+`selectBestCandidateForEventAtRebalance` (`nightPortfolioPlanner.ts:459`) implements exactly the
+missing behavior: promote the next valid backup when the top candidate's entry price has moved
+beyond `max_entry_price`. It has **zero callers** in `lib/`, `app/`, `scripts/` or `tests/` — only
+its own definition. Its time parameter is `_nowMs`, commented *"reserved for future price-staleness
+checks"*.
+
+**Net effect:** production queues an order at a price decided hours earlier, with no liquidity
+check and no staleness check.
+
+**Classification note.** `selectBestCandidateForEventAtRebalance` is `DELETE_AFTER_PARITY`, **not**
+"delete now": its logic must first be re-implemented *reachably* inside the mechanical execution
+guards.
+
+**Related:** `buildNightPortfolioPlan` (`nightPortfolioPlanner.ts:636`) has exactly one caller,
+`app/api/executor/night-plan/route.ts:237`. `buildFounderBattleBatchQueueRow`
+(`eventExecutionQueue.ts:1792`, called `:1903`) is an alternate Queue writer and needs an explicit
+production/ops classification before the zero-caller cutoff proof.
+
+---
+
+## 11. Why direct source overruled the original documentation
+
+The R0 package was assembled from a mix of direct-source review and graph-assisted review on the
+operator workstation. Those graph artifacts are Windows-only and are **not reachable from the
+Cloud execution environment**, so for R1 every load-bearing claim was re-derived from
+`git grep` / `rg` / targeted reads / `git log` against `6e593a5d`.
+
+Three of R0's errors are traceable to reasoning about *intent* rather than *reachability*:
+
+- A stamped `selector_id` reads like a decision; it is metadata (§2).
+- A well-written function reads like a live guard; `selectBestCandidateForEventAtRebalance` has no
+  callers (§10).
+- A field named on a type reads like a persisted column; `physical_event_id` is on the Reservation
+  row type only (§6).
+
+The rule this produces: **presence in source is not reachability, and a type declaration is not a
+persisted column.** Both require a caller trace or a schema check.
+
+**No blame clause.** The R0 documentation executor did not cause the production defect and did not
+introduce it. The defect predates the documentation package; R0 correctly identified the primary
+dual-authority problem. R1 corrects the record, it does not reassign responsibility.
+
+---
+
+## 12. Why existing tests did not catch it
+
+**CURRENT SOURCE FACT.** `tests/contur3/**` is substantial and exercises `buildFireModelCandidates`
+under both `CONTRACT_A_PLANNING_V1` and `CONTRACT_A_V1`, plus extensive rebalance identity-parity
+coverage (`eventExecutionQueue.rebalanceScheduler.test.ts` D1/D6/D8, `executionIdentityParity.test.ts`,
+`nightEventReservations.scheduler.test.ts` C1/C2). `nightEventReservations.scheduler.test.ts:376-377`
+even asserts the *literal source text* of the cron's selector-mode arguments.
+
+The gaps:
+
+1. Tests assert that the cron **passes** `CONTRACT_A_PLANNING_V1`; none asserts that passing it
+   **reaches the Contract A branch**. The stamp is verified, the authority is not.
+2. Tests start *below* the broken producer boundary — they inject rows directly into
+   `buildFireModelCandidates` rather than exercising the real pre-Reservation producer.
+3. No test asserts a fresh price or liquidity refresh, because no production code implements one
+   (§10) — an absent behavior cannot fail an existing assertion.
+4. No test asserts sport-metadata continuity across the Contract A adapter, so the hardcoded
+   `unknown` / `OTHER` (§5) passes silently.
+5. No test asserts `event_start_iso` derivation parity between the two paths (§6).
+
+---
+
+## 13. Blast radius
+
+| Area | Effect |
+|---|---|
+| Model authority | Legacy pipeline decides reservations; Contract A decides nothing pre-Reservation. |
+| Observability | Per-sport reporting collapses on the Contract A path (§5). |
+| Identity | Source lineage nullable (§6); occurrence identity absent from Queue (§6). |
+| Execution safety | No fresh price or liquidity guard (§10). |
+| Execution surface | A second, secret-gated instruction source (§7). |
+| Counters | Legacy funnel and Contract A audit are non-chainable universes (`nightFunnelAudit.ts:288`). |
+
+---
+
+## 14. Preserved working infrastructure
+
+Broad provider inventory · observations · signal pairs · snapshots ·
+`MODEL_SCOPE_BY_PROVIDER_SPORT_CODE` / `resolveModelSport` · Contract A pure model logic ·
+exact-match identity resolution and fail-closed reason codes (`eventExecutionQueue.ts:607-640`) ·
+`OCCURRENCE_IDENTITY_CONFLICT` occurrence uniqueness · Reservation persistence, duplicate
+protection, cap 15, lifecycle · queue builder · `/api/executor/queue` · Ireland mapper/API ·
+callback `idempotency_key` correlation · terminal states · balance/PnL · funnel instrumentation.
+
+---
+
+## 15. Corrective architecture
+
+See [`NEW_COUNTUR_1.md`](./NEW_COUNTUR_1.md) §3–§13 for the corrected target and §17 for the
+revised Commit A/B/C sequence. Summary: one model authority, two lifecycle artifacts, Reservation
+as pure orchestration, bounded final identity, reachable mechanical guards, an immutable Queue as
+sole execution instruction.
+
+---
+
+## 16. Prevention controls
+
+| # | Control | Enforced by |
 |---|---|---|
-| Producer | `buildFireModelCandidates` legacy predicates | `produceFrozenModelV2ShadowDecisions` |
-| Row base | 3228 deduped rows | 8049 source rows |
-| Granularity | market/candidate rows | strict observation-identity groups (3418) |
-| Reason vocabulary | `GAME_STARTED_OR_INVALID`, `UNKNOWN_SCOPE`, `BAD_BUCKET_COV_PRICE`, … | `ESPORTS_EXCLUDED`, `SCORE_BELOW_65`, `SNAPSHOT_NOT_T90_COMPATIBLE`, `OUTSIDE_120M` |
-| Time basis | plan-time lookback window | per-identity T−90 snapshot resolution |
-| Terminal output | 0 candidates → 0 Reservations | 4 accepted decisions → nothing |
-
-Chaining them (e.g. "2812 rejected, therefore 4 accepted from the remainder") would be
-arithmetic fiction. The released instrumentation encodes exactly this refusal
-(`nightFunnelAudit.ts:733-745`). The counter reconciliation rule is locked in
-[`NEW_COUNTUR_1.md` §11](./NEW_COUNTUR_1.md).
+| P1 | A selector/mode argument must be proved to **reach** its branch, not merely to be passed. | Gate G1, G16 |
+| P2 | Every function claimed as a guard must have a proved production caller. | Gate G14, G19 |
+| P3 | A field on a TypeScript type is not a persisted column until schema-checked. | Gate G9, G17 |
+| P4 | Any timestamp used in an equality comparison must have exactly one derivation. | Gate G8 |
+| P5 | Metadata that exists upstream may not be hardcoded downstream. | Gate G6 |
+| P6 | Every production execution surface must be enumerated and reduced to one. | Gate G12, G13 |
+| P7 | Documentation claims must carry a path + symbol at a named SHA, or a NOT VERIFIABLE tag. | Gate G21 |
+| P8 | Graph-tool findings are advisory; direct source is authoritative. | Gate G22 |
 
 ---
 
-## 7. Divergence timeline
+## 17. Source evidence ledger
 
-### 7.1 Proven facts
+Verdicts: `PROVED_CURRENT_SOURCE` · `PROVED_GIT_HISTORY` · `CONTRADICTED` · `PARTIAL` ·
+`NOT_VERIFIABLE` · `RUNTIME_ONLY`.
 
-| When | Ref | Fact |
-|---|---|---|
-| 2026-07-21T09:18+03:00 | `3d967bb Docs: define Contur Roadmap 2` | `CONTUR_ROADMAP_2.md` §1 defines the two-stage lifecycle: Stage A applies "the existing score, coverage, tier, and slot rules"; Stage B runs "the final Contract A decision stage" at rebalance. §2 states the required repair as "broad Contract A planning stage → event reservation → later final Contract A decision at rebalance". This is the **design origin** of the dual authority. |
-| — | `git merge-base --is-ancestor 3d967bb origin/main` → false | `3d967bb` is **not** an ancestor of `main`. It sits on an 8-commit pre-import line (`3d967bb ← 7342090 Add read-only Contract A preview runner ← a698b65 Wire authoritative Contract A decisions into Contur3 ← …`) that is not reachable from any branch. |
-| 2026-07-21T09:32:28+03:00 | `2591e8e Implement canonical two-stage Contract A flow` | **Root commit of `main`** (`%p` empty), a bulk import of 588 files / 127,438 insertions. It already contains `CONTRACT_A_PLANNING_V1`, `buildContractAV1Candidates`, `fetchContractAFinalCandidates`, and `compareCandidateQuality` inside `eventExecutionQueue.ts`. |
-| 2026-07-21T09:46:58+03:00 | `0fcbd0c Repair two-stage Contract A acceptance gaps` | First in-`main` reinforcement: touches the reservation route, `eventExecutionQueue.ts`, `nightEventReservations.ts`, the preview runner, and two test files. It repairs the two-stage design; it does not question it. |
-| 2026-07-22 → 2026-08-02 | `82be4b8`, `4e03615`, `4405637`, `fed8f90`, `73609d5`, `5163146`, `28b9f7f`, `1ffbaeb`, `6e593a5` | Successive identity, policy-ordering, canary, and audit-attribution work, all inside the two-stage frame. `82be4b8 Add exact night funnel audit` is the instrumentation that eventually exposed the parallelism. |
-
-### 7.2 Likely leads
-
-- `a698b65 Wire authoritative Contract A decisions into Contur3` (pre-import line) is the most
-  likely **first** Contract A wiring, and `7342090 Add read-only Contract A preview runner` the
-  likely origin of the preview-only evaluation habit. Both are off-`main` and cannot be
-  confirmed as production-reachable from this repository's history.
-- `CONTUR_ROADMAP_2.md` §2 records that an earlier attempt wired Contract A at the *planning*
-  boundary and produced `19 accepted → 0 reserved`, which was then judged invalid evidence
-  (**HISTORICAL INTENT**). That judgement is the pivot that moved Contract A to rebalance.
-
-### 7.3 Not verifiable
-
-- The exact commit that first introduced the dual authority **cannot** be pinned inside `main`:
-  `main`'s root is a bulk import that already contains it. No blame or `-S` search inside `main`
-  can go earlier.
-- Whether the pre-import line was ever deployed to production is unknown from this checkout.
-- `MARKET_POLICY_ACTIVITY_LABEL` (228 rejects) has no owner in tracked source at `6e593a5d`.
-
-**Verdict.** Neither `3d967bb` nor `0fcbd0c` is the singular root cause. `3d967bb` is the
-**documented intent** that authorized late Contract A invocation; `2591e8e` is the point at
-which `main`'s history begins already carrying the implementation; `0fcbd0c` and later commits
-**reinforced and hardened** it. The bounded timeline above is the honest maximum.
-
----
-
-## 8. Root architectural causes
-
-1. **Two producers of the same decision class.** Model/policy/ranking is emitted by both
-   `buildFireModelCandidates` (legacy) and `frozenModelProducerV2Shadow` (Contract A), at two
-   different points in the same contour.
-2. **A label was accepted as a contract.** `selector_id = "CONTRACT_A_PLANNING_V1"` named an
-   ownership that no code enforced. Nothing tested that the name implied the invocation.
-3. **No typed boundary between model and orchestration.** Contract A's output has no
-   distinct, immutable "approved candidate set" type that Reservation is obliged to consume;
-   both authorities emit the same `FireModelCandidate` shape, so a legacy candidate is
-   structurally indistinguishable from an approved decision.
-4. **A time-semantics confusion was resolved by relocating the model** rather than by
-   re-running it (see §12).
-5. **The legacy path was never cut off.** Retirement was assumed by naming, not proved by a
-   zero-caller test.
-6. **The design document authorized it.** Roadmap 2 §1 made the two-stage split canonical, so
-   every subsequent executor was correct-by-the-document while wrong-by-the-architecture.
-
----
-
-## 9. Why existing tests did not catch it
-
-- Tests exercise `CONTRACT_A_V1` and `CONTRACT_A_PLANNING_V1` **as designed**:
-  `tests/contur3/nightEventReservations.scheduler.test.ts:376-386` asserts that the cron passes
-  `"CONTRACT_A_PLANNING_V1"` — it pins the defect in place as the expected contract.
-- `tests/contur3/twoStageReservationTiming.test.ts` and
-  `tests/contur3/executionIdentityParity.test.ts` verify the *two-stage* flow end to end, so a
-  green suite confirms the dual authority rather than flagging it.
-- Identity tests (`executionIdentityParity`, `eventExecutionQueue.rebalanceScheduler` D1/D6/D7)
-  correctly prove that the exact identity is never substituted — a real and valuable guarantee —
-  but identity immutability says nothing about **who decided** the candidate.
-- No test asserts *ownership*: nothing asserts "Reservation input originated from a Contract A
-  accepted decision", and nothing asserts "rebalance invokes zero model producers".
-- No test asserts **caller cutoff**: no zero-production-caller proof exists for the legacy
-  selector.
-
----
-
-## 10. Why executor reports were insufficient
-
-- Reports answered "did the patch apply and build?" — both true — while the architectural
-  question was "which layer owns the decision?".
-- Per-reason funnel reporting made legacy rejections look like the whole story; a funnel that
-  ends at 0 invites reason-by-reason repair, which is exactly the wrong move when the funnel
-  itself is the retired authority.
-- Counters from two universes were reported in one document, which made a chained reading
-  psychologically available even where the code never chained them.
-- Green build + green tests were treated as architectural acceptance. `AGENTS.md §3.4` already
-  forbids that; the gap was that no gate specifically demanded *ownership* evidence.
-
----
-
-## 11. Model vs orchestration ownership failure
-
-The contour has exactly two kinds of layer, and they were mixed:
-
-| Layer kind | Legitimate powers | Observed violation |
-|---|---|---|
-| **Model authority** (Contract A) | policy, score, eligibility, market policy, price policy, ranking, approved-set formation, rejection reasons | invoked in the wrong place (rebalance), and not invoked in the right place (planning) |
-| **Orchestration** (Reservation, Rebalance, Queue) | grouping, dedupe, capacity, persistence, waiting, refreshing prices, mechanical guards, immutability | `buildFireModelCandidates` filtering/scoring/ranking at planning; `compareCandidateQuality` ranking at rebalance; model invocation inside rebalance |
-
-Orchestration is permitted to **discard** an approved candidate for mechanical reasons. It is
-never permitted to **create, re-score, or re-rank** one.
-
----
-
-## 12. T−90 semantic confusion
-
-**CURRENT SOURCE FACT.** T−90 and T−120 are both *inside* Contract A:
-
-- `T90_OFFSET_MS = 90 * 60_000`; `resolveT90Snapshot` picks the latest snapshot at or before
-  `start − 90m` per strict observation identity — a **snapshot-selection rule**
-  (`frozenModelProducerV2Shadow.ts:230-242`).
-- `TIMING_UPPER_HOURS = 2`; `passesTimingWithin120m` requires `0 ≤ hoursUntilStart < 2` — a
-  **model timing predicate** (`:184-187`).
-- The *execution* window is a different thing entirely: T−70…T−3, enforced by `isDueForRebalance`
-  (`nightWindow.ts:21,24,110`).
-
-**HISTORICAL INTENT.** The comment at `buildFireModelCandidates.ts:2023-2029` states the
-reasoning verbatim: a 17:00 plan reads the broad inventory because "a game several hours away
-legitimately has no T−90 snapshot yet, so resolving the final universe here returns nothing and
-the whole night plan collapses to zero reservations (production, 2026-07-25/26)".
-
-**The error.** The observation was correct; the inference was not. "Contract A cannot decide
-*this occurrence yet*" was converted into "Contract A must not own the planning decision at
-all", which handed authority back to the legacy pipeline and moved the model behind Reservation.
-
-**TARGET LOCK.** An occurrence without a T−90 snapshot is simply **not yet approved**. The
-correct response is to re-run Contract A as snapshots appear and to let the approved set fill
-over time — never to introduce a second authority. T−90/T−120 are execution-window and
-input-selection metadata, not model-invocation timing.
-
----
-
-## 13. Observability ownership failure
-
-- Rejection reasons were emitted by the layer that happened to drop the row, not by the layer
-  that **owns** the decision class. Legacy pipeline reasons therefore described model-class
-  outcomes (`UNKNOWN_SCOPE`, `MARKET_POLICY_ACTIVITY_LABEL`) that belong to Contract A.
-- The result: two reason vocabularies for one decision, and no single place where "why was this
-  occurrence not bet?" can be answered.
-- At least one reason (`MARKET_POLICY_ACTIVITY_LABEL`, 228) has no owner discoverable in tracked
-  source — an observability surface with no located producer.
-- Counter-positive: `nightFunnelAudit.ts` is layer-honest by construction — it "NEVER recomputes
-  a threshold, score, tier, timing, price, or grouping decision", only reshapes counts the
-  production code already emitted. That property is what made the incident detectable and is a
-  KEEP.
-
----
-
-## 14. Legacy-cutoff failure
-
-Retirement was declared by renaming, not by removal:
-
-- `CONTRACT_A_PLANNING_V1` was added to `FireModelSelectorMode` alongside `CONTUR3_CURRENT`
-  rather than replacing it. Three selector modes coexist at `6e593a5d`.
-- No zero-production-caller proof was ever produced for the legacy selector.
-- `compareCandidateQuality` was retained in the execution contour with a comment warning it
-  "must NEVER substitute a different condition_id/token_id/side" (`eventExecutionQueue.ts:610`) —
-  a comment guarding a call site that should not exist in the target contour at all.
-- `lib/executor/nightPortfolioPlanner.ts` remains reachable from
-  `app/api/executor/night-plan/route.ts:11`; its production status is **NEEDS VERIFICATION**.
-
----
-
-## 15. Roadmap delta failure
-
-`CONTUR_ROADMAP_2.md` was never revised after the two-stage design produced 0 Reservations. The
-document remained the authority while production evidence contradicted it. Each subsequent task
-was measured against Roadmap 2 compliance rather than against the terminal business outcome, so
-correct-per-document work accumulated on top of an architecture the evidence had already
-falsified. `NEW_COUNTUR_1.md` §10 supersedes those semantics explicitly; the historical documents
-stay in the repository as evidence.
-
----
-
-## 16. Blast radius
-
-**Affected (authority must change)**
-
-- `lib/executor/buildFireModelCandidates.ts` — selector modes, legacy predicates, ranking, stamp.
-- `lib/executor/nightEventReservations.ts` — candidate intake path (`:711-715`); orchestration retained.
-- `lib/executor/eventExecutionQueue.ts` — `fetchContractAFinalCandidates` (`:812-816`, `:1166-1170`),
-  `compareCandidateQuality` usage (`:18`, `:748`), selection logic (`:599+`).
-- `lib/executor/nightPortfolioPlanner.ts` — ranking authority; disposition pending.
-- `app/api/cron/night-event-reservations/route.ts` — selector wiring.
-- Tests that pin the two-stage contract (`nightEventReservations.scheduler.test.ts`,
-  `twoStageReservationTiming.test.ts`, `executionIdentityParity.test.ts`,
-  `eventExecutionQueue.rebalanceScheduler.test.ts`).
-
-**Not affected**
-
-- Ingestion, signal pairs, snapshots, structured sport metadata.
-- Reservation persistence, duplicate protection, capacity cap, lifecycle.
-- Identity contract, queue builder, queue route, Ireland mapper, callback, terminal states, PnL.
-- All UI, feed, pricing, payment, and auth surfaces — entirely out of scope.
-
----
-
-## 17. Preserved working infrastructure
-
-The incident is narrow. Almost everything built to date is correct and stays:
-
-broad provider inventory · canonical observations · signal pairs · snapshots · broad sports and
-markets · structured sport metadata · Contract A's pure model logic · exact identity work ·
-physical-occurrence identity · Reservation persistence · active duplicate protection · cap 15 ·
-lifecycle · queue builder · Ireland mapper/API · callback · terminal states · balance/PnL ·
-released funnel instrumentation (as migration evidence).
-
-Full table with source references: [`NEW_COUNTUR_1.md` §8](./NEW_COUNTUR_1.md).
-
----
-
-## 18. Corrective architecture
-
-One authority, one path, one deploy:
-
-```
-snapshots → Contract A (sole owner, runs once, before Reservation)
-          → approved candidate set + complete rejection trace + execution-window metadata
-          → Reservation (exact occurrence, dedupe, cap 15, lineage, persistence)
-          → Rebalance (mechanical guards only, persisted approved set only, no model)
-          → immutable Queue → Ireland → callback → terminal state → PnL
-```
-
-Delivered as three stacked commits on one branch (Commit A: authoritative output; Commit B:
-direct output → Reservation; Commit C: mechanical rebalance + legacy cutoff), reviewed once,
-deployed once. Scopes and rollback: [`NEW_COUNTUR_1.md` §12-§15](./NEW_COUNTUR_1.md).
-
----
-
-## 19. Prevention controls
-
-Each maps to a gate in [`NEW_COUNTUR_1_ENGINEERING_GATES.md`](./NEW_COUNTUR_1_ENGINEERING_GATES.md).
-
-| Cause (§8) | Control | Gate |
-|---|---|---|
-| Two producers | one named decision owner per decision class | `ONE DECISION OWNER` |
-| Label ≠ contract | typed, immutable boundary object; ownership asserted by test | `BOUNDARY CONTRACT FIRST`, `CALLER OWNERSHIP TEST` |
-| No approved-set type | approved set frozen at emit | `MODEL OUTPUT IMMUTABILITY` |
-| Time confusion | explicit semantic time contract | `SEMANTIC TIME CONTRACT` |
-| Legacy never cut off | zero-production-caller proof required | `LEGACY CUTOFF`, `NO PARALLEL PRODUCTION PATH` |
-| Document outlived evidence | roadmap delta review each cycle | `ROADMAP DELTA REVIEW` |
-| Reason-by-reason repair | failure tree with 3-5 competing causes before any patch | `FAILURE TREE BEFORE PATCH` |
-| Cross-universe counters | same-universe continuity proof | `COUNTER RECONCILIATION` |
-| Dual-authority deploys | one coherent cutover release | `COHERENT CUTOVER RELEASE` |
-
----
-
-## 20. Evidence ledger summary
-
-| CLAIM | SOURCE PATH | COMMIT | FUNCTION / SECTION | VERDICT |
+| # | Claim | Source path | Symbol / line area | Verdict |
 |---|---|---|---|---|
-| Reservation cron selects `CONTRACT_A_PLANNING_V1` | `app/api/cron/night-event-reservations/route.ts` | `6e593a5d` | `:76`, `:106`, `:194` | PROVED_CURRENT_SOURCE |
-| Only `CONTRACT_A_V1` routes to Contract A | `lib/executor/buildFireModelCandidates.ts` | `6e593a5d` | `:1296` `buildContractAV1Candidates` | PROVED_CURRENT_SOURCE |
-| `CONTRACT_A_PLANNING_V1` only stamps diagnostics | `lib/executor/buildFireModelCandidates.ts` | `6e593a5d` | `:2023-2037` | PROVED_CURRENT_SOURCE |
-| Legacy ranking still decides planning order | `lib/executor/buildFireModelCandidates.ts` | `6e593a5d` | `:2040` tier/score/hours sort | PROVED_CURRENT_SOURCE |
-| Contract A is invoked inside rebalance | `lib/executor/eventExecutionQueue.ts` | `6e593a5d` | `:812-816`, `:1166-1170` `fetchContractAFinalCandidates` | PROVED_CURRENT_SOURCE |
-| A second ranker runs in rebalance | `lib/executor/eventExecutionQueue.ts` | `6e593a5d` | `:18` import, `:748` `.sort(compareCandidateQuality)` | PROVED_CURRENT_SOURCE |
-| Contract A model owner is pure and side-effect free | `lib/modeling/frozenModelProducerV2Shadow.ts` | `6e593a5d` | header, `:51-58` | PROVED_CURRENT_SOURCE |
-| T−90 / T−120 are Contract A internals | `lib/modeling/frozenModelProducerV2Shadow.ts` | `6e593a5d` | `:184-187`, `:230-242` | PROVED_CURRENT_SOURCE |
-| Execution window is T−70…T−3, separate from T−90 | `lib/executor/nightWindow.ts` | `6e593a5d` | `:21`, `:24`, `:110` | PROVED_CURRENT_SOURCE |
-| Instrumentation refuses to chain the two funnels | `lib/executor/nightFunnelAudit.ts` | `6e593a5d` | `:733-745` | PROVED_CURRENT_SOURCE |
-| Identity contract already forbids substitution | `lib/executor/executableMarketIdentity.ts` | `6e593a5d` | header invariants 1-8 | PROVED_CURRENT_SOURCE |
-| Cap 15 is the reservation/queue capacity | `lib/executor/nightEventReservations.ts:399`; `app/api/executor/queue/route.ts` | `6e593a5d` | `TARGET_LIVE_SLOTS`, `DEFAULT_CAP` | PROVED_CURRENT_SOURCE |
-| Callback joins on `idempotency_key`, not `queue_id` | `lib/executor/executorCallbackContract.ts` | `6e593a5d` | `:14-20` | PROVED_CURRENT_SOURCE |
-| Roadmap 2 authorized late Contract A invocation | `CONTUR_ROADMAP_2.md` | `3d967bb` | §1 Stage A/B, §2 | HISTORICAL_INTENT |
-| `3d967bb` is not an ancestor of `main` | `git merge-base --is-ancestor` | — | pre-import 8-commit line | PROVED_GIT_HISTORY |
-| `main`'s root already contains the dual authority | `git show -s --format=%p 2591e8e` (empty) | `2591e8e` | 588 files bulk import | PROVED_GIT_HISTORY |
-| `0fcbd0c` reinforced, did not introduce | `git show --stat 0fcbd0c` | `0fcbd0c` | 6 files, +96/−13 | PROVED_GIT_HISTORY |
-| Contract A must be the sole owner, before Reservation | task lock | — | `NEW_COUNTUR_1.md` §4 | FOUNDER_LOCKED_TARGET |
-| `MARKET_POLICY_ACTIVITY_LABEL` has no source owner | repository-wide `rg` | `6e593a5d` | — | NOT_VERIFIABLE |
-| `app/api/executor/night-plan/route.ts` production status | `app/api/executor/night-plan/route.ts:11` | `6e593a5d` | imports `nightPortfolioPlanner` | NEEDS_IMPLEMENTATION_REVIEW |
+| 1 | Reservation cron plans with `CONTRACT_A_PLANNING_V1` | `app/api/cron/night-event-reservations/route.ts` | `:76`, `:106`, `:194`, `:254` | PROVED_CURRENT_SOURCE |
+| 2 | `CONTRACT_A_PLANNING_V1` does not enter the Contract A branch; only stamps metadata | `lib/executor/buildFireModelCandidates.ts` | `:1296` (branch), `:2023-2037` (stamp), `:2041-2047` (legacy sort) | PROVED_CURRENT_SOURCE |
+| 3 | `CONTRACT_A_V1` short-circuits to the Contract A adapter | `lib/executor/buildFireModelCandidates.ts` | `:1296` → `buildContractAV1Candidates` `:1097+` | PROVED_CURRENT_SOURCE |
+| 4 | Current pre-Reservation model owner is the legacy pipeline | `lib/executor/buildFireModelCandidates.ts` | `:1300-2047` | PROVED_CURRENT_SOURCE |
+| 5 | Post-Reservation Contract A caller is rebalance | `lib/executor/eventExecutionQueue.ts` | `:815`, `:1169` | PROVED_CURRENT_SOURCE |
+| 6 | `compareCandidateQuality` has two live roles | `lib/executor/eventExecutionQueue.ts:748`; `lib/executor/nightPortfolioPlanner.ts:711`, `:727` | — | PROVED_CURRENT_SOURCE |
+| 7 | `selectBestCandidateForEventAtRebalance` has zero callers | `lib/executor/nightPortfolioPlanner.ts` | `:459` (definition only) | PROVED_CURRENT_SOURCE |
+| 8 | No price/liquidity refresh is reachable in the rebalance path | `lib/executor/eventExecutionQueue.ts` | zero matches for `liquidity`/`current_price`/`orderbook`/`midpoint`/`refreshPrice`/`book` | PROVED_CURRENT_SOURCE |
+| 9 | Broad sport metadata exists upstream (15 provider codes) | `lib/executor/buildFireModelCandidates.ts` | `:652-667`, `resolveModelSport` `:688+`, `:1971`, `:2013-2016` | PARTIAL — finding upheld, count corrected from ~10 to 15 |
+| 10 | Contract A adapter hardcodes `unknown` / `OTHER` | `lib/executor/buildFireModelCandidates.ts` | `:1228`, `:1230`, comment `:1159-1163`, exception `:1204` | PROVED_CURRENT_SOURCE |
+| 11 | `physical_event_id` continuity: Reservation yes, Queue no | `lib/executor/nightEventReservations.ts:1125`; `lib/executor/executorQueueTypes.ts:34-35` | — | PROVED_CURRENT_SOURCE |
+| 12 | `condition_id`/`token_id`/`side` continuity is exact-match, fail-closed | `lib/executor/eventExecutionQueue.ts` | `:607-640`, `buildQueueRow` `:170-230` | PROVED_CURRENT_SOURCE |
+| 13 | Source lineage silently nulled for non-UUID values | `lib/executor/eventExecutionQueue.ts` | `resolveQueueSourceSignalId` `:161-165` | PROVED_CURRENT_SOURCE |
+| 14 | `event_start_iso` arithmetically reconstructed on the Contract A path, exact-ms compared | `lib/executor/buildFireModelCandidates.ts:1142-1144` vs `:1543-1546`; `lib/executor/nightEventReservations.ts:1126`, `:1571-1574` | — | PROVED_CURRENT_SOURCE |
+| 15 | `/api/executor/candidates` returns executable identity without Reservation or Queue | `app/api/executor/candidates/route.ts` | `:260`, `:308-318`, secret `:204` | PROVED_CURRENT_SOURCE |
+| 16 | `/api/executor/queue` returns the persisted execution instruction | `app/api/executor/queue/route.ts` | `:50`, `:72` | PROVED_CURRENT_SOURCE |
+| 17 | `IRELAND_RUNTIME_CONTRACT.candidate_endpoint` points at `/api/executor/candidates` | `lib/executor/nightPortfolioPlanner.ts:157`; served `app/api/executor/night-plan/route.ts:380` | — | PROVED_CURRENT_SOURCE |
+| 18 | Callback lookup key is `idempotency_key` | `app/api/executor/order-events/route.ts` | `:150-166` | PROVED_CURRENT_SOURCE |
+| 19 | `executor_order_events` has no `queue_id`/`match_family_key`/`reservation_id` column | `app/api/executor/order-events/route.ts` | note `:200-205` (live 42703 + information_schema dump) | PROVED_CURRENT_SOURCE |
+| 20 | `clob_order_id` is the external order identifier; `venue_order_id` does not exist | `app/api/executor/order-events/route.ts` | `:73`, `:137`, `:167-175`, `:272`; zero matches for `venue_order_id` | PROVED_CURRENT_SOURCE |
+| 21 | Production callers that must lose authority | `eventExecutionQueue.ts:748`; `nightPortfolioPlanner.ts:636`; `app/api/executor/candidates/route.ts`; `app/api/executor/night-plan/route.ts:237`; `eventExecutionQueue.ts:1792/1903` | — | PROVED_CURRENT_SOURCE |
+| 22 | Tests assert the stamp, not the authority; no price/liquidity/sport-continuity tests | `tests/contur3/nightEventReservations.scheduler.test.ts:376-377`; `tests/contur3/**` | — | PROVED_CURRENT_SOURCE |
+| 23 | Owner of rejection reason `MARKET_POLICY_ACTIVITY_LABEL` | — | zero matches in tracked source at `6e593a5d` | NOT_VERIFIABLE |
+| 24 | Live Ireland polling URL | — | not in repository | RUNTIME_ONLY |
+| 25 | Docs commit `752fd87a` is documentation-only over `6e593a5d` | git | `git diff --name-only 6e593a5d 752fd87a` → 5 files, all `docs/ai-context/` | PROVED_GIT_HISTORY |
+
+---
+
+**Related:** [`NEW_COUNTUR_1.md`](./NEW_COUNTUR_1.md) ·
+[`NEW_COUNTUR_1_ENGINEERING_GATES.md`](./NEW_COUNTUR_1_ENGINEERING_GATES.md) ·
+[`09_CONTEXT_DELTA_LOG.md`](./09_CONTEXT_DELTA_LOG.md)
