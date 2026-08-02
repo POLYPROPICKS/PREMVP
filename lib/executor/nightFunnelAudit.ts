@@ -242,13 +242,18 @@ function sumReasonCounts(byReason: Record<string, number>): number {
  *     post-admission rejects, because every dropped merged row (shadow or
  *     not) passes through `rejectReason(reason)` into that one map.
  *
- *  2. Stage 04b arithmetic (only the scored/post-admission universe):
- *       raw.scored_rows_count === postAdmissionDropped + returnedCandidateCount
- *     where postAdmissionDropped = authoritativeDropped - shadowDropped.
- *     Using `raw.total_db_rows` here (as before) silently re-counts the
- *     403 planning-shadow rejects a second time on top of the 2827-row
- *     scored pool -- that double-counting is exactly what this stage must
- *     never do again.
+ *  2. Stage 04b arithmetic (only the deduped post-shadow-admission universe):
+ *       sourceAdmittedDeduped === postAdmissionDropped + returnedCandidateCount
+ *     where sourceAdmittedDeduped = totalDbRows - shadowDropped and
+ *     postAdmissionDropped = authoritativeDropped - shadowDropped.
+ *     `raw.scored_rows_count` is a RAW pre-dedup query count -- it can
+ *     legitimately differ from totalDbRows - shadowDropped in either
+ *     direction (merged/duplicate rows in the scoring query) -- so it is
+ *     NEVER used as the chained stage input, only surfaced informationally
+ *     inside this stage's `source` field. Using it as chained input (as
+ *     before) either silently truncates the real pipeline input or throws on
+ *     production rows where the raw scored count doesn't match the deduped
+ *     admitted universe.
  *
  * A third check (planning-shadow overlap) proves the two shadow reason codes
  * inside `rejected_before_planning_by_reason` are exactly what stage 03
@@ -264,6 +269,12 @@ export function buildAttributablePlanningStage(
   const { raw, returnedCandidateCount, builderInvocationCount, planFetchCandidatesCallCount } = input;
   const src = "buildFireModelCandidates(CONTRACT_A_PLANNING_V1)/RawPlanningDiagnostics";
   const stageName = "04b source-admitted rows -> planning candidates";
+
+  if (!raw) {
+    throw new PlanningAttributionError(
+      `stage "${stageName}": raw planning diagnostics are null -- cannot attribute planning admission without raw diagnostics (fail closed)`,
+    );
+  }
 
   if (builderInvocationCount !== 1) {
     throw new PlanningAttributionError(
@@ -304,7 +315,10 @@ export function buildAttributablePlanningStage(
     );
   }
 
-  const inputCount = raw?.scored_rows_count ?? 0;
+  // Deduped post-shadow-admission universe -- NEVER raw.scored_rows_count,
+  // which is a raw pre-dedup query count and can differ from this value in
+  // either direction. See the function doc comment above.
+  const sourceAdmittedDeduped = totalDbRows - shadowDropped;
   const postAdmissionDropped = authoritativeDropped - shadowDropped;
 
   if (postAdmissionDropped < 0) {
@@ -314,21 +328,22 @@ export function buildAttributablePlanningStage(
     );
   }
 
-  // 3. Stage 04b arithmetic on the scored (post-admission) universe only.
-  if (inputCount !== postAdmissionDropped + returnedCandidateCount) {
+  // 3. Stage 04b arithmetic on the deduped post-shadow-admission universe only.
+  if (sourceAdmittedDeduped !== postAdmissionDropped + returnedCandidateCount) {
     throw new PlanningAttributionError(
-      `stage "${stageName}": scored_rows_count=${inputCount} !== post_admission_dropped=${postAdmissionDropped} ` +
-        `+ returned_candidate_count=${returnedCandidateCount}`,
+      `stage "${stageName}": source_admitted_deduped=${sourceAdmittedDeduped} (total_db_rows-planning_shadow_rejected_count) ` +
+        `!== post_admission_dropped=${postAdmissionDropped} + returned_candidate_count=${returnedCandidateCount} ` +
+        `(raw.scored_rows_count=${raw.scored_rows_count} is informational only, not used in this check)`,
     );
   }
 
   const stage: FunnelStage = {
     stage: stageName,
-    input: inputCount,
+    input: sourceAdmittedDeduped,
     dropped: postAdmissionDropped,
     output: returnedCandidateCount,
     reason: "REJECTED_AFTER_SOURCE_ADMISSION (see P-reason breakdown)",
-    source: `${src}.{scored_rows_count,rejected_before_planning_by_reason}`,
+    source: `${src}.{total_db_rows,planning_shadow_rejected_count,rejected_before_planning_by_reason} (scored_rows_count=${raw.scored_rows_count} informational only)`,
   };
 
   const shadowReasonsAlreadyCounted: Record<string, number> = {};
@@ -405,14 +420,18 @@ export function buildPlanningFunnel(input: {
         `${src}.planning_shadow_rejected_count`,
       ),
     );
-    // scored_rows_count is the survivors after version/shadow admission.
+    // Deduped post-shadow-admission universe = total_db_rows - shadowRejected.
+    // `scored_rows_count` is a raw pre-dedup query count -- it is NEVER used
+    // in this chained stage; it is surfaced only as an informational value
+    // in `source` below so it stays visible without truncating or inflating
+    // the real pipeline input (see buildAttributablePlanningStage doc).
     stages.push(
       chain(
         "04 rows after source-admission (scored universe)",
         totalDb - shadowRejected,
-        Math.max(0, totalDb - shadowRejected - scored),
-        "PRE_SCORE_ADMISSION_DELTA",
-        `${src}.scored_rows_count`,
+        0,
+        "SOURCE_ADMITTED_DEDUPED",
+        `${src}.total_db_rows - planning_shadow_rejected_count (scored_rows_count=${scored} informational only, not chained)`,
       ),
     );
 

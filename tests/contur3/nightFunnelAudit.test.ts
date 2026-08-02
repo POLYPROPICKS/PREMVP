@@ -585,6 +585,93 @@ test("R5: PlanningAttributionError checks verify instanceof, error.name, and mes
   );
 });
 
+// ── R6 — DEDUP: scored_rows_count is a raw pre-dedup query count and must
+// NEVER be used as chained stage-04b input ──────────────────────────────────
+// Production-shaped counter-example: total_db_rows=2917, planning_shadow_
+// rejected_count=225 (all WEAK_EVENT_IDENTITY), scored_rows_count=3683 (a raw
+// pre-dedup query count that legitimately exceeds the deduped universe), and
+// the remaining post-admission reasons sum to exactly 2692 with
+// returnedCandidateCount=0. The correct deduped post-shadow universe is
+// 2917 - 225 = 2692, never 3683.
+
+test("R6: stage 04b uses total_db_rows - planning_shadow_rejected_count (2692), never scored_rows_count (3683)", () => {
+  const raw = rawDiag({
+    total_db_rows: 2917,
+    scored_rows_count: 3683,
+    planning_shadow_rejected_count: 225,
+    planning_shadow_reject_reasons: { WEAK_EVENT_IDENTITY: 225 },
+    rejected_before_planning_by_reason: {
+      WEAK_EVENT_IDENTITY: 225,
+      LOW_SCORE: 2692,
+    },
+  });
+
+  const attribution = buildAttributablePlanningStage({
+    raw,
+    returnedCandidateCount: 0,
+    builderInvocationCount: 1,
+    planFetchCandidatesCallCount: 1,
+  });
+
+  assert.equal(attribution.stage.input, 2692, "stage 04b input must be the deduped post-shadow universe (2917-225), not scored_rows_count (3683)");
+  assert.equal(attribution.stage.dropped, 2692);
+  assert.equal(attribution.stage.output, 0);
+
+  const stages = buildPlanningFunnel({
+    raw,
+    plan: planDiag({
+      universe_size: 0,
+      canonical_event_groups: 0,
+      tier1ReservationsPlanned: 0,
+      reserved_count: 0,
+      reserved_wc_or_soccer_count: 0,
+      upstream_approved_candidates: 0,
+      upstream_rejected_candidates_dropped: 0,
+    }),
+    reservedCount: 0,
+    skippedCount: 0,
+    returnedCandidateCount: 0,
+    builderInvocationCount: 1,
+    planFetchCandidatesCallCount: 1,
+  });
+  assert.doesNotThrow(() => assertStageArithmetic(stages));
+  assert.doesNotThrow(() => assertFunnelContinuity(stages));
+
+  const stage03 = stages.find((s) => s.stage.startsWith("03 rows rejected"));
+  const stage04 = stages.find((s) => s.stage.startsWith("04 rows after source-admission"));
+  const stage04b = stages.find((s) => s.stage.startsWith("04b"));
+
+  assert.equal(stage03?.output, 2692);
+  assert.equal(stage04?.output, 2692);
+  assert.equal(stage04b?.input, 2692);
+  assert.equal(stage04b?.dropped, 2692);
+  assert.equal(stage04b?.output, 0);
+});
+
+test("R6: scored_rows_count lower than the deduped post-shadow universe must not truncate stage 04b input", () => {
+  const raw = rawDiag({
+    total_db_rows: 2917,
+    scored_rows_count: 2000, // deliberately lower than 2692 -- must not truncate
+    planning_shadow_rejected_count: 225,
+    planning_shadow_reject_reasons: { WEAK_EVENT_IDENTITY: 225 },
+    rejected_before_planning_by_reason: {
+      WEAK_EVENT_IDENTITY: 225,
+      LOW_SCORE: 2692,
+    },
+  });
+
+  const attribution = buildAttributablePlanningStage({
+    raw,
+    returnedCandidateCount: 0,
+    builderInvocationCount: 1,
+    planFetchCandidatesCallCount: 1,
+  });
+
+  assert.equal(attribution.stage.input, 2692, "a scored_rows_count lower than the deduped universe must not truncate the real pipeline input");
+  assert.equal(attribution.stage.dropped, 2692);
+  assert.equal(attribution.stage.output, 0);
+});
+
 // ── TEST 4: REASON SURFACING ─────────────────────────────────────────────────
 // Verify exact P-reason surfacing for named codes the builder actually emits
 // (no fabricated enums): MALFORMED_PROVIDER_SPORT, UNSUPPORTED_PROVIDER_SPORT,
