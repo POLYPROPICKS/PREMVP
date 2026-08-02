@@ -129,6 +129,11 @@ export interface RawPlanningDiagnostics {
   accepted_rows_by_raw_provider_sport?: Record<string, number>;
   rejected_rows_by_raw_provider_sport_and_reason?: Record<string, Record<string, number>>;
   unsupported_provider_sport_count?: number;
+  // Present diagnostics.providerSportCode key whose value is not a usable
+  // trimmed non-empty string (object/array/number/boolean/empty/whitespace-only).
+  // Counted separately from rows_missing_structured_provider_sport, which is
+  // for a genuinely absent field -- a malformed row never uses text fallback.
+  malformed_provider_sport_count?: number;
   rows_missing_structured_provider_sport?: number;
   rows_using_legacy_text_fallback?: number;
   provider_sport_alias_normalization_counts?: Record<string, number>;
@@ -672,18 +677,38 @@ const MODEL_SCOPE_BY_PROVIDER_SPORT_CODE: Readonly<Record<string, StrategicScope
 type ModelSportResolution = {
   scope: StrategicScope;
   rawProviderSportCode: string | null;
-  source: "providerSportCode" | "shadowScope" | "text";
+  source: "providerSportCode" | "shadowScope" | "text" | "malformedProviderSportCode";
   hasStructuredSport: boolean;
+  // true iff diagnostics.providerSportCode is a present key (not absent/null/undefined)
+  // that is not a usable trimmed non-empty string. A malformed present value must
+  // fail closed -- it is not the same as the field being absent, and must never
+  // be replaced by shadowScope or title text.
+  malformedProviderSportCode: boolean;
 };
 
 function resolveModelSport(diag: Record<string, unknown>, identityText: string): ModelSportResolution {
-  const providerSportCode = safeLower(diag.providerSportCode);
-  if (providerSportCode) {
+  const rawProviderSportCodeValue = diag.providerSportCode;
+  const providerSportCodeKeyPresent =
+    Object.prototype.hasOwnProperty.call(diag, "providerSportCode") &&
+    rawProviderSportCodeValue !== undefined &&
+    rawProviderSportCodeValue !== null;
+  if (providerSportCodeKeyPresent) {
+    if (typeof rawProviderSportCodeValue === "string" && rawProviderSportCodeValue.trim() !== "") {
+      const providerSportCode = rawProviderSportCodeValue.trim().toLowerCase();
+      return {
+        scope: MODEL_SCOPE_BY_PROVIDER_SPORT_CODE[providerSportCode] ?? "UNKNOWN",
+        rawProviderSportCode: providerSportCode,
+        source: "providerSportCode",
+        hasStructuredSport: true,
+        malformedProviderSportCode: false,
+      };
+    }
     return {
-      scope: MODEL_SCOPE_BY_PROVIDER_SPORT_CODE[providerSportCode] ?? "UNKNOWN",
-      rawProviderSportCode: providerSportCode,
-      source: "providerSportCode",
-      hasStructuredSport: true,
+      scope: "UNKNOWN",
+      rawProviderSportCode: null,
+      source: "malformedProviderSportCode",
+      hasStructuredSport: false,
+      malformedProviderSportCode: true,
     };
   }
   const shadowScope = safeLower(diag.shadowScope);
@@ -693,9 +718,16 @@ function resolveModelSport(diag: Record<string, unknown>, identityText: string):
       rawProviderSportCode: shadowScope,
       source: "shadowScope",
       hasStructuredSport: true,
+      malformedProviderSportCode: false,
     };
   }
-  return { ...deriveSportScope(identityText), rawProviderSportCode: null, source: "text", hasStructuredSport: false };
+  return {
+    ...deriveSportScope(identityText),
+    rawProviderSportCode: null,
+    source: "text",
+    hasStructuredSport: false,
+    malformedProviderSportCode: false,
+  };
 }
 
 /**
@@ -1434,6 +1466,7 @@ export async function buildFireModelCandidates(
         accepted_rows_by_raw_provider_sport: {},
         rejected_rows_by_raw_provider_sport_and_reason: {},
         unsupported_provider_sport_count: 0,
+        malformed_provider_sport_count: 0,
         rows_missing_structured_provider_sport: 0,
         rows_using_legacy_text_fallback: 0,
         provider_sport_alias_normalization_counts: {},
@@ -1514,7 +1547,9 @@ export async function buildFireModelCandidates(
     const { text: identityText, activityLabelDetected } = buildIdentityText(row, planningMode);
     const resolvedModelSport = resolveModelSport(diag, identityText);
     if (rawDiag) {
-      if (resolvedModelSport.rawProviderSportCode) {
+      if (resolvedModelSport.malformedProviderSportCode) {
+        rawDiag.malformed_provider_sport_count = (rawDiag.malformed_provider_sport_count ?? 0) + 1;
+      } else if (resolvedModelSport.rawProviderSportCode) {
         const raw = resolvedModelSport.rawProviderSportCode;
         const modelInputs = rawDiag.model_input_rows_by_raw_provider_sport ?? (rawDiag.model_input_rows_by_raw_provider_sport = {});
         modelInputs[raw] = (modelInputs[raw] ?? 0) + 1;
@@ -1529,6 +1564,13 @@ export async function buildFireModelCandidates(
       if (resolvedModelSport.hasStructuredSport && deriveSportScope(identityText).scope !== "UNKNOWN" && deriveSportScope(identityText).scope !== resolvedModelSport.scope) {
         rawDiag.structured_sport_text_conflicts_structured_won = (rawDiag.structured_sport_text_conflicts_structured_won ?? 0) + 1;
       }
+    }
+    // A present-but-malformed providerSportCode fails closed here -- before any
+    // shadowScope/title-text fallback, and before the UNSUPPORTED_PROVIDER_SPORT
+    // check below (which is only for a valid-but-unrecognized raw string).
+    if (resolvedModelSport.malformedProviderSportCode) {
+      rejectReason("MALFORMED_PROVIDER_SPORT");
+      continue;
     }
     if (resolvedModelSport.source === "providerSportCode" && resolvedModelSport.scope === "UNKNOWN") {
       if (rawDiag) rawDiag.unsupported_provider_sport_count = (rawDiag.unsupported_provider_sport_count ?? 0) + 1;

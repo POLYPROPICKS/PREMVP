@@ -56,7 +56,7 @@ async function at<T>(ms: number, fn: () => Promise<T>): Promise<T> {
 function shadowSportsRow(over: {
   id: string;
   shadowScope: string;
-  providerSportCode?: string;
+  providerSportCode?: unknown;
   eventTitle: string;
   marketQuestion: string;
   eventSlug: string;
@@ -142,7 +142,56 @@ test("unsupported providerSportCode reaches the model and is explicitly rejected
   assert.equal(candidates.length, 0);
   assert.equal(rawDiagnostics?.rejected_before_planning_by_reason.UNSUPPORTED_PROVIDER_SPORT, 1);
   assert.equal(rawDiagnostics?.model_input_rows_by_raw_provider_sport?.["rugby-sevens"], 1);
+  assert.equal(
+    rawDiagnostics?.rejected_before_planning_by_reason.WEAK_EVENT_IDENTITY,
+    undefined,
+    "a valid-but-unrecognized providerSportCode must reject as UNSUPPORTED_PROVIDER_SPORT, never WEAK_EVENT_IDENTITY"
+  );
 });
+
+// ── Malformed structured provider sport (2026-08 boundary correction) ──────
+// diagnostics.providerSportCode PRESENT but not a usable trimmed non-empty
+// string (object/array/number/boolean/empty/whitespace-only) must fail closed
+// at the model boundary: it must never be treated as absent and fall through
+// to shadowScope or title text, even when both would otherwise produce a
+// misleading MLB candidate from team-name text.
+
+const MALFORMED_PROVIDER_SPORT_CASES: Array<{ label: string; value: unknown }> = [
+  { label: "object", value: {} },
+  { label: "array", value: ["nba"] },
+  { label: "number", value: 42 },
+  { label: "boolean", value: true },
+  { label: "empty-string", value: "" },
+  { label: "whitespace-only-string", value: "   " },
+];
+
+for (const { label, value } of MALFORMED_PROVIDER_SPORT_CASES) {
+  test(`MPS-${label}: a malformed providerSportCode (${label}) fails closed and never falls back to shadowScope or text`, async () => {
+    const row = shadowSportsRow({
+      id: `malformed-${label}`,
+      shadowScope: "mlb",
+      eventTitle: "New York Yankees vs. Boston Red Sox",
+      marketQuestion: "New York Yankees vs. Boston Red Sox - Moneyline",
+      eventSlug: `malformed-${label}-yankees-redsox-2026-08-02`,
+    });
+    (row.diagnostics as Record<string, unknown>).providerSportCode = value;
+
+    const { candidates, rawDiagnostics } = await planningCandidates([row]);
+    assert.equal(candidates.length, 0, `malformed providerSportCode (${label}) must never emit a candidate`);
+    assert.equal(rawDiagnostics?.rejected_before_planning_by_reason.MALFORMED_PROVIDER_SPORT, 1);
+    assert.equal(rawDiagnostics?.malformed_provider_sport_count, 1);
+    assert.equal(
+      rawDiagnostics?.rejected_before_planning_by_reason.UNSUPPORTED_PROVIDER_SPORT,
+      undefined,
+      "malformed data has no valid raw provider string, so it must not be classified as UNSUPPORTED_PROVIDER_SPORT"
+    );
+    assert.equal(
+      rawDiagnostics?.rejected_before_planning_by_reason.WEAK_EVENT_IDENTITY,
+      undefined,
+      "malformed data must not reach the shadow-fallback scope resolver at all"
+    );
+  });
+}
 
 test("provider metadata and each token/outcome lineage survive model admission independently", async () => {
   const base = shadowSportsRow({
