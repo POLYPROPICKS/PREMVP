@@ -68,9 +68,36 @@ async function main() {
   console.log(`[audit-night-funnel] plan_id=${planId} as_of=${asOf} horizon_end=${horizonEnd} tz=${timezone}`);
 
   // ── Planning funnel: real production planning candidate build + reservation plan.
+  // Call the builder EXACTLY ONCE, then hand its exact candidates + diagnostics
+  // to buildReservationPlan through the existing deps.fetchCandidates seam so
+  // the plan is built from the SAME candidate set the audit's diagnostics
+  // describe -- never a second, independent database candidate load.
   const PLAN_POOL = 100_000;
-  const { rawDiagnostics } = await buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_PLANNING_V1");
-  const plan = await buildReservationPlan(asOfMs, { selectorMode: "CONTRACT_A_PLANNING_V1" });
+  let candidateInvocationCount = 0;
+  const { candidates, rawDiagnostics } = await buildFireModelCandidates(
+    PLAN_POOL,
+    "all",
+    true,
+    undefined,
+    "CONTRACT_A_PLANNING_V1",
+  );
+  candidateInvocationCount += 1;
+
+  const plan = await buildReservationPlan(asOfMs, {
+    selectorMode: "CONTRACT_A_PLANNING_V1",
+    fetchCandidates: async () => ({
+      candidates,
+      rawDiagnostics: rawDiagnostics
+        ? {
+            total_db_rows: rawDiagnostics.total_db_rows,
+            raw_allowed_fullmatch_rows: rawDiagnostics.raw_allowed_fullmatch_rows,
+            raw_forbidden_rows: rawDiagnostics.raw_forbidden_rows,
+            fullmatch_admitted_count: rawDiagnostics.fullmatch_admitted_count,
+            fullmatch_rejected_by_reason: rawDiagnostics.fullmatch_rejected_by_reason,
+          }
+        : null,
+    }),
+  });
 
   // ── Contract A source rows via the SAME paginated production loader + query.
   const lookbackHours = parseInt(process.env.PLANNING_LOOKBACK_HOURS ?? "72", 10);
@@ -132,6 +159,8 @@ async function main() {
     contractAAtPlanTime,
     contractAForecast,
     queueCounts,
+    returnedCandidateCount: candidates.length,
+    candidateInvocationCount,
   });
 
   // ── Output: compact funnel tables, crosswalk, missing events, JSON summary.
