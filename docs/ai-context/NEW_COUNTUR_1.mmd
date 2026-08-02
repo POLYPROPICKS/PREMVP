@@ -1,0 +1,71 @@
+%% NEW_COUNTUR_1 — canonical single-model-authority execution contour
+%% STATUS: CANONICAL / FOUNDER LOCKED. Date 2026-08-02.
+%% Base production SHA: 6e593a5d0e66e50941f130f7792f67e487dbb347
+%% Companion docs: NEW_COUNTUR_1.md, NEW_COUNTUR_1_ARCHITECTURE_POSTMORTEM.md,
+%%                 NEW_COUNTUR_1_ENGINEERING_GATES.md
+%% Meaning is carried by text labels and line style, never by color alone.
+%%   solid arrow  = the one allowed production path
+%%   dotted arrow = retired authority, shown only to state that it is cut
+flowchart TB
+
+  subgraph A["A. DATASET / INPUT"]
+    A1["Provider inventory jobs<br/>broad sports and markets preserved"]
+    A2["Canonical observations"]
+    A3["Signal pairs"]
+    A4["Snapshots<br/>strict observation identity"]
+    A1 --> A2 --> A3 --> A4
+  end
+
+  subgraph B["B. MODEL AUTHORITY — Contract A only"]
+    B1["Contract A<br/>SOLE owner of sport policy, signal score,<br/>model eligibility, market policy, price policy,<br/>identity requirements, ranking, approved-set formation<br/>RUNS ONCE, BEFORE Reservation"]
+    B2["Approved candidate set<br/>versioned, ordered, IMMUTABLE at emit<br/>exact condition_id / token_id / side<br/>+ canonical physical-occurrence key<br/>+ persisted score and rank"]
+    B3["Complete rejection trace<br/>every input row approved or rejected<br/>with an exact canonical sport / market / reason<br/>no unexplained residue"]
+    B4["Execution-window metadata<br/>T-90 snapshot rule and T-120 timing predicate<br/>are Contract A INPUT-SELECTION rules<br/>execution window is T-70 to T-3<br/>NOT a reason to postpone the model"]
+    B1 --> B2
+    B1 --> B3
+    B1 --> B4
+  end
+
+  subgraph C["C. ORCHESTRATION — no modelling"]
+    C1["Reservation<br/>consumes the approved set DIRECTLY<br/>exact physical occurrence, active duplicate protection,<br/>capacity cap 15, persistence, Contract A lineage<br/>NO score / policy / scope / ranking recalculation"]
+    C2["Rebalance — MECHANICAL GUARDS ONLY<br/>waits for the persisted execution window,<br/>refreshes price and liquidity for the EXACT approved identity,<br/>applies price / time / liquidity / stake guards,<br/>selects only inside the persisted approved set<br/>INVOKES NO MODEL PRODUCER"]
+    C1 --> C2
+  end
+
+  subgraph D["D. EXECUTION"]
+    D1["Immutable Queue<br/>copies the approved identity verbatim<br/>ranks nothing, discovers nothing"]
+    D2["Ireland<br/>executes the immutable instruction only"]
+    D3["Callback<br/>correlates to exactly ONE queue instruction<br/>by exact key: idempotency_key<br/>+ condition_id / token_id / side cross-check<br/>see NEW_COUNTUR_1.md section 7"]
+    D4["Terminal state"]
+    D5["Balance / PnL"]
+    D1 --> D2 --> D3 --> D4 --> D5
+  end
+
+  subgraph E["E. RETIRED AUTHORITY — FORBIDDEN in the production path"]
+    E1["RETIRED: legacy pre-Reservation filters and ranker<br/>buildFireModelCandidates CONTRACT_A_PLANNING_V1 branch<br/>stamps a Contract A label onto legacy-selected candidates"]
+    E2["RETIRED: repeated Contract A invocation inside rebalance<br/>fetchContractAFinalCandidates with CONTRACT_A_V1"]
+    E3["RETIRED: second model ranker<br/>compareCandidateQuality inside the execution contour"]
+    E4["FORBIDDEN: fuzzy rediscovery and sibling substitution<br/>slug / title / lineage re-resolution,<br/>unapproved market substitution"]
+  end
+
+  %% ── the one allowed production path ─────────────────────────────────────
+  A4 --> B1
+  B2 --> C1
+  B4 -. "persisted as data, read by Rebalance" .-> C1
+  C2 --> D1
+
+  %% ── exact identity and lineage continuity ───────────────────────────────
+  B2 == "exact identity + lineage persisted verbatim" ==> C1
+  C1 == "exact identity VALIDATED, never re-resolved" ==> C2
+  C2 == "exact identity copied verbatim" ==> D1
+
+  %% ── retired authority is cut, not rewired ───────────────────────────────
+  E1 -. "CUT: no arrow into Reservation" .-x C1
+  E2 -. "CUT: no model call in rebalance" .-x C2
+  E3 -. "CUT: no second ranker" .-x C2
+  E4 -. "CUT: no substitution into the queue" .-x D1
+
+  classDef production stroke-width:3px;
+  classDef retired stroke-width:2px,stroke-dasharray:6 4;
+  class A1,A2,A3,A4,B1,B2,B3,B4,C1,C2,D1,D2,D3,D4,D5 production;
+  class E1,E2,E3,E4 retired;

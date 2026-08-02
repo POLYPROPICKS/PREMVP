@@ -6,6 +6,91 @@
 
 ---
 
+## 2026-08-02 — NEW_COUNTUR_1 architecture package LOCKED (docs only)
+
+**Status:** `CANONICAL / FOUNDER LOCKED` — documentation only. Zero runtime, test, schema,
+config, or dependency change.
+
+**Base production SHA:** `6e593a5d0e66e50941f130f7792f67e487dbb347`
+**Production audit identifier:** `diag-probe:20260802T085311` (as-of `2026-08-02T08:53:11.000Z`)
+
+### Proved dual-authority finding
+
+The production contour at `6e593a5d` runs **two modelling authorities**, not one model plus
+orchestration:
+
+- `app/api/cron/night-event-reservations/route.ts:76/106/194` plans with
+  `selectorMode: "CONTRACT_A_PLANNING_V1"`, but `lib/executor/buildFireModelCandidates.ts:1296`
+  routes **only** `CONTRACT_A_V1` to Contract A. `CONTRACT_A_PLANNING_V1` runs the legacy CONTUR3
+  pipeline and merely stamps `selector_id` / `contract_a_stage` at `:2023-2037`.
+- Contract A (`lib/modeling/frozenModelProducerV2Shadow.ts`) is invoked **later, inside
+  rebalance**: `lib/executor/eventExecutionQueue.ts:815` and `:1169`.
+- A second ranker is live in the same layer: `compareCandidateQuality`
+  (`eventExecutionQueue.ts:18`, applied `:748`).
+- Therefore `Contract A output → Reservation` is **NOT WIRED**. The legacy funnel and the
+  Contract A audit are parallel universes, not consecutive stages: 3228 deduped rows → 0
+  candidates → 0 Reservations, versus 8049 source rows → 4 accepted decisions that reached
+  nothing. The released instrumentation already refuses to chain them
+  (`lib/executor/nightFunnelAudit.ts:733-745`).
+
+### Canonical target path
+
+Provider inventory → canonical observations → signal pairs → snapshots → **Contract A as the
+sole modelling / policy / ranking owner, running once before Reservation** → versioned approved
+candidate set + complete rejection trace + execution-window metadata → Reservation → mechanical-
+only Rebalance → immutable Queue → Ireland → callback → terminal state → balance / PnL.
+
+### Superseded
+
+`CONTUR_ROADMAP_2.md` §1 two-stage modelling semantics (Stage A legacy rules at planning, Stage B
+Contract A at rebalance) and §2's required repair are **superseded** by `NEW_COUNTUR_1`.
+Historical documents are preserved unchanged as evidence. T−90/T−120 are Contract A input-selection
+rules and execution-window metadata, never a reason to postpone the model.
+
+### Preserves
+
+Broad provider inventory · canonical observations · signal pairs · snapshots · broad sports and
+markets · structured sport metadata · Contract A pure model logic · exact identity work ·
+physical-occurrence identity · Reservation persistence · active duplicate protection · cap 15 ·
+lifecycle · queue builder · Ireland mapper/API · callback · terminal states · balance/PnL ·
+released funnel instrumentation as migration evidence.
+
+### Retires from production authority
+
+Legacy filters inside `CONTRACT_A_PLANNING_V1` · `buildFireModelCandidates` as an independent
+model owner · repeated Contract A invocation inside rebalance · `compareCandidateQuality` as a
+second ranker · post-Reservation policy/score/scope recalculation · unapproved market
+substitution · fuzzy rediscovery. Physical deletion is a separate cleanup commit after
+production parity and a zero-production-caller proof.
+
+### Current roadmap phase and next step
+
+Phase 10 of 13 complete (documentation package). **Next: independent Fable architecture review
+of the committed package.** Allowed verdicts: `PASS_NEW_COUNTUR_1_READY_FOR_IMPLEMENTATION` or
+`FAIL_NEW_COUNTUR_1_WITH_EXACT_CONTRADICTION`.
+
+**Prohibition:** no runtime implementation before Fable `PASS`. The cutover is then one branch,
+three stacked commits (A: Contract A authoritative output; B: direct output → Reservation;
+C: mechanical rebalance + legacy cutoff), one coherent review, one coherent deploy. No
+intermediate dual-authority deploy.
+
+### Package artifacts
+
+- [`NEW_COUNTUR_1.md`](./NEW_COUNTUR_1.md)
+- [`NEW_COUNTUR_1_ARCHITECTURE_POSTMORTEM.md`](./NEW_COUNTUR_1_ARCHITECTURE_POSTMORTEM.md)
+- [`NEW_COUNTUR_1_ENGINEERING_GATES.md`](./NEW_COUNTUR_1_ENGINEERING_GATES.md)
+- [`NEW_COUNTUR_1.mmd`](./NEW_COUNTUR_1.mmd)
+
+### Pending
+
+- [ ] Fable architecture review verdict.
+- [ ] Resolve the owner of rejection reason `MARKET_POLICY_ACTIVITY_LABEL` (228 rejects) — not
+      locatable in tracked source at the base SHA.
+- [ ] Classify `app/api/executor/night-plan/route.ts` (imports `nightPortfolioPlanner`) as
+      production / ops-only / test-only before the zero-caller cutoff proof.
+
+---
+
 ## 2026-07-04 — Work_tru_PPP04July
 
 Stable working model checkpoint: Top Weekly restored, Latest Resolved restored, WhyTrust isolated endpoint restored with ledger + returnCurve from real preview rows. See WORK_TRU_PPP04JULY.md and WORK_TRU_PPP04JULY_FUNNEL_LOG.md.
