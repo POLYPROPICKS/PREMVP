@@ -20,6 +20,9 @@ import path from "node:path";
 import { produceFrozenModelV2ShadowDecisions } from "@/lib/modeling/frozenModelProducerV2Shadow";
 import {
   assembleNightFunnelAudit,
+  createBuilderInvocationCounters,
+  wrapBuilderInvocation,
+  wrapPlanFetchCandidates,
   type QueueCounts,
   type FunnelStage,
 } from "@/lib/executor/nightFunnelAudit";
@@ -72,31 +75,38 @@ async function main() {
   // to buildReservationPlan through the existing deps.fetchCandidates seam so
   // the plan is built from the SAME candidate set the audit's diagnostics
   // describe -- never a second, independent database candidate load.
+  //
+  // Invocation proof is evidence-backed: each counter increments ONLY inside
+  // the exact call site it proves (the wrapped builder call / the exact
+  // deps.fetchCandidates closure), never a manually incremented constant.
   const PLAN_POOL = 100_000;
-  let candidateInvocationCount = 0;
-  const { candidates, rawDiagnostics } = await buildFireModelCandidates(
+  const invocationCounters = createBuilderInvocationCounters();
+
+  const callBuildFireModelCandidatesOnce = wrapBuilderInvocation(invocationCounters, buildFireModelCandidates);
+  const { candidates, rawDiagnostics } = await callBuildFireModelCandidatesOnce(
     PLAN_POOL,
     "all",
     true,
     undefined,
     "CONTRACT_A_PLANNING_V1",
   );
-  candidateInvocationCount += 1;
+
+  const fetchCandidatesOnce = wrapPlanFetchCandidates(invocationCounters, async () => ({
+    candidates,
+    rawDiagnostics: rawDiagnostics
+      ? {
+          total_db_rows: rawDiagnostics.total_db_rows,
+          raw_allowed_fullmatch_rows: rawDiagnostics.raw_allowed_fullmatch_rows,
+          raw_forbidden_rows: rawDiagnostics.raw_forbidden_rows,
+          fullmatch_admitted_count: rawDiagnostics.fullmatch_admitted_count,
+          fullmatch_rejected_by_reason: rawDiagnostics.fullmatch_rejected_by_reason,
+        }
+      : null,
+  }));
 
   const plan = await buildReservationPlan(asOfMs, {
     selectorMode: "CONTRACT_A_PLANNING_V1",
-    fetchCandidates: async () => ({
-      candidates,
-      rawDiagnostics: rawDiagnostics
-        ? {
-            total_db_rows: rawDiagnostics.total_db_rows,
-            raw_allowed_fullmatch_rows: rawDiagnostics.raw_allowed_fullmatch_rows,
-            raw_forbidden_rows: rawDiagnostics.raw_forbidden_rows,
-            fullmatch_admitted_count: rawDiagnostics.fullmatch_admitted_count,
-            fullmatch_rejected_by_reason: rawDiagnostics.fullmatch_rejected_by_reason,
-          }
-        : null,
-    }),
+    fetchCandidates: fetchCandidatesOnce,
   });
 
   // ── Contract A source rows via the SAME paginated production loader + query.
@@ -160,7 +170,8 @@ async function main() {
     contractAForecast,
     queueCounts,
     returnedCandidateCount: candidates.length,
-    candidateInvocationCount,
+    builderInvocationCount: invocationCounters.builderInvocationCount,
+    planFetchCandidatesCallCount: invocationCounters.planFetchCandidatesCallCount,
   });
 
   // ── Output: compact funnel tables, crosswalk, missing events, JSON summary.

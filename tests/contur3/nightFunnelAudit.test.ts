@@ -14,6 +14,7 @@ import path from "node:path";
 
 import {
   assertStageArithmetic,
+  assertFunnelContinuity,
   buildPlanningFunnel,
   buildContractAFunnel,
   buildAttributablePlanningStage,
@@ -21,12 +22,15 @@ import {
   isGroupLevelRejection,
   tallyRejections,
   assembleNightFunnelAudit,
+  createBuilderInvocationCounters,
+  wrapBuilderInvocation,
+  wrapPlanFetchCandidates,
   FunnelArithmeticError,
   PlanningAttributionError,
   type FunnelStage,
 } from "../../lib/executor/nightFunnelAudit";
 import { buildReservationPlan } from "../../lib/executor/nightEventReservations";
-import type { RawPlanningDiagnostics } from "../../lib/executor/buildFireModelCandidates";
+import type { RawPlanningDiagnostics, FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
 import type { ReservationPlanDiagnostics } from "../../lib/executor/nightFunnelAudit";
 import type {
   FrozenModelV2ShadowResult,
@@ -38,12 +42,16 @@ const root = process.cwd();
 
 function rawDiag(overrides: Partial<RawPlanningDiagnostics> = {}): RawPlanningDiagnostics {
   return {
+    // Default fixture: no planning-shadow rejects, no post-admission rejects
+    // (total_db_rows === scored_rows_count === returnedCandidateCount in the
+    // "happy path" tests below). Tests that exercise shadow/post-admission
+    // drops override these fields explicitly and in reconciling combination.
     total_db_rows: 1000,
-    scored_rows_count: 600,
+    scored_rows_count: 1000,
     planning_shadow_rows_count: 0,
     planning_shadow_included_count: 0,
-    planning_shadow_rejected_count: 300,
-    planning_shadow_reject_reasons: { WRONG_VERSION: 300 },
+    planning_shadow_rejected_count: 0,
+    planning_shadow_reject_reasons: {},
     wc_soccer_candidate_count: 0,
     fallback_candidate_count: 0,
     source_counts_by_formula_version: {},
@@ -82,6 +90,10 @@ function rawDiag(overrides: Partial<RawPlanningDiagnostics> = {}): RawPlanningDi
 function planDiag(overrides: Partial<ReservationPlanDiagnostics> = {}): ReservationPlanDiagnostics {
   return {
     universe_size: 120,
+    // Default: returnedCandidateCount (1000) - upstream_rejected_candidates_dropped (880) = universe_size (120).
+    // Tests overriding universe_size or returnedCandidateCount must also override this to keep stage 04c -> 05 continuous.
+    upstream_approved_candidates: 120,
+    upstream_rejected_candidates_dropped: 880,
     event_groups: 60,
     canonical_event_groups: 40,
     reserved_count: 4,
@@ -168,6 +180,7 @@ function frozenResult(): FrozenModelV2ShadowResult {
 
 // ── TDD #1: every stage satisfies input = dropped + output ──────────────────
 
+
 test("planning funnel: every stage balances input = dropped + output", () => {
   const stages = buildPlanningFunnel({
     raw: rawDiag(),
@@ -175,14 +188,17 @@ test("planning funnel: every stage balances input = dropped + output", () => {
     reservedCount: 4,
     skippedCount: 2,
     returnedCandidateCount: 1000,
-    candidateInvocationCount: 1,
+    builderInvocationCount: 1,
+    planFetchCandidatesCallCount: 1,
   });
   assert.doesNotThrow(() => assertStageArithmetic(stages));
+  assert.doesNotThrow(() => assertFunnelContinuity(stages));
 });
 
 test("contract A funnel: every stage balances input = dropped + output", () => {
   const stages = buildContractAFunnel(frozenResult(), "AT_PLAN_TIME");
   assert.doesNotThrow(() => assertStageArithmetic(stages));
+  assert.doesNotThrow(() => assertFunnelContinuity(stages));
 });
 
 test("assertStageArithmetic throws (loudly) on an unbalanced stage", () => {
@@ -202,7 +218,8 @@ test("planning funnel: one physical event with multiple markets collapses to one
     reservedCount: 4,
     skippedCount: 2,
     returnedCandidateCount: 1000,
-    candidateInvocationCount: 1,
+    builderInvocationCount: 1,
+    planFetchCandidatesCallCount: 1,
   });
   const dedup = stages.find((s) => s.stage.startsWith("13 unique physical events"));
   assert.ok(dedup);
@@ -225,7 +242,8 @@ test("planning funnel: fallback slot-fill is a separate stage from Tier1 primary
     reservedCount: 4,
     skippedCount: 0,
     returnedCandidateCount: 1000,
-    candidateInvocationCount: 1,
+    builderInvocationCount: 1,
+    planFetchCandidatesCallCount: 1,
   });
   const primary = stages.find((s) => s.stage.startsWith("14 Tier1 primary"));
   const fallback = stages.find((s) => s.stage.startsWith("17 fallback slot-fill"));
@@ -279,7 +297,8 @@ test("assembleNightFunnelAudit combines all sections, self-asserts arithmetic, a
     contractAForecast: frozenResult(),
     queueCounts: { total: 0, READY: 0, CLAIMED: 0, SENT: 0, EXECUTED: 0, FAILED: 0 },
     returnedCandidateCount: 1000,
-    candidateInvocationCount: 1,
+    builderInvocationCount: 1,
+    planFetchCandidatesCallCount: 1,
   });
   assert.equal(result.plan_id, "night-plan:2026-07-22:1700-minsk");
   assert.ok(result.planning_funnel.length > 0);
@@ -288,10 +307,12 @@ test("assembleNightFunnelAudit combines all sections, self-asserts arithmetic, a
   assert.equal(result.queue.total, 0);
   // self-assertion: assembled sections all balance (no throw)
   assert.equal(result.arithmetic_ok, true);
+  assert.equal(result.builder_invocation_count, 1);
+  assert.equal(result.plan_fetch_candidates_call_count, 1);
 });
 
 // ── TEST 1: UNATTRIBUTED COLLAPSE ────────────────────────────────────────────
-// source-admitted count > 0, returned candidate count = 0, and named
+// source-admitted (scored) count > 0, returned candidate count = 0, and named
 // rejection counts explain ALL dropped rows. Before stage 04b existed this
 // drop had no attribution stage at all; now it must appear, balance, and
 // name every dropped row.
@@ -299,6 +320,7 @@ test("assembleNightFunnelAudit combines all sections, self-asserts arithmetic, a
 test("stage 04b: source-admitted rows collapsing to zero candidates is fully attributed by name", () => {
   const raw = rawDiag({
     total_db_rows: 50,
+    scored_rows_count: 50,
     rejected_before_planning_by_reason: {
       MALFORMED_PROVIDER_SPORT: 10,
       UNSUPPORTED_PROVIDER_SPORT: 15,
@@ -309,41 +331,140 @@ test("stage 04b: source-admitted rows collapsing to zero candidates is fully att
   const attribution = buildAttributablePlanningStage({
     raw,
     returnedCandidateCount: 0,
-    candidateInvocationCount: 1,
+    builderInvocationCount: 1,
+    planFetchCandidatesCallCount: 1,
   });
 
   assert.equal(attribution.stage.input, 50);
   assert.equal(attribution.stage.dropped, 50);
   assert.equal(attribution.stage.output, 0);
   assert.equal(attribution.returned_candidate_count, 0);
-  assert.equal(attribution.candidate_invocation_count, 1);
+  assert.equal(attribution.builder_invocation_count, 1);
+  assert.equal(attribution.plan_fetch_candidates_call_count, 1);
 
   const namedSum = Object.values(attribution.rejected_before_planning_by_reason).reduce((a, b) => a + b, 0);
   assert.equal(namedSum, attribution.stage.dropped, "named reasons must explain every dropped row");
 
   const stages = buildPlanningFunnel({
     raw,
-    plan: planDiag({ universe_size: 0, canonical_event_groups: 0, tier1ReservationsPlanned: 0, reserved_count: 0, reserved_wc_or_soccer_count: 0 }),
+    plan: planDiag({
+      universe_size: 0,
+      canonical_event_groups: 0,
+      tier1ReservationsPlanned: 0,
+      reserved_count: 0,
+      reserved_wc_or_soccer_count: 0,
+      upstream_approved_candidates: 0,
+      upstream_rejected_candidates_dropped: 0,
+    }),
     reservedCount: 0,
     skippedCount: 0,
     returnedCandidateCount: 0,
-    candidateInvocationCount: 1,
+    builderInvocationCount: 1,
+    planFetchCandidatesCallCount: 1,
   });
   assert.doesNotThrow(() => assertStageArithmetic(stages));
+  assert.doesNotThrow(() => assertFunnelContinuity(stages));
 
   const stage04b = stages.find((s) => s.stage.startsWith("04b"));
   assert.ok(stage04b, "stage 04b must exist");
   assert.equal(stage04b?.output, 0);
 
-  // stage 04b output must feed the planning candidate universe (stage 05 input).
+  // stage 04b output must feed the planning candidate universe (stage 05 input)
+  // through the stage 04c upstream-authority bridge.
   const stage05 = stages.find((s) => s.stage.startsWith("05 planning candidate universe"));
-  assert.equal(stage05?.input, stage04b?.output);
+  const stage04c = stages.find((s) => s.stage.startsWith("04c"));
+  assert.equal(stage04c?.input, stage04b?.output);
+  assert.equal(stage05?.input, stage04c?.output);
 });
 
-// ── TEST 2: REJECTION CONTRADICTION FAILS CLOSED ─────────────────────────────
-// source-admitted=10, candidates=2 (dropped=8), but named reasons only sum to
-// 7. This must fail closed -- never report arithmetic_ok=true on a number
-// that cannot be explained.
+// ── R1 — CONTINUITY: stage 04 output must equal stage 04b input exactly ─────
+// (the scored universe, never the raw total_db_rows -- reproduces the
+// production shape: 3230 merged rows -> 403 planning-shadow rejects -> 2827
+// scored rows feeding stage 04b, not 3230).
+
+test("R1: stage 04 output === stage 04b input (scored universe, not total_db_rows)", () => {
+  const raw = rawDiag({
+    total_db_rows: 1000,
+    planning_shadow_rejected_count: 300,
+    planning_shadow_reject_reasons: { WEAK_EVENT_IDENTITY: 300 },
+    scored_rows_count: 700,
+    rejected_before_planning_by_reason: { WEAK_EVENT_IDENTITY: 300 },
+  });
+  const stages = buildPlanningFunnel({
+    raw,
+    plan: planDiag({ upstream_rejected_candidates_dropped: 580, upstream_approved_candidates: 120 }),
+    reservedCount: 0,
+    skippedCount: 0,
+    returnedCandidateCount: 700,
+    builderInvocationCount: 1,
+    planFetchCandidatesCallCount: 1,
+  });
+  const stage04 = stages.find((s) => s.stage.startsWith("04 rows after source-admission"));
+  const stage04b = stages.find((s) => s.stage.startsWith("04b"));
+  assert.equal(stage04?.output, 700);
+  assert.equal(stage04b?.input, 700);
+  assert.equal(stage04?.output, stage04b?.input, "stage 04 output must feed stage 04b input exactly");
+});
+
+// ── R2 — DOUBLE-COUNTING: stage03 dropped + stage04b dropped must equal
+// total_db_rows exactly once, never twice ───────────────────────────────────
+
+test("R2: stage03.dropped + stage04b.dropped === total_db_rows (300 + 700, never 300 + 1000)", () => {
+  const raw = rawDiag({
+    total_db_rows: 1000,
+    planning_shadow_rejected_count: 300,
+    planning_shadow_reject_reasons: { WEAK_EVENT_IDENTITY: 200, UNKNOWN_REJECT_NEEDS_CODE_TRACE: 100 },
+    scored_rows_count: 700,
+    rejected_before_planning_by_reason: {
+      WEAK_EVENT_IDENTITY: 200,
+      UNKNOWN_REJECT_NEEDS_CODE_TRACE: 100,
+      LOW_SCORE: 700,
+    },
+  });
+  const returnedCandidateCount = 0; // scored(700) - postAdmissionDropped(700) = 0
+  const stages = buildPlanningFunnel({
+    raw,
+    plan: planDiag({
+      universe_size: 0,
+      canonical_event_groups: 0,
+      tier1ReservationsPlanned: 0,
+      reserved_count: 0,
+      reserved_wc_or_soccer_count: 0,
+      upstream_approved_candidates: 0,
+      upstream_rejected_candidates_dropped: 0,
+    }),
+    reservedCount: 0,
+    skippedCount: 0,
+    returnedCandidateCount,
+    builderInvocationCount: 1,
+    planFetchCandidatesCallCount: 1,
+  });
+  const stage03 = stages.find((s) => s.stage.startsWith("03 rows rejected"));
+  const stage04b = stages.find((s) => s.stage.startsWith("04b"));
+  assert.equal(stage03?.dropped, 300);
+  assert.equal(stage04b?.dropped, 700);
+  assert.equal((stage03?.dropped ?? 0) + (stage04b?.dropped ?? 0), 1000, "300 + 700 = 1000, not 300 + 1000");
+});
+
+// ── R3 — SHADOW INVARIANT FAIL-CLOSED ────────────────────────────────────────
+
+test("R3: planning_shadow_rejected_count must equal WEAK_EVENT_IDENTITY + UNKNOWN_REJECT_NEEDS_CODE_TRACE, else fail closed", () => {
+  const raw = rawDiag({
+    // authoritative_dropped = 30 + 20 = 50; total_db_rows = 50 + returnedCandidateCount(30) = 80,
+    // so the whole-builder invariant holds and the failure isolates to the shadow-overlap check.
+    total_db_rows: 80,
+    planning_shadow_rejected_count: 50, // claims 50 shadow-rejected...
+    planning_shadow_reject_reasons: { WEAK_EVENT_IDENTITY: 30 },
+    scored_rows_count: 50,
+    rejected_before_planning_by_reason: { WEAK_EVENT_IDENTITY: 30, LOW_SCORE: 20 }, // ...but only 30 named as such
+  });
+  assert.throws(
+    () => buildAttributablePlanningStage({ raw, returnedCandidateCount: 30, builderInvocationCount: 1, planFetchCandidatesCallCount: 1 }),
+    (err: unknown) => err instanceof PlanningAttributionError && /planning_shadow_rejected_count/.test((err as Error).message),
+  );
+});
+
+// ── R2 (contradiction) — REJECTION CONTRADICTION FAILS CLOSED ───────────────
 
 test("stage 04b: contradictory named-reason totals throw PlanningAttributionError instead of reporting arithmetic_ok", () => {
   const raw = rawDiag({
@@ -356,7 +477,7 @@ test("stage 04b: contradictory named-reason totals throw PlanningAttributionErro
   });
 
   assert.throws(
-    () => buildAttributablePlanningStage({ raw, returnedCandidateCount: 2, candidateInvocationCount: 1 }),
+    () => buildAttributablePlanningStage({ raw, returnedCandidateCount: 2, builderInvocationCount: 1, planFetchCandidatesCallCount: 1 }),
     PlanningAttributionError,
   );
 
@@ -372,52 +493,95 @@ test("stage 04b: contradictory named-reason totals throw PlanningAttributionErro
         contractAForecast: frozenResult(),
         queueCounts: { total: 0, READY: 0, CLAIMED: 0, SENT: 0, EXECUTED: 0, FAILED: 0 },
         returnedCandidateCount: 2,
-        candidateInvocationCount: 1,
+        builderInvocationCount: 1,
+        planFetchCandidatesCallCount: 1,
       }),
     PlanningAttributionError,
     "a contradiction must never allow the audit to return arithmetic_ok=true",
   );
 });
 
-// ── TEST 3: SINGLE CANDIDATE SET ─────────────────────────────────────────────
-// Prove through the real buildReservationPlan deps.fetchCandidates seam that
-// the audit uses exactly one builder candidate set: fetchCandidates is called
-// exactly once, no second database candidate load happens, and stage 04b's
-// output equals the plan's universe_size when no candidate is upstream-rejected.
+// ── R4 — INVOCATION PROOF ─────────────────────────────────────────────────────
+// Prove through the real buildReservationPlan deps.fetchCandidates seam AND
+// the exported invocation-counter wrappers (never a manually incremented
+// local constant) that the audit uses exactly one builder call and exactly
+// one plan fetchCandidates call.
 
-test("single candidate set: one fetchCandidates call feeds both the plan and stage 04b, no second fetch", async () => {
-  let fetchCandidatesCallCount = 0;
-  const fetchCandidates = async () => {
-    fetchCandidatesCallCount += 1;
-    return { candidates: [], rawDiagnostics: null };
-  };
+test("R4: one builder call + one buildReservationPlan fetchCandidates call feed stage 04b, via evidence-backed counters", async () => {
+  const counters = createBuilderInvocationCounters();
+
+  const callBuilderOnce = wrapBuilderInvocation(counters, async () => ({
+    candidates: [] as FireModelCandidate[],
+    rawDiagnostics: null,
+  }));
+  const { candidates, rawDiagnostics } = await callBuilderOnce();
+  assert.equal(counters.builderInvocationCount, 1, "builder wrapper must increment only on the real call");
+
+  const fetchCandidatesOnce = wrapPlanFetchCandidates(counters, async () => ({ candidates, rawDiagnostics }));
 
   const plan = await buildReservationPlan(Date.parse("2026-07-22T14:00:00.000Z"), {
     selectorMode: "CONTRACT_A_PLANNING_V1",
-    fetchCandidates,
+    fetchCandidates: fetchCandidatesOnce,
   });
 
-  assert.equal(fetchCandidatesCallCount, 1, "buildReservationPlan must not perform a second candidate fetch");
+  assert.equal(counters.planFetchCandidatesCallCount, 1, "buildReservationPlan must not perform a second candidate fetch");
 
-  const returnedCandidateCount = 0; // matches the empty candidates array fetchCandidates returned above
+  const returnedCandidateCount = candidates.length; // 0, matches the empty array above
   const attribution = buildAttributablePlanningStage({
-    raw: rawDiag({ total_db_rows: 0, rejected_before_planning_by_reason: {} }),
+    raw: rawDiag({ total_db_rows: 0, scored_rows_count: 0, rejected_before_planning_by_reason: {} }),
     returnedCandidateCount,
-    candidateInvocationCount: fetchCandidatesCallCount,
+    builderInvocationCount: counters.builderInvocationCount,
+    planFetchCandidatesCallCount: counters.planFetchCandidatesCallCount,
   });
 
   assert.equal(attribution.stage.output, plan.diagnostics.universe_size, "stage 04b output must equal plan universe input when no candidate is upstream-rejected");
 });
 
-test("single candidate set: a second fetch makes the attribution stage fail closed", () => {
+test("R4: a second builder invocation makes the attribution stage fail closed", () => {
   assert.throws(
     () =>
       buildAttributablePlanningStage({
-        raw: rawDiag({ total_db_rows: 5, rejected_before_planning_by_reason: { LOW_SCORE: 5 } }),
+        raw: rawDiag({ total_db_rows: 5, scored_rows_count: 5, rejected_before_planning_by_reason: { LOW_SCORE: 5 } }),
         returnedCandidateCount: 0,
-        candidateInvocationCount: 2,
+        builderInvocationCount: 2,
+        planFetchCandidatesCallCount: 1,
       }),
-    PlanningAttributionError,
+    (err: unknown) => err instanceof PlanningAttributionError && err.name === "PlanningAttributionError" && /builder_invocation_count/.test((err as Error).message),
+  );
+});
+
+test("R4: a second plan fetchCandidates call makes the attribution stage fail closed", () => {
+  assert.throws(
+    () =>
+      buildAttributablePlanningStage({
+        raw: rawDiag({ total_db_rows: 5, scored_rows_count: 5, rejected_before_planning_by_reason: { LOW_SCORE: 5 } }),
+        returnedCandidateCount: 0,
+        builderInvocationCount: 1,
+        planFetchCandidatesCallCount: 2,
+      }),
+    (err: unknown) => err instanceof PlanningAttributionError && err.name === "PlanningAttributionError" && /plan_fetch_candidates_call_count/.test((err as Error).message),
+  );
+});
+
+// ── R5 — FALSE-POSITIVE TEST FIX ─────────────────────────────────────────────
+// assert.throws checks now verify the exact error type, name, and message
+// fragment -- it must never pass merely because an undefined function threw
+// a TypeError.
+
+test("R5: PlanningAttributionError checks verify instanceof, error.name, and message fragment (not just any throw)", () => {
+  const raw = rawDiag({
+    total_db_rows: 10,
+    scored_rows_count: 10,
+    rejected_before_planning_by_reason: { LOW_SCORE: 3 }, // sums to 3, but 10 - 2 = 8 dropped
+  });
+  assert.throws(
+    () => buildAttributablePlanningStage({ raw, returnedCandidateCount: 2, builderInvocationCount: 1, planFetchCandidatesCallCount: 1 }),
+    (err: unknown) => {
+      assert.ok(err instanceof PlanningAttributionError, "must be a PlanningAttributionError, not a TypeError from an undefined function");
+      assert.equal((err as Error).name, "PlanningAttributionError");
+      assert.match((err as Error).message, /total_db_rows=10/);
+      return true;
+    },
   );
 });
 
@@ -426,11 +590,17 @@ test("single candidate set: a second fetch makes the attribution stage fail clos
 // (no fabricated enums): MALFORMED_PROVIDER_SPORT, UNSUPPORTED_PROVIDER_SPORT,
 // a MARKET_POLICY_* reason, and a full-match reason (present in BOTH
 // rejected_before_planning_by_reason and the fullmatch_rejected_by_reason
-// subset breakdown for the same dropped rows).
+// subset breakdown for the same dropped rows). WEAK_EVENT_IDENTITY is a
+// stage-03 shadow reason: it stays in the full raw map but is EXCLUDED from
+// the P-reason (stage 04b) breakdown and surfaced instead in
+// planning_shadow_reasons_already_counted_at_stage_03.
 
-test("stage 04b: exact reason codes surface as P-reason stages and in the flat rejection maps", () => {
+test("stage 04b: exact reason codes surface as P-reason stages and in the flat rejection maps; shadow reasons excluded from P-reason", () => {
   const raw = rawDiag({
     total_db_rows: 40,
+    planning_shadow_rejected_count: 2,
+    planning_shadow_reject_reasons: { WEAK_EVENT_IDENTITY: 2 },
+    scored_rows_count: 38,
     rejected_before_planning_by_reason: {
       MALFORMED_PROVIDER_SPORT: 5,
       UNSUPPORTED_PROVIDER_SPORT: 6,
@@ -446,14 +616,15 @@ test("stage 04b: exact reason codes surface as P-reason stages and in the flat r
   const attribution = buildAttributablePlanningStage({
     raw,
     returnedCandidateCount: 20,
-    candidateInvocationCount: 1,
+    builderInvocationCount: 1,
+    planFetchCandidatesCallCount: 1,
   });
 
   const reasonNames = attribution.reasonStages.map((s) => s.reason);
   assert.ok(reasonNames.includes("MALFORMED_PROVIDER_SPORT"));
   assert.ok(reasonNames.includes("UNSUPPORTED_PROVIDER_SPORT"));
   assert.ok(reasonNames.includes("MARKET_POLICY_UNSUPPORTED_MARKET"));
-  assert.ok(reasonNames.includes("WEAK_EVENT_IDENTITY"));
+  assert.ok(!reasonNames.includes("WEAK_EVENT_IDENTITY"), "WEAK_EVENT_IDENTITY was already counted at stage 03 and must not double-count as a P-reason");
 
   const malformedStage = attribution.reasonStages.find((s) => s.reason === "MALFORMED_PROVIDER_SPORT");
   assert.equal(malformedStage?.stage, "P-reason MALFORMED_PROVIDER_SPORT");
@@ -463,4 +634,9 @@ test("stage 04b: exact reason codes surface as P-reason stages and in the flat r
   assert.equal(attribution.unsupported_provider_sport_count, 6);
   assert.equal(attribution.market_policy_rejected_by_reason.UNSUPPORTED_MARKET, 7);
   assert.equal(attribution.fullmatch_rejected_by_reason.WEAK_EVENT_IDENTITY, 2);
+
+  // Full raw map is preserved unfiltered (per contract: never remove/rename it).
+  assert.equal(attribution.rejected_before_planning_by_reason.WEAK_EVENT_IDENTITY, 2);
+  // ...while the stage-03 shadow subset is surfaced separately.
+  assert.equal(attribution.planning_shadow_reasons_already_counted_at_stage_03.WEAK_EVENT_IDENTITY, 2);
 });

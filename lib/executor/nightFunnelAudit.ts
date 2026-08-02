@@ -74,6 +74,96 @@ export function assertStageArithmetic(stages: readonly FunnelStage[]): void {
   }
 }
 
+/**
+ * Enforce continuity for the real planning chain, at minimum:
+ *   stage 04 output === stage 04b input
+ *   stage 04b output === stage 05 input (via the 04c upstream-authority
+ *     bridge, when present -- 04b output === 04c input === 04c output === 05
+ *     input)
+ *
+ * Deliberately NOT a blanket adjacent-pair check over the whole funnel:
+ * stages 18->19 compare PLANNED vs ACTUAL persisted reservations by design
+ * (they are allowed to differ), and the contract-A funnel is two
+ * intentionally separate same-granularity segments (row-level A01-A02,
+ * group-level A03-A06) per buildContractAFunnel's own contract -- forcing
+ * continuity across either of those would misreport a designed comparison
+ * point as a data gap. Only the named planning-chain stages are checked here.
+ * Throws PlanningAttributionError before arithmetic_ok can ever be reported
+ * true on a genuine silent gap in this chain.
+ */
+export function assertFunnelContinuity(stages: readonly FunnelStage[]): void {
+  const byPrefix = (prefix: string): FunnelStage | undefined =>
+    stages.find((s) => s.stage.startsWith(prefix));
+
+  const stage04 = byPrefix("04 rows after source-admission");
+  const stage04b = byPrefix("04b");
+  const stage04c = byPrefix("04c");
+  const stage05 = byPrefix("05 planning candidate universe");
+
+  if (stage04 && stage04b && stage04.output !== stage04b.input) {
+    throw new PlanningAttributionError(
+      `funnel continuity break: "${stage04.stage}".output=${stage04.output} !== "${stage04b.stage}".input=${stage04b.input}`,
+    );
+  }
+
+  if (stage04b && stage04c && stage04b.output !== stage04c.input) {
+    throw new PlanningAttributionError(
+      `funnel continuity break: "${stage04b.stage}".output=${stage04b.output} !== "${stage04c.stage}".input=${stage04c.input}`,
+    );
+  }
+
+  if (stage05) {
+    const bridge = stage04c ?? stage04b;
+    if (bridge && bridge.output !== stage05.input) {
+      throw new PlanningAttributionError(
+        `funnel continuity break: "${bridge.stage}".output=${bridge.output} !== "${stage05.stage}".input=${stage05.input}`,
+      );
+    }
+  }
+}
+
+/** Evidence-backed invocation counts, incremented only by real call sites (never a manual constant). */
+export interface BuilderInvocationCounters {
+  builderInvocationCount: number;
+  planFetchCandidatesCallCount: number;
+}
+
+export function createBuilderInvocationCounters(): BuilderInvocationCounters {
+  return { builderInvocationCount: 0, planFetchCandidatesCallCount: 0 };
+}
+
+/**
+ * Wrap the exact function that calls buildFireModelCandidates so
+ * `builderInvocationCount` increments only when that call actually runs and
+ * resolves -- proof by call site, not a manually incremented constant.
+ */
+export function wrapBuilderInvocation<F extends (...args: never[]) => Promise<unknown>>(
+  counters: BuilderInvocationCounters,
+  builderCall: F,
+): F {
+  return (async (...args: Parameters<F>) => {
+    const result = await builderCall(...args);
+    counters.builderInvocationCount += 1;
+    return result;
+  }) as F;
+}
+
+/**
+ * Wrap the exact `deps.fetchCandidates` closure supplied to
+ * buildReservationPlan so `planFetchCandidatesCallCount` increments only
+ * inside that seam -- proof the plan consumed the SAME candidate set, never a
+ * second database candidate load.
+ */
+export function wrapPlanFetchCandidates<F extends (...args: never[]) => Promise<unknown>>(
+  counters: BuilderInvocationCounters,
+  fetchCandidates: F,
+): F {
+  return (async (...args: Parameters<F>) => {
+    counters.planFetchCandidatesCallCount += 1;
+    return fetchCandidates(...args);
+  }) as F;
+}
+
 /** A stage whose input is the previous stage's output; drops `dropped` for `reason`. */
 function chain(
   stage: string,
@@ -89,15 +179,27 @@ export interface PlanningAttributionInput {
   raw: RawPlanningDiagnostics | null;
   /** Exact candidates.length returned by the SAME single builder invocation. */
   returnedCandidateCount: number;
-  /** Proof the audit used one builder candidate set (must be exactly 1). */
-  candidateInvocationCount: number;
+  /** Evidence-backed count of buildFireModelCandidates calls (must be exactly 1). */
+  builderInvocationCount: number;
+  /** Evidence-backed count of buildReservationPlan's deps.fetchCandidates calls (must be exactly 1). */
+  planFetchCandidatesCallCount: number;
 }
 
 export interface PlanningAttributionResult {
   stage: FunnelStage;
-  /** One zero-width "P-reason <CODE>" stage per named rejection reason. */
+  /**
+   * One zero-width "P-reason <CODE>" stage per named POST-source-admission
+   * rejection reason. Deliberately excludes WEAK_EVENT_IDENTITY and
+   * UNKNOWN_REJECT_NEEDS_CODE_TRACE -- those rows were already counted as
+   * dropped at stage 03 (planning-shadow rejection); surfacing them again
+   * here would double-count the same row. See
+   * `planning_shadow_reasons_already_counted_at_stage_03`.
+   */
   reasonStages: FunnelStage[];
+  /** Full raw map, unfiltered -- never removed or renamed, per contract. */
   rejected_before_planning_by_reason: Record<string, number>;
+  /** The subset of the map above already attributed to stage 03 (planning-shadow). */
+  planning_shadow_reasons_already_counted_at_stage_03: Record<string, number>;
   dropped_by_formula_version_and_reason: Record<string, Record<string, number>>;
   market_policy_rejected_by_reason: Record<string, number>;
   fullmatch_rejected_by_reason: Record<string, number>;
@@ -106,69 +208,136 @@ export interface PlanningAttributionResult {
   rejected_rows_by_raw_provider_sport_and_reason: Record<string, Record<string, number>>;
   missing_fullmatch_fixtures: RawPlanningDiagnostics["missing_fullmatch_fixtures"];
   returned_candidate_count: number;
-  candidate_invocation_count: number;
+  builder_invocation_count: number;
+  plan_fetch_candidates_call_count: number;
 }
 
 /**
- * Stage 04b: source-admitted rows -> planning candidates. The builder
- * (buildFireModelCandidates, planningMode) evaluates exactly
- * `raw.total_db_rows` merged/deduped source-admitted rows; every one either
- * becomes a returned candidate or is dropped through the single
- * `rejectReason(reason)` call site, which fans that same per-row drop into
- * `rejected_before_planning_by_reason` (the authoritative total) plus
- * dimensional breakdowns of the identical count (formula-version,
- * raw-provider-sport, full-match subset). Those breakdowns are NOT additional
- * drops and must never be summed alongside the authoritative map.
+ * Rejection reasons that `buildFireModelCandidates` already attributed to the
+ * stage 03 planning-shadow rejection (see
+ * PlanningAttributionInput/`raw.planning_shadow_rejected_count`). They are
+ * present in `rejected_before_planning_by_reason` (the whole-builder map) but
+ * MUST NOT also appear as a stage 04b (post-admission) P-reason -- that would
+ * count the same dropped row twice.
+ */
+const SHADOW_REASONS_ALREADY_COUNTED_AT_STAGE_03 = [
+  "WEAK_EVENT_IDENTITY",
+  "UNKNOWN_REJECT_NEEDS_CODE_TRACE",
+] as const;
+
+/** Sum of a reason-count record's values. */
+function sumReasonCounts(byReason: Record<string, number>): number {
+  return Object.values(byReason).reduce((a, b) => a + b, 0);
+}
+
+/**
+ * Stage 04b: source-admitted (scored) rows -> planning candidates.
  *
- * `input === dropped + output` always holds by construction (dropped is
- * derived), so it proves nothing on its own. The real check is that the named
- * reason totals reconcile exactly with `dropped` -- when they don't, this is
- * either an unattributed collapse or a contradiction, and the audit must fail
- * closed rather than report a number that cannot be explained.
+ * Two DISTINCT invariants are enforced, never conflated:
+ *
+ *  1. Whole-builder invariant (all rows the builder ever saw):
+ *       raw.total_db_rows === authoritativeDropped + returnedCandidateCount
+ *     where authoritativeDropped = sum(raw.rejected_before_planning_by_reason)
+ *     — this includes BOTH the stage-03 planning-shadow rejects AND the
+ *     post-admission rejects, because every dropped merged row (shadow or
+ *     not) passes through `rejectReason(reason)` into that one map.
+ *
+ *  2. Stage 04b arithmetic (only the scored/post-admission universe):
+ *       raw.scored_rows_count === postAdmissionDropped + returnedCandidateCount
+ *     where postAdmissionDropped = authoritativeDropped - shadowDropped.
+ *     Using `raw.total_db_rows` here (as before) silently re-counts the
+ *     403 planning-shadow rejects a second time on top of the 2827-row
+ *     scored pool -- that double-counting is exactly what this stage must
+ *     never do again.
+ *
+ * A third check (planning-shadow overlap) proves the two shadow reason codes
+ * inside `rejected_before_planning_by_reason` are exactly what stage 03
+ * already reported as dropped, so subtracting them once here is provably
+ * correct rather than assumed.
+ *
+ * No Math.max is used anywhere in this function: every contradiction must
+ * throw PlanningAttributionError, never be silently floored to zero.
  */
 export function buildAttributablePlanningStage(
   input: PlanningAttributionInput,
 ): PlanningAttributionResult {
-  const { raw, returnedCandidateCount, candidateInvocationCount } = input;
+  const { raw, returnedCandidateCount, builderInvocationCount, planFetchCandidatesCallCount } = input;
   const src = "buildFireModelCandidates(CONTRACT_A_PLANNING_V1)/RawPlanningDiagnostics";
   const stageName = "04b source-admitted rows -> planning candidates";
 
-  const inputCount = raw?.total_db_rows ?? 0;
-  const dropped = inputCount - returnedCandidateCount;
-
-  if (dropped < 0) {
+  if (builderInvocationCount !== 1) {
     throw new PlanningAttributionError(
-      `stage "${stageName}": returned_candidate_count=${returnedCandidateCount} exceeds total_db_rows=${inputCount}`,
+      `stage "${stageName}": builder_invocation_count=${builderInvocationCount}, expected exactly 1 ` +
+        `(audit must call buildFireModelCandidates exactly once, never a second database candidate load)`,
+    );
+  }
+  if (planFetchCandidatesCallCount !== 1) {
+    throw new PlanningAttributionError(
+      `stage "${stageName}": plan_fetch_candidates_call_count=${planFetchCandidatesCallCount}, expected exactly 1 ` +
+        `(buildReservationPlan must consume the SAME builder candidate set, never a second fetch)`,
     );
   }
 
   const byReason = raw?.rejected_before_planning_by_reason ?? {};
-  const namedSum = Object.values(byReason).reduce((a, b) => a + b, 0);
+  const authoritativeDropped = sumReasonCounts(byReason);
+  const totalDbRows = raw?.total_db_rows ?? 0;
 
-  if (namedSum !== dropped) {
+  // 1. Whole-builder invariant -- separate from stage 04b arithmetic below.
+  if (totalDbRows !== authoritativeDropped + returnedCandidateCount) {
     throw new PlanningAttributionError(
-      `stage "${stageName}": named rejection reasons sum to ${namedSum} but dropped=${dropped} ` +
-        `(input=${inputCount}, output=${returnedCandidateCount}); rejected_before_planning_by_reason does not reconcile`,
+      `stage "${stageName}": total_db_rows=${totalDbRows} !== authoritative_dropped=${authoritativeDropped} ` +
+        `+ returned_candidate_count=${returnedCandidateCount}; rejected_before_planning_by_reason does not reconcile ` +
+        `with the whole-builder row count`,
     );
   }
 
-  if (candidateInvocationCount !== 1) {
+  const shadowDropped = raw?.planning_shadow_rejected_count ?? 0;
+  const shadowWeakEventIdentity = byReason.WEAK_EVENT_IDENTITY ?? 0;
+  const shadowUnknownReject = byReason.UNKNOWN_REJECT_NEEDS_CODE_TRACE ?? 0;
+
+  // 2. Planning-shadow overlap invariant.
+  if (shadowDropped !== shadowWeakEventIdentity + shadowUnknownReject) {
     throw new PlanningAttributionError(
-      `stage "${stageName}": candidate_invocation_count=${candidateInvocationCount}, expected exactly 1 ` +
-        `(audit must use one builder candidate set, never a second database candidate load)`,
+      `stage "${stageName}": planning_shadow_rejected_count=${shadowDropped} !== ` +
+        `rejected_before_planning_by_reason.WEAK_EVENT_IDENTITY=${shadowWeakEventIdentity} + ` +
+        `rejected_before_planning_by_reason.UNKNOWN_REJECT_NEEDS_CODE_TRACE=${shadowUnknownReject}`,
+    );
+  }
+
+  const inputCount = raw?.scored_rows_count ?? 0;
+  const postAdmissionDropped = authoritativeDropped - shadowDropped;
+
+  if (postAdmissionDropped < 0) {
+    throw new PlanningAttributionError(
+      `stage "${stageName}": post_admission_dropped=${postAdmissionDropped} is negative ` +
+        `(authoritative_dropped=${authoritativeDropped}, shadow_dropped=${shadowDropped})`,
+    );
+  }
+
+  // 3. Stage 04b arithmetic on the scored (post-admission) universe only.
+  if (inputCount !== postAdmissionDropped + returnedCandidateCount) {
+    throw new PlanningAttributionError(
+      `stage "${stageName}": scored_rows_count=${inputCount} !== post_admission_dropped=${postAdmissionDropped} ` +
+        `+ returned_candidate_count=${returnedCandidateCount}`,
     );
   }
 
   const stage: FunnelStage = {
     stage: stageName,
     input: inputCount,
-    dropped,
+    dropped: postAdmissionDropped,
     output: returnedCandidateCount,
-    reason: "REJECTED_BEFORE_PLANNING (see P-reason breakdown)",
-    source: `${src}.{total_db_rows,rejected_before_planning_by_reason}`,
+    reason: "REJECTED_AFTER_SOURCE_ADMISSION (see P-reason breakdown)",
+    source: `${src}.{scored_rows_count,rejected_before_planning_by_reason}`,
   };
 
+  const shadowReasonsAlreadyCounted: Record<string, number> = {};
+  for (const key of SHADOW_REASONS_ALREADY_COUNTED_AT_STAGE_03) {
+    if (byReason[key] !== undefined) shadowReasonsAlreadyCounted[key] = byReason[key];
+  }
+
   const reasonStages: FunnelStage[] = Object.keys(byReason)
+    .filter((reason) => !(SHADOW_REASONS_ALREADY_COUNTED_AT_STAGE_03 as readonly string[]).includes(reason))
     .sort()
     .map((reason) => ({
       stage: `P-reason ${reason}`,
@@ -183,6 +352,7 @@ export function buildAttributablePlanningStage(
     stage,
     reasonStages,
     rejected_before_planning_by_reason: byReason,
+    planning_shadow_reasons_already_counted_at_stage_03: shadowReasonsAlreadyCounted,
     dropped_by_formula_version_and_reason: raw?.dropped_by_formula_version_and_reason ?? {},
     market_policy_rejected_by_reason: raw?.market_policy_rejected_by_reason ?? {},
     fullmatch_rejected_by_reason: raw?.fullmatch_rejected_by_reason ?? {},
@@ -192,7 +362,8 @@ export function buildAttributablePlanningStage(
       raw?.rejected_rows_by_raw_provider_sport_and_reason ?? {},
     missing_fullmatch_fixtures: raw?.missing_fullmatch_fixtures ?? [],
     returned_candidate_count: returnedCandidateCount,
-    candidate_invocation_count: candidateInvocationCount,
+    builder_invocation_count: builderInvocationCount,
+    plan_fetch_candidates_call_count: planFetchCandidatesCallCount,
   };
 }
 
@@ -209,8 +380,10 @@ export function buildPlanningFunnel(input: {
   skippedCount: number;
   /** Exact candidates.length returned by the SAME single builder invocation. */
   returnedCandidateCount: number;
-  /** Proof the audit used one builder candidate set (must be exactly 1). */
-  candidateInvocationCount: number;
+  /** Evidence-backed count of buildFireModelCandidates calls (must be exactly 1). */
+  builderInvocationCount: number;
+  /** Evidence-backed count of buildReservationPlan's deps.fetchCandidates calls (must be exactly 1). */
+  planFetchCandidatesCallCount: number;
 }): FunnelStage[] {
   const { raw, plan } = input;
   const src = "buildFireModelCandidates(CONTRACT_A_PLANNING_V1)/RawPlanningDiagnostics";
@@ -246,10 +419,26 @@ export function buildPlanningFunnel(input: {
     const attribution = buildAttributablePlanningStage({
       raw,
       returnedCandidateCount: input.returnedCandidateCount,
-      candidateInvocationCount: input.candidateInvocationCount,
+      builderInvocationCount: input.builderInvocationCount,
+      planFetchCandidatesCallCount: input.planFetchCandidatesCallCount,
     });
     stages.push(attribution.stage);
     stages.push(...attribution.reasonStages);
+
+    // Stage 04c: ReservationPlan's own upstream-authority filter
+    // (buildReservationPlan drops any candidate failing isUpstreamRejected
+    // BEFORE computing universe_size). This is a real, separate drop -- not
+    // part of stage 04b -- so it gets its own bridging stage rather than
+    // silently reconciling stage 04b's output against a smaller universe_size.
+    stages.push(
+      chain(
+        "04c candidates surviving ReservationPlan upstream-authority filter",
+        input.returnedCandidateCount,
+        plan.upstream_rejected_candidates_dropped,
+        "UPSTREAM_REJECTED (ReservationPlan authority boundary)",
+        `${planSrc}.upstream_rejected_candidates_dropped`,
+      ),
+    );
   }
 
   // Reservation-plan grouping/selection stages (physical-event dedup + slots).
@@ -477,6 +666,7 @@ export interface NightFunnelAuditResult {
   // ── Attributable planning rejection evidence (stage 04b), surfaced flat for
   // the JSON summary so no reason is ever hidden behind a stage label alone.
   rejected_before_planning_by_reason: Record<string, number>;
+  planning_shadow_reasons_already_counted_at_stage_03: Record<string, number>;
   dropped_by_formula_version_and_reason: Record<string, Record<string, number>>;
   market_policy_rejected_by_reason: Record<string, number>;
   fullmatch_rejected_by_reason: Record<string, number>;
@@ -485,7 +675,8 @@ export interface NightFunnelAuditResult {
   rejected_rows_by_raw_provider_sport_and_reason: Record<string, Record<string, number>>;
   missing_fullmatch_fixtures: RawPlanningDiagnostics["missing_fullmatch_fixtures"];
   returned_candidate_count: number;
-  candidate_invocation_count: number;
+  builder_invocation_count: number;
+  plan_fetch_candidates_call_count: number;
 }
 
 /**
@@ -506,8 +697,10 @@ export function assembleNightFunnelAudit(input: {
   queueCounts: QueueCounts;
   /** Exact candidates.length returned by the SAME single builder invocation. */
   returnedCandidateCount: number;
-  /** Proof the audit used one builder candidate set (must be exactly 1). */
-  candidateInvocationCount: number;
+  /** Evidence-backed count of buildFireModelCandidates calls (must be exactly 1). */
+  builderInvocationCount: number;
+  /** Evidence-backed count of buildReservationPlan's deps.fetchCandidates calls (must be exactly 1). */
+  planFetchCandidatesCallCount: number;
 }): NightFunnelAuditResult {
   const planning_funnel = buildPlanningFunnel({
     raw: input.raw,
@@ -515,7 +708,8 @@ export function assembleNightFunnelAudit(input: {
     reservedCount: input.reservedCount,
     skippedCount: input.skippedCount,
     returnedCandidateCount: input.returnedCandidateCount,
-    candidateInvocationCount: input.candidateInvocationCount,
+    builderInvocationCount: input.builderInvocationCount,
+    planFetchCandidatesCallCount: input.planFetchCandidatesCallCount,
   });
   const contract_a_at_plan_time = buildContractAFunnel(input.contractAAtPlanTime, "AT_PLAN_TIME");
   const contract_a_forecast = buildContractAFunnel(input.contractAForecast, "CURRENT_SOURCE_FORECAST");
@@ -525,13 +719,20 @@ export function assembleNightFunnelAudit(input: {
   assertStageArithmetic(contract_a_at_plan_time);
   assertStageArithmetic(contract_a_forecast);
 
+  // Self-assert the real planning chain has no silent gap between stages.
+  // (Contract-A funnels are intentionally two separate same-granularity
+  // segments -- see assertFunnelContinuity's doc comment -- so they are not
+  // checked here.)
+  assertFunnelContinuity(planning_funnel);
+
   // Re-derive the same attribution evidence surfaced in stage 04b for the
   // flat JSON summary. Pure/deterministic: if buildPlanningFunnel above did
   // not throw, this cannot throw either.
   const attribution = buildAttributablePlanningStage({
     raw: input.raw,
     returnedCandidateCount: input.returnedCandidateCount,
-    candidateInvocationCount: input.candidateInvocationCount,
+    builderInvocationCount: input.builderInvocationCount,
+    planFetchCandidatesCallCount: input.planFetchCandidatesCallCount,
   });
 
   return {
@@ -542,6 +743,8 @@ export function assembleNightFunnelAudit(input: {
     queue: input.queueCounts,
     arithmetic_ok: true,
     rejected_before_planning_by_reason: attribution.rejected_before_planning_by_reason,
+    planning_shadow_reasons_already_counted_at_stage_03:
+      attribution.planning_shadow_reasons_already_counted_at_stage_03,
     dropped_by_formula_version_and_reason: attribution.dropped_by_formula_version_and_reason,
     market_policy_rejected_by_reason: attribution.market_policy_rejected_by_reason,
     fullmatch_rejected_by_reason: attribution.fullmatch_rejected_by_reason,
@@ -551,6 +754,7 @@ export function assembleNightFunnelAudit(input: {
       attribution.rejected_rows_by_raw_provider_sport_and_reason,
     missing_fullmatch_fixtures: attribution.missing_fullmatch_fixtures,
     returned_candidate_count: attribution.returned_candidate_count,
-    candidate_invocation_count: attribution.candidate_invocation_count,
+    builder_invocation_count: attribution.builder_invocation_count,
+    plan_fetch_candidates_call_count: attribution.plan_fetch_candidates_call_count,
   };
 }
