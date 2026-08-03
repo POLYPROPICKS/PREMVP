@@ -6,6 +6,184 @@
 
 ---
 
+## 2026-08-02 — NEW_COUNTUR_1_R1 architecture CORRECTION (docs only)
+
+**Status:** `CANONICAL / FOUNDER LOCKED — R1`. Documentation only. Zero runtime, test, schema,
+config, or dependency change.
+
+**Source SHA verified against:** `6e593a5d0e66e50941f130f7792f67e487dbb347` (`origin/main`)
+**Docs base commit:** `752fd87a582fadd68db6056180308801f0a045ec` (R0 package, documentation-only
+ancestor diff — five files, all under `docs/ai-context/`)
+
+Every load-bearing R0 finding was **independently re-verified from tracked source** in this
+revision (`git grep` / `rg` / targeted reads / caller traces). Nothing was carried over on trust
+from a prior graph-assisted review — those artifacts are Windows-only and unreachable here.
+
+### Five corrected contradictions
+
+1. **"Contract A runs once before Reservation" — withdrawn.** The complete final market identity
+   only exists near T−90; forcing its resolution at the 17:00 planning stage produced zero
+   reservations in production on 2026-07-25/26 (`lib/executor/buildFireModelCandidates.ts:2023-2030`).
+   Replaced by **ONE MODEL OWNER** with two lifecycle artifacts.
+2. **Rebalance defect misstated.** The deeper problem is not re-invocation but that **no fresh
+   price or liquidity check exists at all** (`lib/executor/eventExecutionQueue.ts` — zero matches
+   for `liquidity`/`current_price`/`orderbook`/`midpoint`), and the only guard that ever did,
+   `selectBestCandidateForEventAtRebalance` (`lib/executor/nightPortfolioPlanner.ts:459`), has
+   **zero callers**.
+3. **"Preserves broad sports" — false on the Contract A path.** The adapter hardcodes
+   `inferred_sport: "unknown"` (`buildFireModelCandidates.ts:1228`) and `strategic_scope: "OTHER"`
+   (`:1230`), discarding the 15-code `MODEL_SCOPE_BY_PROVIDER_SPORT_CODE` mapping (`:652-667`)
+   that already resolves real provider metadata.
+4. **Identity does not survive the Queue.** `physical_event_id` and `event_start_iso` are declared
+   on `NightEventReservationRow` only (`lib/executor/executorQueueTypes.ts:34-35`);
+   `EventExecutionQueueRow` has neither. Additionally, `event_start_iso` is **arithmetically
+   reconstructed** on the Contract A path (`buildFireModelCandidates.ts:1142-1144`) and then
+   **exact-millisecond compared** against a provider-sourced Reservation value
+   (`lib/executor/nightEventReservations.ts:1571-1574`).
+5. **Two production execution surfaces, and a callback-key wording error.**
+   `/api/executor/candidates` returns `condition_id`/`token_id`/`side`/stake behind a production
+   secret with **no Reservation and no Queue row** (`app/api/executor/candidates/route.ts:204`,
+   `:260`, `:308-318`), and `IRELAND_RUNTIME_CONTRACT.candidate_endpoint` still advertises it
+   (`nightPortfolioPlanner.ts:157`). Separately: callback correlation is by `idempotency_key`
+   (`app/api/executor/order-events/route.ts:150-166`); `executor_order_events.queue_id` **does not
+   exist** (`:200-205`); the external order identifier is `clob_order_id`, never `venue_order_id`
+   (which appears nowhere in tracked source).
+
+### Corrected lifecycle
+
+Provider inventory → observations → signal pairs / snapshots → **Contract A Planning Decision** →
+event-level **Reservation** (orchestration only) → **Contract A Final Identity Decision** (bounded
+to reserved events) → **mechanical execution guards** (price + liquidity refresh, stake, exposure,
+time; no model, no ranking) → **immutable Queue** (sole production execution instruction) →
+Ireland → callback (`idempotency_key` + exact identity cross-check, `clob_order_id` receipt) →
+terminal state → balance / PnL.
+
+Both Contract A artifacts belong to **one** model authority. They are two lifecycle stages, not
+two competing model owners.
+
+### Mermaid deleted and deferred
+
+`docs/ai-context/NEW_COUNTUR_1.mmd` is **deleted** from the active package — it encoded the
+superseded one-invocation lifecycle. It remains available in Git history at `752fd87a`. No
+replacement diagram is created. Visualization is deferred until runtime implementation, a coherent
+deploy, production identity proof, and broad-sports proof (Gate G27).
+
+### Next action
+
+**Independent Fable architecture review of the R1 package.** Allowed verdicts:
+`PASS_NEW_COUNTUR_1_R1_READY_FOR_IMPLEMENTATION` or
+`FAIL_NEW_COUNTUR_1_R1_WITH_EXACT_CONTRADICTION`.
+
+**Prohibition:** no runtime implementation, schema change, merge or deploy before an R1 review
+`PASS`. The cutover then remains one branch, three stacked commits (A: authoritative Contract A
+decision contracts; B: Planning Decision → Reservation; C: Final Identity + mechanical guards +
+Queue-only execution), one coherent review, one coherent deploy. No intermediate dual-authority
+deploy.
+
+### Active R1 documents
+
+- [`NEW_COUNTUR_1.md`](./NEW_COUNTUR_1.md)
+- [`NEW_COUNTUR_1_ARCHITECTURE_POSTMORTEM.md`](./NEW_COUNTUR_1_ARCHITECTURE_POSTMORTEM.md)
+- [`NEW_COUNTUR_1_ENGINEERING_GATES.md`](./NEW_COUNTUR_1_ENGINEERING_GATES.md)
+
+### Still open
+
+- [ ] Fable R1 architecture review verdict.
+- [ ] Live Ireland polling URL / poller configuration — **RUNTIME-ONLY**, not provable from this
+      repository, blocking pre-deploy gate (G26).
+- [ ] Owner of rejection reason `MARKET_POLICY_ACTIVITY_LABEL` — still **NOT_VERIFIABLE**; zero
+      matches in tracked source at `6e593a5d` (carried forward from R0).
+- [ ] Classify `app/api/executor/night-plan/route.ts` and `buildFounderBattleBatchQueueRow`
+      (`eventExecutionQueue.ts:1792`, called `:1903`) as production / ops-only / test-only before
+      the zero-production-caller proof (G19).
+
+---
+
+## 2026-08-02 — NEW_COUNTUR_1 architecture package LOCKED (docs only)
+
+**Status:** `CANONICAL / FOUNDER LOCKED` — documentation only. Zero runtime, test, schema,
+config, or dependency change.
+
+**Base production SHA:** `6e593a5d0e66e50941f130f7792f67e487dbb347`
+**Production audit identifier:** `diag-probe:20260802T085311` (as-of `2026-08-02T08:53:11.000Z`)
+
+### Proved dual-authority finding
+
+The production contour at `6e593a5d` runs **two modelling authorities**, not one model plus
+orchestration:
+
+- `app/api/cron/night-event-reservations/route.ts:76/106/194` plans with
+  `selectorMode: "CONTRACT_A_PLANNING_V1"`, but `lib/executor/buildFireModelCandidates.ts:1296`
+  routes **only** `CONTRACT_A_V1` to Contract A. `CONTRACT_A_PLANNING_V1` runs the legacy CONTUR3
+  pipeline and merely stamps `selector_id` / `contract_a_stage` at `:2023-2037`.
+- Contract A (`lib/modeling/frozenModelProducerV2Shadow.ts`) is invoked **later, inside
+  rebalance**: `lib/executor/eventExecutionQueue.ts:815` and `:1169`.
+- A second ranker is live in the same layer: `compareCandidateQuality`
+  (`eventExecutionQueue.ts:18`, applied `:748`).
+- Therefore `Contract A output → Reservation` is **NOT WIRED**. The legacy funnel and the
+  Contract A audit are parallel universes, not consecutive stages: 3228 deduped rows → 0
+  candidates → 0 Reservations, versus 8049 source rows → 4 accepted decisions that reached
+  nothing. The released instrumentation already refuses to chain them
+  (`lib/executor/nightFunnelAudit.ts:733-745`).
+
+### Canonical target path
+
+Provider inventory → canonical observations → signal pairs → snapshots → **Contract A as the
+sole modelling / policy / ranking owner, running once before Reservation** → versioned approved
+candidate set + complete rejection trace + execution-window metadata → Reservation → mechanical-
+only Rebalance → immutable Queue → Ireland → callback → terminal state → balance / PnL.
+
+### Superseded
+
+`CONTUR_ROADMAP_2.md` §1 two-stage modelling semantics (Stage A legacy rules at planning, Stage B
+Contract A at rebalance) and §2's required repair are **superseded** by `NEW_COUNTUR_1`.
+Historical documents are preserved unchanged as evidence. T−90/T−120 are Contract A input-selection
+rules and execution-window metadata, never a reason to postpone the model.
+
+### Preserves
+
+Broad provider inventory · canonical observations · signal pairs · snapshots · broad sports and
+markets · structured sport metadata · Contract A pure model logic · exact identity work ·
+physical-occurrence identity · Reservation persistence · active duplicate protection · cap 15 ·
+lifecycle · queue builder · Ireland mapper/API · callback · terminal states · balance/PnL ·
+released funnel instrumentation as migration evidence.
+
+### Retires from production authority
+
+Legacy filters inside `CONTRACT_A_PLANNING_V1` · `buildFireModelCandidates` as an independent
+model owner · repeated Contract A invocation inside rebalance · `compareCandidateQuality` as a
+second ranker · post-Reservation policy/score/scope recalculation · unapproved market
+substitution · fuzzy rediscovery. Physical deletion is a separate cleanup commit after
+production parity and a zero-production-caller proof.
+
+### Current roadmap phase and next step
+
+Phase 10 of 13 complete (documentation package). **Next: independent Fable architecture review
+of the committed package.** Allowed verdicts: `PASS_NEW_COUNTUR_1_READY_FOR_IMPLEMENTATION` or
+`FAIL_NEW_COUNTUR_1_WITH_EXACT_CONTRADICTION`.
+
+**Prohibition:** no runtime implementation before Fable `PASS`. The cutover is then one branch,
+three stacked commits (A: Contract A authoritative output; B: direct output → Reservation;
+C: mechanical rebalance + legacy cutoff), one coherent review, one coherent deploy. No
+intermediate dual-authority deploy.
+
+### Package artifacts
+
+- [`NEW_COUNTUR_1.md`](./NEW_COUNTUR_1.md)
+- [`NEW_COUNTUR_1_ARCHITECTURE_POSTMORTEM.md`](./NEW_COUNTUR_1_ARCHITECTURE_POSTMORTEM.md)
+- [`NEW_COUNTUR_1_ENGINEERING_GATES.md`](./NEW_COUNTUR_1_ENGINEERING_GATES.md)
+- `NEW_COUNTUR_1.mmd`
+
+### Pending
+
+- [ ] Fable architecture review verdict.
+- [ ] Resolve the owner of rejection reason `MARKET_POLICY_ACTIVITY_LABEL` (228 rejects) — not
+      locatable in tracked source at the base SHA.
+- [ ] Classify `app/api/executor/night-plan/route.ts` (imports `nightPortfolioPlanner`) as
+      production / ops-only / test-only before the zero-caller cutoff proof.
+
+---
+
 ## 2026-07-04 — Work_tru_PPP04July
 
 Stable working model checkpoint: Top Weekly restored, Latest Resolved restored, WhyTrust isolated endpoint restored with ledger + returnCurve from real preview rows. See WORK_TRU_PPP04JULY.md and WORK_TRU_PPP04JULY_FUNNEL_LOG.md.
