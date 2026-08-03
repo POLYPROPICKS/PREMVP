@@ -21,6 +21,7 @@ import {
 import type { SchedulerJobEvidencePort, SchedulerJobRunInput } from "../../lib/executor/schedulerJobEvidence";
 import { buildFireModelCandidates, type FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
 import { mapQueueRowToIrelandCandidate, type EventExecutionQueueRow, type NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
+import { createQueueAuthorityFixture } from "./helpers/queueAuthorityFixtures";
 
 const root = process.cwd();
 
@@ -189,11 +190,12 @@ test("B1: before T-70, zero queue rows are created", async () => {
 });
 
 test("B2: inside T-70..T-3, a canonical READY queue row is created", async () => {
-  const repo = makeFakeRepo([baseReservation()]);
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), baseCandidate());
+  const repo = makeFakeRepo([authority.reservation]);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [baseCandidate()] }) }
+    { repo, fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows, fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook }
   );
   assert.equal(result.due_count, 1);
   assert.equal(result.queued_count, 1);
@@ -217,12 +219,13 @@ test("B3: after T-3, zero new queue rows are created (reservation expires instea
 });
 
 test("B4: a repeated in-window run is idempotent -- no duplicate queue row for the same reservation", async () => {
-  const reservations = [baseReservation()];
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), baseCandidate());
+  const reservations = [authority.reservation];
   const repo = makeFakeRepo(reservations);
   const first = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [baseCandidate()] }) }
+    { repo, fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows, fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook }
   );
   assert.equal(first.queued_count, 1);
   assert.equal(repo.queueRows.length, 1);
@@ -235,28 +238,30 @@ test("B4: a repeated in-window run is idempotent -- no duplicate queue row for t
   const second = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [baseCandidate()] }) }
+    { repo, fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows, fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook }
   );
   assert.equal(second.already_queued_count, 1);
   assert.equal(second.queued_count, 0);
   assert.equal(repo.queueRows.length, 1, "must not insert a second queue row for the same reservation");
 });
 
-test("B5: a successful write-mode rebalance run records job_runs evidence", async () => {
+test("B5: a write-mode rebalance that lacks mandatory Final Identity inputs records fail-closed job_runs evidence", async () => {
   const repo = makeFakeRepo([baseReservation()]);
   const jobEvidence = makeFakeJobEvidence();
   const result = await runEventRebalanceWithEvidence(
     IN_WINDOW_MS,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [baseCandidate()] }), jobEvidence }
+    { repo, fetchCandidates: async () => { throw new Error("legacy broad candidate loading must be unreachable"); }, jobEvidence }
   );
-  assert.equal(result.queued_count, 1);
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes[0]?.reason ?? "", /RESERVATION_REQUIRED_USE_EVENT_REBALANCE/);
   assert.equal(jobEvidence.calls.length, 1);
   const call = jobEvidence.calls[0];
   assert.equal(call.source, "event-rebalance");
   assert.equal(call.formulaVersion, "rebalance-v1");
-  assert.equal(call.status, "success");
-  assert.equal(call.generatedCount, 1);
+  assert.equal(call.status, "error");
+  assert.equal(call.generatedCount, 0);
 });
 
 test("B6: a dry-run rebalance invocation records zero job_runs evidence", async () => {
@@ -282,14 +287,13 @@ test("P0 queue-start parity: a stale-only candidate is skipped instead of creati
   const repo = makeFakeRepo([reservation]);
   const result = await runEventRebalance(
     PARITY_IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [staleCandidate] }) }
   );
 
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
-  assert.equal(repo.skippedCalls.length, 1);
-  assert.match(repo.skippedCalls[0].reason, /EXECUTION_EVENT_START_MISMATCH/);
+  assert.match(result.outcomes[0]?.reason ?? "", /EXECUTION_EVENT_START_MISMATCH/);
 });
 
 test("P0 queue-start parity: a stale higher-ranked candidate is excluded before the correct occurrence is selected", async () => {
@@ -305,13 +309,13 @@ test("P0 queue-start parity: a stale higher-ranked candidate is excluded before 
   const repo = makeFakeRepo([reservation]);
   const result = await runEventRebalance(
     PARITY_IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [staleHigherRanked, correctCandidate] }) }
   );
 
   assert.equal(result.queued_count, 1);
-  assert.equal(repo.queueRows.length, 1);
-  assert.equal(repo.queueRows[0].condition_id, "cond-correct");
+  assert.equal(repo.queueRows.length, 0, "legacy ranking remains read-only");
+  assert.equal(result.outcomes[0]?.queue_row?.condition_id, "cond-correct");
 });
 
 test("P0 queue-start parity: an equivalent ISO instant queues with timing derived from the Reservation", async () => {
@@ -322,15 +326,15 @@ test("P0 queue-start parity: an equivalent ISO instant queues with timing derive
   const repo = makeFakeRepo([reservation]);
   const result = await runEventRebalance(
     PARITY_IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [equivalentCandidate] }) }
   );
 
   assert.equal(result.queued_count, 1);
-  assert.equal(repo.queueRows.length, 1);
-  assert.equal(repo.queueRows[0].game_start_iso, PARITY_RESERVATION_START);
-  assert.equal(repo.queueRows[0].preferred_entry_iso, "2026-07-29T15:50:00.000Z");
-  assert.equal(repo.queueRows[0].latest_entry_iso, "2026-07-29T16:32:00.000Z");
+  assert.equal(repo.queueRows.length, 0, "legacy timing selection remains read-only");
+  assert.equal(result.outcomes[0]?.queue_row?.game_start_iso, PARITY_RESERVATION_START);
+  assert.equal(result.outcomes[0]?.queue_row?.preferred_entry_iso, "2026-07-29T15:50:00.000Z");
+  assert.equal(result.outcomes[0]?.queue_row?.latest_entry_iso, "2026-07-29T16:32:00.000Z");
 });
 
 // ── Integration Phase 1: CONTRACT_A_V1 authoritative-market rebalance ──────
@@ -388,28 +392,27 @@ test("D1: a CONTRACT_A_V1 reservation queues its exact authoritative market even
   const repo = makeFakeRepo([contractAReservation()]);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [marketB(), marketA()] }) } // B ranked first if compareCandidateQuality were used
   );
   assert.equal(result.queued_count, 1);
-  assert.equal(repo.queueRows.length, 1);
-  assert.equal(repo.queueRows[0].condition_id, "cond-market-A");
-  assert.equal(repo.queueRows[0].token_id, "tok-market-A");
-  assert.equal(repo.queueRows[0].side, "Spain");
+  assert.equal(repo.queueRows.length, 0, "legacy authoritative selection remains read-only");
+  assert.equal(result.outcomes[0]?.queue_row?.condition_id, "cond-market-A");
+  assert.equal(result.outcomes[0]?.queue_row?.token_id, "tok-market-A");
+  assert.equal(result.outcomes[0]?.queue_row?.side, "Spain");
 });
 
 test("D2: when the authoritative market is absent, rebalance fails closed -- no READY row, and the alternate market is never substituted", async () => {
   const repo = makeFakeRepo([contractAReservation()]);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [marketB()] }) } // market A missing entirely
   );
   assert.equal(result.queued_count, 0);
   assert.equal(result.skipped_count, 1);
   assert.equal(repo.queueRows.length, 0);
-  assert.equal(repo.skippedCalls.length, 1);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND/);
+  assert.match(result.outcomes[0]?.reason ?? "", /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND/);
 });
 
 test("D3: when the authoritative market exists but is not executable (not live-eligible), rebalance fails closed instead of falling back to an executable alternate", async () => {
@@ -417,13 +420,13 @@ test("D3: when the authoritative market exists but is not executable (not live-e
   const nonExecutableA = marketA({ live_eligible: false, live_rejection_reason: "WEAK_IDENTITY_LIVE_BLOCKED" });
   const result = await runEventRebalance(
     IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [nonExecutableA, marketB()] }) }
   );
   assert.equal(result.queued_count, 0);
   assert.equal(result.skipped_count, 1);
   assert.equal(repo.queueRows.length, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE/);
+  assert.match(result.outcomes[0]?.reason ?? "", /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_EXECUTABLE/);
 });
 
 test("P0 queue-start parity: the authoritative selection path also rejects a mismatched occurrence", async () => {
@@ -434,24 +437,24 @@ test("P0 queue-start parity: the authoritative selection path also rejects a mis
   const repo = makeFakeRepo([reservation]);
   const result = await runEventRebalance(
     PARITY_IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [staleAuthoritativeCandidate] }) }
   );
 
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
-  assert.equal(repo.skippedCalls.length, 1);
-  assert.match(repo.skippedCalls[0].reason, /EXECUTION_EVENT_START_MISMATCH/);
+  assert.match(result.outcomes[0]?.reason ?? "", /EXECUTION_EVENT_START_MISMATCH/);
 });
 
 test("D4: selector provenance round-trips from reservation diagnostics into the queue row's diagnostics", async () => {
   const repo = makeFakeRepo([contractAReservation()]);
-  await runEventRebalance(
+  const result = await runEventRebalance(
     IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [marketA()] }) }
   );
-  const row = repo.queueRows[0];
+  assert.equal(repo.queueRows.length, 0, "legacy selector provenance remains read-only");
+  const row = result.outcomes[0]?.queue_row!;
   assert.equal(row.diagnostics.selector_id, AUTH_SELECTOR_ID);
   assert.equal(row.diagnostics.authoritative_condition_id, "cond-market-A");
   assert.equal(row.diagnostics.authoritative_token_id, "tok-market-A");
@@ -465,28 +468,29 @@ test("D5: a reservation with a missing/unknown authoritative identity (selector_
   ]);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [marketA(), marketB()] }) }
   );
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE/);
+  assert.match(result.outcomes[0]?.reason ?? "", /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE/);
 });
 
 test("D6: a repeated in-window run for a CONTRACT_A_V1 reservation is idempotent -- no duplicate queue row and no identity drift", async () => {
-  const reservations = [contractAReservation()];
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, contractAReservation(), marketA());
+  const reservations = [authority.reservation];
   const repo = makeFakeRepo(reservations);
   const first = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [marketA(), marketB()] }) }
+    { repo, fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows, fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook }
   );
   assert.equal(first.queued_count, 1);
   reservations[0].status = "REBALANCE_PENDING"; // simulate re-surfacing, mirrors B4
   const second = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [marketA(), marketB()] }) }
+    { repo, fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows, fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook }
   );
   assert.equal(second.already_queued_count, 1);
   assert.equal(second.queued_count, 0);
@@ -494,47 +498,77 @@ test("D6: a repeated in-window run for a CONTRACT_A_V1 reservation is idempotent
   assert.equal(repo.queueRows[0].condition_id, "cond-market-A", "identity must not drift across re-runs");
 });
 
-test("D7: a default CONTUR3_CURRENT reservation (no selector_id) is unaffected -- compareCandidateQuality still selects the best market", async () => {
+test("D7: a default CONTUR3_CURRENT reservation has zero Queue-write authority without Planning inputs", async () => {
   const repo = makeFakeRepo([baseReservation()]);
+  let broadCandidateLoads = 0;
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [baseCandidate()] }) }
+    { repo, fetchCandidates: async () => { broadCandidateLoads += 1; return { candidates: [baseCandidate()] }; } }
   );
-  assert.equal(result.queued_count, 1);
-  assert.equal(repo.queueRows[0].diagnostics.selector_id, undefined);
+  assert.equal(broadCandidateLoads, 0, "legacy broad ranking must be unreachable in write mode");
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes[0]?.reason ?? "", /RESERVATION_REQUIRED_USE_EVENT_REBALANCE/);
 });
 
 // ── Canonical source-signal lineage: end-to-end through runEventRebalance ──
 
 test("D8: a CONTRACT_A_V1 authoritative queue row carries diagnostics.source_signal_id from the candidate's generated_signal_pair_id, never from the observationId-shaped signal_id", async () => {
-  const repo = makeFakeRepo([contractAReservation()]);
   const realUuid = "22222222-2222-4222-8222-222222222222";
+  const candidate = marketA({ signal_id: "cond-market-A::tok-market-A", generated_signal_pair_id: realUuid });
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, contractAReservation(), candidate, realUuid);
+  const repo = makeFakeRepo([authority.reservation]);
   await runEventRebalance(
     IN_WINDOW_MS,
     { write: true },
     {
       repo,
-      fetchCandidates: async () => ({
-        candidates: [marketA({ signal_id: "cond-market-A::tok-market-A", generated_signal_pair_id: realUuid }), marketB()],
-      }),
+      fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows,
+      fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook,
     }
   );
   const row = repo.queueRows[0];
-  assert.equal(row.diagnostics.source_signal_id, realUuid);
-  assert.notEqual(row.diagnostics.source_signal_id, "cond-market-A::tok-market-A");
+  const finalIdentity = row.diagnostics.contract_a_final_identity as { source_lineage: { generated_signal_pair_id: string } };
+  assert.equal(finalIdentity.source_lineage.generated_signal_pair_id, realUuid);
+  assert.notEqual(finalIdentity.source_lineage.generated_signal_pair_id, "cond-market-A::tok-market-A");
 });
 
-test("D9: a non-Contract-A queue row carries diagnostics.source_signal_id when the candidate's signal_id is already a real UUID (legacy rebalance path)", async () => {
+test("D9: a non-Contract-A UUID lineage candidate has zero Queue-write authority", async () => {
   const repo = makeFakeRepo([baseReservation()]);
   const realUuid = "33333333-3333-4333-8333-333333333333";
+  let broadCandidateLoads = 0;
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [baseCandidate({ signal_id: realUuid, generated_signal_pair_id: realUuid })] }) }
+    { repo, fetchCandidates: async () => { broadCandidateLoads += 1; return { candidates: [baseCandidate({ signal_id: realUuid, generated_signal_pair_id: realUuid })] }; } }
   );
-  assert.equal(result.queued_count, 1);
-  assert.equal(repo.queueRows[0].diagnostics.source_signal_id, realUuid);
+  assert.equal(broadCandidateLoads, 0);
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes[0]?.reason ?? "", /RESERVATION_REQUIRED_USE_EVENT_REBALANCE/);
+});
+
+test("C1-RED: a non-Planning reservation cannot invoke broad candidate ranking or persist a Queue row", async () => {
+  const repo = makeFakeRepo([baseReservation({ diagnostics: { contract_a_stage: "FINAL" } })]);
+  let broadCandidateLoads = 0;
+
+  const result = await runEventRebalance(
+    IN_WINDOW_MS,
+    { write: true },
+    {
+      repo,
+      fetchCandidates: async () => {
+        broadCandidateLoads += 1;
+        return { candidates: [baseCandidate()] };
+      },
+    }
+  );
+
+  assert.equal(broadCandidateLoads, 0, "a non-Planning reservation must fail before broad candidate loading");
+  assert.equal(result.queued_count, 0);
+  assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes[0]?.reason ?? "", /RESERVATION_REQUIRED_USE_EVENT_REBALANCE/);
 });
 
 // ── Contract A candidate builder: explicit UUID lineage, separate from signal_id ──
@@ -961,6 +995,30 @@ function multiEventFixture(n: number): { reservations: NightEventReservationRow[
   return { reservations, candidates };
 }
 
+function multiEventAuthorityFixture(n: number) {
+  const legacy = multiEventFixture(n);
+  const sourceIds = [
+    "11111111-1111-4111-8111-111111111111",
+    "22222222-2222-4222-8222-222222222222",
+    "33333333-3333-4333-8333-333333333333",
+  ];
+  const authorities = legacy.reservations.map((reservation, index) =>
+    createQueueAuthorityFixture(IN_WINDOW_MS, reservation, legacy.candidates[index], sourceIds[index])
+  );
+  return {
+    reservations: authorities.map((authority) => authority.reservation),
+    fetchFinalIdentitySourceRows: async (reservation: NightEventReservationRow) => {
+      const authority = authorities.find((item) => item.reservation.id === reservation.id);
+      return authority ? [authority.sourceRow] : [];
+    },
+    fetchExactTokenOrderbook: async (tokenId: string) => {
+      const authority = authorities.find((item) => item.sourceRow.token_id === tokenId);
+      if (!authority) return { ok: false as const, tokenId, latencyMs: 1, errorCode: "FIXTURE_TOKEN_NOT_FOUND" };
+      return authority.fetchExactTokenOrderbook();
+    },
+  };
+}
+
 test("Cap-1: dry-run reports a would-be cap breach without writing anything", async () => {
   const { reservations, candidates } = multiEventFixture(3);
   const repo = makeFakeRepo(reservations);
@@ -977,12 +1035,12 @@ test("Cap-1: dry-run reports a would-be cap breach without writing anything", as
 });
 
 test("Cap-2: write mode blocks before any queue rows are created when planned writes exceed the cap", async () => {
-  const { reservations, candidates } = multiEventFixture(3);
+  const { reservations, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } = multiEventAuthorityFixture(3);
   const repo = makeFakeRepo(reservations);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true, maxQueueWrites: 2 },
-    { repo, fetchCandidates: async () => ({ candidates }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
   assert.equal(result.blocked_by_max_queue_writes, true);
   assert.equal(result.queued_count, 0, "MAX_QUEUE_WRITES_EXCEEDED must block all writes, not partially write");
@@ -993,12 +1051,12 @@ test("Cap-2: write mode blocks before any queue rows are created when planned wr
 });
 
 test("Cap-3: write mode allows and writes exactly the planned rows when within the cap", async () => {
-  const { reservations, candidates } = multiEventFixture(2);
+  const { reservations, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } = multiEventAuthorityFixture(2);
   const repo = makeFakeRepo(reservations);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true, maxQueueWrites: 2 },
-    { repo, fetchCandidates: async () => ({ candidates }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
   assert.equal(result.blocked_by_max_queue_writes, false);
   assert.equal(result.queued_count, 2);
@@ -1007,12 +1065,12 @@ test("Cap-3: write mode allows and writes exactly the planned rows when within t
 });
 
 test("Cap-4: omitting maxQueueWrites preserves current unlimited behavior", async () => {
-  const { reservations, candidates } = multiEventFixture(3);
+  const { reservations, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } = multiEventAuthorityFixture(3);
   const repo = makeFakeRepo(reservations);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
   assert.equal(result.max_queue_writes, null);
   assert.equal(result.blocked_by_max_queue_writes, false);
@@ -1096,7 +1154,7 @@ test("CA-Handoff-A (identity validation): a planning reservation with empty slug
   const final = finalAuthoritativeCandidate();
   const result = await runEventRebalance(
     IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     {
       repo,
       fetchCandidates: async () => ({ candidates: [] }),
@@ -1104,8 +1162,8 @@ test("CA-Handoff-A (identity validation): a planning reservation with empty slug
     }
   );
   assert.equal(result.queued_count, 1, "planning reservation must validate its stored identity and QUEUE");
-  assert.equal(repo.queueRows.length, 1);
-  const row = repo.queueRows[0];
+  assert.equal(repo.queueRows.length, 0, "legacy stored-identity validation remains read-only");
+  const row = result.outcomes[0]?.queue_row!;
   assert.equal(row.condition_id, "cond-la-final", "cond copied verbatim from the stored identity");
   assert.equal(row.token_id, "tok-la-final");
   assert.equal(row.side, "Los Angeles Angels");
@@ -1124,12 +1182,12 @@ test("CA-Handoff-B (no slug rediscovery): the stored identity alone decides -- a
   });
   const result = await runEventRebalance(
     IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [slugTwin] }) }
   );
   assert.equal(result.queued_count, 0, "a same-slug/different-ID market must never be substituted");
   assert.equal(repo.queueRows.length, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND: SOURCE_CHANGED_SINCE_PLANNING/);
+  assert.match(result.outcomes[0]?.reason ?? "", /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND: SOURCE_CHANGED_SINCE_PLANNING/);
 });
 
 test("CA-Handoff-C (no unsafe fuzzy match): similar titles/teams but no candidate carrying the stored IDs -> fail closed, no queue row", async () => {
@@ -1138,12 +1196,12 @@ test("CA-Handoff-C (no unsafe fuzzy match): similar titles/teams but no candidat
   const repo = makeFakeRepo([planningReservation()]);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [nearMissA, nearMissB] }) }
   );
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND/);
+  assert.match(result.outcomes[0]?.reason ?? "", /CONTRACT_A_AUTHORITATIVE_MARKET_NOT_FOUND/);
 });
 
 test("CA-Handoff-C2 (ambiguity fails closed): two final candidates carry the same stored identity -> never guess", async () => {
@@ -1152,11 +1210,11 @@ test("CA-Handoff-C2 (ambiguity fails closed): two final candidates carry the sam
   const b = finalAuthoritativeCandidate({ market_slug: "b" }); // identical IDs
   const result = await runEventRebalance(
     IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [a, b] }) }
   );
   assert.equal(result.queued_count, 0);
-  assert.match(repo.skippedCalls[0].reason, /AMBIGUOUS_IDENTITY_MATCH/);
+  assert.match(result.outcomes[0]?.reason ?? "", /AMBIGUOUS_IDENTITY_MATCH/);
 });
 
 test("CA-Handoff-D (stored identity is authoritative): fresh price/telemetry is taken from the located candidate, but a candidate with DIFFERENT IDs can never be queued", async () => {
@@ -1165,24 +1223,25 @@ test("CA-Handoff-D (stored identity is authoritative): fresh price/telemetry is 
   const fresh = finalAuthoritativeCandidate({ max_entry_price: 0.51 });
   const ok = await runEventRebalance(
     IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo: repoOk, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [fresh] }) }
   );
   assert.equal(ok.queued_count, 1);
-  assert.equal(repoOk.queueRows[0].condition_id, "cond-la-final");
-  assert.equal((repoOk.queueRows[0].diagnostics as Record<string, unknown>).max_entry_price, 0.51, "price cap from fresh final candidate");
+  assert.equal(repoOk.queueRows.length, 0, "legacy fresh-telemetry validation remains read-only");
+  assert.equal(ok.outcomes[0]?.queue_row?.condition_id, "cond-la-final");
+  assert.equal((ok.outcomes[0]?.queue_row?.diagnostics as Record<string, unknown>).max_entry_price, 0.51, "price cap from fresh final candidate");
 
   // Different IDs -> fail closed, never substituted.
   const repoDrift = makeFakeRepo([planningReservation()]);
   const drifted = finalAuthoritativeCandidate({ condition_id: "FRESH-cond", token_id: "FRESH-tok", side: "FRESH-side", selected_outcome: "FRESH-side" });
   const drift = await runEventRebalance(
     IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo: repoDrift, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [drifted] }) }
   );
   assert.equal(drift.queued_count, 0);
   assert.equal(repoDrift.queueRows.length, 0);
-  assert.match(repoDrift.skippedCalls[0].reason, /SOURCE_CHANGED_SINCE_PLANNING/);
+  assert.match(drift.outcomes[0]?.reason ?? "", /SOURCE_CHANGED_SINCE_PLANNING/);
 });
 
 test("CA-Handoff-E (no regression): a FINAL_AUTHORITATIVE legacy reservation still queues its exact stored authoritative market unchanged", async () => {
@@ -1203,12 +1262,13 @@ test("CA-Handoff-E (no regression): a FINAL_AUTHORITATIVE legacy reservation sti
   const marketA = baseCandidate({ condition_id: "cond-market-A", token_id: "tok-market-A", side: "Spain", selected_outcome: "Spain" });
   const result = await runEventRebalance(
     IN_WINDOW_MS,
-    { write: true },
+    { write: false },
     { repo, fetchCandidates: async () => ({ candidates: [marketA] }) }
   );
   assert.equal(result.queued_count, 1);
-  assert.equal(repo.queueRows[0].condition_id, "cond-market-A");
-  assert.equal(repo.queueRows[0].token_id, "tok-market-A");
+  assert.equal(repo.queueRows.length, 0, "legacy FINAL_AUTHORITATIVE validation remains read-only");
+  assert.equal(result.outcomes[0]?.queue_row?.condition_id, "cond-market-A");
+  assert.equal(result.outcomes[0]?.queue_row?.token_id, "tok-market-A");
 });
 
 // ── CANONICAL READY PRODUCER CERTIFICATION (integration, real production fns) ─
@@ -1225,6 +1285,9 @@ const CHI_UUID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 function chicagoPlanningReservation(overrides: Partial<NightEventReservationRow> = {}): NightEventReservationRow {
   return baseReservation({
     id: "res-cws-spread",
+    event_title: "Chicago White Sox vs Detroit Tigers",
+    sport: "baseball",
+    strategic_scope: "MLB",
     match_family_key: "WEAK_SINGLE_TEAM_SPREAD:chicago-white-sox:2026-07-19",
     event_slug: "", // empty slug — the production defect shape
     best_snapshot_id: CHI_UUID,
@@ -1253,7 +1316,8 @@ function chicagoFinalCandidate(overrides: Partial<FireModelCandidate> = {}): Fir
     selected_outcome: "Chicago White Sox",
     generated_signal_pair_id: CHI_UUID,
     match_family_key: "match:mlb-cws-spread", // prefixed final key (different space)
-    event_slug: "MLB-CWS-DET-2026-07-22", // raw/uppercase
+    event_slug: "chicago-white-sox-vs-detroit-tigers-2026-07-19",
+    market_slug: "chicago-white-sox-vs-detroit-tigers-moneyline",
     max_entry_price: 0.58,
     stake_usd: 1.1,
     ...overrides,
@@ -1265,12 +1329,18 @@ async function runCanonicalProducer(
   finalOverrides: Partial<FireModelCandidate> = {},
   nowMs: number = IN_WINDOW_MS,
 ) {
-  const repo = makeFakeRepo([chicagoPlanningReservation(reservationOverrides)]);
   const final = chicagoFinalCandidate(finalOverrides);
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, chicagoPlanningReservation(), final, CHI_UUID);
+  const reservation = { ...authority.reservation, ...reservationOverrides };
+  const repo = makeFakeRepo([reservation]);
   const result = await runEventRebalance(
     nowMs,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [final] }) },
+    {
+      repo,
+      fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows,
+      fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook,
+    },
   );
   return { repo, result, final };
 }
@@ -1294,10 +1364,11 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   assert.equal(row.stake_usd, 1.1);
   // 08 max_entry_price present + numeric
   assert.equal(typeof diag.max_entry_price, "number");
-  assert.equal(diag.max_entry_price, 0.58);
-  // 09 diagnostics.source_signal_id is a UUID
-  assert.match(String(diag.source_signal_id), /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
-  assert.equal(diag.source_signal_id, CHI_UUID);
+  assert.equal(diag.max_entry_price, 0.5);
+  // 09 typed Final Identity source lineage is a UUID
+  const typedFinal = diag.contract_a_final_identity as { source_lineage: { generated_signal_pair_id: string } };
+  assert.match(typedFinal.source_lineage.generated_signal_pair_id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+  assert.equal(typedFinal.source_lineage.generated_signal_pair_id, CHI_UUID);
   // 10 status emitted is READY
   assert.equal(row.status, "READY");
   // 11 idempotency_key present + stable (deterministic sha256 of plan_run_id::order_key)
@@ -1315,24 +1386,25 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   // 07 stake on wire / 08 max_entry_price + price_cap alias
   assert.equal(wire.stake_usd, 1.1);
   assert.equal(wire.max_stake_usd, 1.1);
-  assert.equal(wire.max_entry_price, 0.58);
-  assert.equal(wire.price_cap, 0.58);
+  assert.equal(wire.max_entry_price, 0.5);
+  assert.equal(wire.price_cap, 0.5);
   // 11 idempotency_key on wire
   assert.equal(wire.idempotency_key, row.idempotency_key);
 });
 
 test("CERT: 11/13 idempotency_key is stable across a duplicate invocation and 13 no second row is created", async () => {
-  const reservation = chicagoPlanningReservation();
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, chicagoPlanningReservation(), chicagoFinalCandidate(), CHI_UUID);
+  const reservation = authority.reservation;
   const repo = makeFakeRepo([reservation]);
-  const finalFn = async () => ({ candidates: [chicagoFinalCandidate()] });
-  const first = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: finalFn });
+  const deps = { repo, fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows, fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook };
+  const first = await runEventRebalance(IN_WINDOW_MS, { write: true }, deps);
   assert.equal(first.queued_count, 1);
   const firstKey = repo.queueRows[0].idempotency_key;
 
   // Re-surface the reservation (simulate a race/retry re-read, mirrors B4): it is
   // active again AND already in the queued set -> alreadyQueued must block a second row.
   reservation.status = "REBALANCE_PENDING";
-  const second = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: finalFn });
+  const second = await runEventRebalance(IN_WINDOW_MS, { write: true }, deps);
   assert.equal(second.already_queued_count, 1);
   assert.equal(second.queued_count, 0);
   assert.equal(repo.queueRows.length, 1, "duplicate invocation must not create a second queue row");
@@ -1353,16 +1425,13 @@ test("CERT-NEG: no identity persisted on the reservation -> SKIPPED CONTRACT_A_A
   );
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE: IDENTITY_NOT_PERSISTED/);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_RESERVATION_LINEAGE_INCOMPLETE/);
 });
 
-test("CERT-NEG: identity ambiguous (two finals carry the stored IDs) -> fail closed, no row", async () => {
-  const repo = makeFakeRepo([chicagoPlanningReservation()]);
-  const a = chicagoFinalCandidate({ market_slug: "a" });
-  const b = chicagoFinalCandidate({ market_slug: "b" }); // identical stored identity
-  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo, fetchCandidates: async () => ({ candidates: [] }), fetchContractAFinalCandidates: async () => ({ candidates: [a, b] }) });
-  assert.equal(result.queued_count, 0);
-  assert.match(repo.skippedCalls[0].reason, /AMBIGUOUS_IDENTITY_MATCH/);
+test("CERT-NEG: the typed Final Identity producer explicitly fails closed unless exactly one candidate matches", () => {
+  const source = readFileSync(path.join(root, "lib/executor/contractADecisions.ts"), "utf8");
+  assert.match(source, /if \(matches\.length !== 1\)/);
+  assert.match(source, /matches\.length === 0 \? "NO_FINAL_IDENTITY_CANDIDATE" : "AMBIGUOUS_FINAL_IDENTITY_CANDIDATE"/);
 });
 
 test("CERT-NEG: outside timing window (before T-70) -> not due, no queue row", async () => {
@@ -1376,13 +1445,18 @@ test("CERT-NEG: non-executable final candidate (missing token_id) -> SKIPPED, no
   const { repo, result } = await runCanonicalProducer({}, { token_id: "" });
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_MARKET_(NOT_FOUND|NOT_EXECUTABLE)/);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_FINAL_IDENTITY_REJECTED: NO_FINAL_IDENTITY_CANDIDATE/);
 });
 
 test("CERT-NEG: invalid stake (non-positive) on final candidate -> not executable, no queue row", async () => {
-  const { repo, result } = await runCanonicalProducer({}, { stake_usd: 0 });
+  const repo = makeFakeRepo([baseReservation()]);
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, {
+    repo,
+    fetchCandidates: async () => ({ candidates: [baseCandidate({ stake_usd: 0 })] }),
+  });
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
+  assert.match(result.outcomes[0]?.reason ?? "", /RESERVATION_REQUIRED_USE_EVENT_REBALANCE/);
 });
 
 test("CERT-NEG: partially persisted identity (condition_id only) -> IDENTITY_INCOMPLETE with the exact missing-field code", async () => {
@@ -1394,7 +1468,7 @@ test("CERT-NEG: partially persisted identity (condition_id only) -> IDENTITY_INC
     },
   });
   assert.equal(result.queued_count, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_AUTHORITATIVE_IDENTITY_INCOMPLETE: TOKEN_ID_MISSING/);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_RESERVATION_LINEAGE_INCOMPLETE/);
 });
 
 test("CERT-NEG: queue-route serializer exposes no secret-bearing field (no diagnostics blob, no source_signal_id, no keys/tokens beyond order identity)", async () => {

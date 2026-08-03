@@ -1108,14 +1108,18 @@ export async function runEventRebalance(
   // Existing READY/SENT queue rows so we never double-queue a reservation.
   const alreadyQueued = await repo.loadQueuedReservationIds();
 
-  // Load current markets once; Contract A planning reservations additionally
-  // resolve their final authoritative decision at the due-event boundary.
-  const { candidates: universe } = await fetchCandidates();
+  // Queue writes are Contract A only. Broad candidates remain read-only
+  // diagnostic input and can never select a production Queue row.
+  const requireContractAFinalIdentity = write;
+  // Broad candidates are read-only diagnostic input only after this cutoff.
+  const { candidates: universe } = requireContractAFinalIdentity
+    ? { candidates: [] as FireModelCandidate[] }
+    : await fetchCandidates();
   const hasContractAPlanning = due.some((r) => r.diagnostics?.contract_a_stage === "PLANNING");
   // Legacy in-memory seams without the persisted-row loader retain the prior
   // candidate fixture behavior. Production has the bounded loader above and
   // therefore always enters the typed Final Identity Decision boundary.
-  const contractAFinalUniverse = hasContractAPlanning && !fetchFinalIdentitySourceRows
+  const contractAFinalUniverse = !requireContractAFinalIdentity && hasContractAPlanning && !fetchFinalIdentitySourceRows
     ? (await fetchContractAFinalCandidates()).candidates
     : [];
   const marketsByKey = new Map<string, FireModelCandidate[]>();
@@ -1142,7 +1146,11 @@ export async function runEventRebalance(
       continue;
     }
     const selection =
-      reservation.diagnostics?.contract_a_stage === "PLANNING" && fetchFinalIdentitySourceRows
+      requireContractAFinalIdentity && reservation.diagnostics?.contract_a_stage !== "PLANNING"
+        ? { outcome: "SKIPPED" as const, reason: "RESERVATION_REQUIRED_USE_EVENT_REBALANCE", queueRow: null }
+        : requireContractAFinalIdentity && !fetchFinalIdentitySourceRows
+          ? { outcome: "SKIPPED" as const, reason: "FINAL_IDENTITY_DEPENDENCY_REQUIRED", queueRow: null }
+        : reservation.diagnostics?.contract_a_stage === "PLANNING" && fetchFinalIdentitySourceRows
         ? await selectQueueRowFromContractAReservation(
             reservation,
             rebalanceRunId,
@@ -1365,6 +1373,8 @@ export async function runControlledLiveIntent(
     repo?: RebalanceRepoPort;
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     fetchContractAFinalCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+    fetchFinalIdentitySourceRows?: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>;
+    fetchExactTokenOrderbook?: (tokenId: string) => Promise<FetchOrderBookResult>;
   } = {}
 ): Promise<ControlledLiveIntentResult> {
   const validation = validateControlledLiveIntentRequest(requestedTestId);
@@ -1386,6 +1396,12 @@ export async function runControlledLiveIntent(
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
       return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_V1");
     });
+  const fetchFinalIdentitySourceRows =
+    deps.fetchFinalIdentitySourceRows ??
+    (repo.loadFinalIdentitySourceRows
+      ? (reservation: NightEventReservationRow) => repo.loadFinalIdentitySourceRows!(reservation)
+      : null);
+  const fetchExactTokenOrderbook = deps.fetchExactTokenOrderbook ?? fetchOrderBook;
 
   if (!repo.findQueueRowsByRebalanceRunId) {
     throw new Error(
@@ -1417,9 +1433,14 @@ export async function runControlledLiveIntent(
   }
 
   const alreadyQueued = await repo.loadQueuedReservationIds();
-  const { candidates: universe } = await fetchCandidates();
+  const requireContractAFinalIdentity = write;
+  const { candidates: universe } = requireContractAFinalIdentity
+    ? { candidates: [] as FireModelCandidate[] }
+    : await fetchCandidates();
   const hasContractAPlanning = due.some((r) => r.diagnostics?.contract_a_stage === "PLANNING");
-  const contractAFinalUniverse = hasContractAPlanning ? (await fetchContractAFinalCandidates()).candidates : [];
+  const contractAFinalUniverse = !requireContractAFinalIdentity && hasContractAPlanning
+    ? (await fetchContractAFinalCandidates()).candidates
+    : [];
   const marketsByKey = new Map<string, FireModelCandidate[]>();
   for (const c of universe) {
     const arr = marketsByKey.get(c.match_family_key) ?? [];
@@ -1431,7 +1452,18 @@ export async function runControlledLiveIntent(
 
   for (const reservation of due) {
     if (reservation.id && alreadyQueued.has(reservation.id)) continue;
-    const selection = selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
+    if (requireContractAFinalIdentity && reservation.diagnostics?.contract_a_stage !== "PLANNING") continue;
+    if (requireContractAFinalIdentity && !fetchFinalIdentitySourceRows) continue;
+    const selection =
+      requireContractAFinalIdentity
+        ? await selectQueueRowFromContractAReservation(
+            reservation,
+            rebalanceRunId,
+            nowMs,
+            fetchFinalIdentitySourceRows!,
+            fetchExactTokenOrderbook
+          )
+        : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
     if (selection.outcome !== "QUEUED" || !selection.queueRow) continue;
 
     const controlledRow = applyControlledLiveIntentOverrides(selection.queueRow);
