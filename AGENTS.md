@@ -17,6 +17,8 @@
 
 ChatGPT Saved Memory is NOT project source of truth.
 
+`PROMPT__PROTOCOL.md` (repo root) is the Tier 0 canonical owner of prompt authoring, routing, completion, roadmap/value handoff and continuation. Read it before every executor prompt or Prompt Completion task. Subordinate execution/value documents (e.g. `SMALL_TASK_EXECUTION_AND_VALUE_PROTOCOL.md`) may add narrower rules but cannot replace it.
+
 ## 2. Role split
 
 | Agent | Role | Must NOT do |

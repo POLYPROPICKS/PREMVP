@@ -33,7 +33,7 @@ Zone allow/forbid rules are canonical in `TASK_ROUTING_MATRIX.md §3`. If a task
 
 ## 4. Claude Code task prompt template (reusable)
 
-Every executor prompt must carry all fields below. The architect/operator preface that precedes it is canonical in `SMALL_TASK_EXECUTION_AND_VALUE_PROTOCOL.md §21`; a prompt missing any field here is incomplete and must not be executed.
+Every executor prompt must carry all fields below. `PROMPT__PROTOCOL.md` (repo root) is the Tier 0 canonical owner of prompt routing and completion; its §5–6 point here and to `SMALL_TASK_EXECUTION_AND_VALUE_PROTOCOL.md §21` for the architect/operator preface. A prompt missing any field here is incomplete and must not be executed.
 
 ```
 ROADMAP POSITION: [exact phase / commit position]
@@ -78,7 +78,7 @@ STOP CONDITIONS ENCOUNTERED: none / [list]
 GATE 1 VERDICT: PASS / FAIL / STOP
 ```
 
-The response must close with the completion-report fields required by `SMALL_TASK_EXECUTION_AND_VALUE_PROTOCOL.md §22` — actual MODEL, MODEL LEVEL, SESSION MODE, EXECUTION ENVIRONMENT, ROADMAP POSITION, VALUE DELIVERED, CURRENT PRODUCTION VERDICT, SUCCESS TRANSITION, NEXT TWO VALUE STEPS, DISTANCE TO LIVE MILESTONE, and exactly one FOUNDER ACTION. §22 also governs automatic continuation, the single-attempt repair limit, and what a STOP report must preserve.
+The response must close with the completion-report fields required by `PROMPT__PROTOCOL.md §16` (detailed schema: `SMALL_TASK_EXECUTION_AND_VALUE_PROTOCOL.md §22`) — actual MODEL, MODEL LEVEL, SESSION MODE, EXECUTION ENVIRONMENT, ROADMAP POSITION, VALUE DELIVERED, CURRENT PRODUCTION VERDICT, SUCCESS TRANSITION, NEXT TWO VALUE STEPS, DISTANCE TO LIVE MILESTONE, and exactly one FOUNDER ACTION. `PROMPT__PROTOCOL.md §16–17` also governs automatic continuation, the single-attempt repair limit, and what a STOP report must preserve.
 
 ## 6. Inspect-only response schema
 
