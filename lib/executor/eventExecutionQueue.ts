@@ -15,6 +15,11 @@
 
 import { createHash } from "crypto";
 import type { FireModelCandidate } from "./buildFireModelCandidates";
+import {
+  produceContractAFinalIdentityDecision,
+  type ContractAFinalIdentityDecision,
+  type ContractAPlanningDecision,
+} from "./contractADecisions";
 import { compareCandidateQuality } from "./nightPortfolioPlanner";
 import { FROZEN_MODEL_V2_VERSION } from "@/lib/modeling/frozenModelProducerV2Shadow";
 import {
@@ -43,8 +48,27 @@ import {
 } from "./executableMarketIdentity";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
+import { fetchOrderBook } from "@/lib/liquidity/polymarketClient";
+import { computeBuyableUsdAtSlippage, computeSpread, getBestBidAsk } from "@/lib/liquidity/orderbookMath";
+import type { FetchOrderBookResult } from "@/lib/liquidity/types";
 
 const PLAN_POOL = 200;
+
+type FinalIdentitySourceRow = Record<string, unknown>;
+
+function queueIdentityKeys(
+  reservation: NightEventReservationRow,
+  identity: { condition_id: string; token_id: string; side: string }
+): { orderKey: string; idempotencyKey: string; physicalEventId: string; eventStartIso: string } {
+  const physicalEventId = reservation.physical_event_id ?? reservation.match_family_key;
+  const eventStartIso = reservation.event_start_iso ?? reservation.game_start_iso;
+  const orderKey = `${identity.condition_id}:${identity.token_id}:${identity.side}`;
+  const idempotencyKey = createHash("sha256")
+    .update(`${reservation.id ?? reservation.plan_run_id}__${physicalEventId}__${eventStartIso}__${orderKey}`)
+    .digest("hex")
+    .slice(0, 32);
+  return { orderKey, idempotencyKey, physicalEventId, eventStartIso };
+}
 
 // Mirror of /api/executor/night-plan halftime block (P0E_BLOCK_HALFTIME_MARKETS_V1).
 // IMPORTANT: detection must use only market IDENTITY fields (slug/title/key),
@@ -173,11 +197,7 @@ export function buildQueueRow(
   rebalanceRunId: string
 ): EventExecutionQueueRow {
   const reservationStartMs = Date.parse(reservation.game_start_iso);
-  const orderKey = `${best.condition_id}:${best.token_id}:${best.side}`;
-  const idem = createHash("sha256")
-    .update(`${reservation.plan_run_id}__${orderKey}`)
-    .digest("hex")
-    .slice(0, 32);
+  const { orderKey, idempotencyKey, physicalEventId, eventStartIso } = queueIdentityKeys(reservation, best);
   const reservationSelectorId = (reservation.diagnostics ?? {}).selector_id;
   const isContractA = typeof reservationSelectorId === "string" && reservationSelectorId.trim() !== "";
   return {
@@ -211,7 +231,7 @@ export function buildQueueRow(
       : `REBALANCE_SINGLE_BEST_MARKET: tier=${EXECUTABLE_TIER} score=${best.diagnostics.score} cov=${best.diagnostics.coverage}`,
     status: "READY",
     order_key: orderKey,
-    idempotency_key: idem,
+    idempotency_key: idempotencyKey,
     diagnostics: {
       hours_to_start: best.diagnostics.hours_to_start_now,
       timing_bucket: best.timing_bucket,
@@ -220,6 +240,8 @@ export function buildQueueRow(
       max_entry_price: best.max_entry_price,
       source_signal_id: resolveQueueSourceSignalId(best),
       battle_trace_id: `contur3:${reservation.plan_run_id}:${reservation.match_family_key}:${best.condition_id}:${best.token_id}`,
+      physical_event_id: physicalEventId,
+      event_start_iso: eventStartIso,
       // R0E parity surface: the identity the Reservation stored, copied verbatim
       // alongside the executed condition_id/token_id/side columns above so the
       // planning -> reservation -> rebalance -> queue chain can be compared by ID.
@@ -236,6 +258,63 @@ export function buildQueueRow(
             authoritative_event_key: (reservation.diagnostics ?? {}).authoritative_event_key,
           }
         : {}),
+    },
+  };
+}
+
+function buildQueueRowFromFinalIdentity(
+  reservation: NightEventReservationRow,
+  decision: ContractAFinalIdentityDecision,
+  rebalanceRunId: string,
+  refresh: { timestamp: string; latencyMs: number; executablePrice: number; executableDepth: number; spread: number }
+): EventExecutionQueueRow {
+  const { orderKey, idempotencyKey, physicalEventId, eventStartIso } = queueIdentityKeys(reservation, decision);
+  const startMs = Date.parse(eventStartIso);
+  return {
+    reservation_id: reservation.id ?? null,
+    plan_run_id: reservation.plan_run_id,
+    rebalance_run_id: rebalanceRunId,
+    match_family_key: reservation.match_family_key,
+    event_title: reservation.event_title,
+    event_slug: decision.selected_market.event_slug ?? reservation.event_slug,
+    sport: decision.inferred_sport,
+    league: reservation.league,
+    game_start_iso: eventStartIso,
+    condition_id: decision.condition_id,
+    token_id: decision.token_id,
+    side: decision.side,
+    market_slug: decision.selected_market.market_slug,
+    market_title: decision.selected_market.market_slug,
+    market_family: null,
+    score: reservation.event_score,
+    coverage: null,
+    tier: reservation.event_tier ?? EXECUTABLE_TIER,
+    stake_usd: decision.price_policy.stake_usd,
+    preferred_entry_iso: preferredEntryIso(startMs),
+    latest_entry_iso: latestEntryIso(startMs),
+    selection_rank: reservation.reservation_rank ?? 1,
+    selection_reason: "CONTRACT_A_FINAL_IDENTITY_CURRENT_ORDERBOOK_GUARDED",
+    status: "READY",
+    order_key: orderKey,
+    idempotency_key: idempotencyKey,
+    diagnostics: {
+      physical_event_id: physicalEventId,
+      event_start_iso: eventStartIso,
+      contract_a_decision_version: decision.decision_version,
+      contract_a_final_identity: {
+        physical_event_id: decision.physical_event_id,
+        source_lineage: decision.source_lineage,
+        planning_lineage: decision.planning_lineage,
+      },
+      max_entry_price: decision.price_policy.max_entry_price,
+      entry_price: decision.price_policy.entry_price,
+      stake_guard_usd: decision.price_policy.stake_usd,
+      current_executable_price: refresh.executablePrice,
+      current_executable_depth_usd: refresh.executableDepth,
+      current_spread: refresh.spread,
+      orderbook_refresh_at: refresh.timestamp,
+      orderbook_refresh_latency_ms: refresh.latencyMs,
+      mechanical_guard_trace: ["FINAL_IDENTITY_ACCEPTED", "ORDERBOOK_AVAILABLE", "PRICE_CAP_OK", "SPREAD_OK", "DEPTH_OK"],
     },
   };
 }
@@ -489,6 +568,8 @@ export interface RebalanceRepoPort {
   markReservationSkipped(id: string, reason: string): Promise<void>;
   insertQueueRow(row: EventExecutionQueueRow): Promise<void>;
   markReservationQueued(id: string, reason: string): Promise<void>;
+  /** Bounded raw source rows for one persisted Contract A Reservation only. */
+  loadFinalIdentitySourceRows?(reservation: NightEventReservationRow): Promise<FinalIdentitySourceRow[]>;
   // Optional so existing normal-mode repo fakes (constructed before this method
   // existed) keep compiling unchanged. Required in practice by the controlled
   // one-shot live-intent seam, which throws if it is absent (see
@@ -557,6 +638,21 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
         .update({ status: "QUEUED", selection_reason: reason })
         .eq("id", id);
     },
+    async loadFinalIdentitySourceRows(reservation) {
+      const eventSlug = (reservation.diagnostics?.source_lineage as Record<string, unknown> | undefined)?.event_slug;
+      if (typeof eventSlug !== "string" || eventSlug.trim() === "") {
+        throw new Error("FINAL_IDENTITY_SOURCE_LINEAGE_EVENT_SLUG_MISSING");
+      }
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data, error } = await supabaseAdmin
+        .from("generated_signal_pairs")
+        .select("*")
+        .eq("event_slug", eventSlug)
+        .order("created_at", { ascending: false })
+        .limit(50);
+      if (error) throw new Error(`final identity source query failed: ${error.message}`);
+      return (data ?? []) as FinalIdentitySourceRow[];
+    },
     async findQueueRowsByRebalanceRunId(rebalanceRunId) {
       const { supabaseAdmin } = await import("@/lib/supabase/server");
       const { data, error } = await supabaseAdmin
@@ -587,6 +683,104 @@ function candidateMatchesReservationStart(
 
 function executionEventStartMismatchReason(): string {
   return "EXECUTION_EVENT_START_MISMATCH";
+}
+
+function planningDecisionFromReservation(reservation: NightEventReservationRow): ContractAPlanningDecision | null {
+  const diag = reservation.diagnostics ?? {};
+  const sourceLineage = diag.source_lineage;
+  const physicalEventId = reservation.physical_event_id;
+  const eventStartIso = reservation.event_start_iso;
+  const score = diag.planning_score ?? reservation.event_score;
+  const tier = diag.planning_tier ?? reservation.event_tier;
+  const rank = diag.planning_rank ?? reservation.reservation_rank;
+  if (
+    typeof physicalEventId !== "string" || physicalEventId === "" ||
+    typeof eventStartIso !== "string" || !Number.isFinite(Date.parse(eventStartIso)) ||
+    !sourceLineage || typeof sourceLineage !== "object" ||
+    typeof score !== "number" || !Number.isFinite(score) ||
+    typeof tier !== "string" || tier === "" ||
+    typeof rank !== "number" || !Number.isFinite(rank)
+  ) return null;
+  const lineage = sourceLineage as ContractAPlanningDecision["source_lineage"];
+  if (typeof lineage.event_slug !== "string" || lineage.event_slug === "") return null;
+  return {
+    decision_version: "CONTRACT_A_DECISION_V1",
+    contract_a_version: "CONTRACT_A_PLANNING_V1",
+    status: "ACCEPTED",
+    physical_event_id: physicalEventId,
+    source_lineage: lineage,
+    event_start_iso: eventStartIso,
+    event_start_iso_source: "source_row_game_start_iso",
+    inferred_sport: reservation.sport ?? "unknown",
+    strategic_scope: reservation.strategic_scope as ContractAPlanningDecision["strategic_scope"],
+    sport_metadata_source: (diag.sport_metadata_source as ContractAPlanningDecision["sport_metadata_source"]) ?? "unresolved",
+    league: reservation.league,
+    planning_score: score,
+    planning_tier: tier,
+    planning_rank: rank,
+    planning_policy_verdict: (diag.planning_policy_verdict as ContractAPlanningDecision["planning_policy_verdict"]) ?? null,
+    execution_window: {
+      stale_after: typeof diag.stale_after === "string" ? diag.stale_after : null,
+      no_trade_after: typeof diag.no_trade_after === "string" ? diag.no_trade_after : null,
+      timing_bucket: (diag.timing_bucket as ContractAPlanningDecision["execution_window"]["timing_bucket"]) ?? "UNKNOWN",
+    },
+    final_identity_evidence: null,
+    rejection_trace: null,
+  };
+}
+
+async function selectQueueRowFromContractAReservation(
+  reservation: NightEventReservationRow,
+  rebalanceRunId: string,
+  nowMs: number,
+  loadRows: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>,
+  fetchExactTokenOrderbook: (tokenId: string) => Promise<FetchOrderBookResult>,
+  onFinalIdentityAttempt?: () => void
+): Promise<DueReservationSelection> {
+  const planning = planningDecisionFromReservation(reservation);
+  if (!planning) return { outcome: "SKIPPED", reason: "CONTRACT_A_RESERVATION_LINEAGE_INCOMPLETE", queueRow: null };
+  let rows: FinalIdentitySourceRow[];
+  try {
+    rows = await loadRows(reservation);
+  } catch {
+    return { outcome: "SKIPPED", reason: "FINAL_IDENTITY_SOURCE_LOAD_FAILED", queueRow: null };
+  }
+  onFinalIdentityAttempt?.();
+  const result = await produceContractAFinalIdentityDecision(planning, rows);
+  if (!result.accepted) return { outcome: "SKIPPED", reason: `CONTRACT_A_FINAL_IDENTITY_REJECTED: ${result.rejection.reason_code}`, queueRow: null };
+  const final = result.decision;
+  if (!Number.isFinite(final.price_policy.stake_usd) || final.price_policy.stake_usd <= 0) {
+    return { outcome: "SKIPPED", reason: "INVALID_STAKE_USD", queueRow: null };
+  }
+  let orderbook: FetchOrderBookResult;
+  try {
+    orderbook = await fetchExactTokenOrderbook(final.token_id);
+  } catch {
+    return { outcome: "SKIPPED", reason: "EXACT_TOKEN_ORDERBOOK_FETCH_FAILED", queueRow: null };
+  }
+  if (!orderbook.ok || !orderbook.book || orderbook.book.tokenId !== final.token_id) {
+    return { outcome: "SKIPPED", reason: "EXACT_TOKEN_ORDERBOOK_UNAVAILABLE", queueRow: null };
+  }
+  const { bestBid, bestAsk } = getBestBidAsk(orderbook.book);
+  const spread = computeSpread(orderbook.book);
+  if (bestAsk === null || bestBid === null || spread === null) {
+    return { outcome: "SKIPPED", reason: "EXACT_TOKEN_ORDERBOOK_EMPTY", queueRow: null };
+  }
+  if (!Number.isFinite(final.price_policy.max_entry_price) || bestAsk > final.price_policy.max_entry_price) {
+    return { outcome: "SKIPPED", reason: "CURRENT_PRICE_EXCEEDS_CAP", queueRow: null };
+  }
+  if (!Number.isFinite(final.price_policy.max_spread) || final.price_policy.max_spread < 0 || spread > final.price_policy.max_spread) {
+    return { outcome: "SKIPPED", reason: "CURRENT_SPREAD_EXCEEDS_LIMIT", queueRow: null };
+  }
+  const depth = computeBuyableUsdAtSlippage(orderbook.book.asks, final.price_policy.max_spread / bestAsk, bestAsk);
+  if (depth === null || depth < final.price_policy.stake_usd) {
+    return { outcome: "SKIPPED", reason: "CURRENT_DEPTH_INSUFFICIENT", queueRow: null };
+  }
+  const row = buildQueueRowFromFinalIdentity(reservation, final, rebalanceRunId, {
+    timestamp: new Date(nowMs).toISOString(), latencyMs: orderbook.latencyMs,
+    executablePrice: bestAsk, executableDepth: depth, spread,
+  });
+  return { outcome: "QUEUED", reason: row.selection_reason ?? "CONTRACT_A_FINAL_IDENTITY_CURRENT_ORDERBOOK_GUARDED", queueRow: row };
 }
 
 /**
@@ -796,6 +990,9 @@ export async function runEventRebalance(
     repo?: RebalanceRepoPort;
     fetchCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
     fetchContractAFinalCandidates?: () => Promise<{ candidates: FireModelCandidate[] }>;
+    fetchFinalIdentitySourceRows?: (reservation: NightEventReservationRow) => Promise<FinalIdentitySourceRow[]>;
+    fetchExactTokenOrderbook?: (tokenId: string) => Promise<FetchOrderBookResult>;
+    onFinalIdentityAttempt?: () => void;
   } = {}
 ): Promise<RebalanceRunResult> {
   const write = opts.write === true;
@@ -814,6 +1011,12 @@ export async function runEventRebalance(
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
       return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_V1");
     });
+  const fetchFinalIdentitySourceRows =
+    deps.fetchFinalIdentitySourceRows ??
+    (repo.loadFinalIdentitySourceRows
+      ? (reservation: NightEventReservationRow) => repo.loadFinalIdentitySourceRows!(reservation)
+      : null);
+  const fetchExactTokenOrderbook = deps.fetchExactTokenOrderbook ?? fetchOrderBook;
 
   // Due reservations: active status + start within the rebalance window.
   const all = await repo.loadActiveReservations();
@@ -909,7 +1112,12 @@ export async function runEventRebalance(
   // resolve their final authoritative decision at the due-event boundary.
   const { candidates: universe } = await fetchCandidates();
   const hasContractAPlanning = due.some((r) => r.diagnostics?.contract_a_stage === "PLANNING");
-  const contractAFinalUniverse = hasContractAPlanning ? (await fetchContractAFinalCandidates()).candidates : [];
+  // Legacy in-memory seams without the persisted-row loader retain the prior
+  // candidate fixture behavior. Production has the bounded loader above and
+  // therefore always enters the typed Final Identity Decision boundary.
+  const contractAFinalUniverse = hasContractAPlanning && !fetchFinalIdentitySourceRows
+    ? (await fetchContractAFinalCandidates()).candidates
+    : [];
   const marketsByKey = new Map<string, FireModelCandidate[]>();
   for (const c of universe) {
     const arr = marketsByKey.get(c.match_family_key) ?? [];
@@ -933,7 +1141,17 @@ export async function runEventRebalance(
       plannedActions.push({ kind: "ALREADY_QUEUED", reservation });
       continue;
     }
-    const selection = selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
+    const selection =
+      reservation.diagnostics?.contract_a_stage === "PLANNING" && fetchFinalIdentitySourceRows
+        ? await selectQueueRowFromContractAReservation(
+            reservation,
+            rebalanceRunId,
+            nowMs,
+            fetchFinalIdentitySourceRows,
+            fetchExactTokenOrderbook,
+            deps.onFinalIdentityAttempt
+          )
+        : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
     if (selection.outcome === "SKIPPED") {
       plannedActions.push({ kind: "SKIPPED", reservation, reason: selection.reason, blockedCandidates: selection.blockedCandidates });
     } else {
@@ -1872,6 +2090,19 @@ export async function runFounderBattleBatch(
   }
 
   const write = opts.write === true;
+  // Queue authority is Reservation-only. Preserve this historical broad-signal
+  // path for read-only planning evidence, but block every write and direct
+  // callers to persisted Reservation rebalance.
+  if (write) {
+    return {
+      kind: "BLOCKED_GATE_DISABLED",
+      reason: "RESERVATION_REQUIRED_USE_EVENT_REBALANCE",
+      wrote_count: 0,
+      skipped_count: 0,
+      created_rows: [],
+      skipped_reasons: [],
+    };
+  }
   const repo = deps.repo ?? createSupabaseBattleBatchRepoPort();
   const rows = await repo.fetchSignalPairs();
   const { candidates, excluded } = selectFounderBattleBatchCandidates(rows, nowMs, gate.max);

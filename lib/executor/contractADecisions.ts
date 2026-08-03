@@ -64,7 +64,8 @@ export type ContractARejectionReasonCode =
   | "MISSING_SIDE"
   | "PHYSICAL_EVENT_ID_MISMATCH"
   | "EVENT_START_ISO_MISMATCH"
-  | "FINAL_IDENTITY_NOT_LIVE_ELIGIBLE";
+  | "FINAL_IDENTITY_NOT_LIVE_ELIGIBLE"
+  | "AMBIGUOUS_FINAL_IDENTITY_CANDIDATE";
 
 /**
  * One complete deterministic typed rejection trace, shaped so a later commit
@@ -190,6 +191,7 @@ export interface ContractAFinalIdentityDecision {
     max_entry_price: number;
     entry_price: number;
     stake_usd: number;
+    max_spread: number;
     live_policy_version: string;
     verdict: "ACCEPTED";
   };
@@ -509,6 +511,7 @@ export function buildContractAFinalIdentityDecision(
         max_entry_price: candidate.max_entry_price,
         entry_price: candidate.diagnostics.entry_price,
         stake_usd: candidate.stake_usd,
+        max_spread: candidate.max_spread,
         live_policy_version: candidate.live_policy_version,
         verdict: "ACCEPTED",
       },
@@ -585,17 +588,20 @@ export async function produceContractAFinalIdentityDecision(
 ): Promise<ContractADecisionResult<ContractAFinalIdentityDecision>> {
   const { candidates } = await buildFireModelCandidates(limit, "all", true, rows, "CONTRACT_A_V1");
   const byId = indexSourceRows(rows);
-  const match = candidates.find((candidate) => {
+  const matches = candidates.filter((candidate) => {
     const start = resolveContractAEventStartIso(diagnosticsOf(sourceRowFor(candidate, byId, rows)));
     return (
-      resolveContractAPhysicalEventId(candidate, start.ok ? start.iso : null) === planning.physical_event_id
+      start.ok &&
+      start.iso === planning.event_start_iso &&
+      resolveContractAPhysicalEventId(candidate, start.iso) === planning.physical_event_id
     );
   });
-  if (match === undefined) {
+  if (matches.length !== 1) {
+    const reason_code = matches.length === 0 ? "NO_FINAL_IDENTITY_CANDIDATE" : "AMBIGUOUS_FINAL_IDENTITY_CANDIDATE";
     const rejection = buildContractARejectionTrace({
       contract_a_version: "CONTRACT_A_V1",
       stage: "FINAL_IDENTITY",
-      reason_code: "NO_FINAL_IDENTITY_CANDIDATE",
+      reason_code,
       physical_event_id: planning.physical_event_id,
       source_lineage: planning.source_lineage,
     });
@@ -610,6 +616,7 @@ export async function produceContractAFinalIdentityDecision(
     );
     return { accepted: false, rejection };
   }
+  const match = matches[0];
   return buildContractAFinalIdentityDecision(
     planning,
     match,
