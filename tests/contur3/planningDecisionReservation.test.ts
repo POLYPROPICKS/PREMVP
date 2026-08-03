@@ -377,6 +377,82 @@ test("PDR-12: a TERMINAL reservation for an OLD occurrence does not block a new 
   assert.equal(plan.reservations[0].event_start_iso, KICKOFF_B);
 });
 
+const LEGACY_DATE_ONLY_ID = "event:mlb-nyy-phi-2026-07-27:2026-07-27";
+
+test("PDR-12a: an ACTIVE legacy date-only row with the same normalized start is reused, never inserted twice", async () => {
+  const plan = await planFrom([sourceRow({})]);
+  const legacy = {
+    ...plan.reservations[0],
+    id: "legacy-same-start",
+    physical_event_id: LEGACY_DATE_ONLY_ID,
+    event_start_iso: "2026-07-27T21:00:00Z",
+    status: "RESERVED" as const,
+  };
+  const repo = makeFakeRepo([legacy]);
+
+  const persisted = await persistReservationPlan(plan, {}, repo);
+
+  assert.equal(persisted.written_count, 0);
+  assert.equal(persisted.already_exists, true);
+  assert.equal(repo.insertCalls, 0);
+  assert.equal(repo.store.length, 1);
+});
+
+test("PDR-12b: an ACTIVE legacy date-only row with a different same-day start does not collapse a doubleheader", async () => {
+  const plan = await planFrom([sourceRow({ gameStartIso: KICKOFF_B, conditionId: "cond-dh-game-2", tokenId: "tok-dh-2" })]);
+  const legacy = {
+    ...plan.reservations[0],
+    id: "legacy-other-start",
+    physical_event_id: LEGACY_DATE_ONLY_ID,
+    event_start_iso: KICKOFF_A,
+    status: "RESERVED" as const,
+  };
+  const repo = makeFakeRepo([legacy]);
+
+  const persisted = await persistReservationPlan(plan, {}, repo);
+
+  assert.equal(persisted.written_count, 1);
+  assert.equal(repo.insertCalls, 1);
+  assert.equal(repo.store.length, 2);
+});
+
+test("PDR-12c: an ACTIVE legacy date-only row without an exact valid start fails closed", async () => {
+  const plan = await planFrom([sourceRow({})]);
+  const legacy = {
+    ...plan.reservations[0],
+    id: "legacy-unresolved",
+    physical_event_id: LEGACY_DATE_ONLY_ID,
+    event_start_iso: "not-a-timestamp",
+    status: "RESERVED" as const,
+  };
+  const repo = makeFakeRepo([legacy]);
+
+  await assert.rejects(
+    () => persistReservationPlan(plan, {}, repo),
+    /LEGACY_OCCURRENCE_IDENTITY_UNRESOLVED/
+  );
+  assert.equal(repo.insertCalls, 0);
+  assert.equal(repo.store.length, 1);
+});
+
+test("PDR-12d: a TERMINAL legacy date-only row does not block a new Reservation", async () => {
+  const plan = await planFrom([sourceRow({})]);
+  const legacy = {
+    ...plan.reservations[0],
+    id: "legacy-terminal",
+    physical_event_id: LEGACY_DATE_ONLY_ID,
+    event_start_iso: KICKOFF_A,
+    status: "EXPIRED" as const,
+  };
+  const repo = makeFakeRepo([legacy]);
+
+  const persisted = await persistReservationPlan(plan, {}, repo);
+
+  assert.equal(persisted.written_count, 1);
+  assert.equal(repo.insertCalls, 1);
+  assert.equal(repo.store.length, 2);
+});
+
 // ── 6. Cap and ordering ───────────────────────────────────────────────────
 
 function capRows(count: number): Record<string, unknown>[] {

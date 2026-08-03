@@ -1528,6 +1528,38 @@ export interface ReservationRepoPort {
   insert(rows: NightEventReservationRow[]): Promise<void>;
 }
 
+function legacyDateOnlyPhysicalEventId(physicalEventId: string, eventStartMs: number): string | null {
+  const match = physicalEventId.match(/^event:(.+):(\d{4}-\d{2}-\d{2})T/);
+  if (!match) return null;
+  return `event:${match[1].trim().toLowerCase()}:${new Date(eventStartMs).toISOString().slice(0, 10)}`;
+}
+
+async function findExistingReservationOccurrence(
+  repo: ReservationRepoPort,
+  current: { physicalEventId: string; eventStartMs: number; eventStartIso: string },
+  existing: readonly NightEventReservationRow[]
+): Promise<NightEventReservationRow | null> {
+  const exact = repo.findByPhysicalEventId
+    ? await repo.findByPhysicalEventId(current.physicalEventId)
+    : existing.find((row) => row.physical_event_id === current.physicalEventId) ?? null;
+  if (exact) return exact;
+
+  // Only historical slug/date identities may use this fallback. Provider-native
+  // and other exact identities remain exact-key lookups and are never downgraded.
+  const legacyId = legacyDateOnlyPhysicalEventId(current.physicalEventId, current.eventStartMs);
+  if (!legacyId || !repo.findByPhysicalEventId) return null;
+  const legacy = await repo.findByPhysicalEventId(legacyId);
+  if (!legacy || !RESERVATION_ACTIVE_STATUSES.has(String(legacy.status ?? "RESERVED"))) return null;
+
+  const legacyStartMs = Date.parse(legacy.event_start_iso ?? "");
+  if (!Number.isFinite(legacyStartMs)) {
+    throw new Error(
+      `LEGACY_OCCURRENCE_IDENTITY_UNRESOLVED: physical_event_id=${current.physicalEventId} legacy_physical_event_id=${legacyId}`
+    );
+  }
+  return legacyStartMs === current.eventStartMs ? legacy : null;
+}
+
 export function createSupabaseReservationRepoPort(): ReservationRepoPort {
   return {
     async findByPlanRunId(planRunId) {
@@ -2110,13 +2142,7 @@ export async function persistReservationPlan(
     const toInsert: NightEventReservationRow[] = [];
 
     for (const current of canonicalRows) {
-      // The real adapter reads globally by physical_event_id. The exact
-      // plan-local fallback keeps pre-existing in-memory test ports compatible;
-      // it never runs in production and does not permit legacy rows to satisfy
-      // a canonical identity request.
-      const found = repo.findByPhysicalEventId
-        ? await repo.findByPhysicalEventId(current.physicalEventId)
-        : existing.find((row) => row.physical_event_id === current.physicalEventId) ?? null;
+      const found = await findExistingReservationOccurrence(repo, current, existing);
       if (found) {
         const foundStartMs = Date.parse(found.event_start_iso ?? "");
         if (!Number.isFinite(foundStartMs) || foundStartMs !== current.eventStartMs) {
@@ -2402,13 +2428,13 @@ export function nightReservationEmail(
  */
 export async function ensureAndLoadReservations(
   nowMs: number,
-  opts: { allowCreate?: boolean } = {}
+  opts: { allowCreate?: boolean; selectorMode?: FireModelSelectorMode } = {}
 ): Promise<{ planRunId: string; reservations: NightEventReservationRow[]; created: boolean }> {
   const planRunId = buildPlanRunId(nowMs);
   let reservations = await loadReservations(planRunId);
   let created = false;
   if (reservations.length === 0 && opts.allowCreate) {
-    const plan = await buildReservationPlan(nowMs);
+    const plan = await buildReservationPlan(nowMs, { selectorMode: opts.selectorMode });
     await persistReservationPlan(plan, { force: false });
     reservations = await loadReservations(planRunId);
     created = true;
