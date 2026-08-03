@@ -1,0 +1,106 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-08-03T00:00:00Z",
+
+  "_evidence_classes": ["PROVEN_IN_RUNTIME", "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT", "SUPPORTED", "NOT_PROVEN"],
+  "_verdicts": ["PROVEN", "FAILED", "NOT_PROVEN", "NOT_AVAILABLE"],
+
+  "access_surface_policy": {
+    "rule": "An access surface is how the Founder reaches an execution target. It is NOT a separate runtime and MUST NOT be registered as a separate executor.",
+    "surfaces": [
+      { "id": "CLOUD_WEB", "reaches": "claude_code_cloud" },
+      { "id": "CLOUD_MOBILE", "reaches": "claude_code_cloud" },
+      { "id": "DESKTOP", "reaches": "local_codex_windows" },
+      { "id": "MOBILE_REMOTE", "reaches": "local_codex_windows", "via": "Codex Remote", "note": "Codex Remote is an access surface to local_codex_windows. It does not remove local host dependency; it only removes the need for the Founder to sit at the Windows terminal." }
+    ]
+  },
+
+  "execution_targets": [
+    {
+      "executor_id": "claude_code_cloud",
+      "runtime": "claude_code_cloud",
+      "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "host_dependency": false,
+      "access_surfaces": ["CLOUD_WEB", "CLOUD_MOBILE"],
+      "founder_terminal_required": false,
+      "user_scoped_agents_available": false,
+      "project_scoped_agents_available": false,
+      "cross_host_portable": true,
+      "restrictions": [
+        "No access to the Windows worktree C:\\WORK\\KalshiProPulse\\sipropicks-premvp1-1",
+        "No access to user-scoped Codex agents (Weather / Contur reviewers)",
+        "No Ireland runtime access",
+        "Ephemeral container — anything not committed and pushed is lost"
+      ],
+      "capabilities": [
+        { "capability": "REPOSITORY_READ", "verdict": "PROVEN", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002", "proven_at": "2026-08-03T00:00:00Z", "expires_when": "repository access configuration changes" },
+        { "capability": "DEPENDENCY_INSTALL", "verdict": "PROVEN", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002", "proven_at": "2026-08-03T00:00:00Z", "detail": "npm ci exit 0, git status clean afterwards", "expires_when": "package.json or package-lock.json changes materially" },
+        { "capability": "TYPECHECK", "verdict": "PROVEN", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002", "proven_at": "2026-08-03T00:00:00Z", "detail": "npx tsc --noEmit exit 0", "expires_when": "typescript config changes" },
+        { "capability": "BUILD", "verdict": "PROVEN", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002", "proven_at": "2026-08-03T00:00:00Z", "detail": "npm run build exit 0", "expires_when": "build toolchain changes" },
+        { "capability": "DATABASE_READ", "verdict": "PROVEN", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002", "proven_at": "2026-08-03T00:00:00Z", "detail": "authenticated Supabase SELECT via npx tsx scripts/verify-executor-queue.ts", "expires_when": "Supabase credentials rotate" },
+        { "capability": "DATABASE_WRITE", "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null, "note": "Not tested. Must not be routed until separately proven and authorized." },
+        { "capability": "PRODUCTION_HTTPS_READ", "verdict": "PROVEN", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002", "proven_at": "2026-08-03T00:00:00Z", "expires_when": "network policy changes" },
+        { "capability": "GIT_PUSH_FEATURE_BRANCH", "verdict": "PROVEN", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "EVIDENCE_LEDGER#EV-0005", "proven_at": "2026-08-03T00:00:00Z", "proven_sha": "6e593a5d0e66e50941f130f7792f67e487dbb347", "expires_when": "repository permissions change" },
+        { "capability": "IRELAND_RUNTIME_ACCESS", "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null },
+        { "capability": "WEATHER_GATE_REVIEW", "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null, "note": "Reviewer is user-scoped to Codex on the Windows host." },
+        { "capability": "CONTUR_GATE_REVIEW", "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null, "note": "Reviewer is user-scoped to Codex on the Windows host." },
+        { "capability": "DEPLOY", "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null }
+      ]
+    },
+    {
+      "executor_id": "local_codex_windows",
+      "runtime": "local_codex_windows",
+      "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "worktree": "C:\\WORK\\KalshiProPulse\\sipropicks-premvp1-1",
+      "host_dependency": true,
+      "access_surfaces": ["DESKTOP", "MOBILE_REMOTE"],
+      "founder_terminal_required": false,
+      "founder_terminal_required_note": "false when accessed through Codex Remote; the Windows host must still be online",
+      "user_scoped_agents_available": true,
+      "project_scoped_agents_available": false,
+      "cross_host_portable": false,
+      "restrictions": [
+        "Requires the Windows host to be powered on and reachable",
+        "Reviewers are user-scoped (C:\\Users\\Alex\\.codex\\agents), not tracked in the repository",
+        "Reviewer invocation is not deterministic — no required receipt and no tracked CI gate exist yet",
+        "Cloud sessions MUST NOT attempt to read or modify the Windows paths"
+      ],
+      "capabilities": [
+        { "capability": "REPOSITORY_READ", "verdict": "PROVEN", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003", "proven_at": "2026-08-03T00:00:00Z", "expires_when": "host worktree moves" },
+        { "capability": "LOCAL_TEST_RUN", "verdict": "PROVEN", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT", "evidence_ref": "EVIDENCE_LEDGER#EV-0004", "proven_at": "2026-08-03T00:00:00Z", "proven_sha": "76a1590caf34f25ef15de6c45f51e52045447bd2", "detail": "controlled-live test-file runs completed normally; dependency and tsx resolution PASS", "expires_when": "host toolchain changes" },
+        { "capability": "WEATHER_GATE_REVIEW", "verdict": "PROVEN", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003", "proven_at": "2026-08-03T00:00:00Z", "detail": "codex.agent.weather_gate_reviewer.v0 present as a user-scoped agent (availability proven; deterministic invocation NOT proven)", "expires_when": "user agent config changes" },
+        { "capability": "CONTUR_GATE_REVIEW", "verdict": "PROVEN", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003", "proven_at": "2026-08-03T00:00:00Z", "detail": "codex.agent.contur_gate_reviewer present as a user-scoped agent (availability proven; deterministic invocation NOT proven)", "expires_when": "user agent config changes" },
+        { "capability": "DETERMINISTIC_REVIEWER_INVOCATION", "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": "EVIDENCE_LEDGER#EV-0003", "proven_at": null, "expires_when": null, "note": "No required invocation receipt, no deterministic gate, no project-scoped agent package, no tracked CI gate." },
+        { "capability": "DATABASE_READ", "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null },
+        { "capability": "DATABASE_WRITE", "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null },
+        { "capability": "IRELAND_RUNTIME_ACCESS", "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null },
+        { "capability": "DEPLOY", "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null }
+      ]
+    },
+    {
+      "executor_id": "ireland_local",
+      "runtime": "ireland_local",
+      "repository_scope": ["UNPROVEN_REMOTE_IDENTITY"],
+      "host_dependency": true,
+      "access_surfaces": [],
+      "founder_terminal_required": true,
+      "user_scoped_agents_available": false,
+      "project_scoped_agents_available": false,
+      "cross_host_portable": false,
+      "boundary_status": "PROTECTED_EXECUTION_TARGET_BOUNDARY_ONLY",
+      "restrictions": [
+        "Registered as a protected boundary only",
+        "No access attempted or permitted in Architect Control Plane Phase 1/2",
+        "No Ireland agents exist and none may be created in this phase",
+        "Ireland implementation prompts may never be mixed with PREMVP implementation prompts"
+      ],
+      "capabilities": [
+        { "capability": "REPOSITORY_READ", "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null },
+        { "capability": "RUNTIME_ACCESS", "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null },
+        { "capability": "REMOTE_IDENTITY", "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null },
+        { "capability": "AGENT_AVAILABILITY", "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null },
+        { "capability": "DEPLOY", "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null }
+      ]
+    }
+  ]
+}

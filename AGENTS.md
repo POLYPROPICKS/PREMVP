@@ -5,6 +5,32 @@
 <!-- OWNER: Founder/Operator -->
 <!-- MONITORING CHECK: Agent behavior audited against §3 forbidden list and §5 stop conditions -->
 
+## 0. Architect Control Plane — highest-priority entrypoint
+
+Canonical artifacts live in `/docs/ai-context/control-plane/` and are read before the
+hierarchy in §1:
+
+- `ARCHITECT_CONTROL_PLANE.yaml` — read first (policy, boundaries, source authority).
+- `CURRENT_STATE.yaml` — read before planning. **The only** current operational state
+  artifact. Legacy state documents cannot override it; `EVIDENCE_LEDGER.md` is history only.
+- `ROUTING_AND_PIPELINES.yaml` — executor and reviewer selection, by risk class only.
+- `PROMPT__PROTOCOL.md` — contract for every executor prompt.
+- `COMPLETION_ENVELOPE.schema.json` — contract for every executor result.
+- `CAPABILITY_MATRIX.yaml` — environment-specific paths, repositories and shells.
+
+Two corrections this makes to the rest of this file:
+
+1. **§4 is environment-specific and superseded.** The Windows repo path and "Windows CMD
+   preferred" line describe `local_codex_windows` only. Do **not** hardcode Windows as the
+   only execution environment — read the executor's row in `CAPABILITY_MATRIX.yaml`.
+2. **PREMVP and Ireland implementation prompts must remain separate.** One executor prompt
+   targets exactly one repository boundary; mixing them is `PROMPT_GATE_BLOCKED`.
+
+Legacy duplicates are not resolved file-by-file. Their authority and supersession status
+is registered centrally in `ARCHITECT_CONTROL_PLANE.yaml → superseded_or_legacy_sources`.
+
+Verify with `npm run control-plane:check`.
+
 ## 1. Source-of-truth hierarchy
 
 ```
