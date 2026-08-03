@@ -15,7 +15,10 @@ These fields are independent. A future-phase readiness gap does not change a pro
 
 - Missing evidence for the current scope produces `CURRENT_SCOPE_VERDICT: BLOCKED`.
 - A proven contradiction of a current-scope requirement produces `CURRENT_SCOPE_VERDICT: FAIL`.
-- Missing evidence for a future phase does not block the current scope; report `NEXT_PHASE_READINESS: NOT_READY` or `NOT_IN_SCOPE` as applicable.
+- `NEXT_PHASE_READINESS: READY` only when the next phase is explicitly named and its readiness is fully proven by evidence.
+- `NEXT_PHASE_READINESS: NOT_READY` when the next phase is explicitly named and readiness evidence is absent, incomplete, or has not passed its gate.
+- `NEXT_PHASE_READINESS: NOT_IN_SCOPE` only when the next phase is not named in the evidence packet or is explicitly excluded from the requested review scope without a readiness request.
+- If current scope is proven and Ireland/callback is named as the next phase but readiness evidence is absent, return `CURRENT_SCOPE_VERDICT: PASS` and `NEXT_PHASE_READINESS: NOT_READY`.
 - Missing evidence is not a source defect.
 
 ## Boundary
