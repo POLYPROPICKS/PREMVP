@@ -5,6 +5,10 @@
 <!-- OWNER: Founder/Operator -->
 <!-- MONITORING CHECK: Agent behavior audited against §3 forbidden list and §5 stop conditions -->
 
+## Contur independent authority review
+
+For every Codex Contur/Queue patch or authority-gate task, the parent must collect a bounded evidence packet and automatically invoke `contur_gate_reviewer` before declaring the gate result. The Founder must not open or manage a separate reviewer chat. If the reviewer is unavailable, STOP; the parent must not self-review. `weather_gate_reviewer` is permitted only for explicit Weather Model tasks and must not be used for Contur/Queue work.
+
 ## 1. Source-of-truth hierarchy
 
 ```

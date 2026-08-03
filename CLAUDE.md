@@ -4,6 +4,10 @@
 <!-- TOKEN LOADING RULE: ALWAYS load. Never skip. Tier 0. -->
 <!-- MONITORING CHECK: First response must include task classification + execution mode + stop conditions -->
 
+## Contur reviewer invocation
+
+For a Claude Code Contur/Queue patch or authority-gate task, after collecting tests, diff, and build evidence, the main agent must automatically invoke `contur-gate-reviewer` with a bounded evidence packet and wait for its result. No separate Founder action is required. If the subagent is unavailable, STOP; do not self-review. Do not use the Weather reviewer for Contur work.
+
 ## 1. Roles
 
 **Claude Chat**: planner/architecture reviewer/Claude Code prompt generator/monitoring auditor. Classifies tasks, plans patches, writes Claude Code prompts, reviews evidence. Does NOT edit repo files directly. Output for implementation tasks = one ready-to-paste Claude Code block.
