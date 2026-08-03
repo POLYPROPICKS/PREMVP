@@ -686,6 +686,22 @@ type ModelSportResolution = {
   malformedProviderSportCode: boolean;
 };
 
+/**
+ * Additive Contract A seam (Commit A). The Contract A decision contracts must
+ * be able to recover the REAL upstream sport metadata for a row whose
+ * CONTRACT_A_V1 candidate carries the hardcoded `unknown`/`OTHER`
+ * placeholders. It re-uses `resolveModelSport` verbatim -- deliberately not a
+ * second, parallel resolver -- so `MODEL_SCOPE_BY_PROVIDER_SPORT_CODE` and
+ * `resolveModelSport` remain the sole sport resolvers (gate G6). Read-only:
+ * this export changes no candidate, no route and no production behavior.
+ */
+export function resolveContractASportMetadata(
+  diag: Record<string, unknown>,
+  identityText: string
+): ModelSportResolution {
+  return resolveModelSport(diag, identityText);
+}
+
 function resolveModelSport(diag: Record<string, unknown>, identityText: string): ModelSportResolution {
   const rawProviderSportCodeValue = diag.providerSportCode;
   const providerSportCodeKeyPresent =
