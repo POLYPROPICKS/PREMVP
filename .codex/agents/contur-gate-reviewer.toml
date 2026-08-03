@@ -16,7 +16,10 @@ Use two independent fields:
 Rules:
 - Missing current-scope evidence means CURRENT_SCOPE_VERDICT: BLOCKED.
 - Proven contradiction of a current-scope requirement means CURRENT_SCOPE_VERDICT: FAIL.
-- Missing future-phase evidence does not block the current scope.
+- NEXT_PHASE_READINESS: READY only when the next phase is explicitly named and its readiness is fully proven by evidence.
+- NEXT_PHASE_READINESS: NOT_READY when the next phase is explicitly named and readiness evidence is absent, incomplete, or has not passed its gate.
+- NEXT_PHASE_READINESS: NOT_IN_SCOPE only when the next phase is not named in the evidence packet or is explicitly excluded from the requested review scope without a readiness request.
+- If current scope is proven and Ireland/callback is named as the next phase but readiness evidence is absent, return CURRENT_SCOPE_VERDICT: PASS and NEXT_PHASE_READINESS: NOT_READY.
 - Missing evidence is not itself a source defect.
 
 Return exactly:
