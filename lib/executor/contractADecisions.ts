@@ -230,6 +230,20 @@ export function resolveContractASourceLineage(
 }
 
 /**
+ * The collision-safe occurrence stamp for a fallback physical event id.
+ *
+ * The calendar DATE alone is NOT an occurrence: a doubleheader — same event
+ * slug, same day, two separate kickoffs — is two distinct physical events, and
+ * a date-truncated key silently merged them into one Reservation. The exact
+ * start instant is used instead, normalized through `toISOString()` so that
+ * `...T21:00:00Z` and `...T21:00:00.000Z` remain ONE identity across runs.
+ */
+function canonicalOccurrenceStamp(iso: string): string {
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? new Date(ms).toISOString() : iso;
+}
+
+/**
  * THE physical event a Contract A decision is about — one identity, owned by
  * Contract A, identical at both stages.
  *
@@ -239,7 +253,8 @@ export function resolveContractASourceLineage(
  * the SAME physical event, so a decision keyed by the producer would silently
  * fail to bind its own final stage. The canonical identity is therefore built
  * from the two surfaces both stages carry unchanged: the event slug and the
- * canonical event start date.
+ * exact canonical event start instant (never the calendar date alone — see
+ * `canonicalOccurrenceStamp`).
  *
  * Returns null rather than inventing an identity.
  */
@@ -253,7 +268,7 @@ export function resolveContractAPhysicalEventId(
   if (providerKey !== null) return `provider:${providerKey.toLowerCase()}`;
   const slug = nonEmpty(candidate.event_slug);
   if (slug !== null && eventStartIso !== null && /^\d{4}-\d{2}-\d{2}T/.test(eventStartIso)) {
-    return `event:${slug.trim().toLowerCase()}:${eventStartIso.slice(0, 10)}`;
+    return `event:${slug.trim().toLowerCase()}:${canonicalOccurrenceStamp(eventStartIso)}`;
   }
   return nonEmpty(candidate.canonical_event_key) ?? nonEmpty(candidate.match_family_key);
 }

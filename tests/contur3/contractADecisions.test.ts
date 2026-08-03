@@ -112,8 +112,10 @@ test("CA-P2: the Planning Decision preserves the exact physical_event_id produce
   // The producer's OWN keys disagree across the two Contract A stages for the
   // same physical event (planning derives `pair:...`, the final adapter
   // derives `slug:...`). The decision contract therefore owns ONE canonical
-  // identity, built from the event slug + canonical event start date.
-  assert.equal(r.decision.physical_event_id, "event:mlb-nyy-phi-2026-07-27:2026-07-27");
+  // identity, built from the event slug + the EXACT canonical event start
+  // instant -- never the calendar date alone, which collided two kickoffs of a
+  // same-day doubleheader into a single physical event.
+  assert.equal(r.decision.physical_event_id, "event:mlb-nyy-phi-2026-07-27:2026-07-27T21:00:00.000Z");
   const { candidates } = await at(PLANNING_NOW_MS, () =>
     buildFireModelCandidates(100_000, "all", true, [SOURCE_ROW], "CONTRACT_A_PLANNING_V1")
   );

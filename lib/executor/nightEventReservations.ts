@@ -40,6 +40,10 @@ import {
   type NightWindow,
 } from "./nightWindow";
 import type { NightEventReservationRow } from "./executorQueueTypes";
+import type {
+  ContractADecisionResult,
+  ContractAPlanningDecision,
+} from "./contractADecisions";
 import {
   resolvePlanningAnchorDecision,
   type PlanningAnchorDecision,
@@ -675,6 +679,14 @@ export interface ReservationPlan {
     canary_target_requested: boolean;
     canary_target_matched_group_count: number;
     canary_target_group_key: string | null;
+    // ── Contract A planning-decision authority (present only on that path) ──
+    /** Which authority created these reservations. Absent on the legacy path. */
+    reservation_authority?: "CONTRACT_A_PLANNING_DECISION";
+    planning_decisions?: number;
+    planning_decisions_approved?: number;
+    planning_decisions_rejected?: number;
+    duplicate_rejected?: number;
+    cap_excluded?: number;
   };
 }
 
@@ -704,8 +716,41 @@ export async function buildReservationPlan(
     targetPhysicalEventKeyHash?: string;
     /** Injectable only for deterministic ambiguity testing; production always uses hashPhysicalEventKey. */
     hashPhysicalEventKey?: (key: string) => string;
+    // ── Contract A planning-decision path (see below) ──────────────────────
+    /** Source-row seam for the Contract A path. Production loads the real planning universe. */
+    fetchSourceRows?: () => Promise<readonly Record<string, unknown>[]>;
+    /** Decision seam for the Contract A path. Production uses the real Contract A producer. */
+    produceDecisions?: (
+      rows: readonly Record<string, unknown>[]
+    ) => Promise<ContractADecisionResult<ContractAPlanningDecision>[]>;
+    /** Occurrences already holding a reservation, for active duplicate protection. */
+    activeOccurrences?: readonly ReservationOccurrenceGuardRow[];
   } = {}
 ): Promise<ReservationPlan> {
+  // ── CONTRACT A PLANNING AUTHORITY ─────────────────────────────────────────
+  // In Contract A planning mode the authoritative Planning Decision -- not the
+  // legacy candidate/filter/ranking path below -- creates the Reservation.
+  // Contract A already owns sport policy, market policy, planning approval,
+  // score, tier and rank; re-deriving any of them here would be a second model
+  // authority one stage later, which is exactly the defect this replaces.
+  //
+  // The legacy candidate seam survives ONLY for callers that inject a finished
+  // candidate list (funnel audits, evidence replays, planner unit tests). No
+  // production caller injects candidates: every production entry point reaches
+  // this function with selectorMode=CONTRACT_A_PLANNING_V1 and no fetchCandidates.
+  if (
+    (deps.selectorMode ?? "CONTUR3_CURRENT") === "CONTRACT_A_PLANNING_V1" &&
+    deps.fetchCandidates === undefined
+  ) {
+    return buildContractAReservationPlan(nowMs, {
+      fetchSourceRows: deps.fetchSourceRows,
+      produceDecisions: deps.produceDecisions,
+      activeOccurrences: deps.activeOccurrences,
+      targetPhysicalEventKeyHash: deps.targetPhysicalEventKeyHash,
+      hashPhysicalEventKey: deps.hashPhysicalEventKey,
+    });
+  }
+
   const window = resolveNightWindow(nowMs);
   const planRunId = buildPlanRunId(nowMs);
   const fetchCandidates =
@@ -1518,6 +1563,511 @@ export function createSupabaseReservationRepoPort(): ReservationRepoPort {
       const { error } = await supabaseAdmin.from("night_event_reservations").insert(rows);
       if (error) throw new Error(`reservation insert failed: ${error.message}`);
     },
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CONTRACT A APPROVED PLANNING DECISION -> RESERVATION
+//
+// Authority split enforced by this section:
+//   Contract A owns  — sport policy, market policy, planning approval,
+//                      planning score, tier, rank, rejection evidence.
+//   Reservation owns — exact physical occurrence identity, active duplicate
+//                      protection, the cap, persistence, lifecycle, lineage.
+//
+// Nothing here scores, reranks, reclassifies a market, or resolves an
+// executable identity. condition_id / token_id / side belong to the later
+// Final Identity Decision and are deliberately NOT carried into a Reservation.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/** Reservation lifecycle states that still hold a physical occurrence. */
+const RESERVATION_ACTIVE_STATUSES: ReadonlySet<string> = new Set([
+  "RESERVED",
+  "REBALANCE_PENDING",
+  "QUEUED",
+]);
+
+/** Every deterministic reason a Planning Decision does not become a Reservation. */
+export type PlanningDecisionReservationReasonCode =
+  | "PLANNING_DECISION_REJECTED"
+  | "MALFORMED_EVENT_START_ISO"
+  | "OUTSIDE_RESERVATION_HORIZON"
+  | "OCCURRENCE_IDENTITY_CONFLICT"
+  | "ACTIVE_DUPLICATE"
+  | "CAP_EXCLUDED"
+  | "PERSISTENCE_VALIDATION_FAILED";
+
+/**
+ * One bounded rejection record. Carries operational identity and a stable code
+ * only — never a provider payload, market identity, token or env value.
+ */
+export interface PlanningDecisionReservationRejection {
+  reason_code: PlanningDecisionReservationReasonCode;
+  physical_event_id: string | null;
+  decision_version: string | null;
+  detail: string | null;
+}
+
+/** The minimum an existing reservation must expose to guard an occurrence. */
+export interface ReservationOccurrenceGuardRow {
+  physical_event_id?: string | null;
+  event_start_iso?: string | null;
+  status?: string | null;
+}
+
+export interface PlanningDecisionReservationResult {
+  reservations: NightEventReservationRow[];
+  rejections: PlanningDecisionReservationRejection[];
+  /** Occurrence ids admitted in Contract A order, BEFORE the cap. */
+  admittedOccurrenceIds: string[];
+  approvedCount: number;
+  rejectedCount: number;
+  duplicateRejected: number;
+  capExcluded: number;
+}
+
+/**
+ * The authoritative Contract A planning order. Rank is the model's own verdict;
+ * score and identity break ties only so the same decision set always yields the
+ * same reservation order. This is NOT a quality judgement — no legacy
+ * `compareCandidateQuality` reranking happens at the reservation stage.
+ */
+function compareContractAPlanningOrder(
+  a: ContractAPlanningDecision,
+  b: ContractAPlanningDecision
+): number {
+  if (a.planning_rank !== b.planning_rank) return a.planning_rank - b.planning_rank;
+  if (a.planning_score !== b.planning_score) return b.planning_score - a.planning_score;
+  return a.physical_event_id.localeCompare(b.physical_event_id);
+}
+
+/**
+ * Transform ONE accepted Planning Decision into ONE Reservation row.
+ *
+ * Every persisted value is carried from the decision — nothing is re-derived,
+ * re-classified or defaulted. `event_title` stays null rather than substituting
+ * a slug for a title, and the exact market identity is deliberately absent.
+ */
+function planningDecisionReservationRow(
+  decision: ContractAPlanningDecision,
+  ctx: { planRunId: string; window: NightWindow },
+  reservationRank: number
+): NightEventReservationRow {
+  return {
+    physical_event_id: decision.physical_event_id,
+    event_start_iso: decision.event_start_iso,
+    plan_run_id: ctx.planRunId,
+    plan_date_minsk: ctx.window.planDateMinsk,
+    window_start_iso: ctx.window.startIso,
+    window_end_iso: ctx.window.endIso,
+    // The canonical occurrence identity IS the reservation key: downstream
+    // exact-key joins and the capacity audit both address a physical event.
+    match_family_key: decision.physical_event_id,
+    event_slug: decision.source_lineage.event_slug,
+    event_title: null,
+    sport: decision.inferred_sport,
+    league: decision.league,
+    strategic_scope: decision.strategic_scope,
+    game_start_iso: decision.event_start_iso,
+    event_tier: decision.planning_tier,
+    event_score: decision.planning_score,
+    best_snapshot_id: decision.source_lineage.observation_id,
+    reservation_rank: reservationRank,
+    status: "RESERVED",
+    selection_reason:
+      `CONTRACT_A_PLANNING_DECISION: contract=${decision.contract_a_version} ` +
+      `decision=${decision.decision_version} rank=${decision.planning_rank} ` +
+      `tier=${decision.planning_tier}`,
+    diagnostics: {
+      reservation_authority: "CONTRACT_A_PLANNING_DECISION",
+      contract_a_stage: "PLANNING",
+      contract_a_version: decision.contract_a_version,
+      contract_a_decision_version: decision.decision_version,
+      selector_id: decision.contract_a_version,
+      // Model authority, persisted verbatim so nothing downstream recomputes it.
+      planning_score: decision.planning_score,
+      planning_tier: decision.planning_tier,
+      planning_rank: decision.planning_rank,
+      planning_policy_verdict: decision.planning_policy_verdict,
+      // Time and metadata provenance.
+      event_start_iso_source: decision.event_start_iso_source,
+      sport_metadata_source: decision.sport_metadata_source,
+      league: decision.league,
+      timing_bucket: decision.execution_window.timing_bucket,
+      stale_after: decision.execution_window.stale_after,
+      no_trade_after: decision.execution_window.no_trade_after,
+      // Source lineage, preserved exactly as Contract A resolved it. A non-UUID
+      // generated_signal_pair_id stays lineage data in this JSONB column and is
+      // never written into a uuid column.
+      source_lineage: { ...decision.source_lineage },
+      // Stage 2 identity does not exist yet and is never synthesized here.
+      battle_trace_id: `contur3:${ctx.planRunId}:${decision.physical_event_id}:pending-final-identity`,
+    },
+  };
+}
+
+/**
+ * PURE. Turns Contract A Planning Decision results into Reservation rows, and
+ * returns a deterministic reason for every decision that did not become one.
+ *
+ * Gate order is fixed: planning verdict -> canonical event time -> reservation
+ * horizon -> Contract A planning order -> active duplicate -> cap.
+ */
+export function buildReservationsFromPlanningDecisions(
+  results: readonly ContractADecisionResult<ContractAPlanningDecision>[],
+  ctx: { planRunId: string; window: NightWindow; nowMs: number },
+  activeOccurrences: readonly ReservationOccurrenceGuardRow[] = [],
+  opts: { restrictToOccurrenceIds?: ReadonlySet<string> } = {}
+): PlanningDecisionReservationResult {
+  const rejections: PlanningDecisionReservationRejection[] = [];
+  const reject = (
+    reason_code: PlanningDecisionReservationReasonCode,
+    physical_event_id: string | null,
+    decision_version: string | null,
+    detail: string | null = null
+  ) => {
+    rejections.push({ reason_code, physical_event_id, decision_version, detail });
+  };
+
+  // 1. Contract A owns approval. A rejected decision never reaches Reservation.
+  const approved: ContractAPlanningDecision[] = [];
+  let rejectedCount = 0;
+  for (const result of results) {
+    if (!result.accepted) {
+      rejectedCount += 1;
+      reject(
+        "PLANNING_DECISION_REJECTED",
+        result.rejection.physical_event_id,
+        result.rejection.decision_version,
+        result.rejection.reason_code
+      );
+      continue;
+    }
+    approved.push(result.decision);
+  }
+
+  // 2. Reservation owns the occurrence's validity in time. The event start is
+  //    validated, never reconstructed.
+  const admitted: ContractAPlanningDecision[] = [];
+  for (const decision of approved) {
+    const startMs = Date.parse(decision.event_start_iso);
+    if (!Number.isFinite(startMs)) {
+      reject(
+        "MALFORMED_EVENT_START_ISO",
+        decision.physical_event_id,
+        decision.decision_version
+      );
+      continue;
+    }
+    if (!isWithinHorizon(startMs, ctx.window, ctx.nowMs)) {
+      reject(
+        "OUTSIDE_RESERVATION_HORIZON",
+        decision.physical_event_id,
+        decision.decision_version
+      );
+      continue;
+    }
+    admitted.push(decision);
+  }
+
+  // 3. Contract A planning order — never a legacy candidate-quality rerank.
+  admitted.sort(compareContractAPlanningOrder);
+
+  const targeted =
+    opts.restrictToOccurrenceIds === undefined
+      ? admitted
+      : admitted.filter((d) => opts.restrictToOccurrenceIds!.has(d.physical_event_id));
+
+  // 4. Active duplicate protection. A TERMINAL reservation (SKIPPED / EXPIRED /
+  //    CANCELLED) holds no occurrence, so it never blocks a new one.
+  const activeStartByOccurrence = new Map<string, string | null>();
+  for (const row of activeOccurrences) {
+    const id = row.physical_event_id?.trim();
+    if (!id) continue;
+    if (!RESERVATION_ACTIVE_STATUSES.has(String(row.status ?? "RESERVED"))) continue;
+    activeStartByOccurrence.set(id, row.event_start_iso ?? null);
+  }
+
+  const reservations: NightEventReservationRow[] = [];
+  const admittedOccurrenceIds = targeted.map((d) => d.physical_event_id);
+  let duplicateRejected = 0;
+  let capExcluded = 0;
+
+  for (const decision of targeted) {
+    const occurrenceId = decision.physical_event_id;
+    if (activeStartByOccurrence.has(occurrenceId)) {
+      const heldStart = activeStartByOccurrence.get(occurrenceId) ?? "";
+      const heldMs = Date.parse(heldStart);
+      const currentMs = Date.parse(decision.event_start_iso);
+      duplicateRejected += 1;
+      if (Number.isFinite(heldMs) && heldMs !== currentMs) {
+        // Same identity, different start: the identity is wrong, not the plan.
+        reject(
+          "OCCURRENCE_IDENTITY_CONFLICT",
+          occurrenceId,
+          decision.decision_version,
+          "held_start_differs"
+        );
+      } else {
+        reject("ACTIVE_DUPLICATE", occurrenceId, decision.decision_version);
+      }
+      continue;
+    }
+    if (reservations.length >= TARGET_LIVE_SLOTS) {
+      capExcluded += 1;
+      reject("CAP_EXCLUDED", occurrenceId, decision.decision_version);
+      continue;
+    }
+    activeStartByOccurrence.set(occurrenceId, decision.event_start_iso);
+    reservations.push(
+      planningDecisionReservationRow(decision, ctx, reservations.length + 1)
+    );
+  }
+
+  return {
+    reservations,
+    rejections,
+    admittedOccurrenceIds,
+    approvedCount: approved.length,
+    rejectedCount,
+    duplicateRejected,
+    capExcluded,
+  };
+}
+
+/**
+ * The full ReservationPlan diagnostics block for the Contract A path.
+ *
+ * Legacy candidate-funnel counters have no meaning here — this path never runs
+ * anchor classification, tier classification or the fallback ladder — so they
+ * are reported as 0 rather than fabricated. The stages that DO exist carry real
+ * counts, and `first_rejection_code` still names the first gate that fired.
+ */
+function contractAPlanDiagnostics(input: {
+  window: NightWindow;
+  sourceRowCount: number;
+  decisionCount: number;
+  built: PlanningDecisionReservationResult;
+  canaryRequested: boolean;
+  canaryMatchedGroupCount: number;
+  canaryTargetGroupKey: string | null;
+}): ReservationPlan["diagnostics"] {
+  const { built } = input;
+  const bySport: Record<string, number> = {};
+  const byTier: Record<string, number> = {};
+  for (const r of built.reservations) {
+    if (r.sport) bySport[r.sport] = (bySport[r.sport] ?? 0) + 1;
+    if (r.event_tier) byTier[r.event_tier] = (byTier[r.event_tier] ?? 0) + 1;
+  }
+  const rejectionCountsByCode: Record<string, number> = {};
+  for (const rejection of built.rejections) {
+    rejectionCountsByCode[rejection.reason_code] =
+      (rejectionCountsByCode[rejection.reason_code] ?? 0) + 1;
+  }
+  const outsideHorizon = rejectionCountsByCode.OUTSIDE_RESERVATION_HORIZON ?? 0;
+  const reservedCount = built.reservations.length;
+
+  return {
+    // ── Contract A authority ────────────────────────────────────────────────
+    reservation_authority: "CONTRACT_A_PLANNING_DECISION",
+    planning_decisions: input.decisionCount,
+    planning_decisions_approved: built.approvedCount,
+    planning_decisions_rejected: built.rejectedCount,
+    duplicate_rejected: built.duplicateRejected,
+    cap_excluded: built.capExcluded,
+    // ── Real stage counts for this path ─────────────────────────────────────
+    universe_size: input.decisionCount,
+    upstream_approved_candidates: built.approvedCount,
+    upstream_rejected_candidates_dropped: built.rejectedCount,
+    unique_physical_events: new Set(built.admittedOccurrenceIds).size,
+    duplicate_events_removed: built.duplicateRejected,
+    slot_allocated: reservedCount,
+    slot_remaining: Math.max(0, TARGET_LIVE_SLOTS - reservedCount),
+    event_groups: built.admittedOccurrenceIds.length,
+    canonical_event_groups: new Set(built.admittedOccurrenceIds).size,
+    reserved_count: reservedCount,
+    by_sport: bySport,
+    by_tier: byTier,
+    skipped_outside_horizon: outsideHorizon,
+    skipped_weak_key: 0,
+    skipped_non_tier1_event: 0,
+    skipped_no_executable_anchor: 0,
+    skipped_no_fullmatch_anchor: 0,
+    skipped_no_planning_identity: 0,
+    planning_rejection_reasons: {},
+    identity_complete_count: 0,
+    source_rows: input.sourceRowCount,
+    rows_after_horizon: built.admittedOccurrenceIds.length,
+    normalized_physical_events: built.approvedCount,
+    physical_event_groups: new Set(built.admittedOccurrenceIds).size,
+    authoritative_candidates: built.approvedCount,
+    planning_eligible_events: built.admittedOccurrenceIds.length,
+    executable_anchor_candidates: 0,
+    fullmatch_anchor_candidates: 0,
+    planning_identity_candidates: built.approvedCount,
+    timing_eligible_events: built.admittedOccurrenceIds.length,
+    slot_candidates_considered: built.admittedOccurrenceIds.length,
+    slot_allocated_count: reservedCount,
+    slot_not_allocated_count: built.capExcluded,
+    reservations_created: reservedCount,
+    rejected_by_anchor: 0,
+    rejected_by_scope: 0,
+    final_identity_available_at_planning: 0,
+    rejection_counts_by_code: rejectionCountsByCode,
+    first_rejection_code: built.rejections[0]?.reason_code ?? null,
+    groups_with_fullmatch_candidate: 0,
+    groups_only_partial_or_prop: 0,
+    groups_with_valid_sibling_but_wrong_rep: 0,
+    allowed_moneyline_count: 0,
+    allowed_spread_count: 0,
+    allowed_total_count: 0,
+    rejected_partial_count: 0,
+    rejected_prop_count: 0,
+    rejected_activity_label_count: 0,
+    first_zero_stage:
+      input.sourceRowCount === 0
+        ? "SOURCE_ROWS"
+        : built.approvedCount === 0
+          ? "NORMALIZED_PHYSICAL_EVENTS"
+          : built.admittedOccurrenceIds.length === 0
+            ? "TIMING_ELIGIBLE"
+            : reservedCount === 0
+              ? "RESERVATIONS_CREATED"
+              : null,
+    market_level_keys_skipped: 0,
+    market_level_keys_normalized: 0,
+    horizon_end_iso: input.window.horizonEndIso,
+    window_end_iso: input.window.endIso,
+    reserved_wc_or_soccer_count: 0,
+    skipped_by_horizon_count: outsideHorizon,
+    skipped_by_cap_count: built.capExcluded,
+    tier1PhysicalMatchesSeen: 0,
+    tier1ReservationsPlanned: 0,
+    tier1AlreadyReserved: 0,
+    tier1ReservationGapsAfterBuild: 0,
+    weakKeysMerged: 0,
+    representativeTitleReplaced: 0,
+    completeCandidateUniverseUsed: true,
+    underfillInvariantPass: true,
+    targetLiveSlots: TARGET_LIVE_SLOTS,
+    tier1ReservedCount: 0,
+    fallbackSlotFillReservedCount: 0,
+    fallbackTier2Reserved: 0,
+    fallbackTier3Reserved: 0,
+    fallbackEligibleGroupsSeen: 0,
+    fallbackSkippedNoAllowedFullmatch: 0,
+    fallback_rejection_reasons: {},
+    fullmatch_rejection_reasons: {},
+    executable_fullmatch_anchor_count: 0,
+    structured_event_level_anchor_count: 0,
+    planning_anchor_rejected_count: 0,
+    planning_anchor_reason_counts: {},
+    fullmatch_rejection_groups_total: 0,
+    fullmatch_rejection_candidates_total: 0,
+    fullmatch_rejection_evidence_preview: [],
+    slotFillTargetReached: reservedCount >= TARGET_LIVE_SLOTS,
+    canary_target_requested: input.canaryRequested,
+    canary_target_matched_group_count: input.canaryMatchedGroupCount,
+    canary_target_group_key: input.canaryTargetGroupKey,
+  };
+}
+
+/**
+ * Build the frozen reservation plan from AUTHORITATIVE Contract A Planning
+ * Decisions (PURE — no DB writes).
+ *
+ * Production path: real planning source rows -> the real Contract A producer
+ * (`produceContractAPlanningDecisions`, which itself enters
+ * `buildFireModelCandidates`) -> Planning Decisions -> Reservations.
+ */
+export async function buildContractAReservationPlan(
+  nowMs: number,
+  deps: {
+    fetchSourceRows?: () => Promise<readonly Record<string, unknown>[]>;
+    produceDecisions?: (
+      rows: readonly Record<string, unknown>[]
+    ) => Promise<ContractADecisionResult<ContractAPlanningDecision>[]>;
+    activeOccurrences?: readonly ReservationOccurrenceGuardRow[];
+    targetPhysicalEventKeyHash?: string;
+    hashPhysicalEventKey?: (key: string) => string;
+  } = {}
+): Promise<ReservationPlan> {
+  const window = resolveNightWindow(nowMs);
+  const planRunId = buildPlanRunId(nowMs);
+
+  const rows = deps.fetchSourceRows
+    ? await deps.fetchSourceRows()
+    : await (async () => {
+        const { loadContractAPlanningSourceRows } = await import("./buildFireModelCandidates");
+        return loadContractAPlanningSourceRows();
+      })();
+
+  const produce =
+    deps.produceDecisions ??
+    (async (sourceRows: readonly Record<string, unknown>[]) => {
+      const { produceContractAPlanningDecisions } = await import("./contractADecisions");
+      return produceContractAPlanningDecisions(sourceRows);
+    });
+  const results = await produce(rows);
+
+  const ctx = { planRunId, window, nowMs };
+  const activeOccurrences = deps.activeOccurrences ?? [];
+  let built = buildReservationsFromPlanningDecisions(results, ctx, activeOccurrences);
+
+  // ── Canary single-event targeting (planning-stage only; never fuzzy) ──────
+  // Matched against the FULL admitted set, before the cap, so a CEO-approved
+  // target outside the top slots is still addressable. Zero or ambiguous
+  // matches reserve nothing; callers read canary_target_matched_group_count.
+  const canaryRequested = deps.targetPhysicalEventKeyHash !== undefined;
+  const hashFn = deps.hashPhysicalEventKey ?? hashPhysicalEventKey;
+  let canaryMatchedGroupCount = 0;
+  let canaryTargetGroupKey: string | null = null;
+  if (canaryRequested) {
+    const matches = built.admittedOccurrenceIds.filter(
+      (id) => hashFn(id) === deps.targetPhysicalEventKeyHash
+    );
+    canaryMatchedGroupCount = matches.length;
+    canaryTargetGroupKey = matches.length === 1 ? matches[0] : null;
+    built = buildReservationsFromPlanningDecisions(results, ctx, activeOccurrences, {
+      restrictToOccurrenceIds: new Set(canaryTargetGroupKey ? [canaryTargetGroupKey] : []),
+    });
+  }
+
+  // Bounded structured trace: stage, counts and stable reason codes only —
+  // never a provider payload, market identity, token or env value.
+  console.log(
+    "[contract-a] planning_decision_reservation",
+    JSON.stringify({
+      stage: "RESERVATION_FROM_PLANNING_DECISION",
+      plan_run_id: planRunId,
+      source_rows: rows.length,
+      planning_decisions: results.length,
+      approved: built.approvedCount,
+      rejected: built.rejectedCount,
+      reservation_candidates: built.admittedOccurrenceIds.length,
+      duplicate_rejected: built.duplicateRejected,
+      cap_excluded: built.capExcluded,
+      reservations_created: built.reservations.length,
+      cap: TARGET_LIVE_SLOTS,
+      first_rejection_code: built.rejections[0]?.reason_code ?? null,
+    })
+  );
+
+  return {
+    plan_run_id: planRunId,
+    plan_date_minsk: window.planDateMinsk,
+    window,
+    reservations: built.reservations,
+    fullmatch_rejection: buildFullmatchRejectionEvidence([]),
+    diagnostics: contractAPlanDiagnostics({
+      window,
+      sourceRowCount: rows.length,
+      decisionCount: results.length,
+      built,
+      canaryRequested,
+      canaryMatchedGroupCount,
+      canaryTargetGroupKey,
+    }),
   };
 }
 
