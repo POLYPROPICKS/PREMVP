@@ -33,7 +33,7 @@ const VERDICTS = ['PASS', 'FAIL', 'BLOCKED', 'WAIT'];
 const WORKTREE_STATES = ['clean', 'expected_dirty', 'unexpected_dirty'];
 const RISK_CLASSES = [
   'R0_READ_ONLY', 'R1_BOUNDED_CODE', 'R2_ARCHITECTURE_OR_ROADMAP',
-  'R3_ML_CHANGE', 'R4_LIVE_RUNTIME', 'R5_CROSS_REPO_OR_LIVE_MONEY',
+  'R3_WEATHER_MODEL_CHANGE', 'R4_CONTUR_PRODUCTION_BOUNDARY', 'R5_CROSS_REPO_OR_LIVE_MONEY',
 ];
 const EXECUTORS = ['claude_code_cloud', 'local_codex_windows', 'ireland_local'];
 const TEST_RESULTS = ['PASS', 'FAIL', 'SKIPPED', 'NOT_RUN'];

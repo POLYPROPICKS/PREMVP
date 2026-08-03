@@ -90,22 +90,19 @@ local_codex_windows  PREMVP; host dependency true; reached by DESKTOP or by MOBI
 ireland_local        Protected boundary only. Not accessed, not implemented, no agents.
 
 ROUTING — minimum agents, never all agents
-R0 read-only            no reviewer
-R1 bounded code         no reviewer
-R2 architecture/roadmap no mandatory reviewer
-R3 Weather model change MANDATORY codex.agent.weather_gate_reviewer.v0 + receipt
-R4 Contur / exact-SHA / production boundary
-                        MANDATORY codex.agent.contur_gate_reviewer + receipt
-R5 cross-repo or live money  FAILS CLOSED — always BLOCKED
+R0_READ_ONLY                    claude_code_cloud or local_codex_windows; no reviewer
+R1_BOUNDED_CODE                 claude_code_cloud only; no reviewer
+R2_ARCHITECTURE_OR_ROADMAP      claude_code_cloud only; no mandatory reviewer
+R3_WEATHER_MODEL_CHANGE         local_codex_windows; MANDATORY
+                                codex.agent.weather_gate_reviewer.v0 + receipt
+R4_CONTUR_PRODUCTION_BOUNDARY   local_codex_windows; MANDATORY
+                                codex.agent.contur_gate_reviewer + receipt
+R5_CROSS_REPO_OR_LIVE_MONEY     FAILS CLOSED — always BLOCKED
 
 OUTPUT
-Exactly one copyable execution block containing all 25 PROMPT__PROTOCOL sections:
-MODEL, MODEL LEVEL, SESSION MODE, SESSION REASON, EXECUTION ENVIRONMENT,
-REPOSITORY / WORKTREE / CWD, BRANCH / TARGET REF / TARGET SHA, TOKEN / READ BUDGET,
-VALUE TARGET, CURRENT ROADMAP PHASE, NEXT TWO VALUE STEPS, OPERATOR MODE, TASK CLASS,
-RISK CLASS, REQUIRED CAPABILITIES, REQUIRED AGENTS / REVIEWERS, PRECHECK, EXECUTION SCOPE,
-ALLOWED FILES, FORBIDDEN FILES, WRITE POLICY, STOP CONDITIONS, EVIDENCE REQUIRED,
-COMPLETION ENVELOPE, FOUNDER ACTION.
+Exactly one copyable execution block containing every mandatory section listed in the
+PROMPT__PROTOCOL.md section-2 table. Use that table as the checklist — do not summarise,
+reorder or drop sections, and do not rely on this instruction block to enumerate them.
 Every executor result must be a completion envelope. A task requiring a reviewer cannot
 return PASS without a matching receipt whose reviewed_sha equals result_sha.
 
@@ -180,28 +177,65 @@ When running on the snapshot, the architect must state its assumption explicitly
 assumptions (Windows-only paths, prose completion reports, legacy state documents) that
 project-only memory would then absorb as if current.
 
-Create these permanent chats inside the project:
+Create exactly **two** permanent chats inside the project:
 
 | Chat name | Purpose |
 |---|---|
-| `00 — State and Routing` | Load state, classify tasks, decide the executor. Start here every time. |
-| `01 — Executor Prompts` | Compile executor prompts. One milestone per thread. |
-| `02 — Completion Review` | Paste completion envelopes back; validate; propose the state delta. |
-| `03 — Shadow Log` | Phase 3 scenario results and metrics only. |
+| `00 — Architect` | Everything operational: load state, classify, route, compile the executor prompt, and take the completion envelope back for validation and the state-delta proposal. Start here every time. |
+| `01 — Shadow Log` | Phase 3 scenario results and metrics only. Nothing operational. |
+
+Two chats, not four. Splitting state, prompts and review across separate threads forced
+the same context to be re-established three times per milestone and was the main source
+of drift.
 
 ---
 
-## 8. Normal interaction pattern
+## 8. Mandatory post-merge state bootstrap
+
+**Do this once, immediately after the control-plane PR merges to `main`, and before any
+Phase 3 scenario.** Until it is done, `CURRENT_STATE.yaml` still carries the pre-merge
+`origin_main_sha`, so the architect is required to treat state as stale and return
+`PROMPT_GATE_BLOCKED` on everything. That is correct behaviour, not a bug — this section
+is how you clear it.
+
+One Founder action. In `00 — Architect`, send:
+
+```
+Bootstrap state after control-plane merge. Produce one bounded R2_ARCHITECTURE_OR_ROADMAP
+Claude Code Cloud prompt that: resolves live origin/main; updates CURRENT_STATE.yaml
+origin_main_sha, updated_at and state_version; sets last_accepted_completion_id;
+regenerates ARCHITECT_SNAPSHOT.md; runs npm run control-plane:check; commits and pushes.
+Allowed files: docs/ai-context/control-plane/CURRENT_STATE.yaml and
+docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md only.
+```
+
+Then: one copy/paste down to Claude Code Cloud, one envelope back up.
+
+Bootstrap is complete when all four hold:
+
+- [ ] `CURRENT_STATE.yaml` `origin_main_sha` equals live `origin/main`
+- [ ] `state_version` incremented and `updated_at` advanced
+- [ ] `npm run control-plane:check` PASS, including `snapshot:check`
+- [ ] if you are on attached files (§6), the project's `ARCHITECT_SNAPSHOT.md` has been
+      replaced with the regenerated one
+
+Repeat this bootstrap after **every** merge to `main` that touches
+`docs/ai-context/control-plane/`. Skipping it is the single most likely cause of an
+architect confidently planning against a stale SHA.
+
+---
+
+## 9. Normal interaction pattern
 
 1. You (phone): *"Next step on C1."*
 2. Architect: runs the eight stages, returns **one** copyable execution block.
 3. You: one copy/paste into Claude Code Cloud, or one tap in Codex Remote.
 4. Executor: returns a completion envelope.
-5. You: one paste back into `02 — Completion Review`.
+5. You: one paste back into `00 — Architect`.
 6. Architect: validates the envelope and proposes a `CURRENT_STATE` delta.
 
 That is **one copy/paste down and one result up** per milestone. Anything more is a
-routing defect worth logging in `03 — Shadow Log`.
+routing defect worth logging in `01 — Shadow Log`.
 
 If the architect returns `PROMPT_GATE_BLOCKED`, do **not** argue it into producing a
 prompt. It is telling you evidence is missing. Its `Narrowest safe next action` is a
@@ -209,7 +243,7 @@ bounded read-only task — run that first, paste the result back, then re-ask.
 
 ---
 
-## 9. Refreshing `ARCHITECT_SNAPSHOT.md` after an accepted milestone
+## 10. Refreshing `ARCHITECT_SNAPSHOT.md` after an accepted milestone
 
 The snapshot is generated, never hand-edited. After a milestone is accepted:
 
@@ -227,20 +261,20 @@ the canonical files, so a stale snapshot cannot be merged silently.
 
 ---
 
-## 10. Phase 3 — mobile shadow test plan
+## 11. Phase 3 — mobile shadow test plan
 
-Run these five from the phone, in `03 — Shadow Log`. **No Ireland execution, no UAS
+Run these five from the phone, in `01 — Shadow Log`. **No Ireland execution, no UAS
 work.**
 
 | # | Scenario | Success looks like |
 |---|---|---|
-| 1 | Architect produces a **read-only Claude Cloud evidence prompt**. | R0 routing, executor `claude_code_cloud`, no reviewer invoked, zero Founder shell commands, all 25 sections present. |
-| 2 | Architect produces a **bounded PREMVP Cloud implementation prompt**. | R1 routing, explicit `ALLOWED FILES` / `FORBIDDEN FILES`, build + typecheck in `EVIDENCE REQUIRED`, completion envelope required. |
-| 3 | Architect routes a **Contur exact-SHA review to Local Windows Codex via mobile Remote** and requires the Contur reviewer receipt. | R4 routing, executor `local_codex_windows`, access surface `MOBILE_REMOTE`, `codex.agent.contur_gate_reviewer` mandatory, receipt fields enumerated, no Founder CMD. |
+| 1 | Architect produces a **read-only Claude Cloud evidence prompt**. | `R0_READ_ONLY` routing, executor `claude_code_cloud`, no reviewer invoked, zero Founder shell commands, every PROMPT__PROTOCOL §2 section present. |
+| 2 | Architect produces a **bounded PREMVP Cloud implementation prompt**. | `R1_BOUNDED_CODE` routing, explicit `ALLOWED FILES` / `FORBIDDEN FILES`, build + typecheck in `EVIDENCE REQUIRED`, completion envelope required. |
+| 3 | Architect routes a **Contur exact-SHA review to Local Windows Codex via mobile Remote** and requires the Contur reviewer receipt. | `R4_CONTUR_PRODUCTION_BOUNDARY` routing, executor `local_codex_windows`, access surface `MOBILE_REMOTE`, `codex.agent.contur_gate_reviewer` mandatory, receipt fields enumerated, no Founder CMD. |
 | 4 | Architect hits **stale or missing evidence**. | Returns `PROMPT_GATE_BLOCKED` with a named reason and one bounded read-only next action. Does **not** guess a SHA. |
 | 5 | A **completion envelope proposes a state delta**. | Envelope validates; `state_delta_proposal.accepted` is `false`; the architect — not the writer — proposes acceptance. |
 
-### Acceptance metrics (record per scenario in `03 — Shadow Log`)
+### Acceptance metrics (record per scenario in `01 — Shadow Log`)
 
 - zero wrong-repository prompts
 - zero PREMVP/Ireland mixed prompts
@@ -255,7 +289,7 @@ work.**
 
 ### Starting Phase 3 from the phone
 
-Open `00 — State and Routing` and send:
+Open `00 — Architect` and send:
 
 ```
 Shadow scenario 1. Produce a read-only Claude Code Cloud evidence prompt that re-proves

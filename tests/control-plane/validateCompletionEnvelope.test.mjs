@@ -35,7 +35,7 @@ function validEnvelope(overrides = {}) {
     completion_id: 'CMP-0001',
     task_id: 'TASK-C1-REVIEW',
     task_class: 'LIVE_RUNTIME_OPERATION',
-    risk_class: 'R4_LIVE_RUNTIME',
+    risk_class: 'R4_CONTUR_PRODUCTION_BOUNDARY',
     executor: 'local_codex_windows',
     environment: 'local_codex_windows',
     repository: 'POLYPROPICKS/PREMVP',
@@ -112,7 +112,7 @@ test('7d. an R3 envelope that under-declares the Weather reviewer fails', () => 
   // The executor writes required_reviewers about itself. Mandatory reviewers must be
   // derived from ROUTING_AND_PIPELINES.yaml so this cannot silently bypass the gate.
   const result = validateCompletionEnvelope(validEnvelope({
-    risk_class: 'R3_ML_CHANGE',
+    risk_class: 'R3_WEATHER_MODEL_CHANGE',
     task_class: 'ML_MODEL_CHANGE',
     required_reviewers: [],
     invoked_reviewers: [],

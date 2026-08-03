@@ -66,7 +66,7 @@ test('3. unknown executor in routing fails', () => {
 
 test('4. unknown agent in a required pipeline fails', () => {
   const root = withMutatedRoot('ROUTING_AND_PIPELINES.yaml', (doc) => {
-    const r3 = doc.risk_classes.find((r) => r.id === 'R3_ML_CHANGE');
+    const r3 = doc.risk_classes.find((r) => r.id === 'R3_WEATHER_MODEL_CHANGE');
     r3.required_agents.push('codex.agent.does_not_exist');
   });
   const result = validateControlPlane(root);
@@ -145,4 +145,12 @@ test('10. deterministic snapshot check passes and is stable across runs', () => 
   assert.equal(committed, first, 'committed ARCHITECT_SNAPSHOT.md must match the generated output');
   assert.ok(!/\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z/.test(first),
     'snapshot must not embed wall-clock generation time');
+});
+
+test('11. snapshot stays within the 7,000-character architect context budget', () => {
+  // The snapshot is pasted into a phone-first ChatGPT project. If it grows past this,
+  // it stops being a compact stand-in and starts crowding out the actual task.
+  const rendered = renderSnapshot(REPO_ROOT);
+  assert.ok(rendered.length <= 7000,
+    `ARCHITECT_SNAPSHOT.md is ${rendered.length} characters, budget is 7000`);
 });

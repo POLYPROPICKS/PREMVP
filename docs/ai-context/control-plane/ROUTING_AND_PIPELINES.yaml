@@ -12,8 +12,8 @@
     { "id": "DOCS_CONTEXT", "description": "Documentation and control-plane artifacts.", "default_risk_class": "R1_BOUNDED_CODE" },
     { "id": "BOUNDED_CODE_PATCH", "description": "Narrow code patch inside an explicit allowed-file list.", "default_risk_class": "R1_BOUNDED_CODE" },
     { "id": "ARCHITECTURE_OR_ROADMAP", "description": "Control-plane, routing, roadmap or authority change.", "default_risk_class": "R2_ARCHITECTURE_OR_ROADMAP" },
-    { "id": "ML_MODEL_CHANGE", "description": "Weather / scoring / model behavior change.", "default_risk_class": "R3_ML_CHANGE" },
-    { "id": "LIVE_RUNTIME_OPERATION", "description": "Touching a live runtime, deploy, or production data.", "default_risk_class": "R4_LIVE_RUNTIME" },
+    { "id": "ML_MODEL_CHANGE", "description": "Weather / scoring / model behavior change.", "default_risk_class": "R3_WEATHER_MODEL_CHANGE" },
+    { "id": "LIVE_RUNTIME_OPERATION", "description": "Touching a live runtime, deploy, or production data.", "default_risk_class": "R4_CONTUR_PRODUCTION_BOUNDARY" },
     { "id": "CROSS_REPO_OR_LIVE_MONEY", "description": "Spanning PREMVP and Ireland, or moving real money.", "default_risk_class": "R5_CROSS_REPO_OR_LIVE_MONEY" }
   ],
 
@@ -41,7 +41,7 @@
       "id": "R1_BOUNDED_CODE",
       "title": "Bounded code or documentation change inside an explicit allowed-file list",
       "required_capabilities": ["REPOSITORY_READ", "DEPENDENCY_INSTALL", "TYPECHECK", "BUILD"],
-      "eligible_execution_targets": ["claude_code_cloud", "local_codex_windows"],
+      "eligible_execution_targets": ["claude_code_cloud"],
       "required_agents": ["claude.hook.validate_proof_package"],
       "optional_agents": ["claude.command.verify", "premvp.spec.code_auditor"],
       "permitted_repositories": ["POLYPROPICKS/PREMVP"],
@@ -60,9 +60,9 @@
       "id": "R2_ARCHITECTURE_OR_ROADMAP",
       "title": "Architecture, routing, authority or roadmap change",
       "required_capabilities": ["REPOSITORY_READ", "BUILD"],
-      "eligible_execution_targets": ["claude_code_cloud", "local_codex_windows"],
+      "eligible_execution_targets": ["claude_code_cloud"],
       "required_agents": ["claude.hook.validate_proof_package", "premvp.policy.agent_constitution", "premvp.policy.task_routing"],
-      "optional_agents": ["codex.agent.contur_gate_reviewer", "premvp.spec.compliance_monitor"],
+      "optional_agents": ["premvp.spec.compliance_monitor"],
       "permitted_repositories": ["POLYPROPICKS/PREMVP"],
       "forbidden_actions": ["SILENT_STATE_CHANGE", "DEPLOY", "MERGE", "DATABASE_WRITE", "IRELAND_ACCESS"],
       "sequential_stages": ["PRECHECK", "AUTHORITY_REVIEW", "PATCH", "CONTROL_PLANE_VALIDATE", "BUILD", "COMPLETION_ENVELOPE"],
@@ -76,7 +76,7 @@
       "fail_closed": false
     },
     {
-      "id": "R3_ML_CHANGE",
+      "id": "R3_WEATHER_MODEL_CHANGE",
       "title": "Weather / scoring / model behavior change",
       "required_capabilities": ["REPOSITORY_READ", "LOCAL_TEST_RUN", "WEATHER_GATE_REVIEW"],
       "eligible_execution_targets": ["local_codex_windows"],
@@ -98,7 +98,7 @@
       "fail_closed": false
     },
     {
-      "id": "R4_LIVE_RUNTIME",
+      "id": "R4_CONTUR_PRODUCTION_BOUNDARY",
       "title": "Live runtime, production boundary or exact-SHA acceptance work",
       "required_capabilities": ["REPOSITORY_READ", "LOCAL_TEST_RUN", "CONTUR_GATE_REVIEW"],
       "eligible_execution_targets": ["local_codex_windows"],
