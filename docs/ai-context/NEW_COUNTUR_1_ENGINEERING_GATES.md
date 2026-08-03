@@ -98,7 +98,8 @@ Every gate below defines: purpose · PASS · FAIL · evidence · owner · phase 
 - **PASS:** a production-shaped provider row's sport metadata is observable, unchanged in meaning,
   at each of: source row → observation → signal pair/snapshot → Planning Decision → Reservation →
   Final Identity Decision → Queue → observability. `MODEL_SCOPE_BY_PROVIDER_SPORT_CODE`
-  (`buildFireModelCandidates.ts:652-667`, 15 codes) and `resolveModelSport` (`:688+`) are the sole
+  (`buildFireModelCandidates.ts:652-667`, 14 provider-code aliases mapped to 8 distinct
+  StrategicScope values in the current source map) and `resolveModelSport` (`:688+`) are the sole
   resolvers.
 - **FAIL:** any hop hardcodes `inferred_sport: "unknown"` or `strategic_scope: "OTHER"` where real
   upstream metadata exists — the current Contract A adapter behavior at `:1228`/`:1230`. Also FAIL

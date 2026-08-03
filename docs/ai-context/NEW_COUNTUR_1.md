@@ -42,7 +42,7 @@ cover.
 | 5 | Only `/api/executor/queue` treated as the execution surface. | `/api/executor/candidates` is a **secret-gated, production-shaped second execution authority** needing neither Reservation nor Queue. | §10 |
 | 6 | *(absent in R0)* | `event_start_iso` is **arithmetically reconstructed** on the Contract A path, then **exact-millisecond compared** against a differently sourced Reservation timestamp. | §13 |
 | 7 | *(absent in R0)* | Callback correlates by `idempotency_key`; `executor_order_events.queue_id` **does not exist**; the external order id is `clob_order_id`, never `venue_order_id`. | §11 |
-| 8 | *(absent in R0)* | Provider→scope sport mapping already exists and covers **15** provider sport codes, not "about ten". | §12 |
+| 8 | *(absent in R0)* | Provider→scope sport mapping already exists: **14 provider-code aliases mapped to 8 distinct StrategicScope values in the current source map**, not "about ten". | §12 |
 
 ---
 
@@ -311,16 +311,18 @@ identifier is `clob_order_id`. R1 does **not** require a `queue_id` column on
 ## 12. Broad-sports preservation — CORRECTED R1 TARGET
 
 **CURRENT SOURCE FACT — real sport metadata exists upstream.**
-`MODEL_SCOPE_BY_PROVIDER_SPORT_CODE` (`buildFireModelCandidates.ts:652-667`) maps **15 provider
-sport codes** — `basketball`, `nba`, `hockey`, `nhl`, `ice hockey`, `baseball`, `mlb`, `tennis`,
-`cricket`, `mma`, `ufc`, `soccer`, `football`, `esports` — onto nine `StrategicScope` values.
+`MODEL_SCOPE_BY_PROVIDER_SPORT_CODE` (`buildFireModelCandidates.ts:652-667`) has **14 provider-code
+aliases mapped to 8 distinct StrategicScope values in the current source map** — `basketball`,
+`nba`, `hockey`, `nhl`, `ice hockey`, `baseball`, `mlb`, `tennis`, `cricket`, `mma`, `ufc`,
+`soccer`, `football`, `esports`.
 `resolveModelSport` (`:688+`) reads `diagnostics.providerSportCode` explicitly, before any
 text-derived fallback, and fails closed on a malformed present value. The legacy/planning path
 records `provider_sport_code` into diagnostics (`:1971`) and reports accepted rows by raw provider
 sport (`:2013-2016`).
 
-*(Correction to the reported finding: "approximately ten codes" is 15. The finding stands; the
-count was low.)*
+*(Correction to the reported finding: "approximately ten codes" is 14 provider-code aliases mapped
+to 8 distinct StrategicScope values in the current source map. The finding stands; the count was
+low.)*
 
 **CURRENT DEFECT — the Contract A adapter throws it away.**
 `buildContractAV1Candidates` hardcodes `inferred_sport: "unknown"`
