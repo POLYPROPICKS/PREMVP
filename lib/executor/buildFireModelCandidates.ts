@@ -1944,7 +1944,13 @@ export async function buildFireModelCandidates(
         event_slug: rawEventSlugForCandidate,
         match_family_key: matchFamilyKey,
         inferred_sport: sport,
-        activity_label_detected: activityLabelDetected,
+        // Recomputed against the EFFECTIVE candidateMarketSlug, not the stale
+        // activityLabelDetected flag (which describes the original,
+        // possibly-replaced row.market_slug). Otherwise a row whose real
+        // market text was successfully recovered via the event_slug/
+        // condition_id fallback above is still vetoed by the activity-label
+        // check before that recovered text is ever classified.
+        activity_label_detected: isActivityLabelText(candidateMarketSlug),
         providerMarketQuestion: providerContext?.marketQuestion ?? null,
         providerEventTitle: providerContext?.eventTitle ?? null,
         // Deliberately the surfaces the EMITTED candidate will carry, not the
