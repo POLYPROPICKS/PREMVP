@@ -1,13 +1,13 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-04T00:00:00Z",
-  "state_version": 2,
+  "updated_at": "2026-08-04T12:42:32Z",
+  "state_version": 3,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
     "id": "C1",
-    "title": "Queue authority cutoff",
-    "value_target": "persisted Planning Reservation -> typed Contract A Final Identity -> exact-token order book -> guards -> immutable Queue",
+    "title": "C1 production runtime proof",
+    "value_target": "natural Planning -> persisted Reservation -> typed Final Identity -> exact-token order book and guards -> immutable Queue, proven in production runtime",
     "status": "OPEN"
   },
   "next_two_value_steps": [
@@ -20,28 +20,30 @@
     {
       "id": "SETTLEMENT_PNL",
       "title": "Settlement / PnL and production vertical proof",
-      "value_target": "settlement and PnL close the vertical with production runtime proof",
-      "status": "PLANNED"
+      "value_target": "one bounded real order -> authoritative receipt -> callback -> terminal state -> settlement and reconciled PnL",
+      "status": "PLANNED",
+      "requires_founder_live_money_approval": true
     }
   ],
 
   "closed_value_steps": [
     { "id": "A", "title": "Contract A authority", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT" },
-    { "id": "B", "title": "Planning and Reservation writers use Contract A", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT" }
+    { "id": "B", "title": "Planning and Reservation writers use Contract A", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT" },
+    { "id": "C1_SOURCE_MERGE", "title": "C1 source and merge lineage present on origin/main", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "PROVEN_IN_RUNTIME" }
   ],
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "b522d3a3caaa07d8605f2b6d4edbd2db6a71a629",
+    "origin_main_sha": "33f0e882c14c71021902c3912268d89681d88003",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "executor": "claude_code_cloud",
-      "commands": ["git fetch origin main", "git rev-parse origin/main", "git merge-base --is-ancestor b52fab82a46a05ffbc75373049ddbf3ef6563e60 origin/main"],
-      "observed_at": "2026-08-04T00:00:00Z",
+      "commands": ["git fetch --prune origin", "git rev-parse origin/main"],
+      "observed_at": "2026-08-04T12:42:32Z",
       "worktree": "clean",
-      "note": "b522d3a3caaa07d8605f2b6d4edbd2db6a71a629 is the merge commit for PR #77 (Architect Control Plane Phase 1/2), which merged head 546220fc13470b30f7d3d83571461671d3188ab6 plus the freshness-model fix b52fab82a46a05ffbc75373049ddbf3ef6563e60 into main."
+      "note": "33f0e882c14c71021902c3912268d89681d88003 is the live origin/main tip verified in this state-refresh session, applied as a state-only bootstrap advance per CMP-T1-STATE-RECONCILIATION-RECOVERY-V2-20260804."
     }
   },
 
@@ -54,10 +56,10 @@
       "remote_branch_proof": {
         "evidence_class": "PROVEN_IN_RUNTIME",
         "command": "git ls-remote --heads origin codex/queue-authority-cutoff-20260803",
-        "note": "Remote branch identity only. The Founder-accepted local HEAD 76a1590caf34f25ef15de6c45f51e52045447bd2 is NOT present on this remote ref and is NOT proven by Cloud."
+        "note": "76a1590caf34f25ef15de6c45f51e52045447bd2 is proven to be an ancestor of live origin/main and is no longer an unproven remote-only claim."
       },
       "local_head_claimed": "76a1590caf34f25ef15de6c45f51e52045447bd2",
-      "local_head_evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+      "local_head_evidence_class": "PROVEN_IN_RUNTIME",
       "status": "OPEN_WITH_FAILING_ASSERTION"
     }
   ],
@@ -85,7 +87,7 @@
   ],
 
   "open_blockers": [
-    { "id": "BLK-001", "statement": "C1 CTL18 assertion failure is unresolved.", "owner_executor": "local_codex_windows", "blocking": "C1" },
+    { "id": "BLK-001", "statement": "C1 source and merge lineage are present on origin/main; the historical CTL18 failure has not been reproduced or cleared by this state-refresh task; C1 production runtime proof is the current open verification step; the blocker may be closed only by later executable/runtime evidence.", "owner_executor": "local_codex_windows", "blocking": "C1" },
     { "id": "BLK-002", "statement": "Codex reviewer invocation is not deterministic: no required invocation receipt, no deterministic gate, no project-scoped Codex agent package, no tracked CI gate.", "owner_executor": "local_codex_windows", "blocking": "reviewer receipt enforcement outside the Cloud validator" },
     { "id": "BLK-003", "statement": "Supabase write access from claude_code_cloud is NOT_PROVEN.", "owner_executor": "claude_code_cloud", "blocking": "any Cloud task requiring a database write" },
     { "id": "BLK-004", "statement": "Ireland runtime access and Ireland repository remote identity are NOT_PROVEN.", "owner_executor": "ireland_local", "blocking": "C2 execution routing" }
@@ -139,7 +141,7 @@
   ],
 
   "evidence_freshness": {
-    "origin_main_sha_checked_at": "2026-08-04T00:00:00Z",
+    "origin_main_sha_checked_at": "2026-08-04T12:42:32Z",
     "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
     "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
     "max_age_days": 7
@@ -154,5 +156,5 @@
   ],
   "stale_when_note": "Exact equality between main.origin_main_sha and live origin/main is NOT required and is not used as a staleness test. A state-only bootstrap advance (touching only CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md) keeps state FRESH even though origin/main has moved past the recorded baseline.",
 
-  "last_accepted_completion_id": "CMP-CONTROL-PLANE-PHASE-1-2"
+  "last_accepted_completion_id": "CMP-T1-STATE-RECONCILIATION-RECOVERY-V2-20260804"
 }

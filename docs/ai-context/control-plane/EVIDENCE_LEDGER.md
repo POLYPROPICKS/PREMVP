@@ -207,3 +207,24 @@ was updated to this merge commit in the same bootstrap that appended this entry 
 `CURRENT_STATE.yaml` for the current baseline, never this ledger.
 
 No production, database, Railway, Ireland or UAS change occurred.
+
+---
+
+## EV-0008 — State refresh: C1 lineage closed, C1 production runtime proof opened
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **observed_at:** 2026-08-04
+- **executor:** `claude_code_cloud`
+- **completion_id:** `CMP-T1-STATE-RECONCILIATION-RECOVERY-V2-20260804`
+
+| Item | Value |
+|---|---|
+| `git fetch --prune origin` + `git rev-parse origin/main` | `33f0e882c14c71021902c3912268d89681d88003` |
+| C1 source and merge lineage | proven merged on `origin/main` |
+| State refresh applied | `CURRENT_STATE.yaml` advanced state_version 2 → 3 |
+| Deployment mapping (commit → Railway deployment) | `NOT_PROVEN` (unchanged) |
+| Runtime, deployment, database | unchanged in this task |
+| Next authorized step | C1 production runtime proof (OPEN); C2 not started |
+
+This entry documents the state-refresh event only. It is history and is **never**
+authoritative for current state — see `CURRENT_STATE.yaml`.
