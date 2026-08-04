@@ -136,6 +136,68 @@ test('5e. secret-like values in canonical artifacts fail', () => {
   assert.match(errorsFrom(result), /SECRET_LIKE_VALUE/);
 });
 
+test('5f. freshness mode is BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE, not exact equality', () => {
+  const result = validateControlPlane(REPO_ROOT);
+  assert.equal(result.ok, true, errorsFrom(result));
+
+  const state = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, DIR, 'CURRENT_STATE.yaml'), 'utf8'));
+  const policy = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, DIR, 'ARCHITECT_CONTROL_PLANE.yaml'), 'utf8'));
+
+  assert.equal(state.main.origin_main_sha_semantics, 'LAST_VERIFIED_ORIGIN_MAIN_BASELINE');
+  assert.equal(state.main.freshness_check_mode, 'BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE');
+  assert.equal(policy.stale_state_behavior.freshness_check_mode, 'BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE');
+  assert.doesNotMatch(policy.stale_state_behavior.rule, /^Exact equality is required/);
+});
+
+test('5g. state-bootstrap allowlist is exactly the three state artifacts', () => {
+  const policy = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, DIR, 'ARCHITECT_CONTROL_PLANE.yaml'), 'utf8'));
+  const allowlist = policy.stale_state_behavior.state_bootstrap_allowlist;
+  assert.deepEqual(
+    [...allowlist].sort(),
+    [
+      'docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md',
+      'docs/ai-context/control-plane/CURRENT_STATE.yaml',
+      'docs/ai-context/control-plane/EVIDENCE_LEDGER.md',
+    ].sort(),
+  );
+});
+
+test('5h. missing origin_main_sha_semantics fails validation', () => {
+  const root = withMutatedRoot('CURRENT_STATE.yaml', (doc) => {
+    delete doc.main.origin_main_sha_semantics;
+  });
+  const result = validateControlPlane(root);
+  assert.equal(result.ok, false);
+  assert.match(errorsFrom(result), /origin_main_sha_semantics must be LAST_VERIFIED_ORIGIN_MAIN_BASELINE/);
+});
+
+test('5i. wrong freshness_check_mode fails validation', () => {
+  const root = withMutatedRoot('CURRENT_STATE.yaml', (doc) => {
+    doc.main.freshness_check_mode = 'EXACT_MATCH';
+  });
+  const result = validateControlPlane(root);
+  assert.equal(result.ok, false);
+  assert.match(errorsFrom(result), /freshness_check_mode must be BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE/);
+});
+
+test('5j. incomplete state_bootstrap_allowlist fails validation', () => {
+  const root = withMutatedRoot('ARCHITECT_CONTROL_PLANE.yaml', (doc) => {
+    doc.stale_state_behavior.state_bootstrap_allowlist = [
+      'docs/ai-context/control-plane/CURRENT_STATE.yaml',
+    ];
+  });
+  const result = validateControlPlane(root);
+  assert.equal(result.ok, false);
+  assert.match(errorsFrom(result), /state_bootstrap_allowlist must be exactly the three state-bootstrap paths/);
+});
+
+test('5k. snapshot describes baseline/ancestor semantics, not a bare SHA equality claim', () => {
+  const rendered = renderSnapshot(REPO_ROOT);
+  assert.match(rendered, /LAST_VERIFIED_ORIGIN_MAIN_BASELINE/);
+  assert.match(rendered, /BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE/);
+  assert.match(rendered, /ancestor of live origin\/main/);
+});
+
 test('10. deterministic snapshot check passes and is stable across runs', () => {
   const committed = fs.readFileSync(path.join(REPO_ROOT, SNAPSHOT_REL), 'utf8');
   const first = renderSnapshot(REPO_ROOT);

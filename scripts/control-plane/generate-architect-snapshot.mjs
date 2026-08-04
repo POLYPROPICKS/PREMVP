@@ -70,7 +70,7 @@ export function renderSnapshot(root = REPO_ROOT) {
   w(`- Phase: **${state.roadmap_phase}**`);
   w(`- Current step: **${state.current_value_step.id} — ${state.current_value_step.title}** (${state.current_value_step.status})`);
   w(`- Next two: ${state.next_two_value_steps.map((s) => `**${s.id}** ${s.title}`).join(' → ')}`);
-  w(`- main @ ${state.main.repository}: \`${state.main.origin_main_sha}\``);
+  w(`- main @ ${state.main.repository}: baseline \`${state.main.origin_main_sha}\` (${state.main.origin_main_sha_semantics}) — freshness mode ${state.main.freshness_check_mode}: baseline must be an ancestor of live origin/main; a live tip ahead of baseline stays FRESH only if every changed path is in the state-bootstrap allowlist (CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md), otherwise STATE_REFRESH_REQUIRED`);
   w(`- Last accepted completion: ${state.last_accepted_completion_id === null ? 'none' : state.last_accepted_completion_id}`);
   w();
 

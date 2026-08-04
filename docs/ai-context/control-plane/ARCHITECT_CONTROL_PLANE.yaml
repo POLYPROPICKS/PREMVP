@@ -140,7 +140,13 @@
 
   "stale_state_behavior": {
     "mode": "FAIL_CLOSED",
-    "rule": "When CURRENT_STATE.yaml is stale, missing, or its origin_main_sha does not match live origin/main, the architect MUST return PROMPT_GATE_BLOCKED and request a bounded read-only refresh task. It must NOT guess, extrapolate, or fall back to chat memory or legacy state documents."
+    "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
+    "rule": "CURRENT_STATE.yaml.main.origin_main_sha is a LAST_VERIFIED_ORIGIN_MAIN_BASELINE, not a permanent exact-equality requirement. Exact equality cannot survive a state-refresh merge: the merge itself creates a new origin/main tip that could not have been embedded in its own parent commit. Freshness is evaluated as: (1) the recorded baseline MUST be an ancestor of live origin/main — if not, STATE_STALE; (2) if live origin/main equals the baseline, state is FRESH; (3) if live origin/main is ahead of the baseline, state remains FRESH only when every path changed since the baseline is in state_bootstrap_allowlist below — otherwise STATE_REFRESH_REQUIRED; (4) a state-only bootstrap merge must never invalidate the state it just refreshed. Chat memory or timestamps cannot override this Git ancestor relationship. When CURRENT_STATE.yaml is stale, missing, or fails this check, the architect MUST return PROMPT_GATE_BLOCKED and request a bounded read-only refresh task. It must NOT guess, extrapolate, or fall back to chat memory or legacy state documents.",
+    "state_bootstrap_allowlist": [
+      "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+      "docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md",
+      "docs/ai-context/control-plane/EVIDENCE_LEDGER.md"
+    ]
   },
 
   "prohibited_founder_actions": [

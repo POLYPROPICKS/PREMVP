@@ -107,10 +107,13 @@ Every executor result must be a completion envelope. A task requiring a reviewer
 return PASS without a matching receipt whose reviewed_sha equals result_sha.
 
 FAIL CLOSED — return PROMPT_GATE_BLOCKED instead of guessing when:
-a mandatory section cannot be filled with a concrete value; CURRENT_STATE is stale or its
-origin_main_sha no longer matches live origin/main; a required capability is not PROVEN;
-two canonical artifacts contradict each other; the task would mix PREMVP and Ireland; the
-task is R5 without separate authorization; the task would require a prohibited Founder action.
+a mandatory section cannot be filled with a concrete value; CURRENT_STATE's recorded
+origin_main_sha (a verified baseline, not a permanent exact match) is NOT an ancestor of
+live origin/main, or live origin/main is ahead of it and a changed path falls outside the
+state-bootstrap allowlist (CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md);
+a required capability is not PROVEN; two canonical artifacts contradict each other; the
+task would mix PREMVP and Ireland; the task is R5 without separate authorization; the task
+would require a prohibited Founder action.
 Format:
   PROMPT_GATE_BLOCKED
   Reason: <named stop condition>
@@ -192,29 +195,39 @@ of drift.
 
 ## 8. Mandatory post-merge state bootstrap
 
-**Do this once, immediately after the control-plane PR merges to `main`, and before any
-Phase 3 scenario.** Until it is done, `CURRENT_STATE.yaml` still carries the pre-merge
-`origin_main_sha`, so the architect is required to treat state as stale and return
-`PROMPT_GATE_BLOCKED` on everything. That is correct behaviour, not a bug — this section
-is how you clear it.
+**Do this once after any control-plane PR merges to `main`, before the next Phase 3
+scenario.** `CURRENT_STATE.yaml.main.origin_main_sha` is a **verified baseline**
+(`LAST_VERIFIED_ORIGIN_MAIN_BASELINE`), not a permanent exact match — a bootstrap merge
+always moves `origin/main` past whatever baseline it recorded, since the merge commit
+cannot be embedded in its own parent. Freshness mode
+`BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE` (defined in `ARCHITECT_CONTROL_PLANE.yaml`)
+keeps state FRESH across that advance as long as every path changed since the baseline is
+in the state-bootstrap allowlist (`CURRENT_STATE.yaml`, `ARCHITECT_SNAPSHOT.md`,
+`EVIDENCE_LEDGER.md`). If a merge touched anything else — new source, new artifacts — the
+architect correctly returns `STATE_REFRESH_REQUIRED` and this section is how you clear it.
 
 One Founder action. In `00 — Architect`, send:
 
 ```
-Bootstrap state after control-plane merge. Produce one bounded R2_ARCHITECTURE_OR_ROADMAP
-Claude Code Cloud prompt that: resolves live origin/main; updates CURRENT_STATE.yaml
-origin_main_sha, updated_at and state_version; sets last_accepted_completion_id;
-regenerates ARCHITECT_SNAPSHOT.md; runs npm run control-plane:check; commits and pushes.
-Allowed files: docs/ai-context/control-plane/CURRENT_STATE.yaml and
-docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md only.
+Bootstrap state after a control-plane merge. Produce one bounded R2_ARCHITECTURE_OR_ROADMAP
+Claude Code Cloud prompt that: resolves live origin/main; sets CURRENT_STATE.yaml
+main.origin_main_sha to that new baseline (keeping origin_main_sha_semantics
+LAST_VERIFIED_ORIGIN_MAIN_BASELINE and freshness_check_mode
+BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE); updates updated_at and increments
+state_version by exactly 1; sets last_accepted_completion_id; appends one EVIDENCE_LEDGER
+entry; regenerates ARCHITECT_SNAPSHOT.md; runs npm run control-plane:check; commits and
+pushes. Allowed files: docs/ai-context/control-plane/CURRENT_STATE.yaml,
+docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md,
+docs/ai-context/control-plane/EVIDENCE_LEDGER.md only.
 ```
 
 Then: one copy/paste down to Claude Code Cloud, one envelope back up.
 
 Bootstrap is complete when all four hold:
 
-- [ ] `CURRENT_STATE.yaml` `origin_main_sha` equals live `origin/main`
-- [ ] `state_version` incremented and `updated_at` advanced
+- [ ] `CURRENT_STATE.yaml` `main.origin_main_sha` is an ancestor of live `origin/main`
+      (need not be exactly equal)
+- [ ] `state_version` incremented by exactly 1 and `updated_at` advanced
 - [ ] `npm run control-plane:check` PASS, including `snapshot:check`
 - [ ] if you are on attached files (§6), the project's `ARCHITECT_SNAPSHOT.md` has been
       replaced with the regenerated one

@@ -221,6 +221,30 @@ export function validateControlPlane(root = REPO_ROOT) {
   if (!state.main?.proof || !EVIDENCE_CLASSES.includes(state.main.proof.evidence_class)) {
     err('CURRENT_STATE: main.proof.evidence_class must be a known evidence class');
   }
+  // origin_main_sha is a verified baseline, not a permanent exact-equality requirement —
+  // exact equality cannot survive the merge that lands this very state, since that merge
+  // creates a new tip that could not have been embedded in its own parent commit.
+  if (state.main?.origin_main_sha_semantics !== 'LAST_VERIFIED_ORIGIN_MAIN_BASELINE') {
+    err('CURRENT_STATE: main.origin_main_sha_semantics must be LAST_VERIFIED_ORIGIN_MAIN_BASELINE');
+  }
+  if (state.main?.freshness_check_mode !== 'BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE') {
+    err('CURRENT_STATE: main.freshness_check_mode must be BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE');
+  }
+  const sbb = policy.stale_state_behavior;
+  if (sbb?.freshness_check_mode !== 'BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE') {
+    err('ARCHITECT_CONTROL_PLANE: stale_state_behavior.freshness_check_mode must be BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE');
+  }
+  const EXPECTED_BOOTSTRAP_ALLOWLIST = [
+    'docs/ai-context/control-plane/CURRENT_STATE.yaml',
+    'docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md',
+    'docs/ai-context/control-plane/EVIDENCE_LEDGER.md',
+  ];
+  const allowlist = sbb?.state_bootstrap_allowlist;
+  if (!Array.isArray(allowlist) ||
+      allowlist.length !== EXPECTED_BOOTSTRAP_ALLOWLIST.length ||
+      !EXPECTED_BOOTSTRAP_ALLOWLIST.every((p) => allowlist.includes(p))) {
+    err('ARCHITECT_CONTROL_PLANE: stale_state_behavior.state_bootstrap_allowlist must be exactly the three state-bootstrap paths (CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md)');
+  }
 
   // --- Capability matrix ----------------------------------------------------------------
   const targets = capability.execution_targets;

@@ -33,6 +33,8 @@
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
     "origin_main_sha": "6e593a5d0e66e50941f130f7792f67e487dbb347",
+    "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
+    "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "executor": "claude_code_cloud",
@@ -130,11 +132,13 @@
   },
 
   "stale_when": [
-    "live origin/main SHA differs from main.origin_main_sha",
+    "main.origin_main_sha is NOT an ancestor of live origin/main (STATE_STALE)",
+    "main.origin_main_sha IS an ancestor of live origin/main, live origin/main is ahead of it, and any path changed between them falls outside stale_state_behavior.state_bootstrap_allowlist in ARCHITECT_CONTROL_PLANE.yaml (STATE_REFRESH_REQUIRED)",
     "updated_at is older than evidence_freshness.max_age_days",
     "an accepted completion envelope exists whose completion_id is newer than last_accepted_completion_id",
     "a referenced execution target verdict in CAPABILITY_MATRIX.yaml has passed its expires_when"
   ],
+  "stale_when_note": "Exact equality between main.origin_main_sha and live origin/main is NOT required and is not used as a staleness test. A state-only bootstrap advance (touching only CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md) keeps state FRESH even though origin/main has moved past the recorded baseline.",
 
   "last_accepted_completion_id": null
 }

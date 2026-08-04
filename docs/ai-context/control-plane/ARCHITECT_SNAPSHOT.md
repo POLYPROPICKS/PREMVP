@@ -19,7 +19,7 @@ Only current-state authority: `CURRENT_STATE.yaml`. `EVIDENCE_LEDGER.md` is hist
 - Phase: **CONTUR3_QUEUE_AUTHORITY**
 - Current step: **C1 — Queue authority cutoff** (OPEN)
 - Next two: **C2** Ireland execution reads only the immutable Queue → **SETTLEMENT_PNL** Settlement / PnL and production vertical proof
-- main @ POLYPROPICKS/PREMVP: `6e593a5d0e66e50941f130f7792f67e487dbb347`
+- main @ POLYPROPICKS/PREMVP: baseline `6e593a5d0e66e50941f130f7792f67e487dbb347` (LAST_VERIFIED_ORIGIN_MAIN_BASELINE) — freshness mode BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE: baseline must be an ancestor of live origin/main; a live tip ahead of baseline stays FRESH only if every changed path is in the state-bootstrap allowlist (CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md), otherwise STATE_REFRESH_REQUIRED
 - Last accepted completion: none
 
 ## 3. Blockers
@@ -92,4 +92,4 @@ Stale state: **FAIL_CLOSED** — return PROMPT_GATE_BLOCKED and request a bounde
 - Proven passes: CLOUD_REPO_READ, CLOUD_NPM_CI, CLOUD_SUPABASE_SELECT, CLOUD_TYPECHECK, CLOUD_BUILD, CODEX_WEATHER_REVIEWER_PRESENT, CODEX_CONTUR_REVIEWER_PRESENT
 - External checkpoints: CHK-C1-20260803, CHK-CLOUD-CAPABILITY, CHK-CODEX-INVENTORY
 - Freshness: 7 days from 2026-08-03T00:00:00Z
-- Stale when: live origin/main SHA differs from main.origin_main_sha; updated_at is older than evidence_freshness.max_age_days; an accepted completion envelope exists whose completion_id is newer than last_accepted_completion_id; a referenced execution target verdict in CAPABILITY_MATRIX.yaml has passed its expires_when
+- Stale when: main.origin_main_sha is NOT an ancestor of live origin/main (STATE_STALE); main.origin_main_sha IS an ancestor of live origin/main, live origin/main is ahead of it, and any path changed between them falls outside stale_state_behavior.state_bootstrap_allowlist in ARCHITECT_CONTROL_PLANE.yaml (STATE_REFRESH_REQUIRED); updated_at is older than evidence_freshness.max_age_days; an accepted completion envelope exists whose completion_id is newer than last_accepted_completion_id; a referenced execution target verdict in CAPABILITY_MATRIX.yaml has passed its expires_when
