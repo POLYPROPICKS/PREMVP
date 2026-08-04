@@ -1,0 +1,144 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-08-03T00:00:00Z",
+  "state_version": 1,
+
+  "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
+  "current_value_step": {
+    "id": "C1",
+    "title": "Queue authority cutoff",
+    "value_target": "persisted Planning Reservation -> typed Contract A Final Identity -> exact-token order book -> guards -> immutable Queue",
+    "status": "OPEN"
+  },
+  "next_two_value_steps": [
+    {
+      "id": "C2",
+      "title": "Ireland execution reads only the immutable Queue",
+      "value_target": "immutable Queue becomes the only Ireland execution source; callback strictly by queue_id; then terminal state",
+      "status": "NEXT"
+    },
+    {
+      "id": "SETTLEMENT_PNL",
+      "title": "Settlement / PnL and production vertical proof",
+      "value_target": "settlement and PnL close the vertical with production runtime proof",
+      "status": "PLANNED"
+    }
+  ],
+
+  "closed_value_steps": [
+    { "id": "A", "title": "Contract A authority", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT" },
+    { "id": "B", "title": "Planning and Reservation writers use Contract A", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT" }
+  ],
+
+  "main": {
+    "repository": "POLYPROPICKS/PREMVP",
+    "origin_main_sha": "6e593a5d0e66e50941f130f7792f67e487dbb347",
+    "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
+    "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
+    "proof": {
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "executor": "claude_code_cloud",
+      "commands": ["git fetch origin main", "git rev-parse origin/main"],
+      "observed_at": "2026-08-03T00:00:00Z",
+      "worktree": "clean"
+    }
+  },
+
+  "active_execution_work": [
+    {
+      "id": "C1_QUEUE_AUTHORITY_CUTOFF",
+      "executor": "local_codex_windows",
+      "branch": "codex/queue-authority-cutoff-20260803",
+      "remote_branch_sha": "05ed5f45f60567a80fa6a231479ae95bc92962ab",
+      "remote_branch_proof": {
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "command": "git ls-remote --heads origin codex/queue-authority-cutoff-20260803",
+        "note": "Remote branch identity only. The Founder-accepted local HEAD 76a1590caf34f25ef15de6c45f51e52045447bd2 is NOT present on this remote ref and is NOT proven by Cloud."
+      },
+      "local_head_claimed": "76a1590caf34f25ef15de6c45f51e52045447bd2",
+      "local_head_evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+      "status": "OPEN_WITH_FAILING_ASSERTION"
+    }
+  ],
+
+  "proven_passes": [
+    { "id": "CLOUD_REPO_READ", "executor": "claude_code_cloud", "statement": "PREMVP repository read", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
+    { "id": "CLOUD_NPM_CI", "executor": "claude_code_cloud", "statement": "npm ci exit 0 with clean git status", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
+    { "id": "CLOUD_SUPABASE_SELECT", "executor": "claude_code_cloud", "statement": "authenticated Supabase SELECT via npx tsx scripts/verify-executor-queue.ts", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
+    { "id": "CLOUD_TYPECHECK", "executor": "claude_code_cloud", "statement": "npx tsc --noEmit exit 0", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
+    { "id": "CLOUD_BUILD", "executor": "claude_code_cloud", "statement": "npm run build exit 0", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
+    { "id": "CODEX_WEATHER_REVIEWER_PRESENT", "executor": "local_codex_windows", "statement": "codex.agent.weather_gate_reviewer.v0 exists as a user-scoped agent", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003" },
+    { "id": "CODEX_CONTUR_REVIEWER_PRESENT", "executor": "local_codex_windows", "statement": "codex.agent.contur_gate_reviewer exists as a user-scoped agent", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003" }
+  ],
+
+  "proven_failures": [
+    {
+      "id": "C1_CTL18_ASSERTION_FAILURE",
+      "executor": "local_codex_windows",
+      "statement": "CTL18 assertion failure in the controlled-live intent test path",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0004",
+      "note": "Previous runtime-hang hypothesis was NOT reproduced. No retained process, open handle, unresolved Promise, global Date mutation or reproducible full-file hang is currently proven."
+    }
+  ],
+
+  "open_blockers": [
+    { "id": "BLK-001", "statement": "C1 CTL18 assertion failure is unresolved.", "owner_executor": "local_codex_windows", "blocking": "C1" },
+    { "id": "BLK-002", "statement": "Codex reviewer invocation is not deterministic: no required invocation receipt, no deterministic gate, no project-scoped Codex agent package, no tracked CI gate.", "owner_executor": "local_codex_windows", "blocking": "reviewer receipt enforcement outside the Cloud validator" },
+    { "id": "BLK-003", "statement": "Supabase write access from claude_code_cloud is NOT_PROVEN.", "owner_executor": "claude_code_cloud", "blocking": "any Cloud task requiring a database write" },
+    { "id": "BLK-004", "statement": "Ireland runtime access and Ireland repository remote identity are NOT_PROVEN.", "owner_executor": "ireland_local", "blocking": "C2 execution routing" }
+  ],
+
+  "external_accepted_checkpoints": [
+    {
+      "id": "CHK-C1-20260803",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+      "source": "Founder statement in the Phase 1/2 control-plane prompt",
+      "executor": "local_codex_windows",
+      "branch": "codex/queue-authority-cutoff-20260803",
+      "head": "76a1590caf34f25ef15de6c45f51e52045447bd2",
+      "expected_dirty_files": [
+        "lib/executor/eventExecutionQueue.ts",
+        "tests/contur3/eventExecutionQueue.controlledLiveIntent.test.ts",
+        "tests/contur3/eventExecutionQueue.rebalanceScheduler.test.ts"
+      ],
+      "diff": "104 insertions / 13 deletions",
+      "git_diff_check": "PASS (CRLF warnings only)",
+      "dependency_and_tsx_resolution": "PASS",
+      "controlled_live_test_file_runs": "completed normally",
+      "current_failure": "CTL18 assertion failure",
+      "not_reproduced": ["runtime hang hypothesis"],
+      "cloud_inspected": false
+    },
+    {
+      "id": "CHK-CLOUD-CAPABILITY",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "source": "Phase 0 Claude Code Cloud capability audit",
+      "executor": "claude_code_cloud"
+    },
+    {
+      "id": "CHK-CODEX-INVENTORY",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "source": "Phase 0 Local Windows Codex agent inventory",
+      "executor": "local_codex_windows"
+    }
+  ],
+
+  "evidence_freshness": {
+    "origin_main_sha_checked_at": "2026-08-03T00:00:00Z",
+    "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
+    "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
+    "max_age_days": 7
+  },
+
+  "stale_when": [
+    "main.origin_main_sha is NOT an ancestor of live origin/main (STATE_STALE)",
+    "main.origin_main_sha IS an ancestor of live origin/main, live origin/main is ahead of it, and any path changed between them falls outside stale_state_behavior.state_bootstrap_allowlist in ARCHITECT_CONTROL_PLANE.yaml (STATE_REFRESH_REQUIRED)",
+    "updated_at is older than evidence_freshness.max_age_days",
+    "an accepted completion envelope exists whose completion_id is newer than last_accepted_completion_id",
+    "a referenced execution target verdict in CAPABILITY_MATRIX.yaml has passed its expires_when"
+  ],
+  "stale_when_note": "Exact equality between main.origin_main_sha and live origin/main is NOT required and is not used as a staleness test. A state-only bootstrap advance (touching only CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md) keeps state FRESH even though origin/main has moved past the recorded baseline.",
+
+  "last_accepted_completion_id": null
+}

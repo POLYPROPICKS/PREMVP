@@ -1,0 +1,191 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypropicks.com/schemas/control-plane/COMPLETION_ENVELOPE.schema.json",
+  "title": "PolyProPicks Executor Completion Envelope",
+  "description": "Canonical result contract for every executor task. Validated by scripts/control-plane/validate-completion-envelope.mjs — a focused dependency-free validator, not a generic JSON Schema engine.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "completion_id",
+    "task_id",
+    "task_class",
+    "risk_class",
+    "executor",
+    "environment",
+    "repository",
+    "branch",
+    "base_sha",
+    "result_sha",
+    "origin_main_sha",
+    "worktree_before",
+    "worktree_after",
+    "files_changed",
+    "commands_run",
+    "tests",
+    "required_reviewers",
+    "invoked_reviewers",
+    "reviewer_receipts",
+    "evidence",
+    "capability_changes",
+    "state_delta_proposal",
+    "runtime_changed",
+    "deployment_changed",
+    "database_changed",
+    "forbidden_actions_respected",
+    "verdict",
+    "blockers",
+    "founder_action"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "completion_id": { "type": "string", "minLength": 1 },
+    "task_id": { "type": "string", "minLength": 1 },
+    "task_class": { "type": "string", "minLength": 1 },
+    "risk_class": {
+      "type": "string",
+      "enum": [
+        "R0_READ_ONLY",
+        "R1_BOUNDED_CODE",
+        "R2_ARCHITECTURE_OR_ROADMAP",
+        "R3_WEATHER_MODEL_CHANGE",
+        "R4_CONTUR_PRODUCTION_BOUNDARY",
+        "R5_CROSS_REPO_OR_LIVE_MONEY"
+      ]
+    },
+    "executor": {
+      "type": "string",
+      "enum": ["claude_code_cloud", "local_codex_windows", "ireland_local"]
+    },
+    "environment": { "type": "string", "minLength": 1 },
+    "repository": { "type": "string", "minLength": 1 },
+    "branch": { "type": "string", "minLength": 1 },
+    "base_sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "result_sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "origin_main_sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+    "worktree_before": { "type": "string", "enum": ["clean", "expected_dirty", "unexpected_dirty"] },
+    "worktree_after": { "type": "string", "enum": ["clean", "expected_dirty", "unexpected_dirty"] },
+    "files_changed": { "type": "array", "items": { "type": "string" } },
+    "commands_run": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["command", "exit_code", "purpose"],
+        "properties": {
+          "command": { "type": "string", "minLength": 1 },
+          "exit_code": { "type": "integer" },
+          "purpose": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "result"],
+        "properties": {
+          "name": { "type": "string" },
+          "result": { "type": "string", "enum": ["PASS", "FAIL", "SKIPPED", "NOT_RUN"] },
+          "detail": { "type": "string" }
+        }
+      }
+    },
+    "required_reviewers": { "type": "array", "items": { "type": "string" } },
+    "invoked_reviewers": { "type": "array", "items": { "type": "string" } },
+    "reviewer_receipts": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/reviewer_receipt" }
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "evidence_class", "statement"],
+        "properties": {
+          "id": { "type": "string" },
+          "evidence_class": {
+            "type": "string",
+            "enum": [
+              "PROVEN_IN_RUNTIME",
+              "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+              "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+              "SUPPORTED",
+              "NOT_PROVEN"
+            ]
+          },
+          "statement": { "type": "string" },
+          "ref": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "capability_changes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["executor_id", "capability", "new_verdict"],
+        "properties": {
+          "executor_id": { "type": "string" },
+          "capability": { "type": "string" },
+          "new_verdict": { "type": "string", "enum": ["PROVEN", "FAILED", "NOT_PROVEN", "NOT_AVAILABLE"] }
+        }
+      }
+    },
+    "state_delta_proposal": {
+      "type": ["object", "null"],
+      "description": "A PROPOSAL only. The writing executor may never mark its own state delta accepted.",
+      "properties": {
+        "proposed_state_version": { "type": "integer" },
+        "changes": { "type": "array", "items": { "type": "object" } },
+        "accepted": { "type": "boolean", "const": false }
+      }
+    },
+    "runtime_changed": { "type": "boolean" },
+    "deployment_changed": { "type": "boolean" },
+    "database_changed": { "type": "boolean" },
+    "forbidden_actions_respected": { "type": "boolean" },
+    "verdict": { "type": "string", "enum": ["PASS", "FAIL", "BLOCKED", "WAIT"] },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "founder_action": { "type": "string", "minLength": 1 }
+  },
+  "definitions": {
+    "reviewer_receipt": {
+      "type": "object",
+      "required": [
+        "agent_id",
+        "configured_model",
+        "reasoning_policy",
+        "independence_group",
+        "reviewed_sha",
+        "verdict",
+        "evidence_refs"
+      ],
+      "anyOf": [
+        { "required": ["definition_hash"] },
+        { "required": ["implementation_identity"] }
+      ],
+      "properties": {
+        "agent_id": { "type": "string", "minLength": 1 },
+        "definition_hash": { "type": "string" },
+        "implementation_identity": { "type": "string" },
+        "configured_model": { "type": "string", "minLength": 1 },
+        "reasoning_policy": { "type": "string", "minLength": 1 },
+        "independence_group": { "type": "string", "minLength": 1 },
+        "reviewed_sha": { "type": "string", "pattern": "^[0-9a-f]{7,40}$" },
+        "verdict": { "type": "string", "enum": ["PASS", "FAIL", "BLOCKED"] },
+        "evidence_refs": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  },
+  "x-invariants": [
+    "PASS requires every entry of required_reviewers to appear in invoked_reviewers.",
+    "PASS requires a reviewer_receipts entry for every required reviewer.",
+    "Every reviewer receipt's reviewed_sha must equal result_sha.",
+    "PASS is forbidden when any commands_run entry has a non-zero exit_code.",
+    "PASS is forbidden when any tests entry has result FAIL.",
+    "PASS is forbidden when blockers is non-empty.",
+    "PASS is forbidden when forbidden_actions_respected is false.",
+    "PASS is forbidden when worktree_after is unexpected_dirty.",
+    "PASS is forbidden when any reviewer receipt verdict is not PASS.",
+    "state_delta_proposal.accepted must be false or absent — the writer cannot accept its own state."
+  ]
+}

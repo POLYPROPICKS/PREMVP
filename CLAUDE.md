@@ -4,6 +4,30 @@
 <!-- TOKEN LOADING RULE: ALWAYS load. Never skip. Tier 0. -->
 <!-- MONITORING CHECK: First response must include task classification + execution mode + stop conditions -->
 
+## 0. Architect Control Plane — read first
+
+The canonical control plane lives in `/docs/ai-context/control-plane/`. It takes priority
+over legacy state documents.
+
+1. Read `ARCHITECT_CONTROL_PLANE.yaml` **first** — policy, boundaries, source authority.
+2. Read `CURRENT_STATE.yaml` **before planning** — it is the **only** current operational
+   state artifact. Legacy state documents (`01_*`, `02_*`, `09_*`, `11_*`, `WORK_TRU_*`)
+   are descriptive or historical and **cannot override it**. `EVIDENCE_LEDGER.md` is
+   history only.
+3. Use `ROUTING_AND_PIPELINES.yaml` for executor and reviewer selection. Reviewers are
+   invoked by risk class — never all agents for every task.
+4. Use `PROMPT__PROTOCOL.md` for **every** executor prompt. Missing or contradictory
+   input → `PROMPT_GATE_BLOCKED`.
+5. Use `COMPLETION_ENVELOPE.schema.json` for **every** executor result. A task that
+   requires a reviewer cannot return `PASS` without a valid reviewer receipt.
+6. Environment-specific paths, repositories and shells come from `CAPABILITY_MATRIX.yaml`.
+   Do **not** hardcode Windows as the only execution environment — `§4` of `AGENTS.md` is
+   superseded on this point.
+7. PREMVP and Ireland implementation prompts must remain **separate**. One prompt targets
+   exactly one repository boundary.
+
+Verify with `npm run control-plane:check`.
+
 ## 1. Roles
 
 **Claude Chat**: planner/architecture reviewer/Claude Code prompt generator/monitoring auditor. Classifies tasks, plans patches, writes Claude Code prompts, reviews evidence. Does NOT edit repo files directly. Output for implementation tasks = one ready-to-paste Claude Code block.
