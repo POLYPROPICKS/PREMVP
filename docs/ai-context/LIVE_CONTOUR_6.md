@@ -29,6 +29,22 @@ This document governs:
 
 It does not override locked product decisions, security rules, payment/auth boundaries, or founder approval gates.
 
+## 1.1 Current C1 position and nearest value path — 2026-08-04
+
+C1 is accepted on remote feature branch `codex/queue-authority-cutoff-20260803` at
+`05ed5f45f60567a80fa6a231479ae95bc92962ab`; it is not merged, deployed, or production-proven.
+The next value path is: (1) C1 PR/review/merge/deploy; (2) a natural operator-configured
+Planning→Reservation run; (3) real Reservation→Final Identity→immutable Queue proof; (4) a
+Queue-only Ireland receipt; (5) one bounded live order; (6) callback, terminal state, settlement and
+PnL. Battle Proof 1 observability remains unproven, but failed local Supabase observability experiments
+do not prove a broken production pipeline and do not authorize a new audit/execution endpoint.
+
+The approved target run takes a selected model/contour, cutoff/as-of, total slots, group/sport allocation
+and run identity as operator configuration. It selects top-N **unique physical events** under that
+portfolio, persists Reservations, and uses no separate Planning table at this stage. Current source still
+has fixed night-window and 15-slot constants, so this is a documented target rather than a current
+configuration capability.
+
 ---
 
 ## 2. Founder Decision — Canonical Identity Model

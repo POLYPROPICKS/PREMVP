@@ -6,6 +6,32 @@
 
 ---
 
+## 2026-08-04 — C1 accepted branch and configurable Planning→Reservation lock
+
+**Git state (PROVEN):** `codex/queue-authority-cutoff-20260803` and its remote both point to
+`05ed5f45f60567a80fa6a231479ae95bc92962ab` (`fix(queue): enforce Contract A authority across write fixtures`).
+**Release evidence taxonomy:** C1 is not merged, deployed, or production-proven. Detailed executable
+gates are freshly reverified for the release task and are recorded in its PR/release evidence rather
+than this permanent context log; historical executor-result totals are not treated as immutable facts.
+
+**Corrected orchestration model (Founder-approved target):** one sequential, operator-configured run:
+model/contour and as-of cutoff → Contract A Planning → unique physical-event grouping/ranking/allocation
+→ Reservation. It is not a parallel Planning job. Reservation freezes the selected portfolio; Final
+Identity is limited to the reserved event; immutable Queue is Ireland's only instruction. No new Planning
+table is justified now; `night_event_reservations` remains the durable handoff.
+
+**Source gaps (PROVEN):** the current route fixes `CONTRACT_A_PLANNING_V1`, `nightWindow.ts` fixes the
+17:00 anchor, and `nightEventReservations.ts` fixes 15 slots; full operator config and lineage are not
+yet proven. Reservation grouping is event-level and Queue writing is downstream/separate. Failed local
+Supabase observability experiments neither prove a production pipeline failure nor authorize a new
+execution endpoint.
+
+**Next value path:** C1 PR/review/merge/deploy → natural configurable Planning/Reservation run → real
+Reservation→Final Identity→Queue proof → Queue-only Ireland receipt → bounded order → callback/terminal/
+settlement/PnL. Docs commit is pending until the commit containing this entry is created.
+
+---
+
 ## 2026-08-02 — NEW_COUNTUR_1_R1 architecture CORRECTION (docs only)
 
 **Status:** `CANONICAL / FOUNDER LOCKED — R1`. Documentation only. Zero runtime, test, schema,

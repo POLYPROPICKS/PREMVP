@@ -17,6 +17,30 @@
 | Name lock | The canonical spelling is `NEW_COUNTUR_1`. It is not `NEW_CONTOUR_1` and must not be "corrected". |
 | Mermaid | `NEW_COUNTUR_1.mmd` **deleted** from the active package and deferred — see §23 |
 
+### C1 checkpoint and configurable-orchestrator lock — 2026-08-04
+
+**C1 current release state:** branch `codex/queue-authority-cutoff-20260803`, source/test commit
+`05ed5f45f60567a80fa6a231479ae95bc92962ab`, and remote feature head match are
+**PROVEN_BY_CURRENT_GIT**. C1 is **not merged, deployed, or production-proven**. Detailed executable
+gates are **FRESHLY_REVERIFIED_IN_RELEASE_TASK** and belong in PR/release evidence, not permanent
+architecture prose.
+
+**Founder-approved target contract — not a claim of current configurability.** One sequential
+operator-configured run is: selected model/contour snapshot as-of cutoff → Contract A Planning →
+physical-event grouping → event ranking and group/slot allocation → `persistReservationPlan()` →
+`night_event_reservations`. Planning and Reservation are not parallel jobs. Configuration owns model,
+contour, cutoff/as-of, total slots, group/sport allocation, and plan/run identity; “17:00 and 15” is
+one present configuration, not a universal architecture rule.
+
+Contract A owns eligibility, policy, score, rank, tier, rejection trace, unique physical-event
+selection, and allocation before Reservation. Reservation freezes that selected portfolio and its
+recoverable lineage. Final Identity is downstream and may inspect only the reserved physical event to
+choose one exact condition/token/side and apply mechanical guards; it may not select a sibling event,
+switch models, rerank, or recalculate planning. Queue is immutable; Ireland executes Queue and does
+not rediscover model, event, market, token, side, or ranking. Do not add a separate Planning table now:
+`night_event_reservations` remains the durable handoff unless independent planning/replay/rematerialize
+or complete accepted/rejected-ledger requirements become real.
+
 Every statement below is tagged. Read the tag before the sentence:
 
 | Tag | Meaning |
