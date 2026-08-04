@@ -228,3 +228,54 @@ No production, database, Railway, Ireland or UAS change occurred.
 
 This entry documents the state-refresh event only. It is history and is **never**
 authoritative for current state — see `CURRENT_STATE.yaml`.
+
+---
+
+## EV-0009 — Founder authority + prompt-relay-only operator model encoded; GitHub PR integration registered
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **observed_at:** 2026-08-04
+- **executor:** `claude_code_cloud`
+- **completion_id:** `CMP-FOUNDER-AUTHORITY-GITHUB-INTEGRATION-20260804`
+- **branch:** `claude/state-refresh-c1-runtime-proof-20260804`
+- **base:** `e9e304cc40acd12c3efeec1076af95c5205f60d7`
+
+A current explicit Founder decision was accepted and encoded into the canonical Control
+Plane:
+
+- Founder is the highest project authority; a concrete current Founder directive
+  supersedes conflicting internal Control Plane policy for the exact authorized task
+  only (`ARCHITECT_CONTROL_PLANE.yaml.founder_authority`).
+- Founder operates prompt-relay-only: no GitHub, Git, terminal, Supabase or deployment
+  action (`ARCHITECT_CONTROL_PLANE.yaml.operator_model`).
+- Executors own repository integration end-to-end: implement, validate, commit, push,
+  create the PR, merge the PR, verify origin/main
+  (`ARCHITECT_CONTROL_PLANE.yaml.repository_integration`).
+- A minimum command, `claude.command.github_pr_merge.v0`, was registered in
+  `AGENT_REGISTRY.yaml` (status `PLANNED` — no dedicated command file exists yet; the
+  bounded integration is executed directly via authenticated GitHub MCP tools under this
+  policy). R1 and R2 forbidden_actions no longer include a blanket `MERGE` prohibition;
+  R3 and R4 replace it with `MERGE_WITHOUT_REVIEWER_RECEIPT`, preserving the mandatory
+  Weather and Contur reviewer-receipt gates. R5 remains fail-closed by default; its
+  `fail_closed_behavior.founder_override_scope` documents that only an explicit,
+  exactly-named Founder directive can authorize a bounded R5 action, and its empty
+  `eligible_execution_targets` / `permitted_repositories` are unchanged.
+- `CAPABILITY_MATRIX.yaml` registers `GITHUB_PR_CREATE` and `GITHUB_PR_MERGE` for
+  `claude_code_cloud`, both `NOT_PROVEN` at commit time. The schema's verdict enum
+  (`PROVEN`/`FAILED`/`NOT_PROVEN`/`NOT_AVAILABLE`) has no pending state, and this
+  governance commit necessarily precedes the PR-create and PR-merge calls it describes,
+  so it cannot itself prove them. Marking them `PROVEN` here would be a false pre-proof
+  claim, which `founder_authority.limitations` and this project's evidence rules
+  forbid.
+
+Per the authorizing prompt's bounded budget (maximum one new commit, one PR creation,
+one PR merge in this session), this governance change and the PR create/merge attempt
+it authorizes are carried out as a single commit and a single PR. The live result of
+that PR-create and PR-merge attempt — PR number, base/head SHAs, required-check status,
+merge result, and final verified `origin/main` SHA — is reported in completion envelope
+`CMP-FOUNDER-AUTHORITY-GITHUB-INTEGRATION-20260804` for this task. Because that live
+result lands after this commit is authored, `GITHUB_PR_CREATE` and `GITHUB_PR_MERGE`
+stay `NOT_PROVEN` in this file until a later bounded task reads that completion envelope
+and updates these two verdicts with a matching evidence reference.
+
+No production, deployment, database, Ireland or live-money action occurred.

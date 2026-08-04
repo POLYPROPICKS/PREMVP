@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-03T00:00:00Z",
+  "updated_at": "2026-08-04T13:30:00Z",
 
   "_types": ["AGENT", "SKILL", "COMMAND", "HOOK", "SCRIPT", "CI_GATE", "POLICY"],
   "_status": ["PROVEN_PRESENT", "REFERENCED_ONLY", "PLANNED", "SUPERSEDED"],
@@ -374,6 +374,38 @@
       "last_verified_at": "2026-08-03T00:00:00Z",
       "portability": "NEEDS_ADAPTER",
       "notes": "Specification document only. No executable agent implementation exists on any registered platform."
+    },
+    {
+      "canonical_id": "claude.command.github_pr_merge.v0",
+      "type": "COMMAND",
+      "owner_platform": "claude_code_cloud",
+      "implementation_path": null,
+      "status": "PLANNED",
+      "invocation": "EXPLICIT",
+      "triggers": ["R1_BOUNDED_CODE bounded PR integration", "R2_ARCHITECTURE_OR_ROADMAP bounded PR integration", "R3_WEATHER_MODEL_CHANGE integration after a matching reviewer receipt exists", "R4_CONTUR_PRODUCTION_BOUNDARY integration after a matching reviewer receipt exists"],
+      "exclusions": ["R0_READ_ONLY", "R5_CROSS_REPO_OR_LIVE_MONEY without a separate explicit Founder authorization"],
+      "model_policy": "inherit",
+      "reasoning_policy": "inherit",
+      "permissions": "authenticated GitHub MCP: create_pull_request, merge_pull_request, enable_pr_auto_merge",
+      "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "repository, source_branch, source_sha, target_branch, changed_path_allowlist, validation_commands, risk_class, required_reviewers, required_reviewer_receipts",
+      "output_contract": "canonical COMPLETION_ENVELOPE.schema.json result including PR number, PR integrity verification, merge result and verified origin/main ancestry",
+      "independence_group": null,
+      "receipt_required": false,
+      "evidence_class": "NOT_PROVEN",
+      "last_verified_at": "2026-08-04T13:30:00Z",
+      "portability": "CLAUDE_ONLY",
+      "hard_prohibitions": [
+        "no direct push to main",
+        "no force push",
+        "no branch-protection bypass",
+        "no unexpected files",
+        "no missing required reviewer receipt",
+        "no cross-repository merge",
+        "no R5 merge without separate explicit Founder authorization",
+        "no secrets"
+      ],
+      "notes": "Registered by Founder authority decision CMP-FOUNDER-AUTHORITY-GITHUB-INTEGRATION-20260804. Status PLANNED — no dedicated command file exists yet; the contract above is executed directly via GitHub MCP tools under this policy until a dedicated .claude/commands file is added. GITHUB_PR_CREATE and GITHUB_PR_MERGE in CAPABILITY_MATRIX.yaml remain NOT_PROVEN until a live invocation succeeds and is recorded in EVIDENCE_LEDGER.md."
     }
   ]
 }

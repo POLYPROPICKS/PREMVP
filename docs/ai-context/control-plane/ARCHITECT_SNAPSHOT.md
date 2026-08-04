@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate: npm run control-plane:snapshot -->
 
-State v3 · updated 2026-08-04T12:42:32Z · policy 1.0.0
+State v3 · updated 2026-08-04T12:42:32Z · policy 1.1.0
 
 ## 1. Source authority
 
@@ -33,7 +33,7 @@ Only current-state authority: `CURRENT_STATE.yaml`. `EVIDENCE_LEDGER.md` is hist
 
 **`claude_code_cloud`** — host_dependency false, terminal_required false, surfaces CLOUD_WEB/CLOUD_MOBILE
 - PROVEN: REPOSITORY_READ, DEPENDENCY_INSTALL, TYPECHECK, BUILD, DATABASE_READ, PRODUCTION_HTTPS_READ, GIT_PUSH_FEATURE_BRANCH
-- NOT PROVEN: DATABASE_WRITE, IRELAND_RUNTIME_ACCESS, WEATHER_GATE_REVIEW, CONTUR_GATE_REVIEW, DEPLOY
+- NOT PROVEN: DATABASE_WRITE, GITHUB_PR_CREATE, GITHUB_PR_MERGE, IRELAND_RUNTIME_ACCESS, WEATHER_GATE_REVIEW, CONTUR_GATE_REVIEW, DEPLOY
 
 **`local_codex_windows`** — host_dependency true, terminal_required false, surfaces DESKTOP/MOBILE_REMOTE
 - PROVEN: REPOSITORY_READ, LOCAL_TEST_RUN, WEATHER_GATE_REVIEW, CONTUR_GATE_REVIEW
@@ -66,7 +66,7 @@ Every executor prompt is one copyable block containing all mandatory sections of
 
 - `codex.agent.weather_gate_reviewer.v0` — local_codex_windows, EXPLICIT, receipt REQUIRED, triggers: R3_WEATHER_MODEL_CHANGE; Weather model behavior change
 - `codex.agent.contur_gate_reviewer` — local_codex_windows, EXPLICIT, receipt REQUIRED, triggers: R4_CONTUR_PRODUCTION_BOUNDARY; Contur exact-SHA acceptance; production-boundary acceptance
-- Other registered entries (no receipt): 3 COMMAND, 2 HOOK, 3 SCRIPT, 1 CI_GATE, 6 POLICY — see AGENT_REGISTRY.yaml.
+- Other registered entries (no receipt): 4 COMMAND, 2 HOOK, 3 SCRIPT, 1 CI_GATE, 6 POLICY — see AGENT_REGISTRY.yaml.
 
 ## 8. PREMVP / Ireland boundary
 

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-03T00:00:00Z",
+  "updated_at": "2026-08-04T13:30:00Z",
 
   "_evidence_classes": ["PROVEN_IN_RUNTIME", "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT", "SUPPORTED", "NOT_PROVEN"],
   "_verdicts": ["PROVEN", "FAILED", "NOT_PROVEN", "NOT_AVAILABLE"],
@@ -41,6 +41,8 @@
         { "capability": "DATABASE_WRITE", "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null, "note": "Not tested. Must not be routed until separately proven and authorized." },
         { "capability": "PRODUCTION_HTTPS_READ", "verdict": "PROVEN", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002", "proven_at": "2026-08-03T00:00:00Z", "expires_when": "network policy changes" },
         { "capability": "GIT_PUSH_FEATURE_BRANCH", "verdict": "PROVEN", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "EVIDENCE_LEDGER#EV-0005", "proven_at": "2026-08-03T00:00:00Z", "proven_sha": "6e593a5d0e66e50941f130f7792f67e487dbb347", "expires_when": "repository permissions change" },
+        { "capability": "GITHUB_PR_CREATE", "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null, "note": "Founder-authorized capability probe registered in this commit (CMP-FOUNDER-AUTHORITY-GITHUB-INTEGRATION-20260804). Becomes PROVEN only after a successful live create_pull_request call is recorded in EVIDENCE_LEDGER.md by a subsequent task; this commit does not itself prove it." },
+        { "capability": "GITHUB_PR_MERGE", "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null, "note": "Founder-authorized capability probe registered in this commit (CMP-FOUNDER-AUTHORITY-GITHUB-INTEGRATION-20260804). Becomes PROVEN only after a successful live merge_pull_request call plus origin/main ancestry verification is recorded in EVIDENCE_LEDGER.md by a subsequent task; this commit does not itself prove it." },
         { "capability": "IRELAND_RUNTIME_ACCESS", "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null },
         { "capability": "WEATHER_GATE_REVIEW", "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null, "note": "Reviewer is user-scoped to Codex on the Windows host." },
         { "capability": "CONTUR_GATE_REVIEW", "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null, "note": "Reviewer is user-scoped to Codex on the Windows host." },

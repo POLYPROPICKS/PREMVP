@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-03T00:00:00Z",
+  "updated_at": "2026-08-04T13:30:00Z",
 
   "minimum_agent_policy": {
     "rule": "Invoke only the agents required by the classified risk class. There is NO all-agent policy. Invoking an unnecessary reviewer is a routing defect and is recorded as token overhead in shadow metrics.",
@@ -26,7 +26,7 @@
       "required_agents": [],
       "optional_agents": ["claude.command.verify"],
       "permitted_repositories": ["POLYPROPICKS/PREMVP"],
-      "forbidden_actions": ["WRITE_FILES", "COMMIT", "PUSH", "DATABASE_WRITE", "DEPLOY", "IRELAND_ACCESS"],
+      "forbidden_actions": ["WRITE_FILES", "COMMIT", "PUSH", "MERGE", "DATABASE_WRITE", "DEPLOY", "IRELAND_ACCESS"],
       "sequential_stages": ["PRECHECK", "EVIDENCE_COLLECTION", "COMPLETION_ENVELOPE"],
       "parallel_stages": [],
       "evidence_requirements": ["git status --short", "command exit codes", "raw command output excerpts"],
@@ -43,9 +43,9 @@
       "required_capabilities": ["REPOSITORY_READ", "DEPENDENCY_INSTALL", "TYPECHECK", "BUILD"],
       "eligible_execution_targets": ["claude_code_cloud"],
       "required_agents": ["claude.hook.validate_proof_package"],
-      "optional_agents": ["claude.command.verify", "premvp.spec.code_auditor"],
+      "optional_agents": ["claude.command.verify", "premvp.spec.code_auditor", "claude.command.github_pr_merge.v0"],
       "permitted_repositories": ["POLYPROPICKS/PREMVP"],
-      "forbidden_actions": ["SCOPE_EXPANSION", "BROAD_REFACTOR", "DATABASE_WRITE", "DEPLOY", "MERGE", "IRELAND_ACCESS"],
+      "forbidden_actions": ["SCOPE_EXPANSION", "BROAD_REFACTOR", "DATABASE_WRITE", "DEPLOY", "DIRECT_PUSH_TO_MAIN", "FORCE_PUSH", "IRELAND_ACCESS"],
       "sequential_stages": ["PRECHECK", "INSPECT", "PATCH", "TYPECHECK", "BUILD", "DIFF_CHECK", "COMPLETION_ENVELOPE"],
       "parallel_stages": [],
       "evidence_requirements": ["git status --short", "git diff --stat", "git diff --check", "npx tsc --noEmit exit code", "npm run build exit code", "old/new snippets"],
@@ -62,9 +62,9 @@
       "required_capabilities": ["REPOSITORY_READ", "BUILD"],
       "eligible_execution_targets": ["claude_code_cloud"],
       "required_agents": ["claude.hook.validate_proof_package", "premvp.policy.agent_constitution", "premvp.policy.task_routing"],
-      "optional_agents": ["premvp.spec.compliance_monitor"],
+      "optional_agents": ["premvp.spec.compliance_monitor", "claude.command.github_pr_merge.v0"],
       "permitted_repositories": ["POLYPROPICKS/PREMVP"],
-      "forbidden_actions": ["SILENT_STATE_CHANGE", "DEPLOY", "MERGE", "DATABASE_WRITE", "IRELAND_ACCESS"],
+      "forbidden_actions": ["SILENT_STATE_CHANGE", "DEPLOY", "DATABASE_WRITE", "DIRECT_PUSH_TO_MAIN", "FORCE_PUSH", "IRELAND_ACCESS"],
       "sequential_stages": ["PRECHECK", "AUTHORITY_REVIEW", "PATCH", "CONTROL_PLANE_VALIDATE", "BUILD", "COMPLETION_ENVELOPE"],
       "parallel_stages": [],
       "evidence_requirements": ["git status --short", "git diff --stat", "npm run control-plane:check output", "explicit state_delta_proposal"],
@@ -81,9 +81,10 @@
       "required_capabilities": ["REPOSITORY_READ", "LOCAL_TEST_RUN", "WEATHER_GATE_REVIEW"],
       "eligible_execution_targets": ["local_codex_windows"],
       "required_agents": ["codex.agent.weather_gate_reviewer.v0"],
-      "optional_agents": ["premvp.spec.code_auditor"],
+      "optional_agents": ["premvp.spec.code_auditor", "claude.command.github_pr_merge.v0"],
       "permitted_repositories": ["POLYPROPICKS/PREMVP"],
-      "forbidden_actions": ["DEPLOY", "MERGE", "DATABASE_WRITE", "IRELAND_ACCESS", "CROSS_REPO_CHANGE"],
+      "forbidden_actions": ["DEPLOY", "MERGE_WITHOUT_REVIEWER_RECEIPT", "DATABASE_WRITE", "IRELAND_ACCESS", "CROSS_REPO_CHANGE"],
+      "repository_integration_note": "Integration into origin/main may be performed only by claude.command.github_pr_merge.v0, and only after a valid codex.agent.weather_gate_reviewer.v0 receipt whose reviewed_sha equals result_sha exists.",
       "sequential_stages": ["PRECHECK", "INSPECT", "PATCH", "TYPECHECK", "BUILD", "WEATHER_GATE_REVIEW", "COMPLETION_ENVELOPE"],
       "parallel_stages": [],
       "evidence_requirements": ["git status --short", "git diff --stat", "model behavior before/after", "test output"],
@@ -103,9 +104,10 @@
       "required_capabilities": ["REPOSITORY_READ", "LOCAL_TEST_RUN", "CONTUR_GATE_REVIEW"],
       "eligible_execution_targets": ["local_codex_windows"],
       "required_agents": ["codex.agent.contur_gate_reviewer"],
-      "optional_agents": ["premvp.policy.verification_gates", "premvp.spec.compliance_monitor"],
+      "optional_agents": ["premvp.policy.verification_gates", "premvp.spec.compliance_monitor", "claude.command.github_pr_merge.v0"],
       "permitted_repositories": ["POLYPROPICKS/PREMVP"],
-      "forbidden_actions": ["DEPLOY_WITHOUT_FOUNDER_APPROVAL", "MERGE", "DATABASE_WRITE_WITHOUT_PROVEN_CAPABILITY", "IRELAND_ACCESS", "CROSS_REPO_CHANGE"],
+      "forbidden_actions": ["DEPLOY_WITHOUT_FOUNDER_APPROVAL", "MERGE_WITHOUT_REVIEWER_RECEIPT", "DATABASE_WRITE_WITHOUT_PROVEN_CAPABILITY", "IRELAND_ACCESS", "CROSS_REPO_CHANGE"],
+      "repository_integration_note": "Integration into origin/main may be performed only by claude.command.github_pr_merge.v0, and only after a valid codex.agent.contur_gate_reviewer receipt whose reviewed_sha equals result_sha exists.",
       "sequential_stages": ["PRECHECK", "EXACT_SHA_RESOLUTION", "EVIDENCE_COLLECTION", "CONTUR_GATE_REVIEW", "COMPLETION_ENVELOPE"],
       "parallel_stages": [],
       "evidence_requirements": ["exact reviewed SHA", "git status --short", "runtime command exit codes", "explicit production-effect statement"],
@@ -139,7 +141,8 @@
       "fail_closed": true,
       "fail_closed_behavior": {
         "default_verdict": "BLOCKED",
-        "rule": "R5 has no eligible execution target and no permitted repository. It always returns BLOCKED unless a separate Founder authorization exists AND every required capability holds verdict PROVEN in CAPABILITY_MATRIX.yaml. Ireland is NOT eligible for implementation while its capabilities are NOT_PROVEN."
+        "rule": "R5 has no eligible execution target and no permitted repository. It always returns BLOCKED unless a separate Founder authorization exists AND every required capability holds verdict PROVEN in CAPABILITY_MATRIX.yaml. Ireland is NOT eligible for implementation while its capabilities are NOT_PROVEN.",
+        "founder_override_scope": "A current explicit Founder directive may authorize only the exact named bounded action it states, with repository and money boundaries named explicitly. There is no generic or implied authorization. Absent an explicit directive naming the exact action, R5 remains fail-closed with no executor and no merge, and this table's empty eligible_execution_targets/permitted_repositories are never widened by this override."
       }
     }
   ],
