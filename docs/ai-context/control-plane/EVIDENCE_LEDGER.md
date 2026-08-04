@@ -279,3 +279,39 @@ stay `NOT_PROVEN` in this file until a later bounded task reads that completion 
 and updates these two verdicts with a matching evidence reference.
 
 No production, deployment, database, Ireland or live-money action occurred.
+
+## EV-0010 — Post-patch state refresh: PR #83 source fix recorded, C1 runtime proof still open
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **observed_at:** 2026-08-04
+- **executor:** `claude_code_cloud`
+- **completion_id:** `CMP-STATE-V4-POST-PATCH-20260804`
+- **accepted_reconciliation_completion_id:** `CMP-POST-PATCH-STATE-RECONCILIATION-20260804`
+- **branch:** `claude/state-refresh-v4-post-patch-20260804`
+- **base:** `52129f93a314a35abf962069e9efd1566b03975b`
+
+The Architect-accepted reconciliation delta from
+`CMP-POST-PATCH-STATE-RECONCILIATION-20260804` was applied to canonical state.
+
+- `state_version` advanced `3` -> `4`.
+- Recorded `main.origin_main_sha` baseline advanced from
+  `33f0e882c14c71021902c3912268d89681d88003` to
+  `52129f93a314a35abf962069e9efd1566b03975b`.
+- `52129f93a314a35abf962069e9efd1566b03975b` is the merge commit of PR #83 and was
+  verified as the live `origin/main` tip in this session.
+- The PR #83 source commit is
+  `e48e5f674b4d421105a9714196fb95a9403750fc`, verified as an ancestor of `origin/main`.
+- PR #83 changed exactly two paths: application source
+  `lib/executor/buildFireModelCandidates.ts` and regression test
+  `tests/contur3/buildFireModelCandidates.effectiveActivityLabel.test.ts`. This baseline
+  advance therefore includes application source and tests and is not a state-only
+  bootstrap advance.
+- Commit-to-deployment mapping for this patch remains `NOT_PROVEN`. No deployment was
+  observed, triggered or claimed.
+- C1 production runtime proof remains `OPEN`; `BLK-001` was restated, not closed.
+- C2 remains not started (`NEXT`).
+- `runtime_changed=false`, `deployment_changed=false`, `database_changed=false`.
+- Founder action: none.
+
+This entry is history only. It records the state refresh and does not reopen, amend or
+reimplement PR #83.

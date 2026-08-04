@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-04T12:42:32Z",
-  "state_version": 3,
+  "updated_at": "2026-08-04T19:03:01Z",
+  "state_version": 4,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
@@ -34,7 +34,7 @@
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "33f0e882c14c71021902c3912268d89681d88003",
+    "origin_main_sha": "52129f93a314a35abf962069e9efd1566b03975b",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
@@ -43,7 +43,7 @@
       "commands": ["git fetch --prune origin", "git rev-parse origin/main"],
       "observed_at": "2026-08-04T12:42:32Z",
       "worktree": "clean",
-      "note": "33f0e882c14c71021902c3912268d89681d88003 is the live origin/main tip verified in this state-refresh session, applied as a state-only bootstrap advance per CMP-T1-STATE-RECONCILIATION-RECOVERY-V2-20260804."
+      "note": "52129f93a314a35abf962069e9efd1566b03975b is the verified live origin/main baseline for this state refresh and is the merge commit of PR #83, whose source commit e48e5f674b4d421105a9714196fb95a9403750fc changed application source lib/executor/buildFireModelCandidates.ts and regression test tests/contur3/buildFireModelCandidates.effectiveActivityLabel.test.ts. This advance therefore includes application source and tests and is NOT a state-only bootstrap advance. Commit-to-deployment mapping for this patch remains NOT_PROVEN."
     }
   },
 
@@ -87,7 +87,7 @@
   ],
 
   "open_blockers": [
-    { "id": "BLK-001", "statement": "C1 source and merge lineage are present on origin/main; the historical CTL18 failure has not been reproduced or cleared by this state-refresh task; C1 production runtime proof is the current open verification step; the blocker may be closed only by later executable/runtime evidence.", "owner_executor": "local_codex_windows", "blocking": "C1" },
+    { "id": "BLK-001", "statement": "C1 source and merge lineage are present on origin/main. The stale activity-label defect fix is source-merged through PR #83, with merge commit 52129f93a314a35abf962069e9efd1566b03975b and source commit e48e5f674b4d421105a9714196fb95a9403750fc, touching lib/executor/buildFireModelCandidates.ts and tests/contur3/buildFireModelCandidates.effectiveActivityLabel.test.ts. Deployment mapping for this patch remains NOT_PROVEN. The historical CTL18 failure has not been reproduced or cleared. C1 production runtime proof remains the current open verification step and may be closed only by later executable/runtime evidence.", "owner_executor": "local_codex_windows", "blocking": "C1" },
     { "id": "BLK-002", "statement": "Codex reviewer invocation is not deterministic: no required invocation receipt, no deterministic gate, no project-scoped Codex agent package, no tracked CI gate.", "owner_executor": "local_codex_windows", "blocking": "reviewer receipt enforcement outside the Cloud validator" },
     { "id": "BLK-003", "statement": "Supabase write access from claude_code_cloud is NOT_PROVEN.", "owner_executor": "claude_code_cloud", "blocking": "any Cloud task requiring a database write" },
     { "id": "BLK-004", "statement": "Ireland runtime access and Ireland repository remote identity are NOT_PROVEN.", "owner_executor": "ireland_local", "blocking": "C2 execution routing" }
@@ -156,5 +156,5 @@
   ],
   "stale_when_note": "Exact equality between main.origin_main_sha and live origin/main is NOT required and is not used as a staleness test. A state-only bootstrap advance (touching only CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md) keeps state FRESH even though origin/main has moved past the recorded baseline.",
 
-  "last_accepted_completion_id": "CMP-T1-STATE-RECONCILIATION-RECOVERY-V2-20260804"
+  "last_accepted_completion_id": "CMP-POST-PATCH-STATE-RECONCILIATION-20260804"
 }
