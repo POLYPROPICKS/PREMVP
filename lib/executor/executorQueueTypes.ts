@@ -95,6 +95,8 @@ export interface IrelandQueueCandidate {
   rebalance_run_id: string;
   reservation_id: string | null;
   match_family_key: string;
+  /** Canonical alias for legacy match_family_key occurrence storage. */
+  physical_event_id: string | null;
   event_slug: string | null;
   event_id: string | null;
   event_title: string | null;
@@ -118,6 +120,8 @@ export interface IrelandQueueCandidate {
   preferred_entry_iso: string;
   latest_entry_iso: string;
   game_start_iso: string;
+  /** Canonical alias for legacy game_start_iso occurrence storage. */
+  event_start_iso: string;
   // PENDING_WINDOW: preferred_entry_iso still in the future; IN_WINDOW: ready to enter now.
   entry_state: "IN_WINDOW" | "PENDING_WINDOW";
   selection_rank: number;
@@ -150,6 +154,10 @@ export function mapQueueRowToIrelandCandidate(
     rebalance_run_id: row.rebalance_run_id,
     reservation_id: row.reservation_id ?? null,
     match_family_key: row.match_family_key,
+    physical_event_id:
+      (typeof row.diagnostics?.physical_event_id === "string" && row.diagnostics.physical_event_id) ||
+      row.match_family_key ||
+      null,
     event_slug: row.event_slug,
     event_id: row.event_slug,
     event_title: row.event_title,
@@ -170,6 +178,9 @@ export function mapQueueRowToIrelandCandidate(
     preferred_entry_iso: row.preferred_entry_iso,
     latest_entry_iso: row.latest_entry_iso,
     game_start_iso: row.game_start_iso,
+    event_start_iso:
+      (typeof row.diagnostics?.event_start_iso === "string" && row.diagnostics.event_start_iso) ||
+      row.game_start_iso,
     entry_state: entryState,
     selection_rank: row.selection_rank,
     is_executable: true,

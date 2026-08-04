@@ -409,3 +409,72 @@ Root technical-lead failures:
 - global task cost was not measured even though each local step appeared bounded and defensible.
 
 Permanent prevention is this protocol.
+
+## 21. PROMPT_ROUTING_AND_VALUE_PROTOCOL
+
+Canonical for the architect/operator preface that must precede **every** executor prompt. A preface missing any field is an incomplete prompt and must not be issued.
+
+| # | Field | Required content |
+|---|---|---|
+| 1 | PRECHECK OF HANDOFF | what the previous run proved, as `PROVEN / SUPPORTED / INFERRED / UNKNOWN` (§2) |
+| 2 | CURRENT ROADMAP PHASE | exact phase/commit position, not a narrative |
+| 3 | CURRENT PRODUCTION VERDICT | what is live now and what is not |
+| 4 | NEXT STEP | the one bounded step being issued |
+| 5 | NEXT STEP VALUE | what becomes possible that is impossible today |
+| 6 | WHY NOW | why this step precedes the alternatives |
+| 7 | EXACT OWNER | architect / executor / Founder |
+| 8 | EXACT EXECUTION ENVIRONMENT | the named environment; never implied |
+| 9 | MODEL | exact model identifier |
+| 10 | MODEL LEVEL | low / medium / high / max / ultra |
+| 11 | MODEL WHY | why that level is required |
+| 12 | SESSION MODE | NEW SESSION / CONTINUE EXISTING SESSION |
+| 13 | SESSION REASON | why that session mode |
+| 14 | TOKEN / CONTEXT OPTIMIZATION | read budgets and what must not be reread |
+| 15 | NEXT TWO VALUE STEPS | the two steps that follow on success |
+| 16 | DISTANCE TO LIVE CONTOUR | remaining executor runs / reviews / Founder approvals |
+| 17 | OPERATOR ACTION NOW | exactly one Founder action |
+| 18 | STOP / SUCCESS TRANSITION | the named success state and the named STOP states |
+
+Routing rules:
+
+- the operator must not repeatedly explain what to run next — the preface carries the whole route;
+- `BUSINESS EFFECT` (§3) and `DISTANCE TO LIVE CONTOUR` must stay consistent; a step that does not shorten the distance must say so;
+- environment-variable requirements must be proven by the current task, source, or a real build — never inferred automatically from every `.env.example` entry;
+- exact execution environment is mandatory; a prompt without it is incomplete.
+
+## 22. PROMPT_COMPLETION_PROTOCOL
+
+Canonical for executor continuation and the closing report. The executor prompt fields themselves are canonical in `docs/ai-context/CLAUDE_CODE_EXECUTION_PROTOCOL.md §4`; this section governs how the run finishes.
+
+Continuation rules:
+
+- the executor continues automatically through bounded precheck → inspection → implementation/verification → commit/push/report, and stops only on an exact named STOP condition;
+- Git and source must resolve questions before the Founder is asked;
+- expected intermediate RED (e.g. a failing test before its fix) is not a STOP unless named as one;
+- after one failed attempt, no broad repair — return a Direct-source option check: *continue with executor / request exact source / minimal bounded correction, because [exact reason]*;
+- after a bounded correction, no acceptance loop without new risk (§9);
+- do not return a plan instead of execution.
+
+Every completion report must state:
+
+```text
+MODEL                      — actual model used
+MODEL LEVEL                — actual level used
+SESSION MODE               — actual session mode
+EXECUTION ENVIRONMENT      — actual environment
+ROADMAP POSITION
+VALUE DELIVERED
+CURRENT PRODUCTION VERDICT
+SUCCESS TRANSITION         — named success state reached, or the named STOP state
+NEXT TWO VALUE STEPS
+DISTANCE TO LIVE MILESTONE
+FOUNDER ACTION             — exactly one
+```
+
+A STOP report must additionally state:
+
+- what was preserved (commits already made, pushes already completed);
+- the single remaining blocker;
+- whether distance to live changed.
+
+No report may claim build PASS, persistence, promotion, or live progress without exact Git and executable evidence.

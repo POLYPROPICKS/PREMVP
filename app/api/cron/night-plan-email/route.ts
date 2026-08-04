@@ -90,6 +90,7 @@ export async function GET(request: NextRequest) {
     // mode=plan freezes the reservation plan if it does not exist yet; mode=alert never creates.
     const { planRunId, reservations, created } = await ensureAndLoadReservations(Date.now(), {
       allowCreate: mode === "plan",
+      selectorMode: "CONTRACT_A_PLANNING_V1",
     });
     const { subject, text } = nightReservationEmail(planRunId, reservations);
     const shortage = reservations.length === 0;

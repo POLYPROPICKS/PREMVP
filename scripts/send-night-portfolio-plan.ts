@@ -65,6 +65,7 @@ async function main() {
 
   const { planRunId, reservations, created } = await ensureAndLoadReservations(Date.now(), {
     allowCreate,
+    selectorMode: "CONTRACT_A_PLANNING_V1",
   });
   const { subject, text } = nightReservationEmail(planRunId, reservations);
 

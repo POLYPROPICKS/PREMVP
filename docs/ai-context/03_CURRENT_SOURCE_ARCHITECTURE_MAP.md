@@ -4,6 +4,42 @@
 > Verified from: `git log --oneline -10`, `git status --short`, `dir` output.
 > Full re-inspection of file contents required before next major patch.
 
+## Contur3 C1 source-gap snapshot — 2026-08-04
+
+This narrow snapshot is current-source evidence for the configurable-orchestrator lock; it does not
+replace the broader refresh protocol below.
+
+```text
+CURRENT SOURCE: run-night-reservations → POST /api/cron/night-event-reservations
+  → buildReservationPlan(... CONTRACT_A_PLANNING_V1) → persistReservationPlan()
+  → night_event_reservations
+TARGET OWNERSHIP: operator configuration → Contract A Planning → unique physical-event portfolio
+  → Reservation → Final Identity within that event → immutable Queue → Ireland
+```
+
+| Rule | Current source evidence | Classification |
+|---|---|---|
+| One sequential Reservation orchestration run | `runNightReservations()` makes one POST; route builds then persists one plan. | CURRENT_SOURCE_CONFIRMED |
+| Model/contour selection is operator-configurable | Route passes fixed `CONTRACT_A_PLANNING_V1`. | PARTIALLY_IMPLEMENTED |
+| Cutoff/as-of and slot/allocation are operator-configurable | `nightWindow.ts` fixes the 17:00 Minsk anchor; `nightEventReservations.ts` fixes `TARGET_LIVE_SLOTS = 15` and derives `by_sport`. | DOCUMENTED_TARGET_NOT_IMPLEMENTED |
+| Planning groups rows before slot selection | `buildReservationPlan()` groups by physical-event key before reservation rows/ranks. | CURRENT_SOURCE_CONFIRMED |
+| Complete selected model/cutoff/slot lineage is recoverable | Reservation carries plan run, event identity, rank/tier/score and diagnostics, but no proven full configurable model/cutoff/allocation lineage. | PARTIALLY_IMPLEMENTED |
+| Separate persisted Planning table | Tracked migration shows `night_event_reservations` and queue tables; no Planning table was found in this bounded source check. | CURRENT_SOURCE_CONFIRMED |
+| Reservation persistence and downstream Final Identity/Queue ownership | Reservation writer persists selected Reservation rows only; `eventExecutionQueue.ts` consumes persisted Reservations and owns downstream Final Identity and Queue creation. | CURRENT_SOURCE_CONFIRMED |
+
+**Founder-approved target contract requiring a later source patch.** Contract A owns eligibility,
+policy, score, rank, tier, rejection trace, physical-event grouping and allocation before Reservation.
+Reservation must preserve physical event/start, model and contour identity/version, cutoff/as-of,
+plan/run, slot/allocation, group/sport, score/rank/tier, source/model/Contract-A lineage. Final Identity
+may only resolve one exact market/token/side inside the persisted event and apply mechanical guards;
+Queue and Ireland cannot regain planning authority.
+
+**Illustrative target example — not production data.** Barcelona–Real has match-winner and total
+markets sharing one `physical_event_id`; Atletico–Chelsea is eligible-looking but rejected or outside
+configured slots. Planning emits one Barcelona–Real Reservation with model/cutoff/slot lineage, not two.
+Later Final Identity considers only Barcelona–Real, selects one guarded exact market/token/side, creates
+one Queue row, and Ireland executes that instruction.
+
 ## VERIFIED CHANGES SINCE BASELINE
 
 ### Git state (verified)

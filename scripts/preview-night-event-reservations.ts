@@ -23,7 +23,7 @@ async function main() {
     "../lib/executor/nightEventReservations"
   );
 
-  const plan = await buildReservationPlan(Date.now());
+  const plan = await buildReservationPlan(Date.now(), { selectorMode: "CONTRACT_A_PLANNING_V1" });
 
   console.log("=== NIGHT EVENT RESERVATION PREVIEW ===");
   console.log(`plan_run_id:    ${plan.plan_run_id}`);

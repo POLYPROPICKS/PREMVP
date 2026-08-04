@@ -33,7 +33,24 @@ Zone allow/forbid rules are canonical in `TASK_ROUTING_MATRIX.md §3`. If a task
 
 ## 4. Claude Code task prompt template (reusable)
 
+Every executor prompt must carry all fields below. `PROMPT__PROTOCOL.md` (repo root) is the Tier 0 canonical owner of prompt routing and completion; its §5–6 point here and to `SMALL_TASK_EXECUTION_AND_VALUE_PROTOCOL.md §21` for the architect/operator preface. A prompt missing any field here is incomplete and must not be executed.
+
 ```
+ROADMAP POSITION: [exact phase / commit position]
+CURRENT PRODUCTION VERDICT: [what is live, what is not]
+THIS STEP VALUE: [what becomes possible that is impossible today]
+SUCCESS TRANSITION: [named success state and what it opens]
+NEXT TWO VALUE STEPS: [the two steps that follow on success]
+DISTANCE TO LIVE MILESTONE: [executor runs / reviews / Founder approvals remaining]
+OPERATOR HANDOFF REQUIREMENT: [exactly one Founder action expected at the end]
+EXECUTION ENVIRONMENT: [exact named environment — never implied]
+MODEL: [exact model identifier]
+MODEL LEVEL: [low / medium / high / max / ultra]
+SESSION MODE: [NEW SESSION / CONTINUE EXISTING SESSION]
+SESSION REASON: [why that session mode]
+TOKEN / READ BUDGET: [total + per-file line limits; output word limit]
+MARKDOWN READING METHOD: [git ls-files / rg -n keyword ranges / bounded sed -n only; no bulk cat; record exact paths and ranges]
+EVIDENCE REUSE: [prior accepted SHAs and verdicts to reuse unless current Git contradicts them]
 TASK TYPE: [inspect-only / exact-patch / backend-API / frontend-UI / docs-context]
 GOAL: [one concrete measurable outcome]
 CURRENT VERIFIED STATE: branch / git status / last commit / build state
@@ -60,6 +77,8 @@ RISKS: [risk or assumption]
 STOP CONDITIONS ENCOUNTERED: none / [list]
 GATE 1 VERDICT: PASS / FAIL / STOP
 ```
+
+The response must close with the completion-report fields required by `PROMPT__PROTOCOL.md §16` (detailed schema: `SMALL_TASK_EXECUTION_AND_VALUE_PROTOCOL.md §22`) — actual MODEL, MODEL LEVEL, SESSION MODE, EXECUTION ENVIRONMENT, ROADMAP POSITION, VALUE DELIVERED, CURRENT PRODUCTION VERDICT, SUCCESS TRANSITION, NEXT TWO VALUE STEPS, DISTANCE TO LIVE MILESTONE, and exactly one FOUNDER ACTION. `PROMPT__PROTOCOL.md §16–17` also governs automatic continuation, the single-attempt repair limit, and what a STOP report must preserve.
 
 ## 6. Inspect-only response schema
 

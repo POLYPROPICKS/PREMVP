@@ -56,6 +56,8 @@ test("candidate mapping includes core identity fields", () => {
   assert.equal(c.market_slug, "argentina-vs-egypt-moneyline");
   assert.equal(c.event_slug, "argentina-vs-egypt");
   assert.equal(c.latest_entry_iso, "2026-07-07T15:57:00.000Z");
+  assert.equal(c.physical_event_id, "argentina-vs-egypt");
+  assert.equal(c.event_start_iso, "2026-07-07T16:00:00.000Z");
 });
 
 test("candidate mapping exposes dynamic stake_usd and max_stake_usd equal to it (MVP)", () => {

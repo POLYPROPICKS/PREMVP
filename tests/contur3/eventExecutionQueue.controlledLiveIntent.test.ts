@@ -27,6 +27,7 @@ import {
 import { buildRebalanceRunId } from "../../lib/executor/nightWindow";
 import type { FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
 import type { EventExecutionQueueRow, NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
+import { createQueueAuthorityFixture } from "./helpers/queueAuthorityFixtures";
 
 const KICKOFF_ISO = "2026-07-19T19:00:00.000Z";
 // T-60m from a 19:00Z kickoff, inside the T-70..T-3 rebalance window.
@@ -114,6 +115,10 @@ function baseCandidate(overrides: Partial<FireModelCandidate> = {}): FireModelCa
     },
     ...overrides,
   } as FireModelCandidate;
+}
+
+function contractAFinalIdentityFixture() {
+  return createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), baseCandidate());
 }
 
 function makeFakeRepo(reservations: NightEventReservationRow[]): RebalanceRepoPort & {
@@ -225,15 +230,16 @@ test("CTL1: controlled mode rejects any id other than the exact fixed test id, w
 });
 
 test("CTL2: controlled mode preserves the normal canonical derived idempotency_key", async () => {
-  const reservation = baseReservation();
   const candidate = baseCandidate();
+  const { reservation, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } =
+    createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), candidate);
   const repo = makeFakeRepo([reservation]);
 
   const result = await runControlledLiveIntent(
     IN_WINDOW_MS,
     CONTROLLED_LIVE_TEST_ID,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
 
   assert.equal(result.kind, "CREATED");
@@ -251,15 +257,21 @@ test("CTL3: controlled mode never accepts caller-provided market identity or ide
   // requested test id string itself -- there is no condition_id/token_id/
   // side/market/idempotency_key parameter anywhere in its signature. Prove
   // the produced row's identity comes only from the authoritative candidate.
-  const reservation = baseReservation();
-  const candidate = baseCandidate({ condition_id: "cond-real", token_id: "token-real", side: "RealSide" });
+  const candidate = baseCandidate({
+    condition_id: "cond-real",
+    token_id: "token-real",
+    side: "RealSide",
+    selected_outcome: "RealSide",
+  });
+  const { reservation, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } =
+    createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), candidate);
   const repo = makeFakeRepo([reservation]);
 
   const result = await runControlledLiveIntent(
     IN_WINDOW_MS,
     CONTROLLED_LIVE_TEST_ID,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
 
   assert.equal(result.queue_row?.condition_id, "cond-real");
@@ -299,13 +311,19 @@ test("CTL4: controlled mode uses the authoritative Contract A candidate, never a
       version: "v2-lite-growth-safe",
     },
   });
-  const repo = makeFakeRepo([reservation]);
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, reservation, marketA);
+  const repo = makeFakeRepo([authority.reservation]);
 
   const result = await runControlledLiveIntent(
     IN_WINDOW_MS,
     CONTROLLED_LIVE_TEST_ID,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [marketB, marketA] }) }
+    {
+      repo,
+      fetchCandidates: async () => { throw new Error(`broad candidate authority invoked: ${marketB.condition_id}`); },
+      fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows,
+      fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook,
+    }
   );
 
   assert.equal(result.kind, "CREATED");
@@ -319,13 +337,23 @@ test("CTL5: controlled mode writes at most one queue row when multiple reservati
   const reservationB = baseReservation({ id: "res-b", match_family_key: "pair:c-vs-d:2026-07-19", event_slug: "c-vs-d" });
   const candidateA = baseCandidate({ match_family_key: "pair:a-vs-b:2026-07-19", event_slug: "a-vs-b", condition_id: "cond-a", token_id: "token-a" });
   const candidateB = baseCandidate({ match_family_key: "pair:c-vs-d:2026-07-19", event_slug: "c-vs-d", condition_id: "cond-b", token_id: "token-b" });
-  const repo = makeFakeRepo([reservationA, reservationB]);
+  const authorityA = createQueueAuthorityFixture(IN_WINDOW_MS, reservationA, candidateA, "11111111-1111-4111-8111-111111111111");
+  const authorityB = createQueueAuthorityFixture(IN_WINDOW_MS, reservationB, candidateB, "22222222-2222-4222-8222-222222222222");
+  const repo = makeFakeRepo([authorityA.reservation, authorityB.reservation]);
 
   const result = await runControlledLiveIntent(
     IN_WINDOW_MS,
     CONTROLLED_LIVE_TEST_ID,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [candidateA, candidateB] }) }
+    {
+      repo,
+      fetchFinalIdentitySourceRows: async (reservation) =>
+        reservation.id === authorityA.reservation.id ? [authorityA.sourceRow] : [authorityB.sourceRow],
+      fetchExactTokenOrderbook: async (tokenId) =>
+        tokenId === authorityA.sourceRow.token_id
+          ? authorityA.fetchExactTokenOrderbook()
+          : authorityB.fetchExactTokenOrderbook(),
+    }
   );
 
   assert.equal(result.kind, "CREATED");
@@ -333,15 +361,16 @@ test("CTL5: controlled mode writes at most one queue row when multiple reservati
 });
 
 test("CTL6: controlled mode caps stake_usd at 1.00 even when the candidate's own stake is higher", async () => {
-  const reservation = baseReservation();
   const candidate = baseCandidate({ stake_usd: 7 });
+  const { reservation, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } =
+    createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), candidate);
   const repo = makeFakeRepo([reservation]);
 
   const result = await runControlledLiveIntent(
     IN_WINDOW_MS,
     CONTROLLED_LIVE_TEST_ID,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
 
   assert.equal(result.queue_row?.stake_usd, CONTROLLED_LIVE_STAKE_CAP_USD);
@@ -349,15 +378,16 @@ test("CTL6: controlled mode caps stake_usd at 1.00 even when the candidate's own
 });
 
 test("CTL7: controlled mode stores the durable controlled test marker in existing correlation/provenance fields", async () => {
-  const reservation = baseReservation();
   const candidate = baseCandidate();
+  const { reservation, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } =
+    createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), candidate);
   const repo = makeFakeRepo([reservation]);
 
   const result = await runControlledLiveIntent(
     IN_WINDOW_MS,
     CONTROLLED_LIVE_TEST_ID,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
 
   assert.equal(result.queue_row?.rebalance_run_id, CONTROLLED_LIVE_TEST_ID);
@@ -368,15 +398,16 @@ test("CTL7: controlled mode stores the durable controlled test marker in existin
 });
 
 test("CTL8: repeating the same controlled test id after a matching row exists creates zero rows and returns ALREADY_EXISTS", async () => {
-  const reservation = baseReservation();
   const candidate = baseCandidate();
+  const { reservation, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } =
+    createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), candidate);
   const repo = makeFakeRepo([reservation]);
 
   const first = await runControlledLiveIntent(
     IN_WINDOW_MS,
     CONTROLLED_LIVE_TEST_ID,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
   assert.equal(first.kind, "CREATED");
   assert.equal(repo.queueRows.length, 1);
@@ -385,7 +416,7 @@ test("CTL8: repeating the same controlled test id after a matching row exists cr
     IN_WINDOW_MS,
     CONTROLLED_LIVE_TEST_ID,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
   assert.equal(second.kind, "ALREADY_EXISTS");
   assert.equal(second.wrote, false);
@@ -409,14 +440,15 @@ test("CTL9: no safe due candidate produces zero writes and a fail-closed NO_SAFE
 });
 
 test("CTL10: normal scheduled rebalance (runEventRebalance) is behaviorally unchanged by the controlled-mode refactor", async () => {
-  const reservation = baseReservation();
   const candidate = baseCandidate();
+  const { reservation, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } =
+    createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), candidate);
   const repo = makeFakeRepo([reservation]);
 
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
 
   assert.equal(result.due_count, 1);
@@ -424,7 +456,7 @@ test("CTL10: normal scheduled rebalance (runEventRebalance) is behaviorally unch
   assert.equal(repo.queueRows.length, 1);
   assert.equal(repo.queueRows[0].status, "READY");
   assert.equal(repo.queueRows[0].condition_id, "cond-esp-arg");
-  assert.equal(repo.queueRows[0].stake_usd, 7, "normal mode must not apply the controlled $1 stake cap");
+  assert.equal(repo.queueRows[0].stake_usd, 1.1, "normal mode must preserve the Final Identity stake above the controlled $1 cap");
   assert.notEqual(repo.queueRows[0].rebalance_run_id, CONTROLLED_LIVE_TEST_ID, "normal mode must not carry the controlled marker");
 });
 
@@ -522,7 +554,17 @@ test("CTL15: two concurrent runControlledLiveIntent calls for different due rese
   const reservationB = baseReservation({ id: "res-b", match_family_key: "pair:c-vs-d:2026-07-19", event_slug: "c-vs-d" });
   const candidateA = baseCandidate({ match_family_key: "pair:a-vs-b:2026-07-19", event_slug: "a-vs-b", condition_id: "cond-a", token_id: "token-a" });
   const candidateB = baseCandidate({ match_family_key: "pair:c-vs-d:2026-07-19", event_slug: "c-vs-d", condition_id: "cond-b", token_id: "token-b" });
-  const repo = makeConcurrentAwareRepo([reservationA, reservationB]);
+  const authorityA = createQueueAuthorityFixture(IN_WINDOW_MS, reservationA, candidateA, "11111111-1111-4111-8111-111111111111");
+  const authorityB = createQueueAuthorityFixture(IN_WINDOW_MS, reservationB, candidateB, "22222222-2222-4222-8222-222222222222");
+  const repo = makeConcurrentAwareRepo([authorityA.reservation, authorityB.reservation]);
+  const authorityDeps = {
+    fetchFinalIdentitySourceRows: async (reservation: NightEventReservationRow) =>
+      reservation.id === authorityA.reservation.id ? [authorityA.sourceRow] : [authorityB.sourceRow],
+    fetchExactTokenOrderbook: async (tokenId: string) =>
+      tokenId === authorityA.sourceRow.token_id
+        ? authorityA.fetchExactTokenOrderbook()
+        : authorityB.fetchExactTokenOrderbook(),
+  };
 
   // Both invocations' initial duplicate-reads return empty (nothing has been
   // inserted yet); each independently selects a DIFFERENT due reservation --
@@ -530,11 +572,11 @@ test("CTL15: two concurrent runControlledLiveIntent calls for different due rese
   // insertQueueRow (simulating the real Postgres unique index) can catch it.
   const callA = runControlledLiveIntent(IN_WINDOW_MS, CONTROLLED_LIVE_TEST_ID, { write: true }, {
     repo,
-    fetchCandidates: async () => ({ candidates: [candidateA] }),
+    ...authorityDeps,
   });
   const callB = runControlledLiveIntent(IN_WINDOW_MS, CONTROLLED_LIVE_TEST_ID, { write: true }, {
     repo,
-    fetchCandidates: async () => ({ candidates: [candidateB] }),
+    ...authorityDeps,
   });
 
   const [resultA, resultB] = await Promise.all([callA, callB]);
@@ -549,7 +591,7 @@ test("CTL15: two concurrent runControlledLiveIntent calls for different due rese
 });
 
 test("CTL16: a PostgreSQL 23505 unique violation on insert triggers recovery -- re-reads by rebalance_run_id and returns ALREADY_EXISTS without touching the winner", async () => {
-  const reservation = baseReservation();
+  const { reservation, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } = contractAFinalIdentityFixture();
   const candidate = baseCandidate();
   const winnerRow: EventExecutionQueueRow = {
     ...buildQueueRow(reservation, candidate, "rebalance:winner"),
@@ -585,7 +627,7 @@ test("CTL16: a PostgreSQL 23505 unique violation on insert triggers recovery -- 
     IN_WINDOW_MS,
     CONTROLLED_LIVE_TEST_ID,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
 
   assert.equal(insertCalls, 1, "must not try another reservation after a 23505 conflict");
@@ -595,8 +637,7 @@ test("CTL16: a PostgreSQL 23505 unique violation on insert triggers recovery -- 
 });
 
 test("CTL17: if the post-conflict recheck finds zero or more than one row, controlled mode fails closed instead of falsely claiming ALREADY_EXISTS", async () => {
-  const reservation = baseReservation();
-  const candidate = baseCandidate();
+  const { reservation, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } = contractAFinalIdentityFixture();
   const repo: RebalanceRepoPort = {
     async loadActiveReservations() { return [reservation]; },
     async loadQueuedReservationIds() { return new Set(); },
@@ -617,7 +658,7 @@ test("CTL17: if the post-conflict recheck finds zero or more than one row, contr
     IN_WINDOW_MS,
     CONTROLLED_LIVE_TEST_ID,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
 
   assert.equal(result.kind, "BLOCKED_VERIFICATION_FAILED");
@@ -627,15 +668,16 @@ test("CTL17: if the post-conflict recheck finds zero or more than one row, contr
 });
 
 test("CTL18: ambiguous retry after a lost response returns ALREADY_EXISTS and creates zero new rows", async () => {
-  const reservation = baseReservation();
   const candidate = baseCandidate();
+  const { reservation, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } =
+    createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), candidate);
   const repo = makeConcurrentAwareRepo([reservation]);
 
   const first = await runControlledLiveIntent(
     IN_WINDOW_MS,
     CONTROLLED_LIVE_TEST_ID,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
   assert.equal(first.kind, "CREATED");
   assert.equal(repo.queueRows.length, 1);
@@ -646,7 +688,7 @@ test("CTL18: ambiguous retry after a lost response returns ALREADY_EXISTS and cr
     IN_WINDOW_MS,
     CONTROLLED_LIVE_TEST_ID,
     { write: true },
-    { repo, fetchCandidates: async () => ({ candidates: [candidate] }) }
+    { repo, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook }
   );
   assert.equal(retry.kind, "ALREADY_EXISTS");
   assert.equal(retry.wrote, false);

@@ -1,4 +1,4 @@
--- Additive. Does not modify or drop existing columns, tables, or rows.
+-- Additive. Does not modify or remove existing columns, tables, or rows.
 -- MANUAL APPLICATION REQUIRED: repo has no CI/deploy migration runner. Apply via Supabase
 -- SQL editor or supabase db push before the controlled live-intent route is exercised in
 -- production.
