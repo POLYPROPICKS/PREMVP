@@ -175,3 +175,35 @@ The Local Windows worktree was **not** inspected from Cloud.
 Created the canonical control-plane artifacts, deterministic validators, bounded tests,
 package scripts, the SessionStart dependency guard, and the Phase 2 ChatGPT Project
 setup package. Verification results are recorded in the pull request for this branch.
+
+---
+
+## EV-0007 — Architect Control Plane Phase 1/2 merged to main
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **observed_at:** 2026-08-04
+- **executor:** `claude_code_cloud`
+
+| Item | Value |
+|---|---|
+| PR | `POLYPROPICKS/PREMVP#77` |
+| PR final head (post freshness-fix) | `b52fab82a46a05ffbc75373049ddbf3ef6563e60` |
+| Merge commit | `b522d3a3caaa07d8605f2b6d4edbd2db6a71a629` |
+| `git fetch origin main` + `git rev-parse origin/main` | `b522d3a3caaa07d8605f2b6d4edbd2db6a71a629` |
+| `git merge-base --is-ancestor b52fab8… origin/main` | ancestor confirmed |
+
+PR #77 carried four commits: the original canonical foundation and ChatGPT Project
+setup package, plus a fourth commit (`b52fab8`) fixing a self-stale defect in the
+`origin_main_sha` freshness model — exact equality between the recorded baseline and
+live `origin/main` cannot survive the merge that lands it, since the merge commit
+cannot be embedded in its own parent. `origin_main_sha` is now defined as a
+`LAST_VERIFIED_ORIGIN_MAIN_BASELINE` under freshness mode
+`BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE`: the baseline must be an ancestor of live
+`origin/main`, and a state-only bootstrap advance (touching only `CURRENT_STATE.yaml`,
+`ARCHITECT_SNAPSHOT.md`, `EVIDENCE_LEDGER.md`) keeps state FRESH.
+
+This entry documents the merge event only. `CURRENT_STATE.yaml.main.origin_main_sha`
+was updated to this merge commit in the same bootstrap that appended this entry — see
+`CURRENT_STATE.yaml` for the current baseline, never this ledger.
+
+No production, database, Railway, Ireland or UAS change occurred.

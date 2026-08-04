@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-03T00:00:00Z",
-  "state_version": 1,
+  "updated_at": "2026-08-04T00:00:00Z",
+  "state_version": 2,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
@@ -32,15 +32,16 @@
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "6e593a5d0e66e50941f130f7792f67e487dbb347",
+    "origin_main_sha": "b522d3a3caaa07d8605f2b6d4edbd2db6a71a629",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "executor": "claude_code_cloud",
-      "commands": ["git fetch origin main", "git rev-parse origin/main"],
-      "observed_at": "2026-08-03T00:00:00Z",
-      "worktree": "clean"
+      "commands": ["git fetch origin main", "git rev-parse origin/main", "git merge-base --is-ancestor b52fab82a46a05ffbc75373049ddbf3ef6563e60 origin/main"],
+      "observed_at": "2026-08-04T00:00:00Z",
+      "worktree": "clean",
+      "note": "b522d3a3caaa07d8605f2b6d4edbd2db6a71a629 is the merge commit for PR #77 (Architect Control Plane Phase 1/2), which merged head 546220fc13470b30f7d3d83571461671d3188ab6 plus the freshness-model fix b52fab82a46a05ffbc75373049ddbf3ef6563e60 into main."
     }
   },
 
@@ -68,7 +69,8 @@
     { "id": "CLOUD_TYPECHECK", "executor": "claude_code_cloud", "statement": "npx tsc --noEmit exit 0", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
     { "id": "CLOUD_BUILD", "executor": "claude_code_cloud", "statement": "npm run build exit 0", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
     { "id": "CODEX_WEATHER_REVIEWER_PRESENT", "executor": "local_codex_windows", "statement": "codex.agent.weather_gate_reviewer.v0 exists as a user-scoped agent", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003" },
-    { "id": "CODEX_CONTUR_REVIEWER_PRESENT", "executor": "local_codex_windows", "statement": "codex.agent.contur_gate_reviewer exists as a user-scoped agent", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003" }
+    { "id": "CODEX_CONTUR_REVIEWER_PRESENT", "executor": "local_codex_windows", "statement": "codex.agent.contur_gate_reviewer exists as a user-scoped agent", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003" },
+    { "id": "CONTROL_PLANE_PHASE_1_2_MERGED", "executor": "claude_code_cloud", "statement": "PR #77 (Architect Control Plane Phase 1/2 canonical foundation and ChatGPT Project setup) merged to main as b522d3a3caaa07d8605f2b6d4edbd2db6a71a629", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "EVIDENCE_LEDGER#EV-0007" }
   ],
 
   "proven_failures": [
@@ -124,8 +126,20 @@
     }
   ],
 
+  "accepted_completions": [
+    {
+      "id": "CMP-CONTROL-PLANE-PHASE-1-2",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Architect Control Plane Phase 1 (canonical foundation) and Phase 2 (ChatGPT Project setup) landed on main via PR #77.",
+      "pr": "POLYPROPICKS/PREMVP#77",
+      "pr_final_head": "b52fab82a46a05ffbc75373049ddbf3ef6563e60",
+      "merge_commit": "b522d3a3caaa07d8605f2b6d4edbd2db6a71a629",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0007"
+    }
+  ],
+
   "evidence_freshness": {
-    "origin_main_sha_checked_at": "2026-08-03T00:00:00Z",
+    "origin_main_sha_checked_at": "2026-08-04T00:00:00Z",
     "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
     "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
     "max_age_days": 7
@@ -140,5 +154,5 @@
   ],
   "stale_when_note": "Exact equality between main.origin_main_sha and live origin/main is NOT required and is not used as a staleness test. A state-only bootstrap advance (touching only CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md) keeps state FRESH even though origin/main has moved past the recorded baseline.",
 
-  "last_accepted_completion_id": null
+  "last_accepted_completion_id": "CMP-CONTROL-PLANE-PHASE-1-2"
 }
