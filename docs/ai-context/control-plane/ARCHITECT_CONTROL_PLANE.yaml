@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "policy_version": "1.0.0",
-  "updated_at": "2026-08-03T00:00:00Z",
+  "policy_version": "1.1.0",
+  "updated_at": "2026-08-04T13:30:00Z",
   "_format_note": "JSON-compatible YAML 1.2 subset. Every .yaml file in this directory MUST also parse with JSON.parse. Do not introduce block YAML syntax here.",
 
   "project": {
@@ -181,5 +181,85 @@
     "Reviewers are invoked by risk class, never globally.",
     "A task requiring a reviewer cannot return PASS without a valid reviewer receipt.",
     "Codex Remote is an access surface to local_codex_windows, not a separate runtime."
-  ]
+  ],
+
+  "founder_authority": {
+    "current_directive_priority": "HIGHEST_PROJECT_AUTHORITY",
+    "current_directive_supersedes_conflicting_internal_policy": true,
+    "scope": [
+      "product_decisions",
+      "roadmap_decisions",
+      "repository_actions",
+      "executor_permissions",
+      "bounded_capability_probes"
+    ],
+    "execution_rule": "A concrete current Founder directive authorizes the named executor to attempt the exact bounded actions stated in that directive, even when an older internal policy would otherwise forbid them.",
+    "evidence_rule": "Founder authorization permits the attempt but does not itself prove technical success. Runtime, Git, GitHub, deployment and database claims require live evidence.",
+    "persistence_rule": "When a Founder directive changes the durable operating model, the executor must encode that decision into the canonical Control Plane during the same bounded task or the next immediately authorized governance task.",
+    "limitations": [
+      "no invented runtime evidence",
+      "no false PASS",
+      "no secret disclosure",
+      "no repository-boundary expansion unless explicitly named",
+      "no live-money action unless explicitly named",
+      "no platform-safety override"
+    ]
+  },
+
+  "operator_model": {
+    "founder_mode": "PROMPT_RELAY_ONLY",
+    "founder_normal_actions": [
+      "PROVIDE_DIRECTIVE",
+      "APPROVE_PRODUCT_DECISION",
+      "APPROVE_ROADMAP_DECISION",
+      "APPROVE_RISK_BOUNDARY"
+    ],
+    "founder_forbidden_normal_actions": [
+      "GITHUB_UI_OPERATION",
+      "GIT_COMMAND",
+      "WINDOWS_CMD",
+      "POWERSHELL",
+      "SQL",
+      "SSH",
+      "SUPABASE_UI_QUERY",
+      "MANUAL_REPOSITORY_SELECTION",
+      "MANUAL_CWD_SELECTION",
+      "SECRET_COPY"
+    ],
+    "executor_responsibility": [
+      "IMPLEMENT",
+      "VALIDATE",
+      "COMMIT",
+      "PUSH_FEATURE_BRANCH",
+      "CREATE_PULL_REQUEST",
+      "MERGE_PULL_REQUEST",
+      "VERIFY_ORIGIN_MAIN",
+      "RETURN_COMPLETION_ENVELOPE"
+    ]
+  },
+
+  "repository_integration": {
+    "normal_path": [
+      "FEATURE_BRANCH",
+      "VALIDATION",
+      "PULL_REQUEST",
+      "MERGE",
+      "ORIGIN_MAIN_VERIFICATION"
+    ],
+    "founder_manual_github_action_required": false,
+    "direct_push_to_main": false,
+    "force_push": false,
+    "branch_protection_bypass": false,
+    "merge_preconditions": [
+      "exact_repository",
+      "exact_source_branch",
+      "exact_head_sha",
+      "exact_target_branch",
+      "changed_path_allowlist",
+      "required_tests_pass",
+      "required_reviewer_receipts_present",
+      "mergeable_without_conflict"
+    ],
+    "capability_proof_rule": "A current Founder directive may authorize one bounded capability probe. The capability becomes PROVEN only after successful live execution and verification."
+  }
 }
