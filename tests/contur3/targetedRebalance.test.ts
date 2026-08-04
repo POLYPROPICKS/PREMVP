@@ -12,6 +12,7 @@ import assert from "node:assert/strict";
 import { runEventRebalance, type RebalanceRepoPort } from "../../lib/executor/eventExecutionQueue";
 import { buildFireModelCandidates, type FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
 import type { EventExecutionQueueRow, NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
+import { createQueueAuthorityFixture } from "./helpers/queueAuthorityFixtures";
 
 const KICKOFF_ISO = "2026-07-19T19:00:00.000Z";
 // T-70..T-3 window for a 19:00Z kickoff = 17:50Z..18:57Z.
@@ -151,14 +152,13 @@ function makeFakeRepo(reservations: NightEventReservationRow[]): RebalanceRepoPo
 // ── Positive: targeted rebalance processes exactly the one Reservation ────
 
 test("TARGETED-1: targetReservationId queues exactly that Reservation via the real selection path", async () => {
-  const reservations = [
-    baseReservation({ id: "res-a", match_family_key: "pair:argentina-vs-spain:2026-07-19" }),
-  ];
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation({ id: "res-a" }), baseCandidate());
+  const reservations = [authority.reservation];
   const repo = makeFakeRepo(reservations);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true, maxQueueWrites: 1, targetReservationId: "res-a" },
-    { repo, fetchCandidates: async () => ({ candidates: [baseCandidate()] }) }
+    { repo, fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows, fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook }
   );
   assert.equal(result.target_reservation_matched, true);
   assert.equal(result.target_reservation_id, "res-a");
@@ -173,8 +173,9 @@ test("TARGETED-1: targetReservationId queues exactly that Reservation via the re
 // ── Positive: other due Reservations are left completely untouched ────────
 
 test("TARGETED-2: a second due Reservation is never touched by the targeted run", async () => {
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation({ id: "res-a" }), baseCandidate());
   const reservations = [
-    baseReservation({ id: "res-a", match_family_key: "pair:argentina-vs-spain:2026-07-19" }),
+    authority.reservation,
     baseReservation({
       id: "res-b",
       match_family_key: "pair:brazil-vs-uruguay:2026-07-19",
@@ -187,17 +188,8 @@ test("TARGETED-2: a second due Reservation is never touched by the targeted run"
     { write: true, maxQueueWrites: 1, targetReservationId: "res-a" },
     {
       repo,
-      fetchCandidates: async () => ({
-        candidates: [
-          baseCandidate(),
-          baseCandidate({
-            signal_id: "sig-bra-uru",
-            match_family_key: "pair:brazil-vs-uruguay:2026-07-19",
-            condition_id: "cond-bra-uru",
-            token_id: "token-bra-uru",
-          }),
-        ],
-      }),
+      fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows,
+      fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook,
     }
   );
   assert.equal(result.queued_count, 1);
@@ -214,12 +206,13 @@ test("TARGETED-2: a second due Reservation is never touched by the targeted run"
 // ── Negative: a count-only cap is insufficient -- max_queue_writes forced to 1 ─
 
 test("TARGETED-3: maxQueueWrites is forced to 1 in targeted mode regardless of due count", async () => {
-  const reservations = [baseReservation({ id: "res-a" })];
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation({ id: "res-a" }), baseCandidate());
+  const reservations = [authority.reservation];
   const repo = makeFakeRepo(reservations);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true, maxQueueWrites: 1, targetReservationId: "res-a" },
-    { repo, fetchCandidates: async () => ({ candidates: [baseCandidate()] }) }
+    { repo, fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows, fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook }
   );
   assert.equal(result.max_queue_writes, 1);
   assert.equal(result.queue_rows_created, 1);
@@ -263,29 +256,32 @@ test("TARGETED-5: a Reservation that exists but is not yet due is treated as not
 // ── Negative: ambiguous/missing final exact market → zero READY rows ──────
 
 test("TARGETED-6: no executable market for the targeted Reservation → zero READY rows, skip recorded", async () => {
-  const reservations = [baseReservation({ id: "res-a" })];
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation({ id: "res-a" }), baseCandidate());
+  const reservations = [authority.reservation];
   const repo = makeFakeRepo(reservations);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: true, maxQueueWrites: 1, targetReservationId: "res-a" },
-    { repo, fetchCandidates: async () => ({ candidates: [] }) } // no markets for this event at all
+    { repo, fetchFinalIdentitySourceRows: async () => [], fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook }
   );
   assert.equal(result.target_reservation_matched, true);
   assert.equal(result.queued_count, 0);
   assert.equal(result.skipped_count, 1);
   assert.equal(repo.queueRows.length, 0);
-  assert.ok(result.first_rejection_code?.startsWith("NO_EXECUTABLE_TIER1_MARKET"));
+  assert.equal(result.first_rejection_code, "CONTRACT_A_FINAL_IDENTITY_REJECTED");
+  assert.equal(result.outcomes[0]?.reason, "CONTRACT_A_FINAL_IDENTITY_REJECTED: NO_FINAL_IDENTITY_CANDIDATE");
 });
 
 // ── Negative: no condition/token/side is ever synthesized ──────────────────
 
 test("TARGETED-7: the queued row's identity comes only from the real candidate -- never synthesized", async () => {
-  const reservations = [baseReservation({ id: "res-a" })];
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation({ id: "res-a" }), baseCandidate());
+  const reservations = [authority.reservation];
   const repo = makeFakeRepo(reservations);
   await runEventRebalance(
     IN_WINDOW_MS,
     { write: true, maxQueueWrites: 1, targetReservationId: "res-a" },
-    { repo, fetchCandidates: async () => ({ candidates: [baseCandidate()] }) }
+    { repo, fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows, fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook }
   );
   assert.equal(repo.queueRows.length, 1);
   assert.equal(repo.queueRows[0].condition_id, "cond-esp-arg");
@@ -296,12 +292,18 @@ test("TARGETED-7: the queued row's identity comes only from the real candidate -
 // ── Negative: no CLOB / Ireland calls -- dry-run mode writes nothing ───────
 
 test("TARGETED-8: dry-run canary (write=false) computes the same outcome without any repo write", async () => {
-  const reservations = [baseReservation({ id: "res-a" })];
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation({ id: "res-a" }), baseCandidate());
+  const reservations = [authority.reservation];
   const repo = makeFakeRepo(reservations);
   const result = await runEventRebalance(
     IN_WINDOW_MS,
     { write: false, maxQueueWrites: 1, targetReservationId: "res-a" },
-    { repo, fetchCandidates: async () => ({ candidates: [baseCandidate()] }) }
+    {
+      repo,
+      fetchCandidates: async () => ({ candidates: [baseCandidate()] }),
+      fetchFinalIdentitySourceRows: authority.fetchFinalIdentitySourceRows,
+      fetchExactTokenOrderbook: authority.fetchExactTokenOrderbook,
+    }
   );
   assert.equal(result.target_reservation_matched, true);
   assert.equal(result.queued_count, 1, "dry-run still reports what WOULD be queued");

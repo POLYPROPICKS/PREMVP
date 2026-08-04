@@ -1088,16 +1088,18 @@ test("Cap-5 (route-level validation): the event-rebalance route rejects maxQueue
 
 test("Cap-6: founderBattleBatch is structurally unaffected -- the route never threads maxQueueWrites into runFounderBattleBatch", () => {
   const routeSource = readFileSync(path.join(root, "app/api/cron/event-rebalance/route.ts"), "utf8");
-  const founderBlockMatch = routeSource.match(/if \(founderBattleBatch\) \{[\s\S]*?\n  \}\n/);
-  assert.ok(founderBlockMatch, "expected to find the founderBattleBatch branch");
-  assert.doesNotMatch(founderBlockMatch![0], /maxQueueWrites/);
+  const founderStart = routeSource.indexOf("if (founderBattleBatch) {");
+  const founderEnd = routeSource.indexOf("// Canary identity-targeted rebalance", founderStart);
+  assert.ok(founderStart >= 0 && founderEnd > founderStart, "expected to find the founderBattleBatch branch");
+  assert.doesNotMatch(routeSource.slice(founderStart, founderEnd), /maxQueueWrites/);
 });
 
 test("Cap-7: controlledLiveIntent is structurally unaffected -- the route never threads maxQueueWrites into runControlledLiveIntent", () => {
   const routeSource = readFileSync(path.join(root, "app/api/cron/event-rebalance/route.ts"), "utf8");
-  const controlledBlockMatch = routeSource.match(/if \(controlledLiveIntent !== null\) \{[\s\S]*?\n  \}\n/);
-  assert.ok(controlledBlockMatch, "expected to find the controlledLiveIntent branch");
-  assert.doesNotMatch(controlledBlockMatch![0], /maxQueueWrites/);
+  const controlledStart = routeSource.indexOf("if (controlledLiveIntent !== null) {");
+  const controlledEnd = routeSource.indexOf("const maxQueueWritesParsed", controlledStart);
+  assert.ok(controlledStart >= 0 && controlledEnd > controlledStart, "expected to find the controlledLiveIntent branch");
+  assert.doesNotMatch(routeSource.slice(controlledStart, controlledEnd), /maxQueueWrites/);
 });
 
 // ── Contract A planning → final authoritative identity handoff ───────────────

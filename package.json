@@ -84,6 +84,11 @@
     "liquidity:mvp": "tsx scripts/liquidity/run-liquidity-pool-mvp.mjs",
     "liquidity:auto-capture": "tsx scripts/liquidity/run-liquidity-auto-capture.mjs",
     "liquidity:auto-capture:plan": "tsx scripts/liquidity/run-liquidity-auto-capture.mjs --plan --days 7",
+    "control-plane:validate": "node scripts/control-plane/validate-control-plane.mjs",
+    "control-plane:snapshot": "node scripts/control-plane/generate-architect-snapshot.mjs",
+    "control-plane:snapshot:check": "node scripts/control-plane/generate-architect-snapshot.mjs --check",
+    "control-plane:test": "node --test tests/control-plane/*.test.mjs",
+    "control-plane:check": "npm run control-plane:validate && npm run control-plane:test && npm run control-plane:snapshot:check",
     "test:liquidity": "node --import tsx --test tests/liquidity/*.test.ts",
     "test:analytics": "node --import tsx --test tests/analytics/*.test.ts"
   },

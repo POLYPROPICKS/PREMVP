@@ -1,0 +1,185 @@
+{
+  "schema_version": "1.0",
+  "policy_version": "1.0.0",
+  "updated_at": "2026-08-03T00:00:00Z",
+  "_format_note": "JSON-compatible YAML 1.2 subset. Every .yaml file in this directory MUST also parse with JSON.parse. Do not introduce block YAML syntax here.",
+
+  "project": {
+    "name": "PolyProPicks",
+    "control_plane_name": "PolyProPicks — Architect Control Plane",
+    "primary_repository": "POLYPROPICKS/PREMVP",
+    "production_url": "https://polypropicks.com"
+  },
+
+  "architect_interface": {
+    "default": "STANDARD_CHAT",
+    "default_surface": "ChatGPT Project — Standard Chat",
+    "project_name": "PolyProPicks — Architect Control Plane",
+    "memory_mode": "PROJECT_ONLY",
+    "work_mode": "ESCALATION_ONLY",
+    "work_mode_rationale": "Work is high cost and is not the default architect runtime. It may only be used for an explicitly scoped, Founder-authorized deep research or long-horizon architecture escalation.",
+    "architect_subagents": "NOT_IN_PHASE_1",
+    "mandatory_stages": [
+      "STATE_LOAD",
+      "SOURCE_AUTHORITY_CHECK",
+      "TASK_CLASSIFICATION",
+      "RISK_CLASSIFICATION",
+      "EXECUTOR_ROUTING",
+      "PROMPT_COMPILATION",
+      "PROMPT_CONTRACT_CHECK",
+      "FINAL_OUTPUT"
+    ]
+  },
+
+  "operator_mode": {
+    "default": "MOBILE_REMOTE",
+    "allowed": ["MOBILE_REMOTE", "DESKTOP_BROWSER", "DESKTOP_TERMINAL"],
+    "assumption": "The Founder may be operating only through the ChatGPT iOS application. Every normal flow must be completable from a phone."
+  },
+
+  "source_authority": {
+    "_note": "Two separate precedence trees. Do NOT collapse them into one global list.",
+    "runtime_facts": [
+      { "rank": 1, "source": "LIVE_RUNTIME_EVIDENCE", "description": "Current live Git / command / runtime output produced in this session." },
+      { "rank": 2, "source": "CURRENT_STATE_ENTRY", "description": "Accepted CURRENT_STATE.yaml entry with valid freshness and attached proof." },
+      { "rank": 3, "source": "TRACKED_DOCUMENTATION", "description": "Current tracked documentation in the repository." },
+      { "rank": 4, "source": "EXECUTOR_SELF_REPORT", "description": "Executor claim without independent verification. SUPPORTED, never PROVEN." },
+      { "rank": 5, "source": "CHAT_MEMORY", "description": "Chat memory or history. Lowest authority." }
+    ],
+    "runtime_facts_rule": "A Founder statement does not by itself prove a runtime PASS. Founder statements enter as FOUNDER_ACCEPTED_EXTERNAL_* evidence classes and never as PROVEN_IN_RUNTIME.",
+    "product_decisions": [
+      { "rank": 1, "source": "CURRENT_FOUNDER_DECISION", "description": "Current explicit Founder decision." },
+      { "rank": 2, "source": "CONTROL_PLANE_POLICY", "description": "Accepted Architect Control Plane policy (this file)." },
+      { "rank": 3, "source": "LOCKED_PRODUCT_DECISIONS", "description": "docs/ai-context/04_PRODUCT_DECISIONS_LOCKED.md" },
+      { "rank": 4, "source": "HISTORICAL_CHECKPOINT", "description": "Prior accepted checkpoint or milestone record." },
+      { "rank": 5, "source": "CHAT_MEMORY", "description": "Chat memory or history. Lowest authority." }
+    ]
+  },
+
+  "canonical_artifacts": {
+    "root": "docs/ai-context/control-plane",
+    "items": [
+      { "id": "control_plane_policy", "path": "docs/ai-context/control-plane/ARCHITECT_CONTROL_PLANE.yaml", "role": "POLICY", "authoritative_for": "control plane policy, interface, boundaries" },
+      { "id": "current_state", "path": "docs/ai-context/control-plane/CURRENT_STATE.yaml", "role": "CURRENT_STATE", "authoritative_for": "current operational state" },
+      { "id": "capability_matrix", "path": "docs/ai-context/control-plane/CAPABILITY_MATRIX.yaml", "role": "CAPABILITY", "authoritative_for": "execution target capabilities and environment paths" },
+      { "id": "routing_and_pipelines", "path": "docs/ai-context/control-plane/ROUTING_AND_PIPELINES.yaml", "role": "ROUTING", "authoritative_for": "task/risk classes, executor and reviewer selection" },
+      { "id": "agent_registry", "path": "docs/ai-context/control-plane/AGENT_REGISTRY.yaml", "role": "REGISTRY", "authoritative_for": "agents, skills, commands, hooks, scripts, gates, policies" },
+      { "id": "prompt_protocol", "path": "docs/ai-context/control-plane/PROMPT__PROTOCOL.md", "role": "PROMPT_CONTRACT", "authoritative_for": "executor prompt structure" },
+      { "id": "completion_envelope_schema", "path": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json", "role": "COMPLETION_CONTRACT", "authoritative_for": "executor result structure" },
+      { "id": "evidence_ledger", "path": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md", "role": "HISTORICAL_LEDGER", "authoritative_for": "history only — NEVER current state" },
+      { "id": "chatgpt_project_setup", "path": "docs/ai-context/control-plane/CHATGPT_PROJECT_SETUP.md", "role": "FOUNDER_SETUP", "authoritative_for": "Phase 2 project setup and Phase 3 shadow plan" },
+      { "id": "architect_snapshot", "path": "docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md", "role": "GENERATED_SNAPSHOT", "authoritative_for": "nothing — generated view of the canonical files" }
+    ],
+    "single_current_state_authority": {
+      "artifact": "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+      "rule": "CURRENT_STATE.yaml is the ONLY current operational state artifact. Any other document describing current state is historical or descriptive and cannot override it."
+    },
+    "evidence_ledger_authority": {
+      "artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "rule": "EVIDENCE_LEDGER.md is append-only history. It is NEVER authoritative for current state."
+    },
+    "generated_artifacts": [
+      { "path": "docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md", "generator": "scripts/control-plane/generate-architect-snapshot.mjs", "deterministic": true }
+    ]
+  },
+
+  "execution_targets": {
+    "matrix_ref": "docs/ai-context/control-plane/CAPABILITY_MATRIX.yaml",
+    "registered": ["claude_code_cloud", "local_codex_windows", "ireland_local"],
+    "rule": "Environment-specific paths, repositories and shell assumptions MUST be read from CAPABILITY_MATRIX.yaml. Do not hardcode Windows as the only execution environment."
+  },
+
+  "repository_boundaries": {
+    "premvp": {
+      "repository": "POLYPROPICKS/PREMVP",
+      "execution_targets": ["claude_code_cloud", "local_codex_windows"]
+    },
+    "ireland": {
+      "repository": "UNPROVEN_REMOTE_IDENTITY",
+      "execution_targets": ["ireland_local"],
+      "status": "PROTECTED_BOUNDARY_ONLY",
+      "access_in_control_plane_phase_1_2": false
+    },
+    "mixing_rule": "PREMVP and Ireland implementation prompts CANNOT be mixed. One executor prompt targets exactly one repository boundary. A prompt that would touch both must be split, or PROMPT_GATE_BLOCKED.",
+    "cross_repository_implementation": "FORBIDDEN_WITHOUT_SEPARATE_AUTHORIZATION"
+  },
+
+  "mobile_first_policy": {
+    "default_operator_mode": "MOBILE_REMOTE",
+    "normal_flow_must_not_require": ["WINDOWS_CMD", "POWERSHELL", "SQL", "SSH", "SUPABASE_UI_QUERY", "CWD_SELECTION", "MANUAL_REPOSITORY_SELECTION", "SECRET_COPY"],
+    "break_glass": {
+      "id": "BREAK_GLASS_OPERATOR_ACTION",
+      "allowed_when": "It has been explicitly proven that no registered executor in CAPABILITY_MATRIX.yaml can perform the action.",
+      "requires": ["explicit label BREAK_GLASS_OPERATOR_ACTION", "explicit proof of executor inability", "explicit Founder authorization"]
+    }
+  },
+
+  "founder_action_budget": {
+    "preferred": 0,
+    "maximum_normal": 1,
+    "unit": "one clear tap OR one copy/paste action",
+    "per_milestone_maximum": "one copy/paste down and one result up",
+    "overrun_behavior": "STOP and re-contract",
+    "scope": "PER_TASK",
+    "exemptions": [
+      "One-time provisioning sequences performed once per environment — notably the Phase 2 ChatGPT Project setup in CHATGPT_PROJECT_SETUP.md — are outside the per-task budget. They must still be completable from a phone in one bounded UI sequence with no shell, SQL or secret handling."
+    ]
+  },
+
+  "global_stop_conditions": [
+    "CONTROL_PLANE_WRONG_REPOSITORY — checkout is not the repository named in the prompt",
+    "CONTROL_PLANE_DIRTY_WORKTREE — unexpected dirty state",
+    "CONTROL_PLANE_SCOPE_EXPANSION_REQUIRED — a file outside ALLOWED FILES must change",
+    "PROMPT_GATE_BLOCKED — required prompt section, capability, evidence or routing is missing or contradictory",
+    "STATE_STALE — CURRENT_STATE.yaml exceeds its freshness window and cannot be re-proven",
+    "CAPABILITY_NOT_PROVEN — routing requires a capability whose verdict is not PROVEN",
+    "REVIEWER_RECEIPT_MISSING — a mandatory reviewer produced no valid receipt",
+    "REPOSITORY_BOUNDARY_MIXED — a single prompt targets both PREMVP and Ireland",
+    "SECRETS_REQUIRED — env/secret values would have to be read or printed"
+  ],
+
+  "stale_state_behavior": {
+    "mode": "FAIL_CLOSED",
+    "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
+    "rule": "CURRENT_STATE.yaml.main.origin_main_sha is a LAST_VERIFIED_ORIGIN_MAIN_BASELINE, not a permanent exact-equality requirement. Exact equality cannot survive a state-refresh merge: the merge itself creates a new origin/main tip that could not have been embedded in its own parent commit. Freshness is evaluated as: (1) the recorded baseline MUST be an ancestor of live origin/main — if not, STATE_STALE; (2) if live origin/main equals the baseline, state is FRESH; (3) if live origin/main is ahead of the baseline, state remains FRESH only when every path changed since the baseline is in state_bootstrap_allowlist below — otherwise STATE_REFRESH_REQUIRED; (4) a state-only bootstrap merge must never invalidate the state it just refreshed. Chat memory or timestamps cannot override this Git ancestor relationship. When CURRENT_STATE.yaml is stale, missing, or fails this check, the architect MUST return PROMPT_GATE_BLOCKED and request a bounded read-only refresh task. It must NOT guess, extrapolate, or fall back to chat memory or legacy state documents.",
+    "state_bootstrap_allowlist": [
+      "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+      "docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md",
+      "docs/ai-context/control-plane/EVIDENCE_LEDGER.md"
+    ]
+  },
+
+  "prohibited_founder_actions": [
+    "Running Windows CMD or PowerShell in the normal flow",
+    "Writing or running SQL",
+    "Opening the Supabase UI to answer a state question",
+    "SSH into any host",
+    "Locating or typing a working directory",
+    "Manually selecting a repository for an executor",
+    "Copying secret or token values",
+    "Manually editing source files",
+    "Reconciling duplicate instruction documents by hand"
+  ],
+
+  "superseded_or_legacy_sources": [
+    { "path": "docs/ai-context/01_PROJECT_CONTEXT_CURRENT.md", "status": "LEGACY_DESCRIPTIVE", "authoritative_for_current_state": false },
+    { "path": "docs/ai-context/02_CURRENT_TECH_STATE.md", "status": "LEGACY_DESCRIPTIVE", "authoritative_for_current_state": false },
+    { "path": "docs/ai-context/09_CONTEXT_DELTA_LOG.md", "status": "HISTORICAL", "authoritative_for_current_state": false },
+    { "path": "docs/ai-context/11_SOURCE_FILES_AND_REPO_INVENTORY.md", "status": "LEGACY_DESCRIPTIVE", "authoritative_for_current_state": false },
+    { "path": "docs/ai-context/WORK_TRU_PPP04JULY.md", "status": "HISTORICAL", "authoritative_for_current_state": false },
+    { "path": "AGENTS.md#4-project-identity-and-environment", "status": "ENVIRONMENT_ASSUMPTION_SUPERSEDED", "superseded_by": "docs/ai-context/control-plane/CAPABILITY_MATRIX.yaml", "authoritative_for_current_state": false, "note": "The Windows-only repo path and 'Windows CMD preferred' assumption are not valid in Claude Code Cloud." },
+    { "path": "docs/ai-context/PROMPT__PROTOCOL.md", "status": "NOT_TRACKED_IN_ORIGIN_MAIN", "authoritative_for_current_state": false, "note": "A file of this name exists only in an untracked Local Windows worktree. Its authority is unresolved and it MUST NOT be cited as authority. The canonical prompt contract is docs/ai-context/control-plane/PROMPT__PROTOCOL.md." },
+    { "path": "docs/ai-context/PROMPT_COMPLETION_PROTOCOL.md", "status": "ABSENT", "authoritative_for_current_state": false, "superseded_by": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json" }
+  ],
+
+  "invariants": [
+    "CURRENT_STATE.yaml is the only current operational state artifact.",
+    "EVIDENCE_LEDGER.md is historical and never authoritative for current state.",
+    "PREMVP and Ireland implementation prompts cannot be mixed.",
+    "Standard Chat is the default architect interface.",
+    "Work is escalation-only.",
+    "Reviewers are invoked by risk class, never globally.",
+    "A task requiring a reviewer cannot return PASS without a valid reviewer receipt.",
+    "Codex Remote is an access surface to local_codex_windows, not a separate runtime."
+  ]
+}
