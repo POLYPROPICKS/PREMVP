@@ -17,7 +17,7 @@ const BASE_SHA = '6e593a5d0e66e50941f130f7792f67e487dbb347';
 
 function conturReceipt(overrides = {}) {
   return {
-    agent_id: 'codex.agent.contur_gate_reviewer',
+    agent_id: 'premvp.reviewer.contur_gate.v1',
     implementation_identity: 'C:\\Users\\Alex\\.codex\\agents\\contur-gate-reviewer.toml',
     configured_model: 'gpt-5.6-luna',
     reasoning_policy: 'max',
@@ -51,8 +51,8 @@ function validEnvelope(overrides = {}) {
       { command: 'npm run build', exit_code: 0, purpose: 'build gate' },
     ],
     tests: [{ name: 'contur3 controlled-live', result: 'PASS' }],
-    required_reviewers: ['codex.agent.contur_gate_reviewer'],
-    invoked_reviewers: ['codex.agent.contur_gate_reviewer'],
+    required_reviewers: ['premvp.reviewer.contur_gate.v1'],
+    invoked_reviewers: ['premvp.reviewer.contur_gate.v1'],
     reviewer_receipts: [conturReceipt()],
     evidence: [
       { id: 'EV-A', evidence_class: 'PROVEN_IN_RUNTIME', statement: 'build exit 0', ref: null },
@@ -88,7 +88,7 @@ test('6b. missing required fields fail', () => {
 test('7. missing required reviewer receipt fails', () => {
   const result = validateCompletionEnvelope(validEnvelope({ reviewer_receipts: [] }));
   assert.equal(result.ok, false);
-  assert.match(result.errors.join('\n'), /REVIEWER_RECEIPT_MISSING: codex\.agent\.contur_gate_reviewer/);
+  assert.match(result.errors.join('\n'), /REVIEWER_RECEIPT_MISSING: premvp\.reviewer\.contur_gate/);
 });
 
 test('7b. required reviewer never invoked fails', () => {
@@ -119,7 +119,7 @@ test('7d. an R3 envelope that under-declares the Weather reviewer fails', () => 
     reviewer_receipts: [],
   }));
   assert.equal(result.ok, false);
-  assert.match(result.errors.join('\n'), /REQUIRED_REVIEWER_UNDER_DECLARED.*weather_gate_reviewer/);
+  assert.match(result.errors.join('\n'), /REQUIRED_REVIEWER_UNDER_DECLARED.*weather_gate/);
   assert.match(result.errors.join('\n'), /REVIEWER_RECEIPT_MISSING/);
 });
 
@@ -130,7 +130,7 @@ test('7e. an R4 envelope that under-declares the Contur reviewer fails', () => {
     reviewer_receipts: [],
   }));
   assert.equal(result.ok, false);
-  assert.match(result.errors.join('\n'), /REQUIRED_REVIEWER_UNDER_DECLARED.*contur_gate_reviewer/);
+  assert.match(result.errors.join('\n'), /REQUIRED_REVIEWER_UNDER_DECLARED.*contur_gate/);
 });
 
 test('8. reviewed SHA mismatch fails', () => {

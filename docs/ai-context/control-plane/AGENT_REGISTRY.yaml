@@ -11,11 +11,55 @@
 
   "entries": [
     {
+      "canonical_id": "premvp.reviewer.weather_gate.v1",
+      "type": "AGENT",
+      "owner_platform": "portable_project_scoped",
+      "implementation_path": "docs/ai-context/control-plane/reviewers/weather-gate-reviewer.yaml",
+      "status": "PROVEN_PRESENT",
+      "invocation": "EXPLICIT",
+      "triggers": ["R3_WEATHER_MODEL_CHANGE", "Weather model behavior change"],
+      "exclusions": ["R0_READ_ONLY", "R1_BOUNDED_CODE", "R2_ARCHITECTURE_OR_ROADMAP", "R4_CONTUR_PRODUCTION_BOUNDARY", "any non-Weather task"],
+      "model_policy": "inherit_per_executor_adapter",
+      "reasoning_policy": "high",
+      "permissions": "read-only sandbox",
+      "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "reviewed_sha, diff, Weather model acceptance criteria",
+      "output_contract": "reviewer receipt per COMPLETION_ENVELOPE.schema.json#reviewer_receipt",
+      "independence_group": "weather_gate",
+      "receipt_required": true,
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "last_verified_at": "2026-08-04T13:30:00Z",
+      "portability": "PORTABLE",
+      "notes": "Current project-scoped portable identity for the Weather reviewer, executed via an executor-native adapter on either claude_code_cloud or local_codex_windows. Both adapters emit the same receipt schema. Availability proven on local_codex_windows; deterministic invocation NOT proven on either executor — see CURRENT_STATE open blocker BLK-002. Supersedes codex.agent.weather_gate_reviewer.v0 as current routing authority."
+    },
+    {
+      "canonical_id": "premvp.reviewer.contur_gate.v1",
+      "type": "AGENT",
+      "owner_platform": "portable_project_scoped",
+      "implementation_path": "docs/ai-context/control-plane/reviewers/contur-gate-reviewer.yaml",
+      "status": "PROVEN_PRESENT",
+      "invocation": "EXPLICIT",
+      "triggers": ["R4_CONTUR_PRODUCTION_BOUNDARY", "Contur exact-SHA acceptance", "production-boundary acceptance"],
+      "exclusions": ["R0_READ_ONLY", "R1_BOUNDED_CODE", "R3_WEATHER_MODEL_CHANGE", "any task with no Contur or production boundary"],
+      "model_policy": "inherit_per_executor_adapter",
+      "reasoning_policy": "max",
+      "permissions": "read-only sandbox",
+      "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "reviewed_sha, diff, runtime evidence, Contur acceptance criteria",
+      "output_contract": "reviewer receipt per COMPLETION_ENVELOPE.schema.json#reviewer_receipt",
+      "independence_group": "contur_gate",
+      "receipt_required": true,
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "last_verified_at": "2026-08-04T13:30:00Z",
+      "portability": "PORTABLE",
+      "notes": "Current project-scoped portable identity for the Contur reviewer, executed via an executor-native adapter on either claude_code_cloud or local_codex_windows. Both adapters emit the same receipt schema. Availability proven on local_codex_windows; deterministic invocation NOT proven on either executor — see CURRENT_STATE open blocker BLK-002. Supersedes codex.agent.contur_gate_reviewer as current routing authority."
+    },
+    {
       "canonical_id": "codex.agent.weather_gate_reviewer.v0",
       "type": "AGENT",
       "owner_platform": "local_codex_windows",
       "implementation_path": "C:\\Users\\Alex\\.codex\\agents\\weather-gate-reviewer.toml",
-      "status": "PROVEN_PRESENT",
+      "status": "SUPERSEDED",
       "invocation": "EXPLICIT",
       "triggers": ["R3_WEATHER_MODEL_CHANGE", "Weather model behavior change"],
       "exclusions": ["R0_READ_ONLY", "R1_BOUNDED_CODE", "R2_ARCHITECTURE_OR_ROADMAP", "R4_CONTUR_PRODUCTION_BOUNDARY", "any non-Weather task"],
@@ -30,14 +74,14 @@
       "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
       "last_verified_at": "2026-08-03T00:00:00Z",
       "portability": "CODEX_ONLY",
-      "notes": "Availability proven. Deterministic invocation NOT proven — see CURRENT_STATE open blocker BLK-002."
+      "notes": "DEPRECATED historical compatibility id only — not current routing authority. Superseded by premvp.reviewer.weather_gate.v1. Retained so historical receipts referencing this id remain resolvable."
     },
     {
       "canonical_id": "codex.agent.contur_gate_reviewer",
       "type": "AGENT",
       "owner_platform": "local_codex_windows",
       "implementation_path": "C:\\Users\\Alex\\.codex\\agents\\contur-gate-reviewer.toml",
-      "status": "PROVEN_PRESENT",
+      "status": "SUPERSEDED",
       "invocation": "EXPLICIT",
       "triggers": ["R4_CONTUR_PRODUCTION_BOUNDARY", "Contur exact-SHA acceptance", "production-boundary acceptance"],
       "exclusions": ["R0_READ_ONLY", "R1_BOUNDED_CODE", "R3_WEATHER_MODEL_CHANGE", "any task with no Contur or production boundary"],
@@ -52,7 +96,7 @@
       "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
       "last_verified_at": "2026-08-03T00:00:00Z",
       "portability": "CODEX_ONLY",
-      "notes": "Availability proven. Deterministic invocation NOT proven — see CURRENT_STATE open blocker BLK-002."
+      "notes": "DEPRECATED historical compatibility id only — not current routing authority. Superseded by premvp.reviewer.contur_gate.v1. Retained so historical receipts referencing this id remain resolvable."
     },
     {
       "canonical_id": "claude.command.verify",

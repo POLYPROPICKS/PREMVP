@@ -1,0 +1,34 @@
+{
+  "schema_version": "1.0",
+  "reviewer_id": "premvp.reviewer.weather_gate.v1",
+  "title": "PolyProPicks Weather Gate Reviewer — portable definition",
+  "authority": "This is the current tracked, project-scoped Weather reviewer identity. It supersedes any host-specific user-scoped agent file as routing authority. No absolute local-machine path (e.g. C:\\Users\\...) is authoritative for invocation.",
+  "independence_group": "weather_gate",
+  "receipt_required": true,
+  "triggers": ["R3_WEATHER_MODEL_CHANGE", "Weather model behavior change"],
+  "exclusions": ["R0_READ_ONLY", "R1_BOUNDED_CODE", "R2_ARCHITECTURE_OR_ROADMAP", "R4_CONTUR_PRODUCTION_BOUNDARY", "any non-Weather task"],
+  "input_contract": {
+    "reviewed_sha": "the exact commit SHA under review — deterministic, never guessed",
+    "diff": "the bounded diff produced by the task",
+    "acceptance_criteria": "Weather model acceptance criteria for this task class"
+  },
+  "output_contract": {
+    "schema_ref": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json#/definitions/reviewer_receipt",
+    "rule": "reviewed_sha in the receipt MUST equal the completion envelope's result_sha for a PASS to be valid."
+  },
+  "executor_adapters": [
+    {
+      "executor_id": "local_codex_windows",
+      "portability": "NEEDS_ADAPTER",
+      "invocation_mechanism": "user-scoped Codex agent, referenced historically as codex.agent.weather_gate_reviewer.v0 (deprecated compatibility id — not current routing authority)",
+      "emits_same_receipt_schema": true
+    },
+    {
+      "executor_id": "claude_code_cloud",
+      "portability": "NEEDS_ADAPTER",
+      "invocation_mechanism": "project-scoped Agent invocation configured under .claude/agents/ following this same input/output contract",
+      "emits_same_receipt_schema": true
+    }
+  ],
+  "notes": "Both executor-native adapters implement this one reviewer identity and independence_group. Neither adapter depends on the other executor to run; each independently produces a receipt matching the schema above."
+}

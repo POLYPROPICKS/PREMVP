@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "reviewer_id": "premvp.reviewer.contur_gate.v1",
+  "title": "PolyProPicks Contur Gate Reviewer — portable definition",
+  "authority": "This is the current tracked, project-scoped Contur reviewer identity. It supersedes any host-specific user-scoped agent file as routing authority. No absolute local-machine path (e.g. C:\\Users\\...) is authoritative for invocation.",
+  "independence_group": "contur_gate",
+  "receipt_required": true,
+  "triggers": ["R4_CONTUR_PRODUCTION_BOUNDARY", "Contur exact-SHA acceptance", "production-boundary acceptance"],
+  "exclusions": ["R0_READ_ONLY", "R1_BOUNDED_CODE", "R3_WEATHER_MODEL_CHANGE", "any task with no Contur or production boundary"],
+  "input_contract": {
+    "reviewed_sha": "the exact commit SHA under review — deterministic, never guessed",
+    "diff": "the bounded diff produced by the task",
+    "runtime_evidence": "live runtime evidence supporting the production-boundary claim",
+    "acceptance_criteria": "Contur exact-SHA acceptance criteria for this task class"
+  },
+  "output_contract": {
+    "schema_ref": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json#/definitions/reviewer_receipt",
+    "rule": "reviewed_sha in the receipt MUST equal the completion envelope's result_sha for a PASS to be valid."
+  },
+  "executor_adapters": [
+    {
+      "executor_id": "local_codex_windows",
+      "portability": "NEEDS_ADAPTER",
+      "invocation_mechanism": "user-scoped Codex agent, referenced historically as codex.agent.contur_gate_reviewer (deprecated compatibility id — not current routing authority)",
+      "emits_same_receipt_schema": true
+    },
+    {
+      "executor_id": "claude_code_cloud",
+      "portability": "NEEDS_ADAPTER",
+      "invocation_mechanism": "project-scoped Agent invocation configured under .claude/agents/ (see contur-gate-reviewer agent) following this same input/output contract",
+      "emits_same_receipt_schema": true
+    }
+  ],
+  "notes": "Both executor-native adapters implement this one reviewer identity and independence_group. Neither adapter depends on the other executor to run; each independently produces a receipt matching the schema above."
+}
