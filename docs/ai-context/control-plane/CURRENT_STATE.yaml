@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-04T19:03:01Z",
-  "state_version": 4,
+  "updated_at": "2026-08-05T05:11:57Z",
+  "state_version": 5,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
@@ -34,16 +34,16 @@
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "52129f93a314a35abf962069e9efd1566b03975b",
+    "origin_main_sha": "1a140a297523c0413c32954ecf7dc63d1d345d3b",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "executor": "claude_code_cloud",
-      "commands": ["git fetch --prune origin", "git rev-parse origin/main"],
-      "observed_at": "2026-08-04T12:42:32Z",
+      "commands": ["git fetch --prune origin", "git rev-parse origin/main", "curl https://polypropicks.com/api/build-info"],
+      "observed_at": "2026-08-04T19:45:26Z",
       "worktree": "clean",
-      "note": "52129f93a314a35abf962069e9efd1566b03975b is the verified live origin/main baseline for this state refresh and is the merge commit of PR #83, whose source commit e48e5f674b4d421105a9714196fb95a9403750fc changed application source lib/executor/buildFireModelCandidates.ts and regression test tests/contur3/buildFireModelCandidates.effectiveActivityLabel.test.ts. This advance therefore includes application source and tests and is NOT a state-only bootstrap advance. Commit-to-deployment mapping for this patch remains NOT_PROVEN."
+      "note": "Product-source baseline 1a140a297523c0413c32954ecf7dc63d1d345d3b is the PR #85 merge commit and contains implementation commit 7e0ba854dbe08126536346809137300ab7025eb2. Production /api/build-info returned this exact SHA at 2026-08-04T19:45:57Z, proving commit-to-deployment mapping. This was an application-source advance, not a state-only bootstrap."
     }
   },
 
@@ -72,7 +72,8 @@
     { "id": "CLOUD_BUILD", "executor": "claude_code_cloud", "statement": "npm run build exit 0", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
     { "id": "CODEX_WEATHER_REVIEWER_PRESENT", "executor": "local_codex_windows", "statement": "codex.agent.weather_gate_reviewer.v0 exists as a user-scoped agent", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003" },
     { "id": "CODEX_CONTUR_REVIEWER_PRESENT", "executor": "local_codex_windows", "statement": "codex.agent.contur_gate_reviewer exists as a user-scoped agent", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003" },
-    { "id": "CONTROL_PLANE_PHASE_1_2_MERGED", "executor": "claude_code_cloud", "statement": "PR #77 (Architect Control Plane Phase 1/2 canonical foundation and ChatGPT Project setup) merged to main as b522d3a3caaa07d8605f2b6d4edbd2db6a71a629", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "EVIDENCE_LEDGER#EV-0007" }
+    { "id": "CONTROL_PLANE_PHASE_1_2_MERGED", "executor": "claude_code_cloud", "statement": "PR #77 (Architect Control Plane Phase 1/2 canonical foundation and ChatGPT Project setup) merged to main as b522d3a3caaa07d8605f2b6d4edbd2db6a71a629", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "EVIDENCE_LEDGER#EV-0007" },
+    { "id": "CLOUD_PRODUCTION_BUILD_PROVENANCE_READ", "executor": "claude_code_cloud", "statement": "Production GET /api/build-info returned HTTP 200 with a valid full Git commit SHA mapping the running PREMVP build to an exact repository commit.", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "CMP-PR85-DEPLOYMENT-STATE-RUNTIME-BOUNDARY-20260804" }
   ],
 
   "proven_failures": [
@@ -87,7 +88,7 @@
   ],
 
   "open_blockers": [
-    { "id": "BLK-001", "statement": "C1 source and merge lineage are present on origin/main. The stale activity-label defect fix is source-merged through PR #83, with merge commit 52129f93a314a35abf962069e9efd1566b03975b and source commit e48e5f674b4d421105a9714196fb95a9403750fc, touching lib/executor/buildFireModelCandidates.ts and tests/contur3/buildFireModelCandidates.effectiveActivityLabel.test.ts. Deployment mapping for this patch remains NOT_PROVEN. The historical CTL18 failure has not been reproduced or cleared. C1 production runtime proof remains the current open verification step and may be closed only by later executable/runtime evidence.", "owner_executor": "local_codex_windows", "blocking": "C1" },
+    { "id": "BLK-001", "statement": "Deployment is proven for 1a140a297523c0413c32954ecf7dc63d1d345d3b through /api/build-info. C1 remains OPEN because no natural night-reservations run has started after the proven deployment boundary. The historical CTL18 failure remains unresolved. Close C1 only after a natural run proves Planning -> Reservation -> Final Identity -> immutable Queue.", "owner_executor": "local_codex_windows", "blocking": "C1" },
     { "id": "BLK-002", "statement": "Codex reviewer invocation is not deterministic: no required invocation receipt, no deterministic gate, no project-scoped Codex agent package, no tracked CI gate.", "owner_executor": "local_codex_windows", "blocking": "reviewer receipt enforcement outside the Cloud validator" },
     { "id": "BLK-003", "statement": "Supabase write access from claude_code_cloud is NOT_PROVEN.", "owner_executor": "claude_code_cloud", "blocking": "any Cloud task requiring a database write" },
     { "id": "BLK-004", "statement": "Ireland runtime access and Ireland repository remote identity are NOT_PROVEN.", "owner_executor": "ireland_local", "blocking": "C2 execution routing" }
@@ -141,7 +142,7 @@
   ],
 
   "evidence_freshness": {
-    "origin_main_sha_checked_at": "2026-08-04T12:42:32Z",
+    "origin_main_sha_checked_at": "2026-08-04T19:45:26Z",
     "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
     "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
     "max_age_days": 7
@@ -156,5 +157,5 @@
   ],
   "stale_when_note": "Exact equality between main.origin_main_sha and live origin/main is NOT required and is not used as a staleness test. A state-only bootstrap advance (touching only CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md) keeps state FRESH even though origin/main has moved past the recorded baseline.",
 
-  "last_accepted_completion_id": "CMP-POST-PATCH-STATE-RECONCILIATION-20260804"
+  "last_accepted_completion_id": "CMP-PR85-DEPLOYMENT-STATE-RUNTIME-BOUNDARY-20260804"
 }
