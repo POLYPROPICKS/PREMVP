@@ -2301,6 +2301,7 @@ export async function buildLandingCards(options?: {
   // Research universe options — safe defaults preserve existing behavior
   collectResearchSnapshots?: boolean;
   researchSnapshotRunId?: string;
+  producerRunId?: string;
   researchSnapshotAt?: string;
   researchLimit?: number;
   researchOddsMin?: number;
@@ -2382,6 +2383,7 @@ export async function buildLandingCards(options?: {
         fetchVolumeMinUsd: 50000,
         finalEventVolumeMinUsd: 100000,
         targetCards: limit * 2,
+        producerRunId: options?.producerRunId,
       });
 
       if (includeUpcoming) {

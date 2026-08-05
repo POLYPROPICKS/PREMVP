@@ -8,6 +8,7 @@ import {
 } from "../../lib/feed/cacheSportsEventMarketInventory";
 import {
   buildProviderSportMetadataMap,
+  buildStrictProviderSportMetadataMap,
   buildBroadStructuredSportsShadowEntries,
   resolveOfficialSportCode,
   OFFICIAL_FULL_MATCH_MARKET_TYPES,
@@ -30,6 +31,15 @@ const SPORTS_RAW: unknown[] = [
   { sport: "seriea", tags: "1,100350,502" },
   { sport: "nba", tags: "1,600", series: "39" },
 ];
+
+test("diagnostics authority map rejects label and slug fallback", () => {
+  const strict = buildStrictProviderSportMetadataMap([
+    { label: "Display Only", slug: "display-only", tags: "900" },
+    { sport: "nba", tags: "901" },
+  ]);
+  assert.equal(resolveOfficialSportCode(["900"], strict).providerSportCode, null);
+  assert.equal(resolveOfficialSportCode(["901"], strict).providerSportCode, "nba");
+});
 
 const SPECIFIC_SPORTS_TAG_IDS = new Set(["100350", "500", "501", "502", "600"]);
 const SPORTS_TAG_IDS = [...SPECIFIC_SPORTS_TAG_IDS, "1"];
