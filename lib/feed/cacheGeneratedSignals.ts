@@ -4,6 +4,13 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { PremiumSignal, MarketSource, LandingCardDiagnostics, LandingCardPair } from "./types";
 import type { WcShadowEntry } from "./discoverSportsMarkets";
+import {
+  chunkArray,
+  SHADOW_DEDUP_QUERY_CHUNK,
+  SHADOW_INSERT_CHUNK,
+  SHADOW_DEDUP_MAX_QUERIES,
+  SHADOW_DEDUP_BUDGET_EXCEEDED,
+} from "./writeBatching";
 
 export interface CachedSignalPair {
   id?: string;
@@ -167,6 +174,11 @@ export async function writeGeneratedSignalPairs(
  * Write WC shadow candidates as shadow rows in generated_signal_pairs.
  * Deduplicates by (condition_id, selected_token_id) against existing shadow rows.
  * Returns the count of newly inserted rows. Throws on DB error (caller wraps in fail-open try/catch).
+ *
+ * Both the dedup read and the insert are chunked, so a large batch degrades
+ * into many bounded requests instead of one oversized request that fails
+ * wholesale. A mid-batch insert failure keeps the rows already committed and
+ * surfaces the error to the caller rather than discarding the whole run.
  */
 export async function writeStrategicShadowPairs(
   candidates: WcShadowEntry[],
@@ -186,16 +198,41 @@ export async function writeStrategicShadowPairs(
   });
 
   // Read-before-write dedup: skip candidates already stored as shadow rows.
-  const conditionIds = uniqueCandidates.map((c) => c.conditionId);
-  const { data: existing } = await supabaseAdmin
-    .from("generated_signal_pairs")
-    .select("condition_id, selected_token_id, metric_formula_version")
-    .in("condition_id", conditionIds)
-    .eq("metric_formula_version", "shadow-strategic-sports-v1");
+  // The condition-id list is chunked: a broad structured-sports batch carries
+  // tens of thousands of distinct condition IDs, and a single .in() over all of
+  // them serialises into a multi-megabyte query string that the PostgREST
+  // endpoint rejects outright — which silently failed the whole write and left
+  // zero broad rows persisted. Chunking keeps every request inside a sane URL
+  // budget while preserving exact-ID dedup semantics.
+  const conditionIds = [...new Set(uniqueCandidates.map((c) => c.conditionId))];
+  const dedupChunks = chunkArray(conditionIds, SHADOW_DEDUP_QUERY_CHUNK);
+  if (dedupChunks.length > SHADOW_DEDUP_MAX_QUERIES) {
+    // Fail closed and fast: without a dedup index this batch cannot be checked
+    // inside the cron's budget, and writing it half-deduplicated would corrupt
+    // the shadow set. See writeBatching.ts for the exact index required.
+    throw new Error(
+      `${SHADOW_DEDUP_BUDGET_EXCEEDED}: ${conditionIds.length} condition ids need ` +
+        `${dedupChunks.length} dedup queries (budget ${SHADOW_DEDUP_MAX_QUERIES}); ` +
+        `generated_signal_pairs needs an index on ` +
+        `(metric_formula_version, condition_id, selected_token_id)`,
+    );
+  }
 
-  const existingKeys = new Set<string>(
-    (existing ?? []).map((r) => `${r.condition_id}::${r.selected_token_id}::${r.metric_formula_version}`)
-  );
+  const existingKeys = new Set<string>();
+  for (const chunk of dedupChunks) {
+    const { data: existing, error: dedupError } = await supabaseAdmin
+      .from("generated_signal_pairs")
+      .select("condition_id, selected_token_id, metric_formula_version")
+      .in("condition_id", chunk)
+      .eq("metric_formula_version", "shadow-strategic-sports-v1");
+
+    if (dedupError) {
+      throw new Error(`Failed to read existing shadow pairs: ${dedupError.message}`);
+    }
+    for (const r of existing ?? []) {
+      existingKeys.add(`${r.condition_id}::${r.selected_token_id}::${r.metric_formula_version}`);
+    }
+  }
 
   const dedupedCandidates = uniqueCandidates.filter(
     (c) => !existingKeys.has(`${c.conditionId}::${c.selectedTokenId}::shadow-strategic-sports-v1`)
@@ -286,15 +323,21 @@ export async function writeStrategicShadowPairs(
     };
   });
 
-  const { error, count } = await supabaseAdmin
-    .from("generated_signal_pairs")
-    .insert(rows);
+  let inserted = 0;
+  for (const chunk of chunkArray(rows, SHADOW_INSERT_CHUNK)) {
+    const { error, count } = await supabaseAdmin
+      .from("generated_signal_pairs")
+      .insert(chunk);
 
-  if (error) {
-    throw new Error(`Failed to write shadow pairs: ${error.message}`);
+    if (error) {
+      throw new Error(
+        `Failed to write shadow pairs: ${error.message} (after ${inserted} of ${rows.length} rows)`,
+      );
+    }
+    inserted += count ?? chunk.length;
   }
 
-  return count ?? rows.length;
+  return inserted;
 }
 
 /**

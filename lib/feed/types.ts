@@ -572,6 +572,11 @@ export interface SportsDiscoveryCounts {
   broadSportsRowsSkippedMissingOutcome?: number;
   broadSportsRowsSkippedMissingPrice?: number;
   broadSportsRowsSkippedIndexMismatch?: number;
+  /**
+   * Per-event terminal materialization accounting: every considered official
+   * sports event is either MATERIALIZED or carries one explicit skip reason.
+   */
+  broadSportsMaterialization?: import("./discoverSportsMarkets").MaterializationLedger;
 }
 
 export interface SportsDiscoverySample {

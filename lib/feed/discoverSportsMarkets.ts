@@ -489,6 +489,7 @@ export async function discoverSportsMarkets(
         counts.broadSportsRowsSkippedMissingOutcome = broadDiag.rowsSkippedMissingOutcome;
         counts.broadSportsRowsSkippedMissingPrice = broadDiag.rowsSkippedMissingPrice;
         counts.broadSportsRowsSkippedIndexMismatch = broadDiag.rowsSkippedIndexMismatch;
+        counts.broadSportsMaterialization = broadDiag.materialization;
 
         if (broadEntries.length > 0) {
           const { writeStrategicShadowPairs } = await import("./cacheGeneratedSignals");
@@ -1421,6 +1422,83 @@ function extractEventTagIds(rawTags: unknown): string[] {
   return ids;
 }
 
+/**
+ * Resolve exactly one official sport code from an event's official tag IDs.
+ *
+ * Every real Polymarket sports event carries broad umbrella tags ("1" Sports,
+ * "100639" Live Sports, "100350" Soccer, ...) alongside its specific league
+ * tag. Unioning the sport codes of every matching tag therefore made virtually
+ * every production event resolve to hundreds of codes at once and fall out as
+ * ambiguous, so providerSportCode was never populated in production even
+ * though the attribution path existed.
+ *
+ * Specificity is measured structurally, straight from the official /sports
+ * payload: a tag that maps to one sport code is a league tag, a tag that maps
+ * to 389 codes is an umbrella. The narrowest tags on the event win. No text,
+ * slug, symbol or curated allowlist is consulted.
+ */
+export function resolveOfficialSportCode(
+  tagIds: string[],
+  sportMeta: ProviderSportMetadataMap,
+): {
+  providerSportCode: string | null;
+  providerSportSource: WcShadowEntry["providerSportSource"];
+  ambiguousSport: boolean;
+} {
+  let narrowest = Number.POSITIVE_INFINITY;
+  for (const tagId of tagIds) {
+    const codes = sportMeta.tagIdToSportCodes.get(tagId);
+    if (codes && codes.size > 0 && codes.size < narrowest) narrowest = codes.size;
+  }
+  if (!Number.isFinite(narrowest)) {
+    return { providerSportCode: null, providerSportSource: "unclassified", ambiguousSport: false };
+  }
+
+  const matchedCodes = new Set<string>();
+  for (const tagId of tagIds) {
+    const codes = sportMeta.tagIdToSportCodes.get(tagId);
+    if (codes && codes.size === narrowest) for (const c of codes) matchedCodes.add(c);
+  }
+
+  if (matchedCodes.size === 1) {
+    return {
+      providerSportCode: [...matchedCodes][0],
+      providerSportSource: "structured_sports_tag",
+      ambiguousSport: false,
+    };
+  }
+  return { providerSportCode: null, providerSportSource: "ambiguous_multi_tag", ambiguousSport: true };
+}
+
+/**
+ * Official market types that represent the full-match (winner) line. Sourced
+ * from the provider's own sportsMarketType field, never inferred from text.
+ */
+export const OFFICIAL_FULL_MATCH_MARKET_TYPES = new Set(["moneyline"]);
+
+/**
+ * Terminal per-event materialization outcomes. Every official sports event the
+ * producer considers receives exactly one of these, so no event can disappear
+ * between official inventory and Signal Pair input without a stated reason.
+ */
+export type MaterializationOutcome =
+  | "MATERIALIZED"
+  | "NO_SUPPORTED_FULLMATCH_MARKET"
+  | "EXACT_IDENTITY_INCOMPLETE"
+  | "MISSING_OFFICIAL_GAME_START"
+  | "OTHER_EXPLICIT_REASON";
+
+export interface MaterializationLedger {
+  eventsConsidered: number;
+  outcomes: Record<MaterializationOutcome, number>;
+  outcomeTotal: number;
+  /** outcomeTotal === eventsConsidered — the conservation equation. */
+  conservationOk: boolean;
+  fullMatchEventsConsidered: number;
+  fullMatchEventsMaterialized: number;
+  materializedBySport: Record<string, number>;
+}
+
 export interface BroadStructuredSportsBuildDiagnostics {
   rowsConsidered: number;
   rowsProposed: number;
@@ -1433,6 +1511,16 @@ export interface BroadStructuredSportsBuildDiagnostics {
   rowsSkippedMissingOutcome: number;
   rowsSkippedMissingPrice: number;
   rowsSkippedIndexMismatch: number;
+  /** Per-event terminal outcome accounting over the considered inventory. */
+  materialization: MaterializationLedger;
+}
+
+interface EventMaterializationState {
+  producedEntry: boolean;
+  hasFullMatchMarket: boolean;
+  hasValidStart: boolean;
+  sawIdentityFailure: boolean;
+  sportKey: string;
 }
 
 function coercePrice(raw: unknown): number | null {
@@ -1469,34 +1557,57 @@ export function buildBroadStructuredSportsShadowEntries(
     rowsSkippedMissingOutcome: 0,
     rowsSkippedMissingPrice: 0,
     rowsSkippedIndexMismatch: 0,
+    materialization: {
+      eventsConsidered: 0,
+      outcomes: {
+        MATERIALIZED: 0,
+        NO_SUPPORTED_FULLMATCH_MARKET: 0,
+        EXACT_IDENTITY_INCOMPLETE: 0,
+        MISSING_OFFICIAL_GAME_START: 0,
+        OTHER_EXPLICIT_REASON: 0,
+      },
+      outcomeTotal: 0,
+      conservationOk: true,
+      fullMatchEventsConsidered: 0,
+      fullMatchEventsMaterialized: 0,
+      materializedBySport: {},
+    },
   };
   const entries: WcShadowEntry[] = [];
+  const eventState = new Map<string, EventMaterializationState>();
 
   for (const row of inventoryRows) {
     if (!row.isConfirmedSports) continue;
     diagnostics.rowsConsidered += 1;
 
     const tagIds = extractEventTagIds(row.providerTags);
-    const matchedCodes = new Set<string>();
-    for (const tagId of tagIds) {
-      const codes = sportMeta.tagIdToSportCodes.get(tagId);
-      if (codes) for (const c of codes) matchedCodes.add(c);
-    }
+    const { providerSportCode, providerSportSource, ambiguousSport } = resolveOfficialSportCode(
+      tagIds,
+      sportMeta,
+    );
+    if (ambiguousSport) diagnostics.rowsAmbiguousSport += 1;
 
-    let providerSportCode: string | null = null;
-    let providerSportSource: WcShadowEntry["providerSportSource"] = "unclassified";
-    let ambiguousSport = false;
-    if (matchedCodes.size === 1) {
-      providerSportCode = [...matchedCodes][0];
-      providerSportSource = "structured_sports_tag";
-    } else if (matchedCodes.size > 1) {
-      providerSportSource = "ambiguous_multi_tag";
-      ambiguousSport = true;
-      diagnostics.rowsAmbiguousSport += 1;
+    const sportKey = providerSportCode ?? (ambiguousSport ? "AMBIGUOUS_MULTI_SPORT" : "UNCLASSIFIED_SPORTS_TAG");
+    const isFullMatchMarket = OFFICIAL_FULL_MATCH_MARKET_TYPES.has(
+      (row.sportsMarketType ?? "").toLowerCase(),
+    );
+    let state = eventState.get(row.providerEventId);
+    if (!state) {
+      state = {
+        producedEntry: false,
+        hasFullMatchMarket: false,
+        hasValidStart: false,
+        sawIdentityFailure: false,
+        sportKey,
+      };
+      eventState.set(row.providerEventId, state);
     }
+    if (isFullMatchMarket) state.hasFullMatchMarket = true;
+    if (row.eventStartIso) state.hasValidStart = true;
 
     if (!row.conditionId) {
       diagnostics.rowsSkippedMissingToken += 1;
+      state.sawIdentityFailure = true;
       continue;
     }
 
@@ -1509,15 +1620,16 @@ export function buildBroadStructuredSportsShadowEntries(
     const priceCount = row.outcomePrices.length;
     if (tokenCount === 0) {
       diagnostics.rowsSkippedMissingToken += 1;
+      state.sawIdentityFailure = true;
       continue;
     }
     if (tokenCount !== outcomeCount || tokenCount !== priceCount) {
       diagnostics.rowsSkippedIndexMismatch += 1;
+      state.sawIdentityFailure = true;
       continue;
     }
 
     const enrichment = gameTeamLookup.get(row.providerMarketId) ?? { gameId: null, teamAId: null, teamBId: null };
-    const sportKey = providerSportCode ?? (ambiguousSport ? "AMBIGUOUS_MULTI_SPORT" : "UNCLASSIFIED_SPORTS_TAG");
 
     let rowsProposedForMarket = 0;
     for (let idx = 0; idx < tokenCount; idx++) {
@@ -1577,8 +1689,40 @@ export function buildBroadStructuredSportsShadowEntries(
 
     if (rowsProposedForMarket === 0) {
       diagnostics.rowsSkippedMissingToken += 1;
+      state.sawIdentityFailure = true;
+    } else {
+      state.producedEntry = true;
     }
   }
+
+  // Per-event terminal outcome accounting. Exactly one outcome per considered
+  // official event, so materialized + every skip reason == events considered.
+  const ledger = diagnostics.materialization;
+  for (const state of eventState.values()) {
+    let outcome: MaterializationOutcome;
+    if (state.producedEntry) {
+      outcome = "MATERIALIZED";
+    } else if (!state.hasValidStart) {
+      outcome = "MISSING_OFFICIAL_GAME_START";
+    } else if (state.sawIdentityFailure) {
+      outcome = "EXACT_IDENTITY_INCOMPLETE";
+    } else if (!state.hasFullMatchMarket) {
+      outcome = "NO_SUPPORTED_FULLMATCH_MARKET";
+    } else {
+      outcome = "OTHER_EXPLICIT_REASON";
+    }
+    ledger.outcomes[outcome] += 1;
+    ledger.eventsConsidered += 1;
+    if (state.hasFullMatchMarket) {
+      ledger.fullMatchEventsConsidered += 1;
+      if (state.producedEntry) ledger.fullMatchEventsMaterialized += 1;
+    }
+    if (outcome === "MATERIALIZED") {
+      ledger.materializedBySport[state.sportKey] = (ledger.materializedBySport[state.sportKey] ?? 0) + 1;
+    }
+  }
+  ledger.outcomeTotal = Object.values(ledger.outcomes).reduce((a, b) => a + b, 0);
+  ledger.conservationOk = ledger.outcomeTotal === ledger.eventsConsidered;
 
   return { entries, diagnostics };
 }
