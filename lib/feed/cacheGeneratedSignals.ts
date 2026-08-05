@@ -180,11 +180,35 @@ export async function writeGeneratedSignalPairs(
  * wholesale. A mid-batch insert failure keeps the rows already committed and
  * surfaces the error to the caller rather than discarding the whole run.
  */
+export interface StrategicShadowMaterializationRecord {
+  providerEventId: string | null;
+  conditionId: string;
+  sportCode: string | null;
+  outcome: "MATERIALIZED" | "PREEXISTING_DEDUP";
+}
+
+export interface StrategicShadowWriteDetail {
+  inserted: number;
+  materializationRecords: StrategicShadowMaterializationRecord[];
+}
+
+export function writeStrategicShadowPairs(
+  candidates: WcShadowEntry[],
+  defaultExpiresAt: string,
+): Promise<number>;
+export function writeStrategicShadowPairs(
+  candidates: WcShadowEntry[],
+  defaultExpiresAt: string,
+  options: { detailed: true },
+): Promise<StrategicShadowWriteDetail>;
 export async function writeStrategicShadowPairs(
   candidates: WcShadowEntry[],
-  defaultExpiresAt: string
-): Promise<number> {
-  if (candidates.length === 0) return 0;
+  defaultExpiresAt: string,
+  options?: { detailed: true },
+): Promise<number | StrategicShadowWriteDetail> {
+  const detail = (inserted: number, materializationRecords: StrategicShadowMaterializationRecord[]) =>
+    options?.detailed ? { inserted, materializationRecords } : inserted;
+  if (candidates.length === 0) return detail(0, []);
 
   // Intra-batch dedup: collapse duplicates within the candidates array itself.
   // Collectors may return the same conditionId::selectedTokenId multiple times
@@ -246,7 +270,17 @@ export async function writeStrategicShadowPairs(
   const newCandidates = dedupedCandidates.filter(
     (c) => c.shadowReason !== "BROAD_STRUCTURED_SPORTS_V1" || c.selectedOutcome != null
   );
-  if (newCandidates.length === 0) return 0;
+  const materializationRecords: StrategicShadowMaterializationRecord[] = [
+    ...uniqueCandidates
+      .filter((c) => existingKeys.has(`${c.conditionId}::${c.selectedTokenId}::shadow-strategic-sports-v1`))
+      .map((c) => ({
+        providerEventId: c.providerEventId ?? null,
+        conditionId: c.conditionId,
+        sportCode: c.providerSportCode ?? null,
+        outcome: "PREEXISTING_DEDUP" as const,
+      })),
+  ];
+  if (newCandidates.length === 0) return detail(0, materializationRecords);
 
   const rows = newCandidates.map((entry) => {
     // Per-row expiry: game endDate + 48h buffer so resolver can process it after settlement.
@@ -298,6 +332,7 @@ export async function writeStrategicShadowPairs(
         providerSportTagIds: entry.providerSportTagIds ?? null,
         providerSeriesIds: entry.providerSeriesIds ?? null,
         providerEventId: entry.providerEventId ?? null,
+        producerRunId: entry.producerRunId ?? null,
         providerMarketId: entry.providerMarketId ?? null,
         gameId: entry.gameId ?? null,
         teamAId: entry.teamAId ?? null,
@@ -337,7 +372,13 @@ export async function writeStrategicShadowPairs(
     inserted += count ?? chunk.length;
   }
 
-  return inserted;
+  materializationRecords.push(...newCandidates.map((c) => ({
+    providerEventId: c.providerEventId ?? null,
+    conditionId: c.conditionId,
+    sportCode: c.providerSportCode ?? null,
+    outcome: "MATERIALIZED" as const,
+  })));
+  return detail(inserted, materializationRecords);
 }
 
 /**

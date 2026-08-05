@@ -497,6 +497,8 @@ export interface SportsDiscoveryConfig {
   // buildSportsLandingCards, debug routes) stays read-only. Only
   // scripts/generate-signals.ts sets this to true.
   persistInventory?: boolean;
+  /** One producer-scoped identity, created before official discovery. */
+  producerRunId?: string;
   // Test-only dependency injection for the inventory writer's Supabase repo
   // port. Never set in production code -- production always uses the real
   // service-role Supabase client. Structurally compatible with
@@ -564,6 +566,7 @@ export interface SportsDiscoveryCounts {
   broadSportsRowsAmbiguousSport?: number;
   broadSportsWriteInserted?: number;
   broadSportsWriteFailed?: boolean;
+  sportFunnelV1?: Record<string, unknown>;
   // Outcome-alignment diagnostics (correction commit): per-market provider
   // token/outcome/price arrays are iterated fully; malformed tuples are
   // counted here rather than silently dropped or fabricated.
