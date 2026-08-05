@@ -61,17 +61,24 @@ test("production-scale batch stays within a sane per-request budget", () => {
   }
 });
 
-test("a full production batch exceeds the dedup budget and must fail closed", () => {
-  // 18,048 distinct condition IDs is the measured production shape. With no
-  // index on condition_id each dedup query costs ~6s, so this batch cannot be
-  // checked inside the cron budget and must be refused rather than written
-  // half-deduplicated.
+test("a full production batch fits the indexed dedup budget", () => {
+  // 18,048 distinct condition IDs is the measured production shape. The
+  // indexed guard leaves room for the current 84-query batch plus growth.
   const conditionIds = Array.from({ length: 18048 }, (_, i) => `cond-${i}`);
   const needed = chunkArray(conditionIds, SHADOW_DEDUP_QUERY_CHUNK).length;
   assert.ok(
-    needed > SHADOW_DEDUP_MAX_QUERIES,
-    "a full broad batch must be recognised as over budget",
+    needed <= SHADOW_DEDUP_MAX_QUERIES,
+    "a full broad batch must fit the indexed dedup budget",
   );
+});
+
+test("a batch beyond the indexed dedup budget still fails closed", () => {
+  const conditionIds = Array.from(
+    { length: SHADOW_DEDUP_QUERY_CHUNK * SHADOW_DEDUP_MAX_QUERIES + 1 },
+    (_, i) => `cond-${i}`,
+  );
+  const needed = chunkArray(conditionIds, SHADOW_DEDUP_QUERY_CHUNK).length;
+  assert.ok(needed > SHADOW_DEDUP_MAX_QUERIES);
 });
 
 test("a batch inside the dedup budget is allowed through", () => {

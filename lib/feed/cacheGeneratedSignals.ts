@@ -207,14 +207,14 @@ export async function writeStrategicShadowPairs(
   const conditionIds = [...new Set(uniqueCandidates.map((c) => c.conditionId))];
   const dedupChunks = chunkArray(conditionIds, SHADOW_DEDUP_QUERY_CHUNK);
   if (dedupChunks.length > SHADOW_DEDUP_MAX_QUERIES) {
-    // Fail closed and fast: without a dedup index this batch cannot be checked
-    // inside the cron's budget, and writing it half-deduplicated would corrupt
-    // the shadow set. See writeBatching.ts for the exact index required.
+    // Fail closed and fast if the producer outgrows the indexed request
+    // budget; writing a half-deduplicated batch would corrupt the shadow set.
+    // See writeBatching.ts for the measured budget and exact index.
     throw new Error(
       `${SHADOW_DEDUP_BUDGET_EXCEEDED}: ${conditionIds.length} condition ids need ` +
         `${dedupChunks.length} dedup queries (budget ${SHADOW_DEDUP_MAX_QUERIES}); ` +
         `generated_signal_pairs needs an index on ` +
-        `(metric_formula_version, condition_id, selected_token_id)`,
+        `(condition_id, selected_token_id, metric_formula_version)`,
     );
   }
 

@@ -16,16 +16,14 @@ export const SHADOW_INSERT_CHUNK = 500;
 /**
  * Maximum dedup queries a single run may issue.
  *
- * generated_signal_pairs has no index on condition_id, so every dedup query is
- * a sequential scan costing ~6s regardless of how many IDs it carries — a full
- * broad batch needs ~90 of them, which runs for ~11 minutes and still hits
- * statement timeouts partway through. Rather than let a 30-minute cron overrun
- * itself and write a half-deduplicated batch, the writer refuses the batch and
- * says why. Lifting this cap needs an index on
- * (metric_formula_version, condition_id, selected_token_id), which is a schema
- * migration and therefore a separate, explicitly authorized change.
+ * The production index on
+ * (condition_id, selected_token_id, metric_formula_version) makes these
+ * bounded lookups cheap enough for the full observed broad batch. The latest
+ * run carried 16,722 distinct condition IDs (84 chunks); 100 leaves measured
+ * headroom while retaining a fail-closed guard if the producer grows beyond
+ * the cron's safe budget.
  */
-export const SHADOW_DEDUP_MAX_QUERIES = 12;
+export const SHADOW_DEDUP_MAX_QUERIES = 100;
 
 /** Marker for the explicit fail-closed path above. */
 export const SHADOW_DEDUP_BUDGET_EXCEEDED = "SHADOW_DEDUP_BUDGET_EXCEEDED";
