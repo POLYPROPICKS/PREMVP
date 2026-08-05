@@ -6,16 +6,34 @@
 -- cron's budget, which is why the writer fails closed above
 -- SHADOW_DEDUP_MAX_QUERIES (see lib/feed/writeBatching.ts).
 --
--- Fix: a covering index on the writer's exact dedup predicate
--- (metric_formula_version equality + condition_id IN (...), selected_token_id
--- read alongside to avoid a heap fetch) so dedup chunks resolve via an index
--- scan instead of a sequential scan over the whole table.
+-- Fix: a covering index leading with condition_id, not metric_formula_version.
+-- condition_id is the only column every reader of this table actually filters
+-- on. Three other call sites join generated_signal_pairs on
+-- (condition_id, selected_token_id) with NO metric_formula_version predicate
+-- at all: scripts/resolve-signals.ts:707, scripts/resolve-signals.ts:772, and
+-- scripts/verify-resolver-pipeline.ts:167. An index leading with
+-- metric_formula_version would leave that leading column unconstrained for
+-- those three call sites, so Postgres could not use it as a prefix match —
+-- the same failure mode idx_gsp_pending_resolution (20260702) was created to
+-- fix for a different query on this same table. Leading with condition_id
+-- serves the writer's dedup predicate (condition_id IN (...) AND
+-- metric_formula_version = X) as well as all three resolver predicates, as a
+-- prefix match in both cases.
 --
 -- Idempotent — safe to run multiple times. No uniqueness constraint: shadow
 -- rows are not proven unique on this tuple and this index must not change
 -- write semantics, only read cost.
 --
--- Rollback: DROP INDEX IF EXISTS idx_gsp_shadow_dedup;
+-- CONCURRENTLY: table carries ~460k rows under continuous write traffic from
+-- generate-signals/resolve-signals crons; a non-concurrent build would hold a
+-- SHARE lock blocking writes for the build's duration. Whether this
+-- repository's migration-apply mechanism wraps each file in a transaction is
+-- unconfirmed from source — CREATE INDEX CONCURRENTLY cannot run inside a
+-- transaction block. Verify the apply path before running this file; if the
+-- apply mechanism is transactional, drop CONCURRENTLY and accept the
+-- write-lock window instead of failing the migration.
+--
+-- Rollback: DROP INDEX CONCURRENTLY IF EXISTS idx_gsp_shadow_dedup;
 
-CREATE INDEX IF NOT EXISTS idx_gsp_shadow_dedup
-  ON public.generated_signal_pairs (metric_formula_version, condition_id, selected_token_id);
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_gsp_shadow_dedup
+  ON public.generated_signal_pairs (condition_id, selected_token_id, metric_formula_version);
