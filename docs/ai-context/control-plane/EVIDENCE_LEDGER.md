@@ -315,3 +315,46 @@ The Architect-accepted reconciliation delta from
 
 This entry is history only. It records the state refresh and does not reopen, amend or
 reimplement PR #83.
+
+## EV-0011 — State refresh: PR #85 production deployment mapping recorded as PROVEN, C1 runtime proof still open
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **observed_at:** 2026-08-04
+- **executor:** `claude_code_cloud`
+- **completion_id:** `CMP-STATE-V5-PR85-DEPLOYMENT-20260804`
+- **accepted_completion_id:** `CMP-PR85-DEPLOYMENT-STATE-RUNTIME-BOUNDARY-20260804`
+- **branch:** `claude/state-v5-pr85-deployment-20260804`
+- **base:** `1a140a297523c0413c32954ecf7dc63d1d345d3b`
+
+The Architect-accepted delta from `CMP-PR85-DEPLOYMENT-STATE-RUNTIME-BOUNDARY-20260804`
+was applied to canonical state.
+
+- `state_version` advanced `4` -> `5`.
+- Recorded `main.origin_main_sha` product-source baseline advanced from
+  `52129f93a314a35abf962069e9efd1566b03975b` to
+  `1a140a297523c0413c32954ecf7dc63d1d345d3b`.
+- `1a140a297523c0413c32954ecf7dc63d1d345d3b` is the merge commit of PR #85, verified as
+  the live `origin/main` tip in this session.
+- The PR #85 implementation commit is `7e0ba854dbe08126536346809137300ab7025eb2`,
+  verified as an ancestor of `origin/main`.
+- PR #85 changed exactly five paths: `app/api/build-info/route.ts`,
+  `lib/runtime/buildProvenance.ts`, `tests/api/buildInfo.test.ts`,
+  `tests/runtime/buildProvenance.test.ts` (added), and `next.config.ts` (modified). This
+  baseline advance therefore includes application source and tests and is not a
+  state-only bootstrap advance.
+- Commit-to-deployment mapping is `PROVEN`: production `GET /api/build-info` returned
+  HTTP 200 with `commit_sha` `1a140a297523c0413c32954ecf7dc63d1d345d3b` at
+  `2026-08-04T19:45:57Z` — the post-deploy observation boundary. This deployed commit
+  contains the PR #85 implementation commit and equals the verified `origin/main`
+  product-source baseline.
+- No natural night-reservations run has started after the post-deploy observation
+  boundary. The latest natural run started at `2026-08-04T14:02:25.523Z` with
+  `plan_run_id` `night-plan:2026-08-04:1700-minsk`.
+- C1 production runtime proof remains `OPEN`; `BLK-001` was restated with the proven
+  deployment mapping, not closed.
+- C2 remains not started (`NEXT`).
+- `runtime_changed=false`, `deployment_changed=false`, `database_changed=false`.
+- Founder action: none.
+
+This entry is history only. It records the state refresh and does not reopen, amend or
+reimplement PR #85, and does not trigger or observe a new deployment or natural run.

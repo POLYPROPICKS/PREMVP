@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate: npm run control-plane:snapshot -->
 
-State v4 · updated 2026-08-04T19:03:01Z · policy 1.1.0
+State v5 · updated 2026-08-05T05:11:57Z · policy 1.1.0
 
 ## 1. Source authority
 
@@ -19,12 +19,12 @@ Only current-state authority: `CURRENT_STATE.yaml`. `EVIDENCE_LEDGER.md` is hist
 - Phase: **CONTUR3_QUEUE_AUTHORITY**
 - Current step: **C1 — C1 production runtime proof** (OPEN)
 - Next two: **C2** Ireland execution reads only the immutable Queue → **SETTLEMENT_PNL** Settlement / PnL and production vertical proof
-- main @ POLYPROPICKS/PREMVP: baseline `52129f93a314a35abf962069e9efd1566b03975b` (LAST_VERIFIED_ORIGIN_MAIN_BASELINE) — freshness mode BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE: baseline must be an ancestor of live origin/main; a live tip ahead of baseline stays FRESH only if every changed path is in the state-bootstrap allowlist (CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md), otherwise STATE_REFRESH_REQUIRED
-- Last accepted completion: CMP-POST-PATCH-STATE-RECONCILIATION-20260804
+- main @ POLYPROPICKS/PREMVP: baseline `1a140a297523c0413c32954ecf7dc63d1d345d3b` (LAST_VERIFIED_ORIGIN_MAIN_BASELINE) — freshness mode BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE: baseline must be an ancestor of live origin/main; a live tip ahead of baseline stays FRESH only if every changed path is in the state-bootstrap allowlist (CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md), otherwise STATE_REFRESH_REQUIRED
+- Last accepted completion: CMP-PR85-DEPLOYMENT-STATE-RUNTIME-BOUNDARY-20260804
 
 ## 3. Blockers
 
-- `BLK-001` C1 source and merge lineage are present on origin/main. The stale activity-label defect fix is source-merged through PR #83, with merge commit 52129f93a314a35abf962069e9efd1566b03975b and source commit e48e5f674b4d421105a9714196fb95a9403750fc, touching lib/executor/buildFireModelCandidates.ts and tests/contur3/buildFireModelCandidates.effectiveActivityLabel.test.ts. Deployment mapping for this patch remains NOT_PROVEN. The historical CTL18 failure has not been reproduced or cleared. C1 production runtime proof remains the current open verification step and may be closed only by later executable/runtime evidence. (blocks: C1)
+- `BLK-001` Deployment is proven for 1a140a297523c0413c32954ecf7dc63d1d345d3b through /api/build-info. C1 remains OPEN because no natural night-reservations run has started after the proven deployment boundary. The historical CTL18 failure remains unresolved. Close C1 only after a natural run proves Planning -> Reservation -> Final Identity -> immutable Queue. (blocks: C1)
 - `BLK-002` Codex reviewer invocation is not deterministic: no required invocation receipt, no deterministic gate, no project-scoped Codex agent package, no tracked CI gate. (blocks: reviewer receipt enforcement outside the Cloud validator)
 - `BLK-003` Supabase write access from claude_code_cloud is NOT_PROVEN. (blocks: any Cloud task requiring a database write)
 - `BLK-004` Ireland runtime access and Ireland repository remote identity are NOT_PROVEN. (blocks: C2 execution routing)
@@ -89,7 +89,7 @@ Stale state: **FAIL_CLOSED** — return PROMPT_GATE_BLOCKED and request a bounde
 
 ## 11. Evidence identifiers
 
-- Proven passes: CLOUD_REPO_READ, CLOUD_NPM_CI, CLOUD_SUPABASE_SELECT, CLOUD_TYPECHECK, CLOUD_BUILD, CODEX_WEATHER_REVIEWER_PRESENT, CODEX_CONTUR_REVIEWER_PRESENT, CONTROL_PLANE_PHASE_1_2_MERGED
+- Proven passes: CLOUD_REPO_READ, CLOUD_NPM_CI, CLOUD_SUPABASE_SELECT, CLOUD_TYPECHECK, CLOUD_BUILD, CODEX_WEATHER_REVIEWER_PRESENT, CODEX_CONTUR_REVIEWER_PRESENT, CONTROL_PLANE_PHASE_1_2_MERGED, CLOUD_PRODUCTION_BUILD_PROVENANCE_READ
 - External checkpoints: CHK-C1-20260803, CHK-CLOUD-CAPABILITY, CHK-CODEX-INVENTORY
-- Freshness: 7 days from 2026-08-04T19:03:01Z
+- Freshness: 7 days from 2026-08-05T05:11:57Z
 - Stale when: main.origin_main_sha is NOT an ancestor of live origin/main (STATE_STALE); main.origin_main_sha IS an ancestor of live origin/main, live origin/main is ahead of it, and any path changed between them falls outside stale_state_behavior.state_bootstrap_allowlist in ARCHITECT_CONTROL_PLANE.yaml (STATE_REFRESH_REQUIRED); updated_at is older than evidence_freshness.max_age_days; an accepted completion envelope exists whose completion_id is newer than last_accepted_completion_id; a referenced execution target verdict in CAPABILITY_MATRIX.yaml has passed its expires_when
