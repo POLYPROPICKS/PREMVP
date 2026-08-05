@@ -45,7 +45,7 @@ with a stated reason.
 | 12 | `OPERATOR MODE` | Default `MOBILE_REMOTE`. |
 | 13 | `TASK CLASS` | From `ROUTING_AND_PIPELINES.yaml → task_classes`. |
 | 14 | `RISK CLASS` | One of `R0`–`R5`. |
-| 15 | `REQUIRED CAPABILITIES` | Each must hold verdict `PROVEN` for the chosen executor. |
+| 15 | `REQUIRED CAPABILITIES` | Each must be `authorized: true` for the chosen executor per `CAPABILITY_MATRIX.yaml`, and hold verdict `PROVEN` on at least one eligible executor for the risk class. Authorization and evidence are distinct: a capability whose verdict is `NOT_PROVEN` is not thereby forbidden — see §3a same-run capability bootstrap. |
 | 16 | `REQUIRED AGENTS / REVIEWERS` | Minimum set for the risk class. Never "all agents". |
 | 17 | `PRECHECK` | Ordered, mechanical, evidence-producing steps. |
 | 18 | `EXECUTION SCOPE` | What is in scope and what is explicitly out of scope. |
@@ -76,6 +76,30 @@ with a stated reason.
    accepted.
 7. **No authority citation of untracked files**, in particular
    the untracked `docs/ai-context/PROMPT__PROTOCOL.md` on the Local Windows worktree.
+
+## 3a. Authorization versus evidence, and same-run capability bootstrap
+
+`CAPABILITY_MATRIX.yaml` records two independent facts per capability: `authorized`
+(policy permission) and `verdict` (live runtime evidence: `PROVEN`, `FAILED`,
+`NOT_PROVEN`, or `NOT_AVAILABLE`). These MUST NOT be collapsed into one:
+
+- Authorization alone never produces a runtime `PASS`.
+- `NOT_PROVEN` means untested, not forbidden. A prompt MUST NOT be blocked merely
+  because an authorized capability begins the task `NOT_PROVEN`.
+- `NOT_AVAILABLE` means the runtime genuinely lacks the surface — that does block routing.
+- `authorized: false` blocks routing regardless of verdict.
+
+When a required capability is `authorized: true` for the selected executor but its
+verdict is `NOT_PROVEN`, the prompt's `PRECHECK` MUST require the executor to attempt one
+bounded, safe, evidence-producing probe of that capability in the same run, then continue
+automatically when it succeeds. A prompt MUST NOT force executor switching when the
+selected executor is authorized, and MUST NOT require a separate Founder confirmation for
+the probe. A failed, unavailable, or unsafe probe fails closed with the exact blocker
+named — the task returns `BLOCKED` or `WAIT`, never a fabricated `PASS`. This applies
+equally to `claude_code_cloud` and `local_codex_windows` for PREMVP R0–R4: neither
+executor is routed through the other, and PREMVP executor eligibility for R0–R4 is
+symmetric subject to the same reviewer and capability-evidence requirements per risk
+class (see `ROUTING_AND_PIPELINES.yaml → executor_parity_policy`).
 
 ## 4. Reviewer receipt requirements
 

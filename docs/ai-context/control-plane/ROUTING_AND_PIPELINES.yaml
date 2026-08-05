@@ -7,6 +7,10 @@
     "all_agent_invocation": false
   },
 
+  "executor_parity_policy": {
+    "rule": "For PREMVP, claude_code_cloud and local_codex_windows are equally authorized execution targets for R0_READ_ONLY through R4_CONTUR_PRODUCTION_BOUNDARY, subject to the same reviewer and capability-evidence requirements per risk class. Neither executor is an execution dependency of the other — routing MUST NOT route one executor through the other. A capability may be authorized (see CAPABILITY_MATRIX.yaml authorization_vs_evidence_policy) for a given executor while its evidence verdict remains NOT_PROVEN; routing eligibility on a risk class requires only that at least one eligible executor holds a PROVEN verdict for each required capability, and the selected executor may prove its own instance of that capability via the same-run capability bootstrap rule before continuing. Ireland and R5 remain fail-closed and are unaffected by this parity."
+  },
+
   "task_classes": [
     { "id": "READ_ONLY_EVIDENCE", "description": "Gather evidence, no writes.", "default_risk_class": "R0_READ_ONLY" },
     { "id": "DOCS_CONTEXT", "description": "Documentation and control-plane artifacts.", "default_risk_class": "R1_BOUNDED_CODE" },
@@ -41,7 +45,7 @@
       "id": "R1_BOUNDED_CODE",
       "title": "Bounded code or documentation change inside an explicit allowed-file list",
       "required_capabilities": ["REPOSITORY_READ", "DEPENDENCY_INSTALL", "TYPECHECK", "BUILD"],
-      "eligible_execution_targets": ["claude_code_cloud"],
+      "eligible_execution_targets": ["claude_code_cloud", "local_codex_windows"],
       "required_agents": ["claude.hook.validate_proof_package"],
       "optional_agents": ["claude.command.verify", "premvp.spec.code_auditor", "claude.command.github_pr_merge.v0"],
       "permitted_repositories": ["POLYPROPICKS/PREMVP"],
@@ -60,7 +64,7 @@
       "id": "R2_ARCHITECTURE_OR_ROADMAP",
       "title": "Architecture, routing, authority or roadmap change",
       "required_capabilities": ["REPOSITORY_READ", "BUILD"],
-      "eligible_execution_targets": ["claude_code_cloud"],
+      "eligible_execution_targets": ["claude_code_cloud", "local_codex_windows"],
       "required_agents": ["claude.hook.validate_proof_package", "premvp.policy.agent_constitution", "premvp.policy.task_routing"],
       "optional_agents": ["premvp.spec.compliance_monitor", "claude.command.github_pr_merge.v0"],
       "permitted_repositories": ["POLYPROPICKS/PREMVP"],
@@ -79,17 +83,17 @@
       "id": "R3_WEATHER_MODEL_CHANGE",
       "title": "Weather / scoring / model behavior change",
       "required_capabilities": ["REPOSITORY_READ", "LOCAL_TEST_RUN", "WEATHER_GATE_REVIEW"],
-      "eligible_execution_targets": ["local_codex_windows"],
-      "required_agents": ["codex.agent.weather_gate_reviewer.v0"],
+      "eligible_execution_targets": ["claude_code_cloud", "local_codex_windows"],
+      "required_agents": ["premvp.reviewer.weather_gate.v1"],
       "optional_agents": ["premvp.spec.code_auditor", "claude.command.github_pr_merge.v0"],
       "permitted_repositories": ["POLYPROPICKS/PREMVP"],
       "forbidden_actions": ["DEPLOY", "MERGE_WITHOUT_REVIEWER_RECEIPT", "DATABASE_WRITE", "IRELAND_ACCESS", "CROSS_REPO_CHANGE"],
-      "repository_integration_note": "Integration into origin/main may be performed only by claude.command.github_pr_merge.v0, and only after a valid codex.agent.weather_gate_reviewer.v0 receipt whose reviewed_sha equals result_sha exists.",
+      "repository_integration_note": "Integration into origin/main may be performed only by claude.command.github_pr_merge.v0, and only after a valid premvp.reviewer.weather_gate.v1 receipt whose reviewed_sha equals result_sha exists.",
       "sequential_stages": ["PRECHECK", "INSPECT", "PATCH", "TYPECHECK", "BUILD", "WEATHER_GATE_REVIEW", "COMPLETION_ENVELOPE"],
       "parallel_stages": [],
       "evidence_requirements": ["git status --short", "git diff --stat", "model behavior before/after", "test output"],
       "reviewer_receipt_requirements": [
-        { "agent_id": "codex.agent.weather_gate_reviewer.v0", "mandatory": true, "receipt_must_match_result_sha": true, "independence_group": "weather_gate" }
+        { "agent_id": "premvp.reviewer.weather_gate.v1", "mandatory": true, "receipt_must_match_result_sha": true, "independence_group": "weather_gate" }
       ],
       "completion_requirements": ["COMPLETION_ENVELOPE", "valid weather reviewer receipt", "PASS forbidden without a matching receipt"],
       "stop_conditions": ["REVIEWER_RECEIPT_MISSING", "CAPABILITY_NOT_PROVEN", "CONTROL_PLANE_SCOPE_EXPANSION_REQUIRED"],
@@ -102,17 +106,17 @@
       "id": "R4_CONTUR_PRODUCTION_BOUNDARY",
       "title": "Live runtime, production boundary or exact-SHA acceptance work",
       "required_capabilities": ["REPOSITORY_READ", "LOCAL_TEST_RUN", "CONTUR_GATE_REVIEW"],
-      "eligible_execution_targets": ["local_codex_windows"],
-      "required_agents": ["codex.agent.contur_gate_reviewer"],
+      "eligible_execution_targets": ["claude_code_cloud", "local_codex_windows"],
+      "required_agents": ["premvp.reviewer.contur_gate.v1"],
       "optional_agents": ["premvp.policy.verification_gates", "premvp.spec.compliance_monitor", "claude.command.github_pr_merge.v0"],
       "permitted_repositories": ["POLYPROPICKS/PREMVP"],
       "forbidden_actions": ["DEPLOY_WITHOUT_FOUNDER_APPROVAL", "MERGE_WITHOUT_REVIEWER_RECEIPT", "DATABASE_WRITE_WITHOUT_PROVEN_CAPABILITY", "IRELAND_ACCESS", "CROSS_REPO_CHANGE"],
-      "repository_integration_note": "Integration into origin/main may be performed only by claude.command.github_pr_merge.v0, and only after a valid codex.agent.contur_gate_reviewer receipt whose reviewed_sha equals result_sha exists.",
+      "repository_integration_note": "Integration into origin/main may be performed only by claude.command.github_pr_merge.v0, and only after a valid premvp.reviewer.contur_gate.v1 receipt whose reviewed_sha equals result_sha exists.",
       "sequential_stages": ["PRECHECK", "EXACT_SHA_RESOLUTION", "EVIDENCE_COLLECTION", "CONTUR_GATE_REVIEW", "COMPLETION_ENVELOPE"],
       "parallel_stages": [],
       "evidence_requirements": ["exact reviewed SHA", "git status --short", "runtime command exit codes", "explicit production-effect statement"],
       "reviewer_receipt_requirements": [
-        { "agent_id": "codex.agent.contur_gate_reviewer", "mandatory": true, "receipt_must_match_result_sha": true, "independence_group": "contur_gate" }
+        { "agent_id": "premvp.reviewer.contur_gate.v1", "mandatory": true, "receipt_must_match_result_sha": true, "independence_group": "contur_gate" }
       ],
       "completion_requirements": ["COMPLETION_ENVELOPE", "valid Contur reviewer receipt whose reviewed_sha equals result_sha", "PASS forbidden without a matching receipt"],
       "stop_conditions": ["REVIEWER_RECEIPT_MISSING", "CAPABILITY_NOT_PROVEN", "STATE_STALE", "SECRETS_REQUIRED"],
