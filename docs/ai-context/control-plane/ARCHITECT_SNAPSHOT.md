@@ -37,7 +37,7 @@ Only current-state authority: `CURRENT_STATE.yaml`. `EVIDENCE_LEDGER.md` is hist
 
 **`local_codex_windows`** — host_dependency true, terminal_required false, surfaces DESKTOP/MOBILE_REMOTE
 - PROVEN: REPOSITORY_READ, LOCAL_TEST_RUN, WEATHER_GATE_REVIEW, CONTUR_GATE_REVIEW
-- NOT PROVEN: DETERMINISTIC_REVIEWER_INVOCATION, DATABASE_READ, DATABASE_WRITE, IRELAND_RUNTIME_ACCESS, DEPLOY
+- NOT PROVEN: DEPENDENCY_INSTALL, TYPECHECK, BUILD, GIT_PUSH_FEATURE_BRANCH, GITHUB_PR_CREATE, GITHUB_PR_MERGE, DETERMINISTIC_REVIEWER_INVOCATION, DATABASE_READ, DATABASE_WRITE, PRODUCTION_HTTPS_READ, IRELAND_RUNTIME_ACCESS, DEPLOY
 
 **`ireland_local`** — host_dependency true, terminal_required true, surfaces none
 - PROVEN: none
@@ -50,10 +50,10 @@ Access surfaces are not executors: CLOUD_WEB→claude_code_cloud, CLOUD_MOBILE�
 | Risk class | Executors | Required reviewers | Fail closed |
 |---|---|---|---|
 | `R0_READ_ONLY` | claude_code_cloud, local_codex_windows | — | no |
-| `R1_BOUNDED_CODE` | claude_code_cloud | — | no |
-| `R2_ARCHITECTURE_OR_ROADMAP` | claude_code_cloud | — | no |
-| `R3_WEATHER_MODEL_CHANGE` | local_codex_windows | codex.agent.weather_gate_reviewer.v0 | no |
-| `R4_CONTUR_PRODUCTION_BOUNDARY` | local_codex_windows | codex.agent.contur_gate_reviewer | no |
+| `R1_BOUNDED_CODE` | claude_code_cloud, local_codex_windows | — | no |
+| `R2_ARCHITECTURE_OR_ROADMAP` | claude_code_cloud, local_codex_windows | — | no |
+| `R3_WEATHER_MODEL_CHANGE` | claude_code_cloud, local_codex_windows | premvp.reviewer.weather_gate.v1 | no |
+| `R4_CONTUR_PRODUCTION_BOUNDARY` | claude_code_cloud, local_codex_windows | premvp.reviewer.contur_gate.v1 | no |
 | `R5_CROSS_REPO_OR_LIVE_MONEY` | — | — | **YES** |
 
 R5 fails closed: default verdict `BLOCKED`, no eligible executor, no permitted repository.
@@ -64,9 +64,9 @@ Every executor prompt is one copyable block containing all mandatory sections of
 
 ## 7. Reviewers and agents
 
-- `codex.agent.weather_gate_reviewer.v0` — local_codex_windows, EXPLICIT, receipt REQUIRED, triggers: R3_WEATHER_MODEL_CHANGE; Weather model behavior change
-- `codex.agent.contur_gate_reviewer` — local_codex_windows, EXPLICIT, receipt REQUIRED, triggers: R4_CONTUR_PRODUCTION_BOUNDARY; Contur exact-SHA acceptance; production-boundary acceptance
-- Other registered entries (no receipt): 4 COMMAND, 2 HOOK, 3 SCRIPT, 1 CI_GATE, 6 POLICY — see AGENT_REGISTRY.yaml.
+- `premvp.reviewer.weather_gate.v1` — portable_project_scoped, EXPLICIT, receipt REQUIRED, triggers: R3_WEATHER_MODEL_CHANGE; Weather model behavior change
+- `premvp.reviewer.contur_gate.v1` — portable_project_scoped, EXPLICIT, receipt REQUIRED, triggers: R4_CONTUR_PRODUCTION_BOUNDARY; Contur exact-SHA acceptance; production-boundary acceptance
+- Other registered entries (no receipt or deprecated): 2 AGENT, 4 COMMAND, 2 HOOK, 3 SCRIPT, 1 CI_GATE, 6 POLICY — see AGENT_REGISTRY.yaml.
 
 ## 8. PREMVP / Ireland boundary
 

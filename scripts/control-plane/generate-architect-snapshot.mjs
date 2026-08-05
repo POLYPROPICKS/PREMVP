@@ -119,14 +119,14 @@ export function renderSnapshot(root = REPO_ROOT) {
   // --- 7. Reviewers ---------------------------------------------------------------------
   w('## 7. Reviewers and agents');
   w();
-  const receiptAgents = registry.entries.filter((e) => e.receipt_required === true);
+  const receiptAgents = registry.entries.filter((e) => e.receipt_required === true && e.status !== 'SUPERSEDED');
   for (const e of receiptAgents) {
     w(`- \`${e.canonical_id}\` — ${e.owner_platform}, ${e.invocation}, receipt REQUIRED, triggers: ${e.triggers.join('; ')}`);
   }
-  const others = registry.entries.filter((e) => e.receipt_required !== true);
+  const others = registry.entries.filter((e) => !(e.receipt_required === true && e.status !== 'SUPERSEDED'));
   const byType = {};
   for (const e of others) byType[e.type] = (byType[e.type] || 0) + 1;
-  w(`- Other registered entries (no receipt): ${Object.entries(byType).map(([k, v]) => `${v} ${k}`).join(', ')} — see AGENT_REGISTRY.yaml.`);
+  w(`- Other registered entries (no receipt or deprecated): ${Object.entries(byType).map(([k, v]) => `${v} ${k}`).join(', ')} — see AGENT_REGISTRY.yaml.`);
   w();
 
   // --- 8. Boundary ----------------------------------------------------------------------

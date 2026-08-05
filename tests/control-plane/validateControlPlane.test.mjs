@@ -26,7 +26,12 @@ function withMutatedRoot(file, mutate) {
   const dest = path.join(tmp, DIR);
   fs.mkdirSync(dest, { recursive: true });
   for (const entry of fs.readdirSync(path.join(REPO_ROOT, DIR))) {
-    fs.copyFileSync(path.join(REPO_ROOT, DIR, entry), path.join(dest, entry));
+    const src = path.join(REPO_ROOT, DIR, entry);
+    if (fs.statSync(src).isDirectory()) {
+      fs.cpSync(src, path.join(dest, entry), { recursive: true });
+    } else {
+      fs.copyFileSync(src, path.join(dest, entry));
+    }
   }
   const target = path.join(dest, file);
   const doc = JSON.parse(fs.readFileSync(target, 'utf8'));
