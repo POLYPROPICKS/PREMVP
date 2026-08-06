@@ -421,6 +421,22 @@ resumable, idempotent PREMVP release-orchestration state machine, registered
 This entry is history only. It records the Action 2 pipeline scaffold and does not mark
 the pipeline enabled, does not mark C1 complete, and does not self-accept a state delta.
 
+## EV-0017 — 2026-08-06 PR #96 contextual Prompt Contract activation and state bootstrap
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **executor:** `local_codex_windows`
+- **implementation_sha:** `a7214f348de862f220bdf106a3a73a9e7c8f0ebe`
+- **merge_sha:** `cec9fc29de69bc1717ba812c0866b16a3c6e6460`
+- PR #96 merged the executable command-binding validator, contextual prompt compiler,
+  deterministic Architect bundle generator, GitHub adapters, and focused regression tests.
+- `npm ci`, typecheck, production build, Control Plane validation, 92 Control Plane tests,
+  command-binding parity, and deterministic snapshot checks passed.
+- Production `GET /api/build-info` returned `cec9fc29de69bc1717ba812c0866b16a3c6e6460`.
+- The tracked bundle is `docs/ai-context/control-plane/chatgpt-architect/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md`.
+- Step 1 is source-level complete; Step 2 Final Identity verification is NEXT; Step 3
+  forward-looking funnel measurement is FOLLOWING; C1 remains OPEN.
+- This entry is historical evidence only and does not self-accept the state bootstrap.
+
 ## EV-0014 — 2026-08-06 Action 3 executor-owned preflight state refresh
 
 - **evidence_class:** `PROVEN_IN_RUNTIME`
