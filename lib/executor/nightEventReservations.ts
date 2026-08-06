@@ -2208,6 +2208,10 @@ export async function runReservationCronWithEvidence(
   opts: { force?: boolean; selectorMode?: FireModelSelectorMode } = {},
   deps: {
     fetchCandidates?: () => Promise<ReservationCandidateFetchResult>;
+    fetchSourceRows?: () => Promise<readonly Record<string, unknown>[]>;
+    produceDecisions?: (
+      rows: readonly Record<string, unknown>[]
+    ) => Promise<ContractADecisionResult<ContractAPlanningDecision>[]>;
     selectorMode?: FireModelSelectorMode;
     repo?: ReservationRepoPort;
     jobEvidence?: SchedulerJobEvidencePort;
@@ -2218,12 +2222,19 @@ export async function runReservationCronWithEvidence(
   const jobEvidence = deps.jobEvidence ?? createSupabaseSchedulerJobEvidencePort();
   const startedAt = new Date().toISOString();
   try {
-    const plan = await buildReservationPlan(nowMs, {
-      fetchCandidates: deps.fetchCandidates,
-      selectorMode: opts.selectorMode,
-      targetPhysicalEventKeyHash: deps.targetPhysicalEventKeyHash,
-      hashPhysicalEventKey: deps.hashPhysicalEventKey,
-    });
+    const plan = opts.selectorMode === "CONTRACT_A_PLANNING_V1"
+      ? await buildContractAReservationPlan(nowMs, {
+          fetchSourceRows: deps.fetchSourceRows,
+          produceDecisions: deps.produceDecisions,
+          targetPhysicalEventKeyHash: deps.targetPhysicalEventKeyHash,
+          hashPhysicalEventKey: deps.hashPhysicalEventKey,
+        })
+      : await buildReservationPlan(nowMs, {
+          fetchCandidates: deps.fetchCandidates,
+          selectorMode: opts.selectorMode,
+          targetPhysicalEventKeyHash: deps.targetPhysicalEventKeyHash,
+          hashPhysicalEventKey: deps.hashPhysicalEventKey,
+        });
     const persisted = deps.repo
       ? await persistReservationPlan(plan, opts, deps.repo)
       : await persistReservationPlan(plan, opts);
