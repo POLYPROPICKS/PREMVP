@@ -255,6 +255,22 @@
     ]
   },
 
+  "experimental_orchestration_primitives": {
+    "premvp.release_pipeline.v1": {
+      "command_id": "premvp.command.release_pipeline.v1",
+      "specification_path": "docs/ai-context/control-plane/pipelines/PREMVP_RELEASE_PIPELINE_V1.yaml",
+      "status": "EXPERIMENTAL_DISABLED",
+      "policy": [
+        "Prompts may reference this pipeline only in validate, dry-run, or status mode until it is enabled.",
+        "It cannot bypass capability verdicts in CAPABILITY_MATRIX.yaml.",
+        "It cannot bypass reviewers — reviewer requirement is always derived from live ROUTING_AND_PIPELINES.yaml risk routing.",
+        "It cannot bypass repository boundaries — POLYPROPICKS/PREMVP only, Ireland forbidden.",
+        "Live Git/GitHub/deployment evidence always overrides its optional local checkpoint cache.",
+        "Mutating activation requires a dedicated governance task that implements premvp.command.control_plane_reconcile.v1 and passes full canonical validation."
+      ]
+    }
+  },
+
   "repository_integration": {
     "normal_path": [
       "FEATURE_BRANCH",

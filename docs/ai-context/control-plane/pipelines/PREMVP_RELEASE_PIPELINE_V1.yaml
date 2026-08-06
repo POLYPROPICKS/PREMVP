@@ -1,0 +1,272 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-08-06T00:00:00Z",
+
+  "pipeline_id": "premvp.release_pipeline.v1",
+  "command_id": "premvp.command.release_pipeline.v1",
+  "repository": "POLYPROPICKS/PREMVP",
+  "status": "EXPERIMENTAL_DISABLED",
+  "enabled": false,
+  "disabled_until_command": "premvp.command.control_plane_reconcile.v1",
+
+  "operator_intervention_budget": {
+    "launch": 1,
+    "intermediate": 0,
+    "result_transfer": 1
+  },
+
+  "source_authority": "LIVE_GIT_AND_RUNTIME_EVIDENCE_BEFORE_LOCAL_CHECKPOINT",
+  "resumability": "LIVE_RECONSTRUCTION_REQUIRED",
+
+  "hard_prohibitions": {
+    "manual_deployment": true,
+    "direct_main_push": true,
+    "force_push": true,
+    "cross_repository": true,
+    "database_mutation_by_generic_pipeline": true,
+    "ireland": true,
+    "live_money": true
+  },
+
+  "implementation": {
+    "engine": "scripts/control-plane/run-premvp-release.mjs",
+    "lib": "scripts/control-plane/lib/premvp-release-pipeline.mjs",
+    "manifest_validator": "scripts/control-plane/validate-premvp-release-run.mjs",
+    "manifest_schema": "docs/ai-context/control-plane/pipelines/PREMVP_RELEASE_RUN.schema.json"
+  },
+
+  "states": [
+    {
+      "id": "LOAD_CANONICAL",
+      "order": 1,
+      "entry_conditions": ["release-run manifest path supplied", "canonical control-plane artifacts present"],
+      "allowed_actions": ["read docs/ai-context/control-plane/*.yaml and *.json"],
+      "evidence_required": ["canonical artifact paths and parse result"],
+      "idempotency_key": "release_run_id",
+      "success_transition": "LIVE_PRECHECK",
+      "resumable_wait_transition": null,
+      "hard_stop_transitions": ["PIPELINE_SCHEMA_INVALID", "CONTROL_PLANE_VALIDATION_FAILED"],
+      "forbidden_actions": ["writing any file", "deciding routing before canonical load completes"]
+    },
+    {
+      "id": "LIVE_PRECHECK",
+      "order": 2,
+      "entry_conditions": ["canonical artifacts loaded"],
+      "allowed_actions": ["git status --short", "git fetch", "resolve live origin/main", "read production build-info URL"],
+      "evidence_required": ["clean worktree proof", "no active git operation proof", "live origin/main sha"],
+      "idempotency_key": "release_run_id",
+      "success_transition": "RESOLVE_RUN",
+      "resumable_wait_transition": null,
+      "hard_stop_transitions": ["UNEXPECTED_DIRTY_WORKTREE", "ACTIVE_GIT_OPERATION", "REPOSITORY_BOUNDARY_MIXED"],
+      "forbidden_actions": ["mutating writes"]
+    },
+    {
+      "id": "RESOLVE_RUN",
+      "order": 3,
+      "entry_conditions": ["LIVE_PRECHECK passed"],
+      "allowed_actions": ["reconstruct release_run_id identity from live Git/PR/deploy state", "load optional local checkpoint as cache only"],
+      "evidence_required": ["release_run_id", "reconstructed phase from live evidence", "checkpoint cache path (non-authoritative) if present"],
+      "idempotency_key": "release_run_id",
+      "success_transition": "VALIDATE_CHANGESET",
+      "resumable_wait_transition": "RESOLVE_RUN",
+      "hard_stop_transitions": ["PIPELINE_RESUME_RECONSTRUCTION_INCOMPLETE"],
+      "forbidden_actions": ["trusting the local checkpoint over live evidence"]
+    },
+    {
+      "id": "VALIDATE_CHANGESET",
+      "order": 4,
+      "entry_conditions": ["run identity resolved"],
+      "allowed_actions": ["validate allowed_files/forbidden_files", "reject secrets paths", "reject database migrations unless a future pipeline version explicitly permits them"],
+      "evidence_required": ["changed file list", "allowlist/forbidden-list evaluation"],
+      "idempotency_key": "release_run_id",
+      "success_transition": "RUN_TESTS",
+      "resumable_wait_transition": null,
+      "hard_stop_transitions": ["PIPELINE_SCOPE_EXPANSION_REQUIRED", "SECRETS_REQUIRED"],
+      "forbidden_actions": ["pushing before validation completes"]
+    },
+    {
+      "id": "RUN_TESTS",
+      "order": 5,
+      "entry_conditions": ["changeset validated"],
+      "allowed_actions": ["run manifest.test_commands", "run manifest.typecheck_commands", "run manifest.build_commands"],
+      "evidence_required": ["exit codes for every command"],
+      "idempotency_key": "release_run_id + result_sha",
+      "success_transition": "RESOLVE_REVIEWER",
+      "resumable_wait_transition": null,
+      "hard_stop_transitions": ["PIPELINE_TEST_FAILED", "TYPECHECK_FAILED", "BUILD_FAILED"],
+      "forbidden_actions": ["skipping a declared command"]
+    },
+    {
+      "id": "RESOLVE_REVIEWER",
+      "order": 6,
+      "entry_conditions": ["tests passed"],
+      "allowed_actions": ["resolve required reviewer strictly from live risk routing (ROUTING_AND_PIPELINES.yaml)"],
+      "evidence_required": ["risk_class", "resolved reviewer id or none"],
+      "idempotency_key": "release_run_id",
+      "success_transition": "INVOKE_REVIEWER",
+      "resumable_wait_transition": null,
+      "hard_stop_transitions": ["PIPELINE_REVIEWER_ROUTING_UNSAFE", "PIPELINE_R5_FAIL_CLOSED_MISSING"],
+      "forbidden_actions": ["manifest text suppressing a mandatory reviewer", "manifest text adding an unrelated reviewer"]
+    },
+    {
+      "id": "INVOKE_REVIEWER",
+      "order": 7,
+      "entry_conditions": ["reviewer resolved (or none required)"],
+      "allowed_actions": ["reuse a valid matching receipt", "poll a pending invocation", "invoke exactly once through the registered adapter when no receipt exists"],
+      "evidence_required": ["reviewer receipt or explicit none-required record"],
+      "idempotency_key": "release_run_id + reviewed_sha + agent_id",
+      "success_transition": "PUSH_BRANCH",
+      "resumable_wait_transition": "INVOKE_REVIEWER",
+      "hard_stop_transitions": ["REVIEWER_RECEIPT_MISSING"],
+      "forbidden_actions": ["duplicate invocation when a valid matching receipt exists", "accepting a receipt whose reviewed_sha differs from result_sha"]
+    },
+    {
+      "id": "PUSH_BRANCH",
+      "order": 8,
+      "entry_conditions": ["reviewer gate satisfied"],
+      "allowed_actions": ["push the exact feature branch to origin"],
+      "evidence_required": ["pushed branch name and head sha"],
+      "idempotency_key": "feature_branch + head_sha",
+      "success_transition": "RESOLVE_OR_CREATE_PR",
+      "resumable_wait_transition": "PUSH_BRANCH",
+      "hard_stop_transitions": ["DIFF_CHECK_FAILED"],
+      "forbidden_actions": ["direct push to main", "force push"]
+    },
+    {
+      "id": "RESOLVE_OR_CREATE_PR",
+      "order": 9,
+      "entry_conditions": ["branch pushed"],
+      "allowed_actions": ["reuse an existing exact-match PR for this branch", "create a PR through claude.command.github_pr_create.v0 when none exists"],
+      "evidence_required": ["PR number", "PR head sha"],
+      "idempotency_key": "repository + head_branch + base_branch",
+      "success_transition": "VERIFY_PR_INTEGRITY",
+      "resumable_wait_transition": "RESOLVE_OR_CREATE_PR",
+      "hard_stop_transitions": ["GITHUB_COMMAND_REGISTRATION_MISSING"],
+      "forbidden_actions": ["creating a second PR for the same branch"]
+    },
+    {
+      "id": "VERIFY_PR_INTEGRITY",
+      "order": 10,
+      "entry_conditions": ["PR resolved"],
+      "allowed_actions": ["verify repository/base/head/expected head sha", "verify changed files against allowlist/forbidden list", "verify no migration unless explicitly permitted"],
+      "evidence_required": ["PR metadata snapshot"],
+      "idempotency_key": "PR number + head sha",
+      "success_transition": "MERGE_PR",
+      "resumable_wait_transition": null,
+      "hard_stop_transitions": ["PR_INTEGRITY_FAILED"],
+      "forbidden_actions": ["merging an unverified PR"]
+    },
+    {
+      "id": "MERGE_PR",
+      "order": 11,
+      "entry_conditions": ["PR integrity verified"],
+      "allowed_actions": ["merge through claude.command.github_pr_merge.v0 when unmerged", "skip merge when the PR is already merged"],
+      "evidence_required": ["merge sha", "or proof the PR was already merged"],
+      "idempotency_key": "PR number",
+      "success_transition": "VERIFY_MAIN_ANCESTRY",
+      "resumable_wait_transition": "MERGE_PR",
+      "hard_stop_transitions": ["PR_MERGE_FAILED"],
+      "forbidden_actions": ["merging an already-merged PR again", "merging without a required reviewer receipt"]
+    },
+    {
+      "id": "VERIFY_MAIN_ANCESTRY",
+      "order": 12,
+      "entry_conditions": ["merge completed or previously proven"],
+      "allowed_actions": ["verify merge sha is an ancestor of live origin/main"],
+      "evidence_required": ["ancestry check result"],
+      "idempotency_key": "merge sha",
+      "success_transition": "POLL_AUTOMATIC_DEPLOYMENT",
+      "resumable_wait_transition": "VERIFY_MAIN_ANCESTRY",
+      "hard_stop_transitions": ["PR_MERGE_FAILED"],
+      "forbidden_actions": ["assuming ancestry without a live check"]
+    },
+    {
+      "id": "POLL_AUTOMATIC_DEPLOYMENT",
+      "order": 13,
+      "entry_conditions": ["merge sha is an ancestor of origin/main"],
+      "allowed_actions": ["poll manifest.production_build_info_url", "skip polling when production already reports the merge sha"],
+      "evidence_required": ["production build-info sha history"],
+      "idempotency_key": "merge sha",
+      "success_transition": "RECONCILE_CONTROL_PLANE",
+      "resumable_wait_transition": "POLL_AUTOMATIC_DEPLOYMENT",
+      "hard_stop_transitions": ["FINAL_DEPLOYMENT_TIMEOUT"],
+      "forbidden_actions": ["manual deployment", "calling a deploy API or CLI"]
+    },
+    {
+      "id": "RECONCILE_CONTROL_PLANE",
+      "order": 14,
+      "entry_conditions": ["deployment confirmed or WAIT declared with merge preserved"],
+      "allowed_actions": ["pass release_run_id, implementation sha, merge sha, deployment sha, capability evidence and reviewer receipts to premvp.command.control_plane_reconcile.v1"],
+      "evidence_required": ["adapter interface invocation record or explicit NOT_IMPLEMENTED marker in Action 2"],
+      "idempotency_key": "release_run_id",
+      "success_transition": "FINAL_EXACT_SHA_REVIEW",
+      "resumable_wait_transition": "RECONCILE_CONTROL_PLANE",
+      "hard_stop_transitions": ["PIPELINE_MUTATING_MODE_NOT_DISABLED"],
+      "forbidden_actions": ["faking a reconciliation result", "self-accepting a state delta"]
+    },
+    {
+      "id": "FINAL_EXACT_SHA_REVIEW",
+      "order": 15,
+      "entry_conditions": ["reconciliation adapter interface satisfied"],
+      "allowed_actions": ["assemble the canonical completion envelope"],
+      "evidence_required": ["complete evidence array matching COMPLETION_ENVELOPE.schema.json"],
+      "idempotency_key": "release_run_id",
+      "success_transition": "COMPLETE",
+      "resumable_wait_transition": null,
+      "hard_stop_transitions": ["STATE_VALIDATION_FAILED"],
+      "forbidden_actions": ["returning PASS with a non-empty blockers array"]
+    },
+    {
+      "id": "COMPLETE",
+      "order": 16,
+      "entry_conditions": ["completion envelope assembled and internally consistent"],
+      "allowed_actions": ["return terminal outcome"],
+      "evidence_required": ["final envelope"],
+      "idempotency_key": "release_run_id",
+      "success_transition": null,
+      "resumable_wait_transition": null,
+      "hard_stop_transitions": [],
+      "forbidden_actions": ["further mutation after COMPLETE"]
+    }
+  ],
+
+  "terminal_outcomes": {
+    "PASS": "all states reached COMPLETE with no blockers",
+    "WAIT": "merge is proven and preserved; automatic deployment has not yet reached the merge sha within the bounded timeout — resumable, not a rollback",
+    "BLOCKED": "a hard-stop transition fired before an irreversible action; safe to correct and resume",
+    "FAIL": "a required command failed, a required receipt is absent or mismatched, or a forbidden action was attempted"
+  },
+
+  "idempotency_contract": {
+    "no_duplicate_pr": "RESOLVE_OR_CREATE_PR reuses any PR whose repository+head_branch+base_branch already matches before creating one",
+    "no_duplicate_merge": "MERGE_PR checks PR merged state before invoking merge",
+    "no_duplicate_deployment_poll": "POLL_AUTOMATIC_DEPLOYMENT short-circuits when production build-info already equals the merge sha",
+    "no_duplicate_reviewer_invocation": "INVOKE_REVIEWER reuses a receipt whose reviewed_sha equals result_sha and agent_id matches the resolved reviewer; a pending invocation is polled, never re-invoked",
+    "no_repeated_irreversible_phase": "every state resumable via RESOLVE_RUN reconstructs completed phases from live Git/PR/deployment/reviewer evidence before taking any action"
+  },
+
+  "reviewer_routing": {
+    "source_of_truth": "docs/ai-context/control-plane/ROUTING_AND_PIPELINES.yaml risk_classes[*].reviewer_receipt_requirements",
+    "manifest_cannot_suppress_required_reviewer": true,
+    "manifest_cannot_add_arbitrary_reviewer": true,
+    "r0_through_r2_default": "no reviewer unless live routing explicitly requires one",
+    "r3_r4_requirement": "exact live registered reviewer with reviewed_sha equal to result_sha",
+    "r5_behavior": "fail closed — BLOCKED, no executor, no reviewer, no merge"
+  },
+
+  "control_plane_reconcile_adapter_interface": {
+    "command_id": "premvp.command.control_plane_reconcile.v1",
+    "status_in_action_2": "NOT_IMPLEMENTED",
+    "input_contract": [
+      "release_run_id",
+      "task_completion_evidence",
+      "implementation_sha",
+      "merge_sha",
+      "deployment_sha",
+      "capability_evidence",
+      "reviewer_receipts",
+      "permitted_state_facts"
+    ],
+    "output_contract": "reconciliation result consumed by RECONCILE_CONTROL_PLANE; simulated only via fake test adapters until Action 3"
+  }
+}

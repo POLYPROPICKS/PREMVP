@@ -162,5 +162,20 @@
     "No Ireland agent exists and none may be created.",
     "No automatic cross-repository implementation.",
     "R5 fails closed."
+  ],
+
+  "pipeline_catalog": [
+    {
+      "pipeline_id": "premvp.release_pipeline.v1",
+      "command_id": "premvp.command.release_pipeline.v1",
+      "specification_path": "docs/ai-context/control-plane/pipelines/PREMVP_RELEASE_PIPELINE_V1.yaml",
+      "manifest_schema_path": "docs/ai-context/control-plane/pipelines/PREMVP_RELEASE_RUN.schema.json",
+      "status": "EXPERIMENTAL_DISABLED",
+      "enabled": false,
+      "activation_dependency": "premvp.command.control_plane_reconcile.v1",
+      "eligible_executors": ["claude_code_cloud"],
+      "reviewer_selection": "delegated to this file's risk_classes[*].reviewer_receipt_requirements — the pipeline never overrides routing",
+      "note": "Reusable release orchestration engine (branch/PR/merge/deploy-poll/state-reconcile-handoff). Referenced by future executor prompts in validate/dry-run/status mode only until enabled; does not change task-class executor routing or R3/R4 reviewer routing."
+    }
   ]
 }
