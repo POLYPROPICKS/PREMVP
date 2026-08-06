@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate: npm run control-plane:snapshot -->
 
-State v9 · updated 2026-08-06T08:43:57Z · policy 1.2.0
+State v10 · updated 2026-08-06T09:22:01Z · policy 1.2.0
 
 ## 1. Source authority
 
@@ -19,7 +19,7 @@ Only current-state authority: `CURRENT_STATE.yaml`. `EVIDENCE_LEDGER.md` is hist
 - Phase: **CONTUR3_QUEUE_AUTHORITY**
 - Current step: **C1 — C1 production runtime proof** (OPEN)
 - Next two: **C2** Ireland execution reads only the immutable Queue → **SETTLEMENT_PNL** Settlement / PnL and production vertical proof
-- main @ POLYPROPICKS/PREMVP: baseline `1c3b10aaec79a6fb7886533cb563606c61d1549a` (LAST_VERIFIED_ORIGIN_MAIN_BASELINE) — freshness mode BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE: baseline must be an ancestor of live origin/main; a live tip ahead of baseline stays FRESH only if every changed path is in the state-bootstrap allowlist (CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md), otherwise STATE_REFRESH_REQUIRED
+- main @ POLYPROPICKS/PREMVP: baseline `6cd262e6b7fba6c4fd392c3903c51d80fd429489` (LAST_VERIFIED_ORIGIN_MAIN_BASELINE) — freshness mode BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE: baseline must be an ancestor of live origin/main; a live tip ahead of baseline stays FRESH only if every changed path is in the state-bootstrap allowlist (CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md), otherwise STATE_REFRESH_REQUIRED
 - Last accepted completion: CMP-PR85-DEPLOYMENT-STATE-RUNTIME-BOUNDARY-20260804
 
 ## 3. Blockers
@@ -60,13 +60,13 @@ R5 fails closed: default verdict `BLOCKED`, no eligible executor, no permitted r
 
 ## 6. Prompt contract
 
-Every executor prompt is one copyable block containing all mandatory sections of `PROMPT__PROTOCOL.md` §2. Do not summarise or drop sections. Missing, guessed or contradictory input → `PROMPT_GATE_BLOCKED`.
+Short Founder presentation + one executor block only. Every task invokes `premvp.command.execution_precheck.v1`; no default/substitution. Missing hard-boundary input → `PROMPT_GATE_BLOCKED`.
 
 ## 7. Reviewers and agents
 
 - `premvp.reviewer.weather_gate.v1` — portable_project_scoped, EXPLICIT, receipt REQUIRED, triggers: R3_WEATHER_MODEL_CHANGE; Weather model behavior change
 - `premvp.reviewer.contur_gate.v1` — portable_project_scoped, EXPLICIT, receipt REQUIRED, triggers: R4_CONTUR_PRODUCTION_BOUNDARY; Contur exact-SHA acceptance; production-boundary acceptance
-- Other registered entries (no receipt or deprecated): 2 AGENT, 9 COMMAND, 2 HOOK, 3 SCRIPT, 1 CI_GATE, 6 POLICY — see AGENT_REGISTRY.yaml.
+- Other registered entries (no receipt or deprecated): 2 AGENT, 10 COMMAND, 2 HOOK, 3 SCRIPT, 1 CI_GATE, 6 POLICY — see AGENT_REGISTRY.yaml.
 
 ## 8. PREMVP / Ireland boundary
 
@@ -83,13 +83,13 @@ Every executor prompt is one copyable block containing all mandatory sections of
 
 ## 10. Stop conditions
 
-`CONTROL_PLANE_WRONG_REPOSITORY` · `CONTROL_PLANE_DIRTY_WORKTREE` · `CONTROL_PLANE_SCOPE_EXPANSION_REQUIRED` · `PROMPT_GATE_BLOCKED` · `STATE_STALE` · `CAPABILITY_NOT_PROVEN` · `REVIEWER_RECEIPT_MISSING` · `REPOSITORY_BOUNDARY_MIXED` · `SECRETS_REQUIRED`
+`CONTROL_PLANE_WRONG_REPOSITORY` · `CONTROL_PLANE_SCOPE_EXPANSION_REQUIRED` · `PROMPT_GATE_BLOCKED` · `CAPABILITY_NOT_PROVEN` · `REVIEWER_RECEIPT_MISSING` · `REPOSITORY_BOUNDARY_MIXED` · `SECRETS_REQUIRED`
 
-Stale state: **FAIL_CLOSED** — return PROMPT_GATE_BLOCKED and request a bounded read-only refresh.
+Recoverable root/state/dependency/PR/deployment conditions are executor-owned; EXPECTED_NON_BLOCKING, EXECUTOR_OWNED_RECOVERY and RESUMABLE_WAIT always set founder_action none. Invalid ancestry and semantic boundaries remain hard stops.
 
 ## 11. Evidence identifiers
 
 - Proven passes: CLOUD_REPO_READ, CLOUD_NPM_CI, CLOUD_SUPABASE_SELECT, CLOUD_TYPECHECK, CLOUD_BUILD, CODEX_WEATHER_REVIEWER_PRESENT, CODEX_CONTUR_REVIEWER_PRESENT, CONTROL_PLANE_PHASE_1_2_MERGED, CLOUD_PRODUCTION_BUILD_PROVENANCE_READ
 - External checkpoints: CHK-C1-20260803, CHK-CLOUD-CAPABILITY, CHK-CODEX-INVENTORY
-- Freshness: 7 days from 2026-08-06T08:43:57Z
+- Freshness: 7 days from 2026-08-06T09:22:01Z
 - Stale when: main.origin_main_sha is NOT an ancestor of live origin/main (STATE_STALE); main.origin_main_sha IS an ancestor of live origin/main, live origin/main is ahead of it, and any path changed between them falls outside stale_state_behavior.state_bootstrap_allowlist in ARCHITECT_CONTROL_PLANE.yaml (STATE_REFRESH_REQUIRED); updated_at is older than evidence_freshness.max_age_days; an accepted completion envelope exists whose completion_id is newer than last_accepted_completion_id; a referenced execution target verdict in CAPABILITY_MATRIX.yaml has passed its expires_when

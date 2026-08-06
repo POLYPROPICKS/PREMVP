@@ -17,8 +17,8 @@ This file is the **one canonical executor prompt contract** for PolyProPicks.
 
 ## 1. Output shape
 
-Every architect output that asks an executor to do work is **exactly one copyable
-execution block**. No preamble variants, no alternative prompts, no "or you could".
+An architect output may contain a short Founder presentation followed by **exactly one
+copyable execution block**. There are no alternative blocks and no text after that block.
 
 If the architect cannot produce a complete, non-contradictory block, it MUST return
 `PROMPT_GATE_BLOCKED` instead (§5).
@@ -103,14 +103,11 @@ This exception never authorizes direct main push, force push, branch-protection 
 secret exposure, database write, manual deployment, Ireland access, live money, or R5
 work. It expires when the named bootstrap run completes or terminates.
 
-## 3c. `FOUNDER_AUTHORIZED_STATE_RECONCILIATION` exception
+## 3c. Executor-owned state reconciliation
 
-Ordinary stale-state handling remains fail-closed. After live evidence and an authorized
-bootstrap, a current Founder decision may authorize an exact reconciliation only where the
-recorded baseline is an ancestor and the mechanical result is `STATE_REFRESH_REQUIRED`.
-The writer must preserve live evidence as runtime authority, use an evidence-backed
-CURRENT_STATE baseline, and must neither self-accept its completion nor mark its own
-`state_delta_proposal` accepted.
+When the baseline is an ancestor of live main and production equals main, refresh through
+`premvp.command.control_plane_reconcile.v1` is executor-owned and never requires Founder
+authorization. Invalid ancestry remains a HARD_SAFETY_STOP; writers never self-accept state.
 
 ## 4. Reviewer receipt requirements
 
@@ -134,7 +131,7 @@ and MUST state: **a task that requires a reviewer and has no valid receipt canno
 The architect returns this instead of a prompt when any of the following hold:
 
 - a mandatory section from §2 cannot be populated with a concrete value;
-- `CURRENT_STATE.yaml` is stale per its own `stale_when` rules;
+- stale state has invalid ancestry or an unreconcilable semantic conflict;
 - a required capability is not `PROVEN` for any eligible executor;
 - two canonical artifacts contradict each other;
 - the task would mix repository boundaries;
@@ -174,7 +171,9 @@ Run before emitting. All must be `true`:
 - [ ] completion envelope requirement stated
 - [ ] reviewer receipt requirements stated where applicable
 - [ ] bootstrap proving call and resulting capability transition reported where §3b applies
-- [ ] output is one copyable block
+- [ ] exactly one selected executor; no default or substitution
+- [ ] `premvp.command.execution_precheck.v1` is invoked; prompts do not hand-code dirty-root or stale-state recovery
+- [ ] Founder presentation plus exactly one executor block, with no text after it
 
 ## 7. Template
 

@@ -32,6 +32,7 @@ const FILES = {
   registry: 'AGENT_REGISTRY.yaml',
   promptProtocol: 'PROMPT__PROTOCOL.md',
   completionSchema: 'COMPLETION_ENVELOPE.schema.json',
+  escalationTaxonomy: 'EXECUTION_ESCALATION_TAXONOMY.json',
   evidenceLedger: 'EVIDENCE_LEDGER.md',
 };
 
@@ -140,6 +141,7 @@ export function validateControlPlane(root = REPO_ROOT) {
   const policy = parsed.policy;
   const state = parsed.state;
   const capability = parsed.capability;
+  const taxonomy = parsed.escalationTaxonomy;
   const routing = parsed.routing;
   const registry = parsed.registry;
 
@@ -157,6 +159,13 @@ export function validateControlPlane(root = REPO_ROOT) {
     }
   }
   if (errors.length) return { ok: false, errors };
+
+  if (taxonomy?.command_id !== 'premvp.command.execution_precheck.v1' ||
+      taxonomy?.classes?.EXPECTED_NON_BLOCKING?.founder_action !== 'none' ||
+      taxonomy?.classes?.EXECUTOR_OWNED_RECOVERY?.founder_action !== 'none' ||
+      taxonomy?.classes?.RESUMABLE_WAIT?.founder_action !== 'none') {
+    err('ESCALATION_TAXONOMY: recoverable and WAIT classifications must force founder_action none');
+  }
 
   // --- Architect interface policy -------------------------------------------------------
   if (policy.architect_interface.default !== 'STANDARD_CHAT') {
@@ -444,6 +453,8 @@ export function validateControlPlane(root = REPO_ROOT) {
     err(`PROMPT_PROTOCOL: §2 table declares ${promptTableRows.length} sections, expected ${REQUIRED_PROMPT_SECTIONS.length}`);
   }
   if (!pp.includes('PROMPT_GATE_BLOCKED')) err('PROMPT_PROTOCOL: must define PROMPT_GATE_BLOCKED fail-closed behavior');
+  if (!pp.includes('premvp.command.execution_precheck.v1')) err('PROMPT_PROTOCOL: must require shared execution precheck');
+  if (!pp.includes('no default or substitution')) err('PROMPT_PROTOCOL: must prohibit default executor substitution');
 
   // --- Completion schema ----------------------------------------------------------------
   const schema = parsed.completionSchema;

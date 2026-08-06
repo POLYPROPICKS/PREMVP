@@ -1,0 +1,11 @@
+{
+  "schema_version": "1.0",
+  "command_id": "premvp.command.execution_precheck.v1",
+  "classes": {
+    "EXPECTED_NON_BLOCKING": { "outcome": "CONTINUE", "founder_action": "none", "examples": ["declared preservation-only untracked path", "absent optional CI", "draft PR"] },
+    "EXECUTOR_OWNED_RECOVERY": { "outcome": "RECOVER", "founder_action": "none", "examples": ["dedicated worktree", "safe state refresh", "dependency bootstrap", "existing PR reuse", "generated artifact regeneration"] },
+    "RESUMABLE_WAIT": { "outcome": "WAIT", "founder_action": "none", "examples": ["required CI pending", "automatic deployment pending", "reviewer pending"] },
+    "HARD_SAFETY_STOP": { "outcome": "BLOCKED_OR_FAIL", "founder_action": "one actual decision only when no executor continuation exists", "identifiers": ["CONTROL_PLANE_WRONG_REPOSITORY", "REPOSITORY_BOUNDARY_MIXED", "R5_BOUNDARY_REACHED", "IRELAND_BOUNDARY_REACHED", "REQUIRED_SECRET", "INVALID_MAIN_ANCESTRY", "CANONICAL_SEMANTIC_CONTRADICTION", "SELECTED_EXECUTOR_CAPABILITY_ACTUALLY_UNAVAILABLE", "SEMANTIC_AUTHORITY_CONFLICT", "DATABASE_MUTATION_BOUNDARY_REACHED", "REQUIRED_REVIEWER_TERMINAL_FAILURE", "REPOSITORY_GIT_METADATA_CORRUPT", "ALLOWED_WRITE_PATH_OVERLAP"] }
+  },
+  "invariant": "Every condition outside HARD_SAFETY_STOP has founder_action none."
+}
