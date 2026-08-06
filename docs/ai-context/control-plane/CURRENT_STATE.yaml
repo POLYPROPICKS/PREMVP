@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "updated_at": "2026-08-06T08:43:57Z",
-  "state_version": 8,
+  "state_version": 9,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
@@ -34,7 +34,7 @@
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "b8aa8e7ba2114d5f9828200afb2d6c778e15224b",
+    "origin_main_sha": "1c3b10aaec79a6fb7886533cb563606c61d1549a",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
@@ -43,7 +43,7 @@
       "commands": ["git fetch origin main", "git rev-parse origin/main", "git merge-base --is-ancestor <prior-baseline> origin/main", "curl https://polypropicks.com/api/build-info"],
       "observed_at": "2026-08-06T08:43:57Z",
       "worktree": "clean",
-      "note": "Baseline advanced to live origin/main tip b8aa8e7ba2114d5f9828200afb2d6c778e15224b (merge of PR #92, Action 2 release-pipeline scaffold). Production build-info returned the same commit_sha, an exact match. premvp.command.release_pipeline.v1 exists and remains EXPERIMENTAL_DISABLED pending Action 3; C1 remains OPEN. No product, database, Ireland, or live-money behavior changed in this state refresh."
+      "note": "Action 3 implementation baseline 1c3b10aaec79a6fb7886533cb563606c61d1549a is the intended non-state implementation commit. The state-bootstrap commit records it without self-accepting the task; freshness is verified after integration. The shared pipeline is enabled, C1 remains OPEN, and no product, database, Ireland, or live-money behavior changed."
     }
   },
 

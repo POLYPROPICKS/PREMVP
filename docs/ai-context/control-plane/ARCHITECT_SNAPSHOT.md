@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate: npm run control-plane:snapshot -->
 
-State v8 · updated 2026-08-06T08:43:57Z · policy 1.2.0
+State v9 · updated 2026-08-06T08:43:57Z · policy 1.2.0
 
 ## 1. Source authority
 
@@ -19,7 +19,7 @@ Only current-state authority: `CURRENT_STATE.yaml`. `EVIDENCE_LEDGER.md` is hist
 - Phase: **CONTUR3_QUEUE_AUTHORITY**
 - Current step: **C1 — C1 production runtime proof** (OPEN)
 - Next two: **C2** Ireland execution reads only the immutable Queue → **SETTLEMENT_PNL** Settlement / PnL and production vertical proof
-- main @ POLYPROPICKS/PREMVP: baseline `b8aa8e7ba2114d5f9828200afb2d6c778e15224b` (LAST_VERIFIED_ORIGIN_MAIN_BASELINE) — freshness mode BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE: baseline must be an ancestor of live origin/main; a live tip ahead of baseline stays FRESH only if every changed path is in the state-bootstrap allowlist (CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md), otherwise STATE_REFRESH_REQUIRED
+- main @ POLYPROPICKS/PREMVP: baseline `1c3b10aaec79a6fb7886533cb563606c61d1549a` (LAST_VERIFIED_ORIGIN_MAIN_BASELINE) — freshness mode BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE: baseline must be an ancestor of live origin/main; a live tip ahead of baseline stays FRESH only if every changed path is in the state-bootstrap allowlist (CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md), otherwise STATE_REFRESH_REQUIRED
 - Last accepted completion: CMP-PR85-DEPLOYMENT-STATE-RUNTIME-BOUNDARY-20260804
 
 ## 3. Blockers

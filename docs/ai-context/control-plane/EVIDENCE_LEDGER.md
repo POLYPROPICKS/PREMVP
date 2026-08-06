@@ -434,3 +434,15 @@ the pipeline enabled, does not mark C1 complete, and does not self-accept a stat
 - C1 remains OPEN; no product, database, Ireland, or live-money change occurred.
 
 This entry is historical evidence only and does not accept an Action 3 completion.
+
+## EV-0015 — 2026-08-06 Action 3 implementation state bootstrap
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **executor:** `local_codex_windows`
+- **implementation_sha:** `1c3b10aaec79a6fb7886533cb563606c61d1549a`
+- Shared executor-neutral GitHub, reviewer, and reconcile command contracts were registered.
+  The release pipeline is enabled only with prompt-selected executor context; R5 remains
+  fail-closed and reviewer routing remains risk-class derived.
+- This bootstrap advances state only after the non-state implementation commit and does
+  not accept the current completion. C1 remains OPEN; no product, database, Ireland, or
+  live-money behavior changed.
