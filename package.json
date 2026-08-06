@@ -89,6 +89,10 @@
     "control-plane:snapshot:check": "node scripts/control-plane/generate-architect-snapshot.mjs --check",
     "control-plane:test": "node --test tests/control-plane/*.test.mjs",
     "control-plane:check": "npm run control-plane:validate && npm run control-plane:test && npm run control-plane:snapshot:check",
+  "control-plane:release:validate": "node scripts/control-plane/validate-premvp-release-run.mjs",
+  "control-plane:release:dry-run": "node scripts/control-plane/run-premvp-release.mjs --dry-run",
+  "control-plane:release:status": "node scripts/control-plane/run-premvp-release.mjs --status",
+  "control-plane:release:test": "node --test tests/control-plane/premvpReleasePipeline.test.mjs",
     "test:liquidity": "node --import tsx --test tests/liquidity/*.test.ts",
     "test:analytics": "node --import tsx --test tests/analytics/*.test.ts"
   },
