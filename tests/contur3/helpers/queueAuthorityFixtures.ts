@@ -12,7 +12,9 @@ export function createQueueAuthorityFixture(
 ) {
   const eventStartIso = new Date(nowMs + ONE_HOUR_MS).toISOString();
   const eventSlug = candidate.event_slug || reservation.event_slug || "queue-authority-fixture-event";
-  const marketSlug = candidate.market_slug || "queue-authority-fixture-market";
+  // Production-shaped exact provider market text: the bridge must enter the
+  // real Planning producer rather than depend on a hand-built final candidate.
+  const marketSlug = "Argentina vs Spain - Moneyline";
   const selectedOutcome = candidate.selected_outcome || candidate.side;
   const sourceRow = {
     id: sourceId,
@@ -23,7 +25,9 @@ export function createQueueAuthorityFixture(
     score: candidate.diagnostics.score,
     signal_confidence_num: candidate.diagnostics.score,
     smart_money_score_num: candidate.diagnostics.smart_money,
-    entry_price_num: candidate.diagnostics.entry_price,
+    // Avoid the documented 50-74 / 0.44-0.58 planning bad bucket: this
+    // fixture represents a row that was genuinely accepted into Reservation.
+    entry_price_num: 0.42,
     metric_formula_version: candidate.diagnostics.version,
     created_at: new Date(nowMs - THIRTY_MINUTES_MS).toISOString(),
     expires_at: eventStartIso,
@@ -70,7 +74,7 @@ export function createQueueAuthorityFixture(
     book: {
       tokenId: sourceRow.token_id,
       bids: [{ price: 0.49, size: 100 }],
-      asks: [{ price: 0.5, size: 100 }],
+      asks: [{ price: 0.4, size: 100 }],
     },
   });
 

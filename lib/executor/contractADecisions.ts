@@ -35,6 +35,7 @@ import {
   type TimingBucket,
   type UpstreamMarketPolicyDecision,
 } from "./buildFireModelCandidates";
+import { EXECUTABLE_STAKE_USD } from "./executorQueueTypes";
 
 /** Version stamp of the decision CONTRACT itself, independent of the selector. */
 export const CONTRACT_A_DECISION_VERSION = "CONTRACT_A_DECISION_V1" as const;
@@ -472,9 +473,11 @@ export function buildContractAFinalIdentityDecision(
   if (tokenId === null) return reject("MISSING_TOKEN_ID");
   const side = nonEmpty(candidate.side);
   if (side === null) return reject("MISSING_SIDE");
-  if (!candidate.live_eligible) {
-    return reject("FINAL_IDENTITY_NOT_LIVE_ELIGIBLE", candidate.live_rejection_reason ?? undefined);
-  }
+  // `live_eligible` is the Frozen V2 producer verdict.  A Reservation already
+  // owns an accepted Planning Decision, so replaying that verdict here would
+  // revoke Planning through a second universe selector.  Current execution
+  // timing, price, stake, spread, depth and exact-token checks run downstream
+  // in the rebalance path against the same exact candidate.
 
   const sport = resolveContractASportForDecision(candidate, sourceDiagnostics);
 
@@ -510,7 +513,9 @@ export function buildContractAFinalIdentityDecision(
       price_policy: {
         max_entry_price: candidate.max_entry_price,
         entry_price: candidate.diagnostics.entry_price,
-        stake_usd: candidate.stake_usd,
+        // The broad Planning candidate proves only the already-reserved exact
+        // identity. Queue stake remains the immutable execution policy.
+        stake_usd: EXECUTABLE_STAKE_USD,
         max_spread: candidate.max_spread,
         live_policy_version: candidate.live_policy_version,
         verdict: "ACCEPTED",
@@ -584,16 +589,41 @@ export async function produceContractAPlanningDecisions(
 export async function produceContractAFinalIdentityDecision(
   planning: ContractAPlanningDecision,
   rows: readonly Record<string, unknown>[],
-  limit = 100_000
+  limit = 100_000,
+  nowMs = Date.now()
 ): Promise<ContractADecisionResult<ContractAFinalIdentityDecision>> {
-  const { candidates } = await buildFireModelCandidates(limit, "all", true, rows, "CONTRACT_A_V1");
+  // A Reservation is created only from an accepted Planning Decision.  Its
+  // persisted source lineage is therefore the bounded universe for Final
+  // Identity: re-applying Frozen V2 here would silently revoke that earlier
+  // acceptance.  Re-enter the real Planning candidate producer with only the
+  // supplied exact rows; the checks below still require one exact physical
+  // event/start/identity match and the downstream live guards remain intact.
+  const { candidates } = await buildFireModelCandidates(
+    limit,
+    "all",
+    true,
+    rows,
+    "CONTRACT_A_PLANNING_V1",
+    nowMs
+  );
   const byId = indexSourceRows(rows);
   const matches = candidates.filter((candidate) => {
     const start = resolveContractAEventStartIso(diagnosticsOf(sourceRowFor(candidate, byId, rows)));
+    const sameLineage =
+      planning.source_lineage.generated_signal_pair_id !== null &&
+      candidate.generated_signal_pair_id === planning.source_lineage.generated_signal_pair_id;
+    const evidence = planning.final_identity_evidence;
+    const samePersistedIdentity =
+      evidence === null ||
+      (candidate.condition_id === evidence.condition_id &&
+        candidate.token_id === evidence.token_id &&
+        candidate.side === evidence.side);
     return (
       start.ok &&
       start.iso === planning.event_start_iso &&
-      resolveContractAPhysicalEventId(candidate, start.iso) === planning.physical_event_id
+      resolveContractAPhysicalEventId(candidate, start.iso) === planning.physical_event_id &&
+      sameLineage &&
+      samePersistedIdentity
     );
   });
   if (matches.length !== 1) {

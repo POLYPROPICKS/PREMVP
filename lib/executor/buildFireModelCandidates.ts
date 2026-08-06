@@ -1538,7 +1538,8 @@ export async function buildFireModelCandidates(
   scope = "all",
   planningMode = false,
   injectedRows?: readonly Record<string, unknown>[],
-  selectorMode: FireModelSelectorMode = "CONTUR3_CURRENT"
+  selectorMode: FireModelSelectorMode = "CONTUR3_CURRENT",
+  nowMs = Date.now()
 ): Promise<{ candidates: FireModelCandidate[]; rawDiagnostics: RawPlanningDiagnostics | null }> {
   if (!KNOWN_SELECTOR_MODES.includes(selectorMode)) {
     throw new Error(`UNKNOWN_SELECTOR_MODE: ${String(selectorMode)}`);
@@ -1552,7 +1553,7 @@ export async function buildFireModelCandidates(
   }
 
   const planningLookbackIso = new Date(
-    Date.now() - PLANNING_LOOKBACK_HOURS * 3_600_000
+    nowMs - PLANNING_LOOKBACK_HOURS * 3_600_000
   ).toISOString();
 
   let scoredRows: any[];
@@ -1562,7 +1563,7 @@ export async function buildFireModelCandidates(
     // Supplied-row mode: zero Supabase reads. Derive the same two logical
     // subsets the SQL queries below would have produced, applying the
     // identical predicates in-memory to the one supplied snapshot.
-    const nowIso = new Date().toISOString();
+    const nowIso = new Date(nowMs).toISOString();
     scoredRows = injectedRows.filter(
       (row) =>
         versions.includes(row.metric_formula_version as string) &&
@@ -1617,7 +1618,7 @@ export async function buildFireModelCandidates(
     mergedRows.push({ ...row, __planning_source: "shadow_fallback" });
   }
 
-  const now = Date.now();
+  const now = nowMs;
   const candidates: Array<Omit<FireModelCandidate, "rank">> = [];
 
   const rawDiag: RawPlanningDiagnostics | null = planningMode
