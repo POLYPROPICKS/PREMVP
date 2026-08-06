@@ -84,6 +84,8 @@ function shadowSportsRow(over: {
       dataCoverage: 60,
       eventTitle: over.eventTitle,
       marketTitle: over.marketQuestion,
+      providerEventId: `provider-event-${over.id}`,
+      providerMarketId: `provider-market-${over.id}`,
       tier: 1,
       entryPrice: 0.3,
       volumeUsd: 5000,
@@ -129,7 +131,7 @@ for (const [providerSportCode, expectedScope] of [
   });
 }
 
-test("unsupported providerSportCode reaches the model and is explicitly rejected", async () => {
+test("an unlisted exact providerSportCode reaches Contract A without an independent allowlist rejection", async () => {
   const row = shadowSportsRow({
     id: "provider-rugby",
     providerSportCode: "rugby-sevens",
@@ -139,14 +141,63 @@ test("unsupported providerSportCode reaches the model and is explicitly rejected
     eventSlug: "rugby-alpha-vs-beta-2026-08-02",
   });
   const { candidates, rawDiagnostics } = await planningCandidates([row]);
-  assert.equal(candidates.length, 0);
-  assert.equal(rawDiagnostics?.rejected_before_planning_by_reason.UNSUPPORTED_PROVIDER_SPORT, 1);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].strategic_scope, "OTHER");
+  assert.equal(rawDiagnostics?.rejected_before_planning_by_reason.UNSUPPORTED_PROVIDER_SPORT, undefined);
   assert.equal(rawDiagnostics?.model_input_rows_by_raw_provider_sport?.["rugby-sevens"], 1);
   assert.equal(
     rawDiagnostics?.rejected_before_planning_by_reason.WEAK_EVENT_IDENTITY,
     undefined,
-    "a valid-but-unrecognized providerSportCode must reject as UNSUPPORTED_PROVIDER_SPORT, never WEAK_EVENT_IDENTITY"
+    "an exact provider sport must not be rejected by the local sport map"
   );
+});
+
+for (const [providerSportCode, label] of [
+  ["eng", "soccer"],
+  ["cs2", "esports"],
+  ["mlb", "baseball"],
+  ["rugby-sevens", "another official sport"],
+] as const) {
+  test(`Contract A real-entry ${label} with exact structured provider identity passes the sport gate`, async () => {
+    const row = shadowSportsRow({
+      id: `contract-a-${providerSportCode}`,
+      providerSportCode,
+      shadowScope: "",
+      eventTitle: "Alpha FC vs. Beta FC",
+      marketQuestion: "Alpha FC vs. Beta FC - Moneyline",
+      eventSlug: `event-${providerSportCode}-alpha-beta-2026-08-02`,
+    });
+    const { candidates, rawDiagnostics } = await planningCandidates([row]);
+    assert.equal(candidates.length, 1);
+    assert.equal(rawDiagnostics?.rejected_before_planning_by_reason.UNSUPPORTED_PROVIDER_SPORT, undefined);
+  });
+}
+
+test("Contract A exact structured sport without exact provider identity fails closed", async () => {
+  const row = shadowSportsRow({
+    id: "contract-a-missing-exact-identity",
+    providerSportCode: "rugby-sevens",
+    shadowScope: "",
+    eventTitle: "Alpha FC vs. Beta FC",
+    marketQuestion: "Alpha FC vs. Beta FC - Moneyline",
+    eventSlug: "event-rugby-alpha-beta-2026-08-02",
+  });
+  delete (row.diagnostics as Record<string, unknown>).providerEventId;
+  const { candidates, rawDiagnostics } = await planningCandidates([row]);
+  assert.equal(candidates.length, 0);
+  assert.equal(rawDiagnostics?.rejected_before_planning_by_reason.MISSING_EXACT_PROVIDER_IDENTITY, 1);
+});
+
+test("Contract A text-only unknown sport remains fail closed", async () => {
+  const row = shadowSportsRow({
+    id: "contract-a-text-only-unknown",
+    shadowScope: "",
+    eventTitle: "Alpha vs. Beta",
+    marketQuestion: "Alpha vs. Beta - Moneyline",
+    eventSlug: "unclassified-alpha-beta-2026-08-02",
+  });
+  const { candidates } = await planningCandidates([row]);
+  assert.equal(candidates.length, 0);
 });
 
 // ── Malformed structured provider sport (2026-08 boundary correction) ──────

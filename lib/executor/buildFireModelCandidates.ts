@@ -601,6 +601,25 @@ function resolvePlanningScope(
   return { scope: derivedScope, confidence: "NONE" };
 }
 
+/**
+ * Contract A admits an otherwise-unlisted official provider sport only when
+ * the source names the exact provider event, market and condition, plus the
+ * authoritative start. This is an identity boundary, never a title/slug
+ * inference path; incomplete and text-only rows remain fail-closed.
+ */
+function hasExactStructuredProviderContractAIdentity(
+  row: Record<string, unknown>,
+  diag: Record<string, unknown>,
+  gameStartIso: string | null
+): boolean {
+  return (
+    typeof diag.providerEventId === "string" && diag.providerEventId.trim() !== "" &&
+    typeof diag.providerMarketId === "string" && diag.providerMarketId.trim() !== "" &&
+    typeof row.condition_id === "string" && row.condition_id.trim() !== "" &&
+    typeof gameStartIso === "string" && Number.isFinite(Date.parse(gameStartIso))
+  );
+}
+
 function computePlanningFallbackScore(
   row: any,
   scope: StrategicScope,
@@ -1632,7 +1651,21 @@ export async function buildFireModelCandidates(
       rejectReason("MALFORMED_PROVIDER_SPORT");
       continue;
     }
-    if (resolvedModelSport.source === "providerSportCode" && resolvedModelSport.scope === "UNKNOWN") {
+    const exactStructuredProviderContractAIdentity =
+      planningMode &&
+      selectorMode === "CONTRACT_A_PLANNING_V1" &&
+      resolvedModelSport.source === "providerSportCode" &&
+      hasExactStructuredProviderContractAIdentity(row, diag, gameStartIso);
+    if (
+      planningMode &&
+      selectorMode === "CONTRACT_A_PLANNING_V1" &&
+      resolvedModelSport.source === "providerSportCode" &&
+      !exactStructuredProviderContractAIdentity
+    ) {
+      rejectReason("MISSING_EXACT_PROVIDER_IDENTITY");
+      continue;
+    }
+    if (resolvedModelSport.source === "providerSportCode" && resolvedModelSport.scope === "UNKNOWN" && !exactStructuredProviderContractAIdentity) {
       if (rawDiag) rawDiag.unsupported_provider_sport_count = (rawDiag.unsupported_provider_sport_count ?? 0) + 1;
       rejectReason("UNSUPPORTED_PROVIDER_SPORT");
       continue;
@@ -1656,7 +1689,14 @@ export async function buildFireModelCandidates(
     let planningScoreSource: string | null = null;
 
     if (planningFallbackRow) {
-      const planningScope = resolvePlanningScope(row, identityText, resolvedModelSport.scope, !resolvedModelSport.hasStructuredSport);
+      const planningScope = resolvePlanningScope(
+        row,
+        identityText,
+        exactStructuredProviderContractAIdentity && resolvedModelSport.scope === "UNKNOWN"
+          ? "OTHER"
+          : resolvedModelSport.scope,
+        !resolvedModelSport.hasStructuredSport
+      );
       if (planningScope.scope === "UNKNOWN") {
         if (rawDiag) {
           rawDiag.planning_shadow_rejected_count += 1;
@@ -1709,7 +1749,12 @@ export async function buildFireModelCandidates(
 
     const authoritative = authoritativeScope(providerContext);
     const derivedScope = resolvedModelSport.hasStructuredSport
-      ? { scope: resolvedModelSport.scope, confidence: "HIGH" as const }
+      ? {
+          scope: exactStructuredProviderContractAIdentity && resolvedModelSport.scope === "UNKNOWN"
+            ? "OTHER" as const
+            : resolvedModelSport.scope,
+          confidence: "HIGH" as const,
+        }
       : authoritative
         ? { scope: authoritative, confidence: "HIGH" as const }
         : deriveSportScopeWithUpstreamPriority(diag, identityText);
