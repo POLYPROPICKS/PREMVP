@@ -6,6 +6,7 @@ import { produceContractAPlanningDecisions } from "../../lib/executor/contractAD
 import {
   buildReservationsFromPlanningDecisions,
   persistReservationPlan,
+  runReservationCronWithEvidence,
   type ReservationRepoPort,
   type ReservationPlan,
 } from "../../lib/executor/nightEventReservations";
@@ -16,6 +17,7 @@ import {
   type RebalanceRepoPort,
 } from "../../lib/executor/eventExecutionQueue";
 import type { EventExecutionQueueRow, NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
+import type { SchedulerJobEvidencePort } from "../../lib/executor/schedulerJobEvidence";
 
 const PLAN_NOW = Date.parse("2026-08-06T14:00:00.000Z");
 const START = "2026-08-06T19:00:00.000Z";
@@ -64,6 +66,29 @@ function source(id: string, score: number, conditionId: string, eventId = EVENT_
     },
   };
 }
+
+test("real reservation cron entry uses Contract A decisions, not the legacy candidate builder", async () => {
+  const anchor = source("00000000-0000-4000-8000-000000000100", 75, "cond-anchor");
+  const stored: NightEventReservationRow[] = [];
+  const repo: ReservationRepoPort = {
+    async findByPlanRunId() { return []; },
+    async findByPhysicalEventId() { return null; },
+    async deleteByPlanRunId() {},
+    async insert(rows) { stored.push(...rows.map((row) => ({ ...row, id: "reservation-cron-exact" }))); },
+  };
+  const evidence: SchedulerJobEvidencePort = { async writeJobRun() {} };
+  const { plan, persisted } = await at(PLAN_NOW, () => runReservationCronWithEvidence(
+    PLAN_NOW,
+    { selectorMode: "CONTRACT_A_PLANNING_V1" },
+    { fetchSourceRows: async () => [anchor], repo, jobEvidence: evidence }
+  ));
+  assert.equal(persisted.written_count, 1);
+  assert.equal(plan.diagnostics.reservation_authority, "CONTRACT_A_PLANNING_DECISION");
+  assert.equal(
+    ((stored[0]?.diagnostics.source_lineage as Record<string, unknown> | undefined)?.provider_event_id),
+    EVENT_ID
+  );
+});
 
 test("full link: exact Signal Pair -> Planning -> persisted Reservation -> max-score Queue is deterministic and idempotent", async () => {
   const anchor = source("00000000-0000-4000-8000-000000000101", 75, "cond-anchor");
