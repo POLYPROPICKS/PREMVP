@@ -67,11 +67,11 @@ test('authorization and evidence are distinct facts on capability entries', () =
   assert.equal(dbWrite.verdict, 'NOT_PROVEN', 'DATABASE_WRITE evidence remains NOT_PROVEN — authorization never fabricates a runtime PASS');
 });
 
-test('NOT_PROVEN capabilities are still authorized (not equal to forbidden)', () => {
+test('proven local build capability remains authorized', () => {
   const capability = readJson('CAPABILITY_MATRIX.yaml');
   const codex = capability.execution_targets.find((t) => t.executor_id === 'local_codex_windows');
   const build = codex.capabilities.find((c) => c.capability === 'BUILD');
-  assert.equal(build.verdict, 'NOT_PROVEN');
+  assert.equal(build.verdict, 'PROVEN');
   assert.equal(build.authorized, true);
 });
 

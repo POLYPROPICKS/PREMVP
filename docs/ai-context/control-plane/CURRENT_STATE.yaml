@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-05T05:11:57Z",
-  "state_version": 5,
+  "updated_at": "2026-08-06T06:45:00Z",
+  "state_version": 6,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
@@ -34,16 +34,16 @@
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "1a140a297523c0413c32954ecf7dc63d1d345d3b",
+    "origin_main_sha": "c40866d00850bb028a6610f27147bbf35290299f",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
-      "executor": "claude_code_cloud",
+      "executor": "local_codex_windows",
       "commands": ["git fetch --prune origin", "git rev-parse origin/main", "curl https://polypropicks.com/api/build-info"],
-      "observed_at": "2026-08-04T19:45:26Z",
+      "observed_at": "2026-08-06T06:45:00Z",
       "worktree": "clean",
-      "note": "Product-source baseline 1a140a297523c0413c32954ecf7dc63d1d345d3b is the PR #85 merge commit and contains implementation commit 7e0ba854dbe08126536346809137300ab7025eb2. Production /api/build-info returned this exact SHA at 2026-08-04T19:45:57Z, proving commit-to-deployment mapping. This was an application-source advance, not a state-only bootstrap."
+      "note": "Baseline c40866d00850bb028a6610f27147bbf35290299f records local runtime capabilities and their matching parity assertions after governance PR #89 and deployed application PR #90. Production build-info returned application merge ea09f77753aa5352c3959ae63422bd515131eda1. C1 remains OPEN pending an ordinary post-deploy immutable Queue outcome; the historical 15 reservations remain SKIPPED and expired."
     }
   },
 

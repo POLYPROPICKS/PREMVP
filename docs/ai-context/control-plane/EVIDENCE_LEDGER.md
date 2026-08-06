@@ -358,3 +358,12 @@ was applied to canonical state.
 
 This entry is history only. It records the state refresh and does not reopen, amend or
 reimplement PR #85, and does not trigger or observe a new deployment or natural run.
+
+## EV-0012 — 2026-08-06 local runtime repair checkpoint
+
+- Founder decision `FOUNDER_FINAL_PROTOCOL_BOOTSTRAP_AND_RUNTIME_FIX_20260805T2330_PLUS0300` authorized the bounded PREMVP release.
+- Governance PR #89 proved local GitHub PR create/merge; application PR #90 merged as `ea09f77753aa5352c3959ae63422bd515131eda1` and production build-info reached that SHA.
+- Sport funnel diagnostics and exact `generated_signal_pair_id` Final Identity loading deployed; the application reviewer PASS receipt reviewed `d4c61f91a2242152f519e5b6ac27aacf3ec7ea13`.
+- Local `npm ci`, targeted tests, typecheck, and production build passed. No migration, database mutation, manual deployment, job, Ireland, or live-money action occurred.
+- Historical 15-Reservation cohort remains SKIPPED and expired; no natural post-deploy immutable Queue success is proven. C1 remains OPEN.
+- Capability transitions are recorded by `779516d2cc7d184e9242559fff3fbb52f15e874a`. This ledger entry is history only.
