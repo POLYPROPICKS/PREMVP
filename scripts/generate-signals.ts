@@ -116,6 +116,7 @@ async function main() {
   try {
     // Research universe: one UUID per cron run, frozen before buildLandingCards
     const researchSnapshotRunId = randomUUID();
+    const producerRunId = randomUUID();
     const researchSnapshotAt = new Date().toISOString();
 
     // Reservation-aware pinning (P0): read-only, exact-identity only. A load
@@ -140,6 +141,7 @@ async function main() {
       // Research universe options — does not alter product feed behavior
       collectResearchSnapshots: true,
       researchSnapshotRunId,
+      producerRunId,
       researchSnapshotAt,
       researchLimit: 200,
       researchOddsMin: 1.25,
@@ -401,7 +403,7 @@ async function main() {
     // its sports-confirmation classification before persistence. Never throws;
     // a write failure is reported in diagnostics and never blocks signal generation.
     try {
-      const inventoryResult = await discoverSportsMarkets({ persistInventory: true });
+      const inventoryResult = await discoverSportsMarkets({ persistInventory: true, producerRunId });
       const sportsInventorySummary = {
         eventsCaptured: inventoryResult.counts.sportsInventoryEventsCaptured ?? 0,
         marketsCaptured: inventoryResult.counts.sportsInventoryMarketsCaptured ?? 0,
@@ -427,6 +429,7 @@ async function main() {
         rowsSkippedMalformedOutcome: inventoryResult.counts.broadSportsRowsSkippedMalformedOutcome ?? 0,
       };
       diagnostics.broadSportsSignalPair = broadSportsSummary;
+      diagnostics.sport_funnel_v1 = inventoryResult.counts.sportFunnelV1 ?? null;
       if (broadSportsSummary.writeFailed) {
         console.warn(
           `[generate-signals] BROAD_SPORTS_SIGNAL_PAIR_WRITE_FAILED: proposed=${broadSportsSummary.rowsProposed} inserted=${broadSportsSummary.rowsInserted}`,

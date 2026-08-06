@@ -577,6 +577,50 @@ export interface RebalanceRepoPort {
   findQueueRowsByRebalanceRunId?(rebalanceRunId: string): Promise<EventExecutionQueueRow[]>;
 }
 
+class FinalIdentitySourceLoadError extends Error {
+  constructor(readonly reasonCode: string) {
+    super(reasonCode);
+    this.name = "FinalIdentitySourceLoadError";
+  }
+}
+
+function safeDatabaseErrorCategory(error: unknown): string {
+  const code = typeof error === "object" && error !== null && "code" in error
+    ? (error as { code?: unknown }).code
+    : null;
+  return typeof code === "string" && /^[A-Za-z0-9_]{1,64}$/.test(code)
+    ? code.toUpperCase()
+    : "UNKNOWN";
+}
+
+/**
+ * Loads the one Contract A source row named by the persisted Reservation
+ * lineage. The generated_signal_pairs primary key is the only authority here:
+ * event slug (and every display-oriented field) is deliberately excluded.
+ */
+export async function loadFinalIdentitySourceRowsByGeneratedSignalPairId(
+  reservation: NightEventReservationRow,
+  queryById: (generatedSignalPairId: string) => Promise<FinalIdentitySourceRow[]>
+): Promise<FinalIdentitySourceRow[]> {
+  const generatedSignalPairId = (reservation.diagnostics?.source_lineage as Record<string, unknown> | undefined)?.generated_signal_pair_id;
+  if (generatedSignalPairId === undefined || generatedSignalPairId === null || generatedSignalPairId === "") {
+    throw new FinalIdentitySourceLoadError("FINAL_IDENTITY_SOURCE_LINEAGE_ID_MISSING");
+  }
+  if (!isUuidLike(generatedSignalPairId)) {
+    throw new FinalIdentitySourceLoadError("FINAL_IDENTITY_SOURCE_LINEAGE_ID_INVALID");
+  }
+  let rows: FinalIdentitySourceRow[];
+  try {
+    rows = await queryById(generatedSignalPairId);
+  } catch (error) {
+    throw new FinalIdentitySourceLoadError(`FINAL_IDENTITY_SOURCE_QUERY_FAILED_${safeDatabaseErrorCategory(error)}`);
+  }
+  if (rows.length === 0) {
+    throw new FinalIdentitySourceLoadError("FINAL_IDENTITY_SOURCE_ROW_NOT_FOUND");
+  }
+  return rows.slice(0, 1);
+}
+
 export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
   return {
     async loadActiveReservations() {
@@ -639,19 +683,16 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
         .eq("id", id);
     },
     async loadFinalIdentitySourceRows(reservation) {
-      const eventSlug = (reservation.diagnostics?.source_lineage as Record<string, unknown> | undefined)?.event_slug;
-      if (typeof eventSlug !== "string" || eventSlug.trim() === "") {
-        throw new Error("FINAL_IDENTITY_SOURCE_LINEAGE_EVENT_SLUG_MISSING");
-      }
       const { supabaseAdmin } = await import("@/lib/supabase/server");
-      const { data, error } = await supabaseAdmin
-        .from("generated_signal_pairs")
-        .select("*")
-        .eq("event_slug", eventSlug)
-        .order("created_at", { ascending: false })
-        .limit(50);
-      if (error) throw new Error(`final identity source query failed: ${error.message}`);
-      return (data ?? []) as FinalIdentitySourceRow[];
+      return loadFinalIdentitySourceRowsByGeneratedSignalPairId(reservation, async (generatedSignalPairId) => {
+        const { data, error } = await supabaseAdmin
+          .from("generated_signal_pairs")
+          .select("*")
+          .eq("id", generatedSignalPairId)
+          .limit(1);
+        if (error) throw error;
+        return (data ?? []) as FinalIdentitySourceRow[];
+      });
     },
     async findQueueRowsByRebalanceRunId(rebalanceRunId) {
       const { supabaseAdmin } = await import("@/lib/supabase/server");
@@ -742,8 +783,11 @@ async function selectQueueRowFromContractAReservation(
   let rows: FinalIdentitySourceRow[];
   try {
     rows = await loadRows(reservation);
-  } catch {
-    return { outcome: "SKIPPED", reason: "FINAL_IDENTITY_SOURCE_LOAD_FAILED", queueRow: null };
+  } catch (error) {
+    const reasonCode = error instanceof FinalIdentitySourceLoadError
+      ? error.reasonCode
+      : "FINAL_IDENTITY_SOURCE_LOAD_FAILED";
+    return { outcome: "SKIPPED", reason: reasonCode, queueRow: null };
   }
   onFinalIdentityAttempt?.();
   const result = await produceContractAFinalIdentityDecision(planning, rows);

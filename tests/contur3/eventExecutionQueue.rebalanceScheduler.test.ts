@@ -12,8 +12,10 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import {
+  loadFinalIdentitySourceRowsByGeneratedSignalPairId,
   runEventRebalance,
   runEventRebalanceWithEvidence,
   type RebalanceRepoPort,
@@ -23,7 +25,7 @@ import { buildFireModelCandidates, type FireModelCandidate } from "../../lib/exe
 import { mapQueueRowToIrelandCandidate, type EventExecutionQueueRow, type NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 import { createQueueAuthorityFixture } from "./helpers/queueAuthorityFixtures";
 
-const root = process.cwd();
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 
 const KICKOFF_ISO = "2026-07-19T19:00:00.000Z";
 const KICKOFF_MS = Date.parse(KICKOFF_ISO);
@@ -176,6 +178,47 @@ function makeFakeJobEvidence(): SchedulerJobEvidencePort & { calls: SchedulerJob
     },
   };
 }
+
+test("Final Identity source loader uses only the persisted generated_signal_pair_id UUID", async () => {
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), baseCandidate());
+  const queriedIds: string[] = [];
+  const row = { ...authority.sourceRow, event_slug: "DIFFERENT-SLUG-WITH-CASE-MISMATCH" };
+  const rows = await loadFinalIdentitySourceRowsByGeneratedSignalPairId(authority.reservation, async (id) => {
+    queriedIds.push(id);
+    return [row, { ...row, id: "22222222-2222-4222-8222-222222222222" }];
+  });
+  assert.deepEqual(queriedIds, [authority.sourceRow.id], "the lineage UUID remains authoritative when slug differs");
+  assert.equal(rows.length, 1, "the loader may expose at most one exact source row");
+  assert.equal(rows[0].id, authority.sourceRow.id);
+});
+
+test("Final Identity source loader fails closed with bounded reasons", async () => {
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), baseCandidate());
+  const cases: Array<{ reservation: NightEventReservationRow; query: () => Promise<Record<string, unknown>[]>; reason: string }> = [
+    { reservation: { ...authority.reservation, diagnostics: { ...authority.reservation.diagnostics, source_lineage: {} } }, query: async () => [authority.sourceRow], reason: "FINAL_IDENTITY_SOURCE_LINEAGE_ID_MISSING" },
+    { reservation: { ...authority.reservation, diagnostics: { ...authority.reservation.diagnostics, source_lineage: { ...(authority.reservation.diagnostics?.source_lineage as object), generated_signal_pair_id: "not-a-uuid" } } }, query: async () => [authority.sourceRow], reason: "FINAL_IDENTITY_SOURCE_LINEAGE_ID_INVALID" },
+    { reservation: authority.reservation, query: async () => [], reason: "FINAL_IDENTITY_SOURCE_ROW_NOT_FOUND" },
+    { reservation: authority.reservation, query: async () => { throw { code: "42p01", message: "do not disclose" }; }, reason: "FINAL_IDENTITY_SOURCE_QUERY_FAILED_42P01" },
+  ];
+  for (const item of cases) {
+    await assert.rejects(
+      () => loadFinalIdentitySourceRowsByGeneratedSignalPairId(item.reservation, item.query),
+      (error: Error) => error.message === item.reason,
+      item.reason
+    );
+  }
+});
+
+test("Final Identity production loader has no slug fallback query", () => {
+  const source = readFileSync(path.join(root, "lib/executor/eventExecutionQueue.ts"), "utf8");
+  const start = source.indexOf("async loadFinalIdentitySourceRows(reservation)");
+  const end = source.indexOf("async findQueueRowsByRebalanceRunId", start);
+  assert.ok(start >= 0 && end > start, "expected the production Final Identity source loader");
+  const loader = source.slice(start, end);
+  assert.match(loader, /\.eq\("id", generatedSignalPairId\)/);
+  assert.match(loader, /\.limit\(1\)/);
+  assert.doesNotMatch(loader, /event_slug|\.order\(/, "slug and recency must never become source identity fallbacks");
+});
 
 test("B1: before T-70, zero queue rows are created", async () => {
   const repo = makeFakeRepo([baseReservation()]);

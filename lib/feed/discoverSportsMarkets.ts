@@ -2,6 +2,7 @@
 // Phase 3.6B — Production-grade markets-first discovery
 
 import { randomUUID } from "node:crypto";
+import { buildSportFunnelV1, type SportFunnelRecord } from "@/lib/diagnostics/sportFunnel";
 
 import type {
   SportsMarketCandidate,
@@ -420,9 +421,10 @@ export async function discoverSportsMarkets(
         };
       });
 
+      const producerRunId = cfg.producerRunId ?? randomUUID();
       const { rows: inventoryRows, diagnostics: inventoryDiag } = buildSportsEventMarketInventoryRows(
         rawEventsForInventory,
-        { observedAt: now.toISOString(), snapshotRunId: randomUUID() },
+        { observedAt: now.toISOString(), snapshotRunId: producerRunId },
       );
       counts.sportsInventoryEventsCaptured = inventoryDiag.eventsSeen;
       counts.sportsInventoryMarketsCaptured = inventoryDiag.rowsBuilt;
@@ -475,11 +477,16 @@ export async function discoverSportsMarkets(
         }
 
         const sportMeta = buildProviderSportMetadataMap(sportsRaw as unknown[]);
+        // Diagnostics intentionally use only the provider's structured `sport`
+        // field. The broader map remains the existing candidate-classification
+        // contract and must not be changed by this observability addition.
+        const strictSportMeta = buildStrictProviderSportMetadataMap(sportsRaw as unknown[]);
         const { entries: broadEntries, diagnostics: broadDiag } = buildBroadStructuredSportsShadowEntries(
           inventoryRows,
           sportMeta,
           gameTeamLookup,
         );
+        for (const entry of broadEntries) entry.producerRunId = producerRunId;
         counts.broadSportsRowsProposed = broadDiag.rowsProposed;
         counts.broadSportsRowsBySport = broadDiag.rowsBySport;
         counts.broadSportsRowsSkippedMissingToken = broadDiag.rowsSkippedMissingToken;
@@ -491,14 +498,53 @@ export async function discoverSportsMarkets(
         counts.broadSportsRowsSkippedIndexMismatch = broadDiag.rowsSkippedIndexMismatch;
         counts.broadSportsMaterialization = broadDiag.materialization;
 
+        let broadWriteDetail: import("./cacheGeneratedSignals").StrategicShadowWriteDetail = {
+          inserted: 0,
+          materializationRecords: [],
+        };
         if (broadEntries.length > 0) {
           const { writeStrategicShadowPairs } = await import("./cacheGeneratedSignals");
           const broadExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
-          const broadInserted = await writeStrategicShadowPairs(broadEntries, broadExpiresAt);
-          counts.broadSportsWriteInserted = broadInserted;
+          broadWriteDetail = await writeStrategicShadowPairs(broadEntries, broadExpiresAt, { detailed: true });
+          counts.broadSportsWriteInserted = broadWriteDetail.inserted;
         } else {
           counts.broadSportsWriteInserted = 0;
         }
+        const records = broadEntries.map((entry) => ({ providerEventId: entry.providerEventId, conditionId: entry.conditionId, sportCode: entry.providerSportCode }));
+        const officialRecords: SportFunnelRecord[] = rawEventsForInventory.map((event) => {
+          const rawEvent = event as Record<string, unknown>;
+          const resolution = resolveOfficialSportCode(extractEventTagIds(rawEvent.tags), strictSportMeta);
+          return { providerEventId: typeof rawEvent.id === "string" ? rawEvent.id : null, sportCode: resolution.providerSportCode };
+        });
+        const strictSportCodeByEventId = new Map(
+          officialRecords
+            .filter((record): record is SportFunnelRecord & { providerEventId: string } => typeof record.providerEventId === "string")
+            .map((record) => [record.providerEventId, record.sportCode]),
+        );
+        const inventoryRecords = inventoryRows.filter((row) => row.isConfirmedSports).map((row) => {
+          const resolution = resolveOfficialSportCode(extractEventTagIds(row.providerTags), strictSportMeta);
+          return { providerEventId: row.providerEventId, conditionId: row.conditionId, sportCode: resolution.providerSportCode };
+        });
+        counts.sportFunnelV1 = buildSportFunnelV1({
+          producerRunId,
+          asOf: now.toISOString(),
+          createdAt: new Date().toISOString(),
+          sourceGitSha: process.env.VERCEL_GIT_COMMIT_SHA ?? null,
+          officialEvents: officialRecords,
+          inventoryEvents: inventoryRecords,
+          considered: records,
+          materialized: broadWriteDetail.materializationRecords.map(({ outcome: _outcome, ...record }) => ({
+            ...record,
+            sportCode: strictSportCodeByEventId.get(record.providerEventId ?? "") ?? null,
+          })),
+          firstLosses: broadDiag.materializationRecords
+            .filter((record) => record.outcome !== "MATERIALIZED")
+            .map(({ outcome, ...record }) => ({
+              ...record,
+              sportCode: strictSportCodeByEventId.get(record.providerEventId ?? "") ?? null,
+              reason: outcome,
+            })),
+        });
       } catch (broadErr) {
         counts.broadSportsWriteFailed = true;
         const msg = broadErr instanceof Error ? broadErr.message.slice(0, 180) : String(broadErr);
@@ -1350,6 +1396,8 @@ export interface WcShadowEntry {
   providerSportTagIds?: string[];
   providerSeriesIds?: string[];
   providerEventId?: string | null;
+  /** Producer-scoped identity; populated only by the broad structured path. */
+  producerRunId?: string;
   providerMarketId?: string | null;
   gameId?: string | null;
   teamAId?: string | null;
@@ -1403,6 +1451,29 @@ export function buildProviderSportMetadataMap(sportsRaw: unknown[]): ProviderSpo
       tagIdToSportCodes.get(tagId)!.add(code);
     }
 
+    const seriesIds = parseIdList(s.series);
+    if (seriesIds.length > 0) sportCodeToSeriesIds.set(code, seriesIds);
+  }
+  return { tagIdToSportCodes, sportCodeToSeriesIds };
+}
+
+/**
+ * Diagnostics-only authority map. Unlike the legacy candidate map, this never
+ * falls back to a display label, slug, or opaque id when a structured provider
+ * sport code is absent. Those cases are deliberately reported as UNKNOWN.
+ */
+export function buildStrictProviderSportMetadataMap(sportsRaw: unknown[]): ProviderSportMetadataMap {
+  const tagIdToSportCodes = new Map<string, Set<string>>();
+  const sportCodeToSeriesIds = new Map<string, string[]>();
+  for (const raw of sportsRaw) {
+    if (!raw || typeof raw !== "object") continue;
+    const s = raw as Record<string, unknown>;
+    const code = typeof s.sport === "string" && s.sport.trim() ? s.sport.trim().toLowerCase() : null;
+    if (!code) continue;
+    for (const tagId of parseIdList(s.tags)) {
+      if (!tagIdToSportCodes.has(tagId)) tagIdToSportCodes.set(tagId, new Set());
+      tagIdToSportCodes.get(tagId)!.add(code);
+    }
     const seriesIds = parseIdList(s.series);
     if (seriesIds.length > 0) sportCodeToSeriesIds.set(code, seriesIds);
   }
@@ -1499,6 +1570,10 @@ export interface MaterializationLedger {
   materializedBySport: Record<string, number>;
 }
 
+export interface MaterializationRecord extends SportFunnelRecord {
+  outcome: MaterializationOutcome;
+}
+
 export interface BroadStructuredSportsBuildDiagnostics {
   rowsConsidered: number;
   rowsProposed: number;
@@ -1513,9 +1588,12 @@ export interface BroadStructuredSportsBuildDiagnostics {
   rowsSkippedIndexMismatch: number;
   /** Per-event terminal outcome accounting over the considered inventory. */
   materialization: MaterializationLedger;
+  /** Diagnostics-only per-event terminal accounting; never persisted as rows. */
+  materializationRecords: MaterializationRecord[];
 }
 
 interface EventMaterializationState {
+  providerEventId: string;
   producedEntry: boolean;
   hasFullMatchMarket: boolean;
   hasValidStart: boolean;
@@ -1572,6 +1650,7 @@ export function buildBroadStructuredSportsShadowEntries(
       fullMatchEventsMaterialized: 0,
       materializedBySport: {},
     },
+    materializationRecords: [],
   };
   const entries: WcShadowEntry[] = [];
   const eventState = new Map<string, EventMaterializationState>();
@@ -1594,6 +1673,7 @@ export function buildBroadStructuredSportsShadowEntries(
     let state = eventState.get(row.providerEventId);
     if (!state) {
       state = {
+        providerEventId: row.providerEventId,
         producedEntry: false,
         hasFullMatchMarket: false,
         hasValidStart: false,
@@ -1720,6 +1800,11 @@ export function buildBroadStructuredSportsShadowEntries(
     if (outcome === "MATERIALIZED") {
       ledger.materializedBySport[state.sportKey] = (ledger.materializedBySport[state.sportKey] ?? 0) + 1;
     }
+    diagnostics.materializationRecords.push({
+      providerEventId: state.providerEventId,
+      sportCode: state.sportKey === "AMBIGUOUS_MULTI_SPORT" || state.sportKey === "UNCLASSIFIED_SPORTS_TAG" ? null : state.sportKey,
+      outcome,
+    });
   }
   ledger.outcomeTotal = Object.values(ledger.outcomes).reduce((a, b) => a + b, 0);
   ledger.conservationOk = ledger.outcomeTotal === ledger.eventsConsidered;
