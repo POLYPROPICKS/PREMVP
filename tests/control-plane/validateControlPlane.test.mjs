@@ -214,6 +214,17 @@ test('10. deterministic snapshot check passes and is stable across runs', () => 
     'snapshot must not embed wall-clock generation time');
 });
 
+test('10b. generated snapshot has an explicit LF checkout contract and no EOL normalization bypass', () => {
+  const attributes = fs.readFileSync(path.join(REPO_ROOT, '.gitattributes'), 'utf8');
+  const committed = fs.readFileSync(path.join(REPO_ROOT, SNAPSHOT_REL), 'utf8');
+  const rendered = renderSnapshot(REPO_ROOT);
+
+  assert.match(attributes, /^docs\/ai-context\/control-plane\/ARCHITECT_SNAPSHOT\.md text eol=lf$/m);
+  assert.ok(!committed.includes('\r\n'), 'checked-out snapshot must be LF-only');
+  assert.ok(!rendered.includes('\r\n'), 'generator must emit LF-only output');
+  assert.equal(committed, rendered, 'snapshot comparison remains raw and does not normalize EOL differences');
+});
+
 test('11. snapshot stays within the 7,000-character architect context budget', () => {
   // The snapshot is pasted into a phone-first ChatGPT project. If it grows past this,
   // it stops being a compact stand-in and starts crowding out the actual task.

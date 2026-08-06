@@ -86,6 +86,30 @@ test('same-run capability bootstrap rule is declared with fail-closed constraint
   assert.match(constraints, /fails closed/);
 });
 
+test('Founder-authorized bootstrap and state reconciliation remain narrow and non-self-accepting', () => {
+  const policy = readJson('ARCHITECT_CONTROL_PLANE.yaml');
+  const bootstrap = policy.FOUNDER_AUTHORIZED_CAPABILITY_BOOTSTRAP;
+  const reconciliation = policy.FOUNDER_AUTHORIZED_STATE_RECONCILIATION;
+  assert.equal(bootstrap.decision_id, 'FOUNDER_FINAL_PROTOCOL_BOOTSTRAP_AND_RUNTIME_FIX_20260805T2330_PLUS0300');
+  assert.match(bootstrap.scope, /PREMVP-only/);
+  assert.match(bootstrap.failure_behavior, /NOT_PROVEN/);
+  assert.ok(bootstrap.hard_boundaries.includes('no direct push to main'));
+  assert.ok(bootstrap.hard_boundaries.includes('no Ireland'));
+  assert.match(reconciliation.eligibility, /STATE_REFRESH_REQUIRED/);
+  assert.ok(reconciliation.writer_boundaries.some((v) => /do not set the writing task completion_id as accepted/.test(v)));
+});
+
+test('GitHub integration command has a local authenticated-gh binding with merge safeguards', () => {
+  const registry = readJson('AGENT_REGISTRY.yaml');
+  const command = registry.entries.find((entry) => entry.canonical_id === 'claude.command.github_pr_merge.v0');
+  const local = command.executor_bindings.find((binding) => binding.executor_id === 'local_codex_windows');
+  assert.equal(local.transport, 'authenticated local gh CLI');
+  assert.ok(local.operations.includes('pr create'));
+  assert.ok(local.operations.includes('pr merge --merge'));
+  assert.ok(local.prohibitions.includes('no direct push to main'));
+  assert.ok(local.prohibitions.includes('no branch-protection bypass'));
+});
+
 test('portable reviewer definitions carry no user-specific absolute path as authority', () => {
   const weather = readJson('reviewers/weather-gate-reviewer.yaml');
   const contur = readJson('reviewers/contur-gate-reviewer.yaml');
