@@ -62,9 +62,11 @@ test("production-scale batch stays within a sane per-request budget", () => {
 });
 
 test("a full production batch fits the indexed dedup budget", () => {
-  // 18,048 distinct condition IDs is the measured production shape. The
-  // indexed guard leaves room for the current 84-query batch plus growth.
-  const conditionIds = Array.from({ length: 18048 }, (_, i) => `cond-${i}`);
+  // 21,220 distinct condition IDs is the current observed producer shape:
+  // 42,440 exact-ID outcome rows require 107 read-before-write queries.
+  // Keep enough bounded headroom so this proven live batch cannot disappear
+  // at the persistence guard.
+  const conditionIds = Array.from({ length: 21220 }, (_, i) => `cond-${i}`);
   const needed = chunkArray(conditionIds, SHADOW_DEDUP_QUERY_CHUNK).length;
   assert.ok(
     needed <= SHADOW_DEDUP_MAX_QUERIES,
