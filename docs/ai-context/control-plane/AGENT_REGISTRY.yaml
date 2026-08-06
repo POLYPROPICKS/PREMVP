@@ -464,7 +464,7 @@
       "canonical_id": "premvp.command.github_pr_create.v1",
       "type": "COMMAND",
       "owner_platform": "repository",
-      "implementation_path": null,
+      "implementation_path": "scripts/control-plane/github-pr-create.mjs",
       "status": "PROVEN_PRESENT",
       "invocation": "EXPLICIT",
       "triggers": ["PREMVP feature-branch integration"],
@@ -489,7 +489,7 @@
       "canonical_id": "premvp.command.github_pr_merge.v1",
       "type": "COMMAND",
       "owner_platform": "repository",
-      "implementation_path": null,
+      "implementation_path": "scripts/control-plane/github-pr-merge.mjs",
       "status": "PROVEN_PRESENT",
       "invocation": "EXPLICIT",
       "triggers": ["PREMVP PR integration after gates"],
@@ -572,7 +572,7 @@
       "type": "COMMAND",
       "owner_platform": "repository",
       "implementation_path": "scripts/control-plane/run-premvp-release.mjs",
-      "status": "PLANNED",
+      "status": "PROVEN_PRESENT",
       "invocation": "EXPLICIT",
       "triggers": ["a future executor prompt that needs release orchestration instead of reproducing branch/PR/merge/deploy steps inline"],
       "exclusions": ["mutating execution while pipeline_status is EXPERIMENTAL_DISABLED", "R5_CROSS_REPO_OR_LIVE_MONEY", "Ireland", "database mutation"],
@@ -584,18 +584,27 @@
       "output_contract": "canonical COMPLETION_ENVELOPE.schema.json result with verdict PASS, WAIT, BLOCKED or FAIL",
       "independence_group": null,
       "receipt_required": false,
-      "evidence_class": "NOT_PROVEN",
+      "evidence_class": "SUPPORTED",
       "last_verified_at": "2026-08-06T00:00:00Z",
       "portability": "PORTABLE",
       "pipeline_status": "ENABLED",
       "enabled": true,
       "disabled_until_command": null,
       "supported_modes": ["validate", "dry_run", "status", "resume"],
-      "mutating_mode": "DISABLED_UNTIL_ACTION_3",
+      "mutating_mode": "ENABLED_BY_CANONICAL_PIPELINE",
       "operator_intervention_budget": { "launch": 1, "intermediate": 0, "result_transfer": 1 },
       "hard_prohibitions": ["direct push to main", "force push", "manual deployment", "cross-repository action", "database mutation", "Ireland access", "live money"],
       "reviewer_enforcement": "delegated to live risk routing in ROUTING_AND_PIPELINES.yaml — this command entry requires no reviewer receipt of its own",
-      "notes": "Enabled by Action 3 after the shared reconcile command and full Control Plane validation. Shared GitHub and reviewer command identities resolve adapters from the explicitly selected executor; no executor is default or substituted."
+      "notes": "Executable release command. Shared GitHub and reviewer command identities resolve adapters from the explicitly selected executor; no executor is default or substituted."
+    },
+    {
+      "canonical_id": "premvp.command.prompt_compile.v2",
+      "type": "COMMAND", "owner_platform": "repository", "implementation_path": "scripts/control-plane/prompt-compile.mjs", "status": "PROVEN_PRESENT", "invocation": "EXPLICIT",
+      "triggers": ["compile a compact PREMVP executor task manifest"], "exclusions": ["Ireland", "unregistered commands", "default executor"], "model_policy": "selected executor only", "reasoning_policy": "inherit",
+      "permissions": "read canonical registry and compile task-local prompt text", "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "compact contextual manifest with mandatory core and optional modules", "output_contract": "prompt, validation report, emitted/omitted modules, word count and command references", "independence_group": null, "receipt_required": false,
+      "evidence_class": "SUPPORTED", "last_verified_at": "2026-08-06T13:25:00Z", "portability": "PORTABLE", "supported_executors": ["local_codex_windows", "claude_code_cloud"],
+      "hard_prohibitions": ["manual orchestration duplication", "unregistered command reference", "PASS without business result", "recoverable Founder escalation"]
     }
   ]
 }
