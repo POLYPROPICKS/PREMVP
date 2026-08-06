@@ -420,3 +420,29 @@ resumable, idempotent PREMVP release-orchestration state machine, registered
 
 This entry is history only. It records the Action 2 pipeline scaffold and does not mark
 the pipeline enabled, does not mark C1 complete, and does not self-accept a state delta.
+
+## EV-0014 — 2026-08-06 Action 3 executor-owned preflight state refresh
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **executor:** `local_codex_windows`
+- **observed_at:** 2026-08-06T08:43:57Z
+- Live `origin/main` and production `GET /api/build-info` both resolved to
+  `b8aa8e7ba2114d5f9828200afb2d6c778e15224b`, the Action 2 PR #92 merge.
+- The prior baseline `9574dced71579048148401662e67912f7ec03d39` is an ancestor of that
+  merge. The refresh advances only current-state artifacts; it records Action 2 as merged
+  while retaining `EXPERIMENTAL_DISABLED` status and Action 3 as pending.
+- C1 remains OPEN; no product, database, Ireland, or live-money change occurred.
+
+This entry is historical evidence only and does not accept an Action 3 completion.
+
+## EV-0015 — 2026-08-06 Action 3 implementation state bootstrap
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **executor:** `local_codex_windows`
+- **implementation_sha:** `1c3b10aaec79a6fb7886533cb563606c61d1549a`
+- Shared executor-neutral GitHub, reviewer, and reconcile command contracts were registered.
+  The release pipeline is enabled only with prompt-selected executor context; R5 remains
+  fail-closed and reviewer routing remains risk-class derived.
+- This bootstrap advances state only after the non-state implementation commit and does
+  not accept the current completion. C1 remains OPEN; no product, database, Ireland, or
+  live-money behavior changed.
