@@ -185,7 +185,7 @@ test("RED: the real persistInventory:true entrypoint activates the broad adapter
     namedExports: {
       writeStrategicShadowPairs: async (candidates: unknown[]) => {
         writtenBroadRows = candidates;
-        return candidates.length;
+        return { inserted: candidates.length, materializationRecords: [] };
       },
     },
   });

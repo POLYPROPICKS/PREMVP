@@ -19,11 +19,11 @@ export const SHADOW_INSERT_CHUNK = 500;
  * The production index on
  * (condition_id, selected_token_id, metric_formula_version) makes these
  * bounded lookups cheap enough for the full observed broad batch. The latest
- * run carried 16,722 distinct condition IDs (84 chunks); 100 leaves measured
- * headroom while retaining a fail-closed guard if the producer grows beyond
- * the cron's safe budget.
+ * failed run carried about 21,220 distinct condition IDs (107 chunks); 125
+ * leaves bounded headroom while retaining a fail-closed guard if the producer
+ * grows beyond the cron's safe budget.
  */
-export const SHADOW_DEDUP_MAX_QUERIES = 100;
+export const SHADOW_DEDUP_MAX_QUERIES = 125;
 
 /** Marker for the explicit fail-closed path above. */
 export const SHADOW_DEDUP_BUDGET_EXCEEDED = "SHADOW_DEDUP_BUDGET_EXCEEDED";
