@@ -66,7 +66,7 @@ Short Founder presentation + one executor block only. Every task invokes `premvp
 
 - `premvp.reviewer.weather_gate.v1` — portable_project_scoped, EXPLICIT, receipt REQUIRED, triggers: R3_WEATHER_MODEL_CHANGE; Weather model behavior change
 - `premvp.reviewer.contur_gate.v1` — portable_project_scoped, EXPLICIT, receipt REQUIRED, triggers: R4_CONTUR_PRODUCTION_BOUNDARY; Contur exact-SHA acceptance; production-boundary acceptance
-- Other registered entries (no receipt or deprecated): 2 AGENT, 10 COMMAND, 2 HOOK, 3 SCRIPT, 1 CI_GATE, 6 POLICY — see AGENT_REGISTRY.yaml.
+- Other registered entries (no receipt or deprecated): 2 AGENT, 11 COMMAND, 2 HOOK, 3 SCRIPT, 1 CI_GATE, 6 POLICY — see AGENT_REGISTRY.yaml.
 
 ## 8. PREMVP / Ireland boundary
 
