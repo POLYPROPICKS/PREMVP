@@ -367,3 +367,56 @@ reimplement PR #85, and does not trigger or observe a new deployment or natural 
 - Local `npm ci`, targeted tests, typecheck, and production build passed. No migration, database mutation, manual deployment, job, Ireland, or live-money action occurred.
 - Historical 15-Reservation cohort remains SKIPPED and expired; no natural post-deploy immutable Queue success is proven. C1 remains OPEN.
 - Capability transitions are recorded by `779516d2cc7d184e9242559fff3fbb52f15e874a`. This ledger entry is history only.
+
+## EV-0013 — 2026-08-06 Action 2: resumable PREMVP release pipeline scaffold (experimental, disabled)
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **observed_at:** 2026-08-06
+- **executor:** `claude_code_cloud`
+- **branch:** `claude/premvp-release-pipeline-otzkt6`
+- **implementation commit:** `688179b` (see `git log` on the branch for the full 40-character SHA)
+
+Implemented `premvp.command.release_pipeline.v1` / `premvp.release_pipeline.v1`, a reusable,
+resumable, idempotent PREMVP release-orchestration state machine, registered
+`EXPERIMENTAL_DISABLED`.
+
+- Canonical pipeline specification and release-run manifest schema added under
+  `docs/ai-context/control-plane/pipelines/`.
+- Engine library (`scripts/control-plane/lib/premvp-release-pipeline.mjs`), CLI
+  (`scripts/control-plane/run-premvp-release.mjs`), and manifest validator
+  (`scripts/control-plane/validate-premvp-release-run.mjs`) are transport-free: every
+  Git/GitHub/deployment/reviewer operation goes through an injected adapter, so mutating
+  behavior is exercised only via fake adapters in tests.
+- Registered in `AGENT_REGISTRY.yaml` (status `PLANNED`, `pipeline_status
+  EXPERIMENTAL_DISABLED`, `enabled: false`) and cataloged in `ROUTING_AND_PIPELINES.yaml`
+  and `ARCHITECT_CONTROL_PLANE.yaml` without changing any existing task-class routing or
+  R3/R4 mandatory-reviewer routing.
+- `tests/control-plane/premvpReleasePipeline.test.mjs` — 33 tests, all passing — cover
+  manifest invariants (single repository, no Ireland, no R5, zero intermediate operator
+  actions, no direct main push, no manual deployment, no secrets, no v1 database
+  mutation), disabled-mode gating (`assertMutationAllowed` throws
+  `PIPELINE_MUTATING_MODE_NOT_DISABLED` while dry-run/status/validate remain permitted),
+  live-evidence-first reconstruction and resume (a contradictory local checkpoint loses
+  to live Git/PR/deployment state), and idempotency (no duplicate PR creation, no
+  duplicate merge, deployment poll short-circuits on a matching production SHA, no
+  duplicate reviewer invocation, pending reviewer receipts are polled not re-invoked,
+  mismatched receipt SHA blocks) and R5 fail-closed behavior.
+- `npm run control-plane:check` (validator + full control-plane test suite + snapshot
+  check), `npx tsc --noEmit`, and `npm run build` all passed after this change.
+  `git diff --check` passed clean.
+- Mutating pipeline mode remains refused: `premvp.command.control_plane_reconcile.v1`
+  does not exist yet. Dry-run, status reconstruction, manifest validation, and a
+  fixture-manifest resume simulation were exercised locally with zero repository or
+  GitHub mutation.
+- Live `origin/main` at session start was `9574dced71579048148401662e67912f7ec03d39`,
+  proven an exact match to production `GET /api/build-info` in this session. This
+  baseline is unchanged by this entry — the branch above has not been pushed, PR'd, or
+  merged.
+- No product behavior changed. No database, Ireland, or live-money action occurred. C1
+  remains `OPEN`; C2 and `SETTLEMENT_PNL` remain the next two value steps.
+- Founder action: none required to accept this scaffold; merge requires a follow-up
+  confirmation on this remote session before `claude.command.github_pr_merge.v0` is
+  invoked.
+
+This entry is history only. It records the Action 2 pipeline scaffold and does not mark
+the pipeline enabled, does not mark C1 complete, and does not self-accept a state delta.
