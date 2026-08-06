@@ -57,6 +57,8 @@ export type ContractARejectionReasonCode =
   | "MISSING_PHYSICAL_EVENT_ID"
   | "MISSING_CANONICAL_EVENT_START_ISO"
   | "MALFORMED_CANONICAL_EVENT_START_ISO"
+  | "EXACT_PROVIDER_EVENT_IDENTITY_MISSING"
+  | "EXACT_PROVIDER_EVENT_START_MISMATCH"
   | "MARKET_POLICY_REJECTED"
   // final identity
   | "NO_FINAL_IDENTITY_CANDIDATE"
@@ -97,6 +99,13 @@ export interface ContractASourceLineage {
   observation_id: string | null;
   event_slug: string | null;
   provider_event_key: string | null;
+  /** Immutable Polymarket event identity; never derived from title or slug. */
+  provider_event_id: string | null;
+  provider_event_start_iso: string | null;
+  provider_sport: string | null;
+  /** Producer boundary retained for forensic lineage, not for re-selection. */
+  producer_source: string | null;
+  source_created_at: string | null;
 }
 
 /** Where the normalized sport metadata on a decision actually came from. */
@@ -220,16 +229,51 @@ function nonEmpty(value: unknown): string | null {
 export function resolveContractASourceLineage(
   candidate: Pick<FireModelCandidate, "generated_signal_pair_id" | "signal_id" | "event_slug"> & {
     providerEventKey?: string | null;
-  }
+    source?: string | null;
+    created_at?: string | null;
+  },
+  sourceDiagnostics: Record<string, unknown> = {}
 ): ContractASourceLineage {
   const rowId = nonEmpty(candidate.generated_signal_pair_id);
+  const context = exactProviderEventIdentity(sourceDiagnostics);
   return {
     generated_signal_pair_id: rowId,
     generated_signal_pair_id_is_uuid: rowId !== null && UUID_LIKE_RE.test(rowId),
     observation_id: nonEmpty(candidate.signal_id),
     event_slug: nonEmpty(candidate.event_slug),
     provider_event_key: nonEmpty(candidate.providerEventKey ?? null),
+    provider_event_id: context?.eventId ?? null,
+    provider_event_start_iso: context?.eventStartIso ?? null,
+    provider_sport: context?.sport ?? null,
+    producer_source: nonEmpty(candidate.source),
+    source_created_at: nonEmpty(candidate.created_at),
   };
+}
+
+type ExactProviderEventIdentity = {
+  eventId: string;
+  eventStartIso: string;
+  sport: string | null;
+};
+
+function exactProviderEventIdentity(sourceDiagnostics: Record<string, unknown>): ExactProviderEventIdentity | null {
+  const raw = sourceDiagnostics.providerEventContext;
+  if (!raw || typeof raw !== "object") return null;
+  const context = raw as Record<string, unknown>;
+  const eventId = nonEmpty(context.eventId);
+  const eventStartIso = nonEmpty(context.eventStartIso);
+  if (
+    context.v !== "v1" ||
+    context.provider !== "polymarket" ||
+    eventId === null ||
+    eventStartIso === null ||
+    !Number.isFinite(Date.parse(eventStartIso))
+  ) return null;
+  return { eventId, eventStartIso, sport: nonEmpty(context.sportFamily) ?? nonEmpty(context.game) };
+}
+
+function providerPhysicalEventId(eventId: string, eventStartIso: string): string {
+  return `provider:polymarket:${eventId.toLowerCase()}:${eventStartIso.slice(0, 10)}`;
 }
 
 /**
@@ -365,9 +409,12 @@ export function buildContractAPlanningDecision(
   candidate: FireModelCandidate,
   sourceDiagnostics: Record<string, unknown>
 ): ContractADecisionResult<ContractAPlanningDecision> {
-  const lineage = resolveContractASourceLineage(candidate);
+  const lineage = resolveContractASourceLineage(candidate, sourceDiagnostics);
   const start = resolveContractAEventStartIso(sourceDiagnostics);
-  const physicalEventId = resolveContractAPhysicalEventId(candidate, start.ok ? start.iso : null);
+  const providerIdentity = exactProviderEventIdentity(sourceDiagnostics);
+  const physicalEventId = providerIdentity === null
+    ? null
+    : providerPhysicalEventId(providerIdentity.eventId, providerIdentity.eventStartIso);
   const reject = (reason: ContractARejectionReasonCode, detail?: string) =>
     ({
       accepted: false as const,
@@ -382,7 +429,8 @@ export function buildContractAPlanningDecision(
     });
 
   if (!start.ok) return reject(start.reason);
-  if (physicalEventId === null) return reject("MISSING_PHYSICAL_EVENT_ID");
+  if (providerIdentity === null) return reject("EXACT_PROVIDER_EVENT_IDENTITY_MISSING");
+  if (start.iso !== providerIdentity.eventStartIso) return reject("EXACT_PROVIDER_EVENT_START_MISMATCH");
 
   const policy = candidate.diagnostics.market_policy ?? null;
   if (policy !== null && policy.allowed === false) {
@@ -400,7 +448,7 @@ export function buildContractAPlanningDecision(
       decision_version: CONTRACT_A_DECISION_VERSION,
       contract_a_version: "CONTRACT_A_PLANNING_V1",
       status: "ACCEPTED",
-      physical_event_id: physicalEventId,
+      physical_event_id: providerPhysicalEventId(providerIdentity.eventId, providerIdentity.eventStartIso),
       source_lineage: lineage,
       event_start_iso: start.iso,
       event_start_iso_source: start.source,
@@ -444,7 +492,7 @@ export function buildContractAFinalIdentityDecision(
   candidate: FireModelCandidate,
   sourceDiagnostics: Record<string, unknown>
 ): ContractADecisionResult<ContractAFinalIdentityDecision> {
-  const lineage = resolveContractASourceLineage(candidate);
+  const lineage = resolveContractASourceLineage(candidate, sourceDiagnostics);
   const reject = (reason: ContractARejectionReasonCode, detail?: string) =>
     ({
       accepted: false as const,
@@ -461,8 +509,11 @@ export function buildContractAFinalIdentityDecision(
   const start = resolveContractAEventStartIso(sourceDiagnostics);
   if (!start.ok) return reject("EVENT_START_ISO_MISMATCH", start.reason);
   if (start.iso !== planning.event_start_iso) return reject("EVENT_START_ISO_MISMATCH");
+  const providerIdentity = exactProviderEventIdentity(sourceDiagnostics);
+  if (providerIdentity === null) return reject("EXACT_PROVIDER_EVENT_IDENTITY_MISSING");
+  if (providerIdentity.eventStartIso !== start.iso) return reject("EXACT_PROVIDER_EVENT_START_MISMATCH");
 
-  const candidatePhysicalEventId = resolveContractAPhysicalEventId(candidate, start.iso);
+  const candidatePhysicalEventId = providerPhysicalEventId(providerIdentity.eventId, providerIdentity.eventStartIso);
   if (candidatePhysicalEventId !== planning.physical_event_id) {
     return reject("PHYSICAL_EVENT_ID_MISMATCH", candidatePhysicalEventId ?? "null");
   }

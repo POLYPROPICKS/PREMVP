@@ -785,7 +785,7 @@ function executionEventStartMismatchReason(): string {
   return "EXECUTION_EVENT_START_MISMATCH";
 }
 
-function planningDecisionFromReservation(reservation: NightEventReservationRow): ContractAPlanningDecision | null {
+export function planningDecisionFromReservation(reservation: NightEventReservationRow): ContractAPlanningDecision | null {
   const diag = reservation.diagnostics ?? {};
   const sourceLineage = diag.source_lineage;
   const physicalEventId = reservation.physical_event_id;
@@ -802,7 +802,15 @@ function planningDecisionFromReservation(reservation: NightEventReservationRow):
     typeof rank !== "number" || !Number.isFinite(rank)
   ) return null;
   const lineage = sourceLineage as ContractAPlanningDecision["source_lineage"];
-  if (typeof lineage.event_slug !== "string" || lineage.event_slug === "") return null;
+  const providerEventId = lineage.provider_event_id;
+  const providerEventStartIso = lineage.provider_event_start_iso;
+  if (
+    typeof lineage.event_slug !== "string" || lineage.event_slug === "" ||
+    typeof providerEventId !== "string" || providerEventId === "" ||
+    typeof providerEventStartIso !== "string" || !Number.isFinite(Date.parse(providerEventStartIso)) ||
+    providerEventStartIso !== eventStartIso ||
+    providerPhysicalEventId(providerEventId, providerEventStartIso) !== physicalEventId
+  ) return null;
   return {
     decision_version: "CONTRACT_A_DECISION_V1",
     contract_a_version: "CONTRACT_A_PLANNING_V1",
@@ -824,7 +832,8 @@ function planningDecisionFromReservation(reservation: NightEventReservationRow):
       no_trade_after: typeof diag.no_trade_after === "string" ? diag.no_trade_after : null,
       timing_bucket: (diag.timing_bucket as ContractAPlanningDecision["execution_window"]["timing_bucket"]) ?? "UNKNOWN",
     },
-    final_identity_evidence: null,
+    final_identity_evidence:
+      (diag.planning_final_identity_evidence as ContractAPlanningDecision["final_identity_evidence"] | undefined) ?? null,
     rejection_trace: null,
   };
 }

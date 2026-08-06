@@ -62,21 +62,22 @@ async function at<T>(ms: number, fn: () => Promise<T>): Promise<T> {
 /**
  * A production-shaped generated_signal_pairs row: real UUID id, real upstream
  * sport metadata (diagnostics.shadowScope), canonical diagnostics.gameStartIso.
- * Deliberately carries NO providerEventContext, so occurrence identity must be
- * resolved through the slug + canonical start fallback -- the exact surface the
- * date-only collision lived on.
+ * Carries the exact provider event identity required by new Reservations.
  */
 function sourceRow(overrides: {
   id?: string;
   conditionId?: string;
   tokenId?: string;
   eventSlug?: string;
+  providerEventId?: string;
   gameStartIso?: string | null;
   score?: number;
   confidence?: number;
 }): Record<string, unknown> {
   const gameStartIso = overrides.gameStartIso === undefined ? KICKOFF_A : overrides.gameStartIso;
   const conditionId = overrides.conditionId ?? "cond-nyy-phi";
+  const eventSlug = overrides.eventSlug ?? "mlb-nyy-phi-2026-07-27";
+  const providerEventId = overrides.providerEventId ?? `provider-${eventSlug}-${gameStartIso ?? "missing"}`;
   return {
     id: overrides.id ?? "00000000-0000-4000-8000-000000000001",
     condition_id: conditionId,
@@ -91,10 +92,17 @@ function sourceRow(overrides: {
     created_at: "2026-07-27T19:30:00.000Z",
     expires_at: "2026-07-28T04:00:00.000Z",
     signal_result: null,
-    event_slug: overrides.eventSlug ?? "mlb-nyy-phi-2026-07-27",
+    event_slug: eventSlug,
     market_slug: "New York Yankees vs. Philadelphia Phillies - Moneyline",
     diagnostics: {
       ...(gameStartIso === null ? {} : { gameStartIso }),
+      providerEventContext: {
+        v: "v1",
+        provider: "polymarket",
+        eventId: providerEventId,
+        eventStartIso: gameStartIso ?? KICKOFF_A,
+        sportFamily: "baseball",
+      },
       dataCoverage: 60,
       shadowScope: "baseball",
       eventTitle: "New York Yankees vs Philadelphia Phillies",
@@ -379,7 +387,7 @@ test("PDR-12: a TERMINAL reservation for an OLD occurrence does not block a new 
 
 const LEGACY_DATE_ONLY_ID = "event:mlb-nyy-phi-2026-07-27:2026-07-27";
 
-test("PDR-12a: an ACTIVE legacy date-only row with the same normalized start is reused, never inserted twice", async () => {
+test("PDR-12a: an ACTIVE legacy date-only row is never reused as an exact provider Reservation", async () => {
   const plan = await planFrom([sourceRow({})]);
   const legacy = {
     ...plan.reservations[0],
@@ -392,10 +400,10 @@ test("PDR-12a: an ACTIVE legacy date-only row with the same normalized start is 
 
   const persisted = await persistReservationPlan(plan, {}, repo);
 
-  assert.equal(persisted.written_count, 0);
-  assert.equal(persisted.already_exists, true);
-  assert.equal(repo.insertCalls, 0);
-  assert.equal(repo.store.length, 1);
+  assert.equal(persisted.written_count, 1);
+  assert.equal(repo.insertCalls, 1);
+  assert.equal(repo.store.length, 2);
+  assert.notEqual(repo.store[1]?.physical_event_id, LEGACY_DATE_ONLY_ID);
 });
 
 test("PDR-12b: an ACTIVE legacy date-only row with a different same-day start does not collapse a doubleheader", async () => {
@@ -416,7 +424,7 @@ test("PDR-12b: an ACTIVE legacy date-only row with a different same-day start do
   assert.equal(repo.store.length, 2);
 });
 
-test("PDR-12c: an ACTIVE legacy date-only row without an exact valid start fails closed", async () => {
+test("PDR-12c: malformed legacy timing is never parsed as an exact provider occurrence", async () => {
   const plan = await planFrom([sourceRow({})]);
   const legacy = {
     ...plan.reservations[0],
@@ -427,12 +435,10 @@ test("PDR-12c: an ACTIVE legacy date-only row without an exact valid start fails
   };
   const repo = makeFakeRepo([legacy]);
 
-  await assert.rejects(
-    () => persistReservationPlan(plan, {}, repo),
-    /LEGACY_OCCURRENCE_IDENTITY_UNRESOLVED/
-  );
-  assert.equal(repo.insertCalls, 0);
-  assert.equal(repo.store.length, 1);
+  const persisted = await persistReservationPlan(plan, {}, repo);
+  assert.equal(persisted.written_count, 1);
+  assert.equal(repo.insertCalls, 1);
+  assert.equal(repo.store.length, 2);
 });
 
 test("PDR-12d: a TERMINAL legacy date-only row does not block a new Reservation", async () => {
@@ -514,14 +520,14 @@ test("PDR-14: the top 15 are selected in Contract A planning order, not by legac
 
 // ── 7. Event-level semantics and persistence compatibility ────────────────
 
-test("PDR-15: no exact market identity, sibling or new universe is chosen at the Reservation stage", async () => {
+test("PDR-15: Reservation preserves Planning market evidence but never selects a sibling universe", async () => {
   const rows = [sourceRow({})];
   const plan = await planFrom(rows);
   const [r] = plan.reservations;
-  const serialized = JSON.stringify(r);
-
-  assert.doesNotMatch(serialized, /cond-nyy-phi/, "condition_id must not be finalized at reservation");
-  assert.doesNotMatch(serialized, /tok-nyy-phi-yankees/, "token_id must not be finalized at reservation");
+  const evidence = r.diagnostics.planning_final_identity_evidence as Record<string, unknown>;
+  assert.equal(evidence.condition_id, "cond-nyy-phi");
+  assert.equal(evidence.token_id, "tok-nyy-phi-yankees");
+  assert.equal(evidence.side, "New York Yankees");
   assert.equal(r.diagnostics.condition_id, undefined);
   assert.equal(r.diagnostics.token_id, undefined);
   assert.equal(r.diagnostics.side, undefined);
