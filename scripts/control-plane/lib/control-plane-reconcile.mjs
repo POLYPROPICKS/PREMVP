@@ -5,14 +5,32 @@ import path from 'node:path';
 const CONTROL = 'docs/ai-context/control-plane';
 const STATE_FILES = ['CURRENT_STATE.yaml', 'EVIDENCE_LEDGER.md', 'ARCHITECT_SNAPSHOT.md'];
 
-export function reconcilePlan({ mode, baseline = null }) {
+export function normalizeBaseline({ baseline, intendedHead, resolveCommit, isAncestor }) {
+  if (typeof baseline !== 'string' || baseline.trim().length === 0) {
+    throw new Error('RECONCILE_BASELINE_REQUIRED: --apply-state requires a baseline');
+  }
+  if (typeof resolveCommit !== 'function' || typeof isAncestor !== 'function') {
+    throw new Error('RECONCILE_BASELINE_RESOLUTION_REQUIRED: live Git resolution adapters are required');
+  }
+  const resolved = resolveCommit(baseline.trim());
+  if (!/^[0-9a-f]{40}$/i.test(resolved || '')) {
+    throw new Error('RECONCILE_BASELINE_UNRESOLVED: baseline must resolve to one full commit SHA');
+  }
+  if (!isAncestor(resolved, intendedHead)) {
+    throw new Error('RECONCILE_BASELINE_NOT_ANCESTOR: resolved baseline is not an ancestor of intended head');
+  }
+  return resolved.toLowerCase();
+}
+
+export function reconcilePlan({ mode, baseline = null, intendedHead = null, resolveCommit = null, isAncestor = null }) {
   if (!['plan', 'apply-non-state', 'apply-state', 'verify'].includes(mode)) {
     throw new Error(`RECONCILE_INVALID_MODE: ${mode}`);
   }
-  if (mode === 'apply-state' && !/^[0-9a-f]{40}$/i.test(baseline || '')) {
-    throw new Error('RECONCILE_BASELINE_REQUIRED: --apply-state requires a full implementation SHA');
+  let baselineResolvedSha = null;
+  if (mode === 'apply-state') {
+    baselineResolvedSha = normalizeBaseline({ baseline, intendedHead, resolveCommit, isAncestor });
   }
-  return { command_id: 'premvp.command.control_plane_reconcile.v1', mode, baseline,
+  return { command_id: 'premvp.command.control_plane_reconcile.v1', mode, baseline_input: baseline, baseline_resolved_sha: baselineResolvedSha,
     state_files: STATE_FILES.map((f) => `${CONTROL}/${f}`), atomic: true,
     authority: ['live Git/runtime evidence', 'CURRENT_STATE.yaml', 'CAPABILITY_MATRIX.yaml', 'ROUTING_AND_PIPELINES.yaml', 'AGENT_REGISTRY.yaml', 'PROMPT__PROTOCOL.md'] };
 }
