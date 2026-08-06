@@ -1437,7 +1437,8 @@ async function buildContractAV1Candidates(
 export async function fetchPlanningSourceRowSets(
   planningMode: boolean,
   versions: readonly string[],
-  planningLookbackIso: string
+  planningLookbackIso: string,
+  includePlanningShadowRows = true
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<{ scoredRows: any[]; planningShadowRows: any[] }> {
   const { supabaseAdmin } = await import("@/lib/supabase/server");
@@ -1476,7 +1477,7 @@ export async function fetchPlanningSourceRowSets(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let scoredRows: any[];
-  if (planningMode) {
+  if (planningMode && includePlanningShadowRows) {
     scoredRows = await fetchAllPlanningRowsByKeyset(
       (cursor) => applyPlanningSnapshot(buildScoredQuery(), cursor),
       { stage: "planning_scored_rows_fetch" }
@@ -1528,12 +1529,17 @@ export async function loadContractAPlanningSourceRows(): Promise<Record<string, 
   const planningLookbackIso = new Date(
     Date.now() - PLANNING_LOOKBACK_HOURS * 3_600_000
   ).toISOString();
-  const { scoredRows, planningShadowRows } = await fetchPlanningSourceRowSets(
+  const { scoredRows } = await fetchPlanningSourceRowSets(
     true,
     PLANNING_ALLOWED_VERSIONS,
-    planningLookbackIso
+    planningLookbackIso,
+    false
   );
-  return [...scoredRows, ...planningShadowRows] as Record<string, unknown>[];
+  // Contract A Planning consumes only rows carrying the admitted producer score.
+  // The shadow branch is intentionally score-null and cannot become a Planning
+  // Decision; reading its unbounded historical pages here delays the real
+  // Reservation write without expanding the authoritative decision universe.
+  return scoredRows as Record<string, unknown>[];
 }
 
 export async function buildFireModelCandidates(
