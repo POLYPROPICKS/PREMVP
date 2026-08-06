@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-06T09:00:00Z",
-  "state_version": 7,
+  "updated_at": "2026-08-06T08:43:57Z",
+  "state_version": 8,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
@@ -34,16 +34,16 @@
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "9574dced71579048148401662e67912f7ec03d39",
+    "origin_main_sha": "b8aa8e7ba2114d5f9828200afb2d6c778e15224b",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "executor": "claude_code_cloud",
       "commands": ["git fetch origin main", "git rev-parse origin/main", "git merge-base --is-ancestor <prior-baseline> origin/main", "curl https://polypropicks.com/api/build-info"],
-      "observed_at": "2026-08-06T09:00:00Z",
+      "observed_at": "2026-08-06T08:43:57Z",
       "worktree": "clean",
-      "note": "Baseline advanced to live origin/main tip 9574dced71579048148401662e67912f7ec03d39 (merge of PR #91, state-v6 parity recovery). Production build-info returned commit_sha 9574dced71579048148401662e67912f7ec03d39, an exact match. This is a state-only bootstrap advance recording Action 2 (ACTION_2_BUILD_RESUMABLE_PREMVP_RELEASE_PIPELINE_V1): premvp.command.release_pipeline.v1 was implemented and pushed to branch claude/premvp-release-pipeline-otzkt6, EXPERIMENTAL_DISABLED, not yet merged. C1 remains OPEN pending an ordinary post-deploy immutable Queue outcome; the historical 15 reservations remain SKIPPED and expired."
+      "note": "Baseline advanced to live origin/main tip b8aa8e7ba2114d5f9828200afb2d6c778e15224b (merge of PR #92, Action 2 release-pipeline scaffold). Production build-info returned the same commit_sha, an exact match. premvp.command.release_pipeline.v1 exists and remains EXPERIMENTAL_DISABLED pending Action 3; C1 remains OPEN. No product, database, Ireland, or live-money behavior changed in this state refresh."
     }
   },
 
@@ -52,8 +52,8 @@
       "id": "ACTION_2_RELEASE_PIPELINE_SCAFFOLD",
       "executor": "claude_code_cloud",
       "branch": "claude/premvp-release-pipeline-otzkt6",
-      "status": "IMPLEMENTED_NOT_MERGED",
-      "note": "premvp.command.release_pipeline.v1 (premvp.release_pipeline.v1) implemented: pipeline specification, release-run manifest schema, transport-free engine library, CLI, manifest validator, 33 passing tests, and EXPERIMENTAL_DISABLED registration in AGENT_REGISTRY.yaml/ROUTING_AND_PIPELINES.yaml/ARCHITECT_CONTROL_PLANE.yaml. Mutating activation is gated on premvp.command.control_plane_reconcile.v1, which does not exist yet (Action 3 scope). Not yet pushed/PR'd/merged pending Founder confirmation on this remote session."
+      "status": "MERGED_EXPERIMENTAL_DISABLED",
+      "note": "PR #92 merged the release-pipeline scaffold to origin/main as b8aa8e7ba2114d5f9828200afb2d6c778e15224b. It remains EXPERIMENTAL_DISABLED because premvp.command.control_plane_reconcile.v1 does not yet exist; Action 3 is pending."
     },
     {
       "id": "C1_QUEUE_AUTHORITY_CUTOFF",
@@ -149,7 +149,7 @@
   ],
 
   "evidence_freshness": {
-    "origin_main_sha_checked_at": "2026-08-04T19:45:26Z",
+    "origin_main_sha_checked_at": "2026-08-06T08:43:57Z",
     "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
     "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
     "max_age_days": 7
