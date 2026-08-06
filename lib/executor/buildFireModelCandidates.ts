@@ -376,6 +376,10 @@ const SIGNAL_SELECT_COLS =
 const LIVE_ROW_LIMIT = 150;
 const PLANNING_PAGE_SIZE = 1000;
 const PLANNING_FETCH_CEILING = 200_000; // hard safety ceiling, far above realistic corpus
+// The source reads are deliberately smaller than the generic final-row scan.  They
+// run against the live reservation path and must finish inside the scheduler's
+// statement budget even while a producer is writing new rows.
+const PLANNING_SOURCE_PAGE_SIZE = 500;
 // created_at lookback that bounds the planning corpus. Mirrors the reservation capacity
 // audit's LOOKBACK_HOURS so the builder universe == the audit universe, and so the
 // paginated scan stays bounded (an unbounded full-history scan hits a statement timeout).
@@ -466,6 +470,89 @@ export async function fetchAllPlanningRows(
     if (batch.length < PLANNING_PAGE_SIZE) break;
     from += PLANNING_PAGE_SIZE;
     if (from > PLANNING_FETCH_CEILING) break;
+  }
+  return all;
+}
+
+type PlanningKeysetCursor = { createdAt: string; id: string };
+
+/**
+ * Read a fixed planning snapshot with a deterministic (created_at, id) keyset.
+ *
+ * Offset pagination makes later pages progressively more expensive and, without
+ * an `id` tie-break, cannot prove page conservation when rows share a timestamp.
+ * This helper intentionally receives a query factory so retries replay the exact
+ * same cursor and never advance past a failed page.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export async function fetchAllPlanningRowsByKeyset(
+  buildQuery: (cursor: PlanningKeysetCursor | null) => any,
+  opts: {
+    stage?: string;
+    pageSize?: number;
+    retryPolicy?: PaginatedFetchRetryPolicy;
+    sleep?: (ms: number) => Promise<void>;
+  } = {}
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): Promise<any[]> {
+  const stage = opts.stage ?? "planning_keyset_fetch";
+  const pageSize = opts.pageSize ?? PLANNING_SOURCE_PAGE_SIZE;
+  const retryPolicy = opts.retryPolicy ?? DEFAULT_PLANNING_PAGE_RETRY_POLICY;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > PLANNING_PAGE_SIZE) {
+    throw new Error(`${stage} invalid pageSize`);
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const all: any[] = [];
+  let cursor: PlanningKeysetCursor | null = null;
+  let page = 0;
+  for (;;) {
+    page += 1;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let batch: any[] | null = null;
+    let lastMessage = "unknown error";
+    for (let attempt = 1; attempt <= retryPolicy.maxAttempts; attempt++) {
+      const controller = new AbortController();
+      const timeoutHandle = setTimeout(() => controller.abort(), retryPolicy.pageTimeoutMs);
+      try {
+        const { data, error } = await buildQuery(cursor).limit(pageSize).abortSignal(controller.signal);
+        clearTimeout(timeoutHandle);
+        if (!error) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          batch = (data ?? []) as any[];
+          break;
+        }
+        lastMessage = error.message;
+      } catch (err) {
+        clearTimeout(timeoutHandle);
+        lastMessage = err instanceof Error ? err.message : String(err);
+      }
+      if (attempt < retryPolicy.maxAttempts) await sleep(retryPolicy.backoffMs(attempt));
+    }
+    if (batch === null) {
+      const planningError = new Error(
+        `${stage} failed: page=${page} attempts=${retryPolicy.maxAttempts} cause=${sanitizeSchedulerErrorMessage(lastMessage)}`
+      ) as PlanningPageFetchError;
+      planningError.stage = stage;
+      planningError.page = page;
+      planningError.attempts = retryPolicy.maxAttempts;
+      throw planningError;
+    }
+    if (all.length + batch.length > PLANNING_FETCH_CEILING) {
+      throw new Error(`${stage} exceeded planning fetch ceiling`);
+    }
+    all.push(...batch);
+    if (batch.length < pageSize) break;
+    const tail = batch.at(-1);
+    const createdAt = typeof tail?.created_at === "string" ? tail.created_at : "";
+    const id = typeof tail?.id === "string" ? tail.id : "";
+    if (!createdAt || !id) throw new Error(`${stage} invalid keyset cursor at page=${page}`);
+    const nextCursor = { createdAt, id };
+    if (cursor && (nextCursor.createdAt > cursor.createdAt || (nextCursor.createdAt === cursor.createdAt && nextCursor.id >= cursor.id))) {
+      throw new Error(`${stage} non-descending keyset cursor at page=${page}`);
+    }
+    cursor = nextCursor;
   }
   return all;
 }
@@ -1336,6 +1423,19 @@ export async function fetchPlanningSourceRowSets(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<{ scoredRows: any[]; planningShadowRows: any[] }> {
   const { supabaseAdmin } = await import("@/lib/supabase/server");
+  // Freeze both disjoint reads to one causal point.  This prevents rows written
+  // while pagination is in flight from moving between pages or changing the
+  // source universe of a single planning run.
+  const snapshotAsOfIso = new Date().toISOString();
+  const applyPlanningSnapshot = (query: any, cursor: PlanningKeysetCursor | null) => {
+    const bounded = query
+      .gte("created_at", planningLookbackIso)
+      .lte("created_at", snapshotAsOfIso);
+    if (!cursor) return bounded;
+    return bounded.or(
+      `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`
+    );
+  };
 
   // Scored candidate query — same filters in both modes. The ONLY difference is row
   // coverage: the live executor stays recency-bounded (.limit), but planningMode must
@@ -1348,18 +1448,19 @@ export async function fetchPlanningSourceRowSets(
       .select(SIGNAL_SELECT_COLS)
       .in("metric_formula_version", versions as string[])
       .is("signal_result", null)
-      .gt("expires_at", new Date().toISOString())
+      .gt("expires_at", snapshotAsOfIso)
       .not("selected_token_id", "is", null)
       .not("condition_id", "is", null)
       .not("entry_price_num", "is", null)
       .gte("signal_confidence_num", 50)
-      .order("created_at", { ascending: false });
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false });
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let scoredRows: any[];
   if (planningMode) {
-    scoredRows = await fetchAllPlanningRows(
-      () => buildScoredQuery().gte("created_at", planningLookbackIso),
+    scoredRows = await fetchAllPlanningRowsByKeyset(
+      (cursor) => applyPlanningSnapshot(buildScoredQuery(), cursor),
       { stage: "planning_scored_rows_fetch" }
     );
   } else {
@@ -1383,13 +1484,14 @@ export async function fetchPlanningSourceRowSets(
         .select(SIGNAL_SELECT_COLS)
         .eq("metric_formula_version", "shadow-strategic-sports-v1")
         .is("signal_result", null)
-        .gt("expires_at", new Date().toISOString())
+        .gt("expires_at", snapshotAsOfIso)
         .not("selected_token_id", "is", null)
         .not("condition_id", "is", null)
         .is("signal_confidence_num", null)
-        .order("created_at", { ascending: false });
-    planningShadowRows = await fetchAllPlanningRows(
-      () => buildShadowQuery().gte("created_at", planningLookbackIso),
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
+    planningShadowRows = await fetchAllPlanningRowsByKeyset(
+      (cursor) => applyPlanningSnapshot(buildShadowQuery(), cursor),
       { stage: "planning_shadow_rows_fetch" }
     );
   }
