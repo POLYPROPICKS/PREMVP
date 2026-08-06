@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-06T09:25:00Z",
-  "state_version": 11,
+  "updated_at": "2026-08-06T11:09:59Z",
+  "state_version": 12,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
@@ -12,17 +12,16 @@
   },
   "next_two_value_steps": [
     {
-      "id": "C2",
-      "title": "Ireland execution reads only the immutable Queue",
-      "value_target": "immutable Queue becomes the only Ireland execution source; callback strictly by queue_id; then terminal state",
+      "id": "STEP_2_FINAL_IDENTITY",
+      "title": "Final Identity fix verification",
+      "value_target": "fix, ancestry, deployment, and post-fix evidence verified",
       "status": "NEXT"
     },
     {
-      "id": "SETTLEMENT_PNL",
-      "title": "Settlement / PnL and production vertical proof",
-      "value_target": "one bounded real order -> authoritative receipt -> callback -> terminal state -> settlement and reconciled PnL",
-      "status": "PLANNED",
-      "requires_founder_live_money_approval": true
+      "id": "STEP_3_FORWARD_FUNNEL",
+      "title": "Forward Reservation funnel",
+      "value_target": "T-5 eligible traffic",
+      "status": "FOLLOWING"
     }
   ],
 
@@ -30,20 +29,21 @@
     { "id": "A", "title": "Contract A authority", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT" },
     { "id": "B", "title": "Planning and Reservation writers use Contract A", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT" },
     { "id": "C1_SOURCE_MERGE", "title": "C1 source and merge lineage present on origin/main", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "PROVEN_IN_RUNTIME" }
+    ,{ "id": "STEP_1_CONTEXTUAL_PROMPT_CONTRACT", "title": "Contextual Prompt Contract activation via PR #96", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "PROVEN_IN_RUNTIME" }
   ],
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "c74106c46e6e12de2f0ab26be4e0e38bee3169a0",
+    "origin_main_sha": "cec9fc29de69bc1717ba812c0866b16a3c6e6460",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "executor": "claude_code_cloud",
-      "commands": ["git fetch origin main", "git rev-parse origin/main", "git merge-base --is-ancestor <prior-baseline> origin/main", "curl https://polypropicks.com/api/build-info"],
-      "observed_at": "2026-08-06T09:25:00Z",
+      "commands": ["git fetch --prune origin", "git rev-parse origin/main", "git merge-base --is-ancestor a7214f348de862f220bdf106a3a73a9e7c8f0ebe origin/main", "curl https://polypropicks.com/api/build-info"],
+      "observed_at": "2026-08-06T11:09:59Z",
       "worktree": "clean",
-      "note": "PR #94 stored a malformed non-existent baseline. The corrective validator commit c74106c46e6e12de2f0ab26be4e0e38bee3169a0 is the resolved non-state baseline; its state bootstrap records it without self-acceptance. PR #94 is deployed, C1 remains OPEN, and no product, database, Ireland, or live-money behavior changed."
+      "note": "PR #96 merged implementation a7214f348de862f220bdf106a3a73a9e7c8f0ebe as cec9fc29de69bc1717ba812c0866b16a3c6e6460. Production /api/build-info returned the exact merge SHA. Contextual Prompt Contract is complete; C1 remains OPEN and no product, database, Ireland, or live-money behavior changed."
     }
   },
 
@@ -81,6 +81,7 @@
     { "id": "CODEX_CONTUR_REVIEWER_PRESENT", "executor": "local_codex_windows", "statement": "codex.agent.contur_gate_reviewer exists as a user-scoped agent", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003" },
     { "id": "CONTROL_PLANE_PHASE_1_2_MERGED", "executor": "claude_code_cloud", "statement": "PR #77 (Architect Control Plane Phase 1/2 canonical foundation and ChatGPT Project setup) merged to main as b522d3a3caaa07d8605f2b6d4edbd2db6a71a629", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "EVIDENCE_LEDGER#EV-0007" },
     { "id": "CLOUD_PRODUCTION_BUILD_PROVENANCE_READ", "executor": "claude_code_cloud", "statement": "Production GET /api/build-info returned HTTP 200 with a valid full Git commit SHA mapping the running PREMVP build to an exact repository commit.", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "CMP-PR85-DEPLOYMENT-STATE-RUNTIME-BOUNDARY-20260804" }
+    ,{ "id": "PROMPT_CONTRACT_PR96", "executor": "local_codex_windows", "statement": "PR #96 merged and deployed; command bindings and contextual compiler checks passed.", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "EVIDENCE_LEDGER#EV-0017" }
   ],
 
   "proven_failures": [
@@ -149,7 +150,7 @@
   ],
 
   "evidence_freshness": {
-    "origin_main_sha_checked_at": "2026-08-06T09:25:00Z",
+    "origin_main_sha_checked_at": "2026-08-06T11:09:59Z",
     "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
     "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
     "max_age_days": 7
