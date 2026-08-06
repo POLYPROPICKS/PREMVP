@@ -30,6 +30,7 @@ import {
   REBALANCE_MINUTES_BEFORE_START,
   LATEST_ENTRY_MINUTES_BEFORE,
 } from "./nightWindow";
+import { classifyActiveReservationDue } from "./reservationRebalanceContract.mjs";
 import {
   EXECUTABLE_TIER,
   type EventExecutionQueueRow,
@@ -513,36 +514,14 @@ function classifyReservations(
 ): ReservationClassification[] {
   return all
     .map((r) => {
-      const startMs = Date.parse(r.game_start_iso);
-      if (!Number.isFinite(startMs)) {
-        return {
-          match_family_key: r.match_family_key,
-          event_title: r.event_title ?? null,
-          game_start_iso: r.game_start_iso,
-          status: r.status,
-          state: "INVALID_START" as const,
-          seconds_until_due: null,
-          rebalance_starts_iso: null,
-          rebalance_ends_iso: null,
-        };
-      }
-      const rebalanceStartsMs = startMs - REBALANCE_MINUTES_BEFORE_START * 60_000;
-      const rebalanceEndsMs = startMs - LATEST_ENTRY_MINUTES_BEFORE * 60_000;
-      const minutesToStart = (startMs - nowMs) / 60_000;
-      let state: ReservationClassification["state"];
-      if (minutesToStart <= LATEST_ENTRY_MINUTES_BEFORE) state = "EXPIRED";
-      else if (minutesToStart <= REBALANCE_MINUTES_BEFORE_START) state = "DUE_NOW";
-      else state = "NOT_DUE_YET";
+      const classification = classifyActiveReservationDue(r, nowMs) as Pick<ReservationClassification,
+        "state" | "seconds_until_due" | "rebalance_starts_iso" | "rebalance_ends_iso">;
       return {
         match_family_key: r.match_family_key,
         event_title: r.event_title ?? null,
         game_start_iso: r.game_start_iso,
         status: r.status,
-        state,
-        seconds_until_due:
-          state === "NOT_DUE_YET" ? Math.max(0, Math.ceil((rebalanceStartsMs - nowMs) / 1000)) : 0,
-        rebalance_starts_iso: new Date(rebalanceStartsMs).toISOString(),
-        rebalance_ends_iso: new Date(rebalanceEndsMs).toISOString(),
+        ...classification,
       };
     })
     .sort((a, b) => Date.parse(a.game_start_iso) - Date.parse(b.game_start_iso));

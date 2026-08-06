@@ -18,10 +18,14 @@ export const NIGHT_PLAN_HORIZON_HOURS = 18; // planning horizon from the run ins
 // Per-event entry timing (LOCKED policy).
 // Process schedule: continuous 24/7 (canonical Railway cron: * * * * *).
 // Business entry window: T-70m to T-3m enforced in code, NOT in cron schedule.
-export const REBALANCE_MINUTES_BEFORE_START = 70; // open rebalance at T-70m
+import {
+  REBALANCE_MINUTES_BEFORE_START,
+  LATEST_ENTRY_MINUTES_BEFORE,
+  isDueForRebalance as isDueForRebalanceAtUtc,
+} from "./reservationRebalanceContract.mjs";
+export { REBALANCE_MINUTES_BEFORE_START, LATEST_ENTRY_MINUTES_BEFORE };
 export const REBALANCE_LATE_MINUTES_BEFORE_START = 30; // legacy constant — kept for reference
 export const PREFERRED_ENTRY_MINUTES_BEFORE = 45; // preferred entry at T-45m
-export const LATEST_ENTRY_MINUTES_BEFORE = 3;     // last safe queue creation at T-3m
 
 function minskParts(ms: number): { y: number; mo: number; d: number; h: number } {
   const shifted = new Date(ms + MINSK_UTC_OFFSET_HOURS * 3_600_000);
@@ -106,8 +110,7 @@ export function isWithinHorizon(gameStartMs: number, win: NightWindow, nowMs: nu
  * Process schedule is continuous 24/7; this function enforces the business entry window.
  */
 export function isDueForRebalance(gameStartMs: number, nowMs: number): boolean {
-  const minutesToStart = (gameStartMs - nowMs) / 60_000;
-  return minutesToStart > LATEST_ENTRY_MINUTES_BEFORE && minutesToStart <= REBALANCE_MINUTES_BEFORE_START;
+  return isDueForRebalanceAtUtc(gameStartMs, nowMs);
 }
 
 export function preferredEntryIso(gameStartMs: number): string {

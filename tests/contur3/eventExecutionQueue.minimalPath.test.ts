@@ -1,7 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { runEventRebalance, type RebalanceRepoPort } from "../../lib/executor/eventExecutionQueue";
 import type { EventExecutionQueueRow, NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
+import {
+  ACTIVE_REBALANCE_RESERVATION_STATUSES,
+  classifyActiveReservationDue,
+  isActiveReservationForRebalance,
+} from "../../lib/executor/reservationRebalanceContract.mjs";
 
 const START = "2026-08-06T18:00:00.000Z";
 const NOW = Date.parse("2026-08-06T17:00:00.000Z");
@@ -68,4 +74,41 @@ test("PostgreSQL-equivalent identical idempotency conflict returns ALREADY_QUEUE
   const result = await runEventRebalance(NOW, { write: true }, { repo, fetchFinalIdentitySourceRows: async () => [row("pair-a", 80, "cond-a")] });
   assert.equal(result.already_queued_count, 1);
   assert.equal(result.outcomes[0]?.reason, "IDEMPOTENCY_CONFLICT_RECOVERED");
+});
+
+test("persisted lifecycle parity: one frozen UTC asOf gives the same active/due set to audit and real entry", async () => {
+  const active = reservation();
+  const terminal = { ...reservation(), id: "reservation-terminal", status: "SKIPPED" as const, selection_reason: "EXACT_PROVIDER_EVENT_IDENTITY_MISSING" };
+  const expired = { ...reservation(), id: "reservation-expired", game_start_iso: "2026-08-06T17:02:00.000Z", event_start_iso: "2026-08-06T17:02:00.000Z" };
+  const persisted = [active, terminal, expired];
+  const activeRows = persisted.filter((r) => isActiveReservationForRebalance(r.status));
+  assert.deepEqual(ACTIVE_REBALANCE_RESERVATION_STATUSES, ["RESERVED", "REBALANCE_PENDING"]);
+  assert.equal(classifyActiveReservationDue(active, NOW).state, "DUE_NOW");
+  assert.equal(classifyActiveReservationDue(terminal, NOW).state, "DUE_NOW", "timing alone never reactivates a terminal row");
+  assert.equal(classifyActiveReservationDue(expired, NOW).state, "EXPIRED");
+  assert.deepEqual(activeRows.map((r) => r.id), ["reservation-minimal", "reservation-expired"]);
+
+  const queue: EventExecutionQueueRow[] = [];
+  const repo: RebalanceRepoPort = {
+    async loadActiveReservations() { return activeRows; },
+    async loadQueuedReservationIds() { return new Set<string>(); },
+    async markReservationsExpired() {}, async markReservationSkipped() {}, async markReservationQueued() {},
+    async insertQueueRow(value) { queue.push(value); },
+  };
+  const result = await runEventRebalance(NOW, { write: true }, {
+    repo,
+    fetchFinalIdentitySourceRows: async () => [row("pair-low", 22, "cond-low"), row("pair-high", 91, "cond-high")],
+    fetchCandidates: async () => { throw new Error("model/Contract A/order-book path must not run"); },
+  });
+  assert.equal(result.active_reservations_count, 2);
+  assert.equal(result.due_count, 1);
+  assert.equal(result.expired_count, 1);
+  assert.equal(queue.length, 1);
+  assert.equal(queue[0].condition_id, "cond-high");
+
+  const auditSource = readFileSync("scripts/contur3/funnel-trace-audit.mjs", "utf8");
+  assert.match(auditSource, /ACTIVE_REBALANCE_RESERVATION_STATUSES/);
+  assert.match(auditSource, /\.in\('status', ACTIVE_REBALANCE_RESERVATION_STATUSES\)/);
+  assert.match(auditSource, /classifyActiveReservationDue/);
+  assert.doesNotMatch(auditSource, /function classifyDueWindowState/);
 });

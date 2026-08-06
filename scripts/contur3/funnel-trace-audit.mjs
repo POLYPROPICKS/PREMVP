@@ -32,6 +32,13 @@
 
 import fs from 'fs';
 import path from 'path';
+import {
+  ACTIVE_REBALANCE_RESERVATION_STATUSES,
+  REBALANCE_MINUTES_BEFORE_START,
+  LATEST_ENTRY_MINUTES_BEFORE,
+  classifyActiveReservationDue,
+  isActiveReservationForRebalance,
+} from '../../lib/executor/reservationRebalanceContract.mjs';
 
 const LOG_DIR = path.join(process.cwd(), 'modeling', 'fire_runs', 'contur3-blue-model');
 
@@ -40,8 +47,6 @@ const LOOKAHEAD_HOURS = parseInt(process.env.CONTUR3_LOOKAHEAD_HOURS ?? '24', 10
 const EVENT_FILTER    = (process.env.CONTUR3_EVENT_FILTER ?? '').toLowerCase().trim();
 
 // ── Rebalance window constants — mirrors nightWindow.ts ─────────────────────
-const REBALANCE_MINUTES_BEFORE_START = 70;
-const LATEST_ENTRY_MINUTES_BEFORE    = 3;
 
 // ── Market classification regexes ────────────────────────────────────────────
 // Forbidden: must match identity fields only (slug, title, key), never telemetry.
@@ -85,27 +90,6 @@ function computeBattleTraceKey(row) {
 
 function nowIso() {
   return new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19) + 'Z';
-}
-
-function classifyDueWindowState(gameStartIso, nowMs) {
-  const startMs = Date.parse(gameStartIso);
-  if (!Number.isFinite(startMs)) return 'INVALID_START';
-  const minsToStart = (startMs - nowMs) / 60_000;
-  if (minsToStart > REBALANCE_MINUTES_BEFORE_START) return 'BEFORE_WINDOW';
-  if (minsToStart > LATEST_ENTRY_MINUTES_BEFORE)    return 'IN_WINDOW';
-  return 'EXPIRED';
-}
-
-function dueWindowStartIso(gameStartIso) {
-  const ms = Date.parse(gameStartIso);
-  if (!Number.isFinite(ms)) return null;
-  return new Date(ms - REBALANCE_MINUTES_BEFORE_START * 60_000).toISOString();
-}
-
-function dueWindowEndIso(gameStartIso) {
-  const ms = Date.parse(gameStartIso);
-  if (!Number.isFinite(ms)) return null;
-  return new Date(ms - LATEST_ENTRY_MINUTES_BEFORE * 60_000).toISOString();
 }
 
 function csvEscape(v) {
@@ -209,33 +193,45 @@ async function main() {
   if (reserveQ.failed) { failedTables.push('night_event_reservations'); partialFail = true; }
   const allReservations = reserveQ.data ?? [];
 
+  // This is deliberately the same source predicate as
+  // createSupabaseRebalanceRepoPort.loadActiveReservations(): no history
+  // cutoff, pagination, market policy, or title/slug inference.
+  const activeReserveQ = await safeQuery('night_event_reservations.active_rebalance', () =>
+    supabase
+      .from('night_event_reservations')
+      .select('*')
+      .in('status', ACTIVE_REBALANCE_RESERVATION_STATUSES)
+  );
+  if (activeReserveQ.failed) { failedTables.push('night_event_reservations.active_rebalance'); partialFail = true; }
+  const activeReservations = (activeReserveQ.data ?? []).filter(r => isActiveReservationForRebalance(r.status));
+
   const filteredReservations = EVENT_FILTER
     ? allReservations.filter(r => [r.event_title, r.event_slug, r.match_family_key]
         .filter(Boolean).some(f => f.toLowerCase().includes(EVENT_FILTER)))
     : allReservations;
 
-  // Future reservations (game_start_iso in lookahead window)
-  const futureReservations = allReservations.filter(r =>
+  // Only rows the production rebalance is permitted to process are classified.
+  const futureReservations = activeReservations.filter(r =>
     r.game_start_iso && Date.parse(r.game_start_iso) > nowMs &&
     Date.parse(r.game_start_iso) < nowMs + LOOKAHEAD_HOURS * 3_600_000
   );
 
-  // Classify each future reservation by market anchor
+  // No market/policy decision occurs after Reservation. This maps the one
+  // canonical UTC lifecycle contract over the exact active source query.
   const futureWithClass = futureReservations.map(r => {
-    const mc = classifyMarket([r.match_family_key, r.event_slug, r.event_title]);
-    const dwState = classifyDueWindowState(r.game_start_iso, nowMs);
+    const due = classifyActiveReservationDue(r, nowMs);
     return {
       ...r,
-      market_class: mc,
-      due_window_state: dwState,
-      due_window_start_iso: dueWindowStartIso(r.game_start_iso),
-      due_window_end_iso:   dueWindowEndIso(r.game_start_iso),
+      market_class: 'RESERVATION_LOCKED',
+      due_window_state: due.state === 'DUE_NOW' ? 'IN_WINDOW' : due.state === 'NOT_DUE_YET' ? 'BEFORE_WINDOW' : due.state,
+      due_window_start_iso: due.rebalance_starts_iso,
+      due_window_end_iso: due.rebalance_ends_iso,
       battle_trace_key: computeBattleTraceKey(r),
     };
   });
 
-  const futureValidReservations     = futureWithClass.filter(r => isAllowedMarket(r.market_class));
-  const futureForbiddenReservations = futureWithClass.filter(r => !isAllowedMarket(r.market_class));
+  const futureValidReservations     = futureWithClass;
+  const futureForbiddenReservations = [];
   const dueNowReservations          = futureValidReservations.filter(r => r.due_window_state === 'IN_WINDOW');
   const beforeWindowReservations    = futureValidReservations.filter(r => r.due_window_state === 'BEFORE_WINDOW');
   const missedReservations          = allReservations.filter(r => r.status === 'EXPIRED');
@@ -422,7 +418,7 @@ async function main() {
 
   // Queue rows
   for (const r of queueWithClass) {
-    const dwState = classifyDueWindowState(r.game_start_iso, nowMs);
+    const due = classifyActiveReservationDue(r, nowMs);
     csvRows.push({
       stage: 'queue',
       battle_trace_key: r.battle_trace_key,
@@ -433,9 +429,9 @@ async function main() {
       status: r.status,
       market_class: r.market_class,
       game_start_iso: r.game_start_iso,
-      due_window_state: dwState,
-      due_window_start_iso: dueWindowStartIso(r.game_start_iso) ?? '',
-      due_window_end_iso:   dueWindowEndIso(r.game_start_iso) ?? '',
+        due_window_state: due.state === 'DUE_NOW' ? 'IN_WINDOW' : due.state === 'NOT_DUE_YET' ? 'BEFORE_WINDOW' : due.state,
+        due_window_start_iso: due.rebalance_starts_iso ?? '',
+        due_window_end_iso:   due.rebalance_ends_iso ?? '',
       stake_usd: r.stake_usd ?? '',
       condition_id: r.condition_id ?? '',
       token_id: r.token_id ?? '',
