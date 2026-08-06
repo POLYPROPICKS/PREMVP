@@ -12,6 +12,7 @@ export function createQueueAuthorityFixture(
 ) {
   const eventStartIso = new Date(nowMs + ONE_HOUR_MS).toISOString();
   const eventSlug = candidate.event_slug || reservation.event_slug || "queue-authority-fixture-event";
+  const providerEventId = "provider-event-esp-arg";
   // Production-shaped exact provider market text: the bridge must enter the
   // real Planning producer rather than depend on a hand-built final candidate.
   const marketSlug = "Argentina vs Spain - Moneyline";
@@ -23,6 +24,8 @@ export function createQueueAuthorityFixture(
     token_id: candidate.token_id,
     selected_outcome: selectedOutcome,
     score: candidate.diagnostics.score,
+    stake_usd: candidate.stake_usd,
+    max_entry_price: candidate.max_entry_price,
     signal_confidence_num: candidate.diagnostics.score,
     smart_money_score_num: candidate.diagnostics.smart_money,
     // Avoid the documented 50-74 / 0.44-0.58 planning bad bucket: this
@@ -40,13 +43,19 @@ export function createQueueAuthorityFixture(
       shadowScope: candidate.inferred_sport,
       eventTitle: reservation.event_title,
       marketTitle: marketSlug,
+      providerEventContext: {
+        v: "v1",
+        provider: "polymarket",
+        eventId: providerEventId,
+        eventStartIso,
+      },
     },
   };
   const authoritativeReservation: NightEventReservationRow = {
     ...reservation,
     event_slug: eventSlug,
     game_start_iso: eventStartIso,
-    physical_event_id: `event:${eventSlug}:${eventStartIso}`,
+    physical_event_id: `provider:polymarket:${providerEventId}:${eventStartIso.slice(0, 10)}`,
     event_start_iso: eventStartIso,
     diagnostics: {
       selector_id: "CONTRACT_A_PLANNING_V1",
@@ -59,6 +68,7 @@ export function createQueueAuthorityFixture(
         condition_id: sourceRow.condition_id,
         token_id: sourceRow.token_id,
         selected_outcome: sourceRow.selected_outcome,
+        provider_event_key: `polymarket:${providerEventId}:${eventStartIso.slice(0, 10)}`,
       },
       planning_score: sourceRow.score,
       planning_tier: reservation.event_tier,

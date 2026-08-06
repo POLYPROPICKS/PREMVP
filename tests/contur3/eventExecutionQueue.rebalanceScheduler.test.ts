@@ -574,9 +574,9 @@ test("D8: a CONTRACT_A_V1 authoritative queue row carries diagnostics.source_sig
     }
   );
   const row = repo.queueRows[0];
-  const finalIdentity = row.diagnostics.contract_a_final_identity as { source_lineage: { generated_signal_pair_id: string } };
-  assert.equal(finalIdentity.source_lineage.generated_signal_pair_id, realUuid);
-  assert.notEqual(finalIdentity.source_lineage.generated_signal_pair_id, "cond-market-A::tok-market-A");
+  const lineage = row.diagnostics.source_lineage as { generated_signal_pair_id: string };
+  assert.equal(lineage.generated_signal_pair_id, realUuid);
+  assert.notEqual(lineage.generated_signal_pair_id, "cond-market-A::tok-market-A");
 });
 
 test("D9: a non-Contract-A UUID lineage candidate has zero Queue-write authority", async () => {
@@ -1411,11 +1411,11 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   assert.equal(row.stake_usd, 1.1);
   // 08 max_entry_price present + numeric
   assert.equal(typeof diag.max_entry_price, "number");
-  assert.equal(diag.max_entry_price, 0.46);
-  // 09 typed Final Identity source lineage is a UUID
-  const typedFinal = diag.contract_a_final_identity as { source_lineage: { generated_signal_pair_id: string } };
-  assert.match(typedFinal.source_lineage.generated_signal_pair_id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
-  assert.equal(typedFinal.source_lineage.generated_signal_pair_id, CHI_UUID);
+  assert.equal(diag.max_entry_price, 0.58);
+  // 09 selected raw provider-row lineage is preserved without Final Identity.
+  const lineage = diag.source_lineage as { generated_signal_pair_id: string };
+  assert.equal(lineage.generated_signal_pair_id, diag.selected_signal_pair_id);
+  assert.ok(lineage.generated_signal_pair_id.length > 0);
   // 10 status emitted is READY
   assert.equal(row.status, "READY");
   // 11 idempotency_key present + stable (deterministic sha256 of plan_run_id::order_key)
@@ -1433,8 +1433,8 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   // 07 stake on wire / 08 max_entry_price + price_cap alias
   assert.equal(wire.stake_usd, 1.1);
   assert.equal(wire.max_stake_usd, 1.1);
-  assert.equal(wire.max_entry_price, 0.46);
-  assert.equal(wire.price_cap, 0.46);
+  assert.equal(wire.max_entry_price, 0.58);
+  assert.equal(wire.price_cap, 0.58);
   // 11 idempotency_key on wire
   assert.equal(wire.idempotency_key, row.idempotency_key);
 });
@@ -1472,7 +1472,7 @@ test("CERT-NEG: no identity persisted on the reservation -> SKIPPED CONTRACT_A_A
   );
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_RESERVATION_LINEAGE_INCOMPLETE/);
+  assert.equal(repo.skippedCalls[0].reason, "RESERVATION_EXACT_EVENT_LINEAGE_INCOMPLETE");
 });
 
 test("CERT-NEG: the typed Final Identity producer explicitly fails closed unless exactly one candidate matches", () => {
@@ -1487,12 +1487,12 @@ test("CERT-NEG: outside timing window (before T-70) -> not due, no queue row", a
   assert.equal(repo.queueRows.length, 0);
 });
 
-test("CERT-NEG: non-executable final candidate (missing token_id) -> SKIPPED, not queued", async () => {
+test("CERT-NEG: exact provider row missing token_id -> SKIPPED, not queued", async () => {
   // The stored token_id no longer exists in the authoritative universe.
   const { repo, result } = await runCanonicalProducer({}, { token_id: "" });
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_FINAL_IDENTITY_REJECTED: MISSING_TOKEN_ID/);
+  assert.equal(repo.skippedCalls[0].reason, "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR");
 });
 
 test("CERT-NEG: invalid stake (non-positive) on final candidate -> not executable, no queue row", async () => {
@@ -1515,7 +1515,7 @@ test("CERT-NEG: partially persisted identity (condition_id only) -> IDENTITY_INC
     },
   });
   assert.equal(result.queued_count, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_RESERVATION_LINEAGE_INCOMPLETE/);
+  assert.equal(repo.skippedCalls[0].reason, "RESERVATION_EXACT_EVENT_LINEAGE_INCOMPLETE");
 });
 
 test("CERT-NEG: queue-route serializer exposes no secret-bearing field (no diagnostics blob, no source_signal_id, no keys/tokens beyond order identity)", async () => {

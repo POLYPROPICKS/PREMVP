@@ -255,7 +255,7 @@ test("TARGETED-5: a Reservation that exists but is not yet due is treated as not
 
 // ── Negative: ambiguous/missing final exact market → zero READY rows ──────
 
-test("TARGETED-6: no executable market for the targeted Reservation → zero READY rows, skip recorded", async () => {
+test("TARGETED-6: no exact provider row for the targeted Reservation → zero READY rows, exact skip recorded", async () => {
   const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation({ id: "res-a" }), baseCandidate());
   const reservations = [authority.reservation];
   const repo = makeFakeRepo(reservations);
@@ -268,8 +268,8 @@ test("TARGETED-6: no executable market for the targeted Reservation → zero REA
   assert.equal(result.queued_count, 0);
   assert.equal(result.skipped_count, 1);
   assert.equal(repo.queueRows.length, 0);
-  assert.equal(result.first_rejection_code, "CONTRACT_A_FINAL_IDENTITY_REJECTED");
-  assert.equal(result.outcomes[0]?.reason, "CONTRACT_A_FINAL_IDENTITY_REJECTED: NO_FINAL_IDENTITY_CANDIDATE");
+  assert.equal(result.first_rejection_code, "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR");
+  assert.equal(result.outcomes[0]?.reason, "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR");
 });
 
 // ── Negative: no condition/token/side is ever synthesized ──────────────────
