@@ -380,6 +380,7 @@ const PLANNING_FETCH_CEILING = 200_000; // hard safety ceiling, far above realis
 // run against the live reservation path and must finish inside the scheduler's
 // statement budget even while a producer is writing new rows.
 const PLANNING_SOURCE_PAGE_SIZE = 500;
+const PLANNING_SOURCE_PAGE_SIZE_LADDER = [500, 250, 100] as const;
 // created_at lookback that bounds the planning corpus. Mirrors the reservation capacity
 // audit's LOOKBACK_HOURS so the builder universe == the audit universe, and so the
 // paginated scan stays bounded (an unbounded full-history scan hits a statement timeout).
@@ -476,6 +477,10 @@ export async function fetchAllPlanningRows(
 
 type PlanningKeysetCursor = { createdAt: string; id: string };
 
+function isPlanningStatementTimeout(message: string): boolean {
+  return /statement timeout|canceling statement/i.test(message);
+}
+
 /**
  * Read a fixed planning snapshot with a deterministic (created_at, id) keyset.
  *
@@ -490,17 +495,18 @@ export async function fetchAllPlanningRowsByKeyset(
   opts: {
     stage?: string;
     pageSize?: number;
+    pageSizeLadder?: readonly number[];
     retryPolicy?: PaginatedFetchRetryPolicy;
     sleep?: (ms: number) => Promise<void>;
   } = {}
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any[]> {
   const stage = opts.stage ?? "planning_keyset_fetch";
-  const pageSize = opts.pageSize ?? PLANNING_SOURCE_PAGE_SIZE;
+  const pageSizeLadder = opts.pageSizeLadder ?? (opts.pageSize ? [opts.pageSize] : PLANNING_SOURCE_PAGE_SIZE_LADDER);
   const retryPolicy = opts.retryPolicy ?? DEFAULT_PLANNING_PAGE_RETRY_POLICY;
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
-  if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > PLANNING_PAGE_SIZE) {
-    throw new Error(`${stage} invalid pageSize`);
+  if (!pageSizeLadder.length || pageSizeLadder.some((pageSize) => !Number.isInteger(pageSize) || pageSize < 1 || pageSize > PLANNING_PAGE_SIZE)) {
+    throw new Error(`${stage} invalid pageSizeLadder`);
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -511,8 +517,11 @@ export async function fetchAllPlanningRowsByKeyset(
     page += 1;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let batch: any[] | null = null;
+    let batchPageSize = pageSizeLadder[0];
+    let pageSizeIndex = 0;
     let lastMessage = "unknown error";
     for (let attempt = 1; attempt <= retryPolicy.maxAttempts; attempt++) {
+      const pageSize = pageSizeLadder[pageSizeIndex];
       const controller = new AbortController();
       const timeoutHandle = setTimeout(() => controller.abort(), retryPolicy.pageTimeoutMs);
       try {
@@ -521,12 +530,18 @@ export async function fetchAllPlanningRowsByKeyset(
         if (!error) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           batch = (data ?? []) as any[];
+          batchPageSize = pageSize;
           break;
         }
         lastMessage = error.message;
       } catch (err) {
         clearTimeout(timeoutHandle);
         lastMessage = err instanceof Error ? err.message : String(err);
+      }
+      // Only PostgreSQL statement timeouts step down. Network and application
+      // errors retain the exact query shape on retry.
+      if (isPlanningStatementTimeout(lastMessage)) {
+        pageSizeIndex = Math.min(pageSizeIndex + 1, pageSizeLadder.length - 1);
       }
       if (attempt < retryPolicy.maxAttempts) await sleep(retryPolicy.backoffMs(attempt));
     }
@@ -543,7 +558,7 @@ export async function fetchAllPlanningRowsByKeyset(
       throw new Error(`${stage} exceeded planning fetch ceiling`);
     }
     all.push(...batch);
-    if (batch.length < pageSize) break;
+    if (batch.length < batchPageSize) break;
     const tail = batch.at(-1);
     const createdAt = typeof tail?.created_at === "string" ? tail.created_at : "";
     const id = typeof tail?.id === "string" ? tail.id : "";
