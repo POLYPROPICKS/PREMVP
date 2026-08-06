@@ -74,6 +74,13 @@ const SOURCE_ROW = {
   market_slug: "New York Yankees vs. Philadelphia Phillies - Moneyline",
   diagnostics: {
     gameStartIso: KICKOFF_ISO,
+    providerEventContext: {
+      v: "v1",
+      provider: "polymarket",
+      eventId: "mlb-nyy-phi-2026-07-27",
+      eventStartIso: KICKOFF_ISO,
+      sportFamily: "baseball",
+    },
     dataCoverage: 60,
     shadowScope: "baseball",
     eventTitle: "New York Yankees vs Philadelphia Phillies",
@@ -115,7 +122,7 @@ test("CA-P2: the Planning Decision preserves the exact physical_event_id produce
   // identity, built from the event slug + the EXACT canonical event start
   // instant -- never the calendar date alone, which collided two kickoffs of a
   // same-day doubleheader into a single physical event.
-  assert.equal(r.decision.physical_event_id, "event:mlb-nyy-phi-2026-07-27:2026-07-27T21:00:00.000Z");
+  assert.equal(r.decision.physical_event_id, "provider:polymarket:mlb-nyy-phi-2026-07-27:2026-07-27");
   const { candidates } = await at(PLANNING_NOW_MS, () =>
     buildFireModelCandidates(100_000, "all", true, [SOURCE_ROW], "CONTRACT_A_PLANNING_V1")
   );

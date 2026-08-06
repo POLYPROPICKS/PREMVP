@@ -666,7 +666,10 @@ function providerContextOf(diag: Record<string, unknown>): Record<string, string
 }
 
 function providerEventKeyOf(context: Record<string, string> | null, gameStartIso: string): string | null {
-  const identity = context?.eventSlug ?? context?.eventId;
+  // A provider event ID is the only admissible event identity for downstream
+  // Reservation -> Queue lineage. Slugs are display/navigation text and must
+  // never become a fallback physical-event authority.
+  const identity = context?.eventId;
   const start = context?.eventStartIso ?? gameStartIso;
   if (!identity || !/^[-a-z0-9_]+$/i.test(identity) || !/^\d{4}-\d{2}-\d{2}T/.test(start)) return null;
   return `polymarket:${identity.toLowerCase()}:${start.slice(0, 10)}`;

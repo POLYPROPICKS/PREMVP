@@ -1732,6 +1732,9 @@ function planningDecisionReservationRow(
       // generated_signal_pair_id stays lineage data in this JSONB column and is
       // never written into a uuid column.
       source_lineage: { ...decision.source_lineage },
+      // Planning may already hold exact market evidence; persist it verbatim
+      // as lineage, never as a new selection or a later fallback.
+      planning_final_identity_evidence: decision.final_identity_evidence,
       // Stage 2 identity does not exist yet and is never synthesized here.
       battle_trace_id: `contur3:${ctx.planRunId}:${decision.physical_event_id}:pending-final-identity`,
     },
