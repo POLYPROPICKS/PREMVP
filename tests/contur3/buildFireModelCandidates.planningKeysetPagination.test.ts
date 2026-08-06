@@ -35,13 +35,16 @@ function countBySport(rows: Row[]) {
 
 function makeKeysetBuilder(rows: Row[], failFirstCursor: Cursor = null) {
   const cursors: Cursor[] = [];
+  const pageSizes: number[] = [];
   const attempts = new Map<string, number>();
   return {
     cursors,
+    pageSizes,
     attempts,
     builder(cursor: Cursor) {
       return {
         limit(pageSize: number) {
+          pageSizes.push(pageSize);
           return {
             async abortSignal(_signal: AbortSignal) {
               cursors.push(cursor);
@@ -79,4 +82,18 @@ test("R4: keyset source read conserves a 7,001-row multi-sport snapshot through 
 
   assert.deepEqual(countBySport(result), countBySport(snapshot), "sport attribution denominator is unchanged");
   assert.equal(fake.cursors.filter((cursor) => cursor !== null).length, 28, "7,001 rows at 250/page use 29 successful pages plus one retry");
+});
+
+test("R4: a PostgreSQL statement timeout steps down 500→250 on the same keyset cursor", async () => {
+  const fake = makeKeysetBuilder(makeSnapshot(501));
+  const result = await fetchAllPlanningRowsByKeyset(fake.builder, {
+    stage: "planning_shadow_rows_fetch",
+    retryPolicy: { maxAttempts: 3, backoffMs: () => 0, pageTimeoutMs: 1000 },
+    sleep: async () => {},
+  }) as Row[];
+
+  assert.equal(result.length, 501);
+  assert.deepEqual(fake.pageSizes, [500, 250, 500], "only the failed page steps down; the next cursor starts at the bounded default");
+  assert.equal(fake.cursors[0], null);
+  assert.equal(fake.cursors[1], null, "timeout retry must retain the exact cursor");
 });
