@@ -31,6 +31,7 @@ function esaCandidate(overrides: Partial<FireModelCandidate> = {}): FireModelCan
     signal_id: "sig-esp-arg",
     strategy: "TIER1_CORE_STRICT_72_COV50",
     market_slug: "spain-vs-argentina-moneyline",
+    providerEventKey: "polymarket:esp-arg-2026-07-19:2026-07-19",
     match_family_key: "pair:argentina-vs-spain:2026-07-19",
     match_family_key_source: "event_slug",
     match_family_key_is_weak: false,
@@ -80,6 +81,12 @@ function esaCandidate(overrides: Partial<FireModelCandidate> = {}): FireModelCan
       hours_to_start_now: 5,
       fire_model_alias: "FireModel1",
       version: "v2-lite-growth-safe",
+      providerEventContext: {
+        v: "v1",
+        provider: "polymarket",
+        eventId: "esp-arg-2026-07-19",
+        eventStartIso: KICKOFF_ISO,
+      },
     },
     ...overrides,
   } as FireModelCandidate;
@@ -134,12 +141,42 @@ function makeRebalanceRepo(reservationStore: NightEventReservationRow[]): Rebala
       const r = reservationStore.find((x) => x.id === id);
       if (r) { r.status = "QUEUED"; r.selection_reason = reason; }
     },
+    async loadFinalIdentitySourceRows() {
+      return [{
+        id: "pair-esp-arg",
+        condition_id: "cond-esp-arg",
+        selected_token_id: "token-esp-arg-spain",
+        selected_outcome: "Spain",
+        signal_score: 80,
+        stake_usd: 7,
+        max_entry_price: 0.55,
+        market_slug: "spain-vs-argentina-moneyline",
+        diagnostics: {
+          providerEventContext: {
+            v: "v1",
+            provider: "polymarket",
+            eventId: "esp-arg-2026-07-19",
+            eventStartIso: KICKOFF_ISO,
+          },
+        },
+      }];
+    },
   };
 }
 
 function makeJobEvidence(): SchedulerJobEvidencePort & { calls: SchedulerJobRunInput[] } {
   const calls: SchedulerJobRunInput[] = [];
   return { calls, async writeJobRun(input) { calls.push(input); } };
+}
+
+function persistExactRebalanceFixture(row: NightEventReservationRow) {
+  row.physical_event_id = "provider:polymarket:esp-arg-2026-07-19:2026-07-19";
+  row.event_start_iso = KICKOFF_ISO;
+  row.diagnostics = {
+    ...row.diagnostics,
+    contract_a_stage: "PLANNING",
+    source_lineage: { generated_signal_pair_id: "pair-esp-arg" },
+  };
 }
 
 test("C1: full funnel -- planning-eligible candidate -> reservation -> T-60 rebalance -> one canonical READY queue row", async () => {
@@ -159,6 +196,7 @@ test("C1: full funnel -- planning-eligible candidate -> reservation -> T-60 reba
   assert.equal(plan.reservations[0].status, "RESERVED");
   assert.equal(reservationJobEvidence.calls.length, 1);
   assert.equal(reservationJobEvidence.calls[0].status, "success");
+  persistExactRebalanceFixture(reservationRepo.store[0]);
 
   // Stage 2: rebalance tick at T-60, using the persisted reservation store as the
   // live reservation table and the SAME candidate universe as the live market read.
@@ -171,7 +209,7 @@ test("C1: full funnel -- planning-eligible candidate -> reservation -> T-60 reba
   );
 
   assert.equal(rebalanceResult.due_count, 1);
-  assert.equal(rebalanceResult.queued_count, 1);
+  assert.equal(rebalanceResult.queued_count, 1, JSON.stringify(rebalanceResult.outcomes));
   assert.equal(rebalanceRepo.queueRows.length, 1);
   assert.equal(rebalanceJobEvidence.calls.length, 1);
   assert.equal(rebalanceJobEvidence.calls[0].status, "success");
@@ -221,6 +259,7 @@ test("C3: rerunning the full funnel for the same plan_run_id + reservation is id
   const second = await runReservationCronWithEvidence(RESERVATION_NOW_MS, {}, { fetchCandidates, repo: reservationRepo, jobEvidence: jobEvidence1 });
   assert.equal(second.persisted.already_exists, true);
   assert.equal(reservationRepo.store.length, 1);
+  persistExactRebalanceFixture(reservationRepo.store[0]);
 
   const rebalanceRepo = makeRebalanceRepo(reservationRepo.store);
   const jobEvidence2 = makeJobEvidence();
