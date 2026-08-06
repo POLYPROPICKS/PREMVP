@@ -288,7 +288,7 @@ test("B4: a repeated in-window run is idempotent -- no duplicate queue row for t
   assert.equal(repo.queueRows.length, 1, "must not insert a second queue row for the same reservation");
 });
 
-test("B5: a write-mode rebalance that lacks mandatory Final Identity inputs records fail-closed job_runs evidence", async () => {
+test("B5: write-mode scheduler records the first exact per-Reservation rejection, not the generic due aggregate", async () => {
   const repo = makeFakeRepo([baseReservation()]);
   const jobEvidence = makeFakeJobEvidence();
   const result = await runEventRebalanceWithEvidence(
@@ -305,6 +305,8 @@ test("B5: a write-mode rebalance that lacks mandatory Final Identity inputs reco
   assert.equal(call.formulaVersion, "rebalance-v1");
   assert.equal(call.status, "error");
   assert.equal(call.generatedCount, 0);
+  assert.equal(call.errorMessage, "RESERVATION_REQUIRED_USE_EVENT_REBALANCE");
+  assert.equal((call.diagnostics as Record<string, unknown>).first_rejection_code, "RESERVATION_REQUIRED_USE_EVENT_REBALANCE");
 });
 
 test("B6: a dry-run rebalance invocation records zero job_runs evidence", async () => {
@@ -1409,7 +1411,7 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   assert.equal(row.stake_usd, 1.1);
   // 08 max_entry_price present + numeric
   assert.equal(typeof diag.max_entry_price, "number");
-  assert.equal(diag.max_entry_price, 0.5);
+  assert.equal(diag.max_entry_price, 0.46);
   // 09 typed Final Identity source lineage is a UUID
   const typedFinal = diag.contract_a_final_identity as { source_lineage: { generated_signal_pair_id: string } };
   assert.match(typedFinal.source_lineage.generated_signal_pair_id, /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
@@ -1431,8 +1433,8 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   // 07 stake on wire / 08 max_entry_price + price_cap alias
   assert.equal(wire.stake_usd, 1.1);
   assert.equal(wire.max_stake_usd, 1.1);
-  assert.equal(wire.max_entry_price, 0.5);
-  assert.equal(wire.price_cap, 0.5);
+  assert.equal(wire.max_entry_price, 0.46);
+  assert.equal(wire.price_cap, 0.46);
   // 11 idempotency_key on wire
   assert.equal(wire.idempotency_key, row.idempotency_key);
 });
@@ -1490,7 +1492,7 @@ test("CERT-NEG: non-executable final candidate (missing token_id) -> SKIPPED, no
   const { repo, result } = await runCanonicalProducer({}, { token_id: "" });
   assert.equal(result.queued_count, 0);
   assert.equal(repo.queueRows.length, 0);
-  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_FINAL_IDENTITY_REJECTED: NO_FINAL_IDENTITY_CANDIDATE/);
+  assert.match(repo.skippedCalls[0].reason, /CONTRACT_A_FINAL_IDENTITY_REJECTED: MISSING_TOKEN_ID/);
 });
 
 test("CERT-NEG: invalid stake (non-positive) on final candidate -> not executable, no queue row", async () => {

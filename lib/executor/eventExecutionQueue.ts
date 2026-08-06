@@ -790,7 +790,7 @@ async function selectQueueRowFromContractAReservation(
     return { outcome: "SKIPPED", reason: reasonCode, queueRow: null };
   }
   onFinalIdentityAttempt?.();
-  const result = await produceContractAFinalIdentityDecision(planning, rows);
+  const result = await produceContractAFinalIdentityDecision(planning, rows, 100_000, nowMs);
   if (!result.accepted) return { outcome: "SKIPPED", reason: `CONTRACT_A_FINAL_IDENTITY_REJECTED: ${result.rejection.reason_code}`, queueRow: null };
   const final = result.decision;
   if (!Number.isFinite(final.price_policy.stake_usd) || final.price_policy.stake_usd <= 0) {
@@ -1620,7 +1620,7 @@ export async function runEventRebalanceWithEvidence(
         errorMessage: result.blocked_by_max_queue_writes
           ? "MAX_QUEUE_WRITES_EXCEEDED"
           : result.fail_due_reservations_not_queued
-            ? "DUE_RESERVATIONS_NOT_QUEUED"
+            ? result.first_rejection_code ?? "DUE_RESERVATIONS_NOT_QUEUED"
             : undefined,
         diagnostics: {
           rebalance_run_id: result.rebalance_run_id,
@@ -1630,6 +1630,7 @@ export async function runEventRebalanceWithEvidence(
           max_queue_writes: result.max_queue_writes,
           planned_queue_writes: result.planned_queue_writes,
           blocked_by_max_queue_writes: result.blocked_by_max_queue_writes,
+          first_rejection_code: result.first_rejection_code,
         },
       });
     }
