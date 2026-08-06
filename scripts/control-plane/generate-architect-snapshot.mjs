@@ -113,7 +113,7 @@ export function renderSnapshot(root = REPO_ROOT) {
   // --- 6. Prompt contract ---------------------------------------------------------------
   w('## 6. Prompt contract');
   w();
-  w('Every executor prompt is one copyable block containing all mandatory sections of `PROMPT__PROTOCOL.md` §2. Do not summarise or drop sections. Missing, guessed or contradictory input → `PROMPT_GATE_BLOCKED`.');
+  w('Short Founder presentation + one executor block only. Every task invokes `premvp.command.execution_precheck.v1`; no default/substitution. Missing hard-boundary input → `PROMPT_GATE_BLOCKED`.');
   w();
 
   // --- 7. Reviewers ---------------------------------------------------------------------
@@ -151,7 +151,7 @@ export function renderSnapshot(root = REPO_ROOT) {
   w();
   w(policy.global_stop_conditions.map((s) => `\`${s.split(' — ')[0]}\``).join(' · '));
   w();
-  w(`Stale state: **${policy.stale_state_behavior.mode}** — return PROMPT_GATE_BLOCKED and request a bounded read-only refresh.`);
+  w('Recoverable root/state/dependency/PR/deployment conditions are executor-owned; EXPECTED_NON_BLOCKING, EXECUTOR_OWNED_RECOVERY and RESUMABLE_WAIT always set founder_action none. Invalid ancestry and semantic boundaries remain hard stops.');
   w();
 
   // --- 11. Evidence ---------------------------------------------------------------------

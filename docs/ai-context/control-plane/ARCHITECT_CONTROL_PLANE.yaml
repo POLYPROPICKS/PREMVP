@@ -128,10 +128,8 @@
 
   "global_stop_conditions": [
     "CONTROL_PLANE_WRONG_REPOSITORY — checkout is not the repository named in the prompt",
-    "CONTROL_PLANE_DIRTY_WORKTREE — unexpected dirty state",
     "CONTROL_PLANE_SCOPE_EXPANSION_REQUIRED — a file outside ALLOWED FILES must change",
     "PROMPT_GATE_BLOCKED — required prompt section, capability, evidence or routing is missing or contradictory",
-    "STATE_STALE — CURRENT_STATE.yaml exceeds its freshness window and cannot be re-proven",
     "CAPABILITY_NOT_PROVEN — routing requires a capability whose verdict is not PROVEN",
     "REVIEWER_RECEIPT_MISSING — a mandatory reviewer produced no valid receipt",
     "REPOSITORY_BOUNDARY_MIXED — a single prompt targets both PREMVP and Ireland",
@@ -141,7 +139,7 @@
   "stale_state_behavior": {
     "mode": "FAIL_CLOSED",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
-    "rule": "CURRENT_STATE.yaml.main.origin_main_sha is a LAST_VERIFIED_ORIGIN_MAIN_BASELINE, not a permanent exact-equality requirement. Exact equality cannot survive a state-refresh merge: the merge itself creates a new origin/main tip that could not have been embedded in its own parent commit. Freshness is evaluated as: (1) the recorded baseline MUST be an ancestor of live origin/main — if not, STATE_STALE; (2) if live origin/main equals the baseline, state is FRESH; (3) if live origin/main is ahead of the baseline, state remains FRESH only when every path changed since the baseline is in state_bootstrap_allowlist below — otherwise STATE_REFRESH_REQUIRED; (4) a state-only bootstrap merge must never invalidate the state it just refreshed. Chat memory or timestamps cannot override this Git ancestor relationship. When CURRENT_STATE.yaml is stale, missing, or fails this check, the architect MUST return PROMPT_GATE_BLOCKED and request a bounded read-only refresh task. It must NOT guess, extrapolate, or fall back to chat memory or legacy state documents.",
+    "rule": "CURRENT_STATE.yaml.main.origin_main_sha is a LAST_VERIFIED_ORIGIN_MAIN_BASELINE. Invalid baseline ancestry is a HARD_SAFETY_STOP. When the baseline is an ancestor and production equals live main, STATE_REFRESH_REQUIRED is executor-owned reconciliation, not a Founder escalation. State-only bootstrap merges remain fresh by the allowlist below.",
     "state_bootstrap_allowlist": [
       "docs/ai-context/control-plane/CURRENT_STATE.yaml",
       "docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md",
@@ -221,6 +219,13 @@
     "eligibility": "The recorded baseline is an ancestor of live origin/main and the mechanical freshness result is STATE_REFRESH_REQUIRED.",
     "authority": "A current Founder decision may authorize a bounded canonical reconciliation; live Git and runtime evidence remain the source of runtime truth.",
     "writer_boundaries": ["only explicitly authorized state files", "do not set the writing task completion_id as accepted", "do not mark the writer's state_delta_proposal accepted", "CURRENT_STATE baseline must be evidence-backed and mechanically fresh after merge"]
+  },
+
+  "execution_escalation_taxonomy": {
+    "source": "docs/ai-context/control-plane/EXECUTION_ESCALATION_TAXONOMY.json",
+    "rule": "Only HARD_SAFETY_STOP may ask for one actual Founder decision. EXPECTED_NON_BLOCKING, EXECUTOR_OWNED_RECOVERY and RESUMABLE_WAIT require founder_action none.",
+    "preservation_only_path": "docs/ai-context/PROMPT__PROTOCOL.md is untracked, non-authoritative, untouched and non-blocking.",
+    "worktree_rule": "Read-only tasks use origin/main or an isolated surface; write tasks create a dedicated clean worktree. The Founder root is never cleaned, reset or used as unknown task input."
   },
 
   "operator_model": {

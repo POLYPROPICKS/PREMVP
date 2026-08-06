@@ -117,6 +117,14 @@ export function validateCompletionEnvelope(envelope, schema = loadSchema(), rout
       (typeof envelope.founder_action !== 'string' || envelope.founder_action.length === 0)) {
     err('INVALID_FOUNDER_ACTION: must be a non-empty string');
   }
+  if (envelope.verdict === 'WAIT' && envelope.founder_action !== undefined && envelope.founder_action !== 'none') {
+    err('WAIT_WITH_FOUNDER_ACTION: resumable WAIT must set founder_action none');
+  }
+  if (Array.isArray(envelope.evidence) && envelope.evidence.some((e) =>
+    ['EXPECTED_NON_BLOCKING', 'EXECUTOR_OWNED_RECOVERY', 'RESUMABLE_WAIT'].includes(e?.classification)) &&
+    envelope.founder_action !== 'none') {
+    err('RECOVERABLE_WITH_FOUNDER_ACTION: recoverable classifications must set founder_action none');
+  }
 
   // --- commands_run entries -------------------------------------------------------------
   if (isArray(envelope.commands_run)) {
