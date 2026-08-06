@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-06T08:43:57Z",
-  "state_version": 9,
+  "updated_at": "2026-08-06T09:22:01Z",
+  "state_version": 10,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
@@ -34,14 +34,14 @@
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "1c3b10aaec79a6fb7886533cb563606c61d1549a",
+    "origin_main_sha": "6cd262e6b7fba6c4fd392c3903c51d80fd429489",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "executor": "claude_code_cloud",
       "commands": ["git fetch origin main", "git rev-parse origin/main", "git merge-base --is-ancestor <prior-baseline> origin/main", "curl https://polypropicks.com/api/build-info"],
-      "observed_at": "2026-08-06T08:43:57Z",
+      "observed_at": "2026-08-06T09:22:01Z",
       "worktree": "clean",
       "note": "Action 3 implementation baseline 1c3b10aaec79a6fb7886533cb563606c61d1549a is the intended non-state implementation commit. The state-bootstrap commit records it without self-accepting the task; freshness is verified after integration. The shared pipeline is enabled, C1 remains OPEN, and no product, database, Ireland, or live-money behavior changed."
     }
