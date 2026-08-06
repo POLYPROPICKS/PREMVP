@@ -206,6 +206,23 @@
     ]
   },
 
+  "FOUNDER_AUTHORIZED_CAPABILITY_BOOTSTRAP": {
+    "decision_id": "FOUNDER_FINAL_PROTOCOL_BOOTSTRAP_AND_RUNTIME_FIX_20260805T2330_PLUS0300",
+    "scope": "One named PREMVP-only bootstrap run. A current Founder decision authorizes the attempt, never a PROVEN verdict.",
+    "required_fields": ["executor", "repository", "capability", "transport", "exact_proving_call", "postconditions"],
+    "preconditions": ["same-runtime authentication proven", "same-runtime repository read authority proven", "minimum bounded write only", "no dependent action before proof succeeds"],
+    "failure_behavior": "The failed capability remains NOT_PROVEN and the run fails closed before dependent work.",
+    "hard_boundaries": ["PREMVP only unless separately authorized", "no direct push to main", "no force push", "no branch-protection bypass", "no secret exposure", "no database write", "no manual deployment", "no Ireland", "no live money"],
+    "expiry": "The exception expires when the named bootstrap run completes or terminates."
+  },
+
+  "FOUNDER_AUTHORIZED_STATE_RECONCILIATION": {
+    "decision_id": "FOUNDER_FINAL_PROTOCOL_BOOTSTRAP_AND_RUNTIME_FIX_20260805T2330_PLUS0300",
+    "eligibility": "The recorded baseline is an ancestor of live origin/main and the mechanical freshness result is STATE_REFRESH_REQUIRED.",
+    "authority": "A current Founder decision may authorize a bounded canonical reconciliation; live Git and runtime evidence remain the source of runtime truth.",
+    "writer_boundaries": ["only explicitly authorized state files", "do not set the writing task completion_id as accepted", "do not mark the writer's state_delta_proposal accepted", "CURRENT_STATE baseline must be evidence-backed and mechanically fresh after merge"]
+  },
+
   "operator_model": {
     "founder_mode": "PROMPT_RELAY_ONLY",
     "founder_normal_actions": [

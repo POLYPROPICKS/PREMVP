@@ -439,6 +439,15 @@
       "evidence_class": "NOT_PROVEN",
       "last_verified_at": "2026-08-04T13:30:00Z",
       "portability": "CLAUDE_ONLY",
+      "executor_bindings": [
+        {
+          "executor_id": "local_codex_windows",
+          "transport": "authenticated local gh CLI",
+          "operations": ["pr create", "pr view", "pr merge --merge"],
+          "required_inputs": ["exact repository", "source branch", "source SHA", "target branch", "expected head SHA", "changed-path allowlist", "merge method"],
+          "prohibitions": ["no direct push to main", "no force push", "no branch-protection bypass", "no secret output", "no unexpected files", "no missing R4 reviewer receipt"]
+        }
+      ],
       "hard_prohibitions": [
         "no direct push to main",
         "no force push",

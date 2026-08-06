@@ -77,29 +77,40 @@ with a stated reason.
 7. **No authority citation of untracked files**, in particular
    the untracked `docs/ai-context/PROMPT__PROTOCOL.md` on the Local Windows worktree.
 
-## 3a. Authorization versus evidence, and same-run capability bootstrap
+## 3a. Authorization versus evidence and normal mode
 
 `CAPABILITY_MATRIX.yaml` records two independent facts per capability: `authorized`
 (policy permission) and `verdict` (live runtime evidence: `PROVEN`, `FAILED`,
 `NOT_PROVEN`, or `NOT_AVAILABLE`). These MUST NOT be collapsed into one:
 
 - Authorization alone never produces a runtime `PASS`.
-- `NOT_PROVEN` means untested, not forbidden. A prompt MUST NOT be blocked merely
-  because an authorized capability begins the task `NOT_PROVEN`.
+- Normal mode requires every required capability to be `PROVEN`. `NOT_PROVEN` means
+  untested rather than forbidden, but it remains a fail-closed gate for an ordinary task.
 - `NOT_AVAILABLE` means the runtime genuinely lacks the surface — that does block routing.
 - `authorized: false` blocks routing regardless of verdict.
 
-When a required capability is `authorized: true` for the selected executor but its
-verdict is `NOT_PROVEN`, the prompt's `PRECHECK` MUST require the executor to attempt one
-bounded, safe, evidence-producing probe of that capability in the same run, then continue
-automatically when it succeeds. A prompt MUST NOT force executor switching when the
-selected executor is authorized, and MUST NOT require a separate Founder confirmation for
-the probe. A failed, unavailable, or unsafe probe fails closed with the exact blocker
-named — the task returns `BLOCKED` or `WAIT`, never a fabricated `PASS`. This applies
-equally to `claude_code_cloud` and `local_codex_windows` for PREMVP R0–R4: neither
-executor is routed through the other, and PREMVP executor eligibility for R0–R4 is
-symmetric subject to the same reviewer and capability-evidence requirements per risk
-class (see `ROUTING_AND_PIPELINES.yaml → executor_parity_policy`).
+## 3b. `FOUNDER_AUTHORIZED_CAPABILITY_BOOTSTRAP` exception
+
+Only an explicitly named Founder-authorized bootstrap may label one capability
+`BOOTSTRAP_PENDING`. The prompt must name the decision, executor, PREMVP repository,
+capability, authenticated transport, exact minimum proving call, and postconditions; it
+must also prove same-runtime authentication and repository-read authority. The capability
+is not usable by a dependent phase until the exact call succeeds and its runtime evidence
+is captured. Failure leaves it `NOT_PROVEN` and returns `BLOCKED`; no executor switch or
+intermediate Founder confirmation is implied.
+
+This exception never authorizes direct main push, force push, branch-protection bypass,
+secret exposure, database write, manual deployment, Ireland access, live money, or R5
+work. It expires when the named bootstrap run completes or terminates.
+
+## 3c. `FOUNDER_AUTHORIZED_STATE_RECONCILIATION` exception
+
+Ordinary stale-state handling remains fail-closed. After live evidence and an authorized
+bootstrap, a current Founder decision may authorize an exact reconciliation only where the
+recorded baseline is an ancestor and the mechanical result is `STATE_REFRESH_REQUIRED`.
+The writer must preserve live evidence as runtime authority, use an evidence-backed
+CURRENT_STATE baseline, and must neither self-accept its completion nor mark its own
+`state_delta_proposal` accepted.
 
 ## 4. Reviewer receipt requirements
 
@@ -131,6 +142,11 @@ The architect returns this instead of a prompt when any of the following hold:
   proven capabilities;
 - the task would require a prohibited Founder action.
 
+The sole exception is an exact §3b bootstrap task whose concrete preconditions are all
+present. Missing any one bootstrap field or precondition returns `PROMPT_GATE_BLOCKED`
+immediately; failed proof returns `BLOCKED` and does not permit dependent work. §3c does
+not relax ordinary stale-state handling.
+
 Blocked output format:
 
 ```
@@ -148,7 +164,7 @@ Run before emitting. All must be `true`:
 - [ ] all 25 sections present and concrete
 - [ ] exactly one repository boundary
 - [ ] executor exists in `CAPABILITY_MATRIX.yaml`
-- [ ] every required capability is `PROVEN` for that executor
+- [ ] every required capability is `PROVEN`, or one named §3b `BOOTSTRAP_PENDING` capability has every concrete exception field and no dependent phase precedes proof
 - [ ] required agents are the minimum set for the risk class
 - [ ] every required agent exists in `AGENT_REGISTRY.yaml`
 - [ ] `NEXT TWO VALUE STEPS` has exactly two entries and matches `CURRENT_STATE.yaml`
@@ -157,6 +173,7 @@ Run before emitting. All must be `true`:
 - [ ] Founder action budget ≤ 1
 - [ ] completion envelope requirement stated
 - [ ] reviewer receipt requirements stated where applicable
+- [ ] bootstrap proving call and resulting capability transition reported where §3b applies
 - [ ] output is one copyable block
 
 ## 7. Template
