@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-06T09:22:01Z",
-  "state_version": 10,
+  "updated_at": "2026-08-06T09:25:00Z",
+  "state_version": 11,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
@@ -34,16 +34,16 @@
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "6cd262e6b7fba6c4fd392c3903c51d80fd429489",
+    "origin_main_sha": "c74106c46e6e12de2f0ab26be4e0e38bee3169a0",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "executor": "claude_code_cloud",
       "commands": ["git fetch origin main", "git rev-parse origin/main", "git merge-base --is-ancestor <prior-baseline> origin/main", "curl https://polypropicks.com/api/build-info"],
-      "observed_at": "2026-08-06T09:22:01Z",
+      "observed_at": "2026-08-06T09:25:00Z",
       "worktree": "clean",
-      "note": "Action 3 implementation baseline 1c3b10aaec79a6fb7886533cb563606c61d1549a is the intended non-state implementation commit. The state-bootstrap commit records it without self-accepting the task; freshness is verified after integration. The shared pipeline is enabled, C1 remains OPEN, and no product, database, Ireland, or live-money behavior changed."
+      "note": "PR #94 stored a malformed non-existent baseline. The corrective validator commit c74106c46e6e12de2f0ab26be4e0e38bee3169a0 is the resolved non-state baseline; its state bootstrap records it without self-acceptance. PR #94 is deployed, C1 remains OPEN, and no product, database, Ireland, or live-money behavior changed."
     }
   },
 
@@ -149,7 +149,7 @@
   ],
 
   "evidence_freshness": {
-    "origin_main_sha_checked_at": "2026-08-06T08:43:57Z",
+    "origin_main_sha_checked_at": "2026-08-06T09:25:00Z",
     "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
     "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
     "max_age_days": 7

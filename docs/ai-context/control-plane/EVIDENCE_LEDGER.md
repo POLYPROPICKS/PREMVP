@@ -446,3 +446,12 @@ This entry is historical evidence only and does not accept an Action 3 completio
 - This bootstrap advances state only after the non-state implementation commit and does
   not accept the current completion. C1 remains OPEN; no product, database, Ireland, or
   live-money behavior changed.
+## EV-0016 — 2026-08-06 PR #94 baseline correction
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **executor:** `local_codex_windows`
+- PR #94 stored malformed baseline `6cd262e6b7fba6c4fd392c3903c51d80fd429489`; Git could not resolve it.
+- Validator hardening commit `c74106c46e6e12de2f0ab26be4e0e38bee3169a0` resolves a supplied
+  revision to one full commit SHA and requires ancestor proof before state output.
+- Corrective state bootstrap is pending integration. C1 remains OPEN; no product, database,
+  Ireland, job, or live-money behavior changed.
