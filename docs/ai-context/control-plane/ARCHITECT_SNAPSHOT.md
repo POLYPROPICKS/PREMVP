@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate: npm run control-plane:snapshot -->
 
-State v8 · updated 2026-08-06T08:43:57Z · policy 1.1.0
+State v8 · updated 2026-08-06T08:43:57Z · policy 1.2.0
 
 ## 1. Source authority
 
@@ -66,7 +66,7 @@ Every executor prompt is one copyable block containing all mandatory sections of
 
 - `premvp.reviewer.weather_gate.v1` — portable_project_scoped, EXPLICIT, receipt REQUIRED, triggers: R3_WEATHER_MODEL_CHANGE; Weather model behavior change
 - `premvp.reviewer.contur_gate.v1` — portable_project_scoped, EXPLICIT, receipt REQUIRED, triggers: R4_CONTUR_PRODUCTION_BOUNDARY; Contur exact-SHA acceptance; production-boundary acceptance
-- Other registered entries (no receipt or deprecated): 2 AGENT, 5 COMMAND, 2 HOOK, 3 SCRIPT, 1 CI_GATE, 6 POLICY — see AGENT_REGISTRY.yaml.
+- Other registered entries (no receipt or deprecated): 2 AGENT, 9 COMMAND, 2 HOOK, 3 SCRIPT, 1 CI_GATE, 6 POLICY — see AGENT_REGISTRY.yaml.
 
 ## 8. PREMVP / Ireland boundary
 

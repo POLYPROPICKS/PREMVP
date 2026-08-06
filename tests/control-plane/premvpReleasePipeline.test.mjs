@@ -103,32 +103,28 @@ test('8. manifest rejects secrets or secret-file fields', () => {
   assert.match(result.errors.join('\n'), /NO_SECRETS/);
 });
 
-// ---- 9. Pipeline is disabled for mutating execution. -------------------------------------------
-test('9. pipeline is disabled for mutating execution', () => {
-  assert.equal(pipelineSpec.status, 'EXPERIMENTAL_DISABLED');
-  assert.equal(pipelineSpec.enabled, false);
-  assert.throws(() => assertMutationAllowed(pipelineSpec), (e) => {
-    assert.ok(e instanceof PipelineError);
-    assert.equal(e.code, 'PIPELINE_MUTATING_MODE_NOT_DISABLED');
-    return true;
-  });
+// ---- 9. Pipeline is enabled only with the reconciliation command. ------------------------------
+test('9. pipeline is enabled for mutating execution after Action 3 reconciliation', () => {
+  assert.equal(pipelineSpec.status, 'ENABLED');
+  assert.equal(pipelineSpec.enabled, true);
+  assert.doesNotThrow(() => assertMutationAllowed(pipelineSpec));
 });
 
 // ---- 10. Dry-run is permitted while disabled. ---------------------------------------------------
-test('10. dry-run is permitted while disabled', () => {
+test('10. dry-run remains permitted while enabled', () => {
   const result = dryRunPlan(baseManifest(), routingDoc, pipelineSpec);
   assert.equal(result.ok, true, result.errors.join('\n'));
-  assert.equal(result.plan.pipeline_status, 'EXPERIMENTAL_DISABLED');
-  assert.equal(result.plan.mutating_mode_enabled, false);
+  assert.equal(result.plan.pipeline_status, 'ENABLED');
+  assert.equal(result.plan.mutating_mode_enabled, true);
   assert.deepEqual(result.plan.states, STATE_ORDER);
 });
 
 // ---- 11. Status reconstruction is permitted while disabled. -------------------------------------
-test('11. status reconstruction is permitted while disabled', async () => {
+test('11. status reconstruction is permitted while enabled', async () => {
   const adapters = fakeAdapters({});
   const reconstructed = await reconstructRun(baseManifest(), routingDoc, adapters);
   const report = statusReport(reconstructed, baseManifest(), pipelineSpec);
-  assert.equal(report.pipeline_status, 'EXPERIMENTAL_DISABLED');
+  assert.equal(report.pipeline_status, 'ENABLED');
   assert.equal(report.phase_completed_through, 'RESOLVE_RUN');
 });
 
@@ -313,12 +309,11 @@ test('28. transport interruption resumes from live Git/PR state', async () => {
   assert.equal(reconstructed.evidence.branch.exists, false);
 });
 
-// ---- 30. Missing reconciliation adapter prevents mutating activation. ---------------------------
-test('30. missing reconciliation adapter prevents mutating activation', () => {
-  assert.equal(pipelineSpec.control_plane_reconcile_adapter_interface.status_in_action_2, 'NOT_IMPLEMENTED');
-  assert.equal(pipelineSpec.disabled_until_command, RECONCILE_COMMAND_ID);
-  assert.throws(() => assertMutationAllowed(pipelineSpec),
-    (e) => e.message.includes(RECONCILE_COMMAND_ID));
+// ---- 30. Reconciliation adapter enables mutating activation. -----------------------------------
+test('30. reconciliation adapter is required and enabled', () => {
+  assert.equal(pipelineSpec.control_plane_reconcile_adapter_interface.status_in_action_2, 'IMPLEMENTED_ACTION_3');
+  assert.equal(pipelineSpec.disabled_until_command, null);
+  assert.doesNotThrow(() => assertMutationAllowed(pipelineSpec));
 });
 
 // ---- 31. Completion PASS invariants are enforced. ------------------------------------------------

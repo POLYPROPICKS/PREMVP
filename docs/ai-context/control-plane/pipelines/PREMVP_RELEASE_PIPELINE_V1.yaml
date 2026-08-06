@@ -5,9 +5,9 @@
   "pipeline_id": "premvp.release_pipeline.v1",
   "command_id": "premvp.command.release_pipeline.v1",
   "repository": "POLYPROPICKS/PREMVP",
-  "status": "EXPERIMENTAL_DISABLED",
-  "enabled": false,
-  "disabled_until_command": "premvp.command.control_plane_reconcile.v1",
+  "status": "ENABLED",
+  "enabled": true,
+  "disabled_until_command": null,
 
   "operator_intervention_budget": {
     "launch": 1,
@@ -256,7 +256,7 @@
 
   "control_plane_reconcile_adapter_interface": {
     "command_id": "premvp.command.control_plane_reconcile.v1",
-    "status_in_action_2": "NOT_IMPLEMENTED",
+    "status_in_action_2": "IMPLEMENTED_ACTION_3",
     "input_contract": [
       "release_run_id",
       "task_completion_evidence",
