@@ -10,6 +10,8 @@ export interface ForwardFunnelSummary {
   sports: Record<string, number>;
   score_ready: number;
   contract_a_input: number;
+  pre_contract_a_eligible: number;
+  contract_a_decision_results: number;
   contract_a_accepted: number;
   contract_a_rejected: number;
   top_first_rejection_reasons: Record<string, number>;
@@ -69,6 +71,8 @@ export function rowsForEventWindow(rows: readonly Row[], startMs: number, endMs:
 export function summarizeForwardFunnel(input: {
   rows: readonly Row[];
   decisions: readonly Decision[];
+  contractAFunctionInput: number;
+  preContractEligible: number;
   reservationPhysicalEventIds: readonly string[];
   planningSelected: number;
   startMs: number;
@@ -98,7 +102,12 @@ export function summarizeForwardFunnel(input: {
     unique_events: eventIds.size,
     sports,
     score_ready: datedRows.filter(scoreReady).length,
-    contract_a_input: input.decisions.length,
+    // `produceContractAPlanningDecisions` receives source rows, then reuses
+    // the candidate builder. Keep both boundaries explicit: eligible results
+    // conserve with accepted/rejected; raw function input does not.
+    contract_a_input: input.contractAFunctionInput,
+    pre_contract_a_eligible: input.preContractEligible,
+    contract_a_decision_results: input.decisions.length,
     contract_a_accepted,
     contract_a_rejected: rejected.length,
     top_first_rejection_reasons: Object.fromEntries(Object.entries(top_first_rejection_reasons).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))),

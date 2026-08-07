@@ -51,6 +51,14 @@ function applyFilters(rows: Row[], filters: Filter[]): Row[] {
         });
         break;
       }
+      case "lte": {
+        const [col, val] = f.args as [string, string | number];
+        out = out.filter((r) => {
+          const v = r[col];
+          return v != null && (v as string | number) <= val;
+        });
+        break;
+      }
       case "not": {
         const [col, op2, val] = f.args as [string, string, unknown];
         if (op2 === "is" && val === null) {
@@ -102,6 +110,10 @@ function makeFakeSupabaseAdmin(rows: Row[], selectCalls: string[]) {
           filters.push({ op: "gte", args });
           return builder;
         },
+        lte(...args: unknown[]) {
+          filters.push({ op: "lte", args });
+          return builder;
+        },
         not(...args: unknown[]) {
           filters.push({ op: "not", args });
           return builder;
@@ -118,7 +130,7 @@ function makeFakeSupabaseAdmin(rows: Row[], selectCalls: string[]) {
         limit(n: number) {
           let result = applyFilters(rows, filters);
           if (orderCol) result = sortByCol(result, orderCol, orderAscending);
-          return Promise.resolve({ data: result.slice(0, n), error: null });
+          return { abortSignal: (_signal: unknown) => Promise.resolve({ data: result.slice(0, n), error: null }) };
         },
         range(from: number, to: number) {
           rangeFrom = from;

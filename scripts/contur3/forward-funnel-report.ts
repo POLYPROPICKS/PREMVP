@@ -43,6 +43,7 @@ async function main() {
   const compareMs = zonedUtc(date, compare, tz);
   loadEnvConfig(process.cwd());
   const { loadContractAPlanningSourceRows } = await import("@/lib/executor/buildFireModelCandidates");
+  const { buildFireModelCandidates } = await import("@/lib/executor/buildFireModelCandidates");
   const { produceContractAPlanningDecisions } = await import("@/lib/executor/contractADecisions");
   const { buildReservationPlan } = await import("@/lib/executor/nightEventReservations");
   const sourceSnapshot = await loadContractAPlanningSourceRows(atMs);
@@ -51,24 +52,27 @@ async function main() {
     // Re-evaluate the same immutable source snapshot at each requested clock.
     // The source is fetched once; only the existing policy's time-dependent
     // predicates are replayed.
+    const preContract = await buildFireModelCandidates(100_000, "all", true, datedRows, "CONTRACT_A_PLANNING_V1", nowMs);
     const decisions = await produceContractAPlanningDecisions(datedRows, 100_000, nowMs);
     const plan = await buildReservationPlan(nowMs, {
     selectorMode: "CONTRACT_A_PLANNING_V1",
     fetchSourceRows: async () => datedRows,
     produceDecisions: async () => decisions,
     });
-    return { decisions, plan };
+    return { decisions, preContract, plan };
   };
   const [atPlan, comparePlan] = await Promise.all([buildAt(atMs), buildAt(compareMs)]);
   const atIds = reservationIds(atPlan.plan);
   const compareIds = reservationIds(comparePlan.plan);
-  const summary = summarizeForwardFunnel({ rows: sourceSnapshot, decisions: atPlan.decisions, reservationPhysicalEventIds: atIds, planningSelected: atPlan.plan.diagnostics.planning_eligible_events, startMs, endMs });
+  const summary = summarizeForwardFunnel({ rows: sourceSnapshot, decisions: atPlan.decisions, contractAFunctionInput: datedRows.length, preContractEligible: atPlan.preContract.candidates.length, reservationPhysicalEventIds: atIds, planningSelected: atPlan.plan.diagnostics.planning_eligible_events, startMs, endMs });
   const delta = compareReservationSets(atIds, compareIds);
   console.log(JSON.stringify({
     reporter: "contur3:forward-funnel-report",
     read_only: true,
     eval: { date, timezone: tz, event_start_gte: new Date(startMs).toISOString(), event_start_lt: new Date(endMs).toISOString(), at: new Date(atMs).toISOString(), compare: new Date(compareMs).toISOString() },
     ...summary,
+    pre_contract_a_deduped_rows: datedRows.length - (atPlan.preContract.rawDiagnostics?.total_db_rows ?? datedRows.length),
+    pre_contract_a_drop_reasons: atPlan.preContract.rawDiagnostics?.rejected_before_planning_by_reason ?? {},
     would_reserve_13_10: atIds.length,
     would_reserve_17_00: compareIds.length,
     delta,
