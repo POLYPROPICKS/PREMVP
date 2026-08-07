@@ -501,3 +501,41 @@ behavior changed.
 
 This entry is history only. It records the Stage 1 state reconciliation and does not
 self-accept any Stage 2 result produced in the same task.
+
+## EV-0019 — 2026-08-07 Evolution Control Plane Stage 2 state reconciliation
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **executor:** `local_codex_windows`
+- **observed_at:** 2026-08-07T11:11:09Z
+- **implementation_sha:** `60cf2301954ee5841dcebd032971540dad84c3eb`
+- **merge_sha:** `a942a0d833982bca5caf01ff05d4e4bfb9151119`
+
+PR #110 (`evolution/control-plane-stage-2`) merged the Evolution Control Plane Stage 2
+Automation Roadmap Governor — result/delta schemas, a dependency-free validator library
+(evidence-driven eligibility, no-fabrication, `accepted:false`, factual/strategic field
+separation, Axis A priority protection), the reviewer prompt, a CLI, and 38 new tests —
+to `origin/main`, registering `premvp.command.evolution_govern.v1` and recording
+`SCHEDULE_MANIFEST.yaml` for two intended routines with no scheduler registered in the
+control plane. The same PR also carried the Stage 1 state-reconciliation bootstrap (see
+EV-0018) as a bundled, non-self-accepted state delta. Live `git fetch`,
+`git rev-parse origin/main`, and `git merge-base --is-ancestor` in this session confirmed
+`60cf2301954ee5841dcebd032971540dad84c3eb` is the PR head and
+`a942a0d833982bca5caf01ff05d4e4bfb9151119` is its merge commit on `origin/main`, and that
+the prior recorded baseline `0e43a121e189d2654543d00f4c59a5c15d548528` is a proven
+ancestor of the new baseline. `gh pr view 110` independently confirmed PR #110 is
+`MERGED` with this title and body.
+
+This reconciliation is bounded to exactly what was Architect-accepted for this run:
+recording `CMP-EVOLUTION-CONTROL-PLANE-STAGE-2-20260807` as an accepted completion,
+advancing `CURRENT_STATE.yaml.main.origin_main_sha` to the Stage 2 merge checkpoint,
+advancing `updated_at`/`state_version`, and regenerating `ARCHITECT_SNAPSHOT.md`. It does
+**not** accept any global executor/access-surface mapping change, any `.gitignore`
+change, any unproven `claude_code_cloud` Evolution capability claim, or scheduler
+activation — those remain outside this run's authorization. `roadmap_phase`,
+`current_value_step`, `closed_value_steps`, `active_execution_work`, `open_blockers` and
+all other product-roadmap fields are unchanged. C1 remains `OPEN`. The Governor is
+implemented; schedules are not yet activated; `SCHEDULE_MANIFEST.yaml` exists; no
+runtime, product, or database change occurred.
+
+This entry is history only. It records the Stage 2 state reconciliation and does not
+self-accept any later Evolution Control Plane result.

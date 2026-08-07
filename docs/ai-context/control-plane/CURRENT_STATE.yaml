@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-07T10:32:48Z",
-  "state_version": 13,
+  "updated_at": "2026-08-07T11:11:09Z",
+  "state_version": 14,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
@@ -34,16 +34,16 @@
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "0e43a121e189d2654543d00f4c59a5c15d548528",
+    "origin_main_sha": "a942a0d833982bca5caf01ff05d4e4bfb9151119",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "executor": "local_codex_windows",
-      "commands": ["git fetch --prune origin", "git rev-parse origin/main", "git merge-base --is-ancestor 6f65df44668fe96441b35f309cbeafbc5ec197d6 origin/main"],
-      "observed_at": "2026-08-07T10:32:48Z",
+      "commands": ["git fetch --prune origin", "git rev-parse origin/main", "git merge-base --is-ancestor 60cf2301954ee5841dcebd032971540dad84c3eb origin/main", "git merge-base --is-ancestor 0e43a121e189d2654543d00f4c59a5c15d548528 origin/main"],
+      "observed_at": "2026-08-07T11:11:09Z",
       "worktree": "clean",
-      "note": "PR #109 (evolution/control-plane-stage-1) merged implementation 6f65df44668fe96441b35f309cbeafbc5ec197d6 as 0e43a121e189d2654543d00f4c59a5c15d548528. This is a state-only bootstrap advance for the Evolution Control Plane Stage 1 completion only: it records the baseline and the accepted completion and does not touch roadmap_phase, current_value_step, closed_value_steps, or any product-roadmap field. C1 remains OPEN and no product, database, Ireland, or live-money behavior changed. The prior baseline cec9fc29de69bc1717ba812c0866b16a3c6e6460 is a proven ancestor of this SHA."
+      "note": "PR #110 (evolution/control-plane-stage-2) merged implementation 60cf2301954ee5841dcebd032971540dad84c3eb as a942a0d833982bca5caf01ff05d4e4bfb9151119. This is a state-only bootstrap advance for the Evolution Control Plane Stage 2 completion only: it records the baseline and the accepted completion and does not touch roadmap_phase, current_value_step, closed_value_steps, or any product-roadmap field. The Automation Roadmap Governor (validators, schemas, CLI, reviewer prompt, tests) and SCHEDULE_MANIFEST.yaml are implemented and merged; no scheduler is registered and no schedule is activated. C1 remains OPEN and no product, database, Ireland, or live-money behavior changed. The prior baseline 0e43a121e189d2654543d00f4c59a5c15d548528 is a proven ancestor of this SHA."
     }
   },
 
@@ -155,11 +155,20 @@
       "pr_final_head": "6f65df44668fe96441b35f309cbeafbc5ec197d6",
       "merge_commit": "0e43a121e189d2654543d00f4c59a5c15d548528",
       "evidence_ref": "EVIDENCE_LEDGER#EV-0018"
+    },
+    {
+      "id": "CMP-EVOLUTION-CONTROL-PLANE-STAGE-2-20260807",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Evolution Control Plane Stage 2 (Automation Roadmap Governor: result/delta schemas, dependency-free evidence-driven validator library, reviewer prompt, CLI, 38 tests) landed on main via PR #110, which also carried the Stage 1 state reconciliation as a bundled state-only bootstrap. This reconciliation accepts only the Stage 2 completion and refreshes the main baseline; it does not accept any global executor/access-surface mapping change, any .gitignore change, any unproven claude_code_cloud Evolution capability claim, or scheduler activation. Governor implemented; schedules not yet activated; SCHEDULE_MANIFEST.yaml recorded for two intended routines with no scheduler registered; no runtime, product, or database change occurred.",
+      "pr": "POLYPROPICKS/PREMVP#110",
+      "pr_final_head": "60cf2301954ee5841dcebd032971540dad84c3eb",
+      "merge_commit": "a942a0d833982bca5caf01ff05d4e4bfb9151119",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0019"
     }
   ],
 
   "evidence_freshness": {
-    "origin_main_sha_checked_at": "2026-08-07T10:32:48Z",
+    "origin_main_sha_checked_at": "2026-08-07T11:11:09Z",
     "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
     "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
     "max_age_days": 7
@@ -174,5 +183,5 @@
   ],
   "stale_when_note": "Exact equality between main.origin_main_sha and live origin/main is NOT required and is not used as a staleness test. A state-only bootstrap advance (touching only CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md) keeps state FRESH even though origin/main has moved past the recorded baseline.",
 
-  "last_accepted_completion_id": "CMP-EVOLUTION-CONTROL-PLANE-STAGE-1-20260807"
+  "last_accepted_completion_id": "CMP-EVOLUTION-CONTROL-PLANE-STAGE-2-20260807"
 }
