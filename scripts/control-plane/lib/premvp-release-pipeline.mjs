@@ -170,9 +170,14 @@ export async function reconstructRun(manifest, routingDoc, adapters) {
 }
 
 /** ---- Idempotent PR resolution. ---- */
-export async function resolveOrCreatePr(adapters, { repository, head, base, title, body }) {
+export async function resolveOrCreatePr(adapters, { repository, head, base, title, body, expectedHeadSha }) {
   const existing = await adapters.github.findPullRequest({ repo: repository, head, base });
-  if (existing) return { pr: existing, created: false };
+  // A merged PR on the same reusable branch cannot represent a newly pushed commit.
+  // Reuse it only when it already carries the exact result SHA; otherwise create the
+  // next PR for the branch rather than failing integrity before that safe operation.
+  if (existing && (!existing.merged || !expectedHeadSha || existing.headSha === expectedHeadSha)) {
+    return { pr: existing, created: false };
+  }
   const created = await adapters.github.createPullRequest({ repo: repository, head, base, title, body });
   return { pr: created, created: true };
 }
@@ -319,6 +324,7 @@ export async function executeReleaseRun(manifest, routingDoc, pipelineSpec, adap
     base: manifest.target_ref,
     title: manifest.pr_title || manifest.task_id,
     body: manifest.pr_body || '',
+    expectedHeadSha: resultSha,
   });
   if (pr.headSha && pr.headSha !== resultSha) {
     throw new PipelineError('PR_INTEGRITY_FAILED', `PR head ${pr.headSha} != ${resultSha}`);
