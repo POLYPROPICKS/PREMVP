@@ -187,6 +187,15 @@ test('14. exact existing PR is reused / 15. duplicate PR creation is prevented',
   assert.equal(adapters._callLog.createPullRequest, 0);
 });
 
+test('15b. a merged PR with an older branch head creates the next PR', async () => {
+  const adapters = fakeAdapters({ pr: { number: 7, repo: 'POLYPROPICKS/PREMVP', headSha: 'old', merged: true, mergeCommitSha: 'm1' } });
+  const { created } = await resolveOrCreatePr(adapters, {
+    repository: 'POLYPROPICKS/PREMVP', head: 'feature', base: 'main', title: 't', body: 'b', expectedHeadSha: 'new',
+  });
+  assert.equal(created, true);
+  assert.equal(adapters._callLog.createPullRequest, 1);
+});
+
 // ---- 16/17/29. Merged PR skips merge; ancestry skips repeated integration. -------------------
 test('16. merged PR skips merge / 29. irreversible action not repeated', async () => {
   const adapters = fakeAdapters({});
