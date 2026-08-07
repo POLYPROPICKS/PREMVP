@@ -1487,7 +1487,7 @@ export async function fetchPlanningSourceRowSets(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let scoredRows: any[];
-  if (planningMode && includePlanningShadowRows) {
+  if (planningMode) {
     scoredRows = await fetchAllPlanningRowsByKeyset(
       (cursor) => applyPlanningSnapshot(buildScoredQuery(), cursor),
       { stage: "planning_scored_rows_fetch" }
@@ -1506,7 +1506,7 @@ export async function fetchPlanningSourceRowSets(
   // single snapshot that could serve both without changing candidate eligibility.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let planningShadowRows: any[] = [];
-  if (planningMode) {
+  if (planningMode && includePlanningShadowRows) {
     const buildShadowQuery = () =>
       supabaseAdmin
         .from("generated_signal_pairs")
