@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypropicks.com/schemas/control-plane/evolution/OPERATOR_ACTION_EVENT.schema.json",
+  "title": "PolyProPicks Operator Action Event",
+  "description": "One manually submitted Founder message to an executor surface. Enforced by scripts/control-plane/lib/operator-actions.mjs — a focused dependency-free validator, not a generic JSON Schema engine.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["action_id", "occurred_at", "surface", "type", "origin"],
+  "properties": {
+    "action_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identity used for deduplication. Two events with the same action_id are the same action."
+    },
+    "occurred_at": {
+      "type": "string",
+      "minLength": 1,
+      "description": "ISO-8601 timestamp supplied by the input bundle. Never read from the local clock."
+    },
+    "surface": {
+      "type": "string",
+      "enum": ["CLOUDCODE", "CODEX", "UNKNOWN"]
+    },
+    "type": {
+      "type": "string",
+      "enum": ["START", "FOLLOW_UP", "CORRECTION", "RETRY", "HANDOFF", "APPROVAL"]
+    },
+    "origin": {
+      "type": "string",
+      "enum": ["FOUNDER_MANUAL", "EXECUTOR_INTERNAL", "ARCHITECT"],
+      "description": "Only FOUNDER_MANUAL is counted as an execution operator action. EXECUTOR_INTERNAL is excluded by policy. ARCHITECT feeds architect_corrections only."
+    },
+    "mission_id": {
+      "type": ["string", "null"],
+      "description": "Groups actions into a mission so intermediate_actions_per_mission can be derived."
+    },
+    "capture_coverage": {
+      "type": "string",
+      "enum": ["COMPLETE", "PARTIAL", "UNKNOWN"],
+      "description": "Per-event coverage. Absent resolves to UNKNOWN."
+    },
+    "source_ref": {
+      "type": ["string", "null"],
+      "description": "Where this event was observed. Required for a COMPLETE coverage claim."
+    },
+    "note": { "type": ["string", "null"] }
+  },
+  "x-invariants": [
+    "origin EXECUTOR_INTERNAL is never counted as an operator action.",
+    "origin ARCHITECT is counted only as architect_corrections and never in the execution operator action total.",
+    "Duplicate action_id values collapse to the first occurrence in deterministic order.",
+    "A missing capture_coverage resolves to UNKNOWN, never to COMPLETE.",
+    "capture_coverage COMPLETE requires a non-empty source_ref."
+  ]
+}

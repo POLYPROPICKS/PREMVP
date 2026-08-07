@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "ladder_id": "premvp.founder_capability_ladder.v1",
+  "updated_at": "2026-08-07T00:00:00Z",
+  "_format_note": "JSON-compatible YAML 1.2 subset.",
+
+  "promotion_rule": {
+    "statement": "A level is reached only with practical evidence. Describing, reading about or agreeing with a level never promotes it.",
+    "required_evidence": [
+      "a persistent artifact in Git that the Founder's own decision produced or shaped",
+      "at least one recorded cycle or completion envelope where the level was actually exercised"
+    ],
+    "self_promotion": "FORBIDDEN — a Daily Evolution cycle may propose a promotion, never accept it.",
+    "demotion": "A level may be marked regressed when a later cycle shows the practice was abandoned."
+  },
+
+  "levels": [
+    {
+      "level": 1,
+      "id": "MISSION_DISCIPLINE",
+      "title": "Mission discipline",
+      "plain_ru": "Умение поставить одну задачу с ясной границей: что именно нужно, где можно писать, чего делать нельзя.",
+      "evidence_examples": ["a task prompt with an explicit allowed-file list", "a scope that was held instead of expanded mid-run"],
+      "status": "NOT_ASSESSED"
+    },
+    {
+      "level": 2,
+      "id": "VERIFICATION_DISCIPLINE",
+      "title": "Verification discipline",
+      "plain_ru": "Умение требовать доказательство, а не отчёт. Ничего не считается сделанным без проверяемого следа.",
+      "evidence_examples": ["a rejected claim that lacked evidence", "an accepted completion envelope with runtime evidence"],
+      "status": "NOT_ASSESSED"
+    },
+    {
+      "level": 3,
+      "id": "PERMISSION_AND_TOOL_DESIGN",
+      "title": "Permission and tool design",
+      "plain_ru": "Умение заранее решить, что исполнителю разрешено и чем он это делает, вместо разрешений по ходу дела.",
+      "evidence_examples": ["a capability matrix decision", "a registered command replacing an ad-hoc instruction"],
+      "status": "NOT_ASSESSED"
+    },
+    {
+      "level": 4,
+      "id": "AUTOMATION_ECONOMICS",
+      "title": "Automation economics",
+      "plain_ru": "Умение считать, стоит ли автоматизация своей цены: сколько времени и денег она экономит и когда окупается.",
+      "evidence_examples": ["a hypothesis classified REJECT on cost grounds", "a recorded cost_per_verified_result comparison"],
+      "status": "NOT_ASSESSED"
+    },
+    {
+      "level": 5,
+      "id": "DURABLE_OPERATIONS",
+      "title": "Durable operations",
+      "plain_ru": "Умение строить так, чтобы работа переживала смену сессии, чата и машины.",
+      "evidence_examples": ["work resumed in a different environment from Git artifacts only", "a recovery checkpoint that was actually used"],
+      "status": "NOT_ASSESSED"
+    },
+    {
+      "level": 6,
+      "id": "CONTROL_PLANE_OWNERSHIP",
+      "title": "Control-plane ownership",
+      "plain_ru": "Умение владеть правилами системы: менять политику осознанно, а не подстраиваться под неё.",
+      "evidence_examples": ["a canonical policy change authored by Founder decision", "a rejected executor proposal that conflicted with policy"],
+      "status": "NOT_ASSESSED"
+    },
+    {
+      "level": 7,
+      "id": "CONTROLLED_SELF_IMPROVEMENT",
+      "title": "Controlled self-improvement",
+      "plain_ru": "Умение позволять системе улучшать саму себя, не теряя контроль над приоритетами и деньгами.",
+      "evidence_examples": ["an automation promoted through a gate with a stop condition", "an automation stopped by its own stop condition"],
+      "status": "NOT_ASSESSED"
+    }
+  ],
+
+  "assessment_note": "All levels ship as NOT_ASSESSED. Stage 1 creates the ladder; it does not grade the Founder against it. Assessment begins when real cycles exist."
+}

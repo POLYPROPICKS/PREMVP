@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-04T13:30:00Z",
+  "updated_at": "2026-08-07T00:00:00Z",
 
   "_types": ["AGENT", "SKILL", "COMMAND", "HOOK", "SCRIPT", "CI_GATE", "POLICY"],
   "_status": ["PROVEN_PRESENT", "REFERENCED_ONLY", "PLANNED", "SUPERSEDED"],
@@ -605,6 +605,54 @@
       "input_contract": "compact contextual manifest with mandatory core and optional modules", "output_contract": "prompt, validation report, emitted/omitted modules, word count and command references", "independence_group": null, "receipt_required": false,
       "evidence_class": "SUPPORTED", "last_verified_at": "2026-08-06T13:25:00Z", "portability": "PORTABLE", "supported_executors": ["local_codex_windows", "claude_code_cloud"],
       "hard_prohibitions": ["manual orchestration duplication", "unregistered command reference", "PASS without business result", "recoverable Founder escalation"]
+    },
+    {
+      "canonical_id": "premvp.command.evolution_collect.v1",
+      "type": "COMMAND",
+      "owner_platform": "repository",
+      "implementation_path": "scripts/control-plane/evolution-collect.mjs",
+      "status": "PROVEN_PRESENT",
+      "invocation": "EXPLICIT",
+      "triggers": ["Daily Evolution Review input collection for a 1-2 day period"],
+      "exclusions": ["Ireland", "database access", "product runtime", "live money", "scheduling"],
+      "model_policy": "n/a",
+      "reasoning_policy": "n/a",
+      "permissions": "read one Evolution input bundle and write a normalized collection file",
+      "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "an Evolution input bundle: period bounds, operator action events, declared capture coverage, optional measured metric values",
+      "output_contract": "deduplicated OPERATOR_ACTION_SUMMARY plus a DIAGNOSTIC_ONLY supporting-metrics block where unmeasured values stay UNKNOWN",
+      "independence_group": null,
+      "receipt_required": false,
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "last_verified_at": "2026-08-07T00:00:00Z",
+      "portability": "PORTABLE",
+      "supported_executors": ["local_codex_windows", "claude_code_cloud"],
+      "hard_prohibitions": ["counting executor-internal work as an operator action", "guessing unavailable cost or usage data", "network access", "cross-repository input"],
+      "notes": "Dependency-free Node ESM, offline, clock-free. Executed live on local_codex_windows during Evolution Stage 1; not yet executed on claude_code_cloud."
+    },
+    {
+      "canonical_id": "premvp.command.evolution_evaluate.v1",
+      "type": "COMMAND",
+      "owner_platform": "repository",
+      "implementation_path": "scripts/control-plane/evolution-evaluate.mjs",
+      "status": "PROVEN_PRESENT",
+      "invocation": "EXPLICIT",
+      "triggers": ["validation of a Daily Evolution Review cycle and rendering of its Founder report"],
+      "exclusions": ["Ireland", "database access", "product runtime", "live money", "CURRENT_STATE acceptance"],
+      "model_policy": "n/a",
+      "reasoning_policy": "n/a",
+      "permissions": "read one cycle document and write the validated cycle plus its report under evolution/cycles",
+      "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "an EVOLUTION_CYCLE document authored by the Daily Evolution Review reviewer",
+      "output_contract": "explicit violation list, or a validated cycle plus a rendered Russian Founder report satisfying the heading and style contract",
+      "independence_group": null,
+      "receipt_required": false,
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "last_verified_at": "2026-08-07T00:00:00Z",
+      "portability": "PORTABLE",
+      "supported_executors": ["local_codex_windows", "claude_code_cloud"],
+      "hard_prohibitions": ["merging Axis A and Axis B", "letting a supporting metric set an axis verdict", "inferring reconciled PnL without fills, fees and settlement evidence", "self-accepting a cycle or a roadmap change", "product phase mutation"],
+      "notes": "Renders a Founder report only for an admissible cycle. Executed live on local_codex_windows during Evolution Stage 1; not yet executed on claude_code_cloud."
     }
   ]
 }

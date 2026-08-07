@@ -1,0 +1,70 @@
+{
+  "schema_version": "1.0",
+  "policy_id": "premvp.evolution_portability.v1",
+  "updated_at": "2026-08-07T00:00:00Z",
+  "_format_note": "JSON-compatible YAML 1.2 subset.",
+
+  "goal": "Another session, another executor and another machine must be able to run the Daily Evolution Review from Git alone, with no access to the chat that created it.",
+
+  "portability_contract": {
+    "runtime": "Node.js ESM, dependency-free (node: builtins only).",
+    "shell_neutral": true,
+    "path_neutral": "No absolute or Windows-specific paths in any Evolution artifact or script. Paths are repository-relative.",
+    "determinism": "Same input bundle produces byte-identical collection output, cycle validation result and Founder report.",
+    "clock": "No implicit wall-clock reads inside validation or rendering. Timestamps come from the input bundle.",
+    "network": "None. Collection and evaluation are offline.",
+    "secrets": "None read, none printed."
+  },
+
+  "environment_targets": [
+    {
+      "executor_id": "claude_code_cloud",
+      "supported": true,
+      "notes": "Ephemeral container. Everything the cycle needs must be committed; nothing may rely on local scratch state.",
+      "evidence": "NOT_PROVEN — Evolution scripts have not yet been executed on this target."
+    },
+    {
+      "executor_id": "local_codex_windows",
+      "supported": true,
+      "notes": "Windows host. Scripts are invoked through npm scripts so no shell-specific syntax is required.",
+      "evidence": "PROVEN_IN_RUNTIME — Stage 1 tests and validators executed on this target."
+    },
+    {
+      "executor_id": "ireland_local",
+      "supported": false,
+      "notes": "Protected boundary. Evolution never reads, writes or reasons about Ireland.",
+      "evidence": "NOT_AVAILABLE"
+    }
+  ],
+
+  "storage_contract": {
+    "input_bundles": "docs/ai-context/control-plane/evolution/input-bundles/",
+    "cycles": "docs/ai-context/control-plane/evolution/cycles/",
+    "corrections": "docs/ai-context/control-plane/evolution/corrections/",
+    "diagrams": "docs/ai-context/control-plane/evolution/diagrams/",
+    "naming": "<YYYY-MM-DD>__<slug>.json for bundles, cycles and corrections; the Founder report is written next to its cycle as <cycle_id>.report.md.",
+    "rule": "Every Evolution result is a tracked file. Nothing important lives only in a chat transcript, a terminal buffer or an executor's memory."
+  },
+
+  "handoff_contract": {
+    "minimum_to_resume": [
+      "docs/ai-context/control-plane/evolution/EVOLUTION_POLICY.yaml",
+      "docs/ai-context/control-plane/evolution/prompts/DAILY_EVOLUTION_REVIEW.md",
+      "docs/ai-context/control-plane/evolution/schemas/",
+      "the target input bundle",
+      "npm run control-plane:evolution:collect",
+      "npm run control-plane:evolution:evaluate"
+    ],
+    "rule": "If those artifacts are present, a cold session can produce and validate a cycle without any prior conversation context."
+  },
+
+  "forbidden": [
+    "third-party runtime dependencies",
+    "absolute host paths",
+    "network calls",
+    "database access",
+    "product runtime imports",
+    "Ireland access",
+    "live-money reasoning"
+  ]
+}

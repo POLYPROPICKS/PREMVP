@@ -1,0 +1,85 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypropicks.com/schemas/control-plane/evolution/OPERATOR_ACTION_SUMMARY.schema.json",
+  "title": "PolyProPicks Operator Action Summary",
+  "description": "Deterministic aggregation of operator action events for one Evolution period. Produced by scripts/control-plane/lib/operator-actions.mjs.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "period_start",
+    "period_end",
+    "capture_coverage",
+    "total_operator_actions",
+    "by_type",
+    "by_surface",
+    "architect_corrections",
+    "duplicates_dropped",
+    "excluded",
+    "derived"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "period_start": { "type": "string", "minLength": 1 },
+    "period_end": { "type": "string", "minLength": 1 },
+    "capture_coverage": { "type": "string", "enum": ["COMPLETE", "PARTIAL", "UNKNOWN"] },
+    "total_operator_actions": { "type": "integer", "minimum": 0 },
+    "by_type": {
+      "type": "object",
+      "required": ["START", "FOLLOW_UP", "CORRECTION", "RETRY", "HANDOFF", "APPROVAL"],
+      "additionalProperties": false,
+      "properties": {
+        "START": { "type": "integer", "minimum": 0 },
+        "FOLLOW_UP": { "type": "integer", "minimum": 0 },
+        "CORRECTION": { "type": "integer", "minimum": 0 },
+        "RETRY": { "type": "integer", "minimum": 0 },
+        "HANDOFF": { "type": "integer", "minimum": 0 },
+        "APPROVAL": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "by_surface": {
+      "type": "object",
+      "required": ["CLOUDCODE", "CODEX", "UNKNOWN"],
+      "additionalProperties": false,
+      "properties": {
+        "CLOUDCODE": { "type": "integer", "minimum": 0 },
+        "CODEX": { "type": "integer", "minimum": 0 },
+        "UNKNOWN": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "architect_corrections": { "type": "integer", "minimum": 0 },
+    "duplicates_dropped": { "type": "integer", "minimum": 0 },
+    "excluded": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["action_id", "reason"],
+        "properties": {
+          "action_id": { "type": "string" },
+          "reason": {
+            "type": "string",
+            "enum": ["EXECUTOR_INTERNAL", "ARCHITECT_CORRECTION", "DUPLICATE_ACTION_ID", "OUT_OF_PERIOD"]
+          }
+        }
+      }
+    },
+    "derived": {
+      "type": "object",
+      "required": ["intermediate_actions_per_mission", "actions_per_verified_result"],
+      "properties": {
+        "intermediate_actions_per_mission": {
+          "anyOf": [{ "type": "number" }, { "type": "string", "enum": ["UNKNOWN", "NOT_AVAILABLE"] }]
+        },
+        "actions_per_verified_result": {
+          "anyOf": [{ "type": "number" }, { "type": "string", "enum": ["UNKNOWN", "NOT_AVAILABLE"] }]
+        }
+      }
+    }
+  },
+  "x-invariants": [
+    "total_operator_actions equals the sum of by_type and the sum of by_surface.",
+    "architect_corrections is never included in total_operator_actions.",
+    "Derived ratios are UNKNOWN when capture_coverage is UNKNOWN or the denominator is zero.",
+    "Every dropped or excluded event appears in excluded with an explicit reason."
+  ]
+}
