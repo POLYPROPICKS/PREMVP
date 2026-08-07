@@ -1,0 +1,216 @@
+{
+  "schema_version": "1.0",
+  "policy_id": "premvp.evolution_policy.v1",
+  "stage": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+  "updated_at": "2026-08-07T00:00:00Z",
+  "_format_note": "JSON-compatible YAML 1.2 subset, identical to the rest of docs/ai-context/control-plane. Every .yaml file here MUST also parse with JSON.parse.",
+
+  "purpose": "Turn each 1-2 days of real PolyProPicks engineering work into a durable, Git-persisted learning artifact without changing product phase, C1/C2 meaning, PnL gates or live-money authority.",
+
+  "authority": {
+    "role": "SUBORDINATE_POLICY",
+    "rule": "This policy governs the Evolution routine only. It never overrides ARCHITECT_CONTROL_PLANE.yaml, CURRENT_STATE.yaml, CAPABILITY_MATRIX.yaml or ROUTING_AND_PIPELINES.yaml. Where it appears to conflict, the canonical control-plane artifact wins and the Evolution cycle records the conflict instead of resolving it.",
+    "cannot_change": [
+      "roadmap_phase",
+      "current_value_step",
+      "C1 or C2 meaning",
+      "PnL gates",
+      "live-money authority",
+      "repository boundaries",
+      "capability verdicts"
+    ],
+    "self_acceptance": "An Evolution cycle is evidence and proposal only. It may never mark CURRENT_STATE.yaml, a roadmap change or a capability verdict as accepted."
+  },
+
+  "axes": {
+    "separation_rule": "Axis A and Axis B are evaluated independently and are never merged, averaged, traded off inside a single verdict, or derived from each other. A cycle always carries two verdicts.",
+    "axis_a": {
+      "id": "AXIS_A_LAUNCH_REVENUE_PNL",
+      "priority": "HIGHEST_BUSINESS_PRIORITY",
+      "question": "Did this period move PolyProPicks measurably closer to production launch, revenue, settlement and reconciled PnL?",
+      "required_findings": [
+        "what moved the project toward launch, revenue or PnL",
+        "what next verified production fact became possible",
+        "what blocker was removed or introduced",
+        "what remains NOT PROVEN",
+        "whether runtime or business evidence exists"
+      ],
+      "verdicts": [
+        "ADVANCED",
+        "NO_MEASURABLE_CHANGE",
+        "STALLED",
+        "REGRESSED",
+        "NOT_ENOUGH_EVIDENCE"
+      ],
+      "default_verdict_without_evidence": "NOT_ENOUGH_EVIDENCE"
+    },
+    "axis_b": {
+      "id": "AXIS_B_MANIFEST_2_CAPABILITY",
+      "priority": "SYSTEM_EVOLUTION",
+      "question": "Did this period create or strengthen a reusable Manifest 2 / Agent Operating System capability?",
+      "capability_domains": [
+        "MISSION_CONTRACTS",
+        "VERIFICATION_AND_EVIDENCE",
+        "MISSION_REGISTRY",
+        "DECLARATIVE_ENVIRONMENTS",
+        "PERMISSION_AND_TOOL_POLICY",
+        "REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS",
+        "PORTABILITY_ACROSS_CLOUDCODE_AND_CODEX",
+        "RECOVERY_AND_CHECKPOINTS",
+        "AUTOMATION_ECONOMICS",
+        "CONTROLLED_IMPROVEMENT"
+      ],
+      "proof_rule": "A capability is NOT proven because an LLM described it. It must persist as a reusable artifact in Git AND have evidence of use or validation. Description without a persisted artifact is at most PRACTICED_NOT_YET_PROVEN.",
+      "verdicts": [
+        "CAPABILITY_ADDED",
+        "CAPABILITY_STRENGTHENED",
+        "PRACTICED_NOT_YET_PROVEN",
+        "NO_MEASURABLE_CHANGE",
+        "REGRESSED"
+      ],
+      "default_verdict_without_evidence": "NO_MEASURABLE_CHANGE"
+    }
+  },
+
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "override_rule": "Supporting metrics can never set, raise, lower or justify an Axis A or Axis B verdict. They explain a verdict that was already derived from evidence.",
+    "founder_action_count_rule": "Founder/operator action count is a diagnostic signal, NOT the main KPI. A cycle that lowers operator actions while Axis A did not advance is not a success.",
+    "unknown_rule": "A metric with no supporting evidence MUST be recorded literally as the string UNKNOWN or NOT_AVAILABLE. Estimating, interpolating or guessing cost, token or time values is forbidden.",
+    "metrics": [
+      { "id": "time_to_verified_result", "unit": "minutes", "kind": "NUMERIC_OR_UNKNOWN" },
+      { "id": "first_pass_pass_rate", "unit": "ratio_0_1", "kind": "NUMERIC_OR_UNKNOWN" },
+      { "id": "rework_count", "unit": "count", "kind": "NUMERIC_OR_UNKNOWN" },
+      { "id": "cost_per_verified_result", "unit": "currency_or_tokens", "kind": "NUMERIC_OR_UNKNOWN" },
+      { "id": "reviewer_rejection_count", "unit": "count", "kind": "NUMERIC_OR_UNKNOWN" },
+      { "id": "runtime_evidence_count", "unit": "count", "kind": "NUMERIC_OR_UNKNOWN" },
+      { "id": "reusable_artifacts_created", "unit": "count", "kind": "NUMERIC_OR_UNKNOWN" },
+      { "id": "cloudcode_actions", "unit": "count", "kind": "NUMERIC_OR_UNKNOWN" },
+      { "id": "codex_actions", "unit": "count", "kind": "NUMERIC_OR_UNKNOWN" },
+      { "id": "architect_corrections", "unit": "count", "kind": "NUMERIC_OR_UNKNOWN" },
+      { "id": "intermediate_actions_per_mission", "unit": "ratio", "kind": "NUMERIC_OR_UNKNOWN" },
+      { "id": "actions_per_verified_result", "unit": "ratio", "kind": "NUMERIC_OR_UNKNOWN" }
+    ]
+  },
+
+  "evidence_policy": {
+    "material_claim_rule": "Every material claim — an Axis A proven fact, an Axis B capability, a removed blocker, a metric value that is not UNKNOWN — MUST carry at least one evidence reference.",
+    "evidence_ref_forms": [
+      "git SHA",
+      "PR number",
+      "tracked repository path",
+      "command name plus exit code",
+      "EVIDENCE_LEDGER entry id",
+      "completion envelope id"
+    ],
+    "evidence_classes": [
+      "PROVEN_IN_RUNTIME",
+      "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+      "SUPPORTED",
+      "NOT_PROVEN"
+    ],
+    "pnl_rule": {
+      "id": "NO_INFERRED_RECONCILED_PNL",
+      "statement": "Reconciled PnL is NEVER inferred. A cycle may claim reconciled PnL only when fills, fees and settlement evidence are all present as explicit evidence references.",
+      "required_evidence_kinds": ["FILLS", "FEES", "SETTLEMENT"],
+      "on_violation": "UNSUPPORTED_PNL_CLAIM — the cycle is rejected by the validator, not downgraded."
+    }
+  },
+
+  "automation_hypotheses": {
+    "target_range": { "min": 5, "max": 8 },
+    "invention_rule": "Never invent a hypothesis to reach five. A hypothesis must be supported by an observed problem in the reviewed period.",
+    "under_target_rule": "Fewer than five hypotheses is allowed ONLY when the cycle sets insufficient_supported_hypotheses true and gives an explicit reason.",
+    "classifications": ["NOW", "PRODUCT_FIRST", "SYSTEM_LATER", "REJECT"],
+    "required_fields": [
+      "observed_problem",
+      "why_it_matters",
+      "axis_a_effect",
+      "axis_b_effect",
+      "proposed_automation",
+      "persistent_artifact",
+      "expected_value",
+      "implementation_cost",
+      "verification_cost",
+      "risk",
+      "success_metric",
+      "rollback_or_stop_condition",
+      "timing",
+      "classification"
+    ]
+  },
+
+  "founder_learning": {
+    "practices": {
+      "exact_count": 2,
+      "rule": "Exactly two Founder practices per cycle — not one, not three. Two is enough to compare and few enough to actually do.",
+      "required_fields": [
+        "skill_practiced",
+        "why_it_matters_now",
+        "how_it_applies_to_current_project",
+        "persistent_git_artifact"
+      ],
+      "comparison_required": true,
+      "recommended_order_required": true
+    },
+    "experiments": {
+      "min": 2,
+      "max": 3,
+      "required_fields": [
+        "hypothesis",
+        "bounded_scope",
+        "persistent_artifact",
+        "promotion_condition",
+        "stop_condition"
+      ],
+      "rule": "Every experiment must create or validate a persistent reusable artifact in Git and must declare an observable promotion condition and an observable stop condition."
+    }
+  },
+
+  "founder_report": {
+    "language": "ru",
+    "format": "markdown",
+    "style_contract": [
+      "plain Russian, understandable without engineering background",
+      "short paragraphs and bullets",
+      "explain unavoidable technical terms in-line",
+      "no schema dumps, no JSON blocks, no field names",
+      "no false certainty — unknown stays unknown",
+      "mobile-readable"
+    ],
+    "required_headings": [
+      "# Daily Evolution Review",
+      "## Главный итог",
+      "## Ось A — запуск, выручка и PnL",
+      "## Ось B — Manifest 2",
+      "## Что доказано",
+      "## Что блокирует следующий шаг",
+      "## Варианты автоматизации",
+      "## Две практики Founder",
+      "## Следующие эксперименты",
+      "## Поддерживающие метрики",
+      "## Roadmap",
+      "## Что произойдёт дальше"
+    ],
+    "headings_are_ordered": true,
+    "machine_evidence_location": "docs/ai-context/control-plane/evolution/cycles/<cycle_id>.json"
+  },
+
+  "stage_1_boundaries": {
+    "implemented": [
+      "Evolution directory, policies and schemas",
+      "operator action collection, deduplication and aggregation",
+      "deterministic cycle and Founder-report validators",
+      "Daily Evolution Review reviewer prompt",
+      "Git-persisted cycle and correction storage"
+    ],
+    "explicitly_not_implemented": [
+      "executable Automation Roadmap Governor (Stage 2)",
+      "scheduling or cron activation (Stage 2)",
+      "multi-cycle comparison and Roadmap Delta Proposal (Stage 2)",
+      "automation-effect verification and Promotion Gate (Stage 2)"
+    ],
+    "no_historical_cycle_rule": "Stage 1 does not run a real-world Daily Evolution cycle. cycles/ ships empty on purpose. Synthetic deterministic fixtures live in tests only."
+  }
+}

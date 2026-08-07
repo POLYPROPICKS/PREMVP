@@ -98,6 +98,9 @@
     "control-plane:commands:check": "node scripts/control-plane/validate-command-bindings.mjs",
     "control-plane:prompt:compile": "node scripts/control-plane/prompt-compile.mjs",
     "control-plane:architect-bundle": "node scripts/control-plane/generate-chatgpt-architect-bundle.mjs",
+    "control-plane:evolution:collect": "node scripts/control-plane/evolution-collect.mjs",
+    "control-plane:evolution:evaluate": "node scripts/control-plane/evolution-evaluate.mjs",
+    "control-plane:evolution:test": "node --test tests/control-plane/evolutionDailyReview.test.mjs",
     "test:liquidity": "node --import tsx --test tests/liquidity/*.test.ts",
     "test:analytics": "node --import tsx --test tests/analytics/*.test.ts"
   },

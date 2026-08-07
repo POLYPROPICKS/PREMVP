@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "policy_id": "premvp.operator_action_policy.v1",
+  "updated_at": "2026-08-07T00:00:00Z",
+  "_format_note": "JSON-compatible YAML 1.2 subset.",
+
+  "unit_definition": {
+    "statement": "One Founder message manually submitted to CloudCode or Codex equals exactly one execution operator action.",
+    "counts": [
+      "a message the Founder typed or pasted and sent to an executor surface"
+    ],
+    "does_not_count": [
+      "executor-internal commands",
+      "tests run by the executor",
+      "reviewer invocations",
+      "automated routine steps",
+      "retries the executor performed on its own",
+      "tool calls inside a single executor turn"
+    ],
+    "rationale": "The metric measures how much manual relay the Founder still performs, not how much work the machine did."
+  },
+
+  "action_types": [
+    { "id": "START", "meaning": "Opens a new mission or task on an executor surface." },
+    { "id": "FOLLOW_UP", "meaning": "Adds information or asks for continuation inside an existing mission." },
+    { "id": "CORRECTION", "meaning": "Founder corrects a wrong direction, output or assumption." },
+    { "id": "RETRY", "meaning": "Founder re-submits after a failure, timeout or lost session." },
+    { "id": "HANDOFF", "meaning": "Founder carries a result from one executor surface to another." },
+    { "id": "APPROVAL", "meaning": "Founder grants a decision or permission the executor could not take alone." }
+  ],
+
+  "architect_corrections": {
+    "id": "ARCHITECT_CORRECTION",
+    "rule": "A correction produced by the Architect (planning layer) is recorded SEPARATELY and is never added to the execution operator action total.",
+    "metric": "architect_corrections",
+    "reason": "Mixing them would hide whether the Founder is relaying more, or the plan is being corrected more."
+  },
+
+  "surfaces": [
+    { "id": "CLOUDCODE", "metric": "cloudcode_actions" },
+    { "id": "CODEX", "metric": "codex_actions" },
+    { "id": "UNKNOWN", "metric": null, "note": "Counted in the total but attributed to neither surface metric." }
+  ],
+
+  "deduplication": {
+    "key": "action_id",
+    "rule": "Events sharing an action_id are the same action. The first occurrence in deterministic order is kept; later occurrences are dropped and counted as duplicates_dropped.",
+    "deterministic_order": ["occurred_at ascending", "action_id ascending", "input order"],
+    "rationale": "The same relay is often reported by two sources (the executor transcript and the Founder's own log). Without dedup the metric silently doubles."
+  },
+
+  "capture_coverage": {
+    "values": ["COMPLETE", "PARTIAL", "UNKNOWN"],
+    "definitions": {
+      "COMPLETE": "Every operator action in the period is present and every source that could hold one was read.",
+      "PARTIAL": "At least one source was read but at least one known source was missing or truncated.",
+      "UNKNOWN": "Coverage cannot be established; the totals are a lower bound only."
+    },
+    "resolution_rule": "Bundle coverage is the WORST coverage among the declared bundle coverage and every event's own coverage. Absence of a declared coverage resolves to UNKNOWN.",
+    "reporting_rule": "A summary with coverage PARTIAL or UNKNOWN must never be presented as an exact count. Derived ratios are reported as UNKNOWN when coverage is UNKNOWN."
+  },
+
+  "derived_metrics": {
+    "intermediate_actions_per_mission": "Actions that are not START, divided by mission count. UNKNOWN when mission count is zero or coverage is UNKNOWN.",
+    "actions_per_verified_result": "Total counted actions divided by verified results. UNKNOWN when verified results is zero or coverage is UNKNOWN."
+  },
+
+  "kpi_rule": "Operator action count is a supporting diagnostic. It can never raise or lower an Axis A or Axis B verdict, and a reduction in operator actions is not by itself progress."
+}

@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypropicks.com/schemas/control-plane/evolution/FOUNDER_CORRECTION.schema.json",
+  "title": "PolyProPicks Founder Correction",
+  "description": "A durable record of a Founder or Architect correction so the same mistake is not repeated across sessions. Stage 1 persists and reads corrections; the Correction Ledger and its governance belong to Stage 2.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "correction_id",
+    "recorded_at",
+    "source",
+    "subject",
+    "what_was_wrong",
+    "what_is_correct",
+    "why_it_matters",
+    "applies_to",
+    "evidence_refs",
+    "accepted"
+  ],
+  "properties": {
+    "correction_id": { "type": "string", "minLength": 1 },
+    "recorded_at": { "type": "string", "minLength": 1 },
+    "source": { "type": "string", "enum": ["FOUNDER", "ARCHITECT"] },
+    "subject": { "type": "string", "minLength": 1, "description": "Short label for what the correction is about." },
+    "what_was_wrong": { "type": "string", "minLength": 1 },
+    "what_is_correct": { "type": "string", "minLength": 1 },
+    "why_it_matters": { "type": "string", "minLength": 1 },
+    "applies_to": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "Repository paths, command ids or policy ids the correction governs."
+    },
+    "cycle_id": { "type": ["string", "null"], "description": "The Evolution cycle that surfaced the correction, when there is one." },
+    "evidence_refs": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+    "accepted": {
+      "type": "boolean",
+      "const": false,
+      "description": "A correction written by an executor is always a proposal. Acceptance is a separate architect step."
+    }
+  },
+  "x-invariants": [
+    "accepted must be false — the writing executor never accepts its own correction.",
+    "A correction must name at least one artifact it applies to, otherwise it cannot be enforced later.",
+    "Corrections are append-only files under evolution/corrections/ and are readable without any chat context."
+  ]
+}
