@@ -1,0 +1,327 @@
+{
+  "schema_version": "1.0",
+  "cycle_id": "2026-08-07__daily-evolution-review-001",
+  "period_start": "2026-08-07T00:00:00Z",
+  "period_end": "2026-08-07T18:11:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "claude-sonnet-5",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [
+      "CMP-EVOLUTION-CONTROL-PLANE-STAGE-1-20260807",
+      "CMP-EVOLUTION-CONTROL-PLANE-STAGE-2-20260807"
+    ],
+    "confirmed_changes": [
+      "PR#109",
+      "PR#110",
+      "PR#111",
+      "PR#112",
+      "PR#113",
+      "PR#114",
+      "PR#115"
+    ],
+    "input_bundle_ref": "NONE - no file exists yet under docs/ai-context/control-plane/evolution/input-bundles/; this is the first real Daily Evolution Review and operator-action coverage is UNKNOWN as a direct result."
+  },
+  "axis_a": {
+    "verdict": "NO_MEASURABLE_CHANGE",
+    "what_moved": [
+      {
+        "statement": "Добавлен и доработан read-only отчёт по форвардной воронке (funnel reporter) для Contur3 (lib/executor/forwardFunnelReport.ts, scripts/contur3/forward-funnel-report.ts) - первый переиспользуемый диагностический инструмент для следующего шага STEP_3_FORWARD_FUNNEL (T-5 трафик).",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "PR#112",
+          "PR#113",
+          "tests/contur3/forwardFunnelReport.test.ts"
+        ]
+      },
+      {
+        "statement": "Релизный конвейер PREMVP (premvp.release_pipeline.v1) перешёл из состояния EXPERIMENTAL_DISABLED в статус ENABLED, стал возобновляемой (resumable) машиной состояний с 35 проходящими детерминированными тестами, включая возобновление уже смёрженных веток.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "PR#114",
+          "PR#115",
+          "docs/ai-context/control-plane/pipelines/PREMVP_RELEASE_PIPELINE_V1.yaml",
+          "npm run control-plane:release:test exit 0 (35/35, проверено в этом цикле)"
+        ]
+      }
+    ],
+    "next_verified_production_fact_now_possible": "После одного реального (read-only) запуска отчёта по форвардной воронке появится первый проверенный в реальных данных факт по STEP_3_FORWARD_FUNNEL вместо только тестового покрытия.",
+    "blockers_removed": [
+      {
+        "statement": "CURRENT_STATE.yaml фиксировал релизный конвейер как EXPERIMENTAL_DISABLED из-за отсутствия команды control_plane_reconcile.v1. Эта команда теперь существует, а спецификация конвейера уже говорит ENABLED - блокер снят на уровне кода, хотя CURRENT_STATE.yaml пока не обновлён.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "scripts/control-plane/reconcile-control-plane.mjs",
+          "docs/ai-context/control-plane/pipelines/PREMVP_RELEASE_PIPELINE_V1.yaml",
+          "PR#114"
+        ]
+      }
+    ],
+    "blockers_introduced": [],
+    "not_proven": [
+      "За период не собрано ни одного факта из реального рантайма или бизнеса - всё выше это код и тесты, а не живой деплой или сигнал по выручке.",
+      "C1 остаётся OPEN: блокер BLK-001 (нет доказанного естественного прогона ночных резерваций после последней подтверждённой точки деплоя) не изменился.",
+      "Релизный конвейер ни разу не выполнил реальный релиз от начала до конца на origin/main; статус ENABLED и прохождение тестов - это не то же самое, что доказанный живой прогон.",
+      "Отчёт по форвардной воронке ни разу не запускался на реальных данных Supabase."
+    ],
+    "runtime_or_business_evidence_exists": false,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_ADDED",
+    "capabilities": [
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "Способность Evolution Stage 1 (ежедневный разбор) впервые применена как реальный, сохранённый в Git цикл, чем закрывается условие выхода Stage 1.",
+        "persisted_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-08-07__daily-evolution-review-001.json",
+        "use_or_validation_evidence": "47 из 47 тестов проходят (evolution:test, проверено в этом цикле); этот цикл проверен и записан командой evolution_evaluate.v1 --write.",
+        "evidence_refs": [
+          "npm run control-plane:evolution:test exit 0 (47/47)",
+          "docs/ai-context/control-plane/evolution/AUTOMATION_ROADMAP.yaml"
+        ]
+      },
+      {
+        "domain": "PORTABILITY_ACROSS_CLOUDCODE_AND_CODEX",
+        "statement": "claude_code_cloud в этой сессии выполнил тестовые наборы Evolution и релизного конвейера, переводя доказательство переносимости для этого исполнителя из статуса NOT_PROVEN в реальный результат рантайма.",
+        "persisted_artifact": "docs/ai-context/control-plane/evolution/TOOL_AND_ENVIRONMENT_PORTABILITY.yaml",
+        "use_or_validation_evidence": "evolution:test (47/47), evolution:govern:test (38/38) и release:test (35/35) - все завершились с кодом 0 на claude_code_cloud в этой сессии.",
+        "evidence_refs": [
+          "npm run control-plane:evolution:test exit 0",
+          "npm run control-plane:evolution:govern:test exit 0",
+          "npm run control-plane:release:test exit 0"
+        ]
+      },
+      {
+        "domain": "RECOVERY_AND_CHECKPOINTS",
+        "statement": "Релизный конвейер PREMVP получил возобновляемое, идемпотентное выполнение - включая возобновление уже смёрженных веток - как переиспользуемую машину состояний с обязательным ревью, а не разовый скрипт.",
+        "persisted_artifact": "scripts/control-plane/lib/premvp-release-pipeline.mjs",
+        "use_or_validation_evidence": "35 из 35 детерминированных тестов проходят, включая новый сценарий возобновления смёрженных веток.",
+        "evidence_refs": [
+          "PR#114",
+          "PR#115",
+          "tests/control-plane/premvpReleasePipeline.test.mjs"
+        ]
+      }
+    ],
+    "not_proven": [
+      "Automation Roadmap Governor (Stage 2) ни разу не провёл реальный проход управления; roadmap-proposals/ намеренно пуст.",
+      "Возобновляемость релизного конвейера доказана только на тестовых заглушках, а не на живых GitHub- и деплой-транспортах.",
+      "Доказательства переносимости для local_codex_windows относятся к прошлым дням и не перепроверялись в этом цикле."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": "UNKNOWN",
+      "runtime_evidence_count": 0,
+      "reusable_artifacts_created": 3,
+      "cloudcode_actions": "UNKNOWN",
+      "codex_actions": "UNKNOWN",
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-08-07T00:00:00Z",
+    "period_end": "2026-08-07T18:11:00Z",
+    "capture_coverage": "UNKNOWN",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "В этом первом реальном цикле вообще не было входного пакета операторских действий, поэтому полнота сбора вышла неизвестной, а каждый счётчик действий - слепой ноль, а не проверенное малое число.",
+      "why_it_matters": "Без реальной полноты сбора вся диагностика ручных сообщений Founder, ради которой существует этот разбор, бессмысленна и в будущих циклах тоже.",
+      "axis_a_effect": "нет прямого эффекта - только диагностика",
+      "axis_b_effect": "Делает домены AUTOMATION_ECONOMICS и VERIFICATION_AND_EVIDENCE реально измеримыми вместо постоянно неизвестных",
+      "proposed_automation": "Лёгкий перехватчик на поверхностях исполнения CloudCode/Codex, который автоматически добавляет одно событие OPERATOR_ACTION_EVENT на каждое отправленное Founder сообщение в файл входного пакета за день, без дополнительного ручного шага",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/input-bundles/<date>.json",
+      "expected_value": "Переводит ручную нагрузку Founder из неизмеримой в измеримую между циклами",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий - только чтение и добавление записи, продукт не затрагивается",
+      "success_metric": "Полнота сбора становится COMPLETE или PARTIAL как минимум 3 цикла подряд",
+      "rollback_or_stop_condition": "Остановить сбор, если лог начнёт хранить содержимое сообщений сверх action_id/типа/поверхности/времени, или если появится лишний ручной шаг",
+      "timing": "До следующего Daily Evolution Review",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/input-bundles/README.md",
+        "operator_actions этого цикла"
+      ]
+    },
+    {
+      "id": "H2",
+      "observed_problem": "Релизный конвейер теперь в статусе ENABLED и проходит 35 тестов на тестовых заглушках, но ни разу не выполнил реальный релиз от начала до конца на живых GitHub- и деплой-транспортах.",
+      "why_it_matters": "Возобновляемая машина состояний, проверенная только на заглушках, ещё не заслуживает доверия для реального, трудно обратимого релизного действия.",
+      "axis_a_effect": "В перспективе может сократить время до деплоя после подтверждения; сегодня только снижает риск, заранее выявляя пробелы",
+      "axis_b_effect": "Переводит RECOVERY_AND_CHECKPOINTS из доказательства только тестами к PROVEN_IN_RUNTIME",
+      "proposed_automation": "Один ограниченный запуск --status или --dry-run на реальном манифесте с низким риском, чтобы получить первое доказательство на живых транспортах, прежде чем доверять конвейеру настоящий релиз",
+      "persistent_artifact": "запись в EVIDENCE_LEDGER.md с транскриптом и кодом выхода --status/--dry-run",
+      "expected_value": "Первый реальный сигнал доверия перед использованием конвейера для настоящего релиза",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Средний - даже --dry-run делает живые обращения к GitHub",
+      "success_metric": "--status/--dry-run завершается в рамках заявленного бюджета вмешательства оператора без ручного обхода",
+      "rollback_or_stop_condition": "Остановиться немедленно при приближении к любой запрещённой границе (ручной деплой, прямой push в main, Ireland, реальные деньги)",
+      "timing": "После явного одобрения Founder на Action 3",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/pipelines/PREMVP_RELEASE_PIPELINE_V1.yaml",
+        "PR#114",
+        "PR#115"
+      ]
+    },
+    {
+      "id": "H3",
+      "observed_problem": "Automation Roadmap Governor (Stage 2) реализован и покрыт 38 тестами, но ни разу не провёл реальный проход управления, и для этого нужно минимум два сопоставимых сохранённых цикла.",
+      "why_it_matters": "Условие выхода Stage 2 не может быть закрыто, пока не пройдёт реальный запуск Governor, а для этого нужно накопление этого и будущих циклов.",
+      "axis_a_effect": "нет прямого эффекта",
+      "axis_b_effect": "Закроет условие выхода Stage 2 из AUTOMATION_ROADMAP.yaml и откроет реальное сравнение циклов между собой",
+      "proposed_automation": "Когда будет сохранено минимум два сопоставимых цикла Daily Evolution, запустить premvp.command.evolution_govern.v1 для первого реального сравнения",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/roadmap-proposals/",
+      "expected_value": "Переводит Governor из реализованного, но неиспытанного, в доказанный",
+      "implementation_cost": "нет - уже реализовано",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий - R0, только чтение, accepted всегда false",
+      "success_metric": "Результат Governor впервые проходит проверку и сохраняется под roadmap-proposals/",
+      "rollback_or_stop_condition": "Остановиться, если сопоставимых проверенных циклов меньше двух",
+      "timing": "После следующих 1-2 Daily Evolution Review",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/AUTOMATION_ROADMAP.yaml"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "Новый отчёт по форвардной воронке доступен только для чтения и покрыт тестами на фикстурах, но у следующего шага STEP_3_FORWARD_FUNNEL (T-5 трафик) до сих пор нет ни одного факта из реальных данных.",
+      "why_it_matters": "STEP_3 - следующий шаг ценности в CURRENT_STATE.yaml; доказательство только кодом его не продвигает.",
+      "axis_a_effect": "Даст первый реальный факт по T-5-воронке, нужный для STEP_3",
+      "axis_b_effect": "нет прямого эффекта - это продуктовая диагностика, а не системная способность",
+      "proposed_automation": "Запустить scripts/contur3/forward-funnel-report.ts один раз на реальных, доступных только для чтения данных Supabase с ограниченной периодичностью и сохранить результат как отслеживаемое доказательство",
+      "persistent_artifact": "сохранённый результат запуска forward-funnel-report со ссылкой из EVIDENCE_LEDGER.md",
+      "expected_value": "Даёт STEP_3_FORWARD_FUNNEL реальное доказательство вместо только кода",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий - только чтение по замыслу и коммиту",
+      "success_metric": "Реальный запуск на продовых или staging данных зафиксирован и на него есть ссылка из CURRENT_STATE.yaml",
+      "rollback_or_stop_condition": "Остановиться, если отчёту когда-либо понадобится путь записи или доступ к Ireland",
+      "timing": "После явного одобрения Founder",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "PR#112",
+        "PR#113",
+        "lib/executor/forwardFunnelReport.ts"
+      ]
+    },
+    {
+      "id": "H5",
+      "observed_problem": "Этот цикл обнаружил, что запись CURRENT_STATE.yaml про релизный конвейер - EXPERIMENTAL_DISABLED из-за отсутствия control_plane_reconcile.v1 - фактически устарела: команда существует, а спецификация конвейера говорит ENABLED, но CURRENT_STATE.yaml до этого разбора никто не обновил.",
+      "why_it_matters": "CURRENT_STATE.yaml - единственный канонический документ текущего состояния, на который опирается весь control plane; незаметно устаревшее поле статуса может направить следующее решение по ложному основанию.",
+      "axis_a_effect": "Не даёт Architect планировать на устаревшей предпосылке о доступности релизного конвейера",
+      "axis_b_effect": "Усиливает VERIFICATION_AND_EVIDENCE - ловит расхождение состояния автоматически, а не только при ручном чтении",
+      "proposed_automation": "Read-only проверка расхождений, которая сверяет конкретные поля статуса из CURRENT_STATE.yaml (например active_execution_work[*].status) с живыми артефактами, которые они описывают (например собственным полем статуса спецификации конвейера), и сообщает о несовпадениях для разбора Architect",
+      "persistent_artifact": "scripts/control-plane/validate-control-plane.mjs (расширенный) или новый отдельный валидатор",
+      "expected_value": "Убирает класс незаметного устаревания CURRENT_STATE, который этот цикл нашёл только вручную",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий - только сравнение для чтения, CURRENT_STATE не меняет",
+      "success_metric": "npm run control-plane:check явно падает при следующем расхождении отслеживаемого поля статуса с описываемым артефактом",
+      "rollback_or_stop_condition": "Остановиться, если возникают ложные срабатывания в периоды законной многошаговой сверки",
+      "timing": "Следующая задача control plane, одобренная Architect",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "docs/ai-context/control-plane/pipelines/PREMVP_RELEASE_PIPELINE_V1.yaml"
+      ]
+    }
+  ],
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "Дисциплина проверки - перепроверять статус по живому источнику вместо того, чтобы доверять записи, которая его описывает",
+      "why_it_matters_now": "Этот цикл обнаружил, что запись CURRENT_STATE.yaml про релизный конвейер уже устарела относительно спецификации конвейера и её проходящих тестов; доверие записи вместо источника закрепило бы сегодняшний вывод на устаревшей информации",
+      "how_it_applies_to_current_project": "Прежде чем принимать любой статус 'заблокировано' или 'отключено' из CURRENT_STATE.yaml, или самоотчёт исполнителя, перепроверяйте сам исходный файл или запускайте саму команду, которую он описывает",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-08-07__daily-evolution-review-001.json",
+      "ladder_level": 2
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "Устойчивость операций - понимание, что условие выхода этапа закрывается только артефактом в Git, и этот артефакт несёт суждение дальше, а не память или переписка",
+      "why_it_matters_now": "Сегодняшний запуск - первый реальный цикл Evolution; закрыто ли условие выхода Stage 1, зависит целиком от того, сохранён и проверен ли этот цикл, а не от того, помнит ли кто-то, что разбор состоялся",
+      "how_it_applies_to_current_project": "Читайте текст exit_condition в AUTOMATION_ROADMAP.yaml прежде чем считать этап фактически завершённым, и проверяйте, существует ли уже конкретный названный там артефакт Git",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/AUTOMATION_ROADMAP.yaml",
+      "ladder_level": 5
+    }
+  ],
+  "founder_practice_comparison": "Первая практика дешевле и окупается сразу - это привычка на каждый прочитанный статус начиная с сегодня. Вторая практика окупается только на границах этапов Evolution, но именно она останавливает незаметное расхождение roadmap, как это уже случилось с записью про релизный конвейер.",
+  "founder_practice_recommended_order": [
+    "P1",
+    "P2"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "Если добавить лёгкий перехватчик операторских действий, следующий Daily Evolution Review покажет известную полноту сбора вместо слепого нуля",
+      "bounded_scope": "Только один период; чтение уже отправляемых Founder сообщений в CloudCode/Codex, без нового ручного шага для Founder",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/input-bundles/<next-period>.json",
+      "promotion_condition": "Полнота сбора следующего цикла - COMPLETE или PARTIAL вместо неизвестной",
+      "stop_condition": "Остановиться, если сбор потребует лишнего ручного шага от Founder или хранения содержимого сообщений сверх action_id/типа/поверхности/времени"
+    },
+    {
+      "id": "E2",
+      "hypothesis": "Если один раз запустить scripts/contur3/forward-funnel-report.ts на реальных read-only данных Supabase, STEP_3_FORWARD_FUNNEL получит первый факт из рантайма вместо только тестового фикстурного покрытия",
+      "bounded_scope": "Один ограниченный read-only запуск; без записи, без Ireland, без действий с реальными деньгами",
+      "persistent_artifact": "результат запуска со ссылкой из EVIDENCE_LEDGER.md",
+      "promotion_condition": "Запуск завершается успешно и может быть записан как PROVEN_IN_RUNTIME в будущем обновлении CURRENT_STATE.yaml",
+      "stop_condition": "Остановиться, если скрипту понадобится путь записи или более широкие права, чем read-only доступ к Supabase"
+    },
+    {
+      "id": "E3",
+      "hypothesis": "Если один раз запустить premvp.command.evolution_govern.v1 при наличии минимум двух сопоставимых циклов Daily Evolution, условие выхода Stage 2 станет проверяемым так же, как сейчас у Stage 1",
+      "bounded_scope": "R0, только чтение, сравнение уже сохранённых и проверенных циклов; accepted всегда false",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/roadmap-proposals/<result_id>.json",
+      "promotion_condition": "Результат Governor впервые проходит проверку и сохраняется под roadmap-proposals/",
+      "stop_condition": "Остановиться, если сопоставимых проверенных циклов пока меньше двух"
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "CONTUR3_QUEUE_AUTHORITY"
+  },
+  "next_step": "Сохранить этот цикл как первый реальный Daily Evolution Review (закрывающий условие выхода Stage 1), добавить лёгкий входной пакет операторских действий до начала следующего периода, чтобы полнота сбора перестала быть неизвестной, и передать Architect устаревшую запись CURRENT_STATE.yaml про релизный конвейер для исправления.",
+  "accepted": false
+}
