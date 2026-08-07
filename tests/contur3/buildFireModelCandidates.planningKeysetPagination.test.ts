@@ -97,3 +97,20 @@ test("R4: a PostgreSQL statement timeout steps down 500→250 on the same keyset
   assert.equal(fake.cursors[0], null);
   assert.equal(fake.cursors[1], null, "timeout retry must retain the exact cursor");
 });
+
+test("R4: a keyset query that ignores AbortSignal is bounded and fails instead of hanging", async () => {
+  let aborted = false;
+  const hangingBuilder = () => ({
+    limit: () => ({
+      abortSignal: (signal: AbortSignal) => new Promise(() => signal.addEventListener("abort", () => { aborted = true; })),
+    }),
+  });
+  await assert.rejects(
+    fetchAllPlanningRowsByKeyset(hangingBuilder, {
+      stage: "hanging_keyset_read",
+      retryPolicy: { maxAttempts: 1, backoffMs: () => 0, pageTimeoutMs: 20 },
+    }),
+    /hanging_keyset_read failed: page=1 attempts=1 cause=/
+  );
+  assert.equal(aborted, true);
+});
