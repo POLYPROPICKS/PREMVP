@@ -32,6 +32,7 @@ import {
   statusReport,
   assertRunIdentityConsistent,
   assertPassInvariants,
+  executeReleaseRun,
 } from '../../scripts/control-plane/lib/premvp-release-pipeline.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -366,4 +367,32 @@ test('changeset validation passes for an exact allowed-file match', () => {
     [],
   );
   assert.equal(result.ok, true);
+});
+
+test('enabled lifecycle executes registered phases with an exact reviewer receipt', async () => {
+  const manifest = baseManifest({
+    risk_class: 'R4_CONTUR_PRODUCTION_BOUNDARY',
+    allowed_files: ['scripts/control-plane/run-premvp-release.mjs'],
+    test_commands: ['test'], typecheck_commands: [], build_commands: [],
+    feature_branch: 'codex/test-release', target_ref: 'main',
+  });
+  const calls = [];
+  const adapters = {
+    git: {
+      currentHead: async () => 'exact-sha', changedFiles: async () => ['scripts/control-plane/run-premvp-release.mjs'],
+      push: async () => calls.push('push'), isAncestor: async () => true,
+    },
+    commands: { run: async () => calls.push('test') },
+    reviewer: { findReceipt: async () => ({ agent_id: 'premvp.reviewer.contur_gate.v1', reviewed_sha: 'exact-sha', verdict: 'PASS' }) },
+    github: {
+      findPullRequest: async () => null,
+      createPullRequest: async () => ({ number: 1, repo: 'POLYPROPICKS/PREMVP', headSha: 'exact-sha', merged: false, mergeCommitSha: null, url: 'x' }),
+      mergePullRequest: async () => ({ mergeCommitSha: 'merge-sha' }),
+    },
+    deploy: { getProductionSha: async () => 'merge-sha' },
+    reconcile: { verify: async () => calls.push('reconcile') },
+  };
+  const result = await executeReleaseRun(manifest, routingDoc, pipelineSpec, adapters);
+  assert.equal(result.status, 'PASS');
+  assert.deepEqual(calls, ['test', 'push', 'reconcile']);
 });
