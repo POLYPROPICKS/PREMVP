@@ -618,9 +618,10 @@ function sourceRowFor(
  */
 export async function produceContractAPlanningDecisions(
   rows: readonly Record<string, unknown>[],
-  limit = 100_000
+  limit = 100_000,
+  nowMs = Date.now()
 ): Promise<ContractADecisionResult<ContractAPlanningDecision>[]> {
-  const { candidates } = await buildFireModelCandidates(limit, "all", true, rows, "CONTRACT_A_PLANNING_V1");
+  const { candidates } = await buildFireModelCandidates(limit, "all", true, rows, "CONTRACT_A_PLANNING_V1", nowMs);
   const byId = indexSourceRows(rows);
   return candidates.map((candidate) =>
     buildContractAPlanningDecision(candidate, diagnosticsOf(sourceRowFor(candidate, byId, rows)))

@@ -70,6 +70,7 @@
     "contur3:reservation-admission-audit": "node scripts/contur3/reservation-admission-audit.mjs",
     "contur3:rebalance-window-audit": "node scripts/contur3/rebalance-window-audit.mjs",
     "contur3:funnel-trace-audit": "node scripts/contur3/funnel-trace-audit.mjs",
+    "contur3:forward-funnel-report": "tsx scripts/contur3/forward-funnel-report.ts",
     "contur3:battle-stage-gate": "node scripts/contur3/battle-stage-gate.mjs",
     "contur3:reservation-capacity-audit": "node scripts/contur3/reservation-capacity-audit.mjs",
     "contur3:reservation-tier-probe": "tsx scripts/contur3/reservation-capacity-audit.tier-probe.ts",

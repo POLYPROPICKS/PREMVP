@@ -523,10 +523,21 @@ export async function fetchAllPlanningRowsByKeyset(
     for (let attempt = 1; attempt <= retryPolicy.maxAttempts; attempt++) {
       const pageSize = pageSizeLadder[pageSizeIndex];
       const controller = new AbortController();
-      const timeoutHandle = setTimeout(() => controller.abort(), retryPolicy.pageTimeoutMs);
       try {
-        const { data, error } = await buildQuery(cursor).limit(pageSize).abortSignal(controller.signal);
-        clearTimeout(timeoutHandle);
+        // Some fetch implementations acknowledge AbortSignal without settling
+        // their promise. Race the operation itself so a stuck SELECT cannot
+        // hold the whole read-only report indefinitely.
+        const response = await new Promise<any>((resolve, reject) => {
+          const timeoutHandle = setTimeout(() => {
+            controller.abort();
+            reject(new Error(`${stage} page read timed out after ${retryPolicy.pageTimeoutMs}ms`));
+          }, retryPolicy.pageTimeoutMs);
+          buildQuery(cursor).limit(pageSize).abortSignal(controller.signal).then(
+            (value: any) => { clearTimeout(timeoutHandle); resolve(value); },
+            (error: unknown) => { clearTimeout(timeoutHandle); reject(error); }
+          );
+        });
+        const { data, error } = response;
         if (!error) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           batch = (data ?? []) as any[];
@@ -535,7 +546,6 @@ export async function fetchAllPlanningRowsByKeyset(
         }
         lastMessage = error.message;
       } catch (err) {
-        clearTimeout(timeoutHandle);
         lastMessage = err instanceof Error ? err.message : String(err);
       }
       // Only PostgreSQL statement timeouts step down. Network and application
@@ -1525,9 +1535,9 @@ export async function fetchPlanningSourceRowSets(
  * `buildFireModelCandidates` as injected rows, so candidate eligibility is
  * decided in exactly one place.
  */
-export async function loadContractAPlanningSourceRows(): Promise<Record<string, unknown>[]> {
+export async function loadContractAPlanningSourceRows(nowMs = Date.now()): Promise<Record<string, unknown>[]> {
   const planningLookbackIso = new Date(
-    Date.now() - PLANNING_LOOKBACK_HOURS * 3_600_000
+    nowMs - PLANNING_LOOKBACK_HOURS * 3_600_000
   ).toISOString();
   const { scoredRows } = await fetchPlanningSourceRowSets(
     true,
