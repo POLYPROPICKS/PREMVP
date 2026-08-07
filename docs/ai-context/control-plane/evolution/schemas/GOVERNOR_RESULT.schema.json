@@ -1,0 +1,190 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypropicks.com/schemas/control-plane/evolution/GOVERNOR_RESULT.schema.json",
+  "title": "PolyProPicks Automation Roadmap Governor Result",
+  "description": "The machine-readable result of one Automation Roadmap Governor run. Enforced by scripts/control-plane/lib/evolution-governor.mjs — a focused dependency-free validator, not a generic JSON Schema engine. A separate result schema is justified here because a Governor run is more than a roadmap delta: it always answers the eight governing questions and may legitimately conclude with no change when evidence is insufficient — that no-change outcome is not itself a delta.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "result_id",
+    "repository",
+    "generated_by",
+    "generated_at",
+    "eligibility",
+    "findings",
+    "roadmap_delta",
+    "roadmap_factual_updates",
+    "next_step",
+    "accepted"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+    "result_id": { "type": "string", "minLength": 1 },
+    "repository": { "type": "string", "const": "POLYPROPICKS/PREMVP" },
+    "generated_by": {
+      "type": "object",
+      "required": ["executor", "model_label", "prompt_id"],
+      "properties": {
+        "executor": { "type": "string", "enum": ["claude_code_cloud", "local_codex_windows"] },
+        "model_label": { "type": "string", "minLength": 1 },
+        "prompt_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "generated_at": { "type": "string", "minLength": 1 },
+
+    "eligibility": {
+      "type": "object",
+      "description": "Default eligibility: at least three new validated cycles since the last governance run, OR the configured weekly boundary. When neither holds, the run must be an explicit no-change outcome.",
+      "required": ["eligible", "reason", "based_on_cycles", "new_validated_cycle_count", "weekly_boundary_reached"],
+      "properties": {
+        "eligible": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1 },
+        "based_on_cycles": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "new_validated_cycle_count": { "type": "integer", "minimum": 0 },
+        "weekly_boundary_reached": { "type": "boolean" }
+      }
+    },
+
+    "findings": {
+      "type": "object",
+      "description": "Plain answers to the eight governing questions. Every findings claim that is material carries evidence — insufficient evidence is stated explicitly, never inferred.",
+      "required": [
+        "axis_b_advancement",
+        "axis_a_support_or_distraction",
+        "repeated_problems",
+        "experiments_with_evidence",
+        "founder_skills_practiced",
+        "automation_decisions",
+        "roadmap_on_course",
+        "roadmap_delta_justified"
+      ],
+      "properties": {
+        "axis_b_advancement": { "$ref": "#/definitions/finding" },
+        "axis_a_support_or_distraction": {
+          "type": "object",
+          "required": ["statement", "verdict", "evidence_refs"],
+          "properties": {
+            "statement": { "type": "string", "minLength": 1 },
+            "verdict": { "type": "string", "enum": ["SUPPORTED_AXIS_A", "DISTRACTED_FROM_AXIS_A", "NEUTRAL", "NOT_ENOUGH_EVIDENCE"] },
+            "evidence_refs": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          }
+        },
+        "repeated_problems": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["problem", "repetition_count", "cycle_refs"],
+            "properties": {
+              "problem": { "type": "string", "minLength": 1 },
+              "repetition_count": { "type": "integer", "minimum": 2 },
+              "cycle_refs": { "type": "array", "minItems": 2, "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        },
+        "experiments_with_evidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["experiment_id", "outcome", "evidence_refs"],
+            "properties": {
+              "experiment_id": { "type": "string", "minLength": 1 },
+              "outcome": { "type": "string", "enum": ["PROMOTION_CONDITION_MET", "STOP_CONDITION_MET", "INCONCLUSIVE"] },
+              "evidence_refs": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        },
+        "founder_skills_practiced": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ladder_id", "repetition_count", "cycle_refs"],
+            "properties": {
+              "ladder_id": {
+                "type": "string",
+                "enum": ["MISSION_DISCIPLINE", "VERIFICATION_DISCIPLINE", "PERMISSION_AND_TOOL_DESIGN", "AUTOMATION_ECONOMICS", "DURABLE_OPERATIONS", "CONTROL_PLANE_OWNERSHIP", "CONTROLLED_SELF_IMPROVEMENT"]
+              },
+              "repetition_count": { "type": "integer", "minimum": 1 },
+              "cycle_refs": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        },
+        "automation_decisions": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["subject", "decision", "reason", "evidence_refs"],
+            "properties": {
+              "subject": { "type": "string", "minLength": 1 },
+              "decision": { "type": "string", "enum": ["PROMOTE", "DEFER", "REJECT"] },
+              "reason": { "type": "string", "minLength": 1 },
+              "evidence_refs": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+            }
+          }
+        },
+        "roadmap_on_course": {
+          "type": "object",
+          "required": ["statement", "on_course"],
+          "properties": {
+            "statement": { "type": "string", "minLength": 1 },
+            "on_course": { "type": "boolean" }
+          }
+        },
+        "roadmap_delta_justified": { "type": "boolean" }
+      }
+    },
+
+    "roadmap_delta": {
+      "description": "A single ROADMAP_DELTA when findings.roadmap_delta_justified is true and eligibility.eligible is true. Null otherwise — a Governor never fabricates a delta to fill this field.",
+      "anyOf": [{ "type": "null" }, { "$ref": "ROADMAP_DELTA.schema.json" }]
+    },
+
+    "roadmap_factual_updates": {
+      "type": "object",
+      "description": "Factual, non-strategic fields the system may update automatically from evidence. Every key must be one of the allowed factual fields; a strategic key here is a contract violation, not a Governor decision.",
+      "required": ["role"],
+      "properties": {
+        "role": { "type": "string", "const": "FACTUAL_ONLY" },
+        "last_evaluated_at": { "type": "string" },
+        "cycle_count": { "type": "integer", "minimum": 0 },
+        "evidence_counters": { "type": "object" },
+        "hypothesis_status": { "type": "object" },
+        "experiment_status": { "type": "object" },
+        "measured_supporting_metrics": { "type": "object" },
+        "repetition_counts": { "type": "object" },
+        "capability_evidence_observations": { "type": "object" }
+      }
+    },
+
+    "founder_report_ref": { "type": ["string", "null"], "description": "Repository path to the rendered Russian Founder report, once persisted." },
+
+    "next_step": { "type": "string", "minLength": 1 },
+
+    "accepted": {
+      "type": "boolean",
+      "const": false,
+      "description": "A Governor result is evidence and proposal only, exactly like an Evolution cycle. It never accepts itself, a roadmap change, or a capability promotion."
+    }
+  },
+
+  "definitions": {
+    "finding": {
+      "type": "object",
+      "required": ["statement", "verdict", "evidence_refs"],
+      "properties": {
+        "statement": { "type": "string", "minLength": 1 },
+        "verdict": { "type": "string", "enum": ["CAPABILITY_ADDED", "CAPABILITY_STRENGTHENED", "PRACTICED_NOT_YET_PROVEN", "NO_MEASURABLE_CHANGE", "REGRESSED"] },
+        "evidence_refs": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    }
+  },
+
+  "x-invariants": [
+    "accepted must be false.",
+    "eligible must be false whenever new_validated_cycle_count < 3 and weekly_boundary_reached is false; the result must then be an explicit no-change outcome with roadmap_delta null.",
+    "roadmap_delta is non-null only when eligibility.eligible is true and findings.roadmap_delta_justified is true.",
+    "roadmap_factual_updates never carries a strategic key — PnL priority, product-roadmap phase, live-money gates, risk authority, strategic stage order, accepted capability level and promotion rules are never auto-updated.",
+    "Every repeated_problems entry names at least two distinct cycle references — a single-cycle observation is not a repetition.",
+    "founder_skills_practiced ladder_id values must be members of FOUNDER_CAPABILITY_LADDER.yaml; the Governor never promotes a level, it only records repetition evidence."
+  ]
+}

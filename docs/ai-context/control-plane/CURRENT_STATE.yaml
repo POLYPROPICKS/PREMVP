@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-06T11:09:59Z",
-  "state_version": 12,
+  "updated_at": "2026-08-07T10:32:48Z",
+  "state_version": 13,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
@@ -34,16 +34,16 @@
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "cec9fc29de69bc1717ba812c0866b16a3c6e6460",
+    "origin_main_sha": "0e43a121e189d2654543d00f4c59a5c15d548528",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
-      "executor": "claude_code_cloud",
-      "commands": ["git fetch --prune origin", "git rev-parse origin/main", "git merge-base --is-ancestor a7214f348de862f220bdf106a3a73a9e7c8f0ebe origin/main", "curl https://polypropicks.com/api/build-info"],
-      "observed_at": "2026-08-06T11:09:59Z",
+      "executor": "local_codex_windows",
+      "commands": ["git fetch --prune origin", "git rev-parse origin/main", "git merge-base --is-ancestor 6f65df44668fe96441b35f309cbeafbc5ec197d6 origin/main"],
+      "observed_at": "2026-08-07T10:32:48Z",
       "worktree": "clean",
-      "note": "PR #96 merged implementation a7214f348de862f220bdf106a3a73a9e7c8f0ebe as cec9fc29de69bc1717ba812c0866b16a3c6e6460. Production /api/build-info returned the exact merge SHA. Contextual Prompt Contract is complete; C1 remains OPEN and no product, database, Ireland, or live-money behavior changed."
+      "note": "PR #109 (evolution/control-plane-stage-1) merged implementation 6f65df44668fe96441b35f309cbeafbc5ec197d6 as 0e43a121e189d2654543d00f4c59a5c15d548528. This is a state-only bootstrap advance for the Evolution Control Plane Stage 1 completion only: it records the baseline and the accepted completion and does not touch roadmap_phase, current_value_step, closed_value_steps, or any product-roadmap field. C1 remains OPEN and no product, database, Ireland, or live-money behavior changed. The prior baseline cec9fc29de69bc1717ba812c0866b16a3c6e6460 is a proven ancestor of this SHA."
     }
   },
 
@@ -146,11 +146,20 @@
       "pr_final_head": "b52fab82a46a05ffbc75373049ddbf3ef6563e60",
       "merge_commit": "b522d3a3caaa07d8605f2b6d4edbd2db6a71a629",
       "evidence_ref": "EVIDENCE_LEDGER#EV-0007"
+    },
+    {
+      "id": "CMP-EVOLUTION-CONTROL-PLANE-STAGE-1-20260807",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Evolution Control Plane Stage 1 (Daily Evolution Review foundation: policies, schemas, deterministic validators, collector, evaluator, reviewer prompt) landed on main via PR #109. This reconciliation is bounded to recording the completion and refreshing the main baseline; it does not accept the proposed global executor/access-surface mapping change, the proposed .gitignore change, or any unproven claude_code_cloud Evolution capability claim.",
+      "pr": "POLYPROPICKS/PREMVP#109",
+      "pr_final_head": "6f65df44668fe96441b35f309cbeafbc5ec197d6",
+      "merge_commit": "0e43a121e189d2654543d00f4c59a5c15d548528",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0018"
     }
   ],
 
   "evidence_freshness": {
-    "origin_main_sha_checked_at": "2026-08-06T11:09:59Z",
+    "origin_main_sha_checked_at": "2026-08-07T10:32:48Z",
     "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
     "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
     "max_age_days": 7
@@ -165,5 +174,5 @@
   ],
   "stale_when_note": "Exact equality between main.origin_main_sha and live origin/main is NOT required and is not used as a staleness test. A state-only bootstrap advance (touching only CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md) keeps state FRESH even though origin/main has moved past the recorded baseline.",
 
-  "last_accepted_completion_id": "CMP-PR85-DEPLOYMENT-STATE-RUNTIME-BOUNDARY-20260804"
+  "last_accepted_completion_id": "CMP-EVOLUTION-CONTROL-PLANE-STAGE-1-20260807"
 }

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
   "roadmap_id": "premvp.evolution_automation_roadmap.v1",
-  "updated_at": "2026-08-07T00:00:00Z",
+  "updated_at": "2026-08-07T10:32:48Z",
   "_format_note": "JSON-compatible YAML 1.2 subset.",
 
   "authority": {
@@ -37,7 +37,8 @@
       "id": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
       "order": 2,
       "title": "Automation Roadmap and governance",
-      "status": "NOT_STARTED",
+      "status": "IMPLEMENTED_NOT_YET_EXERCISED",
+      "status_note": "The Automation Roadmap Governor, its result and delta schemas, eligibility rule, factual/strategic field separation, and the reviewer prompt exist and are covered by deterministic tests. No real Governor run has happened yet and no real Daily Evolution cycle has been persisted — that is deliberate and is not evidence of use. Founder Correction Ledger governance and automation-effect verification beyond the delta contract remain open scope.",
       "scope": [
         "executable Automation Roadmap Governor",
         "comparison of multiple cycles",
@@ -49,6 +50,8 @@
         "execution-environment portability enforcement"
       ],
       "entry_condition": "Stage 1 exit condition met and at least two comparable cycles exist.",
+      "entry_condition_met": false,
+      "exit_condition": "At least one real Governor run has been produced by the reviewer prompt, validated by premvp.command.evolution_govern.v1, and committed under roadmap-proposals/.",
       "explicitly_out_of_stage_1": true
     },
     {
