@@ -101,6 +101,8 @@
     "control-plane:evolution:collect": "node scripts/control-plane/evolution-collect.mjs",
     "control-plane:evolution:evaluate": "node scripts/control-plane/evolution-evaluate.mjs",
     "control-plane:evolution:test": "node --test tests/control-plane/evolutionDailyReview.test.mjs",
+    "control-plane:evolution:govern": "node scripts/control-plane/evolution-govern.mjs",
+    "control-plane:evolution:govern:test": "node --test tests/control-plane/evolutionGovernor.test.mjs",
     "test:liquidity": "node --import tsx --test tests/liquidity/*.test.ts",
     "test:analytics": "node --import tsx --test tests/analytics/*.test.ts"
   },

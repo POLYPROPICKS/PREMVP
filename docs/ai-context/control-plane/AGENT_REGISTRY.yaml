@@ -653,6 +653,30 @@
       "supported_executors": ["local_codex_windows", "claude_code_cloud"],
       "hard_prohibitions": ["merging Axis A and Axis B", "letting a supporting metric set an axis verdict", "inferring reconciled PnL without fills, fees and settlement evidence", "self-accepting a cycle or a roadmap change", "product phase mutation"],
       "notes": "Renders a Founder report only for an admissible cycle. Executed live on local_codex_windows during Evolution Stage 1; not yet executed on claude_code_cloud."
+    },
+    {
+      "canonical_id": "premvp.command.evolution_govern.v1",
+      "type": "COMMAND",
+      "owner_platform": "repository",
+      "implementation_path": "scripts/control-plane/evolution-govern.mjs",
+      "status": "PROVEN_PRESENT",
+      "invocation": "EXPLICIT",
+      "triggers": ["Automation Roadmap Governor run: weekly, or after three new validated Evolution cycles"],
+      "exclusions": ["Ireland", "database access", "product runtime", "live money", "CURRENT_STATE acceptance", "capability promotion", "PnL priority mutation"],
+      "model_policy": "n/a",
+      "reasoning_policy": "n/a",
+      "permissions": "read persisted Evolution cycles and write the validated Governor result plus its report under evolution/roadmap-proposals",
+      "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "a GOVERNOR_RESULT document authored by the Automation Roadmap Governor reviewer, citing persisted validated cycle ids",
+      "output_contract": "explicit violation list, or a validated Governor result plus a rendered Russian Founder report satisfying the heading and style contract",
+      "independence_group": null,
+      "receipt_required": false,
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "last_verified_at": "2026-08-07T00:00:00Z",
+      "portability": "PORTABLE",
+      "supported_executors": ["local_codex_windows", "claude_code_cloud"],
+      "hard_prohibitions": ["fabricating a roadmap delta when eligibility is not met", "self-accepting a Governor result or a roadmap delta", "mutating PnL priority, product-roadmap phase, live-money gates, risk authority, strategic stage order, accepted capability level or promotion rules", "promoting a Founder capability ladder level", "inventing an Evolution or roadmap stage beyond Stage 1, Stage 2 and Vision"],
+      "notes": "Evolution Stage 2. Eligibility is evidence-driven: at least three new validated cycles since the last governance run, or the configured weekly boundary. Insufficient evidence produces an explicit no-change GOVERNOR_RESULT, never a fabricated delta. Executed live on local_codex_windows during Evolution Stage 2 landing; not yet executed on claude_code_cloud."
     }
   ]
 }

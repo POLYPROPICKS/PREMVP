@@ -471,3 +471,33 @@ This entry is historical evidence only and does not accept an Action 3 completio
   revision to one full commit SHA and requires ancestor proof before state output.
 - Corrective state bootstrap is pending integration. C1 remains OPEN; no product, database,
   Ireland, job, or live-money behavior changed.
+
+## EV-0018 — 2026-08-07 Evolution Control Plane Stage 1 state reconciliation
+
+- **evidence_class:** `PROVEN_IN_RUNTIME`
+- **executor:** `local_codex_windows`
+- **observed_at:** 2026-08-07T10:32:48Z
+- **implementation_sha:** `6f65df44668fe96441b35f309cbeafbc5ec197d6`
+- **merge_sha:** `0e43a121e189d2654543d00f4c59a5c15d548528`
+
+PR #109 (`evolution/control-plane-stage-1`) merged the Evolution Control Plane Stage 1
+foundation — Daily Evolution Review policies, schemas, deterministic collector/evaluator
+validators, the reviewer prompt, and focused tests — to `origin/main`. Live `git fetch`,
+`git rev-parse origin/main`, and `git merge-base --is-ancestor` in this session confirmed
+`6f65df44668fe96441b35f309cbeafbc5ec197d6` is the PR head and `0e43a121e189d2654543d00f4c59a5c15d548528`
+is its merge commit on `origin/main`. The prior recorded baseline
+`cec9fc29de69bc1717ba812c0866b16a3c6e6460` is a proven ancestor of the new baseline.
+
+This reconciliation is bounded to exactly what was Architect-accepted for this run:
+recording `CMP-EVOLUTION-CONTROL-PLANE-STAGE-1-20260807` as an accepted completion,
+advancing `CURRENT_STATE.yaml.main.origin_main_sha` to the Stage 1 merge checkpoint,
+advancing `updated_at`/`state_version`, and regenerating `ARCHITECT_SNAPSHOT.md`. It does
+**not** accept the proposed global executor/access-surface mapping change, the proposed
+`.gitignore` change, or any unproven `claude_code_cloud` Evolution capability claim — those
+remain outside this run's authorization. `roadmap_phase`, `current_value_step`,
+`closed_value_steps`, `active_execution_work`, `open_blockers` and all other product-roadmap
+fields are unchanged. C1 remains `OPEN`. No product, database, Ireland, or live-money
+behavior changed.
+
+This entry is history only. It records the Stage 1 state reconciliation and does not
+self-accept any Stage 2 result produced in the same task.
