@@ -1,0 +1,24 @@
+{
+  "bundle_id": "2026-08-08__daily-evolution-review",
+  "repository": "POLYPROPICKS/PREMVP",
+  "period_start": "2026-08-07T10:47:52Z",
+  "period_end": "2026-08-08T13:53:49Z",
+  "capture_coverage": "UNKNOWN",
+  "mission_count": null,
+  "verified_result_count": null,
+  "operator_action_events": [],
+  "completion_envelope_ids": [],
+  "confirmed_changes": [
+    "POLYPROPICKS/PREMVP#111 (1d8dfe4ef2675182585b0b808ce8603c01aac93e) — Evolution Control Plane Stage 2 state reconciliation (baseline for this period)",
+    "POLYPROPICKS/PREMVP#112 (78a951e62803c04c16694d57ff364aa47f869867) — feat(contur3): add read-only forward funnel reporter",
+    "POLYPROPICKS/PREMVP#113 (56b71f80e1dac2bd6df28e2358940f6be938014f) — fix(planning): preserve complete contract a source rows",
+    "POLYPROPICKS/PREMVP#114 (03f1fb0a99dd9d71b79f09a0264c7e4e962ffdf9) — fix(control-plane): execute enabled release lifecycle",
+    "POLYPROPICKS/PREMVP#115 (9325fdf6446222c29b9dc8dc595f18f8367c31ea) — fix(control-plane): resume reusable merged branches",
+    "POLYPROPICKS/PREMVP#117 (22e9ee2115f12c46b3428c3237d9cb1d72d18c6f) — fix(rebalance): bound exact signal pair lookup",
+    "POLYPROPICKS/PREMVP#118 (1e5f21ae8dec67d0c6f0827ddad25d8c3ec5dc74) — fix(producer): complete provider enumeration and exact identity on shadow rows",
+    "POLYPROPICKS/PREMVP#119 (1b0d34fe0f156ced7510c391e22786197a74bce4) — feat(control-plane): register production-observation checkpoint command",
+    "POLYPROPICKS/PREMVP#120 (e06b6653f4fee7a9ea165edc87f22ebb03862ad4) — fix(control-plane): decouple DB-backed observation stages from the app probe"
+  ],
+  "supporting_metrics": {},
+  "_note": "No Founder operator-action log is tracked anywhere in this repository, so operator_action_events is empty and capture_coverage is UNKNOWN rather than estimated. confirmed_changes and all axis evidence come from live git history (git log/diff/merge-base run against origin/main in this session) and docs/ai-context/control-plane artifacts, not from chat memory."
+}
