@@ -536,6 +536,13 @@ export interface SportsDiscoveryCounts {
   eventPagesFetched?: number;
   eventSpineTruncated?: boolean;
   officialEventsFetched48h?: number;
+  // Producer conservation — enumeration stage. `eventsEnumerationComplete`
+  // false means the official universe was NOT fully enumerated; the run must
+  // not be treated as a complete denominator.
+  eventsEnumerated?: number;
+  eventsEnumerationComplete?: boolean;
+  eventsEnumerationDuplicatesDropped?: number;
+  eventsEnumerationIncompleteReason?: string | null;
   confirmedSportsEvents48h?: number;
   nestedSportsMarketsFlattened?: number;
   canonicalStartTimeApplied?: number;
@@ -566,6 +573,8 @@ export interface SportsDiscoveryCounts {
   broadSportsRowsAmbiguousSport?: number;
   broadSportsWriteInserted?: number;
   broadSportsWriteFailed?: boolean;
+  /** Writer-stage conservation ledger (see StrategicShadowWriteConservation). */
+  broadSportsWriteConservation?: Record<string, unknown>;
   sportFunnelV1?: Record<string, unknown>;
   // Outcome-alignment diagnostics (correction commit): per-market provider
   // token/outcome/price arrays are iterated fully; malformed tuples are

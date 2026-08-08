@@ -47,6 +47,145 @@ async function safeFetch<T>(
   }
 }
 
+// ── Complete provider enumeration primitive ────────────────────────────────
+// One shared cursor/keyset walker for every production path that enumerates
+// the configured sports/event universe. Single-shot first-page fetches are a
+// silent truncation of the official universe: a partition wider than one page
+// used to be represented downstream as if it were the complete partition.
+//
+// Contract:
+//   - consume EVERY provider page via `after_cursor` until natural termination
+//   - exact provider-event-ID dedupe, first-occurrence wins (deterministic
+//     across overlapping partitions)
+//   - cursor non-progress is an explicit error, never an infinite loop
+//   - a partition that could NOT be fully enumerated is returned with
+//     `complete: false` + `incompleteReason` so callers can fail explicitly
+//     instead of treating a partial page set as the whole universe
+//   - no deep-offset pagination: keyset cursors only
+
+/** Safety cap. 100 pages x 100 events = 10,000 events per partition. */
+export const KEYSET_MAX_PAGES = 100;
+/** Provider page size. Gamma rejects keyset limits above 100. */
+export const KEYSET_PAGE_SIZE = 100;
+
+export interface KeysetEnumerationResult {
+  events: Record<string, unknown>[];
+  pagesFetched: number;
+  /** True only when the provider signalled natural end-of-partition. */
+  complete: boolean;
+  /** Non-null exactly when `complete` is false. */
+  incompleteReason: string | null;
+  /** Events dropped as exact provider-event-ID duplicates. */
+  duplicatesDropped: number;
+  /** Back-compat alias for `!complete` (previous field name). */
+  truncated: boolean;
+  /** Back-compat: transport/shape error text, null when complete. */
+  errorState: string | null;
+}
+
+/**
+ * Walk `/events/keyset` to completion for an arbitrary Gamma filter set.
+ *
+ * `baseParams` must NOT contain `limit` or `after_cursor` — this function owns
+ * pagination. Any caller-supplied page bound is intentionally ignored: bounding
+ * the page count is exactly the truncation this primitive exists to remove.
+ */
+export async function fetchEventsKeysetCompleteSafe(
+  baseParams: Record<string, string>,
+  options?: { timeoutMs?: number; maxPages?: number },
+): Promise<KeysetEnumerationResult> {
+  const maxPages = options?.maxPages ?? KEYSET_MAX_PAGES;
+  const timeoutMs = options?.timeoutMs ?? 20000;
+
+  const events: Record<string, unknown>[] = [];
+  const seenIds = new Set<string>();
+  let cursor: string | null = null;
+  let pagesFetched = 0;
+  let duplicatesDropped = 0;
+  let complete = false;
+  let incompleteReason: string | null = null;
+
+  try {
+    while (true) {
+      if (pagesFetched >= maxPages) {
+        incompleteReason = `KEYSET_PAGE_CAP_REACHED: stopped after ${maxPages} pages`;
+        break;
+      }
+
+      const params = new URLSearchParams({
+        ...baseParams,
+        limit: String(KEYSET_PAGE_SIZE),
+      });
+      if (cursor) params.set("after_cursor", cursor);
+
+      const url = `${GAMMA_API_BASE}/events/keyset?${params.toString()}`;
+      const resp = await safeFetch<unknown>(url, {}, timeoutMs);
+
+      if (!resp) {
+        incompleteReason = `KEYSET_PAGE_FAILED: null response at page ${pagesFetched + 1}`;
+        break;
+      }
+
+      const obj = resp as Record<string, unknown>;
+      const pageEvents = Array.isArray(obj.events)
+        ? (obj.events as Record<string, unknown>[])
+        : Array.isArray(resp)
+          ? (resp as Record<string, unknown>[])
+          : null;
+
+      if (!pageEvents) {
+        incompleteReason = `KEYSET_UNEXPECTED_SHAPE: page ${pagesFetched + 1}`;
+        break;
+      }
+
+      pagesFetched++;
+
+      for (const ev of pageEvents) {
+        const id = String(ev.id ?? "");
+        if (!id) continue;
+        if (seenIds.has(id)) {
+          duplicatesDropped++;
+          continue;
+        }
+        seenIds.add(id);
+        events.push(ev);
+      }
+
+      const nextCursor = typeof obj.next_cursor === "string" && obj.next_cursor !== ""
+        ? obj.next_cursor
+        : null;
+
+      // Natural termination: the provider has no further page.
+      if (nextCursor === null) {
+        complete = true;
+        break;
+      }
+
+      // Cursor non-progress: the provider handed back the cursor we just used.
+      // Continuing would loop forever on the same page, so this is an explicit
+      // incompleteness, not a completion.
+      if (nextCursor === cursor) {
+        incompleteReason = `KEYSET_CURSOR_NON_PROGRESS: cursor repeated at page ${pagesFetched}`;
+        break;
+      }
+
+      cursor = nextCursor;
+    }
+  } catch (err) {
+    incompleteReason = `KEYSET_THREW: ${err instanceof Error ? err.message : String(err)}`;
+  }
+
+  return {
+    events,
+    pagesFetched,
+    complete,
+    incompleteReason,
+    duplicatesDropped,
+    truncated: !complete,
+    errorState: incompleteReason,
+  };
+}
+
 /**
  * Fetch active events from Gamma API
  * Handles multiple response shapes: raw array, { events: [] }, { data: [] }, { items: [] }
@@ -173,72 +312,37 @@ export async function fetchPolymarketSportsMetadataSafe(): Promise<{
  * Fetch events by tag ID from Gamma API
  * For sports-specific discovery
  */
-export async function fetchPolymarketEventsByTagSafe(tagId: string, limit = 100): Promise<PolymarketRawEvent[]> {
-  const params = new URLSearchParams({
+export async function fetchPolymarketEventsByTagSafe(tagId: string): Promise<PolymarketRawEvent[]> {
+  const result = await fetchEventsKeysetCompleteSafe({
     tag_id: tagId,
     active: "true",
     closed: "false",
-    limit: limit.toString(),
     related_tags: "true",
   });
-
-  const url = `${GAMMA_API_BASE}/events?${params.toString()}`;
-
-  const response = await safeFetch<unknown>(url, {
-    next: { revalidate: 300 },
-  });
-
-  if (!response) {
-    return [];
+  if (!result.complete) {
+    console.warn(
+      `fetchPolymarketEventsByTagSafe: incomplete enumeration for tag_id=${tagId}: ${result.incompleteReason}`,
+    );
   }
-
-  // Handle raw array response
-  if (Array.isArray(response)) {
-    return response as PolymarketRawEvent[];
-  }
-
-  // Handle object wrappers
-  if (typeof response === "object" && response !== null) {
-    const obj = response as Record<string, unknown>;
-
-    if (Array.isArray(obj.events)) {
-      return obj.events as PolymarketRawEvent[];
-    }
-    if (Array.isArray(obj.data)) {
-      return obj.data as PolymarketRawEvent[];
-    }
-    if (Array.isArray(obj.items)) {
-      return obj.items as PolymarketRawEvent[];
-    }
-  }
-
-  console.warn("Unexpected Gamma tag-filtered response shape:", typeof response);
-  return [];
+  return result.events as unknown as PolymarketRawEvent[];
 }
 
 /**
  * Fetch events from Gamma API by tag_slug (e.g. "fifa-world-cup", "2026-fifa-world-cup").
  * Used for targeted category discovery when sports-tag discovery misses specific leagues.
  */
-export async function fetchEventsByTagSlugSafe(tagSlug: string, limit = 50): Promise<PolymarketRawEvent[]> {
-  const params = new URLSearchParams({
+export async function fetchEventsByTagSlugSafe(tagSlug: string): Promise<PolymarketRawEvent[]> {
+  const result = await fetchEventsKeysetCompleteSafe({
     tag_slug: tagSlug,
     active: "true",
     closed: "false",
-    limit: limit.toString(),
   });
-  const url = `${GAMMA_API_BASE}/events?${params.toString()}`;
-  const response = await safeFetch<unknown>(url, { next: { revalidate: 300 } });
-  if (!response) return [];
-  if (Array.isArray(response)) return response as PolymarketRawEvent[];
-  if (typeof response === "object" && response !== null) {
-    const obj = response as Record<string, unknown>;
-    if (Array.isArray(obj.events)) return obj.events as PolymarketRawEvent[];
-    if (Array.isArray(obj.data)) return obj.data as PolymarketRawEvent[];
-    if (Array.isArray(obj.items)) return obj.items as PolymarketRawEvent[];
+  if (!result.complete) {
+    console.warn(
+      `fetchEventsByTagSlugSafe: incomplete enumeration for tag_slug=${tagSlug}: ${result.incompleteReason}`,
+    );
   }
-  console.warn(`fetchEventsByTagSlugSafe: unexpected response shape for tag_slug=${tagSlug}`);
-  return [];
+  return result.events as unknown as PolymarketRawEvent[];
 }
 
 /**
@@ -268,25 +372,18 @@ export async function fetchTagIdBySlugSafe(tagSlug: string): Promise<string | nu
  * Polymarket sports match games are grouped by series, NOT by tag_slug — tag_slug
  * returns only tournament-winner futures. Series queries surface fixture-level games.
  */
-export async function fetchEventsBySeriesSafe(seriesId: string, limit = 50): Promise<PolymarketRawEvent[]> {
-  const params = new URLSearchParams({
+export async function fetchEventsBySeriesSafe(seriesId: string): Promise<PolymarketRawEvent[]> {
+  const result = await fetchEventsKeysetCompleteSafe({
     series_id: seriesId,
     active: "true",
     closed: "false",
-    limit: limit.toString(),
   });
-  const url = `${GAMMA_API_BASE}/events?${params.toString()}`;
-  const response = await safeFetch<unknown>(url, { next: { revalidate: 300 } });
-  if (!response) return [];
-  if (Array.isArray(response)) return response as PolymarketRawEvent[];
-  if (typeof response === "object" && response !== null) {
-    const obj = response as Record<string, unknown>;
-    if (Array.isArray(obj.events)) return obj.events as PolymarketRawEvent[];
-    if (Array.isArray(obj.data)) return obj.data as PolymarketRawEvent[];
-    if (Array.isArray(obj.items)) return obj.items as PolymarketRawEvent[];
+  if (!result.complete) {
+    console.warn(
+      `fetchEventsBySeriesSafe: incomplete enumeration for series_id=${seriesId}: ${result.incompleteReason}`,
+    );
   }
-  console.warn(`fetchEventsBySeriesSafe: unexpected response shape for series_id=${seriesId}`);
-  return [];
+  return result.events as unknown as PolymarketRawEvent[];
 }
 
 /**
@@ -529,86 +626,24 @@ export async function fetchMarketsBySportsTag(
 }
 
 /**
- * Fetch all active events whose startTime falls within [startIso, endIso] using
- * /events/keyset cursor pagination. Fail-open: returns empty events plus diagnostic
- * state on any fetch error so callers can fall back gracefully.
+ * Fetch ALL active events whose startTime falls within [startIso, endIso] using
+ * `/events/keyset` cursor pagination.
  *
- * Safety cap: 100 pages maximum (10,000 events).
+ * This is the official event universe for the producer. The returned
+ * `complete` flag is load-bearing: when false the partition was NOT fully
+ * enumerated and callers must treat the result as an explicit failure rather
+ * than as the whole universe.
  */
 export async function fetchActiveEventsByStartWindowKeysetSafe(
   startIso: string,
   endIso: string,
-): Promise<{
-  events: Record<string, unknown>[];
-  pagesFetched: number;
-  truncated: boolean;
-  errorState: string | null;
-}> {
-  const MAX_PAGES = 100;
-  const events: Record<string, unknown>[] = [];
-  const seenIds = new Set<string>();
-  let cursor: string | null = null;
-  let lastCursor: string | null = null;
-  let pagesFetched = 0;
-  let truncated = false;
-  let errorState: string | null = null;
-
-  try {
-    while (true) {
-      if (pagesFetched >= MAX_PAGES) {
-        truncated = true;
-        break;
-      }
-
-      const params = new URLSearchParams({
-        active: "true",
-        closed: "false",
-        start_time_min: startIso,
-        start_time_max: endIso,
-        limit: "100",
-      });
-      if (cursor) params.set("after_cursor", cursor);
-
-      const url = `${GAMMA_API_BASE}/events/keyset?${params.toString()}`;
-      const resp = await safeFetch<unknown>(url, {}, 20000);
-
-      if (!resp) {
-        errorState = "keyset page returned null";
-        break;
-      }
-
-      const obj = resp as Record<string, unknown>;
-      const pageEvents = Array.isArray(obj.events)
-        ? (obj.events as Record<string, unknown>[])
-        : Array.isArray(resp)
-          ? (resp as Record<string, unknown>[])
-          : null;
-
-      if (!pageEvents) {
-        errorState = "unexpected keyset response shape";
-        break;
-      }
-
-      pagesFetched++;
-
-      for (const ev of pageEvents) {
-        const id = String(ev.id ?? "");
-        if (id && !seenIds.has(id)) {
-          seenIds.add(id);
-          events.push(ev);
-        }
-      }
-
-      const nextCursor = typeof obj.next_cursor === "string" ? obj.next_cursor : null;
-      if (!nextCursor || nextCursor === "" || nextCursor === lastCursor) break;
-      lastCursor = cursor;
-      cursor = nextCursor;
-    }
-  } catch (err) {
-    errorState = err instanceof Error ? err.message : String(err);
-  }
-
-  return { events, pagesFetched, truncated, errorState };
+): Promise<KeysetEnumerationResult> {
+  return fetchEventsKeysetCompleteSafe({
+    active: "true",
+    closed: "false",
+    start_time_min: startIso,
+    start_time_max: endIso,
+  });
 }
 
 /**

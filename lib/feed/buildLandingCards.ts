@@ -1889,7 +1889,7 @@ async function fetchEventsForCategory(
 
     if (sportsMeta.success && sportsMeta.tagId) {
       // Use tag-filtered fetch for better sports discovery
-      const tagEvents = await fetchPolymarketEventsByTagSafe(sportsMeta.tagId, 100);
+      const tagEvents = await fetchPolymarketEventsByTagSafe(sportsMeta.tagId);
       if (tagEvents.length > 0) {
         allEvents.push(...tagEvents);
         sportsTagSuccess = true;

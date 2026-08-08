@@ -187,9 +187,69 @@ export interface StrategicShadowMaterializationRecord {
   outcome: "MATERIALIZED" | "PREEXISTING_DEDUP";
 }
 
+/**
+ * Row-level writer conservation ledger.
+ *
+ * Every proposed candidate lands in exactly one terminal bucket:
+ *   rowsProposed === rowsInserted + rowsDeduped + rowsExplicitlyRejected
+ * (when `writeFailed` is false). Nothing may silently disappear between the
+ * producer and `generated_signal_pairs`.
+ */
+export interface StrategicShadowWriteConservation {
+  rowsProposed: number;
+  rowsInserted: number;
+  /** Collapsed as exact conditionId::tokenId duplicates (intra-batch + preexisting). */
+  rowsDeduped: number;
+  /** Dropped for a named, attributable reason. */
+  rowsExplicitlyRejected: number;
+  rejectionsByReason: Record<string, number>;
+  writeFailed: boolean;
+  conservationOk: boolean;
+  /** Rows emitted WITHOUT a complete exact provider event identity. */
+  rowsMissingProviderEventContext: number;
+}
+
 export interface StrategicShadowWriteDetail {
   inserted: number;
   materializationRecords: StrategicShadowMaterializationRecord[];
+  conservation: StrategicShadowWriteConservation;
+}
+
+/**
+ * THE exact provider event identity carried on every emitted shadow row.
+ *
+ * Downstream (`exactProviderEventIdentity` in lib/executor/contractADecisions.ts,
+ * `providerContextOf` in lib/executor/buildFireModelCandidates.ts) accepts ONLY
+ * this structured object — a flat `providerEventId` field is invisible to it.
+ * Emitting the flat field alone is exactly how broad structured-sports rows lost
+ * their provider lineage and fell back to slug identity.
+ *
+ * Returns null rather than inventing an identity: the contract requires a real
+ * provider event ID plus a parseable authoritative start. Title and slug are
+ * carried as context only and are NEVER the identity authority.
+ */
+export function buildShadowProviderEventContext(
+  entry: WcShadowEntry,
+): NonNullable<LandingCardDiagnostics["providerEventContext"]> | null {
+  const eventId = typeof entry.providerEventId === "string" ? entry.providerEventId.trim() : "";
+  const startIso = typeof entry.gameStartIso === "string" ? entry.gameStartIso.trim() : "";
+  if (!eventId || !startIso || !Number.isFinite(Date.parse(startIso))) return null;
+
+  const sportFamily = typeof entry.providerSportCode === "string" ? entry.providerSportCode.trim() : "";
+  const eventSlug = typeof entry.eventSlug === "string" ? entry.eventSlug.trim() : "";
+  const eventTitle = typeof entry.eventTitle === "string" ? entry.eventTitle.trim() : "";
+  const marketQuestion = typeof entry.marketQuestion === "string" ? entry.marketQuestion.trim() : "";
+
+  return {
+    v: "v1",
+    provider: "polymarket",
+    eventId,
+    eventStartIso: startIso,
+    ...(eventSlug ? { eventSlug } : {}),
+    ...(eventTitle ? { eventTitle } : {}),
+    ...(marketQuestion ? { marketQuestion } : {}),
+    ...(sportFamily ? { sportFamily, league: sportFamily } : {}),
+  };
 }
 
 export function writeStrategicShadowPairs(
@@ -206,9 +266,32 @@ export async function writeStrategicShadowPairs(
   defaultExpiresAt: string,
   options?: { detailed: true },
 ): Promise<number | StrategicShadowWriteDetail> {
-  const detail = (inserted: number, materializationRecords: StrategicShadowMaterializationRecord[]) =>
-    options?.detailed ? { inserted, materializationRecords } : inserted;
-  if (candidates.length === 0) return detail(0, []);
+  const rejectionsByReason: Record<string, number> = {};
+  let rowsMissingProviderEventContext = 0;
+  const rejectRows = (reason: string, n: number) => {
+    if (n > 0) rejectionsByReason[reason] = (rejectionsByReason[reason] ?? 0) + n;
+  };
+  const detail = (
+    inserted: number,
+    materializationRecords: StrategicShadowMaterializationRecord[],
+    deduped: number,
+    writeFailed = false,
+  ) => {
+    const rowsExplicitlyRejected = Object.values(rejectionsByReason).reduce((a, b) => a + b, 0);
+    const conservation: StrategicShadowWriteConservation = {
+      rowsProposed: candidates.length,
+      rowsInserted: inserted,
+      rowsDeduped: deduped,
+      rowsExplicitlyRejected,
+      rejectionsByReason,
+      writeFailed,
+      conservationOk:
+        writeFailed || candidates.length === inserted + deduped + rowsExplicitlyRejected,
+      rowsMissingProviderEventContext,
+    };
+    return options?.detailed ? { inserted, materializationRecords, conservation } : inserted;
+  };
+  if (candidates.length === 0) return detail(0, [], 0);
 
   // Intra-batch dedup: collapse duplicates within the candidates array itself.
   // Collectors may return the same conditionId::selectedTokenId multiple times
@@ -270,6 +353,14 @@ export async function writeStrategicShadowPairs(
   const newCandidates = dedupedCandidates.filter(
     (c) => c.shadowReason !== "BROAD_STRUCTURED_SPORTS_V1" || c.selectedOutcome != null
   );
+  // Attributable terminal outcome for every candidate that does NOT reach the
+  // insert: intra-batch duplicate, preexisting row, or named rejection. A
+  // dropped-and-uncounted candidate is exactly the silent producer loss this
+  // ledger exists to make impossible.
+  const rowsDeduped =
+    (candidates.length - uniqueCandidates.length) +
+    (uniqueCandidates.length - dedupedCandidates.length);
+  rejectRows("MALFORMED_OUTCOME_TUPLE", dedupedCandidates.length - newCandidates.length);
   const materializationRecords: StrategicShadowMaterializationRecord[] = [
     ...uniqueCandidates
       .filter((c) => existingKeys.has(`${c.conditionId}::${c.selectedTokenId}::shadow-strategic-sports-v1`))
@@ -280,11 +371,13 @@ export async function writeStrategicShadowPairs(
         outcome: "PREEXISTING_DEDUP" as const,
       })),
   ];
-  if (newCandidates.length === 0) return detail(0, materializationRecords);
+  if (newCandidates.length === 0) return detail(0, materializationRecords, rowsDeduped);
 
   const rows = newCandidates.map((entry) => {
     // Per-row expiry: game endDate + 48h buffer so resolver can process it after settlement.
     // Falls back to defaultExpiresAt (30d) when endDate is unavailable.
+    const providerEventContext = buildShadowProviderEventContext(entry);
+    if (!providerEventContext) rowsMissingProviderEventContext += 1;
     const rowExpiresAt = entry.eventEndIso
       ? new Date(new Date(entry.eventEndIso).getTime() + 48 * 3600 * 1000).toISOString()
       : defaultExpiresAt;
@@ -309,6 +402,10 @@ export async function writeStrategicShadowPairs(
       diagnostics: {
         conditionId: entry.conditionId,
         selectedTokenId: entry.selectedTokenId,
+        // Exact provider event identity, structured. This is the ONLY shape
+        // downstream Contract A / candidate building reads; the flat
+        // `providerEventId` below is diagnostics, not identity.
+        providerEventContext,
         isShadow: true,
         shadowScope: entry.shadowScope,
         shadowReason: entry.shadowReason,
@@ -365,6 +462,9 @@ export async function writeStrategicShadowPairs(
       .insert(chunk);
 
     if (error) {
+      // WRITE_FAILED is a terminal, attributable outcome for the remaining
+      // rows -- the ledger records it rather than losing them silently.
+      rejectRows("WRITE_FAILED", rows.length - inserted);
       throw new Error(
         `Failed to write shadow pairs: ${error.message} (after ${inserted} of ${rows.length} rows)`,
       );
@@ -378,7 +478,7 @@ export async function writeStrategicShadowPairs(
     sportCode: c.providerSportCode ?? null,
     outcome: "MATERIALIZED" as const,
   })));
-  return detail(inserted, materializationRecords);
+  return detail(inserted, materializationRecords, rowsDeduped);
 }
 
 /**
