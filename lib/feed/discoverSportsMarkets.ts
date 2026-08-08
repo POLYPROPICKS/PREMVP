@@ -333,9 +333,16 @@ export async function discoverSportsMarkets(
   counts.eventPagesFetched = keysetResult.pagesFetched;
   counts.eventSpineTruncated = keysetResult.truncated;
   counts.officialEventsFetched48h = keysetResult.events.length;
+  // EVENTS_ENUMERATED + the completeness of that enumeration. An incomplete
+  // partition is an explicit, named failure -- never a partial page set
+  // presented downstream as the whole official universe.
+  counts.eventsEnumerated = keysetResult.events.length;
+  counts.eventsEnumerationComplete = keysetResult.complete;
+  counts.eventsEnumerationDuplicatesDropped = keysetResult.duplicatesDropped;
+  counts.eventsEnumerationIncompleteReason = keysetResult.incompleteReason;
 
-  if (keysetResult.errorState) {
-    warnings.push(`Event keyset fetch error: ${keysetResult.errorState}`);
+  if (!keysetResult.complete) {
+    warnings.push(`OFFICIAL_EVENT_ENUMERATION_INCOMPLETE: ${keysetResult.incompleteReason}`);
   }
 
   // Classify events and flatten nested markets with event context injected
@@ -501,6 +508,16 @@ export async function discoverSportsMarkets(
         let broadWriteDetail: import("./cacheGeneratedSignals").StrategicShadowWriteDetail = {
           inserted: 0,
           materializationRecords: [],
+          conservation: {
+            rowsProposed: 0,
+            rowsInserted: 0,
+            rowsDeduped: 0,
+            rowsExplicitlyRejected: 0,
+            rejectionsByReason: {},
+            writeFailed: false,
+            conservationOk: true,
+            rowsMissingProviderEventContext: 0,
+          },
         };
         if (broadEntries.length > 0) {
           const { writeStrategicShadowPairs } = await import("./cacheGeneratedSignals");
@@ -510,6 +527,10 @@ export async function discoverSportsMarkets(
         } else {
           counts.broadSportsWriteInserted = 0;
         }
+        // ROWS_PROPOSED / ROWS_INSERTED / ROWS_DEDUPED /
+        // ROWS_EXPLICITLY_REJECTED / WRITE_FAILED -- the writer-side half of
+        // producer conservation.
+        counts.broadSportsWriteConservation = { ...broadWriteDetail.conservation };
         const records = broadEntries.map((entry) => ({ providerEventId: entry.providerEventId, conditionId: entry.conditionId, sportCode: entry.providerSportCode }));
         const officialRecords: SportFunnelRecord[] = rawEventsForInventory.map((event) => {
           const rawEvent = event as Record<string, unknown>;
@@ -868,7 +889,7 @@ export async function discoverSportsMarkets(
     const WC2026_SERIES_ID = "11433"; // series slug: soccer-fifwc
     let rawTagEvents: PolymarketRawEvent[] = [];
     try {
-      rawTagEvents = await fetchEventsBySeriesSafe(WC2026_SERIES_ID, 50);
+      rawTagEvents = await fetchEventsBySeriesSafe(WC2026_SERIES_ID);
     } catch {
       warnings.push(`WC2026 series fetch failed for series_id=${WC2026_SERIES_ID}`);
     }
@@ -994,7 +1015,7 @@ export async function discoverSportsMarkets(
     const rawEsportsEvents: PolymarketRawEvent[] = [];
     for (const tagSlug of ESPORTS_TAG_SLUGS) {
       try {
-        const events = await fetchEventsByTagSlugSafe(tagSlug, 30);
+        const events = await fetchEventsByTagSlugSafe(tagSlug);
         rawEsportsEvents.push(...events);
       } catch {
         warnings.push(`Esports tag-slug fetch failed for ${tagSlug}`);
@@ -1161,7 +1182,7 @@ export async function discoverSportsMarkets(
     ) => {
       let raw: PolymarketRawEvent[] = [];
       try {
-        raw = await fetchEventsByTagSlugSafe(slug, 50);
+        raw = await fetchEventsByTagSlugSafe(slug);
       } catch {
         warnings.push(`${leagueLabel} tag-slug fetch failed for ${slug}`);
         return;
@@ -1825,7 +1846,7 @@ export async function collectWcShadowCandidates(): Promise<WcShadowEntry[]> {
   const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
 
   try {
-    const rawEvents = await fetchEventsBySeriesSafe(WC2026_SERIES_ID, 50);
+    const rawEvents = await fetchEventsBySeriesSafe(WC2026_SERIES_ID);
     if (rawEvents.length === 0) return [];
 
     const nowMs = Date.now();
@@ -1914,7 +1935,7 @@ export async function collectEsportShadowCandidates(): Promise<WcShadowEntry[]> 
   try {
     const rawEvents: PolymarketRawEvent[] = [];
     for (const tagSlug of ESPORTS_TAG_SLUGS) {
-      try { rawEvents.push(...await fetchEventsByTagSlugSafe(tagSlug, 30)); } catch { /* skip tag */ }
+      try { rawEvents.push(...await fetchEventsByTagSlugSafe(tagSlug)); } catch { /* skip tag */ }
     }
     if (rawEvents.length === 0) return [];
 
@@ -2017,7 +2038,7 @@ export async function collectNbaNhlShadowCandidates(): Promise<WcShadowEntry[]> 
   const collectLeague = async (slugs: string[], leagueLabel: "NBA" | "NHL"): Promise<LeagueEntry[]> => {
     const raw: PolymarketRawEvent[] = [];
     for (const slug of slugs) {
-      try { raw.push(...await fetchEventsByTagSlugSafe(slug, 50)); } catch { /* skip */ }
+      try { raw.push(...await fetchEventsByTagSlugSafe(slug)); } catch { /* skip */ }
     }
     const nowMs = Date.now();
     const seen = new Set<string>();
@@ -2188,7 +2209,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
     const WC_EX = /\b(top goalscorer|longshots parlay|qualification longshots|squad|winner|champion|outright)\b|player to make|will .+ play/i;
     const EXACT_SCORE_SLUG = /exact.?score/i;
     const nowMs = Date.now();
-    const wcSeries = await fetchEventsBySeriesSafe("11433", 50);
+    const wcSeries = await fetchEventsBySeriesSafe("11433");
 
     // Expand each game's sub-events; deduplicate by event ID.
     // gameId lives on the market level in the Gamma API response, not on the event.
@@ -2266,11 +2287,11 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
     // tag_id + related_tags=true: surfaces spread/total/corner events under child tags
     const wcTagId = await fetchTagIdBySlugSafe("fifwc").catch(() => null);
     if (wcTagId) {
-      try { wcTagRaw.push(...await fetchPolymarketEventsByTagSafe(wcTagId, 100)); } catch { /**/ }
+      try { wcTagRaw.push(...await fetchPolymarketEventsByTagSafe(wcTagId)); } catch { /**/ }
     }
     // slug fallback: tournament-winner futures (useful for WC title detection baseline)
     for (const ts of ["fifwc", "soccer-fifwc"]) {
-      try { wcTagRaw.push(...await fetchEventsByTagSlugSafe(ts, 50)); } catch { /**/ }
+      try { wcTagRaw.push(...await fetchEventsByTagSlugSafe(ts)); } catch { /**/ }
     }
     const seenTag = new Set<string>();
     for (const ev of wcTagRaw) {
@@ -2322,7 +2343,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
     const nowMs = Date.now();
     const rawEs: PolymarketRawEvent[] = [];
     for (const s of ["esports", "counter-strike", "cs2", "dota-2", "valorant", "league-of-legends"]) {
-      try { rawEs.push(...await fetchEventsByTagSlugSafe(s, 30)); } catch { /**/ }
+      try { rawEs.push(...await fetchEventsByTagSlugSafe(s)); } catch { /**/ }
     }
     const seenEs = new Set<string>();
     for (const ev of rawEs) {
@@ -2353,7 +2374,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
     try {
       const nowMs = Date.now();
       const raw: PolymarketRawEvent[] = [];
-      for (const s of slugs) { try { raw.push(...await fetchEventsByTagSlugSafe(s, 50)); } catch { /**/ } }
+      for (const s of slugs) { try { raw.push(...await fetchEventsByTagSlugSafe(s)); } catch { /**/ } }
       const seen = new Set<string>();
       for (const ev of raw) {
         if (!ev.active || ev.closed) continue;
