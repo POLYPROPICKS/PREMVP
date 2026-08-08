@@ -11,8 +11,11 @@
  * Contract (see AGENT_REGISTRY.yaml entry for the authoritative statement):
  *   - a PostgREST PGRST002 / HTTP 5xx response from the database read surface is a
  *     RECOVERABLE INFRASTRUCTURE WAIT, never PROMPT_GATE_BLOCKED;
- *   - an application read surface returning HTTP 200 with a `static-fallback-*` payload id
- *     is DEGRADED database evidence, not healthy evidence — treated the same as a WAIT;
+ *   - the application landing-cards read surface is a CORROBORATIVE health signal (it can
+ *     catch silent static-fallback degradation on that one route), not required evidence:
+ *     DB-backed stages read Supabase directly and proceed whenever the raw database surface
+ *     is healthy, independent of app_surface_status. App unavailability only blocks a stage
+ *     that is proven to require the app surface specifically -- none currently exist;
  *   - progress is checkpointed to a local, non-secret, gitignored JSON file
  *     (reports/observation/<observation_id>.json) so a transport/session interruption
  *     does not lose transaction state;
@@ -194,8 +197,12 @@ async function measureProducerOutput(supabaseUrl, supabaseKey, table, metricForm
   };
 }
 
-async function main() {
-  const input = JSON.parse(process.argv[2] || "{}");
+/**
+ * Runs the full checkpointed observation and RETURNS the result (never logs, never sets
+ * process.exitCode) so it can be exercised in-process by tests. The CLI entrypoint below is
+ * a thin wrapper that prints the returned result and maps it to an exit code.
+ */
+async function runObservation(input) {
   if (!input.observation_id) throw new Error("observation_id is required");
   if (!input.expected_ancestor_sha) throw new Error("expected_ancestor_sha is required");
 
@@ -239,20 +246,15 @@ async function main() {
         updated_at: new Date().toISOString(),
         evidence: { ...checkpoint.evidence, expected_ancestor_sha: input.expected_ancestor_sha },
       });
-      console.log(
-        JSON.stringify(
-          {
-            verdict: "PROMPT_GATE_BLOCKED",
-            reason: "EXPECTED_ANCESTOR_NOT_IN_PRODUCTION",
-            origin_main: originMain,
-            production_sha: productionSha,
-          },
-          null,
-          2,
-        ),
-      );
-      process.exitCode = 1;
-      return;
+      return {
+        exitCode: 1,
+        result: {
+          verdict: "PROMPT_GATE_BLOCKED",
+          reason: "EXPECTED_ANCESTOR_NOT_IN_PRODUCTION",
+          origin_main: originMain,
+          production_sha: productionSha,
+        },
+      };
     }
     checkpoint = {
       ...checkpoint,
@@ -285,67 +287,74 @@ async function main() {
       updated_at: new Date().toISOString(),
       evidence: { ...checkpoint.evidence, database_read_status: dbProbe.reason },
     });
-    console.log(
-      JSON.stringify({ verdict: "PROMPT_GATE_BLOCKED", reason: dbProbe.reason }, null, 2),
-    );
-    process.exitCode = 1;
-    return;
+    return { exitCode: 1, result: { verdict: "PROMPT_GATE_BLOCKED", reason: dbProbe.reason } };
   }
 
-  if (!dbProbe.available || appProbe.degraded || !appProbe.healthy) {
+  // The application landing-cards probe is a CORROBORATIVE health signal (it detects
+  // silent static-fallback degradation on that one route) — it is NOT required evidence
+  // for the DB-backed stages below, which read Supabase directly via REST and never call
+  // the app. It must never block DB-backed measurement when the raw DB surface is healthy;
+  // it is recorded independently so a genuinely app-specific stage could depend on it later.
+  const appSurfaceStatus = !appUrl
+    ? "APP_SURFACE_NOT_CONFIGURED"
+    : appProbe.degraded
+      ? "APP_SURFACE_DEGRADED"
+      : !appProbe.healthy
+        ? "APP_SURFACE_UNAVAILABLE"
+        : "APP_SURFACE_HEALTHY";
+
+  if (!dbProbe.available) {
     checkpoint = {
       ...checkpoint,
       stage: "database_waiting",
       updated_at: new Date().toISOString(),
       evidence: {
         ...checkpoint.evidence,
-        database_read_status: dbProbe.available
-          ? "DATABASE_READ_AVAILABLE_BUT_APP_SURFACE_DEGRADED"
-          : `DATABASE_READ_TEMPORARILY_UNAVAILABLE: ${dbProbe.reason}`,
+        database_read_status: `DATABASE_READ_TEMPORARILY_UNAVAILABLE: ${dbProbe.reason}`,
+        app_surface_status: appSurfaceStatus,
         app_probe_reason: appProbe.reason,
       },
     };
     writeCheckpoint(checkpointFile, checkpoint);
-    console.log(
-      JSON.stringify(
-        {
-          verdict: "WAIT_INFRASTRUCTURE_RECOVERY",
-          checkpoint_id: input.observation_id,
-          resume_stage: checkpoint.stage,
-          database_read_status: checkpoint.evidence.database_read_status,
-          deployment: {
-            origin_main: checkpoint.evidence.origin_main,
-            production_sha: checkpoint.evidence.production_sha,
-            expected_ancestor_sha: checkpoint.evidence.expected_ancestor_sha,
-            ancestor_proven: checkpoint.evidence.ancestor_proven,
-          },
-          founder_action: "none",
+    return {
+      exitCode: 0,
+      result: {
+        verdict: "WAIT_INFRASTRUCTURE_RECOVERY",
+        checkpoint_id: input.observation_id,
+        resume_stage: checkpoint.stage,
+        database_read_status: checkpoint.evidence.database_read_status,
+        app_surface_status: appSurfaceStatus,
+        deployment: {
+          origin_main: checkpoint.evidence.origin_main,
+          production_sha: checkpoint.evidence.production_sha,
+          expected_ancestor_sha: checkpoint.evidence.expected_ancestor_sha,
+          ancestor_proven: checkpoint.evidence.ancestor_proven,
         },
-        null,
-        2,
-      ),
-    );
-    return;
+        founder_action: "none",
+      },
+    };
   }
 
-  // Stage 3-6: database is healthy on both surfaces. Run the read-only measurement.
+  // Stage 3-6: the raw DB surface is healthy. DB-backed measurement may proceed regardless
+  // of app_surface_status — that status is carried through as corroborative evidence only.
   const measurement = await measureProducerOutput(supabaseUrl, supabaseKey, table, metricFormulaVersion);
   if (!measurement.ok) {
     checkpoint = {
       ...checkpoint,
       stage: "database_waiting",
       updated_at: new Date().toISOString(),
-      evidence: { ...checkpoint.evidence, database_read_status: measurement.reason },
+      evidence: { ...checkpoint.evidence, database_read_status: measurement.reason, app_surface_status: appSurfaceStatus },
     };
     writeCheckpoint(checkpointFile, checkpoint);
-    console.log(
-      JSON.stringify(
-        { verdict: "WAIT_INFRASTRUCTURE_RECOVERY", reason: measurement.reason, founder_action: "none" },
-        null,
-        2,
-      ),
-    );
-    return;
+    return {
+      exitCode: 0,
+      result: {
+        verdict: "WAIT_INFRASTRUCTURE_RECOVERY",
+        reason: measurement.reason,
+        app_surface_status: appSurfaceStatus,
+        founder_action: "none",
+      },
+    };
   }
 
   checkpoint = {
@@ -355,6 +364,7 @@ async function main() {
     evidence: {
       ...checkpoint.evidence,
       database_read_status: "DATABASE_READ_AVAILABLE",
+      app_surface_status: appSurfaceStatus,
       natural_run_observed: measurement.naturalRunObserved,
       rows_persisted: measurement.rowsPersisted,
       signal_pair_present_events: measurement.signalPairPresentEvents,
@@ -372,38 +382,43 @@ async function main() {
   };
   writeCheckpoint(checkpointFile, checkpoint);
 
-  console.log(
-    JSON.stringify(
-      {
-        verdict: "PRODUCER_PRODUCTION_EFFECT_PROVEN",
-        checkpoint_id: input.observation_id,
-        resume_stage: checkpoint.stage,
-        deployment: {
-          origin_main: checkpoint.evidence.origin_main,
-          production_sha: checkpoint.evidence.production_sha,
-          expected_ancestor_sha: checkpoint.evidence.expected_ancestor_sha,
-        },
-        database_read_status: "DATABASE_READ_AVAILABLE",
-        natural_run_observed: measurement.naturalRunObserved,
-        production_persistence_read: {
-          rows_persisted: measurement.rowsPersisted,
-          signal_pair_present_events: measurement.signalPairPresentEvents,
-          identity_complete_events: measurement.identityCompleteEvents,
-          contract_a_input_events: measurement.contractAInputEvents,
-          rows_missing_provider_event_context: measurement.rowsMissingProviderEventContext,
-          score_ready_rows: measurement.scoreReadyRows,
-        },
-        run_scoped_ledger_available: false,
-        founder_action: "none",
+  return {
+    exitCode: 0,
+    result: {
+      verdict: "PRODUCER_PRODUCTION_EFFECT_PROVEN",
+      checkpoint_id: input.observation_id,
+      resume_stage: checkpoint.stage,
+      deployment: {
+        origin_main: checkpoint.evidence.origin_main,
+        production_sha: checkpoint.evidence.production_sha,
+        expected_ancestor_sha: checkpoint.evidence.expected_ancestor_sha,
       },
-      null,
-      2,
-    ),
-  );
+      database_read_status: "DATABASE_READ_AVAILABLE",
+      app_surface_status: appSurfaceStatus,
+      natural_run_observed: measurement.naturalRunObserved,
+      production_persistence_read: {
+        rows_persisted: measurement.rowsPersisted,
+        signal_pair_present_events: measurement.signalPairPresentEvents,
+        identity_complete_events: measurement.identityCompleteEvents,
+        contract_a_input_events: measurement.contractAInputEvents,
+        rows_missing_provider_event_context: measurement.rowsMissingProviderEventContext,
+        score_ready_rows: measurement.scoreReadyRows,
+      },
+      run_scoped_ledger_available: false,
+      founder_action: "none",
+    },
+  };
+}
+
+async function main() {
+  const input = JSON.parse(process.argv[2] || "{}");
+  const { result, exitCode } = await runObservation(input);
+  console.log(JSON.stringify(result, null, 2));
+  process.exitCode = exitCode;
 }
 
 // Exported for tests — pure functions, no I/O side effects beyond what's explicit above.
-export { STAGES, stageIndex, probeDatabase, probeAppReadSurface, measureProducerOutput };
+export { STAGES, stageIndex, probeDatabase, probeAppReadSurface, measureProducerOutput, runObservation };
 
 if (process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url))) {
   main().catch((err) => {

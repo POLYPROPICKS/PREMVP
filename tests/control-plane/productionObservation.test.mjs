@@ -15,6 +15,7 @@ import {
   probeDatabase,
   probeAppReadSurface,
   measureProducerOutput,
+  runObservation,
   STAGES,
   stageIndex,
 } from "../../scripts/control-plane/production-observation.mjs";
@@ -215,6 +216,71 @@ test("checkpoint file records database_waiting on a live outage and is resumable
     assert.equal(result2.verdict, "WAIT_INFRASTRUCTURE_RECOVERY");
     assert.equal(result2.deployment.expected_ancestor_sha, sha);
   });
+});
+
+test("gating fix: a healthy raw DB surface proceeds to measurement even when the app landing-cards route is degraded", async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "obs-gating-fix-"));
+  const savedEnv = { ...process.env };
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: dir });
+    execFileSync("git", ["commit", "--allow-empty", "-q", "-m", "root", "--no-gpg-sign"], {
+      cwd: dir,
+      env: { ...process.env, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@t.com", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@t.com" },
+    });
+    const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, encoding: "utf8" }).trim();
+    execFileSync("git", ["remote", "add", "origin", dir], { cwd: dir });
+    execFileSync("git", ["update-ref", "refs/remotes/origin/main", sha], { cwd: dir });
+
+    process.env.NEXT_PUBLIC_APP_URL = "https://app.example";
+    process.env.SUPABASE_URL = "https://db.example";
+    process.env.SUPABASE_SERVICE_ROLE_KEY = "test-key-not-a-secret";
+
+    globalThis.fetch = async (input) => {
+      const url = new URL(String(input));
+      if (url.hostname === "app.example") {
+        // App: always answers with a static-fallback payload (HTTP 200, degraded content).
+        return jsonResponse(200, { pairs: [{ id: "static-fallback-0" }] });
+      }
+      if (url.pathname === "/rest/v1/") {
+        return jsonResponse(200, { ok: true });
+      }
+      // Producer output table: one identity-complete row, healthy DB.
+      return jsonResponse(200, [
+        {
+          diagnostics: {
+            providerEventId: "evt-1",
+            providerEventContext: {
+              v: "v1",
+              provider: "polymarket",
+              eventId: "evt-1",
+              eventStartIso: "2030-01-01T00:00:00.000Z",
+            },
+          },
+          score: null,
+        },
+      ]);
+    };
+
+    const { result, exitCode } = await runObservation({
+      observation_id: "unit-test-gating-fix",
+      repository_root: dir,
+      expected_ancestor_sha: sha,
+    });
+
+    assert.equal(exitCode, 0);
+    assert.equal(
+      result.verdict,
+      "PRODUCER_PRODUCTION_EFFECT_PROVEN",
+      "a healthy raw DB surface must not be blocked by a degraded corroborative app probe",
+    );
+    assert.equal(result.app_surface_status, "APP_SURFACE_DEGRADED");
+    assert.equal(result.database_read_status, "DATABASE_READ_AVAILABLE");
+    assert.equal(result.natural_run_observed, true);
+    assert.equal(result.production_persistence_read.identity_complete_events, 1);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+    process.env = savedEnv;
+  }
 });
 
 test("checkpoint blocks (does not WAIT) when the expected ancestor is genuinely not in production", () => {
