@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   loadFinalIdentitySourceRowsByGeneratedSignalPairId,
+  loadExactProviderSiblingRowsFromAnchor,
   runEventRebalance,
   runEventRebalanceWithEvidence,
   type RebalanceRepoPort,
@@ -217,7 +218,32 @@ test("Final Identity production loader has no slug fallback query", () => {
   const loader = source.slice(start, end);
   assert.match(loader, /\.eq\("id", generatedSignalPairId\)/);
   assert.match(loader, /\.limit\(1\)/);
+  assert.match(loader, /\.eq\("condition_id", conditionId\)/);
+  assert.doesNotMatch(loader, /\.contains\("diagnostics"/, "the first-stage sibling lookup must never scan broad JSON");
   assert.doesNotMatch(loader, /event_slug|\.order\(/, "slug and recency must never become source identity fallbacks");
+});
+
+test("production-scale exact sibling lookup is condition-bounded before residual provider validation", async () => {
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), baseCandidate());
+  const anchor = { ...authority.sourceRow, condition_id: "cond-exact", diagnostics: { providerEventContext: { v: "v1", provider: "polymarket", eventId: "event-a", eventStartIso: KICKOFF_ISO } } };
+  const siblingHigh = { ...anchor, id: "pair-high", score: 91, selected_token_id: "token-high", selected_outcome: "YES" };
+  const siblingTie = { ...anchor, id: "pair-z", score: 91, selected_token_id: "token-z", selected_outcome: "NO" };
+  const wrongStart = { ...anchor, id: "pair-other-start", diagnostics: { providerEventContext: { v: "v1", provider: "polymarket", eventId: "event-a", eventStartIso: "2026-07-20T19:00:00.000Z" } } };
+  const broadPopulation = Array.from({ length: 50_000 }, (_, i) => ({ ...anchor, id: `unrelated-${i}`, condition_id: `other-${i}`, diagnostics: { providerEventContext: { v: "v1", provider: "polymarket", eventId: `other-${i}`, eventStartIso: KICKOFF_ISO } } }));
+  let queriedCondition: string | null = null;
+  const rows = await loadExactProviderSiblingRowsFromAnchor(
+    authority.reservation,
+    async () => [anchor],
+    async (conditionId) => {
+      queriedCondition = conditionId;
+      return [anchor, siblingHigh, siblingTie, wrongStart];
+    },
+  );
+  assert.equal(broadPopulation.length, 50_000, "fixture represents a production-scale unrelated population");
+  assert.equal(queriedCondition, "cond-exact", "only the scalar anchor condition reaches the sibling read");
+  assert.deepEqual(rows.map((r) => r.id).sort(), ["pair-high", "pair-z", anchor.id].sort(), "different occurrence is excluded after the bounded read");
+  assert.equal(rows.length, 3);
+  assert.equal(rows.filter((r) => r.id === "pair-high").length, 1, "the bounded set retains the max-score candidate consumed by the established queue selector");
 });
 
 test("B1: before T-70, zero queue rows are created", async () => {

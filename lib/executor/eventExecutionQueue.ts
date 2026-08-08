@@ -615,6 +615,42 @@ export async function loadFinalIdentitySourceRowsByGeneratedSignalPairId(
   return rows.slice(0, 1);
 }
 
+/**
+ * Resolves exact executable siblings from the persisted UUID anchor. The first
+ * sibling query is always the anchor's scalar condition_id; provider metadata
+ * is validation only after that bounded read.
+ */
+export async function loadExactProviderSiblingRowsFromAnchor(
+  reservation: NightEventReservationRow,
+  queryById: (generatedSignalPairId: string) => Promise<FinalIdentitySourceRow[]>,
+  queryByConditionId: (conditionId: string) => Promise<FinalIdentitySourceRow[]>,
+): Promise<FinalIdentitySourceRow[]> {
+  const [anchor] = await loadFinalIdentitySourceRowsByGeneratedSignalPairId(reservation, queryById);
+  const conditionId = text(anchor?.condition_id);
+  const context = anchor?.diagnostics && typeof anchor.diagnostics === "object"
+    ? (anchor.diagnostics as Record<string, unknown>).providerEventContext as Record<string, unknown> | undefined
+    : undefined;
+  const eventId = text(context?.eventId);
+  const eventStartIso = text(context?.eventStartIso);
+  if (!conditionId) throw new FinalIdentitySourceLoadError("EXACT_PROVIDER_EVENT_CONDITION_ID_MISSING");
+  if (!context || context.v !== "v1" || context.provider !== "polymarket" || !eventId || !eventStartIso) {
+    throw new FinalIdentitySourceLoadError("EXACT_PROVIDER_EVENT_IDENTITY_MISSING");
+  }
+  let rows: FinalIdentitySourceRow[];
+  try {
+    rows = await queryByConditionId(conditionId);
+  } catch (error) {
+    throw new FinalIdentitySourceLoadError(`EXACT_PROVIDER_EVENT_QUERY_FAILED_${safeDatabaseErrorCategory(error)}`);
+  }
+  return rows.filter((row) => {
+    const candidateContext = row.diagnostics && typeof row.diagnostics === "object"
+      ? (row.diagnostics as Record<string, unknown>).providerEventContext as Record<string, unknown> | undefined
+      : undefined;
+    return candidateContext?.v === "v1" && candidateContext.provider === "polymarket" &&
+      candidateContext.eventId === eventId && candidateContext.eventStartIso === eventStartIso;
+  });
+}
+
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
 }
@@ -722,30 +758,23 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
     },
     async loadFinalIdentitySourceRows(reservation) {
       const { supabaseAdmin } = await import("@/lib/supabase/server");
-      const anchorRows = await loadFinalIdentitySourceRowsByGeneratedSignalPairId(reservation, async (generatedSignalPairId) => {
-        const { data, error } = await supabaseAdmin
-          .from("generated_signal_pairs")
-          .select("*")
-          .eq("id", generatedSignalPairId)
+      return loadExactProviderSiblingRowsFromAnchor(
+        reservation,
+        async (generatedSignalPairId) => {
+          const { data, error } = await supabaseAdmin
+            .from("generated_signal_pairs")
+            .select("*")
+            .eq("id", generatedSignalPairId)
           .limit(1);
-        if (error) throw error;
-        return (data ?? []) as FinalIdentitySourceRow[];
-      });
-      const diagnostics = anchorRows[0]?.diagnostics;
-      const context = diagnostics && typeof diagnostics === "object"
-        ? (diagnostics as Record<string, unknown>).providerEventContext as Record<string, unknown> | undefined
-        : undefined;
-      const eventId = text(context?.eventId);
-      const eventStartIso = text(context?.eventStartIso);
-      if (!context || context.v !== "v1" || context.provider !== "polymarket" || !eventId || !eventStartIso) {
-        throw new FinalIdentitySourceLoadError("EXACT_PROVIDER_EVENT_IDENTITY_MISSING");
-      }
-      const { data, error } = await supabaseAdmin
-        .from("generated_signal_pairs")
-        .select("*")
-        .contains("diagnostics", { providerEventContext: { v: "v1", provider: "polymarket", eventId, eventStartIso } });
-      if (error) throw new FinalIdentitySourceLoadError(`EXACT_PROVIDER_EVENT_QUERY_FAILED_${safeDatabaseErrorCategory(error)}`);
-      return (data ?? []) as FinalIdentitySourceRow[];
+          if (error) throw error;
+          return (data ?? []) as FinalIdentitySourceRow[];
+        },
+        async (conditionId) => {
+          const { data, error } = await supabaseAdmin.from("generated_signal_pairs").select("*").eq("condition_id", conditionId);
+          if (error) throw error;
+          return (data ?? []) as FinalIdentitySourceRow[];
+        },
+      );
     },
     async findQueueRowsByRebalanceRunId(rebalanceRunId) {
       const { supabaseAdmin } = await import("@/lib/supabase/server");
