@@ -1083,7 +1083,7 @@ function multiEventAuthorityFixture(n: number) {
       return authority ? [authority.sourceRow] : [];
     },
     fetchExactTokenOrderbook: async (tokenId: string) => {
-      const authority = authorities.find((item) => item.sourceRow.token_id === tokenId);
+      const authority = authorities.find((item) => item.sourceRow.selected_token_id === tokenId);
       if (!authority) return { ok: false as const, tokenId, latencyMs: 1, errorCode: "FIXTURE_TOKEN_NOT_FOUND" };
       return authority.fetchExactTokenOrderbook();
     },
@@ -1435,9 +1435,13 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   assert.equal(row.side, "Chicago White Sox");
   // 07 stake_usd = 1.10
   assert.equal(row.stake_usd, 1.1);
-  // 08 max_entry_price present + numeric
+  // 08 max_entry_price present + numeric. This is the FROZEN accepted
+  // pre-Reservation price of the selected exact sibling, i.e. the fixture's
+  // generated_signal_pairs.entry_price_num (0.42) -- not a separately computed
+  // cap. It was previously asserted as 0.58 only because the fixture fabricated
+  // a `max_entry_price` property that the real table cannot store.
   assert.equal(typeof diag.max_entry_price, "number");
-  assert.equal(diag.max_entry_price, 0.58);
+  assert.equal(diag.max_entry_price, 0.42);
   // 09 selected raw provider-row lineage is preserved without Final Identity.
   const lineage = diag.source_lineage as { generated_signal_pair_id: string };
   assert.equal(lineage.generated_signal_pair_id, diag.selected_signal_pair_id);
@@ -1459,8 +1463,10 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   // 07 stake on wire / 08 max_entry_price + price_cap alias
   assert.equal(wire.stake_usd, 1.1);
   assert.equal(wire.max_stake_usd, 1.1);
-  assert.equal(wire.max_entry_price, 0.58);
-  assert.equal(wire.price_cap, 0.58);
+  // Consumer wire view carries the same frozen accepted pre-Reservation price
+  // (entry_price_num of the selected exact sibling) under both names.
+  assert.equal(wire.max_entry_price, 0.42);
+  assert.equal(wire.price_cap, 0.42);
   // 11 idempotency_key on wire
   assert.equal(wire.idempotency_key, row.idempotency_key);
 });
