@@ -1,0 +1,311 @@
+{
+  "schema_version": "1.0",
+  "cycle_id": "2026-08-08__daily-evolution-review-001",
+  "period_start": "2026-08-07T11:11:09Z",
+  "period_end": "2026-08-08T13:53:49Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "claude-sonnet-5",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "PR#111 merge 1d8dfe4ef2675182585b0b808ce8603c01aac93e",
+      "PR#112 merge 78a951e62803c04c16694d57ff364aa47f869867",
+      "PR#113 merge 56b71f80e1dac2bd6df28e2358940f6be938014f",
+      "PR#114 merge 03f1fb0a99dd9d71b79f09a0264c7e4e962ffdf9",
+      "PR#115 merge 9325fdf6446222c29b9dc8dc595f18f8367c31ea",
+      "PR#117 merge 22e9ee2115f12c46b3428c3237d9cb1d72d18c6f",
+      "PR#118 merge 1e5f21ae8dec67d0c6f0827ddad25d8c3ec5dc74",
+      "PR#119 merge 1b0d34fe0f156ced7510c391e22786197a74bce4",
+      "PR#120 merge e06b6653f4fee7a9ea165edc87f22ebb03862ad4"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-08-09__daily-evolution-review-001.json"
+  },
+  "axis_a": {
+    "verdict": "NO_MEASURABLE_CHANGE",
+    "what_moved": [
+      {
+        "statement": "Поиск соседних заявок при ребалансировке резервирования теперь идёт по точному индексированному ключу condition_id, а не по неограниченному поиску внутри JSON-поля, с той же проверкой личности после выборки.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#117 merge 22e9ee2115f12c46b3428c3237d9cb1d72d18c6f",
+          "tests/contur3/eventExecutionQueue.rebalanceScheduler.test.ts 65/65 pass, прогнано вживую в этой сессии"
+        ]
+      },
+      {
+        "statement": "Сбор рынков у продюсера теперь проходит по всем страницам курсора с явными кодами неполноты вместо остановки на первой странице, а теневые строки теперь несут структурированную личность провайдера вместо пустой.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#118 merge 1e5f21ae8dec67d0c6f0827ddad25d8c3ec5dc74",
+          "npm run test:producer 16/16 pass, прогнано вживую в этой сессии"
+        ]
+      },
+      {
+        "statement": "Появился постоянный инструмент только для чтения, показывающий воронку Contract A и Planning (относится к шагу STEP_3_FORWARD_FUNNEL), и в тот же день исправлена ошибка загрузчика, из-за которой намеренно исключённые теневые строки выпадали.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#112 merge 78a951e62803c04c16694d57ff364aa47f869867",
+          "PR#113 merge 56b71f80e1dac2bd6df28e2358940f6be938014f",
+          "tests/contur3/forwardFunnelReport.test.ts 2/2 pass, прогнано вживую в этой сессии"
+        ]
+      }
+    ],
+    "next_verified_production_fact_now_possible": "Запуск нового инструмента воронки (scripts/contur3/forward-funnel-report.ts) на проде мог бы показать, есть ли трафик, подходящий под T-5 (следующий шаг после C1). Он ещё не запускался на проде, и результата за этот период нет",
+    "blockers_removed": [],
+    "blockers_introduced": [],
+    "not_proven": [
+      "Ни по одному из 9 слитых за период PR нет доказательства, что он реально изменил исход резервирования, сигнал, который видит платящий пользователь, или любую метрику на проде. Есть только факт слияния и локальные тесты.",
+      "Доказательство C1 на проде остаётся открытым (блокер BLK-001 в CURRENT_STATE.yaml): ни один естественный ночной прогон резервирований не доказан после последней подтверждённой поставки, и этот период это не меняет.",
+      "Инструмент воронки ещё не запускался на проде.",
+      "Исполняемый путь релизного конвейера (PR#114, PR#115) ни разу не прогонялся целиком на реальном PR.",
+      "Команда наблюдения за продом (PR#119, PR#120) ни разу не вызывалась против настоящего прода, только против тестовых заглушек."
+    ],
+    "runtime_or_business_evidence_exists": true,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_ADDED",
+    "capabilities": [
+      {
+        "domain": "RECOVERY_AND_CHECKPOINTS",
+        "statement": "Появилась возобновляемая команда наблюдения за продом с ключом observation_id, которая отличает сбой инфраструктуры от настоящего провала проверки.",
+        "persisted_artifact": "scripts/control-plane/production-observation.mjs",
+        "use_or_validation_evidence": "Зарегистрирована в AGENT_REGISTRY.yaml со статусом PROVEN_PRESENT, 14 тестов проходят, прогнано вживую в этой сессии.",
+        "evidence_refs": [
+          "PR#119 merge 1b0d34fe0f156ced7510c391e22786197a74bce4",
+          "PR#120 merge e06b6653f4fee7a9ea165edc87f22ebb03862ad4",
+          "tests/control-plane/productionObservation.test.mjs 14/14 pass, прогнано вживую в этой сессии",
+          "docs/ai-context/control-plane/AGENT_REGISTRY.yaml canonical_id premvp.command.production_observation.v1"
+        ]
+      },
+      {
+        "domain": "REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS",
+        "statement": "Исполняемый путь релизного конвейера (проверка, тесты, гейт ревьюера, push, PR, merge, сверка, ожидание поставки) теперь реализован и умеет продолжать работу с уже слитой веткой.",
+        "persisted_artifact": "scripts/control-plane/lib/premvp-release-pipeline.mjs",
+        "use_or_validation_evidence": "35 тестов проходят, прогнано вживую в этой сессии. Сам конвейер остаётся EXPERIMENTAL_DISABLED до появления premvp.command.control_plane_reconcile.v1.",
+        "evidence_refs": [
+          "PR#114 merge 03f1fb0a99dd9d71b79f09a0264c7e4e962ffdf9",
+          "PR#115 merge 9325fdf6446222c29b9dc8dc595f18f8367c31ea",
+          "tests/control-plane/premvpReleasePipeline.test.mjs 35/35 pass, прогнано вживую в этой сессии"
+        ]
+      }
+    ],
+    "not_proven": [
+      "Ни одна из двух возможностей ещё не применялась на настоящем проде или на реальном слиянии PR, только на тестах и заглушках.",
+      "Ни по одному из 9 слитых за период PR не заведена запись в EVIDENCE_LEDGER.md, и CURRENT_STATE.yaml всё ещё указывает на базовую точку до начала периода (a942a0d833982bca5caf01ff05d4e4bfb9151119).",
+      "Более ранняя, не слитая попытка этого же разбора (ветка claude-eager-cori-lg8qhq, только по PR#111-115) осталась в репозитории как незакрытый черновик и не попала в основную ветку — само по себе признак, что процесс разбора пока не доводится до конца надёжно."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": "UNKNOWN",
+      "runtime_evidence_count": 5,
+      "reusable_artifacts_created": 7,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-08-07T11:11:09Z",
+    "period_end": "2026-08-08T13:53:49Z",
+    "capture_coverage": "UNKNOWN",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "За период слилось 9 PR (со #111 по #120), и ни на один не заведён completion envelope или запись в EVIDENCE_LEDGER. CURRENT_STATE.yaml всё ещё указывает на точку до начала периода.",
+      "why_it_matters": "Control Plane считает CURRENT_STATE.yaml и EVIDENCE_LEDGER.md единственным источником текущего состояния, но они уже на несколько слияний отстают от настоящего origin/main. Чем дольше разрыв не закрывается, тем выше риск решений по устаревшей картине.",
+      "axis_a_effect": "прямого эффекта нет, но задерживает момент, когда факту на проде можно доверять",
+      "axis_b_effect": "закрыло бы разрыв в проверяемости между тем, что слито, и тем, что записано как состояние",
+      "proposed_automation": "При каждом слиянии в main автоматически готовить черновик completion envelope и черновик записи EVIDENCE_LEDGER из сообщения слияния и текста PR, чтобы исполнитель или Founder его подтверждали, а не писали с нуля.",
+      "persistent_artifact": "scripts/control-plane/ (новая команда generate-completion-envelope-stub.mjs и запись в AGENT_REGISTRY.yaml)",
+      "expected_value": "разрыв между новым слиянием на origin/main и новой записью в EVIDENCE_LEDGER.md держится на нуле или одном слиянии",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий: только чтение, черновик всё равно требует явного принятия и никогда не принимает себя сам",
+      "success_metric": "разрыв между последним слиянием на origin/main и последней записью в EVIDENCE_LEDGER.md остаётся не больше одного слияния",
+      "rollback_or_stop_condition": "прекратить генерацию черновиков, если их систематически отклоняют или игнорируют",
+      "timing": "следующий цикл разбора или управления автоматизацией",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/EVIDENCE_LEDGER.md последняя запись EV-0019 от 2026-08-07",
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml last_accepted_completion_id CMP-EVOLUTION-CONTROL-PLANE-STAGE-2-20260807"
+      ]
+    },
+    {
+      "id": "H2",
+      "observed_problem": "Общее правило .gitignore *.json незаметно исключает всё внутри docs/ai-context/control-plane/evolution/cycles/ и input-bundles/, поэтому сохранить настоящий цикл разбора можно только через git add -f. Более ранний черновик этого же разбора уже столкнулся с этим и обходил проблему вручную.",
+      "why_it_matters": "Цикл разбора должен быть надёжным артефактом в Git, но может незаметно не попасть под отслеживание, если исполнитель не заметит и не добавит файл принудительно.",
+      "axis_a_effect": "нет",
+      "axis_b_effect": "убирает скрытый отказ в гарантии переносимости и восстановления результатов разбора",
+      "proposed_automation": "Добавить точечные исключения из .gitignore для docs/ai-context/control-plane/evolution/cycles/**, input-bundles/**, corrections/** и roadmap-proposals/**, чтобы evolution_evaluate.v1 --write никогда не требовал ручного принудительного добавления.",
+      "persistent_artifact": ".gitignore",
+      "expected_value": "убирает один регулярный ручной шаг и один риск незаметной потери результата в каждом будущем цикле",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий: точечное исключение, легко отменить",
+      "success_metric": "после evolution_evaluate.v1 --write новые файлы цикла сразу видны в git status без принудительного добавления",
+      "rollback_or_stop_condition": "отменить исключение, если оно начнёт затрагивать посторонние сгенерированные json-файлы в тех же папках",
+      "timing": "следующая ограниченная задача обслуживания control-plane",
+      "classification": "NOW",
+      "evidence_refs": [
+        ".gitignore строка 55",
+        "ветка claude-eager-cori-lg8qhq, коммит 29c7bf2, тот же обход отмечен в сообщении"
+      ]
+    },
+    {
+      "id": "H3",
+      "observed_problem": "SCHEDULE_MANIFEST.yaml сам фиксирует, что ни в CAPABILITY_MATRIX.yaml, ни в AGENT_REGISTRY.yaml не зарегистрирован ни один механизм SCHEDULER/CRON/ROUTINE, поэтому ежедневный разбор может запускаться только через внешнюю площадку по решению Founder.",
+      "why_it_matters": "Этот запуск доказывает, что разбор реально проходит целиком от внешнего триггера до готового отчёта — это и есть недостающее доказательство, которого ждал SCHEDULE_MANIFEST.yaml.",
+      "axis_a_effect": "нет",
+      "axis_b_effect": "позволило бы следующему циклу перевести разбор из неформальной привычки в зарегистрированную, доказанную возможность",
+      "proposed_automation": "Зафиксировать этот запуск как первое доказательство срабатывания premvp.routine.daily_evolution_review.v1 от внешней площадки, а затем зарегистрировать возможность SCHEDULER с описанием этой площадки, когда Founder подтвердит её личность и периодичность.",
+      "persistent_artifact": "docs/ai-context/control-plane/CAPABILITY_MATRIX.yaml",
+      "expected_value": "превращает неформальную ежедневную привычку в проверяемую, переиспользуемую возможность",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий: только описательная запись в реестре, без изменения выполнения",
+      "success_metric": "в CAPABILITY_MATRIX.yaml появляется возможность SCHEDULER минимум с одной ссылкой на доказанное срабатывание",
+      "rollback_or_stop_condition": "не регистрировать, пока не доказаны минимум два срабатывания подряд, чтобы одна удачная попытка не сошла за надёжную возможность",
+      "timing": "после следующего подтверждённого срабатывания этого же разбора",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/SCHEDULE_MANIFEST.yaml registered_routine_mechanism.status NOT_FOUND_IN_CONTROL_PLANE"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "Новый инструмент воронки и новая команда наблюдения за продом существуют и проходят собственные тесты, но ни разу не запускались на настоящем проде, поэтому их польза для Оси A пока только теоретическая.",
+      "why_it_matters": "Инструмент, проверенный только на заглушках, доказывает, что он не падает, а не то, что он даёт полезное или верное число на проде.",
+      "axis_a_effect": "один запуск дал бы первое реальное доказательство по шагу STEP_3_FORWARD_FUNNEL или первое реальное возобновлённое наблюдение",
+      "axis_b_effect": "перевело бы обе возможности из статуса «попрактиковались, но не доказано» в статус реально применённых",
+      "proposed_automation": "Одобренный Founder ограниченный запуск scripts/contur3/forward-funnel-report.ts и scripts/control-plane/production-observation.mjs против текущей поставки на проде, с результатом, зафиксированным записью в EVIDENCE_LEDGER.",
+      "persistent_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "expected_value": "первое реальное число по воронке и первое реальное доказательство работы команды наблюдения вне тестов",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий: обе команды по конструкции только читают, но обращаются к настоящему проду, поэтому уместно одобрение Founder",
+      "success_metric": "по одной зафиксированной записи EVIDENCE_LEDGER на каждый инструмент, с реальным результатом с прода",
+      "rollback_or_stop_condition": "немедленно остановиться, если для результата понадобится запись в базу или доступ шире уже разрешённого чтения",
+      "timing": "следующая задача с разрешённым чтением с прода",
+      "classification": "NOW",
+      "evidence_refs": [
+        "scripts/contur3/forward-funnel-report.ts",
+        "scripts/control-plane/production-observation.mjs"
+      ]
+    },
+    {
+      "id": "H5",
+      "observed_problem": "Более ранняя попытка этого же ежедневного разбора (ветка claude-eager-cori-lg8qhq) дошла до проверенного цикла и открытого черновика PR, но так и не была слита и была молча вытеснена новой работой в main. Её данные теперь устарели и не связаны с реальным состоянием репозитория.",
+      "why_it_matters": "Цикл разбора, который не доходит до main быстро, теряет смысл: он описывает период, который продолжает расти у него за спиной.",
+      "axis_a_effect": "нет",
+      "axis_b_effect": "показывает пробел в надёжности между сессиями: результат разбора должен либо быстро доходить до main, либо явно отмечаться как отменённый, а не висеть бесконечно",
+      "proposed_automation": "При создании нового цикла разбора проверять, есть ли более старый открытый и не слитый PR разбора, и явно упоминать его в новом отчёте, чтобы Founder мог закрыть его или заменить, а не потерять из виду.",
+      "persistent_artifact": "scripts/control-plane/evolution-collect.mjs (добавить необязательную ссылку prior_open_pr)",
+      "expected_value": "больше не остаётся молча забытых циклов разбора",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий: только дополнительная информация в отчёте",
+      "success_metric": "ни один PR разбора не остаётся открытым и не слитым дольше одного цикла без явного решения Founder",
+      "rollback_or_stop_condition": "убрать проверку, если она станет давать ложные срабатывания при улучшении привычки закрывать ветки",
+      "timing": "следующее изменение инструментов разбора",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "удалённая ветка claude-eager-cori-lg8qhq, коммит 29c7bf2"
+      ]
+    }
+  ],
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "Читать доказательство, а не заголовок PR",
+      "why_it_matters_now": "За один день слилось 9 PR с короткими сообщениями коммитов, но реальная проверка (тесты, typecheck) нигде не была прогнана заново и не записана в EVIDENCE_LEDGER. Разница между слиянием и доказательством стирается, если её не проверять руками.",
+      "how_it_applies_to_current_project": "Перед тем как считать день продуктивным, стоит один раз в день (например, в момент этого разбора) реально прогнать control-plane:check, test:producer и связанные пакеты тестов, а не доверять описанию PR на слово.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-08-08__daily-evolution-review-001.json",
+      "ladder_level": 2
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "Держать состояние проекта синхронным с реальным origin/main",
+      "why_it_matters_now": "CURRENT_STATE.yaml сейчас на 9 слияний позади origin/main, и ни одно из них не зафиксировано записью в EVIDENCE_LEDGER. Чем дольше это состояние не обновляется, тем больше решений принимается по устаревшей картине.",
+      "how_it_applies_to_current_project": "После каждой пачки слияний стоит явно решить: либо зафиксировать их как принятое состояние отдельной задачей сверки, либо явно признать, что состояние сейчас описательное, а не финальное.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+      "ladder_level": 6
+    }
+  ],
+  "founder_practice_comparison": "Первая практика дешевле: её можно делать в одиночку прямо во время разбора, и она сразу даёт реальное доказательство вместо веры на слово. Вторая требует решения Founder о том, что считать принятым состоянием, и поэтому идёт после того, как накопится ясная картина из первой практики.",
+  "founder_practice_recommended_order": [
+    "P1",
+    "P2"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "Если каждый день реально прогонять control-plane:check и связанные тесты вместо того, чтобы доверять сообщению коммита, число расхождений между заявленным и реальным состоянием кода будет видно сразу, а не через несколько дней.",
+      "bounded_scope": "Один период разбора, только чтение и прогон уже существующих тестов, без изменения продуктового кода",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/",
+      "promotion_condition": "После трёх подряд циклов, где реальный прогон тестов подтверждает заявления PR без расхождений, можно считать эту практику стандартной частью разбора",
+      "stop_condition": "Если реальный прогон дважды подряд расходится с тем, что заявлено в теле PR, разбор должен явно это отметить как блокер, а не молча продолжать"
+    },
+    {
+      "id": "E2",
+      "hypothesis": "Черновик записи EVIDENCE_LEDGER, сгенерированный автоматически из сообщения слияния, сократит разрыв между тем, что реально попало в main, и тем, что записано как принятое состояние.",
+      "bounded_scope": "Один инструмент, только предлагает черновик, никогда не принимает его сам",
+      "persistent_artifact": "scripts/control-plane/",
+      "promotion_condition": "Founder или Architect принимает предложенный черновик без переписывания больше половины текста в трёх случаях подряд",
+      "stop_condition": "Если черновики систематически переписываются с нуля, автоматизация не экономит времени и должна быть остановлена"
+    },
+    {
+      "id": "E3",
+      "hypothesis": "Один Founder-одобренный запуск нового forward funnel reporter против продакшена даст первое реальное число по T-5 трафику, вместо того чтобы оставаться только протестированным на моках инструментом.",
+      "bounded_scope": "Один запуск, только чтение, один инструмент",
+      "persistent_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "promotion_condition": "Получено реальное число T-5 трафика, зафиксированное записью в EVIDENCE_LEDGER",
+      "stop_condition": "Если запуск требует записи в базу или доступа за пределы уже разрешённого чтения, останавливаемся и эскалируем"
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "CONTUR3_QUEUE_AUTHORITY"
+  },
+  "next_step": "Founder принимает или отклоняет этот разбор и решает, какие из предложенных вариантов автоматизации стоит превратить в отдельную ограниченную задачу. Сам разбор ничего не запускает и ничего не принимает автоматически.",
+  "accepted": false
+}

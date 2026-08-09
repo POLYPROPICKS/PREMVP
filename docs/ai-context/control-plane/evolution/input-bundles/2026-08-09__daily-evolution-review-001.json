@@ -1,0 +1,26 @@
+{
+  "bundle_id": "2026-08-09__daily-evolution-review-001",
+  "repository": "POLYPROPICKS/PREMVP",
+  "period_start": "2026-08-07T11:11:09Z",
+  "period_end": "2026-08-08T13:53:49Z",
+  "capture_coverage": "UNKNOWN",
+  "mission_count": null,
+  "verified_result_count": null,
+  "operator_action_events": [],
+  "completion_envelope_ids": [],
+  "confirmed_changes": [
+    "PR#111 merge 1d8dfe4ef2675182585b0b808ce8603c01aac93e",
+    "PR#112 merge 78a951e62803c04c16694d57ff364aa47f869867",
+    "PR#113 merge 56b71f80e1dac2bd6df28e2358940f6be938014f",
+    "PR#114 merge 03f1fb0a99dd9d71b79f09a0264c7e4e962ffdf9",
+    "PR#115 merge 9325fdf6446222c29b9dc8dc595f18f8367c31ea",
+    "PR#117 merge 22e9ee2115f12c46b3428c3237d9cb1d72d18c6f",
+    "PR#118 merge 1e5f21ae8dec67d0c6f0827ddad25d8c3ec5dc74",
+    "PR#119 merge 1b0d34fe0f156ced7510c391e22786197a74bce4",
+    "PR#120 merge e06b6653f4fee7a9ea165edc87f22ebb03862ad4"
+  ],
+  "supporting_metrics": {
+    "reusable_artifacts_created": 7,
+    "runtime_evidence_count": 5
+  }
+}
