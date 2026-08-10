@@ -239,6 +239,26 @@ test("a preexisting row with a dropped family is repaired by one corrected dupli
   assert.equal(hasStructuredScoredSportAuthority(diagnostics), true);
 });
 
+test("tennis family remains scorer-authoritative when structured tags map to multiple raw provider codes", async () => {
+  reset();
+  const row = inventoryRow(250, { providerTags: [{ id: "950", slug: "tennis" }] });
+  const sportMeta = buildProviderSportMetadataMap([
+    { sport: "atp", tags: "950" },
+    { sport: "wta", tags: "950" },
+  ]);
+  const { entries } = buildBroadStructuredSportsShadowEntries([row], sportMeta, new Map());
+  assert.equal(entries[0].providerSportCode, null);
+  assert.equal(entries[0].providerSportFamily, "tennis");
+  await (await cache()).writeStrategicShadowPairs(entries, OBSERVED_AT, { detailed: true });
+  const diagnostics = insertedRows[0].diagnostics as Record<string, unknown>;
+  const context = diagnostics.providerEventContext as Record<string, unknown>;
+  assert.equal(diagnostics.providerSportCode, null);
+  assert.equal(diagnostics.providerSportFamily, "tennis");
+  assert.equal(context.league, undefined);
+  assert.equal(context.sportFamily, "tennis");
+  assert.equal(hasStructuredScoredSportAuthority(diagnostics), true);
+});
+
 test("identity is derived from provider fields only -- never reconstructed from title or slug", async () => {
   const { buildShadowProviderEventContext } = await cache();
   // No provider event id => no identity. The title and slug are present and

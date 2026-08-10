@@ -124,7 +124,7 @@ export const STRUCTURED_SPORT_RULES = [
     file: "lib/feed/sportScoreOwnership.ts",
     functionName: "hasStructuredScoredSportAuthority",
     required: [
-      [/nonEmpty\(record\.providerSportCode\)/, "scorer authority does not require raw provider sport code"],
+      [/\(providerContext\.league\s*\?\?\s*null\)\s*===\s*providerSportCode/, "scorer authority does not validate nullable raw provider sport code separately"],
       [/providerContext\.sportFamily\s*===\s*providerSportFamily/, "scorer authority does not reject mismatched code/family carrier state"],
     ],
   },

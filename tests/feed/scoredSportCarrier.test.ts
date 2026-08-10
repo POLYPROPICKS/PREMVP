@@ -147,8 +147,19 @@ test("scored carrier preserves provider event and sport authority into persisted
   assert.equal(hasStructuredScoredSportAuthority({
     ...row.diagnostics,
     providerSportCode: undefined,
+    providerEventContext: {
+      ...(row.diagnostics.providerEventContext as Record<string, unknown>),
+      league: null,
+    },
+  }), true, "canonical family remains authoritative when structured tags expose no unique raw league code");
+  assert.equal(hasStructuredScoredSportAuthority({
+    ...row.diagnostics,
+    providerSportCode: undefined,
+  }), false, "nullable raw code must still match the separately carried context league");
+  assert.equal(hasStructuredScoredSportAuthority({
+    ...row.diagnostics,
     providerSportFamily: undefined,
-  }), false);
+  }), false, "canonical family remains mandatory");
   assert.equal(hasStructuredScoredSportAuthority({
     ...row.diagnostics,
     providerEventId: "mismatched-provider-event",
