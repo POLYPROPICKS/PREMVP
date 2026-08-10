@@ -57,6 +57,8 @@ export const STRUCTURED_SPORT_RULES = [
     file: "lib/feed/cacheGeneratedSignals.ts",
     functionName: "writeStrategicShadowPairs",
     required: [
+      [/select\("condition_id, selected_token_id, metric_formula_version, diagnostics"\)/, "broad dedup cannot validate the persisted sport-family carrier"],
+      [/hasMatchingStructuredSportCarrier\(r\.diagnostics,\s*candidate\)/, "broad dedup preserves mismatched code/family carrier rows"],
       [/providerSportCode:\s*entry\.providerSportCode/, "broad persistence drops raw provider sport code"],
       [/providerSportFamily:\s*entry\.providerSportFamily/, "broad persistence drops canonical provider sport family"],
     ],
