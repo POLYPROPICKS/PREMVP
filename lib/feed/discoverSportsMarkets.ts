@@ -1478,6 +1478,7 @@ export interface WcShadowEntry {
   // Structured provider-sport contract (commit 1). Populated only by the
   // broad structured-sports collector; undefined for legacy targeted rows.
   providerSportCode?: string | null;
+  providerSportFamily?: string | null;
   providerSportSource?: "structured_sports_tag" | "unclassified" | "ambiguous_multi_tag";
   providerSportTagIds?: string[];
   providerSeriesIds?: string[];
@@ -1750,6 +1751,7 @@ export function buildBroadStructuredSportsShadowEntries(
       tagIds,
       sportMeta,
     );
+    const providerSportFamily = resolveStructuredSportFamily(row.providerTags, providerSportCode);
     if (ambiguousSport) diagnostics.rowsAmbiguousSport += 1;
 
     const sportKey = providerSportCode ?? (ambiguousSport ? "AMBIGUOUS_MULTI_SPORT" : "UNCLASSIFIED_SPORTS_TAG");
@@ -1837,6 +1839,7 @@ export function buildBroadStructuredSportsShadowEntries(
         tokenIndex: idx,
         volumeUsd: row.volumeUsd,
         providerSportCode,
+        providerSportFamily,
         providerSportSource,
         providerSportTagIds: tagIds,
         providerSeriesIds: providerSportCode ? sportMeta.sportCodeToSeriesIds.get(providerSportCode) ?? [] : [],
