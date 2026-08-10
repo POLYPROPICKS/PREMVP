@@ -1,4 +1,25 @@
-# CHATGPT_PROJECT_SETUP.md — Phase 2 Founder Setup Package
+# CHATGPT_PROJECT_SETUP.md — HISTORICAL / SUPERSEDED
+
+> **STATUS: SUPERSEDED — HISTORICAL RECORD ONLY. NOT CURRENT POLICY.**
+>
+> This file records the original one-time Phase 2 project setup. It is **not** the current
+> prompt policy, **not** current state, and **MUST NOT** be uploaded as an active ChatGPT
+> Project Source.
+>
+> The current Project Sources and Project Instructions are generated deterministically from
+> the canonical control plane into
+> `docs/ai-context/control-plane/chatgpt-architect/project-package/`.
+> Follow `project-package/REPLACE_PROJECT_SOURCES.md`; verify with
+> `npm run control-plane:project-package:check`.
+>
+> The executor prompt contract below reflects the **retired** fixed-section model. The
+> canonical contract is now the Mission Contract in `PROMPT__PROTOCOL.md` and
+> `MISSION_CONTRACT.schema.json`. There is exactly one direction of generation: canonical
+> control plane → generated package. This document never overrides canonical policy.
+
+---
+
+## Historical record — Phase 2 Founder Setup Package
 
 Phone-first. Everything below can be done from the ChatGPT iOS app or a browser. No
 terminal, no SQL, no secrets.

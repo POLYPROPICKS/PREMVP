@@ -1,11 +1,44 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "command_id": "premvp.command.execution_precheck.v1",
+  "_authority": "This file is the ONE canonical hard-stop taxonomy. No other artifact may maintain a competing list. scripts/control-plane/lib/outcome-semantics.mjs reads HARD_SAFETY_STOP.identifiers from here.",
   "classes": {
     "EXPECTED_NON_BLOCKING": { "outcome": "CONTINUE", "founder_action": "none", "examples": ["declared preservation-only untracked path", "absent optional CI", "draft PR"] },
-    "EXECUTOR_OWNED_RECOVERY": { "outcome": "RECOVER", "founder_action": "none", "examples": ["dedicated worktree", "safe state refresh", "dependency bootstrap", "existing PR reuse", "generated artifact regeneration"] },
+    "EXECUTOR_OWNED_RECOVERY": { "outcome": "RECOVER", "founder_action": "none", "examples": ["dedicated worktree", "safe state refresh", "dependency bootstrap", "existing PR reuse", "generated artifact regeneration", "implementation or test correction"] },
     "RESUMABLE_WAIT": { "outcome": "WAIT", "founder_action": "none", "examples": ["required CI pending", "automatic deployment pending", "reviewer pending"] },
-    "HARD_SAFETY_STOP": { "outcome": "BLOCKED_OR_FAIL", "founder_action": "one actual decision only when no executor continuation exists", "identifiers": ["CONTROL_PLANE_WRONG_REPOSITORY", "REPOSITORY_BOUNDARY_MIXED", "R5_BOUNDARY_REACHED", "IRELAND_BOUNDARY_REACHED", "REQUIRED_SECRET", "INVALID_MAIN_ANCESTRY", "CANONICAL_SEMANTIC_CONTRADICTION", "SELECTED_EXECUTOR_CAPABILITY_ACTUALLY_UNAVAILABLE", "SEMANTIC_AUTHORITY_CONFLICT", "DATABASE_MUTATION_BOUNDARY_REACHED", "REQUIRED_REVIEWER_TERMINAL_FAILURE", "REPOSITORY_GIT_METADATA_CORRUPT", "ALLOWED_WRITE_PATH_OVERLAP"] }
+    "TRANSPORT_RESUME": { "outcome": "WAIT", "founder_action": "none", "examples": ["execution slice exhausted", "session or connection interrupted"], "requires_checkpoint": true, "rule": "Session or runtime slice exhaustion is transport state. It is NEVER a business or authority block and never consumes a Founder action." },
+    "HARD_SAFETY_STOP": { "outcome": "BLOCKED_OR_FAIL", "founder_action": "one actual decision only when no executor continuation exists", "identifiers": ["CONTROL_PLANE_WRONG_REPOSITORY", "REPOSITORY_BOUNDARY_MIXED", "R5_BOUNDARY_REACHED", "IRELAND_BOUNDARY_REACHED", "REQUIRED_SECRET", "INVALID_MAIN_ANCESTRY", "CANONICAL_SEMANTIC_CONTRADICTION", "SELECTED_EXECUTOR_CAPABILITY_ACTUALLY_UNAVAILABLE", "SEMANTIC_AUTHORITY_CONFLICT", "DATABASE_MUTATION_BOUNDARY_REACHED", "REQUIRED_REVIEWER_TERMINAL_FAILURE", "REPOSITORY_GIT_METADATA_CORRUPT", "ALLOWED_WRITE_PATH_OVERLAP", "MISSING_REQUIRED_FOUNDER_AUTHORIZATION", "FORBIDDEN_SCHEMA_OR_PRODUCTION_MUTATION_REQUIRED"] }
   },
-  "invariant": "Every condition outside HARD_SAFETY_STOP has founder_action none."
+
+  "outcome_classes": {
+    "TERMINAL_PASS": { "verdict": "PASS", "founder_action": "one terminal result" },
+    "HARD_BLOCKED": { "verdict": "BLOCKED", "founder_action": "at most one actual decision", "requires": "hard_stop_record" },
+    "RECOVERABLE_EXECUTION_FAILURE": { "verdict": "FAIL", "founder_action": "none" },
+    "EXTERNAL_WAIT": { "verdict": "WAIT", "founder_action": "none" },
+    "TRANSPORT_PAUSE": { "verdict": "WAIT", "founder_action": "none", "requires": "checkpoint" }
+  },
+
+  "hard_stop_record": {
+    "required_fields": ["hard_stop_id", "recovery_attempts", "unrecoverable_evidence"],
+    "rule": "A terminal BLOCKED result must name a canonical HARD_SAFETY_STOP identifier, list the registered recovery paths actually attempted, and state why recovery cannot continue. A BLOCKED result while any recovery_attempts entry is not exhausted is invalid.",
+    "recovery_attempt_fields": ["id", "action", "outcome", "exhausted"]
+  },
+
+  "checkpoint_record": {
+    "required_fields": ["checkpoint_id", "next_step", "platform_auto_resume"],
+    "rule": "A transport pause preserves a machine-readable checkpoint. platform_auto_resume must state honestly whether a real platform-native automatic resume mechanism exists; a false value is preserved as an architectural limitation, never disguised as a solved capability."
+  },
+
+  "never_terminal_reasons": [
+    "implementation unfinished",
+    "substantial work remains",
+    "more tests required",
+    "continue implementation",
+    "first implementation attempt failed",
+    "session execution time ended"
+  ],
+
+  "invariant": "Every condition outside HARD_SAFETY_STOP has founder_action none.",
+  "recovery_before_block_invariant": "A hard blocked result is illegal while a canonical safe recovery path remains unexhausted.",
+  "operator_action_budget": { "start": 1, "intermediate": 0, "terminal_result": 1 }
 }

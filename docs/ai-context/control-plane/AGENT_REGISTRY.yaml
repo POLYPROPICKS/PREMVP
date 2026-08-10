@@ -632,6 +632,33 @@
       "hard_prohibitions": ["manual orchestration duplication", "unregistered command reference", "PASS without business result", "recoverable Founder escalation"]
     },
     {
+      "canonical_id": "premvp.command.mission_compile.v1",
+      "type": "COMMAND", "owner_platform": "repository", "implementation_path": "scripts/control-plane/mission-compile.mjs", "status": "PROVEN_PRESENT", "invocation": "EXPLICIT",
+      "triggers": ["compile and semantically validate one PREMVP Mission Contract"], "exclusions": ["Ireland implementation", "unregistered commands", "default executor", "risk-derived capabilities"], "model_policy": "selected executor only", "reasoning_policy": "inherit",
+      "permissions": "read canonical control-plane artifacts and compile task-local mission text", "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "a MISSION_CONTRACT.schema.json instance with mission core, optional modules, direct_actions and required_capabilities", "output_contract": "compiled mission prompt, resolved capabilities, emitted/omitted modules and the exact semantic violations when compilation fails", "independence_group": null, "receipt_required": false,
+      "evidence_class": "PROVEN_IN_RUNTIME", "last_verified_at": "2026-08-10T00:00:00Z", "portability": "PORTABLE", "supported_executors": ["local_codex_windows", "claude_code_cloud"],
+      "hard_prohibitions": ["capability without a direct action", "risk-injected capability", "application persistence treated as raw DB mutation", "mixed repository boundary", "invented command id", "recoverable condition declared as a hard boundary", "manual orchestration duplication"]
+    },
+    {
+      "canonical_id": "premvp.command.architect_bundle.v1",
+      "type": "COMMAND", "owner_platform": "repository", "implementation_path": "scripts/control-plane/generate-chatgpt-architect-bundle.mjs", "status": "PROVEN_PRESENT", "invocation": "EXPLICIT",
+      "triggers": ["regenerate or verify the generated ChatGPT Architect bundle"], "exclusions": ["Ireland", "database access", "product runtime", "live money"], "model_policy": "n/a", "reasoning_policy": "n/a",
+      "permissions": "read canonical control-plane artifacts and write the generated bundle", "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "live canonical control-plane artifacts", "output_contract": "deterministic CHATGPT_ARCHITECT_PROJECT_BUNDLE.md, or a --check failure naming the drift", "independence_group": null, "receipt_required": false,
+      "evidence_class": "PROVEN_IN_RUNTIME", "last_verified_at": "2026-08-10T00:00:00Z", "portability": "PORTABLE", "supported_executors": ["local_codex_windows", "claude_code_cloud"],
+      "hard_prohibitions": ["wall-clock timestamps", "generation from a non-canonical source", "hand editing the generated bundle"]
+    },
+    {
+      "canonical_id": "premvp.command.chatgpt_project_package.v1",
+      "type": "COMMAND", "owner_platform": "repository", "implementation_path": "scripts/control-plane/generate-chatgpt-project-package.mjs", "status": "PROVEN_PRESENT", "invocation": "EXPLICIT",
+      "triggers": ["regenerate or verify the deterministic ChatGPT Architect Project package"], "exclusions": ["Ireland", "database access", "product runtime", "live money", "secret material"], "model_policy": "n/a", "reasoning_policy": "n/a",
+      "permissions": "read canonical control-plane artifacts and write the generated Project package", "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "live canonical control-plane artifacts", "output_contract": "PROJECT_INSTRUCTIONS.txt, exactly four SOURCES files, PROJECT_SOURCE_MANIFEST.json and REPLACE_PROJECT_SOURCES.md, or a --check failure naming the stale artifact", "independence_group": null, "receipt_required": false,
+      "evidence_class": "PROVEN_IN_RUNTIME", "last_verified_at": "2026-08-10T00:00:00Z", "portability": "PORTABLE", "supported_executors": ["local_codex_windows", "claude_code_cloud"],
+      "hard_prohibitions": ["historical source in the active upload set", "secret values in generated output", "a generated source that contradicts canonical policy", "reverse generation into the canonical control plane"]
+    },
+    {
       "canonical_id": "premvp.command.evolution_collect.v1",
       "type": "COMMAND",
       "owner_platform": "repository",

@@ -21,6 +21,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import {
+  OUTCOME_CLASSES,
+  OUTCOME_CLASS_VERDICT,
+  NON_TERMINAL_OUTCOME_CLASSES,
+  blockJustificationViolations,
+  loadHardStopIds,
+  operatorBudgetViolations,
+} from './lib/outcome-semantics.mjs';
+
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, '..', '..');
 const SCHEMA_PATH = path.join(
@@ -37,6 +46,14 @@ const RISK_CLASSES = [
 ];
 const EXECUTORS = ['claude_code_cloud', 'local_codex_windows', 'ireland_local'];
 const TEST_RESULTS = ['PASS', 'FAIL', 'SKIPPED', 'NOT_RUN'];
+
+const BUSINESS_RESULT_EVIDENCE_CLASSES = [
+  'PROVEN_IN_RUNTIME', 'FOUNDER_ACCEPTED_EXTERNAL_AUDIT', 'FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT',
+];
+
+/** A WAIT that hands recovery back to the Founder is the exact anti-pattern to reject. */
+const WAIT_DELEGATION_RE =
+  /\b(launch|start|send|paste|run|issue|write)\b[^.\n]{0,40}\b(recovery|another|next|follow-?up|new)\b[^.\n]{0,20}\b(prompt|task|session)\b/i;
 
 const RECEIPT_REQUIRED_FIELDS = [
   'agent_id', 'configured_model', 'reasoning_policy', 'independence_group',
@@ -68,7 +85,8 @@ function mandatoryReviewersFor(riskClass, routing) {
 
 function isArray(v) { return Array.isArray(v); }
 
-export function validateCompletionEnvelope(envelope, schema = loadSchema(), routing = loadRouting()) {
+export function validateCompletionEnvelope(
+  envelope, schema = loadSchema(), routing = loadRouting(), hardStopIds = loadHardStopIds(REPO_ROOT)) {
   const errors = [];
   const err = (m) => errors.push(m);
 
@@ -121,9 +139,90 @@ export function validateCompletionEnvelope(envelope, schema = loadSchema(), rout
     err('WAIT_WITH_FOUNDER_ACTION: resumable WAIT must set founder_action none');
   }
   if (Array.isArray(envelope.evidence) && envelope.evidence.some((e) =>
-    ['EXPECTED_NON_BLOCKING', 'EXECUTOR_OWNED_RECOVERY', 'RESUMABLE_WAIT'].includes(e?.classification)) &&
+    ['EXPECTED_NON_BLOCKING', 'EXECUTOR_OWNED_RECOVERY', 'RESUMABLE_WAIT', 'TRANSPORT_RESUME'].includes(e?.classification)) &&
     envelope.founder_action !== 'none') {
     err('RECOVERABLE_WITH_FOUNDER_ACTION: recoverable classifications must set founder_action none');
+  }
+
+  // --- Outcome semantics ------------------------------------------------------------------
+  // The verdict string alone is not trusted. A result is terminal only when its semantic
+  // class, its evidence and its recovery record all agree.
+  const outcome = envelope.outcome_class;
+  if (outcome !== undefined) {
+    if (!OUTCOME_CLASSES.includes(outcome)) {
+      err(`INVALID_OUTCOME_CLASS: ${outcome}`);
+    } else if (envelope.verdict !== undefined && OUTCOME_CLASS_VERDICT[outcome] !== envelope.verdict) {
+      err(`OUTCOME_CLASS_VERDICT_MISMATCH: ${outcome} requires verdict ${OUTCOME_CLASS_VERDICT[outcome]}, got ${envelope.verdict}`);
+    }
+    if (NON_TERMINAL_OUTCOME_CLASSES.includes(outcome) && envelope.founder_action !== 'none') {
+      err(`RECOVERABLE_WITH_FOUNDER_ACTION: ${outcome} must set founder_action none`);
+    }
+  }
+
+  // A genuine terminal block: canonical id + exhausted recovery + why recovery stops.
+  if (envelope.verdict === 'BLOCKED' || outcome === 'HARD_BLOCKED') {
+    const hs = envelope.hard_stop;
+    if (!hs || typeof hs !== 'object' || Array.isArray(hs)) {
+      err('BLOCKED_WITHOUT_HARD_STOP_RECORD: a terminal block requires hard_stop{hard_stop_id, recovery_attempts, unrecoverable_evidence}');
+    } else {
+      if (!hardStopIds.includes(hs.hard_stop_id)) {
+        err(`BLOCKED_WITHOUT_CANONICAL_HARD_STOP_ID: ${hs.hard_stop_id} is not in EXECUTION_ESCALATION_TAXONOMY.json`);
+      }
+      const attempts = isArray(hs.recovery_attempts) ? hs.recovery_attempts : [];
+      if (attempts.length === 0) {
+        err('BLOCKED_WITHOUT_RECOVERY_EVIDENCE: recovery_attempts must record the registered recovery paths actually attempted');
+      }
+      for (const a of attempts) {
+        for (const f of ['id', 'action', 'outcome', 'exhausted']) {
+          if (!a || typeof a !== 'object' || !Object.prototype.hasOwnProperty.call(a, f)) {
+            err(`BLOCKED_RECOVERY_ATTEMPT_INCOMPLETE: missing ${f}`);
+          }
+        }
+        if (a && a.exhausted !== true) {
+          err(`BLOCKED_WHILE_RECOVERY_REMAINS: recovery path ${a.id} is not exhausted`);
+        }
+      }
+      if (typeof hs.unrecoverable_evidence !== 'string' || hs.unrecoverable_evidence.trim() === '') {
+        err('BLOCKED_WITHOUT_UNRECOVERABLE_EVIDENCE: state why recovery cannot continue');
+      }
+    }
+    // The justification itself must describe a genuine boundary.
+    const justification = [
+      ...(isArray(envelope.blockers) ? envelope.blockers : []),
+      hs && typeof hs === 'object' ? hs.unrecoverable_evidence : '',
+      envelope.founder_action,
+    ].filter((s) => typeof s === 'string').join('\n');
+    for (const v of blockJustificationViolations(justification)) err(v);
+  }
+
+  // Transport pause preserves a checkpoint; it is never a business blocker.
+  if (outcome === 'TRANSPORT_PAUSE') {
+    const cp = envelope.checkpoint;
+    if (!cp || typeof cp !== 'object' || Array.isArray(cp)) {
+      err('TRANSPORT_PAUSE_WITHOUT_CHECKPOINT: preserve checkpoint{checkpoint_id, next_step, platform_auto_resume}');
+    } else {
+      for (const f of ['checkpoint_id', 'next_step']) {
+        if (typeof cp[f] !== 'string' || cp[f].trim() === '') err(`TRANSPORT_PAUSE_CHECKPOINT_INCOMPLETE: ${f}`);
+      }
+      if (typeof cp.platform_auto_resume !== 'boolean') {
+        err('TRANSPORT_PAUSE_CHECKPOINT_INCOMPLETE: platform_auto_resume must be an explicit boolean');
+      }
+    }
+    if (isArray(envelope.blockers) && envelope.blockers.length > 0) {
+      err('TRANSPORT_PAUSE_WITH_BLOCKERS: an execution-slice pause is transport state, not a business blocker');
+    }
+  }
+
+  // A WAIT may never hand ordinary recovery back to the Founder.
+  if (envelope.verdict === 'WAIT') {
+    const waitText = [
+      envelope.founder_action,
+      ...(isArray(envelope.blockers) ? envelope.blockers : []),
+      envelope.wait_reason,
+    ].filter((s) => typeof s === 'string').join('\n');
+    if (WAIT_DELEGATION_RE.test(waitText)) {
+      err('WAIT_DELEGATES_RECOVERY_TO_FOUNDER: a registered recovery path must run instead of asking the Founder to launch another prompt');
+    }
   }
 
   // --- commands_run entries -------------------------------------------------------------
@@ -220,6 +319,23 @@ export function validateCompletionEnvelope(envelope, schema = loadSchema(), rout
         err(`PASS_WITH_NON_PASS_RECEIPT: ${r.agent_id} returned ${r.verdict}`);
       }
     }
+
+    // A PASS must prove the BUSINESS RESULT, not merely that the gates were green.
+    const businessProof = (isArray(envelope.evidence) ? envelope.evidence : []).filter(
+      (e) => e && e.business_result === true &&
+        BUSINESS_RESULT_EVIDENCE_CLASSES.includes(e.evidence_class));
+    if (businessProof.length === 0) {
+      err('PASS_WITHOUT_BUSINESS_RESULT_EVIDENCE: PASS requires at least one evidence entry with business_result true and a proven or Founder-accepted evidence class');
+    }
+
+    // Operator budget: one start, zero intermediate, one terminal result.
+    for (const v of operatorBudgetViolations(envelope.operator_actions)) {
+      err(v === 'OPERATOR_BUDGET_MISSING'
+        ? 'PASS_WITHOUT_OPERATOR_ACTION_BUDGET: operator_actions{start, intermediate, terminal_result} is required for a PASS'
+        : v);
+    }
+  } else if (envelope.operator_actions !== undefined && envelope.operator_actions !== null) {
+    for (const v of operatorBudgetViolations(envelope.operator_actions)) err(v);
   }
 
   return { ok: errors.length === 0, errors };

@@ -1,0 +1,155 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypropicks.com/schemas/control-plane/MISSION_CONTRACT.schema.json",
+  "title": "PolyProPicks Architect Mission Contract",
+  "description": "Canonical machine-readable Mission Contract. The Architect states WHAT / WHY / ACCEPTANCE; registered commands and the executor own generic HOW. Compiled and semantically validated by scripts/control-plane/mission-compile.mjs — a focused dependency-free compiler, not a generic JSON Schema engine.",
+  "schema_version": "1.0",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema_version",
+    "mission_id",
+    "mission",
+    "business_result",
+    "repository",
+    "repository_boundary",
+    "scope",
+    "hard_boundaries",
+    "acceptance"
+  ],
+  "properties": {
+    "schema_version": { "type": "string" },
+
+    "mission_id": { "type": "string", "minLength": 1 },
+    "mission": { "type": "string", "minLength": 1, "description": "WHAT is being changed, in one or two sentences. Never a procedure." },
+    "business_result": { "type": "string", "minLength": 1, "description": "WHY — the value this mission delivers once terminal acceptance holds." },
+
+    "repository": { "type": "string", "minLength": 1 },
+    "repository_boundary": { "type": "string", "enum": ["PREMVP", "IRELAND"] },
+
+    "executor": {
+      "type": ["string", "null"],
+      "enum": ["claude_code_cloud", "local_codex_windows", "ireland_local", null],
+      "description": "Routing metadata. Resolvable at runtime; never invented."
+    },
+    "task_class": { "type": ["string", "null"] },
+    "risk_class": { "type": ["string", "null"], "description": "Risk controls authority, safety and reviewer requirement. Risk NEVER injects a technical capability." },
+
+    "scope": {
+      "type": "object",
+      "required": ["allowed_paths"],
+      "properties": {
+        "allowed_paths": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+        "out_of_scope": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+
+    "hard_boundaries": {
+      "type": "array",
+      "items": { "type": "string" },
+      "minItems": 1,
+      "description": "Genuine boundaries only. A recoverable condition (dirty root, missing dependencies, generated drift, existing PR, CI/deployment wait, reviewer polling, state reconciliation, implementation correction, transport interruption) may never be declared here."
+    },
+
+    "acceptance": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "statement", "evaluated_at"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "statement": { "type": "string", "minLength": 1 },
+          "evaluated_at": {
+            "type": "string",
+            "enum": ["START_GATE", "TERMINAL"],
+            "description": "START_GATE criteria must hold before execution. TERMINAL criteria are measured after execution — 'not yet implemented' at task start is NOT a failed criterion."
+          },
+          "met": { "type": ["boolean", "null"] }
+        }
+      }
+    },
+
+    "direct_actions": {
+      "type": "array",
+      "description": "Actions the SELECTED EXECUTOR itself performs. A downstream consequence in another system is not a direct action and creates no capability requirement.",
+      "items": {
+        "type": "object",
+        "required": ["id", "action", "repository_boundary", "requires_capabilities"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "action": { "type": "string", "minLength": 1 },
+          "repository_boundary": { "type": "string", "enum": ["PREMVP", "IRELAND"] },
+          "persistence": {
+            "type": "string",
+            "enum": ["NONE", "APPLICATION_OWNED", "RAW_DATABASE_MUTATION"],
+            "default": "NONE",
+            "description": "APPLICATION_OWNED persistence is the application writing through its own code path. It is NOT raw database mutation and must NOT require DATABASE_WRITE."
+          },
+          "downstream_effects": { "type": "array", "items": { "type": "string" } },
+          "requires_capabilities": { "type": "array", "items": { "type": "string" } }
+        }
+      }
+    },
+
+    "required_capabilities": {
+      "type": "array",
+      "description": "Every entry MUST name the direct action that requires it. No direct_action_ref → semantic validation FAIL.",
+      "items": {
+        "type": "object",
+        "required": ["capability", "direct_action_ref"],
+        "properties": {
+          "capability": { "type": "string", "minLength": 1 },
+          "direct_action_ref": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+
+    "commands": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Registered command IDs. Each must have a registration, an executable binding, and be invokable by the selected executor."
+    },
+
+    "operator_budget": {
+      "type": "object",
+      "required": ["start", "intermediate", "terminal_result"],
+      "properties": {
+        "start": { "type": "integer", "minimum": 0, "maximum": 1 },
+        "intermediate": { "type": "integer", "minimum": 0, "maximum": 0 },
+        "terminal_result": { "type": "integer", "minimum": 1, "maximum": 1 }
+      }
+    },
+
+    "modules": {
+      "type": "object",
+      "description": "Conditional sections, emitted ONLY when directly relevant.",
+      "properties": {
+        "FOUNDER AUTHORIZATION": { "type": "string" },
+        "RUNTIME EVIDENCE": { "type": "string" },
+        "DATABASE": { "type": "string" },
+        "REVIEWER": { "type": "string" },
+        "RELEASE": { "type": "string" },
+        "PRODUCTION OBSERVATION": { "type": "string" },
+        "LIVE MONEY": { "type": "string" }
+      }
+    },
+
+    "authorization_ref": { "type": ["string", "null"], "description": "Optional. Named Founder decision id when the mission touches protected scope." },
+    "runtime_evidence_requirement": { "type": ["string", "null"], "description": "Optional. Named live evidence the terminal result must carry." }
+  },
+
+  "x-invariants": [
+    "CAPABILITY_BY_DIRECT_ACTION_ONLY — every required capability resolves to a direct action that declares it.",
+    "RISK_NOT_CAPABILITY — risk class controls authority, safety and reviewers; it never injects a technical capability.",
+    "APPLICATION_PERSISTENCE_NOT_RAW_DB_MUTATION — APPLICATION_OWNED persistence must not require DATABASE_WRITE.",
+    "ONE_REPOSITORY_BOUNDARY — every direct action shares the mission repository boundary; foreign-repository capabilities are rejected.",
+    "REGISTERED_COMMAND_VALIDITY — registration + executable binding + executor invocability, all three.",
+    "RECOVERY_BEFORE_BLOCK — a canonically recoverable condition may never be declared a hard boundary.",
+    "INCOMPLETE_IS_NOT_TERMINAL — unfinished implementation never justifies a terminal block.",
+    "SESSION_END_IS_TRANSPORT_RESUME — execution-slice exhaustion is transport state, not a business block.",
+    "OPERATOR_ACTION_BUDGET — start <= 1, intermediate = 0, terminal_result = 1.",
+    "ACCEPTANCE_AFTER_EXECUTION — TERMINAL acceptance criteria are never evaluated at the START GATE.",
+    "NO_MANUAL_ORCHESTRATION — lifecycle mechanics owned by registered commands may not be restated as mission prose."
+  ]
+}
