@@ -296,7 +296,8 @@ export function buildShadowProviderEventContext(
   const startIso = typeof entry.gameStartIso === "string" ? entry.gameStartIso.trim() : "";
   if (!eventId || !startIso || !Number.isFinite(Date.parse(startIso))) return null;
 
-  const sportFamily = typeof entry.providerSportCode === "string" ? entry.providerSportCode.trim() : "";
+  const sportFamily = typeof entry.providerSportFamily === "string" ? entry.providerSportFamily.trim() : "";
+  const league = typeof entry.providerSportCode === "string" ? entry.providerSportCode.trim() : "";
   const eventSlug = typeof entry.eventSlug === "string" ? entry.eventSlug.trim() : "";
   const eventTitle = typeof entry.eventTitle === "string" ? entry.eventTitle.trim() : "";
   const marketQuestion = typeof entry.marketQuestion === "string" ? entry.marketQuestion.trim() : "";
@@ -314,7 +315,8 @@ export function buildShadowProviderEventContext(
     ...(eventSlug ? { eventSlug } : {}),
     ...(eventTitle ? { eventTitle } : {}),
     ...(marketQuestion ? { marketQuestion } : {}),
-    ...(sportFamily ? { sportFamily, league: sportFamily } : {}),
+    ...(sportFamily ? { sportFamily } : {}),
+    ...(league ? { league } : {}),
     ...(providerMarketId ? { providerMarketId } : {}),
     ...(marketType ? { marketType } : {}),
     ...(gameId ? { gameId } : {}),
@@ -498,6 +500,7 @@ export async function writeStrategicShadowPairs(
         // never normalized/aliased here; model-boundary normalization is a
         // separate, later commit.
         providerSportCode: entry.providerSportCode ?? null,
+        providerSportFamily: entry.providerSportFamily ?? null,
         providerSportSource: entry.providerSportSource ?? null,
         providerSportTagIds: entry.providerSportTagIds ?? null,
         providerSeriesIds: entry.providerSeriesIds ?? null,

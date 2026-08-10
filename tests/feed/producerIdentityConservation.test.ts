@@ -16,6 +16,7 @@ import {
   buildBroadStructuredSportsShadowEntries,
   buildProviderSportMetadataMap,
 } from "../../lib/feed/discoverSportsMarkets";
+import { hasStructuredScoredSportAuthority } from "../../lib/feed/sportScoreOwnership";
 
 const OBSERVED_AT = "2030-01-01T00:00:00.000Z";
 const START_ISO = "2030-01-02T18:30:00.000Z";
@@ -161,6 +162,51 @@ test("exact provider identity survives normalization and reaches the emitted Sig
     new Set(insertedRows.map((r) => r.selected_outcome)),
     new Set(["Team A", "Team B"]),
   );
+});
+
+test("canonical sport family survives the broad carrier, persistence, and scorer authority independently of raw provider code", async () => {
+  reset();
+  const cases = [
+    { tagFamily: "soccer", code: "rus", expectedFamily: "soccer", supported: true },
+    { tagFamily: "tennis", code: "atp", expectedFamily: "tennis", supported: true },
+    { tagFamily: "baseball", code: "mlb", expectedFamily: "baseball", supported: true },
+    { tagFamily: "esports", code: "lol", expectedFamily: "esports", supported: true },
+    { tagFamily: "esports", code: "cs2", expectedFamily: "esports", supported: true },
+    { tagFamily: "esports", code: "val", expectedFamily: "esports", supported: true },
+    { tagFamily: "basketball", code: "wnba", expectedFamily: "basketball", supported: true },
+    { tagFamily: "cricket", code: "international-cricket", expectedFamily: "cricket", supported: true },
+    { tagFamily: "rugby", code: "rugby-sevens", expectedFamily: null, supported: false },
+    { tagFamily: "table-tennis", code: "setkameua", expectedFamily: "table-tennis", supported: false },
+  ] as const;
+  const sportsRaw = cases.map(({ code }, index) => ({ sport: code, tags: String(700 + index) }));
+  const rows = cases.map(({ tagFamily }, index) => inventoryRow(index + 100, {
+    providerTags: [{ id: String(700 + index), slug: tagFamily }],
+  }));
+  const { entries } = buildBroadStructuredSportsShadowEntries(
+    rows,
+    buildProviderSportMetadataMap(sportsRaw),
+    new Map(),
+  );
+
+  assert.equal(entries.length, cases.length * 2);
+  await (await cache()).writeStrategicShadowPairs(entries, OBSERVED_AT, { detailed: true });
+  assert.equal(insertedRows.length, entries.length);
+
+  for (const [index, expected] of cases.entries()) {
+    const entry = entries[index * 2];
+    const row = insertedRows[index * 2];
+    const diagnostics = row.diagnostics as Record<string, unknown>;
+    const providerContext = diagnostics.providerEventContext as Record<string, unknown>;
+
+    assert.equal(entry.providerSportCode, expected.code);
+    assert.equal(entry.providerSportFamily, expected.expectedFamily);
+    assert.notEqual(entry.providerSportCode, entry.providerSportFamily, "raw code and canonical family stay distinct");
+    assert.equal(diagnostics.providerSportCode, expected.code);
+    assert.equal(diagnostics.providerSportFamily, expected.expectedFamily);
+    assert.equal(providerContext.league, expected.code);
+    assert.equal(providerContext.sportFamily ?? null, expected.expectedFamily);
+    assert.equal(hasStructuredScoredSportAuthority(diagnostics), expected.supported);
+  }
 });
 
 test("identity is derived from provider fields only -- never reconstructed from title or slug", async () => {

@@ -36,6 +36,32 @@ export const RULES = [
 
 export const STRUCTURED_SPORT_RULES = [
   {
+    file: "lib/feed/discoverSportsMarkets.ts",
+    functionName: "buildBroadStructuredSportsShadowEntries",
+    required: [
+      [/resolveStructuredSportFamily\(row\.providerTags,\s*providerSportCode\)/, "broad Signal Pair carrier drops canonical provider sport family"],
+      [/providerSportCode,\s*providerSportFamily,\s*providerSportSource/s, "broad Signal Pair entry does not keep raw code and canonical family distinct"],
+    ],
+  },
+  {
+    file: "lib/feed/cacheGeneratedSignals.ts",
+    functionName: "buildShadowProviderEventContext",
+    required: [
+      [/entry\.providerSportFamily/, "provider event context ignores canonical provider sport family"],
+      [/entry\.providerSportCode/, "provider event context drops raw provider sport code"],
+      [/sportFamily\s*\?\s*\{\s*sportFamily\s*\}/, "provider event context sportFamily is not canonical family"],
+      [/league\s*\?\s*\{\s*league\s*\}/, "provider event context league does not preserve raw provider sport code"],
+    ],
+  },
+  {
+    file: "lib/feed/cacheGeneratedSignals.ts",
+    functionName: "writeStrategicShadowPairs",
+    required: [
+      [/providerSportCode:\s*entry\.providerSportCode/, "broad persistence drops raw provider sport code"],
+      [/providerSportFamily:\s*entry\.providerSportFamily/, "broad persistence drops canonical provider sport family"],
+    ],
+  },
+  {
     file: "lib/feed/buildLandingCards.ts",
     functionName: "researchNestedMarketToCandidate",
     required: [
@@ -90,6 +116,14 @@ export const STRUCTURED_SPORT_RULES = [
     required: [
       [/SUPPORTED_BY_SCORE_MODEL/, "supported scorer ownership is not explicit"],
       [/INTENTIONALLY_UNSCORED/, "unsupported scorer ownership is not explicit"],
+    ],
+  },
+  {
+    file: "lib/feed/sportScoreOwnership.ts",
+    functionName: "hasStructuredScoredSportAuthority",
+    required: [
+      [/nonEmpty\(record\.providerSportCode\)/, "scorer authority does not require raw provider sport code"],
+      [/providerContext\.sportFamily\s*===\s*providerSportFamily/, "scorer authority does not reject mismatched code/family carrier state"],
     ],
   },
 ];
