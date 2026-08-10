@@ -17,7 +17,11 @@ const PHYSICAL_ID = "provider:polymarket:exact-event-17:2026-08-06";
 function row(id: string, score: number, conditionId: string, extra: Record<string, unknown> = {}) {
   return {
     id, condition_id: conditionId, selected_token_id: `token-${conditionId}`, selected_outcome: "YES",
-    score, stake_usd: 1.1, max_entry_price: 0.62, market_slug: `market-${conditionId}`,
+    // Real production carriers only. `score`/`stake_usd`/`max_entry_price` are
+    // not columns on generated_signal_pairs and must never appear in a fixture.
+    signal_confidence_num: score, entry_price_num: 0.62,
+    metric_formula_version: "shadow-firemodel1_1_research_v0",
+    market_slug: `market-${conditionId}`,
     diagnostics: { providerEventContext: { v: "v1", provider: "polymarket", eventId: EVENT_ID, eventStartIso: START }, ...extra },
   };
 }

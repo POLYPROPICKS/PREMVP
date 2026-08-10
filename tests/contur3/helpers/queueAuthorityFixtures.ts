@@ -21,11 +21,14 @@ export function createQueueAuthorityFixture(
     id: sourceId,
     condition_id: candidate.condition_id,
     selected_token_id: candidate.token_id,
-    token_id: candidate.token_id,
+
     selected_outcome: selectedOutcome,
-    score: candidate.diagnostics.score,
-    stake_usd: candidate.stake_usd,
-    max_entry_price: candidate.max_entry_price,
+    // NOTE: `score`, `stake_usd` and `max_entry_price` are deliberately NOT set
+    // here. None is a column on generated_signal_pairs, so a fixture that sets
+    // them is strictly stronger than any row production can produce. The real
+    // carriers are signal_confidence_num (authoritative model score) and
+    // entry_price_num (frozen accepted pre-Reservation price); stake comes from
+    // the EXECUTABLE_STAKE_USD execution constant, never from row data.
     signal_confidence_num: candidate.diagnostics.score,
     smart_money_score_num: candidate.diagnostics.smart_money,
     // Avoid the documented 50-74 / 0.44-0.58 planning bad bucket: this
@@ -66,11 +69,11 @@ export function createQueueAuthorityFixture(
         event_slug: sourceRow.event_slug,
         market_slug: sourceRow.market_slug,
         condition_id: sourceRow.condition_id,
-        token_id: sourceRow.token_id,
+        token_id: sourceRow.selected_token_id,
         selected_outcome: sourceRow.selected_outcome,
         provider_event_key: `polymarket:${providerEventId}:${eventStartIso.slice(0, 10)}`,
       },
-      planning_score: sourceRow.score,
+      planning_score: sourceRow.signal_confidence_num,
       planning_tier: reservation.event_tier,
       planning_rank: reservation.reservation_rank,
       sport_metadata_source: "upstream",
@@ -79,10 +82,10 @@ export function createQueueAuthorityFixture(
   const fetchFinalIdentitySourceRows = async () => [sourceRow];
   const fetchExactTokenOrderbook = async () => ({
     ok: true as const,
-    tokenId: sourceRow.token_id,
+    tokenId: sourceRow.selected_token_id,
     latencyMs: 1,
     book: {
-      tokenId: sourceRow.token_id,
+      tokenId: sourceRow.selected_token_id,
       bids: [{ price: 0.49, size: 100 }],
       asks: [{ price: 0.4, size: 100 }],
     },

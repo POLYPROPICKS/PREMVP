@@ -350,7 +350,7 @@ test("CTL5: controlled mode writes at most one queue row when multiple reservati
       fetchFinalIdentitySourceRows: async (reservation) =>
         reservation.id === authorityA.reservation.id ? [authorityA.sourceRow] : [authorityB.sourceRow],
       fetchExactTokenOrderbook: async (tokenId) =>
-        tokenId === authorityA.sourceRow.token_id
+        tokenId === authorityA.sourceRow.selected_token_id
           ? authorityA.fetchExactTokenOrderbook()
           : authorityB.fetchExactTokenOrderbook(),
     }
@@ -561,7 +561,7 @@ test("CTL15: two concurrent runControlledLiveIntent calls for different due rese
     fetchFinalIdentitySourceRows: async (reservation: NightEventReservationRow) =>
       reservation.id === authorityA.reservation.id ? [authorityA.sourceRow] : [authorityB.sourceRow],
     fetchExactTokenOrderbook: async (tokenId: string) =>
-      tokenId === authorityA.sourceRow.token_id
+      tokenId === authorityA.sourceRow.selected_token_id
         ? authorityA.fetchExactTokenOrderbook()
         : authorityB.fetchExactTokenOrderbook(),
   };

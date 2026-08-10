@@ -33,6 +33,7 @@ import {
 import { classifyActiveReservationDue } from "./reservationRebalanceContract.mjs";
 import {
   EXECUTABLE_TIER,
+  EXECUTABLE_STAKE_USD,
   type EventExecutionQueueRow,
   type NightEventReservationRow,
 } from "./executorQueueTypes";
@@ -57,6 +58,35 @@ const PLAN_POOL = 200;
 
 type FinalIdentitySourceRow = Record<string, unknown>;
 
+/**
+ * One exact execution-compatible sibling of a reserved physical event.
+ *
+ * FIELD OWNERSHIP (each value comes from its real owner, never from an invented
+ * column). An earlier revision of this contract required `signal_score`,
+ * `stake_usd` and `max_entry_price` as row properties; none of the three has
+ * ever been a column on `generated_signal_pairs`, so the gate was unsatisfiable
+ * from the day it was written and no event ever reached the Queue through it.
+ *
+ *   signalScore   <- generated_signal_pairs.signal_confidence_num
+ *                    The authoritative model score carrier, and the same one
+ *                    Contract A planning reads. `score` is written NULL by every
+ *                    production writer and is NOT a live carrier.
+ *   stakeUsd      <- EXECUTABLE_STAKE_USD
+ *                    A fixed execution-contract constant owned by the executor,
+ *                    not per-row data. Persisting it per signal pair would
+ *                    create a second, forgeable stake authority.
+ *   maxEntryPrice <- generated_signal_pairs.entry_price_num
+ *                    The accepted pre-Reservation snapshot price, frozen per
+ *                    exact sibling at producer time. This is the same term
+ *                    buildContractAV1Candidates already treats as the accepted
+ *                    ceiling (`max_entry_price: decision.entryPrice`), so no
+ *                    slippage buffer or new pricing rule is introduced here and
+ *                    no later order book may raise it.
+ *   scoreContractVersion <- generated_signal_pairs.metric_formula_version
+ *                    Score-comparability domain. Raw scores from different
+ *                    formula versions are not proven to share a scale, so they
+ *                    never compete; see loadExactProviderSiblingRowsFromAnchor.
+ */
 type ExactProviderSignalPair = {
   id: string;
   conditionId: string;
@@ -67,6 +97,7 @@ type ExactProviderSignalPair = {
   eventStartIso: string;
   stakeUsd: number;
   maxEntryPrice: number;
+  scoreContractVersion: string;
   marketSlug: string | null;
 };
 
@@ -632,9 +663,18 @@ export async function loadExactProviderSiblingRowsFromAnchor(
     : undefined;
   const eventId = text(context?.eventId);
   const eventStartIso = text(context?.eventStartIso);
+  // Score-comparability domain, taken from the Reservation's own accepted
+  // planning lineage rather than any hard-coded version name. Raw scores from
+  // two different formula versions are not proven to share a scale or to have
+  // been valid under the same execution contract, so they must not compete for
+  // the same reserved event; only the anchor's domain is admissible.
+  const scoreContractVersion = text(anchor?.metric_formula_version);
   if (!conditionId) throw new FinalIdentitySourceLoadError("EXACT_PROVIDER_EVENT_CONDITION_ID_MISSING");
   if (!context || context.v !== "v1" || context.provider !== "polymarket" || !eventId || !eventStartIso) {
     throw new FinalIdentitySourceLoadError("EXACT_PROVIDER_EVENT_IDENTITY_MISSING");
+  }
+  if (!scoreContractVersion) {
+    throw new FinalIdentitySourceLoadError("EXACT_PROVIDER_EVENT_SCORE_CONTRACT_MISSING");
   }
   let rows: FinalIdentitySourceRow[];
   try {
@@ -647,7 +687,8 @@ export async function loadExactProviderSiblingRowsFromAnchor(
       ? (row.diagnostics as Record<string, unknown>).providerEventContext as Record<string, unknown> | undefined
       : undefined;
     return candidateContext?.v === "v1" && candidateContext.provider === "polymarket" &&
-      candidateContext.eventId === eventId && candidateContext.eventStartIso === eventStartIso;
+      candidateContext.eventId === eventId && candidateContext.eventStartIso === eventStartIso &&
+      text(row.metric_formula_version) === scoreContractVersion;
   });
 }
 
@@ -670,17 +711,27 @@ function exactProviderSignalPair(row: FinalIdentitySourceRow): ExactProviderSign
   const eventStartIso = text(c.eventStartIso);
   const id = text(row.id);
   const conditionId = text(row.condition_id);
-  const tokenId = text(row.selected_token_id) ?? text(row.token_id);
+  const tokenId = text(row.selected_token_id);
   const side = text(row.selected_outcome);
-  const signalScore = finite(row.signal_score) ?? finite(row.score);
-  const stakeUsd = finite(row.stake_usd) ?? finite(diagnostics?.accepted_stake_usd);
-  const maxEntryPrice = finite(row.max_entry_price) ?? finite(diagnostics?.accepted_max_entry_price);
+  // Authoritative model score. A NULL signal_confidence_num marks a deliberately
+  // unscored shadow/research row, which is never an execution candidate -- it is
+  // excluded here rather than defaulted, so shadow material can never be traded.
+  const signalScore = finite(row.signal_confidence_num);
+  // Execution-contract constant, never row data.
+  const stakeUsd = EXECUTABLE_STAKE_USD;
+  // Frozen accepted pre-Reservation price for this exact sibling.
+  const maxEntryPrice = finite(row.entry_price_num);
+  const scoreContractVersion = text(row.metric_formula_version);
   if (
     c.v !== "v1" || c.provider !== "polymarket" || !id || !eventId || !eventStartIso ||
     !Number.isFinite(Date.parse(eventStartIso)) || !conditionId || !tokenId || !side ||
-    signalScore === null || stakeUsd === null || stakeUsd <= 0 || maxEntryPrice === null || maxEntryPrice <= 0
+    !scoreContractVersion ||
+    signalScore === null || stakeUsd <= 0 || maxEntryPrice === null || maxEntryPrice <= 0
   ) return null;
-  return { id, conditionId, tokenId, side, signalScore, eventId, eventStartIso, stakeUsd, maxEntryPrice, marketSlug: text(row.market_slug) };
+  return {
+    id, conditionId, tokenId, side, signalScore, eventId, eventStartIso,
+    stakeUsd, maxEntryPrice, scoreContractVersion, marketSlug: text(row.market_slug),
+  };
 }
 
 function providerPhysicalEventId(eventId: string, eventStartIso: string): string {
@@ -911,6 +962,7 @@ async function selectQueueRowFromContractAReservation(
       physical_event_id: physicalEventId, event_start_iso: eventStartIso,
       source_lineage: { generated_signal_pair_id: selected.id },
       selected_signal_pair_id: selected.id, selected_signal_score: selected.signalScore,
+      selected_score_contract_version: selected.scoreContractVersion,
       max_entry_price: selected.maxEntryPrice, stake_guard_usd: selected.stakeUsd,
       mechanical_guard_trace: ["RESERVATION_ACTIVE", "DUE_WINDOW", "EXACT_PROVIDER_EVENT", "MAX_SIGNAL_SCORE", "IDENTITY_COMPLETE"],
     },
