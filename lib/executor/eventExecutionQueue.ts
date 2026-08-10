@@ -687,13 +687,28 @@ export async function loadExactProviderSiblingRowsFromAnchor(
       ? (row.diagnostics as Record<string, unknown>).providerEventContext as Record<string, unknown> | undefined
       : undefined;
     return candidateContext?.v === "v1" && candidateContext.provider === "polymarket" &&
-      candidateContext.eventId === eventId && candidateContext.eventStartIso === eventStartIso &&
+      candidateContext.eventId === eventId && sameEventStartInstant(candidateContext.eventStartIso, eventStartIso) &&
       text(row.metric_formula_version) === scoreContractVersion;
   });
 }
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+/**
+ * Event start is an instant, not a serialization format. Both boundaries may
+ * carry valid ISO timestamps with different UTC spellings (for example
+ * PostgreSQL timestamptz +00:00 versus JSON/provider Z); malformed values are
+ * never accepted as an identity match.
+ */
+function sameEventStartInstant(left: unknown, right: unknown): boolean {
+  const leftIso = text(left);
+  const rightIso = text(right);
+  if (!leftIso || !rightIso) return false;
+  const leftMs = Date.parse(leftIso);
+  const rightMs = Date.parse(rightIso);
+  return Number.isFinite(leftMs) && Number.isFinite(rightMs) && leftMs === rightMs;
 }
 
 function finite(value: unknown): number | null {
@@ -940,7 +955,7 @@ async function selectQueueRowFromContractAReservation(
     return { outcome: "SKIPPED", reason: reasonCode, queueRow: null };
   }
   const candidates = rows.map(exactProviderSignalPair).filter((v): v is ExactProviderSignalPair => v !== null)
-    .filter((v) => v.eventStartIso === eventStartIso && providerPhysicalEventId(v.eventId, v.eventStartIso) === physicalEventId)
+    .filter((v) => sameEventStartInstant(v.eventStartIso, eventStartIso) && providerPhysicalEventId(v.eventId, v.eventStartIso) === physicalEventId)
     .sort(compareExactProviderSignalPairs);
   const selected = candidates[0];
   if (!selected) return { outcome: "SKIPPED", reason: "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR", queueRow: null };

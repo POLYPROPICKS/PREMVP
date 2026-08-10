@@ -41,6 +41,9 @@ import {
 // ---------------------------------------------------------------------------
 const PROVIDER_EVENT_ID = "818389";
 const EVENT_START = "2026-08-09T18:00:00Z";
+// PostgreSQL timestamptz serialization from night_event_reservations. This is
+// the same instant as EVENT_START, but must not require matching text.
+const RESERVATION_EVENT_START = "2026-08-09T18:00:00+00:00";
 const PHYSICAL_ID = "provider:polymarket:818389:2026-08-09";
 const CONDITION_ID = "0xf8ca43d088e56d7e759948f62d74071bf66f21b6bac9e5a51b0a9935fdbd7b07";
 const ANCHOR_PAIR_ID = "05d6fe25-65ae-49a9-831b-7900d2608b02";
@@ -79,7 +82,7 @@ function productionReservation(
     status: "RESERVED",
     selection_reason: null,
     physical_event_id: PHYSICAL_ID,
-    event_start_iso: EVENT_START,
+    event_start_iso: RESERVATION_EVENT_START,
     diagnostics: {
       selector_id: "CONTRACT_A_PLANNING_V1",
       contract_a_stage: "PLANNING",
@@ -261,6 +264,9 @@ test("C1-1: natural due Reservation reaches Queue via highest authoritative scor
   const h = harness(productionSiblings(), productionReservation());
   const result = await h.run();
 
+  assert.notEqual(RESERVATION_EVENT_START, EVENT_START, "the regression must cross the real timestamptz/JSON serialization boundary");
+  assert.equal(Date.parse(RESERVATION_EVENT_START), Date.parse(EVENT_START));
+
   assert.equal(
     result.queued_count,
     1,
@@ -286,7 +292,7 @@ test("C1-1: natural due Reservation reaches Queue via highest authoritative scor
 
   // Exact identity lineage.
   assert.equal(diag.physical_event_id, PHYSICAL_ID);
-  assert.equal(diag.event_start_iso, EVENT_START);
+  assert.equal(diag.event_start_iso, RESERVATION_EVENT_START);
   assert.equal(q.reservation_id, "36fe6db7-e0d0-4609-a92e-25fed17c6fbb");
 });
 
@@ -422,6 +428,18 @@ test("C1-6: wrong provider event / start / physical identity are all rejected", 
   );
   const physResult = await hPhys.run();
   assert.equal(physResult.queued_count, 0, "physical identity mismatch must fail closed");
+
+  // An unparsable persisted Reservation timestamp must never become an
+  // implicit match for otherwise-valid provider siblings.
+  const hInvalidStart = harness(
+    productionSiblings(),
+    productionReservation({
+      event_start_iso: "not-a-timestamp",
+      game_start_iso: "not-a-timestamp",
+    } as Partial<NightEventReservationRow>),
+  );
+  const invalidResult = await hInvalidStart.run();
+  assert.equal(invalidResult.queued_count, 0, "invalid event-start timestamps must fail closed");
 });
 
 test("C1-7: repeated natural cadence creates no duplicate Queue for the same identity", async () => {
