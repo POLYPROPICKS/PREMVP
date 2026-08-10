@@ -743,7 +743,7 @@ export async function discoverSportsMarkets(
       ? evCtx.providerSeriesIds.map(String)
       : [];
     const scoreOwnership = scoreOwnershipForSportFamily(providerSportFamily);
-    if (!eventId || !providerSportCode || !providerSportFamily) {
+    if (!admitsResearchIntakeSportIdentity(eventId, providerSportFamily)) {
       researchExcludedInvalidStale++;
       continue;
     }
@@ -1595,6 +1595,32 @@ function extractEventTagIds(rawTags: unknown): string[] {
  * to 389 codes is an umbrella. The narrowest tags on the event win. No text,
  * slug, symbol or curated allowlist is consulted.
  */
+/**
+ * Research (scored) intake identity admission.
+ *
+ * The canonical structured family is the score and identity authority -- exactly
+ * the contract `hasStructuredScoredSportAuthority` enforces at the persistence
+ * boundary, where `(providerContext.league ?? null) === providerSportCode`
+ * deliberately admits a NULL raw code. `resolveOfficialSportCode` returns null
+ * whenever the provider's structured tags expose no UNIQUE code (an ambiguous
+ * multi-code tag, e.g. one tennis tag mapping to both atp and wta), so requiring
+ * the raw code here dropped every canonical-family-only event out of the scored
+ * universe before a score could ever be attempted -- which is why families whose
+ * tags are structurally ambiguous reached authority and were never scored.
+ *
+ * Still fail-closed: no provider event id, or no canonical structured family,
+ * is not admitted. Nothing here is derived from title, slug or category text.
+ */
+export function admitsResearchIntakeSportIdentity(
+  eventId: string | null | undefined,
+  providerSportFamily: string | null | undefined,
+): providerSportFamily is string {
+  return (
+    typeof eventId === "string" && eventId.trim() !== "" &&
+    typeof providerSportFamily === "string" && providerSportFamily.trim() !== ""
+  );
+}
+
 export function resolveOfficialSportCode(
   tagIds: string[],
   sportMeta: ProviderSportMetadataMap,

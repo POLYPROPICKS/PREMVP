@@ -240,7 +240,8 @@ export interface ParentEventMeta {
   polymarketEventSlug?: string;
   sportsMarketType?: string;
   providerEventId?: string;
-  providerSportCode?: string;
+  /** Null when the provider's structured tags expose no unique raw league code. */
+  providerSportCode?: string | null;
   providerSportFamily?: string;
   providerSportSource?: string;
   providerSportTagIds?: string[];
@@ -265,6 +266,19 @@ export function buildStructuredProviderDiagnostics(
   const eventId = parentMeta.providerEventId ?? parentMeta.id;
   const providerMarketId = parentMeta.providerMarketId ?? safeString(market.id) ?? undefined;
   const eventStartIso = parentMeta.startDate ?? eventEndDate;
+  // A row that carries ANY structured provider sport value carries structured
+  // identity only: `parentMeta.category` is display text (league name / "Sports")
+  // and must never be substituted into the structured carrier. Doing so gave a
+  // canonical-family-only row (raw code legitimately null) a text `league`, which
+  // then failed hasStructuredScoredSportAuthority's
+  // `(providerContext.league ?? null) === providerSportCode` equality. Rows with
+  // no structured sport at all keep the pre-existing legacy category behaviour.
+  const carriesStructuredSport =
+    (parentMeta.providerSportFamily ?? null) !== null || (parentMeta.providerSportCode ?? null) !== null;
+  const contextSportFamily =
+    parentMeta.providerSportFamily ?? (carriesStructuredSport ? null : parentMeta.category ?? null);
+  const contextLeague =
+    parentMeta.providerSportCode ?? (carriesStructuredSport ? null : parentMeta.category ?? null);
   return {
     providerSportCode: parentMeta.providerSportCode ?? null,
     providerSportFamily: parentMeta.providerSportFamily ?? null,
@@ -280,12 +294,8 @@ export function buildStructuredProviderDiagnostics(
       ...(parentMeta.polymarketEventSlug ? { eventSlug: parentMeta.polymarketEventSlug } : {}),
       ...(parentMeta.title ? { eventTitle: parentMeta.title } : {}),
       ...(safeString(market.question) ? { marketQuestion: safeString(market.question)! } : {}),
-      ...(parentMeta.providerSportFamily ?? parentMeta.category
-        ? { sportFamily: parentMeta.providerSportFamily ?? parentMeta.category }
-        : {}),
-      ...(parentMeta.providerSportCode ?? parentMeta.category
-        ? { league: parentMeta.providerSportCode ?? parentMeta.category }
-        : {}),
+      ...(contextSportFamily ? { sportFamily: contextSportFamily } : {}),
+      ...(contextLeague ? { league: contextLeague } : {}),
       ...(eventStartIso ? { eventStartIso } : {}),
       ...(providerMarketId ? { providerMarketId } : {}),
       ...(parentMeta.sportsMarketType ? { marketType: parentMeta.sportsMarketType } : {}),

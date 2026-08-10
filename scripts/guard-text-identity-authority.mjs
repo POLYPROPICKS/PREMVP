@@ -32,6 +32,14 @@ export const RULES = [
       [/lineage\.event_slug/, "Reservation reconstruction requires display text"],
     ],
   },
+  {
+    file: "lib/feed/discoverSportsMarkets.ts",
+    functionName: "admitsResearchIntakeSportIdentity",
+    forbidden: [
+      [/providerSportCode/, "scored intake admission requires the optional raw provider league code"],
+      [/category|eventTitle|marketQuestion|slug/i, "scored intake admission reads display text"],
+    ],
+  },
 ];
 
 export const STRUCTURED_SPORT_RULES = [
@@ -70,6 +78,23 @@ export const STRUCTURED_SPORT_RULES = [
       [/providerSportCode:\s*rm\.providerSportCode/, "scored adapter drops raw provider sport"],
       [/providerSportFamily:\s*rm\.providerSportFamily/, "scored adapter drops canonical provider sport family"],
       [/providerEventId:\s*rm\.eventId/, "scored adapter drops provider event identity"],
+    ],
+  },
+  {
+    file: "lib/feed/buildLandingCards.ts",
+    functionName: "buildStructuredProviderDiagnostics",
+    required: [
+      [/const\s+carriesStructuredSport\s*=/, "structured carrier does not distinguish structured rows from legacy text rows"],
+      [/contextSportFamily\s*=\s*\n?\s*parentMeta\.providerSportFamily\s*\?\?/s, "structured carrier sportFamily is not the canonical provider family"],
+      [/contextLeague\s*=\s*\n?\s*parentMeta\.providerSportCode\s*\?\?/s, "structured carrier league is not the raw provider sport code"],
+      [/carriesStructuredSport\s*\?\s*null\s*:/s, "structured rows may still inherit display category text as sport identity"],
+    ],
+  },
+  {
+    file: "lib/feed/discoverSportsMarkets.ts",
+    functionName: "admitsResearchIntakeSportIdentity",
+    required: [
+      [/providerSportFamily/, "scored intake admission ignores the canonical provider sport family"],
     ],
   },
   {
