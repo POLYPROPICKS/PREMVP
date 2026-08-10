@@ -274,7 +274,11 @@ export interface ResearchNestedMarket {
   marketSubtype?: string | null;
   gameStartTimeIso?: string | null;
   hoursUntilStartNum?: number | null;
-  providerSportCode: string;
+  // Raw provider league code. NULL whenever the provider's structured tags
+  // expose no unique code (e.g. one tennis tag mapping to both atp and wta).
+  // The canonical family below is the score/identity authority; this code is an
+  // optional narrowing detail -- see hasStructuredScoredSportAuthority.
+  providerSportCode: string | null;
   providerSportFamily: string;
   providerSportSource: "structured_sports_tag";
   providerSportTagIds: string[];
