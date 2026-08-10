@@ -33,6 +33,10 @@ import {
   isFuturesMarket,
   classifyGameSignal,
 } from "./normalizePolymarket";
+import {
+  resolveStructuredSportFamily,
+  scoreOwnershipForSportFamily,
+} from "./sportScoreOwnership";
 
 const DEFAULT_CONFIG: SportsDiscoveryConfig = {
   windowHours: 24,
@@ -149,6 +153,22 @@ function resolveLeagueName(
   if (q.includes("cs2") || q.includes("csgo") || q.includes("dota") || q.includes("valorant") || q.includes("map handicap")) return "Esports";
   if (q.includes("world cup") || q.includes("wc2026") || q.includes("wc 2026") || q.includes("fifa world cup")) return "World Cup 2026";
   return "Sports";
+}
+
+function structuredCarrierFromMarket(market: SportsMarketCandidate | null | undefined) {
+  const events = market && Array.isArray(market.raw.events)
+    ? market.raw.events as Record<string, unknown>[]
+    : [];
+  const event = events[0] ?? {};
+  const strings = (value: unknown): string[] => Array.isArray(value) ? value.map(String) : [];
+  return {
+    providerEventId: typeof event.id === "string" ? event.id : null,
+    providerSportCode: typeof event.providerSportCode === "string" ? event.providerSportCode : null,
+    providerSportFamily: typeof event.providerSportFamily === "string" ? event.providerSportFamily : null,
+    providerSportSource: typeof event.providerSportSource === "string" ? event.providerSportSource : null,
+    providerSportTagIds: strings(event.providerSportTagIds),
+    providerSeriesIds: strings(event.providerSeriesIds),
+  };
 }
 
 // Create group key for market grouping
@@ -298,6 +318,7 @@ export async function discoverSportsMarkets(
       });
     }
   }
+  const providerSportMetadata = buildProviderSportMetadataMap(sportsRaw as unknown[]);
 
   // Add probe tag if available (for flat fallback path)
   const probeTagId = "100639";
@@ -363,6 +384,16 @@ export async function discoverSportsMarkets(
     const eventStartTime = typeof event.startTime === "string" ? event.startTime : undefined;
     const eventId = String(event.id ?? "");
     const eventSlug = String(event.slug ?? "");
+    const providerSportTagIds = extractEventTagIds(event.tags);
+    const providerSportResolution = resolveOfficialSportCode(
+      providerSportTagIds,
+      providerSportMetadata,
+    );
+    const providerSportCode = providerSportResolution.providerSportCode;
+    const providerSportFamily = resolveStructuredSportFamily(event.tags, providerSportCode);
+    const providerSeriesIds = providerSportCode
+      ? providerSportMetadata.sportCodeToSeriesIds.get(providerSportCode) ?? []
+      : [];
 
     const nestedMarkets = Array.isArray(event.markets)
       ? (event.markets as Record<string, unknown>[])
@@ -384,6 +415,11 @@ export async function discoverSportsMarkets(
           slug: eventSlug,
           startTime: eventStartTime ?? null,
           title: event.title,
+          providerSportCode,
+          providerSportFamily,
+          providerSportSource: providerSportResolution.providerSportSource,
+          providerSportTagIds,
+          providerSeriesIds,
         }],
       };
       if (eventStartTime) {
@@ -645,6 +681,7 @@ export async function discoverSportsMarkets(
   let researchExcludedOddsBelowMin = 0;
   let researchExcludedOddsAboveMax = 0;
   let researchExcludedOddsInvalid = 0;
+  let researchExcludedUnsupportedSport = 0;
   const researchMarketsByFamily: Record<string, number> = {};
 
   for (const nm of normalizedMarkets) {
@@ -697,6 +734,23 @@ export async function discoverSportsMarkets(
     const eventId = String(evCtx.id ?? "");
     const eventTitle = String(evCtx.title ?? "");
     const eventSlug = nm.nestedEventSlug || String(evCtx.slug ?? "");
+    const providerSportCode = typeof evCtx.providerSportCode === "string" ? evCtx.providerSportCode : null;
+    const providerSportFamily = typeof evCtx.providerSportFamily === "string" ? evCtx.providerSportFamily : null;
+    const providerSportTagIds = Array.isArray(evCtx.providerSportTagIds)
+      ? evCtx.providerSportTagIds.map(String)
+      : [];
+    const providerSeriesIds = Array.isArray(evCtx.providerSeriesIds)
+      ? evCtx.providerSeriesIds.map(String)
+      : [];
+    const scoreOwnership = scoreOwnershipForSportFamily(providerSportFamily);
+    if (!eventId || !providerSportCode || !providerSportFamily) {
+      researchExcludedInvalidStale++;
+      continue;
+    }
+    if (scoreOwnership !== "SUPPORTED_BY_SCORE_MODEL") {
+      researchExcludedUnsupportedSport++;
+      continue;
+    }
     // market_family = league name (not market type). Prefer raw Gamma category; fall back to slug inference.
     // sportsMarketType = Polymarket internal market type — stored separately for research modeling.
     const rawGammaCategory = String((nm.raw as Record<string, unknown>).category ?? evCtx.category ?? "") || null;
@@ -752,6 +806,12 @@ export async function discoverSportsMarkets(
         marketSubtype: s2MarketType,
         gameStartTimeIso: evStartStr,
         hoursUntilStartNum,
+        providerSportCode,
+        providerSportFamily,
+        providerSportSource: "structured_sports_tag",
+        providerSportTagIds,
+        providerSeriesIds,
+        scoreOwnership,
       });
     }
 
@@ -768,6 +828,7 @@ export async function discoverSportsMarkets(
   counts.researchExcludedOddsBelowMin = researchExcludedOddsBelowMin;
   counts.researchExcludedOddsAboveMax = researchExcludedOddsAboveMax;
   counts.researchExcludedOddsInvalid = researchExcludedOddsInvalid;
+  counts.researchExcludedUnsupportedSportMarkets = researchExcludedUnsupportedSport;
   counts.researchMarketsByFamily = researchMarketsByFamily;
 
   // 5. Filter active and classify
@@ -1274,6 +1335,7 @@ export async function discoverSportsMarkets(
         const raw = g.primaryMarket?.raw || {};
         return (raw.image as string) || (raw.icon as string) || null;
       })(),
+      ...structuredCarrierFromMarket(g.primaryMarket),
       // Add raw market data for outcome pricing
       primaryMarketRaw: g.primaryMarket ? {
         outcomes: g.primaryMarket.outcomes,
@@ -1287,6 +1349,7 @@ export async function discoverSportsMarkets(
         volume24hr: g.primaryMarket.volume24hr,
         volumeClob: g.primaryMarket.volumeClob,
         oneDayPriceChange: g.primaryMarket.oneDayPriceChange,
+        providerMarketId: g.primaryMarket.id,
       } : null,
       // Add all grouped markets for mapper to try
       marketsRaw: g.markets.map(m => ({
@@ -1321,6 +1384,7 @@ export async function discoverSportsMarkets(
       marketCount: g.markets.length,
       strategy: "markets-first-48h-fallback",
       leagueName: resolveLeagueName(g, teamsMap),
+      ...structuredCarrierFromMarket(g.primaryMarket),
       primaryMarketRaw: g.primaryMarket ? {
         outcomes: g.primaryMarket.outcomes,
         outcomePrices: g.primaryMarket.outcomePrices,
@@ -1333,6 +1397,7 @@ export async function discoverSportsMarkets(
         volume24hr: g.primaryMarket.volume24hr,
         volumeClob: g.primaryMarket.volumeClob,
         oneDayPriceChange: g.primaryMarket.oneDayPriceChange,
+        providerMarketId: g.primaryMarket.id,
       } : null,
     }));
 

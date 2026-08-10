@@ -4,12 +4,14 @@ import {
   auditFunctionSource,
   runGuard,
   RULES,
+  STRUCTURED_SPORT_RULES,
   TEXT_CLASSIFICATION_ALLOWLIST,
 } from "../../scripts/guard-text-identity-authority.mjs";
 
 test("active PREMVP authority functions satisfy the semantic guard", () => {
   assert.deepEqual(runGuard(), []);
   assert.ok(RULES.length >= 3);
+  assert.ok(STRUCTURED_SPORT_RULES.length >= 7);
   assert.ok(TEXT_CLASSIFICATION_ALLOWLIST.includes("lib/contur3/taxonomy.ts"));
 });
 
@@ -22,7 +24,7 @@ test("guard rejects display text used inside a planning identity decision", () =
     RULES[0].forbidden,
     "synthetic-regression.ts",
   );
-  assert.ok(failures.some((failure) => failure.includes("display text")));
+  assert.ok(failures.some((failure: string) => failure.includes("display text")));
 });
 
 test("guard rejects condition-bounded event sibling loading", () => {
@@ -34,5 +36,5 @@ test("guard rejects condition-bounded event sibling loading", () => {
     RULES[1].forbidden,
     "synthetic-regression.ts",
   );
-  assert.ok(failures.some((failure) => failure.includes("one market condition")));
+  assert.ok(failures.some((failure: string) => failure.includes("one market condition")));
 });

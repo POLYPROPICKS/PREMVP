@@ -34,6 +34,66 @@ export const RULES = [
   },
 ];
 
+export const STRUCTURED_SPORT_RULES = [
+  {
+    file: "lib/feed/buildLandingCards.ts",
+    functionName: "researchNestedMarketToCandidate",
+    required: [
+      [/providerSportCode:\s*rm\.providerSportCode/, "scored adapter drops raw provider sport"],
+      [/providerSportFamily:\s*rm\.providerSportFamily/, "scored adapter drops canonical provider sport family"],
+      [/providerEventId:\s*rm\.eventId/, "scored adapter drops provider event identity"],
+    ],
+  },
+  {
+    file: "lib/feed/buildLandingCards.ts",
+    functionName: "selectResearchMarketsForScoring",
+    required: [
+      [/scoreOwnership\s*!==\s*"SUPPORTED_BY_SCORE_MODEL"/, "scorer routing lacks explicit ownership gate"],
+      [/row\.eventId.*row\.eventStartIso/s, "scorer routing lacks provider-occurrence conservation"],
+    ],
+  },
+  {
+    file: "lib/feed/cacheGeneratedSignals.ts",
+    functionName: "buildFireModel1_1ResearchRows",
+    required: [
+      [/diagnostics:\s*\{\s*\.\.\.diag/s, "scored writer drops structured diagnostics"],
+      [/signal_confidence_num:\s*ps\.winProbability/, "scored writer bypasses the real score owner"],
+      [/metric_formula_version:\s*FIREMODEL1_1_RESEARCH_METRIC_VERSION/, "scored writer drops score-contract version"],
+    ],
+  },
+  {
+    file: "lib/feed/cacheGeneratedSignals.ts",
+    functionName: "writeFireModel1_1ResearchPairs",
+    required: [
+      [/select\("condition_id, selected_token_id, diagnostics"\)/, "research dedup cannot distinguish legacy rows from structured rows"],
+      [/hasStructuredScoredSportAuthority\(row\.diagnostics\)/, "legacy scored rows prevent structured replacement writes"],
+    ],
+  },
+  {
+    file: "lib/executor/buildFireModelCandidates.ts",
+    functionName: "loadContractAPlanningSourceRows",
+    required: [
+      [/hasStructuredScoredSportAuthority\(row\.diagnostics\)/, "active Contract A loader admits legacy text-authority rows"],
+    ],
+  },
+  {
+    file: "lib/executor/buildFireModelCandidates.ts",
+    functionName: "resolveModelSport",
+    required: [
+      [/diag\.providerSportFamily/, "Contract A resolver ignores canonical structured sport family"],
+      [/diag\.providerSportCode/, "Contract A resolver ignores raw provider sport code"],
+    ],
+  },
+  {
+    file: "lib/feed/sportScoreOwnership.ts",
+    functionName: "scoreOwnershipForSportFamily",
+    required: [
+      [/SUPPORTED_BY_SCORE_MODEL/, "supported scorer ownership is not explicit"],
+      [/INTENTIONALLY_UNSCORED/, "unsupported scorer ownership is not explicit"],
+    ],
+  },
+];
+
 // Explicit allowlist: these functions classify a market surface for policy;
 // they do not establish event/occurrence identity.
 export const TEXT_CLASSIFICATION_ALLOWLIST = [
@@ -68,12 +128,40 @@ export function auditFunctionSource(source, functionName, forbidden, file = "fix
     .map(([, message]) => `${file}:${functionName}: ${message}`);
 }
 
+export function auditRequiredFunctionSource(source, functionName, required, file = "fixture.ts") {
+  const parsed = ts.createSourceFile(file, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  let target = null;
+  const visit = (node) => {
+    if (functionNameOf(node) === functionName) target = node;
+    ts.forEachChild(node, visit);
+  };
+  visit(parsed);
+  if (!target) return [`${file}:${functionName}: function not found`];
+  const body = target.getText(parsed);
+  return required
+    .filter(([pattern]) => !pattern.test(body))
+    .map(([, message]) => `${file}:${functionName}: ${message}`);
+}
+
 export function runGuard(root = ROOT) {
   const failures = [];
   for (const rule of RULES) {
     const absolute = path.join(root, rule.file);
     const source = fs.readFileSync(absolute, "utf8");
     failures.push(...auditFunctionSource(source, rule.functionName, rule.forbidden, rule.file));
+  }
+  for (const rule of STRUCTURED_SPORT_RULES) {
+    const absolute = path.join(root, rule.file);
+    const source = fs.readFileSync(absolute, "utf8");
+    failures.push(...auditRequiredFunctionSource(source, rule.functionName, rule.required, rule.file));
+    if (rule.functionName === "resolveModelSport") {
+      const structuredIndex = source.indexOf("function resolveModelSport");
+      const familyIndex = source.indexOf("diag.providerSportFamily", structuredIndex);
+      const textFallbackIndex = source.indexOf("deriveSportScope(identityText)", structuredIndex);
+      if (familyIndex < 0 || textFallbackIndex < 0 || familyIndex > textFallbackIndex) {
+        failures.push(`${rule.file}:${rule.functionName}: legacy text precedes structured sport authority`);
+      }
+    }
   }
   return failures;
 }
@@ -84,6 +172,6 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     console.error(`TEXT_AS_IDENTITY_AUTHORITY_GUARD_FAIL\n${failures.join("\n")}`);
     process.exitCode = 1;
   } else {
-    console.log(`TEXT_AS_IDENTITY_AUTHORITY_GUARD_PASS rules=${RULES.length} classification_allowlist=${TEXT_CLASSIFICATION_ALLOWLIST.length}`);
+    console.log(`TEXT_AS_IDENTITY_AUTHORITY_GUARD_PASS rules=${RULES.length + STRUCTURED_SPORT_RULES.length} classification_allowlist=${TEXT_CLASSIFICATION_ALLOWLIST.length}`);
   }
 }
