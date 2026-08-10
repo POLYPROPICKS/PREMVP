@@ -85,7 +85,8 @@ FOUNDER ACTION: [exactly one action]
 
 ## 5. Hard stops — no exceptions
 
-- Git status dirty unexpectedly → STOP immediately
+- Dirty Founder root → preserve untouched and run the canonical execution precheck to use an
+  isolated clean worktree; only dirty state in the selected isolated worktree is a STOP
 - Build fails → FAIL total, not partial success
 - Allowed file missing from repo → STOP
 - Old block not found for exact replacement → STOP

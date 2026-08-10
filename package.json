@@ -90,9 +90,9 @@
     "control-plane:snapshot:check": "node scripts/control-plane/generate-architect-snapshot.mjs --check",
     "control-plane:test": "node --test tests/control-plane/*.test.mjs",
     "control-plane:check": "npm run control-plane:validate && npm run control-plane:commands:check && npm run control-plane:test && npm run control-plane:snapshot:check && npm run control-plane:project-package:check",
-  "control-plane:release:validate": "node scripts/control-plane/validate-premvp-release-run.mjs",
-  "control-plane:release:dry-run": "node scripts/control-plane/run-premvp-release.mjs --dry-run",
-  "control-plane:release:status": "node scripts/control-plane/run-premvp-release.mjs --status",
+    "control-plane:release:validate": "node scripts/control-plane/validate-premvp-release-run.mjs",
+    "control-plane:release:dry-run": "node scripts/control-plane/run-premvp-release.mjs --dry-run",
+    "control-plane:release:status": "node scripts/control-plane/run-premvp-release.mjs --status",
     "control-plane:release:test": "node --test tests/control-plane/premvpReleasePipeline.test.mjs",
     "control-plane:precheck": "node scripts/control-plane/execution-precheck.mjs",
     "control-plane:precheck:test": "node --test tests/control-plane/executionPrecheck.test.mjs",
@@ -113,6 +113,7 @@
     "test:producer": "node --experimental-test-module-mocks --import tsx --test tests/feed/providerCompleteEnumeration.test.ts tests/feed/producerIdentityConservation.test.ts"
   },
   "dependencies": {
+    "@sentry/nextjs": "10.69.0",
     "@supabase/supabase-js": "^2.105.1",
     "@whop/sdk": "^0.0.39",
     "exceljs": "4.4.0",

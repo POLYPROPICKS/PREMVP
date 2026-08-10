@@ -561,6 +561,24 @@
       "hard_prohibitions": ["Founder reviewer session", "receipt SHA mismatch"]
     },
     {
+      "canonical_id": "premvp.skill.sentry_production_debug.v1",
+      "type": "SKILL",
+      "owner_platform": "repository",
+      "implementation_path": ".agents/skills/polypropicks-production-debug/SKILL.md",
+      "status": "PROVEN_PRESENT",
+      "invocation": "MODEL_DECIDED",
+      "triggers": ["production incident", "production regression", "Sentry issue/event investigation"],
+      "exclusions": ["ordinary code work", "product work without an incident", "Sentry unavailable without a need for production evidence"],
+      "model_policy": "selected executor only", "reasoning_policy": "inherit",
+      "permissions": "requires SENTRY_READ_DEBUG for direct Sentry MCP reads; repository and Git reads for source correlation",
+      "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "incident context and selected executor with SENTRY_READ_DEBUG capability",
+      "output_contract": "evidence-backed diagnosis or SENTRY_EVIDENCE_UNAVAILABLE; no fabricated event findings",
+      "independence_group": null, "receipt_required": false,
+      "evidence_class": "PROVEN_IN_RUNTIME", "last_verified_at": "2026-08-10T00:00:00Z", "portability": "PORTABLE",
+      "hard_prohibitions": ["make Sentry mandatory for ordinary work", "message-only diagnosis when stack/context is available", "fabricate Sentry evidence", "enable replay/tracing/profiling/PII by default"]
+    },
+    {
       "canonical_id": "premvp.command.execution_precheck.v1",
       "type": "COMMAND", "owner_platform": "repository", "implementation_path": "scripts/control-plane/execution-precheck.mjs", "status": "PROVEN_PRESENT", "invocation": "EXPLICIT",
       "triggers": ["every PREMVP task before orchestration"], "exclusions": ["Ireland", "database mutation", "live money"], "model_policy": "selected executor only; no default or substitution", "reasoning_policy": "inherit",

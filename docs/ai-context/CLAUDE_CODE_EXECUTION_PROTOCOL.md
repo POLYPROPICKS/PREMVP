@@ -58,7 +58,7 @@ PRECHECK: git branch --show-current; git status --short; git log --oneline -3; [
 ALLOWED FILES: [exact paths]
 FORBIDDEN FILES/CHANGES: [paths + reason]; no refactor; no renaming classNames/props/types; no commit/push/deploy
 EXACT STEPS: [precheck → action → action → verification]
-STOP CONDITIONS: branch unexpected; expected file/block missing; forbidden file must be edited; build fails (FAIL total); unexpected dirty files; scope exceeds allowed files
+STOP CONDITIONS: branch unexpected; expected file/block missing; forbidden file must be edited; build fails (FAIL total); unexpected dirty files in the selected isolated worktree; scope exceeds allowed files. A dirty Founder root is preserved and isolated through premvp.command.execution_precheck.v1 with founder_action none.
 VERIFICATION COMMANDS: git status --short; git diff --stat; git diff --check; npm run build; [task-specific curl/Supabase check]
 ```
 
