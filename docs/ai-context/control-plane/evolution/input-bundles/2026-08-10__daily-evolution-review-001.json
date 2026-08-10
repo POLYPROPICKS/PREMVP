@@ -1,0 +1,35 @@
+{
+  "bundle_id": "2026-08-10__daily-evolution-review-001",
+  "repository": "POLYPROPICKS/PREMVP",
+  "period_start": "2026-08-07T11:11:09Z",
+  "period_end": "2026-08-10T17:19:05Z",
+  "capture_coverage": "UNKNOWN",
+  "mission_count": null,
+  "verified_result_count": null,
+  "operator_action_events": [],
+  "completion_envelope_ids": [],
+  "confirmed_changes": [
+    "PR#111 merge 1d8dfe4ef2675182585b0b808ce8603c01aac93e",
+    "PR#112 merge 78a951e62803c04c16694d57ff364aa47f869867",
+    "PR#113 merge 56b71f80e1dac2bd6df28e2358940f6be938014f",
+    "PR#114 merge 03f1fb0a99dd9d71b79f09a0264c7e4e962ffdf9",
+    "PR#115 merge 9325fdf6446222c29b9dc8dc595f18f8367c31ea",
+    "PR#117 merge 22e9ee2115f12c46b3428c3237d9cb1d72d18c6f",
+    "PR#118 merge 1e5f21ae8dec67d0c6f0827ddad25d8c3ec5dc74",
+    "PR#119 merge 1b0d34fe0f156ced7510c391e22786197a74bce4",
+    "PR#120 merge e06b6653f4fee7a9ea165edc87f22ebb03862ad4",
+    "PR#123 merge 41d50ecafc989c6aab984bdc290d042fbc9534ab",
+    "PR#124 merge d86cc140ebc57c5e274198dc2c683aaa0859f96f",
+    "PR#125 merge af0f781c60f8ec1a23f6da9772592d58d7ea2061",
+    "PR#126 merge acd82d8c53465e4cac38b804fce670975865147a",
+    "PR#127 merge ddf8afcad3297669c41aa0032568cd42eb47bcd3",
+    "PR#128 merge e30de0174f97c9184ce27fb053e5c649fc886967",
+    "PR#129 merge ecefb95d965182e5855f7e55fd650fc61a135b7b",
+    "PR#130 merge 136bcca01a5a3f81e4a62d0845494b3b27bf7468",
+    "PR#131 merge 4b7176a0e5a7167c992f1c62ae62d6e78b329d38"
+  ],
+  "supporting_metrics": {
+    "reusable_artifacts_created": 9,
+    "runtime_evidence_count": 0
+  }
+}
