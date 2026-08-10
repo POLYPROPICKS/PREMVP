@@ -31,10 +31,35 @@ const FILES = {
   routing: 'ROUTING_AND_PIPELINES.yaml',
   registry: 'AGENT_REGISTRY.yaml',
   promptProtocol: 'PROMPT__PROTOCOL.md',
+  missionContract: 'MISSION_CONTRACT.schema.json',
   completionSchema: 'COMPLETION_ENVELOPE.schema.json',
   escalationTaxonomy: 'EXECUTION_ESCALATION_TAXONOMY.json',
   evidenceLedger: 'EVIDENCE_LEDGER.md',
 };
+
+/** The six always-required mission-core sections. The fixed 25-section model is retired. */
+const MISSION_CORE_SECTIONS = [
+  'MISSION', 'BUSINESS RESULT', 'REPOSITORY', 'SCOPE', 'HARD BOUNDARIES', 'ACCEPTANCE',
+];
+
+const MISSION_MODULE_SECTIONS = [
+  'FOUNDER AUTHORIZATION', 'RUNTIME EVIDENCE', 'DATABASE', 'REVIEWER', 'RELEASE',
+  'PRODUCTION OBSERVATION', 'LIVE MONEY',
+];
+
+const MISSION_INVARIANT_IDS = [
+  'CAPABILITY_BY_DIRECT_ACTION_ONLY', 'RISK_NOT_CAPABILITY',
+  'APPLICATION_PERSISTENCE_NOT_RAW_DB_MUTATION', 'ONE_REPOSITORY_BOUNDARY',
+  'REGISTERED_COMMAND_VALIDITY', 'RECOVERY_BEFORE_BLOCK', 'INCOMPLETE_IS_NOT_TERMINAL',
+  'SESSION_END_IS_TRANSPORT_RESUME', 'OPERATOR_ACTION_BUDGET', 'ACCEPTANCE_AFTER_EXECUTION',
+];
+
+/** Fixed-template enforcement that CP-HARDENING-01 retires and must not reappear. */
+const LEGACY_TEMPLATE_PATTERNS = [
+  /all 25 sections must be populated/i,
+  /all 25 sections present/i,
+  /every section below is present and populated/i,
+];
 
 const REQUIRED_POLICY_KEYS = [
   'schema_version', 'policy_version', 'project', 'architect_interface', 'operator_mode',
@@ -429,32 +454,84 @@ export function validateControlPlane(root = REPO_ROOT) {
     });
   }
 
-  // --- Prompt protocol contract ---------------------------------------------------------
+  // --- Mission contract (retired: the fixed 25-section prompt template) ------------------
   const pp = raw.promptProtocol || '';
-  const REQUIRED_PROMPT_SECTIONS = [
-    'MODEL', 'MODEL LEVEL', 'SESSION MODE', 'SESSION REASON', 'EXECUTION ENVIRONMENT',
-    'REPOSITORY / WORKTREE / CWD', 'BRANCH / TARGET REF / TARGET SHA', 'TOKEN / READ BUDGET',
-    'VALUE TARGET', 'CURRENT ROADMAP PHASE', 'NEXT TWO VALUE STEPS', 'OPERATOR MODE',
-    'TASK CLASS', 'RISK CLASS', 'REQUIRED CAPABILITIES', 'REQUIRED AGENTS / REVIEWERS',
-    'PRECHECK', 'EXECUTION SCOPE', 'ALLOWED FILES', 'FORBIDDEN FILES', 'WRITE POLICY',
-    'STOP CONDITIONS', 'EVIDENCE REQUIRED', 'COMPLETION ENVELOPE', 'FOUNDER ACTION',
-  ];
-  // Anchored to the numbered §2 table rows, not a loose substring match: a bare
-  // `includes` would let "MODEL" be satisfied by "MODEL LEVEL", or by any prose mention.
+  // The §2 table now declares the SIX mission-core sections, and nothing more. Anchored to
+  // numbered table rows, not a loose substring match, so "MISSION" cannot be satisfied by
+  // any prose mention.
   const promptTableRows = pp.split('\n').filter((l) => /^\|\s*\d+\s*\|/.test(l));
   const declaredSections = new Set(
     promptTableRows.map((l) => (l.split('|')[2] || '').replace(/`/g, '').trim()));
-  for (const s of REQUIRED_PROMPT_SECTIONS) {
+  for (const s of MISSION_CORE_SECTIONS) {
     if (!declaredSections.has(s)) {
-      err(`PROMPT_PROTOCOL: missing mandatory section row for ${s} in the §2 contract table`);
+      err(`PROMPT_PROTOCOL: missing mission-core section row for ${s} in the §2 contract table`);
     }
   }
-  if (promptTableRows.length !== REQUIRED_PROMPT_SECTIONS.length) {
-    err(`PROMPT_PROTOCOL: §2 table declares ${promptTableRows.length} sections, expected ${REQUIRED_PROMPT_SECTIONS.length}`);
+  if (promptTableRows.length !== MISSION_CORE_SECTIONS.length) {
+    err(`PROMPT_PROTOCOL: §2 table declares ${promptTableRows.length} mission-core sections, expected ${MISSION_CORE_SECTIONS.length}`);
+  }
+  // The retired model must not reappear anywhere in the canonical prompt contract.
+  for (const re of LEGACY_TEMPLATE_PATTERNS) {
+    const m = pp.match(re);
+    if (m && !/RETIRED|retired|MUST NOT|never/.test(pp.slice(Math.max(0, m.index - 200), m.index + 200))) {
+      err(`PROMPT_PROTOCOL_LEGACY_25_SECTION_MODEL: the fixed-template rule "${m[0]}" is retired and may not be re-enforced`);
+    }
+  }
+  for (const s of MISSION_MODULE_SECTIONS) {
+    if (!pp.includes(s)) err(`PROMPT_PROTOCOL: conditional module ${s} must be declared`);
   }
   if (!pp.includes('PROMPT_GATE_BLOCKED')) err('PROMPT_PROTOCOL: must define PROMPT_GATE_BLOCKED fail-closed behavior');
   if (!pp.includes('premvp.command.execution_precheck.v1')) err('PROMPT_PROTOCOL: must require shared execution precheck');
   if (!pp.includes('no default or substitution')) err('PROMPT_PROTOCOL: must prohibit default executor substitution');
+  if (!pp.includes('MISSION_CONTRACT.schema.json')) err('PROMPT_PROTOCOL: must reference the machine-readable MISSION_CONTRACT.schema.json');
+  for (const inv of MISSION_INVARIANT_IDS) {
+    if (!pp.includes(inv)) err(`PROMPT_PROTOCOL: missing machine-enforced invariant ${inv}`);
+  }
+
+  // --- Mission contract schema ----------------------------------------------------------
+  const mission = parsed.missionContract;
+  for (const f of ['mission_id', 'mission', 'business_result', 'repository',
+    'repository_boundary', 'scope', 'hard_boundaries', 'acceptance']) {
+    if (!(mission.required || []).includes(f)) err(`MISSION_CONTRACT_SCHEMA: required field missing — ${f}`);
+  }
+  for (const f of ['direct_actions', 'required_capabilities', 'operator_budget',
+    'authorization_ref', 'runtime_evidence_requirement']) {
+    if (!has(mission.properties || {}, f)) err(`MISSION_CONTRACT_SCHEMA: property missing — ${f}`);
+  }
+  // Capabilities must be linkable to a direct action by machine, not by prose.
+  const capItem = mission.properties?.required_capabilities?.items;
+  if (!(capItem?.required || []).includes('direct_action_ref')) {
+    err('MISSION_CONTRACT_SCHEMA: required_capabilities items must require direct_action_ref');
+  }
+  for (const inv of MISSION_INVARIANT_IDS) {
+    if (!(mission['x-invariants'] || []).some((s) => String(s).includes(inv))) {
+      err(`MISSION_CONTRACT_SCHEMA: x-invariants must declare ${inv}`);
+    }
+  }
+
+  // --- Hard-stop taxonomy: one canonical list with machine-readable block semantics ------
+  const hs = taxonomy?.classes?.HARD_SAFETY_STOP;
+  if (!Array.isArray(hs?.identifiers) || hs.identifiers.length === 0) {
+    err('ESCALATION_TAXONOMY: HARD_SAFETY_STOP must enumerate canonical hard_stop identifiers');
+  }
+  for (const f of ['hard_stop_id', 'recovery_attempts', 'unrecoverable_evidence']) {
+    if (!(taxonomy?.hard_stop_record?.required_fields || []).includes(f)) {
+      err(`ESCALATION_TAXONOMY: hard_stop_record.required_fields must include ${f}`);
+    }
+  }
+  if (taxonomy?.classes?.TRANSPORT_RESUME?.founder_action !== 'none') {
+    err('ESCALATION_TAXONOMY: TRANSPORT_RESUME must force founder_action none');
+  }
+  if (!taxonomy?.checkpoint_record?.required_fields?.includes('platform_auto_resume')) {
+    err('ESCALATION_TAXONOMY: checkpoint_record must require an honest platform_auto_resume flag');
+  }
+  const budget = taxonomy?.operator_action_budget;
+  if (!budget || budget.intermediate !== 0 || budget.terminal_result !== 1 || budget.start > 1) {
+    err('ESCALATION_TAXONOMY: operator_action_budget must be start <= 1, intermediate 0, terminal_result 1');
+  }
+  if (!Array.isArray(taxonomy?.never_terminal_reasons) || taxonomy.never_terminal_reasons.length === 0) {
+    err('ESCALATION_TAXONOMY: never_terminal_reasons must enumerate reasons that can never make a result terminal');
+  }
 
   // --- Completion schema ----------------------------------------------------------------
   const schema = parsed.completionSchema;
@@ -464,10 +541,27 @@ export function validateControlPlane(root = REPO_ROOT) {
     'worktree_before', 'worktree_after', 'files_changed', 'commands_run', 'tests',
     'required_reviewers', 'invoked_reviewers', 'reviewer_receipts', 'evidence',
     'capability_changes', 'state_delta_proposal', 'runtime_changed', 'deployment_changed',
-    'database_changed', 'forbidden_actions_respected', 'verdict', 'blockers', 'founder_action',
+    'database_changed', 'forbidden_actions_respected', 'verdict', 'outcome_class', 'blockers',
+    'founder_action',
   ];
   for (const f of REQUIRED_SCHEMA_FIELDS) {
     if (!(schema.required || []).includes(f)) err(`COMPLETION_SCHEMA: required field missing — ${f}`);
+  }
+  // Outcome semantics: a terminal block, a transport pause and a budget claim must all be
+  // machine-checkable, not inferred from the verdict string.
+  for (const f of ['outcome_class', 'hard_stop', 'checkpoint', 'operator_actions']) {
+    if (!has(schema.properties || {}, f)) err(`COMPLETION_SCHEMA: property missing — ${f}`);
+  }
+  for (const f of ['hard_stop_id', 'recovery_attempts', 'unrecoverable_evidence']) {
+    if (!(schema.properties?.hard_stop?.required || []).includes(f)) {
+      err(`COMPLETION_SCHEMA: hard_stop required field missing — ${f}`);
+    }
+  }
+  if (!(schema.properties?.checkpoint?.required || []).includes('platform_auto_resume')) {
+    err('COMPLETION_SCHEMA: checkpoint must require platform_auto_resume');
+  }
+  if (!has(schema.properties?.evidence?.items?.properties || {}, 'business_result')) {
+    err('COMPLETION_SCHEMA: evidence items must support a business_result marker');
   }
   const receipt = schema.definitions?.reviewer_receipt;
   for (const f of ['agent_id', 'configured_model', 'reasoning_policy', 'independence_group',
