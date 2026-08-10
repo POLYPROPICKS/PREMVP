@@ -65,6 +65,13 @@ export interface LandingCardDiagnostics {
     game?: string;
     league?: string;
     eventStartIso?: string;
+    providerMarketId?: string;
+    marketType?: string;
+    gameId?: string;
+    teamAId?: string;
+    teamBId?: string;
+    sportTagIds?: string[];
+    seriesIds?: string[];
   };
   selectedTokenId: string | null;
   selectedOutcome: string;

@@ -125,6 +125,24 @@ export class GeneratedSignalPairsTable {
     return this.rows.filter((r) => r.condition_id === conditionId).map(clone);
   }
 
+  /** Mirrors the production JSONB event-identity + score-domain sibling read. */
+  async queryByProviderEvent(identity: {
+    eventId: string;
+    eventStartIso: string;
+    scoreContractVersion: string;
+  }): Promise<StoredRow[]> {
+    const expectedStart = Date.parse(identity.eventStartIso);
+    return this.rows.filter((row) => {
+      const diagnostics = row.diagnostics as Record<string, unknown> | undefined;
+      const context = diagnostics?.providerEventContext as Record<string, unknown> | undefined;
+      return context?.v === "v1" && context.provider === "polymarket" &&
+        context.eventId === identity.eventId &&
+        typeof context.eventStartIso === "string" &&
+        Date.parse(context.eventStartIso) === expectedStart &&
+        row.metric_formula_version === identity.scoreContractVersion;
+    }).map(clone);
+  }
+
   get size(): number {
     return this.rows.length;
   }

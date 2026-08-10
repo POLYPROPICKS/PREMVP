@@ -138,6 +138,8 @@ test("exact provider identity survives normalization and reaches the emitted Sig
     // Provider event ID and the authoritative event start, preserved exactly.
     assert.equal(ctx.eventId, "pm-event-1");
     assert.equal(ctx.eventStartIso, START_ISO);
+    assert.equal(ctx.providerMarketId, "pm-market-1");
+    assert.equal(ctx.marketType, "moneyline");
     assert.equal(diag.gameStartIso, START_ISO, "authoritative start is unchanged");
 
     // Structured official sport attribution, from the /sports tag map -- not

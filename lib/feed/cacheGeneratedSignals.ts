@@ -239,6 +239,11 @@ export function buildShadowProviderEventContext(
   const eventSlug = typeof entry.eventSlug === "string" ? entry.eventSlug.trim() : "";
   const eventTitle = typeof entry.eventTitle === "string" ? entry.eventTitle.trim() : "";
   const marketQuestion = typeof entry.marketQuestion === "string" ? entry.marketQuestion.trim() : "";
+  const providerMarketId = typeof entry.providerMarketId === "string" ? entry.providerMarketId.trim() : "";
+  const marketType = typeof entry.marketType === "string" ? entry.marketType.trim().toLowerCase() : "";
+  const gameId = typeof entry.gameId === "string" ? entry.gameId.trim() : "";
+  const teamAId = typeof entry.teamAId === "string" ? entry.teamAId.trim() : "";
+  const teamBId = typeof entry.teamBId === "string" ? entry.teamBId.trim() : "";
 
   return {
     v: "v1",
@@ -249,6 +254,13 @@ export function buildShadowProviderEventContext(
     ...(eventTitle ? { eventTitle } : {}),
     ...(marketQuestion ? { marketQuestion } : {}),
     ...(sportFamily ? { sportFamily, league: sportFamily } : {}),
+    ...(providerMarketId ? { providerMarketId } : {}),
+    ...(marketType ? { marketType } : {}),
+    ...(gameId ? { gameId } : {}),
+    ...(teamAId ? { teamAId } : {}),
+    ...(teamBId ? { teamBId } : {}),
+    ...(entry.providerSportTagIds?.length ? { sportTagIds: [...entry.providerSportTagIds] } : {}),
+    ...(entry.providerSeriesIds?.length ? { seriesIds: [...entry.providerSeriesIds] } : {}),
   };
 }
 
