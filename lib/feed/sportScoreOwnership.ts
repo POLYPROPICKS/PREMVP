@@ -88,9 +88,9 @@ export function hasStructuredScoredSportAuthority(diagnostics: unknown): boolean
   const nonEmpty = (value: unknown) => typeof value === "string" && value.trim() !== "";
   const providerEventId = nonEmpty(record.providerEventId) ? record.providerEventId as string : null;
   const providerMarketId = nonEmpty(record.providerMarketId) ? record.providerMarketId as string : null;
+  const providerSportCode = nonEmpty(record.providerSportCode) ? record.providerSportCode as string : null;
   const providerSportFamily = nonEmpty(record.providerSportFamily) ? record.providerSportFamily as string : null;
-  return nonEmpty(record.providerSportCode) &&
-    providerSportFamily !== null &&
+  return providerSportFamily !== null &&
     scoreOwnershipForSportFamily(record.providerSportFamily) === "SUPPORTED_BY_SCORE_MODEL" &&
     providerEventId !== null &&
     providerMarketId !== null &&
@@ -98,5 +98,6 @@ export function hasStructuredScoredSportAuthority(diagnostics: unknown): boolean
     nonEmpty(providerContext.eventStartIso) &&
     Number.isFinite(Date.parse(providerContext.eventStartIso as string)) &&
     providerContext.providerMarketId === providerMarketId &&
-    providerContext.sportFamily === providerSportFamily;
+    providerContext.sportFamily === providerSportFamily &&
+    (providerContext.league ?? null) === providerSportCode;
 }
