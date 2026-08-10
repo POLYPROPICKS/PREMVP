@@ -93,6 +93,13 @@ export interface LandingCardDiagnostics {
   signalStatus?: "qualified" | "upcoming_candidate";
   gameStartIso?: string | null;
   parentEventVolume24hr?: number | null;
+  providerSportCode?: string | null;
+  providerSportFamily?: string | null;
+  providerSportSource?: string | null;
+  providerSportTagIds?: string[];
+  providerSeriesIds?: string[];
+  providerEventId?: string | null;
+  providerMarketId?: string | null;
   metricDedupeAdjusted?: boolean;
   metricDedupeReason?: string;
   rawMetricVector?: number[];
@@ -232,6 +239,9 @@ export interface ResearchFunnelCounters {
   firemodel11WideAttempted?: number;
   firemodel11WideScored?: number;
   firemodel11WideSelected?: number;
+  researchScorerEligibleEvents?: number;
+  researchScorerSelectedEvents?: number;
+  researchScorerCapacityExcludedEvents?: number;
 }
 
 // ─── S2: Wide research universe — pre-grouping, pre-volume nested market ───────
@@ -264,6 +274,12 @@ export interface ResearchNestedMarket {
   marketSubtype?: string | null;
   gameStartTimeIso?: string | null;
   hoursUntilStartNum?: number | null;
+  providerSportCode: string;
+  providerSportFamily: string;
+  providerSportSource: "structured_sports_tag";
+  providerSportTagIds: string[];
+  providerSeriesIds: string[];
+  scoreOwnership: import("./sportScoreOwnership").SportScoreOwnership;
 }
 
 export interface LandingCardPair {
@@ -563,6 +579,7 @@ export interface SportsDiscoveryCounts {
   researchExcludedOddsBelowMin?: number;
   researchExcludedOddsAboveMax?: number;
   researchExcludedOddsInvalid?: number;
+  researchExcludedUnsupportedSportMarkets?: number;
   researchMarketsByFamily?: Record<string, number>;
   // Broad sports inventory diagnostics (P0-A, Option B)
   sportsInventoryEventsCaptured?: number;
@@ -622,6 +639,7 @@ export interface SportsDiscoverySample {
     volume24hr?: number | null;
     volumeClob?: number | null;
     oneDayPriceChange?: number | null;
+    providerMarketId?: string;
   } | null;
   marketsRaw?: Array<{
     outcomes: string[];
@@ -642,6 +660,12 @@ export interface SportsDiscoverySample {
   teamAName?: string | null;
   teamBName?: string | null;
   eventImage?: string | null;
+  providerEventId?: string | null;
+  providerSportCode?: string | null;
+  providerSportFamily?: string | null;
+  providerSportSource?: string | null;
+  providerSportTagIds?: string[];
+  providerSeriesIds?: string[];
 }
 
 export interface MarketSourceEvidenceCard {

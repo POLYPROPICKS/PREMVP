@@ -27,6 +27,10 @@ import {
   isForbiddenAnchorMarket,
   marketPolicyFingerprint,
 } from "./nightEventReservations";
+import {
+  hasStructuredScoredSportAuthority,
+  MODEL_SCOPE_BY_STRUCTURED_SPORT_FAMILY,
+} from "@/lib/feed/sportScoreOwnership";
 
 const POLICY_VERSION = "battle-sm-guard-v1-20260615";
 const LIVE_POLICY_VERSION = "live-risk-guard-v1";
@@ -798,6 +802,7 @@ function computePlanningFallbackScore(
 // an alias of mma per founder instruction; every other value is intentionally
 // absent so an unrecognized or unlisted upstream sport stays fail-closed.
 const MODEL_SCOPE_BY_PROVIDER_SPORT_CODE: Readonly<Record<string, StrategicScope>> = {
+  ...MODEL_SCOPE_BY_STRUCTURED_SPORT_FAMILY,
   basketball: "BASKETBALL",
   nba: "BASKETBALL",
   hockey: "HOCKEY",
@@ -825,7 +830,7 @@ const MODEL_SCOPE_BY_PROVIDER_SPORT_CODE: Readonly<Record<string, StrategicScope
 type ModelSportResolution = {
   scope: StrategicScope;
   rawProviderSportCode: string | null;
-  source: "providerSportCode" | "shadowScope" | "text" | "malformedProviderSportCode";
+  source: "providerSportFamily" | "providerSportCode" | "shadowScope" | "text" | "malformedProviderSportCode";
   hasStructuredSport: boolean;
   // true iff diagnostics.providerSportCode is a present key (not absent/null/undefined)
   // that is not a usable trimmed non-empty string. A malformed present value must
@@ -851,6 +856,31 @@ export function resolveContractASportMetadata(
 }
 
 function resolveModelSport(diag: Record<string, unknown>, identityText: string): ModelSportResolution {
+  const rawProviderSportFamilyValue = diag.providerSportFamily;
+  const providerSportFamilyKeyPresent =
+    Object.prototype.hasOwnProperty.call(diag, "providerSportFamily") &&
+    rawProviderSportFamilyValue !== undefined &&
+    rawProviderSportFamilyValue !== null;
+  if (providerSportFamilyKeyPresent) {
+    if (typeof rawProviderSportFamilyValue !== "string" || rawProviderSportFamilyValue.trim() === "") {
+      return {
+        scope: "UNKNOWN",
+        rawProviderSportCode: null,
+        source: "malformedProviderSportCode",
+        hasStructuredSport: false,
+        malformedProviderSportCode: true,
+      };
+    }
+    const providerSportFamily = rawProviderSportFamilyValue.trim().toLowerCase();
+    const rawProviderSportCode = safeLower(diag.providerSportCode) || providerSportFamily;
+    return {
+      scope: MODEL_SCOPE_BY_PROVIDER_SPORT_CODE[providerSportFamily] ?? "UNKNOWN",
+      rawProviderSportCode,
+      source: "providerSportFamily",
+      hasStructuredSport: true,
+      malformedProviderSportCode: false,
+    };
+  }
   const rawProviderSportCodeValue = diag.providerSportCode;
   const providerSportCodeKeyPresent =
     Object.prototype.hasOwnProperty.call(diag, "providerSportCode") &&
@@ -1563,7 +1593,9 @@ export async function loadContractAPlanningSourceRows(nowMs = Date.now()): Promi
   // The shadow branch is intentionally score-null and cannot become a Planning
   // Decision; reading its unbounded historical pages here delays the real
   // Reservation write without expanding the authoritative decision universe.
-  return scoredRows as Record<string, unknown>[];
+  return (scoredRows as Record<string, unknown>[]).filter((row) =>
+    hasStructuredScoredSportAuthority(row.diagnostics),
+  );
 }
 
 export async function buildFireModelCandidates(
@@ -1805,18 +1837,22 @@ export async function buildFireModelCandidates(
     const exactStructuredProviderContractAIdentity =
       planningMode &&
       selectorMode === "CONTRACT_A_PLANNING_V1" &&
-      resolvedModelSport.source === "providerSportCode" &&
+      (resolvedModelSport.source === "providerSportCode" || resolvedModelSport.source === "providerSportFamily") &&
       hasExactStructuredProviderContractAIdentity(row, diag, gameStartIso);
     if (
       planningMode &&
       selectorMode === "CONTRACT_A_PLANNING_V1" &&
-      resolvedModelSport.source === "providerSportCode" &&
+      (resolvedModelSport.source === "providerSportCode" || resolvedModelSport.source === "providerSportFamily") &&
       !exactStructuredProviderContractAIdentity
     ) {
       rejectReason("MISSING_EXACT_PROVIDER_IDENTITY");
       continue;
     }
-    if (resolvedModelSport.source === "providerSportCode" && resolvedModelSport.scope === "UNKNOWN" && !exactStructuredProviderContractAIdentity) {
+    if (
+      (resolvedModelSport.source === "providerSportCode" || resolvedModelSport.source === "providerSportFamily") &&
+      resolvedModelSport.scope === "UNKNOWN" &&
+      !exactStructuredProviderContractAIdentity
+    ) {
       if (rawDiag) rawDiag.unsupported_provider_sport_count = (rawDiag.unsupported_provider_sport_count ?? 0) + 1;
       rejectReason("UNSUPPORTED_PROVIDER_SPORT");
       continue;
