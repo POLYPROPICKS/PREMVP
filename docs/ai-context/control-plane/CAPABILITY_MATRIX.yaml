@@ -98,6 +98,7 @@
         { "capability": "DATABASE_READ", "authorized": true, "verdict": "PROVEN", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "post-deploy bounded SELECT", "proven_at": "2026-08-06T06:36:00Z", "expires_when": "database access configuration changes" },
         { "capability": "DATABASE_WRITE", "authorized": true, "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null, "note": "Authorized for R4 subject to the same-run capability bootstrap rule (reversible, bounded, non-business-table probe)." },
         { "capability": "PRODUCTION_HTTPS_READ", "authorized": true, "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null },
+        { "capability": "SENTRY_READ_DEBUG", "authorized": true, "verdict": "NOT_PROVEN", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null, "note": "Narrow Sentry MCP issue/event/stack/release read capability. It is only required for production-debug investigation, never ordinary development; same-run probes supply evidence but do not self-accept this matrix entry." },
         { "capability": "IRELAND_RUNTIME_ACCESS", "authorized": false, "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null },
         { "capability": "DEPLOY", "authorized": false, "verdict": "NOT_AVAILABLE", "evidence_class": "NOT_PROVEN", "evidence_ref": null, "proven_at": null, "expires_when": null }
       ]

@@ -31,15 +31,15 @@ Only current-state authority: `CURRENT_STATE.yaml`. `EVIDENCE_LEDGER.md` is hist
 
 ## 4. Execution targets
 
-**`claude_code_cloud`** — host_dependency false, terminal_required false, surfaces CLOUD_WEB/CLOUD_MOBILE
+**`claude_code_cloud`** — host false, terminal false, surfaces CLOUD_WEB/CLOUD_MOBILE
 - PROVEN: REPOSITORY_READ, DEPENDENCY_INSTALL, TYPECHECK, BUILD, DATABASE_READ, PRODUCTION_HTTPS_READ, GIT_PUSH_FEATURE_BRANCH
 - NOT PROVEN: DATABASE_WRITE, GITHUB_PR_CREATE, GITHUB_PR_MERGE, IRELAND_RUNTIME_ACCESS, WEATHER_GATE_REVIEW, CONTUR_GATE_REVIEW, DEPLOY
 
-**`local_codex_windows`** — host_dependency true, terminal_required false, surfaces DESKTOP/MOBILE_REMOTE
+**`local_codex_windows`** — host true, terminal false, surfaces DESKTOP/MOBILE_REMOTE
 - PROVEN: REPOSITORY_READ, DEPENDENCY_INSTALL, TYPECHECK, BUILD, LOCAL_TEST_RUN, GIT_PUSH_FEATURE_BRANCH, GITHUB_PR_CREATE, GITHUB_PR_MERGE, WEATHER_GATE_REVIEW, CONTUR_GATE_REVIEW, DETERMINISTIC_REVIEWER_INVOCATION, DATABASE_READ
-- NOT PROVEN: DATABASE_WRITE, PRODUCTION_HTTPS_READ, IRELAND_RUNTIME_ACCESS, DEPLOY
+- NOT PROVEN: DATABASE_WRITE, PRODUCTION_HTTPS_READ, SENTRY_READ_DEBUG, IRELAND_RUNTIME_ACCESS, DEPLOY
 
-**`ireland_local`** — host_dependency true, terminal_required true, surfaces none
+**`ireland_local`** — host true, terminal true, surfaces none
 - PROVEN: none
 - NOT PROVEN: REPOSITORY_READ, RUNTIME_ACCESS, REMOTE_IDENTITY, AGENT_AVAILABILITY, DEPLOY
 
@@ -66,7 +66,7 @@ Short Founder presentation + one executor block only. Every task invokes `premvp
 
 - `premvp.reviewer.weather_gate.v1` — portable_project_scoped, EXPLICIT, receipt REQUIRED, triggers: R3_WEATHER_MODEL_CHANGE; Weather model behavior change
 - `premvp.reviewer.contur_gate.v1` — portable_project_scoped, EXPLICIT, receipt REQUIRED, triggers: R4_CONTUR_PRODUCTION_BOUNDARY; Contur exact-SHA acceptance; production-boundary acceptance
-- Other registered entries (no receipt or deprecated): 2 AGENT, 18 COMMAND, 2 HOOK, 3 SCRIPT, 1 CI_GATE, 6 POLICY — see AGENT_REGISTRY.yaml.
+- Other registered entries (no receipt or deprecated): 2 AGENT, 18 COMMAND, 2 HOOK, 3 SCRIPT, 1 CI_GATE, 6 POLICY, 1 SKILL — see AGENT_REGISTRY.yaml.
 
 ## 8. PREMVP / Ireland boundary
 

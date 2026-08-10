@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 import { resolveBuildProvenance, resolveGitHeadShaSync } from "./lib/runtime/buildProvenance";
 
 const buildProvenance = resolveBuildProvenance({
@@ -14,4 +15,10 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  org: "artifactvault",
+  project: "polypropicks-premvp",
+  authToken: process.env.SENTRY_AUTH_TOKEN,
+  silent: !process.env.CI,
+  widenClientFileUpload: false,
+});

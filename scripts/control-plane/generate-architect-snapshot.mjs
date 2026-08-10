@@ -86,7 +86,7 @@ export function renderSnapshot(root = REPO_ROOT) {
   for (const t of capability.execution_targets) {
     const proven = t.capabilities.filter((c) => c.verdict === 'PROVEN').map((c) => c.capability);
     const gaps = t.capabilities.filter((c) => c.verdict !== 'PROVEN').map((c) => c.capability);
-    w(`**\`${t.executor_id}\`** — host_dependency ${t.host_dependency}, terminal_required ${t.founder_terminal_required}, surfaces ${t.access_surfaces.length ? t.access_surfaces.join('/') : 'none'}`);
+    w(`**\`${t.executor_id}\`** — host ${t.host_dependency}, terminal ${t.founder_terminal_required}, surfaces ${t.access_surfaces.length ? t.access_surfaces.join('/') : 'none'}`);
     w(`- PROVEN: ${proven.length ? proven.join(', ') : 'none'}`);
     w(`- NOT PROVEN: ${gaps.length ? gaps.join(', ') : 'none'}`);
     w();
