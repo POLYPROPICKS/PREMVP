@@ -32,6 +32,13 @@ import type { MarketAnchorDecision, MarketAnchorInput } from "../contur3/taxonom
  * resolve and validate an exact allowed market before anything is queued.
  */
 
+/**
+ * Current authority contract: event ID + authoritative start establish the
+ * occurrence; market ID + condition establish the provider market; official
+ * sport code + market type establish structured classification. The historical
+ * text predicate below is retained only as an exported classifier and is not
+ * called by the active admission function.
+ */
 export type PlanningAnchorKind = "EXECUTABLE_MARKET" | "STRUCTURED_FULLMATCH_EVENT" | "REJECTED";
 
 export interface PlanningAnchorDecision {
@@ -40,15 +47,16 @@ export interface PlanningAnchorDecision {
   reason_code: string;
 }
 
-/**
- * Sports that may use the event-level planning anchor. eSports is excluded
- * outright: its full-match policy is the canonical BO-series exception in
- * fullMatchAnchorDecision, and every eSports surface in the production corpus is
- * already rejected for a DIFFERENT reason (PARTIAL_EVENT_SCOPE /
- * ESPORTS_NON_POLICY), so it can never reach the market_class==="unknown" branch.
- * "unknown" is excluded because an unclassified sport is not a supported one.
- */
-const PLANNING_EVENT_LEVEL_EXCLUDED_SPORTS = new Set(["esport", "esports", "unknown", ""]);
+/** Provider-owned fields that may establish a planning occurrence. */
+export interface StructuredPlanningIdentity {
+  providerEventId?: string | null;
+  providerEventStartIso?: string | null;
+  providerMarketId?: string | null;
+  conditionId?: string | null;
+  providerSportCode?: string | null;
+  providerMarketType?: string | null;
+}
+
 
 /**
  * A bare two-competitor matchup and NOTHING else: "A vs B" / "A vs. B", anchored
@@ -99,10 +107,17 @@ export function isEventLevelMatchupText(value: unknown): boolean {
   return true;
 }
 
-function isSupportedNonEsportSport(sport: unknown): boolean {
-  const value = trimmedOrNull(sport);
-  if (value === null) return false;
-  return !PLANNING_EVENT_LEVEL_EXCLUDED_SPORTS.has(value.toLowerCase());
+function hasExactStructuredFullMatchIdentity(identity: StructuredPlanningIdentity | null | undefined): boolean {
+  if (!identity) return false;
+  const start = trimmedOrNull(identity.providerEventStartIso);
+  return Boolean(
+    trimmedOrNull(identity.providerEventId) &&
+    start && Number.isFinite(Date.parse(start)) &&
+    trimmedOrNull(identity.providerMarketId) &&
+    trimmedOrNull(identity.conditionId) &&
+    trimmedOrNull(identity.providerSportCode) &&
+    trimmedOrNull(identity.providerMarketType)?.toLowerCase() === "moneyline"
+  );
 }
 
 /**
@@ -126,8 +141,10 @@ export function resolvePlanningAnchorDecision(input: {
   anchorInput: MarketAnchorInput;
   /** candidate.inferred_sport */
   sport: string | null;
+  /** Provider-owned IDs/enums; the only event-level identity authority. */
+  structuredIdentity?: StructuredPlanningIdentity | null;
 }): PlanningAnchorDecision {
-  const { canonical, anchorInput } = input;
+  const { canonical } = input;
 
   // 1. Whatever the existing planning anchor already allows, keep allowing --
   //    identically, including the canonical eSports BO-series exception.
@@ -139,43 +156,23 @@ export function resolvePlanningAnchorDecision(input: {
     };
   }
 
-  // 2. The event-level branch is entered ONLY from the exact production
-  //    signature. Any other rejection reason (ACTIVITY_LABEL,
-  //    FORBIDDEN_MARKET_CLASS, ESPORTS_NON_POLICY, PARTIAL_EVENT_SCOPE) is
-  //    untouched and stays rejected -- this is what keeps the whole eSports and
-  //    partial-market corpus out.
-  if (canonical.reason_code !== "UNKNOWN_MARKET_CLASS") {
-    return { allowed_for_planning: false, anchor_kind: "REJECTED", reason_code: canonical.reason_code ?? "REJECTED" };
-  }
-  if (canonical.market_class !== "unknown") {
-    return { allowed_for_planning: false, anchor_kind: "REJECTED", reason_code: "UNKNOWN_MARKET_CLASS" };
-  }
-  if (canonical.event_scope !== "full_match") {
-    return { allowed_for_planning: false, anchor_kind: "REJECTED", reason_code: "PARTIAL_EVENT_SCOPE" };
-  }
-  // Only the provider's OWN question may authorise an event-level anchor. A
-  // derived title or a slug is not strong enough evidence to reserve a slot.
-  if (canonical.evidence_source !== "structured") {
-    return { allowed_for_planning: false, anchor_kind: "REJECTED", reason_code: "PLANNING_EVENT_LEVEL_NOT_STRUCTURED" };
-  }
-  if (!isSupportedNonEsportSport(input.sport)) {
-    return { allowed_for_planning: false, anchor_kind: "REJECTED", reason_code: "PLANNING_EVENT_LEVEL_UNSUPPORTED_SPORT" };
+  // Exact provider IDs establish the occurrence and market; the official
+  // market type establishes full-match scope. Titles, questions and slugs may
+  // still classify legacy markets, but never authorize an event-level slot.
+  if (hasExactStructuredFullMatchIdentity(input.structuredIdentity)) {
+    return {
+      allowed_for_planning: true,
+      anchor_kind: "STRUCTURED_FULLMATCH_EVENT",
+      reason_code: "PLANNING_STRUCTURED_FULLMATCH_IDENTITY",
+    };
   }
 
-  const question = trimmedOrNull(anchorInput.providerMarketQuestion);
-  if (question === null || !isEventLevelMatchupText(question)) {
-    return { allowed_for_planning: false, anchor_kind: "REJECTED", reason_code: "PLANNING_EVENT_LEVEL_NOT_MATCHUP" };
-  }
-  // The question must describe the SAME physical matchup as the event title,
-  // so a market question can never be mistaken for its own event.
-  const eventTitle = trimmedOrNull(anchorInput.eventTitle);
-  if (eventTitle !== null && normalizeForCompare(eventTitle) !== normalizeForCompare(question)) {
-    return { allowed_for_planning: false, anchor_kind: "REJECTED", reason_code: "PLANNING_EVENT_LEVEL_TITLE_MISMATCH" };
-  }
-
+  // 2. Without the exact structured carrier, event-level admission fails
+  //    closed. The canonical reason remains useful classification evidence,
+  //    but it never becomes occurrence identity.
   return {
-    allowed_for_planning: true,
-    anchor_kind: "STRUCTURED_FULLMATCH_EVENT",
-    reason_code: "PLANNING_EVENT_LEVEL_FULLMATCH",
+    allowed_for_planning: false,
+    anchor_kind: "REJECTED",
+    reason_code: canonical.reason_code ?? "STRUCTURED_EVENT_IDENTITY_INCOMPLETE",
   };
 }

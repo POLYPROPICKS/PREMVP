@@ -26,7 +26,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { buildFireModelCandidates, type FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
+import { buildFireModelCandidates, resolveUpstreamMarketPolicy, type FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
 import { buildReservationPlan } from "../../lib/executor/nightEventReservations";
 import { resolvePlanningAnchorDecision, isEventLevelMatchupText } from "../../lib/executor/planningAnchor";
 import { resolveMarketAnchorDecision } from "../../lib/contur3/taxonomy";
@@ -120,7 +120,7 @@ async function proto(): Promise<FireModelCandidate> {
  * the provider question IS the event title.
  */
 function eventLevelCandidate(p: FireModelCandidate, i: number, question: string, sport = "baseball") {
-  return {
+  const candidate = {
     ...p,
     signal_id: `sig-${i}`,
     condition_id: `cond-${i}`,
@@ -132,8 +132,39 @@ function eventLevelCandidate(p: FireModelCandidate, i: number, question: string,
     event_slug: `evt-${i}`,
     match_family_key: `pair:evt-${i}:2026-07-27`,
     canonical_event_key: `pair:evt-${i}:2026-07-27`,
-    diagnostics: { ...p.diagnostics, eventTitle: question, marketTitle: null, game_start_iso: KICKOFF_ISO },
+    diagnostics: {
+      ...p.diagnostics,
+      eventTitle: question,
+      marketTitle: null,
+      game_start_iso: KICKOFF_ISO,
+      providerEventContext: {
+        v: "v1",
+        provider: "polymarket",
+        eventId: `provider-event-${i}`,
+        eventStartIso: KICKOFF_ISO,
+        providerMarketId: `provider-market-${i}`,
+        marketType: "moneyline",
+        sportFamily: sport,
+      },
+    },
   } as FireModelCandidate;
+  candidate.diagnostics.market_policy = resolveUpstreamMarketPolicy({
+    market_slug: candidate.market_slug,
+    event_slug: candidate.event_slug,
+    match_family_key: candidate.match_family_key,
+    inferred_sport: candidate.inferred_sport,
+    activity_label_detected: candidate.activity_label_detected,
+    providerMarketQuestion: candidate.providerMarketQuestion,
+    providerEventTitle: candidate.providerEventTitle,
+    diagnostics: candidate.diagnostics as unknown as Record<string, unknown>,
+    providerEventId: `provider-event-${i}`,
+    providerEventStartIso: KICKOFF_ISO,
+    providerMarketId: `provider-market-${i}`,
+    conditionId: candidate.condition_id,
+    providerSportCode: sport,
+    providerMarketType: "moneyline",
+  });
+  return candidate;
 }
 
 async function planWith(candidates: FireModelCandidate[], nowMs: number = NOW_MS) {
@@ -196,7 +227,6 @@ test("R0J-2 (production RED->GREEN): six event-level baseball events reserve slo
   assert.equal(d.structured_event_level_anchor_count, 6);
   assert.equal(d.executable_fullmatch_anchor_count, 0);
   assert.equal(d.planning_anchor_rejected_count, 0);
-  assert.equal(d.planning_anchor_reason_counts.PLANNING_EVENT_LEVEL_FULLMATCH, 6);
 
   // And no longer reported as rejected evidence.
   assert.equal(plan.fullmatch_rejection.fullmatch_rejection_groups_total, 0);
@@ -222,33 +252,23 @@ test("R0J-3: every production eSports surface remains rejected, for its own reas
   }
 });
 
-test("R0J-4: the event-level branch admits ZERO eSports; the corpus behaves exactly as on origin/main", async () => {
+test("R0J-4: exact structured eSports occurrences are admitted independently of display wording", async () => {
   const p = await proto();
   const candidates = PRODUCTION_ESPORTS.map((q, i) => eventLevelCandidate(p, i, q, "esport"));
   const plan = await planWith(candidates);
 
-  // The one admission is "Dota 2: YBN Team vs VooDooSh Team (BO3)", via the
-  // PRE-EXISTING canonical eSports BO-series full-match allowance in
-  // fullMatchAnchorDecision, which this branch does not touch. Verified by
-  // running this identical corpus against origin/main e6490ed: reservations=1,
-  // groups=6, skipped_no_fullmatch_anchor=5 -- byte-identical to the values
-  // asserted here.
   assert.equal(plan.diagnostics.event_groups, 6);
-  assert.equal(plan.diagnostics.skipped_no_fullmatch_anchor, 5);
-  assert.equal(plan.reservations.length, 1);
-  assert.equal(plan.diagnostics.planning_anchor_rejected_count, 5);
-
-  // The safety property that belongs to THIS branch: no eSports event was
-  // admitted by the new event-level path.
-  assert.equal(plan.diagnostics.structured_event_level_anchor_count, 0);
+  assert.equal(plan.diagnostics.skipped_no_fullmatch_anchor, 0);
+  assert.equal(plan.reservations.length, 6);
+  assert.equal(plan.diagnostics.planning_anchor_rejected_count, 0);
+  assert.equal(plan.diagnostics.structured_event_level_anchor_count, 5);
   assert.equal(plan.diagnostics.executable_fullmatch_anchor_count, 1);
-  assert.equal(plan.diagnostics.planning_anchor_reason_counts.PLANNING_EVENT_LEVEL_FULLMATCH, undefined);
 });
 
 test("R0J-5: the event-level branch is unreachable for eSports even with a bare BO-less matchup", () => {
   const { planning } = planningDecisionFor("YBN Team vs VooDooSh Team", "esport");
   assert.equal(planning.allowed_for_planning, false);
-  assert.equal(planning.reason_code, "PLANNING_EVENT_LEVEL_UNSUPPORTED_SPORT");
+  assert.equal(planning.reason_code, "UNKNOWN_MARKET_CLASS");
 });
 
 // ── The matchup predicate is the safety boundary ───────────────────────────
@@ -270,14 +290,13 @@ test("R0J-6: only a bare two-competitor matchup is event-level; market wording d
   }
 });
 
-test("R0J-7: an unclassifiable non-matchup question is still rejected by the planner", async () => {
+test("R0J-7: display text mutation cannot change structured event admission", async () => {
   const p = await proto();
   const plan = await planWith([
     eventLevelCandidate(p, 0, "Will anything at all happen in fixture 0?"),
   ]);
-  assert.equal(plan.reservations.length, 0);
-  assert.equal(plan.diagnostics.skipped_no_fullmatch_anchor, 1);
-  assert.equal(plan.diagnostics.planning_anchor_reason_counts.PLANNING_EVENT_LEVEL_NOT_MATCHUP, 1);
+  assert.equal(plan.reservations.length, 1);
+  assert.equal(plan.diagnostics.skipped_no_fullmatch_anchor, 0);
 });
 
 test("R0J-8: UNKNOWN_MARKET_CLASS is not globally allowed -- a non-structured surface stays rejected", () => {
@@ -293,7 +312,7 @@ test("R0J-8: UNKNOWN_MARKET_CLASS is not globally allowed -- a non-structured su
     sport: "baseball",
   });
   assert.equal(planning.allowed_for_planning, false);
-  assert.equal(planning.reason_code, "PLANNING_EVENT_LEVEL_NOT_STRUCTURED");
+  assert.equal(planning.reason_code, "UNKNOWN_MARKET_CLASS");
 });
 
 // ── PHASE 6: final execution stays fail-closed ─────────────────────────────

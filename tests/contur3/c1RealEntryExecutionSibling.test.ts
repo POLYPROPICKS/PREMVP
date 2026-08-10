@@ -209,7 +209,7 @@ function harness(
       loadExactProviderSiblingRowsFromAnchor(
         r,
         (id: string) => table.queryById(id),
-        (conditionId: string) => table.queryByConditionId(conditionId),
+        (identity) => table.queryByProviderEvent(identity),
       ),
     // Any post-Reservation re-entry into model / broad discovery is a contract breach.
     fetchCandidates: async () => {

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "guard:text-identity-authority": "node scripts/guard-text-identity-authority.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",

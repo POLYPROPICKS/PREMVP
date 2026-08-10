@@ -654,10 +654,13 @@ export async function loadFinalIdentitySourceRowsByGeneratedSignalPairId(
 export async function loadExactProviderSiblingRowsFromAnchor(
   reservation: NightEventReservationRow,
   queryById: (generatedSignalPairId: string) => Promise<FinalIdentitySourceRow[]>,
-  queryByConditionId: (conditionId: string) => Promise<FinalIdentitySourceRow[]>,
+  queryByProviderEvent: (identity: {
+    eventId: string;
+    eventStartIso: string;
+    scoreContractVersion: string;
+  }) => Promise<FinalIdentitySourceRow[]>,
 ): Promise<FinalIdentitySourceRow[]> {
   const [anchor] = await loadFinalIdentitySourceRowsByGeneratedSignalPairId(reservation, queryById);
-  const conditionId = text(anchor?.condition_id);
   const context = anchor?.diagnostics && typeof anchor.diagnostics === "object"
     ? (anchor.diagnostics as Record<string, unknown>).providerEventContext as Record<string, unknown> | undefined
     : undefined;
@@ -669,7 +672,6 @@ export async function loadExactProviderSiblingRowsFromAnchor(
   // been valid under the same execution contract, so they must not compete for
   // the same reserved event; only the anchor's domain is admissible.
   const scoreContractVersion = text(anchor?.metric_formula_version);
-  if (!conditionId) throw new FinalIdentitySourceLoadError("EXACT_PROVIDER_EVENT_CONDITION_ID_MISSING");
   if (!context || context.v !== "v1" || context.provider !== "polymarket" || !eventId || !eventStartIso) {
     throw new FinalIdentitySourceLoadError("EXACT_PROVIDER_EVENT_IDENTITY_MISSING");
   }
@@ -678,7 +680,7 @@ export async function loadExactProviderSiblingRowsFromAnchor(
   }
   let rows: FinalIdentitySourceRow[];
   try {
-    rows = await queryByConditionId(conditionId);
+    rows = await queryByProviderEvent({ eventId, eventStartIso, scoreContractVersion });
   } catch (error) {
     throw new FinalIdentitySourceLoadError(`EXACT_PROVIDER_EVENT_QUERY_FAILED_${safeDatabaseErrorCategory(error)}`);
   }
@@ -835,8 +837,14 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
           if (error) throw error;
           return (data ?? []) as FinalIdentitySourceRow[];
         },
-        async (conditionId) => {
-          const { data, error } = await supabaseAdmin.from("generated_signal_pairs").select("*").eq("condition_id", conditionId);
+        async ({ eventId, eventStartIso, scoreContractVersion }) => {
+          const { data, error } = await supabaseAdmin
+            .from("generated_signal_pairs")
+            .select("*")
+            .contains("diagnostics", {
+              providerEventContext: { v: "v1", provider: "polymarket", eventId, eventStartIso },
+            })
+            .eq("metric_formula_version", scoreContractVersion);
           if (error) throw error;
           return (data ?? []) as FinalIdentitySourceRow[];
         },
@@ -900,10 +908,9 @@ export function planningDecisionFromReservation(reservation: NightEventReservati
   const providerEventId = lineage.provider_event_id;
   const providerEventStartIso = lineage.provider_event_start_iso;
   if (
-    typeof lineage.event_slug !== "string" || lineage.event_slug === "" ||
     typeof providerEventId !== "string" || providerEventId === "" ||
     typeof providerEventStartIso !== "string" || !Number.isFinite(Date.parse(providerEventStartIso)) ||
-    providerEventStartIso !== eventStartIso ||
+    !sameEventStartInstant(providerEventStartIso, eventStartIso) ||
     providerPhysicalEventId(providerEventId, providerEventStartIso) !== physicalEventId
   ) return null;
   return {

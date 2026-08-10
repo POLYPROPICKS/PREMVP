@@ -292,6 +292,12 @@ export type MarketPolicyProbe = Pick<
   providerMarketQuestion?: string | null;
   providerEventTitle?: string | null;
   diagnostics?: Record<string, unknown>;
+  providerEventId?: string | null;
+  providerEventStartIso?: string | null;
+  providerMarketId?: string | null;
+  conditionId?: string | null;
+  providerSportCode?: string | null;
+  providerMarketType?: string | null;
 };
 
 /**
@@ -348,6 +354,14 @@ export function resolveUpstreamMarketPolicy(probe: MarketPolicyProbe): UpstreamM
     canonical,
     anchorInput,
     sport: probe.inferred_sport ?? null,
+    structuredIdentity: {
+      providerEventId: probe.providerEventId,
+      providerEventStartIso: probe.providerEventStartIso,
+      providerMarketId: probe.providerMarketId,
+      conditionId: probe.conditionId,
+      providerSportCode: probe.providerSportCode,
+      providerMarketType: probe.providerMarketType,
+    },
   });
   return {
     ...base,
@@ -669,7 +683,7 @@ function providerContextOf(diag: Record<string, unknown>): Record<string, string
   const c = raw as Record<string, unknown>;
   if (c.v !== "v1" || c.provider !== "polymarket") return null;
   const out: Record<string, string> = {};
-  for (const key of ["eventId", "eventSlug", "eventTitle", "marketQuestion", "sportFamily", "game", "league", "eventStartIso"]) {
+  for (const key of ["eventId", "eventSlug", "eventTitle", "marketQuestion", "sportFamily", "game", "league", "eventStartIso", "providerMarketId", "marketType", "gameId", "teamAId", "teamBId"]) {
     if (typeof c[key] === "string" && c[key].trim()) out[key] = c[key].trim();
   }
   return out;
@@ -2135,6 +2149,12 @@ export async function buildFireModelCandidates(
         activity_label_detected: isActivityLabelText(candidateMarketSlug),
         providerMarketQuestion: providerContext?.marketQuestion ?? null,
         providerEventTitle: providerContext?.eventTitle ?? null,
+        providerEventId: providerContext?.eventId ?? null,
+        providerEventStartIso: providerContext?.eventStartIso ?? null,
+        providerMarketId: providerContext?.providerMarketId ?? null,
+        conditionId: typeof row.condition_id === "string" ? row.condition_id : null,
+        providerSportCode: providerContext?.sportFamily ?? null,
+        providerMarketType: providerContext?.marketType ?? null,
         // Deliberately the surfaces the EMITTED candidate will carry, not the
         // raw source row's: the verdict must describe the candidate that
         // reservation later receives, or it describes nothing it can be
