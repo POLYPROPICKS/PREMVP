@@ -71,7 +71,7 @@ function buildEntries(rows: SportsEventMarketInventoryRow[]) {
 
 // ── Fake DB boundary ───────────────────────────────────────────────────────
 let insertedRows: Record<string, unknown>[] = [];
-let preexisting: Array<{ condition_id: string; selected_token_id: string }> = [];
+let preexisting: Array<{ condition_id: string; selected_token_id: string; diagnostics?: Record<string, unknown> }> = [];
 let insertShouldFail = false;
 
 mock.module("@/lib/supabase/server", {
@@ -209,6 +209,36 @@ test("canonical sport family survives the broad carrier, persistence, and scorer
   }
 });
 
+test("a preexisting row with a dropped family is repaired by one corrected duplicate instead of blocking persistence", async () => {
+  reset();
+  const { entries } = buildEntries([inventoryRow(1)]);
+  preexisting = [{
+    condition_id: entries[0].conditionId,
+    selected_token_id: entries[0].selectedTokenId,
+    diagnostics: {
+      providerSportCode: "basketball",
+      providerSportFamily: null,
+      providerEventId: entries[0].providerEventId,
+      providerMarketId: entries[0].providerMarketId,
+      providerEventContext: {
+        eventId: entries[0].providerEventId,
+        providerMarketId: entries[0].providerMarketId,
+        sportFamily: "basketball",
+        league: "basketball",
+      },
+    },
+  }];
+
+  const detail = await (await cache()).writeStrategicShadowPairs(entries, OBSERVED_AT, { detailed: true });
+  assert.equal(detail.inserted, 2, "the malformed preexisting carrier must not dedup either real outcome");
+  assert.equal(detail.conservation.rowsDeduped, 0);
+  const repaired = insertedRows.find((row) => row.selected_token_id === entries[0].selectedTokenId);
+  const diagnostics = repaired?.diagnostics as Record<string, unknown>;
+  assert.equal(diagnostics.providerSportCode, "basketball");
+  assert.equal(diagnostics.providerSportFamily, "basketball");
+  assert.equal(hasStructuredScoredSportAuthority(diagnostics), true);
+});
+
 test("identity is derived from provider fields only -- never reconstructed from title or slug", async () => {
   const { buildShadowProviderEventContext } = await cache();
   // No provider event id => no identity. The title and slug are present and
@@ -283,9 +313,24 @@ test("deduped and rejected rows are attributable -- proposed == inserted + dedup
   const good = inventoryRow(1);
   // Preexisting shadow row for one of event 2's tokens -> ROWS_DEDUPED.
   const already = inventoryRow(2);
-  preexisting = [{ condition_id: "cond-2", selected_token_id: "tok-2-a" }];
-
   const { entries } = buildEntries([good, already]);
+  const existingEntry = entries.find((entry) => entry.conditionId === "cond-2" && entry.selectedTokenId === "tok-2-a")!;
+  preexisting = [{
+    condition_id: existingEntry.conditionId,
+    selected_token_id: existingEntry.selectedTokenId,
+    diagnostics: {
+      providerSportCode: existingEntry.providerSportCode,
+      providerSportFamily: existingEntry.providerSportFamily,
+      providerEventId: existingEntry.providerEventId,
+      providerMarketId: existingEntry.providerMarketId,
+      providerEventContext: {
+        eventId: existingEntry.providerEventId,
+        providerMarketId: existingEntry.providerMarketId,
+        sportFamily: existingEntry.providerSportFamily,
+        league: existingEntry.providerSportCode,
+      },
+    },
+  }];
   // Duplicate one entry verbatim -> intra-batch ROWS_DEDUPED.
   const withDupe = [...entries, entries[0]];
 

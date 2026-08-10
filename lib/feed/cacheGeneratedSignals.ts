@@ -327,6 +327,25 @@ export function buildShadowProviderEventContext(
   };
 }
 
+function hasMatchingStructuredSportCarrier(diagnostics: unknown, entry: WcShadowEntry): boolean {
+  if (!diagnostics || typeof diagnostics !== "object") return false;
+  const diag = diagnostics as Record<string, unknown>;
+  const context = diag.providerEventContext;
+  if (!context || typeof context !== "object") return false;
+  const providerContext = context as Record<string, unknown>;
+  const normalize = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : null;
+  const expectedCode = normalize(entry.providerSportCode);
+  const expectedFamily = normalize(entry.providerSportFamily);
+  return normalize(diag.providerSportCode) === expectedCode &&
+    normalize(diag.providerSportFamily) === expectedFamily &&
+    normalize(diag.providerEventId) === normalize(entry.providerEventId) &&
+    normalize(diag.providerMarketId) === normalize(entry.providerMarketId) &&
+    normalize(providerContext.eventId) === normalize(entry.providerEventId) &&
+    normalize(providerContext.providerMarketId) === normalize(entry.providerMarketId) &&
+    normalize(providerContext.sportFamily) === expectedFamily &&
+    normalize(providerContext.league) === expectedCode;
+}
+
 export function writeStrategicShadowPairs(
   candidates: WcShadowEntry[],
   defaultExpiresAt: string,
@@ -400,11 +419,17 @@ export async function writeStrategicShadowPairs(
     );
   }
 
+  const candidateByKey = new Map(
+    uniqueCandidates.map((candidate) => [
+      `${candidate.conditionId}::${candidate.selectedTokenId}::shadow-strategic-sports-v1`,
+      candidate,
+    ]),
+  );
   const existingKeys = new Set<string>();
   for (const chunk of dedupChunks) {
     const { data: existing, error: dedupError } = await supabaseAdmin
       .from("generated_signal_pairs")
-      .select("condition_id, selected_token_id, metric_formula_version")
+      .select("condition_id, selected_token_id, metric_formula_version, diagnostics")
       .in("condition_id", chunk)
       .eq("metric_formula_version", "shadow-strategic-sports-v1");
 
@@ -412,7 +437,11 @@ export async function writeStrategicShadowPairs(
       throw new Error(`Failed to read existing shadow pairs: ${dedupError.message}`);
     }
     for (const r of existing ?? []) {
-      existingKeys.add(`${r.condition_id}::${r.selected_token_id}::${r.metric_formula_version}`);
+      const key = `${r.condition_id}::${r.selected_token_id}::${r.metric_formula_version}`;
+      const candidate = candidateByKey.get(key);
+      if (candidate && hasMatchingStructuredSportCarrier(r.diagnostics, candidate)) {
+        existingKeys.add(key);
+      }
     }
   }
 
