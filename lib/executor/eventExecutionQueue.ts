@@ -838,9 +838,9 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
           return (data ?? []) as FinalIdentitySourceRow[];
         },
         // Bounded exact-identity lookup, not a broad diagnostics containment
-        // scan. The previous `.contains("diagnostics", {...})` query shape
-        // forced Postgres to evaluate a full-row JSONB containment check
-        // against every row of generated_signal_pairs (a table already
+        // scan. The previous JSONB-containment query shape forced Postgres
+        // to evaluate a full-row check against every row of
+        // generated_signal_pairs (a table already
         // proven, in this same repo's migration history, to grow past the
         // point an unindexed full-table predicate can complete inside the
         // statement timeout — see idx_gsp_shadow_dedup and
