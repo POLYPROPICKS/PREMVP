@@ -74,6 +74,45 @@ test("candidate mapping exposes max_entry_price / price_cap read from diagnostic
   assert.equal(c.price_cap, 0.71);
 });
 
+test("candidate mapping preserves the persisted queue instruction identity required by Ireland", () => {
+  const nowMs = Date.parse("2026-08-11T12:00:00.000Z");
+  const c = mapQueueRowToIrelandCandidate(
+    baseRow({
+      id: "021d6539-6ba1-4c84-930a-42d5dde8b4db",
+      reservation_id: "4c7600e4-824d-415d-bd64-9a92bbaf90d8",
+      match_family_key: "provider:polymarket:822487:2026-08-11",
+      game_start_iso: "2026-08-11T15:00:00.000Z",
+      condition_id: "condition-822487",
+      token_id: "token-822487",
+      side: "YES",
+      stake_usd: 1.1,
+      idempotency_key: "idem-822487",
+      status: "READY",
+      diagnostics: {
+        physical_event_id: "provider:polymarket:822487:2026-08-11",
+        event_start_iso: "2026-08-11T15:00:00.000Z",
+        source_lineage: { provider_event_id: "822487" },
+        max_entry_price: 0.62,
+      },
+    }),
+    nowMs,
+  );
+
+  assert.equal(c.queue_id, "021d6539-6ba1-4c84-930a-42d5dde8b4db");
+  assert.equal(c.reservation_id, "4c7600e4-824d-415d-bd64-9a92bbaf90d8");
+  assert.equal(c.physical_event_id, "provider:polymarket:822487:2026-08-11");
+  assert.equal(c.provider_event_id, "822487");
+  assert.equal(c.condition_id, "condition-822487");
+  assert.equal(c.token_id, "token-822487");
+  assert.equal(c.side, "YES");
+  assert.equal(c.stake_usd, 1.1);
+  assert.equal(c.idempotency_key, "idem-822487");
+  assert.equal(c.status, "READY");
+  assert.equal(c.event_start_iso, "2026-08-11T15:00:00.000Z");
+  assert.equal(c.max_entry_price, 0.62);
+  assert.equal(c.price_cap, 0.62);
+});
+
 test("candidate mapping falls back to null price cap when diagnostics missing it", () => {
   const nowMs = Date.parse("2026-07-07T15:00:00.000Z");
   const c = mapQueueRowToIrelandCandidate(baseRow({ diagnostics: {} }), nowMs);
