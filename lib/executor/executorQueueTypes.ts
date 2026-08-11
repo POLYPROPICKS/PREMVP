@@ -89,6 +89,8 @@ export interface EventExecutionQueueRow {
 // Ireland-facing candidate projection (mirrors /api/executor/night-plan candidate shape).
 export interface IrelandQueueCandidate {
   candidate_id: string;
+  /** Canonical persisted event_execution_queue.id for consumer acknowledgement. */
+  queue_id: string;
   order_key: string;
   idempotency_key: string | null;
   plan_run_id: string;
@@ -97,6 +99,8 @@ export interface IrelandQueueCandidate {
   match_family_key: string;
   /** Canonical alias for legacy match_family_key occurrence storage. */
   physical_event_id: string | null;
+  /** Provider event identity preserved from immutable persisted lineage. */
+  provider_event_id: string | null;
   event_slug: string | null;
   event_id: string | null;
   event_title: string | null;
@@ -125,12 +129,35 @@ export interface IrelandQueueCandidate {
   // PENDING_WINDOW: preferred_entry_iso still in the future; IN_WINDOW: ready to enter now.
   entry_state: "IN_WINDOW" | "PENDING_WINDOW";
   selection_rank: number;
+  status: QueueStatus;
   is_executable: true;
 }
 
 function extractMaxEntryPrice(diagnostics: Record<string, unknown>): number | null {
   const v = diagnostics.max_entry_price;
   return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+function extractProviderEventId(diagnostics: Record<string, unknown>): string | null {
+  const direct = diagnostics.provider_event_id;
+  if (typeof direct === "string" && direct) return direct;
+
+  const sourceLineage = diagnostics.source_lineage;
+  if (sourceLineage && typeof sourceLineage === "object") {
+    const providerEventId = (sourceLineage as Record<string, unknown>).provider_event_id;
+    if (typeof providerEventId === "string" && providerEventId) return providerEventId;
+  }
+
+  const finalIdentity = diagnostics.contract_a_final_identity;
+  if (finalIdentity && typeof finalIdentity === "object") {
+    const lineage = (finalIdentity as Record<string, unknown>).source_lineage;
+    if (lineage && typeof lineage === "object") {
+      const providerEventId = (lineage as Record<string, unknown>).provider_event_id;
+      if (typeof providerEventId === "string" && providerEventId) return providerEventId;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -146,8 +173,10 @@ export function mapQueueRowToIrelandCandidate(
   const entryState: IrelandQueueCandidate["entry_state"] =
     Number.isFinite(preferredMs) && preferredMs <= nowMs ? "IN_WINDOW" : "PENDING_WINDOW";
   const maxEntryPrice = extractMaxEntryPrice(row.diagnostics ?? {});
+  const providerEventId = extractProviderEventId(row.diagnostics ?? {});
   return {
     candidate_id: row.id ?? `${row.plan_run_id}:${row.match_family_key}`,
+    queue_id: row.id ?? `${row.plan_run_id}:${row.match_family_key}`,
     order_key: row.order_key ?? `${row.condition_id}:${row.token_id}:${row.side}`,
     idempotency_key: row.idempotency_key ?? null,
     plan_run_id: row.plan_run_id,
@@ -158,6 +187,7 @@ export function mapQueueRowToIrelandCandidate(
       (typeof row.diagnostics?.physical_event_id === "string" && row.diagnostics.physical_event_id) ||
       row.match_family_key ||
       null,
+    provider_event_id: providerEventId,
     event_slug: row.event_slug,
     event_id: row.event_slug,
     event_title: row.event_title,
@@ -183,6 +213,7 @@ export function mapQueueRowToIrelandCandidate(
       row.game_start_iso,
     entry_state: entryState,
     selection_rank: row.selection_rank,
+    status: row.status,
     is_executable: true,
   };
 }
