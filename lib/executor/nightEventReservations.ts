@@ -45,6 +45,11 @@ import type {
   ContractAPlanningDecision,
 } from "./contractADecisions";
 import {
+  LIVE_RESERVATION_ALLOCATION_V1,
+  rankAllocatableApprovedPhysicalEvents,
+  type LiveReservationAllocationPolicy,
+} from "./liveReservationAllocationPolicy";
+import {
   resolvePlanningAnchorDecision,
   type PlanningAnchorDecision,
 } from "./planningAnchor";
@@ -400,7 +405,7 @@ function anchorEvidenceForCandidate(c: FireModelCandidate): MarketAnchorDecision
 // Founder live-slot policy: try to fill at least this many live slots when eligible
 // candidates exist. Tier1 first; Tier2 then Tier3 only as explicit fallback to reach
 // the target. Fallback never uses forbidden market classes.
-const TARGET_LIVE_SLOTS = 15;
+const TARGET_LIVE_SLOTS = LIVE_RESERVATION_ALLOCATION_V1.targetReservationSlots;
 
 function eventTierOf(c: FireModelCandidate): "TIER1" | "TIER2" | "TIER3" | "REJECTED" {
   if (c.strategy === "TIER1_CORE_STRICT_72_COV50") return "TIER1";
@@ -687,6 +692,13 @@ export interface ReservationPlan {
     planning_decisions_rejected?: number;
     duplicate_rejected?: number;
     cap_excluded?: number;
+    allocation_policy_id?: string;
+    allocation_min_start_lead_minutes?: number;
+    allocation_target_reservation_slots?: number;
+    allocation_ranking_order?: readonly string[];
+    allocation_allocatable_after_time_guard?: number;
+    allocation_minimum_lead_rejected?: number;
+    allocation_missing_provider_volume?: number;
   };
 }
 
@@ -1604,12 +1616,14 @@ export function createSupabaseReservationRepoPort(): ReservationRepoPort {
 // Authority split enforced by this section:
 //   Contract A owns  — sport policy, market policy, planning approval,
 //                      planning score, tier, rank, rejection evidence.
-//   Reservation owns — exact physical occurrence identity, active duplicate
-//                      protection, the cap, persistence, lifecycle, lineage.
+//   Reservation owns — exact physical occurrence identity, live allocation
+//                      order, active duplicate protection, the cap,
+//                      persistence, lifecycle, lineage.
 //
-// Nothing here scores, reranks, reclassifies a market, or resolves an
-// executable identity. condition_id / token_id / side belong to the later
-// Final Identity Decision and are deliberately NOT carried into a Reservation.
+// Nothing here scores, reclassifies a market, or resolves an executable
+// identity. The allocation policy orders already-approved physical events.
+// condition_id / token_id / side belong to the later Final Identity Decision
+// and are deliberately NOT carried into a Reservation.
 // ═══════════════════════════════════════════════════════════════════════════
 
 /** Reservation lifecycle states that still hold a physical occurrence. */
@@ -1624,6 +1638,8 @@ export type PlanningDecisionReservationReasonCode =
   | "PLANNING_DECISION_REJECTED"
   | "MALFORMED_EVENT_START_ISO"
   | "OUTSIDE_RESERVATION_HORIZON"
+  | "MIN_START_LEAD_NOT_MET"
+  | "DUPLICATE_PHYSICAL_EVENT"
   | "OCCURRENCE_IDENTITY_CONFLICT"
   | "ACTIVE_DUPLICATE"
   | "CAP_EXCLUDED"
@@ -1650,27 +1666,15 @@ export interface ReservationOccurrenceGuardRow {
 export interface PlanningDecisionReservationResult {
   reservations: NightEventReservationRow[];
   rejections: PlanningDecisionReservationRejection[];
-  /** Occurrence ids admitted in Contract A order, BEFORE the cap. */
+  /** Distinct allocatable occurrence ids in policy order, before the cap. */
   admittedOccurrenceIds: string[];
   approvedCount: number;
   rejectedCount: number;
   duplicateRejected: number;
   capExcluded: number;
-}
-
-/**
- * The authoritative Contract A planning order. Rank is the model's own verdict;
- * score and identity break ties only so the same decision set always yields the
- * same reservation order. This is NOT a quality judgement — no legacy
- * `compareCandidateQuality` reranking happens at the reservation stage.
- */
-function compareContractAPlanningOrder(
-  a: ContractAPlanningDecision,
-  b: ContractAPlanningDecision
-): number {
-  if (a.planning_rank !== b.planning_rank) return a.planning_rank - b.planning_rank;
-  if (a.planning_score !== b.planning_score) return b.planning_score - a.planning_score;
-  return a.physical_event_id.localeCompare(b.physical_event_id);
+  minimumLeadRejected: number;
+  allocatableAfterTimeGuard: number;
+  missingProviderVolume: number;
 }
 
 /**
@@ -1683,6 +1687,10 @@ function compareContractAPlanningOrder(
 function planningDecisionReservationRow(
   decision: ContractAPlanningDecision,
   ctx: { planRunId: string; window: NightWindow },
+  allocation: {
+    policy: LiveReservationAllocationPolicy;
+    providerMarketVolume: number | null;
+  },
   reservationRank: number
 ): NightEventReservationRow {
   return {
@@ -1721,6 +1729,14 @@ function planningDecisionReservationRow(
       planning_tier: decision.planning_tier,
       planning_rank: decision.planning_rank,
       planning_policy_verdict: decision.planning_policy_verdict,
+      allocation_policy_id: allocation.policy.policyId,
+      allocation_min_start_lead_minutes: allocation.policy.minStartLeadMinutes,
+      allocation_target_reservation_slots: allocation.policy.targetReservationSlots,
+      allocation_ranking_order: [...allocation.policy.rankingOrder],
+      allocation_sport_priority: allocation.policy.preferredStrategicScopes.includes(decision.strategic_scope)
+        ? "PREFERRED"
+        : "STANDARD",
+      provider_market_volume: allocation.providerMarketVolume,
       // Time and metadata provenance.
       event_start_iso_source: decision.event_start_iso_source,
       sport_metadata_source: decision.sport_metadata_source,
@@ -1752,7 +1768,11 @@ export function buildReservationsFromPlanningDecisions(
   results: readonly ContractADecisionResult<ContractAPlanningDecision>[],
   ctx: { planRunId: string; window: NightWindow; nowMs: number },
   activeOccurrences: readonly ReservationOccurrenceGuardRow[] = [],
-  opts: { restrictToOccurrenceIds?: ReadonlySet<string> } = {}
+  opts: {
+    restrictToOccurrenceIds?: ReadonlySet<string>;
+    allocationPolicy?: LiveReservationAllocationPolicy;
+    providerVolumeByPhysicalEventId?: ReadonlyMap<string, number | null>;
+  } = {}
 ): PlanningDecisionReservationResult {
   const rejections: PlanningDecisionReservationRejection[] = [];
   const reject = (
@@ -1805,13 +1825,30 @@ export function buildReservationsFromPlanningDecisions(
     admitted.push(decision);
   }
 
-  // 3. Contract A planning order — never a legacy candidate-quality rerank.
-  admitted.sort(compareContractAPlanningOrder);
+  // 3. LIVE_RESERVATION_ALLOCATION_V1 orders already-approved physical events.
+  const allocationPolicy = opts.allocationPolicy ?? LIVE_RESERVATION_ALLOCATION_V1;
+  const allocation = rankAllocatableApprovedPhysicalEvents(
+    admitted.map((decision) => ({
+      decision,
+      providerMarketVolume:
+        opts.providerVolumeByPhysicalEventId?.get(decision.physical_event_id) ?? null,
+    })),
+    ctx.window.startMs,
+    allocationPolicy,
+  );
+  for (const decision of allocation.excludedBeforeMinimumLead) {
+    reject("MIN_START_LEAD_NOT_MET", decision.physical_event_id, decision.decision_version);
+  }
+  for (const decision of allocation.duplicateDecisionsRemoved) {
+    reject("DUPLICATE_PHYSICAL_EVENT", decision.physical_event_id, decision.decision_version);
+  }
 
   const targeted =
     opts.restrictToOccurrenceIds === undefined
-      ? admitted
-      : admitted.filter((d) => opts.restrictToOccurrenceIds!.has(d.physical_event_id));
+      ? allocation.rankedDistinct
+      : allocation.rankedDistinct.filter((candidate) =>
+          opts.restrictToOccurrenceIds!.has(candidate.decision.physical_event_id)
+        );
 
   // 4. Active duplicate protection. A TERMINAL reservation (SKIPPED / EXPIRED /
   //    CANCELLED) holds no occurrence, so it never blocks a new one.
@@ -1824,11 +1861,12 @@ export function buildReservationsFromPlanningDecisions(
   }
 
   const reservations: NightEventReservationRow[] = [];
-  const admittedOccurrenceIds = targeted.map((d) => d.physical_event_id);
-  let duplicateRejected = 0;
+  const admittedOccurrenceIds = targeted.map((candidate) => candidate.decision.physical_event_id);
+  let duplicateRejected = allocation.duplicatesRemoved;
   let capExcluded = 0;
 
-  for (const decision of targeted) {
+  for (const candidate of targeted) {
+    const decision = candidate.decision;
     const occurrenceId = decision.physical_event_id;
     if (activeStartByOccurrence.has(occurrenceId)) {
       const heldStart = activeStartByOccurrence.get(occurrenceId) ?? "";
@@ -1848,14 +1886,22 @@ export function buildReservationsFromPlanningDecisions(
       }
       continue;
     }
-    if (reservations.length >= TARGET_LIVE_SLOTS) {
+    if (reservations.length >= allocationPolicy.targetReservationSlots) {
       capExcluded += 1;
       reject("CAP_EXCLUDED", occurrenceId, decision.decision_version);
       continue;
     }
     activeStartByOccurrence.set(occurrenceId, decision.event_start_iso);
     reservations.push(
-      planningDecisionReservationRow(decision, ctx, reservations.length + 1)
+      planningDecisionReservationRow(
+        decision,
+        ctx,
+        {
+          policy: allocationPolicy,
+          providerMarketVolume: candidate.providerMarketVolume,
+        },
+        reservations.length + 1,
+      )
     );
   }
 
@@ -1867,6 +1913,11 @@ export function buildReservationsFromPlanningDecisions(
     rejectedCount,
     duplicateRejected,
     capExcluded,
+    minimumLeadRejected: allocation.excludedBeforeMinimumLead.length,
+    allocatableAfterTimeGuard: allocation.rankedDistinct.length,
+    missingProviderVolume: allocation.rankedDistinct.filter(
+      (candidate) => candidate.providerMarketVolume === null,
+    ).length,
   };
 }
 
@@ -1910,6 +1961,13 @@ function contractAPlanDiagnostics(input: {
     planning_decisions_rejected: built.rejectedCount,
     duplicate_rejected: built.duplicateRejected,
     cap_excluded: built.capExcluded,
+    allocation_policy_id: LIVE_RESERVATION_ALLOCATION_V1.policyId,
+    allocation_min_start_lead_minutes: LIVE_RESERVATION_ALLOCATION_V1.minStartLeadMinutes,
+    allocation_target_reservation_slots: LIVE_RESERVATION_ALLOCATION_V1.targetReservationSlots,
+    allocation_ranking_order: [...LIVE_RESERVATION_ALLOCATION_V1.rankingOrder],
+    allocation_allocatable_after_time_guard: built.allocatableAfterTimeGuard,
+    allocation_minimum_lead_rejected: built.minimumLeadRejected,
+    allocation_missing_provider_volume: built.missingProviderVolume,
     // ── Real stage counts for this path ─────────────────────────────────────
     universe_size: input.decisionCount,
     upstream_approved_candidates: built.approvedCount,
@@ -2007,6 +2065,46 @@ function contractAPlanDiagnostics(input: {
   };
 }
 
+function structuredProviderMarketVolume(row: Record<string, unknown>): number | null {
+  const diagnostics = row.diagnostics;
+  if (!diagnostics || typeof diagnostics !== "object") return null;
+  const value = (diagnostics as Record<string, unknown>).parentEventVolume24hr;
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function providerVolumeByPhysicalEventId(
+  rows: readonly Record<string, unknown>[],
+  results: readonly ContractADecisionResult<ContractAPlanningDecision>[],
+): Map<string, number | null> {
+  const rowsById = new Map<string, Record<string, unknown>>();
+  const rowsByObservation = new Map<string, Record<string, unknown>>();
+  for (const row of rows) {
+    if (typeof row.id === "string" && row.id) rowsById.set(row.id, row);
+    const conditionId = typeof row.condition_id === "string" ? row.condition_id : "";
+    const tokenId = typeof row.selected_token_id === "string" ? row.selected_token_id : "";
+    if (conditionId && tokenId) rowsByObservation.set(`${conditionId}::${tokenId}`, row);
+  }
+
+  const volumes = new Map<string, number | null>();
+  for (const result of results) {
+    if (!result.accepted) continue;
+    const lineage = result.decision.source_lineage;
+    const row =
+      (lineage.generated_signal_pair_id
+        ? rowsById.get(lineage.generated_signal_pair_id)
+        : undefined) ??
+      (lineage.observation_id ? rowsByObservation.get(lineage.observation_id) : undefined);
+    const volume = row ? structuredProviderMarketVolume(row) : null;
+    const prior = volumes.get(result.decision.physical_event_id) ?? null;
+    if (volume !== null && (prior === null || volume > prior)) {
+      volumes.set(result.decision.physical_event_id, volume);
+    } else if (!volumes.has(result.decision.physical_event_id)) {
+      volumes.set(result.decision.physical_event_id, null);
+    }
+  }
+  return volumes;
+}
+
 /**
  * Build the frozen reservation plan from AUTHORITATIVE Contract A Planning
  * Decisions (PURE — no DB writes).
@@ -2047,7 +2145,11 @@ export async function buildContractAReservationPlan(
 
   const ctx = { planRunId, window, nowMs };
   const activeOccurrences = deps.activeOccurrences ?? [];
-  let built = buildReservationsFromPlanningDecisions(results, ctx, activeOccurrences);
+  const providerVolumes = providerVolumeByPhysicalEventId(rows, results);
+  let built = buildReservationsFromPlanningDecisions(results, ctx, activeOccurrences, {
+    allocationPolicy: LIVE_RESERVATION_ALLOCATION_V1,
+    providerVolumeByPhysicalEventId: providerVolumes,
+  });
 
   // ── Canary single-event targeting (planning-stage only; never fuzzy) ──────
   // Matched against the FULL admitted set, before the cap, so a CEO-approved
@@ -2065,6 +2167,8 @@ export async function buildContractAReservationPlan(
     canaryTargetGroupKey = matches.length === 1 ? matches[0] : null;
     built = buildReservationsFromPlanningDecisions(results, ctx, activeOccurrences, {
       restrictToOccurrenceIds: new Set(canaryTargetGroupKey ? [canaryTargetGroupKey] : []),
+      allocationPolicy: LIVE_RESERVATION_ALLOCATION_V1,
+      providerVolumeByPhysicalEventId: providerVolumes,
     });
   }
 

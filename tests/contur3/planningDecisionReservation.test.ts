@@ -73,6 +73,7 @@ function sourceRow(overrides: {
   gameStartIso?: string | null;
   score?: number;
   confidence?: number;
+  providerVolume?: number;
 }): Record<string, unknown> {
   const gameStartIso = overrides.gameStartIso === undefined ? KICKOFF_A : overrides.gameStartIso;
   const conditionId = overrides.conditionId ?? "cond-nyy-phi";
@@ -107,6 +108,9 @@ function sourceRow(overrides: {
       shadowScope: "baseball",
       eventTitle: "New York Yankees vs Philadelphia Phillies",
       marketTitle: "Yankees vs Phillies moneyline",
+      ...(overrides.providerVolume === undefined
+        ? {}
+        : { parentEventVolume24hr: overrides.providerVolume }),
     },
   };
 }
@@ -492,16 +496,14 @@ test("PDR-13: the reservation cap remains exactly 15", async () => {
   assert.equal(plan.diagnostics.cap_excluded, decisions.filter((d) => d.accepted).length - 15);
 });
 
-test("PDR-14: the top 15 are selected in Contract A planning order, not by legacy candidate quality", async () => {
+test("PDR-14: the top 15 already-approved events use live allocation score order", async () => {
   const rows = capRows(20);
   const decisions = await at(NOW_MS, () => produceContractAPlanningDecisions(rows));
   const approved = decisions.flatMap((d) => (d.accepted ? [d.decision] : []));
-  const contractAOrder = [...approved]
+  const allocationOrder = [...approved]
     .sort((a, b) =>
-      a.planning_rank !== b.planning_rank
-        ? a.planning_rank - b.planning_rank
-        : b.planning_score - a.planning_score ||
-          a.physical_event_id.localeCompare(b.physical_event_id)
+      b.planning_score - a.planning_score ||
+      a.physical_event_id.localeCompare(b.physical_event_id)
     )
     .slice(0, 15)
     .map((d) => d.physical_event_id);
@@ -509,13 +511,42 @@ test("PDR-14: the top 15 are selected in Contract A planning order, not by legac
   const plan = await planFrom(rows);
   assert.deepEqual(
     plan.reservations.map((r) => r.physical_event_id),
-    contractAOrder,
-    "reservation order must be the Contract A planning order"
+    allocationOrder,
+    "reservation order must use live allocation after Contract A approval"
   );
   assert.deepEqual(
     plan.reservations.map((r) => r.reservation_rank),
     Array.from({ length: 15 }, (_, i) => i + 1)
   );
+});
+
+test("PDR-14b: real source-row provider volume breaks equal-score ties through exact decision lineage", async () => {
+  const lowVolume = sourceRow({
+    id: "00000000-0000-4000-8000-000000000021",
+    conditionId: "cond-low-volume",
+    tokenId: "tok-low-volume",
+    eventSlug: "mlb-low-volume-2026-07-27",
+    providerEventId: "provider-low-volume",
+    score: 80,
+    providerVolume: 10,
+  });
+  const highVolume = sourceRow({
+    id: "00000000-0000-4000-8000-000000000022",
+    conditionId: "cond-high-volume",
+    tokenId: "tok-high-volume",
+    eventSlug: "mlb-high-volume-2026-07-27",
+    providerEventId: "provider-high-volume",
+    score: 80,
+    providerVolume: 1_000,
+  });
+
+  const plan = await planFrom([lowVolume, highVolume]);
+  assert.deepEqual(
+    plan.reservations.map((row) => row.diagnostics.provider_market_volume),
+    [1_000, 10],
+  );
+  assert.equal(plan.diagnostics.allocation_policy_id, "LIVE_RESERVATION_ALLOCATION_V1");
+  assert.equal(plan.diagnostics.allocation_allocatable_after_time_guard, 2);
 });
 
 // ── 7. Event-level semantics and persistence compatibility ────────────────
