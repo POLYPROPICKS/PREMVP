@@ -740,10 +740,25 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
       if (!context || context.v !== "v1" || context.provider !== "polymarket" || !eventId || !eventStartIso) {
         throw new FinalIdentitySourceLoadError("EXACT_PROVIDER_EVENT_IDENTITY_MISSING");
       }
+      // Bounded exact-identity lookup, not a broad diagnostics containment scan.
+      // The previous JSONB-containment query shape forced Postgres to
+      // evaluate a full-row check against every row of
+      // generated_signal_pairs (a table already proven, in this same repo's
+      // migration history, to grow past the point an unindexed full-table
+      // predicate can complete inside the statement timeout — see
+      // idx_gsp_shadow_dedup and idx_gsp_pending_resolution). Filtering on the
+      // extracted providerEventContext fields directly lets a supporting
+      // expression index (idx_gsp_provider_event_context) serve this as an
+      // index scan instead of a sequential scan, while matching the exact same
+      // v1/polymarket/eventId/eventStartIso identity the reservation's
+      // persisted lineage already authorizes.
       const { data, error } = await supabaseAdmin
         .from("generated_signal_pairs")
         .select("*")
-        .contains("diagnostics", { providerEventContext: { v: "v1", provider: "polymarket", eventId, eventStartIso } });
+        .eq("diagnostics->providerEventContext->>v", "v1")
+        .eq("diagnostics->providerEventContext->>provider", "polymarket")
+        .eq("diagnostics->providerEventContext->>eventId", eventId)
+        .eq("diagnostics->providerEventContext->>eventStartIso", eventStartIso);
       if (error) throw new FinalIdentitySourceLoadError(`EXACT_PROVIDER_EVENT_QUERY_FAILED_${safeDatabaseErrorCategory(error)}`);
       return (data ?? []) as FinalIdentitySourceRow[];
     },
