@@ -91,7 +91,6 @@ test("candidate mapping preserves the persisted queue instruction identity requi
       diagnostics: {
         physical_event_id: "provider:polymarket:822487:2026-08-11",
         event_start_iso: "2026-08-11T15:00:00.000Z",
-        source_lineage: { provider_event_id: "822487" },
         max_entry_price: 0.62,
       },
     }),

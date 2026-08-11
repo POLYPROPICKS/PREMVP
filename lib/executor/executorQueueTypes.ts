@@ -157,6 +157,15 @@ function extractProviderEventId(diagnostics: Record<string, unknown>): string | 
     }
   }
 
+  // Legacy persisted Queue rows may predate the explicit lineage field, but
+  // still carry the canonical immutable provider occurrence identity. This is
+  // a structured identity parse, never a reconstruction from display text.
+  const physicalEventId = diagnostics.physical_event_id;
+  const physicalMatch = typeof physicalEventId === "string"
+    ? /^provider:polymarket:([^:]+):\d{4}-\d{2}-\d{2}$/.exec(physicalEventId)
+    : null;
+  if (physicalMatch?.[1]) return physicalMatch[1];
+
   return null;
 }
 
