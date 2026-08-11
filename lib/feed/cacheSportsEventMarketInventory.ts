@@ -300,6 +300,19 @@ export const SPORTS_INVENTORY_CONFLICT_TARGET =
 
 const MAX_BATCH_SIZE = 500;
 
+/**
+ * Queue SLA guard: the broad inventory is observability-only and fail-open.
+ * Do not generate its high-churn upsert workload while a persisted Reservation
+ * may be approaching execution, or when the Reservation read itself is
+ * unavailable. Discovery and structured Signal Pair materialization continue.
+ */
+export function shouldSuppressSportsInventoryWrite(input: {
+  activeReservationPinCount: number;
+  pinLoadFailed: boolean;
+}): boolean {
+  return input.pinLoadFailed || input.activeReservationPinCount > 0;
+}
+
 export interface SportsInventoryRepoPort {
   upsertBatch(
     rows: Record<string, unknown>[],
