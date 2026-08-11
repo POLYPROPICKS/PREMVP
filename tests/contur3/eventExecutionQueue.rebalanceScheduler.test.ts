@@ -218,8 +218,16 @@ test("Final Identity production loader has no slug fallback query", () => {
   const loader = source.slice(start, end);
   assert.match(loader, /\.eq\("id", generatedSignalPairId\)/);
   assert.match(loader, /\.limit\(1\)/);
-  assert.match(loader, /\.contains\("diagnostics"/);
-  assert.match(loader, /providerEventContext: \{ v: "v1", provider: "polymarket", eventId, eventStartIso \}/);
+  // The broad, unindexed diagnostics containment scan
+  // (`.contains("diagnostics", {...})`) previously caused
+  // EXACT_PROVIDER_EVENT_QUERY_FAILED_57014 in production (proven: 2026-08-10
+  // Minsk cohort, 15/15 natural Reservations). It must stay bounded exact-eq
+  // filters on the extracted identity fields, not a containment scan.
+  assert.doesNotMatch(loader, /\.contains\(\s*"diagnostics"/, "the broad diagnostics containment scan must not return");
+  assert.match(loader, /\.eq\("diagnostics->providerEventContext->>v",\s*"v1"\)/);
+  assert.match(loader, /\.eq\("diagnostics->providerEventContext->>provider",\s*"polymarket"\)/);
+  assert.match(loader, /\.eq\("diagnostics->providerEventContext->>eventId",\s*eventId\)/);
+  assert.match(loader, /\.eq\("diagnostics->providerEventContext->>eventStartIso",\s*eventStartIso\)/);
   assert.match(loader, /\.eq\("metric_formula_version", scoreContractVersion\)/);
   assert.doesNotMatch(loader, /\.eq\("condition_id"/, "one market condition cannot define the event sibling set");
   assert.doesNotMatch(loader, /event_slug|\.order\(/, "slug and recency must never become source identity fallbacks");

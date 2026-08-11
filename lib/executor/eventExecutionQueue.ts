@@ -837,13 +837,28 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
           if (error) throw error;
           return (data ?? []) as FinalIdentitySourceRow[];
         },
+        // Bounded exact-identity lookup, not a broad diagnostics containment
+        // scan. The previous JSONB-containment query shape forced Postgres
+        // to evaluate a full-row check against every row of
+        // generated_signal_pairs (a table already
+        // proven, in this same repo's migration history, to grow past the
+        // point an unindexed full-table predicate can complete inside the
+        // statement timeout — see idx_gsp_shadow_dedup and
+        // idx_gsp_pending_resolution). Filtering on the extracted
+        // providerEventContext fields directly lets a supporting expression
+        // index (idx_gsp_provider_event_context) serve this as an index scan
+        // instead of a sequential scan, while matching the exact same
+        // v1/polymarket/eventId/eventStartIso identity plus the
+        // metric_formula_version score-contract domain this callback already
+        // received from the anchor.
         async ({ eventId, eventStartIso, scoreContractVersion }) => {
           const { data, error } = await supabaseAdmin
             .from("generated_signal_pairs")
             .select("*")
-            .contains("diagnostics", {
-              providerEventContext: { v: "v1", provider: "polymarket", eventId, eventStartIso },
-            })
+            .eq("diagnostics->providerEventContext->>v", "v1")
+            .eq("diagnostics->providerEventContext->>provider", "polymarket")
+            .eq("diagnostics->providerEventContext->>eventId", eventId)
+            .eq("diagnostics->providerEventContext->>eventStartIso", eventStartIso)
             .eq("metric_formula_version", scoreContractVersion);
           if (error) throw error;
           return (data ?? []) as FinalIdentitySourceRow[];
