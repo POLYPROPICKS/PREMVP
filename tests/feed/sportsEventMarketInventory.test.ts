@@ -8,6 +8,7 @@ import {
   buildSportsEventMarketInventoryRows,
   writeSportsEventMarketInventory,
   classifySportsConfirmation,
+  shouldSuppressSportsInventoryWrite,
   SPORTS_INVENTORY_CONFLICT_TARGET,
   type SportsInventoryRawEvent,
 } from "../../lib/feed/cacheSportsEventMarketInventory";
@@ -650,6 +651,32 @@ test("integration: producer opt-in (persistInventory: true) writes exactly once 
   assert.equal(repoPort.calls[0].length, 2, "both nested markets reached the writer");
   assert.equal(result.counts.sportsInventoryEventsCaptured, 1);
   assert.equal(result.counts.sportsInventoryMarketsCaptured, 2);
+  assert.equal(result.counts.sportsInventoryWriteFailed, false);
+});
+
+test("active Reservations or an unavailable Reservation-pin read suppress only inventory persistence", () => {
+  assert.equal(shouldSuppressSportsInventoryWrite({ activeReservationPinCount: 1, pinLoadFailed: false }), true);
+  assert.equal(shouldSuppressSportsInventoryWrite({ activeReservationPinCount: 0, pinLoadFailed: true }), true);
+  assert.equal(shouldSuppressSportsInventoryWrite({ activeReservationPinCount: 0, pinLoadFailed: false }), false);
+});
+
+test("integration: suppression preserves inventory mapping but does not invoke the high-churn writer", async () => {
+  const repoPort = new CapturingRepoPort();
+  const event = rawKeysetEvent({ id: "evt-live-reservation" });
+
+  const result = await withMockedFetch(
+    makeMockFetch({ sportsRaw: MLB_SPORTS_RAW, keysetEvents: [event] }),
+    () => discoverSportsMarkets({
+      persistInventory: true,
+      suppressInventoryWrite: true,
+      persistInventoryRepoPort: repoPort,
+    }),
+  );
+
+  assert.equal(repoPort.calls.length, 0, "suppressed inventory persistence must perform no upsert");
+  assert.equal(result.counts.sportsInventoryEventsCaptured, 1);
+  assert.equal(result.counts.sportsInventoryMarketsCaptured, 1);
+  assert.equal(result.counts.sportsInventoryWriteSuppressed, true);
   assert.equal(result.counts.sportsInventoryWriteFailed, false);
 });
 

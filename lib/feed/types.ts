@@ -524,6 +524,10 @@ export interface SportsDiscoveryConfig {
   // buildSportsLandingCards, debug routes) stays read-only. Only
   // scripts/generate-signals.ts sets this to true.
   persistInventory?: boolean;
+  // Queue-SLA guard used only by the producer. Mapping and broad structured
+  // Signal Pair materialization still run; only the inventory-table upsert is
+  // suppressed while active Reservations exist or their lookup is unavailable.
+  suppressInventoryWrite?: boolean;
   /** One producer-scoped identity, created before official discovery. */
   producerRunId?: string;
   // Test-only dependency injection for the inventory writer's Supabase repo
@@ -591,6 +595,7 @@ export interface SportsDiscoveryCounts {
   sportsInventorySiblingMax?: number;
   sportsInventoryRowsSkippedMissingIdentity?: number;
   sportsInventoryWriteFailed?: boolean;
+  sportsInventoryWriteSuppressed?: boolean;
   // Broad structured sports Signal Pair diagnostics (commit 1 of the
   // provider-sport -> Signal Pair -> model -> Reservation contract).
   // Reuses the same broad keyset capture as the inventory block above;

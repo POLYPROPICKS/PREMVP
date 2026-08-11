@@ -18,6 +18,7 @@ import {
 import { discoverSportsMarkets, collectWcShadowCandidates, collectEsportShadowCandidates, collectNbaNhlShadowCandidates, collectFullLineOutcomeV1Candidates } from "../lib/feed/discoverSportsMarkets";
 import type { WcShadowEntry } from "../lib/feed/discoverSportsMarkets";
 import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
+import { shouldSuppressSportsInventoryWrite } from "../lib/feed/cacheSportsEventMarketInventory";
 import { FORMULA_VERSION } from "../lib/feed/types";
 
 const CONFIG = {
@@ -403,18 +404,29 @@ async function main() {
     // its sports-confirmation classification before persistence. Never throws;
     // a write failure is reported in diagnostics and never blocks signal generation.
     try {
-      const inventoryResult = await discoverSportsMarkets({ persistInventory: true, producerRunId });
+      const suppressInventoryWrite = shouldSuppressSportsInventoryWrite({
+        activeReservationPinCount: pinLoad.active_reservation_pin_count,
+        pinLoadFailed: pinLoad.load_failed,
+      });
+      const inventoryResult = await discoverSportsMarkets({
+        persistInventory: true,
+        suppressInventoryWrite,
+        producerRunId,
+      });
       const sportsInventorySummary = {
         eventsCaptured: inventoryResult.counts.sportsInventoryEventsCaptured ?? 0,
         marketsCaptured: inventoryResult.counts.sportsInventoryMarketsCaptured ?? 0,
         siblingMax: inventoryResult.counts.sportsInventorySiblingMax ?? 0,
         rowsSkippedMissingIdentity: inventoryResult.counts.sportsInventoryRowsSkippedMissingIdentity ?? 0,
         writeFailed: inventoryResult.counts.sportsInventoryWriteFailed ?? false,
+        writeSuppressed: inventoryResult.counts.sportsInventoryWriteSuppressed ?? false,
       };
       diagnostics.sportsInventory = sportsInventorySummary;
       console.log(
         `[generate-signals] sports inventory: events=${sportsInventorySummary.eventsCaptured} ` +
-          `markets=${sportsInventorySummary.marketsCaptured} write_failed=${sportsInventorySummary.writeFailed}`,
+          `markets=${sportsInventorySummary.marketsCaptured} ` +
+          `write_suppressed=${sportsInventorySummary.writeSuppressed} ` +
+          `write_failed=${sportsInventorySummary.writeFailed}`,
       );
 
       // Broad structured sports -> Signal Pair write result. A failure here is

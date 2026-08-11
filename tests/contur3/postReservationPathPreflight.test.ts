@@ -87,6 +87,7 @@ test("PRE17: allocated Contract-A Reservation persists, reloads, resolves exact 
       for (const row of rows) {
         const serialized = JSON.parse(JSON.stringify(row)) as NightEventReservationRow;
         serialized.id = "00000000-0000-4000-8000-000000009999";
+        assert.ok(serialized.event_start_iso);
         serialized.event_start_iso = serialized.event_start_iso.replace(/Z$/, "+00:00");
         serialized.game_start_iso = serialized.game_start_iso.replace(/Z$/, "+00:00");
         stored.push(serialized);
@@ -96,6 +97,7 @@ test("PRE17: allocated Contract-A Reservation persists, reloads, resolves exact 
   const persisted = await persistReservationPlan(plan, {}, reservationRepo);
   assert.equal(persisted.written_count, 1);
   const reloaded = (await reservationRepo.findByPlanRunId(plan.plan_run_id))[0];
+  assert.ok(reloaded.event_start_iso);
   assert.equal(Date.parse(reloaded.event_start_iso), Date.parse(EVENT_START));
   assert.equal(reloaded.physical_event_id, PHYSICAL_EVENT_ID);
   const lineage = reloaded.diagnostics.source_lineage as Record<string, unknown>;

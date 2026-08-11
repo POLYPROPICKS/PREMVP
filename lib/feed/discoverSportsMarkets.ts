@@ -526,10 +526,21 @@ export async function discoverSportsMarkets(
         inventoryDiag.rowsSkippedMissingMarketId +
         inventoryDiag.rowsSkippedInvalidStart;
 
-      const writeResult = await writeSportsEventMarketInventory(
-        inventoryRows,
-        cfg.persistInventoryRepoPort ? { repoPort: cfg.persistInventoryRepoPort } : {},
-      );
+      const inventoryWriteSuppressed = cfg.suppressInventoryWrite === true;
+      const writeResult = inventoryWriteSuppressed
+        ? {
+            attempted: inventoryRows.length,
+            inserted: 0,
+            batches: 0,
+            failed: false,
+            errorCode: null,
+            errorMessage: null,
+          }
+        : await writeSportsEventMarketInventory(
+            inventoryRows,
+            cfg.persistInventoryRepoPort ? { repoPort: cfg.persistInventoryRepoPort } : {},
+          );
+      counts.sportsInventoryWriteSuppressed = inventoryWriteSuppressed;
       counts.sportsInventoryWriteFailed = writeResult.failed;
       if (writeResult.failed) {
         warnings.push(
