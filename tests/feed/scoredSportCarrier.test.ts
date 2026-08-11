@@ -52,7 +52,12 @@ function persistedScoredRow(index: number, family: string, providerSportCode: st
   };
 }
 
-function research(eventId: string, conditionId: string, family = "soccer"): ResearchNestedMarket {
+function research(
+  eventId: string,
+  conditionId: string,
+  family = "soccer",
+  overrides: Partial<ResearchNestedMarket> = {},
+): ResearchNestedMarket {
   return {
     eventId,
     eventTitle: "Display text deliberately carries no sport name",
@@ -79,6 +84,7 @@ function research(eventId: string, conditionId: string, family = "soccer"): Rese
     providerSportTagIds: ["1", `family-${family}`],
     providerSeriesIds: [`series-${family}`],
     scoreOwnership: scoreOwnershipForSportFamily(family),
+    ...overrides,
   };
 }
 
@@ -102,6 +108,83 @@ test("research selection gives each eligible supported event a real scorer attem
   const selected = selectResearchMarketsForScoring(universe, new Set(), 3, 0);
   assert.deepEqual(new Set(selected.map((row) => row.eventId)), new Set(["a", "b", "c"]));
   assert.ok(selected.every((row) => row.scoreOwnership === "SUPPORTED_BY_SCORE_MODEL"));
+});
+
+test("research scorer selection uses structured primary market authority for soccer and tennis, not technical or display ordering", () => {
+  const soccerPrimary = research("soccer-provider-event", "z-soccer-primary", "soccer", {
+    marketId: "soccer-provider-market-primary",
+    sportsMarketType: "moneyline",
+  });
+  const soccerSecondary = research("soccer-provider-event", "a-soccer-secondary", "soccer", {
+    marketId: "soccer-provider-market-secondary",
+    sportsMarketType: "totals",
+  });
+  const tennisPrimary = research("tennis-provider-event", "z-tennis-primary", "tennis", {
+    marketId: "tennis-provider-market-primary",
+    providerSportCode: null,
+    sportsMarketType: "moneyline",
+  });
+  const tennisSecondary = research("tennis-provider-event", "a-tennis-secondary", "tennis", {
+    marketId: "tennis-provider-market-secondary",
+    providerSportCode: null,
+    sportsMarketType: "spreads",
+  });
+
+  const selected = selectResearchMarketsForScoring(
+    [soccerSecondary, tennisSecondary, soccerPrimary, tennisPrimary],
+    new Set(),
+    2,
+    0,
+  );
+  assert.deepEqual(selected.map((row) => row.marketId).sort(), [
+    "soccer-provider-market-primary",
+    "tennis-provider-market-primary",
+  ]);
+
+  const displayChanged = [soccerPrimary, tennisPrimary].map((row) => ({
+    ...row,
+    eventTitle: "arbitrary display event",
+    eventSlug: "arbitrary-display-slug",
+    marketQuestion: "arbitrary display question",
+    marketSlug: "arbitrary-market-slug",
+    marketTitle: "arbitrary market title",
+  }));
+  assert.deepEqual(
+    selectResearchMarketsForScoring(displayChanged, new Set(), 2, 0).map((row) => row.marketId).sort(),
+    ["soccer-provider-market-primary", "tennis-provider-market-primary"],
+  );
+});
+
+test("research scorer selection deterministically ties structured full-match markets by provider market ID and fails closed", () => {
+  const laterProviderId = research("event-1", "a-condition", "soccer", {
+    marketId: "provider-market-z",
+    sportsMarketType: "moneyline",
+  });
+  const earlierProviderId = research("event-1", "z-condition", "soccer", {
+    marketId: "provider-market-a",
+    sportsMarketType: "moneyline",
+  });
+  const malformed = research("", "condition-malformed", "soccer", {
+    marketId: "provider-market-malformed",
+    sportsMarketType: "moneyline",
+  });
+  const invalidStart = research("event-invalid-start", "condition-invalid-start", "soccer", {
+    marketId: "provider-market-invalid-start",
+    eventStartIso: "not-an-authoritative-start",
+    sportsMarketType: "moneyline",
+  });
+  const unsupported = research("event-table-tennis", "condition-table-tennis", "table-tennis", {
+    marketId: "provider-market-table-tennis",
+    sportsMarketType: "moneyline",
+  });
+
+  const selected = selectResearchMarketsForScoring(
+    [laterProviderId, malformed, unsupported, invalidStart, earlierProviderId],
+    new Set(),
+    5,
+    0,
+  );
+  assert.deepEqual(selected.map((row) => row.marketId), ["provider-market-a"]);
 });
 
 test("scored carrier preserves provider event and sport authority into persisted research diagnostics", () => {
