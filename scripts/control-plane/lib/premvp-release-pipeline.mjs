@@ -170,9 +170,14 @@ export async function reconstructRun(manifest, routingDoc, adapters) {
 }
 
 /** ---- Idempotent PR resolution. ---- */
-export async function resolveOrCreatePr(adapters, { repository, head, base, title, body }) {
+export async function resolveOrCreatePr(adapters, { repository, head, base, title, body, expectedHeadSha }) {
   const existing = await adapters.github.findPullRequest({ repo: repository, head, base });
-  if (existing) return { pr: existing, created: false };
+  // A merged PR on the same reusable branch cannot represent a newly pushed commit.
+  // Reuse it only when it already carries the exact result SHA; otherwise create the
+  // next PR for the branch rather than failing integrity before that safe operation.
+  if (existing && (!existing.merged || !expectedHeadSha || existing.headSha === expectedHeadSha)) {
+    return { pr: existing, created: false };
+  }
   const created = await adapters.github.createPullRequest({ repo: repository, head, base, title, body });
   return { pr: created, created: true };
 }
@@ -277,5 +282,73 @@ export function statusReport(reconstructed, manifest, pipelineSpec) {
     phase_completed_through: reconstructed.phaseCompletedThrough,
     next_state: STATE_ORDER[STATE_ORDER.indexOf(reconstructed.phaseCompletedThrough) + 1] || 'COMPLETE',
     evidence: reconstructed.evidence,
+  };
+}
+
+/**
+ * Execute the registered PREMVP release lifecycle through injected transports.
+ * The real CLI binds these transports to the selected local executor; tests use
+ * fakes. This keeps the ordering, exact-SHA review gate and idempotency rules
+ * in one place rather than leaving the enabled command as a non-executable
+ * specification.
+ */
+export async function executeReleaseRun(manifest, routingDoc, pipelineSpec, adapters) {
+  const manifestResult = validateReleaseRunManifest(manifest);
+  if (!manifestResult.ok) throw new PipelineError('PIPELINE_SCHEMA_INVALID', manifestResult.errors.join('; '));
+  assertMutationAllowed(pipelineSpec);
+  assertManifestCannotOverrideReviewer(manifest);
+
+  const resultSha = await adapters.git.currentHead();
+  const changedFiles = await adapters.git.changedFiles(manifest.base_ref, resultSha);
+  const changeset = checkChangeset(changedFiles, manifest.allowed_files, manifest.forbidden_files);
+  if (!changeset.ok) throw new PipelineError('PIPELINE_SCOPE_EXPANSION_REQUIRED', changeset.violations.join('; '));
+
+  for (const command of [...manifest.test_commands, ...manifest.typecheck_commands, ...manifest.build_commands]) {
+    await adapters.commands.run(command);
+  }
+
+  const reviewer = resolveReviewerRequirement(routingDoc, manifest.risk_class);
+  let receipt = null;
+  if (reviewer.required) {
+    receipt = await adapters.reviewer.findReceipt({ agentId: reviewer.agentId, reviewedSha: resultSha, manifest });
+    if (!receipt) throw new PipelineError('REVIEWER_RECEIPT_MISSING', `Missing ${reviewer.agentId} receipt for ${resultSha}`);
+    if (receipt.reviewed_sha !== resultSha || receipt.verdict !== 'PASS') {
+      throw new PipelineError('REVIEWER_RECEIPT_MISMATCH', `Invalid reviewer receipt for ${resultSha}`);
+    }
+  }
+
+  await adapters.git.push(manifest.feature_branch, resultSha);
+  const { pr, created } = await resolveOrCreatePr(adapters, {
+    repository: manifest.repository,
+    head: manifest.feature_branch,
+    base: manifest.target_ref,
+    title: manifest.pr_title || manifest.task_id,
+    body: manifest.pr_body || '',
+    expectedHeadSha: resultSha,
+  });
+  if (pr.headSha && pr.headSha !== resultSha) {
+    throw new PipelineError('PR_INTEGRITY_FAILED', `PR head ${pr.headSha} != ${resultSha}`);
+  }
+  const merge = await mergePrIdempotent(adapters, pr);
+  const mergedPr = merge.pr;
+  if (!mergedPr.mergeCommitSha) throw new PipelineError('PR_MERGE_FAILED', 'No merge commit SHA returned');
+  const ancestor = await adapters.git.isAncestor(mergedPr.mergeCommitSha, 'origin/main');
+  if (!ancestor) throw new PipelineError('PR_MERGE_FAILED', `${mergedPr.mergeCommitSha} is not an ancestor of origin/main`);
+  const deployment = await pollAutomaticDeployment(adapters, {
+    url: manifest.production_build_info_url,
+    targetSha: mergedPr.mergeCommitSha,
+    timeoutSeconds: manifest.deployment_timeout_seconds,
+    sleep: adapters.sleep,
+  });
+  await adapters.reconcile.verify({ manifest, resultSha, mergeSha: mergedPr.mergeCommitSha, deployment });
+  return {
+    status: deployment.status === 'DEPLOYED' ? 'PASS' : 'WAIT',
+    result_sha: resultSha,
+    reviewer_receipt: receipt,
+    pr: mergedPr,
+    pr_created: created,
+    merged: merge.merged,
+    deployment,
+    changed_files: changedFiles,
   };
 }

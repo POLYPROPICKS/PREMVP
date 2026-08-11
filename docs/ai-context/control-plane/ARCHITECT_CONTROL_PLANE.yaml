@@ -64,10 +64,13 @@
       { "id": "capability_matrix", "path": "docs/ai-context/control-plane/CAPABILITY_MATRIX.yaml", "role": "CAPABILITY", "authoritative_for": "execution target capabilities and environment paths" },
       { "id": "routing_and_pipelines", "path": "docs/ai-context/control-plane/ROUTING_AND_PIPELINES.yaml", "role": "ROUTING", "authoritative_for": "task/risk classes, executor and reviewer selection" },
       { "id": "agent_registry", "path": "docs/ai-context/control-plane/AGENT_REGISTRY.yaml", "role": "REGISTRY", "authoritative_for": "agents, skills, commands, hooks, scripts, gates, policies" },
-      { "id": "prompt_protocol", "path": "docs/ai-context/control-plane/PROMPT__PROTOCOL.md", "role": "PROMPT_CONTRACT", "authoritative_for": "executor prompt structure" },
+      { "id": "prompt_protocol", "path": "docs/ai-context/control-plane/PROMPT__PROTOCOL.md", "role": "PROMPT_CONTRACT", "authoritative_for": "Mission Contract structure — the fixed 25-section prompt template is RETIRED" },
+      { "id": "mission_contract_schema", "path": "docs/ai-context/control-plane/MISSION_CONTRACT.schema.json", "role": "MISSION_CONTRACT", "authoritative_for": "machine-readable mission structure and semantic invariants" },
+      { "id": "execution_escalation_taxonomy", "path": "docs/ai-context/control-plane/EXECUTION_ESCALATION_TAXONOMY.json", "role": "HARD_STOP_TAXONOMY", "authoritative_for": "the ONE canonical hard-stop taxonomy, outcome classes and operator action budget" },
       { "id": "completion_envelope_schema", "path": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json", "role": "COMPLETION_CONTRACT", "authoritative_for": "executor result structure" },
       { "id": "evidence_ledger", "path": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md", "role": "HISTORICAL_LEDGER", "authoritative_for": "history only — NEVER current state" },
-      { "id": "chatgpt_project_setup", "path": "docs/ai-context/control-plane/CHATGPT_PROJECT_SETUP.md", "role": "FOUNDER_SETUP", "authoritative_for": "Phase 2 project setup and Phase 3 shadow plan" },
+      { "id": "chatgpt_project_setup", "path": "docs/ai-context/control-plane/CHATGPT_PROJECT_SETUP.md", "role": "HISTORICAL_SETUP", "authoritative_for": "nothing — SUPERSEDED by the deterministic Project package under chatgpt-architect/project-package/" },
+      { "id": "chatgpt_project_package", "path": "docs/ai-context/control-plane/chatgpt-architect/project-package", "role": "GENERATED_PROJECT_PACKAGE", "authoritative_for": "nothing — deterministic generated view of the canonical files, and the ONLY current source of ChatGPT Project Sources and Project Instructions" },
       { "id": "architect_snapshot", "path": "docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md", "role": "GENERATED_SNAPSHOT", "authoritative_for": "nothing — generated view of the canonical files" }
     ],
     "single_current_state_authority": {
@@ -79,8 +82,21 @@
       "rule": "EVIDENCE_LEDGER.md is append-only history. It is NEVER authoritative for current state."
     },
     "generated_artifacts": [
-      { "path": "docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md", "generator": "scripts/control-plane/generate-architect-snapshot.mjs", "deterministic": true }
-    ]
+      { "path": "docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md", "generator": "scripts/control-plane/generate-architect-snapshot.mjs", "deterministic": true },
+      { "path": "docs/ai-context/control-plane/chatgpt-architect/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md", "generator": "scripts/control-plane/generate-chatgpt-architect-bundle.mjs", "deterministic": true },
+      { "path": "docs/ai-context/control-plane/chatgpt-architect/project-package", "generator": "scripts/control-plane/generate-chatgpt-project-package.mjs", "deterministic": true }
+    ],
+    "generation_direction": {
+      "rule": "ONE direction only: canonical control plane -> generated snapshot / bundle / Project package. A generated or historical setup document may NEVER override canonical policy.",
+      "check_command": "npm run control-plane:project-package:check",
+      "active_project_sources": [
+        "docs/ai-context/control-plane/chatgpt-architect/project-package/SOURCES/ARCHITECT_SNAPSHOT.md",
+        "docs/ai-context/control-plane/chatgpt-architect/project-package/SOURCES/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md",
+        "docs/ai-context/control-plane/chatgpt-architect/project-package/SOURCES/PROMPT__PROTOCOL.md",
+        "docs/ai-context/control-plane/chatgpt-architect/project-package/SOURCES/COMPLETION_ENVELOPE.schema.json"
+      ],
+      "excluded_from_active_sources": ["CHATGPT_PROJECT_SETUP.md", "NEW_CONTOUR_3.md", "NEW_CONTOUR_4.md", "EVIDENCE_LEDGER.md", "pasted completion reports", "prompt-failure postmortems", "secrets and .env files"]
+    }
   },
 
   "execution_targets": {
@@ -167,7 +183,9 @@
     { "path": "docs/ai-context/WORK_TRU_PPP04JULY.md", "status": "HISTORICAL", "authoritative_for_current_state": false },
     { "path": "AGENTS.md#4-project-identity-and-environment", "status": "ENVIRONMENT_ASSUMPTION_SUPERSEDED", "superseded_by": "docs/ai-context/control-plane/CAPABILITY_MATRIX.yaml", "authoritative_for_current_state": false, "note": "The Windows-only repo path and 'Windows CMD preferred' assumption are not valid in Claude Code Cloud." },
     { "path": "docs/ai-context/PROMPT__PROTOCOL.md", "status": "NOT_TRACKED_IN_ORIGIN_MAIN", "authoritative_for_current_state": false, "note": "A file of this name exists only in an untracked Local Windows worktree. Its authority is unresolved and it MUST NOT be cited as authority. The canonical prompt contract is docs/ai-context/control-plane/PROMPT__PROTOCOL.md." },
-    { "path": "docs/ai-context/PROMPT_COMPLETION_PROTOCOL.md", "status": "ABSENT", "authoritative_for_current_state": false, "superseded_by": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json" }
+    { "path": "docs/ai-context/PROMPT_COMPLETION_PROTOCOL.md", "status": "ABSENT", "authoritative_for_current_state": false, "superseded_by": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json" },
+    { "path": "docs/ai-context/control-plane/CHATGPT_PROJECT_SETUP.md", "status": "SUPERSEDED", "authoritative_for_current_state": false, "superseded_by": "docs/ai-context/control-plane/chatgpt-architect/project-package", "note": "A one-time Phase 2 setup record. It is NOT current prompt policy and MUST NOT be uploaded as an active Project Source." },
+    { "path": "PROMPT__PROTOCOL 25-section template", "status": "RETIRED", "authoritative_for_current_state": false, "superseded_by": "docs/ai-context/control-plane/MISSION_CONTRACT.schema.json", "note": "The fixed-template rule requiring every prompt section to be populated is retired. No artifact may re-enforce it." }
   ],
 
   "invariants": [

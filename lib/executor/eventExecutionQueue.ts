@@ -33,6 +33,7 @@ import {
 import { classifyActiveReservationDue } from "./reservationRebalanceContract.mjs";
 import {
   EXECUTABLE_TIER,
+  EXECUTABLE_STAKE_USD,
   type EventExecutionQueueRow,
   type NightEventReservationRow,
 } from "./executorQueueTypes";
@@ -57,6 +58,35 @@ const PLAN_POOL = 200;
 
 type FinalIdentitySourceRow = Record<string, unknown>;
 
+/**
+ * One exact execution-compatible sibling of a reserved physical event.
+ *
+ * FIELD OWNERSHIP (each value comes from its real owner, never from an invented
+ * column). An earlier revision of this contract required `signal_score`,
+ * `stake_usd` and `max_entry_price` as row properties; none of the three has
+ * ever been a column on `generated_signal_pairs`, so the gate was unsatisfiable
+ * from the day it was written and no event ever reached the Queue through it.
+ *
+ *   signalScore   <- generated_signal_pairs.signal_confidence_num
+ *                    The authoritative model score carrier, and the same one
+ *                    Contract A planning reads. `score` is written NULL by every
+ *                    production writer and is NOT a live carrier.
+ *   stakeUsd      <- EXECUTABLE_STAKE_USD
+ *                    A fixed execution-contract constant owned by the executor,
+ *                    not per-row data. Persisting it per signal pair would
+ *                    create a second, forgeable stake authority.
+ *   maxEntryPrice <- generated_signal_pairs.entry_price_num
+ *                    The accepted pre-Reservation snapshot price, frozen per
+ *                    exact sibling at producer time. This is the same term
+ *                    buildContractAV1Candidates already treats as the accepted
+ *                    ceiling (`max_entry_price: decision.entryPrice`), so no
+ *                    slippage buffer or new pricing rule is introduced here and
+ *                    no later order book may raise it.
+ *   scoreContractVersion <- generated_signal_pairs.metric_formula_version
+ *                    Score-comparability domain. Raw scores from different
+ *                    formula versions are not proven to share a scale, so they
+ *                    never compete; see loadExactProviderSiblingRowsFromAnchor.
+ */
 type ExactProviderSignalPair = {
   id: string;
   conditionId: string;
@@ -67,6 +97,7 @@ type ExactProviderSignalPair = {
   eventStartIso: string;
   stakeUsd: number;
   maxEntryPrice: number;
+  scoreContractVersion: string;
   marketSlug: string | null;
 };
 
@@ -615,8 +646,71 @@ export async function loadFinalIdentitySourceRowsByGeneratedSignalPairId(
   return rows.slice(0, 1);
 }
 
+/**
+ * Resolves exact executable siblings from the persisted UUID anchor. The first
+ * sibling query is always the anchor's scalar condition_id; provider metadata
+ * is validation only after that bounded read.
+ */
+export async function loadExactProviderSiblingRowsFromAnchor(
+  reservation: NightEventReservationRow,
+  queryById: (generatedSignalPairId: string) => Promise<FinalIdentitySourceRow[]>,
+  queryByProviderEvent: (identity: {
+    eventId: string;
+    eventStartIso: string;
+    scoreContractVersion: string;
+  }) => Promise<FinalIdentitySourceRow[]>,
+): Promise<FinalIdentitySourceRow[]> {
+  const [anchor] = await loadFinalIdentitySourceRowsByGeneratedSignalPairId(reservation, queryById);
+  const context = anchor?.diagnostics && typeof anchor.diagnostics === "object"
+    ? (anchor.diagnostics as Record<string, unknown>).providerEventContext as Record<string, unknown> | undefined
+    : undefined;
+  const eventId = text(context?.eventId);
+  const eventStartIso = text(context?.eventStartIso);
+  // Score-comparability domain, taken from the Reservation's own accepted
+  // planning lineage rather than any hard-coded version name. Raw scores from
+  // two different formula versions are not proven to share a scale or to have
+  // been valid under the same execution contract, so they must not compete for
+  // the same reserved event; only the anchor's domain is admissible.
+  const scoreContractVersion = text(anchor?.metric_formula_version);
+  if (!context || context.v !== "v1" || context.provider !== "polymarket" || !eventId || !eventStartIso) {
+    throw new FinalIdentitySourceLoadError("EXACT_PROVIDER_EVENT_IDENTITY_MISSING");
+  }
+  if (!scoreContractVersion) {
+    throw new FinalIdentitySourceLoadError("EXACT_PROVIDER_EVENT_SCORE_CONTRACT_MISSING");
+  }
+  let rows: FinalIdentitySourceRow[];
+  try {
+    rows = await queryByProviderEvent({ eventId, eventStartIso, scoreContractVersion });
+  } catch (error) {
+    throw new FinalIdentitySourceLoadError(`EXACT_PROVIDER_EVENT_QUERY_FAILED_${safeDatabaseErrorCategory(error)}`);
+  }
+  return rows.filter((row) => {
+    const candidateContext = row.diagnostics && typeof row.diagnostics === "object"
+      ? (row.diagnostics as Record<string, unknown>).providerEventContext as Record<string, unknown> | undefined
+      : undefined;
+    return candidateContext?.v === "v1" && candidateContext.provider === "polymarket" &&
+      candidateContext.eventId === eventId && sameEventStartInstant(candidateContext.eventStartIso, eventStartIso) &&
+      text(row.metric_formula_version) === scoreContractVersion;
+  });
+}
+
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+/**
+ * Event start is an instant, not a serialization format. Both boundaries may
+ * carry valid ISO timestamps with different UTC spellings (for example
+ * PostgreSQL timestamptz +00:00 versus JSON/provider Z); malformed values are
+ * never accepted as an identity match.
+ */
+function sameEventStartInstant(left: unknown, right: unknown): boolean {
+  const leftIso = text(left);
+  const rightIso = text(right);
+  if (!leftIso || !rightIso) return false;
+  const leftMs = Date.parse(leftIso);
+  const rightMs = Date.parse(rightIso);
+  return Number.isFinite(leftMs) && Number.isFinite(rightMs) && leftMs === rightMs;
 }
 
 function finite(value: unknown): number | null {
@@ -634,17 +728,27 @@ function exactProviderSignalPair(row: FinalIdentitySourceRow): ExactProviderSign
   const eventStartIso = text(c.eventStartIso);
   const id = text(row.id);
   const conditionId = text(row.condition_id);
-  const tokenId = text(row.selected_token_id) ?? text(row.token_id);
+  const tokenId = text(row.selected_token_id);
   const side = text(row.selected_outcome);
-  const signalScore = finite(row.signal_score) ?? finite(row.score);
-  const stakeUsd = finite(row.stake_usd) ?? finite(diagnostics?.accepted_stake_usd);
-  const maxEntryPrice = finite(row.max_entry_price) ?? finite(diagnostics?.accepted_max_entry_price);
+  // Authoritative model score. A NULL signal_confidence_num marks a deliberately
+  // unscored shadow/research row, which is never an execution candidate -- it is
+  // excluded here rather than defaulted, so shadow material can never be traded.
+  const signalScore = finite(row.signal_confidence_num);
+  // Execution-contract constant, never row data.
+  const stakeUsd = EXECUTABLE_STAKE_USD;
+  // Frozen accepted pre-Reservation price for this exact sibling.
+  const maxEntryPrice = finite(row.entry_price_num);
+  const scoreContractVersion = text(row.metric_formula_version);
   if (
     c.v !== "v1" || c.provider !== "polymarket" || !id || !eventId || !eventStartIso ||
     !Number.isFinite(Date.parse(eventStartIso)) || !conditionId || !tokenId || !side ||
-    signalScore === null || stakeUsd === null || stakeUsd <= 0 || maxEntryPrice === null || maxEntryPrice <= 0
+    !scoreContractVersion ||
+    signalScore === null || stakeUsd <= 0 || maxEntryPrice === null || maxEntryPrice <= 0
   ) return null;
-  return { id, conditionId, tokenId, side, signalScore, eventId, eventStartIso, stakeUsd, maxEntryPrice, marketSlug: text(row.market_slug) };
+  return {
+    id, conditionId, tokenId, side, signalScore, eventId, eventStartIso,
+    stakeUsd, maxEntryPrice, scoreContractVersion, marketSlug: text(row.market_slug),
+  };
 }
 
 function providerPhysicalEventId(eventId: string, eventStartIso: string): string {
@@ -722,45 +826,44 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
     },
     async loadFinalIdentitySourceRows(reservation) {
       const { supabaseAdmin } = await import("@/lib/supabase/server");
-      const anchorRows = await loadFinalIdentitySourceRowsByGeneratedSignalPairId(reservation, async (generatedSignalPairId) => {
-        const { data, error } = await supabaseAdmin
-          .from("generated_signal_pairs")
-          .select("*")
-          .eq("id", generatedSignalPairId)
+      return loadExactProviderSiblingRowsFromAnchor(
+        reservation,
+        async (generatedSignalPairId) => {
+          const { data, error } = await supabaseAdmin
+            .from("generated_signal_pairs")
+            .select("*")
+            .eq("id", generatedSignalPairId)
           .limit(1);
-        if (error) throw error;
-        return (data ?? []) as FinalIdentitySourceRow[];
-      });
-      const diagnostics = anchorRows[0]?.diagnostics;
-      const context = diagnostics && typeof diagnostics === "object"
-        ? (diagnostics as Record<string, unknown>).providerEventContext as Record<string, unknown> | undefined
-        : undefined;
-      const eventId = text(context?.eventId);
-      const eventStartIso = text(context?.eventStartIso);
-      if (!context || context.v !== "v1" || context.provider !== "polymarket" || !eventId || !eventStartIso) {
-        throw new FinalIdentitySourceLoadError("EXACT_PROVIDER_EVENT_IDENTITY_MISSING");
-      }
-      // Bounded exact-identity lookup, not a broad diagnostics containment scan.
-      // The previous JSONB-containment query shape forced Postgres to
-      // evaluate a full-row check against every row of
-      // generated_signal_pairs (a table already proven, in this same repo's
-      // migration history, to grow past the point an unindexed full-table
-      // predicate can complete inside the statement timeout — see
-      // idx_gsp_shadow_dedup and idx_gsp_pending_resolution). Filtering on the
-      // extracted providerEventContext fields directly lets a supporting
-      // expression index (idx_gsp_provider_event_context) serve this as an
-      // index scan instead of a sequential scan, while matching the exact same
-      // v1/polymarket/eventId/eventStartIso identity the reservation's
-      // persisted lineage already authorizes.
-      const { data, error } = await supabaseAdmin
-        .from("generated_signal_pairs")
-        .select("*")
-        .eq("diagnostics->providerEventContext->>v", "v1")
-        .eq("diagnostics->providerEventContext->>provider", "polymarket")
-        .eq("diagnostics->providerEventContext->>eventId", eventId)
-        .eq("diagnostics->providerEventContext->>eventStartIso", eventStartIso);
-      if (error) throw new FinalIdentitySourceLoadError(`EXACT_PROVIDER_EVENT_QUERY_FAILED_${safeDatabaseErrorCategory(error)}`);
-      return (data ?? []) as FinalIdentitySourceRow[];
+          if (error) throw error;
+          return (data ?? []) as FinalIdentitySourceRow[];
+        },
+        // Bounded exact-identity lookup, not a broad diagnostics containment
+        // scan. The previous `.contains("diagnostics", {...})` query shape
+        // forced Postgres to evaluate a full-row JSONB containment check
+        // against every row of generated_signal_pairs (a table already
+        // proven, in this same repo's migration history, to grow past the
+        // point an unindexed full-table predicate can complete inside the
+        // statement timeout — see idx_gsp_shadow_dedup and
+        // idx_gsp_pending_resolution). Filtering on the extracted
+        // providerEventContext fields directly lets a supporting expression
+        // index (idx_gsp_provider_event_context) serve this as an index scan
+        // instead of a sequential scan, while matching the exact same
+        // v1/polymarket/eventId/eventStartIso identity plus the
+        // metric_formula_version score-contract domain this callback already
+        // received from the anchor.
+        async ({ eventId, eventStartIso, scoreContractVersion }) => {
+          const { data, error } = await supabaseAdmin
+            .from("generated_signal_pairs")
+            .select("*")
+            .eq("diagnostics->providerEventContext->>v", "v1")
+            .eq("diagnostics->providerEventContext->>provider", "polymarket")
+            .eq("diagnostics->providerEventContext->>eventId", eventId)
+            .eq("diagnostics->providerEventContext->>eventStartIso", eventStartIso)
+            .eq("metric_formula_version", scoreContractVersion);
+          if (error) throw error;
+          return (data ?? []) as FinalIdentitySourceRow[];
+        },
+      );
     },
     async findQueueRowsByRebalanceRunId(rebalanceRunId) {
       const { supabaseAdmin } = await import("@/lib/supabase/server");
@@ -820,10 +923,9 @@ export function planningDecisionFromReservation(reservation: NightEventReservati
   const providerEventId = lineage.provider_event_id;
   const providerEventStartIso = lineage.provider_event_start_iso;
   if (
-    typeof lineage.event_slug !== "string" || lineage.event_slug === "" ||
     typeof providerEventId !== "string" || providerEventId === "" ||
     typeof providerEventStartIso !== "string" || !Number.isFinite(Date.parse(providerEventStartIso)) ||
-    providerEventStartIso !== eventStartIso ||
+    !sameEventStartInstant(providerEventStartIso, eventStartIso) ||
     providerPhysicalEventId(providerEventId, providerEventStartIso) !== physicalEventId
   ) return null;
   return {
@@ -875,7 +977,7 @@ async function selectQueueRowFromContractAReservation(
     return { outcome: "SKIPPED", reason: reasonCode, queueRow: null };
   }
   const candidates = rows.map(exactProviderSignalPair).filter((v): v is ExactProviderSignalPair => v !== null)
-    .filter((v) => v.eventStartIso === eventStartIso && providerPhysicalEventId(v.eventId, v.eventStartIso) === physicalEventId)
+    .filter((v) => sameEventStartInstant(v.eventStartIso, eventStartIso) && providerPhysicalEventId(v.eventId, v.eventStartIso) === physicalEventId)
     .sort(compareExactProviderSignalPairs);
   const selected = candidates[0];
   if (!selected) return { outcome: "SKIPPED", reason: "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR", queueRow: null };
@@ -897,6 +999,7 @@ async function selectQueueRowFromContractAReservation(
       physical_event_id: physicalEventId, event_start_iso: eventStartIso,
       source_lineage: { generated_signal_pair_id: selected.id },
       selected_signal_pair_id: selected.id, selected_signal_score: selected.signalScore,
+      selected_score_contract_version: selected.scoreContractVersion,
       max_entry_price: selected.maxEntryPrice, stake_guard_usd: selected.stakeUsd,
       mechanical_guard_trace: ["RESERVATION_ACTIVE", "DUE_WINDOW", "EXACT_PROVIDER_EVENT", "MAX_SIGNAL_SCORE", "IDENTITY_COMPLETE"],
     },

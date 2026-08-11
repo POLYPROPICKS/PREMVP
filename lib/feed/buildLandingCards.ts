@@ -75,7 +75,7 @@ function getOddsBandCalibration(selectedOdds: number): OddsBandCalibration {
   return                           { min: 52, max: 55, label: "High-Upside Longshot",  action: "WATCH" };
 }
 
-function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket | null {
+export function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket | null {
   const primary = sample.primaryMarketRaw;
   if (!primary || !primary.conditionId) return null;
   const providerEventTitle =
@@ -98,7 +98,7 @@ function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket
   };
 
   const event: PolymarketRawEvent = {
-    id: sample.gameId || sample.slug,
+    id: sample.providerEventId || sample.gameId || sample.slug,
     title: sample.title,
     slug: sample.slug,
     active: true,
@@ -119,6 +119,13 @@ function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket
     polymarketEventSlug: sample.polymarketEventSlug || undefined,
     sportsMarketType: sample.primaryMarketRaw?.sportsMarketType ?? undefined,
     gameTimeConfidence: sample.gameTimeConfidence ?? undefined,
+    providerEventId: sample.providerEventId ?? undefined,
+    providerSportCode: sample.providerSportCode ?? undefined,
+    providerSportFamily: sample.providerSportFamily ?? undefined,
+    providerSportSource: sample.providerSportSource ?? undefined,
+    providerSportTagIds: sample.providerSportTagIds ?? undefined,
+    providerSeriesIds: sample.providerSeriesIds ?? undefined,
+    providerMarketId: primary.providerMarketId ?? primary.conditionId,
   };
 
   return {
@@ -132,7 +139,7 @@ function sampleToCandidateMarket(sample: SportsDiscoverySample): CandidateMarket
   };
 }
 
-function researchNestedMarketToCandidate(rm: ResearchNestedMarket): {
+export function researchNestedMarketToCandidate(rm: ResearchNestedMarket): {
   candidate: CandidateMarket;
   forcedOutcome: ForcedOutcomeSelection;
 } | null {
@@ -177,6 +184,13 @@ function researchNestedMarketToCandidate(rm: ResearchNestedMarket): {
     startDate: rm.gameStartTimeIso || rm.eventStartIso || undefined,
     polymarketEventSlug: eventSlug,
     sportsMarketType: rm.sportsMarketType ?? rm.marketSubtype ?? undefined,
+    providerEventId: rm.eventId,
+    providerSportCode: rm.providerSportCode,
+    providerSportFamily: rm.providerSportFamily,
+    providerSportSource: rm.providerSportSource,
+    providerSportTagIds: rm.providerSportTagIds,
+    providerSeriesIds: rm.providerSeriesIds,
+    providerMarketId: rm.marketId,
   };
 
   return {
@@ -225,6 +239,119 @@ export interface ParentEventMeta {
   startDate?: string;
   polymarketEventSlug?: string;
   sportsMarketType?: string;
+  providerEventId?: string;
+  /** Null when the provider's structured tags expose no unique raw league code. */
+  providerSportCode?: string | null;
+  providerSportFamily?: string;
+  providerSportSource?: string;
+  providerSportTagIds?: string[];
+  providerSeriesIds?: string[];
+  providerMarketId?: string;
+}
+
+export function buildStructuredProviderDiagnostics(
+  parentMeta: ParentEventMeta,
+  market: PolymarketRawMarket,
+  eventEndDate?: string,
+): Pick<LandingCardDiagnostics,
+  | "providerSportCode"
+  | "providerSportFamily"
+  | "providerSportSource"
+  | "providerSportTagIds"
+  | "providerSeriesIds"
+  | "providerEventId"
+  | "providerMarketId"
+  | "providerEventContext"
+> {
+  const eventId = parentMeta.providerEventId ?? parentMeta.id;
+  const providerMarketId = parentMeta.providerMarketId ?? safeString(market.id) ?? undefined;
+  const eventStartIso = parentMeta.startDate ?? eventEndDate;
+  // A row that carries ANY structured provider sport value carries structured
+  // identity only: `parentMeta.category` is display text (league name / "Sports")
+  // and must never be substituted into the structured carrier. Doing so gave a
+  // canonical-family-only row (raw code legitimately null) a text `league`, which
+  // then failed hasStructuredScoredSportAuthority's
+  // `(providerContext.league ?? null) === providerSportCode` equality. Rows with
+  // no structured sport at all keep the pre-existing legacy category behaviour.
+  const carriesStructuredSport =
+    (parentMeta.providerSportFamily ?? null) !== null || (parentMeta.providerSportCode ?? null) !== null;
+  const contextSportFamily =
+    parentMeta.providerSportFamily ?? (carriesStructuredSport ? null : parentMeta.category ?? null);
+  const contextLeague =
+    parentMeta.providerSportCode ?? (carriesStructuredSport ? null : parentMeta.category ?? null);
+  return {
+    providerSportCode: parentMeta.providerSportCode ?? null,
+    providerSportFamily: parentMeta.providerSportFamily ?? null,
+    providerSportSource: parentMeta.providerSportSource ?? null,
+    providerSportTagIds: parentMeta.providerSportTagIds ?? [],
+    providerSeriesIds: parentMeta.providerSeriesIds ?? [],
+    providerEventId: eventId ?? null,
+    providerMarketId: providerMarketId ?? null,
+    providerEventContext: {
+      v: "v1",
+      provider: "polymarket",
+      ...(eventId ? { eventId } : {}),
+      ...(parentMeta.polymarketEventSlug ? { eventSlug: parentMeta.polymarketEventSlug } : {}),
+      ...(parentMeta.title ? { eventTitle: parentMeta.title } : {}),
+      ...(safeString(market.question) ? { marketQuestion: safeString(market.question)! } : {}),
+      ...(contextSportFamily ? { sportFamily: contextSportFamily } : {}),
+      ...(contextLeague ? { league: contextLeague } : {}),
+      ...(eventStartIso ? { eventStartIso } : {}),
+      ...(providerMarketId ? { providerMarketId } : {}),
+      ...(parentMeta.sportsMarketType ? { marketType: parentMeta.sportsMarketType } : {}),
+      ...(parentMeta.providerSportTagIds?.length ? { sportTagIds: [...parentMeta.providerSportTagIds] } : {}),
+      ...(parentMeta.providerSeriesIds?.length ? { seriesIds: [...parentMeta.providerSeriesIds] } : {}),
+    },
+  };
+}
+
+/**
+ * Bounded scorer routing with event conservation. Public rows remain first, then
+ * one eligible market per still-unrepresented provider occurrence is selected
+ * before any event receives a second market. The real scorer still owns every
+ * score and all existing market/input gates remain unchanged.
+ */
+export function selectResearchMarketsForScoring(
+  universe: readonly ResearchNestedMarket[],
+  publicIdentitySet: ReadonlySet<string>,
+  limit: number,
+  rotationOffset: number,
+): ResearchNestedMarket[] {
+  if (limit <= 0) return [];
+  const deduped = new Map<string, ResearchNestedMarket>();
+  for (const row of universe) {
+    if (row.scoreOwnership !== "SUPPORTED_BY_SCORE_MODEL") continue;
+    const key = `${row.conditionId}::${row.selectedTokenId}`;
+    if (!deduped.has(key)) deduped.set(key, row);
+  }
+  const rows = [...deduped.values()];
+  const publicRows = rows
+    .filter((row) => publicIdentitySet.has(`${row.conditionId}::${row.selectedTokenId}`))
+    .slice(0, limit);
+  if (publicRows.length >= limit) return publicRows;
+
+  const hidden = rows
+    .filter((row) => !publicIdentitySet.has(`${row.conditionId}::${row.selectedTokenId}`))
+    .sort((a, b) => {
+      const left = `${a.eventId}::${a.eventStartIso}::${a.conditionId}::${a.selectedTokenId}`;
+      const right = `${b.eventId}::${b.eventStartIso}::${b.conditionId}::${b.selectedTokenId}`;
+      return left.localeCompare(right);
+    });
+  const offset = hidden.length > 0 ? ((rotationOffset % hidden.length) + hidden.length) % hidden.length : 0;
+  const rotated = [...hidden.slice(offset), ...hidden.slice(0, offset)];
+  const represented = new Set(publicRows.map((row) => `${row.eventId}::${row.eventStartIso}`));
+  const firstPerEvent: ResearchNestedMarket[] = [];
+  const remaining: ResearchNestedMarket[] = [];
+  for (const row of rotated) {
+    const eventKey = `${row.eventId}::${row.eventStartIso}`;
+    if (!represented.has(eventKey)) {
+      represented.add(eventKey);
+      firstPerEvent.push(row);
+    } else {
+      remaining.push(row);
+    }
+  }
+  return [...publicRows, ...firstPerEvent, ...remaining].slice(0, limit);
 }
 
 interface EnrichedMarket {
@@ -933,6 +1060,11 @@ async function enrichMarket(
   }
 
   const warnings: string[] = [...initialWarnings];
+  const structuredProviderDiagnostics = buildStructuredProviderDiagnostics(
+    parentMeta,
+    market,
+    event.endDate,
+  );
   const diagnostics: LandingCardDiagnostics = {
     conditionId: safeString(market.conditionId) ?? null,
     selectedTokenId: selectedOutcome.tokenId,
@@ -956,18 +1088,9 @@ async function enrichMarket(
       event.volume24hr ?? market.volume24hr ?? 0
     ),
     gameStartIso: parentMeta.startDate ?? event.endDate ?? null,
-    providerEventContext: {
-      v: "v1",
-      provider: "polymarket",
-      ...(parentMeta.id ? { eventId: parentMeta.id } : {}),
-      ...(parentMeta.polymarketEventSlug ? { eventSlug: parentMeta.polymarketEventSlug } : {}),
-      ...(parentMeta.title ? { eventTitle: parentMeta.title } : {}),
-      ...(safeString(market.question) ? { marketQuestion: safeString(market.question)! } : {}),
-      ...(parentMeta.category ? { sportFamily: parentMeta.category, league: parentMeta.category } : {}),
-      ...(providerGame ? { game: providerGame } : {}),
-      ...(parentMeta.startDate ?? event.endDate ? { eventStartIso: parentMeta.startDate ?? event.endDate! } : {}),
-    },
+    ...structuredProviderDiagnostics,
   };
+  if (providerGame && diagnostics.providerEventContext) diagnostics.providerEventContext.game = providerGame;
 
   // Try to get price movement from Gamma fields as fallback
   let gammaPriceChange: number | null = null;
@@ -1889,7 +2012,7 @@ async function fetchEventsForCategory(
 
     if (sportsMeta.success && sportsMeta.tagId) {
       // Use tag-filtered fetch for better sports discovery
-      const tagEvents = await fetchPolymarketEventsByTagSafe(sportsMeta.tagId, 100);
+      const tagEvents = await fetchPolymarketEventsByTagSafe(sportsMeta.tagId);
       if (tagEvents.length > 0) {
         allEvents.push(...tagEvents);
         sportsTagSuccess = true;
@@ -2731,40 +2854,29 @@ export async function buildLandingCards(options?: {
         }
       }
 
-      // Deduplicate universe by conditionId::selectedTokenId
-      const universeMap = new Map<string, ResearchNestedMarket>();
-      for (const rm of rawUniverse) {
-        const k = `${rm.conditionId}::${rm.selectedTokenId}`;
-        if (!universeMap.has(k)) universeMap.set(k, rm);
-      }
-      const dedupedUniverse = Array.from(universeMap.values());
-
-      // Split: public-exposed (always include) vs. hidden (rotating)
-      const publicExposed = dedupedUniverse.filter(rm =>
-        publicIdentitySet.has(`${rm.conditionId}::${rm.selectedTokenId}`)
-      );
-      const hidden = dedupedUniverse.filter(rm =>
-        !publicIdentitySet.has(`${rm.conditionId}::${rm.selectedTokenId}`)
-      );
-
-      // Deterministic stable sort of hidden pool by conditionId::selectedTokenId
-      hidden.sort((a, b) => {
-        const ka = `${a.conditionId}::${a.selectedTokenId}`;
-        const kb = `${b.conditionId}::${b.selectedTokenId}`;
-        return ka < kb ? -1 : ka > kb ? 1 : 0;
-      });
-
-      // Rotation: 30-min UTC bucket offset wraps around hidden pool
       const bucket30min = Math.floor(Date.now() / (30 * 60 * 1000));
-      const offset = hidden.length > 0 ? bucket30min % hidden.length : 0;
-      const rotatedHidden = hidden.length > 0
-        ? [...hidden.slice(offset), ...hidden.slice(0, offset)]
-        : [];
-
-      // Select: public-exposed first, then rotating hidden, capped at researchLimit
-      const remainingSlots = Math.max(0, researchLimit - publicExposed.length);
-      const selectedHidden = rotatedHidden.slice(0, remainingSlots);
-      const selectedResearch = [...publicExposed, ...selectedHidden];
+      const selectedResearch = selectResearchMarketsForScoring(
+        rawUniverse,
+        publicIdentitySet,
+        researchLimit,
+        bucket30min,
+      );
+      const dedupedSupportedResearchCount = new Set(
+        rawUniverse
+          .filter((row) => row.scoreOwnership === "SUPPORTED_BY_SCORE_MODEL")
+          .map((row) => `${row.conditionId}::${row.selectedTokenId}`),
+      ).size;
+      const selectedPublicCount = selectedResearch.filter((row) =>
+        publicIdentitySet.has(`${row.conditionId}::${row.selectedTokenId}`),
+      ).length;
+      const eligibleEventCount = new Set(
+        rawUniverse
+          .filter((row) => row.scoreOwnership === "SUPPORTED_BY_SCORE_MODEL")
+          .map((row) => `${row.eventId}::${row.eventStartIso}`),
+      ).size;
+      const selectedEventCount = new Set(
+        selectedResearch.map((row) => `${row.eventId}::${row.eventStartIso}`),
+      ).size;
 
       for (const rm of selectedResearch) {
         rf.firemodel11WideAttempted = (rf.firemodel11WideAttempted ?? 0) + 1;
@@ -2934,11 +3046,14 @@ export async function buildLandingCards(options?: {
 
       // Persist S2 selection diagnostics on the research funnel
       rf.researchSnapshotsSelected = selectedResearch.length;
-      rf.researchSnapshotsSelectedPublic = publicExposed.length;
-      rf.researchSnapshotsSelectedRotating = selectedHidden.length;
+      rf.researchSnapshotsSelectedPublic = selectedPublicCount;
+      rf.researchSnapshotsSelectedRotating = selectedResearch.length - selectedPublicCount;
       rf.researchSnapshotSelectionLimit = researchLimit;
       rf.researchUniverseEvents = s2ResearchUniverseEventCount;
-      rf.researchUniverseMarkets = dedupedUniverse.length;
+      rf.researchUniverseMarkets = dedupedSupportedResearchCount;
+      rf.researchScorerEligibleEvents = eligibleEventCount;
+      rf.researchScorerSelectedEvents = selectedEventCount;
+      rf.researchScorerCapacityExcludedEvents = Math.max(0, eligibleEventCount - selectedEventCount);
     }
 
     return {

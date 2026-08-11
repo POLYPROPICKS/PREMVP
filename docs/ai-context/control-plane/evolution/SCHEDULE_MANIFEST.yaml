@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0",
+  "manifest_id": "premvp.evolution_schedule_manifest.v1",
+  "updated_at": "2026-08-07T10:32:48Z",
+  "_format_note": "JSON-compatible YAML 1.2 subset, identical to the rest of docs/ai-context/control-plane.",
+
+  "authority": {
+    "role": "SCHEDULE_MANIFEST_ONLY",
+    "rule": "This file declares intended trigger cadence only. All business logic — collection, validation, eligibility, evidence rules, the no-fabrication rule — lives in the persisted Git commands and policies each routine points to. The schedule is only a trigger; nothing here can substitute for the reviewer prompt or the validators."
+  },
+
+  "registered_routine_mechanism": {
+    "status": "NOT_FOUND_IN_CONTROL_PLANE",
+    "checked": [
+      "CAPABILITY_MATRIX.yaml execution_targets[*].capabilities — no SCHEDULER/CRON/ROUTINE capability is registered for claude_code_cloud, local_codex_windows or ireland_local",
+      "AGENT_REGISTRY.yaml entries[*].type — the registered types are AGENT, SKILL, COMMAND, HOOK, SCRIPT, CI_GATE, POLICY; none is a scheduling primitive"
+    ],
+    "note": "As of this manifest, no live registered execution surface in the PREMVP control plane can create or persist a recurring schedule. This manifest does not invent one — it records the two intended routines and their cadence so a Founder-operated scheduling surface (or a future registered mechanism) can bind to them without guessing the contract."
+  },
+
+  "routines": [
+    {
+      "routine_id": "premvp.routine.daily_evolution_review.v1",
+      "title": "Daily Evolution Review",
+      "stage": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+      "cadence": {
+        "primary": "once per day, in the evening, Founder local time",
+        "fallback": "every two days when the daily cadence cannot be kept — never silently skipped, the manifest records the fallback explicitly"
+      },
+      "trigger_action": "Collect operator-action input since the last accepted cycle, then produce and validate exactly one Evolution cycle and its Founder report.",
+      "commands": [
+        "npm run control-plane:evolution:collect -- --input <bundle.json> --out <collection.json>",
+        "npm run control-plane:evolution:evaluate -- --cycle <cycle.json> --write"
+      ],
+      "prompt": "docs/ai-context/control-plane/evolution/prompts/DAILY_EVOLUTION_REVIEW.md",
+      "business_logic_owner": "scripts/control-plane/lib/evolution-cycle.mjs and scripts/control-plane/lib/operator-actions.mjs — the schedule only decides when this runs, never what it decides",
+      "output_location": "docs/ai-context/control-plane/evolution/cycles/"
+    },
+    {
+      "routine_id": "premvp.routine.automation_roadmap_governor.v1",
+      "title": "Automation Roadmap Governor",
+      "stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+      "cadence": {
+        "primary": "weekly",
+        "alternative": "after three new validated Evolution cycles since the last governance run, when the triggering mechanism supports a data-driven condition instead of a fixed calendar boundary"
+      },
+      "trigger_action": "Run the Governor over persisted, validated Evolution cycles since the last governance run and produce exactly one Governor result and its Founder report.",
+      "commands": [
+        "npm run control-plane:evolution:govern -- --result <result.json> --write"
+      ],
+      "prompt": "docs/ai-context/control-plane/evolution/prompts/AUTOMATION_ROADMAP_GOVERNOR.md",
+      "business_logic_owner": "scripts/control-plane/lib/evolution-governor.mjs — eligibility, the no-fabrication rule and the factual/strategic field separation are enforced there, never by the scheduler",
+      "output_location": "docs/ai-context/control-plane/evolution/roadmap-proposals/"
+    }
+  ],
+
+  "founder_ui_action_required": {
+    "action": "Enable two recurring routines pointing at the commands above, at the stated cadence, using whichever scheduling surface the Founder currently operates (for example a Claude Routine, a scheduled CI workflow, or a Railway scheduled job) — none of these is yet a registered PREMVP control-plane execution surface, so this is a one-time bounded setup action, not a per-task approval.",
+    "routine_1": "Daily Evolution Review — evening, daily (or every 2 days as a stated fallback) — runs the two commands under premvp.routine.daily_evolution_review.v1 above.",
+    "routine_2": "Automation Roadmap Governor — weekly (or after 3 new validated cycles if the surface supports a data-driven trigger) — runs the command under premvp.routine.automation_roadmap_governor.v1 above.",
+    "reason": "No SCHEDULER/CRON/ROUTINE capability is registered in CAPABILITY_MATRIX.yaml or AGENT_REGISTRY.yaml for either claude_code_cloud or local_codex_windows. Inventing an ad hoc scheduler here would violate the no-invented-scheduler instruction and the cross-environment portability contract every other Evolution artifact follows.",
+    "bounded": true,
+    "blocks_implementation": false
+  }
+}

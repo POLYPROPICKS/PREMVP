@@ -18,7 +18,11 @@ import { runReservationCronWithEvidence, type ReservationRepoPort } from "../../
 import { runEventRebalanceWithEvidence, type RebalanceRepoPort } from "../../lib/executor/eventExecutionQueue";
 import type { SchedulerJobEvidencePort, SchedulerJobRunInput } from "../../lib/executor/schedulerJobEvidence";
 import type { FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
-import type { EventExecutionQueueRow, NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
+import {
+  EXECUTABLE_STAKE_USD,
+  type EventExecutionQueueRow,
+  type NightEventReservationRow,
+} from "../../lib/executor/executorQueueTypes";
 
 // 17:00 Minsk = 14:00Z, canonical reservation anchor.
 const RESERVATION_NOW_MS = Date.parse("2026-07-19T14:00:00.000Z");
@@ -147,9 +151,11 @@ function makeRebalanceRepo(reservationStore: NightEventReservationRow[]): Rebala
         condition_id: "cond-esp-arg",
         selected_token_id: "token-esp-arg-spain",
         selected_outcome: "Spain",
-        signal_score: 80,
-        stake_usd: 7,
-        max_entry_price: 0.55,
+        // Real generated_signal_pairs carriers only. signal_score / stake_usd /
+        // max_entry_price are not columns and must not be fabricated here.
+        signal_confidence_num: 80,
+        entry_price_num: 0.55,
+        metric_formula_version: "shadow-firemodel1_1_research_v0",
         market_slug: "spain-vs-argentina-moneyline",
         diagnostics: {
           providerEventContext: {
@@ -223,7 +229,9 @@ test("C1: full funnel -- planning-eligible candidate -> reservation -> T-60 reba
   assert.equal(row.condition_id, "cond-esp-arg");
   assert.equal(row.token_id, "token-esp-arg-spain");
   assert.equal(row.side, "Spain");
-  assert.equal(row.stake_usd, 7);
+  // Stake is the execution-contract constant, never a per-row value.
+  assert.equal(row.stake_usd, EXECUTABLE_STAKE_USD);
+  // Frozen accepted pre-Reservation price, carried from entry_price_num.
   assert.equal((row.diagnostics as Record<string, unknown>).max_entry_price, 0.55);
   assert.ok(row.preferred_entry_iso, "queue row must have preferred_entry_iso");
   assert.ok(row.latest_entry_iso, "queue row must have latest_entry_iso");

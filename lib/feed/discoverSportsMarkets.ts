@@ -33,6 +33,10 @@ import {
   isFuturesMarket,
   classifyGameSignal,
 } from "./normalizePolymarket";
+import {
+  resolveStructuredSportFamily,
+  scoreOwnershipForSportFamily,
+} from "./sportScoreOwnership";
 
 const DEFAULT_CONFIG: SportsDiscoveryConfig = {
   windowHours: 24,
@@ -149,6 +153,22 @@ function resolveLeagueName(
   if (q.includes("cs2") || q.includes("csgo") || q.includes("dota") || q.includes("valorant") || q.includes("map handicap")) return "Esports";
   if (q.includes("world cup") || q.includes("wc2026") || q.includes("wc 2026") || q.includes("fifa world cup")) return "World Cup 2026";
   return "Sports";
+}
+
+function structuredCarrierFromMarket(market: SportsMarketCandidate | null | undefined) {
+  const events = market && Array.isArray(market.raw.events)
+    ? market.raw.events as Record<string, unknown>[]
+    : [];
+  const event = events[0] ?? {};
+  const strings = (value: unknown): string[] => Array.isArray(value) ? value.map(String) : [];
+  return {
+    providerEventId: typeof event.id === "string" ? event.id : null,
+    providerSportCode: typeof event.providerSportCode === "string" ? event.providerSportCode : null,
+    providerSportFamily: typeof event.providerSportFamily === "string" ? event.providerSportFamily : null,
+    providerSportSource: typeof event.providerSportSource === "string" ? event.providerSportSource : null,
+    providerSportTagIds: strings(event.providerSportTagIds),
+    providerSeriesIds: strings(event.providerSeriesIds),
+  };
 }
 
 // Create group key for market grouping
@@ -298,6 +318,7 @@ export async function discoverSportsMarkets(
       });
     }
   }
+  const providerSportMetadata = buildProviderSportMetadataMap(sportsRaw as unknown[]);
 
   // Add probe tag if available (for flat fallback path)
   const probeTagId = "100639";
@@ -333,9 +354,16 @@ export async function discoverSportsMarkets(
   counts.eventPagesFetched = keysetResult.pagesFetched;
   counts.eventSpineTruncated = keysetResult.truncated;
   counts.officialEventsFetched48h = keysetResult.events.length;
+  // EVENTS_ENUMERATED + the completeness of that enumeration. An incomplete
+  // partition is an explicit, named failure -- never a partial page set
+  // presented downstream as the whole official universe.
+  counts.eventsEnumerated = keysetResult.events.length;
+  counts.eventsEnumerationComplete = keysetResult.complete;
+  counts.eventsEnumerationDuplicatesDropped = keysetResult.duplicatesDropped;
+  counts.eventsEnumerationIncompleteReason = keysetResult.incompleteReason;
 
-  if (keysetResult.errorState) {
-    warnings.push(`Event keyset fetch error: ${keysetResult.errorState}`);
+  if (!keysetResult.complete) {
+    warnings.push(`OFFICIAL_EVENT_ENUMERATION_INCOMPLETE: ${keysetResult.incompleteReason}`);
   }
 
   // Classify events and flatten nested markets with event context injected
@@ -356,6 +384,16 @@ export async function discoverSportsMarkets(
     const eventStartTime = typeof event.startTime === "string" ? event.startTime : undefined;
     const eventId = String(event.id ?? "");
     const eventSlug = String(event.slug ?? "");
+    const providerSportTagIds = extractEventTagIds(event.tags);
+    const providerSportResolution = resolveOfficialSportCode(
+      providerSportTagIds,
+      providerSportMetadata,
+    );
+    const providerSportCode = providerSportResolution.providerSportCode;
+    const providerSportFamily = resolveStructuredSportFamily(event.tags, providerSportCode);
+    const providerSeriesIds = providerSportCode
+      ? providerSportMetadata.sportCodeToSeriesIds.get(providerSportCode) ?? []
+      : [];
 
     const nestedMarkets = Array.isArray(event.markets)
       ? (event.markets as Record<string, unknown>[])
@@ -377,6 +415,11 @@ export async function discoverSportsMarkets(
           slug: eventSlug,
           startTime: eventStartTime ?? null,
           title: event.title,
+          providerSportCode,
+          providerSportFamily,
+          providerSportSource: providerSportResolution.providerSportSource,
+          providerSportTagIds,
+          providerSeriesIds,
         }],
       };
       if (eventStartTime) {
@@ -501,6 +544,16 @@ export async function discoverSportsMarkets(
         let broadWriteDetail: import("./cacheGeneratedSignals").StrategicShadowWriteDetail = {
           inserted: 0,
           materializationRecords: [],
+          conservation: {
+            rowsProposed: 0,
+            rowsInserted: 0,
+            rowsDeduped: 0,
+            rowsExplicitlyRejected: 0,
+            rejectionsByReason: {},
+            writeFailed: false,
+            conservationOk: true,
+            rowsMissingProviderEventContext: 0,
+          },
         };
         if (broadEntries.length > 0) {
           const { writeStrategicShadowPairs } = await import("./cacheGeneratedSignals");
@@ -510,6 +563,10 @@ export async function discoverSportsMarkets(
         } else {
           counts.broadSportsWriteInserted = 0;
         }
+        // ROWS_PROPOSED / ROWS_INSERTED / ROWS_DEDUPED /
+        // ROWS_EXPLICITLY_REJECTED / WRITE_FAILED -- the writer-side half of
+        // producer conservation.
+        counts.broadSportsWriteConservation = { ...broadWriteDetail.conservation };
         const records = broadEntries.map((entry) => ({ providerEventId: entry.providerEventId, conditionId: entry.conditionId, sportCode: entry.providerSportCode }));
         const officialRecords: SportFunnelRecord[] = rawEventsForInventory.map((event) => {
           const rawEvent = event as Record<string, unknown>;
@@ -624,6 +681,7 @@ export async function discoverSportsMarkets(
   let researchExcludedOddsBelowMin = 0;
   let researchExcludedOddsAboveMax = 0;
   let researchExcludedOddsInvalid = 0;
+  let researchExcludedUnsupportedSport = 0;
   const researchMarketsByFamily: Record<string, number> = {};
 
   for (const nm of normalizedMarkets) {
@@ -676,6 +734,23 @@ export async function discoverSportsMarkets(
     const eventId = String(evCtx.id ?? "");
     const eventTitle = String(evCtx.title ?? "");
     const eventSlug = nm.nestedEventSlug || String(evCtx.slug ?? "");
+    const providerSportCode = typeof evCtx.providerSportCode === "string" ? evCtx.providerSportCode : null;
+    const providerSportFamily = typeof evCtx.providerSportFamily === "string" ? evCtx.providerSportFamily : null;
+    const providerSportTagIds = Array.isArray(evCtx.providerSportTagIds)
+      ? evCtx.providerSportTagIds.map(String)
+      : [];
+    const providerSeriesIds = Array.isArray(evCtx.providerSeriesIds)
+      ? evCtx.providerSeriesIds.map(String)
+      : [];
+    const scoreOwnership = scoreOwnershipForSportFamily(providerSportFamily);
+    if (!admitsResearchIntakeSportIdentity(eventId, providerSportFamily)) {
+      researchExcludedInvalidStale++;
+      continue;
+    }
+    if (scoreOwnership !== "SUPPORTED_BY_SCORE_MODEL") {
+      researchExcludedUnsupportedSport++;
+      continue;
+    }
     // market_family = league name (not market type). Prefer raw Gamma category; fall back to slug inference.
     // sportsMarketType = Polymarket internal market type — stored separately for research modeling.
     const rawGammaCategory = String((nm.raw as Record<string, unknown>).category ?? evCtx.category ?? "") || null;
@@ -731,6 +806,12 @@ export async function discoverSportsMarkets(
         marketSubtype: s2MarketType,
         gameStartTimeIso: evStartStr,
         hoursUntilStartNum,
+        providerSportCode,
+        providerSportFamily,
+        providerSportSource: "structured_sports_tag",
+        providerSportTagIds,
+        providerSeriesIds,
+        scoreOwnership,
       });
     }
 
@@ -747,6 +828,7 @@ export async function discoverSportsMarkets(
   counts.researchExcludedOddsBelowMin = researchExcludedOddsBelowMin;
   counts.researchExcludedOddsAboveMax = researchExcludedOddsAboveMax;
   counts.researchExcludedOddsInvalid = researchExcludedOddsInvalid;
+  counts.researchExcludedUnsupportedSportMarkets = researchExcludedUnsupportedSport;
   counts.researchMarketsByFamily = researchMarketsByFamily;
 
   // 5. Filter active and classify
@@ -868,7 +950,7 @@ export async function discoverSportsMarkets(
     const WC2026_SERIES_ID = "11433"; // series slug: soccer-fifwc
     let rawTagEvents: PolymarketRawEvent[] = [];
     try {
-      rawTagEvents = await fetchEventsBySeriesSafe(WC2026_SERIES_ID, 50);
+      rawTagEvents = await fetchEventsBySeriesSafe(WC2026_SERIES_ID);
     } catch {
       warnings.push(`WC2026 series fetch failed for series_id=${WC2026_SERIES_ID}`);
     }
@@ -994,7 +1076,7 @@ export async function discoverSportsMarkets(
     const rawEsportsEvents: PolymarketRawEvent[] = [];
     for (const tagSlug of ESPORTS_TAG_SLUGS) {
       try {
-        const events = await fetchEventsByTagSlugSafe(tagSlug, 30);
+        const events = await fetchEventsByTagSlugSafe(tagSlug);
         rawEsportsEvents.push(...events);
       } catch {
         warnings.push(`Esports tag-slug fetch failed for ${tagSlug}`);
@@ -1161,7 +1243,7 @@ export async function discoverSportsMarkets(
     ) => {
       let raw: PolymarketRawEvent[] = [];
       try {
-        raw = await fetchEventsByTagSlugSafe(slug, 50);
+        raw = await fetchEventsByTagSlugSafe(slug);
       } catch {
         warnings.push(`${leagueLabel} tag-slug fetch failed for ${slug}`);
         return;
@@ -1253,6 +1335,7 @@ export async function discoverSportsMarkets(
         const raw = g.primaryMarket?.raw || {};
         return (raw.image as string) || (raw.icon as string) || null;
       })(),
+      ...structuredCarrierFromMarket(g.primaryMarket),
       // Add raw market data for outcome pricing
       primaryMarketRaw: g.primaryMarket ? {
         outcomes: g.primaryMarket.outcomes,
@@ -1266,6 +1349,7 @@ export async function discoverSportsMarkets(
         volume24hr: g.primaryMarket.volume24hr,
         volumeClob: g.primaryMarket.volumeClob,
         oneDayPriceChange: g.primaryMarket.oneDayPriceChange,
+        providerMarketId: g.primaryMarket.id,
       } : null,
       // Add all grouped markets for mapper to try
       marketsRaw: g.markets.map(m => ({
@@ -1300,6 +1384,7 @@ export async function discoverSportsMarkets(
       marketCount: g.markets.length,
       strategy: "markets-first-48h-fallback",
       leagueName: resolveLeagueName(g, teamsMap),
+      ...structuredCarrierFromMarket(g.primaryMarket),
       primaryMarketRaw: g.primaryMarket ? {
         outcomes: g.primaryMarket.outcomes,
         outcomePrices: g.primaryMarket.outcomePrices,
@@ -1312,6 +1397,7 @@ export async function discoverSportsMarkets(
         volume24hr: g.primaryMarket.volume24hr,
         volumeClob: g.primaryMarket.volumeClob,
         oneDayPriceChange: g.primaryMarket.oneDayPriceChange,
+        providerMarketId: g.primaryMarket.id,
       } : null,
     }));
 
@@ -1392,6 +1478,7 @@ export interface WcShadowEntry {
   // Structured provider-sport contract (commit 1). Populated only by the
   // broad structured-sports collector; undefined for legacy targeted rows.
   providerSportCode?: string | null;
+  providerSportFamily?: string | null;
   providerSportSource?: "structured_sports_tag" | "unclassified" | "ambiguous_multi_tag";
   providerSportTagIds?: string[];
   providerSeriesIds?: string[];
@@ -1508,6 +1595,32 @@ function extractEventTagIds(rawTags: unknown): string[] {
  * to 389 codes is an umbrella. The narrowest tags on the event win. No text,
  * slug, symbol or curated allowlist is consulted.
  */
+/**
+ * Research (scored) intake identity admission.
+ *
+ * The canonical structured family is the score and identity authority -- exactly
+ * the contract `hasStructuredScoredSportAuthority` enforces at the persistence
+ * boundary, where `(providerContext.league ?? null) === providerSportCode`
+ * deliberately admits a NULL raw code. `resolveOfficialSportCode` returns null
+ * whenever the provider's structured tags expose no UNIQUE code (an ambiguous
+ * multi-code tag, e.g. one tennis tag mapping to both atp and wta), so requiring
+ * the raw code here dropped every canonical-family-only event out of the scored
+ * universe before a score could ever be attempted -- which is why families whose
+ * tags are structurally ambiguous reached authority and were never scored.
+ *
+ * Still fail-closed: no provider event id, or no canonical structured family,
+ * is not admitted. Nothing here is derived from title, slug or category text.
+ */
+export function admitsResearchIntakeSportIdentity(
+  eventId: string | null | undefined,
+  providerSportFamily: string | null | undefined,
+): providerSportFamily is string {
+  return (
+    typeof eventId === "string" && eventId.trim() !== "" &&
+    typeof providerSportFamily === "string" && providerSportFamily.trim() !== ""
+  );
+}
+
 export function resolveOfficialSportCode(
   tagIds: string[],
   sportMeta: ProviderSportMetadataMap,
@@ -1664,6 +1777,7 @@ export function buildBroadStructuredSportsShadowEntries(
       tagIds,
       sportMeta,
     );
+    const providerSportFamily = resolveStructuredSportFamily(row.providerTags, providerSportCode);
     if (ambiguousSport) diagnostics.rowsAmbiguousSport += 1;
 
     const sportKey = providerSportCode ?? (ambiguousSport ? "AMBIGUOUS_MULTI_SPORT" : "UNCLASSIFIED_SPORTS_TAG");
@@ -1751,6 +1865,7 @@ export function buildBroadStructuredSportsShadowEntries(
         tokenIndex: idx,
         volumeUsd: row.volumeUsd,
         providerSportCode,
+        providerSportFamily,
         providerSportSource,
         providerSportTagIds: tagIds,
         providerSeriesIds: providerSportCode ? sportMeta.sportCodeToSeriesIds.get(providerSportCode) ?? [] : [],
@@ -1825,7 +1940,7 @@ export async function collectWcShadowCandidates(): Promise<WcShadowEntry[]> {
   const FALLBACK_MIN = 0.20, FALLBACK_MAX = 0.741;
 
   try {
-    const rawEvents = await fetchEventsBySeriesSafe(WC2026_SERIES_ID, 50);
+    const rawEvents = await fetchEventsBySeriesSafe(WC2026_SERIES_ID);
     if (rawEvents.length === 0) return [];
 
     const nowMs = Date.now();
@@ -1914,7 +2029,7 @@ export async function collectEsportShadowCandidates(): Promise<WcShadowEntry[]> 
   try {
     const rawEvents: PolymarketRawEvent[] = [];
     for (const tagSlug of ESPORTS_TAG_SLUGS) {
-      try { rawEvents.push(...await fetchEventsByTagSlugSafe(tagSlug, 30)); } catch { /* skip tag */ }
+      try { rawEvents.push(...await fetchEventsByTagSlugSafe(tagSlug)); } catch { /* skip tag */ }
     }
     if (rawEvents.length === 0) return [];
 
@@ -2017,7 +2132,7 @@ export async function collectNbaNhlShadowCandidates(): Promise<WcShadowEntry[]> 
   const collectLeague = async (slugs: string[], leagueLabel: "NBA" | "NHL"): Promise<LeagueEntry[]> => {
     const raw: PolymarketRawEvent[] = [];
     for (const slug of slugs) {
-      try { raw.push(...await fetchEventsByTagSlugSafe(slug, 50)); } catch { /* skip */ }
+      try { raw.push(...await fetchEventsByTagSlugSafe(slug)); } catch { /* skip */ }
     }
     const nowMs = Date.now();
     const seen = new Set<string>();
@@ -2188,7 +2303,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
     const WC_EX = /\b(top goalscorer|longshots parlay|qualification longshots|squad|winner|champion|outright)\b|player to make|will .+ play/i;
     const EXACT_SCORE_SLUG = /exact.?score/i;
     const nowMs = Date.now();
-    const wcSeries = await fetchEventsBySeriesSafe("11433", 50);
+    const wcSeries = await fetchEventsBySeriesSafe("11433");
 
     // Expand each game's sub-events; deduplicate by event ID.
     // gameId lives on the market level in the Gamma API response, not on the event.
@@ -2266,11 +2381,11 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
     // tag_id + related_tags=true: surfaces spread/total/corner events under child tags
     const wcTagId = await fetchTagIdBySlugSafe("fifwc").catch(() => null);
     if (wcTagId) {
-      try { wcTagRaw.push(...await fetchPolymarketEventsByTagSafe(wcTagId, 100)); } catch { /**/ }
+      try { wcTagRaw.push(...await fetchPolymarketEventsByTagSafe(wcTagId)); } catch { /**/ }
     }
     // slug fallback: tournament-winner futures (useful for WC title detection baseline)
     for (const ts of ["fifwc", "soccer-fifwc"]) {
-      try { wcTagRaw.push(...await fetchEventsByTagSlugSafe(ts, 50)); } catch { /**/ }
+      try { wcTagRaw.push(...await fetchEventsByTagSlugSafe(ts)); } catch { /**/ }
     }
     const seenTag = new Set<string>();
     for (const ev of wcTagRaw) {
@@ -2322,7 +2437,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
     const nowMs = Date.now();
     const rawEs: PolymarketRawEvent[] = [];
     for (const s of ["esports", "counter-strike", "cs2", "dota-2", "valorant", "league-of-legends"]) {
-      try { rawEs.push(...await fetchEventsByTagSlugSafe(s, 30)); } catch { /**/ }
+      try { rawEs.push(...await fetchEventsByTagSlugSafe(s)); } catch { /**/ }
     }
     const seenEs = new Set<string>();
     for (const ev of rawEs) {
@@ -2353,7 +2468,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
     try {
       const nowMs = Date.now();
       const raw: PolymarketRawEvent[] = [];
-      for (const s of slugs) { try { raw.push(...await fetchEventsByTagSlugSafe(s, 50)); } catch { /**/ } }
+      for (const s of slugs) { try { raw.push(...await fetchEventsByTagSlugSafe(s)); } catch { /**/ } }
       const seen = new Set<string>();
       for (const ev of raw) {
         if (!ev.active || ev.closed) continue;

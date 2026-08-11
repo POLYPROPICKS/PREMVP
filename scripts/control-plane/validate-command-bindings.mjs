@@ -4,7 +4,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 export function validateCommandBindings(repoRoot = root) {
  const registry = JSON.parse(fs.readFileSync(path.join(repoRoot, 'docs/ai-context/control-plane/AGENT_REGISTRY.yaml'), 'utf8'));
  const errors = [];
- for (const entry of registry.entries.filter((x) => x.type === 'COMMAND' && x.status === 'PROVEN_PRESENT')) {
+ for (const entry of registry.entries.filter((x) => ['COMMAND', 'SKILL'].includes(x.type) && x.status === 'PROVEN_PRESENT')) {
    if (!entry.implementation_path) errors.push(`COMMAND_REFERENCE_NOT_EXECUTABLE: ${entry.canonical_id}`);
    else if (!fs.existsSync(path.join(repoRoot, entry.implementation_path))) errors.push(`COMMAND_REFERENCE_NOT_EXECUTABLE: ${entry.canonical_id} -> ${entry.implementation_path}`);
  }

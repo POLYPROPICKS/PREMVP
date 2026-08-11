@@ -16,6 +16,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   loadFinalIdentitySourceRowsByGeneratedSignalPairId,
+  loadExactProviderSiblingRowsFromAnchor,
   runEventRebalance,
   runEventRebalanceWithEvidence,
   type RebalanceRepoPort,
@@ -217,7 +218,46 @@ test("Final Identity production loader has no slug fallback query", () => {
   const loader = source.slice(start, end);
   assert.match(loader, /\.eq\("id", generatedSignalPairId\)/);
   assert.match(loader, /\.limit\(1\)/);
+  // The broad, unindexed diagnostics containment scan
+  // (`.contains("diagnostics", {...})`) previously caused
+  // EXACT_PROVIDER_EVENT_QUERY_FAILED_57014 in production (proven: 2026-08-10
+  // Minsk cohort, 15/15 natural Reservations). It must stay bounded exact-eq
+  // filters on the extracted identity fields, not a containment scan.
+  assert.doesNotMatch(loader, /\.contains\(\s*"diagnostics"/, "the broad diagnostics containment scan must not return");
+  assert.match(loader, /\.eq\("diagnostics->providerEventContext->>v",\s*"v1"\)/);
+  assert.match(loader, /\.eq\("diagnostics->providerEventContext->>provider",\s*"polymarket"\)/);
+  assert.match(loader, /\.eq\("diagnostics->providerEventContext->>eventId",\s*eventId\)/);
+  assert.match(loader, /\.eq\("diagnostics->providerEventContext->>eventStartIso",\s*eventStartIso\)/);
+  assert.match(loader, /\.eq\("metric_formula_version", scoreContractVersion\)/);
+  assert.doesNotMatch(loader, /\.eq\("condition_id"/, "one market condition cannot define the event sibling set");
   assert.doesNotMatch(loader, /event_slug|\.order\(/, "slug and recency must never become source identity fallbacks");
+});
+
+test("production-scale exact sibling lookup is condition-bounded before residual provider validation", async () => {
+  const authority = createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), baseCandidate());
+  const anchor = { ...authority.sourceRow, condition_id: "cond-exact", diagnostics: { providerEventContext: { v: "v1", provider: "polymarket", eventId: "event-a", eventStartIso: KICKOFF_ISO } } };
+  const siblingHigh = { ...anchor, id: "pair-high", score: 91, selected_token_id: "token-high", selected_outcome: "YES" };
+  const siblingTie = { ...anchor, id: "pair-z", score: 91, selected_token_id: "token-z", selected_outcome: "NO" };
+  const wrongStart = { ...anchor, id: "pair-other-start", diagnostics: { providerEventContext: { v: "v1", provider: "polymarket", eventId: "event-a", eventStartIso: "2026-07-20T19:00:00.000Z" } } };
+  const broadPopulation = Array.from({ length: 50_000 }, (_, i) => ({ ...anchor, id: `unrelated-${i}`, condition_id: `other-${i}`, diagnostics: { providerEventContext: { v: "v1", provider: "polymarket", eventId: `other-${i}`, eventStartIso: KICKOFF_ISO } } }));
+  let queriedIdentity: Record<string, string> | null = null;
+  const rows = await loadExactProviderSiblingRowsFromAnchor(
+    authority.reservation,
+    async () => [anchor],
+    async (identity) => {
+      queriedIdentity = identity;
+      return [anchor, siblingHigh, siblingTie, wrongStart];
+    },
+  );
+  assert.equal(broadPopulation.length, 50_000, "fixture represents a production-scale unrelated population");
+  assert.deepEqual(queriedIdentity, {
+    eventId: "event-a",
+    eventStartIso: KICKOFF_ISO,
+    scoreContractVersion: "v2-lite-growth-safe",
+  }, "the exact provider occurrence and score domain reach the sibling read");
+  assert.deepEqual(rows.map((r) => r.id).sort(), ["pair-high", "pair-z", anchor.id].sort(), "different occurrence is excluded after the bounded read");
+  assert.equal(rows.length, 3);
+  assert.equal(rows.filter((r) => r.id === "pair-high").length, 1, "the bounded set retains the max-score candidate consumed by the established queue selector");
 });
 
 test("B1: before T-70, zero queue rows are created", async () => {
@@ -1057,7 +1097,7 @@ function multiEventAuthorityFixture(n: number) {
       return authority ? [authority.sourceRow] : [];
     },
     fetchExactTokenOrderbook: async (tokenId: string) => {
-      const authority = authorities.find((item) => item.sourceRow.token_id === tokenId);
+      const authority = authorities.find((item) => item.sourceRow.selected_token_id === tokenId);
       if (!authority) return { ok: false as const, tokenId, latencyMs: 1, errorCode: "FIXTURE_TOKEN_NOT_FOUND" };
       return authority.fetchExactTokenOrderbook();
     },
@@ -1409,9 +1449,13 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   assert.equal(row.side, "Chicago White Sox");
   // 07 stake_usd = 1.10
   assert.equal(row.stake_usd, 1.1);
-  // 08 max_entry_price present + numeric
+  // 08 max_entry_price present + numeric. This is the FROZEN accepted
+  // pre-Reservation price of the selected exact sibling, i.e. the fixture's
+  // generated_signal_pairs.entry_price_num (0.42) -- not a separately computed
+  // cap. It was previously asserted as 0.58 only because the fixture fabricated
+  // a `max_entry_price` property that the real table cannot store.
   assert.equal(typeof diag.max_entry_price, "number");
-  assert.equal(diag.max_entry_price, 0.58);
+  assert.equal(diag.max_entry_price, 0.42);
   // 09 selected raw provider-row lineage is preserved without Final Identity.
   const lineage = diag.source_lineage as { generated_signal_pair_id: string };
   assert.equal(lineage.generated_signal_pair_id, diag.selected_signal_pair_id);
@@ -1433,8 +1477,10 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   // 07 stake on wire / 08 max_entry_price + price_cap alias
   assert.equal(wire.stake_usd, 1.1);
   assert.equal(wire.max_stake_usd, 1.1);
-  assert.equal(wire.max_entry_price, 0.58);
-  assert.equal(wire.price_cap, 0.58);
+  // Consumer wire view carries the same frozen accepted pre-Reservation price
+  // (entry_price_num of the selected exact sibling) under both names.
+  assert.equal(wire.max_entry_price, 0.42);
+  assert.equal(wire.price_cap, 0.42);
   // 11 idempotency_key on wire
   assert.equal(wire.idempotency_key, row.idempotency_key);
 });

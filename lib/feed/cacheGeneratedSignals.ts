@@ -4,6 +4,7 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { PremiumSignal, MarketSource, LandingCardDiagnostics, LandingCardPair } from "./types";
 import type { WcShadowEntry } from "./discoverSportsMarkets";
+import { hasStructuredScoredSportAuthority } from "./sportScoreOwnership";
 import {
   chunkArray,
   SHADOW_DEDUP_QUERY_CHUNK,
@@ -46,6 +47,66 @@ export interface WritePairsInput {
   source: string;
   formulaVersion: string;
   expiresAt: string;
+}
+
+export const FIREMODEL1_1_RESEARCH_METRIC_VERSION = "shadow-firemodel1_1_research_v0";
+
+export function buildFireModel1_1ResearchRows(
+  pairs: LandingCardPair[],
+  defaultExpiresAt: string,
+) {
+  return pairs.map((pair) => {
+    const { premiumSignal: ps, diagnostics: diag } = pair;
+    const smartMoneyScore = findMetricValue(
+      Array.isArray(ps.metrics) ? ps.metrics : null,
+      "smart money",
+    );
+    const whalePublicScore =
+      findMetricValue(Array.isArray(ps.metrics) ? ps.metrics : null, "whale") ??
+      findMetricValue(Array.isArray(ps.metrics) ? ps.metrics : null, "public");
+    const preEventScore = findMetricValue(
+      Array.isArray(ps.metrics) ? ps.metrics : null,
+      "pre",
+    );
+    const entryPriceNum = typeof diag.currentPrice === "number" ? diag.currentPrice : null;
+    return {
+      source: "polymarket",
+      formula_version: FIREMODEL1_1_RESEARCH_METRIC_VERSION,
+      event_slug: ps.eventTitle,
+      market_slug: pair.marketSource.headline,
+      condition_id: diag.conditionId,
+      selected_outcome: diag.selectedOutcome,
+      premium_signal: ps,
+      market_source: pair.marketSource,
+      market_sources: null,
+      diagnostics: {
+        ...diag,
+        fireModelAlias: "FireModel1.1",
+        entryGate: "score>=50_coverage>=25",
+        isResearchCandidate: true,
+        researchScore: ps.winProbability,
+        researchDataCoverage: diag.dataCoverage,
+        smartMoneyScore: smartMoneyScore ?? null,
+        gameStartIso: diag.gameStartIso ?? null,
+        recentTradeCash: diag.recentTradeCash ?? null,
+      },
+      score: null,
+      expires_at: defaultExpiresAt,
+      selected_token_id: diag.selectedTokenId,
+      entry_price_num: entryPriceNum,
+      signal_confidence_num: ps.winProbability,
+      expected_return_pct_num: parsePercentLikeNumber(ps.profit),
+      trust_metrics: Array.isArray(ps.metrics) && ps.metrics.length > 0 ? ps.metrics : null,
+      smart_money_score_num: typeof smartMoneyScore === "number" ? smartMoneyScore : null,
+      whale_public_score_num: typeof whalePublicScore === "number" ? whalePublicScore : null,
+      pre_event_score_num: typeof preEventScore === "number" ? preEventScore : null,
+      signal_result: null,
+      resolved_at: null,
+      winning_outcome: null,
+      realized_return_pct: null,
+      metric_formula_version: FIREMODEL1_1_RESEARCH_METRIC_VERSION,
+    };
+  });
 }
 
 /**
@@ -187,9 +248,102 @@ export interface StrategicShadowMaterializationRecord {
   outcome: "MATERIALIZED" | "PREEXISTING_DEDUP";
 }
 
+/**
+ * Row-level writer conservation ledger.
+ *
+ * Every proposed candidate lands in exactly one terminal bucket:
+ *   rowsProposed === rowsInserted + rowsDeduped + rowsExplicitlyRejected
+ * (when `writeFailed` is false). Nothing may silently disappear between the
+ * producer and `generated_signal_pairs`.
+ */
+export interface StrategicShadowWriteConservation {
+  rowsProposed: number;
+  rowsInserted: number;
+  /** Collapsed as exact conditionId::tokenId duplicates (intra-batch + preexisting). */
+  rowsDeduped: number;
+  /** Dropped for a named, attributable reason. */
+  rowsExplicitlyRejected: number;
+  rejectionsByReason: Record<string, number>;
+  writeFailed: boolean;
+  conservationOk: boolean;
+  /** Rows emitted WITHOUT a complete exact provider event identity. */
+  rowsMissingProviderEventContext: number;
+}
+
 export interface StrategicShadowWriteDetail {
   inserted: number;
   materializationRecords: StrategicShadowMaterializationRecord[];
+  conservation: StrategicShadowWriteConservation;
+}
+
+/**
+ * THE exact provider event identity carried on every emitted shadow row.
+ *
+ * Downstream (`exactProviderEventIdentity` in lib/executor/contractADecisions.ts,
+ * `providerContextOf` in lib/executor/buildFireModelCandidates.ts) accepts ONLY
+ * this structured object — a flat `providerEventId` field is invisible to it.
+ * Emitting the flat field alone is exactly how broad structured-sports rows lost
+ * their provider lineage and fell back to slug identity.
+ *
+ * Returns null rather than inventing an identity: the contract requires a real
+ * provider event ID plus a parseable authoritative start. Title and slug are
+ * carried as context only and are NEVER the identity authority.
+ */
+export function buildShadowProviderEventContext(
+  entry: WcShadowEntry,
+): NonNullable<LandingCardDiagnostics["providerEventContext"]> | null {
+  const eventId = typeof entry.providerEventId === "string" ? entry.providerEventId.trim() : "";
+  const startIso = typeof entry.gameStartIso === "string" ? entry.gameStartIso.trim() : "";
+  if (!eventId || !startIso || !Number.isFinite(Date.parse(startIso))) return null;
+
+  const sportFamily = typeof entry.providerSportFamily === "string" ? entry.providerSportFamily.trim() : "";
+  const league = typeof entry.providerSportCode === "string" ? entry.providerSportCode.trim() : "";
+  const eventSlug = typeof entry.eventSlug === "string" ? entry.eventSlug.trim() : "";
+  const eventTitle = typeof entry.eventTitle === "string" ? entry.eventTitle.trim() : "";
+  const marketQuestion = typeof entry.marketQuestion === "string" ? entry.marketQuestion.trim() : "";
+  const providerMarketId = typeof entry.providerMarketId === "string" ? entry.providerMarketId.trim() : "";
+  const marketType = typeof entry.marketType === "string" ? entry.marketType.trim().toLowerCase() : "";
+  const gameId = typeof entry.gameId === "string" ? entry.gameId.trim() : "";
+  const teamAId = typeof entry.teamAId === "string" ? entry.teamAId.trim() : "";
+  const teamBId = typeof entry.teamBId === "string" ? entry.teamBId.trim() : "";
+
+  return {
+    v: "v1",
+    provider: "polymarket",
+    eventId,
+    eventStartIso: startIso,
+    ...(eventSlug ? { eventSlug } : {}),
+    ...(eventTitle ? { eventTitle } : {}),
+    ...(marketQuestion ? { marketQuestion } : {}),
+    ...(sportFamily ? { sportFamily } : {}),
+    ...(league ? { league } : {}),
+    ...(providerMarketId ? { providerMarketId } : {}),
+    ...(marketType ? { marketType } : {}),
+    ...(gameId ? { gameId } : {}),
+    ...(teamAId ? { teamAId } : {}),
+    ...(teamBId ? { teamBId } : {}),
+    ...(entry.providerSportTagIds?.length ? { sportTagIds: [...entry.providerSportTagIds] } : {}),
+    ...(entry.providerSeriesIds?.length ? { seriesIds: [...entry.providerSeriesIds] } : {}),
+  };
+}
+
+function hasMatchingStructuredSportCarrier(diagnostics: unknown, entry: WcShadowEntry): boolean {
+  if (!diagnostics || typeof diagnostics !== "object") return false;
+  const diag = diagnostics as Record<string, unknown>;
+  const context = diag.providerEventContext;
+  if (!context || typeof context !== "object") return false;
+  const providerContext = context as Record<string, unknown>;
+  const normalize = (value: unknown) => typeof value === "string" && value.trim() ? value.trim() : null;
+  const expectedCode = normalize(entry.providerSportCode);
+  const expectedFamily = normalize(entry.providerSportFamily);
+  return normalize(diag.providerSportCode) === expectedCode &&
+    normalize(diag.providerSportFamily) === expectedFamily &&
+    normalize(diag.providerEventId) === normalize(entry.providerEventId) &&
+    normalize(diag.providerMarketId) === normalize(entry.providerMarketId) &&
+    normalize(providerContext.eventId) === normalize(entry.providerEventId) &&
+    normalize(providerContext.providerMarketId) === normalize(entry.providerMarketId) &&
+    normalize(providerContext.sportFamily) === expectedFamily &&
+    normalize(providerContext.league) === expectedCode;
 }
 
 export function writeStrategicShadowPairs(
@@ -206,9 +360,32 @@ export async function writeStrategicShadowPairs(
   defaultExpiresAt: string,
   options?: { detailed: true },
 ): Promise<number | StrategicShadowWriteDetail> {
-  const detail = (inserted: number, materializationRecords: StrategicShadowMaterializationRecord[]) =>
-    options?.detailed ? { inserted, materializationRecords } : inserted;
-  if (candidates.length === 0) return detail(0, []);
+  const rejectionsByReason: Record<string, number> = {};
+  let rowsMissingProviderEventContext = 0;
+  const rejectRows = (reason: string, n: number) => {
+    if (n > 0) rejectionsByReason[reason] = (rejectionsByReason[reason] ?? 0) + n;
+  };
+  const detail = (
+    inserted: number,
+    materializationRecords: StrategicShadowMaterializationRecord[],
+    deduped: number,
+    writeFailed = false,
+  ) => {
+    const rowsExplicitlyRejected = Object.values(rejectionsByReason).reduce((a, b) => a + b, 0);
+    const conservation: StrategicShadowWriteConservation = {
+      rowsProposed: candidates.length,
+      rowsInserted: inserted,
+      rowsDeduped: deduped,
+      rowsExplicitlyRejected,
+      rejectionsByReason,
+      writeFailed,
+      conservationOk:
+        writeFailed || candidates.length === inserted + deduped + rowsExplicitlyRejected,
+      rowsMissingProviderEventContext,
+    };
+    return options?.detailed ? { inserted, materializationRecords, conservation } : inserted;
+  };
+  if (candidates.length === 0) return detail(0, [], 0);
 
   // Intra-batch dedup: collapse duplicates within the candidates array itself.
   // Collectors may return the same conditionId::selectedTokenId multiple times
@@ -242,11 +419,17 @@ export async function writeStrategicShadowPairs(
     );
   }
 
+  const candidateByKey = new Map(
+    uniqueCandidates.map((candidate) => [
+      `${candidate.conditionId}::${candidate.selectedTokenId}::shadow-strategic-sports-v1`,
+      candidate,
+    ]),
+  );
   const existingKeys = new Set<string>();
   for (const chunk of dedupChunks) {
     const { data: existing, error: dedupError } = await supabaseAdmin
       .from("generated_signal_pairs")
-      .select("condition_id, selected_token_id, metric_formula_version")
+      .select("condition_id, selected_token_id, metric_formula_version, diagnostics")
       .in("condition_id", chunk)
       .eq("metric_formula_version", "shadow-strategic-sports-v1");
 
@@ -254,7 +437,11 @@ export async function writeStrategicShadowPairs(
       throw new Error(`Failed to read existing shadow pairs: ${dedupError.message}`);
     }
     for (const r of existing ?? []) {
-      existingKeys.add(`${r.condition_id}::${r.selected_token_id}::${r.metric_formula_version}`);
+      const key = `${r.condition_id}::${r.selected_token_id}::${r.metric_formula_version}`;
+      const candidate = candidateByKey.get(key);
+      if (candidate && hasMatchingStructuredSportCarrier(r.diagnostics, candidate)) {
+        existingKeys.add(key);
+      }
     }
   }
 
@@ -270,6 +457,14 @@ export async function writeStrategicShadowPairs(
   const newCandidates = dedupedCandidates.filter(
     (c) => c.shadowReason !== "BROAD_STRUCTURED_SPORTS_V1" || c.selectedOutcome != null
   );
+  // Attributable terminal outcome for every candidate that does NOT reach the
+  // insert: intra-batch duplicate, preexisting row, or named rejection. A
+  // dropped-and-uncounted candidate is exactly the silent producer loss this
+  // ledger exists to make impossible.
+  const rowsDeduped =
+    (candidates.length - uniqueCandidates.length) +
+    (uniqueCandidates.length - dedupedCandidates.length);
+  rejectRows("MALFORMED_OUTCOME_TUPLE", dedupedCandidates.length - newCandidates.length);
   const materializationRecords: StrategicShadowMaterializationRecord[] = [
     ...uniqueCandidates
       .filter((c) => existingKeys.has(`${c.conditionId}::${c.selectedTokenId}::shadow-strategic-sports-v1`))
@@ -280,11 +475,13 @@ export async function writeStrategicShadowPairs(
         outcome: "PREEXISTING_DEDUP" as const,
       })),
   ];
-  if (newCandidates.length === 0) return detail(0, materializationRecords);
+  if (newCandidates.length === 0) return detail(0, materializationRecords, rowsDeduped);
 
   const rows = newCandidates.map((entry) => {
     // Per-row expiry: game endDate + 48h buffer so resolver can process it after settlement.
     // Falls back to defaultExpiresAt (30d) when endDate is unavailable.
+    const providerEventContext = buildShadowProviderEventContext(entry);
+    if (!providerEventContext) rowsMissingProviderEventContext += 1;
     const rowExpiresAt = entry.eventEndIso
       ? new Date(new Date(entry.eventEndIso).getTime() + 48 * 3600 * 1000).toISOString()
       : defaultExpiresAt;
@@ -309,6 +506,10 @@ export async function writeStrategicShadowPairs(
       diagnostics: {
         conditionId: entry.conditionId,
         selectedTokenId: entry.selectedTokenId,
+        // Exact provider event identity, structured. This is the ONLY shape
+        // downstream Contract A / candidate building reads; the flat
+        // `providerEventId` below is diagnostics, not identity.
+        providerEventContext,
         isShadow: true,
         shadowScope: entry.shadowScope,
         shadowReason: entry.shadowReason,
@@ -328,6 +529,7 @@ export async function writeStrategicShadowPairs(
         // never normalized/aliased here; model-boundary normalization is a
         // separate, later commit.
         providerSportCode: entry.providerSportCode ?? null,
+        providerSportFamily: entry.providerSportFamily ?? null,
         providerSportSource: entry.providerSportSource ?? null,
         providerSportTagIds: entry.providerSportTagIds ?? null,
         providerSeriesIds: entry.providerSeriesIds ?? null,
@@ -365,6 +567,9 @@ export async function writeStrategicShadowPairs(
       .insert(chunk);
 
     if (error) {
+      // WRITE_FAILED is a terminal, attributable outcome for the remaining
+      // rows -- the ledger records it rather than losing them silently.
+      rejectRows("WRITE_FAILED", rows.length - inserted);
       throw new Error(
         `Failed to write shadow pairs: ${error.message} (after ${inserted} of ${rows.length} rows)`,
       );
@@ -378,7 +583,7 @@ export async function writeStrategicShadowPairs(
     sportCode: c.providerSportCode ?? null,
     outcome: "MATERIALIZED" as const,
   })));
-  return detail(inserted, materializationRecords);
+  return detail(inserted, materializationRecords, rowsDeduped);
 }
 
 /**
@@ -394,8 +599,6 @@ export async function writeFireModel1_1ResearchPairs(
 ): Promise<number> {
   if (pairs.length === 0) return 0;
 
-  const METRIC_VERSION = "shadow-firemodel1_1_research_v0";
-
   const validPairs = pairs.filter(
     (p) => p.diagnostics.conditionId && p.diagnostics.selectedTokenId,
   );
@@ -405,12 +608,14 @@ export async function writeFireModel1_1ResearchPairs(
   const conditionIds = validPairs.map((p) => p.diagnostics.conditionId as string);
   const { data: existing } = await supabaseAdmin
     .from("generated_signal_pairs")
-    .select("condition_id, selected_token_id")
+    .select("condition_id, selected_token_id, diagnostics")
     .in("condition_id", conditionIds)
-    .eq("metric_formula_version", METRIC_VERSION);
+    .eq("metric_formula_version", FIREMODEL1_1_RESEARCH_METRIC_VERSION);
 
   const existingKeys = new Set<string>(
-    (existing ?? []).map((r) => `${r.condition_id}::${r.selected_token_id}`),
+    (existing ?? [])
+      .filter((row) => hasStructuredScoredSportAuthority(row.diagnostics))
+      .map((r) => `${r.condition_id}::${r.selected_token_id}`),
   );
 
   const newPairs = validPairs.filter(
@@ -418,59 +623,7 @@ export async function writeFireModel1_1ResearchPairs(
   );
   if (newPairs.length === 0) return 0;
 
-  const rows = newPairs.map((pair) => {
-    const { premiumSignal: ps, diagnostics: diag } = pair;
-    const smartMoneyScore = findMetricValue(
-      Array.isArray(ps.metrics) ? ps.metrics : null,
-      "smart money",
-    );
-    const whalePublicScore =
-      findMetricValue(Array.isArray(ps.metrics) ? ps.metrics : null, "whale") ??
-      findMetricValue(Array.isArray(ps.metrics) ? ps.metrics : null, "public");
-    const preEventScore = findMetricValue(
-      Array.isArray(ps.metrics) ? ps.metrics : null,
-      "pre",
-    );
-    const entryPriceNum = typeof diag.currentPrice === "number" ? diag.currentPrice : null;
-
-    return {
-      source: "polymarket",
-      formula_version: METRIC_VERSION,
-      event_slug: ps.eventTitle,
-      market_slug: pair.marketSource.headline,
-      condition_id: diag.conditionId,
-      selected_outcome: diag.selectedOutcome,
-      premium_signal: ps,
-      market_source: pair.marketSource,
-      market_sources: null,
-      diagnostics: {
-        ...diag,
-        fireModelAlias: "FireModel1.1",
-        entryGate: "score>=50_coverage>=25",
-        isResearchCandidate: true,
-        researchScore: ps.winProbability,
-        researchDataCoverage: diag.dataCoverage,
-        smartMoneyScore: smartMoneyScore ?? null,
-        gameStartIso: diag.gameStartIso ?? null,
-        recentTradeCash: diag.recentTradeCash ?? null,
-      },
-      score: null,
-      expires_at: defaultExpiresAt,
-      selected_token_id: diag.selectedTokenId,
-      entry_price_num: entryPriceNum,
-      signal_confidence_num: ps.winProbability,
-      expected_return_pct_num: parsePercentLikeNumber(ps.profit),
-      trust_metrics: Array.isArray(ps.metrics) && ps.metrics.length > 0 ? ps.metrics : null,
-      smart_money_score_num: typeof smartMoneyScore === "number" ? smartMoneyScore : null,
-      whale_public_score_num: typeof whalePublicScore === "number" ? whalePublicScore : null,
-      pre_event_score_num: typeof preEventScore === "number" ? preEventScore : null,
-      signal_result: null,
-      resolved_at: null,
-      winning_outcome: null,
-      realized_return_pct: null,
-      metric_formula_version: METRIC_VERSION,
-    };
-  });
+  const rows = buildFireModel1_1ResearchRows(newPairs, defaultExpiresAt);
 
   const { error, count } = await supabaseAdmin
     .from("generated_signal_pairs")

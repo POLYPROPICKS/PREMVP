@@ -51,8 +51,11 @@ debug-v2.json
 # Railway env snapshots — never commit, contain live secrets
 railway-config*.json
 railway-env*.json
-landing-check.json 
+landing-check.json
 *.json
+# Architect Control Plane artifacts are canonical policy and deterministic generated
+# output, not runtime artifacts. The blanket *.json rule above must never swallow them.
+!docs/ai-context/control-plane/**/*.json
 # Founder status snapshots are runtime artifacts (MODE A producer output)
 reports/morning/latest_founder_status_snapshot.md
 # Liquidity funnel reports are runtime artifacts; keep the dir via .gitkeep only

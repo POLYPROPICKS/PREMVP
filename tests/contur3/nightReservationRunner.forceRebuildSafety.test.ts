@@ -148,16 +148,23 @@ test("10. runNightReservations: calling without an injected fetchImpl throws ins
   );
 });
 
-test("11. static safety: main() only runs on direct script execution, never on module import", async () => {
-  // This test file itself already imports the module above without triggering
-  // any network call (proven by the absence of any fetch activity in tests
-  // 1-5, which use zero fetchImpl calls) -- this is a static guard on the
-  // entrypoint gate so a future edit cannot silently remove it.
+test("11. direct invocation enters main cross-platform but stops before HTTP without a secret", async () => {
+  // Importing this module above proves imports do not invoke main(). Direct execution
+  // uses an empty environment, so main must emit MISSING_EXECUTOR_SECRET and exit
+  // before it can make any network request.
   const { readFileSync } = await import("node:fs");
   const path = await import("node:path");
+  const { spawnSync } = await import("node:child_process");
+  const runnerPath = path.join(process.cwd(), "scripts", "contur3", "run-night-reservations.mjs");
   const src = readFileSync(
-    path.join(process.cwd(), "scripts", "contur3", "run-night-reservations.mjs"),
+    runnerPath,
     "utf8"
   );
-  assert.match(src, /if \(import\.meta\.url === `file:\/\/\$\{process\.argv\[1\]\}`\) \{\s*\n\s*main\(\);\s*\n\}/);
+  assert.match(src, /fileURLToPath\(import\.meta\.url\) === path\.resolve\(process\.argv\[1\]\)/);
+  const result = spawnSync(process.execPath, [runnerPath], {
+    encoding: "utf8",
+    env: { NODE_ENV: "test" } as NodeJS.ProcessEnv,
+  });
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /MISSING_EXECUTOR_SECRET/);
 });

@@ -26,6 +26,7 @@ function keysetEvent(opts: {
   title: string;
   startTime: string;
   tagIds: string[];
+  tagSlugs?: Record<string, string>;
   markets: Record<string, unknown>[];
 }): Record<string, unknown> {
   return {
@@ -35,7 +36,7 @@ function keysetEvent(opts: {
     startTime: opts.startTime,
     active: true,
     closed: false,
-    tags: opts.tagIds.map((id) => ({ id, label: id })),
+    tags: opts.tagIds.map((id) => ({ id, label: id, ...(opts.tagSlugs?.[id] ? { slug: opts.tagSlugs[id] } : {}) })),
     markets: opts.markets,
   };
 }
@@ -66,6 +67,15 @@ test("RED: the real persistInventory:true entrypoint activates the broad adapter
     tagIds: ["301"],
     markets: [twoOutcomeMarket("mkt-basketball-1", "cond-basketball-1")],
   });
+  const soccerEvent = keysetEvent({
+    id: "evt-soccer-rus-1",
+    slug: "soccer-rus-1",
+    title: "Soccer Game",
+    startTime: "2026-08-01T20:00:00.000Z",
+    tagIds: ["303"],
+    tagSlugs: { "303": "soccer" },
+    markets: [twoOutcomeMarket("mkt-soccer-rus-1", "cond-soccer-rus-1")],
+  });
   // rugby-sevens is never hardcoded anywhere in the codebase's business
   // logic -- it reaches the writer purely because /sports metadata
   // structurally declares tag 309 for it below.
@@ -92,14 +102,15 @@ test("RED: the real persistInventory:true entrypoint activates the broad adapter
         sports: [
           { sport: "baseball", tags: "300,1" },
           { sport: "basketball", tags: "301,1" },
+          { sport: "rus", tags: "303,1" },
           { sport: "rugby-sevens", tags: "309,1" },
         ],
-        tagIds: ["300", "301", "309", "1"],
+        tagIds: ["300", "301", "303", "309", "1"],
         success: true,
       }),
       fetchTeams: async () => ({ teams: [], count: 0 }),
       fetchActiveEventsByStartWindowKeysetSafe: async () => ({
-        events: [basketballEvent, rugbyEvent, nonSportsEvent],
+        events: [basketballEvent, soccerEvent, rugbyEvent, nonSportsEvent],
         pagesFetched: 1,
         truncated: false,
         errorState: null,
@@ -208,14 +219,15 @@ test("RED: the real persistInventory:true entrypoint activates the broad adapter
     selectedOutcome: string | null;
     selectedTokenId: string;
     providerSportCode: string | null;
+    providerSportFamily: string | null;
   }>;
 
-  // 3 events reach the keyset, but only 2 are structurally confirmed sports
-  // (basketball, rugby) -- election is not.
-  assert.equal(result.counts.confirmedSportsEvents48h, 2);
+  // 4 events reach the keyset, but only 3 are structurally confirmed sports
+  // (basketball, soccer, rugby) -- election is not.
+  assert.equal(result.counts.confirmedSportsEvents48h, 3);
 
-  // Two 2-outcome confirmed-sports markets -> four writer rows total.
-  assert.equal(rows.length, 4, "both confirmed-sports markets' full outcome sets must reach the writer");
+  // Three 2-outcome confirmed-sports markets -> six writer rows total.
+  assert.equal(rows.length, 6, "all confirmed-sports markets' full outcome sets must reach the writer");
   const byEvent = (id: string) => rows.filter((r) => r.providerEventId === id);
 
   const basketballRows = byEvent("evt-basketball-1");
@@ -224,12 +236,17 @@ test("RED: the real persistInventory:true entrypoint activates the broad adapter
   assert.deepEqual(new Set(basketballRows.map((r) => r.selectedOutcome)), new Set(["Yes", "No"]));
   assert.equal(basketballRows[0].providerSportCode, "basketball");
 
+  const soccerRows = byEvent("evt-soccer-rus-1");
+  assert.equal(soccerRows.length, 2);
+  assert.equal(soccerRows[0].providerSportCode, "rus", "raw league/provider code remains unchanged");
+  assert.equal(soccerRows[0].providerSportFamily, "soccer", "canonical family survives the real discovery entrypoint");
+
   const rugbyRows = byEvent("evt-rugby-1");
   assert.equal(rugbyRows.length, 2, "a future/unsupported provider sport tag must still reach the writer with both outcomes");
   assert.equal(rugbyRows[0].providerSportCode, "rugby-sevens");
 
   assert.equal(byEvent("evt-election-1").length, 0, "a structurally non-sports event must never reach the broad writer");
 
-  assert.equal(result.counts.broadSportsRowsProposed, 4);
-  assert.equal(result.counts.broadSportsWriteInserted, 4);
+  assert.equal(result.counts.broadSportsRowsProposed, 6);
+  assert.equal(result.counts.broadSportsWriteInserted, 6);
 });

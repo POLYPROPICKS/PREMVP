@@ -65,6 +65,13 @@ export interface LandingCardDiagnostics {
     game?: string;
     league?: string;
     eventStartIso?: string;
+    providerMarketId?: string;
+    marketType?: string;
+    gameId?: string;
+    teamAId?: string;
+    teamBId?: string;
+    sportTagIds?: string[];
+    seriesIds?: string[];
   };
   selectedTokenId: string | null;
   selectedOutcome: string;
@@ -86,6 +93,13 @@ export interface LandingCardDiagnostics {
   signalStatus?: "qualified" | "upcoming_candidate";
   gameStartIso?: string | null;
   parentEventVolume24hr?: number | null;
+  providerSportCode?: string | null;
+  providerSportFamily?: string | null;
+  providerSportSource?: string | null;
+  providerSportTagIds?: string[];
+  providerSeriesIds?: string[];
+  providerEventId?: string | null;
+  providerMarketId?: string | null;
   metricDedupeAdjusted?: boolean;
   metricDedupeReason?: string;
   rawMetricVector?: number[];
@@ -225,6 +239,9 @@ export interface ResearchFunnelCounters {
   firemodel11WideAttempted?: number;
   firemodel11WideScored?: number;
   firemodel11WideSelected?: number;
+  researchScorerEligibleEvents?: number;
+  researchScorerSelectedEvents?: number;
+  researchScorerCapacityExcludedEvents?: number;
 }
 
 // ─── S2: Wide research universe — pre-grouping, pre-volume nested market ───────
@@ -257,6 +274,16 @@ export interface ResearchNestedMarket {
   marketSubtype?: string | null;
   gameStartTimeIso?: string | null;
   hoursUntilStartNum?: number | null;
+  // Raw provider league code. NULL whenever the provider's structured tags
+  // expose no unique code (e.g. one tennis tag mapping to both atp and wta).
+  // The canonical family below is the score/identity authority; this code is an
+  // optional narrowing detail -- see hasStructuredScoredSportAuthority.
+  providerSportCode: string | null;
+  providerSportFamily: string;
+  providerSportSource: "structured_sports_tag";
+  providerSportTagIds: string[];
+  providerSeriesIds: string[];
+  scoreOwnership: import("./sportScoreOwnership").SportScoreOwnership;
 }
 
 export interface LandingCardPair {
@@ -536,6 +563,13 @@ export interface SportsDiscoveryCounts {
   eventPagesFetched?: number;
   eventSpineTruncated?: boolean;
   officialEventsFetched48h?: number;
+  // Producer conservation — enumeration stage. `eventsEnumerationComplete`
+  // false means the official universe was NOT fully enumerated; the run must
+  // not be treated as a complete denominator.
+  eventsEnumerated?: number;
+  eventsEnumerationComplete?: boolean;
+  eventsEnumerationDuplicatesDropped?: number;
+  eventsEnumerationIncompleteReason?: string | null;
   confirmedSportsEvents48h?: number;
   nestedSportsMarketsFlattened?: number;
   canonicalStartTimeApplied?: number;
@@ -549,6 +583,7 @@ export interface SportsDiscoveryCounts {
   researchExcludedOddsBelowMin?: number;
   researchExcludedOddsAboveMax?: number;
   researchExcludedOddsInvalid?: number;
+  researchExcludedUnsupportedSportMarkets?: number;
   researchMarketsByFamily?: Record<string, number>;
   // Broad sports inventory diagnostics (P0-A, Option B)
   sportsInventoryEventsCaptured?: number;
@@ -566,6 +601,8 @@ export interface SportsDiscoveryCounts {
   broadSportsRowsAmbiguousSport?: number;
   broadSportsWriteInserted?: number;
   broadSportsWriteFailed?: boolean;
+  /** Writer-stage conservation ledger (see StrategicShadowWriteConservation). */
+  broadSportsWriteConservation?: Record<string, unknown>;
   sportFunnelV1?: Record<string, unknown>;
   // Outcome-alignment diagnostics (correction commit): per-market provider
   // token/outcome/price arrays are iterated fully; malformed tuples are
@@ -606,6 +643,7 @@ export interface SportsDiscoverySample {
     volume24hr?: number | null;
     volumeClob?: number | null;
     oneDayPriceChange?: number | null;
+    providerMarketId?: string;
   } | null;
   marketsRaw?: Array<{
     outcomes: string[];
@@ -626,6 +664,12 @@ export interface SportsDiscoverySample {
   teamAName?: string | null;
   teamBName?: string | null;
   eventImage?: string | null;
+  providerEventId?: string | null;
+  providerSportCode?: string | null;
+  providerSportFamily?: string | null;
+  providerSportSource?: string | null;
+  providerSportTagIds?: string[];
+  providerSeriesIds?: string[];
 }
 
 export interface MarketSourceEvidenceCard {

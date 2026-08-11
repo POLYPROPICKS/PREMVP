@@ -56,6 +56,13 @@ function validEnvelope(overrides = {}) {
     reviewer_receipts: [conturReceipt()],
     evidence: [
       { id: 'EV-A', evidence_class: 'PROVEN_IN_RUNTIME', statement: 'build exit 0', ref: null },
+      {
+        id: 'EV-B',
+        evidence_class: 'PROVEN_IN_RUNTIME',
+        statement: 'queue authority cutoff observed in the controlled-live run',
+        ref: null,
+        business_result: true,
+      },
     ],
     capability_changes: [],
     state_delta_proposal: { proposed_state_version: 2, changes: [], accepted: false },
@@ -64,8 +71,27 @@ function validEnvelope(overrides = {}) {
     database_changed: false,
     forbidden_actions_respected: true,
     verdict: 'PASS',
+    outcome_class: 'TERMINAL_PASS',
+    operator_actions: { start: 1, intermediate: 0, terminal_result: 1 },
     blockers: [],
     founder_action: 'Review and accept the state delta proposal.',
+    ...overrides,
+  };
+}
+
+/** A genuine terminal block: canonical id, exhausted recovery, stated impossibility. */
+function hardStop(overrides = {}) {
+  return {
+    hard_stop_id: 'R5_BOUNDARY_REACHED',
+    recovery_attempts: [
+      {
+        id: 'EXECUTOR_REROUTE',
+        action: 'searched ROUTING_AND_PIPELINES.yaml for an eligible R5 execution target',
+        outcome: 'no eligible execution target exists',
+        exhausted: true,
+      },
+    ],
+    unrecoverable_evidence: 'R5 has no eligible execution target and no permitted repository; ireland_local capabilities are NOT_PROVEN.',
     ...overrides,
   };
 }
@@ -182,10 +208,13 @@ test('9e. self-accepted state delta fails', () => {
   assert.match(result.errors.join('\n'), /STATE_DELTA_SELF_ACCEPTED/);
 });
 
-test('9f. a BLOCKED envelope with blockers is valid', () => {
+test('9f. a BLOCKED envelope with a complete hard-stop record is valid', () => {
   const result = validateCompletionEnvelope(validEnvelope({
     verdict: 'BLOCKED',
-    blockers: ['R5_FAIL_CLOSED — ireland_local capabilities are NOT_PROVEN'],
+    outcome_class: 'HARD_BLOCKED',
+    hard_stop: hardStop(),
+    blockers: ['R5_BOUNDARY_REACHED — ireland_local capabilities are NOT_PROVEN'],
+    founder_action: 'Decide whether to authorize a separate Ireland boundary task.',
   }));
   assert.equal(result.ok, true, result.errors.join('\n'));
 });
@@ -203,4 +232,168 @@ test('9g. an R0 envelope with no required reviewers is valid', () => {
     state_delta_proposal: null,
   }));
   assert.equal(result.ok, true, result.errors.join('\n'));
+});
+
+// --- CP-HARDENING-01: outcome semantics ---------------------------------------------------
+// The verdict string is no longer trusted on its own. These cases are the false hard STOPs
+// that used to send the Founder a recovery prompt instead of a finished task.
+
+function blocked(overrides = {}) {
+  return validEnvelope({
+    verdict: 'BLOCKED',
+    outcome_class: 'HARD_BLOCKED',
+    hard_stop: hardStop(),
+    founder_action: 'Decide whether to authorize a separate Ireland boundary task.',
+    ...overrides,
+  });
+}
+
+test('CP-10. "implementation incomplete" can never be a terminal hard block', () => {
+  const result = validateCompletionEnvelope(blocked({
+    blockers: ['Implementation is incomplete — substantial work remains on the compiler.'],
+  }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /INCOMPLETE_IS_NOT_TERMINAL/);
+});
+
+test('CP-10b. a failed first attempt can never be a terminal hard block', () => {
+  const result = validateCompletionEnvelope(blocked({
+    hard_stop: hardStop({ unrecoverable_evidence: 'The first implementation attempt failed.' }),
+  }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /INCOMPLETE_IS_NOT_TERMINAL/);
+});
+
+test('CP-11. session execution time ending is transport state, not a business block', () => {
+  const result = validateCompletionEnvelope(blocked({
+    blockers: ['Session execution time ended before the release stage.'],
+  }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /SESSION_END_IS_NOT_BUSINESS_BLOCK/);
+});
+
+test('CP-11b. a transport pause is a WAIT carrying an honest checkpoint', () => {
+  const ok = validateCompletionEnvelope(validEnvelope({
+    verdict: 'WAIT',
+    outcome_class: 'TRANSPORT_PAUSE',
+    blockers: [],
+    founder_action: 'none',
+    checkpoint: {
+      checkpoint_id: 'CP-HARDENING-01#stage-3',
+      completed_steps: ['compiler', 'completion semantics'],
+      next_step: 'regenerate the Project package and re-run the targeted tests',
+      platform_auto_resume: false,
+    },
+  }));
+  assert.equal(ok.ok, true, ok.errors.join('\n'));
+
+  const missing = validateCompletionEnvelope(validEnvelope({
+    verdict: 'WAIT', outcome_class: 'TRANSPORT_PAUSE', blockers: [], founder_action: 'none',
+  }));
+  assert.equal(missing.ok, false);
+  assert.match(missing.errors.join('\n'), /TRANSPORT_PAUSE_WITHOUT_CHECKPOINT/);
+});
+
+test('CP-12. a hard block without a canonical id or recovery evidence fails', () => {
+  const noRecord = validateCompletionEnvelope(validEnvelope({
+    verdict: 'BLOCKED', outcome_class: 'HARD_BLOCKED', blockers: ['something went wrong'],
+  }));
+  assert.equal(noRecord.ok, false);
+  assert.match(noRecord.errors.join('\n'), /BLOCKED_WITHOUT_HARD_STOP_RECORD/);
+
+  const invented = validateCompletionEnvelope(blocked({
+    hard_stop: hardStop({ hard_stop_id: 'TASK_TOO_BIG' }),
+  }));
+  assert.equal(invented.ok, false);
+  assert.match(invented.errors.join('\n'), /BLOCKED_WITHOUT_CANONICAL_HARD_STOP_ID/);
+
+  const noAttempts = validateCompletionEnvelope(blocked({
+    hard_stop: hardStop({ recovery_attempts: [] }),
+  }));
+  assert.equal(noAttempts.ok, false);
+  assert.match(noAttempts.errors.join('\n'), /BLOCKED_WITHOUT_RECOVERY_EVIDENCE/);
+});
+
+test('CP-12b. a block while registered recovery remains unexhausted fails', () => {
+  const result = validateCompletionEnvelope(blocked({
+    hard_stop: hardStop({
+      recovery_attempts: [{
+        id: 'DEDICATED_WORKTREE', action: 'considered an isolated worktree',
+        outcome: 'not attempted', exhausted: false,
+      }],
+    }),
+  }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /BLOCKED_WHILE_RECOVERY_REMAINS/);
+});
+
+test('CP-12c. a recoverable condition returned as a hard block fails', () => {
+  for (const reason of [
+    'The Founder root is dirty and cannot be used.',
+    'Missing locked dependencies prevent the build.',
+    'The generated snapshot is stale.',
+  ]) {
+    const result = validateCompletionEnvelope(blocked({ blockers: [reason] }));
+    assert.equal(result.ok, false, reason);
+    assert.match(result.errors.join('\n'), /RECOVERABLE_CONDITION_RETURNED_AS_HARD_BLOCK/);
+  }
+});
+
+test('CP-13. a WAIT may not ask the Founder to launch a recovery prompt', () => {
+  const result = validateCompletionEnvelope(validEnvelope({
+    verdict: 'WAIT', outcome_class: 'EXTERNAL_WAIT', blockers: [],
+    founder_action: 'none',
+    wait_reason: 'Please launch another prompt to continue the release.',
+  }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /WAIT_DELEGATES_RECOVERY_TO_FOUNDER/);
+});
+
+test('CP-14. outcome_class must carry its one legal verdict', () => {
+  const result = validateCompletionEnvelope(validEnvelope({ outcome_class: 'EXTERNAL_WAIT' }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /OUTCOME_CLASS_VERDICT_MISMATCH/);
+});
+
+test('CP-15. a recoverable outcome may never consume a Founder action', () => {
+  const result = validateCompletionEnvelope(validEnvelope({
+    verdict: 'FAIL', outcome_class: 'RECOVERABLE_EXECUTION_FAILURE', blockers: [],
+    founder_action: 'Re-run the task with a larger budget.',
+  }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /RECOVERABLE_WITH_FOUNDER_ACTION/);
+});
+
+test('CP-19. PASS without business-result evidence fails', () => {
+  const result = validateCompletionEnvelope(validEnvelope({
+    evidence: [{ id: 'EV-A', evidence_class: 'PROVEN_IN_RUNTIME', statement: 'build exit 0', ref: null }],
+  }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /PASS_WITHOUT_BUSINESS_RESULT_EVIDENCE/);
+});
+
+test('CP-19b. business-result evidence that is only SUPPORTED does not prove a PASS', () => {
+  const result = validateCompletionEnvelope(validEnvelope({
+    evidence: [{ id: 'EV-B', evidence_class: 'SUPPORTED', statement: 'looks right', ref: null, business_result: true }],
+  }));
+  assert.equal(result.ok, false);
+  assert.match(result.errors.join('\n'), /PASS_WITHOUT_BUSINESS_RESULT_EVIDENCE/);
+});
+
+test('CP-20. operator budget: one start, zero intermediate, one terminal result', () => {
+  const missing = validateCompletionEnvelope(validEnvelope({ operator_actions: undefined }));
+  assert.equal(missing.ok, false);
+  assert.match(missing.errors.join('\n'), /PASS_WITHOUT_OPERATOR_ACTION_BUDGET/);
+
+  const intermediate = validateCompletionEnvelope(validEnvelope({
+    operator_actions: { start: 1, intermediate: 1, terminal_result: 1 },
+  }));
+  assert.equal(intermediate.ok, false);
+  assert.match(intermediate.errors.join('\n'), /OPERATOR_BUDGET_VIOLATION: intermediate must be 0/);
+
+  const twoStarts = validateCompletionEnvelope(validEnvelope({
+    operator_actions: { start: 2, intermediate: 0, terminal_result: 1 },
+  }));
+  assert.equal(twoStarts.ok, false);
+  assert.match(twoStarts.errors.join('\n'), /OPERATOR_BUDGET_VIOLATION: start must be 0 or 1/);
 });

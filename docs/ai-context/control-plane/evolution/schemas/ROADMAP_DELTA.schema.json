@@ -1,0 +1,89 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://polypropicks.com/schemas/control-plane/evolution/ROADMAP_DELTA.schema.json",
+  "title": "PolyProPicks Automation Roadmap Delta",
+  "description": "One evidence-based proposed change to the Evolution Automation Roadmap, produced by the Automation Roadmap Governor. Enforced by scripts/control-plane/lib/evolution-governor.mjs — a focused dependency-free validator, not a generic JSON Schema engine. A delta is always a proposal: it can never accept itself, and it can never touch Axis A priority, product-roadmap phase, live-money gates, risk authority, strategic stage order, accepted capability level or promotion rules.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "roadmap_delta_id",
+    "based_on_cycles",
+    "current_stage",
+    "proposed_change",
+    "preserves",
+    "supersedes",
+    "retires",
+    "business_effect",
+    "manifest_2_effect",
+    "evidence",
+    "opportunity_cost",
+    "drift_from_original_roadmap",
+    "drift_justified",
+    "success_metric",
+    "rollback_condition",
+    "accepted"
+  ],
+  "properties": {
+    "roadmap_delta_id": { "type": "string", "minLength": 1 },
+    "based_on_cycles": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "cycle_id values of the persisted, validated Evolution cycles this delta is derived from. Never invented — every id must resolve to a cycle file under evolution/cycles/."
+    },
+    "current_stage": {
+      "type": "string",
+      "enum": ["STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP", "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE", "VISION_AGENT_OPERATING_SYSTEM"],
+      "description": "Must match one of the exactly three approved AUTOMATION_ROADMAP.yaml levels. The Governor never invents a fourth stage."
+    },
+    "proposed_change": { "type": "string", "minLength": 1, "description": "The concrete change proposed within the Evolution roadmap only — never a change to the product roadmap." },
+    "preserves": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 },
+      "description": "What explicitly stays unchanged, at minimum the Axis A priority invariant."
+    },
+    "supersedes": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "retires": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+    "business_effect": { "type": "string", "minLength": 1, "description": "Effect on Axis A — launch, revenue, settlement, reconciled PnL. May state 'none'. Must never claim to reorder Axis A below Axis B." },
+    "manifest_2_effect": { "type": "string", "minLength": 1, "description": "Effect on Axis B — reusable Manifest 2 / Agent Operating System capability. May state 'none'." },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/claim" },
+      "description": "Every material claim behind this delta must carry at least one evidence reference to a persisted cycle, PR, SHA or completion envelope."
+    },
+    "opportunity_cost": { "type": "string", "minLength": 1, "description": "What is not done, or done later, because this change is made. Never 'none' without justification — an automation delta always displaces something." },
+    "drift_from_original_roadmap": { "type": "string", "minLength": 1, "description": "How far this change moves from the roadmap approved in AUTOMATION_ROADMAP.yaml. 'none' is a valid value when the change is purely factual." },
+    "drift_justified": { "type": "boolean" },
+    "success_metric": { "type": "string", "minLength": 1, "description": "An observable metric that would show this change worked." },
+    "rollback_condition": { "type": "string", "minLength": 1, "description": "An observable condition under which this change is reverted." },
+    "accepted": {
+      "type": "boolean",
+      "const": false,
+      "description": "A roadmap delta is a proposal only. The Governor must never set this true — acceptance is a separate Architect/Promotion Gate step."
+    }
+  },
+  "definitions": {
+    "claim": {
+      "type": "object",
+      "required": ["statement", "evidence_class", "evidence_refs"],
+      "properties": {
+        "statement": { "type": "string", "minLength": 1 },
+        "evidence_class": {
+          "type": "string",
+          "enum": ["PROVEN_IN_RUNTIME", "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT", "SUPPORTED", "NOT_PROVEN"]
+        },
+        "evidence_refs": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } }
+      }
+    }
+  },
+  "x-invariants": [
+    "accepted must be false — the Governor never accepts its own delta.",
+    "current_stage must be one of the exactly three approved AUTOMATION_ROADMAP.yaml levels.",
+    "business_effect must never state or imply that Axis A drops below Axis B in priority.",
+    "The delta object may never carry a key that mutates PnL priority, product-roadmap phase, live-money gates, risk authority, strategic stage order, accepted capability level or promotion rules — those require a separate Promotion Gate.",
+    "based_on_cycles must be non-empty and every id must resolve to a persisted, validated cycle.",
+    "Every evidence entry is a material claim and carries at least one evidence reference."
+  ]
+}

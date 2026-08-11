@@ -1,0 +1,78 @@
+{
+  "schema_version": "1.0",
+  "roadmap_id": "premvp.evolution_automation_roadmap.v1",
+  "updated_at": "2026-08-07T10:32:48Z",
+  "_format_note": "JSON-compatible YAML 1.2 subset.",
+
+  "authority": {
+    "role": "EVOLUTION_ROADMAP_ONLY",
+    "rule": "This is the roadmap of the Evolution capability itself. It is NOT the product roadmap. It never changes CURRENT_STATE.yaml roadmap_phase, current_value_step, C1/C2 meaning, PnL gates or live-money authority.",
+    "product_roadmap_source": "docs/ai-context/control-plane/CURRENT_STATE.yaml"
+  },
+
+  "stage_count_rule": "Exactly three approved levels: Stage 1, Stage 2 and Vision. No additional stages may be invented by an executor or by a cycle.",
+
+  "levels": [
+    {
+      "id": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+      "order": 1,
+      "title": "Daily Evolution Routine MVP",
+      "status": "IMPLEMENTED_NOT_YET_EXERCISED",
+      "status_note": "Contracts, schemas, validators, scripts and the reviewer prompt exist and are covered by deterministic tests. No real-world cycle has been run yet — that is deliberate and is not evidence of use.",
+      "scope": [
+        "completion envelopes and confirmed changes as cycle input",
+        "Axis A determination",
+        "Axis B determination",
+        "supporting metrics as diagnostics only",
+        "automation hypotheses",
+        "exactly two Founder practices",
+        "two to three bounded experiments",
+        "operator action collection and aggregation",
+        "plain-language Founder Daily Report",
+        "results persisted in Git"
+      ],
+      "exit_condition": "At least one real Daily Evolution cycle has been produced by the reviewer prompt, validated by premvp.command.evolution_evaluate.v1 and committed under cycles/."
+    },
+    {
+      "id": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+      "order": 2,
+      "title": "Automation Roadmap and governance",
+      "status": "IMPLEMENTED_NOT_YET_EXERCISED",
+      "status_note": "The Automation Roadmap Governor, its result and delta schemas, eligibility rule, factual/strategic field separation, and the reviewer prompt exist and are covered by deterministic tests. No real Governor run has happened yet and no real Daily Evolution cycle has been persisted — that is deliberate and is not evidence of use. Founder Correction Ledger governance and automation-effect verification beyond the delta contract remain open scope.",
+      "scope": [
+        "executable Automation Roadmap Governor",
+        "comparison of multiple cycles",
+        "Founder Correction Ledger",
+        "automation-effect verification",
+        "factual metric updates from evidence",
+        "Roadmap Delta Proposal with accepted false",
+        "Promotion Gate",
+        "execution-environment portability enforcement"
+      ],
+      "entry_condition": "Stage 1 exit condition met and at least two comparable cycles exist.",
+      "entry_condition_met": false,
+      "exit_condition": "At least one real Governor run has been produced by the reviewer prompt, validated by premvp.command.evolution_govern.v1, and committed under roadmap-proposals/.",
+      "explicitly_out_of_stage_1": true
+    },
+    {
+      "id": "VISION_AGENT_OPERATING_SYSTEM",
+      "order": 3,
+      "title": "Agent Operating System",
+      "status": "VISION",
+      "scope": [
+        "Mission Contracts instead of dependence on one master prompt",
+        "mission registry",
+        "declarative environments",
+        "verification layer",
+        "reusable scripts, validators and policies",
+        "controlled self-improvement",
+        "recovery across sessions and execution environments",
+        "automation that never displaces the launch, revenue and PnL priority"
+      ],
+      "entry_condition": "Stage 2 governance proven across multiple cycles and multiple execution environments.",
+      "explicitly_out_of_stage_1": true
+    }
+  ],
+
+  "priority_invariant": "No Evolution level may reorder Axis A below Axis B. Automation exists to make launch, revenue, settlement and reconciled PnL arrive sooner and more safely — never instead of them."
+}

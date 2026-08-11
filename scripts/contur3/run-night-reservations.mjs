@@ -15,6 +15,7 @@
  */
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 export const BASE_URL = 'https://polypropicks.com';
 export const ENDPOINT = '/api/cron/night-event-reservations';
@@ -207,6 +208,7 @@ async function main() {
 }
 
 // Only run as a real network-facing script when executed directly, never on import.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// fileURLToPath avoids the Windows backslash/file-URL mismatch of a string comparison.
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
   main();
 }

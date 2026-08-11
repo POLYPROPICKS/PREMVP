@@ -88,7 +88,8 @@ Every rule below is a **gate**, not a preference.
 ### 3.5 Git/deploy rules
 - Do NOT commit without explicit gate check
 - Do NOT push/deploy without explicit founder approval
-- Do NOT continue when git status is unexpectedly dirty
+- Do NOT use an unexpectedly dirty Founder root as task input. Preserve it untouched and use the
+  canonical execution precheck to create an isolated clean worktree; it is executor-owned recovery.
 - Do NOT commit when git diff --check reports trailing whitespace
 
 ### 3.6 Env/secrets rules
@@ -208,7 +209,8 @@ unless the current task explicitly says payment phase.
 
 Stop immediately and output STOP CONDITION response if:
 
-1. `git status --short` is dirty unexpectedly
+1. The selected isolated worktree is dirty unexpectedly, or the dirty Founder root overlaps an
+   explicitly allowed write path
 2. Build fails (treat as FAIL, not partial success)
 3. Expected file or code block is missing from repo
 4. Forbidden file must be edited to continue

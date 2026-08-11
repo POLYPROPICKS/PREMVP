@@ -27,6 +27,10 @@ import {
   isForbiddenAnchorMarket,
   marketPolicyFingerprint,
 } from "./nightEventReservations";
+import {
+  hasStructuredScoredSportAuthority,
+  MODEL_SCOPE_BY_STRUCTURED_SPORT_FAMILY,
+} from "@/lib/feed/sportScoreOwnership";
 
 const POLICY_VERSION = "battle-sm-guard-v1-20260615";
 const LIVE_POLICY_VERSION = "live-risk-guard-v1";
@@ -292,6 +296,12 @@ export type MarketPolicyProbe = Pick<
   providerMarketQuestion?: string | null;
   providerEventTitle?: string | null;
   diagnostics?: Record<string, unknown>;
+  providerEventId?: string | null;
+  providerEventStartIso?: string | null;
+  providerMarketId?: string | null;
+  conditionId?: string | null;
+  providerSportCode?: string | null;
+  providerMarketType?: string | null;
 };
 
 /**
@@ -348,6 +358,14 @@ export function resolveUpstreamMarketPolicy(probe: MarketPolicyProbe): UpstreamM
     canonical,
     anchorInput,
     sport: probe.inferred_sport ?? null,
+    structuredIdentity: {
+      providerEventId: probe.providerEventId,
+      providerEventStartIso: probe.providerEventStartIso,
+      providerMarketId: probe.providerMarketId,
+      conditionId: probe.conditionId,
+      providerSportCode: probe.providerSportCode,
+      providerMarketType: probe.providerMarketType,
+    },
   });
   return {
     ...base,
@@ -523,10 +541,21 @@ export async function fetchAllPlanningRowsByKeyset(
     for (let attempt = 1; attempt <= retryPolicy.maxAttempts; attempt++) {
       const pageSize = pageSizeLadder[pageSizeIndex];
       const controller = new AbortController();
-      const timeoutHandle = setTimeout(() => controller.abort(), retryPolicy.pageTimeoutMs);
       try {
-        const { data, error } = await buildQuery(cursor).limit(pageSize).abortSignal(controller.signal);
-        clearTimeout(timeoutHandle);
+        // Some fetch implementations acknowledge AbortSignal without settling
+        // their promise. Race the operation itself so a stuck SELECT cannot
+        // hold the whole read-only report indefinitely.
+        const response = await new Promise<any>((resolve, reject) => {
+          const timeoutHandle = setTimeout(() => {
+            controller.abort();
+            reject(new Error(`${stage} page read timed out after ${retryPolicy.pageTimeoutMs}ms`));
+          }, retryPolicy.pageTimeoutMs);
+          buildQuery(cursor).limit(pageSize).abortSignal(controller.signal).then(
+            (value: any) => { clearTimeout(timeoutHandle); resolve(value); },
+            (error: unknown) => { clearTimeout(timeoutHandle); reject(error); }
+          );
+        });
+        const { data, error } = response;
         if (!error) {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           batch = (data ?? []) as any[];
@@ -535,7 +564,6 @@ export async function fetchAllPlanningRowsByKeyset(
         }
         lastMessage = error.message;
       } catch (err) {
-        clearTimeout(timeoutHandle);
         lastMessage = err instanceof Error ? err.message : String(err);
       }
       // Only PostgreSQL statement timeouts step down. Network and application
@@ -659,7 +687,7 @@ function providerContextOf(diag: Record<string, unknown>): Record<string, string
   const c = raw as Record<string, unknown>;
   if (c.v !== "v1" || c.provider !== "polymarket") return null;
   const out: Record<string, string> = {};
-  for (const key of ["eventId", "eventSlug", "eventTitle", "marketQuestion", "sportFamily", "game", "league", "eventStartIso"]) {
+  for (const key of ["eventId", "eventSlug", "eventTitle", "marketQuestion", "sportFamily", "game", "league", "eventStartIso", "providerMarketId", "marketType", "gameId", "teamAId", "teamBId"]) {
     if (typeof c[key] === "string" && c[key].trim()) out[key] = c[key].trim();
   }
   return out;
@@ -774,6 +802,7 @@ function computePlanningFallbackScore(
 // an alias of mma per founder instruction; every other value is intentionally
 // absent so an unrecognized or unlisted upstream sport stays fail-closed.
 const MODEL_SCOPE_BY_PROVIDER_SPORT_CODE: Readonly<Record<string, StrategicScope>> = {
+  ...MODEL_SCOPE_BY_STRUCTURED_SPORT_FAMILY,
   basketball: "BASKETBALL",
   nba: "BASKETBALL",
   hockey: "HOCKEY",
@@ -801,7 +830,7 @@ const MODEL_SCOPE_BY_PROVIDER_SPORT_CODE: Readonly<Record<string, StrategicScope
 type ModelSportResolution = {
   scope: StrategicScope;
   rawProviderSportCode: string | null;
-  source: "providerSportCode" | "shadowScope" | "text" | "malformedProviderSportCode";
+  source: "providerSportFamily" | "providerSportCode" | "shadowScope" | "text" | "malformedProviderSportCode";
   hasStructuredSport: boolean;
   // true iff diagnostics.providerSportCode is a present key (not absent/null/undefined)
   // that is not a usable trimmed non-empty string. A malformed present value must
@@ -827,6 +856,31 @@ export function resolveContractASportMetadata(
 }
 
 function resolveModelSport(diag: Record<string, unknown>, identityText: string): ModelSportResolution {
+  const rawProviderSportFamilyValue = diag.providerSportFamily;
+  const providerSportFamilyKeyPresent =
+    Object.prototype.hasOwnProperty.call(diag, "providerSportFamily") &&
+    rawProviderSportFamilyValue !== undefined &&
+    rawProviderSportFamilyValue !== null;
+  if (providerSportFamilyKeyPresent) {
+    if (typeof rawProviderSportFamilyValue !== "string" || rawProviderSportFamilyValue.trim() === "") {
+      return {
+        scope: "UNKNOWN",
+        rawProviderSportCode: null,
+        source: "malformedProviderSportCode",
+        hasStructuredSport: false,
+        malformedProviderSportCode: true,
+      };
+    }
+    const providerSportFamily = rawProviderSportFamilyValue.trim().toLowerCase();
+    const rawProviderSportCode = safeLower(diag.providerSportCode) || providerSportFamily;
+    return {
+      scope: MODEL_SCOPE_BY_PROVIDER_SPORT_CODE[providerSportFamily] ?? "UNKNOWN",
+      rawProviderSportCode,
+      source: "providerSportFamily",
+      hasStructuredSport: true,
+      malformedProviderSportCode: false,
+    };
+  }
   const rawProviderSportCodeValue = diag.providerSportCode;
   const providerSportCodeKeyPresent =
     Object.prototype.hasOwnProperty.call(diag, "providerSportCode") &&
@@ -1477,7 +1531,7 @@ export async function fetchPlanningSourceRowSets(
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let scoredRows: any[];
-  if (planningMode && includePlanningShadowRows) {
+  if (planningMode) {
     scoredRows = await fetchAllPlanningRowsByKeyset(
       (cursor) => applyPlanningSnapshot(buildScoredQuery(), cursor),
       { stage: "planning_scored_rows_fetch" }
@@ -1496,7 +1550,7 @@ export async function fetchPlanningSourceRowSets(
   // single snapshot that could serve both without changing candidate eligibility.
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let planningShadowRows: any[] = [];
-  if (planningMode) {
+  if (planningMode && includePlanningShadowRows) {
     const buildShadowQuery = () =>
       supabaseAdmin
         .from("generated_signal_pairs")
@@ -1525,9 +1579,9 @@ export async function fetchPlanningSourceRowSets(
  * `buildFireModelCandidates` as injected rows, so candidate eligibility is
  * decided in exactly one place.
  */
-export async function loadContractAPlanningSourceRows(): Promise<Record<string, unknown>[]> {
+export async function loadContractAPlanningSourceRows(nowMs = Date.now()): Promise<Record<string, unknown>[]> {
   const planningLookbackIso = new Date(
-    Date.now() - PLANNING_LOOKBACK_HOURS * 3_600_000
+    nowMs - PLANNING_LOOKBACK_HOURS * 3_600_000
   ).toISOString();
   const { scoredRows } = await fetchPlanningSourceRowSets(
     true,
@@ -1539,7 +1593,9 @@ export async function loadContractAPlanningSourceRows(): Promise<Record<string, 
   // The shadow branch is intentionally score-null and cannot become a Planning
   // Decision; reading its unbounded historical pages here delays the real
   // Reservation write without expanding the authoritative decision universe.
-  return scoredRows as Record<string, unknown>[];
+  return (scoredRows as Record<string, unknown>[]).filter((row) =>
+    hasStructuredScoredSportAuthority(row.diagnostics),
+  );
 }
 
 export async function buildFireModelCandidates(
@@ -1781,18 +1837,22 @@ export async function buildFireModelCandidates(
     const exactStructuredProviderContractAIdentity =
       planningMode &&
       selectorMode === "CONTRACT_A_PLANNING_V1" &&
-      resolvedModelSport.source === "providerSportCode" &&
+      (resolvedModelSport.source === "providerSportCode" || resolvedModelSport.source === "providerSportFamily") &&
       hasExactStructuredProviderContractAIdentity(row, diag, gameStartIso);
     if (
       planningMode &&
       selectorMode === "CONTRACT_A_PLANNING_V1" &&
-      resolvedModelSport.source === "providerSportCode" &&
+      (resolvedModelSport.source === "providerSportCode" || resolvedModelSport.source === "providerSportFamily") &&
       !exactStructuredProviderContractAIdentity
     ) {
       rejectReason("MISSING_EXACT_PROVIDER_IDENTITY");
       continue;
     }
-    if (resolvedModelSport.source === "providerSportCode" && resolvedModelSport.scope === "UNKNOWN" && !exactStructuredProviderContractAIdentity) {
+    if (
+      (resolvedModelSport.source === "providerSportCode" || resolvedModelSport.source === "providerSportFamily") &&
+      resolvedModelSport.scope === "UNKNOWN" &&
+      !exactStructuredProviderContractAIdentity
+    ) {
       if (rawDiag) rawDiag.unsupported_provider_sport_count = (rawDiag.unsupported_provider_sport_count ?? 0) + 1;
       rejectReason("UNSUPPORTED_PROVIDER_SPORT");
       continue;
@@ -2125,6 +2185,12 @@ export async function buildFireModelCandidates(
         activity_label_detected: isActivityLabelText(candidateMarketSlug),
         providerMarketQuestion: providerContext?.marketQuestion ?? null,
         providerEventTitle: providerContext?.eventTitle ?? null,
+        providerEventId: providerContext?.eventId ?? null,
+        providerEventStartIso: providerContext?.eventStartIso ?? null,
+        providerMarketId: providerContext?.providerMarketId ?? null,
+        conditionId: typeof row.condition_id === "string" ? row.condition_id : null,
+        providerSportCode: providerContext?.sportFamily ?? null,
+        providerMarketType: providerContext?.marketType ?? null,
         // Deliberately the surfaces the EMITTED candidate will carry, not the
         // raw source row's: the verdict must describe the candidate that
         // reservation later receives, or it describes nothing it can be
