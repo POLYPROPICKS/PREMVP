@@ -1,3 +1,8 @@
+---
+name: polypropicks-production-debug
+description: "Investigate a production incident or regression with Sentry evidence correlated to current Git and source. Use for production failures, regressions, or Sentry issue/event diagnosis; do not use for ordinary code or product work without an incident."
+---
+
 # PolyProPicks production debug
 
 Use this skill only for a production incident or regression. It requires the selected

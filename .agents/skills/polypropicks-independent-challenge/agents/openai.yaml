@@ -1,0 +1,7 @@
+interface:
+  display_name: "PolyProPicks Independent Challenge"
+  short_description: "Challenge costly technical premises early"
+  default_prompt: "Use $polypropicks-independent-challenge to challenge this mission before implementation, then continue with the smallest evidence-backed approach."
+
+policy:
+  allow_implicit_invocation: true

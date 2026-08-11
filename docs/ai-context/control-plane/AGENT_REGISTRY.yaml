@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-07T00:00:00Z",
+  "updated_at": "2026-08-11T00:00:00Z",
 
   "_types": ["AGENT", "SKILL", "COMMAND", "HOOK", "SCRIPT", "CI_GATE", "POLICY"],
   "_status": ["PROVEN_PRESENT", "REFERENCED_ONLY", "PLANNED", "SUPERSEDED"],
@@ -577,6 +577,28 @@
       "independence_group": null, "receipt_required": false,
       "evidence_class": "PROVEN_IN_RUNTIME", "last_verified_at": "2026-08-10T00:00:00Z", "portability": "PORTABLE",
       "hard_prohibitions": ["make Sentry mandatory for ordinary work", "message-only diagnosis when stack/context is available", "fabricate Sentry evidence", "enable replay/tracing/profiling/PII by default"]
+    },
+    {
+      "canonical_id": "premvp.skill.independent_challenge.v1",
+      "type": "SKILL",
+      "owner_platform": "repository",
+      "implementation_path": ".agents/skills/polypropicks-independent-challenge/SKILL.md",
+      "status": "PROVEN_PRESENT",
+      "invocation": "MODEL_DECIDED",
+      "triggers": ["manual $polypropicks-independent-challenge invocation", "non-trivial mission with material premise uncertainty", "repeated failure", "large or irreversible scope", "materially different implementation alternatives", "important authority or trust-boundary change"],
+      "exclusions": ["trivial mechanical edit", "formatting or typo fix", "already-proven narrow change", "ordinary documentation update", "routine regeneration", "risk class alone"],
+      "model_policy": "selected executor only",
+      "reasoning_policy": "inherit",
+      "permissions": "workflow and reasoning guidance only; direct actions remain capability-scoped",
+      "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "Mission Contract or proposed implementation, diagnosis, architecture, migration, production fix, control-plane change, refactor, or high-impact technical decision",
+      "output_contract": "evidence classification, bounded challenge record, exactly one challenge verdict, and continuation through the smallest defensible authorized path",
+      "independence_group": null,
+      "receipt_required": false,
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "last_verified_at": "2026-08-11T00:00:00Z",
+      "portability": "PORTABLE",
+      "hard_prohibitions": ["mandatory invocation by risk class alone", "new capability inference", "Founder escalation for recoverable uncertainty", "speculative redesign", "database write", "deployment", "live money"]
     },
     {
       "canonical_id": "premvp.command.execution_precheck.v1",

@@ -205,6 +205,13 @@ unless explicitly scoped in current task.
 Payment architecture docs are reference only — do not implement payment changes
 unless the current task explicitly says payment phase.
 
+## 8.1 Independent challenge
+
+For non-trivial work, verify material implementation and diagnosis premises before expensive changes.
+When uncertainty, repeated failure, broad scope, irreversible risk, or competing approaches make it
+useful, invoke `$polypropicks-independent-challenge`. Resolve recoverable uncertainty autonomously;
+do not return it to Founder. The Skill is optional and must not inflate routine review.
+
 ## 9. Stop conditions
 
 Stop immediately and output STOP CONDITION response if:
