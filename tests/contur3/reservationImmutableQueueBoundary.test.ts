@@ -25,7 +25,18 @@ const exactSource = {
   signal_result: null,
   event_slug: "mlb-nyy-phi-2026-07-27",
   market_slug: "New York Yankees vs Philadelphia Phillies - Moneyline",
-  diagnostics: { gameStartIso: START, dataCoverage: 60, shadowScope: "baseball" },
+  diagnostics: {
+    gameStartIso: START,
+    dataCoverage: 60,
+    shadowScope: "baseball",
+    providerEventContext: {
+      v: "v1",
+      provider: "polymarket",
+      eventId: "provider-event-exact",
+      eventStartIso: START,
+      sportFamily: "baseball",
+    },
+  },
 };
 
 function at<T>(fn: () => Promise<T>): Promise<T> {
@@ -111,11 +122,15 @@ test("C1 RED: a persisted Step B Reservation reaches Contract A final identity, 
 
   assert.equal(result.queued_count, 1, JSON.stringify(result.outcomes));
   assert.equal(repo.rows.length, 1);
-  assert.equal(finalIdentityCalls, 1);
-  assert.equal(orderbookCalls, 1);
+  // Planning Reservations now reload exact raw provider rows directly; the
+  // legacy final-candidate callback must not be used as an identity fallback.
+  assert.equal(finalIdentityCalls, 0);
+  // The persisted exact source row owns the frozen entry price; rebalance
+  // must not substitute an order-book refresh for that immutable instruction.
+  assert.equal(orderbookCalls, 0);
   assert.equal(repo.rows[0].diagnostics.physical_event_id, planning.decision.physical_event_id);
   assert.equal(repo.rows[0].diagnostics.event_start_iso, START);
   assert.equal(repo.rows[0].condition_id, "cond-exact");
   assert.equal(repo.rows[0].token_id, "token-exact");
-  assert.equal(repo.rows[0].diagnostics.current_executable_price, 0.42);
+  assert.equal(repo.rows[0].diagnostics.max_entry_price, 0.42);
 });
