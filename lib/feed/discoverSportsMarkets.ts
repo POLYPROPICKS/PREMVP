@@ -255,6 +255,55 @@ function groupMarketsByGame(markets: SportsMarketCandidate[]): GameGroup[] {
   });
 }
 
+export type ResearchMarketTimingReason =
+  | "STRUCTURED_EVENT_START_ELIGIBLE"
+  | "FALLBACK_MARKET_END_ELIGIBLE"
+  | "MARKET_INACTIVE_OR_CLOSED"
+  | "EVENT_START_OUTSIDE_RESEARCH_HORIZON"
+  | "MARKET_END_BEFORE_EVENT_START_OR_INVALID"
+  | "MARKET_END_AFTER_RESEARCH_HORIZON";
+
+export function researchMarketTimingDecision(input: {
+  active: boolean;
+  closed: boolean;
+  nowMs: number;
+  eventStartIso: string | null;
+  marketEndIso: string | null;
+  providerEventId: string | null;
+  providerEventStartIso: string | null;
+}): { eligible: boolean; reason: ResearchMarketTimingReason } {
+  if (!input.active || input.closed) {
+    return { eligible: false, reason: "MARKET_INACTIVE_OR_CLOSED" };
+  }
+
+  const eventStartMs = Date.parse(input.eventStartIso ?? "");
+  const research24hMs = input.nowMs + 24 * 60 * 60 * 1000;
+  if (!Number.isFinite(eventStartMs) || eventStartMs < input.nowMs || eventStartMs >= research24hMs) {
+    return { eligible: false, reason: "EVENT_START_OUTSIDE_RESEARCH_HORIZON" };
+  }
+  if (!input.marketEndIso) {
+    return { eligible: false, reason: "MARKET_END_BEFORE_EVENT_START_OR_INVALID" };
+  }
+
+  const providerEventStartMs = Date.parse(input.providerEventStartIso ?? "");
+  const hasExactStructuredEventStart =
+    Boolean(input.providerEventId) &&
+    Number.isFinite(providerEventStartMs) &&
+    providerEventStartMs === eventStartMs;
+  if (hasExactStructuredEventStart) {
+    return { eligible: true, reason: "STRUCTURED_EVENT_START_ELIGIBLE" };
+  }
+
+  const marketEndMs = Date.parse(input.marketEndIso);
+  if (!Number.isFinite(marketEndMs) || marketEndMs < eventStartMs) {
+    return { eligible: false, reason: "MARKET_END_BEFORE_EVENT_START_OR_INVALID" };
+  }
+  if (marketEndMs > input.nowMs + 48 * 60 * 60 * 1000) {
+    return { eligible: false, reason: "MARKET_END_AFTER_RESEARCH_HORIZON" };
+  }
+  return { eligible: true, reason: "FALLBACK_MARKET_END_ELIGIBLE" };
+}
+
 // Main discovery function
 export async function discoverSportsMarkets(
   config?: Partial<SportsDiscoveryConfig>
@@ -666,13 +715,12 @@ export async function discoverSportsMarkets(
   counts.withNestedEventStartTime = normalizedMarkets.filter(m => m.nestedEventStartTime).length;
 
   // ── S2: Wide research universe (pre-grouping, pre-volume, pre-ranking) ─────────
-  // Per-market eligibility: event.startTime in [now, now+24h), market.endDate in
-  //   [event.startTime, now+48h), active binary market with valid prices, conditionId,
-  //   both clobTokenIds present, not tournament/season/series outright.
+  // Per-market eligibility: authoritative event.startTime in [now, now+24h),
+  //   active binary market with valid prices, conditionId, both clobTokenIds
+  //   present, not tournament/season/series outright. Flat-market fallback rows
+  //   retain the stricter market.endDate timing checks.
   // No volume filter. No grouping. No primary-only. No card cap.
   const researchEligibleMarketsArr: ResearchNestedMarket[] = [];
-  const research24hMs = now.getTime() + 24 * 60 * 60 * 1000;
-  const research48hMs = now.getTime() + 48 * 60 * 60 * 1000;
   const researchSeenEventIds = new Set<string>();
   let researchExcludedLongHorizon = 0;
   let researchExcludedOutright = 0;
@@ -685,26 +733,41 @@ export async function discoverSportsMarkets(
   const researchMarketsByFamily: Record<string, number> = {};
 
   for (const nm of normalizedMarkets) {
-    // Active and open only
-    if (!nm.active || nm.closed) { researchExcludedInvalidStale++; continue; }
-
-    // Canonical event start must be within [now, now+24h)
+    const eventsRaw = Array.isArray((nm.raw as Record<string, unknown>).events)
+      ? ((nm.raw as Record<string, unknown>).events as Record<string, unknown>[])
+      : [];
+    const evCtx = eventsRaw[0] ?? {};
+    const eventId = String(evCtx.id ?? "");
     const evStartStr = nm.eventStartTime || nm.nestedEventStartTime || nm.gameStartTime || null;
-    if (!evStartStr) { researchExcludedInvalidStale++; continue; }
-    const evStartMs = new Date(evStartStr).getTime();
-    if (isNaN(evStartMs) || evStartMs < now.getTime() || evStartMs >= research24hMs) {
+    const mktEndStr = nm.endDateIso || String((nm.raw as Record<string, unknown>).endDate ?? "") || null;
+    const providerEventStartIso = typeof evCtx.startTime === "string" ? evCtx.startTime : null;
+    const timingDecision = researchMarketTimingDecision({
+      active: nm.active,
+      closed: nm.closed,
+      nowMs: now.getTime(),
+      eventStartIso: evStartStr,
+      marketEndIso: mktEndStr,
+      providerEventId: eventId || null,
+      providerEventStartIso,
+    });
+
+    if (timingDecision.reason === "MARKET_INACTIVE_OR_CLOSED" ||
+        timingDecision.reason === "EVENT_START_OUTSIDE_RESEARCH_HORIZON") {
       researchExcludedInvalidStale++; continue;
     }
 
     // Not an outright/futures market
     if (isFuturesMarket(nm)) { researchExcludedOutright++; continue; }
 
-    // market.endDate must exist and be in [event.startTime, now+48h)
-    const mktEndStr = nm.endDateIso || String((nm.raw as Record<string, unknown>).endDate ?? "") || null;
-    if (!mktEndStr) { researchExcludedInvalidStale++; continue; }
-    const mktEndMs = new Date(mktEndStr).getTime();
-    if (isNaN(mktEndMs) || mktEndMs < evStartMs) { researchExcludedInvalidStale++; continue; }
-    if (mktEndMs > research48hMs) { researchExcludedLongHorizon++; continue; }
+    if (timingDecision.reason === "MARKET_END_BEFORE_EVENT_START_OR_INVALID") {
+      researchExcludedInvalidStale++; continue;
+    }
+    if (timingDecision.reason === "MARKET_END_AFTER_RESEARCH_HORIZON") {
+      researchExcludedLongHorizon++; continue;
+    }
+    if (!timingDecision.eligible || !evStartStr || !mktEndStr) {
+      researchExcludedInvalidStale++; continue;
+    }
 
     // conditionId required
     if (!nm.conditionId) { researchExcludedInvalidStale++; continue; }
@@ -726,12 +789,6 @@ export async function discoverSportsMarkets(
     }
 
     // European odds corridor [1.25, 4.00] — matches DB chk_gsrs_odds_corridor constraint
-    // Extract event context from augmented raw.events array
-    const eventsRaw = Array.isArray((nm.raw as Record<string, unknown>).events)
-      ? ((nm.raw as Record<string, unknown>).events as Record<string, unknown>[])
-      : [];
-    const evCtx = eventsRaw[0] ?? {};
-    const eventId = String(evCtx.id ?? "");
     const eventTitle = String(evCtx.title ?? "");
     const eventSlug = nm.nestedEventSlug || String(evCtx.slug ?? "");
     const providerSportCode = typeof evCtx.providerSportCode === "string" ? evCtx.providerSportCode : null;
