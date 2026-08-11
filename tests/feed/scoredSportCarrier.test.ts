@@ -141,6 +141,18 @@ test("research scorer selection uses structured primary market authority for soc
     "tennis-provider-market-primary",
   ]);
 
+  for (const rotationOffset of [1, 7, 31]) {
+    assert.deepEqual(
+      selectResearchMarketsForScoring(
+        [tennisPrimary, soccerPrimary, tennisSecondary, soccerSecondary],
+        new Set(),
+        2,
+        rotationOffset,
+      ).map((row) => row.marketId).sort(),
+      ["soccer-provider-market-primary", "tennis-provider-market-primary"],
+    );
+  }
+
   const displayChanged = [soccerPrimary, tennisPrimary].map((row) => ({
     ...row,
     eventTitle: "arbitrary display event",
