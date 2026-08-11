@@ -1,0 +1,507 @@
+{
+  "schema_version": "1.0",
+  "cycle_id": "2026-08-11__daily_evolution_review",
+  "period_start": "2026-08-10T00:00:00Z",
+  "period_end": "2026-08-11T20:49:28Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "accepted": false,
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "claude_code_cloud_daily_evolution_review_routine",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "PR#123",
+      "PR#124",
+      "PR#125",
+      "PR#126",
+      "PR#127",
+      "PR#128",
+      "PR#129",
+      "PR#130",
+      "PR#131",
+      "PR#133",
+      "PR#134",
+      "PR#135",
+      "PR#136",
+      "PR#137",
+      "PR#138",
+      "PR#139",
+      "PR#140",
+      "PR#141",
+      "PR#142",
+      "PR#143",
+      "PR#144",
+      "PR#145"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-08-11__daily_evolution_review_input.json"
+  },
+  "axis_a": {
+    "verdict": "NOT_ENOUGH_EVIDENCE",
+    "what_moved": [
+      {
+        "statement": "22 PR (#123-#145) влились в origin/main за ~44 часа, почти все — в зоне открытого шага C1 (CONTUR3_QUEUE_AUTHORITY): сравнение времени, авторитет provider-ID, распространение structured-sport, фикс таймаута запроса, политика живого распределения и вывод identity очереди для Ирландии.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#123",
+          "PR#134",
+          "PR#140",
+          "PR#142",
+          "PR#143",
+          "PR#144",
+          "git merge-base --is-ancestor <each SHA> origin/main"
+        ]
+      },
+      {
+        "statement": "Появилось новое регрессионное покрытие overnight-preflight (PR#141 — проверка пути после резервирования, PR#145 — согласование фикстуры неизменяемой очереди), которое сужает разрыв до всё ещё открытого требования BLK-001 (доказанный ночной прогон), но это тестовое покрытие, а не сам боевой прогон.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "PR#141",
+          "PR#145"
+        ]
+      }
+    ],
+    "next_verified_production_fact_now_possible": "Пройдёт ли естественный ночной прогон (Planning -> Reservation -> Final Identity -> неизменяемая Queue) чисто поверх нового фикса identity очереди для Ирландии (PR#143/#144) — это теперь проверяемо, но не проверено в этом разборе: нужен доступ к продакшену и базе данных, которого у этого разбора нет.",
+    "blockers_removed": [],
+    "blockers_introduced": [],
+    "not_proven": [
+      "Остаются ли открытыми блокеры BLK-001..BLK-004 из CURRENT_STATE.yaml, закрылись ли, или появился новый риск после фиксов этого периода — CURRENT_STATE.yaml не обновлялся с 2026-08-07T11:11:09Z, это четыре дня и около 35 мёржей позади живого origin/main, а этот разбор не трогает продакшен и базу, чтобы проверить напрямую.",
+      "Понадобился ли PR#144 потому что фикс identity очереди в PR#143 был неполным, или потому что работу намеренно разделили на два PR — описание PR не изучалось, чтобы различить эти варианты.",
+      "Сверенный PnL, исполнения, комиссии или расчёт за период — таких данных нет и они не запрашивались; ничего не заявляется.",
+      "Доказана ли эффективность фиксов этого периода в проде — подтверждено только их присутствие в origin/main через git ancestry."
+    ],
+    "runtime_or_business_evidence_exists": false,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_ADDED",
+    "capabilities": [
+      {
+        "domain": "MISSION_CONTRACTS",
+        "statement": "25-секционную модель промпта заменили на семантический компилятор Mission Contract и генератор ChatGPT project-package.",
+        "persisted_artifact": "scripts/control-plane/lib/mission-compile.mjs",
+        "use_or_validation_evidence": "30 тестов в 2 наборах (missionContract, chatgptProjectPackage) — перезапущены и прошли зелёными в этой сессии.",
+        "evidence_refs": [
+          "PR#124",
+          "tests/control-plane/missionContract.test.mjs",
+          "tests/control-plane/chatgptProjectPackage.test.mjs"
+        ]
+      },
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "Появилась способность диагностики прода: инструментирование Sentry зарегистрировано в AGENT_REGISTRY.yaml, с явным запретом на диагностику только по тексту ошибки и на включение PII/трейсинга по умолчанию.",
+        "persisted_artifact": "docs/ai-context/control-plane/AGENT_REGISTRY.yaml",
+        "use_or_validation_evidence": "tests/control-plane/sentryProductionDebug.test.mjs, 4/4 прошли — перезапущены и подтверждены зелёными в этой сессии.",
+        "evidence_refs": [
+          "PR#125",
+          "tests/control-plane/sentryProductionDebug.test.mjs"
+        ]
+      },
+      {
+        "domain": "CONTROLLED_IMPROVEMENT",
+        "statement": "Зарегистрирован навык независимой проверки: ограниченная роль 'адвоката дьявола' для нетривиальных миссий, подключённая в AGENT_REGISTRY.yaml и ROUTING_AND_PIPELINES.yaml.",
+        "persisted_artifact": ".agents/skills/polypropicks-independent-challenge/SKILL.md",
+        "use_or_validation_evidence": "tests/control-plane/independentChallengeSkill.test.mjs, 8/8 прошли — перезапущены и подтверждены зелёными в этой сессии.",
+        "evidence_refs": [
+          "PR#135",
+          "tests/control-plane/independentChallengeSkill.test.mjs",
+          "docs/ai-context/control-plane/AGENT_REGISTRY.yaml"
+        ]
+      }
+    ],
+    "not_proven": [
+      "Использовались ли компилятор Mission Contract или навык независимой проверки в реальной задаче исполнителя — оба доказанно присутствуют и покрыты тестами, но ещё не доказано применение в бою.",
+      "Ловил ли уже Sentry-контур реальную продовую проблему — пока такого случая не было.",
+      "Это первый цикл Stage 1, поэтому сравнивать преемственность способностей между циклами пока не с чем."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": 5,
+      "cost_per_verified_result": "NOT_AVAILABLE",
+      "reviewer_rejection_count": "UNKNOWN",
+      "runtime_evidence_count": "UNKNOWN",
+      "reusable_artifacts_created": 9,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-08-10T00:00:00Z",
+    "period_end": "2026-08-11T20:49:28Z",
+    "capture_coverage": "UNKNOWN",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "defect_accounting": {
+    "role": "SUPPLEMENTARY_NOT_SCHEMA_REQUIRED",
+    "method": "Normalized by component + causal boundary + failure class from git commit messages, branch names and merge sequence within the reviewed period. This is a git-ancestry proxy, not a read of any issue tracker or reviewer log — coverage PARTIAL.",
+    "total_defect_occurrences": 15,
+    "distinct_defect_families": 9,
+    "new_families": 9,
+    "repeated_families_in_period": 3,
+    "families": [
+      {
+        "id": "STRUCTURED_SPORT_FAMILY_CARRIER",
+        "component": "feed ingestion -> scoring -> planning pipeline",
+        "causal_boundary": "structured-sport / family-carrier field propagation",
+        "occurrence_count": 5,
+        "evidence_refs": [
+          "PR#128 8817824",
+          "PR#129 edc4b4d",
+          "PR#130 2b6a9ad",
+          "PR#131 9e97f13",
+          "commit 41c9b1c"
+        ],
+        "first_seen": "2026-08-10T17:39:42+03:00",
+        "last_seen": "2026-08-10T19:46:09Z",
+        "lifecycle": "REPEATED -> IMPLEMENTED",
+        "proven_effective": false,
+        "note": "Same branch (structured-sport-family-carrier) reused across 3 separate merged PRs plus the originating PR#128 fix; five corrective commits in under three hours before no further fixes in this family appeared for the rest of the window."
+      },
+      {
+        "id": "IRELAND_QUEUE_IDENTITY_PROVIDER_EVENT_DERIVATION",
+        "component": "Ireland execution queue",
+        "causal_boundary": "queue identity vs provider-event identity derivation",
+        "occurrence_count": 2,
+        "evidence_refs": [
+          "PR#143 a88a610",
+          "PR#144 e02a634"
+        ],
+        "first_seen": "2026-08-11T22:33:50+03:00",
+        "last_seen": "2026-08-11T22:40:02+03:00",
+        "lifecycle": "REPEATED -> IMPLEMENTED",
+        "proven_effective": false,
+        "note": "PR#144 merged 5 minutes after PR#143 on the same branch (restore-ireland-queue-contract); a fixture-alignment commit (0c9d9bd) followed immediately after."
+      },
+      {
+        "id": "REBALANCE_SIBLING_QUERY_TIMEOUT_57014",
+        "component": "event-rebalance scheduler",
+        "causal_boundary": "exact-provider-event sibling lookup query bound",
+        "occurrence_count": 2,
+        "evidence_refs": [
+          "PR#134 c24b548",
+          "PR#134 7da1aee (in-PR self-correction before merge)"
+        ],
+        "first_seen": "2026-08-11T08:32:01+03:00",
+        "last_seen": "2026-08-11T08:52:19+03:00",
+        "lifecycle": "REPEATED -> IMPLEMENTED",
+        "proven_effective": false,
+        "note": "Rework happened inside a single PR before merge (self-matching literal left in a bounded-query comment), so it never reached main in a broken state."
+      },
+      {
+        "id": "RESERVATION_TIMESTAMP_INSTANT_COMPARISON",
+        "component": "reservation/queue write path",
+        "causal_boundary": "reservation event start comparison by instant vs wall-clock text",
+        "occurrence_count": 1,
+        "evidence_refs": [
+          "PR#126 99bedd3"
+        ],
+        "first_seen": "2026-08-10T13:22:57+03:00",
+        "last_seen": "2026-08-10T13:22:57+03:00",
+        "lifecycle": "NEW -> IMPLEMENTED",
+        "proven_effective": false
+      },
+      {
+        "id": "PROVIDER_ID_AUTHORITY_PLANNING_QUEUE",
+        "component": "planning/queue write path",
+        "causal_boundary": "which identity (provider ID vs derived text identity) is authoritative",
+        "occurrence_count": 1,
+        "evidence_refs": [
+          "PR#127 aac7bde"
+        ],
+        "first_seen": "2026-08-10T15:44:26+03:00",
+        "last_seen": "2026-08-10T15:44:26+03:00",
+        "lifecycle": "NEW -> IMPLEMENTED",
+        "proven_effective": false
+      },
+      {
+        "id": "CONTRACT_A_SCORED_QUERY_UNSCORED_VERSION",
+        "component": "planning query (Contract A)",
+        "causal_boundary": "structurally-unscored version rows admitted into the scored query",
+        "occurrence_count": 1,
+        "evidence_refs": [
+          "PR#136 ba7be3d"
+        ],
+        "first_seen": "2026-08-11T11:16:38+03:00",
+        "last_seen": "2026-08-11T11:16:38+03:00",
+        "lifecycle": "NEW -> IMPLEMENTED",
+        "proven_effective": false
+      },
+      {
+        "id": "STRUCTURED_PRIMARY_SCORER_MARKET_SELECTION",
+        "component": "feed scoring",
+        "causal_boundary": "primary scorer market selection among structured candidates",
+        "occurrence_count": 1,
+        "evidence_refs": [
+          "PR#137 5031d51"
+        ],
+        "first_seen": "2026-08-11T13:00:59+03:00",
+        "last_seen": "2026-08-11T13:00:59+03:00",
+        "lifecycle": "NEW -> IMPLEMENTED",
+        "proven_effective": false,
+        "note": "PR#138 immediately after adds a regression test proving the selection ignores rotation — verification follow-up, not a second fix."
+      },
+      {
+        "id": "SPORTS_PROVIDER_TIMING_AUTHORITY",
+        "component": "sports provider ingestion",
+        "causal_boundary": "provider event timing authority",
+        "occurrence_count": 1,
+        "evidence_refs": [
+          "PR#139 4fdae95"
+        ],
+        "first_seen": "2026-08-11T15:24:23+03:00",
+        "last_seen": "2026-08-11T15:24:23+03:00",
+        "lifecycle": "NEW -> IMPLEMENTED",
+        "proven_effective": false
+      },
+      {
+        "id": "RESERVATION_QUEUE_INVENTORY_CHURN",
+        "component": "reservation queue",
+        "causal_boundary": "inventory churn corrupting reserved queue state",
+        "occurrence_count": 1,
+        "evidence_refs": [
+          "PR#142 64eb09d"
+        ],
+        "first_seen": "2026-08-11T21:13:25+03:00",
+        "last_seen": "2026-08-11T21:13:25+03:00",
+        "lifecycle": "NEW -> IMPLEMENTED",
+        "proven_effective": false
+      }
+    ],
+    "implemented_fixes": 9,
+    "proven_effective_fixes": 0,
+    "regressions": 0,
+    "unresolved_recurring_defects": "UNKNOWN — no cross-cycle history exists yet to say whether any of these 9 families recur in the next period.",
+    "reporting_caveat": "This defect accounting is a git-ancestry proxy built from commit messages and branch reuse, not from an issue tracker, PR review thread, or CI failure log. It is a lower bound: defects caught and fixed within a single commit (no separate corrective commit) are invisible to this method."
+  },
+  "executor_and_recovery_load": {
+    "role": "SUPPLEMENTARY_NOT_SCHEMA_REQUIRED",
+    "capture_coverage": "PARTIAL",
+    "method": "Proxy from git: one executor run per merged PR (lower bound — does not see aborted/non-merged sessions), one recovery iteration per same-branch PR reuse or in-PR self-correction commit.",
+    "executor_runs": 22,
+    "executor_runs_note": "22 merge events (#123-#145, excluding the never-merged #132) in the window. 21 on codex/ branches (local_codex_windows), 1 on a claude/ branch (claude_code_cloud, PR#133).",
+    "recovery_iterations": 5,
+    "recovery_iterations_note": "4 branch-reuse resumes (structured-sport-family-carrier x2 extra merges, structured-scorer-market-selection-20260811 x1 extra merge, restore-ireland-queue-contract x1 extra merge) + 1 in-PR self-correction before merge (PR#134).",
+    "architect_corrections": "UNKNOWN — not visible from git alone.",
+    "reviewer_rejection_count": "UNKNOWN",
+    "prompt_reroutes_or_rewrites": "UNKNOWN",
+    "permission_or_environment_friction": "UNKNOWN",
+    "wrong_routing_or_checkpoint_events": "UNKNOWN"
+  },
+  "founder_actions_detail": {
+    "role": "SUPPLEMENTARY_NOT_SCHEMA_REQUIRED",
+    "capture_coverage": "UNKNOWN",
+    "total_founder_actions": "UNKNOWN (floor 0 in operator_actions — no capture source exists)",
+    "starts": "UNKNOWN",
+    "follow_ups": "UNKNOWN",
+    "corrections_retries": "UNKNOWN",
+    "handoffs": "UNKNOWN",
+    "approvals": "UNKNOWN",
+    "manual_ui_recovery_actions": "UNKNOWN",
+    "removable_founder_actions": "UNKNOWN — cannot classify what was never captured."
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "Коллектор операторских действий Stage 1 существует с PR#109, но ни разу не получал реальный входной пакет. Счётчик Founder-действий в этом цикле — это пол в 0, а не измеренные данные, просто потому что нет источника, который фиксирует сообщения Founder в CloudCode/Codex.",
+      "why_it_matters": "Every future Daily Evolution cycle will report the same UNKNOWN/0 unless a capture source exists — the whole FOUNDER ACTIONS section of this routine is currently unusable.",
+      "axis_a_effect": "none directly",
+      "axis_b_effect": "Blocks AUTOMATION_ECONOMICS domain measurement entirely.",
+      "proposed_automation": "Лёгкий экспортёр на каждой поверхности (хук начала/конца сессии CloudCode; чтение лога на стороне Codex), который дописывает одну JSON-строку на каждое отправленное Founder-сообщение в файл в формате Evolution input-bundle.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/input-bundles/ (потребитель уже есть в scripts/control-plane/lib/operator-actions.mjs — не хватает только источника захвата)",
+      "expected_value": "capture_coverage reads COMPLETE instead of UNKNOWN on future cycles, unlocking every derived ratio metric.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low if metadata-only (timestamp, surface, type); higher if it captures message content.",
+      "success_metric": "capture_coverage is COMPLETE on 2 consecutive cycles.",
+      "rollback_or_stop_condition": "Остановиться, если потребуется читать содержимое сообщения сверх типа/времени/поверхности.",
+      "timing": "Before the next scheduled cycle if feasible.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml",
+        "docs/ai-context/control-plane/evolution/input-bundles/2026-08-11__daily_evolution_review_input.json"
+      ]
+    },
+    {
+      "id": "H2",
+      "observed_problem": "CURRENT_STATE.yaml.updated_at — 2026-08-07T11:11:09Z. Живой origin/main с тех пор продвинулся примерно на 35 мёржей, а в EVIDENCE_LEDGER.md нет ни одной соответствующей записи; расхождение обнаружил случайно этот разбор, а не сам контур.",
+      "why_it_matters": "The control plane's single current-state artifact can no longer answer 'what is BLK-001..004's status right now' without a human re-deriving it from raw git log — the exact failure mode CURRENT_STATE.yaml exists to prevent.",
+      "axis_a_effect": "Directly blocks this and future cycles from confirming whether C1 progress is real without extra manual reconciliation.",
+      "axis_b_effect": "RECOVERY_AND_CHECKPOINTS domain regression risk: a checkpoint meant to be the current truth is behind reality by construction, not by exception.",
+      "proposed_automation": "Подключить уже существующий scripts/control-plane/reconcile-control-plane.mjs как регулярную или срабатывающую на мёрж проверку, которая помечает CURRENT_STATE как STATE_REFRESH_REQUIRED по правилу stale_when, уже описанному в самом CURRENT_STATE.yaml, вместо того чтобы полагаться на следующий Daily Evolution Review.",
+      "persistent_artifact": "scripts/control-plane/reconcile-control-plane.mjs (расширить триггер запуска, не саму логику)",
+      "expected_value": "State staleness caught same-day instead of days later by coincidence.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low — detection only, no autonomous state mutation implied.",
+      "success_metric": "No future cycle finds CURRENT_STATE.yaml more than 1-2 days stale relative to origin/main.",
+      "rollback_or_stop_condition": "Останавливать не нужно — это чисто дополнительное обнаружение, ничего не меняющее само по себе.",
+      "timing": "Next architect cycle.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+        "scripts/control-plane/reconcile-control-plane.mjs"
+      ]
+    },
+    {
+      "id": "H3",
+      "observed_problem": "PR#129, #130 и #131 трижды использовали одно и то же имя ветки (structured-sport-family-carrier) для отдельных мёржей, и PR#143/#144 сделали то же самое для restore-ireland-queue-contract — без отслеживаемой связи, что один PR исправляет другой.",
+      "why_it_matters": "Rework cost is invisible to any automated metric today; rework_count in this cycle (5) had to be hand-derived from branch-name archaeology.",
+      "axis_a_effect": "Hides how much of a given day's PR count is net-new value vs. same-day rework.",
+      "axis_b_effect": "AUTOMATION_ECONOMICS and VERIFICATION_AND_EVIDENCE domains cannot compute rework_count reliably without manual git-log reading.",
+      "proposed_automation": "Небольшой валидатор, который обнаруживает повторное использование одного имени ветки в PR за период и фиксирует это как связь-исправление, вместо ручного разбора.",
+      "persistent_artifact": "предлагается: scripts/control-plane/lib/ (новый небольшой модуль) плюс поле схемы у записей confirmed_changes",
+      "expected_value": "rework_count becomes a real, derived metric instead of UNKNOWN or hand-counted.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low.",
+      "success_metric": "rework_count is derived automatically, not hand-counted, in the next cycle.",
+      "rollback_or_stop_condition": "Отказаться, если объём PR в большинстве периодов слишком мал, чтобы сигнал имел смысл.",
+      "timing": "System Stage 2 window.",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "PR#129",
+        "PR#130",
+        "PR#131",
+        "PR#143",
+        "PR#144"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "5 исправлений менее чем за 3 часа (PR#128-#131, 41c9b1c) боролись с одним и тем же дефектом structured-sport/family-carrier; похожий фикс provider-identity (PR#127) и фикс identity очереди для Ирландии (PR#143/#144) повторились позже — все про 'какое поле здесь авторитетно' на критическом пути C1.",
+      "why_it_matters": "A repeat causal pattern this concentrated, in the exact area blocking C1, is a signal worth a structural fix rather than another one-off patch.",
+      "axis_a_effect": "Directly relevant — this pattern is inside the critical path to closing C1.",
+      "axis_b_effect": "Points at a missing persisted 'identity authority contract' spec/fixture that new provider/queue boundaries could be checked against.",
+      "proposed_automation": "Это не действие контура Evolution, а предложение по продуктовому коду: закреплённая контрактная матрица тестов identity-authority, которой должны соответствовать новые границы provider/queue/feed.",
+      "persistent_artifact": "предлагается: tests/contur3/identityAuthorityContract.test.ts (пока не существует)",
+      "expected_value": "Fewer same-causal-boundary repeat fixes per week in this area.",
+      "implementation_cost": "UNKNOWN — nontrivial, touches product test surface.",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium — a wrong abstraction here could itself become a maintenance burden.",
+      "success_metric": "Zero same-causal-boundary repeat fixes in this area across the next 2 cycles.",
+      "rollback_or_stop_condition": "Остановиться, если фикстуру контракта придётся постоянно переписывать — это сигнал неверной абстракции.",
+      "timing": "Architect decision, product-first.",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "PR#127",
+        "PR#128",
+        "PR#129",
+        "PR#130",
+        "PR#131",
+        "PR#143",
+        "PR#144"
+      ]
+    },
+    {
+      "id": "H5",
+      "observed_problem": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json и scripts/control-plane/validate-completion-envelope.mjs существуют с PR#77/#109, но ни одного реального экземпляра completion envelope в репозитории нет — inputs.completion_envelope_ids в этом цикле неизбежно пуст.",
+      "why_it_matters": "A validator with nothing to validate in practice is only exercised by its own tests, never by a real executor run — the same capture gap as Founder actions, one level up.",
+      "axis_a_effect": "none directly",
+      "axis_b_effect": "MISSION_CONTRACTS/VERIFICATION_AND_EVIDENCE domains have an unused verification surface.",
+      "proposed_automation": "Требовать completion envelope как завершающий шаг исполнительской сессии по отслеживаемой миссии, с сохранением в отслеживаемой директории.",
+      "persistent_artifact": "предлагается: docs/ai-context/control-plane/completions/ (пока не существует)",
+      "expected_value": "inputs.completion_envelope_ids becomes usable Evolution input instead of permanently empty.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low.",
+      "success_metric": "The next cycle's inputs.completion_envelope_ids is non-empty.",
+      "rollback_or_stop_condition": "Останавливать не нужно.",
+      "timing": "System Stage 2 window.",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json",
+        "scripts/control-plane/validate-completion-envelope.mjs"
+      ]
+    }
+  ],
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "Требовать доказательство результата в реальном контуре, а не считать факт мёржа в main завершением",
+      "why_it_matters_now": "За 44 часа в main влилось 22 PR прямо в зоне текущего открытого шага C1, но ни один из открытых блокеров (BLK-001..004) не подтверждён закрытым — потому что подтверждение требует боевого прогона, а не факта мёржа.",
+      "how_it_applies_to_current_project": "Перед тем как считать C1 ближе к готовности, явно спросить: 'какой прод-факт это доказывает прямо сейчас' — и принять ответ 'ещё никакой' как валидный ответ, а не как повод считать работу законченной.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/CURRENT_STATE.yaml (open_blockers)"
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "Держать CURRENT_STATE.yaml и EVIDENCE_LEDGER.md синхронизированными с реальным origin/main, а не только после Evolution-задач",
+      "why_it_matters_now": "CURRENT_STATE.yaml не обновлялся с 7 августа, а за это время в main влилось около 35 PR — расхождение обнаружил только этот разбор, а не сам контур.",
+      "how_it_applies_to_current_project": "После заметного пакета мёржей (не только Evolution-цикла) запускать существующий scripts/control-plane/reconcile-control-plane.mjs, а не ждать, пока рассинхронизация станет отдельной находкой следующего разбора.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md"
+    }
+  ],
+  "founder_practice_comparison": "Первая практика дешевле и защищает бизнес-достоверность прямо сейчас — она не требует новых инструментов, только привычки задавать вопрос. Вторая требует регулярного действия (запуск существующего скрипта) и защищает системную достоверность, но зависит от того, что первая уже закреплена.",
+  "founder_practice_recommended_order": [
+    "P1",
+    "P2"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "Если запускать scripts/control-plane/reconcile-control-plane.mjs после каждого дня с 5+ мёржами, CURRENT_STATE.yaml не будет отставать больше чем на 1-2 дня.",
+      "bounded_scope": "Следующие 3 календарных дня с активным мёржем, только чтение и запись CURRENT_STATE.yaml/EVIDENCE_LEDGER.md через существующий скрипт.",
+      "persistent_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md (новые записи о сверке)",
+      "promotion_condition": "На следующем Daily Evolution Review CURRENT_STATE.yaml отстаёт не больше чем на 1-2 дня от origin/main.",
+      "stop_condition": "Если сверка вручную занимает больше времени, чем экономит — остановиться и вернуться к разбору по факту, а не по расписанию."
+    },
+    {
+      "id": "E2",
+      "hypothesis": "Если фиксировать в одном месте, когда PR повторно использует то же имя ветки (как structured-sport-family-carrier и restore-ireland-queue-contract), rework_count можно будет считать без ручного разбора git log.",
+      "bounded_scope": "Следующие 2 цикла Daily Evolution Review, только чтение git-истории.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/ (следующий цикл ссылается на этот)",
+      "promotion_condition": "Следующий цикл получает rework_count без ручного просмотра веток.",
+      "stop_condition": "Если совпадение имён веток не даёт надёжного сигнала (слишком много ложных срабатываний) — остановиться."
+    },
+    {
+      "id": "E3",
+      "hypothesis": "Если явно потребовать один completion envelope на исполнительскую сессию, к третьему циклу completion_envelope_ids перестанет быть пустым.",
+      "bounded_scope": "Одна выбранная Architect-сессия в качестве пилота, без изменения продукта.",
+      "persistent_artifact": "docs/ai-context/control-plane/completions/ (появится при первом реальном envelope)",
+      "promotion_condition": "Хотя бы один настоящий completion envelope закоммичен и проходит validate-completion-envelope.mjs.",
+      "stop_condition": "Если оформление envelope занимает заметно больше времени, чем сама задача — остановиться и упростить схему, а не заставлять Founder/executor подгонять работу под форму."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "CONTUR3_QUEUE_AUTHORITY",
+    "note": "This cycle satisfies STAGE_1's own exit_condition ('at least one real Daily Evolution cycle produced, validated and committed under cycles/'). Promoting the Evolution stage itself is Architect/Governor scope, not this review's."
+  },
+  "next_step": "Следующий разбор: подтвердить, отставание CURRENT_STATE.yaml сократилось или нет, и появился ли хотя бы один реальный источник Founder-действий вместо нулевого потолка. Governor (Routine 2) получает 5 гипотез, 9 семей дефектов и первый реальный операционный срез для сравнения со следующими циклами.",
+  "corrections": []
+}

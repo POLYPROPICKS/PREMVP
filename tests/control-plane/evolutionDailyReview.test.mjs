@@ -667,7 +667,16 @@ test('the Founder capability ladder holds the seven approved levels in order', (
   assert.ok(ladder.levels.every((l) => l.status === 'NOT_ASSESSED'));
 });
 
-test('Stage 1 ships no historical cycle — cycles/ holds only its placeholder', () => {
-  const entries = fs.readdirSync(path.join(REPO_ROOT, EVOLUTION_DIR, 'cycles'));
-  assert.deepEqual(entries.filter((f) => f.endsWith('.json')), []);
+test('every persisted cycle under cycles/ is schema-valid and carries its rendered report', () => {
+  const dir = path.join(REPO_ROOT, EVOLUTION_DIR, 'cycles');
+  const entries = fs.readdirSync(dir);
+  const cycleFiles = entries.filter((f) => f.endsWith('.json'));
+  for (const file of cycleFiles) {
+    const cycle = JSON.parse(fs.readFileSync(path.join(dir, file), 'utf8'));
+    const result = validateEvolutionCycle(cycle);
+    assert.deepEqual(result.errors, [], `${file} must be schema-valid`);
+    assert.equal(cycle.accepted, false, `${file}.accepted must be false — a cycle is evidence and proposal only`);
+    const reportFile = file.replace(/\.json$/, '.report.md');
+    assert.ok(entries.includes(reportFile), `${file} must carry a persisted report ${reportFile}`);
+  }
 });
