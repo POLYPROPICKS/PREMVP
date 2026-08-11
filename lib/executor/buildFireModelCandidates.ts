@@ -1515,11 +1515,26 @@ export async function fetchPlanningSourceRowSets(
   // see the COMPLETE candidate universe via full .range() pagination. A row cap here
   // was the dominant cause of Contur3 reservation underfill — physical matches whose
   // Tier1 full-match candidate fell outside the most-recent slice were never reserved.
+  //
+  // "shadow-strategic-sports-v1" rows are written with signal_confidence_num
+  // IS NULL by construction (they are the not-yet-scored population the
+  // separate shadow query below exists to read) and can therefore never
+  // satisfy `signal_confidence_num >= 50` — including that version in this
+  // query's IN-list contributes zero rows in every environment, but on the
+  // live table forces Postgres into a created_at-ordered scan through a huge,
+  // structurally-unmatchable population before it can satisfy ORDER BY +
+  // LIMIT, which reproduced as a 57014 statement timeout in production. Drop
+  // it from this scored-only query only; the shadow query two blocks below is
+  // unaffected (it already filters on this exact version directly) and
+  // `versions`/PLANNING_ALLOWED_VERSIONS are unchanged everywhere else.
+  const scoredQueryVersions = (versions as string[]).filter(
+    (version) => version !== "shadow-strategic-sports-v1"
+  );
   const buildScoredQuery = () =>
     supabaseAdmin
       .from("generated_signal_pairs")
       .select(SIGNAL_SELECT_COLS)
-      .in("metric_formula_version", versions as string[])
+      .in("metric_formula_version", scoredQueryVersions)
       .is("signal_result", null)
       .gt("expires_at", snapshotAsOfIso)
       .not("selected_token_id", "is", null)
