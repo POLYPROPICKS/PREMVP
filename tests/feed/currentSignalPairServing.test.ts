@@ -12,6 +12,8 @@ test("current serving projection keeps historical lineage, deterministic replace
   assert.match(migration, /CREATE TABLE IF NOT EXISTS public\.current_signal_pair_serving_backfill_checkpoint/);
   assert.match(migration, /CREATE OR REPLACE FUNCTION public\.backfill_current_signal_pair_serving/);
   assert.match(migration, /ORDER BY source\.created_at ASC, source\.id ASC/);
+  assert.match(migration, /source\.expires_at > now\(\)/);
+  assert.match(migration, /source\.signal_result IS NULL/);
   assert.match(migration, /PERFORM public\.refresh_current_signal_pair_serving\(source_ids\)/);
   assert.match(migration, /FOR UPDATE/);
   assert.doesNotMatch(migration, /DELETE FROM public\.generated_signal_pairs/);
