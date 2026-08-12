@@ -71,7 +71,10 @@
       { "id": "evidence_ledger", "path": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md", "role": "HISTORICAL_LEDGER", "authoritative_for": "history only — NEVER current state" },
       { "id": "chatgpt_project_setup", "path": "docs/ai-context/control-plane/CHATGPT_PROJECT_SETUP.md", "role": "HISTORICAL_SETUP", "authoritative_for": "nothing — SUPERSEDED by the deterministic Project package under chatgpt-architect/project-package/" },
       { "id": "chatgpt_project_package", "path": "docs/ai-context/control-plane/chatgpt-architect/project-package", "role": "GENERATED_PROJECT_PACKAGE", "authoritative_for": "nothing — deterministic generated view of the canonical files, and the ONLY current source of ChatGPT Project Sources and Project Instructions" },
-      { "id": "architect_snapshot", "path": "docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md", "role": "GENERATED_SNAPSHOT", "authoritative_for": "nothing — generated view of the canonical files" }
+      { "id": "architect_snapshot", "path": "docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md", "role": "GENERATED_SNAPSHOT", "authoritative_for": "nothing — generated view of the canonical files" },
+      { "id": "canonical_vertical_spine_manifest", "path": "docs/ai-context/control-plane/CANONICAL_VERTICAL_SPINE_MANIFEST.yaml", "role": "ARCHITECTURE_EVIDENCE", "authoritative_for": "the proven Contur3 production execution contour (Polymarket authority → signal-cache → resolver/scoring → Contract A Planning → Reservation → Rebalance → Queue → Ireland boundary), per-stage runtime evidence status" },
+      { "id": "cross_system_contract_matrix", "path": "docs/ai-context/control-plane/CROSS_SYSTEM_CONTRACT_MATRIX.yaml", "role": "ARCHITECTURE_EVIDENCE", "authoritative_for": "field-by-field semantics at every real boundary crossed by the canonical vertical spine, including the side vs execution_side distinction" },
+      { "id": "legacy_superseded_inventory", "path": "docs/ai-context/control-plane/LEGACY_SUPERSEDED_INVENTORY.yaml", "role": "ARCHITECTURE_EVIDENCE", "authoritative_for": "classification only of alternate/parallel/legacy implementations found around the canonical spine — never authoritative for deletion; SAFE_DELETE_NOW_COUNT is always 0 there" }
     ],
     "single_current_state_authority": {
       "artifact": "docs/ai-context/control-plane/CURRENT_STATE.yaml",

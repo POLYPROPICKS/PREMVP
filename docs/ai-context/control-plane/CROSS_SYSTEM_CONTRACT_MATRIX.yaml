@@ -1,0 +1,159 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-08-12T00:00:00Z",
+  "_format_note": "JSON-compatible YAML 1.2 subset, consistent with every other .yaml file in this directory. Do not introduce block YAML syntax here.",
+
+  "_purpose": "Authoritative field-by-field contract for every real boundary crossed by the Contur3 canonical vertical spine (see CANONICAL_VERTICAL_SPINE_MANIFEST.yaml). Field names/aliases are recorded exactly as they exist in source -- none are invented or normalized for aesthetics.",
+
+  "invariant_preserved": {
+    "statement": "side = outcome selector (which token_id / team / YES-NO was chosen). execution_side = execution action (the CLOB order verb, mechanically always \"BUY\" -- this queue is entry-only, no exit/sell path exists anywhere in the Contur3 pipeline). These are two different fields with two different owners and must never be collapsed.",
+    "source": "lib/executor/executorQueueTypes.ts (IrelandQueueCandidate.side / .execution_side doc comments), commit 76d3fe8",
+    "cross_check_dependency": "PREMVP's own order-event validation (validateOrderEventAgainstQueueRow) matches a consumer's submitted `side` against the persisted queue row's `side` -- NOT against execution_side. A consumer that echoes execution_side back as `side` will fail SIDE_MISMATCH."
+  },
+
+  "fields": [
+    {
+      "field": "provider_event_id",
+      "source_authority": "Polymarket Gamma/CLOB event API (immutable provider event identity)",
+      "producer": "discoverSportsMarkets() (lib/feed/discoverSportsMarkets.ts) -- captured into diagnostics.providerEventContext.eventId at signal-cache write time",
+      "consumer": "lib/executor/contractADecisions.ts exactProviderEventIdentity(); lib/executor/executorQueueTypes.ts extractProviderEventId()",
+      "semantic_meaning": "The exact Polymarket event this signal pair is about. Never derived from title or slug.",
+      "transformed": true,
+      "transformation_allowed": true,
+      "transformation_note": "Lower-cased when composed into physical_event_id (see next row); the raw value itself is never mutated.",
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST (tests/contur3/finalIdentityProviderEventQuery.regression.test.ts et al.)"
+    },
+    {
+      "field": "physical_event_id",
+      "source_authority": "PREMVP-owned derived identity (Contract A), not a Polymarket field",
+      "producer": "providerPhysicalEventId() / resolveContractAPhysicalEventId() -- lib/executor/contractADecisions.ts",
+      "consumer": "night_event_reservations.physical_event_id; event_execution_queue.diagnostics.physical_event_id; IrelandQueueCandidate.physical_event_id",
+      "semantic_meaning": "Format `provider:polymarket:<eventId_lowercase>:<YYYY-MM-DD>` (or `event:<slug>:<isoInstant>` fallback). The canonical PREMVP occurrence key -- deliberately keyed on the exact start INSTANT, not the calendar date alone, so a doubleheader (same slug, same day, two kickoffs) is never silently merged into one Reservation.",
+      "transformed": true,
+      "transformation_allowed": true,
+      "transformation_note": "This is the one field in the matrix that IS a designed derivation, not a passthrough. Documented explicitly in source as intentional (canonicalOccurrenceStamp).",
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+    },
+    {
+      "field": "signal_pair_id",
+      "source_authority": "generated_signal_pairs.id (Supabase UUID primary key)",
+      "producer": "writeGeneratedSignalPairs() -- lib/feed/cacheGeneratedSignals.ts; carried through as diagnostics.selected_signal_pair_id / diagnostics.source_lineage.generated_signal_pair_id on the Queue row",
+      "consumer": "extractSignalPairId() -- lib/executor/executorQueueTypes.ts:207 -> IrelandQueueCandidate.signal_pair_id (added in commit 76d3fe8)",
+      "semantic_meaning": "The exact signal-pair lineage row that selected this market at rebalance time.",
+      "transformed": false,
+      "transformation_allowed": "n/a -- verbatim only; source comment: \"never derived from title/slug\"",
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST (tests/contur3/reservationExactLineage.fullLink.test.ts, tests/contur3/executorQueueRoute.candidateMapping.test.ts)"
+    },
+    {
+      "field": "reservation_id",
+      "source_authority": "night_event_reservations.id (Supabase auto id)",
+      "producer": "persistReservationPlan() -- lib/executor/nightEventReservations.ts",
+      "consumer": "buildQueueRow() / buildQueueRowFromFinalIdentity() (lib/executor/eventExecutionQueue.ts) -> event_execution_queue.reservation_id -> IrelandQueueCandidate.reservation_id",
+      "semantic_meaning": "Links a Queue row back to the frozen ~17:00 Minsk event-level reservation it was rebalanced from.",
+      "transformed": false,
+      "transformation_allowed": "n/a",
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+    },
+    {
+      "field": "queue_id / queue_row_id",
+      "source_authority": "event_execution_queue.id (Supabase auto id)",
+      "producer": "insertQueueRow() (lib/executor/eventExecutionQueue.ts) writes the row; mapQueueRowToIrelandCandidate() (lib/executor/executorQueueTypes.ts:220) serializes both names",
+      "consumer": "GET /api/executor/queue response candidates[]",
+      "semantic_meaning": "queue_id = candidate_id fallback composite (row.id ?? `${plan_run_id}:${match_family_key}`) preserved for backward compatibility. queue_row_id = the strict, non-fallback form -- verbatim row.id or explicit null, NEVER synthesized (added additively in commit 76d3fe8 specifically so a consumer never mistakes a composite fallback string for a real persisted id).",
+      "transformed": false,
+      "transformation_allowed": "n/a -- queue_id's fallback composite is a documented legacy exception, not a new transformation",
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+    },
+    {
+      "field": "condition_id / token_id",
+      "source_authority": "Polymarket CLOB market identity (condition_id per market, token_id per outcome)",
+      "producer": "buildFireModelCandidates() reads generated_signal_pairs.condition_id / .selected_token_id; carried unchanged through Contract A Reservation diagnostics (authoritative_condition_id/authoritative_token_id) into the Queue row's own condition_id/token_id columns",
+      "consumer": "IrelandQueueCandidate.condition_id/.token_id; validateOrderEventAgainstQueueRow() identity cross-check",
+      "semantic_meaning": "The exact market + exact outcome token Ireland's CLOB adapter must place the order against. Never substituted once a Reservation exists -- rebalance VALIDATES a stored identity, it never re-resolves a different token.",
+      "transformed": false,
+      "transformation_allowed": "n/a -- verbatim end-to-end by design",
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+    },
+    {
+      "field": "side (outcome selector)",
+      "source_authority": "generated_signal_pairs.selected_outcome (e.g. \"YES\"/\"NO\" or a team name)",
+      "producer": "buildFireModelCandidates() / exactProviderSignalPair() carries row.selected_outcome verbatim through to Queue row `side` column",
+      "consumer": "IrelandQueueCandidate.side; validateOrderEventAgainstQueueRow() SIDE_MISMATCH check against a consumer's callback",
+      "semantic_meaning": "WHICH token_id/outcome was chosen. NOT a CLOB order action -- see execution_side below and invariant_preserved.",
+      "transformed": false,
+      "transformation_allowed": "n/a -- verbatim, and PREMVP's own callback cross-check depends on it staying unchanged",
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+    },
+    {
+      "field": "execution_side",
+      "source_authority": "PREMVP-owned execution-contract constant, not a persisted column",
+      "producer": "mapQueueRowToIrelandCandidate() -- lib/executor/executorQueueTypes.ts:253, hardcoded literal \"BUY\" (added commit 76d3fe8)",
+      "consumer": "Ireland's CLOB order-action decoder",
+      "semantic_meaning": "The actual CLOB order verb Ireland's execution adapter should submit. Mechanically always BUY because nothing in the Contur3 pipeline (buildFireModelCandidates / nightPortfolioPlanner / eventExecutionQueue) ever constructs an exit/sell order, and token_id already disambiguates the exact outcome being acquired.",
+      "transformed": true,
+      "transformation_allowed": true,
+      "transformation_note": "Computed at serialization time, never read from any row -- there is no execution_side column in event_execution_queue.",
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST on the PREMVP side; the Ireland-side decode fix this field exists to satisfy is FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT (see CANONICAL_VERTICAL_SPINE_MANIFEST S8/S10)."
+    },
+    {
+      "field": "signal_score",
+      "source_authority": "generated_signal_pairs.signal_confidence_num",
+      "producer": "exactProviderSignalPair() -- lib/executor/eventExecutionQueue.ts:720, reads row.signal_confidence_num (NOT a literal `score` column, which every production writer sets NULL and which is not a live carrier)",
+      "consumer": "compareExactProviderSignalPairs() ranking; event_execution_queue.diagnostics.selected_signal_score; event_execution_queue.score column",
+      "semantic_meaning": "The authoritative model confidence score used to rank exact executable siblings of a reserved event. Comparability is gated by metric_formula_version (scoreContractVersion) -- raw scores from two different formula versions never compete for the same reserved event.",
+      "transformed": false,
+      "transformation_allowed": "n/a -- an earlier revision of this contract required signal_score/stake_usd/max_entry_price directly as row properties on the exact-sibling type; none of the three was ever a real generated_signal_pairs column, so that gate was unsatisfiable from the day it was written (see field ownership comment at lib/executor/eventExecutionQueue.ts:61-89). The corrected mapping recorded here is the one that actually ships.",
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+    },
+    {
+      "field": "stake_usd",
+      "source_authority": "EXECUTABLE_STAKE_USD constant (lib/executor/executorQueueTypes.ts:25, currently 1.10 USD) -- an execution-contract constant OWNED BY THE EXECUTOR, explicitly NOT a per-row generated_signal_pairs column",
+      "producer": "exactProviderSignalPair() stamps stakeUsd=EXECUTABLE_STAKE_USD; buildQueueRow()/buildQueueRowFromFinalIdentity() write it onto the Queue row's stake_usd column",
+      "consumer": "IrelandQueueCandidate.stake_usd and .max_stake_usd (MVP: max_stake_usd === stake_usd, a hard cap, not a suggestion); validateOrderEventAgainstQueueRow() STAKE_EXCEEDS_QUEUE_MAX check",
+      "semantic_meaning": "$1.10 is deliberately the smallest size that clears Polymarket's CLOB minimum-order-size rejection while keeping per-order exposure minimal (source comment). Persisting stake per signal pair instead would create a second, forgeable stake authority -- explicitly rejected by design.",
+      "transformed": false,
+      "transformation_allowed": "n/a -- constant, not derived per row",
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+    },
+    {
+      "field": "price / max-entry guard",
+      "source_authority": "generated_signal_pairs.entry_price_num (the accepted pre-Reservation snapshot price, frozen per exact sibling at producer time)",
+      "producer": "exactProviderSignalPair() reads row.entry_price_num as maxEntryPrice; extractMaxEntryPrice() (lib/executor/executorQueueTypes.ts:170) reads it back off diagnostics.max_entry_price",
+      "consumer": "IrelandQueueCandidate.max_entry_price and .price_cap (same value under two names -- max_entry_price is the model term, price_cap is the consumer-facing alias); validateOrderEventAgainstQueueRow() PRICE_EXCEEDS_QUEUE_MAX check",
+      "semantic_meaning": "Consumer may fill at this price or better (lower), never above it. No later order-book read may raise this ceiling. A missing max_entry_price fails validation closed (\"no cap = no safe execution boundary\") rather than skipping the check.",
+      "transformed": false,
+      "transformation_allowed": "n/a -- frozen at producer time, never recomputed downstream except by the separate final-identity orderbook-guarded path, which re-validates against the SAME accepted ceiling rather than replacing it",
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+    },
+    {
+      "field": "idempotency_key",
+      "source_authority": "PREMVP-derived, not carried from any upstream source",
+      "producer": "queueIdentityKeys() -- lib/executor/eventExecutionQueue.ts:104: sha256(`${reservation.id ?? plan_run_id}__${physicalEventId}__${eventStartIso}__${orderKey}`).slice(0,32)",
+      "consumer": "event_execution_queue.idempotency_key; POST /api/executor/order-events unique-constraint dedup; handleQueueMarkExecuted() cross-check requiring a matching executor_order_events row before accepting status=EXECUTED",
+      "semantic_meaning": "One deterministic key per (reservation, physical event, exact order identity) tuple -- the join key across the Queue row, the mark callback, and the order-event callback.",
+      "transformed": true,
+      "transformation_allowed": true,
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+    },
+    {
+      "field": "status",
+      "source_authority": "QueueStatus enum -- single source of truth in lib/executor/executorCallbackContract.ts:26 (READY | CLAIMED | SENT | EXECUTED | SKIPPED | FAILED | EXPIRED | CANCELLED)",
+      "producer": "insertQueueRow() writes initial READY; POST /api/executor/queue/mark writes subsequent transitions (QUEUE_MARK_ACCEPTED_STATUSES: CLAIMED|EXECUTED|SKIPPED|FAILED|EXPIRED)",
+      "consumer": "GET /api/executor/queue (filters status=READY only); event_execution_queue.status",
+      "semantic_meaning": "EXECUTED is the one terminal status (QUEUE_TERMINAL_STATUSES) and is protected against silent downgrade by rejectsExecutedRegression().",
+      "transformed": false,
+      "transformation_allowed": "n/a -- closed enum, no free-text status ever accepted",
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+    },
+    {
+      "field": "timestamps / execution window",
+      "source_authority": "night_event_reservations.game_start_iso (ultimately generated_signal_pairs' provider event start instant)",
+      "producer": "preferredEntryIso() / latestEntryIso() -- lib/executor/nightWindow.ts, applied at Queue-row build time",
+      "consumer": "IrelandQueueCandidate.preferred_entry_iso / .latest_entry_iso / .game_start_iso / .event_start_iso; entry_state (\"IN_WINDOW\"|\"PENDING_WINDOW\") computed at GET-request serialization time by comparing preferred_entry_iso to the request's now",
+      "semantic_meaning": "The T-70..T-3 (rebalance) and preferred/latest entry windows that gate when a Queue row is due and when Ireland should treat a candidate as immediately actionable.",
+      "transformed": true,
+      "transformation_allowed": true,
+      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+    }
+  ]
+}
