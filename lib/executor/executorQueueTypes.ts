@@ -91,11 +91,29 @@ export interface IrelandQueueCandidate {
   candidate_id: string;
   /** Canonical persisted event_execution_queue.id for consumer acknowledgement. */
   queue_id: string;
+  /**
+   * Authoritative event_execution_queue.id (the persisted row's own primary
+   * key), exposed verbatim under its own name rather than only inside the
+   * candidate_id/queue_id fallback composite. Null only when the row
+   * genuinely has no persisted id yet -- never synthesized. queue_id above
+   * and queue_row_id here currently carry the same value for a persisted
+   * row; queue_row_id is the strict, non-fallback form.
+   */
+  queue_row_id: string | null;
   order_key: string;
   idempotency_key: string | null;
   plan_run_id: string;
   rebalance_run_id: string;
   reservation_id: string | null;
+  /**
+   * Authoritative signal-pair lineage id (generated_signal_pairs.id) that
+   * selected this exact market at rebalance time. Sourced verbatim from
+   * diagnostics.selected_signal_pair_id (falling back to
+   * diagnostics.source_lineage.generated_signal_pair_id, the same lineage
+   * value under its Reservation-stage key) -- never derived from title/slug.
+   * Null when the row predates this lineage stamp.
+   */
+  signal_pair_id: string | null;
   match_family_key: string;
   /** Canonical alias for legacy match_family_key occurrence storage. */
   physical_event_id: string | null;
@@ -107,7 +125,23 @@ export interface IrelandQueueCandidate {
   sport: string | null;
   condition_id: string;
   token_id: string;
+  /**
+   * Outcome selector (e.g. "YES"/"NO" or a team name) identifying which
+   * token_id was chosen. This is NOT a CLOB order action -- see
+   * execution_side below. Preserved verbatim for backward compatibility:
+   * PREMVP's own order-event cross-check (validateOrderEventAgainstQueueRow)
+   * matches a consumer's callback against this exact value.
+   */
   side: string;
+  /**
+   * Canonical CLOB order action (BUY/SELL) Ireland's execution adapter
+   * consumes. This queue is entry-only: nothing in the Contur3 pipeline
+   * (buildFireModelCandidates / nightPortfolioPlanner / eventExecutionQueue)
+   * ever constructs an exit/sell order, and token_id already disambiguates
+   * the exact outcome being acquired -- so the order action is mechanically
+   * always "BUY", never guessed from a title or the outcome selector above.
+   */
+  execution_side: "BUY";
   market_slug: string | null;
   market_title: string | null;
   market_family: string | null;
@@ -169,6 +203,15 @@ function extractProviderEventId(diagnostics: Record<string, unknown>): string | 
   return null;
 }
 
+/** Reads the authoritative signal-pair lineage id off a queue row's diagnostics (never derived, never defaulted). */
+function extractSignalPairId(diagnostics: Record<string, unknown>): string | null {
+  const direct = diagnostics.selected_signal_pair_id;
+  if (typeof direct === "string" && direct.trim() !== "") return direct;
+  const lineage = diagnostics.source_lineage as Record<string, unknown> | undefined;
+  const fromLineage = lineage?.generated_signal_pair_id;
+  return typeof fromLineage === "string" && fromLineage.trim() !== "" ? fromLineage : null;
+}
+
 /**
  * Pure row → consumer-candidate projection (no DB, no side effects) so it can be
  * unit-tested and shared between /api/executor/queue and any future consumer route.
@@ -183,14 +226,17 @@ export function mapQueueRowToIrelandCandidate(
     Number.isFinite(preferredMs) && preferredMs <= nowMs ? "IN_WINDOW" : "PENDING_WINDOW";
   const maxEntryPrice = extractMaxEntryPrice(row.diagnostics ?? {});
   const providerEventId = extractProviderEventId(row.diagnostics ?? {});
+  const signalPairId = extractSignalPairId(row.diagnostics ?? {});
   return {
     candidate_id: row.id ?? `${row.plan_run_id}:${row.match_family_key}`,
     queue_id: row.id ?? `${row.plan_run_id}:${row.match_family_key}`,
+    queue_row_id: row.id ?? null,
     order_key: row.order_key ?? `${row.condition_id}:${row.token_id}:${row.side}`,
     idempotency_key: row.idempotency_key ?? null,
     plan_run_id: row.plan_run_id,
     rebalance_run_id: row.rebalance_run_id,
     reservation_id: row.reservation_id ?? null,
+    signal_pair_id: signalPairId,
     match_family_key: row.match_family_key,
     physical_event_id:
       (typeof row.diagnostics?.physical_event_id === "string" && row.diagnostics.physical_event_id) ||
@@ -204,6 +250,7 @@ export function mapQueueRowToIrelandCandidate(
     condition_id: row.condition_id,
     token_id: row.token_id,
     side: row.side,
+    execution_side: "BUY",
     market_slug: row.market_slug,
     market_title: row.market_title ?? null,
     market_family: row.market_family,
