@@ -16,6 +16,7 @@ import {
 
 function baseRow(overrides: Partial<EventExecutionQueueRow> = {}): EventExecutionQueueRow {
   return {
+    id: "queue-row-1",
     reservation_id: "res-1",
     plan_run_id: "plan-1",
     rebalance_run_id: "rebalance-1",
@@ -42,7 +43,7 @@ function baseRow(overrides: Partial<EventExecutionQueueRow> = {}): EventExecutio
     status: "READY",
     order_key: "cond-1:token-1:Argentina",
     idempotency_key: "idem-1",
-    diagnostics: { max_entry_price: 0.62 },
+    diagnostics: { max_entry_price: 0.62, selected_signal_pair_id: "pair-abc-1" },
     ...overrides,
   };
 }
@@ -58,6 +59,52 @@ test("candidate mapping includes core identity fields", () => {
   assert.equal(c.latest_entry_iso, "2026-07-07T15:57:00.000Z");
   assert.equal(c.physical_event_id, "argentina-vs-egypt");
   assert.equal(c.event_start_iso, "2026-07-07T16:00:00.000Z");
+});
+
+test("candidate mapping exposes queue_row_id from the persisted row id (never synthesized)", () => {
+  const nowMs = Date.parse("2026-07-07T15:00:00.000Z");
+  const withId = mapQueueRowToIrelandCandidate(baseRow({ id: "queue-row-42" }), nowMs);
+  assert.equal(withId.queue_row_id, "queue-row-42");
+  assert.equal(withId.candidate_id, "queue-row-42");
+
+  const withoutId = mapQueueRowToIrelandCandidate(baseRow({ id: undefined }), nowMs);
+  assert.equal(withoutId.queue_row_id, null, "must be null, never a fallback composite string");
+  assert.equal(withoutId.candidate_id, "plan-1:argentina-vs-egypt", "candidate_id fallback is unaffected");
+});
+
+test("candidate mapping exposes signal_pair_id from diagnostics.selected_signal_pair_id", () => {
+  const nowMs = Date.parse("2026-07-07T15:00:00.000Z");
+  const c = mapQueueRowToIrelandCandidate(
+    baseRow({ diagnostics: { max_entry_price: 0.62, selected_signal_pair_id: "pair-xyz-9" } }),
+    nowMs
+  );
+  assert.equal(c.signal_pair_id, "pair-xyz-9");
+});
+
+test("candidate mapping falls back to diagnostics.source_lineage.generated_signal_pair_id when selected_signal_pair_id is absent", () => {
+  const nowMs = Date.parse("2026-07-07T15:00:00.000Z");
+  const c = mapQueueRowToIrelandCandidate(
+    baseRow({ diagnostics: { max_entry_price: 0.62, source_lineage: { generated_signal_pair_id: "pair-lineage-1" } } }),
+    nowMs
+  );
+  assert.equal(c.signal_pair_id, "pair-lineage-1");
+});
+
+test("candidate mapping exposes null signal_pair_id when no lineage is present (never fabricated)", () => {
+  const nowMs = Date.parse("2026-07-07T15:00:00.000Z");
+  const c = mapQueueRowToIrelandCandidate(baseRow({ diagnostics: { max_entry_price: 0.62 } }), nowMs);
+  assert.equal(c.signal_pair_id, null);
+});
+
+test("candidate mapping emits canonical execution_side BUY regardless of the outcome side value, and preserves side unchanged", () => {
+  const nowMs = Date.parse("2026-07-07T15:00:00.000Z");
+  const yes = mapQueueRowToIrelandCandidate(baseRow({ side: "YES" }), nowMs);
+  assert.equal(yes.execution_side, "BUY");
+  assert.equal(yes.side, "YES", "outcome selector must survive unchanged for PREMVP's own order-event cross-check");
+
+  const no = mapQueueRowToIrelandCandidate(baseRow({ side: "NO" }), nowMs);
+  assert.equal(no.execution_side, "BUY");
+  assert.equal(no.side, "NO");
 });
 
 test("candidate mapping exposes dynamic stake_usd and max_stake_usd equal to it (MVP)", () => {

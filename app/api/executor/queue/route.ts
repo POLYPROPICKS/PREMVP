@@ -121,6 +121,10 @@ export async function GET(request: NextRequest) {
           do_not_rank: true,
           do_not_pull_broad_candidates: true,
           do_not_apply_tier2_tier3: true,
+          // execution_side is the canonical CLOB order action (always "BUY" --
+          // this queue is entry-only). `side` remains the outcome selector
+          // (which token_id was chosen) and must not be read as an order action.
+          execution_side_is_order_action_not_outcome: true,
         },
       },
       { status: 200, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" } }

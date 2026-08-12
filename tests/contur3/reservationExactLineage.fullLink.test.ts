@@ -16,6 +16,7 @@ import {
   runEventRebalance,
   type RebalanceRepoPort,
 } from "../../lib/executor/eventExecutionQueue";
+import { mapQueueRowToIrelandCandidate } from "../../lib/executor/executorQueueTypes";
 import type { EventExecutionQueueRow, NightEventReservationRow } from "../../lib/executor/executorQueueTypes";
 import type { SchedulerJobEvidencePort } from "../../lib/executor/schedulerJobEvidence";
 
@@ -166,4 +167,20 @@ test("full link: exact Signal Pair -> Planning -> persisted Reservation -> max-s
   const second = await runEventRebalance(REBALANCE_NOW, { write: true }, deps);
   assert.equal(second.already_queued_count, 1);
   assert.equal(queues.length, 1);
+
+  // Ireland-facing serialization: the exact queue row id, signal-pair lineage,
+  // and stake/price guards must survive verbatim into the wire contract, and
+  // the canonical CLOB order action must be BUY (this queue is entry-only) --
+  // distinct from and never overwriting the persisted outcome selector "YES".
+  const candidate = mapQueueRowToIrelandCandidate(queues[0], REBALANCE_NOW);
+  assert.equal(candidate.queue_row_id, "queue-exact");
+  assert.equal(candidate.reservation_id, "reservation-exact");
+  assert.equal(candidate.signal_pair_id, siblingHigh.id);
+  assert.equal(candidate.condition_id, "cond-high");
+  assert.equal(candidate.token_id, "token-cond-high");
+  assert.equal(candidate.side, "YES");
+  assert.equal(candidate.execution_side, "BUY");
+  assert.equal(candidate.stake_usd, queues[0].stake_usd);
+  assert.equal(candidate.max_entry_price, queues[0].diagnostics.max_entry_price);
+  assert.equal(candidate.idempotency_key, queues[0].idempotency_key);
 });
