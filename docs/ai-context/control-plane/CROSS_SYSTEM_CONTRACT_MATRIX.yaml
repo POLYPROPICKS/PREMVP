@@ -1,9 +1,9 @@
 {
-  "schema_version": "1.0",
-  "updated_at": "2026-08-12T00:00:00Z",
+  "schema_version": "1.1",
+  "updated_at": "2026-08-12T01:00:00Z",
   "_format_note": "JSON-compatible YAML 1.2 subset, consistent with every other .yaml file in this directory. Do not introduce block YAML syntax here.",
 
-  "_purpose": "Authoritative field-by-field contract for every real boundary crossed by the Contur3 canonical vertical spine (see CANONICAL_VERTICAL_SPINE_MANIFEST.yaml). Field names/aliases are recorded exactly as they exist in source -- none are invented or normalized for aesthetics.",
+  "_purpose": "Authoritative field-by-field contract for every real boundary crossed by the Contur3 canonical vertical spine (see CANONICAL_VERTICAL_SPINE_MANIFEST.yaml). Field names/aliases are recorded exactly as they exist in source -- none are invented or normalized for aesthetics. production_evidence values were corrected 2026-08-12T01:00:00Z per Founder directive to reflect the accepted Aug-11/12 production runtime contour (see CANONICAL_VERTICAL_SPINE_MANIFEST.yaml proof_dimension_note) rather than only source-level test evidence.",
 
   "invariant_preserved": {
     "statement": "side = outcome selector (which token_id / team / YES-NO was chosen). execution_side = execution action (the CLOB order verb, mechanically always \"BUY\" -- this queue is entry-only, no exit/sell path exists anywhere in the Contur3 pipeline). These are two different fields with two different owners and must never be collapsed.",
@@ -32,7 +32,7 @@
       "transformed": true,
       "transformation_allowed": true,
       "transformation_note": "This is the one field in the matrix that IS a designed derivation, not a passthrough. Documented explicitly in source as intentional (canonicalOccurrenceStamp).",
-      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+      "production_evidence": "PROVEN_IN_PRODUCTION -- carried an accepted Aug-11/12 runtime edge (CANONICAL_VERTICAL_SPINE_MANIFEST S4, \"Contract A / Reservation planning\"). Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT."
     },
     {
       "field": "signal_pair_id",
@@ -42,7 +42,7 @@
       "semantic_meaning": "The exact signal-pair lineage row that selected this market at rebalance time.",
       "transformed": false,
       "transformation_allowed": "n/a -- verbatim only; source comment: \"never derived from title/slug\"",
-      "production_evidence": "PROVEN_BY_CONTRACT_TEST (tests/contur3/reservationExactLineage.fullLink.test.ts, tests/contur3/executorQueueRoute.candidateMapping.test.ts)"
+      "production_evidence": "PROVEN_IN_PRODUCTION for its transit through the accepted Aug-11/12 edges S7 (persisted Queue row) -> S8 (PREMVP Queue API) -> S9 (Ireland observation/decode) (see CANONICAL_VERTICAL_SPINE_MANIFEST). The field's ORIGINATING stage (S2 signal-cache write) is not itself claimed proven-in-production this pass -- see tests/contur3/reservationExactLineage.fullLink.test.ts, tests/contur3/executorQueueRoute.candidateMapping.test.ts for the source-level proof underneath both."
     },
     {
       "field": "reservation_id",
@@ -52,7 +52,7 @@
       "semantic_meaning": "Links a Queue row back to the frozen ~17:00 Minsk event-level reservation it was rebalanced from.",
       "transformed": false,
       "transformation_allowed": "n/a",
-      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+      "production_evidence": "PROVEN_IN_PRODUCTION -- carried an accepted Aug-11/12 runtime edge (CANONICAL_VERTICAL_SPINE_MANIFEST S5, \"persisted night_event_reservations\"). Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT."
     },
     {
       "field": "queue_id / queue_row_id",
@@ -62,7 +62,7 @@
       "semantic_meaning": "queue_id = candidate_id fallback composite (row.id ?? `${plan_run_id}:${match_family_key}`) preserved for backward compatibility. queue_row_id = the strict, non-fallback form -- verbatim row.id or explicit null, NEVER synthesized (added additively in commit 76d3fe8 specifically so a consumer never mistakes a composite fallback string for a real persisted id).",
       "transformed": false,
       "transformation_allowed": "n/a -- queue_id's fallback composite is a documented legacy exception, not a new transformation",
-      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+      "production_evidence": "PROVEN_IN_PRODUCTION -- carried an accepted Aug-11/12 runtime edge (CANONICAL_VERTICAL_SPINE_MANIFEST S7 persisted, S8 served via the Queue API). Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT."
     },
     {
       "field": "condition_id / token_id",
@@ -72,7 +72,7 @@
       "semantic_meaning": "The exact market + exact outcome token Ireland's CLOB adapter must place the order against. Never substituted once a Reservation exists -- rebalance VALIDATES a stored identity, it never re-resolves a different token.",
       "transformed": false,
       "transformation_allowed": "n/a -- verbatim end-to-end by design",
-      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+      "production_evidence": "PROVEN_IN_PRODUCTION for its transit through S4-S9 of the accepted Aug-11/12 contour (Contract A Reservation planning through Ireland observation/decode) -- Ireland's decode of these exact values is the edge this correction pass upgrades. The upstream Polymarket-origin identity itself (S1/S2) remains SOURCE_ONLY/PROVEN_BY_CONTRACT_TEST, unchanged this pass."
     },
     {
       "field": "side (outcome selector)",
@@ -82,7 +82,7 @@
       "semantic_meaning": "WHICH token_id/outcome was chosen. NOT a CLOB order action -- see execution_side below and invariant_preserved.",
       "transformed": false,
       "transformation_allowed": "n/a -- verbatim, and PREMVP's own callback cross-check depends on it staying unchanged",
-      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+      "production_evidence": "PROVEN_IN_PRODUCTION for its transit through S7-S9 (persisted Queue row through Ireland observation/decode). Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT."
     },
     {
       "field": "execution_side",
@@ -93,7 +93,7 @@
       "transformed": true,
       "transformation_allowed": true,
       "transformation_note": "Computed at serialization time, never read from any row -- there is no execution_side column in event_execution_queue.",
-      "production_evidence": "PROVEN_BY_CONTRACT_TEST on the PREMVP side; the Ireland-side decode fix this field exists to satisfy is FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT (see CANONICAL_VERTICAL_SPINE_MANIFEST S8/S10)."
+      "production_evidence": "PROVEN_IN_PRODUCTION on both dimensions for the accepted Aug-11/12 run: PROVEN_BY_CONTRACT_TEST as a PREMVP source symbol, and the exact reason CANONICAL_VERTICAL_SPINE_MANIFEST S9 (\"Ireland observation/decode\") is now PROVEN_IN_PRODUCTION -- Ireland's prior UNSUPPORTED_SIDE decode failure that motivated commit 76d3fe8 is confirmed resolved for this run. Evidence class for the runtime edge: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT."
     },
     {
       "field": "signal_score",
@@ -113,7 +113,7 @@
       "semantic_meaning": "$1.10 is deliberately the smallest size that clears Polymarket's CLOB minimum-order-size rejection while keeping per-order exposure minimal (source comment). Persisting stake per signal pair instead would create a second, forgeable stake authority -- explicitly rejected by design.",
       "transformed": false,
       "transformation_allowed": "n/a -- constant, not derived per row",
-      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+      "production_evidence": "PROVEN_IN_PRODUCTION -- carried an accepted Aug-11/12 runtime edge (S6 event-rebalance through S11 Ireland SENDING/submitter invocation, the deepest currently proven edge). Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT."
     },
     {
       "field": "price / max-entry guard",
@@ -123,7 +123,7 @@
       "semantic_meaning": "Consumer may fill at this price or better (lower), never above it. No later order-book read may raise this ceiling. A missing max_entry_price fails validation closed (\"no cap = no safe execution boundary\") rather than skipping the check.",
       "transformed": false,
       "transformation_allowed": "n/a -- frozen at producer time, never recomputed downstream except by the separate final-identity orderbook-guarded path, which re-validates against the SAME accepted ceiling rather than replacing it",
-      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+      "production_evidence": "PROVEN_IN_PRODUCTION -- carried an accepted Aug-11/12 runtime edge (S6 event-rebalance through S11 Ireland SENDING/submitter invocation). Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT."
     },
     {
       "field": "idempotency_key",
@@ -133,7 +133,7 @@
       "semantic_meaning": "One deterministic key per (reservation, physical event, exact order identity) tuple -- the join key across the Queue row, the mark callback, and the order-event callback.",
       "transformed": true,
       "transformation_allowed": true,
-      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+      "production_evidence": "PROVEN_IN_PRODUCTION for its transit through S6-S10 (event-rebalance through the PREMVP CLAIM callback, S10) -- this is the key Ireland's CLAIM callback used. The final EXECUTED-transition use of this key (requiring a matching executor_order_events row) is NOT proven this run -- see field-level note on `status` below and CANONICAL_VERTICAL_SPINE_MANIFEST S12."
     },
     {
       "field": "status",
@@ -143,7 +143,7 @@
       "semantic_meaning": "EXECUTED is the one terminal status (QUEUE_TERMINAL_STATUSES) and is protected against silent downgrade by rejectsExecutedRegression().",
       "transformed": false,
       "transformation_allowed": "n/a -- closed enum, no free-text status ever accepted",
-      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+      "production_evidence": "READY->CLAIMED transition: PROVEN_IN_PRODUCTION (accepted Aug-11/12 edge S10, \"PREMVP CLAIM callback\"). CLAIMED->EXECUTED transition: UNPROVEN -- not reached this run; venue-level result remains unresolved (CANONICAL_VERTICAL_SPINE_MANIFEST S12). SENT exists in the persisted enum but is not a QUEUE_MARK_ACCEPTED_STATUSES input today, so it cannot be independently confirmed via a PREMVP-persisted transition -- see mission_label_corrections in the manifest."
     },
     {
       "field": "timestamps / execution window",
@@ -153,7 +153,7 @@
       "semantic_meaning": "The T-70..T-3 (rebalance) and preferred/latest entry windows that gate when a Queue row is due and when Ireland should treat a candidate as immediately actionable.",
       "transformed": true,
       "transformation_allowed": true,
-      "production_evidence": "PROVEN_BY_CONTRACT_TEST"
+      "production_evidence": "PROVEN_IN_PRODUCTION -- carried an accepted Aug-11/12 runtime edge (S5-S8: the reservation's game_start_iso governed a real rebalance-window admission that reached the Queue API). Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT."
     }
   ]
 }

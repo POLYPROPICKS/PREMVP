@@ -1,9 +1,11 @@
 {
-  "schema_version": "1.0",
-  "updated_at": "2026-08-12T00:00:00Z",
+  "schema_version": "1.1",
+  "updated_at": "2026-08-12T01:00:00Z",
   "_format_note": "JSON-compatible YAML 1.2 subset, consistent with every other .yaml file in this directory. Do not introduce block YAML syntax here.",
 
   "_purpose": "Every alternate implementation/caller/contract found while tracing the canonical vertical spine (CANONICAL_VERTICAL_SPINE_MANIFEST.yaml), classified by production reachability. Nothing in this file has been deleted or modified -- classification only, per mission scope (SAFE_DELETE_NOW_COUNT is always 0 for this mission).",
+
+  "reaffirmed_2026-08-12T01:00:00Z": "Corrected in the same pass as CANONICAL_VERTICAL_SPINE_MANIFEST.yaml and CROSS_SYSTEM_CONTRACT_MATRIX.yaml to upgrade the accepted Aug-11/12 production runtime edges to PROVEN_IN_PRODUCTION. That correction does NOT change anything in this file: L1/L2/L6 (the buildFireModelCandidates default CONTUR3_CURRENT selector plus /api/executor/night-plan and /api/executor/candidates) remain PARALLEL_PRODUCTION_REACHABLE / INVESTIGATE, unchanged and untouched, pending proof of their own traffic/reachability -- see NEXT_ARCHITECTURE_FOLLOWUP in the manifest. SAFE_DELETE_NOW_COUNT remains 0 for every entry in this file.",
 
   "entries": [
     {
