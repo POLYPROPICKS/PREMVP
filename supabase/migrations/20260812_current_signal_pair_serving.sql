@@ -144,8 +144,14 @@ BEGIN
   WITH batch AS (
     SELECT source.id, source.created_at
     FROM public.generated_signal_pairs source
-    WHERE checkpoint.last_source_created_at IS NULL
+    WHERE source.condition_id IS NOT NULL
+      AND source.selected_token_id IS NOT NULL
+      AND source.metric_formula_version IS NOT NULL
+      AND source.expires_at > now()
+      AND source.signal_result IS NULL
+      AND (checkpoint.last_source_created_at IS NULL
       OR (source.created_at, source.id) > (checkpoint.last_source_created_at, checkpoint.last_source_generated_signal_pair_id)
+      )
     ORDER BY source.created_at ASC, source.id ASC
     LIMIT p_batch_size
   )
