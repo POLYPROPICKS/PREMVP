@@ -1,0 +1,178 @@
+{
+  "schema_version": "1.1",
+  "updated_at": "2026-08-12T00:00:00Z",
+  "_format_note": "JSON-compatible YAML 1.2 subset, consistent with every other .yaml file in this directory. Do not introduce block YAML syntax here.",
+
+  "_purpose": "Canonical map of the proven Aug-11/12 production execution contour (Polymarket authority -> signal-cache -> resolver/scoring -> Contract A Planning -> Reservation -> Rebalance -> Queue -> Ireland consumption -> venue submission -> callback), anchored to live PREMVP source. Runtime truth outranks source assumptions per ARCHITECT_CONTROL_PLANE.yaml source_authority.runtime_facts.",
+
+  "repository_scope": "POLYPROPICKS/PREMVP only. Ireland-owned functional stages are named generically (never a specific Ireland source symbol) because Ireland is a PROTECTED_BOUNDARY_ONLY repository per ARCHITECT_CONTROL_PLANE.yaml repository_boundaries.ireland and no Ireland source is inspectable from here.",
+
+  "proof_dimension_note": {
+    "rule": "Every stage in this manifest carries TWO independent proof dimensions, per Founder correction of 2026-08-12: SOURCE_SYMBOL_PROOF (can the PREMVP producer/consumer symbol be located and exercised by a PREMVP test) and RUNTIME_EDGE_PROOF (did this edge actually carry a real event in the accepted Aug-11/12 production run). An edge can be PROVEN_IN_PRODUCTION on runtime_edge_proof even when the downstream Ireland implementation symbol is externally owned and not inspectable from this repository -- SOURCE_SYMBOL_PROOF stays UNPROVEN_NOT_INSPECTABLE for Ireland-owned stages regardless of runtime_edge_proof. `runtime_evidence_status` on each stage is the summary field equal to the stronger of the two dimensions when a stage has both.",
+    "evidence_class_for_runtime_edge_proof": "The Aug-11/12 production run itself was not independently re-derived from live git/HTTP/DB reads THIS session (Ireland access is out of bounds; a fresh CURRENT_STATE.yaml reconciliation is out of this mission's scope). Its PROVEN_IN_PRODUCTION status rests on FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT evidence (ARCHITECT_CONTROL_PLANE.yaml source_authority.runtime_facts rank 4) supplied as a current, explicit Founder directive -- which the same policy file's founder_authority section recognizes as authorizing exactly this kind of accepted-fact encoding into the canonical Control Plane. It is not re-labeled as independently re-verified LIVE_RUNTIME_EVIDENCE (rank 1)."
+  },
+
+  "mission_label_corrections": [
+    "\"resolver/scoring\" in the mission's approximate contour is buildFireModelCandidates() (lib/executor/buildFireModelCandidates.ts) -- not a separate service. scripts/resolve-signals.ts is a DIFFERENT, unrelated concern (track-record outcome resolution for resolved signals) and must not be confused with this stage.",
+    "CONTRACT_A_PLANNING_V1 is not a standalone producer -- it is a decision-contract stamp emitted by lib/executor/contractADecisions.ts (buildContractAPlanningDecision), entered by re-running buildFireModelCandidates with selectorMode=\"CONTRACT_A_PLANNING_V1\".",
+    "decode_queue_row, ProductionQueueAdapter and ProductionClobAdapter have no matching symbol anywhere in POLYPROPICKS/PREMVP (grep-confirmed zero matches) and are not reintroduced here. Per this correction pass's explicit instruction, Ireland-owned stages are named by FUNCTION ONLY (\"Ireland observation/decode\", \"Ireland SENDING / submitter invocation\", \"Ireland canonical submitter\") -- never a specific unproven Ireland symbol. PREMVP's actual contract with Ireland is the JSON shape of GET /api/executor/queue and the accepted bodies of POST /api/executor/queue/mark and POST /api/executor/order-events.",
+    "PREMVP's QueueStatus enum (lib/executor/executorCallbackContract.ts:26) includes SENT as a persisted status (QUEUE_PERSISTED_STATUSES), but QUEUE_MARK_ACCEPTED_STATUSES (the set POST /api/executor/queue/mark actually accepts) is CLAIMED|EXECUTED|SKIPPED|FAILED|EXPIRED -- SENT is not currently an accepted mark-endpoint input. This is why \"Ireland SENDING / submitter invocation\" (S11) cannot be proven from a PREMVP-persisted status transition and instead rests on FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT evidence (Ireland-side observation). Flagged as a source-level observation only -- not in scope to change this pass."
+  ],
+
+  "stages": [
+    {
+      "stage_id": "S1_POLYMARKET_STRUCTURED_SPORTS_AUTHORITY",
+      "repository_owner": "PREMVP",
+      "canonical_producer": "discoverSportsMarkets() -- lib/feed/discoverSportsMarkets.ts:308 (fetchSportsMetadata + Polymarket Gamma/CLOB event+market fetch, tag-id driven, event-spine grouping)",
+      "persistence_or_api_boundary": "None persisted at this stage -- in-memory discovery result (SportsDiscoveryResult), invoked from scripts/generate-signals.ts via `npm run generate:signals`.",
+      "canonical_consumer": "writeGeneratedSignalPairs() in scripts/generate-signals.ts (lib/feed/cacheGeneratedSignals.ts:171)",
+      "source_symbol_proof": "PROVEN_PRESENT",
+      "runtime_edge_proof": "SOURCE_ONLY",
+      "runtime_evidence_status": "SOURCE_ONLY",
+      "identity_keys_carried": ["providerEventContext{v:\"v1\",provider:\"polymarket\",eventId,eventStartIso,sportFamily}", "condition_id", "token_id (selected_token_id downstream)"],
+      "known_current_blocker": "The production scheduling trigger for `npm run generate:signals` is not located in tracked repo config -- only the npm script itself is proven present. railway-config-before-runtime-fix.json is an explicitly stale/pre-fix file and cannot be cited as current Railway wiring. Not named in the mission's accepted Aug-11/12 contour, so not upgraded this pass."
+    },
+    {
+      "stage_id": "S2_SIGNAL_CACHE_GENERATED_SIGNAL_PAIRS",
+      "repository_owner": "PREMVP",
+      "canonical_producer": "writeGeneratedSignalPairs() -- lib/feed/cacheGeneratedSignals.ts:171",
+      "persistence_or_api_boundary": "Supabase table generated_signal_pairs (INSERT). Indexed by supabase/migrations/20260811_generated_signal_pairs_provider_event_context_index.sql for the exact v1/polymarket/eventId/eventStartIso lookup used downstream.",
+      "canonical_consumer": "buildFireModelCandidates() (lib/executor/buildFireModelCandidates.ts) via fetchAllPlanningRows / fetchAllPlanningRowsByKeyset / fetchPlanningSourceRowSets / loadContractAPlanningSourceRows",
+      "source_symbol_proof": "PROVEN_BY_CONTRACT_TEST",
+      "runtime_edge_proof": "PROVEN_BY_CONTRACT_TEST",
+      "runtime_evidence_status": "PROVEN_BY_CONTRACT_TEST",
+      "identity_keys_carried": ["id (uuid pk)", "condition_id", "selected_token_id", "selected_outcome", "diagnostics.providerEventContext", "metric_formula_version", "signal_confidence_num", "entry_price_num"],
+      "known_current_blocker": "None structural. Not named in the mission's accepted Aug-11/12 contour, so not upgraded this pass -- see S4 onward for the accepted edges."
+    },
+    {
+      "stage_id": "S3_RESOLVER_SCORING",
+      "repository_owner": "PREMVP",
+      "canonical_producer": "buildFireModelCandidates() -- lib/executor/buildFireModelCandidates.ts:1616, plus resolveUpstreamMarketPolicy (MARKET_POLICY_VERSION=\"CONTRACT_A_PLANNING_V1\", buildFireModelCandidates.ts:266)",
+      "persistence_or_api_boundary": "In-process pure/async function library. No independent persistence -- reads generated_signal_pairs, emits FireModelCandidate[] plus RawPlanningDiagnostics.",
+      "canonical_consumer": "lib/executor/contractADecisions.ts (produceContractAPlanningDecisions / produceContractAFinalIdentityDecision); lib/executor/eventExecutionQueue.ts; app/api/executor/night-plan and app/api/executor/candidates routes (legacy default path -- see LEGACY_SUPERSEDED_INVENTORY L1/L2/L6)",
+      "source_symbol_proof": "PROVEN_BY_CONTRACT_TEST",
+      "runtime_edge_proof": "PROVEN_BY_CONTRACT_TEST",
+      "runtime_evidence_status": "PROVEN_BY_CONTRACT_TEST",
+      "identity_keys_carried": ["generated_signal_pair_id", "signal_id", "canonical_event_key", "match_family_key", "condition_id", "token_id", "side"],
+      "known_current_blocker": "buildFireModelCandidates()'s selectorMode parameter defaults to the legacy value \"CONTUR3_CURRENT\" (buildFireModelCandidates.ts:1621). Any caller that omits the explicit selectorMode argument silently gets legacy scoring instead of CONTRACT_A_PLANNING_V1 -- confirmed true today for app/api/executor/night-plan/route.ts and app/api/executor/candidates/route.ts. PRESERVED finding -- see NEXT_ARCHITECTURE_FOLLOWUP; those two routes are unchanged this pass."
+    },
+    {
+      "stage_id": "S4_CONTRACT_A_RESERVATION_PLANNING",
+      "repository_owner": "PREMVP",
+      "canonical_producer": "buildContractAPlanningDecision() / produceContractAPlanningDecisions() -- lib/executor/contractADecisions.ts:408,619. Entered by app/api/cron/night-event-reservations/route.ts, which always passes selectorMode: \"CONTRACT_A_PLANNING_V1\" explicitly on every write path (canaryPreview, targetPhysicalEventKeyHash, forceRebuild, standard create).",
+      "persistence_or_api_boundary": "In-process decision object (ContractAPlanningDecision, status ACCEPTED | rejection_trace). Not independently persisted -- it is folded into the Reservation row diagnostics at the next stage.",
+      "canonical_consumer": "lib/executor/nightEventReservations.ts persistReservationPlan()",
+      "source_symbol_proof": "PROVEN_BY_CONTRACT_TEST (tests/contur3/contractADecisions.test.ts, tests/contur3/planningDecisionReservation.test.ts)",
+      "runtime_edge_proof": "PROVEN_IN_PRODUCTION -- part of the accepted Aug-11/12 contour named explicitly in this mission (\"Contract A / Reservation planning\"). Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT (see proof_dimension_note).",
+      "runtime_evidence_status": "PROVEN_IN_PRODUCTION",
+      "identity_keys_carried": ["physical_event_id = provider:polymarket:<eventId_lowercase>:<YYYY-MM-DD>", "source_lineage{generated_signal_pair_id, provider_event_id, provider_event_start_iso}", "decision_version=CONTRACT_A_DECISION_V1", "contract_a_version=CONTRACT_A_PLANNING_V1"],
+      "known_current_blocker": "None on the accepted edge itself. CURRENT_STATE.yaml (control-plane state artifact, last state-only bootstrap 2026-08-07, origin_main_sha a942a0d8) still records C1 as OPEN and BLK-001 (\"no natural night-reservations run has started after the proven deployment boundary\") -- that entry predates the Aug-11/12 run this mission accepts and is stale; it is not overridden here and remains flagged for a separate CURRENT_STATE reconciliation task, out of this mission's scope."
+    },
+    {
+      "stage_id": "S5_NIGHT_EVENT_RESERVATIONS_PERSISTED",
+      "repository_owner": "PREMVP",
+      "canonical_producer": "persistReservationPlan() / runReservationCronWithEvidence() -- lib/executor/nightEventReservations.ts, invoked by GET|POST /api/cron/night-event-reservations (app/api/cron/night-event-reservations/route.ts)",
+      "persistence_or_api_boundary": "Supabase table night_event_reservations (INSERT). Creation-window guard blocks writes 08:00-16:30 Minsk by design (isInReservationCreationWindow).",
+      "canonical_consumer": "lib/executor/eventExecutionQueue.ts createSupabaseRebalanceRepoPort().loadActiveReservations() (status IN RESERVED, REBALANCE_PENDING)",
+      "source_symbol_proof": "PROVEN_BY_CONTRACT_TEST",
+      "runtime_edge_proof": "PROVEN_IN_PRODUCTION -- accepted Aug-11/12 contour item \"persisted night_event_reservations\". Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT.",
+      "runtime_evidence_status": "PROVEN_IN_PRODUCTION",
+      "identity_keys_carried": ["id", "plan_run_id", "physical_event_id", "event_start_iso", "match_family_key", "diagnostics.source_lineage", "diagnostics.selector_id=\"CONTRACT_A_PLANNING_V1\""],
+      "known_current_blocker": "None. The 08:00-16:30 Minsk write-skip is intended operator-facing behavior, not a defect."
+    },
+    {
+      "stage_id": "S6_EVENT_REBALANCE",
+      "repository_owner": "PREMVP",
+      "canonical_producer": "runEventRebalance() / runEventRebalanceWithEvidence() -- lib/executor/eventExecutionQueue.ts, invoked by GET|POST /api/cron/event-rebalance (app/api/cron/event-rebalance/route.ts). Selection: selectQueueRowForDueReservation() -> selectQueueRowFromContractAReservation() (Contract A path) or buildQueueRowFromFinalIdentity() (final-identity/orderbook-guarded path), gated by isDueForRebalance() (T-70..T-3 minutes before start).",
+      "persistence_or_api_boundary": "In-process selection over generated_signal_pairs siblings + live orderbook guard (fetchOrderBook / computeBuyableUsdAtSlippage / computeSpread), then a single INSERT into event_execution_queue.",
+      "canonical_consumer": "insertQueueRow() (RebalanceRepoPort) -> event_execution_queue",
+      "source_symbol_proof": "PROVEN_BY_CONTRACT_TEST",
+      "runtime_edge_proof": "PROVEN_IN_PRODUCTION -- accepted Aug-11/12 contour item \"event-rebalance\". Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT.",
+      "runtime_evidence_status": "PROVEN_IN_PRODUCTION",
+      "identity_keys_carried": ["order_key = condition_id:token_id:side", "idempotency_key = sha256(reservation.id||plan_run_id + physical_event_id + event_start_iso + order_key).slice(0,32)"],
+      "known_current_blocker": "max_queue_writes Phase-1 safety cap applies to the canonical branch only (never to founderBattleBatch/controlledLiveIntent -- see LEGACY_SUPERSEDED_INVENTORY). buildQueueRowFromFinalIdentity's orderbook-guarded path requires a live liquidity read to succeed; a liquidity-fetch failure fails that path closed. Neither condition contradicts the accepted edge -- the Aug-11/12 run reached a successful selection."
+    },
+    {
+      "stage_id": "S7_EVENT_EXECUTION_QUEUE_PERSISTED",
+      "repository_owner": "PREMVP",
+      "canonical_producer": "insertQueueRow() via createSupabaseRebalanceRepoPort() -- lib/executor/eventExecutionQueue.ts:805",
+      "persistence_or_api_boundary": "Supabase table event_execution_queue (schema: EventExecutionQueueRow, lib/executor/executorQueueTypes.ts:57). Migration: supabase/migrations/20260622_night_reservation_execution_queue.sql (+ later identity/index migrations).",
+      "canonical_consumer": "GET /api/executor/queue (mapQueueRowToIrelandCandidate); POST /api/executor/queue/mark; POST /api/executor/order-events cross-check",
+      "source_symbol_proof": "PROVEN_BY_CONTRACT_TEST",
+      "runtime_edge_proof": "PROVEN_IN_PRODUCTION -- accepted Aug-11/12 contour item \"persisted event_execution_queue\". Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT.",
+      "runtime_evidence_status": "PROVEN_IN_PRODUCTION",
+      "identity_keys_carried": ["id (queue_row_id)", "reservation_id", "plan_run_id", "rebalance_run_id", "condition_id", "token_id", "side", "order_key", "idempotency_key", "status"],
+      "known_current_blocker": "None."
+    },
+    {
+      "stage_id": "S8_PREMVP_QUEUE_API",
+      "repository_owner": "PREMVP",
+      "canonical_producer": "GET /api/executor/queue -- app/api/executor/queue/route.ts, serializing via mapQueueRowToIrelandCandidate() (lib/executor/executorQueueTypes.ts:220)",
+      "persistence_or_api_boundary": "HTTP API, x-executor-secret auth (EXECUTOR_CANDIDATES_SECRET). Filters status=READY AND latest_entry_iso>now, ordered by preferred_entry_iso then queued_at. Route comment: \"the ONLY executable source for Ireland\" -- does not call buildFireModelCandidates, does not rebalance, never returns Tier2/Tier3/halftime.",
+      "canonical_consumer": "Ireland's queue-consumption boundary (Ireland repository is UNPROVEN_REMOTE_IDENTITY, PROTECTED_BOUNDARY_ONLY per ARCHITECT_CONTROL_PLANE.yaml -- not inspectable from PREMVP; no specific Ireland symbol is asserted here).",
+      "source_symbol_proof": "PROVEN_BY_CONTRACT_TEST (tests/contur3/executorQueueRoute.candidateMapping.test.ts)",
+      "runtime_edge_proof": "PROVEN_IN_PRODUCTION -- accepted Aug-11/12 contour item \"PREMVP Queue API\": the endpoint was called and returned candidates that Ireland went on to observe/decode. Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT.",
+      "runtime_evidence_status": "PROVEN_IN_PRODUCTION",
+      "identity_keys_carried": ["candidate_id", "queue_id", "queue_row_id", "signal_pair_id", "condition_id", "token_id", "side", "execution_side=\"BUY\"", "order_key", "idempotency_key"],
+      "known_current_blocker": "execution_side / queue_row_id / signal_pair_id were added additively in commit 76d3fe8 (merged to origin/main as PR #147 / ed309af) specifically to fix Ireland's decoder rejecting instructions with UNSUPPORTED_SIDE. The accepted Aug-11/12 runtime edge is the evidence that Ireland's live decoder has in fact picked up this exact deployed contract -- see S9."
+    },
+    {
+      "stage_id": "S9_IRELAND_OBSERVATION_DECODE",
+      "repository_owner": "Ireland (PROTECTED_BOUNDARY_ONLY, access_in_control_plane_phase_1_2=false)",
+      "canonical_producer": "Ireland's own observation/decode of the S8 candidate payload. No specific Ireland symbol is named (none exists in PREMVP source -- decode_queue_row, ProductionQueueAdapter etc. are grep-confirmed absent from this repository and are not reintroduced here).",
+      "persistence_or_api_boundary": "N/A -- Ireland-owned runtime, not inspectable from PREMVP.",
+      "canonical_consumer": "Ireland's own order-construction pipeline, culminating in the S10/S11 callback and submission edges.",
+      "source_symbol_proof": "UNPROVEN_NOT_INSPECTABLE -- no Ireland source is visible to this repository, by design (PROTECTED_BOUNDARY_ONLY).",
+      "runtime_edge_proof": "PROVEN_IN_PRODUCTION -- accepted Aug-11/12 contour item \"Ireland observation/decode\": Ireland successfully observed and decoded a live Queue instruction (the prior UNSUPPORTED_SIDE decode failure that motivated commit 76d3fe8 is confirmed resolved for this run). Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT.",
+      "runtime_evidence_status": "PROVEN_IN_PRODUCTION (runtime edge) / UNPROVEN_NOT_INSPECTABLE (source symbol) -- see proof_dimension_note for why these two fields legitimately diverge on an externally-owned stage.",
+      "identity_keys_carried": ["(inherits S8's candidate fields verbatim -- no PREMVP visibility into Ireland's internal representation)", "execution_side", "token_id", "condition_id", "side (outcome selector -- must not be read as the order action)"],
+      "known_current_blocker": "CURRENT_STATE.yaml BLK-004 (\"Ireland runtime access and Ireland repository remote identity are NOT_PROVEN\") still applies to SOURCE_SYMBOL_PROOF -- it does not contradict RUNTIME_EDGE_PROOF, which rests on a different, Founder-accepted evidence class rather than PREMVP-side repository/runtime access."
+    },
+    {
+      "stage_id": "S10_PREMVP_CLAIM_CALLBACK",
+      "repository_owner": "PREMVP (endpoint) / Ireland (caller)",
+      "canonical_producer": "Ireland calls POST /api/executor/queue/mark with status=CLAIMED (app/api/executor/queue/mark/route.ts) -> isQueueMarkAcceptedStatus() / rejectsExecutedRegression() (lib/executor/executorCallbackContract.ts). CLAIMED is one of the QUEUE_MARK_ACCEPTED_STATUSES (CLAIMED|EXECUTED|SKIPPED|FAILED|EXPIRED).",
+      "persistence_or_api_boundary": "HTTP API, x-executor-secret auth. UPDATE event_execution_queue.status -> CLAIMED, appended to diagnostics.mark_history.",
+      "canonical_consumer": "event_execution_queue.status column; downstream diagnostics/mark_history; gates S11.",
+      "source_symbol_proof": "PROVEN_BY_CONTRACT_TEST",
+      "runtime_edge_proof": "PROVEN_IN_PRODUCTION -- accepted Aug-11/12 contour item \"PREMVP CLAIM callback\": Ireland called back with a CLAIM after decoding the instruction. Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT.",
+      "runtime_evidence_status": "PROVEN_IN_PRODUCTION",
+      "identity_keys_carried": ["queue_id", "status=CLAIMED", "idempotency_key"],
+      "known_current_blocker": "None on the CLAIM edge itself. Distinct from and upstream of the separate EXECUTED transition, which requires a matching executor_order_events row (handleQueueMarkExecuted) and remains unproven for this run -- see S12."
+    },
+    {
+      "stage_id": "S11_IRELAND_SENDING_SUBMITTER_INVOCATION",
+      "repository_owner": "Ireland (PROTECTED_BOUNDARY_ONLY)",
+      "canonical_producer": "Ireland's own canonical submitter (no specific Ireland symbol named -- see mission_label_corrections). Entered a SENDING state and attempted venue submission.",
+      "persistence_or_api_boundary": "N/A -- Ireland-owned runtime. Note: PREMVP's own QueueStatus enum carries a SENT value (QUEUE_PERSISTED_STATUSES) but POST /api/executor/queue/mark's accepted-status set does not currently include SENT as an input, so this edge cannot be reconstructed from a PREMVP-persisted status transition -- see mission_label_corrections.",
+      "canonical_consumer": "Polymarket CLOB venue (S12).",
+      "source_symbol_proof": "UNPROVEN_NOT_INSPECTABLE -- Ireland-owned, no PREMVP visibility, and deliberately not named to a specific symbol per this correction pass's instruction.",
+      "runtime_edge_proof": "PROVEN_IN_PRODUCTION -- accepted Aug-11/12 contour item \"Ireland SENDING / submitter invocation\": Ireland's canonical submitter entered SENDING and attempted venue submission. Evidence class: FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT. This is the DEEPEST edge accepted as proven this pass.",
+      "runtime_evidence_status": "PROVEN_IN_PRODUCTION (runtime edge) / UNPROVEN_NOT_INSPECTABLE (source symbol)",
+      "identity_keys_carried": ["condition_id", "token_id", "execution_side=\"BUY\"", "stake_usd", "max_entry_price/price_cap"],
+      "known_current_blocker": "Venue-level cause/result of the attempted submission is unresolved -- this is exactly where CURRENT_DEEPEST_PROVEN_VERTICAL_BOUNDARY stops. A post-diagnostic natural instruction is required to establish the next edge (S12)."
+    },
+    {
+      "stage_id": "S12_VENUE_RESULT_AND_FULL_CALLBACK_RECONCILIATION",
+      "repository_owner": "Ireland (venue result) / PREMVP (callback endpoint)",
+      "canonical_producer": "Polymarket CLOB venue-level fill/reject outcome (UNPROVEN_FROM_PREMVP, no source or result visibility). If/when reached, the full reconciliation callback lands at PREMVP's POST /api/executor/order-events (app/api/executor/order-events/route.ts) -> handleOrderEventSubmission() -> INSERT executor_order_events, cross-validated via validateOrderEventAgainstQueueRow() (lib/executor/executorQueueTypes.ts:309), and only then can POST /api/executor/queue/mark accept status=EXECUTED (handleQueueMarkExecuted requires a matching executor_order_events row -- an Ireland self-assertion alone is never sufficient).",
+      "persistence_or_api_boundary": "Venue: Polymarket CLOB (Ireland-owned, no PREMVP visibility). Callback: Supabase table executor_order_events (INSERT) plus event_execution_queue.status=EXECUTED, x-executor-secret auth.",
+      "canonical_consumer": "event_execution_queue.status (terminal EXECUTED) and executor_order_events as the audit-of-record.",
+      "source_symbol_proof": "PROVEN_BY_CONTRACT_TEST for the PREMVP callback/reconciliation endpoints themselves (they exist and are exercised by tests). UNPROVEN_NOT_INSPECTABLE for the Ireland-side venue result.",
+      "runtime_edge_proof": "UNPROVEN -- NOT part of the accepted Aug-11/12 contour. This mission explicitly states venue-level cause/result remains unresolved and a post-diagnostic natural instruction is still required before this edge can be evaluated.",
+      "runtime_evidence_status": "UNPROVEN",
+      "identity_keys_carried": ["idempotency_key", "condition_id", "token_id", "side/selected_side", "submitted_size", "submitted_price", "clob_order_id", "transaction_hashes"],
+      "known_current_blocker": "This is the stage immediately past CURRENT_DEEPEST_PROVEN_VERTICAL_BOUNDARY. Nothing here is proven end-to-end as of this mission."
+    }
+  ],
+
+  "CURRENT_DEEPEST_PROVEN_VERTICAL_BOUNDARY": "Ireland canonical submitter entered SENDING and attempted venue submission; venue-level cause/result remains unresolved and requires a post-diagnostic natural instruction.",
+
+  "edge_counts": {
+    "PROVEN_IN_PRODUCTION": 8,
+    "PROVEN_BY_CONTRACT_TEST": 3,
+    "SOURCE_ONLY": 1,
+    "UNPROVEN": 1,
+    "note": "PROVEN_IN_PRODUCTION (S4-S11) reflects the accepted Aug-11/12 runtime contour per this mission's Founder correction: Contract A/Reservation planning -> persisted night_event_reservations -> event-rebalance -> persisted event_execution_queue -> PREMVP Queue API -> Ireland observation/decode -> PREMVP CLAIM callback -> Ireland SENDING/submitter invocation. Each of these edges' RUNTIME_EDGE_PROOF is PROVEN_IN_PRODUCTION even where the corresponding Ireland SOURCE_SYMBOL_PROOF stays UNPROVEN_NOT_INSPECTABLE (S9, S11) -- see proof_dimension_note. PROVEN_BY_CONTRACT_TEST (S2, S3, S12-endpoint-only) and SOURCE_ONLY (S1) are edges NOT named in the accepted Aug-11/12 contour and are correctly left unchanged. UNPROVEN (S12 venue result) is the one edge past the current deepest proven boundary."
+  }
+}

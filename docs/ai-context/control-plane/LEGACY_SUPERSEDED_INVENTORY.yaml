@@ -1,0 +1,109 @@
+{
+  "schema_version": "1.1",
+  "updated_at": "2026-08-12T01:00:00Z",
+  "_format_note": "JSON-compatible YAML 1.2 subset, consistent with every other .yaml file in this directory. Do not introduce block YAML syntax here.",
+
+  "_purpose": "Every alternate implementation/caller/contract found while tracing the canonical vertical spine (CANONICAL_VERTICAL_SPINE_MANIFEST.yaml), classified by production reachability. Nothing in this file has been deleted or modified -- classification only, per mission scope (SAFE_DELETE_NOW_COUNT is always 0 for this mission).",
+
+  "reaffirmed_2026-08-12T01:00:00Z": "Corrected in the same pass as CANONICAL_VERTICAL_SPINE_MANIFEST.yaml and CROSS_SYSTEM_CONTRACT_MATRIX.yaml to upgrade the accepted Aug-11/12 production runtime edges to PROVEN_IN_PRODUCTION. That correction does NOT change anything in this file: L1/L2/L6 (the buildFireModelCandidates default CONTUR3_CURRENT selector plus /api/executor/night-plan and /api/executor/candidates) remain PARALLEL_PRODUCTION_REACHABLE / INVESTIGATE, unchanged and untouched, pending proof of their own traffic/reachability -- see NEXT_ARCHITECTURE_FOLLOWUP in the manifest. SAFE_DELETE_NOW_COUNT remains 0 for every entry in this file.",
+
+  "entries": [
+    {
+      "id": "L1",
+      "path_or_symbol": "app/api/executor/night-plan/route.ts (GET, x-executor-secret auth)",
+      "overlaps_canonical_spine_at": "S3_RESOLVER_SCORING / S8_GET_EXECUTOR_QUEUE -- calls buildFireModelCandidates(PLAN_POOL, \"all\", true) with NO selectorMode argument, so it silently runs the legacy default \"CONTUR3_CURRENT\" scoring path instead of CONTRACT_A_PLANNING_V1. Its output shape is explicitly documented elsewhere (executorQueueTypes.ts comment) as the thing IrelandQueueCandidate \"mirrors\" -- i.e. this route predates and structurally resembles the canonical Queue endpoint.",
+      "current_callers": "Any holder of the shared EXECUTOR_CANDIDATES_SECRET (same header PREMVP's own executor endpoints use). No caller inside this repository invokes it -- it is an inbound HTTP surface only.",
+      "runtime_reachability_evidence": "Route file present and unconditional (no feature flag). If origin/main is deployed as-is (proven build/deploy evidence exists in CURRENT_STATE.yaml for an earlier SHA), this endpoint is live and answers requests today.",
+      "classification": "PARALLEL_PRODUCTION_REACHABLE",
+      "recommended_disposition": "INVESTIGATE",
+      "disposition_reason": "Confirm whether Ireland (or any other integration) has ever called this route in production. The canonical spine's own route comment (app/api/executor/queue/route.ts) explicitly declares itself \"the ONLY executable source for Ireland\" -- if that is true today, this route is a live but unused legacy surface using stale scoring logic and is a real risk if anyone ever re-points a consumer at it."
+    },
+    {
+      "id": "L2",
+      "path_or_symbol": "app/api/executor/candidates/route.ts (GET, x-executor-secret auth)",
+      "overlaps_canonical_spine_at": "S3_RESOLVER_SCORING -- calls buildFireModelCandidates(EVENT_DEDUPE_POOL, scope) with NO selectorMode argument, same legacy-default exposure as L1.",
+      "current_callers": "Same shared-secret exposure as L1.",
+      "runtime_reachability_evidence": "Route file present and unconditional. Live if deployed.",
+      "classification": "PARALLEL_PRODUCTION_REACHABLE",
+      "recommended_disposition": "INVESTIGATE",
+      "disposition_reason": "Same reasoning as L1."
+    },
+    {
+      "id": "L3",
+      "path_or_symbol": "runFounderBattleBatch() -- lib/executor/eventExecutionQueue.ts:2348, reachable via GET|POST /api/cron/event-rebalance?founderBattleBatch=1",
+      "overlaps_canonical_spine_at": "S6_EVENT_REBALANCE / S7_EVENT_EXECUTION_QUEUE -- reads generated_signal_pairs directly and writes 2-4 fresh READY event_execution_queue rows, entirely bypassing the Reservation stage (S5) and the normal single-market-per-event rebalance selection (S6's canonical branch).",
+      "current_callers": "app/api/cron/event-rebalance/route.ts, gated by BOTH the explicit ?founderBattleBatch=1 request param AND process.env.FOUNDER_BATTLE_BATCH_MODE===\"YES\" (fails closed with BLOCKED_GATE_DISABLED otherwise).",
+      "runtime_reachability_evidence": "Reachable only with the env gate set, which is an explicit, auditable operator action, not an ambient default.",
+      "classification": "MANUAL_ONLY",
+      "recommended_disposition": "KEEP",
+      "disposition_reason": "Documented, narrow, fail-closed operational escape hatch -- not silently reachable in normal production traffic."
+    },
+    {
+      "id": "L4",
+      "path_or_symbol": "runControlledLiveIntent() -- lib/executor/eventExecutionQueue.ts, reachable via GET|POST /api/cron/event-rebalance?controlledLiveIntent=...",
+      "overlaps_canonical_spine_at": "S6_EVENT_REBALANCE / S7_EVENT_EXECUTION_QUEUE -- one-shot live-intent Queue write, separate branch from runEventRebalanceWithEvidence.",
+      "current_callers": "app/api/cron/event-rebalance/route.ts. Rejects (BLOCKED_INVALID_REQUEST) any value other than one pre-authorized fixed test id.",
+      "runtime_reachability_evidence": "Reachable, but the accepted-value allowlist has exactly one entry -- effectively a single named test seam, not a general-purpose bypass.",
+      "classification": "TEST_ONLY",
+      "recommended_disposition": "KEEP",
+      "disposition_reason": "Fail-closed against any id other than the one pre-authorized value; used to prove the exact Signal Pair -> Planning -> Reservation -> Queue link (see tests/contur3/reservationExactLineage.fullLink.test.ts)."
+    },
+    {
+      "id": "L5",
+      "path_or_symbol": "Canary paths: GET|POST /api/cron/event-rebalance?canary=CEO_APPROVED&targetReservationId=...; GET|POST /api/cron/night-event-reservations?canary=CEO_APPROVED&mode=canaryPreview / &targetPhysicalEventKeyHash=...",
+      "overlaps_canonical_spine_at": "S4_CONTRACT_A_PLANNING_V1 / S5_NIGHT_EVENT_RESERVATIONS / S6_EVENT_REBALANCE -- identity-targeted single-event/single-reservation variants of the canonical write paths, using the SAME underlying selection/decision functions (buildReservationPlan, runEventRebalanceWithEvidence) rather than a separate implementation.",
+      "current_callers": "Both cron routes, gated by the literal string canary=CEO_APPROVED.",
+      "runtime_reachability_evidence": "Reachable only with the exact literal auth value; fails closed (400/explicit failure code) otherwise.",
+      "classification": "MANUAL_ONLY",
+      "recommended_disposition": "KEEP",
+      "disposition_reason": "Not a competing implementation -- narrows the same canonical selector to one target and is explicitly auth-gated."
+    },
+    {
+      "id": "L6",
+      "path_or_symbol": "buildFireModelCandidates()'s default selectorMode parameter value -- lib/executor/buildFireModelCandidates.ts:1621 (`selectorMode: FireModelSelectorMode = \"CONTUR3_CURRENT\"`)",
+      "overlaps_canonical_spine_at": "S3_RESOLVER_SCORING -- this is the root cause shared by L1 and L2: the canonical resolver/scoring function itself still defaults to the legacy selector when a caller forgets to opt in.",
+      "current_callers": "Every caller of buildFireModelCandidates() that omits the selectorMode argument -- confirmed true for L1 and L2 today. The canonical spine callers (contractADecisions.ts, night-event-reservations route, event-rebalance route) all pass it explicitly and are unaffected.",
+      "runtime_reachability_evidence": "Source-confirmed default value; live whenever L1/L2 are live.",
+      "classification": "PARALLEL_PRODUCTION_REACHABLE",
+      "recommended_disposition": "INVESTIGATE",
+      "disposition_reason": "A safer default (or a required, non-defaulted parameter) would close L1/L2's exposure at the root instead of per-caller. This is a design question for the Founder/Architect, not a mechanical fix -- flagged, not applied, per this mission's no-behavior-change scope."
+    },
+    {
+      "id": "L7",
+      "path_or_symbol": "isLegacyAuthoritativeReservation branch (reservationSelectorId === FROZEN_MODEL_V2_VERSION) inside selectQueueRowForDueReservation() -- lib/executor/eventExecutionQueue.ts:1038",
+      "overlaps_canonical_spine_at": "S6_EVENT_REBALANCE -- an alternate resolution branch for Reservation rows stamped with the older FROZEN_MODEL_V2_VERSION selector instead of CONTRACT_A_PLANNING_V1.",
+      "current_callers": "Only reachable for a night_event_reservations row whose diagnostics.selector_id equals the legacy value. app/api/cron/night-event-reservations/route.ts's every write path now stamps selectorMode: \"CONTRACT_A_PLANNING_V1\" unconditionally, so no NEW Reservation can take this branch -- it exists only to finish resolving any row written before the Contract A cutover.",
+      "runtime_reachability_evidence": "Code-reachable only through pre-existing persisted state, not through any current write path.",
+      "classification": "SUPERSEDED_NOT_PRODUCTION_REACHABLE",
+      "recommended_disposition": "DELETE_AFTER_SECOND_LIVE_PROOF",
+      "disposition_reason": "Safe to remove once it is proven (a live query, not source inspection) that no RESERVED/REBALANCE_PENDING night_event_reservations row still carries the legacy FROZEN_MODEL_V2_VERSION selector. That query was not run in this mission (no production probes / no DB mutation permitted)."
+    },
+    {
+      "id": "L8",
+      "path_or_symbol": "scripts/send-night-portfolio-plan.ts (npm run night:plan | night:plan:email | night:plan:alert) vs scripts/founder-email-dispatcher.ts --mode=night-plan (npm run ops:night-plan-email, the script docs/OPS_REPORT_CRON_SCHEDULE.md names as the canonical Railway Custom Start Command for the 17:00 Minsk Night Plan Service)",
+      "overlaps_canonical_spine_at": "Adjacent to S5/S6 (both scripts read the same night-plan/portfolio data for founder-facing email, not the live Queue itself) -- two scripts both plausibly own the \"send the night plan email\" role.",
+      "current_callers": "package.json defines both sets of npm scripts. Only ops:night-plan-email is named as the live Railway command in tracked ops documentation; night:plan:email has no tracked scheduler reference.",
+      "runtime_reachability_evidence": "No tracked Railway service config in this repository confirms which script Railway actually invokes -- railway-config-before-runtime-fix.json is explicitly a stale/pre-fix file and cannot be cited as current wiring.",
+      "classification": "UNKNOWN_REQUIRES_PROOF",
+      "recommended_disposition": "INVESTIGATE",
+      "disposition_reason": "Needs a live Railway service-config read (outside this mission's no-production-probes scope) to confirm night:plan:email is not still separately scheduled alongside ops:night-plan-email."
+    },
+    {
+      "id": "L9",
+      "path_or_symbol": "codex.agent.weather_gate_reviewer.v0 / codex.agent.contur_gate_reviewer (docs/ai-context/control-plane/AGENT_REGISTRY.yaml)",
+      "overlaps_canonical_spine_at": "Not part of the execution spine itself -- adjacent governance/reviewer tooling, included here only for completeness because it was encountered while reading the control plane.",
+      "current_callers": "None -- already marked status: SUPERSEDED in AGENT_REGISTRY.yaml, explicitly retained only so historical receipts referencing the old id remain resolvable.",
+      "runtime_reachability_evidence": "Registry-confirmed SUPERSEDED; superseded by premvp.reviewer.weather_gate.v1 / premvp.reviewer.contur_gate.v1.",
+      "classification": "SUPERSEDED_NOT_PRODUCTION_REACHABLE",
+      "recommended_disposition": "DO_NOT_TOUCH",
+      "disposition_reason": "Already correctly classified in the canonical registry; out of this mission's spine scope. Recorded here only so this inventory is not silently incomplete about what else was seen."
+    }
+  ],
+
+  "SAFE_DELETE_NOW_COUNT": 0,
+  "unknown_items_requiring_proof_before_any_legacy_deletion": [
+    "L7: a live (not source-only) query confirming zero night_event_reservations rows in status RESERVED or REBALANCE_PENDING still carry diagnostics.selector_id === FROZEN_MODEL_V2_VERSION.",
+    "L1 / L2 / L6: live confirmation (traffic logs, an Ireland-side source read, or a direct Founder statement) of whether app/api/executor/night-plan and app/api/executor/candidates have ever been called by any production consumer, and whether buildFireModelCandidates' legacy default selectorMode is exercised by any caller outside those two routes.",
+    "L8: a live Railway service-config read confirming exactly one of night:plan:email / ops:night-plan-email is the scheduled 17:00 Minsk Night Plan Service, not both."
+  ]
+}
