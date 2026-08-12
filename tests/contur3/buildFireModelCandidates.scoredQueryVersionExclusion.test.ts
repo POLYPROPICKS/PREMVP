@@ -18,7 +18,7 @@ import assert from "node:assert/strict";
 
 type Row = Record<string, unknown>;
 type Filter = { op: string; args: unknown[] };
-type CallLog = { filters: Filter[]; selectCols: string | null };
+type CallLog = { table: string; filters: Filter[]; selectCols: string | null };
 
 function applyFilters(rows: Row[], filters: Filter[]): Row[] {
   let out = rows.slice();
@@ -76,9 +76,8 @@ function applyFilters(rows: Row[], filters: Filter[]): Row[] {
 function makeFakeSupabaseAdmin(rows: Row[], callLog: CallLog[]) {
   return {
     from(table: string) {
-      assert.equal(table, "generated_signal_pairs");
       const filters: Filter[] = [];
-      const entry: CallLog = { filters, selectCols: null };
+      const entry: CallLog = { table, filters, selectCols: null };
       callLog.push(entry);
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const builder: any = {
@@ -96,7 +95,8 @@ function makeFakeSupabaseAdmin(rows: Row[], callLog: CallLog[]) {
         order() { return builder; },
         limit(n: number) {
           const result = applyFilters(rows, filters);
-          return { abortSignal: (_signal: unknown) => Promise.resolve({ data: result.slice(0, n), error: null }) };
+          const response = { data: result.slice(0, n), error: null };
+          return { ...response, abortSignal: (_signal: unknown) => Promise.resolve(response) };
         },
       };
       return builder;
@@ -125,6 +125,9 @@ function scoredRow(): Row {
     expires_at: FUTURE_EXPIRES_ISO,
     signal_result: null,
     diagnostics: {},
+    projection_status: "ACTIVE",
+    source_generated_signal_pair_id: "scored-row-1",
+    source_created_at: ROW_CREATED_AT_ISO,
   };
 }
 
@@ -144,6 +147,9 @@ function unscoreable_shadow_strategic_v1_row(): Row {
     expires_at: FUTURE_EXPIRES_ISO,
     signal_result: null,
     diagnostics: {},
+    projection_status: "ACTIVE",
+    source_generated_signal_pair_id: "shadow-row-1",
+    source_created_at: ROW_CREATED_AT_ISO,
   };
 }
 
@@ -195,7 +201,7 @@ test("R4: the scored-rows query never includes shadow-strategic-sports-v1 in its
   assert.equal(shadowEqFilter!.args[1], "shadow-strategic-sports-v1");
 });
 
-test("R4: loadContractAPlanningSourceRows (the production Contract A source loader) excludes the structurally-unmatchable shadow version end to end", async (t) => {
+test("R4: Contract A source loader reads the bounded serving projection and excludes the structurally-unmatchable shadow version", async (t) => {
   const callLog: CallLog[] = [];
   const rows = [scoredRow(), unscoreable_shadow_strategic_v1_row()];
   t.mock.module("../../lib/supabase/server", {
@@ -205,6 +211,7 @@ test("R4: loadContractAPlanningSourceRows (the production Contract A source load
   const { loadContractAPlanningSourceRows } = await import("../../lib/executor/buildFireModelCandidates");
   const result = await loadContractAPlanningSourceRows(REAL_NOW_MS);
 
+  assert.ok(callLog.every((call) => call.table === "current_signal_pair_serving"), "Contract A must not read generated_signal_pairs");
   const scoredCall = callLog.find((c) => c.filters.some((f) => f.op === "gte" && f.args[0] === "signal_confidence_num"));
   const scoredVersions = (scoredCall!.filters.find((f) => f.op === "in" && f.args[0] === "metric_formula_version")!.args[1]) as string[];
   assert.ok(!scoredVersions.includes("shadow-strategic-sports-v1"));
@@ -214,4 +221,17 @@ test("R4: loadContractAPlanningSourceRows (the production Contract A source load
   // here is 0, but the important, proven invariant is the query shape above:
   // no shadow-strategic-sports-v1 row is ever fetched into this path at all.
   assert.equal(result.length, 0);
+});
+
+test("R4: CONTRACT_A_PLANNING_V1 reads scored and shadow current-serving sets without keyset pagination", async (t) => {
+  const callLog: CallLog[] = [];
+  t.mock.module("../../lib/supabase/server", {
+    namedExports: { supabaseAdmin: makeFakeSupabaseAdmin([scoredRow(), unscoreable_shadow_strategic_v1_row()], callLog) },
+  });
+  const { buildFireModelCandidates } = await import("../../lib/executor/buildFireModelCandidates");
+  await buildFireModelCandidates(1000, "all", true, undefined, "CONTRACT_A_PLANNING_V1", REAL_NOW_MS);
+
+  assert.equal(callLog.length, 2, "one bounded query each for scored and shadow serving sets");
+  assert.ok(callLog.every((call) => call.table === "current_signal_pair_serving"));
+  assert.ok(callLog.every((call) => call.selectCols?.includes("source_generated_signal_pair_id")));
 });
