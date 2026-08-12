@@ -7,6 +7,12 @@
 
   "repository_scope": "POLYPROPICKS/PREMVP only. Ireland-owned functional stages are named generically (never a specific Ireland source symbol) because Ireland is a PROTECTED_BOUNDARY_ONLY repository per ARCHITECT_CONTROL_PLANE.yaml repository_boundaries.ireland and no Ireland source is inspectable from here.",
 
+  "current_signal_pair_serving_model_design": {
+    "path": "docs/ai-context/control-plane/CURRENT_SIGNAL_PAIR_SERVING_MODEL_DESIGN.md",
+    "status": "DESIGN_ONLY",
+    "scope": "Canonical proposed bounded serving projection for current-state readers of generated_signal_pairs. It does not change this spine's runtime behavior or historical lineage authority."
+  },
+
   "proof_dimension_note": {
     "rule": "Every stage in this manifest carries TWO independent proof dimensions, per Founder correction of 2026-08-12: SOURCE_SYMBOL_PROOF (can the PREMVP producer/consumer symbol be located and exercised by a PREMVP test) and RUNTIME_EDGE_PROOF (did this edge actually carry a real event in the accepted Aug-11/12 production run). An edge can be PROVEN_IN_PRODUCTION on runtime_edge_proof even when the downstream Ireland implementation symbol is externally owned and not inspectable from this repository -- SOURCE_SYMBOL_PROOF stays UNPROVEN_NOT_INSPECTABLE for Ireland-owned stages regardless of runtime_edge_proof. `runtime_evidence_status` on each stage is the summary field equal to the stronger of the two dimensions when a stage has both.",
     "evidence_class_for_runtime_edge_proof": "The Aug-11/12 production run itself was not independently re-derived from live git/HTTP/DB reads THIS session (Ireland access is out of bounds; a fresh CURRENT_STATE.yaml reconciliation is out of this mission's scope). Its PROVEN_IN_PRODUCTION status rests on FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT evidence (ARCHITECT_CONTROL_PLANE.yaml source_authority.runtime_facts rank 4) supplied as a current, explicit Founder directive -- which the same policy file's founder_authority section recognizes as authorizing exactly this kind of accepted-fact encoding into the canonical Control Plane. It is not re-labeled as independently re-verified LIVE_RUNTIME_EVIDENCE (rank 1)."
