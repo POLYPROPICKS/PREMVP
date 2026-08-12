@@ -390,6 +390,15 @@ const SIGNAL_SELECT_COLS =
   "signal_confidence_num, smart_money_score_num, diagnostics, " +
   "market_slug, event_slug, metric_formula_version, created_at, expires_at";
 
+// The serving projection carries the same consumer fields under explicit
+// lineage names. Keep the normalization here so every Contract A decision still
+// consumes the established generated_signal_pairs-shaped row contract.
+const SERVING_SIGNAL_SELECT_COLS =
+  "source_generated_signal_pair_id, condition_id, selected_outcome, selected_token_id, " +
+  "entry_price_num, signal_confidence_num, diagnostics, market_slug, event_slug, " +
+  "metric_formula_version, source_created_at, expires_at, signal_result, projection_status";
+const PLANNING_SERVING_ROW_LIMIT = 10_000;
+
 // Live executor row cap (recency-bounded). Planning mode is NEVER capped here.
 const LIVE_ROW_LIMIT = 150;
 const PLANNING_PAGE_SIZE = 1000;
@@ -1587,6 +1596,63 @@ export async function fetchPlanningSourceRowSets(
   return { scoredRows, planningShadowRows };
 }
 
+function normalizeServingSourceRow(row: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...row,
+    id: row.source_generated_signal_pair_id,
+    created_at: row.source_created_at,
+  };
+}
+
+async function fetchContractAPlanningServingRowSets(
+  snapshotAsOfIso: string,
+  includePlanningShadowRows: boolean,
+): Promise<{ scoredRows: Record<string, unknown>[]; planningShadowRows: Record<string, unknown>[] }> {
+  const { supabaseAdmin } = await import("@/lib/supabase/server");
+  const read = async (buildQuery: () => any, stage: string) => {
+    const { data, error } = await buildQuery().limit(PLANNING_SERVING_ROW_LIMIT);
+    if (error) throw new Error(`${stage} failed: ${error.message}`);
+    const rows = (data ?? []) as Record<string, unknown>[];
+    if (rows.length === PLANNING_SERVING_ROW_LIMIT) {
+      throw new Error(`${stage} reached bounded serving limit=${PLANNING_SERVING_ROW_LIMIT}`);
+    }
+    return rows.map(normalizeServingSourceRow);
+  };
+  const buildScoredQuery = () =>
+    supabaseAdmin
+      .from("current_signal_pair_serving")
+      .select(SERVING_SIGNAL_SELECT_COLS)
+      .eq("projection_status", "ACTIVE")
+      .in("metric_formula_version", ALLOWED_VERSIONS)
+      .is("signal_result", null)
+      .gt("expires_at", snapshotAsOfIso)
+      .not("selected_token_id", "is", null)
+      .not("condition_id", "is", null)
+      .not("entry_price_num", "is", null)
+      .gte("signal_confidence_num", 50)
+      .order("source_created_at", { ascending: false })
+      .order("source_generated_signal_pair_id", { ascending: false });
+  const scoredRows = await read(buildScoredQuery, "planning_serving_scored_rows_fetch");
+  if (!includePlanningShadowRows) return { scoredRows, planningShadowRows: [] };
+  const buildShadowQuery = () =>
+    supabaseAdmin
+      .from("current_signal_pair_serving")
+      .select(SERVING_SIGNAL_SELECT_COLS)
+      .eq("projection_status", "ACTIVE")
+      .eq("metric_formula_version", "shadow-strategic-sports-v1")
+      .is("signal_result", null)
+      .gt("expires_at", snapshotAsOfIso)
+      .not("selected_token_id", "is", null)
+      .not("condition_id", "is", null)
+      .is("signal_confidence_num", null)
+      .order("source_created_at", { ascending: false })
+      .order("source_generated_signal_pair_id", { ascending: false });
+  return {
+    scoredRows,
+    planningShadowRows: await read(buildShadowQuery, "planning_serving_shadow_rows_fetch"),
+  };
+}
+
 /**
  * The exact production planning universe as ONE flat source-row snapshot, for
  * the Contract A decision boundary. Same queries, same predicates, same
@@ -1595,15 +1661,7 @@ export async function fetchPlanningSourceRowSets(
  * decided in exactly one place.
  */
 export async function loadContractAPlanningSourceRows(nowMs = Date.now()): Promise<Record<string, unknown>[]> {
-  const planningLookbackIso = new Date(
-    nowMs - PLANNING_LOOKBACK_HOURS * 3_600_000
-  ).toISOString();
-  const { scoredRows } = await fetchPlanningSourceRowSets(
-    true,
-    PLANNING_ALLOWED_VERSIONS,
-    planningLookbackIso,
-    false
-  );
+  const { scoredRows } = await fetchContractAPlanningServingRowSets(new Date(nowMs).toISOString(), false);
   // Contract A Planning consumes only rows carrying the admitted producer score.
   // The shadow branch is intentionally score-null and cannot become a Planning
   // Decision; reading its unbounded historical pages here delays the real
@@ -1677,6 +1735,10 @@ export async function buildFireModelCandidates(
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
         .slice(0, LIVE_ROW_LIMIT);
     }
+  } else if (planningMode && selectorMode === "CONTRACT_A_PLANNING_V1") {
+    const loaded = await fetchContractAPlanningServingRowSets(new Date(nowMs).toISOString(), true);
+    scoredRows = loaded.scoredRows;
+    planningShadowRows = loaded.planningShadowRows;
   } else {
     const loaded = await fetchPlanningSourceRowSets(planningMode, versions, planningLookbackIso);
     scoredRows = loaded.scoredRows;

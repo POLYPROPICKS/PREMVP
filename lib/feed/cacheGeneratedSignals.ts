@@ -12,6 +12,7 @@ import {
   SHADOW_DEDUP_MAX_QUERIES,
   SHADOW_DEDUP_BUDGET_EXCEEDED,
 } from "./writeBatching";
+import { projectInsertedRows } from "./currentSignalPairServing";
 
 export interface CachedSignalPair {
   id?: string;
@@ -220,14 +221,16 @@ export async function writeGeneratedSignalPairs(
     };
   });
 
-  const { error, count } = await supabaseAdmin
-    .from("generated_signal_pairs")
-    .insert(rows);
+  const insertQuery = supabaseAdmin.from("generated_signal_pairs").insert(rows) as any;
+  const { data, error, count } = typeof insertQuery.select === "function"
+    ? await insertQuery.select("id")
+    : await insertQuery;
 
   if (error) {
     throw new Error(`Failed to write signal pairs: ${error.message}`);
   }
 
+  await projectInsertedRows(data, rows.length);
   return count ?? rows.length;
 }
 
@@ -562,9 +565,10 @@ export async function writeStrategicShadowPairs(
 
   let inserted = 0;
   for (const chunk of chunkArray(rows, SHADOW_INSERT_CHUNK)) {
-    const { error, count } = await supabaseAdmin
-      .from("generated_signal_pairs")
-      .insert(chunk);
+    const insertQuery = supabaseAdmin.from("generated_signal_pairs").insert(chunk) as any;
+    const { data, error, count } = typeof insertQuery.select === "function"
+      ? await insertQuery.select("id")
+      : await insertQuery;
 
     if (error) {
       // WRITE_FAILED is a terminal, attributable outcome for the remaining
@@ -574,6 +578,7 @@ export async function writeStrategicShadowPairs(
         `Failed to write shadow pairs: ${error.message} (after ${inserted} of ${rows.length} rows)`,
       );
     }
+    await projectInsertedRows(data, chunk.length);
     inserted += count ?? chunk.length;
   }
 
@@ -625,14 +630,16 @@ export async function writeFireModel1_1ResearchPairs(
 
   const rows = buildFireModel1_1ResearchRows(newPairs, defaultExpiresAt);
 
-  const { error, count } = await supabaseAdmin
-    .from("generated_signal_pairs")
-    .insert(rows);
+  const insertQuery = supabaseAdmin.from("generated_signal_pairs").insert(rows) as any;
+  const { data, error, count } = typeof insertQuery.select === "function"
+    ? await insertQuery.select("id")
+    : await insertQuery;
 
   if (error) {
     throw new Error(`Failed to write FireModel1.1 research pairs: ${error.message}`);
   }
 
+  await projectInsertedRows(data, rows.length);
   return count ?? rows.length;
 }
 
