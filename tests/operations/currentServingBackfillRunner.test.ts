@@ -23,6 +23,7 @@ test("an ambiguous transport result reconnects and resumes from the changed dura
 test("only throttles and ambiguous transport failures are retried", () => {
   assert.equal(classifyBackfillTransportError(new Error("HTTP 429")), "THROTTLE");
   assert.equal(classifyBackfillTransportError(new Error("connection reset")), "AMBIGUOUS");
+  assert.equal(classifyBackfillTransportError(new Error("Failed to connect to database: authentication did not complete within 15000ms")), "AMBIGUOUS");
   assert.equal(classifyBackfillTransportError(new Error("(ECHECKOUTTIMEOUT) unable to check out connection from the pool after 15000ms in Session mode")), "POOL_EXHAUSTED");
   assert.equal(classifyBackfillTransportError(new Error("SQLSTATE 57014")), "POSTGRES");
 });
