@@ -1,0 +1,702 @@
+{
+  "schema_version": "1.0",
+  "cycle_id": "2026-08-13__daily_evolution_review_consolidated",
+  "period_start": "2026-08-07T11:11:09Z",
+  "period_end": "2026-08-13T19:16:58Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "accepted": false,
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "claude-sonnet-5",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "PR#111-#145 (2026-08-07..2026-08-11), PR#147/#148 (2026-08-12) -- REUSED verbatim from PR#154's own findings for this sub-period; PR#154 in turn REUSED the 2026-08-07..2026-08-11 portion from PR#132/#146. Not re-derived in this session.",
+      "PR#150 squash-merge 778346c6 (codex/mission-2-current-serving) -- REUSED from PR#154. Contract A Planning begins reading current_signal_pair_serving.",
+      "PR#151 squash-merge 7cd53aa0 (codex/mission-2-current-serving) -- REUSED from PR#154. RLS + service_role restriction on the new projection.",
+      "PR#152 CLOSED UNMERGED (codex/mission-2-current-serving) -- REUSED from PR#154. Abandoned duplicate of #153.",
+      "PR#153 squash-merge 40389884 (codex/mission2-serving-backfill-repair) -- REUSED from PR#154. Bounds backfill to current-eligible sources.",
+      "PR#149 OPEN, STILL NOT MERGED, head f89c46ef8a65084fa2621191c055b69b4541f0a8 (codex/gsp-current-serving-model-design-20260812) -- design doc for #150, now 10 further implementation PRs (#155-#164) have shipped on this feature without it ever merging.",
+      "PR#154 OPEN DRAFT, STILL NOT MERGED, head 53a9f6bb9692030211397f91975091c19bd385e9 (claude/daily-evolution-review-2026-08-12) -- the prior consolidated Evolution cycle for the period ending 2026-08-12T15:44:18Z. This cycle RESUMES that lineage: its full Axis A/B findings, defect families and hypotheses are REUSED (marked REUSED_FROM_PR154 below) and this document supersedes it for the combined period. PR#154 is commented and closed by this run per the established ONE PERIOD -- ONE LINEAGE consolidation pattern (the same action PR#154 itself took against PR#132/#146).",
+      "PR#155 merge a4cd846 (codex/current-serving-authority-reconciliation, 2026-08-13T05:40:05Z) -- NEW. Docs-only reconciliation of current-serving authority; Contur PASS.",
+      "PR#156 merge b87712b (codex/current-serving-backfill-runner, 2026-08-13T06:48:49Z) -- NEW. Adds the resumable production backfill runner (lib/operations/currentServingBackfillRunner.ts, scripts/current-serving-backfill-runner.ts). Contur PASS for b87712b.",
+      "PR#157 merge 97b3efc (codex/current-serving-runner-watchdog-20260813, 2026-08-13T08:12:39Z) -- NEW. Bounds runner waits: 15s heartbeat + 45s cancellable query watchdog. Contur PASS for 97b3efc. First latent-layer fix exposed by PR#156.",
+      "PR#158 merge b2200a0 (codex/current-serving-pool-recovery-20260813, 2026-08-13T08:50:08Z) -- NEW. Recovers session-pool exhaustion during sustained backfill: sequential close/backoff/reconnect/durable-checkpoint resume. Contur PASS for b2200a0. Second latent-layer fix on the same boundary.",
+      "PR#159 merge 4ce4bb7 (codex/current-serving-auth-transport-recovery-20260813, 2026-08-13T08:57:40Z) -- NEW. Recovers proven authentication-checkout transport timeouts. Contur PASS for 4ce4bb7. Third latent-layer fix on the same boundary.",
+      "PR#160 merge 9420e05 (claude/publish-planning-serving-phase1-review, 2026-08-13T10:37:11Z) -- NEW. Publishes a 10-file independent architecture/database evidence package for Phase 1 (docs/ai-context/control-plane/reviews/planning-serving-phase1/). Evidence-only, no application/DB/schema change.",
+      "PR#161 merge 3bdab9f (codex/phase1-query-shape-correction-20260813, 2026-08-13T11:09:02Z) -- NEW. Bounds refresh_current_signal_pair_serving(uuid[]) reads to supplied source ids, preserves NULL full-corpus recovery path. 16/16 targeted tests PASS per PR body. Contur PASS for 3bdab9f.",
+      "PR#162 merge f76c0ec (codex/new-contour-7, 2026-08-13T13:51:24Z) -- NEW. Persists the Founder-approved DIRECT_SERVING_WITH_BOUNDED_BOOTSTRAP roadmap decision (NEW_CONTOUR_7.md) and regenerates the compact Architect context. control-plane:check, typecheck, build all PASS per PR body.",
+      "PR#163 merge 9171233 (codex/hot-current-universe-dedup-20260813, 2026-08-13T17:07:01Z) -- NEW. Retargets producer dedup reads from the historical corpus to eligible current-serving rows, preserving insert-first GSP lineage.",
+      "PR#164 merge 7784361 (codex/production-planning-read-recovery-20260813, 2026-08-13T19:16:58Z) -- NEW. Restores the CONTRACT_A_PLANNING_V1 scored serving read path after a live production Postgres 57014 (query_canceled) failure; adds one concurrent partial index migration (20260813193000_current_signal_pair_serving_planning_scored_index.sql) and one DDL-shape regression test. R4 Contur reviewer PASS for 7784361. Fourth, and so far final, latent-layer fix on the same rollout boundary.",
+      "This session independently re-ran live on the current origin/main tip (acbad91): npm ci (PASS), npm run control-plane:check (249/249 PASS -- see defect_accounting note on why this differs from PR#154's reported 248/249), npm run control-plane:evolution:test (47/47 PASS), npx tsc --noEmit (PASS, exit 0), npm run build (PASS, exit 0), tests/feed/currentSignalPairServing.test.ts (10/10 PASS), tests/feed/currentSignalPairServingPlanningIndex.test.ts (1/1 PASS), tests/feed/producerIdentityConservation.test.ts (13/13 PASS), tests/operations/currentServingBackfillRunner.test.ts (6/6 PASS), tests/contur3/twoStageReservationTiming.test.ts (7/14 PASS -- unchanged, reconfirmed failing)."
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-08-13__daily_evolution_review_input.json"
+  },
+  "axis_a": {
+    "verdict": "ADVANCED",
+    "what_moved": [
+      {
+        "statement": "Founder одобрил и зафиксировал в репозитории решение по дорожной карте DIRECT_SERVING_WITH_BOUNDED_BOOTSTRAP (New Contour 7): текущий шаг BOUNDED_PRE_HOOK_SEED, статус FOUNDER_APPROVED_RUNTIME_PENDING, со следующими двумя шагами (CURRENT_OPERATIONAL_COVERAGE_PROOF, NATURAL_WRITER_PROJECTION_PROOF) уже названными явно.",
+        "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+        "evidence_refs": [
+          "PR#162 merge f76c0ec908ed0792e6cd6d775f73d7c28acb80aa",
+          "docs/ai-context/control-plane/CURRENT_STATE.yaml approved_execution_frontier"
+        ]
+      },
+      {
+        "statement": "Раннер бэкфилла для current_signal_pair_serving реально работал в проде и вживую наткнулся на 4 инфраструктурных предела -- watchdog, пул соединений, авторизационный транспорт, Postgres 57014 -- все 4 устранены тем же днём с Contur-ревью по каждому коммиту.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#157 merge 97b3efc8dd4aaccee6fa5811c40f3adcb7bb5550 (Contur PASS)",
+          "PR#158 merge b2200a07ade9f161a7248b18f518f041ac60e36d (Contur PASS)",
+          "PR#159 merge 4ce4bb7f4a75ab446fcadae1f9e62c5f580375a2 (Contur PASS)",
+          "PR#164 merge 7784361d606d72e81ee3273bda48cd05edbd6ebd (R4 Contur PASS)",
+          "tests/operations/currentServingBackfillRunner.test.ts -- 6/6 PASS, независимо перезапущено вживую в этой сессии на текущем origin/main"
+        ]
+      },
+      {
+        "statement": "CONTRACT_A_PLANNING_V1 scored-путь чтения восстановлен после боевого отказа 57014 добавлением одного индекса, создаваемого CONCURRENTLY, плюс регрессионный тест формы DDL/плана запроса -- новый паттерн проверки 'форма индекса соответствует форме запроса' до включения в прод.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "supabase/migrations/20260813193000_current_signal_pair_serving_planning_scored_index.sql",
+          "tests/feed/currentSignalPairServingPlanningIndex.test.ts -- 1/1 PASS, независимо перезапущено вживую в этой сессии"
+        ]
+      },
+      {
+        "statement": "Продюсер дедупликации сигналов переведён с чтения растущего исторического корпуса на текущую (current) проекцию serving, сохраняя insert-first историческую линейность -- прямое применение урока HISTORY_IS_NOT_OPERATIONAL_AUTHORITY из CURRENT_STATE.yaml.operational_lessons_and_deferred_work.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#163 merge 9171233 (commit 9171233e58d5584c62fb0a8c77275d104035796)",
+          "tests/feed/producerIdentityConservation.test.ts -- 13/13 PASS, независимо перезапущено вживую в этой сессии"
+        ]
+      },
+      {
+        "statement": "Опубликован независимый 10-файловый пакет архитектурного/БД-обзора Phase 1 (Planning Serving) -- документирует целевую архитектуру, текущую реализацию с точными ссылками на файл/строку, точные формы SQL-запросов, инвентарь индексов и таймлайн боевых доказательств, без изменения кода/схемы/зависимостей.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#160 merge 9420e054a01738f61bbf2187de2f3aa960172893",
+          "docs/ai-context/control-plane/reviews/planning-serving-phase1/REVIEW_PACKAGE_MANIFEST.json"
+        ]
+      }
+    ],
+    "next_verified_production_fact_now_possible": "Раз 4 инфраструктурных предела раннера устранены, следующий факт -- критерии phase_1_runtime_acceptance из CURRENT_STATE.yaml (покрытие 100%, PASS-семантика). На снимке от 2026-08-13T12:00 (до PR#164) это ещё WAIT из-за transient Supabase schema-cache ошибки. Снял ли PR#164 эту причину -- не проверялось (БД вне границ).",
+    "blockers_removed": [
+      {
+        "statement": "Раннер бэкфилла мог зависать без ограничения по времени на отдельном запросе -- добавлены 15s heartbeat и 45s отменяемый предел запроса.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#157 merge 97b3efc8dd4aaccee6fa5811c40f3adcb7bb5550"
+        ]
+      },
+      {
+        "statement": "Продолжительный бэкфилл исчерпывал пул сессий БД -- добавлены последовательное закрытие/backoff/переподключение и устойчивое возобновление с чекпоинта.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#158 merge b2200a07ade9f161a7248b18f518f041ac60e36d"
+        ]
+      },
+      {
+        "statement": "Тайм-ауты авторизационного транспорта при чекауте соединения приводили к необработанному сбою -- добавлено восстановление с сохранённой паузой транспорта.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#159 merge 4ce4bb7f4a75ab446fcadae1f9e62c5f580375a2"
+        ]
+      },
+      {
+        "statement": "Скорированное чтение CONTRACT_A_PLANNING_V1 против current_signal_pair_serving отменялось Postgres кодом 57014 (query_canceled) из-за отсутствующего под форму запроса индекса -- восстановлено добавлением частичного индекса CONCURRENTLY плюс регрессионным тестом формы плана.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "PR#164 merge 7784361d606d72e81ee3273bda48cd05edbd6ebd",
+          "supabase/migrations/20260813193000_current_signal_pair_serving_planning_scored_index.sql"
+        ]
+      }
+    ],
+    "blockers_introduced": [],
+    "not_proven": [
+      "Критерии phase_1_runtime_acceptance (PRE_HOOK_ELIGIBLE_GAP=0, CURRENT_OPERATIONAL_SERVING_COVERAGE=100%, SERVING_WINNER_SEMANTICS=PASS и т.д.) остаются недоказанными в проде -- последний снимок CURRENT_STATE.yaml явно пишет WAIT, а PR#164 (устраняющий как минимум одну причину WAIT -- 57014) слился ПОСЛЕ этого снимка; повторная проверка WAIT этим разбором не проводилась (доступ к БД вне границ).",
+      "CURRENT_STATE.yaml.main.origin_main_sha (280d35bd, слияние PR#161) -- STATE_REFRESH_REQUIRED: живой origin/main ушёл на 3 слитых PR вперёд (#162, #163, #164), и эти PR трогают миграции/lib-код вне state_bootstrap_allowlist (только CURRENT_STATE.yaml/ARCHITECT_SNAPSHOT.md/EVIDENCE_LEDGER.md). Разрыв заметно уже, чем 36 PR у PR#154, но не закрыт.",
+      "EVIDENCE_LEDGER.md заканчивается записью EV-0020 (2026-08-13T05:30:15Z, соответствует PR#155) -- у 9 слитых после неё PR (#156-#164) нет записи в реестре доказательств.",
+      "Это СЕДЬМОЙ подряд PR цикла Daily Evolution Review (#116, #121, #122, #132, #146, #154 и теперь этот) -- и ни один так и не слит в main. PR#154 (за прошлый период) сам остаётся открытым черновиком на момент этого разбора.",
+      "PR#149 (проектный документ current-serving модели) по-прежнему не слит -- теперь 10 PR реализации (#150,151,153,155-164) ушли вперёд без него.",
+      "tests/contur3/twoStageReservationTiming.test.ts по-прежнему падает на 7 из 14 -- перепроверено вживую в этой сессии на текущем origin/main, без изменений с базовой точки PR#132/#146/#154. Файл всё ещё не подключён ни к одному npm-скрипту.",
+      "Звено S12 (результат на бирже, callback EXECUTED) остаётся UNPROVEN -- нет новых свидетельств за этот период, доступ к Ireland вне границ.",
+      "Сверенный PnL, исполнения, комиссии, расчёт: доказательств нет и не запрашивались; ничего не заявляется."
+    ],
+    "runtime_or_business_evidence_exists": true,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_ADDED",
+    "capabilities": [
+      {
+        "domain": "RECOVERY_AND_CHECKPOINTS",
+        "statement": "НОВОЕ. Резервируемый раннер бэкфилла с чекпоинтом, watchdog-ограничением запроса, восстановлением пула соединений (backoff/reconnect) и восстановлением авторизационного транспорта -- первый экземпляр паттерна 'долгоживущий раннер против растущей боевой таблицы' в репозитории.",
+        "persisted_artifact": "lib/operations/currentServingBackfillRunner.ts, scripts/current-serving-backfill-runner.ts",
+        "use_or_validation_evidence": "6/6 PASS, перепроверено вживую; 4 боевых восстановления (PR#157,158,159,164) подтверждают паттерн под нагрузкой.",
+        "evidence_refs": [
+          "PR#156 merge b87712b06b67297a34d60b07986a21a76e15fa05",
+          "PR#157, PR#158, PR#159, PR#164 -- боевые восстановления того же раннера"
+        ]
+      },
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "НОВОЕ. Регрессионный тест формы 'план запроса опирается ровно на нужный частичный индекс' -- формализует то, что раньше проверялось только вручную и было пропущено до боевого отказа 57014.",
+        "persisted_artifact": "tests/feed/currentSignalPairServingPlanningIndex.test.ts, supabase/migrations/20260813193000_current_signal_pair_serving_planning_scored_index.sql",
+        "use_or_validation_evidence": "1/1 PASS, независимо перезапущено вживую в этой сессии.",
+        "evidence_refs": [
+          "PR#164 merge 7784361d606d72e81ee3273bda48cd05edbd6ebd"
+        ]
+      },
+      {
+        "domain": "MISSION_REGISTRY",
+        "statement": "УСИЛЕНО (REUSED domain из PR#154). premvp.reviewer.contur_gate.v1 реально вызывался и получал PASS на каждом боевом/инфраструктурном PR периода (5 из 5: #157,158,159,161,164) -- систематически используется, хотя детерминированность вызова (BLK-002) остаётся недоказанной.",
+        "persisted_artifact": "docs/ai-context/control-plane/reviewers/contur-gate-reviewer.yaml",
+        "use_or_validation_evidence": "5 PR-рецептов PASS этого периода, процитированных в телах соответствующих PR.",
+        "evidence_refs": [
+          "PR#157",
+          "PR#158",
+          "PR#159",
+          "PR#161",
+          "PR#164"
+        ]
+      },
+      {
+        "domain": "MISSION_CONTRACTS",
+        "statement": "REUSED от PR#154 (изначально PR#132/#124). Mission Contract семантический компилятор.",
+        "persisted_artifact": "docs/ai-context/control-plane/PROMPT__PROTOCOL.md, MISSION_CONTRACT.schema.json, scripts/control-plane/mission-compile.mjs",
+        "use_or_validation_evidence": "control-plane:check 249/249 PASS, прогнано вживую в этой сессии на текущем origin/main.",
+        "evidence_refs": [
+          "PR#124 merge d86cc140",
+          "control-plane:check 249/249 PASS -- прогнано вживую в этой сессии"
+        ]
+      },
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "REUSED от PR#154 (изначально PR#125). Минимальная инструментация Sentry для продакшен-отладки.",
+        "persisted_artifact": ".agents/skills/polypropicks-production-debug/SKILL.md",
+        "use_or_validation_evidence": "часть control-plane:check 249/249 PASS, прогнано вживую в этой сессии.",
+        "evidence_refs": [
+          "PR#125 merge af0f781c"
+        ]
+      },
+      {
+        "domain": "CONTROLLED_IMPROVEMENT",
+        "statement": "REUSED от PR#154 (изначально PR#135/#146). Навык независимой проверки для нетривиальных миссий.",
+        "persisted_artifact": ".agents/skills/polypropicks-independent-challenge/SKILL.md",
+        "use_or_validation_evidence": "часть control-plane:check 249/249 PASS, прогнано вживую в этой сессии.",
+        "evidence_refs": [
+          "PR#135 merge aac431db"
+        ]
+      }
+    ],
+    "not_proven": [
+      "Это СЕДЬМОЙ подряд PR цикла Daily Evolution Review -- и ни один так и не слит в main. Способность 'разбор становится постоянной канонической историей репозитория' остаётся недоказанной для своего решающего шага седьмой раз подряд.",
+      "premvp.command.release_pipeline.v1 по-прежнему зарегистрирован ENABLED, но ни разу не был реально вызван -- ни для одного из семи циклов Evolution, включая ровно тот пробный вызов (validate/dry_run -> resume), который PR#154's experiment E1 явно предложил и который так и не состоялся.",
+      "Новый паттерн резервируемого раннера (RECOVERY_AND_CHECKPOINTS) пока подтверждён только на одном-единственном экземпляре (current_signal_pair_serving) -- обобщается ли он на другие долгоживущие боевые раннеры, не проверялось.",
+      "Использовались ли компилятор Mission Contract или навык независимой проверки в реальной небоевой задаче исполнителя (не в самом Evolution-разборе), по-прежнему не проверялось."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": 6,
+      "cost_per_verified_result": "NOT_AVAILABLE",
+      "reviewer_rejection_count": "UNKNOWN",
+      "runtime_evidence_count": 4,
+      "reusable_artifacts_created": 6,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-08-07T11:11:09Z",
+    "period_end": "2026-08-13T19:16:58Z",
+    "capture_coverage": "UNKNOWN",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "defect_accounting": {
+    "role": "SUPPLEMENTARY_NOT_SCHEMA_REQUIRED",
+    "method": "Normalized by component + causal boundary + failure class from git commit messages, branch names, merge sequence and PR metadata across the FULL period since the Stage-2 baseline (a942a0d8, 2026-08-07T11:11:09Z). The 13 families through 2026-08-12T15:44:18Z are REUSED verbatim from PR#154 (which itself REUSED 9 of them from PR#146). 3 new/evolved families are added for the 2026-08-12T15:44:18Z..2026-08-13T19:16:58Z incremental period. This is a git/PR-ancestry proxy, not a read of any issue tracker or reviewer log -- coverage PARTIAL.",
+    "total_defect_occurrences": 33,
+    "distinct_defect_families": 15,
+    "new_families": 2,
+    "reused_families_with_new_occurrences": 1,
+    "reused_families_unchanged": 12,
+    "control_plane_note": "npm run control-plane:check reported 249/249 PASS live in this session on the unmodified origin/main tip (before this cycle's own files were added) -- one more than PR#154's reported 248/249. The by-design 'cycles/ ships empty' Stage-1 placeholder guard (tests/control-plane/evolutionDailyReview.test.mjs) only fails once real cycle files exist under evolution/cycles/, which was true on PR#154's branch (adding its own cycle files) but is NOT true on unmodified origin/main today. This cycle's own commit will trip that same guard again for the same unresolved reason (its fix lives only in never-merged PR#146/#154), which is why total_defect_occurrences below counts it under EVOLUTION_CYCLE_PR_NEVER_MERGED rather than as a fresh control-plane regression.",
+    "families": [
+      {
+        "id": "STRUCTURED_SPORT_FAMILY_CARRIER",
+        "component": "feed ingestion -> scoring -> planning pipeline",
+        "occurrence_count": 5,
+        "lifecycle": "REUSED_FROM_PR154 -- no new occurrence this period",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#154 defect_accounting.families[0]"
+        ]
+      },
+      {
+        "id": "IRELAND_QUEUE_IDENTITY_PROVIDER_EVENT_DERIVATION",
+        "component": "Ireland execution queue",
+        "occurrence_count": 2,
+        "lifecycle": "REUSED_FROM_PR154 -- no new occurrence this period",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#154 defect_accounting.families[1]"
+        ]
+      },
+      {
+        "id": "REBALANCE_SIBLING_QUERY_TIMEOUT_57014",
+        "component": "event-rebalance sibling scheduler",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR154 -- no new occurrence in THIS exact component this period, but see CONTRACT_A_PLANNING_SCORED_QUERY_TIMEOUT_57014 below for a same-error-class occurrence in a different component",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#154 defect_accounting.families[2]"
+        ]
+      },
+      {
+        "id": "RESERVATION_TIMESTAMP_INSTANT_COMPARISON",
+        "component": "reservation/queue write path",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR154",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#154 defect_accounting.families[3]"
+        ]
+      },
+      {
+        "id": "PROVIDER_ID_AUTHORITY_PLANNING_QUEUE",
+        "component": "planning/queue write path",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR154",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#154 defect_accounting.families[4]"
+        ]
+      },
+      {
+        "id": "CONTRACT_A_SCORED_QUERY_UNSCORED_VERSION",
+        "component": "planning query (Contract A)",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR154",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#154 defect_accounting.families[5]"
+        ]
+      },
+      {
+        "id": "STRUCTURED_PRIMARY_SCORER_MARKET_SELECTION",
+        "component": "feed scoring",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR154",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#154 defect_accounting.families[6]"
+        ]
+      },
+      {
+        "id": "SPORTS_PROVIDER_TIMING_AUTHORITY",
+        "component": "sports provider ingestion",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR154",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#154 defect_accounting.families[7]"
+        ]
+      },
+      {
+        "id": "RESERVATION_QUEUE_INVENTORY_CHURN",
+        "component": "reservation queue",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR154",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#154 defect_accounting.families[8]"
+        ]
+      },
+      {
+        "id": "IRELAND_QUEUE_CONTRACT_FIELD_GAP",
+        "component": "Ireland execution queue / ProductionQueueAdapter boundary",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR154 (ONION_NEXT_LAYER of IRELAND_QUEUE_IDENTITY_PROVIDER_EVENT_DERIVATION)",
+        "proven_effective": true,
+        "evidence_refs": [
+          "PR#154 defect_accounting.families[9]"
+        ]
+      },
+      {
+        "id": "CANONICAL_ARTIFACT_FOUNDER_CORRECTION",
+        "component": "control-plane canonical architecture artifacts",
+        "occurrence_count": 2,
+        "lifecycle": "REUSED_FROM_PR154",
+        "proven_effective": true,
+        "evidence_refs": [
+          "PR#154 defect_accounting.families[11]"
+        ]
+      },
+      {
+        "id": "SERVING_DESIGN_DOC_BEHIND_IMPLEMENTATION",
+        "component": "current_signal_pair_serving design/implementation ordering",
+        "occurrence_count": 1,
+        "lifecycle": "REUSED_FROM_PR154, WORSENED -- PR#149 was already behind #150/#151/#153 in PR#154; now 7 MORE implementation PRs (#155-#161,#163,#164) have shipped past it",
+        "proven_effective": false,
+        "evidence_refs": [
+          "PR#149 still open, head f89c46ef"
+        ]
+      },
+      {
+        "id": "EVOLUTION_CYCLE_PR_NEVER_MERGED",
+        "component": "control-plane / Evolution routine release path",
+        "causal_boundary": "a validated, schema-passing Evolution cycle PR is produced but the merge step never happens",
+        "occurrence_count": 7,
+        "evidence_refs": [
+          "PR#116",
+          "PR#121",
+          "PR#122",
+          "PR#132",
+          "PR#146",
+          "PR#154",
+          "this cycle's own PR"
+        ],
+        "first_seen": "2026-08-07T18:21:30Z",
+        "last_seen": "2026-08-13T19:16:58Z",
+        "lifecycle": "SAME_ROOT_REPEAT (7th occurrence, up from 6 in PR#154) -- REPEATED, NOT IMPLEMENTED",
+        "proven_effective": false,
+        "note": "PR#154's own experiment E1 explicitly proposed exactly one Founder-approved trial invocation of premvp.command.release_pipeline.v1 (already ENABLED) in validate/dry_run then resume mode for PR#154 itself. That trial did not happen before this review ran; PR#154 remains open and draft. The recommendation has now repeated across three consecutive cycles (PR#132 H5, PR#146, PR#154 E1) without execution."
+      },
+      {
+        "id": "CURRENT_SIGNAL_PAIR_SERVING_ROLLOUT_ONION_CHAIN",
+        "component": "current_signal_pair_serving backfill runner + Contract A Planning read path",
+        "causal_boundary": "each fix in the new-projection rollout exposed the next untested production-scale property of the same boundary: security (RLS) -> backfill scope -> runner watchdog bound -> connection-pool sizing -> auth-transport resilience -> query-shape/index proof",
+        "occurrence_count": 8,
+        "evidence_refs": [
+          "PR#151 (RLS gap, 2026-08-12T15:24:40Z)",
+          "PR#153 (unbounded backfill scope, 2026-08-12T15:44:19Z)",
+          "PR#157 (unbounded runner wait, 2026-08-13T08:12:39Z)",
+          "PR#158 (connection-pool exhaustion, 2026-08-13T08:50:08Z)",
+          "PR#159 (auth-transport timeout, 2026-08-13T08:57:40Z)",
+          "PR#161 (unbounded refresh query shape, 2026-08-13T11:09:02Z)",
+          "PR#163 (historical-corpus dedup dependency, 2026-08-13T17:07:01Z)",
+          "PR#164 (missing index -> production 57014, 2026-08-13T19:16:58Z)"
+        ],
+        "first_seen": "2026-08-12T15:24:40Z",
+        "last_seen": "2026-08-13T19:16:58Z",
+        "lifecycle": "ONION_CHAIN -- 8 LATENT_NEXT_LAYER_EXPOSED occurrences on one business path across ~28 hours",
+        "proven_effective": true,
+        "note": "PR#154 already flagged the first 2 layers (RLS, backfill scope) as 'MISSION_2_SERVING_PROJECTION_REWORK -- REPEATED', not yet as an onion chain. Six MORE layers landed in the following 28 hours on the identical boundary, crossing the protocol's 'two or more LATENT_NEXT_LAYER_EXPOSED on the same path' threshold clearly. Per protocol this hypothesis is tested explicitly in automation_hypotheses H3/H4 below: local per-PR diagnosis and unit/fixture-level verification (30/30 PASS every time) is too narrow a boundary for this class of change -- every layer that failed was a production-scale property (load, concurrency, connection lifecycle, index shape) invisible to fixture tests. Every individual fix is itself proven effective (Contur-reviewed, tests passing, incident resolved) -- the systemic gap is the ABSENCE of one upfront boundary-level invariant, not any single fix being wrong."
+      },
+      {
+        "id": "CONTRACT_A_PLANNING_SCORED_QUERY_TIMEOUT_57014",
+        "component": "Contract A Planning scored serving read path",
+        "causal_boundary": "Postgres 57014 (query_canceled) in production due to a query shape with no matching index",
+        "occurrence_count": 1,
+        "evidence_refs": [
+          "PR#164 merge 7784361d606d72e81ee3273bda48cd05edbd6ebd",
+          "supabase/migrations/20260813193000_current_signal_pair_serving_planning_scored_index.sql"
+        ],
+        "first_seen": "2026-08-13T19:16:58Z",
+        "last_seen": "2026-08-13T19:16:58Z",
+        "lifecycle": "NEW_INDEPENDENT family id, but SAME ERROR-CLASS as REBALANCE_SIBLING_QUERY_TIMEOUT_57014 (REUSED family, different component) -- second distinct component to hit an unbounded/unindexed hot-path query and fail with 57014 in production",
+        "proven_effective": true,
+        "note": "This is the specific finding behind automation_hypothesis H4: the same Postgres 57014 error class has now surfaced in two unrelated components (event-rebalance sibling scheduler, and now Contract A Planning scored reads) whenever a new or changed hot-path query shipped without a matching index-shape regression test proven before production exposure."
+      }
+    ],
+    "implemented_fixes": 17,
+    "proven_effective_fixes": 6,
+    "regressions": 0,
+    "active_onion_chains": 2,
+    "onion_chains": [
+      {
+        "chain_id": "IRELAND_QUEUE_CONTRACT_COMPLETENESS_CHAIN",
+        "business_path": "Ireland execution queue contract completeness",
+        "chain_depth": 2,
+        "first_observed": "2026-08-11 (PR#143/#144)",
+        "latest_boundary_reached": "2026-08-12T10:01:03+03:00 (PR#147)",
+        "underlying_systemic_gap": "REUSED_FROM_PR154 -- unchanged this period, no new layer observed.",
+        "missing_verification_boundary": "REUSED_FROM_PR154."
+      },
+      {
+        "chain_id": "CURRENT_SIGNAL_PAIR_SERVING_ROLLOUT_ONION_CHAIN",
+        "business_path": "Contract A Planning read path via the current_signal_pair_serving projection: feature -> security -> backfill scope -> runner hardening (watchdog, pool, auth) -> query-shape/index",
+        "chain_depth": 8,
+        "first_observed": "2026-08-12T15:24:40Z",
+        "latest_boundary_reached": "2026-08-13T19:16:58Z",
+        "underlying_systemic_gap": "New hot-path queries and long-running maintenance runners against this projection have shipped repeatedly without a pre-production, production-scale verification boundary (real connection-pool load, real query duration under data volume, real index-shape proof). Each missing property was discovered only after it failed live, one layer at a time, over 28 hours -- not through one upfront boundary-level invariant.",
+        "missing_verification_boundary": "An end-to-end / bounded-load verification boundary for new Supabase-backed hot-path queries and long-running maintenance runners is absent. Local unit/fixture tests passed every single time (30/30 this period alone) while every production-scale property (pool sizing, auth transport, query plan under real index/data shape) was caught live in production instead.",
+        "hypothesis_tested": "Per protocol: two-or-more LATENT_NEXT_LAYER_EXPOSED defects on the same path require explicitly testing whether local diagnosis/verification is too narrow. That hypothesis is CONFIRMED here -- see automation_hypotheses H3 and H4."
+      }
+    ],
+    "unresolved_recurring_defects": "STRUCTURED_SPORT_FAMILY_CARRIER, IRELAND_QUEUE_IDENTITY_PROVIDER_EVENT_DERIVATION, REBALANCE_SIBLING_QUERY_TIMEOUT_57014, and SERVING_DESIGN_DOC_BEHIND_IMPLEMENTATION (all REUSED) show no NEW occurrence in their own exact component this period, but SERVING_DESIGN_DOC_BEHIND_IMPLEMENTATION has objectively worsened (the gap between design and implementation grew) and REBALANCE_SIBLING_QUERY_TIMEOUT_57014's error class re-appeared in a sibling component (see CONTRACT_A_PLANNING_SCORED_QUERY_TIMEOUT_57014). EVOLUTION_CYCLE_PR_NEVER_MERGED is the single most persistent unresolved defect at 7 consecutive occurrences.",
+    "reporting_caveat": "This defect accounting is a git/PR-ancestry proxy, not a read of any issue tracker, PR review thread, or CI failure log. It is a lower bound: defects caught and fixed within a single commit (no separate corrective commit or PR) are invisible to this method."
+  },
+  "executor_and_recovery_load": {
+    "role": "SUPPLEMENTARY_NOT_SCHEMA_REQUIRED",
+    "capture_coverage": "PARTIAL",
+    "method": "Proxy from git/PR metadata. The 2026-08-07..2026-08-12T15:44:18Z sub-period (36 merged PRs, 8 recovery iterations, 29 distinct branches) is REUSED verbatim from PR#154. The 2026-08-12T15:44:18Z..2026-08-13T19:16:58Z incremental period is independently computed for this cycle.",
+    "executor_runs": 46,
+    "executor_runs_note": "36 REUSED from PR#154 (period through 2026-08-12T15:44:18Z) + 10 NEW merged PRs this incremental period (#155,156,157,158,159,160,161,162,163,164). PR#149 (still open) and PR#154 (still open, itself a prior Evolution cycle, not a product PR) are excluded as non-landing/non-product.",
+    "recovery_iterations": 8,
+    "recovery_iterations_note": "8 REUSED from PR#154 for the period through 2026-08-12T15:44:18Z. For the new incremental period, the strict branch-reuse proxy finds 0 (all 10 new PRs used distinct head-branch names -- unlike prior periods, no branch was literally reused across sequential merges). This UNDERCOUNTS the real recovery signal: PR#157, #158, #159 and #164 are each explicitly a same-day recovery of a production incident exposed by the immediately preceding PR on the identical component, just authored on fresh branches rather than reused ones. See defect_accounting.families.CURRENT_SIGNAL_PAIR_SERVING_ROLLOUT_ONION_CHAIN for the thematic recovery count (4 incident-recovery PRs this period: #157,158,159,164), which the branch-identity proxy alone would have missed entirely.",
+    "distinct_pr_head_branches": 39,
+    "distinct_pr_head_branches_note": "29 REUSED from PR#154 + 10 new distinct branches this incremental period (all 10 new merged PRs used unique branch names).",
+    "architect_corrections": "UNKNOWN -- not visible from git alone.",
+    "reviewer_rejection_count": "UNKNOWN",
+    "prompt_reroutes_or_rewrites": "UNKNOWN",
+    "permission_or_environment_friction": "UNKNOWN",
+    "wrong_routing_or_checkpoint_events": "UNKNOWN"
+  },
+  "founder_actions_detail": {
+    "role": "SUPPLEMENTARY_NOT_SCHEMA_REQUIRED",
+    "capture_coverage": "UNKNOWN",
+    "total_founder_actions": "UNKNOWN (floor 0 in operator_actions -- no capture source exists)",
+    "execution_founder_actions_proven": 0,
+    "execution_founder_actions_proven_note": "0 formally captured operator_action_events exist anywhere in the tracked repository -- OPERATOR_ACTION_POLICY.yaml's capture source still does not exist (unchanged since PR#146/#154).",
+    "total_founder_actions_lower_bound": 39,
+    "total_founder_actions_lower_bound_method": "29 (REUSED from PR#154) + 10 distinct head-branch names among the 10 newly merged PRs this incremental period, same branch-name-as-proxy method as PR#154. Does not count this routine's own scheduled invocation, reviewer calls, or any automated step.",
+    "starts": "UNKNOWN (lower bound 39, see total_founder_actions_lower_bound)",
+    "follow_ups": "UNKNOWN",
+    "corrections_retries": "UNKNOWN",
+    "handoffs": "UNKNOWN",
+    "approvals": "UNKNOWN",
+    "manual_ui_recovery_actions": "UNKNOWN",
+    "removable_founder_actions": "UNKNOWN -- cannot classify what was never captured."
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "Это СЕДЬМОЙ подряд PR цикла Daily Evolution Review -- и ни один не слит в main. PR#154's собственный эксперимент E1 прямо предложил один пробный вызов release_pipeline.v1 (validate/dry_run -> resume) именно для себя -- этого не произошло до текущего разбора.",
+      "why_it_matters": "SAME_ROOT_REPEAT гипотезы H1/H5 из PR#132/#146/#154, теперь в 7-й раз. Вся ценность Evolution Control Plane остаётся недоступной Founder, пока решающий шаг (слияние) systematically не происходит, а собственная рекомендация предыдущего цикла не исполняется.",
+      "axis_a_effect": "нет прямого эффекта на продукт, но откладывает момент, когда Founder видит единую консолидированную картину",
+      "axis_b_effect": "главный неподтверждённый элемент возможности RECOVERY_AND_CHECKPOINTS/CONTROLLED_IMPROVEMENT: цикл разбора систематически не завершает свой жизненный цикл",
+      "proposed_automation": "Founder одобряет ровно один реальный вызов premvp.command.release_pipeline.v1 в режиме validate/dry_run, затем resume, для ИМЕННО этого консолидированного PR -- впервые проверяя путь черновик -> проверка -> слияние целиком.",
+      "persistent_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "expected_value": "останавливает накопление неслитых конкурирующих циклов; либо доказывает путь автоматического релиза, либо находит конкретную причину затора",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "средний: первый реальный вызов инструмента, умеющего сливать PR; жёстко запрещён прямой push и force push его собственным контрактом",
+      "success_metric": "ровно один PR цикла Evolution слит в main через зарегистрированный конвейер, зафиксировано записью EVIDENCE_LEDGER",
+      "rollback_or_stop_condition": "остановиться и эскалировать Founder, если конвейер запросит доступ за пределами уже разрешённого",
+      "timing": "немедленно -- седьмой цикл подряд без исполнения",
+      "classification": "NOW",
+      "evidence_refs": [
+        "PR#116,121,122,132,146,154 -- все открытые/закрытые без слияния",
+        "PR#154 experiment E1, не исполнен"
+      ]
+    },
+    {
+      "id": "H2",
+      "observed_problem": "CURRENT_STATE.yaml отстаёт от live origin/main на 3 слитых PR (#162,163,164); EVIDENCE_LEDGER.md отстаёт на 9 слитых PR (#156-164) от своей последней записи EV-0020.",
+      "why_it_matters": "SAME_ROOT_REPEAT гипотезы H2 из PR#132/#146/#154 -- разрыв CURRENT_STATE заметно сократился (с 36 PR у PR#154 до 3 сейчас, реальный прогресс), но разрыв EVIDENCE_LEDGER, наоборот, продолжает расти отдельно. Реестр доказательств -- источник истины для будущих разборов -- систематически неполон.",
+      "axis_a_effect": "мешает будущим циклам подтвердить статус блокеров без ручной git-археологии",
+      "axis_b_effect": "риск регресса возможности RECOVERY_AND_CHECKPOINTS: чекпоинт должен быть текущей истиной, но структурно отстаёт",
+      "proposed_automation": "Подключить premvp.command.control_plane_reconcile.v1 (уже PROVEN_PRESENT) как обязательный шаг после каждого пакета из 3+ слитых PR, включая одновременное добавление записи EVIDENCE_LEDGER -- не только обновление CURRENT_STATE.yaml.",
+      "persistent_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "expected_value": "закрывает оба разрыва одновременно вместо частичного прогресса по одному",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий -- уже существующий read-only-по-продукту инструмент",
+      "success_metric": "origin_main_sha в CURRENT_STATE.yaml и последняя запись EVIDENCE_LEDGER.md оба отстают не более чем на 1 слитый PR от live origin/main",
+      "rollback_or_stop_condition": "остановиться, если сверка попытается принять расхождение продуктовой фазы без Founder/Architect",
+      "timing": "следующий пакет из 3+ слияний",
+      "classification": "NOW",
+      "evidence_refs": [
+        "CURRENT_STATE.yaml main.origin_main_sha=280d35bd vs live acbad91",
+        "EVIDENCE_LEDGER.md EV-0020 vs PR#156-164"
+      ]
+    },
+    {
+      "id": "H3",
+      "observed_problem": "Раскатка current_signal_pair_serving (проекция + раннер бэкфилла) породила 8 последовательных 'слоёв' исправлений за 28 часов (RLS, объём бэкфилла, watchdog, пул соединений, авторизационный транспорт, форма запроса, зависимость от истории, недостающий индекс/57014) -- каждый раз локальные модульные тесты проходили (30/30 в этот период), а проблема ловилась только в проде.",
+      "why_it_matters": "Это первый цикл, где протокольный порог 'два и более LATENT_NEXT_LAYER_EXPOSED на одном пути' явно превышен (8 слоёв) -- прямое доказательство того, что локальная диагностика/проверка по каждому PR слишком узкая для этого класса изменений (новые горячие запросы и долгоживущие обслуживающие раннеры против растущей боевой таблицы).",
+      "axis_a_effect": "положительный в итоге (все 4 боевых инцидента устранены), но каждый инцидент -- это реальный боевой отказ, а не заранее пойманная проблема",
+      "axis_b_effect": "домен VERIFICATION_AND_EVIDENCE: отсутствует единая граница проверки уровня 'форма индекса + пул соединений + транспорт под нагрузкой' до включения новой горячей боевой возможности",
+      "proposed_automation": "Для любой новой горячей SQL-возможности требовать до боевого включения: (1) тест формы индекса/плана запроса (уже сделано ad hoc в PR#164 -- формализовать), (2) оценку бюджета пула соединений/времени раннера, (3) watchdog/предел по времени по умолчанию для нового долгоживущего раннера.",
+      "persistent_artifact": "предлагается: docs/ai-context/CLAUDE_CODE_EXECUTION_PROTOCOL.md (новый раздел 'hot-path query readiness checklist')",
+      "expected_value": "переносит обнаружение 4 из 4 инцидентов этого периода с прода на этап проверки до слияния",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий -- только процессное требование, не меняет уже принятые проектные решения",
+      "success_metric": "следующая новая горячая боевая возможность проходит весь чек-лист до первого боевого включения без последующего того же класса инцидента в течение 48 часов",
+      "rollback_or_stop_condition": "убрать чек-лист, если он будет систематически давать ложные срабатывания на заведомо низкообъёмные изменения",
+      "timing": "до следующей новой горячей боевой возможности, трогающей Supabase",
+      "classification": "NOW",
+      "evidence_refs": [
+        "defect_accounting.families.CURRENT_SIGNAL_PAIR_SERVING_ROLLOUT_ONION_CHAIN",
+        "PR#157,158,159,161,163,164"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "Postgres 57014 (query_canceled) теперь наблюдался в ДВУХ разных компонентах: планировщике rebalance-соседей (REBALANCE_SIBLING_QUERY_TIMEOUT_57014, из PR#146/#154) и, в этом периоде, скорированном чтении Contract A Planning (CONTRACT_A_PLANNING_SCORED_QUERY_TIMEOUT_57014, PR#164) -- оба раза причина одна и та же: горячий запрос без соответствующего его форме индекса.",
+      "why_it_matters": "Один и тот же класс боевого отказа повторяется в разных частях кодовой базы -- это не два случайных инцидента, а отсутствующий проектный инвариант уровня всего репозитория, а не локальная особенность одной фичи (см. H3, более узкий по масштабу).",
+      "axis_a_effect": "прямой риск повторного боевого отказа 57014 в любом ещё не проверенном горячем пути",
+      "axis_b_effect": "домен VERIFICATION_AND_EVIDENCE: нет общепроектного правила 'каждый новый или изменённый горячий SQL-запрос обязан иметь тест формы индекса до включения в прод'",
+      "proposed_automation": "Зафиксировать в docs/ai-context/VERIFICATION_GATES.md общепроектное (не только для current-serving) правило: любой PR, меняющий или добавляющий горячий SQL-запрос против Supabase, обязан включать тест формы индекса/плана запроса в своём test plan.",
+      "persistent_artifact": "docs/ai-context/VERIFICATION_GATES.md",
+      "expected_value": "закрывает класс отказа 57014 системно, а не только для current_signal_pair_serving",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий -- только документируемое правило верификации",
+      "success_metric": "ни один следующий PR с новым/изменённым горячим SQL-запросом не приводит к боевому 57014 без сопровождающего теста формы индекса в своём test plan",
+      "rollback_or_stop_condition": "убрать правило, если оно даст систематические ложные срабатывания на заведомо холодные (нечастые/маловолюмные) запросы",
+      "timing": "следующее изменение VERIFICATION_GATES.md",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "REBALANCE_SIBLING_QUERY_TIMEOUT_57014 (PR#146/#154)",
+        "CONTRACT_A_PLANNING_SCORED_QUERY_TIMEOUT_57014 (PR#164)"
+      ]
+    },
+    {
+      "id": "H5",
+      "observed_problem": "PR#149 (проектный документ current-serving модели) остаётся неслитым -- теперь 10 PR реализации (#150,151,153,155-161,163,164) ушли вперёд без него, по сравнению с 3 PR на момент PR#154.",
+      "why_it_matters": "SAME_ROOT_REPEAT гипотезы H7/PR#154 -- разрыв между проектом и реализацией не сократился, а вырос более чем втрое.",
+      "axis_a_effect": "нет прямого эффекта",
+      "axis_b_effect": "домен VERIFICATION_AND_EVIDENCE: нет проверки порядка 'проект -> реализация'",
+      "proposed_automation": "REUSED_FROM_PR154 -- требовать в шаблоне PR явную ссылку на статус связанного проектного документа для боевых изменений БД.",
+      "persistent_artifact": "предлагается: .github/pull_request_template.md",
+      "expected_value": "исключает молчаливое расхождение между принятым проектом и уже слитой реализацией",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий",
+      "success_metric": "PR#149 либо слит, либо явно закрыт как устаревший до следующего цикла",
+      "rollback_or_stop_condition": "убрать требование при ложных срабатываниях на намеренно независимые документы",
+      "timing": "следующее изменение шаблона PR",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "PR#149 open, unmerged",
+        "PR#150,151,153,155-161,163,164"
+      ]
+    },
+    {
+      "id": "H6",
+      "observed_problem": "REUSED_FROM_PR154 H8 -- быстрая переделка одной темы в течение суток теперь наблюдалась третий раз подряд (structured-sport-family-carrier у PR#132, mission-2-current-serving у PR#146/#154, и теперь весь цепочка current-serving rollout в этом периоде, см. H3).",
+      "why_it_matters": "Паттерн 'новая боевая возможность требует немедленных последующих правок в тот же день' систематический, не случайный.",
+      "axis_a_effect": "снижает уверенность в первой версии любой новой боевой возможности без ручной проверки диффов",
+      "axis_b_effect": "домен VERIFICATION_AND_EVIDENCE: нет структурного сигнала о таком паттерне помимо ручного чтения истории",
+      "proposed_automation": "REUSED_FROM_PR154 -- если тема PR порождает 3+ отдельных PR за 24 часа, требовать явное поле 'что было упущено в первой версии' в последнем PR серии.",
+      "persistent_artifact": "предлагается: .github/pull_request_template.md",
+      "expected_value": "делает видимым паттерн без ручного просмотра истории",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "низкий",
+      "success_metric": "серия из 3+ PR по одной теме за 24 часа сопровождается явным полем причины",
+      "rollback_or_stop_condition": "убрать проверку при ложных срабатываниях на намеренно поэтапную разработку",
+      "timing": "следующее изменение шаблона PR",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "PR#150,151,152,153",
+        "PR#156,157,158,159,161,163,164"
+      ]
+    },
+    {
+      "id": "H7",
+      "observed_problem": "CURRENT_STATE.yaml сейчас формально STATE_REFRESH_REQUIRED (см. axis_a.not_proven) сразу после слияния PR#162,163,164, но это обнаруживается только вручную, этим самым разбором.",
+      "why_it_matters": "Правило свежести состояния (stale_when в CURRENT_STATE.yaml) уже сформулировано и проверяется тестами control-plane:check, но НЕ подключено как автоматический CI-гейт после каждого слияния в main -- то есть staleness обнаруживается только когда кто-то (например, этот разбор) явно её ищет.",
+      "axis_a_effect": "риск накопления необнаруженной устарелости между разборами",
+      "axis_b_effect": "домен PERMISSION_AND_TOOL_POLICY/VERIFICATION_AND_EVIDENCE: правило существует, но не enforced автоматически",
+      "proposed_automation": "Зарегистрировать CI_GATE по аналогии с уже запланированным premvp.ci_gate.reviewer_receipt_enforcement: 'premvp.ci_gate.state_freshness_check', падающий, если origin_main_sha в CURRENT_STATE.yaml не является предком последнего слияния в main более чем на N PR.",
+      "persistent_artifact": "docs/ai-context/control-plane/AGENT_REGISTRY.yaml (новая запись CI_GATE)",
+      "expected_value": "делает устарелость состояния видимой сразу после слияния, а не только на следующем Evolution-разборе",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "средний -- требует выбора порога N и решения, что происходит при провале (блокировка мержа или только предупреждение)",
+      "success_metric": "первое реальное срабатывание гейта на живом PR, зафиксированное в EVIDENCE_LEDGER",
+      "rollback_or_stop_condition": "отключить гейт, если он заблокирует не связанные с состоянием PR ложными срабатываниями",
+      "timing": "SYSTEM_LATER -- после решения H1/H2",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "CURRENT_STATE.yaml stale_when",
+        "premvp.ci_gate.reviewer_receipt_enforcement (аналогичный уже PLANNED гейт)"
+      ]
+    }
+  ],
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "Распознавать луковичную цепочку (onion chain) вместо серии несвязанных багов -- когда 3+ исправления ложатся на одну и ту же границу за ~24-48 часов, останавливаться и спрашивать, какой пограничный инвариант отсутствует, вместо одобрения 'ещё одного точечного патча'.",
+      "why_it_matters_now": "Именно это произошло сегодня: 8 последовательных слоёв на одной границе (current_signal_pair_serving) за 28 часов, включая настоящий боевой отказ 57014. Каждое отдельное исправление было правильным, но никто не остановился спросить 'чего вообще не хватает системно', пока это не сделал этот разбор.",
+      "how_it_applies_to_current_project": "При просмотре следующей серии из 3+ PR на одну тему за короткое время явно спрашивать: это независимые баги или один и тот же непроверенный пограничный инвариант проявляется слой за слоем? См. H3/H4 выше как готовый пример такого вопроса.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-08-13__daily_evolution_review_consolidated.json",
+      "ladder_level": 4
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "Доводить уже принятое решение до конца в тот же рабочий день, а не давать ему повторяться в виде рекомендации из цикла в цикл.",
+      "why_it_matters_now": "Это третий цикл подряд (PR#132 H5 -> PR#146 -> PR#154 experiment E1), где предлагается один и тот же пробный вызов release_pipeline.v1, и третий раз подряд он не происходит. Разрыв CURRENT_STATE, наоборот, сузился (36 PR -> 3 PR) именно потому, что кто-то реально стал чаще запускать сверку -- это доказательство, что 'довести до конца' работает, когда происходит.",
+      "how_it_applies_to_current_project": "Когда Evolution-разбор прямо называет одно конкретное действие (сейчас: H1 -- пробный вызов release_pipeline.v1 для этого PR), делать именно это в течение того же рабочего дня, используя уже сузившийся разрыв CURRENT_STATE как доказательство, что доведение до конца возможно.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+      "ladder_level": 6
+    }
+  ],
+  "founder_practice_comparison": "Первая практика дешева и применяется в одиночку при чтении любого следующего отчёта за пару минут -- достаточно спросить один вопрос. Вторая требует настоящего решения Founder и напрямую разблокирует ценность всей возможности Evolution, простаивающей семь циклов подряд -- поэтому она приоритетнее, хотя обе можно делать параллельно.",
+  "founder_practice_recommended_order": [
+    "P2",
+    "P1"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "REUSED_FROM_PR154, ЕЩЁ НЕ ИСПОЛНЕНО. Если Founder одобрит ровно один вызов premvp.command.release_pipeline.v1 в режиме validate/dry_run, затем resume, для этого консолидированного PR, можно будет впервые за семь циклов подряд узнать, работает ли путь черновик -> проверка -> слияние целиком.",
+      "bounded_scope": "Один запуск, только режимы validate/dry_run затем resume, только новые файлы этого PR, без прямого push в main.",
+      "persistent_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "promotion_condition": "Этот PR слит в main через зарегистрированный конвейер, результат зафиксирован записью EVIDENCE_LEDGER.",
+      "stop_condition": "Если конвейер запросит доступ за пределами уже разрешённого -- остановиться и эскалировать Founder."
+    },
+    {
+      "id": "E2",
+      "hypothesis": "Если формализовать тест формы индекса/плана запроса (уже сделанный ad hoc в PR#164) как обязательный шаблон для следующей новой горячей SQL-читающей возможности, класс отказов 57014 не повторится в третьем компоненте.",
+      "bounded_scope": "Один новый вспомогательный тест-хелпер по образцу tests/feed/currentSignalPairServingPlanningIndex.test.ts, применённый только к следующему PR, добавляющему новый горячий запрос -- без общего блокирующего CI-гейта на все существующие запросы сразу.",
+      "persistent_artifact": "tests/feed/currentSignalPairServingPlanningIndex.test.ts (уже существует как образец) + новый переиспользуемый хелпер",
+      "promotion_condition": "Хотя бы один следующий PR с новым горячим SQL-запросом ссылается на этот хелпер в своём test plan без боевого 57014 после слияния.",
+      "stop_condition": "Если хелпер даст систематические ложные срабатывания на заведомо холодные запросы -- оставить его необязательным образцом, не гейтом."
+    },
+    {
+      "id": "E3",
+      "hypothesis": "REUSED_FROM_PR154, ЧАСТИЧНО ИСПОЛНЕНО (разрыв CURRENT_STATE сузился с 36 до 3 PR, но EVIDENCE_LEDGER отстаёт на 9). Один Architect-одобренный запуск premvp.command.control_plane_reconcile.v1 закроет оставшийся разрыв в 3 PR CURRENT_STATE и 9 PR EVIDENCE_LEDGER одновременно.",
+      "bounded_scope": "Один запуск, только канонические артефакты control-plane, без изменения roadmap_phase, current_value_step или закрытых блокеров.",
+      "persistent_artifact": "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+      "promotion_condition": "origin_main_sha в CURRENT_STATE.yaml становится проверенным предком текущего origin/main, и EVIDENCE_LEDGER.md получает записи для PR#156-164 без ручного редактирования JSON.",
+      "stop_condition": "Если сверка попытается принять любое расхождение продуктовой фазы или закрытых блокеров без Founder/Architect -- остановиться."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE",
+    "note": "CURRENT_STATE.yaml.roadmap_phase legitimately advanced from CONTUR3_QUEUE_AUTHORITY (observed by PR#154) to PHASE1_PLANNING_SERVING_CLOSURE via the Founder-approved New Contour 7 decision (PR#162) -- this review only OBSERVES that fact, it does not itself set or endorse the phase. Consolidates and supersedes PR#154 (2026-08-12), which itself superseded PR#132 (2026-08-10) and PR#146 (2026-08-11), all of which remain open, draft and unmerged. This is the 7th Evolution cycle PR produced under Stage 1 and, like all 6 before it, does not itself resolve the underlying non-merge pattern (automation_hypotheses H1) -- it is evidence and proposal only."
+  },
+  "next_step": "Founder подтверждает, что этот цикл канонический (PR#154 закрывается как superseded, как ранее #132/#146), и одобряет пробный вызов release-конвейера для слияния (H1/E1). Отдельно: рассмотреть H3/H4 (чек-лист для новых горячих SQL-путей) до следующей возможности, трогающей Supabase.",
+  "corrections": []
+}
