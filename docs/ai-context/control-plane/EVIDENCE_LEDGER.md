@@ -539,3 +539,29 @@ runtime, product, or database change occurred.
 
 This entry is history only. It records the Stage 2 state reconciliation and does not
 self-accept any later Evolution Control Plane result.
+
+## EV-0020 — 2026-08-13 current serving authority reconciliation
+
+- **evidence_class:** `PROVEN_IN_RUNTIME` for live Git; `FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT` for the already-applied production migration/function state.
+- **executor:** `local_codex_windows`
+- **observed_at:** 2026-08-13T05:30:15Z
+- **live_origin_main_sha:** `40389884c34b943d9d50766f45296fee02913c61`
+- **prior_state_baseline:** `a942a0d833982bca5caf01ff05d4e4bfb9151119`
+- **excluded_stale_head:** `a6bb1ad` (not an ancestor of live `origin/main`)
+
+`git fetch --prune origin`, `git rev-parse origin/main`, and ancestry checks proved the
+live SHA and baseline ancestry. The stale isolated current-serving head is explicitly
+excluded from authority. Current main's authoritative backfill definition is the final
+`CREATE OR REPLACE` in `supabase/migrations/20260812_current_signal_pair_serving_backfill_repair.sql`:
+it selects only non-null-identity, unexpired, unresolved source rows after the locked
+lexicographic checkpoint and orders `(created_at, id)` ascending. Current main's
+`CONTRACT_A_PLANNING_V1` loader reads the bounded `current_signal_pair_serving` projection,
+not the historical corpus. The ongoing writer calls the SQL refresh RPC after every
+successful historical insert and surfaces an explicit recoverable pending error on failure.
+
+No production mutation, backfill execution, selector probe, DDL/index action, Planning,
+Reservation, Queue, Ireland activity, or application behavior change occurred. Direct
+production catalog/function-body retrieval was unavailable in this executor; the production
+schema/function alignment is therefore recorded only with its explicit Founder-accepted
+external evidence class, never as a new runtime proof. The externally supplied completed
+index recovery (`idx_gsp_current_serving_backfill_order`, valid and ready) was not revisited.

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-07T11:11:09Z",
-  "state_version": 14,
+  "updated_at": "2026-08-13T05:30:15Z",
+  "state_version": 15,
 
   "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
   "current_value_step": {
@@ -34,17 +34,34 @@
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "a942a0d833982bca5caf01ff05d4e4bfb9151119",
+    "origin_main_sha": "40389884c34b943d9d50766f45296fee02913c61",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "executor": "local_codex_windows",
-      "commands": ["git fetch --prune origin", "git rev-parse origin/main", "git merge-base --is-ancestor 60cf2301954ee5841dcebd032971540dad84c3eb origin/main", "git merge-base --is-ancestor 0e43a121e189d2654543d00f4c59a5c15d548528 origin/main"],
-      "observed_at": "2026-08-07T11:11:09Z",
+      "commands": ["git fetch --prune origin", "git rev-parse origin/main", "git merge-base --is-ancestor a942a0d833982bca5caf01ff05d4e4bfb9151119 origin/main", "git merge-base --is-ancestor a6bb1ad origin/main"],
+      "observed_at": "2026-08-13T05:30:15Z",
       "worktree": "clean",
-      "note": "PR #110 (evolution/control-plane-stage-2) merged implementation 60cf2301954ee5841dcebd032971540dad84c3eb as a942a0d833982bca5caf01ff05d4e4bfb9151119. This is a state-only bootstrap advance for the Evolution Control Plane Stage 2 completion only: it records the baseline and the accepted completion and does not touch roadmap_phase, current_value_step, closed_value_steps, or any product-roadmap field. The Automation Roadmap Governor (validators, schemas, CLI, reviewer prompt, tests) and SCHEDULE_MANIFEST.yaml are implemented and merged; no scheduler is registered and no schedule is activated. C1 remains OPEN and no product, database, Ireland, or live-money behavior changed. The prior baseline 0e43a121e189d2654543d00f4c59a5c15d548528 is a proven ancestor of this SHA."
+      "note": "Current live origin/main is 40389884c34b943d9d50766f45296fee02913c61 (PR #153, current-serving backfill repair). The prior baseline a942a0d833982bca5caf01ff05d4e4bfb9151119 is a proven ancestor. The stale isolated-worktree head a6bb1ad is not an ancestor and is excluded from runtime and source authority. This refresh records source authority only; it does not execute a backfill, a selector probe, DDL, Planning, Reservation, Queue, Ireland, or an application change."
     }
+  },
+
+  "current_serving_authority": {
+    "status": "RECONCILED",
+    "authoritative_source_sha": "40389884c34b943d9d50766f45296fee02913c61",
+    "stale_worktree_excluded": { "head": "a6bb1ad", "reason": "NOT_ANCESTOR_OF_LIVE_ORIGIN_MAIN" },
+    "schema": "supabase/migrations/20260812_current_signal_pair_serving.sql:4-24; table public.current_signal_pair_serving, primary key (condition_id, selected_token_id, metric_formula_version), unique source_generated_signal_pair_id, lineage FK to generated_signal_pairs(id)",
+    "refresh_function": "supabase/migrations/20260812_current_signal_pair_serving.sql:47-120; refresh_current_signal_pair_serving(uuid[]) selects impacted keys, chooses latest eligible unresolved/unexpired source by (created_at,id) DESC, and monotonic-upserts the projection",
+    "backfill_function": "supabase/migrations/20260812_current_signal_pair_serving_backfill_repair.sql:4-51; this is the final CREATE OR REPLACE definition on current main and therefore supersedes the earlier definition in 20260812_current_signal_pair_serving.sql",
+    "checkpoint": "public.current_signal_pair_serving_backfill_checkpoint, checkpoint_name=generated_signal_pairs_v1, lexicographic cursor (last_source_created_at,last_source_generated_signal_pair_id), updated only after refresh succeeds under FOR UPDATE",
+    "current_eligible_selector": "generated_signal_pairs where condition_id IS NOT NULL AND selected_token_id IS NOT NULL AND metric_formula_version IS NOT NULL AND expires_at > now() AND signal_result IS NULL AND cursor is strictly greater; ORDER BY created_at ASC, id ASC; LIMIT p_batch_size (1..10000)",
+    "ongoing_update_path": "lib/feed/cacheGeneratedSignals.ts:225-233, 573-581, 634-642 -> projectInsertedRows -> lib/feed/currentSignalPairServing.ts:14-21 refreshCurrentSignalPairServing -> service-role RPC refresh_current_signal_pair_serving; historical insert remains authoritative and a projection failure is explicit SERVING_PROJECTION_PENDING",
+    "contract_a_planning_loader": "lib/executor/buildFireModelCandidates.ts:1607-1653 and 1738-1741; selectorMode CONTRACT_A_PLANNING_V1 reads current_signal_pair_serving ACTIVE rows only, normalizes source_generated_signal_pair_id/source_created_at to historical row identity, uses separate bounded scored and shadow queries, and fails closed at limit 10000",
+    "production_schema_alignment": { "verdict": "PASS", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT", "evidence": "Current main migrations 20260812_current_signal_pair_serving.sql, 20260812_current_signal_pair_serving_backfill_repair.sql and 20260812_current_signal_pair_serving_security.sql are stated applied for the released implementation; direct catalog definition read was unavailable in this executor." },
+    "production_function_alignment": { "verdict": "PASS_FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT", "evidence": "The released implementation and the current main source are reconciled at 40389884c34b943d9d50766f45296fee02913c61. Direct pg_get_functiondef/catalog retrieval was unavailable; this is not relabeled as PROVEN_IN_RUNTIME." },
+    "index_recovery": "EXTERNALLY_PROVEN_COMPLETE; idx_gsp_current_serving_backfill_order indisvalid=true indisready=true; not revisited or modified.",
+    "next_value_step": "resume bounded production mission at three exact read-only selector probes, then one 250-row backfill batch; no architectural reopening required"
   },
 
   "active_execution_work": [
@@ -168,7 +185,7 @@
   ],
 
   "evidence_freshness": {
-    "origin_main_sha_checked_at": "2026-08-07T11:11:09Z",
+    "origin_main_sha_checked_at": "2026-08-13T05:30:15Z",
     "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
     "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
     "max_age_days": 7
