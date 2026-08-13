@@ -17,6 +17,7 @@ import {
   buildProviderSportMetadataMap,
 } from "../../lib/feed/discoverSportsMarkets";
 import { hasStructuredScoredSportAuthority } from "../../lib/feed/sportScoreOwnership";
+import type { LandingCardPair } from "../../lib/feed/types";
 
 const OBSERVED_AT = "2030-01-01T00:00:00.000Z";
 const START_ISO = "2030-01-02T18:30:00.000Z";
@@ -71,31 +72,74 @@ function buildEntries(rows: SportsEventMarketInventoryRow[]) {
 
 // ── Fake DB boundary ───────────────────────────────────────────────────────
 let insertedRows: Record<string, unknown>[] = [];
-let preexisting: Array<{ condition_id: string; selected_token_id: string; diagnostics?: Record<string, unknown> }> = [];
+type ServingRow = {
+  condition_id: string;
+  selected_token_id: string;
+  metric_formula_version: string;
+  diagnostics?: Record<string, unknown>;
+  projection_status: string;
+  signal_result: string | null;
+  expires_at: string;
+};
+let historicalGspRows: ServingRow[] = [];
+let servingRows: ServingRow[] = [];
+let selectQueries: Array<{ table: string; columns: string; filters: Record<string, unknown> }> = [];
+let projectedSourceIds: string[][] = [];
 let insertShouldFail = false;
+let nextInsertedId = 0;
 
 mock.module("@/lib/supabase/server", {
   namedExports: {
     supabaseAdmin: {
-      from() {
+      from(table: string) {
+        const filters: Record<string, unknown> = {};
         const q: Record<string, unknown> = {};
-        q.select = () => q;
-        q.in = (_col: string, chunk: string[]) => {
-          q._chunk = chunk;
+        q.select = (columns: string) => {
+          selectQueries.push({ table, columns, filters });
           return q;
         };
-        q.eq = () => ({
-          data: preexisting
-            .filter((r) => (q._chunk as string[]).includes(r.condition_id))
-            .map((r) => ({ ...r, metric_formula_version: "shadow-strategic-sports-v1" })),
-          error: null,
+        q.in = (_col: string, chunk: string[]) => {
+          filters[_col] = chunk;
+          return q;
+        };
+        q.eq = (column: string, value: unknown) => {
+          filters[column] = value;
+          return q;
+        };
+        q.is = (column: string, value: unknown) => {
+          filters[`${column}:is`] = value;
+          return q;
+        };
+        q.gt = (column: string, value: unknown) => {
+          filters[`${column}:gt`] = value;
+          return q;
+        };
+        Object.defineProperty(q, "data", {
+          get: () => {
+            const rows = table === "current_signal_pair_serving" ? servingRows : historicalGspRows;
+            return rows.filter((row) => {
+              const conditionIds = filters.condition_id;
+              if (Array.isArray(conditionIds) && !conditionIds.includes(row.condition_id)) return false;
+              if (filters.metric_formula_version && row.metric_formula_version !== filters.metric_formula_version) return false;
+              if (filters.projection_status && row.projection_status !== filters.projection_status) return false;
+              if (Object.prototype.hasOwnProperty.call(filters, "signal_result:is") && row.signal_result !== filters["signal_result:is"]) return false;
+              if (filters["expires_at:gt"] && row.expires_at <= filters["expires_at:gt"]) return false;
+              return true;
+            });
+          },
         });
+        q.error = null;
         q.insert = (chunk: Record<string, unknown>[]) => {
           if (insertShouldFail) return { error: { message: "db exploded" }, count: null };
           insertedRows.push(...chunk);
-          return { error: null, count: chunk.length };
+          const data = chunk.map(() => ({ id: `00000000-0000-4000-8000-${String(++nextInsertedId).padStart(12, "0")}` }));
+          return { select: () => ({ data, error: null, count: chunk.length }) };
         };
         return q;
+      },
+      rpc(_fn: string, args: { p_source_generated_signal_pair_ids: string[] }) {
+        projectedSourceIds.push(args.p_source_generated_signal_pair_ids);
+        return { error: null };
       },
     },
   },
@@ -111,8 +155,69 @@ async function cache(): Promise<CacheModule> {
 
 function reset() {
   insertedRows = [];
-  preexisting = [];
+  historicalGspRows = [];
+  servingRows = [];
+  selectQueries = [];
+  projectedSourceIds = [];
   insertShouldFail = false;
+  nextInsertedId = 0;
+}
+
+function activeServingRow(
+  conditionId: string,
+  selectedTokenId: string,
+  metricFormulaVersion: string,
+  diagnostics: Record<string, unknown>,
+  overrides: Partial<ServingRow> = {},
+): ServingRow {
+  return {
+    condition_id: conditionId,
+    selected_token_id: selectedTokenId,
+    metric_formula_version: metricFormulaVersion,
+    diagnostics,
+    projection_status: "ACTIVE",
+    signal_result: null,
+    expires_at: "2030-01-03T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function researchPair(n: number): LandingCardPair {
+  const conditionId = `research-condition-${n}`;
+  const selectedTokenId = `research-token-${n}`;
+  const providerEventId = `research-event-${n}`;
+  const providerMarketId = `research-market-${n}`;
+  return {
+    premiumSignal: {
+      eventTitle: `Research event ${n}`,
+      marketQuestion: "Will side A win?",
+      winProbability: 64,
+      profit: "+12%",
+      metrics: [],
+    },
+    marketSource: { headline: "Will side A win?" },
+    diagnostics: {
+      conditionId,
+      selectedTokenId,
+      selectedOutcome: "A",
+      currentPrice: 0.4,
+      dataCoverage: 40,
+      gameStartIso: START_ISO,
+      providerSportCode: "ucl",
+      providerSportFamily: "soccer",
+      providerEventId,
+      providerMarketId,
+      providerEventContext: {
+        v: "v1",
+        provider: "polymarket",
+        eventId: providerEventId,
+        eventStartIso: START_ISO,
+        providerMarketId,
+        sportFamily: "soccer",
+        league: "ucl",
+      },
+    },
+  } as unknown as LandingCardPair;
 }
 
 test("exact provider identity survives normalization and reaches the emitted Signal Pair row", async () => {
@@ -209,12 +314,111 @@ test("canonical sport family survives the broad carrier, persistence, and scorer
   }
 });
 
+test("shadow writer rebuilds from empty current serving without historical GSP suppression and projects inserted IDs", async () => {
+  reset();
+  const { entries } = buildEntries([inventoryRow(1)]);
+  const candidate = entries[0];
+  historicalGspRows = [activeServingRow(
+    candidate.conditionId,
+    candidate.selectedTokenId,
+    "shadow-strategic-sports-v1",
+    {
+      providerSportCode: candidate.providerSportCode,
+      providerSportFamily: candidate.providerSportFamily,
+      providerEventId: candidate.providerEventId,
+      providerMarketId: candidate.providerMarketId,
+      providerEventContext: {
+        eventId: candidate.providerEventId,
+        providerMarketId: candidate.providerMarketId,
+        sportFamily: candidate.providerSportFamily,
+        league: candidate.providerSportCode,
+      },
+    },
+  )];
+
+  const detail = await (await cache()).writeStrategicShadowPairs(entries, OBSERVED_AT, { detailed: true });
+
+  assert.equal(detail.inserted, 2, "historical GSP rows must not suppress an empty-serving rebuild");
+  assert.deepEqual(projectedSourceIds.map((ids) => ids.length), [2], "insert-returned GSP IDs remain the serving lineage input");
+  assert.equal(selectQueries.filter((query) => query.table === "generated_signal_pairs").length, 0);
+  const servingRead = selectQueries.find((query) => query.table === "current_signal_pair_serving");
+  assert.deepEqual(servingRead?.filters.condition_id, ["cond-1"]);
+  assert.equal(servingRead?.filters.metric_formula_version, "shadow-strategic-sports-v1");
+  assert.equal(servingRead?.filters.projection_status, "ACTIVE");
+  assert.equal(servingRead?.filters["signal_result:is"], null);
+  assert.equal(typeof servingRead?.filters["expires_at:gt"], "string");
+});
+
+test("shadow dedup suppresses only active unresolved unexpired current-serving carrier matches", async () => {
+  reset();
+  const { entries } = buildEntries([inventoryRow(1)]);
+  const candidate = entries[0];
+  const diagnostics = {
+    providerSportCode: candidate.providerSportCode,
+    providerSportFamily: candidate.providerSportFamily,
+    providerEventId: candidate.providerEventId,
+    providerMarketId: candidate.providerMarketId,
+    providerEventContext: {
+      eventId: candidate.providerEventId,
+      providerMarketId: candidate.providerMarketId,
+      sportFamily: candidate.providerSportFamily,
+      league: candidate.providerSportCode,
+    },
+  };
+  servingRows = [activeServingRow(candidate.conditionId, candidate.selectedTokenId, "shadow-strategic-sports-v1", diagnostics)];
+
+  const detail = await (await cache()).writeStrategicShadowPairs(entries, OBSERVED_AT, { detailed: true });
+  assert.equal(detail.inserted, 1);
+  assert.equal(detail.conservation.rowsDeduped, 1);
+
+  reset();
+  servingRows = [activeServingRow(candidate.conditionId, candidate.selectedTokenId, "shadow-strategic-sports-v1", diagnostics, {
+    expires_at: "2020-12-31T00:00:00.000Z",
+  })];
+  const rebuiltAfterExpiry = await (await cache()).writeStrategicShadowPairs(entries, OBSERVED_AT, { detailed: true });
+  assert.equal(rebuiltAfterExpiry.inserted, 2, "expired serving rows must not poison a current rebuild");
+
+  reset();
+  servingRows = [activeServingRow(candidate.conditionId, candidate.selectedTokenId, "shadow-strategic-sports-v1", diagnostics, {
+    signal_result: "WON",
+  })];
+  const rebuiltAfterResolution = await (await cache()).writeStrategicShadowPairs(entries, OBSERVED_AT, { detailed: true });
+  assert.equal(rebuiltAfterResolution.inserted, 2, "resolved serving rows must not poison a current rebuild");
+});
+
+test("research writer uses current serving authority for rebuild, active dedup, and expiry", async () => {
+  reset();
+  const pair = researchPair(1);
+  const diagnostics = pair.diagnostics as unknown as Record<string, unknown>;
+  const conditionId = diagnostics.conditionId as string;
+  const selectedTokenId = diagnostics.selectedTokenId as string;
+  historicalGspRows = [activeServingRow(conditionId, selectedTokenId, "shadow-firemodel1_1_research_v0", diagnostics)];
+
+  assert.equal(await (await cache()).writeFireModel1_1ResearchPairs([pair], OBSERVED_AT), 1);
+  assert.equal(selectQueries.filter((query) => query.table === "generated_signal_pairs").length, 0);
+  assert.equal(projectedSourceIds.flat().length, 1, "research keeps exact inserted-GSP ID lineage");
+
+  reset();
+  servingRows = [activeServingRow(conditionId, selectedTokenId, "shadow-firemodel1_1_research_v0", diagnostics)];
+  assert.equal(await (await cache()).writeFireModel1_1ResearchPairs([pair], OBSERVED_AT), 0);
+
+  reset();
+  servingRows = [activeServingRow(conditionId, selectedTokenId, "shadow-firemodel1_1_research_v0", diagnostics, {
+    expires_at: "2020-12-31T00:00:00.000Z",
+  })];
+  assert.equal(await (await cache()).writeFireModel1_1ResearchPairs([pair], OBSERVED_AT), 1);
+});
+
 test("a preexisting row with a dropped family is repaired by one corrected duplicate instead of blocking persistence", async () => {
   reset();
   const { entries } = buildEntries([inventoryRow(1)]);
-  preexisting = [{
+  servingRows = [{
     condition_id: entries[0].conditionId,
     selected_token_id: entries[0].selectedTokenId,
+    metric_formula_version: "shadow-strategic-sports-v1",
+    projection_status: "ACTIVE",
+    signal_result: null,
+    expires_at: "2030-01-03T00:00:00.000Z",
     diagnostics: {
       providerSportCode: "basketball",
       providerSportFamily: null,
@@ -335,9 +539,13 @@ test("deduped and rejected rows are attributable -- proposed == inserted + dedup
   const already = inventoryRow(2);
   const { entries } = buildEntries([good, already]);
   const existingEntry = entries.find((entry) => entry.conditionId === "cond-2" && entry.selectedTokenId === "tok-2-a")!;
-  preexisting = [{
+  servingRows = [{
     condition_id: existingEntry.conditionId,
     selected_token_id: existingEntry.selectedTokenId,
+    metric_formula_version: "shadow-strategic-sports-v1",
+    projection_status: "ACTIVE",
+    signal_result: null,
+    expires_at: "2030-01-03T00:00:00.000Z",
     diagnostics: {
       providerSportCode: existingEntry.providerSportCode,
       providerSportFamily: existingEntry.providerSportFamily,

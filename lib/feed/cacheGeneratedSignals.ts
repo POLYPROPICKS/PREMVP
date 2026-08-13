@@ -401,7 +401,8 @@ export async function writeStrategicShadowPairs(
     return true;
   });
 
-  // Read-before-write dedup: skip candidates already stored as shadow rows.
+  // Read-before-write dedup: suppress only identities that are currently
+  // serving. Historical generated rows are lineage, not producer authority.
   // The condition-id list is chunked: a broad structured-sports batch carries
   // tens of thousands of distinct condition IDs, and a single .in() over all of
   // them serialises into a multi-megabyte query string that the PostgREST
@@ -417,7 +418,7 @@ export async function writeStrategicShadowPairs(
     throw new Error(
       `${SHADOW_DEDUP_BUDGET_EXCEEDED}: ${conditionIds.length} condition ids need ` +
         `${dedupChunks.length} dedup queries (budget ${SHADOW_DEDUP_MAX_QUERIES}); ` +
-        `generated_signal_pairs needs an index on ` +
+        `current_signal_pair_serving needs its primary identity index on ` +
         `(condition_id, selected_token_id, metric_formula_version)`,
     );
   }
@@ -431,13 +432,16 @@ export async function writeStrategicShadowPairs(
   const existingKeys = new Set<string>();
   for (const chunk of dedupChunks) {
     const { data: existing, error: dedupError } = await supabaseAdmin
-      .from("generated_signal_pairs")
+      .from("current_signal_pair_serving")
       .select("condition_id, selected_token_id, metric_formula_version, diagnostics")
       .in("condition_id", chunk)
-      .eq("metric_formula_version", "shadow-strategic-sports-v1");
+      .eq("metric_formula_version", "shadow-strategic-sports-v1")
+      .eq("projection_status", "ACTIVE")
+      .is("signal_result", null)
+      .gt("expires_at", new Date().toISOString());
 
     if (dedupError) {
-      throw new Error(`Failed to read existing shadow pairs: ${dedupError.message}`);
+      throw new Error(`Failed to read current serving shadow pairs: ${dedupError.message}`);
     }
     for (const r of existing ?? []) {
       const key = `${r.condition_id}::${r.selected_token_id}::${r.metric_formula_version}`;
@@ -609,13 +613,17 @@ export async function writeFireModel1_1ResearchPairs(
   );
   if (validPairs.length === 0) return 0;
 
-  // Read-before-write dedup: skip already-stored research rows.
+  // Read-before-write dedup: suppress only identities that are currently
+  // serving. Historical generated rows remain append-only lineage.
   const conditionIds = validPairs.map((p) => p.diagnostics.conditionId as string);
   const { data: existing } = await supabaseAdmin
-    .from("generated_signal_pairs")
+    .from("current_signal_pair_serving")
     .select("condition_id, selected_token_id, diagnostics")
     .in("condition_id", conditionIds)
-    .eq("metric_formula_version", FIREMODEL1_1_RESEARCH_METRIC_VERSION);
+    .eq("metric_formula_version", FIREMODEL1_1_RESEARCH_METRIC_VERSION)
+    .eq("projection_status", "ACTIVE")
+    .is("signal_result", null)
+    .gt("expires_at", new Date().toISOString());
 
   const existingKeys = new Set<string>(
     (existing ?? [])
