@@ -50,7 +50,7 @@ export function classifyBackfillTransportError(error: unknown): "THROTTLE" | "PO
   const text = String((error as { message?: unknown })?.message ?? error).toLowerCase();
   if (/\b429\b|too many requests|throttl/.test(text)) return "THROTTLE";
   if (/echeckouttimeout|check out connection from the pool|session mode/.test(text)) return "POOL_EXHAUSTED";
-  if (/timeout|timed out|disconnect|connection reset|connection terminated|econnreset|econnrefused|etimedout|network/.test(text)) return "AMBIGUOUS";
+  if (/timeout|timed out|authentication did not complete|failed to connect to database|disconnect|connection reset|connection terminated|econnreset|econnrefused|etimedout|network/.test(text)) return "AMBIGUOUS";
   return "POSTGRES";
 }
 
