@@ -90,3 +90,6 @@ visual-runs/
 
 # Contur3 generated diagnostics/logs (canonical monitor output) — never track
 var/
+
+# Current-serving production runner receipts are resumable local operational state.
+var/current-serving-backfill/
