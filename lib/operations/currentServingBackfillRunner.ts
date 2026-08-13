@@ -12,6 +12,7 @@ export type ServingBackfillReceipt = {
   transportRecoveries: number;
   lastCheckpoint: ServingBackfillCheckpoint | null;
   terminal: boolean;
+  transportPaused?: boolean;
 };
 
 export interface ServingBackfillPort {
@@ -29,22 +30,26 @@ export type ServingBackfillRunnerOptions = {
   batchSize?: number;
   paceMs?: number;
   maxThrottleBackoffMs?: number;
+  maxTransportRecoveries?: number;
   newPort: () => Promise<ServingBackfillPort>;
   store: ServingBackfillReceiptStore;
   sleep?: (ms: number) => Promise<void>;
   now?: () => number;
+  random?: () => number;
+  onEvent?: (event: "POOL_EXHAUSTED" | "RECOVERY_BACKOFF" | "CHECKPOINT_RECOVERED" | "BACKFILL_RESUMED") => void;
 };
 
-export type ServingBackfillResult = ServingBackfillReceipt & { terminalZeroConfirmed: boolean };
+export type ServingBackfillResult = ServingBackfillReceipt & { terminalZeroConfirmed: boolean; transportPaused: boolean };
 
 function sameCheckpoint(left: ServingBackfillCheckpoint | null, right: ServingBackfillCheckpoint | null): boolean {
   return left?.lastSourceCreatedAt === right?.lastSourceCreatedAt &&
     left?.lastSourceGeneratedSignalPairId === right?.lastSourceGeneratedSignalPairId;
 }
 
-export function classifyBackfillTransportError(error: unknown): "THROTTLE" | "AMBIGUOUS" | "POSTGRES" {
+export function classifyBackfillTransportError(error: unknown): "THROTTLE" | "POOL_EXHAUSTED" | "AMBIGUOUS" | "POSTGRES" {
   const text = String((error as { message?: unknown })?.message ?? error).toLowerCase();
   if (/\b429\b|too many requests|throttl/.test(text)) return "THROTTLE";
+  if (/echeckouttimeout|check out connection from the pool|session mode/.test(text)) return "POOL_EXHAUSTED";
   if (/timeout|timed out|disconnect|connection reset|connection terminated|econnreset|econnrefused|etimedout|network/.test(text)) return "AMBIGUOUS";
   return "POSTGRES";
 }
@@ -62,35 +67,66 @@ export async function runCurrentServingBackfill(options: ServingBackfillRunnerOp
   if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 10_000) throw new Error("INVALID_BATCH_SIZE");
   const paceMs = options.paceMs ?? 250;
   const maxThrottleBackoffMs = options.maxThrottleBackoffMs ?? 10_000;
+  const maxTransportRecoveries = options.maxTransportRecoveries ?? 8;
   const now = options.now ?? Date.now;
+  const random = options.random ?? Math.random;
   const sleep = options.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   let receipt = options.store.load() ?? initialReceipt(now);
   let port = await options.newPort();
   let throttleDelayMs = 500;
+  let consecutiveTransportFailures = 0;
   let shortBatchSeen = false;
 
-  const save = (terminal = false) => {
-    receipt = { ...receipt, updatedAt: new Date(now()).toISOString(), terminal, lastCheckpoint: receipt.lastCheckpoint };
+  const save = (terminal = false, transportPaused = false) => {
+    receipt = { ...receipt, updatedAt: new Date(now()).toISOString(), terminal, transportPaused, lastCheckpoint: receipt.lastCheckpoint };
     options.store.save(receipt);
   };
-  const recover = async (before: ServingBackfillCheckpoint | null, kind: "THROTTLE" | "AMBIGUOUS") => {
-    await port.close();
-    if (kind === "THROTTLE") {
-      await sleep(throttleDelayMs);
-      throttleDelayMs = Math.min(throttleDelayMs * 2, maxThrottleBackoffMs);
+  const recover = async (before: ServingBackfillCheckpoint | null, firstKind: "THROTTLE" | "POOL_EXHAUSTED" | "AMBIGUOUS") => {
+    let kind = firstKind;
+    for (;;) {
+      consecutiveTransportFailures += 1;
+      receipt = { ...receipt, transportRecoveries: receipt.transportRecoveries + 1, lastCheckpoint: before };
+      if (kind === "POOL_EXHAUSTED") options.onEvent?.("POOL_EXHAUSTED");
+      if (consecutiveTransportFailures > maxTransportRecoveries) {
+        save(false, true);
+        return null;
+      }
+      await port.close();
+      const backoffMs = Math.min(500 * 2 ** (consecutiveTransportFailures - 1), maxThrottleBackoffMs);
+      const delayMs = backoffMs + Math.floor(random() * Math.max(1, Math.floor(backoffMs / 4)));
+      options.onEvent?.("RECOVERY_BACKOFF");
+      await sleep(delayMs);
+      port = await options.newPort();
+      try {
+        const after = await port.readCheckpoint();
+        receipt = { ...receipt, lastCheckpoint: after };
+        save();
+        consecutiveTransportFailures = 0;
+        throttleDelayMs = 500;
+        options.onEvent?.("CHECKPOINT_RECOVERED");
+        options.onEvent?.("BACKFILL_RESUMED");
+        // The next loop always starts from this durable cursor. Exact processed count
+        // remains intentionally unknown after an ambiguous transport failure.
+        return after;
+      } catch (error) {
+        const nextKind = classifyBackfillTransportError(error);
+        if (nextKind === "POSTGRES") throw error;
+        kind = nextKind;
+      }
     }
-    port = await options.newPort();
-    const after = await port.readCheckpoint();
-    receipt = { ...receipt, transportRecoveries: receipt.transportRecoveries + 1, lastCheckpoint: after };
-    save();
-    // A changed durable cursor proves a committed batch. Do not replay it; the next loop
-    // starts from that cursor. The exact count is intentionally not fabricated.
-    return !sameCheckpoint(before, after);
   };
 
   try {
     for (;;) {
-      const before = await port.readCheckpoint();
+      let before: ServingBackfillCheckpoint;
+      try {
+        before = await port.readCheckpoint();
+      } catch (error) {
+        const kind = classifyBackfillTransportError(error);
+        if (kind === "POSTGRES") throw error;
+        if (await recover(receipt.lastCheckpoint, kind) === null) return { ...receipt, terminalZeroConfirmed: false, transportPaused: true };
+        continue;
+      }
       receipt = { ...receipt, lastCheckpoint: before };
       const started = now();
       let processed: number;
@@ -99,11 +135,20 @@ export async function runCurrentServingBackfill(options: ServingBackfillRunnerOp
       } catch (error) {
         const kind = classifyBackfillTransportError(error);
         if (kind === "POSTGRES") throw error;
-        await recover(before, kind);
+        if (await recover(before, kind) === null) return { ...receipt, terminalZeroConfirmed: false, transportPaused: true };
         continue;
       }
       throttleDelayMs = 500;
-      const checkpoint = await port.readCheckpoint();
+      let checkpoint: ServingBackfillCheckpoint;
+      try {
+        checkpoint = await port.readCheckpoint();
+      } catch (error) {
+        const kind = classifyBackfillTransportError(error);
+        if (kind === "POSTGRES") throw error;
+        if (await recover(before, kind) === null) return { ...receipt, terminalZeroConfirmed: false, transportPaused: true };
+        continue;
+      }
+      consecutiveTransportFailures = 0;
       receipt = {
         ...receipt,
         batches: receipt.batches + 1,
@@ -114,7 +159,7 @@ export async function runCurrentServingBackfill(options: ServingBackfillRunnerOp
       save();
       if (processed === 0 && shortBatchSeen) {
         save(true);
-        return { ...receipt, terminalZeroConfirmed: true };
+        return { ...receipt, terminalZeroConfirmed: true, transportPaused: false };
       }
       if (processed < batchSize) shortBatchSeen = true;
       await sleep(paceMs);

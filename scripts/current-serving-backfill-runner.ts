@@ -140,7 +140,23 @@ async function main() {
   if (!connection) throw new Error(`MISSING_REQUIRED_SERVER_SIDE_CONNECTION_ENV:${connectionEnv}`);
   const receiptFile = path.join(process.cwd(), "var", "current-serving-backfill", "receipt.json");
   console.log(JSON.stringify({ runner_event: "RUNNER_STARTED", query_timeout_ms: QUERY_TIMEOUT_MS, heartbeat_ms: HEARTBEAT_MS }));
-  const result = await runCurrentServingBackfill({ newPort: () => createPort(connection), store: receiptStore(receiptFile) });
+  const result = await runCurrentServingBackfill({
+    newPort: () => createPort(connection),
+    store: receiptStore(receiptFile),
+    onEvent: (runner_event) => console.log(JSON.stringify({ runner_event })),
+  });
+  if (result.transportPaused) {
+    console.log(JSON.stringify({
+      TRANSPORT_PAUSE: "YES",
+      UNKNOWN_COMMIT_STATE: "NO",
+      TRANSPORT_RECOVERIES: result.transportRecoveries,
+      checkpoint: result.lastCheckpoint,
+      receipt_file: "var/current-serving-backfill/receipt.json",
+      verdict: "WAIT",
+    }, null, 2));
+    process.exitCode = 2;
+    return;
+  }
   const verification = await verifyTerminal(connection);
   const pass = result.terminalZeroConfirmed && verification.historical_orphans === 0 && verification.semantic_mismatches === 0 && verification.planning_57014_count === 0;
   console.log(JSON.stringify({
