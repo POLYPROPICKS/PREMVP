@@ -15,6 +15,7 @@ import {
 } from "../lib/operations/currentServingBackfillRunner";
 
 type SqlClient = ReturnType<typeof postgres>;
+type CancellableQuery<T> = PromiseLike<T> & { cancel(): void };
 type Verification = {
   final_checkpoint: ServingBackfillCheckpoint;
   final_serving_rows: number;
@@ -36,6 +37,38 @@ function readArgs(argv: readonly string[]) {
   return { connectionEnv: at >= 0 ? argv[at + 1] : "DATABASE_URL" };
 }
 
+const QUERY_TIMEOUT_MS = 45_000;
+const HEARTBEAT_MS = 15_000;
+
+/**
+ * postgres.js has a connection timeout but deliberately no per-query deadline.
+ * This runner must never wait silently on a production call: emit a heartbeat,
+ * cancel at the operational bound, then let the durable-cursor state machine
+ * decide whether a timed-out backfill transaction committed.
+ */
+async function runBoundedQuery<T>(label: string, query: CancellableQuery<T>): Promise<T> {
+  const started = Date.now();
+  console.log(JSON.stringify({ runner_event: "QUERY_STARTED", label }));
+  const heartbeat = setInterval(() => {
+    console.log(JSON.stringify({ runner_event: "QUERY_HEARTBEAT", label, elapsed_ms: Date.now() - started }));
+  }, HEARTBEAT_MS);
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      Promise.resolve(query),
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          query.cancel();
+          reject(new Error(`RUNNER_QUERY_TIMEOUT:${label}:${QUERY_TIMEOUT_MS}`));
+        }, QUERY_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    clearInterval(heartbeat);
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
 function receiptStore(file: string) {
   return {
     load(): ServingBackfillReceipt | null {
@@ -53,14 +86,14 @@ function createPort(connection: string): Promise<ServingBackfillPort> {
   const sql = postgres(connection, { max: 1, connect_timeout: 20, idle_timeout: 30 });
   return Promise.resolve({
     async backfill(batchSize) {
-      const rows = await sql<{ processed: number }[]>`select public.backfill_current_signal_pair_serving(${batchSize}) as processed`;
+      const rows = await runBoundedQuery("BACKFILL_CALL", sql<{ processed: number }[]>`select public.backfill_current_signal_pair_serving(${batchSize}) as processed`);
       return numberValue(rows[0]?.processed);
     },
     async readCheckpoint() {
-      const rows = await sql<{ last_source_created_at: string | null; last_source_generated_signal_pair_id: string | null }[]>`
+      const rows = await runBoundedQuery("CHECKPOINT_READ", sql<{ last_source_created_at: string | null; last_source_generated_signal_pair_id: string | null }[]>`
         select last_source_created_at::text, last_source_generated_signal_pair_id::text
         from public.current_signal_pair_serving_backfill_checkpoint
-        where checkpoint_name = 'generated_signal_pairs_v1'`;
+        where checkpoint_name = 'generated_signal_pairs_v1'`);
       if (rows.length !== 1) throw new Error("BACKFILL_CHECKPOINT_MISSING");
       return { lastSourceCreatedAt: rows[0].last_source_created_at, lastSourceGeneratedSignalPairId: rows[0].last_source_generated_signal_pair_id };
     },
@@ -106,6 +139,7 @@ async function main() {
   const connection = process.env[connectionEnv];
   if (!connection) throw new Error(`MISSING_REQUIRED_SERVER_SIDE_CONNECTION_ENV:${connectionEnv}`);
   const receiptFile = path.join(process.cwd(), "var", "current-serving-backfill", "receipt.json");
+  console.log(JSON.stringify({ runner_event: "RUNNER_STARTED", query_timeout_ms: QUERY_TIMEOUT_MS, heartbeat_ms: HEARTBEAT_MS }));
   const result = await runCurrentServingBackfill({ newPort: () => createPort(connection), store: receiptStore(receiptFile) });
   const verification = await verifyTerminal(connection);
   const pass = result.terminalZeroConfirmed && verification.historical_orphans === 0 && verification.semantic_mismatches === 0 && verification.planning_57014_count === 0;
