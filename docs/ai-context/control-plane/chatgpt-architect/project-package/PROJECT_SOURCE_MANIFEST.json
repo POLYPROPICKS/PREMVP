@@ -7,7 +7,7 @@
   "provenance": {
     "_volatile": true,
     "_note": "Resolved live at generation time and normalized by --check, which verifies content hashes rather than the commit id.",
-    "generated_from_commit": "40389884c34b943d9d50766f45296fee02913c61"
+    "generated_from_commit": "280d35bd8184f20124647df6297e237dcaa6b155"
   },
   "active_project_sources": [
     {
@@ -15,16 +15,16 @@
       "role": "GENERATED_SNAPSHOT",
       "canonical_path": "docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md",
       "upload_path": "docs/ai-context/control-plane/chatgpt-architect/project-package/SOURCES/ARCHITECT_SNAPSHOT.md",
-      "bytes": 7011,
-      "sha256": "8c56952d0f5f5877b5c319cd002ef64249e851860a558039b5a193c7386eb8c4"
+      "bytes": 6995,
+      "sha256": "db233cbaed61ce6518676a2a658bdfaa1045774220a0009564ccb036e915992b"
     },
     {
       "name": "CHATGPT_ARCHITECT_PROJECT_BUNDLE.md",
       "role": "GENERATED_BUNDLE",
       "canonical_path": "docs/ai-context/control-plane/chatgpt-architect/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md",
       "upload_path": "docs/ai-context/control-plane/chatgpt-architect/project-package/SOURCES/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md",
-      "bytes": 7151,
-      "sha256": "140e824fd2e6c64a8a96097834ec4ab5e200f64cf696883d9d70619635cd76d2"
+      "bytes": 7591,
+      "sha256": "1a659dd6112af56b6183f68bfe8a34411dcfe0488d1a306e59d0f9b73879563b"
     },
     {
       "name": "PROMPT__PROTOCOL.md",

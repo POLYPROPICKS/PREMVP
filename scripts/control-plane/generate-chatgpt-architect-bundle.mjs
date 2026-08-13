@@ -121,6 +121,13 @@ export function renderBundle(root = REPO_ROOT) {
   for (const s of state.next_two_value_steps) w(`- Next: ${s.id} — ${s.title}`);
   w();
 
+  if (state.approved_execution_frontier) {
+    w(`- Approved frontier: ${state.approved_execution_frontier.decision} (${state.approved_execution_frontier.decision_status})`);
+    w(`- Phase 1 closure: ${state.approved_execution_frontier.phase_1_planning_serving_closure.join(' -> ')}`);
+    w(`- After Phase 1: ${state.approved_execution_frontier.after_phase_1.join(' -> ')}`);
+    w();
+  }
+
   w('## 8. New-chat bootstrap');
   w();
   w('Read the canonical Control Plane, resolve live Git before any runtime claim, select exactly one explicit executor, and compile one Mission Contract. Never ask the Founder to perform an intermediate recovery action.');

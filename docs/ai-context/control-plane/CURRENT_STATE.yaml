@@ -1,28 +1,59 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-13T05:30:15Z",
-  "state_version": 15,
+  "updated_at": "2026-08-13T12:00:00Z",
+  "state_version": 16,
 
-  "roadmap_phase": "CONTUR3_QUEUE_AUTHORITY",
+  "roadmap_phase": "PHASE1_PLANNING_SERVING_CLOSURE",
   "current_value_step": {
-    "id": "C1",
-    "title": "C1 production runtime proof",
-    "value_target": "natural Planning -> persisted Reservation -> typed Final Identity -> exact-token order book and guards -> immutable Queue, proven in production runtime",
-    "status": "OPEN"
+    "id": "BOUNDED_PRE_HOOK_SEED",
+    "title": "Bounded pre-hook seed",
+    "value_target": "seed only current Contract A eligible identities that are absent or stale in current_signal_pair_serving; runtime execution remains pending",
+    "status": "FOUNDER_APPROVED_RUNTIME_PENDING"
   },
   "next_two_value_steps": [
     {
-      "id": "STEP_2_FINAL_IDENTITY",
-      "title": "Final Identity fix verification",
-      "value_target": "fix, ancestry, deployment, and post-fix evidence verified",
+      "id": "CURRENT_OPERATIONAL_COVERAGE_PROOF",
+      "title": "Current operational coverage proof",
+      "value_target": "prove the current Contract A eligible universe is fully represented by serving winners",
       "status": "NEXT"
     },
     {
-      "id": "STEP_3_FORWARD_FUNNEL",
-      "title": "Forward Reservation funnel",
-      "value_target": "T-5 eligible traffic",
+      "id": "NATURAL_WRITER_PROJECTION_PROOF",
+      "title": "Natural writer projection proof",
+      "value_target": "prove newly inserted historical rows project by their exact returned ids without historical traversal",
       "status": "FOLLOWING"
     }
+  ],
+
+  "approved_execution_frontier": {
+    "decision": "DIRECT_SERVING_WITH_BOUNDED_BOOTSTRAP",
+    "decision_status": "FOUNDER_APPROVED_RUNTIME_PENDING",
+    "phase_1_planning_serving_closure": ["BOUNDED_PRE_HOOK_SEED", "CURRENT_OPERATIONAL_COVERAGE_PROOF", "NATURAL_WRITER_PROJECTION_PROOF", "CONTRACT_A_PLANNING_PROOF", "NATURAL_PLANNING_TO_RESERVATION", "PHASE1_CANONICAL_CLOSE"],
+    "after_phase_1": ["Reservation", "Rebalance", "immutable Queue"],
+    "later_separate_repository_mission": ["Ireland execution boundary", "venue", "callback", "settlement/reconciled PnL"],
+    "runtime_safety": "Founder approval changes the roadmap only. Phase 1, serving coverage, Planning, Reservation, Rebalance, and Queue runtime PASS remain unproven until their respective live evidence exists."
+  },
+  "implementation_readiness_new_contour_7": {
+    "assessment_status": "WAIT_TRANSPORT_PAUSE",
+    "writer_projection_cutover": { "source_sha": "3bdab9fb2c876d3e6956b87c8b100cf3c17d5bf0", "source_commit_time": "2026-08-13T14:04:21+03:00", "deployment_time": "NOT_PROVEN", "evidence": "supabase/migrations/20260813105911_refresh_current_signal_pair_serving_id_bounded.sql establishes the non-NULL id-bounded refresh path; lib/feed/currentSignalPairServing.ts already passes exact inserted ids." },
+    "bounded_seed_definition": "At one frozen now(), source candidates are generated_signal_pairs rows operationally eligible for Contract A Planning: allowed scored formula version, unresolved, unexpired, non-null condition_id/selected_token_id, entry_price_num, confidence >= 50, and structured scored-sport authority. Partition by (condition_id, selected_token_id, metric_formula_version); winner is greatest (created_at, id) DESC. Seed exactly the winner ids whose active serving row for the same identity is absent or names a different source_generated_signal_pair_id. A pre-hook cutoff is corroborative only; it cannot replace this current-state comparison.",
+    "next_seed_method": "EXISTING_ID_BOUNDED_REFRESH",
+    "application_code_change_required": "NO_FROM_SOURCE",
+    "database_schema_change_required": "NO_FROM_SOURCE",
+    "runtime_measurement": "WAIT: bounded read-only source/serving query reached a transient Supabase schema-cache retry error; no count, coverage, or runtime PASS is claimed.",
+    "natural_proof_plan": "After the seed, observe one normal producer cycle and verify returned inserted ids -> refresh_current_signal_pair_serving(non-NULL ids) -> active serving winner -> CONTRACT_A_PLANNING_V1, with no historical keyset traversal in steady-state maintenance.",
+    "phase_1_runtime_acceptance": ["PRE_HOOK_ELIGIBLE_GAP = 0", "CURRENT_OPERATIONAL_SERVING_COVERAGE = 100%", "SERVING_WINNER_SEMANTICS = PASS", "SERVING_LINEAGE = PASS", "NATURAL_WRITER_PROJECTION = PASS", "CONTRACT_A_PLANNING_V1 = PASS", "HISTORICAL_KEYSET_IN_PLANNING = ABSENT", "PLANNING_57014_COUNT = 0", "PLANNING_LATENCY = MEASURED_AND_BOUNDED", "NATURAL_PLANNING_TO_RESERVATION = PASS"],
+    "explicitly_not_required": ["FULL_HISTORY_CURSOR_EXHAUSTED", "processed=0", "historical checkpoint reaches corpus end"]
+  },
+  "operational_lessons_and_deferred_work": [
+    "HISTORY_IS_NOT_OPERATIONAL_AUTHORITY: historical growth must not increase normal Planning serving cost.",
+    "BOUNDED_CURRENT_TRUTH: operational work scales with the currently eligible universe, not historical depth.",
+    "FULL_BACKFILL_OFF_CRITICAL_PATH: cursor exhaustion is recovery or maintenance unless fresh evidence proves it blocks a business transition.",
+    "FRESH_GENERATION_NOT_COMPLETE: current shadow/research dedup semantics require carry-forward coverage; one producer generation alone is insufficient.",
+    "NO_BLIND_MAINTENANCE_OPTIMIZATION: do not optimize one-time runners, indexes, or watchdogs without proving they block the next business boundary.",
+    "FIRST_PROVEN_BLOCKER_DISCIPLINE: remove one proven blocker, then observe the next boundary before redesigning further layers.",
+    "FOUNDER_NOT_OPERATOR: no repeated SQL, batch, Git, reviewer, or recovery actions are assigned to the Founder.",
+    "DEFERRED_FUTURE_OPTIONS: generation_id, atomic snapshot, async history archive, serving pruning, projection reconciler, speculative serving indexes, runner/watchdog redesign, and broad Phase 2 audit remain hypotheses or recovery work pending fresh evidence."
   ],
 
   "closed_value_steps": [
@@ -34,16 +65,16 @@
 
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "40389884c34b943d9d50766f45296fee02913c61",
+    "origin_main_sha": "280d35bd8184f20124647df6297e237dcaa6b155",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "executor": "local_codex_windows",
-      "commands": ["git fetch --prune origin", "git rev-parse origin/main", "git merge-base --is-ancestor a942a0d833982bca5caf01ff05d4e4bfb9151119 origin/main", "git merge-base --is-ancestor a6bb1ad origin/main"],
-      "observed_at": "2026-08-13T05:30:15Z",
-      "worktree": "clean",
-      "note": "Current live origin/main is 40389884c34b943d9d50766f45296fee02913c61 (PR #153, current-serving backfill repair). The prior baseline a942a0d833982bca5caf01ff05d4e4bfb9151119 is a proven ancestor. The stale isolated-worktree head a6bb1ad is not an ancestor and is excluded from runtime and source authority. This refresh records source authority only; it does not execute a backfill, a selector probe, DDL, Planning, Reservation, Queue, Ireland, or an application change."
+      "commands": ["git fetch origin main", "git rev-parse origin/main", "git merge-base --is-ancestor 40389884c34b943d9d50766f45296fee02913c61 origin/main"],
+      "observed_at": "2026-08-13T12:00:00Z",
+      "worktree": "isolated clean worktree",
+      "note": "Live origin/main was 280d35bd8184f20124647df6297e237dcaa6b155 before this docs-only New Contour 7 branch. The prior baseline 40389884c34b943d9d50766f45296fee02913c61 is an ancestor. This state refresh records the Founder-approved roadmap and source-readiness assessment only; it does not execute a seed, refresh RPC, backfill, DDL, Planning, Reservation, Queue, Ireland, or application change."
     }
   },
 
