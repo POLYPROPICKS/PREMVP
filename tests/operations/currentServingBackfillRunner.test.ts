@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
 import { test } from "node:test";
 import { classifyBackfillTransportError, runCurrentServingBackfill, type ServingBackfillCheckpoint, type ServingBackfillPort, type ServingBackfillReceipt } from "../../lib/operations/currentServingBackfillRunner";
 
@@ -22,4 +24,14 @@ test("only throttles and ambiguous transport failures are retried", () => {
   assert.equal(classifyBackfillTransportError(new Error("HTTP 429")), "THROTTLE");
   assert.equal(classifyBackfillTransportError(new Error("connection reset")), "AMBIGUOUS");
   assert.equal(classifyBackfillTransportError(new Error("SQLSTATE 57014")), "POSTGRES");
+});
+
+test("production adapter has a bounded cancellable query watchdog and visible heartbeat", () => {
+  const runner = fs.readFileSync(path.resolve(process.cwd(), "scripts/current-serving-backfill-runner.ts"), "utf8");
+  assert.match(runner, /const QUERY_TIMEOUT_MS = 45_000/);
+  assert.match(runner, /const HEARTBEAT_MS = 15_000/);
+  assert.match(runner, /runner_event: "RUNNER_STARTED"/);
+  assert.match(runner, /runner_event: "QUERY_HEARTBEAT"/);
+  assert.match(runner, /query\.cancel\(\)/);
+  assert.match(runner, /RUNNER_QUERY_TIMEOUT:.*QUERY_TIMEOUT_MS/);
 });
