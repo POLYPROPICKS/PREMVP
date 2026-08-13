@@ -98,7 +98,7 @@
         "docs/ai-context/control-plane/chatgpt-architect/project-package/SOURCES/PROMPT__PROTOCOL.md",
         "docs/ai-context/control-plane/chatgpt-architect/project-package/SOURCES/COMPLETION_ENVELOPE.schema.json"
       ],
-      "excluded_from_active_sources": ["CHATGPT_PROJECT_SETUP.md", "NEW_CONTOUR_3.md", "NEW_CONTOUR_4.md", "EVIDENCE_LEDGER.md", "pasted completion reports", "prompt-failure postmortems", "secrets and .env files"]
+      "excluded_from_active_sources": ["CHATGPT_PROJECT_SETUP.md", "NEW_CONTOUR_3.md", "NEW_CONTOUR_4.md", "NEW_CONTOUR_7.md", "EVIDENCE_LEDGER.md", "pasted completion reports", "prompt-failure postmortems", "secrets and .env files"]
     }
   },
 
@@ -188,6 +188,7 @@
     { "path": "docs/ai-context/PROMPT__PROTOCOL.md", "status": "NOT_TRACKED_IN_ORIGIN_MAIN", "authoritative_for_current_state": false, "note": "A file of this name exists only in an untracked Local Windows worktree. Its authority is unresolved and it MUST NOT be cited as authority. The canonical prompt contract is docs/ai-context/control-plane/PROMPT__PROTOCOL.md." },
     { "path": "docs/ai-context/PROMPT_COMPLETION_PROTOCOL.md", "status": "ABSENT", "authoritative_for_current_state": false, "superseded_by": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json" },
     { "path": "docs/ai-context/control-plane/CHATGPT_PROJECT_SETUP.md", "status": "SUPERSEDED", "authoritative_for_current_state": false, "superseded_by": "docs/ai-context/control-plane/chatgpt-architect/project-package", "note": "A one-time Phase 2 setup record. It is NOT current prompt policy and MUST NOT be uploaded as an active Project Source." },
+    { "path": "docs/ai-context/control-plane/NEW_CONTOUR_7.md", "status": "HISTORICAL_CONTEXT_CHECKPOINT", "authoritative_for_current_state": false, "superseded_by": "docs/ai-context/control-plane/CURRENT_STATE.yaml", "note": "Founder-approved New Contour 7 handoff. It records context and readiness only; it cannot assert current runtime state or Phase 1 completion." },
     { "path": "PROMPT__PROTOCOL 25-section template", "status": "RETIRED", "authoritative_for_current_state": false, "superseded_by": "docs/ai-context/control-plane/MISSION_CONTRACT.schema.json", "note": "The fixed-template rule requiring every prompt section to be populated is retired. No artifact may re-enforce it." }
   ],
 

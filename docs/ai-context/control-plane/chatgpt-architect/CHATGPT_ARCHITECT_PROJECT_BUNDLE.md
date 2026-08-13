@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate: npm run control-plane:architect-bundle -->
 
-State v15 · updated 2026-08-13T05:30:15Z · policy 1.2.0
+State v16 · updated 2026-08-13T12:00:00Z · policy 1.2.0
 
 Canonical authority is `docs/ai-context/control-plane/**`. Live Git and runtime output outrank this guide for every fact. Never invent a command id, SHA, executor, capability verdict or runtime proof.
 
@@ -90,10 +90,14 @@ Access surfaces are not executors: CLOUD_WEB→claude_code_cloud, CLOUD_MOBILE�
 
 ## 7. Roadmap
 
-- Phase: CONTUR3_QUEUE_AUTHORITY
-- Current step: C1 — C1 production runtime proof (OPEN)
-- Next: STEP_2_FINAL_IDENTITY — Final Identity fix verification
-- Next: STEP_3_FORWARD_FUNNEL — Forward Reservation funnel
+- Phase: PHASE1_PLANNING_SERVING_CLOSURE
+- Current step: BOUNDED_PRE_HOOK_SEED — Bounded pre-hook seed (FOUNDER_APPROVED_RUNTIME_PENDING)
+- Next: CURRENT_OPERATIONAL_COVERAGE_PROOF — Current operational coverage proof
+- Next: NATURAL_WRITER_PROJECTION_PROOF — Natural writer projection proof
+
+- Approved frontier: DIRECT_SERVING_WITH_BOUNDED_BOOTSTRAP (FOUNDER_APPROVED_RUNTIME_PENDING)
+- Phase 1 closure: BOUNDED_PRE_HOOK_SEED -> CURRENT_OPERATIONAL_COVERAGE_PROOF -> NATURAL_WRITER_PROJECTION_PROOF -> CONTRACT_A_PLANNING_PROOF -> NATURAL_PLANNING_TO_RESERVATION -> PHASE1_CANONICAL_CLOSE
+- After Phase 1: Reservation -> Rebalance -> immutable Queue
 
 ## 8. New-chat bootstrap
 

@@ -68,10 +68,13 @@ export function renderSnapshot(root = REPO_ROOT) {
   w('## 2. Phase and value steps');
   w();
   w(`- Phase: **${state.roadmap_phase}**`);
-  w(`- Current step: **${state.current_value_step.id} — ${state.current_value_step.title}** (${state.current_value_step.status})`);
-  w(`- Next two: ${state.next_two_value_steps.map((s) => `**${s.id}** ${s.title}`).join(' → ')}`);
-  w(`- main @ ${state.main.repository}: baseline \`${state.main.origin_main_sha}\` (${state.main.origin_main_sha_semantics}) — freshness mode ${state.main.freshness_check_mode}: baseline must be an ancestor of live origin/main; a live tip ahead of baseline stays FRESH only if every changed path is in the state-bootstrap allowlist (CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md), otherwise STATE_REFRESH_REQUIRED`);
-  w(`- Last accepted completion: ${state.last_accepted_completion_id === null ? 'none' : state.last_accepted_completion_id}`);
+  w(`- Current: **${state.current_value_step.id}** (${state.current_value_step.status})`);
+  w(`- Next two: ${state.next_two_value_steps.map((s) => `**${s.id}**`).join(' → ')}`);
+  w(`- main \`${state.main.origin_main_sha}\`: LAST_VERIFIED_ORIGIN_MAIN_BASELINE; BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE (ancestor required; non-bootstrap diff=>STATE_REFRESH_REQUIRED).`);
+  if (state.approved_execution_frontier) {
+    w(`- Approved frontier: **${state.approved_execution_frontier.decision}**.`);
+    w(`- Critical path: ${state.approved_execution_frontier.phase_1_planning_serving_closure.join(' -> ')} -> ${state.approved_execution_frontier.after_phase_1.join(' -> ')}.`);
+  }
   w();
 
   // --- 3. Blockers ----------------------------------------------------------------------
