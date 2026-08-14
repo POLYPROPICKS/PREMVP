@@ -3,7 +3,12 @@
 
 -- The producer-owned expiry batch reads the current serving projection in expiry
 -- order. `now()` stays in the function predicate because it is not indexable.
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_csps_prune_expired_active
+-- The managed migration surface is transactional. Bound lock acquisition and build
+-- duration so activation fails atomically instead of waiting behind live writers.
+SET LOCAL lock_timeout = '2s';
+SET LOCAL statement_timeout = '5s';
+
+CREATE INDEX IF NOT EXISTS idx_csps_prune_expired_active
   ON public.current_signal_pair_serving (expires_at ASC)
   WHERE projection_status = 'ACTIVE'
     AND expires_at IS NOT NULL;

@@ -72,7 +72,10 @@ test("bounded refresh migration reads supplied IDs directly and preserves full-c
 });
 
 test("serving prune is bounded, index-backed, and never performs a broad GSP read", () => {
-  assert.match(pruneMigration, /CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_csps_prune_expired_active/i);
+  assert.match(pruneMigration, /SET LOCAL lock_timeout = '2s';/i);
+  assert.match(pruneMigration, /SET LOCAL statement_timeout = '5s';/i);
+  assert.match(pruneMigration, /CREATE INDEX IF NOT EXISTS idx_csps_prune_expired_active/i);
+  assert.doesNotMatch(pruneMigration, /CREATE INDEX CONCURRENTLY/i);
   assert.match(pruneMigration, /ON public\.current_signal_pair_serving \(expires_at ASC\)/i);
   assert.match(pruneMigration, /p_batch_size < 1 OR p_batch_size > 25/);
   assert.match(pruneMigration, /serving\.expires_at <= now\(\)/);
