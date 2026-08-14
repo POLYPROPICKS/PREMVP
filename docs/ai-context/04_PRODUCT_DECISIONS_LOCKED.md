@@ -1,5 +1,25 @@
 # **PRODUCT\_DECISIONS\_LOCKED.md**
 
+## CURRENT ROADMAP OVERRIDE — 2026-08-14 — NEW_CONTOUR_9
+
+**Founder decision:** NEW_CONTOUR_9 is the final minimal database/system architecture and the canonical roadmap from current PREMVP state to first reconciled PnL. It supersedes older roadmap assumptions in this document where they conflict, while preserving product/UI/payment decisions that it does not address.
+
+The canonical decision record is docs/ai-context/control-plane/NEW_CONTOUR_9.md; the required 90-day intervention policy is docs/ai-context/control-plane/NEW_CONTOUR_9_RISK_REGISTER.md. CURRENT_STATE.yaml remains the only operational-state artifact. These documents do **not** mark pruning, Queue execution, Ireland, live money, settlement, or PnL as runtime PASS.
+
+**Locked roadmap sequence:**
+
+1. Documentation persistence (NEW_CONTOUR_9, risk register, this roadmap).
+2. Eligibility-symmetric physical lifecycle for current_signal_pair_serving.
+3. Queue claim/callback idempotency proof; repair only a proven defect; one Ireland consumer.
+4. One 10k-candidate/1k-Reservation capacity gate.
+5. Natural PREMVP bounded-lineage proof through Queue (reuse accepted heartbeat evidence).
+6. Separate R5/Ireland authorization for one bounded real order.
+7. Callback -> settlement -> fees -> reconciled net PnL, then architecture freeze.
+
+**Locked simplicity rules:** one PostgreSQL primary; current_signal_pair_serving is the only hot Planning authority; generated_signal_pairs is history/lineage and not a broad live-critical read path; broad analytics move to validated offline clone/export/Parquet. Do not build Redis, Kafka, ClickHouse, a new hot table, History V2, a new queue/backfill runner, generation snapshots, sharding, DB split, generic cleanup/scheduling, or generic observability without a measured failing business boundary and proof that a smaller correction cannot work.
+
+**Critical semantic correction:** the 24-hour window is event-start relevance for execution, not serving-row age. Physical serving eviction is initially only expired or resolved/terminal state so it remains symmetric with producer eligibility/dedup and cannot create a re-emission loop.
+
 ---
 
 ## CURRENT ROADMAP OVERRIDE — 2026-05-15
