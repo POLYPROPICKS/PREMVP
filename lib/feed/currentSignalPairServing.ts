@@ -1,5 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 
+export const CURRENT_SERVING_PRUNE_BATCH_SIZE = 25;
+
 export class ServingProjectionPendingError extends Error {
   readonly sourceGeneratedSignalPairIds: readonly string[];
 
@@ -40,4 +42,54 @@ export function insertedSourceIds(data: unknown, expectedCount: number): string[
 export async function projectInsertedRows(data: unknown, expectedCount: number): Promise<void> {
   if (data === undefined) return;
   await refreshCurrentSignalPairServing(insertedSourceIds(data, expectedCount));
+}
+
+export type CurrentServingPruneResult = {
+  attempted: boolean;
+  deletedRows: number;
+  batches: number;
+  durationMs: number;
+};
+
+function uniqueSourceIds(sourceGeneratedSignalPairIds: readonly string[]): string[] {
+  return [...new Set(sourceGeneratedSignalPairIds.filter((id): id is string => typeof id === "string" && id.length > 0))];
+}
+
+/**
+ * Removes only physically stale serving rows. The normal producer path passes
+ * no IDs and prunes one expiry-indexed batch. The resolver path passes only
+ * source IDs it just changed to a terminal result, so the SQL function makes
+ * exact primary-key checks and never reconstructs from historical GSP rows.
+ */
+export async function pruneCurrentSignalPairServing(
+  resolvedSourceGeneratedSignalPairIds: readonly string[] = [],
+): Promise<CurrentServingPruneResult> {
+  const startedAt = Date.now();
+  const sourceIds = uniqueSourceIds(resolvedSourceGeneratedSignalPairIds);
+  const batches = sourceIds.length === 0
+    ? [null]
+    : Array.from({ length: Math.ceil(sourceIds.length / CURRENT_SERVING_PRUNE_BATCH_SIZE) }, (_, index) =>
+      sourceIds.slice(index * CURRENT_SERVING_PRUNE_BATCH_SIZE, (index + 1) * CURRENT_SERVING_PRUNE_BATCH_SIZE),
+    );
+  let deletedRows = 0;
+
+  for (const resolvedIds of batches) {
+    const { data, error } = await supabaseAdmin.rpc("prune_current_signal_pair_serving", {
+      p_batch_size: CURRENT_SERVING_PRUNE_BATCH_SIZE,
+      p_resolved_source_generated_signal_pair_ids: resolvedIds,
+    });
+    if (error) throw new Error(`CURRENT_SERVING_PRUNE_FAILED: ${error.message}`);
+    const deleted = Number(data ?? 0);
+    if (!Number.isInteger(deleted) || deleted < 0 || deleted > CURRENT_SERVING_PRUNE_BATCH_SIZE) {
+      throw new Error("CURRENT_SERVING_PRUNE_INVALID_RESULT");
+    }
+    deletedRows += deleted;
+  }
+
+  return {
+    attempted: true,
+    deletedRows,
+    batches: batches.length,
+    durationMs: Date.now() - startedAt,
+  };
 }
