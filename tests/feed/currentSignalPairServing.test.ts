@@ -6,6 +6,10 @@ const boundedRefreshMigration = readFileSync(
   "supabase/migrations/20260813105911_refresh_current_signal_pair_serving_id_bounded.sql",
   "utf8",
 );
+const pruneMigration = readFileSync(
+  "supabase/migrations/20260814120000_current_signal_pair_serving_prune.sql",
+  "utf8",
+);
 
 type ServingCandidate = {
   id: string;
@@ -65,6 +69,71 @@ test("bounded refresh migration reads supplied IDs directly and preserves full-c
   assert.match(boundedRefreshMigration, /source\.signal_result IS NULL/);
   assert.match(boundedRefreshMigration, /\(EXCLUDED\.source_created_at, EXCLUDED\.source_generated_signal_pair_id\)[\s\S]*>[\s\S]*\(current_signal_pair_serving\.source_created_at, current_signal_pair_serving\.source_generated_signal_pair_id\)/);
   assert.doesNotMatch(boundedRefreshMigration, /CREATE\s+(?:UNIQUE\s+)?INDEX|DROP\s+INDEX/i);
+});
+
+test("serving prune is bounded, index-backed, and never performs a broad GSP read", () => {
+  assert.match(pruneMigration, /SET LOCAL lock_timeout = '2s';/i);
+  assert.match(pruneMigration, /SET LOCAL statement_timeout = '5s';/i);
+  assert.match(pruneMigration, /CREATE INDEX IF NOT EXISTS idx_csps_prune_expired_active/i);
+  assert.doesNotMatch(pruneMigration, /CREATE INDEX CONCURRENTLY/i);
+  assert.match(pruneMigration, /ON public\.current_signal_pair_serving \(expires_at ASC\)/i);
+  assert.match(pruneMigration, /p_batch_size < 1 OR p_batch_size > 25/);
+  assert.match(pruneMigration, /serving\.expires_at <= now\(\)/);
+  assert.match(pruneMigration, /ORDER BY serving\.expires_at ASC[\s\S]*LIMIT p_batch_size[\s\S]*FOR UPDATE SKIP LOCKED/);
+  assert.match(pruneMigration, /source\.id = serving\.source_generated_signal_pair_id/);
+  assert.match(pruneMigration, /source\.signal_result IS NOT NULL/);
+  assert.match(pruneMigration, /serving\.source_generated_signal_pair_id = ANY\(p_resolved_source_generated_signal_pair_ids\)/);
+  assert.match(pruneMigration, /REVOKE EXECUTE ON FUNCTION public\.prune_current_signal_pair_serving\(integer, uuid\[\]\) FROM PUBLIC/i);
+  assert.match(pruneMigration, /GRANT EXECUTE ON FUNCTION public\.prune_current_signal_pair_serving\(integer, uuid\[\]\) TO service_role/i);
+  assert.doesNotMatch(pruneMigration, /FROM public\.generated_signal_pairs source\s+WHERE\s+source\.signal_result IS NOT NULL/i);
+  assert.doesNotMatch(pruneMigration, /DELETE FROM public\.generated_signal_pairs/i);
+});
+
+type PrunableServingCandidate = ServingCandidate & { projectionStatus: "ACTIVE" | "PENDING" };
+
+function applyPrune(
+  current: Map<string, PrunableServingCandidate>,
+  resolvedSourceIds: Set<string>,
+  now = "2030-01-01T00:00:00.000Z",
+) {
+  for (const [identity, row] of current) {
+    const expiredActive = row.projectionStatus === "ACTIVE" && row.expiresAt <= now;
+    if (expiredActive || resolvedSourceIds.has(row.id)) current.delete(identity);
+  }
+  return current;
+}
+
+test("prune evicts expired and exact terminal rows while preserving eligible identities", () => {
+  const current = new Map<string, PrunableServingCandidate>([
+    ["expired", { ...candidate("expired", "2029-12-31T00:00:00.000Z", { expiresAt: "2029-12-31T23:59:59.000Z" }), projectionStatus: "ACTIVE" }],
+    ["resolved", { ...candidate("resolved", "2029-12-31T00:00:00.000Z"), projectionStatus: "ACTIVE" }],
+    ["eligible", { ...candidate("eligible", "2029-12-31T00:00:00.000Z"), projectionStatus: "ACTIVE" }],
+    ["pending", { ...candidate("pending", "2029-12-31T00:00:00.000Z", { expiresAt: "2029-12-31T23:59:59.000Z" }), projectionStatus: "PENDING" }],
+  ]);
+  applyPrune(current, new Set(["resolved"]));
+  assert.deepEqual([...current.keys()], ["eligible", "pending"]);
+});
+
+test("prune is idempotent and cannot cause a current producer identity to re-emit", () => {
+  const identity = "condition-a::token-a::formula-a";
+  const current = new Map<string, PrunableServingCandidate>([
+    [identity, { ...candidate("current", "2029-12-31T00:00:00.000Z"), projectionStatus: "ACTIVE" }],
+  ]);
+  applyPrune(current, new Set());
+  applyPrune(current, new Set());
+  assert.equal(current.size, 1, "repeated expiry prune leaves the still-current dedup identity intact");
+  assert.equal(current.get(identity)?.id, "current", "the still-current dedup identity remains present, so the producer does not re-emit it");
+});
+
+test("prune and Planning snapshot operate on independent copies without historical reconstruction", () => {
+  const current = new Map<string, PrunableServingCandidate>([
+    ["expired", { ...candidate("expired", "2029-12-31T00:00:00.000Z", { expiresAt: "2029-12-31T23:59:59.000Z" }), projectionStatus: "ACTIVE" }],
+    ["eligible", { ...candidate("eligible", "2029-12-31T00:00:00.000Z"), projectionStatus: "ACTIVE" }],
+  ]);
+  const planningSnapshot = [...current.values()].filter((row) => row.projectionStatus === "ACTIVE" && row.expiresAt > "2030-01-01T00:00:00.000Z");
+  applyPrune(current, new Set());
+  assert.deepEqual(planningSnapshot.map((row) => row.id), ["eligible"]);
+  assert.deepEqual([...current.values()].map((row) => row.id), ["eligible"]);
 });
 
 test("bounded refresh handles out-of-order arrival", () => {
@@ -133,7 +202,7 @@ test("current serving projection keeps historical lineage, deterministic replace
   assert.doesNotMatch(migration, /DELETE FROM public\.generated_signal_pairs/);
 });
 
-test("writer projection is idempotent by source UUID and exposes a recoverable pending failure", async (t) => {
+test("writer projection is idempotent by source UUID and serving prune batches exact terminal IDs", async (t) => {
   const calls: Array<{ fn: string; args: Record<string, unknown> }> = [];
   let fail = false;
   t.mock.module("../../lib/supabase/server", {
@@ -146,13 +215,32 @@ test("writer projection is idempotent by source UUID and exposes a recoverable p
       },
     },
   });
-  const { refreshCurrentSignalPairServing, ServingProjectionPendingError } = await import("../../lib/feed/currentSignalPairServing");
+  const { refreshCurrentSignalPairServing, pruneCurrentSignalPairServing, ServingProjectionPendingError } = await import("../../lib/feed/currentSignalPairServing");
 
   await refreshCurrentSignalPairServing(["source-a", "source-a", "", "source-b"]);
   assert.deepEqual(calls[0], {
     fn: "refresh_current_signal_pair_serving",
     args: { p_source_generated_signal_pair_ids: ["source-a", "source-b"] },
   });
+
+  const prune = await pruneCurrentSignalPairServing(Array.from({ length: 26 }, (_, index) => `source-${index}`));
+  assert.deepEqual(prune, { attempted: true, deletedRows: 0, batches: 2, durationMs: prune.durationMs });
+  assert.deepEqual(calls.slice(1), [
+    {
+      fn: "prune_current_signal_pair_serving",
+      args: {
+        p_batch_size: 25,
+        p_resolved_source_generated_signal_pair_ids: Array.from({ length: 25 }, (_, index) => `source-${index}`),
+      },
+    },
+    {
+      fn: "prune_current_signal_pair_serving",
+      args: {
+        p_batch_size: 25,
+        p_resolved_source_generated_signal_pair_ids: ["source-25"],
+      },
+    },
+  ]);
 
   fail = true;
   await assert.rejects(

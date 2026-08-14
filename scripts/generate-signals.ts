@@ -19,6 +19,7 @@ import { discoverSportsMarkets, collectWcShadowCandidates, collectEsportShadowCa
 import type { WcShadowEntry } from "../lib/feed/discoverSportsMarkets";
 import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
 import { shouldSuppressSportsInventoryWrite } from "../lib/feed/cacheSportsEventMarketInventory";
+import { pruneCurrentSignalPairServing } from "../lib/feed/currentSignalPairServing";
 import { FORMULA_VERSION } from "../lib/feed/types";
 
 const CONFIG = {
@@ -640,6 +641,24 @@ async function main() {
     } catch (fm11Err) {
       console.warn("[generate-signals] FireModel1.1 research write failed (non-fatal):", fm11Err instanceof Error ? fm11Err.message : String(fm11Err));
       diagnostics.fm11ResearchWarning = fm11Err instanceof Error ? fm11Err.message : String(fm11Err);
+    }
+
+    // Producer-owned HOT lifecycle maintenance runs only after the normal
+    // historical writes and serving projections have completed.
+    try {
+      const prune = await pruneCurrentSignalPairServing();
+      diagnostics.PRUNE_ATTEMPTED = prune.attempted;
+      diagnostics.PRUNE_DELETED_ROWS = prune.deletedRows;
+      diagnostics.PRUNE_BATCHES = prune.batches;
+      diagnostics.PRUNE_DURATION_MS = prune.durationMs;
+      diagnostics.PRUNE_ERROR = null;
+    } catch (pruneError) {
+      diagnostics.PRUNE_ATTEMPTED = true;
+      diagnostics.PRUNE_DELETED_ROWS = 0;
+      diagnostics.PRUNE_BATCHES = 0;
+      diagnostics.PRUNE_DURATION_MS = null;
+      diagnostics.PRUNE_ERROR = pruneError instanceof Error ? pruneError.message : String(pruneError);
+      console.error("[generate-signals] Current serving prune failed (non-fatal):", diagnostics.PRUNE_ERROR);
     }
   } catch (error) {
     status = "error";

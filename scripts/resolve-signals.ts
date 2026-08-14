@@ -10,6 +10,7 @@ import {
   fetchGammaMarketByConditionId,
   resolveSignalOutcome,
 } from "../lib/feed/resolveSignalOutcome";
+import { pruneCurrentSignalPairServing } from "../lib/feed/currentSignalPairServing";
 
 // ---- Config ----------------------------------------------------------------
 
@@ -495,6 +496,32 @@ async function main() {
   const supabase = supabaseAdmin;
 
   const startedAt = new Date().toISOString();
+  let pruneAttempted = false;
+  let pruneDeletedRows = 0;
+  let pruneBatches = 0;
+  let pruneDurationMs = 0;
+  let pruneError: string | null = null;
+  const pruneResolvedServingRows = async (updatedRows: Array<{ id: string }> | null | undefined) => {
+    const ids = (updatedRows ?? []).map((row) => row.id).filter((id): id is string => typeof id === "string" && id.length > 0);
+    if (ids.length === 0) return;
+    pruneAttempted = true;
+    try {
+      const result = await pruneCurrentSignalPairServing(ids);
+      pruneDeletedRows += result.deletedRows;
+      pruneBatches += result.batches;
+      pruneDurationMs += result.durationMs;
+    } catch (error) {
+      pruneError = error instanceof Error ? error.message : String(error);
+      console.error("[resolve-signals] Current serving terminal prune failed (non-fatal):", pruneError);
+    }
+  };
+  const pruneDiagnostics = () => ({
+    PRUNE_ATTEMPTED: pruneAttempted,
+    PRUNE_DELETED_ROWS: pruneDeletedRows,
+    PRUNE_BATCHES: pruneBatches,
+    PRUNE_DURATION_MS: pruneDurationMs,
+    PRUNE_ERROR: pruneError,
+  });
   const expiredCutoff = new Date().toISOString();
 
   // ── job_runs helper (write-mode only) ────────────────────────────────────
@@ -657,6 +684,7 @@ async function main() {
           }
 
           const affectedRows = updatedRows?.length ?? 0;
+          await pruneResolvedServingRows(updatedRows);
           livePriorityRowsUpdated += affectedRows;
           liveSourceRowsResolved++;
           livePriorityResolved++;
@@ -782,6 +810,7 @@ async function main() {
       }
 
       const affectedRows = updatedRows?.length ?? 0;
+      await pruneResolvedServingRows(updatedRows);
       livePriorityRowsUpdated += affectedRows;
       livePriorityResolved++;
       console.log(
@@ -838,6 +867,7 @@ async function main() {
             liveSourceRowsResolved,
             liveSourceRowsUnresolved,
             liveSourceRowsMissing,
+            ...pruneDiagnostics(),
           },
         });
       } else {
@@ -1031,6 +1061,7 @@ async function main() {
         }
 
         const affectedRows = updatedRows?.length ?? 0;
+        await pruneResolvedServingRows(updatedRows);
         if (affectedRows > 0) {
           trackRecordRowsUpdated += affectedRows;
           trackRecordUpdated++;
@@ -1277,6 +1308,7 @@ async function main() {
       const affectedRows = updatedRows?.length ?? 0;
       if (affectedRows > 0) {
         rowsUpdatedTotal += affectedRows;
+        await pruneResolvedServingRows(updatedRows);
         strictTokensUpdated++;
         console.log(
           `  ${DEDUPE_STRICT ? "WRITE_STRICT" : "WRITE"} ${rowLabel}` +
@@ -1351,6 +1383,7 @@ async function main() {
         expiredCutoff: ONLY_EXPIRED ? expiredCutoff : null,
         by_state: stateCounts,
         by_result: resultCounts,
+        ...pruneDiagnostics(),
       },
     });
   } else {
