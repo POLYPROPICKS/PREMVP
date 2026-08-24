@@ -107,7 +107,6 @@ export interface OrderEventCanonicalPayload {
   condition_id: string | null;
   token_id: string;
   side: string | null;
-  market_slug: string | null;
   submitted_size: number | null;
   submitted_price: number | null;
   clob_order_id: string | null;
@@ -121,7 +120,6 @@ export function projectCanonicalOrderEventPayload(record: Record<string, unknown
     condition_id: str(record.condition_id),
     token_id: str(record.token_id) ?? "",
     side: str(record.side ?? record.selected_side),
-    market_slug: str(record.market_slug),
     submitted_size: num(record.submitted_size),
     submitted_price: num(record.submitted_price),
     clob_order_id: str(record.clob_order_id),
@@ -134,7 +132,6 @@ export function canonicalPayloadsEqual(a: OrderEventCanonicalPayload, b: OrderEv
     a.condition_id === b.condition_id &&
     a.token_id === b.token_id &&
     a.side === b.side &&
-    a.market_slug === b.market_slug &&
     a.submitted_size === b.submitted_size &&
     a.submitted_price === b.submitted_price &&
     a.clob_order_id === b.clob_order_id
@@ -223,7 +220,6 @@ function canonicalFromStoredEvent(row: StoredOrderEvent): OrderEventCanonicalPay
     condition_id: row.condition_id,
     token_id: row.token_id,
     side: row.side ?? row.selected_side,
-    market_slug: row.market_slug,
     submitted_size: row.submitted_size,
     submitted_price: row.submitted_price,
     clob_order_id: row.clob_order_id,
@@ -266,6 +262,7 @@ export type OrderEventOutcome =
   | { kind: "CONFLICT_CLOB_ORDER_ID" }
   | { kind: "REJECTED_MISSING_TOKEN_ID" }
   | { kind: "REJECTED_MISSING_IDEMPOTENCY_KEY" }
+  | { kind: "REJECTED_QUEUE_ROW_NOT_FOUND" }
   | { kind: "REJECTED_QUEUE_POLICY_MISMATCH"; reason: string }
   | { kind: "DB_ERROR"; message: string };
 
@@ -383,7 +380,9 @@ export async function handleOrderEventSubmission(
 
   const queueRow = await port.findQueueRowByIdempotencyKey(idempotencyKey);
 
-  if (queueRow) {
+  if (!queueRow) return { kind: "REJECTED_QUEUE_ROW_NOT_FOUND" };
+
+  {
     const submission: OrderEventSubmission = {
       idempotency_key: idempotencyKey,
       token_id: tokenId,
