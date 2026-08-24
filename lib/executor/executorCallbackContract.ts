@@ -54,8 +54,29 @@ export const QUEUE_MARK_ACCEPTED_STATUSES: readonly QueueStatus[] = [
   "EXPIRED",
 ];
 
-/** Terminal statuses required by P0 — protected against silent downgrade. */
-export const QUEUE_TERMINAL_STATUSES: readonly QueueStatus[] = ["EXECUTED"];
+/**
+ * A Queue row is executable only while READY.  Every status after CLAIMED is
+ * non-executable; terminal rows must never become available for a new claim.
+ */
+export const QUEUE_TERMINAL_STATUSES: readonly QueueStatus[] = [
+  "SENT",
+  "EXECUTED",
+  "SKIPPED",
+  "FAILED",
+  "EXPIRED",
+  "CANCELLED",
+];
+
+const QUEUE_ALLOWED_TRANSITIONS: Readonly<Record<QueueStatus, readonly QueueStatus[]>> = {
+  READY: ["CLAIMED", "EXECUTED", "SKIPPED", "FAILED", "EXPIRED"],
+  CLAIMED: ["EXECUTED", "SKIPPED", "FAILED", "EXPIRED"],
+  SENT: [],
+  EXECUTED: [],
+  SKIPPED: [],
+  FAILED: [],
+  EXPIRED: [],
+  CANCELLED: [],
+};
 
 export function isQueueMarkAcceptedStatus(value: unknown): value is QueueStatus {
   return typeof value === "string" && (QUEUE_MARK_ACCEPTED_STATUSES as readonly string[]).includes(value);
@@ -63,6 +84,13 @@ export function isQueueMarkAcceptedStatus(value: unknown): value is QueueStatus 
 
 export function isTerminalQueueStatus(status: string): boolean {
   return (QUEUE_TERMINAL_STATUSES as readonly string[]).includes(status);
+}
+
+/** Same-status retries are no-ops; all other transitions must be enumerated. */
+export function isQueueStatusTransitionAllowed(currentStatus: string, requestedStatus: QueueStatus): boolean {
+  if (currentStatus === requestedStatus) return true;
+  const allowed = QUEUE_ALLOWED_TRANSITIONS[currentStatus as QueueStatus];
+  return Array.isArray(allowed) && allowed.includes(requestedStatus);
 }
 
 // ── canonical order-event identity ──────────────────────────────────────────
@@ -426,6 +454,37 @@ export interface QueueMarkDbPort {
   updateQueueStatus(queueId: string, patch: { status: QueueStatus; diagnostics: Record<string, unknown> }): Promise<QueueMarkRow>;
 }
 
+export interface QueueClaimDbPort {
+  /** Atomic compare-and-set: updates only a persisted READY row. */
+  claimReadyQueueRow(queueId: string): Promise<QueueMarkRow | null>;
+  findQueueRow(queueId: string): Promise<QueueMarkRow | null>;
+}
+
+export type QueueClaimOutcome =
+  | { kind: "CLAIMED"; row: QueueMarkRow }
+  | { kind: "IDEMPOTENT_NO_OP"; row: QueueMarkRow }
+  | { kind: "REJECTED_NOT_READY"; row: QueueMarkRow }
+  | { kind: "REJECTED_QUEUE_ROW_NOT_FOUND" };
+
+/**
+ * The only executable authority transition.  The port owns the database CAS;
+ * a retry that observes CLAIMED is intentionally a no-op, never a second
+ * authority grant.  Ireland remains responsible for using the immutable
+ * idempotency key when resuming an ambiguous transport result.
+ */
+export async function handleQueueClaim(
+  port: QueueClaimDbPort,
+  input: { queueId: string },
+): Promise<QueueClaimOutcome> {
+  const claimed = await port.claimReadyQueueRow(input.queueId);
+  if (claimed) return { kind: "CLAIMED", row: claimed };
+
+  const current = await port.findQueueRow(input.queueId);
+  if (!current) return { kind: "REJECTED_QUEUE_ROW_NOT_FOUND" };
+  if (current.status === "CLAIMED") return { kind: "IDEMPOTENT_NO_OP", row: current };
+  return { kind: "REJECTED_NOT_READY", row: current };
+}
+
 export type QueueMarkOutcome =
   | { kind: "UPDATED"; row: QueueMarkRow }
   | { kind: "IDEMPOTENT_NO_OP"; row: QueueMarkRow }
@@ -477,7 +536,7 @@ export async function handleQueueMarkExecuted(
   return { kind: "UPDATED", row: updated };
 }
 
-/** Non-EXECUTED mutation guard: EXECUTED must never be overwritten by a non-EXECUTED status. */
+/** Backward-compatible name for the closed Queue transition rule. */
 export function rejectsExecutedRegression(currentStatus: string, requestedStatus: string): boolean {
-  return currentStatus === "EXECUTED" && requestedStatus !== "EXECUTED";
+  return !isQueueMarkAcceptedStatus(requestedStatus) || !isQueueStatusTransitionAllowed(currentStatus, requestedStatus);
 }

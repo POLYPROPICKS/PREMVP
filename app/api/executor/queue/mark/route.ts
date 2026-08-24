@@ -4,6 +4,7 @@ import {
   isQueueMarkAcceptedStatus,
   rejectsExecutedRegression,
   handleQueueMarkExecuted,
+  handleQueueClaim,
   type QueueMarkDbPort,
   type QueueMarkRow,
   type StoredOrderEvent,
@@ -90,6 +91,31 @@ function createSupabaseQueueMarkDbPort(): QueueMarkDbPort {
   };
 }
 
+function createSupabaseQueueClaimDbPort() {
+  return {
+    async claimReadyQueueRow(queueId: string) {
+      const { data, error } = await supabaseAdmin
+        .from("event_execution_queue")
+        .update({ status: "CLAIMED", updated_at: new Date().toISOString() })
+        .eq("id", queueId)
+        .eq("status", "READY")
+        .select("id, status, order_key, match_family_key, stake_usd, condition_id, token_id, side, idempotency_key, diagnostics, updated_at")
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return data ? toQueueMarkRow(data as Record<string, unknown>) : null;
+    },
+    async findQueueRow(queueId: string) {
+      const { data, error } = await supabaseAdmin
+        .from("event_execution_queue")
+        .select("id, status, order_key, match_family_key, stake_usd, condition_id, token_id, side, idempotency_key, diagnostics, updated_at")
+        .eq("id", queueId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      return data ? toQueueMarkRow(data as Record<string, unknown>) : null;
+    },
+  };
+}
+
 export async function POST(request: NextRequest) {
   const secret = request.headers.get("x-executor-secret");
   const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
@@ -134,6 +160,22 @@ export async function POST(request: NextRequest) {
   };
 
   try {
+    if (status === "CLAIMED") {
+      const outcome = await handleQueueClaim(createSupabaseQueueClaimDbPort(), {
+        queueId: queue_id,
+      });
+      switch (outcome.kind) {
+        case "CLAIMED":
+          return NextResponse.json({ ok: true, success: true, duplicate: false, queue_id, status: outcome.row.status, updated: outcome.row }, { status: 200 });
+        case "IDEMPOTENT_NO_OP":
+          return NextResponse.json({ ok: true, success: true, duplicate: true, queue_id, status: outcome.row.status, updated: outcome.row }, { status: 200 });
+        case "REJECTED_QUEUE_ROW_NOT_FOUND":
+          return NextResponse.json({ ok: false, success: false, error: "Queue row not found", queue_id }, { status: 404 });
+        case "REJECTED_NOT_READY":
+          return NextResponse.json({ ok: false, success: false, error: `Queue row is ${outcome.row.status}; READY required for claim`, queue_id }, { status: 409 });
+      }
+    }
+
     if (status === "EXECUTED") {
       const outcome = await handleQueueMarkExecuted(createSupabaseQueueMarkDbPort(), {
         queueId: queue_id,
@@ -162,8 +204,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Non-EXECUTED mutation path — read current row to enforce the shared
-    // EXECUTED-immutability guard, then update as before.
+    // Non-CLAIMED/EXECUTED mutation path: only an enumerated transition may
+    // win, and the update compares the status observed by this request.
     const { data: current, error: readErr } = await supabaseAdmin
       .from("event_execution_queue")
       .select("id, status, order_key, diagnostics")
@@ -178,9 +220,13 @@ export async function POST(request: NextRequest) {
 
     if (rejectsExecutedRegression(currentStatus, status)) {
       return NextResponse.json(
-        { ok: false, success: false, error: `Row already EXECUTED; cannot overwrite with ${status}`, queue_id },
+        { ok: false, success: false, error: `Illegal Queue transition ${currentStatus} -> ${status}`, queue_id },
         { status: 409 }
       );
+    }
+
+    if (currentStatus === status) {
+      return NextResponse.json({ ok: true, success: true, duplicate: true, queue_id, status: currentStatus, updated: current }, { status: 200 });
     }
 
     const prevDiag = (current.diagnostics ?? {}) as Record<string, unknown>;
@@ -199,8 +245,9 @@ export async function POST(request: NextRequest) {
       .from("event_execution_queue")
       .update(updatePayload)
       .eq("id", queue_id)
+      .eq("status", currentStatus)
       .select("id, status, order_key, match_family_key, stake_usd, updated_at")
-      .single();
+      .maybeSingle();
 
     if (updateErr) {
       if (updateErr.message?.includes("updated_at")) {
@@ -208,13 +255,17 @@ export async function POST(request: NextRequest) {
           .from("event_execution_queue")
           .update({ status, diagnostics: newDiag })
           .eq("id", queue_id)
+          .eq("status", currentStatus)
           .select("id, status, order_key, match_family_key, stake_usd")
-          .single();
+          .maybeSingle();
         if (updateErr2) throw new Error(updateErr2.message);
+        if (!updated2) return NextResponse.json({ ok: false, success: false, error: "Queue state changed concurrently", queue_id }, { status: 409 });
         return NextResponse.json({ ok: true, success: true, duplicate: false, queue_id, status: updated2?.status, updated: updated2 }, { status: 200 });
       }
       throw new Error(updateErr.message);
     }
+
+    if (!updated) return NextResponse.json({ ok: false, success: false, error: "Queue state changed concurrently", queue_id }, { status: 409 });
 
     return NextResponse.json({ ok: true, success: true, duplicate: false, queue_id, status: updated?.status, updated }, { status: 200 });
   } catch (err) {
