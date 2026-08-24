@@ -603,7 +603,7 @@
     {
       "canonical_id": "premvp.command.execution_precheck.v1",
       "type": "COMMAND", "owner_platform": "repository", "implementation_path": "scripts/control-plane/execution-precheck.mjs", "status": "PROVEN_PRESENT", "invocation": "EXPLICIT",
-      "triggers": ["every PREMVP task before orchestration"], "exclusions": ["Ireland", "database mutation", "live money"], "model_policy": "selected executor only; no default or substitution", "reasoning_policy": "inherit",
+      "triggers": ["every PREMVP task before orchestration"], "exclusions": ["Ireland", "database mutation", "direct venue-money action"], "model_policy": "selected executor only; no default or substitution", "reasoning_policy": "inherit",
       "permissions": "classification and executor-owned isolated worktree preparation only", "repository_scope": ["POLYPROPICKS/PREMVP"],
       "input_contract": "task/release id, selected executor, repository, task/risk class, operation mode, authority SHA, preservation paths, allowed files, capabilities",
       "output_contract": "deterministic worktree/state/capability classification with recoveries, waits, hard stops and founder_action", "independence_group": null, "receipt_required": false,
@@ -640,7 +640,7 @@
       "status": "PROVEN_PRESENT",
       "invocation": "EXPLICIT",
       "triggers": ["a future executor prompt that needs release orchestration instead of reproducing branch/PR/merge/deploy steps inline"],
-      "exclusions": ["mutating execution while pipeline_status is EXPERIMENTAL_DISABLED", "R5_CROSS_REPO_OR_LIVE_MONEY", "Ireland", "database mutation"],
+      "exclusions": ["mutating execution while pipeline_status is EXPERIMENTAL_DISABLED", "unauthorized R5_CROSS_REPO_OR_LIVE_MONEY", "Ireland", "database mutation", "direct venue-money action"],
       "model_policy": "inherit",
       "reasoning_policy": "inherit",
       "permissions": "repository read/write on the feature branch; GitHub PR create/merge through shared canonical commands; production build-info read",

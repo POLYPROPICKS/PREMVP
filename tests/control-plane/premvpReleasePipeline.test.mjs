@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { validateReleaseRunManifest, RECONCILE_COMMAND_ID } from '../../scripts/control-plane/validate-premvp-release-run.mjs';
+import { validateReleaseRunManifest, RECONCILE_COMMAND_ID, R5_AUTHORIZED_ROUTE_ID, R5_AUTHORIZATION_REF } from '../../scripts/control-plane/validate-premvp-release-run.mjs';
 import {
   STATE_ORDER,
   PipelineError,
@@ -67,11 +67,23 @@ test('3. manifest rejects Ireland', () => {
   assert.match(result.errors.join('\n'), /NO_IRELAND/);
 });
 
-// ---- 4. Rejects R5. -------------------------------------------------------------------------
-test('4. manifest rejects R5', () => {
+// ---- 4. Generic R5 remains fail-closed. ------------------------------------------------------
+test('4. generic R5 manifest remains fail-closed', () => {
   const result = validateReleaseRunManifest(baseManifest({ risk_class: 'R5_CROSS_REPO_OR_LIVE_MONEY' }));
   assert.equal(result.ok, false);
-  assert.match(result.errors.join('\n'), /NO_R5/);
+  assert.match(result.errors.join('\n'), /R5_FAIL_CLOSED/);
+});
+
+test('4b. exact Founder-authorized future Queue R5 route requires the Contur reviewer', () => {
+  const manifest = baseManifest({
+    risk_class: 'R5_CROSS_REPO_OR_LIVE_MONEY',
+    task_id: 'R5_FUTURE_QUEUE_STAKE_20260824',
+    r5_authorization: { route_id: R5_AUTHORIZED_ROUTE_ID, authorization_ref: R5_AUTHORIZATION_REF, direct_action_scope: 'FUTURE_QUEUE_STAKE_CONFIGURATION', max_stake_usd: 2.5, historical_queue_mutation: false, raw_database_mutation: false, direct_venue_action: false },
+  });
+  const result = validateReleaseRunManifest(manifest);
+  assert.equal(result.ok, true, result.errors.join('\n'));
+  const reviewer = resolveReviewerRequirement(routingDoc, manifest.risk_class, manifest);
+  assert.deepEqual(reviewer, { required: true, agentId: 'premvp.reviewer.contur_gate.v1', independenceGroup: 'contur_gate' });
 });
 
 // ---- 5. Rejects intermediate operator actions > 0. ------------------------------------------
@@ -298,7 +310,7 @@ test('26. R5 fails closed', () => {
     (e) => e instanceof R5FailClosedError);
   const dry = dryRunPlan(baseManifest({ risk_class: 'R5_CROSS_REPO_OR_LIVE_MONEY' }), routingDoc, pipelineSpec);
   assert.equal(dry.ok, false);
-  assert.match(dry.errors.join('\n'), /NO_R5/);
+  assert.match(dry.errors.join('\n'), /R5_FAIL_CLOSED/);
 });
 
 // ---- 27. Local checkpoint loses to contradictory live evidence. ---------------------------------

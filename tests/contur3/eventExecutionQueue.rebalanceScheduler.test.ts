@@ -687,7 +687,7 @@ test("Lineage-CA1: a CONTRACT_A_V1 candidate carries generated_signal_pair_id = 
   assert.match(c.signal_id, /^cond-ca-lineage::/);
 });
 
-test("Stake-CA1: a canonical CONTRACT_A_V1 candidate carries stake_usd = 1.10 (frozen-model live contour), sourced from EXECUTABLE_STAKE_USD", async () => {
+test("Stake-CA1: a canonical CONTRACT_A_V1 candidate carries the Founder-authorized 2.50 future Queue stake, sourced from EXECUTABLE_STAKE_USD", async () => {
   const sourceRow = {
     id: "55555555-5555-4555-8555-555555555555",
     condition_id: "cond-ca-stake",
@@ -702,8 +702,8 @@ test("Stake-CA1: a canonical CONTRACT_A_V1 candidate carries stake_usd = 1.10 (f
   };
   const { candidates } = await buildFireModelCandidates(10, "all", true, [sourceRow], "CONTRACT_A_V1");
   assert.equal(candidates.length, 1);
-  assert.equal(candidates[0].stake_usd, 1.1, "canonical Contract A stake must be the $1.10 live-contour stake, not $7");
-  assert.equal(candidates[0].max_order_usd, 1.1, "canonical Contract A max_order_usd must also track the $1.10 stake");
+  assert.equal(candidates[0].stake_usd, 2.5, "canonical future Queue stake must be the Founder-authorized $2.50 ceiling");
+  assert.equal(candidates[0].max_order_usd, 2.5, "canonical max_order_usd must also track the $2.50 ceiling");
 });
 
 // ── R0E: fail closed on malformed final Contract A markets ────────────────
@@ -1447,8 +1447,8 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   assert.equal(row.condition_id, "cond-cws-final");
   assert.equal(row.token_id, "tok-cws-final");
   assert.equal(row.side, "Chicago White Sox");
-  // 07 stake_usd = 1.10
-  assert.equal(row.stake_usd, 1.1);
+  // 07 future Queue stake is the Founder-authorized 2.50 ceiling.
+  assert.equal(row.stake_usd, 2.5);
   // 08 max_entry_price present + numeric. This is the FROZEN accepted
   // pre-Reservation price of the selected exact sibling, i.e. the fixture's
   // generated_signal_pairs.entry_price_num (0.42) -- not a separately computed
@@ -1475,8 +1475,8 @@ test("CERT: canonical READY producer positive acceptance matrix (01-13) via real
   assert.equal(wire.is_executable, true);
   assert.ok(wire.entry_state === "IN_WINDOW" || wire.entry_state === "PENDING_WINDOW");
   // 07 stake on wire / 08 max_entry_price + price_cap alias
-  assert.equal(wire.stake_usd, 1.1);
-  assert.equal(wire.max_stake_usd, 1.1);
+  assert.equal(wire.stake_usd, 2.5);
+  assert.equal(wire.max_stake_usd, 2.5);
   // Consumer wire view carries the same frozen accepted pre-Reservation price
   // (entry_price_num of the selected exact sibling) under both names.
   assert.equal(wire.max_entry_price, 0.42);
