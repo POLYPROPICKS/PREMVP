@@ -20,6 +20,7 @@ import {
 
 function baseQueueRow(overrides: Partial<EventExecutionQueueRow> = {}): EventExecutionQueueRow {
   return {
+    id: "queue-1",
     reservation_id: "res-1",
     plan_run_id: "plan-1",
     rebalance_run_id: "rebalance-1",
@@ -53,6 +54,8 @@ function baseQueueRow(overrides: Partial<EventExecutionQueueRow> = {}): EventExe
 
 function baseSubmission(overrides: Partial<OrderEventSubmission> = {}): OrderEventSubmission {
   return {
+    queue_id: "queue-1",
+    reservation_id: "res-1",
     idempotency_key: "idem-1",
     token_id: "token-1",
     condition_id: "cond-1",

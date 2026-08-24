@@ -61,6 +61,8 @@ function baseQueueRow(overrides: Partial<EventExecutionQueueRow> = {}): EventExe
 
 function validSubmissionRaw(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
+    queue_id: "queue-1",
+    reservation_id: "res-1",
     token_id: "token-1",
     idempotency_key: "idem-1",
     condition_id: "cond-1",
@@ -145,7 +147,7 @@ test("2: missing idempotency_key is rejected", async () => {
   assert.equal(outcome.kind, "REJECTED_MISSING_IDEMPOTENCY_KEY");
 });
 
-test("3: the insert payload passed to the port never contains queue_id", async () => {
+test("3: validated callback lineage remains available to the application persistence adapter", async () => {
   const port = makeFakePort();
   const seen: Record<string, unknown>[] = [];
   const spyPort: OrderEventDbPort = {
@@ -158,7 +160,8 @@ test("3: the insert payload passed to the port never contains queue_id", async (
   const outcome = await handleOrderEventSubmission(spyPort, validSubmissionRaw());
   assert.equal(outcome.kind, "INSERTED");
   assert.equal(seen.length, 1);
-  assert.equal("queue_id" in seen[0], false);
+  assert.equal(seen[0].queue_id, "queue-1");
+  assert.equal(seen[0].reservation_id, "res-1");
 });
 
 test("4: first insert returns a canonical event row and terminal-marks the matching READY queue row EXECUTED (accepted order: has clob_order_id, success not false)", async () => {
@@ -236,7 +239,7 @@ test("7: a clob_order_id collision under a different idempotency_key is rejected
   assert.equal(first.kind, "INSERTED");
   const second = await handleOrderEventSubmission(
     port,
-    validSubmissionRaw({ idempotency_key: "idem-2", token_id: "token-2", condition_id: "cond-2", side: "Egypt", clob_order_id: "clob-1" }),
+    validSubmissionRaw({ queue_id: "queue-2", idempotency_key: "idem-2", token_id: "token-2", condition_id: "cond-2", side: "Egypt", clob_order_id: "clob-1" }),
   );
   assert.equal(second.kind, "CONFLICT_CLOB_ORDER_ID");
   assert.equal(port.eventsById.size, 1);
@@ -246,6 +249,22 @@ test("8: a queue-policy mismatch (stake exceeds cap) is rejected before insert",
   const port = makeFakePort();
   const outcome = await handleOrderEventSubmission(port, validSubmissionRaw({ submitted_size: 999 }));
   assert.equal(outcome.kind, "REJECTED_QUEUE_POLICY_MISMATCH");
+  assert.equal(port.eventsById.size, 0);
+});
+
+test("8b: callback queue_id must match the authoritative Queue row", async () => {
+  const port = makeFakePort();
+  const outcome = await handleOrderEventSubmission(port, validSubmissionRaw({ queue_id: "queue-other" }));
+  assert.equal(outcome.kind, "REJECTED_QUEUE_POLICY_MISMATCH");
+  if (outcome.kind === "REJECTED_QUEUE_POLICY_MISMATCH") assert.equal(outcome.reason, "QUEUE_ID_MISMATCH");
+  assert.equal(port.eventsById.size, 0);
+});
+
+test("8c: callback reservation_id must match the authoritative Queue lineage", async () => {
+  const port = makeFakePort();
+  const outcome = await handleOrderEventSubmission(port, validSubmissionRaw({ reservation_id: "reservation-other" }));
+  assert.equal(outcome.kind, "REJECTED_QUEUE_POLICY_MISMATCH");
+  if (outcome.kind === "REJECTED_QUEUE_POLICY_MISMATCH") assert.equal(outcome.reason, "RESERVATION_ID_MISMATCH");
   assert.equal(port.eventsById.size, 0);
 });
 

@@ -8,6 +8,14 @@ import {
   type InsertOrderEventFailure,
 } from "@/lib/executor/executorCallbackContract";
 import type { EventExecutionQueueRow } from "@/lib/executor/executorQueueTypes";
+import {
+  applyResolvedOutcomeToExecutionReconciliation,
+  buildExecutionReconciliation,
+  mergeExecutionReconciliationMeta,
+  readExecutionReconciliation,
+  type ExecutionReconciliationV1,
+  type ReconciliationOrderEvent,
+} from "@/lib/executor/executionReconciliation";
 
 // Keys whose name (case-insensitive, normalised) triggers value removal
 const BANNED_SUBSTRINGS = [
@@ -136,6 +144,76 @@ function toStoredOrderEvent(row: Record<string, unknown>): StoredOrderEvent {
     submitted_price: typeof row.submitted_price === "number" ? row.submitted_price : null,
     clob_order_id: typeof row.clob_order_id === "string" ? row.clob_order_id : null,
   };
+}
+
+function toReconciliationOrderEvent(row: Record<string, unknown>): ReconciliationOrderEvent {
+  return {
+    id: String(row.id),
+    created_at: String(row.created_at),
+    idempotency_key: str(row.idempotency_key),
+    condition_id: str(row.condition_id),
+    token_id: String(row.token_id),
+    side: str(row.side),
+    selected_side: str(row.selected_side),
+    submitted_size: num(row.submitted_size),
+    submitted_price: num(row.submitted_price),
+    clob_order_id: str(row.clob_order_id),
+    making_amount: num(row.making_amount),
+    taking_amount: num(row.taking_amount),
+    fee_usd: num(row.fee_usd),
+  };
+}
+
+async function persistExecutionReconciliation(
+  raw: Record<string, unknown>,
+  storedEventId: string,
+): Promise<ExecutionReconciliationV1> {
+  const idempotencyKey = str(raw.idempotency_key);
+  if (!idempotencyKey) throw new Error("RECONCILIATION_MISSING_IDEMPOTENCY_KEY");
+
+  const [{ data: queueData, error: queueError }, { data: eventData, error: eventError }] = await Promise.all([
+    supabaseAdmin.from("event_execution_queue").select("*").eq("idempotency_key", idempotencyKey).single(),
+    supabaseAdmin.from("executor_order_events").select("*").eq("id", storedEventId).single(),
+  ]);
+  if (queueError || !queueData) throw new Error("RECONCILIATION_QUEUE_READ_FAILED");
+  if (eventError || !eventData) throw new Error("RECONCILIATION_EVENT_READ_FAILED");
+
+  const queue = queueData as unknown as EventExecutionQueueRow;
+  const eventRow = eventData as Record<string, unknown>;
+  const event = toReconciliationOrderEvent(eventRow);
+  const prior = readExecutionReconciliation(eventRow.executor_meta);
+  let reconciliation = buildExecutionReconciliation({ queue, event, raw, prior: prior ?? undefined });
+
+  if (reconciliation.source_signal_pair_id) {
+    const { data: signal, error: signalError } = await supabaseAdmin
+      .from("generated_signal_pairs")
+      .select("resolved_at,winning_outcome,signal_result,selected_token_id")
+      .eq("id", reconciliation.source_signal_pair_id)
+      .maybeSingle();
+    if (signalError) throw new Error("RECONCILIATION_SIGNAL_READ_FAILED");
+    if (signal?.resolved_at && (signal.signal_result === "won" || signal.signal_result === "lost")) {
+      reconciliation = applyResolvedOutcomeToExecutionReconciliation(reconciliation, {
+        resolved_at: String(signal.resolved_at),
+        winning_outcome: str(signal.winning_outcome),
+        winning_token_id: signal.signal_result === "won" ? reconciliation.token_id : null,
+      });
+    }
+  }
+
+  const executorMeta = mergeExecutionReconciliationMeta(
+    eventRow.executor_meta as Record<string, unknown> | null,
+    reconciliation,
+  );
+  const { data: updated, error: updateError } = await supabaseAdmin
+    .from("executor_order_events")
+    .update({ executor_meta: executorMeta })
+    .eq("id", event.id)
+    .eq("idempotency_key", reconciliation.idempotency_key)
+    .eq("clob_order_id", reconciliation.clob_order_id)
+    .select("id")
+    .single();
+  if (updateError || !updated) throw new Error("RECONCILIATION_PERSISTENCE_FAILED");
+  return reconciliation;
 }
 
 /**
@@ -308,6 +386,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "DB_ERROR" }, { status: 500 });
   }
 
+  let reconciliation: ExecutionReconciliationV1 | null = null;
+  if (
+    (outcome.kind === "INSERTED" || outcome.kind === "DUPLICATE") &&
+    (outcome.queueMark.kind === "EXECUTED" || outcome.queueMark.kind === "ALREADY_EXECUTED")
+  ) {
+    try {
+      reconciliation = await persistExecutionReconciliation(raw, outcome.row.id);
+    } catch (error) {
+      console.error(
+        "[executor/order-events] Reconciliation persistence failed:",
+        error instanceof Error ? error.message : "unknown",
+      );
+      return NextResponse.json({ success: false, error: "RECONCILIATION_PERSISTENCE_FAILED" }, { status: 500 });
+    }
+  }
+
   switch (outcome.kind) {
     case "REJECTED_MISSING_TOKEN_ID":
       return NextResponse.json({ error: "Missing required field: token_id" }, { status: 400 });
@@ -331,6 +425,7 @@ export async function POST(request: NextRequest) {
           id: outcome.row.id,
           created_at: outcome.row.created_at,
           queue_mark: outcome.queueMark,
+          reconciliation,
         },
         { status: 200 },
       );
@@ -344,6 +439,7 @@ export async function POST(request: NextRequest) {
           id: outcome.row.id,
           created_at: outcome.row.created_at,
           queue_mark: outcome.queueMark,
+          reconciliation,
         },
         { status: 200 },
       );
