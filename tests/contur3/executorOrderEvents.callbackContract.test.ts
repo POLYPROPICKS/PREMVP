@@ -119,7 +119,7 @@ function makeFakePort(
         token_id: canonical.token_id,
         side: canonical.side,
         selected_side: typeof record.selected_side === "string" ? record.selected_side : null,
-        market_slug: canonical.market_slug,
+        market_slug: typeof record.market_slug === "string" ? record.market_slug : null,
         submitted_size: canonical.submitted_size,
         submitted_price: canonical.submitted_price,
         clob_order_id: canonical.clob_order_id,
@@ -172,6 +172,19 @@ test("4: first insert returns a canonical event row and terminal-marks the match
   const queueRow = port.queueByIdemKey.get("idem-1");
   assert.equal(queueRow?.status, "EXECUTED");
   assert.equal((queueRow?.diagnostics as Record<string, unknown>).clob_order_id, "clob-1");
+});
+
+test("4a: differing display text never rejects an exact-id callback", async () => {
+  const port = makeFakePort();
+  const outcome = await handleOrderEventSubmission(port, validSubmissionRaw({
+    market_slug: "display-only-drift",
+    event_slug: "different-display-event",
+    event_title: "Different display title",
+    market_question: "Different display question?",
+  }));
+  assert.equal(outcome.kind, "INSERTED");
+  assert.equal(port.queueByIdemKey.get("idem-1")?.status, "EXECUTED");
+  assert.equal(port.eventsById.size, 1);
 });
 
 test("5: an identical duplicate submission returns the same canonical row, no second insert, idempotent queue mark (already EXECUTED)", async () => {
@@ -235,14 +248,11 @@ test("8: a queue-policy mismatch (stake exceeds cap) is rejected before insert",
   assert.equal(port.eventsById.size, 0);
 });
 
-test("9: no queue row found for the idempotency_key does not block order-event persistence, but queueMark reports QUEUE_ROW_NOT_FOUND", async () => {
+test("9: an unmatched idempotency_key is rejected before persistence", async () => {
   const port = makeFakePort([]);
   const outcome = await handleOrderEventSubmission(port, validSubmissionRaw());
-  assert.equal(outcome.kind, "INSERTED", "persistence must still succeed even with no matching queue row");
-  if (outcome.kind === "INSERTED") {
-    assert.equal(outcome.queueMark.kind, "QUEUE_ROW_NOT_FOUND");
-  }
-  assert.equal(port.eventsById.size, 1);
+  assert.equal(outcome.kind, "REJECTED_QUEUE_ROW_NOT_FOUND");
+  assert.equal(port.eventsById.size, 0);
 });
 
 test("10: a concurrent unique-violation race (identical payload) is not trusted from the pre-check alone -- it re-reads the canonical row and returns duplicate", async () => {
@@ -324,8 +334,8 @@ test("16: policy validation (when a queue row exists) still occurs before any in
     },
   };
   const notFound = await handleOrderEventSubmission(spyPort, validSubmissionRaw());
-  assert.equal(notFound.kind, "INSERTED", "a missing queue row must not prevent persistence");
-  assert.equal(insertCalls, 1);
+  assert.equal(notFound.kind, "REJECTED_QUEUE_ROW_NOT_FOUND");
+  assert.equal(insertCalls, 0);
   insertCalls = 0;
 
   const policyPort = makeFakePort();
@@ -423,11 +433,10 @@ test("22: an explicit accepted:false with no clob_order_id still marks the queue
   assert.equal((queueRow?.diagnostics as Record<string, unknown>).rejection_reason, "insufficient balance");
 });
 
-test("23: a missing queue row for a rejected order-event still persists the event and returns queueMark QUEUE_ROW_NOT_FOUND (not FAILED, nothing to mark)", async () => {
+test("23: a rejected callback with an unmatched idempotency_key cannot persist", async () => {
   const port = makeFakePort([]);
   const outcome = await handleOrderEventSubmission(port, validSubmissionRaw({ order_status: "ORDER_REJECTED" }));
-  assert.equal(outcome.kind, "INSERTED", "persistence must still succeed even with no matching queue row");
-  if (outcome.kind === "INSERTED") assert.equal(outcome.queueMark.kind, "QUEUE_ROW_NOT_FOUND");
+  assert.equal(outcome.kind, "REJECTED_QUEUE_ROW_NOT_FOUND");
 });
 
 test("24: the rejected-marking code path does not depend on queue_id/reservation_id/match_family_key columns (shared static route guards)", () => {

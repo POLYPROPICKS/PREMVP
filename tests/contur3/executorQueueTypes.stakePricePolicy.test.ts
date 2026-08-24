@@ -130,13 +130,12 @@ test("side mismatch is rejected", () => {
   if (!result.ok) assert.equal(result.reason, "SIDE_MISMATCH");
 });
 
-test("market_slug mismatch is rejected", () => {
+test("market_slug mismatch is accepted when canonical execution invariants match", () => {
   const result = validateOrderEventAgainstQueueRow(
     baseSubmission({ market_slug: "argentina-vs-egypt-total" }),
     baseQueueRow()
   );
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.equal(result.reason, "MARKET_SLUG_MISMATCH");
+  assert.equal(result.ok, true);
 });
 
 test("missing submitted_size is rejected (fail-safe, not silently allowed)", () => {
@@ -184,13 +183,12 @@ test("missing side is rejected when queue row has side", () => {
   if (!result.ok) assert.equal(result.reason, "SIDE_MISMATCH");
 });
 
-test("missing market_slug is rejected when queue row has market_slug", () => {
+test("missing market_slug is accepted when canonical execution invariants match", () => {
   const result = validateOrderEventAgainstQueueRow(
     baseSubmission({ market_slug: null }),
     baseQueueRow()
   );
-  assert.equal(result.ok, false);
-  if (!result.ok) assert.equal(result.reason, "MARKET_SLUG_MISMATCH");
+  assert.equal(result.ok, true);
 });
 
 test("non-positive submitted_size is rejected", () => {
