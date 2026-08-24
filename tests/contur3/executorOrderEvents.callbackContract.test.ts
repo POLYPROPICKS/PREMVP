@@ -174,6 +174,19 @@ test("4: first insert returns a canonical event row and terminal-marks the match
   assert.equal((queueRow?.diagnostics as Record<string, unknown>).clob_order_id, "clob-1");
 });
 
+test("4a: differing display text never rejects an exact-id callback", async () => {
+  const port = makeFakePort();
+  const outcome = await handleOrderEventSubmission(port, validSubmissionRaw({
+    market_slug: "display-only-drift",
+    event_slug: "different-display-event",
+    event_title: "Different display title",
+    market_question: "Different display question?",
+  }));
+  assert.equal(outcome.kind, "INSERTED");
+  assert.equal(port.queueByIdemKey.get("idem-1")?.status, "EXECUTED");
+  assert.equal(port.eventsById.size, 1);
+});
+
 test("5: an identical duplicate submission returns the same canonical row, no second insert, idempotent queue mark (already EXECUTED)", async () => {
   const port = makeFakePort();
   const first = await handleOrderEventSubmission(port, validSubmissionRaw());

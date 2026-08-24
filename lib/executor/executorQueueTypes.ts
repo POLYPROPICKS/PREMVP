@@ -296,7 +296,8 @@ export type OrderEventValidationResult =
 
 /**
  * Enforces the founder-approved execution-boundary policy:
- *   - identity (token_id/condition_id/side/market_slug) must match the queue row;
+ *   - canonical execution invariants (token_id/condition_id/side) must match the queue row;
+ *     display text such as market_slug is never identity or an admission gate;
  *     if the queue row has a value for a field, the submission must report it too
  *   - submitted stake is mandatory, must be finite/positive, and <= queue row
  *     stake_usd (consumer may spend less, never more)
@@ -318,9 +319,6 @@ export function validateOrderEventAgainstQueueRow(
   }
   if (queueRow.side !== null && submitted.side !== queueRow.side) {
     return { ok: false, reason: "SIDE_MISMATCH" };
-  }
-  if (queueRow.market_slug !== null && submitted.market_slug !== queueRow.market_slug) {
-    return { ok: false, reason: "MARKET_SLUG_MISMATCH" };
   }
   if (
     submitted.submitted_size === null ||
