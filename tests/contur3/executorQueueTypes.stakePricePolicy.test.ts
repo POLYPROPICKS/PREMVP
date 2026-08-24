@@ -58,6 +58,7 @@ function baseSubmission(overrides: Partial<OrderEventSubmission> = {}): OrderEve
     condition_id: "cond-1",
     side: "Argentina",
     market_slug: "argentina-vs-egypt-moneyline",
+    stake_usd: 7,
     submitted_size: 7,
     submitted_price: 0.6,
     ...overrides,
@@ -77,13 +78,31 @@ test("consumer may execute at strictly lower stake than queue max", () => {
   assert.equal(result.ok, true);
 });
 
-test("submitted size > queue stake is rejected", () => {
+test("Breidablik dimensions: 6.75 shares at 0.370 stays within the USD 2.50 ceiling", () => {
   const result = validateOrderEventAgainstQueueRow(
-    baseSubmission({ submitted_size: 10 }),
-    baseQueueRow({ stake_usd: 7 })
+    baseSubmission({ stake_usd: 2.5, submitted_size: 6.75, submitted_price: 0.37 }),
+    baseQueueRow({ stake_usd: 2.5, diagnostics: { max_entry_price: 0.375 } })
+  );
+  assert.equal(0.37 * 6.75, 2.4975);
+  assert.equal(result.ok, true);
+});
+
+test("callback USD stake above the Queue ceiling is rejected", () => {
+  const result = validateOrderEventAgainstQueueRow(
+    baseSubmission({ stake_usd: 2.51, submitted_size: 5, submitted_price: 0.5 }),
+    baseQueueRow({ stake_usd: 2.5 })
   );
   assert.equal(result.ok, false);
   if (!result.ok) assert.equal(result.reason, "STAKE_EXCEEDS_QUEUE_MAX");
+});
+
+test("submitted USD notional above the Queue ceiling is rejected", () => {
+  const result = validateOrderEventAgainstQueueRow(
+    baseSubmission({ stake_usd: 2.5, submitted_size: 6.76, submitted_price: 0.37 }),
+    baseQueueRow({ stake_usd: 2.5, diagnostics: { max_entry_price: 0.375 } })
+  );
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.reason, "ORDER_NOTIONAL_EXCEEDS_QUEUE_MAX");
 });
 
 test("consumer may execute at strictly lower price than max_entry_price", () => {
