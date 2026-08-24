@@ -240,7 +240,7 @@
   "defect_accounting": {
     "role": "SUPPLEMENTARY_NOT_SCHEMA_REQUIRED",
     "method": "Normalized by component + causal boundary + failure class from git commit messages, branch names, merge sequence and PR metadata across the FULL unresolved period since the Stage-2 baseline (a942a0d8, 2026-08-07T11:11:09Z). The 15 families through 2026-08-13T19:16:58Z are REUSED verbatim from PR#165 (itself largely REUSED from PR#154/#146). 4 new families are added for the 2026-08-13T19:16:58Z..2026-08-24T20:14:14Z incremental period. This is a git/PR-ancestry proxy, not a read of any issue tracker or reviewer log -- coverage PARTIAL.",
-    "total_defect_occurrences": 40,
+    "total_defect_occurrences": 41,
     "distinct_defect_families": 19,
     "new_families": 4,
     "reused_families_with_new_occurrences": 1,
