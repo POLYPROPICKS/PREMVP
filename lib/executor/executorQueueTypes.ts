@@ -281,6 +281,8 @@ export function mapQueueRowToIrelandCandidate(
 // ---------------------------------------------------------------------------
 
 export interface OrderEventSubmission {
+  queue_id: string | null;
+  reservation_id: string | null;
   idempotency_key: string | null;
   token_id: string | null;
   condition_id: string | null;
@@ -314,6 +316,12 @@ export function validateOrderEventAgainstQueueRow(
   submitted: OrderEventSubmission,
   queueRow: EventExecutionQueueRow
 ): OrderEventValidationResult {
+  if (!queueRow.id || submitted.queue_id !== queueRow.id) {
+    return { ok: false, reason: "QUEUE_ID_MISMATCH" };
+  }
+  if (submitted.reservation_id !== queueRow.reservation_id) {
+    return { ok: false, reason: "RESERVATION_ID_MISMATCH" };
+  }
   if (submitted.token_id !== queueRow.token_id) {
     return { ok: false, reason: "TOKEN_ID_MISMATCH" };
   }

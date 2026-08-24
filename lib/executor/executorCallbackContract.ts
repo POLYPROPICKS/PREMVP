@@ -384,6 +384,8 @@ export async function handleOrderEventSubmission(
 
   {
     const submission: OrderEventSubmission = {
+      queue_id: typeof raw.queue_id === "string" ? raw.queue_id : null,
+      reservation_id: typeof raw.reservation_id === "string" ? raw.reservation_id : null,
       idempotency_key: idempotencyKey,
       token_id: tokenId,
       condition_id: typeof raw.condition_id === "string" ? raw.condition_id : null,
