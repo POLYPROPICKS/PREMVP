@@ -13,6 +13,8 @@ import path from "node:path";
 
 import {
   handleQueueMarkExecuted,
+  handleQueueClaim,
+  isQueueStatusTransitionAllowed,
   rejectsExecutedRegression,
   QUEUE_MARK_ACCEPTED_STATUSES,
   QUEUE_PERSISTED_STATUSES,
@@ -144,6 +146,41 @@ test("16: EXECUTED never regresses to a non-EXECUTED status (shared guard)", () 
   assert.equal(rejectsExecutedRegression("READY", "FAILED"), false);
 });
 
+test("Step 2/T1-T3: concurrent READY claims have one winner; an ambiguous retry is a no-op", async () => {
+  let current = baseRow();
+  let claims = 0;
+  const port = {
+    async claimReadyQueueRow(_queueId: string) {
+      if (current.status !== "READY") return null;
+      current = { ...current, status: "CLAIMED" };
+      claims += 1;
+      return { ...current };
+    },
+    async findQueueRow() {
+      return { ...current };
+    },
+  };
+
+  const [first, second] = await Promise.all([
+    handleQueueClaim(port, { queueId: "q-1" }),
+    handleQueueClaim(port, { queueId: "q-1" }),
+  ]);
+  assert.equal([first.kind, second.kind].filter((kind) => kind === "CLAIMED").length, 1);
+  assert.equal(claims, 1, "only the CAS winner receives a transition");
+
+  const retry = await handleQueueClaim(port, { queueId: "q-1" });
+  assert.equal(retry.kind, "IDEMPOTENT_NO_OP");
+  assert.equal(claims, 1, "a lost claim response cannot mint a second authority");
+});
+
+test("Step 2/T5-T9: Queue transitions are closed and terminal states cannot regress", () => {
+  assert.ok(isQueueStatusTransitionAllowed("READY", "CLAIMED"));
+  assert.ok(isQueueStatusTransitionAllowed("CLAIMED", "EXECUTED"));
+  assert.ok(!isQueueStatusTransitionAllowed("FAILED", "CLAIMED"));
+  assert.ok(!isQueueStatusTransitionAllowed("SENT", "CLAIMED"));
+  assert.ok(!isQueueStatusTransitionAllowed("EXECUTED", "FAILED"));
+});
+
 test("19: the runtime-accepted mark statuses are a subset of the full persisted union (single shared source)", () => {
   for (const status of QUEUE_MARK_ACCEPTED_STATUSES) {
     assert.ok((QUEUE_PERSISTED_STATUSES as readonly string[]).includes(status), `${status} must be in the persisted union`);
@@ -162,4 +199,10 @@ test("the mark route imports the shared status contract, not a private duplicate
 test("the mark route delegates EXECUTED verification to handleQueueMarkExecuted", () => {
   const source = readFileSync(path.join(root, "app/api/executor/queue/mark/route.ts"), "utf8");
   assert.match(source, /handleQueueMarkExecuted/);
+});
+
+test("the mark route claims only with an atomic READY compare-and-set", () => {
+  const source = readFileSync(path.join(root, "app/api/executor/queue/mark/route.ts"), "utf8");
+  assert.match(source, /handleQueueClaim/);
+  assert.match(source, /\.update\(\{ status: "CLAIMED"[\s\S]{0,400}\.eq\("status", "READY"\)/);
 });
