@@ -66,6 +66,7 @@ function validSubmissionRaw(overrides: Record<string, unknown> = {}): Record<str
     condition_id: "cond-1",
     side: "Argentina",
     market_slug: "argentina-vs-egypt-moneyline",
+    stake_usd: 3,
     submitted_size: 3,
     submitted_price: 0.55,
     clob_order_id: "clob-1",

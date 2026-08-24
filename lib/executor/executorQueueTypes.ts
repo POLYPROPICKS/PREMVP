@@ -286,6 +286,7 @@ export interface OrderEventSubmission {
   condition_id: string | null;
   side: string | null;
   market_slug: string | null;
+  stake_usd: number | null;
   submitted_size: number | null;
   submitted_price: number | null;
 }
@@ -299,8 +300,10 @@ export type OrderEventValidationResult =
  *   - canonical execution invariants (token_id/condition_id/side) must match the queue row;
  *     display text such as market_slug is never identity or an admission gate;
  *     if the queue row has a value for a field, the submission must report it too
- *   - submitted stake is mandatory, must be finite/positive, and <= queue row
- *     stake_usd (consumer may spend less, never more)
+ *   - callback stake_usd is a USD allocation ceiling and must be finite,
+ *     positive, and <= the queue row stake_usd
+ *   - submitted_size is shares; actual USD notional is submitted_price ×
+ *     submitted_size and must be <= the queue row stake_usd
  *   - queue row must carry a max_entry_price to validate against (no cap = no
  *     safe execution boundary, so validation fails closed)
  *   - submitted price is mandatory, must be finite/positive, and <= queue row
@@ -320,15 +323,18 @@ export function validateOrderEventAgainstQueueRow(
   if (queueRow.side !== null && submitted.side !== queueRow.side) {
     return { ok: false, reason: "SIDE_MISMATCH" };
   }
+  if (submitted.stake_usd === null || !Number.isFinite(submitted.stake_usd) || submitted.stake_usd <= 0) {
+    return { ok: false, reason: "MISSING_STAKE_USD" };
+  }
+  if (submitted.stake_usd > queueRow.stake_usd) {
+    return { ok: false, reason: "STAKE_EXCEEDS_QUEUE_MAX" };
+  }
   if (
     submitted.submitted_size === null ||
     !Number.isFinite(submitted.submitted_size) ||
     submitted.submitted_size <= 0
   ) {
     return { ok: false, reason: "MISSING_SUBMITTED_SIZE" };
-  }
-  if (submitted.submitted_size > queueRow.stake_usd) {
-    return { ok: false, reason: "STAKE_EXCEEDS_QUEUE_MAX" };
   }
   const maxEntryPrice = extractMaxEntryPrice(queueRow.diagnostics ?? {});
   if (maxEntryPrice === null) {
@@ -343,6 +349,9 @@ export function validateOrderEventAgainstQueueRow(
   }
   if (submitted.submitted_price > maxEntryPrice) {
     return { ok: false, reason: "PRICE_EXCEEDS_QUEUE_MAX" };
+  }
+  if (submitted.submitted_price * submitted.submitted_size > queueRow.stake_usd) {
+    return { ok: false, reason: "ORDER_NOTIONAL_EXCEEDS_QUEUE_MAX" };
   }
   return { ok: true };
 }
