@@ -426,6 +426,32 @@ export function validateControlPlane(root = REPO_ROOT) {
     if ((r5.permitted_repositories || []).length !== 0) {
       err('ROUTING: R5_CROSS_REPO_OR_LIVE_MONEY must have no permitted repositories');
     }
+    if ((r5.required_capabilities || []).length !== 0) {
+      err('ROUTING: R5_CROSS_REPO_OR_LIVE_MONEY capabilities must be derived from direct actions, not risk');
+    }
+    const routes = r5.authorized_bounded_routes || [];
+    if (!Array.isArray(routes) || routes.length !== 1) {
+      err('ROUTING: R5 must declare exactly one bounded Founder-authorized route');
+    } else {
+      const route = routes[0];
+      if (route.id !== 'FOUNDER_AUTHORIZED_PREMVP_FUTURE_QUEUE_STAKE_V1' ||
+          route.authorization_ref !== 'FOUNDER_AUTH_R5_PREMVP_FUTURE_QUEUE_STAKE_20260824' ||
+          route.repository !== 'POLYPROPICKS/PREMVP' || route.executor !== 'local_codex_windows' ||
+          route.direct_action_scope !== 'FUTURE_QUEUE_STAKE_CONFIGURATION' ||
+          route.max_stake_usd !== 2.5 || route.release_allowed !== true) {
+        err('ROUTING: R5 bounded route does not match the exact Founder authorization');
+      }
+      if (route.required_reviewer !== 'premvp.reviewer.contur_gate.v1' ||
+          !agentIds.has(route.required_reviewer)) {
+        err('ROUTING: R5 bounded route must require the registered Contur reviewer');
+      }
+      const constraints = new Set(route.constraints || []);
+      for (const required of ['ONE_PREMVP_REPOSITORY', 'APPLICATION_OWNED_PERSISTENCE_ONLY',
+        'NO_HISTORICAL_QUEUE_MUTATION', 'NO_DIRECT_VENUE_ACTION', 'NO_IRELAND_RUNTIME_ACCESS',
+        'NO_RAW_DATABASE_MUTATION', 'AUTOMATIC_DEPLOY_ONLY']) {
+        if (!constraints.has(required)) err(`ROUTING: R5 bounded route missing constraint ${required}`);
+      }
+    }
   }
 
   // --- Secret scan ----------------------------------------------------------------------

@@ -18,6 +18,8 @@ export const REPO_ROOT = path.resolve(HERE, '..', '..');
 export const RECONCILE_COMMAND_ID = 'premvp.command.control_plane_reconcile.v1';
 export const RELEASE_PIPELINE_COMMAND_ID = 'premvp.command.release_pipeline.v1';
 export const CANONICAL_REPOSITORY = 'POLYPROPICKS/PREMVP';
+export const R5_AUTHORIZED_ROUTE_ID = 'FOUNDER_AUTHORIZED_PREMVP_FUTURE_QUEUE_STAKE_V1';
+export const R5_AUTHORIZATION_REF = 'FOUNDER_AUTH_R5_PREMVP_FUTURE_QUEUE_STAKE_20260824';
 
 const REQUIRED_FIELDS = [
   'schema_version', 'release_run_id', 'task_id', 'task_class', 'risk_class', 'executor',
@@ -48,6 +50,20 @@ function stringify(manifest) {
   return JSON.stringify(manifest);
 }
 
+export function isAuthorizedBoundedR5Manifest(manifest) {
+  const a = manifest?.r5_authorization;
+  return Boolean(
+    a &&
+    a.route_id === R5_AUTHORIZED_ROUTE_ID &&
+    a.authorization_ref === R5_AUTHORIZATION_REF &&
+    a.direct_action_scope === 'FUTURE_QUEUE_STAKE_CONFIGURATION' &&
+    a.max_stake_usd === 2.5 &&
+    a.historical_queue_mutation === false &&
+    a.raw_database_mutation === false &&
+    a.direct_venue_action === false
+  );
+}
+
 export function validateReleaseRunManifest(manifest) {
   const errors = [];
   const err = (msg) => errors.push(msg);
@@ -74,9 +90,14 @@ export function validateReleaseRunManifest(manifest) {
     err('NO_IRELAND: manifest references Ireland, which is forbidden for this pipeline');
   }
 
-  // NO_R5
+  // R5 remains fail-closed except for the one manifest-bound Founder route.
   if (manifest.risk_class === 'R5_CROSS_REPO_OR_LIVE_MONEY') {
-    err('NO_R5: risk_class R5_CROSS_REPO_OR_LIVE_MONEY is rejected at manifest validation');
+    if (!isAuthorizedBoundedR5Manifest(manifest)) {
+      err('R5_FAIL_CLOSED: R5 requires the exact bounded Founder authorization');
+    }
+    if (manifest.executor !== 'local_codex_windows') {
+      err('R5_AUTHORIZED_EXECUTOR: bounded R5 route requires local_codex_windows');
+    }
   }
   if (manifest.risk_class && !KNOWN_RISK_CLASSES.includes(manifest.risk_class)) {
     err(`UNKNOWN_RISK_CLASS: ${manifest.risk_class}`);

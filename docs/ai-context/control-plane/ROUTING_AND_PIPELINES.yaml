@@ -128,7 +128,7 @@
     {
       "id": "R5_CROSS_REPO_OR_LIVE_MONEY",
       "title": "Cross-repository (PREMVP + Ireland) or live-money execution",
-      "required_capabilities": ["IRELAND_RUNTIME_ACCESS", "REMOTE_IDENTITY", "DATABASE_WRITE"],
+      "required_capabilities": [],
       "eligible_execution_targets": [],
       "required_agents": [],
       "optional_agents": [],
@@ -145,9 +145,23 @@
       "fail_closed": true,
       "fail_closed_behavior": {
         "default_verdict": "BLOCKED",
-        "rule": "R5 has no eligible execution target and no permitted repository. It always returns BLOCKED unless a separate Founder authorization exists AND every required capability holds verdict PROVEN in CAPABILITY_MATRIX.yaml. Ireland is NOT eligible for implementation while its capabilities are NOT_PROVEN.",
+        "rule": "R5 capabilities are derived only from direct actions. Generic R5 has no eligible execution target and no permitted repository and returns BLOCKED. Ireland is never eligible for implementation while its capabilities are NOT_PROVEN.",
         "founder_override_scope": "A current explicit Founder directive may authorize only the exact named bounded action it states, with repository and money boundaries named explicitly. There is no generic or implied authorization. Absent an explicit directive naming the exact action, R5 remains fail-closed with no executor and no merge, and this table's empty eligible_execution_targets/permitted_repositories are never widened by this override."
-      }
+      },
+      "authorized_bounded_routes": [
+        {
+          "id": "FOUNDER_AUTHORIZED_PREMVP_FUTURE_QUEUE_STAKE_V1",
+          "authorization_ref": "FOUNDER_AUTH_R5_PREMVP_FUTURE_QUEUE_STAKE_20260824",
+          "repository": "POLYPROPICKS/PREMVP",
+          "executor": "local_codex_windows",
+          "direct_action_scope": "FUTURE_QUEUE_STAKE_CONFIGURATION",
+          "max_stake_usd": 2.5,
+          "required_capabilities": ["REPOSITORY_READ", "LOCAL_TEST_RUN", "TYPECHECK", "BUILD"],
+          "required_reviewer": "premvp.reviewer.contur_gate.v1",
+          "constraints": ["ONE_PREMVP_REPOSITORY", "APPLICATION_OWNED_PERSISTENCE_ONLY", "NO_HISTORICAL_QUEUE_MUTATION", "NO_DIRECT_VENUE_ACTION", "NO_IRELAND_RUNTIME_ACCESS", "NO_RAW_DATABASE_MUTATION", "AUTOMATIC_DEPLOY_ONLY"],
+          "release_allowed": true
+        }
+      ]
     }
   ],
 

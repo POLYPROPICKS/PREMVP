@@ -13,7 +13,7 @@
  * Live evidence always outranks the optional local checkpoint — see reconstructRun().
  */
 
-import { validateReleaseRunManifest, RECONCILE_COMMAND_ID } from '../validate-premvp-release-run.mjs';
+import { validateReleaseRunManifest, isAuthorizedBoundedR5Manifest, RECONCILE_COMMAND_ID } from '../validate-premvp-release-run.mjs';
 
 export const STATE_ORDER = [
   'LOAD_CANONICAL',
@@ -48,9 +48,19 @@ export class R5FailClosedError extends PipelineError {
 }
 
 /** ---- Reviewer routing: strictly derived from live ROUTING_AND_PIPELINES.yaml. ---- */
-export function resolveReviewerRequirement(routingDoc, riskClass) {
+export function resolveReviewerRequirement(routingDoc, riskClass, manifest = null) {
   if (riskClass === 'R5_CROSS_REPO_OR_LIVE_MONEY') {
-    throw new R5FailClosedError();
+    if (!isAuthorizedBoundedR5Manifest(manifest)) throw new R5FailClosedError();
+    const r5 = (routingDoc.risk_classes || []).find((r) => r.id === riskClass);
+    const route = (r5?.authorized_bounded_routes || []).find(
+      (candidate) => candidate.id === manifest.r5_authorization.route_id &&
+        candidate.authorization_ref === manifest.r5_authorization.authorization_ref &&
+        candidate.executor === manifest.executor &&
+        candidate.repository === manifest.repository &&
+        candidate.release_allowed === true,
+    );
+    if (!route) throw new R5FailClosedError('R5 authorization is not represented by live routing');
+    return { required: true, agentId: route.required_reviewer, independenceGroup: 'contur_gate' };
   }
   const riskEntry = (routingDoc.risk_classes || []).find((r) => r.id === riskClass);
   if (!riskEntry) {
@@ -156,7 +166,7 @@ export async function reconstructRun(manifest, routingDoc, adapters) {
     }
   }
 
-  const reviewerReq = resolveReviewerRequirement(routingDoc, manifest.risk_class);
+  const reviewerReq = resolveReviewerRequirement(routingDoc, manifest.risk_class, manifest);
   evidence.reviewer_requirement = reviewerReq;
   if (reviewerReq.required) {
     const receipt = await adapters.reviewer.findReceipt({
@@ -236,7 +246,7 @@ export function dryRunPlan(manifest, routingDoc, pipelineSpec) {
     return { ok: false, errors: manifestResult.errors, plan: null };
   }
   assertManifestCannotOverrideReviewer(manifest);
-  const reviewer = resolveReviewerRequirement(routingDoc, manifest.risk_class);
+  const reviewer = resolveReviewerRequirement(routingDoc, manifest.risk_class, manifest);
   return {
     ok: true,
     errors: [],
@@ -307,7 +317,7 @@ export async function executeReleaseRun(manifest, routingDoc, pipelineSpec, adap
     await adapters.commands.run(command);
   }
 
-  const reviewer = resolveReviewerRequirement(routingDoc, manifest.risk_class);
+  const reviewer = resolveReviewerRequirement(routingDoc, manifest.risk_class, manifest);
   let receipt = null;
   if (reviewer.required) {
     receipt = await adapters.reviewer.findReceipt({ agentId: reviewer.agentId, reviewedSha: resultSha, manifest });
