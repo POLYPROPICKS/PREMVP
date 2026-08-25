@@ -1,0 +1,46 @@
+{
+  "bundle_id": "2026-08-25__evolution-canonical-cycle",
+  "repository": "POLYPROPICKS/PREMVP",
+  "period_start": "2026-08-25T00:00:00Z",
+  "period_end": "2026-08-26T00:00:00Z",
+  "capture_coverage": "PARTIAL",
+  "completion_envelope_ids": [],
+  "confirmed_changes": ["POLYPROPICKS/PREMVP#182"],
+  "operator_action_events": [
+    {
+      "action_id": "2026-08-25-A1",
+      "occurred_at": "2026-08-25T19:40:00Z",
+      "surface": "CLOUDCODE",
+      "type": "START",
+      "origin": "FOUNDER_MANUAL",
+      "mission_id": "M-EVOLUTION-PERSISTENCE-20260825",
+      "capture_coverage": "COMPLETE",
+      "source_ref": "this CloudCode session transcript, mission 1 (Evolution persistence repair)"
+    },
+    {
+      "action_id": "2026-08-25-A2",
+      "occurred_at": "2026-08-25T19:45:00Z",
+      "surface": "CLOUDCODE",
+      "type": "APPROVAL",
+      "origin": "FOUNDER_MANUAL",
+      "mission_id": "M-EVOLUTION-PERSISTENCE-20260825",
+      "capture_coverage": "COMPLETE",
+      "source_ref": "this CloudCode session transcript, executor-routing and release-scope approval"
+    },
+    {
+      "action_id": "2026-08-25-A3",
+      "occurred_at": "2026-08-25T20:05:00Z",
+      "surface": "CLOUDCODE",
+      "type": "START",
+      "origin": "FOUNDER_MANUAL",
+      "mission_id": "M-EVOLUTION-CANONICAL-CYCLE-20260825",
+      "capture_coverage": "COMPLETE",
+      "source_ref": "this CloudCode session transcript, mission 2 (close canonical-persistence milestone)"
+    }
+  ],
+  "supporting_metrics": {
+    "reusable_artifacts_created": 1,
+    "runtime_evidence_count": 1
+  },
+  "notes": "This bundle records only operator actions directly witnessed in this CloudCode session on 2026-08-25. Seven other PRs (#175-#181) merged to origin/main during the same calendar day via other executor sessions (chiefly local_codex_windows/Codex); their operator actions are real but not captured here, which is why capture_coverage is declared PARTIAL rather than COMPLETE."
+}

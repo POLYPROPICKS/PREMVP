@@ -1,0 +1,193 @@
+{
+  "schema_version": "1.0",
+  "cycle_id": "2026-08-25__evolution-canonical-cycle",
+  "period_start": "2026-08-25T00:00:00Z",
+  "period_end": "2026-08-26T00:00:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "local_codex_windows",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the local_codex_windows execution target bound to worktree C:\\WORK\\KalshiProPulse\\sipropicks-premvp1-1 per CAPABILITY_MATRIX.yaml",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#182"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-08-25__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "NOT_ENOUGH_EVIDENCE",
+    "what_moved": [],
+    "next_verified_production_fact_now_possible": null,
+    "blockers_removed": [],
+    "blockers_introduced": [],
+    "not_proven": [
+      "Business, revenue, launch or PnL impact of PR#182 and of the seven other PRs merged into origin/main the same calendar day (#175-#181) is not independently verified by this review.",
+      "No production runtime evidence was collected this cycle."
+    ],
+    "runtime_or_business_evidence_exists": false,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_ADDED",
+    "capabilities": [
+      {
+        "domain": "REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS",
+        "statement": "Evolution Cycle persistence now enforces one canonical cycle per evaluation period: a retry resumes the same lineage, a competing cycle for that period is rejected.",
+        "persisted_artifact": "scripts/control-plane/evolution-evaluate.mjs",
+        "use_or_validation_evidence": "255/255 control-plane tests pass (incl. 6 new persistence tests); control-plane:check PASS; merged as d4baeb4 via PR#182; re-verified live in a fresh worktree just before this cycle.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#182",
+          "commit d4baeb4",
+          "tests/control-plane/evolutionDailyReview.test.mjs"
+        ]
+      }
+    ],
+    "not_proven": [
+      "Behavior under genuinely concurrent writers (two processes persisting at once) is not tested — only sequential retries were verified."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": "UNKNOWN",
+      "runtime_evidence_count": 1,
+      "reusable_artifacts_created": 1,
+      "cloudcode_actions": 3,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": 0.5,
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-08-25T00:00:00Z",
+    "period_end": "2026-08-26T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 3,
+    "by_type": {
+      "START": 2,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 1
+    },
+    "by_surface": {
+      "CLOUDCODE": 3,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": 0.5,
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "This cycle only saw its own CloudCode session; Codex-side actions behind the other seven same-day PRs are invisible to it, so coverage is only partial.",
+      "why_it_matters": "Comparing operator-action counts across periods only works if coverage is reliably complete, not partial by default.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "Would let a future collector honestly report COMPLETE coverage across both CloudCode and Codex without inventing counts.",
+      "proposed_automation": "A shared, append-only operator-action log both executors write to at message time, which evolution-collect.mjs reads directly instead of a manually authored bundle.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml",
+      "expected_value": "Reliable COMPLETE-coverage operator-action metrics across both executors",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: read-only aggregation, no product or runtime change",
+      "success_metric": "coverage reaches complete for a full daily period without manually authored events",
+      "rollback_or_stop_condition": "Stop if it needs either executor to change how it starts sessions, or can't stay dependency-free and offline",
+      "timing": "Next cycle or later",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "this cycle's input bundle declares coverage partial",
+        "docs/ai-context/control-plane/evolution/input-bundles/2026-08-25__evolution-canonical-cycle.json"
+      ]
+    },
+    {
+      "id": "H2",
+      "observed_problem": "confirmed_changes for this cycle was compiled by manually reading git log for merge commits on origin/main; the other seven merges the same day were identified but excluded from evidence because their business impact was not independently verified — correct, but slow and easy to under- or over-scope by hand.",
+      "why_it_matters": "A Daily Evolution Review that requires hand-auditing git log every time will not stay a daily routine.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "A deterministic confirmed-changes collector would make Axis A evidence gathering itself reusable and auditable rather than ad hoc per cycle.",
+      "proposed_automation": "A read-only script that lists merge commits into origin/main within a given period and emits them as a confirmed_changes candidate list for the reviewer to accept or reject per item.",
+      "persistent_artifact": "scripts/control-plane/evolution-collect.mjs",
+      "expected_value": "Faster, more complete confirmed_changes without inferring business impact",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: read-only git log, no write path",
+      "success_metric": "confirmed_changes for a period is generated, not hand-typed, in a following cycle",
+      "rollback_or_stop_condition": "Stop if the script's output is ever used to infer business impact rather than just list merge identity",
+      "timing": "Next cycle",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "this cycle's confirmed_changes was manually compiled via git log",
+        "POLYPROPICKS/PREMVP#182"
+      ]
+    }
+  ],
+  "insufficient_supported_hypotheses": true,
+  "insufficient_supported_hypotheses_reason": "Only two automation gaps were directly observed and evidenced this cycle (partial cross-surface operator-action capture, manual confirmed-changes compilation); inventing three to six more to reach the 5-8 target would not be evidence-based.",
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "Verifying an invariant's exact location and mechanism before patching it — reading the failing/blocking test itself, not just a description of it, before deciding what 'obsolete' means.",
+      "why_it_matters_now": "The prior mission depended entirely on finding the one test asserting cycles/ must stay empty; patching a plausible-sounding but wrong location would have shipped code with the real invariant still blocking every future cycle.",
+      "how_it_applies_to_current_project": "The same discipline applies to every other 'obsolete invariant' or 'stale gate' claim in this control plane — locate and read the exact enforcing code before trusting a description of what it does.",
+      "persistent_git_artifact": "tests/control-plane/evolutionDailyReview.test.mjs",
+      "ladder_level": 2
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "Treating executor-identity fields in persisted evidence as a correctness question, not a formatting detail — resolving which registered executor_id a session's runtime actually matches against CAPABILITY_MATRIX.yaml instead of guessing.",
+      "why_it_matters_now": "generated_by.executor is a permanent field in every future Evolution Cycle; a wrong identity here would misattribute capability evidence for as long as the history exists.",
+      "how_it_applies_to_current_project": "The same check applies anywhere a persisted record claims which executor did something — CURRENT_STATE.yaml, completion envelopes, reviewer receipts.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/CAPABILITY_MATRIX.yaml",
+      "ladder_level": 6
+    }
+  ],
+  "founder_practice_comparison": "P1 is verification discipline before any patch lands; P2 is evidentiary correctness of self-identification inside the persisted record itself. P1 protects code correctness, P2 protects the durability and trustworthiness of the Evolution history.",
+  "founder_practice_recommended_order": [
+    "P1",
+    "P2"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "A shared operator-action log written by both executors at message time would let coverage reach complete without manually authored events.",
+      "bounded_scope": "One period, read-only design spike: sketch the log format and where each executor would append to it; no product or runtime change, no logging actually wired in yet.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml",
+      "promotion_condition": "The sketch is reviewed and a following cycle collects a bundle from the shared log rather than a hand-authored one.",
+      "stop_condition": "Stop if a shared log would require either executor to change its session-start mechanism, or cannot stay dependency-free."
+    },
+    {
+      "id": "E2",
+      "hypothesis": "A read-only merge-commit lister for a given period would make confirmed_changes deterministic instead of hand-compiled.",
+      "bounded_scope": "One period, script prototype only: list merge commits into origin/main between two timestamps; the reviewer still decides which become confirmed_changes.",
+      "persistent_artifact": "scripts/control-plane/evolution-collect.mjs",
+      "promotion_condition": "A following cycle's confirmed_changes list is generated by the script and only reviewed, not hand-typed.",
+      "stop_condition": "Stop if the script's output is ever used to infer business impact rather than just list merge identity."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "CONTUR3_QUEUE_AUTHORITY"
+  },
+  "next_step": "Persist this cycle to origin/main, then run a read-only Governor eligibility check to confirm the canonical history is consumable. No scheduling activation and no automation implementation follow from this cycle.",
+  "accepted": false
+}
