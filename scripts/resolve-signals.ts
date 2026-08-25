@@ -11,11 +11,7 @@ import {
   resolveSignalOutcome,
 } from "../lib/feed/resolveSignalOutcome";
 import { pruneCurrentSignalPairServing } from "../lib/feed/currentSignalPairServing";
-import {
-  applyResolvedOutcomeToExecutionReconciliation,
-  mergeExecutionReconciliationMeta,
-  readExecutionReconciliation,
-} from "../lib/executor/executionReconciliation";
+import { reconcileExecutionLifecycle } from "../lib/executor/executionLifecycle";
 
 // ---- Config ----------------------------------------------------------------
 
@@ -495,61 +491,7 @@ async function reconcilePendingExecutionSettlements(
   supabase: any,
   writeMode: boolean,
 ): Promise<{ loaded: number; eligible: number; updated: number }> {
-  const sinceIso = new Date(Date.now() - 30 * 24 * 3_600_000).toISOString();
-  const { data: eventRows, error: eventError } = await supabase
-    .from("executor_order_events")
-    .select("id,created_at,clob_order_id,idempotency_key,executor_meta")
-    .not("clob_order_id", "is", null)
-    .gte("created_at", sinceIso)
-    .order("created_at", { ascending: true })
-    .limit(200);
-  if (eventError) throw new Error(`EXECUTION_RECONCILIATION_READ_FAILED: ${eventError.message}`);
-
-  let eligible = 0;
-  let updated = 0;
-  for (const row of (eventRows ?? []) as Array<Record<string, unknown>>) {
-    const prior = readExecutionReconciliation(row.executor_meta);
-    if (!prior || prior.settlement_status === "SETTLED_RECONCILED" || !prior.source_signal_pair_id) continue;
-    eligible++;
-
-    const { data: signal, error: signalError } = await supabase
-      .from("generated_signal_pairs")
-      .select("resolved_at,winning_outcome,signal_result,selected_token_id")
-      .eq("id", prior.source_signal_pair_id)
-      .maybeSingle();
-    if (signalError) throw new Error(`EXECUTION_RECONCILIATION_SIGNAL_READ_FAILED: ${signalError.message}`);
-    if (!signal?.resolved_at || (signal.signal_result !== "won" && signal.signal_result !== "lost")) continue;
-
-    const next = applyResolvedOutcomeToExecutionReconciliation(prior, {
-      resolved_at: String(signal.resolved_at),
-      winning_outcome: typeof signal.winning_outcome === "string" ? signal.winning_outcome : null,
-      winning_token_id: signal.signal_result === "won" ? prior.token_id : null,
-    });
-    if (JSON.stringify(next) === JSON.stringify(prior)) continue;
-
-    console.log(
-      `[resolve-signals] EXECUTION_RECONCILIATION_${writeMode ? "WRITE" : "WOULD"}` +
-        ` key=${prior.reconciliation_key} status=${next.settlement_status}`,
-    );
-    if (!writeMode) continue;
-
-    const meta = mergeExecutionReconciliationMeta(
-      row.executor_meta as Record<string, unknown> | null,
-      next,
-    );
-    const { data: changed, error: updateError } = await supabase
-      .from("executor_order_events")
-      .update({ executor_meta: meta })
-      .eq("id", row.id)
-      .eq("idempotency_key", prior.idempotency_key)
-      .eq("clob_order_id", prior.clob_order_id)
-      .select("id")
-      .single();
-    if (updateError || !changed) throw new Error("EXECUTION_RECONCILIATION_UPDATE_FAILED");
-    updated++;
-  }
-
-  const summary = { loaded: eventRows?.length ?? 0, eligible, updated };
+  const summary = await reconcileExecutionLifecycle(supabase, { writeMode, limit: 200 });
   console.log(`[resolve-signals] EXECUTION_RECONCILIATION_SUMMARY ${JSON.stringify(summary)}`);
   return summary;
 }

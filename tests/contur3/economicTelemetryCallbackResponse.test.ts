@@ -135,7 +135,7 @@ test("ECONOMIC_TELEMETRY_V1 callback responses acknowledge the persisted canonic
   assert.deepEqual(first.economic_telemetry, (eventRows[0].executor_meta as Record<string, unknown>).economic_telemetry_v1);
   assert.notDeepEqual(first.economic_telemetry, { execution_status: "CONFIRMED" });
 
-  const enrichmentResponse = await POST(request(callback({ execution_status: "MATCHED", executed_shares: 5.43, average_fill_price: 0.45, fee_usd: 0.01 })));
+  const enrichmentResponse = await POST(request(callback({ execution_status: "CONFIRMED", executed_shares: 5.43, average_fill_price: 0.45, fee_usd: 0.01 })));
   assert.equal(enrichmentResponse.status, 200);
   const enrichment = await enrichmentResponse.json();
   assert.equal(enrichment.success, true);
@@ -145,4 +145,7 @@ test("ECONOMIC_TELEMETRY_V1 callback responses acknowledge the persisted canonic
   assert.deepEqual(enrichment.economic_telemetry, (eventRows[0].executor_meta as Record<string, unknown>).economic_telemetry_v1);
   assert.equal(enrichment.economic_telemetry.executed.executed_shares.value, 5.43);
   assert.equal(enrichment.economic_telemetry.costs.fee_usd.value, 0.01);
+  assert.equal(enrichment.reconciliation.fill_status, "MATCHED_CONFIRMED");
+  assert.equal(enrichment.reconciliation.actual_fill_price, 0.45);
+  assert.equal(enrichment.reconciliation.executed_notional_usd, 2.4435);
 });

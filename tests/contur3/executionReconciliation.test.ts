@@ -7,6 +7,7 @@ import {
   buildExecutionReconciliation,
   mergeExecutionReconciliationMeta,
 } from "../../lib/executor/executionReconciliation";
+import { validateReconciliationSourceSignalPair } from "../../lib/executor/executionLifecycle";
 
 const queue = {
   id: "30943442-944a-4315-890b-dd8d155ed1fc",
@@ -69,19 +70,20 @@ test("accepted-open callback creates exact lineage and explicit pending economic
   assert.equal(reconciliation.net_pnl_usd, null);
 });
 
-test("a matched callback promotes the same record without creating new economics", () => {
+test("canonical telemetry promotes the same record with actual fill economics", () => {
   const prior = buildExecutionReconciliation({ queue, event, raw: acceptedOpen });
   const reconciliation = buildExecutionReconciliation({
     queue,
     event: { ...event, taking_amount: 6.75 },
-    raw: { ...acceptedOpen, state: "matched", order_status: "matched", executed_size: 6.75 },
+    raw: { ...acceptedOpen, state: "matched", order_status: "matched", executed_size: 6.75, average_fill_price: 0.35 },
     prior,
   });
 
   assert.equal(reconciliation.reconciliation_key, prior.reconciliation_key);
   assert.equal(reconciliation.fill_status, "MATCHED_CONFIRMED");
   assert.equal(reconciliation.executed_shares, 6.75);
-  assert.equal(reconciliation.executed_notional_usd, 2.4975);
+  assert.equal(reconciliation.actual_fill_price, 0.35);
+  assert.equal(reconciliation.executed_notional_usd, 2.3625);
   assert.equal(reconciliation.settlement_status, "PENDING_MARKET_RESOLUTION");
   assert.equal(reconciliation.fee_status, "NOT_REPORTED");
 });
@@ -103,7 +105,7 @@ test("matched quantity resolves gross PnL but waits for an unreported fee", () =
   const matched = buildExecutionReconciliation({
     queue,
     event,
-    raw: { ...acceptedOpen, order_status: "matched", executed_size: 6.75 },
+    raw: { ...acceptedOpen, order_status: "matched", executed_size: 6.75, average_fill_price: 0.35 },
   });
   const resolved = applyResolvedOutcomeToExecutionReconciliation(matched, {
     resolved_at: "2026-08-25T00:00:00.000Z",
@@ -113,7 +115,7 @@ test("matched quantity resolves gross PnL but waits for an unreported fee", () =
 
   assert.equal(resolved.settlement_status, "RESOLVED_FEE_PENDING");
   assert.equal(resolved.result_status, "WON");
-  assert.equal(resolved.gross_pnl_usd, 4.2525);
+  assert.equal(resolved.gross_pnl_usd, 4.3875);
   assert.equal(resolved.net_pnl_usd, null);
 });
 
@@ -121,7 +123,7 @@ test("an explicit zero fee produces reconciled net PnL", () => {
   const matched = buildExecutionReconciliation({
     queue,
     event: { ...event, fee_usd: 0 },
-    raw: { ...acceptedOpen, order_status: "matched", executed_size: 6.75, fee_usd: 0 },
+    raw: { ...acceptedOpen, order_status: "matched", executed_size: 6.75, average_fill_price: 0.35, fee_usd: 0 },
   });
   const resolved = applyResolvedOutcomeToExecutionReconciliation(matched, {
     resolved_at: "2026-08-25T00:00:00.000Z",
@@ -132,26 +134,79 @@ test("an explicit zero fee produces reconciled net PnL", () => {
   assert.equal(resolved.settlement_status, "SETTLED_RECONCILED");
   assert.equal(resolved.fee_status, "REPORTED");
   assert.equal(resolved.fee_usd, 0);
-  assert.equal(resolved.gross_pnl_usd, 4.2525);
-  assert.equal(resolved.net_pnl_usd, 4.2525);
+  assert.equal(resolved.gross_pnl_usd, 4.3875);
+  assert.equal(resolved.net_pnl_usd, 4.3875);
 });
 
 test("a later callback can advance filled quantity and cannot erase a reported fee with null", () => {
   const prior = buildExecutionReconciliation({
     queue,
     event: { ...event, fee_usd: 0.01 },
-    raw: { ...acceptedOpen, order_status: "matched", executed_size: 3, fee_usd: 0.01 },
+    raw: { ...acceptedOpen, order_status: "matched", executed_size: 3, average_fill_price: 0.35, fee_usd: 0.01 },
   });
   const next = buildExecutionReconciliation({
     queue,
     event: { ...event, fee_usd: 0.01 },
-    raw: { ...acceptedOpen, order_status: "matched", executed_size: 6.75, fee_usd: null },
+    raw: { ...acceptedOpen, order_status: "matched", executed_size: 6.75, average_fill_price: 0.35, fee_usd: null },
     prior,
   });
 
   assert.equal(next.executed_shares, 6.75);
   assert.equal(next.fee_usd, 0.01);
   assert.equal(next.fee_status, "REPORTED");
+});
+
+test("confirmed ECONOMIC_TELEMETRY_V1 is monotonic fill authority and preserves null fee evidence", () => {
+  const prior = buildExecutionReconciliation({ queue, event, raw: acceptedOpen });
+  const reconciliation = buildExecutionReconciliation({
+    queue,
+    event,
+    raw: acceptedOpen,
+    prior,
+    telemetry: {
+      version: "ECONOMIC_TELEMETRY_V1",
+      identity: { queue_id: queue.id, reservation_id: queue.reservation_id, condition_id: queue.condition_id, token_id: queue.token_id, side: queue.side, idempotency_key: queue.idempotency_key, clob_order_id: event.clob_order_id },
+      requested: { authorized_stake_ceiling_usd: 2.5, submitted_price: 0.37, requested_shares: 6.75, requested_notional_usd: 2.4975 },
+      executed: { execution_status: "CONFIRMED", executed_shares: { value: 6.75, evidence_state: "KNOWN" }, average_fill_price: { value: 0.35, evidence_state: "KNOWN" }, executed_notional_usd: { value: 2.3625, evidence_state: "KNOWN" }, making_amount: { value: null, evidence_state: "NOT_YET_AVAILABLE" }, taking_amount: { value: null, evidence_state: "NOT_YET_AVAILABLE" } },
+      costs: { fee_rate_bps: { value: 0, evidence_state: "KNOWN" }, fee_usd: { value: null, evidence_state: "NOT_RETURNED_BY_VENUE" }, fee_source: null, slippage_reference_price: { value: null, evidence_state: "NOT_YET_AVAILABLE" }, slippage_usd: { value: null, evidence_state: "NOT_YET_AVAILABLE" } },
+      wallet: { lifecycle_point: "UNKNOWN", observed_at: null, collateral_balance_usd: { value: null, evidence_state: "NOT_YET_AVAILABLE" }, spendable_balance_usd: { value: null, evidence_state: "NOT_YET_AVAILABLE" }, allowance_usd: { value: null, evidence_state: "NOT_YET_AVAILABLE" } },
+    },
+  });
+
+  assert.equal(reconciliation.fill_status, "MATCHED_CONFIRMED");
+  assert.equal(reconciliation.actual_fill_price, 0.35);
+  assert.equal(reconciliation.executed_notional_usd, 2.3625);
+  assert.equal(reconciliation.fee_status, "NOT_REPORTED");
+  const settled = applyResolvedOutcomeToExecutionReconciliation(reconciliation, { resolved_at: "2026-08-25T00:00:00.000Z", winning_outcome: "No", winning_token_id: "token-no" });
+  assert.equal(settled.gross_pnl_usd, -2.3625);
+  assert.equal(settled.net_pnl_usd, null);
+  assert.equal(settled.settlement_status, "RESOLVED_FEE_PENDING");
+});
+
+test("source settlement validates exact carried pair identity and fails closed on a shared-condition mismatch", () => {
+  const reconciliation = buildExecutionReconciliation({ queue, event, raw: acceptedOpen });
+  assert.doesNotThrow(() => validateReconciliationSourceSignalPair(reconciliation, {
+    id: "2dd087ba-bfdf-4c96-b5c6-3fc4a0005e7f", condition_id: "0xcondition", selected_token_id: "token-yes", selected_outcome: "Yes", diagnostics: {},
+  }));
+  assert.throws(() => validateReconciliationSourceSignalPair(reconciliation, {
+    id: "other-pair", condition_id: "0xcondition", selected_token_id: "token-no", selected_outcome: "No", diagnostics: {},
+  }), /EXECUTION_RECONCILIATION_SOURCE_SIGNAL_PAIR_IDENTITY_CONFLICT/);
+});
+
+test("callback and provider identity conflicts fail closed before reconciliation mutation", () => {
+  assert.throws(() => buildExecutionReconciliation({
+    queue,
+    event,
+    raw: { ...acceptedOpen, queue_id: "another-queue" },
+  }), /RECONCILIATION_IDENTITY_CONFLICT_QUEUE_ID/);
+  const withProvider = buildExecutionReconciliation({
+    queue: { ...queue, diagnostics: { ...queue.diagnostics, provider_event_id: "provider-event-a" } },
+    event,
+    raw: acceptedOpen,
+  });
+  assert.throws(() => validateReconciliationSourceSignalPair(withProvider, {
+    id: "2dd087ba-bfdf-4c96-b5c6-3fc4a0005e7f", condition_id: "0xcondition", selected_token_id: "token-yes", selected_outcome: "Yes", diagnostics: { provider_event_id: "provider-event-b" },
+  }), /EXECUTION_RECONCILIATION_SOURCE_PROVIDER_IDENTITY_CONFLICT/);
 });
 
 test("metadata merge preserves unrelated executor metadata and is deterministic", () => {
@@ -175,5 +230,5 @@ test("the existing resolver path owns the automatic settlement sweep", () => {
   const source = readFileSync(path.join(process.cwd(), "scripts/resolve-signals.ts"), "utf8");
   assert.match(source, /await reconcilePendingExecutionSettlements\(supabase, WRITE_MODE\)/);
   assert.match(source, /EXECUTION_RECONCILIATION_SUMMARY/);
-  assert.match(source, /readExecutionReconciliation\(row\.executor_meta\)/);
+  assert.match(source, /reconcileExecutionLifecycle\(supabase, \{ writeMode, limit: 200 \}\)/);
 });
