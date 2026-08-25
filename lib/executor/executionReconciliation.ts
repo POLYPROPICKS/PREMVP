@@ -386,6 +386,6 @@ export function readExecutionReconciliation(
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Partial<ExecutionReconciliationV1>;
   return record.version === EXECUTION_RECONCILIATION_VERSION
-    ? (record as ExecutionReconciliationV1)
+    ? ({ ...record, provider_event_id: record.provider_event_id ?? null } as ExecutionReconciliationV1)
     : null;
 }
