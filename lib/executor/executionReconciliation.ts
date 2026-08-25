@@ -185,6 +185,50 @@ function isConfirmedTelemetry(telemetry: EconomicTelemetryV1 | undefined): telem
     executed_notional_usd.evidence_state === "KNOWN" && executed_notional_usd.value != null && executed_notional_usd.value > 0;
 }
 
+/**
+ * Advances an already-persisted reconciliation from its canonical telemetry
+ * without re-reading Queue or order-event inputs. This is used by bounded
+ * lifecycle recovery so an existing ACCEPTED_OPEN row can become filled even
+ * when no further executor callback arrives.
+ */
+export function advanceExecutionReconciliationFromTelemetry(
+  prior: ExecutionReconciliationV1,
+  telemetry: EconomicTelemetryV1 | null | undefined,
+): ExecutionReconciliationV1 {
+  if (!telemetry) return prior;
+  assertTelemetryIdentity(telemetry, prior);
+  if (!isConfirmedTelemetry(telemetry)) return prior;
+  const executedShares = telemetry.executed.executed_shares.value!;
+  const actualFillPrice = telemetry.executed.average_fill_price.value!;
+  const executedNotional = telemetry.executed.executed_notional_usd.value!;
+  if (prior.executed_shares != null && executedShares < prior.executed_shares) {
+    throw new Error("RECONCILIATION_TELEMETRY_FILL_DOWNGRADE");
+  }
+  const calculatedNotional = roundMoney(executedShares * actualFillPrice);
+  if (calculatedNotional !== executedNotional) throw new Error("RECONCILIATION_TELEMETRY_EXECUTED_NOTIONAL_MISMATCH");
+  const feeUsd = telemetry.costs.fee_usd.evidence_state === "KNOWN"
+    ? telemetry.costs.fee_usd.value
+    : prior.fee_usd;
+  const next: ExecutionReconciliationV1 = {
+    ...prior,
+    fill_status: "MATCHED_CONFIRMED",
+    executed_shares: executedShares,
+    actual_fill_price: actualFillPrice,
+    executed_notional_usd: executedNotional,
+    settlement_status: prior.resolved_at ? prior.settlement_status : "PENDING_MARKET_RESOLUTION",
+    fee_status: feeUsd == null ? "NOT_REPORTED" : "REPORTED",
+    fee_usd: feeUsd,
+  };
+  if (next.resolved_at) {
+    return applyResolvedOutcomeToExecutionReconciliation(next, {
+      resolved_at: next.resolved_at,
+      winning_outcome: next.winning_outcome,
+      winning_token_id: next.winning_token_id,
+    });
+  }
+  return next;
+}
+
 function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) throw new Error(`RECONCILIATION_MISSING_${field}`);
   return value;
