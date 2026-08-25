@@ -9,6 +9,12 @@ import {
 } from "@/lib/executor/executorCallbackContract";
 import type { EventExecutionQueueRow } from "@/lib/executor/executorQueueTypes";
 import {
+  buildEconomicTelemetry,
+  mergeEconomicTelemetryMeta,
+  readEconomicTelemetry,
+  type EconomicTelemetryV1,
+} from "@/lib/executor/economicTelemetry";
+import {
   applyResolvedOutcomeToExecutionReconciliation,
   buildExecutionReconciliation,
   mergeExecutionReconciliationMeta,
@@ -164,10 +170,10 @@ function toReconciliationOrderEvent(row: Record<string, unknown>): Reconciliatio
   };
 }
 
-async function persistExecutionReconciliation(
+async function persistEconomicTelemetry(
   raw: Record<string, unknown>,
   storedEventId: string,
-): Promise<ExecutionReconciliationV1> {
+): Promise<EconomicTelemetryV1> {
   const idempotencyKey = str(raw.idempotency_key);
   if (!idempotencyKey) throw new Error("RECONCILIATION_MISSING_IDEMPOTENCY_KEY");
 
@@ -180,10 +186,48 @@ async function persistExecutionReconciliation(
 
   const queue = queueData as unknown as EventExecutionQueueRow;
   const eventRow = eventData as Record<string, unknown>;
+  const telemetry = buildEconomicTelemetry({
+    queue,
+    event: toReconciliationOrderEvent(eventRow),
+    raw,
+    prior: readEconomicTelemetry(eventRow.executor_meta) ?? undefined,
+  });
+  const executorMeta = mergeEconomicTelemetryMeta(
+    eventRow.executor_meta as Record<string, unknown> | null,
+    telemetry,
+  );
+  const { data: updated, error: updateError } = await supabaseAdmin
+    .from("executor_order_events")
+    .update({ executor_meta: executorMeta })
+    .eq("id", storedEventId)
+    .eq("idempotency_key", telemetry.identity.idempotency_key)
+    .eq("clob_order_id", telemetry.identity.clob_order_id)
+    .select("id")
+    .single();
+  if (updateError || !updated) throw new Error("ECONOMIC_TELEMETRY_PERSISTENCE_FAILED");
+  return telemetry;
+}
+
+// Legacy settlement reconciliation remains behaviorally unchanged. Economic
+// telemetry is a separate truthful input contract for the next lifecycle
+// mission; it neither replaces nor advances this pre-existing lifecycle.
+async function persistExecutionReconciliation(
+  raw: Record<string, unknown>,
+  storedEventId: string,
+): Promise<ExecutionReconciliationV1> {
+  const idempotencyKey = str(raw.idempotency_key);
+  if (!idempotencyKey) throw new Error("RECONCILIATION_MISSING_IDEMPOTENCY_KEY");
+  const [{ data: queueData, error: queueError }, { data: eventData, error: eventError }] = await Promise.all([
+    supabaseAdmin.from("event_execution_queue").select("*").eq("idempotency_key", idempotencyKey).single(),
+    supabaseAdmin.from("executor_order_events").select("*").eq("id", storedEventId).single(),
+  ]);
+  if (queueError || !queueData) throw new Error("RECONCILIATION_QUEUE_READ_FAILED");
+  if (eventError || !eventData) throw new Error("RECONCILIATION_EVENT_READ_FAILED");
+  const queue = queueData as unknown as EventExecutionQueueRow;
+  const eventRow = eventData as Record<string, unknown>;
   const event = toReconciliationOrderEvent(eventRow);
   const prior = readExecutionReconciliation(eventRow.executor_meta);
   let reconciliation = buildExecutionReconciliation({ queue, event, raw, prior: prior ?? undefined });
-
   if (reconciliation.source_signal_pair_id) {
     const { data: signal, error: signalError } = await supabaseAdmin
       .from("generated_signal_pairs")
@@ -199,11 +243,7 @@ async function persistExecutionReconciliation(
       });
     }
   }
-
-  const executorMeta = mergeExecutionReconciliationMeta(
-    eventRow.executor_meta as Record<string, unknown> | null,
-    reconciliation,
-  );
+  const executorMeta = mergeExecutionReconciliationMeta(eventRow.executor_meta as Record<string, unknown> | null, reconciliation);
   const { data: updated, error: updateError } = await supabaseAdmin
     .from("executor_order_events")
     .update({ executor_meta: executorMeta })
@@ -386,19 +426,21 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: "DB_ERROR" }, { status: 500 });
   }
 
+  let economicTelemetry: EconomicTelemetryV1 | null = null;
   let reconciliation: ExecutionReconciliationV1 | null = null;
   if (
     (outcome.kind === "INSERTED" || outcome.kind === "DUPLICATE") &&
     (outcome.queueMark.kind === "EXECUTED" || outcome.queueMark.kind === "ALREADY_EXECUTED")
   ) {
     try {
+      economicTelemetry = await persistEconomicTelemetry(raw, outcome.row.id);
       reconciliation = await persistExecutionReconciliation(raw, outcome.row.id);
     } catch (error) {
       console.error(
-        "[executor/order-events] Reconciliation persistence failed:",
+        "[executor/order-events] Economic telemetry persistence failed:",
         error instanceof Error ? error.message : "unknown",
       );
-      return NextResponse.json({ success: false, error: "RECONCILIATION_PERSISTENCE_FAILED" }, { status: 500 });
+      return NextResponse.json({ success: false, error: "ECONOMIC_TELEMETRY_PERSISTENCE_FAILED" }, { status: 500 });
     }
   }
 
@@ -425,6 +467,7 @@ export async function POST(request: NextRequest) {
           id: outcome.row.id,
           created_at: outcome.row.created_at,
           queue_mark: outcome.queueMark,
+          economic_telemetry: economicTelemetry,
           reconciliation,
         },
         { status: 200 },
@@ -439,6 +482,7 @@ export async function POST(request: NextRequest) {
           id: outcome.row.id,
           created_at: outcome.row.created_at,
           queue_mark: outcome.queueMark,
+          economic_telemetry: economicTelemetry,
           reconciliation,
         },
         { status: 200 },
