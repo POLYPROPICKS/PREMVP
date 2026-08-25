@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polypropicks.com/contracts/ECONOMIC_TELEMETRY_V1.consumer-contract.schema.json",
+  "title": "PREMVP ECONOMIC_TELEMETRY_V1 consumer callback",
+  "description": "Portable contract for POST /api/executor/order-events. ECONOMIC_TELEMETRY_V1 is persisted at executor_order_events.executor_meta.economic_telemetry_v1.",
+  "type": "object",
+  "required": ["queue_id", "reservation_id", "condition_id", "token_id", "side", "idempotency_key", "clob_order_id", "stake_usd", "submitted_price", "submitted_size"],
+  "properties": {
+    "queue_id": { "type": "string", "minLength": 1 },
+    "reservation_id": { "type": ["string", "null"] },
+    "condition_id": { "type": "string", "minLength": 1 },
+    "token_id": { "type": "string", "minLength": 1 },
+    "side": { "type": "string", "minLength": 1 },
+    "idempotency_key": { "type": "string", "minLength": 1 },
+    "clob_order_id": { "type": "string", "minLength": 1 },
+    "stake_usd": { "type": "number", "exclusiveMinimum": 0, "description": "Requested authorized stake. Must not exceed the queued stake_usd." },
+    "submitted_price": { "type": "number", "exclusiveMinimum": 0, "description": "Requested limit/submitted price. Must not exceed the queued max_entry_price." },
+    "submitted_size": { "type": "number", "exclusiveMinimum": 0, "description": "Requested shares. submitted_price × submitted_size must not exceed the queued stake_usd." },
+    "economic_telemetry_v1": { "$ref": "#/$defs/economicTelemetryInput" }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "evidenceState": { "type": "string", "enum": ["KNOWN", "NOT_RETURNED_BY_VENUE", "NOT_YET_AVAILABLE", "NOT_APPLICABLE"] },
+    "economicObservation": {
+      "type": "object",
+      "required": ["value", "evidence_state"],
+      "properties": { "value": { "type": ["number", "null"] }, "evidence_state": { "$ref": "#/$defs/evidenceState" } },
+      "additionalProperties": false
+    },
+    "economicTelemetryInput": {
+      "type": "object",
+      "description": "Optional economic enrichment. The deployed parser also accepts these fields at the callback root when this object is absent. Numeric strings are accepted here only; the required callback admission fields above must be JSON numbers.",
+      "properties": {
+        "execution_status": { "type": "string" },
+        "executed_shares": { "type": ["number", "string"] },
+        "executed_size": { "type": ["number", "string"] },
+        "filled_size": { "type": ["number", "string"] },
+        "average_fill_price": { "type": ["number", "string"] },
+        "actual_fill_price": { "type": ["number", "string"] },
+        "filled_price": { "type": ["number", "string"] },
+        "executed_notional_usd": { "type": ["number", "string"] },
+        "making_amount": { "type": ["number", "string"] },
+        "taking_amount": { "type": ["number", "string"] },
+        "fee_rate_bps": { "type": ["number", "string"] },
+        "fee_usd": { "type": ["number", "string"] },
+        "fee_source": { "type": "string" },
+        "slippage_reference_price": { "type": ["number", "string"] },
+        "slippage_usd": { "type": ["number", "string"] },
+        "collateral_balance_usd": { "type": ["number", "string"] },
+        "spendable_balance_usd": { "type": ["number", "string"] },
+        "allowance_usd": { "type": ["number", "string"] },
+        "wallet_observed_at": { "type": "string" },
+        "wallet_observation_lifecycle_point": { "type": "string", "enum": ["PRE_SUBMIT", "POST_SUBMIT", "CURRENT_SNAPSHOT", "UNKNOWN"] },
+        "wallet_capture_evidence": { "type": "string", "enum": ["CAPTURED_AT_PRE_SUBMIT", "CAPTURED_AT_POST_SUBMIT"] }
+      },
+      "patternProperties": { "_evidence_state$": { "$ref": "#/$defs/evidenceState" } },
+      "additionalProperties": true
+    },
+    "economicTelemetryRecord": {
+      "type": "object",
+      "required": ["version", "identity", "requested", "executed", "costs", "wallet"],
+      "properties": {
+        "version": { "const": "ECONOMIC_TELEMETRY_V1" },
+        "identity": { "type": "object", "required": ["queue_id", "reservation_id", "condition_id", "token_id", "side", "idempotency_key", "clob_order_id"] },
+        "requested": { "type": "object", "required": ["authorized_stake_ceiling_usd", "submitted_price", "requested_shares", "requested_notional_usd"] },
+        "executed": { "type": "object", "required": ["execution_status", "executed_shares", "average_fill_price", "executed_notional_usd", "making_amount", "taking_amount"] },
+        "costs": { "type": "object", "required": ["fee_rate_bps", "fee_usd", "fee_source", "slippage_reference_price", "slippage_usd"] },
+        "wallet": { "type": "object", "required": ["lifecycle_point", "observed_at", "collateral_balance_usd", "spendable_balance_usd", "allowance_usd"] }
+      }
+    }
+  },
+  "x-contract-version": "1.0.0",
+  "x-endpoint": { "method": "POST", "path": "/api/executor/order-events", "required_header": "x-executor-secret" },
+  "x-numeric-semantics": "All stored numbers must be finite. Requested notional is rounded to 8 decimals as submitted_price × submitted_size. Executed notional is calculated from executed_shares × average_fill_price when both are known; a supplied contradictory executed_notional_usd is rejected. A null observation is never zero.",
+  "x-idempotency": "The existing execution is identified by idempotency_key and clob_order_id, with queue_id, reservation_id, condition_id, token_id, and side required to match the queue-derived stored identity. First admission inserts. A later callback with the same canonical event fields is duplicate=true and may enrich the same executor_meta record. A changed canonical event or reused clob_order_id is a 409 conflict. A later null/non-known observation never erases a previously KNOWN observation. A queue already EXECUTED is never downgraded by a later rejection.",
+  "x-wallet-lifecycle": "PRE_SUBMIT and POST_SUBMIT require wallet_capture_evidence exactly CAPTURED_AT_<lifecycle>. CURRENT_SNAPSHOT needs no historical attestation and must not be represented as historical evidence. The deployed validator has no monotonic lifecycle/downgrade rule: a later explicitly attested lifecycle value is accepted; only an unattested PRE_SUBMIT or POST_SUBMIT claim is rejected, surfaced by the route as HTTP 500 ECONOMIC_TELEMETRY_PERSISTENCE_FAILED.",
+  "x-responses": {
+    "accepted_or_same_record_enrichment": { "status": 200, "body": { "success": true, "duplicate": false, "event_id": "string", "idempotency_key": "string|null", "id": "string", "created_at": "string", "queue_mark": "object", "economic_telemetry": "economicTelemetryRecord", "reconciliation": "object|null" } },
+    "exact_duplicate": { "status": 200, "body_delta": { "duplicate": true }, "semantics": "The same stored event is returned; economic telemetry persistence is re-run against the prior record." },
+    "validation_failure": { "status": 400, "errors": ["Missing required field: token_id", "REJECTED_MISSING_IDEMPOTENCY_KEY_FOR_QUEUE_VALIDATION"] },
+    "queue_not_found": { "status": 404, "body": { "success": false, "error": "QUEUE_ROW_NOT_FOUND" } },
+    "identity_or_policy_conflict": { "status": 409, "errors": ["REJECTED_QUEUE_POLICY_MISMATCH", "IDEMPOTENCY_CONFLICT", "CLOB_ORDER_ID_CONFLICT"] },
+    "persistence_or_unhandled_telemetry_error": { "status": 500, "errors": ["DB_ERROR", "ECONOMIC_TELEMETRY_PERSISTENCE_FAILED"] }
+  }
+}
