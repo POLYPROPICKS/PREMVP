@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { buildEconomicTelemetry, mergeEconomicTelemetryMeta, readEconomicTelemetry } from "../../lib/executor/economicTelemetry";
+import { buildEconomicTelemetry, mergeEconomicTelemetryMeta, readEconomicTelemetry, readPersistedEconomicTelemetry } from "../../lib/executor/economicTelemetry";
 
 const queue = { id: "943fb286-b92d-4d38-8924-dedc048bc297", reservation_id: "res-san-luis", condition_id: "condition-san-luis", token_id: "token-san-luis", side: "YES", idempotency_key: "idem-san-luis", stake_usd: 2.5 };
 const event = { idempotency_key: "idem-san-luis", clob_order_id: "0x6f9a58fe1aa1a51b0c6c99694d65af9d0538ff922d16cc39022868df86b20b79", submitted_price: 0.46, submitted_size: 5.43 };
@@ -47,4 +47,19 @@ test("same identity enriches the same canonical record; strong identity conflict
   const stored = mergeEconomicTelemetryMeta({}, second);
   assert.equal(readEconomicTelemetry(stored), second);
   assert.throws(() => buildEconomicTelemetry({ queue: { ...queue, token_id: "other-token" }, event, prior: first, raw: { submitted_price: 0.46, submitted_size: 5.43 } }), /IDENTITY_CONFLICT_TOKEN_ID/);
+});
+
+test("callback acknowledgement reads economic telemetry from the persisted executor_meta record", () => {
+  const rawEchoCandidate = buildEconomicTelemetry({ queue, event, raw: { submitted_price: 0.46, submitted_size: 5.43 } });
+  const persistedMerged = buildEconomicTelemetry({
+    queue,
+    event,
+    prior: rawEchoCandidate,
+    raw: { submitted_price: 0.46, submitted_size: 5.43, economic_telemetry_v1: { executed_shares: 5.43, average_fill_price: 0.45 } },
+  });
+  const persistedMeta = mergeEconomicTelemetryMeta({ source: "ireland" }, persistedMerged);
+
+  assert.equal(readPersistedEconomicTelemetry(persistedMeta), persistedMerged);
+  assert.notDeepEqual(readPersistedEconomicTelemetry(persistedMeta), rawEchoCandidate);
+  assert.throws(() => readPersistedEconomicTelemetry({}), /PERSISTED_RECORD_MISSING/);
 });
