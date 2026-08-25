@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "policy_version": "1.2.0",
-  "updated_at": "2026-08-06T08:43:57Z",
+  "policy_version": "1.3.0",
+  "updated_at": "2026-08-25T00:00:00Z",
   "_format_note": "JSON-compatible YAML 1.2 subset. Every .yaml file in this directory MUST also parse with JSON.parse. Do not introduce block YAML syntax here.",
 
   "project": {
@@ -200,8 +200,19 @@
     "Work is escalation-only.",
     "Reviewers are invoked by risk class, never globally.",
     "A task requiring a reviewer cannot return PASS without a valid reviewer receipt.",
-    "Codex Remote is an access surface to local_codex_windows, not a separate runtime."
+    "Codex Remote is an access surface to local_codex_windows, not a separate runtime.",
+    "A merged migration is not a proven-applied migration. Repository ancestry (including a merge to origin/main) is never runtime proof of database activation; production migration-history/runtime evidence is required before a migration may be claimed active.",
+    "A narrow producer bugfix must not automatically expand into serving cleanup, a database migration, legacy historical cleanup, or additional downstream guards. Each materially different production boundary requires independent business necessity, stated explicitly.",
+    "A production database migration is never the default containment tool for a temporary same-day incident. Prefer the narrowest existing application boundary; introduce or activate schema/database mutation only when the business result strictly requires it."
   ],
+
+  "live_incident_containment_protocol": {
+    "_note": "Applies to any live-money or live-execution incident response before implementation work begins. Strengthens the existing invariants above rather than duplicating them.",
+    "step_1_bounded_census_first": "Before compiling or implementing containment for a live-money cohort, perform one bounded current-state census first: what remains controllable, what has already executed, how much business window remains. Do not spend implementation time protecting an already-passed business window.",
+    "step_2_business_window_overrides_technical_completeness": "If the urgent cohort has already executed or the remaining business value has expired, stop containment implementation, preserve evidence, and defer architectural cleanup. Do not keep shipping protection for a historical event because implementation already began.",
+    "step_3_stop_after_business_result": "Once the requested narrow business correction is production-proven, do not continue into cleanup, hardening, or architecture expansion unless separately justified or Founder-authorized.",
+    "runtime_slice_note": "An interrupted install, exhausted model session, or resumable runtime slice is a transport/slice exhaustion event, not a product/business block. Checkpoint and resume in a new session rather than reclassifying it as blocked."
+  },
 
   "founder_authority": {
     "current_directive_priority": "HIGHEST_PROJECT_AUTHORITY",
