@@ -8,6 +8,8 @@
  * not used: current PREMVP source has no producer/consumer contract for it.
  */
 
+import type { EconomicTelemetryV1 } from "./economicTelemetry";
+
 export const EXECUTION_RECONCILIATION_VERSION = "EXECUTION_RECONCILIATION_V1" as const;
 
 export type FillStatus = "ACCEPTED_OPEN" | "MATCHED_CONFIRMED";
@@ -26,6 +28,7 @@ export interface ExecutionReconciliationV1 {
   queue_id: string;
   reservation_id: string | null;
   source_signal_pair_id: string | null;
+  provider_event_id: string | null;
   order_event_id: string;
   condition_id: string;
   token_id: string;
@@ -38,6 +41,7 @@ export interface ExecutionReconciliationV1 {
   authorized_stake_ceiling_usd: number;
   fill_status: FillStatus;
   executed_shares: number | null;
+  actual_fill_price: number | null;
   executed_notional_usd: number | null;
   settlement_status: SettlementStatus;
   result_status: ResultStatus;
@@ -142,6 +146,89 @@ function explicitFee(
   return prior?.fee_usd ?? null;
 }
 
+function providerEventId(diagnostics: Record<string, unknown>): string | null {
+  const direct = diagnostics.provider_event_id ?? diagnostics.providerEventId;
+  if (typeof direct === "string" && direct.length > 0) return direct;
+  const lineage = diagnostics.source_lineage;
+  if (!lineage || typeof lineage !== "object" || Array.isArray(lineage)) return null;
+  const nested = (lineage as Record<string, unknown>).provider_event_id ?? (lineage as Record<string, unknown>).providerEventId;
+  return typeof nested === "string" && nested.length > 0 ? nested : null;
+}
+
+function requireSameIdentity(expected: string | null, actual: unknown, field: string): void {
+  if (actual == null || actual === "") return;
+  if (typeof actual !== "string" || actual !== expected) {
+    throw new Error(`RECONCILIATION_IDENTITY_CONFLICT_${field}`);
+  }
+}
+
+function assertTelemetryIdentity(
+  telemetry: EconomicTelemetryV1,
+  identity: Pick<ExecutionReconciliationV1, "queue_id" | "reservation_id" | "condition_id" | "token_id" | "side" | "idempotency_key" | "clob_order_id">,
+): void {
+  for (const key of ["queue_id", "reservation_id", "condition_id", "token_id", "side", "idempotency_key", "clob_order_id"] as const) {
+    if (telemetry.identity[key] !== identity[key]) throw new Error(`RECONCILIATION_TELEMETRY_IDENTITY_CONFLICT_${key.toUpperCase()}`);
+  }
+}
+
+function assertPriorIdentity(prior: ExecutionReconciliationV1, next: ExecutionReconciliationV1): void {
+  for (const key of ["queue_id", "source_signal_pair_id", "provider_event_id", "condition_id", "token_id", "side", "idempotency_key", "clob_order_id", "order_event_id"] as const) {
+    if (prior[key] !== next[key]) throw new Error(`RECONCILIATION_IDENTITY_CONFLICT_${key.toUpperCase()}`);
+  }
+}
+
+function isConfirmedTelemetry(telemetry: EconomicTelemetryV1 | undefined): telemetry is EconomicTelemetryV1 {
+  if (!telemetry || telemetry.executed.execution_status?.toUpperCase() !== "CONFIRMED") return false;
+  const { executed_shares, average_fill_price, executed_notional_usd } = telemetry.executed;
+  return executed_shares.evidence_state === "KNOWN" && executed_shares.value != null && executed_shares.value > 0 &&
+    average_fill_price.evidence_state === "KNOWN" && average_fill_price.value != null && average_fill_price.value > 0 &&
+    executed_notional_usd.evidence_state === "KNOWN" && executed_notional_usd.value != null && executed_notional_usd.value > 0;
+}
+
+/**
+ * Advances an already-persisted reconciliation from its canonical telemetry
+ * without re-reading Queue or order-event inputs. This is used by bounded
+ * lifecycle recovery so an existing ACCEPTED_OPEN row can become filled even
+ * when no further executor callback arrives.
+ */
+export function advanceExecutionReconciliationFromTelemetry(
+  prior: ExecutionReconciliationV1,
+  telemetry: EconomicTelemetryV1 | null | undefined,
+): ExecutionReconciliationV1 {
+  if (!telemetry) return prior;
+  assertTelemetryIdentity(telemetry, prior);
+  if (!isConfirmedTelemetry(telemetry)) return prior;
+  const executedShares = telemetry.executed.executed_shares.value!;
+  const actualFillPrice = telemetry.executed.average_fill_price.value!;
+  const executedNotional = telemetry.executed.executed_notional_usd.value!;
+  if (prior.executed_shares != null && executedShares < prior.executed_shares) {
+    throw new Error("RECONCILIATION_TELEMETRY_FILL_DOWNGRADE");
+  }
+  const calculatedNotional = roundMoney(executedShares * actualFillPrice);
+  if (calculatedNotional !== executedNotional) throw new Error("RECONCILIATION_TELEMETRY_EXECUTED_NOTIONAL_MISMATCH");
+  const feeUsd = telemetry.costs.fee_usd.evidence_state === "KNOWN"
+    ? telemetry.costs.fee_usd.value
+    : prior.fee_usd;
+  const next: ExecutionReconciliationV1 = {
+    ...prior,
+    fill_status: "MATCHED_CONFIRMED",
+    executed_shares: executedShares,
+    actual_fill_price: actualFillPrice,
+    executed_notional_usd: executedNotional,
+    settlement_status: prior.resolved_at ? prior.settlement_status : "PENDING_MARKET_RESOLUTION",
+    fee_status: feeUsd == null ? "NOT_REPORTED" : "REPORTED",
+    fee_usd: feeUsd,
+  };
+  if (next.resolved_at) {
+    return applyResolvedOutcomeToExecutionReconciliation(next, {
+      resolved_at: next.resolved_at,
+      winning_outcome: next.winning_outcome,
+      winning_token_id: next.winning_token_id,
+    });
+  }
+  return next;
+}
+
 function requireString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) throw new Error(`RECONCILIATION_MISSING_${field}`);
   return value;
@@ -152,8 +239,9 @@ export function buildExecutionReconciliation(input: {
   event: ReconciliationOrderEvent;
   raw: Record<string, unknown>;
   prior?: ExecutionReconciliationV1;
+  telemetry?: EconomicTelemetryV1;
 }): ExecutionReconciliationV1 {
-  const { queue, event, raw, prior } = input;
+  const { queue, event, raw, prior, telemetry } = input;
   const queueId = requireString(queue.id, "QUEUE_ID");
   const idempotencyKey = requireString(queue.idempotency_key, "IDEMPOTENCY_KEY");
   const clobOrderId = requireString(event.clob_order_id, "CLOB_ORDER_ID");
@@ -165,9 +253,37 @@ export function buildExecutionReconciliation(input: {
   if (submittedPrice == null || submittedPrice <= 0) throw new Error("RECONCILIATION_MISSING_SUBMITTED_PRICE");
   if (requestedShares == null || requestedShares <= 0) throw new Error("RECONCILIATION_MISSING_SUBMITTED_SIZE");
 
-  const matched = isMatched(raw, prior);
-  const executedShares = explicitExecutedShares(raw, event, matched, prior);
-  const feeUsd = explicitFee(raw, event, prior);
+  requireSameIdentity(conditionId, event.condition_id, "CONDITION_ID");
+  requireSameIdentity(tokenId, event.token_id, "TOKEN_ID");
+  requireSameIdentity(side, event.side ?? event.selected_side, "SIDE");
+  requireSameIdentity(idempotencyKey, event.idempotency_key, "IDEMPOTENCY_KEY");
+  requireSameIdentity(queueId, raw.queue_id, "QUEUE_ID");
+  requireSameIdentity(queue.reservation_id, raw.reservation_id, "RESERVATION_ID");
+  requireSameIdentity(sourceSignalPairId(queue.diagnostics ?? {}), raw.source_signal_pair_id ?? raw.signal_pair_id, "SOURCE_SIGNAL_PAIR_ID");
+  requireSameIdentity(conditionId, raw.condition_id, "CONDITION_ID");
+  requireSameIdentity(tokenId, raw.token_id, "TOKEN_ID");
+  requireSameIdentity(side, raw.side, "SIDE");
+  requireSameIdentity(side, raw.selected_side, "SIDE");
+  requireSameIdentity(idempotencyKey, raw.idempotency_key, "IDEMPOTENCY_KEY");
+  requireSameIdentity(clobOrderId, raw.clob_order_id, "CLOB_ORDER_ID");
+
+  if (isConfirmedTelemetry(telemetry) && prior?.executed_shares != null && telemetry.executed.executed_shares.value! < prior.executed_shares) {
+    throw new Error("RECONCILIATION_TELEMETRY_FILL_DOWNGRADE");
+  }
+  const matched = isConfirmedTelemetry(telemetry) || isMatched(raw, prior);
+  const legacyActualFillPrice = finiteNumber(raw.average_fill_price) ?? finiteNumber(raw.actual_fill_price) ?? finiteNumber(raw.filled_price);
+  const executedShares = isConfirmedTelemetry(telemetry)
+    ? Math.max(prior?.executed_shares ?? 0, telemetry.executed.executed_shares.value!)
+    : explicitExecutedShares(raw, event, matched, prior);
+  const actualFillPrice = isConfirmedTelemetry(telemetry)
+    ? telemetry.executed.average_fill_price.value!
+    : legacyActualFillPrice ?? prior?.actual_fill_price ?? null;
+  const executedNotional = isConfirmedTelemetry(telemetry)
+    ? telemetry.executed.executed_notional_usd.value!
+    : executedShares != null && actualFillPrice != null ? roundMoney(executedShares * actualFillPrice) : null;
+  const feeUsd = telemetry
+    ? telemetry.costs.fee_usd.evidence_state === "KNOWN" ? telemetry.costs.fee_usd.value : prior?.fee_usd ?? null
+    : explicitFee(raw, event, prior);
   const feeStatus: FeeStatus = !matched
     ? "PENDING_FILL_CONFIRMATION"
     : feeUsd == null
@@ -180,6 +296,7 @@ export function buildExecutionReconciliation(input: {
     queue_id: queueId,
     reservation_id: queue.reservation_id,
     source_signal_pair_id: sourceSignalPairId(queue.diagnostics ?? {}),
+    provider_event_id: providerEventId(queue.diagnostics ?? {}),
     order_event_id: event.id,
     condition_id: conditionId,
     token_id: tokenId,
@@ -192,7 +309,8 @@ export function buildExecutionReconciliation(input: {
     authorized_stake_ceiling_usd: queue.stake_usd,
     fill_status: matched ? "MATCHED_CONFIRMED" : "ACCEPTED_OPEN",
     executed_shares: executedShares,
-    executed_notional_usd: executedShares == null ? null : roundMoney(submittedPrice * executedShares),
+    actual_fill_price: actualFillPrice,
+    executed_notional_usd: executedNotional,
     settlement_status: matched ? "PENDING_MARKET_RESOLUTION" : "PENDING_FILL_CONFIRMATION",
     result_status: prior?.result_status ?? "PENDING",
     resolved_at: prior?.resolved_at ?? null,
@@ -203,6 +321,9 @@ export function buildExecutionReconciliation(input: {
     gross_pnl_usd: prior?.gross_pnl_usd ?? null,
     net_pnl_usd: prior?.net_pnl_usd ?? null,
   };
+
+  if (telemetry) assertTelemetryIdentity(telemetry, base);
+  if (prior) assertPriorIdentity(prior, base);
 
   if (base.resolved_at) {
     return applyResolvedOutcomeToExecutionReconciliation(base, {
@@ -225,7 +346,7 @@ export function applyResolvedOutcomeToExecutionReconciliation(
     winning_token_id: resolution.winning_token_id,
   };
 
-  if (prior.fill_status !== "MATCHED_CONFIRMED" || prior.executed_shares == null) {
+  if (prior.fill_status !== "MATCHED_CONFIRMED" || prior.executed_shares == null || prior.executed_notional_usd == null) {
     return {
       ...base,
       settlement_status: "RESOLVED_AWAITING_FILL_CONFIRMATION",
@@ -237,8 +358,8 @@ export function applyResolvedOutcomeToExecutionReconciliation(
 
   const won = resolution.winning_token_id === prior.token_id;
   const grossPnl = won
-    ? prior.executed_shares * (1 - prior.submitted_price)
-    : -prior.executed_shares * prior.submitted_price;
+    ? prior.executed_shares - prior.executed_notional_usd
+    : -prior.executed_notional_usd;
   const roundedGross = roundMoney(grossPnl);
   const hasFee = prior.fee_status === "REPORTED" && prior.fee_usd != null;
   return {

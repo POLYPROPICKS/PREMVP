@@ -16,13 +16,13 @@ import {
   type EconomicTelemetryV1,
 } from "@/lib/executor/economicTelemetry";
 import {
-  applyResolvedOutcomeToExecutionReconciliation,
   buildExecutionReconciliation,
   mergeExecutionReconciliationMeta,
   readExecutionReconciliation,
   type ExecutionReconciliationV1,
   type ReconciliationOrderEvent,
 } from "@/lib/executor/executionReconciliation";
+import { validateReconciliationSourceSignalPair } from "@/lib/executor/executionLifecycle";
 
 // Keys whose name (case-insensitive, normalised) triggers value removal
 const BANNED_SUBSTRINGS = [
@@ -171,6 +171,10 @@ function toReconciliationOrderEvent(row: Record<string, unknown>): Reconciliatio
   };
 }
 
+function isConfirmedEconomicTelemetry(telemetry: EconomicTelemetryV1): boolean {
+  return telemetry.executed.execution_status?.toUpperCase() === "CONFIRMED";
+}
+
 async function persistEconomicTelemetry(
   raw: Record<string, unknown>,
   storedEventId: string,
@@ -187,12 +191,19 @@ async function persistEconomicTelemetry(
 
   const queue = queueData as unknown as EventExecutionQueueRow;
   const eventRow = eventData as Record<string, unknown>;
-  const telemetry = buildEconomicTelemetry({
+  const priorTelemetry = readEconomicTelemetry(eventRow.executor_meta);
+  const candidateTelemetry = buildEconomicTelemetry({
     queue,
     event: toReconciliationOrderEvent(eventRow),
     raw,
-    prior: readEconomicTelemetry(eventRow.executor_meta) ?? undefined,
+    prior: priorTelemetry ?? undefined,
   });
+  // A later acknowledgement cannot downgrade a confirmed venue fill. Preserve
+  // the existing canonical telemetry in that case; it remains available for
+  // a later callback that carries confirmed, richer economic observations.
+  const telemetry = priorTelemetry && isConfirmedEconomicTelemetry(priorTelemetry) && !isConfirmedEconomicTelemetry(candidateTelemetry)
+    ? priorTelemetry
+    : candidateTelemetry;
   const executorMeta = mergeEconomicTelemetryMeta(
     eventRow.executor_meta as Record<string, unknown> | null,
     telemetry,
@@ -209,9 +220,9 @@ async function persistEconomicTelemetry(
   return readPersistedEconomicTelemetry((updated as Record<string, unknown>).executor_meta);
 }
 
-// Legacy settlement reconciliation remains behaviorally unchanged. Economic
-// telemetry is a separate truthful input contract for the next lifecycle
-// mission; it neither replaces nor advances this pre-existing lifecycle.
+// ECONOMIC_TELEMETRY_V1 is the fill authority for the same immutable order
+// event. Settlement itself is performed by the resolver lifecycle adapter,
+// which carries the authoritative winning token rather than inferring it.
 async function persistExecutionReconciliation(
   raw: Record<string, unknown>,
   storedEventId: string,
@@ -228,21 +239,22 @@ async function persistExecutionReconciliation(
   const eventRow = eventData as Record<string, unknown>;
   const event = toReconciliationOrderEvent(eventRow);
   const prior = readExecutionReconciliation(eventRow.executor_meta);
-  let reconciliation = buildExecutionReconciliation({ queue, event, raw, prior: prior ?? undefined });
+  let reconciliation = buildExecutionReconciliation({
+    queue,
+    event,
+    raw,
+    prior: prior ?? undefined,
+    telemetry: readEconomicTelemetry(eventRow.executor_meta) ?? undefined,
+  });
   if (reconciliation.source_signal_pair_id) {
     const { data: signal, error: signalError } = await supabaseAdmin
       .from("generated_signal_pairs")
-      .select("resolved_at,winning_outcome,signal_result,selected_token_id")
+      .select("id,condition_id,selected_token_id,selected_outcome,diagnostics")
       .eq("id", reconciliation.source_signal_pair_id)
       .maybeSingle();
     if (signalError) throw new Error("RECONCILIATION_SIGNAL_READ_FAILED");
-    if (signal?.resolved_at && (signal.signal_result === "won" || signal.signal_result === "lost")) {
-      reconciliation = applyResolvedOutcomeToExecutionReconciliation(reconciliation, {
-        resolved_at: String(signal.resolved_at),
-        winning_outcome: str(signal.winning_outcome),
-        winning_token_id: signal.signal_result === "won" ? reconciliation.token_id : null,
-      });
-    }
+    if (!signal) throw new Error("RECONCILIATION_SOURCE_SIGNAL_PAIR_NOT_FOUND");
+    validateReconciliationSourceSignalPair(reconciliation, signal);
   }
   const executorMeta = mergeExecutionReconciliationMeta(eventRow.executor_meta as Record<string, unknown> | null, reconciliation);
   const { data: updated, error: updateError } = await supabaseAdmin

@@ -79,6 +79,7 @@
     "contur3:live-funnel-log": "node scripts/contur3/live-funnel-log.mjs",
     "contur3:g2-log": "node scripts/contur3/g2-log.mjs",
     "contur3:preflight24h": "node scripts/contur3/preflight24h.mjs",
+    "contur3:reconcile-execution-lifecycle": "tsx scripts/contur3/reconcile-execution-lifecycle.ts",
     "contur3:battle-ready": "node scripts/contur3/battle-ready.mjs",
     "liquidity:build-watchlist": "tsx scripts/liquidity/build-watchlist.mjs",
     "liquidity:capture-snapshots": "tsx scripts/liquidity/capture-snapshots.mjs",

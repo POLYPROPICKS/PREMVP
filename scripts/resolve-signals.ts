@@ -11,11 +11,7 @@ import {
   resolveSignalOutcome,
 } from "../lib/feed/resolveSignalOutcome";
 import { pruneCurrentSignalPairServing } from "../lib/feed/currentSignalPairServing";
-import {
-  applyResolvedOutcomeToExecutionReconciliation,
-  mergeExecutionReconciliationMeta,
-  readExecutionReconciliation,
-} from "../lib/executor/executionReconciliation";
+import { reconcileExecutionLifecycle } from "../lib/executor/executionLifecycle";
 
 // ---- Config ----------------------------------------------------------------
 
@@ -495,61 +491,7 @@ async function reconcilePendingExecutionSettlements(
   supabase: any,
   writeMode: boolean,
 ): Promise<{ loaded: number; eligible: number; updated: number }> {
-  const sinceIso = new Date(Date.now() - 30 * 24 * 3_600_000).toISOString();
-  const { data: eventRows, error: eventError } = await supabase
-    .from("executor_order_events")
-    .select("id,created_at,clob_order_id,idempotency_key,executor_meta")
-    .not("clob_order_id", "is", null)
-    .gte("created_at", sinceIso)
-    .order("created_at", { ascending: true })
-    .limit(200);
-  if (eventError) throw new Error(`EXECUTION_RECONCILIATION_READ_FAILED: ${eventError.message}`);
-
-  let eligible = 0;
-  let updated = 0;
-  for (const row of (eventRows ?? []) as Array<Record<string, unknown>>) {
-    const prior = readExecutionReconciliation(row.executor_meta);
-    if (!prior || prior.settlement_status === "SETTLED_RECONCILED" || !prior.source_signal_pair_id) continue;
-    eligible++;
-
-    const { data: signal, error: signalError } = await supabase
-      .from("generated_signal_pairs")
-      .select("resolved_at,winning_outcome,signal_result,selected_token_id")
-      .eq("id", prior.source_signal_pair_id)
-      .maybeSingle();
-    if (signalError) throw new Error(`EXECUTION_RECONCILIATION_SIGNAL_READ_FAILED: ${signalError.message}`);
-    if (!signal?.resolved_at || (signal.signal_result !== "won" && signal.signal_result !== "lost")) continue;
-
-    const next = applyResolvedOutcomeToExecutionReconciliation(prior, {
-      resolved_at: String(signal.resolved_at),
-      winning_outcome: typeof signal.winning_outcome === "string" ? signal.winning_outcome : null,
-      winning_token_id: signal.signal_result === "won" ? prior.token_id : null,
-    });
-    if (JSON.stringify(next) === JSON.stringify(prior)) continue;
-
-    console.log(
-      `[resolve-signals] EXECUTION_RECONCILIATION_${writeMode ? "WRITE" : "WOULD"}` +
-        ` key=${prior.reconciliation_key} status=${next.settlement_status}`,
-    );
-    if (!writeMode) continue;
-
-    const meta = mergeExecutionReconciliationMeta(
-      row.executor_meta as Record<string, unknown> | null,
-      next,
-    );
-    const { data: changed, error: updateError } = await supabase
-      .from("executor_order_events")
-      .update({ executor_meta: meta })
-      .eq("id", row.id)
-      .eq("idempotency_key", prior.idempotency_key)
-      .eq("clob_order_id", prior.clob_order_id)
-      .select("id")
-      .single();
-    if (updateError || !changed) throw new Error("EXECUTION_RECONCILIATION_UPDATE_FAILED");
-    updated++;
-  }
-
-  const summary = { loaded: eventRows?.length ?? 0, eligible, updated };
+  const summary = await reconcileExecutionLifecycle(supabase, { writeMode, limit: 200 });
   console.log(`[resolve-signals] EXECUTION_RECONCILIATION_SUMMARY ${JSON.stringify(summary)}`);
   return summary;
 }
@@ -783,130 +725,10 @@ async function main() {
         ` live_source_rows_missing=${liveSourceRowsMissing}`,
     );
 
-    // ── Pass 2: existing executor_order_events-based path (unchanged) —
-    // kept as a supplementary source for any live target this repo's
-    // order-events table records that a queue row doesn't (or didn't) carry.
-    const targets = await loadPriorityLiveTargets(supabase);
-    livePriorityTargetsLoaded = targets.length;
-    console.log(
-      `[resolve-signals] Live priority targets loaded: ${livePriorityTargetsLoaded}` +
-        `${targets[0] ? ` source=${targets[0].source_path}` : ""}`,
-    );
-
-    for (const target of targets) {
-      if (WRITE_MODE && livePriorityResolved >= maxUpdates) {
-        console.log(
-          `[resolve-signals] Max live priority updates reached (${maxUpdates}) — stopping priority writes`,
-        );
-        break;
-      }
-
-      const { data: matchingRows, error: matchError } = await supabase
-        .from("generated_signal_pairs")
-        .select(
-          "id, created_at, expires_at, event_slug, condition_id, selected_outcome, selected_token_id, entry_price_num",
-        )
-        .eq("condition_id", target.condition_id)
-        .eq("selected_token_id", target.selected_token_id)
-        .is("signal_result", null)
-        .not("entry_price_num", "is", null)
-        .not("metric_formula_version", "is", null);
-
-      if (matchError) {
-        livePriorityErrors++;
-        console.error(
-          `[resolve-signals] LIVE_PRIORITY_ERROR ${target.event} DB match failed: ${matchError.message}`,
-        );
-        continue;
-      }
-
-      const rowsForTarget = ((matchingRows ?? []) as unknown) as ResolverRow[];
-      if (!rowsForTarget.length) {
-        livePriorityMissingInPairs++;
-        console.log(
-          `[resolve-signals] LIVE_PRIORITY_MISSING ${target.event} ${target.condition_id}::${target.selected_token_id}`,
-        );
-        continue;
-      }
-      livePriorityTargetsMatchedInPairs++;
-
-      const row = rowsForTarget
-        .slice()
-        .sort((a, b) => Date.parse(a.created_at ?? "") - Date.parse(b.created_at ?? ""))[0];
-      const market = await fetchGammaMarketByConditionId(target.condition_id);
-      const outcome = resolveSignalOutcome({
-        conditionId: target.condition_id,
-        selectedTokenId: target.selected_token_id,
-        entryPriceNum: row.entry_price_num,
-        market,
-      });
-
-      if (outcome.resolverState !== "resolved_candidate") {
-        livePriorityUnresolved++;
-        console.log(
-          `[resolve-signals] LIVE_PRIORITY_SKIP ${target.event}` +
-            ` state=${outcome.resolverState} reason=${outcome.skipReason}`,
-        );
-        continue;
-      }
-
-      if (!WRITE_MODE) {
-        livePriorityUnresolved++;
-        console.log(
-          `[resolve-signals] LIVE_PRIORITY_WOULD ${target.event}` +
-            ` result=${outcome.signalResult}` +
-            ` return=${outcome.realizedReturnPct}%` +
-            ` winner=${outcome.candidateWinningOutcome}`,
-        );
-        continue;
-      }
-
-      const resolvedAt = new Date().toISOString();
-      const { data: updatedRows, error: updateError } = await supabase
-        .from("generated_signal_pairs")
-        .update({
-          signal_result: outcome.signalResult,
-          resolved_at: resolvedAt,
-          winning_outcome: outcome.candidateWinningOutcome,
-          realized_return_pct: outcome.realizedReturnPct,
-        })
-        .is("signal_result", null)
-        .eq("condition_id", target.condition_id)
-        .eq("selected_token_id", target.selected_token_id)
-        .select("id");
-
-      if (updateError) {
-        livePriorityErrors++;
-        console.error(
-          `[resolve-signals] LIVE_PRIORITY_ERROR ${target.event} update failed: ${updateError.message}`,
-        );
-        continue;
-      }
-
-      const affectedRows = updatedRows?.length ?? 0;
-      await pruneResolvedServingRows(updatedRows);
-      livePriorityRowsUpdated += affectedRows;
-      livePriorityResolved++;
-      console.log(
-        `[resolve-signals] LIVE_PRIORITY_WRITE ${target.event}` +
-          ` strictKey=${target.condition_id}::${target.selected_token_id}` +
-          ` rows=${affectedRows}` +
-          ` result=${outcome.signalResult}` +
-          ` return=${outcome.realizedReturnPct}%` +
-          ` winner=${outcome.candidateWinningOutcome}`,
-      );
-    }
-
-    console.log(
-      `[resolve-signals] LIVE_PRIORITY_SUMMARY` +
-        ` loaded=${livePriorityTargetsLoaded}` +
-        ` matched=${livePriorityTargetsMatchedInPairs}` +
-        ` resolved=${livePriorityResolved}` +
-        ` unresolved=${livePriorityUnresolved}` +
-        ` missing=${livePriorityMissingInPairs}` +
-        ` errors=${livePriorityErrors}` +
-        ` rows_updated=${livePriorityRowsUpdated}`,
-    );
+    // Economic executions must carry their exact source pair. The former
+    // order-event fallback rediscovered rows by condition/token and could
+    // mutate a sibling; it is intentionally fail-closed instead.
+    console.log("[resolve-signals] LIVE_PRIORITY_LEGACY_EVENT_FALLBACK_SKIPPED reason=EXACT_SOURCE_SIGNAL_PAIR_REQUIRED");
 
     if (!ONLY_EXPIRED && !HAS_EXPLICIT_ORDER) {
       const finishedAt = new Date().toISOString();
