@@ -37,12 +37,13 @@ import {
   resolveStructuredSportFamily,
   scoreOwnershipForSportFamily,
 } from "./sportScoreOwnership";
+import { MINIMUM_MODEL_EVENT_VOLUME_USD } from "./eventLiquidityGate";
 
 const DEFAULT_CONFIG: SportsDiscoveryConfig = {
   windowHours: 24,
   fallbackWindowHours: 72,
   fetchVolumeMinUsd: 50000,
-  finalEventVolumeMinUsd: 100000,
+  finalEventVolumeMinUsd: MINIMUM_MODEL_EVENT_VOLUME_USD,
   targetCards: 5,
   platform: "Polymarket",
   network: "Polygon",
@@ -589,6 +590,17 @@ export async function discoverSportsMarkets(
           sportMeta,
           gameTeamLookup,
         );
+        const aggregateByEvent = new Map<string, { sum: number; complete: boolean }>();
+        for (const row of inventoryRows) {
+          const aggregate = aggregateByEvent.get(row.providerEventId) ?? { sum: 0, complete: true };
+          if (typeof row.volumeUsd !== "number" || !Number.isFinite(row.volumeUsd)) aggregate.complete = false;
+          else aggregate.sum += row.volumeUsd;
+          aggregateByEvent.set(row.providerEventId, aggregate);
+        }
+        for (const entry of broadEntries) {
+          const aggregate = entry.providerEventId ? aggregateByEvent.get(entry.providerEventId) : null;
+          entry.eventVolumeUsd = aggregate?.complete ? aggregate.sum : null;
+        }
         for (const entry of broadEntries) entry.producerRunId = producerRunId;
         counts.broadSportsRowsProposed = broadDiag.rowsProposed;
         counts.broadSportsRowsBySport = broadDiag.rowsBySport;
@@ -1541,6 +1553,8 @@ export interface WcShadowEntry {
   tokenIndex?: number;
   priceBucket?: string | null;
   volumeUsd?: number | null;
+  /** Canonical aggregate event volume, never a child-market substitute. */
+  eventVolumeUsd?: number | null;
   v1EligibilityReason?: string | null;
   marketFamily?: string | null;
   // Structured provider-sport contract (commit 1). Populated only by the
@@ -1572,6 +1586,18 @@ export interface WcShadowEntry {
 export interface ProviderSportMetadataMap {
   tagIdToSportCodes: Map<string, Set<string>>;
   sportCodeToSeriesIds: Map<string, string[]>;
+}
+
+function canonicalEventVolumeUsd(event: Pick<PolymarketRawEvent, "markets">): number | null {
+  const markets = Array.isArray(event.markets) ? event.markets : [];
+  if (markets.length === 0) return null;
+  let total = 0;
+  for (const market of markets) {
+    const { volume } = canonicalMarketVolume(normalizeSportsMarket(market as unknown as Record<string, unknown>));
+    if (!Number.isFinite(volume)) return null;
+    total += volume;
+  }
+  return total;
 }
 
 function parseIdList(value: unknown): string[] {
@@ -2019,6 +2045,7 @@ export async function collectWcShadowCandidates(): Promise<WcShadowEntry[]> {
       if (!event.id && !event.slug) continue;
       const title = event.title || event.slug || "";
       if (WC2026_PROP_EXCLUDE_RE.test(title)) continue;
+      const eventVolumeUsd = canonicalEventVolumeUsd(event);
       const endIso = event.endDateIso || event.endDate || null;
       if (endIso) {
         const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
@@ -2070,6 +2097,7 @@ export async function collectWcShadowCandidates(): Promise<WcShadowEntry[]> {
           marketTitle: cand.nm.question ? cand.nm.question.substring(0, 200) : null,
           shadowScope: "WC2026" as const,
           shadowReason: "PER_EVENT_CAP_EXTRA_MARKET",
+          eventVolumeUsd,
         });
       }
     }
@@ -2107,6 +2135,7 @@ export async function collectEsportShadowCandidates(): Promise<WcShadowEntry[]> 
       nm: SportsMarketCandidate; tier: number; inBandPrice: number; chosenPriceIdx: number;
       conditionId: string; selectedTokenId: string;
       eventSlug: string; eventTitle: string; eventEndIso: string; vol: number; matchLike: boolean;
+      eventVolumeUsd: number | null;
     };
     const pool: EPool[] = [];
 
@@ -2116,6 +2145,7 @@ export async function collectEsportShadowCandidates(): Promise<WcShadowEntry[]> 
       if (!key || seenKeys.has(key)) continue;
       const title = event.title || event.slug || "";
       if (ESPORTS_PROP_EXCLUDE_RE.test(title)) continue;
+      const eventVolumeUsd = canonicalEventVolumeUsd(event);
       const endIso = event.endDateIso || event.endDate || null;
       if (!endIso) continue;
       const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
@@ -2147,6 +2177,7 @@ export async function collectEsportShadowCandidates(): Promise<WcShadowEntry[]> 
         eventEndIso: endIso,
         vol: (event as { volume24hr?: number }).volume24hr ?? 0,
         matchLike: isMatchLike(title),
+        eventVolumeUsd,
       });
     }
 
@@ -2171,6 +2202,7 @@ export async function collectEsportShadowCandidates(): Promise<WcShadowEntry[]> 
       marketTitle: c.nm.question ? c.nm.question.substring(0, 200) : null,
       shadowScope: "ESPORT" as const,
       shadowReason: "TARGET_POOL_EXTRA_EVENT",
+      eventVolumeUsd: c.eventVolumeUsd,
     }));
   } catch {
     return [];
@@ -2195,6 +2227,7 @@ export async function collectNbaNhlShadowCandidates(): Promise<WcShadowEntry[]> 
     conditionId: string; selectedTokenId: string;
     eventSlug: string; eventTitle: string; eventEndIso: string;
     leagueLabel: "NBA" | "NHL";
+    eventVolumeUsd: number | null;
   };
 
   const collectLeague = async (slugs: string[], leagueLabel: "NBA" | "NHL"): Promise<LeagueEntry[]> => {
@@ -2211,6 +2244,7 @@ export async function collectNbaNhlShadowCandidates(): Promise<WcShadowEntry[]> 
       if (!key || seen.has(key)) continue;
       const title = event.title || event.slug || "";
       if (STRAT_PROP_EXCLUDE_RE.test(title)) continue;
+      const eventVolumeUsd = canonicalEventVolumeUsd(event);
       const endIso = event.endDateIso || event.endDate || null;
       if (!endIso) continue;
       const hoursUntil = (new Date(endIso).getTime() - nowMs) / 3600000;
@@ -2238,6 +2272,7 @@ export async function collectNbaNhlShadowCandidates(): Promise<WcShadowEntry[]> 
         eventTitle: title.substring(0, 100),
         eventEndIso: endIso,
         leagueLabel,
+        eventVolumeUsd,
       });
     }
     // Sort by nearest endDate — approximates window-expansion priority of section 8e
@@ -2265,6 +2300,7 @@ export async function collectNbaNhlShadowCandidates(): Promise<WcShadowEntry[]> 
       marketTitle: e.nm.question ? e.nm.question.substring(0, 200) : null,
       shadowScope: e.leagueLabel,
       shadowReason: "TARGET_LEAGUE_EXTRA_EVENT",
+      eventVolumeUsd: e.eventVolumeUsd,
     }));
   } catch {
     return [];
@@ -2299,6 +2335,7 @@ function _v1BothSides(
   eligReason: "PRIMARY_FAMILY" | "HIGH_VOLUME_NON_PRIMARY" | "WC_HIGH_VOLUME_GROUP_V1_1",
   detectedMarketFamily?: string,
   gameStartIso?: string | null,
+  eventVolumeUsd?: number | null,
 ): WcShadowEntry[] {
   const conditionId = nm.conditionId ?? null;
   if (!conditionId) return [];
@@ -2331,6 +2368,7 @@ function _v1BothSides(
       tokenIndex: i,
       priceBucket: _v1PriceBucket(price),
       volumeUsd: vol > 0 ? vol : null,
+      eventVolumeUsd: eventVolumeUsd ?? null,
       v1EligibilityReason: eligReason,
       marketFamily: detectedMarketFamily ?? (_v1IsPrimary(nm, scope) ? "primary" : "non_primary"),
     });
@@ -2423,7 +2461,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
           || (!mtype && /spread|handicap|over.?under|total goals?|corners|first half|both teams to score/.test(question));
         const vol = _v1MarketVol(nm);
         if (isWcPrimary) {
-          all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY", undefined, startIso));
+          all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY", undefined, startIso, canonicalEventVolumeUsd(ev)));
         } else if (isHighVolGroup && vol > 5000) {
           let detectedGroup = "high_vol_group";
           if (/spread|handicap/.test(mtype)) detectedGroup = "spread";
@@ -2432,7 +2470,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
           else if (/both.?teams.?to.?score/.test(mtype)) detectedGroup = "goal";
           else if (/over.?under|total.?goal/.test(mtype)) detectedGroup = "total";
           else if (/first.?half|second.?half/.test(mtype)) detectedGroup = "half";
-          all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "WC_HIGH_VOLUME_GROUP_V1_1", detectedGroup, startIso));
+          all.push(..._v1BothSides(nm, "WC2026", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, "WC_HIGH_VOLUME_GROUP_V1_1", detectedGroup, startIso, canonicalEventVolumeUsd(ev)));
         }
         // else: unknown type or insufficient volume — skip
       }
@@ -2484,7 +2522,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
           || (!mtype && /spread|handicap|over.?under|total goals?|corners|first half|both teams/.test(question));
         const vol = _v1MarketVol(nm);
         if (isWcP) {
-          all.push(..._v1BothSides(nm, "WC2026", evSlugL.substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY", undefined, startIsoTag));
+          all.push(..._v1BothSides(nm, "WC2026", evSlugL.substring(0, 80), title.substring(0, 100), endIso, "PRIMARY_FAMILY", undefined, startIsoTag, canonicalEventVolumeUsd(ev)));
         } else if (isHvg && vol > 5000) {
           let dg = "high_vol_group";
           if (/spread|handicap/.test(mtype)) dg = "spread";
@@ -2493,7 +2531,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
           else if (/both.?teams.?to.?score/.test(mtype)) dg = "goal";
           else if (/over.?under|total.?goal/.test(mtype)) dg = "total";
           else if (/first.?half|second.?half/.test(mtype)) dg = "half";
-          all.push(..._v1BothSides(nm, "WC2026", evSlugL.substring(0, 80), title.substring(0, 100), endIso, "WC_HIGH_VOLUME_GROUP_V1_1", dg, startIsoTag));
+          all.push(..._v1BothSides(nm, "WC2026", evSlugL.substring(0, 80), title.substring(0, 100), endIso, "WC_HIGH_VOLUME_GROUP_V1_1", dg, startIsoTag, canonicalEventVolumeUsd(ev)));
         }
       }
     }
@@ -2521,7 +2559,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
         const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
         const isPrim = _v1IsPrimary(nm, "ESPORT");
         if (!isPrim && _v1MarketVol(nm) < MIN_VOL_NP) continue;
-        all.push(..._v1BothSides(nm, "ESPORT", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, isPrim ? "PRIMARY_FAMILY" : "HIGH_VOLUME_NON_PRIMARY"));
+        all.push(..._v1BothSides(nm, "ESPORT", (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, isPrim ? "PRIMARY_FAMILY" : "HIGH_VOLUME_NON_PRIMARY", undefined, undefined, canonicalEventVolumeUsd(ev)));
       }
     }
   } catch { /* fail-open */ }
@@ -2551,7 +2589,7 @@ export async function collectFullLineOutcomeV1Candidates(): Promise<WcShadowEntr
           const nm = normalizeSportsMarket(m as unknown as Record<string, unknown>);
           const isPrim = _v1IsPrimary(nm, scope);
           if (!isPrim && _v1MarketVol(nm) < MIN_VOL_NP) continue;
-          all.push(..._v1BothSides(nm, scope, (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, isPrim ? "PRIMARY_FAMILY" : "HIGH_VOLUME_NON_PRIMARY"));
+          all.push(..._v1BothSides(nm, scope, (ev.slug || "").substring(0, 80), title.substring(0, 100), endIso, isPrim ? "PRIMARY_FAMILY" : "HIGH_VOLUME_NON_PRIMARY", undefined, undefined, canonicalEventVolumeUsd(ev)));
         }
       }
     } catch { /* fail-open per league */ }
