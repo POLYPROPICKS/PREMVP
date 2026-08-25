@@ -107,6 +107,17 @@ function isNonEmptyString(v) {
   return typeof v === 'string' && v.trim().length > 0;
 }
 
+/**
+ * Canonical evaluation-period identity for a cycle: the calendar date the period starts on.
+ * One period key maps to exactly one canonical cycle_id — this is the identity retry, resume
+ * and duplicate-detection all key off. Not the same string as cycle_id: cycle_id may carry a
+ * descriptive slug, but two cycles sharing this key are always the same evaluation period.
+ */
+export function derivePeriodKey(periodStart) {
+  if (typeof periodStart !== 'string' || periodStart.length < 10) return null;
+  return periodStart.slice(0, 10);
+}
+
 function isObject(v) {
   return v !== null && typeof v === 'object' && !Array.isArray(v);
 }

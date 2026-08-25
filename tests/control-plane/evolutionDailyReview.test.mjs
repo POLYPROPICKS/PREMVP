@@ -21,7 +21,8 @@ import {
 } from '../../scripts/control-plane/lib/evolution-cycle.mjs';
 
 import { collectEvolutionInputs } from '../../scripts/control-plane/evolution-collect.mjs';
-import { evaluateEvolutionCycle } from '../../scripts/control-plane/evolution-evaluate.mjs';
+import { evaluateEvolutionCycle, resolveCyclePersistence } from '../../scripts/control-plane/evolution-evaluate.mjs';
+import os from 'node:os';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const EVOLUTION_DIR = 'docs/ai-context/control-plane/evolution';
@@ -667,7 +668,80 @@ test('the Founder capability ladder holds the seven approved levels in order', (
   assert.ok(ladder.levels.every((l) => l.status === 'NOT_ASSESSED'));
 });
 
-test('Stage 1 ships no historical cycle — cycles/ holds only its placeholder', () => {
-  const entries = fs.readdirSync(path.join(REPO_ROOT, EVOLUTION_DIR, 'cycles'));
-  assert.deepEqual(entries.filter((f) => f.endsWith('.json')), []);
+test('every persisted Evolution cycle validates against the canonical contract', () => {
+  const cyclesDir = path.join(REPO_ROOT, EVOLUTION_DIR, 'cycles');
+  const jsonFiles = fs.readdirSync(cyclesDir).filter((f) => f.endsWith('.json'));
+  for (const file of jsonFiles) {
+    const cycle = JSON.parse(fs.readFileSync(path.join(cyclesDir, file), 'utf8'));
+    const result = validateEvolutionCycle(cycle);
+    assert.equal(result.ok, true, `${file} violates the canonical contract: ${result.errors.join('; ')}`);
+    assert.equal(`${cycle.cycle_id}.json`, file, `${file} must be named after its own cycle_id`);
+  }
+});
+
+test('one evaluation period maps to exactly one canonical cycle identity', () => {
+  const cyclesDir = path.join(REPO_ROOT, EVOLUTION_DIR, 'cycles');
+  const jsonFiles = fs.readdirSync(cyclesDir).filter((f) => f.endsWith('.json'));
+  const seenPeriods = new Map();
+  for (const file of jsonFiles) {
+    const cycle = JSON.parse(fs.readFileSync(path.join(cyclesDir, file), 'utf8'));
+    const periodKey = cycle.period_start.slice(0, 10);
+    const prior = seenPeriods.get(periodKey);
+    assert.equal(prior, undefined,
+      `period ${periodKey} has competing canonical cycles: ${prior} and ${cycle.cycle_id}`);
+    seenPeriods.set(periodKey, cycle.cycle_id);
+  }
+});
+
+test('resolveCyclePersistence: an empty cycles directory always creates a new lineage', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'evo-cycles-'));
+  try {
+    const result = resolveCyclePersistence(cycleFixture({ cycle_id: '2026-08-25__daily-review' }), tmp);
+    assert.deepEqual(result, { ok: true, mode: 'CREATE', errors: [] });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('resolveCyclePersistence: a retry with the same cycle_id resumes the existing lineage', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'evo-cycles-'));
+  try {
+    const cycle = cycleFixture({ cycle_id: '2026-08-25__daily-review', period_start: '2026-08-25T00:00:00Z' });
+    fs.writeFileSync(path.join(tmp, `${cycle.cycle_id}.json`), JSON.stringify(cycle), 'utf8');
+    const result = resolveCyclePersistence(cycle, tmp);
+    assert.deepEqual(result, { ok: true, mode: 'RESUME', errors: [] });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('resolveCyclePersistence: a different cycle_id for an already-canonical period is rejected as a competing lineage', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'evo-cycles-'));
+  try {
+    const original = cycleFixture({ cycle_id: '2026-08-25__daily-review', period_start: '2026-08-25T00:00:00Z' });
+    fs.writeFileSync(path.join(tmp, `${original.cycle_id}.json`), JSON.stringify(original), 'utf8');
+
+    const retryWithNewId = cycleFixture({ cycle_id: '2026-08-25__daily-review-retry', period_start: '2026-08-25T00:00:00Z' });
+    const result = resolveCyclePersistence(retryWithNewId, tmp);
+
+    assert.equal(result.ok, false);
+    assert.equal(result.mode, null);
+    assert.ok(result.errors.some((e) => e.includes('DUPLICATE_CANONICAL_CYCLE_FOR_PERIOD')));
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test('resolveCyclePersistence: a different evaluation period is always a new lineage', () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'evo-cycles-'));
+  try {
+    const dayOne = cycleFixture({ cycle_id: '2026-08-24__daily-review', period_start: '2026-08-24T00:00:00Z' });
+    fs.writeFileSync(path.join(tmp, `${dayOne.cycle_id}.json`), JSON.stringify(dayOne), 'utf8');
+
+    const dayTwo = cycleFixture({ cycle_id: '2026-08-25__daily-review', period_start: '2026-08-25T00:00:00Z' });
+    const result = resolveCyclePersistence(dayTwo, tmp);
+    assert.deepEqual(result, { ok: true, mode: 'CREATE', errors: [] });
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 });

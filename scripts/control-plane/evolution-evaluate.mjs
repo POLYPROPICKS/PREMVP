@@ -29,6 +29,7 @@ import {
   validateEvolutionCycle,
   renderFounderReport,
   validateFounderReport,
+  derivePeriodKey,
 } from './lib/evolution-cycle.mjs';
 
 export const COMMAND_ID = 'premvp.command.evolution_evaluate.v1';
@@ -53,6 +54,54 @@ export function evaluateEvolutionCycle(cycle) {
     return { ok: false, errors: reportResult.errors, report };
   }
   return { ok: true, errors: [], report };
+}
+
+/**
+ * Decides whether persisting `cycle` under `cyclesDir` would continue an existing canonical
+ * lineage, start a new one, or collide with a different cycle already canonical for the same
+ * evaluation period.
+ *
+ * One evaluation period (the calendar date `period_start` falls on) maps to exactly one
+ * canonical cycle_id. A retry that reproduces the same cycle_id for that period is a RESUME
+ * of the same lineage; a different cycle_id claiming the same period is a competing lineage
+ * and is rejected rather than silently written alongside or over the original.
+ */
+export function resolveCyclePersistence(cycle, cyclesDir) {
+  const periodKey = derivePeriodKey(cycle.period_start);
+  if (!periodKey) {
+    return { ok: false, mode: null, errors: ['period_start must be a non-empty string to resolve persistence identity'] };
+  }
+
+  let entries = [];
+  try {
+    entries = fs.readdirSync(cyclesDir).filter((f) => f.endsWith('.json'));
+  } catch {
+    entries = [];
+  }
+
+  for (const file of entries) {
+    const existingId = file.slice(0, -'.json'.length);
+    if (existingId === cycle.cycle_id) continue;
+    let existing;
+    try {
+      existing = JSON.parse(fs.readFileSync(path.join(cyclesDir, file), 'utf8'));
+    } catch {
+      continue;
+    }
+    if (derivePeriodKey(existing.period_start) === periodKey) {
+      return {
+        ok: false,
+        mode: null,
+        errors: [
+          `DUPLICATE_CANONICAL_CYCLE_FOR_PERIOD: period ${periodKey} already has a canonical cycle (${existingId}) — ` +
+          `resume that lineage instead of persisting ${cycle.cycle_id} as a competing cycle for the same period`,
+        ],
+      };
+    }
+  }
+
+  const resuming = entries.includes(`${cycle.cycle_id}.json`);
+  return { ok: true, mode: resuming ? 'RESUME' : 'CREATE', errors: [] };
 }
 
 function main() {
@@ -86,6 +135,14 @@ function main() {
   if (args.includes('--write')) {
     const dir = path.join(REPO_ROOT, CYCLES_DIR);
     fs.mkdirSync(dir, { recursive: true });
+
+    const persistence = resolveCyclePersistence(cycle, dir);
+    if (!persistence.ok) {
+      process.stderr.write('[evolution-evaluate] FAIL (persistence lineage conflict)\n');
+      for (const e of persistence.errors) process.stderr.write(`  - ${e}\n`);
+      process.exit(1);
+    }
+
     fs.writeFileSync(path.join(dir, `${cycle.cycle_id}.json`), `${JSON.stringify(cycle, null, 2)}\n`, 'utf8');
     fs.writeFileSync(path.join(dir, `${cycle.cycle_id}.report.md`), report, 'utf8');
   }
