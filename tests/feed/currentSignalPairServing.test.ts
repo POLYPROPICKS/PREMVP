@@ -10,6 +10,30 @@ const pruneMigration = readFileSync(
   "supabase/migrations/20260814120000_current_signal_pair_serving_prune.sql",
   "utf8",
 );
+const liquidityGateMigration = readFileSync(
+  "supabase/migrations/20260825000000_current_signal_pair_serving_event_liquidity_gate.sql",
+  "utf8",
+);
+
+test("liquidity-gated serving projection requires canonical event evidence and removes unknown historical serving rows", () => {
+  assert.match(liquidityGateMigration, /source\.diagnostics ->> 'eventVolumeUsd'/);
+  assert.match(liquidityGateMigration, /source\.diagnostics ->> 'parentEventVolume24hr'/);
+  assert.match(liquidityGateMigration, /\) >= 1000/);
+  assert.match(liquidityGateMigration, /\, -1\) < 1000/);
+  assert.match(liquidityGateMigration, /DELETE FROM public\.current_signal_pair_serving AS serving/);
+  assert.doesNotMatch(liquidityGateMigration, /DELETE FROM public\.generated_signal_pairs/i);
+});
+
+test("event liquidity gate uses the exact $1,000 inclusive boundary and fails closed", async () => {
+  const { hasEligibleEventVolume } = await import("../../lib/feed/eventLiquidityGate");
+  assert.equal(hasEligibleEventVolume(0), false);
+  assert.equal(hasEligibleEventVolume(64.32), false);
+  assert.equal(hasEligibleEventVolume(999.99), false);
+  assert.equal(hasEligibleEventVolume(1000), true);
+  assert.equal(hasEligibleEventVolume(329197.300672), true);
+  assert.equal(hasEligibleEventVolume(null), false);
+  assert.equal(hasEligibleEventVolume("1000"), false);
+});
 
 type ServingCandidate = {
   id: string;

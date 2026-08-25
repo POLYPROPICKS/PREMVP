@@ -4,6 +4,7 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { PremiumSignal, MarketSource, LandingCardDiagnostics, LandingCardPair } from "./types";
 import type { WcShadowEntry } from "./discoverSportsMarkets";
+import { hasEligibleEventVolume } from "./eventLiquidityGate";
 import { hasStructuredScoredSportAuthority } from "./sportScoreOwnership";
 import {
   chunkArray,
@@ -390,11 +391,19 @@ export async function writeStrategicShadowPairs(
   };
   if (candidates.length === 0) return detail(0, [], 0);
 
+  const liquidityEligibleCandidates = candidates.filter((candidate) => {
+    const volume = candidate.eventVolumeUsd;
+    const eligible = hasEligibleEventVolume(volume);
+    if (!eligible) rejectRows(volume == null ? "EVENT_VOLUME_UNKNOWN" : "EVENT_VOLUME_BELOW_MINIMUM", 1);
+    return eligible;
+  });
+  if (liquidityEligibleCandidates.length === 0) return detail(0, [], 0);
+
   // Intra-batch dedup: collapse duplicates within the candidates array itself.
   // Collectors may return the same conditionId::selectedTokenId multiple times
   // (e.g., same event appearing in both series and game_id sub-event responses).
   const batchKeys = new Set<string>();
-  const uniqueCandidates = candidates.filter((c) => {
+  const uniqueCandidates = liquidityEligibleCandidates.filter((c) => {
     const k = `${c.conditionId}::${c.selectedTokenId}`;
     if (batchKeys.has(k)) return false;
     batchKeys.add(k);
@@ -469,7 +478,7 @@ export async function writeStrategicShadowPairs(
   // dropped-and-uncounted candidate is exactly the silent producer loss this
   // ledger exists to make impossible.
   const rowsDeduped =
-    (candidates.length - uniqueCandidates.length) +
+    (liquidityEligibleCandidates.length - uniqueCandidates.length) +
     (uniqueCandidates.length - dedupedCandidates.length);
   rejectRows("MALFORMED_OUTCOME_TUPLE", dedupedCandidates.length - newCandidates.length);
   const materializationRecords: StrategicShadowMaterializationRecord[] = [
@@ -529,6 +538,7 @@ export async function writeStrategicShadowPairs(
         tokenIndex: entry.tokenIndex ?? null,
         priceBucket: entry.priceBucket ?? null,
         volumeUsd: entry.volumeUsd ?? null,
+        eventVolumeUsd: entry.eventVolumeUsd ?? null,
         v1EligibilityReason: entry.v1EligibilityReason ?? null,
         marketFamily: entry.marketFamily ?? null,
         gameStartIso: entry.gameStartIso ?? null,

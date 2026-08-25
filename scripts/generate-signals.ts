@@ -606,6 +606,7 @@ async function main() {
           tokenIndex: undefined,
           priceBucket: pBucket,
           volumeUsd: vol > 0 ? vol : null,
+          eventVolumeUsd: vol > 0 ? vol : null,
           v1EligibilityReason: "WC_HIGH_VOLUME_GROUP_V1_1",
           marketFamily: detectedGroup,
         });

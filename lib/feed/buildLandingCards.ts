@@ -39,6 +39,7 @@ import {
   discoverSportsMarkets,
   OFFICIAL_FULL_MATCH_MARKET_TYPES,
 } from "./discoverSportsMarkets";
+import { hasEligibleEventVolume, MINIMUM_MODEL_EVENT_VOLUME_USD } from "./eventLiquidityGate";
 import type { SportsDiscoverySample } from "./types";
 
 import {
@@ -2127,6 +2128,9 @@ async function buildUpcomingPairs(
   for (const sample of sorted) {
     if (pairs.length >= upcomingLimit) break;
     if (!sample.leagueName || !sample.resolvedGameTimeIso || !sample.primaryMarketRaw?.conditionId) continue;
+    // Same pre-model event gate as primary sports discovery. Upcoming/fallback
+    // samples must not bypass the aggregate event-volume policy.
+    if (!hasEligibleEventVolume(sample.eventVolumeUsd)) continue;
 
     const candidate = sampleToCandidateMarket(sample);
     if (!candidate) continue;
@@ -2527,7 +2531,7 @@ export async function buildLandingCards(options?: {
         windowHours: 24,
         fallbackWindowHours: 48,
         fetchVolumeMinUsd: 50000,
-        finalEventVolumeMinUsd: 100000,
+        finalEventVolumeMinUsd: MINIMUM_MODEL_EVENT_VOLUME_USD,
         targetCards: limit * 2,
         producerRunId: options?.producerRunId,
       });
