@@ -76,7 +76,7 @@
   "x-wallet-lifecycle": "PRE_SUBMIT and POST_SUBMIT require wallet_capture_evidence exactly CAPTURED_AT_<lifecycle>. CURRENT_SNAPSHOT needs no historical attestation and must not be represented as historical evidence. The deployed validator has no monotonic lifecycle/downgrade rule: a later explicitly attested lifecycle value is accepted; only an unattested PRE_SUBMIT or POST_SUBMIT claim is rejected, surfaced by the route as HTTP 500 ECONOMIC_TELEMETRY_PERSISTENCE_FAILED.",
   "x-responses": {
     "accepted_or_same_record_enrichment": { "status": 200, "body": { "success": true, "duplicate": false, "event_id": "string", "idempotency_key": "string|null", "id": "string", "created_at": "string", "queue_mark": "object", "economic_telemetry": "economicTelemetryRecord", "reconciliation": "object|null" } },
-    "exact_duplicate": { "status": 200, "body_delta": { "duplicate": true }, "semantics": "The same stored event is returned; economic telemetry persistence is re-run against the prior record." },
+    "exact_duplicate": { "status": 200, "body_delta": { "duplicate": true }, "semantics": "The same stored event is returned; economic telemetry persistence is re-run against the prior record, and economic_telemetry is read from the persisted canonical executor_meta record after the update rather than echoed from the request." },
     "validation_failure": { "status": 400, "errors": ["Missing required field: token_id", "REJECTED_MISSING_IDEMPOTENCY_KEY_FOR_QUEUE_VALIDATION"] },
     "queue_not_found": { "status": 404, "body": { "success": false, "error": "QUEUE_ROW_NOT_FOUND" } },
     "identity_or_policy_conflict": { "status": 409, "errors": ["REJECTED_QUEUE_POLICY_MISMATCH", "IDEMPOTENCY_CONFLICT", "CLOB_ORDER_ID_CONFLICT"] },

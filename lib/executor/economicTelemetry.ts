@@ -95,4 +95,9 @@ export function readEconomicTelemetry(meta: unknown): EconomicTelemetryV1 | null
   const value = (meta as Record<string, unknown>).economic_telemetry_v1;
   return value && typeof value === "object" && !Array.isArray(value) && (value as { version?: unknown }).version === ECONOMIC_TELEMETRY_VERSION ? value as EconomicTelemetryV1 : null;
 }
+export function readPersistedEconomicTelemetry(meta: unknown): EconomicTelemetryV1 {
+  const telemetry = readEconomicTelemetry(meta);
+  if (!telemetry) throw new Error("ECONOMIC_TELEMETRY_PERSISTED_RECORD_MISSING");
+  return telemetry;
+}
 export function mergeEconomicTelemetryMeta(existing: Record<string, unknown> | null | undefined, telemetry: EconomicTelemetryV1): Record<string, unknown> { return { ...(existing ?? {}), economic_telemetry_v1: telemetry }; }

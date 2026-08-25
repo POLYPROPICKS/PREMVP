@@ -12,6 +12,7 @@ import {
   buildEconomicTelemetry,
   mergeEconomicTelemetryMeta,
   readEconomicTelemetry,
+  readPersistedEconomicTelemetry,
   type EconomicTelemetryV1,
 } from "@/lib/executor/economicTelemetry";
 import {
@@ -202,10 +203,10 @@ async function persistEconomicTelemetry(
     .eq("id", storedEventId)
     .eq("idempotency_key", telemetry.identity.idempotency_key)
     .eq("clob_order_id", telemetry.identity.clob_order_id)
-    .select("id")
+    .select("executor_meta")
     .single();
   if (updateError || !updated) throw new Error("ECONOMIC_TELEMETRY_PERSISTENCE_FAILED");
-  return telemetry;
+  return readPersistedEconomicTelemetry((updated as Record<string, unknown>).executor_meta);
 }
 
 // Legacy settlement reconciliation remains behaviorally unchanged. Economic

@@ -21,6 +21,9 @@ test("portable contract remains tied to the deployed validator and deterministic
   assert.match(validator, /assertSameIdentity/);
   assert.match(validator, /ECONOMIC_TELEMETRY_EXECUTED_NOTIONAL_MISMATCH/);
   assert.match(validator, /ECONOMIC_TELEMETRY_WALLET_LIFECYCLE_UNPROVEN/);
+  assert.match(validator, /readPersistedEconomicTelemetry/);
   assert.match(route, /case "REJECTED_QUEUE_ROW_NOT_FOUND":\s*return NextResponse\.json\(\{ success: false, error: "QUEUE_ROW_NOT_FOUND" \}, \{ status: 404 \}\)/);
+  assert.match(route, /\.select\("executor_meta"\)/);
+  assert.match(route, /readPersistedEconomicTelemetry\(/);
   assert.match(route, /economic_telemetry: economicTelemetry/);
 });
