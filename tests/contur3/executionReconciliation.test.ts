@@ -163,12 +163,12 @@ test("metadata merge preserves unrelated executor metadata and is deterministic"
   assert.deepEqual(second, first);
 });
 
-test("accepted and duplicate callbacks both invoke canonical reconciliation persistence", () => {
+test("accepted and duplicate callbacks both invoke canonical economic telemetry persistence", () => {
   const source = readFileSync(path.join(process.cwd(), "app/api/executor/order-events/route.ts"), "utf8");
   assert.match(source, /outcome\.kind === "INSERTED" \|\| outcome\.kind === "DUPLICATE"/);
-  assert.match(source, /persistExecutionReconciliation\(raw, outcome\.row\.id\)/);
-  assert.match(source, /\.eq\("idempotency_key", reconciliation\.idempotency_key\)/);
-  assert.match(source, /\.eq\("clob_order_id", reconciliation\.clob_order_id\)/);
+  assert.match(source, /persistEconomicTelemetry\(raw, outcome\.row\.id\)/);
+  assert.match(source, /\.eq\("idempotency_key", telemetry\.identity\.idempotency_key\)/);
+  assert.match(source, /\.eq\("clob_order_id", telemetry\.identity\.clob_order_id\)/);
 });
 
 test("the existing resolver path owns the automatic settlement sweep", () => {
