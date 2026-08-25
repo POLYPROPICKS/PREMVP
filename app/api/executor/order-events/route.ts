@@ -449,6 +449,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing required field: token_id" }, { status: 400 });
     case "REJECTED_MISSING_IDEMPOTENCY_KEY":
       return NextResponse.json({ error: "REJECTED_MISSING_IDEMPOTENCY_KEY_FOR_QUEUE_VALIDATION" }, { status: 400 });
+    case "REJECTED_QUEUE_ROW_NOT_FOUND":
+      return NextResponse.json({ success: false, error: "QUEUE_ROW_NOT_FOUND" }, { status: 404 });
     case "REJECTED_QUEUE_POLICY_MISMATCH":
       return NextResponse.json({ error: "REJECTED_QUEUE_POLICY_MISMATCH", reason: outcome.reason }, { status: 409 });
     case "CONFLICT_IDEMPOTENCY":
