@@ -105,7 +105,7 @@ export function dedupeOperatorActions(events) {
 
 function inPeriod(event, periodStart, periodEnd) {
   if (!isNonEmptyString(periodStart) || !isNonEmptyString(periodEnd)) return true;
-  return event.occurred_at >= periodStart && event.occurred_at <= periodEnd;
+  return event.occurred_at >= periodStart && event.occurred_at < periodEnd;
 }
 
 /**
@@ -200,7 +200,7 @@ export function aggregateOperatorActions(events = [], options = {}) {
  * becoming a confident-looking number derived from a partial sample.
  */
 function ratio(numerator, denominator, coverage) {
-  if (coverage === 'UNKNOWN') return 'UNKNOWN';
+  if (coverage !== 'COMPLETE') return 'UNKNOWN';
   if (!Number.isInteger(denominator) || denominator <= 0) return 'UNKNOWN';
   return Math.round((numerator / denominator) * 100) / 100;
 }
