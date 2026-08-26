@@ -316,13 +316,37 @@ export function buildStructuredProviderDiagnostics(
  * before any event receives a second market. The real scorer still owns every
  * score and all existing market/input gates remain unchanged.
  */
+// P1A: bounded research-scorer processing budget. Replaces the fixed 200-event
+// selection ceiling as the mechanism that keeps the producer run bounded.
+export const RESEARCH_SCORER_DEFAULT_BUDGET_MS = 6 * 60_000;
+// Provider-concurrency bound for the wide scorer. Each in-flight candidate issues its
+// own sequential CLOB/Data-API calls through safeFetch(), which swallows HTTP 429 as
+// `null` — throttling would therefore surface as *lower dataCoverage*, i.e. silently
+// corrupt the very attribution this funnel publishes. The widest provider fan-out
+// that already exists in this producer is 2 (discoverSportsMarkets NBA/NHL), and
+// there is no retry/backoff layer anywhere in lib/feed/polymarketClient.ts. 4 is a
+// deliberate, evidence-bounded step above that precedent; any resulting shortfall is
+// now explicit as NOT_SCORED_SCORER_BUDGET_EXHAUSTED rather than silent quality loss.
+export const RESEARCH_SCORER_CHUNK_SIZE = 4;
+
+// P2: canonical terminal statuses for every FireModel1.1 wide attempt.
+// attempted === selected + scoredRejected + notScored, always.
+export type FireModelWideTerminalStatus =
+  | "SCORED_AND_SELECTED"
+  | `SCORED_AND_REJECTED_${string}`
+  | `NOT_SCORED_${string}`;
+
 export function selectResearchMarketsForScoring(
   universe: readonly ResearchNestedMarket[],
   publicIdentitySet: ReadonlySet<string>,
-  limit: number,
+  // P1A: `null` means "no fixed selection ceiling" — every scorer-eligible event
+  // gets a scoring opportunity. Numeric limits are preserved for callers/tests
+  // that intentionally bound the selection.
+  limit: number | null,
   rotationOffset: number,
 ): ResearchNestedMarket[] {
-  if (limit <= 0) return [];
+  const unbounded = limit === null;
+  if (!unbounded && limit <= 0) return [];
   const deduped = new Map<string, ResearchNestedMarket>();
   for (const row of universe) {
     if (row.scoreOwnership !== "SUPPORTED_BY_SCORE_MODEL") continue;
@@ -331,10 +355,10 @@ export function selectResearchMarketsForScoring(
     if (!deduped.has(key)) deduped.set(key, row);
   }
   const rows = [...deduped.values()];
-  const publicRows = rows
-    .filter((row) => publicIdentitySet.has(`${row.conditionId}::${row.selectedTokenId}`))
-    .slice(0, limit);
-  if (publicRows.length >= limit) return publicRows;
+  const allPublicRows = rows
+    .filter((row) => publicIdentitySet.has(`${row.conditionId}::${row.selectedTokenId}`));
+  const publicRows = unbounded ? allPublicRows : allPublicRows.slice(0, limit as number);
+  if (!unbounded && publicRows.length >= (limit as number)) return publicRows;
 
   const hidden = rows
     .filter((row) => !publicIdentitySet.has(`${row.conditionId}::${row.selectedTokenId}`));
@@ -361,7 +385,8 @@ export function selectResearchMarketsForScoring(
       firstPerEvent.push(eventRows[0]);
     }
   }
-  return [...publicRows, ...firstPerEvent].slice(0, limit);
+  const combined = [...publicRows, ...firstPerEvent];
+  return unbounded ? combined : combined.slice(0, limit as number);
 }
 
 function hasStructuredScorerMarketAuthority(row: ResearchNestedMarket): boolean {
@@ -2453,7 +2478,11 @@ export async function buildLandingCards(options?: {
   researchSnapshotRunId?: string;
   producerRunId?: string;
   researchSnapshotAt?: string;
-  researchLimit?: number;
+  // P1A: pass `null` to remove the fixed research-scorer selection ceiling so every
+  // scorer-eligible event receives a scoring opportunity. Scoring is then bounded by
+  // researchScorerBudgetMs (wall clock) instead of by an arbitrary count.
+  researchLimit?: number | null;
+  researchScorerBudgetMs?: number;
   researchOddsMin?: number;
   researchOddsMax?: number;
   // Reservation-aware producer pinning (P0) — bounded, exact-identity only.
@@ -2470,7 +2499,18 @@ export async function buildLandingCards(options?: {
   const collectResearchSnapshots = options?.collectResearchSnapshots ?? false;
   const researchSnapshotRunId = options?.researchSnapshotRunId ?? null;
   const researchSnapshotAt = options?.researchSnapshotAt ?? null;
-  const researchLimit = clamp(options?.researchLimit ?? limit * 3, 1, 200);
+  // P1A: `null` = no fixed ceiling (all scorer-eligible events get a scoring
+  // opportunity). Numeric values keep the historical clamp for legacy callers.
+  const researchLimit: number | null =
+    options?.researchLimit === null
+      ? null
+      : clamp(options?.researchLimit ?? limit * 3, 1, 200);
+  const researchSnapshotCap = researchLimit ?? Number.POSITIVE_INFINITY;
+  const researchScorerBudgetMs = clamp(
+    options?.researchScorerBudgetMs ?? RESEARCH_SCORER_DEFAULT_BUDGET_MS,
+    1_000,
+    30 * 60_000,
+  );
   const researchOddsMin = options?.researchOddsMin ?? 1.25;
   const researchOddsMax = options?.researchOddsMax ?? 4.00;
 
@@ -2500,6 +2540,19 @@ export async function buildLandingCards(options?: {
   let candidatesAfterEndedFilter = 0;
   let pairsGenerated = 0;
   let candidatesAfterDataCoverageFilter = 0;
+
+  // ── P1B: primary funnel terminal attribution ────────────────────────────────
+  // Exactly one canonical terminal code per candidate that enters the primary
+  // product loop, so 45 -> after-coverage -> qualified is auditable by reason.
+  const primaryTerminalReasonCounts: Record<string, number> = {};
+  const primaryCoverageRejectionValues: number[] = [];
+  // Conservation witness: every candidate that enters the primary loop is counted
+  // here, so the invariant sum(primaryTerminalReasonCounts) === primaryCandidatesEntered
+  // is verifiable from production telemetry alone, not only by reading the code.
+  let primaryCandidatesEntered = 0;
+  const recordPrimaryTerminal = (code: string) => {
+    primaryTerminalReasonCounts[code] = (primaryTerminalReasonCounts[code] ?? 0) + 1;
+  };
 
   // Sports discovery diagnostics (null when category != "sports")
   let sportsDiscoveryCounts: Record<string, unknown> | null = null;
@@ -2718,15 +2771,25 @@ export async function buildLandingCards(options?: {
     for (const candidate of candidates) {
       const productCapReached = pairs.length >= limit;
       const researchCapReached =
-        !collectResearchSnapshots || researchSnapshots.length >= researchLimit;
+        !collectResearchSnapshots || researchSnapshots.length >= researchSnapshotCap;
 
       // Both caps satisfied — stop iterating
       if (productCapReached && researchCapReached) break;
 
+      primaryCandidatesEntered++;
       if (collectResearchSnapshots && !researchCapReached) rf.candidatesSeen++;
 
       // Skip if already has rejection reasons (product path only; research skips pre-enrichment failures)
       if (candidate.rejectionReasons.length > 0) {
+        // P1B CONSERVATION: the terminal reason is recorded for EVERY candidate that
+        // enters the loop. Only the `rejected` diagnostics array stays gated on the
+        // product cap — a candidate that reaches this branch after the cap is reached
+        // must still be attributable, not a silent fall-through.
+        recordPrimaryTerminal(
+          productCapReached
+            ? "PRIMARY_NOT_EVALUATED_PRODUCT_CAP_REACHED_PRE_ENRICHMENT_REJECTED"
+            : "PRIMARY_PRE_ENRICHMENT_CANDIDATE_REJECTED",
+        );
         if (!productCapReached) {
           rejected.push({
             id: candidate.market.id,
@@ -2741,6 +2804,12 @@ export async function buildLandingCards(options?: {
       const enriched = await enrichMarket(candidate.event, candidate.market, candidate.warnings);
 
       if (!enriched) {
+        // P1B CONSERVATION: see above — attribution is never gated on the product cap.
+        recordPrimaryTerminal(
+          productCapReached
+            ? "PRIMARY_NOT_EVALUATED_PRODUCT_CAP_REACHED_ENRICHMENT_NULL"
+            : "PRIMARY_ENRICHMENT_NULL",
+        );
         if (!productCapReached) {
           rejected.push({
             id: candidate.market.id,
@@ -2770,10 +2839,17 @@ export async function buildLandingCards(options?: {
       }
 
       // ── PRODUCT GATES (only when product cap not yet reached) ───────────────
-      if (productCapReached) continue;
+      if (productCapReached) {
+        recordPrimaryTerminal("PRIMARY_NOT_EVALUATED_PRODUCT_CAP_REACHED");
+        continue;
+      }
 
       // Check data coverage threshold
       if (enriched.diagnostics.dataCoverage < minDataCoverage) {
+        // P1B: the concrete coverage value that failed the rule is retained so the
+        // loss is attributable to the rule AND its input, not just to a count.
+        recordPrimaryTerminal("PRIMARY_REJECTED_DATA_COVERAGE_BELOW_THRESHOLD");
+        primaryCoverageRejectionValues.push(enriched.diagnostics.dataCoverage);
         rejected.push({
           id: candidate.market.id,
           rejectionReasons: [
@@ -2787,6 +2863,7 @@ export async function buildLandingCards(options?: {
       candidatesAfterDataCoverageFilter++;
 
       if (enriched.diagnostics.rejectionReasons.length > 0) {
+        recordPrimaryTerminal("PRIMARY_REJECTED_ENRICHMENT_REJECTION_REASONS");
         rejected.push({
           id: candidate.market.id,
           rejectionReasons: enriched.diagnostics.rejectionReasons,
@@ -2798,6 +2875,7 @@ export async function buildLandingCards(options?: {
       const pair = generateLandingCardPair(enriched);
 
       if (!pair) {
+        recordPrimaryTerminal("PRIMARY_REJECTED_PAIR_GENERATION_FAILED");
         rejected.push({
           id: candidate.market.id,
           rejectionReasons: ["Failed to generate landing card pair"],
@@ -2805,6 +2883,7 @@ export async function buildLandingCards(options?: {
         continue;
       }
       if (pair.premiumSignal.winProbability < 52) {
+        recordPrimaryTerminal("PRIMARY_REJECTED_WIN_PROBABILITY_BELOW_52");
         rejected.push({
           id: candidate.market.id,
           rejectionReasons: [`Signal confidence too low: ${pair.premiumSignal.winProbability}`],
@@ -2814,6 +2893,7 @@ export async function buildLandingCards(options?: {
 
       // Check if premiumSignal.time is "Ended" and exclude if needed
       if (excludeEnded && pair.premiumSignal.time === "Ended") {
+        recordPrimaryTerminal("PRIMARY_REJECTED_MARKET_ENDED_AT_PAIR_STAGE");
         rejected.push({
           id: candidate.market.id,
           rejectionReasons: ["Market ended (premiumSignal.time = Ended)"],
@@ -2828,6 +2908,7 @@ export async function buildLandingCards(options?: {
         pair.id;
 
       if (seenPairIds.has(pair.id) || seenMarketKeys.has(marketKey)) {
+        recordPrimaryTerminal("PRIMARY_REJECTED_DUPLICATE");
         rejected.push({
           id: candidate.market.id,
           rejectionReasons: [`Duplicate landing pair skipped: ${pair.id}`],
@@ -2838,6 +2919,7 @@ export async function buildLandingCards(options?: {
       seenPairIds.add(pair.id);
       seenMarketKeys.add(marketKey);
 
+      recordPrimaryTerminal("PRIMARY_QUALIFIED");
       pairs.push(pair);
       pairsGenerated++;
       if (pinnedKeysForPersistCheck.size > 0) {
@@ -2846,6 +2928,13 @@ export async function buildLandingCards(options?: {
       }
     }
     pinApplyDiagnostics = { ...pinApplyDiagnostics, pinned_candidates_persisted: pinnedCandidatesPersisted };
+
+    // P1B: publish primary funnel terminal attribution (model + stage + values).
+    rf.primaryCandidatesEntered = primaryCandidatesEntered;
+    rf.primaryTerminalReasonCounts = primaryTerminalReasonCounts;
+    rf.primaryCoverageRejectionValues = primaryCoverageRejectionValues;
+    rf.primaryDecisionModel = FORMULA_VERSION;
+    rf.primaryCoverageThresholdApplied = minDataCoverage;
 
     // Include non-sports rejected markets in final rejected list (for category=sports)
     const finalRejected = rejected;
@@ -2905,32 +2994,139 @@ export async function buildLandingCards(options?: {
         selectedResearch.map((row) => `${row.eventId}::${row.eventStartIso}`),
       ).size;
 
-      for (const rm of selectedResearch) {
-        rf.firemodel11WideAttempted = (rf.firemodel11WideAttempted ?? 0) + 1;
+      // ── P1A/P2: bounded, fully-attributed FireModel1.1 wide scoring ──────────
+      // Every selected candidate terminates in exactly one canonical status, and
+      // processing is bounded by a wall-clock budget (chunked concurrency) rather
+      // than by a fixed candidate-count ceiling.
+      type FireModelWideOutcome = {
+        key: string;
+        status: FireModelWideTerminalStatus;
+        score: number | null;
+        dataCoverage: number | null;
+        winProbability: number | null;
+        pair: ReturnType<typeof generateLandingCardPair> | null;
+      };
+
+      const wideOutcomes = new Map<string, FireModelWideOutcome>();
+      const terminalReasonCounts: Record<string, number> = {};
+      const recordWideTerminal = (o: FireModelWideOutcome) => {
+        wideOutcomes.set(o.key, o);
+        terminalReasonCounts[o.status] = (terminalReasonCounts[o.status] ?? 0) + 1;
+      };
+
+      const scoreOneResearchMarket = async (
+        rm: ResearchNestedMarket,
+      ): Promise<FireModelWideOutcome> => {
+        const key = `${rm.conditionId}::${rm.selectedTokenId}`;
         const adapted = researchNestedMarketToCandidate(rm);
-        if (!adapted) continue;
-
-        const enrichedResearch = await enrichMarket(
-          adapted.candidate.event,
-          adapted.candidate.market,
-          adapted.candidate.warnings,
-          adapted.forcedOutcome,
-        );
-        if (!enrichedResearch) continue;
-
+        if (!adapted) {
+          return { key, status: "NOT_SCORED_ADAPTER_REJECTED", score: null, dataCoverage: null, winProbability: null, pair: null };
+        }
+        let enrichedResearch: Awaited<ReturnType<typeof enrichMarket>> = null;
+        try {
+          enrichedResearch = await enrichMarket(
+            adapted.candidate.event,
+            adapted.candidate.market,
+            adapted.candidate.warnings,
+            adapted.forcedOutcome,
+          );
+        } catch {
+          return { key, status: "NOT_SCORED_ENRICHMENT_THREW", score: null, dataCoverage: null, winProbability: null, pair: null };
+        }
+        if (!enrichedResearch) {
+          return { key, status: "NOT_SCORED_ENRICHMENT_NULL", score: null, dataCoverage: null, winProbability: null, pair: null };
+        }
+        const coverage = enrichedResearch.diagnostics.dataCoverage;
         const fm11Pair = generateLandingCardPair(enrichedResearch);
-        if (!fm11Pair) continue;
-        rf.firemodel11WideScored = (rf.firemodel11WideScored ?? 0) + 1;
+        if (!fm11Pair) {
+          return { key, status: "NOT_SCORED_PAIR_GENERATION_FAILED", score: null, dataCoverage: coverage, winProbability: null, pair: null };
+        }
+        const score =
+          typeof enrichedResearch.diagnostics.formulaScore === "number"
+            ? enrichedResearch.diagnostics.formulaScore
+            : null;
+        const winProbability = fm11Pair.premiumSignal.winProbability;
+        // Research-band selection rule (UNCHANGED thresholds).
+        if (coverage < 25) {
+          return { key, status: "SCORED_AND_REJECTED_COVERAGE_BELOW_RESEARCH_FLOOR_25", score, dataCoverage: coverage, winProbability, pair: fm11Pair };
+        }
+        if (coverage >= minDataCoverage) {
+          return { key, status: "SCORED_AND_REJECTED_COVERAGE_AT_OR_ABOVE_PRODUCT_THRESHOLD", score, dataCoverage: coverage, winProbability, pair: fm11Pair };
+        }
+        if (winProbability < 50) {
+          return { key, status: "SCORED_AND_REJECTED_WIN_PROBABILITY_BELOW_50", score, dataCoverage: coverage, winProbability, pair: fm11Pair };
+        }
+        return { key, status: "SCORED_AND_SELECTED", score, dataCoverage: coverage, winProbability, pair: fm11Pair };
+      };
 
-        if (
-          enrichedResearch.diagnostics.dataCoverage >= 25 &&
-          enrichedResearch.diagnostics.dataCoverage < minDataCoverage &&
-          fm11Pair.premiumSignal.winProbability >= 50
-        ) {
-          firemodel11ResearchCandidates.push(fm11Pair);
-          rf.firemodel11WideSelected = (rf.firemodel11WideSelected ?? 0) + 1;
+      const scorerStartedMs = Date.now();
+      let budgetExhausted = false;
+      let scoredCount = 0;
+      let selectedCount = 0;
+      let scoredRejectedCount = 0;
+      let notScoredCount = 0;
+      let scoreRetainedCount = 0;
+
+      for (let i = 0; i < selectedResearch.length; i += RESEARCH_SCORER_CHUNK_SIZE) {
+        const chunk = selectedResearch.slice(i, i + RESEARCH_SCORER_CHUNK_SIZE);
+        if (Date.now() - scorerStartedMs >= researchScorerBudgetMs) {
+          budgetExhausted = true;
+          for (const rm of selectedResearch.slice(i)) {
+            rf.firemodel11WideAttempted = (rf.firemodel11WideAttempted ?? 0) + 1;
+            notScoredCount++;
+            recordWideTerminal({
+              key: `${rm.conditionId}::${rm.selectedTokenId}`,
+              status: "NOT_SCORED_SCORER_BUDGET_EXHAUSTED",
+              score: null, dataCoverage: null, winProbability: null, pair: null,
+            });
+          }
+          break;
+        }
+        // FAILURE ISOLATION: scoreOneResearchMarket() calls researchNestedMarketToCandidate()
+        // and generateLandingCardPair() outside its inner try. A single throw from either
+        // would reject Promise.all and abort the whole wide loop (and buildLandingCards).
+        // This wrapper guarantees the mapper never rejects: one bad candidate terminates
+        // itself with a canonical NOT_SCORED_ reason and the loop continues.
+        const results = await Promise.all(
+          chunk.map(async (rm): Promise<FireModelWideOutcome> => {
+            try {
+              return await scoreOneResearchMarket(rm);
+            } catch {
+              return {
+                key: `${rm.conditionId}::${rm.selectedTokenId}`,
+                status: "NOT_SCORED_SCORER_THREW",
+                score: null, dataCoverage: null, winProbability: null, pair: null,
+              };
+            }
+          }),
+        );
+        for (const outcome of results) {
+          rf.firemodel11WideAttempted = (rf.firemodel11WideAttempted ?? 0) + 1;
+          recordWideTerminal(outcome);
+          if (outcome.status.startsWith("NOT_SCORED_")) {
+            notScoredCount++;
+            continue;
+          }
+          scoredCount++;
+          if (outcome.score !== null) scoreRetainedCount++;
+          if (outcome.status === "SCORED_AND_SELECTED") {
+            selectedCount++;
+            if (outcome.pair) firemodel11ResearchCandidates.push(outcome.pair);
+          } else {
+            scoredRejectedCount++;
+          }
         }
       }
+
+      rf.firemodel11WideScored = scoredCount;
+      rf.firemodel11WideSelected = selectedCount;
+      rf.firemodel11WideScoredRejected = scoredRejectedCount;
+      rf.firemodel11WideNotScored = notScoredCount;
+      rf.firemodel11WideTerminalReasonCounts = terminalReasonCounts;
+      rf.firemodel11WideScoreRetainedCount = scoreRetainedCount;
+      rf.researchScorerBudgetMs = researchScorerBudgetMs;
+      rf.researchScorerElapsedMs = Date.now() - scorerStartedMs;
+      rf.researchScorerBudgetExhausted = budgetExhausted;
 
       // Build set of already-captured conditionId::selectedTokenId keys (from public-path loop)
       const alreadyCapturedKeys = new Set(
@@ -2947,6 +3143,10 @@ export async function buildLandingCards(options?: {
         const rmKey = `${rm.conditionId}::${rm.selectedTokenId}`;
         if (alreadyCapturedKeys.has(rmKey)) continue; // already captured via public-path loop
 
+        // P2/TERMINAL: retain the real score for every candidate that was actually
+        // scored in the wide loop above, instead of emitting SCORE_UNAVAILABLE blindly.
+        const wo = wideOutcomes.get(rmKey) ?? null;
+        const woScored = wo !== null && !wo.status.startsWith("NOT_SCORED_");
         const gameStartIso = rm.gameStartTimeIso ?? rm.eventStartIso;
         const hoursUntilStart = (new Date(gameStartIso).getTime() - nowMs) / 3_600_000;
         const europeanOdds = rm.selectedPriceNum > 0
@@ -2970,8 +3170,8 @@ export async function buildLandingCards(options?: {
           marketFamily: rm.leagueName ?? rm.marketFamily,
           league: rm.leagueName ?? rm.marketFamily,
           gameStartIso,
-          dataCoverageNum: null,
-          productRejectionReasons: ["research-s2-direct"],
+          dataCoverageNum: wo?.dataCoverage ?? null,
+          productRejectionReasons: [wo ? wo.status : "research-s2-direct"],
           diagnostics: {
             conditionId: rm.conditionId,
             selectedTokenId: rm.selectedTokenId,
@@ -2988,9 +3188,9 @@ export async function buildLandingCards(options?: {
             selectedTradeCount: null,
             totalTradeCount: null,
             holderConcentrationScore: null,
-            dataCoverage: 0,
-            formulaUsed: "research-s2-direct",
-            rejectionReasons: ["research-s2-direct"],
+            dataCoverage: wo?.dataCoverage ?? 0,
+            formulaUsed: woScored ? FORMULA_VERSION : "research-s2-direct",
+            rejectionReasons: [wo ? wo.status : "research-s2-direct"],
             gameStartIso,
             researchContext: {
               v: "v1",
@@ -3005,17 +3205,17 @@ export async function buildLandingCards(options?: {
             },
             // Explainability: S2 markets are not enriched; no formula score available.
             // All codes below are truthful for this path — enrichMarket() was not called.
-            formulaScore: null,
+            formulaScore: woScored ? wo!.score : null,
             fireModel: {
               version: "firemodel_capture_v1",
               capturedAt: researchSnapshotAt,
               sourceRunId: researchSnapshotRunId,
               formulaVersion: FORMULA_VERSION,
               modelCandidate: {
-                score: null,
+                score: woScored ? wo!.score : null,
                 tier: null,
-                confidence: null,
-                dataCoverage: null,
+                confidence: woScored ? wo!.winProbability : null,
+                dataCoverage: wo?.dataCoverage ?? null,
                 entryPrice: rm.selectedPriceNum,
                 marketFamily: rm.marketFamily ?? rm.leagueName ?? rm.sportsMarketType ?? null,
                 normalizedFixtureKey: rm.eventSlug || null,
@@ -3028,14 +3228,16 @@ export async function buildLandingCards(options?: {
                 candidateRankWithinFamily: null,
                 allowedFamilies: [],
                 blockedFamilyReason: null,
-                selectionStatus: "RESEARCH_S2_DIRECT_CAPTURED",
-                rejectionReason: "SCORE_UNAVAILABLE",
+                selectionStatus: wo ? wo.status : "RESEARCH_S2_DIRECT_CAPTURED",
+                rejectionReason: wo
+                  ? (wo.status === "SCORED_AND_SELECTED" ? null : wo.status)
+                  : "SCORE_UNAVAILABLE",
                 eligibilityFlags: {
                   hasConditionId: Boolean(rm.conditionId),
                   hasSelectedTokenId: Boolean(rm.selectedTokenId),
                   hasOpposingTokenId: Boolean(rm.opposingTokenId),
                   hasEntryPrice: rm.selectedPriceNum != null,
-                  hasFormulaScore: false,
+                  hasFormulaScore: woScored && wo!.score !== null,
                 },
                 queryId: "all_sports_research_candidates_v1",
                 datasetId: "ALL_SPORTS_RESEARCH_CANDIDATES_V1",
@@ -3075,12 +3277,25 @@ export async function buildLandingCards(options?: {
       rf.researchSnapshotsSelected = selectedResearch.length;
       rf.researchSnapshotsSelectedPublic = selectedPublicCount;
       rf.researchSnapshotsSelectedRotating = selectedResearch.length - selectedPublicCount;
-      rf.researchSnapshotSelectionLimit = researchLimit;
+      rf.researchSnapshotSelectionLimit = researchLimit ?? undefined;
+      rf.researchScorerSelectionMode = researchLimit === null ? "ALL_ELIGIBLE" : "FIXED_LIMIT";
       rf.researchUniverseEvents = s2ResearchUniverseEventCount;
       rf.researchUniverseMarkets = dedupedSupportedResearchCount;
       rf.researchScorerEligibleEvents = eligibleEventCount;
       rf.researchScorerSelectedEvents = selectedEventCount;
       rf.researchScorerCapacityExcludedEvents = Math.max(0, eligibleEventCount - selectedEventCount);
+      // TERMINAL INVARIANT: with no fixed ceiling, zero eligible events are dropped
+      // by a constant. Any shortfall is attributed to the bounded scoring budget.
+      rf.researchScorerFixedLimitExcludedEvents =
+        researchLimit === null ? 0 : Math.max(0, eligibleEventCount - selectedEventCount);
+      rf.researchScorerBudgetExcludedEvents = new Set(
+        selectedResearch
+          .filter((row) =>
+            wideOutcomes.get(`${row.conditionId}::${row.selectedTokenId}`)?.status ===
+            "NOT_SCORED_SCORER_BUDGET_EXHAUSTED",
+          )
+          .map((row) => `${row.eventId}::${row.eventStartIso}`),
+      ).size;
     }
 
     return {
