@@ -145,7 +145,9 @@ async function main() {
       researchSnapshotRunId,
       producerRunId,
       researchSnapshotAt,
-      researchLimit: 200,
+      // P1A: null = no fixed research-scorer ceiling. Every scorer-eligible event
+      // gets a scoring opportunity; the run stays bounded by the wall-clock budget.
+      researchLimit: null,
       researchOddsMin: 1.25,
       researchOddsMax: 4.00,
     });

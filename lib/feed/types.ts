@@ -242,6 +242,27 @@ export interface ResearchFunnelCounters {
   researchScorerEligibleEvents?: number;
   researchScorerSelectedEvents?: number;
   researchScorerCapacityExcludedEvents?: number;
+  // P1A capacity attribution — separates "dropped by a fixed constant" (a defect)
+  // from "not reached inside the bounded scoring budget" (an honest resource bound).
+  researchScorerFixedLimitExcludedEvents?: number;
+  researchScorerBudgetExcludedEvents?: number;
+  researchScorerSelectionMode?: "FIXED_LIMIT" | "ALL_ELIGIBLE";
+  researchScorerBudgetMs?: number;
+  researchScorerElapsedMs?: number;
+  researchScorerBudgetExhausted?: boolean;
+  // P2 FireModel1.1 wide terminal accounting. Conserves:
+  // firemodel11WideAttempted === selected + scoredRejected + notScored.
+  firemodel11WideScoredRejected?: number;
+  firemodel11WideNotScored?: number;
+  firemodel11WideTerminalReasonCounts?: Record<string, number>;
+  firemodel11WideScoreRetainedCount?: number;
+  // P1B primary funnel terminal accounting (canonical codes, one per candidate).
+  // Conservation invariant: sum(primaryTerminalReasonCounts) === primaryCandidatesEntered.
+  primaryCandidatesEntered?: number;
+  primaryTerminalReasonCounts?: Record<string, number>;
+  primaryCoverageRejectionValues?: number[];
+  primaryDecisionModel?: string;
+  primaryCoverageThresholdApplied?: number;
 }
 
 // ─── S2: Wide research universe — pre-grouping, pre-volume nested market ───────
