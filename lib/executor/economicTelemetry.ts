@@ -58,10 +58,16 @@ function assertSameIdentity(previous: EconomicTelemetryV1, next: EconomicTelemet
 export function buildEconomicTelemetry(input: { queue: EconomicTelemetryQueue; event: EconomicTelemetryEvent; raw: Record<string, unknown>; prior?: EconomicTelemetryV1 }): EconomicTelemetryV1 {
   const { queue, event, raw, prior } = input;
   const payload = telemetryInput(raw);
-  const requestedShares = finite(event.submitted_size ?? raw.submitted_size);
   const submittedPrice = finite(event.submitted_price ?? raw.submitted_price);
-  if (requestedShares == null || requestedShares <= 0) throw new Error("ECONOMIC_TELEMETRY_MISSING_REQUESTED_SHARES");
   if (submittedPrice == null || submittedPrice <= 0) throw new Error("ECONOMIC_TELEMETRY_MISSING_SUBMITTED_PRICE");
+  let requestedShares = finite(event.submitted_size ?? raw.submitted_size);
+  // Callbacks that predate the explicit submitted_size field carry only the
+  // authorized stake and the submitted price; requested shares is then exactly
+  // reconstructible as stake_usd / submitted_price, not invented data.
+  if (requestedShares == null && Number.isFinite(queue.stake_usd) && queue.stake_usd > 0) {
+    requestedShares = queue.stake_usd / submittedPrice;
+  }
+  if (requestedShares == null || requestedShares <= 0) throw new Error("ECONOMIC_TELEMETRY_MISSING_REQUESTED_SHARES");
   const identity = {
     queue_id: requireString(queue.id, "QUEUE_ID"), reservation_id: queue.reservation_id,
     condition_id: requireString(queue.condition_id, "CONDITION_ID"), token_id: requireString(queue.token_id, "TOKEN_ID"), side: requireString(queue.side, "SIDE"),
