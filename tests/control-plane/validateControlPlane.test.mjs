@@ -154,7 +154,7 @@ test('5f. freshness mode is BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE, not exact
   assert.doesNotMatch(policy.stale_state_behavior.rule, /^Exact equality is required/);
 });
 
-test('5g. state-bootstrap allowlist is exactly the three state artifacts', () => {
+test('5g. state-bootstrap allowlist includes only state authority and deterministic derivatives', () => {
   const policy = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, DIR, 'ARCHITECT_CONTROL_PLANE.yaml'), 'utf8'));
   const allowlist = policy.stale_state_behavior.state_bootstrap_allowlist;
   assert.deepEqual(
@@ -163,6 +163,8 @@ test('5g. state-bootstrap allowlist is exactly the three state artifacts', () =>
       'docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md',
       'docs/ai-context/control-plane/CURRENT_STATE.yaml',
       'docs/ai-context/control-plane/EVIDENCE_LEDGER.md',
+      'docs/ai-context/control-plane/chatgpt-architect/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md',
+      'docs/ai-context/control-plane/chatgpt-architect/project-package',
     ].sort(),
   );
 });
@@ -193,7 +195,7 @@ test('5j. incomplete state_bootstrap_allowlist fails validation', () => {
   });
   const result = validateControlPlane(root);
   assert.equal(result.ok, false);
-  assert.match(errorsFrom(result), /state_bootstrap_allowlist must be exactly the three state-bootstrap paths/);
+  assert.match(errorsFrom(result), /state_bootstrap_allowlist must be exactly the canonical state paths/);
 });
 
 test('5k. snapshot describes baseline/ancestor semantics, not a bare SHA equality claim', () => {

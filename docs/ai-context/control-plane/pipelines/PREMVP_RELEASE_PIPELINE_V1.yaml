@@ -267,6 +267,6 @@
       "reviewer_receipts",
       "permitted_state_facts"
     ],
-    "output_contract": "reconciliation result consumed by RECONCILE_CONTROL_PLANE; simulated only via fake test adapters until Action 3"
+    "output_contract": "accepted PREMVP merge produces one bounded factual CURRENT_STATE reconciliation commit and state-only PR; the writer validates terminal completion evidence and exact merge ancestry but cannot accept product, runtime, capability, roadmap, business, or PnL claims"
   }
 }

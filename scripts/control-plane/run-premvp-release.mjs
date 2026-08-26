@@ -140,7 +140,23 @@ async function main() {
         },
       },
       deploy: { getProductionSha: async (url) => { const response = await fetch(url); if (!response.ok) throw new PipelineError('DEPLOYMENT_READ_FAILED', `HTTP ${response.status}`); const payload = await response.json(); return typeof payload.commit_sha === 'string' ? payload.commit_sha : null; } },
-      reconcile: { verify: async () => { run('node', ['scripts/control-plane/reconcile-control-plane.mjs', '--verify'], { inherit: true }); } },
+      reconcile: {
+        apply: async ({ manifest, resultSha, mergeSha }) => {
+          const completionPath = path.resolve(REPO_ROOT, manifest.completion_envelope_path);
+          run('node', ['scripts/control-plane/reconcile-control-plane.mjs', '--apply-state', '--evidence', completionPath, '--result-sha', resultSha, '--merge-sha', mergeSha], { inherit: true });
+          const stateFiles = [
+            'docs/ai-context/control-plane/CURRENT_STATE.yaml',
+            'docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md',
+            'docs/ai-context/control-plane/chatgpt-architect/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md',
+            'docs/ai-context/control-plane/chatgpt-architect/project-package',
+          ];
+          run('git', ['add', '--', ...stateFiles], { inherit: true });
+          try { run('git', ['diff', '--cached', '--quiet']); return { changed: false, stateHeadSha: null }; } catch { /* expected staged factual delta */ }
+          run('git', ['commit', '-m', `chore(control-plane): reconcile ${manifest.release_run_id}`], { inherit: true });
+          return { changed: true, stateHeadSha: run('git', ['rev-parse', 'HEAD']).trim() };
+        },
+        verify: async () => { run('node', ['scripts/control-plane/reconcile-control-plane.mjs', '--verify'], { inherit: true }); },
+      },
       sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
     };
     const result = await executeReleaseRun(manifest, routingDoc, pipelineSpec, adapters);

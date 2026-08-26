@@ -350,7 +350,27 @@ export async function executeReleaseRun(manifest, routingDoc, pipelineSpec, adap
     timeoutSeconds: manifest.deployment_timeout_seconds,
     sleep: adapters.sleep,
   });
-  await adapters.reconcile.verify({ manifest, resultSha, mergeSha: mergedPr.mergeCommitSha, deployment });
+  const reconciliation = await adapters.reconcile.apply({ manifest, resultSha, mergeSha: mergedPr.mergeCommitSha, deployment });
+  if (!reconciliation || reconciliation.changed !== true || !reconciliation.stateHeadSha) {
+    throw new PipelineError('RECONCILIATION_NOT_PERSISTED', 'Accepted change did not produce a persisted factual state reconciliation commit');
+  }
+  await adapters.git.push(manifest.feature_branch, reconciliation.stateHeadSha);
+  const statePrResult = await resolveOrCreatePr(adapters, {
+    repository: manifest.repository,
+    head: manifest.feature_branch,
+    base: manifest.target_ref,
+    title: `chore(control-plane): reconcile ${manifest.release_run_id}`,
+    body: 'Automatic factual CURRENT_STATE reconciliation for an already accepted PREMVP change.',
+    expectedHeadSha: reconciliation.stateHeadSha,
+  });
+  if (statePrResult.pr.headSha && statePrResult.pr.headSha !== reconciliation.stateHeadSha) {
+    throw new PipelineError('RECONCILIATION_PR_INTEGRITY_FAILED', `State PR head ${statePrResult.pr.headSha} != ${reconciliation.stateHeadSha}`);
+  }
+  const stateMerge = await mergePrIdempotent(adapters, statePrResult.pr);
+  if (!stateMerge.pr.mergeCommitSha || !await adapters.git.isAncestor(stateMerge.pr.mergeCommitSha, 'origin/main')) {
+    throw new PipelineError('RECONCILIATION_PR_MERGE_FAILED', 'Factual state reconciliation commit is not accepted on origin/main');
+  }
+  await adapters.reconcile.verify({ manifest, resultSha, mergeSha: mergedPr.mergeCommitSha, deployment, reconciliation, stateMergeSha: stateMerge.pr.mergeCommitSha });
   return {
     status: deployment.status === 'DEPLOYED' ? 'PASS' : 'WAIT',
     result_sha: resultSha,
@@ -359,6 +379,7 @@ export async function executeReleaseRun(manifest, routingDoc, pipelineSpec, adap
     pr_created: created,
     merged: merge.merged,
     deployment,
+    reconciliation: { ...reconciliation, pr: stateMerge.pr, merged: stateMerge.merged },
     changed_files: changedFiles,
   };
 }

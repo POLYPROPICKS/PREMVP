@@ -162,7 +162,9 @@
     "state_bootstrap_allowlist": [
       "docs/ai-context/control-plane/CURRENT_STATE.yaml",
       "docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md",
-      "docs/ai-context/control-plane/EVIDENCE_LEDGER.md"
+      "docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "docs/ai-context/control-plane/chatgpt-architect/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md",
+      "docs/ai-context/control-plane/chatgpt-architect/project-package"
     ]
   },
 

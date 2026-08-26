@@ -411,9 +411,13 @@ test('enabled lifecycle executes registered phases with an exact reviewer receip
       mergePullRequest: async () => ({ mergeCommitSha: 'merge-sha' }),
     },
     deploy: { getProductionSha: async () => 'merge-sha' },
-    reconcile: { verify: async () => calls.push('reconcile') },
+    reconcile: {
+      apply: async () => { calls.push('reconcile-apply'); return { changed: true, stateHeadSha: 'exact-sha' }; },
+      verify: async () => calls.push('reconcile-verify'),
+    },
   };
   const result = await executeReleaseRun(manifest, routingDoc, pipelineSpec, adapters);
   assert.equal(result.status, 'PASS');
-  assert.deepEqual(calls, ['test', 'push', 'reconcile']);
+  assert.deepEqual(calls, ['test', 'push', 'reconcile-apply', 'push', 'reconcile-verify']);
+  assert.equal(result.reconciliation.pr.mergeCommitSha, 'merge-sha');
 });
