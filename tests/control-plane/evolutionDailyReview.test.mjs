@@ -253,7 +253,7 @@ test('capture coverage is worst-wins and defaults to UNKNOWN, which forces deriv
     event({ action_id: 'A2', capture_coverage: 'PARTIAL', occurred_at: '2026-08-06T10:00:00Z' }),
   ], { period_start: '2026-08-06T00:00:00Z', period_end: '2026-08-07T00:00:00Z', declared_capture_coverage: 'COMPLETE', mission_count: 1, verified_result_count: 1 });
   assert.equal(partial.summary.capture_coverage, 'PARTIAL');
-  assert.equal(typeof partial.summary.derived.actions_per_verified_result, 'number');
+  assert.equal(partial.summary.derived.actions_per_verified_result, 'UNKNOWN');
 
   const undeclared = aggregateOperatorActions([
     { action_id: 'A1', occurred_at: '2026-08-06T09:00:00Z', surface: 'CODEX', type: 'START', origin: 'FOUNDER_MANUAL', mission_id: 'M1' },
@@ -338,6 +338,93 @@ test('a well-formed synthetic cycle passes every Stage 1 contract', () => {
   const result = validateEvolutionCycle(cycleFixture());
   assert.deepEqual(result.errors, []);
   assert.equal(result.ok, true);
+});
+
+test('consecutive half-open periods retain the boundary event exactly once', () => {
+  const boundary = event({ occurred_at: '2026-08-07T00:00:00Z' });
+  const first = aggregateOperatorActions([boundary], {
+    period_start: '2026-08-06T00:00:00Z', period_end: '2026-08-07T00:00:00Z', declared_capture_coverage: 'COMPLETE',
+  });
+  const second = aggregateOperatorActions([boundary], {
+    period_start: '2026-08-07T00:00:00Z', period_end: '2026-08-08T00:00:00Z', declared_capture_coverage: 'COMPLETE',
+  });
+  assert.equal(first.summary.total_operator_actions, 0);
+  assert.equal(second.summary.total_operator_actions, 1);
+});
+
+test('v1.1 cycles preserve operating telemetry without converting missing evidence to zero', () => {
+  const cycle = cycleFixture({
+    schema_version: '1.1',
+    evidence_cutoff: '2026-08-07T00:00:00Z',
+    operating_telemetry: {
+      capture_coverage: 'COMPLETE',
+      founder_actions_proven: 3,
+      founder_actions_removable: 'UNKNOWN',
+      chat_interaction_coverage: 'COMPLETE',
+      executor_runs: 2,
+      successful_terminal_results: 1,
+      reruns_resumes: 1,
+      recovery_iterations: 1,
+      architect_corrections: 0,
+      reviewer_corrections_rejections: 'UNKNOWN',
+      orchestration_waste_iterations: 'UNKNOWN',
+      defect_occurrences: [
+        {
+          defect_id: 'DEF-1', origin: 'ORCHESTRATION_OR_RECOVERY_DEFECT',
+          recurrence: 'LATENT_NEXT_LAYER_EXPOSED', defect_chain_id: 'CHAIN-1',
+          implemented_fix_ref: 'PR#101', proven_effective_evidence_refs: ['test#101'],
+        },
+      ],
+      defect_counts_by_origin: { ORCHESTRATION_OR_RECOVERY_DEFECT: 1 },
+      defect_counts_by_recurrence: { LATENT_NEXT_LAYER_EXPOSED: 1 },
+      repeated_defect_families: 0,
+      active_onion_chains: 1,
+      implemented_fixes: 1,
+      proven_effective_fixes: 1,
+      runtime_evidence_count: 'UNKNOWN',
+      reusable_artifacts_created: 'UNKNOWN',
+      actions_per_verified_result: 3,
+      time_to_verified_result: 'UNKNOWN',
+    },
+  });
+  assert.deepEqual(validateEvolutionCycle(cycle).errors, []);
+  assert.equal(cycle.operating_telemetry.founder_actions_removable, 'UNKNOWN');
+});
+
+test('a v1.1 cycle cannot canonically close after its evidence cutoff', () => {
+  const cycle = cycleFixture({ schema_version: '1.1', evidence_cutoff: '2026-08-06T23:59:59Z' });
+  const { ok, errors } = validateEvolutionCycle(cycle);
+  assert.equal(ok, false);
+  assert.ok(errors.some((e) => e.includes('period_end must be at or before evidence_cutoff')));
+});
+
+test('collector retains separate defect origin, recurrence, causal family and fix-effect evidence', () => {
+  const { ok, collection } = collectEvolutionInputs({
+    bundle_id: 'telemetry', repository: 'POLYPROPICKS/PREMVP',
+    period_start: '2026-08-06T00:00:00Z', period_end: '2026-08-07T00:00:00Z',
+    evidence_cutoff: '2026-08-07T00:00:00Z', capture_coverage: 'COMPLETE',
+    verified_result_count: 1, operator_action_events: [event()],
+    operating_telemetry: { executor_runs: 2, recovery_iterations: 1 },
+    defect_occurrences: [{
+      defect_id: 'DEF-1', origin: 'ORCHESTRATION_OR_RECOVERY_DEFECT',
+      recurrence: 'LATENT_NEXT_LAYER_EXPOSED', defect_chain_id: 'CHAIN-1',
+      implemented_fix_ref: 'PR#101', proven_effective_evidence_refs: ['test#101'],
+    }],
+  });
+  assert.equal(ok, true);
+  assert.equal(collection.operating_telemetry.executor_runs, 2);
+  assert.equal(collection.operating_telemetry.defect_occurrences[0].recurrence, 'LATENT_NEXT_LAYER_EXPOSED');
+});
+
+test('collector leaves unavailable defect evidence UNKNOWN instead of fabricating zero defects', () => {
+  const { ok, collection } = collectEvolutionInputs({
+    bundle_id: 'unknown-defects', repository: 'POLYPROPICKS/PREMVP',
+    period_start: '2026-08-06T00:00:00Z', period_end: '2026-08-07T00:00:00Z',
+    evidence_cutoff: '2026-08-07T00:00:00Z', capture_coverage: 'COMPLETE', operator_action_events: [],
+  });
+  assert.equal(ok, true);
+  assert.equal(collection.operating_telemetry.defect_occurrences, 'UNKNOWN');
+  assert.equal(collection.operating_telemetry.repeated_defect_families, 'UNKNOWN');
 });
 
 test('axis verdicts stay independent — a strong Axis B does not lift Axis A', () => {

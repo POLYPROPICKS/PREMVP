@@ -25,10 +25,15 @@
     "accepted"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
+    "schema_version": { "type": "string", "enum": ["1.0", "1.1"] },
     "cycle_id": { "type": "string", "minLength": 1 },
     "period_start": { "type": "string", "minLength": 1 },
     "period_end": { "type": "string", "minLength": 1 },
+    "evidence_cutoff": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required for schema_version 1.1. A canonical cycle may not close after this cutoff."
+    },
     "repository": { "type": "string", "const": "POLYPROPICKS/PREMVP" },
     "generated_by": {
       "type": "object",
@@ -146,6 +151,43 @@
 
     "operator_actions": { "$ref": "OPERATOR_ACTION_SUMMARY.schema.json" },
 
+    "operating_telemetry": {
+      "type": "object",
+      "description": "Detailed diagnostic evidence for schema_version 1.1. Unknown evidence stays UNKNOWN or NOT_AVAILABLE.",
+      "required": [
+        "capture_coverage", "founder_actions_proven", "founder_actions_removable", "chat_interaction_coverage",
+        "executor_runs", "successful_terminal_results", "reruns_resumes", "recovery_iterations",
+        "architect_corrections", "reviewer_corrections_rejections", "orchestration_waste_iterations",
+        "defect_occurrences", "defect_counts_by_origin", "defect_counts_by_recurrence",
+        "repeated_defect_families", "active_onion_chains", "implemented_fixes", "proven_effective_fixes",
+        "runtime_evidence_count", "reusable_artifacts_created", "actions_per_verified_result", "time_to_verified_result"
+      ],
+      "properties": {
+        "capture_coverage": { "type": "string", "enum": ["COMPLETE", "PARTIAL", "UNKNOWN"] },
+        "chat_interaction_coverage": { "type": "string", "enum": ["COMPLETE", "PARTIAL", "UNKNOWN"] },
+        "founder_actions_proven": { "$ref": "#/definitions/metric" },
+        "founder_actions_removable": { "$ref": "#/definitions/metric" },
+        "executor_runs": { "$ref": "#/definitions/metric" },
+        "successful_terminal_results": { "$ref": "#/definitions/metric" },
+        "reruns_resumes": { "$ref": "#/definitions/metric" },
+        "recovery_iterations": { "$ref": "#/definitions/metric" },
+        "architect_corrections": { "$ref": "#/definitions/metric" },
+        "reviewer_corrections_rejections": { "$ref": "#/definitions/metric" },
+        "orchestration_waste_iterations": { "$ref": "#/definitions/metric" },
+        "defect_occurrences": { "anyOf": [{ "type": "array", "items": { "$ref": "#/definitions/defect_occurrence" } }, { "type": "string", "enum": ["UNKNOWN", "NOT_AVAILABLE"] }] },
+        "defect_counts_by_origin": { "anyOf": [{ "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }, { "type": "string", "enum": ["UNKNOWN", "NOT_AVAILABLE"] }] },
+        "defect_counts_by_recurrence": { "anyOf": [{ "type": "object", "additionalProperties": { "type": "integer", "minimum": 0 } }, { "type": "string", "enum": ["UNKNOWN", "NOT_AVAILABLE"] }] },
+        "repeated_defect_families": { "$ref": "#/definitions/metric" },
+        "active_onion_chains": { "$ref": "#/definitions/metric" },
+        "implemented_fixes": { "$ref": "#/definitions/metric" },
+        "proven_effective_fixes": { "$ref": "#/definitions/metric" },
+        "runtime_evidence_count": { "$ref": "#/definitions/metric" },
+        "reusable_artifacts_created": { "$ref": "#/definitions/metric" },
+        "actions_per_verified_result": { "$ref": "#/definitions/metric" },
+        "time_to_verified_result": { "$ref": "#/definitions/metric" }
+      }
+    },
+
     "automation_hypotheses": {
       "type": "array",
       "maxItems": 8,
@@ -225,6 +267,21 @@
   },
 
   "definitions": {
+    "metric": {
+      "anyOf": [{ "type": "number" }, { "type": "string", "enum": ["UNKNOWN", "NOT_AVAILABLE"] }]
+    },
+    "defect_occurrence": {
+      "type": "object",
+      "required": ["defect_id", "origin", "recurrence", "proven_effective_evidence_refs"],
+      "properties": {
+        "defect_id": { "type": "string", "minLength": 1 },
+        "origin": { "type": "string", "enum": ["PRODUCT_OR_RUNTIME_DEFECT", "PROMPT_OR_MISSION_CONSTRUCTION_DEFECT", "DIAGNOSIS_SCOPE_DEFECT", "ORCHESTRATION_OR_RECOVERY_DEFECT", "TEST_OR_VERIFICATION_DEFECT", "STATE_OR_CONTEXT_DEFECT", "ENVIRONMENT_OR_PERMISSION_DEFECT", "CONTROL_PLANE_DEFECT", "UNKNOWN_ORIGIN"] },
+        "recurrence": { "type": "string", "enum": ["NEW_INDEPENDENT", "SAME_ROOT_REPEAT", "LATENT_NEXT_LAYER_EXPOSED", "REGRESSION", "PROMPT_INDUCED_REPEAT", "UNKNOWN_RECURRENCE"] },
+        "defect_chain_id": { "type": ["string", "null"] },
+        "implemented_fix_ref": { "type": ["string", "null"] },
+        "proven_effective_evidence_refs": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    },
     "claim": {
       "type": "object",
       "required": ["statement", "evidence_class", "evidence_refs"],
@@ -239,6 +296,13 @@
     }
   },
 
+  "allOf": [
+    {
+      "if": { "properties": { "schema_version": { "const": "1.1" } } },
+      "then": { "required": ["evidence_cutoff", "operating_telemetry"] }
+    }
+  ],
+
   "x-invariants": [
     "axis_a and axis_b carry independent verdicts and are never merged or averaged.",
     "supporting_metrics.role must be DIAGNOSTIC_ONLY and may not contain any axis verdict key.",
@@ -248,6 +312,9 @@
     "experiments contains two or three entries, each with a persistent artifact, a promotion condition and a stop condition.",
     "Fewer than five automation hypotheses requires insufficient_supported_hypotheses true with a reason.",
     "roadmap.product_phase_unchanged must be true — an Evolution cycle never changes the product phase.",
-    "accepted must be false."
+    "accepted must be false.",
+    "For schema_version 1.1, period_end must be at or before evidence_cutoff; legacy 1.0 cycles remain readable without a cutoff.",
+    "Defect origin and recurrence remain independent dimensions; LATENT_NEXT_LAYER_EXPOSED is not a regression classification.",
+    "A proven-effective fix requires a distinct implemented_fix_ref plus post-fix evidence."
   ]
 }

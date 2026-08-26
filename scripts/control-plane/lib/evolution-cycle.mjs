@@ -20,7 +20,20 @@ import {
   validateOperatorActionSummary,
 } from './operator-actions.mjs';
 
-export const CYCLE_SCHEMA_VERSION = '1.0';
+export const CYCLE_SCHEMA_VERSION = '1.1';
+export const COMPATIBLE_CYCLE_SCHEMA_VERSIONS = Object.freeze(['1.0', CYCLE_SCHEMA_VERSION]);
+
+export const DEFECT_ORIGINS = Object.freeze([
+  'PRODUCT_OR_RUNTIME_DEFECT', 'PROMPT_OR_MISSION_CONSTRUCTION_DEFECT',
+  'DIAGNOSIS_SCOPE_DEFECT', 'ORCHESTRATION_OR_RECOVERY_DEFECT',
+  'TEST_OR_VERIFICATION_DEFECT', 'STATE_OR_CONTEXT_DEFECT',
+  'ENVIRONMENT_OR_PERMISSION_DEFECT', 'CONTROL_PLANE_DEFECT', 'UNKNOWN_ORIGIN',
+]);
+
+export const DEFECT_RECURRENCES = Object.freeze([
+  'NEW_INDEPENDENT', 'SAME_ROOT_REPEAT', 'LATENT_NEXT_LAYER_EXPOSED',
+  'REGRESSION', 'PROMPT_INDUCED_REPEAT', 'UNKNOWN_RECURRENCE',
+]);
 
 export const AXIS_A_VERDICTS = Object.freeze([
   'ADVANCED', 'NO_MEASURABLE_CHANGE', 'STALLED', 'REGRESSED', 'NOT_ENOUGH_EVIDENCE',
@@ -200,6 +213,60 @@ function validateSupportingMetrics(metrics, push) {
   }
 }
 
+function isMetricValue(value) {
+  return (typeof value === 'number' && Number.isFinite(value)) || UNKNOWN_METRIC_VALUES.includes(value);
+}
+
+function validateOperatingTelemetry(telemetry, push) {
+  if (!isObject(telemetry)) return push('operating_telemetry must be an object for schema_version 1.1');
+  const metricFields = [
+    'founder_actions_proven', 'founder_actions_removable', 'executor_runs',
+    'successful_terminal_results', 'reruns_resumes', 'recovery_iterations',
+    'architect_corrections', 'reviewer_corrections_rejections', 'orchestration_waste_iterations',
+    'implemented_fixes', 'proven_effective_fixes', 'runtime_evidence_count',
+    'reusable_artifacts_created', 'actions_per_verified_result', 'time_to_verified_result',
+  ];
+  if (!['COMPLETE', 'PARTIAL', 'UNKNOWN'].includes(telemetry.capture_coverage)) {
+    push('operating_telemetry.capture_coverage must be COMPLETE, PARTIAL or UNKNOWN');
+  }
+  if (!['COMPLETE', 'PARTIAL', 'UNKNOWN'].includes(telemetry.chat_interaction_coverage)) {
+    push('operating_telemetry.chat_interaction_coverage must be COMPLETE, PARTIAL or UNKNOWN');
+  }
+  for (const field of metricFields) {
+    if (!isMetricValue(telemetry[field])) push(`operating_telemetry.${field} must be a number or UNKNOWN/NOT_AVAILABLE`);
+  }
+  if ((!isObject(telemetry.defect_counts_by_origin) && !UNKNOWN_METRIC_VALUES.includes(telemetry.defect_counts_by_origin)) ||
+      (!isObject(telemetry.defect_counts_by_recurrence) && !UNKNOWN_METRIC_VALUES.includes(telemetry.defect_counts_by_recurrence))) {
+    push('operating_telemetry must carry defect_counts_by_origin and defect_counts_by_recurrence, or mark both UNKNOWN');
+  }
+  if (!isMetricValue(telemetry.repeated_defect_families) || !isMetricValue(telemetry.active_onion_chains)) {
+    push('operating_telemetry repeated_defect_families and active_onion_chains must be measured or UNKNOWN');
+  }
+  if (UNKNOWN_METRIC_VALUES.includes(telemetry.defect_occurrences)) return;
+  if (!Array.isArray(telemetry.defect_occurrences)) return push('operating_telemetry.defect_occurrences must be an array or UNKNOWN');
+  const ids = new Set();
+  telemetry.defect_occurrences.forEach((defect, i) => {
+    const label = `operating_telemetry.defect_occurrences[${i}]`;
+    if (!isObject(defect)) return push(`${label} must be an object`);
+    if (!isNonEmptyString(defect.defect_id) || ids.has(defect.defect_id)) push(`${label}.defect_id must be unique and non-empty`);
+    ids.add(defect.defect_id);
+    if (!DEFECT_ORIGINS.includes(defect.origin)) push(`${label}.origin must be an approved defect origin`);
+    if (!DEFECT_RECURRENCES.includes(defect.recurrence)) push(`${label}.recurrence must be an approved recurrence classification`);
+    if (defect.defect_chain_id !== null && defect.defect_chain_id !== undefined && !isNonEmptyString(defect.defect_chain_id)) {
+      push(`${label}.defect_chain_id must be a non-empty string or null`);
+    }
+    if (defect.implemented_fix_ref !== null && defect.implemented_fix_ref !== undefined && !isNonEmptyString(defect.implemented_fix_ref)) {
+      push(`${label}.implemented_fix_ref must be a non-empty string or null`);
+    }
+    if (!Array.isArray(defect.proven_effective_evidence_refs) || !defect.proven_effective_evidence_refs.every(isNonEmptyString)) {
+      push(`${label}.proven_effective_evidence_refs must be an array of evidence references`);
+    }
+    if (defect.proven_effective_evidence_refs?.length > 0 && !isNonEmptyString(defect.implemented_fix_ref)) {
+      push(`${label} cannot claim a proven-effective fix without implemented_fix_ref`);
+    }
+  });
+}
+
 function validateAxisA(axis, push) {
   if (!isObject(axis)) return push('axis_a must be an object');
   if (!AXIS_A_VERDICTS.includes(axis.verdict)) {
@@ -291,6 +358,14 @@ export function validateEvolutionCycle(cycle) {
 
   for (const field of ['schema_version', 'cycle_id', 'period_start', 'period_end', 'next_step']) {
     if (!isNonEmptyString(cycle[field])) push(`${field} must be a non-empty string`);
+  }
+  if (!COMPATIBLE_CYCLE_SCHEMA_VERSIONS.includes(cycle.schema_version)) {
+    push(`schema_version must be one of ${COMPATIBLE_CYCLE_SCHEMA_VERSIONS.join(', ')}`);
+  }
+  if (cycle.schema_version === CYCLE_SCHEMA_VERSION) {
+    if (!isNonEmptyString(cycle.evidence_cutoff)) push('evidence_cutoff must be a non-empty string for schema_version 1.1');
+    else if (cycle.period_end > cycle.evidence_cutoff) push('period_end must be at or before evidence_cutoff — a canonical cycle cannot claim evidence from an unfinished period');
+    validateOperatingTelemetry(cycle.operating_telemetry, push);
   }
   if (cycle.repository !== 'POLYPROPICKS/PREMVP') {
     push('repository must be POLYPROPICKS/PREMVP — Evolution never crosses the repository boundary');
