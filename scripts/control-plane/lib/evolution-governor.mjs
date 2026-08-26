@@ -24,7 +24,21 @@
  * JSON Schema engine: the messages have to be readable by a Founder on a phone.
  */
 
-export const GOVERNOR_SCHEMA_VERSION = '1.0';
+import fs from 'node:fs';
+import path from 'node:path';
+
+import {
+  derivePeriodKey,
+  validateEvolutionCycle,
+} from './evolution-cycle.mjs';
+
+export const GOVERNOR_SCHEMA_VERSION = '1.1';
+
+export const TERMINAL_DISPOSITIONS = Object.freeze([
+  'ONE_AUTOMATION_INVESTMENT',
+  'NO_AUTOMATION_NOW',
+  'EVIDENCE_INSUFFICIENT',
+]);
 
 export const AUTOMATION_ROADMAP_STAGES = Object.freeze([
   'STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP',
@@ -108,6 +122,216 @@ function isObject(v) {
 
 function nonEmptyStringArray(v) {
   return Array.isArray(v) && v.length > 0 && v.every(isNonEmptyString);
+}
+
+function sortedJsonFiles(dir) {
+  try {
+    return fs.readdirSync(dir).filter((file) => file.endsWith('.json')).sort();
+  } catch (error) {
+    return { error };
+  }
+}
+
+/**
+ * Enumerates the canonical persisted Cycle directory and validates every consumed document
+ * through the existing Evolution validator. A malformed file, a filename/id mismatch or a
+ * competing period lineage invalidates the whole discovery; the Governor never cherry-picks
+ * a convenient subset of history.
+ */
+export function discoverCanonicalEvolutionCycles(cyclesDir) {
+  const files = sortedJsonFiles(cyclesDir);
+  if (!Array.isArray(files)) {
+    return { ok: false, cycles: [], files: [], errors: [`cannot read canonical Evolution Cycle directory ${cyclesDir}: ${files.error.message}`] };
+  }
+
+  const errors = [];
+  const cycles = [];
+  const ids = new Set();
+  const periods = new Map();
+
+  for (const file of files) {
+    const fullPath = path.join(cyclesDir, file);
+    let cycle;
+    try {
+      cycle = JSON.parse(fs.readFileSync(fullPath, 'utf8'));
+    } catch (error) {
+      errors.push(`${file}: invalid JSON (${error.message})`);
+      continue;
+    }
+
+    const validation = validateEvolutionCycle(cycle);
+    if (!validation.ok) {
+      errors.push(...validation.errors.map((error) => `${file}: ${error}`));
+      continue;
+    }
+
+    const expectedFile = `${cycle.cycle_id}.json`;
+    if (file !== expectedFile) errors.push(`${file}: canonical filename must be ${expectedFile}`);
+    if (ids.has(cycle.cycle_id)) errors.push(`${file}: duplicate canonical cycle_id ${cycle.cycle_id}`);
+    ids.add(cycle.cycle_id);
+
+    const periodKey = derivePeriodKey(cycle.period_start);
+    if (periods.has(periodKey) && periods.get(periodKey) !== cycle.cycle_id) {
+      errors.push(`${file}: DUPLICATE_CANONICAL_CYCLE_FOR_PERIOD ${periodKey} already belongs to ${periods.get(periodKey)}`);
+    } else {
+      periods.set(periodKey, cycle.cycle_id);
+    }
+
+    cycles.push(cycle);
+  }
+
+  cycles.sort((left, right) => left.period_start.localeCompare(right.period_start) || left.cycle_id.localeCompare(right.cycle_id));
+  return { ok: errors.length === 0, cycles: errors.length === 0 ? cycles : [], files, errors };
+}
+
+/** Persisted Governor results are the only authority for which Cycle ids were consumed. */
+export function discoverPersistedGovernorResults(resultsDir) {
+  const files = sortedJsonFiles(resultsDir);
+  if (!Array.isArray(files)) {
+    return { ok: false, results: [], files: [], errors: [`cannot read persisted Governor result directory ${resultsDir}: ${files.error.message}`] };
+  }
+
+  const errors = [];
+  const results = [];
+  const ids = new Set();
+  for (const file of files) {
+    let result;
+    try {
+      result = JSON.parse(fs.readFileSync(path.join(resultsDir, file), 'utf8'));
+    } catch (error) {
+      errors.push(`${file}: invalid JSON (${error.message})`);
+      continue;
+    }
+    const validation = validateGovernorResult(result);
+    if (!validation.ok) {
+      errors.push(...validation.errors.map((error) => `${file}: ${error}`));
+      continue;
+    }
+    const expectedFile = `${result.result_id}.json`;
+    if (file !== expectedFile) errors.push(`${file}: canonical filename must be ${expectedFile}`);
+    if (ids.has(result.result_id)) errors.push(`${file}: duplicate Governor result_id ${result.result_id}`);
+    ids.add(result.result_id);
+    results.push(result);
+  }
+  results.sort((left, right) => left.generated_at.localeCompare(right.generated_at) || left.result_id.localeCompare(right.result_id));
+  return { ok: errors.length === 0, results: errors.length === 0 ? results : [], files, errors };
+}
+
+const TELEMETRY_METRIC_FIELDS = Object.freeze([
+  'founder_actions_proven', 'founder_actions_removable', 'executor_runs',
+  'successful_terminal_results', 'reruns_resumes', 'recovery_iterations',
+  'architect_corrections', 'reviewer_corrections_rejections', 'orchestration_waste_iterations',
+  'repeated_defect_families', 'active_onion_chains', 'implemented_fixes',
+  'proven_effective_fixes', 'runtime_evidence_count', 'reusable_artifacts_created',
+  'actions_per_verified_result', 'time_to_verified_result',
+]);
+
+function measuredOrUnknown(value) {
+  return (typeof value === 'number' && Number.isFinite(value)) || ['UNKNOWN', 'NOT_AVAILABLE'].includes(value)
+    ? value
+    : 'UNKNOWN';
+}
+
+/**
+ * Presents v1.0 and v1.1 Cycles to Governor reasoning through one truthful telemetry shape.
+ * Legacy fields are reused only when their meaning is exact; absent v1.1 evidence is UNKNOWN.
+ */
+export function normalizeCycleTelemetry(cycle) {
+  if (cycle?.schema_version === '1.1' && isObject(cycle.operating_telemetry)) {
+    const telemetry = {};
+    for (const field of TELEMETRY_METRIC_FIELDS) telemetry[field] = measuredOrUnknown(cycle.operating_telemetry[field]);
+    return {
+      capture_coverage: cycle.operating_telemetry.capture_coverage ?? 'UNKNOWN',
+      chat_interaction_coverage: cycle.operating_telemetry.chat_interaction_coverage ?? 'UNKNOWN',
+      ...telemetry,
+      defect_occurrences: Array.isArray(cycle.operating_telemetry.defect_occurrences)
+        ? cycle.operating_telemetry.defect_occurrences
+        : 'UNKNOWN',
+      defect_counts_by_origin: isObject(cycle.operating_telemetry.defect_counts_by_origin)
+        ? cycle.operating_telemetry.defect_counts_by_origin
+        : 'UNKNOWN',
+      defect_counts_by_recurrence: isObject(cycle.operating_telemetry.defect_counts_by_recurrence)
+        ? cycle.operating_telemetry.defect_counts_by_recurrence
+        : 'UNKNOWN',
+    };
+  }
+
+  const actions = isObject(cycle?.operator_actions) ? cycle.operator_actions : {};
+  const metrics = isObject(cycle?.supporting_metrics?.values) ? cycle.supporting_metrics.values : {};
+  return {
+    capture_coverage: actions.capture_coverage ?? 'UNKNOWN',
+    chat_interaction_coverage: 'UNKNOWN',
+    founder_actions_proven: measuredOrUnknown(actions.total_operator_actions),
+    founder_actions_removable: 'UNKNOWN',
+    executor_runs: 'UNKNOWN',
+    successful_terminal_results: 'UNKNOWN',
+    reruns_resumes: 'UNKNOWN',
+    recovery_iterations: 'UNKNOWN',
+    architect_corrections: measuredOrUnknown(actions.architect_corrections),
+    reviewer_corrections_rejections: measuredOrUnknown(metrics.reviewer_rejection_count),
+    orchestration_waste_iterations: 'UNKNOWN',
+    defect_occurrences: 'UNKNOWN',
+    defect_counts_by_origin: 'UNKNOWN',
+    defect_counts_by_recurrence: 'UNKNOWN',
+    repeated_defect_families: 'UNKNOWN',
+    active_onion_chains: 'UNKNOWN',
+    implemented_fixes: 'UNKNOWN',
+    proven_effective_fixes: 'UNKNOWN',
+    runtime_evidence_count: measuredOrUnknown(metrics.runtime_evidence_count),
+    reusable_artifacts_created: measuredOrUnknown(metrics.reusable_artifacts_created),
+    actions_per_verified_result: measuredOrUnknown(metrics.actions_per_verified_result),
+    time_to_verified_result: measuredOrUnknown(metrics.time_to_verified_result),
+  };
+}
+
+function weeklyBoundaryFromHistory(lastResult, newCycles) {
+  if (!lastResult || newCycles.length === 0) return false;
+  const lastRun = Date.parse(lastResult.generated_at);
+  const latestEvidence = Math.max(...newCycles.map((cycle) => Date.parse(cycle.period_end)));
+  return Number.isFinite(lastRun) && Number.isFinite(latestEvidence) && latestEvidence - lastRun >= 7 * 24 * 60 * 60 * 1000;
+}
+
+/** Derives eligibility and the reasoning packet only from validated persisted history. */
+export function prepareGovernorEvidence({ cycles = [], priorGovernorResults = [] } = {}) {
+  const prior = [...priorGovernorResults].sort((left, right) => left.generated_at.localeCompare(right.generated_at) || left.result_id.localeCompare(right.result_id));
+  const consumedCycleIds = new Set(prior.flatMap((result) => result.eligibility?.based_on_cycles || []));
+  const newCycles = cycles.filter((cycle) => !consumedCycleIds.has(cycle.cycle_id));
+  const lastResult = prior.at(-1) ?? null;
+  const weeklyBoundaryReached = weeklyBoundaryFromHistory(lastResult, newCycles);
+  const eligibilityBase = computeEligibility({
+    newValidatedCycleCount: newCycles.length,
+    weeklyBoundaryReached,
+  });
+  const eligibility = {
+    ...eligibilityBase,
+    based_on_cycles: newCycles.map((cycle) => cycle.cycle_id),
+    new_validated_cycle_count: newCycles.length,
+    weekly_boundary_reached: weeklyBoundaryReached,
+  };
+  return {
+    history: {
+      canonical_cycle_count: cycles.length,
+      prior_governor_result_count: prior.length,
+      last_governor_result_id: lastResult?.result_id ?? null,
+      previously_consumed_cycle_ids: [...consumedCycleIds].sort(),
+    },
+    eligibility,
+    terminal_disposition: eligibility.eligible ? null : 'EVIDENCE_INSUFFICIENT',
+    cycle_evidence: newCycles.map((cycle) => ({
+      cycle_id: cycle.cycle_id,
+      schema_version: cycle.schema_version,
+      period_start: cycle.period_start,
+      period_end: cycle.period_end,
+      axis_a: cycle.axis_a,
+      axis_b: cycle.axis_b,
+      automation_hypotheses: cycle.automation_hypotheses,
+      founder_practices: cycle.founder_practices,
+      experiments: cycle.experiments,
+      operator_actions: cycle.operator_actions,
+      supporting_metrics: cycle.supporting_metrics,
+      telemetry: normalizeCycleTelemetry(cycle),
+    })),
+  };
 }
 
 function validateClaim(claim, label, push) {
@@ -223,11 +447,24 @@ export function validateRoadmapFactualUpdates(updates, label = 'roadmap_factual_
 }
 
 /** Full GOVERNOR_RESULT validation. Returns every violation, not just the first. */
-export function validateGovernorResult(result) {
+export function validateGovernorResult(result, { preparedEvidence = null } = {}) {
   const errors = [];
   const push = (m) => errors.push(m);
 
   if (!isObject(result)) return { ok: false, errors: ['result must be an object'] };
+
+  if (result.schema_version !== GOVERNOR_SCHEMA_VERSION) {
+    push(`schema_version must be ${GOVERNOR_SCHEMA_VERSION}`);
+  }
+
+  if (!TERMINAL_DISPOSITIONS.includes(result.terminal_disposition)) {
+    push(`terminal_disposition must be exactly one of ${TERMINAL_DISPOSITIONS.join(', ')}`);
+  }
+  for (const disposition of TERMINAL_DISPOSITIONS) {
+    if (Object.prototype.hasOwnProperty.call(result, disposition)) {
+      push(`${disposition} must not appear as a separate top-level flag — terminal_disposition is the one terminal field`);
+    }
+  }
 
   for (const field of ['result_id', 'generated_at', 'next_step']) {
     if (!isNonEmptyString(result[field])) push(`${field} must be a non-empty string`);
@@ -376,6 +613,51 @@ export function validateGovernorResult(result) {
   // --- roadmap_delta presence rule --------------------------------------------------------
   const deltaJustified = isObject(findings) && findings.roadmap_delta_justified === true;
   const eligible = isObject(eligibility) && eligibility.eligible === true;
+  const promoted = isObject(findings) && Array.isArray(findings.automation_decisions)
+    ? findings.automation_decisions.filter((decision) => decision?.decision === 'PROMOTE')
+    : [];
+
+  if (!eligible && result.terminal_disposition !== 'EVIDENCE_INSUFFICIENT') {
+    push('terminal_disposition must be EVIDENCE_INSUFFICIENT when canonical eligibility is false');
+  }
+  if (eligible && result.terminal_disposition === 'EVIDENCE_INSUFFICIENT') {
+    push('terminal_disposition EVIDENCE_INSUFFICIENT is forbidden when canonical eligibility is true');
+  }
+  if (result.terminal_disposition === 'EVIDENCE_INSUFFICIENT') {
+    if (promoted.length !== 0) push(`EVIDENCE_INSUFFICIENT requires zero PROMOTE automation decisions (found ${promoted.length})`);
+    if (deltaJustified) push('EVIDENCE_INSUFFICIENT requires findings.roadmap_delta_justified false');
+  }
+  if (result.terminal_disposition === 'ONE_AUTOMATION_INVESTMENT') {
+    if (!eligible) push('ONE_AUTOMATION_INVESTMENT requires canonical eligibility');
+    if (promoted.length !== 1) push(`ONE_AUTOMATION_INVESTMENT requires exactly one PROMOTE automation decision (found ${promoted.length})`);
+    if (result.roadmap_delta === null) push('ONE_AUTOMATION_INVESTMENT requires one unaccepted roadmap_delta proposal');
+  }
+  if (result.terminal_disposition === 'NO_AUTOMATION_NOW') {
+    if (!eligible) push('NO_AUTOMATION_NOW requires enough canonical evidence to reason');
+    if (promoted.length !== 0) push(`NO_AUTOMATION_NOW requires zero PROMOTE automation decisions (found ${promoted.length})`);
+    if (result.roadmap_delta !== null) push('NO_AUTOMATION_NOW requires roadmap_delta null');
+    if (deltaJustified) push('NO_AUTOMATION_NOW requires findings.roadmap_delta_justified false');
+  }
+
+  if (preparedEvidence) {
+    const canonical = preparedEvidence.eligibility;
+    const suppliedIds = Array.isArray(eligibility?.based_on_cycles) ? eligibility.based_on_cycles : [];
+    const eligibilityMatches = eligibility?.eligible === canonical.eligible &&
+      eligibility?.new_validated_cycle_count === canonical.new_validated_cycle_count &&
+      eligibility?.weekly_boundary_reached === canonical.weekly_boundary_reached &&
+      JSON.stringify(suppliedIds) === JSON.stringify(canonical.based_on_cycles);
+    if (!eligibilityMatches) {
+      push('eligibility and based_on_cycles must match canonical persisted history discovered by the Governor command');
+    }
+    if (result.roadmap_delta !== null &&
+        JSON.stringify(result.roadmap_delta?.based_on_cycles) !== JSON.stringify(canonical.based_on_cycles)) {
+      push('roadmap_delta.based_on_cycles must exactly match the canonical persisted Cycle ids prepared for this Governor run');
+    }
+    if (preparedEvidence.terminal_disposition !== null &&
+        result.terminal_disposition !== preparedEvidence.terminal_disposition) {
+      push(`terminal_disposition must be ${preparedEvidence.terminal_disposition} for the discovered canonical history`);
+    }
+  }
 
   if (result.roadmap_delta !== null) {
     if (!eligible) {

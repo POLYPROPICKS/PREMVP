@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://polypropicks.com/schemas/control-plane/evolution/GOVERNOR_RESULT.schema.json",
   "title": "PolyProPicks Automation Roadmap Governor Result",
-  "description": "The machine-readable result of one Automation Roadmap Governor run. Enforced by scripts/control-plane/lib/evolution-governor.mjs — a focused dependency-free validator, not a generic JSON Schema engine. A separate result schema is justified here because a Governor run is more than a roadmap delta: it always answers the eight governing questions and may legitimately conclude with no change when evidence is insufficient — that no-change outcome is not itself a delta.",
+  "description": "The machine-readable result of one Automation Roadmap Governor run. Enforced by scripts/control-plane/lib/evolution-governor.mjs — a focused dependency-free validator, not a generic JSON Schema engine. The Governor deterministically prepares its evidence from canonical persisted Evolution Cycles and every result carries exactly one terminal disposition.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -11,6 +11,7 @@
     "repository",
     "generated_by",
     "generated_at",
+    "terminal_disposition",
     "eligibility",
     "findings",
     "roadmap_delta",
@@ -19,7 +20,7 @@
     "accepted"
   ],
   "properties": {
-    "schema_version": { "type": "string" },
+    "schema_version": { "type": "string", "const": "1.1" },
     "result_id": { "type": "string", "minLength": 1 },
     "repository": { "type": "string", "const": "POLYPROPICKS/PREMVP" },
     "generated_by": {
@@ -32,6 +33,11 @@
       }
     },
     "generated_at": { "type": "string", "minLength": 1 },
+    "terminal_disposition": {
+      "type": "string",
+      "enum": ["ONE_AUTOMATION_INVESTMENT", "NO_AUTOMATION_NOW", "EVIDENCE_INSUFFICIENT"],
+      "description": "Exactly one top-level terminal Governor outcome. ONE_AUTOMATION_INVESTMENT selects one promoted automation proposal; NO_AUTOMATION_NOW is an eligible evidence-based decision to invest in none; EVIDENCE_INSUFFICIENT is mandatory when canonical eligibility is false."
+    },
 
     "eligibility": {
       "type": "object",
@@ -180,6 +186,11 @@
   },
 
   "x-invariants": [
+    "terminal_disposition is exactly one of ONE_AUTOMATION_INVESTMENT, NO_AUTOMATION_NOW or EVIDENCE_INSUFFICIENT; the enum value is the single terminal field, never three separate flags.",
+    "EVIDENCE_INSUFFICIENT is required when eligibility.eligible is false and forbidden when eligibility.eligible is true.",
+    "ONE_AUTOMATION_INVESTMENT requires eligibility.eligible true, exactly one PROMOTE automation decision and one roadmap_delta with accepted false.",
+    "NO_AUTOMATION_NOW requires eligibility.eligible true, zero PROMOTE decisions, roadmap_delta null and roadmap_delta_justified false.",
+    "eligibility and based_on_cycles must match the canonical persisted history discovered and validated by premvp.command.evolution_govern.v1; supplied cycle ids are never an authority.",
     "accepted must be false.",
     "eligible must be false whenever new_validated_cycle_count < 3 and weekly_boundary_reached is false; the result must then be an explicit no-change outcome with roadmap_delta null.",
     "roadmap_delta is non-null only when eligibility.eligible is true and findings.roadmap_delta_justified is true.",

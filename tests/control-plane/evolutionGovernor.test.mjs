@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import {
@@ -13,6 +15,10 @@ import {
   validateGovernorReport,
   GOVERNOR_REPORT_HEADINGS,
   ELIGIBILITY_MIN_NEW_CYCLES,
+  TERMINAL_DISPOSITIONS,
+  discoverCanonicalEvolutionCycles,
+  normalizeCycleTelemetry,
+  prepareGovernorEvidence,
 } from '../../scripts/control-plane/lib/evolution-governor.mjs';
 
 import { evaluateGovernorResult } from '../../scripts/control-plane/evolution-govern.mjs';
@@ -59,7 +65,7 @@ function deltaFixture(overrides = {}) {
 
 function eligibleResultFixture(overrides = {}) {
   return {
-    schema_version: '1.0',
+    schema_version: '1.1',
     result_id: 'GOV-SYNTHETIC-1',
     repository: 'POLYPROPICKS/PREMVP',
     generated_by: {
@@ -68,6 +74,7 @@ function eligibleResultFixture(overrides = {}) {
       prompt_id: 'premvp.prompt.automation_roadmap_governor.v1',
     },
     generated_at: '2026-08-07T10:00:00Z',
+    terminal_disposition: 'ONE_AUTOMATION_INVESTMENT',
     eligibility: {
       eligible: true,
       reason: `${SYNTHETIC_CYCLES.length} new validated cycle(s) meets the minimum of ${ELIGIBILITY_MIN_NEW_CYCLES}`,
@@ -109,7 +116,7 @@ function eligibleResultFixture(overrides = {}) {
 
 function ineligibleResultFixture(overrides = {}) {
   return {
-    schema_version: '1.0',
+    schema_version: '1.1',
     result_id: 'GOV-SYNTHETIC-2',
     repository: 'POLYPROPICKS/PREMVP',
     generated_by: {
@@ -118,6 +125,7 @@ function ineligibleResultFixture(overrides = {}) {
       prompt_id: 'premvp.prompt.automation_roadmap_governor.v1',
     },
     generated_at: '2026-08-07T10:00:00Z',
+    terminal_disposition: 'EVIDENCE_INSUFFICIENT',
     eligibility: {
       eligible: false,
       reason: 'only 1 new validated cycle(s) (minimum 3) and the weekly boundary has not been reached — insufficient evidence for a Governor run',
@@ -169,6 +177,137 @@ test('eligibility is refused with fewer than three cycles and no weekly boundary
 test('eligibility never invents evidence for a missing input', () => {
   const result = computeEligibility({});
   assert.equal(result.eligible, false);
+});
+
+// ---------------------------------------------------------------------------------------
+// Canonical persisted history and telemetry preparation
+// ---------------------------------------------------------------------------------------
+
+test('the Governor discovers and validates the real canonical persisted Cycle history', () => {
+  const cyclesDir = path.join(REPO_ROOT, EVOLUTION_DIR, 'cycles');
+  const discovered = discoverCanonicalEvolutionCycles(cyclesDir);
+  assert.equal(discovered.ok, true, discovered.errors.join('\n'));
+  assert.deepEqual(discovered.cycles.map((cycle) => cycle.cycle_id), [
+    '2026-08-25__evolution-canonical-cycle',
+  ]);
+});
+
+test('canonical discovery fails closed when any consumed Cycle fails the existing Evolution validator', () => {
+  const cyclesDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-invalid-cycle-'));
+  try {
+    fs.writeFileSync(path.join(cyclesDir, 'invalid.json'), JSON.stringify({
+      schema_version: '1.0',
+      cycle_id: 'invalid',
+      repository: 'POLYPROPICKS/PREMVP',
+      accepted: false,
+    }));
+    const discovered = discoverCanonicalEvolutionCycles(cyclesDir);
+    assert.equal(discovered.ok, false);
+    assert.ok(discovered.errors.some((error) => error.includes('invalid.json')));
+    assert.ok(discovered.errors.some((error) => error.includes('period_start')));
+  } finally {
+    fs.rmSync(cyclesDir, { recursive: true, force: true });
+  }
+});
+
+test('v1.0 telemetry keeps measured values and exposes absent v1.1 evidence as UNKNOWN', () => {
+  const cycle = JSON.parse(fs.readFileSync(path.join(
+    REPO_ROOT,
+    EVOLUTION_DIR,
+    'cycles/2026-08-25__evolution-canonical-cycle.json',
+  ), 'utf8'));
+  const telemetry = normalizeCycleTelemetry(cycle);
+  assert.equal(telemetry.founder_actions_proven, 3);
+  assert.equal(telemetry.architect_corrections, 0);
+  assert.equal(telemetry.runtime_evidence_count, 1);
+  assert.equal(telemetry.executor_runs, 'UNKNOWN');
+  assert.equal(telemetry.recovery_iterations, 'UNKNOWN');
+  assert.equal(telemetry.defect_occurrences, 'UNKNOWN');
+  assert.equal(telemetry.proven_effective_fixes, 'UNKNOWN');
+});
+
+test('v1.1 telemetry exposes Founder actions, recovery, defect origin/recurrence, latent layers and fix/effect evidence', () => {
+  const defect = {
+    defect_id: 'D1',
+    origin: 'ORCHESTRATION_OR_RECOVERY_DEFECT',
+    recurrence: 'LATENT_NEXT_LAYER_EXPOSED',
+    defect_chain_id: 'CHAIN-1',
+    implemented_fix_ref: 'commit abc1234',
+    proven_effective_evidence_refs: ['test:post-fix-pass'],
+  };
+  const telemetry = normalizeCycleTelemetry({
+    schema_version: '1.1',
+    operating_telemetry: {
+      capture_coverage: 'COMPLETE',
+      chat_interaction_coverage: 'PARTIAL',
+      founder_actions_proven: 2,
+      founder_actions_removable: 1,
+      executor_runs: 4,
+      successful_terminal_results: 1,
+      reruns_resumes: 2,
+      recovery_iterations: 3,
+      architect_corrections: 1,
+      reviewer_corrections_rejections: 1,
+      orchestration_waste_iterations: 1,
+      defect_occurrences: [defect],
+      defect_counts_by_origin: { ORCHESTRATION_OR_RECOVERY_DEFECT: 1 },
+      defect_counts_by_recurrence: { LATENT_NEXT_LAYER_EXPOSED: 1 },
+      repeated_defect_families: 0,
+      active_onion_chains: 1,
+      implemented_fixes: 1,
+      proven_effective_fixes: 1,
+      runtime_evidence_count: 1,
+      reusable_artifacts_created: 1,
+      actions_per_verified_result: 2,
+      time_to_verified_result: 30,
+    },
+  });
+  assert.equal(telemetry.founder_actions_removable, 1);
+  assert.equal(telemetry.executor_runs, 4);
+  assert.equal(telemetry.recovery_iterations, 3);
+  assert.deepEqual(telemetry.defect_occurrences, [defect]);
+  assert.equal(telemetry.defect_counts_by_recurrence.LATENT_NEXT_LAYER_EXPOSED, 1);
+  assert.equal(telemetry.proven_effective_fixes, 1);
+});
+
+test('the current one-Cycle canonical history prepares EVIDENCE_INSUFFICIENT without supplied cycle ids', () => {
+  const cyclesDir = path.join(REPO_ROOT, EVOLUTION_DIR, 'cycles');
+  const discovered = discoverCanonicalEvolutionCycles(cyclesDir);
+  assert.equal(discovered.ok, true, discovered.errors.join('\n'));
+  const prepared = prepareGovernorEvidence({ cycles: discovered.cycles, priorGovernorResults: [] });
+  assert.equal(prepared.eligibility.eligible, false);
+  assert.equal(prepared.eligibility.new_validated_cycle_count, 1);
+  assert.deepEqual(prepared.eligibility.based_on_cycles, ['2026-08-25__evolution-canonical-cycle']);
+  assert.equal(prepared.terminal_disposition, 'EVIDENCE_INSUFFICIENT');
+  assert.equal(prepared.cycle_evidence[0].telemetry.executor_runs, 'UNKNOWN');
+});
+
+test('weekly eligibility is derived from persisted Governor history and Cycle periods', () => {
+  const cycles = [
+    { cycle_id: 'C1', period_start: '2026-08-01T00:00:00Z', period_end: '2026-08-02T00:00:00Z', schema_version: '1.0', operator_actions: {}, supporting_metrics: { values: {} } },
+    { cycle_id: 'C2', period_start: '2026-08-09T00:00:00Z', period_end: '2026-08-10T00:00:00Z', schema_version: '1.0', operator_actions: {}, supporting_metrics: { values: {} } },
+  ];
+  const priorGovernorResults = [{
+    result_id: 'G1',
+    generated_at: '2026-08-02T00:00:00Z',
+    eligibility: { based_on_cycles: ['C1'] },
+  }];
+  const prepared = prepareGovernorEvidence({ cycles, priorGovernorResults });
+  assert.equal(prepared.eligibility.weekly_boundary_reached, true);
+  assert.equal(prepared.eligibility.eligible, true);
+  assert.deepEqual(prepared.eligibility.based_on_cycles, ['C2']);
+});
+
+test('the CLI preparation path is directly runnable from canonical persisted Cycles', () => {
+  const run = spawnSync(process.execPath, ['scripts/control-plane/evolution-govern.mjs', '--prepare', '--json'], {
+    cwd: REPO_ROOT,
+    encoding: 'utf8',
+  });
+  assert.equal(run.status, 0, run.stderr);
+  const prepared = JSON.parse(run.stdout);
+  assert.equal(prepared.command_id, 'premvp.command.evolution_govern.v1');
+  assert.equal(prepared.eligibility.new_validated_cycle_count, 1);
+  assert.equal(prepared.terminal_disposition, 'EVIDENCE_INSUFFICIENT');
 });
 
 // ---------------------------------------------------------------------------------------
@@ -273,6 +412,81 @@ test('a well-formed ineligible Governor result with no delta passes — a stated
   const { ok, errors } = validateGovernorResult(ineligibleResultFixture());
   assert.deepEqual(errors, []);
   assert.equal(ok, true);
+});
+
+test('the Governor contract exposes exactly the three terminal dispositions', () => {
+  assert.deepEqual(TERMINAL_DISPOSITIONS, [
+    'ONE_AUTOMATION_INVESTMENT',
+    'NO_AUTOMATION_NOW',
+    'EVIDENCE_INSUFFICIENT',
+  ]);
+});
+
+test('insufficient eligibility requires the EVIDENCE_INSUFFICIENT terminal disposition', () => {
+  const { ok, errors } = validateGovernorResult(ineligibleResultFixture({ terminal_disposition: 'NO_AUTOMATION_NOW' }));
+  assert.equal(ok, false);
+  assert.ok(errors.some((error) => error.includes('EVIDENCE_INSUFFICIENT')));
+});
+
+test('EVIDENCE_INSUFFICIENT cannot promote an automation without sufficient history', () => {
+  const result = ineligibleResultFixture();
+  result.findings.automation_decisions = [{
+    subject: 'Unsupported investment', decision: 'PROMOTE', reason: 'synthetic', evidence_refs: [SYNTHETIC_CYCLES[0]],
+  }];
+  result.findings.roadmap_delta_justified = true;
+  const { ok, errors } = validateGovernorResult(result);
+  assert.equal(ok, false);
+  assert.ok(errors.some((error) => error.includes('zero PROMOTE')));
+  assert.ok(errors.some((error) => error.includes('roadmap_delta_justified false')));
+});
+
+test('ONE_AUTOMATION_INVESTMENT requires exactly one promoted automation and an unaccepted delta', () => {
+  const result = eligibleResultFixture();
+  result.findings.automation_decisions.push({
+    subject: 'Second investment', decision: 'PROMOTE', reason: 'synthetic', evidence_refs: [...SYNTHETIC_CYCLES],
+  });
+  const { ok, errors } = validateGovernorResult(result);
+  assert.equal(ok, false);
+  assert.ok(errors.some((error) => error.includes('exactly one PROMOTE')));
+});
+
+test('NO_AUTOMATION_NOW is an eligible no-investment result with no delta', () => {
+  const result = eligibleResultFixture({ terminal_disposition: 'NO_AUTOMATION_NOW', roadmap_delta: null });
+  result.findings.automation_decisions = result.findings.automation_decisions.map((decision) => ({ ...decision, decision: 'DEFER' }));
+  result.findings.roadmap_delta_justified = false;
+  const { ok, errors } = validateGovernorResult(result);
+  assert.deepEqual(errors, []);
+  assert.equal(ok, true);
+});
+
+test('canonical preparation rejects a result that supplies non-canonical Cycle ids or eligibility', () => {
+  const cyclesDir = path.join(REPO_ROOT, EVOLUTION_DIR, 'cycles');
+  const discovered = discoverCanonicalEvolutionCycles(cyclesDir);
+  const preparedEvidence = prepareGovernorEvidence({ cycles: discovered.cycles, priorGovernorResults: [] });
+  const result = ineligibleResultFixture({
+    eligibility: {
+      eligible: false,
+      reason: 'manually reconstructed',
+      based_on_cycles: ['fabricated-cycle'],
+      new_validated_cycle_count: 1,
+      weekly_boundary_reached: false,
+    },
+  });
+  const evaluated = evaluateGovernorResult(result, { preparedEvidence });
+  assert.equal(evaluated.ok, false);
+  assert.ok(evaluated.errors.some((error) => error.includes('canonical persisted history')));
+});
+
+test('a proposed investment must cite the same canonical Cycle ids as prepared eligibility', () => {
+  const result = eligibleResultFixture();
+  const preparedEvidence = {
+    eligibility: result.eligibility,
+    terminal_disposition: null,
+  };
+  result.roadmap_delta.based_on_cycles = ['fabricated-cycle'];
+  const { ok, errors } = validateGovernorResult(result, { preparedEvidence });
+  assert.equal(ok, false);
+  assert.ok(errors.some((error) => error.includes('roadmap_delta.based_on_cycles')));
 });
 
 test('a Governor result can never accept itself', () => {
