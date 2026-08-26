@@ -7,7 +7,7 @@
   "provenance": {
     "_volatile": true,
     "_note": "Resolved live at generation time and normalized by --check, which verifies content hashes rather than the commit id.",
-    "generated_from_commit": "6eca4b48c21a9cde874c1033ed41f052fd81bf6d"
+    "generated_from_commit": "3dac09ae1260f335626b50809bb93af106959b89"
   },
   "active_project_sources": [
     {

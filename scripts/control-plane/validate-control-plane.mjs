@@ -272,12 +272,14 @@ export function validateControlPlane(root = REPO_ROOT) {
     'docs/ai-context/control-plane/CURRENT_STATE.yaml',
     'docs/ai-context/control-plane/ARCHITECT_SNAPSHOT.md',
     'docs/ai-context/control-plane/EVIDENCE_LEDGER.md',
+    'docs/ai-context/control-plane/chatgpt-architect/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md',
+    'docs/ai-context/control-plane/chatgpt-architect/project-package',
   ];
   const allowlist = sbb?.state_bootstrap_allowlist;
   if (!Array.isArray(allowlist) ||
       allowlist.length !== EXPECTED_BOOTSTRAP_ALLOWLIST.length ||
       !EXPECTED_BOOTSTRAP_ALLOWLIST.every((p) => allowlist.includes(p))) {
-    err('ARCHITECT_CONTROL_PLANE: stale_state_behavior.state_bootstrap_allowlist must be exactly the three state-bootstrap paths (CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md)');
+    err('ARCHITECT_CONTROL_PLANE: stale_state_behavior.state_bootstrap_allowlist must be exactly the canonical state paths and their deterministic generated derivatives');
   }
 
   // --- Capability matrix ----------------------------------------------------------------
