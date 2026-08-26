@@ -12,6 +12,7 @@
  * stay separated from strategic fields.
  *
  * Usage:
+ *   node scripts/control-plane/evolution-govern.mjs --prepare [--json]
  *   node scripts/control-plane/evolution-govern.mjs --result <result.json> [--write] [--json]
  *   node scripts/control-plane/evolution-govern.mjs --result <result.json> --report-out <file.md>
  *
@@ -31,21 +32,51 @@ import {
   validateGovernorResult,
   renderGovernorFounderReport,
   validateGovernorReport,
+  discoverCanonicalEvolutionCycles,
+  discoverPersistedGovernorResults,
+  prepareGovernorEvidence,
 } from './lib/evolution-governor.mjs';
 
 export const COMMAND_ID = 'premvp.command.evolution_govern.v1';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, '..', '..');
+export const CYCLES_DIR = 'docs/ai-context/control-plane/evolution/cycles';
 export const ROADMAP_PROPOSALS_DIR = 'docs/ai-context/control-plane/evolution/roadmap-proposals';
+
+/** Discovers and validates the only persisted evidence authorities used by this command. */
+export function prepareCanonicalGovernorEvidence(repoRoot = REPO_ROOT) {
+  const cycleDiscovery = discoverCanonicalEvolutionCycles(path.join(repoRoot, CYCLES_DIR));
+  const resultDiscovery = discoverPersistedGovernorResults(path.join(repoRoot, ROADMAP_PROPOSALS_DIR));
+  const errors = [...cycleDiscovery.errors, ...resultDiscovery.errors];
+  if (cycleDiscovery.ok && resultDiscovery.ok) {
+    const canonicalCycleIds = new Set(cycleDiscovery.cycles.map((cycle) => cycle.cycle_id));
+    for (const result of resultDiscovery.results) {
+      for (const cycleId of result.eligibility.based_on_cycles) {
+        if (!canonicalCycleIds.has(cycleId)) {
+          errors.push(`${result.result_id}: persisted Governor history cites missing canonical Cycle ${cycleId}`);
+        }
+      }
+    }
+  }
+  if (errors.length > 0) return { ok: false, errors, evidence: null };
+  return {
+    ok: true,
+    errors: [],
+    evidence: prepareGovernorEvidence({
+      cycles: cycleDiscovery.cycles,
+      priorGovernorResults: resultDiscovery.results,
+    }),
+  };
+}
 
 /**
  * Validates a Governor result and, only if it is admissible, renders and re-validates its
  * report. Rendering a report for an inadmissible result would hand the Founder a readable
  * summary of a judgement the contract already rejected — so it never happens.
  */
-export function evaluateGovernorResult(result) {
-  const resultCheck = validateGovernorResult(result);
+export function evaluateGovernorResult(result, { preparedEvidence = null } = {}) {
+  const resultCheck = validateGovernorResult(result, { preparedEvidence });
   if (!resultCheck.ok) {
     return { ok: false, errors: resultCheck.errors, report: null };
   }
@@ -60,17 +91,33 @@ export function evaluateGovernorResult(result) {
 function main() {
   const args = process.argv.slice(2);
   if (args.includes('--help')) {
-    process.stdout.write(`${COMMAND_ID}\nUsage: --result <result.json> [--write] [--report-out <file.md>] [--json]\n`);
+    process.stdout.write(`${COMMAND_ID}\nUsage: --prepare [--json] | --result <result.json> [--write] [--report-out <file.md>] [--json]\n`);
     process.exit(0);
   }
+
+  const preparation = prepareCanonicalGovernorEvidence();
+  if (!preparation.ok) {
+    process.stderr.write(`[evolution-govern] FAIL (${preparation.errors.length} canonical history violation(s))\n`);
+    for (const error of preparation.errors) process.stderr.write(`  - ${error}\n`);
+    process.exit(1);
+  }
+
+  if (args.includes('--prepare')) {
+    const payload = { ok: true, command_id: COMMAND_ID, ...preparation.evidence };
+    process.stdout.write(args.includes('--json')
+      ? `${JSON.stringify(payload, null, 2)}\n`
+      : `[evolution-govern] PREPARED — ${payload.history.canonical_cycle_count} canonical cycle(s), disposition ${payload.terminal_disposition ?? 'REASONING_REQUIRED'}\n`);
+    process.exit(0);
+  }
+
   const resultIdx = args.indexOf('--result');
   if (resultIdx < 0 || !args[resultIdx + 1]) {
-    process.stderr.write('evolution-govern requires --result <result.json>\n');
+    process.stderr.write('evolution-govern requires --prepare or --result <result.json>\n');
     process.exit(1);
   }
 
   const result = JSON.parse(fs.readFileSync(args[resultIdx + 1], 'utf8'));
-  const { ok, errors, report } = evaluateGovernorResult(result);
+  const { ok, errors, report } = evaluateGovernorResult(result, { preparedEvidence: preparation.evidence });
 
   if (!ok) {
     process.stderr.write(`[evolution-govern] FAIL (${errors.length} violation(s))\n`);
@@ -93,8 +140,8 @@ function main() {
   }
 
   process.stdout.write(args.includes('--json')
-    ? `${JSON.stringify({ ok, command_id: COMMAND_ID, result_id: result.result_id, eligible: result.eligibility.eligible, has_roadmap_delta: result.roadmap_delta !== null }, null, 2)}\n`
-    : `[evolution-govern] PASS — eligible ${result.eligibility.eligible}, roadmap_delta ${result.roadmap_delta !== null ? 'present' : 'none'}\n`);
+    ? `${JSON.stringify({ ok, command_id: COMMAND_ID, result_id: result.result_id, eligible: result.eligibility.eligible, terminal_disposition: result.terminal_disposition, has_roadmap_delta: result.roadmap_delta !== null }, null, 2)}\n`
+    : `[evolution-govern] PASS — ${result.terminal_disposition}, roadmap_delta ${result.roadmap_delta !== null ? 'present' : 'none'}\n`);
   process.exit(0);
 }
 
