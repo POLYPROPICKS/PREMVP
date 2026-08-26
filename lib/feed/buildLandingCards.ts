@@ -1353,7 +1353,7 @@ async function enrichMarket(
  * Compute all scores and generate landing card pair
  * Uses fallback scores when enrichment data is missing
  */
-function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | null {
+export function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | null {
   const { parentMeta, market, selectedOutcome, diagnostics } = enriched;
 
   // Banded confidence scoring anchored to selectedOdds
@@ -1413,9 +1413,10 @@ function generateLandingCardPair(enriched: EnrichedMarket): LandingCardPair | nu
   const signalV2Raw = 0.35 * oddsFit + 0.25 * smartMoneyVal + 0.15 * pubWhaleVal
     + 0.20 * preEventVal + 0.05 * (dataCoverage ?? 0);
   const noTradeData = maxTradeCash == null && recentTradeCash == null;
+  // dataCoverage is a PreEventScore_v2/SignalConfidence_v2 input feature (weighted above)
+  // and is persisted separately in diagnostics.dataCoverage for eligibility/tier/policy use.
+  // It must not additionally impose a numeric ceiling on the final score here.
   let signalCap = 95;
-  if ((dataCoverage ?? 0) < 50) signalCap = Math.min(signalCap, 64);
-  else if ((dataCoverage ?? 0) < 75) signalCap = Math.min(signalCap, 75);
   if (noTradeData) signalCap = Math.min(signalCap, 68);
 
   // Odds-calibrated display cap: preserve raw evidence score, cap displayed confidence by odds band.
