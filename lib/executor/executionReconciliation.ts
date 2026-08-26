@@ -249,8 +249,14 @@ export function buildExecutionReconciliation(input: {
   const tokenId = requireString(queue.token_id, "TOKEN_ID");
   const side = requireString(queue.side, "SIDE");
   const submittedPrice = finiteNumber(event.submitted_price ?? raw.submitted_price);
-  const requestedShares = finiteNumber(event.submitted_size ?? raw.submitted_size);
   if (submittedPrice == null || submittedPrice <= 0) throw new Error("RECONCILIATION_MISSING_SUBMITTED_PRICE");
+  let requestedShares = finiteNumber(event.submitted_size ?? raw.submitted_size);
+  // Callbacks that predate the explicit submitted_size field carry only the
+  // authorized stake and the submitted price; requested shares is then exactly
+  // reconstructible as stake_usd / submitted_price, not invented data.
+  if (requestedShares == null && Number.isFinite(queue.stake_usd) && queue.stake_usd > 0) {
+    requestedShares = queue.stake_usd / submittedPrice;
+  }
   if (requestedShares == null || requestedShares <= 0) throw new Error("RECONCILIATION_MISSING_SUBMITTED_SIZE");
 
   requireSameIdentity(conditionId, event.condition_id, "CONDITION_ID");
