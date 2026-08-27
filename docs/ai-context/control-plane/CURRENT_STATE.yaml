@@ -1,8 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-13T12:00:00Z",
-  "state_version": 16,
-
+  "updated_at": "2026-08-27T07:20:53.556Z",
+  "state_version": 17,
   "roadmap_phase": "PHASE1_PLANNING_SERVING_CLOSURE",
   "current_value_step": {
     "id": "BOUNDED_PRE_HOOK_SEED",
@@ -24,26 +23,61 @@
       "status": "FOLLOWING"
     }
   ],
-
   "approved_execution_frontier": {
     "decision": "DIRECT_SERVING_WITH_BOUNDED_BOOTSTRAP",
     "decision_status": "FOUNDER_APPROVED_RUNTIME_PENDING",
-    "phase_1_planning_serving_closure": ["BOUNDED_PRE_HOOK_SEED", "CURRENT_OPERATIONAL_COVERAGE_PROOF", "NATURAL_WRITER_PROJECTION_PROOF", "CONTRACT_A_PLANNING_PROOF", "NATURAL_PLANNING_TO_RESERVATION", "PHASE1_CANONICAL_CLOSE"],
-    "after_phase_1": ["Reservation", "Rebalance", "immutable Queue"],
-    "later_separate_repository_mission": ["Ireland execution boundary", "venue", "callback", "settlement/reconciled PnL"],
+    "phase_1_planning_serving_closure": [
+      "BOUNDED_PRE_HOOK_SEED",
+      "CURRENT_OPERATIONAL_COVERAGE_PROOF",
+      "NATURAL_WRITER_PROJECTION_PROOF",
+      "CONTRACT_A_PLANNING_PROOF",
+      "NATURAL_PLANNING_TO_RESERVATION",
+      "PHASE1_CANONICAL_CLOSE"
+    ],
+    "after_phase_1": [
+      "Reservation",
+      "Rebalance",
+      "immutable Queue"
+    ],
+    "later_separate_repository_mission": [
+      "Ireland execution boundary",
+      "venue",
+      "callback",
+      "settlement/reconciled PnL"
+    ],
     "runtime_safety": "Founder approval changes the roadmap only. Phase 1, serving coverage, Planning, Reservation, Rebalance, and Queue runtime PASS remain unproven until their respective live evidence exists."
   },
   "implementation_readiness_new_contour_7": {
     "assessment_status": "WAIT_TRANSPORT_PAUSE",
-    "writer_projection_cutover": { "source_sha": "3bdab9fb2c876d3e6956b87c8b100cf3c17d5bf0", "source_commit_time": "2026-08-13T14:04:21+03:00", "deployment_time": "NOT_PROVEN", "evidence": "supabase/migrations/20260813105911_refresh_current_signal_pair_serving_id_bounded.sql establishes the non-NULL id-bounded refresh path; lib/feed/currentSignalPairServing.ts already passes exact inserted ids." },
+    "writer_projection_cutover": {
+      "source_sha": "3bdab9fb2c876d3e6956b87c8b100cf3c17d5bf0",
+      "source_commit_time": "2026-08-13T14:04:21+03:00",
+      "deployment_time": "NOT_PROVEN",
+      "evidence": "supabase/migrations/20260813105911_refresh_current_signal_pair_serving_id_bounded.sql establishes the non-NULL id-bounded refresh path; lib/feed/currentSignalPairServing.ts already passes exact inserted ids."
+    },
     "bounded_seed_definition": "At one frozen now(), source candidates are generated_signal_pairs rows operationally eligible for Contract A Planning: allowed scored formula version, unresolved, unexpired, non-null condition_id/selected_token_id, entry_price_num, confidence >= 50, and structured scored-sport authority. Partition by (condition_id, selected_token_id, metric_formula_version); winner is greatest (created_at, id) DESC. Seed exactly the winner ids whose active serving row for the same identity is absent or names a different source_generated_signal_pair_id. A pre-hook cutoff is corroborative only; it cannot replace this current-state comparison.",
     "next_seed_method": "EXISTING_ID_BOUNDED_REFRESH",
     "application_code_change_required": "NO_FROM_SOURCE",
     "database_schema_change_required": "NO_FROM_SOURCE",
     "runtime_measurement": "WAIT: bounded read-only source/serving query reached a transient Supabase schema-cache retry error; no count, coverage, or runtime PASS is claimed.",
     "natural_proof_plan": "After the seed, observe one normal producer cycle and verify returned inserted ids -> refresh_current_signal_pair_serving(non-NULL ids) -> active serving winner -> CONTRACT_A_PLANNING_V1, with no historical keyset traversal in steady-state maintenance.",
-    "phase_1_runtime_acceptance": ["PRE_HOOK_ELIGIBLE_GAP = 0", "CURRENT_OPERATIONAL_SERVING_COVERAGE = 100%", "SERVING_WINNER_SEMANTICS = PASS", "SERVING_LINEAGE = PASS", "NATURAL_WRITER_PROJECTION = PASS", "CONTRACT_A_PLANNING_V1 = PASS", "HISTORICAL_KEYSET_IN_PLANNING = ABSENT", "PLANNING_57014_COUNT = 0", "PLANNING_LATENCY = MEASURED_AND_BOUNDED", "NATURAL_PLANNING_TO_RESERVATION = PASS"],
-    "explicitly_not_required": ["FULL_HISTORY_CURSOR_EXHAUSTED", "processed=0", "historical checkpoint reaches corpus end"]
+    "phase_1_runtime_acceptance": [
+      "PRE_HOOK_ELIGIBLE_GAP = 0",
+      "CURRENT_OPERATIONAL_SERVING_COVERAGE = 100%",
+      "SERVING_WINNER_SEMANTICS = PASS",
+      "SERVING_LINEAGE = PASS",
+      "NATURAL_WRITER_PROJECTION = PASS",
+      "CONTRACT_A_PLANNING_V1 = PASS",
+      "HISTORICAL_KEYSET_IN_PLANNING = ABSENT",
+      "PLANNING_57014_COUNT = 0",
+      "PLANNING_LATENCY = MEASURED_AND_BOUNDED",
+      "NATURAL_PLANNING_TO_RESERVATION = PASS"
+    ],
+    "explicitly_not_required": [
+      "FULL_HISTORY_CURSOR_EXHAUSTED",
+      "processed=0",
+      "historical checkpoint reaches corpus end"
+    ]
   },
   "operational_lessons_and_deferred_work": [
     "HISTORY_IS_NOT_OPERATIONAL_AUTHORITY: historical growth must not increase normal Planning serving cost.",
@@ -55,33 +89,54 @@
     "FOUNDER_NOT_OPERATOR: no repeated SQL, batch, Git, reviewer, or recovery actions are assigned to the Founder.",
     "DEFERRED_FUTURE_OPTIONS: generation_id, atomic snapshot, async history archive, serving pruning, projection reconciler, speculative serving indexes, runner/watchdog redesign, and broad Phase 2 audit remain hypotheses or recovery work pending fresh evidence."
   ],
-
   "closed_value_steps": [
-    { "id": "A", "title": "Contract A authority", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT" },
-    { "id": "B", "title": "Planning and Reservation writers use Contract A", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT" },
-    { "id": "C1_SOURCE_MERGE", "title": "C1 source and merge lineage present on origin/main", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "PROVEN_IN_RUNTIME" }
-    ,{ "id": "STEP_1_CONTEXTUAL_PROMPT_CONTRACT", "title": "Contextual Prompt Contract activation via PR #96", "status": "SOURCE_LEVEL_CLOSED", "evidence_class": "PROVEN_IN_RUNTIME" }
+    {
+      "id": "A",
+      "title": "Contract A authority",
+      "status": "SOURCE_LEVEL_CLOSED",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT"
+    },
+    {
+      "id": "B",
+      "title": "Planning and Reservation writers use Contract A",
+      "status": "SOURCE_LEVEL_CLOSED",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT"
+    },
+    {
+      "id": "C1_SOURCE_MERGE",
+      "title": "C1 source and merge lineage present on origin/main",
+      "status": "SOURCE_LEVEL_CLOSED",
+      "evidence_class": "PROVEN_IN_RUNTIME"
+    },
+    {
+      "id": "STEP_1_CONTEXTUAL_PROMPT_CONTRACT",
+      "title": "Contextual Prompt Contract activation via PR #96",
+      "status": "SOURCE_LEVEL_CLOSED",
+      "evidence_class": "PROVEN_IN_RUNTIME"
+    }
   ],
-
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "280d35bd8184f20124647df6297e237dcaa6b155",
+    "origin_main_sha": "f8d8ce7a21b50c013d75da8952bfee4c61d687e1",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
-      "executor": "local_codex_windows",
-      "commands": ["git fetch origin main", "git rev-parse origin/main", "git merge-base --is-ancestor 40389884c34b943d9d50766f45296fee02913c61 origin/main"],
-      "observed_at": "2026-08-13T12:00:00Z",
-      "worktree": "isolated clean worktree",
-      "note": "Live origin/main was 280d35bd8184f20124647df6297e237dcaa6b155 before this docs-only New Contour 7 branch. The prior baseline 40389884c34b943d9d50766f45296fee02913c61 is an ancestor. This state refresh records the Founder-approved roadmap and source-readiness assessment only; it does not execute a seed, refresh RPC, backfill, DDL, Planning, Reservation, Queue, Ireland, or application change."
+      "commands": [
+        "git merge-base --is-ancestor f8d8ce7a21b50c013d75da8952bfee4c61d687e1 origin/main",
+        "git merge-base --is-ancestor 6b4acb81b353517c951297b9f672fab6e01209f2 f8d8ce7a21b50c013d75da8952bfee4c61d687e1"
+      ],
+      "observed_at": "2026-08-27T07:20:53.556Z",
+      "note": "Automatic factual reconciliation. This records only an already-accepted PREMVP merge and terminal completion lineage; it does not accept product, runtime, capability, roadmap, business, or PnL claims."
     }
   },
-
   "current_serving_authority": {
     "status": "RECONCILED",
     "authoritative_source_sha": "40389884c34b943d9d50766f45296fee02913c61",
-    "stale_worktree_excluded": { "head": "a6bb1ad", "reason": "NOT_ANCESTOR_OF_LIVE_ORIGIN_MAIN" },
+    "stale_worktree_excluded": {
+      "head": "a6bb1ad",
+      "reason": "NOT_ANCESTOR_OF_LIVE_ORIGIN_MAIN"
+    },
     "schema": "supabase/migrations/20260812_current_signal_pair_serving.sql:4-24; table public.current_signal_pair_serving, primary key (condition_id, selected_token_id, metric_formula_version), unique source_generated_signal_pair_id, lineage FK to generated_signal_pairs(id)",
     "refresh_function": "supabase/migrations/20260812_current_signal_pair_serving.sql:47-120; refresh_current_signal_pair_serving(uuid[]) selects impacted keys, chooses latest eligible unresolved/unexpired source by (created_at,id) DESC, and monotonic-upserts the projection",
     "backfill_function": "supabase/migrations/20260812_current_signal_pair_serving_backfill_repair.sql:4-51; this is the final CREATE OR REPLACE definition on current main and therefore supersedes the earlier definition in 20260812_current_signal_pair_serving.sql",
@@ -89,12 +144,19 @@
     "current_eligible_selector": "generated_signal_pairs where condition_id IS NOT NULL AND selected_token_id IS NOT NULL AND metric_formula_version IS NOT NULL AND expires_at > now() AND signal_result IS NULL AND cursor is strictly greater; ORDER BY created_at ASC, id ASC; LIMIT p_batch_size (1..10000)",
     "ongoing_update_path": "lib/feed/cacheGeneratedSignals.ts:225-233, 573-581, 634-642 -> projectInsertedRows -> lib/feed/currentSignalPairServing.ts:14-21 refreshCurrentSignalPairServing -> service-role RPC refresh_current_signal_pair_serving; historical insert remains authoritative and a projection failure is explicit SERVING_PROJECTION_PENDING",
     "contract_a_planning_loader": "lib/executor/buildFireModelCandidates.ts:1607-1653 and 1738-1741; selectorMode CONTRACT_A_PLANNING_V1 reads current_signal_pair_serving ACTIVE rows only, normalizes source_generated_signal_pair_id/source_created_at to historical row identity, uses separate bounded scored and shadow queries, and fails closed at limit 10000",
-    "production_schema_alignment": { "verdict": "PASS", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT", "evidence": "Current main migrations 20260812_current_signal_pair_serving.sql, 20260812_current_signal_pair_serving_backfill_repair.sql and 20260812_current_signal_pair_serving_security.sql are stated applied for the released implementation; direct catalog definition read was unavailable in this executor." },
-    "production_function_alignment": { "verdict": "PASS_FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT", "evidence": "The released implementation and the current main source are reconciled at 40389884c34b943d9d50766f45296fee02913c61. Direct pg_get_functiondef/catalog retrieval was unavailable; this is not relabeled as PROVEN_IN_RUNTIME." },
+    "production_schema_alignment": {
+      "verdict": "PASS",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+      "evidence": "Current main migrations 20260812_current_signal_pair_serving.sql, 20260812_current_signal_pair_serving_backfill_repair.sql and 20260812_current_signal_pair_serving_security.sql are stated applied for the released implementation; direct catalog definition read was unavailable in this executor."
+    },
+    "production_function_alignment": {
+      "verdict": "PASS_FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+      "evidence": "The released implementation and the current main source are reconciled at 40389884c34b943d9d50766f45296fee02913c61. Direct pg_get_functiondef/catalog retrieval was unavailable; this is not relabeled as PROVEN_IN_RUNTIME."
+    },
     "index_recovery": "EXTERNALLY_PROVEN_COMPLETE; idx_gsp_current_serving_backfill_order indisvalid=true indisready=true; not revisited or modified.",
     "next_value_step": "resume bounded production mission at three exact read-only selector probes, then one 250-row backfill batch; no architectural reopening required"
   },
-
   "active_execution_work": [
     {
       "id": "ACTION_2_RELEASE_PIPELINE_SCAFFOLD",
@@ -118,20 +180,78 @@
       "status": "OPEN_WITH_FAILING_ASSERTION"
     }
   ],
-
   "proven_passes": [
-    { "id": "CLOUD_REPO_READ", "executor": "claude_code_cloud", "statement": "PREMVP repository read", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
-    { "id": "CLOUD_NPM_CI", "executor": "claude_code_cloud", "statement": "npm ci exit 0 with clean git status", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
-    { "id": "CLOUD_SUPABASE_SELECT", "executor": "claude_code_cloud", "statement": "authenticated Supabase SELECT via npx tsx scripts/verify-executor-queue.ts", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
-    { "id": "CLOUD_TYPECHECK", "executor": "claude_code_cloud", "statement": "npx tsc --noEmit exit 0", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
-    { "id": "CLOUD_BUILD", "executor": "claude_code_cloud", "statement": "npm run build exit 0", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0002" },
-    { "id": "CODEX_WEATHER_REVIEWER_PRESENT", "executor": "local_codex_windows", "statement": "codex.agent.weather_gate_reviewer.v0 exists as a user-scoped agent", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003" },
-    { "id": "CODEX_CONTUR_REVIEWER_PRESENT", "executor": "local_codex_windows", "statement": "codex.agent.contur_gate_reviewer exists as a user-scoped agent", "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT", "evidence_ref": "EVIDENCE_LEDGER#EV-0003" },
-    { "id": "CONTROL_PLANE_PHASE_1_2_MERGED", "executor": "claude_code_cloud", "statement": "PR #77 (Architect Control Plane Phase 1/2 canonical foundation and ChatGPT Project setup) merged to main as b522d3a3caaa07d8605f2b6d4edbd2db6a71a629", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "EVIDENCE_LEDGER#EV-0007" },
-    { "id": "CLOUD_PRODUCTION_BUILD_PROVENANCE_READ", "executor": "claude_code_cloud", "statement": "Production GET /api/build-info returned HTTP 200 with a valid full Git commit SHA mapping the running PREMVP build to an exact repository commit.", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "CMP-PR85-DEPLOYMENT-STATE-RUNTIME-BOUNDARY-20260804" }
-    ,{ "id": "PROMPT_CONTRACT_PR96", "executor": "local_codex_windows", "statement": "PR #96 merged and deployed; command bindings and contextual compiler checks passed.", "evidence_class": "PROVEN_IN_RUNTIME", "evidence_ref": "EVIDENCE_LEDGER#EV-0017" }
+    {
+      "id": "CLOUD_REPO_READ",
+      "executor": "claude_code_cloud",
+      "statement": "PREMVP repository read",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0002"
+    },
+    {
+      "id": "CLOUD_NPM_CI",
+      "executor": "claude_code_cloud",
+      "statement": "npm ci exit 0 with clean git status",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0002"
+    },
+    {
+      "id": "CLOUD_SUPABASE_SELECT",
+      "executor": "claude_code_cloud",
+      "statement": "authenticated Supabase SELECT via npx tsx scripts/verify-executor-queue.ts",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0002"
+    },
+    {
+      "id": "CLOUD_TYPECHECK",
+      "executor": "claude_code_cloud",
+      "statement": "npx tsc --noEmit exit 0",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0002"
+    },
+    {
+      "id": "CLOUD_BUILD",
+      "executor": "claude_code_cloud",
+      "statement": "npm run build exit 0",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0002"
+    },
+    {
+      "id": "CODEX_WEATHER_REVIEWER_PRESENT",
+      "executor": "local_codex_windows",
+      "statement": "codex.agent.weather_gate_reviewer.v0 exists as a user-scoped agent",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0003"
+    },
+    {
+      "id": "CODEX_CONTUR_REVIEWER_PRESENT",
+      "executor": "local_codex_windows",
+      "statement": "codex.agent.contur_gate_reviewer exists as a user-scoped agent",
+      "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_AUDIT",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0003"
+    },
+    {
+      "id": "CONTROL_PLANE_PHASE_1_2_MERGED",
+      "executor": "claude_code_cloud",
+      "statement": "PR #77 (Architect Control Plane Phase 1/2 canonical foundation and ChatGPT Project setup) merged to main as b522d3a3caaa07d8605f2b6d4edbd2db6a71a629",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0007"
+    },
+    {
+      "id": "CLOUD_PRODUCTION_BUILD_PROVENANCE_READ",
+      "executor": "claude_code_cloud",
+      "statement": "Production GET /api/build-info returned HTTP 200 with a valid full Git commit SHA mapping the running PREMVP build to an exact repository commit.",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "evidence_ref": "CMP-PR85-DEPLOYMENT-STATE-RUNTIME-BOUNDARY-20260804"
+    },
+    {
+      "id": "PROMPT_CONTRACT_PR96",
+      "executor": "local_codex_windows",
+      "statement": "PR #96 merged and deployed; command bindings and contextual compiler checks passed.",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "evidence_ref": "EVIDENCE_LEDGER#EV-0017"
+    }
   ],
-
   "proven_failures": [
     {
       "id": "C1_CTL18_ASSERTION_FAILURE",
@@ -142,14 +262,32 @@
       "note": "Previous runtime-hang hypothesis was NOT reproduced. No retained process, open handle, unresolved Promise, global Date mutation or reproducible full-file hang is currently proven."
     }
   ],
-
   "open_blockers": [
-    { "id": "BLK-001", "statement": "Deployment is proven for 1a140a297523c0413c32954ecf7dc63d1d345d3b through /api/build-info. C1 remains OPEN because no natural night-reservations run has started after the proven deployment boundary. The historical CTL18 failure remains unresolved. Close C1 only after a natural run proves Planning -> Reservation -> Final Identity -> immutable Queue.", "owner_executor": "local_codex_windows", "blocking": "C1" },
-    { "id": "BLK-002", "statement": "Codex reviewer invocation is not deterministic: no required invocation receipt, no deterministic gate, no project-scoped Codex agent package, no tracked CI gate.", "owner_executor": "local_codex_windows", "blocking": "reviewer receipt enforcement outside the Cloud validator" },
-    { "id": "BLK-003", "statement": "Supabase write access from claude_code_cloud is NOT_PROVEN.", "owner_executor": "claude_code_cloud", "blocking": "any Cloud task requiring a database write" },
-    { "id": "BLK-004", "statement": "Ireland runtime access and Ireland repository remote identity are NOT_PROVEN.", "owner_executor": "ireland_local", "blocking": "C2 execution routing" }
+    {
+      "id": "BLK-001",
+      "statement": "Deployment is proven for 1a140a297523c0413c32954ecf7dc63d1d345d3b through /api/build-info. C1 remains OPEN because no natural night-reservations run has started after the proven deployment boundary. The historical CTL18 failure remains unresolved. Close C1 only after a natural run proves Planning -> Reservation -> Final Identity -> immutable Queue.",
+      "owner_executor": "local_codex_windows",
+      "blocking": "C1"
+    },
+    {
+      "id": "BLK-002",
+      "statement": "Codex reviewer invocation is not deterministic: no required invocation receipt, no deterministic gate, no project-scoped Codex agent package, no tracked CI gate.",
+      "owner_executor": "local_codex_windows",
+      "blocking": "reviewer receipt enforcement outside the Cloud validator"
+    },
+    {
+      "id": "BLK-003",
+      "statement": "Supabase write access from claude_code_cloud is NOT_PROVEN.",
+      "owner_executor": "claude_code_cloud",
+      "blocking": "any Cloud task requiring a database write"
+    },
+    {
+      "id": "BLK-004",
+      "statement": "Ireland runtime access and Ireland repository remote identity are NOT_PROVEN.",
+      "owner_executor": "ireland_local",
+      "blocking": "C2 execution routing"
+    }
   ],
-
   "external_accepted_checkpoints": [
     {
       "id": "CHK-C1-20260803",
@@ -168,7 +306,9 @@
       "dependency_and_tsx_resolution": "PASS",
       "controlled_live_test_file_runs": "completed normally",
       "current_failure": "CTL18 assertion failure",
-      "not_reproduced": ["runtime hang hypothesis"],
+      "not_reproduced": [
+        "runtime hang hypothesis"
+      ],
       "cloud_inspected": false
     },
     {
@@ -184,7 +324,6 @@
       "executor": "local_codex_windows"
     }
   ],
-
   "accepted_completions": [
     {
       "id": "CMP-CONTROL-PLANE-PHASE-1-2",
@@ -212,16 +351,22 @@
       "pr_final_head": "60cf2301954ee5841dcebd032971540dad84c3eb",
       "merge_commit": "a942a0d833982bca5caf01ff05d4e4bfb9151119",
       "evidence_ref": "EVIDENCE_LEDGER#EV-0019"
+    },
+    {
+      "id": "contract-a-single-production-population-20260827",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Accepted PREMVP completion contract-a-single-production-population-20260827 reconciled from its terminal PASS envelope and exact merge ancestry.",
+      "implementation_sha": "6b4acb81b353517c951297b9f672fab6e01209f2",
+      "merge_commit": "f8d8ce7a21b50c013d75da8952bfee4c61d687e1",
+      "evidence_ref": "COMPLETION_ENVELOPE#contract-a-single-production-population-20260827"
     }
   ],
-
   "evidence_freshness": {
-    "origin_main_sha_checked_at": "2026-08-13T05:30:15Z",
+    "origin_main_sha_checked_at": "2026-08-27T07:20:53.556Z",
     "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
     "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
     "max_age_days": 7
   },
-
   "stale_when": [
     "main.origin_main_sha is NOT an ancestor of live origin/main (STATE_STALE)",
     "main.origin_main_sha IS an ancestor of live origin/main, live origin/main is ahead of it, and any path changed between them falls outside stale_state_behavior.state_bootstrap_allowlist in ARCHITECT_CONTROL_PLANE.yaml (STATE_REFRESH_REQUIRED)",
@@ -230,6 +375,5 @@
     "a referenced execution target verdict in CAPABILITY_MATRIX.yaml has passed its expires_when"
   ],
   "stale_when_note": "Exact equality between main.origin_main_sha and live origin/main is NOT required and is not used as a staleness test. A state-only bootstrap advance (touching only CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md) keeps state FRESH even though origin/main has moved past the recorded baseline.",
-
-  "last_accepted_completion_id": "CMP-EVOLUTION-CONTROL-PLANE-STAGE-2-20260807"
+  "last_accepted_completion_id": "contract-a-single-production-population-20260827"
 }
