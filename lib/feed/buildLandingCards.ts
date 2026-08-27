@@ -338,6 +338,38 @@ export const RESEARCH_SCORER_DEFAULT_BUDGET_MS = 6 * 60_000;
 // now explicit as NOT_SCORED_SCORER_BUDGET_EXHAUSTED rather than silent quality loss.
 export const RESEARCH_SCORER_CHUNK_SIZE = 4;
 
+// PRE17: proven-capacity bound for the PRIMARY product scoring population.
+//
+// The primary candidate loop (enrich -> generateLandingCardPair -> product gates)
+// was fed `[...finalCandidates, ...fallback48hCandidates].slice(0, limit * 3)`,
+// and discovery itself was called with `targetCards: limit * 2`. With the live
+// `limit = 15` that truncated the liquidity-eligible physical-event population to
+// 45 BEFORE any Signal Score, sport, market-type or identity predicate ran — a
+// purely positional cap that was the sole owner of the observed 587 -> 45 loss.
+//
+// This constant replaces that positional cap with throughput the canonical
+// scorer is already PROVEN to sustain in production: an Aug-2026 producer run
+// scored ~254 physical events in ~61s, well inside the 360s research-scorer
+// budget, with no budget exhaustion. It is a bounded-throughput ceiling only —
+// NOT a product/eligibility constant. Every downstream eligibility gate is
+// unchanged and still runs per candidate.
+export const PRIMARY_SCORER_PROVEN_CAPACITY = 254;
+
+/**
+ * Concatenate the 24h primary discovery samples with the 48h fallback samples and
+ * bound the result to the proven primary-scorer throughput. Ordering is preserved
+ * exactly — the already volume-DESC/time-ASC sorted 24h block first, then the 48h
+ * fallback block; only the tail beyond `capacity` is dropped. A population at or
+ * below the bound is returned unchanged (concatenation only).
+ */
+export function boundPrimaryScorerPopulation<T>(
+  primary24h: readonly T[],
+  fallback48h: readonly T[],
+  capacity: number = PRIMARY_SCORER_PROVEN_CAPACITY,
+): T[] {
+  return [...primary24h, ...fallback48h].slice(0, Math.max(1, capacity));
+}
+
 // P2: canonical terminal statuses for every FireModel1.1 wide attempt.
 // attempted === selected + scoredRejected + notScored, always.
 export type FireModelWideTerminalStatus =
@@ -2674,7 +2706,10 @@ export async function buildLandingCards(options?: {
         fallbackWindowHours: 48,
         fetchVolumeMinUsd: 50000,
         finalEventVolumeMinUsd: MINIMUM_MODEL_EVENT_VOLUME_USD,
-        targetCards: limit * 2,
+        // PRE17: was `limit * 2` (=30). Discovery must not pre-truncate below the
+        // proven primary-scorer capacity; the single bound is applied just below
+        // via boundPrimaryScorerPopulation().
+        targetCards: PRIMARY_SCORER_PROVEN_CAPACITY,
         producerRunId: options?.producerRunId,
       });
 
@@ -2709,10 +2744,13 @@ export async function buildLandingCards(options?: {
         upcomingRawSamples = [...strategicOrdered, ...fallbackUnique];
       }
 
-      const discoverySamples = [
-        ...discovery.finalCandidates,
-        ...discovery.fallback48hCandidates,
-      ].slice(0, limit * 3);
+      // PRE17: was `[...final, ...fallback].slice(0, limit * 3)` (=45 at limit=15),
+      // a positional pre-score cap. Bounded now by the proven scorer throughput;
+      // ordering (24h block, then 48h fallback) is preserved exactly.
+      const discoverySamples = boundPrimaryScorerPopulation(
+        discovery.finalCandidates,
+        discovery.fallback48hCandidates,
+      );
 
       let sampleToNullCount = 0;
       let fallback48hNullDrops = 0;
