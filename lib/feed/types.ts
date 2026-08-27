@@ -263,6 +263,13 @@ export interface ResearchFunnelCounters {
   primaryCoverageRejectionValues?: number[];
   primaryDecisionModel?: string;
   primaryCoverageThresholdApplied?: number;
+  // Primary-loop wall-clock guard: runtime-safety boundary on the sequential
+  // primary candidate loop. `primaryLoopBudgetExcludedCandidates` counts events
+  // NOT_EVALUATED because the loop budget expired first — not a rejection class.
+  primaryLoopBudgetMs?: number;
+  primaryLoopElapsedMs?: number;
+  primaryLoopBudgetExhausted?: boolean;
+  primaryLoopBudgetExcludedCandidates?: number;
 }
 
 // ─── S2: Wide research universe — pre-grouping, pre-volume nested market ───────

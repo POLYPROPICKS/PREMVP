@@ -370,6 +370,54 @@ export function boundPrimaryScorerPopulation<T>(
   return [...primary24h, ...fallback48h].slice(0, Math.max(1, capacity));
 }
 
+// PRIMARY-LOOP WALL-CLOCK GUARD — runtime-safety boundary, NOT a selection policy.
+//
+// PRIMARY_SCORER_PROVEN_CAPACITY (254) is a finite ADVISORY population ceiling; it
+// does not bound wall-clock time. The primary candidate loop
+// (enrich -> primary-sibling recovery -> generateLandingCardPair -> product gates)
+// is fully sequential, so if per-event enrichment latency regresses, 254
+// iterations could consume unbounded producer runtime. This budget is the
+// authoritative runtime bound: the loop stops OPENING new candidate work once it
+// is spent. Events reached before it expires execute exactly as they do today.
+//
+// It reuses the producer's existing scoring-budget semantics — same default
+// magnitude as RESEARCH_SCORER_DEFAULT_BUDGET_MS and the same [1s, 30min] clamp
+// already applied to researchScorerBudgetMs. It never selects, ranks, or
+// de-prioritises any event.
+export const PRIMARY_LOOP_DEFAULT_BUDGET_MS = RESEARCH_SCORER_DEFAULT_BUDGET_MS;
+
+// Terminal reason for candidates the primary loop never opened because its
+// wall-clock budget was already exhausted. These candidates were NOT evaluated:
+// they are not enrichment failures, not score failures, not product rejections.
+export const PRIMARY_LOOP_BUDGET_EXHAUSTED_TERMINAL_REASON =
+  "PRIMARY_NOT_EVALUATED_DUE_TO_PRIMARY_LOOP_BUDGET";
+
+/**
+ * Wall-clock guard for the sequential primary candidate loop. `startedAtMs` is
+ * captured once at loop entry against the same clock supplied as `now` (defaults
+ * to Date.now). The loop calls `isExhausted()` BEFORE opening new candidate work,
+ * so an event that has already started is never interrupted. Deterministic under
+ * an injected fake clock. `budgetMs` is clamped to the producer's existing
+ * [1s, 30min] scoring-budget window.
+ */
+export function createPrimaryLoopBudgetGuard(opts: {
+  startedAtMs: number;
+  budgetMs?: number;
+  now?: () => number;
+}): { isExhausted: () => boolean; elapsedMs: () => number; budgetMs: number } {
+  const now = opts.now ?? Date.now;
+  const budgetMs = clamp(
+    opts.budgetMs ?? PRIMARY_LOOP_DEFAULT_BUDGET_MS,
+    1_000,
+    30 * 60_000,
+  );
+  return {
+    budgetMs,
+    elapsedMs: () => now() - opts.startedAtMs,
+    isExhausted: () => now() - opts.startedAtMs >= budgetMs,
+  };
+}
+
 // P2: canonical terminal statuses for every FireModel1.1 wide attempt.
 // attempted === selected + scoredRejected + notScored, always.
 export type FireModelWideTerminalStatus =
@@ -2604,6 +2652,12 @@ export async function buildLandingCards(options?: {
   // researchScorerBudgetMs (wall clock) instead of by an arbitrary count.
   researchLimit?: number | null;
   researchScorerBudgetMs?: number;
+  // PRIMARY-LOOP WALL-CLOCK GUARD: runtime override for the sequential primary
+  // candidate loop's wall-clock budget (defaults to PRIMARY_LOOP_DEFAULT_BUDGET_MS,
+  // clamped to [1s, 30min]). `primaryLoopNowMs` injects a clock for deterministic
+  // tests; production uses Date.now.
+  primaryLoopBudgetMs?: number;
+  primaryLoopNowMs?: () => number;
   researchOddsMin?: number;
   researchOddsMax?: number;
   // Reservation-aware producer pinning (P0) — bounded, exact-identity only.
@@ -2634,6 +2688,7 @@ export async function buildLandingCards(options?: {
   );
   const researchOddsMin = options?.researchOddsMin ?? 1.25;
   const researchOddsMax = options?.researchOddsMax ?? 4.00;
+  const primaryLoopNowMs = options?.primaryLoopNowMs ?? Date.now;
 
   const researchSnapshots: ResearchEligibleSignalSnapshot[] = [];
   const requiredProviderEvents = options?.requiredProviderEvents ?? [];
@@ -2891,6 +2946,16 @@ export async function buildLandingCards(options?: {
       candidatesAfterEndedFilter = candidates.length;
     }
 
+    // PRIMARY-LOOP WALL-CLOCK GUARD: capture the loop start time and arm the
+    // budget. `PRIMARY_SCORER_PROVEN_CAPACITY` (254) bounds the population count
+    // only; this guard is the authoritative runtime bound on the sequential loop.
+    const primaryLoopBudgetGuard = createPrimaryLoopBudgetGuard({
+      startedAtMs: primaryLoopNowMs(),
+      budgetMs: options?.primaryLoopBudgetMs,
+      now: primaryLoopNowMs,
+    });
+    let primaryLoopBudgetExhausted = false;
+
     // Process candidates until we have enough product pairs AND research snapshots.
     // When collectResearchSnapshots=false the loop breaks exactly as before (at pairs.length>=limit).
     // When collectResearchSnapshots=true the loop continues past the product cap only until
@@ -2902,6 +2967,21 @@ export async function buildLandingCards(options?: {
 
       // Both caps satisfied — stop iterating
       if (productCapReached && researchCapReached) break;
+
+      // PRIMARY-LOOP WALL-CLOCK GUARD: once the budget is spent, stop opening new
+      // candidate work (no enrichment, no sibling recovery, no snapshot, no product
+      // gates). Remaining candidates are still attributed exactly once — with an
+      // explicit NOT_EVALUATED reason, never an enrichment/score/product failure —
+      // so the conservation invariant
+      // sum(primaryTerminalReasonCounts) === primaryCandidatesEntered still holds.
+      if (!primaryLoopBudgetExhausted && primaryLoopBudgetGuard.isExhausted()) {
+        primaryLoopBudgetExhausted = true;
+      }
+      if (primaryLoopBudgetExhausted) {
+        primaryCandidatesEntered++;
+        recordPrimaryTerminal(PRIMARY_LOOP_BUDGET_EXHAUSTED_TERMINAL_REASON);
+        continue;
+      }
 
       primaryCandidatesEntered++;
       if (collectResearchSnapshots && !researchCapReached) rf.candidatesSeen++;
@@ -3075,6 +3155,14 @@ export async function buildLandingCards(options?: {
     rf.primaryCoverageRejectionValues = primaryCoverageRejectionValues;
     rf.primaryDecisionModel = FORMULA_VERSION;
     rf.primaryCoverageThresholdApplied = minDataCoverage;
+    // PRIMARY-LOOP WALL-CLOCK GUARD telemetry. `primaryLoopBudgetExcludedCandidates`
+    // is the count that were NOT_EVALUATED because the loop budget expired first —
+    // separate from every enrichment/score/product rejection.
+    rf.primaryLoopBudgetMs = primaryLoopBudgetGuard.budgetMs;
+    rf.primaryLoopElapsedMs = primaryLoopBudgetGuard.elapsedMs();
+    rf.primaryLoopBudgetExhausted = primaryLoopBudgetExhausted;
+    rf.primaryLoopBudgetExcludedCandidates =
+      primaryTerminalReasonCounts[PRIMARY_LOOP_BUDGET_EXHAUSTED_TERMINAL_REASON] ?? 0;
 
     // Include non-sports rejected markets in final rejected list (for category=sports)
     const finalRejected = rejected;
