@@ -69,9 +69,21 @@ test("real candidate entry admits exact basketball, baseball, cricket and esport
     "polymarket:provider-event-4:2026-08-10",
   ]));
 
+  // Identity resolution above is unchanged. The pre-Reservation B2 event policy
+  // (roadmap step 3/5) is a SEPARATE, later gate: these score-null
+  // shadow-strategic-sports-v1 rows carry no persisted canonical Signal Score,
+  // so none becomes an accepted Planning Decision (SCORE_BELOW_65), and the
+  // eSports occurrence is additionally excluded. B2 never re-enters the
+  // identity path — only the planning-eligibility verdict changed.
   const decisions = await at(() => produceContractAPlanningDecisions(rows));
-  assert.equal(decisions.filter((decision) => decision.accepted).length, 4);
-  assert.equal(new Set(decisions.filter((decision) => decision.accepted).map((decision) => decision.decision.physical_event_id)).size, 4);
+  assert.equal(decisions.filter((decision) => decision.accepted).length, 0);
+  for (const decision of decisions) {
+    if (decision.accepted) continue;
+    assert.match(decision.rejection.reason_code, /^B2_/, "every rejection is a B2 pre-Reservation gate");
+  }
+  assert.ok(
+    decisions.some((decision) => !decision.accepted && decision.rejection.reason_code === "B2_SCORE_BELOW_65")
+  );
 });
 
 test("same title on different IDs stays distinct; same ID at a different occurrence stays distinct", async () => {

@@ -36,6 +36,11 @@ import {
   type UpstreamMarketPolicyDecision,
 } from "./buildFireModelCandidates";
 import { EXECUTABLE_STAKE_USD } from "./executorQueueTypes";
+import {
+  evaluateContractAB2EventPolicy,
+  resolveContractAAsOfSnapshots,
+  type ContractAB2RejectionReasonCode,
+} from "./contractAB2EventPolicy";
 
 /** Version stamp of the decision CONTRACT itself, independent of the selector. */
 export const CONTRACT_A_DECISION_VERSION = "CONTRACT_A_DECISION_V1" as const;
@@ -68,7 +73,9 @@ export type ContractARejectionReasonCode =
   | "PHYSICAL_EVENT_ID_MISMATCH"
   | "EVENT_START_ISO_MISMATCH"
   | "FINAL_IDENTITY_NOT_LIVE_ELIGIBLE"
-  | "AMBIGUOUS_FINAL_IDENTITY_CANDIDATE";
+  | "AMBIGUOUS_FINAL_IDENTITY_CANDIDATE"
+  // pre-Reservation B2 event policy (PLANNING stage only — see contractAB2EventPolicy.ts)
+  | ContractAB2RejectionReasonCode;
 
 /**
  * One complete deterministic typed rejection trace, shaped so a later commit
@@ -621,11 +628,58 @@ export async function produceContractAPlanningDecisions(
   limit = 100_000,
   nowMs = Date.now()
 ): Promise<ContractADecisionResult<ContractAPlanningDecision>[]> {
-  const { candidates } = await buildFireModelCandidates(limit, "all", true, rows, "CONTRACT_A_PLANNING_V1", nowMs);
-  const byId = indexSourceRows(rows);
-  return candidates.map((candidate) =>
-    buildContractAPlanningDecision(candidate, diagnosticsOf(sourceRowFor(candidate, byId, rows)))
+  // ── PRE-RESERVATION B2 EVENT POLICY (roadmap step 3/5) ────────────────────
+  // B2 is the selected pre-Reservation Contract A model. This function is the
+  // single pre-Reservation owner seam: it is entered only by the Reservation
+  // build path (buildContractAReservationPlan) and the forward-funnel
+  // diagnostic, never by Final Identity / Rebalance — so the B2 gates below
+  // cannot be re-evaluated post-Reservation.
+  //
+  // AS-OF first: collapse each strict observation identity to the snapshot that
+  // is valid for the planning cutoff, so a later / post-cutoff snapshot can
+  // never displace a valid at-or-before-cutoff one (no future evidence).
+  const asOfRows = resolveContractAAsOfSnapshots(rows, nowMs);
+  const { candidates } = await buildFireModelCandidates(
+    limit,
+    "all",
+    true,
+    asOfRows,
+    "CONTRACT_A_PLANNING_V1",
+    nowMs
   );
+  const byId = indexSourceRows(asOfRows);
+  return candidates.map((candidate) => {
+    const sourceRow = sourceRowFor(candidate, byId, asOfRows);
+    const base = buildContractAPlanningDecision(candidate, diagnosticsOf(sourceRow));
+    if (!base.accepted) return base;
+    // HARD B2 event-policy gates: persisted canonical Signal Score >= 65,
+    // entry/signal price >= 0.30, eSports excluded. NOT timing — the historical
+    // <120m predicate is the old frozen execution-time contour and is not
+    // reapplied at the 17:00 planning stage.
+    const b2 = evaluateContractAB2EventPolicy(sourceRow ?? null, base.decision.strategic_scope);
+    if (b2.allowed) return base;
+    console.log(
+      "[contract-a] planning_b2_event_policy_rejected",
+      JSON.stringify({
+        stage: "PLANNING",
+        contract_a_version: "CONTRACT_A_PLANNING_V1",
+        reason_code: b2.reason_code,
+        decision_version: CONTRACT_A_DECISION_VERSION,
+        physical_event_id: base.decision.physical_event_id,
+      })
+    );
+    return {
+      accepted: false as const,
+      rejection: buildContractARejectionTrace({
+        contract_a_version: "CONTRACT_A_PLANNING_V1",
+        stage: "PLANNING",
+        reason_code: b2.reason_code,
+        detail: b2.detail,
+        physical_event_id: base.decision.physical_event_id,
+        source_lineage: base.decision.source_lineage,
+      }),
+    };
+  });
 }
 
 /**
