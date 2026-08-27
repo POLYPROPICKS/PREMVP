@@ -1,0 +1,447 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-08-26__evolution-canonical-cycle",
+  "period_start": "2026-08-26T00:00:00Z",
+  "period_end": "2026-08-27T00:00:00Z",
+  "evidence_cutoff": "2026-08-27T00:00:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target, invoked by a scheduled Daily Evolution Review trigger with no live Founder session this run",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#184",
+      "POLYPROPICKS/PREMVP#185",
+      "POLYPROPICKS/PREMVP#186",
+      "POLYPROPICKS/PREMVP#188",
+      "POLYPROPICKS/PREMVP#187"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-08-26__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "NOT_ENOUGH_EVIDENCE",
+    "what_moved": [
+      {
+        "statement": "A production-shaped defect in legacy Ireland accepted_open callbacks (missing submitted_size) collapsed every retry into HTTP 500 and stranded execution in BLOCKED_CALLBACK before Queue polling; fixed by deriving requested_shares from stake_usd and submitted_price.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#187",
+          "commit 4c523e59564f09fb973ee6d96ac5fe7f4a5c62e2",
+          "tests/contur3/economicTelemetryLegacyAcceptedOpenCallback.test.ts"
+        ]
+      },
+      {
+        "statement": "PR#188 reports the observed production research-scorer funnel discarded 581 of 781 scorer-eligible events behind a fixed 200-row cap, with late losses unattributable; the cap was replaced by a wall-clock budget with full terminal attribution.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#188",
+          "commit b2de038b8dd748201f479339005519f49a4d6b2c",
+          "tests/feed/researchScorerCapacity.test.ts"
+        ]
+      }
+    ],
+    "next_verified_production_fact_now_possible": "A live production_observation run after the next producer cycle can check whether removing the research-scorer cap increases real signal coverage without breaking attribution, and whether a live legacy Horbury retry now returns 200 instead of 500.",
+    "blockers_removed": [
+      {
+        "statement": "Legacy-shaped Horbury accepted_open callbacks (no submitted_size) no longer 500 and no longer strand execution in BLOCKED_CALLBACK ahead of Queue polling.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#187",
+          "commit 4c523e59564f09fb973ee6d96ac5fe7f4a5c62e2"
+        ]
+      },
+      {
+        "statement": "The 200-row research-scorer cap that discarded most scorer-eligible production events is removed; scoring is now wall-clock-bounded with full terminal attribution instead of silent truncation.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#188",
+          "commit b2de038b8dd748201f479339005519f49a4d6b2c"
+        ]
+      }
+    ],
+    "blockers_introduced": [],
+    "not_proven": [
+      "Neither fix was observed acting on live production traffic this period — no production_observation run was executed, so real-runtime behavior remains unconfirmed beyond unit tests and reviewer receipts.",
+      "CURRENT_STATE.yaml is stale relative to live origin/main: product and control-plane paths outside its docs-only bootstrap allowlist changed since its recorded baseline, and the new reconcile capability landed this period has not yet been run to refresh it.",
+      "Reconciled PnL: not claimed and not evidenced — no fills, fees or settlement evidence exists for this period."
+    ],
+    "runtime_or_business_evidence_exists": false,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_STRENGTHENED",
+    "capabilities": [
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "The Evolution Cycle contract was extended to version 1.1: an evidence cutoff and a detailed operating-telemetry block, backward-compatible with existing 1.0 cycles.",
+        "persisted_artifact": "docs/ai-context/control-plane/evolution/schemas/EVOLUTION_CYCLE.schema.json",
+        "use_or_validation_evidence": "276 of 276 control-plane tests pass, including extended coverage for the new contract; this cycle itself is authored and validated against it.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#184",
+          "commit 53237194611557ef8c658115edeb83a614e1c884",
+          "tests/control-plane/evolutionDailyReview.test.mjs",
+          "this cycle document, version 1.1"
+        ]
+      },
+      {
+        "domain": "CONTROLLED_IMPROVEMENT",
+        "statement": "The Automation Roadmap Governor now discovers and validates canonical persisted Evolution cycles directly, instead of only synthetic fixtures, while preserving accepted:false and all strategic guardrails.",
+        "persisted_artifact": "scripts/control-plane/lib/evolution-governor.mjs",
+        "use_or_validation_evidence": "52 Governor tests plus the full 276-test control-plane suite pass; a canonical one-cycle run correctly returns EVIDENCE_INSUFFICIENT with only one cycle on record.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#186",
+          "commit 3ce0634c90760fe6ef337b687bbd3ce6573e2097",
+          "tests/control-plane/evolutionGovernor.test.mjs"
+        ]
+      },
+      {
+        "domain": "REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS",
+        "statement": "A new automated CURRENT_STATE reconciliation script stages candidate factual state deltas after an accepted release and fail-closes on a non-ancestor or non-terminal baseline.",
+        "persisted_artifact": "scripts/control-plane/lib/control-plane-reconcile.mjs",
+        "use_or_validation_evidence": "6 dedicated tests plus the full 276-test control-plane suite pass; not yet run against the real, currently stale state file.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#185",
+          "commit 84ec33f474a0219f644d904892c7907f3d9d4594",
+          "tests/control-plane/controlPlaneReconcileBaseline.test.mjs"
+        ]
+      }
+    ],
+    "not_proven": [
+      "The new reconcile capability has synthetic test coverage only; it has not yet been run to resolve the real stale-state condition noted above.",
+      "Persisting this cycle itself (a second real persisted cycle) broke 3 of the Governor's own tests, which hard-code the live evolution/cycles directory to contain exactly one entry; the Governor's discovery/eligibility logic itself behaved correctly (it now finds 2 cycles, still below the 3-cycle threshold), but its test suite is not isolated from real repository growth."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": 1,
+      "runtime_evidence_count": 6,
+      "reusable_artifacts_created": 5,
+      "cloudcode_actions": 2,
+      "codex_actions": 3,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-08-26T00:00:00Z",
+    "period_end": "2026-08-27T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 5,
+    "by_type": {
+      "START": 5,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 2,
+      "CODEX": 3,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "capture_coverage": "PARTIAL",
+    "founder_actions_proven": 5,
+    "founder_actions_removable": 0,
+    "chat_interaction_coverage": "UNKNOWN",
+    "executor_runs": 5,
+    "successful_terminal_results": 5,
+    "reruns_resumes": 0,
+    "recovery_iterations": 0,
+    "architect_corrections": 0,
+    "reviewer_corrections_rejections": 1,
+    "orchestration_waste_iterations": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "D-20260826-01",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "commit 4c523e59564f09fb973ee6d96ac5fe7f4a5c62e2 (PR#187)",
+        "proven_effective_evidence_refs": [
+          "tests/contur3/economicTelemetryLegacyAcceptedOpenCallback.test.ts PASS (independently re-run)",
+          "PR#187: contur_gate reviewer PASS bound to exact SHA"
+        ]
+      },
+      {
+        "defect_id": "D-20260826-02",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": "CHAIN-RESEARCH-SCORER-CAPACITY-20260826",
+        "implemented_fix_ref": "commit b2de038b8dd748201f479339005519f49a4d6b2c (PR#188)",
+        "proven_effective_evidence_refs": [
+          "tests/feed/researchScorerCapacity.test.ts PASS 4/4 (independently re-run)",
+          "npm run control-plane:check PASS 276/276 (independently re-run)"
+        ]
+      },
+      {
+        "defect_id": "D-20260826-03",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-RESEARCH-SCORER-CAPACITY-20260826",
+        "implemented_fix_ref": "commit b2de038b8dd748201f479339005519f49a4d6b2c, corrected from intermediate SHA 0b8ecc8 (PR#188)",
+        "proven_effective_evidence_refs": [
+          "PR#188 body: contur_gate reviewer returned FAIL on 0b8ecc8 for recordPrimaryTerminal being gated on productCapReached (zero attribution once the cap is removed); PASS on b2de038",
+          "tests/feed/researchScorerCapacity.test.ts: rotation-offset coverage test PASS (independently re-run)"
+        ]
+      },
+      {
+        "defect_id": "D-20260826-04",
+        "origin": "UNKNOWN_ORIGIN",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "D-20260826-05",
+        "origin": "STATE_OR_CONTEXT_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "D-20260826-06",
+        "origin": "TEST_OR_VERIFICATION_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "PRODUCT_OR_RUNTIME_DEFECT": 3,
+      "PROMPT_OR_MISSION_CONSTRUCTION_DEFECT": 0,
+      "DIAGNOSIS_SCOPE_DEFECT": 0,
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 0,
+      "TEST_OR_VERIFICATION_DEFECT": 1,
+      "STATE_OR_CONTEXT_DEFECT": 1,
+      "ENVIRONMENT_OR_PERMISSION_DEFECT": 0,
+      "CONTROL_PLANE_DEFECT": 0,
+      "UNKNOWN_ORIGIN": 1
+    },
+    "defect_counts_by_recurrence": {
+      "NEW_INDEPENDENT": 5,
+      "SAME_ROOT_REPEAT": 0,
+      "LATENT_NEXT_LAYER_EXPOSED": 1,
+      "REGRESSION": 0,
+      "PROMPT_INDUCED_REPEAT": 0,
+      "UNKNOWN_RECURRENCE": 0
+    },
+    "repeated_defect_families": 0,
+    "active_onion_chains": 0,
+    "implemented_fixes": 3,
+    "proven_effective_fixes": 3,
+    "runtime_evidence_count": 6,
+    "reusable_artifacts_created": 5,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN"
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "For a second cycle in a row, operator-action capture is only a lower bound: all 5 actions this period are inferred from merged branches, with no session transcript or completion envelope proving any follow-up activity.",
+      "why_it_matters": "A metric that can only ever report a lower bound cannot be compared reliably cycle over cycle, and this is now an observed repeat, not a one-off gap.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "Would let a future collector honestly report COMPLETE coverage across both CloudCode and Codex without inferring counts from branch existence.",
+      "proposed_automation": "A shared, append-only operator-action log both executors write to at message time, read directly by the collector.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml",
+      "expected_value": "Reliable COMPLETE-coverage operator-action metrics across both executors, across cycles",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: read-only aggregation, no product or runtime change",
+      "success_metric": "A following cycle reports capture_coverage COMPLETE without any git-inferred lower-bound events",
+      "rollback_or_stop_condition": "Stop if it would require either executor to change how it starts sessions, or could not stay dependency-free and offline.",
+      "timing": "Next cycle or later",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "this cycle's input bundle declares coverage PARTIAL with all 5 events inferred from PR/branch existence, not a witnessed transcript",
+        "the 2026-08-25 cycle recorded the identical gap as its own H1"
+      ]
+    },
+    {
+      "id": "H2",
+      "observed_problem": "CURRENT_STATE.yaml is stale relative to live origin/main under its own staleness rule, even though this period landed an automated reconciliation script built for exactly this case.",
+      "why_it_matters": "A capability that exists in Git but has never been run against the real drifted state is not yet delivering the value it was built for, and every day it stays unrun the gap between the canonical doc and reality grows.",
+      "axis_a_effect": "none directly, but a stale CURRENT_STATE.yaml risks future missions planning against outdated facts",
+      "axis_b_effect": "Would convert the #185 capability from validated-by-synthetic-tests-only to proven by one real accepted reconciliation, closing this cycle's own axis_b not_proven item",
+      "proposed_automation": "Run the control-plane reconcile command in read-only mode as the next bounded architect step, then have the Founder review and accept the proposed delta.",
+      "persistent_artifact": "scripts/control-plane/reconcile-control-plane.mjs",
+      "expected_value": "A refreshed, evidence-backed CURRENT_STATE.yaml and one real, non-synthetic validation of the #185 capability",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: the script fail-closes on a non-ancestor or non-terminal baseline by design",
+      "success_metric": "CURRENT_STATE.yaml's baseline sha and updated_at reflect a Founder-accepted delta covering PR#175-188",
+      "rollback_or_stop_condition": "Stop if the proposed delta touches any field this routine is not authorized to change, such as roadmap phase or PnL gates.",
+      "timing": "Next architect step (NOW)",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml baseline sha 40389884c34b943d9d50766f45296fee02913c61, updated_at 2026-08-13",
+        "docs/ai-context/control-plane/ARCHITECT_CONTROL_PLANE.yaml state bootstrap allowlist (docs-only paths)",
+        "POLYPROPICKS/PREMVP#185"
+      ]
+    },
+    {
+      "id": "H3",
+      "observed_problem": "None of the 5 PRs merged this period carry any GitHub check-run status; all verification evidence lives only in PR-body self-report and this review's own re-run of local commands.",
+      "why_it_matters": "AGENT_REGISTRY.yaml already records the reviewer-receipt CI gate as PLANNED/NOT_PROVEN; this cycle is the first Evolution review to observe the practical consequence directly across a full day of merges.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "A CI gate would make control-plane:check and the relevant test suites reproducible evidence attached to the commit itself, not something this review has to re-run by hand every time",
+      "proposed_automation": "A CI workflow that runs the control-plane check and the changed-package test suites on every PR and publishes a GitHub check run.",
+      "persistent_artifact": ".github/workflows/ (new)",
+      "expected_value": "Independently reproducible, commit-attached verification evidence instead of PR-body self-report",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low to moderate: needs correct scoping so it does not block on unrelated pre-existing red suites (see H4)",
+      "success_metric": "A following cycle finds at least one non-zero GitHub check-run status on a reviewed PR",
+      "rollback_or_stop_condition": "Stop if a CI workflow cannot be added without secrets or live database access.",
+      "timing": "System later",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "GitHub pull_request_read get_status for #184, #185, #186, #187, #188 — all returned state=pending, total_count=0"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "The producer identity-conservation suite fails 10 of 22 tests; re-run this cycle it reproduces the exact split PR#188 reported on pristine main, and the file predates this and the prior review period.",
+      "why_it_matters": "A red suite guarding exactly the invariant the roadmap's next value step depends on has gone unaddressed across at least two review periods; root cause is not yet known to be environmental or a real product regression.",
+      "axis_a_effect": "Currently none measured, but this suite guards the exact invariant the roadmap's writer-projection proof step needs",
+      "axis_b_effect": "Root-causing it would either restore a trustworthy regression guard for writer-projection conservation or reveal it needs replacing",
+      "proposed_automation": "A bounded, read-only root-cause spike: run the 10 failing assertions in isolation with verbose diagnostics to classify the failure.",
+      "persistent_artifact": "tests/feed/producerIdentityConservation.test.ts",
+      "expected_value": "Either a fixed, trustworthy regression guard or an explicit, evidenced decision to replace it",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: read-only diagnosis, no product change is authorized by this hypothesis alone",
+      "success_metric": "A following cycle reports either 22/22 passing or an explicit, evidenced root-cause classification",
+      "rollback_or_stop_condition": "Stop the spike the moment it would require any product or database change beyond the test file itself.",
+      "timing": "Next cycle or later",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "node --experimental-test-module-mocks --import tsx --test tests/feed/producerIdentityConservation.test.ts (independently re-run this cycle): 12 pass / 10 fail",
+        "POLYPROPICKS/PREMVP#188 body reports the identical byte-for-byte split on pristine origin/main with the patch stashed",
+        "git log -1 --format=%ci -- tests/feed/producerIdentityConservation.test.ts = 2026-08-13"
+      ]
+    },
+    {
+      "id": "H5",
+      "observed_problem": "Removing the research-scorer cap exposed a second hidden defect — attribution gated on the same cap — caught only by reviewer inspection, not by any existing automated test.",
+      "why_it_matters": "This is a direct, evidenced onion-chain: fixing the visible defect exposed a deeper one that a reviewer caught by inspection, not by test; the same class of latent coupling could recur anywhere else the cap was implicitly load-bearing.",
+      "axis_a_effect": "A permanent conservation-invariant test would make future signal-coverage regressions visible immediately instead of only under manual reviewer inspection",
+      "axis_b_effect": "Adds a durable verification artifact enforcing a named production conservation invariant",
+      "proposed_automation": "Add a permanent regression test asserting the funnel conservation invariant, independent of any capacity ceiling.",
+      "persistent_artifact": "tests/feed/researchScorerCapacity.test.ts",
+      "expected_value": "Automated, always-on detection of the exact defect class this period only caught via manual reviewer inspection",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: additive regression test only",
+      "success_metric": "A following cycle shows this invariant covered by an automated test, not only by reviewer inspection",
+      "rollback_or_stop_condition": "Stop if the invariant cannot be asserted without a live database or production traffic.",
+      "timing": "Next cycle",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#188 body: reviewer FAIL on intermediate SHA 0b8ecc8, PASS on b2de038; reviewer follow-up note about the missing conservation-invariant test"
+      ]
+    },
+    {
+      "id": "H6",
+      "observed_problem": "Persisting this very cycle broke 3 of 276 control-plane tests: they hard-code the live cycles directory to contain exactly one entry, so the control-plane check gate is now red at current HEAD purely because a second real cycle was legitimately persisted.",
+      "why_it_matters": "This routine persists a new real cycle every time it runs; left unfixed, the identical 3 tests will fail again on every future run, permanently keeping a required gate red for a reason that has nothing to do with an actual regression.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "The underlying Governor discovery and eligibility logic is confirmed correct (it found 2 cycles and correctly stayed below the 3-cycle threshold); only the test harness is not isolated from real repository growth.",
+      "proposed_automation": "Rewrite the 3 affected Governor tests to use an isolated temporary cycles directory, or to compute expected counts dynamically, instead of asserting a fixed historical count against the real repository.",
+      "persistent_artifact": "tests/control-plane/evolutionGovernor.test.mjs",
+      "expected_value": "control-plane:check returns to green without ever again depending on how many real cycles have accumulated",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: test-only isolation fix, no change to Governor logic",
+      "success_metric": "A following cycle's control-plane:check passes 276/276 (or more) regardless of how many real cycles exist",
+      "rollback_or_stop_condition": "Stop if isolating these tests would require changing the Governor's own discovery or eligibility logic rather than only the test harness.",
+      "timing": "Next architect step (NOW)",
+      "classification": "NOW",
+      "evidence_refs": [
+        "npm run control-plane:test after persisting this cycle: 273 pass / 3 fail (evolutionGovernor.test.mjs lines 186, 273, 301, each asserting exactly one real persisted cycle)"
+      ]
+    }
+  ],
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "Independently reproducing a PR's own pre-existing-failure claim before accepting it as out of scope.",
+      "why_it_matters_now": "PR#188 claimed 10 test failures were pre-existing; re-running the same command this cycle reproduced the identical split independently, turning a claim into real evidence.",
+      "how_it_applies_to_current_project": "The same discipline applies to any future PR claiming a failure is pre-existing, environmental, or out of scope.",
+      "persistent_git_artifact": "tests/feed/producerIdentityConservation.test.ts",
+      "ladder_level": 2
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "Recognizing an onion-chain pattern and demanding a permanent invariant guard instead of accepting a one-off patch as sufficient.",
+      "why_it_matters_now": "The reviewer flagged the same gap as a non-blocking follow-up; treating it as a real automation hypothesis keeps the invariant from silently breaking again.",
+      "how_it_applies_to_current_project": "Any future finding where a limit was masking a real defect should be checked for the same implicit-dependency shape.",
+      "persistent_git_artifact": "lib/feed/buildLandingCards.ts",
+      "ladder_level": 5
+    }
+  ],
+  "founder_practice_comparison": "P1 is verification discipline applied to other executors' claims; P2 is a diagnosis pattern applied to defects found during the work. P1 protects what this review accepts as evidence; P2 protects the codebase from this period's actual failure mode.",
+  "founder_practice_recommended_order": [
+    "P1",
+    "P2"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "A shared operator-action log written by both executors at message time would let coverage reach complete without inferring counts from branches.",
+      "bounded_scope": "One period, read-only design spike carried forward from the prior cycle: sketch the log format only, no logging wired in yet.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml",
+      "promotion_condition": "The sketch is reviewed and a following cycle collects a bundle from the shared log rather than a git-inferred one.",
+      "stop_condition": "Stop if a shared log would require either executor to change its session-start mechanism, or cannot stay dependency-free."
+    },
+    {
+      "id": "E2",
+      "hypothesis": "Running the control-plane reconcile command in read-only mode against the real baseline would show what a refresh would change, without accepting it yet.",
+      "bounded_scope": "One bounded, read-only dry run of the reconcile script; no state write, no product or database change.",
+      "persistent_artifact": "scripts/control-plane/reconcile-control-plane.mjs",
+      "promotion_condition": "The dry-run output is reviewed and, if correct, a following mission runs it for real to refresh the state file.",
+      "stop_condition": "Stop if the dry-run proposes any change outside the bounded factual fields this script may touch."
+    },
+    {
+      "id": "E3",
+      "hypothesis": "The 10 failing producer-conservation assertions have a single identifiable root cause a bounded diagnostic pass can determine.",
+      "bounded_scope": "Run the failing assertions in isolation with added diagnostics; no test or product code changed as part of the spike.",
+      "persistent_artifact": "tests/feed/producerIdentityConservation.test.ts",
+      "promotion_condition": "A following cycle reports an explicit, evidenced root-cause classification for all 10 failures.",
+      "stop_condition": "Stop the spike the moment fixing it would require a database or live-runtime change beyond the test file."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE"
+  },
+  "next_step": "Persist this cycle. control-plane:check is now red at HEAD (273/276) only because this cycle's own entry breaks 3 Governor tests hard-coded to one cycle (H6) — fix that isolation first, then run the reconcile command read-only to refresh the stale state file, then spike the 10 failing producer-conservation tests. No scheduling or automation follows from this cycle.",
+  "accepted": false
+}
