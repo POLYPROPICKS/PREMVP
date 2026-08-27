@@ -1,0 +1,56 @@
+{
+  "schema_ref": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json#/definitions/reviewer_receipt",
+  "receipt_kind": "R4_CONTUR_EXACT_SHA_ACCEPTANCE",
+  "issued_at": "2026-08-27T00:00:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "risk_class": "R4_CONTUR_PRODUCTION_BOUNDARY",
+  "review_target": {
+    "candidate_sha": "31340683d2b91be755cad834baaeba8794fdbcb5",
+    "expected_parent": "7ebad82d50bbc1b3e5e5ed38c3d1b057e745ea52",
+    "required_ancestor": "002805749bdb5c80a6afa3345f908cd9e5f69c6d",
+    "parent_verified": true,
+    "required_ancestor_verified": true
+  },
+  "reviewer_receipt": {
+    "agent_id": "premvp.reviewer.contur_gate.v1",
+    "implementation_identity": "claude_code_cloud adapter :: project-scoped Agent .claude/agents/contur-gate-reviewer.md",
+    "definition_hash": "sha256:f0e090fc7045adc2b6276ff92e8dc25bc015b79d1d1d48272b06ab4ad1a3153d",
+    "configured_model": "sonnet",
+    "reasoning_policy": "effort:high",
+    "independence_group": "contur_gate",
+    "reviewed_sha": "31340683d2b91be755cad834baaeba8794fdbcb5",
+    "verdict": "PASS",
+    "evidence_refs": [
+      "git rev-parse 31340683d2b91be755cad834baaeba8794fdbcb5^ == 7ebad82d50bbc1b3e5e5ed38c3d1b057e745ea52",
+      "git merge-base --is-ancestor 002805749bdb5c80a6afa3345f908cd9e5f69c6d 31340683d2b91be755cad834baaeba8794fdbcb5 -> exit 0",
+      "diff 002805749..31340683 file list: M lib/feed/buildLandingCards.ts, M lib/feed/types.ts, A tests/feed/primaryLoopWallClockGuard.test.ts, A tests/feed/primaryScorerPopulationCap.test.ts",
+      "lib/feed/buildLandingCards.ts: slice(0, limit*3) positional cap removed; discoverySamples = boundPrimaryScorerPopulation(finalCandidates, fallback48hCandidates)",
+      "lib/feed/buildLandingCards.ts: targetCards limit*2 -> PRIMARY_SCORER_PROVEN_CAPACITY",
+      "lib/feed/buildLandingCards.ts: PRIMARY_SCORER_PROVEN_CAPACITY = 254 (finite advisory population ceiling; 24h-then-48h ordering preserved)",
+      "lib/feed/buildLandingCards.ts: PRIMARY_LOOP_DEFAULT_BUDGET_MS = RESEARCH_SCORER_DEFAULT_BUDGET_MS = 360000ms; createPrimaryLoopBudgetGuard clamps [1000, 1800000]; checked before opening new candidate work; in-flight event never interrupted",
+      "lib/feed/buildLandingCards.ts: PRIMARY_LOOP_BUDGET_EXHAUSTED_TERMINAL_REASON = \"PRIMARY_NOT_EVALUATED_DUE_TO_PRIMARY_LOOP_BUDGET\"; recorded via recordPrimaryTerminal; conservation invariant sum(primaryTerminalReasonCounts) === primaryCandidatesEntered preserved",
+      "no policy-constant reassignment in added lines (Signal Score formula, thresholds, liquidity floor, timing windows, sport/market policy, sibling recovery, GSP/serving, Contract A/B2, Reservation/Rebalance/Queue, Ireland, DB/schema untouched)",
+      "tests/feed/primaryScorerPopulationCap.test.ts + tests/feed/primaryLoopWallClockGuard.test.ts at reviewed_sha (node --import tsx --test): tests 13, pass 13, fail 0",
+      "EXACT_SHA_REVIEW_PACKET.md (this directory)"
+    ]
+  },
+  "acceptance_criteria_result": {
+    "1_reviewed_sha_pinned": "PASS",
+    "2_exact_parent_and_ancestry": "PASS",
+    "3_artificial_45_cap_removed": "PASS",
+    "4_finite_population_ceiling_254": "PASS",
+    "5_primary_loop_wall_clock_guard": "PASS",
+    "6_budget_exhausted_tail_classified_PRIMARY_NOT_EVALUATED_DUE_TO_PRIMARY_LOOP_BUDGET": "PASS",
+    "7_no_product_model_downstream_authority_change": "PASS"
+  },
+  "product_semantic_delta": "NONE",
+  "release_eligible": "YES",
+  "final_verdict": "EXACT_SHA_REVIEW_PASS",
+  "outcome_class": "TERMINAL_PASS",
+  "next_phase": {
+    "name": "premvp.release_pipeline.v1",
+    "integration_command": "claude.command.github_pr_merge.v0",
+    "readiness_assessed_here": false,
+    "note": "Release lifecycle INVOKE_REVIEWER may reuse this receipt: reviewed_sha equals the release result_sha and agent_id matches the R4 required reviewer."
+  }
+}
