@@ -133,11 +133,16 @@ async function persistedScoredRow(): Promise<Record<string, unknown>> {
 
   const [writerRow] = p.buildFireModel1_1ResearchRows([pair], "2026-08-12T19:00:00.000Z");
   // Only the database-assigned columns are added; the writer owns everything else.
+  // The structured canonical-family diagnostics under test are version-agnostic;
+  // re-stamp the selected production population so the row is admitted to scored
+  // Contract A Planning (research/challenger populations no longer are).
   return {
     ...writerRow,
     id: "00000000-0000-4000-8000-000000000901",
     created_at: "2026-08-10T13:30:00.000Z",
     signal_result: null,
+    formula_version: "v2-lite-growth-safe",
+    metric_formula_version: "v2-lite-growth-safe",
   } as unknown as Record<string, unknown>;
 }
 

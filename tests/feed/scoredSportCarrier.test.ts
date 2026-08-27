@@ -23,8 +23,11 @@ function persistedScoredRow(index: number, family: string, providerSportCode: st
   return {
     id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
     source: "polymarket",
-    formula_version: "shadow-firemodel1_1_research_v0",
-    metric_formula_version: "shadow-firemodel1_1_research_v0",
+    // The selected production population — the only population admitted to
+    // scored Contract A Planning. This fixture's concern is structured sport
+    // carrying, which is version-agnostic.
+    formula_version: "v2-lite-growth-safe",
+    metric_formula_version: "v2-lite-growth-safe",
     condition_id: `condition-${index}`,
     selected_token_id: `token-${index}`,
     selected_outcome: "A",
@@ -287,5 +290,5 @@ test("production-shaped supported sports retain one score contract and structure
   assert.deepEqual(built.candidates.map((candidate) => candidate.strategic_scope), cases.map((entry) => entry[2]));
   assert.ok(built.candidates.every((candidate) => candidate.diagnostics.legacy_text_fallback_used === false));
   assert.equal(built.rawDiagnostics?.rows_using_legacy_text_fallback, 0);
-  assert.ok(rows.every((row) => row.metric_formula_version === "shadow-firemodel1_1_research_v0"));
+  assert.ok(rows.every((row) => row.metric_formula_version === "v2-lite-growth-safe"));
 });

@@ -181,8 +181,8 @@ test("R4: the scored-rows query never includes shadow-strategic-sports-v1 in its
   );
   assert.deepEqual(
     new Set(scoredVersions),
-    new Set(["v2-lite-growth-safe", "shadow-firemodel1_1_research_v0"]),
-    "the scored query must still cover every other planning-recognized version unchanged"
+    new Set(["v2-lite-growth-safe"]),
+    "scored Contract A Planning admits exactly the one selected production population (research/challenger populations are not money-authoritative)"
   );
 
   // Corrected loader returns the same eligible source semantics: the real
