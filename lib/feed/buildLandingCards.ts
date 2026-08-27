@@ -141,6 +141,10 @@ export function sampleToCandidateMarket(sample: SportsDiscoverySample): Candidat
     isSportsRelated: true,
     isEnded: false,
     sportsMatchedKeyword: "sports-discovery",
+    // Sibling markets already present on the discovery sample. Carried verbatim
+    // so primary representative-market recovery can consider same-event siblings
+    // without fetching a new universe.
+    siblingMarketsRaw: sample.marketsRaw,
   };
 }
 
@@ -226,6 +230,11 @@ export interface CandidateMarket {
   isEnded: boolean;
   sportsMatchedKeyword?: string;
   sportsBlockedKeyword?: string;
+  /**
+   * Sibling markets of the SAME authoritative physical event, as already present
+   * on the discovery sample. Used only by primary representative-market recovery.
+   */
+  siblingMarketsRaw?: SportsDiscoverySample["marketsRaw"];
 }
 
 interface ForcedOutcomeSelection {
@@ -1080,6 +1089,85 @@ function getParentMeta(market: PolymarketRawMarket): ParentEventMeta {
     title: safeString(market.question) || "Unknown Event",
     slug: slugify(safeString(market.question) || "unknown"),
   };
+}
+
+/**
+ * Primary representative-market recovery.
+ *
+ * When a physical event's initially chosen representative market is unusable
+ * (fails selectOutcome / enrichment), recover the event through a sibling that
+ *  - belongs to the SAME authoritative physical event (already on the sample),
+ *  - is a market type already permitted by the CURRENT full-event product policy
+ *    (`OFFICIAL_FULL_MATCH_MARKET_TYPES`, provider market type only — never text),
+ *  - has a valid binary outcome/token identity, and
+ *  - has an outcome inside the EXISTING primary scorer price corridor
+ *    (`selectOutcome`, reused unchanged).
+ *
+ * No new universe is fetched, no new market type is invented and no policy is
+ * broadened. Returns null (fail closed) when no such sibling exists.
+ */
+export function selectRecoverablePrimarySibling(
+  candidate: CandidateMarket,
+): CandidateMarket | null {
+  const siblings = candidate.siblingMarketsRaw;
+  if (!siblings || siblings.length === 0) return null;
+
+  const primaryConditionId = safeString(candidate.market.conditionId);
+  const parentMeta = getParentMeta(candidate.market);
+
+  for (const sib of siblings) {
+    if (!sib) continue;
+    const conditionId = safeString(sib.conditionId);
+    if (!conditionId || conditionId === primaryConditionId) continue;
+
+    // CURRENT full-event product policy — provider market type only, never text.
+    const marketType = String(sib.sportsMarketType ?? "").toLowerCase();
+    if (!OFFICIAL_FULL_MATCH_MARKET_TYPES.has(marketType)) continue;
+
+    // Existing binary outcome/token identity requirement.
+    const outcomes = safeParseArray<string>(sib.outcomes);
+    const prices = safeParseArray<unknown>(sib.outcomePrices);
+    const tokenIds = safeParseArray<string>(sib.clobTokenIds);
+    if (outcomes.length !== 2 || prices.length !== 2 || tokenIds.length !== 2) continue;
+    if (!safeString(tokenIds[0]) || !safeString(tokenIds[1])) continue;
+
+    const siblingMarket: PolymarketRawMarket = {
+      id: conditionId,
+      conditionId,
+      question: sib.question ?? candidate.market.question,
+      slug: candidate.market.slug,
+      active: true,
+      closed: false,
+      outcomes: sib.outcomes as unknown as PolymarketRawOutcome[] | string,
+      outcomePrices: sib.outcomePrices as unknown as Record<string, number> | string,
+      clobTokenIds: sib.clobTokenIds as unknown as string[] | string,
+      volume24hr: sib.volume24hr ?? undefined,
+      oneDayPriceChange: sib.oneDayPriceChange ?? undefined,
+    };
+
+    // EXISTING primary scorer price corridor — reuse selectOutcome unchanged.
+    const selected = selectOutcome(siblingMarket);
+    if (!selected) continue;
+    if (selected.price <= 0 || selected.price >= 1) continue;
+
+    (siblingMarket as unknown as Record<string, unknown>)._parentMeta = {
+      ...parentMeta,
+      sportsMarketType: sib.sportsMarketType ?? parentMeta.sportsMarketType,
+      providerMarketId: conditionId,
+    };
+
+    return {
+      event: { ...candidate.event, markets: [siblingMarket] },
+      market: siblingMarket,
+      rejectionReasons: [],
+      warnings: [...candidate.warnings, "primary-sibling-recovery"],
+      isSportsRelated: candidate.isSportsRelated,
+      isEnded: false,
+      sportsMatchedKeyword: candidate.sportsMatchedKeyword,
+    };
+  }
+
+  return null;
 }
 
 /**
@@ -2802,7 +2890,20 @@ export async function buildLandingCards(options?: {
       }
 
       // Enrich with API data (pass initial warnings)
-      const enriched = await enrichMarket(candidate.event, candidate.market, candidate.warnings);
+      let effectiveCandidate = candidate;
+      let enriched = await enrichMarket(candidate.event, candidate.market, candidate.warnings);
+
+      // Primary representative-market recovery: when the initially chosen
+      // representative is unusable, recover the SAME authoritative physical event
+      // through a product-policy-permitted sibling with valid identity and a
+      // corridor outcome. Fails closed exactly as before when no sibling exists.
+      if (!enriched && !productCapReached) {
+        const recovered = selectRecoverablePrimarySibling(candidate);
+        if (recovered) {
+          effectiveCandidate = recovered;
+          enriched = await enrichMarket(recovered.event, recovered.market, recovered.warnings);
+        }
+      }
 
       if (!enriched) {
         // P1B CONSERVATION: see above — attribution is never gated on the product cap.
@@ -2829,7 +2930,7 @@ export async function buildLandingCards(options?: {
       if (collectResearchSnapshots && !researchCapReached && researchSnapshotRunId && researchSnapshotAt) {
         const snap = await tryBuildResearchSnapshot(
           enriched,
-          candidate,
+          effectiveCandidate,
           researchSnapshotRunId,
           researchSnapshotAt,
           researchOddsMin,
@@ -2852,7 +2953,7 @@ export async function buildLandingCards(options?: {
         recordPrimaryTerminal("PRIMARY_REJECTED_DATA_COVERAGE_BELOW_THRESHOLD");
         primaryCoverageRejectionValues.push(enriched.diagnostics.dataCoverage);
         rejected.push({
-          id: candidate.market.id,
+          id: effectiveCandidate.market.id,
           rejectionReasons: [
             `Data coverage below threshold: ${enriched.diagnostics.dataCoverage}%`,
             `Required: ${minDataCoverage}%`,
@@ -2866,7 +2967,7 @@ export async function buildLandingCards(options?: {
       if (enriched.diagnostics.rejectionReasons.length > 0) {
         recordPrimaryTerminal("PRIMARY_REJECTED_ENRICHMENT_REJECTION_REASONS");
         rejected.push({
-          id: candidate.market.id,
+          id: effectiveCandidate.market.id,
           rejectionReasons: enriched.diagnostics.rejectionReasons,
         });
         continue;
@@ -2878,7 +2979,7 @@ export async function buildLandingCards(options?: {
       if (!pair) {
         recordPrimaryTerminal("PRIMARY_REJECTED_PAIR_GENERATION_FAILED");
         rejected.push({
-          id: candidate.market.id,
+          id: effectiveCandidate.market.id,
           rejectionReasons: ["Failed to generate landing card pair"],
         });
         continue;
@@ -2886,7 +2987,7 @@ export async function buildLandingCards(options?: {
       if (pair.premiumSignal.winProbability < 52) {
         recordPrimaryTerminal("PRIMARY_REJECTED_WIN_PROBABILITY_BELOW_52");
         rejected.push({
-          id: candidate.market.id,
+          id: effectiveCandidate.market.id,
           rejectionReasons: [`Signal confidence too low: ${pair.premiumSignal.winProbability}`],
         });
         continue;
@@ -2896,22 +2997,22 @@ export async function buildLandingCards(options?: {
       if (excludeEnded && pair.premiumSignal.time === "Ended") {
         recordPrimaryTerminal("PRIMARY_REJECTED_MARKET_ENDED_AT_PAIR_STAGE");
         rejected.push({
-          id: candidate.market.id,
+          id: effectiveCandidate.market.id,
           rejectionReasons: ["Market ended (premiumSignal.time = Ended)"],
         });
         continue;
       }
 
       const marketKey =
-        safeString(candidate.market.id) ||
-        safeString(candidate.market.conditionId) ||
-        safeString(candidate.market.slug) ||
+        safeString(effectiveCandidate.market.id) ||
+        safeString(effectiveCandidate.market.conditionId) ||
+        safeString(effectiveCandidate.market.slug) ||
         pair.id;
 
       if (seenPairIds.has(pair.id) || seenMarketKeys.has(marketKey)) {
         recordPrimaryTerminal("PRIMARY_REJECTED_DUPLICATE");
         rejected.push({
-          id: candidate.market.id,
+          id: effectiveCandidate.market.id,
           rejectionReasons: [`Duplicate landing pair skipped: ${pair.id}`],
         });
         continue;
@@ -2924,7 +3025,7 @@ export async function buildLandingCards(options?: {
       pairs.push(pair);
       pairsGenerated++;
       if (pinnedKeysForPersistCheck.size > 0) {
-        const key = computeCandidateProviderEventKey(candidate);
+        const key = computeCandidateProviderEventKey(effectiveCandidate);
         if (key !== null && pinnedKeysForPersistCheck.has(key)) pinnedCandidatesPersisted++;
       }
     }
