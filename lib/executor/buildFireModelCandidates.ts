@@ -31,6 +31,10 @@ import {
   hasStructuredScoredSportAuthority,
   MODEL_SCOPE_BY_STRUCTURED_SPORT_FAMILY,
 } from "@/lib/feed/sportScoreOwnership";
+import {
+  PRODUCTION_SIGNAL_POPULATION_VERSION,
+  PRODUCTION_SCORED_PLANNING_VERSIONS,
+} from "./productionSignalPopulation";
 
 const POLICY_VERSION = "battle-sm-guard-v1-20260615";
 const LIVE_POLICY_VERSION = "live-risk-guard-v1";
@@ -375,14 +379,18 @@ export function resolveUpstreamMarketPolicy(probe: MarketPolicyProbe): UpstreamM
   };
 }
 
-// Execution endpoint uses the strict version set only.
-const ALLOWED_VERSIONS = ["v2-lite-growth-safe", "shadow-firemodel1_1_research_v0"];
-// Planning endpoint includes shadow-strategic-sports-v1 for the full planning universe.
-const PLANNING_ALLOWED_VERSIONS = [
-  "shadow-strategic-sports-v1",
-  "v2-lite-growth-safe",
-  "shadow-firemodel1_1_research_v0",
-];
+// Live (Ireland) executor version set — unchanged. The event execution Queue
+// enforces the selected production population downstream; see
+// lib/executor/productionSignalPopulation.ts.
+const ALLOWED_VERSIONS = [PRODUCTION_SIGNAL_POPULATION_VERSION, "shadow-firemodel1_1_research_v0"];
+// Scored Contract A Planning / Reservation admits exactly ONE explicitly
+// selected production signal population (PRODUCTION_SCORED_PLANNING_VERSIONS).
+// The score-null "shadow-strategic-sports-v1" population still reaches Planning
+// through the disjoint shadow-fallback branch below (queried by that exact
+// version, never via this list); "shadow-firemodel1_1_research_v0" and every
+// other research/challenger population stay persisted + analysed but are no
+// longer money-authoritative for Planning/Reservation slots.
+const PLANNING_ALLOWED_VERSIONS = [...PRODUCTION_SCORED_PLANNING_VERSIONS];
 
 // Shared select column list for the generated_signal_pairs candidate queries.
 const SIGNAL_SELECT_COLS =
@@ -1525,20 +1533,20 @@ export async function fetchPlanningSourceRowSets(
   // was the dominant cause of Contur3 reservation underfill — physical matches whose
   // Tier1 full-match candidate fell outside the most-recent slice were never reserved.
   //
-  // "shadow-strategic-sports-v1" rows are written with signal_confidence_num
-  // IS NULL by construction (they are the not-yet-scored population the
-  // separate shadow query below exists to read) and can therefore never
-  // satisfy `signal_confidence_num >= 50` — including that version in this
-  // query's IN-list contributes zero rows in every environment, but on the
-  // live table forces Postgres into a created_at-ordered scan through a huge,
-  // structurally-unmatchable population before it can satisfy ORDER BY +
-  // LIMIT, which reproduced as a 57014 statement timeout in production. Drop
-  // it from this scored-only query only; the shadow query two blocks below is
-  // unaffected (it already filters on this exact version directly) and
-  // `versions`/PLANNING_ALLOWED_VERSIONS are unchanged everywhere else.
-  const scoredQueryVersions = (versions as string[]).filter(
-    (version) => version !== "shadow-strategic-sports-v1"
-  );
+  // Scored Contract A Planning / Reservation money slots consume exactly ONE
+  // explicitly selected production signal population
+  // (PRODUCTION_SCORED_PLANNING_VERSIONS). Research / challenger populations
+  // (e.g. "shadow-firemodel1_1_research_v0") stay persisted + analysed but are
+  // never money-authoritative here. The live (Ireland) executor path keeps its
+  // existing recency-bounded ALLOWED_VERSIONS set, minus the score-null
+  // "shadow-strategic-sports-v1" population: that version can never satisfy
+  // `signal_confidence_num >= 50`, and leaving it in the IN-list forced
+  // Postgres into a created_at-ordered scan through a huge, structurally
+  // unmatchable population (reproduced as a 57014 statement timeout in
+  // production). The disjoint shadow query two blocks below reads it directly.
+  const scoredQueryVersions = planningMode
+    ? [...PRODUCTION_SCORED_PLANNING_VERSIONS]
+    : (versions as string[]).filter((version) => version !== "shadow-strategic-sports-v1");
   const buildScoredQuery = () =>
     supabaseAdmin
       .from("generated_signal_pairs")
@@ -1623,7 +1631,9 @@ async function fetchContractAPlanningServingRowSets(
       .from("current_signal_pair_serving")
       .select(SERVING_SIGNAL_SELECT_COLS)
       .eq("projection_status", "ACTIVE")
-      .in("metric_formula_version", ALLOWED_VERSIONS)
+      // current_signal_pair_serving may carry multiple populations; the money
+      // READ authority is the one selected production population only.
+      .in("metric_formula_version", PRODUCTION_SCORED_PLANNING_VERSIONS)
       .is("signal_result", null)
       .gt("expires_at", snapshotAsOfIso)
       .not("selected_token_id", "is", null)
@@ -1702,9 +1712,14 @@ export async function buildFireModelCandidates(
     // subsets the SQL queries below would have produced, applying the
     // identical predicates in-memory to the one supplied snapshot.
     const nowIso = new Date(nowMs).toISOString();
+    // Scored planning admission mirrors the DB reads: exactly the selected
+    // production population in planningMode, the live version set otherwise.
+    const scoredAdmissionVersions = planningMode
+      ? PRODUCTION_SCORED_PLANNING_VERSIONS
+      : versions;
     scoredRows = injectedRows.filter(
       (row) =>
-        versions.includes(row.metric_formula_version as string) &&
+        scoredAdmissionVersions.includes(row.metric_formula_version as string) &&
         row.signal_result == null &&
         typeof row.expires_at === "string" &&
         row.expires_at > nowIso &&
