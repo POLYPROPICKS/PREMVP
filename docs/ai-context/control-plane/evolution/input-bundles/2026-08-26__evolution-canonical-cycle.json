@@ -1,0 +1,72 @@
+{
+  "bundle_id": "2026-08-26__evolution-canonical-cycle",
+  "repository": "POLYPROPICKS/PREMVP",
+  "period_start": "2026-08-26T00:00:00Z",
+  "period_end": "2026-08-27T00:00:00Z",
+  "capture_coverage": "PARTIAL",
+  "completion_envelope_ids": [],
+  "confirmed_changes": [
+    "POLYPROPICKS/PREMVP#184",
+    "POLYPROPICKS/PREMVP#185",
+    "POLYPROPICKS/PREMVP#186",
+    "POLYPROPICKS/PREMVP#188",
+    "POLYPROPICKS/PREMVP#187"
+  ],
+  "operator_action_events": [
+    {
+      "action_id": "2026-08-26-PR184-START",
+      "occurred_at": "2026-08-26T04:16:42Z",
+      "surface": "CODEX",
+      "type": "START",
+      "origin": "FOUNDER_MANUAL",
+      "mission_id": "PR-184",
+      "capture_coverage": "PARTIAL",
+      "source_ref": "POLYPROPICKS/PREMVP#184 (codex/evolution-telemetry-cycle) merged 2026-08-26T07:16:59+03:00; branch existence and single-commit history are indirect evidence of one manually authorized Codex mission, not a witnessed session transcript"
+    },
+    {
+      "action_id": "2026-08-26-PR185-START",
+      "occurred_at": "2026-08-26T04:35:25Z",
+      "surface": "CODEX",
+      "type": "START",
+      "origin": "FOUNDER_MANUAL",
+      "mission_id": "PR-185",
+      "capture_coverage": "PARTIAL",
+      "source_ref": "POLYPROPICKS/PREMVP#185 (codex/current-state-auto-reconcile) merged 2026-08-26T10:35:34+03:00; indirect branch/PR evidence only"
+    },
+    {
+      "action_id": "2026-08-26-PR186-START",
+      "occurred_at": "2026-08-26T05:08:02Z",
+      "surface": "CODEX",
+      "type": "START",
+      "origin": "FOUNDER_MANUAL",
+      "mission_id": "PR-186",
+      "capture_coverage": "PARTIAL",
+      "source_ref": "POLYPROPICKS/PREMVP#186 (codex/governor-persisted-cycles-20260826) merged 2026-08-26T11:08:20+03:00; indirect branch/PR evidence only"
+    },
+    {
+      "action_id": "2026-08-26-PR188-START",
+      "occurred_at": "2026-08-26T10:02:59Z",
+      "surface": "CLOUDCODE",
+      "type": "START",
+      "origin": "FOUNDER_MANUAL",
+      "mission_id": "PR-188",
+      "capture_coverage": "PARTIAL",
+      "source_ref": "POLYPROPICKS/PREMVP#188 (claude/research-scorer-capacity-attribution-20260826) merged 2026-08-26T16:03:17+03:00; indirect branch/PR evidence only"
+    },
+    {
+      "action_id": "2026-08-26-PR187-START",
+      "occurred_at": "2026-08-26T08:12:14Z",
+      "surface": "CLOUDCODE",
+      "type": "START",
+      "origin": "FOUNDER_MANUAL",
+      "mission_id": "PR-187",
+      "capture_coverage": "PARTIAL",
+      "source_ref": "POLYPROPICKS/PREMVP#187 (claude/horbury-callback-economic-telemetry-freeze-20260826) merged 2026-08-26T16:22:55+03:00; indirect branch/PR evidence only"
+    }
+  ],
+  "supporting_metrics": {
+    "reusable_artifacts_created": 5,
+    "runtime_evidence_count": 5
+  },
+  "notes": "This bundle is authored by the automated Daily Evolution Review routine itself (no live Founder session was witnessed this run) from git/PR ancestry only: 5 branches (3 codex/*, 2 claude/*) merged into origin/main between period_start and period_end, each treated as one lower-bound Founder START action per the OPERATOR_ACTION_POLICY rule that a manually launched Claude/Codex execution counts as a START when manual launch is evidenced. No session transcript, completion envelope, or ChatGPT Project record was available to prove FOLLOW_UP/CORRECTION/RETRY/HANDOFF/APPROVAL actions inside each mission, so capture_coverage is PARTIAL and all counts are a lower bound only, not an exhaustive total. One reviewer-driven correction (not a Founder action) is evidenced inside PR#188 itself: the contur_gate reviewer returned FAIL on an intermediate SHA (0b8ecc8) for a real attribution defect, corrected before the merged SHA b2de038 — recorded as a reviewer_corrections_rejections telemetry value in the cycle, not as an operator action."
+}
