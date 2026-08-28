@@ -1,0 +1,119 @@
+{
+  "bundle_id": "2026-08-26__evolution-canonical-cycle",
+  "repository": "POLYPROPICKS/PREMVP",
+  "period_start": "2026-08-26T00:00:00Z",
+  "period_end": "2026-08-28T00:00:00Z",
+  "evidence_cutoff": "2026-08-28T00:30:00Z",
+  "capture_coverage": "PARTIAL",
+  "completion_envelope_ids": [],
+  "confirmed_changes": [
+    "POLYPROPICKS/PREMVP#184",
+    "POLYPROPICKS/PREMVP#185",
+    "POLYPROPICKS/PREMVP#186",
+    "POLYPROPICKS/PREMVP#187",
+    "POLYPROPICKS/PREMVP#188",
+    "POLYPROPICKS/PREMVP#191",
+    "POLYPROPICKS/PREMVP#193",
+    "POLYPROPICKS/PREMVP#194",
+    "POLYPROPICKS/PREMVP#195",
+    "POLYPROPICKS/PREMVP#196",
+    "POLYPROPICKS/PREMVP#197"
+  ],
+  "operator_action_events": [
+    { "action_id": "2026-08-26-BR-184", "occurred_at": "2026-08-26T10:16:30+03:00", "surface": "CODEX", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-184", "capture_coverage": "PARTIAL", "source_ref": "distinct branch codex/evolution-telemetry-cycle merged as PR#184 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-26-BR-185", "occurred_at": "2026-08-26T10:35:14+03:00", "surface": "CODEX", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-185", "capture_coverage": "PARTIAL", "source_ref": "distinct branch codex/current-state-auto-reconcile merged as PR#185 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-26-BR-186", "occurred_at": "2026-08-26T11:07:32+03:00", "surface": "CODEX", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-186", "capture_coverage": "PARTIAL", "source_ref": "distinct branch codex/governor-persisted-cycles-20260826 merged as PR#186 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-26-BR-187", "occurred_at": "2026-08-26T11:43:17+03:00", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-187", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/horbury-callback-economic-telemetry-freeze-20260826 merged as PR#187 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-26-BR-188", "occurred_at": "2026-08-26T15:50:21+03:00", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-188", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/research-scorer-capacity-attribution-20260826 merged as PR#188 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-26-BR-193", "occurred_at": "2026-08-26T22:51:53+03:00", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-193", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/signal-score-coverage-cap-fix-20260826 merged as PR#193 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-27-BR-191", "occurred_at": "2026-08-27T09:59:12+03:00", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-191", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/contract-a-production-population-selector-20260827 merged as PR#191 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-27-BR-194", "occurred_at": "2026-08-27T12:10:33+03:00", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-194", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/contract-a-b2-pre-reservation-policy-20260827 merged as PR#194 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-27-BR-195", "occurred_at": "2026-08-27T14:01:54+03:00", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-195", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/primary-sibling-recovery-20260827 merged as PR#195 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-27-BR-197", "occurred_at": "2026-08-27T17:36:29+03:00", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-197", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/primary-scorer-wall-clock-guard merged as PR#197 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-27-BR-196", "occurred_at": "2026-08-27T18:36:26+03:00", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-196", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/contur-gate-receipt-31340683 merged as PR#196 — secondary evidence lower bound, not a witnessed session transcript" }
+  ],
+  "operating_telemetry": {
+    "reviewer_corrections_rejections": 0,
+    "runtime_evidence_count": 3,
+    "reusable_artifacts_created": 3
+  },
+  "supporting_metrics": {
+    "runtime_evidence_count": 3,
+    "reusable_artifacts_created": 3
+  },
+  "defect_occurrences": [
+    {
+      "defect_id": "DEF-2026-08-26-RESEARCH-SCORER-CAP",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "NEW_INDEPENDENT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#188",
+      "proven_effective_evidence_refs": ["tests/feed/researchScorerCapacity.test.ts — re-run this cycle, PASS"]
+    },
+    {
+      "defect_id": "DEF-2026-08-27-PRIMARY-PRESCORER-CAP",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "NEW_INDEPENDENT",
+      "defect_chain_id": "CHAIN-PRIMARY-CAP-20260827",
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#197",
+      "proven_effective_evidence_refs": ["tests/feed/primaryScorerPopulationCap.test.ts — re-run this cycle, PASS"]
+    },
+    {
+      "defect_id": "DEF-2026-08-27-PRIMARY-LOOP-WALLCLOCK",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+      "defect_chain_id": "CHAIN-PRIMARY-CAP-20260827",
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#197",
+      "proven_effective_evidence_refs": ["tests/feed/primaryLoopWallClockGuard.test.ts — re-run this cycle, PASS", "docs/ai-context/control-plane/reviews/release-decap-primary-budget-guard-31340683/CONTUR_GATE_EXACT_SHA_REVIEW_RECEIPT.json"]
+    },
+    {
+      "defect_id": "DEF-2026-08-26-SIGNAL-SCORE-COVERAGE-CEILING",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "NEW_INDEPENDENT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#193",
+      "proven_effective_evidence_refs": ["tests/feed/signalScoreCoverageCapRemoval.test.ts — re-run this cycle, PASS"]
+    },
+    {
+      "defect_id": "DEF-2026-08-27-PRIMARY-SIBLING-DISCARD",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "NEW_INDEPENDENT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#195",
+      "proven_effective_evidence_refs": ["tests/feed/primarySiblingRecovery.test.ts — re-run this cycle, PASS"]
+    },
+    {
+      "defect_id": "DEF-2026-08-27-MULTI-POPULATION-MONEY-ADMISSION",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "NEW_INDEPENDENT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#191",
+      "proven_effective_evidence_refs": []
+    },
+    {
+      "defect_id": "DEF-2026-08-26-HORBURY-LEGACY-CALLBACK-500",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "NEW_INDEPENDENT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#187",
+      "proven_effective_evidence_refs": []
+    },
+    {
+      "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+      "origin": "STATE_OR_CONTEXT_DEFECT",
+      "recurrence": "SAME_ROOT_REPEAT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": null,
+      "proven_effective_evidence_refs": []
+    },
+    {
+      "defect_id": "DEF-2026-08-28-GOVERNOR-TEST-HARDCODED-CYCLE-COUNT",
+      "origin": "TEST_OR_VERIFICATION_DEFECT",
+      "recurrence": "NEW_INDEPENDENT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": null,
+      "proven_effective_evidence_refs": []
+    }
+  ],
+  "notes": "operator_action_events are a LOWER BOUND inferred from 11 distinct feature branches merged to origin/main in this period (one START per branch); this reviewer had no access to any other session's transcript, so within-mission FOLLOW_UP/CORRECTION/RETRY/APPROVAL events and ChatGPT Architect chat activity are NOT captured — capture_coverage is PARTIAL by construction. defect_occurrences and their proven_effective_evidence_refs reflect this reviewer's own re-execution of tests/control-plane/evolutionDailyReview.test.mjs (57/57 pass), tests/control-plane/evolutionGovernor.test.mjs (52/52 pass) and the five feed defect-fix test files via 'node --import tsx --test' (26/26 pass) at origin/main HEAD 2eb18ccecaf5950fc322ee8bf92987fa0bb8e2bd on 2026-08-28. No production/runtime business observation (fills, fees, settlement, or a live producer run) was collected this cycle."
+}
