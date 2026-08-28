@@ -306,7 +306,7 @@ test('the CLI preparation path is directly runnable from canonical persisted Cyc
   assert.equal(run.status, 0, run.stderr);
   const prepared = JSON.parse(run.stdout);
   assert.equal(prepared.command_id, 'premvp.command.evolution_govern.v1');
-  assert.equal(prepared.eligibility.new_validated_cycle_count, 1);
+  assert.equal(prepared.eligibility.new_validated_cycle_count, 0);
   assert.equal(prepared.terminal_disposition, 'EVIDENCE_INSUFFICIENT');
 });
 
@@ -667,9 +667,15 @@ test('every Stage 2 Governor artifact another session needs is present and machi
   assert.ok(fs.existsSync(path.join(REPO_ROOT, EVOLUTION_DIR, 'roadmap-proposals/README.md')));
 });
 
-test('Stage 2 ships no historical Governor result — roadmap-proposals/ holds only its placeholder', () => {
-  const entries = fs.readdirSync(path.join(REPO_ROOT, EVOLUTION_DIR, 'roadmap-proposals'));
-  assert.deepEqual(entries.filter((f) => f.endsWith('.json')), []);
+test('every persisted Governor result validates against the canonical contract', () => {
+  const resultsDir = path.join(REPO_ROOT, EVOLUTION_DIR, 'roadmap-proposals');
+  const jsonFiles = fs.readdirSync(resultsDir).filter((f) => f.endsWith('.json'));
+  for (const file of jsonFiles) {
+    const result = JSON.parse(fs.readFileSync(path.join(resultsDir, file), 'utf8'));
+    const validation = validateGovernorResult(result);
+    assert.equal(validation.ok, true, `${file} violates the canonical contract: ${validation.errors.join('; ')}`);
+    assert.equal(`${result.result_id}.json`, file, `${file} must be named after its own result_id`);
+  }
 });
 
 test('a schedule manifest exists, parses, and does not invent a registered scheduler', () => {

@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.1",
+  "result_id": "2026-08-28__automation-roadmap-governor-run",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "runtime-selected (see claude.ai/code session details)",
+    "prompt_id": "premvp.prompt.automation_roadmap_governor.v1"
+  },
+  "generated_at": "2026-08-28T02:04:00Z",
+  "terminal_disposition": "EVIDENCE_INSUFFICIENT",
+  "eligibility": {
+    "eligible": false,
+    "reason": "с прошлого запуска Governor накопился только 1 новый провалидированный цикл (минимум — 3), и недельная граница ещё не наступлена — доказательств недостаточно для полноценного разбора",
+    "based_on_cycles": [
+      "2026-08-25__evolution-canonical-cycle"
+    ],
+    "new_validated_cycle_count": 1,
+    "weekly_boundary_reached": false
+  },
+  "findings": {
+    "axis_b_advancement": {
+      "statement": "Пока сохранён только один цикл Evolution, а прошлых запусков Governor не было. Один цикл не может показать изменение между периодами — нужно минимум два сравнимых цикла. Внутри этого единственного цикла Ось B получила вердикт CAPABILITY_ADDED (PR#182 / коммит d4baeb4), но задача Governor — сравнение между циклами, а для него истории пока не хватает.",
+      "verdict": "NO_MEASURABLE_CHANGE",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/cycles/2026-08-25__evolution-canonical-cycle.json",
+        "docs/ai-context/control-plane/evolution/roadmap-proposals/ (empty prior to this run)"
+      ]
+    },
+    "axis_a_support_or_distraction": {
+      "statement": "При одном цикле и без прошлой базы Governor нет оснований утверждать, помогала ли автоматизация запуску, выручке, расчётам или сверенному PnL между периодами. Сам этот цикл оценил Ось A как NOT_ENOUGH_EVIDENCE — доказательств запуска и бизнес-эффекта пока нет.",
+      "verdict": "NOT_ENOUGH_EVIDENCE",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/cycles/2026-08-25__evolution-canonical-cycle.json"
+      ]
+    },
+    "repeated_problems": [],
+    "experiments_with_evidence": [],
+    "founder_skills_practiced": [],
+    "automation_decisions": [],
+    "roadmap_on_course": {
+      "statement": "В AUTOMATION_ROADMAP.yaml Stage 2 помечен как IMPLEMENTED_NOT_YET_EXERCISED, условие входа ещё не выполнено (нужно минимум два сравнимых цикла). Циклов пока один, значит условие не выполнено — этот запуск первый реальный прогон инструментов Stage 2, и он честно даёт EVIDENCE_INSUFFICIENT вместо выдуманного сравнения. Roadmap идёт по плану, отклонения нет.",
+      "on_course": true
+    },
+    "roadmap_delta_justified": false
+  },
+  "roadmap_delta": null,
+  "roadmap_factual_updates": {
+    "role": "FACTUAL_ONLY",
+    "last_evaluated_at": "2026-08-28T02:04:00Z",
+    "cycle_count": 1
+  },
+  "founder_report_ref": "docs/ai-context/control-plane/evolution/roadmap-proposals/2026-08-28__automation-roadmap-governor-run.report.md",
+  "next_step": "Продолжать ежедневный Daily Evolution Review, пока не накопится минимум 3 новых провалидированных цикла, затем повторить запуск Governor. Инвестиций в автоматизацию сейчас нет — прямая продуктовая работа над расчётами и сверенным PnL сейчас важнее.",
+  "accepted": false
+}
