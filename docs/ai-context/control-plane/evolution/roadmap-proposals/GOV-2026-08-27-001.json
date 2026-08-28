@@ -1,0 +1,51 @@
+{
+  "schema_version": "1.1",
+  "result_id": "GOV-2026-08-27-001",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "runtime-selected-cloud-session",
+    "prompt_id": "premvp.prompt.automation_roadmap_governor.v1"
+  },
+  "generated_at": "2026-08-27T00:00:00Z",
+  "terminal_disposition": "EVIDENCE_INSUFFICIENT",
+  "eligibility": {
+    "eligible": false,
+    "reason": "only 1 new validated cycle(s) (minimum 3) and the weekly boundary has not been reached — insufficient evidence for a Governor run",
+    "based_on_cycles": [
+      "2026-08-25__evolution-canonical-cycle"
+    ],
+    "new_validated_cycle_count": 1,
+    "weekly_boundary_reached": false
+  },
+  "findings": {
+    "axis_b_advancement": {
+      "statement": "Only one canonical Evolution Cycle exists (2026-08-25__evolution-canonical-cycle). One cycle is an observation, not a cross-cycle pattern — no Axis B advancement claim across periods can be supported.",
+      "verdict": "NO_MEASURABLE_CHANGE",
+      "evidence_refs": []
+    },
+    "axis_a_support_or_distraction": {
+      "statement": "With only one cycle, whether automation activity supported or distracted from Axis A cannot be compared across periods.",
+      "verdict": "NOT_ENOUGH_EVIDENCE",
+      "evidence_refs": []
+    },
+    "repeated_problems": [],
+    "experiments_with_evidence": [],
+    "founder_skills_practiced": [],
+    "automation_decisions": [],
+    "roadmap_on_course": {
+      "statement": "Stage 2 (Automation Roadmap and governance) status_note in AUTOMATION_ROADMAP.yaml already records IMPLEMENTED_NOT_YET_EXERCISED with entry_condition_met: false. This run confirms that state — the eligibility gate itself is functioning as designed and no drift from the approved roadmap is observed.",
+      "on_course": true
+    },
+    "roadmap_delta_justified": false
+  },
+  "roadmap_delta": null,
+  "roadmap_factual_updates": {
+    "role": "FACTUAL_ONLY",
+    "last_evaluated_at": "2026-08-27T00:00:00Z",
+    "cycle_count": 1
+  },
+  "founder_report_ref": null,
+  "next_step": "Continue direct product work on the execution → callback → terminal state → settlement → fees → reconciled PnL path. Re-run this Governor once at least two more validated Evolution Cycles are persisted under evolution/cycles/ (three total), or once the configured weekly boundary is reached — whichever comes first.",
+  "accepted": false
+}
