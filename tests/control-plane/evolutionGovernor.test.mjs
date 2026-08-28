@@ -17,6 +17,7 @@ import {
   ELIGIBILITY_MIN_NEW_CYCLES,
   TERMINAL_DISPOSITIONS,
   discoverCanonicalEvolutionCycles,
+  discoverPersistedGovernorResults,
   normalizeCycleTelemetry,
   prepareGovernorEvidence,
 } from '../../scripts/control-plane/lib/evolution-governor.mjs';
@@ -183,13 +184,13 @@ test('eligibility never invents evidence for a missing input', () => {
 // Canonical persisted history and telemetry preparation
 // ---------------------------------------------------------------------------------------
 
-test('the Governor discovers and validates the real canonical persisted Cycle history', () => {
+test('the Governor discovers and validates canonical persisted Cycle history without cardinality assumptions', () => {
   const cyclesDir = path.join(REPO_ROOT, EVOLUTION_DIR, 'cycles');
   const discovered = discoverCanonicalEvolutionCycles(cyclesDir);
   assert.equal(discovered.ok, true, discovered.errors.join('\n'));
-  assert.deepEqual(discovered.cycles.map((cycle) => cycle.cycle_id), [
-    '2026-08-25__evolution-canonical-cycle',
-  ]);
+  for (const cycle of discovered.cycles) {
+    assert.ok(discovered.files.includes(`${cycle.cycle_id}.json`));
+  }
 });
 
 test('canonical discovery fails closed when any consumed Cycle fails the existing Evolution validator', () => {
@@ -270,16 +271,16 @@ test('v1.1 telemetry exposes Founder actions, recovery, defect origin/recurrence
   assert.equal(telemetry.proven_effective_fixes, 1);
 });
 
-test('the current one-Cycle canonical history prepares EVIDENCE_INSUFFICIENT without supplied cycle ids', () => {
+test('canonical history preparation derives its evidence from every unconsumed persisted Cycle', () => {
   const cyclesDir = path.join(REPO_ROOT, EVOLUTION_DIR, 'cycles');
   const discovered = discoverCanonicalEvolutionCycles(cyclesDir);
   assert.equal(discovered.ok, true, discovered.errors.join('\n'));
+  const canonicalCycleIds = discovered.cycles.map((cycle) => cycle.cycle_id);
   const prepared = prepareGovernorEvidence({ cycles: discovered.cycles, priorGovernorResults: [] });
-  assert.equal(prepared.eligibility.eligible, false);
-  assert.equal(prepared.eligibility.new_validated_cycle_count, 1);
-  assert.deepEqual(prepared.eligibility.based_on_cycles, ['2026-08-25__evolution-canonical-cycle']);
-  assert.equal(prepared.terminal_disposition, 'EVIDENCE_INSUFFICIENT');
-  assert.equal(prepared.cycle_evidence[0].telemetry.executor_runs, 'UNKNOWN');
+  assert.equal(prepared.history.canonical_cycle_count, canonicalCycleIds.length);
+  assert.equal(prepared.eligibility.new_validated_cycle_count, canonicalCycleIds.length);
+  assert.deepEqual(prepared.eligibility.based_on_cycles, canonicalCycleIds);
+  assert.deepEqual(prepared.cycle_evidence.map((cycle) => cycle.cycle_id), canonicalCycleIds);
 });
 
 test('weekly eligibility is derived from persisted Governor history and Cycle periods', () => {
@@ -305,9 +306,21 @@ test('the CLI preparation path is directly runnable from canonical persisted Cyc
   });
   assert.equal(run.status, 0, run.stderr);
   const prepared = JSON.parse(run.stdout);
+  const cycles = discoverCanonicalEvolutionCycles(path.join(REPO_ROOT, EVOLUTION_DIR, 'cycles'));
+  const priorResults = discoverPersistedGovernorResults(path.join(REPO_ROOT, EVOLUTION_DIR, 'roadmap-proposals'));
+  assert.equal(cycles.ok, true, cycles.errors.join('\n'));
+  assert.equal(priorResults.ok, true, priorResults.errors.join('\n'));
+  const consumedCycleIds = new Set(priorResults.results.flatMap((result) => result.eligibility.based_on_cycles));
+  const unconsumedCycleIds = cycles.cycles
+    .filter((cycle) => !consumedCycleIds.has(cycle.cycle_id))
+    .map((cycle) => cycle.cycle_id);
   assert.equal(prepared.command_id, 'premvp.command.evolution_govern.v1');
-  assert.equal(prepared.eligibility.new_validated_cycle_count, 1);
-  assert.equal(prepared.terminal_disposition, 'EVIDENCE_INSUFFICIENT');
+  assert.equal(prepared.history.canonical_cycle_count, cycles.cycles.length);
+  assert.equal(prepared.history.prior_governor_result_count, priorResults.results.length);
+  assert.equal(prepared.eligibility.new_validated_cycle_count, unconsumedCycleIds.length);
+  assert.deepEqual(prepared.eligibility.based_on_cycles, unconsumedCycleIds);
+  assert.deepEqual(prepared.cycle_evidence.map((cycle) => cycle.cycle_id), unconsumedCycleIds);
+  assert.equal(prepared.terminal_disposition, prepared.eligibility.eligible ? null : 'EVIDENCE_INSUFFICIENT');
 });
 
 // ---------------------------------------------------------------------------------------
@@ -667,9 +680,41 @@ test('every Stage 2 Governor artifact another session needs is present and machi
   assert.ok(fs.existsSync(path.join(REPO_ROOT, EVOLUTION_DIR, 'roadmap-proposals/README.md')));
 });
 
-test('Stage 2 ships no historical Governor result — roadmap-proposals/ holds only its placeholder', () => {
-  const entries = fs.readdirSync(path.join(REPO_ROOT, EVOLUTION_DIR, 'roadmap-proposals'));
-  assert.deepEqual(entries.filter((f) => f.endsWith('.json')), []);
+test('persisted Governor result discovery accepts growing valid history and rejects malformed or duplicate results', () => {
+  const resultsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'governor-result-history-'));
+  try {
+    assert.deepEqual(discoverPersistedGovernorResults(resultsDir), {
+      ok: true,
+      results: [],
+      files: [],
+      errors: [],
+    });
+
+    const first = ineligibleResultFixture();
+    fs.writeFileSync(path.join(resultsDir, `${first.result_id}.json`), JSON.stringify(first));
+    let discovered = discoverPersistedGovernorResults(resultsDir);
+    assert.equal(discovered.ok, true, discovered.errors.join('\n'));
+    assert.deepEqual(discovered.results.map((result) => result.result_id), [first.result_id]);
+
+    const second = eligibleResultFixture();
+    fs.writeFileSync(path.join(resultsDir, `${second.result_id}.json`), JSON.stringify(second));
+    discovered = discoverPersistedGovernorResults(resultsDir);
+    assert.equal(discovered.ok, true, discovered.errors.join('\n'));
+    assert.deepEqual(discovered.results.map((result) => result.result_id), [second.result_id, first.result_id]);
+
+    fs.writeFileSync(path.join(resultsDir, 'duplicate-id.json'), JSON.stringify({ ...first, result_id: second.result_id }));
+    discovered = discoverPersistedGovernorResults(resultsDir);
+    assert.equal(discovered.ok, false);
+    assert.ok(discovered.errors.some((error) => error.includes(`duplicate Governor result_id ${second.result_id}`)));
+
+    fs.rmSync(path.join(resultsDir, 'duplicate-id.json'));
+    fs.writeFileSync(path.join(resultsDir, 'malformed.json'), '{');
+    discovered = discoverPersistedGovernorResults(resultsDir);
+    assert.equal(discovered.ok, false);
+    assert.ok(discovered.errors.some((error) => error.includes('malformed.json: invalid JSON')));
+  } finally {
+    fs.rmSync(resultsDir, { recursive: true, force: true });
+  }
 });
 
 test('a schedule manifest exists, parses, and does not invent a registered scheduler', () => {
