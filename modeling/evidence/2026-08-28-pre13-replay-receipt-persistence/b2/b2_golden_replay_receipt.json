@@ -1,0 +1,731 @@
+{
+  "schemaVersion": 1,
+  "engineVersion": "4B.2A-bounded-routing-experiments-v1",
+  "corpusSummary": {
+    "rawRowCount": 49400,
+    "strictDedupRowCount": 1850,
+    "droppedDuplicateRows": 47550,
+    "strictDedupPolicy": "strict_latest_created_before_resolved"
+  },
+  "evidenceProvenance": {
+    "contentHash": "5b50a3de8a48d36a41bfe9a79fc968e1f566694d82ce04fecc78ee3b71331d39",
+    "rawRowCount": 49400,
+    "strictDedupRowCount": 1850,
+    "strictDedupPolicy": "strict_latest_created_before_resolved"
+  },
+  "candidateBudget": {
+    "baseComparators": 1,
+    "candidates": 3,
+    "frozen": true
+  },
+  "baseComparator": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+  "candidateDefinitions": [
+    {
+      "id": "B2_PRICE_FLOOR_030",
+      "parentId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "addedConditions": [
+        "finite entry_price_num with 0 < price <= 1 and price >= 0.30 (missing/invalid fails closed)"
+      ]
+    },
+    {
+      "id": "B2_TIMING_WITHIN_120M",
+      "parentId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "addedConditions": [
+        "known canonical event start with 0 <= hoursUntilStart < 2 (unknown/already-started fails closed; never resolved_at)"
+      ]
+    },
+    {
+      "id": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      "parentId": "B2_PRICE_FLOOR_030",
+      "addedConditions": [
+        "known canonical event start with 0 <= hoursUntilStart < 2 (unknown/already-started fails closed; never resolved_at)"
+      ]
+    }
+  ],
+  "baseMetrics": {
+    "id": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+    "selectedObservations": 877,
+    "wins": 405,
+    "losses": 472,
+    "voidOrInvalid": 0,
+    "winRate": 46.18016,
+    "flatUnitPnl": 62.4067,
+    "flatUnitRoi": 7.115929,
+    "maximumDrawdownUnits": 30.5632,
+    "longestLosingStreak": 10,
+    "workingEventGroups": 612,
+    "maximumSignalsPerWorkingEvent": 6,
+    "averageEntryPrice": 0.431157,
+    "timingCoveredRows": 757,
+    "timingCoveragePct": 86.31699,
+    "selectionHash": "5d07642123942c0497ef3395edacf9a7ab943a7b37ec0b0dbf29e12a0978d251"
+  },
+  "candidateMetrics": [
+    {
+      "id": "B2_PRICE_FLOOR_030",
+      "selectedObservations": 835,
+      "wins": 399,
+      "losses": 436,
+      "voidOrInvalid": 0,
+      "winRate": 47.784431,
+      "flatUnitPnl": 79.9018,
+      "flatUnitRoi": 9.569078,
+      "maximumDrawdownUnits": 18.8387,
+      "longestLosingStreak": 8,
+      "workingEventGroups": 576,
+      "maximumSignalsPerWorkingEvent": 6,
+      "averageEntryPrice": 0.440048,
+      "timingCoveredRows": 722,
+      "timingCoveragePct": 86.467066,
+      "selectionHash": "83d55f21befe8fe4403086ea99081a9377cab4ad6e0efb01440a57ca4192c944"
+    },
+    {
+      "id": "B2_TIMING_WITHIN_120M",
+      "selectedObservations": 581,
+      "wins": 282,
+      "losses": 299,
+      "voidOrInvalid": 0,
+      "winRate": 48.537005,
+      "flatUnitPnl": 76.3401,
+      "flatUnitRoi": 13.139432,
+      "maximumDrawdownUnits": 16.6305,
+      "longestLosingStreak": 8,
+      "workingEventGroups": 423,
+      "maximumSignalsPerWorkingEvent": 4,
+      "averageEntryPrice": 0.432429,
+      "timingCoveredRows": 581,
+      "timingCoveragePct": 100,
+      "selectionHash": "997fcbe5476194813dae9153ed52b5b6229199833a910442e6edebe120dad573"
+    },
+    {
+      "id": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      "selectedObservations": 560,
+      "wins": 278,
+      "losses": 282,
+      "voidOrInvalid": 0,
+      "winRate": 49.642857,
+      "flatUnitPnl": 82.5912,
+      "flatUnitRoi": 14.748429,
+      "maximumDrawdownUnits": 14.6305,
+      "longestLosingStreak": 7,
+      "workingEventGroups": 407,
+      "maximumSignalsPerWorkingEvent": 4,
+      "averageEntryPrice": 0.438975,
+      "timingCoveredRows": 560,
+      "timingCoveragePct": 100,
+      "selectionHash": "0f9368b7e5aa10a33220b42db8670e84aa7787a3e089629ded8dd7dc0735a03f"
+    }
+  ],
+  "parentComparisons": [
+    {
+      "candidateId": "B2_PRICE_FLOOR_030",
+      "againstId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "deltaN": -42,
+      "deltaPnl": 17.4951,
+      "deltaRoiPercentagePoints": 2.453149,
+      "deltaMaxDrawdownUnits": -11.7245,
+      "deltaLongestLosingStreak": -2,
+      "deltaEventGroups": -36,
+      "deltaMaximumSignalsPerEvent": 0
+    },
+    {
+      "candidateId": "B2_TIMING_WITHIN_120M",
+      "againstId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "deltaN": -296,
+      "deltaPnl": 13.9334,
+      "deltaRoiPercentagePoints": 6.023503,
+      "deltaMaxDrawdownUnits": -13.9327,
+      "deltaLongestLosingStreak": -2,
+      "deltaEventGroups": -189,
+      "deltaMaximumSignalsPerEvent": -2
+    },
+    {
+      "candidateId": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      "againstId": "B2_PRICE_FLOOR_030",
+      "deltaN": -275,
+      "deltaPnl": 2.6894,
+      "deltaRoiPercentagePoints": 5.179351,
+      "deltaMaxDrawdownUnits": -4.2082,
+      "deltaLongestLosingStreak": -1,
+      "deltaEventGroups": -169,
+      "deltaMaximumSignalsPerEvent": -2
+    }
+  ],
+  "baseComparisons": [
+    {
+      "candidateId": "B2_PRICE_FLOOR_030",
+      "againstId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "deltaN": -42,
+      "deltaPnl": 17.4951,
+      "deltaRoiPercentagePoints": 2.453149,
+      "deltaMaxDrawdownUnits": -11.7245,
+      "deltaLongestLosingStreak": -2,
+      "deltaEventGroups": -36,
+      "deltaMaximumSignalsPerEvent": 0
+    },
+    {
+      "candidateId": "B2_TIMING_WITHIN_120M",
+      "againstId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "deltaN": -296,
+      "deltaPnl": 13.9334,
+      "deltaRoiPercentagePoints": 6.023503,
+      "deltaMaxDrawdownUnits": -13.9327,
+      "deltaLongestLosingStreak": -2,
+      "deltaEventGroups": -189,
+      "deltaMaximumSignalsPerEvent": -2
+    },
+    {
+      "candidateId": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      "againstId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "deltaN": -317,
+      "deltaPnl": 20.1845,
+      "deltaRoiPercentagePoints": 7.6325,
+      "deltaMaxDrawdownUnits": -15.9327,
+      "deltaLongestLosingStreak": -3,
+      "deltaEventGroups": -205,
+      "deltaMaximumSignalsPerEvent": -2
+    }
+  ],
+  "removedRowAttribution": [
+    {
+      "candidateId": "B2_PRICE_FLOOR_030",
+      "parentId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "removedObservations": 42,
+      "removedPnl": -17.4951,
+      "removedRoi": -41.655,
+      "removedWins": 6,
+      "removedLosses": 36,
+      "removedMaximumDrawdownUnits": 25.8415,
+      "removedLongestLosingStreak": 13,
+      "byPriceBand": [
+        {
+          "key": "PRICE_BELOW_0_30",
+          "observations": 42
+        }
+      ],
+      "byFineTimingBucket": [
+        {
+          "key": "T_0_TO_30M",
+          "observations": 16
+        },
+        {
+          "key": "T_12_TO_24H",
+          "observations": 7
+        },
+        {
+          "key": "T_120_TO_180M",
+          "observations": 2
+        },
+        {
+          "key": "T_24_TO_48H",
+          "observations": 1
+        },
+        {
+          "key": "T_3_TO_6H",
+          "observations": 1
+        },
+        {
+          "key": "T_30_TO_60M",
+          "observations": 2
+        },
+        {
+          "key": "T_6_TO_12H",
+          "observations": 3
+        },
+        {
+          "key": "T_60_TO_120M",
+          "observations": 3
+        },
+        {
+          "key": "UNKNOWN_START_TIME",
+          "observations": 7
+        }
+      ],
+      "byScoreBand": [
+        {
+          "key": "SCORE_65_TO_71_99",
+          "observations": 41
+        },
+        {
+          "key": "SCORE_72_TO_79_99",
+          "observations": 1
+        }
+      ],
+      "byCoverageBand": [
+        {
+          "key": "COVERAGE_50_TO_74",
+          "observations": 14
+        },
+        {
+          "key": "COVERAGE_75_TO_89",
+          "observations": 28
+        }
+      ],
+      "bySport": [
+        {
+          "key": "OTHER",
+          "observations": 33
+        },
+        {
+          "key": "tennis",
+          "observations": 9
+        }
+      ],
+      "byMarketFamily": [
+        {
+          "key": "MATCH_WINNER_OR_MONEYLINE",
+          "observations": 42
+        }
+      ],
+      "bySingleVsMultiSignalEvent": [
+        {
+          "key": "SINGLE_SIGNAL_EVENT",
+          "observations": 42
+        }
+      ]
+    },
+    {
+      "candidateId": "B2_TIMING_WITHIN_120M",
+      "parentId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "removedObservations": 296,
+      "removedPnl": -13.9334,
+      "removedRoi": -4.70723,
+      "removedWins": 123,
+      "removedLosses": 173,
+      "removedMaximumDrawdownUnits": 29.4527,
+      "removedLongestLosingStreak": 5,
+      "byPriceBand": [
+        {
+          "key": "PRICE_0_30_TO_0_43",
+          "observations": 113
+        },
+        {
+          "key": "PRICE_0_44_TO_0_58",
+          "observations": 162
+        },
+        {
+          "key": "PRICE_BELOW_0_30",
+          "observations": 21
+        }
+      ],
+      "byFineTimingBucket": [
+        {
+          "key": "T_12_TO_24H",
+          "observations": 61
+        },
+        {
+          "key": "T_120_TO_180M",
+          "observations": 19
+        },
+        {
+          "key": "T_24_TO_48H",
+          "observations": 15
+        },
+        {
+          "key": "T_3_TO_6H",
+          "observations": 23
+        },
+        {
+          "key": "T_48H_PLUS",
+          "observations": 15
+        },
+        {
+          "key": "T_6_TO_12H",
+          "observations": 43
+        },
+        {
+          "key": "UNKNOWN_START_TIME",
+          "observations": 120
+        }
+      ],
+      "byScoreBand": [
+        {
+          "key": "SCORE_65_TO_71_99",
+          "observations": 211
+        },
+        {
+          "key": "SCORE_72_TO_79_99",
+          "observations": 82
+        },
+        {
+          "key": "SCORE_80_PLUS",
+          "observations": 3
+        }
+      ],
+      "byCoverageBand": [
+        {
+          "key": "COVERAGE_50_TO_74",
+          "observations": 138
+        },
+        {
+          "key": "COVERAGE_75_TO_89",
+          "observations": 158
+        }
+      ],
+      "bySport": [
+        {
+          "key": "basketball",
+          "observations": 6
+        },
+        {
+          "key": "hockey",
+          "observations": 1
+        },
+        {
+          "key": "OTHER",
+          "observations": 254
+        },
+        {
+          "key": "tennis",
+          "observations": 35
+        }
+      ],
+      "byMarketFamily": [
+        {
+          "key": "MATCH_WINNER_OR_MONEYLINE",
+          "observations": 296
+        }
+      ],
+      "bySingleVsMultiSignalEvent": [
+        {
+          "key": "MULTI_SIGNAL_EVENT",
+          "observations": 79
+        },
+        {
+          "key": "SINGLE_SIGNAL_EVENT",
+          "observations": 217
+        }
+      ]
+    },
+    {
+      "candidateId": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      "parentId": "B2_PRICE_FLOOR_030",
+      "removedObservations": 275,
+      "removedPnl": -2.6894,
+      "removedRoi": -0.977964,
+      "removedWins": 121,
+      "removedLosses": 154,
+      "removedMaximumDrawdownUnits": 19.8648,
+      "removedLongestLosingStreak": 5,
+      "byPriceBand": [
+        {
+          "key": "PRICE_0_30_TO_0_43",
+          "observations": 113
+        },
+        {
+          "key": "PRICE_0_44_TO_0_58",
+          "observations": 162
+        }
+      ],
+      "byFineTimingBucket": [
+        {
+          "key": "T_12_TO_24H",
+          "observations": 54
+        },
+        {
+          "key": "T_120_TO_180M",
+          "observations": 17
+        },
+        {
+          "key": "T_24_TO_48H",
+          "observations": 14
+        },
+        {
+          "key": "T_3_TO_6H",
+          "observations": 22
+        },
+        {
+          "key": "T_48H_PLUS",
+          "observations": 15
+        },
+        {
+          "key": "T_6_TO_12H",
+          "observations": 40
+        },
+        {
+          "key": "UNKNOWN_START_TIME",
+          "observations": 113
+        }
+      ],
+      "byScoreBand": [
+        {
+          "key": "SCORE_65_TO_71_99",
+          "observations": 190
+        },
+        {
+          "key": "SCORE_72_TO_79_99",
+          "observations": 82
+        },
+        {
+          "key": "SCORE_80_PLUS",
+          "observations": 3
+        }
+      ],
+      "byCoverageBand": [
+        {
+          "key": "COVERAGE_50_TO_74",
+          "observations": 127
+        },
+        {
+          "key": "COVERAGE_75_TO_89",
+          "observations": 148
+        }
+      ],
+      "bySport": [
+        {
+          "key": "basketball",
+          "observations": 6
+        },
+        {
+          "key": "hockey",
+          "observations": 1
+        },
+        {
+          "key": "OTHER",
+          "observations": 240
+        },
+        {
+          "key": "tennis",
+          "observations": 28
+        }
+      ],
+      "byMarketFamily": [
+        {
+          "key": "MATCH_WINNER_OR_MONEYLINE",
+          "observations": 275
+        }
+      ],
+      "bySingleVsMultiSignalEvent": [
+        {
+          "key": "MULTI_SIGNAL_EVENT",
+          "observations": 79
+        },
+        {
+          "key": "SINGLE_SIGNAL_EVENT",
+          "observations": 196
+        }
+      ]
+    }
+  ],
+  "duplicateAnalysis": [
+    {
+      "candidateId": "B2_PRICE_FLOOR_030",
+      "selectionHash": "83d55f21befe8fe4403086ea99081a9377cab4ad6e0efb01440a57ca4192c944",
+      "status": "UNIQUE_SELECTION",
+      "duplicateOf": null
+    },
+    {
+      "candidateId": "B2_TIMING_WITHIN_120M",
+      "selectionHash": "997fcbe5476194813dae9153ed52b5b6229199833a910442e6edebe120dad573",
+      "status": "UNIQUE_SELECTION",
+      "duplicateOf": null
+    },
+    {
+      "candidateId": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      "selectionHash": "0f9368b7e5aa10a33220b42db8670e84aa7787a3e089629ded8dd7dc0735a03f",
+      "status": "UNIQUE_SELECTION",
+      "duplicateOf": null
+    }
+  ],
+  "timingSensitivity": {
+    "subWindows": [
+      {
+        "bucket": "T_0_TO_30M",
+        "metrics": {
+          "observations": 488,
+          "wins": 234,
+          "losses": 254,
+          "voidOrInvalid": 0,
+          "winRate": 47.950819672131146,
+          "flatUnitPnl": 60.872800000000055,
+          "flatUnitRoi": 12.473934426229519,
+          "uniqueMarkets": 484,
+          "workingEventGroups": 366,
+          "maximumSignalsPerWorkingEvent": 4,
+          "maximumDrawdownUnits": 23.60260000000001,
+          "longestLosingStreak": 11,
+          "sampleClass": "ROBUST"
+        }
+      },
+      {
+        "bucket": "T_30_TO_60M",
+        "metrics": {
+          "observations": 50,
+          "wins": 22,
+          "losses": 28,
+          "voidOrInvalid": 0,
+          "winRate": 44,
+          "flatUnitPnl": -1.2771999999999992,
+          "flatUnitRoi": -2.5543999999999984,
+          "uniqueMarkets": 50,
+          "workingEventGroups": 49,
+          "maximumSignalsPerWorkingEvent": 2,
+          "maximumDrawdownUnits": 6.9798,
+          "longestLosingStreak": 4,
+          "sampleClass": "MODERATE"
+        }
+      },
+      {
+        "bucket": "T_60_TO_120M",
+        "metrics": {
+          "observations": 43,
+          "wins": 26,
+          "losses": 17,
+          "voidOrInvalid": 0,
+          "winRate": 60.46511627906976,
+          "flatUnitPnl": 16.744500000000002,
+          "flatUnitRoi": 38.940697674418615,
+          "uniqueMarkets": 42,
+          "workingEventGroups": 41,
+          "maximumSignalsPerWorkingEvent": 2,
+          "maximumDrawdownUnits": 3.6471,
+          "longestLosingStreak": 3,
+          "sampleClass": "MODERATE"
+        }
+      },
+      {
+        "bucket": "T_120_TO_180M",
+        "metrics": {
+          "observations": 19,
+          "wins": 7,
+          "losses": 12,
+          "voidOrInvalid": 0,
+          "winRate": 36.84210526315789,
+          "flatUnitPnl": -0.9691999999999996,
+          "flatUnitRoi": -5.101052631578945,
+          "uniqueMarkets": 19,
+          "workingEventGroups": 19,
+          "maximumSignalsPerWorkingEvent": 1,
+          "maximumDrawdownUnits": 7.9798,
+          "longestLosingStreak": 7,
+          "sampleClass": "LOW"
+        }
+      }
+    ],
+    "cumulativeGates": [
+      {
+        "gate": "WITHIN_30M",
+        "metrics": {
+          "observations": 488,
+          "wins": 234,
+          "losses": 254,
+          "voidOrInvalid": 0,
+          "winRate": 47.950819672131146,
+          "flatUnitPnl": 60.872800000000055,
+          "flatUnitRoi": 12.473934426229519,
+          "uniqueMarkets": 484,
+          "workingEventGroups": 366,
+          "maximumSignalsPerWorkingEvent": 4,
+          "maximumDrawdownUnits": 23.60260000000001,
+          "longestLosingStreak": 11,
+          "sampleClass": "ROBUST"
+        }
+      },
+      {
+        "gate": "WITHIN_60M",
+        "metrics": {
+          "observations": 538,
+          "wins": 256,
+          "losses": 282,
+          "voidOrInvalid": 0,
+          "winRate": 47.58364312267658,
+          "flatUnitPnl": 59.595600000000054,
+          "flatUnitRoi": 11.07724907063198,
+          "uniqueMarkets": 526,
+          "workingEventGroups": 400,
+          "maximumSignalsPerWorkingEvent": 4,
+          "maximumDrawdownUnits": 20.791100000000014,
+          "longestLosingStreak": 10,
+          "sampleClass": "ROBUST"
+        }
+      },
+      {
+        "gate": "WITHIN_120M",
+        "metrics": {
+          "observations": 581,
+          "wins": 282,
+          "losses": 299,
+          "voidOrInvalid": 0,
+          "winRate": 48.53700516351119,
+          "flatUnitPnl": 76.34010000000004,
+          "flatUnitRoi": 13.139432013769369,
+          "uniqueMarkets": 562,
+          "workingEventGroups": 423,
+          "maximumSignalsPerWorkingEvent": 4,
+          "maximumDrawdownUnits": 16.630500000000012,
+          "longestLosingStreak": 8,
+          "sampleClass": "ROBUST"
+        }
+      },
+      {
+        "gate": "WITHIN_180M",
+        "metrics": {
+          "observations": 600,
+          "wins": 289,
+          "losses": 311,
+          "voidOrInvalid": 0,
+          "winRate": 48.16666666666667,
+          "flatUnitPnl": 75.37090000000006,
+          "flatUnitRoi": 12.561816666666678,
+          "uniqueMarkets": 579,
+          "workingEventGroups": 432,
+          "maximumSignalsPerWorkingEvent": 5,
+          "maximumDrawdownUnits": 16.630500000000012,
+          "longestLosingStreak": 8,
+          "sampleClass": "ROBUST"
+        }
+      }
+    ]
+  },
+  "triage": [
+    {
+      "candidateId": "B2_PRICE_FLOOR_030",
+      "parentId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "status": "ADVANCE_BROAD_FOLLOWUP",
+      "rationale": "N=835, PnL=79.9018, ROI=9.569078, MaxDD=18.8387 vs parent PnL=62.4067, ROI=7.115929, MaxDD=30.5632; unique=true"
+    },
+    {
+      "candidateId": "B2_TIMING_WITHIN_120M",
+      "parentId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "status": "ADVANCE_BROAD_FOLLOWUP",
+      "rationale": "N=581, PnL=76.3401, ROI=13.139432, MaxDD=16.6305 vs parent PnL=62.4067, ROI=7.115929, MaxDD=30.5632; unique=true"
+    },
+    {
+      "candidateId": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      "parentId": "B2_PRICE_FLOOR_030",
+      "status": "ADVANCE_BROAD_FOLLOWUP",
+      "rationale": "N=560, PnL=82.5912, ROI=14.748429, MaxDD=14.6305 vs parent PnL=79.9018, ROI=9.569078, MaxDD=18.8387; unique=true"
+    }
+  ],
+  "nextC1RegistryInputs": [
+    {
+      "candidateId": "B2_PRICE_FLOOR_030",
+      "parentId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "selectionHash": "83d55f21befe8fe4403086ea99081a9377cab4ad6e0efb01440a57ca4192c944",
+      "triageStatus": "ADVANCE_BROAD_FOLLOWUP",
+      "duplicateStatus": "UNIQUE_SELECTION"
+    },
+    {
+      "candidateId": "B2_TIMING_WITHIN_120M",
+      "parentId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+      "selectionHash": "997fcbe5476194813dae9153ed52b5b6229199833a910442e6edebe120dad573",
+      "triageStatus": "ADVANCE_BROAD_FOLLOWUP",
+      "duplicateStatus": "UNIQUE_SELECTION"
+    },
+    {
+      "candidateId": "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M",
+      "parentId": "B2_PRICE_FLOOR_030",
+      "selectionHash": "0f9368b7e5aa10a33220b42db8670e84aa7787a3e089629ded8dd7dc0735a03f",
+      "triageStatus": "ADVANCE_BROAD_FOLLOWUP",
+      "duplicateStatus": "UNIQUE_SELECTION"
+    }
+  ],
+  "limitations": [
+    "HISTORICAL_BOUNDED_EXPERIMENT_ONLY: no Champion, no promotion, no live change",
+    "no permanent strategy/model registry entry created in this phase",
+    "score formula weights unchanged; missing inputs (oddsFit, momentum, liquidity, corpus-absent smart_money/whale_public) not fabricated",
+    "descriptive only: removed-row attribution and timing sensitivity carry no causal claim",
+    "candidates recomputed from canonical raw corpus; B1 evidence numbers are rationale only, never hardcoded"
+  ],
+  "contentHash": "bb4e5319f42773e5f4343b272fc039ae1354f6df4c0702afdd782580bf81d6df"
+}
