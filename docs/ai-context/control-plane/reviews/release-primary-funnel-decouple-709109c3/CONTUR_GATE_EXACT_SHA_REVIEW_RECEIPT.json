@@ -1,0 +1,67 @@
+{
+  "schema_ref": "docs/ai-context/control-plane/COMPLETION_ENVELOPE.schema.json#/definitions/reviewer_receipt",
+  "receipt_kind": "R4_CONTUR_EXACT_SHA_ACCEPTANCE",
+  "issued_at": "2026-08-28T00:00:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "risk_class": "R4_CONTUR_PRODUCTION_BOUNDARY",
+  "review_target": {
+    "candidate_sha": "709109c3ebca81d14dc08efd08336c63ed203870",
+    "pull_request": 201,
+    "feature_branch": "claude/decouple-primary-scoring-from-feed-cap-20260828",
+    "expected_parent": "2b24dff95259c447463fb4e6cc5ff18e9cd0689d",
+    "required_ancestor": "2eb18ccecaf5950fc322ee8bf92987fa0bb8e2bd",
+    "parent_verified": true,
+    "required_ancestor_verified": true,
+    "parent_equals_live_origin_main": true,
+    "parent_equals_production_build_info_sha": true
+  },
+  "reviewer_receipt": {
+    "agent_id": "premvp.reviewer.contur_gate.v1",
+    "implementation_identity": "claude_code_cloud adapter :: project-scoped Agent .claude/agents/contur-gate-reviewer.md",
+    "definition_hash": "sha256:f0e090fc7045adc2b6276ff92e8dc25bc015b79d1d1d48272b06ab4ad1a3153d",
+    "configured_model": "sonnet",
+    "reasoning_policy": "effort:high",
+    "independence_group": "contur_gate",
+    "reviewed_sha": "709109c3ebca81d14dc08efd08336c63ed203870",
+    "verdict": "PASS",
+    "evidence_refs": [
+      "git rev-parse 709109c3ebca81d14dc08efd08336c63ed203870^ == 2b24dff95259c447463fb4e6cc5ff18e9cd0689d",
+      "live origin/main == 2b24dff95259c447463fb4e6cc5ff18e9cd0689d (reviewed_sha parent == live origin/main; clean fast-forward, no rebase divergence)",
+      "production GET https://polypropicks.com/api/build-info commit_sha == 2b24dff95259c447463fb4e6cc5ff18e9cd0689d (production currently runs the exact parent)",
+      "git merge-base --is-ancestor 2eb18ccecaf5950fc322ee8bf92987fa0bb8e2bd 709109c3ebca81d14dc08efd08336c63ed203870 -> exit 0 (PR #197 primary-scorer wall-clock guard baseline is an ancestor)",
+      "gh pr view 201: headRefOid == 709109c3ebca81d14dc08efd08336c63ed203870, mergeable == MERGEABLE, mergeStateStatus == CLEAN, no CI checks configured",
+      "diff --stat 2b24dff..709109c3: 10 files, +1514 / -364; lib/contur3/taxonomy.ts, lib/feed/buildLandingCards.ts, lib/feed/persistPrimarySignalPopulation.ts (new), lib/feed/types.ts, scripts/generate-signals.ts, tests/feed/{canonicalPrimaryPopulationPersistence,primaryCoverageDiagnosticOnly,primaryPhysicalEventRecovery,primaryPopulationDecoupling}.test.ts (new), tests/feed/primarySiblingRecovery.test.ts (rewritten)",
+      "buildLandingCards: limit = clamp(options.limit ?? 4, 1, 15) unchanged; publicPairs.push gated on publicPairs.length < limit; evaluateFullPrimaryPopulation defaults false -> byte-identical legacy path; PRIMARY_SCORER_PROVEN_CAPACITY = 254 and PRIMARY_LOOP_DEFAULT_BUDGET_MS = 360000 (clamp [1000,1800000]) unchanged; conservation sum(primaryTerminalReasonCounts) === primaryCandidatesEntered preserved",
+      "persistPrimarySignalPopulation.ts (new): selectCanonicalPrimaryExtras (identity-diff on conditionId::selectedTokenId) routed through the EXISTING writeGeneratedSignalPairs (metric_formula_version \"v2-lite-growth-safe\" unchanged); extras written first so readLatestGeneratedSignalPairs(<=15) is byte-identical; <=15 qualified -> no extra write",
+      "recovery: selectRecoverablePrimaryMarket; resolvePhysicalMatchIdentity requires both team sets (token overlap) + kickoff day, fail-closed on unparseable; rowIsSamePhysicalEvent applied to both same-provider-event and cross-eventId discovery branches; no provider/network call; AUTHORIZED_RECOVERY_MARKET_TYPES = {moneyline, spread, spreads, total, totals} exact sportsMarketType match on both branches",
+      "lib/contur3/taxonomy.ts ALLOWED_TOTAL_TOKEN adds joined-surface \\bo u \\d; \"O/U 2.5\" -> \"o u 2\" -> allowed_fullmatch_total (existing authorized class, no new family); FORBIDDEN_HALFTIME_SQ / FORBIDDEN_CORNERS_SQ evaluated first so \"1st Half O/U\" and \"O/U Total Corners\" remain forbidden; monitor parity audit unchanged",
+      "primary dataCoverage: hard terminal gate (recordPrimaryTerminal PRIMARY_REJECTED_DATA_COVERAGE_BELOW_THRESHOLD + continue) replaced by diagnostic push to primaryCoverageRejectionValues; minDataCoverage constant/clamp and enrichMarket coverage calc untouched; PRIMARY_REJECTED_DATA_COVERAGE_BELOW_THRESHOLD no longer emitted, grep shows no downstream consumer; coverage 5 + winProb 40 still -> PRIMARY_REJECTED_WIN_PROBABILITY_BELOW_52",
+      "independent test run in isolated worktree pinned to 709109c3 (node --import tsx --test): tests/feed/{primaryPopulationDecoupling,canonicalPrimaryPopulationPersistence,primaryPhysicalEventRecovery,primarySiblingRecovery,primaryCoverageDiagnosticOnly,primaryLoopWallClockGuard,primaryScorerPopulationCap}.test.ts + tests/contur3/{taxonomy.corpus,fullMatchAnchorScope}.test.ts -> tests 64, pass 64, fail 0, exit 0",
+      "docs/ai-context/control-plane/reviews/release-primary-funnel-decouple-709109c3/EXACT_SHA_REVIEW_PACKET.md (this directory)"
+    ]
+  },
+  "acceptance_criteria_result": {
+    "1_reviewed_sha_pinned_and_ancestry": "PASS",
+    "2_public_15_decoupled_from_semantic_evaluation": "PASS",
+    "3_canonical_over_15_qualified_persistence_feed_byte_identical": "PASS",
+    "4_physical_event_scoped_recovery_fail_closed": "PASS",
+    "5_authorized_moneyline_spread_full_match_total_recovery_only": "PASS",
+    "6_contract_a_terse_ou_total_recognition_no_new_family": "PASS",
+    "7_data_coverage_diagnostic_only_no_other_model_authority_change": "PASS",
+    "8_release_eligible_for_production_integration_of_this_exact_sha": "PASS"
+  },
+  "non_blocking_residual": "Full-repo `tsc --noEmit` was not re-run at reviewed_sha in a non-symlinked checkout: the isolated worktree uses a symlinked node_modules that breaks @types/node / node: resolution globally (~4565 spurious errors, environment artifact). tsx execution transpiles without type-checking. Type-check clean on changed/new files is attributed to the prior implementing session. Reviewer verdict: does not contradict any current-scope requirement and does not block.",
+  "product_semantic_delta": "PRIMARY_CANDIDATE_POPULATION_WIDENED_DOWNSTREAM_POLICY_UNCHANGED",
+  "release_eligible": "YES",
+  "current_scope_verdict": "PASS",
+  "next_phase_readiness": "NOT_IN_SCOPE",
+  "final_verdict": "EXACT_SHA_REVIEW_PASS",
+  "outcome_class": "TERMINAL_PASS",
+  "next_phase": {
+    "name": "premvp.release_pipeline.v1",
+    "integration_command": "claude.command.github_pr_merge.v0",
+    "integration_target_pr": 201,
+    "readiness_assessed_here": false,
+    "note": "Release lifecycle INVOKE_REVIEWER may reuse this receipt: reviewed_sha equals the PR #201 head / release result_sha and agent_id matches the R4 required reviewer premvp.reviewer.contur_gate.v1."
+  }
+}
