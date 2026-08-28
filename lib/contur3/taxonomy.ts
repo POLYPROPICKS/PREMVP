@@ -67,7 +67,11 @@ const ALLOWED_MONEYLINE_SQ = /moneyline|matchwinner|towin|matchresult|winner|dra
 const ALLOWED_MONEYLINE_TOKEN = /\bdraw\b/;
 const ALLOWED_SPREAD_SQ = /spread|handicap/;
 const ALLOWED_TOTAL_SQ = /totalgoals|overunder/;
-const ALLOWED_TOTAL_TOKEN = /\bou\b|\btotals?\b|\bover\b|\bunder\b/;
+// `\bo u \d` recognises the terse provider form "O/U 2.5": the tokenizer splits
+// the slash so "O/U" arrives as adjacent tokens `o` `u`, and the trailing digit
+// keeps it from matching stray "o u" prose. Forbidden classes are still tested
+// first, so "1st Half O/U" and "O/U Total Corners" stay forbidden.
+const ALLOWED_TOTAL_TOKEN = /\bou\b|\bo u \d|\btotals?\b|\bover\b|\bunder\b/;
 
 /**
  * Classify raw market/identity text into the canonical market class.

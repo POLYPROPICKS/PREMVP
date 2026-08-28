@@ -353,6 +353,13 @@ export interface LandingCardsResponse {
   researchFunnel?: ResearchFunnelCounters;
   // FireModel1.1 lower-gate research candidates (dataCoverage>=25, score>=50, NOT in public feed)
   firemodel11ResearchCandidates?: LandingCardPair[];
+  // Full canonical-qualified PRIMARY population — the same real semantic gate
+  // chain as `pairs`, run for the whole bounded primary scorer population rather
+  // than stopping at the public presentation cap. Present only when
+  // buildLandingCards is called with evaluateFullPrimaryPopulation: true. `pairs`
+  // stays bounded to the presentation limit; this can be longer. Feeds the
+  // canonical GSP / serving persistence boundary consumed by Contract A / B2.
+  primaryQualifiedPairs?: LandingCardPair[];
 }
 
 // ============================================================================
