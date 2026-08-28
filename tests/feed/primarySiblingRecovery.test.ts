@@ -3,14 +3,20 @@ import assert from "node:assert/strict";
 
 import {
   sampleToCandidateMarket,
-  selectRecoverablePrimarySibling,
+  selectRecoverablePrimaryMarket,
 } from "../../lib/feed/buildLandingCards";
 import type { CandidateMarket } from "../../lib/feed/buildLandingCards";
 import type { SportsDiscoverySample } from "../../lib/feed/types";
 
+// Same-provider-event branch of the physical-event-scoped recovery
+// (`selectRecoverablePrimaryMarket` with an empty universe). This branch
+// SUBSUMES the former moneyline-only same-shard recovery: any binary sibling of
+// the same provider event group is now eligible, still gated by the unchanged
+// selectOutcome price corridor and binary token identity.
+
 type SiblingRaw = NonNullable<SportsDiscoverySample["marketsRaw"]>[number];
 
-function moneyline(conditionId: string, prices: number[], opts?: Partial<SiblingRaw>): SiblingRaw {
+function sib(conditionId: string, prices: number[], opts?: Partial<SiblingRaw>): SiblingRaw {
   return {
     outcomes: ["Team A", "Team B"],
     outcomePrices: prices,
@@ -24,134 +30,77 @@ function moneyline(conditionId: string, prices: number[], opts?: Partial<Sibling
 
 function primaryCandidate(siblings: SiblingRaw[] | undefined): CandidateMarket {
   return {
-    event: {
-      id: "provider-event-1",
-      title: "Team A vs Team B",
-      slug: "team-a-vs-team-b",
-      active: true,
-      closed: false,
-      markets: [],
-      category: "sports",
-    },
+    event: { id: "provider-event-1", title: "Team A vs Team B", slug: "team-a-vs-team-b", active: true, closed: false, markets: [], category: "sports" },
     market: {
-      // representative that is unusable (lopsided, outside corridor)
-      id: "cond-primary",
-      conditionId: "cond-primary",
-      question: "Team A vs Team B",
-      slug: "team-a-vs-team-b",
-      active: true,
-      closed: false,
+      id: "cond-primary", conditionId: "cond-primary", question: "Team A vs Team B", slug: "team-a-vs-team-b",
+      active: true, closed: false,
       outcomes: ["Team A", "Team B"] as unknown as never,
       outcomePrices: [0.97, 0.03] as unknown as never,
       clobTokenIds: ["cond-primary-tokA", "cond-primary-tokB"] as unknown as never,
     },
-    rejectionReasons: [],
-    warnings: [],
-    isSportsRelated: true,
-    isEnded: false,
-    sportsMatchedKeyword: "sports-discovery",
-    siblingMarketsRaw: siblings,
+    rejectionReasons: [], warnings: [], isSportsRelated: true, isEnded: false,
+    sportsMatchedKeyword: "sports-discovery", siblingMarketsRaw: siblings,
   };
 }
 
-test("A. recovers a same-event full-match sibling with valid identity and corridor outcome", () => {
+test("A. recovers a same-provider-event binary sibling with a corridor outcome; identity preserved", () => {
   const candidate = primaryCandidate([
-    moneyline("cond-primary", [0.97, 0.03]), // the representative itself — must be skipped
-    moneyline("cond-ml-sibling", [0.45, 0.55]),
+    sib("cond-primary", [0.97, 0.03]),        // the representative — skipped
+    sib("cond-ml-sibling", [0.45, 0.55]),
   ]);
-
-  const recovered = selectRecoverablePrimarySibling(candidate);
-  assert.ok(recovered, "expected a recovered sibling candidate");
-  assert.equal(recovered!.market.conditionId, "cond-ml-sibling");
-  assert.equal(recovered!.market.id, "cond-ml-sibling");
-  // event identity is preserved from the authoritative physical event
-  assert.equal(recovered!.event.id, "provider-event-1");
-  assert.ok(recovered!.warnings.includes("primary-sibling-recovery"));
+  const r = selectRecoverablePrimaryMarket(candidate);
+  assert.ok(r);
+  assert.equal(r!.recoverySource, "same-provider-event");
+  assert.equal(r!.candidate.market.conditionId, "cond-ml-sibling");
+  assert.equal(r!.forcedOutcome.selectedTokenId, "cond-ml-sibling-tokA"); // 0.45 side, real token
+  assert.equal(r!.forcedOutcome.selectedPriceNum, 0.45);
+  assert.equal(r!.candidate.event.id, "provider-event-1");
+  assert.ok(r!.candidate.warnings.includes("primary-sibling-recovery"));
 });
 
-test("B. fails closed when no sibling satisfies product policy / identity / corridor", () => {
-  // partial-event types with perfectly good corridor prices — still excluded
-  const partialOnly = primaryCandidate([
-    moneyline("cond-half", [0.45, 0.55], { sportsMarketType: "halftime" }),
-    moneyline("cond-spread", [0.5, 0.5], { sportsMarketType: "spread" }),
-    moneyline("cond-total", [0.48, 0.52], { sportsMarketType: "total" }),
-  ]);
-  assert.equal(selectRecoverablePrimarySibling(partialOnly), null);
+test("B. authorized families (moneyline / spread / total) eligible; unauthorized + invalid rejected", () => {
+  // authorized: full-match spread / total
+  assert.equal(selectRecoverablePrimaryMarket(primaryCandidate([sib("cond-sp", [0.44, 0.56], { sportsMarketType: "spreads" })]))!.candidate.market.conditionId, "cond-sp");
+  assert.equal(selectRecoverablePrimaryMarket(primaryCandidate([sib("cond-tot", [0.46, 0.54], { sportsMarketType: "totals" })]))!.candidate.market.conditionId, "cond-tot");
 
-  // full-match sibling but outcome outside the existing price corridor
-  const outOfCorridor = primaryCandidate([moneyline("cond-ml-lopsided", [0.96, 0.04])]);
-  assert.equal(selectRecoverablePrimarySibling(outOfCorridor), null);
+  // unauthorized families rejected even with a perfect corridor price
+  assert.equal(selectRecoverablePrimaryMarket(primaryCandidate([sib("cond-corners", [0.44, 0.56], { sportsMarketType: "total_corners" })])), null, "corners not authorized");
+  assert.equal(selectRecoverablePrimaryMarket(primaryCandidate([sib("cond-ht", [0.45, 0.55], { sportsMarketType: "soccer_halftime_result" })])), null, "halftime not authorized");
+  assert.equal(selectRecoverablePrimaryMarket(primaryCandidate([sib("cond-tht", [0.45, 0.55], { sportsMarketType: "soccer_first_half_team_totals" })])), null, "half-team-total not authorized");
 
-  // full-match sibling but non-binary identity
-  const nonBinary = primaryCandidate([
-    {
-      outcomes: ["Team A", "Draw", "Team B"],
-      outcomePrices: [0.4, 0.3, 0.3],
-      clobTokenIds: ["t1", "t2", "t3"],
-      question: "Team A vs Team B",
-      sportsMarketType: "moneyline",
-      conditionId: "cond-3way",
-    } as SiblingRaw,
-  ]);
-  assert.equal(selectRecoverablePrimarySibling(nonBinary), null);
-
-  // full-match sibling but missing token identity
-  const noTokens = primaryCandidate([
-    moneyline("cond-ml-notoken", [0.45, 0.55], { clobTokenIds: ["", ""] }),
-  ]);
-  assert.equal(selectRecoverablePrimarySibling(noTokens), null);
-
-  // no sibling data at all
-  assert.equal(selectRecoverablePrimarySibling(primaryCandidate(undefined)), null);
+  // fail-closed cases unchanged:
+  assert.equal(selectRecoverablePrimaryMarket(primaryCandidate([sib("cond-lopsided", [0.96, 0.04])])), null, "outside corridor");
+  assert.equal(selectRecoverablePrimaryMarket(primaryCandidate([{
+    outcomes: ["Team A", "Draw", "Team B"], outcomePrices: [0.4, 0.3, 0.3],
+    clobTokenIds: ["t1", "t2", "t3"], question: "Team A vs Team B", sportsMarketType: "moneyline", conditionId: "cond-3way",
+  } as SiblingRaw])), null, "non-binary");
+  assert.equal(selectRecoverablePrimaryMarket(primaryCandidate([sib("cond-notoken", [0.45, 0.55], { clobTokenIds: ["", ""] })])), null, "missing tokens");
+  assert.equal(selectRecoverablePrimaryMarket(primaryCandidate(undefined)), null, "no sibling data");
 });
 
-test("C. policy preservation — a partial market is never chosen over a full-match sibling", () => {
+test("C. deterministic pick — corridor outcome closest to 0.45 wins among authorized families", () => {
   const candidate = primaryCandidate([
-    moneyline("cond-1h", [0.45, 0.55], { sportsMarketType: "1st_half" }),
-    moneyline("cond-ml-ok", [0.5, 0.5]),
+    sib("cond-ht", [0.45, 0.55], { sportsMarketType: "soccer_halftime_result" }), // dist 0.00 but UNAUTHORIZED
+    sib("cond-sp", [0.47, 0.53], { sportsMarketType: "spreads" }),                 // dist 0.02, authorized
+    sib("cond-ml", [0.5, 0.5]),                                                    // dist 0.05, authorized
   ]);
-  const recovered = selectRecoverablePrimarySibling(candidate);
-  assert.ok(recovered);
-  assert.equal(recovered!.market.conditionId, "cond-ml-ok");
+  const r = selectRecoverablePrimaryMarket(candidate);
+  assert.ok(r);
+  assert.equal(r!.candidate.market.conditionId, "cond-sp");
 });
 
-test("sampleToCandidateMarket carries sibling markets from the discovery sample", () => {
+test("D. sampleToCandidateMarket carries siblings; recovery consumes them", () => {
   const sample = {
-    title: "Team A vs Team B",
-    slug: "team-a-vs-team-b",
-    gameId: "game-1",
-    eventVolumeUsd: 100000,
-    resolvedGameTimeIso: "2026-08-28T18:00:00.000Z",
-    gameTimeSource: "test",
-    gameTimeConfidence: "high",
-    marketCount: 2,
-    strategy: "markets-first",
-    primaryMarketRaw: {
-      outcomes: ["Team A", "Team B"],
-      outcomePrices: [0.97, 0.03],
-      clobTokenIds: ["p-tokA", "p-tokB"],
-      question: "Team A vs Team B",
-      sportsMarketType: "moneyline",
-      conditionId: "cond-primary",
-    },
-    marketsRaw: [
-      {
-        outcomes: ["Team A", "Team B"],
-        outcomePrices: [0.45, 0.55],
-        clobTokenIds: ["s-tokA", "s-tokB"],
-        question: "Team A vs Team B",
-        sportsMarketType: "moneyline",
-        conditionId: "cond-ml-sibling",
-      },
-    ],
+    title: "Team A vs Team B", slug: "team-a-vs-team-b", gameId: "game-1", eventVolumeUsd: 100000,
+    resolvedGameTimeIso: "2026-08-28T18:00:00.000Z", gameTimeSource: "test", gameTimeConfidence: "high",
+    marketCount: 2, strategy: "markets-first",
+    primaryMarketRaw: { outcomes: ["Team A", "Team B"], outcomePrices: [0.97, 0.03], clobTokenIds: ["p-tokA", "p-tokB"], question: "Team A vs Team B", sportsMarketType: "moneyline", conditionId: "cond-primary" },
+    marketsRaw: [{ outcomes: ["Team A", "Team B"], outcomePrices: [0.45, 0.55], clobTokenIds: ["s-tokA", "s-tokB"], question: "Team A vs Team B", sportsMarketType: "moneyline", conditionId: "cond-ml-sibling" }],
   } as unknown as SportsDiscoverySample;
 
   const candidate = sampleToCandidateMarket(sample);
   assert.ok(candidate);
-  assert.ok(Array.isArray(candidate!.siblingMarketsRaw));
-  assert.equal(candidate!.siblingMarketsRaw!.length, 1);
-
-  const recovered = selectRecoverablePrimarySibling(candidate!);
-  assert.ok(recovered);
-  assert.equal(recovered!.market.conditionId, "cond-ml-sibling");
+  const r = selectRecoverablePrimaryMarket(candidate!);
+  assert.ok(r);
+  assert.equal(r!.candidate.market.conditionId, "cond-ml-sibling");
 });
