@@ -10,11 +10,11 @@ import {
   type RequiredProviderEventPin,
 } from "../lib/feed/buildLandingCards";
 import {
-  writeGeneratedSignalPairs,
   writeStrategicShadowPairs,
   writeFireModel1_1ResearchPairs,
   writeJobRun,
 } from "../lib/feed/cacheGeneratedSignals";
+import { persistCanonicalPrimarySignalPopulation } from "../lib/feed/persistPrimarySignalPopulation";
 import { discoverSportsMarkets, collectWcShadowCandidates, collectEsportShadowCandidates, collectNbaNhlShadowCandidates, collectFullLineOutcomeV1Candidates } from "../lib/feed/discoverSportsMarkets";
 import type { WcShadowEntry } from "../lib/feed/discoverSportsMarkets";
 import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
@@ -140,6 +140,11 @@ async function main() {
       includeUpcoming: CONFIG.includeUpcoming,
       upcomingLimit: CONFIG.upcomingLimit,
       requiredProviderEvents: pinLoad.pins,
+      // Decouple canonical PRIMARY semantic evaluation from the public feed cap:
+      // run the full bounded primary population through the real gate chain and
+      // return every qualified outcome (incl. beyond public rank CONFIG.limit)
+      // in `primaryQualifiedPairs`. The public `pairs` array stays capped.
+      evaluateFullPrimaryPopulation: true,
       // Research universe options — does not alter product feed behavior
       collectResearchSnapshots: true,
       researchSnapshotRunId,
@@ -264,25 +269,33 @@ async function main() {
         Date.now() + CONFIG.cacheExpiryHours * 60 * 60 * 1000
       ).toISOString();
 
-      await writeGeneratedSignalPairs({
-        pairs: pairsToCache.map((p: any) => ({
-          premiumSignal: {
-            ...p.premiumSignal,
-            metrics: p.premiumSignal.metrics.map((m: any) => ({
-              ...m,
-              value: typeof m.value === 'number' ? m.value : parseFloat(String(m.value)) || 0,
-            })),
-          },
-          marketSource: p.marketSource,
-          marketSources: p.marketSources,
-          diagnostics: p.diagnostics,
-        })),
+      // Canonical PRIMARY population -> existing GSP writer. The public
+      // selection (pairsToCache, <= CONFIG.limit) is written UNCHANGED; every
+      // additional semantically-qualified primary outcome beyond public rank
+      // CONFIG.limit is written as an extra canonical row through the SAME
+      // writer, deduped by conditionId::selectedTokenId identity. Extras are
+      // written first so the public rows keep the newer created_at and the
+      // public feed read stays byte-identical.
+      const primaryPersist = await persistCanonicalPrimarySignalPopulation({
+        primaryQualifiedPairs: result.primaryQualifiedPairs ?? [],
+        publicPairsToCache: pairsToCache,
         source: "polymarket",
         formulaVersion: FORMULA_VERSION,
         expiresAt,
       });
+      diagnostics.canonicalPrimaryPersist = {
+        public_persisted: primaryPersist.publicPersistedCount,
+        canonical_extras_proposed: primaryPersist.canonicalExtrasProposed,
+        canonical_extras_persisted: primaryPersist.canonicalExtrasPersistedCount,
+        canonical_persisted_total: primaryPersist.canonicalPersistedCount,
+        primary_qualified_total: result.primaryQualifiedPairs?.length ?? pairsToCache.length,
+      };
 
-      console.log(`[generate-signals] Cached ${generatedCount} pairs (expires: ${expiresAt})`);
+      console.log(
+        `[generate-signals] Cached ${generatedCount} public pairs + ` +
+          `${primaryPersist.canonicalExtrasPersistedCount} canonical primary extras ` +
+          `(canonical total ${primaryPersist.canonicalPersistedCount}, expires: ${expiresAt})`,
+      );
       const rp = (diagnostics.reservationPins ?? {}) as Record<string, unknown>;
       console.log(
         `[generate-signals] reservation pin outcome: found=${rp.pinned_candidates_found ?? 0} ` +

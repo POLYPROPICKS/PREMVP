@@ -237,7 +237,7 @@ export interface CandidateMarket {
   siblingMarketsRaw?: SportsDiscoverySample["marketsRaw"];
 }
 
-interface ForcedOutcomeSelection {
+export interface ForcedOutcomeSelection {
   selectedTokenId: string;
   selectedOutcomeName?: string | null;
   selectedOutcomeIndex?: number | null;
@@ -1171,40 +1171,148 @@ function getParentMeta(market: PolymarketRawMarket): ParentEventMeta {
   };
 }
 
-/**
- * Primary representative-market recovery.
- *
- * When a physical event's initially chosen representative market is unusable
- * (fails selectOutcome / enrichment), recover the event through a sibling that
- *  - belongs to the SAME authoritative physical event (already on the sample),
- *  - is a market type already permitted by the CURRENT full-event product policy
- *    (`OFFICIAL_FULL_MATCH_MARKET_TYPES`, provider market type only — never text),
- *  - has a valid binary outcome/token identity, and
- *  - has an outcome inside the EXISTING primary scorer price corridor
- *    (`selectOutcome`, reused unchanged).
- *
- * No new universe is fetched, no new market type is invented and no policy is
- * broadened. Returns null (fail closed) when no such sibling exists.
- */
-export function selectRecoverablePrimarySibling(
-  candidate: CandidateMarket,
-): CandidateMarket | null {
-  const siblings = candidate.siblingMarketsRaw;
-  if (!siblings || siblings.length === 0) return null;
+// ── PHYSICAL-EVENT-SCOPED PRIMARY RECOVERY ───────────────────────────────────
+//
+// Polymarket shards a single physical match across ~7 separate provider event
+// ids (one per market family). The former recovery only inspected the SAME
+// provider-event group (`candidate.siblingMarketsRaw`) and only the "moneyline"
+// family, so an exact-score representative could not recover a moneyline / total
+// / corners market that exists under a DIFFERENT provider_event_id of the SAME
+// match. This recovery resolves the physical match identity (teams + kickoff
+// day, from existing structured fields) and considers ANY binary market of that
+// same physical match — from the same-shard siblings AND from the wide market
+// universe already fetched in the producer pass (`researchEligibleMarkets`). No
+// new provider/network fetch is added. It never crosses physical-event identity
+// (both team token-sets and the kickoff day must match). One deterministic
+// result. This SUBSUMES the same-shard recovery — that is branch (1) below.
 
+const RECOVERY_STOPWORDS = new Set([
+  "fc", "afc", "sc", "cd", "ac", "as", "us", "rc", "krc", "vfl", "vfb", "tsg", "ss",
+  "ssc", "cf", "club", "de", "da", "the", "city", "town", "united", "utd", "calcio",
+  "sk", "if", "bk", "fk", "exact", "score", "vs", "and", "any", "other",
+]);
+
+function recoveryTokens(text: string): string[] {
+  return String(text)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .split(/[\s-]+/)
+    .filter((w) => w.length >= 3 && !RECOVERY_STOPWORDS.has(w));
+}
+
+export interface PhysicalMatchIdentity {
+  teamTokensA: string[];
+  teamTokensB: string[];
+  dayIso: string; // YYYY-MM-DD
+}
+
+/**
+ * Resolve the candidate's PHYSICAL match from existing structured fields only
+ * (parent-meta start date + representative-market question / event title).
+ * Fail-closed (null) when teams or a kickoff day cannot be parsed.
+ */
+export function resolvePhysicalMatchIdentity(
+  candidate: CandidateMarket,
+): PhysicalMatchIdentity | null {
+  const meta = getParentMeta(candidate.market);
+  const day = (safeString(meta.startDate) ?? safeString(candidate.event.endDate) ?? safeString(meta.endDate) ?? "").slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
+
+  const text =
+    safeString(candidate.market.question) ??
+    safeString(meta.title) ??
+    safeString(candidate.event.title) ??
+    "";
+  let m = text.match(/exact score:\s*(.+?)\s+\d+\s*-\s*\d+\s+(.+?)\s*\??$/i);
+  if (!m) m = text.match(/^(.+?)\s+vs\.?\s+(.+?)(?:\s*[:?,]|$)/i);
+  if (!m) return null;
+  const a = recoveryTokens(m[1]);
+  const b = recoveryTokens(m[2]);
+  if (a.length === 0 || b.length === 0) return null;
+  return { teamTokensA: a, teamTokensB: b, dayIso: day };
+}
+
+function rowIsSamePhysicalEvent(
+  rowText: string,
+  rowDayIso: string,
+  identity: PhysicalMatchIdentity,
+): boolean {
+  if (rowDayIso !== identity.dayIso) return false;
+  const rt = new Set(recoveryTokens(rowText));
+  const hasA = identity.teamTokensA.some((t) => rt.has(t));
+  const hasB = identity.teamTokensB.some((t) => rt.has(t));
+  return hasA && hasB; // BOTH teams -> same physical match; guards cross-event contamination
+}
+
+export interface RecoveredPrimaryMarket {
+  candidate: CandidateMarket;
+  /** Preserves the recovered market's real token / side / price for enrichMarket. */
+  forcedOutcome: ForcedOutcomeSelection;
+  recoverySource: "same-provider-event" | "cross-provider-event";
+}
+
+interface RecoveryPick {
+  market: PolymarketRawMarket;
+  forcedOutcome: ForcedOutcomeSelection;
+  sortPrice: number;
+  sourceKey: string;
+  source: "same-provider-event" | "cross-provider-event";
+  providerEventId: string;
+}
+
+// The EXISTING primary scorer price corridor selectOutcome enforces — reused
+// verbatim here, never widened.
+const PRIMARY_RECOVERY_CORRIDOR_MIN = 0.20;
+const PRIMARY_RECOVERY_CORRIDOR_MAX = 0.741;
+
+// The Founder-authorized full-match product contour — the SAME universe Contract
+// A planning/rebalence admits (moneyline / spread / full-match total goals).
+// Recovery must not surface a market Contract A would reject: corners, halftime,
+// first-to-score, team-total and half-scoped families stay outside this set.
+// Exact provider `sportsMarketType` match only — "total_corners" / "soccer_*_team_totals"
+// are NOT "totals".
+const AUTHORIZED_RECOVERY_MARKET_TYPES = new Set([
+  "moneyline",
+  "spread",
+  "spreads",
+  "total",
+  "totals",
+]);
+
+function isAuthorizedRecoveryMarketType(sportsMarketType: unknown): boolean {
+  return AUTHORIZED_RECOVERY_MARKET_TYPES.has(String(sportsMarketType ?? "").trim().toLowerCase());
+}
+
+/**
+ * Physical-event-scoped primary representative-market recovery. Returns exactly
+ * one deterministic recovered market (or null, fail-closed). `physicalEventUniverse`
+ * is the already-fetched wide market universe (`discovery.researchEligibleMarkets`);
+ * pass `[]` to restrict to same-provider-event recovery.
+ */
+export function selectRecoverablePrimaryMarket(
+  candidate: CandidateMarket,
+  physicalEventUniverse: readonly ResearchNestedMarket[] = [],
+): RecoveredPrimaryMarket | null {
   const primaryConditionId = safeString(candidate.market.conditionId);
   const parentMeta = getParentMeta(candidate.market);
+  const ownProviderEventId =
+    safeString(parentMeta.providerEventId) ??
+    safeString(parentMeta.id) ??
+    safeString(candidate.event.id) ??
+    "";
 
-  for (const sib of siblings) {
+  const picks: RecoveryPick[] = [];
+
+  // ── (1) SAME provider event group — any binary sibling (subsumes the former
+  //        moneyline-only same-shard recovery). ─────────────────────────────
+  for (const sib of candidate.siblingMarketsRaw ?? []) {
     if (!sib) continue;
     const conditionId = safeString(sib.conditionId);
     if (!conditionId || conditionId === primaryConditionId) continue;
-
-    // CURRENT full-event product policy — provider market type only, never text.
-    const marketType = String(sib.sportsMarketType ?? "").toLowerCase();
-    if (!OFFICIAL_FULL_MATCH_MARKET_TYPES.has(marketType)) continue;
-
-    // Existing binary outcome/token identity requirement.
+    // Authorized full-match product contour only (moneyline / spread / total).
+    if (!isAuthorizedRecoveryMarketType(sib.sportsMarketType)) continue;
     const outcomes = safeParseArray<string>(sib.outcomes);
     const prices = safeParseArray<unknown>(sib.outcomePrices);
     const tokenIds = safeParseArray<string>(sib.clobTokenIds);
@@ -1224,10 +1332,9 @@ export function selectRecoverablePrimarySibling(
       volume24hr: sib.volume24hr ?? undefined,
       oneDayPriceChange: sib.oneDayPriceChange ?? undefined,
     };
-
     // EXISTING primary scorer price corridor — reuse selectOutcome unchanged.
     const selected = selectOutcome(siblingMarket);
-    if (!selected) continue;
+    if (!selected || !selected.tokenId) continue;
     if (selected.price <= 0 || selected.price >= 1) continue;
 
     (siblingMarket as unknown as Record<string, unknown>)._parentMeta = {
@@ -1235,19 +1342,93 @@ export function selectRecoverablePrimarySibling(
       sportsMarketType: sib.sportsMarketType ?? parentMeta.sportsMarketType,
       providerMarketId: conditionId,
     };
-
-    return {
-      event: { ...candidate.event, markets: [siblingMarket] },
+    picks.push({
       market: siblingMarket,
-      rejectionReasons: [],
-      warnings: [...candidate.warnings, "primary-sibling-recovery"],
-      isSportsRelated: candidate.isSportsRelated,
-      isEnded: false,
-      sportsMatchedKeyword: candidate.sportsMatchedKeyword,
-    };
+      forcedOutcome: {
+        selectedTokenId: selected.tokenId,
+        selectedOutcomeName: selected.name,
+        selectedOutcomeIndex: selected.index,
+        selectedPriceNum: selected.price,
+      },
+      sortPrice: selected.price,
+      sourceKey: `same:${conditionId}:${selected.tokenId}`,
+      source: "same-provider-event",
+      providerEventId: ownProviderEventId,
+    });
   }
 
-  return null;
+  // ── (2) CROSS provider event — same PHYSICAL match, any binary market from
+  //        the already-fetched wide universe. Never fetches. ────────────────
+  const identity = physicalEventUniverse.length > 0 ? resolvePhysicalMatchIdentity(candidate) : null;
+  if (identity) {
+    const seen = new Set<string>();
+    for (const rm of physicalEventUniverse) {
+      const rmEventId = safeString(rm.eventId) ?? "";
+      if (!rmEventId || rmEventId === ownProviderEventId) continue; // branch (1) owns the same event
+      const rmConditionId = safeString(rm.conditionId);
+      if (!rmConditionId || rmConditionId === primaryConditionId) continue;
+      // Authorized full-match product contour only (moneyline / spread / total) —
+      // corners / halftime / first-to-score / team-total families are excluded
+      // so recovery never surfaces a market Contract A planning would reject.
+      if (!isAuthorizedRecoveryMarketType(rm.sportsMarketType)) continue;
+      if (!safeString(rm.selectedTokenId) || !safeString(rm.opposingTokenId)) continue;
+      const price = Number(rm.selectedPriceNum);
+      if (!Number.isFinite(price) || price <= 0 || price >= 1) continue;
+      if (price < PRIMARY_RECOVERY_CORRIDOR_MIN || price > PRIMARY_RECOVERY_CORRIDOR_MAX) continue;
+
+      const rowDay = String(rm.gameStartTimeIso ?? rm.eventStartIso ?? "").slice(0, 10);
+      const rowText = `${rm.eventTitle ?? ""} ${rm.marketQuestion ?? ""} ${rm.eventSlug ?? ""}`;
+      if (!rowIsSamePhysicalEvent(rowText, rowDay, identity)) continue;
+
+      const dedupKey = `${rmConditionId}:${rm.selectedTokenId}`;
+      if (seen.has(dedupKey)) continue;
+      seen.add(dedupKey);
+
+      const adapted = researchNestedMarketToCandidate(rm);
+      if (!adapted) continue;
+      picks.push({
+        market: adapted.candidate.market,
+        forcedOutcome: adapted.forcedOutcome,
+        sortPrice: price,
+        sourceKey: `cross:${rmEventId}:${rmConditionId}:${rm.selectedTokenId}`,
+        source: "cross-provider-event",
+        providerEventId: rmEventId,
+      });
+    }
+  }
+
+  if (picks.length === 0) return null;
+
+  // Deterministic single result: corridor outcome closest to 0.45, then
+  // same-provider-event preferred on ties, then stable lexicographic key.
+  picks.sort((x, y) => {
+    const d = Math.abs(x.sortPrice - 0.45) - Math.abs(y.sortPrice - 0.45);
+    if (Math.abs(d) > 1e-9) return d;
+    if (x.source !== y.source) return x.source === "same-provider-event" ? -1 : 1;
+    return x.sourceKey < y.sourceKey ? -1 : x.sourceKey > y.sourceKey ? 1 : 0;
+  });
+  const chosen = picks[0];
+
+  const chosenCandidate: CandidateMarket = {
+    event:
+      chosen.source === "same-provider-event"
+        ? { ...candidate.event, markets: [chosen.market] }
+        : { ...candidate.event, id: chosen.providerEventId, markets: [chosen.market] },
+    market: chosen.market,
+    rejectionReasons: [],
+    warnings: [
+      ...candidate.warnings,
+      "primary-sibling-recovery",
+      chosen.source === "cross-provider-event"
+        ? "cross-provider-event-recovery"
+        : "same-provider-event-recovery",
+    ],
+    isSportsRelated: candidate.isSportsRelated,
+    isEnded: false,
+    sportsMatchedKeyword: candidate.sportsMatchedKeyword,
+  };
+
+  return { candidate: chosenCandidate, forcedOutcome: chosen.forcedOutcome, recoverySource: chosen.source };
 }
 
 /**
@@ -2625,6 +2806,345 @@ async function tryBuildResearchSnapshot(
   };
 }
 
+// ============================================================================
+// PRIMARY CANDIDATE LOOP — semantic evaluation decoupled from the public cap
+//
+// The sequential primary loop takes the already-bounded primary scorer
+// population (`boundPrimaryScorerPopulation`, ceiling 254) and runs every
+// candidate through: pre-enrichment gate -> enrichMarket -> primary sibling
+// recovery -> research snapshot capture -> dataCoverage -> enrichment
+// rejectionReasons -> generateLandingCardPair -> winProbability -> ended ->
+// dedupe -> PRIMARY_QUALIFIED.
+//
+// `evaluateFullPrimaryPopulation` is the ONLY behavioural switch:
+//   false (default) — byte-identical legacy behaviour. The loop stops opening
+//     product work once `limit` public pairs exist; remaining candidates are
+//     attributed PRIMARY_NOT_EVALUATED_PRODUCT_CAP_REACHED and sibling recovery
+//     is suppressed once the public feed is full.
+//   true — the public feed is STILL capped at `limit` (publicPairs), but the
+//     public cap no longer suppresses anything else: every candidate in the
+//     bounded population runs the full semantic gate chain, receives a real
+//     terminal reason, sibling recovery runs on otherwise-eligible candidates
+//     regardless of public-feed saturation, and every qualified outcome —
+//     including beyond public rank `limit` — is collected into
+//     `canonicalPrimaryPairs` for the canonical GSP / serving persistence
+//     boundary consumed by Contract A / B2.
+//
+// Thresholds, score/model semantics, the 254 population ceiling and the 360s
+// wall-clock guard are untouched — this function only changes which STAGE
+// decides a candidate is out of scope, never what is decided.
+// ============================================================================
+
+export interface PrimaryCandidateLoopParams {
+  candidates: CandidateMarket[];
+  limit: number;
+  minDataCoverage: number;
+  excludeEnded: boolean;
+  evaluateFullPrimaryPopulation: boolean;
+  budgetGuard: ReturnType<typeof createPrimaryLoopBudgetGuard>;
+  collectResearchSnapshots: boolean;
+  /**
+   * Live check mirroring the legacy inline
+   * `!collectResearchSnapshots || researchSnapshots.length >= researchSnapshotCap`.
+   * Supplied by the caller so this function never owns the snapshots array.
+   */
+  isResearchCapReached: () => boolean;
+  pinnedKeysForPersistCheck: ReadonlySet<string>;
+  /** Pre-seeded (the ended-market filter already pushed to it) — mutated in place. */
+  rejected: Array<{ id?: string; rejectionReasons: string[] }>;
+  /** The producer research funnel — increment fields mutated in place. */
+  researchFunnel: ResearchFunnelCounters;
+  seenPairIds: Set<string>;
+  seenMarketKeys: Set<string>;
+  deps: {
+    enrichMarket: (
+      event: PolymarketRawEvent,
+      market: PolymarketRawMarket,
+      warnings: string[],
+      forcedOutcome?: ForcedOutcomeSelection,
+    ) => Promise<EnrichedMarket | null>;
+    /** Physical-event-scoped recovery — same-shard + cross-provider-event, one deterministic result. */
+    selectRecoverablePrimaryMarket: (candidate: CandidateMarket) => RecoveredPrimaryMarket | null;
+    generateLandingCardPair: (enriched: EnrichedMarket) => LandingCardPair | null;
+    computeCandidateProviderEventKey: (candidate: CandidateMarket) => string | null;
+    /** No-op unless research collection is active AND the cap is not yet reached. */
+    captureResearchSnapshot: (
+      enriched: EnrichedMarket,
+      effectiveCandidate: CandidateMarket,
+    ) => Promise<void>;
+  };
+}
+
+export interface PrimaryCandidateLoopResult {
+  /** Public landing-card surface — hard-bounded to `limit`. */
+  publicPairs: LandingCardPair[];
+  /**
+   * Every canonical-qualified primary outcome, in evaluation order. When
+   * `evaluateFullPrimaryPopulation` is false this is exactly `publicPairs`.
+   */
+  canonicalPrimaryPairs: LandingCardPair[];
+  primaryTerminalReasonCounts: Record<string, number>;
+  primaryCoverageRejectionValues: number[];
+  primaryCandidatesEntered: number;
+  candidatesAfterDataCoverageFilter: number;
+  pairsGenerated: number;
+  pinnedCandidatesPersisted: number;
+  primaryLoopBudgetExhausted: boolean;
+}
+
+export async function runPrimaryCandidateLoop(
+  params: PrimaryCandidateLoopParams,
+): Promise<PrimaryCandidateLoopResult> {
+  const {
+    candidates,
+    limit,
+    minDataCoverage,
+    excludeEnded,
+    evaluateFullPrimaryPopulation,
+    budgetGuard,
+    collectResearchSnapshots,
+    isResearchCapReached,
+    pinnedKeysForPersistCheck,
+    rejected,
+    researchFunnel: rf,
+    seenPairIds,
+    seenMarketKeys,
+    deps,
+  } = params;
+
+  const publicPairs: LandingCardPair[] = [];
+  const canonicalPrimaryPairs: LandingCardPair[] = [];
+  const primaryTerminalReasonCounts: Record<string, number> = {};
+  const primaryCoverageRejectionValues: number[] = [];
+  const recordPrimaryTerminal = (code: string) => {
+    primaryTerminalReasonCounts[code] = (primaryTerminalReasonCounts[code] ?? 0) + 1;
+  };
+
+  let primaryCandidatesEntered = 0;
+  let candidatesAfterDataCoverageFilter = 0;
+  let pairsGenerated = 0;
+  let pinnedCandidatesPersisted = 0;
+  let primaryLoopBudgetExhausted = false;
+
+  for (const candidate of candidates) {
+    const publicCapReached = publicPairs.length >= limit;
+    const researchCapReached = isResearchCapReached();
+    const researchCollectionActive = collectResearchSnapshots && !researchCapReached;
+
+    // Legacy fast-exit for the pure public / API path (byte-identical to the
+    // former inline `if (productCapReached && researchCapReached) break;`).
+    // Under full-population evaluation the public cap never stops the loop: the
+    // bounded population (<= PRIMARY_SCORER_PROVEN_CAPACITY) and the wall-clock
+    // guard are the only bounds.
+    if (!evaluateFullPrimaryPopulation && publicCapReached && researchCapReached) break;
+
+    if (!primaryLoopBudgetExhausted && budgetGuard.isExhausted()) {
+      primaryLoopBudgetExhausted = true;
+    }
+    if (primaryLoopBudgetExhausted) {
+      primaryCandidatesEntered++;
+      recordPrimaryTerminal(PRIMARY_LOOP_BUDGET_EXHAUSTED_TERMINAL_REASON);
+      continue;
+    }
+
+    primaryCandidatesEntered++;
+    if (researchCollectionActive) rf.candidatesSeen++;
+
+    // The ONLY thing the public cap gates once full-population evaluation is on
+    // is nothing at all — `semanticEvaluationSuppressed` is permanently false.
+    const semanticEvaluationSuppressed = publicCapReached && !evaluateFullPrimaryPopulation;
+
+    if (candidate.rejectionReasons.length > 0) {
+      recordPrimaryTerminal(
+        semanticEvaluationSuppressed
+          ? "PRIMARY_NOT_EVALUATED_PRODUCT_CAP_REACHED_PRE_ENRICHMENT_REJECTED"
+          : "PRIMARY_PRE_ENRICHMENT_CANDIDATE_REJECTED",
+      );
+      if (!semanticEvaluationSuppressed) {
+        rejected.push({
+          id: candidate.market.id,
+          rejectionReasons: [...candidate.rejectionReasons],
+        });
+      }
+      if (researchCollectionActive) rf.rejectedPreResearchCandidateReasons++;
+      continue;
+    }
+
+    let effectiveCandidate = candidate;
+    let enriched = await deps.enrichMarket(candidate.event, candidate.market, candidate.warnings);
+
+    // Primary representative-market recovery — runs whenever semantic evaluation
+    // is live for this candidate, i.e. always under full-population evaluation,
+    // independent of public-feed saturation.
+    if (!enriched && !semanticEvaluationSuppressed) {
+      const recovered = deps.selectRecoverablePrimaryMarket(candidate);
+      if (recovered) {
+        effectiveCandidate = recovered.candidate;
+        enriched = await deps.enrichMarket(
+          recovered.candidate.event,
+          recovered.candidate.market,
+          recovered.candidate.warnings,
+          recovered.forcedOutcome,
+        );
+      }
+    }
+
+    if (!enriched) {
+      recordPrimaryTerminal(
+        semanticEvaluationSuppressed
+          ? "PRIMARY_NOT_EVALUATED_PRODUCT_CAP_REACHED_ENRICHMENT_NULL"
+          : "PRIMARY_ENRICHMENT_NULL",
+      );
+      if (!semanticEvaluationSuppressed) {
+        rejected.push({
+          id: candidate.market.id,
+          rejectionReasons: ["Failed to select valid outcome"],
+        });
+      }
+      if (researchCollectionActive) rf.enrichmentNull++;
+      continue;
+    }
+
+    if (researchCollectionActive) {
+      await deps.captureResearchSnapshot(enriched, effectiveCandidate);
+    }
+
+    // ── PRODUCT GATES ──────────────────────────────────────────────────────
+    if (semanticEvaluationSuppressed) {
+      recordPrimaryTerminal("PRIMARY_NOT_EVALUATED_PRODUCT_CAP_REACHED");
+      continue;
+    }
+
+    // dataCoverage is DIAGNOSTIC-ONLY for the primary semantic path. It is still
+    // computed (enrichMarket, unchanged) and still carried verbatim in the
+    // candidate's diagnostics / output, but a low value — including below 25 —
+    // no longer terminates an otherwise valid candidate. Low-coverage values are
+    // still collected for observability; the candidate continues to the existing
+    // pair / model decision path, which can still reject it on its own merits.
+    if (enriched.diagnostics.dataCoverage < minDataCoverage) {
+      primaryCoverageRejectionValues.push(enriched.diagnostics.dataCoverage);
+    }
+
+    candidatesAfterDataCoverageFilter++;
+
+    if (enriched.diagnostics.rejectionReasons.length > 0) {
+      recordPrimaryTerminal("PRIMARY_REJECTED_ENRICHMENT_REJECTION_REASONS");
+      rejected.push({
+        id: effectiveCandidate.market.id,
+        rejectionReasons: enriched.diagnostics.rejectionReasons,
+      });
+      continue;
+    }
+
+    const pair = deps.generateLandingCardPair(enriched);
+
+    if (!pair) {
+      recordPrimaryTerminal("PRIMARY_REJECTED_PAIR_GENERATION_FAILED");
+      rejected.push({
+        id: effectiveCandidate.market.id,
+        rejectionReasons: ["Failed to generate landing card pair"],
+      });
+      continue;
+    }
+    if (pair.premiumSignal.winProbability < 52) {
+      recordPrimaryTerminal("PRIMARY_REJECTED_WIN_PROBABILITY_BELOW_52");
+      rejected.push({
+        id: effectiveCandidate.market.id,
+        rejectionReasons: [`Signal confidence too low: ${pair.premiumSignal.winProbability}`],
+      });
+      continue;
+    }
+
+    if (excludeEnded && pair.premiumSignal.time === "Ended") {
+      recordPrimaryTerminal("PRIMARY_REJECTED_MARKET_ENDED_AT_PAIR_STAGE");
+      rejected.push({
+        id: effectiveCandidate.market.id,
+        rejectionReasons: ["Market ended (premiumSignal.time = Ended)"],
+      });
+      continue;
+    }
+
+    const marketKey =
+      safeString(effectiveCandidate.market.id) ||
+      safeString(effectiveCandidate.market.conditionId) ||
+      safeString(effectiveCandidate.market.slug) ||
+      pair.id;
+
+    if (seenPairIds.has(pair.id) || seenMarketKeys.has(marketKey)) {
+      recordPrimaryTerminal("PRIMARY_REJECTED_DUPLICATE");
+      rejected.push({
+        id: effectiveCandidate.market.id,
+        rejectionReasons: [`Duplicate landing pair skipped: ${pair.id}`],
+      });
+      continue;
+    }
+
+    seenPairIds.add(pair.id);
+    seenMarketKeys.add(marketKey);
+
+    recordPrimaryTerminal("PRIMARY_QUALIFIED");
+    canonicalPrimaryPairs.push(pair);
+    // Public presentation cap — bounded, and the ONLY effect the cap now has.
+    if (publicPairs.length < limit) publicPairs.push(pair);
+    pairsGenerated++;
+    if (pinnedKeysForPersistCheck.size > 0) {
+      const key = deps.computeCandidateProviderEventKey(effectiveCandidate);
+      if (key !== null && pinnedKeysForPersistCheck.has(key)) pinnedCandidatesPersisted++;
+    }
+  }
+
+  return {
+    publicPairs,
+    canonicalPrimaryPairs,
+    primaryTerminalReasonCounts,
+    primaryCoverageRejectionValues,
+    primaryCandidatesEntered,
+    candidatesAfterDataCoverageFilter,
+    pairsGenerated,
+    pinnedCandidatesPersisted,
+    primaryLoopBudgetExhausted,
+  };
+}
+
+/**
+ * The canonical-qualified primary outcomes that are NOT already represented in
+ * the public selection, keyed by `conditionId::selectedTokenId`. These are the
+ * rows the producer must ADD to the canonical GSP / serving persistence
+ * boundary so a semantically-qualified primary candidate beyond public rank
+ * `limit` still reaches Contract A / B2 — without changing the public feed,
+ * which is bounded independently at read time.
+ *
+ * A pair with no `conditionId`/`selectedTokenId` identity is treated as an
+ * extra (it cannot be matched against the public set and is never silently
+ * dropped).
+ */
+export function selectCanonicalPrimaryExtras(
+  primaryQualifiedPairs: readonly LandingCardPair[],
+  alreadyPersistedPairs: readonly LandingCardPair[],
+): LandingCardPair[] {
+  const identityOf = (p: LandingCardPair): string | null => {
+    const cond = p.diagnostics?.conditionId;
+    const tok = p.diagnostics?.selectedTokenId;
+    return cond && tok ? `${cond}::${tok}` : null;
+  };
+  const persisted = new Set<string>();
+  for (const p of alreadyPersistedPairs) {
+    const id = identityOf(p);
+    if (id) persisted.add(id);
+  }
+  const seenExtra = new Set<string>();
+  const extras: LandingCardPair[] = [];
+  for (const p of primaryQualifiedPairs) {
+    const id = identityOf(p);
+    if (id !== null) {
+      if (persisted.has(id) || seenExtra.has(id)) continue;
+      seenExtra.add(id);
+    }
+    extras.push(p);
+  }
+  return extras;
+}
+
 /**
  * Main function to build landing cards from Polymarket data
  *
@@ -2662,8 +3182,16 @@ export async function buildLandingCards(options?: {
   researchOddsMax?: number;
   // Reservation-aware producer pinning (P0) — bounded, exact-identity only.
   requiredProviderEvents?: RequiredProviderEventPin[];
+  // DECOUPLING SWITCH. false (default) preserves the exact legacy primary-loop
+  // behaviour: semantic evaluation stops once `limit` public pairs exist. true
+  // keeps the public feed capped at `limit` but runs the FULL semantic gate
+  // chain for the whole bounded primary population, so a qualified candidate
+  // beyond public rank `limit` still gets a real terminal reason and is
+  // collected into `primaryQualifiedPairs`. See runPrimaryCandidateLoop.
+  evaluateFullPrimaryPopulation?: boolean;
 }): Promise<LandingCardsResponse & { pinDiagnostics?: ProducerPinApplyDiagnostics }> {
   const limit = clamp(options?.limit ?? 4, 1, 15);
+  const evaluateFullPrimaryPopulation = options?.evaluateFullPrimaryPopulation ?? false;
   const category = options?.category ?? "sports";
   const minDataCoverage = clamp(options?.minDataCoverage ?? 25, 0, 100);
   const excludeEnded = options?.excludeEnded ?? true;
@@ -2719,16 +3247,9 @@ export async function buildLandingCards(options?: {
 
   // ── P1B: primary funnel terminal attribution ────────────────────────────────
   // Exactly one canonical terminal code per candidate that enters the primary
-  // product loop, so 45 -> after-coverage -> qualified is auditable by reason.
-  const primaryTerminalReasonCounts: Record<string, number> = {};
-  const primaryCoverageRejectionValues: number[] = [];
-  // Conservation witness: every candidate that enters the primary loop is counted
-  // here, so the invariant sum(primaryTerminalReasonCounts) === primaryCandidatesEntered
-  // is verifiable from production telemetry alone, not only by reading the code.
-  let primaryCandidatesEntered = 0;
-  const recordPrimaryTerminal = (code: string) => {
-    primaryTerminalReasonCounts[code] = (primaryTerminalReasonCounts[code] ?? 0) + 1;
-  };
+  // product loop. Owned by runPrimaryCandidateLoop; surfaced on the funnel after
+  // the loop returns. Conservation invariant:
+  // sum(primaryTerminalReasonCounts) === primaryCandidatesEntered.
 
   // Sports discovery diagnostics (null when category != "sports")
   let sportsDiscoveryCounts: Record<string, unknown> | null = null;
@@ -2906,9 +3427,7 @@ export async function buildLandingCards(options?: {
       pinApplyDiagnostics = prioritized.diagnostics;
     }
     const pinnedKeysForPersistCheck = new Set(requiredProviderEvents.map((p) => p.providerEventId));
-    let pinnedCandidatesPersisted = 0;
 
-    const pairs: LandingCardPair[] = [];
     const seenPairIds = new Set<string>();
     const seenMarketKeys = new Set<string>();
     const rejected: Array<{ id?: string; rejectionReasons: string[] }> = [];
@@ -2954,200 +3473,63 @@ export async function buildLandingCards(options?: {
       budgetMs: options?.primaryLoopBudgetMs,
       now: primaryLoopNowMs,
     });
-    let primaryLoopBudgetExhausted = false;
 
-    // Process candidates until we have enough product pairs AND research snapshots.
-    // When collectResearchSnapshots=false the loop breaks exactly as before (at pairs.length>=limit).
-    // When collectResearchSnapshots=true the loop continues past the product cap only until
-    // researchSnapshots.length>=researchLimit; product pairs[] is never extended past limit.
-    for (const candidate of candidates) {
-      const productCapReached = pairs.length >= limit;
-      const researchCapReached =
-        !collectResearchSnapshots || researchSnapshots.length >= researchSnapshotCap;
+    // Primary candidate loop — semantic evaluation is decoupled from the public
+    // presentation cap. `publicPairs` stays bounded to `limit`; when
+    // `evaluateFullPrimaryPopulation` is true every bounded-population candidate
+    // still runs the full semantic gate chain and every qualified outcome
+    // (including beyond public rank `limit`) is returned in `canonicalPrimaryPairs`.
+    const primaryLoop = await runPrimaryCandidateLoop({
+      candidates,
+      limit,
+      minDataCoverage,
+      excludeEnded,
+      evaluateFullPrimaryPopulation,
+      budgetGuard: primaryLoopBudgetGuard,
+      collectResearchSnapshots,
+      isResearchCapReached: () =>
+        !collectResearchSnapshots || researchSnapshots.length >= researchSnapshotCap,
+      pinnedKeysForPersistCheck,
+      rejected,
+      researchFunnel: rf,
+      seenPairIds,
+      seenMarketKeys,
+      deps: {
+        enrichMarket,
+        // Physical-event-scoped recovery over the already-fetched wide universe.
+        selectRecoverablePrimaryMarket: (c) => selectRecoverablePrimaryMarket(c, s2ResearchUniverse),
+        generateLandingCardPair,
+        computeCandidateProviderEventKey,
+        captureResearchSnapshot: async (enriched, effectiveCandidate) => {
+          if (researchSnapshots.length >= researchSnapshotCap) return;
+          if (!researchSnapshotRunId || !researchSnapshotAt) return;
+          const snap = await tryBuildResearchSnapshot(
+            enriched,
+            effectiveCandidate,
+            researchSnapshotRunId,
+            researchSnapshotAt,
+            researchOddsMin,
+            researchOddsMax,
+            rf,
+          );
+          if (snap) researchSnapshots.push(snap);
+        },
+      },
+    });
 
-      // Both caps satisfied — stop iterating
-      if (productCapReached && researchCapReached) break;
+    const pairs = primaryLoop.publicPairs;
+    const canonicalPrimaryPairs = primaryLoop.canonicalPrimaryPairs;
+    const primaryLoopBudgetExhausted = primaryLoop.primaryLoopBudgetExhausted;
+    const primaryCandidatesEntered = primaryLoop.primaryCandidatesEntered;
+    const primaryTerminalReasonCounts = primaryLoop.primaryTerminalReasonCounts;
+    const primaryCoverageRejectionValues = primaryLoop.primaryCoverageRejectionValues;
+    candidatesAfterDataCoverageFilter = primaryLoop.candidatesAfterDataCoverageFilter;
+    pairsGenerated = primaryLoop.pairsGenerated;
 
-      // PRIMARY-LOOP WALL-CLOCK GUARD: once the budget is spent, stop opening new
-      // candidate work (no enrichment, no sibling recovery, no snapshot, no product
-      // gates). Remaining candidates are still attributed exactly once — with an
-      // explicit NOT_EVALUATED reason, never an enrichment/score/product failure —
-      // so the conservation invariant
-      // sum(primaryTerminalReasonCounts) === primaryCandidatesEntered still holds.
-      if (!primaryLoopBudgetExhausted && primaryLoopBudgetGuard.isExhausted()) {
-        primaryLoopBudgetExhausted = true;
-      }
-      if (primaryLoopBudgetExhausted) {
-        primaryCandidatesEntered++;
-        recordPrimaryTerminal(PRIMARY_LOOP_BUDGET_EXHAUSTED_TERMINAL_REASON);
-        continue;
-      }
-
-      primaryCandidatesEntered++;
-      if (collectResearchSnapshots && !researchCapReached) rf.candidatesSeen++;
-
-      // Skip if already has rejection reasons (product path only; research skips pre-enrichment failures)
-      if (candidate.rejectionReasons.length > 0) {
-        // P1B CONSERVATION: the terminal reason is recorded for EVERY candidate that
-        // enters the loop. Only the `rejected` diagnostics array stays gated on the
-        // product cap — a candidate that reaches this branch after the cap is reached
-        // must still be attributable, not a silent fall-through.
-        recordPrimaryTerminal(
-          productCapReached
-            ? "PRIMARY_NOT_EVALUATED_PRODUCT_CAP_REACHED_PRE_ENRICHMENT_REJECTED"
-            : "PRIMARY_PRE_ENRICHMENT_CANDIDATE_REJECTED",
-        );
-        if (!productCapReached) {
-          rejected.push({
-            id: candidate.market.id,
-            rejectionReasons: [...candidate.rejectionReasons],
-          });
-        }
-        if (collectResearchSnapshots && !researchCapReached) rf.rejectedPreResearchCandidateReasons++;
-        continue;
-      }
-
-      // Enrich with API data (pass initial warnings)
-      let effectiveCandidate = candidate;
-      let enriched = await enrichMarket(candidate.event, candidate.market, candidate.warnings);
-
-      // Primary representative-market recovery: when the initially chosen
-      // representative is unusable, recover the SAME authoritative physical event
-      // through a product-policy-permitted sibling with valid identity and a
-      // corridor outcome. Fails closed exactly as before when no sibling exists.
-      if (!enriched && !productCapReached) {
-        const recovered = selectRecoverablePrimarySibling(candidate);
-        if (recovered) {
-          effectiveCandidate = recovered;
-          enriched = await enrichMarket(recovered.event, recovered.market, recovered.warnings);
-        }
-      }
-
-      if (!enriched) {
-        // P1B CONSERVATION: see above — attribution is never gated on the product cap.
-        recordPrimaryTerminal(
-          productCapReached
-            ? "PRIMARY_NOT_EVALUATED_PRODUCT_CAP_REACHED_ENRICHMENT_NULL"
-            : "PRIMARY_ENRICHMENT_NULL",
-        );
-        if (!productCapReached) {
-          rejected.push({
-            id: candidate.market.id,
-            rejectionReasons: ["Failed to select valid outcome"],
-          });
-        }
-        if (collectResearchSnapshots && !researchCapReached) rf.enrichmentNull++;
-        continue;
-      }
-
-      // ── RESEARCH SNAPSHOT CAPTURE (before product gates) ────────────────────
-      // Captured AFTER enrichment and M3-C diagnostics, BEFORE dataCoverage
-      // threshold, rejectionReasons gate, winProbability threshold, and all
-      // product-specific filters. dataCoverage is stored as a field, NOT used
-      // as an eligibility gate here.
-      if (collectResearchSnapshots && !researchCapReached && researchSnapshotRunId && researchSnapshotAt) {
-        const snap = await tryBuildResearchSnapshot(
-          enriched,
-          effectiveCandidate,
-          researchSnapshotRunId,
-          researchSnapshotAt,
-          researchOddsMin,
-          researchOddsMax,
-          rf,
-        );
-        if (snap) researchSnapshots.push(snap);
-      }
-
-      // ── PRODUCT GATES (only when product cap not yet reached) ───────────────
-      if (productCapReached) {
-        recordPrimaryTerminal("PRIMARY_NOT_EVALUATED_PRODUCT_CAP_REACHED");
-        continue;
-      }
-
-      // Check data coverage threshold
-      if (enriched.diagnostics.dataCoverage < minDataCoverage) {
-        // P1B: the concrete coverage value that failed the rule is retained so the
-        // loss is attributable to the rule AND its input, not just to a count.
-        recordPrimaryTerminal("PRIMARY_REJECTED_DATA_COVERAGE_BELOW_THRESHOLD");
-        primaryCoverageRejectionValues.push(enriched.diagnostics.dataCoverage);
-        rejected.push({
-          id: effectiveCandidate.market.id,
-          rejectionReasons: [
-            `Data coverage below threshold: ${enriched.diagnostics.dataCoverage}%`,
-            `Required: ${minDataCoverage}%`,
-          ],
-        });
-        continue;
-      }
-
-      candidatesAfterDataCoverageFilter++;
-
-      if (enriched.diagnostics.rejectionReasons.length > 0) {
-        recordPrimaryTerminal("PRIMARY_REJECTED_ENRICHMENT_REJECTION_REASONS");
-        rejected.push({
-          id: effectiveCandidate.market.id,
-          rejectionReasons: enriched.diagnostics.rejectionReasons,
-        });
-        continue;
-      }
-
-      // Generate landing card pair
-      const pair = generateLandingCardPair(enriched);
-
-      if (!pair) {
-        recordPrimaryTerminal("PRIMARY_REJECTED_PAIR_GENERATION_FAILED");
-        rejected.push({
-          id: effectiveCandidate.market.id,
-          rejectionReasons: ["Failed to generate landing card pair"],
-        });
-        continue;
-      }
-      if (pair.premiumSignal.winProbability < 52) {
-        recordPrimaryTerminal("PRIMARY_REJECTED_WIN_PROBABILITY_BELOW_52");
-        rejected.push({
-          id: effectiveCandidate.market.id,
-          rejectionReasons: [`Signal confidence too low: ${pair.premiumSignal.winProbability}`],
-        });
-        continue;
-      }
-
-      // Check if premiumSignal.time is "Ended" and exclude if needed
-      if (excludeEnded && pair.premiumSignal.time === "Ended") {
-        recordPrimaryTerminal("PRIMARY_REJECTED_MARKET_ENDED_AT_PAIR_STAGE");
-        rejected.push({
-          id: effectiveCandidate.market.id,
-          rejectionReasons: ["Market ended (premiumSignal.time = Ended)"],
-        });
-        continue;
-      }
-
-      const marketKey =
-        safeString(effectiveCandidate.market.id) ||
-        safeString(effectiveCandidate.market.conditionId) ||
-        safeString(effectiveCandidate.market.slug) ||
-        pair.id;
-
-      if (seenPairIds.has(pair.id) || seenMarketKeys.has(marketKey)) {
-        recordPrimaryTerminal("PRIMARY_REJECTED_DUPLICATE");
-        rejected.push({
-          id: effectiveCandidate.market.id,
-          rejectionReasons: [`Duplicate landing pair skipped: ${pair.id}`],
-        });
-        continue;
-      }
-
-      seenPairIds.add(pair.id);
-      seenMarketKeys.add(marketKey);
-
-      recordPrimaryTerminal("PRIMARY_QUALIFIED");
-      pairs.push(pair);
-      pairsGenerated++;
-      if (pinnedKeysForPersistCheck.size > 0) {
-        const key = computeCandidateProviderEventKey(effectiveCandidate);
-        if (key !== null && pinnedKeysForPersistCheck.has(key)) pinnedCandidatesPersisted++;
-      }
-    }
-    pinApplyDiagnostics = { ...pinApplyDiagnostics, pinned_candidates_persisted: pinnedCandidatesPersisted };
+    pinApplyDiagnostics = {
+      ...pinApplyDiagnostics,
+      pinned_candidates_persisted: primaryLoop.pinnedCandidatesPersisted,
+    };
 
     // P1B: publish primary funnel terminal attribution (model + stage + values).
     rf.primaryCandidatesEntered = primaryCandidatesEntered;
@@ -3552,6 +3934,10 @@ export async function buildLandingCards(options?: {
       } as unknown as import("./types").InspectedMetadata,
       ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
       ...(firemodel11ResearchCandidates.length > 0 ? { firemodel11ResearchCandidates } : {}),
+      // Full canonical-qualified primary population (public + beyond public rank
+      // `limit`). Only surfaced under full-population evaluation; the public
+      // `pairs` array above stays bounded to `limit` regardless.
+      ...(evaluateFullPrimaryPopulation ? { primaryQualifiedPairs: canonicalPrimaryPairs } : {}),
       ...(requiredProviderEvents.length > 0 ? { pinDiagnostics: pinApplyDiagnostics } : {}),
     };
   } catch (error) {
