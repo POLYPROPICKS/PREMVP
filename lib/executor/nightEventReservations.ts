@@ -2363,6 +2363,13 @@ export async function runReservationCronWithEvidence(
   } catch (err) {
     const finishedAt = new Date().toISOString();
     const msg = err instanceof Error ? err.message : "Unknown error";
+    const sanitizedMsg = sanitizeSchedulerErrorMessage(msg);
+    // job_runs.diagnostics is NOT NULL. The error path previously omitted
+    // this field entirely, which made the writeJobRun insert itself throw
+    // (23502), and that secondary failure was swallowed as non-fatal by
+    // createSupabaseSchedulerJobEvidencePort -- silently erasing every
+    // Reservation failure from job_runs. A minimal non-null failure-context
+    // object satisfies the schema without inventing new evidence shape.
     await jobEvidence.writeJobRun({
       source: "night-event-reservations",
       formulaVersion: "reservation-v1",
@@ -2372,7 +2379,11 @@ export async function runReservationCronWithEvidence(
       generatedCount: 0,
       rejectedCount: 0,
       durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
-      errorMessage: sanitizeSchedulerErrorMessage(msg),
+      errorMessage: sanitizedMsg,
+      diagnostics: {
+        error_message: sanitizedMsg,
+        selector_mode: opts.selectorMode ?? null,
+      },
     });
     throw err;
   }

@@ -1626,6 +1626,17 @@ async function fetchContractAPlanningServingRowSets(
     }
     return rows.map(normalizeServingSourceRow);
   };
+  // Same PLANNING_LOOKBACK_HOURS bound the pre-cutover generated_signal_pairs
+  // scored query always applied (see fetchPlanningSourceRowSets above), derived
+  // from this call's own snapshotAsOfIso rather than a fresh Date.now() so the
+  // lower and upper bounds of the scan are pinned to one causal instant.
+  // source_created_at is the serving projection's equivalent of GSP.created_at.
+  // Without this bound the ordered scan covers the entire ACTIVE projection,
+  // which is what produced the 57014 statement-timeout regression introduced
+  // when 778346c moved this read off the already-bounded GSP query.
+  const scoredLookbackIso = new Date(
+    Date.parse(snapshotAsOfIso) - PLANNING_LOOKBACK_HOURS * 3_600_000
+  ).toISOString();
   const buildScoredQuery = () =>
     supabaseAdmin
       .from("current_signal_pair_serving")
@@ -1635,6 +1646,7 @@ async function fetchContractAPlanningServingRowSets(
       // READ authority is the one selected production population only.
       .in("metric_formula_version", PRODUCTION_SCORED_PLANNING_VERSIONS)
       .is("signal_result", null)
+      .gte("source_created_at", scoredLookbackIso)
       .gt("expires_at", snapshotAsOfIso)
       .not("selected_token_id", "is", null)
       .not("condition_id", "is", null)
