@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "algorithm": "SHA-256",
+  "artifacts": {
+    "b2/b1_score_component_analysis.json": "4221f78a2dda7e27467e730f09bb1f131ccb2ea521fed8a657b2fee89a7d50b0",
+    "b2/b1_score_component_analysis_manifest.json": "90525db9c58179a3a0b36238f9539b73d821d642b6231fc73159e117f00ce440",
+    "b2/b2_golden_replay_receipt.json": "af6425b65a3b134d73a6823b40c9eedb972ff33a721df8a264b5cdc0a8101c89",
+    "b2/b2_golden_replay_receipt_manifest.json": "a2246b4d1b77ba0a073e14432db2d7005177cd58a542d9317a9c196c29932a58",
+    "dataset/dataset_freeze_manifest.json": "4e169008abe0e64865a26304b35cd38a8d5bd6d66e1e716bee53d0389cc56ec7",
+    "dataset/generated_signal_pairs_export.json.gz": "153cd28fb98294dd6c3e8cdcb480d77c8b10790d1e04ee7bd856a39cfaaa6a85",
+    "dataset/locked_execution_sequence.json": "43f9d20c8f6cbfd800b9b510abc5e2aacdf480b93aa1c95b95e2a7b5790b1d49",
+    "dataset/locked_signal_identity_set.json": "5d650d6f394f61d353fabc501e5c0a4c777599686c472f6b43da39bafa51359d",
+    "dataset/locked_signal_sequence.json": "199db430c2acf7aa453d1874bb73641f799520a2db02fca3d2290b9d5dd51870",
+    "dataset/source_lineage.json": "1a2ec86b79b250623a688c5b1583472d0e10412d3ac938fdeaa7e22ae9db47cd",
+    "dynamic_protected_growth_v1/approved_capital_curve.json": "6d9382221a80254b2d2aa8ebe22f01fed5b105a24e468ae4141d752b53259dc1",
+    "dynamic_protected_growth_v1/approved_engine_identity_ledger.json": "d440ab94b355079dac8a6feb0de297d1266953294fe1d02dff70b3d8cabfae90",
+    "dynamic_protected_growth_v1/approved_engine_replay_manifest.json": "b2357de48f1455ed80633b7b17593aec66f926fb3c2513b5ef955dfc991d3b08",
+    "dynamic_protected_growth_v1/approved_vault_transfer_ledger.json": "11885fb09a1d5324989695c268081ab7c1a71e00efbf92c2cfcd7ecc3a8ff767",
+    "dynamic_protected_growth_v1/recovered_dynamic_identity_ledger.json": "9e55448019630e6b7a5db479b75f5bb93215fa045f0e5fcece09adcb8599edae",
+    "dynamic_protected_growth_v1/recovery_summary.json": "5eb85cbefafae11f974f0026a3133a89bde2f34cc040f3a54e59fc5667242e05",
+    "fixed_safe_v1/fixed_profile_curve.json": "74ff1028d7e1b7a12085f5c9b31050e150aa390d249d45e8a73100e8dbb91ed0",
+    "fixed_safe_v1/fixed_profile_ledger.json": "5b7e55e95ed44a5a57e5933ba5a9139999ecfe6c7a5e675dcd5f6948f11c2eb0",
+    "fixed_safe_v1/fixed_replay_manifest.json": "826b4263bdf85ffcf669226dd06ab75d42606ecdf9544d86bcdbb1cd8cd5a391",
+    "fixed_safe_v1/fixed_replay_profiles.json": "9efbc82a07b9ae1d5510437716a447a97593022d4553d439aefc7d7f73b9586c"
+  }
+}

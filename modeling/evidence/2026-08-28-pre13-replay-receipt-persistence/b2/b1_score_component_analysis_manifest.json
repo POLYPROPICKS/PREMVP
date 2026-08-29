@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "engineVersion": "4B.1-score-component-analysis-v1",
+  "generatedArtifact": "score_component_analysis",
+  "contentHash": "5b50a3de8a48d36a41bfe9a79fc968e1f566694d82ce04fecc78ee3b71331d39",
+  "jsonSha256": "4221f78a2dda7e27467e730f09bb1f131ccb2ea521fed8a657b2fee89a7d50b0",
+  "htmlSha256": "9abe39b1eb6ebc1c34f8f01cc36e4205887b01830e54e52eb377f85413826b33",
+  "rawRowCount": 49400,
+  "strictDedupRowCount": 1850,
+  "cohortCount": 10,
+  "b2DirectionCount": 6
+}
