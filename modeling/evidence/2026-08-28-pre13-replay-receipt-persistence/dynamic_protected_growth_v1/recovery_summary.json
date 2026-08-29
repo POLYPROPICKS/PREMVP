@@ -1,0 +1,65 @@
+{
+  "version": "DYNAMIC_PROTECTED_GROWTH_V1_IDENTITY_RECOVERY_V1",
+  "evidenceClassification": "RECOVERED_DETERMINISTIC_DERIVED_EVIDENCE",
+  "originalIdentityLedgerRetained": false,
+  "exactIdentityLedgerReconstructedFromApprovedEngine": true,
+  "approvedProfile": "DYNAMIC_PROTECTED_GROWTH_V1",
+  "approvedPolicy": {
+    "family": "DYNAMIC_PRINCIPAL_RECOVERY_VAULT_V2",
+    "id": "PRV2_T25_P50_R1_S0.05_C0.1",
+    "triggerProfitU": 25,
+    "principalTargetU": 50,
+    "principalRecoveryRate": 1,
+    "postRecoverySkimRate": 0.05,
+    "transferCapPctOfActiveReference": 0.1
+  },
+  "hashes": {
+    "datasetSha256": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+    "identitySetSha256": "99f22a9bb8db0a2ff7bddd8e72f87a097fdb136f1a242a300ccb0e8740d0fcca",
+    "lockedExecutionOrderSha256": "5457240a539e5db189c1b23659678f157b322928105909a5812ce318a9d6b036",
+    "approvedEngineExecutionLedgerHash": "8d7a872d69a48b66878bb858352441ce57eb11b86a518c519d80ac572ea9f8b3",
+    "capitalCurveHash": "4767cb8a994bb91b8a95f2a5787b77a4975a267915f7df2c7500dd14991a51cd",
+    "vaultTransferLedgerHash": "0aba155936f1365bfd40f3b42d2fc443acea7dd944d3f6bf3c54c6613aef5a17",
+    "recoveredIdentityLedgerCanonicalHash": "f439b6cee782cae886b00fe2900cdd717fec653d6915bcda8272fd615965dd6f"
+  },
+  "execution": {
+    "intended": 231,
+    "executed": 230,
+    "skipped": 1,
+    "skippedObservationId": "40cbd6a5-ea1a-4a41-a40d-826bffa9ca74",
+    "skipReason": "EXPOSURE_LIMIT"
+  },
+  "settlement": {
+    "resolved": 230,
+    "wins": 122,
+    "losses": 108,
+    "unresolvedOrVoid": 0
+  },
+  "economics": {
+    "totalStaked": 529.11172857,
+    "pnl": 121.85057149,
+    "roi": 23.02927055,
+    "finalFreeActive": 119.50804292,
+    "finalOpenPrincipal": 0,
+    "finalActive": 119.50804292,
+    "finalVault": 52.34252857,
+    "finalTotal": 171.85057149,
+    "minimumTotal": 50,
+    "maximumTotalFall": 19.99816041,
+    "maximumActiveFall": 28.02518589,
+    "maximumConcurrentPositions": 36,
+    "maximumLockedPrincipal": 87.53571829,
+    "transferCount": 29,
+    "totalTransferred": 52.34252857
+  },
+  "chronology": {
+    "outcomesUsedForPreExecutionDecisionOrStake": false,
+    "settlementRule": "settle due positions through decision timestamp before entry batch; equal resolved timestamps settle as one batch; decision order remains locked execution sequence"
+  },
+  "artifactHashes": {
+    "rawApprovedEngineLedgerFileSha256": "d440ab94b355079dac8a6feb0de297d1266953294fe1d02dff70b3d8cabfae90",
+    "recoveredIdentityLedgerFileSha256": "9e55448019630e6b7a5db479b75f5bb93215fa045f0e5fcece09adcb8599edae",
+    "approvedCapitalCurveFileSha256": "6d9382221a80254b2d2aa8ebe22f01fed5b105a24e468ae4141d752b53259dc1",
+    "approvedVaultTransferLedgerFileSha256": "11885fb09a1d5324989695c268081ab7c1a71e00efbf92c2cfcd7ecc3a8ff767"
+  }
+}

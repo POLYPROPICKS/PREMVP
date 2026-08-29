@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "engineVersion": "4B.2A-bounded-routing-experiments-v1",
+  "inputSha256": "b2f5dfb5963e036ddb3c2c41a94faff9d7f3eaf08755b9afb9aec7091869be45",
+  "classifierSha256": "ec47640740fbf5a8789ee023fdb41298cde947dcda9e1109af3fc0905305f24f",
+  "evidenceSha256": "4221f78a2dda7e27467e730f09bb1f131ccb2ea521fed8a657b2fee89a7d50b0",
+  "evidenceContentHash": "5b50a3de8a48d36a41bfe9a79fc968e1f566694d82ce04fecc78ee3b71331d39",
+  "strictDedupPolicy": "strict_latest_created_before_resolved",
+  "rawRowCount": 49400,
+  "strictDedupRowCount": 1850,
+  "baseComparatorId": "ALT4_TS_SCORE_GE_65_EXCLUDE_ESPORTS",
+  "candidateIds": [
+    "B2_PRICE_FLOOR_030",
+    "B2_TIMING_WITHIN_120M",
+    "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M"
+  ],
+  "experimentContentHash": "bb4e5319f42773e5f4343b272fc039ae1354f6df4c0702afdd782580bf81d6df",
+  "jsonSha256": "af6425b65a3b134d73a6823b40c9eedb972ff33a721df8a264b5cdc0a8101c89",
+  "htmlSha256": "362e62235f036f0fa5e651469978aed99982729765233a64d9f59491add7117b",
+  "artifactSha256s": {
+    "bounded_routing_experiments.json": "af6425b65a3b134d73a6823b40c9eedb972ff33a721df8a264b5cdc0a8101c89",
+    "bounded_routing_experiments.html": "362e62235f036f0fa5e651469978aed99982729765233a64d9f59491add7117b"
+  }
+}

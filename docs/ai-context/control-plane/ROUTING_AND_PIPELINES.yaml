@@ -77,7 +77,31 @@
       "stop_conditions": ["PROMPT_GATE_BLOCKED", "CONTROL_PLANE_SCOPE_EXPANSION_REQUIRED", "STATE_STALE"],
       "founder_action_budget": 1,
       "mobile_compatible": true,
-      "fail_closed": false
+      "fail_closed": false,
+      "artifact_class_overrides": [
+        {
+          "artifact_class": "EVOLUTION_ROADMAP_PROPOSAL",
+          "changed_path_scope": ["docs/ai-context/control-plane/evolution/roadmap-proposals/"],
+          "produced_by": ["premvp.prompt.automation_roadmap_governor.v1"],
+          "rationale": "An Automation Roadmap (Operations) Governor run is R2 only for authority sensitivity — it may propose a roadmap-affecting delta. Its output is a single accepted:false evidence-only proposal under evolution/roadmap-proposals/, never a CURRENT_STATE delta, never product or control-plane code. The generic R2 CONTROL_PLANE_VALIDATE + BUILD stages, the npm run control-plane:check evidence requirement and the state_delta_proposal completion requirement do NOT apply to this artifact class.",
+          "sequential_stages": ["PRECHECK", "AUTHORITY_REVIEW", "GOVERNOR_RESULT", "GOVERNOR_RESULT_VALIDATE", "TERMINAL_PERSISTENCE", "COMPLETION_ENVELOPE"],
+          "evidence_requirements": [
+            "git status --short",
+            "git diff --stat",
+            "git diff --check",
+            "node scripts/control-plane/evolution-govern.mjs --result <result>.json exit code",
+            "npm run control-plane:evolution:govern:test exit code"
+          ],
+          "completion_requirements": ["COMPLETION_ENVELOPE", "exactly one GOVERNOR_RESULT.terminal_disposition", "accepted:false on the result and any embedded roadmap delta"],
+          "broad_gates_forbidden_unless_named_mandatory": ["npm run control-plane:check", "npx tsc --noEmit", "npm run build", "application/product test suites"],
+          "terminal_persistence": {
+            "owner_command": "premvp.command.evolution_canonicalize.v1",
+            "binding": "docs/ai-context/control-plane/evolution/SCHEDULE_MANIFEST.yaml",
+            "rule": "Canonicalization of the validated evidence-only Governor lineage to origin/main is owned by premvp.command.evolution_canonicalize.v1 with zero intermediate Founder actions. The Governor run never creates its own PR polling/babysitting loop and never transfers persistence, review or merge waiting to the Founder. A pending branch or draft PR is never Governor evidence authority."
+          },
+          "no_weakening_note": "This override is scoped to the EVOLUTION_ROADMAP_PROPOSAL artifact class only. Every other R2 mission keeps the full required_capabilities, sequential_stages, evidence_requirements and completion_requirements above unchanged."
+        }
+      ]
     },
     {
       "id": "R3_WEATHER_MODEL_CHANGE",

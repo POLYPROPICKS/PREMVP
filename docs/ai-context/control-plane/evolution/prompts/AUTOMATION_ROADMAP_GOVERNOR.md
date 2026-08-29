@@ -2,14 +2,21 @@
 
 **Prompt id:** `premvp.prompt.automation_roadmap_governor.v1`
 **Stage:** Stage 2 — Automation Roadmap and governance
-**Risk class:** `R2_ARCHITECTURE_OR_ROADMAP` (control-plane/roadmap change) — the Governor reads
-persisted Evolution cycles and proposes a roadmap delta; it never patches product code, never
-touches the database, and never self-accepts anything.
+**Risk class:** `R2_ARCHITECTURE_OR_ROADMAP` — but only for *authority sensitivity*: the
+Governor may propose a roadmap-affecting delta, so its proposal is reviewed as roadmap-class
+work. It reads persisted Evolution cycles, writes one `accepted: false` evidence-only proposal
+under `evolution/roadmap-proposals/`, never patches product or control-plane code, never
+touches the database, never mutates `CURRENT_STATE.yaml`, and never self-accepts anything.
+Because the produced artifact is an evidence-only proposal and not a state or code change, the
+**verification budget and integration path are the artifact-class ones in §9 below**, not the
+generic R2 `CONTROL_PLANE_VALIDATE` + `BUILD` + `state_delta_proposal` stages. See
+`ROUTING_AND_PIPELINES.yaml` → `risk_classes[R2].artifact_class_overrides`.
 **Repository:** `POLYPROPICKS/PREMVP` only.
 
-This prompt is the reviewer contract for one Automation Roadmap Governor run. It is
-self-contained on purpose: a cold session in any registered execution environment must be
-able to run it from Git with no prior conversation.
+This prompt is the reviewer contract for one Automation Roadmap Governor run (also referred to
+as the Automation Operations Governor). It is self-contained on purpose: a cold session in any
+registered execution environment must be able to run it from Git with no prior conversation,
+with **no chat history and no external historical instruction**.
 
 ---
 
@@ -38,19 +45,43 @@ You may not use chat memory, a summary of a previous session, or an executor's
 self-description as evidence for anything material. Every cycle you cite must resolve to a
 file under `evolution/cycles/`.
 
-## 3. Eligibility comes first
+**Canonical history only.** Eligibility and `based_on_cycles` are computed exclusively from
+Evolution cycles that are already merged into canonical `origin/main`. A pending branch, an
+open or draft pull request, a local unmerged file, or any not-yet-canonical artifact is
+**never** evidence and never counts toward eligibility — `premvp.command.evolution_govern.v1`
+discovers and validates the canonical history itself and supplied cycle ids are never an
+authority.
+
+## 3. Eligibility and the one terminal disposition
 
 Compute eligibility before anything else, using
-`computeEligibility` from `scripts/control-plane/lib/evolution-governor.mjs`:
+`computeEligibility` / `prepareGovernorEvidence` from
+`scripts/control-plane/lib/evolution-governor.mjs`:
 
-- **eligible** when at least three new validated cycles exist since the last Governor run,
-  **or** the configured weekly boundary has been reached;
+- **eligible** when at least three new validated canonical cycles exist since the last
+  Governor run, **or** the configured weekly boundary has been reached;
 - **not eligible** otherwise.
 
-If not eligible, stop there. Produce a `GOVERNOR_RESULT` with `eligibility.eligible: false`,
-`roadmap_delta: null`, and findings that state plainly that there is not yet enough evidence.
-**Never fabricate a roadmap delta to fill the gap.** A stated no-change outcome is a correct,
-complete result — not a failure.
+These thresholds (three new validated cycles, or the weekly boundary) and the Governor's
+economics are fixed. This prompt does not change them.
+
+Every run ends in **exactly one** `terminal_disposition` (schema
+`GOVERNOR_RESULT.schema.json`):
+
+- `EVIDENCE_INSUFFICIENT` — **mandatory** when `eligibility.eligible` is false. Stop there:
+  `roadmap_delta: null`, findings that state plainly there is not yet enough canonical
+  evidence. A metric with no supporting evidence stays the literal string `UNKNOWN` /
+  `NOT_AVAILABLE` — never estimated.
+- `NO_AUTOMATION_NOW` — eligible, but the evidence does not justify investing in any
+  automation now: zero `PROMOTE` decisions, `roadmap_delta: null`,
+  `roadmap_delta_justified: false`.
+- `ONE_AUTOMATION_INVESTMENT` — eligible and the evidence justifies exactly one promoted
+  automation: exactly one `PROMOTE` automation decision and one `roadmap_delta` with
+  `accepted: false`.
+
+**Never fabricate a roadmap delta to fill the gap.** A stated no-change outcome
+(`EVIDENCE_INSUFFICIENT` or `NO_AUTOMATION_NOW`) is a correct, complete result — not a
+failure.
 
 ## 4. The eight questions
 
@@ -138,13 +169,63 @@ This Governor run never:
 - promotes a Founder capability ladder level — it records repetition evidence only;
 - touches product runtime, the database, deployment or Ireland;
 - reads or prints secrets;
-- treats operator action count, or any supporting metric, as an axis verdict.
+- treats operator action count, or any supporting metric, as an axis verdict;
+- treats a pending branch, an open/draft PR, or any not-yet-canonical file as evidence or as
+  eligibility input;
+- runs broad or unrelated verification gates — full `control-plane:check`, `tsc --noEmit`,
+  `npm run build`, or any application/test suite outside §9 — unless a live canonical policy
+  line makes that gate mandatory for the exact `evolution/roadmap-proposals/` artifact class;
+- opens, polls, watches or "babysits" a pull request, or waits on merge — terminal
+  persistence is owned by `premvp.command.evolution_canonicalize.v1` (§9);
+- transfers ordinary persistence, review or merge waiting to the Founder;
+- runs a no-new-evidence polling iteration — if canonical history has not advanced since the
+  last run, the run is `EVIDENCE_INSUFFICIENT` and stops.
 
-## 9. How to run it
+## 9. Verification budget, and how to run it
+
+### 9.1 Produce and validate the result — the cheapest sufficient proof
 
 ```
+node scripts/control-plane/evolution-govern.mjs --prepare
 node scripts/control-plane/evolution-govern.mjs --result <result>.json --write
 ```
 
-`--write` persists the result and its report under `roadmap-proposals/`. Without `--write`,
-nothing is written and the command is a pure validation pass.
+`--prepare` discovers and validates the canonical `origin/main` Evolution history and reports
+the forced `terminal_disposition` (or `REASONING_REQUIRED` when eligible). `--result … --write`
+re-runs every Stage 2 contract — canonical-history discovery, eligibility, the one-disposition
+invariants, `accepted: false`, the factual/strategic field separation — then renders and
+re-validates the Russian Founder report, and only then persists both under
+`roadmap-proposals/`. Without `--write` it is a pure validation pass.
+
+**This artifact class's entire required verification budget is:**
+
+- `evolution-govern.mjs --result <result>.json` exit `0` (validation + report render);
+- `npm run control-plane:evolution:govern:test` exit `0`;
+- `git status --short`, `git diff --stat`, `git diff --check`.
+
+Do **not** run `npm run control-plane:check`, `tsc`, `npm run build`, or any product/test
+suite. None is mandatory for an `evolution/roadmap-proposals/` proposal artifact, and running
+them is the broad-verification ritual this contract exists to prevent. If, and only if, a
+canonical policy line is later added that names one of those gates mandatory for this exact
+artifact class, run exactly that gate and nothing more.
+
+### 9.2 Terminal persistence — not your job to babysit
+
+Canonicalization of the validated, evidence-only Governor lineage
+(`roadmap-proposals/<result_id>.json` + `<result_id>.report.md`) into `origin/main` is owned
+by the single registered terminal persistence lifecycle
+`premvp.command.evolution_canonicalize.v1`, bound to this routine in
+`evolution/SCHEDULE_MANIFEST.yaml`:
+
+```
+npm run control-plane:evolution:canonicalize -- --canonicalize --branch <lineage-branch>
+```
+
+It re-runs the Stage 2 validators, hard-allowlists the Evolution evidence artifact surface,
+enforces Governor-result uniqueness and `accepted: false`, and merges to `origin/main` through
+the shared GitHub PR create/merge commands with **zero intermediate Founder actions**. The
+Governor run does not create its own PR, does not open a polling/watching loop over one, and
+does not hand merge-waiting to the Founder. Ordinary review and merge latency is normal
+pipeline behaviour, not a task the Governor or the Founder waits on. After canonicalization
+the Governor still reads only canonical `origin/main` history — nothing in the pending lineage
+is ever evidence.
