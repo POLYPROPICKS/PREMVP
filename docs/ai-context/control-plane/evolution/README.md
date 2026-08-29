@@ -35,7 +35,7 @@ business is not success.
 | `FOUNDER_CAPABILITY_LADDER.yaml` | The seven-level Founder progression and its promotion rule. |
 | `OPERATOR_ACTION_POLICY.yaml` | What counts as one operator action, and what deliberately does not. |
 | `TOOL_AND_ENVIRONMENT_PORTABILITY.yaml` | What must stay true for another environment to resume this work. |
-| `SCHEDULE_MANIFEST.yaml` | The two intended routines and their cadence. The schedule is only a trigger — see *Boundaries*. |
+| `SCHEDULE_MANIFEST.yaml` | The two intended routines, their cadence, and the terminal persistence stage each one ends with. The schedule is only a trigger — see *Boundaries*. |
 | `schemas/` | Focused JSON Schemas for cycles, hypotheses, corrections, operator actions, Governor results and roadmap deltas. |
 | `prompts/DAILY_EVOLUTION_REVIEW.md` | The self-contained Stage 1 reviewer contract. |
 | `prompts/AUTOMATION_ROADMAP_GOVERNOR.md` | The self-contained Stage 2 reviewer contract. |
@@ -54,9 +54,21 @@ see *Boundaries*.
 npm run control-plane:evolution:collect -- --input <bundle.json> --out <collection.json>
 npm run control-plane:evolution:evaluate -- --cycle <cycle.json> --write
 npm run control-plane:evolution:govern -- --result <result.json> --write
+npm run control-plane:evolution:canonicalize -- --canonicalize --branch <lineage-branch>
 npm run control-plane:evolution:test
 npm run control-plane:evolution:govern:test
+npm run control-plane:evolution:canonicalize:test
 ```
+
+`control-plane:evolution:canonicalize` is the **terminal persistence stage** for both routines
+(`SCHEDULE_MANIFEST.yaml`). It admits an already validated, evidence-only Cycle or Governor
+lineage — hard-allowlisted to `cycles/`, `roadmap-proposals/`, `input-bundles/` and
+`diagrams/` evidence files — re-runs the Stage 1 / Stage 2 validators, preserves `accepted:false`
+and one-period/one-lineage + Governor-result uniqueness, and then canonicalizes it to
+`origin/main` through the shared GitHub PR create/merge commands with **zero intermediate
+Founder actions**. It is not a second state or evidence authority, and it never lets a pending
+branch or draft PR become evidence authority — the Governor still reads only canonical
+`origin/main` history.
 
 All commands are dependency-free Node ESM, offline, and read no clock — the same input
 produces the same output on Claude Code Cloud and on the local Windows Codex host.

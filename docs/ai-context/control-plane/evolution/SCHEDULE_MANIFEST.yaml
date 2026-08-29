@@ -6,7 +6,15 @@
 
   "authority": {
     "role": "SCHEDULE_MANIFEST_ONLY",
-    "rule": "This file declares intended trigger cadence only. All business logic — collection, validation, eligibility, evidence rules, the no-fabrication rule — lives in the persisted Git commands and policies each routine points to. The schedule is only a trigger; nothing here can substitute for the reviewer prompt or the validators."
+    "rule": "This file declares intended trigger cadence and the terminal persistence binding only. All business logic — collection, validation, eligibility, evidence rules, the no-fabrication rule, the canonicalization allowlist — lives in the persisted Git commands and policies each routine points to. The schedule is only a trigger; nothing here can substitute for the reviewer prompt, the validators or the canonicalization admission contract."
+  },
+
+  "terminal_persistence_stage": {
+    "command_id": "premvp.command.evolution_canonicalize.v1",
+    "implementation_path": "scripts/control-plane/evolution-canonicalize.mjs",
+    "role": "TERMINAL_PERSISTENCE_ONLY",
+    "rule": "After a routine has produced and validated its artifact, this is the single registered lifecycle that converts the validated, evidence-only Evolution/Governor lineage into canonical origin/main with zero intermediate Founder actions. It re-runs the Stage 1 / Stage 2 validators, hard-allowlists the exact Evolution evidence artifact surface (cycles/, roadmap-proposals/, input-bundles/, diagrams/), preserves accepted:false and one-period/one-lineage + Governor-result uniqueness, and fails closed otherwise. It is not a second state or evidence authority and it never lets a pending branch or draft PR become evidence authority — the Governor still consumes only canonical origin/main history.",
+    "reuses": ["premvp.command.github_pr_create.v1", "premvp.command.github_pr_merge.v1"]
   },
 
   "registered_routine_mechanism": {
@@ -15,7 +23,7 @@
       "CAPABILITY_MATRIX.yaml execution_targets[*].capabilities — no SCHEDULER/CRON/ROUTINE capability is registered for claude_code_cloud, local_codex_windows or ireland_local",
       "AGENT_REGISTRY.yaml entries[*].type — the registered types are AGENT, SKILL, COMMAND, HOOK, SCRIPT, CI_GATE, POLICY; none is a scheduling primitive"
     ],
-    "note": "As of this manifest, no live registered execution surface in the PREMVP control plane can create or persist a recurring schedule. This manifest does not invent one — it records the two intended routines and their cadence so a Founder-operated scheduling surface (or a future registered mechanism) can bind to them without guessing the contract."
+    "note": "As of this manifest, no live registered execution surface in the PREMVP control plane can create or persist a recurring schedule. This manifest does not invent one — it records the two intended routines and their cadence so a Founder-operated scheduling surface (or a future registered mechanism) can bind to them without guessing the contract. The TRIGGER remains Founder-operated; the terminal PERSISTENCE of each validated artifact is now a registered lifecycle (premvp.command.evolution_canonicalize.v1) and no longer needs a Founder merge or review action."
   },
 
   "routines": [
@@ -34,7 +42,12 @@
       ],
       "prompt": "docs/ai-context/control-plane/evolution/prompts/DAILY_EVOLUTION_REVIEW.md",
       "business_logic_owner": "scripts/control-plane/lib/evolution-cycle.mjs and scripts/control-plane/lib/operator-actions.mjs — the schedule only decides when this runs, never what it decides",
-      "output_location": "docs/ai-context/control-plane/evolution/cycles/"
+      "output_location": "docs/ai-context/control-plane/evolution/cycles/",
+      "terminal_persistence_stage": {
+        "command_id": "premvp.command.evolution_canonicalize.v1",
+        "command": "npm run control-plane:evolution:canonicalize -- --canonicalize --branch <lineage-branch>",
+        "rule": "Runs after evolution:evaluate --write. Admits the validated evidence-only cycle lineage (cycles/<cycle_id>.json + <cycle_id>.report.md, and any required input-bundles/ or diagrams/ evidence) and canonicalizes it to origin/main with no Founder merge or review action. Fails closed on any unrelated changed path, malformed artifact, accepted:true, or a competing lineage for the same evaluation period."
+      }
     },
     {
       "routine_id": "premvp.routine.automation_roadmap_governor.v1",
@@ -50,15 +63,20 @@
       ],
       "prompt": "docs/ai-context/control-plane/evolution/prompts/AUTOMATION_ROADMAP_GOVERNOR.md",
       "business_logic_owner": "scripts/control-plane/lib/evolution-governor.mjs — eligibility, the no-fabrication rule and the factual/strategic field separation are enforced there, never by the scheduler",
-      "output_location": "docs/ai-context/control-plane/evolution/roadmap-proposals/"
+      "output_location": "docs/ai-context/control-plane/evolution/roadmap-proposals/",
+      "terminal_persistence_stage": {
+        "command_id": "premvp.command.evolution_canonicalize.v1",
+        "command": "npm run control-plane:evolution:canonicalize -- --canonicalize --branch <lineage-branch>",
+        "rule": "Runs after evolution:govern --write. Admits the validated evidence-only Governor result lineage (roadmap-proposals/<result_id>.json + <result_id>.report.md) and canonicalizes it to origin/main with no Founder merge or review action. Enforces Governor-result uniqueness and accepted:false on the result and any embedded roadmap delta; a proposal requiring external acceptance is never canonicalized as accepted. The Governor keeps reading only canonical origin/main history."
+      }
     }
   ],
 
   "founder_ui_action_required": {
-    "action": "Enable two recurring routines pointing at the commands above, at the stated cadence, using whichever scheduling surface the Founder currently operates (for example a Claude Routine, a scheduled CI workflow, or a Railway scheduled job) — none of these is yet a registered PREMVP control-plane execution surface, so this is a one-time bounded setup action, not a per-task approval.",
-    "routine_1": "Daily Evolution Review — evening, daily (or every 2 days as a stated fallback) — runs the two commands under premvp.routine.daily_evolution_review.v1 above.",
-    "routine_2": "Automation Roadmap Governor — weekly (or after 3 new validated cycles if the surface supports a data-driven trigger) — runs the command under premvp.routine.automation_roadmap_governor.v1 above.",
-    "reason": "No SCHEDULER/CRON/ROUTINE capability is registered in CAPABILITY_MATRIX.yaml or AGENT_REGISTRY.yaml for either claude_code_cloud or local_codex_windows. Inventing an ad hoc scheduler here would violate the no-invented-scheduler instruction and the cross-environment portability contract every other Evolution artifact follows.",
+    "action": "Enable two recurring routines pointing at the commands above, at the stated cadence, using whichever scheduling surface the Founder currently operates (for example a Claude Routine, a scheduled CI workflow, or a Railway scheduled job) — none of these is yet a registered PREMVP control-plane execution surface, so this is a one-time bounded setup action, not a per-task approval. Each routine now ends with its terminal_persistence_stage command, so a validated Cycle or Governor result reaches canonical origin/main without any further Founder merge, review or PR action.",
+    "routine_1": "Daily Evolution Review — evening, daily (or every 2 days as a stated fallback) — runs the two commands under premvp.routine.daily_evolution_review.v1 above, then its terminal_persistence_stage.",
+    "routine_2": "Automation Roadmap Governor — weekly (or after 3 new validated cycles if the surface supports a data-driven trigger) — runs the command under premvp.routine.automation_roadmap_governor.v1 above, then its terminal_persistence_stage.",
+    "reason": "No SCHEDULER/CRON/ROUTINE capability is registered in CAPABILITY_MATRIX.yaml or AGENT_REGISTRY.yaml for either claude_code_cloud or local_codex_windows. Inventing an ad hoc scheduler here would violate the no-invented-scheduler instruction and the cross-environment portability contract every other Evolution artifact follows. The canonicalization step is a registered COMMAND, not a scheduler, so it introduces no new scheduling primitive.",
     "bounded": true,
     "blocks_implementation": false
   }
