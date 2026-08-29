@@ -530,6 +530,146 @@ export interface RebalanceRunResult {
   target_reservation_id: string | null;
   /** True when opts.targetReservationId matched an active, due reservation. */
   target_reservation_matched: boolean;
+  // ── PREMVP-owned READY Queue deadline sweep (runs before the active-Queue
+  //    blocking/dedupe population this run) ─────────────────────────────────
+  ready_queue_expiry?: ReadyQueueExpirySweepResult;
+}
+
+// ── PREMVP-owned READY Queue deadline expiry ────────────────────────────────
+//
+// A Queue instruction must never remain operationally READY once its
+// latest_entry_iso has passed. The Queue GET deadline filter already hides such
+// rows from execution, but nothing transitioned them to a terminal state, so
+// stale READY rows accumulated and kept poisoning active Queue identity/blocking
+// state (loadQueuedReservationIds / findBlockingQueueRowByIdentity treat every
+// non-terminal row as a live blocker).
+//
+// This sweep transitions ONLY rows that are:
+//   status = READY  AND  latest_entry_iso < now()
+//   AND have NO matching executor_order_events execution evidence
+// into the already-canonical EXPIRED status, recording an auditable reason and
+// bounded PREMVP diagnostics. It never touches CLAIMED/SENT/terminal rows and
+// never deletes anything. CLAIMED-past-deadline is explicitly out of scope
+// (absence of an order-event callback does not prove no venue order was sent).
+
+export const READY_QUEUE_EXPIRY_REASON = "LATEST_ENTRY_WINDOW_PASSED" as const;
+export const READY_QUEUE_EXPIRY_SOURCE = "PREMVP_EVENT_REBALANCE_READY_DEADLINE_SWEEP" as const;
+
+export interface ReadyQueueExpiryPlanEntry {
+  id: string;
+  diagnostics: Record<string, unknown>;
+}
+
+export interface ReadyQueueExpirySweepResult {
+  scanned: number;
+  expired_count: number;
+  protected_by_order_evidence_count: number;
+  skipped_non_ready_count: number;
+  skipped_deadline_not_passed_count: number;
+  wrote: boolean;
+  expired_entries: ReadyQueueExpiryPlanEntry[];
+}
+
+/**
+ * Pure (no DB) READY-only deadline expiry plan. `orderEvidenceRowIds` is the set
+ * of row ids for which executor_order_events evidence was already found by the
+ * caller — those rows are protected from expiry (they already entered execution;
+ * their terminal state is owned by the callback path, not this sweep).
+ */
+export function planReadyQueueDeadlineExpiry(
+  rows: EventExecutionQueueRow[],
+  nowMs: number,
+  orderEvidenceRowIds: Set<string>,
+  rebalanceRunId: string
+): ReadyQueueExpirySweepResult {
+  const sweptAtIso = new Date(nowMs).toISOString();
+  let skippedNonReady = 0;
+  let skippedDeadlineNotPassed = 0;
+  let protectedByEvidence = 0;
+  const expiredEntries: ReadyQueueExpiryPlanEntry[] = [];
+
+  for (const row of rows) {
+    if (row.status !== "READY") {
+      skippedNonReady += 1;
+      continue;
+    }
+    const latestEntryMs = Date.parse(row.latest_entry_iso);
+    if (!Number.isFinite(latestEntryMs) || latestEntryMs >= nowMs) {
+      skippedDeadlineNotPassed += 1;
+      continue;
+    }
+    if (row.id && orderEvidenceRowIds.has(row.id)) {
+      protectedByEvidence += 1;
+      continue;
+    }
+    if (!row.id) {
+      // Cannot target a write without a primary key — never guess identity.
+      skippedNonReady += 1;
+      continue;
+    }
+    expiredEntries.push({
+      id: row.id,
+      diagnostics: {
+        ...(row.diagnostics ?? {}),
+        premvp_deadline_expiry: {
+          reason: READY_QUEUE_EXPIRY_REASON,
+          expired_by: READY_QUEUE_EXPIRY_SOURCE,
+          rebalance_run_id: rebalanceRunId,
+          latest_entry_iso: row.latest_entry_iso,
+          swept_at_iso: sweptAtIso,
+          order_evidence_present: false,
+          previous_status: "READY",
+        },
+      },
+    });
+  }
+
+  return {
+    scanned: rows.length,
+    expired_count: expiredEntries.length,
+    protected_by_order_evidence_count: protectedByEvidence,
+    skipped_non_ready_count: skippedNonReady,
+    skipped_deadline_not_passed_count: skippedDeadlineNotPassed,
+    wrote: false,
+    expired_entries: expiredEntries,
+  };
+}
+
+/**
+ * Orchestrates the READY Queue deadline sweep against a RebalanceRepoPort.
+ * No-ops (returns an all-zero result) when the port does not implement the
+ * deadline-sweep methods, so legacy in-memory seams keep working unchanged.
+ */
+export async function sweepExpiredReadyQueueRows(
+  repo: RebalanceRepoPort,
+  nowMs: number,
+  rebalanceRunId: string,
+  opts: { write: boolean }
+): Promise<ReadyQueueExpirySweepResult> {
+  const emptyResult: ReadyQueueExpirySweepResult = {
+    scanned: 0,
+    expired_count: 0,
+    protected_by_order_evidence_count: 0,
+    skipped_non_ready_count: 0,
+    skipped_deadline_not_passed_count: 0,
+    wrote: false,
+    expired_entries: [],
+  };
+  if (!repo.loadDeadlinePassedReadyQueueRows || !repo.hasExecutorOrderEventEvidence || !repo.markReadyQueueRowsExpired) {
+    return emptyResult;
+  }
+  const rows = await repo.loadDeadlinePassedReadyQueueRows(new Date(nowMs).toISOString());
+  const evidenceIds = new Set<string>();
+  for (const row of rows) {
+    if (row.status !== "READY" || !row.id) continue;
+    if (await repo.hasExecutorOrderEventEvidence(row)) evidenceIds.add(row.id);
+  }
+  const plan = planReadyQueueDeadlineExpiry(rows, nowMs, evidenceIds, rebalanceRunId);
+  if (opts.write && plan.expired_entries.length > 0) {
+    await repo.markReadyQueueRowsExpired(plan.expired_entries);
+    return { ...plan, wrote: true };
+  }
+  return plan;
 }
 
 /** Leading reason code of a fail-closed reason string (never the free text). */
@@ -600,6 +740,23 @@ export interface RebalanceRepoPort {
   // one-shot live-intent seam, which throws if it is absent (see
   // runControlledLiveIntent) rather than silently skipping duplicate-safety.
   findQueueRowsByRebalanceRunId?(rebalanceRunId: string): Promise<EventExecutionQueueRow[]>;
+  // ── PREMVP READY Queue deadline sweep (optional so pre-existing in-memory
+  //    seams keep compiling; production always provides all three) ───────────
+  /** READY rows whose latest_entry_iso is already < nowIso. READY-only scan. */
+  loadDeadlinePassedReadyQueueRows?(nowIso: string): Promise<EventExecutionQueueRow[]>;
+  /**
+   * True when executor_order_events already holds evidence that this exact
+   * instruction entered execution — the same canonical idempotency_key +
+   * condition_id/token_id/side identity relationship the Queue execution and
+   * callback path uses. Never infers "no execution" from queue status alone.
+   */
+  hasExecutorOrderEventEvidence?(row: EventExecutionQueueRow): Promise<boolean>;
+  /**
+   * READY -> EXPIRED transition for deadline-passed rows only. The write is
+   * itself guarded on status = 'READY' so a row that concurrently became
+   * CLAIMED/SENT/terminal is never mutated by this sweep.
+   */
+  markReadyQueueRowsExpired?(entries: ReadyQueueExpiryPlanEntry[]): Promise<void>;
 }
 
 class FinalIdentitySourceLoadError extends Error {
@@ -879,6 +1036,57 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
       const { data, error } = await supabaseAdmin.from("event_execution_queue").select("*").eq("idempotency_key", idempotencyKey);
       if (error) throw new Error(`queue idempotency lookup failed: ${error.message}`);
       return (data ?? []) as unknown as EventExecutionQueueRow[];
+    },
+    async loadDeadlinePassedReadyQueueRows(nowIso) {
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      const { data, error } = await supabaseAdmin
+        .from("event_execution_queue")
+        .select("*")
+        .eq("status", "READY")
+        .lt("latest_entry_iso", nowIso);
+      if (error) throw new Error(`ready-queue deadline scan failed: ${error.message}`);
+      return (data ?? []) as unknown as EventExecutionQueueRow[];
+    },
+    async hasExecutorOrderEventEvidence(row) {
+      if (!row.idempotency_key) return false;
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      // Canonical join used by Queue execution/callback handling: idempotency_key
+      // with an identity cross-check on condition_id / token_id / side. A row
+      // that matches means the instruction already entered execution and must
+      // not be blindly expired by this deadline sweep.
+      const { data, error } = await supabaseAdmin
+        .from("executor_order_events")
+        .select("idempotency_key, condition_id, token_id, selected_side, side")
+        .eq("idempotency_key", row.idempotency_key)
+        .limit(50);
+      if (error) throw new Error(`order-event evidence lookup failed: ${error.message}`);
+      return ((data ?? []) as Array<Record<string, unknown>>).some((e) => {
+        const evtSide =
+          (typeof e.side === "string" && e.side) ||
+          (typeof e.selected_side === "string" && e.selected_side) ||
+          null;
+        const tokenOk = typeof e.token_id === "string" && e.token_id === row.token_id;
+        const conditionOk =
+          row.condition_id == null || e.condition_id == null || e.condition_id === row.condition_id;
+        const sideOk = evtSide == null || row.side == null || evtSide === row.side;
+        return tokenOk && conditionOk && sideOk;
+      });
+    },
+    async markReadyQueueRowsExpired(entries) {
+      if (entries.length === 0) return;
+      const { supabaseAdmin } = await import("@/lib/supabase/server");
+      for (const entry of entries) {
+        const { error } = await supabaseAdmin
+          .from("event_execution_queue")
+          .update({
+            status: "EXPIRED",
+            selection_reason: READY_QUEUE_EXPIRY_REASON,
+            diagnostics: entry.diagnostics,
+          })
+          .eq("id", entry.id)
+          .eq("status", "READY");
+        if (error) throw new Error(`ready-queue expiry write failed: ${error.message}`);
+      }
     },
   };
 }
@@ -1292,6 +1500,18 @@ export async function runEventRebalance(
 
   const outcomes: RebalanceOutcome[] = [];
 
+  // ── PREMVP-owned READY Queue deadline sweep ───────────────────────────────
+  // Runs BEFORE loadQueuedReservationIds() (the active-Queue blocking/dedupe
+  // population) and before any market selection, so a stale READY row past its
+  // latest_entry_iso is already EXPIRED and can no longer participate in this
+  // same cycle's Queue identity/blocking state. READY-only; never mutates
+  // CLAIMED/SENT/terminal rows; never expires a row with executor_order_events
+  // execution evidence. Skipped in canary identity-targeted mode, which by
+  // contract leaves every row it did not target untouched.
+  const readyQueueExpiry = targetReservationId
+    ? undefined
+    : await sweepExpiredReadyQueueRows(repo, nowMs, rebalanceRunId, { write });
+
   if (write && expired.length > 0) {
     const expiredIds = expired.map((r) => r.id).filter((v): v is string => Boolean(v));
     if (expiredIds.length > 0) {
@@ -1325,6 +1545,7 @@ export async function runEventRebalance(
       first_rejection_code: targetReservationId && !canaryTargetMatched ? "CANARY_RESERVATION_NOT_FOUND" : null,
       target_reservation_id: targetReservationId,
       target_reservation_matched: canaryTargetMatched,
+      ready_queue_expiry: readyQueueExpiry,
     };
   }
 
@@ -1419,6 +1640,7 @@ export async function runEventRebalance(
       first_rejection_code: "BLOCKED_BY_MAX_QUEUE_WRITES",
       target_reservation_id: targetReservationId,
       target_reservation_matched: canaryTargetMatched,
+      ready_queue_expiry: readyQueueExpiry,
     };
   }
 
@@ -1533,6 +1755,7 @@ export async function runEventRebalance(
     first_rejection_code: firstRejectionCode,
     target_reservation_id: targetReservationId,
     target_reservation_matched: canaryTargetMatched,
+    ready_queue_expiry: readyQueueExpiry,
   };
 }
 
