@@ -769,6 +769,31 @@
       "supported_executors": ["local_codex_windows", "claude_code_cloud"],
       "hard_prohibitions": ["fabricating a roadmap delta when eligibility is not met", "self-accepting a Governor result or a roadmap delta", "mutating PnL priority, product-roadmap phase, live-money gates, risk authority, strategic stage order, accepted capability level or promotion rules", "promoting a Founder capability ladder level", "inventing an Evolution or roadmap stage beyond Stage 1, Stage 2 and Vision"],
       "notes": "Evolution Stage 2. Eligibility is evidence-driven: at least three new validated cycles since the last governance run, or the configured weekly boundary. Insufficient evidence produces an explicit no-change GOVERNOR_RESULT, never a fabricated delta. Executed live on local_codex_windows during Evolution Stage 2 landing; not yet executed on claude_code_cloud."
+    },
+    {
+      "canonical_id": "premvp.command.evolution_canonicalize.v1",
+      "type": "COMMAND",
+      "owner_platform": "repository",
+      "implementation_path": "scripts/control-plane/evolution-canonicalize.mjs",
+      "status": "PROVEN_PRESENT",
+      "invocation": "EXPLICIT",
+      "triggers": ["terminal persistence stage of Daily Evolution Review", "terminal persistence stage of Automation Operations Governor", "canonicalize a validated evidence-only Evolution/Governor lineage to origin/main"],
+      "exclusions": ["Ireland", "database access", "product runtime", "product-roadmap change", "CURRENT_STATE acceptance", "live money", "scheduling", "any changed path outside the Evolution evidence artifact allowlist", "Evolution schemas, policies, prompts, corrections or SCHEDULE_MANIFEST"],
+      "model_policy": "n/a",
+      "reasoning_policy": "n/a",
+      "permissions": "read a changed-path lineage, re-run the Stage 1 / Stage 2 validators, and — only on a clean admission — canonicalize via premvp.command.github_pr_create.v1 and premvp.command.github_pr_merge.v1",
+      "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "a changed-path lineage between origin/main and a feature branch containing only Evolution evidence artifacts (cycles/<cycle_id>.json + <cycle_id>.report.md, roadmap-proposals/<result_id>.json + <result_id>.report.md, required input-bundles/*.json, diagrams/*)",
+      "output_contract": "an explicit admission violation list, or an admitted verdict plus — for --canonicalize — a verified origin/main merge of the lineage with zero intermediate Founder actions",
+      "independence_group": null,
+      "receipt_required": false,
+      "evidence_class": "SUPPORTED",
+      "last_verified_at": "2026-08-29T00:00:00Z",
+      "portability": "PORTABLE",
+      "supported_executors": ["local_codex_windows", "claude_code_cloud"],
+      "adapter_resolution": "selected executor only; no default adapter; fail closed without a proven compatible binding",
+      "hard_prohibitions": ["canonicalizing any non-Evolution-evidence path", "becoming a second state or evidence authority", "skipping schema/semantic validation", "admitting accepted:true or any strategic authority field", "admitting a competing lineage for one evaluation period or a duplicate Governor result", "letting a pending branch or draft PR become evidence authority", "direct push to main", "force push", "branch-protection bypass", "database mutation", "Ireland access", "live money"],
+      "notes": "Terminal persistence stage bound in docs/ai-context/control-plane/evolution/SCHEDULE_MANIFEST.yaml for both premvp.routine.daily_evolution_review.v1 and premvp.routine.automation_roadmap_governor.v1. Admission contract lives in scripts/control-plane/lib/evolution-canonicalize.mjs and is proven by tests/control-plane/evolutionCanonicalize.test.mjs; it reuses the existing Stage 1 / Stage 2 validators and the shared GitHub PR create/merge commands and adds no PR/merge mechanics of its own. End-to-end canonicalization not yet executed live; evidence_class SUPPORTED until a live run is recorded in EVIDENCE_LEDGER.md."
     }
   ]
 }

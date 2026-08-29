@@ -87,6 +87,7 @@ Access surfaces are not executors: CLOUD_WEB→claude_code_cloud, CLOUD_MOBILE�
 - `premvp.command.evolution_collect.v1` → scripts/control-plane/evolution-collect.mjs (PORTABLE)
 - `premvp.command.evolution_evaluate.v1` → scripts/control-plane/evolution-evaluate.mjs (PORTABLE)
 - `premvp.command.evolution_govern.v1` → scripts/control-plane/evolution-govern.mjs (PORTABLE)
+- `premvp.command.evolution_canonicalize.v1` → scripts/control-plane/evolution-canonicalize.mjs (PORTABLE)
 
 ## 7. Roadmap
 
