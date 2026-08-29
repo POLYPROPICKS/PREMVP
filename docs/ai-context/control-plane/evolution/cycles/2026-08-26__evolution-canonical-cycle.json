@@ -1,0 +1,526 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-08-26__evolution-canonical-cycle",
+  "period_start": "2026-08-26T00:00:00Z",
+  "period_end": "2026-08-28T00:00:00Z",
+  "evidence_cutoff": "2026-08-29T00:20:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target (CLOUD_WEB access surface, scheduled_trigger origin, environment env_01PbFexCT8JFuNJthgwknzwY) per CAPABILITY_MATRIX.yaml",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#184",
+      "POLYPROPICKS/PREMVP#185",
+      "POLYPROPICKS/PREMVP#186",
+      "POLYPROPICKS/PREMVP#187",
+      "POLYPROPICKS/PREMVP#188",
+      "POLYPROPICKS/PREMVP#191",
+      "POLYPROPICKS/PREMVP#193",
+      "POLYPROPICKS/PREMVP#194",
+      "POLYPROPICKS/PREMVP#195",
+      "POLYPROPICKS/PREMVP#196",
+      "POLYPROPICKS/PREMVP#197"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-08-26__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "STALLED",
+    "what_moved": [
+      {
+        "statement": "Убран жёсткий потолок в 200 событий у research-scorer — он отбрасывал 581 из 781 подходящих для оценки событий без учёта остатка; теперь прогон ограничен бюджетом по времени (RESEARCH_SCORER_DEFAULT_BUDGET_MS) с явным итоговым статусом для каждого кандидата.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#188",
+          "commit b2de038b8dd748201f479339005519f49a4d6b2c",
+          "tests/feed/researchScorerCapacity.test.ts"
+        ]
+      },
+      {
+        "statement": "Убран позиционный потолок limit*3 (=45) у primary pre-scorer — он урезал 587 ликвидных физических событий до 45 входов; заменён на подтверждённую пропускную способность (254) и явный бюджет по времени (wall-clock) для последовательного основного цикла.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#197",
+          "commit 7ebad82d50bbc1b3e5e5ed38c3d1b057e745ea52",
+          "commit 31340683d2b91be755cad834baaeba8794fdbcb5",
+          "docs/ai-context/control-plane/reviews/release-decap-primary-budget-guard-31340683/CONTUR_GATE_EXACT_SHA_REVIEW_RECEIPT.json",
+          "tests/feed/primaryScorerPopulationCap.test.ts",
+          "tests/feed/primaryLoopWallClockGuard.test.ts"
+        ]
+      },
+      {
+        "statement": "Допуск в деньгах Contract A Planning / Reservation ограничен ровно одной выбранной продакшн-популяцией сигналов (v2-lite-growth-safe); теневые популяции по-прежнему сохраняются и анализируются, но больше не авторитетны для денег.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#191",
+          "commit 6b4acb81b353517c951297b9f672fab6e01209f2",
+          "lib/executor/productionSignalPopulation.ts",
+          "tests/contur3/buildFireModelCandidates.productionPopulationSelector.test.ts"
+        ]
+      },
+      {
+        "statement": "dataCoverage больше не накладывает отдельный числовой потолок на отображаемый Signal Score поверх своей роли как взвешенного признака — убран источник схлопывания разных оценок в одну при тонком покрытии данными.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#193",
+          "commit b24eab97ad966278f81a073320efc1ac12d4b634",
+          "tests/feed/signalScoreCoverageCapRemoval.test.ts"
+        ]
+      },
+      {
+        "statement": "Модельный гейт B2 перед Reservation (сохранённый Signal Score >= 65, цена входа >= 0.30, исключены eSports) теперь обязателен для решения Contract A Planning до того, как оно станет Reservation.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#194",
+          "commit ac9ddc47143d6a2484cb2c352d7c6ce3902fb28c",
+          "lib/executor/contractAB2EventPolicy.ts",
+          "tests/contur3/contractAB2EventPolicy.preReservation.test.ts"
+        ]
+      },
+      {
+        "statement": "Первичное физическое событие с непригодным основным рынком больше не отбрасывается целиком, если у того же события уже есть валидный полноценный рынок-«сосед».",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#195",
+          "commit fad1c9ed45b9f561b8da03ef16888ff778ed712f",
+          "tests/feed/primarySiblingRecovery.test.ts"
+        ]
+      },
+      {
+        "statement": "Старые повторные callback-и Ireland (accepted_open) без поля submitted_size больше не приводят к HTTP 500; requested_shares восстанавливается из stake_usd / submitted_price, когда submitted_size отсутствует.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#187",
+          "commit 4c523e59564f09fb973ee6d96ac5fe7f4a5c62e2",
+          "tests/contur3/economicTelemetryLegacyAcceptedOpenCallback.test.ts"
+        ]
+      }
+    ],
+    "next_verified_production_fact_now_possible": "Один естественный прод-цикл, прогнанный против исправленных потолков, единой популяции и B2-гейта, который подтвердил бы критерии готовности Phase 1 из CURRENT_STATE.yaml — такой прогон ещё не выполнялся и не наблюдался.",
+    "blockers_removed": [
+      {
+        "statement": "Сняты два независимых искусственных числовых потолка (200 у research-scorer, limit*3 у primary pre-scorer), которые молча отбрасывали большинство подходящих кандидатов ещё до продуктовых проверок; заменены на подтверждённые ёмкости с явными бюджетами по времени.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "commit b2de038b8dd748201f479339005519f49a4d6b2c",
+          "commit 7ebad82d50bbc1b3e5e5ed38c3d1b057e745ea52",
+          "commit 31340683d2b91be755cad834baaeba8794fdbcb5"
+        ]
+      },
+      {
+        "statement": "Снята неоднозначность, какая продакшн-популяция сигналов авторитетна для денег в Contract A Planning/Reservation — теперь во всех трёх точках допуска в деньги действует ровно одна популяция.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "commit 6b4acb81b353517c951297b9f672fab6e01209f2"
+        ]
+      }
+    ],
+    "blockers_introduced": [],
+    "not_proven": [
+      "Изменили ли эти семь слитых исправлений реальный результат Planning/Reservation в проде — не наблюдалось. CURRENT_STATE.yaml по-прежнему фиксирует проверку готовности Phase 1 как WAIT (временная ошибка кэша схемы Supabase), без изменений с начала периода.",
+      "За этот период нет доказательств исполнений, комиссий или расчёта. Сверенный PnL не заявляется и не выводится из исправлений на уровне кода.",
+      "Влияние любого из одиннадцати слитых PR на выручку или бизнес независимо не подтверждено — за пределами самого merge и его тестов.",
+      "Срабатывал ли на практике бюджет по времени из коммита 31340683 (то есть пропускались ли кандидаты) — не наблюдалось; телеметрия продакшена за этот период не читалась."
+    ],
+    "runtime_or_business_evidence_exists": false,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_STRENGTHENED",
+    "capabilities": [
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "Формат Evolution Cycle получил версию 1.1 с контрактом телеметрии: счётчики действий Founder, учёт дефектов по причине и повторяемости, отслеживание цепочек «луковичных» дефектов — всё это проверяется отдельным валидатором, а не остаётся текстом ревьюера.",
+        "persisted_artifact": "scripts/control-plane/lib/evolution-cycle.mjs",
+        "use_or_validation_evidence": "Этот цикл сам сделан версией 1.1 и проверяется по этому контракту при записи; набор тестов Evolution вырос на 89 строк в том же коммите.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#184",
+          "commit 5323719",
+          "docs/ai-context/control-plane/evolution/schemas/EVOLUTION_CYCLE.schema.json",
+          "tests/control-plane/evolutionDailyReview.test.mjs"
+        ]
+      },
+      {
+        "domain": "AUTOMATION_ECONOMICS",
+        "statement": "Отдельная библиотека control-plane-reconcile снижает ручное редактирование CURRENT_STATE.yaml после деплоя или merge за счёт автоматической сверки фактического состояния.",
+        "persisted_artifact": "scripts/control-plane/lib/control-plane-reconcile.mjs",
+        "use_or_validation_evidence": "tests/control-plane/controlPlaneReconcileBaseline.test.mjs расширен на +23 строки в том же коммите; validate-control-plane.mjs и reconcile-control-plane.mjs переведены на новую библиотеку и слиты в PR#185.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#185",
+          "commit 84ec33f474a0219f644d904892c7907f3d9d4594",
+          "tests/control-plane/controlPlaneReconcileBaseline.test.mjs"
+        ]
+      },
+      {
+        "domain": "MISSION_REGISTRY",
+        "statement": "Automation Roadmap Governor теперь умеет читать реальные сохранённые Evolution-циклы как вход для оценки применимости, а не только синтетические тестовые фикстуры — закрыта часть разрыва между Stage 1 и Stage 2, на который указывала сама политика.",
+        "persisted_artifact": "scripts/control-plane/lib/evolution-governor.mjs",
+        "use_or_validation_evidence": "tests/control-plane/evolutionGovernor.test.mjs расширен на 218 строк в том же коммите, что добавил чтение сохранённых циклов; слито в PR#186.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#186",
+          "commit 3ce0634c90760fe6ef337b687bbd3ce6573e2097",
+          "tests/control-plane/evolutionGovernor.test.mjs"
+        ]
+      },
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "Ревьюер Contur gate вызван, расписка сохранена для реального релизного кандидата (31340683) — первое подтверждение, что расписка оформляется на живом кандидате, а не только по спецификации.",
+        "persisted_artifact": "docs/ai-context/control-plane/reviews/release-decap-primary-budget-guard-31340683/CONTUR_GATE_EXACT_SHA_REVIEW_RECEIPT.json",
+        "use_or_validation_evidence": "Ссылается на проверенную цепочку коммитов и 13 из 13 тестов на этом SHA; PR#196 слил расписку в origin/main.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#196",
+          "commit d7c0f5efa6fd824a4beb3a54404033e0d8ffb107",
+          "docs/ai-context/control-plane/reviews/release-decap-primary-budget-guard-31340683/CONTUR_GATE_EXACT_SHA_REVIEW_RECEIPT.json"
+        ]
+      }
+    ],
+    "not_proven": [
+      "Корректность чтения Governor-ом сохранённых циклов при более чем одном каноническом цикле не проверена — до этого запуска существовал только один канонический цикл (2026-08-25).",
+      "CI-гейт для проверки расписок ревьюера по-прежнему только PLANNED, не доказан, согласно AGENT_REGISTRY.yaml — расписка Contur за этот период оформлена и проверена вручную, а не машиной, это тот же открытый блокер BLK-002 из CURRENT_STATE.yaml."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": "UNKNOWN",
+      "runtime_evidence_count": 0,
+      "reusable_artifacts_created": 10,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-08-26T00:00:00Z",
+    "period_end": "2026-08-28T00:00:00Z",
+    "capture_coverage": "UNKNOWN",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "capture_coverage": "UNKNOWN",
+    "chat_interaction_coverage": "UNKNOWN",
+    "founder_actions_proven": "UNKNOWN",
+    "founder_actions_removable": "UNKNOWN",
+    "executor_runs": "UNKNOWN",
+    "successful_terminal_results": 11,
+    "reruns_resumes": "UNKNOWN",
+    "recovery_iterations": "UNKNOWN",
+    "architect_corrections": 0,
+    "reviewer_corrections_rejections": "UNKNOWN",
+    "orchestration_waste_iterations": "UNKNOWN",
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-08-26-A-RESEARCH-SCORER-CAP",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "commit b2de038b8dd748201f479339005519f49a4d6b2c (PR#188)",
+        "proven_effective_evidence_refs": [
+          "tests/feed/researchScorerCapacity.test.ts",
+          "POLYPROPICKS/PREMVP#188 merged"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-27-B-PRIMARY-PRESCORER-CAP",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": "DCH-PRIMARY-SCORER-CAP-TO-BUDGET-20260827",
+        "implemented_fix_ref": "commit 7ebad82d50bbc1b3e5e5ed38c3d1b057e745ea52 (PR#197)",
+        "proven_effective_evidence_refs": [
+          "tests/feed/primaryScorerPopulationCap.test.ts",
+          "docs/ai-context/control-plane/reviews/release-decap-primary-budget-guard-31340683/CONTUR_GATE_EXACT_SHA_REVIEW_RECEIPT.json"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-27-C-PRIMARY-LOOP-UNBOUNDED-WALLCLOCK",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "DCH-PRIMARY-SCORER-CAP-TO-BUDGET-20260827",
+        "implemented_fix_ref": "commit 31340683d2b91be755cad834baaeba8794fdbcb5 (PR#197)",
+        "proven_effective_evidence_refs": [
+          "tests/feed/primaryLoopWallClockGuard.test.ts",
+          "docs/ai-context/control-plane/reviews/release-decap-primary-budget-guard-31340683/CONTUR_GATE_EXACT_SHA_REVIEW_RECEIPT.json"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-26-D-HORBURY-LEGACY-CALLBACK",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "commit 4c523e59564f09fb973ee6d96ac5fe7f4a5c62e2 (PR#187)",
+        "proven_effective_evidence_refs": [
+          "tests/contur3/economicTelemetryLegacyAcceptedOpenCallback.test.ts",
+          "POLYPROPICKS/PREMVP#187 merged"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-27-E-MULTI-POPULATION-ADMISSION",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "commit 6b4acb81b353517c951297b9f672fab6e01209f2 (PR#191)",
+        "proven_effective_evidence_refs": [
+          "tests/contur3/buildFireModelCandidates.productionPopulationSelector.test.ts",
+          "POLYPROPICKS/PREMVP#191 merged"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-27-F-DATACOVERAGE-SCORE-CEILING",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "commit b24eab97ad966278f81a073320efc1ac12d4b634 (PR#193)",
+        "proven_effective_evidence_refs": [
+          "tests/feed/signalScoreCoverageCapRemoval.test.ts",
+          "POLYPROPICKS/PREMVP#193 merged"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-27-G-PRIMARY-SIBLING-DISCARD",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "commit fad1c9ed45b9f561b8da03ef16888ff778ed712f (PR#195)",
+        "proven_effective_evidence_refs": [
+          "tests/feed/primarySiblingRecovery.test.ts",
+          "POLYPROPICKS/PREMVP#195 merged"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-26-H-MANUAL-LEDGER-RECONCILIATION-GAP",
+        "origin": "CONTROL_PLANE_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": "DCH-MANUAL-EVIDENCE-RECONCILIATION",
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "PRODUCT_OR_RUNTIME_DEFECT": 7,
+      "PROMPT_OR_MISSION_CONSTRUCTION_DEFECT": 0,
+      "DIAGNOSIS_SCOPE_DEFECT": 0,
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 0,
+      "TEST_OR_VERIFICATION_DEFECT": 0,
+      "STATE_OR_CONTEXT_DEFECT": 0,
+      "ENVIRONMENT_OR_PERMISSION_DEFECT": 0,
+      "CONTROL_PLANE_DEFECT": 1,
+      "UNKNOWN_ORIGIN": 0
+    },
+    "defect_counts_by_recurrence": {
+      "NEW_INDEPENDENT": 6,
+      "SAME_ROOT_REPEAT": 1,
+      "LATENT_NEXT_LAYER_EXPOSED": 1,
+      "REGRESSION": 0,
+      "PROMPT_INDUCED_REPEAT": 0,
+      "UNKNOWN_RECURRENCE": 0
+    },
+    "repeated_defect_families": 1,
+    "active_onion_chains": 1,
+    "implemented_fixes": 7,
+    "proven_effective_fixes": 7,
+    "runtime_evidence_count": 0,
+    "reusable_artifacts_created": 10,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN"
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1-CROSS-SURFACE-OPERATOR-ACTION-CAPTURE",
+      "observed_problem": "У этого цикла нет прямой видимости ни одного действия Founder/Codex/CloudCode за весь период 2026-08-26 — 2026-08-28 (хуже, чем частичное покрытие цикла 2026-08-25 — у этого разбора вообще нет стенограммы сессии за этот период), поэтому полнота сбора помечена как «неизвестно», а не «частично».",
+      "why_it_matters": "Сравнение числа ручных действий между периодами работает только при надёжно полном сборе, а не «неизвестно» по умолчанию всякий раз, когда проверяющая сессия сама не видела работу.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "Позволило бы будущему сборщику честно показывать полный сбор по CloudCode и Codex, не завися от того, видела ли проверяющая сессия работу лично.",
+      "proposed_automation": "Общий, дописываемый только в конец журнал действий оператора, куда оба исполнителя пишут в момент сообщения; evolution-collect.mjs читает его напрямую вместо вручную собранного бандла.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml",
+      "expected_value": "Надёжные метрики действий оператора с полным покрытием по обоим исполнителям, независимо от того, какая сессия делает Daily Evolution Review",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий: только чтение и агрегация, без изменений продукта или рантайма",
+      "success_metric": "покрытие становится полным за весь день без вручную собранного бандла",
+      "rollback_or_stop_condition": "Остановиться, если потребует менять то, как исполнители запускают сессии, или не получится остаться без зависимостей и офлайн",
+      "timing": "Следующий цикл или позже",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "input-бандл этого цикла объявляет полноту сбора «неизвестно» с нулём событий действий оператора",
+        "docs/ai-context/control-plane/evolution/input-bundles/2026-08-26__evolution-canonical-cycle.json",
+        "перенесено из 2026-08-25__evolution-canonical-cycle.json automation_hypotheses[0] (H1), та же нерешённая первопричина, теперь на ещё худшем уровне покрытия"
+      ]
+    },
+    {
+      "id": "H2-MANUAL-CONFIRMED-CHANGES-AND-LEDGER-RECONCILIATION",
+      "observed_problem": "Список подтверждённых изменений для этого цикла снова собран вручную чтением 'git log --merges' за период. Кроме того, последняя запись EVIDENCE_LEDGER.md (EV-0020) датирована 2026-08-13 — более 20 merge в origin/main с тех пор, включая четыре важных для Axis B merge в этом периоде (#184, #185, #186, #196), не имеют соответствующей записи в журнале.",
+      "why_it_matters": "Daily Evolution Review, требующий каждый раз вручную вычитывать git log, не останется ежедневной рутиной, а журнал, молча отстающий от main, перестаёт быть той историей, которой можно доверять без повторного восстановления из git.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "Детерминированный сборщик подтверждённых изменений плюс помощник для черновика записи в журнал сделал бы переиспользуемым и проверяемым не только сбор доказательств Axis A, но и саму историю принятых доказательств.",
+      "proposed_automation": "Скрипт только для чтения, который перечисляет merge-коммиты в origin/main за период, выдаёт их как список кандидатов в confirmed_changes и готовит черновик записи EVIDENCE_LEDGER.md для проверки архитектором/фаундером (без автоматического коммита).",
+      "persistent_artifact": "scripts/control-plane/evolution-collect.mjs",
+      "expected_value": "Более быстрый и полный список подтверждённых изменений и журнал, не отстающий от main на недели",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий: только чтение git log, без пути записи в сам EVIDENCE_LEDGER.md",
+      "success_metric": "список подтверждённых изменений для периода генерируется, а не печатается вручную, в следующем цикле; разрыв в EVIDENCE_LEDGER.md сокращается до менее недели",
+      "rollback_or_stop_condition": "Остановиться, если вывод скрипта когда-либо используют для вывода бизнес-эффекта, а не только списка merge, или если его подключат к автозаписи EVIDENCE_LEDGER.md без проверки",
+      "timing": "Следующий цикл",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "перенесено из 2026-08-25__evolution-canonical-cycle.json automation_hypotheses[1] (H2), та же нерешённая первопричина",
+        "docs/ai-context/control-plane/EVIDENCE_LEDGER.md последняя запись EV-0020 от 2026-08-13",
+        "git log --oneline origin/main после EV-0020 показывает 20+ merge без записи в журнале"
+      ]
+    },
+    {
+      "id": "H3-CAP-REMOVAL-WITHOUT-BUDGET-GUARD-CHECK",
+      "observed_problem": "Снятие искусственного позиционного потолка primary pre-scorer (коммит 7ebad82) обошлось без бюджета по времени; страховку пришлось добавлять отдельным коммитом (31340683) в тот же день, после того как риск был описан в самом тексте коммита. При снятии потолка research-scorer (b2de038) бюджет по времени добавили сразу в том же коммите — практика непоследовательна.",
+      "why_it_matters": "Жёсткий числовой потолок иногда неявно служит и бюджетом по времени; снять его без явного временного бюджета в том же изменении — это ровно тот скрытый дефект, который ловится только вторым, отдельным PR постфактум.",
+      "axis_a_effect": "Снизило бы шанс повторения этой же «луковичной» цепочки в продюсерском пути, который напрямую ведёт к запуску",
+      "axis_b_effect": "Переиспользуемая статическая проверка стала бы новым артефактом REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS",
+      "proposed_automation": "Скрипт-lint только для чтения, который помечает диф, снимающий фиксированную числовую константу ёмкости (по шаблону имени *_CAP, *_LIMIT), если тот же диф не добавляет и не имеет рядом парную константу *_BUDGET_MS.",
+      "persistent_artifact": "scripts/control-plane (новый прототип скрипта, ещё не создан)",
+      "expected_value": "Ловит именно этот «луковичный» паттерн до merge, а не одним коммитом позже",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Средний: эвристика по шаблону имени может ложно сработать на несвязанных константах",
+      "success_metric": "эвристика помечает паттерн этого периода DCH-PRIMARY-SCORER-CAP-TO-BUDGET-20260827 при повторном прогоне на двух коммитах, не помечая случайную выборку слитых дифов",
+      "rollback_or_stop_condition": "Остановиться, если ложных срабатываний окажется больше, чем верных находок, на двух оценённых PR",
+      "timing": "Следующий цикл или позже",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "текст коммита 7ebad82d50bbc1b3e5e5ed38c3d1b057e745ea52: 'a per-event enrichment latency regression could let 254 iterations consume unbounded producer runtime'",
+        "текст коммита 31340683d2b91be755cad834baaeba8794fdbcb5: 'Removing the artificial limit*3 (=45) positional pre-scorer cap (7ebad82) let the primary candidate loop process up to ... 254 ... events per run'"
+      ]
+    },
+    {
+      "id": "H4-REVIEWER-RECEIPT-SCHEMA-VALIDATION-GAP",
+      "observed_problem": "Расписка Contur gate для кандидата 31340683 оформлена вручную и закоммичена напрямую; ничто не показывает, что перед этим прошла автоматическая проверка схемы. CI-гейт для этого по-прежнему только PLANNED, тот же открытый блокер BLK-002.",
+      "why_it_matters": "Расписка ревьюера, правильная по форме только благодаря аккуратности автора, без машинной проверки, может незаметно разойтись со схемой, пока что-то ниже по цепочке (например, повторное использование расписки в premvp.command.github_pr_merge.v1) не откажется её разобрать.",
+      "axis_a_effect": "напрямую нет, но некорректная расписка может незаметно заблокировать или ошибочно пропустить будущий релиз по границе Contur",
+      "axis_b_effect": "Закрыло бы часть уже зарегистрированного разрыва BLK-002 небольшой прицельной проверкой только для чтения",
+      "proposed_automation": "Расширить существующий валидатор конвертов завершения (или добавить отдельный узкий скрипт), чтобы он проверял отдельный JSON-файл расписки ревьюера под docs/ai-context/control-plane/reviews/** по соответствующей подсхеме — как pre-commit или CI-проверку.",
+      "persistent_artifact": "scripts/control-plane/validate-completion-envelope.mjs",
+      "expected_value": "Машинно проверенная форма расписки ревьюера до того, как её повторно использует цикл merge",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий: только проверка уже существующей схемы",
+      "success_metric": "существующая расписка 31340683 и хотя бы одна намеренно сломанная тестовая расписка проверяются корректно",
+      "rollback_or_stop_condition": "Остановиться, если формы расписок Weather и Contur разойдутся настолько, что одна проверка не сможет покрыть обе, не ослабив ни один из гейтов",
+      "timing": "Следующий цикл или позже",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/reviews/release-decap-primary-budget-guard-31340683/CONTUR_GATE_EXACT_SHA_REVIEW_RECEIPT.json",
+        "docs/ai-context/control-plane/AGENT_REGISTRY.yaml запись premvp.ci_gate.reviewer_receipt_enforcement (статус PLANNED, не доказано)",
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml open_blockers BLK-002"
+      ]
+    },
+    {
+      "id": "H5-LEGACY-CALLBACK-BACKCOMPAT-FIXTURE-SUITE",
+      "observed_problem": "Дефект со старыми callback-ами Horbury (accepted_open без submitted_size) показывает, что обязательное поле, добавленное в buildEconomicTelemetry/buildExecutionReconciliation, не было проверено против всех старых форм полезной нагрузки до того, как повторные попытки начали падать с HTTP 500.",
+      "why_it_matters": "Путь, соседствующий с расчётом/сверкой, падающий закрыто на старых данных, — реальный операционный риск при каждом новом обязательном поле, и это не первый раз, когда предположение о старой форме данных потребовало точечного исправления.",
+      "axis_a_effect": "Снижает шанс повторного сбоя на пути расчёта в следующий раз, когда в контракт callback добавят обязательное поле",
+      "axis_b_effect": "Отдельный набор фикстур для обратной совместимости стал бы новым артефактом REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS",
+      "proposed_automation": "Небольшая библиотека фикстур с известными старыми формами callback (без submitted_size и другими будущими вариантами), против которой прогоняются изменения buildEconomicTelemetry/buildExecutionReconciliation как часть их существующих тестов.",
+      "persistent_artifact": "tests/contur3/economicTelemetryLegacyAcceptedOpenCallback.test.ts",
+      "expected_value": "Любое будущее изменение обязательных полей контракта callback автоматически проверяется против всех известных старых форм",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий: добавление затрагивает только тесты",
+      "success_metric": "следующее изменение обязательных полей контракта callback прогоняется через библиотеку фикстур без ручного напоминания",
+      "rollback_or_stop_condition": "Остановиться, если старые формы полезной нагрузки окажутся слишком разнообразными для ограниченного набора фикстур",
+      "timing": "Следующий цикл или позже",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "commit 4c523e59564f09fb973ee6d96ac5fe7f4a5c62e2",
+        "tests/contur3/economicTelemetryLegacyAcceptedOpenCallback.test.ts"
+      ]
+    }
+  ],
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "Читать точный блок готовности рантайма в CURRENT_STATE.yaml перед тем, как засчитывать любое число слитых PR как движение бизнеса — вместо того чтобы судить о прогрессе по объёму merge.",
+      "why_it_matters_now": "В этом периоде было одиннадцать слитых PR, и по объёму это выглядело как сильный прогресс; но сам блок готовности рантайма не изменился по сути (всё ещё WAIT) ни до, ни после периода — а именно этот факт определяет вердикт по Axis A.",
+      "how_it_applies_to_current_project": "Та же проверка применима к каждому будущему Daily Evolution Review и к любому статусу для Founder: активность на уровне кода и доказательство рантайма/бизнеса — разные вопросы, и ответ на второй даёт только сам блок готовности рантайма в CURRENT_STATE.yaml.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+      "ladder_level": 3
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "Распознавать скрытый дефект следующего слоя по тексту коммита, который сам описывает свою причинно-следственную связь, не дожидаясь отдельного доказательства из рантайма.",
+      "why_it_matters_now": "Коммит 31340683 прямо говорит, что снятие потолка в 7ebad82 и обнажило риск по времени, который он же чинит — этой фразы достаточно, чтобы классифицировать дефект как «скрытый следующий слой» с реальной цепочкой, не дожидаясь отдельного прод-инцидента для доказательства причинности.",
+      "how_it_applies_to_current_project": "То же чтение применимо к любому будущему PR, чей текст коммита рассказывает «снятие X обнажило Y» — это бесплатный и надёжный сигнал «луковичной» цепочки, который стоит искать в текстах коммитов перед тем, как считать дефект независимым и новым.",
+      "persistent_git_artifact": "tests/feed/primaryLoopWallClockGuard.test.ts",
+      "ladder_level": 4
+    }
+  ],
+  "founder_practice_comparison": "P1 защищает корректность Axis A, не давая объёму merge подменить доказательство рантайма или бизнеса. P2 ускоряет верную классификацию цепочек дефектов, используя причинный текст самих коммитов вместо ожидания свежих доказательств из рантайма. P1 защищает от самой соблазнительной ложной победы во всём этом разборе; P2 удешевляет раздел учёта дефектов.",
+  "founder_practice_recommended_order": [
+    "P1",
+    "P2"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "Статическая проверка, помечающая диф, снимающий фиксированную числовую константу ёмкости без парной константы бюджета по времени в том же дифе, поймала бы паттерн DCH-PRIMARY-SCORER-CAP-TO-BUDGET-20260827 до того, как потребовался отдельный коммит.",
+      "bounded_scope": "Один период, только набросок скрипта только для чтения, прогнанный вручную на двух существующих коммитах (7ebad82, 31340683) как первый тестовый случай — без подключения к CI.",
+      "persistent_artifact": "scripts/control-plane/check-capacity-guard-pairing.mjs (предложен, ещё не создан)",
+      "promotion_condition": "Набросок верно помечает историческое состояние 7ebad82 без страховки и не помечает объединённое состояние 7ebad82+31340683 при ручном прогоне.",
+      "stop_condition": "Остановиться, если ложных срабатываний окажется больше, чем верных находок, на небольшой выборке прошлых PR."
+    },
+    {
+      "id": "E2",
+      "hypothesis": "Скрипт только для чтения, который перечисляет merge-коммиты в origin/main за период и готовит черновики confirmed_changes и записи EVIDENCE_LEDGER.md, закрыл бы разрыв, который уже сохраняется нерешённым два цикла подряд (2026-08-25 и этот).",
+      "bounded_scope": "Один период, только прототип скрипта: перечислить merge между двумя метками времени и подготовить черновики записей журнала для проверки человеком/архитектором; без автозаписи в EVIDENCE_LEDGER.md.",
+      "persistent_artifact": "scripts/control-plane/evolution-collect.mjs",
+      "promotion_condition": "В следующем цикле список confirmed_changes И хотя бы одна черновая запись EVIDENCE_LEDGER.md сгенерированы скриптом и только проверены, а не напечатаны вручную.",
+      "stop_condition": "Остановиться, если вывод скрипта когда-либо автоматически закоммитят в EVIDENCE_LEDGER.md без проверки человеком или архитектором."
+    },
+    {
+      "id": "E3",
+      "hypothesis": "Расширение существующего валидатора конвертов завершения для проверки отдельного JSON-файла расписки ревьюера позволило бы машинно проверять расписку 31340683 (и будущие) до коммита, сужая открытый блокер BLK-002.",
+      "bounded_scope": "Один период, только прототип валидатора: прогнать существующую подсхему расписки ревьюера против реальной расписки 31340683 и одной намеренно сломанной тестовой; без подключения к CI.",
+      "persistent_artifact": "scripts/control-plane/validate-completion-envelope.mjs",
+      "promotion_condition": "Прототип верно принимает реальную расписку 31340683 и верно отклоняет сломанную тестовую.",
+      "stop_condition": "Остановиться, если формы расписок Weather и Contur разойдутся настолько, что одна проверка не сможет покрыть обе, не ослабив ни один из гейтов."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE"
+  },
+  "next_step": "Сохранить этот цикл в origin/main через уже привязанный к этой сессии цикл branch/PR, затем остановиться — без опроса состояния, без активации расписания, без реализации автоматизации и без принятия изменений в CURRENT_STATE. Следующий разбор должен покрыть период с 2026-08-28T00:00:00Z и далее.",
+  "accepted": false
+}

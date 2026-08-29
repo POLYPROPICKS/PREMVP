@@ -1,0 +1,27 @@
+{
+  "bundle_id": "2026-08-26__evolution-canonical-cycle",
+  "repository": "POLYPROPICKS/PREMVP",
+  "period_start": "2026-08-26T00:00:00Z",
+  "period_end": "2026-08-28T00:00:00Z",
+  "capture_coverage": "UNKNOWN",
+  "completion_envelope_ids": [],
+  "confirmed_changes": [
+    "POLYPROPICKS/PREMVP#184",
+    "POLYPROPICKS/PREMVP#185",
+    "POLYPROPICKS/PREMVP#186",
+    "POLYPROPICKS/PREMVP#187",
+    "POLYPROPICKS/PREMVP#188",
+    "POLYPROPICKS/PREMVP#191",
+    "POLYPROPICKS/PREMVP#193",
+    "POLYPROPICKS/PREMVP#194",
+    "POLYPROPICKS/PREMVP#195",
+    "POLYPROPICKS/PREMVP#196",
+    "POLYPROPICKS/PREMVP#197"
+  ],
+  "operator_action_events": [],
+  "supporting_metrics": {
+    "reusable_artifacts_created": 10,
+    "runtime_evidence_count": 0
+  },
+  "notes": "This bundle is authored by a scheduled claude_code_cloud Evolution Review session that did not directly witness any Founder/Codex/CloudCode operator-action relay for this period — unlike the 2026-08-25 cycle, no CloudCode session transcript from this period is available to this reviewer. capture_coverage is therefore declared UNKNOWN rather than PARTIAL: the zero operator_action_events below is a floor, not a claim that no manual relay happened. confirmed_changes was compiled by reading 'git log --merges origin/main' for the period 2026-08-26T00:00:00Z to 2026-08-28T00:00:00Z (exclusive) — this remains a manually-run, not an automated, step (see automation hypothesis carried over from the 2026-08-25 cycle's H2)."
+}
