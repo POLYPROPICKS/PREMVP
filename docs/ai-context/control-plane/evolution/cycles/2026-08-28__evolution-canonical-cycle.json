@@ -1,0 +1,520 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-08-28__evolution-canonical-cycle",
+  "period_start": "2026-08-28T00:00:00Z",
+  "period_end": "2026-08-30T00:00:00Z",
+  "evidence_cutoff": "2026-08-30T00:30:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (Routine A)",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [
+      "CMP-RESERVATION-SERVING-LOOKBACK-EVIDENCE-20260828"
+    ],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#200",
+      "POLYPROPICKS/PREMVP#201",
+      "POLYPROPICKS/PREMVP#202",
+      "POLYPROPICKS/PREMVP#203",
+      "POLYPROPICKS/PREMVP#204",
+      "POLYPROPICKS/PREMVP#207",
+      "POLYPROPICKS/PREMVP#208",
+      "POLYPROPICKS/PREMVP#209",
+      "POLYPROPICKS/PREMVP#210"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-08-28__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "STALLED",
+    "what_moved": [
+      {
+        "statement": "В воронке primary-фида убрали ещё два тихих потолка: публичный лимит 15 больше не останавливает семантическую оценку кандидатов за топ-15, а низкий dataCoverage больше не завершает кандидата жёстким отказом — только диагностика (PR#201).",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#201",
+          "tests/feed/primaryPopulationDecoupling.test.ts",
+          "tests/feed/canonicalPrimaryPopulationPersistence.test.ts",
+          "tests/feed/primaryCoverageDiagnosticOnly.test.ts"
+        ]
+      },
+      {
+        "statement": "Восстановлена 72ч нижняя граница по source_created_at в запросе Reservation к serving; её потерю при переходе на serving назвали доказанной причиной ночных HTTP 500 с 2026-08-27. Founder/Architect уже приняли фикс в CURRENT_STATE.yaml с классом PROVEN_IN_RUNTIME (PR#203).",
+        "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#203",
+          "docs/ai-context/control-plane/CURRENT_STATE.yaml#accepted_completions.CMP-RESERVATION-SERVING-LOOKBACK-EVIDENCE-20260828",
+          "tests/contur3/buildFireModelCandidates.servingLookbackBound.test.ts"
+        ]
+      },
+      {
+        "statement": "В том же PR починена вторая, независимая проблема на той же дорожке: запись error-evidence для упавшего Reservation-прогона сама падала (job_runs.diagnostics NOT NULL, код 23502) и тихо проглатывалась как не критичная — стирая из job_runs каждый неудачный прогон Reservation. Теперь diagnostics всегда непустой, исходное исключение по-прежнему пробрасывается.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#203",
+          "tests/contur3/nightEventReservations.errorEvidenceDiagnostics.test.ts"
+        ]
+      },
+      {
+        "statement": "Инструкция очереди больше не может бесконечно оставаться READY после прохождения своего дедлайна (latest_entry_iso): добавлена дедлайн-развёртка READY→EXPIRED перед загрузкой блокирующей популяции Queue, строго при отсутствии evidence реального исполнения (PR#208).",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#208",
+          "tests/contur3/eventExecutionQueue.readyQueueDeadlineExpiry.test.ts"
+        ]
+      }
+    ],
+    "next_verified_production_fact_now_possible": "Один read-only прогон production_observation.v1 против ночного Reservation-крана покажет, остановил ли восстановленный 72ч lookback реальные таймауты — этот цикл принял фикс только через чекпоинт CURRENT_STATE.yaml, без своего наблюдения",
+    "blockers_removed": [
+      {
+        "statement": "HTTP 500 в ночном Reservation-кране, вызванный неограниченным сканом current_signal_pair_serving, устранён на уровне кода и принят как PROVEN_IN_RUNTIME в CURRENT_STATE.yaml.",
+        "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#203",
+          "docs/ai-context/control-plane/CURRENT_STATE.yaml#accepted_completions.CMP-RESERVATION-SERVING-LOOKBACK-EVIDENCE-20260828"
+        ]
+      },
+      {
+        "statement": "Молчаливая потеря evidence о падении Reservation-прогона (job_runs.diagnostics NOT NULL) устранена на уровне кода.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#203"
+        ]
+      }
+    ],
+    "blockers_introduced": [],
+    "not_proven": [
+      "Ни разу в этом цикле не запускали production_observation.v1 против живого Reservation-крана — принятие фикса опирается на уже одобренный Architect-чекпоинт CURRENT_STATE.yaml, а не на собственное наблюдение этого разбора.",
+      "roadmap_phase и approved_execution_frontier.decision_status в CURRENT_STATE.yaml остались PHASE1_PLANNING_SERVING_CLOSURE / FOUNDER_APPROVED_RUNTIME_PENDING без изменений — этот период не двигает продукт к запуску на уровне фазы, только чинит дефекты внутри уже одобренного, но ещё не полностью живого контура.",
+      "То, что ночной Reservation-кран уже упал в проде с 2026-08-27 (а не просто существует как код), означает, что часть исполнения уже реально идёт на живых данных за пределами описанного в CURRENT_STATE.yaml как ожидающего рантайма — расхождение зафиксировано, но не расследовано.",
+      "Исполнения, комиссии и расчёт по-прежнему не собирались; сверенный PnL за этот цикл не доказан и не заявляется.",
+      "B2-политика и единая каноническая популяция из прошлого цикла (PR#191, PR#194) всё ещё не подтверждены наблюдением за живым продом — гипотеза H6 прошлого цикла осталась невыполненной, перенесена в этот цикл без изменений."
+    ],
+    "runtime_or_business_evidence_exists": true,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_STRENGTHENED",
+    "capabilities": [
+      {
+        "domain": "RECOVERY_AND_CHECKPOINTS",
+        "statement": "Добавлена терминальная стадия сохранения evolution_canonicalize.v1: допускает только evidence-only артефакты и переносит их на canonical origin/main без действий Founder. Построена в ответ на задержку: прошлый цикл провисел pending PR ~35 часов, с 2 брошенными дублями.",
+        "persisted_artifact": "scripts/control-plane/evolution-canonicalize.mjs",
+        "use_or_validation_evidence": "19/19 тестов evolutionCanonicalize.test.mjs проходят; команда PROVEN_PRESENT в AGENT_REGISTRY.yaml.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#209",
+          "scripts/control-plane/lib/evolution-canonicalize.mjs",
+          "tests/control-plane/evolutionCanonicalize.test.mjs",
+          "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#premvp.command.evolution_canonicalize.v1"
+        ]
+      },
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "Тесты Governor больше не зашивают число канонических циклов как фикстуру — читают директорию динамически.",
+        "persisted_artifact": "tests/control-plane/evolutionGovernor.test.mjs",
+        "use_or_validation_evidence": "Прогнано заново при 3 циклах на диске: 128/128 тестов проходят.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#200",
+          "tests/control-plane/evolutionGovernor.test.mjs"
+        ]
+      },
+      {
+        "domain": "CONTROLLED_IMPROVEMENT",
+        "statement": "Контракт холодного запуска Governor приведён в соответствие с evidence-only устройством: границы no-PR-babysitting и no-Founder-merge-handoff задокументированы явно.",
+        "persisted_artifact": "docs/ai-context/control-plane/evolution/prompts/AUTOMATION_ROADMAP_GOVERNOR.md",
+        "use_or_validation_evidence": "PR#210 слит; R2-переопределение остаётся ограничено ролью Governor, обычный R2 не тронут.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#210",
+          "docs/ai-context/control-plane/ROUTING_AND_PIPELINES.yaml"
+        ]
+      },
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "Уже принятый replay-пакет модели PRE13 канонически сохранён как durable-артефакт в репозитории.",
+        "persisted_artifact": "docs/ai-context/control-plane/modeling (PRE13 replay receipts, PR#207)",
+        "use_or_validation_evidence": "PR#207 слит; чистая канонизация без смены продукта, модели или БД.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#207"
+        ]
+      }
+    ],
+    "not_proven": [
+      "evolution_canonicalize.mjs ни разу не проходил полный --canonicalize в реальном прогоне — 19/19 тестов доказывают admission, но не то, что PR create/merge реально отработают в каждой среде (в этой среде нет CLI gh — см. next_step).",
+      "CURRENT_STATE.yaml обновили вручную раз в этом периоде (PR#204) и снова отстал на ~7 слияний — способность к сверке есть, но continuous-режим или CI-гейт для неё всё ещё не построены (гипотеза H1)."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": "UNKNOWN",
+      "runtime_evidence_count": 1,
+      "reusable_artifacts_created": 4,
+      "cloudcode_actions": 5,
+      "codex_actions": 3,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-08-28T00:00:00Z",
+    "period_end": "2026-08-30T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 8,
+    "by_type": {
+      "START": 8,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 5,
+      "CODEX": 3,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "founder_actions_removable": "UNKNOWN",
+    "executor_runs": "UNKNOWN",
+    "successful_terminal_results": "UNKNOWN",
+    "reruns_resumes": "UNKNOWN",
+    "recovery_iterations": "UNKNOWN",
+    "reviewer_corrections_rejections": 0,
+    "orchestration_waste_iterations": "UNKNOWN",
+    "implemented_fixes": 8,
+    "proven_effective_fixes": 7,
+    "runtime_evidence_count": 1,
+    "reusable_artifacts_created": 4,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN",
+    "capture_coverage": "PARTIAL",
+    "chat_interaction_coverage": "PARTIAL",
+    "founder_actions_proven": 8,
+    "architect_corrections": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-08-28-GOVERNOR-TEST-HARDCODED-CYCLE-COUNT",
+        "origin": "TEST_OR_VERIFICATION_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#200",
+        "proven_effective_evidence_refs": [
+          "tests/control-plane/evolutionGovernor.test.mjs — re-run this cycle at HEAD 7caacd8 with 3 canonical cycles now on disk (2026-08-25, 2026-08-26, this one pending), 128/128 pass across evolutionGovernor.test.mjs + evolutionDailyReview.test.mjs + evolutionCanonicalize.test.mjs"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+        "origin": "STATE_OR_CONTEXT_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#204",
+        "proven_effective_evidence_refs": [
+          "docs/ai-context/control-plane/CURRENT_STATE.yaml updated_at=2026-08-28T21:00:54Z, state_version 17, origin_main_sha=2cb8d49 (partial: manual reconciliation worked once, then drifted again — origin_main_sha is already ~7 merges behind this cycle's own evidence_cutoff HEAD 7caacd8, because no continuous reconciliation automation runs yet)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-28-PUBLIC15-CAP-SUPPRESSES-SEMANTIC-EVAL",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-PRIMARY-CAP-20260827",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#201",
+        "proven_effective_evidence_refs": [
+          "tests/feed/primaryPopulationDecoupling.test.ts — re-run this cycle, PASS",
+          "tests/feed/canonicalPrimaryPopulationPersistence.test.ts — re-run this cycle, PASS"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-28-PRIMARY-DATACOVERAGE-HARD-REJECT",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-PRIMARY-CAP-20260827",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#201",
+        "proven_effective_evidence_refs": [
+          "tests/feed/primaryCoverageDiagnosticOnly.test.ts — re-run this cycle, PASS"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-27-RESERVATION-SERVING-LOOKBACK-UNBOUNDED",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "REGRESSION",
+        "defect_chain_id": "CHAIN-RESERVATION-LOOKBACK-20260828",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#203",
+        "proven_effective_evidence_refs": [
+          "tests/contur3/buildFireModelCandidates.servingLookbackBound.test.ts — re-run this cycle, PASS",
+          "docs/ai-context/control-plane/CURRENT_STATE.yaml accepted_completions[CMP-RESERVATION-SERVING-LOOKBACK-EVIDENCE-20260828], evidence_class PROVEN_IN_RUNTIME"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-28-RESERVATION-ERROR-EVIDENCE-INSERT-FAIL",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-RESERVATION-LOOKBACK-20260828",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#203",
+        "proven_effective_evidence_refs": [
+          "tests/contur3/nightEventReservations.errorEvidenceDiagnostics.test.ts — re-run this cycle, PASS"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-29-READY-QUEUE-DEADLINE-NOT-EXPIRED",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#208",
+        "proven_effective_evidence_refs": [
+          "tests/contur3/eventExecutionQueue.readyQueueDeadlineExpiry.test.ts — re-run this cycle, PASS (10/10)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-28-EVOLUTION-CYCLE-PENDING-PR-LATENCY",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#209",
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "TEST_OR_VERIFICATION_DEFECT": 1,
+      "STATE_OR_CONTEXT_DEFECT": 1,
+      "PRODUCT_OR_RUNTIME_DEFECT": 5,
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 1
+    },
+    "defect_counts_by_recurrence": {
+      "NEW_INDEPENDENT": 2,
+      "SAME_ROOT_REPEAT": 2,
+      "LATENT_NEXT_LAYER_EXPOSED": 3,
+      "REGRESSION": 1
+    },
+    "repeated_defect_families": 2,
+    "active_onion_chains": 2
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "CURRENT_STATE.yaml обновили вручную один раз в этом периоде (PR#204, origin_main_sha=2cb8d49, checked_at 2026-08-28T21:00:54Z) — и он тут же снова начал отставать: к evidence_cutoff этого цикла (2026-08-30T00:30Z) живой origin/main уже на ~7 слияний впереди (#207, #208, #209, #210, плюс сам PR#198). Разовая ручная сверка не заменяет continuous-механизм.",
+      "why_it_matters": "Это тот же корневой разрыв, что и в цикле от 26 августа (H1 там же): библиотека сверки существует уже 3 дня (PR#185), но ни разу не запускалась в расписании или как гейт — только вручную и по одному разу.",
+      "axis_a_effect": "Косвенный: устаревающее состояние продолжает риск того, что план Архитектора будет строиться поверх картины, отставшей на несколько слияний.",
+      "axis_b_effect": "none — способность уже есть, разрыв ровно в её расписании/автоматизации, не в реализации",
+      "proposed_automation": "То же предложение, что и в прошлом цикле, теперь с прямым доказательством, что разовый ручной запуск не держится дольше одного дня: подключить scripts/control-plane/lib/control-plane-reconcile.mjs как CI-гейт или отдельный read-only Routine, который сравнивает CURRENT_STATE.origin_main_sha с живым origin/main на каждый мёрж или на регулярном расписании.",
+      "persistent_artifact": "scripts/control-plane/lib/control-plane-reconcile.mjs",
+      "expected_value": "origin_main_sha в CURRENT_STATE.yaml не успевает отстать больше чем на заданное малое число слияний",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий при read-only/предложение-режиме; этот разбор сам делту CURRENT_STATE не принимает",
+      "success_metric": "В следующем цикле origin_main_sha отстаёт от живого origin/main на малое заданное число слияний в момент evidence_cutoff, а не на 7+",
+      "rollback_or_stop_condition": "Остановиться, если сверка потребует доступ к продовому runtime или базе данных, либо Founder отклонит предложенную делту.",
+      "timing": "Next cycle or later",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "POLYPROPICKS/PREMVP#204",
+        "docs/ai-context/control-plane/evolution/cycles/2026-08-26__evolution-canonical-cycle.json#automation_hypotheses.H1"
+      ]
+    },
+    {
+      "id": "H2",
+      "observed_problem": "В этой же воронке primary-фида нашли и починили ещё два тихих потолка того же класса (публичный лимит 15 останавливал семантическую оценку; низкий dataCoverage завершал кандидата жёстким отказом) — пятый и шестой случай одного и того же паттерна за два цикла подряд, в одной цепочке CHAIN-PRIMARY-CAP-20260827.",
+      "why_it_matters": "Гипотеза H3 прошлого цикла прямо предсказывала четвёртый потолок — он нашёлся, и не один, а два. Паттерн устойчиво повторяется в одной части кода быстрее, чем его чинят по одному.",
+      "axis_a_effect": "Прямого эффекта нет; каждый непойманный случай продолжает тихо терять квалифицированные события до продукта",
+      "axis_b_effect": "Превращает вручную повторяемую диагностику в переиспользуемый, тестируемый инвариант — предложение не изменилось со времени H2 прошлого цикла, но подтверждающих случаев теперь 5-6",
+      "proposed_automation": "Тот же общий помощник-проверка сохранения количества кандидатов на границе воронки: сколько вошло должно равняться сумме терминальных причин выхода — теперь с двумя новыми готовыми тестовыми случаями (primaryPopulationDecoupling, primaryCoverageDiagnosticOnly) как материалом для прототипа.",
+      "persistent_artifact": "tests/feed/lib/populationConservation.ts (новый)",
+      "expected_value": "Одна переиспользуемая проверка вместо N отдельных; быстрее находится следующий такой дефект",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий: только тестовый помощник, поведение продукта не меняется",
+      "success_metric": "В следующем цикле фикс на другой стадии воронки переиспользует этот помощник без нового отдельного кода проверки",
+      "rollback_or_stop_condition": "Остановиться, если у стадий воронки окажутся несовместимые формы терминальных причин.",
+      "timing": "Next cycle",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#201",
+        "operating_telemetry.active_onion_chains includes CHAIN-PRIMARY-CAP-20260827 in this cycle (now 5 links across two cycles)"
+      ]
+    },
+    {
+      "id": "H3",
+      "observed_problem": "Тот же класс проектной ошибки продолжает повторяться: недокументированный числовой потолок или порог без именованной обоснованной константы. Этот период добавил как минимум ещё 2 подтверждённых случая к трём из прошлого цикла.",
+      "why_it_matters": "Пять случаев одной и той же ошибки проектирования за два цикла — структурная проверка ловит класс, а не каждый случай постфактум расследованием телеметрии.",
+      "axis_a_effect": "Прямого эффекта нет; снижает риск следующего незаметного потолка",
+      "axis_b_effect": "Устойчивое lint-правило вместо разовых фиксов — без изменений с прошлого цикла",
+      "proposed_automation": "Статическая проверка (lint-правило или скрипт control-plane), которая помечает голые числовые потолки/пороги в коде скоринга и допуска в воронку без именованной константы с обоснованием.",
+      "persistent_artifact": "новое eslint-правило или скрипт control-plane (пока не создано)",
+      "expected_value": "Ловит этот класс дефекта до слияния, а не после расследования телеметрии прода",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий: только статический анализ",
+      "success_metric": "В следующем цикле правило отклоняет повторно введённый голый числовой потолок в CI",
+      "rollback_or_stop_condition": "Остановиться, если правило будет слишком часто ложно срабатывать на легитимные именованные числа.",
+      "timing": "System later",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#201"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "В этом цикле снова удалось установить только нижнюю границу — 8 миссий Founder по отдельным git-веткам; ни одной первичной записи операторского действия по-прежнему нет. Тот же разрыв, что и в двух предыдущих циклах подряд.",
+      "why_it_matters": "Метрики операторских действий нельзя сравнивать между циклами, пока охват остаётся частичным по построению каждый раз — это третье подряд подтверждение одной и той же гипотезы, не новая находка.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "Позволит проверенным операторским действиям перестать быть нижней оценкой по веткам и стать полным счётом",
+      "proposed_automation": "Без изменений с прошлого цикла: общий, дозаписываемый лог операторских действий, куда оба исполнителя пишут в момент отправки сообщения, и который evolution-collect.mjs читает напрямую.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml",
+      "expected_value": "Проверенные операторские действия достигают полной, а не частичной полноты охвата",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий: только чтение и агрегация, продукт и рантайм не меняются",
+      "success_metric": "В следующем цикле полнота охвата полная без придуманных чисел",
+      "rollback_or_stop_condition": "Остановиться, если это потребует менять то, как исполнители стартуют сессии.",
+      "timing": "Next cycle or later",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/cycles/2026-08-26__evolution-canonical-cycle.json#automation_hypotheses.H4",
+        "this cycle's operator_actions.capture_coverage=PARTIAL with 8 branch-inferred actions"
+      ]
+    },
+    {
+      "id": "H5",
+      "observed_problem": "Второй раз за два цикла один и тот же класс дефекта — путь записи evidence/телеметрии молча теряет данные на необработанном крайнем случае: сначала легаси-колбэк Horbury без submitted_size (прошлый цикл, PR#187), теперь запись error-evidence для упавшего Reservation-прогона (job_runs.diagnostics NOT NULL, этот цикл, PR#203). Оба раза проблему нашли постфактум, а не превентивно.",
+      "why_it_matters": "Путь записи evidence о деньгах/исполнении — самый опасный для тихой потери данных после запуска C1/C2; два независимых случая за два цикла подряд говорят, что это не единичная случайность, а класс.",
+      "axis_a_effect": "Предотвращение таких потерь защищает целостность телеметрии исполнения и расчёта, от которой в итоге зависит сверенный PnL",
+      "axis_b_effect": "none",
+      "proposed_automation": "Расширенный (относительно H5 прошлого цикла) ограниченный read-only аудит: не только легаси-формы колбэков Ireland, но и каждый путь записи evidence/diagnostics на денежной дорожке (Reservation, Rebalance, Queue) на предмет NOT NULL или обязательных полей, которые могут не заполниться на крайнем случае.",
+      "persistent_artifact": "новый отчёт-аудит в docs/ai-context/control-plane/reviews/ (пока не создан)",
+      "expected_value": "Находит следующий пробел до того, как его найдёт живой повтор",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий: только read-only аудит схемы и кода, рантайм не меняется",
+      "success_metric": "Аудит либо не находит новых пробелов, либо находит и документирует хотя бы один, который станет отдельным ограниченным фиксом",
+      "rollback_or_stop_condition": "Остановиться, если аудит потребует доступ на запись к продовым данным, а не только SELECT/чтение схемы.",
+      "timing": "Product first",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#187",
+        "POLYPROPICKS/PREMVP#203"
+      ]
+    },
+    {
+      "id": "H6",
+      "observed_problem": "B2-политика (PR#194) и единая каноническая популяция (PR#191) остаются подтверждёнными только на уровне кода и тестов ещё один цикл подряд — ни одного read-only наблюдения за продом за два цикла.",
+      "why_it_matters": "Без наблюдения за продом B2 и единая популяция рискуют незаметно записаться как продвижение к запуску в будущей сессии планирования.",
+      "axis_a_effect": "Закроет разрыв между уровнем кода и уровнем прода для решений, накопившихся за два цикла",
+      "axis_b_effect": "none",
+      "proposed_automation": "Без изменений с прошлого цикла: один ограниченный read-only прогон уже зарегистрированной production_observation.v1, нацеленный на решения Contract A Planning, прошедшие через гейт B2.",
+      "persistent_artifact": "reports/observation/<observation_id>.json (уже существующий контракт вывода команды)",
+      "expected_value": "Переводит B2 из подтверждённого на уровне кода в подтверждённое на уровне прода",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Низкий: команда явно read-only по AGENT_REGISTRY.yaml",
+      "success_metric": "Наблюдение возвращает подтверждение продового эффекта для решений, прошедших B2",
+      "rollback_or_stop_condition": "Остановиться, если наблюдение дважды подряд вернёт статус ожидания инфраструктуры вместо реального результата.",
+      "timing": "Next cycle",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#194",
+        "docs/ai-context/control-plane/evolution/cycles/2026-08-26__evolution-canonical-cycle.json#automation_hypotheses.H6"
+      ]
+    },
+    {
+      "id": "H7",
+      "observed_problem": "Прошлый цикл (2026-08-26) провисел как pending PR ~35 часов (создан 2026-08-28T00:32Z, смёржен 2026-08-29T11:54Z через PR#198), с двумя брошенными дублирующими draft PR (#189, #205) на тот же период. Именно для этого построена терминальная стадия persistence — evolution_canonicalize.mjs (PR#209) — но она ни разу не проходила реальный сквозной прогон.",
+      "why_it_matters": "Способность на уровне кода и тестов (19/19) не то же самое, что доказанная способность закрывать разрыв в реальном прогоне; этот самый цикл — первая возможность её реально попробовать.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "Либо подтвердит RECOVERY_AND_CHECKPOINTS способность из этого же цикла на уровне реального использования, либо найдёт конкретный разрыв (например: команда полагается на CLI gh, которого нет в исполняющей среде) для отдельной ограниченной задачи",
+      "proposed_automation": "Уже построено в этом цикле (PR#209); следующий шаг — не новая автоматизация, а её первое реальное использование этим самым Routine для персистенции этого цикла, с точным протоколом её результата.",
+      "persistent_artifact": "scripts/control-plane/evolution-canonicalize.mjs",
+      "expected_value": "Устраняет доказанный источник orchestration waste — многочасовое зависание циклов в pending PR — вместо ещё одного раунда ручного мёржа",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Низкий: admission жёстко ограничен evidence-путями, accepted:false сохраняется, self-acceptance невозможен по контракту",
+      "success_metric": "origin/main ancestry этого цикла подтверждена без ручного вмешательства Founder в мёрж/ревью, либо зафиксирован конкретный разрыв инструментария (например отсутствие CLI gh) как отдельный дефект",
+      "rollback_or_stop_condition": "Если --canonicalize требует недоступный в этой среде инструмент (например CLI gh) — не изобретать обходной путь, зафиксировать PENDING_RESUMABLE и остановиться, не начиная параллельную линию.",
+      "timing": "Immediate — this cycle",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#209",
+        "POLYPROPICKS/PREMVP#198 merge timing: created 2026-08-28T00:32Z, merged 2026-08-29T11:54Z",
+        "POLYPROPICKS/PREMVP#189, #205 (stranded duplicate draft PRs for the superseded 2026-08-26 period)"
+      ]
+    }
+  ],
+  "insufficient_supported_hypotheses": false,
+  "insufficient_supported_hypotheses_reason": null,
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "Не принимать даже уже одобренный Architect-чекпоинт с меткой PROVEN_IN_RUNTIME как замену собственному read-only наблюдению за живым продом в рамках этого Routine.",
+      "why_it_matters_now": "В этом цикле реальный продовый инцидент (HTTP 500 в ночном Reservation-кране) был исправлен и уже принят как PROVEN_IN_RUNTIME в CURRENT_STATE.yaml — это сильнее, чем чисто код-уровневое доказательство прошлых циклов, и тем легче случайно принять его как достаточное без независимой проверки.",
+      "how_it_applies_to_current_project": "Прежде чем в следующем плане Архитектора считать reservation-lookback фикс подтверждённым продом, запустить один read-only прогон production_observation.v1 именно против ночного Reservation-крана.",
+      "persistent_git_artifact": "scripts/control-plane/production-observation.mjs",
+      "ladder_level": 4
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "Прежде чем записывать красный тест как найденный дефект, проверить, не является ли красный результат следствием собственного неверного вызова инструмента (отсутствующий флаг, не тот раннер) — а не реальной регрессией.",
+      "why_it_matters_now": "В этом цикле повторный прогон теста lookback-фикса без нужного флага раннера дал ложный failure, похожий на регрессию только что принятого фикса; сверка с package.json показала — это ошибка вызова, а не продукта.",
+      "how_it_applies_to_current_project": "Перед тем как перезапускать любой существующий тестовый файл вне npm-скрипта, сверяться с package.json на предмет требуемых флагов раннера, а не запускать node --test напрямую с произвольным набором флагов.",
+      "persistent_git_artifact": "package.json",
+      "ladder_level": 3
+    }
+  ],
+  "founder_practice_comparison": "P2 дешёвый и механический — предотвращает то, чтобы этот самый разбор записал ложный дефект. P1 — более глубокая дисциплина о том, что даже уже одобренный чекпоинт не заменяет собственное наблюдение этого Routine.",
+  "founder_practice_recommended_order": [
+    "P2",
+    "P1"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "Помощник-проверка сохранения количества кандидатов на границе воронки (H2) теперь может использовать 2 новых готовых тестовых случая из PR#201 как материал для прототипа без нового продового кода.",
+      "bounded_scope": "В рамках одного периода — только прототип на уже существующих тестовых фикстурах primaryPopulationDecoupling/primaryCoverageDiagnosticOnly; новую стадию воронки не трогать.",
+      "persistent_artifact": "tests/feed/lib/populationConservation.ts (новый)",
+      "promotion_condition": "В следующем цикле фикс на другой стадии воронки переиспользует этот помощник без нового отдельного кода проверки.",
+      "stop_condition": "Остановиться, если у стадий воронки окажутся несовместимые формы терминальных причин."
+    },
+    {
+      "id": "E2",
+      "hypothesis": "production_observation.v1, уже зарегистрированная и read-only, может независимо подтвердить, что восстановленный 72ч lookback реально остановил SQLSTATE 57014 в ночном Reservation-кране, без нового кода.",
+      "bounded_scope": "Один read-only прогон наблюдения, нацеленный именно на ночной Reservation-кран после PR#203, в следующем естественном цикле планирования.",
+      "persistent_artifact": "reports/observation/<observation_id>.json (уже существующий контракт вывода команды)",
+      "promotion_condition": "Наблюдение вернёт подтверждение отсутствия таймаутов 57014 в прогонах после merge_commit 2cb8d49.",
+      "stop_condition": "Остановиться, если наблюдение дважды подряд вернёт статус ожидания инфраструктуры вместо реального результата."
+    },
+    {
+      "id": "E3",
+      "hypothesis": "evolution_canonicalize.mjs (PR#209), уже прошедший 19/19 тестов на уровне admission-контракта, реально закрывает многочасовую pending-PR задержку из H7 при первом настоящем использовании этим самым циклом.",
+      "bounded_scope": "Один реальный прогон admission (--admit) на этой ветке, персистенция цикла и попытка terminal persistence на canonical origin/main в рамках инструментов, доступных этой исполняющей среде; новую механику PR/merge не изобретать.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-08-28__evolution-canonical-cycle.json (этот цикл)",
+      "promotion_condition": "origin/main ancestry этого цикла подтверждена без нового ручного мёржа, инициированного Founder.",
+      "stop_condition": "Остановиться и зафиксировать PENDING_RESUMABLE, если canonicalize зависит от инструмента, недоступного в этой среде (например CLI gh) — не изобретать обходной путь."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE (по CURRENT_STATE.yaml, updated_at 2026-08-28T21:00:54Z, state_version 17 — свежее чем в прошлом цикле, но уже на ~7 слияний позади evidence_cutoff этого цикла; см. DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE)"
+  },
+  "next_step": "Сохранить этот цикл. Попробовать терминальную персистенцию через evolution_canonicalize.mjs; если её механика PR/merge требует инструмент, недоступный в этой среде (CLI gh), использовать эквивалентные операции GitHub API, уже доступные исполнителю, и зафиксировать конкретный результат как evidence для H7.",
+  "corrections": [],
+  "accepted": false
+}
