@@ -1,0 +1,270 @@
+{
+  "schema_version": "1.1",
+  "result_id": "2026-08-30__automation-roadmap-governor-result",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "claude_code_cloud_runtime_selected",
+    "prompt_id": "premvp.prompt.automation_roadmap_governor.v1"
+  },
+  "generated_at": "2026-08-30T02:07:24Z",
+  "terminal_disposition": "ONE_AUTOMATION_INVESTMENT",
+  "eligibility": {
+    "eligible": true,
+    "reason": "3 new validated cycle(s) meets the minimum of 3",
+    "based_on_cycles": [
+      "2026-08-25__evolution-canonical-cycle",
+      "2026-08-26__evolution-canonical-cycle",
+      "2026-08-28__evolution-canonical-cycle"
+    ],
+    "new_validated_cycle_count": 3,
+    "weekly_boundary_reached": false
+  },
+  "findings": {
+    "axis_b_advancement": {
+      "statement": "The Evolution/Governor control plane grew real machinery this window: Cycle schema 1.1 with defect/telemetry tracking (PR#184), Governor reading canonical persisted cycles directly (PR#186), and a terminal-persistence lifecycle (PR#209, 19/19 tests) built to remove the ~35h pending-PR latency the 2026-08-26 cycle suffered. All code- and test-proven; this is the first real exercise of most of it.",
+      "verdict": "CAPABILITY_STRENGTHENED",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#184",
+        "POLYPROPICKS/PREMVP#186",
+        "POLYPROPICKS/PREMVP#209",
+        "tests/control-plane/evolutionCanonicalize.test.mjs",
+        "docs/ai-context/control-plane/evolution/cycles/2026-08-28__evolution-canonical-cycle.json#axis_b"
+      ]
+    },
+    "axis_a_support_or_distraction": {
+      "statement": "No automation hypothesis has a measured Axis A effect yet: production_observation.v1 was proposed for B2 three cycles running and never run; the one manual CURRENT_STATE.yaml fix (PR#204) decayed back to ~7 merges drift within a day. Real Axis A progress here (fixing the nightly Reservation HTTP 500, PR#203) came from direct product work, not automation.",
+      "verdict": "NOT_ENOUGH_EVIDENCE",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/cycles/2026-08-26__evolution-canonical-cycle.json#automation_hypotheses.H6",
+        "docs/ai-context/control-plane/evolution/cycles/2026-08-28__evolution-canonical-cycle.json#automation_hypotheses.H6",
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "POLYPROPICKS/PREMVP#203"
+      ]
+    },
+    "repeated_problems": [
+      {
+        "problem": "CURRENT_STATE.yaml (the sole current-state authority CLAUDE.md requires reading before any planning) goes stale within roughly a day of a manual fix, because the reconciliation library that could keep it current (control-plane-reconcile.mjs, PR#185) has never run on a schedule or gate — only once by hand.",
+        "repetition_count": 2,
+        "cycle_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "problem": "An undocumented bare numeric cap or threshold (no named, justified constant) silently suppresses qualified candidates or scores somewhere in the primary/research feed funnel.",
+        "repetition_count": 5,
+        "cycle_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "problem": "Operator-action capture coverage stays PARTIAL every single cycle because actions are inferred from git branches instead of recorded by either executor at message time.",
+        "repetition_count": 3,
+        "cycle_refs": [
+          "2026-08-25__evolution-canonical-cycle",
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "problem": "A path that records evidence/diagnostics for a failed or legacy execution/reservation event silently drops or fails to write required data on an unhandled edge case (legacy Ireland callback missing submitted_size, then a NOT NULL diagnostics column on a failed Reservation run).",
+        "repetition_count": 2,
+        "cycle_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle"
+        ]
+      }
+    ],
+    "experiments_with_evidence": [
+      {
+        "experiment_id": "2026-08-26__evolution-canonical-cycle#E2",
+        "outcome": "INCONCLUSIVE",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#204",
+          "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+          "docs/ai-context/control-plane/evolution/cycles/2026-08-28__evolution-canonical-cycle.json#automation_hypotheses.H1"
+        ]
+      },
+      {
+        "experiment_id": "2026-08-26__evolution-canonical-cycle#E3",
+        "outcome": "INCONCLUSIVE",
+        "evidence_refs": [
+          "docs/ai-context/control-plane/evolution/cycles/2026-08-28__evolution-canonical-cycle.json#automation_hypotheses.H6"
+        ]
+      },
+      {
+        "experiment_id": "2026-08-25__evolution-canonical-cycle#E1",
+        "outcome": "INCONCLUSIVE",
+        "evidence_refs": [
+          "docs/ai-context/control-plane/evolution/cycles/2026-08-26__evolution-canonical-cycle.json#automation_hypotheses.H4",
+          "docs/ai-context/control-plane/evolution/cycles/2026-08-28__evolution-canonical-cycle.json#automation_hypotheses.H4"
+        ]
+      }
+    ],
+    "founder_skills_practiced": [
+      {
+        "ladder_id": "AUTOMATION_ECONOMICS",
+        "repetition_count": 2,
+        "cycle_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "ladder_id": "PERMISSION_AND_TOOL_DESIGN",
+        "repetition_count": 2,
+        "cycle_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "ladder_id": "VERIFICATION_DISCIPLINE",
+        "repetition_count": 1,
+        "cycle_refs": [
+          "2026-08-25__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "ladder_id": "CONTROL_PLANE_OWNERSHIP",
+        "repetition_count": 1,
+        "cycle_refs": [
+          "2026-08-25__evolution-canonical-cycle"
+        ]
+      }
+    ],
+    "automation_decisions": [
+      {
+        "subject": "Continuous/CI-gated invocation of the already-built control-plane-reconcile.mjs against CURRENT_STATE.yaml",
+        "decision": "PROMOTE",
+        "reason": "Same-root repeat measured twice (11-merge drift, a manual fix via PR#204, then 7-merge drift again within ~36h) against a capability that already exists and is tested. Highest-leverage, lowest-cost candidate: wires an existing script, builds nothing new.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#185",
+          "POLYPROPICKS/PREMVP#204",
+          "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+          "docs/ai-context/control-plane/evolution/cycles/2026-08-28__evolution-canonical-cycle.json#automation_hypotheses.H1"
+        ]
+      },
+      {
+        "subject": "Shared funnel population-conservation invariant helper (tests/feed/lib/populationConservation.ts)",
+        "decision": "DEFER",
+        "reason": "Real, repeated pattern (5 confirmed occurrences across 2 cycles in chain CHAIN-PRIMARY-CAP-20260827) but both cycles that raised it classified it SYSTEM_LATER, not NOW, and only one automation investment is authorized this run. Revisit at the next Governor run once a prototype exists.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#188",
+          "POLYPROPICKS/PREMVP#197",
+          "POLYPROPICKS/PREMVP#201"
+        ]
+      },
+      {
+        "subject": "Static lint rule against bare numeric caps/thresholds in scoring and funnel-admission code",
+        "decision": "DEFER",
+        "reason": "Same underlying design-error class as the population-conservation gap (5 occurrences, 2 cycles), classified SYSTEM_LATER by both cycles that raised it. Deferred behind the single promoted investment this run.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#188",
+          "POLYPROPICKS/PREMVP#197",
+          "POLYPROPICKS/PREMVP#193",
+          "POLYPROPICKS/PREMVP#201"
+        ]
+      },
+      {
+        "subject": "Shared, append-only operator-action log written by both executors at message time",
+        "decision": "DEFER",
+        "reason": "Confirmed gap in all 3 cycles, classified NOW, but its footprint (both executors change how they record actions) is larger than the promoted candidate. Only one investment is authorized this run; revisit next Governor run.",
+        "evidence_refs": [
+          "docs/ai-context/control-plane/evolution/cycles/2026-08-25__evolution-canonical-cycle.json#automation_hypotheses.H1",
+          "docs/ai-context/control-plane/evolution/cycles/2026-08-26__evolution-canonical-cycle.json#automation_hypotheses.H4",
+          "docs/ai-context/control-plane/evolution/cycles/2026-08-28__evolution-canonical-cycle.json#automation_hypotheses.H4"
+        ]
+      },
+      {
+        "subject": "Read-only audit of evidence/diagnostics-recording paths on the money/execution track for other unhandled legacy-form gaps",
+        "decision": "REJECT",
+        "reason": "Both cycles that raised this (H5) already classified it PRODUCT_FIRST — a direct product-code audit on the execution/settlement path, not infrastructure automation. Routed to direct product work, not an automation decision.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#187",
+          "POLYPROPICKS/PREMVP#203"
+        ]
+      }
+    ],
+    "roadmap_on_course": {
+      "statement": "Stage 2's own exit condition (\"at least one real Governor run has been produced by the reviewer prompt, validated by premvp.command.evolution_govern.v1, and committed under roadmap-proposals/\") is met by this very run. The roadmap is on course: nothing here proposes a fourth stage, and the one promoted investment sequences already-in-scope Stage 2 work rather than inventing new scope.",
+      "on_course": true
+    },
+    "roadmap_delta_justified": true
+  },
+  "roadmap_delta": {
+    "roadmap_delta_id": "RD-2026-08-30-CURRENT-STATE-RECONCILIATION-GATE",
+    "based_on_cycles": [
+      "2026-08-25__evolution-canonical-cycle",
+      "2026-08-26__evolution-canonical-cycle",
+      "2026-08-28__evolution-canonical-cycle"
+    ],
+    "current_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "proposed_change": "Bind the already-built control-plane-reconcile.mjs into a recurring, read-only invocation (CI gate on merges to main, or a scheduled Routine) that compares CURRENT_STATE.yaml's origin_main_sha to live origin/main and opens a proposed delta PR past a small drift threshold (e.g. 3 merges) — replacing the one-off manual run (PR#204) that decayed within about a day.",
+    "preserves": [
+      "Axis A priority over Axis B in every future Evolution cycle and Governor run",
+      "CURRENT_STATE.yaml as the sole current operational state authority per CLAUDE.md",
+      "Founder/Architect-only acceptance of any resulting state delta — the gate proposes, it never auto-accepts",
+      "roadmap_phase, current_value_step, C1/C2 meaning, PnL gates and live-money authority, all untouched by this delta"
+    ],
+    "supersedes": [
+      "the single manual, non-recurring invocation of control-plane-reconcile.mjs demonstrated in PR#204"
+    ],
+    "retires": [],
+    "business_effect": "None directly — no product, runtime or database change. Indirect support for Axis A: reduces the risk that a future Architect plan or patch task is built on a CURRENT_STATE.yaml that has silently drifted behind merged work, which CLAUDE.md requires reading first as the sole current-state authority before any implementation task.",
+    "manifest_2_effect": "Converts an already-built, already-tested reconciliation library (PR#185) that has been exercised exactly once by hand into a recurring, evidence-driven safeguard — closing the same-root-repeat state-drift defect confirmed in two consecutive cycles (2026-08-26 and 2026-08-28) with a deterministic script rather than a new agent.",
+    "evidence": [
+      {
+        "statement": "CURRENT_STATE.yaml drifted roughly 11 merges behind live origin/main before the 2026-08-26 cycle first flagged it as automation hypothesis H1, even though the reconciliation library to fix this (PR#185) already existed at that point.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "docs/ai-context/control-plane/evolution/cycles/2026-08-26__evolution-canonical-cycle.json#automation_hypotheses.H1",
+          "POLYPROPICKS/PREMVP#185"
+        ]
+      },
+      {
+        "statement": "A single manual reconciliation (PR#204) updated CURRENT_STATE.yaml at 2026-08-28T21:00:54Z (state_version 17, origin_main_sha=2cb8d49), but by this Governor run's own evidence_cutoff (HEAD 7caacd8 / 138120b) origin/main was already about 7 merges ahead again — proving a one-off manual run does not hold.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+          "POLYPROPICKS/PREMVP#204",
+          "docs/ai-context/control-plane/evolution/cycles/2026-08-28__evolution-canonical-cycle.json#automation_hypotheses.H1"
+        ]
+      },
+      {
+        "statement": "scripts/control-plane/lib/control-plane-reconcile.mjs exists, is dependency-free and read-only (computes a factual delta only; never writes CURRENT_STATE.yaml itself), and merged with its own tests in PR#185.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#185",
+          "scripts/control-plane/lib/control-plane-reconcile.mjs"
+        ]
+      }
+    ],
+    "opportunity_cost": "The bounded Founder/Architect time to wire a schedule or CI-gate invocation and to review the first few proposed deltas is spent here instead of on the population-conservation invariant helper or the shared operator-action log, both of which are real, evidenced gaps that stay deferred to a following Governor run because only one investment is authorized per run.",
+    "drift_from_original_roadmap": "None — AUTOMATION_ROADMAP.yaml Stage 2 already lists factual metric updates from evidence as in-stage scope. This delta only sequences which already-in-scope Stage 2 capability gets a real trigger first; it does not add a new stage or new scope.",
+    "drift_justified": true,
+    "success_metric": "At the next Governor run's evidence_cutoff, CURRENT_STATE.yaml's origin_main_sha is behind live origin/main by no more than a small bounded number of merges (for example <=3), instead of the 7-11 merges measured across the last two cycles.",
+    "rollback_condition": "Stop invoking the gate if it ever requires production runtime or database access beyond a read-only Git history comparison, or if the Founder rejects two consecutive proposed deltas as incorrect.",
+    "accepted": false
+  },
+  "roadmap_factual_updates": {
+    "role": "FACTUAL_ONLY",
+    "last_evaluated_at": "2026-08-30T02:07:24Z",
+    "cycle_count": 3,
+    "repetition_counts": {
+      "CURRENT_STATE_STALENESS_SAME_ROOT_REPEAT": 2,
+      "SILENT_FUNNEL_NUMERIC_CEILING": 5,
+      "OPERATOR_ACTION_COVERAGE_PARTIAL": 3,
+      "EVIDENCE_PATH_SILENT_WRITE_LOSS": 2
+    },
+    "capability_evidence_observations": {
+      "STAGE_2_GOVERNOR_FIRST_REAL_RUN": "this result is the first real Governor run consumed against canonical persisted cycles 2026-08-25, 2026-08-26 and 2026-08-28",
+      "EVOLUTION_CANONICALIZE_FIRST_REAL_USE_PENDING": "scripts/control-plane/evolution-canonicalize.mjs (PR#209) has 19/19 tests passing but has not yet completed a real --canonicalize admission+merge in this execution environment, which lacks the gh CLI its github-pr-create.mjs/github-pr-merge.mjs steps shell out to"
+    }
+  },
+  "founder_report_ref": "docs/ai-context/control-plane/evolution/roadmap-proposals/2026-08-30__automation-roadmap-governor-result.report.md",
+  "next_step": "Wire control-plane-reconcile.mjs into a CI gate or scheduled Routine per this delta, as a separate bounded task — this result only proposes it. Delivered via a pull request here since evolution_canonicalize.mjs needs the gh CLI, unavailable in this environment; the roadmap_delta still needs a separate Architect Promotion Gate before acceptance either way.",
+  "accepted": false
+}
