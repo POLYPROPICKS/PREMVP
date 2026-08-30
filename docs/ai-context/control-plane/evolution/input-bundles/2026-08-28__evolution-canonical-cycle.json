@@ -1,0 +1,124 @@
+{
+  "bundle_id": "2026-08-28__evolution-canonical-cycle",
+  "repository": "POLYPROPICKS/PREMVP",
+  "period_start": "2026-08-28T00:00:00Z",
+  "period_end": "2026-08-30T00:00:00Z",
+  "evidence_cutoff": "2026-08-30T00:30:00Z",
+  "capture_coverage": "PARTIAL",
+  "completion_envelope_ids": [
+    "CMP-RESERVATION-SERVING-LOOKBACK-EVIDENCE-20260828"
+  ],
+  "confirmed_changes": [
+    "POLYPROPICKS/PREMVP#200",
+    "POLYPROPICKS/PREMVP#201",
+    "POLYPROPICKS/PREMVP#202",
+    "POLYPROPICKS/PREMVP#203",
+    "POLYPROPICKS/PREMVP#204",
+    "POLYPROPICKS/PREMVP#207",
+    "POLYPROPICKS/PREMVP#208",
+    "POLYPROPICKS/PREMVP#209",
+    "POLYPROPICKS/PREMVP#210"
+  ],
+  "operator_action_events": [
+    { "action_id": "2026-08-28-BR-200", "occurred_at": "2026-08-28T06:19:36Z", "surface": "CODEX", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-200", "capture_coverage": "PARTIAL", "source_ref": "distinct branch codex/evolution-history-tests-20260828 merged as PR#200 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-28-BR-201", "occurred_at": "2026-08-28T08:51:54Z", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-201", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/decouple-primary-scoring-from-feed-cap-20260828 merged as PR#201 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-28-BR-202", "occurred_at": "2026-08-28T09:02:46Z", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-202", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/contur-gate-receipt-709109c3 merged as PR#202 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-28-BR-203", "occurred_at": "2026-08-28T20:55:44Z", "surface": "CODEX", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-203", "capture_coverage": "PARTIAL", "source_ref": "distinct branch codex/reservation-serving-lookback-evidence-20260828 merged as PR#203 then reused for PR#204 (state reconciliation) — one branch counted once; secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-29-BR-207", "occurred_at": "2026-08-29T06:18:10Z", "surface": "CODEX", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-207", "capture_coverage": "PARTIAL", "source_ref": "distinct branch codex/pre13-canonical-evidence-release-20260829 merged as PR#207 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-29-BR-208", "occurred_at": "2026-08-29T08:10:27Z", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-208", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/premvp-ready-queue-expiry-lifecycle merged as PR#208 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-29-BR-209", "occurred_at": "2026-08-29T08:48:08Z", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-209", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/evolution-canonicalize-lifecycle merged as PR#209 — secondary evidence lower bound, not a witnessed session transcript" },
+    { "action_id": "2026-08-29-BR-210", "occurred_at": "2026-08-29T09:02:45Z", "surface": "CLOUDCODE", "type": "START", "origin": "FOUNDER_MANUAL", "mission_id": "PR-210", "capture_coverage": "PARTIAL", "source_ref": "distinct branch claude/governor-cold-run-contract-canonical merged as PR#210 — secondary evidence lower bound, not a witnessed session transcript" }
+  ],
+  "operating_telemetry": {
+    "reviewer_corrections_rejections": 0,
+    "runtime_evidence_count": 1,
+    "reusable_artifacts_created": 4
+  },
+  "supporting_metrics": {
+    "runtime_evidence_count": 1,
+    "reusable_artifacts_created": 4
+  },
+  "defect_occurrences": [
+    {
+      "defect_id": "DEF-2026-08-28-GOVERNOR-TEST-HARDCODED-CYCLE-COUNT",
+      "origin": "TEST_OR_VERIFICATION_DEFECT",
+      "recurrence": "NEW_INDEPENDENT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#200",
+      "proven_effective_evidence_refs": [
+        "tests/control-plane/evolutionGovernor.test.mjs — re-run this cycle at HEAD 7caacd8 with 3 canonical cycles now on disk (2026-08-25, 2026-08-26, this one pending), 128/128 pass across evolutionGovernor.test.mjs + evolutionDailyReview.test.mjs + evolutionCanonicalize.test.mjs"
+      ]
+    },
+    {
+      "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+      "origin": "STATE_OR_CONTEXT_DEFECT",
+      "recurrence": "SAME_ROOT_REPEAT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#204",
+      "proven_effective_evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml updated_at=2026-08-28T21:00:54Z, state_version 17, origin_main_sha=2cb8d49 (partial: manual reconciliation worked once, then drifted again — origin_main_sha is already ~7 merges behind this cycle's own evidence_cutoff HEAD 7caacd8, because no continuous reconciliation automation runs yet)"
+      ]
+    },
+    {
+      "defect_id": "DEF-2026-08-28-PUBLIC15-CAP-SUPPRESSES-SEMANTIC-EVAL",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+      "defect_chain_id": "CHAIN-PRIMARY-CAP-20260827",
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#201",
+      "proven_effective_evidence_refs": [
+        "tests/feed/primaryPopulationDecoupling.test.ts — re-run this cycle, PASS",
+        "tests/feed/canonicalPrimaryPopulationPersistence.test.ts — re-run this cycle, PASS"
+      ]
+    },
+    {
+      "defect_id": "DEF-2026-08-28-PRIMARY-DATACOVERAGE-HARD-REJECT",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+      "defect_chain_id": "CHAIN-PRIMARY-CAP-20260827",
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#201",
+      "proven_effective_evidence_refs": [
+        "tests/feed/primaryCoverageDiagnosticOnly.test.ts — re-run this cycle, PASS"
+      ]
+    },
+    {
+      "defect_id": "DEF-2026-08-27-RESERVATION-SERVING-LOOKBACK-UNBOUNDED",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "REGRESSION",
+      "defect_chain_id": "CHAIN-RESERVATION-LOOKBACK-20260828",
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#203",
+      "proven_effective_evidence_refs": [
+        "tests/contur3/buildFireModelCandidates.servingLookbackBound.test.ts — re-run this cycle, PASS",
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml accepted_completions[CMP-RESERVATION-SERVING-LOOKBACK-EVIDENCE-20260828], evidence_class PROVEN_IN_RUNTIME"
+      ]
+    },
+    {
+      "defect_id": "DEF-2026-08-28-RESERVATION-ERROR-EVIDENCE-INSERT-FAIL",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+      "defect_chain_id": "CHAIN-RESERVATION-LOOKBACK-20260828",
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#203",
+      "proven_effective_evidence_refs": [
+        "tests/contur3/nightEventReservations.errorEvidenceDiagnostics.test.ts — re-run this cycle, PASS"
+      ]
+    },
+    {
+      "defect_id": "DEF-2026-08-29-READY-QUEUE-DEADLINE-NOT-EXPIRED",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "NEW_INDEPENDENT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#208",
+      "proven_effective_evidence_refs": [
+        "tests/contur3/eventExecutionQueue.readyQueueDeadlineExpiry.test.ts — re-run this cycle, PASS (10/10)"
+      ]
+    },
+    {
+      "defect_id": "DEF-2026-08-28-EVOLUTION-CYCLE-PENDING-PR-LATENCY",
+      "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+      "recurrence": "SAME_ROOT_REPEAT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#209",
+      "proven_effective_evidence_refs": []
+    }
+  ],
+  "notes": "operator_action_events are a LOWER BOUND inferred from 8 distinct feature branches merged to origin/main in this period (one START per branch; PR#203+PR#204 share one branch and count once); this reviewer had no access to any other session's transcript, so within-mission FOLLOW_UP/CORRECTION/RETRY/APPROVAL events and ChatGPT Architect chat activity are NOT captured — capture_coverage is PARTIAL by construction, same known gap as the 2026-08-25 and 2026-08-26 cycles (see hypothesis H4/continuation). defect_occurrences and their proven_effective_evidence_refs reflect this reviewer's own re-execution at origin/main HEAD 7caacd80116bc59b89c88b6c2c4eeec906bfec33 on 2026-08-30: tests/control-plane/evolutionGovernor.test.mjs + evolutionDailyReview.test.mjs + evolutionCanonicalize.test.mjs together (128/128 pass), and the seven period-specific feed/contur3 test files via 'node --experimental-test-module-mocks --import tsx --test' (31/31 pass; the first attempt without --experimental-test-module-mocks produced one false failure in buildFireModelCandidates.servingLookbackBound.test.ts on this reviewer's own missing flag, not a product defect — corrected and re-run clean). PR#198 (the 2026-08-26 cycle's own canonical landing) is excluded from this period's confirmed_changes and operator actions: its content was already described by the prior cycle; only its merge timing (created 2026-08-28T00:32Z, merged 2026-08-29T11:54Z, ~35h pending, with draft PRs #189 and #205 left stranded on the same superseded period) is used here as evidence for DEF-2026-08-28-EVOLUTION-CYCLE-PENDING-PR-LATENCY. No production_observation.v1 read-only run was performed this cycle; the reservation-lookback runtime-proof claim rests on the already Founder/Architect-accepted CURRENT_STATE.yaml checkpoint, not on this reviewer's own live observation."
+}
