@@ -342,6 +342,31 @@ export function validateControlPlane(root = REPO_ROOT) {
   for (const id of REQUIRED_REGISTRY_IDS) {
     if (!agentIds.has(id)) err(`AGENT_REGISTRY: required entry missing — ${id}`);
   }
+  // Portable GitHub lifecycle commands must bind each supported executor explicitly.  In
+  // particular, Cloud must resolve its registered MCP operations rather than falling back
+  // to a local gh process.
+  const githubBindings = [
+    ['premvp.command.github_pr_create.v1', 'GITHUB_PR_CREATE', 'create_pull_request'],
+    ['premvp.command.github_pr_merge.v1', 'GITHUB_PR_MERGE', 'merge_pull_request'],
+  ];
+  for (const [id, capabilityId, cloudOperation] of githubBindings) {
+    const entry = (registry.entries || []).find((x) => x.canonical_id === id);
+    const bindings = entry?.executor_bindings || [];
+    for (const executorId of ['local_codex_windows', 'claude_code_cloud']) {
+      const binding = bindings.find((b) => b.executor_id === executorId);
+      if (!binding) {
+        err(`AGENT_REGISTRY: ${id} missing executor binding for ${executorId}`);
+        continue;
+      }
+      if (binding.capability !== capabilityId) err(`AGENT_REGISTRY: ${id}.${executorId} must bind ${capabilityId}`);
+      if (executorId === 'local_codex_windows' && (binding.transport !== 'local_gh_cli' || !binding.script)) {
+        err(`AGENT_REGISTRY: ${id}.local_codex_windows must bind local_gh_cli with a script`);
+      }
+      if (executorId === 'claude_code_cloud' && (binding.transport !== 'github_mcp' || binding.operation !== cloudOperation || binding.dispatch !== 'registered_platform_capability')) {
+        err(`AGENT_REGISTRY: ${id}.claude_code_cloud must bind registered GitHub MCP ${cloudOperation}`);
+      }
+    }
+  }
   // Weather and Contur reviewers must be preserved and receipt-bearing.
   for (const id of ['codex.agent.weather_gate_reviewer.v0', 'codex.agent.contur_gate_reviewer']) {
     const e = (registry.entries || []).find((x) => x.canonical_id === id);

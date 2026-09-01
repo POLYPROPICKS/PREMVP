@@ -141,6 +141,16 @@ test('5e. secret-like values in canonical artifacts fail', () => {
   assert.match(errorsFrom(result), /SECRET_LIKE_VALUE/);
 });
 
+test('5e1. a GitHub PR command missing its cloud MCP adapter fails validation', () => {
+  const root = withMutatedRoot('AGENT_REGISTRY.yaml', (doc) => {
+    const command = doc.entries.find((entry) => entry.canonical_id === 'premvp.command.github_pr_create.v1');
+    command.executor_bindings = command.executor_bindings.filter((binding) => binding.executor_id !== 'claude_code_cloud');
+  });
+  const result = validateControlPlane(root);
+  assert.equal(result.ok, false);
+  assert.match(errorsFrom(result), /github_pr_create\.v1 missing executor binding for claude_code_cloud/);
+});
+
 test('5f. freshness mode is BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE, not exact equality', () => {
   const result = validateControlPlane(REPO_ROOT);
   assert.equal(result.ok, true, errorsFrom(result));

@@ -482,6 +482,10 @@
       "portability": "PORTABLE",
       "supported_executors": ["local_codex_windows", "claude_code_cloud"],
       "adapter_resolution": "selected executor only; no default adapter; fail closed without a proven compatible binding",
+      "executor_bindings": [
+        { "executor_id": "local_codex_windows", "transport": "local_gh_cli", "operation": "pr_create", "capability": "GITHUB_PR_CREATE", "script": "scripts/control-plane/github-pr-create.mjs" },
+        { "executor_id": "claude_code_cloud", "transport": "github_mcp", "operation": "create_pull_request", "capability": "GITHUB_PR_CREATE", "dispatch": "registered_platform_capability" }
+      ],
       "idempotency": "reuse matching repository+head+base PR before create",
       "hard_prohibitions": ["direct push to main", "force push", "cross-repository action", "secrets"]
     },
@@ -507,6 +511,10 @@
       "portability": "PORTABLE",
       "supported_executors": ["local_codex_windows", "claude_code_cloud"],
       "adapter_resolution": "selected executor only; no default adapter; fail closed without a proven compatible binding",
+      "executor_bindings": [
+        { "executor_id": "local_codex_windows", "transport": "local_gh_cli", "operation": "pr_merge", "capability": "GITHUB_PR_MERGE", "script": "scripts/control-plane/github-pr-merge.mjs" },
+        { "executor_id": "claude_code_cloud", "transport": "github_mcp", "operation": "merge_pull_request", "capability": "GITHUB_PR_MERGE", "dispatch": "registered_platform_capability" }
+      ],
       "idempotency": "reuse merged PR evidence before merge",
       "hard_prohibitions": ["direct push to main", "force push", "branch-protection bypass", "missing required reviewer receipt"]
     },
