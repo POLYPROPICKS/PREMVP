@@ -1,0 +1,46 @@
+{
+  "schema_version": "1.0",
+  "cohorts": [
+    {
+      "stage": "EARLY",
+      "historical_n": 1788,
+      "reconstructed_n": 1728,
+      "delta": -60
+    },
+    {
+      "stage": "RECOVERED",
+      "historical_n": 1602,
+      "reconstructed_n": 2367,
+      "delta": 765
+    },
+    {
+      "stage": "MAIN",
+      "historical_n": 18705,
+      "reconstructed_n": 0,
+      "delta": -18705
+    },
+    {
+      "stage": "TOTAL",
+      "historical_n": 22095,
+      "reconstructed_n": 4167,
+      "delta": -17928
+    }
+  ],
+  "raw_provider_event_n": 51206,
+  "unique_physical_event_n": 4167,
+  "provider_to_physical_collision_n": 47039,
+  "settlement": {
+    "WIN": 1595,
+    "LOSS": 2444,
+    "AMBIGUOUS": 0,
+    "UNRESOLVED": 128,
+    "total": 4167
+  },
+  "price_050_060_reproduction": {
+    "N": 211,
+    "ROI_pct": 46.91943127962085,
+    "PnL": 99,
+    "MaxDD": -6
+  },
+  "coverage_gaps_n": 8
+}
