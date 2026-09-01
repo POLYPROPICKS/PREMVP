@@ -15,6 +15,7 @@ import {
   PROPOSALS_PREFIX,
   INPUT_BUNDLES_PREFIX,
 } from '../../scripts/control-plane/lib/evolution-canonicalize.mjs';
+import { resolveCanonicalizationAdapters } from '../../scripts/control-plane/evolution-canonicalize.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const EVOLUTION_DIR = 'docs/ai-context/control-plane/evolution';
@@ -196,6 +197,17 @@ test('a valid Governor result evidence lineage is admissible', () => {
   const result = governorFixture();
   const verdict = admitCanonicalizationLineage(governorPaths(result));
   assert.deepEqual(verdict.errors, []);
+  assert.equal(verdict.ok, true);
+  assert.deepEqual(verdict.admitted.governor_results, [result.result_id]);
+});
+
+test('cloud Governor-result canonicalization selects GitHub MCP while retaining accepted:false', () => {
+  const result = governorFixture();
+  const adapters = resolveCanonicalizationAdapters('claude_code_cloud');
+  const verdict = admitCanonicalizationLineage(governorPaths(result));
+  assert.equal(result.accepted, false);
+  assert.equal(adapters.create.operation, 'create_pull_request');
+  assert.equal(adapters.merge.operation, 'merge_pull_request');
   assert.equal(verdict.ok, true);
   assert.deepEqual(verdict.admitted.governor_results, [result.result_id]);
 });

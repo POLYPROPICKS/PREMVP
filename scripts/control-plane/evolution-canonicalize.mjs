@@ -39,12 +39,28 @@ import {
   PROPOSALS_PREFIX,
 } from './lib/evolution-canonicalize.mjs';
 import { derivePeriodKey } from './lib/evolution-cycle.mjs';
+import {
+  readGitHubPrRegistry,
+  resolveGitHubPrAdapter,
+} from './lib/github-pr-adapter-binding.mjs';
 
 export const COMMAND_ID = 'premvp.command.evolution_canonicalize.v1';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, '..', '..');
 export const DEFAULT_REPOSITORY = 'POLYPROPICKS/PREMVP';
+
+/**
+ * Resolve both terminal lifecycle primitives through the active executor.  The cloud binding
+ * is intentionally a GitHub MCP dispatch, never a substitution to this process's local gh.
+ */
+export function resolveCanonicalizationAdapters(executorId, repoRoot = REPO_ROOT) {
+  const registry = readGitHubPrRegistry(repoRoot);
+  return {
+    create: resolveGitHubPrAdapter({ registry, commandId: 'premvp.command.github_pr_create.v1', executorId }),
+    merge: resolveGitHubPrAdapter({ registry, commandId: 'premvp.command.github_pr_merge.v1', executorId }),
+  };
+}
 
 function git(args) {
   return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' });
@@ -118,6 +134,7 @@ function main() {
   const head = opt('--head', 'HEAD');
   const repository = opt('--repository', DEFAULT_REPOSITORY);
   const branch = opt('--branch');
+  const executor = opt('--executor');
 
   let lineage;
   try {
@@ -152,22 +169,44 @@ function main() {
     process.exit(1);
   }
 
-  const runCommand = (script, payload) => {
+  if (!executor) {
+    process.stderr.write('[evolution-canonicalize] FAIL — --canonicalize requires --executor <registered executor>; no adapter default or executor substitution is permitted\n');
+    process.exit(1);
+  }
+
+  let adapters;
+  try {
+    adapters = resolveCanonicalizationAdapters(executor);
+  } catch (e) {
+    process.stderr.write(`[evolution-canonicalize] FAIL — ${e.message}\n`);
+    process.exit(1);
+  }
+
+  const runCommand = (adapter, payload) => {
+    if (adapter.transport !== 'local_gh_cli') {
+      throw new Error(`GITHUB_PR_EXECUTOR_NATIVE_DISPATCH_REQUIRED: ${adapter.command_id} on ${executor} resolves to ${adapter.transport}/${adapter.operation}; invoke the registered GitHub MCP capability, never local gh`);
+    }
     try {
-      return execFileSync('node', [path.join('scripts', 'control-plane', script), JSON.stringify(payload)], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
+      return execFileSync('node', [adapter.script, JSON.stringify(payload)], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
     } catch (e) {
-      process.stderr.write(`[evolution-canonicalize] FAIL — ${script}: ${e.message}\n`);
+      process.stderr.write(`[evolution-canonicalize] FAIL — ${adapter.command_id}: ${e.message}\n`);
       process.exit(1);
     }
   };
 
-  const created = runCommand('github-pr-create.mjs', {
+  let created;
+  try {
+    created = runCommand(adapters.create, {
     repository,
     source_branch: branch,
     target_branch: 'main',
     title: `chore(evolution): canonicalize validated Evolution evidence lineage`,
     body: `Terminal persistence stage of ${COMMAND_ID}. Admitted: cycles [${verdict.admitted.cycles.join(', ')}], governor results [${verdict.admitted.governor_results.join(', ')}]. Hard-allowlisted to the Evolution evidence artifact surface; schema/semantic validation re-run; accepted:false preserved.`,
-  });
+    });
+  } catch (e) {
+    process.stderr.write(`[evolution-canonicalize] FAIL — ${e.message}\n`);
+    process.exit(1);
+  }
   let prNumber = null;
   try {
     const parsed = JSON.parse(created);
@@ -181,7 +220,13 @@ function main() {
     process.exit(1);
   }
 
-  const merged = runCommand('github-pr-merge.mjs', { repository, number: prNumber });
+  let merged;
+  try {
+    merged = runCommand(adapters.merge, { repository, number: prNumber });
+  } catch (e) {
+    process.stderr.write(`[evolution-canonicalize] FAIL — ${e.message}\n`);
+    process.exit(1);
+  }
 
   tryGit(['fetch', '--prune', 'origin']);
   const isAncestor = tryGit(['merge-base', '--is-ancestor', head, 'origin/main']) !== null;
