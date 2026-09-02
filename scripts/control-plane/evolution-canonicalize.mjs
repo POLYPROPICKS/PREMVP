@@ -62,6 +62,65 @@ export function resolveCanonicalizationAdapters(executorId, repoRoot = REPO_ROOT
   };
 }
 
+function terminalPayloads({ repository, branch, admitted }) {
+  return {
+    create: {
+      repository,
+      source_branch: branch,
+      target_branch: 'main',
+      title: 'chore(evolution): canonicalize validated Evolution evidence lineage',
+      body: `Terminal persistence stage of ${COMMAND_ID}. Admitted: cycles [${admitted.cycles.join(', ')}], governor results [${admitted.governor_results.join(', ')}]. Hard-allowlisted to the Evolution evidence artifact surface; schema/semantic validation re-run; accepted:false preserved.`,
+    },
+  };
+}
+
+/**
+ * Create an executor-owned terminal-dispatch plan after admission. The plan never substitutes
+ * transports: cloud operations are handed only to the selected executor's registered GitHub
+ * MCP capability, while local Codex continues to call its registered gh scripts.
+ */
+export function createCanonicalizationDispatchPlan({ executorId, repository, branch, admitted, repoRoot = REPO_ROOT }) {
+  const adapters = resolveCanonicalizationAdapters(executorId, repoRoot);
+  const payloads = terminalPayloads({ repository, branch, admitted });
+  const step = (adapter, payload) => {
+    if (adapter.transport === 'local_gh_cli' && adapter.script) {
+      return { mode: 'LOCAL_SCRIPT', adapter, payload };
+    }
+    if (adapter.transport === 'github_mcp' && adapter.dispatch === 'registered_platform_capability') {
+      return { mode: 'EXECUTOR_NATIVE_PLATFORM_CAPABILITY', adapter, payload };
+    }
+    throw new Error(`GITHUB_PR_EXECUTOR_NATIVE_DISPATCH_UNAVAILABLE: ${adapter.command_id} on ${executorId} resolves to unsupported ${adapter.transport || 'missing-transport'}/${adapter.operation || 'missing-operation'}`);
+  };
+  const create = step(adapters.create, payloads.create);
+  const merge = step(adapters.merge, { repository, number_from: 'create.number' });
+  if (create.mode !== merge.mode) {
+    throw new Error(`GITHUB_PR_EXECUTOR_NATIVE_DISPATCH_UNAVAILABLE: create/merge transport mismatch for ${executorId}`);
+  }
+  return Object.freeze({
+    command_id: COMMAND_ID,
+    executor_id: executorId,
+    create,
+    merge,
+  });
+}
+
+/**
+ * Executes a previously admitted plan through an executor-provided native dispatcher. The
+ * lifecycle owns ordering and payload construction; the executor owns its platform capability.
+ */
+export async function executeCanonicalizationDispatchPlan(plan, dispatch) {
+  if (typeof dispatch !== 'function') {
+    throw new Error('GITHUB_PR_EXECUTOR_NATIVE_DISPATCH_UNAVAILABLE: executor-native dispatch function is required');
+  }
+  const created = await dispatch(plan.create);
+  const prNumber = Number(created?.number);
+  if (!Number.isInteger(prNumber) || prNumber <= 0) {
+    throw new Error('GITHUB_PR_EXECUTOR_NATIVE_DISPATCH_UNAVAILABLE: create dispatch did not return a PR number');
+  }
+  const merged = await dispatch({ ...plan.merge, payload: { repository: plan.merge.payload.repository, number: prNumber } });
+  return { pr_number: prNumber, merge_output: merged };
+}
+
 function git(args) {
   return execFileSync('git', args, { cwd: REPO_ROOT, encoding: 'utf8' });
 }
@@ -174,35 +233,37 @@ function main() {
     process.exit(1);
   }
 
-  let adapters;
+  let plan;
   try {
-    adapters = resolveCanonicalizationAdapters(executor);
+    plan = createCanonicalizationDispatchPlan({ executorId: executor, repository, branch, admitted: verdict.admitted });
   } catch (e) {
     process.stderr.write(`[evolution-canonicalize] FAIL — ${e.message}\n`);
     process.exit(1);
   }
 
-  const runCommand = (adapter, payload) => {
-    if (adapter.transport !== 'local_gh_cli') {
-      throw new Error(`GITHUB_PR_EXECUTOR_NATIVE_DISPATCH_REQUIRED: ${adapter.command_id} on ${executor} resolves to ${adapter.transport}/${adapter.operation}; invoke the registered GitHub MCP capability, never local gh`);
-    }
+  if (plan.create.mode === 'EXECUTOR_NATIVE_PLATFORM_CAPABILITY') {
+    process.stdout.write(`${JSON.stringify({
+      ok: true,
+      command_id: COMMAND_ID,
+      terminal_state: 'EXECUTOR_NATIVE_DISPATCH_READY',
+      dispatch_plan: plan,
+      ...verdict.admitted,
+    }, null, 2)}\n`);
+    process.exit(0);
+  }
+
+  const runCommand = (step) => {
     try {
-      return execFileSync('node', [adapter.script, JSON.stringify(payload)], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
+      return execFileSync('node', [step.adapter.script, JSON.stringify(step.payload)], { cwd: REPO_ROOT, encoding: 'utf8' }).trim();
     } catch (e) {
-      process.stderr.write(`[evolution-canonicalize] FAIL — ${adapter.command_id}: ${e.message}\n`);
+      process.stderr.write(`[evolution-canonicalize] FAIL — ${step.adapter.command_id}: ${e.message}\n`);
       process.exit(1);
     }
   };
 
   let created;
   try {
-    created = runCommand(adapters.create, {
-    repository,
-    source_branch: branch,
-    target_branch: 'main',
-    title: `chore(evolution): canonicalize validated Evolution evidence lineage`,
-    body: `Terminal persistence stage of ${COMMAND_ID}. Admitted: cycles [${verdict.admitted.cycles.join(', ')}], governor results [${verdict.admitted.governor_results.join(', ')}]. Hard-allowlisted to the Evolution evidence artifact surface; schema/semantic validation re-run; accepted:false preserved.`,
-    });
+    created = runCommand(plan.create);
   } catch (e) {
     process.stderr.write(`[evolution-canonicalize] FAIL — ${e.message}\n`);
     process.exit(1);
@@ -222,7 +283,7 @@ function main() {
 
   let merged;
   try {
-    merged = runCommand(adapters.merge, { repository, number: prNumber });
+    merged = runCommand({ ...plan.merge, payload: { repository, number: prNumber } });
   } catch (e) {
     process.stderr.write(`[evolution-canonicalize] FAIL — ${e.message}\n`);
     process.exit(1);

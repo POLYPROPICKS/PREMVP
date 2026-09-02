@@ -45,8 +45,9 @@
       "output_location": "docs/ai-context/control-plane/evolution/cycles/",
       "terminal_persistence_stage": {
         "command_id": "premvp.command.evolution_canonicalize.v1",
-        "command": "npm run control-plane:evolution:canonicalize -- --canonicalize --branch <lineage-branch>",
-        "rule": "Runs after evolution:evaluate --write. Admits the validated evidence-only cycle lineage (cycles/<cycle_id>.json + <cycle_id>.report.md, and any required input-bundles/ or diagrams/ evidence) and canonicalizes it to origin/main with no Founder merge or review action. Fails closed on any unrelated changed path, malformed artifact, accepted:true, or a competing lineage for the same evaluation period."
+        "command": "npm run control-plane:evolution:canonicalize -- --canonicalize --branch <lineage-branch> --executor <selected-executor>",
+        "executor_source": "selected executor of the routine; no default or substitution",
+        "rule": "Runs after evolution:evaluate --write. Admits the validated evidence-only cycle lineage (cycles/<cycle_id>.json + <cycle_id>.report.md, and any required input-bundles/ or diagrams/ evidence) and canonicalizes it to origin/main with no Founder merge or review action. It resolves the selected executor's registered terminal adapter: local_gh_cli runs the registered local script; github_mcp emits an executor-native platform-capability dispatch plan for that same selected executor; any missing or unsupported dispatch fails closed. Fails closed on any unrelated changed path, malformed artifact, accepted:true, or a competing lineage for the same evaluation period."
       }
     },
     {
@@ -66,8 +67,9 @@
       "output_location": "docs/ai-context/control-plane/evolution/roadmap-proposals/",
       "terminal_persistence_stage": {
         "command_id": "premvp.command.evolution_canonicalize.v1",
-        "command": "npm run control-plane:evolution:canonicalize -- --canonicalize --branch <lineage-branch>",
-        "rule": "Runs after evolution:govern --write. Admits the validated evidence-only Governor result lineage (roadmap-proposals/<result_id>.json + <result_id>.report.md) and canonicalizes it to origin/main with no Founder merge or review action. Enforces Governor-result uniqueness and accepted:false on the result and any embedded roadmap delta; a proposal requiring external acceptance is never canonicalized as accepted. The Governor keeps reading only canonical origin/main history."
+        "command": "npm run control-plane:evolution:canonicalize -- --canonicalize --branch <lineage-branch> --executor <selected-executor>",
+        "executor_source": "selected executor of the routine; no default or substitution",
+        "rule": "Runs after evolution:govern --write. Admits the validated evidence-only Governor result lineage (roadmap-proposals/<result_id>.json + <result_id>.report.md) and canonicalizes it to origin/main with no Founder merge or review action. It resolves the selected executor's registered terminal adapter: local_gh_cli runs the registered local script; github_mcp emits an executor-native platform-capability dispatch plan for that same selected executor; any missing or unsupported dispatch fails closed. Enforces Governor-result uniqueness and accepted:false on the result and any embedded roadmap delta; a proposal requiring external acceptance is never canonicalized as accepted. The Governor keeps reading only canonical origin/main history."
       }
     }
   ],
