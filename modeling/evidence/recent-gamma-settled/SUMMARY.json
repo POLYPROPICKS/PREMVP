@@ -1,0 +1,120 @@
+{
+  "mission": "RECENT_RESERVATION_GAMMA_SETTLED_V1",
+  "generated_at": "2026-09-02T12:27:16.503Z",
+  "population": {
+    "RESERVATION_ROW_N": 30,
+    "UNIQUE_PHYSICAL_EVENT_N": 30,
+    "UNIQUE_MARKET_SIDE_N": 30,
+    "plan_dates": {
+      "2026-08-31": 15,
+      "2026-09-01": 15,
+      "2026-09-02": 0
+    }
+  },
+  "settlement": {
+    "GAMMA_EXACT_EVENT_LINK_N": 30,
+    "GAMMA_EXACT_MARKET_LINK_N": 30,
+    "GAMMA_EXACT_TOKEN_LINK_N": 30,
+    "GAMMA_SETTLED_N": 30,
+    "GAMMA_OPEN_N": 0,
+    "GAMMA_NO_MATCH_N": 0,
+    "GAMMA_AMBIGUOUS_N": 0,
+    "WIN_N": 16,
+    "LOSS_N": 14,
+    "GAMMA_SETTLED_BUT_GSP_NULL_N": 30,
+    "GAMMA_SETTLED_AND_GSP_WON_LOST_N": 0,
+    "GSP_CONTRADICTS_GAMMA_N": 0
+  },
+  "coverage_over_settled": {
+    "denominator": 30,
+    "ENTRY_PRICE_PRESENT_N": 30,
+    "VOLUME_PRESENT_N": 30,
+    "MARKET_TYPE_PRESENT_N": 23,
+    "PROVIDER_SPORT_CODE_PRESENT_N": 30,
+    "SCORE_PRESENT_N": 0
+  },
+  "economics": {
+    "COHORT_ALL_SETTLED": {
+      "N": 30,
+      "W": 16,
+      "L": 14,
+      "PNL_U": 7.1772,
+      "ROI_PCT": 23.92,
+      "MAX_DRAWDOWN_U": -4.0587
+    },
+    "MODEL_1_C4": {
+      "N": 0,
+      "W": 0,
+      "L": 0,
+      "PNL_U": 0,
+      "ROI_PCT": null,
+      "MAX_DRAWDOWN_U": 0
+    },
+    "MODEL_2_C1_SOCCER_CORE": {
+      "N": 0,
+      "W": 0,
+      "L": 0,
+      "PNL_U": 0,
+      "ROI_PCT": null,
+      "MAX_DRAWDOWN_U": 0
+    },
+    "MODEL_3_C4_NON_SOCCER": {
+      "N": 0,
+      "W": 0,
+      "L": 0,
+      "PNL_U": 0,
+      "ROI_PCT": null,
+      "MAX_DRAWDOWN_U": 0
+    },
+    "entry_price_range": [
+      0.385,
+      0.495
+    ]
+  },
+  "frozen_hypotheses": {
+    "A_UWCL": {
+      "status": "NOT_OBSERVED",
+      "reason": "no provider_sport_code=uwcl in cohort",
+      "TOTAL_N": 0,
+      "SETTLED_N": 0
+    },
+    "B_SOCCER_FIRST_TO_SCORE": {
+      "status": "NOT_OBSERVED",
+      "reason": "no market_type_raw=soccer_first_to_score; observed classes: allowed_fullmatch_total/spread/unknown",
+      "TOTAL_N": 0,
+      "SETTLED_N": 0
+    },
+    "C_SOCCER_EXACT_SCORE": {
+      "status": "NOT_OBSERVED",
+      "reason": "no market_type_raw=soccer_exact_score",
+      "TOTAL_N": 0,
+      "SETTLED_N": 0
+    }
+  },
+  "daily": {
+    "2026-08-31": {
+      "RESERVATION_N": 15,
+      "GAMMA_SETTLED_N": 15,
+      "C4_SETTLED_N": 0,
+      "C4_PNL_U": 0,
+      "COHORT_PNL_U": 5.6031,
+      "COHORT_ROI_PCT": 37.35
+    },
+    "2026-09-01": {
+      "RESERVATION_N": 15,
+      "GAMMA_SETTLED_N": 15,
+      "C4_SETTLED_N": 0,
+      "C4_PNL_U": 0,
+      "COHORT_PNL_U": 1.5742,
+      "COHORT_ROI_PCT": 10.49
+    },
+    "2026-09-02": {
+      "RESERVATION_N": 0,
+      "GAMMA_SETTLED_N": 0,
+      "C4_SETTLED_N": 0,
+      "C4_PNL_U": 0,
+      "COHORT_PNL_U": 0,
+      "COHORT_ROI_PCT": null
+    }
+  }
+}
