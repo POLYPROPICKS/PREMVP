@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.0",
+  "baseline": "modeling/evidence/recent-rich-evaluation/RECENT_RICH_C4_EVALUATION_7D_V2.jsonl.gz",
+  "runs": [
+    {
+      "run_id": "run-2026-09-02T11-32-04-825Z",
+      "previous_decision_cutoff": "2026-09-02T09:08:59.000Z",
+      "current_run_cutoff": "2026-09-02T11:32:04.826Z",
+      "baseline_artifact": "modeling/evidence/recent-rich-evaluation/RECENT_RICH_C4_EVALUATION_7D_V2.jsonl.gz",
+      "baseline_commit": "d7c63e8",
+      "new_source_row_n": 3603,
+      "new_c4_decision_n": 0,
+      "new_c4_score_present_n": 0,
+      "new_c4_volume_present_n": 0,
+      "new_uwcl_c4_n": 0,
+      "new_first_to_score_c4_n": 0,
+      "new_exact_score_c4_n": 0,
+      "previous_unresolved_c4_n": 530,
+      "newly_resolved_c4_n": 0,
+      "total_resolved_c4_n": 0,
+      "total_captured_c4_decision_n": 530,
+      "decisions_shard": "decisions/run-2026-09-02T11-32-04-825Z.jsonl.gz",
+      "decisions_shard_sha256": "f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec",
+      "settlements_shard": "settlements/run-2026-09-02T11-32-04-825Z.jsonl.gz",
+      "settlements_shard_sha256": "f61f27bd17de546264aa58f40f3aafaac7021e0ef69c17f6b1b4cd7664a037ec",
+      "economic_modeling_ready": "NO",
+      "next_transition": "RECENT_RICH_C4_ECONOMIC_MODELING_V1"
+    }
+  ],
+  "latest_decision_cutoff": "2026-09-02T11:32:04.826Z",
+  "total_captured_c4_decision_n": 530,
+  "total_resolved_c4_n": 0
+}
