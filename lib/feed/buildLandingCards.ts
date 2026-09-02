@@ -21,6 +21,7 @@ import {
   type ResearchFunnelCounters,
   type ResearchNestedMarket,
 } from "./types";
+import { buildResearchScoreObservation } from "./researchScoreObservation";
 
 import {
   fetchPolymarketActiveEvents,
@@ -2803,6 +2804,17 @@ async function tryBuildResearchSnapshot(
     signalPhaseAtSnapshot,
     oddsBandLabel,
     opposingPriceNum,
+    // FORWARD_RICH_CAPTURE_V1 — persist the already-computed fire-model score
+    // with exact lineage. Public path: score comes from the enriched formula audit.
+    scoreObservation: buildResearchScoreObservation({
+      scoreValue: diag.formulaAudit?.finalSignalV2 ?? null,
+      metricFormulaVersion: FORMULA_VERSION,
+      snapshotAt,
+      snapshotRunId,
+      conditionId: condId,
+      selectedTokenId: selectedTokId,
+      sourceLineage: "PUBLIC_PATH_ENRICHMENT",
+    }),
   };
 }
 
@@ -3878,6 +3890,18 @@ export async function buildLandingCards(options?: {
           signalPhaseAtSnapshot: "prematch",
           oddsBandLabel: null,
           opposingPriceNum: rm.opposingPriceNum,
+          // FORWARD_RICH_CAPTURE_V1 — retain the real wide-scorer score when the
+          // candidate was actually scored this run; unscored S2-direct rows carry
+          // an explicit null with lineage rather than a silently absent field.
+          scoreObservation: buildResearchScoreObservation({
+            scoreValue: woScored ? wo!.score : null,
+            metricFormulaVersion: woScored ? FORMULA_VERSION : null,
+            snapshotAt: researchSnapshotAt,
+            snapshotRunId: researchSnapshotRunId,
+            conditionId: rm.conditionId,
+            selectedTokenId: rm.selectedTokenId,
+            sourceLineage: woScored ? "S2_WIDE_SCORER" : "S2_DIRECT_UNSCORED",
+          }),
         };
         researchSnapshots.push(s2Snap);
         alreadyCapturedKeys.add(rmKey);
