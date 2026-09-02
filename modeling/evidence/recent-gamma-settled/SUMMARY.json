@@ -1,120 +1,186 @@
 {
-  "mission": "RECENT_RESERVATION_GAMMA_SETTLED_V1",
-  "generated_at": "2026-09-02T12:27:16.503Z",
+  "mission": "RECENT_RESERVATION_CONTOUR_ECONOMIC_EXPANSION_V1",
+  "supersedes": "RECENT_RESERVATION_GAMMA_SETTLED_V1 (N=30 baseline, preserved as first 30 chronological rows of this cohort)",
+  "generated_at": "2026-09-02T12:34:57.468Z",
   "population": {
-    "RESERVATION_ROW_N": 30,
-    "UNIQUE_PHYSICAL_EVENT_N": 30,
-    "UNIQUE_MARKET_SIDE_N": 30,
-    "plan_dates": {
-      "2026-08-31": 15,
-      "2026-09-01": 15,
-      "2026-09-02": 0
-    }
+    "RESERVATION_ROW_N": 195,
+    "EXACT_GAMMA_LINK_N": 195,
+    "SETTLED_N": 190,
+    "OPEN_N": 5,
+    "NO_MATCH_N": 0,
+    "AMBIGUOUS_N": 0,
+    "DECISION_DATE_START": "2026-08-19T14:01:45.248611+00:00",
+    "DECISION_DATE_END": "2026-09-01T14:02:06.824672+00:00",
+    "window_days": 14,
+    "stop_condition": "B - all available recent (14-day) Reservation cohorts exhausted; 195 raw rows available, short of the 200-settled target"
   },
-  "settlement": {
-    "GAMMA_EXACT_EVENT_LINK_N": 30,
-    "GAMMA_EXACT_MARKET_LINK_N": 30,
-    "GAMMA_EXACT_TOKEN_LINK_N": 30,
-    "GAMMA_SETTLED_N": 30,
-    "GAMMA_OPEN_N": 0,
-    "GAMMA_NO_MATCH_N": 0,
-    "GAMMA_AMBIGUOUS_N": 0,
-    "WIN_N": 16,
-    "LOSS_N": 14,
-    "GAMMA_SETTLED_BUT_GSP_NULL_N": 30,
-    "GAMMA_SETTLED_AND_GSP_WON_LOST_N": 0,
-    "GSP_CONTRADICTS_GAMMA_N": 0
-  },
-  "coverage_over_settled": {
-    "denominator": 30,
-    "ENTRY_PRICE_PRESENT_N": 30,
-    "VOLUME_PRESENT_N": 30,
-    "MARKET_TYPE_PRESENT_N": 23,
-    "PROVIDER_SPORT_CODE_PRESENT_N": 30,
-    "SCORE_PRESENT_N": 0
+  "diagnostic": {
+    "GSP_NULL_AMONG_SETTLED": 182,
+    "GSP_CONTRADICTS_GAMMA": 0
   },
   "economics": {
-    "COHORT_ALL_SETTLED": {
-      "N": 30,
-      "W": 16,
-      "L": 14,
-      "PNL_U": 7.1772,
-      "ROI_PCT": 23.92,
-      "MAX_DRAWDOWN_U": -4.0587
+    "FULL": {
+      "N": 190,
+      "W": 103,
+      "L": 87,
+      "PNL_U": 34.0046,
+      "ROI_PCT": 17.9,
+      "MAX_DRAWDOWN_U": -13.14
     },
-    "MODEL_1_C4": {
-      "N": 0,
-      "W": 0,
-      "L": 0,
-      "PNL_U": 0,
-      "ROI_PCT": null,
-      "MAX_DRAWDOWN_U": 0
-    },
-    "MODEL_2_C1_SOCCER_CORE": {
-      "N": 0,
-      "W": 0,
-      "L": 0,
-      "PNL_U": 0,
-      "ROI_PCT": null,
-      "MAX_DRAWDOWN_U": 0
-    },
-    "MODEL_3_C4_NON_SOCCER": {
-      "N": 0,
-      "W": 0,
-      "L": 0,
-      "PNL_U": 0,
-      "ROI_PCT": null,
-      "MAX_DRAWDOWN_U": 0
-    },
-    "entry_price_range": [
-      0.385,
-      0.495
+    "cumulative": [
+      {
+        "N": 30,
+        "W": 15,
+        "L": 15,
+        "PNL_U": 0.9054,
+        "ROI_PCT": 3.02,
+        "MAX_DRAWDOWN_U": -5.0198
+      },
+      {
+        "N": 50,
+        "W": 33,
+        "L": 17,
+        "PNL_U": 20.1353,
+        "ROI_PCT": 40.27,
+        "MAX_DRAWDOWN_U": -5.0198
+      },
+      {
+        "N": 100,
+        "W": 52,
+        "L": 48,
+        "PNL_U": 11.315,
+        "ROI_PCT": 11.31,
+        "MAX_DRAWDOWN_U": -13.14
+      },
+      {
+        "N": 150,
+        "W": 80,
+        "L": 70,
+        "PNL_U": 21.4053,
+        "ROI_PCT": 14.27,
+        "MAX_DRAWDOWN_U": -13.14
+      },
+      {
+        "N": 190,
+        "W": 103,
+        "L": 87,
+        "PNL_U": 34.0046,
+        "ROI_PCT": 17.9,
+        "MAX_DRAWDOWN_U": -13.14
+      }
     ]
   },
-  "frozen_hypotheses": {
-    "A_UWCL": {
-      "status": "NOT_OBSERVED",
-      "reason": "no provider_sport_code=uwcl in cohort",
-      "TOTAL_N": 0,
-      "SETTLED_N": 0
+  "descriptive_slices": {
+    "scope": {
+      "SOCCER": {
+        "N": 106,
+        "W": 57,
+        "L": 49,
+        "PNL_U": 22.1843,
+        "ROI_PCT": 20.93,
+        "MAX_DRAWDOWN_U": -7.9175
+      },
+      "NON_SOCCER": {
+        "N": 84,
+        "W": 46,
+        "L": 38,
+        "PNL_U": 11.8203,
+        "ROI_PCT": 14.07,
+        "MAX_DRAWDOWN_U": -10.0716
+      }
     },
-    "B_SOCCER_FIRST_TO_SCORE": {
-      "status": "NOT_OBSERVED",
-      "reason": "no market_type_raw=soccer_first_to_score; observed classes: allowed_fullmatch_total/spread/unknown",
-      "TOTAL_N": 0,
-      "SETTLED_N": 0
-    },
-    "C_SOCCER_EXACT_SCORE": {
-      "status": "NOT_OBSERVED",
-      "reason": "no market_type_raw=soccer_exact_score",
-      "TOTAL_N": 0,
-      "SETTLED_N": 0
+    "market_class": {
+      "allowed_fullmatch_total": {
+        "N": 34,
+        "W": 21,
+        "L": 13,
+        "PNL_U": 13.7513,
+        "ROI_PCT": 40.44,
+        "MAX_DRAWDOWN_U": -4.5904
+      },
+      "allowed_fullmatch_spread": {
+        "N": 8,
+        "W": 3,
+        "L": 5,
+        "PNL_U": -1.1076,
+        "ROI_PCT": -13.85,
+        "MAX_DRAWDOWN_U": -3.9381
+      },
+      "unknown": {
+        "N": 145,
+        "W": 77,
+        "L": 68,
+        "PNL_U": 19.7091,
+        "ROI_PCT": 13.59,
+        "MAX_DRAWDOWN_U": -13.14
+      }
     }
   },
+  "entry_price_distribution": {
+    "MIN": 0.365,
+    "P25": 0.43,
+    "MEDIAN": 0.465,
+    "P75": 0.5,
+    "MAX": 0.53
+  },
   "daily": {
+    "2026-08-19": {
+      "RESERVATION_N": 15,
+      "SETTLED_N": 14
+    },
+    "2026-08-20": {
+      "RESERVATION_N": 15,
+      "SETTLED_N": 14
+    },
+    "2026-08-21": {
+      "RESERVATION_N": 15,
+      "SETTLED_N": 15
+    },
+    "2026-08-22": {
+      "RESERVATION_N": 15,
+      "SETTLED_N": 15
+    },
+    "2026-08-23": {
+      "RESERVATION_N": 15,
+      "SETTLED_N": 13
+    },
+    "2026-08-24": {
+      "RESERVATION_N": 15,
+      "SETTLED_N": 15
+    },
+    "2026-08-25": {
+      "RESERVATION_N": 30,
+      "SETTLED_N": 29
+    },
+    "2026-08-26": {
+      "RESERVATION_N": 15,
+      "SETTLED_N": 15
+    },
+    "2026-08-29": {
+      "RESERVATION_N": 30,
+      "SETTLED_N": 30
+    },
     "2026-08-31": {
       "RESERVATION_N": 15,
-      "GAMMA_SETTLED_N": 15,
-      "C4_SETTLED_N": 0,
-      "C4_PNL_U": 0,
-      "COHORT_PNL_U": 5.6031,
-      "COHORT_ROI_PCT": 37.35
+      "SETTLED_N": 15
     },
     "2026-09-01": {
       "RESERVATION_N": 15,
-      "GAMMA_SETTLED_N": 15,
-      "C4_SETTLED_N": 0,
-      "C4_PNL_U": 0,
-      "COHORT_PNL_U": 1.5742,
-      "COHORT_ROI_PCT": 10.49
-    },
-    "2026-09-02": {
-      "RESERVATION_N": 0,
-      "GAMMA_SETTLED_N": 0,
-      "C4_SETTLED_N": 0,
-      "C4_PNL_U": 0,
-      "COHORT_PNL_U": 0,
-      "COHORT_ROI_PCT": null
+      "SETTLED_N": 15
     }
-  }
+  },
+  "comparison_to_c4": {
+    "note": "Reservation contour is a different selection population from C4; compared as a separate strategy, not a sequential funnel.",
+    "C4_HISTORICAL_BENCHMARK": {
+      "N": 4142,
+      "ROI_PCT": 11.85,
+      "MAX_DRAWDOWN_U": -15.84
+    },
+    "C4_AUGUST": {
+      "N": 4117,
+      "ROI_PCT": 11.53,
+      "MAX_DRAWDOWN_U": -16.41
+    }
+  },
+  "verdict": "RESERVATION_CONTOUR_CHALLENGER_PROMISING"
 }
