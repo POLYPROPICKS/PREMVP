@@ -41,6 +41,8 @@
     "modeling:one-per-match-backtest": "tsx scripts/modeling/one-per-match-backtest.ts",
     "modeling:research-engine": "tsx scripts/modeling/research-engine-run.ts",
     "test:modeling:research-engine": "node --import tsx --test tests/modeling/research-engine/*.test.ts",
+    "modeling:forward-rich": "tsx scripts/modeling/forward-rich-materialize.ts",
+    "test:modeling:forward-rich": "node --import tsx --test tests/modeling/forward-rich/*.test.ts",
     "ops:report": "tsx scripts/daily-ops-report.ts",
     "ops:report:email": "tsx scripts/founder-email-dispatcher.ts --mode=morning",
     "ops:report:email:legacy": "tsx scripts/daily-ops-report.ts --email=alexgrushin@gmail.com",

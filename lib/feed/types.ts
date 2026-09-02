@@ -164,6 +164,11 @@ export interface LandingCardDiagnostics {
   };
   // Explainability fields — research snapshot diagnostics only; never used by product feed
   formulaScore?: number | null;
+  // FORWARD_RICH_CAPTURE_V1 — canonical, queryable score observation lineage.
+  // One immutable observation of the already-computed strategic/fire-model score,
+  // persisted verbatim into the append-only GSRS diagnostics JSONB. Score movement
+  // is DERIVED downstream from repeated snapshots; this block is never mutated.
+  scoreObservation?: ResearchScoreObservation | null;
   fireModel?: {
     version: "firemodel_capture_v1";
     capturedAt: string;
@@ -211,6 +216,37 @@ export interface LandingCardDiagnostics {
     cap?: number;
     window?: string;
   }>;
+}
+
+/**
+ * FORWARD_RICH_CAPTURE_V1 — immutable score observation.
+ *
+ * Persisted inside `generated_signal_research_snapshots.diagnostics` (JSONB, no
+ * schema change). Each GSRS row already carries `snapshot_run_id`, `snapshot_at`,
+ * `condition_id`, `selected_token_id`; this block adds the strategic/fire-model
+ * score value plus its exact metric/formula version and source lineage so the
+ * daily materializer can extract a first/last/delta score series from repeated
+ * immutable snapshots without a dedicated poller.
+ */
+export interface ResearchScoreObservation {
+  /** Already-computed strategic/fire-model score. null only when no score exists on this path. */
+  scoreValue: number | null;
+  /** What the number is. Currently the banded final signal (fire-model candidate score). */
+  scoreKind: "FIRE_MODEL_FINAL_SIGNAL_V2";
+  /** Exact metric/formula version that produced `scoreValue`. */
+  metricFormulaVersion: string | null;
+  /** FEATURE_OBSERVED_AT — the instant this score was observed (== snapshot_at). */
+  featureObservedAt: string;
+  /** SOURCE_CREATED_AT — the immutable GSRS observation is itself the source (== snapshot_at). */
+  sourceCreatedAt: string;
+  conditionId: string;
+  selectedTokenId: string;
+  snapshotRunId: string;
+  /** Which producer path computed the score carried on this snapshot. */
+  sourceLineage:
+    | "PUBLIC_PATH_ENRICHMENT"
+    | "S2_WIDE_SCORER"
+    | "S2_DIRECT_UNSCORED";
 }
 
 export interface ResearchFunnelCounters {
@@ -399,6 +435,10 @@ export interface ResearchEligibleSignalSnapshot {
   diagnostics: LandingCardDiagnostics;
 
   publicFeedExposed: boolean;
+
+  // FORWARD_RICH_CAPTURE_V1 — canonical score observation for this snapshot.
+  // The writer persists this verbatim into diagnostics.scoreObservation.
+  scoreObservation?: ResearchScoreObservation | null;
 
   // Modeling feature contract v1 — persisted for downstream analysis only
   eventId?: string | null;

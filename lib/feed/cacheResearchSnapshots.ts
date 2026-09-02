@@ -5,20 +5,40 @@
 
 import { supabaseAdmin } from "@/lib/supabase/server";
 import { ResearchEligibleSignalSnapshot } from "./types";
+import { buildResearchScoreObservation } from "./researchScoreObservation";
 
 /**
- * Write research-eligible signal snapshots to the isolated research table.
- * Uses upsert with conflict target (snapshot_run_id, condition_id, selected_token_id).
- * Returns { inserted: 0 } for empty input without hitting Supabase.
+ * FORWARD_RICH_CAPTURE_V1 — pure row builder for one research snapshot.
+ *
+ * Exported for focused deterministic testing. The append-only GSRS table has no
+ * typed score column, so the strategic/fire-model score is persisted verbatim
+ * inside `diagnostics.scoreObservation` (JSONB — no schema change). The writer
+ * guarantees the block is always present with exact lineage: it prefers the
+ * builder-supplied `scoreObservation`, then a nested `diagnostics.scoreObservation`,
+ * and otherwise synthesizes one from `diagnostics.formulaScore` /
+ * `diagnostics.fireModel` so a computed score can never be silently dropped.
  */
-export async function writeResearchEligibleSignalSnapshots({
-  snapshots,
-}: {
-  snapshots: ResearchEligibleSignalSnapshot[];
-}): Promise<{ inserted: number }> {
-  if (snapshots.length === 0) return { inserted: 0 };
+export function toResearchSnapshotRow(s: ResearchEligibleSignalSnapshot) {
+  const nestedFromFireModel =
+    typeof s.diagnostics.formulaScore === "number"
+      ? s.diagnostics.formulaScore
+      : (s.diagnostics.fireModel?.modelCandidate?.score ?? null);
 
-  const rows = snapshots.map((s) => ({
+  const scoreObservation =
+    s.scoreObservation ??
+    s.diagnostics.scoreObservation ??
+    buildResearchScoreObservation({
+      scoreValue: nestedFromFireModel,
+      metricFormulaVersion:
+        s.diagnostics.fireModel?.formulaVersion ?? s.formulaVersion ?? null,
+      snapshotAt: s.snapshotAt,
+      snapshotRunId: s.snapshotRunId,
+      conditionId: s.conditionId,
+      selectedTokenId: s.selectedTokenId,
+      sourceLineage: "S2_DIRECT_UNSCORED",
+    });
+
+  return {
     snapshot_run_id: s.snapshotRunId,
     snapshot_at: s.snapshotAt,
     expires_at: s.expiresAt,
@@ -36,7 +56,7 @@ export async function writeResearchEligibleSignalSnapshots({
     game_start_iso: s.gameStartIso ?? null,
     data_coverage_num: s.dataCoverageNum ?? null,
     product_rejection_reasons: s.productRejectionReasons,
-    diagnostics: s.diagnostics,
+    diagnostics: { ...s.diagnostics, scoreObservation },
     public_feed_exposed: s.publicFeedExposed,
     // Modeling feature contract v1
     event_id: s.eventId ?? null,
@@ -45,7 +65,22 @@ export async function writeResearchEligibleSignalSnapshots({
     signal_phase_at_snapshot: s.signalPhaseAtSnapshot ?? null,
     odds_band_label: s.oddsBandLabel ?? null,
     opposing_price_num: s.opposingPriceNum ?? null,
-  }));
+  };
+}
+
+/**
+ * Write research-eligible signal snapshots to the isolated research table.
+ * Uses upsert with conflict target (snapshot_run_id, condition_id, selected_token_id).
+ * Returns { inserted: 0 } for empty input without hitting Supabase.
+ */
+export async function writeResearchEligibleSignalSnapshots({
+  snapshots,
+}: {
+  snapshots: ResearchEligibleSignalSnapshot[];
+}): Promise<{ inserted: number }> {
+  if (snapshots.length === 0) return { inserted: 0 };
+
+  const rows = snapshots.map(toResearchSnapshotRow);
 
   const { error, count } = await supabaseAdmin
     .from("generated_signal_research_snapshots")
