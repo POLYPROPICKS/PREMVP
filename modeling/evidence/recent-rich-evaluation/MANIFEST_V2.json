@@ -1,0 +1,26 @@
+{
+  "snapshot_id": "RECENT_RICH_C4_EVALUATION_7D_V2",
+  "supersedes": "RECENT_RICH_C4_EVALUATION_7D_V1 (kept, not overwritten)",
+  "correction_cause": "GRAIN_COLLAPSE: V1 deduped to latest-per-(condition_id,selected_token_id,formula_version), discarding distinct research decisions. A single-formula population restriction (shadow-strategic-sports-v1) was tried and rejected during this correction: that formula's population is esports-only in this window (providerSportCode always null, C4=0), which contradicts the accepted UWCL/soccer coverage; the accepted population is therefore the full unfiltered window (matches prior accepted ~288,952 vs this window's 289,867), not a single formula_version.",
+  "window_start": "2026-08-26T09:37:44.000Z",
+  "window_end": "2026-09-02T09:08:59.000Z",
+  "production_source": "generated_signal_pairs (PRIMARY production DB, read-only)",
+  "accepted_population_formula_version": "ALL (no single-formula restriction — see correction_cause)",
+  "query_contract": "created_at keyset pagination per daily chunk, gte/lt(window), order (created_at,id) asc, page=1000",
+  "row_grain": "near-identity: one row per generated_signal_pairs id; collapses only exact duplicate (condition_id, selected_token_id, metric_formula_version, created_at) instants",
+  "c4_filter": "0.50 <= entry_price_num < 0.60 AND (sport_family = soccer OR lead_time_hours >= 24)",
+  "frozen_keys": [
+    "provider_sport_code=uwcl",
+    "market_type_raw=soccer_first_to_score",
+    "market_type_raw=soccer_exact_score"
+  ],
+  "settlement_semantics": "reused from scripts/resolve-signals.ts labels (signal_result won/lost, resolved_at, winning_outcome, realized_return_pct); precedence: terminal signal_result -> RESOLVED; resolved_at set without terminal signal_result -> UNKNOWN (linkage gap, not silently PENDING); otherwise PENDING",
+  "price_movement": "NOT_PROVEN (deferred — out of verification budget)",
+  "payload_files": [
+    "RECENT_RICH_C4_EVALUATION_7D_V2.jsonl.gz"
+  ],
+  "build_time_ms": 259211,
+  "build_utc": "2026-09-02T11:25:18.329Z",
+  "next_transition": "RECENT_RICH_C4_ECONOMIC_MODELING_V1",
+  "coverage_ref": "COVERAGE_V2.json"
+}
