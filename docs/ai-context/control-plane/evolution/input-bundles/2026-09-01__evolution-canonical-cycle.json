@@ -1,0 +1,34 @@
+{
+  "bundle_id": "2026-09-01__evolution-canonical-cycle",
+  "repository": "POLYPROPICKS/PREMVP",
+  "period_start": "2026-09-01T00:00:00Z",
+  "period_end": "2026-09-02T00:00:00Z",
+  "evidence_cutoff": "2026-09-02T00:20:00Z",
+  "capture_coverage": "PARTIAL",
+  "completion_envelope_ids": [],
+  "confirmed_changes": [
+    "POLYPROPICKS/PREMVP#215",
+    "POLYPROPICKS/PREMVP#220"
+  ],
+  "operator_action_events": [],
+  "operating_telemetry": {
+    "reviewer_corrections_rejections": 0,
+    "runtime_evidence_count": 0,
+    "reusable_artifacts_created": 1
+  },
+  "supporting_metrics": {
+    "runtime_evidence_count": 0,
+    "reusable_artifacts_created": 1
+  },
+  "defect_occurrences": [
+    {
+      "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+      "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+      "recurrence": "SAME_ROOT_REPEAT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": null,
+      "proven_effective_evidence_refs": []
+    }
+  ],
+  "notes": "git log origin/main --since=2026-09-01T00:20:00Z (the prior cycle's own evidence_cutoff) through this bundle's evidence_cutoff (2026-09-02T00:20:00Z) shows two merges to main: PR#215 (2026-09-01T00:23:21Z, 3 minutes after the prior cutoff — the prior cycle's own docs artifact, its predecessor, not new business evidence) and PR#220 'fix(control-plane): bind cloud PR adapters' (585b6f750beb26ce35950f999651a62dbee5723e, merged 2026-09-01T19:51:51Z, 8 files/+214/-8). PR#220 registers explicit executor_bindings for GITHUB_PR_CREATE and GITHUB_PR_MERGE in AGENT_REGISTRY.yaml (local_codex_windows -> local_gh_cli scripts, claude_code_cloud -> github_mcp dispatch), adds a new reusable resolver module scripts/control-plane/lib/github-pr-adapter-binding.mjs (fail-closed, no implicit fallback between transports), wires it into scripts/control-plane/evolution-canonicalize.mjs (now requires --executor and throws GITHUB_PR_EXECUTOR_NATIVE_DISPATCH_REQUIRED when a cloud executor's binding does not resolve to local_gh_cli, rather than silently trying to shell out to a gh CLI that is not present on this executor), adds a githubPrAdapterBinding.test.mjs test file (58 lines) and extends validateControlPlane.test.mjs (10 lines) and evolutionCanonicalize.test.mjs (12 lines). CAPABILITY_MATRIX.yaml's GITHUB_PR_CREATE/GITHUB_PR_MERGE entries gained an adapter_binding_ref field but their verdict stayed NOT_PROVEN (unchanged) for the local_codex_windows-scoped probe; a separate, pre-existing claude_code_cloud-scoped entry has carried verdict PROVEN since 2026-08-06 (PR#89,90) and was not touched by this commit. This is documentation/formalization of an adapter-selection contract, not a new live PR-create/merge proof, and it does not itself resolve the growing stranded-draft-PR pile: mcp__github__list_pull_requests (state=open) at this cutoff shows the Governor/Evolution draft-PR family (H7) grew from 5 to 6 — #199, #205, #206, #212, #214 (all present at the prior cutoff) plus new #216 'Automation Roadmap Governor: first Stage 2 run (25 Aug - 31 Aug cycles)' (opened 2026-09-01T02:16:01Z, within this period). Three additional open PRs appeared this period outside that family and are recorded only as context, not as a new defect (insufficient repeated evidence yet to establish a causal pattern distinct from ordinary in-progress work): #217 'data(research): freeze SUMMER_DISCOVERY_UNIVERSE_V2 row-level artifact' (draft), #218 'docs(research): freeze SUMMER_ORIGINAL_BUILD_RECIPE_V1 semantic reconciliation' (draft), #219 'MODEL_RESEARCH_ENGINE_FREEZE_V1' (open, non-draft). docs/ai-context/control-plane/CURRENT_STATE.yaml remains unchanged (updated_at=2026-08-28T21:00:54Z, state_version 17, origin_main_sha=2cb8d49...) - fifth consecutive cycle with the same staleness gap (H1), not re-recorded as a new defect_occurrence since nothing changed. No CI check runs are recorded against PR#220's head commit (mcp__github__pull_request_read get_check_runs returned zero check runs) - this repository has no CI wired to GitHub check runs for this class of change; the merge itself, via the registered GitHub MCP capability under Founder-authorized repository-integration policy, is the available evidence. operator_action_events is empty for the same structural reason as every prior cycle: merge/PR evidence is the only signal this reviewer's method can see, and it does not prove zero Founder/Architect chat activity that never reached a merge - capture_coverage stays PARTIAL. No completion envelopes were accepted in CURRENT_STATE.yaml this period. No product code, database, deployment or Ireland path changed this period, so no product test suite was run (see VERIFICATION BUDGET discipline in the routine prompt); reusable_artifacts_created=1 counts scripts/control-plane/lib/github-pr-adapter-binding.mjs, the one new persisted reusable artifact this period."
+}
