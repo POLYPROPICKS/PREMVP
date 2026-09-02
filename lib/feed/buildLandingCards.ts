@@ -3663,9 +3663,12 @@ export async function buildLandingCards(options?: {
         if (!fm11Pair) {
           return { key, status: "NOT_SCORED_PAIR_GENERATION_FAILED", score: null, dataCoverage: coverage, winProbability: null, pair: null };
         }
+        // generateLandingCardPair() persists the computed score onto
+        // diagnostics.formulaAudit.finalSignalV2 (mutation, above), not onto a
+        // top-level diagnostics.formulaScore — that field is never set here.
         const score =
-          typeof enrichedResearch.diagnostics.formulaScore === "number"
-            ? enrichedResearch.diagnostics.formulaScore
+          typeof enrichedResearch.diagnostics.formulaAudit?.finalSignalV2 === "number"
+            ? enrichedResearch.diagnostics.formulaAudit.finalSignalV2
             : null;
         const winProbability = fm11Pair.premiumSignal.winProbability;
         // Research-band selection rule (UNCHANGED thresholds).
