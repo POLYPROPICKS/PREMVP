@@ -15,7 +15,11 @@ import {
   PROPOSALS_PREFIX,
   INPUT_BUNDLES_PREFIX,
 } from '../../scripts/control-plane/lib/evolution-canonicalize.mjs';
-import { resolveCanonicalizationAdapters } from '../../scripts/control-plane/evolution-canonicalize.mjs';
+import {
+  createCanonicalizationDispatchPlan,
+  executeCanonicalizationDispatchPlan,
+  resolveCanonicalizationAdapters,
+} from '../../scripts/control-plane/evolution-canonicalize.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const EVOLUTION_DIR = 'docs/ai-context/control-plane/evolution';
@@ -212,6 +216,61 @@ test('cloud Governor-result canonicalization selects GitHub MCP while retaining 
   assert.deepEqual(verdict.admitted.governor_results, [result.result_id]);
 });
 
+test('cloud Governor-result canonicalization produces and executes an executor-native GitHub MCP dispatch plan', async () => {
+  const result = governorFixture();
+  const verdict = admitCanonicalizationLineage(governorPaths(result));
+  const plan = createCanonicalizationDispatchPlan({
+    executorId: 'claude_code_cloud',
+    repository: 'POLYPROPICKS/PREMVP',
+    branch: 'claude/governor-result',
+    admitted: verdict.admitted,
+  });
+  assert.equal(plan.create.mode, 'EXECUTOR_NATIVE_PLATFORM_CAPABILITY');
+  assert.equal(plan.create.adapter.operation, 'create_pull_request');
+  assert.equal(plan.merge.adapter.operation, 'merge_pull_request');
+  const calls = [];
+  const completed = await executeCanonicalizationDispatchPlan(plan, async (step) => {
+    calls.push(step);
+    return calls.length === 1 ? { number: 222 } : { merged: true };
+  });
+  assert.equal(completed.pr_number, 222);
+  assert.equal(calls[1].payload.number, 222);
+  assert.equal(result.accepted, false);
+});
+
+test('Evolution-compatible local canonicalization retains the registered local gh scripts', () => {
+  const cycle = cycleFixture();
+  const verdict = admitCanonicalizationLineage(cyclePaths(cycle));
+  const plan = createCanonicalizationDispatchPlan({
+    executorId: 'local_codex_windows',
+    repository: 'POLYPROPICKS/PREMVP',
+    branch: 'codex/evolution-cycle',
+    admitted: verdict.admitted,
+  });
+  assert.equal(plan.create.mode, 'LOCAL_SCRIPT');
+  assert.equal(plan.create.adapter.script, 'scripts/control-plane/github-pr-create.mjs');
+  assert.equal(plan.merge.adapter.script, 'scripts/control-plane/github-pr-merge.mjs');
+});
+
+test('terminal dispatch fails closed when the selected adapter has no supported executor-native dispatch', () => {
+  const result = governorFixture();
+  const verdict = admitCanonicalizationLineage(governorPaths(result));
+  const brokenRegistry = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'docs/ai-context/control-plane/AGENT_REGISTRY.yaml'), 'utf8'));
+  brokenRegistry.entries.find((entry) => entry.canonical_id === 'premvp.command.github_pr_create.v1')
+    .executor_bindings.find((binding) => binding.executor_id === 'claude_code_cloud').dispatch = 'unsupported_dispatch';
+  const tempRoot = fs.mkdtempSync(path.join(process.cwd(), 'terminal-dispatch-'));
+  fs.mkdirSync(path.join(tempRoot, 'docs', 'ai-context', 'control-plane'), { recursive: true });
+  fs.writeFileSync(path.join(tempRoot, 'docs', 'ai-context', 'control-plane', 'AGENT_REGISTRY.yaml'), JSON.stringify(brokenRegistry));
+  try {
+    assert.throws(
+      () => createCanonicalizationDispatchPlan({ executorId: 'claude_code_cloud', repository: 'POLYPROPICKS/PREMVP', branch: 'claude/governor-result', admitted: verdict.admitted, repoRoot: tempRoot }),
+      /GITHUB_PR_EXECUTOR_NATIVE_DISPATCH_UNAVAILABLE/,
+    );
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
 test('an Evolution input bundle required by a cycle is admissible alongside it', () => {
   const cycle = cycleFixture();
   const base = cyclePaths(cycle);
@@ -386,6 +445,8 @@ test('both Evolution routines bind evolution_canonicalize as their terminal pers
     assert.ok(routine.terminal_persistence_stage, `${routine.routine_id} missing terminal_persistence_stage`);
     assert.equal(routine.terminal_persistence_stage.command_id, COMMAND_ID);
     assert.ok(String(routine.terminal_persistence_stage.command || '').includes('control-plane:evolution:canonicalize'));
+    assert.ok(String(routine.terminal_persistence_stage.command || '').includes('--executor <selected-executor>'));
+    assert.equal(routine.terminal_persistence_stage.executor_source, 'selected executor of the routine; no default or substitution');
   }
   // The manifest still does not invent a registered scheduler.
   assert.equal(manifest.registered_routine_mechanism.status, 'NOT_FOUND_IN_CONTROL_PLANE');
