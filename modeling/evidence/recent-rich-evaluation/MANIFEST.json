@@ -1,0 +1,23 @@
+{
+  "snapshot_id": "RECENT_RICH_C4_EVALUATION_7D_V1",
+  "window_start": "2026-08-26T09:37:44.000Z",
+  "window_end": "2026-09-02T09:08:59.000Z",
+  "production_source": "generated_signal_pairs (PRIMARY production DB, read-only)",
+  "query_contract": "created_at keyset pagination, gte(window_start) lt(window_end), order (created_at,id) asc, page=1000",
+  "row_grain": "(condition_id, selected_token_id, metric_formula_version) latest winner by (created_at,id) DESC",
+  "c4_filter": "0.50 <= entry_price_num < 0.60 AND (sport_family = soccer OR lead_time_hours >= 24)",
+  "frozen_keys": [
+    "provider_sport_code=uwcl",
+    "market_type_raw=soccer_first_to_score",
+    "market_type_raw=soccer_exact_score"
+  ],
+  "settlement_semantics": "reused from scripts/resolve-signals.ts (signal_result won/lost, resolved_at, winning_outcome, realized_return_pct); label-only, no formula invented",
+  "price_movement": "NOT_PROVEN (deferred — out of verification budget for CALL 1)",
+  "payload_files": [
+    "RECENT_RICH_C4_EVALUATION_7D_V1.jsonl.gz"
+  ],
+  "build_time_ms": 269665,
+  "build_utc": "2026-09-02T11:07:57.979Z",
+  "next_transition": "RECENT_RICH_C4_ECONOMIC_MODELING_V1",
+  "coverage_ref": "COVERAGE.json"
+}
