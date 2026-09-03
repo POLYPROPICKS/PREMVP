@@ -5,7 +5,9 @@ import {
   compareWatermarks,
   resolveInitialWatermark,
   runAppendSync,
+  runReconcileSweep,
   toMinskDailyRailwayCron,
+  type SyncRow,
   type Watermark,
 } from "../../lib/research-clone/dailySync";
 
@@ -67,4 +69,97 @@ test("bounded initial catch-up persists a checkpoint and an immediate rerun is i
   assert.equal(second.newRows, 0);
   assert.equal(second.updatedRows, 0);
   assert.equal(second.duplicateN, 0);
+  assert.equal(second.pending, false);
+});
+
+const FIELDS = ["created_at", "id"] as const;
+const ZERO_ID = "00000000-0000-0000-0000-000000000000";
+
+/** Ordered (created_at, id) rows; each is also a valid Watermark for these fields. */
+function seq(count: number): SyncRow[] {
+  return Array.from({ length: count }, (_, index) => ({
+    created_at: `2026-09-${String(2 + Math.floor(index / 5)).padStart(2, "0")}T00:00:0${index % 5}.000Z`,
+    id: `10000000-0000-0000-0000-${String(index + 1).padStart(12, "0")}`,
+  }));
+}
+
+const gt = (a: SyncRow, b: Watermark | null) => compareWatermarks(a as Watermark, b, FIELDS) > 0;
+
+test("append page-budget exhaustion is a resumable pending flag, not a throw", async () => {
+  const all = seq(30);
+  const latest = all[all.length - 1] as Watermark;
+  let checkpoint: Watermark | null = null;
+  const port = {
+    async sourceMaxWatermark() { return latest; },
+    async targetMaxWatermark() { return checkpoint; },
+    async readCheckpoint() { return checkpoint; },
+    async fetchSourcePage(after: Watermark | null) {
+      return all.filter((row) => !after || gt(row, after)).slice(0, 5);
+    },
+    async upsertTargetRows(rows: SyncRow[]) { return { newRows: rows.length, updatedRows: 0, duplicateN: 0 }; },
+    async writeCheckpoint(next: Watermark) { checkpoint = next; },
+  };
+
+  const first = await runAppendSync(FIELDS, 2, port);
+  assert.equal(first.pending, true);
+  assert.equal(first.pages, 2);
+  assert.deepEqual(checkpoint, all[9]); // 2 pages * 5 rows, checkpoint persisted
+
+  // A later run resumes from the durable checkpoint and finishes.
+  let guard = 0;
+  let result = first;
+  while (result.pending && guard < 20) { result = await runAppendSync(FIELDS, 2, port); guard += 1; }
+  assert.equal(result.pending, false);
+  assert.deepEqual(checkpoint, latest);
+});
+
+test("reconcile sweep resumes from a durable cursor and never rescans from a stale window", async () => {
+  const window: Watermark = { created_at: "2026-09-02T00:00:00.000Z", id: ZERO_ID };
+  const rows = seq(30);
+  const fetched: string[] = [];
+  let cursor: Watermark | null = null;
+  const makePort = () => ({
+    async readCursor() { return cursor; },
+    async fetchSourcePage(after: Watermark) {
+      fetched.push(after.id);
+      return rows.filter((row) => gt(row, after)).slice(0, 5);
+    },
+    async applyRows(page: SyncRow[]) { return { updatedRows: page.length }; },
+    async writeCursor(next: Watermark) { cursor = next; },
+  });
+
+  // Fresh sweep: starts at the window start, spends its 2-page budget, stays pending,
+  // and leaves a durable cursor.
+  const first = await runReconcileSweep(FIELDS, window, 5, 2, makePort());
+  assert.equal(first.pending, true);
+  assert.equal(fetched[0], ZERO_ID);
+  assert.deepEqual(cursor, rows[9]);
+
+  // Next run: resumes from the cursor (not the window start) and completes.
+  fetched.length = 0;
+  const second = await runReconcileSweep(FIELDS, window, 5, 10, makePort());
+  assert.equal(second.pending, false);
+  assert.equal(fetched[0], rows[9].id);
+
+  // A cursor left behind by a now-rolled-past window is ignored (monotonic forward).
+  cursor = { created_at: "2026-08-01T00:00:00.000Z", id: ZERO_ID };
+  fetched.length = 0;
+  await runReconcileSweep(FIELDS, window, 5, 1, makePort());
+  assert.equal(fetched[0], ZERO_ID);
+});
+
+test("reconcile sweep ends cleanly (not pending) when the recent window is fully drained", async () => {
+  const window: Watermark = { created_at: "2026-09-02T00:00:00.000Z", id: ZERO_ID };
+  const rows = seq(3);
+  const port = {
+    async readCursor() { return null; },
+    async fetchSourcePage(after: Watermark) {
+      return rows.filter((row) => gt(row, after)).slice(0, 5);
+    },
+    async applyRows(page: SyncRow[]) { return { updatedRows: page.length }; },
+    async writeCursor() {},
+  };
+  const sweep = await runReconcileSweep(FIELDS, window, 5, 4, port);
+  assert.equal(sweep.pending, false);
+  assert.equal(sweep.updatedRows, 3);
 });

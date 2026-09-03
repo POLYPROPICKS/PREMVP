@@ -4,6 +4,7 @@ import {
   compareWatermarks,
   rowWatermark,
   runAppendSync,
+  runReconcileSweep,
   type SyncRow,
   type Watermark,
 } from "../lib/research-clone/dailySync";
@@ -39,6 +40,8 @@ type TableEvidence = {
   NEW_ROWS: number;
   UPDATED_ROWS: number;
   DUPLICATE_N: number;
+  APPEND_PENDING: boolean;
+  RECONCILIATION_PENDING: boolean;
 };
 
 const SPECS: readonly TableSpec[] = [
@@ -94,6 +97,12 @@ function checkpointSource(spec: TableSpec): string {
   return `${SYNC_VERSION}:checkpoint:${spec.table}`;
 }
 
+/** Durable resume point for an interrupted reconciliation sweep. Kept separate
+ * from the append checkpoint so neither can move the other backwards. */
+function reconcileCursorSource(spec: TableSpec): string {
+  return `${SYNC_VERSION}:reconcile-cursor:${spec.table}`;
+}
+
 function checkpointFromDiagnostics(value: unknown, fields: readonly string[]): Watermark | null {
   if (!value || typeof value !== "object") return null;
   const raw = (value as Record<string, unknown>).watermark;
@@ -147,11 +156,11 @@ async function sourcePage(client: Client, spec: TableSpec, after: Watermark | nu
   return (data ?? []) as SyncRow[];
 }
 
-async function readCheckpoint(target: Client, spec: TableSpec): Promise<Watermark | null> {
+async function readCheckpoint(target: Client, spec: TableSpec, source: string): Promise<Watermark | null> {
   const { data, error } = await target
     .from("job_runs")
     .select("diagnostics")
-    .eq("source", checkpointSource(spec))
+    .eq("source", source)
     .eq("status", "success")
     .order("started_at", { ascending: false })
     .limit(1);
@@ -160,10 +169,10 @@ async function readCheckpoint(target: Client, spec: TableSpec): Promise<Watermar
   return checkpointFromDiagnostics(latest.diagnostics, spec.fields);
 }
 
-async function writeCheckpoint(target: Client, spec: TableSpec, watermark: Watermark): Promise<void> {
+async function writeCheckpoint(target: Client, spec: TableSpec, source: string, watermark: Watermark): Promise<void> {
   const now = new Date().toISOString();
   const { error } = await target.from("job_runs").insert({
-    source: checkpointSource(spec),
+    source,
     formula_version: SYNC_VERSION,
     started_at: now,
     finished_at: now,
@@ -202,38 +211,45 @@ async function applyRows(target: Client, spec: TableSpec, rows: SyncRow[]) {
   return { newRows: newRows.length, updatedRows: changedRows.length, duplicateN: 0 };
 }
 
-async function reconcileRecent(target: Client, source: Client, spec: TableSpec, targetBefore: Watermark | null): Promise<number> {
-  if (!spec.reconciliationStart || !targetBefore) return 0;
-  const lowerBound = spec.reconciliationStart(targetBefore, new Date());
-  let after: Watermark | null = { [spec.fields[0]]: lowerBound, [spec.fields[1]]: "00000000-0000-0000-0000-000000000000" };
-  let updatedRows = 0;
-  for (let page = 0; page < MAX_RECONCILIATION_PAGES; page += 1) {
-    const rows = await sourcePage(source, spec, after);
-    if (rows.length === 0) return updatedRows;
-    const applied = await applyRows(target, spec, rows);
-    updatedRows += applied.updatedRows;
-    after = rowWatermark(rows[rows.length - 1], spec.fields);
-  }
-  throw new Error(`RESEARCH_CLONE_RECONCILIATION_PAGE_BUDGET_EXHAUSTED_${spec.table}`);
+async function reconcileRecent(
+  target: Client,
+  source: Client,
+  spec: TableSpec,
+  targetBefore: Watermark | null,
+): Promise<{ updatedRows: number; pending: boolean }> {
+  if (!spec.reconciliationStart || !targetBefore) return { updatedRows: 0, pending: false };
+  const windowStart: Watermark = {
+    [spec.fields[0]]: spec.reconciliationStart(targetBefore, new Date()),
+    [spec.fields[1]]: "00000000-0000-0000-0000-000000000000",
+  };
+  const sweep = await runReconcileSweep(spec.fields, windowStart, PAGE_SIZE, MAX_RECONCILIATION_PAGES, {
+    readCursor: () => readCheckpoint(target, spec, reconcileCursorSource(spec)),
+    fetchSourcePage: (after) => sourcePage(source, spec, after),
+    applyRows: async (rows) => ({ updatedRows: (await applyRows(target, spec, rows)).updatedRows }),
+    writeCursor: (watermark) => writeCheckpoint(target, spec, reconcileCursorSource(spec), watermark),
+  });
+  return { updatedRows: sweep.updatedRows, pending: sweep.pending };
 }
 
 async function syncTable(target: Client, source: Client, spec: TableSpec): Promise<TableEvidence> {
   const append = await runAppendSync(spec.fields, MAX_APPEND_PAGES, {
     sourceMaxWatermark: () => maxWatermark(source, spec),
     targetMaxWatermark: () => maxWatermark(target, spec),
-    readCheckpoint: () => readCheckpoint(target, spec),
+    readCheckpoint: () => readCheckpoint(target, spec, checkpointSource(spec)),
     fetchSourcePage: (after) => sourcePage(source, spec, after),
     upsertTargetRows: (rows) => applyRows(target, spec, rows),
-    writeCheckpoint: (watermark) => writeCheckpoint(target, spec, watermark),
+    writeCheckpoint: (watermark) => writeCheckpoint(target, spec, checkpointSource(spec), watermark),
   });
-  const reconciliationUpdates = await reconcileRecent(target, source, spec, append.targetBefore);
+  const reconciliation = await reconcileRecent(target, source, spec, append.targetBefore);
   return {
     SOURCE_MAX_WATERMARK: append.sourceMaxWatermark,
     TARGET_BEFORE: append.targetBefore,
     TARGET_AFTER: await maxWatermark(target, spec),
     NEW_ROWS: append.newRows,
-    UPDATED_ROWS: append.updatedRows + reconciliationUpdates,
+    UPDATED_ROWS: append.updatedRows + reconciliation.updatedRows,
     DUPLICATE_N: append.duplicateN,
+    APPEND_PENDING: append.pending,
+    RECONCILIATION_PENDING: reconciliation.pending,
   };
 }
 
@@ -250,8 +266,22 @@ async function main(): Promise<void> {
   const source = createClient(productionUrl, productionKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const target = createClient(cloneUrl, cloneKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const tables: Record<TableName, TableEvidence> = {} as Record<TableName, TableEvidence>;
+  // Each table is synced in turn. A spent page budget on an earlier table is a
+  // resumable `*_PENDING` outcome, never a throw, so later tables are not starved
+  // and the next scheduled run continues from the durable checkpoints/cursors.
   for (const spec of SPECS) tables[spec.table] = await syncTable(target, source, spec);
-  console.log(JSON.stringify({ TABLES: tables, DURATION_MS: Date.now() - startedAt, STATUS: "SUCCESS" }));
+  const pendingTables = (Object.keys(tables) as TableName[]).filter(
+    (name) => tables[name].APPEND_PENDING || tables[name].RECONCILIATION_PENDING,
+  );
+  console.log(
+    JSON.stringify({
+      TABLES: tables,
+      PENDING_TABLES: pendingTables,
+      RESUME_PENDING: pendingTables.length > 0,
+      DURATION_MS: Date.now() - startedAt,
+      STATUS: "SUCCESS",
+    }),
+  );
 }
 
 main().catch((error) => {

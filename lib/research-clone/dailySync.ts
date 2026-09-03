@@ -18,6 +18,13 @@ export interface AppendSyncResult {
   updatedRows: number;
   duplicateN: number;
   pages: number;
+  /**
+   * True when the finite page budget was spent before the durable checkpoint
+   * caught up to the source. The already-written rows and the per-page
+   * checkpoint are durable, so this is a resumable "more to do" signal, not a
+   * failure — the next scheduled run continues from the persisted checkpoint.
+   */
+  pending: boolean;
 }
 
 /** Railway evaluates schedules in UTC. Europe/Minsk is fixed UTC+3. */
@@ -108,9 +115,11 @@ export async function runAppendSync<Row extends SyncRow>(
     pages += 1;
   }
 
-  if (pages === maxPages && sourceMaxWatermark && cursor && compareWatermarks(cursor, sourceMaxWatermark, fields) < 0) {
-    throw new Error("RESEARCH_CLONE_PAGE_BUDGET_EXHAUSTED");
-  }
+  const pending =
+    pages === maxPages &&
+    sourceMaxWatermark !== null &&
+    cursor !== null &&
+    compareWatermarks(cursor, sourceMaxWatermark, fields) < 0;
 
   return {
     sourceMaxWatermark,
@@ -120,5 +129,60 @@ export async function runAppendSync<Row extends SyncRow>(
     updatedRows,
     duplicateN,
     pages,
+    pending,
   };
+}
+
+export interface ReconcileSweepPort<Row extends SyncRow> {
+  /** Durable resume point of an interrupted sweep, or null to start fresh. */
+  readCursor(): Promise<Watermark | null>;
+  fetchSourcePage(after: Watermark): Promise<Row[]>;
+  applyRows(rows: Row[]): Promise<{ updatedRows: number }>;
+  writeCursor(watermark: Watermark): Promise<void>;
+}
+
+export interface ReconcileSweepResult {
+  updatedRows: number;
+  pages: number;
+  /** Budget spent with more recent rows still unverified — resume next run. */
+  pending: boolean;
+  cursor: Watermark | null;
+}
+
+/**
+ * Bounded reconciliation sweep over the recent window. Re-checks already-cloned
+ * rows for source-side updates. A finite page budget is always kept; spending it
+ * is a normal resumable outcome (`pending: true`) rather than a fatal error, so
+ * one heavy table cannot starve the tables that run after it. The durable cursor
+ * only ever moves forward: an interrupted sweep resumes from it, and once the
+ * rolling window advances past it the sweep restarts from the window start.
+ */
+export async function runReconcileSweep<Row extends SyncRow>(
+  fields: readonly string[],
+  windowStart: Watermark,
+  pageSize: number,
+  maxPages: number,
+  port: ReconcileSweepPort<Row>,
+): Promise<ReconcileSweepResult> {
+  const savedCursor = await port.readCursor();
+  let after: Watermark =
+    savedCursor !== null && compareWatermarks(savedCursor, windowStart, fields) > 0 ? savedCursor : windowStart;
+
+  let updatedRows = 0;
+  let pages = 0;
+  while (pages < maxPages) {
+    const rows = await port.fetchSourcePage(after);
+    if (rows.length === 0) return { updatedRows, pages, pending: false, cursor: after };
+    const applied = await port.applyRows(rows);
+    updatedRows += applied.updatedRows;
+    const next = rowWatermark(rows[rows.length - 1], fields);
+    if (compareWatermarks(next, after, fields) <= 0) {
+      throw new Error("RESEARCH_CLONE_RECONCILE_NON_ADVANCING_PAGE");
+    }
+    after = next;
+    await port.writeCursor(after);
+    pages += 1;
+    if (rows.length < pageSize) return { updatedRows, pages, pending: false, cursor: after };
+  }
+  return { updatedRows, pages, pending: true, cursor: after };
 }
