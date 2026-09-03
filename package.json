@@ -119,6 +119,7 @@
     "control-plane:evolution:govern:test": "node --test tests/control-plane/evolutionGovernor.test.mjs",
     "control-plane:evolution:canonicalize": "node scripts/control-plane/evolution-canonicalize.mjs",
     "control-plane:evolution:canonicalize:test": "node --test tests/control-plane/evolutionCanonicalize.test.mjs",
+    "control-plane:evolution:stop-gate:test": "node --test tests/control-plane/evolutionGovernorStopGate.test.mjs",
     "test:liquidity": "node --import tsx --test tests/liquidity/*.test.ts",
     "test:analytics": "node --import tsx --test tests/analytics/*.test.ts",
     "test:producer": "node --experimental-test-module-mocks --import tsx --test tests/feed/providerCompleteEnumeration.test.ts tests/feed/producerIdentityConservation.test.ts"
