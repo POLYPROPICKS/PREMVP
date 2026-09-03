@@ -53,11 +53,25 @@ function classifyPopulation(formulaVersion: string | null): PopulationId {
   return "UNCLASSIFIED";
 }
 
-/** Resolves the Supabase client by exact project ref, never by env-var name. */
+/** Credential class inferred from key shape only — never from its value beyond the prefix. */
+function credentialClass(key: string): "sb_secret" | "sb_publishable" | "jwt" | "unknown" {
+  if (key.startsWith("sb_secret_")) return "sb_secret";
+  if (key.startsWith("sb_publishable_")) return "sb_publishable";
+  if (key.split(".").length === 3) return "jwt"; // legacy service_role/anon JWT, role unknown without decoding
+  return "unknown";
+}
+
+/**
+ * Resolves the Supabase client by exact project ref, never by env-var name —
+ * and by credential CLASS, never by env-var name either. A var named
+ * SUPABASE_SERVICE_ROLE_KEY is not proof the value it holds is privileged
+ * (observed: it held an sb_publishable_ key in this environment, which reads
+ * as zero rows under RLS). Scans all configured env values for the first
+ * sb_secret_-class (privileged) key, regardless of which variable holds it.
+ */
 function resolveCloneClient(): SupabaseClient {
   const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error("BLOCKED_NO_SUPABASE_BINDING_CONFIGURED");
+  if (!url) throw new Error("BLOCKED_NO_SUPABASE_URL_CONFIGURED");
   const ref = new URL(url).hostname.split(".")[0];
   if (ref === EXPECTED_PRODUCTION_REF) {
     throw new Error("BLOCKED_PRODUCTION_REF_REJECTED: configured binding resolves to production, not the research clone");
@@ -65,7 +79,27 @@ function resolveCloneClient(): SupabaseClient {
   if (ref !== EXPECTED_CLONE_REF) {
     throw new Error(`BLOCKED_NO_BINDING_MATCHES_CLONE_REF: configured project ref is not ${EXPECTED_CLONE_REF}`);
   }
-  console.log(JSON.stringify({ resolvedBindingProjectRef: ref, matchesExpectedCloneRef: true }));
+
+  let privilegedKeyVar: string | null = null;
+  for (const [k, v] of Object.entries(process.env)) {
+    if (typeof v === "string" && credentialClass(v) === "sb_secret") {
+      privilegedKeyVar = k;
+      break;
+    }
+  }
+  const fallbackKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const key = privilegedKeyVar ? (process.env[privilegedKeyVar] as string) : fallbackKey;
+  if (!key) throw new Error("BLOCKED_NO_SUPABASE_CREDENTIAL_CONFIGURED");
+  const usedClass = privilegedKeyVar ? "sb_secret" : credentialClass(key);
+
+  console.log(
+    JSON.stringify({
+      resolvedBindingProjectRef: ref,
+      matchesExpectedCloneRef: true,
+      credentialEnvVarUsed: privilegedKeyVar ?? "SUPABASE_SERVICE_ROLE_KEY",
+      credentialClass: usedClass,
+    }),
+  );
   return createClient(url, key, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
@@ -99,9 +133,13 @@ interface RawGsp {
 async function fetchGspWindow(client: SupabaseClient): Promise<RawGsp[]> {
   const pageSize = 1000;
   const out: RawGsp[] = [];
-  let offset = 0;
+  // Keyset pagination, not OFFSET/range — avoids deep-offset timeouts on a
+  // multi-million-row table. created_at is not unique alone, so the cursor
+  // also carries a stable tiebreak (condition_id).
+  let cursorCreatedAt: string | null = null;
+  let cursorConditionId: string | null = null;
   while (true) {
-    const { data, error } = await client
+    let query = client
       .from("generated_signal_pairs")
       .select("condition_id, selected_token_id, created_at, entry_price_num, diagnostics, formula_version")
       .not("condition_id", "is", null)
@@ -109,7 +147,14 @@ async function fetchGspWindow(client: SupabaseClient): Promise<RawGsp[]> {
       .gte("created_at", WINDOW_START)
       .lt("created_at", WINDOW_END)
       .order("created_at", { ascending: true })
-      .range(offset, offset + pageSize - 1);
+      .order("condition_id", { ascending: true })
+      .limit(pageSize);
+    if (cursorCreatedAt !== null) {
+      query = query.or(
+        `created_at.gt.${cursorCreatedAt},and(created_at.eq.${cursorCreatedAt},condition_id.gt.${cursorConditionId})`,
+      );
+    }
+    const { data, error } = await query;
     if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_generated_signal_pairs:${error.message}`);
     const chunk = (data ?? []) as Row[];
     for (const raw of chunk) {
@@ -131,7 +176,9 @@ async function fetchGspWindow(client: SupabaseClient): Promise<RawGsp[]> {
       });
     }
     if (chunk.length < pageSize) break;
-    offset += pageSize;
+    const last = chunk[chunk.length - 1];
+    cursorCreatedAt = String(last.created_at);
+    cursorConditionId = String(last.condition_id);
   }
   return out;
 }
@@ -139,12 +186,17 @@ async function fetchGspWindow(client: SupabaseClient): Promise<RawGsp[]> {
 async function fetchObservationsWindow(client: SupabaseClient): Promise<ForwardRichSnapshotObservation[]> {
   const pageSize = 1000;
   const out: ForwardRichSnapshotObservation[] = [];
-  let offset = 0;
-  // PIT features may reference observations that precede the decision; widen the
-  // read floor. The materializer applies the exact FEATURE_OBSERVED_AT <= DECISION_AT cut.
-  const readFloor = new Date(Date.parse(WINDOW_START) - 30 * 24 * 3600 * 1000).toISOString();
+  // Keyset pagination (not OFFSET/range): deep-offset pagination over a
+  // multi-hundred-thousand-row table times out. snapshot_at is not unique
+  // alone, so the cursor also carries a stable tiebreak (condition_id).
+  let cursorSnapshotAt: string | null = null;
+  let cursorConditionId: string | null = null;
+  // Bounded to the decision day itself, matching the closed D-1 slice this
+  // mission scores; the PIT cut inside the materializer still applies
+  // FEATURE_OBSERVED_AT <= DECISION_AT on whatever is fetched here.
+  const readFloor = WINDOW_START;
   while (true) {
-    const { data, error } = await client
+    let query = client
       .from("generated_signal_research_snapshots")
       .select(
         "condition_id, selected_token_id, snapshot_at, created_at, snapshot_run_id, selected_price_num, opposing_price_num, event_id, game_start_iso, data_coverage_num, diagnostics",
@@ -152,7 +204,14 @@ async function fetchObservationsWindow(client: SupabaseClient): Promise<ForwardR
       .gte("snapshot_at", readFloor)
       .lt("snapshot_at", WINDOW_END)
       .order("snapshot_at", { ascending: true })
-      .range(offset, offset + pageSize - 1);
+      .order("condition_id", { ascending: true })
+      .limit(pageSize);
+    if (cursorSnapshotAt !== null) {
+      query = query.or(
+        `snapshot_at.gt.${cursorSnapshotAt},and(snapshot_at.eq.${cursorSnapshotAt},condition_id.gt.${cursorConditionId})`,
+      );
+    }
+    const { data, error } = await query;
     if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_generated_signal_research_snapshots:${error.message}`);
     const chunk = (data ?? []) as Row[];
     for (const raw of chunk) {
@@ -177,7 +236,9 @@ async function fetchObservationsWindow(client: SupabaseClient): Promise<ForwardR
       });
     }
     if (chunk.length < pageSize) break;
-    offset += pageSize;
+    const last = chunk[chunk.length - 1];
+    cursorSnapshotAt = String(last.snapshot_at);
+    cursorConditionId = String(last.condition_id);
   }
   return out;
 }
