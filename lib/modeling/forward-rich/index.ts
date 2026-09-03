@@ -14,5 +14,6 @@
 export * from "./types";
 export * from "./materializeForwardRichResearch";
 export * from "./augustFrozenResearchContext";
+export * from "./compactCorpus";
 
-export const NEXT_SEMANTIC_TRANSITION = "FORWARD_RICH_CAPTURE_RELEASE_V1";
+export const NEXT_SEMANTIC_TRANSITION = "COMPACT_CORPUS_FORWARD_MODEL_SCOREBOARD_V1";

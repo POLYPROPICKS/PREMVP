@@ -44,6 +44,26 @@ export interface ForwardRichSnapshotObservation {
   dataCoverageNum?: number | null;
 }
 
+/**
+ * Mandatory population identity (RESEARCH_CORPUS_CONTRACT.md §1). Incompatible
+ * producer populations are NEVER pooled in one performance result.
+ *   AUG_SHADOW_C4_V1        — immutable August historical shadow benchmark
+ *   SEP_SHADOW_STRATEGIC_V1 — September forward unscored strategic population
+ *   SEP_PUBLIC_RICH_V1      — September forward scored public / rich scorer population
+ */
+export type PopulationId =
+  | "AUG_SHADOW_C4_V1"
+  | "SEP_SHADOW_STRATEGIC_V1"
+  | "SEP_PUBLIC_RICH_V1";
+
+/**
+ * Gamma terminal settlement state — the ONLY settlement authority
+ * (RESEARCH_CORPUS_CONTRACT.md §5.2). `provider_event_id = Gamma event.id`.
+ * Absent / null ⇒ the identity is still OPEN and is excluded from every PnL
+ * aggregate. Clone `signal_result` is never used as settlement authority.
+ */
+export type GammaTerminalState = "WIN" | "LOSS" | "VOID";
+
 /** One immutable generated_signal_pairs decision row, normalized by the caller. */
 export interface ForwardRichSignalPair {
   conditionId: string;
@@ -67,6 +87,30 @@ export interface ForwardRichSignalPair {
   providerSportFamily?: string | null;
 
   formulaVersion?: string | null;
+
+  /**
+   * Mandatory population identity. When omitted the compact layer derives it
+   * from `formulaVersion` + `decisionAt` per RESEARCH_CORPUS_CONTRACT.md §1.
+   */
+  populationId?: PopulationId;
+
+  /**
+   * Gamma terminal outcome for the selected side, or null/absent while OPEN.
+   * Settlement authority — see RESEARCH_CORPUS_CONTRACT.md §5.
+   */
+  gammaTerminal?: GammaTerminalState | null;
+
+  /**
+   * Research-clone `signal_result` verbatim. Recorded for cross-check ONLY —
+   * never used as settlement authority (RESEARCH_CORPUS_CONTRACT.md §5.2).
+   */
+  cloneSignalResult?: string | null;
+
+  /**
+   * Number of raw GSP decision rows for this identity that the compact layer
+   * already collapsed into this pair (>= 1). Defaults to 1.
+   */
+  collapsedCount?: number;
 }
 
 export interface MaterializeForwardRichInput {
@@ -93,8 +137,23 @@ export interface DerivedSeries {
   delta: number | null;
 }
 
+/**
+ * Label layer (RESEARCH_CORPUS_CONTRACT.md §5). SEPARATE from the immutable PIT
+ * feature block — it is attached at materialization and updated as settlement
+ * resolves; it never feeds back into a frozen feature value.
+ */
+export type CorpusLabel =
+  | "WIN"
+  | "LOSS"
+  | "VOID"
+  | "OPEN"
+  | "NO_MATCH"
+  | "AMBIGUOUS";
+
 export interface ForwardRichResearchRow {
   // ── identity ──────────────────────────────────────────────────────────────
+  /** Mandatory population identity (RESEARCH_CORPUS_CONTRACT.md §1). */
+  populationId: PopulationId;
   conditionId: string;
   selectedTokenId: string;
   providerEventId: string | null;
@@ -134,4 +193,16 @@ export interface ForwardRichResearchRow {
   eligibleObservationWindowEnd: string;
   totalObservationsSeen: number;
   eligibleObservationsUsed: number;
+
+  // ── label layer (mutable, NON-PIT — RESEARCH_CORPUS_CONTRACT.md §5) ──────
+  /** Gamma terminal state for the selected side; null while OPEN. Authority. */
+  gammaTerminal: GammaTerminalState | null;
+  /** Derived label. Gamma-authoritative; NO_MATCH/AMBIGUOUS on broken identity. */
+  label: CorpusLabel;
+  /** Clone signal_result verbatim — cross-check only, never settlement authority. */
+  cloneSignalResult: string | null;
+
+  // ── raw-emission compression accounting ─────────────────────────────────
+  /** How many raw GSP decision rows for this identity collapsed into this row. */
+  rawEmissionsCollapsed: number;
 }
