@@ -1,0 +1,2463 @@
+{
+  "MISSION": "DETERMINISTIC_RICH_MODEL_SCORECARD_V1",
+  "GENERATED_AT": "2026-09-03T00:00:00.000Z",
+  "ENGINE_VERSION": "freeze-v1",
+  "MODEL_VERSION": "freeze-v1",
+  "EVALUATION_MODE": "BACKWARD_LOOKING_DESCRIPTIVE",
+  "FORWARD_VALIDATED": false,
+  "DISCLAIMER": "Every number here is a BACKWARD-LOOKING DESCRIPTIVE statistic over settled corpus rows at the latest Gamma-authoritative AS-OF label state. It is NOT a forward-performance claim, NOT a strategy, and NOT investment advice. FORWARD_VALIDATED is false for every cell.",
+  "THRESHOLD_SEARCH_PERFORMED": false,
+  "SIZING": "flat 1u per selected physical event",
+  "POPULATION_POOLING": "FORBIDDEN",
+  "SCORE_SERIES_USED_AS_PREDICATE": false,
+  "SCORE_LEVEL_BUCKETS_FIXED": [
+    "null",
+    "<55",
+    "55-59",
+    "60-64",
+    "65-69",
+    "70-74",
+    "75+"
+  ],
+  "WINDOW_END": "2026-09-02",
+  "CELLS": [
+    {
+      "PERIOD": "7d",
+      "POPULATION_ID": "SEP_PUBLIC_RICH_V1",
+      "WINDOW_START": "2026-08-27",
+      "WINDOW_END": "2026-09-02",
+      "DATA_QUALITY": {
+        "INPUT_ROWS": {
+          "value": 1732,
+          "unit": "frozen compact rows across constituent partitions (pre cross-partition collapse)",
+          "source_stage": "WINDOW_PRE_COLLAPSE"
+        },
+        "UNIQUE_SELECTION_N": {
+          "value": 1700,
+          "unit": "distinct (population_id, condition_id, selected_token_id) — one model bet",
+          "source_stage": "WINDOW_UNIQUE_SELECTION"
+        },
+        "UNIQUE_PHYSICAL_EVENT_SELECTION_N": {
+          "value": 1545,
+          "unit": "distinct provider_event_id among unique selections",
+          "source_stage": "WINDOW_UNIQUE_PHYSICAL_EVENT"
+        },
+        "SETTLED_N": 1415,
+        "OPEN_N": 285,
+        "NO_MATCH_N": 0,
+        "SCORE_LEVEL": {
+          "INPUT_DENOMINATOR": 1700,
+          "SCORE_LEVEL_PRESENT_N": 1700,
+          "SCORE_LEVEL_COVERAGE_PCT": 100,
+          "MIN": 53,
+          "MAX": 78,
+          "UNIT": "unique-selection rows with a decision-time Score LEVEL",
+          "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION",
+          "SOURCE": "generated_signal_pairs.pre_event_score_num (immutable at INSERT; distinct from the GSRS Score SERIES)"
+        },
+        "SCORE_SERIES": {
+          "COVERAGE_PCT": 0,
+          "STATUS": "DATA_QUALITY_ONLY",
+          "NOTE": "Score SERIES (GSRS observation movement) is a DATA QUALITY dimension only. It is NEVER used as a predicate in this scorecard; a model that requires it is ineligible until its evidence exists."
+        },
+        "FEATURE_COVERAGE": {
+          "score_numeric_pct": 0,
+          "score_numeric_n": 0,
+          "score_level_pct": 1,
+          "score_level_n": 1700,
+          "score_level_min": 53,
+          "score_level_max": 78,
+          "price_path_pct": 0.82471,
+          "volume_usd_pct": 0,
+          "lead_time_pct": 1,
+          "price_path_n": 1402,
+          "volume_usd_n": 0,
+          "lead_time_n": 1700
+        }
+      },
+      "ENGINE_INPUT_ADAPTER": {
+        "ALL_ROW_N": 1700,
+        "OPEN_N": 285,
+        "NO_MATCH_N": 0,
+        "AMBIGUOUS_N": 0,
+        "VOID_N": 0,
+        "WIN_LOSS_SETTLED_N": 1415,
+        "UNRESOLVED_PHYSICAL_EVENT_N": 0,
+        "MISSING_EVENT_START_N": 0,
+        "OUT_OF_RANGE_ENTRY_PRICE_N": 0,
+        "ECONOMIC_ELIGIBLE_ROW_N": 1415,
+        "UNIT": "scorecard-ready unique-selection rows (labelAsOf view)",
+        "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION → ENGINE_INPUT_ADAPTER"
+      },
+      "MODELS": {
+        "C0": {
+          "MODEL_ID": "C0",
+          "ROLE": "PRICE_ANCHOR",
+          "PREDICATE": "0.50 <= entry_price < 0.60",
+          "INPUT_ELIGIBLE_ROW_N": 1415,
+          "SELECTED_PHYSICAL_EVENT_N": 453,
+          "WINS": 320,
+          "LOSSES": 133,
+          "PNL_U": 183,
+          "ROI_PCT": 40.3979,
+          "MAX_DRAWDOWN_U": -11.02,
+          "PNL_PER_100_BETS": 40.4,
+          "raw": {
+            "pnlU": 183.0026453000991,
+            "roiPct": 40.39793494483423,
+            "maxDrawdownU": -11.019801980198025
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 453,
+                "PNL_U": 183,
+                "ROI_PCT": 40.3979,
+                "CUMULATIVE_PNL_U": 183
+              }
+            ],
+            "POSITIVE_BUCKET_N": 1,
+            "NEGATIVE_BUCKET_N": 0,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 1,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C1": {
+          "MODEL_ID": "C1",
+          "ROLE": "HIGH_ROI",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family = soccer",
+          "INPUT_ELIGIBLE_ROW_N": 1415,
+          "SELECTED_PHYSICAL_EVENT_N": 20,
+          "WINS": 11,
+          "LOSSES": 9,
+          "PNL_U": -0.07,
+          "ROI_PCT": -0.3304,
+          "MAX_DRAWDOWN_U": -3,
+          "PNL_PER_100_BETS": -0.33,
+          "raw": {
+            "pnlU": -0.06608370564075972,
+            "roiPct": -0.3304185282037986,
+            "maxDrawdownU": -3
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 20,
+                "PNL_U": -0.07,
+                "ROI_PCT": -0.3304,
+                "CUMULATIVE_PNL_U": -0.07
+              }
+            ],
+            "POSITIVE_BUCKET_N": 0,
+            "NEGATIVE_BUCKET_N": 1,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 1,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C4": {
+          "MODEL_ID": "C4",
+          "ROLE": "BALANCED / CURRENT OPERATING MODEL",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND (sport_family = soccer OR lead_time_hours >= 24)",
+          "INPUT_ELIGIBLE_ROW_N": 1415,
+          "SELECTED_PHYSICAL_EVENT_N": 20,
+          "WINS": 11,
+          "LOSSES": 9,
+          "PNL_U": -0.07,
+          "ROI_PCT": -0.3304,
+          "MAX_DRAWDOWN_U": -3,
+          "PNL_PER_100_BETS": -0.33,
+          "raw": {
+            "pnlU": -0.06608370564075972,
+            "roiPct": -0.3304185282037986,
+            "maxDrawdownU": -3
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 20,
+                "PNL_U": -0.07,
+                "ROI_PCT": -0.3304,
+                "CUMULATIVE_PNL_U": -0.07
+              }
+            ],
+            "POSITIVE_BUCKET_N": 0,
+            "NEGATIVE_BUCKET_N": 1,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 1,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C5": {
+          "MODEL_ID": "C5",
+          "ROLE": "PNL_SCALE",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family != table-tennis",
+          "INPUT_ELIGIBLE_ROW_N": 1415,
+          "SELECTED_PHYSICAL_EVENT_N": 453,
+          "WINS": 320,
+          "LOSSES": 133,
+          "PNL_U": 183,
+          "ROI_PCT": 40.3979,
+          "MAX_DRAWDOWN_U": -11.02,
+          "PNL_PER_100_BETS": 40.4,
+          "raw": {
+            "pnlU": 183.0026453000991,
+            "roiPct": 40.39793494483423,
+            "maxDrawdownU": -11.019801980198025
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 453,
+                "PNL_U": 183,
+                "ROI_PCT": 40.3979,
+                "CUMULATIVE_PNL_U": 183
+              }
+            ],
+            "POSITIVE_BUCKET_N": 1,
+            "NEGATIVE_BUCKET_N": 0,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 1,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        }
+      },
+      "SCORE_LEVEL_DIAGNOSTIC": [
+        {
+          "BUCKET": "null",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "<55",
+          "SETTLED_N": 15,
+          "WIN": 9,
+          "LOSS": 6,
+          "VOID": 0,
+          "ECONOMIC_N": 15,
+          "PNL_U": -2.55,
+          "ROI_PCT": -17.0249,
+          "MAX_DRAWDOWN_U": -3.5
+        },
+        {
+          "BUCKET": "55-59",
+          "SETTLED_N": 141,
+          "WIN": 57,
+          "LOSS": 84,
+          "VOID": 0,
+          "ECONOMIC_N": 140,
+          "PNL_U": 40.72,
+          "ROI_PCT": 29.0823,
+          "MAX_DRAWDOWN_U": -10.22
+        },
+        {
+          "BUCKET": "60-64",
+          "SETTLED_N": 684,
+          "WIN": 399,
+          "LOSS": 285,
+          "VOID": 0,
+          "ECONOMIC_N": 675,
+          "PNL_U": 191.15,
+          "ROI_PCT": 28.3186,
+          "MAX_DRAWDOWN_U": -16.7
+        },
+        {
+          "BUCKET": "65-69",
+          "SETTLED_N": 491,
+          "WIN": 231,
+          "LOSS": 260,
+          "VOID": 0,
+          "ECONOMIC_N": 474,
+          "PNL_U": 45.04,
+          "ROI_PCT": 9.5014,
+          "MAX_DRAWDOWN_U": -14.31
+        },
+        {
+          "BUCKET": "70-74",
+          "SETTLED_N": 70,
+          "WIN": 39,
+          "LOSS": 31,
+          "VOID": 0,
+          "ECONOMIC_N": 70,
+          "PNL_U": 17.67,
+          "ROI_PCT": 25.2392,
+          "MAX_DRAWDOWN_U": -4.49
+        },
+        {
+          "BUCKET": "75+",
+          "SETTLED_N": 14,
+          "WIN": 4,
+          "LOSS": 10,
+          "VOID": 0,
+          "ECONOMIC_N": 14,
+          "PNL_U": -5.21,
+          "ROI_PCT": -37.1786,
+          "MAX_DRAWDOWN_U": -5.67
+        }
+      ]
+    },
+    {
+      "PERIOD": "7d",
+      "POPULATION_ID": "SEP_SHADOW_STRATEGIC_V1",
+      "WINDOW_START": "2026-08-27",
+      "WINDOW_END": "2026-09-02",
+      "DATA_QUALITY": {
+        "INPUT_ROWS": {
+          "value": 5548,
+          "unit": "frozen compact rows across constituent partitions (pre cross-partition collapse)",
+          "source_stage": "WINDOW_PRE_COLLAPSE"
+        },
+        "UNIQUE_SELECTION_N": {
+          "value": 2857,
+          "unit": "distinct (population_id, condition_id, selected_token_id) — one model bet",
+          "source_stage": "WINDOW_UNIQUE_SELECTION"
+        },
+        "UNIQUE_PHYSICAL_EVENT_SELECTION_N": {
+          "value": 141,
+          "unit": "distinct provider_event_id among unique selections",
+          "source_stage": "WINDOW_UNIQUE_PHYSICAL_EVENT"
+        },
+        "SETTLED_N": 1604,
+        "OPEN_N": 1253,
+        "NO_MATCH_N": 0,
+        "SCORE_LEVEL": {
+          "INPUT_DENOMINATOR": 2857,
+          "SCORE_LEVEL_PRESENT_N": 0,
+          "SCORE_LEVEL_COVERAGE_PCT": 0,
+          "MIN": null,
+          "MAX": null,
+          "UNIT": "unique-selection rows with a decision-time Score LEVEL",
+          "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION",
+          "SOURCE": "generated_signal_pairs.pre_event_score_num (immutable at INSERT; distinct from the GSRS Score SERIES)"
+        },
+        "SCORE_SERIES": {
+          "COVERAGE_PCT": 0,
+          "STATUS": "DATA_QUALITY_ONLY",
+          "NOTE": "Score SERIES (GSRS observation movement) is a DATA QUALITY dimension only. It is NEVER used as a predicate in this scorecard; a model that requires it is ineligible until its evidence exists."
+        },
+        "FEATURE_COVERAGE": {
+          "score_numeric_pct": 0,
+          "score_numeric_n": 0,
+          "score_level_pct": 0,
+          "score_level_n": 0,
+          "score_level_min": null,
+          "score_level_max": null,
+          "price_path_pct": 0.0532,
+          "volume_usd_pct": 0.77494,
+          "lead_time_pct": 0.0532,
+          "price_path_n": 152,
+          "volume_usd_n": 2214,
+          "lead_time_n": 152
+        }
+      },
+      "ENGINE_INPUT_ADAPTER": {
+        "ALL_ROW_N": 2857,
+        "OPEN_N": 1253,
+        "NO_MATCH_N": 0,
+        "AMBIGUOUS_N": 0,
+        "VOID_N": 0,
+        "WIN_LOSS_SETTLED_N": 1604,
+        "UNRESOLVED_PHYSICAL_EVENT_N": 1527,
+        "MISSING_EVENT_START_N": 0,
+        "OUT_OF_RANGE_ENTRY_PRICE_N": 0,
+        "ECONOMIC_ELIGIBLE_ROW_N": 77,
+        "UNIT": "scorecard-ready unique-selection rows (labelAsOf view)",
+        "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION → ENGINE_INPUT_ADAPTER"
+      },
+      "MODELS": {
+        "C0": {
+          "MODEL_ID": "C0",
+          "ROLE": "PRICE_ANCHOR",
+          "PREDICATE": "0.50 <= entry_price < 0.60",
+          "INPUT_ELIGIBLE_ROW_N": 77,
+          "SELECTED_PHYSICAL_EVENT_N": 18,
+          "WINS": 9,
+          "LOSSES": 9,
+          "PNL_U": -1.34,
+          "ROI_PCT": -7.4432,
+          "MAX_DRAWDOWN_U": -2.65,
+          "PNL_PER_100_BETS": -7.44,
+          "raw": {
+            "pnlU": -1.3397710034024428,
+            "roiPct": -7.443172241124682,
+            "maxDrawdownU": -2.6522578756938247
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 10,
+                "PNL_U": -0.89,
+                "ROI_PCT": -8.8794,
+                "CUMULATIVE_PNL_U": -0.89
+              }
+            ],
+            "POSITIVE_BUCKET_N": 0,
+            "NEGATIVE_BUCKET_N": 1,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 1,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C1": {
+          "MODEL_ID": "C1",
+          "ROLE": "HIGH_ROI",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family = soccer",
+          "INPUT_ELIGIBLE_ROW_N": 77,
+          "SELECTED_PHYSICAL_EVENT_N": 0,
+          "WINS": 0,
+          "LOSSES": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0,
+          "PNL_PER_100_BETS": 0,
+          "raw": {
+            "pnlU": 0,
+            "roiPct": 0,
+            "maxDrawdownU": 0
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 0,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": 0
+              }
+            ],
+            "POSITIVE_BUCKET_N": 0,
+            "NEGATIVE_BUCKET_N": 0,
+            "ZERO_OR_EMPTY_BUCKET_N": 1,
+            "BURST_CONCENTRATION": null,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C4": {
+          "MODEL_ID": "C4",
+          "ROLE": "BALANCED / CURRENT OPERATING MODEL",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND (sport_family = soccer OR lead_time_hours >= 24)",
+          "INPUT_ELIGIBLE_ROW_N": 77,
+          "SELECTED_PHYSICAL_EVENT_N": 0,
+          "WINS": 0,
+          "LOSSES": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0,
+          "PNL_PER_100_BETS": 0,
+          "raw": {
+            "pnlU": 0,
+            "roiPct": 0,
+            "maxDrawdownU": 0
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 0,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": 0
+              }
+            ],
+            "POSITIVE_BUCKET_N": 0,
+            "NEGATIVE_BUCKET_N": 0,
+            "ZERO_OR_EMPTY_BUCKET_N": 1,
+            "BURST_CONCENTRATION": null,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C5": {
+          "MODEL_ID": "C5",
+          "ROLE": "PNL_SCALE",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family != table-tennis",
+          "INPUT_ELIGIBLE_ROW_N": 77,
+          "SELECTED_PHYSICAL_EVENT_N": 18,
+          "WINS": 9,
+          "LOSSES": 9,
+          "PNL_U": -1.34,
+          "ROI_PCT": -7.4432,
+          "MAX_DRAWDOWN_U": -2.65,
+          "PNL_PER_100_BETS": -7.44,
+          "raw": {
+            "pnlU": -1.3397710034024428,
+            "roiPct": -7.443172241124682,
+            "maxDrawdownU": -2.6522578756938247
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 10,
+                "PNL_U": -0.89,
+                "ROI_PCT": -8.8794,
+                "CUMULATIVE_PNL_U": -0.89
+              }
+            ],
+            "POSITIVE_BUCKET_N": 0,
+            "NEGATIVE_BUCKET_N": 1,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 1,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        }
+      },
+      "SCORE_LEVEL_DIAGNOSTIC": [
+        {
+          "BUCKET": "null",
+          "SETTLED_N": 1604,
+          "WIN": 793,
+          "LOSS": 811,
+          "VOID": 0,
+          "ECONOMIC_N": 73,
+          "PNL_U": -10.67,
+          "ROI_PCT": -14.6215,
+          "MAX_DRAWDOWN_U": -15.4
+        },
+        {
+          "BUCKET": "<55",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "55-59",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "60-64",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "65-69",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "70-74",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "75+",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        }
+      ]
+    },
+    {
+      "PERIOD": "14d",
+      "POPULATION_ID": "SEP_PUBLIC_RICH_V1",
+      "WINDOW_START": "2026-08-20",
+      "WINDOW_END": "2026-09-02",
+      "DATA_QUALITY": {
+        "INPUT_ROWS": {
+          "value": 1812,
+          "unit": "frozen compact rows across constituent partitions (pre cross-partition collapse)",
+          "source_stage": "WINDOW_PRE_COLLAPSE"
+        },
+        "UNIQUE_SELECTION_N": {
+          "value": 1769,
+          "unit": "distinct (population_id, condition_id, selected_token_id) — one model bet",
+          "source_stage": "WINDOW_UNIQUE_SELECTION"
+        },
+        "UNIQUE_PHYSICAL_EVENT_SELECTION_N": {
+          "value": 1608,
+          "unit": "distinct provider_event_id among unique selections",
+          "source_stage": "WINDOW_UNIQUE_PHYSICAL_EVENT"
+        },
+        "SETTLED_N": 1470,
+        "OPEN_N": 299,
+        "NO_MATCH_N": 0,
+        "SCORE_LEVEL": {
+          "INPUT_DENOMINATOR": 1769,
+          "SCORE_LEVEL_PRESENT_N": 1769,
+          "SCORE_LEVEL_COVERAGE_PCT": 100,
+          "MIN": 53,
+          "MAX": 81,
+          "UNIT": "unique-selection rows with a decision-time Score LEVEL",
+          "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION",
+          "SOURCE": "generated_signal_pairs.pre_event_score_num (immutable at INSERT; distinct from the GSRS Score SERIES)"
+        },
+        "SCORE_SERIES": {
+          "COVERAGE_PCT": 0,
+          "STATUS": "DATA_QUALITY_ONLY",
+          "NOTE": "Score SERIES (GSRS observation movement) is a DATA QUALITY dimension only. It is NEVER used as a predicate in this scorecard; a model that requires it is ineligible until its evidence exists."
+        },
+        "FEATURE_COVERAGE": {
+          "score_numeric_pct": 0,
+          "score_numeric_n": 0,
+          "score_level_pct": 1,
+          "score_level_n": 1769,
+          "score_level_min": 53,
+          "score_level_max": 81,
+          "price_path_pct": 0.82306,
+          "volume_usd_pct": 0,
+          "lead_time_pct": 1,
+          "price_path_n": 1456,
+          "volume_usd_n": 0,
+          "lead_time_n": 1769
+        }
+      },
+      "ENGINE_INPUT_ADAPTER": {
+        "ALL_ROW_N": 1769,
+        "OPEN_N": 299,
+        "NO_MATCH_N": 0,
+        "AMBIGUOUS_N": 0,
+        "VOID_N": 0,
+        "WIN_LOSS_SETTLED_N": 1470,
+        "UNRESOLVED_PHYSICAL_EVENT_N": 0,
+        "MISSING_EVENT_START_N": 0,
+        "OUT_OF_RANGE_ENTRY_PRICE_N": 0,
+        "ECONOMIC_ELIGIBLE_ROW_N": 1470,
+        "UNIT": "scorecard-ready unique-selection rows (labelAsOf view)",
+        "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION → ENGINE_INPUT_ADAPTER"
+      },
+      "MODELS": {
+        "C0": {
+          "MODEL_ID": "C0",
+          "ROLE": "PRICE_ANCHOR",
+          "PREDICATE": "0.50 <= entry_price < 0.60",
+          "INPUT_ELIGIBLE_ROW_N": 1470,
+          "SELECTED_PHYSICAL_EVENT_N": 454,
+          "WINS": 320,
+          "LOSSES": 134,
+          "PNL_U": 182,
+          "ROI_PCT": 40.0887,
+          "MAX_DRAWDOWN_U": -11.02,
+          "PNL_PER_100_BETS": 40.09,
+          "raw": {
+            "pnlU": 182.0026453000991,
+            "roiPct": 40.08868839209231,
+            "maxDrawdownU": -11.019801980198025
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-20",
+                "END_DATE": "2026-08-27",
+                "N": 1,
+                "PNL_U": -1,
+                "ROI_PCT": -100,
+                "CUMULATIVE_PNL_U": -1
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 453,
+                "PNL_U": 183,
+                "ROI_PCT": 40.3979,
+                "CUMULATIVE_PNL_U": 182
+              }
+            ],
+            "POSITIVE_BUCKET_N": 1,
+            "NEGATIVE_BUCKET_N": 1,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 0.9946,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C1": {
+          "MODEL_ID": "C1",
+          "ROLE": "HIGH_ROI",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family = soccer",
+          "INPUT_ELIGIBLE_ROW_N": 1470,
+          "SELECTED_PHYSICAL_EVENT_N": 20,
+          "WINS": 11,
+          "LOSSES": 9,
+          "PNL_U": -0.07,
+          "ROI_PCT": -0.3304,
+          "MAX_DRAWDOWN_U": -3,
+          "PNL_PER_100_BETS": -0.33,
+          "raw": {
+            "pnlU": -0.06608370564075972,
+            "roiPct": -0.3304185282037986,
+            "maxDrawdownU": -3
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-20",
+                "END_DATE": "2026-08-27",
+                "N": 0,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": 0
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 20,
+                "PNL_U": -0.07,
+                "ROI_PCT": -0.3304,
+                "CUMULATIVE_PNL_U": -0.07
+              }
+            ],
+            "POSITIVE_BUCKET_N": 0,
+            "NEGATIVE_BUCKET_N": 1,
+            "ZERO_OR_EMPTY_BUCKET_N": 1,
+            "BURST_CONCENTRATION": 1,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C4": {
+          "MODEL_ID": "C4",
+          "ROLE": "BALANCED / CURRENT OPERATING MODEL",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND (sport_family = soccer OR lead_time_hours >= 24)",
+          "INPUT_ELIGIBLE_ROW_N": 1470,
+          "SELECTED_PHYSICAL_EVENT_N": 21,
+          "WINS": 11,
+          "LOSSES": 10,
+          "PNL_U": -1.07,
+          "ROI_PCT": -5.0766,
+          "MAX_DRAWDOWN_U": -3.32,
+          "PNL_PER_100_BETS": -5.08,
+          "raw": {
+            "pnlU": -1.0660837056407595,
+            "roiPct": -5.0765890744798075,
+            "maxDrawdownU": -3.3193277310924367
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-20",
+                "END_DATE": "2026-08-27",
+                "N": 1,
+                "PNL_U": -1,
+                "ROI_PCT": -100,
+                "CUMULATIVE_PNL_U": -1
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 20,
+                "PNL_U": -0.07,
+                "ROI_PCT": -0.3304,
+                "CUMULATIVE_PNL_U": -1.07
+              }
+            ],
+            "POSITIVE_BUCKET_N": 0,
+            "NEGATIVE_BUCKET_N": 2,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 0.9346,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C5": {
+          "MODEL_ID": "C5",
+          "ROLE": "PNL_SCALE",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family != table-tennis",
+          "INPUT_ELIGIBLE_ROW_N": 1470,
+          "SELECTED_PHYSICAL_EVENT_N": 454,
+          "WINS": 320,
+          "LOSSES": 134,
+          "PNL_U": 182,
+          "ROI_PCT": 40.0887,
+          "MAX_DRAWDOWN_U": -11.02,
+          "PNL_PER_100_BETS": 40.09,
+          "raw": {
+            "pnlU": 182.0026453000991,
+            "roiPct": 40.08868839209231,
+            "maxDrawdownU": -11.019801980198025
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-20",
+                "END_DATE": "2026-08-27",
+                "N": 1,
+                "PNL_U": -1,
+                "ROI_PCT": -100,
+                "CUMULATIVE_PNL_U": -1
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 453,
+                "PNL_U": 183,
+                "ROI_PCT": 40.3979,
+                "CUMULATIVE_PNL_U": 182
+              }
+            ],
+            "POSITIVE_BUCKET_N": 1,
+            "NEGATIVE_BUCKET_N": 1,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 0.9946,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        }
+      },
+      "SCORE_LEVEL_DIAGNOSTIC": [
+        {
+          "BUCKET": "null",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "<55",
+          "SETTLED_N": 15,
+          "WIN": 9,
+          "LOSS": 6,
+          "VOID": 0,
+          "ECONOMIC_N": 15,
+          "PNL_U": -2.55,
+          "ROI_PCT": -17.0249,
+          "MAX_DRAWDOWN_U": -3.5
+        },
+        {
+          "BUCKET": "55-59",
+          "SETTLED_N": 147,
+          "WIN": 57,
+          "LOSS": 90,
+          "VOID": 0,
+          "ECONOMIC_N": 146,
+          "PNL_U": 34.72,
+          "ROI_PCT": 23.7776,
+          "MAX_DRAWDOWN_U": -10.22
+        },
+        {
+          "BUCKET": "60-64",
+          "SETTLED_N": 701,
+          "WIN": 405,
+          "LOSS": 296,
+          "VOID": 0,
+          "ECONOMIC_N": 692,
+          "PNL_U": 193.15,
+          "ROI_PCT": 27.9123,
+          "MAX_DRAWDOWN_U": -16.7
+        },
+        {
+          "BUCKET": "65-69",
+          "SETTLED_N": 513,
+          "WIN": 238,
+          "LOSS": 275,
+          "VOID": 0,
+          "ECONOMIC_N": 496,
+          "PNL_U": 39.86,
+          "ROI_PCT": 8.0368,
+          "MAX_DRAWDOWN_U": -14.31
+        },
+        {
+          "BUCKET": "70-74",
+          "SETTLED_N": 77,
+          "WIN": 39,
+          "LOSS": 38,
+          "VOID": 0,
+          "ECONOMIC_N": 77,
+          "PNL_U": 10.67,
+          "ROI_PCT": 13.8538,
+          "MAX_DRAWDOWN_U": -7.85
+        },
+        {
+          "BUCKET": "75+",
+          "SETTLED_N": 17,
+          "WIN": 5,
+          "LOSS": 12,
+          "VOID": 0,
+          "ECONOMIC_N": 17,
+          "PNL_U": -5.8,
+          "ROI_PCT": -34.0904,
+          "MAX_DRAWDOWN_U": -6.21
+        }
+      ]
+    },
+    {
+      "PERIOD": "14d",
+      "POPULATION_ID": "SEP_SHADOW_STRATEGIC_V1",
+      "WINDOW_START": "2026-08-20",
+      "WINDOW_END": "2026-09-02",
+      "DATA_QUALITY": {
+        "INPUT_ROWS": {
+          "value": 12769,
+          "unit": "frozen compact rows across constituent partitions (pre cross-partition collapse)",
+          "source_stage": "WINDOW_PRE_COLLAPSE"
+        },
+        "UNIQUE_SELECTION_N": {
+          "value": 6451,
+          "unit": "distinct (population_id, condition_id, selected_token_id) — one model bet",
+          "source_stage": "WINDOW_UNIQUE_SELECTION"
+        },
+        "UNIQUE_PHYSICAL_EVENT_SELECTION_N": {
+          "value": 395,
+          "unit": "distinct provider_event_id among unique selections",
+          "source_stage": "WINDOW_UNIQUE_PHYSICAL_EVENT"
+        },
+        "SETTLED_N": 3779,
+        "OPEN_N": 2672,
+        "NO_MATCH_N": 0,
+        "SCORE_LEVEL": {
+          "INPUT_DENOMINATOR": 6451,
+          "SCORE_LEVEL_PRESENT_N": 0,
+          "SCORE_LEVEL_COVERAGE_PCT": 0,
+          "MIN": null,
+          "MAX": null,
+          "UNIT": "unique-selection rows with a decision-time Score LEVEL",
+          "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION",
+          "SOURCE": "generated_signal_pairs.pre_event_score_num (immutable at INSERT; distinct from the GSRS Score SERIES)"
+        },
+        "SCORE_SERIES": {
+          "COVERAGE_PCT": 0,
+          "STATUS": "DATA_QUALITY_ONLY",
+          "NOTE": "Score SERIES (GSRS observation movement) is a DATA QUALITY dimension only. It is NEVER used as a predicate in this scorecard; a model that requires it is ineligible until its evidence exists."
+        },
+        "FEATURE_COVERAGE": {
+          "score_numeric_pct": 0,
+          "score_numeric_n": 0,
+          "score_level_pct": 0,
+          "score_level_n": 0,
+          "score_level_min": null,
+          "score_level_max": null,
+          "price_path_pct": 0.04387,
+          "volume_usd_pct": 0.58038,
+          "lead_time_pct": 0.2767,
+          "price_path_n": 283,
+          "volume_usd_n": 3744,
+          "lead_time_n": 1785
+        }
+      },
+      "ENGINE_INPUT_ADAPTER": {
+        "ALL_ROW_N": 6451,
+        "OPEN_N": 2672,
+        "NO_MATCH_N": 0,
+        "AMBIGUOUS_N": 0,
+        "VOID_N": 0,
+        "WIN_LOSS_SETTLED_N": 3779,
+        "UNRESOLVED_PHYSICAL_EVENT_N": 2767,
+        "MISSING_EVENT_START_N": 0,
+        "OUT_OF_RANGE_ENTRY_PRICE_N": 0,
+        "ECONOMIC_ELIGIBLE_ROW_N": 1012,
+        "UNIT": "scorecard-ready unique-selection rows (labelAsOf view)",
+        "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION → ENGINE_INPUT_ADAPTER"
+      },
+      "MODELS": {
+        "C0": {
+          "MODEL_ID": "C0",
+          "ROLE": "PRICE_ANCHOR",
+          "PREDICATE": "0.50 <= entry_price < 0.60",
+          "INPUT_ELIGIBLE_ROW_N": 1012,
+          "SELECTED_PHYSICAL_EVENT_N": 155,
+          "WINS": 68,
+          "LOSSES": 87,
+          "PNL_U": -26.05,
+          "ROI_PCT": -16.8056,
+          "MAX_DRAWDOWN_U": -28.22,
+          "PNL_PER_100_BETS": -16.81,
+          "raw": {
+            "pnlU": -26.04872150728558,
+            "roiPct": -16.805626778893924,
+            "maxDrawdownU": -28.21658210605449
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-20",
+                "END_DATE": "2026-08-27",
+                "N": 82,
+                "PNL_U": -9.09,
+                "ROI_PCT": -11.0848,
+                "CUMULATIVE_PNL_U": -9.09
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 9,
+                "PNL_U": -1.74,
+                "ROI_PCT": -19.331,
+                "CUMULATIVE_PNL_U": -10.83
+              }
+            ],
+            "POSITIVE_BUCKET_N": 0,
+            "NEGATIVE_BUCKET_N": 2,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 0.8393,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C1": {
+          "MODEL_ID": "C1",
+          "ROLE": "HIGH_ROI",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family = soccer",
+          "INPUT_ELIGIBLE_ROW_N": 1012,
+          "SELECTED_PHYSICAL_EVENT_N": 3,
+          "WINS": 1,
+          "LOSSES": 2,
+          "PNL_U": -1.02,
+          "ROI_PCT": -33.9934,
+          "MAX_DRAWDOWN_U": -2,
+          "PNL_PER_100_BETS": -33.99,
+          "raw": {
+            "pnlU": -1.0198019801980198,
+            "roiPct": -33.993399339933994,
+            "maxDrawdownU": -2
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-20",
+                "END_DATE": "2026-08-27",
+                "N": 3,
+                "PNL_U": -1.02,
+                "ROI_PCT": -33.9934,
+                "CUMULATIVE_PNL_U": -1.02
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 0,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": -1.02
+              }
+            ],
+            "POSITIVE_BUCKET_N": 0,
+            "NEGATIVE_BUCKET_N": 1,
+            "ZERO_OR_EMPTY_BUCKET_N": 1,
+            "BURST_CONCENTRATION": 1,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C4": {
+          "MODEL_ID": "C4",
+          "ROLE": "BALANCED / CURRENT OPERATING MODEL",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND (sport_family = soccer OR lead_time_hours >= 24)",
+          "INPUT_ELIGIBLE_ROW_N": 1012,
+          "SELECTED_PHYSICAL_EVENT_N": 36,
+          "WINS": 15,
+          "LOSSES": 21,
+          "PNL_U": -7.08,
+          "ROI_PCT": -19.6713,
+          "MAX_DRAWDOWN_U": -8.59,
+          "PNL_PER_100_BETS": -19.67,
+          "raw": {
+            "pnlU": -7.081651934328179,
+            "roiPct": -19.67125537313383,
+            "maxDrawdownU": -8.5900989895934
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-20",
+                "END_DATE": "2026-08-27",
+                "N": 12,
+                "PNL_U": -0.21,
+                "ROI_PCT": -1.762,
+                "CUMULATIVE_PNL_U": -0.21
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 0,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": -0.21
+              }
+            ],
+            "POSITIVE_BUCKET_N": 0,
+            "NEGATIVE_BUCKET_N": 1,
+            "ZERO_OR_EMPTY_BUCKET_N": 1,
+            "BURST_CONCENTRATION": 1,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C5": {
+          "MODEL_ID": "C5",
+          "ROLE": "PNL_SCALE",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family != table-tennis",
+          "INPUT_ELIGIBLE_ROW_N": 1012,
+          "SELECTED_PHYSICAL_EVENT_N": 137,
+          "WINS": 63,
+          "LOSSES": 74,
+          "PNL_U": -18.05,
+          "ROI_PCT": -13.1742,
+          "MAX_DRAWDOWN_U": -20.22,
+          "PNL_PER_100_BETS": -13.17,
+          "raw": {
+            "pnlU": -18.048721507285585,
+            "roiPct": -13.174249275390936,
+            "maxDrawdownU": -20.216582106054492
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-20",
+                "END_DATE": "2026-08-27",
+                "N": 64,
+                "PNL_U": -1.09,
+                "ROI_PCT": -1.7024,
+                "CUMULATIVE_PNL_U": -1.09
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-27",
+                "END_DATE": "2026-09-03",
+                "N": 9,
+                "PNL_U": -1.74,
+                "ROI_PCT": -19.331,
+                "CUMULATIVE_PNL_U": -2.83
+              }
+            ],
+            "POSITIVE_BUCKET_N": 0,
+            "NEGATIVE_BUCKET_N": 2,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 0.6148,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        }
+      },
+      "SCORE_LEVEL_DIAGNOSTIC": [
+        {
+          "BUCKET": "null",
+          "SETTLED_N": 3779,
+          "WIN": 1844,
+          "LOSS": 1935,
+          "VOID": 0,
+          "ECONOMIC_N": 276,
+          "PNL_U": -55.34,
+          "ROI_PCT": -20.0513,
+          "MAX_DRAWDOWN_U": -60.09
+        },
+        {
+          "BUCKET": "<55",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "55-59",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "60-64",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "65-69",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "70-74",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "75+",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        }
+      ]
+    },
+    {
+      "PERIOD": "30d",
+      "POPULATION_ID": "SEP_PUBLIC_RICH_V1",
+      "WINDOW_START": "2026-08-04",
+      "WINDOW_END": "2026-09-02",
+      "DATA_QUALITY": {
+        "INPUT_ROWS": {
+          "value": 4607,
+          "unit": "frozen compact rows across constituent partitions (pre cross-partition collapse)",
+          "source_stage": "WINDOW_PRE_COLLAPSE"
+        },
+        "UNIQUE_SELECTION_N": {
+          "value": 4510,
+          "unit": "distinct (population_id, condition_id, selected_token_id) — one model bet",
+          "source_stage": "WINDOW_UNIQUE_SELECTION"
+        },
+        "UNIQUE_PHYSICAL_EVENT_SELECTION_N": {
+          "value": 2014,
+          "unit": "distinct provider_event_id among unique selections",
+          "source_stage": "WINDOW_UNIQUE_PHYSICAL_EVENT"
+        },
+        "SETTLED_N": 3149,
+        "OPEN_N": 1361,
+        "NO_MATCH_N": 0,
+        "SCORE_LEVEL": {
+          "INPUT_DENOMINATOR": 4510,
+          "SCORE_LEVEL_PRESENT_N": 4510,
+          "SCORE_LEVEL_COVERAGE_PCT": 100,
+          "MIN": 53,
+          "MAX": 83,
+          "UNIT": "unique-selection rows with a decision-time Score LEVEL",
+          "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION",
+          "SOURCE": "generated_signal_pairs.pre_event_score_num (immutable at INSERT; distinct from the GSRS Score SERIES)"
+        },
+        "SCORE_SERIES": {
+          "COVERAGE_PCT": 0,
+          "STATUS": "DATA_QUALITY_ONLY",
+          "NOTE": "Score SERIES (GSRS observation movement) is a DATA QUALITY dimension only. It is NEVER used as a predicate in this scorecard; a model that requires it is ineligible until its evidence exists."
+        },
+        "FEATURE_COVERAGE": {
+          "score_numeric_pct": 0,
+          "score_numeric_n": 0,
+          "score_level_pct": 1,
+          "score_level_n": 4510,
+          "score_level_min": 53,
+          "score_level_max": 83,
+          "price_path_pct": 0.88049,
+          "volume_usd_pct": 0,
+          "lead_time_pct": 1,
+          "price_path_n": 3971,
+          "volume_usd_n": 0,
+          "lead_time_n": 4510
+        }
+      },
+      "ENGINE_INPUT_ADAPTER": {
+        "ALL_ROW_N": 4510,
+        "OPEN_N": 1361,
+        "NO_MATCH_N": 0,
+        "AMBIGUOUS_N": 0,
+        "VOID_N": 0,
+        "WIN_LOSS_SETTLED_N": 3149,
+        "UNRESOLVED_PHYSICAL_EVENT_N": 115,
+        "MISSING_EVENT_START_N": 0,
+        "OUT_OF_RANGE_ENTRY_PRICE_N": 0,
+        "ECONOMIC_ELIGIBLE_ROW_N": 3034,
+        "UNIT": "scorecard-ready unique-selection rows (labelAsOf view)",
+        "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION → ENGINE_INPUT_ADAPTER"
+      },
+      "MODELS": {
+        "C0": {
+          "MODEL_ID": "C0",
+          "ROLE": "PRICE_ANCHOR",
+          "PREDICATE": "0.50 <= entry_price < 0.60",
+          "INPUT_ELIGIBLE_ROW_N": 3034,
+          "SELECTED_PHYSICAL_EVENT_N": 590,
+          "WINS": 383,
+          "LOSSES": 207,
+          "PNL_U": 168.04,
+          "ROI_PCT": 28.482,
+          "MAX_DRAWDOWN_U": -20.33,
+          "PNL_PER_100_BETS": 28.48,
+          "raw": {
+            "pnlU": 168.04355962971957,
+            "roiPct": 28.481959259274504,
+            "maxDrawdownU": -20.330635182342792
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-04",
+                "END_DATE": "2026-08-11",
+                "N": 115,
+                "PNL_U": -14.33,
+                "ROI_PCT": -12.4614,
+                "CUMULATIVE_PNL_U": -14.33
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-11",
+                "END_DATE": "2026-08-18",
+                "N": 2,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": -14.33
+              },
+              {
+                "BUCKET_INDEX": 2,
+                "START_DATE": "2026-08-18",
+                "END_DATE": "2026-08-25",
+                "N": 1,
+                "PNL_U": -1,
+                "ROI_PCT": -100,
+                "CUMULATIVE_PNL_U": -15.33
+              },
+              {
+                "BUCKET_INDEX": 3,
+                "START_DATE": "2026-08-25",
+                "END_DATE": "2026-09-01",
+                "N": 296,
+                "PNL_U": 147.79,
+                "ROI_PCT": 49.9291,
+                "CUMULATIVE_PNL_U": 132.46
+              },
+              {
+                "BUCKET_INDEX": 4,
+                "START_DATE": "2026-09-01",
+                "END_DATE": "2026-09-08",
+                "N": 157,
+                "PNL_U": 35.21,
+                "ROI_PCT": 22.4283,
+                "CUMULATIVE_PNL_U": 167.67
+              }
+            ],
+            "POSITIVE_BUCKET_N": 2,
+            "NEGATIVE_BUCKET_N": 2,
+            "ZERO_OR_EMPTY_BUCKET_N": 1,
+            "BURST_CONCENTRATION": 0.7452,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C1": {
+          "MODEL_ID": "C1",
+          "ROLE": "HIGH_ROI",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family = soccer",
+          "INPUT_ELIGIBLE_ROW_N": 3034,
+          "SELECTED_PHYSICAL_EVENT_N": 20,
+          "WINS": 11,
+          "LOSSES": 9,
+          "PNL_U": -0.07,
+          "ROI_PCT": -0.3304,
+          "MAX_DRAWDOWN_U": -3,
+          "PNL_PER_100_BETS": -0.33,
+          "raw": {
+            "pnlU": -0.06608370564075972,
+            "roiPct": -0.3304185282037986,
+            "maxDrawdownU": -3
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-04",
+                "END_DATE": "2026-08-11",
+                "N": 0,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": 0
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-11",
+                "END_DATE": "2026-08-18",
+                "N": 0,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": 0
+              },
+              {
+                "BUCKET_INDEX": 2,
+                "START_DATE": "2026-08-18",
+                "END_DATE": "2026-08-25",
+                "N": 0,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": 0
+              },
+              {
+                "BUCKET_INDEX": 3,
+                "START_DATE": "2026-08-25",
+                "END_DATE": "2026-09-01",
+                "N": 14,
+                "PNL_U": 0.62,
+                "ROI_PCT": 4.4584,
+                "CUMULATIVE_PNL_U": 0.62
+              },
+              {
+                "BUCKET_INDEX": 4,
+                "START_DATE": "2026-09-01",
+                "END_DATE": "2026-09-08",
+                "N": 6,
+                "PNL_U": -0.69,
+                "ROI_PCT": -11.5044,
+                "CUMULATIVE_PNL_U": -0.07
+              }
+            ],
+            "POSITIVE_BUCKET_N": 1,
+            "NEGATIVE_BUCKET_N": 1,
+            "ZERO_OR_EMPTY_BUCKET_N": 3,
+            "BURST_CONCENTRATION": 0.5267,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C4": {
+          "MODEL_ID": "C4",
+          "ROLE": "BALANCED / CURRENT OPERATING MODEL",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND (sport_family = soccer OR lead_time_hours >= 24)",
+          "INPUT_ELIGIBLE_ROW_N": 3034,
+          "SELECTED_PHYSICAL_EVENT_N": 23,
+          "WINS": 11,
+          "LOSSES": 12,
+          "PNL_U": -3.07,
+          "ROI_PCT": -13.3308,
+          "MAX_DRAWDOWN_U": -5.32,
+          "PNL_PER_100_BETS": -13.33,
+          "raw": {
+            "pnlU": -3.0660837056407595,
+            "roiPct": -13.330798720177214,
+            "maxDrawdownU": -5.319327731092437
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-04",
+                "END_DATE": "2026-08-11",
+                "N": 1,
+                "PNL_U": -1,
+                "ROI_PCT": -100,
+                "CUMULATIVE_PNL_U": -1
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-11",
+                "END_DATE": "2026-08-18",
+                "N": 1,
+                "PNL_U": -1,
+                "ROI_PCT": -100,
+                "CUMULATIVE_PNL_U": -2
+              },
+              {
+                "BUCKET_INDEX": 2,
+                "START_DATE": "2026-08-18",
+                "END_DATE": "2026-08-25",
+                "N": 1,
+                "PNL_U": -1,
+                "ROI_PCT": -100,
+                "CUMULATIVE_PNL_U": -3
+              },
+              {
+                "BUCKET_INDEX": 3,
+                "START_DATE": "2026-08-25",
+                "END_DATE": "2026-09-01",
+                "N": 14,
+                "PNL_U": 0.62,
+                "ROI_PCT": 4.4584,
+                "CUMULATIVE_PNL_U": -2.38
+              },
+              {
+                "BUCKET_INDEX": 4,
+                "START_DATE": "2026-09-01",
+                "END_DATE": "2026-09-08",
+                "N": 6,
+                "PNL_U": -0.69,
+                "ROI_PCT": -11.5044,
+                "CUMULATIVE_PNL_U": -3.07
+              }
+            ],
+            "POSITIVE_BUCKET_N": 1,
+            "NEGATIVE_BUCKET_N": 4,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 0.232,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C5": {
+          "MODEL_ID": "C5",
+          "ROLE": "PNL_SCALE",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family != table-tennis",
+          "INPUT_ELIGIBLE_ROW_N": 3034,
+          "SELECTED_PHYSICAL_EVENT_N": 590,
+          "WINS": 383,
+          "LOSSES": 207,
+          "PNL_U": 168.04,
+          "ROI_PCT": 28.482,
+          "MAX_DRAWDOWN_U": -20.33,
+          "PNL_PER_100_BETS": 28.48,
+          "raw": {
+            "pnlU": 168.04355962971957,
+            "roiPct": 28.481959259274504,
+            "maxDrawdownU": -20.330635182342792
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-04",
+                "END_DATE": "2026-08-11",
+                "N": 115,
+                "PNL_U": -14.33,
+                "ROI_PCT": -12.4614,
+                "CUMULATIVE_PNL_U": -14.33
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-11",
+                "END_DATE": "2026-08-18",
+                "N": 2,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": -14.33
+              },
+              {
+                "BUCKET_INDEX": 2,
+                "START_DATE": "2026-08-18",
+                "END_DATE": "2026-08-25",
+                "N": 1,
+                "PNL_U": -1,
+                "ROI_PCT": -100,
+                "CUMULATIVE_PNL_U": -15.33
+              },
+              {
+                "BUCKET_INDEX": 3,
+                "START_DATE": "2026-08-25",
+                "END_DATE": "2026-09-01",
+                "N": 296,
+                "PNL_U": 147.79,
+                "ROI_PCT": 49.9291,
+                "CUMULATIVE_PNL_U": 132.46
+              },
+              {
+                "BUCKET_INDEX": 4,
+                "START_DATE": "2026-09-01",
+                "END_DATE": "2026-09-08",
+                "N": 157,
+                "PNL_U": 35.21,
+                "ROI_PCT": 22.4283,
+                "CUMULATIVE_PNL_U": 167.67
+              }
+            ],
+            "POSITIVE_BUCKET_N": 2,
+            "NEGATIVE_BUCKET_N": 2,
+            "ZERO_OR_EMPTY_BUCKET_N": 1,
+            "BURST_CONCENTRATION": 0.7452,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        }
+      },
+      "SCORE_LEVEL_DIAGNOSTIC": [
+        {
+          "BUCKET": "null",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "<55",
+          "SETTLED_N": 84,
+          "WIN": 66,
+          "LOSS": 18,
+          "VOID": 0,
+          "ECONOMIC_N": 52,
+          "PNL_U": -3.57,
+          "ROI_PCT": -6.8654,
+          "MAX_DRAWDOWN_U": -8.18
+        },
+        {
+          "BUCKET": "55-59",
+          "SETTLED_N": 393,
+          "WIN": 156,
+          "LOSS": 237,
+          "VOID": 0,
+          "ECONOMIC_N": 236,
+          "PNL_U": 20.67,
+          "ROI_PCT": 8.7589,
+          "MAX_DRAWDOWN_U": -22.41
+        },
+        {
+          "BUCKET": "60-64",
+          "SETTLED_N": 1847,
+          "WIN": 958,
+          "LOSS": 889,
+          "VOID": 0,
+          "ECONOMIC_N": 892,
+          "PNL_U": 181.94,
+          "ROI_PCT": 20.3965,
+          "MAX_DRAWDOWN_U": -29.8
+        },
+        {
+          "BUCKET": "65-69",
+          "SETTLED_N": 685,
+          "WIN": 312,
+          "LOSS": 373,
+          "VOID": 0,
+          "ECONOMIC_N": 613,
+          "PNL_U": 48.1,
+          "ROI_PCT": 7.8461,
+          "MAX_DRAWDOWN_U": -14.31
+        },
+        {
+          "BUCKET": "70-74",
+          "SETTLED_N": 106,
+          "WIN": 55,
+          "LOSS": 51,
+          "VOID": 0,
+          "ECONOMIC_N": 105,
+          "PNL_U": 16.34,
+          "ROI_PCT": 15.5609,
+          "MAX_DRAWDOWN_U": -7.85
+        },
+        {
+          "BUCKET": "75+",
+          "SETTLED_N": 34,
+          "WIN": 16,
+          "LOSS": 18,
+          "VOID": 0,
+          "ECONOMIC_N": 34,
+          "PNL_U": 2.01,
+          "ROI_PCT": 5.9026,
+          "MAX_DRAWDOWN_U": -6.21
+        }
+      ]
+    },
+    {
+      "PERIOD": "30d",
+      "POPULATION_ID": "SEP_SHADOW_STRATEGIC_V1",
+      "WINDOW_START": "2026-08-04",
+      "WINDOW_END": "2026-09-02",
+      "DATA_QUALITY": {
+        "INPUT_ROWS": {
+          "value": 26089,
+          "unit": "frozen compact rows across constituent partitions (pre cross-partition collapse)",
+          "source_stage": "WINDOW_PRE_COLLAPSE"
+        },
+        "UNIQUE_SELECTION_N": {
+          "value": 15419,
+          "unit": "distinct (population_id, condition_id, selected_token_id) — one model bet",
+          "source_stage": "WINDOW_UNIQUE_SELECTION"
+        },
+        "UNIQUE_PHYSICAL_EVENT_SELECTION_N": {
+          "value": 1168,
+          "unit": "distinct provider_event_id among unique selections",
+          "source_stage": "WINDOW_UNIQUE_PHYSICAL_EVENT"
+        },
+        "SETTLED_N": 9168,
+        "OPEN_N": 6251,
+        "NO_MATCH_N": 0,
+        "SCORE_LEVEL": {
+          "INPUT_DENOMINATOR": 15419,
+          "SCORE_LEVEL_PRESENT_N": 0,
+          "SCORE_LEVEL_COVERAGE_PCT": 0,
+          "MIN": null,
+          "MAX": null,
+          "UNIT": "unique-selection rows with a decision-time Score LEVEL",
+          "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION",
+          "SOURCE": "generated_signal_pairs.pre_event_score_num (immutable at INSERT; distinct from the GSRS Score SERIES)"
+        },
+        "SCORE_SERIES": {
+          "COVERAGE_PCT": 0,
+          "STATUS": "DATA_QUALITY_ONLY",
+          "NOTE": "Score SERIES (GSRS observation movement) is a DATA QUALITY dimension only. It is NEVER used as a predicate in this scorecard; a model that requires it is ineligible until its evidence exists."
+        },
+        "FEATURE_COVERAGE": {
+          "score_numeric_pct": 0,
+          "score_numeric_n": 0,
+          "score_level_pct": 0,
+          "score_level_n": 0,
+          "score_level_min": null,
+          "score_level_max": null,
+          "price_path_pct": 0.04047,
+          "volume_usd_pct": 0.38057,
+          "lead_time_pct": 0.50593,
+          "price_path_n": 624,
+          "volume_usd_n": 5868,
+          "lead_time_n": 7801
+        }
+      },
+      "ENGINE_INPUT_ADAPTER": {
+        "ALL_ROW_N": 15419,
+        "OPEN_N": 6251,
+        "NO_MATCH_N": 0,
+        "AMBIGUOUS_N": 0,
+        "VOID_N": 0,
+        "WIN_LOSS_SETTLED_N": 9168,
+        "UNRESOLVED_PHYSICAL_EVENT_N": 4826,
+        "MISSING_EVENT_START_N": 0,
+        "OUT_OF_RANGE_ENTRY_PRICE_N": 0,
+        "ECONOMIC_ELIGIBLE_ROW_N": 4342,
+        "UNIT": "scorecard-ready unique-selection rows (labelAsOf view)",
+        "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION → ENGINE_INPUT_ADAPTER"
+      },
+      "MODELS": {
+        "C0": {
+          "MODEL_ID": "C0",
+          "ROLE": "PRICE_ANCHOR",
+          "PREDICATE": "0.50 <= entry_price < 0.60",
+          "INPUT_ELIGIBLE_ROW_N": 4342,
+          "SELECTED_PHYSICAL_EVENT_N": 626,
+          "WINS": 313,
+          "LOSSES": 313,
+          "PNL_U": -14.46,
+          "ROI_PCT": -2.3096,
+          "MAX_DRAWDOWN_U": -42.92,
+          "PNL_PER_100_BETS": -2.31,
+          "raw": {
+            "pnlU": -14.457825864796625,
+            "roiPct": -2.3095568474116015,
+            "maxDrawdownU": -42.91938897579505
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-04",
+                "END_DATE": "2026-08-11",
+                "N": 324,
+                "PNL_U": 20.12,
+                "ROI_PCT": 6.2092,
+                "CUMULATIVE_PNL_U": 20.12
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-11",
+                "END_DATE": "2026-08-18",
+                "N": 128,
+                "PNL_U": -9.22,
+                "ROI_PCT": -7.2008,
+                "CUMULATIVE_PNL_U": 10.9
+              },
+              {
+                "BUCKET_INDEX": 2,
+                "START_DATE": "2026-08-18",
+                "END_DATE": "2026-08-25",
+                "N": 153,
+                "PNL_U": -20.83,
+                "ROI_PCT": -13.6142,
+                "CUMULATIVE_PNL_U": -9.93
+              },
+              {
+                "BUCKET_INDEX": 3,
+                "START_DATE": "2026-08-25",
+                "END_DATE": "2026-09-01",
+                "N": 16,
+                "PNL_U": -1.42,
+                "ROI_PCT": -8.8482,
+                "CUMULATIVE_PNL_U": -11.34
+              },
+              {
+                "BUCKET_INDEX": 4,
+                "START_DATE": "2026-09-01",
+                "END_DATE": "2026-09-08",
+                "N": 1,
+                "PNL_U": -1,
+                "ROI_PCT": -100,
+                "CUMULATIVE_PNL_U": -12.34
+              }
+            ],
+            "POSITIVE_BUCKET_N": 1,
+            "NEGATIVE_BUCKET_N": 4,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 0.3961,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C1": {
+          "MODEL_ID": "C1",
+          "ROLE": "HIGH_ROI",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family = soccer",
+          "INPUT_ELIGIBLE_ROW_N": 4342,
+          "SELECTED_PHYSICAL_EVENT_N": 48,
+          "WINS": 29,
+          "LOSSES": 19,
+          "PNL_U": 7.28,
+          "ROI_PCT": 15.1686,
+          "MAX_DRAWDOWN_U": -4.04,
+          "PNL_PER_100_BETS": 15.17,
+          "raw": {
+            "pnlU": 7.280934732021342,
+            "roiPct": 15.16861402504446,
+            "maxDrawdownU": -4.03921568627451
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-04",
+                "END_DATE": "2026-08-11",
+                "N": 8,
+                "PNL_U": -0.21,
+                "ROI_PCT": -2.5896,
+                "CUMULATIVE_PNL_U": -0.21
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-11",
+                "END_DATE": "2026-08-18",
+                "N": 37,
+                "PNL_U": 8.51,
+                "ROI_PCT": 22.9943,
+                "CUMULATIVE_PNL_U": 8.3
+              },
+              {
+                "BUCKET_INDEX": 2,
+                "START_DATE": "2026-08-18",
+                "END_DATE": "2026-08-25",
+                "N": 3,
+                "PNL_U": -1.02,
+                "ROI_PCT": -33.9934,
+                "CUMULATIVE_PNL_U": 7.28
+              },
+              {
+                "BUCKET_INDEX": 3,
+                "START_DATE": "2026-08-25",
+                "END_DATE": "2026-09-01",
+                "N": 0,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": 7.28
+              },
+              {
+                "BUCKET_INDEX": 4,
+                "START_DATE": "2026-09-01",
+                "END_DATE": "2026-09-08",
+                "N": 0,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": 7.28
+              }
+            ],
+            "POSITIVE_BUCKET_N": 1,
+            "NEGATIVE_BUCKET_N": 2,
+            "ZERO_OR_EMPTY_BUCKET_N": 2,
+            "BURST_CONCENTRATION": 0.8737,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C4": {
+          "MODEL_ID": "C4",
+          "ROLE": "BALANCED / CURRENT OPERATING MODEL",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND (sport_family = soccer OR lead_time_hours >= 24)",
+          "INPUT_ELIGIBLE_ROW_N": 4342,
+          "SELECTED_PHYSICAL_EVENT_N": 203,
+          "WINS": 97,
+          "LOSSES": 106,
+          "PNL_U": -13.82,
+          "ROI_PCT": -6.8081,
+          "MAX_DRAWDOWN_U": -26.62,
+          "PNL_PER_100_BETS": -6.81,
+          "raw": {
+            "pnlU": -13.82038513660614,
+            "roiPct": -6.808071495865094,
+            "maxDrawdownU": -26.62308723935674
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-04",
+                "END_DATE": "2026-08-11",
+                "N": 95,
+                "PNL_U": 3.49,
+                "ROI_PCT": 3.6712,
+                "CUMULATIVE_PNL_U": 3.49
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-11",
+                "END_DATE": "2026-08-18",
+                "N": 60,
+                "PNL_U": -2.71,
+                "ROI_PCT": -4.5168,
+                "CUMULATIVE_PNL_U": 0.78
+              },
+              {
+                "BUCKET_INDEX": 2,
+                "START_DATE": "2026-08-18",
+                "END_DATE": "2026-08-25",
+                "N": 48,
+                "PNL_U": -14.6,
+                "ROI_PCT": -30.4124,
+                "CUMULATIVE_PNL_U": -13.82
+              },
+              {
+                "BUCKET_INDEX": 3,
+                "START_DATE": "2026-08-25",
+                "END_DATE": "2026-09-01",
+                "N": 0,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": -13.82
+              },
+              {
+                "BUCKET_INDEX": 4,
+                "START_DATE": "2026-09-01",
+                "END_DATE": "2026-09-08",
+                "N": 0,
+                "PNL_U": 0,
+                "ROI_PCT": 0,
+                "CUMULATIVE_PNL_U": -13.82
+              }
+            ],
+            "POSITIVE_BUCKET_N": 1,
+            "NEGATIVE_BUCKET_N": 2,
+            "ZERO_OR_EMPTY_BUCKET_N": 2,
+            "BURST_CONCENTRATION": 0.7019,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        },
+        "C5": {
+          "MODEL_ID": "C5",
+          "ROLE": "PNL_SCALE",
+          "PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family != table-tennis",
+          "INPUT_ELIGIBLE_ROW_N": 4342,
+          "SELECTED_PHYSICAL_EVENT_N": 566,
+          "WINS": 284,
+          "LOSSES": 282,
+          "PNL_U": -12.46,
+          "ROI_PCT": -2.201,
+          "MAX_DRAWDOWN_U": -37.92,
+          "PNL_PER_100_BETS": -2.2,
+          "raw": {
+            "pnlU": -12.457825864796632,
+            "roiPct": -2.201029304734387,
+            "maxDrawdownU": -37.91938897579505
+          },
+          "STABILITY": {
+            "BUCKET_DAYS": 7,
+            "BUCKETS": [
+              {
+                "BUCKET_INDEX": 0,
+                "START_DATE": "2026-08-04",
+                "END_DATE": "2026-08-11",
+                "N": 313,
+                "PNL_U": 17.12,
+                "ROI_PCT": 5.469,
+                "CUMULATIVE_PNL_U": 17.12
+              },
+              {
+                "BUCKET_INDEX": 1,
+                "START_DATE": "2026-08-11",
+                "END_DATE": "2026-08-18",
+                "N": 107,
+                "PNL_U": -10.22,
+                "ROI_PCT": -9.5486,
+                "CUMULATIVE_PNL_U": 6.9
+              },
+              {
+                "BUCKET_INDEX": 2,
+                "START_DATE": "2026-08-18",
+                "END_DATE": "2026-08-25",
+                "N": 125,
+                "PNL_U": -14.83,
+                "ROI_PCT": -11.8638,
+                "CUMULATIVE_PNL_U": -7.93
+              },
+              {
+                "BUCKET_INDEX": 3,
+                "START_DATE": "2026-08-25",
+                "END_DATE": "2026-09-01",
+                "N": 16,
+                "PNL_U": -1.42,
+                "ROI_PCT": -8.8482,
+                "CUMULATIVE_PNL_U": -9.34
+              },
+              {
+                "BUCKET_INDEX": 4,
+                "START_DATE": "2026-09-01",
+                "END_DATE": "2026-09-08",
+                "N": 1,
+                "PNL_U": -1,
+                "ROI_PCT": -100,
+                "CUMULATIVE_PNL_U": -10.34
+              }
+            ],
+            "POSITIVE_BUCKET_N": 1,
+            "NEGATIVE_BUCKET_N": 4,
+            "ZERO_OR_EMPTY_BUCKET_N": 0,
+            "BURST_CONCENTRATION": 0.3839,
+            "NOTE": "7-day chronological buckets anchored at WINDOW_START; BURST_CONCENTRATION near 1.0 means the economics come from one isolated period, not a repeated effect."
+          }
+        }
+      },
+      "SCORE_LEVEL_DIAGNOSTIC": [
+        {
+          "BUCKET": "null",
+          "SETTLED_N": 9168,
+          "WIN": 4471,
+          "LOSS": 4697,
+          "VOID": 0,
+          "ECONOMIC_N": 941,
+          "PNL_U": -93.61,
+          "ROI_PCT": -9.9476,
+          "MAX_DRAWDOWN_U": -97.88
+        },
+        {
+          "BUCKET": "<55",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "55-59",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "60-64",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "65-69",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "70-74",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        },
+        {
+          "BUCKET": "75+",
+          "SETTLED_N": 0,
+          "WIN": 0,
+          "LOSS": 0,
+          "VOID": 0,
+          "ECONOMIC_N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0
+        }
+      ]
+    }
+  ],
+  "COMPARISON": [
+    {
+      "MODEL_ID": "C0",
+      "POPULATION_ID": "SEP_PUBLIC_RICH_V1",
+      "BY_PERIOD": {
+        "7d": {
+          "N": 453,
+          "PNL_U": 183,
+          "ROI_PCT": 40.3979,
+          "MAX_DRAWDOWN_U": -11.02,
+          "PNL_PER_100_BETS": 40.4,
+          "POSITIVE_BUCKET_N": 1,
+          "NEGATIVE_BUCKET_N": 0,
+          "BURST_CONCENTRATION": 1
+        },
+        "14d": {
+          "N": 454,
+          "PNL_U": 182,
+          "ROI_PCT": 40.0887,
+          "MAX_DRAWDOWN_U": -11.02,
+          "PNL_PER_100_BETS": 40.09,
+          "POSITIVE_BUCKET_N": 1,
+          "NEGATIVE_BUCKET_N": 1,
+          "BURST_CONCENTRATION": 0.9946
+        },
+        "30d": {
+          "N": 590,
+          "PNL_U": 168.04,
+          "ROI_PCT": 28.482,
+          "MAX_DRAWDOWN_U": -20.33,
+          "PNL_PER_100_BETS": 28.48,
+          "POSITIVE_BUCKET_N": 2,
+          "NEGATIVE_BUCKET_N": 2,
+          "BURST_CONCENTRATION": 0.7452
+        }
+      }
+    },
+    {
+      "MODEL_ID": "C0",
+      "POPULATION_ID": "SEP_SHADOW_STRATEGIC_V1",
+      "BY_PERIOD": {
+        "7d": {
+          "N": 18,
+          "PNL_U": -1.34,
+          "ROI_PCT": -7.4432,
+          "MAX_DRAWDOWN_U": -2.65,
+          "PNL_PER_100_BETS": -7.44,
+          "POSITIVE_BUCKET_N": 0,
+          "NEGATIVE_BUCKET_N": 1,
+          "BURST_CONCENTRATION": 1
+        },
+        "14d": {
+          "N": 155,
+          "PNL_U": -26.05,
+          "ROI_PCT": -16.8056,
+          "MAX_DRAWDOWN_U": -28.22,
+          "PNL_PER_100_BETS": -16.81,
+          "POSITIVE_BUCKET_N": 0,
+          "NEGATIVE_BUCKET_N": 2,
+          "BURST_CONCENTRATION": 0.8393
+        },
+        "30d": {
+          "N": 626,
+          "PNL_U": -14.46,
+          "ROI_PCT": -2.3096,
+          "MAX_DRAWDOWN_U": -42.92,
+          "PNL_PER_100_BETS": -2.31,
+          "POSITIVE_BUCKET_N": 1,
+          "NEGATIVE_BUCKET_N": 4,
+          "BURST_CONCENTRATION": 0.3961
+        }
+      }
+    },
+    {
+      "MODEL_ID": "C1",
+      "POPULATION_ID": "SEP_PUBLIC_RICH_V1",
+      "BY_PERIOD": {
+        "7d": {
+          "N": 20,
+          "PNL_U": -0.07,
+          "ROI_PCT": -0.3304,
+          "MAX_DRAWDOWN_U": -3,
+          "PNL_PER_100_BETS": -0.33,
+          "POSITIVE_BUCKET_N": 0,
+          "NEGATIVE_BUCKET_N": 1,
+          "BURST_CONCENTRATION": 1
+        },
+        "14d": {
+          "N": 20,
+          "PNL_U": -0.07,
+          "ROI_PCT": -0.3304,
+          "MAX_DRAWDOWN_U": -3,
+          "PNL_PER_100_BETS": -0.33,
+          "POSITIVE_BUCKET_N": 0,
+          "NEGATIVE_BUCKET_N": 1,
+          "BURST_CONCENTRATION": 1
+        },
+        "30d": {
+          "N": 20,
+          "PNL_U": -0.07,
+          "ROI_PCT": -0.3304,
+          "MAX_DRAWDOWN_U": -3,
+          "PNL_PER_100_BETS": -0.33,
+          "POSITIVE_BUCKET_N": 1,
+          "NEGATIVE_BUCKET_N": 1,
+          "BURST_CONCENTRATION": 0.5267
+        }
+      }
+    },
+    {
+      "MODEL_ID": "C1",
+      "POPULATION_ID": "SEP_SHADOW_STRATEGIC_V1",
+      "BY_PERIOD": {
+        "7d": {
+          "N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0,
+          "PNL_PER_100_BETS": 0,
+          "POSITIVE_BUCKET_N": 0,
+          "NEGATIVE_BUCKET_N": 0,
+          "BURST_CONCENTRATION": null
+        },
+        "14d": {
+          "N": 3,
+          "PNL_U": -1.02,
+          "ROI_PCT": -33.9934,
+          "MAX_DRAWDOWN_U": -2,
+          "PNL_PER_100_BETS": -33.99,
+          "POSITIVE_BUCKET_N": 0,
+          "NEGATIVE_BUCKET_N": 1,
+          "BURST_CONCENTRATION": 1
+        },
+        "30d": {
+          "N": 48,
+          "PNL_U": 7.28,
+          "ROI_PCT": 15.1686,
+          "MAX_DRAWDOWN_U": -4.04,
+          "PNL_PER_100_BETS": 15.17,
+          "POSITIVE_BUCKET_N": 1,
+          "NEGATIVE_BUCKET_N": 2,
+          "BURST_CONCENTRATION": 0.8737
+        }
+      }
+    },
+    {
+      "MODEL_ID": "C4",
+      "POPULATION_ID": "SEP_PUBLIC_RICH_V1",
+      "BY_PERIOD": {
+        "7d": {
+          "N": 20,
+          "PNL_U": -0.07,
+          "ROI_PCT": -0.3304,
+          "MAX_DRAWDOWN_U": -3,
+          "PNL_PER_100_BETS": -0.33,
+          "POSITIVE_BUCKET_N": 0,
+          "NEGATIVE_BUCKET_N": 1,
+          "BURST_CONCENTRATION": 1
+        },
+        "14d": {
+          "N": 21,
+          "PNL_U": -1.07,
+          "ROI_PCT": -5.0766,
+          "MAX_DRAWDOWN_U": -3.32,
+          "PNL_PER_100_BETS": -5.08,
+          "POSITIVE_BUCKET_N": 0,
+          "NEGATIVE_BUCKET_N": 2,
+          "BURST_CONCENTRATION": 0.9346
+        },
+        "30d": {
+          "N": 23,
+          "PNL_U": -3.07,
+          "ROI_PCT": -13.3308,
+          "MAX_DRAWDOWN_U": -5.32,
+          "PNL_PER_100_BETS": -13.33,
+          "POSITIVE_BUCKET_N": 1,
+          "NEGATIVE_BUCKET_N": 4,
+          "BURST_CONCENTRATION": 0.232
+        }
+      }
+    },
+    {
+      "MODEL_ID": "C4",
+      "POPULATION_ID": "SEP_SHADOW_STRATEGIC_V1",
+      "BY_PERIOD": {
+        "7d": {
+          "N": 0,
+          "PNL_U": 0,
+          "ROI_PCT": 0,
+          "MAX_DRAWDOWN_U": 0,
+          "PNL_PER_100_BETS": 0,
+          "POSITIVE_BUCKET_N": 0,
+          "NEGATIVE_BUCKET_N": 0,
+          "BURST_CONCENTRATION": null
+        },
+        "14d": {
+          "N": 36,
+          "PNL_U": -7.08,
+          "ROI_PCT": -19.6713,
+          "MAX_DRAWDOWN_U": -8.59,
+          "PNL_PER_100_BETS": -19.67,
+          "POSITIVE_BUCKET_N": 0,
+          "NEGATIVE_BUCKET_N": 1,
+          "BURST_CONCENTRATION": 1
+        },
+        "30d": {
+          "N": 203,
+          "PNL_U": -13.82,
+          "ROI_PCT": -6.8081,
+          "MAX_DRAWDOWN_U": -26.62,
+          "PNL_PER_100_BETS": -6.81,
+          "POSITIVE_BUCKET_N": 1,
+          "NEGATIVE_BUCKET_N": 2,
+          "BURST_CONCENTRATION": 0.7019
+        }
+      }
+    },
+    {
+      "MODEL_ID": "C5",
+      "POPULATION_ID": "SEP_PUBLIC_RICH_V1",
+      "BY_PERIOD": {
+        "7d": {
+          "N": 453,
+          "PNL_U": 183,
+          "ROI_PCT": 40.3979,
+          "MAX_DRAWDOWN_U": -11.02,
+          "PNL_PER_100_BETS": 40.4,
+          "POSITIVE_BUCKET_N": 1,
+          "NEGATIVE_BUCKET_N": 0,
+          "BURST_CONCENTRATION": 1
+        },
+        "14d": {
+          "N": 454,
+          "PNL_U": 182,
+          "ROI_PCT": 40.0887,
+          "MAX_DRAWDOWN_U": -11.02,
+          "PNL_PER_100_BETS": 40.09,
+          "POSITIVE_BUCKET_N": 1,
+          "NEGATIVE_BUCKET_N": 1,
+          "BURST_CONCENTRATION": 0.9946
+        },
+        "30d": {
+          "N": 590,
+          "PNL_U": 168.04,
+          "ROI_PCT": 28.482,
+          "MAX_DRAWDOWN_U": -20.33,
+          "PNL_PER_100_BETS": 28.48,
+          "POSITIVE_BUCKET_N": 2,
+          "NEGATIVE_BUCKET_N": 2,
+          "BURST_CONCENTRATION": 0.7452
+        }
+      }
+    },
+    {
+      "MODEL_ID": "C5",
+      "POPULATION_ID": "SEP_SHADOW_STRATEGIC_V1",
+      "BY_PERIOD": {
+        "7d": {
+          "N": 18,
+          "PNL_U": -1.34,
+          "ROI_PCT": -7.4432,
+          "MAX_DRAWDOWN_U": -2.65,
+          "PNL_PER_100_BETS": -7.44,
+          "POSITIVE_BUCKET_N": 0,
+          "NEGATIVE_BUCKET_N": 1,
+          "BURST_CONCENTRATION": 1
+        },
+        "14d": {
+          "N": 137,
+          "PNL_U": -18.05,
+          "ROI_PCT": -13.1742,
+          "MAX_DRAWDOWN_U": -20.22,
+          "PNL_PER_100_BETS": -13.17,
+          "POSITIVE_BUCKET_N": 0,
+          "NEGATIVE_BUCKET_N": 2,
+          "BURST_CONCENTRATION": 0.6148
+        },
+        "30d": {
+          "N": 566,
+          "PNL_U": -12.46,
+          "ROI_PCT": -2.201,
+          "MAX_DRAWDOWN_U": -37.92,
+          "PNL_PER_100_BETS": -2.2,
+          "POSITIVE_BUCKET_N": 1,
+          "NEGATIVE_BUCKET_N": 4,
+          "BURST_CONCENTRATION": 0.3839
+        }
+      }
+    }
+  ]
+}

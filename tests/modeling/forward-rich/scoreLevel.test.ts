@@ -78,7 +78,7 @@ test("rolling manifest exposes a per-population SCORE_LEVEL block distinct from 
   const d = resolveWindowDates(7, now).windowEnd;
   const NULL_SERIES = { observationCount: 0, firstEligibleValue: null, firstEligibleObservedAt: null, lastEligibleValue: null, lastEligibleObservedAt: null, delta: null };
   const mk = (p: Partial<RollingCompactRow> & Pick<RollingCompactRow, "populationId" | "conditionId" | "selectedTokenId">): RollingCompactRow => ({
-    providerEventId: null, decisionAt: `${d}T06:00:00Z`, label: "OPEN", score: NULL_SERIES, selectedPrice: NULL_SERIES, volumeUsd: null, leadTimeHours: null, ...p,
+    providerEventId: null, entryPrice: null, eventStart: null, sportFamily: null, decisionAt: `${d}T06:00:00Z`, label: "OPEN", score: NULL_SERIES, selectedPrice: NULL_SERIES, volumeUsd: null, leadTimeHours: null, ...p,
   });
   const part: LoadedPartition = {
     partitionDate: d, canonicalHash: `h-${d}`, labelEvidenceAsOf: null, sourceWindowStart: null, sourceWindowEnd: null,
