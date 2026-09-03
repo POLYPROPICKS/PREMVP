@@ -16,13 +16,50 @@
  */
 
 import type {
+  CorpusLabel,
   DerivedSeries,
   ForwardRichResearchRow,
+  ForwardRichSignalPair,
   ForwardRichSnapshotObservation,
+  GammaTerminalState,
   MaterializeForwardRichInput,
+  PopulationId,
 } from "./types";
 
 const HOUR_MS = 3_600_000;
+
+/**
+ * Population identity resolution (RESEARCH_CORPUS_CONTRACT.md §1). Explicit
+ * `pair.populationId` always wins; otherwise the frozen predicate:
+ *   formula_version = 'shadow-strategic-sports-v1'  -> SEP_SHADOW_STRATEGIC_V1
+ *   decision month = 2026-08                        -> AUG_SHADOW_C4_V1
+ *   otherwise                                       -> SEP_PUBLIC_RICH_V1
+ */
+export function derivePopulationId(pair: ForwardRichSignalPair): PopulationId {
+  if (pair.populationId) return pair.populationId;
+  if (pair.formulaVersion === "shadow-strategic-sports-v1") {
+    return "SEP_SHADOW_STRATEGIC_V1";
+  }
+  if (pair.decisionAt.slice(0, 7) === "2026-08") return "AUG_SHADOW_C4_V1";
+  return "SEP_PUBLIC_RICH_V1";
+}
+
+/**
+ * Label layer (RESEARCH_CORPUS_CONTRACT.md §5). Gamma terminal state is the
+ * only settlement authority; a broken identity is NO_MATCH; absent Gamma
+ * state is OPEN. Clone signal_result is never consulted here.
+ */
+function deriveLabel(
+  conditionId: string,
+  selectedTokenId: string,
+  gammaTerminal: GammaTerminalState | null,
+): CorpusLabel {
+  if (!conditionId || !selectedTokenId) return "NO_MATCH";
+  if (gammaTerminal === "WIN") return "WIN";
+  if (gammaTerminal === "LOSS") return "LOSS";
+  if (gammaTerminal === "VOID") return "VOID";
+  return "OPEN";
+}
 
 function identityKey(conditionId: string, selectedTokenId: string): string {
   return `${conditionId}::${selectedTokenId}`;
@@ -119,7 +156,10 @@ export function materializeForwardRichResearch(
     const dataCoverage =
       eligible.find((o) => typeof o.dataCoverageNum === "number")?.dataCoverageNum ?? null;
 
+    const gammaTerminal = pair.gammaTerminal ?? null;
+
     rows.push({
+      populationId: derivePopulationId(pair),
       conditionId: pair.conditionId,
       selectedTokenId: pair.selectedTokenId,
       providerEventId:
@@ -153,6 +193,12 @@ export function materializeForwardRichResearch(
       eligibleObservationWindowEnd: windowEnd,
       totalObservationsSeen: allObs.length,
       eligibleObservationsUsed: eligible.length,
+
+      gammaTerminal,
+      label: deriveLabel(pair.conditionId, pair.selectedTokenId, gammaTerminal),
+      cloneSignalResult: pair.cloneSignalResult ?? null,
+
+      rawEmissionsCollapsed: pair.collapsedCount ?? 1,
     });
   }
 
