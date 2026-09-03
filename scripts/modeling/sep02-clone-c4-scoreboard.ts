@@ -43,14 +43,57 @@ const WINDOW_START = "2026-09-01T21:00:00.000Z"; // 2026-09-02 00:00 Europe/Mins
 const WINDOW_END = "2026-09-02T21:00:00.000Z"; // 2026-09-03 00:00 Europe/Minsk (exclusive)
 const SINCE_CUTOFF = "2026-09-01T20:59:59.999Z"; // one ms before WINDOW_START, so decisionAt > cutoff admits the whole closed slice
 
-type PopulationId = "SEP_SHADOW_STRATEGIC_V1" | "SEP_PUBLIC_RICH_V1" | "UNCLASSIFIED";
-const SHADOW_FORMULA_VERSION = "shadow-strategic-sports-v1";
-const PUBLIC_RICH_FORMULA_VERSION = "v2-lite-growth-safe";
+/**
+ * Population lineage mapping — corrected to the exact generated_signal_pairs
+ * .formula_version values actually observed on the real 2026-09-02 clone
+ * rows (probed directly, not assumed): "shadow-strategic-sports-v1",
+ * "trusted-initial-formula-v1.1" (the scored non-shadow / "rich" lineage
+ * actually in use — NOT "v2-lite-growth-safe", which does not appear in
+ * this window), and "shadow-firemodel1_1_research_v0" (a distinct research
+ * shadow lineage, kept separate from both). Any other/null value is
+ * genuinely UNCLASSIFIED — on the probed window this was empty.
+ */
+type PopulationId =
+  | "SEP_SHADOW_STRATEGIC_V1"
+  | "SEP_PUBLIC_RICH_V1"
+  | "SEP_FIREMODEL1_1_RESEARCH_V0"
+  | "UNCLASSIFIED";
+const SHADOW_STRATEGIC_FORMULA_VERSION = "shadow-strategic-sports-v1";
+const PUBLIC_RICH_FORMULA_VERSION = "trusted-initial-formula-v1.1";
+const FIREMODEL1_1_RESEARCH_FORMULA_VERSION = "shadow-firemodel1_1_research_v0";
 
 function classifyPopulation(formulaVersion: string | null): PopulationId {
-  if (formulaVersion === SHADOW_FORMULA_VERSION) return "SEP_SHADOW_STRATEGIC_V1";
+  if (formulaVersion === SHADOW_STRATEGIC_FORMULA_VERSION) return "SEP_SHADOW_STRATEGIC_V1";
   if (formulaVersion === PUBLIC_RICH_FORMULA_VERSION) return "SEP_PUBLIC_RICH_V1";
+  if (formulaVersion === FIREMODEL1_1_RESEARCH_FORMULA_VERSION) return "SEP_FIREMODEL1_1_RESEARCH_V0";
   return "UNCLASSIFIED";
+}
+
+/**
+ * The physical-event identity used by C4/research-engine's one-bet-per-event
+ * semantics (research-engine/types.ts ResearchEngineInputEvent.physicalEventKey).
+ * Uses the real provider event id when present; falls back to the
+ * condition+token market/side identity only when it is absent, and the
+ * fallback is tagged so it is never confused with a real provider event id.
+ */
+function physicalEventKeyOf(r: { providerEventId: string | null; conditionId: string; selectedTokenId: string }): string {
+  return r.providerEventId ?? `NO_PROVIDER_EVENT_ID::${r.conditionId}::${r.selectedTokenId}`;
+}
+
+/** Chronological-first collapse to one row per physical event — identical rule to research-engine/engine.ts runModel's claimedKeys collapse, applied here so both the eligibility count and the settled bet count share one identity. */
+function collapseToPhysicalEvents<T extends { decisionAt: string; providerEventId: string | null; conditionId: string; selectedTokenId: string }>(
+  rows: T[],
+): T[] {
+  const sorted = [...rows].sort((a, b) => (a.decisionAt < b.decisionAt ? -1 : a.decisionAt > b.decisionAt ? 1 : 0));
+  const claimed = new Set<string>();
+  const out: T[] = [];
+  for (const r of sorted) {
+    const key = physicalEventKeyOf(r);
+    if (claimed.has(key)) continue;
+    claimed.add(key);
+    out.push(r);
+  }
+  return out;
 }
 
 /** Credential class inferred from key shape only — never from its value beyond the prefix. */
@@ -285,7 +328,10 @@ function classifySettlement(
 interface PopulationReport {
   population: PopulationId;
   period: string;
-  uniqueEligibleEvents: number;
+  rawRows: number;
+  compactRows: number;
+  uniquePhysicalEventsInCompact: number;
+  c4EligiblePhysicalEvents: number;
   bets: number;
   settledN: number;
   win: number;
@@ -294,24 +340,27 @@ interface PopulationReport {
   open: number;
   noMatch: number;
   ambiguous: number;
-  pnlUnits: number;
-  roiPct: number;
-  maxDrawdownUnits: number;
-  pnlPer100Bets: number;
+  pnlUnits: number | null;
+  roiPct: number | null;
+  maxDrawdownUnits: number | null;
+  winRatePct: number | null;
+  pnlPer100Bets: number | null;
   coverage: {
     entryPricePct: number;
     sportLeadTimePct: number;
     scorePct: number;
     volumePct: number;
+    providerEventIdPct: number;
   };
 }
 
 async function runForPopulation(
   population: PopulationId,
+  rawRowCount: number,
   compactRows: ForwardRichResearchRow[],
 ): Promise<PopulationReport> {
   const c4 = FROZEN_MODELS.C4;
-  const eligible = compactRows.filter((r) => {
+  const eligibleByRow = compactRows.filter((r) => {
     if (r.entryPrice == null || r.leadTimeHours == null) return false;
     const sportFamily = (r.providerSportFamily ?? r.providerSportCode ?? "").toLowerCase();
     return c4.predicate({
@@ -320,6 +369,10 @@ async function runForPopulation(
       leadTimeHours: r.leadTimeHours,
     } as any);
   });
+  // UNIQUE_PHYSICAL_EVENTS: collapse to one row per physical event using the
+  // exact chronological-first rule research-engine/engine.ts runModel applies
+  // internally, so "C4 eligible physical events" and "Bets" share one identity.
+  const eligiblePhysicalEvents = collapseToPhysicalEvents(eligibleByRow);
 
   const settlementCounts: Record<SettlementCategory, number> = {
     WIN: 0,
@@ -331,7 +384,7 @@ async function runForPopulation(
   };
   const winLossInput: ResearchEngineInputEvent[] = [];
 
-  for (const row of eligible) {
+  for (const row of eligiblePhysicalEvents) {
     const market = await fetchGammaMarketByConditionId(row.conditionId);
     const resolved = resolveSignalOutcome({
       conditionId: row.conditionId,
@@ -343,7 +396,7 @@ async function runForPopulation(
     settlementCounts[category] += 1;
     if (category === "WIN" || category === "LOSS") {
       winLossInput.push({
-        physicalEventKey: `${row.conditionId}::${row.selectedTokenId}`,
+        physicalEventKey: physicalEventKeyOf(row),
         decisionTimestamp: row.decisionAt,
         eventStart: row.eventStart ?? row.decisionAt,
         entryPrice: row.entryPrice as number,
@@ -356,8 +409,9 @@ async function runForPopulation(
   const modelResult = runModel("C4", winLossInput);
 
   const settledN = modelResult.WINS + modelResult.LOSSES;
-  const bets = eligible.length;
+  const bets = eligiblePhysicalEvents.length; // one bet per physical event, by construction
   const pnlPer100 = bets === 0 ? 0 : Math.round((modelResult.PNL_U / bets) * 100 * 100) / 100;
+  const winRatePct = settledN === 0 ? null : Math.round((modelResult.WINS / settledN) * 10000) / 100;
 
   const withEntryPrice = compactRows.filter((r) => r.entryPrice != null).length;
   const withSportLeadTime = compactRows.filter(
@@ -365,12 +419,16 @@ async function runForPopulation(
   ).length;
   const withScore = compactRows.filter((r) => r.score.observationCount > 0).length;
   const withVolume = compactRows.filter((r) => r.volumeUsd != null).length;
+  const withProviderEventId = compactRows.filter((r) => r.providerEventId != null).length;
   const pct = (n: number) => (compactRows.length === 0 ? 0 : Math.round((n / compactRows.length) * 10000) / 100);
 
   return {
     population,
     period: "2026-09-02 (Europe/Minsk, single day)",
-    uniqueEligibleEvents: bets,
+    rawRows: rawRowCount,
+    compactRows: compactRows.length,
+    uniquePhysicalEventsInCompact: collapseToPhysicalEvents(compactRows).length,
+    c4EligiblePhysicalEvents: eligiblePhysicalEvents.length,
     bets,
     settledN,
     win: settlementCounts.WIN,
@@ -382,12 +440,14 @@ async function runForPopulation(
     pnlUnits: modelResult.PNL_U,
     roiPct: modelResult.ROI_PCT,
     maxDrawdownUnits: modelResult.MAX_DRAWDOWN_U,
+    winRatePct,
     pnlPer100Bets: pnlPer100,
     coverage: {
       entryPricePct: pct(withEntryPrice),
       sportLeadTimePct: pct(withSportLeadTime),
       scorePct: pct(withScore),
       volumePct: pct(withVolume),
+      providerEventIdPct: pct(withProviderEventId),
     },
   };
 }
@@ -402,8 +462,12 @@ async function main() {
   ]);
 
   const rawGspRows = rawGsp.length;
-  const uniqueProviderEvents = new Set(rawGsp.map((r) => r.providerEventId).filter(Boolean)).size;
-  const uniqueConditionMarkets = new Set(rawGsp.map((r) => r.conditionId)).size;
+  // Explicit, separately-named source-stage units — never conflated.
+  const distinctProviderEventId = new Set(rawGsp.map((r) => r.providerEventId).filter((v): v is string => v != null)).size;
+  const distinctPhysicalEventKey = new Set(rawGsp.map((r) => physicalEventKeyOf(r))).size;
+  const distinctConditionId = new Set(rawGsp.map((r) => r.conditionId)).size;
+  const rawProviderEventIdCoveragePct =
+    rawGspRows === 0 ? 0 : Math.round((rawGsp.filter((r) => r.providerEventId != null).length / rawGspRows) * 10000) / 100;
 
   const byPopulation = new Map<PopulationId, RawGsp[]>();
   for (const row of rawGsp) {
@@ -413,13 +477,19 @@ async function main() {
     byPopulation.set(pop, bucket);
   }
 
+  // Invariant: raw population row counts must reconcile to the raw denominator.
+  const populationRowSum = [...byPopulation.values()].reduce((sum, rows) => sum + rows.length, 0);
+  const invariantFailures: string[] = [];
+  if (populationRowSum !== rawGspRows) {
+    invariantFailures.push(
+      `POPULATION_ROW_SUM_MISMATCH: sum(population raw rows)=${populationRowSum} !== rawGspRows=${rawGspRows}`,
+    );
+  }
+
   const materializedAt = new Date().toISOString();
   const funnel: Record<string, unknown> = {};
   const reports: PopulationReport[] = [];
-
-  let totalCompactRows = 0;
-  let totalCompactEvents = new Set<string>();
-  let totalCompactMarkets = new Set<string>();
+  let allCompactRows: ForwardRichResearchRow[] = [];
 
   for (const [population, rows] of byPopulation) {
     const compactPairs = compactSignalPairs(rows);
@@ -429,47 +499,76 @@ async function main() {
       sinceCutoff: SINCE_CUTOFF,
       materializedAt,
     });
+    allCompactRows = allCompactRows.concat(compactRows);
 
-    totalCompactRows += compactRows.length;
-    for (const r of compactRows) {
-      totalCompactEvents.add(r.providerEventId ?? `${r.conditionId}::${r.selectedTokenId}`);
-      totalCompactMarkets.add(r.conditionId);
+    const uniquePhysicalEvents = collapseToPhysicalEvents(compactRows).length;
+    // Invariant: per-population UNIQUE_PHYSICAL_EVENTS <= that population's compact rows.
+    if (uniquePhysicalEvents > compactRows.length) {
+      invariantFailures.push(
+        `${population}: UNIQUE_PHYSICAL_EVENTS(${uniquePhysicalEvents}) > compactRows(${compactRows.length})`,
+      );
     }
 
     funnel[population] = {
       rawRows: rows.length,
       compactRows: compactRows.length,
       compressionRatio: compactRows.length === 0 ? null : Math.round((rows.length / compactRows.length) * 100) / 100,
-      uniqueCompactEvents: new Set(compactRows.map((r) => r.providerEventId ?? `${r.conditionId}::${r.selectedTokenId}`)).size,
-      uniqueCompactMarkets: new Set(compactRows.map((r) => r.conditionId)).size,
+      DISTINCT_PROVIDER_EVENT_ID: new Set(compactRows.map((r) => r.providerEventId).filter((v): v is string => v != null)).size,
+      DISTINCT_CONDITION_ID: new Set(compactRows.map((r) => r.conditionId)).size,
+      UNIQUE_PHYSICAL_EVENTS: uniquePhysicalEvents,
     };
 
-    reports.push(await runForPopulation(population, compactRows));
+    reports.push(await runForPopulation(population, rows.length, compactRows));
   }
+
+  // Invariant: no per-population UNIQUE_PHYSICAL_EVENTS may exceed the global
+  // count measured with the exact same physical-event key.
+  const globalUniquePhysicalEvents = collapseToPhysicalEvents(allCompactRows).length;
+  for (const [population, entry] of Object.entries(funnel)) {
+    const upe = (entry as { UNIQUE_PHYSICAL_EVENTS: number }).UNIQUE_PHYSICAL_EVENTS;
+    if (upe > globalUniquePhysicalEvents) {
+      invariantFailures.push(`${population}: UNIQUE_PHYSICAL_EVENTS(${upe}) > global(${globalUniquePhysicalEvents})`);
+    }
+  }
+  // Invariant: Bets <= C4 eligible physical events (equality by construction here).
+  for (const r of reports) {
+    if (r.bets > r.c4EligiblePhysicalEvents) {
+      invariantFailures.push(`${r.population}: bets(${r.bets}) > c4EligiblePhysicalEvents(${r.c4EligiblePhysicalEvents})`);
+    }
+  }
+
+  const correctionRequired = invariantFailures.length > 0;
+  const publishedReports = correctionRequired
+    ? reports.map((r) => ({ ...r, pnlUnits: null, roiPct: null, maxDrawdownUnits: null, winRatePct: null, pnlPer100Bets: null }))
+    : reports;
 
   console.log(
     JSON.stringify(
       {
-        command: "REAL_COMPACT_CORPUS_MODEL_SCOREBOARD_ACCEPTANCE_V1",
+        command: "REAL_C4_SCOREBOARD_SEMANTICALLY_ACCEPTED",
+        status: correctionRequired ? "CORRECTION_REQUIRED" : "OK",
+        invariantFailures,
         provenance: {
           sourceProjectRef: EXPECTED_CLONE_REF,
           window: { minskDate: "2026-09-02", utcStart: WINDOW_START, utcEnd: WINDOW_END },
         },
         sourceStage: {
           rawGspRows,
-          uniqueProviderEvents,
-          uniqueConditionMarkets,
+          DISTINCT_PROVIDER_EVENT_ID: distinctProviderEventId,
+          DISTINCT_PHYSICAL_EVENT_KEY: distinctPhysicalEventKey,
+          DISTINCT_CONDITION_ID: distinctConditionId,
+          providerEventIdCoveragePct: rawProviderEventIdCoveragePct,
+          note:
+            rawProviderEventIdCoveragePct < 100
+              ? `provider_event_id absent on ${Math.round((100 - rawProviderEventIdCoveragePct) * 100) / 100}% of raw rows; DISTINCT_PHYSICAL_EVENT_KEY falls back to condition_id::selected_token_id for those rows (tagged NO_PROVIDER_EVENT_ID::...)`
+              : "provider_event_id present on all raw rows",
         },
+        populationRawRowReconciliation: { populationRowSum, rawGspRows, matches: populationRowSum === rawGspRows },
         compressionByPopulation: funnel,
-        analyticalOutputTotals: {
-          compactRows: totalCompactRows,
-          uniqueCompactEvents: totalCompactEvents.size,
-          uniqueCompactMarkets: totalCompactMarkets.size,
-          compressionRatio: totalCompactRows === 0 ? null : Math.round((rawGspRows / totalCompactRows) * 100) / 100,
-        },
+        globalUniquePhysicalEvents,
         weeklyStability: "NOT_YET_MEASURABLE (single-day slice)",
         c4PredicateUnchanged: FROZEN_MODELS.C4.predicateDescription,
-        scoreboard: reports,
+        scoreboard: publishedReports,
       },
       null,
       2,
