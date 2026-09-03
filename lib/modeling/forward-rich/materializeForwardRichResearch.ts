@@ -29,18 +29,28 @@ import type {
 const HOUR_MS = 3_600_000;
 
 /**
- * Population identity resolution (RESEARCH_CORPUS_CONTRACT.md §1). Explicit
- * `pair.populationId` always wins; otherwise the frozen predicate:
+ * Population identity resolution (RESEARCH_CORPUS_CONTRACT.md §1) — producer /
+ * predicate driven, never calendar-month driven.
+ *
+ *   explicit pair.populationId                      -> honoured verbatim
  *   formula_version = 'shadow-strategic-sports-v1'  -> SEP_SHADOW_STRATEGIC_V1
- *   decision month = 2026-08                        -> AUG_SHADOW_C4_V1
- *   otherwise                                       -> SEP_PUBLIC_RICH_V1
+ *   otherwise (forward scored / public-rich lineage)-> SEP_PUBLIC_RICH_V1
+ *
+ * AUG_SHADOW_C4_V1 is the IMMUTABLE historical C4 benchmark (model = C4,
+ * decision period 2026-08-05..2026-08-25, frozen N=4,117). It is never extended
+ * forward and is reachable ONLY through an explicit `pair.populationId`
+ * carrying that proven benchmark identity — a live forward row must never
+ * become AUG_SHADOW_C4_V1 merely because its DECISION_AT falls in August UTC.
+ * The removed `decisionAt month == 2026-08` shortcut was an implementation
+ * defect against the frozen contract: a Europe/Minsk rolling day that begins in
+ * the prior UTC month (e.g. Minsk 2026-09-01 starts 2026-08-31T21:00Z) pushed
+ * legitimate forward public-rich rows into the immutable benchmark population.
  */
 export function derivePopulationId(pair: ForwardRichSignalPair): PopulationId {
   if (pair.populationId) return pair.populationId;
   if (pair.formulaVersion === "shadow-strategic-sports-v1") {
     return "SEP_SHADOW_STRATEGIC_V1";
   }
-  if (pair.decisionAt.slice(0, 7) === "2026-08") return "AUG_SHADOW_C4_V1";
   return "SEP_PUBLIC_RICH_V1";
 }
 
