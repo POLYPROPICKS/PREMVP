@@ -1,0 +1,19 @@
+# Service-scoped Railway config for the `research-clone-daily-sync` service ONLY.
+#
+# This file is intentionally NOT named `railway.toml` / `railway.json` and does
+# not live at the repository root, so Railway does not auto-discover it. It takes
+# effect only for the single service whose Settings > Config-as-code path is set
+# to `ops/railway/research-clone-daily-sync.toml`. No sibling service (PREMVP
+# web, signal-resolve-cron, contur3-* crons, ops-report-email-cron, etc.) reads
+# it, so landing it on `main` cannot change any other service's start command.
+#
+# Activation (pointing the service at this path + first bounded run) is handled
+# by the follow-up mission RESEARCH_CLONE_RUNTIME_ACTIVATE_VERIFY_V1.
+
+[build]
+buildCommand = "npm ci --ignore-scripts"
+
+[deploy]
+startCommand = "npm run research-clone:sync"
+cronSchedule = "0 2 * * *"
+restartPolicyType = "NEVER"

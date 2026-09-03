@@ -9,6 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "generate:signals": "tsx scripts/generate-signals.ts",
+    "research-clone:sync": "tsx scripts/research-clone-daily-sync.ts",
+    "test:research-clone-sync": "node --import tsx --test tests/research-clone/*.test.ts",
     "current-serving:backfill": "tsx scripts/current-serving-backfill-runner.ts",
     "resolve:signals": "tsx scripts/resolve-signals.ts",
     "resolve:signals:live-priority": "tsx scripts/resolve-signals.ts --write --priority-live-ledger --dedupe-strict --limit=100 --max-updates=100",
