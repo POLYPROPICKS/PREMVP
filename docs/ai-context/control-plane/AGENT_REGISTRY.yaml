@@ -184,6 +184,28 @@
       "portability": "CLAUDE_ONLY"
     },
     {
+      "canonical_id": "claude.hook.evolution_governor_terminal_persistence_gate",
+      "type": "HOOK",
+      "owner_platform": "claude_code_cloud",
+      "implementation_path": ".claude/hooks/evolution-governor-stop-gate.mjs",
+      "status": "PROVEN_PRESENT",
+      "invocation": "AUTOMATIC",
+      "triggers": ["Stop event on a Claude Code session that produced Daily Evolution Review or Automation Operations Governor evidence under evolution/cycles/ or evolution/roadmap-proposals/"],
+      "exclusions": ["any session that produced no Evolution/Governor evidence artifact", "Ireland", "product runtime", "database access"],
+      "model_policy": "n/a",
+      "reasoning_policy": "n/a",
+      "permissions": "read git state and delegate the admission verdict to premvp.command.evolution_canonicalize.v1 --admit --json; no PR, merge, ancestry or GitHub logic of its own",
+      "repository_scope": ["POLYPROPICKS/PREMVP"],
+      "input_contract": "transcript_path (accepted for signature compatibility; the verdict is derived from git state only)",
+      "output_contract": "exit 0 allow Stop (no pending persistence, or admission failed and the terminal failure is reported); exit 2 block Stop (validated lineage not yet canonical on origin/main -> drive premvp.command.evolution_canonicalize.v1; or the canonicalizer hard-failed -> fail closed)",
+      "independence_group": null,
+      "receipt_required": false,
+      "evidence_class": "SUPPORTED",
+      "last_verified_at": "2026-09-03T00:00:00Z",
+      "portability": "CLAUDE_ONLY",
+      "notes": "Enforcement/orchestration only. Reuses premvp.command.evolution_canonicalize.v1 and, through it, premvp.command.github_pr_create.v1 / github_pr_merge.v1 — it never re-implements admission, ancestry or GitHub mechanics. Proven by tests/control-plane/evolutionGovernorStopGate.test.mjs. End-to-end block-then-canonicalize not yet executed live; evidence_class SUPPORTED until a live run is recorded in EVIDENCE_LEDGER.md."
+    },
+    {
       "canonical_id": "claude.hook.session_start_dependency_guard",
       "type": "HOOK",
       "owner_platform": "claude_code_cloud",

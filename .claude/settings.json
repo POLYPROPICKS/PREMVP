@@ -21,6 +21,12 @@
             "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/validate-proof-package.mjs\" \"${transcript_path}\"",
             "timeout": 30,
             "statusMessage": "Checking proof package completeness..."
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/evolution-governor-stop-gate.mjs\" \"${transcript_path}\"",
+            "timeout": 30,
+            "statusMessage": "Enforcing Evolution/Governor terminal persistence..."
           }
         ]
       }
