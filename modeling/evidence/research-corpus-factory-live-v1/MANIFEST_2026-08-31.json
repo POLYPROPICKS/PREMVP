@@ -1,0 +1,173 @@
+{
+  "CORPUS_SCHEMA_VERSION": "research-corpus-factory-live-v1",
+  "MISSION": "RESEARCH_CORPUS_D1_FREEZE_RELEASE_V1",
+  "RELEASE_STATUS": "ACCEPTED_IMMUTABLE",
+  "GENERATED_AT": "2026-09-03T13:53:24.688Z",
+  "MANIFEST_FROZEN_AT": "2026-09-03T13:54:02.303Z",
+  "AS_OF_MODEL": "IMMUTABLE_AS_OF",
+  "ARTIFACT_IMMUTABLE": true,
+  "LABEL_EVIDENCE_AS_OF": {
+    "value": "2026-09-03T13:53:24.688Z",
+    "unit": "ISO-8601 UTC instant",
+    "meaning": "Gamma/CLOB terminal state was queried as of GENERATED_AT. Settlement may legitimately evolve later; a future rerun of the same D-1 date is NOT required to reproduce this label hash and MUST NOT overwrite this artifact."
+  },
+  "DETERMINISM_MODEL": "fixed captured clone inputs -> pure compact materializer -> deterministic artifact content. Pure materializer layer proven by tests/modeling/forward-rich/compactCorpus.test.ts (16/16). The label layer is AS-OF and time-varying by design.",
+  "SOURCE_PROJECT": "nppznoujvnyjargjkmnv",
+  "SOURCE_KIND": "RESEARCH_CLONE",
+  "SOURCE_WINDOW_START": {
+    "value": "2026-08-30T21:00:00.000Z",
+    "unit": "ISO-8601 UTC instant",
+    "tz": "Europe/Minsk D-1 00:00"
+  },
+  "SOURCE_WINDOW_END": {
+    "value": "2026-08-31T21:00:00.000Z",
+    "unit": "ISO-8601 UTC instant",
+    "tz": "Europe/Minsk D 00:00"
+  },
+  "SOURCE_D1_DATE_MINSK": "2026-08-31",
+  "SOURCE_MAX_WATERMARK": {
+    "value": "2026-08-31T00:05:36.178696+00:00|fee6f26a-0cdb-4e1a-bd53-f5cdc6c3ae95",
+    "unit": "generated_signal_pairs (created_at|id) keyset",
+    "source_stage": "INPUT_RAW"
+  },
+  "OBS_LOOKBACK_FLOOR": "2026-07-31T21:00:00.000Z",
+  "COUNTS": [
+    {
+      "name": "INPUT_RAW_ROW_N",
+      "value": 1130,
+      "unit": "generated_signal_pairs decision rows (repeated emissions included)",
+      "source_stage": "INPUT_RAW"
+    },
+    {
+      "name": "INPUT_OBSERVATION_ROW_N",
+      "value": 3658,
+      "unit": "generated_signal_research_snapshots rows",
+      "source_stage": "INPUT_RAW_OBSERVATION"
+    },
+    {
+      "name": "OUTPUT_COMPACT_ROW_N",
+      "value": 920,
+      "unit": "compact PIT feature rows (1 per canonical identity)",
+      "source_stage": "OUTPUT_COMPACT"
+    },
+    {
+      "name": "PIT_FUTURE_LEAK_N",
+      "value": 0,
+      "unit": "compact rows with an eligible observation after DECISION_AT",
+      "source_stage": "OUTPUT_COMPACT"
+    },
+    {
+      "name": "SETTLED_N",
+      "value": 490,
+      "unit": "compact rows with Gamma terminal label WIN|LOSS|VOID",
+      "source_stage": "OUTPUT_COMPACT_LABEL"
+    },
+    {
+      "name": "OPEN_N",
+      "value": 430,
+      "unit": "compact rows with label OPEN (no Gamma terminal state)",
+      "source_stage": "OUTPUT_COMPACT_LABEL"
+    },
+    {
+      "name": "NO_MATCH_N",
+      "value": 0,
+      "unit": "compact rows with label NO_MATCH (broken identity)",
+      "source_stage": "OUTPUT_COMPACT_LABEL"
+    }
+  ],
+  "POPULATIONS": [
+    {
+      "population_id": "SEP_PUBLIC_RICH_V1",
+      "COMPACT_ROW_N": {
+        "value": 251,
+        "unit": "compact rows",
+        "source_stage": "OUTPUT_COMPACT"
+      },
+      "COMPACT_PHYSICAL_EVENT_N": {
+        "value": 212,
+        "unit": "distinct provider_event_id (== Gamma event.id)",
+        "source_stage": "OUTPUT_COMPACT",
+        "unresolved_provider_event_id_rows": 0
+      },
+      "LABEL_COUNTS": {
+        "value": {
+          "WIN": 125,
+          "LOSS": 101,
+          "OPEN": 25
+        },
+        "unit": "compact rows by label",
+        "source_stage": "OUTPUT_COMPACT_LABEL"
+      }
+    },
+    {
+      "population_id": "SEP_SHADOW_STRATEGIC_V1",
+      "COMPACT_ROW_N": {
+        "value": 669,
+        "unit": "compact rows",
+        "source_stage": "OUTPUT_COMPACT"
+      },
+      "COMPACT_PHYSICAL_EVENT_N": {
+        "value": 30,
+        "unit": "distinct provider_event_id (== Gamma event.id)",
+        "source_stage": "OUTPUT_COMPACT",
+        "unresolved_provider_event_id_rows": 638
+      },
+      "LABEL_COUNTS": {
+        "value": {
+          "OPEN": 405,
+          "LOSS": 127,
+          "WIN": 137
+        },
+        "unit": "compact rows by label",
+        "source_stage": "OUTPUT_COMPACT_LABEL"
+      }
+    }
+  ],
+  "POPULATION_POOLING": "FORBIDDEN — counts are per population_id and are never summed across populations",
+  "COMPRESSION_EVIDENCE": {
+    "ROWS": {
+      "UNIT": "rows",
+      "SOURCE_STAGE": "INPUT_RAW -> OUTPUT_COMPACT",
+      "INPUT_DENOMINATOR": 1130,
+      "OUTPUT_DENOMINATOR": 920,
+      "ratio": 1.2283,
+      "note": "raw generated_signal_pairs decision rows (repeated emissions) collapsed to one first-eligible compact row per canonical identity"
+    },
+    "BYTES": {
+      "UNIT": "bytes",
+      "SOURCE_STAGE": "canonical JSONL -> gzip -9 artifact on disk",
+      "INPUT_DENOMINATOR": 1259799,
+      "OUTPUT_DENOMINATOR": 86197,
+      "ratio": 14.62
+    }
+  },
+  "PHYSICAL_EVENT_CENSUS": {
+    "UNIT": "distinct provider_event_id (== Gamma event.id)",
+    "IDENTITY_RULE": "RESEARCH_CORPUS_CONTRACT.md §2 — provider_event_id only; rows with no provider_event_id are counted separately as UNRESOLVED, never folded in via a condition_id fallback",
+    "INPUT_RAW": {
+      "SOURCE_STAGE": "INPUT_RAW",
+      "DENOMINATOR": null,
+      "NOTE": "not recomputable from the frozen compact artifact alone (raw generated_signal_pairs rows are not retained in the artifact); see COMPRESSION_EVIDENCE.ROWS for the denominator-consistent raw->compact reduction"
+    },
+    "OUTPUT_COMPACT": {
+      "SOURCE_STAGE": "OUTPUT_COMPACT",
+      "DENOMINATOR": 238,
+      "UNRESOLVED_PROVIDER_EVENT_ID_ROWS": 638
+    },
+    "NOTE": "Per-stage census, NOT a compression funnel. The prior manifest's 834->844 'physical events' line mixed a provider_event_id||condition_id fallback rule and is withdrawn."
+  },
+  "ARTIFACT_BYTES": {
+    "value": 86197,
+    "unit": "bytes (CORPUS_<d1>.jsonl.gz on disk)"
+  },
+  "CANONICAL_CONTENT_SHA256": "c46668b3f570da8c282e1cea30432e5337f006670be9fe611cfbb73989719ed1",
+  "CANONICAL_CONTENT_DEFINITION": "sha256(utf8) of the newline-joined canonical (sorted-key) JSON of every compact row in deterministic materializer order; independent of gzip framing",
+  "SETTLEMENT_AUTHORITY": "Gamma/CLOB public terminal state only; clone signal_result recorded per-row as cloneSignalResult cross-check, never promoted",
+  "GAMMA_RESOLVER_STATE_COUNTS": {
+    "resolved_candidate": 490,
+    "active_unresolved": 85,
+    "lookup_failed": 345
+  },
+  "PRODUCTION_PRIMARY_READS": 0,
+  "PRODUCTION_WRITES": 0
+}
