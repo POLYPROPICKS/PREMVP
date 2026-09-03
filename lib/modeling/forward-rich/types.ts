@@ -89,6 +89,16 @@ export interface ForwardRichSignalPair {
   formulaVersion?: string | null;
 
   /**
+   * Decision-time Score LEVEL — `generated_signal_pairs.pre_event_score_num`
+   * verbatim. Written once in the immutable GSP INSERT payload
+   * (`created_at == DECISION_AT`); no repository writer mutates it after insert.
+   * PIT-safe at DECISION_AT with no GSRS dependency. This is the Score LEVEL and
+   * is NEVER conflated with the GSRS-derived Score SERIES / movement
+   * (RESEARCH_CORPUS_SCORE_LEVEL_SOURCE_RECONCILE_V1, verdict C).
+   */
+  preEventScoreNum?: number | null;
+
+  /**
    * Mandatory population identity. When omitted the compact layer derives it
    * from `formulaVersion` + `decisionAt` per RESEARCH_CORPUS_CONTRACT.md §1.
    */
@@ -170,7 +180,18 @@ export interface ForwardRichResearchRow {
   sport: string | null;
   formulaVersion: string | null;
 
-  // ── RICH: score ──────────────────────────────────────────────────────────
+  // ── RICH: score LEVEL (immutable decision-time scalar, GSP) ──────────────
+  /**
+   * Decision-time Score LEVEL from `generated_signal_pairs.pre_event_score_num`
+   * (RESEARCH_CORPUS_SCORE_LEVEL_SOURCE_RECONCILE_V1). Distinct from `score`
+   * (the GSRS observation SERIES). Null where the producer wrote null
+   * (e.g. SEP_SHADOW_STRATEGIC_V1 — structural absence, never synthesized).
+   */
+  scoreLevel: number | null;
+  /** Lineage tag; the only permitted value is the GSP column name. */
+  scoreLevelSource: "generated_signal_pairs.pre_event_score_num" | null;
+
+  // ── RICH: score SERIES (GSRS observation movement) ──────────────────────
   scoreMetricFormulaVersion: string | null;
   score: DerivedSeries;
 

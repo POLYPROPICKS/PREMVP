@@ -185,6 +185,12 @@ export function materializeForwardRichResearch(
       sport: pair.providerSportCode ?? pair.providerSportFamily ?? null,
       formulaVersion: pair.formulaVersion ?? null,
 
+      scoreLevel: typeof pair.preEventScoreNum === "number" ? pair.preEventScoreNum : null,
+      scoreLevelSource:
+        typeof pair.preEventScoreNum === "number"
+          ? "generated_signal_pairs.pre_event_score_num"
+          : null,
+
       scoreMetricFormulaVersion,
       score: deriveSeries(eligible, (o) => o.scoreValue),
 

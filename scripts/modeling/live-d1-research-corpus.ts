@@ -132,7 +132,7 @@ interface RawPair extends ForwardRichSignalPair {
 }
 
 const GSP_COLS =
-  "id, condition_id, selected_token_id, created_at, entry_price_num, diagnostics, formula_version, signal_result";
+  "id, condition_id, selected_token_id, created_at, entry_price_num, diagnostics, formula_version, signal_result, pre_event_score_num";
 
 /**
  * Two-read (timestamp,id) keyset page — the PROVEN shape from
@@ -225,6 +225,7 @@ async function readSignalPairs(
         providerSportCode: str(d.providerSportCode),
         providerSportFamily: str(d.providerSportFamily),
         formulaVersion: str(r.formula_version),
+        preEventScoreNum: num(r.pre_event_score_num),
         gammaTerminal: null,
         cloneSignalResult: str(r.signal_result),
         _cloneSignalResultRaw: str(r.signal_result),
