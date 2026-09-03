@@ -12,11 +12,13 @@ import {
 import {
   buildPlanRunId,
   resolveNightWindow,
-  isInReservationCreationWindow,
+  parseReservationTimesMinsk,
+  resolveReservationAnchor,
+  resolveDueReservationAnchor,
 } from "@/lib/executor/nightWindow";
 
-// Contur3 17:00 Minsk event-first reservation cron.
-//   GET/POST /api/cron/night-event-reservations          → create/return tonight's reserved events.
+// Configured-Minsk-anchor event-first Reservation cron.
+// Railway supplies a continuous wake-up; RESERVATION_TIMES_MINSK is the sole anchor authority.
 //   ?mode=status                                          → read-only status, never writes.
 //   ?dryRun=1                                            → alias for mode=status.
 //   ?forceRebuild=CEO_APPROVED                           → delete queue+reservations, rebuild.
@@ -31,8 +33,7 @@ import {
 //                                                            already has rows. Uses the existing
 //                                                            write seam (not forceRebuild).
 //
-// Creation window guard: writes are blocked 08:00–16:30 Minsk to prevent accidental
-// stale-plan creation from morning cron misfires. Use forceCreate=CEO_APPROVED to override.
+// Normal writes are admitted only during a bounded configured-anchor delay window.
 //
 // Auth: same x-executor-secret pattern as /api/executor/*. Event-level only — this NEVER
 // writes the execution queue and NEVER places orders. Per-event market selection happens
@@ -60,6 +61,8 @@ async function handle(request: NextRequest) {
   const nowIso = new Date(nowMs).toISOString();
 
   try {
+    const reservationTimes = parseReservationTimesMinsk();
+    const currentAnchor = resolveReservationAnchor(nowMs, reservationTimes);
     // ── canary=CEO_APPROVED&mode=canaryPreview: read-only, zero writes ───────
     if (mode === "canaryPreview") {
       if (!canaryAuthorized) {
@@ -166,8 +169,8 @@ async function handle(request: NextRequest) {
 
     // ── mode=status or dryRun=1: read-only, never writes ─────────────────────
     if (mode === "status" || dryRun) {
-      const planRunId = buildPlanRunId(nowMs);
-      const window = resolveNightWindow(nowMs);
+      const planRunId = buildPlanRunId(nowMs, currentAnchor);
+      const window = resolveNightWindow(nowMs, currentAnchor);
       const planHealth = await loadPlanStatus(planRunId, nowMs);
       return NextResponse.json(
         {
@@ -180,7 +183,7 @@ async function handle(request: NextRequest) {
           window_end_iso: window.endIso,
           horizon_end_iso: window.horizonEndIso,
           plan_health: planHealth,
-          in_creation_window: isInReservationCreationWindow(nowMs),
+          configured_anchor_due: resolveDueReservationAnchor(nowMs, reservationTimes) !== null,
           generated_at_iso: nowIso,
         },
         { status: 200, headers: { "Cache-Control": "no-store" } }
@@ -221,26 +224,26 @@ async function handle(request: NextRequest) {
       );
     }
 
-    // ── Creation window guard: block daytime writes (08:00–16:30 Minsk) ───────
-    const inWindow = isInReservationCreationWindow(nowMs);
-    if (!inWindow && !force && !forceCreate) {
-      const planRunId = buildPlanRunId(nowMs);
-      const window = resolveNightWindow(nowMs);
+    // ── Configured-anchor admission: ordinary wake-ups outside a due anchor do not write. ──
+    const dueAnchor = resolveDueReservationAnchor(nowMs, reservationTimes);
+    if (!dueAnchor && !force && !forceCreate) {
+      const planRunId = buildPlanRunId(nowMs, currentAnchor);
+      const window = resolveNightWindow(nowMs, currentAnchor);
       const planHealth = await loadPlanStatus(planRunId, nowMs);
       return NextResponse.json(
         {
           ok: true,
           write_skipped: true,
-          write_skip_reason: "OUTSIDE_CREATION_WINDOW_08_TO_1630_MINSK",
-          allowed_creation_window: "16:30–08:00 Minsk (evening/night)",
+          write_skip_reason: "OUTSIDE_CONFIGURED_RESERVATION_ANCHOR_WINDOW",
+          configured_reservation_times_minsk: reservationTimes.map((time) => `${time.hhmm.slice(0, 2)}:${time.hhmm.slice(2)}`),
           plan_run_id: planRunId,
           plan_date_minsk: window.planDateMinsk,
           window_start_iso: window.startIso,
           window_end_iso: window.endIso,
           plan_health: planHealth,
-          in_creation_window: false,
+          configured_anchor_due: false,
           generated_at_iso: nowIso,
-          hint: "Cron fires at 17:00 Minsk. Override with ?forceCreate=CEO_APPROVED.",
+          hint: "Railway may wake continuously; writes occur only at RESERVATION_TIMES_MINSK anchors. Override with ?forceCreate=CEO_APPROVED.",
           founder_action_required: false,
           ireland_autostart_expected: false,
         },
@@ -252,6 +255,7 @@ async function handle(request: NextRequest) {
     const { plan, persisted: result } = await runReservationCronWithEvidence(nowMs, {
       force: force || forceCreate,
       selectorMode: "CONTRACT_A_PLANNING_V1",
+      anchor: dueAnchor ?? currentAnchor,
     });
 
     // Persist diagnostics (non-fatal if it fails).
@@ -302,7 +306,7 @@ async function handle(request: NextRequest) {
           score: r.event_score,
           status: r.status,
         })),
-        in_creation_window: inWindow,
+        configured_anchor_due: dueAnchor !== null,
         founder_action_required: false,
         ireland_autostart_expected: true,
         note: "Event-level reservation only. Market selection occurs at T-60/T-30 rebalance.",

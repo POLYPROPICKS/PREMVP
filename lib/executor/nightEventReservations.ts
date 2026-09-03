@@ -38,6 +38,7 @@ import {
   PREFERRED_ENTRY_MINUTES_BEFORE,
   LATEST_ENTRY_MINUTES_BEFORE,
   type NightWindow,
+  type ReservationAnchor,
 } from "./nightWindow";
 import type { NightEventReservationRow } from "./executorQueueTypes";
 import type {
@@ -2116,6 +2117,7 @@ function providerVolumeByPhysicalEventId(
 export async function buildContractAReservationPlan(
   nowMs: number,
   deps: {
+    anchor?: ReservationAnchor;
     fetchSourceRows?: () => Promise<readonly Record<string, unknown>[]>;
     produceDecisions?: (
       rows: readonly Record<string, unknown>[]
@@ -2125,8 +2127,8 @@ export async function buildContractAReservationPlan(
     hashPhysicalEventKey?: (key: string) => string;
   } = {}
 ): Promise<ReservationPlan> {
-  const window = resolveNightWindow(nowMs);
-  const planRunId = buildPlanRunId(nowMs);
+  const window = resolveNightWindow(nowMs, deps.anchor);
+  const planRunId = buildPlanRunId(nowMs, deps.anchor);
 
   const rows = deps.fetchSourceRows
     ? await deps.fetchSourceRows()
@@ -2309,7 +2311,7 @@ export async function persistReservationPlan(
  */
 export async function runReservationCronWithEvidence(
   nowMs: number,
-  opts: { force?: boolean; selectorMode?: FireModelSelectorMode } = {},
+  opts: { force?: boolean; selectorMode?: FireModelSelectorMode; anchor?: ReservationAnchor } = {},
   deps: {
     fetchCandidates?: () => Promise<ReservationCandidateFetchResult>;
     fetchSourceRows?: () => Promise<readonly Record<string, unknown>[]>;
@@ -2328,6 +2330,7 @@ export async function runReservationCronWithEvidence(
   try {
     const plan = opts.selectorMode === "CONTRACT_A_PLANNING_V1"
       ? await buildContractAReservationPlan(nowMs, {
+          anchor: opts.anchor,
           fetchSourceRows: deps.fetchSourceRows,
           produceDecisions: deps.produceDecisions,
           targetPhysicalEventKeyHash: deps.targetPhysicalEventKeyHash,
