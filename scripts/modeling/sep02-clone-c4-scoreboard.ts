@@ -313,6 +313,95 @@ function compactSignalPairs(rows: RawGsp[]): ForwardRichSignalPair[] {
     }));
 }
 
+type EventStartSourceClass =
+  | "GSP_DIAGNOSTICS"
+  | "GSRS_EXACT_IDENTITY_MATCH"
+  | "GSRS_CONDITION_ID_MATCH"
+  | "NONE_AVAILABLE";
+
+/**
+ * Recovers eventStartIso using ONLY exact-identity clone data, in the
+ * mission's stated precedence:
+ *   1. direct GSP field (diagnostics.gameStartIso) — pair.eventStartIso as fetched;
+ *   2. exact identity match (condition_id + selected_token_id) against
+ *      generated_signal_research_snapshots.game_start_iso, PIT-filtered
+ *      (snapshot_at <= decision_at) — this is what the unchanged materializer
+ *      already does internally when eventStartIso is null;
+ *   3. condition_id-only match against the same table/column, still PIT-filtered.
+ *      Game start time is a property of the physical market, not the selected
+ *      side, so a snapshot recorded against the OPPOSING token of the same
+ *      condition_id is still an exact-identity source, never a slug/text guess.
+ * Step 3 is computed here (not inside the unchanged materializer) precisely so
+ * it only fires when steps 1 and 2 both fail — never overriding the
+ * materializer's own exact-token match.
+ */
+function resolveEventStart(
+  pair: { conditionId: string; selectedTokenId: string; decisionAt: string; eventStartIso: string | null },
+  observationsByConditionId: Map<string, ForwardRichSnapshotObservation[]>,
+): { eventStartIso: string | null; sourceClass: EventStartSourceClass } {
+  if (pair.eventStartIso != null) {
+    return { eventStartIso: pair.eventStartIso, sourceClass: "GSP_DIAGNOSTICS" };
+  }
+  const sameCondition = (observationsByConditionId.get(pair.conditionId) ?? [])
+    .filter((o) => o.snapshotAt <= pair.decisionAt)
+    .sort((a, b) => (a.snapshotAt < b.snapshotAt ? -1 : a.snapshotAt > b.snapshotAt ? 1 : 0));
+
+  const exactTokenHit = sameCondition.find((o) => o.selectedTokenId === pair.selectedTokenId && o.gameStartIso != null);
+  if (exactTokenHit) {
+    return { eventStartIso: exactTokenHit.gameStartIso, sourceClass: "GSRS_EXACT_IDENTITY_MATCH" };
+  }
+  const conditionOnlyHit = sameCondition.find((o) => o.gameStartIso != null);
+  if (conditionOnlyHit) {
+    return { eventStartIso: conditionOnlyHit.gameStartIso, sourceClass: "GSRS_CONDITION_ID_MATCH" };
+  }
+  return { eventStartIso: null, sourceClass: "NONE_AVAILABLE" };
+}
+
+interface CoverageBeforeAfter {
+  beforePct: number;
+  afterPct: number;
+  sourceClassCounts: Record<EventStartSourceClass, number>;
+}
+
+/** Enriches eventStartIso in place (returns new pair objects) and reports before/after coverage. */
+function enrichEventStart(
+  pairs: ForwardRichSignalPair[],
+  observations: ForwardRichSnapshotObservation[],
+): { enriched: ForwardRichSignalPair[]; coverage: CoverageBeforeAfter } {
+  const observationsByConditionId = new Map<string, ForwardRichSnapshotObservation[]>();
+  for (const o of observations) {
+    const bucket = observationsByConditionId.get(o.conditionId);
+    if (bucket) bucket.push(o);
+    else observationsByConditionId.set(o.conditionId, [o]);
+  }
+
+  const sourceClassCounts: Record<EventStartSourceClass, number> = {
+    GSP_DIAGNOSTICS: 0,
+    GSRS_EXACT_IDENTITY_MATCH: 0,
+    GSRS_CONDITION_ID_MATCH: 0,
+    NONE_AVAILABLE: 0,
+  };
+  const enriched: ForwardRichSignalPair[] = [];
+  for (const pair of pairs) {
+    const { eventStartIso, sourceClass } = resolveEventStart(pair, observationsByConditionId);
+    sourceClassCounts[sourceClass] += 1;
+    enriched.push({ ...pair, eventStartIso });
+  }
+
+  const n = pairs.length || 1;
+  const beforeResolved = sourceClassCounts.GSP_DIAGNOSTICS + sourceClassCounts.GSRS_EXACT_IDENTITY_MATCH;
+  const afterResolved = beforeResolved + sourceClassCounts.GSRS_CONDITION_ID_MATCH;
+
+  return {
+    enriched,
+    coverage: {
+      beforePct: Math.round((beforeResolved / n) * 10000) / 100,
+      afterPct: Math.round((afterResolved / n) * 10000) / 100,
+      sourceClassCounts,
+    },
+  };
+}
+
 type SettlementCategory = "WIN" | "LOSS" | "VOID" | "OPEN" | "NO_MATCH" | "AMBIGUOUS";
 
 function classifySettlement(
@@ -347,17 +436,21 @@ interface PopulationReport {
   pnlPer100Bets: number | null;
   coverage: {
     entryPricePct: number;
+    sportPct: number;
+    leadTimeHoursPct: number;
     sportLeadTimePct: number;
     scorePct: number;
     volumePct: number;
     providerEventIdPct: number;
   };
+  eventStartEnrichment: CoverageBeforeAfter;
 }
 
 async function runForPopulation(
   population: PopulationId,
   rawRowCount: number,
   compactRows: ForwardRichResearchRow[],
+  eventStartEnrichment: CoverageBeforeAfter,
 ): Promise<PopulationReport> {
   const c4 = FROZEN_MODELS.C4;
   const eligibleByRow = compactRows.filter((r) => {
@@ -414,6 +507,8 @@ async function runForPopulation(
   const winRatePct = settledN === 0 ? null : Math.round((modelResult.WINS / settledN) * 10000) / 100;
 
   const withEntryPrice = compactRows.filter((r) => r.entryPrice != null).length;
+  const withSport = compactRows.filter((r) => (r.providerSportFamily ?? r.providerSportCode ?? null) != null).length;
+  const withLeadTime = compactRows.filter((r) => r.leadTimeHours != null).length;
   const withSportLeadTime = compactRows.filter(
     (r) => (r.providerSportFamily ?? r.providerSportCode ?? null) != null && r.leadTimeHours != null,
   ).length;
@@ -444,11 +539,14 @@ async function runForPopulation(
     pnlPer100Bets: pnlPer100,
     coverage: {
       entryPricePct: pct(withEntryPrice),
+      sportPct: pct(withSport),
+      leadTimeHoursPct: pct(withLeadTime),
       sportLeadTimePct: pct(withSportLeadTime),
       scorePct: pct(withScore),
       volumePct: pct(withVolume),
       providerEventIdPct: pct(withProviderEventId),
     },
+    eventStartEnrichment,
   };
 }
 
@@ -493,8 +591,12 @@ async function main() {
 
   for (const [population, rows] of byPopulation) {
     const compactPairs = compactSignalPairs(rows);
+    // Fills eventStartIso gaps from exact-identity clone data only (see
+    // resolveEventStart doc) before the unchanged materializer runs, so its
+    // own PIT rule and exact-token fallback still apply to whatever remains.
+    const { enriched: enrichedPairs, coverage: eventStartEnrichment } = enrichEventStart(compactPairs, observations);
     const compactRows = materializeForwardRichResearch({
-      signalPairs: compactPairs,
+      signalPairs: enrichedPairs,
       observations,
       sinceCutoff: SINCE_CUTOFF,
       materializedAt,
@@ -518,7 +620,7 @@ async function main() {
       UNIQUE_PHYSICAL_EVENTS: uniquePhysicalEvents,
     };
 
-    reports.push(await runForPopulation(population, rows.length, compactRows));
+    reports.push(await runForPopulation(population, rows.length, compactRows, eventStartEnrichment));
   }
 
   // Invariant: no per-population UNIQUE_PHYSICAL_EVENTS may exceed the global
