@@ -80,11 +80,45 @@ function loadPartition(date: string): LoadedPartition {
     }
   }
 
+  // ── additive Score LEVEL overlay (RESEARCH_CORPUS_SCORE_LEVEL_CORRECTION_V1) ──
+  // Independently hashed; keyed by canonical corpus identity; never mutates the
+  // frozen CORPUS artifact. Present for pre-correction accepted partitions; a
+  // forward partition carries scoreLevel on the row itself and needs no overlay.
+  const overlayGz = join(PARTITION_DIR, `SCORE_LEVEL_OVERLAY_${date}.jsonl.gz`);
+  const overlayManifestPath = join(PARTITION_DIR, `SCORE_LEVEL_OVERLAY_MANIFEST_${date}.json`);
+  const scoreLevelByIdentity = new Map<string, number | null>();
+  let scoreLevelOverlaySha: string | null = null;
+  if (existsSync(overlayGz)) {
+    const ogz = readFileSync(overlayGz);
+    const ojsonl = gunzipSync(ogz).toString("utf8");
+    scoreLevelOverlaySha = createHash("sha256").update(ojsonl, "utf8").digest("hex");
+    if (existsSync(overlayManifestPath)) {
+      const om = JSON.parse(readFileSync(overlayManifestPath, "utf8")) as Record<string, unknown>;
+      if (String(om.OVERLAY_CANONICAL_CONTENT_SHA256 ?? "") !== scoreLevelOverlaySha) {
+        throw new Error(`SCORE_LEVEL_OVERLAY_HASH_MISMATCH ${date}`);
+      }
+      if (String(om.PARENT_PARTITION_CANONICAL_SHA256 ?? "") !== canonicalHash) {
+        throw new Error(`SCORE_LEVEL_OVERLAY_PARENT_MISMATCH ${date}: overlay was built against a different CORPUS hash`);
+      }
+    }
+    for (const l of ojsonl.split("\n").filter((x) => x.trim().length > 0)) {
+      const o = JSON.parse(l);
+      scoreLevelByIdentity.set(`${o.conditionId}::${o.selectedTokenId}::${o.decisionAt}`, typeof o.scoreLevel === "number" ? o.scoreLevel : null);
+    }
+  }
+
   const rows: RollingCompactRow[] = jsonl
     .split("\n")
     .filter((l) => l.trim().length > 0)
     .map((l) => {
       const r = JSON.parse(l);
+      const idKey = `${r.conditionId}::${r.selectedTokenId}::${r.decisionAt}`;
+      const scoreLevel =
+        typeof r.scoreLevel === "number"
+          ? r.scoreLevel
+          : scoreLevelByIdentity.has(idKey)
+            ? scoreLevelByIdentity.get(idKey)!
+            : undefined;
       return {
         populationId: r.populationId,
         conditionId: r.conditionId,
@@ -93,11 +127,13 @@ function loadPartition(date: string): LoadedPartition {
         decisionAt: r.decisionAt,
         label: r.label,
         score: r.score,
+        scoreLevel,
         selectedPrice: r.selectedPrice,
         volumeUsd: r.volumeUsd ?? null,
         leadTimeHours: r.leadTimeHours ?? null,
       } satisfies RollingCompactRow;
     });
+  void scoreLevelOverlaySha;
 
   const win = (manifest.SOURCE_WINDOW_START as { value?: string } | undefined)?.value ?? null;
   const winEnd = (manifest.SOURCE_WINDOW_END as { value?: string } | undefined)?.value ?? null;

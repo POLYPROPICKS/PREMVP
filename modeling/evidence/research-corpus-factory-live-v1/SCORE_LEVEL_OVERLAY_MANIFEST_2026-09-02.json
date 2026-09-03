@@ -1,0 +1,44 @@
+{
+  "OVERLAY_SCHEMA_VERSION": "score-level-overlay-v1",
+  "MISSION": "RESEARCH_CORPUS_SCORE_LEVEL_CORRECTION_V1",
+  "GENERATED_AT": "2026-09-03T14:51:16.853Z",
+  "PARTITION_DATE": "2026-09-02",
+  "PARENT_PARTITION": "CORPUS_2026-09-02.jsonl.gz",
+  "PARENT_PARTITION_CANONICAL_SHA256": "0e06fd869462118b79138cf6741c188f2d58c551f3f8023eadbc6b18eb2d7287",
+  "PARENT_ARTIFACT_UNCHANGED": true,
+  "IDENTITY_KEY": "(condition_id, selected_token_id, decisionAt) — canonical corpus identity",
+  "SCORE_LEVEL_SOURCE": "generated_signal_pairs.pre_event_score_num",
+  "WRITE_TIME_SEMANTICS": "immutable at GSP INSERT; created_at == DECISION_AT; no writer mutates it after insert",
+  "PIT_SAFE_AT_DECISION": true,
+  "SCORE_SERIES_RELATIONSHIP": "distinct from the GSRS score DerivedSeries; LEVEL is never a series and never synthesized",
+  "OVERLAY_ROW_N": 1137,
+  "POPULATIONS": [
+    {
+      "population_id": "SEP_PUBLIC_RICH_V1",
+      "OVERLAY_ROW_N": 501,
+      "SCORE_LEVEL_PRESENT_N": 501,
+      "SCORE_LEVEL_COVERAGE_PCT": 100,
+      "MIN": 53,
+      "MAX": 78,
+      "STRUCTURAL_NULL_NOTE": null
+    },
+    {
+      "population_id": "SEP_SHADOW_STRATEGIC_V1",
+      "OVERLAY_ROW_N": 636,
+      "SCORE_LEVEL_PRESENT_N": 0,
+      "SCORE_LEVEL_COVERAGE_PCT": 0,
+      "MIN": null,
+      "MAX": null,
+      "STRUCTURAL_NULL_NOTE": "producer writes pre_event_score_num = null; absence is structural and preserved"
+    }
+  ],
+  "SOURCE_SPAN": {
+    "startUtc": "2026-08-26T21:00:00.000Z",
+    "endUtc": "2026-09-02T21:00:00.000Z",
+    "gsp_rows_scanned": 7951
+  },
+  "OVERLAY_CANONICAL_CONTENT_SHA256": "102ca0f0757a4a92dc9a79e0ea691dd524146ee61bd871893b91d9e3994fe371",
+  "OVERLAY_CANONICAL_CONTENT_DEFINITION": "sha256(utf8) of newline-joined canonical (sorted-key) JSON of every overlay row in (condition_id, selected_token_id, decisionAt) order",
+  "PRODUCTION_PRIMARY_READS": 0,
+  "PRODUCTION_WRITES": 0
+}
