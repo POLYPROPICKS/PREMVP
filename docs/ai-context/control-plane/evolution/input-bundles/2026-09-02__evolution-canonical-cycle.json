@@ -1,0 +1,35 @@
+{
+  "bundle_id": "2026-09-02__evolution-canonical-cycle",
+  "repository": "POLYPROPICKS/PREMVP",
+  "period_start": "2026-09-02T00:00:00Z",
+  "period_end": "2026-09-03T00:00:00Z",
+  "evidence_cutoff": "2026-09-03T00:25:00Z",
+  "capture_coverage": "PARTIAL",
+  "completion_envelope_ids": [],
+  "confirmed_changes": [
+    "POLYPROPICKS/PREMVP#219",
+    "POLYPROPICKS/PREMVP#224",
+    "POLYPROPICKS/PREMVP#225"
+  ],
+  "operator_action_events": [],
+  "operating_telemetry": {
+    "reviewer_corrections_rejections": 0,
+    "runtime_evidence_count": 0,
+    "reusable_artifacts_created": 3
+  },
+  "supporting_metrics": {
+    "runtime_evidence_count": 0,
+    "reusable_artifacts_created": 3
+  },
+  "defect_occurrences": [
+    {
+      "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+      "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+      "recurrence": "SAME_ROOT_REPEAT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": null,
+      "proven_effective_evidence_refs": []
+    }
+  ],
+  "notes": "git log origin/main --since=2026-09-02T00:20:00Z (the prior cycle's own evidence_cutoff) through this bundle's evidence_cutoff (2026-09-03T00:25:00Z) shows three real merges to main plus the prior cycle's own docs artifact: PR#221 (merged 2026-09-02T00:21:55Z, 3 min after the prior cutoff -- the prior cycle's own docs(evolution) artifact, not new business evidence, excluded from confirmed_changes exactly as PR#215 was excluded from the prior bundle). PR#219 'MODEL_RESEARCH_ENGINE_FREEZE_V1' (1b42125, merged 2026-09-02T05:46:15Z, 11 files/+1021) adds an isolated, LLM-free, deterministic research-engine module (lib/modeling/research-engine/) freezing C0/C1/C4/C5 model semantics as code, with 21 hermetic tests, a CLI, and an explicit statement that it does not solve canonical dataset portability (next transition: CANONICAL_MODELING_DATASET_V1); no DB/production/Contract A/Reservation/Queue/scoring/Score/Volume/liquidity/CLV path touched. PR#224 'TERMINAL_LIFECYCLE_DISPATCH_20260902' (0c8e7cd, merged 2026-09-02T07:22:17Z, 3 files/+145/-21) changes scripts/control-plane/evolution-canonicalize.mjs so that, for an executor whose registered GitHub PR adapter resolves to github_mcp/registered_platform_capability (claude_code_cloud), --canonicalize now emits a structured EXECUTOR_NATIVE_PLATFORM_CAPABILITY dispatch plan (create_pull_request then merge_pull_request payloads) instead of throwing GITHUB_PR_EXECUTOR_NATIVE_DISPATCH_REQUIRED; adds createCanonicalizationDispatchPlan/executeCanonicalizationDispatchPlan plus 4 new tests including one proving the fail-closed path when no adapter resolves. PR#225 'FORWARD_RICH_CAPTURE_RELEASE_V1' (eca1cf2, merged 2026-09-02T08:45:44Z, 14 files/+1167/-12) is a release-only integration making new production GSRS snapshot generations persist an additive, always-present diagnostics.scoreObservation block (lineage-stamped via new lib/feed/researchScoreObservation.ts) carrying the already-computed strategic/fire-model Score; explicitly never read by the product feed and explicitly does not itself capture any live Score (next transition: FORWARD_RICH_CAPTURE_RUNTIME_OBSERVATION_V1); reviewed by premvp.reviewer.contur_gate.v1 (R4_CONTUR_PRODUCTION_BOUNDARY) with CURRENT_SCOPE_VERDICT PASS, NEXT_PHASE_READINESS NOT_READY; 15 new tests. docs/ai-context/control-plane/CURRENT_STATE.yaml remains unchanged (updated_at=2026-08-28T21:00:54Z, state_version 17, origin_main_sha=2cb8d49...) -- sixth consecutive cycle with the same staleness gap (H1). mcp__github__list_pull_requests (state=open) at this cutoff shows the tracked Governor/Evolution draft-PR family (H7) at #199, #205, #206, #212, #214, #216 (all six present at the prior cutoff, still open) plus new #216-adjacent PR #222 'docs(evolution): first Automation Roadmap Governor pass -- ONE_AUTOMATION_INVESTMENT' (opened 2026-09-02T02:12:44Z, within this period) -- seven confirmed this period. Two additional same-titled Evolution-persistence PRs, #189 and #190 (both dated 2026-08-26/27), are also currently open and match the same family by title but were not enumerated in the prior cycle's own H7 count; recorded here as a scope note for Routine B rather than folded into this period's delta, since this reviewer cannot reconstruct why the prior cycle omitted them from cheap evidence alone. No completion envelopes were accepted this period. No product database, deployment or Ireland path changed, so no product test suite was run beyond what each PR's own stated verification already reported (tsc/build/targeted tests per PR body) -- consistent with the VERIFICATION BUDGET discipline in the routine prompt. reusable_artifacts_created=3 counts lib/modeling/research-engine/ (PR#219), the executor-native dispatch-plan capability in scripts/control-plane/evolution-canonicalize.mjs (PR#224), and lib/feed/researchScoreObservation.ts (PR#225)."
+}
