@@ -30,6 +30,7 @@ import { gunzipSync } from "node:zlib";
 
 import {
   buildRollingManifest,
+  buildScorecardRowView,
   resolveWindowDates,
   SUPPORTED_WINDOW_DAYS,
   type LoadedPartition,
@@ -37,7 +38,7 @@ import {
   type WindowDays,
 } from "@/lib/modeling/research-corpus/rollingCorpus";
 
-const PARTITION_DIR = "modeling/evidence/research-corpus-factory-live-v1";
+export const PARTITION_DIR = "modeling/evidence/research-corpus-factory-live-v1";
 const OUT_DIR = "modeling/evidence/rolling-research-corpus-v1";
 
 function arg(name: string): string | undefined {
@@ -56,13 +57,13 @@ function partitionPaths(date: string) {
   };
 }
 
-function partitionExists(date: string): boolean {
+export function partitionExists(date: string): boolean {
   const p = partitionPaths(date);
   return existsSync(p.corpus) && existsSync(p.manifest);
 }
 
 /** Load + hash-verify one immutable D-1 partition from local disk ONLY. */
-function loadPartition(date: string): LoadedPartition {
+export function loadPartition(date: string): LoadedPartition {
   const p = partitionPaths(date);
   const gz = readFileSync(p.corpus);
   const jsonl = gunzipSync(gz).toString("utf8");
@@ -125,6 +126,10 @@ function loadPartition(date: string): LoadedPartition {
         selectedTokenId: r.selectedTokenId,
         providerEventId: r.providerEventId ?? null,
         decisionAt: r.decisionAt,
+        // verbatim carry-through of immutable BASE fields
+        entryPrice: typeof r.entryPrice === "number" ? r.entryPrice : null,
+        eventStart: typeof r.eventStart === "string" ? r.eventStart : null,
+        sportFamily: typeof r.providerSportFamily === "string" ? r.providerSportFamily : null,
         label: r.label,
         score: r.score,
         scoreLevel,
@@ -194,14 +199,19 @@ function main() {
   const stem = `ROLLING_MANIFEST_${windowDays}d_${windowEnd}`;
   const manifestJson = JSON.stringify(manifest, null, 2) + "\n";
   const manifestPath = join(OUT_DIR, `${stem}.json`);
-  writeFileSync(manifestPath, manifestJson);
-  writeFileSync(
-    join(OUT_DIR, `${stem}.SHA256SUMS.txt`),
-    [
-      `${createHash("sha256").update(manifestJson, "utf8").digest("hex")}  ${stem}.json`,
-      ...manifest.PARTITIONS.map((p) => `${p.PARTITION_CANONICAL_HASH}  PARTITION_CANONICAL_CONTENT ${p.PARTITION_DATE}`),
-    ].join("\n") + "\n",
-  );
+  // Pure-projection modes (--scorecard-rows) never refresh the committed rolling
+  // manifest — they only read the already-loaded immutable partitions.
+  const writeManifest = !has("--scorecard-rows");
+  if (writeManifest) {
+    writeFileSync(manifestPath, manifestJson);
+    writeFileSync(
+      join(OUT_DIR, `${stem}.SHA256SUMS.txt`),
+      [
+        `${createHash("sha256").update(manifestJson, "utf8").digest("hex")}  ${stem}.json`,
+        ...manifest.PARTITIONS.map((p) => `${p.PARTITION_CANONICAL_HASH}  PARTITION_CANONICAL_CONTENT ${p.PARTITION_DATE}`),
+      ].join("\n") + "\n",
+    );
+  }
 
   // ── optional local stream-read proof (no DB, no broad scan) ─────────────
   let readProof: Record<string, unknown> | undefined;
@@ -230,6 +240,41 @@ function main() {
     };
   }
 
+  // ── optional deterministic scorecard-ready row view (ROLLING_SCORECARD_ROW_VIEW_V1) ──
+  // No DB, no broad scan: it projects the already-loaded immutable partitions
+  // through the canonical rolling collapse. Determinism is proven inline by
+  // building the view twice (once from the partitions in reverse order) and
+  // asserting an identical canonical row hash.
+  let scorecardRows: Record<string, unknown> | undefined;
+  if (has("--scorecard-rows")) {
+    const view = buildScorecardRowView({ windowDays, nowUtc, partitions });
+    const rowsHash = createHash("sha256").update(JSON.stringify(view.rows), "utf8").digest("hex");
+    const viewReversed = buildScorecardRowView({ windowDays, nowUtc, partitions: [...partitions].reverse() });
+    const rowsHashReversed = createHash("sha256").update(JSON.stringify(viewReversed.rows), "utf8").digest("hex");
+    if (rowsHash !== rowsHashReversed) {
+      throw new Error(`SCORECARD_ROW_VIEW_NONDETERMINISTIC: ${rowsHash} != ${rowsHashReversed} (input-order dependent)`);
+    }
+    const outPath = arg("--scorecard-rows-out");
+    if (outPath) writeFileSync(outPath, JSON.stringify(view, null, 2) + "\n");
+    scorecardRows = {
+      MISSION: view.MISSION,
+      DB_READS: 0,
+      BROAD_SCANS: 0,
+      WINDOW_COMPLETE: view.WINDOW_COMPLETE,
+      PRE_COLLAPSE_ROW_N: view.PRE_COLLAPSE_ROW_N,
+      ROW_N: view.ROW_N,
+      PIT_FUTURE_LEAK_N: view.PIT_FUTURE_LEAK_N,
+      POPULATION_ROW_N: view.POPULATION_ROW_N,
+      AS_OF_LABEL_CHANGED_N: view.AS_OF_LABEL_CHANGED_N,
+      SCORECARD_ROW_VIEW_SHA256: rowsHash,
+      INPUT_ORDER_INDEPENDENT: rowsHash === rowsHashReversed,
+      MATCHES_MANIFEST_UNIQUE_SELECTION:
+        view.ROW_N === manifest.CROSS_PARTITION_IDENTITY.WINDOW_UNIQUE_SELECTION_N.value,
+      SAMPLE_ROWS: view.rows.slice(0, 2),
+      writtenTo: outPath ?? null,
+    };
+  }
+
   process.stdout.write(
     JSON.stringify(
       {
@@ -248,6 +293,7 @@ function main() {
         LABEL_AS_OF_OVERLAY: manifest.LABEL_AS_OF_OVERLAY,
         manifestPath,
         readProof,
+        scorecardRows,
       },
       null,
       2,
@@ -255,4 +301,8 @@ function main() {
   );
 }
 
-main();
+const invokedDirectly =
+  typeof process.argv[1] === "string" &&
+  /rolling-research-corpus(\.ts|\.js|\.mjs)?$/.test(process.argv[1]);
+
+if (invokedDirectly) main();

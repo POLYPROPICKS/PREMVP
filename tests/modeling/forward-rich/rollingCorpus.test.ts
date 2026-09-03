@@ -20,6 +20,7 @@ import { gunzipSync } from "node:zlib";
 
 import {
   buildRollingManifest,
+  buildScorecardRowView,
   latestClosedMinskDay,
   resolveWindowDates,
   type DerivedSeries,
@@ -39,6 +40,9 @@ const NULL_SERIES: DerivedSeries = {
 function row(p: Partial<RollingCompactRow> & Pick<RollingCompactRow, "populationId" | "conditionId" | "selectedTokenId" | "decisionAt">): RollingCompactRow {
   return {
     providerEventId: null,
+    entryPrice: null,
+    eventStart: null,
+    sportFamily: null,
     label: "OPEN",
     score: NULL_SERIES,
     selectedPrice: NULL_SERIES,
@@ -163,6 +167,129 @@ test("a window missing any closed-day partition is not reported complete", () =>
   assert.equal(m.AVAILABLE_PARTITION_N, 3);
   assert.equal(m.MISSING_PARTITION_N, 4);
   assert.equal(m.MISSING_DAYS.length, 4);
+});
+
+// ── ROLLING_SCORECARD_ROW_VIEW_V1 ────────────────────────────────────────
+const SC_NOW = "2026-09-03T09:00:00.000Z";
+
+test("scorecard row view: duplicate identity across partitions collapses to the earliest feature row, entryPrice verbatim", () => {
+  const { dates } = resolveWindowDates(7, SC_NOW);
+  const id = { populationId: "SEP_PUBLIC_RICH_V1" as const, conditionId: "c-dup", selectedTokenId: "t-dup" };
+  const partitions = dates.map((d, i) =>
+    partition(d, [
+      row({
+        ...id,
+        decisionAt: `${d}T0${i}:00:00Z`,
+        entryPrice: i === 0 ? 0.41 : 0.99, // only the earliest (i=0) must survive
+        scoreLevel: i === 0 ? 67 : 12,
+        leadTimeHours: i === 0 ? 5 : 99,
+        label: i === 0 ? "OPEN" : "WIN",
+      }),
+    ]),
+  );
+  const view = buildScorecardRowView({ windowDays: 7, nowUtc: SC_NOW, partitions });
+  assert.equal(view.ROW_N, 1);
+  assert.equal(view.PRE_COLLAPSE_ROW_N, 7);
+  const r = view.rows[0];
+  assert.equal(r.decisionAt, `${dates[0]}T00:00:00Z`);
+  assert.equal(r.entryPrice, 0.41);
+  assert.equal(r.scoreLevel, 67);
+  assert.equal(r.leadTimeHours, 5);
+});
+
+test("scorecard row view: frozenLabel is the earliest row's label; labelAsOf takes a later terminal label without mutating features", () => {
+  const { dates } = resolveWindowDates(7, SC_NOW);
+  const id = { populationId: "SEP_PUBLIC_RICH_V1" as const, conditionId: "c-settle", selectedTokenId: "t-settle" };
+  const partitions = [
+    partition(dates[0], [row({ ...id, decisionAt: `${dates[0]}T06:00:00Z`, entryPrice: 0.55, scoreLevel: 70, label: "OPEN" })]),
+    partition(dates[3], [row({ ...id, decisionAt: `${dates[3]}T06:00:00Z`, entryPrice: 0.10, scoreLevel: 5, label: "LOSS" })]),
+  ];
+  const view = buildScorecardRowView({ windowDays: 7, nowUtc: SC_NOW, partitions });
+  assert.equal(view.ROW_N, 1);
+  const r = view.rows[0];
+  assert.equal(r.frozenLabel, "OPEN");
+  assert.equal(r.labelAsOf, "LOSS");
+  // decision-time features stay the EARLIEST row's values
+  assert.equal(r.decisionAt, `${dates[0]}T06:00:00Z`);
+  assert.equal(r.entryPrice, 0.55);
+  assert.equal(r.scoreLevel, 70);
+  assert.equal(view.AS_OF_LABEL_CHANGED_N["SEP_PUBLIC_RICH_V1"], 1);
+});
+
+test("scorecard row view: a later terminal label never reverts once terminal; OPEN-after-WIN keeps WIN", () => {
+  const { dates } = resolveWindowDates(7, SC_NOW);
+  const id = { populationId: "SEP_PUBLIC_RICH_V1" as const, conditionId: "c-x", selectedTokenId: "t-x" };
+  const partitions = [
+    partition(dates[0], [row({ ...id, decisionAt: `${dates[0]}T06:00:00Z`, label: "WIN" })]),
+    partition(dates[2], [row({ ...id, decisionAt: `${dates[2]}T06:00:00Z`, label: "OPEN" })]),
+  ];
+  const r = buildScorecardRowView({ windowDays: 7, nowUtc: SC_NOW, partitions }).rows[0];
+  assert.equal(r.frozenLabel, "WIN");
+  assert.equal(r.labelAsOf, "WIN");
+});
+
+test("scorecard row view: populations stay isolated and are never pooled", () => {
+  const { dates } = resolveWindowDates(7, SC_NOW);
+  const partitions = dates.map((d) =>
+    partition(d, [
+      row({ populationId: "SEP_PUBLIC_RICH_V1", conditionId: `pr-${d}`, selectedTokenId: "t", decisionAt: `${d}T06:00:00Z`, scoreLevel: 60 }),
+      row({ populationId: "SEP_SHADOW_STRATEGIC_V1", conditionId: `ss-${d}`, selectedTokenId: "t", decisionAt: `${d}T07:00:00Z`, scoreLevel: null }),
+    ]),
+  );
+  const view = buildScorecardRowView({ windowDays: 7, nowUtc: SC_NOW, partitions });
+  assert.equal(view.POPULATION_ROW_N["SEP_PUBLIC_RICH_V1"], 7);
+  assert.equal(view.POPULATION_ROW_N["SEP_SHADOW_STRATEGIC_V1"], 7);
+  assert.equal(view.ROW_N, 14);
+  // structural null score LEVEL is carried as null, never synthesized
+  const shadow = view.rows.filter((r) => r.populationId === "SEP_SHADOW_STRATEGIC_V1");
+  assert.ok(shadow.every((r) => r.scoreLevel === null));
+});
+
+test("scorecard row view: deterministic and independent of partition input order", () => {
+  const { dates } = resolveWindowDates(7, SC_NOW);
+  const build = () =>
+    dates.map((d, i) =>
+      partition(d, [
+        row({ populationId: "SEP_PUBLIC_RICH_V1", conditionId: `c-${d}`, selectedTokenId: "t1", decisionAt: `${d}T0${i}:00:00Z`, entryPrice: 0.3 + i / 100 }),
+        row({ populationId: "SEP_SHADOW_STRATEGIC_V1", conditionId: `s-${d}`, selectedTokenId: "t2", decisionAt: `${d}T1${i}:00:00Z` }),
+      ]),
+    );
+  const a = buildScorecardRowView({ windowDays: 7, nowUtc: SC_NOW, partitions: build() });
+  const b = buildScorecardRowView({ windowDays: 7, nowUtc: SC_NOW, partitions: [...build()].reverse() });
+  assert.deepEqual(a.rows, b.rows);
+  assert.equal(JSON.stringify(a.rows), JSON.stringify(b.rows));
+});
+
+test("scorecard row view: PIT_FUTURE_LEAK_N matches manifest semantics (0 clean, 1 leaky)", () => {
+  const d = latestClosedMinskDay(SC_NOW);
+  const clean = row({
+    populationId: "SEP_PUBLIC_RICH_V1", conditionId: "c1", selectedTokenId: "t1", decisionAt: `${d}T12:00:00Z`,
+    selectedPrice: { ...NULL_SERIES, observationCount: 1, lastEligibleObservedAt: `${d}T10:00:00Z`, lastEligibleValue: 0.4 },
+  });
+  const leaky = row({
+    populationId: "SEP_PUBLIC_RICH_V1", conditionId: "c2", selectedTokenId: "t2", decisionAt: `${d}T12:00:00Z`,
+    score: { ...NULL_SERIES, observationCount: 1, lastEligibleObservedAt: `${d}T18:00:00Z`, lastEligibleValue: 2 },
+  });
+  assert.equal(buildScorecardRowView({ windowDays: 7, nowUtc: SC_NOW, partitions: [partition(d, [clean])] }).PIT_FUTURE_LEAK_N, 0);
+  assert.equal(buildScorecardRowView({ windowDays: 7, nowUtc: SC_NOW, partitions: [partition(d, [leaky])] }).PIT_FUTURE_LEAK_N, 1);
+});
+
+test("buildRollingManifest output is unchanged for identical inputs after the shared-collapse refactor", () => {
+  const { dates } = resolveWindowDates(7, SC_NOW);
+  const mk = () =>
+    dates.map((d, i) =>
+      partition(d, [
+        row({ populationId: "SEP_PUBLIC_RICH_V1", conditionId: "c-shared", selectedTokenId: "t", decisionAt: `${d}T0${i}:00:00Z`, providerEventId: "e1", label: i === 0 ? "OPEN" : "WIN", scoreLevel: 65 }),
+        row({ populationId: "SEP_SHADOW_STRATEGIC_V1", conditionId: `s-${d}`, selectedTokenId: "t", decisionAt: `${d}T09:00:00Z` }),
+      ]),
+    );
+  const m1 = buildRollingManifest({ windowDays: 7, nowUtc: SC_NOW, partitions: mk() }, "2026-09-03T09:00:00.000Z");
+  const m2 = buildRollingManifest({ windowDays: 7, nowUtc: SC_NOW, partitions: [...mk()].reverse() }, "2026-09-03T09:00:00.000Z");
+  assert.equal(JSON.stringify(m1), JSON.stringify(m2));
+  const rich = m1.POPULATIONS.find((p) => p.population_id === "SEP_PUBLIC_RICH_V1")!;
+  assert.equal(rich.UNIQUE_SELECTION_N.value, 1);
+  assert.equal(rich.LABEL_COUNTS_FROZEN["OPEN"], 1);
+  assert.equal(m1.LABEL_AS_OF_OVERLAY.POPULATIONS.find((p) => p.population_id === "SEP_PUBLIC_RICH_V1")!.changed_from_frozen_n, 1);
 });
 
 test("the committed immutable D-1 partition (2026-09-02) loads and hash-verifies", () => {
