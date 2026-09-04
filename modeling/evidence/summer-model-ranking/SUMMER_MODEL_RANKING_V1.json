@@ -1,0 +1,692 @@
+{
+  "mission": "RANK_SUMMER_MODELS_AND_FREEZE_PROVISIONAL_FINALISTS_V1",
+  "basis": {
+    "dataset_id": "AUGUST_MAIN_DB_ENRICHMENT_V1",
+    "sha256": "3e3472839dab244ee0b18b7435fd882a21a440042928a10ed5f6111c93697e93",
+    "formula_version": "shadow-strategic-sports-v1",
+    "base_event_n_expected": 18705,
+    "base_event_n_observed": 18705,
+    "base_event_n_match": true,
+    "physical_event_parent_n_after_price_and_sport_presence_filter": 18702,
+    "decision_span_start": "2026-08-05T13:37:00.153Z",
+    "decision_span_end": "2026-08-25T16:07:57.730Z",
+    "span_days": 20.105,
+    "settlement": "flat 1u; WIN pnl_u = 1/entry_price - 1; LOSS pnl_u = -1; every recovered row carries a terminal WIN/LOSS",
+    "one_bet_per_physical_event": "chronologically first row per physicalEventKey satisfying the predicate (research-engine engine.ts semantics, unchanged)"
+  },
+  "models": [
+    {
+      "MODEL_ID": "C0",
+      "ROLE": "PRICE_ANCHOR",
+      "EXACT_PREDICATE": "0.50 <= entry_price < 0.60",
+      "PHYSICAL_EVENT_PARENT_N": 18702,
+      "MODEL_ELIGIBLE_N": 9976,
+      "SETTLED_BET_N": 9976,
+      "W": 5341,
+      "L": 4635,
+      "PNL_U": 507.53,
+      "ROI_PCT": 5.0876,
+      "MAX_DRAWDOWN_U": -51.38,
+      "BETS_PER_DAY": 496.2,
+      "WEEKLY": [
+        {
+          "week": "2026-08-03",
+          "n": 2741,
+          "pnlU": 116.31,
+          "roiPct": 4.2434
+        },
+        {
+          "week": "2026-08-10",
+          "n": 2379,
+          "pnlU": 164.25,
+          "roiPct": 6.9041
+        },
+        {
+          "week": "2026-08-17",
+          "n": 3354,
+          "pnlU": 173.2,
+          "roiPct": 5.164
+        },
+        {
+          "week": "2026-08-24",
+          "n": 1502,
+          "pnlU": 53.77,
+          "roiPct": 3.58
+        }
+      ],
+      "POSITIVE_BUCKET_N": 4,
+      "NEGATIVE_BUCKET_N": 0,
+      "LARGEST_DAY_PNL_SHARE_PCT": 11.5,
+      "LARGEST_SINGLE_EVENT_PNL_SHARE_PCT": 0.02,
+      "SPORT_COMPOSITION": [
+        {
+          "sport": "table-tennis",
+          "n": 3429,
+          "sharePct": 34.37
+        },
+        {
+          "sport": "soccer",
+          "n": 3253,
+          "sharePct": 32.61
+        },
+        {
+          "sport": "tennis",
+          "n": 1918,
+          "sharePct": 19.23
+        },
+        {
+          "sport": "esports",
+          "n": 476,
+          "sharePct": 4.77
+        },
+        {
+          "sport": "cricket",
+          "n": 411,
+          "sharePct": 4.12
+        },
+        {
+          "sport": "baseball",
+          "n": 372,
+          "sharePct": 3.73
+        },
+        {
+          "sport": "golf",
+          "n": 43,
+          "sharePct": 0.43
+        },
+        {
+          "sport": "basketball",
+          "n": 29,
+          "sharePct": 0.29
+        },
+        {
+          "sport": "other",
+          "n": 12,
+          "sharePct": 0.12
+        },
+        {
+          "sport": "american-football",
+          "n": 9,
+          "sharePct": 0.09
+        },
+        {
+          "sport": "volleyball",
+          "n": 9,
+          "sharePct": 0.09
+        },
+        {
+          "sport": "handball",
+          "n": 6,
+          "sharePct": 0.06
+        },
+        {
+          "sport": "rugby",
+          "n": 5,
+          "sharePct": 0.05
+        },
+        {
+          "sport": "mma",
+          "n": 4,
+          "sharePct": 0.04
+        }
+      ],
+      "MARKET_FAMILY_COMPOSITION": [
+        {
+          "family": "unknown",
+          "n": 9860,
+          "sharePct": 98.84
+        },
+        {
+          "family": "Esports",
+          "n": 69,
+          "sharePct": 0.69
+        },
+        {
+          "family": "Sports",
+          "n": 39,
+          "sharePct": 0.39
+        },
+        {
+          "family": "Tennis",
+          "n": 4,
+          "sharePct": 0.04
+        },
+        {
+          "family": "UFC",
+          "n": 2,
+          "sharePct": 0.02
+        },
+        {
+          "family": "MLS",
+          "n": 1,
+          "sharePct": 0.01
+        },
+        {
+          "family": "NBA",
+          "n": 1,
+          "sharePct": 0.01
+        }
+      ]
+    },
+    {
+      "MODEL_ID": "C1",
+      "ROLE": "HIGH_ROI",
+      "EXACT_PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family = soccer",
+      "PHYSICAL_EVENT_PARENT_N": 18702,
+      "MODEL_ELIGIBLE_N": 3253,
+      "SETTLED_BET_N": 3253,
+      "W": 1915,
+      "L": 1338,
+      "PNL_U": 431.22,
+      "ROI_PCT": 13.2559,
+      "MAX_DRAWDOWN_U": -16.94,
+      "BETS_PER_DAY": 161.8,
+      "WEEKLY": [
+        {
+          "week": "2026-08-03",
+          "n": 950,
+          "pnlU": 73.14,
+          "roiPct": 7.6993
+        },
+        {
+          "week": "2026-08-10",
+          "n": 831,
+          "pnlU": 150.25,
+          "roiPct": 18.0811
+        },
+        {
+          "week": "2026-08-17",
+          "n": 1146,
+          "pnlU": 167.76,
+          "roiPct": 14.6387
+        },
+        {
+          "week": "2026-08-24",
+          "n": 326,
+          "pnlU": 40.06,
+          "roiPct": 12.2878
+        }
+      ],
+      "POSITIVE_BUCKET_N": 4,
+      "NEGATIVE_BUCKET_N": 0,
+      "LARGEST_DAY_PNL_SHARE_PCT": 15.01,
+      "LARGEST_SINGLE_EVENT_PNL_SHARE_PCT": 0.06,
+      "SPORT_COMPOSITION": [
+        {
+          "sport": "soccer",
+          "n": 3253,
+          "sharePct": 100
+        }
+      ],
+      "MARKET_FAMILY_COMPOSITION": [
+        {
+          "family": "unknown",
+          "n": 3229,
+          "sharePct": 99.26
+        },
+        {
+          "family": "Sports",
+          "n": 23,
+          "sharePct": 0.71
+        },
+        {
+          "family": "MLS",
+          "n": 1,
+          "sharePct": 0.03
+        }
+      ]
+    },
+    {
+      "MODEL_ID": "C2",
+      "ROLE": "LEAD_GE_24H",
+      "EXACT_PREDICATE": "0.50 <= entry_price < 0.60 AND lead_time_hours >= 24",
+      "PHYSICAL_EVENT_PARENT_N": 18702,
+      "MODEL_ELIGIBLE_N": 2868,
+      "SETTLED_BET_N": 2868,
+      "W": 1634,
+      "L": 1234,
+      "PNL_U": 309.77,
+      "ROI_PCT": 10.8009,
+      "MAX_DRAWDOWN_U": -14.39,
+      "BETS_PER_DAY": 142.65,
+      "WEEKLY": [
+        {
+          "week": "2026-08-03",
+          "n": 766,
+          "pnlU": 41.92,
+          "roiPct": 5.472
+        },
+        {
+          "week": "2026-08-10",
+          "n": 508,
+          "pnlU": 90.64,
+          "roiPct": 17.8423
+        },
+        {
+          "week": "2026-08-17",
+          "n": 1068,
+          "pnlU": 121.29,
+          "roiPct": 11.3567
+        },
+        {
+          "week": "2026-08-24",
+          "n": 526,
+          "pnlU": 55.93,
+          "roiPct": 10.6322
+        }
+      ],
+      "POSITIVE_BUCKET_N": 4,
+      "NEGATIVE_BUCKET_N": 0,
+      "LARGEST_DAY_PNL_SHARE_PCT": 13.65,
+      "LARGEST_SINGLE_EVENT_PNL_SHARE_PCT": 0.06,
+      "SPORT_COMPOSITION": [
+        {
+          "sport": "soccer",
+          "n": 2004,
+          "sharePct": 69.87
+        },
+        {
+          "sport": "tennis",
+          "n": 321,
+          "sharePct": 11.19
+        },
+        {
+          "sport": "cricket",
+          "n": 212,
+          "sharePct": 7.39
+        },
+        {
+          "sport": "baseball",
+          "n": 182,
+          "sharePct": 6.35
+        },
+        {
+          "sport": "esports",
+          "n": 84,
+          "sharePct": 2.93
+        },
+        {
+          "sport": "golf",
+          "n": 35,
+          "sharePct": 1.22
+        },
+        {
+          "sport": "basketball",
+          "n": 16,
+          "sharePct": 0.56
+        },
+        {
+          "sport": "handball",
+          "n": 6,
+          "sharePct": 0.21
+        },
+        {
+          "sport": "rugby",
+          "n": 4,
+          "sharePct": 0.14
+        },
+        {
+          "sport": "mma",
+          "n": 2,
+          "sharePct": 0.07
+        },
+        {
+          "sport": "american-football",
+          "n": 1,
+          "sharePct": 0.03
+        },
+        {
+          "sport": "other",
+          "n": 1,
+          "sharePct": 0.03
+        }
+      ],
+      "MARKET_FAMILY_COMPOSITION": [
+        {
+          "family": "unknown",
+          "n": 2867,
+          "sharePct": 99.97
+        },
+        {
+          "family": "Esports",
+          "n": 1,
+          "sharePct": 0.03
+        }
+      ]
+    },
+    {
+      "MODEL_ID": "C3",
+      "ROLE": "SOCCER_AND_LEAD_GE_24H (C1 INTERSECT C2)",
+      "EXACT_PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family = soccer AND lead_time_hours >= 24",
+      "PHYSICAL_EVENT_PARENT_N": 18702,
+      "MODEL_ELIGIBLE_N": 2004,
+      "SETTLED_BET_N": 2004,
+      "W": 1173,
+      "L": 831,
+      "PNL_U": 266.42,
+      "ROI_PCT": 13.2945,
+      "MAX_DRAWDOWN_U": -13.94,
+      "BETS_PER_DAY": 99.68,
+      "WEEKLY": [
+        {
+          "week": "2026-08-03",
+          "n": 559,
+          "pnlU": 34.46,
+          "roiPct": 6.1644
+        },
+        {
+          "week": "2026-08-10",
+          "n": 348,
+          "pnlU": 85.08,
+          "roiPct": 24.449
+        },
+        {
+          "week": "2026-08-17",
+          "n": 787,
+          "pnlU": 104.32,
+          "roiPct": 13.2549
+        },
+        {
+          "week": "2026-08-24",
+          "n": 310,
+          "pnlU": 42.57,
+          "roiPct": 13.7307
+        }
+      ],
+      "POSITIVE_BUCKET_N": 4,
+      "NEGATIVE_BUCKET_N": 0,
+      "LARGEST_DAY_PNL_SHARE_PCT": 13.46,
+      "LARGEST_SINGLE_EVENT_PNL_SHARE_PCT": 0.09,
+      "SPORT_COMPOSITION": [
+        {
+          "sport": "soccer",
+          "n": 2004,
+          "sharePct": 100
+        }
+      ],
+      "MARKET_FAMILY_COMPOSITION": [
+        {
+          "family": "unknown",
+          "n": 2004,
+          "sharePct": 100
+        }
+      ]
+    },
+    {
+      "MODEL_ID": "C4",
+      "ROLE": "BALANCED / CURRENT OPERATING MODEL",
+      "EXACT_PREDICATE": "0.50 <= entry_price < 0.60 AND (sport_family = soccer OR lead_time_hours >= 24)",
+      "PHYSICAL_EVENT_PARENT_N": 18702,
+      "MODEL_ELIGIBLE_N": 4117,
+      "SETTLED_BET_N": 4117,
+      "W": 2376,
+      "L": 1741,
+      "PNL_U": 474.56,
+      "ROI_PCT": 11.5269,
+      "MAX_DRAWDOWN_U": -16.41,
+      "BETS_PER_DAY": 204.78,
+      "WEEKLY": [
+        {
+          "week": "2026-08-03",
+          "n": 1157,
+          "pnlU": 80.6,
+          "roiPct": 6.9663
+        },
+        {
+          "week": "2026-08-10",
+          "n": 991,
+          "pnlU": 155.81,
+          "roiPct": 15.7226
+        },
+        {
+          "week": "2026-08-17",
+          "n": 1427,
+          "pnlU": 184.73,
+          "roiPct": 12.9456
+        },
+        {
+          "week": "2026-08-24",
+          "n": 542,
+          "pnlU": 53.42,
+          "roiPct": 9.8558
+        }
+      ],
+      "POSITIVE_BUCKET_N": 4,
+      "NEGATIVE_BUCKET_N": 0,
+      "LARGEST_DAY_PNL_SHARE_PCT": 13.74,
+      "LARGEST_SINGLE_EVENT_PNL_SHARE_PCT": 0.05,
+      "SPORT_COMPOSITION": [
+        {
+          "sport": "soccer",
+          "n": 3253,
+          "sharePct": 79.01
+        },
+        {
+          "sport": "tennis",
+          "n": 321,
+          "sharePct": 7.8
+        },
+        {
+          "sport": "cricket",
+          "n": 212,
+          "sharePct": 5.15
+        },
+        {
+          "sport": "baseball",
+          "n": 182,
+          "sharePct": 4.42
+        },
+        {
+          "sport": "esports",
+          "n": 84,
+          "sharePct": 2.04
+        },
+        {
+          "sport": "golf",
+          "n": 35,
+          "sharePct": 0.85
+        },
+        {
+          "sport": "basketball",
+          "n": 16,
+          "sharePct": 0.39
+        },
+        {
+          "sport": "handball",
+          "n": 6,
+          "sharePct": 0.15
+        },
+        {
+          "sport": "rugby",
+          "n": 4,
+          "sharePct": 0.1
+        },
+        {
+          "sport": "mma",
+          "n": 2,
+          "sharePct": 0.05
+        },
+        {
+          "sport": "american-football",
+          "n": 1,
+          "sharePct": 0.02
+        },
+        {
+          "sport": "other",
+          "n": 1,
+          "sharePct": 0.02
+        }
+      ],
+      "MARKET_FAMILY_COMPOSITION": [
+        {
+          "family": "unknown",
+          "n": 4092,
+          "sharePct": 99.39
+        },
+        {
+          "family": "Sports",
+          "n": 23,
+          "sharePct": 0.56
+        },
+        {
+          "family": "Esports",
+          "n": 1,
+          "sharePct": 0.02
+        },
+        {
+          "family": "MLS",
+          "n": 1,
+          "sharePct": 0.02
+        }
+      ]
+    },
+    {
+      "MODEL_ID": "C5",
+      "ROLE": "PNL_SCALE",
+      "EXACT_PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family != table-tennis",
+      "PHYSICAL_EVENT_PARENT_N": 18702,
+      "MODEL_ELIGIBLE_N": 6547,
+      "SETTLED_BET_N": 6547,
+      "W": 3625,
+      "L": 2922,
+      "PNL_U": 506,
+      "ROI_PCT": 7.7287,
+      "MAX_DRAWDOWN_U": -24.5,
+      "BETS_PER_DAY": 325.64,
+      "WEEKLY": [
+        {
+          "week": "2026-08-03",
+          "n": 1580,
+          "pnlU": 97.39,
+          "roiPct": 6.164
+        },
+        {
+          "week": "2026-08-10",
+          "n": 1563,
+          "pnlU": 156.56,
+          "roiPct": 10.0167
+        },
+        {
+          "week": "2026-08-17",
+          "n": 2278,
+          "pnlU": 196.27,
+          "roiPct": 8.616
+        },
+        {
+          "week": "2026-08-24",
+          "n": 1126,
+          "pnlU": 55.77,
+          "roiPct": 4.953
+        }
+      ],
+      "POSITIVE_BUCKET_N": 4,
+      "NEGATIVE_BUCKET_N": 0,
+      "LARGEST_DAY_PNL_SHARE_PCT": 11.92,
+      "LARGEST_SINGLE_EVENT_PNL_SHARE_PCT": 0.03,
+      "SPORT_COMPOSITION": [
+        {
+          "sport": "soccer",
+          "n": 3253,
+          "sharePct": 49.69
+        },
+        {
+          "sport": "tennis",
+          "n": 1918,
+          "sharePct": 29.3
+        },
+        {
+          "sport": "esports",
+          "n": 476,
+          "sharePct": 7.27
+        },
+        {
+          "sport": "cricket",
+          "n": 411,
+          "sharePct": 6.28
+        },
+        {
+          "sport": "baseball",
+          "n": 372,
+          "sharePct": 5.68
+        },
+        {
+          "sport": "golf",
+          "n": 43,
+          "sharePct": 0.66
+        },
+        {
+          "sport": "basketball",
+          "n": 29,
+          "sharePct": 0.44
+        },
+        {
+          "sport": "other",
+          "n": 12,
+          "sharePct": 0.18
+        },
+        {
+          "sport": "american-football",
+          "n": 9,
+          "sharePct": 0.14
+        },
+        {
+          "sport": "volleyball",
+          "n": 9,
+          "sharePct": 0.14
+        },
+        {
+          "sport": "handball",
+          "n": 6,
+          "sharePct": 0.09
+        },
+        {
+          "sport": "rugby",
+          "n": 5,
+          "sharePct": 0.08
+        },
+        {
+          "sport": "mma",
+          "n": 4,
+          "sharePct": 0.06
+        }
+      ],
+      "MARKET_FAMILY_COMPOSITION": [
+        {
+          "family": "unknown",
+          "n": 6431,
+          "sharePct": 98.23
+        },
+        {
+          "family": "Esports",
+          "n": 69,
+          "sharePct": 1.05
+        },
+        {
+          "family": "Sports",
+          "n": 39,
+          "sharePct": 0.6
+        },
+        {
+          "family": "Tennis",
+          "n": 4,
+          "sharePct": 0.06
+        },
+        {
+          "family": "UFC",
+          "n": 2,
+          "sharePct": 0.03
+        },
+        {
+          "family": "MLS",
+          "n": 1,
+          "sharePct": 0.02
+        },
+        {
+          "family": "NBA",
+          "n": 1,
+          "sharePct": 0.02
+        }
+      ]
+    }
+  ]
+}

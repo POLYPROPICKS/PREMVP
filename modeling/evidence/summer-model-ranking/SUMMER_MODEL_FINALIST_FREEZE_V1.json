@@ -1,0 +1,234 @@
+{
+  "artifact": "SUMMER_MODEL_FINALIST_FREEZE_V1",
+  "artifact_version": "1.0.0",
+  "mission": "RANK_SUMMER_MODELS_AND_FREEZE_PROVISIONAL_FINALISTS_V1",
+  "status": "IMMUTABLE",
+  "decision": "TWO_OR_THREE_PROVISIONAL_FINALISTS_FROZEN",
+  "finalist_count": 3,
+  "freeze_timestamp_utc": "2026-09-04T00:00:00Z",
+  "founder_action": "none",
+  "scope": "Historical MODEL-LAB step only. Chooses provisional historical finalists for the next CURRENT_EXECUTABILITY_AND_FINAL_FREEZE_V1 mission. No production, Contract A, Reservation, Rebalance, Queue, Ireland or filter change.",
+
+  "authoritative_summer_basis": {
+    "primary_reproduced_basis": {
+      "dataset_id": "AUGUST_MAIN_DB_ENRICHMENT_V1",
+      "sha256": "3e3472839dab244ee0b18b7435fd882a21a440042928a10ed5f6111c93697e93",
+      "formula_version": "shadow-strategic-sports-v1",
+      "base_event_n": 18705,
+      "physical_event_parent_n_after_price_and_sport_presence_filter": 18702,
+      "decision_span": "2026-08-05T13:37:00Z .. 2026-08-25T16:07:57Z",
+      "span_days": 20.104,
+      "sport_family_join_source": "modeling/local_exports/august_enriched_research_dataset_v1/AUGUST_ENRICHED_RESEARCH_DATASET_V1.jsonl (upstream, id-join)",
+      "reproduction": "scripts/modeling/summer-model-ranking-scorecard.ts — deterministic, reuses lib/modeling/research-engine/** predicates, ordering, settlement and metrics unchanged; C4 anchor reproduces AUGUST_MAIN_DB_ENRICHMENT_V1 exactly (N=4117 / +474.56u / 11.5269% / -16.41u).",
+      "note": "This is the in-repo reproducible portable basis. It is the August subset of the broader June-August discovery corpus; keep it separate from any post-2026-09-04 true-wide September data and from the narrow recent Reservation cohorts."
+    },
+    "cross_check_basis_discovery": {
+      "name": "JUNE-AUGUST DISCOVERY denominator",
+      "provenance": "Canonical frozen aggregates in lib/modeling/research-engine/goldenContract.ts, independently reproduced bit-for-bit from SHA-pinned frozen event-level inputs in modeling/local_exports/pnl_portfolio_overlap_and_priority_v1/PNL_PORTFOLIO_OVERLAP_AND_PRIORITY_V1.json (benchmark_replication_exact block).",
+      "corpus": "22,095 research rows -> 10,452 price-band research rows -> 9,282 collapsed price-band physical events",
+      "role": "Independent denominator cross-check only. NOT pooled with the August basis."
+    },
+    "cross_check_basis_chronological_tail": {
+      "name": "CHRONOLOGICAL TRANSFER TAIL (untouched_test.jsonl)",
+      "sha256": "cdaca7b00b6b1f829742fa4f9710ec10dbdab52517afdff25e23266ed82691bf",
+      "provider_event_n": 3741,
+      "classification": "CHRONOLOGICAL_TRANSFER_CHECK_NOT_INDEPENDENT_VALIDATION",
+      "role": "Held-out summer chronological slice; used only to observe whether the marginal edge holds on the most recent summer window."
+    }
+  },
+
+  "shared_economic_contract": {
+    "unit": "physical economic event",
+    "stake": "flat 1u per selected physical event",
+    "one_bet_per_physical_event": "chronologically first row per physicalEventKey satisfying the predicate (research-engine engine.ts semantics, unchanged)",
+    "settlement": "WIN pnl_u = 1/entry_price - 1 ; LOSS pnl_u = -1 ; every recovered August row carries a terminal WIN/LOSS",
+    "roi_pct": "100 * settled gross PnL_u / settled physical_event_n",
+    "maxdd_u": "minimum chronological peak-to-trough of cumulative settled gross PnL (research-engine metrics.ts maxDrawdownU, unchanged)",
+    "lead_time_hours": "event_start - decision_timestamp, in hours",
+    "no_pooling_of_incompatible_populations": true
+  },
+
+  "model_predicate_resolution": {
+    "note": "All six model predicates resolved from repository/canonical modeling evidence only. Shared price band for every model: 0.50 <= entry_price < 0.60 (lower inclusive, upper exclusive).",
+    "C0": {
+      "role": "PRICE_ANCHOR",
+      "exact_predicate": "0.50 <= entry_price < 0.60",
+      "source": "lib/modeling/research-engine/models.ts (C0) ; lib/modeling/research-engine/goldenContract.ts ; frozen_candidates_for_forward_v1 (C0_PARENT)",
+      "authoritative": true
+    },
+    "C1": {
+      "role": "HIGH_ROI",
+      "exact_predicate": "0.50 <= entry_price < 0.60 AND sport_family = soccer",
+      "source": "lib/modeling/research-engine/models.ts (C1)",
+      "authoritative": true
+    },
+    "C2": {
+      "role": "LEAD_GE_24H",
+      "exact_predicate": "0.50 <= entry_price < 0.60 AND lead_time_hours >= 24",
+      "source": "modeling/local_exports/frozen_candidates_for_forward_v1/FROZEN_CANDIDATES_FOR_FORWARD_V1.json (C2_LEAD_GE_24H) ; PNL_PORTFOLIO_OVERLAP_AND_PRIORITY_V1 C2_reference (N=2811 exact). Not present in the frozen research-engine family (that family was later narrowed to C0/C1/C4/C5), but the predicate itself is exactly declared and reproduced.",
+      "authoritative": true,
+      "multiple_definition_note": "C2 has exactly one historical definition (lead-time-only arm). No competing definition exists."
+    },
+    "C3": {
+      "role": "SOCCER_AND_LEAD_GE_24H",
+      "exact_predicate": "0.50 <= entry_price < 0.60 AND sport_family = soccer AND lead_time_hours >= 24",
+      "source": "Reconciled from the C4 identity C4 = C1 UNION C2 with C3 = C1 INTERSECT C2 : discovery 3332 + 2811 - 2001 = 4142 (FINAL_MODEL_SET_FREEZE_V1 union_semantics) ; PNL_PORTFOLIO_OVERLAP_AND_PRIORITY_V1 C3_reference (N=2001, +265.69u, 13.278%, -13.0u exact).",
+      "authoritative": "REPRESENTABLE — exact intersection arm; not an independently code-frozen model.",
+      "multiple_definition_note": "The only historical use of a 'C3' label is this C1-INTERSECT-C2 arm. No competing definition exists."
+    },
+    "C4": {
+      "role": "BALANCED / CURRENT OPERATING MODEL",
+      "exact_predicate": "0.50 <= entry_price < 0.60 AND (sport_family = soccer OR lead_time_hours >= 24)",
+      "source": "lib/modeling/research-engine/models.ts (C4) ; SINGLE_MODEL_OPERATING_POLICY_SELECTION_V1 (selected single operating model)",
+      "authoritative": true
+    },
+    "C5": {
+      "role": "PNL_SCALE",
+      "exact_predicate": "0.50 <= entry_price < 0.60 AND sport_family != table-tennis",
+      "source": "lib/modeling/research-engine/models.ts (C5)",
+      "authoritative": true
+    },
+    "CONTRACT_A": {
+      "role": "LIVE PRODUCTION RESERVATION CONTOUR",
+      "exact_predicate": "NOT a single predicate. Three-stage production pipeline (candidate builder score/coverage tier + bad-bucket carve-out + hoursToStart<=6 live gate; CONTRACT_A_PLANNING_V1 identity/eligibility gate; 15-slot per-run ranked allocation). Resolved in modeling/evidence/contract-a-vs-c4/SUMMARY.md.",
+      "authoritative": "REPRESENTABLE ONLY ON ITS OWN RESERVATION OUTPUT — not representable as a filter over the summer research corpus. Evaluated on its own settled denominator, never pooled with the C0-C5 basis.",
+      "derived_predeclared_hypothesis": {
+        "id": "CONTRACT_A_SOCCER_ONLY",
+        "exact_predicate": "Contract A pipeline unchanged, restricted to diagnostics.strategic_scope = SOCCER",
+        "source": "modeling/evidence/contract-a-c4-common-universe/SUMMARY.md verdict A (already-frozen challenger)"
+      }
+    }
+  },
+
+  "six_model_scorecard": {
+    "AUGUST_BASIS_REPRODUCED": {
+      "denominator": "18,702 price+sport-present August physical events; 20.10 decision days",
+      "columns": "MODEL | MODEL_ELIGIBLE_N=SETTLED_BET_N | W | L | PNL_U | ROI_PCT | MAX_DRAWDOWN_U | BETS_PER_DAY | POSITIVE_WEEK_N | NEGATIVE_WEEK_N",
+      "rows": {
+        "C0": { "N": 9976, "W": 5341, "L": 4635, "PNL_U": 507.53, "ROI_PCT": 5.09, "MAX_DRAWDOWN_U": -51.38, "BETS_PER_DAY": 496.2, "POSITIVE_WEEK_N": 4, "NEGATIVE_WEEK_N": 0 },
+        "C1": { "N": 3253, "W": 1915, "L": 1338, "PNL_U": 431.22, "ROI_PCT": 13.26, "MAX_DRAWDOWN_U": -16.94, "BETS_PER_DAY": 161.8, "POSITIVE_WEEK_N": 4, "NEGATIVE_WEEK_N": 0 },
+        "C2": { "N": 2868, "W": 1634, "L": 1234, "PNL_U": 309.77, "ROI_PCT": 10.80, "MAX_DRAWDOWN_U": -14.39, "BETS_PER_DAY": 142.65, "POSITIVE_WEEK_N": 4, "NEGATIVE_WEEK_N": 0 },
+        "C3": { "N": 2004, "W": 1173, "L": 831, "PNL_U": 266.42, "ROI_PCT": 13.29, "MAX_DRAWDOWN_U": -13.94, "BETS_PER_DAY": 99.68, "POSITIVE_WEEK_N": 4, "NEGATIVE_WEEK_N": 0 },
+        "C4": { "N": 4117, "W": 2376, "L": 1741, "PNL_U": 474.56, "ROI_PCT": 11.53, "MAX_DRAWDOWN_U": -16.41, "BETS_PER_DAY": 204.78, "POSITIVE_WEEK_N": 4, "NEGATIVE_WEEK_N": 0 },
+        "C5": { "N": 6547, "W": 3625, "L": 2922, "PNL_U": 506.00, "ROI_PCT": 7.73, "MAX_DRAWDOWN_U": -24.50, "BETS_PER_DAY": 325.64, "POSITIVE_WEEK_N": 4, "NEGATIVE_WEEK_N": 0 }
+      },
+      "full_detail": "modeling/evidence/summer-model-ranking/SUMMER_MODEL_RANKING_V1.json (weekly buckets, concentration shares, sport + market-family composition per model)"
+    },
+    "DISCOVERY_BASIS_CROSS_CHECK": {
+      "denominator": "9,282 price-band June-August physical events (goldenContract.ts + PNL_PORTFOLIO benchmark_replication_exact)",
+      "rows": {
+        "C0": { "N": 9282, "W": 5023, "L": 4259, "PNL_U": 554.40, "ROI_PCT": 5.9728, "MAX_DRAWDOWN_U": -39.83 },
+        "C1": { "N": 3332, "W": 1964, "L": 1368, "PNL_U": 445.69, "ROI_PCT": 13.3762, "MAX_DRAWDOWN_U": -16.92 },
+        "C2": { "N": 2811, "W": 1605, "L": 1206, "PNL_U": 310.71, "ROI_PCT": 11.0534, "MAX_DRAWDOWN_U": -15.31 },
+        "C3": { "N": 2001, "PNL_U": 265.69, "ROI_PCT": 13.278, "MAX_DRAWDOWN_U": -13.00 },
+        "C4": { "N": 4142, "W": 2398, "L": 1744, "PNL_U": 490.71, "ROI_PCT": 11.8472, "MAX_DRAWDOWN_U": -15.84 },
+        "C5": { "N": 6893, "W": 3844, "L": 3049, "PNL_U": 586.03, "ROI_PCT": 8.5018, "MAX_DRAWDOWN_U": -24.46 }
+      }
+    },
+    "CHRONOLOGICAL_TAIL_CROSS_CHECK": {
+      "denominator": "3,741 provider events (untouched_test.jsonl), held-out summer tail",
+      "rows": {
+        "C0": { "N": 2439, "PNL_U": 124.99, "ROI_PCT": 5.1248, "MAX_DRAWDOWN_U": -51.26 },
+        "C1": { "N": 728, "PNL_U": 135.51, "ROI_PCT": 18.6145, "MAX_DRAWDOWN_U": -10.99 },
+        "C2": { "N": 953, "PNL_U": 129.00, "ROI_PCT": 13.5362, "MAX_DRAWDOWN_U": -11.68 },
+        "C4": { "N": 1050, "PNL_U": 156.40, "ROI_PCT": 14.8950, "MAX_DRAWDOWN_U": -11.68 },
+        "C5": { "N": 1763, "PNL_U": 154.99, "ROI_PCT": 8.7915, "MAX_DRAWDOWN_U": -21.04 }
+      },
+      "marginal_tier_edge": {
+        "C1_core": "discovery 13.38% -> tail 18.61% ROI ; positive both ; KEEP",
+        "C4_minus_C1 (non-soccer, lead>=24h)": "discovery 5.56% -> tail 6.49% ROI ; positive both ; KEEP",
+        "C5_minus_C4 residual": "discovery 3.46% -> tail -0.20% ROI (-1.40u) ; deepest drawdown in the book (-34.57u / -29.09u) ; REJECT",
+        "C0_minus_C5 (table-tennis in band)": "drags C0 max drawdown to -39.83u discovery / -51.26u tail ; REJECT"
+      }
+    },
+    "CONTRACT_A_OWN_DENOMINATOR": {
+      "full_current_lineage": { "window": "2026-08-05 .. 2026-09-01", "SETTLED_N": 330, "W": 156, "L": 174, "PNL_U": 11.4912, "ROI_PCT": 3.48, "MAX_DRAWDOWN_U": -27.3109, "POSITIVE_QUARTILE_N": 2, "NEGATIVE_QUARTILE_N": 2, "bets_per_day_executable": "~15 (15-slot per plan run)", "source": "modeling/evidence/contract-a-validation/SUMMARY.md" },
+      "replayed_common_universe": { "SETTLED_N": 316, "baseline_settled": { "N": 272, "PNL_U": 17.9513, "ROI_PCT": 6.60, "MAX_DRAWDOWN_U": -15.6316 }, "source": "modeling/evidence/contract-a-c4-common-universe/SUMMARY.md" },
+      "CONTRACT_A_SOCCER_ONLY": { "N": 154, "PNL_U": 21.3782, "ROI_PCT": 13.88, "MAX_DRAWDOWN_U": -8.0000 }
+    }
+  },
+
+  "ranking": {
+    "criteria_priority": ["enough N", "positive PnL", "strong ROI", "acceptable MaxDD", "temporal stability", "realistic daily capacity", "simple executable predicate"],
+    "strong": ["C1", "C4", "C2"],
+    "failed": {
+      "C0": "ROI only 5.1-6.0% and max drawdown -40u to -51u (worst in the set, blows out on the chronological tail); table-tennis is ~34% of its book. Fails ROI and MaxDD.",
+      "C5": "ROI 7.7-8.5%, drawdown -24.5u. The slice it adds over C4 (C5 minus C4) returned +3.46% on discovery and -0.20% (an outright loss) on the chronological tail while carrying the deepest standalone drawdown anywhere. More volume and more drawdown for lower ROI. Already rejected by SINGLE_MODEL_OPERATING_POLICY_SELECTION_V1. Fails the combined-usefulness bar.",
+      "C3": "Best drawdown (-13.9u) and ROI tied with C1 (13.3%), but it is a strict subset of both C1 and C4 (soccer AND lead>=24h) - a risk-tightened variant of C1, not a genuinely different model. Held as a reference tightening of finalist C1, not frozen as a separate finalist.",
+      "CONTRACT_A": "3.5% ROI on the full current lineage, -27u drawdown, only 2 of 4 chronological quartiles positive; the recent improvement is a composition artifact (esports leaving the mix), not a durable predicate edge. Not comparable on the summer research basis. Not frozen as a historical finalist; its SOCCER-restricted form is recorded as a derived hypothesis for the Contract-A track."
+    }
+  },
+
+  "provisional_finalists": [
+    {
+      "MODEL_ID": "C1",
+      "MODEL_VERSION": "1.0.0",
+      "ECONOMIC_ROLE": "HIGH_ROI / sport-edge core",
+      "EXACT_PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family = soccer",
+      "REQUIRED_DECISION_TIME_FIELDS": ["entry_price (decision-time selected price)", "sport_family (normalized, must resolve to 'soccer')", "decision_timestamp", "event_start", "physical_event identity"],
+      "SUMMER_PARENT_N": 18702,
+      "SUMMER_BASIS_AUGUST": { "N": 3253, "PNL_U": 431.22, "ROI_PCT": 13.26, "MAX_DRAWDOWN_U": -16.94, "BETS_PER_DAY": 161.8 },
+      "SUMMER_BASIS_DISCOVERY": { "N": 3332, "PNL_U": 445.69, "ROI_PCT": 13.3762, "MAX_DRAWDOWN_U": -16.92 },
+      "CHRONOLOGICAL_TAIL": { "N": 728, "PNL_U": 135.51, "ROI_PCT": 18.6145, "MAX_DRAWDOWN_U": -10.99 },
+      "TEMPORAL_STABILITY_SUMMARY": "August: 4 of 4 weekly buckets positive (ROI 7.7% / 18.1% / 14.6% / 12.3%). Chronological tail ROI rises to 18.61%. Largest single-day positive-PnL share 15.0%, largest single-event share 0.06% - no burst concentration.",
+      "SPORT_MARKET_COMPOSITION": "soccer 100% by construction; market family 'unknown' 99.3% (the shadow-strategic export does not populate market_family for soccer), 'Sports' 0.7%.",
+      "WHY_IT_MAY_TRANSFER_TO_CURRENT_LIVE": "Highest ROI of any high-N model on both summer bases and it improves out-of-sample on the held-out tail. Single-dimension predicate over two fields production already computes point-in-time (entry_price, sport_family). Soccer is the deepest, most continuously scheduled market on the venue, so daily executable candidate supply is the least fragile of the three finalists.",
+      "KNOWN_TRANSFER_RISK": "Concentrated in one sport - a soccer-specific pricing regime shift (calendar gap between competitions, or a venue liquidity change in soccer markets) removes the entire edge at once. The 13% ROI is a research-universe figure; the executable subset and its true entry prices are unproven and are the subject of CURRENT_EXECUTABILITY_AND_FINAL_FREEZE_V1."
+    },
+    {
+      "MODEL_ID": "C4",
+      "MODEL_VERSION": "1.0.0",
+      "ECONOMIC_ROLE": "BALANCED / current operating model",
+      "EXACT_PREDICATE": "0.50 <= entry_price < 0.60 AND (sport_family = soccer OR lead_time_hours >= 24)",
+      "REQUIRED_DECISION_TIME_FIELDS": ["entry_price", "sport_family", "lead_time_hours = event_start - decision_timestamp", "decision_timestamp", "event_start", "physical_event identity"],
+      "SUMMER_PARENT_N": 18702,
+      "SUMMER_BASIS_AUGUST": { "N": 4117, "PNL_U": 474.56, "ROI_PCT": 11.53, "MAX_DRAWDOWN_U": -16.41, "BETS_PER_DAY": 204.78 },
+      "SUMMER_BASIS_DISCOVERY": { "N": 4142, "PNL_U": 490.71, "ROI_PCT": 11.8472, "MAX_DRAWDOWN_U": -15.84 },
+      "CHRONOLOGICAL_TAIL": { "N": 1050, "PNL_U": 156.40, "ROI_PCT": 14.8950, "MAX_DRAWDOWN_U": -11.68 },
+      "TEMPORAL_STABILITY_SUMMARY": "August: 4 of 4 weekly buckets positive (ROI 7.0% / 15.7% / 12.9% / 9.9%). Chronological tail is the highest absolute PnL of all models (+156.40u) at 14.90% ROI. Largest single-day positive-PnL share 13.7%.",
+      "SPORT_MARKET_COMPOSITION": "August selected: soccer 79.0%, tennis 7.8%, cricket 5.2%, baseball 4.4%, esports 2.0%, remainder <1% each. The non-soccer share is entirely the lead_time>=24h arm.",
+      "WHY_IT_MAY_TRANSFER_TO_CURRENT_LIVE": "Already the production-selected single operating model (SINGLE_MODEL_OPERATING_POLICY_SELECTION_V1). Highest absolute PnL over the shared chronological tail window, so per fixed operating period it produces the most money of the three. The C4-minus-C1 arm it adds over C1 was positive on both denominators (discovery +5.56%, tail +6.49%). More sport-diversified than C1, so less exposed to a single-sport regime break.",
+      "KNOWN_TRANSFER_RISK": "The non-soccer lead>=24h arm is the weaker half of the edge (~6% ROI vs ~13-18% for the soccer core) and depends on the venue actually listing 50-60c markets a full day before start with usable liquidity - historically true in research but the live Contract A hard cap of hoursToStart<=6 means production currently never reaches this arm at all. Executability of the >=24h arm is unproven and is the central question for the next mission."
+    },
+    {
+      "MODEL_ID": "C2",
+      "MODEL_VERSION": "1.0.0",
+      "ECONOMIC_ROLE": "LEAD_GE_24H / pure timing-edge",
+      "EXACT_PREDICATE": "0.50 <= entry_price < 0.60 AND lead_time_hours >= 24",
+      "REQUIRED_DECISION_TIME_FIELDS": ["entry_price", "lead_time_hours = event_start - decision_timestamp", "decision_timestamp", "event_start", "physical_event identity", "sport_family (only to exclude nothing - C2 has no sport rule; carried for composition/diagnostic)"],
+      "SUMMER_PARENT_N": 18702,
+      "SUMMER_BASIS_AUGUST": { "N": 2868, "PNL_U": 309.77, "ROI_PCT": 10.80, "MAX_DRAWDOWN_U": -14.39, "BETS_PER_DAY": 142.65 },
+      "SUMMER_BASIS_DISCOVERY": { "N": 2811, "PNL_U": 310.71, "ROI_PCT": 11.0534, "MAX_DRAWDOWN_U": -15.31 },
+      "CHRONOLOGICAL_TAIL": { "N": 953, "PNL_U": 129.00, "ROI_PCT": 13.5362, "MAX_DRAWDOWN_U": -11.68 },
+      "TEMPORAL_STABILITY_SUMMARY": "August: 4 of 4 weekly buckets positive (ROI 5.5% / 17.8% / 11.4% / 10.6%). Chronological tail ROI rises to 13.54%. Max drawdown -14.4u is the shallowest of the three finalists on the August basis. Largest single-day positive-PnL share 13.7%.",
+      "SPORT_MARKET_COMPOSITION": "August selected: soccer 69.9%, tennis 11.2%, cricket 7.4%, baseball 6.4%, esports 2.9%, golf 1.2%, remainder <1%. The most sport-diverse of the three finalists.",
+      "WHY_IT_MAY_TRANSFER_TO_CURRENT_LIVE": "A genuinely different edge from C1/C4: it is sport-agnostic and rests only on the observation that a 50-60c market priced a full day or more before an event is systematically mispriced. Because it does not depend on any one sport it is the most robust of the three to a single-sport regime break, and its drawdown is the smallest. Stable across all four August weeks and improves on the held-out tail.",
+      "KNOWN_TRANSFER_RISK": "The >=24h lead-time arm is structurally unreachable under the current live Contract A pipeline (hard cap hoursToStart<=6). Making C2 executable requires either a distinct early-reservation contour or a change to that cap - which is out of scope here and is the core feasibility question for CURRENT_EXECUTABILITY_AND_FINAL_FREEZE_V1. If early markets in the band turn out to be thin or to move sharply before start, realized entry prices and fills will not match the research figure."
+    }
+  ],
+
+  "held_reference_not_frozen": {
+    "C3": { "exact_predicate": "0.50 <= entry_price < 0.60 AND sport_family = soccer AND lead_time_hours >= 24", "august": { "N": 2004, "PNL_U": 266.42, "ROI_PCT": 13.29, "MAX_DRAWDOWN_U": -13.94 }, "role": "risk-tightened form of finalist C1 - lowest drawdown in the whole set; test as a C1 sub-variant only if C1's drawdown proves unacceptable live." },
+    "CONTRACT_A_SOCCER_ONLY": { "exact_predicate": "Contract A pipeline unchanged, restricted to strategic_scope = SOCCER", "own_denominator": { "N": 154, "PNL_U": 21.3782, "ROI_PCT": 13.88, "MAX_DRAWDOWN_U": -8.0000 }, "role": "already-frozen challenger on the Contract-A track (contract-a-c4-common-universe verdict A); belongs to the Contract-A lineage, not the C0-C5 research lineage." }
+  },
+
+  "no_tuning_contract": {
+    "status": "ACTIVE_IMMUTABLE",
+    "new_lineage_required_for_any_change_to": [
+      "entry_price band 0.50 / 0.60 and inclusivity",
+      "soccer condition or sport taxonomy",
+      "24-hour lead-time threshold or its definition (event_start - decision_timestamp)",
+      "C4 OR/union semantics",
+      "physical-event identity",
+      "one-bet-per-physical-event rule",
+      "settlement / PnL / ROI / MaxDD formulas",
+      "flat 1u stake"
+    ],
+    "no_threshold_search_performed": true,
+    "no_september_data_used": true,
+    "no_new_hypothesis_created": true
+  },
+
+  "next_semantic_transition": "CURRENT_EXECUTABILITY_AND_FINAL_FREEZE_V1",
+  "next_step_scope": "For C1, C4 and C2 only: prove current provider fields / markets / sides exist for each exact predicate, estimate current executable candidate capacity per day, and choose the single best model for provisional execution through Contract A -> Reservation at ~15-30 bets/day."
+}
