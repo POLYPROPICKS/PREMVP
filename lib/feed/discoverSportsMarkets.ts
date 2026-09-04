@@ -256,6 +256,78 @@ function groupMarketsByGame(markets: SportsMarketCandidate[]): GameGroup[] {
   });
 }
 
+// ── EXPAND_ALLOWED_SOCCER_MARKET_UNIVERSE_V1 ────────────────────────────────
+// Provider-authoritative soccer market families admitted as distinct product
+// candidates, in addition to the pre-existing one-representative-per-group
+// behaviour. Exact `sportsMarketType` match only -- deliberately not text
+// matching -- so no other family (corners, halftime, props, both-teams-to-
+// score, other scorer markets) is ever implicitly admitted here. moneyline /
+// spread(s) / total(s) are the pre-existing product families; soccer_exact_score
+// and soccer_first_to_score are the two newly admitted ones proven present in
+// provider inventory (CANONICAL_PRODUCT_DATA_LINEAGE_V1, 2026-09-04).
+export const SOCCER_MULTI_MARKET_APPROVED_TYPES: ReadonlySet<string> = new Set([
+  "moneyline",
+  "spread",
+  "spreads",
+  "total",
+  "totals",
+  "soccer_exact_score",
+  "soccer_first_to_score",
+]);
+
+/** The two families this mission adds. Presence of one of these on a group is
+ * what triggers multi-market emission -- a soccer group whose only approved
+ * markets are moneyline/spread/total keeps the pre-existing single
+ * representative-market row, byte-identical to before this mission. */
+const SOCCER_NEWLY_ADMITTED_TYPES: ReadonlySet<string> = new Set([
+  "soccer_exact_score",
+  "soccer_first_to_score",
+]);
+
+function approvedSoccerMarketType(m: SportsMarketCandidate): string | null {
+  const type = String(m.sportsMarketType ?? "").trim().toLowerCase();
+  if (!type || !SOCCER_MULTI_MARKET_APPROVED_TYPES.has(type)) return null;
+  if (!m.conditionId) return null;
+  return type;
+}
+
+/**
+ * Pure selector: which markets of a physical-event group become product
+ * candidates. Default (unchanged from before this mission): exactly the
+ * group's one representative `primaryMarket`. For a SOCCER group that
+ * contains at least one newly-admitted family (exact score or first-to-
+ * score) alongside an approved-family sibling, every distinct approved-family
+ * market in the group becomes its own candidate -- one physical event, many
+ * exact market/token candidates, decided later by Contract A and Rebalance.
+ * Every other sport, and every soccer group without a newly-admitted family
+ * present, is unaffected.
+ */
+export function selectSoccerGroupCandidateMarkets(group: GameGroup): SportsMarketCandidate[] {
+  const fallback = group.primaryMarket ? [group.primaryMarket] : [];
+  if (group.markets.length === 0) return fallback;
+  const isSoccer = group.markets.some(
+    (m) => structuredCarrierFromMarket(m).providerSportFamily === "soccer",
+  );
+  if (!isSoccer) return fallback;
+
+  const approvedSiblings: SportsMarketCandidate[] = [];
+  const seenConditionIds = new Set<string>();
+  let hasNewlyAdmittedFamily = false;
+  for (const m of group.markets) {
+    const type = approvedSoccerMarketType(m);
+    if (type === null) continue;
+    if (structuredCarrierFromMarket(m).providerSportFamily !== "soccer") continue;
+    if (SOCCER_NEWLY_ADMITTED_TYPES.has(type)) hasNewlyAdmittedFamily = true;
+    const cid = m.conditionId as string;
+    if (seenConditionIds.has(cid)) continue;
+    seenConditionIds.add(cid);
+    approvedSiblings.push(m);
+  }
+
+  if (!hasNewlyAdmittedFamily || approvedSiblings.length === 0) return fallback;
+  return approvedSiblings;
+}
+
 export type ResearchMarketTimingReason =
   | "STRUCTURED_EVENT_START_ELIGIBLE"
   | "FALLBACK_MARKET_END_ELIGIBLE"
@@ -1391,60 +1463,71 @@ export async function discoverSportsMarkets(
     return 0;
   });
 
-  // 11. Build final candidates
+  // 11. Build final candidates.
+  // EXPAND_ALLOWED_SOCCER_MARKET_UNIVERSE_V1: buildCandidateSample is keyed off
+  // ONE market, not always g.primaryMarket, so a soccer group carrying an
+  // approved exact-score / first-to-score sibling can emit more than one
+  // candidate for the same physical event. Every field below is identical to
+  // the pre-existing single-row shape; only which market supplies the
+  // market-specific fields (title/slug/sportsMarketType/primaryMarketRaw/
+  // structured carrier) changes -- group-level fields (teams, volume, time,
+  // league, sibling marketsRaw) are always the group's, so downstream
+  // physical-event identity is unaffected.
+  const buildCandidateSample = (g: GameGroup, market: SportsMarketCandidate | null): SportsDiscoverySample => ({
+    title: market?.question?.substring(0, 100) || g.highestVolumeMarket?.question?.substring(0, 100) || "Unknown",
+    slug: market?.slug?.substring(0, 60) || g.highestVolumeMarket?.slug?.substring(0, 60) || "",
+    gameId: g.gameId,
+    sportsMarketType: market?.sportsMarketType,
+    eventVolumeUsd: g.eventVolumeUsd,
+    resolvedGameTimeIso: g.resolvedGameTimeIso,
+    gameTimeSource: g.gameTimeSource,
+    gameTimeConfidence: g.gameTimeConfidence,
+    marketCount: g.markets.length,
+    strategy: "markets-first",
+    leagueName: resolveLeagueName(g, teamsMap),
+    polymarketEventSlug: market?.nestedEventSlug || market?.slug || "",
+    teamALogo: g.teamAID ? (teamsMap.get(g.teamAID)?.logo ?? null) : null,
+    teamBLogo: g.teamBID ? (teamsMap.get(g.teamBID)?.logo ?? null) : null,
+    teamAName: g.teamAID ? (teamsMap.get(g.teamAID)?.name ?? null) : null,
+    teamBName: g.teamBID ? (teamsMap.get(g.teamBID)?.name ?? null) : null,
+    eventImage: (() => {
+      const raw = market?.raw || {};
+      return (raw.image as string) || (raw.icon as string) || null;
+    })(),
+    ...structuredCarrierFromMarket(market),
+    // Add raw market data for outcome pricing
+    primaryMarketRaw: market ? {
+      outcomes: market.outcomes,
+      outcomePrices: market.outcomePrices,
+      clobTokenIds: market.clobTokenIds,
+      question: market.question,
+      sportsMarketType: market.sportsMarketType,
+      gameId: market.gameId,
+      conditionId: market.conditionId,
+      volumeNum: market.volumeNum,
+      volume24hr: market.volume24hr,
+      volumeClob: market.volumeClob,
+      oneDayPriceChange: market.oneDayPriceChange,
+      providerMarketId: market.id,
+    } : null,
+    // Add all grouped markets for mapper to try
+    marketsRaw: g.markets.map(m => ({
+      outcomes: m.outcomes,
+      outcomePrices: m.outcomePrices,
+      clobTokenIds: m.clobTokenIds,
+      question: m.question,
+      sportsMarketType: m.sportsMarketType,
+      conditionId: m.conditionId,
+      volumeNum: m.volumeNum,
+      volume24hr: m.volume24hr,
+      volumeClob: m.volumeClob,
+      oneDayPriceChange: m.oneDayPriceChange,
+    })),
+  });
+
   const finalCandidates: SportsDiscoverySample[] = volumeEligible24hGroups
     .slice(0, cfg.targetCards)
-    .map((g, idx) => ({
-      title: g.primaryMarket?.question?.substring(0, 100) || g.highestVolumeMarket?.question?.substring(0, 100) || "Unknown",
-      slug: g.primaryMarket?.slug?.substring(0, 60) || g.highestVolumeMarket?.slug?.substring(0, 60) || "",
-      gameId: g.gameId,
-      sportsMarketType: g.primaryMarket?.sportsMarketType,
-      eventVolumeUsd: g.eventVolumeUsd,
-      resolvedGameTimeIso: g.resolvedGameTimeIso,
-      gameTimeSource: g.gameTimeSource,
-      gameTimeConfidence: g.gameTimeConfidence,
-      marketCount: g.markets.length,
-      strategy: "markets-first",
-      leagueName: resolveLeagueName(g, teamsMap),
-      polymarketEventSlug: g.primaryMarket?.nestedEventSlug || g.primaryMarket?.slug || "",
-      teamALogo: g.teamAID ? (teamsMap.get(g.teamAID)?.logo ?? null) : null,
-      teamBLogo: g.teamBID ? (teamsMap.get(g.teamBID)?.logo ?? null) : null,
-      teamAName: g.teamAID ? (teamsMap.get(g.teamAID)?.name ?? null) : null,
-      teamBName: g.teamBID ? (teamsMap.get(g.teamBID)?.name ?? null) : null,
-      eventImage: (() => {
-        const raw = g.primaryMarket?.raw || {};
-        return (raw.image as string) || (raw.icon as string) || null;
-      })(),
-      ...structuredCarrierFromMarket(g.primaryMarket),
-      // Add raw market data for outcome pricing
-      primaryMarketRaw: g.primaryMarket ? {
-        outcomes: g.primaryMarket.outcomes,
-        outcomePrices: g.primaryMarket.outcomePrices,
-        clobTokenIds: g.primaryMarket.clobTokenIds,
-        question: g.primaryMarket.question,
-        sportsMarketType: g.primaryMarket.sportsMarketType,
-        gameId: g.primaryMarket.gameId,
-        conditionId: g.primaryMarket.conditionId,
-        volumeNum: g.primaryMarket.volumeNum,
-        volume24hr: g.primaryMarket.volume24hr,
-        volumeClob: g.primaryMarket.volumeClob,
-        oneDayPriceChange: g.primaryMarket.oneDayPriceChange,
-        providerMarketId: g.primaryMarket.id,
-      } : null,
-      // Add all grouped markets for mapper to try
-      marketsRaw: g.markets.map(m => ({
-        outcomes: m.outcomes,
-        outcomePrices: m.outcomePrices,
-        clobTokenIds: m.clobTokenIds,
-        question: m.question,
-        sportsMarketType: m.sportsMarketType,
-        conditionId: m.conditionId,
-        volumeNum: m.volumeNum,
-        volume24hr: m.volume24hr,
-        volumeClob: m.volumeClob,
-        oneDayPriceChange: m.oneDayPriceChange,
-      })),
-    }));
+    .flatMap((g) => selectSoccerGroupCandidateMarkets(g).map((market) => buildCandidateSample(g, market)));
 
   counts.finalPairs = finalCandidates.length;
 
