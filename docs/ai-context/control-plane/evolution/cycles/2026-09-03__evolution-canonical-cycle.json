@@ -1,0 +1,362 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-09-03__evolution-canonical-cycle",
+  "period_start": "2026-09-03T00:00:00Z",
+  "period_end": "2026-09-04T00:00:00Z",
+  "evidence_cutoff": "2026-09-04T00:25:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (Routine A)",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#230",
+      "POLYPROPICKS/PREMVP#231",
+      "POLYPROPICKS/PREMVP#232",
+      "POLYPROPICKS/PREMVP#234",
+      "POLYPROPICKS/PREMVP#235",
+      "POLYPROPICKS/PREMVP#236",
+      "POLYPROPICKS/PREMVP#237",
+      "POLYPROPICKS/PREMVP#238",
+      "POLYPROPICKS/PREMVP#239"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-09-03__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "NOT_ENOUGH_EVIDENCE",
+    "what_moved": [],
+    "next_verified_production_fact_now_possible": "PR#231 made the Reservation cron's window configurable (RESERVATION_TIMES_MINSK, default preserves the legacy 17:00 anchor). Next fact: a real post-merge Railway fire of the route, checked via ?mode=status, resolving exactly as the new unit tests predict -- not yet observed.",
+    "blockers_removed": [],
+    "blockers_introduced": [],
+    "not_proven": [
+      "PR#231 rewrites the live Reservation cron's anchor/window logic; merged directly by the POLYPROPICKS account in 4 seconds, 0 CI check runs (no .github/workflows exists repo-wide -- pre-existing, not new), no post-merge invocation recorded. Code/test-level only.",
+      "The 7d/14d/30d research corpus and scorecard (PR#234/235/236/237/238/239) are explicitly backward-looking: FORWARD_VALIDATED=false, no winner chosen. The one positive cell (C0/C5, 30d +28.5% ROI) is, by the report's own text, one recent burst week, not a repeated effect.",
+      "PR#230/#232 (research-clone daily sync) mirrors production tables into a research database; changes no product, serving or money path.",
+      "CURRENT_STATE.yaml is unchanged since 2026-08-28T21:00:54Z (state_version 17) -- seventh consecutive cycle. This period newly proves the precise trigger: origin_main_sha is a proven ancestor of live origin/main, but the changed paths fall outside the state_bootstrap_allowlist, so it is STATE_REFRESH_REQUIRED, not merely aging.",
+      "CHAIN-PRIMARY-CAP-20260827 and CHAIN-RESERVATION-LOOKBACK-20260828 remain open onion chains with no new links this period (H2/H5 continuity).",
+      "No completion envelope was Architect-accepted this period. Four PASS-status envelopes exist in-repo for this period's modeling work but none reached CURRENT_STATE.yaml.accepted_completions."
+    ],
+    "runtime_or_business_evidence_exists": false,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_ADDED",
+    "capabilities": [
+      {
+        "domain": "REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS",
+        "statement": "A rolling 7/14/30d research-corpus pipeline plus a deterministic scorecard evaluate the frozen C0/C1/C4/C5 predicates (PR#219) against real historical data -- the transition the prior cycle flagged as missing.",
+        "persisted_artifact": "scripts/modeling/rolling-research-corpus.ts",
+        "use_or_validation_evidence": "4 completion envelopes PASS; new tests under tests/modeling/; SHA256 manifests under modeling/evidence/.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#234",
+          "POLYPROPICKS/PREMVP#235",
+          "POLYPROPICKS/PREMVP#237",
+          "POLYPROPICKS/PREMVP#238",
+          "POLYPROPICKS/PREMVP#239",
+          "scripts/modeling/rolling-research-corpus.ts",
+          "scripts/modeling/scorecard-run.ts",
+          "modeling/evidence/rich-model-scorecard-v1/FINDINGS_SCORECARD_V1.md"
+        ]
+      },
+      {
+        "domain": "RECOVERY_AND_CHECKPOINTS",
+        "statement": "A bounded, resumable daily sync mirrors three production Supabase tables row-for-row into a research-clone database on a Railway cron, with a finite page ceiling so a damaged source cannot become an unbounded run; hardened for reconciliation budget in the same period.",
+        "persisted_artifact": "lib/research-clone/dailySync.ts",
+        "use_or_validation_evidence": "New tests: dailySync.test.ts, railwayConfig.test.ts, plus a same-period hardening PR (#232) adding reconciliation-budget tests.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#230",
+          "POLYPROPICKS/PREMVP#232",
+          "lib/research-clone/dailySync.ts",
+          "ops/railway/research-clone-daily-sync.toml",
+          "tests/research-clone/dailySync.test.ts"
+        ]
+      },
+      {
+        "domain": "CONTROLLED_IMPROVEMENT",
+        "statement": "The live Reservation cron's anchor timing moved from one hardcoded 17:00 Minsk constant to a configurable, fail-closed RESERVATION_TIMES_MINSK anchor list, preserving legacy behavior when config is absent.",
+        "persisted_artifact": "lib/executor/nightWindow.ts",
+        "use_or_validation_evidence": "New tests (tests/contur3/reservationAnchors.test.ts): default fallback, multi-anchor, midnight rollover, bounded admission, fail-closed invalid input.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#231",
+          "lib/executor/nightWindow.ts",
+          "tests/contur3/reservationAnchors.test.ts",
+          "app/api/cron/night-event-reservations/route.ts"
+        ]
+      }
+    ],
+    "not_proven": [
+      "The scorecard is explicitly descriptive-only per its own FINDINGS document; it does not itself choose a model, and the declared next mission has not started.",
+      "The research-clone daily sync has not been observed completing an unattended Railway-triggered run this period; runtime_evidence_count is 0.",
+      "The Reservation anchor capability (PR#231) has zero CI check runs and no live cron-fire observation; SOURCE_OR_CONTROL_PROVEN only (H6).",
+      "operator_action_events capture is still a lower bound with no primary per-message log (H4) -- unchanged from prior cycles."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": "UNKNOWN",
+      "runtime_evidence_count": 0,
+      "reusable_artifacts_created": 3,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-09-03T00:00:00Z",
+    "period_end": "2026-09-04T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "founder_actions_removable": "UNKNOWN",
+    "executor_runs": "UNKNOWN",
+    "successful_terminal_results": "UNKNOWN",
+    "reruns_resumes": "UNKNOWN",
+    "recovery_iterations": "UNKNOWN",
+    "reviewer_corrections_rejections": 0,
+    "orchestration_waste_iterations": "UNKNOWN",
+    "implemented_fixes": 0,
+    "proven_effective_fixes": 0,
+    "runtime_evidence_count": 0,
+    "reusable_artifacts_created": 3,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN",
+    "capture_coverage": "PARTIAL",
+    "chat_interaction_coverage": "PARTIAL",
+    "founder_actions_proven": 0,
+    "architect_corrections": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 1
+    },
+    "defect_counts_by_recurrence": {
+      "SAME_ROOT_REPEAT": 1
+    },
+    "repeated_defect_families": 1,
+    "active_onion_chains": 0
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "CURRENT_STATE.yaml still shows updated_at=2026-08-28T21:00:54Z (state_version 17) -- seventh consecutive cycle unchanged. This period newly proves the exact classification: origin_main_sha is still an ancestor of live origin/main, but the changed paths fall outside the state_bootstrap_allowlist, so it is STATE_REFRESH_REQUIRED, not just aging.",
+      "why_it_matters": "Seventh consecutive cycle carrying the same open gap: a reconciliation library has existed for weeks (PR#185) but has only ever run manually, once, and the gap has now sharpened from vague staleness to a named, rule-triggered condition.",
+      "axis_a_effect": "Indirect: any Architect planning session run before this is fixed still risks planning on top of a state picture that can silently drift again.",
+      "axis_b_effect": "none -- the capability already exists, the gap is purely in scheduling/automation, not implementation",
+      "proposed_automation": "Unchanged from prior cycles: wire scripts/control-plane/lib/control-plane-reconcile.mjs as a CI gate or a separate read-only Routine that compares CURRENT_STATE.origin_main_sha against live origin/main on every merge or on a fixed schedule.",
+      "persistent_artifact": "scripts/control-plane/lib/control-plane-reconcile.mjs",
+      "expected_value": "origin_main_sha in CURRENT_STATE.yaml never drifts more than a small, defined number of merges behind",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low in read-only/proposal mode; this review does not accept a CURRENT_STATE delta itself",
+      "success_metric": "At the next cycle's evidence_cutoff, origin_main_sha is behind live origin/main by a small defined number of merges, not by the current gap",
+      "rollback_or_stop_condition": "Stop if reconciliation requires production runtime or database access, or the Founder rejects the proposed delta.",
+      "timing": "Next cycle or later",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "docs/ai-context/control-plane/ARCHITECT_CONTROL_PLANE.yaml#stale_state_behavior.state_bootstrap_allowlist",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-02__evolution-canonical-cycle.json#automation_hypotheses.H1"
+      ]
+    },
+    {
+      "id": "H2",
+      "observed_problem": "No new instance this period (none of the nine confirmed PRs touch the primary feed funnel) -- the underlying gap remains: no shared population-conservation test helper for the primary feed funnel, despite 5-6 confirmed instances of the same silent-cap pattern across CHAIN-PRIMARY-CAP-20260827.",
+      "why_it_matters": "A third consecutive dormant period on this funnel does not close an open structural gap; the next engineering period on it is exactly as likely to hit the next instance as before.",
+      "axis_a_effect": "None this period; each future unfound cap would still silently drop qualified events",
+      "axis_b_effect": "Would turn manually repeated diagnosis into a reusable, testable invariant -- proposal unchanged since H2 was first raised",
+      "proposed_automation": "Same shared population-conservation check across funnel stages proposed in prior cycles, still buildable from the two already-existing test cases (primaryPopulationDecoupling, primaryCoverageDiagnosticOnly) without new product code.",
+      "persistent_artifact": "tests/feed/lib/populationConservation.ts (still not created)",
+      "expected_value": "One reusable check instead of N one-off ones; faster discovery of the next instance of this pattern",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: test helper only, no product behavior change",
+      "success_metric": "A fix on a different funnel stage reuses this helper instead of new one-off check code",
+      "rollback_or_stop_condition": "Stop if funnel stages turn out to have incompatible terminal-reason shapes.",
+      "timing": "Next cycle with funnel work",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#201",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-02__evolution-canonical-cycle.json#automation_hypotheses.H2"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "This period again established only a lower bound of zero for operator_action_events -- several PRs were authored and merged directly by the POLYPROPICKS account within seconds with no visible review step, but this reviewer still has no primary operator-action log. Same structural gap, another cycle.",
+      "why_it_matters": "Operator-action metrics still cannot be compared across cycles while capture stays partial by construction every time -- this is a repeat confirmation, not a new finding.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "Would let proven operator actions stop being a branch-inferred lower bound and become a full count",
+      "proposed_automation": "Unchanged from prior cycles: a shared, append-only operator-action log that both executors write to at message-submission time, which evolution-collect.mjs reads directly.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml",
+      "expected_value": "Proven operator actions reach full, not partial, capture coverage",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: read/aggregate only, no product or runtime change",
+      "success_metric": "A future cycle reaches full capture coverage without inferred numbers",
+      "rollback_or_stop_condition": "Stop if this would require changing how executors start sessions.",
+      "timing": "Next cycle or later",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-02__evolution-canonical-cycle.json#automation_hypotheses.H4",
+        "this cycle's operator_actions.capture_coverage=PARTIAL with 0 branch-inferred actions"
+      ]
+    },
+    {
+      "id": "H6",
+      "observed_problem": "B2 (PR#194) and the unified population (PR#191) remain code/test-confirmed only, still no production observation. This period adds a third instance of the same gap: PR#231's Reservation-anchor rewrite also has zero post-merge invocation evidence, alongside PR#225's still-unread diagnostics field.",
+      "why_it_matters": "Without a production observation, code-confirmed changes to the Reservation path continue to risk being silently recorded as a launch advance in a future planning session without runtime proof; three independent features now share this exact gap.",
+      "axis_a_effect": "Would close the code-level-vs-production-level gap for decisions that have now accumulated across seven cycles",
+      "axis_b_effect": "none",
+      "proposed_automation": "Unchanged in mechanism, newly targeted: one bounded read-only GET of app/api/cron/night-event-reservations?mode=status after PR#231, to confirm resolveDueReservationAnchor/resolveNightWindow resolve against a real Railway wake-up exactly as the 44 unit tests predict.",
+      "persistent_artifact": "reports/observation/<observation_id>.json (existing command output contract)",
+      "expected_value": "Moves PR#231 from code-confirmed to production-confirmed",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: read-only status endpoint, no write, no forceCreate",
+      "success_metric": "The observation's window_start_iso/plan_run_id match the expected default 17:00 Minsk anchor identity",
+      "rollback_or_stop_condition": "Stop if the observation returns an infrastructure-pending status twice in a row instead of a real result.",
+      "timing": "Next cycle with funnel/planning work",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#194",
+        "POLYPROPICKS/PREMVP#225",
+        "POLYPROPICKS/PREMVP#231",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-02__evolution-canonical-cycle.json#automation_hypotheses.H6"
+      ]
+    },
+    {
+      "id": "H7",
+      "observed_problem": "The tracked Governor/Evolution draft-PR family held steady at 7 members this period (#199/205/206/212/214/216/222, none closed or added). Separately, 5 new open/draft modeling PRs (#223/226/227/228/233) accumulated without terminal persistence -- same shape, different artifact class than PR#224 covers.",
+      "why_it_matters": "The originally tracked family stopped growing for the first time -- a real improvement -- but the underlying pattern (work lands on a branch, a draft PR opens, nothing canonicalizes it) has now generalized beyond Evolution/Governor artifacts to ordinary modeling work, which this reviewer has not yet gathered enough evidence to prove shares H7's exact causal mechanism.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "PR#224's dispatch-plan capability remains a precondition for safely canonicalizing the Evolution/Governor family from claude_code_cloud; it does not extend to the newly observed modeling-PR pile.",
+      "proposed_automation": "Not a Routine A action on the other stranded branches. Recorded for Routine B: run terminal_persistence_stage on the 7-member family or supersede/close them; separately decide if the modeling-PR pile needs its own mechanism. This run persists its own lineage via GitHub MCP (E3) -- a normal step, not babysitting.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/SCHEDULE_MANIFEST.yaml (already documents the intended terminal_persistence_stage for the Governor routine)",
+      "expected_value": "No stranded draft PRs left open across periods; Routine B's own history stays as clean as Routine A's now is",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: this hypothesis proposes only running an already-registered, end-to-end-invocable lifecycle command for the known family, and observation-only scoping for the new one",
+      "success_metric": "At a future cycle's evidence_cutoff, the Evolution/Governor family is zero, and the modeling-PR pile is either explicitly classified as intentional draft evidence or also brought to zero",
+      "rollback_or_stop_condition": "Stop if closing or superseding these PRs would discard evidence a Founder has not yet reviewed.",
+      "timing": "Next Governor run",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#199",
+        "POLYPROPICKS/PREMVP#205",
+        "POLYPROPICKS/PREMVP#206",
+        "POLYPROPICKS/PREMVP#212",
+        "POLYPROPICKS/PREMVP#214",
+        "POLYPROPICKS/PREMVP#216",
+        "POLYPROPICKS/PREMVP#222",
+        "POLYPROPICKS/PREMVP#223",
+        "POLYPROPICKS/PREMVP#226",
+        "POLYPROPICKS/PREMVP#227",
+        "POLYPROPICKS/PREMVP#228",
+        "POLYPROPICKS/PREMVP#233",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-02__evolution-canonical-cycle.json#automation_hypotheses.H7"
+      ]
+    }
+  ],
+  "insufficient_supported_hypotheses": true,
+  "insufficient_supported_hypotheses_reason": "Only five hypotheses are supported this period. H3 and H5 remain valid families but had zero new evidence this period (PR#231's new constants are named and justified, not the bare-ceiling pattern H3 tracks; no money-lane evidence-write silent-loss instance appeared for H5); inventing a sixth/seventh to reach slack would violate the no-invention rule.",
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "When a prior cycle's own axis_b.not_proven names a specific declared next transition (PR#219's 'CANONICAL_MODELING_DATASET_V1'), check a later period's new PRs against that exact name before treating them as an unrelated, brand-new capability -- this period's rolling-corpus/scorecard work is that exact transition, not a fresh, disconnected effort.",
+      "why_it_matters_now": "Six PRs of dense modeling work landed in one day; without checking the prior cycle's own declared next-step, it would have been easy to record this as a generic 'more modeling capability' entry instead of recognizing it closes a specifically tracked gap.",
+      "how_it_applies_to_current_project": "Every Daily Evolution Review should grep the prior 1-2 cycles' axis_b.not_proven and next_verified_production_fact_now_possible fields for named next-transition identifiers before writing this period's capability entries.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/README.md",
+      "ladder_level": 2
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "Treat a zero-CI, seconds-long, single-account direct-merge PR that touches a money-adjacent production path (here: the Reservation cron's admission/anchor logic) as exactly the boundary case Axis A's source-vs-runtime proof-level split exists for -- credit it at most as code/test-confirmed, however large its own test suite, until a real post-merge invocation is independently observed.",
+      "why_it_matters_now": "PR#231 is the largest true production-runtime change of the period (not a research/docs artifact) and is also the one with the least external verification around it (no CI, no review, no completion envelope) -- exactly where overcrediting Axis A would do the most damage.",
+      "how_it_applies_to_current_project": "Whenever a merge touches app/api/cron/*, lib/executor/*, or another money/execution path with no CI check runs and no reviewer receipt, this review caps its Axis A credit at SOURCE_OR_CONTROL_PROVEN and records a targeted next observation (see H6) rather than letting the PR's own test count substitute for runtime proof.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/README.md",
+      "ladder_level": 2
+    }
+  ],
+  "founder_practice_comparison": "P2 is the higher-priority discipline: it guards Axis A, the highest-priority axis, against overcrediting exactly the kind of unreviewed money-adjacent change this period actually contains. P1 is a narrower evidence-linking habit that improves Axis B bookkeeping continuity but carries no direct business risk if skipped for one cycle.",
+  "founder_practice_recommended_order": [
+    "P2",
+    "P1"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "A single bounded read-only GET of app/api/cron/night-event-reservations?mode=status, taken after PR#231's merge, can independently confirm the new configurable-anchor logic resolves identically to the 44 unit tests' predictions against a real production instant, with no new code.",
+      "bounded_scope": "One read-only status call only (no forceCreate, no write path); record the response's window_start_iso, plan_run_id and configured_anchor_due alongside the expected values computed from the same nowMs.",
+      "persistent_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "promotion_condition": "The observed plan_run_id and window_start_iso match the deterministic values this reviewer can independently compute for the same instant under the default (unconfigured) anchor.",
+      "stop_condition": "Stop if the observation would require any write-capable mode, a secret this executor does not already hold, or forceCreate."
+    },
+    {
+      "id": "E2",
+      "hypothesis": "The funnel population-conservation helper (H2) can still be prototyped from the two existing PR#201 test fixtures without new product code, unchanged from prior cycles.",
+      "bounded_scope": "Prototype only, on the existing primaryPopulationDecoupling/primaryCoverageDiagnosticOnly fixtures; do not touch a new funnel stage.",
+      "persistent_artifact": "tests/feed/lib/populationConservation.ts (new)",
+      "promotion_condition": "A future cycle's fix on a different funnel stage reuses this helper instead of new one-off check code.",
+      "stop_condition": "Stop if funnel stages turn out to have incompatible terminal-reason shapes."
+    },
+    {
+      "id": "E3",
+      "hypothesis": "This cycle's own terminal persistence can again reach canonical origin/main with zero Founder action, using the same GitHub-MCP-backed path already proven once for the prior cycle's own lineage (PR#229).",
+      "bounded_scope": "One canonicalization attempt for this cycle's own lineage only (cycles/2026-09-03__evolution-canonical-cycle.json + its report + this input bundle); no new mechanism invented if it fails, and no action taken on any other stranded branch.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-03__evolution-canonical-cycle.json",
+      "promotion_condition": "A PR containing exactly the three allowlisted Evolution-evidence files is created and merged via GitHub MCP tools, and git merge-base --is-ancestor confirms this cycle's commit is an ancestor of origin/main.",
+      "stop_condition": "Stop and record PENDING_RESUMABLE if the branch, PR, or merge step is blocked by anything beyond this executor's available GitHub MCP tools -- do not invent a workaround."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE (per CURRENT_STATE.yaml, updated_at 2026-08-28T21:00:54Z, state_version 17 -- unchanged this period; see hypothesis H1, not re-recorded as a new defect_occurrences entry since the condition itself is the same, only its classification sharpened)"
+  },
+  "next_step": "Persist via the proven GitHub-MCP path (already validated once for the prior cycle's own lineage via PR#229): push this cycle's three allowlisted files on this branch, create a PR against main, merge it, and verify origin/main ancestry. Do not babysit the 7-member Evolution/Governor draft-PR family or the newly observed modeling-PR pile beyond recording both for Routine B.",
+  "corrections": [],
+  "accepted": false
+}
