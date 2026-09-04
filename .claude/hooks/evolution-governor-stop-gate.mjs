@@ -19,7 +19,7 @@
  *   premvp.command.evolution_canonicalize.v1  ->  scripts/control-plane/evolution-canonicalize.mjs
  *
  * ...invoked in its read-only `--admit --json` mode. When a validated Evolution/Governor
- * lineage has not yet reached canonical origin/main, the hook blocks Stop and prints the
+ * lineage has not yet reached freshly observed canonical origin/main, the hook blocks Stop and prints the
  * exact registered terminal-persistence command the session must run:
  *
  *   npm run control-plane:evolution:canonicalize -- --canonicalize --branch <branch> --executor <selected-executor>
@@ -84,20 +84,18 @@ export function parsePorcelainPaths(porcelain) {
  * Classify what this session did with Evolution/Governor evidence, using git state only.
  *
  * @param {(args: string[]) => string} runGit  git runner, cwd already bound to the repo.
+ * @param {{ base?: string }} [options]  The already-resolved local ref to use as a comparison baseline.
  * @returns {{ dirty: string[], committed: string[], base: string, branch: string }}
  */
-export function collectEvidenceState(runGit) {
+export function collectEvidenceState(runGit, { base: requestedBase = 'origin/main' } = {}) {
   const safe = (args, fallback = '') => {
     try { return runGit(args); } catch { return fallback; }
   };
 
   const branch = safe(['rev-parse', '--abbrev-ref', 'HEAD']).trim() || 'HEAD';
 
-  // Prefer origin/main as the canonical baseline; fall back so the hook still runs offline.
-  let base = 'origin/main';
-  if (!safe(['rev-parse', '--verify', '--quiet', 'origin/main']).trim()) {
-    base = safe(['rev-parse', '--verify', '--quiet', 'main']).trim() ? 'main' : '';
-  }
+  // The Stop gate has no local-main fallback: canonical authority is remote main only.
+  const base = safe(['rev-parse', '--verify', '--quiet', requestedBase]).trim() ? requestedBase : '';
 
   const dirty = parsePorcelainPaths(safe(['status', '--porcelain'])).filter(isEvolutionEvidencePath);
 
@@ -114,6 +112,21 @@ export function collectEvidenceState(runGit) {
   return { dirty: [...new Set(dirty)], committed: [...new Set(committed)], base, branch };
 }
 
+/**
+ * Fetch only the canonical main tip into FETCH_HEAD. This deliberately does not update a
+ * local remote-tracking ref: the Stop decision consumes the fetched commit SHA directly.
+ */
+export function refreshCanonicalMainAuthority(runGit) {
+  try {
+    runGit(['fetch', '--no-tags', 'origin', 'refs/heads/main']);
+    const sha = runGit(['rev-parse', '--verify', '--quiet', 'FETCH_HEAD']).trim();
+    if (!sha) throw new Error('git fetch completed without a resolvable FETCH_HEAD');
+    return { ok: true, base: sha, sha };
+  } catch (error) {
+    return { ok: false, error: String(error && error.message || error) };
+  }
+}
+
 const ALLOW = (reason, message = '') => ({ decision: 'ALLOW', code: 0, reason, message });
 const BLOCK = (reason, message) => ({ decision: 'BLOCK', code: 2, reason, message });
 
@@ -127,7 +140,7 @@ const BLOCK = (reason, message) => ({ decision: 'BLOCK', code: 2, reason, messag
  *        Runs `evolution-canonicalize.mjs --admit --json --base <base> --head HEAD` and returns its result.
  */
 export function evaluateStopGate({ runGit, runAdmit }) {
-  const { dirty, committed, base, branch } = collectEvidenceState(runGit);
+  let { dirty, committed, base, branch } = collectEvidenceState(runGit);
 
   // --- case 1 / case 4: nothing this session -----------------------------------------
   // No uncommitted evidence and no evidence on HEAD that is missing from origin/main.
@@ -158,10 +171,37 @@ export function evaluateStopGate({ runGit, runAdmit }) {
     );
   }
 
+  // A cached origin/main can predate a successful GitHub merge. Once local evidence shows a
+  // committed Evolution/Governor lineage, refresh remote authority before classifying it as
+  // pending or canonical. Failure is terminally unsafe, so fail closed rather than trusting
+  // the stale remote-tracking ref.
+  const authority = refreshCanonicalMainAuthority(runGit);
+  if (!authority.ok) {
+    return BLOCK(
+      'CASE_5_CANONICAL_AUTHORITY_REFRESH_FAILED',
+      [
+        '[evolution-governor-stop-gate] Cannot freshly observe canonical origin/main while',
+        'checking this session\'s committed Evolution/Governor lineage. Failing closed — Stop is',
+        'blocked rather than treating cached origin/main as terminal proof.',
+        '',
+        `  fetch   : git fetch --no-tags origin refs/heads/main`,
+        `  cause   : ${authority.error || '(no detail)'}`,
+      ].join('\n'),
+    );
+  }
+
+  ({ dirty, committed, base, branch } = collectEvidenceState(runGit, { base: authority.base }));
+
+  // The freshly observed remote main already contains this lineage. Do not invoke admission
+  // or emit a second canonicalization instruction.
+  if (dirty.length === 0 && committed.length === 0) {
+    return ALLOW('CASE_4_CANONICAL_ON_FRESH_REMOTE_MAIN');
+  }
+
   // --- committed evidence not on origin/main: delegate the verdict to the canonicalizer
   let admit;
   try {
-    admit = runAdmit({ base: base || 'origin/main' });
+    admit = runAdmit({ base });
   } catch (error) {
     admit = { status: null, stdout: '', stderr: String(error && error.message || error), error };
   }
@@ -219,7 +259,7 @@ export function evaluateStopGate({ runGit, runAdmit }) {
       'this session\'s Evolution/Governor evidence can be persisted. Failing closed — Stop is',
       'blocked and no alternative persistence path is invented.',
       '',
-      `  command : node ${CANONICALIZE_SCRIPT} --admit --json --base ${base || 'origin/main'} --head HEAD`,
+      `  command : node ${CANONICALIZE_SCRIPT} --admit --json --base ${base} --head HEAD`,
       `  exit    : ${admit.status === null ? '(spawn failed)' : admit.status}`,
       '  stderr  :',
       ...(stderr ? stderr.split('\n').map((l) => `    ${l}`) : ['    (empty)']),
