@@ -1,0 +1,169 @@
+{
+  "CORPUS_SCHEMA_VERSION": "research-corpus-factory-live-v1",
+  "MISSION": "RESEARCH_CORPUS_D1_FREEZE_RELEASE_V1",
+  "GENERATED_AT": "2026-09-04T08:29:09.671Z",
+  "AS_OF_MODEL": "IMMUTABLE_AS_OF",
+  "ARTIFACT_IMMUTABLE": true,
+  "LABEL_EVIDENCE_AS_OF": {
+    "value": "2026-09-04T08:29:09.671Z",
+    "unit": "ISO-8601 UTC instant",
+    "meaning": "Gamma/CLOB terminal state was queried as of this instant. Settlement may legitimately evolve later; a future rerun of the same D-1 date is NOT required to reproduce this label hash and MUST NOT overwrite this artifact."
+  },
+  "DETERMINISM_MODEL": "fixed captured clone inputs -> pure compact materializer -> deterministic artifact content. The pure materializer layer is proven by tests/modeling/forward-rich/compactCorpus.test.ts (16/16). The label layer is AS-OF and time-varying by design.",
+  "SOURCE_PROJECT": "nppznoujvnyjargjkmnv",
+  "SOURCE_KIND": "RESEARCH_CLONE",
+  "SOURCE_WINDOW_START": {
+    "value": "2026-09-02T21:00:00.000Z",
+    "unit": "ISO-8601 UTC instant",
+    "tz": "Europe/Minsk D-1 00:00"
+  },
+  "SOURCE_WINDOW_END": {
+    "value": "2026-09-03T21:00:00.000Z",
+    "unit": "ISO-8601 UTC instant",
+    "tz": "Europe/Minsk D 00:00"
+  },
+  "SOURCE_D1_DATE_MINSK": "2026-09-03",
+  "SOURCE_MAX_WATERMARK": {
+    "value": "2026-09-03T20:37:55.242865+00:00|f5f01c55-f1e5-4c46-b211-e9ce3f20aa9c",
+    "unit": "generated_signal_pairs (created_at|id) keyset",
+    "source_stage": "INPUT_RAW"
+  },
+  "OBS_LOOKBACK_FLOOR": "2026-08-03T21:00:00.000Z",
+  "COUNTS": [
+    {
+      "name": "INPUT_RAW_ROW_N",
+      "value": 46776,
+      "unit": "generated_signal_pairs decision rows (repeated emissions included)",
+      "source_stage": "INPUT_RAW"
+    },
+    {
+      "name": "INPUT_OBSERVATION_ROW_N",
+      "value": 20004,
+      "unit": "generated_signal_research_snapshots rows",
+      "source_stage": "INPUT_RAW_OBSERVATION"
+    },
+    {
+      "name": "OUTPUT_COMPACT_ROW_N",
+      "value": 3115,
+      "unit": "compact PIT feature rows (1 per canonical identity)",
+      "source_stage": "OUTPUT_COMPACT"
+    },
+    {
+      "name": "PIT_FUTURE_LEAK_N",
+      "value": 0,
+      "unit": "compact rows with an eligible observation after DECISION_AT",
+      "source_stage": "OUTPUT_COMPACT"
+    },
+    {
+      "name": "SETTLED_N",
+      "value": 796,
+      "unit": "compact rows with Gamma terminal label WIN|LOSS|VOID",
+      "source_stage": "OUTPUT_COMPACT_LABEL"
+    },
+    {
+      "name": "OPEN_N",
+      "value": 2319,
+      "unit": "compact rows with label OPEN (no Gamma terminal state)",
+      "source_stage": "OUTPUT_COMPACT_LABEL"
+    },
+    {
+      "name": "NO_MATCH_N",
+      "value": 0,
+      "unit": "compact rows with label NO_MATCH (broken identity)",
+      "source_stage": "OUTPUT_COMPACT_LABEL"
+    }
+  ],
+  "POPULATIONS": [
+    {
+      "population_id": "SEP_PUBLIC_RICH_V1",
+      "COMPACT_ROW_N": {
+        "value": 1340,
+        "unit": "compact rows",
+        "source_stage": "OUTPUT_COMPACT"
+      },
+      "COMPACT_PHYSICAL_EVENT_N": {
+        "value": 859,
+        "unit": "distinct provider_event_id",
+        "source_stage": "OUTPUT_COMPACT"
+      },
+      "LABEL_COUNTS": {
+        "value": {
+          "LOSS": 245,
+          "WIN": 207,
+          "OPEN": 888
+        },
+        "unit": "compact rows by label",
+        "source_stage": "OUTPUT_COMPACT_LABEL"
+      }
+    },
+    {
+      "population_id": "SEP_SHADOW_STRATEGIC_V1",
+      "COMPACT_ROW_N": {
+        "value": 1775,
+        "unit": "compact rows",
+        "source_stage": "OUTPUT_COMPACT"
+      },
+      "COMPACT_PHYSICAL_EVENT_N": {
+        "value": 1169,
+        "unit": "distinct provider_event_id",
+        "source_stage": "OUTPUT_COMPACT"
+      },
+      "LABEL_COUNTS": {
+        "value": {
+          "OPEN": 1431,
+          "WIN": 151,
+          "LOSS": 193
+        },
+        "unit": "compact rows by label",
+        "source_stage": "OUTPUT_COMPACT_LABEL"
+      }
+    }
+  ],
+  "POPULATION_POOLING": "FORBIDDEN — counts above are per population_id and are never summed across populations",
+  "COMPRESSION_EVIDENCE": {
+    "ROWS": {
+      "UNIT": "rows",
+      "SOURCE_STAGE": "INPUT_RAW -> OUTPUT_COMPACT",
+      "INPUT_DENOMINATOR": 46776,
+      "OUTPUT_DENOMINATOR": 3115,
+      "ratio": 15.0164,
+      "note": "raw generated_signal_pairs decision rows (repeated emissions) collapsed to one first-eligible compact row per canonical identity"
+    },
+    "BYTES": {
+      "UNIT": "bytes",
+      "SOURCE_STAGE": "canonical JSONL -> gzip -9 artifact on disk",
+      "INPUT_DENOMINATOR": 4483938,
+      "OUTPUT_DENOMINATOR": 330536,
+      "ratio": 13.57
+    }
+  },
+  "PHYSICAL_EVENT_CENSUS": {
+    "UNIT": "distinct provider_event_id (== Gamma event.id)",
+    "IDENTITY_RULE": "RESEARCH_CORPUS_CONTRACT.md §2 — provider_event_id only; rows with no provider_event_id are counted separately as UNRESOLVED, never folded in via a condition_id fallback",
+    "INPUT_RAW": {
+      "SOURCE_STAGE": "INPUT_RAW",
+      "DENOMINATOR": 896,
+      "UNRESOLVED_PROVIDER_EVENT_ID_ROWS": 37416
+    },
+    "OUTPUT_COMPACT": {
+      "SOURCE_STAGE": "OUTPUT_COMPACT",
+      "DENOMINATOR": 888,
+      "UNRESOLVED_PROVIDER_EVENT_ID_ROWS": 1706
+    },
+    "NOTE": "OUTPUT_COMPACT.DENOMINATOR may exceed INPUT_RAW.DENOMINATOR because the pure materializer enriches provider_event_id from GSRS event_id for identities that carried only condition_id at the generated_signal_pairs stage. This is identity resolution, not new physical events, and is not presented as compression."
+  },
+  "ARTIFACT_BYTES": {
+    "value": 330536,
+    "unit": "bytes (CORPUS_<d1>.jsonl.gz on disk)"
+  },
+  "CANONICAL_CONTENT_SHA256": "ae282781ec102cb992d4231e242ed67825056b7696ad773dd25c232e05e29883",
+  "CANONICAL_CONTENT_DEFINITION": "sha256(utf8) of the newline-joined canonical (sorted-key) JSON of every compact row in deterministic materializer order; independent of gzip framing",
+  "SETTLEMENT_AUTHORITY": "Gamma/CLOB public terminal state only; clone signal_result recorded per-row as cloneSignalResult cross-check, never promoted",
+  "GAMMA_RESOLVER_STATE_COUNTS": {
+    "resolved_candidate": 796,
+    "lookup_failed": 1745,
+    "active_unresolved": 574
+  },
+  "PRODUCTION_PRIMARY_READS": 0,
+  "PRODUCTION_WRITES": 0
+}

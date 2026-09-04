@@ -1,0 +1,419 @@
+{
+  "MANIFEST_VERSION": "rolling-research-corpus-7d14d30d-v1",
+  "MISSION": "ROLLING_RESEARCH_CORPUS_7D14D30D_V1",
+  "GENERATED_AT": "2026-09-04T08:33:10.511Z",
+  "WINDOW_DAYS_REQUESTED": 14,
+  "WINDOW_START": "2026-08-21",
+  "WINDOW_END": "2026-09-03",
+  "WINDOW_COMPLETE": true,
+  "AVAILABLE_PARTITION_N": 14,
+  "MISSING_PARTITION_N": 0,
+  "AVAILABLE_DAYS": [
+    "2026-08-21",
+    "2026-08-22",
+    "2026-08-23",
+    "2026-08-24",
+    "2026-08-25",
+    "2026-08-26",
+    "2026-08-27",
+    "2026-08-28",
+    "2026-08-29",
+    "2026-08-30",
+    "2026-08-31",
+    "2026-09-01",
+    "2026-09-02",
+    "2026-09-03"
+  ],
+  "MISSING_DAYS": [],
+  "PARTITIONS": [
+    {
+      "PARTITION_DATE": "2026-08-21",
+      "PARTITION_CANONICAL_HASH": "7d41c3ea901e796dd72aa23a3cf6e2acd6142d52b3c33f99b4bf7131fe1974f6",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T15:56:30.297Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-08-20T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-08-21T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 1133,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 19,
+        "SEP_SHADOW_STRATEGIC_V1": 1114
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-08-22",
+      "PARTITION_CANONICAL_HASH": "f2266b0b113830e0dc7c5f40d9a994be93da6dfea2163c7f1828c3c33c24f4af",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T15:57:02.229Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-08-21T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-08-22T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 1096,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 14,
+        "SEP_SHADOW_STRATEGIC_V1": 1082
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-08-23",
+      "PARTITION_CANONICAL_HASH": "344592832483764ace6cf047582d31c5470168a4b0828c309024f4dc1af4d0d5",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T15:57:29.784Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-08-22T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-08-23T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 1079,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 6,
+        "SEP_SHADOW_STRATEGIC_V1": 1073
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-08-24",
+      "PARTITION_CANONICAL_HASH": "03361b87c8fea02e05d9be50e2003a3ab4a406461ec5157d7cf1c42ff73ad630",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T15:57:56.853Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-08-23T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-08-24T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 908,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 11,
+        "SEP_SHADOW_STRATEGIC_V1": 897
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-08-25",
+      "PARTITION_CANONICAL_HASH": "e3e028a4ad649a52855a30a8f9beb9372485272d3594ffa8e6f6e829da4a153c",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T15:58:18.637Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-08-24T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-08-25T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 1025,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 6,
+        "SEP_SHADOW_STRATEGIC_V1": 1019
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-08-26",
+      "PARTITION_CANONICAL_HASH": "ca14195233000fe1c8ed86fba04c4fab0dbf790c711bfe6951faa1063ca54896",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T15:58:45.363Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-08-25T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-08-26T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 1056,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 18,
+        "SEP_SHADOW_STRATEGIC_V1": 1038
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-08-27",
+      "PARTITION_CANONICAL_HASH": "b8d69fbfe3ae1334105558f2a134860ed1bf8defddf07d6c63798b88e2350b08",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T13:50:51.239Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-08-26T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-08-27T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 1084,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 8,
+        "SEP_SHADOW_STRATEGIC_V1": 1076
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-08-28",
+      "PARTITION_CANONICAL_HASH": "3bd8e76e21a0a9665bebdd144c3c818af0124049ef16b5c0b2c34673a461366d",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T13:51:29.825Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-08-27T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-08-28T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 1105,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 20,
+        "SEP_SHADOW_STRATEGIC_V1": 1085
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-08-29",
+      "PARTITION_CANONICAL_HASH": "66889b4bf0d0d62747b53318b637ba2825bb676982d74275ab9303838ee2c628",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T13:52:09.716Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-08-28T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-08-29T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 850,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 245,
+        "SEP_SHADOW_STRATEGIC_V1": 605
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-08-30",
+      "PARTITION_CANONICAL_HASH": "d73f547d2494a4c05748dc333dd948ad0a8d90a5336d624a582f62fd42d03a59",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T13:52:43.749Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-08-29T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-08-30T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 1056,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 214,
+        "SEP_SHADOW_STRATEGIC_V1": 842
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-08-31",
+      "PARTITION_CANONICAL_HASH": "c46668b3f570da8c282e1cea30432e5337f006670be9fe611cfbb73989719ed1",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T13:53:24.688Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-08-30T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-08-31T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 920,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 251,
+        "SEP_SHADOW_STRATEGIC_V1": 669
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-09-01",
+      "PARTITION_CANONICAL_HASH": "9681b7acccd2f6923937c12fc2151120eef79079301ea5fcecb71cac85630154",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T13:54:02.591Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-08-31T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-09-01T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 1128,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 493,
+        "SEP_SHADOW_STRATEGIC_V1": 635
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-09-02",
+      "PARTITION_CANONICAL_HASH": "0e06fd869462118b79138cf6741c188f2d58c551f3f8023eadbc6b18eb2d7287",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-03T12:22:51.565Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-09-01T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-09-02T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 1137,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 501,
+        "SEP_SHADOW_STRATEGIC_V1": 636
+      }
+    },
+    {
+      "PARTITION_DATE": "2026-09-03",
+      "PARTITION_CANONICAL_HASH": "ae282781ec102cb992d4231e242ed67825056b7696ad773dd25c232e05e29883",
+      "PARTITION_LABEL_EVIDENCE_AS_OF": "2026-09-04T08:29:09.671Z",
+      "PARTITION_SOURCE_WINDOW_START": "2026-09-02T21:00:00.000Z",
+      "PARTITION_SOURCE_WINDOW_END": "2026-09-03T21:00:00.000Z",
+      "PARTITION_ROW_N": {
+        "value": 3115,
+        "unit": "frozen compact rows in the immutable D-1 partition",
+        "source_stage": "PARTITION_OUTPUT_COMPACT"
+      },
+      "PARTITION_COMPACT_ROW_N_BY_POPULATION": {
+        "SEP_PUBLIC_RICH_V1": 1340,
+        "SEP_SHADOW_STRATEGIC_V1": 1775
+      }
+    }
+  ],
+  "CROSS_PARTITION_IDENTITY": {
+    "WINDOW_PRE_COLLAPSE_ROW_N": {
+      "value": 16692,
+      "unit": "Σ frozen compact rows over available partitions",
+      "source_stage": "WINDOW_PRE_COLLAPSE"
+    },
+    "WINDOW_UNIQUE_SELECTION_N": {
+      "value": 10055,
+      "unit": "distinct (population_id, condition_id, selected_token_id)",
+      "source_stage": "WINDOW_UNIQUE_SELECTION"
+    },
+    "WINDOW_UNIQUE_PHYSICAL_EVENT_SELECTION_N": {
+      "value": 2814,
+      "unit": "distinct (population_id, provider_event_id) among unique selections",
+      "source_stage": "WINDOW_UNIQUE_PHYSICAL_EVENT"
+    },
+    "COLLAPSE_RULE": "A selection identity present in >1 partition collapses to its earliest-DECISION_AT frozen row (first decision). Physical events are never multiplied across dates. UNITs above are distinct and never mixed."
+  },
+  "WINDOW_INPUT_ROW_N": {
+    "value": 16692,
+    "unit": "frozen compact rows referenced by the window (pre-collapse)",
+    "source_stage": "WINDOW_PRE_COLLAPSE"
+  },
+  "PIT_FUTURE_LEAK_N": {
+    "value": 0,
+    "unit": "unique-selection rows with an eligible observation after DECISION_AT",
+    "source_stage": "WINDOW_UNIQUE_SELECTION"
+  },
+  "POPULATION_POOLING": "FORBIDDEN — every count is per population_id and is never summed across populations",
+  "POPULATIONS": [
+    {
+      "population_id": "SEP_PUBLIC_RICH_V1",
+      "PARTITION_COMPACT_ROW_N": 3146,
+      "INPUT_ROWS": {
+        "value": 3146,
+        "unit": "frozen compact rows across constituent partitions (pre cross-partition collapse)",
+        "source_stage": "WINDOW_PRE_COLLAPSE"
+      },
+      "UNIQUE_SELECTION_N": {
+        "value": 3084,
+        "unit": "distinct (population_id, condition_id, selected_token_id) — one model bet",
+        "source_stage": "WINDOW_UNIQUE_SELECTION"
+      },
+      "UNIQUE_PHYSICAL_EVENT_SELECTION_N": {
+        "value": 2442,
+        "unit": "distinct provider_event_id among unique selections",
+        "source_stage": "WINDOW_UNIQUE_PHYSICAL_EVENT"
+      },
+      "LABEL_COUNTS_FROZEN": {
+        "LOSS": 959,
+        "WIN": 937,
+        "OPEN": 1188
+      },
+      "SETTLED_N": 1896,
+      "OPEN_N": 1188,
+      "NO_MATCH_N": 0,
+      "SCORE_LEVEL": {
+        "INPUT_DENOMINATOR": 3084,
+        "SCORE_LEVEL_PRESENT_N": 3084,
+        "SCORE_LEVEL_COVERAGE_PCT": 100,
+        "MIN": 53,
+        "MAX": 81,
+        "UNIT": "unique-selection rows with a decision-time Score LEVEL",
+        "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION",
+        "SOURCE": "generated_signal_pairs.pre_event_score_num (immutable at INSERT; distinct from the GSRS Score SERIES)"
+      },
+      "FEATURE_COVERAGE": {
+        "score_numeric_pct": 0,
+        "score_numeric_n": 0,
+        "score_level_pct": 1,
+        "score_level_n": 3084,
+        "score_level_min": 53,
+        "score_level_max": 81,
+        "price_path_pct": 0.87095,
+        "volume_usd_pct": 0,
+        "lead_time_pct": 1,
+        "price_path_n": 2686,
+        "volume_usd_n": 0,
+        "lead_time_n": 3084
+      }
+    },
+    {
+      "population_id": "SEP_SHADOW_STRATEGIC_V1",
+      "PARTITION_COMPACT_ROW_N": 13546,
+      "INPUT_ROWS": {
+        "value": 13546,
+        "unit": "frozen compact rows across constituent partitions (pre cross-partition collapse)",
+        "source_stage": "WINDOW_PRE_COLLAPSE"
+      },
+      "UNIQUE_SELECTION_N": {
+        "value": 6971,
+        "unit": "distinct (population_id, condition_id, selected_token_id) — one model bet",
+        "source_stage": "WINDOW_UNIQUE_SELECTION"
+      },
+      "UNIQUE_PHYSICAL_EVENT_SELECTION_N": {
+        "value": 372,
+        "unit": "distinct provider_event_id among unique selections",
+        "source_stage": "WINDOW_UNIQUE_PHYSICAL_EVENT"
+      },
+      "LABEL_COUNTS_FROZEN": {
+        "WIN": 1447,
+        "OPEN": 3922,
+        "LOSS": 1602
+      },
+      "SETTLED_N": 3049,
+      "OPEN_N": 3922,
+      "NO_MATCH_N": 0,
+      "SCORE_LEVEL": {
+        "INPUT_DENOMINATOR": 6971,
+        "SCORE_LEVEL_PRESENT_N": 0,
+        "SCORE_LEVEL_COVERAGE_PCT": 0,
+        "MIN": null,
+        "MAX": null,
+        "UNIT": "unique-selection rows with a decision-time Score LEVEL",
+        "SOURCE_STAGE": "WINDOW_UNIQUE_SELECTION",
+        "SOURCE": "generated_signal_pairs.pre_event_score_num (immutable at INSERT; distinct from the GSRS Score SERIES)"
+      },
+      "FEATURE_COVERAGE": {
+        "score_numeric_pct": 0,
+        "score_numeric_n": 0,
+        "score_level_pct": 0,
+        "score_level_n": 0,
+        "score_level_min": null,
+        "score_level_max": null,
+        "price_path_pct": 0.04791,
+        "volume_usd_pct": 0.67881,
+        "lead_time_pct": 0.12538,
+        "price_path_n": 334,
+        "volume_usd_n": 4732,
+        "lead_time_n": 874
+      }
+    }
+  ],
+  "LABEL_AS_OF_OVERLAY": {
+    "note": "Separate, explicit fresher-settlement view. Per identity it takes the label from the LATEST constituent partition that observed it (Gamma authority; a terminal label never reverts to OPEN). It is NEVER written back into a frozen D-1 artifact — the immutable partitions and their LABEL_EVIDENCE_AS_OF are preserved.",
+    "POPULATIONS": [
+      {
+        "population_id": "SEP_PUBLIC_RICH_V1",
+        "SETTLED_N": 1907,
+        "OPEN_N": 1177,
+        "NO_MATCH_N": 0,
+        "LABEL_COUNTS": {
+          "LOSS": 960,
+          "WIN": 947,
+          "OPEN": 1177
+        },
+        "changed_from_frozen_n": 11
+      },
+      {
+        "population_id": "SEP_SHADOW_STRATEGIC_V1",
+        "SETTLED_N": 3623,
+        "OPEN_N": 3348,
+        "NO_MATCH_N": 0,
+        "LABEL_COUNTS": {
+          "WIN": 1737,
+          "OPEN": 3348,
+          "LOSS": 1886
+        },
+        "changed_from_frozen_n": 574
+      }
+    ]
+  },
+  "PARTITION_HASH_REFERENCES_ONLY": true,
+  "PRODUCTION_PRIMARY_READS": 0,
+  "PRODUCTION_WRITES": 0
+}
