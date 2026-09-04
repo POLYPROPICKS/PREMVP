@@ -1,0 +1,41 @@
+{
+  "bundle_id": "2026-09-03__evolution-canonical-cycle",
+  "repository": "POLYPROPICKS/PREMVP",
+  "period_start": "2026-09-03T00:00:00Z",
+  "period_end": "2026-09-04T00:00:00Z",
+  "evidence_cutoff": "2026-09-04T00:25:00Z",
+  "capture_coverage": "PARTIAL",
+  "completion_envelope_ids": [],
+  "confirmed_changes": [
+    "POLYPROPICKS/PREMVP#230",
+    "POLYPROPICKS/PREMVP#231",
+    "POLYPROPICKS/PREMVP#232",
+    "POLYPROPICKS/PREMVP#234",
+    "POLYPROPICKS/PREMVP#235",
+    "POLYPROPICKS/PREMVP#236",
+    "POLYPROPICKS/PREMVP#237",
+    "POLYPROPICKS/PREMVP#238",
+    "POLYPROPICKS/PREMVP#239"
+  ],
+  "operator_action_events": [],
+  "operating_telemetry": {
+    "reviewer_corrections_rejections": 0,
+    "runtime_evidence_count": 0,
+    "reusable_artifacts_created": 3
+  },
+  "supporting_metrics": {
+    "runtime_evidence_count": 0,
+    "reusable_artifacts_created": 3
+  },
+  "defect_occurrences": [
+    {
+      "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+      "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+      "recurrence": "SAME_ROOT_REPEAT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": null,
+      "proven_effective_evidence_refs": []
+    }
+  ],
+  "notes": "git log origin/main --since=2026-09-03T00:20:00Z (the prior cycle's own evidence_cutoff) through this bundle's evidence_cutoff (2026-09-04T00:25:00Z) shows ten merges to main: PR#229 (merged 2026-09-03T00:24:11Z, 3 min after the prior cutoff -- the prior cycle's own docs(evolution) canonicalization artifact, not new business evidence, excluded from confirmed_changes exactly as PR#221/#215 were excluded from earlier bundles) plus nine real merges. PR#231 'RESERVATION_ANCHORS_RELEASE' (3253c67, merged 2026-09-03T06:15:40Z, 4 files/+129/-164, authored+merged by the POLYPROPICKS account itself within 4 seconds, 0 CI check runs -- this repository carries no .github/workflows at all, so 0 check runs is the existing baseline, not a new gap) replaces the fixed 17:00 Minsk daytime-guard on the live app/api/cron/night-event-reservations route with a configurable RESERVATION_TIMES_MINSK Minsk-anchor list (lib/executor/nightWindow.ts fully rewritten: parseReservationTimesMinsk/resolveReservationAnchor/resolveDueReservationAnchor/resolveNightWindow), defaulting to the legacy single 17:00 anchor when the env var is absent, with a bounded 5-minute missed-wakeup tolerance and fail-closed validation on malformed/duplicate anchors; 44 new deterministic unit tests (tests/contur3/reservationAnchors.test.ts) cover absent-config, multi-anchor coexistence, midnight rollover and invalid-input rejection, but no post-merge production invocation of the route is recorded in this bundle. PR#230 'RESEARCH_CLONE_SYNC_LAND_MAIN_V1' (2ece2b8, +515 across 6 files) and PR#232 'RESEARCH_CLONE_RECONCILIATION_BUDGET_RELEASE_V1' (67aec34, +214/-25 across 3 files) land and then harden a bounded, resumable daily Supabase-to-research-clone sync (lib/research-clone/dailySync.ts, scripts/research-clone-daily-sync.ts, ops/railway/research-clone-daily-sync.toml) mirroring generated_signal_pairs/generated_signal_research_snapshots/night_event_reservations row-for-row into a separate research database on a Railway cron, with an explicit finite page ceiling (MAX_APPEND_PAGES=1000) so a damaged source cannot become an unbounded run; touches no product/serving/money path. PR#234/#235/#236/#237/#238/#239 (7c22bea, 099d00b, aae2b87, 49fed48, 88b12ea, 84a67c1; combined ~+15000 insertions across scripts/modeling/*.ts, tests/modeling/forward-rich/*, and modeling/evidence/**) build and canonicalize a live D-1 research-corpus factory plus a rolling 7d/14d/30d research-corpus interface plus a decision-time Score LEVEL overlay plus a deterministic 7d/14d/30d economic model scorecard (scripts/modeling/scorecard-run.ts, tests/modeling/scorecard/scorecardEvaluator.test.ts) evaluated against the frozen C0/C1/C4/C5 predicates from PR#219 (prior cycle). This directly delivers the 'CANONICAL_MODELING_DATASET_V1' next-transition the 2026-09-02 cycle recorded as still missing for PR#219's frozen research engine. The scorecard's own FINDINGS_SCORECARD_V1.md states explicitly: 'BACKWARD-LOOKING DESCRIPTIVE ONLY. FORWARD_VALIDATED = false for every cell. No forward-performance claim. No threshold search. No winner chosen.' Only C0/C5 on SEP_PUBLIC_RICH_V1 shows positive 30d economics (+168u/+28.5% ROI, N=590), and the report's own honest-data section attributes the entire positive result to one recent burst week (2026-08-25->2026-09-01, +147.79u) against three flat/negative earlier weeks -- explicitly not a repeated effect. Four PASS-status completion envelopes exist in-repo for this period's modeling work (CANONICALIZE_REAL_14D_RESULT_V1, CMP-ROLLING-RESEARCH-CORPUS-30D-BACKFILL-CHUNK-A-V1-20260903, CHUNK-B, CMP-DETERMINISTIC-RICH-MODEL-SCORECARD-V1-20260903) but none is Architect-accepted into CURRENT_STATE.yaml.accepted_completions, so completion_envelope_ids stays empty per this policy's stricter 'accepted' bar. docs/ai-context/control-plane/CURRENT_STATE.yaml remains unchanged (updated_at=2026-08-28T21:00:54Z, state_version 17, origin_main_sha=2cb8d49...) -- this bundle newly confirms live git merge-base --is-ancestor proves that sha is still an ancestor of live origin/main, but every path that changed between them (research/modeling scripts, tests, ops/railway config, package.json, docs/ai-context/control-plane/evolution/* artifacts) falls entirely outside ARCHITECT_CONTROL_PLANE.yaml's stale_state_behavior.state_bootstrap_allowlist, so CURRENT_STATE.yaml is precisely STATE_REFRESH_REQUIRED per its own declared stale_when rule, not merely aging. mcp__github__list_pull_requests (state=open) at this cutoff shows the tracked Governor/Evolution draft-PR family (H7) unchanged at exactly 7 members (#199, #205, #206, #212, #214, #216, #222 -- all present at the prior cutoff, none closed or added this period) plus, separately, five open/draft non-Evolution PRs from recent modeling/research work (#223, #226, #227, #228, #233) that were not open at prior cutoffs -- flagged here as a related-but-distinct scope note for Routine B (same draft-PR-accumulation shape, different artifact class and different terminal-persistence mechanism than the Evolution-specific dispatch plan PR#224 shipped), not folded into the H7 count. No completion envelope was Architect-accepted this period. No product database, deployment or Ireland path changed. No product test suite was run beyond what each PR's own stated verification already reported (unit tests per PR body) -- consistent with the VERIFICATION BUDGET discipline in the routine prompt; this reviewer separately confirmed via mcp__github__pull_request_read that PR#231, #239 (spot-checked) show 0 CI check runs, and via git ls-tree that no .github/workflows directory exists on origin/main at all, so this is a pre-existing repository-wide condition, not a new occurrence this period. reusable_artifacts_created=3 counts the rolling-corpus+scorecard modeling pipeline (PR#234/#235/#236/#237/#238/#239), the bounded resumable research-clone daily sync (PR#230/#232), and the configurable multi-anchor Reservation scheduling capability (PR#231)."
+}
