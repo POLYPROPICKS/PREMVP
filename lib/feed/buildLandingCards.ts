@@ -38,7 +38,6 @@ import {
 import {
   deriveProviderEsportsGame,
   discoverSportsMarkets,
-  OFFICIAL_FULL_MATCH_MARKET_TYPES,
 } from "./discoverSportsMarkets";
 import { hasEligibleEventVolume, MINIMUM_MODEL_EVENT_VOLUME_USD } from "./eventLiquidityGate";
 import type { SportsDiscoverySample } from "./types";
@@ -428,69 +427,65 @@ export type FireModelWideTerminalStatus =
 
 export function selectResearchMarketsForScoring(
   universe: readonly ResearchNestedMarket[],
-  publicIdentitySet: ReadonlySet<string>,
-  // P1A: `null` means "no fixed selection ceiling" — every scorer-eligible event
-  // gets a scoring opportunity. Numeric limits are preserved for callers/tests
-  // that intentionally bound the selection.
-  limit: number | null,
-  rotationOffset: number,
+  _publicIdentitySet: ReadonlySet<string>,
+  _limit: number | null,
+  _rotationOffset: number,
 ): ResearchNestedMarket[] {
-  const unbounded = limit === null;
-  if (!unbounded && limit <= 0) return [];
+  // Discovery has already established research eligibility. This boundary retains
+  // every valid, score-owned condition/token identity; it must not collapse the
+  // universe to one market per physical event or reapply a moneyline-only gate.
   const deduped = new Map<string, ResearchNestedMarket>();
   for (const row of universe) {
     if (row.scoreOwnership !== "SUPPORTED_BY_SCORE_MODEL") continue;
-    if (!hasStructuredScorerMarketAuthority(row)) continue;
+    if (!hasStructuredResearchScorerIdentity(row)) continue;
     const key = `${row.conditionId}::${row.selectedTokenId}`;
     if (!deduped.has(key)) deduped.set(key, row);
   }
-  const rows = [...deduped.values()];
-  const allPublicRows = rows
-    .filter((row) => publicIdentitySet.has(`${row.conditionId}::${row.selectedTokenId}`));
-  const publicRows = unbounded ? allPublicRows : allPublicRows.slice(0, limit as number);
-  if (!unbounded && publicRows.length >= (limit as number)) return publicRows;
-
-  const hidden = rows
-    .filter((row) => !publicIdentitySet.has(`${row.conditionId}::${row.selectedTokenId}`));
-  const byEvent = new Map<string, ResearchNestedMarket[]>();
-  for (const row of hidden) {
-    const eventKey = `${row.eventId}::${row.eventStartIso}`;
-    const eventRows = byEvent.get(eventKey) ?? [];
-    eventRows.push(row);
-    byEvent.set(eventKey, eventRows);
-  }
-  const canonicalByEvent = [...byEvent.entries()]
+  return [...deduped.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([, eventRows]) => eventRows.sort(compareStructuredProviderMarketRows));
-  const offset = canonicalByEvent.length > 0
-    ? ((rotationOffset % canonicalByEvent.length) + canonicalByEvent.length) % canonicalByEvent.length
-    : 0;
-  const rotated = [...canonicalByEvent.slice(offset), ...canonicalByEvent.slice(0, offset)];
-  const represented = new Set(publicRows.map((row) => `${row.eventId}::${row.eventStartIso}`));
-  const firstPerEvent: ResearchNestedMarket[] = [];
-  for (const eventRows of rotated) {
-    const eventKey = `${eventRows[0].eventId}::${eventRows[0].eventStartIso}`;
-    if (!represented.has(eventKey)) {
-      represented.add(eventKey);
-      firstPerEvent.push(eventRows[0]);
-    }
-  }
-  const combined = [...publicRows, ...firstPerEvent];
-  return unbounded ? combined : combined.slice(0, limit as number);
+    .map(([, row]) => row);
 }
 
-function hasStructuredScorerMarketAuthority(row: ResearchNestedMarket): boolean {
+function hasStructuredResearchScorerIdentity(row: ResearchNestedMarket): boolean {
   if (!row.eventId || !row.eventStartIso || !row.marketId || !row.conditionId || !row.selectedTokenId) return false;
   if (!Number.isFinite(Date.parse(row.eventStartIso))) return false;
   if (!row.providerSportFamily || row.providerSportSource !== "structured_sports_tag") return false;
-  const marketType = row.sportsMarketType?.trim().toLowerCase();
-  return Boolean(marketType && OFFICIAL_FULL_MATCH_MARKET_TYPES.has(marketType));
+  return true;
 }
 
-function compareStructuredProviderMarketRows(a: ResearchNestedMarket, b: ResearchNestedMarket): number {
-  const left = `${a.marketId}::${a.conditionId}::${a.selectedTokenId}`;
-  const right = `${b.marketId}::${b.conditionId}::${b.selectedTokenId}`;
-  return left.localeCompare(right);
+function newWideResearchSportFamilyCounters() {
+  return {
+    DISCOVERY_RESEARCH_ELIGIBLE_MARKET_N: 0,
+    DISCOVERY_RESEARCH_ELIGIBLE_TOKEN_N: 0,
+    WIDE_SCORER_ATTEMPT_N: 0,
+    WIDE_SCORE_50PLUS_N: 0,
+    WIDE_GSP_PERSISTED_N: 0,
+    BUDGET_EXHAUSTED_N: 0,
+  };
+}
+
+export function buildWideResearchBySportFamilyCounters(
+  universe: readonly ResearchNestedMarket[],
+): NonNullable<ResearchFunnelCounters["wideResearchBySportFamily"]> {
+  const counters: NonNullable<ResearchFunnelCounters["wideResearchBySportFamily"]> = {};
+  const marketsByFamily = new Map<string, Set<string>>();
+  const tokensByFamily = new Map<string, Set<string>>();
+  for (const row of universe) {
+    if (row.scoreOwnership !== "SUPPORTED_BY_SCORE_MODEL") continue;
+    const family = row.providerSportFamily.trim().toLowerCase() || "unknown";
+    counters[family] ??= newWideResearchSportFamilyCounters();
+    const markets = marketsByFamily.get(family) ?? new Set<string>();
+    markets.add(row.conditionId);
+    marketsByFamily.set(family, markets);
+    const tokens = tokensByFamily.get(family) ?? new Set<string>();
+    tokens.add(`${row.conditionId}::${row.selectedTokenId}`);
+    tokensByFamily.set(family, tokens);
+  }
+  for (const [family, counter] of Object.entries(counters)) {
+    counter.DISCOVERY_RESEARCH_ELIGIBLE_MARKET_N = marketsByFamily.get(family)?.size ?? 0;
+    counter.DISCOVERY_RESEARCH_ELIGIBLE_TOKEN_N = tokensByFamily.get(family)?.size ?? 0;
+  }
+  return counters;
 }
 
 interface EnrichedMarket {
@@ -3599,6 +3594,7 @@ export async function buildLandingCards(options?: {
         researchLimit,
         bucket30min,
       );
+      const wideResearchBySportFamily = buildWideResearchBySportFamilyCounters(rawUniverse);
       const dedupedSupportedResearchCount = new Set(
         rawUniverse
           .filter((row) => row.scoreOwnership === "SUPPORTED_BY_SCORE_MODEL")
@@ -3635,6 +3631,8 @@ export async function buildLandingCards(options?: {
         wideOutcomes.set(o.key, o);
         terminalReasonCounts[o.status] = (terminalReasonCounts[o.status] ?? 0) + 1;
       };
+      const counterForWideResearch = (rm: ResearchNestedMarket) =>
+        wideResearchBySportFamily[rm.providerSportFamily.trim().toLowerCase() || "unknown"];
 
       const scoreOneResearchMarket = async (
         rm: ResearchNestedMarket,
@@ -3695,6 +3693,7 @@ export async function buildLandingCards(options?: {
           budgetExhausted = true;
           for (const rm of selectedResearch.slice(i)) {
             rf.firemodel11WideAttempted = (rf.firemodel11WideAttempted ?? 0) + 1;
+            counterForWideResearch(rm).BUDGET_EXHAUSTED_N++;
             notScoredCount++;
             recordWideTerminal({
               key: `${rm.conditionId}::${rm.selectedTokenId}`,
@@ -3722,8 +3721,12 @@ export async function buildLandingCards(options?: {
             }
           }),
         );
-        for (const outcome of results) {
+        for (const [resultIndex, outcome] of results.entries()) {
+          const rm = chunk[resultIndex];
           rf.firemodel11WideAttempted = (rf.firemodel11WideAttempted ?? 0) + 1;
+          const counter = counterForWideResearch(rm);
+          counter.WIDE_SCORER_ATTEMPT_N++;
+          if (outcome.score !== null && outcome.score >= 50) counter.WIDE_SCORE_50PLUS_N++;
           recordWideTerminal(outcome);
           if (outcome.status.startsWith("NOT_SCORED_")) {
             notScoredCount++;
@@ -3749,6 +3752,7 @@ export async function buildLandingCards(options?: {
       rf.researchScorerBudgetMs = researchScorerBudgetMs;
       rf.researchScorerElapsedMs = Date.now() - scorerStartedMs;
       rf.researchScorerBudgetExhausted = budgetExhausted;
+      rf.wideResearchBySportFamily = wideResearchBySportFamily;
 
       // Build set of already-captured conditionId::selectedTokenId keys (from public-path loop)
       const alreadyCapturedKeys = new Set(
@@ -3912,16 +3916,15 @@ export async function buildLandingCards(options?: {
       rf.researchSnapshotsSelectedPublic = selectedPublicCount;
       rf.researchSnapshotsSelectedRotating = selectedResearch.length - selectedPublicCount;
       rf.researchSnapshotSelectionLimit = researchLimit ?? undefined;
-      rf.researchScorerSelectionMode = researchLimit === null ? "ALL_ELIGIBLE" : "FIXED_LIMIT";
+      rf.researchScorerSelectionMode = "ALL_ELIGIBLE";
       rf.researchUniverseEvents = s2ResearchUniverseEventCount;
       rf.researchUniverseMarkets = dedupedSupportedResearchCount;
       rf.researchScorerEligibleEvents = eligibleEventCount;
       rf.researchScorerSelectedEvents = selectedEventCount;
       rf.researchScorerCapacityExcludedEvents = Math.max(0, eligibleEventCount - selectedEventCount);
-      // TERMINAL INVARIANT: with no fixed ceiling, zero eligible events are dropped
-      // by a constant. Any shortfall is attributed to the bounded scoring budget.
-      rf.researchScorerFixedLimitExcludedEvents =
-        researchLimit === null ? 0 : Math.max(0, eligibleEventCount - selectedEventCount);
+      // This selector never imposes a fixed positional ceiling. Any candidates
+      // not reached are attributed explicitly to the bounded scorer budget.
+      rf.researchScorerFixedLimitExcludedEvents = 0;
       rf.researchScorerBudgetExcludedEvents = new Set(
         selectedResearch
           .filter((row) =>

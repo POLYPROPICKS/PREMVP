@@ -292,6 +292,16 @@ export interface ResearchFunnelCounters {
   firemodel11WideNotScored?: number;
   firemodel11WideTerminalReasonCounts?: Record<string, number>;
   firemodel11WideScoreRetainedCount?: number;
+  // Conservation counters for the discovery-authorized wide universe, grouped by
+  // the existing structured sport-family authority.
+  wideResearchBySportFamily?: Record<string, {
+    DISCOVERY_RESEARCH_ELIGIBLE_MARKET_N: number;
+    DISCOVERY_RESEARCH_ELIGIBLE_TOKEN_N: number;
+    WIDE_SCORER_ATTEMPT_N: number;
+    WIDE_SCORE_50PLUS_N: number;
+    WIDE_GSP_PERSISTED_N: number;
+    BUDGET_EXHAUSTED_N: number;
+  }>;
   // P1B primary funnel terminal accounting (canonical codes, one per candidate).
   // Conservation invariant: sum(primaryTerminalReasonCounts) === primaryCandidatesEntered.
   primaryCandidatesEntered?: number;

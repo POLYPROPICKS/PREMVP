@@ -1,7 +1,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { selectResearchMarketsForScoring } from "../../lib/feed/buildLandingCards";
+import {
+  buildWideResearchBySportFamilyCounters,
+  selectResearchMarketsForScoring,
+} from "../../lib/feed/buildLandingCards";
 import { scoreOwnershipForSportFamily } from "../../lib/feed/sportScoreOwnership";
 import type { ResearchNestedMarket } from "../../lib/feed/types";
 
@@ -66,14 +69,13 @@ function wideUniverse(eventCount: number): ResearchNestedMarket[] {
 const eligibleEvents = (rows: readonly ResearchNestedMarket[]) =>
   new Set(rows.map((row) => `${row.eventId}::${row.eventStartIso}`)).size;
 
-test("the historical fixed limit is exactly what dropped eligible events above the ceiling", () => {
+test("wide selection never restores a positional cap when an explicit legacy limit is supplied", () => {
   const universe = wideUniverse(500);
   const selected = selectResearchMarketsForScoring(universe, new Set(), 200, 0);
 
   assert.equal(eligibleEvents(universe), 500);
-  assert.equal(selected.length, 200);
-  const capacityExcluded = eligibleEvents(universe) - eligibleEvents(selected);
-  assert.equal(capacityExcluded, 300, "fixed limit is the sole cause of this loss");
+  assert.equal(selected.length, 1_000);
+  assert.equal(eligibleEvents(selected), 500);
 });
 
 test("with no fixed ceiling every scorer-eligible event receives a scoring opportunity", () => {
@@ -83,12 +85,53 @@ test("with no fixed ceiling every scorer-eligible event receives a scoring oppor
   // TERMINAL INVARIANT: capacity_excluded_due_only_to_fixed_limit === 0
   assert.equal(eligibleEvents(selected), eligibleEvents(universe));
   assert.equal(eligibleEvents(universe) - eligibleEvents(selected), 0);
-  // One canonical market per event; no duplicate identities.
-  assert.equal(selected.length, 500);
+  // Every distinct market/outcome identity survives; there is no one-market-per-event collapse.
+  assert.equal(selected.length, 1_000);
   assert.equal(
     new Set(selected.map((row) => `${row.conditionId}::${row.selectedTokenId}`)).size,
-    500,
+    1_000,
   );
+});
+
+test("one football event with three markets retains both binary outcome tokens for every market", () => {
+  const rows: ResearchNestedMarket[] = [];
+  for (const conditionId of ["football-moneyline", "football-total", "football-spread"]) {
+    rows.push(research("football-event", conditionId, "soccer", {
+      marketId: `market-${conditionId}`,
+      sportsMarketType: conditionId,
+      selectedTokenId: `${conditionId}-yes`,
+      opposingTokenId: `${conditionId}-no`,
+      selectedOutcomeName: "Yes",
+      opposingOutcomeName: "No",
+      selectedPriceNum: 0.4,
+      opposingPriceNum: 0.6,
+    }));
+    rows.push(research("football-event", conditionId, "soccer", {
+      marketId: `market-${conditionId}`,
+      sportsMarketType: conditionId,
+      selectedTokenId: `${conditionId}-no`,
+      opposingTokenId: `${conditionId}-yes`,
+      selectedOutcomeName: "No",
+      opposingOutcomeName: "Yes",
+      selectedPriceNum: 0.6,
+      opposingPriceNum: 0.4,
+    }));
+  }
+
+  const selected = selectResearchMarketsForScoring(rows, new Set(), null, 0);
+  assert.equal(new Set(rows.map((row) => row.conditionId)).size, 3);
+  assert.equal(rows.length, 6);
+  assert.equal(new Set(selected.map((row) => row.conditionId)).size, 3);
+  assert.equal(selected.length, 6);
+  assert.equal(new Set(selected.map((row) => `${row.conditionId}::${row.selectedTokenId}`)).size, 6);
+  assert.deepEqual(buildWideResearchBySportFamilyCounters(rows).soccer, {
+    DISCOVERY_RESEARCH_ELIGIBLE_MARKET_N: 3,
+    DISCOVERY_RESEARCH_ELIGIBLE_TOKEN_N: 6,
+    WIDE_SCORER_ATTEMPT_N: 0,
+    WIDE_SCORE_50PLUS_N: 0,
+    WIDE_GSP_PERSISTED_N: 0,
+    BUDGET_EXHAUSTED_N: 0,
+  });
 });
 
 test("unbounded selection still excludes unsupported sports and keeps public rows", () => {
@@ -109,6 +152,7 @@ test("unbounded selection still excludes unsupported sports and keeps public row
     ),
     "public-feed-exposed rows are never dropped",
   );
+  assert.equal(selected.length, 500);
   assert.equal(eligibleEvents(selected), 250);
 });
 

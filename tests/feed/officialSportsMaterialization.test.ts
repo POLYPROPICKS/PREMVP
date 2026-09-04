@@ -13,6 +13,9 @@ import {
   resolveOfficialSportCode,
   OFFICIAL_FULL_MATCH_MARKET_TYPES,
 } from "../../lib/feed/discoverSportsMarkets";
+import { selectResearchMarketsForScoring } from "../../lib/feed/buildLandingCards";
+import { scoreOwnershipForSportFamily } from "../../lib/feed/sportScoreOwnership";
+import type { ResearchNestedMarket } from "../../lib/feed/types";
 
 // ── Official sports materialization ────────────────────────────────────────
 // Production-shaped seam. Every real Polymarket sports event carries broad
@@ -199,6 +202,49 @@ test("no duplicate condition/token identity is emitted for one market", () => {
   ]);
   const keys = entries.map((e) => `${e.conditionId}::${e.selectedTokenId}`);
   assert.equal(new Set(keys).size, keys.length, "each condition/token pair must appear once");
+});
+
+test("bounded provider-shaped soccer capture conserves all three markets and both outcomes through wide selection", () => {
+  const { entries } = build([
+    event({
+      id: "evt-wide-soccer",
+      tagIds: ["1", "100350", "500"],
+      markets: [
+        market({ id: "m-wide-moneyline", conditionId: "cond-wide-moneyline", sportsMarketType: "moneyline" }),
+        market({ id: "m-wide-total", conditionId: "cond-wide-total", sportsMarketType: "totals" }),
+        market({ id: "m-wide-spread", conditionId: "cond-wide-spread", sportsMarketType: "spreads" }),
+      ],
+    }),
+  ]);
+  const universe: ResearchNestedMarket[] = entries.map((entry) => ({
+    eventId: entry.providerEventId ?? "",
+    eventTitle: entry.eventTitle,
+    eventSlug: entry.eventSlug,
+    eventStartIso: entry.gameStartIso ?? "",
+    marketId: entry.providerMarketId ?? "",
+    marketQuestion: entry.marketQuestion,
+    marketEndIso: entry.eventEndIso ?? "",
+    marketFamily: entry.providerSportFamily ?? null,
+    sportsMarketType: entry.marketType ?? null,
+    conditionId: entry.conditionId,
+    selectedTokenId: entry.selectedTokenId,
+    opposingTokenId: "provider-opposing-token",
+    selectedPriceNum: entry.entryPriceNum ?? 0,
+    opposingPriceNum: 1 - (entry.entryPriceNum ?? 0),
+    publicFeedExposed: false,
+    providerSportCode: entry.providerSportCode ?? null,
+    // This is the discovery canonical family after the existing code-to-family
+    // normalization; the raw provider code remains epl in the captured shape.
+    providerSportFamily: "soccer",
+    providerSportSource: "structured_sports_tag",
+    providerSportTagIds: entry.providerSportTagIds ?? [],
+    providerSeriesIds: entry.providerSeriesIds ?? [],
+    scoreOwnership: scoreOwnershipForSportFamily("soccer"),
+  }));
+
+  const selected = selectResearchMarketsForScoring(universe, new Set(), null, 0);
+  assert.equal(new Set(selected.map((row) => row.conditionId)).size, 3);
+  assert.equal(new Set(selected.map((row) => `${row.conditionId}::${row.selectedTokenId}`)).size, 6);
 });
 
 // ── materialization outcome ledger ─────────────────────────────────────────

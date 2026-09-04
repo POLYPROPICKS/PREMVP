@@ -11,7 +11,7 @@ import {
 } from "../lib/feed/buildLandingCards";
 import {
   writeStrategicShadowPairs,
-  writeFireModel1_1ResearchPairs,
+  writeFireModel1_1ResearchPairsWithDetail,
   writeJobRun,
 } from "../lib/feed/cacheGeneratedSignals";
 import { persistCanonicalPrimarySignalPopulation } from "../lib/feed/persistPrimarySignalPopulation";
@@ -645,7 +645,13 @@ async function main() {
       const fm11Candidates = result.firemodel11ResearchCandidates ?? [];
       if (fm11Candidates.length > 0) {
         const fm11ExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-        const fm11Inserted = await writeFireModel1_1ResearchPairs(fm11Candidates, fm11ExpiresAt);
+        const fm11Write = await writeFireModel1_1ResearchPairsWithDetail(fm11Candidates, fm11ExpiresAt);
+        const fm11Inserted = fm11Write.inserted;
+        for (const pair of fm11Write.persistedPairs) {
+          const family = pair.diagnostics.providerSportFamily?.trim().toLowerCase() || "unknown";
+          const counter = result.researchFunnel?.wideResearchBySportFamily?.[family];
+          if (counter) counter.WIDE_GSP_PERSISTED_N++;
+        }
         console.log(`[generate-signals] FireModel1.1 research pairs written: ${fm11Inserted}`);
         diagnostics.fm11ResearchCandidatesFound = fm11Candidates.length;
         diagnostics.fm11ResearchPairsInserted = fm11Inserted;
