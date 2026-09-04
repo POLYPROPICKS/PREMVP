@@ -612,16 +612,21 @@ export async function writeStrategicShadowPairs(
  * Deduplicates by (condition_id, selected_token_id) against existing research rows.
  * Throws on DB error (caller wraps in fail-open try/catch).
  */
-export async function writeFireModel1_1ResearchPairs(
+export interface FireModel1_1ResearchWriteResult {
+  inserted: number;
+  persistedPairs: LandingCardPair[];
+}
+
+export async function writeFireModel1_1ResearchPairsWithDetail(
   pairs: LandingCardPair[],
   defaultExpiresAt: string,
-): Promise<number> {
-  if (pairs.length === 0) return 0;
+): Promise<FireModel1_1ResearchWriteResult> {
+  if (pairs.length === 0) return { inserted: 0, persistedPairs: [] };
 
   const validPairs = pairs.filter(
     (p) => p.diagnostics.conditionId && p.diagnostics.selectedTokenId,
   );
-  if (validPairs.length === 0) return 0;
+  if (validPairs.length === 0) return { inserted: 0, persistedPairs: [] };
 
   // Read-before-write dedup: suppress only identities that are currently
   // serving. Historical generated rows remain append-only lineage.
@@ -644,7 +649,7 @@ export async function writeFireModel1_1ResearchPairs(
   const newPairs = validPairs.filter(
     (p) => !existingKeys.has(`${p.diagnostics.conditionId}::${p.diagnostics.selectedTokenId}`),
   );
-  if (newPairs.length === 0) return 0;
+  if (newPairs.length === 0) return { inserted: 0, persistedPairs: [] };
 
   const rows = buildFireModel1_1ResearchRows(newPairs, defaultExpiresAt);
 
@@ -658,7 +663,14 @@ export async function writeFireModel1_1ResearchPairs(
   }
 
   await projectInsertedRows(data, rows.length);
-  return count ?? rows.length;
+  return { inserted: count ?? rows.length, persistedPairs: newPairs };
+}
+
+export async function writeFireModel1_1ResearchPairs(
+  pairs: LandingCardPair[],
+  defaultExpiresAt: string,
+): Promise<number> {
+  return (await writeFireModel1_1ResearchPairsWithDetail(pairs, defaultExpiresAt)).inserted;
 }
 
 /**

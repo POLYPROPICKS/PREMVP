@@ -101,7 +101,7 @@ test("structured tag authority resolves every currently authorized score family 
   assert.equal(scoreOwnershipForSportFamily("rugby-sevens"), "INTENTIONALLY_UNSCORED");
 });
 
-test("research selection gives each eligible supported event a real scorer attempt before extra markets", () => {
+test("research selection retains every discovery-authorized identity for supported sport families", () => {
   const universe = [
     research("a", "a-1"), research("a", "a-2"), research("a", "a-3"),
     research("b", "b-1", "tennis"),
@@ -110,10 +110,11 @@ test("research selection gives each eligible supported event a real scorer attem
   ];
   const selected = selectResearchMarketsForScoring(universe, new Set(), 3, 0);
   assert.deepEqual(new Set(selected.map((row) => row.eventId)), new Set(["a", "b", "c"]));
+  assert.equal(selected.length, 5);
   assert.ok(selected.every((row) => row.scoreOwnership === "SUPPORTED_BY_SCORE_MODEL"));
 });
 
-test("research scorer selection uses structured primary market authority for soccer and tennis, not technical or display ordering", () => {
+test("research scorer selection preserves soccer and tennis market identities without a moneyline-only authority gate", () => {
   const soccerPrimary = research("soccer-provider-event", "z-soccer-primary", "soccer", {
     marketId: "soccer-provider-market-primary",
     sportsMarketType: "moneyline",
@@ -141,7 +142,9 @@ test("research scorer selection uses structured primary market authority for soc
   );
   assert.deepEqual(selected.map((row) => row.marketId).sort(), [
     "soccer-provider-market-primary",
+    "soccer-provider-market-secondary",
     "tennis-provider-market-primary",
+    "tennis-provider-market-secondary",
   ]);
 
   for (const rotationOffset of [1, 7, 31]) {
@@ -152,7 +155,12 @@ test("research scorer selection uses structured primary market authority for soc
         2,
         rotationOffset,
       ).map((row) => row.marketId).sort(),
-      ["soccer-provider-market-primary", "tennis-provider-market-primary"],
+      [
+        "soccer-provider-market-primary",
+        "soccer-provider-market-secondary",
+        "tennis-provider-market-primary",
+        "tennis-provider-market-secondary",
+      ],
     );
   }
 
@@ -170,7 +178,7 @@ test("research scorer selection uses structured primary market authority for soc
   );
 });
 
-test("research scorer selection deterministically ties structured full-match markets by provider market ID and fails closed", () => {
+test("research scorer selection retains valid market identities and fails closed for malformed or unsupported rows", () => {
   const laterProviderId = research("event-1", "a-condition", "soccer", {
     marketId: "provider-market-z",
     sportsMarketType: "moneyline",
@@ -199,7 +207,7 @@ test("research scorer selection deterministically ties structured full-match mar
     5,
     0,
   );
-  assert.deepEqual(selected.map((row) => row.marketId), ["provider-market-a"]);
+  assert.deepEqual(selected.map((row) => row.marketId).sort(), ["provider-market-a", "provider-market-z"]);
 });
 
 test("scored carrier preserves provider event and sport authority into persisted research diagnostics", () => {
