@@ -22,6 +22,7 @@ import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { mkdirSync, writeFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
@@ -140,15 +141,24 @@ const GSP_COLS =
  * triggers 57014 on GSP; splitting into a tie-drain + a strictly-greater advance
  * keeps both reads on the (created_at,id) index. `endUtc` is enforced by the
  * caller breaking once a page crosses it (rows arrive ascending).
+ *
+ * `source` tells the caller which query produced the page:
+ *  - "tie": rows all share `afterTs` exactly (`eq(tsField, afterTs)`). A short
+ *    ("< PAGE") tie page means only NO MORE IDS AT THIS EXACT TIMESTAMP — it is
+ *    NOT evidence that no later timestamp exists, and the caller MUST NOT
+ *    terminate the outer scan on it.
+ *  - "advance": rows are strictly after `afterTs` (`gt(tsField, afterTs)`). A
+ *    short advance page is the only page kind that legitimately signals
+ *    end-of-data for a forward keyset scan.
  */
-async function keysetPage(
+export async function keysetPage(
   db: SupabaseClient,
   table: string,
   tsField: string,
   cols: string,
   afterTs: string,
   afterId: string,
-): Promise<Row[]> {
+): Promise<{ rows: Row[]; source: "tie" | "advance" }> {
   if (afterId) {
     const tie = await db
       .from(table)
@@ -158,7 +168,7 @@ async function keysetPage(
       .order("id", { ascending: true })
       .limit(PAGE);
     if (tie.error) throw new Error(`CLONE_READ_${table}:${tie.error.code ?? ""}:${tie.error.message}`);
-    if ((tie.data ?? []).length > 0) return (tie.data ?? []) as unknown as Row[];
+    if ((tie.data ?? []).length > 0) return { rows: (tie.data ?? []) as unknown as Row[], source: "tie" };
   }
   const adv = await db
     .from(table)
@@ -168,11 +178,11 @@ async function keysetPage(
     .order("id", { ascending: true })
     .limit(PAGE);
   if (adv.error) throw new Error(`CLONE_READ_${table}:${adv.error.code ?? ""}:${adv.error.message}`);
-  return (adv.data ?? []) as unknown as Row[];
+  return { rows: (adv.data ?? []) as unknown as Row[], source: "advance" };
 }
 
 /** Bounded keyset read of generated_signal_pairs over the D-1 window. */
-async function readSignalPairs(
+export async function readSignalPairs(
   db: SupabaseClient,
   startUtc: string,
   endUtc: string,
@@ -185,7 +195,7 @@ async function readSignalPairs(
   let maxWatermark: string | null = null;
 
   for (let guard = 0; guard < 1000; guard++) {
-    const chunk = await keysetPage(
+    const { rows: chunk, source } = await keysetPage(
       db,
       "generated_signal_pairs",
       "created_at",
@@ -232,7 +242,10 @@ async function readSignalPairs(
       });
     }
     if (crossed) break;
-    if (chunk.length < PAGE) break;
+    // A short TIE page only means "no more ids at this exact timestamp" —
+    // it must NOT end the scan. Only a short ADVANCE page (strictly later
+    // timestamps exhausted) is a legitimate end-of-data signal.
+    if (source === "advance" && chunk.length < PAGE) break;
     const last = obj(chunk[chunk.length - 1]);
     afterCreated = String(last.created_at);
     afterId = String(last.id);
@@ -241,7 +254,7 @@ async function readSignalPairs(
 }
 
 /** Bounded read of GSRS observations for the seen identities only. */
-async function readObservations(
+export async function readObservations(
   db: SupabaseClient,
   conditionIds: string[],
   floorUtc: string,
@@ -256,6 +269,11 @@ async function readObservations(
     let afterId = "";
     for (let guard = 0; guard < 2000; guard++) {
       let chunk: Row[] = [];
+      // Tracks which query produced `chunk`. A short ("< PAGE") "tie" page
+      // means only NO MORE IDS AT THIS EXACT snapshot_at — it must NOT end
+      // the scan. Only a short "advance" page legitimately signals
+      // end-of-data (mirrors the keysetPage/readSignalPairs fix above).
+      let source: "tie" | "advance" = "advance";
       if (afterId) {
         const tie = await db
           .from("generated_signal_research_snapshots")
@@ -268,6 +286,7 @@ async function readObservations(
         if (tie.error)
           throw new Error(`CLONE_READ_generated_signal_research_snapshots:${tie.error.code ?? ""}:${tie.error.message}`);
         chunk = (tie.data ?? []) as Row[];
+        if (chunk.length > 0) source = "tie";
       }
       if (chunk.length === 0) {
         const adv = await db
@@ -281,6 +300,7 @@ async function readObservations(
         if (adv.error)
           throw new Error(`CLONE_READ_generated_signal_research_snapshots:${adv.error.code ?? ""}:${adv.error.message}`);
         chunk = (adv.data ?? []) as Row[];
+        source = "advance";
       }
       if (chunk.length === 0) break;
       if (String(obj(chunk[0]).snapshot_at) >= endUtc) break;
@@ -310,7 +330,7 @@ async function readObservations(
         });
       }
       if (crossed) break;
-      if (chunk.length < PAGE) break;
+      if (source === "advance" && chunk.length < PAGE) break;
       const last = obj(chunk[chunk.length - 1]);
       afterSnap = String(last.snapshot_at);
       afterId = String(last.id);
@@ -635,7 +655,11 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  console.error(err instanceof Error ? err.stack || err.message : String(err));
-  process.exit(1);
-});
+// CLI entry-point guard: run only when this file is the invoked script, not
+// when imported (e.g. by regression tests exercising keysetPage/readSignalPairs).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(err instanceof Error ? err.stack || err.message : String(err));
+    process.exit(1);
+  });
+}
