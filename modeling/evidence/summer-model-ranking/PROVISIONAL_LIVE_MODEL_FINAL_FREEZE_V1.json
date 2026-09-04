@@ -1,0 +1,137 @@
+{
+  "artifact": "PROVISIONAL_LIVE_MODEL_FINAL_FREEZE_V1",
+  "artifact_version": "1.0.0",
+  "mission": "CURRENT_EXECUTABILITY_AND_FINAL_FREEZE_V1",
+  "status": "IMMUTABLE",
+  "decision": "C1_PROVISIONAL_LIVE_FROZEN",
+  "freeze_timestamp_utc": "2026-09-04T12:49:29Z",
+  "founder_action": "none",
+  "NO_RETUNING": true,
+  "scope": "Freezes exactly one provisional live model. No production / Contract A / Reservation / Rebalance / Queue / Ireland / filter mutation. Capacity + compatibility test only, not a PnL backtest.",
+
+  "inputs": {
+    "summer_finalist_freeze": {
+      "path": "modeling/evidence/summer-model-ranking/SUMMER_MODEL_FINALIST_FREEZE_V1.json",
+      "sha256": "a304e7e96550c92aad3bb2df51d519cc2c68d0932487f8ed8798fb477ea53fa9",
+      "role": "frozen C1/C4/C2 predicates + summer economics — consumed verbatim, not reinterpreted"
+    },
+    "current_capacity_probe": {
+      "path": "modeling/evidence/summer-model-ranking/CURRENT_EXECUTABILITY_PROBE_V1.json",
+      "reproduce": "npx tsx scripts/modeling/current-executability-probe.ts --scored-lookback-hours 48",
+      "read_only": "SELECT-only; no writes, no execution endpoints, no production mutation",
+      "probe_at": "2026-09-04T12:49:29Z"
+    },
+    "contract_a_live_code_resolution": {
+      "scored_planning_predicate": "metric_formula_version IN ('v2-lite-growth-safe','shadow-firemodel1_1_research_v0') AND signal_result IS NULL AND expires_at > now AND selected_token_id/condition_id/entry_price_num NOT NULL AND signal_confidence_num >= 50 AND created_at >= now-72h AND hasStructuredScoredSportAuthority(diagnostics)",
+      "sources": ["lib/executor/buildFireModelCandidates.ts (loadContractAPlanningSourceRows, fetchPlanningSourceRowSets, decideLiveEligibility, TIER1_CORE_STRICT_72_COV50, hoursToStart<=6.0)", "lib/executor/liveReservationAllocationPolicy.ts (15-slot cap, minStartLeadMinutes=30, plan window 14:00Z-05:00Z)", "lib/feed/sportScoreOwnership.ts (hasStructuredScoredSportAuthority)"],
+      "resolved_against": "origin/main f7b662b (true-wide selector fix #244 merged); working-tree WIP not used"
+    }
+  },
+
+  "current_market_size": {
+    "true_wide_provider_supply": {
+      "est_provider_outcomes_per_day": 41609,
+      "est_provider_physical_events_per_day": 4484,
+      "est_price_band_events_per_day": 1594,
+      "model_executable_events": 0,
+      "finding": "The true-wide 'shadow-strategic-sports-v1' population restored by #244 carries market/outcome breadth but NOT diagnostics.providerSportFamily or providerEventContext.eventStartIso. sport_family and event_start are absent, so this population supplies ~0 executable events for any of C1/C4/C2. Model-executable supply lives entirely in the scored planning universe."
+    },
+    "contract_a_scored_planning_universe": {
+      "scan_span_hours": 47.59,
+      "est_events_per_day": 555,
+      "est_price_band_events_per_day": 281,
+      "sport_family_event_mix_48h": { "tennis": 441, "soccer": 390, "esports": 120, "baseball": 83, "cricket": 59, "hockey": 8 },
+      "lead_fwd_hours": { "p50": 2.2, "p90": 21.2, "p99": 23.2, "max": 23.2 },
+      "lead_created_hours": { "p50": 13.9, "p90": 23.8, "p99": 23.9, "max": 23.9 },
+      "lead_ge_24h_events": 0
+    },
+    "contract_a_reservations_28d": {
+      "rows": 374, "days": 23, "per_day": 16.3,
+      "strategic_scope_mix": { "SOCCER": 204, "TENNIS": 116, "ESPORT": 31, "MLB": 19, "BASKETBALL": 2, "MMA": 2 },
+      "soccer_share_pct": 54.5,
+      "lead_ge_24h_reservations": 0,
+      "slot_cap_per_plan_run": 15
+    }
+  },
+
+  "per_finalist_current_funnel": {
+    "unit_note": "events / markets / outcomes / model candidates / executable bets kept as separate units; funnel counts below are per unique physical event on the 47.6h scored-universe scan",
+    "C1": {
+      "EXACT_PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family = soccer",
+      "summer": { "N": 3253, "PNL_U": 431.22, "ROI_PCT": 13.26, "MAX_DD_U": -16.94, "tail_roi_pct": 18.61, "positive_weeks": "4/4" },
+      "CURRENT_PROVIDER_PHYSICAL_EVENT_N_per_day": 555,
+      "MODEL_PRICE_AND_SPORT_ELIGIBLE_N_scan": 209,
+      "MODEL_ELIGIBLE_PER_DAY": 105.4,
+      "REQUIRED_FIELDS_COMPLETE_N_scan": 209,
+      "CONTRACT_A_COMPATIBLE_N_scan": 209,
+      "CONTRACT_A_COMPATIBLE_PER_DAY": 105.4,
+      "LIVE_EXECUTABLE_NOW_LE_6H_PER_DAY": 38.8,
+      "UNIQUE_EXECUTABLE_PHYSICAL_EVENT_N_scan": 209,
+      "ESTIMATED_BETS_PER_DAY": "15 (Contract A 15-slot cap), up to ~30 on double-run nights",
+      "capacity_headroom": "~105 soccer-band eligible events/day is ~7x the 15-slot cap; Contract A already sources 54.5% soccer",
+      "rejection_accounting": { "PRICE": 544, "SPORT": 447, "LEAD_TIME": 0, "SCORE": 0, "CONFIDENCE": "removed upstream (>=50)", "COVERAGE_OR_BAD_BUCKET": 0, "CONTRACT_A_TIME_WINDOW_GT_6H": 66, "OTHER_CONTRACT_A_GATE": 0 },
+      "material_operational_defect": "NONE — bad-bucket removes 0 C1 events (fallback-pool coverage ~25, never in 50-74); the TIER1 gate is not a reservation gate (70% of current reservations are TIER3); required decision-time fields present in the scored/authority population."
+    },
+    "C4": {
+      "EXACT_PREDICATE": "0.50 <= entry_price < 0.60 AND (sport_family = soccer OR lead_time_hours >= 24)",
+      "summer": { "N": 4117, "PNL_U": 474.56, "ROI_PCT": 11.53, "MAX_DD_U": -16.41, "tail_roi_pct": 14.90 },
+      "TOTAL_MODEL_ELIGIBLE_CURRENT_N_scan": 209,
+      "ELIGIBLE_WITH_LEAD_GE_24H_N": 0,
+      "CURRENT_CONTRACT_A_REACHABLE_N_scan": 209,
+      "LOST_ONLY_BECAUSE_OF_CURRENT_TIME_WINDOW_N": 0,
+      "finding": "C4 == C1 on the current pipeline. The non-soccer lead>=24h arm has ZERO current supply — no scored candidate exceeds ~24h lead (scoring-pipeline horizon), a wall reached BEFORE the Contract A 6h execution gate. Freezing C4 would ship a model whose second half is permanently inert."
+    },
+    "C2": {
+      "EXACT_PREDICATE": "0.50 <= entry_price < 0.60 AND lead_time_hours >= 24",
+      "summer": { "N": 2868, "PNL_U": 309.77, "ROI_PCT": 10.80, "MAX_DD_U": -14.39, "tail_roi_pct": 13.54, "aug_bets_per_day": 143 },
+      "TOTAL_MODEL_ELIGIBLE_CURRENT_N_scan": 0,
+      "ELIGIBLE_WITH_LEAD_GE_24H_N": 0,
+      "CURRENT_CONTRACT_A_REACHABLE_N_scan": 0,
+      "LOST_ONLY_BECAUSE_OF_CURRENT_TIME_WINDOW_N": 0,
+      "finding": "ZERO current executable supply. All 557 C2-lead rejections are the scoring-pipeline ~24h horizon, not the Contract A 6h gate (0 of those). The historical >=24h edge is real (~143 August events/day, 10.8% ROI) but sits entirely outside the current scoring + reservation pipeline. Reaching it requires a new early-scoring + early-reservation contour — an architecture change, out of scope, and not required because C1 capacity is sufficient."
+    }
+  },
+
+  "what_contract_a_prevents_today": {
+    "for_C1": "Nothing material. C1 does not need >=24h lead; current reservations run fine at <6h; bad-bucket and tier gates cost C1 zero events.",
+    "for_C2_and_C4_lead_arm": "The >=24h opportunity is blocked BEFORE Contract A — at the scoring-pipeline ~24h candidate horizon. Contract A's hoursToStart<=6.0 live gate is a second, later wall (0/374 reservations ever >=24h, 0 ever >12h at reserve time). Both walls would have to move to make C2 executable.",
+    "no_contour_change_made": true
+  },
+
+  "FINAL_FREEZE": {
+    "WINNER_MODEL_ID": "C1",
+    "WINNER_MODEL_VERSION": "1.0.0",
+    "ECONOMIC_ROLE": "HIGH_ROI / soccer sport-edge core",
+    "EXACT_PREDICATE": "0.50 <= entry_price < 0.60 AND sport_family = soccer",
+    "REQUIRED_DECISION_TIME_FIELDS": ["entry_price (decision-time selected price)", "sport_family (must resolve to 'soccer' via structured provider sport authority)", "decision_timestamp", "event_start", "physical_event identity (provider_event_id / condition_id)"],
+    "SUMMER_N": 3253,
+    "SUMMER_N_DISCOVERY_CROSSCHECK": 3332,
+    "SUMMER_PNL": "+431.22u (August basis) / +445.69u (June-Aug discovery)",
+    "SUMMER_ROI": "13.26% (August) / 13.38% (discovery) / 18.61% held-out chronological tail",
+    "SUMMER_MAX_DD": "-16.94u (August) / -16.92u (discovery)",
+    "CURRENT_MODEL_ELIGIBLE_N": "~105 soccer price-band physical events / day (scored planning universe)",
+    "CURRENT_CONTRACT_A_COMPATIBLE_N": "~105 / day (bad-bucket and tier gates cost zero C1 events)",
+    "CURRENT_EXECUTABLE_EVENT_N": "~39 / day already inside the <=6h live window; the full ~105/day is reservable as future plan-window slots",
+    "ESTIMATED_BETS_PER_DAY": "15 (Contract A 15-slot cap per plan run); ~20-30 on double-run nights — within the 15-30 target",
+    "MAIN_CURRENT_REJECTION_REASONS": ["PRICE (outside 0.50-0.60): dominant, ~544/1101 scored events", "SPORT (not soccer): ~447 events — expected, C1 is soccer-only by design and NOT a model failure", "Contract A 15-slot-per-run cap is the throughput limiter, not a supply shortage"],
+    "WHY_THIS_MODEL_IS_SELECTED": "Strong historical economics (highest ROI of any high-N finalist on both summer bases, improves out-of-sample, every summer week positive, -17u drawdown); sufficient current executable supply (~105 soccer-band eligible events/day, ~7x the Contract A slot cap; Contract A already sources 54.5% soccer); simplest existing execution compatibility (needs only entry_price + sport_family, both already computed point-in-time; runs through the existing Contract A -> Reservation contour); and no architecture change. C4 is identical to C1 on today's pipeline (its >=24h arm has zero supply) and C2 has zero current supply, so neither can be executed today without building an early-entry pipeline that C1's sufficiency makes unnecessary.",
+    "NO_RETUNING": true
+  },
+
+  "acceptance": {
+    "1_wide_semantics_measured": "PASS — true-wide 'shadow-strategic-sports-v1' population scanned; breadth ~4,484 events/day; decision-time-field gap identified",
+    "2_exact_frozen_predicates": "PASS — C1/C4/C2 taken verbatim from SUMMER_MODEL_FINALIST_FREEZE_V1.json",
+    "3_capacity_measured_not_guessed": "PASS — 47.6h keyset scan of the scored planning universe + 28d reservation history",
+    "4_contract_a_vs_model_rejection_separated": "PASS — rejection_accounting splits PRICE / SPORT / LEAD_TIME / SCORE / COVERAGE_OR_BAD_BUCKET / CONTRACT_A_TIME_WINDOW",
+    "5_c1_daily_capacity_explicit": "PASS — ~105 eligible/day, ~39/day <=6h, ~15/day through the Contract A cap",
+    "6_c4_c2_lead_ge_24h_loss_quantified": "PASS — 0 current supply; blocked at the ~24h scoring horizon, quantified separately from the 6h Contract A gate",
+    "7_one_frozen_or_incompatibility_proven": "PASS — C1 frozen",
+    "8_no_thresholds_changed": "PASS",
+    "9_no_live_mutation": "PASS — SELECT-only",
+    "10_founder_actions": "0"
+  },
+
+  "next_semantic_transition": "LAUNCH_PROVISIONAL_CONTRACT_A_CONTOUR_V1",
+  "next_step_scope": "Put frozen C1 through Contract A -> Reservation with bounded useful live capacity ~15-30 bets/day. Parallel: post-2026-09-04 true-wide D-1 accrues untuned; after 7-10 true-wide forward days, FORWARD_WINNER_DECISION_V1 applies C1's frozen predicate unchanged and returns KEEP / SWAP / REJECT.",
+  "documented_future_option_not_this_missions_call": "The >=24h opportunity pool (summer C2: ~143 August events/day, 10.8% ROI, -14.4u MaxDD) is real and currently unreachable — it would need an early-scoring + early-reservation contour. Recorded for a post-provisional-launch decision only; NOT required now and NOT authorized here."
+}
