@@ -1,0 +1,61 @@
+{
+  "bundle_id": "2026-09-04__evolution-canonical-cycle",
+  "repository": "POLYPROPICKS/PREMVP",
+  "period_start": "2026-09-04T00:00:00Z",
+  "period_end": "2026-09-05T00:00:00Z",
+  "evidence_cutoff": "2026-09-05T00:25:00Z",
+  "capture_coverage": "PARTIAL",
+  "completion_envelope_ids": [],
+  "confirmed_changes": [
+    "POLYPROPICKS/PREMVP#242",
+    "POLYPROPICKS/PREMVP#243",
+    "POLYPROPICKS/PREMVP#244",
+    "POLYPROPICKS/PREMVP#245"
+  ],
+  "operator_action_events": [],
+  "operating_telemetry": {
+    "reviewer_corrections_rejections": 0,
+    "runtime_evidence_count": 1,
+    "reusable_artifacts_created": 2,
+    "implemented_fixes": 2,
+    "proven_effective_fixes": 2,
+    "repeated_defect_families": 2,
+    "active_onion_chains": 1
+  },
+  "supporting_metrics": {
+    "runtime_evidence_count": 1,
+    "reusable_artifacts_created": 2
+  },
+  "defect_occurrences": [
+    {
+      "defect_id": "DEF-2026-09-04-D1-READER-TIE-DRAIN-SILENT-TRUNCATION",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+      "defect_chain_id": "CHAIN-D1-RESEARCH-CORPUS-READER-20260904",
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#242",
+      "proven_effective_evidence_refs": [
+        "POLYPROPICKS/PREMVP#242 (7 focused node:test regressions reproducing the exact 1000-advance+304-tie-drain shape; live railway smoke against the real research clone reads exactly 46,776 rows post-fix)",
+        "POLYPROPICKS/PREMVP#243 (independent CANONICALIZE_D1_2026_09_03_V1 reconciliation: INPUT_RAW_ROW_N=46,776, exact match to the research-clone generated_signal_pairs denominator, no truncation)"
+      ]
+    },
+    {
+      "defect_id": "DEF-2026-09-04-WIDE-RESEARCH-MARKET-TYPE-ALLOWLIST-CEILING",
+      "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+      "recurrence": "SAME_ROOT_REPEAT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": "POLYPROPICKS/PREMVP#244",
+      "proven_effective_evidence_refs": [
+        "POLYPROPICKS/PREMVP#244 (27/27 focused tests, tsc --noEmit, npm run build all reported green per PR body -- code/test level only, no independent live-runtime re-observation this cycle)"
+      ]
+    },
+    {
+      "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+      "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+      "recurrence": "SAME_ROOT_REPEAT",
+      "defect_chain_id": null,
+      "implemented_fix_ref": null,
+      "proven_effective_evidence_refs": []
+    }
+  ],
+  "notes": "git log origin/main --since=2026-09-04T00:25:00Z (the prior cycle's own evidence_cutoff) through this bundle's evidence_cutoff (2026-09-05T00:25:00Z) shows six merges to main: PR#240 (merged 2026-09-04T03:28:35+03:00 -- the prior cycle's own docs(evolution) canonicalization artifact, not new business evidence, excluded from confirmed_changes exactly as PR#229/#221/#215 were excluded from earlier bundles) plus four real merges (PR#242, #243, #244, #245); PR#241 (Automation Roadmap Governor run) was opened this period but is NOT merged to main at this cutoff (mcp__github__pull_request_read confirms state=open) and is Routine B's own artifact, not this Routine's confirmed evidence. PR#242 'FIX_D1_FACTORY_TIE_DRAIN_EARLY_TERMINATION_V1' (26da960, merged 2026-09-04T08:28:31Z, +240/-13 across 2 files, authored+merged by the POLYPROPICKS account within 12 seconds of PR creation, 0 CI check runs -- this repository still carries no .github/workflows at all, pre-existing baseline) fixes a severe silent data-loss defect in the D-1 research-corpus reader used by the prior cycle's newly-added rolling-corpus capability (PR#234-239): a short same-timestamp tie-drain page was wrongly treated as end-of-stream, so readSignalPairs/readObservations stopped after 1,304 of 46,776 real rows for 2026-09-03 -- a 97.2% silent undercount -- whenever a burst of same-timestamp rows exceeded the page size. This is the first time the reader was exercised at true full-day scale against an independently known row count (via the prior cycle's own canonicalization work), which is exactly what exposed the defect; it is recorded as a LATENT_NEXT_LAYER_EXPOSED layer under a new chain, DEFECT_CHAIN_ID=CHAIN-D1-RESEARCH-CORPUS-READER-20260904 (layer A: the reader/rolling-corpus capability built in the 2026-09-03 cycle; layer B: this period's discovery+fix). Fix: keysetPage now reports which query (tie vs advance) produced a page; both readers only terminate on a short page from the advance query. 7 new node:test regressions reproduce the exact failing shape and pass only with the fix (verified by reverting the guard in isolation and re-running); a live `railway run --service research-clone-daily-sync` smoke test confirms the fixed reader now reads exactly 46,776 rows for 2026-09-03, matching the independently proven COUNT(*) denominator -- this bundle's runtime_evidence_count is set to 1 on the strength of that live railway invocation, the first genuine runtime observation across recent cycles (all prior cycles recorded runtime_evidence_count=0). PR#243 'CANONICALIZE_D1_2026_09_03_V1' (c37a511, +1636/-0 across 9 files) re-materializes the full corrected 2026-09-03 partition using the PR#242 fix and independently reconciles INPUT_RAW_ROW_N=46,776 to the same proven denominator (exact match, no truncation); advances the existing rolling 7d/14d/30d manifests to 2026-09-03 with WINDOW_COMPLETE=true and zero missing partitions; no previously accepted D-1 partition changed; no model/filter/threshold work; no production or clone writes; explicitly backward-looking/descriptive only, same FORWARD_VALIDATED=false posture as the prior cycle's scorecard work. PR#244 'fix(feed): preserve wide research market outcomes' (41057a3, +205/-76 across 7 files, authored by the POLYPROPICKS account, 0 CI check runs, merged 17 seconds after PR creation) restores wide multi-market/multi-outcome research scoring that had been silently narrowed by a market-type allowlist (`OFFICIAL_FULL_MATCH_MARKET_TYPES`) inside `selectResearchMarketsForScoring`/`hasStructuredScorerMarketAuthority` in lib/feed/buildLandingCards.ts. Git history (`git log -S OFFICIAL_FULL_MATCH_MARKET_TYPES.has -- lib/feed/buildLandingCards.ts`) shows this allowlist filter predates commit b2de038 ('fix(feed): remove fixed 200 research-scorer cap'), i.e. the numeric-ceiling instance the earlier H3 hypothesis tracked was fixed while this separate, structurally identical undocumented-restrictive-ceiling defect (a market-type allowlist silently dropping eligible wide-research rows instead of a numeric limit) remained in the same function and went unnoticed until this period -- a sixth confirmed instance of H3's design-error class (undocumented ceiling/allowlist silently drops eligible data without being named/justified as an intentional bound), recorded here as SAME_ROOT_REPEAT of that family. PR#244's own stated verification is 27/27 focused tests, `npx tsc --noEmit`, `npm run build`, `git diff --check`, all green per the PR body; this reviewer did not independently re-run those checks (Verification Budget discipline: the PR's own stated, itemized verification is reused as SOURCE_OR_CONTROL_PROVEN evidence, not re-executed) and no independent post-merge production observation of the restored wide-research scoring exists yet. PR#245 'Admit soccer_exact_score / soccer_first_to_score into the money-authoritative market universe' (d4a10c1, +625/-63 across 7 files, authored+merged by the POLYPROPICKS account within 15 seconds of PR creation, 0 CI check runs) extends `lib/feed/discoverSportsMarkets.ts` (selectSoccerGroupCandidateMarkets), `lib/feed/buildLandingCards.ts` (AUTHORIZED_RECOVERY_MARKET_TYPES) and `lib/executor/planningAnchor.ts` (resolvePlanningAnchorDecision) to admit two previously-rejected soccer market families into the Contract A / Reservation-eligible population, with 90/90 focused tests reported green in the PR body but zero CI check runs, zero external review, and zero post-merge observation of these families actually reaching a live GSP/Reservation cycle -- a fourth confirmed instance of the H6 gap (code/test-confirmed only, no production observation), following PR#194, PR#225 and PR#231 from prior cycles. docs/ai-context/control-plane/CURRENT_STATE.yaml remains unchanged (updated_at=2026-08-28T21:00:54Z, state_version 17, origin_main_sha unchanged) -- this bundle newly confirms live git merge-base --is-ancestor still proves that sha is an ancestor of live origin/main, but every path that changed this period again falls entirely outside ARCHITECT_CONTROL_PLANE.yaml's stale_state_behavior.state_bootstrap_allowlist, so CURRENT_STATE.yaml remains STATE_REFRESH_REQUIRED for an eighth consecutive cycle. No completion envelope was Architect-accepted this period (completion_envelope_ids stays empty). mcp__github__list_pull_requests (state=open) at this cutoff shows the originally tracked Governor/Evolution draft-PR family (H7) still unchanged at exactly 7 members (#199, #205, #206, #212, #214, #216, #222), the five previously-observed modeling-PR pile (#223, #226, #227, #228, #233) also unchanged, and one new member of the generalized pattern: PR#241 (Routine B's own first real Automation Roadmap Governor run) opened this period and not yet merged -- the stranded-draft-PR shape has now extended to Routine B's own canonical-persistence artifact, not just ordinary modeling work; recorded here as continuity evidence for H7, not acted on (not this Routine's persistence lineage to manage). reusable_artifacts_created=2 counts the D-1 reader's tie/advance page-source fix (a correctness strengthening of the existing rolling-corpus reusable pipeline, scripts/modeling/live-d1-research-corpus.ts) and the restored wide-research market selection plus its new per-sport-family funnel counters (lib/feed/buildLandingCards.ts); PR#245 is business/product market-admission logic, not a Manifest 2 capability-domain artifact, and is not counted toward this metric. No product database, deployment or Ireland path changed."
+}
