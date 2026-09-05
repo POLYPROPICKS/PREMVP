@@ -12,6 +12,7 @@ import {
 } from "../lib/feed/resolveSignalOutcome";
 import { pruneCurrentSignalPairServing } from "../lib/feed/currentSignalPairServing";
 import { reconcileExecutionLifecycle } from "../lib/executor/executionLifecycle";
+import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "../lib/ops/emergencyQuiesce";
 
 // ---- Config ----------------------------------------------------------------
 
@@ -499,6 +500,13 @@ async function reconcilePendingExecutionSettlements(
 async function main() {
   // Load .env.local before any module that reads process.env at import time
   loadEnvConfig(process.cwd());
+
+  // EMERGENCY_QUIESCE_PROD_DB_BACKGROUND_LOAD_V1: before the Supabase client
+  // is even constructed. Exits 0 so Railway sees a clean run.
+  if (isEmergencyQuiesceActive()) {
+    console.log(`[resolve-signals] ${JSON.stringify(buildEmergencyQuiesceResult("resolve-signals"))}`);
+    process.exit(0);
+  }
 
   const { supabaseAdmin } = await import("../lib/supabase/server");
   // Dynamic import keeps loadEnvConfig ordering: env must be loaded before any

@@ -21,6 +21,7 @@ import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchS
 import { shouldSuppressSportsInventoryWrite } from "../lib/feed/cacheSportsEventMarketInventory";
 import { pruneCurrentSignalPairServing } from "../lib/feed/currentSignalPairServing";
 import { FORMULA_VERSION } from "../lib/feed/types";
+import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "../lib/ops/emergencyQuiesce";
 
 const CONFIG = {
   limit: 15,
@@ -105,6 +106,14 @@ async function loadActiveReservationPins(): Promise<ActiveReservationPinLoadResu
 }
 
 async function main() {
+  // EMERGENCY_QUIESCE_PROD_DB_BACKGROUND_LOAD_V1: before any Supabase client
+  // call, provider fetch, or scoring work. Exits 0 so Railway sees a clean
+  // run, never a failure to retry.
+  if (isEmergencyQuiesceActive()) {
+    console.log(`[generate-signals] ${JSON.stringify(buildEmergencyQuiesceResult("generate-signals"))}`);
+    process.exit(0);
+  }
+
   const startedAt = new Date().toISOString();
   let status: "success" | "empty" | "error" = "success";
   let generatedCount = 0;

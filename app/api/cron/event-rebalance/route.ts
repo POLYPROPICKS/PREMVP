@@ -5,6 +5,7 @@ import {
   runControlledLiveIntent,
   runFounderBattleBatch,
 } from "@/lib/executor/eventExecutionQueue";
+import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "@/lib/ops/emergencyQuiesce";
 
 // Contur3 per-event rebalance cron (run every 5-10 minutes).
 //   GET/POST /api/cron/event-rebalance          → select one market per due reserved event,
@@ -45,6 +46,16 @@ function parseMaxQueueWrites(raw: string | null): { ok: true; value: number | nu
 }
 
 async function handle(request: NextRequest) {
+  // EMERGENCY_QUIESCE_PROD_DB_BACKGROUND_LOAD_V1: the very first thing this
+  // route does, before auth, before any Supabase client call. A deterministic
+  // 200 so the scheduler never sees a failure to retry.
+  if (isEmergencyQuiesceActive()) {
+    return NextResponse.json(buildEmergencyQuiesceResult("cron/event-rebalance"), {
+      status: 200,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
   const secret = request.headers.get("x-executor-secret");
   const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
   if (!expectedSecret || secret !== expectedSecret) {
