@@ -1,0 +1,427 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-09-04__evolution-canonical-cycle",
+  "period_start": "2026-09-04T00:00:00Z",
+  "period_end": "2026-09-05T00:00:00Z",
+  "evidence_cutoff": "2026-09-05T00:25:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (Routine A)",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#242",
+      "POLYPROPICKS/PREMVP#243",
+      "POLYPROPICKS/PREMVP#244",
+      "POLYPROPICKS/PREMVP#245"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-09-04__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "NOT_ENOUGH_EVIDENCE",
+    "what_moved": [],
+    "next_verified_production_fact_now_possible": "PR#245 admitted soccer_exact_score / soccer_first_to_score into the Contract A / Reservation-eligible market population. Next fact: a bounded read-only observation of a live GSP/Reservation cycle showing one of these two families actually reach current_signal_pair_serving or a Reservation slot -- not yet observed.",
+    "blockers_removed": [],
+    "blockers_introduced": [],
+    "not_proven": [
+      "PR#245 rewrites discovery/recovery/planning-anchor logic on the live Contract A path; merged by the POLYPROPICKS account in 15 seconds, 0 CI runs, no post-merge invocation recorded. Code/test-confirmed only (90/90 tests per PR body) -- a fourth instance of the H6 production-observation gap (with PR#194, #225, #231).",
+      "PR#244 (restore wide research market outcomes) reverses a market-type allowlist that had been silently narrowing research scoring since before commit b2de038; its own stated verification (27/27 tests, tsc, build) was reused as evidence and not independently re-run this cycle, and no post-merge production observation exists yet.",
+      "PR#242/#243 (D-1 reader tie-drain fix + full corrected 2026-09-03 canonicalization) are explicitly backward-looking research/modeling work: no model/filter/threshold decision, no production or clone write, FORWARD_VALIDATED=false posture unchanged from prior cycles.",
+      "CURRENT_STATE.yaml is unchanged since 2026-08-28T21:00:54Z (state_version 17) -- an eighth consecutive cycle. origin_main_sha remains a proven ancestor of live origin/main, but every changed path this period again falls outside the state_bootstrap_allowlist, so it remains STATE_REFRESH_REQUIRED, not merely aging (H1 continuity).",
+      "No completion envelope was Architect-accepted this period; completion_envelope_ids stays empty.",
+      "CHAIN-PRIMARY-CAP-20260827 and CHAIN-RESERVATION-LOOKBACK-20260828 (from prior cycles) show no new links this period."
+    ],
+    "runtime_or_business_evidence_exists": false,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_STRENGTHENED",
+    "capabilities": [
+      {
+        "domain": "REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS",
+        "statement": "The D-1 research-corpus reader no longer silently truncates on a tie-drain page; it now distinguishes a short 'tie' page from a short 'advance' page, fixing a 97.2% silent undercount (46,776 rows vs. 1,304 read).",
+        "persisted_artifact": "scripts/modeling/live-d1-research-corpus.ts",
+        "use_or_validation_evidence": "7 new regressions reproduce the exact failing shape and pass only with the fix; a live railway smoke test confirms exactly 46,776 rows now read.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#242",
+          "POLYPROPICKS/PREMVP#243",
+          "scripts/modeling/live-d1-research-corpus.ts",
+          "tests/modeling/forward-rich/live-d1-research-corpus.pagination.test.ts"
+        ]
+      },
+      {
+        "domain": "REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS",
+        "statement": "Wide multi-market/multi-outcome research scoring is restored: an undocumented market-type allowlist that silently narrowed the research-eligible universe is removed, and a new per-sport-family funnel-counter function makes that boundary explicit and inspectable.",
+        "persisted_artifact": "lib/feed/buildLandingCards.ts",
+        "use_or_validation_evidence": "27/27 focused tests, tsc --noEmit and npm run build reported green per the PR body; new counters are directly testable going forward.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#244",
+          "lib/feed/buildLandingCards.ts"
+        ]
+      }
+    ],
+    "not_proven": [
+      "Neither strengthened capability has an independent post-merge production observation yet; both remain code/test-confirmed (SOURCE_OR_CONTROL_PROVEN), except the D-1 reader fix which additionally has one live Railway smoke-test read (RUNTIME_PROVEN for that one reconciliation fact only, not for any money/serving path).",
+      "PR#245's market-family admission is a product/business-logic change, not a Manifest 2 capability-domain artifact, and is not counted toward Axis B."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": "UNKNOWN",
+      "runtime_evidence_count": 1,
+      "reusable_artifacts_created": 2,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-09-04T00:00:00Z",
+    "period_end": "2026-09-05T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "founder_actions_removable": "UNKNOWN",
+    "executor_runs": "UNKNOWN",
+    "successful_terminal_results": "UNKNOWN",
+    "reruns_resumes": "UNKNOWN",
+    "recovery_iterations": "UNKNOWN",
+    "reviewer_corrections_rejections": 0,
+    "orchestration_waste_iterations": "UNKNOWN",
+    "implemented_fixes": 2,
+    "proven_effective_fixes": 2,
+    "runtime_evidence_count": 1,
+    "reusable_artifacts_created": 2,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN",
+    "capture_coverage": "PARTIAL",
+    "chat_interaction_coverage": "PARTIAL",
+    "founder_actions_proven": 0,
+    "architect_corrections": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-09-04-D1-READER-TIE-DRAIN-SILENT-TRUNCATION",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-D1-RESEARCH-CORPUS-READER-20260904",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#242",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#242 (7 focused node:test regressions reproducing the exact 1000-advance+304-tie-drain shape; live railway smoke against the real research clone reads exactly 46,776 rows post-fix)",
+          "POLYPROPICKS/PREMVP#243 (independent CANONICALIZE_D1_2026_09_03_V1 reconciliation: INPUT_RAW_ROW_N=46,776, exact match to the research-clone generated_signal_pairs denominator, no truncation)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-04-WIDE-RESEARCH-MARKET-TYPE-ALLOWLIST-CEILING",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#244",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#244 (27/27 focused tests, tsc --noEmit, npm run build all reported green per PR body -- code/test level only, no independent live-runtime re-observation this cycle)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "PRODUCT_OR_RUNTIME_DEFECT": 2,
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 1
+    },
+    "defect_counts_by_recurrence": {
+      "LATENT_NEXT_LAYER_EXPOSED": 1,
+      "SAME_ROOT_REPEAT": 2
+    },
+    "repeated_defect_families": 2,
+    "active_onion_chains": 1
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "CURRENT_STATE.yaml still shows updated_at=2026-08-28T21:00:54Z (state_version 17) -- an eighth consecutive cycle unchanged. origin_main_sha remains a proven ancestor of live origin/main, but every path that changed this period again falls outside the state_bootstrap_allowlist.",
+      "why_it_matters": "Eighth consecutive cycle carrying the same open gap: a reconciliation library has existed for weeks (PR#185) but has only ever run manually, once.",
+      "axis_a_effect": "Indirect: any Architect planning session run before this is fixed still risks planning on top of a state picture that can silently drift.",
+      "axis_b_effect": "none -- the capability already exists, the gap is purely in scheduling/automation, not implementation",
+      "proposed_automation": "Unchanged from prior cycles: wire scripts/control-plane/lib/control-plane-reconcile.mjs as a CI gate or a separate read-only Routine that compares CURRENT_STATE.origin_main_sha against live origin/main on every merge or on a fixed schedule.",
+      "persistent_artifact": "scripts/control-plane/lib/control-plane-reconcile.mjs",
+      "expected_value": "origin_main_sha in CURRENT_STATE.yaml never drifts more than a small, defined number of merges behind",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low in read-only/proposal mode; this review does not accept a CURRENT_STATE delta itself",
+      "success_metric": "At the next cycle's evidence_cutoff, origin_main_sha is behind live origin/main by a small defined number of merges, not by the current gap",
+      "rollback_or_stop_condition": "Stop if reconciliation requires production runtime or database access, or the Founder rejects the proposed delta.",
+      "timing": "Next cycle or later",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "docs/ai-context/control-plane/ARCHITECT_CONTROL_PLANE.yaml#stale_state_behavior.state_bootstrap_allowlist",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-03__evolution-canonical-cycle.json#automation_hypotheses.H1"
+      ]
+    },
+    {
+      "id": "H2",
+      "observed_problem": "No new instance this period (none of the four confirmed PRs touch the primary feed funnel's own capping mechanism) -- the underlying gap remains: no shared population-conservation test helper for the primary feed funnel, despite prior confirmed instances of the same silent-cap pattern across CHAIN-PRIMARY-CAP-20260827.",
+      "why_it_matters": "A dormant period on this specific funnel does not close an open structural gap; the next engineering period on it is exactly as likely to hit the next instance as before.",
+      "axis_a_effect": "None this period; each future unfound cap would still silently drop qualified events",
+      "axis_b_effect": "Would turn manually repeated diagnosis into a reusable, testable invariant -- proposal unchanged since H2 was first raised",
+      "proposed_automation": "Same shared population-conservation check across funnel stages proposed in prior cycles, still buildable from the two already-existing test cases (primaryPopulationDecoupling, primaryCoverageDiagnosticOnly) without new product code.",
+      "persistent_artifact": "tests/feed/lib/populationConservation.ts (still not created)",
+      "expected_value": "One reusable check instead of N one-off ones; faster discovery of the next instance of this pattern",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: test helper only, no product behavior change",
+      "success_metric": "A fix on a different funnel stage reuses this helper instead of new one-off check code",
+      "rollback_or_stop_condition": "Stop if funnel stages turn out to have incompatible terminal-reason shapes.",
+      "timing": "Next cycle with funnel work",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#201",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-03__evolution-canonical-cycle.json#automation_hypotheses.H2"
+      ]
+    },
+    {
+      "id": "H3",
+      "observed_problem": "PR#244 confirms a sixth case of this hypothesis's design-error class: an undocumented restrictive boundary silently drops eligible data without being named as an intentional bound. This time it was a market-type allowlist, not a numeric ceiling -- and it predates and outlived the commit that fixed the '200 research-scorer cap' instance in the same function.",
+      "why_it_matters": "Six confirmed cases across two cycles, in the same file/function neighborhood, is now strong evidence that case-by-case post-hoc discovery is not closing this class of mistake; a structural check that flags any allowlist/ceiling/limit constant lacking an explicit justification comment and a completeness test would catch the next instance before it silently drops data for weeks.",
+      "axis_a_effect": "None directly, but the same pattern has previously appeared on primary-funnel/money-adjacent paths (H2), so leaving the class unaddressed keeps that risk open",
+      "axis_b_effect": "Would convert a repeatedly re-discovered defect class into one reusable structural check, directly strengthening REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS",
+      "proposed_automation": "A lint-style or test-suite check that enumerates fixed Set/array allowlists and numeric limits in lib/feed/**, lib/executor/** and scripts/modeling/** and requires each to carry an adjacent comment naming why it is bounded plus a completeness test proving nothing eligible is silently excluded.",
+      "persistent_artifact": "tests/lib/undocumentedCeilingAudit.ts (new)",
+      "expected_value": "The next allowlist/ceiling introduced or left over from a fix is caught by a structural check instead of a future Daily Evolution Review discovering it after the fact",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: read-only static/test audit, no product behavior change",
+      "success_metric": "A future cycle records zero new instances of this class, or the audit itself flags the instance before it reaches main",
+      "rollback_or_stop_condition": "Stop if the audit produces unmanageable false positives against intentionally-bounded constants (e.g. the Reservation 15-slot cap, which is a named, justified bound, not this defect class).",
+      "timing": "Next cycle or later",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#244",
+        "lib/feed/buildLandingCards.ts",
+        "docs/ai-context/control-plane/evolution/cycles/2026-08-28__evolution-canonical-cycle.json#automation_hypotheses.H3"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "This period again established only a lower bound of zero for operator_action_events -- four PRs were authored and merged directly by the POLYPROPICKS account within seconds each, with no visible review step, but this reviewer still has no primary operator-action log. Same structural gap, another cycle.",
+      "why_it_matters": "Operator-action metrics still cannot be compared across cycles while capture stays partial by construction every time -- this is a repeat confirmation, not a new finding.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "Would let proven operator actions stop being a branch-inferred lower bound and become a full count",
+      "proposed_automation": "Unchanged from prior cycles: a shared, append-only operator-action log that both executors write to at message-submission time, which evolution-collect.mjs reads directly.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml",
+      "expected_value": "Proven operator actions reach full, not partial, capture coverage",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: read/aggregate only, no product or runtime change",
+      "success_metric": "A future cycle reaches full capture coverage without inferred numbers",
+      "rollback_or_stop_condition": "Stop if this would require changing how executors start sessions.",
+      "timing": "Next cycle or later",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-03__evolution-canonical-cycle.json#automation_hypotheses.H4",
+        "this cycle's operator_actions.capture_coverage=PARTIAL with 0 branch-inferred actions across four same-account merges"
+      ]
+    },
+    {
+      "id": "H5",
+      "observed_problem": "No new instance this period -- the two prior confirmed instances of the same defect class (a money/execution evidence-write path silently losing data on an unhandled edge case: Horbury legacy callback PR#187, Reservation error-evidence insert PR#203) remain without the bounded read-only audit proposed repeatedly.",
+      "why_it_matters": "The evidence/telemetry write path has not been swept even once for other unhandled legacy shapes, despite two independent confirmed hits.",
+      "axis_a_effect": "Would close the code-level-vs-production-level gap for decisions that have now accumulated across several cycles",
+      "axis_b_effect": "none -- the gap is a missing audit, not a missing capability",
+      "proposed_automation": "Unchanged: one bounded read-only sweep of the evidence/telemetry write call sites for unhandled legacy-shape branches, reusing the two confirmed instances as the seed pattern.",
+      "persistent_artifact": "reports/observation/<observation_id>.json (existing command output contract)",
+      "expected_value": "Either a third instance is found and fixed, or the class is affirmatively closed with evidence instead of assumed closed",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: read-only audit, no write path change unless a new instance is confirmed",
+      "success_metric": "The sweep completes and reports either zero or N new instances, closing the open question either way",
+      "rollback_or_stop_condition": "Stop if the sweep would require production database access this executor does not hold.",
+      "timing": "Next cycle with funnel/telemetry work",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#187",
+        "POLYPROPICKS/PREMVP#203",
+        "docs/ai-context/control-plane/evolution/cycles/2026-08-31__evolution-canonical-cycle.json#automation_hypotheses.H5"
+      ]
+    },
+    {
+      "id": "H6",
+      "observed_problem": "PR#245 adds a fourth instance of the same gap: a zero-CI, single-account, seconds-long merge that rewrites discovery/recovery/planning-anchor logic on the live Contract A path, with 90/90 tests reported in the PR body but zero post-merge invocation evidence -- following PR#194, PR#225 and PR#231.",
+      "why_it_matters": "Four independent features on the same money-adjacent path now share this exact gap; without a production observation, code-confirmed Contract A changes continue to risk being silently recorded as a launch advance in a future planning session without runtime proof.",
+      "axis_a_effect": "Would close the code-level-vs-production-level gap for the highest-priority axis",
+      "axis_b_effect": "none",
+      "proposed_automation": "Unchanged in mechanism, newly targeted: one bounded read-only observation (a live feed/discovery sample or a GSP snapshot) taken after PR#245's merge, checking whether a soccer_exact_score or soccer_first_to_score market appears in the admitted population exactly as the 90 unit tests predict.",
+      "persistent_artifact": "reports/observation/<observation_id>.json (existing command output contract)",
+      "expected_value": "Moves PR#245 from code-confirmed to production-confirmed",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: read-only observation, no write path",
+      "success_metric": "The observation shows at least one of the two new market families present in a live discovery/GSP sample with the expected structured identity",
+      "rollback_or_stop_condition": "Stop if the observation would require a write-capable mode or a secret this executor does not already hold.",
+      "timing": "Next cycle with funnel/planning work",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#194",
+        "POLYPROPICKS/PREMVP#225",
+        "POLYPROPICKS/PREMVP#231",
+        "POLYPROPICKS/PREMVP#245",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-03__evolution-canonical-cycle.json#automation_hypotheses.H6"
+      ]
+    },
+    {
+      "id": "H7",
+      "observed_problem": "The originally tracked Governor/Evolution draft-PR family held steady at 7 members this period (#199/205/206/212/214/216/222, unchanged), and the five modeling-PR pile (#223/226/227/228/233) also held steady -- but a new member of the same generalized pattern appeared: PR#241, Routine B's own first real Automation Roadmap Governor run, opened this period and not yet merged.",
+      "why_it_matters": "The stranded-draft-PR shape has now reached Routine B's own canonical-persistence artifact, not just ordinary product/modeling work -- the pattern this hypothesis tracks keeps generalizing rather than closing.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "PR#224's dispatch-plan capability remains the precondition for safely canonicalizing the Evolution/Governor family; it does not extend to the modeling-PR pile or to PR#241 without separate review",
+      "proposed_automation": "Not a Routine A action on any of these branches. Recorded for Routine B: run terminal_persistence_stage on the 7-member family and on PR#241 itself, or supersede/close them; separately decide if the modeling-PR pile needs its own mechanism.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/SCHEDULE_MANIFEST.yaml (already documents the intended terminal_persistence_stage for the Governor routine)",
+      "expected_value": "No stranded draft PRs left open across periods; Routine B's own history stays as clean as Routine A's now is",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: this hypothesis proposes only running an already-registered, end-to-end-invocable lifecycle command for the known families, and observation-only scoping for PR#241",
+      "success_metric": "At a future cycle's evidence_cutoff, the Evolution/Governor family, the modeling-PR pile and PR#241 are all either explicitly classified as intentional draft evidence or brought to zero",
+      "rollback_or_stop_condition": "Stop if closing or superseding these PRs would discard evidence a Founder has not yet reviewed.",
+      "timing": "Next Governor run",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#199",
+        "POLYPROPICKS/PREMVP#205",
+        "POLYPROPICKS/PREMVP#206",
+        "POLYPROPICKS/PREMVP#212",
+        "POLYPROPICKS/PREMVP#214",
+        "POLYPROPICKS/PREMVP#216",
+        "POLYPROPICKS/PREMVP#222",
+        "POLYPROPICKS/PREMVP#223",
+        "POLYPROPICKS/PREMVP#226",
+        "POLYPROPICKS/PREMVP#227",
+        "POLYPROPICKS/PREMVP#228",
+        "POLYPROPICKS/PREMVP#233",
+        "POLYPROPICKS/PREMVP#241",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-03__evolution-canonical-cycle.json#automation_hypotheses.H7"
+      ]
+    },
+    {
+      "id": "H8",
+      "observed_problem": "A reader built in the prior cycle (PR#234-239) silently undercounted 2026-09-03 by 97.2% (1,304 of 46,776 rows) until running it at full-day scale exposed the tie-drain bug (PR#242); it was only caught because PR#243's canonicalization step reconciled the output against a known-good COUNT(*) denominator.",
+      "why_it_matters": "This is a first documented onion-chain case for the research/modeling pipeline family (CHAIN-D1-RESEARCH-CORPUS-READER-20260904, depth 2): building a capability exposed a severe latent defect one layer deeper, and only an incidental reconciliation step caught it. No new reader or aggregation pipeline in this codebase currently has a required reconciliation-against-independent-denominator step by default.",
+      "axis_a_effect": "None directly (research/modeling only this instance), but the same reconciliation gap would apply equally to any future production/money-path reader",
+      "axis_b_effect": "Would turn an incidental catch into a standing requirement: RECOVERY_AND_CHECKPOINTS / VERIFICATION_AND_EVIDENCE strengthened by making row-count reconciliation a checklist item for any new or modified reader pipeline",
+      "proposed_automation": "A short, named verification-budget checklist item (not a new script) requiring that any new or materially modified bounded-pagination reader be validated once against an independent COUNT(*) or equivalent ground-truth denominator before its output is trusted as a canonicalized artifact.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/README.md",
+      "expected_value": "The next new reader/aggregation pipeline is reconciled against ground truth before, not after, a Daily Evolution Review happens to notice the gap",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: a documentation/checklist addition, no code or product behavior change",
+      "success_metric": "A future new reader pipeline's completion envelope or PR body explicitly states its reconciliation-to-denominator check",
+      "rollback_or_stop_condition": "Stop if a future case shows the checklist item is not generalizable across pipeline shapes.",
+      "timing": "Next cycle with new pipeline work",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#242",
+        "POLYPROPICKS/PREMVP#243",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-03__evolution-canonical-cycle.json"
+      ]
+    }
+  ],
+  "insufficient_supported_hypotheses": false,
+  "insufficient_supported_hypotheses_reason": null,
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "Treat a zero-CI, seconds-long, single-account merge touching a money-adjacent path (here PR#245, Contract A discovery/planning-anchor logic) as the boundary case for Axis A's source-vs-runtime split -- cap credit at SOURCE_OR_CONTROL_PROVEN until an independent post-merge observation exists.",
+      "why_it_matters_now": "This is the fourth consecutive cycle where the single largest true production-path change of the period (not a research/docs artifact) is also the one with the least external verification -- exactly where overcrediting Axis A would do the most damage, and exactly the pattern H6 now tracks four times over.",
+      "how_it_applies_to_current_project": "Whenever a merge touches lib/feed/discoverSportsMarkets.ts, lib/executor/planningAnchor.ts, app/api/cron/*, or another money/execution path with no CI check runs and no reviewer receipt, this review caps its Axis A credit at SOURCE_OR_CONTROL_PROVEN and records a targeted next observation (see H6) rather than letting the PR's own test count substitute for runtime proof.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/README.md",
+      "ladder_level": 2
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "Before crediting any new or rewritten reader/aggregation pipeline as a working capability, check whether its output was reconciled against an independent known-good denominator -- a green test suite alone did not catch this period's own 97.2% silent undercount; only that reconciliation step did.",
+      "why_it_matters_now": "This period is the first direct proof, in this repository, that a fully test-covered pipeline can still silently drop the overwhelming majority of its data; the practice that actually caught it (reconciling against a known denominator) was incidental, not a required step.",
+      "how_it_applies_to_current_project": "Every Daily Evolution Review should ask, for any reader/pipeline change, 'what independent count was this reconciled against, and is that reconciliation itself evidenced' -- not just whether unit tests pass -- before crediting the change as CAPABILITY_ADDED or CAPABILITY_STRENGTHENED.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/README.md",
+      "ladder_level": 2
+    }
+  ],
+  "founder_practice_comparison": "P1 is higher priority: it guards Axis A against overcrediting the unreviewed money-adjacent change this period again contains (a fourth confirmed instance). P2 is a data-integrity habit proven on a research-only pipeline with no direct business risk yet, but it generalizes to any future production-path reader.",
+  "founder_practice_recommended_order": [
+    "P1",
+    "P2"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "A single bounded read-only observation of a live feed/discovery sample or GSP snapshot, taken after PR#245's merge, can independently confirm that at least one of soccer_exact_score or soccer_first_to_score reaches the admitted population exactly as the 90 unit tests predict, with no new code.",
+      "bounded_scope": "One read-only observation only (no write path, no forceCreate); record the observed market family/identity fields alongside the expected values from PR#245's own test fixtures.",
+      "persistent_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "promotion_condition": "The observed sample shows at least one admitted market of either new family with the exact structured-identity shape PR#245's tests predict.",
+      "stop_condition": "Stop if the observation would require any write-capable mode, a secret this executor does not already hold, or forceCreate."
+    },
+    {
+      "id": "E2",
+      "hypothesis": "The funnel population-conservation helper (H2) can still be prototyped from the two existing PR#201 test fixtures without new product code, unchanged from prior cycles.",
+      "bounded_scope": "Prototype only, on the existing primaryPopulationDecoupling/primaryCoverageDiagnosticOnly fixtures; do not touch a new funnel stage.",
+      "persistent_artifact": "tests/feed/lib/populationConservation.ts (new)",
+      "promotion_condition": "A future cycle's fix on a different funnel stage reuses this helper instead of new one-off check code.",
+      "stop_condition": "Stop if funnel stages turn out to have incompatible terminal-reason shapes."
+    },
+    {
+      "id": "E3",
+      "hypothesis": "This cycle's own terminal persistence can again reach canonical origin/main with zero Founder action, using the same GitHub-MCP-backed path already proven for the two prior cycles' own lineages.",
+      "bounded_scope": "One canonicalization attempt for this cycle's own lineage only (cycles/2026-09-04__evolution-canonical-cycle.json + its report + this input bundle); no new mechanism invented if it fails, and no action taken on any other stranded branch.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-04__evolution-canonical-cycle.json",
+      "promotion_condition": "A PR containing exactly the three allowlisted Evolution-evidence files is created and merged via GitHub MCP tools, and git merge-base --is-ancestor confirms this cycle's commit is an ancestor of origin/main.",
+      "stop_condition": "Stop and record PENDING_RESUMABLE if the branch, PR, or merge step is blocked by anything beyond this executor's available GitHub MCP tools -- do not invent a workaround."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE (per CURRENT_STATE.yaml, updated_at 2026-08-28T21:00:54Z, state_version 17 -- unchanged this period; see hypothesis H1, not re-recorded as a new defect_occurrences entry since the condition itself is the same, only its cycle count sharpened)"
+  },
+  "next_step": "Persist via the proven GitHub-MCP path (already validated for the two prior cycles' own lineages): push this cycle's three allowlisted files on this branch, create a PR against main, merge it, and verify origin/main ancestry. Do not babysit the 7-member Evolution/Governor draft-PR family, the modeling-PR pile, or PR#241 beyond recording all three for Routine B.",
+  "corrections": [],
+  "accepted": false
+}
