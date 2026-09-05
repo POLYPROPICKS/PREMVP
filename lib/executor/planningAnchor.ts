@@ -39,11 +39,7 @@ import type { MarketAnchorDecision, MarketAnchorInput } from "../contur3/taxonom
  * text predicate below is retained only as an exported classifier and is not
  * called by the active admission function.
  */
-export type PlanningAnchorKind =
-  | "EXECUTABLE_MARKET"
-  | "STRUCTURED_FULLMATCH_EVENT"
-  | "APPROVED_SOCCER_MARKET_FAMILY"
-  | "REJECTED";
+export type PlanningAnchorKind = "EXECUTABLE_MARKET" | "STRUCTURED_FULLMATCH_EVENT" | "REJECTED";
 
 export interface PlanningAnchorDecision {
   allowed_for_planning: boolean;
@@ -125,43 +121,6 @@ function hasExactStructuredFullMatchIdentity(identity: StructuredPlanningIdentit
 }
 
 /**
- * EXPAND_ALLOWED_SOCCER_MARKET_UNIVERSE_V1 — the two provider-authoritative
- * soccer market families proven present in provider inventory
- * (CANONICAL_PRODUCT_DATA_LINEAGE_V1, 2026-09-04) but previously unreachable
- * at Contract A solely because their market family was unsupported. Exact
- * `providerMarketType` match only — never text — so no other family (corners,
- * halftime, both-teams-to-score, other scorer markets) is admitted by this
- * branch. This changes ONLY which market families can be seen; it does not
- * touch score/price/confidence/coverage/timing thresholds, which remain the
- * Contract A B2 gate's exclusively (contractAB2EventPolicy.ts).
- */
-const APPROVED_SOCCER_MARKET_TYPES = new Set(["soccer_exact_score", "soccer_first_to_score"]);
-
-function hasApprovedSoccerMarketFamilyIdentity(
-  identity: StructuredPlanningIdentity | null | undefined,
-  canonical: MarketAnchorDecision,
-): boolean {
-  if (!identity) return false;
-  const type = trimmedOrNull(identity.providerMarketType)?.toLowerCase() ?? null;
-  if (type === null || !APPROVED_SOCCER_MARKET_TYPES.has(type)) return false;
-  const start = trimmedOrNull(identity.providerEventStartIso);
-  if (!(
-    trimmedOrNull(identity.providerEventId) &&
-    start && Number.isFinite(Date.parse(start)) &&
-    trimmedOrNull(identity.providerMarketId) &&
-    trimmedOrNull(identity.conditionId) &&
-    trimmedOrNull(identity.providerSportCode)
-  )) return false;
-  // Never rescue a partial-event-scope or activity-label reading -- only the
-  // provider's own full-match exact-score / first-to-score family, at
-  // full-match scope, exactly as Contract A already requires of every other
-  // allowed family.
-  if (canonical.event_scope !== "full_match") return false;
-  if (canonical.reason_code === "ACTIVITY_LABEL") return false;
-  return true;
-}
-
-/**
  * The planning-stage verdict for one candidate.
  *
  * Every input is a decision the planner has ALREADY made -- the existing
@@ -205,21 +164,6 @@ export function resolvePlanningAnchorDecision(input: {
       allowed_for_planning: true,
       anchor_kind: "STRUCTURED_FULLMATCH_EVENT",
       reason_code: "PLANNING_STRUCTURED_FULLMATCH_IDENTITY",
-    };
-  }
-
-  // EXPAND_ALLOWED_SOCCER_MARKET_UNIVERSE_V1: the provider's own exact-score /
-  // first-to-score market type, with the same completeness bar as every other
-  // structured admission above. The canonical text classifier still runs (it
-  // is what produced `canonical` and remains fail-closed for every OTHER
-  // family), but a correctly persisted candidate in one of these two families
-  // is no longer rejected solely because the family itself was unsupported.
-  if (hasApprovedSoccerMarketFamilyIdentity(input.structuredIdentity, canonical)) {
-    const marketType = trimmedOrNull(input.structuredIdentity!.providerMarketType)!.toLowerCase();
-    return {
-      allowed_for_planning: true,
-      anchor_kind: "APPROVED_SOCCER_MARKET_FAMILY",
-      reason_code: `SOCCER_MARKET_FAMILY_APPROVED_${marketType.toUpperCase()}`,
     };
   }
 

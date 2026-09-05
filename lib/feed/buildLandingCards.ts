@@ -1264,21 +1264,17 @@ const PRIMARY_RECOVERY_CORRIDOR_MIN = 0.20;
 const PRIMARY_RECOVERY_CORRIDOR_MAX = 0.741;
 
 // The Founder-authorized full-match product contour — the SAME universe Contract
-// A planning/rebalence admits (moneyline / spread / full-match total goals,
-// plus soccer_exact_score / soccer_first_to_score as of
-// EXPAND_ALLOWED_SOCCER_MARKET_UNIVERSE_V1). Recovery must not surface a market
-// Contract A would reject: corners, halftime, team-total, both-teams-to-score,
-// other scorer markets and half-scoped families stay outside this set.
+// A planning/rebalence admits (moneyline / spread / full-match total goals).
+// Recovery must not surface a market Contract A would reject: corners, halftime,
+// first-to-score, team-total and half-scoped families stay outside this set.
 // Exact provider `sportsMarketType` match only — "total_corners" / "soccer_*_team_totals"
-// are NOT "totals", and this list is deliberately NOT widened by text matching.
+// are NOT "totals".
 const AUTHORIZED_RECOVERY_MARKET_TYPES = new Set([
   "moneyline",
   "spread",
   "spreads",
   "total",
   "totals",
-  "soccer_exact_score",
-  "soccer_first_to_score",
 ]);
 
 function isAuthorizedRecoveryMarketType(sportsMarketType: unknown): boolean {

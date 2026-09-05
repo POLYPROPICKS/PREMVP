@@ -13,11 +13,9 @@ import {
 } from "../../lib/contur3/taxonomy";
 
 // MISSION: align physical-event recovery + Contract A on the Founder-authorized
-// contour — moneyline / spreads / full-match totals, PLUS soccer_exact_score /
-// soccer_first_to_score as of EXPAND_ALLOWED_SOCCER_MARKET_UNIVERSE_V1. Corners,
-// halftime, half/team-half markets, both-teams-to-score and other scorer
-// markets stay outside. Contract A must recognise a terse full-match total
-// ("O/U 2.5").
+// contour — moneyline / spreads / full-match totals only. Corners, halftime,
+// first-to-score, half/team-half markets stay outside. Contract A must recognise
+// a terse full-match total ("O/U 2.5").
 //
 // Run: node --import tsx --test tests/feed/primaryPhysicalEventRecovery.test.ts
 
@@ -90,11 +88,12 @@ test("3. cross-provider-event full-match TOTAL recovery works", () => {
   assert.equal(r!.forcedOutcome.selectedTokenId, "tot-o");
 });
 
-// ── 4. recovery NEVER selects corners / halftime / half-team-totals ──────────
-test("4. recovery does NOT select corners / halftime / half-team-totals alternatives", () => {
+// ── 4. recovery NEVER selects corners / halftime / first-to-score ────────────
+test("4. recovery does NOT select corners / halftime / first-to-score alternatives", () => {
   const universe: ResearchNestedMarket[] = [
     rnm({ eventId: "851829", conditionId: "cond-corners", selectedTokenId: "c-o", opposingTokenId: "c-u", selectedPriceNum: 0.45, sportsMarketType: "total_corners", marketQuestion: "Wrexham AFC vs. Birmingham City FC: O/U 9.5 Total Corners" }),
     rnm({ eventId: "851831", conditionId: "cond-ht", selectedTokenId: "h-a", opposingTokenId: "h-b", selectedPriceNum: 0.45, sportsMarketType: "soccer_halftime_result", marketQuestion: "Wrexham AFC leading at halftime?" }),
+    rnm({ eventId: "851833", conditionId: "cond-fts", selectedTokenId: "f-a", opposingTokenId: "f-b", selectedPriceNum: 0.45, sportsMarketType: "soccer_first_to_score", marketQuestion: "Wrexham AFC to score first?" }),
     rnm({ eventId: "851835", conditionId: "cond-hht", selectedTokenId: "hh-o", opposingTokenId: "hh-u", selectedPriceNum: 0.45, sportsMarketType: "soccer_first_half_team_totals", marketQuestion: "Wrexham AFC 1st Half O/U 0.5" }),
   ];
   assert.equal(selectRecoverablePrimaryMarket(exactScoreCandidate(), universe), null, "no authorized family present -> fail closed");
@@ -104,29 +103,6 @@ test("4. recovery does NOT select corners / halftime / half-team-totals alternat
   const r = selectRecoverablePrimaryMarket(exactScoreCandidate(), withAuthorized);
   assert.ok(r);
   assert.equal(r!.candidate.market.conditionId, "cond-ml");
-});
-
-// ── 4a. EXPAND_ALLOWED_SOCCER_MARKET_UNIVERSE_V1: recovery DOES now select
-//        soccer_exact_score / soccer_first_to_score, but corners/halftime
-//        siblings alongside them are still never picked ────────────────────
-test("4a. recovery selects soccer_first_to_score when it is the only authorized family present", () => {
-  const universe: ResearchNestedMarket[] = [
-    rnm({ eventId: "851829", conditionId: "cond-corners", selectedTokenId: "c-o", opposingTokenId: "c-u", selectedPriceNum: 0.45, sportsMarketType: "total_corners", marketQuestion: "Wrexham AFC vs. Birmingham City FC: O/U 9.5 Total Corners" }),
-    rnm({ eventId: "851833", conditionId: "cond-fts", selectedTokenId: "f-a", opposingTokenId: "f-b", selectedPriceNum: 0.45, sportsMarketType: "soccer_first_to_score", marketQuestion: "Wrexham AFC to score first?" }),
-  ];
-  const r = selectRecoverablePrimaryMarket(exactScoreCandidate(), universe);
-  assert.ok(r);
-  assert.equal(r!.candidate.market.conditionId, "cond-fts");
-  assert.equal(r!.recoverySource, "cross-provider-event");
-});
-
-test("4a-ii. recovery selects soccer_exact_score when it is the only authorized family present", () => {
-  const universe: ResearchNestedMarket[] = [
-    rnm({ eventId: "851836", conditionId: "cond-xs2", selectedTokenId: "x-a", opposingTokenId: "x-b", selectedPriceNum: 0.45, sportsMarketType: "soccer_exact_score", marketQuestion: "Exact Score: Wrexham AFC 1 - 0 Birmingham City FC?" }),
-  ];
-  const r = selectRecoverablePrimaryMarket(exactScoreCandidate(), universe);
-  assert.ok(r);
-  assert.equal(r!.candidate.market.conditionId, "cond-xs2");
 });
 
 test("4b. same-shard corners/halftime siblings are also excluded", () => {
