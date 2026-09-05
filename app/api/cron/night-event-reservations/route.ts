@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "@/lib/ops/emergencyQuiesce";
 import {
   persistReservationPlanDiagnostics,
   loadPlanStatus,
@@ -42,6 +43,15 @@ import {
 export const dynamic = "force-dynamic";
 
 async function handle(request: NextRequest) {
+  // EMERGENCY_QUIESCE_PROD_DB_BACKGROUND_LOAD_V1: first thing this route
+  // does, before auth, before any Supabase client call.
+  if (isEmergencyQuiesceActive()) {
+    return NextResponse.json(buildEmergencyQuiesceResult("cron/night-event-reservations"), {
+      status: 200,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+
   const secret = request.headers.get("x-executor-secret");
   const expectedSecret = process.env.EXECUTOR_CANDIDATES_SECRET;
   if (!expectedSecret || secret !== expectedSecret) {
