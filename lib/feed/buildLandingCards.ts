@@ -38,6 +38,7 @@ import {
 import {
   deriveProviderEsportsGame,
   discoverSportsMarkets,
+  OFFICIAL_FULL_MATCH_MARKET_TYPES,
 } from "./discoverSportsMarkets";
 import { hasEligibleEventVolume, MINIMUM_MODEL_EVENT_VOLUME_USD } from "./eventLiquidityGate";
 import type { SportsDiscoverySample } from "./types";
@@ -427,30 +428,70 @@ export type FireModelWideTerminalStatus =
 
 export function selectResearchMarketsForScoring(
   universe: readonly ResearchNestedMarket[],
-  _publicIdentitySet: ReadonlySet<string>,
-  _limit: number | null,
-  _rotationOffset: number,
+  publicIdentitySet: ReadonlySet<string>,
+  // `null` removes only the positional ceiling. The hidden population remains
+  // bounded to one deterministic representative per physical event.
+  limit: number | null,
+  rotationOffset: number,
 ): ResearchNestedMarket[] {
-  // Discovery has already established research eligibility. This boundary retains
-  // every valid, score-owned condition/token identity; it must not collapse the
-  // universe to one market per physical event or reapply a moneyline-only gate.
+  const unbounded = limit === null;
+  if (!unbounded && limit <= 0) return [];
   const deduped = new Map<string, ResearchNestedMarket>();
   for (const row of universe) {
     if (row.scoreOwnership !== "SUPPORTED_BY_SCORE_MODEL") continue;
-    if (!hasStructuredResearchScorerIdentity(row)) continue;
+    if (!hasStructuredScorerMarketAuthority(row)) continue;
     const key = `${row.conditionId}::${row.selectedTokenId}`;
     if (!deduped.has(key)) deduped.set(key, row);
   }
-  return [...deduped.entries()]
+  const rows = [...deduped.values()];
+  const allPublicRows = rows.filter((row) =>
+    publicIdentitySet.has(`${row.conditionId}::${row.selectedTokenId}`),
+  );
+  const publicRows = unbounded ? allPublicRows : allPublicRows.slice(0, limit);
+  if (!unbounded && publicRows.length >= limit) return publicRows;
+
+  const hidden = rows.filter((row) =>
+    !publicIdentitySet.has(`${row.conditionId}::${row.selectedTokenId}`),
+  );
+  const byEvent = new Map<string, ResearchNestedMarket[]>();
+  for (const row of hidden) {
+    const eventKey = `${row.eventId}::${row.eventStartIso}`;
+    const eventRows = byEvent.get(eventKey) ?? [];
+    eventRows.push(row);
+    byEvent.set(eventKey, eventRows);
+  }
+  const canonicalByEvent = [...byEvent.entries()]
     .sort(([left], [right]) => left.localeCompare(right))
-    .map(([, row]) => row);
+    .map(([, eventRows]) => eventRows.sort(compareStructuredProviderMarketRows));
+  const offset = canonicalByEvent.length > 0
+    ? ((rotationOffset % canonicalByEvent.length) + canonicalByEvent.length) % canonicalByEvent.length
+    : 0;
+  const rotated = [...canonicalByEvent.slice(offset), ...canonicalByEvent.slice(0, offset)];
+  const represented = new Set(publicRows.map((row) => `${row.eventId}::${row.eventStartIso}`));
+  const firstPerEvent: ResearchNestedMarket[] = [];
+  for (const eventRows of rotated) {
+    const eventKey = `${eventRows[0].eventId}::${eventRows[0].eventStartIso}`;
+    if (!represented.has(eventKey)) {
+      represented.add(eventKey);
+      firstPerEvent.push(eventRows[0]);
+    }
+  }
+  const combined = [...publicRows, ...firstPerEvent];
+  return unbounded ? combined : combined.slice(0, limit);
 }
 
-function hasStructuredResearchScorerIdentity(row: ResearchNestedMarket): boolean {
+function hasStructuredScorerMarketAuthority(row: ResearchNestedMarket): boolean {
   if (!row.eventId || !row.eventStartIso || !row.marketId || !row.conditionId || !row.selectedTokenId) return false;
   if (!Number.isFinite(Date.parse(row.eventStartIso))) return false;
   if (!row.providerSportFamily || row.providerSportSource !== "structured_sports_tag") return false;
-  return true;
+  const marketType = row.sportsMarketType?.trim().toLowerCase();
+  return Boolean(marketType && OFFICIAL_FULL_MATCH_MARKET_TYPES.has(marketType));
+}
+
+function compareStructuredProviderMarketRows(a: ResearchNestedMarket, b: ResearchNestedMarket): number {
+  const left = `${a.marketId}::${a.conditionId}::${a.selectedTokenId}`;
+  const right = `${b.marketId}::${b.conditionId}::${b.selectedTokenId}`;
+  return left.localeCompare(right);
 }
 
 function newWideResearchSportFamilyCounters() {
@@ -3916,7 +3957,9 @@ export async function buildLandingCards(options?: {
       rf.researchSnapshotsSelectedPublic = selectedPublicCount;
       rf.researchSnapshotsSelectedRotating = selectedResearch.length - selectedPublicCount;
       rf.researchSnapshotSelectionLimit = researchLimit ?? undefined;
-      rf.researchScorerSelectionMode = "ALL_ELIGIBLE";
+      rf.researchScorerSelectionMode = researchLimit === null
+        ? "REPRESENTATIVE_PER_EVENT"
+        : "FIXED_LIMIT";
       rf.researchUniverseEvents = s2ResearchUniverseEventCount;
       rf.researchUniverseMarkets = dedupedSupportedResearchCount;
       rf.researchScorerEligibleEvents = eligibleEventCount;
