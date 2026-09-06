@@ -282,7 +282,7 @@ export interface ResearchFunnelCounters {
   // from "not reached inside the bounded scoring budget" (an honest resource bound).
   researchScorerFixedLimitExcludedEvents?: number;
   researchScorerBudgetExcludedEvents?: number;
-  researchScorerSelectionMode?: "FIXED_LIMIT" | "ALL_ELIGIBLE";
+  researchScorerSelectionMode?: "FIXED_LIMIT" | "ALL_ELIGIBLE" | "REPRESENTATIVE_PER_EVENT";
   researchScorerBudgetMs?: number;
   researchScorerElapsedMs?: number;
   researchScorerBudgetExhausted?: boolean;

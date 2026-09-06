@@ -204,7 +204,7 @@ test("no duplicate condition/token identity is emitted for one market", () => {
   assert.equal(new Set(keys).size, keys.length, "each condition/token pair must appear once");
 });
 
-test("bounded provider-shaped soccer capture conserves all three markets and both outcomes through wide selection", () => {
+test("provider capture remains complete while wide scoring takes one hidden event representative", () => {
   const { entries } = build([
     event({
       id: "evt-wide-soccer",
@@ -233,8 +233,6 @@ test("bounded provider-shaped soccer capture conserves all three markets and bot
     opposingPriceNum: 1 - (entry.entryPriceNum ?? 0),
     publicFeedExposed: false,
     providerSportCode: entry.providerSportCode ?? null,
-    // This is the discovery canonical family after the existing code-to-family
-    // normalization; the raw provider code remains epl in the captured shape.
     providerSportFamily: "soccer",
     providerSportSource: "structured_sports_tag",
     providerSportTagIds: entry.providerSportTagIds ?? [],
@@ -242,9 +240,10 @@ test("bounded provider-shaped soccer capture conserves all three markets and bot
     scoreOwnership: scoreOwnershipForSportFamily("soccer"),
   }));
 
+  assert.equal(entries.length, 6, "upstream inventory still conserves all market outcomes");
   const selected = selectResearchMarketsForScoring(universe, new Set(), null, 0);
-  assert.equal(new Set(selected.map((row) => row.conditionId)).size, 3);
-  assert.equal(new Set(selected.map((row) => `${row.conditionId}::${row.selectedTokenId}`)).size, 6);
+  assert.equal(selected.length, 1);
+  assert.equal(selected[0].marketId, "m-wide-moneyline");
 });
 
 // ── materialization outcome ledger ─────────────────────────────────────────
