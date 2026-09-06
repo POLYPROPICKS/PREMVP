@@ -1,0 +1,59 @@
+{
+    "bundle_id": "2026-09-05__evolution-canonical-cycle",
+    "repository": "POLYPROPICKS/PREMVP",
+    "period_start": "2026-09-05T00:00:00Z",
+    "period_end": "2026-09-06T00:00:00Z",
+    "evidence_cutoff": "2026-09-06T00:20:00Z",
+    "capture_coverage": "PARTIAL",
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+        "POLYPROPICKS/PREMVP#247",
+        "POLYPROPICKS/PREMVP#248"
+    ],
+    "operator_action_events": [],
+    "operating_telemetry": {
+        "reviewer_corrections_rejections": 0,
+        "runtime_evidence_count": 1,
+        "reusable_artifacts_created": 1,
+        "implemented_fixes": 2,
+        "proven_effective_fixes": 1,
+        "repeated_defect_families": 2,
+        "active_onion_chains": 1
+    },
+    "supporting_metrics": {
+        "runtime_evidence_count": 1,
+        "reusable_artifacts_created": 1,
+        "reviewer_rejection_count": 0,
+        "architect_corrections": 0
+    },
+    "defect_occurrences": [
+        {
+            "defect_id": "DEF-2026-09-05-CONTUR3-SOCCER-MARKET-EXPANSION-PRODUCTION-DB-OVERLOAD",
+            "origin": "PROMPT_OR_MISSION_CONSTRUCTION_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-CONTUR-MONEY-PATH-PRODUCTION-OBSERVATION-GAP-20260905",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#247",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#247 (exact clean 7-file revert of PR#245's diff; 71/71 focused regression tests pass; git diff --check clean; PR body cites accepted production-monitoring evidence: producer decisions/run rose from ~54 to ~250 after PR#245 deployed, generated rows stayed roughly flat while rejected/evaluated work rose sharply, repeated Postgres crash-recovery events followed overnight, autovacuum workers failed to start promptly by ~03:24, sustained statement timeouts began ~04:12)",
+                "POLYPROPICKS/PREMVP#248 (defense-in-depth containment: EMERGENCY_QUIESCE kill switch added same day so a future recurrence of the same job-driven DB overload shape can be stopped without a code revert)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+            "origin": "STATE_OR_CONTEXT_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+            "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        }
+    ],
+    "notes": "git log origin/main --since=2026-09-05T00:25:00Z (the prior cycle's own evidence_cutoff) through this bundle's evidence_cutoff (2026-09-06T00:20:00Z) shows three merges to main: PR#246 (merge commit 323092d, 2026-09-05T00:29:16Z -- the prior cycle's own docs(evolution) canonicalization of the 2026-09-04 cycle, not new business evidence, excluded from confirmed_changes exactly as PR#240/#229/#221/#215 were excluded from earlier bundles) plus two real merges: PR#247 and PR#248. No other PR reached main in this window; mcp__github__list_pull_requests (state=open) at this cutoff confirms no competing or additional Evolution/Governor cycle exists for this period. PR#247 'Revert \"feat(contur3): admit soccer_exact_score / soccer_first_to_score...\" (#245)' (a9f45a6, merged 2026-09-05T08:12:35Z, +/-... exact 7-file inverse of d4a10c1) removes the market-universe expansion the prior cycle (2026-09-04) recorded only as NOT_ENOUGH_EVIDENCE / SOURCE_OR_CONTROL_PROVEN with an explicit open risk (hypothesis H6: a fourth zero-CI, single-account, seconds-long merge on the Contract A discovery/planning-anchor path with no post-merge production observation, following PR#194, #225 and #231). That flagged risk materialized within hours of deployment: the PR#247 body cites accepted production-monitoring evidence of a producer decisions/run spike (~54 to ~250), flat generated-row output while rejected/evaluated work rose sharply, repeated Postgres crash-recovery events overnight, autovacuum workers failing to start promptly by ~03:24, and sustained statement timeouts from ~04:12; final root cause is explicitly not claimed fully proven -- the revert removes the strongest causal trigger so stability can be tested with the pre-expansion workload restored. The revert is an exact clean inverse of the 7 files PR#245 touched (lib/executor/planningAnchor.ts, lib/feed/buildLandingCards.ts, lib/feed/discoverSportsMarkets.ts, and 4 more incl. one deleted test file); PR#244 and all other later commits are explicitly preserved untouched; Reservation ranking/cap, Rebalance, Contract A economic thresholds, research clone, D-1 and Ireland are stated unaffected. 71/71 focused regression tests reported passing per the PR body; this bundle reuses that stated verification as SOURCE_OR_CONTROL_PROVEN evidence (Verification Budget discipline) rather than independently re-running the full suite, since re-running an unrelated full regression pass is not a gate this evidence-only artifact class requires. PR#248 'feat(ops): add EMERGENCY_QUIESCE kill switch for high-frequency background DB jobs' (9115dec, merged 2026-09-05T08:57:01Z, same-day follow-up) adds lib/ops/emergencyQuiesce.ts: a single env var (EMERGENCY_QUIESCE=1, off by default, fail-open) that makes four recurring/high-frequency production-DB job entrypoints (app/api/cron/event-rebalance/route.ts, app/api/cron/night-event-reservations/route.ts, scripts/generate-signals.ts, scripts/resolve-signals.ts) return/exit immediately before any Supabase client call, provider fetch, scoring, or reservation/rebalance work, and before any retry loop can start; the two API routes return a deterministic 200 JSON body so the scheduler does not retry-storm, and the two scripts process.exit(0). Customer-facing web routes, /api/build-info, and Ireland's executor endpoints are explicitly untouched; Contract A, Reservation, Rebalance and model logic are explicitly untouched; nothing beyond PR#245 (already reverted) is reverted. PR body states 4/4 focused tests pass (tests/ops/emergencyQuiesce.test.ts, new file), git diff --check clean, targeted typecheck zero new errors -- reused as SOURCE_OR_CONTROL_PROVEN evidence, not independently re-run. The kill switch is a genuinely new, persisted, reusable Manifest 2 capability (RECOVERY_AND_CHECKPOINTS domain) with test-level validation; it has not been exercised in a live incident this period (EMERGENCY_QUIESCE remains unset/off), so its production containment value is not yet runtime-proven. This period's incident is recorded as DEF-2026-09-05-CONTUR3-SOCCER-MARKET-EXPANSION-PRODUCTION-DB-OVERLOAD, origin PROMPT_OR_MISSION_CONSTRUCTION_DEFECT (the PR#245 mission was authorized and merged without a required capacity/production-load boundary check on a change to the Contract A / Reservation-eligible market population, even though three prior instances of exactly this gap -- PR#194, #225, #231 -- had already been tracked as hypothesis H6), recurrence LATENT_NEXT_LAYER_EXPOSED under new chain CHAIN-CONTUR-MONEY-PATH-PRODUCTION-OBSERVATION-GAP-20260905 (layer A: the repeatedly-tracked H6 production-observation gap across four merges; layer B: this period's materialized production incident, the first of the four instances to cause measured production harm rather than remaining an unobserved theoretical risk). docs/ai-context/control-plane/CURRENT_STATE.yaml remains unchanged (updated_at=2026-08-28T21:00:54Z, state_version 17); live `git merge-base --is-ancestor 2cb8d49872adb032fe5e0f951916f1bc670d3438 origin/main` still proves that baseline is an ancestor of live origin/main (64 commits behind at this cutoff), but every path changed since then -- including this period's #247/#248 -- again falls entirely outside ARCHITECT_CONTROL_PLANE.yaml's stale_state_behavior.state_bootstrap_allowlist, so CURRENT_STATE.yaml remains STATE_REFRESH_REQUIRED for a ninth consecutive cycle (DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE, SAME_ROOT_REPEAT). No completion envelope was Architect-accepted this period (completion_envelope_ids stays empty); no OPERATOR_ACTION_EVENT records were found for this period, so total_operator_actions is a PARTIAL lower bound of zero, not a claimed true zero. mcp__github__list_pull_requests (state=open) at this cutoff shows the previously tracked Governor/Evolution draft-PR family (H7: #199/205/206/212/214/216/222 plus the five-member modeling-PR pile #223/226/227/228/233 plus #241) unchanged at 13 members, none merged this period; additionally, this cutoff's full open-PR listing surfaces further, previously-untracked stray Evolution-related drafts outside H7's originally tracked scope (#190, #189, #174) and several long-stranded non-Evolution drafts (#149, #70, #69, #61, #58, #18, #17, #7, #1, oldest opened 2026-06-25), none touched this period -- recorded as continuity evidence that H7's pattern generalizes further than previously scoped, not acted on and not a new hypothesis. reusable_artifacts_created=1 counts only lib/ops/emergencyQuiesce.ts (a new Manifest 2 capability artifact); PR#247 restores prior business logic and is not counted toward this metric. No product database, deployment or Ireland path changed."
+}

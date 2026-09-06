@@ -1,0 +1,392 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-09-05__evolution-canonical-cycle",
+  "period_start": "2026-09-05T00:00:00Z",
+  "period_end": "2026-09-06T00:00:00Z",
+  "evidence_cutoff": "2026-09-06T00:20:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (Routine A)",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#247",
+      "POLYPROPICKS/PREMVP#248"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-09-05__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "REGRESSED",
+    "what_moved": [],
+    "next_verified_production_fact_now_possible": "A bounded read-only production observation of producer decisions/run volume and Postgres load/autovacuum health after PR#247 + PR#248, to independently confirm the workload and stability actually returned to the pre-PR#245 baseline -- not yet observed this cycle.",
+    "blockers_removed": [
+      {
+        "statement": "PR#247 removed the PR#245 soccer_exact_score/soccer_first_to_score market admission via an exact, clean 7-file inverse of PR#245's diff, restoring the pre-expansion Contract A discovery/planning-anchor behavior; 71/71 focused regression tests reported passing and git diff --check reported clean.",
+        "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#247"
+        ]
+      }
+    ],
+    "blockers_introduced": [
+      {
+        "statement": "PR#245 (merged the prior period) caused a production DB-load incident whose consequences fell inside this period: accepted evidence in PR#247's revert rationale shows decisions/run rising ~54 to ~250, repeated Postgres crash-recovery events, autovacuum start delays, and sustained statement timeouts. Root cause not claimed fully proven.",
+        "evidence_class": "FOUNDER_ACCEPTED_EXTERNAL_CHECKPOINT",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#245",
+          "POLYPROPICKS/PREMVP#247"
+        ]
+      }
+    ],
+    "not_proven": [
+      "Root cause of the DB overload is not claimed fully proven by PR#247's own body -- only the strongest causal trigger was removed; the underlying capacity/behavior mechanism remains unconfirmed.",
+      "No independent post-revert production observation exists yet confirming producer decisions/run actually returned to ~54/run and that crash-recovery/autovacuum/timeout symptoms stopped.",
+      "EMERGENCY_QUIESCE (PR#248) has never been activated in production; its containment value is code/test-confirmed only (4/4 focused tests per the PR body), not runtime-proven under a real incident.",
+      "CURRENT_STATE.yaml is unchanged since 2026-08-28T21:00:54Z (state_version 17) -- a ninth consecutive cycle, 64 commits behind live origin/main; every changed path again falls outside the state_bootstrap_allowlist, so it stays STATE_REFRESH_REQUIRED.",
+      "No completion envelope was Architect-accepted this period; completion_envelope_ids stays empty.",
+      "The Evolution/Governor draft-PR family (H7, 13 members) and further previously-untracked stray Evolution/product draft PRs remain open and unmerged; none reached canonical persistence this period."
+    ],
+    "runtime_or_business_evidence_exists": true,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_ADDED",
+    "capabilities": [
+      {
+        "domain": "RECOVERY_AND_CHECKPOINTS",
+        "statement": "A new fail-open kill switch (EMERGENCY_QUIESCE=1, off by default) stops the four recurring production-DB job entrypoints before any external call; customer-facing routes are untouched.",
+        "persisted_artifact": "lib/ops/emergencyQuiesce.ts",
+        "use_or_validation_evidence": "4/4 focused tests pass (tests/ops/emergencyQuiesce.test.ts); all four call sites check the switch first. Not yet exercised in a live incident.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#248",
+          "lib/ops/emergencyQuiesce.ts",
+          "tests/ops/emergencyQuiesce.test.ts"
+        ]
+      }
+    ],
+    "not_proven": [
+      "The kill switch has not been activated during a real incident this period; its production containment value remains code/test-confirmed only (SOURCE_OR_CONTROL_PROVEN), not RUNTIME_PROVEN.",
+      "PR#247 (the revert) restores prior business logic on the Contract A path and is not itself a new Manifest 2 capability-domain artifact."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": 0,
+      "runtime_evidence_count": 1,
+      "reusable_artifacts_created": 1,
+      "cloudcode_actions": "UNKNOWN",
+      "codex_actions": "UNKNOWN",
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-09-05T00:00:00Z",
+    "period_end": "2026-09-06T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "capture_coverage": "PARTIAL",
+    "founder_actions_proven": 0,
+    "founder_actions_removable": "UNKNOWN",
+    "chat_interaction_coverage": "PARTIAL",
+    "executor_runs": "UNKNOWN",
+    "successful_terminal_results": "UNKNOWN",
+    "reruns_resumes": "UNKNOWN",
+    "recovery_iterations": "UNKNOWN",
+    "architect_corrections": 0,
+    "reviewer_corrections_rejections": 0,
+    "orchestration_waste_iterations": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-09-05-CONTUR3-SOCCER-MARKET-EXPANSION-PRODUCTION-DB-OVERLOAD",
+        "origin": "PROMPT_OR_MISSION_CONSTRUCTION_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-CONTUR-MONEY-PATH-PRODUCTION-OBSERVATION-GAP-20260905",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#247",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#247 (exact clean 7-file revert of PR#245's diff; 71/71 focused regression tests pass; git diff --check clean; PR body cites accepted production-monitoring evidence: producer decisions/run rose from ~54 to ~250 after PR#245 deployed, generated rows stayed roughly flat while rejected/evaluated work rose sharply, repeated Postgres crash-recovery events followed overnight, autovacuum workers failed to start promptly by ~03:24, sustained statement timeouts began ~04:12)",
+          "POLYPROPICKS/PREMVP#248 (defense-in-depth containment: EMERGENCY_QUIESCE kill switch added same day so a future recurrence of the same job-driven DB-overload shape can be stopped without a code revert)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+        "origin": "STATE_OR_CONTEXT_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "PROMPT_OR_MISSION_CONSTRUCTION_DEFECT": 1,
+      "STATE_OR_CONTEXT_DEFECT": 1,
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 1
+    },
+    "defect_counts_by_recurrence": {
+      "LATENT_NEXT_LAYER_EXPOSED": 1,
+      "SAME_ROOT_REPEAT": 2
+    },
+    "repeated_defect_families": 2,
+    "active_onion_chains": 1,
+    "implemented_fixes": 2,
+    "proven_effective_fixes": 1,
+    "runtime_evidence_count": 1,
+    "reusable_artifacts_created": 1,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN"
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "CURRENT_STATE.yaml still shows updated_at=2026-08-28T21:00:54Z (state_version 17) -- a ninth consecutive cycle unchanged, now 64 commits behind live origin/main at this cutoff, including this period's own PR#247 revert and PR#248 kill switch.",
+      "why_it_matters": "A stale CURRENT_STATE keeps forcing every cycle to re-derive ancestry and re-argue staleness from raw Git instead of reading one authoritative, current file; it also means the accepted_completions list (last: 2026-08-28) has not recorded any of the real production-path work landed since, including this period's incident and its fix.",
+      "axis_a_effect": "none directly, but increases the risk that a future cycle over-trusts a stale accepted-completion list when assessing Axis A",
+      "axis_b_effect": "Blocks CONTROLLED_IMPROVEMENT / MISSION_REGISTRY maturity: a control-plane artifact whose own freshness contract (max_age_days) is routinely exceeded is not yet a durable capability",
+      "proposed_automation": "A scheduled, read-only CURRENT_STATE reconciliation check (premvp.command.control_plane_reconcile.v1 already exists) run after each canonicalized Evolution cycle, bounded to the existing state_bootstrap_allowlist, so state-only advances happen automatically without waiting for a product-boundary mission.",
+      "persistent_artifact": "scripts/control-plane/reconcile-control-plane.mjs (already exists; proposal is scheduling, not new code)",
+      "expected_value": "Removes a ninth-and-counting recurring STATE_OR_CONTEXT_DEFECT and gives Routine B a current, trustworthy CURRENT_STATE baseline for every comparison",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: the existing command already fail-closes on invalid baselines and is scoped to state-only paths",
+      "success_metric": "CURRENT_STATE.yaml's updated_at/state_version advances within one cycle of a qualifying canonicalized change, without any Founder action",
+      "rollback_or_stop_condition": "Stop if any proposed automatic reconciliation would touch a path outside state_bootstrap_allowlist -- that always requires an explicit bounded mission instead.",
+      "timing": "Next cycle",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-04__evolution-canonical-cycle.json#automation_hypotheses.H1",
+        "docs/ai-context/control-plane/evolution/cycles/2026-08-28__evolution-canonical-cycle.json#operating_telemetry.defect_occurrences.DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE"
+      ]
+    },
+    {
+      "id": "H3",
+      "observed_problem": "No new instance this period (neither PR#247 nor PR#248 introduces an undocumented restrictive ceiling/allowlist) -- the design-error class tracked since earlier cycles (an undocumented restrictive boundary silently drops eligible data) had no new confirmed case this period.",
+      "why_it_matters": "Continuity only: the class remains real (sixth confirmed instance was PR#244 last period) even when a given period adds no new case.",
+      "axis_a_effect": "none this period",
+      "axis_b_effect": "none this period",
+      "proposed_automation": "Unchanged from prior cycles: a lint-style check flagging any new market-type/formula-version allowlist or numeric cap added without an adjacent named justification comment or test asserting the boundary is intentional.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/AUTOMATION_ROADMAP.yaml (candidate entry; not yet implemented)",
+      "expected_value": "Would have flagged PR#244's allowlist and earlier numeric-cap instances at review time instead of discovery time",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium: a naive lint rule risks false positives on genuinely intentional boundaries",
+      "success_metric": "A future instance of this design-error class is caught before merge rather than after",
+      "rollback_or_stop_condition": "Stop if false-positive rate on existing intentional boundaries proves too high in a dry run",
+      "timing": "SYSTEM_LATER",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#244",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-04__evolution-canonical-cycle.json#automation_hypotheses.H3"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "This period again established only a lower bound of zero operator-action events: PR#247 and PR#248 were authored and merged with no recorded action event, so the founder-action count stays a floor of zero, not a true count.",
+      "why_it_matters": "Without capture, Founder-effort measurement for exactly the highest-stakes period so far (a same-day production incident and its remediation) is UNKNOWN, undermining Routine B's ability to compare automation value against actual manual load.",
+      "axis_a_effect": "none directly",
+      "axis_b_effect": "Blocks VERIFICATION_AND_EVIDENCE maturity for the operator-action pipeline itself",
+      "proposed_automation": "Unchanged: instrument the executor surface(s) that produced PR#247/#248 to emit OPERATOR_ACTION_EVENT records consumable by premvp.command.evolution_collect.v1.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/schemas/OPERATOR_ACTION_EVENT.schema.json (already exists; proposal is emission, not schema work)",
+      "expected_value": "Converts founder_actions_proven from a lower bound to a real count for future cycles, including incident-response periods where Founder load likely matters most",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: additive instrumentation only",
+      "success_metric": "Action-capture coverage reaches COMPLETE for at least one future cycle",
+      "rollback_or_stop_condition": "Stop if instrumentation would require reading Founder chat content this executor does not already have access to",
+      "timing": "NOW",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#247",
+        "POLYPROPICKS/PREMVP#248",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-04__evolution-canonical-cycle.json#automation_hypotheses.H4"
+      ]
+    },
+    {
+      "id": "H6",
+      "observed_problem": "PR#245's zero-CI merge onto the live Contract A discovery path (a fourth confirmed instance of this gap, after PR#194, #225, #231) is no longer theoretical: it correlated with a real incident -- decisions/run ~54 to ~250, crash-recovery events, autovacuum delays, timeouts -- forcing a same-day revert (PR#247) plus a kill switch (PR#248).",
+      "why_it_matters": "This is the first of the four tracked H6 instances to cause measured production harm rather than remaining unobserved; it converts H6 from a code-review-hygiene concern into a proven money-adjacent operational risk, and materially strengthens the case for closing this gap before the next Contract A market-admission change.",
+      "axis_a_effect": "A pre-merge production-capacity check on this path would directly protect launch-readiness and revenue infrastructure from repeat incidents",
+      "axis_b_effect": "Would convert VERIFICATION_AND_EVIDENCE from PRACTICED_NOT_YET_PROVEN to a real gate for the highest-risk path in the repository",
+      "proposed_automation": "A required pre-merge check on the three Contract A discovery/planning-anchor files that estimates the change's effect on producer decisions/run against a known-safe ceiling, plus a bounded post-merge observation via the existing premvp.command.production_observation.v1 command.",
+      "persistent_artifact": "scripts/control-plane/production-observation.mjs (already exists and is reusable for the post-merge half of this check)",
+      "expected_value": "Prevents a repeat of this period's incident on the same class of change; closes the fourth-and-now-proven instance of the H6 gap",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low for the observation half (read-only, already proven); the pre-merge capacity-estimate half needs product-owner input on a safe ceiling",
+      "success_metric": "The next Contract A market-admission change carries a recorded pre-merge capacity estimate and a post-merge production observation before this Routine credits it toward Axis A",
+      "rollback_or_stop_condition": "Stop if a capacity ceiling cannot be defined without database access this executor does not hold -- escalate to a bounded architect decision instead of guessing one",
+      "timing": "NOW",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#194",
+        "POLYPROPICKS/PREMVP#225",
+        "POLYPROPICKS/PREMVP#231",
+        "POLYPROPICKS/PREMVP#245",
+        "POLYPROPICKS/PREMVP#247",
+        "POLYPROPICKS/PREMVP#248",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-04__evolution-canonical-cycle.json#automation_hypotheses.H6"
+      ]
+    },
+    {
+      "id": "H7",
+      "observed_problem": "The tracked Evolution/Governor draft-PR family (7-core + 5-modeling-pile + #241) held steady at 13 members this period, none merged -- and this cutoff's open-PR listing surfaces further stray Evolution drafts (#190/189/174) and long-stranded non-Evolution drafts (#149 down to #1, oldest opened 2026-06-25).",
+      "why_it_matters": "The stranded-draft-PR shape keeps generalizing beyond its originally tracked scope rather than closing, now spanning nearly the repository's entire open-PR history back to its oldest PR (#1).",
+      "axis_a_effect": "none",
+      "axis_b_effect": "The dispatch-plan capability (PR#224) remains the precondition for safely canonicalizing the Evolution/Governor family; it does not extend to the modeling-PR pile or the newly-surfaced stray drafts without separate review",
+      "proposed_automation": "Not a Routine A action on any of these branches. Recorded for Routine B: run terminal_persistence_stage on the known families or explicitly classify/close them; separately decide whether the modeling-PR pile and the newly-surfaced stray drafts need their own mechanism or Founder review.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/SCHEDULE_MANIFEST.yaml (already documents the intended terminal_persistence_stage for the Governor routine)",
+      "expected_value": "No stranded draft PRs left open across periods; Routine B's own history stays as clean as Routine A's now is",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: this hypothesis proposes only running an already-registered lifecycle command or an explicit classification pass",
+      "success_metric": "At a future cycle's evidence_cutoff, all tracked and newly-surfaced draft PRs are either explicitly classified as intentional draft evidence or brought to zero",
+      "rollback_or_stop_condition": "Stop if closing or superseding these PRs would discard evidence a Founder has not yet reviewed",
+      "timing": "Next Governor run",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#199",
+        "POLYPROPICKS/PREMVP#205",
+        "POLYPROPICKS/PREMVP#206",
+        "POLYPROPICKS/PREMVP#212",
+        "POLYPROPICKS/PREMVP#214",
+        "POLYPROPICKS/PREMVP#216",
+        "POLYPROPICKS/PREMVP#222",
+        "POLYPROPICKS/PREMVP#223",
+        "POLYPROPICKS/PREMVP#226",
+        "POLYPROPICKS/PREMVP#227",
+        "POLYPROPICKS/PREMVP#228",
+        "POLYPROPICKS/PREMVP#233",
+        "POLYPROPICKS/PREMVP#241",
+        "POLYPROPICKS/PREMVP#190",
+        "POLYPROPICKS/PREMVP#189",
+        "POLYPROPICKS/PREMVP#174",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-04__evolution-canonical-cycle.json#automation_hypotheses.H7"
+      ]
+    },
+    {
+      "id": "H8",
+      "observed_problem": "No new instance this period -- the D-1 research-corpus reader defect fixed last period (PR#242/#243) had no new confirmed recurrence or new layer exposed this period.",
+      "why_it_matters": "Continuity only; the underlying chain (CHAIN-D1-RESEARCH-CORPUS-READER-20260904) had no new links this period.",
+      "axis_a_effect": "none this period",
+      "axis_b_effect": "none this period",
+      "proposed_automation": "Unchanged: reconcile any new rolling-corpus reader output against an independently known row-count denominator before trusting it, as already done once for 2026-09-03.",
+      "persistent_artifact": "scripts/modeling/live-d1-research-corpus.ts (already exists)",
+      "expected_value": "Prevents a repeat silent undercount if the reader is exercised again at full-day scale",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low",
+      "success_metric": "Any future full-day reconciliation of this reader matches its independently known denominator exactly",
+      "rollback_or_stop_condition": "Stop if no new full-day reconciliation is attempted in the next several cycles -- close as dormant rather than re-asserting each period",
+      "timing": "SYSTEM_LATER",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#242",
+        "POLYPROPICKS/PREMVP#243",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-04__evolution-canonical-cycle.json#automation_hypotheses.H8"
+      ]
+    }
+  ],
+  "insufficient_supported_hypotheses": false,
+  "insufficient_supported_hypotheses_reason": null,
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "Require an explicit pre-merge production-capacity check (not just a passing unit-test count) before merging any change to a money-adjacent, zero-CI path like Contract A's discovery/planning-anchor logic -- and treat this period's incident as proof the check is load-bearing, not precautionary.",
+      "why_it_matters_now": "This is the fourth tracked instance of the same gap (H6), and the first to cause measured production harm: a producer decisions/run spike, repeated Postgres crash-recovery events, autovacuum start delays and sustained statement timeouts, all requiring a same-day revert. The theoretical risk this Routine flagged three times before is no longer theoretical.",
+      "how_it_applies_to_current_project": "Before the next merge touching lib/feed/discoverSportsMarkets.ts, lib/feed/buildLandingCards.ts, or lib/executor/planningAnchor.ts, require a stated estimate of the change's effect on producer decisions/run against a known-safe ceiling, plus a scheduled post-merge production observation (premvp.command.production_observation.v1 already exists for the read-only half).",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-05__evolution-canonical-cycle.json (this cycle's H6 record) and scripts/control-plane/production-observation.mjs",
+      "ladder_level": 2
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "When a production incident is suspected, add a narrowly-scoped, fail-open kill switch for the exact affected job entrypoints (here: four background DB jobs) before or alongside a root-cause revert, explicitly leaving customer-facing paths and unrelated systems untouched.",
+      "why_it_matters_now": "PR#248 demonstrates this pattern worked cleanly same-day: a single env var, off by default, scoped to exactly the four job entrypoints implicated in the incident, with no changes to Contract A, Reservation, Rebalance, model logic, or customer-facing routes. This is now a persisted, reusable incident-response shape rather than a one-off fix.",
+      "how_it_applies_to_current_project": "The next suspected production incident on a background/cron job should default to this same shape -- a scoped, fail-open, off-by-default kill switch checked before any external call -- rather than inventing a new containment mechanism each time.",
+      "persistent_git_artifact": "lib/ops/emergencyQuiesce.ts",
+      "ladder_level": 5
+    }
+  ],
+  "founder_practice_comparison": "P1 is higher priority: it would have prevented this period's incident from reaching production at all, and directly protects the highest-priority axis (launch/revenue) on the highest-risk path in the repository. P2 is a proven incident-response pattern that reduces the cost and blast radius of a future incident but does not prevent one.",
+  "founder_practice_recommended_order": [
+    "P1",
+    "P2"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "A single bounded read-only production observation, taken now that PR#247 and PR#248 are both merged, can independently confirm that producer decisions/run has returned to roughly its pre-PR#245 baseline (~54/run) and that no further crash-recovery/autovacuum/timeout symptoms are occurring, closing the loop this period's own evidence left open.",
+      "bounded_scope": "One read-only observation only, using the existing premvp.command.production_observation.v1 command; no write path, no forceCreate, no schema or code change.",
+      "persistent_artifact": "reports/observation/<observation_id>.json (existing command output contract) plus a recorded entry in docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "promotion_condition": "The observation shows producer decisions/run back near the pre-PR#245 baseline and no new crash-recovery/autovacuum/timeout symptoms in the observed window.",
+      "stop_condition": "Stop if the observation would require a write-capable mode, a secret this executor does not already hold, or database access beyond the command's existing read-only contract."
+    },
+    {
+      "id": "E2",
+      "hypothesis": "A lightweight, documented pre-merge producer-decisions-per-run estimate (even a manual back-of-envelope note in the PR body, not new code) for changes to the three Contract A discovery/planning-anchor files can be adopted immediately, ahead of any automated capacity-check tooling, and would have flagged PR#245 before merge.",
+      "bounded_scope": "Prototype as a documented checklist addition only; no new script, no new CI gate (none exists in this repository), no change to the actual discovery/planning-anchor logic.",
+      "persistent_artifact": "docs/ai-context/CLAUDE_CODE_EXECUTION_PROTOCOL.md (candidate location for a new checklist line; not modified by this Routine)",
+      "promotion_condition": "A future PR touching one of the three named files includes a stated producer-decisions/run estimate in its body before merge.",
+      "stop_condition": "Stop if no PR touches these files in the next several cycles -- the practice cannot be validated without a real instance, so it stays a proposal rather than an enforced gate."
+    },
+    {
+      "id": "E3",
+      "hypothesis": "This cycle's own terminal persistence can again reach canonical origin/main with zero intermediate Founder action, using the same GitHub-MCP-backed path already proven for the prior cycles' own lineages.",
+      "bounded_scope": "One canonicalization attempt for this cycle's own lineage only (cycles/2026-09-05__evolution-canonical-cycle.json + its report + this input bundle); no new mechanism invented if it fails, and no action taken on any other stranded branch (see H7).",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-05__evolution-canonical-cycle.json",
+      "promotion_condition": "A PR containing exactly the allowlisted Evolution-evidence files for this lineage is created and merged, and git merge-base --is-ancestor confirms this cycle's commit is an ancestor of origin/main.",
+      "stop_condition": "Stop and return the canonical resumable outcome if canonicalization cannot complete within this execution window -- do not create a second lineage or a private polling loop."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE (per CURRENT_STATE.yaml, updated_at 2026-08-28T21:00:54Z, state_version 17 -- unchanged this period; see hypothesis H1)"
+  },
+  "next_step": "Persist via the proven GitHub-MCP path: push this cycle's allowlisted files, create a PR against main, merge it, and verify origin/main ancestry. Then run experiment E1 (production observation post-revert). Do not babysit the 13-member draft-PR family beyond recording it for Routine B.",
+  "corrections": [],
+  "accepted": false
+}
