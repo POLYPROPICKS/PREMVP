@@ -1,0 +1,395 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-09-06__evolution-canonical-cycle",
+  "period_start": "2026-09-06T00:00:00Z",
+  "period_end": "2026-09-07T00:00:00Z",
+  "evidence_cutoff": "2026-09-07T00:20:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (Routine A)",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#250"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-09-06__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "NOT_ENOUGH_EVIDENCE",
+    "what_moved": [],
+    "next_verified_production_fact_now_possible": "A bounded read-only production observation of the wide-research scorer's fanout counters since PR#250 deployed, confirming the representative-per-event bound holds under real inventory, not only the synthetic 23,543-identity fixture -- not yet observed this cycle.",
+    "blockers_removed": [
+      {
+        "statement": "PR#250 removed a latent unbounded-fanout risk in the wide-research selector (lib/feed/buildLandingCards.ts): the hidden population is now capped to one representative per physical event instead of every surviving identity. A 23,543-identity/343-event fixture confirms it. 35/35 tests, tsc, build and git diff --check pass per the PR body.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#250"
+        ]
+      }
+    ],
+    "blockers_introduced": [],
+    "not_proven": [
+      "No live production observation confirms whether the unbounded fanout PR#244 introduced on 2026-09-04 actually executed at incident scale before PR#250 bounded it two days later; PR#250's own evidence is a synthetic fixture, not a production measurement.",
+      "PR#250 touches lib/feed/buildLandingCards.ts, one of P1's three named high-risk files; its body does not state a producer-decisions/run estimate in P1's exact form, though it does include an incident-scale fixture -- P1 adoption on this file remains PARTIAL, not proven.",
+      "PR#250 explicitly states no runtime, Railway, database, producer, Reservation, Rebalance, Queue, Ireland, writer, serving-refresh or EMERGENCY_QUIESCE changes -- it is a feed/research-scoring fix, not a Contract A execution, revenue or settlement change.",
+      "CURRENT_STATE.yaml is unchanged since 2026-08-28T21:00:54Z (state_version 17) -- a tenth consecutive cycle; every path changed this period again falls outside the state_bootstrap_allowlist, so it stays STATE_REFRESH_REQUIRED.",
+      "No completion envelope was Architect-accepted this period; completion_envelope_ids stays empty.",
+      "The Evolution/Governor draft-PR family (H7, 13 members) and previously tracked stray drafts remain open and unmerged; three further previously-untracked open PRs (#218, #217, #192) surfaced this cutoff outside H7's originally tracked scope, none touched this period."
+    ],
+    "runtime_or_business_evidence_exists": false,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "NO_MEASURABLE_CHANGE",
+    "capabilities": [],
+    "not_proven": [
+      "PR#250 fixes a product defect in an existing file (lib/feed/buildLandingCards.ts) and does not persist a new Manifest 2 capability-domain artifact; reusable_artifacts_created is 0 this period.",
+      "EMERGENCY_QUIESCE (PR#248, 2026-09-05) has still not been activated in production; its containment value remains code/test-confirmed only, unchanged this period.",
+      "No Automation Roadmap Governor run reached canonical persistence this period; the tracked Governor draft-PR family (#199/205/206/212/214/216/222/223/226/227/228/233/241) remains unmerged and unchanged in composition."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": 0,
+      "runtime_evidence_count": 0,
+      "reusable_artifacts_created": 0,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-09-06T00:00:00Z",
+    "period_end": "2026-09-07T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "founder_actions_removable": "UNKNOWN",
+    "executor_runs": "UNKNOWN",
+    "successful_terminal_results": "UNKNOWN",
+    "reruns_resumes": "UNKNOWN",
+    "recovery_iterations": "UNKNOWN",
+    "reviewer_corrections_rejections": 0,
+    "orchestration_waste_iterations": "UNKNOWN",
+    "implemented_fixes": 1,
+    "proven_effective_fixes": 1,
+    "runtime_evidence_count": 0,
+    "reusable_artifacts_created": 0,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN",
+    "capture_coverage": "PARTIAL",
+    "chat_interaction_coverage": "PARTIAL",
+    "founder_actions_proven": 0,
+    "architect_corrections": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-09-06-WIDE-RESEARCH-SELECTOR-UNBOUNDED-FANOUT",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-WIDE-RESEARCH-SELECTOR-BOUND-20260904",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#250",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#250 (lib/feed/buildLandingCards.ts selectResearchMarketsForScoring: when limit is null, the unbounded hidden population is now capped to one deterministic representative per physical event instead of every surviving identity; public identities are always preserved untouched. 35/35 focused feed/selector/money-path tests pass, npx tsc --noEmit passes, npm run build passes, git diff --check clean. An incident-sized synthetic fixture of 23,543 identities across 343 events yields exactly 343 selected representatives, reproducing the exact unbounded-fanout shape PR#244 had introduced.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+        "origin": "STATE_OR_CONTEXT_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "PRODUCT_OR_RUNTIME_DEFECT": 1,
+      "STATE_OR_CONTEXT_DEFECT": 1,
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 1
+    },
+    "defect_counts_by_recurrence": {
+      "LATENT_NEXT_LAYER_EXPOSED": 1,
+      "SAME_ROOT_REPEAT": 2
+    },
+    "repeated_defect_families": 0,
+    "active_onion_chains": 1
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "CURRENT_STATE.yaml still shows updated_at=2026-08-28T21:00:54Z (state_version 17) -- a tenth consecutive cycle unchanged, now including this period's own PR#250 fix falling outside the state_bootstrap_allowlist.",
+      "why_it_matters": "A stale CURRENT_STATE keeps forcing every cycle to re-derive ancestry and re-argue staleness from raw Git instead of reading one authoritative, current file.",
+      "axis_a_effect": "none directly, but increases the risk that a future cycle over-trusts a stale accepted-completion list when assessing Axis A",
+      "axis_b_effect": "Blocks CONTROLLED_IMPROVEMENT / MISSION_REGISTRY maturity: a control-plane artifact whose own freshness contract (max_age_days) is routinely exceeded is not yet a durable capability",
+      "proposed_automation": "A scheduled, read-only CURRENT_STATE reconciliation check (premvp.command.control_plane_reconcile.v1 already exists) run after each canonicalized Evolution cycle, bounded to the existing state_bootstrap_allowlist, so state-only advances happen automatically without waiting for a product-boundary mission.",
+      "persistent_artifact": "scripts/control-plane/reconcile-control-plane.mjs (already exists; proposal is scheduling, not new code)",
+      "expected_value": "Removes a tenth-and-counting recurring STATE_OR_CONTEXT_DEFECT and gives Routine B a current, trustworthy CURRENT_STATE baseline for every comparison",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: the existing command already fail-closes on invalid baselines and is scoped to state-only paths",
+      "success_metric": "CURRENT_STATE.yaml's updated_at/state_version advances within one cycle of a qualifying canonicalized change, without any Founder action",
+      "rollback_or_stop_condition": "Stop if any proposed automatic reconciliation would touch a path outside state_bootstrap_allowlist -- that always requires an explicit bounded mission instead.",
+      "timing": "Next cycle",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-05__evolution-canonical-cycle.json#automation_hypotheses.H1"
+      ]
+    },
+    {
+      "id": "H3",
+      "observed_problem": "This period closes the layer this class opened: PR#244 removed a restrictive market-type allowlist (sixth confirmed instance) but also removed the per-event fanout bound; that deeper defect is fixed by PR#250 (chain CHAIN-WIDE-RESEARCH-SELECTOR-BOUND-20260904).",
+      "why_it_matters": "Confirms the onion-chain risk this class carries: removing a restrictive boundary to fix silently-dropped data can itself expose a capacity/fanout defect if no bound is re-established in the same change. Both layers are now closed for this instance.",
+      "axis_a_effect": "none this period",
+      "axis_b_effect": "none this period",
+      "proposed_automation": "Unchanged from prior cycles: a lint-style check flagging any new market-type/formula-version allowlist or numeric cap added or removed without an adjacent named justification comment or test asserting the boundary (or its removal) is intentional and bounded.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/AUTOMATION_ROADMAP.yaml (candidate entry; not yet implemented)",
+      "expected_value": "Would have required PR#244 to state, at review time, what re-bounds the hidden population once the allowlist ceiling is removed -- catching this period's defect before merge instead of two days later",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium: a naive lint rule risks false positives on genuinely intentional boundaries",
+      "success_metric": "A future instance of this design-error class is caught before merge rather than after",
+      "rollback_or_stop_condition": "Stop if false-positive rate on existing intentional boundaries proves too high in a dry run",
+      "timing": "SYSTEM_LATER",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#244",
+        "POLYPROPICKS/PREMVP#250",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-05__evolution-canonical-cycle.json#automation_hypotheses.H3"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "This period again established only a lower bound of zero operator-action events: PR#250 was authored and merged with no recorded action event, so the founder-action count stays a floor of zero, not a true count.",
+      "why_it_matters": "Without capture, Founder-effort measurement stays UNKNOWN even for a period whose change touched a file this Routine has flagged as high-risk (H6/P1), undermining Routine B's ability to compare automation value against actual manual load.",
+      "axis_a_effect": "none directly",
+      "axis_b_effect": "Blocks VERIFICATION_AND_EVIDENCE maturity for the operator-action pipeline itself",
+      "proposed_automation": "Unchanged: instrument the executor surface(s) that produced PR#250 to emit OPERATOR_ACTION_EVENT records consumable by premvp.command.evolution_collect.v1.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/schemas/OPERATOR_ACTION_EVENT.schema.json (already exists; proposal is emission, not schema work)",
+      "expected_value": "Converts founder_actions_proven from a lower bound to a real count for future cycles",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: additive instrumentation only",
+      "success_metric": "Action-capture coverage reaches COMPLETE for at least one future cycle",
+      "rollback_or_stop_condition": "Stop if instrumentation would require reading Founder chat content this executor does not already have access to",
+      "timing": "Ongoing",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#250",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-05__evolution-canonical-cycle.json#automation_hypotheses.H4"
+      ]
+    },
+    {
+      "id": "H6",
+      "observed_problem": "A second, independent H6-class instance hit one of the same three named files: PR#250 bounded a capacity/fanout defect in buildLandingCards.ts that PR#244 introduced without a stated estimate. Unlike PR#245's incident, this was caught via tests before any production harm.",
+      "why_it_matters": "Generalizes H6 beyond Contract A market-admission specifically: the same underlying gap (a population/fanout-widening change merged without a stated capacity estimate on one of the three named high-risk files) now has two confirmed instances in under a week, one of which caused real production harm and one of which did not. This strengthens rather than weakens the case for the pre-merge capacity-estimate practice across all three files, not just Contract A admissions.",
+      "axis_a_effect": "A pre-merge capacity check on these three files would directly protect both the Contract A/Reservation money path and the research-scoring compute path from repeat incidents",
+      "axis_b_effect": "Would convert VERIFICATION_AND_EVIDENCE from PRACTICED_NOT_YET_PROVEN to a real gate applied uniformly across all three named files, not just the Contract A subset",
+      "proposed_automation": "Unchanged: a required pre-merge check on the three files (lib/feed/discoverSportsMarkets.ts, lib/feed/buildLandingCards.ts, lib/executor/planningAnchor.ts) that estimates the change's effect on producer decisions/run or scorer fanout size against a known-safe ceiling, plus a bounded post-merge observation via the existing premvp.command.production_observation.v1 command.",
+      "persistent_artifact": "scripts/control-plane/production-observation.mjs (already exists and is reusable for the post-merge half of this check)",
+      "expected_value": "Prevents a repeat of either this period's or the Sept-5 incident's shape on any of the three named files",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low for the observation half (read-only, already proven); the pre-merge capacity-estimate half needs product-owner input on a safe ceiling for each of the three files",
+      "success_metric": "The next merge touching any of the three named files carries a recorded pre-merge capacity estimate before this Routine credits it toward Axis A",
+      "rollback_or_stop_condition": "Stop if a capacity ceiling cannot be defined without database access this executor does not hold -- escalate to a bounded architect decision instead of guessing one",
+      "timing": "NOW",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#194",
+        "POLYPROPICKS/PREMVP#225",
+        "POLYPROPICKS/PREMVP#231",
+        "POLYPROPICKS/PREMVP#245",
+        "POLYPROPICKS/PREMVP#247",
+        "POLYPROPICKS/PREMVP#248",
+        "POLYPROPICKS/PREMVP#244",
+        "POLYPROPICKS/PREMVP#250",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-05__evolution-canonical-cycle.json#automation_hypotheses.H6"
+      ]
+    },
+    {
+      "id": "H7",
+      "observed_problem": "The tracked draft-PR family (13 members) held steady, none merged -- and this cutoff surfaces three further untracked open PRs outside H7's scope: #218, #217, #192. Total open PRs: 28, up from 25 at the prior cutoff.",
+      "why_it_matters": "The stranded-draft-PR shape keeps generalizing beyond its originally tracked scope rather than closing, and each cycle's manual re-scan keeps finding more of it rather than the pile shrinking.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "The dispatch-plan capability (PR#224) remains the precondition for safely canonicalizing the Evolution/Governor family; it does not extend to the modeling-PR pile or the newly-surfaced stray drafts without separate review",
+      "proposed_automation": "Not a Routine A action on any of these branches. Recorded for Routine B: run terminal_persistence_stage on the known families or explicitly classify/close them; separately decide whether the modeling-PR pile and the newly-surfaced stray drafts need their own mechanism or Founder review.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/SCHEDULE_MANIFEST.yaml (already documents the intended terminal_persistence_stage for the Governor routine)",
+      "expected_value": "No stranded draft PRs left open across periods; Routine B's own history stays as clean as Routine A's now is",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: this hypothesis proposes only running an already-registered lifecycle command or an explicit classification pass",
+      "success_metric": "At a future cycle's evidence_cutoff, all tracked and newly-surfaced draft PRs are either explicitly classified as intentional draft evidence or brought to zero",
+      "rollback_or_stop_condition": "Stop if closing or superseding these PRs would discard evidence a Founder has not yet reviewed",
+      "timing": "Next Governor run",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#199",
+        "POLYPROPICKS/PREMVP#205",
+        "POLYPROPICKS/PREMVP#206",
+        "POLYPROPICKS/PREMVP#212",
+        "POLYPROPICKS/PREMVP#214",
+        "POLYPROPICKS/PREMVP#216",
+        "POLYPROPICKS/PREMVP#222",
+        "POLYPROPICKS/PREMVP#223",
+        "POLYPROPICKS/PREMVP#226",
+        "POLYPROPICKS/PREMVP#227",
+        "POLYPROPICKS/PREMVP#228",
+        "POLYPROPICKS/PREMVP#233",
+        "POLYPROPICKS/PREMVP#241",
+        "POLYPROPICKS/PREMVP#190",
+        "POLYPROPICKS/PREMVP#189",
+        "POLYPROPICKS/PREMVP#174",
+        "POLYPROPICKS/PREMVP#218",
+        "POLYPROPICKS/PREMVP#217",
+        "POLYPROPICKS/PREMVP#192",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-05__evolution-canonical-cycle.json#automation_hypotheses.H7"
+      ]
+    },
+    {
+      "id": "H8",
+      "observed_problem": "No new instance this period -- the D-1 research-corpus reader defect fixed two periods ago (PR#242/#243) had no new confirmed recurrence or new layer exposed. This is the second consecutive period with no new link on this chain.",
+      "why_it_matters": "Continuity only; the underlying chain (CHAIN-D1-RESEARCH-CORPUS-READER-20260904) had no new links this period, approaching its own stated dormancy threshold.",
+      "axis_a_effect": "none this period",
+      "axis_b_effect": "none this period",
+      "proposed_automation": "Unchanged: reconcile any new rolling-corpus reader output against an independently known row-count denominator before trusting it, as already done once for 2026-09-03.",
+      "persistent_artifact": "scripts/modeling/live-d1-research-corpus.ts (already exists)",
+      "expected_value": "Prevents a repeat silent undercount if the reader is exercised again at full-day scale",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low",
+      "success_metric": "Any future full-day reconciliation of this reader matches its independently known denominator exactly",
+      "rollback_or_stop_condition": "This hypothesis's own stop condition: close as dormant if no new full-day reconciliation is attempted in the next several cycles -- now two consecutive periods without one",
+      "timing": "SYSTEM_LATER",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#242",
+        "POLYPROPICKS/PREMVP#243",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-05__evolution-canonical-cycle.json#automation_hypotheses.H8"
+      ]
+    },
+    {
+      "id": "H9",
+      "observed_problem": "PR#250's body does not state a producer-decisions/run estimate in P1's exact form, though it is the first merge touching one of P1's three named files since P1 was proposed; it does include an incident-scale fixture as capacity-relevant evidence for this specific concern.",
+      "why_it_matters": "P1 proposed after the Sept-5 incident has not yet been observed in practice on its first qualifying opportunity. This does not indicate the practice failed -- PR#250 is a bound-tightening fix, the safe direction -- but it means P1's adoption remains unverified going into whatever change touches one of the three files next.",
+      "axis_a_effect": "none this period (PR#250 tightens a bound rather than widening one, so no new Axis A risk was introduced by the absence of a stated estimate)",
+      "axis_b_effect": "Blocks P1 from graduating past PRACTICED_NOT_YET_PROVEN: a recommended practice with zero observed adoptions is not yet a capability",
+      "proposed_automation": "No new automation proposed -- this hypothesis exists to track P1's own adoption evidence across cycles rather than propose a second mechanism alongside H6.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-05__evolution-canonical-cycle.json#founder_practices.P1 (the practice itself; this hypothesis tracks its adoption, not its content)",
+      "expected_value": "Converts P1 from a proposed practice to a proven-adopted one once a genuinely widening change to one of the three files carries a stated estimate",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: purely observational, no new mechanism to build",
+      "success_metric": "The next PR touching one of the three named files that widens (not tightens) their population/fanout includes a stated capacity estimate in its body before merge",
+      "rollback_or_stop_condition": "Stop tracking as a distinct hypothesis and fold back into H6 once one clear adoption or non-adoption instance on a widening change is observed",
+      "timing": "Next qualifying PR",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#250",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-05__evolution-canonical-cycle.json#founder_practices.P1"
+      ]
+    }
+  ],
+  "insufficient_supported_hypotheses": false,
+  "insufficient_supported_hypotheses_reason": null,
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "State an explicit capacity/fanout estimate in the PR body for any change to the three H6-named files (lib/feed/discoverSportsMarkets.ts, lib/feed/buildLandingCards.ts, lib/executor/planningAnchor.ts) that could widen the population or fanout they process -- not just for Contract A market-admission changes.",
+      "why_it_matters_now": "This period confirmed a second, independent instance of the underlying gap on one of these exact files (PR#244 -> PR#250), generalizing H6 beyond Contract A. The practice proposed after the Sept-5 incident has not yet been exercised on a genuinely widening change to these files.",
+      "how_it_applies_to_current_project": "Before merging any future change to one of the three named files that removes a restriction or increases a population/fanout ceiling, state in the PR body what the change does to producer decisions/run or scorer fanout size, and cite a known-safe ceiling it stays under.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-06__evolution-canonical-cycle.json (this cycle's H6/H9 record)",
+      "ladder_level": 2
+    },
+    {
+      "id": "P2",
+      "skill_practiced": "Before relying on a previously-tracked open-PR list (e.g. H7's family), re-run a full `state=open` listing rather than trusting the prior cycle's remembered scope -- untracked stray drafts keep surfacing that a memorized list would miss.",
+      "why_it_matters_now": "This period's full open-PR sweep surfaced three previously-untracked PRs (#218, #217, #192) outside H7's originally recorded scope, growing the open-PR count from 25 to 28 in a single day without any of the three being new activity.",
+      "how_it_applies_to_current_project": "Each Evolution cycle (and any Governor run) should re-list all open PRs rather than diffing only against the previously named H7 membership, so scope creep in the draft-PR pile is caught the period it is discovered rather than accumulating silently.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-06__evolution-canonical-cycle.json (this cycle's H7 record, now including #218/#217/#192)",
+      "ladder_level": 1
+    }
+  ],
+  "founder_practice_comparison": "P1 is higher priority: it protects both the Contract A money path and the research-scoring compute path from a repeat of a gap with one real incident and one near-miss in a week. P2 is lower-cost bookkeeping that keeps the draft-PR evidence accurate but prevents nothing directly.",
+  "founder_practice_recommended_order": [
+    "P1",
+    "P2"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "A single bounded read-only production observation of the wide-research scorer's counters (researchScorerSelectionMode, researchSnapshotsSelectedRotating, researchSnapshotSelectionLimit) since PR#250 deployed can confirm the representative-per-event bound is holding under real inventory, not only the synthetic 23,543-identity fixture.",
+      "bounded_scope": "One read-only observation only, using the existing premvp.command.production_observation.v1 command; no write path, no forceCreate, no schema or code change.",
+      "persistent_artifact": "reports/observation/<observation_id>.json (existing command output contract) plus a recorded entry in docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "promotion_condition": "The observation shows researchScorerSelectionMode=REPRESENTATIVE_PER_EVENT in the live feed build and no anomalous fanout counts relative to known event volume.",
+      "stop_condition": "Stop if the observation would require a write-capable mode, a secret this executor does not already hold, or database access beyond the command's existing read-only contract."
+    },
+    {
+      "id": "E2",
+      "hypothesis": "A lightweight, documented pre-merge capacity/fanout estimate (even a manual note in the PR body, not new code) for changes to the three H6-named files can be adopted without automated tooling, and would have made PR#250's underlying trigger (PR#244) visible before merge.",
+      "bounded_scope": "Prototype as a documented checklist addition only; no new script, no new CI gate (none exists in this repository), no change to the actual discovery/planning-anchor/selector logic.",
+      "persistent_artifact": "docs/ai-context/CLAUDE_CODE_EXECUTION_PROTOCOL.md (candidate location for a new checklist line; not modified by this Routine)",
+      "promotion_condition": "A future PR that widens (not tightens) the population/fanout of one of the three named files includes a stated capacity estimate in its body before merge. Not yet met: PR#250, the one qualifying merge since this experiment was proposed, is a tightening fix and did not carry a producer-decisions/run-style estimate.",
+      "stop_condition": "Stop if no widening PR touches these files in the next several cycles -- the practice cannot be validated without a real instance, so it stays a proposal rather than an enforced gate."
+    },
+    {
+      "id": "E3",
+      "hypothesis": "This cycle's own terminal persistence can again reach canonical origin/main with zero intermediate Founder action, using the same GitHub-MCP-backed path already proven for the prior five cycles' own lineages.",
+      "bounded_scope": "One canonical Evolution cycle document plus its rendered report, persisted via the registered branch/PR/merge lifecycle; no product code path touched.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-06__evolution-canonical-cycle.json and its .report.md",
+      "promotion_condition": "The cycle reaches canonical origin/main with founder_action count of zero for this persistence step.",
+      "stop_condition": "Stop and return the canonical resumable outcome if the registered persistence lifecycle cannot complete within this execution window."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE (per CURRENT_STATE.yaml, updated_at 2026-08-28T21:00:54Z, state_version 17 -- unchanged this period; see hypothesis H1)"
+  },
+  "next_step": "Persist via the proven GitHub-MCP path: push this cycle's allowlisted files, create a PR against main, merge it, and verify origin/main ancestry. Then run experiment E1 (production observation of the wide-research selector's live counters). Do not babysit the now-28-member draft-PR family beyond recording it for Routine B.",
+  "corrections": [],
+  "accepted": false
+}
