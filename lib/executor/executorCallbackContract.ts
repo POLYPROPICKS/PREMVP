@@ -391,8 +391,8 @@ export async function handleOrderEventSubmission(
       condition_id: typeof raw.condition_id === "string" ? raw.condition_id : null,
       side: typeof (raw.side ?? raw.selected_side) === "string" ? ((raw.side ?? raw.selected_side) as string) : null,
       market_slug: typeof raw.market_slug === "string" ? raw.market_slug : null,
-      stake_usd: typeof raw.stake_usd === "number" ? raw.stake_usd : null,
-      submitted_size: typeof (raw.submitted_size ?? raw.stake_usd) === "number" ? (raw.submitted_size ?? raw.stake_usd) as number : null,
+      stake_usd: numLike(raw.stake_usd),
+      submitted_size: numLike(raw.submitted_size) ?? numLike(raw.stake_usd),
       submitted_price: typeof raw.submitted_price === "number" ? raw.submitted_price : null,
     };
     const validation = validateOrderEventAgainstQueueRow(submission, queueRow);
