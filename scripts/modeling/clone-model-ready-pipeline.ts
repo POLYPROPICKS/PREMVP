@@ -23,9 +23,24 @@ function latestClosedMinskDay() {
 function datesRequested() { return (arg("--dates")?.split(",").filter(Boolean) ?? [latestClosedMinskDay()]).sort(); }
 function corpusPath(d: string) { return join(OUT, `CORPUS_${d}.jsonl.gz`); }
 function manifestPath(d: string) { return join(OUT, `MANIFEST_${d}.json`); }
+/**
+ * Normalizes the persisted materializer's real sport-authority field
+ * (`providerSportFamily`) into the frozen-evaluator carrier field
+ * (`sportFamily`). The raw materialized row never carries a `sportFamily`
+ * key; without this normalization it silently defaults to "" downstream and
+ * the frozen C1/C4/C5 sport predicates become unreachable. Missing source
+ * authority stays explicit `null` — never fabricated.
+ */
+export function normalizeMaterializedSportFamily(raw: { providerSportFamily?: unknown }): string | null {
+  const v = typeof raw.providerSportFamily === "string" ? raw.providerSportFamily.trim().toLowerCase() : "";
+  return v.length > 0 ? v : null;
+}
 function loadRows(d: string): ScorecardReadyRow[] {
   const lines = gunzipSync(readFileSync(corpusPath(d))).toString("utf8").split("\n").filter(Boolean);
-  return lines.map((line) => { const r = JSON.parse(line); return { ...r, frozenLabel: r.label, labelAsOf: r.label } as ScorecardReadyRow; });
+  return lines.map((line) => {
+    const r = JSON.parse(line);
+    return { ...r, sportFamily: normalizeMaterializedSportFamily(r), frozenLabel: r.label, labelAsOf: r.label } as ScorecardReadyRow;
+  });
 }
 function dateMinus(end: string, days: number) { return new Date(Date.parse(`${end}T00:00:00Z`) - (days - 1) * DAY_MS).toISOString().slice(0, 10); }
 export function isInModelDateWindow(row: { model_date: string }, start: string, end: string) {
