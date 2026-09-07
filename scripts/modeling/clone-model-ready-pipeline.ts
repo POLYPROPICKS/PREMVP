@@ -11,6 +11,8 @@ import type { ScorecardReadyRow } from "../../lib/modeling/research-corpus/rolli
 const OUT = "modeling/evidence/research-corpus-factory-live-v1";
 const EXPECTED_CLONE_REF = "nppznoujvnyjargjkmnv";
 const DAY_MS = 86_400_000;
+const ROLLING_READ_PAGE_SIZE = 1_000;
+const ROLLING_READ_MAX_ROWS = 100_000;
 
 function projectRef(url: string) { return new URL(url).hostname.split(".")[0]; }
 function arg(name: string) { const p = process.argv.find((v) => v.startsWith(`${name}=`)); return p?.slice(name.length + 1); }
@@ -26,6 +28,23 @@ function loadRows(d: string): ScorecardReadyRow[] {
   return lines.map((line) => { const r = JSON.parse(line); return { ...r, frozenLabel: r.label, labelAsOf: r.label } as ScorecardReadyRow; });
 }
 function dateMinus(end: string, days: number) { return new Date(Date.parse(`${end}T00:00:00Z`) - (days - 1) * DAY_MS).toISOString().slice(0, 10); }
+export function isInModelDateWindow(row: { model_date: string }, start: string, end: string) {
+  return row.model_date >= start && row.model_date <= end;
+}
+async function readRollingRows(db: any, floor: string, asOf: string) {
+  const rows: Array<{ model_date: string; population_id: string; canonical_row: ScorecardReadyRow }> = [];
+  for (let from = 0; ; from += ROLLING_READ_PAGE_SIZE) {
+    const { data, error } = await db.from("research_model_ready_rows")
+      .select("model_date,population_id,canonical_row")
+      .gte("model_date", floor).lte("model_date", asOf)
+      .order("model_date").order("population_id").order("condition_id").order("selected_token_id").order("decision_at")
+      .range(from, from + ROLLING_READ_PAGE_SIZE - 1);
+    if (error) throw new Error(`CLONE_MODEL_READY_READ:${error.code ?? error.message}`);
+    rows.push(...(data ?? []));
+    if (rows.length > ROLLING_READ_MAX_ROWS) throw new Error("CLONE_MODEL_READY_READ_LIMIT_REACHED");
+    if ((data?.length ?? 0) < ROLLING_READ_PAGE_SIZE) return rows;
+  }
+}
 export function isSchemaPendingError(error: unknown): boolean {
   return error instanceof Error && /CLONE_MODEL_(?:DAY_READ|ROW_WRITE|ECONOMICS_WRITE|READY_READ|ROLLING_WRITE):PGRST205/.test(error.message);
 }
@@ -73,17 +92,14 @@ async function main() {
 
   const asOf = dates.filter((d) => !DEGRADED_MODEL_DATES.has(d)).at(-1) ?? latestClosedMinskDay();
   const floor = dateMinus(asOf,30);
-  const { data, error } = await db.from("research_model_ready_rows").select("model_date,population_id,canonical_row").gte("model_date",floor).lte("model_date",asOf).order("model_date").limit(100001);
-  if (error) throw new Error(`CLONE_MODEL_READY_READ:${error.code ?? error.message}`);
-  if ((data?.length ?? 0) > 100000) throw new Error("CLONE_MODEL_READY_READ_LIMIT_REACHED");
-  const all = (data ?? []).filter((r:any) => !DEGRADED_MODEL_DATES.has(r.model_date)).map((r:any) => r.canonical_row as ScorecardReadyRow);
+  const all = (await readRollingRows(db, floor, asOf)).filter((r) => !DEGRADED_MODEL_DATES.has(r.model_date));
   const computedAt = new Date().toISOString();
   const rolling: Record<string, unknown>[] = [];
   for (const days of [7,14,30] as const) {
     const start = dateMinus(asOf,days);
-    const windowRows = all.filter((r) => r.decisionAt.slice(0,10) >= start && r.decisionAt.slice(0,10) <= asOf);
-    for (const populationId of [...new Set(windowRows.map((r) => r.populationId))].sort()) {
-      const models = evaluateRows(windowRows.filter((r) => r.populationId === populationId));
+    const windowRows = all.filter((r:any) => isInModelDateWindow(r, start, asOf));
+    for (const populationId of [...new Set(windowRows.map((r:any) => r.population_id))].sort()) {
+      const models = evaluateRows(windowRows.filter((r:any) => r.population_id === populationId).map((r:any) => r.canonical_row as ScorecardReadyRow));
       for (const [modelId,m] of Object.entries(models)) rolling.push({ as_of_date:asOf, period_kind:`${days}D`, period_start:start, period_end:asOf, population_id:populationId, model_id:modelId, event_n:m.SELECTED_PHYSICAL_EVENT_N, wins:m.WINS, losses:m.LOSSES, pnl_u:m.PNL_U, roi_pct:m.ROI_PCT, max_drawdown_u:m.MAX_DRAWDOWN_U, model_version:MODEL_READY_VERSION, source_kind:"RESEARCH_CLONE", computed_at:computedAt });
     }
   }
