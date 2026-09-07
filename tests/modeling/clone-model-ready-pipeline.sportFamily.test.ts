@@ -79,19 +79,20 @@ test("REGRESSION: normalized soccer row is visible to the frozen evaluator via e
   assert.equal(result.C4.selectedBets[0]?.sportFamily, "soccer");
 });
 
-test("BEFORE-FIX REPRODUCTION: without normalization the same soccer row is invisible to C4's soccer branch", () => {
+test("HISTORICAL_ROW_COMPATIBILITY: an old-shape row (no sportFamily key, real authority under providerSportFamily) is now correctly visible via evaluateRows()'s read-boundary fallback (resolveSportFamily)", () => {
   const raw = persistedMaterializerRow({
     providerSportFamily: "soccer", entryPrice: 0.55,
     decisionAt: "2026-09-03T01:00:00Z", eventStart: "2026-09-03T04:00:00Z",
   });
-  // Simulates the pre-fix defect: spreading the raw materialized row directly
-  // and forcing it `as ScorecardReadyRow` never produces a `sportFamily` key,
-  // so the consumer's `r.sportFamily ?? ""` silently becomes "".
-  const brokenRow = { ...raw, frozenLabel: raw.label, labelAsOf: raw.label } as unknown as ScorecardReadyRow;
-  assert.equal((brokenRow as any).sportFamily, undefined);
-  const result = evaluateRows([brokenRow]);
-  assert.equal(result.C1.SELECTED_PHYSICAL_EVENT_N, 0, "pre-fix: soccer-only C1 cannot see this event");
-  assert.equal(result.C4.SELECTED_PHYSICAL_EVENT_N, 0, "pre-fix: soccer branch of C4 cannot see this event, and lead_time_hours=3 < 24 also fails");
+  // This is the exact old-accepted shape: spreading the raw materialized row
+  // directly and forcing it `as ScorecardReadyRow` never produces a
+  // `sportFamily` key -- the persisted `canonical_row` for Sep03/04/06 looks
+  // exactly like this. It is never rewritten.
+  const oldShapeRow = { ...raw, frozenLabel: raw.label, labelAsOf: raw.label } as unknown as ScorecardReadyRow;
+  assert.equal((oldShapeRow as any).sportFamily, undefined, "the persisted row itself is untouched -- no sportFamily key");
+  const result = evaluateRows([oldShapeRow]);
+  assert.equal(result.C1.SELECTED_PHYSICAL_EVENT_N, 1, "read-boundary fallback resolves providerSportFamily -> C1 sees it");
+  assert.equal(result.C4.SELECTED_PHYSICAL_EVENT_N, 1, "read-boundary fallback resolves providerSportFamily -> C4's soccer branch sees it");
 });
 
 test("REGRESSION: C5 still applies table-tennis exclusion correctly against a normalized carrier", () => {
