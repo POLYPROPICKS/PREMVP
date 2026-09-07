@@ -646,6 +646,133 @@ test('rendering is deterministic — the same result produces a byte-identical r
 });
 
 // ---------------------------------------------------------------------------------------
+// Founder report — variable-length cycle provenance (real 2026-09-07 history shape)
+// ---------------------------------------------------------------------------------------
+
+// The real canonical history on 2026-09-07: 11 persisted Evolution cycles, every id carrying
+// the long "__evolution-canonical-cycle" suffix. Concatenated onto one line by the renderer
+// these overflow the 400-character phone-readability limit the report validator enforces —
+// the renderer must wrap them across lines and never drop, truncate or summarise any id.
+const CANONICAL_HISTORY_CYCLE_IDS = Object.freeze([
+  '2026-08-25__evolution-canonical-cycle',
+  '2026-08-26__evolution-canonical-cycle',
+  '2026-08-28__evolution-canonical-cycle',
+  '2026-08-30__evolution-canonical-cycle',
+  '2026-08-31__evolution-canonical-cycle',
+  '2026-09-01__evolution-canonical-cycle',
+  '2026-09-02__evolution-canonical-cycle',
+  '2026-09-03__evolution-canonical-cycle',
+  '2026-09-04__evolution-canonical-cycle',
+  '2026-09-05__evolution-canonical-cycle',
+  '2026-09-06__evolution-canonical-cycle',
+]);
+
+function manyCanonicalCycleIds(count) {
+  return Array.from({ length: count }, (_, i) => {
+    const day = String((i % 28) + 1).padStart(2, '0');
+    const month = String((Math.floor(i / 28) % 12) + 1).padStart(2, '0');
+    return `2026-${month}-${day}__evolution-canonical-cycle-${String(i + 1).padStart(3, '0')}`;
+  });
+}
+
+function longHistoryEligibleResult(cycleIds, overrides = {}) {
+  return eligibleResultFixture({
+    eligibility: {
+      eligible: true,
+      reason: `${cycleIds.length} new validated cycle(s) meets the minimum of ${ELIGIBILITY_MIN_NEW_CYCLES}`,
+      based_on_cycles: [...cycleIds],
+      new_validated_cycle_count: cycleIds.length,
+      weekly_boundary_reached: false,
+    },
+    roadmap_delta: deltaFixture({ based_on_cycles: [...cycleIds] }),
+    ...overrides,
+  });
+}
+
+const MAX_REPORT_LINE = 400;
+const reportLines = (report) => report.split('\n');
+const everyLineWithinLimit = (report) => reportLines(report).every((line) => line.length <= MAX_REPORT_LINE);
+
+test('the real 2026-09-07 11-cycle Governor history renders every id without overflowing the 400-character line limit', () => {
+  const result = longHistoryEligibleResult(CANONICAL_HISTORY_CYCLE_IDS);
+  assert.ok(CANONICAL_HISTORY_CYCLE_IDS.length >= 11);
+  assert.equal(result.terminal_disposition, 'ONE_AUTOMATION_INVESTMENT');
+
+  const resultCheck = validateGovernorResult(result);
+  assert.deepEqual(resultCheck.errors, []);
+
+  const report = renderGovernorFounderReport(result);
+  const reportCheck = validateGovernorReport(report);
+  assert.deepEqual(reportCheck.errors, []);
+
+  for (const id of CANONICAL_HISTORY_CYCLE_IDS) {
+    assert.ok(report.includes(id), `rendered report dropped cycle id ${id}`);
+  }
+  for (const line of reportLines(report)) {
+    assert.ok(line.length <= MAX_REPORT_LINE, `rendered line is ${line.length} characters: ${line}`);
+  }
+});
+
+test('a valid eligible ONE_AUTOMATION_INVESTMENT over the 11-cycle history evaluates end to end', () => {
+  const result = longHistoryEligibleResult(CANONICAL_HISTORY_CYCLE_IDS);
+  const evaluated = evaluateGovernorResult(result);
+  assert.equal(evaluated.ok, true, evaluated.errors.join('\n'));
+  assert.ok(evaluated.report.startsWith('# Automation Roadmap Review'));
+  assert.ok(CANONICAL_HISTORY_CYCLE_IDS.every((id) => evaluated.report.includes(id)));
+  assert.ok(everyLineWithinLimit(evaluated.report));
+
+  // accepted:false authority is untouched by the rendering fix
+  const selfAccepted = evaluateGovernorResult(longHistoryEligibleResult(CANONICAL_HISTORY_CYCLE_IDS, { accepted: true }));
+  assert.equal(selfAccepted.ok, false);
+});
+
+test('NO_AUTOMATION_NOW over a long canonical history wraps provenance and is otherwise unchanged', () => {
+  const result = longHistoryEligibleResult(CANONICAL_HISTORY_CYCLE_IDS, {
+    terminal_disposition: 'NO_AUTOMATION_NOW',
+    roadmap_delta: null,
+  });
+  result.findings = {
+    ...result.findings,
+    automation_decisions: result.findings.automation_decisions.map((d) => ({ ...d, decision: 'DEFER' })),
+    roadmap_delta_justified: false,
+  };
+
+  const evaluated = evaluateGovernorResult(result);
+  assert.equal(evaluated.ok, true, evaluated.errors.join('\n'));
+  assert.ok(everyLineWithinLimit(evaluated.report));
+  assert.ok(CANONICAL_HISTORY_CYCLE_IDS.every((id) => evaluated.report.includes(id)));
+  assert.ok(evaluated.report.includes('Изменений не предлагается'));
+});
+
+test('EVIDENCE_INSUFFICIENT rendering is unchanged by the provenance wrapping fix', () => {
+  const evaluated = evaluateGovernorResult(ineligibleResultFixture());
+  assert.equal(evaluated.ok, true, evaluated.errors.join('\n'));
+  assert.ok(evaluated.report.includes('Доказательств пока недостаточно'));
+  assert.ok(evaluated.report.includes('Roadmap не меняется'));
+  assert.ok(everyLineWithinLimit(evaluated.report));
+});
+
+test('the provenance renderer is not tied to a fixed cycle count — it scales well past the current history', () => {
+  for (const count of [12, 25, 60]) {
+    const ids = manyCanonicalCycleIds(count);
+    const evaluated = evaluateGovernorResult(longHistoryEligibleResult(ids));
+    assert.equal(evaluated.ok, true, `count ${count}: ${evaluated.errors.join('\n')}`);
+    for (const id of ids) assert.ok(evaluated.report.includes(id), `count ${count} dropped ${id}`);
+    for (const line of reportLines(evaluated.report)) {
+      assert.ok(line.length <= MAX_REPORT_LINE, `count ${count} line is ${line.length} characters`);
+    }
+    const provenanceLines = reportLines(evaluated.report).filter((l) => /^- 2026-\d\d-\d\d__evolution-canonical-cycle/.test(l));
+    assert.ok(provenanceLines.length >= 2, `count ${count} expected provenance to wrap across multiple lines`);
+  }
+});
+
+test('provenance rendering stays deterministic for a long history', () => {
+  const a = renderGovernorFounderReport(longHistoryEligibleResult(CANONICAL_HISTORY_CYCLE_IDS));
+  const b = renderGovernorFounderReport(longHistoryEligibleResult(CANONICAL_HISTORY_CYCLE_IDS));
+  assert.equal(a, b);
+});
+
+// ---------------------------------------------------------------------------------------
 // End-to-end evaluation
 // ---------------------------------------------------------------------------------------
 

@@ -726,6 +726,37 @@ function bullets(lines, emptyText) {
 }
 
 /**
+ * The Founder report must stay readable on a phone — no rendered line may exceed 400
+ * characters (enforced by validateGovernorReport). Cycle provenance is the one variable-length
+ * field: a Governor run spanning many canonical cycles would otherwise concatenate every id
+ * onto a single oversized line. Wrapping against a tighter width leaves headroom so no
+ * bounded-many-per-line block can ever reach the readability ceiling.
+ */
+const CYCLE_PROVENANCE_WRAP_WIDTH = 320;
+
+/**
+ * Renders "based on cycles" provenance as one or more bulleted lines, packing as many cycle
+ * ids onto each line as fit under the wrap width. Every id is kept verbatim — the list is
+ * never truncated or summarised. A single id longer than the wrap width still gets its own
+ * line rather than being split.
+ */
+function wrapCycleProvenanceLines(cycleIds, wrapWidth = CYCLE_PROVENANCE_WRAP_WIDTH) {
+  const lines = [];
+  let current = '';
+  for (const id of cycleIds) {
+    const candidate = current === '' ? `- ${id}` : `${current}, ${id}`;
+    if (current !== '' && candidate.length > wrapWidth) {
+      lines.push(current);
+      current = `- ${id}`;
+    } else {
+      current = candidate;
+    }
+  }
+  if (current !== '') lines.push(current);
+  return lines;
+}
+
+/**
  * Renders the Russian Founder report from a validated Governor result.
  * Deliberately plain: no field names, no JSON, no quotes — those live in the result JSON.
  */
@@ -736,7 +767,14 @@ export function renderGovernorFounderReport(result) {
   const delta = result.roadmap_delta;
 
   push('# Automation Roadmap Review', '');
-  push(`Основано на циклах: ${result.eligibility.based_on_cycles.join(', ') || 'нет циклов за этот разбор'}. Сформировано: ${result.generated_at}.`, '');
+  const cycleIds = Array.isArray(result.eligibility.based_on_cycles) ? result.eligibility.based_on_cycles : [];
+  if (cycleIds.length === 0) {
+    push(`Основано на циклах: нет циклов за этот разбор. Сформировано: ${result.generated_at}.`, '');
+  } else {
+    push('Основано на циклах:');
+    push(...wrapCycleProvenanceLines(cycleIds));
+    push(`Сформировано: ${result.generated_at}.`, '');
+  }
 
   push('## Главный вывод', '');
   if (!result.eligibility.eligible) {
