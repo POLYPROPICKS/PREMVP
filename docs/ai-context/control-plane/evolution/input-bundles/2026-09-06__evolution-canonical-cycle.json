@@ -1,0 +1,57 @@
+{
+    "bundle_id": "2026-09-06__evolution-canonical-cycle",
+    "repository": "POLYPROPICKS/PREMVP",
+    "period_start": "2026-09-06T00:00:00Z",
+    "period_end": "2026-09-07T00:00:00Z",
+    "evidence_cutoff": "2026-09-07T00:20:00Z",
+    "capture_coverage": "PARTIAL",
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+        "POLYPROPICKS/PREMVP#250"
+    ],
+    "operator_action_events": [],
+    "operating_telemetry": {
+        "reviewer_corrections_rejections": 0,
+        "runtime_evidence_count": 0,
+        "reusable_artifacts_created": 0,
+        "implemented_fixes": 1,
+        "proven_effective_fixes": 1,
+        "repeated_defect_families": 2,
+        "active_onion_chains": 1
+    },
+    "supporting_metrics": {
+        "runtime_evidence_count": 0,
+        "reusable_artifacts_created": 0,
+        "reviewer_rejection_count": 0,
+        "architect_corrections": 0
+    },
+    "defect_occurrences": [
+        {
+            "defect_id": "DEF-2026-09-06-WIDE-RESEARCH-SELECTOR-UNBOUNDED-FANOUT",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-WIDE-RESEARCH-SELECTOR-BOUND-20260904",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#250",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#250 (lib/feed/buildLandingCards.ts selectResearchMarketsForScoring: when limit is null, the unbounded hidden population is now capped to one deterministic representative per physical event instead of every surviving identity; public identities are always preserved untouched. 35/35 focused feed/selector/money-path tests pass, npx tsc --noEmit passes, npm run build passes, git diff --check clean. An incident-sized synthetic fixture of 23,543 identities across 343 events yields exactly 343 selected representatives, reproducing the exact unbounded-fanout shape PR#244 had introduced.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+            "origin": "STATE_OR_CONTEXT_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+            "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        }
+    ],
+    "notes": "git log origin/main --since=2026-09-06T00:20:00Z (the prior cycle's own evidence_cutoff) through this bundle's evidence_cutoff (2026-09-07T00:20:00Z) shows two merges to main: PR#249 (merge commit 3c008bb, 2026-09-06T00:28:25Z -- the prior cycle's own docs(evolution) canonicalization of the 2026-09-05 cycle, not new business evidence, excluded from confirmed_changes exactly as PR#247/#246/#240/#229/#221 were excluded from earlier bundles) plus one real merge: PR#250. No other PR reached main in this window; mcp__github__list_pull_requests (state=open) at this cutoff confirms no competing or additional Evolution/Governor cycle exists for this period. PR#250 'fix(feed): bound wide research fanout' (0f2b0e8, merged 2026-09-06T11:58:10Z) restores the immediate pre-PR#244 representative-per-event bound on lib/feed/buildLandingCards.ts's selectResearchMarketsForScoring: PR#244 (2026-09-04, prior period) had removed an overly restrictive market-type allowlist (DEF-2026-09-04-WIDE-RESEARCH-MARKET-TYPE-ALLOWLIST-CEILING, tracked as hypothesis H3) but in doing so also removed the one-representative-per-event cap on the hidden (non-public) population, so the scorer's hidden fanout could scale with raw surviving identity count instead of physical-event count. PR#250 reports an incident-sized synthetic fixture of 23,543 identities across 343 events selecting down to exactly 343 representatives, confirming the unbounded shape and its fix; 35/35 focused tests, tsc, build and git diff --check all reported passing per the PR body. This is an onion-chain layer B: fixing the H3-tracked restrictive-allowlist defect (layer A, PR#244) exposed a deeper capacity/fanout defect (layer B, this bundle's DEF-2026-09-06-WIDE-RESEARCH-SELECTOR-UNBOUNDED-FANOUT), closed by PR#250 -- new chain CHAIN-WIDE-RESEARCH-SELECTOR-BOUND-20260904. Notably, lib/feed/buildLandingCards.ts is one of the three files the 2026-09-05 cycle's founder practice P1 named as needing a stated pre-merge producer-decisions/run capacity estimate (alongside lib/feed/discoverSportsMarkets.ts and lib/executor/planningAnchor.ts); PR#250 is the first merge touching one of those three files since P1 was proposed, and its body does not state a producer-decisions/run estimate in P1's exact form, though it does include an incident-scale identity/event fixture as capacity-relevant evidence for this specific concern. No live production observation exists confirming whether the unbounded fanout actually executed at incident scale against real inventory during the roughly two days PR#244 was live (2026-09-04 11:20 UTC to 2026-09-06 11:58 UTC) before PR#250 bounded it; this bundle does not claim it did or did not. PR#250 body states no runtime, Railway, database, producer, Reservation, Rebalance, Queue, Ireland, writer, serving-refresh or EMERGENCY_QUIESCE changes; reusable_artifacts_created=0 because PR#250 modifies existing files rather than persisting a new Manifest 2 capability artifact. docs/ai-context/control-plane/CURRENT_STATE.yaml remains unchanged (updated_at=2026-08-28T21:00:54Z, state_version 17); live `git merge-base --is-ancestor` still proves that baseline is an ancestor of live origin/main, but every path changed since then -- including this period's #250 -- again falls entirely outside ARCHITECT_CONTROL_PLANE.yaml's stale_state_behavior.state_bootstrap_allowlist, so CURRENT_STATE.yaml remains STATE_REFRESH_REQUIRED for a tenth consecutive cycle (DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE, SAME_ROOT_REPEAT). No completion envelope was Architect-accepted this period (completion_envelope_ids stays empty); no OPERATOR_ACTION_EVENT records were found for this period, so total_operator_actions is a PARTIAL lower bound of zero, not a claimed true zero. mcp__github__list_pull_requests (state=open) at this cutoff shows the previously tracked Governor/Evolution draft-PR family (H7: #199/205/206/212/214/216/222 plus the five-member modeling-PR pile #223/226/227/228/233 plus #241) still unmerged at 13 members, plus the previously-tracked stray drafts #190/189/174, plus the previously-tracked long-stranded non-Evolution drafts #149/70/69/61/58/18/17/7/1 -- and this cutoff additionally surfaces three further, previously-untracked open PRs outside H7's originally tracked scope: #218 (2026-09-01, docs(research) freeze, draft), #217 (2026-09-01, data(research) freeze, draft) and #192 (2026-08-27, chore(control-plane) reconcile, non-draft) -- none touched this period, recorded as continuity evidence that H7's generalizing-scope pattern continues (total open PRs at this cutoff: 28, up from 25 at the prior cutoff), not acted on and not a new hypothesis. No product database, deployment or Ireland path changed."
+}
