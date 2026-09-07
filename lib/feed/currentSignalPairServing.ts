@@ -17,13 +17,20 @@ export class ServingProjectionPendingError extends Error {
  * and recoverable by rerunning the SQL-owned deterministic reconciler; it never
  * rolls back or mutates the historical corpus.
  */
-export async function refreshCurrentSignalPairServing(sourceGeneratedSignalPairIds: readonly string[]): Promise<void> {
+export type ServingProjectionResult = {
+  projectedCount: number;
+  durationMs: number;
+};
+
+export async function refreshCurrentSignalPairServing(sourceGeneratedSignalPairIds: readonly string[]): Promise<ServingProjectionResult> {
+  const startedAt = Date.now();
   const ids = [...new Set(sourceGeneratedSignalPairIds.filter((id): id is string => typeof id === "string" && id.length > 0))];
-  if (ids.length === 0) return;
+  if (ids.length === 0) return { projectedCount: 0, durationMs: Date.now() - startedAt };
   const { error } = await supabaseAdmin.rpc("refresh_current_signal_pair_serving", {
     p_source_generated_signal_pair_ids: ids,
   });
   if (error) throw new ServingProjectionPendingError(ids, error);
+  return { projectedCount: ids.length, durationMs: Date.now() - startedAt };
 }
 
 export function insertedSourceIds(data: unknown, expectedCount: number): string[] {
@@ -39,9 +46,9 @@ export function insertedSourceIds(data: unknown, expectedCount: number): string[
 
 /** Test doubles used by older producer tests do not emulate `.select()`. Real
  * Supabase writer calls always request IDs; production rejects a missing reply. */
-export async function projectInsertedRows(data: unknown, expectedCount: number): Promise<void> {
-  if (data === undefined) return;
-  await refreshCurrentSignalPairServing(insertedSourceIds(data, expectedCount));
+export async function projectInsertedRows(data: unknown, expectedCount: number): Promise<ServingProjectionResult> {
+  if (data === undefined) return { projectedCount: expectedCount, durationMs: 0 };
+  return refreshCurrentSignalPairServing(insertedSourceIds(data, expectedCount));
 }
 
 export type CurrentServingPruneResult = {

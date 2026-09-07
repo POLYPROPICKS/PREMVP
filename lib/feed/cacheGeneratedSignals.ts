@@ -51,6 +51,26 @@ export interface WritePairsInput {
   expiresAt: string;
 }
 
+export interface WritePairsTelemetryResult {
+  persistedCount: number;
+  servingProjectedCount: number;
+  primaryPersistDurationMs: number;
+  servingProjectDurationMs: number;
+}
+
+export type MoneyPersistencePhase = "PRIMARY_GSP_PERSISTENCE" | "SERVING_PROJECTION";
+
+export class MoneyPersistenceBoundaryError extends Error {
+  constructor(
+    readonly phase: MoneyPersistencePhase,
+    cause: unknown,
+    readonly evidence: WritePairsTelemetryResult,
+  ) {
+    super(cause instanceof Error ? cause.message : String(cause), { cause });
+    this.name = "MoneyPersistenceBoundaryError";
+  }
+}
+
 export const FIREMODEL1_1_RESEARCH_METRIC_VERSION = "shadow-firemodel1_1_research_v0";
 
 export function buildFireModel1_1ResearchRows(
@@ -173,6 +193,12 @@ function findMetricValue(
 export async function writeGeneratedSignalPairs(
   input: WritePairsInput
 ): Promise<number> {
+  return (await writeGeneratedSignalPairsWithTelemetry(input)).persistedCount;
+}
+
+export async function writeGeneratedSignalPairsWithTelemetry(
+  input: WritePairsInput
+): Promise<WritePairsTelemetryResult> {
   const rows = input.pairs.map((pair) => {
     const { premiumSignal: ps, diagnostics: diag } = pair;
 
@@ -222,17 +248,49 @@ export async function writeGeneratedSignalPairs(
     };
   });
 
+  const persistStartedAt = Date.now();
   const insertQuery = supabaseAdmin.from("generated_signal_pairs").insert(rows) as any;
   const { data, error, count } = typeof insertQuery.select === "function"
     ? await insertQuery.select("id")
     : await insertQuery;
 
   if (error) {
-    throw new Error(`Failed to write signal pairs: ${error.message}`);
+    throw new MoneyPersistenceBoundaryError(
+      "PRIMARY_GSP_PERSISTENCE",
+      new Error(`Failed to write signal pairs: ${error.message}`),
+      {
+        persistedCount: 0,
+        servingProjectedCount: 0,
+        primaryPersistDurationMs: Date.now() - persistStartedAt,
+        servingProjectDurationMs: 0,
+      },
+    );
   }
 
-  await projectInsertedRows(data, rows.length);
-  return count ?? rows.length;
+  const primaryPersistDurationMs = Date.now() - persistStartedAt;
+  const persistedCount = count ?? rows.length;
+  let projection;
+  const servingStartedAt = Date.now();
+  try {
+    projection = await projectInsertedRows(data, rows.length);
+  } catch (projectionError) {
+    throw new MoneyPersistenceBoundaryError(
+      "SERVING_PROJECTION",
+      projectionError,
+      {
+        persistedCount,
+        servingProjectedCount: 0,
+        primaryPersistDurationMs,
+        servingProjectDurationMs: Date.now() - servingStartedAt,
+      },
+    );
+  }
+  return {
+    persistedCount,
+    servingProjectedCount: projection.projectedCount,
+    primaryPersistDurationMs,
+    servingProjectDurationMs: projection.durationMs,
+  };
 }
 
 /**
