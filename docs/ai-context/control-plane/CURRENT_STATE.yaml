@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-08-28T21:00:54Z",
-  "state_version": 17,
+  "updated_at": "2026-09-07T19:54:04Z",
+  "state_version": 18,
   "roadmap_phase": "PHASE1_PLANNING_SERVING_CLOSURE",
   "current_value_step": {
     "id": "BOUNDED_PRE_HOOK_SEED",
@@ -117,16 +117,16 @@
   ],
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "2cb8d49872adb032fe5e0f951916f1bc670d3438",
+    "origin_main_sha": "6f02942d500ed4ebd40188bd8926331d1cb3fa61",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "commands": [
-        "git merge-base --is-ancestor 2cb8d49872adb032fe5e0f951916f1bc670d3438 origin/main",
-        "git merge-base --is-ancestor c06ebd7dd1449037e60044afd00ed2a922930d16 2cb8d49872adb032fe5e0f951916f1bc670d3438"
+        "git merge-base --is-ancestor 6f02942d500ed4ebd40188bd8926331d1cb3fa61 origin/main",
+        "git merge-base --is-ancestor db7cc2db55e2ec2312c7eb958a975b0fda10b290 6f02942d500ed4ebd40188bd8926331d1cb3fa61"
       ],
-      "observed_at": "2026-08-28T21:00:54Z",
+      "observed_at": "2026-09-07T19:54:04Z",
       "note": "Automatic factual reconciliation. This records only an already-accepted PREMVP merge and terminal completion lineage; it does not accept product, runtime, capability, roadmap, business, or PnL claims."
     }
   },
@@ -359,10 +359,18 @@
       "implementation_sha": "c06ebd7dd1449037e60044afd00ed2a922930d16",
       "merge_commit": "2cb8d49872adb032fe5e0f951916f1bc670d3438",
       "evidence_ref": "COMPLETION_ENVELOPE#CMP-RESERVATION-SERVING-LOOKBACK-EVIDENCE-20260828"
+    },
+    {
+      "id": "money-producer-isolation-v2-db7cc2d",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Accepted PREMVP completion money-producer-isolation-v2-db7cc2d reconciled from its terminal PASS envelope and exact merge ancestry.",
+      "implementation_sha": "db7cc2db55e2ec2312c7eb958a975b0fda10b290",
+      "merge_commit": "6f02942d500ed4ebd40188bd8926331d1cb3fa61",
+      "evidence_ref": "COMPLETION_ENVELOPE#money-producer-isolation-v2-db7cc2d"
     }
   ],
   "evidence_freshness": {
-    "origin_main_sha_checked_at": "2026-08-28T21:00:54Z",
+    "origin_main_sha_checked_at": "2026-09-07T19:54:04Z",
     "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
     "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
     "max_age_days": 7
@@ -375,5 +383,5 @@
     "a referenced execution target verdict in CAPABILITY_MATRIX.yaml has passed its expires_when"
   ],
   "stale_when_note": "Exact equality between main.origin_main_sha and live origin/main is NOT required and is not used as a staleness test. A state-only bootstrap advance (touching only CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md) keeps state FRESH even though origin/main has moved past the recorded baseline.",
-  "last_accepted_completion_id": "CMP-RESERVATION-SERVING-LOOKBACK-EVIDENCE-20260828"
+  "last_accepted_completion_id": "money-producer-isolation-v2-db7cc2d"
 }
