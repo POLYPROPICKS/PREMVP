@@ -10,6 +10,7 @@
     "lint": "eslint",
     "generate:signals": "tsx scripts/generate-signals.ts",
     "research-clone:sync": "tsx scripts/research-clone-daily-sync.ts",
+    "research-clone:model-ready": "tsx scripts/modeling/clone-model-ready-pipeline.ts",
     "test:research-clone-sync": "node --import tsx --test tests/research-clone/*.test.ts",
     "current-serving:backfill": "tsx scripts/current-serving-backfill-runner.ts",
     "resolve:signals": "tsx scripts/resolve-signals.ts",

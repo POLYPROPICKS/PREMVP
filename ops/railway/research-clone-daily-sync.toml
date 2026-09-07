@@ -14,6 +14,6 @@
 buildCommand = "npm ci --ignore-scripts"
 
 [deploy]
-startCommand = "npm run research-clone:sync"
+startCommand = "npm run research-clone:sync && npm run research-clone:model-ready"
 cronSchedule = "0 2 * * *"
 restartPolicyType = "NEVER"
