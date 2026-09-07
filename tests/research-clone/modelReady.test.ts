@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DEGRADED_MODEL_DATES, evaluateRows, toStoredModelRow } from "../../lib/research-clone/modelReady";
-import { isSchemaPendingError } from "../../scripts/modeling/clone-model-ready-pipeline";
+import { isSchemaPendingError, isInModelDateWindow } from "../../scripts/modeling/clone-model-ready-pipeline";
 
 const series = { firstEligibleValue: null, firstEligibleObservedAt: null, lastEligibleValue: null, lastEligibleObservedAt: null, observationCount: 0, delta: null };
 const row = (label: "WIN"|"LOSS", event="e") => ({ populationId:"SEP_PUBLIC_RICH_V1" as const, conditionId:`c-${label}-${event}`, selectedTokenId:"t", providerEventId:event, decisionAt:"2026-09-03T01:00:00Z", entryPrice:0.5, eventStart:"2026-09-03T12:00:00Z", sportFamily:"soccer", scoreLevel:60, score:series, selectedPrice:series, volumeUsd:null, leadTimeHours:11, frozenLabel:label, labelAsOf:label });
@@ -24,4 +24,10 @@ test("Sep-05 is explicitly degraded", () => assert.equal(DEGRADED_MODEL_DATES.ha
 test("unactivated clone schema is a safe downstream no-op; other failures remain failures", () => {
   assert.equal(isSchemaPendingError(new Error("CLONE_MODEL_DAY_READ:PGRST205")), true);
   assert.equal(isSchemaPendingError(new Error("CLONE_MODEL_DAY_READ:500")), false);
+});
+
+test("rolling membership uses persisted model_date when decisionAt is from a prior calendar day", () => {
+  const stored = { model_date: "2026-09-04", canonical_row: { ...row("WIN"), decisionAt: "2026-09-03T23:59:59Z" } };
+  assert.equal(isInModelDateWindow(stored, "2026-09-04", "2026-09-04"), true);
+  assert.equal(isInModelDateWindow(stored, "2026-09-05", "2026-09-06"), false);
 });
