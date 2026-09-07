@@ -12,7 +12,13 @@
 
 import type { LandingCardPair } from "./types";
 import { selectCanonicalPrimaryExtras } from "./buildLandingCards";
-import { writeGeneratedSignalPairs, type WritePairsInput } from "./cacheGeneratedSignals";
+import {
+  writeGeneratedSignalPairs,
+  writeGeneratedSignalPairsWithTelemetry,
+  MoneyPersistenceBoundaryError,
+  type WritePairsInput,
+  type WritePairsTelemetryResult,
+} from "./cacheGeneratedSignals";
 
 type WriteInputPair = WritePairsInput["pairs"][number];
 
@@ -42,6 +48,9 @@ export interface PrimaryPopulationPersistResult {
   canonicalExtrasPersistedCount: number;
   /** Total canonical generated_signal_pairs rows for this producer cycle. */
   canonicalPersistedCount: number;
+  servingProjectedCount: number;
+  primaryPersistDurationMs: number;
+  servingProjectDurationMs: number;
 }
 
 /**
@@ -69,8 +78,19 @@ export async function persistCanonicalPrimarySignalPopulation(args: {
   expiresAt: string;
   /** Injectable for tests; defaults to the real canonical writer. */
   write?: typeof writeGeneratedSignalPairs;
+  writeWithTelemetry?: typeof writeGeneratedSignalPairsWithTelemetry;
 }): Promise<PrimaryPopulationPersistResult> {
-  const write = args.write ?? writeGeneratedSignalPairs;
+  const write = args.writeWithTelemetry ?? (args.write
+    ? async (input: WritePairsInput): Promise<WritePairsTelemetryResult> => {
+        const persistedCount = await args.write!(input);
+        return {
+          persistedCount,
+          servingProjectedCount: persistedCount,
+          primaryPersistDurationMs: 0,
+          servingProjectDurationMs: 0,
+        };
+      }
+    : writeGeneratedSignalPairsWithTelemetry);
 
   const extras = selectCanonicalPrimaryExtras(
     args.primaryQualifiedPairs,
@@ -78,26 +98,55 @@ export async function persistCanonicalPrimarySignalPopulation(args: {
   );
 
   let canonicalExtrasPersistedCount = 0;
+  let servingProjectedCount = 0;
+  let primaryPersistDurationMs = 0;
+  let servingProjectDurationMs = 0;
+  const writeBatch = async (input: WritePairsInput): Promise<WritePairsTelemetryResult> => {
+    try {
+      return await write(input);
+    } catch (error) {
+      if (error instanceof MoneyPersistenceBoundaryError) {
+        throw new MoneyPersistenceBoundaryError(error.phase, error, {
+          persistedCount: canonicalExtrasPersistedCount + error.evidence.persistedCount,
+          servingProjectedCount: servingProjectedCount + error.evidence.servingProjectedCount,
+          primaryPersistDurationMs: primaryPersistDurationMs + error.evidence.primaryPersistDurationMs,
+          servingProjectDurationMs: servingProjectDurationMs + error.evidence.servingProjectDurationMs,
+        });
+      }
+      throw error;
+    }
+  };
   if (extras.length > 0) {
-    canonicalExtrasPersistedCount = await write({
+    const extraWrite = await writeBatch({
       pairs: extras.map(toWriteInputPair),
       source: args.source,
       formulaVersion: args.formulaVersion,
       expiresAt: args.expiresAt,
     });
+    canonicalExtrasPersistedCount = extraWrite.persistedCount;
+    servingProjectedCount += extraWrite.servingProjectedCount;
+    primaryPersistDurationMs += extraWrite.primaryPersistDurationMs;
+    servingProjectDurationMs += extraWrite.servingProjectDurationMs;
   }
 
-  const publicPersistedCount = await write({
+  const publicWrite = await writeBatch({
     pairs: args.publicPairsToCache.map(toWriteInputPair),
     source: args.source,
     formulaVersion: args.formulaVersion,
     expiresAt: args.expiresAt,
   });
+  const publicPersistedCount = publicWrite.persistedCount;
+  servingProjectedCount += publicWrite.servingProjectedCount;
+  primaryPersistDurationMs += publicWrite.primaryPersistDurationMs;
+  servingProjectDurationMs += publicWrite.servingProjectDurationMs;
 
   return {
     publicPersistedCount,
     canonicalExtrasProposed: extras.length,
     canonicalExtrasPersistedCount,
     canonicalPersistedCount: publicPersistedCount + canonicalExtrasPersistedCount,
+    servingProjectedCount,
+    primaryPersistDurationMs,
+    servingProjectDurationMs,
   };
 }

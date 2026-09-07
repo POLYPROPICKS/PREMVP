@@ -10,6 +10,7 @@ import {
 } from "../../lib/feed/buildLandingCards";
 import type { LandingCardPair } from "../../lib/feed/types";
 import type { WritePairsInput } from "../../lib/feed/cacheGeneratedSignals";
+import { MoneyPersistenceBoundaryError } from "../../lib/feed/cacheGeneratedSignals";
 
 // MISSION: WIRE_FULL_PRIMARY_QUALIFIED_POPULATION_INTO_CANONICAL_GSP_PERSISTENCE
 //
@@ -81,6 +82,9 @@ test("full primary-qualified population reaches the canonical GSP writer; public
   const CANONICAL_PERSISTED_COUNT = res.canonicalPersistedCount;
   assert.equal(CANONICAL_PERSISTED_COUNT, 22);
   assert.ok(CANONICAL_PERSISTED_COUNT > 15);
+  assert.equal(res.servingProjectedCount, 22);
+  assert.equal(res.primaryPersistDurationMs, 0);
+  assert.equal(res.servingProjectDurationMs, 0);
   assert.equal(res.canonicalExtrasProposed, 7);
   assert.equal(res.canonicalExtrasPersistedCount, 7);
 
@@ -135,4 +139,73 @@ test("<= 15 qualified: no extra write, public path byte-identical (zero behaviou
   assert.equal(batches.length, 1, "only the existing public write happens");
   assert.equal(batches[0].pairs.length, 11);
   assert.equal(res.canonicalPersistedCount, 11);
+  assert.equal(res.servingProjectedCount, 11);
+});
+
+test("money telemetry aggregates primary persistence and Serving projection per batch", async () => {
+  const primaryQualifiedPairs = Array.from({ length: 18 }, (_, i) => pair(i));
+  let call = 0;
+
+  const res = await persistCanonicalPrimarySignalPopulation({
+    primaryQualifiedPairs,
+    publicPairsToCache: primaryQualifiedPairs.slice(0, 15),
+    source: "polymarket",
+    formulaVersion: "v2-lite-growth-safe",
+    expiresAt: "2026-08-28T12:00:00.000Z",
+    writeWithTelemetry: async (input) => {
+      call++;
+      return {
+        persistedCount: input.pairs.length,
+        servingProjectedCount: input.pairs.length,
+        primaryPersistDurationMs: call * 10,
+        servingProjectDurationMs: call * 2,
+      };
+    },
+  });
+
+  assert.equal(res.canonicalPersistedCount, 18);
+  assert.equal(res.servingProjectedCount, 18);
+  assert.equal(res.primaryPersistDurationMs, 30);
+  assert.equal(res.servingProjectDurationMs, 6);
+});
+
+test("Serving failure retains already-committed primary evidence", async () => {
+  const primaryQualifiedPairs = Array.from({ length: 18 }, (_, i) => pair(i));
+  let call = 0;
+
+  await assert.rejects(
+    persistCanonicalPrimarySignalPopulation({
+      primaryQualifiedPairs,
+      publicPairsToCache: primaryQualifiedPairs.slice(0, 15),
+      source: "polymarket",
+      formulaVersion: "v2-lite-growth-safe",
+      expiresAt: "2026-08-28T12:00:00.000Z",
+      writeWithTelemetry: async (input) => {
+        call++;
+        if (call === 1) {
+          return {
+            persistedCount: input.pairs.length,
+            servingProjectedCount: input.pairs.length,
+            primaryPersistDurationMs: 10,
+            servingProjectDurationMs: 2,
+          };
+        }
+        throw new MoneyPersistenceBoundaryError("SERVING_PROJECTION", new Error("timeout"), {
+          persistedCount: input.pairs.length,
+          servingProjectedCount: 0,
+          primaryPersistDurationMs: 20,
+          servingProjectDurationMs: 5,
+        });
+      },
+    }),
+    (error: unknown) => {
+      assert.ok(error instanceof MoneyPersistenceBoundaryError);
+      assert.equal(error.phase, "SERVING_PROJECTION");
+      assert.equal(error.evidence.persistedCount, 18);
+      assert.equal(error.evidence.servingProjectedCount, 3);
+      assert.equal(error.evidence.primaryPersistDurationMs, 30);
+      assert.equal(error.evidence.servingProjectDurationMs, 7);
+      return true;
+    },
+  );
 });

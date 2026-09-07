@@ -13,6 +13,7 @@ import {
   writeStrategicShadowPairs,
   writeFireModel1_1ResearchPairsWithDetail,
   writeJobRun,
+  MoneyPersistenceBoundaryError,
 } from "../lib/feed/cacheGeneratedSignals";
 import { persistCanonicalPrimarySignalPopulation } from "../lib/feed/persistPrimarySignalPopulation";
 import { discoverSportsMarkets, collectWcShadowCandidates, collectEsportShadowCandidates, collectNbaNhlShadowCandidates, collectFullLineOutcomeV1Candidates } from "../lib/feed/discoverSportsMarkets";
@@ -20,6 +21,7 @@ import type { WcShadowEntry } from "../lib/feed/discoverSportsMarkets";
 import { writeResearchEligibleSignalSnapshots } from "../lib/feed/cacheResearchSnapshots";
 import { shouldSuppressSportsInventoryWrite } from "../lib/feed/cacheSportsEventMarketInventory";
 import { pruneCurrentSignalPairServing } from "../lib/feed/currentSignalPairServing";
+import { isDatabaseTimeout, resolveSignalProducerMode } from "../lib/feed/moneyProducerMode";
 import { FORMULA_VERSION } from "../lib/feed/types";
 import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "../lib/ops/emergencyQuiesce";
 
@@ -115,20 +117,33 @@ async function main() {
   }
 
   const startedAt = new Date().toISOString();
+  const moneyRunStartedAtMs = Date.now();
+  const producerRunId = randomUUID();
   let status: "success" | "empty" | "error" = "success";
   let generatedCount = 0;
   let rejectedCount = 0;
   let errorMessage: string | undefined;
   let diagnostics: Record<string, unknown> = {};
+  let producerMode: "money" | "research" = "money";
+  let primaryCandidateN = 0;
+  let primaryQualifiedN = 0;
+  let primaryPersistedN = 0;
+  let servingProjectedN = 0;
+  let primaryPersistDurationMs = 0;
+  let servingProjectDurationMs = 0;
+  let primaryDbTimeoutN = 0;
+  let servingDbTimeoutN = 0;
+  let nonMoneyBranchExecutedN = 0;
 
   console.log("[generate-signals] Starting signal generation...");
   console.log(`[generate-signals] Config: ${JSON.stringify(CONFIG)}`);
 
   try {
+    producerMode = resolveSignalProducerMode(process.env.SIGNAL_PRODUCER_MODE);
+    console.log(`[generate-signals] producer_mode=${producerMode} run_id=${producerRunId}`);
     // Research universe: one UUID per cron run, frozen before buildLandingCards
-    const researchSnapshotRunId = randomUUID();
-    const producerRunId = randomUUID();
-    const researchSnapshotAt = new Date().toISOString();
+    const researchSnapshotRunId = producerMode === "research" ? randomUUID() : undefined;
+    const researchSnapshotAt = producerMode === "research" ? new Date().toISOString() : undefined;
 
     // Reservation-aware pinning (P0): read-only, exact-identity only. A load
     // failure degrades to zero pins but is reported distinctly (load_failed),
@@ -155,7 +170,7 @@ async function main() {
       // in `primaryQualifiedPairs`. The public `pairs` array stays capped.
       evaluateFullPrimaryPopulation: true,
       // Research universe options — does not alter product feed behavior
-      collectResearchSnapshots: true,
+      collectResearchSnapshots: producerMode === "research",
       researchSnapshotRunId,
       producerRunId,
       researchSnapshotAt,
@@ -229,6 +244,8 @@ async function main() {
     const pairsToCache = applyStrategicFloor(sortedMergedPairs, CONFIG.limit);
     generatedCount = pairsToCache.length;
     rejectedCount = result.rejected?.length ?? 0;
+    primaryCandidateN = Number(result.inspected?.candidatesAfterEndedFilter ?? 0);
+    primaryQualifiedN = result.primaryQualifiedPairs?.length ?? pairsToCache.length;
 
     const inspectedAny = result.inspected as unknown as Record<string, unknown> | undefined;
     const sportsDiscovery = (inspectedAny?.sportsDiscovery as Record<string, unknown> | undefined) ?? null;
@@ -272,7 +289,7 @@ async function main() {
     if (generatedCount === 0) {
       status = "empty";
       console.log("[generate-signals] No pairs generated - caching skipped");
-    } else {
+    } else if (producerMode === "money") {
       // Write pairs to cache for ok/partial status
       const expiresAt = new Date(
         Date.now() + CONFIG.cacheExpiryHours * 60 * 60 * 1000
@@ -285,13 +302,36 @@ async function main() {
       // writer, deduped by conditionId::selectedTokenId identity. Extras are
       // written first so the public rows keep the newer created_at and the
       // public feed read stays byte-identical.
-      const primaryPersist = await persistCanonicalPrimarySignalPopulation({
-        primaryQualifiedPairs: result.primaryQualifiedPairs ?? [],
-        publicPairsToCache: pairsToCache,
-        source: "polymarket",
-        formulaVersion: FORMULA_VERSION,
-        expiresAt,
-      });
+      let primaryPersist;
+      const persistenceBoundaryStartedAt = Date.now();
+      try {
+        primaryPersist = await persistCanonicalPrimarySignalPopulation({
+          primaryQualifiedPairs: result.primaryQualifiedPairs ?? [],
+          publicPairsToCache: pairsToCache,
+          source: "polymarket",
+          formulaVersion: FORMULA_VERSION,
+          expiresAt,
+        });
+      } catch (persistError) {
+        const elapsed = Date.now() - persistenceBoundaryStartedAt;
+        if (persistError instanceof MoneyPersistenceBoundaryError) {
+          primaryPersistedN = persistError.evidence.persistedCount;
+          servingProjectedN = persistError.evidence.servingProjectedCount;
+          primaryPersistDurationMs = persistError.evidence.primaryPersistDurationMs;
+          servingProjectDurationMs = persistError.evidence.servingProjectDurationMs;
+        }
+        if (persistError instanceof MoneyPersistenceBoundaryError && persistError.phase === "SERVING_PROJECTION") {
+          if (isDatabaseTimeout(persistError)) servingDbTimeoutN++;
+        } else {
+          if (!(persistError instanceof MoneyPersistenceBoundaryError)) primaryPersistDurationMs += elapsed;
+          if (isDatabaseTimeout(persistError)) primaryDbTimeoutN++;
+        }
+        throw persistError;
+      }
+      primaryPersistedN = primaryPersist.canonicalPersistedCount;
+      servingProjectedN = primaryPersist.servingProjectedCount;
+      primaryPersistDurationMs = primaryPersist.primaryPersistDurationMs;
+      servingProjectDurationMs = primaryPersist.servingProjectDurationMs;
       diagnostics.canonicalPrimaryPersist = {
         public_persisted: primaryPersist.publicPersistedCount,
         canonical_extras_proposed: primaryPersist.canonicalExtrasProposed,
@@ -312,7 +352,31 @@ async function main() {
       );
     }
 
+    // HOT serving lifecycle maintenance belongs to the money path and completes
+    // before any explicitly scheduled research work can start or fail.
+    if (producerMode === "money") {
+      try {
+        const prune = await pruneCurrentSignalPairServing();
+        diagnostics.PRUNE_ATTEMPTED = prune.attempted;
+        diagnostics.PRUNE_DELETED_ROWS = prune.deletedRows;
+        diagnostics.PRUNE_BATCHES = prune.batches;
+        diagnostics.PRUNE_DURATION_MS = prune.durationMs;
+        diagnostics.PRUNE_ERROR = null;
+      } catch (pruneError) {
+        diagnostics.PRUNE_ATTEMPTED = true;
+        diagnostics.PRUNE_DELETED_ROWS = 0;
+        diagnostics.PRUNE_BATCHES = 0;
+        diagnostics.PRUNE_DURATION_MS = null;
+        diagnostics.PRUNE_ERROR = pruneError instanceof Error ? pruneError.message : String(pruneError);
+        console.error("[generate-signals] Current serving prune failed (non-fatal):", diagnostics.PRUNE_ERROR);
+      }
+    }
+
+    nonMoneyBranches: {
+      if (producerMode !== "research") break nonMoneyBranches;
+
     let researchWriterAttempted = false;
+    nonMoneyBranchExecutedN++;
     let researchSnapshotsInserted = 0;
     let researchWriterWarning: string | null = null;
     let researchSnapshotsBeforeDedup = 0;
@@ -429,6 +493,7 @@ async function main() {
     // its sports-confirmation classification before persistence. Never throws;
     // a write failure is reported in diagnostics and never blocks signal generation.
     try {
+      nonMoneyBranchExecutedN++;
       const suppressInventoryWrite = shouldSuppressSportsInventoryWrite({
         activeReservationPinCount: pinLoad.active_reservation_pin_count,
         pinLoadFailed: pinLoad.load_failed,
@@ -486,6 +551,7 @@ async function main() {
     // Collects WC2026 extra-market candidates excluded by PER_EVENT_CAP=1 and
     // writes them as shadow rows for resolver tracking. Non-fatal.
     try {
+      nonMoneyBranchExecutedN++;
       const wcShadowExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       const shadowCandidates = await collectWcShadowCandidates();
       if (shadowCandidates.length > 0) {
@@ -506,6 +572,7 @@ async function main() {
 
     // ── eSport shadow write (fail-open) ────────────────────────────────────
     try {
+      nonMoneyBranchExecutedN++;
       const esportExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       const esportShadow = await collectEsportShadowCandidates();
       if (esportShadow.length > 0) {
@@ -525,6 +592,7 @@ async function main() {
 
     // ── NBA/NHL shadow write (fail-open) ───────────────────────────────────
     try {
+      nonMoneyBranchExecutedN++;
       const nbaNhlExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       const nbaNhlShadow = await collectNbaNhlShadowCandidates();
       if (nbaNhlShadow.length > 0) {
@@ -546,6 +614,7 @@ async function main() {
     // Captures all eligible binary in-band market outcomes (both sides) across
     // WC/eSport/NBA/NHL. Supplements per-scope cap-based collectors. Non-fatal.
     try {
+      nonMoneyBranchExecutedN++;
       const v1ExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
       const v1Candidates = await collectFullLineOutcomeV1Candidates();
       if (v1Candidates.length > 0) {
@@ -568,6 +637,7 @@ async function main() {
     // shadow-strategic-sports-v1. Targets spread/total/corners/goals/halves
     // present in the public feed but missed by the game_id V1 collector.
     try {
+      nonMoneyBranchExecutedN++;
       const WC_DET = /fifwc|world.?cup|fifa.?wc/i;
       const WC_HVG = /spread|handicap|over.?under|\bO\/U\b|total|team.?total|both.?teams.?to.?score|first.?team.?to.?score|corner|\bhalf\b|first.?half|second.?half/i;
       const WC_EXC = /exact.?scor|correct.?scor|player|assist|\bshot\b|goalscor|anytime.?scor/i;
@@ -651,6 +721,7 @@ async function main() {
     // Persists enriched rows with dataCoverage>=25 but below product minDataCoverage gate.
     // metric_formula_version='shadow-firemodel1_1_research_v0'; never shown in public feed.
     try {
+      nonMoneyBranchExecutedN++;
       const fm11Candidates = result.firemodel11ResearchCandidates ?? [];
       if (fm11Candidates.length > 0) {
         const fm11ExpiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
@@ -674,22 +745,6 @@ async function main() {
       diagnostics.fm11ResearchWarning = fm11Err instanceof Error ? fm11Err.message : String(fm11Err);
     }
 
-    // Producer-owned HOT lifecycle maintenance runs only after the normal
-    // historical writes and serving projections have completed.
-    try {
-      const prune = await pruneCurrentSignalPairServing();
-      diagnostics.PRUNE_ATTEMPTED = prune.attempted;
-      diagnostics.PRUNE_DELETED_ROWS = prune.deletedRows;
-      diagnostics.PRUNE_BATCHES = prune.batches;
-      diagnostics.PRUNE_DURATION_MS = prune.durationMs;
-      diagnostics.PRUNE_ERROR = null;
-    } catch (pruneError) {
-      diagnostics.PRUNE_ATTEMPTED = true;
-      diagnostics.PRUNE_DELETED_ROWS = 0;
-      diagnostics.PRUNE_BATCHES = 0;
-      diagnostics.PRUNE_DURATION_MS = null;
-      diagnostics.PRUNE_ERROR = pruneError instanceof Error ? pruneError.message : String(pruneError);
-      console.error("[generate-signals] Current serving prune failed (non-fatal):", diagnostics.PRUNE_ERROR);
     }
   } catch (error) {
     status = "error";
@@ -701,6 +756,23 @@ async function main() {
   const finishedAt = new Date().toISOString();
   const durationMs =
     new Date(finishedAt).getTime() - new Date(startedAt).getTime();
+  const totalMoneyRunDurationMs = Date.now() - moneyRunStartedAtMs;
+  const moneyProducerTelemetry = {
+    RUN_ID: producerRunId,
+    PRIMARY_CANDIDATE_N: primaryCandidateN,
+    PRIMARY_QUALIFIED_N: primaryQualifiedN,
+    PRIMARY_PERSISTED_N: primaryPersistedN,
+    SERVING_PROJECTED_N: servingProjectedN,
+    PRIMARY_PERSIST_DURATION_MS: primaryPersistDurationMs,
+    SERVING_PROJECT_DURATION_MS: servingProjectDurationMs,
+    TOTAL_MONEY_RUN_DURATION_MS: totalMoneyRunDurationMs,
+    PRIMARY_DB_TIMEOUT_N: primaryDbTimeoutN,
+    SERVING_DB_TIMEOUT_N: servingDbTimeoutN,
+    NON_MONEY_BRANCH_EXECUTED_N: nonMoneyBranchExecutedN,
+  };
+  diagnostics.producerMode = producerMode;
+  diagnostics.moneyProducer = moneyProducerTelemetry;
+  console.log(`[generate-signals] MONEY_PRODUCER_TELEMETRY ${JSON.stringify(moneyProducerTelemetry)}`);
 
   try {
     await writeJobRun({
