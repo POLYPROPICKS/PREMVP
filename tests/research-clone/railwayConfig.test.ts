@@ -27,7 +27,7 @@ test("service-scoped config exists only at a non-auto-discovered path and target
   assert.equal(existsSync(scopedPath), true, "expected ops/railway/research-clone-daily-sync.toml");
 
   const contents = readFileSync(scopedPath, "utf8");
-  assert.match(contents, /startCommand\s*=\s*"npm run research-clone:sync"/);
+  assert.match(contents, /startCommand\s*=\s*"npm run research-clone:sync && npm run research-clone:model-ready"/);
   assert.match(contents, /cronSchedule\s*=\s*"0 2 \* \* \*"/);
   assert.match(contents, /restartPolicyType\s*=\s*"NEVER"/);
 });
@@ -35,6 +35,7 @@ test("service-scoped config exists only at a non-auto-discovered path and target
 test("main exposes the research-clone:sync package command and its implementation", () => {
   const pkg = JSON.parse(readFileSync(repoRoot + "package.json", "utf8"));
   assert.equal(pkg.scripts["research-clone:sync"], "tsx scripts/research-clone-daily-sync.ts");
+  assert.equal(pkg.scripts["research-clone:model-ready"], "tsx scripts/modeling/clone-model-ready-pipeline.ts");
   assert.equal(existsSync(repoRoot + "scripts/research-clone-daily-sync.ts"), true);
   assert.equal(existsSync(repoRoot + "lib/research-clone/dailySync.ts"), true);
 });

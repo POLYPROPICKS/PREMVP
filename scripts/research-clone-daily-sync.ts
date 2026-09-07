@@ -282,6 +282,10 @@ async function main(): Promise<void> {
       STATUS: "SUCCESS",
     }),
   );
+  // Do not advance the downstream model-ready boundary until every raw table
+  // reached its durable clone checkpoint. The scheduled command uses `&&`, so
+  // a resumable partial sync safely suppresses model materialization.
+  if (pendingTables.length > 0) process.exitCode = 75;
 }
 
 main().catch((error) => {
