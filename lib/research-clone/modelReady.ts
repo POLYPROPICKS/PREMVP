@@ -32,11 +32,32 @@ export function toStoredModelRow(modelDate: string, row: ScorecardReadyRow): Sto
   };
 }
 
+/**
+ * Resolves the frozen-evaluator sport-family carrier from a persisted
+ * canonical row, old and new alike. Rows materialized after the carrier fix
+ * already carry a normalized `sportFamily`. Rows accepted before that fix
+ * carry the real source authority only under `providerSportFamily` (still
+ * present verbatim on the immutable persisted `canonical_row` JSON, never
+ * rewritten); this falls back to it with the exact same trim/lowercase
+ * semantics used at the write boundary
+ * (scripts/modeling/clone-model-ready-pipeline.ts:normalizeMaterializedSportFamily).
+ * Missing source authority — on either shape — stays explicit `null`, never
+ * fabricated.
+ */
+export function resolveSportFamily(row: { sportFamily?: string | null; providerSportFamily?: unknown }): string | null {
+  if (typeof row.sportFamily === "string") {
+    const normalized = row.sportFamily.trim().toLowerCase();
+    if (normalized.length > 0) return normalized;
+  }
+  const fallback = typeof row.providerSportFamily === "string" ? row.providerSportFamily.trim().toLowerCase() : "";
+  return fallback.length > 0 ? fallback : null;
+}
+
 export function evaluateRows(rows: ScorecardReadyRow[]) {
   const input = rows
     .filter((r) => (r.labelAsOf === "WIN" || r.labelAsOf === "LOSS") && r.providerEventId && r.eventStart && r.entryPrice !== null && r.entryPrice > 0 && r.entryPrice < 1)
     .sort((a, b) => a.decisionAt.localeCompare(b.decisionAt) || a.conditionId.localeCompare(b.conditionId))
-    .map((r) => ({ physicalEventKey: r.providerEventId!, decisionTimestamp: r.decisionAt, eventStart: r.eventStart!, entryPrice: r.entryPrice!, sportFamily: r.sportFamily ?? "", outcome: r.labelAsOf as "WIN" | "LOSS", ref: r.conditionId }));
+    .map((r) => ({ physicalEventKey: r.providerEventId!, decisionTimestamp: r.decisionAt, eventStart: r.eventStart!, entryPrice: r.entryPrice!, sportFamily: resolveSportFamily(r) ?? "", outcome: r.labelAsOf as "WIN" | "LOSS", ref: r.conditionId }));
   const result = runResearchEngine(input, "all");
   return Object.fromEntries(FROZEN_MODEL_IDS.map((id: FrozenModelId) => [id, result.models[id]]));
 }
