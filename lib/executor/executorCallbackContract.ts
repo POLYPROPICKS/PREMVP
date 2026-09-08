@@ -393,7 +393,7 @@ export async function handleOrderEventSubmission(
       market_slug: typeof raw.market_slug === "string" ? raw.market_slug : null,
       stake_usd: numLike(raw.stake_usd),
       submitted_size: numLike(raw.submitted_size) ?? numLike(raw.stake_usd),
-      submitted_price: typeof raw.submitted_price === "number" ? raw.submitted_price : null,
+      submitted_price: numLike(raw.submitted_price),
     };
     const validation = validateOrderEventAgainstQueueRow(submission, queueRow);
     if (!validation.ok) return { kind: "REJECTED_QUEUE_POLICY_MISMATCH", reason: validation.reason };
