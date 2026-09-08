@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-09-08T11:07:12Z",
-  "state_version": 22,
+  "updated_at": "2026-09-08T11:57:18Z",
+  "state_version": 23,
   "roadmap_phase": "PHASE1_PLANNING_SERVING_CLOSURE",
   "current_value_step": {
     "id": "BOUNDED_PRE_HOOK_SEED",
@@ -117,17 +117,17 @@
   ],
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "6f35a0f9c6038f082cfabcb26a8f7a030cc7f6d7",
+    "origin_main_sha": "8ffdfac0867d72b55b63c92e72496c9157c82a3e",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "commands": [
-        "git merge-base --is-ancestor 6f35a0f9c6038f082cfabcb26a8f7a030cc7f6d7 origin/main",
-        "git merge-base --is-ancestor 877b6adb4d9706fb5d220fe090b176135b1792b4 6f35a0f9c6038f082cfabcb26a8f7a030cc7f6d7"
+        "git merge-base --is-ancestor 8ffdfac0867d72b55b63c92e72496c9157c82a3e origin/main",
+        "git merge-base --is-ancestor 6f35a0f9c6038f082cfabcb26a8f7a030cc7f6d7 8ffdfac0867d72b55b63c92e72496c9157c82a3e"
       ],
-      "observed_at": "2026-09-08T11:07:12Z",
-      "note": "Automatic factual reconciliation. This records only an already-accepted PREMVP merge and terminal completion lineage; it does not accept product, runtime, capability, roadmap, business, or PnL claims."
+      "observed_at": "2026-09-08T11:57:18Z",
+      "note": "Automatic factual reconciliation. PR #272 (head de68cd7e892496eaa0fa70f82e5dd39ab6a486b5, exactly 7 recovered supabase/migrations/*.sql history files, no product code) merged into origin/main as 8ffdfac0867d72b55b63c92e72496c9157c82a3e. History-only migration-file recovery; no production DB mutation performed, no db push, no migration repair, PR #268 untouched. This records only an already-accepted PREMVP merge and lineage; it does not accept product, runtime, capability, roadmap, business, or PnL claims."
     }
   },
   "current_serving_authority": {
