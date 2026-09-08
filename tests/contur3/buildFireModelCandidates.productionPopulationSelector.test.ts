@@ -169,6 +169,9 @@ test("the canonical production population authority is v2-lite-growth-safe only"
 
 test("loadContractAPlanningSourceRows money read admits ONLY the selected production population", async (t) => {
   const v2Row = structuredRow("v2-lite-growth-safe", "v2", 80);
+  v2Row.source_generated_signal_pair_id = null;
+  v2Row.observation_id = "00000000-0000-4000-8000-000000000218";
+  v2Row.observed_at = CREATED_AT_ISO;
   const researchRow = structuredRow("shadow-firemodel1_1_research_v0", "research", 80);
   const shadowStrategicRow = structuredRow("shadow-strategic-sports-v1", "strategic", null);
   const servingRows = [v2Row, researchRow, shadowStrategicRow];
@@ -194,6 +197,7 @@ test("loadContractAPlanningSourceRows money read admits ONLY the selected produc
   assert.equal(result.length, 1);
   assert.equal(result[0].metric_formula_version, "v2-lite-growth-safe");
   assert.equal(result[0].condition_id, "condition-v2");
+  assert.equal(result[0].id, v2Row.observation_id, "direct observation is readable without GSP lineage");
   assert.ok(!result.some((r) => r.metric_formula_version === "shadow-firemodel1_1_research_v0"));
   assert.ok(!result.some((r) => r.metric_formula_version === "shadow-strategic-sports-v1"));
 
