@@ -122,7 +122,7 @@ export function projectCanonicalOrderEventPayload(record: Record<string, unknown
     side: str(record.side ?? record.selected_side),
     submitted_size: num(record.submitted_size),
     submitted_price: num(record.submitted_price),
-    clob_order_id: str(record.clob_order_id),
+    clob_order_id: str(record.clob_order_id) ?? str(record.venue_order_id) ?? str(record.order_id) ?? str(record.order_hash),
   };
 }
 
@@ -159,6 +159,24 @@ function numLike(v: unknown): number | null {
     if (Number.isFinite(n)) return n;
   }
   return null;
+}
+
+export interface NormalizedOrderEventPersistenceFields {
+  stake_usd: number | null;
+  clob_order_id: string | null;
+}
+
+/**
+ * Normalizes execution facts that Ireland already supplied under its
+ * established callback aliases. This is persistence shaping only: it does
+ * not derive submitted_size, fees, wallet telemetry, or any new fact.
+ */
+export function deriveOrderEventPersistenceFields(raw: Record<string, unknown>): NormalizedOrderEventPersistenceFields {
+  const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+  return {
+    stake_usd: numLike(raw.stake_usd),
+    clob_order_id: str(raw.clob_order_id) ?? str(raw.venue_order_id) ?? str(raw.order_id) ?? str(raw.order_hash),
+  };
 }
 
 function nestedObj(v: unknown): Record<string, unknown> | null {
@@ -288,7 +306,7 @@ type OrderEventClassification =
  */
 function classifyOrderEvent(raw: Record<string, unknown>): OrderEventClassification {
   const str = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
-  const clobOrderId = str(raw.clob_order_id) ?? str(raw.order_id) ?? str(raw.order_hash);
+  const clobOrderId = deriveOrderEventPersistenceFields(raw).clob_order_id;
   const status = str(raw.order_status)?.toUpperCase() ?? str(raw.status)?.toUpperCase() ?? null;
 
   const explicitlyRejected =

@@ -3,6 +3,7 @@ import { supabaseAdmin } from "@/lib/supabase/server";
 import {
   handleOrderEventSubmission,
   deriveOrderEventFillFields,
+  deriveOrderEventPersistenceFields,
   type OrderEventDbPort,
   type StoredOrderEvent,
   type InsertOrderEventFailure,
@@ -317,6 +318,7 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
       // never against raw -- response_json_sanitized must never carry an
       // unredacted secret through the nested raw_response fallback.
       const fill = deriveOrderEventFillFields(s);
+      const persistence = deriveOrderEventPersistenceFields(s);
       const record: Record<string, unknown> = {
         // identity / routing
         event_type: str(s.event_type),
@@ -325,7 +327,7 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
 
         // dedup keys
         idempotency_key: str(s.idempotency_key),
-        clob_order_id: str(s.clob_order_id),
+        clob_order_id: persistence.clob_order_id,
         transaction_hashes: s.transaction_hashes ?? null,
 
         // NOTE: executor_order_events.queue_id, match_family_key, and
@@ -356,7 +358,7 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
         // pricing
         submitted_price: fill.submitted_price,
         submitted_size: fill.submitted_size,
-        stake_usd: num(s.stake_usd),
+        stake_usd: persistence.stake_usd,
         making_amount: fill.making_amount,
         taking_amount: fill.taking_amount,
         observed_best_bid: num(s.observed_best_bid),
