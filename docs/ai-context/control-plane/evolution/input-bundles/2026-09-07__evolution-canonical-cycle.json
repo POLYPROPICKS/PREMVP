@@ -1,0 +1,116 @@
+{
+    "bundle_id": "2026-09-07__evolution-canonical-cycle",
+    "repository": "POLYPROPICKS/PREMVP",
+    "period_start": "2026-09-07T00:00:00Z",
+    "period_end": "2026-09-08T00:00:00Z",
+    "evidence_cutoff": "2026-09-08T00:20:00Z",
+    "capture_coverage": "PARTIAL",
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+        "POLYPROPICKS/PREMVP#253",
+        "POLYPROPICKS/PREMVP#254",
+        "POLYPROPICKS/PREMVP#255",
+        "POLYPROPICKS/PREMVP#256",
+        "POLYPROPICKS/PREMVP#257",
+        "POLYPROPICKS/PREMVP#258",
+        "POLYPROPICKS/PREMVP#259",
+        "POLYPROPICKS/PREMVP#260"
+    ],
+    "operator_action_events": [],
+    "operating_telemetry": {
+        "capture_coverage": "PARTIAL",
+        "chat_interaction_coverage": "UNKNOWN",
+        "founder_actions_proven": 0,
+        "founder_actions_removable": "UNKNOWN",
+        "executor_runs": "UNKNOWN",
+        "successful_terminal_results": 9,
+        "reruns_resumes": "UNKNOWN",
+        "recovery_iterations": "UNKNOWN",
+        "architect_corrections": 0,
+        "reviewer_corrections_rejections": 0,
+        "orchestration_waste_iterations": 0,
+        "repeated_defect_families": 3,
+        "active_onion_chains": 1,
+        "implemented_fixes": 5,
+        "proven_effective_fixes": 5,
+        "runtime_evidence_count": 0,
+        "reusable_artifacts_created": 1,
+        "actions_per_verified_result": "UNKNOWN",
+        "time_to_verified_result": "UNKNOWN"
+    },
+    "supporting_metrics": {
+        "runtime_evidence_count": 0,
+        "reusable_artifacts_created": 1,
+        "reviewer_rejection_count": 0,
+        "architect_corrections": 0
+    },
+    "defect_occurrences": [
+        {
+            "defect_id": "DEF-2026-09-07-GOVERNOR-REPORT-LINE-WIDTH-HISTORY-GROWTH",
+            "origin": "CONTROL_PLANE_DEFECT",
+            "recurrence": "NEW_INDEPENDENT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#253",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#253 (renderGovernorFounderReport concatenated every eligibility.based_on_cycles id onto one line; the real 2026-09-07 history of 11 canonical Evolution cycles produced a 484-character line, failing the existing 400-character readability contract in validateGovernorReport. Fixed by wrapping provenance across bounded-many-per-line bullets at a 320-char pack width. control-plane:evolution:govern:test 58/58, control-plane:evolution:test 57/57, control-plane:check 310/310 pass; real 11-cycle render confirmed PASS, max line 312.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-07-SPORTFAMILY-CARRIER-MISMATCH",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "NEW_INDEPENDENT",
+            "defect_chain_id": "CHAIN-SPORTFAMILY-CARRIER-MISMATCH-20260907",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#257",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#257 (persisted materializer rows carry the real sport authority as providerSportFamily, but clone-model-ready-pipeline.ts:loadRows() never produced a sportFamily key, so lib/research-clone/modelReady.ts:evaluateRows() silently defaulted every row's sportFamily to \"\", making the frozen C1/C4 soccer branch and the C5 table-tennis exclusion unreachable -- proven against the clone: 529 of 1085 C0 events over 2026-09-03/04/06 are genuinely soccer, yet C4 selected 0 before the fix. normalizeMaterializedSportFamily() added at the write boundary. 16/16 focused tests pass, npx tsc --noEmit clean.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-07-SPORTFAMILY-HISTORICAL-ROW-READ-FALLBACK-MISSING",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-SPORTFAMILY-CARRIER-MISMATCH-20260907",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#258",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#258 (fixing the write boundary in PR#257 exposed a deeper layer: research_model_ready_rows already accepted for 2026-09-03/04/06 were persisted before that fix, so their immutable canonical_row has no sportFamily key at all -- only providerSportFamily. Added resolveSportFamily() read-side fallback in lib/research-clone/modelReady.ts. 39/39 focused tests pass; business-proof against the real, untouched Sep03/04/06 canonical_row objects reproduces the frozen baseline exactly: C0 N=1085 PnL=+162.87u ROI=15.0107%, C1/C4 N=529 PnL=+67.93u ROI=12.8408%, C5 N=1085 PnL=+162.87u ROI=15.0107%.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-07-CLONE-ROLLING-WINDOW-DATE-SEMANTICS",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "NEW_INDEPENDENT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#256",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#256 (clone rolling economics membership incorrectly used decisionAt instead of the persisted model_date; also added bounded pagination so rolling reads no longer silently truncate at the Data API page size. Reviewed SHA 1c4aff0, Contur gate reviewer PASS. 17/17 focused research-clone tests pass, typecheck/build/diff-check PASS.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+            "origin": "STATE_OR_CONTEXT_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#260",
+            "proven_effective_evidence_refs": [
+                "docs/ai-context/control-plane/CURRENT_STATE.yaml (updated_at advanced from 2026-08-28T21:00:54Z / state_version 17 -- stale for 10 consecutive Evolution cycles per hypothesis H1 -- to 2026-09-07T19:54:04Z / state_version 18, recording the accepted completion money-producer-isolation-v2-db7cc2d with proven origin/main merge ancestry. This closes the chronic staleness chain, but only because a qualifying accepted completion happened to land this period -- the underlying coupling between state refresh and completion acceptance is unaddressed, see hypothesis H1.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+            "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-07-ZERO-CI-GATE-ON-MERGE",
+            "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": "CHAIN-NO-CI-GATE-MERGE-ENFORCEMENT",
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        }
+    ],
+    "notes": "git log origin/main --since=2026-09-07T00:00:00Z --until=2026-09-08T00:00:00Z shows 9 merges to main: PR#251 (merge commit 3bda5a6, 2026-09-07T00:25:12Z -- the prior cycle's own docs(evolution) canonicalization of the 2026-09-06 cycle, excluded from confirmed_changes exactly as PR#249/#247/#246/#240 etc. were excluded from earlier bundles) plus eight real merges: PR#253/254/255/256/257/258/259/260. mcp__github__list_pull_requests (state=open) at this cutoff shows 29 open PRs (up from 28 at the prior cutoff), with one newly-surfaced member: #252 'evidence(contur3): 2026-09-06 funnel-trace-audit -- Ireland order-submission stall' (draft, created 2026-09-07T02:14:33Z) -- draft/unmerged, its findings are not confirmed evidence for this cycle, recorded only as H7 continuity. Money-producer isolation (PR#259, state-reconciled by PR#260): normal signal generation now persists only the bounded primary money population, projects it to Serving, prunes Serving, and requires explicit SIGNAL_PRODUCER_MODE=research for research snapshots/shadow writers/FireModel persistence -- 6 focused tests, typecheck and production build passed per the PR body; this is the accepted completion CURRENT_STATE.yaml now records as money-producer-isolation-v2-db7cc2d. No live production/runtime observation of this isolation exists yet this period. Evolution/Governor Stop-gate (PR#255) lands the durable terminal-persistence enforcement hook (.claude/hooks/evolution-governor-stop-gate.mjs, already registered in AGENT_REGISTRY.yaml with evidence_class SUPPORTED) on canonical origin/main for the first time; 18/18 focused + 328/328 full control-plane tests pass; no live end-to-end block-then-canonicalize run has yet been recorded in EVIDENCE_LEDGER.md. PR#253 fixed a real CONTROL_PLANE_DEFECT in the Automation Roadmap Governor's Founder-report renderer that would have blocked a valid Governor result from ever producing a passing report once canonical Evolution history reached 11 cycles -- the same 'growing canonical history breaks a fixed-width/fixed-cardinality assumption' shape flagged generally by this Routine's own live-history defect-detection instructions, though this is its first confirmed instance and is not yet chained to a prior one. PR#257 and PR#258 form a same-day two-layer onion chain (CHAIN-SPORTFAMILY-CARRIER-MISMATCH-20260907): #257 fixed the write-boundary field-name mismatch that made the frozen C1/C4 soccer branch unreachable; fixing that write boundary immediately exposed that already-accepted historical rows persisted before the fix still lacked the corrected field, requiring #258's read-side backward-compatible fallback the same day. Checked via mcp__github__pull_request_read method=get_check_runs on PR#259 and PR#255: both return total_count=0 -- confirming, for the first time via the GitHub Checks API rather than timing inference alone, that this period's merges (all created-to-merged in seconds to a few minutes, single-account, no requested reviewers) proceed with zero CI gate. This directly instantiates open_blocker BLK-002 ('Codex reviewer invocation is not deterministic: no required invocation receipt, no deterministic gate, no project-scoped Codex agent package, no tracked CI gate') at the highest stakes yet observed, since PR#259 touches the live money-producer/Contract A serving boundary directly. docs/ai-context/control-plane/EVIDENCE_LEDGER.md's most recent entry remains EV-0020 (2026-08-13); none of this period's eight real merges added a ledger entry, so EVIDENCE_LEDGER.md is not a current source for this period's evidence -- CURRENT_STATE.yaml and live PR/commit history were used instead per the source-of-truth hierarchy. No completion envelope other than the one already reflected in CURRENT_STATE.yaml's accepted_completions was found; no OPERATOR_ACTION_EVENT records exist for this period, so total_operator_actions stays a PARTIAL lower bound of zero. chat_interaction_coverage is recorded UNKNOWN per this Routine's own instruction (no canonical source exposes ChatGPT Project conversation history) -- prior cycles recorded this field PARTIAL, which this bundle treats as a latent self-produced inconsistency now corrected going forward, not a new defect worth a separate defect_occurrence entry. No product database, deployment or Ireland runtime path changed this period; PR#252's draft funnel-trace-audit is the only Ireland-adjacent artifact and it remains unmerged."
+}
