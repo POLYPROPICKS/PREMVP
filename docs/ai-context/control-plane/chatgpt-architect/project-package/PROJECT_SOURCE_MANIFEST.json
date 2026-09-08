@@ -7,7 +7,7 @@
   "provenance": {
     "_volatile": true,
     "_note": "Resolved live at generation time and normalized by --check, which verifies content hashes rather than the commit id.",
-    "generated_from_commit": "6f35a0f9c6038f082cfabcb26a8f7a030cc7f6d7"
+    "generated_from_commit": "dd4df582a8a23190aa16526e0c0367e522b7fdf2"
   },
   "active_project_sources": [
     {
@@ -23,8 +23,8 @@
       "role": "GENERATED_BUNDLE",
       "canonical_path": "docs/ai-context/control-plane/chatgpt-architect/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md",
       "upload_path": "docs/ai-context/control-plane/chatgpt-architect/project-package/SOURCES/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md",
-      "bytes": 7700,
-      "sha256": "22095f2bb465eb0dac28e3145a63910ced8a5ae88ad1498d4798e42966a5b6ae"
+      "bytes": 7827,
+      "sha256": "2200f92a7cb242db4a94e54341d8671b77b829bb463f7e2a38f6dba031b6f249"
     },
     {
       "name": "PROMPT__PROTOCOL.md",
