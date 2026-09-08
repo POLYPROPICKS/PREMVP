@@ -17,6 +17,7 @@ import {
   handleOrderEventSubmission,
   projectCanonicalOrderEventPayload,
   deriveOrderEventFillFields,
+  deriveOrderEventPersistenceFields,
   type OrderEventDbPort,
   type StoredOrderEvent,
   type InsertOrderEventFailure,
@@ -598,6 +599,28 @@ test("Fill-9 (route wiring, static source check): the route uses deriveOrderEven
   assert.match(source, /response_json_sanitized:\s*fill\.response_json_sanitized/);
   assert.doesNotMatch(source, /making_amount:\s*str\(/);
   assert.doesNotMatch(source, /taking_amount:\s*str\(/);
+});
+
+test("Persistence-1 (Ireland callback shape): supplied stake and venue identity persist without fabricating submitted_size", () => {
+  const payload = {
+    stake_usd: "2.50",
+    submitted_price: "0.43",
+    venue_order_id: "venue-order-43",
+    order_id: "legacy-order-43",
+  };
+  const persistence = deriveOrderEventPersistenceFields(payload);
+  const canonical = projectCanonicalOrderEventPayload({ token_id: "token-1", idempotency_key: "idem-1", ...payload });
+  const fill = deriveOrderEventFillFields(payload);
+  const source = readFileSync(path.join(root, "app/api/executor/order-events/route.ts"), "utf8");
+
+  assert.equal(persistence.stake_usd, 2.5);
+  assert.equal(persistence.clob_order_id, "venue-order-43");
+  assert.equal(canonical.clob_order_id, "venue-order-43");
+  assert.equal(fill.submitted_price, 0.43);
+  assert.equal(fill.submitted_size, null);
+  assert.match(source, /const persistence = deriveOrderEventPersistenceFields\(s\)/);
+  assert.match(source, /clob_order_id:\s*persistence\.clob_order_id/);
+  assert.match(source, /stake_usd:\s*persistence\.stake_usd/);
 });
 
 test("Fill-10: fee_usd is never inferred -- an explicit null fee_usd in the callback stays null end-to-end through handleOrderEventSubmission (no queue-policy/insert path fabricates it)", async () => {
