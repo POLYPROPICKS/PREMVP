@@ -34,6 +34,7 @@ import {
   assertPassInvariants,
   executeReleaseRun,
 } from '../../scripts/control-plane/lib/premvp-release-pipeline.mjs';
+import { MIGRATION_MODE, validateApprovedMigrationRelease } from '../../scripts/control-plane/lib/premvp-application-migration-release.mjs';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const routingDoc = JSON.parse(fs.readFileSync(
@@ -45,6 +46,25 @@ const releaseRunSchema = JSON.parse(fs.readFileSync(
 
 function baseManifest(overrides = {}) {
   return JSON.parse(JSON.stringify({ ...releaseRunSchema.example_valid_r2_run, ...overrides }));
+}
+
+function migrationManifest(overrides = {}) {
+  return baseManifest({
+    task_id: 'PREMVP_APPLICATION_MIGRATION_RELEASE',
+    task_class: 'LIVE_RUNTIME_OPERATION',
+    risk_class: 'R4_CONTUR_PRODUCTION_BOUNDARY',
+    executor: 'local_codex_windows',
+    allowed_files: ['supabase/migrations/20260908000000_safe_additive.sql'],
+    required_capabilities: ['REPOSITORY_READ', 'LOCAL_TEST_RUN', 'PREMVP_APPLICATION_MIGRATION_RELEASE'],
+    migration_release: {
+      mode: MIGRATION_MODE,
+      migration_files: ['supabase/migrations/20260908000000_safe_additive.sql'],
+      safety_class: 'ADDITIVE_COMPATIBLE',
+      rollback_strategy: 'COMPATIBILITY_RETAINED',
+      direct_raw_mutation: false,
+    },
+    ...overrides,
+  });
 }
 
 // ---- 1. Manifest schema accepts a valid R2 PREMVP run. -----------------------------------
@@ -130,6 +150,12 @@ test('10. dry-run remains permitted while enabled', () => {
   assert.equal(result.plan.pipeline_status, 'ENABLED');
   assert.equal(result.plan.mutating_mode_enabled, true);
   assert.deepEqual(result.plan.states, STATE_ORDER);
+});
+
+test('10b. declared additive PREMVP migration reaches the registered dry-run path', () => {
+  const result = dryRunPlan(migrationManifest(), routingDoc, pipelineSpec);
+  assert.equal(result.ok, true, result.errors.join('\n'));
+  assert.ok(result.plan.states.includes('APPLY_APPROVED_MIGRATION'));
 });
 
 // ---- 11. Status reconstruction is permitted while disabled. -------------------------------------
@@ -355,7 +381,7 @@ test('31. completion PASS invariants are enforced', () => {
 });
 
 // ---- 32. No database/Ireland/live-money action is reachable. -------------------------------------
-test('32. no database/Ireland/live-money action is reachable', () => {
+test('32. only the declared application-migration adapter may reach database mutation', () => {
   assert.equal(pipelineSpec.hard_prohibitions.database_mutation_by_generic_pipeline, true);
   assert.equal(pipelineSpec.hard_prohibitions.ireland, true);
   assert.equal(pipelineSpec.hard_prohibitions.live_money, true);
@@ -366,8 +392,30 @@ test('32. no database/Ireland/live-money action is reachable', () => {
 
   const libSource = fs.readFileSync(
     path.join(REPO_ROOT, 'scripts/control-plane/lib/premvp-release-pipeline.mjs'), 'utf8');
-  assert.ok(!/supabase|DATABASE_URL|railway (up|deploy)/i.test(libSource),
-    'engine must not reference a database write transport or a manual deploy command');
+  assert.ok(!/DATABASE_URL|railway (up|deploy)/i.test(libSource),
+    'engine must not reference credentials or a manual deploy command');
+});
+
+test('migration safety rejects raw, destructive, mixed, and undeclared changes', () => {
+  const declaration = migrationManifest().migration_release;
+  const safeSql = '-- PREMVP_APPLICATION_MIGRATION_V1\nCREATE TABLE public.safe_probe (id uuid PRIMARY KEY);';
+  const safe = validateApprovedMigrationRelease({ declaration, changedFiles: declaration.migration_files, readFile: () => safeSql });
+  assert.equal(safe.ok, true, safe.errors.join('\n'));
+  const destructive = validateApprovedMigrationRelease({ declaration, changedFiles: declaration.migration_files, readFile: () => '-- PREMVP_APPLICATION_MIGRATION_V1\nDROP TABLE public.safe_probe;' });
+  assert.equal(destructive.ok, false);
+  assert.match(destructive.errors.join('\n'), /MIGRATION_SQL_FORBIDDEN/);
+  const mixed = validateApprovedMigrationRelease({ declaration, changedFiles: [...declaration.migration_files, 'supabase/migrations/20260908000001_second.sql'], readFile: () => safeSql });
+  assert.equal(mixed.ok, false);
+  assert.match(mixed.errors.join('\n'), /MIGRATION_CHANGESET_MISMATCH/);
+  const undeclared = validateApprovedMigrationRelease({ declaration: null, changedFiles: declaration.migration_files, readFile: () => safeSql });
+  assert.equal(undeclared.ok, false);
+  assert.match(undeclared.errors.join('\n'), /DECLARATION_REQUIRED/);
+  const unapprovedConstraintDrop = validateApprovedMigrationRelease({ declaration, changedFiles: declaration.migration_files, readFile: () => '-- PREMVP_APPLICATION_MIGRATION_V1\nALTER TABLE public.safe_probe DROP CONSTRAINT safe_probe_fk;' });
+  assert.equal(unapprovedConstraintDrop.ok, false);
+  assert.match(unapprovedConstraintDrop.errors.join('\n'), /CONSTRAINT_DROP_UNAUTHORIZED/);
+  const compatibleDeclaration = { ...declaration, safety_class: 'COMPATIBILITY_TRANSITION', constraint_drop_justification: 'Remove legacy FK after direct Serving contract is reviewed.' };
+  const compatible = validateApprovedMigrationRelease({ declaration: compatibleDeclaration, changedFiles: compatibleDeclaration.migration_files, readFile: () => '-- PREMVP_APPLICATION_MIGRATION_V1\nALTER TABLE public.safe_probe DROP CONSTRAINT safe_probe_fk;' });
+  assert.equal(compatible.ok, true, compatible.errors.join('\n'));
 });
 
 // ---- Changeset validation (VALIDATE_CHANGESET state). ---------------------------------------------
@@ -420,4 +468,27 @@ test('enabled lifecycle executes registered phases with an exact reviewer receip
   assert.equal(result.status, 'PASS');
   assert.deepEqual(calls, ['test', 'push', 'reconcile-apply', 'push', 'reconcile-verify']);
   assert.equal(result.reconciliation.pr.mergeCommitSha, 'merge-sha');
+});
+
+test('migration-bearing lifecycle invokes the adapter after the exact R4 receipt and before push', async () => {
+  const manifest = migrationManifest({ test_commands: ['test'], typecheck_commands: [], build_commands: [] });
+  const calls = [];
+  const adapters = {
+    git: {
+      currentHead: async () => 'exact-sha',
+      changedFiles: async () => manifest.migration_release.migration_files,
+      readFile: () => '-- PREMVP_APPLICATION_MIGRATION_V1\nCREATE TABLE public.safe_probe (id uuid PRIMARY KEY);',
+      push: async () => calls.push('push'),
+      isAncestor: async () => true,
+    },
+    commands: { run: async () => calls.push('test') },
+    reviewer: { findReceipt: async () => ({ agent_id: 'premvp.reviewer.contur_gate.v1', reviewed_sha: 'exact-sha', verdict: 'PASS' }) },
+    database: { applyApprovedMigration: async () => { calls.push('migration'); return { ok: true, migration_file: manifest.migration_release.migration_files[0] }; } },
+    github: { findPullRequest: async () => null, createPullRequest: async () => ({ number: 1, repo: 'POLYPROPICKS/PREMVP', headSha: 'exact-sha', merged: false, mergeCommitSha: null, url: 'x' }), mergePullRequest: async () => ({ mergeCommitSha: 'merge-sha' }) },
+    deploy: { getProductionSha: async () => 'merge-sha' },
+    reconcile: { apply: async () => ({ changed: true, stateHeadSha: 'exact-sha' }), verify: async () => {} },
+  };
+  const result = await executeReleaseRun(manifest, routingDoc, pipelineSpec, adapters);
+  assert.equal(result.status, 'PASS');
+  assert.deepEqual(calls, ['test', 'migration', 'push', 'push']);
 });

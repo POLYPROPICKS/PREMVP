@@ -115,6 +115,7 @@ async function main() {
       git: {
         currentHead: async () => run('git', ['rev-parse', 'HEAD']).trim(),
         changedFiles: async (base, sha) => run('git', ['diff', '--name-only', `${base}...${sha}`]).split(/\r?\n/).filter(Boolean),
+        readFile: (file) => fs.readFileSync(path.resolve(REPO_ROOT, file), 'utf8'),
         push: async (branch, sha) => { run('git', ['push', 'origin', `${sha}:refs/heads/${branch}`], { inherit: true }); },
         isAncestor: async (sha, ref) => { try { run('git', ['fetch', 'origin'], { inherit: true }); run('git', ['merge-base', '--is-ancestor', sha, ref]); return true; } catch { return false; } },
       },
@@ -140,6 +141,12 @@ async function main() {
         },
       },
       deploy: { getProductionSha: async (url) => { const response = await fetch(url); if (!response.ok) throw new PipelineError('DEPLOYMENT_READ_FAILED', `HTTP ${response.status}`); const payload = await response.json(); return typeof payload.commit_sha === 'string' ? payload.commit_sha : null; } },
+      database: {
+        applyApprovedMigration: async ({ declaration }) => {
+          const output = run('node', ['scripts/control-plane/apply-premvp-approved-migration.mjs', '--declaration', JSON.stringify(declaration)], { inherit: false });
+          return JSON.parse(output);
+        },
+      },
       reconcile: {
         apply: async ({ manifest, resultSha, mergeSha }) => {
           const completionPath = path.resolve(REPO_ROOT, manifest.completion_envelope_path);
