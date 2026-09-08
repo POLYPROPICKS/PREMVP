@@ -1,0 +1,476 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-09-07__evolution-canonical-cycle",
+  "period_start": "2026-09-07T00:00:00Z",
+  "period_end": "2026-09-08T00:00:00Z",
+  "evidence_cutoff": "2026-09-08T00:20:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (Routine A)",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#253",
+      "POLYPROPICKS/PREMVP#254",
+      "POLYPROPICKS/PREMVP#255",
+      "POLYPROPICKS/PREMVP#256",
+      "POLYPROPICKS/PREMVP#257",
+      "POLYPROPICKS/PREMVP#258",
+      "POLYPROPICKS/PREMVP#259",
+      "POLYPROPICKS/PREMVP#260"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-09-07__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "NOT_ENOUGH_EVIDENCE",
+    "what_moved": [],
+    "next_verified_production_fact_now_possible": "A bounded read-only production observation of the next signal-generation run after PR#259/#260, confirming research/shadow writers stay gated behind SIGNAL_PRODUCER_MODE=research under real inventory -- not yet observed.",
+    "blockers_removed": [
+      {
+        "statement": "PR#259 (reconciled by PR#260 as money-producer-isolation-v2-db7cc2d) isolates the live money-producer path from research writers: normal generation persists only the bounded primary money population and prunes Serving; research/shadow writers now require SIGNAL_PRODUCER_MODE=research. 6 tests, typecheck and build passed; recorded as an accepted completion.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#259",
+          "POLYPROPICKS/PREMVP#260",
+          "docs/ai-context/control-plane/CURRENT_STATE.yaml#accepted_completions.money-producer-isolation-v2-db7cc2d"
+        ]
+      },
+      {
+        "statement": "PR#257+PR#258 closed a two-layer defect (CHAIN-SPORTFAMILY-CARRIER-MISMATCH-20260907) in the research-clone model-ready pipeline: a providerSportFamily/sportFamily field mismatch made the frozen C1/C4 soccer branch unreachable. Fixed at the write boundary and with a historical-row read fallback; business-proof against real clone data reproduces the frozen PnL/ROI baseline exactly.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#257",
+          "POLYPROPICKS/PREMVP#258"
+        ]
+      },
+      {
+        "statement": "PR#256 fixed clone rolling-economics membership to key on persisted model_date instead of decisionAt, and added bounded pagination so rolling reads no longer truncate at the page size. Contur gate reviewer PASS; 17/17 focused tests, typecheck, build and diff-check passed.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#256"
+        ]
+      }
+    ],
+    "blockers_introduced": [],
+    "not_proven": [
+      "No live production observation exists confirming the money-producer isolation (PR#259/#260) actually holds under a real signal-generation run -- only unit tests, typecheck and a production build were exercised, none of them a runtime/business observation.",
+      "Reconciled PnL is not claimed and cannot be: no fills, fees or settlement evidence exists for this period.",
+      "All eight merges this period landed with zero CI checks (GitHub Checks API on PR#259 and PR#255 both return total_count=0), each opened-to-merged within seconds to minutes by one account with no reviewers -- the starkest BLK-002 instance yet: PR#259, the money-producer isolation itself, merged 3 seconds after opening.",
+      "The sportFamily chain's business-proof (PnL/ROI table matching the frozen baseline) is a read-only clone/diagnostic measurement against historical data, not a live production/runtime observation and not reconciled PnL.",
+      "CURRENT_STATE.yaml's four open blockers (BLK-001 C1 natural night-reservations run, BLK-002 non-deterministic reviewer invocation / no CI gate, BLK-003 Supabase write access from claude_code_cloud, BLK-004 Ireland runtime access) remain unresolved and unchanged this period.",
+      "A new draft PR (#252, 'evidence(contur3): 2026-09-06 funnel-trace-audit -- Ireland order-submission stall', created 2026-09-07T02:14:33Z) appeared investigating a possible Ireland/C2 execution issue, but it is unmerged and its findings are not confirmed evidence for this cycle."
+    ],
+    "runtime_or_business_evidence_exists": false,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_ADDED",
+    "capabilities": [
+      {
+        "domain": "RECOVERY_AND_CHECKPOINTS",
+        "statement": "Evolution/Governor terminal-persistence Stop-gate reaches canonical main for the first time (PR#255): a Stop hook blocks session end until a validated Evolution/Governor lineage is canonical.",
+        "persisted_artifact": ".claude/hooks/evolution-governor-stop-gate.mjs (AGENT_REGISTRY.yaml hook entry)",
+        "use_or_validation_evidence": "18/18 focused tests plus the full 328/328 suite pass (PR#255); no live end-to-end run recorded yet, so test-validated only.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#255",
+          "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#claude.hook.evolution_governor_terminal_persistence_gate"
+        ]
+      },
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "Governor's Founder-report renderer fixed to stay valid as canonical history grows: provenance now wraps across bounded per-line bullets instead of one long line.",
+        "persisted_artifact": "scripts/control-plane/evolution-govern.mjs",
+        "use_or_validation_evidence": "Governor/Evolution/control-plane suites pass (58/58, 57/57, 310/310); real 11-cycle render PASS, max line 312 (PR#253).",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#253"
+        ]
+      }
+    ],
+    "not_proven": [
+      "The Stop-gate's live end-to-end enforcement (an actual session blocked at Stop, then successfully driven through canonicalization to a fresh canonical main) has not yet been observed and recorded in EVIDENCE_LEDGER.md.",
+      "The money-producer isolation (PR#259/#260) and the sportFamily/rolling-window fixes (PR#256/257/258) are correctness fixes to existing product and modeling files, not new persisted Manifest 2 capability-domain artifacts; they are counted under Axis A, not Axis B.",
+      "No Automation Roadmap Governor run itself executed or reached canonical persistence this period; the tracked Governor draft-PR family remains unmerged and unchanged in composition apart from the new #252 stray draft."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": 0,
+      "runtime_evidence_count": 0,
+      "reusable_artifacts_created": 1,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-09-07T00:00:00Z",
+    "period_end": "2026-09-08T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "founder_actions_removable": "UNKNOWN",
+    "executor_runs": "UNKNOWN",
+    "successful_terminal_results": 9,
+    "reruns_resumes": "UNKNOWN",
+    "recovery_iterations": "UNKNOWN",
+    "reviewer_corrections_rejections": 0,
+    "orchestration_waste_iterations": 0,
+    "implemented_fixes": 5,
+    "proven_effective_fixes": 5,
+    "runtime_evidence_count": 0,
+    "reusable_artifacts_created": 1,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN",
+    "capture_coverage": "PARTIAL",
+    "chat_interaction_coverage": "PARTIAL",
+    "founder_actions_proven": 0,
+    "architect_corrections": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-09-07-GOVERNOR-REPORT-LINE-WIDTH-HISTORY-GROWTH",
+        "origin": "CONTROL_PLANE_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#253",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#253 (renderGovernorFounderReport concatenated every eligibility.based_on_cycles id onto one line; the real 2026-09-07 history of 11 canonical Evolution cycles produced a 484-character line, failing the existing 400-character readability contract in validateGovernorReport. Fixed by wrapping provenance across bounded-many-per-line bullets at a 320-char pack width. control-plane:evolution:govern:test 58/58, control-plane:evolution:test 57/57, control-plane:check 310/310 pass; real 11-cycle render confirmed PASS, max line 312.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-07-SPORTFAMILY-CARRIER-MISMATCH",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": "CHAIN-SPORTFAMILY-CARRIER-MISMATCH-20260907",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#257",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#257 (persisted materializer rows carry the real sport authority as providerSportFamily, but clone-model-ready-pipeline.ts:loadRows() never produced a sportFamily key, so lib/research-clone/modelReady.ts:evaluateRows() silently defaulted every row's sportFamily to \"\", making the frozen C1/C4 soccer branch and the C5 table-tennis exclusion unreachable -- proven against the clone: 529 of 1085 C0 events over 2026-09-03/04/06 are genuinely soccer, yet C4 selected 0 before the fix. normalizeMaterializedSportFamily() added at the write boundary. 16/16 focused tests pass, npx tsc --noEmit clean.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-07-SPORTFAMILY-HISTORICAL-ROW-READ-FALLBACK-MISSING",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-SPORTFAMILY-CARRIER-MISMATCH-20260907",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#258",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#258 (fixing the write boundary in PR#257 exposed a deeper layer: research_model_ready_rows already accepted for 2026-09-03/04/06 were persisted before that fix, so their immutable canonical_row has no sportFamily key at all -- only providerSportFamily. Added resolveSportFamily() read-side fallback in lib/research-clone/modelReady.ts. 39/39 focused tests pass; business-proof against the real, untouched Sep03/04/06 canonical_row objects reproduces the frozen baseline exactly: C0 N=1085 PnL=+162.87u ROI=15.0107%, C1/C4 N=529 PnL=+67.93u ROI=12.8408%, C5 N=1085 PnL=+162.87u ROI=15.0107%.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-07-CLONE-ROLLING-WINDOW-DATE-SEMANTICS",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#256",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#256 (clone rolling economics membership incorrectly used decisionAt instead of the persisted model_date; also added bounded pagination so rolling reads no longer silently truncate at the Data API page size. Reviewed SHA 1c4aff0, Contur gate reviewer PASS. 17/17 focused research-clone tests pass, typecheck/build/diff-check PASS.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+        "origin": "STATE_OR_CONTEXT_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#260",
+        "proven_effective_evidence_refs": [
+          "docs/ai-context/control-plane/CURRENT_STATE.yaml (updated_at advanced from 2026-08-28T21:00:54Z / state_version 17 -- stale for 10 consecutive Evolution cycles per hypothesis H1 -- to 2026-09-07T19:54:04Z / state_version 18, recording the accepted completion money-producer-isolation-v2-db7cc2d with proven origin/main merge ancestry. This closes the chronic staleness chain, but only because a qualifying accepted completion happened to land this period -- the underlying coupling between state refresh and completion acceptance is unaddressed, see hypothesis H1.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-07-ZERO-CI-GATE-ON-MERGE",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": "CHAIN-NO-CI-GATE-MERGE-ENFORCEMENT",
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "CONTROL_PLANE_DEFECT": 1,
+      "PRODUCT_OR_RUNTIME_DEFECT": 3,
+      "STATE_OR_CONTEXT_DEFECT": 1,
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 2
+    },
+    "defect_counts_by_recurrence": {
+      "NEW_INDEPENDENT": 3,
+      "LATENT_NEXT_LAYER_EXPOSED": 1,
+      "SAME_ROOT_REPEAT": 3
+    },
+    "repeated_defect_families": 1,
+    "active_onion_chains": 1
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "CURRENT_STATE.yaml finally advanced this period (state_version 17 to 18, stale 10 cycles) -- but only as a side effect of PR#260 reconciling an accepted completion, not from any scheduled reconciliation independent of completion timing.",
+      "why_it_matters": "The root cause this hypothesis has tracked for ten cycles is unaddressed: state refresh is coupled to an accepted completion happening to land, not to elapsed time or cycle count. Most of the last ten periods carried no qualifying completion, so staleness is expected to recur on the very next period without one.",
+      "axis_a_effect": "none directly, but increases the risk that a future cycle over-trusts a stale accepted-completion list when assessing Axis A",
+      "axis_b_effect": "Blocks CONTROLLED_IMPROVEMENT / MISSION_REGISTRY maturity: a control-plane artifact whose own freshness contract (max_age_days) depends on incidental completion timing is not yet a durable capability",
+      "proposed_automation": "A scheduled, read-only CURRENT_STATE reconciliation check (premvp.command.control_plane_reconcile.v1 already exists) run after each canonicalized Evolution cycle regardless of whether a product completion was accepted, bounded to the existing state_bootstrap_allowlist.",
+      "persistent_artifact": "scripts/control-plane/reconcile-control-plane.mjs (already exists; proposal is scheduling, not new code)",
+      "expected_value": "Decouples CURRENT_STATE freshness from incidental completion timing, giving Routine B a reliably current baseline for every comparison instead of one that depends on how many completions happened to land",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: the existing command already fail-closes on invalid baselines and is scoped to state-only paths",
+      "success_metric": "CURRENT_STATE.yaml's updated_at/state_version advances within one cycle even in a period with zero accepted product completions",
+      "rollback_or_stop_condition": "Stop if any proposed automatic reconciliation would touch a path outside state_bootstrap_allowlist -- that always requires an explicit bounded mission instead.",
+      "timing": "Next cycle without a qualifying completion",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "POLYPROPICKS/PREMVP#260",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-06__evolution-canonical-cycle.json#automation_hypotheses.H1"
+      ]
+    },
+    {
+      "id": "H3",
+      "observed_problem": "No new instance this period -- none of the eight confirmed merges touch a market-type/formula-version allowlist boundary.",
+      "why_it_matters": "Continuity only; the CHAIN-WIDE-RESEARCH-SELECTOR-BOUND-20260904 chain this hypothesis tracks had both its layers closed as of the 2026-09-06 cycle and gained no new links this period.",
+      "axis_a_effect": "none this period",
+      "axis_b_effect": "none this period",
+      "proposed_automation": "Unchanged from prior cycles: a lint-style check flagging any new market-type/formula-version allowlist or numeric cap added or removed without an adjacent named justification comment or test.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/AUTOMATION_ROADMAP.yaml (candidate entry; not yet implemented)",
+      "expected_value": "Would catch a future instance of this specific design-error class before merge rather than after",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium: a naive lint rule risks false positives on genuinely intentional boundaries",
+      "success_metric": "A future instance of this design-error class is caught before merge rather than after",
+      "rollback_or_stop_condition": "Stop if false-positive rate on existing intentional boundaries proves too high in a dry run",
+      "timing": "SYSTEM_LATER",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-06__evolution-canonical-cycle.json#automation_hypotheses.H3"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "This period again established only a lower bound of zero operator-action events across eight real merges (PR#253/254/255/256/257/258/259/260), including the money-producer isolation itself -- the founder-action count stays a floor of zero, not a true count.",
+      "why_it_matters": "Without capture, Founder-effort measurement stays UNKNOWN even for a period that shipped a genuine execution-boundary fix to the live money path, undermining Routine B's ability to compare automation value against actual manual load.",
+      "axis_a_effect": "none directly",
+      "axis_b_effect": "Blocks VERIFICATION_AND_EVIDENCE maturity for the operator-action pipeline itself",
+      "proposed_automation": "Unchanged: instrument the executor surface(s) that produced this period's PRs to emit OPERATOR_ACTION_EVENT records consumable by premvp.command.evolution_collect.v1.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/schemas/OPERATOR_ACTION_EVENT.schema.json (already exists; proposal is emission, not schema work)",
+      "expected_value": "Converts founder_actions_proven from a lower bound to a real count for future cycles",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: additive instrumentation only",
+      "success_metric": "Action-capture coverage reaches COMPLETE for at least one future cycle",
+      "rollback_or_stop_condition": "Stop if instrumentation would require reading Founder chat content this executor does not already have access to",
+      "timing": "Ongoing",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#259",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-06__evolution-canonical-cycle.json#automation_hypotheses.H4"
+      ]
+    },
+    {
+      "id": "H6",
+      "observed_problem": "This period generalizes H6 sharply: all eight real merges, not just the three named files, were opened and merged within seconds to minutes by one account, no reviewers. GitHub Checks API on PR#259 and PR#255 confirms total_count=0 -- zero CI on either, including the money-producer isolation itself.",
+      "why_it_matters": "The gap is no longer limited to three named files -- it is now Checks-API-confirmed as the norm for essentially every merge, including the one that changed the live money-producer's execution boundary. Highest-stakes instance yet; directly instantiates BLK-002 (no deterministic reviewer gate, no tracked CI gate).",
+      "axis_a_effect": "A required pre-merge check (even a minimal CI run) on changes touching the money-producer/Contract A serving path would directly protect the live money path from an unreviewed regression reaching main",
+      "axis_b_effect": "Would convert VERIFICATION_AND_EVIDENCE from PRACTICED_NOT_YET_PROVEN to a real gate; closes BLK-002",
+      "proposed_automation": "Broadened in scope: the previously-proposed pre-merge capacity check on the three named files, plus premvp.ci_gate.reviewer_receipt_enforcement (already PLANNED in AGENT_REGISTRY.yaml) actually wired as a tracked CI gate instead of validator-only enforcement.",
+      "persistent_artifact": "scripts/control-plane/production-observation.mjs (already exists, reusable for the post-merge half); premvp.ci_gate.reviewer_receipt_enforcement (registered PLANNED, implementation_path null)",
+      "expected_value": "Prevents an unreviewed, zero-CI change from reaching the live money-producer path undetected before merge, not only after",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low for read-only observation; wiring an actual CI gate needs a bounded architect decision on which checks are mandatory pre-merge",
+      "success_metric": "The next merge touching the money-producer/Contract A serving path or any of the three named files runs at least one CI check before merge",
+      "rollback_or_stop_condition": "Stop if wiring a CI gate would require credentials or CI infrastructure this executor does not hold -- escalate to a bounded architect decision instead of guessing one",
+      "timing": "NOW",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#259",
+        "POLYPROPICKS/PREMVP#255",
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml#open_blockers.BLK-002",
+        "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#premvp.ci_gate.reviewer_receipt_enforcement",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-06__evolution-canonical-cycle.json#automation_hypotheses.H6"
+      ]
+    },
+    {
+      "id": "H7",
+      "observed_problem": "The tracked open-PR count grew from 28 to 29 at this cutoff (mcp__github__list_pull_requests state=open), with one new member: #252 ('evidence(contur3): 2026-09-06 funnel-trace-audit -- Ireland order-submission stall', draft, created 2026-09-07T02:14:33Z).",
+      "why_it_matters": "The stranded-draft-PR shape keeps generalizing rather than closing, and each cycle's full re-scan (practice P2 from the 2026-09-06 cycle) keeps finding new members rather than the pile shrinking.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "The dispatch-plan capability (PR#224) remains the precondition for safely canonicalizing the Evolution/Governor family; it does not extend to the modeling-PR pile or newly-surfaced stray drafts without separate review",
+      "proposed_automation": "Not a Routine A action on any of these branches. Recorded for Routine B: run terminal_persistence_stage on the known families or explicitly classify/close them.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/SCHEDULE_MANIFEST.yaml (already documents the intended terminal_persistence_stage for the Governor routine)",
+      "expected_value": "No stranded draft PRs left open across periods; Routine B's own history stays as clean as Routine A's now is",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: this hypothesis proposes only running an already-registered lifecycle command or an explicit classification pass",
+      "success_metric": "At a future cycle's evidence_cutoff, all tracked and newly-surfaced draft PRs are either explicitly classified as intentional draft evidence or brought to zero",
+      "rollback_or_stop_condition": "Stop if closing or superseding these PRs would discard evidence a Founder has not yet reviewed",
+      "timing": "Next Governor run",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#252",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-06__evolution-canonical-cycle.json#automation_hypotheses.H7"
+      ]
+    },
+    {
+      "id": "H8",
+      "observed_problem": "No new instance this period -- the D-1 research-corpus reader defect (chain CHAIN-D1-RESEARCH-CORPUS-READER-20260904) had no new confirmed recurrence or new layer exposed. This is the third consecutive period without one, at or past this hypothesis's own stated dormancy threshold.",
+      "why_it_matters": "Continuity only; recorded so Routine B can decide whether to formally close this chain as dormant rather than have it silently re-appear as NEW in a future period.",
+      "axis_a_effect": "none this period",
+      "axis_b_effect": "none this period",
+      "proposed_automation": "Unchanged: reconcile any new rolling-corpus reader output against an independently known row-count denominator before trusting it.",
+      "persistent_artifact": "scripts/modeling/live-d1-research-corpus.ts (already exists)",
+      "expected_value": "Prevents a repeat silent undercount if the reader is exercised again at full-day scale",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low",
+      "success_metric": "Any future full-day reconciliation of this reader matches its independently known denominator exactly",
+      "rollback_or_stop_condition": "This hypothesis's own stop condition is now met: three consecutive periods without a new full-day reconciliation attempt. Recommend Routine B close this hypothesis as dormant next cycle unless a new instance appears first.",
+      "timing": "SYSTEM_LATER",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-06__evolution-canonical-cycle.json#automation_hypotheses.H8"
+      ]
+    },
+    {
+      "id": "H9",
+      "observed_problem": "No new instance this period -- none of the eight confirmed merges touch any of the three P1-named files (lib/feed/discoverSportsMarkets.ts, lib/feed/buildLandingCards.ts, lib/executor/planningAnchor.ts).",
+      "why_it_matters": "P1's adoption remains unverified going into whatever change touches one of the three files next; absence of a qualifying PR this period neither confirms nor refutes adoption.",
+      "axis_a_effect": "none this period",
+      "axis_b_effect": "Blocks P1 from graduating past PRACTICED_NOT_YET_PROVEN: a recommended practice with zero observed adoptions is not yet a capability",
+      "proposed_automation": "No new automation proposed -- this hypothesis exists to track P1's own adoption evidence across cycles.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-05__evolution-canonical-cycle.json#founder_practices.P1 (the practice itself; this hypothesis tracks its adoption, not its content)",
+      "expected_value": "Converts P1 from a proposed practice to a proven-adopted one once a genuinely widening change to one of the three files carries a stated estimate",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: purely observational, no new mechanism to build",
+      "success_metric": "The next PR touching one of the three named files that widens (not tightens) their population/fanout includes a stated capacity estimate in its body before merge",
+      "rollback_or_stop_condition": "Stop tracking as a distinct hypothesis and fold back into H6 once one clear adoption or non-adoption instance on a widening change is observed",
+      "timing": "Next qualifying PR",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-06__evolution-canonical-cycle.json#automation_hypotheses.H9"
+      ]
+    },
+    {
+      "id": "H10",
+      "observed_problem": "PR#257 and PR#258 form a same-day two-layer onion chain: #257 fixed a materializer field-name mismatch at the write boundary; that fix immediately exposed that already-accepted historical rows still lacked the corrected field, needing a second same-day PR for a read-side fallback.",
+      "why_it_matters": "A materializer/pipeline field-name or normalization change is not complete when it fixes only the write boundary -- immutable historical rows persisted under the old shape need their own compatibility path in the same change, or the defect simply resurfaces one layer deeper, as it did here within hours.",
+      "axis_a_effect": "none directly this period (both layers were closed the same day before any Axis A claim depended on them)",
+      "axis_b_effect": "Would strengthen VERIFICATION_AND_EVIDENCE: a documented requirement that any persisted-field rename/normalization change include a historical-row compatibility test in the same PR, not a same-day follow-up",
+      "proposed_automation": "A lightweight review checklist item (not new code): any change to a materializer or pipeline that renames or normalizes a field written to a persisted/accepted row must include, in the same PR, both a write-boundary test and a read-side backward-compatibility test against the pre-change row shape.",
+      "persistent_artifact": "docs/ai-context/CLAUDE_CODE_EXECUTION_PROTOCOL.md (candidate location for a new checklist line; not modified by this Routine)",
+      "expected_value": "Catches the second-layer defect in the same review as the first, rather than requiring a same-day follow-up PR discovered only after the first fix is proven",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: documentation-only proposal, no new enforcement mechanism",
+      "success_metric": "The next persisted-field rename/normalization change ships both tests in one PR rather than two",
+      "rollback_or_stop_condition": "Stop if no qualifying field-rename/normalization change occurs in the next several cycles to test adoption against",
+      "timing": "Next qualifying PR",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#257",
+        "POLYPROPICKS/PREMVP#258"
+      ]
+    }
+  ],
+  "insufficient_supported_hypotheses": false,
+  "insufficient_supported_hypotheses_reason": null,
+  "founder_practices": [
+    {
+      "id": "P1",
+      "skill_practiced": "State an explicit capacity/fanout estimate in the PR body for any change to the three H6-named files (lib/feed/discoverSportsMarkets.ts, lib/feed/buildLandingCards.ts, lib/executor/planningAnchor.ts), and treat any change touching the live money-producer/Contract A serving path as requiring at least one CI check or an explicit stated reason none ran.",
+      "why_it_matters_now": "This period's Checks-API confirmation that PR#259 (the money-producer isolation) merged with zero CI checks 3 seconds after opening is the starkest instance yet of the gap P1 was written to close.",
+      "how_it_applies_to_current_project": "Before merging any future change to the money-producer path or one of the three named files, state in the PR body what the change does to producer decisions/run or scorer fanout size, and either trigger at least one automated check or explicitly record why none exists yet.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-07__evolution-canonical-cycle.json (this cycle's H6 record)",
+      "ladder_level": 2
+    },
+    {
+      "id": "P3",
+      "skill_practiced": "When a materializer or pipeline change renames or normalizes a field that is written to a persisted/accepted row, ship both a write-boundary test and a read-side backward-compatibility test for the pre-change row shape in the same PR.",
+      "why_it_matters_now": "PR#257 and PR#258 today are a concrete, same-day example of exactly the gap this practice closes: the first PR proved only the new-shape path, and the immutable old-shape rows needed a second PR hours later.",
+      "how_it_applies_to_current_project": "Any future change to scripts/modeling/clone-model-ready-pipeline.ts, lib/research-clone/modelReady.ts, or similar materializers should include a fixture built from the actual pre-change persisted row shape, not only the new shape.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-07__evolution-canonical-cycle.json (this cycle's H10 record)",
+      "ladder_level": 1
+    }
+  ],
+  "founder_practice_comparison": "P1 is higher priority: it protects the live money-producer/Contract A serving boundary and is now evidenced by the starkest zero-CI instance yet observed. P3 is lower-stakes but concrete and immediately actionable, protecting research/model correctness rather than the live money path.",
+  "founder_practice_recommended_order": [
+    "P1",
+    "P3"
+  ],
+  "experiments": [
+    {
+      "id": "E1",
+      "hypothesis": "A single bounded read-only production observation (premvp.command.production_observation.v1) of the next natural signal-generation run after PR#259/#260 deployed can confirm normal generation persists only the bounded primary money population and correctly gates research/shadow writers behind SIGNAL_PRODUCER_MODE=research under real inventory, not only the six focused unit tests in the PR.",
+      "bounded_scope": "One read-only observation only; no write path, no forceCreate, no schema or code change.",
+      "persistent_artifact": "reports/observation/<observation_id>.json (existing command output contract) plus a recorded entry in docs/ai-context/control-plane/EVIDENCE_LEDGER.md",
+      "promotion_condition": "The observation confirms a natural run persisted only the bounded primary money population and that research-mode writers did not fire without the explicit flag.",
+      "stop_condition": "Stop if the observation would require a write-capable mode, a secret this executor does not already hold, or database access beyond the command's existing read-only contract."
+    },
+    {
+      "id": "E2",
+      "hypothesis": "The Evolution/Governor terminal-persistence Stop-gate (PR#255) can complete one full live end-to-end cycle -- blocking Stop while a validated Evolution lineage is not yet canonical, then successfully driving canonicalization to a canonical main -- upgrading this hook's evidence rating from SUPPORTED to PROVEN_IN_RUNTIME.",
+      "bounded_scope": "Observed passively as a byproduct of this cycle's own terminal persistence attempt; no separate mission, no manual triggering of a failure state.",
+      "persistent_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md (new entry recording a live block-then-canonicalize event, if one occurs)",
+      "promotion_condition": "EVIDENCE_LEDGER.md records a live block-then-canonicalize event this cycle or a future one.",
+      "stop_condition": "Stop and record EXTERNAL_WAIT if this execution environment has no active Stop hook wired, rather than attempting to force one."
+    },
+    {
+      "id": "E3",
+      "hypothesis": "This cycle's own terminal persistence can again reach canonical origin/main with zero intermediate Founder action, using the same GitHub-MCP-backed path already proven for prior cycles' lineages.",
+      "bounded_scope": "One canonical Evolution cycle document plus its rendered report, persisted via the registered branch/PR/merge lifecycle; no product code path touched.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-07__evolution-canonical-cycle.json and its .report.md",
+      "promotion_condition": "The cycle reaches canonical origin/main with a founder_action count of zero for this persistence step.",
+      "stop_condition": "Stop and return the canonical resumable outcome if the registered persistence lifecycle cannot complete within this execution window."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE (per CURRENT_STATE.yaml, updated_at 2026-09-07T19:54:04Z, state_version 18 -- refreshed this period via the money-producer-isolation-v2-db7cc2d reconciliation; see hypothesis H1)"
+  },
+  "next_step": "Persist via the proven GitHub-MCP path: push this cycle's allowlisted files, create a PR against main, merge it, and verify origin/main ancestry. Then run experiment E1 (production observation of the money-producer isolation) as resources permit. Do not babysit the now-29-member draft-PR family beyond recording it for Routine B.",
+  "corrections": [],
+  "accepted": false
+}
