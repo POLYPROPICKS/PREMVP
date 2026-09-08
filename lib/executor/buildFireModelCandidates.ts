@@ -402,7 +402,7 @@ const SIGNAL_SELECT_COLS =
 // lineage names. Keep the normalization here so every Contract A decision still
 // consumes the established generated_signal_pairs-shaped row contract.
 const SERVING_SIGNAL_SELECT_COLS =
-  "source_generated_signal_pair_id, condition_id, selected_outcome, selected_token_id, " +
+  "observation_id, observed_at, source_generated_signal_pair_id, condition_id, selected_outcome, selected_token_id, " +
   "entry_price_num, signal_confidence_num, diagnostics, market_slug, event_slug, " +
   "metric_formula_version, source_created_at, expires_at, signal_result, projection_status";
 const PLANNING_SERVING_ROW_LIMIT = 10_000;
@@ -1358,7 +1358,10 @@ async function buildContractAV1Candidates(
     const rawMarketSlug = typeof sourceRow.market_slug === "string" ? sourceRow.market_slug : decision.eventKey;
     const staleAfter = typeof sourceRow.expires_at === "string" ? sourceRow.expires_at : gameStartIso;
 
-    const contractASourceRowId = typeof sourceRow.id === "string" && sourceRow.id.trim() !== "" ? sourceRow.id : null;
+    const lineageId = Object.prototype.hasOwnProperty.call(sourceRow, "source_generated_signal_pair_id")
+      ? sourceRow.source_generated_signal_pair_id
+      : sourceRow.id;
+    const contractASourceRowId = typeof lineageId === "string" && lineageId.trim() !== "" ? lineageId : null;
 
     // Fail-closed market anchor check (R0E): the Contract A final path reuses
     // the same canonical helpers as planning (isActivityLabelText,
@@ -1607,8 +1610,8 @@ export async function fetchPlanningSourceRowSets(
 function normalizeServingSourceRow(row: Record<string, unknown>): Record<string, unknown> {
   return {
     ...row,
-    id: row.source_generated_signal_pair_id,
-    created_at: row.source_created_at,
+    id: row.source_generated_signal_pair_id ?? row.observation_id,
+    created_at: row.observed_at ?? row.source_created_at,
   };
 }
 
@@ -1653,7 +1656,7 @@ async function fetchContractAPlanningServingRowSets(
       .not("entry_price_num", "is", null)
       .gte("signal_confidence_num", 50)
       .order("source_created_at", { ascending: false })
-      .order("source_generated_signal_pair_id", { ascending: false });
+      .order("observation_id", { ascending: false });
   const scoredRows = await read(buildScoredQuery, "planning_serving_scored_rows_fetch");
   if (!includePlanningShadowRows) return { scoredRows, planningShadowRows: [] };
   const buildShadowQuery = () =>
@@ -1668,7 +1671,7 @@ async function fetchContractAPlanningServingRowSets(
       .not("condition_id", "is", null)
       .is("signal_confidence_num", null)
       .order("source_created_at", { ascending: false })
-      .order("source_generated_signal_pair_id", { ascending: false });
+      .order("observation_id", { ascending: false });
   return {
     scoredRows,
     planningShadowRows: await read(buildShadowQuery, "planning_serving_shadow_rows_fetch"),

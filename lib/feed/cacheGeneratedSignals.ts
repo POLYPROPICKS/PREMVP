@@ -199,7 +199,57 @@ export async function writeGeneratedSignalPairs(
 export async function writeGeneratedSignalPairsWithTelemetry(
   input: WritePairsInput
 ): Promise<WritePairsTelemetryResult> {
-  const rows = input.pairs.map((pair) => {
+  const rows = buildGeneratedSignalPairRows(input);
+
+  const persistStartedAt = Date.now();
+  const insertQuery = supabaseAdmin.from("generated_signal_pairs").insert(rows) as any;
+  const { data, error, count } = typeof insertQuery.select === "function"
+    ? await insertQuery.select("id")
+    : await insertQuery;
+
+  if (error) {
+    throw new MoneyPersistenceBoundaryError(
+      "PRIMARY_GSP_PERSISTENCE",
+      new Error(`Failed to write signal pairs: ${error.message}`),
+      {
+        persistedCount: 0,
+        servingProjectedCount: 0,
+        primaryPersistDurationMs: Date.now() - persistStartedAt,
+        servingProjectDurationMs: 0,
+      },
+    );
+  }
+
+  const primaryPersistDurationMs = Date.now() - persistStartedAt;
+  const persistedCount = count ?? rows.length;
+  let projection;
+  const servingStartedAt = Date.now();
+  try {
+    projection = await projectInsertedRows(data, rows.length);
+  } catch (projectionError) {
+    throw new MoneyPersistenceBoundaryError(
+      "SERVING_PROJECTION",
+      projectionError,
+      {
+        persistedCount,
+        servingProjectedCount: 0,
+        primaryPersistDurationMs,
+        servingProjectDurationMs: Date.now() - servingStartedAt,
+      },
+    );
+  }
+  return {
+    persistedCount,
+    servingProjectedCount: projection.projectedCount,
+    primaryPersistDurationMs,
+    servingProjectDurationMs: projection.durationMs,
+  };
+}
+
+/** One canonical payload mapper shared by the durable current-state publisher
+ * and the temporary historical GSP writer. */
+export function buildGeneratedSignalPairRows(input: WritePairsInput) {
+  return input.pairs.map((pair) => {
     const { premiumSignal: ps, diagnostics: diag } = pair;
 
     // --- immutable point-in-time performance snapshot ---
@@ -247,50 +297,6 @@ export async function writeGeneratedSignalPairsWithTelemetry(
       metric_formula_version: "v2-lite-growth-safe",
     };
   });
-
-  const persistStartedAt = Date.now();
-  const insertQuery = supabaseAdmin.from("generated_signal_pairs").insert(rows) as any;
-  const { data, error, count } = typeof insertQuery.select === "function"
-    ? await insertQuery.select("id")
-    : await insertQuery;
-
-  if (error) {
-    throw new MoneyPersistenceBoundaryError(
-      "PRIMARY_GSP_PERSISTENCE",
-      new Error(`Failed to write signal pairs: ${error.message}`),
-      {
-        persistedCount: 0,
-        servingProjectedCount: 0,
-        primaryPersistDurationMs: Date.now() - persistStartedAt,
-        servingProjectDurationMs: 0,
-      },
-    );
-  }
-
-  const primaryPersistDurationMs = Date.now() - persistStartedAt;
-  const persistedCount = count ?? rows.length;
-  let projection;
-  const servingStartedAt = Date.now();
-  try {
-    projection = await projectInsertedRows(data, rows.length);
-  } catch (projectionError) {
-    throw new MoneyPersistenceBoundaryError(
-      "SERVING_PROJECTION",
-      projectionError,
-      {
-        persistedCount,
-        servingProjectedCount: 0,
-        primaryPersistDurationMs,
-        servingProjectDurationMs: Date.now() - servingStartedAt,
-      },
-    );
-  }
-  return {
-    persistedCount,
-    servingProjectedCount: projection.projectedCount,
-    primaryPersistDurationMs,
-    servingProjectDurationMs: projection.durationMs,
-  };
 }
 
 /**
