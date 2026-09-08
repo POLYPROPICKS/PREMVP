@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readAndValidateMigration } from './lib/premvp-application-migration-release.mjs';
+import { runDbPushWithFallback } from './lib/premvp-migration-adapter-connection.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const args = process.argv.slice(2);
@@ -14,13 +15,14 @@ const migrationFile = readAndValidateMigration(root, declaration);
 const run = (cliArgs) => process.platform === 'win32'
   ? execFileSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'npx.cmd', '--yes', 'supabase@latest', ...cliArgs], { cwd: root, encoding: 'utf8', stdio: 'pipe' })
   : execFileSync('npx', ['--yes', 'supabase@latest', ...cliArgs], { cwd: root, encoding: 'utf8', stdio: 'pipe' });
-const dry = run(['db', 'push', '--linked', '--skip-vault', '--dry-run', '--yes']);
+const dbPush = (extraArgs) => runDbPushWithFallback({ run, extraArgs });
+const dry = dbPush(['--skip-vault', '--dry-run', '--yes']);
 if (!dry.includes(path.basename(migrationFile))) throw new Error('MIGRATION_NOT_PENDING_ON_LINKED_PROJECT');
 const localMigrations = [...dry.matchAll(/\d{14}_[a-z0-9_]+\.sql/gi)].map((match) => `supabase/migrations/${match[0]}`);
 if ([...new Set(localMigrations)].some((file) => file !== migrationFile)) throw new Error('UNEXPECTED_PENDING_MIGRATION');
 if (args.includes('--dry-run')) {
   process.stdout.write(JSON.stringify({ ok: true, mode: 'dry_run', migration_file: migrationFile }) + '\n');
 } else {
-  run(['db', 'push', '--linked', '--skip-vault', '--yes']);
+  dbPush(['--skip-vault', '--yes']);
   process.stdout.write(JSON.stringify({ ok: true, mode: 'applied', migration_file: migrationFile }) + '\n');
 }
