@@ -14,6 +14,7 @@
  */
 
 import { validateReleaseRunManifest, isAuthorizedBoundedR5Manifest, RECONCILE_COMMAND_ID } from '../validate-premvp-release-run.mjs';
+import { validateApprovedMigrationRelease } from './premvp-application-migration-release.mjs';
 
 export const STATE_ORDER = [
   'LOAD_CANONICAL',
@@ -23,6 +24,7 @@ export const STATE_ORDER = [
   'RUN_TESTS',
   'RESOLVE_REVIEWER',
   'INVOKE_REVIEWER',
+  'APPLY_APPROVED_MIGRATION',
   'PUSH_BRANCH',
   'RESOLVE_OR_CREATE_PR',
   'VERIFY_PR_INTEGRITY',
@@ -85,7 +87,7 @@ export function assertManifestCannotOverrideReviewer(manifest) {
 }
 
 /** ---- Changeset validation. ---- */
-export function checkChangeset(changedFiles, allowedFiles, forbiddenFiles) {
+export function checkChangeset(changedFiles, allowedFiles, forbiddenFiles, migrationRelease = null, readFile = null) {
   const violations = [];
   const allowedSet = new Set(allowedFiles);
   for (const f of changedFiles) {
@@ -97,6 +99,14 @@ export function checkChangeset(changedFiles, allowedFiles, forbiddenFiles) {
         violations.push(`FORBIDDEN_FILE_TOUCHED: ${f}`);
       }
     }
+  }
+  if (migrationRelease || changedFiles.some((file) => file.startsWith('supabase/migrations/'))) {
+    const migration = validateApprovedMigrationRelease({
+      declaration: migrationRelease,
+      changedFiles,
+      readFile: readFile || (() => ''),
+    });
+    violations.push(...migration.errors);
   }
   return { ok: violations.length === 0, violations };
 }
@@ -310,7 +320,13 @@ export async function executeReleaseRun(manifest, routingDoc, pipelineSpec, adap
 
   const resultSha = await adapters.git.currentHead();
   const changedFiles = await adapters.git.changedFiles(manifest.base_ref, resultSha);
-  const changeset = checkChangeset(changedFiles, manifest.allowed_files, manifest.forbidden_files);
+  const changeset = checkChangeset(
+    changedFiles,
+    manifest.allowed_files,
+    manifest.forbidden_files,
+    manifest.migration_release || null,
+    (file) => adapters.git.readFile(file),
+  );
   if (!changeset.ok) throw new PipelineError('PIPELINE_SCOPE_EXPANSION_REQUIRED', changeset.violations.join('; '));
 
   for (const command of [...manifest.test_commands, ...manifest.typecheck_commands, ...manifest.build_commands]) {
@@ -324,6 +340,14 @@ export async function executeReleaseRun(manifest, routingDoc, pipelineSpec, adap
     if (!receipt) throw new PipelineError('REVIEWER_RECEIPT_MISSING', `Missing ${reviewer.agentId} receipt for ${resultSha}`);
     if (receipt.reviewed_sha !== resultSha || receipt.verdict !== 'PASS') {
       throw new PipelineError('REVIEWER_RECEIPT_MISMATCH', `Invalid reviewer receipt for ${resultSha}`);
+    }
+  }
+
+  let migration = null;
+  if (manifest.migration_release) {
+    migration = await adapters.database.applyApprovedMigration({ declaration: manifest.migration_release, resultSha });
+    if (!migration || migration.ok !== true || migration.migration_file !== manifest.migration_release.migration_files[0]) {
+      throw new PipelineError('MIGRATION_APPLICATION_FAILED', 'Registered migration adapter did not return exact successful evidence');
     }
   }
 
@@ -375,6 +399,7 @@ export async function executeReleaseRun(manifest, routingDoc, pipelineSpec, adap
     status: deployment.status === 'DEPLOYED' ? 'PASS' : 'WAIT',
     result_sha: resultSha,
     reviewer_receipt: receipt,
+    migration,
     pr: mergedPr,
     pr_created: created,
     merged: merge.merged,

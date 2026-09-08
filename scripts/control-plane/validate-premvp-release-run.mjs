@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { MIGRATION_MODE, validateMigrationReleaseDeclaration } from './lib/premvp-application-migration-release.mjs';
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, '..', '..');
@@ -138,6 +139,17 @@ export function validateReleaseRunManifest(manifest) {
   for (const cmd of allCommands) {
     if (typeof cmd === 'string' && DB_COMMAND_PATTERN.test(cmd)) {
       err(`NO_DATABASE_MUTATION_V1: command "${cmd}" looks like a database migration/write`);
+    }
+  }
+
+  if (manifest.migration_release !== undefined) {
+    const migration = validateMigrationReleaseDeclaration(manifest.migration_release);
+    for (const error of migration.errors) err(error);
+    if (!manifest.required_capabilities.includes('PREMVP_APPLICATION_MIGRATION_RELEASE')) {
+      err('MIGRATION_CAPABILITY_REQUIRED');
+    }
+    if (manifest.risk_class !== 'R4_CONTUR_PRODUCTION_BOUNDARY') {
+      err('MIGRATION_RISK_CLASS_MUST_BE_R4');
     }
   }
 
