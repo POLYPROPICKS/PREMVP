@@ -416,6 +416,14 @@ test('migration safety rejects raw, destructive, mixed, and undeclared changes',
   const compatibleDeclaration = { ...declaration, safety_class: 'COMPATIBILITY_TRANSITION', constraint_drop_justification: 'Remove legacy FK after direct Serving contract is reviewed.' };
   const compatible = validateApprovedMigrationRelease({ declaration: compatibleDeclaration, changedFiles: compatibleDeclaration.migration_files, readFile: () => '-- PREMVP_APPLICATION_MIGRATION_V1\nALTER TABLE public.safe_probe DROP CONSTRAINT safe_probe_fk;' });
   assert.equal(compatible.ok, true, compatible.errors.join('\n'));
+  const atomicUpsert = validateApprovedMigrationRelease({ declaration: compatibleDeclaration, changedFiles: compatibleDeclaration.migration_files, readFile: () => '-- PREMVP_APPLICATION_MIGRATION_V1\nINSERT INTO public.safe_probe (id) VALUES (1) ON CONFLICT (id) DO UPDATE SET id = EXCLUDED.id;\nREVOKE ALL ON FUNCTION public.safe_fn() FROM PUBLIC, anon, authenticated;' });
+  assert.equal(atomicUpsert.ok, true, atomicUpsert.errors.join('\n'));
+  const directUpdate = validateApprovedMigrationRelease({ declaration, changedFiles: declaration.migration_files, readFile: () => '-- PREMVP_APPLICATION_MIGRATION_V1\nUPDATE public.safe_probe SET id = 2;' });
+  assert.equal(directUpdate.ok, false);
+  assert.match(directUpdate.errors.join('\n'), /MIGRATION_SQL_FORBIDDEN/);
+  const publicGrant = validateApprovedMigrationRelease({ declaration, changedFiles: declaration.migration_files, readFile: () => '-- PREMVP_APPLICATION_MIGRATION_V1\nGRANT SELECT ON public.safe_probe TO authenticated;' });
+  assert.equal(publicGrant.ok, false);
+  assert.match(publicGrant.errors.join('\n'), /MIGRATION_SQL_FORBIDDEN/);
 });
 
 // ---- Changeset validation (VALIDATE_CHANGESET state). ---------------------------------------------

@@ -7,10 +7,10 @@ const FORBIDDEN_SQL = [
   /\bDROP\s+(TABLE|SCHEMA|DATABASE|FUNCTION|TYPE|COLUMN|INDEX)\b/i,
   /\bTRUNCATE\b/i,
   /\bDELETE\s+FROM\b/i,
-  /\bUPDATE\s+\w+/i,
+  /^\s*UPDATE\s+[a-z_".]+/im,
   /\bSECURITY\s+DEFINER\b/i,
   /\b(CREATE|ALTER)\s+ROLE\b/i,
-  /\b(GRANT|REVOKE)\b[\s\S]{0,160}\b(PUBLIC|anon|authenticated)\b/i,
+  /\bGRANT\b[\s\S]{0,160}\bTO\s+(PUBLIC|anon|authenticated)\b/i,
   /\bCREATE\s+EXTENSION\b/i,
 ];
 

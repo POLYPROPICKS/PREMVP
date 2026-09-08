@@ -11,7 +11,9 @@ const raw = index >= 0 ? args[index + 1] : null;
 if (!raw) throw new Error('MIGRATION_DECLARATION_REQUIRED');
 const declaration = JSON.parse(raw);
 const migrationFile = readAndValidateMigration(root, declaration);
-const run = (cliArgs) => execFileSync('npx', ['--yes', 'supabase@latest', ...cliArgs], { cwd: root, encoding: 'utf8', stdio: 'pipe' });
+const run = (cliArgs) => process.platform === 'win32'
+  ? execFileSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'npx.cmd', '--yes', 'supabase@latest', ...cliArgs], { cwd: root, encoding: 'utf8', stdio: 'pipe' })
+  : execFileSync('npx', ['--yes', 'supabase@latest', ...cliArgs], { cwd: root, encoding: 'utf8', stdio: 'pipe' });
 const dry = run(['db', 'push', '--linked', '--skip-vault', '--dry-run', '--yes']);
 if (!dry.includes(path.basename(migrationFile))) throw new Error('MIGRATION_NOT_PENDING_ON_LINKED_PROJECT');
 const localMigrations = [...dry.matchAll(/\d{14}_[a-z0-9_]+\.sql/gi)].map((match) => `supabase/migrations/${match[0]}`);
