@@ -20,6 +20,8 @@ import {
   resolveProjectContextArgs,
   redactSecrets,
   runDbPushWithFallback,
+  extractCausalFailure,
+  CAUSE_NOT_EXTRACTABLE,
 } from '../../scripts/control-plane/lib/premvp-migration-adapter-connection.mjs';
 
 test('isNotLinkedError recognizes the known not-linked failure signatures', () => {
@@ -95,6 +97,114 @@ test('runDbPushWithFallback never leaks the password/token when the fallback its
       assert.equal(error.message.includes('super-secret-pw'), false);
       assert.equal(error.message.includes('sbp_token_value'), false);
       assert.match(error.message, /SUPABASE_PROJECT_CONTEXT_ESTABLISH_FAILED/);
+      return true;
+    },
+  );
+});
+
+// --- PRESERVE_CAUSAL_SUPABASE_ADAPTER_FAILURE_V1 regressions ---------------------------
+// A fallback db-push failure must carry sanitized causal evidence from stdout, stderr and
+// the process error, never a bare progress line, and never a secret.
+
+const notLinked = () => ({ stderr: 'LegacyProjectNotLinkedError' });
+const CAUSAL_ENV = { SUPABASE_PROJECT_REF: 'abc123', SUPABASE_DB_PASSWORD: 'super-secret-pw', SUPABASE_ACCESS_TOKEN: 'sbp_token_value' };
+const fallbackFailure = (failure) => (cliArgs) => {
+  if (cliArgs.includes('--linked')) throw notLinked();
+  throw failure;
+};
+
+test('extractCausalFailure keeps a concrete stdout cause when stderr carries only progress', () => {
+  const cause = extractCausalFailure({
+    stdout: 'Connecting to remote database...\ndial tcp 1.2.3.4:5432: i/o timeout',
+    stderr: 'Connecting to remote database...',
+  });
+  assert.match(cause, /i\/o timeout/);
+  assert.equal(cause.includes('Connecting to remote database'), false);
+});
+
+test('extractCausalFailure keeps the concrete stderr cause alongside progress noise', () => {
+  const cause = extractCausalFailure({
+    stderr: 'Connecting to remote database...\nfailed SASL auth: password authentication failed for user "postgres"',
+  });
+  assert.match(cause, /password authentication failed/);
+  assert.equal(cause.includes('Connecting to remote database'), false);
+});
+
+test('extractCausalFailure returns CAUSE_NOT_EXTRACTABLE when only progress text exists', () => {
+  assert.equal(extractCausalFailure({ stdout: 'Connecting to remote database...', stderr: '   \n...' }), CAUSE_NOT_EXTRACTABLE);
+  assert.equal(extractCausalFailure({}), CAUSE_NOT_EXTRACTABLE);
+});
+
+test('extractCausalFailure preserves each concrete cause family it is meant to surface', () => {
+  const families = [
+    'dial tcp: connection refused',
+    'getaddrinfo ENOTFOUND db.abc123.supabase.co',
+    'context deadline exceeded: timeout',
+    'unauthorized: invalid access token',
+    'project not found for ref abc123',
+    'spawn npx.cmd ENOENT',
+  ];
+  for (const line of families) {
+    assert.equal(extractCausalFailure({ stderr: `Connecting to remote database...\n${line}` }), line);
+  }
+});
+
+test('extractCausalFailure bounds the excerpt instead of returning the whole log', () => {
+  const noisy = Array.from({ length: 40 }, (_, i) => `error line ${i}`).join('\n');
+  const cause = extractCausalFailure({ stdout: noisy });
+  assert.equal(cause.split(' | ').length, 3);
+  const long = extractCausalFailure({ stderr: `fatal: ${'x'.repeat(500)}` });
+  assert.ok(long.length < 260);
+  assert.match(long, /\.\.\.$/);
+});
+
+test('extractCausalFailure redacts secrets found in either stream', () => {
+  const cause = extractCausalFailure(
+    {
+      stdout: 'auth failed with --password super-secret-pw',
+      stderr: 'connection string postgresql://postgres:super-secret-pw@db.abc123.supabase.co:5432/postgres rejected; token sbp_token_value',
+    },
+    [CAUSAL_ENV.SUPABASE_DB_PASSWORD, CAUSAL_ENV.SUPABASE_ACCESS_TOKEN],
+  );
+  assert.equal(cause.includes('super-secret-pw'), false);
+  assert.equal(cause.includes('sbp_token_value'), false);
+  assert.equal(cause.includes('db.abc123.supabase.co:5432/postgres'), false);
+  assert.match(cause, /REDACTED/);
+});
+
+test('runDbPushWithFallback surfaces the stdout cause instead of the progress line', () => {
+  const run = fallbackFailure({
+    stdout: 'Connecting to remote database...\ndial tcp 1.2.3.4:5432: i/o timeout',
+    stderr: 'Connecting to remote database...',
+  });
+  assert.throws(
+    () => runDbPushWithFallback({ run, extraArgs: [], env: CAUSAL_ENV }),
+    (error) => {
+      assert.match(error.message, /^SUPABASE_PROJECT_CONTEXT_ESTABLISH_FAILED: /);
+      assert.match(error.message, /i\/o timeout/);
+      assert.equal(error.message.endsWith('Connecting to remote database...'), false);
+      return true;
+    },
+  );
+});
+
+test('runDbPushWithFallback reports CAUSE_NOT_EXTRACTABLE rather than a progress line', () => {
+  const run = fallbackFailure({ stdout: 'Connecting to remote database...', stderr: '' });
+  assert.throws(
+    () => runDbPushWithFallback({ run, extraArgs: [], env: CAUSAL_ENV }),
+    /SUPABASE_PROJECT_CONTEXT_ESTABLISH_FAILED: CAUSE_NOT_EXTRACTABLE/,
+  );
+});
+
+test('runDbPushWithFallback redacts SUPABASE_DB_URL when it appears in the failure', () => {
+  const env = { ...CAUSAL_ENV, SUPABASE_DB_URL: 'postgresql://postgres:super-secret-pw@db.abc123.supabase.co:5432/postgres' };
+  const run = fallbackFailure({ stderr: `fatal: could not connect using ${env.SUPABASE_DB_URL}` });
+  assert.throws(
+    () => runDbPushWithFallback({ run, extraArgs: [], env }),
+    (error) => {
+      assert.equal(error.message.includes('super-secret-pw'), false);
+      assert.equal(error.message.includes('db.abc123.supabase.co'), false);
+      assert.match(error.message, /could not connect/);
       return true;
     },
   );

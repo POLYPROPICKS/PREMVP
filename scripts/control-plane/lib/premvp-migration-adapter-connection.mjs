@@ -40,6 +40,68 @@ export function redactSecrets(text, secrets) {
   );
 }
 
+/** Explicit marker returned when nothing more specific than progress output was captured. */
+export const CAUSE_NOT_EXTRACTABLE = 'CAUSE_NOT_EXTRACTABLE';
+
+/**
+ * Structural redaction for authorization material that is not an exact known env value:
+ * connection strings, inline `--password` / `password=` flags, access tokens and
+ * authorization headers. Applied on top of the exact-value redaction so a rotated or
+ * CLI-echoed credential can never reach the thrown message.
+ */
+const STRUCTURAL_SECRET_PATTERNS = [
+  [/\bpostgres(?:ql)?:\/\/\S+/gi, 'postgresql://***REDACTED***'],
+  [/(--password[=\s]+)\S+/gi, '$1***REDACTED***'],
+  [/(\bpassword\s*[=:]\s*)\S+/gi, '$1***REDACTED***'],
+  [/\bsbp_[A-Za-z0-9._-]+/g, '***REDACTED***'],
+  [/(\b(?:authorization|bearer|api[-_]?key)\s*[=:]\s*)\S+/gi, '$1***REDACTED***'],
+];
+
+/** Exact-value redaction plus structural redaction of authorization material. */
+export function sanitizeDiagnosticText(text, secrets = []) {
+  return STRUCTURAL_SECRET_PATTERNS.reduce(
+    (acc, [pattern, replacement]) => acc.replace(pattern, replacement),
+    redactSecrets(text, secrets),
+  );
+}
+
+/** Lines that describe what the CLI was doing, never why it failed. */
+const PROGRESS_ONLY_LINE = /^(?:connecting to remote database|initialising|initializing|linking project|applying migration|remote database is up to date|supabase db push|skipping migration|using workdir|[-\\|/*•….\s]*)\.*$/i;
+
+/** Concrete causes worth surfacing ahead of any other surviving line. */
+const CONCRETE_CAUSE = /(timeout|timed out|etimedout|connection refused|econnrefused|dns|enotfound|eai_again|getaddrinfo|authentication|auth failed|unauthorized|forbidden|invalid (?:api |access )?(?:key|token)|401|403|project (?:not found|ref)|invalid project|permission denied|sasl|certificate|tls|ssl|enoent|einval|spawn|exit code|command failed|panic|fatal|error)/i;
+
+const MAX_CAUSE_LINES = 3;
+const MAX_LINE_CHARS = 200;
+
+/**
+ * Builds a bounded, sanitized causal excerpt from a failed CLI invocation.
+ *
+ * Reads stdout, stderr and the process error message — the Supabase CLI writes its real
+ * failure to stdout on several paths, which is why stdout may not be dropped. Progress-only
+ * lines are discarded; lines naming a concrete cause are preferred over the rest; the result
+ * is capped in both line count and line length so a diagnostic can never become a raw log
+ * dump. When nothing but progress output survives, returns CAUSE_NOT_EXTRACTABLE rather than
+ * presenting a progress line as the cause.
+ */
+export function extractCausalFailure(error, secrets = []) {
+  const streams = [error?.stdout, error?.stderr, error?.message];
+  const lines = [];
+  for (const stream of streams) {
+    for (const raw of sanitizeDiagnosticText(stream ?? '', secrets).split(/\r?\n/)) {
+      const line = raw.trim();
+      if (!line || PROGRESS_ONLY_LINE.test(line)) continue;
+      if (!lines.includes(line)) lines.push(line);
+    }
+  }
+  if (!lines.length) return CAUSE_NOT_EXTRACTABLE;
+  const concrete = lines.filter((line) => CONCRETE_CAUSE.test(line));
+  const chosen = (concrete.length ? concrete : lines).slice(0, MAX_CAUSE_LINES);
+  return chosen
+    .map((line) => (line.length > MAX_LINE_CHARS ? `${line.slice(0, MAX_LINE_CHARS)}...` : line))
+    .join(' | ');
+}
+
 /**
  * Runs `supabase db push` preferring an already-linked worktree, and falling back to
  * explicit `--project-ref` / `--password` connection args (from env) only when the
@@ -60,16 +122,9 @@ export function runDbPushWithFallback({ run, extraArgs, env = process.env }) {
     try {
       return run(['db', 'push', ...contextArgs, ...extraArgs]);
     } catch (fallbackError) {
-      const secrets = [env.SUPABASE_DB_PASSWORD, env.SUPABASE_ACCESS_TOKEN];
-      const sanitized = redactSecrets(
-        `${fallbackError?.stderr || ''}\n${fallbackError?.message || ''}`,
-        secrets,
-      )
-        .trim()
-        .split('\n')
-        .filter(Boolean)
-        .slice(-1)[0] || 'unknown';
-      throw new Error(`SUPABASE_PROJECT_CONTEXT_ESTABLISH_FAILED: ${sanitized}`);
+      const secrets = [env.SUPABASE_DB_PASSWORD, env.SUPABASE_ACCESS_TOKEN, env.SUPABASE_DB_URL];
+      const cause = extractCausalFailure(fallbackError, secrets);
+      throw new Error(`SUPABASE_PROJECT_CONTEXT_ESTABLISH_FAILED: ${cause}`);
     }
   }
 }
