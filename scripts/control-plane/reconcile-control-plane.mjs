@@ -7,6 +7,17 @@ import { reconcilePlan, buildFactualStateDelta } from './lib/control-plane-recon
 import { validateCompletionEnvelope } from './validate-completion-envelope.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+function runNpm(args) {
+  if (process.platform === 'win32') {
+    return execFileSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', 'npm.cmd', ...args], {
+      cwd: root,
+      stdio: 'inherit',
+    });
+  }
+  return execFileSync('npm', args, { cwd: root, stdio: 'inherit' });
+}
+
 const args = process.argv.slice(2);
 const mode = args.includes('--apply-non-state') ? 'apply-non-state' : args.includes('--apply-state') ? 'apply-state' : args.includes('--verify') ? 'verify' : 'plan';
 const baselineIndex = args.indexOf('--baseline');
@@ -41,14 +52,14 @@ try {
       state,
       completion,
       mergeSha: resolveCommit(mergeSha),
-      observedAt: new Date().toISOString(),
+      observedAt: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
       isAncestor,
     });
     if (reconciliation.changed) {
       fs.writeFileSync(statePath, `${JSON.stringify(reconciliation.state, null, 2)}\n`, 'utf8');
-      execFileSync('npm.cmd', ['run', 'control-plane:snapshot'], { cwd: root, stdio: 'inherit' });
-      execFileSync('npm.cmd', ['run', 'control-plane:architect-bundle'], { cwd: root, stdio: 'inherit' });
-      execFileSync('npm.cmd', ['run', 'control-plane:project-package'], { cwd: root, stdio: 'inherit' });
+      runNpm(['run', 'control-plane:snapshot']);
+      runNpm(['run', 'control-plane:architect-bundle']);
+      runNpm(['run', 'control-plane:project-package']);
     }
   }
   if (mode === 'verify') {
