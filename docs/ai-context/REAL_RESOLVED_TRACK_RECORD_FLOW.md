@@ -108,7 +108,7 @@ never computes the final summary from global `generated_signal_pairs`, raw
 1. Run the refresh blocks in
    `supabase/migrations/20260702_track_record_window_results.sql`
    (idempotent: history upsert → per-window rebuild → summary upsert).
-2. Run `supabase/migrations/preview_track_record_shown_history_flow.sql`
+2. Run `supabase/sql-previews/preview_track_record_shown_history_flow.sql`
    in the Supabase SQL Editor — compact readable sections `01_SUMMARY`,
    `02_DATES`, `03_DUPLICATES_TOP`, `04_TOP_ROWS` (with `audit_flag`).
 3. Re-run after each display refresh / resolver cron cycle.

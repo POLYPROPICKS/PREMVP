@@ -53,6 +53,15 @@ export const RECOVERABLE_CONDITIONS = Object.freeze([
   { id: 'SAFE_STATE_RECONCILIATION', class: 'EXECUTOR_OWNED_RECOVERY', match: /\b(state refresh|state reconciliation|STATE_REFRESH_REQUIRED|stale state)\b/i },
   { id: 'IMPLEMENTATION_OR_TEST_CORRECTION', class: 'EXECUTOR_OWNED_RECOVERY', match: /\b(test|compiler|implementation)\b[^.\n]{0,30}\b(defect|failure|failed)\b[^.\n]{0,30}\b(fix|correct|retry)\b|\bfailed first (test|attempt)\b/i },
   { id: 'RESUMABLE_TRANSPORT_INTERRUPTION', class: 'TRANSPORT_RESUME', match: /\b(transport|connection|session)\b[^.\n]{0,20}\b(interrupt\w*|dropped|reset)\b/i },
+  // Registered PREMVP migration-execution recoveries (RESTORE_ONE_START_PREMVP_MIGRATION_EXECUTION_V1).
+  // The Supabase values are absent from the current process env but present in the persistent
+  // authorized Windows User Environment — the executor bridges them, it is not a REQUIRED_SECRET.
+  { id: 'WINDOWS_PERSISTENT_ENV_BRIDGE_AVAILABLE', class: 'EXECUTOR_OWNED_RECOVERY', match: /\b(persistent|user)\b[^.\n]{0,30}\b(environment|env)\b[^.\n]{0,40}\b(present|available|provisioned|bridge\w*|set)\b|\bSUPABASE_[A-Z_]+\b[^.\n]{0,40}\b(persistent|user) (environment|env)\b/i },
+  // A non-migration SQL helper/preview/debug file statically detected inside supabase/migrations/
+  // is a directory-hygiene defect the executor relocates; it is never a hard boundary.
+  { id: 'NON_MIGRATION_SQL_IN_MIGRATION_DIRECTORY', class: 'EXECUTOR_OWNED_RECOVERY', match: /\bNON_MIGRATION_SQL_IN_MIGRATION_DIRECTORY\b|\b(preview|helper|debug)\b[^.\n]{0,30}\bsql\b[^.\n]{0,30}\bmigrations?\b[^.\n]{0,20}\b(director|folder)/i },
+  // Local platform / process invocation correction (e.g. npx.cmd vs npx, ComSpec) on Windows.
+  { id: 'LOCAL_PLATFORM_INVOCATION_CORRECTION', class: 'EXECUTOR_OWNED_RECOVERY', match: /\b(platform|process|shell|invocation|npx|cmd\.exe|ComSpec)\b[^.\n]{0,40}\b(correct\w*|adjust\w*|wrong (binary|command)|EINVAL|not recognized)\b/i },
 ]);
 
 /**
