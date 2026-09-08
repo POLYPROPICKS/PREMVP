@@ -1,0 +1,316 @@
+{
+  "schema_version": "1.1",
+  "result_id": "2026-09-08__automation-roadmap-governor-result",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (PolyProPicks Automation Operations Governor)",
+    "prompt_id": "premvp.prompt.automation_roadmap_governor.v1"
+  },
+  "generated_at": "2026-09-08T02:07:38Z",
+  "terminal_disposition": "ONE_AUTOMATION_INVESTMENT",
+  "eligibility": {
+    "eligible": true,
+    "reason": "12 new validated cycle(s) meets the minimum of 3",
+    "based_on_cycles": [
+      "2026-08-25__evolution-canonical-cycle",
+      "2026-08-26__evolution-canonical-cycle",
+      "2026-08-28__evolution-canonical-cycle",
+      "2026-08-30__evolution-canonical-cycle",
+      "2026-08-31__evolution-canonical-cycle",
+      "2026-09-01__evolution-canonical-cycle",
+      "2026-09-02__evolution-canonical-cycle",
+      "2026-09-03__evolution-canonical-cycle",
+      "2026-09-04__evolution-canonical-cycle",
+      "2026-09-05__evolution-canonical-cycle",
+      "2026-09-06__evolution-canonical-cycle",
+      "2026-09-07__evolution-canonical-cycle"
+    ],
+    "new_validated_cycle_count": 12,
+    "weekly_boundary_reached": false
+  },
+  "findings": {
+    "axis_b_advancement": {
+      "statement": "Терминальная персистенция Evolution/Governor-циклов созрела от ручного PR на ~35 часов до мержа за секунды с нулевым действием Founder (PR#211 — 9с, PR#213 — 5с), плюс адаптер GitHub PR-инструментов по исполнителю (PR#220, PR#224) и Stop-гейт на canonical main (PR#255).",
+      "verdict": "CAPABILITY_STRENGTHENED",
+      "evidence_refs": [
+        "2026-08-30__evolution-canonical-cycle",
+        "2026-08-31__evolution-canonical-cycle",
+        "2026-09-01__evolution-canonical-cycle",
+        "2026-09-02__evolution-canonical-cycle",
+        "2026-09-07__evolution-canonical-cycle",
+        "PR#211",
+        "PR#213",
+        "PR#220",
+        "PR#224",
+        "PR#255"
+      ]
+    },
+    "axis_a_support_or_distraction": {
+      "statement": "Evolution/Governor-инфраструктура шла отдельными ветками параллельно продуктовым мержам и не отняла ресурсов у прода, но и не продвинула Ось A: сверенный PnL не заявлен ни разу за 12 циклов, а один период (2026-09-05) зафиксировал откат Оси A из-за отдельного прод-инцидента.",
+      "verdict": "NEUTRAL",
+      "evidence_refs": [
+        "2026-08-30__evolution-canonical-cycle",
+        "2026-09-03__evolution-canonical-cycle",
+        "2026-09-05__evolution-canonical-cycle",
+        "2026-09-07__evolution-canonical-cycle"
+      ]
+    },
+    "repeated_problems": [
+      {
+        "problem": "Мержи денежно-смежных файлов Contract A и пути изоляции продюсера проходят с нулевым CI и без ревью; один случай уже вызвал прод-инцидент (рост decisions/run с ~54 до ~250, откат и kill switch), а к последнему циклу это стало нормой для всех мержей.",
+        "repetition_count": 7,
+        "cycle_refs": [
+          "2026-08-30__evolution-canonical-cycle",
+          "2026-09-02__evolution-canonical-cycle",
+          "2026-09-03__evolution-canonical-cycle",
+          "2026-09-04__evolution-canonical-cycle",
+          "2026-09-05__evolution-canonical-cycle",
+          "2026-09-06__evolution-canonical-cycle",
+          "2026-09-07__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "problem": "CURRENT_STATE.yaml не обновлялся сверкой с живым origin/main десять циклов подряд (state_version оставался 17 с 2026-08-28), хотя детерминированный скрипт сверки уже существует — он просто ни разу не был подключён как расписание или CI-гейт, только запускался вручную.",
+        "repetition_count": 10,
+        "cycle_refs": [
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle",
+          "2026-08-31__evolution-canonical-cycle",
+          "2026-09-01__evolution-canonical-cycle",
+          "2026-09-02__evolution-canonical-cycle",
+          "2026-09-03__evolution-canonical-cycle",
+          "2026-09-04__evolution-canonical-cycle",
+          "2026-09-05__evolution-canonical-cycle",
+          "2026-09-06__evolution-canonical-cycle",
+          "2026-09-07__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "problem": "Первичного лога операторских действий по-прежнему нет ни у одного исполнителя, поэтому количество ручных действий Founder за период всегда остаётся лишь нижней оценкой, а не точным числом.",
+        "repetition_count": 12,
+        "cycle_refs": [
+          "2026-08-25__evolution-canonical-cycle",
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-08-30__evolution-canonical-cycle",
+          "2026-08-31__evolution-canonical-cycle",
+          "2026-09-01__evolution-canonical-cycle",
+          "2026-09-02__evolution-canonical-cycle",
+          "2026-09-03__evolution-canonical-cycle",
+          "2026-09-04__evolution-canonical-cycle",
+          "2026-09-05__evolution-canonical-cycle",
+          "2026-09-06__evolution-canonical-cycle",
+          "2026-09-07__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "problem": "Недокументированный числовой потолок или ограничивающий allowlist без именованной обоснованной константы повторно проскальзывает в код скоринга и допуска в воронку (лимит 200, обрез 45, allowlist типов рынков, отсутствие потолка fanout) — один и тот же класс проектной ошибки в разных местах.",
+        "repetition_count": 6,
+        "cycle_refs": [
+          "2026-08-25__evolution-canonical-cycle",
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-08-28__evolution-canonical-cycle",
+          "2026-09-04__evolution-canonical-cycle",
+          "2026-09-05__evolution-canonical-cycle",
+          "2026-09-06__evolution-canonical-cycle"
+        ]
+      }
+    ],
+    "experiments_with_evidence": [
+      {
+        "experiment_id": "E3_GITHUB_MCP_TERMINAL_PERSISTENCE_FALLBACK",
+        "outcome": "PROMOTION_CONDITION_MET",
+        "evidence_refs": [
+          "2026-08-30__evolution-canonical-cycle",
+          "2026-08-31__evolution-canonical-cycle",
+          "PR#211",
+          "PR#213"
+        ]
+      },
+      {
+        "experiment_id": "RECONCILE_PIPELINE_OUTPUT_AGAINST_KNOWN_DENOMINATOR",
+        "outcome": "PROMOTION_CONDITION_MET",
+        "evidence_refs": [
+          "2026-09-04__evolution-canonical-cycle",
+          "PR#242",
+          "PR#243"
+        ]
+      },
+      {
+        "experiment_id": "PRODUCTION_OBSERVATION_V1_FOR_MONEY_PATH_MERGES",
+        "outcome": "INCONCLUSIVE",
+        "evidence_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-09-03__evolution-canonical-cycle",
+          "2026-09-05__evolution-canonical-cycle",
+          "2026-09-07__evolution-canonical-cycle"
+        ]
+      }
+    ],
+    "founder_skills_practiced": [
+      {
+        "ladder_id": "VERIFICATION_DISCIPLINE",
+        "repetition_count": 6,
+        "cycle_refs": [
+          "2026-08-30__evolution-canonical-cycle",
+          "2026-09-01__evolution-canonical-cycle",
+          "2026-09-02__evolution-canonical-cycle",
+          "2026-09-03__evolution-canonical-cycle",
+          "2026-09-04__evolution-canonical-cycle",
+          "2026-09-05__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "ladder_id": "DURABLE_OPERATIONS",
+        "repetition_count": 6,
+        "cycle_refs": [
+          "2026-08-30__evolution-canonical-cycle",
+          "2026-08-31__evolution-canonical-cycle",
+          "2026-09-01__evolution-canonical-cycle",
+          "2026-09-02__evolution-canonical-cycle",
+          "2026-09-03__evolution-canonical-cycle",
+          "2026-09-04__evolution-canonical-cycle"
+        ]
+      }
+    ],
+    "automation_decisions": [
+      {
+        "subject": "Расширить CI-гейт reviewer_receipt_enforcement на 3 денежных файла и путь изоляции продюсера",
+        "decision": "PROMOTE",
+        "reason": "Единственный дефект окна, уже вызвавший измеримый прод-инцидент; гейт уже зарегистрирован как PLANNED, реализация детерминированная, без нового LLM-агента.",
+        "evidence_refs": [
+          "2026-09-04__evolution-canonical-cycle",
+          "2026-09-05__evolution-canonical-cycle",
+          "2026-09-07__evolution-canonical-cycle",
+          "PR#245",
+          "PR#247",
+          "PR#248",
+          "PR#259"
+        ]
+      },
+      {
+        "subject": "Подключить скрипт сверки CURRENT_STATE.yaml как расписание или CI-гейт",
+        "decision": "DEFER",
+        "reason": "Реальный разрыв (10 циклов подряд), но в бухгалтерии состояния, не на денежном пути; state_version уже сдвинулся один раз как побочный эффект — ниже приоритета, чем H6.",
+        "evidence_refs": [
+          "2026-09-06__evolution-canonical-cycle",
+          "2026-09-07__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "subject": "Ввести общий, дозаписываемый лог операторских действий, читаемый evolution-collect.mjs напрямую",
+        "decision": "DEFER",
+        "reason": "Повторяется во всех 12 циклах, но закрывает разрыв в полноте доказательств для самого Evolution-разбора, а не риск на денежном пути; ниже по экономическому приоритету, чем гейт, уже привязанный к реальному инциденту.",
+        "evidence_refs": [
+          "2026-08-25__evolution-canonical-cycle",
+          "2026-09-07__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "subject": "Построить общий помощник сохранения количества кандидатов на границе воронки и статическую проверку голых числовых потолков/allowlist",
+        "decision": "DEFER",
+        "reason": "Ревьюер сам классифицировал это как система позже в большинстве циклов; конкретный экземпляр этого класса дефекта (PR#244 to PR#250) уже был закрыт тестами без прод-вреда, в отличие от денежного пути.",
+        "evidence_refs": [
+          "2026-08-26__evolution-canonical-cycle",
+          "2026-09-06__evolution-canonical-cycle"
+        ]
+      }
+    ],
+    "roadmap_on_course": {
+      "statement": "Stage 2 (Automation Roadmap and governance) remains on course: this is the first real Governor run against canonical history, it produces exactly one bounded evidence-based proposal with accepted false, and it satisfies Stage 2's own exit condition without inventing a fourth roadmap level or touching strategic authority.",
+      "on_course": true
+    },
+    "roadmap_delta_justified": true
+  },
+  "roadmap_delta": {
+    "roadmap_delta_id": "premvp.roadmap_delta.2026-09-08__ci-gate-money-path-capacity-check.v1",
+    "based_on_cycles": [
+      "2026-08-25__evolution-canonical-cycle",
+      "2026-08-26__evolution-canonical-cycle",
+      "2026-08-28__evolution-canonical-cycle",
+      "2026-08-30__evolution-canonical-cycle",
+      "2026-08-31__evolution-canonical-cycle",
+      "2026-09-01__evolution-canonical-cycle",
+      "2026-09-02__evolution-canonical-cycle",
+      "2026-09-03__evolution-canonical-cycle",
+      "2026-09-04__evolution-canonical-cycle",
+      "2026-09-05__evolution-canonical-cycle",
+      "2026-09-06__evolution-canonical-cycle",
+      "2026-09-07__evolution-canonical-cycle"
+    ],
+    "current_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "proposed_change": "Расширить CI-гейт reviewer_receipt_enforcement (статус PLANNED, только R3/R4) новым триггером на три денежных файла и путь изоляции продюсера: PR обязан содержать оценку эффекта на decisions/run или fanout и нести CI-прогон до мержа, либо явную причину его отсутствия. Гейт детерминированный, без LLM.",
+    "preserves": [
+      "Приоритет Оси A (запуск, выручка, PnL) над Осью B",
+      "roadmap_phase, значение C1/C2, PnL-гейты и права на реальные деньги в CURRENT_STATE.yaml не меняются этим предложением",
+      "Существующие ровно три уровня Automation Roadmap (Stage 1, Stage 2, Vision) — новый уровень не изобретается",
+      "Существующие триггеры premvp.ci_gate.reviewer_receipt_enforcement на R3 и R4 не удаляются, только расширяются"
+    ],
+    "supersedes": [],
+    "retires": [],
+    "business_effect": "Защищает Ось A, не продвигая её напрямую: единственный подтверждённый инцидент за 12 циклов случился на одном из этих файлов при нулевом CI (decisions/run ~54 до ~250, откат, kill switch). Гейт снижает риск повторного простоя на пути к settlement и PnL, но сам выручку не создаёт.",
+    "manifest_2_effect": "Переводит уже зарегистрированную, но нереализованную способность CI_GATE из PLANNED в реализованную; усиливает существующий домен PERMISSION_AND_TOOL_DESIGN детерминированным скриптом, без нового постоянного LLM-агента.",
+    "evidence": [
+      {
+        "statement": "PR#245 (2026-09-04) слился в живой путь обнаружения и планирования Contract A с нулевым CI и вызвал реальный прод-инцидент базы данных: по обоснованию отката PR#247 producer decisions/run выросли примерно с 54 до 250, зафиксированы повторные события crash-recovery Postgres, задержки старта autovacuum и устойчивые таймауты; потребовался откат в тот же день (PR#247) и kill switch (PR#248). Точная первопричина инцидента не заявлена как полностью доказанная.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "2026-09-05__evolution-canonical-cycle",
+          "PR#245",
+          "PR#247",
+          "PR#248"
+        ]
+      },
+      {
+        "statement": "Один и тот же класс дефекта — мерж денежно-смежного файла с нулевым CI и без ревью — повторился минимум семь раз за окно разбора: PR#194, PR#225, PR#231, PR#245 (инцидент), PR#250 (пойман тестами до вреда), и обобщился до всех восьми мержей цикла 2026-09-07, включая сам money-producer isolation (PR#259, слит через 3 секунды после открытия).",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "2026-08-30__evolution-canonical-cycle",
+          "2026-09-02__evolution-canonical-cycle",
+          "2026-09-03__evolution-canonical-cycle",
+          "2026-09-04__evolution-canonical-cycle",
+          "2026-09-06__evolution-canonical-cycle",
+          "2026-09-07__evolution-canonical-cycle"
+        ]
+      },
+      {
+        "statement": "premvp.ci_gate.reviewer_receipt_enforcement уже существует как зарегистрированная запись control-plane (AGENT_REGISTRY.yaml) со статусом PLANNED и пустым implementation_path, с триггерами только на R3_WEATHER_MODEL_CHANGE и R4_CONTUR_PRODUCTION_BOUNDARY — она пока не покрывает три названных файла и путь изоляции денежного продюсера, где произошёл инцидент.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#premvp.ci_gate.reviewer_receipt_enforcement"
+        ]
+      }
+    ],
+    "opportunity_cost": "Время на реализацию и подключение этого гейта не тратится на прямую продуктовую работу или на три другие предложенные автоматизации этого разбора (сверка CURRENT_STATE.yaml по расписанию, лог операторских действий, помощник сохранения популяции воронки) — все три остаются отложенными на этот цикл.",
+    "drift_from_original_roadmap": "Минимальное: не создаёт нового этапа roadmap и не меняет типы риск-классов Stage 2; только расширяет область срабатывания уже зарегистрированного, но нереализованного CI-гейта, что прямо входит в заявленный объём Stage 2.",
+    "drift_justified": true,
+    "success_metric": "Доля PR, меняющих один из трёх названных файлов или путь изоляции денежного продюсера, которые несут хотя бы один зарегистрированный CI-прогон и явную оценку эффекта в теле PR, растёт с наблюдаемых 0% (PR#194, #225, #231, #245, #250, #259 — ни одного с CI) до 100% для новых PR после подключения гейта.",
+    "rollback_condition": "Откатить это изменение, если гейт хотя бы дважды подряд без причины блокирует легитимный PR без реального риска для денежного пути, либо если его реализация потребует доступ к продовому runtime или базе данных сверх уже существующих прав исполнителя.",
+    "accepted": false
+  },
+  "roadmap_factual_updates": {
+    "role": "FACTUAL_ONLY",
+    "last_evaluated_at": "2026-09-08T02:07:38Z",
+    "cycle_count": 12,
+    "repetition_counts": {
+      "H6_ZERO_CI_MONEY_PATH_MERGE": 7,
+      "H1_CURRENT_STATE_STALENESS": 10,
+      "H4_OPERATOR_ACTION_LOG_GAP": 12,
+      "H2_UNDOCUMENTED_CEILING_ALLOWLIST": 6
+    },
+    "hypothesis_status": {
+      "H6_ZERO_CI_MONEY_PATH_MERGE": "PROMOTED_TO_ROADMAP_DELTA",
+      "H1_CURRENT_STATE_STALENESS": "DEFERRED",
+      "H4_OPERATOR_ACTION_LOG_GAP": "DEFERRED",
+      "H2_UNDOCUMENTED_CEILING_ALLOWLIST": "DEFERRED"
+    },
+    "capability_evidence_observations": {
+      "GITHUB_MCP_TERMINAL_PERSISTENCE_FALLBACK": "PROVEN_REPEATABLE across PR#211 (9s) and PR#213 (5s), reused in subsequent cycles",
+      "CI_GATE_REVIEWER_RECEIPT_ENFORCEMENT": "STILL_PLANNED_NOT_IMPLEMENTED as of 2026-09-07__evolution-canonical-cycle; scope does not yet include the three H6-named files"
+    }
+  },
+  "founder_report_ref": null,
+  "next_step": "Отдельная ограниченная задача (не этот разбор и не текущий спринт) реализует расширение CI-гейта на три файла и путь изоляции продюсера, подключает его и подтверждает проверкой. Architect принимает или отклоняет это отдельным шагом Promotion Gate до начала реализации.",
+  "accepted": false
+}
