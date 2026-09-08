@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate: npm run control-plane:architect-bundle -->
 
-State v21 · updated 2026-09-08T07:54:06Z · policy 1.3.0
+State v22 · updated 2026-09-08T11:07:12Z · policy 1.3.0
 
 Canonical authority is `docs/ai-context/control-plane/**`. Live Git and runtime output outrank this guide for every fact. Never invent a command id, SHA, executor, capability verdict or runtime proof.
 
