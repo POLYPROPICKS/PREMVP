@@ -197,6 +197,25 @@ test("N4b: submitted_size fallback from a numeric-string stake_usd passes when w
   assert.equal(outcome.kind, "INSERTED");
 });
 
+test("N4c: live-shape numeric-string submitted_price reaches queue-policy validation with normalized stake fallback", async () => {
+  const port = makeFakePort();
+  const outcome = await handleOrderEventSubmission(
+    port,
+    irelandCallbackRaw({ stake_usd: "2.50", submitted_size: undefined, submitted_price: "0.43" }),
+  );
+  assert.equal(outcome.kind, "INSERTED");
+});
+
+for (const badPrice of [undefined, "", "abc", "Infinity", Number.NaN, Infinity, 0, "0", -0.01, "-0.01"]) {
+  test(`N4d: invalid submitted_price ${JSON.stringify(badPrice)} remains rejected MISSING_SUBMITTED_PRICE`, async () => {
+    const port = makeFakePort();
+    const outcome = await handleOrderEventSubmission(port, irelandCallbackRaw({ submitted_price: badPrice }));
+    assert.equal(outcome.kind, "REJECTED_QUEUE_POLICY_MISMATCH");
+    if (outcome.kind === "REJECTED_QUEUE_POLICY_MISMATCH") assert.equal(outcome.reason, "MISSING_SUBMITTED_PRICE");
+    assert.equal(port.eventsById.size, 0);
+  });
+}
+
 // 5. The MISSING_STAKE_USD policy still rejects a truly missing / zero / negative stake.
 for (const missing of [undefined, null, 0, "0", -1, "-2.5"]) {
   test(`N5: stake_usd ${JSON.stringify(missing)} is still rejected MISSING_STAKE_USD`, async () => {
