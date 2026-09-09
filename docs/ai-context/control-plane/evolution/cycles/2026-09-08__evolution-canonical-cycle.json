@@ -1,0 +1,535 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-09-08__evolution-canonical-cycle",
+  "period_start": "2026-09-08T00:00:00Z",
+  "period_end": "2026-09-09T00:00:00Z",
+  "evidence_cutoff": "2026-09-09T00:30:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (Routine A)",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#262",
+      "POLYPROPICKS/PREMVP#263",
+      "POLYPROPICKS/PREMVP#264",
+      "POLYPROPICKS/PREMVP#265",
+      "POLYPROPICKS/PREMVP#266",
+      "POLYPROPICKS/PREMVP#267",
+      "POLYPROPICKS/PREMVP#269",
+      "POLYPROPICKS/PREMVP#270",
+      "POLYPROPICKS/PREMVP#271",
+      "POLYPROPICKS/PREMVP#272",
+      "POLYPROPICKS/PREMVP#274",
+      "POLYPROPICKS/PREMVP#275",
+      "POLYPROPICKS/PREMVP#276",
+      "POLYPROPICKS/PREMVP#277"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-09-08__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "NOT_ENOUGH_EVIDENCE",
+    "what_moved": [],
+    "next_verified_production_fact_now_possible": "A bounded read-only observation of the next real Ireland executor callback carrying a JSON numeric-string stake_usd, submitted_price, or a clob_order_id under one of its alias keys, confirming it is now accepted and persisted instead of rejected as REJECTED_QUEUE_POLICY_MISMATCH / MISSING_STAKE_USD -- not yet observed.",
+    "blockers_removed": [
+      {
+        "statement": "PR#271 fixed a defect in the Ireland executor callback path: the numeric-field mapper accepted stake_usd/submitted_size only when JSON-typed as a number, nulling Ireland's numeric-string values and causing 14 live executions to be rejected as MISSING_STAKE_USD (HTTP 409). Fixed via the existing numLike() helper; a focused test was added.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#271",
+          "tests/contur3/executorOrderEvents.numericStringNormalization.test.ts"
+        ]
+      },
+      {
+        "statement": "PR#274 fixed the sibling submitted_price field in the same object literal PR#271 had just fixed, which carried the identical typeof-narrowing defect -- the second layer of a same-day chain in one file.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#274"
+        ]
+      },
+      {
+        "statement": "PR#277 broadened clob_order_id resolution to Ireland's venue_order_id/order_id/order_hash aliases and added deriveOrderEventPersistenceFields(), wiring accepted callback facts into an actual persistence path (app/api/executor/order-events/route.ts) rather than classifying them in memory only -- the third layer of the same chain.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#277"
+        ]
+      }
+    ],
+    "blockers_introduced": [],
+    "not_proven": [
+      "No live post-fix production observation exists confirming that a new Ireland callback carrying a numeric-string stake_usd/price or an aliased order id now succeeds and persists correctly -- only focused unit tests were exercised, not a runtime/business observation of the fix's own effect.",
+      "Reconciled PnL is not claimed and cannot be: no fills, fees or settlement evidence exists for this period.",
+      "The zero-CI-gate-on-merge pattern established in the 2026-09-07 cycle continues unchanged: PR#277, this period's last merge, returns total_count=0 on the GitHub Checks API, the same as every prior period.",
+      "docs/ai-context/control-plane/CURRENT_STATE.yaml advanced twice this period (state_version 18 to 22) as a side effect of accepted completions, but went stale again within the same day: PR#271/272/274/275/276/277 (all merged after the 2026-09-08T11:07:12Z refresh) are not yet reflected in its accepted_completions or origin_main_sha.",
+      "CURRENT_STATE.yaml's four open blockers (BLK-001 C1 natural night-reservations run, BLK-002 non-deterministic reviewer invocation / no CI gate, BLK-003 Supabase write access from claude_code_cloud, BLK-004 Ireland runtime access) remain unresolved and unchanged this period.",
+      "The Automation Roadmap Governor's 2026-09-08 recommendation (extend premvp.ci_gate.reviewer_receipt_enforcement to money-adjacent files) is a proposal only; no Promotion Gate acceptance or implementation has occurred.",
+      "The open (unmerged) draft/non-draft PR pile grew again this period, from 29 to 32 members at this cutoff (mcp__github__list_pull_requests, state=open), including a new non-draft member (#278, 'forward-port B1 GSP-independent migration') and two new drafts (#268, #273); none are confirmed evidence for this cycle.",
+      "The PREMVP release/migration pipeline's six same-day proven-failure-class fixes (PR#264/266/269/272/275/276) demonstrate it is only now being exercised for real on local_codex_windows; no equivalent real end-to-end run has yet been observed on claude_code_cloud, and no production database migration has yet been applied through this hardened path."
+    ],
+    "runtime_or_business_evidence_exists": false,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_ADDED",
+    "capabilities": [
+      {
+        "domain": "RECOVERY_AND_CHECKPOINTS",
+        "statement": "The PREMVP migration-execution path gained two new permanent guards: a directory preflight that fails closed on non-migration SQL, and a Windows credential bridge restoring one-start recovery without ever printing secrets.",
+        "persisted_artifact": "lib/migration-directory-preflight.mjs; lib/windows-user-env-bridge.mjs",
+        "use_or_validation_evidence": "3 new focused test files pass (migrationDirectoryPreflight, windowsUserEnvBridge, oneStartMigrationRecoverySemantics); existing adapter tests unchanged and still pass.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#275",
+          "tests/control-plane/migrationDirectoryPreflight.test.mjs",
+          "tests/control-plane/windowsUserEnvBridge.test.mjs",
+          "tests/control-plane/oneStartMigrationRecoverySemantics.test.mjs"
+        ]
+      },
+      {
+        "domain": "RECOVERY_AND_CHECKPOINTS",
+        "statement": "The PREMVP migration adapter's extractCausalFailure() now returns the real failure cause (timeout, DNS, auth, CLI error) instead of letting a progress banner mask it, bounded to 3 lines of 200 chars each.",
+        "persisted_artifact": "scripts/control-plane/lib/premvp-migration-adapter-connection.mjs",
+        "use_or_validation_evidence": "Focused tests updated and passing; sanitizeDiagnosticText() still redacts connection strings and secrets on top of the extracted excerpt.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#276",
+          "scripts/control-plane/lib/premvp-migration-adapter-connection.mjs"
+        ]
+      },
+      {
+        "domain": "AUTOMATION_ECONOMICS",
+        "statement": "The Automation Roadmap Governor ran for the first time against real history -- 12 real Evolution cycles, 2026-08-25 through 2026-09-07 -- and reached canonical main via PR#262 with a real ONE_AUTOMATION_INVESTMENT decision.",
+        "persisted_artifact": "docs/ai-context/control-plane/evolution/roadmap-proposals/2026-09-08__automation-roadmap-governor-result.json + .report.md",
+        "use_or_validation_evidence": "Cites all 12 cycle ids; reached canonical main, unlike its 8 prior draft-only attempts (#190, #199, #206, #212, #214, #216, #222, #241), all still open.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#262",
+          "docs/ai-context/control-plane/evolution/roadmap-proposals/2026-09-08__automation-roadmap-governor-result.json"
+        ]
+      }
+    ],
+    "not_proven": [
+      "The Governor's recommended CI-gate extension is a proposal only (accepted:false); no Promotion Gate acceptance or implementation has occurred.",
+      "The migration adapter's new guards (PR#275/#276) are test-validated only; no real production database migration has yet been executed through this hardened path to prove they hold under a genuine production failure.",
+      "The executor callback field-normalization fixes (PR#271/#274/#277) are correctness fixes to an existing product file on the money-adjacent execution boundary, not new Manifest-2 capability-domain artifacts; they are counted under Axis A, not Axis B.",
+      "The now six-round-deep release-pipeline chain shows the pipeline is only now being exercised for real on local_codex_windows; equivalent proof on claude_code_cloud remains absent."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": 0,
+      "runtime_evidence_count": 0,
+      "reusable_artifacts_created": 2,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-09-08T00:00:00Z",
+    "period_end": "2026-09-09T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "founder_actions_removable": "UNKNOWN",
+    "executor_runs": "UNKNOWN",
+    "successful_terminal_results": 11,
+    "reruns_resumes": "UNKNOWN",
+    "recovery_iterations": "UNKNOWN",
+    "reviewer_corrections_rejections": 0,
+    "orchestration_waste_iterations": 0,
+    "implemented_fixes": 9,
+    "proven_effective_fixes": 9,
+    "runtime_evidence_count": 0,
+    "reusable_artifacts_created": 2,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN",
+    "capture_coverage": "PARTIAL",
+    "chat_interaction_coverage": "PARTIAL",
+    "founder_actions_proven": 0,
+    "architect_corrections": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-09-08-EXECUTOR-CALLBACK-STAKE-USD-NUMERIC-STRING",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": "CHAIN-EXECUTOR-CALLBACK-FIELD-NORMALIZATION-20260907",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#271",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#271 (317417d: Ireland durable callbacks carry economic fields as JSON numeric strings, e.g. stake_usd: \"2.5\". handleOrderEventSubmission's OrderEventSubmission mapper accepted stake_usd and the submitted_size stake fallback only when typeof raw.<field> === \"number\", coercing a numeric string to null; the unchanged queue-policy validator then rejected the callback as REJECTED_QUEUE_POLICY_MISMATCH / MISSING_STAKE_USD (HTTP 409) even though the value was present, correctly named and economically valid -- 14 live Ireland executions rejected this way. Routed stake_usd and submitted_size through the file's existing numLike() helper. New focused test tests/contur3/executorOrderEvents.numericStringNormalization.test.ts added.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-08-EXECUTOR-CALLBACK-PRICE-NUMERIC-STRING",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-EXECUTOR-CALLBACK-FIELD-NORMALIZATION-20260907",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#274",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#274 (e6d2ae8: the same object literal PR#271 fixed carried an identical unfixed sibling -- submitted_price: typeof raw.submitted_price === \"number\" ? raw.submitted_price : null -- the exact typeof-narrowing pattern PR#271 had just removed from stake_usd/submitted_size, a few lines above it in the same function. Changed to numLike(raw.submitted_price). tests/contur3/executorOrderEvents.numericStringNormalization.test.ts extended with a price-normalization case; passes.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-08-EXECUTOR-CALLBACK-ORDER-ID-ALIAS-GAP",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-EXECUTOR-CALLBACK-FIELD-NORMALIZATION-20260907",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#277",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#277 (3c17973: after the two numeric-field layers, classifyOrderEvent()/projectCanonicalOrderEventPayload() were found to resolve clob_order_id only from the exact clob_order_id key, dropping Ireland's venue_order_id/order_id/order_hash aliases. Added exported deriveOrderEventPersistenceFields() resolving clob_order_id across all four aliases and wired it into both classification and a new persistence path (app/api/executor/order-events/route.ts) so accepted callback facts are actually persisted under a normalized identity instead of only classified in memory. tests/contur3/executorOrderEvents.callbackContract.test.ts extended; passes.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-08-RELEASE-PIPELINE-WINDOWS-RECONCILE-PATH",
+        "origin": "ENVIRONMENT_OR_PERMISSION_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": "CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#264",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#264 (021757a: the newly-registered bounded migration release (PR#263) exposed a Windows-path handling gap in scripts/control-plane/reconcile-control-plane.mjs the first time the release pipeline was actually exercised on local_codex_windows for a real migration release rather than a unit-test fixture. CURRENT_STATE.yaml and ARCHITECT_SNAPSHOT.md updated as part of the same reconciliation.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-08-RELEASE-PIPELINE-UNSAFE-UPSERT-REJECTION",
+        "origin": "CONTROL_PLANE_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#266",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#266 (9518fee: apply-premvp-approved-migration.mjs and premvp-application-migration-release.mjs rejected a class of safe migration upserts the real release run needed to admit; fixed with focused test coverage added to tests/control-plane/premvpReleasePipeline.test.mjs.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-08-RELEASE-PIPELINE-WORKTREE-ASSUMPTION",
+        "origin": "CONTROL_PLANE_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#269",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#269 (877b6ad: apply-premvp-approved-migration.mjs required an already-linked Supabase worktree and failed closed with LegacyProjectNotLinkedError otherwise -- a pre-linked-worktree assumption that only surfaced once the pipeline ran for real outside that exact precondition. Adapter now tries the linked project first and falls back to the CLI's documented non-interactive db push --project-ref --password flags only on that specific not-linked failure; other db-push failures still propagate unchanged and secrets are never surfaced.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-08-RELEASE-PIPELINE-MIGRATION-HISTORY-DRIFT",
+        "origin": "STATE_OR_CONTEXT_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#272",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#272 (de68cd7: restored 7 remote Supabase migration history files (current_signal_pair_serving family plus strategic identity-snapshot migrations) that were applied to the remote project but absent from supabase/migrations/ in the repository, a drift only surfaced by running the real migration-release path end to end.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-08-RELEASE-PIPELINE-DIRECTORY-HYGIENE-AND-ONE-START",
+        "origin": "CONTROL_PLANE_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#275",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#275 (0521292: three further proven failure classes in the same real execution path -- a read-only preview/audit SQL script living inside supabase/migrations/ (relocated to supabase/sql-previews/, byte-equivalent), no permanent guard against non-migration SQL reaching the Supabase CLI (new lib/migration-directory-preflight.mjs, fails closed with NON_MIGRATION_SQL_IN_MIGRATION_DIRECTORY), and missing one-start recovery when the process environment lacks already-provisioned Windows User Environment Supabase credentials (new lib/windows-user-env-bridge.mjs, values never printed/persisted/returned). Three new focused test files added and passing.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-08-RELEASE-PIPELINE-CAUSAL-FAILURE-MASKING",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#276",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#276 (7e38e26: the registered migration adapter reduced a failed fallback supabase db push to SUPABASE_PROJECT_CONTEXT_ESTABLISH_FAILED: Connecting to remote database... -- the progress banner displaced the real cause, so neither automatic recovery nor a proven hard stop was possible. extractCausalFailure() in scripts/control-plane/lib/premvp-migration-adapter-connection.mjs now reads stdout, stderr and the process error message, drops progress-only lines, prefers lines naming a concrete cause, and returns a bounded excerpt (max 3 lines, 200 chars each) or CAUSE_NOT_EXTRACTABLE rather than presenting a progress line as the cause. Sanitization layered on top via the existing redactor.)"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+        "origin": "STATE_OR_CONTEXT_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-07-ZERO-CI-GATE-ON-MERGE",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": "CHAIN-NO-CI-GATE-MERGE-ENFORCEMENT",
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "PRODUCT_OR_RUNTIME_DEFECT": 3,
+      "ENVIRONMENT_OR_PERMISSION_DEFECT": 1,
+      "CONTROL_PLANE_DEFECT": 3,
+      "STATE_OR_CONTEXT_DEFECT": 2,
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 3
+    },
+    "defect_counts_by_recurrence": {
+      "NEW_INDEPENDENT": 2,
+      "LATENT_NEXT_LAYER_EXPOSED": 7,
+      "SAME_ROOT_REPEAT": 3
+    },
+    "repeated_defect_families": 2,
+    "active_onion_chains": 2
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "CURRENT_STATE.yaml advanced twice this period (state_version 18 to 22) as a side effect of four accepted migration-release completions, then went stale again within the same day once PR#271/272/274/275/276/277 merged after the last refresh.",
+      "why_it_matters": "This is a same-day relapse of the exact coupling this hypothesis has tracked since 2026-08-28: state freshness depends entirely on whether an accepted completion happens to land, not on elapsed time or cycle count -- proven again by going stale again hours after being refreshed.",
+      "axis_a_effect": "none directly, but increases the risk that a future cycle over-trusts a stale accepted-completion list when assessing Axis A",
+      "axis_b_effect": "Blocks CONTROLLED_IMPROVEMENT / MISSION_REGISTRY maturity: a control-plane artifact whose own freshness contract depends on incidental completion timing is not yet a durable capability",
+      "proposed_automation": "A scheduled, read-only CURRENT_STATE reconciliation check (premvp.command.control_plane_reconcile.v1 already exists) run after each canonicalized Evolution cycle and after each accepted product completion, regardless of order, bounded to the existing state_bootstrap_allowlist.",
+      "persistent_artifact": "scripts/control-plane/reconcile-control-plane.mjs (already exists; proposal is scheduling, not new code)",
+      "expected_value": "Decouples CURRENT_STATE freshness from incidental completion timing, giving Routine B a reliably current baseline for every comparison",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: the existing command already fail-closes on invalid baselines and is scoped to state-only paths",
+      "success_metric": "CURRENT_STATE.yaml's updated_at/state_version advances within hours of every accepted completion, not just some of them, with zero same-day relapses",
+      "rollback_or_stop_condition": "Stop if any proposed automatic reconciliation would touch a path outside state_bootstrap_allowlist -- that always requires an explicit bounded mission instead.",
+      "timing": "Next accepted completion",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "POLYPROPICKS/PREMVP#264",
+        "POLYPROPICKS/PREMVP#277",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-07__evolution-canonical-cycle.json#automation_hypotheses.H1"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "This period again established only a lower bound of zero operator-action events across fourteen real merges, including three that fixed a live-execution-boundary defect confirmed to have rejected 14 real Ireland executions.",
+      "why_it_matters": "Without capture, Founder-effort measurement stays UNKNOWN even for a period that shipped a genuine execution-boundary fix to a real, named production incident, undermining Routine B's ability to compare automation value against actual manual load.",
+      "axis_a_effect": "none directly",
+      "axis_b_effect": "Blocks VERIFICATION_AND_EVIDENCE maturity for the operator-action pipeline itself",
+      "proposed_automation": "Unchanged: instrument the executor surface(s) that produced this period's PRs to emit OPERATOR_ACTION_EVENT records consumable by premvp.command.evolution_collect.v1.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/schemas/OPERATOR_ACTION_EVENT.schema.json (already exists; proposal is emission, not schema work)",
+      "expected_value": "Converts founder_actions_proven from a lower bound to a real count for future cycles",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: additive instrumentation only",
+      "success_metric": "Action-capture coverage reaches COMPLETE for at least one future cycle",
+      "rollback_or_stop_condition": "Stop if instrumentation would require reading Founder chat content this executor does not already have access to",
+      "timing": "Ongoing",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#271",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-07__evolution-canonical-cycle.json#automation_hypotheses.H4"
+      ]
+    },
+    {
+      "id": "H6",
+      "observed_problem": "PR#277, this period's last merge, again returns total_count=0 on the GitHub Checks API -- the zero-CI-gate-on-merge pattern is unchanged from 2026-09-07, even in a period where the Automation Roadmap Governor's own canonical decision (PR#262) recommended extending premvp.ci_gate.reviewer_receipt_enforcement to money-adjacent files.",
+      "why_it_matters": "The gap now has a Routine B-level decision behind it (the Governor's ONE_AUTOMATION_INVESTMENT pick) but zero implementation progress this period -- the recommendation and the merge behavior it targets have not yet converged.",
+      "axis_a_effect": "A required pre-merge check on changes touching the money-producer/Contract A serving path or the executor callback path would directly protect the live money path from an unreviewed regression reaching main",
+      "axis_b_effect": "Would convert VERIFICATION_AND_EVIDENCE from PRACTICED_NOT_YET_PROVEN to a real gate; closes BLK-002",
+      "proposed_automation": "Unchanged in substance, now Governor-endorsed: wire premvp.ci_gate.reviewer_receipt_enforcement (registered PLANNED) as a tracked CI gate covering the money-producer isolation path, Contract A files, and the executor callback contract, per the 2026-09-08 Governor recommendation.",
+      "persistent_artifact": "premvp.ci_gate.reviewer_receipt_enforcement (registered PLANNED, implementation_path null); docs/ai-context/control-plane/evolution/roadmap-proposals/2026-09-08__automation-roadmap-governor-result.json (the accepted-pending Governor recommendation)",
+      "expected_value": "Prevents an unreviewed, zero-CI change from reaching the live money-producer or executor-callback path undetected before merge, not only after",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low for read-only observation; wiring an actual CI gate needs a bounded architect decision (Promotion Gate) on which checks are mandatory pre-merge",
+      "success_metric": "The next merge touching the money-producer/Contract A serving path or the executor callback contract runs at least one CI check before merge",
+      "rollback_or_stop_condition": "Stop if wiring a CI gate would require credentials or CI infrastructure this executor does not hold -- escalate to a bounded architect decision instead of guessing one",
+      "timing": "NOW",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#277",
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml#open_blockers.BLK-002",
+        "docs/ai-context/control-plane/evolution/roadmap-proposals/2026-09-08__automation-roadmap-governor-result.json",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-07__evolution-canonical-cycle.json#automation_hypotheses.H6"
+      ]
+    },
+    {
+      "id": "H7",
+      "observed_problem": "The tracked open-PR count grew from 29 to 32 at this cutoff, with three new members: #268 (draft), #273 (draft), and #278 (NOT draft -- 'forward-port B1 GSP-independent migration').",
+      "why_it_matters": "The stranded-draft/open-PR pile keeps generalizing rather than closing, now including a non-draft member, each cycle's full re-scan keeps finding new members rather than the pile shrinking.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "The dispatch-plan capability remains the precondition for safely canonicalizing the Evolution/Governor family; it does not extend to the modeling-PR pile or newly-surfaced stray PRs without separate review",
+      "proposed_automation": "Not a Routine A action on any of these branches. Recorded for Routine B: run terminal_persistence_stage on the known families or explicitly classify/close them.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/SCHEDULE_MANIFEST.yaml (already documents the intended terminal_persistence_stage for the Governor routine)",
+      "expected_value": "No stranded open PRs left across periods; Routine B's own history stays as clean as Routine A's now is",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low: this hypothesis proposes only running an already-registered lifecycle command or an explicit classification pass",
+      "success_metric": "At a future cycle's evidence_cutoff, all tracked and newly-surfaced open PRs are either explicitly classified as intentional draft evidence or brought to zero",
+      "rollback_or_stop_condition": "Stop if closing or superseding these PRs would discard evidence a Founder has not yet reviewed",
+      "timing": "Next Governor run",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#268",
+        "POLYPROPICKS/PREMVP#273",
+        "POLYPROPICKS/PREMVP#278",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-07__evolution-canonical-cycle.json#automation_hypotheses.H7"
+      ]
+    },
+    {
+      "id": "H8",
+      "observed_problem": "No new instance this period -- the D-1 research-corpus reader defect chain (CHAIN-D1-RESEARCH-CORPUS-READER-20260904) had no new confirmed recurrence or new layer exposed. This is now the fourth consecutive period without one, past this hypothesis's own stated dormancy threshold of three.",
+      "why_it_matters": "Recorded so Routine B can formally close this chain as dormant rather than have it silently re-appear as NEW in a future period; this hypothesis's own stop condition was already met as of the 2026-09-07 cycle.",
+      "axis_a_effect": "none this period",
+      "axis_b_effect": "none this period",
+      "proposed_automation": "Unchanged: reconcile any new rolling-corpus reader output against an independently known row-count denominator before trusting it.",
+      "persistent_artifact": "scripts/modeling/live-d1-research-corpus.ts (already exists)",
+      "expected_value": "Prevents a repeat silent undercount if the reader is exercised again at full-day scale",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "Low",
+      "success_metric": "Any future full-day reconciliation of this reader matches its independently known denominator exactly",
+      "rollback_or_stop_condition": "Already met as of the 2026-09-07 cycle (three consecutive periods without a new instance); recommend Routine B close this hypothesis as dormant now unless a new instance appears first.",
+      "timing": "SYSTEM_LATER",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-07__evolution-canonical-cycle.json#automation_hypotheses.H8"
+      ]
+    },
+    {
+      "id": "H11",
+      "observed_problem": "Within lib/executor/executorCallbackContract.ts, three sequential same-day PRs (#271, #274, #277) each fixed one more field-normalization gap in the same submission-mapping function -- stake_usd/submitted_size, then submitted_price, then clob_order_id aliasing -- each discovered only after the previous fix landed, rather than in one pass.",
+      "why_it_matters": "This is a two-plus-LATENT_NEXT_LAYER_EXPOSED chain on the same execution-boundary path (CHAIN-EXECUTOR-CALLBACK-FIELD-NORMALIZATION-20260907): the underlying gap is not any one field, it is that the mapper normalizes each incoming Ireland field with its own bespoke ad hoc typeof check instead of routing every numeric/identity field through one shared, auditable normalization contract. The original fix (#271) was scoped to the field a live rejection happened to name, without auditing sibling fields with the identical pattern in the same object literal.",
+      "axis_a_effect": "Directly protects the live execution/settlement ingestion boundary: each layer of this chain, until closed, represents a class of real Ireland executions that can be silently rejected or misrecorded",
+      "axis_b_effect": "Would strengthen VERIFICATION_AND_EVIDENCE: a documented, testable invariant that every field read from an external executor callback passes through one shared normalization/alias-resolution helper audited in the same review, not fixed field-by-field as each fails in production",
+      "proposed_automation": "A focused test (or lint rule) over lib/executor/executorCallbackContract.ts asserting every raw.<field> read in the submission-normalization block is routed through numLike()/deriveOrderEventPersistenceFields() rather than a bare typeof or direct property read, so a future sibling-field gap fails CI instead of requiring a third live-rejection incident to surface.",
+      "persistent_artifact": "tests/contur3/executorOrderEvents.numericStringNormalization.test.ts (already exists; proposal extends its scope to a structural assertion over the whole mapping function)",
+      "expected_value": "Catches the next sibling-field gap in review or CI, rather than requiring another live Ireland execution to be rejected first",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low: additive test/lint only, no behavior change",
+      "success_metric": "The next field added to or read from the callback submission mapper is covered by the same structural test before merge, with zero same-file live-rejection incidents in the following period",
+      "rollback_or_stop_condition": "Stop if a structural assertion over the mapping function produces false positives on fields that are deliberately not numeric/identity-typed",
+      "timing": "NOW",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#271",
+        "POLYPROPICKS/PREMVP#274",
+        "POLYPROPICKS/PREMVP#277",
+        "lib/executor/executorCallbackContract.ts"
+      ]
+    },
+    {
+      "id": "H12",
+      "observed_problem": "The PREMVP release pipeline (ENABLED since 2026-08-06, proof level SUPPORTED) hit six same-day proven failure classes the first time it ran for real on local_codex_windows (PR#264 Windows path, #266 unsafe upsert, #269 worktree assumption, #272 history drift, #275 directory/one-start, #276 causal-failure masking).",
+      "why_it_matters": "This is a six-layer onion chain (CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908) exposing the same missing boundary invariant as H11 in a different subsystem: a component was marked ENABLED / PROVEN_PRESENT in AGENT_REGISTRY.yaml without first completing one real end-to-end exercise on each supported executor against the exact environment it would actually run in -- six previously-untested boundaries surfaced back-to-back in one day once it finally ran for real.",
+      "axis_a_effect": "Indirect: a release/migration pipeline that reaches production database changes safely and observably is a precondition for any future Axis A claim that depends on a live schema change",
+      "axis_b_effect": "Would raise the release pipeline's proof level from SUPPORTED toward PROVEN_IN_RUNTIME once it completes a full real run on both supported executors (local_codex_windows and claude_code_cloud) with zero new failure classes",
+      "proposed_automation": "Require a recorded real (not only unit-tested) end-to-end dry run per supported executor, cited in the registry's proof references, before a control-plane pipeline command's status can be advanced past SUPPORTED to PROVEN_IN_RUNTIME; validate-command-bindings.mjs is the natural place to check the reference exists.",
+      "persistent_artifact": "scripts/control-plane/validate-command-bindings.mjs (already exists; proposal adds one check, not a new script)",
+      "expected_value": "Surfaces this exact failure shape (a pipeline component marked usable before its first real exercise) as a registry-validation failure instead of a same-day incident chain discovered live",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium: requires agreeing what counts as a qualifying real end-to-end run per executor, and could block a legitimate SUPPORTED-to-PROVEN_IN_RUNTIME promotion if evidence recording lags the actual run",
+      "success_metric": "The next control-plane pipeline command promoted to PROVEN_IN_RUNTIME cites a real per-executor end-to-end run in AGENT_REGISTRY.yaml at promotion time",
+      "rollback_or_stop_condition": "Stop if this check would block a promotion that already has equivalent real evidence recorded elsewhere (e.g. EVIDENCE_LEDGER.md) -- broaden the accepted evidence location instead of the requirement",
+      "timing": "NOW",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#264",
+        "POLYPROPICKS/PREMVP#266",
+        "POLYPROPICKS/PREMVP#269",
+        "POLYPROPICKS/PREMVP#272",
+        "POLYPROPICKS/PREMVP#275",
+        "POLYPROPICKS/PREMVP#276",
+        "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#premvp.command.release_pipeline.v1"
+      ]
+    }
+  ],
+  "insufficient_supported_hypotheses": false,
+  "insufficient_supported_hypotheses_reason": null,
+  "founder_practices": [
+    {
+      "id": "P4",
+      "skill_practiced": "When fixing a field-mapping or type-coercion defect in a shared normalization function, audit every sibling field in the same function for the identical pattern in the same pass, instead of fixing only the field a live incident happened to name.",
+      "why_it_matters_now": "PR#271, #274 and #277 today are a concrete, same-day, three-layer example of exactly the gap this practice closes: the first PR fixed only the field named in the 14-rejection incident, and two more same-day PRs were needed to close sibling gaps in the identical object literal.",
+      "how_it_applies_to_current_project": "Before merging a fix to lib/executor/executorCallbackContract.ts or any similar external-contract mapper, list every field read from the raw payload in the same function and confirm each one that should be numeric/identity-normalized actually is, in the same PR.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-08__evolution-canonical-cycle.json (this cycle's H11 record)",
+      "ladder_level": 2
+    },
+    {
+      "id": "P5",
+      "skill_practiced": "Before marking a control-plane pipeline command ENABLED or PROVEN_PRESENT in AGENT_REGISTRY.yaml, run it for real end-to-end on the executor environment it will actually run in, not only against unit-test fixtures.",
+      "why_it_matters_now": "The PREMVP release pipeline was registered ENABLED on 2026-08-06 but had apparently never been exercised for real on local_codex_windows until this period, which then surfaced six sequential proven failure classes in one day.",
+      "how_it_applies_to_current_project": "Before the next control-plane pipeline command is promoted past SUPPORTED, run and record one real per-executor dry run (or live run) and cite it in the registry's proof references, per hypothesis H12.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-08__evolution-canonical-cycle.json (this cycle's H12 record)",
+      "ladder_level": 3
+    }
+  ],
+  "founder_practice_comparison": "P4 is higher priority: it protects a live execution boundary with a real, counted incident (14 rejected Ireland executions) and is immediately actionable. P5 is a broader process discipline with systemic but less immediate payoff.",
+  "founder_practice_recommended_order": [
+    "P4",
+    "P5"
+  ],
+  "experiments": [
+    {
+      "id": "E4",
+      "hypothesis": "A single bounded read-only observation of the next real Ireland executor callback carrying a JSON numeric-string stake_usd, submitted_price, or an aliased order-id field can confirm it is now accepted and persisted, not only the focused unit tests in PR#271/#274/#277.",
+      "bounded_scope": "One read-only observation of the next naturally-occurring qualifying callback; no synthetic callback injection, no write path beyond what the existing route already performs.",
+      "persistent_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md (new entry recording the observed callback outcome, if one occurs)",
+      "promotion_condition": "A real Ireland callback with a numeric-string economic field or an aliased order id is observed accepted and persisted rather than rejected.",
+      "stop_condition": "Stop if confirming this would require injecting a synthetic callback, reading Ireland-side logs this executor does not have access to, or any write beyond the existing route's normal behavior."
+    },
+    {
+      "id": "E5",
+      "hypothesis": "The PREMVP release pipeline can complete one full real end-to-end run on claude_code_cloud (not only local_codex_windows) with zero new proven failure classes, closing the per-executor evidence gap named in hypothesis H12.",
+      "bounded_scope": "One dry-run or validate-mode invocation of premvp.command.release_pipeline.v1 on claude_code_cloud against a real (not synthetic) migration candidate; no live database mutation unless the pipeline's own gates pass.",
+      "persistent_artifact": "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#premvp.command.release_pipeline.v1 (proof references updated with the run outcome) plus an EVIDENCE_LEDGER.md entry",
+      "promotion_condition": "The run completes with a PASS or an explicit WAIT/BLOCKED verdict and zero new proven failure classes beyond the six already fixed this period.",
+      "stop_condition": "Stop and record EXTERNAL_WAIT if claude_code_cloud lacks a credential or environment binding this command already requires, rather than attempting to force one."
+    },
+    {
+      "id": "E6",
+      "hypothesis": "This cycle's own terminal persistence can again reach canonical origin/main with zero intermediate Founder action, using the same GitHub-MCP-backed path already proven for prior cycles' lineages.",
+      "bounded_scope": "One canonical Evolution cycle document plus its rendered report, persisted via the registered branch/PR/merge lifecycle; no product code path touched.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-08__evolution-canonical-cycle.json and its .report.md",
+      "promotion_condition": "The cycle reaches canonical origin/main with a founder_action count of zero for this persistence step.",
+      "stop_condition": "Stop and return the canonical resumable outcome if the registered persistence lifecycle cannot complete within this execution window."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE (per CURRENT_STATE.yaml, updated_at 2026-09-08T11:07:12Z, state_version 22 -- refreshed this period via four migration-release completions, then stale again relative to PR#271/272/274/275/276/277; see hypothesis H1)"
+  },
+  "next_step": "Persist via the proven GitHub-MCP path: push this cycle's allowlisted files, create a PR against main, merge it, and verify origin/main ancestry. Then run experiment E4 (observe the next real Ireland callback) and E5 (a claude_code_cloud release-pipeline dry run) as resources permit. Do not babysit the now-32-member open-PR family beyond recording it for Routine B.",
+  "corrections": [],
+  "accepted": false
+}

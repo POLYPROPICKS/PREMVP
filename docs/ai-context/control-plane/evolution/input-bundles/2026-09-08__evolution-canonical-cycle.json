@@ -1,0 +1,170 @@
+{
+    "bundle_id": "2026-09-08__evolution-canonical-cycle",
+    "repository": "POLYPROPICKS/PREMVP",
+    "period_start": "2026-09-08T00:00:00Z",
+    "period_end": "2026-09-09T00:00:00Z",
+    "evidence_cutoff": "2026-09-09T00:30:00Z",
+    "capture_coverage": "PARTIAL",
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+        "POLYPROPICKS/PREMVP#262",
+        "POLYPROPICKS/PREMVP#263",
+        "POLYPROPICKS/PREMVP#264",
+        "POLYPROPICKS/PREMVP#265",
+        "POLYPROPICKS/PREMVP#266",
+        "POLYPROPICKS/PREMVP#267",
+        "POLYPROPICKS/PREMVP#269",
+        "POLYPROPICKS/PREMVP#270",
+        "POLYPROPICKS/PREMVP#271",
+        "POLYPROPICKS/PREMVP#272",
+        "POLYPROPICKS/PREMVP#274",
+        "POLYPROPICKS/PREMVP#275",
+        "POLYPROPICKS/PREMVP#276",
+        "POLYPROPICKS/PREMVP#277"
+    ],
+    "operator_action_events": [],
+    "operating_telemetry": {
+        "capture_coverage": "PARTIAL",
+        "chat_interaction_coverage": "UNKNOWN",
+        "founder_actions_proven": 0,
+        "founder_actions_removable": "UNKNOWN",
+        "executor_runs": "UNKNOWN",
+        "successful_terminal_results": 11,
+        "reruns_resumes": "UNKNOWN",
+        "recovery_iterations": "UNKNOWN",
+        "architect_corrections": 0,
+        "reviewer_corrections_rejections": 0,
+        "orchestration_waste_iterations": 0,
+        "repeated_defect_families": 3,
+        "active_onion_chains": 2,
+        "implemented_fixes": 9,
+        "proven_effective_fixes": 9,
+        "runtime_evidence_count": 0,
+        "reusable_artifacts_created": 2,
+        "actions_per_verified_result": "UNKNOWN",
+        "time_to_verified_result": "UNKNOWN"
+    },
+    "supporting_metrics": {
+        "runtime_evidence_count": 0,
+        "reusable_artifacts_created": 2,
+        "reviewer_rejection_count": 0,
+        "architect_corrections": 0
+    },
+    "defect_occurrences": [
+        {
+            "defect_id": "DEF-2026-09-08-EXECUTOR-CALLBACK-STAKE-USD-NUMERIC-STRING",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "NEW_INDEPENDENT",
+            "defect_chain_id": "CHAIN-EXECUTOR-CALLBACK-FIELD-NORMALIZATION-20260907",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#271",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#271 (317417d: Ireland durable callbacks carry economic fields as JSON numeric strings, e.g. stake_usd: \"2.5\". handleOrderEventSubmission's OrderEventSubmission mapper accepted stake_usd and the submitted_size stake fallback only when typeof raw.<field> === \"number\", coercing a numeric string to null; the unchanged queue-policy validator then rejected the callback as REJECTED_QUEUE_POLICY_MISMATCH / MISSING_STAKE_USD (HTTP 409) even though the value was present, correctly named and economically valid -- 14 live Ireland executions rejected this way. Routed stake_usd and submitted_size through the file's existing numLike() helper. New focused test tests/contur3/executorOrderEvents.numericStringNormalization.test.ts added.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-08-EXECUTOR-CALLBACK-PRICE-NUMERIC-STRING",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-EXECUTOR-CALLBACK-FIELD-NORMALIZATION-20260907",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#274",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#274 (e6d2ae8: the same object literal PR#271 fixed carried an identical unfixed sibling -- submitted_price: typeof raw.submitted_price === \"number\" ? raw.submitted_price : null -- the exact typeof-narrowing pattern PR#271 had just removed from stake_usd/submitted_size, a few lines above it in the same function. Changed to numLike(raw.submitted_price). tests/contur3/executorOrderEvents.numericStringNormalization.test.ts extended with a price-normalization case; passes.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-08-EXECUTOR-CALLBACK-ORDER-ID-ALIAS-GAP",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-EXECUTOR-CALLBACK-FIELD-NORMALIZATION-20260907",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#277",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#277 (3c17973: after the two numeric-field layers, classifyOrderEvent()/projectCanonicalOrderEventPayload() were found to resolve clob_order_id only from the exact clob_order_id key, dropping Ireland's venue_order_id/order_id/order_hash aliases. Added exported deriveOrderEventPersistenceFields() resolving clob_order_id across all four aliases and wired it into both classification and a new persistence path (app/api/executor/order-events/route.ts) so accepted callback facts are actually persisted under a normalized identity instead of only classified in memory. tests/contur3/executorOrderEvents.callbackContract.test.ts extended; passes.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-08-RELEASE-PIPELINE-WINDOWS-RECONCILE-PATH",
+            "origin": "ENVIRONMENT_OR_PERMISSION_DEFECT",
+            "recurrence": "NEW_INDEPENDENT",
+            "defect_chain_id": "CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#264",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#264 (021757a: the newly-registered bounded migration release (PR#263) exposed a Windows-path handling gap in scripts/control-plane/reconcile-control-plane.mjs the first time the release pipeline was actually exercised on local_codex_windows for a real migration release rather than a unit-test fixture. CURRENT_STATE.yaml and ARCHITECT_SNAPSHOT.md updated as part of the same reconciliation.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-08-RELEASE-PIPELINE-UNSAFE-UPSERT-REJECTION",
+            "origin": "CONTROL_PLANE_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#266",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#266 (9518fee: apply-premvp-approved-migration.mjs and premvp-application-migration-release.mjs rejected a class of safe migration upserts the real release run needed to admit; fixed with focused test coverage added to tests/control-plane/premvpReleasePipeline.test.mjs.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-08-RELEASE-PIPELINE-WORKTREE-ASSUMPTION",
+            "origin": "CONTROL_PLANE_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#269",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#269 (877b6ad: apply-premvp-approved-migration.mjs required an already-linked Supabase worktree and failed closed with LegacyProjectNotLinkedError otherwise -- a pre-linked-worktree assumption that only surfaced once the pipeline ran for real outside that exact precondition. Adapter now tries the linked project first and falls back to the CLI's documented non-interactive db push --project-ref --password flags only on that specific not-linked failure; other db-push failures still propagate unchanged and secrets are never surfaced.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-08-RELEASE-PIPELINE-MIGRATION-HISTORY-DRIFT",
+            "origin": "STATE_OR_CONTEXT_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#272",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#272 (de68cd7: restored 7 remote Supabase migration history files (current_signal_pair_serving family plus strategic identity-snapshot migrations) that were applied to the remote project but absent from supabase/migrations/ in the repository, a drift only surfaced by running the real migration-release path end to end.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-08-RELEASE-PIPELINE-DIRECTORY-HYGIENE-AND-ONE-START",
+            "origin": "CONTROL_PLANE_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#275",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#275 (0521292: three further proven failure classes in the same real execution path -- a read-only preview/audit SQL script living inside supabase/migrations/ (relocated to supabase/sql-previews/, byte-equivalent), no permanent guard against non-migration SQL reaching the Supabase CLI (new lib/migration-directory-preflight.mjs, fails closed with NON_MIGRATION_SQL_IN_MIGRATION_DIRECTORY), and missing one-start recovery when the process environment lacks already-provisioned Windows User Environment Supabase credentials (new lib/windows-user-env-bridge.mjs, values never printed/persisted/returned). Three new focused test files added and passing.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-08-RELEASE-PIPELINE-CAUSAL-FAILURE-MASKING",
+            "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#276",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#276 (7e38e26: the registered migration adapter reduced a failed fallback supabase db push to SUPABASE_PROJECT_CONTEXT_ESTABLISH_FAILED: Connecting to remote database... -- the progress banner displaced the real cause, so neither automatic recovery nor a proven hard stop was possible. extractCausalFailure() in scripts/control-plane/lib/premvp-migration-adapter-connection.mjs now reads stdout, stderr and the process error message, drops progress-only lines, prefers lines naming a concrete cause, and returns a bounded excerpt (max 3 lines, 200 chars each) or CAUSE_NOT_EXTRACTABLE rather than presenting a progress line as the cause. Sanitization layered on top via the existing redactor.)"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+            "origin": "STATE_OR_CONTEXT_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-01-GOVERNOR-ARTIFACT-DRAFT-PR-ACCUMULATION",
+            "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-07-ZERO-CI-GATE-ON-MERGE",
+            "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": "CHAIN-NO-CI-GATE-MERGE-ENFORCEMENT",
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        }
+    ],
+    "notes": "git fetch + git log origin/main after the 2026-09-07 cycle's own cutoff commit c9a2878 through the live origin/main HEAD (4301ecf, 2026-09-08T17:54:53+03:00 -- no further merges yet on 2026-09-09 at this cutoff) shows PR#261 (persisting the prior, 2026-09-07 cycle itself -- excluded from confirmed_changes exactly as PR#251/#249 etc. were excluded in prior bundles) plus 14 real merges: PR#262 (the first canonical Automation Roadmap Governor run, based on 12 real cycles 2026-08-25..2026-09-07, reaching origin/main for the first time -- unlike its 8 prior draft-only attempts #190/#199/#206/#212/#214/#216/#222/#241, all still open), PR#263/264/265/266/267 (a bounded PREMVP migration-release feature landing plus two same-day real-environment reconciliation/upsert-safety fixes, each only surfacing once the release pipeline was actually run for real on local_codex_windows for the first time), PR#269/270 (removing a pre-linked-worktree assumption from the same adapter), PR#271/272/274/275/276/277. mcp__github__list_pull_requests (state=open) at this cutoff shows 32 open PRs (up from 29 at the 2026-09-07 cutoff): three new members since then -- #268 (draft, 'publish current money state without GSP prerequisite'), #273 (draft, 'Control Plane reconciliation: PR #272 migration-history merge'), and #278 (NOT draft, 'forward-port B1 GSP-independent migration') -- none merged, none confirmed evidence for this cycle, recorded for H7 continuity only. mcp__github__pull_request_read method=get_status on PR#277 (the period's last merge) returns total_count=0 -- the zero-CI-gate-on-merge pattern established in the 2026-09-07 cycle continues unchanged into this period. docs/ai-context/control-plane/CURRENT_STATE.yaml advanced twice this period as a side effect of accepted completions (state_version 18 -> 22, updated_at to 2026-09-08T11:07:12Z, recording register-premvp-db-migration-release-v1-4d95f41, recover-premvp-release-reconcile-021757a, land-premvp-migration-safety-recovery-v3-9518fee4 and release-premvp-adapter-self-contained-pr269 as accepted completions with proven origin/main merge ancestry) but went stale again within the same day: PR#271/272/274/275/276/277 (all merged after 2026-09-08T11:07:12Z) are not yet reflected in CURRENT_STATE.yaml's accepted_completions or origin_main_sha -- a same-day relapse of the exact H1 coupling (state freshness depends on incidental completion timing, not elapsed time or cycle count) tracked since 2026-08-28. Two independent same-day, same-file/-subsystem three- and six-layer defect chains were found this period (CHAIN-EXECUTOR-CALLBACK-FIELD-NORMALIZATION-20260907 in lib/executor/executorCallbackContract.ts, and CHAIN-PREMVP-RELEASE-PIPELINE-FIRST-REAL-EXECUTION-20260908 across the PREMVP migration/release pipeline) -- both fit this Routine's onion-chain detection criteria (two or more LATENT_NEXT_LAYER_EXPOSED defects on the same path), and both point to the same missing boundary invariant: a component was marked usable/ENABLED without first completing one real end-to-end exercise against the exact input shapes and executor environment it would actually see in production, so each real exercise this period surfaced a new previously-untested boundary. docs/ai-context/control-plane/EVIDENCE_LEDGER.md's most recent entry remains EV-0020 (2026-08-13); none of this period's fourteen real merges added a ledger entry, so EVIDENCE_LEDGER.md is not a current source for this period -- CURRENT_STATE.yaml and live PR/commit history were used instead per the source-of-truth hierarchy. No completion envelope beyond what CURRENT_STATE.yaml already reflects was found; no OPERATOR_ACTION_EVENT records exist for this period, so total_operator_actions stays a PARTIAL lower bound of zero. No product database migration, deployment, or Ireland runtime path change is claimed this period -- the 14 live Ireland execution rejections cited in PR#271's commit message are a proven-in-runtime fact about a real prior production incident that this period's source-level fix addresses, not a runtime observation of the fix's own effect, which remains unobserved."
+}
