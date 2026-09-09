@@ -23,8 +23,6 @@ import {
   type ExecutionReconciliationV1,
   type ReconciliationOrderEvent,
 } from "@/lib/executor/executionReconciliation";
-import { validateReconciliationSourceSignalPair } from "@/lib/executor/executionLifecycle";
-
 // Keys whose name (case-insensitive, normalised) triggers value removal
 const BANNED_SUBSTRINGS = [
   "secret",
@@ -240,23 +238,22 @@ async function persistExecutionReconciliation(
   const eventRow = eventData as Record<string, unknown>;
   const event = toReconciliationOrderEvent(eventRow);
   const prior = readExecutionReconciliation(eventRow.executor_meta);
-  let reconciliation = buildExecutionReconciliation({
+  // B4: source_signal_pair_id is carried through as historical/diagnostic
+  // lineage only (see buildExecutionReconciliation -> sourceSignalPairId,
+  // sourced from Queue's own diagnostics). Callback reconciliation never
+  // reads generated_signal_pairs to validate it -- Queue + the immutable
+  // order event are the complete identity authority (queue_id, reservation_id,
+  // condition_id, token_id, side, idempotency_key, clob_order_id are all
+  // already fail-closed checked inside buildExecutionReconciliation). GSP-row
+  // cross-validation against source_signal_pair_id belongs to the settlement/
+  // resolution lifecycle (lib/executor/executionLifecycle.ts, B6), not here.
+  const reconciliation = buildExecutionReconciliation({
     queue,
     event,
     raw,
     prior: prior ?? undefined,
     telemetry: readEconomicTelemetry(eventRow.executor_meta) ?? undefined,
   });
-  if (reconciliation.source_signal_pair_id) {
-    const { data: signal, error: signalError } = await supabaseAdmin
-      .from("generated_signal_pairs")
-      .select("id,condition_id,selected_token_id,selected_outcome,diagnostics")
-      .eq("id", reconciliation.source_signal_pair_id)
-      .maybeSingle();
-    if (signalError) throw new Error("RECONCILIATION_SIGNAL_READ_FAILED");
-    if (!signal) throw new Error("RECONCILIATION_SOURCE_SIGNAL_PAIR_NOT_FOUND");
-    validateReconciliationSourceSignalPair(reconciliation, signal);
-  }
   const executorMeta = mergeExecutionReconciliationMeta(eventRow.executor_meta as Record<string, unknown> | null, reconciliation);
   const { data: updated, error: updateError } = await supabaseAdmin
     .from("executor_order_events")
