@@ -4,10 +4,14 @@
  * Focused tests for the registered PREMVP application-migration adapter's project-context
  * fallback (scripts/control-plane/lib/premvp-migration-adapter-connection.mjs). Verifies:
  * - a linked worktree is always tried first;
- * - an absent-link failure falls back to non-interactive --project-ref/--password from env;
+ * - an absent-link failure falls back to the non-interactive direct-DB --db-url route,
+ *   preferring an explicit SUPABASE_DB_URL and otherwise deriving one from
+ *   SUPABASE_PROJECT_REF / SUPABASE_DB_PASSWORD in Supabase's documented direct
+ *   connection format, with the password percent-encoded into the URI;
  * - any other db-push failure is never swallowed by the fallback;
  * - missing env fails closed instead of guessing;
- * - a fallback failure never leaks the password/token value.
+ * - a fallback failure never leaks the password/token/connection-URL value, and never
+ *   retries beyond the one direct-route attempt.
  *
  * Run: node --test tests/control-plane/premvpMigrationAdapterConnection.test.mjs
  */
@@ -17,6 +21,7 @@ import assert from 'node:assert/strict';
 
 import {
   isNotLinkedError,
+  resolveDirectDbUrl,
   resolveProjectContextArgs,
   redactSecrets,
   runDbPushWithFallback,
@@ -30,14 +35,36 @@ test('isNotLinkedError recognizes the known not-linked failure signatures', () =
   assert.equal(isNotLinkedError({ stderr: 'permission denied' }), false);
 });
 
-test('resolveProjectContextArgs fails closed when env is incomplete', () => {
-  assert.throws(() => resolveProjectContextArgs({}), /SUPABASE_PROJECT_CONTEXT_ENV_MISSING/);
-  assert.throws(() => resolveProjectContextArgs({ SUPABASE_PROJECT_REF: 'ref-only' }), /SUPABASE_PROJECT_CONTEXT_ENV_MISSING/);
+test('resolveDirectDbUrl fails closed when env is incomplete', () => {
+  assert.throws(() => resolveDirectDbUrl({}), /SUPABASE_PROJECT_CONTEXT_ENV_MISSING/);
+  assert.throws(() => resolveDirectDbUrl({ SUPABASE_PROJECT_REF: 'ref-only' }), /SUPABASE_PROJECT_CONTEXT_ENV_MISSING/);
+  assert.throws(() => resolveDirectDbUrl({ SUPABASE_DB_PASSWORD: 'pw-only' }), /SUPABASE_PROJECT_CONTEXT_ENV_MISSING/);
 });
 
-test('resolveProjectContextArgs builds the documented non-interactive db-push flags', () => {
+test('resolveDirectDbUrl prefers an explicitly provisioned SUPABASE_DB_URL', () => {
+  const explicit = 'postgresql://postgres:explicit-pw@db.explicit123.supabase.co:5432/postgres';
+  const url = resolveDirectDbUrl({
+    SUPABASE_DB_URL: explicit,
+    SUPABASE_PROJECT_REF: 'ignored-ref',
+    SUPABASE_DB_PASSWORD: 'ignored-pw',
+  });
+  assert.equal(url, explicit);
+});
+
+test('resolveDirectDbUrl derives the current authoritative direct-connection format from project ref + password', () => {
+  const url = resolveDirectDbUrl({ SUPABASE_PROJECT_REF: 'abc123', SUPABASE_DB_PASSWORD: 'secret-pw' });
+  assert.equal(url, 'postgresql://postgres:secret-pw@db.abc123.supabase.co:5432/postgres');
+});
+
+test('resolveDirectDbUrl percent-encodes a password containing URI-reserved characters', () => {
+  const url = resolveDirectDbUrl({ SUPABASE_PROJECT_REF: 'abc123', SUPABASE_DB_PASSWORD: 'p@ss:w/ord#1?&' });
+  assert.equal(url, `postgresql://postgres:${encodeURIComponent('p@ss:w/ord#1?&')}@db.abc123.supabase.co:5432/postgres`);
+  assert.equal(url.includes('p@ss:w/ord#1?&'), false);
+});
+
+test('resolveProjectContextArgs builds the documented non-interactive direct-DB db-push flags', () => {
   const args = resolveProjectContextArgs({ SUPABASE_PROJECT_REF: 'abc123', SUPABASE_DB_PASSWORD: 'secret-pw' });
-  assert.deepEqual(args, ['--project-ref', 'abc123', '--password', 'secret-pw']);
+  assert.deepEqual(args, ['--db-url', 'postgresql://postgres:secret-pw@db.abc123.supabase.co:5432/postgres']);
 });
 
 test('redactSecrets removes every secret occurrence and leaves other text intact', () => {
@@ -66,7 +93,7 @@ test('runDbPushWithFallback establishes project context non-interactively when n
   const result = runDbPushWithFallback({ run, extraArgs: ['--skip-vault', '--dry-run', '--yes'], env });
   assert.equal(result, 'fallback-output');
   assert.equal(calls.length, 2);
-  assert.deepEqual(calls[1], ['db', 'push', '--project-ref', 'abc123', '--password', 'secret-pw', '--skip-vault', '--dry-run', '--yes']);
+  assert.deepEqual(calls[1], ['db', 'push', '--db-url', 'postgresql://postgres:secret-pw@db.abc123.supabase.co:5432/postgres', '--skip-vault', '--dry-run', '--yes']);
 });
 
 test('runDbPushWithFallback never falls back on an unrelated db-push failure', () => {

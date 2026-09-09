@@ -5,11 +5,20 @@
  * adapter (apply-premvp-approved-migration.mjs) without requiring a pre-linked worktree.
  *
  * `supabase link` is an interactive/stateful step that mutates the worktree's
- * .supabase/project-ref file; it is not required to run `db push` non-interactively.
- * The Supabase CLI's `db push` command accepts `--project-ref` and `--password` directly,
- * so when no linked project state exists we pass those instead of `--linked`, sourced from
- * the already-provisioned environment (SUPABASE_ACCESS_TOKEN is read by the CLI itself from
- * the environment; SUPABASE_PROJECT_REF / SUPABASE_DB_PASSWORD are passed explicitly).
+ * .supabase/project-ref file, and fetches PostgREST configuration from the Supabase
+ * Management API to validate it — it is not required to run `db push` non-interactively,
+ * and its Management API dependency (SUPABASE_ACCESS_TOKEN, platform reachability) is
+ * exactly what the direct-DB route below exists to avoid. Per current Supabase CLI
+ * documentation, `db push` supports a self-hosted-style `--db-url <connection-string>`
+ * flag as the only documented non-interactive alternative to `--linked`: it opens a plain
+ * Postgres wire-protocol connection and never calls the Management API. When no linked
+ * project state exists we therefore fall back to `--db-url`, built either from an
+ * explicitly provisioned SUPABASE_DB_URL or derived in-memory from
+ * SUPABASE_PROJECT_REF / SUPABASE_DB_PASSWORD using Supabase's documented direct
+ * connection format (`postgresql://postgres:<password>@db.<project-ref>.supabase.co:5432/postgres`).
+ * The derived URL is held only in memory for the single CLI invocation; it is never
+ * logged, and any occurrence of it (or its password) in CLI output is redacted before
+ * being surfaced (see sanitizeDiagnosticText / STRUCTURAL_SECRET_PATTERNS below).
  */
 
 const NOT_LINKED_MARKERS = [
@@ -24,13 +33,35 @@ export function isNotLinkedError(error) {
   return NOT_LINKED_MARKERS.some((marker) => text.includes(marker));
 }
 
-export function resolveProjectContextArgs(env = process.env) {
+/**
+ * Resolves the direct Postgres connection URL for the fallback route, preferring an
+ * explicitly provisioned SUPABASE_DB_URL and otherwise deriving it from
+ * SUPABASE_PROJECT_REF / SUPABASE_DB_PASSWORD using Supabase's documented direct
+ * connection format. The database password is percent-encoded (encodeURIComponent) so a
+ * password containing URI-reserved characters (`@`, `:`, `/`, `#`, `?`, etc.) still
+ * produces a valid, unambiguous connection URI. Fails closed — never guesses — when
+ * neither an explicit URL nor a complete ref+password pair is available.
+ */
+export function resolveDirectDbUrl(env = process.env) {
+  if (env.SUPABASE_DB_URL) return env.SUPABASE_DB_URL;
   const projectRef = env.SUPABASE_PROJECT_REF;
   const dbPassword = env.SUPABASE_DB_PASSWORD;
   if (!projectRef || !dbPassword) {
     throw new Error('SUPABASE_PROJECT_CONTEXT_ENV_MISSING');
   }
-  return ['--project-ref', projectRef, '--password', dbPassword];
+  return `postgresql://postgres:${encodeURIComponent(dbPassword)}@db.${projectRef}.supabase.co:5432/postgres`;
+}
+
+/**
+ * Builds the `db push` CLI args for the direct-DB fallback route: `--db-url <url>`, the
+ * only documented non-interactive `db push` route that never depends on Management API
+ * authorization. Superseded (and no longer produces) the legacy `--project-ref
+ * --password` pairing, which is not a documented `db push` flag combination and — via
+ * `supabase link` semantics — implies Management API involvement this route is required
+ * to avoid.
+ */
+export function resolveProjectContextArgs(env = process.env) {
+  return ['--db-url', resolveDirectDbUrl(env)];
 }
 
 export function redactSecrets(text, secrets) {
@@ -103,10 +134,12 @@ export function extractCausalFailure(error, secrets = []) {
 }
 
 /**
- * Runs `supabase db push` preferring an already-linked worktree, and falling back to
- * explicit `--project-ref` / `--password` connection args (from env) only when the
- * failure is specifically an absent-link condition. Any failure of the fallback itself
- * is re-thrown with secret values redacted — never surfaced verbatim.
+ * Runs `supabase db push` preferring an already-linked worktree, and falling back to the
+ * direct-DB `--db-url` route (from env, see resolveDirectDbUrl) only when the failure is
+ * specifically an absent-link condition — the direct route never requires Management API
+ * authorization. There is no further fallback after a direct-route failure: any failure
+ * of the fallback itself is re-thrown once, with secret values (including the resolved
+ * connection URL, which embeds the password) redacted — never surfaced verbatim.
  */
 export function runDbPushWithFallback({ run, extraArgs, env = process.env }) {
   try {
@@ -122,7 +155,7 @@ export function runDbPushWithFallback({ run, extraArgs, env = process.env }) {
     try {
       return run(['db', 'push', ...contextArgs, ...extraArgs]);
     } catch (fallbackError) {
-      const secrets = [env.SUPABASE_DB_PASSWORD, env.SUPABASE_ACCESS_TOKEN, env.SUPABASE_DB_URL];
+      const secrets = [env.SUPABASE_DB_PASSWORD, env.SUPABASE_ACCESS_TOKEN, env.SUPABASE_DB_URL, contextArgs[1]];
       const cause = extractCausalFailure(fallbackError, secrets);
       throw new Error(`SUPABASE_PROJECT_CONTEXT_ESTABLISH_FAILED: ${cause}`);
     }
