@@ -4,7 +4,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { buildLandingCards } from "@/lib/feed/buildLandingCards";
-import { readLatestGeneratedSignalPairs } from "@/lib/feed/cacheGeneratedSignals";
+import { readCurrentServingSignalPairs } from "@/lib/feed/cacheGeneratedSignals";
 import {
   FORMULA_VERSION,
   LandingCardDiagnostics,
@@ -360,7 +360,7 @@ export async function GET(request: NextRequest) {
     const emptyUpcoming: LandingCardPair[] = [];
 
     try {
-      const cachedPairs = await readLatestGeneratedSignalPairs(limit);
+      const cachedPairs = await readCurrentServingSignalPairs(limit);
       const allCachedPairs = canonicalizePairs(cachedPairs, limit);
       const canonicalCachedPairs = includeUpcoming
         ? allCachedPairs
