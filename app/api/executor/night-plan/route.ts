@@ -233,7 +233,13 @@ export async function GET(request: NextRequest) {
 
   try {
     // planningMode=true: include shadow-strategic-sports-v1 and future soccer/WC matches.
-    const { candidates: universe, rawDiagnostics } = await buildFireModelCandidates(PLAN_POOL, "all", true);
+    const { candidates: universe, rawDiagnostics } = await buildFireModelCandidates(
+      PLAN_POOL,
+      "all",
+      true,
+      undefined,
+      "CONTRACT_A_PLANNING_V1",
+    );
     const plan = buildNightPortfolioPlan(universe, {
       nowMs: Date.now(),
       targetMin,

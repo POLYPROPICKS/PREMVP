@@ -627,14 +627,10 @@ export async function discoverSportsMarkets(
             rowsMissingProviderEventContext: 0,
           },
         };
-        if (broadEntries.length > 0) {
-          const { writeStrategicShadowPairs } = await import("./cacheGeneratedSignals");
-          const broadExpiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString();
-          broadWriteDetail = await writeStrategicShadowPairs(broadEntries, broadExpiresAt, { detailed: true });
-          counts.broadSportsWriteInserted = broadWriteDetail.inserted;
-        } else {
-          counts.broadSportsWriteInserted = 0;
-        }
+        // Discovery is a serving request. Historical/research shadow persistence
+        // is not maintained synchronously here; it has no authority over the
+        // landing response and must not create a GSP request side effect.
+        counts.broadSportsWriteInserted = 0;
         // ROWS_PROPOSED / ROWS_INSERTED / ROWS_DEDUPED /
         // ROWS_EXPLICITLY_REJECTED / WRITE_FAILED -- the writer-side half of
         // producer conservation.

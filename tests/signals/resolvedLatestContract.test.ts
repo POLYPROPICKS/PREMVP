@@ -44,16 +44,15 @@ test("legacy proof builder produces non-empty signals for a 14-day window (sourc
   assert.ok(proof.signals.length > 0, "legacy builder must return signals regardless of window size");
 });
 
-test("route: Latest mode falls back to the legacy generated_signal_pairs contract for non-7-day windows when read-model signals are empty", () => {
-  // Must NOT touch the existing 7-day-only gate (asserted by publishedActivity.test.ts).
-  assert.ok(routeSource.includes("isLatestMode && windowDays === LEGACY_PROOF_WINDOW_DAYS"));
-  // New fallback path: latest mode, any window other than the 7-day proof window,
-  // triggered only when the read-model produced zero rows for this window —
-  // reusing the SAME single generated_signal_pairs query (no second live query).
-  assert.ok(
-    routeSource.includes("isLatestMode && windowDays !== LEGACY_PROOF_WINDOW_DAYS && windowRows.length === 0"),
-    "route must wire a legacy generated_signal_pairs fallback for Latest signals outside the 7-day proof window"
+test("route: Latest mode remains on track_record_window_results when the read-model is empty", () => {
+  assert.equal(
+    routeSource.includes('.from("generated_signal_pairs")'),
+    false,
+    "Latest serving must not fall back to generated_signal_pairs"
   );
-  const occurrences = routeSource.split('.from("generated_signal_pairs")').length - 1;
-  assert.equal(occurrences, 1, "the fallback must reuse the existing single generated_signal_pairs query, not add a second one");
+  assert.equal(
+    routeSource.includes("needsLegacyFallback"),
+    false,
+    "an empty read-model must remain unavailable rather than reconstructing historical state"
+  );
 });

@@ -3,7 +3,6 @@ import {
   runEventRebalanceWithEvidence,
   persistRebalanceDiagnostics,
   runControlledLiveIntent,
-  runFounderBattleBatch,
 } from "@/lib/executor/eventExecutionQueue";
 import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "@/lib/ops/emergencyQuiesce";
 
@@ -69,37 +68,14 @@ async function handle(request: NextRequest) {
   const canary = searchParams.get("canary");
   const targetReservationId = searchParams.get("targetReservationId");
 
-  // Founder battle batch mode: an entirely separate, narrower branch that
-  // reads generated_signal_pairs directly and creates 2-4 fresh READY rows.
-  // Requires BOTH this explicit request param AND the FOUNDER_BATTLE_BATCH_MODE
-  // env gate -- fails closed otherwise. Never touches Ireland executor code,
-  // never invokes runEventRebalanceWithEvidence/job_runs evidence.
+  // The pre-manifest founder batch selected new candidates from historical GSP.
+  // It is deliberately unavailable: live rebalance may only consume a persisted
+  // Reservation manifest or Queue authority and must never rediscover a market.
   if (founderBattleBatch) {
-    try {
-      const result = await runFounderBattleBatch(Date.now(), process.env, { write: !dryRun });
-      const status = result.kind === "BLOCKED_GATE_DISABLED" ? 403 : 200;
-      return NextResponse.json(
-        {
-          ok: result.kind === "CREATED",
-          mode: "founder_battle_batch",
-          dry_run: dryRun,
-          kind: result.kind,
-          reason: result.reason,
-          wrote_count: result.wrote_count,
-          skipped_count: result.skipped_count,
-          created_rows: result.created_rows,
-          skipped_reasons: result.skipped_reasons,
-        },
-        { status, headers: { "Cache-Control": "no-store" } }
-      );
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : "Unknown error";
-      console.error("[cron/event-rebalance] founder_battle_batch error:", msg);
-      return NextResponse.json(
-        { ok: false, mode: "founder_battle_batch", error: msg },
-        { status: 500, headers: { "Cache-Control": "no-store" } }
-      );
-    }
+    return NextResponse.json(
+      { ok: false, mode: "founder_battle_batch", error: "LEGACY_GSP_BATCH_REMOVED" },
+      { status: 410, headers: { "Cache-Control": "no-store" } },
+    );
   }
 
   // Canary identity-targeted rebalance: process exactly one Reservation, via

@@ -257,7 +257,13 @@ export async function GET(request: NextRequest) {
 
   try {
     // --- Step 2: Fetch model-ranked candidate pool ---
-    const { candidates: pool } = await buildFireModelCandidates(EVENT_DEDUPE_POOL, scope);
+    const { candidates: pool } = await buildFireModelCandidates(
+      EVENT_DEDUPE_POOL,
+      scope,
+      false,
+      undefined,
+      "CONTRACT_A_PLANNING_V1",
+    );
 
     const candidatesBeforeEventDedupe = pool.length;
     let sameEventCandidatesSuppressed = 0;

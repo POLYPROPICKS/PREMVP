@@ -1260,61 +1260,8 @@ export async function GET(request: Request) {
     trackRecordDisplayTable: { windowDays, rows: trackRecordRows },
   };
 
-  // ── Legacy 7D proof (mode=latest&days=7 only) ─────────────────────────────
-  // Pre-existing consumers (PassOfferModal, reconstruction top-feed card) keep
-  // the pre-PR#22 generated_signal_pairs contract. Isolated from the
-  // read-model weekResultsCard above — it only drives the top-level
-  // `summary`/`signals` and the separate `legacyWeekResultsCard` field.
-  // isSevenDayLatestWindow keeps the exact pre-existing 7-day-only proof gate
-  // (summary/card contract, untouched). needsLegacyFallback additionally covers
-  // any other Latest window (e.g. days=14) whose read-model produced zero rows —
-  // Latest must not depend on track_record_window_results being populated; it
-  // reuses this SAME single generated_signal_pairs query for its `signals` only.
-  const isSevenDayLatestWindow = isLatestMode && windowDays === LEGACY_PROOF_WINDOW_DAYS;
-  const needsLegacyFallback = isLatestMode && windowDays !== LEGACY_PROOF_WINDOW_DAYS && windowRows.length === 0;
-  let legacyProof: LegacySevenDayProof | null = null;
-  if (isSevenDayLatestWindow || needsLegacyFallback) {
-    const legacyCutoff = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000).toISOString();
-    let query = supabase
-      .from("generated_signal_pairs")
-      .select(
-        "id, created_at, resolved_at, condition_id, selected_outcome, winning_outcome, " +
-        "signal_result, realized_return_pct, metric_formula_version, entry_price_num, " +
-        "premium_signal, diagnostics"
-      )
-      .not("signal_result", "is", null)
-      // Exclude shadow research rows; preserve legacy rows where metric_formula_version IS NULL.
-      .or("metric_formula_version.is.null,metric_formula_version.not.like.shadow-%")
-      .gte("resolved_at", legacyCutoff)
-      .order("resolved_at", { ascending: false })
-      .limit(INTERNAL_FETCH_LIMIT);
-
-    const { data: legacyRows, error: legacyError } = await query;
-    if (legacyError) {
-      // Legacy proof is additive — never fail the read-model response over it.
-      console.error("[legacySevenDayProof] DB_QUERY_ERROR", {
-        source: LEGACY_SEVEN_DAY_PROOF_SOURCE,
-        windowDays,
-        message: legacyError.message,
-      });
-    } else {
-      legacyProof = buildLegacySevenDayProofFromRows(
-        ((legacyRows ?? []) as unknown) as DbRow[],
-        windowDays
-      );
-      console.log("[legacySevenDayProof]", {
-        source: LEGACY_SEVEN_DAY_PROOF_SOURCE,
-        windowDays,
-        rowsScanned: legacyProof.summary.snapshotRows,
-        uniqueResolved: legacyProof.summary.uniqueResolved,
-        won: legacyProof.summary.won,
-        lost: legacyProof.summary.lost,
-        displayedSignals: legacyProof.signals.length,
-        hasCard: legacyProof.card !== null,
-      });
-    }
-  }
-
+  // Latest and historical responses are served solely from the bounded
+  // track-record read model. Missing rows remain unavailable; no GSP fallback.
   // ── signals: legacy carousel array (ResolvedSignalsCarousel / PassOfferModal /
   // reconstruction page) — sourced from the SAME read-model rows as
   // weekResultsCard above, never a second live query against
@@ -1340,14 +1287,6 @@ export async function GET(request: Request) {
     signals = carouselSignals.slice(0, limit);
   }
 
-  // ── Legacy signals fallback for Latest outside the 7-day proof window ──────
-  // needsLegacyFallback already fetched legacyProof above when the read-model
-  // had zero rows for this window — reuse its `signals` here so Latest never
-  // renders empty waiting on WhyTrust/read-model refresh.
-  if (needsLegacyFallback && legacyProof) {
-    signals = legacyProof.signals;
-  }
-
   // ── Response ──────────────────────────────────────────────────────────────
   // Top-level `summary` is derived entirely from the read-model values already
   // computed above (windowSummary / summary / trackStatus / rawShownRows) —
@@ -1365,9 +1304,7 @@ export async function GET(request: Request) {
     {
       ok: true,
       generatedAt: new Date().toISOString(),
-      summary: isSevenDayLatestWindow && legacyProof
-        ? legacyProof.summary
-        : {
+      summary: {
             uniqueResolved: summary.resolvedCount,
             snapshotRows: rawShownRows,
             won: summary.winsCount,
@@ -1387,9 +1324,8 @@ export async function GET(request: Request) {
               excludePush: true,
             }),
           },
-      signals: legacyProof ? legacyProof.signals : signals,
+      signals,
       weekResultsCard,
-      ...(isSevenDayLatestWindow && legacyProof && { legacyWeekResultsCard: legacyProof.card }),
       resolvedLedger: ledgerProofRows,
     },
     { headers: { "Cache-Control": "no-store" } }

@@ -10,11 +10,8 @@
 // Data flow (read-only, no DB writes, no RPC):
 //   1. track_record_window_summary  → funnel counters + status for the window.
 //   2. track_record_window_results  → detail rows (populated only for ready windows).
-//   3. If (2) is empty but the summary shows resolved rows exist, build HONEST
-//      preview rows from track_record_shown_signal_history joined (two-step)
-//      to generated_signal_pairs — real resolved won/lost rows only. Status is
-//      preserved as-is: preview NEVER masks insufficient_history as ready, and
-//      insufficient_history always reports zero headline PnL.
+//   3. Missing read-model rows remain unavailable. The route never falls back
+//      to a historical signal store to manufacture a current trust response.
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -28,6 +25,8 @@ import { buildQualifiedCumulativeReturnCurve } from "@/lib/track-record/promotio
 export const dynamic = "force-dynamic";
 
 export const WHY_TRUST_SOURCE = "why_trust_track_record" as const;
+// Retained for the pure historical mapper only. The GET handler never selects
+// this source and never reads GSP as a serving fallback.
 export const PREVIEW_DETAIL_SOURCE = "preview_from_shown_history" as const;
 export const WINDOW_RESULTS_DETAIL_SOURCE = "window_results" as const;
 
@@ -418,42 +417,9 @@ export async function GET(request: Request) {
   const summary = (summaryRes.data as WhyTrustSummaryRow | null) ?? null;
   const windowRows = ((resultsRes.data ?? []) as unknown) as WhyTrustWindowResultRow[];
 
-  // Honest preview path: results table empty but the summary says resolved
-  // shown rows exist → read the real resolved shown rows (read-only, two-step).
-  let previewRows: TrackRecordRow[] = [];
-  if (windowRows.length === 0 && (summary?.resolved_unique_rows ?? 0) > 0) {
-    const windowStartDay = new Date(Date.now() - windowDays * 24 * 60 * 60 * 1000)
-      .toISOString()
-      .slice(0, 10);
-
-    const historyRes = await supabase
-      .from("track_record_shown_signal_history")
-      .select(
-        "source_row_id, shown_batch_day, event_title, market_question, " +
-        "selected_outcome, display_score_rank, normalized_match_key"
-      )
-      .gte("shown_batch_day", windowStartDay)
-      .limit(FETCH_LIMIT);
-
-    if (!historyRes.error && (historyRes.data ?? []).length > 0) {
-      const historyRows = ((historyRes.data ?? []) as unknown) as ShownHistoryRow[];
-      const ids = historyRows.map((h) => h.source_row_id);
-      const pairsRes = await supabase
-        .from("generated_signal_pairs")
-        .select("id, resolved_at, signal_result, winning_outcome, entry_price_num")
-        .in("id", ids)
-        .in("signal_result", ["won", "lost"])
-        .not("resolved_at", "is", null)
-        .limit(FETCH_LIMIT);
-
-      if (!pairsRes.error) {
-        previewRows = buildPreviewRows(
-          historyRows,
-          ((pairsRes.data ?? []) as unknown) as ResolvedPairLookupRow[]
-        );
-      }
-    }
-  }
+  // A missing bounded read-model is an honest unavailable state. Do not use
+  // historical GSP rows as a serving fallback.
+  const previewRows: TrackRecordRow[] = [];
 
   const weekResultsCard = buildWhyTrustWeekResultsCard({
     windowDays,

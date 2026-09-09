@@ -982,45 +982,11 @@ export function createSupabaseRebalanceRepoPort(): RebalanceRepoPort {
         .eq("id", id);
     },
     async loadFinalIdentitySourceRows(reservation) {
-      const { supabaseAdmin } = await import("@/lib/supabase/server");
-      return loadExactProviderSiblingRowsFromAnchor(
-        reservation,
-        async (generatedSignalPairId) => {
-          const { data, error } = await supabaseAdmin
-            .from("generated_signal_pairs")
-            .select("*")
-            .eq("id", generatedSignalPairId)
-          .limit(1);
-          if (error) throw error;
-          return (data ?? []) as FinalIdentitySourceRow[];
-        },
-        // Bounded exact-identity lookup, not a broad diagnostics containment
-        // scan. The previous JSONB-containment query shape forced Postgres
-        // to evaluate a full-row check against every row of
-        // generated_signal_pairs (a table already
-        // proven, in this same repo's migration history, to grow past the
-        // point an unindexed full-table predicate can complete inside the
-        // statement timeout — see idx_gsp_shadow_dedup and
-        // idx_gsp_pending_resolution). Filtering on the extracted
-        // providerEventContext fields directly lets a supporting expression
-        // index (idx_gsp_provider_event_context) serve this as an index scan
-        // instead of a sequential scan, while matching the exact same
-        // v1/polymarket/eventId/eventStartIso identity plus the
-        // metric_formula_version score-contract domain this callback already
-        // received from the anchor.
-        async ({ eventId, eventStartIso, scoreContractVersion }) => {
-          const { data, error } = await supabaseAdmin
-            .from("generated_signal_pairs")
-            .select("*")
-            .eq("diagnostics->providerEventContext->>v", "v1")
-            .eq("diagnostics->providerEventContext->>provider", "polymarket")
-            .eq("diagnostics->providerEventContext->>eventId", eventId)
-            .eq("diagnostics->providerEventContext->>eventStartIso", eventStartIso)
-            .eq("metric_formula_version", scoreContractVersion);
-          if (error) throw error;
-          return (data ?? []) as FinalIdentitySourceRow[];
-        },
-      );
+      // A Reservation without the supported immutable candidate manifest is a
+      // legacy cohort. It must fail closed rather than re-query GSP to recreate
+      // a selection-time universe.
+      void reservation;
+      return [] as FinalIdentitySourceRow[];
     },
     async findQueueRowsByRebalanceRunId(rebalanceRunId) {
       const { supabaseAdmin } = await import("@/lib/supabase/server");
@@ -1583,7 +1549,7 @@ export async function runEventRebalance(
     deps.fetchCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true);
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_PLANNING_V1");
     });
   const fetchContractAFinalCandidates =
     deps.fetchContractAFinalCandidates ??
@@ -2009,7 +1975,7 @@ export async function runControlledLiveIntent(
     deps.fetchCandidates ??
     (async () => {
       const { buildFireModelCandidates } = await import("./buildFireModelCandidates");
-      return buildFireModelCandidates(PLAN_POOL, "all", true);
+      return buildFireModelCandidates(PLAN_POOL, "all", true, undefined, "CONTRACT_A_PLANNING_V1");
     });
   const fetchContractAFinalCandidates =
     deps.fetchContractAFinalCandidates ??
