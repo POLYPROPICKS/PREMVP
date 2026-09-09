@@ -10,6 +10,10 @@ import {
 } from "@/lib/executor/executorCallbackContract";
 import type { EventExecutionQueueRow } from "@/lib/executor/executorQueueTypes";
 import {
+  deriveWalletObservationFields,
+  WALLET_OBSERVATION_COLUMN_NAMES,
+} from "@/lib/executor/executorWalletState";
+import {
   buildEconomicTelemetry,
   mergeEconomicTelemetryMeta,
   readEconomicTelemetry,
@@ -316,6 +320,10 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
       // unredacted secret through the nested raw_response fallback.
       const fill = deriveOrderEventFillFields(s);
       const persistence = deriveOrderEventPersistenceFields(s);
+      // Structured wallet observation carried by accepted Ireland/Polymarket
+      // callbacks (EXECUTOR_WALLET_STATE_V1). Persisted as queryable columns;
+      // raw_event_json still keeps the full payload for forensic lineage.
+      const wallet = deriveWalletObservationFields(s);
       const record: Record<string, unknown> = {
         // identity / routing
         event_type: str(s.event_type),
@@ -382,6 +390,13 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
         executor_meta: s.executor_meta ?? null,
         raw_event_json: s, // full sanitised payload
 
+        // wallet observation (EXECUTOR_WALLET_STATE_V1)
+        spendable_balance_usd: wallet.spendable_balance_usd,
+        collateral_balance_usd: wallet.collateral_balance_usd,
+        allowance_usd: wallet.allowance_usd,
+        wallet_observed_at: wallet.wallet_observed_at,
+        wallet_observation_lifecycle_point: wallet.wallet_observation_lifecycle_point,
+
         // error
         error_message: str(s.error_message),
       };
@@ -390,11 +405,28 @@ function createSupabaseOrderEventDbPort(): OrderEventDbPort {
         if (record[k] === null || record[k] === undefined) delete record[k];
       }
 
-      const { data, error } = await supabaseAdmin
+      let { data, error } = await supabaseAdmin
         .from("executor_order_events")
         .insert(record)
         .select("*")
         .single();
+
+      // Additive-migration safety: if the wallet-observation columns are not
+      // yet present live (PostgREST PGRST204 / Postgres 42703), retry once
+      // without them so callback ingestion never regresses. The full payload
+      // is still preserved in raw_event_json.
+      if (error && (error.code === "PGRST204" || error.code === "42703")) {
+        const walletColumnNamed = WALLET_OBSERVATION_COLUMN_NAMES.some((c) => error!.message.includes(c));
+        const anyWalletColumnInRecord = WALLET_OBSERVATION_COLUMN_NAMES.some((c) => c in record);
+        if (walletColumnNamed || anyWalletColumnInRecord) {
+          for (const c of WALLET_OBSERVATION_COLUMN_NAMES) delete record[c];
+          ({ data, error } = await supabaseAdmin
+            .from("executor_order_events")
+            .insert(record)
+            .select("*")
+            .single());
+        }
+      }
 
       if (error) {
         if (error.code === "23505") {
