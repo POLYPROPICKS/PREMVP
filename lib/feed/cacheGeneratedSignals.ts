@@ -166,6 +166,106 @@ export async function readLatestGeneratedSignalPairs(
   }));
 }
 
+/**
+ * B5: GSP-free equivalent of readLatestGeneratedSignalPairs. The candidate
+ * universe is current_signal_pair_serving (bounded, current, non-expired,
+ * ACTIVE) restricted to B1-direct rows (observation_id IS NOT NULL — legacy
+ * GSP-anchored serving rows are simply not part of this bounded authority and
+ * are excluded, never chased through a GSP read). The full display payload
+ * (premium_signal/market_source/diagnostics) for each such row is resolved
+ * from primary_evidence_outbox, looked up ONLY by the exact observed_at
+ * values already present among the bounded Serving rows just read (at most a
+ * handful of producer-cycle timestamps) — never a table scan, never ordered
+ * traversal of the outbox.
+ *
+ * Same output contract as readLatestGeneratedSignalPairs: CachedSignalPair[],
+ * ready for the existing canonicalizePairs() path unchanged.
+ */
+export async function readCurrentServingSignalPairs(
+  limit: number
+): Promise<CachedSignalPair[]> {
+  const nowIso = new Date().toISOString();
+  const { data: servingRows, error: servingError } = await supabaseAdmin
+    .from("current_signal_pair_serving")
+    .select("observation_id, observed_at, expires_at")
+    .eq("projection_status", "ACTIVE")
+    .not("observation_id", "is", null)
+    .is("signal_result", null)
+    .gt("expires_at", nowIso)
+    // Same shadow-exclusion shape as readLatestGeneratedSignalPairs.
+    .or("metric_formula_version.is.null,metric_formula_version.not.like.shadow-%")
+    .order("observed_at", { ascending: false })
+    .order("observation_id", { ascending: false })
+    .limit(limit);
+
+  if (servingError) {
+    throw new Error(`Failed to read current serving signal pairs: ${servingError.message}`);
+  }
+  if (!servingRows || servingRows.length === 0) return [];
+
+  const observedAtValues = Array.from(
+    new Set(
+      servingRows
+        .map((row) => row.observed_at)
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+    )
+  );
+  if (observedAtValues.length === 0) return [];
+
+  // Bounded by construction: at most one row per producer cycle, and only the
+  // exact cycle timestamps the current Serving rows above actually reference.
+  const { data: outboxRows, error: outboxError } = await supabaseAdmin
+    .from("primary_evidence_outbox")
+    .select("observed_at, evidence_rows")
+    .in("observed_at", observedAtValues);
+
+  if (outboxError) {
+    throw new Error(`Failed to read primary evidence outbox: ${outboxError.message}`);
+  }
+  if (!outboxRows || outboxRows.length === 0) return [];
+
+  const evidenceByObservationId = new Map<string, Record<string, unknown>>();
+  for (const outboxRow of outboxRows) {
+    const evidenceRows = Array.isArray(outboxRow.evidence_rows) ? outboxRow.evidence_rows : [];
+    for (const entry of evidenceRows) {
+      if (!entry || typeof entry !== "object") continue;
+      const entryObservationId = (entry as Record<string, unknown>).observation_id;
+      if (typeof entryObservationId === "string" && entryObservationId.length > 0) {
+        evidenceByObservationId.set(entryObservationId, entry as Record<string, unknown>);
+      }
+    }
+  }
+
+  const pairs: CachedSignalPair[] = [];
+  for (const row of servingRows) {
+    if (pairs.length >= limit) break;
+    const observationId = row.observation_id;
+    if (typeof observationId !== "string") continue;
+    const entry = evidenceByObservationId.get(observationId);
+    if (!entry) continue; // No matching evidence -- excluded, never a GSP fallback.
+    const premiumSignal = entry.premium_signal;
+    const marketSource = entry.market_source;
+    const diagnostics = entry.diagnostics;
+    if (
+      !premiumSignal || typeof premiumSignal !== "object" ||
+      !marketSource || typeof marketSource !== "object" ||
+      !diagnostics || typeof diagnostics !== "object"
+    ) continue; // Malformed evidence -- excluded, safe fallback owns the rest.
+
+    pairs.push({
+      id: observationId,
+      premiumSignal: premiumSignal as PremiumSignal,
+      marketSource: marketSource as MarketSource,
+      diagnostics: diagnostics as LandingCardDiagnostics,
+      score: typeof entry.score === "number" ? entry.score : undefined,
+      createdAt: typeof row.observed_at === "string" ? row.observed_at : undefined,
+      expiresAt: typeof row.expires_at === "string" ? row.expires_at : undefined,
+    });
+  }
+
+  return pairs;
+}
+
 // Parses a percent string like "+38%" or "-5.5%" to a number (38, -5.5).
 // Returns null for unparseable input.
 function parsePercentLikeNumber(raw: string | undefined | null): number | null {
