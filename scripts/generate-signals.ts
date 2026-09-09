@@ -134,6 +134,8 @@ async function main() {
   let primaryDbTimeoutN = 0;
   let servingDbTimeoutN = 0;
   let nonMoneyBranchExecutedN = 0;
+  let primaryEvidenceCapturedN = 0;
+  let gspWriteStatus = "NOT_APPLICABLE";
 
   console.log("[generate-signals] Starting signal generation...");
   console.log(`[generate-signals] Config: ${JSON.stringify(CONFIG)}`);
@@ -295,13 +297,9 @@ async function main() {
         Date.now() + CONFIG.cacheExpiryHours * 60 * 60 * 1000
       ).toISOString();
 
-      // Canonical PRIMARY population -> existing GSP writer. The public
-      // selection (pairsToCache, <= CONFIG.limit) is written UNCHANGED; every
-      // additional semantically-qualified primary outcome beyond public rank
-      // CONFIG.limit is written as an extra canonical row through the SAME
-      // writer, deduped by conditionId::selectedTokenId identity. Extras are
-      // written first so the public rows keep the newer created_at and the
-      // public feed read stays byte-identical.
+      // Canonical PRIMARY population -> atomic durable evidence + Serving.
+      // Historical GSP persistence is intentionally outside the synchronous
+      // money path and cannot block publication of current policy state.
       let primaryPersist;
       const persistenceBoundaryStartedAt = Date.now();
       try {
@@ -311,6 +309,8 @@ async function main() {
           source: "polymarket",
           formulaVersion: FORMULA_VERSION,
           expiresAt,
+          observationId: producerRunId,
+          observedAt: startedAt,
         });
       } catch (persistError) {
         const elapsed = Date.now() - persistenceBoundaryStartedAt;
@@ -332,12 +332,16 @@ async function main() {
       servingProjectedN = primaryPersist.servingProjectedCount;
       primaryPersistDurationMs = primaryPersist.primaryPersistDurationMs;
       servingProjectDurationMs = primaryPersist.servingProjectDurationMs;
+      primaryEvidenceCapturedN = primaryPersist.primaryEvidenceCapturedCount;
+      gspWriteStatus = primaryPersist.gspWriteStatus;
       diagnostics.canonicalPrimaryPersist = {
         public_persisted: primaryPersist.publicPersistedCount,
         canonical_extras_proposed: primaryPersist.canonicalExtrasProposed,
         canonical_extras_persisted: primaryPersist.canonicalExtrasPersistedCount,
         canonical_persisted_total: primaryPersist.canonicalPersistedCount,
         primary_qualified_total: result.primaryQualifiedPairs?.length ?? pairsToCache.length,
+        primary_evidence_captured: primaryPersist.primaryEvidenceCapturedCount,
+        gsp_write_status: primaryPersist.gspWriteStatus,
       };
 
       console.log(
@@ -769,6 +773,8 @@ async function main() {
     PRIMARY_DB_TIMEOUT_N: primaryDbTimeoutN,
     SERVING_DB_TIMEOUT_N: servingDbTimeoutN,
     NON_MONEY_BRANCH_EXECUTED_N: nonMoneyBranchExecutedN,
+    PRIMARY_EVIDENCE_CAPTURED_N: primaryEvidenceCapturedN,
+    GSP_WRITE_STATUS: gspWriteStatus,
   };
   diagnostics.producerMode = producerMode;
   diagnostics.moneyProducer = moneyProducerTelemetry;
