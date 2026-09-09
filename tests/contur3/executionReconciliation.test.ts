@@ -7,7 +7,6 @@ import {
   buildExecutionReconciliation,
   mergeExecutionReconciliationMeta,
 } from "../../lib/executor/executionReconciliation";
-import { validateReconciliationSourceSignalPair } from "../../lib/executor/executionLifecycle";
 
 const queue = {
   id: "30943442-944a-4315-890b-dd8d155ed1fc",
@@ -183,30 +182,26 @@ test("confirmed ECONOMIC_TELEMETRY_V1 is monotonic fill authority and preserves 
   assert.equal(settled.settlement_status, "RESOLVED_FEE_PENDING");
 });
 
-test("source settlement validates exact carried pair identity and fails closed on a shared-condition mismatch", () => {
-  const reconciliation = buildExecutionReconciliation({ queue, event, raw: acceptedOpen });
-  assert.doesNotThrow(() => validateReconciliationSourceSignalPair(reconciliation, {
-    id: "2dd087ba-bfdf-4c96-b5c6-3fc4a0005e7f", condition_id: "0xcondition", selected_token_id: "token-yes", selected_outcome: "Yes", diagnostics: {},
-  }));
-  assert.throws(() => validateReconciliationSourceSignalPair(reconciliation, {
-    id: "other-pair", condition_id: "0xcondition", selected_token_id: "token-no", selected_outcome: "No", diagnostics: {},
-  }), /EXECUTION_RECONCILIATION_SOURCE_SIGNAL_PAIR_IDENTITY_CONFLICT/);
+test("source_signal_pair_id is carried as non-blocking lineage: presence/absence never gates reconciliation build", () => {
+  const withSource = buildExecutionReconciliation({ queue, event, raw: acceptedOpen });
+  assert.equal(withSource.source_signal_pair_id, "2dd087ba-bfdf-4c96-b5c6-3fc4a0005e7f");
+
+  const queueWithoutLineage = { ...queue, diagnostics: {} };
+  const withoutSource = buildExecutionReconciliation({
+    queue: queueWithoutLineage,
+    event,
+    raw: { ...acceptedOpen, source_signal_pair_id: undefined, signal_pair_id: undefined },
+  });
+  assert.equal(withoutSource.source_signal_pair_id, null);
+  assert.equal(withoutSource.settlement_status, "PENDING_FILL_CONFIRMATION");
 });
 
-test("callback and provider identity conflicts fail closed before reconciliation mutation", () => {
+test("callback identity conflicts fail closed before reconciliation mutation", () => {
   assert.throws(() => buildExecutionReconciliation({
     queue,
     event,
     raw: { ...acceptedOpen, queue_id: "another-queue" },
   }), /RECONCILIATION_IDENTITY_CONFLICT_QUEUE_ID/);
-  const withProvider = buildExecutionReconciliation({
-    queue: { ...queue, diagnostics: { ...queue.diagnostics, provider_event_id: "provider-event-a" } },
-    event,
-    raw: acceptedOpen,
-  });
-  assert.throws(() => validateReconciliationSourceSignalPair(withProvider, {
-    id: "2dd087ba-bfdf-4c96-b5c6-3fc4a0005e7f", condition_id: "0xcondition", selected_token_id: "token-yes", selected_outcome: "Yes", diagnostics: { provider_event_id: "provider-event-b" },
-  }), /EXECUTION_RECONCILIATION_SOURCE_PROVIDER_IDENTITY_CONFLICT/);
 });
 
 test("metadata merge preserves unrelated executor metadata and is deterministic", () => {
