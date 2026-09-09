@@ -1163,6 +1163,58 @@ export function planningDecisionFromReservation(reservation: NightEventReservati
   };
 }
 
+/** Structural subset of ExactProviderSignalPair the queue-row builder actually
+ * needs — satisfied by both the GSP-anchor path (ExactProviderSignalPair) and
+ * the B2 candidate-manifest path (ManifestExactSignalPair) below. */
+type SelectedExactCandidate = {
+  id: string;
+  conditionId: string;
+  tokenId: string;
+  side: string;
+  signalScore: number;
+  stakeUsd: number;
+  maxEntryPrice: number;
+  scoreContractVersion: string;
+  marketSlug: string | null;
+};
+
+/** ONE canonical queue-row builder for every "already-resolved exact executable
+ * identity" selection path (GSP-anchor sibling OR B2 candidate manifest) —
+ * identity/stake/idempotency computation never forks by source authority. */
+function buildQueueRowFromExactCandidate(
+  reservation: NightEventReservationRow,
+  rebalanceRunId: string,
+  physicalEventId: string,
+  eventStartIso: string,
+  selected: SelectedExactCandidate,
+  provenance: { sourceAuthority: string; mechanicalGuardTrace: string[] }
+): EventExecutionQueueRow {
+  const { orderKey, idempotencyKey } = queueIdentityKeys(reservation, {
+    condition_id: selected.conditionId, token_id: selected.tokenId, side: selected.side,
+  });
+  const startMs = Date.parse(eventStartIso);
+  return {
+    reservation_id: reservation.id ?? null, plan_run_id: reservation.plan_run_id, rebalance_run_id: rebalanceRunId,
+    match_family_key: reservation.match_family_key, event_title: reservation.event_title, event_slug: reservation.event_slug,
+    sport: reservation.sport, league: reservation.league, game_start_iso: eventStartIso,
+    condition_id: selected.conditionId, token_id: selected.tokenId, side: selected.side,
+    market_slug: selected.marketSlug, market_title: selected.marketSlug, market_family: null,
+    score: selected.signalScore, coverage: null, tier: reservation.event_tier ?? EXECUTABLE_TIER,
+    stake_usd: selected.stakeUsd, preferred_entry_iso: preferredEntryIso(startMs), latest_entry_iso: latestEntryIso(startMs),
+    selection_rank: reservation.reservation_rank ?? 1, selection_reason: "RESERVED_EVENT_MAX_SIGNAL_SCORE_V1",
+    status: "READY", order_key: orderKey, idempotency_key: idempotencyKey,
+    diagnostics: {
+      physical_event_id: physicalEventId, event_start_iso: eventStartIso,
+      source_lineage: { generated_signal_pair_id: selected.id },
+      selected_signal_pair_id: selected.id, selected_signal_score: selected.signalScore,
+      selected_score_contract_version: selected.scoreContractVersion,
+      max_entry_price: selected.maxEntryPrice, stake_guard_usd: selected.stakeUsd,
+      source_authority: provenance.sourceAuthority,
+      mechanical_guard_trace: provenance.mechanicalGuardTrace,
+    },
+  };
+}
+
 async function selectQueueRowFromContractAReservation(
   reservation: NightEventReservationRow,
   rebalanceRunId: string,
@@ -1189,29 +1241,125 @@ async function selectQueueRowFromContractAReservation(
     .sort(compareExactProviderSignalPairs);
   const selected = candidates[0];
   if (!selected) return { outcome: "SKIPPED", reason: "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR", queueRow: null };
-  const { orderKey, idempotencyKey } = queueIdentityKeys(reservation, {
-    condition_id: selected.conditionId, token_id: selected.tokenId, side: selected.side,
+  const row = buildQueueRowFromExactCandidate(reservation, rebalanceRunId, physicalEventId, eventStartIso, selected, {
+    sourceAuthority: "GSP_ANCHOR_SIBLING",
+    mechanicalGuardTrace: ["RESERVATION_ACTIVE", "DUE_WINDOW", "EXACT_PROVIDER_EVENT", "MAX_SIGNAL_SCORE", "IDENTITY_COMPLETE"],
   });
-  const startMs = Date.parse(eventStartIso);
-  const row: EventExecutionQueueRow = {
-    reservation_id: reservation.id ?? null, plan_run_id: reservation.plan_run_id, rebalance_run_id: rebalanceRunId,
-    match_family_key: reservation.match_family_key, event_title: reservation.event_title, event_slug: reservation.event_slug,
-    sport: reservation.sport, league: reservation.league, game_start_iso: eventStartIso,
-    condition_id: selected.conditionId, token_id: selected.tokenId, side: selected.side,
-    market_slug: selected.marketSlug, market_title: selected.marketSlug, market_family: null,
-    score: selected.signalScore, coverage: null, tier: reservation.event_tier ?? EXECUTABLE_TIER,
-    stake_usd: selected.stakeUsd, preferred_entry_iso: preferredEntryIso(startMs), latest_entry_iso: latestEntryIso(startMs),
-    selection_rank: reservation.reservation_rank ?? 1, selection_reason: "RESERVED_EVENT_MAX_SIGNAL_SCORE_V1",
-    status: "READY", order_key: orderKey, idempotency_key: idempotencyKey,
-    diagnostics: {
-      physical_event_id: physicalEventId, event_start_iso: eventStartIso,
-      source_lineage: { generated_signal_pair_id: selected.id },
-      selected_signal_pair_id: selected.id, selected_signal_score: selected.signalScore,
-      selected_score_contract_version: selected.scoreContractVersion,
-      max_entry_price: selected.maxEntryPrice, stake_guard_usd: selected.stakeUsd,
-      mechanical_guard_trace: ["RESERVATION_ACTIVE", "DUE_WINDOW", "EXACT_PROVIDER_EVENT", "MAX_SIGNAL_SCORE", "IDENTITY_COMPLETE"],
-    },
+  return { outcome: "QUEUED", reason: row.selection_reason ?? "RESERVED_EVENT_MAX_SIGNAL_SCORE_V1", queueRow: row };
+}
+
+/** The B2 candidate-manifest version this Rebalance path knows how to consume.
+ * A Reservation stamped with any other (or malformed) version fails closed —
+ * see resolveReservationCandidateManifest — it never falls back to GSP. */
+const B2_SUPPORTED_CANDIDATE_MANIFEST_VERSION = "RESERVATION_CANDIDATE_MANIFEST_V1";
+
+/** A candidate resolved directly from a B2 Reservation's frozen
+ * diagnostics.candidate_manifest — no eventId/eventStartIso field is needed
+ * because manifest entries are already scoped to the Reservation's own
+ * physical event by construction (buildReservationCandidateManifestsByPhysicalEvent
+ * in nightEventReservations.ts groups by that exact identity before persisting). */
+type ManifestExactSignalPair = SelectedExactCandidate;
+
+/** Structural mirror of exactProviderSignalPair's field-presence/validity
+ * gate, applied to ONE manifest entry instead of a GSP row. Any entry that
+ * fails this check makes the WHOLE manifest UNSUPPORTED (fail closed) rather
+ * than being silently dropped — a manifest is the frozen decision-time
+ * universe; silently narrowing it here would be exactly the "widen/rediscover"
+ * behavior B3 must not do. */
+function manifestEntryToExactSignalPair(entry: unknown): ManifestExactSignalPair | null {
+  if (!entry || typeof entry !== "object") return null;
+  const e = entry as Record<string, unknown>;
+  const id = text(e.generated_signal_pair_id);
+  const conditionId = text(e.condition_id);
+  const tokenId = text(e.token_id);
+  const side = text(e.side);
+  const scoreContractVersion = text(e.metric_formula_version);
+  const signalScore = finite(e.signal_confidence_num);
+  const maxEntryPrice = finite(e.entry_price_num);
+  if (
+    id === null || conditionId === null || tokenId === null || side === null ||
+    scoreContractVersion === null || signalScore === null ||
+    maxEntryPrice === null || maxEntryPrice <= 0
+  ) return null;
+  return {
+    id, conditionId, tokenId, side, signalScore,
+    stakeUsd: EXECUTABLE_STAKE_USD, maxEntryPrice, scoreContractVersion,
+    marketSlug: text(e.market_slug),
   };
+}
+
+/** Same ranking rule as compareExactProviderSignalPairs (max score, then a
+ * fully deterministic tie-break) — one selection policy regardless of which
+ * candidate source produced the array. */
+function compareManifestExactSignalPairs(a: ManifestExactSignalPair, b: ManifestExactSignalPair): number {
+  return (
+    b.signalScore - a.signalScore ||
+    a.conditionId.localeCompare(b.conditionId) ||
+    a.tokenId.localeCompare(b.tokenId) ||
+    a.side.localeCompare(b.side) ||
+    a.id.localeCompare(b.id)
+  );
+}
+
+type ReservationCandidateManifestResolution =
+  | { kind: "LEGACY_NO_MANIFEST" }
+  | { kind: "UNSUPPORTED"; reason: string }
+  | { kind: "SUPPORTED"; candidates: ManifestExactSignalPair[] };
+
+/** PURE — no DB read, no I/O. A Reservation with no candidate_manifest_version
+ * at all is a legacy (pre-B2) cohort: callers keep the existing bounded GSP
+ * path unchanged. A present-but-unrecognized version, or any entry that fails
+ * manifestEntryToExactSignalPair, is UNSUPPORTED: callers must fail closed
+ * with the returned reason and must NEVER fall back to querying GSP. */
+function resolveReservationCandidateManifest(
+  reservation: NightEventReservationRow
+): ReservationCandidateManifestResolution {
+  const diag = reservation.diagnostics ?? {};
+  const version = diag.candidate_manifest_version;
+  if (version === null || version === undefined) return { kind: "LEGACY_NO_MANIFEST" };
+  if (version !== B2_SUPPORTED_CANDIDATE_MANIFEST_VERSION) {
+    return { kind: "UNSUPPORTED", reason: "B2_MANIFEST_VERSION_UNSUPPORTED" };
+  }
+  const rawEntries = diag.candidate_manifest;
+  if (!Array.isArray(rawEntries) || rawEntries.length === 0) {
+    return { kind: "UNSUPPORTED", reason: "B2_MANIFEST_EMPTY_OR_MALFORMED" };
+  }
+  const candidates: ManifestExactSignalPair[] = [];
+  for (const rawEntry of rawEntries) {
+    const candidate = manifestEntryToExactSignalPair(rawEntry);
+    if (candidate === null) return { kind: "UNSUPPORTED", reason: "B2_MANIFEST_ENTRY_MALFORMED" };
+    candidates.push(candidate);
+  }
+  return { kind: "SUPPORTED", candidates };
+}
+
+/**
+ * B3: final market selection for a B2 Reservation, sourced ENTIRELY from its
+ * already-persisted diagnostics.candidate_manifest — zero generated_signal_pairs
+ * reads, zero current_signal_pair_serving reads. PURE (no DB, no I/O): the
+ * manifest IS the complete bounded candidate universe for this Reservation: no
+ * query ever widens or rediscovers it here.
+ *
+ * Multiple manifest entries for the same physical event (different markets)
+ * remain distinct candidates under this ONE Reservation's selection — exactly
+ * one queue row is ever produced, same as every other selection path.
+ */
+function selectQueueRowFromReservationCandidateManifest(
+  reservation: NightEventReservationRow,
+  candidates: readonly ManifestExactSignalPair[],
+  rebalanceRunId: string
+): DueReservationSelection {
+  const eventStartIso = reservation.event_start_iso;
+  const physicalEventId = reservation.physical_event_id;
+  if (!eventStartIso || !Number.isFinite(Date.parse(eventStartIso)) || !physicalEventId) {
+    return { outcome: "SKIPPED", reason: "RESERVATION_EXACT_EVENT_LINEAGE_INCOMPLETE", queueRow: null };
+  }
+  const selected = [...candidates].sort(compareManifestExactSignalPairs)[0];
+  if (!selected) return { outcome: "SKIPPED", reason: "NO_EXACT_RESERVED_EVENT_SIGNAL_PAIR", queueRow: null };
+  const row = buildQueueRowFromExactCandidate(reservation, rebalanceRunId, physicalEventId, eventStartIso, selected, {
+    sourceAuthority: "B2_CANDIDATE_MANIFEST",
+    mechanicalGuardTrace: ["RESERVATION_ACTIVE", "DUE_WINDOW", "B2_CANDIDATE_MANIFEST", "MAX_SIGNAL_SCORE", "IDENTITY_COMPLETE"],
+  });
   return { outcome: "QUEUED", reason: row.selection_reason ?? "RESERVED_EVENT_MAX_SIGNAL_SCORE_V1", queueRow: row };
 }
 
@@ -1589,19 +1737,33 @@ export async function runEventRebalance(
       plannedActions.push({ kind: "ALREADY_QUEUED", reservation });
       continue;
     }
+    // B3: a Reservation carrying a supported B2 candidate manifest is
+    // resolved ENTIRELY from that manifest — no GSP read, no Serving read,
+    // and it never falls into the requireContractAFinalIdentity/
+    // fetchFinalIdentitySourceRows gates below, which exist only for the
+    // GSP-dependent legacy path. An UNSUPPORTED (present but malformed)
+    // manifest fails closed right here and never reaches selectQueueRowFromContractAReservation.
+    const manifestResolution =
+      reservation.diagnostics?.contract_a_stage === "PLANNING"
+        ? resolveReservationCandidateManifest(reservation)
+        : null;
     const selection =
-      requireContractAFinalIdentity && reservation.diagnostics?.contract_a_stage !== "PLANNING"
-        ? { outcome: "SKIPPED" as const, reason: "RESERVATION_REQUIRED_USE_EVENT_REBALANCE", queueRow: null }
-        : requireContractAFinalIdentity && !fetchFinalIdentitySourceRows
-          ? { outcome: "SKIPPED" as const, reason: "FINAL_IDENTITY_DEPENDENCY_REQUIRED", queueRow: null }
-        : reservation.diagnostics?.contract_a_stage === "PLANNING" && fetchFinalIdentitySourceRows
-        ? await selectQueueRowFromContractAReservation(
-            reservation,
-            rebalanceRunId,
-            nowMs,
-            fetchFinalIdentitySourceRows
-          )
-        : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
+      manifestResolution?.kind === "SUPPORTED"
+        ? selectQueueRowFromReservationCandidateManifest(reservation, manifestResolution.candidates, rebalanceRunId)
+        : manifestResolution?.kind === "UNSUPPORTED"
+          ? { outcome: "SKIPPED" as const, reason: manifestResolution.reason, queueRow: null }
+          : requireContractAFinalIdentity && reservation.diagnostics?.contract_a_stage !== "PLANNING"
+            ? { outcome: "SKIPPED" as const, reason: "RESERVATION_REQUIRED_USE_EVENT_REBALANCE", queueRow: null }
+            : requireContractAFinalIdentity && !fetchFinalIdentitySourceRows
+              ? { outcome: "SKIPPED" as const, reason: "FINAL_IDENTITY_DEPENDENCY_REQUIRED", queueRow: null }
+            : reservation.diagnostics?.contract_a_stage === "PLANNING" && fetchFinalIdentitySourceRows
+            ? await selectQueueRowFromContractAReservation(
+                reservation,
+                rebalanceRunId,
+                nowMs,
+                fetchFinalIdentitySourceRows
+              )
+            : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
     if (selection.outcome === "SKIPPED") {
       plannedActions.push({ kind: "SKIPPED", reservation, reason: selection.reason, blockedCandidates: selection.blockedCandidates });
     } else {
@@ -1910,17 +2072,29 @@ export async function runControlledLiveIntent(
 
   for (const reservation of due) {
     if (reservation.id && alreadyQueued.has(reservation.id)) continue;
-    if (requireContractAFinalIdentity && reservation.diagnostics?.contract_a_stage !== "PLANNING") continue;
-    if (requireContractAFinalIdentity && !fetchFinalIdentitySourceRows) continue;
+    // B3: same manifest-first resolution as runEventRebalance — a SUPPORTED
+    // B2 manifest never touches GSP; an UNSUPPORTED one fails closed (skip to
+    // the next due reservation, never fall back to GSP for this one).
+    const manifestResolution =
+      reservation.diagnostics?.contract_a_stage === "PLANNING"
+        ? resolveReservationCandidateManifest(reservation)
+        : null;
+    if (manifestResolution?.kind === "UNSUPPORTED") continue;
+    if (manifestResolution?.kind !== "SUPPORTED") {
+      if (requireContractAFinalIdentity && reservation.diagnostics?.contract_a_stage !== "PLANNING") continue;
+      if (requireContractAFinalIdentity && !fetchFinalIdentitySourceRows) continue;
+    }
     const selection =
-      requireContractAFinalIdentity
-        ? await selectQueueRowFromContractAReservation(
-            reservation,
-            rebalanceRunId,
-            nowMs,
-            fetchFinalIdentitySourceRows!
-          )
-        : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
+      manifestResolution?.kind === "SUPPORTED"
+        ? selectQueueRowFromReservationCandidateManifest(reservation, manifestResolution.candidates, rebalanceRunId)
+        : requireContractAFinalIdentity
+          ? await selectQueueRowFromContractAReservation(
+              reservation,
+              rebalanceRunId,
+              nowMs,
+              fetchFinalIdentitySourceRows!
+            )
+          : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
     if (selection.outcome !== "QUEUED" || !selection.queueRow) continue;
 
     const controlledRow = applyControlledLiveIntentOverrides(selection.queueRow);
