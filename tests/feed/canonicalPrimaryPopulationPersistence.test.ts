@@ -49,7 +49,7 @@ test("GSP-unavailable injection: exact primary evidence reaches direct Serving a
 });
 
 test("schema contract removes GSP FK and enforces bounded idempotent durable publication", () => {
-  const sql = readFileSync("supabase/migrations/20260907203453_make_current_money_state_gsp_independent.sql", "utf8");
+  const sql = readFileSync("supabase/migrations/20260908120000_make_current_money_state_gsp_independent.sql", "utf8");
   assert.match(sql, /primary_evidence_outbox/);
   assert.match(sql, /DROP CONSTRAINT IF EXISTS current_signal_pair_serving_source_generated_signal_pair_id_fkey/);
   assert.match(sql, /ALTER COLUMN source_generated_signal_pair_id DROP NOT NULL/);
