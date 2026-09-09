@@ -137,6 +137,54 @@ export async function fetchGammaMarketByConditionId(
   }
 }
 
+export type ProviderResolverState = "active_unresolved" | "closed_unknown" | "resolved_candidate" | "lookup_failed";
+
+export interface ProviderMarketResolution {
+  resolverState: ProviderResolverState;
+  candidateWinningOutcome: string | null;
+  candidateWinningTokenId: string | null;
+}
+
+/**
+ * Pure provider-market winner resolution: identifies the closed market's
+ * winning outcome/token from Gamma/CLOB data alone. Deliberately carries no
+ * selected-token or historical entry-price snapshot -- those only decide
+ * whether a *specific side* won or lost, which is a matter for the caller
+ * (execution reconciliation identity), not for the provider resolver.
+ * Fails closed (closed_unknown) unless the market has exactly one winner.
+ */
+export function resolveProviderMarketWinner(market: GammaMarket | null): ProviderMarketResolution {
+  if (!market) {
+    return { resolverState: "lookup_failed", candidateWinningOutcome: null, candidateWinningTokenId: null };
+  }
+
+  if (market.closed !== true) {
+    return { resolverState: "active_unresolved", candidateWinningOutcome: null, candidateWinningTokenId: null };
+  }
+
+  const outcomes = safeParseJsonArray(market.outcomes);
+  const outcomePrices = safeParseNumberArray(market.outcomePrices);
+  const clobTokenIds = safeParseJsonArray(market.clobTokenIds);
+
+  let winnerIndex: number | null = null;
+  if (outcomePrices) {
+    const highCount = outcomePrices.filter((p) => p >= 0.99).length;
+    const highIdx = outcomePrices.findIndex((p) => p >= 0.99);
+    if (highCount === 1) winnerIndex = highIdx;
+  }
+  if (winnerIndex === null) {
+    return { resolverState: "closed_unknown", candidateWinningOutcome: null, candidateWinningTokenId: null };
+  }
+
+  const candidateWinningOutcome = outcomes?.[winnerIndex] ?? null;
+  const candidateWinningTokenId = clobTokenIds?.[winnerIndex] ?? null;
+  if (!candidateWinningTokenId) {
+    return { resolverState: "closed_unknown", candidateWinningOutcome: null, candidateWinningTokenId: null };
+  }
+
+  return { resolverState: "resolved_candidate", candidateWinningOutcome, candidateWinningTokenId };
+}
+
 export function resolveSignalOutcome(
   input: ResolveSignalOutcomeInput
 ): ResolvedSignalOutcome {
