@@ -284,6 +284,24 @@ function providerPhysicalEventId(eventId: string, eventStartIso: string): string
 }
 
 /**
+ * The same physical-event identity resolution `buildContractAPlanningDecision`
+ * applies internally, exposed so a caller (B2 Reservation candidate manifest)
+ * can group raw source rows by physical event WITHOUT re-implementing or
+ * drifting from Contract A's one identity rule.
+ */
+export function resolveContractAProviderPhysicalEventIdentity(
+  sourceDiagnostics: Record<string, unknown>
+): { eventId: string; eventStartIso: string; physicalEventId: string } | null {
+  const identity = exactProviderEventIdentity(sourceDiagnostics);
+  if (identity === null) return null;
+  return {
+    eventId: identity.eventId,
+    eventStartIso: identity.eventStartIso,
+    physicalEventId: providerPhysicalEventId(identity.eventId, identity.eventStartIso),
+  };
+}
+
+/**
  * The collision-safe occurrence stamp for a fallback physical event id.
  *
  * The calendar DATE alone is NOT an occurrence: a doubleheader — same event

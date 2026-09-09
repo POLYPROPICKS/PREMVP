@@ -45,6 +45,7 @@ import type {
   ContractADecisionResult,
   ContractAPlanningDecision,
 } from "./contractADecisions";
+import { resolveContractAProviderPhysicalEventIdentity } from "./contractADecisions";
 import {
   LIVE_RESERVATION_ALLOCATION_V1,
   rankAllocatableApprovedPhysicalEvents,
@@ -1678,6 +1679,137 @@ export interface PlanningDecisionReservationResult {
   missingProviderVolume: number;
 }
 
+const RESERVATION_CANDIDATE_MANIFEST_VERSION = "RESERVATION_CANDIDATE_MANIFEST_V1" as const;
+
+/**
+ * Bound on manifest entries persisted per Reservation (per physical event).
+ * One physical event realistically offers a handful of markets (moneyline,
+ * spread, total, a few props); this is decision evidence for the ONE reserved
+ * physical event, never a generic historical data platform.
+ */
+const RESERVATION_CANDIDATE_MANIFEST_MAX_ENTRIES = 20;
+
+const CANDIDATE_MANIFEST_UUID_LIKE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * ONE bounded, immutable candidate identity captured at Reservation decision
+ * time. Enough to rediscover the exact market row later WITHOUT re-querying
+ * mutable Serving: the generated_signal_pair_id/observation_id anchor (B1's
+ * `id = source_generated_signal_pair_id ?? observation_id` normalization),
+ * the exact executable identity, and the score/price this Reservation actually
+ * saw — never re-derived from a later, possibly-changed Serving row.
+ */
+export interface ReservationCandidateManifestEntry {
+  generated_signal_pair_id: string | null;
+  generated_signal_pair_id_is_uuid: boolean;
+  condition_id: string;
+  token_id: string;
+  side: string | null;
+  market_slug: string | null;
+  event_slug: string | null;
+  entry_price_num: number | null;
+  signal_confidence_num: number | null;
+  metric_formula_version: string | null;
+  source_created_at: string | null;
+}
+
+export interface ReservationCandidateManifest {
+  manifest_version: typeof RESERVATION_CANDIDATE_MANIFEST_VERSION;
+  entries: ReservationCandidateManifestEntry[];
+  truncated: boolean;
+}
+
+function nonEmptyManifestString(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+function manifestEntryFromSourceRow(row: Record<string, unknown>): ReservationCandidateManifestEntry | null {
+  const conditionId = nonEmptyManifestString(row.condition_id);
+  const tokenId = nonEmptyManifestString(row.selected_token_id);
+  if (conditionId === null || tokenId === null) return null;
+  const id = nonEmptyManifestString(row.id);
+  return {
+    generated_signal_pair_id: id,
+    generated_signal_pair_id_is_uuid: id !== null && CANDIDATE_MANIFEST_UUID_LIKE_RE.test(id),
+    condition_id: conditionId,
+    token_id: tokenId,
+    side: nonEmptyManifestString(row.selected_outcome),
+    market_slug: nonEmptyManifestString(row.market_slug),
+    event_slug: nonEmptyManifestString(row.event_slug),
+    entry_price_num: typeof row.entry_price_num === "number" && Number.isFinite(row.entry_price_num)
+      ? row.entry_price_num
+      : null,
+    signal_confidence_num: typeof row.signal_confidence_num === "number" && Number.isFinite(row.signal_confidence_num)
+      ? row.signal_confidence_num
+      : null,
+    metric_formula_version: nonEmptyManifestString(row.metric_formula_version),
+    source_created_at: nonEmptyManifestString(row.created_at),
+  };
+}
+
+function compareManifestEntries(
+  a: ReservationCandidateManifestEntry,
+  b: ReservationCandidateManifestEntry
+): number {
+  return (
+    (b.signal_confidence_num ?? -Infinity) - (a.signal_confidence_num ?? -Infinity) ||
+    a.condition_id.localeCompare(b.condition_id) ||
+    a.token_id.localeCompare(b.token_id)
+  );
+}
+
+/**
+ * Groups the EXACT same bounded, already-eligibility-filtered source-row
+ * snapshot the Planning Decisions were produced from (never a new or wider
+ * query) into one bounded candidate manifest per admitted physical event.
+ *
+ * This is the decision-time candidate set: every row here already passed the
+ * same Serving eligibility gates (`loadContractAPlanningSourceRows` /
+ * `fetchContractAPlanningServingRowSets`) that produced the Planning
+ * Decisions themselves — grouping never widens or re-filters that universe.
+ */
+export function buildReservationCandidateManifestsByPhysicalEvent(
+  rows: readonly Record<string, unknown>[],
+  admittedPhysicalEventIds: ReadonlySet<string>,
+  maxEntriesPerEvent = RESERVATION_CANDIDATE_MANIFEST_MAX_ENTRIES
+): Map<string, ReservationCandidateManifest> {
+  const grouped = new Map<string, ReservationCandidateManifestEntry[]>();
+  for (const row of rows) {
+    const diagnostics = row.diagnostics && typeof row.diagnostics === "object"
+      ? (row.diagnostics as Record<string, unknown>)
+      : {};
+    const identity = resolveContractAProviderPhysicalEventIdentity(diagnostics);
+    if (identity === null || !admittedPhysicalEventIds.has(identity.physicalEventId)) continue;
+    const entry = manifestEntryFromSourceRow(row);
+    if (entry === null) continue;
+    const list = grouped.get(identity.physicalEventId);
+    if (list) list.push(entry);
+    else grouped.set(identity.physicalEventId, [entry]);
+  }
+
+  const result = new Map<string, ReservationCandidateManifest>();
+  for (const [physicalEventId, entries] of grouped) {
+    // Defensive dedup by exact executable identity — Serving already enforces
+    // (condition_id, selected_token_id, metric_formula_version) uniqueness,
+    // this only guards against a caller supplying duplicate rows.
+    const seen = new Set<string>();
+    const deduped: ReservationCandidateManifestEntry[] = [];
+    for (const entry of entries) {
+      const key = `${entry.condition_id}::${entry.token_id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      deduped.push(entry);
+    }
+    deduped.sort(compareManifestEntries);
+    result.set(physicalEventId, {
+      manifest_version: RESERVATION_CANDIDATE_MANIFEST_VERSION,
+      entries: deduped.slice(0, maxEntriesPerEvent),
+      truncated: deduped.length > maxEntriesPerEvent,
+    });
+  }
+  return result;
+}
+
 /**
  * Transform ONE accepted Planning Decision into ONE Reservation row.
  *
@@ -1692,7 +1824,8 @@ function planningDecisionReservationRow(
     policy: LiveReservationAllocationPolicy;
     providerMarketVolume: number | null;
   },
-  reservationRank: number
+  reservationRank: number,
+  candidateManifest: ReservationCandidateManifest | undefined
 ): NightEventReservationRow {
   return {
     physical_event_id: decision.physical_event_id,
@@ -1754,6 +1887,14 @@ function planningDecisionReservationRow(
       planning_final_identity_evidence: decision.final_identity_evidence,
       // Stage 2 identity does not exist yet and is never synthesized here.
       battle_trace_id: `contur3:${ctx.planRunId}:${decision.physical_event_id}:pending-final-identity`,
+      // B2: the exact bounded candidate manifest this Reservation decided over
+      // (see buildReservationCandidateManifestsByPhysicalEvent). Absent on
+      // legacy rows written before B2 — never backfilled, never required for
+      // this Reservation to remain valid.
+      candidate_manifest_version: candidateManifest?.manifest_version ?? null,
+      candidate_manifest: candidateManifest?.entries ?? [],
+      candidate_manifest_count: candidateManifest?.entries.length ?? 0,
+      candidate_manifest_truncated: candidateManifest?.truncated ?? false,
     },
   };
 }
@@ -1773,6 +1914,12 @@ export function buildReservationsFromPlanningDecisions(
     restrictToOccurrenceIds?: ReadonlySet<string>;
     allocationPolicy?: LiveReservationAllocationPolicy;
     providerVolumeByPhysicalEventId?: ReadonlyMap<string, number | null>;
+    /**
+     * B2: the exact same bounded source-row snapshot the Planning Decisions
+     * were produced from. Used only to derive each admitted physical event's
+     * candidate manifest (grouping, never a new query or a wider universe).
+     */
+    sourceRowsForCandidateManifest?: readonly Record<string, unknown>[];
   } = {}
 ): PlanningDecisionReservationResult {
   const rejections: PlanningDecisionReservationRejection[] = [];
@@ -1866,6 +2013,15 @@ export function buildReservationsFromPlanningDecisions(
   let duplicateRejected = allocation.duplicatesRemoved;
   let capExcluded = 0;
 
+  // B2: bounded candidate manifest per admitted physical event, derived from
+  // the exact same source-row snapshot the decisions themselves came from.
+  const candidateManifestsByPhysicalEventId = opts.sourceRowsForCandidateManifest
+    ? buildReservationCandidateManifestsByPhysicalEvent(
+        opts.sourceRowsForCandidateManifest,
+        new Set(admittedOccurrenceIds)
+      )
+    : new Map<string, ReservationCandidateManifest>();
+
   for (const candidate of targeted) {
     const decision = candidate.decision;
     const occurrenceId = decision.physical_event_id;
@@ -1902,6 +2058,7 @@ export function buildReservationsFromPlanningDecisions(
           providerMarketVolume: candidate.providerMarketVolume,
         },
         reservations.length + 1,
+        candidateManifestsByPhysicalEventId.get(occurrenceId),
       )
     );
   }
@@ -2151,6 +2308,7 @@ export async function buildContractAReservationPlan(
   let built = buildReservationsFromPlanningDecisions(results, ctx, activeOccurrences, {
     allocationPolicy: LIVE_RESERVATION_ALLOCATION_V1,
     providerVolumeByPhysicalEventId: providerVolumes,
+    sourceRowsForCandidateManifest: rows,
   });
 
   // ── Canary single-event targeting (planning-stage only; never fuzzy) ──────
@@ -2171,6 +2329,7 @@ export async function buildContractAReservationPlan(
       restrictToOccurrenceIds: new Set(canaryTargetGroupKey ? [canaryTargetGroupKey] : []),
       allocationPolicy: LIVE_RESERVATION_ALLOCATION_V1,
       providerVolumeByPhysicalEventId: providerVolumes,
+      sourceRowsForCandidateManifest: rows,
     });
   }
 
