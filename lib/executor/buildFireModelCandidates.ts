@@ -1576,6 +1576,18 @@ export async function fetchPlanningSourceRowSets(
         .not("selected_token_id", "is", null)
         .not("condition_id", "is", null)
         .is("signal_confidence_num", null)
+        // A row whose diagnostics.gameStartIso is absent (JSON null OR the
+        // literal string "null") is unconditionally rejected below as
+        // MISSING_GAME_START -- every code path, every planning run, no
+        // exception (see the `!gameStartIso` continue right after
+        // buildIdentityText). It can therefore never become a candidate, so
+        // excluding it here changes zero eligibility outcomes. Measured live
+        // against production (2026-08-12): this is the majority of the
+        // shadow-strategic-sports-v1 backlog and the dominant contributor to
+        // the read volume that reproduced the 57014 statement timeout in
+        // planning_shadow_rows_fetch at deep pagination pages.
+        .not("diagnostics->>gameStartIso", "is", null)
+        .neq("diagnostics->>gameStartIso", "null")
         .order("created_at", { ascending: false })
         .order("id", { ascending: false });
     planningShadowRows = await fetchAllPlanningRowsByKeyset(
