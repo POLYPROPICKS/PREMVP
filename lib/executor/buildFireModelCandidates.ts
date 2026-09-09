@@ -1765,8 +1765,11 @@ export async function buildFireModelCandidates(
         .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
         .slice(0, LIVE_ROW_LIMIT);
     }
-  } else if (planningMode && selectorMode === "CONTRACT_A_PLANNING_V1") {
-    const loaded = await fetchContractAPlanningServingRowSets(new Date(nowMs).toISOString(), true);
+  } else if (selectorMode === "CONTRACT_A_PLANNING_V1") {
+    const loaded = await fetchContractAPlanningServingRowSets(
+      new Date(nowMs).toISOString(),
+      planningMode,
+    );
     scoredRows = loaded.scoredRows;
     planningShadowRows = loaded.planningShadowRows;
   } else {
