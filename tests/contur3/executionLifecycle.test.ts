@@ -223,6 +223,19 @@ test("J: the port contract exposes exactly loadEvents/persistEvent -- no source-
   assert.deepEqual(Object.keys(port).filter((k) => typeof (port as unknown as Record<string, unknown>)[k] === "function").sort(), ["loadEvents", "persistEvent"]);
 });
 
+test("a second pass over an already-settled event is a no-op: no further writes, no re-invented mutation", async () => {
+  const port = makePort({ [eventId]: { reconciliation_v1: confirmedFillReconciliation({ fee_status: "REPORTED", fee_usd: 0.01 }) } });
+  const resolver = async () => ({ resolverState: "resolved_candidate" as const, candidateWinningOutcome: "Yes", candidateWinningTokenId: "token-yes" });
+
+  const first = await reconcileExecutionLifecycleWithPort(port, { writeMode: true, eventIds: [eventId], resolver });
+  assert.equal(first.updated, 1);
+  assert.equal(port.eventWrites, 1);
+
+  const second = await reconcileExecutionLifecycleWithPort(port, { writeMode: true, eventIds: [eventId], resolver });
+  assert.equal(second.updated, 0, "an identical re-resolution against an already-settled event produces no further write");
+  assert.equal(port.eventWrites, 1, "duplicate observation does not write the event again");
+});
+
 test("dry-run reports a would-update without writes", async () => {
   const port = makePort({ [eventId]: { reconciliation_v1: confirmedFillReconciliation() } });
   const resolver = async () => ({ resolverState: "resolved_candidate" as const, candidateWinningOutcome: "Yes", candidateWinningTokenId: "token-yes" });
