@@ -13,6 +13,7 @@
 // Supabase import and performs no I/O, so it is fully unit-testable with
 // fixtures and can never mutate production state.
 
+import { PLAN_TIMEZONE } from "./nightWindow";
 import type { RawPlanningDiagnostics } from "./buildFireModelCandidates";
 import type { ReservationPlan } from "./nightEventReservations";
 import type {
@@ -797,26 +798,86 @@ export function assembleNightFunnelAudit(input: {
 // explicitly UNKNOWN/absent rather than fabricating a zero.
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** Canonical natural night-plan anchor id: `night-plan:YYYY-MM-DD:HHMM-<tz>`. */
+/**
+ * Canonical natural night-plan anchor id: `night-plan:YYYY-MM-DD:HHMM-minsk`.
+ * Mirrors lib/executor/nightWindow.ts `buildPlanRunId` — the ONLY producer of
+ * these ids. The timezone token is always `minsk` (canonical PLAN_TIMEZONE).
+ */
 export const NATURAL_NIGHT_ANCHOR_RE =
   /^night-plan:(\d{4}-\d{2}-\d{2}):(\d{2})(\d{2})-([a-z0-9]+)$/;
 
+/** Timezone token every canonical Reservation anchor id carries. */
+export const NATURAL_ANCHOR_TZ_TOKEN = "minsk" as const;
+
 export interface ParsedNaturalAnchor {
   plan_run_id: string;
-  /** Calendar date component, `YYYY-MM-DD`. */
+  /** Calendar date component, `YYYY-MM-DD` (PLAN_TIMEZONE wall date). */
   date: string;
-  /** Wall-clock component, `HHMM`. */
+  /** Wall-clock component, `HHMM` (PLAN_TIMEZONE wall time). */
   time: string;
   timezone: string;
-  /** `${date} ${time}` — lexicographic order is chronological order (tz-agnostic). */
+  /** `${date} ${time}` — retained for provenance; ordering uses `scheduled_ms`. */
   sort_key: string;
+  /**
+   * Exact scheduled anchor instant (UTC ms), derived from the PLAN_TIMEZONE
+   * wall clock the same way nightWindow.ts resolves a Reservation anchor. This
+   * — not the calendar date — is the eligibility key.
+   */
+  scheduled_ms: number;
+  scheduled_iso: string;
+}
+
+/**
+ * UTC offset (ms) of `timeZone` at the instant `utcMs`. Uses the platform tz
+ * database keyed by the canonical PLAN_TIMEZONE identifier rather than a second
+ * hard-coded offset model. (Europe/Minsk is a fixed UTC+3 zone, so the value is
+ * stable, but this stays correct if the canonical zone ever changes.)
+ */
+function zoneOffsetMs(utcMs: number, timeZone: string): number {
+  const dtf = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hourCycle: "h23",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+  const parts = dtf.formatToParts(new Date(utcMs));
+  const f: Record<string, number> = {};
+  for (const p of parts) if (p.type !== "literal") f[p.type] = Number(p.value);
+  const wallAsUtc = Date.UTC(f.year, f.month - 1, f.day, f.hour, f.minute, f.second);
+  return wallAsUtc - utcMs;
+}
+
+/** Exact scheduled instant (UTC ms) of a PLAN_TIMEZONE wall date+time. */
+function naturalAnchorScheduledMs(date: string, hhmm: string): number {
+  const [y, mo, d] = date.split("-").map(Number);
+  const hour = Number(hhmm.slice(0, 2));
+  const minute = Number(hhmm.slice(2, 4));
+  const naiveUtc = Date.UTC(y, mo - 1, d, hour, minute, 0);
+  // Two-step naive→zoned resolution: exact for a fixed-offset zone like Minsk.
+  return naiveUtc - zoneOffsetMs(naiveUtc, PLAN_TIMEZONE);
 }
 
 export function parseNaturalAnchor(planRunId: string): ParsedNaturalAnchor | null {
   const m = NATURAL_NIGHT_ANCHOR_RE.exec(planRunId);
   if (!m) return null;
   const [, date, hh, mm, timezone] = m;
-  return { plan_run_id: planRunId, date, time: `${hh}${mm}`, timezone, sort_key: `${date} ${hh}${mm}` };
+  // Only the canonical PLAN_TIMEZONE anchor id is a resolvable natural anchor.
+  if (timezone !== NATURAL_ANCHOR_TZ_TOKEN) return null;
+  const time = `${hh}${mm}`;
+  const scheduled_ms = naturalAnchorScheduledMs(date, time);
+  return {
+    plan_run_id: planRunId,
+    date,
+    time,
+    timezone,
+    sort_key: `${date} ${time}`,
+    scheduled_ms,
+    scheduled_iso: new Date(scheduled_ms).toISOString(),
+  };
 }
 
 export class AnchorResolutionError extends Error {
@@ -842,55 +903,68 @@ export class AnchorContaminationError extends Error {
 export interface NaturalAnchorResolution {
   /** The evidence cutoff the resolution was performed against (ISO), or null. */
   evidence_cutoff_iso: string | null;
-  /** The single deterministically selected latest expected natural anchor. */
+  /** The evidence cutoff instant (UTC ms), or null. */
+  evidence_cutoff_ms: number | null;
+  /** The single deterministically selected anchor. */
   selected: ParsedNaturalAnchor;
   /**
-   * Other EXPECTED natural anchors sharing the selected anchor's calendar date
-   * that were NOT selected — direct proof that a second same-day anchor is
-   * visible to the resolver yet excluded from the cohort.
+   * True only when an explicit plan-id was resolved whose scheduled instant is
+   * after the evidence cutoff (the operator asked for it by name). Always false
+   * for auto-selection — an auto-selected anchor is never in the future.
+   */
+  selected_is_future: boolean;
+  /**
+   * Other natural anchors sharing the selected anchor's wall date whose
+   * scheduled instant is at or before the selected anchor's — the prior
+   * same-day comparison evidence. A later same-day anchor is NEVER here.
    */
   same_day_excluded: ParsedNaturalAnchor[];
-  /** Every expected natural anchor considered (date <= cutoff), sorted ascending. */
+  /** Every expected natural anchor (scheduled_ms <= cutoff), ascending by instant. */
   expected_natural_anchors: ParsedNaturalAnchor[];
   /** Candidate ids ignored because they are not canonical natural anchors. */
   non_natural_ignored: string[];
-  /** Natural-anchor ids dropped because their date is after the evidence cutoff. */
+  /** Natural-anchor ids whose scheduled instant is after the evidence cutoff. */
   future_anchors_excluded: string[];
 }
 
 /**
- * Deterministically select the single latest expected natural anchor from a set
- * of candidate plan_run_ids.
+ * Deterministically select the single current anchor from candidate plan_run_ids.
  *
  *  - Non-canonical ids are ignored (surfaced in `non_natural_ignored`).
- *  - When `cutoffIso` is given, anchors dated after the cutoff's UTC date are
- *    "not yet expected" and are excluded (surfaced in `future_anchors_excluded`).
- *  - The selected anchor is the maximum by `${date} ${time}`; the ordering is a
- *    total order, and any residual ambiguity (two ids with an identical sort key)
- *    fails closed rather than picking arbitrarily.
+ *  - Eligibility is `anchor scheduled instant <= evidence cutoff instant`, using
+ *    the exact PLAN_TIMEZONE anchor clock (nightWindow semantics) — NOT the
+ *    calendar date. A same-day later anchor stays in `future_anchors_excluded`
+ *    until its scheduled instant is reached, then becomes eligible.
+ *  - Auto mode selects the maximum eligible anchor by `scheduled_ms`; an exact
+ *    instant tie fails closed.
+ *  - `explicitPlanRunId` selects that anchor by name (it must be a canonical
+ *    natural anchor); `selected_is_future` records if it is not yet due, and
+ *    `same_day_excluded` is computed relative to THAT anchor so the metadata is
+ *    internally consistent.
  *
  * No current date, production count, or specific wall-clock value is hard-coded.
  */
 export function resolveLatestExpectedNaturalAnchor(
   candidatePlanRunIds: readonly string[],
-  opts: { cutoffIso?: string | null } = {},
+  opts: { cutoffIso?: string | null; explicitPlanRunId?: string | null } = {},
 ): NaturalAnchorResolution {
   const cutoffIso = opts.cutoffIso ?? null;
-  let cutoffDate: string | null = null;
+  let cutoffMs: number | null = null;
   if (cutoffIso != null) {
     const ms = Date.parse(cutoffIso);
     if (!Number.isFinite(ms)) {
       throw new AnchorResolutionError(`INVALID_CUTOFF_ISO: ${cutoffIso}`);
     }
-    cutoffDate = new Date(ms).toISOString().slice(0, 10);
+    cutoffMs = ms;
   }
+  const explicitId = opts.explicitPlanRunId ?? null;
 
   const nonNatural: string[] = [];
-  const future: string[] = [];
-  const parsed: ParsedNaturalAnchor[] = [];
+  const parsedAll: ParsedNaturalAnchor[] = [];
   const seen = new Set<string>();
 
-  for (const id of candidatePlanRunIds) {
+  const allIds = explicitId != null ? [...candidatePlanRunIds, explicitId] : candidatePlanRunIds;
+  for (const id of allIds) {
     if (seen.has(id)) continue;
     seen.add(id);
     const p = parseNaturalAnchor(id);
@@ -898,41 +972,61 @@ export function resolveLatestExpectedNaturalAnchor(
       nonNatural.push(id);
       continue;
     }
-    if (cutoffDate != null && p.date > cutoffDate) {
-      future.push(id);
-      continue;
+    parsedAll.push(p);
+  }
+
+  const isFuture = (p: ParsedNaturalAnchor): boolean =>
+    cutoffMs != null && p.scheduled_ms > cutoffMs;
+  const future = parsedAll.filter(isFuture);
+  const futureIds = new Set(future.map((p) => p.plan_run_id));
+  const expected = parsedAll
+    .filter((p) => !futureIds.has(p.plan_run_id))
+    .sort((a, b) => a.scheduled_ms - b.scheduled_ms);
+
+  let selected: ParsedNaturalAnchor;
+  let selected_is_future = false;
+
+  if (explicitId != null) {
+    const found = parsedAll.find((p) => p.plan_run_id === explicitId);
+    if (!found) {
+      throw new AnchorResolutionError(`EXPLICIT_PLAN_ID_NOT_A_NATURAL_ANCHOR: ${explicitId}`);
     }
-    parsed.push(p);
+    selected = found;
+    selected_is_future = futureIds.has(found.plan_run_id);
+  } else {
+    if (expected.length === 0) {
+      throw new AnchorResolutionError(
+        `NO_EXPECTED_NATURAL_ANCHOR: ${candidatePlanRunIds.length} candidate(s) — ` +
+          `${nonNatural.length} non-natural, ${future.length} not yet due`,
+      );
+    }
+    selected = expected[expected.length - 1];
+    const topPeers = expected.filter((p) => p.scheduled_ms === selected.scheduled_ms);
+    if (topPeers.length > 1) {
+      throw new AnchorResolutionError(
+        `AMBIGUOUS_LATEST_ANCHOR: ${topPeers.map((p) => p.plan_run_id).join(", ")}`,
+      );
+    }
   }
 
-  if (parsed.length === 0) {
-    throw new AnchorResolutionError(
-      `NO_EXPECTED_NATURAL_ANCHOR: ${candidatePlanRunIds.length} candidate(s) — ` +
-        `${nonNatural.length} non-natural, ${future.length} after cutoff`,
-    );
-  }
-
-  parsed.sort((a, b) => (a.sort_key < b.sort_key ? -1 : a.sort_key > b.sort_key ? 1 : 0));
-  const selected = parsed[parsed.length - 1];
-
-  const topPeers = parsed.filter((p) => p.sort_key === selected.sort_key);
-  if (topPeers.length > 1) {
-    throw new AnchorResolutionError(
-      `AMBIGUOUS_LATEST_ANCHOR: ${topPeers.map((p) => p.plan_run_id).join(", ")}`,
-    );
-  }
-
-  const same_day_excluded = parsed.filter(
-    (p) => p.date === selected.date && p.plan_run_id !== selected.plan_run_id,
-  );
+  const same_day_excluded = parsedAll
+    .filter(
+      (p) =>
+        p.date === selected.date &&
+        p.scheduled_ms <= selected.scheduled_ms &&
+        p.plan_run_id !== selected.plan_run_id,
+    )
+    .sort((a, b) => a.scheduled_ms - b.scheduled_ms);
 
   return {
     evidence_cutoff_iso: cutoffIso,
+    evidence_cutoff_ms: cutoffMs,
     selected,
+    selected_is_future,
     same_day_excluded,
-    expected_natural_anchors: parsed,
+    expected_natural_anchors: expected,
     non_natural_ignored: nonNatural,
-    future_anchors_excluded: future,
+    future_anchors_excluded: future.map((p) => p.plan_run_id).sort(),
   };
 }
 

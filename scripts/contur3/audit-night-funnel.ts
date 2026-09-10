@@ -89,28 +89,28 @@ async function main() {
   const candidateAnchorIds = [
     ...new Set((anchorRows ?? []).map((r) => String((r as { plan_run_id?: unknown }).plan_run_id ?? "")).filter(Boolean)),
   ];
-  // An explicit --plan-id is honoured verbatim (back-compat); it is still fed
-  // through the resolver so the packet carries the same-day-excluded set.
-  const anchorResolution = resolveLatestExpectedNaturalAnchor(
-    explicitPlanId ? [...candidateAnchorIds, explicitPlanId] : candidateAnchorIds,
-    { cutoffIso: evidenceCutoff },
-  );
-  const selectedNaturalAnchor =
-    explicitPlanId != null
-      ? anchorResolution.expected_natural_anchors.find((p) => p.plan_run_id === explicitPlanId) ?? null
-      : anchorResolution.selected;
-  if (explicitPlanId != null && selectedNaturalAnchor == null) {
-    console.error(`EXPLICIT_PLAN_ID_NOT_A_NATURAL_ANCHOR: ${explicitPlanId}`);
+  // Eligibility is `anchor scheduled instant <= evidence cutoff instant`
+  // (canonical PLAN_TIMEZONE anchor clock), never calendar date. An explicit
+  // --plan-id is resolved by name with internally consistent selected-anchor
+  // and same-day-exclusion metadata.
+  let anchorForPacket: ReturnType<typeof resolveLatestExpectedNaturalAnchor>;
+  try {
+    anchorForPacket = resolveLatestExpectedNaturalAnchor(candidateAnchorIds, {
+      cutoffIso: evidenceCutoff,
+      explicitPlanRunId: explicitPlanId ?? null,
+    });
+  } catch (err) {
+    console.error(err instanceof Error ? err.message : String(err));
     process.exit(2);
   }
-  const anchorForPacket = { ...anchorResolution, selected: selectedNaturalAnchor! };
   const planId = anchorForPacket.selected.plan_run_id;
 
   console.log(`[audit-night-funnel] plan_id=${planId} as_of=${asOf} evidence_cutoff=${evidenceCutoff} horizon_end=${horizonEnd} tz=${timezone}`);
   console.log(
     `[audit-night-funnel] anchor_resolution selected=${planId} ` +
+      `scheduled=${anchorForPacket.selected.scheduled_iso} selected_is_future=${anchorForPacket.selected_is_future} ` +
       `same_day_excluded=[${anchorForPacket.same_day_excluded.map((p) => p.plan_run_id).join(",")}] ` +
-      `non_natural_ignored=${anchorResolution.non_natural_ignored.length} future_excluded=${anchorResolution.future_anchors_excluded.length}`,
+      `non_natural_ignored=${anchorForPacket.non_natural_ignored.length} future_excluded=${anchorForPacket.future_anchors_excluded.length}`,
   );
 
   // ── Planning funnel: real production planning candidate build + reservation plan.
