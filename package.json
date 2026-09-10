@@ -107,6 +107,8 @@
     "control-plane:precheck": "node scripts/control-plane/execution-precheck.mjs",
     "control-plane:precheck:test": "node --test tests/control-plane/executionPrecheck.test.mjs",
     "control-plane:commands:check": "node scripts/control-plane/validate-command-bindings.mjs",
+    "control-plane:migration:target-only": "node scripts/control-plane/apply-premvp-approved-migration.mjs --target-only",
+    "control-plane:migration:target-only:test": "node --test tests/control-plane/premvpTargetOnlyMigration.test.mjs",
     "control-plane:prompt:compile": "node scripts/control-plane/prompt-compile.mjs",
     "control-plane:architect-bundle": "node scripts/control-plane/generate-chatgpt-architect-bundle.mjs",
     "control-plane:architect-bundle:check": "node scripts/control-plane/generate-chatgpt-architect-bundle.mjs --check",
