@@ -20,11 +20,14 @@ import path from "node:path";
 import { produceFrozenModelV2ShadowDecisions } from "@/lib/modeling/frozenModelProducerV2Shadow";
 import {
   assembleNightFunnelAudit,
+  assembleExactAnchorEvidencePacket,
+  resolveLatestExpectedNaturalAnchor,
   createBuilderInvocationCounters,
   wrapBuilderInvocation,
   wrapPlanFetchCandidates,
   type QueueCounts,
   type FunnelStage,
+  type PacketOrderEventRow,
 } from "@/lib/executor/nightFunnelAudit";
 
 const PLANNING_PAGE_SIZE = 1000; // mirrors buildFireModelCandidates' loader page size (diagnostic only)
@@ -49,12 +52,15 @@ function printFunnel(title: string, stages: FunnelStage[]): void {
 async function main() {
   loadEnvConfig(process.cwd());
 
-  const planId = arg("plan-id");
+  const explicitPlanId = arg("plan-id");
   const asOf = arg("as-of");
   const horizonEnd = arg("horizon-end");
   const timezone = arg("timezone", "Europe/Minsk");
-  if (!planId || !asOf) {
-    console.error("MISSING_ARGS: --plan-id and --as-of are required");
+  // Evidence cutoff for deterministic single-anchor selection. Defaults to the
+  // plan instant; never a hard-coded date.
+  const evidenceCutoff = arg("evidence-cutoff", asOf);
+  if (!asOf) {
+    console.error("MISSING_ARGS: --as-of is required (--plan-id optional: latest expected natural anchor is resolved when omitted)");
     process.exit(2);
   }
   const asOfMs = Date.parse(asOf);
@@ -68,7 +74,44 @@ async function main() {
   const { buildFireModelCandidates, fetchAllPlanningRows } = await import("@/lib/executor/buildFireModelCandidates");
   const { buildReservationPlan } = await import("@/lib/executor/nightEventReservations");
 
-  console.log(`[audit-night-funnel] plan_id=${planId} as_of=${asOf} horizon_end=${horizonEnd} tz=${timezone}`);
+  // ── Deterministic single-anchor selection (READ-ONLY) ─────────────────────
+  // Resolve exactly one latest expected natural anchor as of the evidence
+  // cutoff. An explicit --plan-id still wins; otherwise the distinct persisted
+  // plan_run_ids are the candidate set. A second same-day natural anchor is
+  // surfaced but structurally excluded from the cohort denominator.
+  const { data: anchorRows, error: anchorErr } = await supabaseAdmin
+    .from("night_event_reservations")
+    .select("plan_run_id");
+  if (anchorErr) {
+    console.error(`ANCHOR_CANDIDATE_READ_FAILED: ${anchorErr.message}`);
+    process.exit(1);
+  }
+  const candidateAnchorIds = [
+    ...new Set((anchorRows ?? []).map((r) => String((r as { plan_run_id?: unknown }).plan_run_id ?? "")).filter(Boolean)),
+  ];
+  // An explicit --plan-id is honoured verbatim (back-compat); it is still fed
+  // through the resolver so the packet carries the same-day-excluded set.
+  const anchorResolution = resolveLatestExpectedNaturalAnchor(
+    explicitPlanId ? [...candidateAnchorIds, explicitPlanId] : candidateAnchorIds,
+    { cutoffIso: evidenceCutoff },
+  );
+  const selectedNaturalAnchor =
+    explicitPlanId != null
+      ? anchorResolution.expected_natural_anchors.find((p) => p.plan_run_id === explicitPlanId) ?? null
+      : anchorResolution.selected;
+  if (explicitPlanId != null && selectedNaturalAnchor == null) {
+    console.error(`EXPLICIT_PLAN_ID_NOT_A_NATURAL_ANCHOR: ${explicitPlanId}`);
+    process.exit(2);
+  }
+  const anchorForPacket = { ...anchorResolution, selected: selectedNaturalAnchor! };
+  const planId = anchorForPacket.selected.plan_run_id;
+
+  console.log(`[audit-night-funnel] plan_id=${planId} as_of=${asOf} evidence_cutoff=${evidenceCutoff} horizon_end=${horizonEnd} tz=${timezone}`);
+  console.log(
+    `[audit-night-funnel] anchor_resolution selected=${planId} ` +
+      `same_day_excluded=[${anchorForPacket.same_day_excluded.map((p) => p.plan_run_id).join(",")}] ` +
+      `non_natural_ignored=${anchorResolution.non_natural_ignored.length} future_excluded=${anchorResolution.future_anchors_excluded.length}`,
+  );
 
   // ── Planning funnel: real production planning candidate build + reservation plan.
   // Call the builder EXACTLY ONCE, then hand its exact candidates + diagnostics
@@ -147,7 +190,7 @@ async function main() {
   // ── Actual queue rows for this plan (READ-ONLY).
   const { data: queueRows, error: qErr } = await supabaseAdmin
     .from("event_execution_queue")
-    .select("status")
+    .select("status, idempotency_key, reservation_id")
     .eq("plan_run_id", planId);
   if (qErr) {
     console.error(`QUEUE_READ_FAILED: ${qErr.message}`);
@@ -159,6 +202,47 @@ async function main() {
     const st = String((q as { status?: unknown }).status ?? "");
     if (st in queueCounts) (queueCounts as unknown as Record<string, number>)[st] += 1;
   }
+
+  // ── Downstream execution/order lineage for this plan (READ-ONLY).
+  // executor_order_events has NO plan_run_id and NO queue_id column: the only
+  // exact link is idempotency_key, sourced from THIS plan's queue rows. When any
+  // queue row lacks an idempotency_key the key set is not exhaustive, so
+  // downstream evidence is represented as UNKNOWN (null), never a fabricated zero.
+  const packetQueueRows = (queueRows ?? []).map((q) => ({
+    plan_run_id: planId,
+    status: String((q as { status?: unknown }).status ?? ""),
+    idempotency_key: ((q as { idempotency_key?: unknown }).idempotency_key ?? null) as string | null,
+    reservation_id: ((q as { reservation_id?: unknown }).reservation_id ?? null) as string | null,
+  }));
+  const queueIdempotencyKeys = packetQueueRows
+    .map((q) => q.idempotency_key)
+    .filter((v): v is string => v != null);
+  const queueKeySetExhaustive = packetQueueRows.every((q) => q.idempotency_key != null);
+
+  let packetOrderEvents: PacketOrderEventRow[] | null = null;
+  if (packetQueueRows.length > 0 && queueKeySetExhaustive && queueIdempotencyKeys.length > 0) {
+    const { data: orderEventRows, error: oeErr } = await supabaseAdmin
+      .from("executor_order_events")
+      .select("idempotency_key, order_status, success, clob_order_id, executor_meta")
+      .in("idempotency_key", queueIdempotencyKeys);
+    if (oeErr) {
+      console.error(`ORDER_EVENT_READ_FAILED: ${oeErr.message}`);
+      process.exit(1);
+    }
+    packetOrderEvents = (orderEventRows ?? []) as unknown as PacketOrderEventRow[];
+  }
+
+  const packetReservationRows = reservations.map((r) => ({
+    plan_run_id: planId,
+    status: String((r as { status?: unknown }).status ?? ""),
+  }));
+
+  const exactAnchorPacket = assembleExactAnchorEvidencePacket({
+    anchor: anchorForPacket,
+    reservations: packetReservationRows,
+    queueRows: packetQueueRows,
+    orderEvents: packetOrderEvents,
+  });
 
   const audit = assembleNightFunnelAudit({
     planId,
@@ -190,6 +274,9 @@ async function main() {
 
   console.log("\n=== QUEUE ===");
   console.log(JSON.stringify(queueCounts));
+
+  console.log("\n=== DETERMINISTIC_EXACT_ANCHOR_EVIDENCE_PACKET_V1 ===");
+  console.log(JSON.stringify(exactAnchorPacket, null, 2));
 
   console.log("\n=== JSON SUMMARY ===");
   console.log(JSON.stringify(audit));
