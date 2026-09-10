@@ -938,3 +938,98 @@ test("packet: audit library source still imports no Supabase client after the pa
   const src = readFileSync(path.join(root, "lib/executor/nightFunnelAudit.ts"), "utf8");
   assert.doesNotMatch(src, /from\s+["'][^"']*supabase[^"']*["']/i, "pure audit lib must not import any supabase client");
 });
+
+// ── CORRECT_EXACT_ANCHOR_CUTOFF_TIME_SEMANTICS_V1 ────────────────────────────
+// Eligibility is the exact scheduled anchor instant (PLAN_TIMEZONE wall clock,
+// Minsk = UTC+3), never the calendar date. 10:00 Minsk => 07:00Z, 17:00 => 14:00Z.
+
+const A10 = "night-plan:2026-07-22:1000-minsk";
+const A17 = "night-plan:2026-07-22:1700-minsk";
+
+test("cutoff-time: scheduled instant is the PLAN_TIMEZONE wall time (Minsk = UTC+3)", () => {
+  assert.equal(parseNaturalAnchor(A10)?.scheduled_iso, "2026-07-22T07:00:00.000Z");
+  assert.equal(parseNaturalAnchor(A17)?.scheduled_iso, "2026-07-22T14:00:00.000Z");
+});
+
+test("cutoff-time: after 10:00 but before 17:00 Minsk selects 10:00; 17:00 is not-yet-due", () => {
+  const r = resolveLatestExpectedNaturalAnchor([A17, A10], { cutoffIso: "2026-07-22T12:30:00.000Z" }); // 15:30 Minsk
+  assert.equal(r.selected.plan_run_id, A10);
+  assert.deepEqual(r.future_anchors_excluded, [A17], "17:00 Minsk is not yet expected at 15:30 Minsk");
+  assert.equal(r.selected_is_future, false);
+  assert.deepEqual(r.same_day_excluded.map((p) => p.plan_run_id), []);
+});
+
+test("cutoff-time: no calendar-date shortcut can admit a future same-day anchor", () => {
+  // 09:00Z 07-22 = 12:00 Minsk — same calendar date as 17:00 Minsk, but before it.
+  const r = resolveLatestExpectedNaturalAnchor([A17, A10], { cutoffIso: "2026-07-22T09:00:00.000Z" });
+  assert.equal(r.selected.plan_run_id, A10);
+  assert.ok(r.future_anchors_excluded.includes(A17));
+});
+
+test("cutoff-time: at/after 17:00 Minsk selects 17:00; 10:00 becomes same-day comparison evidence", () => {
+  const atExactly = resolveLatestExpectedNaturalAnchor([A10, A17], { cutoffIso: "2026-07-22T14:00:00.000Z" });
+  assert.equal(atExactly.selected.plan_run_id, A17, "an anchor is eligible at its own scheduled instant");
+  assert.deepEqual(atExactly.same_day_excluded.map((p) => p.plan_run_id), [A10]);
+  assert.deepEqual(atExactly.future_anchors_excluded, []);
+
+  const after = resolveLatestExpectedNaturalAnchor([A10, A17], { cutoffIso: "2026-07-22T20:00:00.000Z" });
+  assert.equal(after.selected.plan_run_id, A17);
+  assert.deepEqual(after.same_day_excluded.map((p) => p.plan_run_id), [A10]);
+});
+
+test("cutoff-time: midnight rollover stays consistent with nightWindow — prior day's last anchor holds until the next is due", () => {
+  const nextDayFirst = "night-plan:2026-07-23:1000-minsk"; // 2026-07-23T07:00:00Z
+  const beforeNext = resolveLatestExpectedNaturalAnchor([A17, nextDayFirst], { cutoffIso: "2026-07-23T02:00:00.000Z" }); // 05:00 Minsk 07-23
+  assert.equal(beforeNext.selected.plan_run_id, A17);
+  assert.deepEqual(beforeNext.future_anchors_excluded, [nextDayFirst]);
+
+  const atNext = resolveLatestExpectedNaturalAnchor([A17, nextDayFirst], { cutoffIso: "2026-07-23T07:00:00.000Z" });
+  assert.equal(atNext.selected.plan_run_id, nextDayFirst);
+});
+
+test("cutoff-time: explicit plan-id produces internally consistent selected + same-day-exclusion metadata", () => {
+  // Choose 10:00 explicitly though 17:00 is present and (late cutoff) already due.
+  const r = resolveLatestExpectedNaturalAnchor([A10, A17], {
+    cutoffIso: "2026-07-22T20:00:00.000Z",
+    explicitPlanRunId: A10,
+  });
+  assert.equal(r.selected.plan_run_id, A10);
+  assert.equal(r.selected_is_future, false);
+  // exclusion is relative to the EXPLICIT anchor: 17:00 is later, so it is not prior evidence
+  assert.deepEqual(r.same_day_excluded.map((p) => p.plan_run_id), []);
+
+  // An explicit anchor not yet due is flagged, never silently treated as current.
+  const rf = resolveLatestExpectedNaturalAnchor([A10, A17], {
+    cutoffIso: "2026-07-22T09:00:00.000Z",
+    explicitPlanRunId: A17,
+  });
+  assert.equal(rf.selected.plan_run_id, A17);
+  assert.equal(rf.selected_is_future, true);
+  assert.deepEqual(rf.same_day_excluded.map((p) => p.plan_run_id), [A10]);
+});
+
+test("cutoff-time: explicit plan-id that is not a canonical natural anchor fails closed", () => {
+  assert.throws(
+    () => resolveLatestExpectedNaturalAnchor([A10], { explicitPlanRunId: "manual-replay:x" }),
+    (err: unknown) =>
+      err instanceof AnchorResolutionError && /EXPLICIT_PLAN_ID_NOT_A_NATURAL_ANCHOR/.test((err as Error).message),
+  );
+});
+
+test("cutoff-time: a non-minsk tz token is not a resolvable natural anchor", () => {
+  assert.equal(parseNaturalAnchor("night-plan:2026-07-22:1700-utc"), null);
+});
+
+test("cutoff-time: exact-anchor packet still isolates + freezes with the instant-based resolution", () => {
+  const anchor = resolveLatestExpectedNaturalAnchor([A10, A17], { cutoffIso: "2026-07-22T20:00:00.000Z" });
+  const packet = assembleExactAnchorEvidencePacket({
+    anchor,
+    reservations: [{ plan_run_id: A17, status: "RESERVED" }],
+    queueRows: [{ plan_run_id: A17, status: "SENT", idempotency_key: "idem-1", reservation_id: "res-1" }],
+    orderEvents: [{ idempotency_key: "idem-1", order_status: "EXECUTED" }],
+  });
+  assert.equal(packet.plan_run_id, A17);
+  assert.deepEqual(packet.same_day_excluded_anchors, [A10]);
+  assert.equal(packet.downstream_execution_lineage.value, 1);
+  assert.ok(Object.isFrozen(packet));
+});
