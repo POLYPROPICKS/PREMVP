@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Offline Model Comparison — Sep 01–10 · 2026-09-10T14:04:29.586Z</title>
+<script src="vendor/plotly-2.35.2.min.js"></script>
+<style>
+  :root { color-scheme: light dark; }
+  body { margin: 0; font: 14px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+         background: #0f1115; color: #e6e6e6; }
+  header { padding: 18px 24px; border-bottom: 1px solid #262a33; background: #14171d; }
+  h1 { font-size: 18px; margin: 0 0 4px; }
+  h2 { font-size: 15px; margin: 32px 24px 8px; padding-top: 8px; border-top: 1px solid #262a33; }
+  .sub { color: #9aa4b2; font-size: 12px; }
+  .wrap { padding: 0 12px 48px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 8px; }
+  .chart { background: #14171d; border: 1px solid #262a33; border-radius: 8px; padding: 6px; min-height: 320px; }
+  table { border-collapse: collapse; width: calc(100% - 24px); margin: 8px 12px; font-size: 12.5px; }
+  th, td { border: 1px solid #262a33; padding: 4px 8px; text-align: right; white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; }
+  thead th { background: #1b1f27; position: sticky; top: 0; }
+  .na { color: #6b7280; font-style: italic; }
+  .neg { color: #ff8080; } .pos { color: #6ee7a8; }
+  .scroll { overflow-x: auto; }
+  .pill { display:inline-block; padding:1px 7px; border-radius:10px; font-size:11px; background:#1b1f27; border:1px solid #313743; margin-right:4px;}
+  .warn { color:#ffcc66; }
+  .controls { margin: 6px 12px; }
+  select { background:#1b1f27; color:#e6e6e6; border:1px solid #313743; border-radius:6px; padding:3px 6px; }
+  ul.unavail { margin: 4px 12px; }
+  ul.unavail li { margin-bottom: 6px; }
+  code { background:#1b1f27; padding:1px 4px; border-radius:4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Offline Policy Replay — Model Comparison Dashboard</h1>
+  <div class="sub">
+    Window <b>2026-09-01 .. 2026-09-10</b> ·
+    AS-OF <b>2026-09-10T14:04:29.586Z</b> ·
+    economics <b>GROSS_BEFORE_FEES</b> ·
+    determinism <code>b2acb03221df72c3…</code>
+  </div>
+  <div class="sub">View over pre-calculated artifacts — no recomputation. AS-OF 2026-09-10T14:04:29.586Z · determinism b2acb03221df72c3.
+    Source: <code>SEPTEMBER_TABLES.json</code>, <code>CONTRACT_A_ATTRIBUTION_V1.json</code>,
+    <code>CONTRACT_A_CANDIDATES_V1.json</code>, <code>MANIFEST.json</code>.
+    Parity checks passed: <b>284</b>.</div>
+  <div class="sub">Plotly loaded from vendored <code>vendor/plotly-2.35.2.min.js</code> · fully offline (file://, no network, no CDN).</div>
+</header>
+<div class="wrap">
+
+  <h2>1 · Model overview</h2>
+  <div class="sub controls">PRIMARY operator comparison — default lanes only:
+    <b>C0, CONTRACT_A_FILTER_SIM_CURRENT, CONTRACT_A_PRICE_FLOOR_050_BAD_BUCKET_OFF, CONTRACT_A_TOTALS_PRICE_FLOOR_050_BAD_BUCKET_OFF</b>.
+    BETS / TERMINAL / UNRESOLVED / WINS / LOSSES / PNL_U / ROI_PCT / MAX_DD_U / WIN_RATE — verbatim from source.
+    <span class="na">N/A</span> = null economics in the source (never shown as 0).
+    C1–C5 + C0_REFERENCE are retained below under "research / hidden models".</div>
+  <div id="tbl-overview" class="scroll"></div>
+
+  <h2>1b · Model status &amp; deterministic runtime contract</h2>
+  <div class="sub controls">RUNTIME_KIND = DETERMINISTIC_CODE · LLM_DEPENDENCY_AT_RUNTIME = NO ·
+    NETWORK/DATABASE_DEPENDENCY_AT_REPLAY = NO for every model. STATUS describes the current operator surface only.</div>
+  <div id="tbl-contract" class="scroll"></div>
+
+  <h2>2 · Model comparison charts</h2>
+  <div class="sub controls">default operator lanes only.</div>
+  <div class="grid">
+    <div id="c-pnl" class="chart"></div>
+    <div id="c-roi" class="chart"></div>
+    <div id="c-bets" class="chart"></div>
+    <div id="c-dd" class="chart"></div>
+    <div id="c-frontier" class="chart"></div>
+  </div>
+
+  <details style="margin:12px">
+    <summary class="sub">research / hidden models (C1–C5, C0_REFERENCE) — source results retained, excluded from default plots</summary>
+    <div id="tbl-research" class="scroll"></div>
+    <div class="grid"><div id="c-research-pnl" class="chart"></div><div id="c-research-roi" class="chart"></div></div>
+  </details>
+
+  <h2>3 · Sport comparison (model × sport)</h2>
+  <div class="controls">
+    metric <select id="sport-metric">
+      <option value="PNL_U">PNL_U</option>
+      <option value="ROI_PCT">ROI_PCT</option>
+      <option value="BETS">BETS</option>
+      <option value="TERMINAL">TERMINAL</option>
+      <option value="WINS">WINS</option>
+      <option value="LOSSES">LOSSES</option>
+      <option value="MAX_DD_U">MAX_DD_U</option>
+    </select>
+    <span class="sub">toggle models in the legend · heatmap + grouped bars</span>
+  </div>
+  <div class="grid">
+    <div id="c-sport-heat" class="chart"></div>
+    <div id="c-sport-bar" class="chart"></div>
+  </div>
+  <div id="tbl-sport" class="scroll"></div>
+
+  <h2>4 · Contract A diagnostics — selected-bet breakdowns</h2>
+  <div class="sub controls">From <code>CONTRACT_A_ATTRIBUTION_V1.json</code> — persisted for <code>CONTRACT_A_FILTER_SIM_CURRENT</code> only.
+    dimension <select id="band-dim"></select></div>
+  <div class="grid">
+    <div id="c-band-pnl" class="chart"></div>
+    <div id="c-band-roi" class="chart"></div>
+  </div>
+  <div id="tbl-band" class="scroll"></div>
+  <h3 class="sub" style="margin:20px 12px 4px">Ranked Contract A damage attribution</h3>
+  <div class="grid"><div id="c-ranked" class="chart"></div></div>
+  <div id="tbl-ranked" class="scroll"></div>
+
+  <h2>5 · Contract A correction comparison</h2>
+  <div class="sub controls">From <code>CONTRACT_A_CANDIDATES_V1.json</code> · decision: <b>NO_FIXED_CORRECTION_SUPPORTED</b></div>
+  <div class="grid">
+    <div id="c-cand-pnl" class="chart"></div>
+    <div id="c-cand-roi" class="chart"></div>
+  </div>
+  <div id="tbl-cand" class="scroll"></div>
+  <div id="tbl-cand-sport" class="scroll"></div>
+  <div id="tbl-cand-market" class="scroll"></div>
+
+  <h2>6 · Data quality</h2>
+  <div id="tbl-dq" class="scroll"></div>
+  <div class="grid">
+    <div id="c-dq-terminal" class="chart"></div>
+    <div id="c-dq-fields" class="chart"></div>
+  </div>
+
+  <h2>7 · Unavailable dimensions (explicit — not synthesized)</h2>
+  <ul class="unavail">
+    <li><b>Cumulative PnL / equity curve (all models)</b><br /><span class="sub">No persisted chronological per-bet or per-day series exists in SEPTEMBER_TABLES.json; runReplay() emits aggregates only. Expanding the replay engine is out of scope.</span></li>
+    <li><b>Score / entry-price / lead-time / volume bands for C0–C5</b><br /><span class="sub">SEPTEMBER_TABLES.json groups by sport only. Band economics are persisted for CONTRACT_A_FILTER_SIM_CURRENT only (CONTRACT_A_ATTRIBUTION_V1.json).</span></li>
+    <li><b>Volume / liquidity segmentation (any model)</b><br /><span class="sub">No source artifact groups or reports economics by volume_usd / liquidity_usd.</span></li>
+    <li><b>CONTRACT_A_ACTUAL — historical production-selection lane</b><br /><span class="sub">Does not exist. The current Contract A lane is CONTRACT_A_FILTER_SIM_CURRENT, a filter simulation that by design does not reproduce the scheduler / slot allocation / historical picks.</span></li>
+    <li><b>Market-family grouping for C0–C5</b><br /><span class="sub">Not persisted in SEPTEMBER_TABLES.json (group_by=sport). Available only as a fresh runReplay(--group-by market_family) run, which this mission does not perform.</span></li>
+  </ul>
+
+</div>
+<script id="model-data" type="application/json">{"meta":{"mission":"BUILD_REUSABLE_OFFLINE_POLICY_REPLAY_PLANE_V1","window":{"from":"2026-09-01","to":"2026-09-10","as_of":"2026-09-10T14:04:29.586Z"},"economics_basis":"GROSS_BEFORE_FEES","determinism_hash":"b2acb03221df72c385cf9d27315f8fcd416f4781d4661a25adda09035d16bca5","wall_clock_ms":null,"days_loaded":["2026-09-01","2026-09-02","2026-09-03","2026-09-04","2026-09-05","2026-09-06","2026-09-07","2026-09-08","2026-09-09","2026-09-10"],"days_missing":[],"label_sources":{"2026-09-01":"corpus_inline_gammaTerminal","2026-09-02":"corpus_inline_gammaTerminal","2026-09-03":"corpus_inline_gammaTerminal","2026-09-04":"settlement_label_sidecar","2026-09-05":"settlement_label_sidecar","2026-09-06":"settlement_label_sidecar","2026-09-07":"settlement_label_sidecar","2026-09-08":"settlement_label_sidecar","2026-09-09":"corpus_inline_gammaTerminal","2026-09-10":"corpus_inline_gammaTerminal"},"counts":{"IDENTITY_N":33351,"DISTINCT_PHYSICAL_EVENT_N":10699,"TERMINAL_LABELED_IDENTITY_N":6256,"UNRESOLVED_IDENTITY_N":27095},"field_completeness":{"IDENTITY_N":33351,"MARKET_TYPE_PRESENT_N":30784,"MARKET_TYPE_PRESENT_PCT":92.3,"EVENT_START_PRESENT_N":24842,"EVENT_START_PRESENT_PCT":74.49,"BOTH_PRESENT_N":22547,"BOTH_PRESENT_PCT":67.61,"UNKNOWN_BOTH_MISSING_N":272,"CA_FIELDS_OVERLAY_ENRICHED_N":10989}},"overallModels":[{"model":"C0","source":"SEPTEMBER_TABLES.json","STATUS":"ACTIVE_REFERENCE","DASHBOARD_DEFAULT_VISIBLE":true,"BETS":5565,"TERMINAL":1578,"UNRESOLVED":3987,"WINS":931,"LOSSES":647,"PNL_U":241.6,"ROI_PCT":15.3107,"MAX_DD_U":-23.24,"WIN_RATE_PCT":59,"CONCENTRATION":0.2967,"REJECT_REASONS":{"PREDICATE_FALSE":21553}},{"model":"C1","source":"SEPTEMBER_TABLES.json","STATUS":"RESEARCH_REFERENCE_NOT_ACTIVE_OPERATOR_MODEL","DASHBOARD_DEFAULT_VISIBLE":false,"BETS":951,"TERMINAL":325,"UNRESOLVED":626,"WINS":211,"LOSSES":114,"PNL_U":81.96,"ROI_PCT":25.2182,"MAX_DD_U":-6.41,"WIN_RATE_PCT":64.92,"CONCENTRATION":0.8325,"REJECT_REASONS":{"PREDICATE_FALSE":21853,"SPORT_UNKNOWN":8983}},{"model":"C2","source":"SEPTEMBER_TABLES.json","STATUS":"ZERO_SELECTION_CURRENT_WINDOW","DASHBOARD_DEFAULT_VISIBLE":false,"BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null,"CONCENTRATION":null,"REJECT_REASONS":{"PREDICATE_FALSE":24842,"MISSING_LEAD_TIME":8509}},{"model":"C3","source":"SEPTEMBER_TABLES.json","STATUS":"ZERO_SELECTION_CURRENT_WINDOW","DASHBOARD_DEFAULT_VISIBLE":false,"BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null,"CONCENTRATION":null,"REJECT_REASONS":{"PREDICATE_FALSE":24368,"SPORT_UNKNOWN":8983}},{"model":"C4","source":"SEPTEMBER_TABLES.json","STATUS":"REDUNDANT_WITH_C1_CURRENT_WINDOW","DASHBOARD_DEFAULT_VISIBLE":false,"BETS":951,"TERMINAL":325,"UNRESOLVED":626,"WINS":211,"LOSSES":114,"PNL_U":81.96,"ROI_PCT":25.2182,"MAX_DD_U":-6.41,"WIN_RATE_PCT":64.92,"CONCENTRATION":0.8325,"REJECT_REASONS":{"PREDICATE_FALSE":22327,"SPORT_AND_LEAD_UNKNOWN":8509}},{"model":"C5","source":"SEPTEMBER_TABLES.json","STATUS":"REDUNDANT_WITH_C0_CURRENT_WINDOW","DASHBOARD_DEFAULT_VISIBLE":false,"BETS":5565,"TERMINAL":1578,"UNRESOLVED":3987,"WINS":931,"LOSSES":647,"PNL_U":241.6,"ROI_PCT":15.3107,"MAX_DD_U":-23.24,"WIN_RATE_PCT":59,"CONCENTRATION":0.2967,"REJECT_REASONS":{"PREDICATE_FALSE":21553}},{"model":"CONTRACT_A_FILTER_SIM_CURRENT","source":"SEPTEMBER_TABLES.json","STATUS":"ACTIVE_CURRENT_POLICY_SIMULATION","DASHBOARD_DEFAULT_VISIBLE":true,"BETS":1075,"TERMINAL":251,"UNRESOLVED":824,"WINS":71,"LOSSES":180,"PNL_U":-50.29,"ROI_PCT":-20.0359,"MAX_DD_U":-55.69,"WIN_RATE_PCT":28.29,"CONCENTRATION":0.3111,"REJECT_REASONS":{"FORMULA_VERSION_NOT_ALLOWED":16746,"MARKET_ANCHOR_UNKNOWN_MARKET_CLASS":3276,"MARKET_ANCHOR_FORBIDDEN_MARKET_CLASS":3043,"BAD_BUCKET_COV_PRICE":2558,"ESPORTS_NON_POLICY":895,"MARKET_ANCHOR_PARTIAL_EVENT_SCOPE":695}},{"model":"CONTRACT_A_PRICE_FLOOR_050_BAD_BUCKET_OFF","source":"CONTRACT_A_CANDIDATES_V1.json","STATUS":"ACTIVE_CORRECTION_CANDIDATE","DASHBOARD_DEFAULT_VISIBLE":true,"BETS":17,"TERMINAL":1,"UNRESOLVED":16,"WINS":1,"LOSSES":0,"PNL_U":1,"ROI_PCT":100,"MAX_DD_U":0,"WIN_RATE_PCT":100,"CONCENTRATION":null,"REJECT_REASONS":null},{"model":"CONTRACT_A_TOTALS_PRICE_FLOOR_050_BAD_BUCKET_OFF","source":"CONTRACT_A_CANDIDATES_V1.json","STATUS":"ACTIVE_CORRECTION_CANDIDATE","DASHBOARD_DEFAULT_VISIBLE":true,"BETS":8,"TERMINAL":0,"UNRESOLVED":8,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null,"CONCENTRATION":null,"REJECT_REASONS":null}],"dashboardDefaultModels":["C0","CONTRACT_A_FILTER_SIM_CURRENT","CONTRACT_A_PRICE_FLOOR_050_BAD_BUCKET_OFF","CONTRACT_A_TOTALS_PRICE_FLOOR_050_BAD_BUCKET_OFF"],"defaultModels":[{"model":"C0","source":"SEPTEMBER_TABLES.json","STATUS":"ACTIVE_REFERENCE","DASHBOARD_DEFAULT_VISIBLE":true,"BETS":5565,"TERMINAL":1578,"UNRESOLVED":3987,"WINS":931,"LOSSES":647,"PNL_U":241.6,"ROI_PCT":15.3107,"MAX_DD_U":-23.24,"WIN_RATE_PCT":59,"CONCENTRATION":0.2967,"REJECT_REASONS":{"PREDICATE_FALSE":21553}},{"model":"CONTRACT_A_FILTER_SIM_CURRENT","source":"SEPTEMBER_TABLES.json","STATUS":"ACTIVE_CURRENT_POLICY_SIMULATION","DASHBOARD_DEFAULT_VISIBLE":true,"BETS":1075,"TERMINAL":251,"UNRESOLVED":824,"WINS":71,"LOSSES":180,"PNL_U":-50.29,"ROI_PCT":-20.0359,"MAX_DD_U":-55.69,"WIN_RATE_PCT":28.29,"CONCENTRATION":0.3111,"REJECT_REASONS":{"FORMULA_VERSION_NOT_ALLOWED":16746,"MARKET_ANCHOR_UNKNOWN_MARKET_CLASS":3276,"MARKET_ANCHOR_FORBIDDEN_MARKET_CLASS":3043,"BAD_BUCKET_COV_PRICE":2558,"ESPORTS_NON_POLICY":895,"MARKET_ANCHOR_PARTIAL_EVENT_SCOPE":695}},{"model":"CONTRACT_A_PRICE_FLOOR_050_BAD_BUCKET_OFF","source":"CONTRACT_A_CANDIDATES_V1.json","STATUS":"ACTIVE_CORRECTION_CANDIDATE","DASHBOARD_DEFAULT_VISIBLE":true,"BETS":17,"TERMINAL":1,"UNRESOLVED":16,"WINS":1,"LOSSES":0,"PNL_U":1,"ROI_PCT":100,"MAX_DD_U":0,"WIN_RATE_PCT":100,"CONCENTRATION":null,"REJECT_REASONS":null},{"model":"CONTRACT_A_TOTALS_PRICE_FLOOR_050_BAD_BUCKET_OFF","source":"CONTRACT_A_CANDIDATES_V1.json","STATUS":"ACTIVE_CORRECTION_CANDIDATE","DASHBOARD_DEFAULT_VISIBLE":true,"BETS":8,"TERMINAL":0,"UNRESOLVED":8,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null,"CONCENTRATION":null,"REJECT_REASONS":null}],"researchModels":[{"model":"C1","source":"SEPTEMBER_TABLES.json","STATUS":"RESEARCH_REFERENCE_NOT_ACTIVE_OPERATOR_MODEL","DASHBOARD_DEFAULT_VISIBLE":false,"BETS":951,"TERMINAL":325,"UNRESOLVED":626,"WINS":211,"LOSSES":114,"PNL_U":81.96,"ROI_PCT":25.2182,"MAX_DD_U":-6.41,"WIN_RATE_PCT":64.92,"CONCENTRATION":0.8325,"REJECT_REASONS":{"PREDICATE_FALSE":21853,"SPORT_UNKNOWN":8983}},{"model":"C2","source":"SEPTEMBER_TABLES.json","STATUS":"ZERO_SELECTION_CURRENT_WINDOW","DASHBOARD_DEFAULT_VISIBLE":false,"BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null,"CONCENTRATION":null,"REJECT_REASONS":{"PREDICATE_FALSE":24842,"MISSING_LEAD_TIME":8509}},{"model":"C3","source":"SEPTEMBER_TABLES.json","STATUS":"ZERO_SELECTION_CURRENT_WINDOW","DASHBOARD_DEFAULT_VISIBLE":false,"BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null,"CONCENTRATION":null,"REJECT_REASONS":{"PREDICATE_FALSE":24368,"SPORT_UNKNOWN":8983}},{"model":"C4","source":"SEPTEMBER_TABLES.json","STATUS":"REDUNDANT_WITH_C1_CURRENT_WINDOW","DASHBOARD_DEFAULT_VISIBLE":false,"BETS":951,"TERMINAL":325,"UNRESOLVED":626,"WINS":211,"LOSSES":114,"PNL_U":81.96,"ROI_PCT":25.2182,"MAX_DD_U":-6.41,"WIN_RATE_PCT":64.92,"CONCENTRATION":0.8325,"REJECT_REASONS":{"PREDICATE_FALSE":22327,"SPORT_AND_LEAD_UNKNOWN":8509}},{"model":"C5","source":"SEPTEMBER_TABLES.json","STATUS":"REDUNDANT_WITH_C0_CURRENT_WINDOW","DASHBOARD_DEFAULT_VISIBLE":false,"BETS":5565,"TERMINAL":1578,"UNRESOLVED":3987,"WINS":931,"LOSSES":647,"PNL_U":241.6,"ROI_PCT":15.3107,"MAX_DD_U":-23.24,"WIN_RATE_PCT":59,"CONCENTRATION":0.2967,"REJECT_REASONS":{"PREDICATE_FALSE":21553}}],"runtimeContract":[{"MODEL_ID":"C0","MODEL_VERSION":"research-engine-freeze-v1","RUNTIME_KIND":"DETERMINISTIC_CODE","LLM_DEPENDENCY_AT_RUNTIME":false,"NETWORK_DEPENDENCY_AT_REPLAY":false,"DATABASE_DEPENDENCY_AT_REPLAY":false,"CANONICAL_PREDICATE_OWNER":"lib/modeling/research-engine/models.ts (FROZEN_MODELS, freeze-v1)","STATUS":"ACTIVE_REFERENCE","DASHBOARD_DEFAULT_VISIBLE":true},{"MODEL_ID":"C5","MODEL_VERSION":"research-engine-freeze-v1","RUNTIME_KIND":"DETERMINISTIC_CODE","LLM_DEPENDENCY_AT_RUNTIME":false,"NETWORK_DEPENDENCY_AT_REPLAY":false,"DATABASE_DEPENDENCY_AT_REPLAY":false,"CANONICAL_PREDICATE_OWNER":"lib/modeling/research-engine/models.ts (FROZEN_MODELS, freeze-v1)","STATUS":"REDUNDANT_WITH_C0_CURRENT_WINDOW","DASHBOARD_DEFAULT_VISIBLE":false},{"MODEL_ID":"C1","MODEL_VERSION":"research-engine-freeze-v1","RUNTIME_KIND":"DETERMINISTIC_CODE","LLM_DEPENDENCY_AT_RUNTIME":false,"NETWORK_DEPENDENCY_AT_REPLAY":false,"DATABASE_DEPENDENCY_AT_REPLAY":false,"CANONICAL_PREDICATE_OWNER":"lib/modeling/research-engine/models.ts (FROZEN_MODELS, freeze-v1)","STATUS":"RESEARCH_REFERENCE_NOT_ACTIVE_OPERATOR_MODEL","DASHBOARD_DEFAULT_VISIBLE":false},{"MODEL_ID":"C4","MODEL_VERSION":"research-engine-freeze-v1","RUNTIME_KIND":"DETERMINISTIC_CODE","LLM_DEPENDENCY_AT_RUNTIME":false,"NETWORK_DEPENDENCY_AT_REPLAY":false,"DATABASE_DEPENDENCY_AT_REPLAY":false,"CANONICAL_PREDICATE_OWNER":"lib/modeling/research-engine/models.ts (FROZEN_MODELS, freeze-v1)","STATUS":"REDUNDANT_WITH_C1_CURRENT_WINDOW","DASHBOARD_DEFAULT_VISIBLE":false},{"MODEL_ID":"C2","MODEL_VERSION":"research-engine-freeze-v1","RUNTIME_KIND":"DETERMINISTIC_CODE","LLM_DEPENDENCY_AT_RUNTIME":false,"NETWORK_DEPENDENCY_AT_REPLAY":false,"DATABASE_DEPENDENCY_AT_REPLAY":false,"CANONICAL_PREDICATE_OWNER":"lib/modeling/offline-replay/policyRegistry.ts (composed from frozen ENTRY_PRICE_BAND / C4_LEAD_TIME_HOURS_THRESHOLD / SOCCER_FAMILY constants)","STATUS":"ZERO_SELECTION_CURRENT_WINDOW","DASHBOARD_DEFAULT_VISIBLE":false},{"MODEL_ID":"C3","MODEL_VERSION":"research-engine-freeze-v1","RUNTIME_KIND":"DETERMINISTIC_CODE","LLM_DEPENDENCY_AT_RUNTIME":false,"NETWORK_DEPENDENCY_AT_REPLAY":false,"DATABASE_DEPENDENCY_AT_REPLAY":false,"CANONICAL_PREDICATE_OWNER":"lib/modeling/offline-replay/policyRegistry.ts (composed from frozen ENTRY_PRICE_BAND / C4_LEAD_TIME_HOURS_THRESHOLD / SOCCER_FAMILY constants)","STATUS":"ZERO_SELECTION_CURRENT_WINDOW","DASHBOARD_DEFAULT_VISIBLE":false},{"MODEL_ID":"CONTRACT_A_FILTER_SIM_CURRENT","MODEL_VERSION":"contract-a-filter-sim-current-v1","RUNTIME_KIND":"DETERMINISTIC_CODE","LLM_DEPENDENCY_AT_RUNTIME":false,"NETWORK_DEPENDENCY_AT_REPLAY":false,"DATABASE_DEPENDENCY_AT_REPLAY":false,"CANONICAL_PREDICATE_OWNER":"lib/modeling/offline-replay/contractAFilterSim.ts + lib/contur3/taxonomy.ts::resolveMarketAnchorDecision (imported verbatim)","STATUS":"ACTIVE_CURRENT_POLICY_SIMULATION","DASHBOARD_DEFAULT_VISIBLE":true},{"MODEL_ID":"CONTRACT_A_PRICE_FLOOR_050_BAD_BUCKET_OFF","MODEL_VERSION":"contract-a-correction-candidates-v1","RUNTIME_KIND":"DETERMINISTIC_CODE","LLM_DEPENDENCY_AT_RUNTIME":false,"NETWORK_DEPENDENCY_AT_REPLAY":false,"DATABASE_DEPENDENCY_AT_REPLAY":false,"CANONICAL_PREDICATE_OWNER":"scripts/modeling/offline-replay-contract-a-candidates.ts (fixed ContractAAblation constants: minEntryPrice 0.50 / skipBadBucket / restrictToMarketClasses)","STATUS":"ACTIVE_CORRECTION_CANDIDATE","DASHBOARD_DEFAULT_VISIBLE":true},{"MODEL_ID":"CONTRACT_A_TOTALS_PRICE_FLOOR_050_BAD_BUCKET_OFF","MODEL_VERSION":"contract-a-correction-candidates-v1","RUNTIME_KIND":"DETERMINISTIC_CODE","LLM_DEPENDENCY_AT_RUNTIME":false,"NETWORK_DEPENDENCY_AT_REPLAY":false,"DATABASE_DEPENDENCY_AT_REPLAY":false,"CANONICAL_PREDICATE_OWNER":"scripts/modeling/offline-replay-contract-a-candidates.ts (fixed ContractAAblation constants: minEntryPrice 0.50 / skipBadBucket / restrictToMarketClasses)","STATUS":"ACTIVE_CORRECTION_CANDIDATE","DASHBOARD_DEFAULT_VISIBLE":true},{"MODEL_ID":"C0_REFERENCE","MODEL_VERSION":"research-engine-freeze-v1","RUNTIME_KIND":"DETERMINISTIC_CODE","LLM_DEPENDENCY_AT_RUNTIME":false,"NETWORK_DEPENDENCY_AT_REPLAY":false,"DATABASE_DEPENDENCY_AT_REPLAY":false,"CANONICAL_PREDICATE_OWNER":"lib/modeling/research-engine/models.ts (FROZEN_MODELS, freeze-v1)","STATUS":"DUPLICATE_OF_C0_DO_NOT_RENDER_AS_SEPARATE_OPERATOR_MODEL","DASHBOARD_DEFAULT_VISIBLE":false}],"sportRows":[{"model":"C0","sport":"baseball","BETS":93,"TERMINAL":35,"UNRESOLVED":58,"WINS":22,"LOSSES":13,"PNL_U":7.75,"ROI_PCT":22.1308,"MAX_DD_U":-3,"WIN_RATE_PCT":62.86},{"model":"C0","sport":"basketball","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C0","sport":"cricket","BETS":90,"TERMINAL":28,"UNRESOLVED":62,"WINS":13,"LOSSES":15,"PNL_U":-2.12,"ROI_PCT":-7.559,"MAX_DD_U":-5,"WIN_RATE_PCT":46.43},{"model":"C0","sport":"esports","BETS":158,"TERMINAL":38,"UNRESOLVED":120,"WINS":21,"LOSSES":17,"PNL_U":3.64,"ROI_PCT":9.5726,"MAX_DD_U":-4,"WIN_RATE_PCT":55.26},{"model":"C0","sport":"hockey","BETS":2,"TERMINAL":1,"UNRESOLVED":1,"WINS":0,"LOSSES":1,"PNL_U":-1,"ROI_PCT":-100,"MAX_DD_U":-1,"WIN_RATE_PCT":0},{"model":"C0","sport":"mma","BETS":2,"TERMINAL":1,"UNRESOLVED":1,"WINS":1,"LOSSES":0,"PNL_U":0.82,"ROI_PCT":81.8182,"MAX_DD_U":0,"WIN_RATE_PCT":100},{"model":"C0","sport":"soccer","BETS":951,"TERMINAL":325,"UNRESOLVED":626,"WINS":211,"LOSSES":114,"PNL_U":81.96,"ROI_PCT":25.2182,"MAX_DD_U":-6.41,"WIN_RATE_PCT":64.92},{"model":"C0","sport":"tennis","BETS":1888,"TERMINAL":666,"UNRESOLVED":1222,"WINS":410,"LOSSES":256,"PNL_U":151.74,"ROI_PCT":22.784,"MAX_DD_U":-19.21,"WIN_RATE_PCT":61.56},{"model":"C0","sport":"unknown","BETS":2386,"TERMINAL":486,"UNRESOLVED":1900,"WINS":254,"LOSSES":232,"PNL_U":-1.18,"ROI_PCT":-0.2433,"MAX_DD_U":-20.4,"WIN_RATE_PCT":52.26},{"model":"C1","sport":"baseball","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C1","sport":"basketball","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C1","sport":"cricket","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C1","sport":"esports","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C1","sport":"hockey","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C1","sport":"mma","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C1","sport":"soccer","BETS":951,"TERMINAL":325,"UNRESOLVED":626,"WINS":211,"LOSSES":114,"PNL_U":81.96,"ROI_PCT":25.2182,"MAX_DD_U":-6.41,"WIN_RATE_PCT":64.92},{"model":"C1","sport":"tennis","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C1","sport":"unknown","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C2","sport":"baseball","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C2","sport":"basketball","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C2","sport":"cricket","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C2","sport":"esports","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C2","sport":"hockey","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C2","sport":"mma","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C2","sport":"soccer","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C2","sport":"tennis","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C2","sport":"unknown","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C3","sport":"baseball","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C3","sport":"basketball","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C3","sport":"cricket","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C3","sport":"esports","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C3","sport":"hockey","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C3","sport":"mma","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C3","sport":"soccer","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C3","sport":"tennis","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C3","sport":"unknown","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C4","sport":"baseball","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C4","sport":"basketball","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C4","sport":"cricket","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C4","sport":"esports","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C4","sport":"hockey","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C4","sport":"mma","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C4","sport":"soccer","BETS":951,"TERMINAL":325,"UNRESOLVED":626,"WINS":211,"LOSSES":114,"PNL_U":81.96,"ROI_PCT":25.2182,"MAX_DD_U":-6.41,"WIN_RATE_PCT":64.92},{"model":"C4","sport":"tennis","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C4","sport":"unknown","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C5","sport":"baseball","BETS":93,"TERMINAL":35,"UNRESOLVED":58,"WINS":22,"LOSSES":13,"PNL_U":7.75,"ROI_PCT":22.1308,"MAX_DD_U":-3,"WIN_RATE_PCT":62.86},{"model":"C5","sport":"basketball","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"C5","sport":"cricket","BETS":90,"TERMINAL":28,"UNRESOLVED":62,"WINS":13,"LOSSES":15,"PNL_U":-2.12,"ROI_PCT":-7.559,"MAX_DD_U":-5,"WIN_RATE_PCT":46.43},{"model":"C5","sport":"esports","BETS":158,"TERMINAL":38,"UNRESOLVED":120,"WINS":21,"LOSSES":17,"PNL_U":3.64,"ROI_PCT":9.5726,"MAX_DD_U":-4,"WIN_RATE_PCT":55.26},{"model":"C5","sport":"hockey","BETS":2,"TERMINAL":1,"UNRESOLVED":1,"WINS":0,"LOSSES":1,"PNL_U":-1,"ROI_PCT":-100,"MAX_DD_U":-1,"WIN_RATE_PCT":0},{"model":"C5","sport":"mma","BETS":2,"TERMINAL":1,"UNRESOLVED":1,"WINS":1,"LOSSES":0,"PNL_U":0.82,"ROI_PCT":81.8182,"MAX_DD_U":0,"WIN_RATE_PCT":100},{"model":"C5","sport":"soccer","BETS":951,"TERMINAL":325,"UNRESOLVED":626,"WINS":211,"LOSSES":114,"PNL_U":81.96,"ROI_PCT":25.2182,"MAX_DD_U":-6.41,"WIN_RATE_PCT":64.92},{"model":"C5","sport":"tennis","BETS":1888,"TERMINAL":666,"UNRESOLVED":1222,"WINS":410,"LOSSES":256,"PNL_U":151.74,"ROI_PCT":22.784,"MAX_DD_U":-19.21,"WIN_RATE_PCT":61.56},{"model":"C5","sport":"unknown","BETS":2386,"TERMINAL":486,"UNRESOLVED":1900,"WINS":254,"LOSSES":232,"PNL_U":-1.18,"ROI_PCT":-0.2433,"MAX_DD_U":-20.4,"WIN_RATE_PCT":52.26},{"model":"CONTRACT_A_FILTER_SIM_CURRENT","sport":"baseball","BETS":170,"TERMINAL":39,"UNRESOLVED":131,"WINS":12,"LOSSES":27,"PNL_U":-7.95,"ROI_PCT":-20.3792,"MAX_DD_U":-18.31,"WIN_RATE_PCT":30.77},{"model":"CONTRACT_A_FILTER_SIM_CURRENT","sport":"basketball","BETS":1,"TERMINAL":0,"UNRESOLVED":1,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"CONTRACT_A_FILTER_SIM_CURRENT","sport":"cricket","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"CONTRACT_A_FILTER_SIM_CURRENT","sport":"esports","BETS":0,"TERMINAL":0,"UNRESOLVED":0,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"CONTRACT_A_FILTER_SIM_CURRENT","sport":"hockey","BETS":1,"TERMINAL":0,"UNRESOLVED":1,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"CONTRACT_A_FILTER_SIM_CURRENT","sport":"mma","BETS":3,"TERMINAL":2,"UNRESOLVED":1,"WINS":1,"LOSSES":1,"PNL_U":0.41,"ROI_PCT":20.4819,"MAX_DD_U":-1,"WIN_RATE_PCT":50},{"model":"CONTRACT_A_FILTER_SIM_CURRENT","sport":"soccer","BETS":888,"TERMINAL":209,"UNRESOLVED":679,"WINS":58,"LOSSES":151,"PNL_U":-41.75,"ROI_PCT":-19.9769,"MAX_DD_U":-44.42,"WIN_RATE_PCT":27.75},{"model":"CONTRACT_A_FILTER_SIM_CURRENT","sport":"tennis","BETS":5,"TERMINAL":0,"UNRESOLVED":5,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"model":"CONTRACT_A_FILTER_SIM_CURRENT","sport":"unknown","BETS":7,"TERMINAL":1,"UNRESOLVED":6,"WINS":0,"LOSSES":1,"PNL_U":-1,"ROI_PCT":-100,"MAX_DD_U":-1,"WIN_RATE_PCT":0}],"sports":["baseball","basketball","cricket","esports","hockey","mma","soccer","tennis","unknown"],"primaryModels":["C0","C1","C2","C3","C4","C5","CONTRACT_A_FILTER_SIM_CURRENT"],"candidateModels":["CONTRACT_A_PRICE_FLOOR_050_BAD_BUCKET_OFF","CONTRACT_A_TOTALS_PRICE_FLOOR_050_BAD_BUCKET_OFF"],"contractAAttribution":{"baselineReproduced":{"C0":{"BETS":5565,"TERMINAL":1578,"UNRESOLVED":3987,"WINS":931,"LOSSES":647,"PNL_U":241.6,"ROI_PCT":15.3107,"MAX_DD_U":-22.5,"WIN_RATE_PCT":59},"CONTRACT_A_FILTER_SIM_CURRENT":{"BETS":1075,"TERMINAL":251,"UNRESOLVED":824,"WINS":71,"LOSSES":180,"PNL_U":-50.29,"ROI_PCT":-20.0359,"MAX_DD_U":-57.13,"WIN_RATE_PCT":28.29},"expected":{"C0_TERMINAL":1578,"C0_PNL_U":241.6,"A_TERMINAL":251,"A_PNL_U":-50.29},"match":true,"superseded_non_canonical":{"A_TERMINAL":545,"A_PNL_U":-86.91,"A_ROI":-15.95,"authority":"NON_CANONICAL_LOCAL_WIP_SEMANTICS"}},"bands":[{"dimension":"by_entry_price","bucket":"0.44-0.50","BETS":263,"TERMINAL":65,"UNRESOLVED":198,"WINS":18,"LOSSES":47,"PNL_U":-25.87,"ROI_PCT":-39.7973,"MAX_DD_U":-28.26,"WIN_RATE_PCT":27.69},{"dimension":"by_entry_price","bucket":"0.50-0.54","BETS":4,"TERMINAL":0,"UNRESOLVED":4,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"dimension":"by_entry_price","bucket":"\u003c0.44","BETS":808,"TERMINAL":186,"UNRESOLVED":622,"WINS":53,"LOSSES":133,"PNL_U":-24.42,"ROI_PCT":-13.13,"MAX_DD_U":-42.04,"WIN_RATE_PCT":28.49},{"dimension":"by_lead_time","bucket":"0-2h","BETS":63,"TERMINAL":22,"UNRESOLVED":41,"WINS":4,"LOSSES":18,"PNL_U":-9.98,"ROI_PCT":-45.3592,"MAX_DD_U":-9.98,"WIN_RATE_PCT":18.18},{"dimension":"by_lead_time","bucket":"2-6h","BETS":134,"TERMINAL":33,"UNRESOLVED":101,"WINS":12,"LOSSES":21,"PNL_U":-3.64,"ROI_PCT":-11.0358,"MAX_DD_U":-6.12,"WIN_RATE_PCT":36.36},{"dimension":"by_lead_time","bucket":"6-24h","BETS":878,"TERMINAL":196,"UNRESOLVED":682,"WINS":55,"LOSSES":141,"PNL_U":-36.67,"ROI_PCT":-18.7088,"MAX_DD_U":-44.92,"WIN_RATE_PCT":28.06},{"dimension":"by_score","bucket":"50-59","BETS":147,"TERMINAL":39,"UNRESOLVED":108,"WINS":15,"LOSSES":24,"PNL_U":23.47,"ROI_PCT":60.184,"MAX_DD_U":-6,"WIN_RATE_PCT":38.46},{"dimension":"by_score","bucket":"60-64","BETS":346,"TERMINAL":80,"UNRESOLVED":266,"WINS":19,"LOSSES":61,"PNL_U":-29.6,"ROI_PCT":-36.9989,"MAX_DD_U":-36.77,"WIN_RATE_PCT":23.75},{"dimension":"by_score","bucket":"65-71","BETS":539,"TERMINAL":120,"UNRESOLVED":419,"WINS":33,"LOSSES":87,"PNL_U":-41.71,"ROI_PCT":-34.762,"MAX_DD_U":-45.82,"WIN_RATE_PCT":27.5},{"dimension":"by_score","bucket":">=72","BETS":43,"TERMINAL":12,"UNRESOLVED":31,"WINS":4,"LOSSES":8,"PNL_U":-2.45,"ROI_PCT":-20.4021,"MAX_DD_U":-3.98,"WIN_RATE_PCT":33.33},{"dimension":"by_data_coverage","bucket":"25","BETS":493,"TERMINAL":122,"UNRESOLVED":371,"WINS":36,"LOSSES":86,"PNL_U":-23.78,"ROI_PCT":-19.4902,"MAX_DD_U":-30.54,"WIN_RATE_PCT":29.51},{"dimension":"by_data_coverage","bucket":"50","BETS":457,"TERMINAL":100,"UNRESOLVED":357,"WINS":29,"LOSSES":71,"PNL_U":-11.65,"ROI_PCT":-11.6477,"MAX_DD_U":-18.73,"WIN_RATE_PCT":29},{"dimension":"by_data_coverage","bucket":"75","BETS":125,"TERMINAL":29,"UNRESOLVED":96,"WINS":6,"LOSSES":23,"PNL_U":-14.86,"ROI_PCT":-51.2559,"MAX_DD_U":-16.06,"WIN_RATE_PCT":20.69},{"dimension":"by_formula_version","bucket":"trusted-initial-formula-v1.1","BETS":1075,"TERMINAL":251,"UNRESOLVED":824,"WINS":71,"LOSSES":180,"PNL_U":-50.29,"ROI_PCT":-20.0359,"MAX_DD_U":-57.13,"WIN_RATE_PCT":28.29},{"dimension":"by_market_family","bucket":"allowed_fullmatch_moneyline","BETS":460,"TERMINAL":106,"UNRESOLVED":354,"WINS":29,"LOSSES":77,"PNL_U":-23.43,"ROI_PCT":-22.1002,"MAX_DD_U":-31.67,"WIN_RATE_PCT":27.36},{"dimension":"by_market_family","bucket":"allowed_fullmatch_spread","BETS":205,"TERMINAL":51,"UNRESOLVED":154,"WINS":10,"LOSSES":41,"PNL_U":-22.66,"ROI_PCT":-44.4351,"MAX_DD_U":-29.27,"WIN_RATE_PCT":19.61},{"dimension":"by_market_family","bucket":"allowed_fullmatch_total","BETS":410,"TERMINAL":94,"UNRESOLVED":316,"WINS":32,"LOSSES":62,"PNL_U":-4.2,"ROI_PCT":-4.4702,"MAX_DD_U":-14.21,"WIN_RATE_PCT":34.04}],"bandDimensions":["by_entry_price","by_lead_time","by_score","by_data_coverage","by_formula_version","by_market_family"],"ranked":[{"RANK":1,"CONTRACT_A_SEMANTIC":"EXECUTABLE_MARKET_ANCHOR","CURRENT_RULE":"resolveMarketAnchorDecision().allowed (fullmatch money/spread/total only)","EVIDENCE":"ablation TERMINAL=570, newly-admitted-only TERMINAL=312 PnL=100.7","CURRENT_A_PNL":-50.29,"ABLATION_PNL":53.91,"DELTA_PNL":104.2,"CURRENT_A_ROI":-20.0359,"ABLATION_ROI":9.4571,"DELTA_ROI_PP":29.49,"VERDICT":"LIKELY_MAJOR_DAMAGE"},{"RANK":2,"CONTRACT_A_SEMANTIC":"BAD_BUCKET","CURRENT_RULE":"reject coverage∈[50,74] ∧ price∈[0.44,0.58]","EVIDENCE":"ablation TERMINAL=313, newly-admitted-only TERMINAL=59 PnL=7.38","CURRENT_A_PNL":-50.29,"ABLATION_PNL":-39.85,"DELTA_PNL":10.44,"CURRENT_A_ROI":-20.0359,"ABLATION_ROI":-12.7303,"DELTA_ROI_PP":7.31,"VERDICT":"LIKELY_DAMAGE"},{"RANK":3,"CONTRACT_A_SEMANTIC":"TIER_ADMISSION","CURRENT_RULE":"computeTier(score,cov) must be non-null (T1/T2/T3)","EVIDENCE":"ablation TERMINAL=251, newly-admitted-only TERMINAL=0 PnL=0","CURRENT_A_PNL":-50.29,"ABLATION_PNL":-50.29,"DELTA_PNL":0,"CURRENT_A_ROI":-20.0359,"ABLATION_ROI":-20.0359,"DELTA_ROI_PP":0,"VERDICT":"NEUTRAL_OR_PROTECTIVE"},{"RANK":4,"CONTRACT_A_SEMANTIC":"SCORE_FLOOR","CURRENT_RULE":"score ≥ 50","EVIDENCE":"ablation TERMINAL=251, newly-admitted-only TERMINAL=0 PnL=0","CURRENT_A_PNL":-50.29,"ABLATION_PNL":-50.29,"DELTA_PNL":0,"CURRENT_A_ROI":-20.0359,"ABLATION_ROI":-20.0359,"DELTA_ROI_PP":0,"VERDICT":"NEUTRAL_OR_PROTECTIVE"}]},"contractACandidates":{"mission":"COMPARE_TWO_FIXED_CONTRACT_A_CORRECTIONS_V1","decision":"NO_FIXED_CORRECTION_SUPPORTED","comparison":[{"MODEL":"CONTRACT_A_FILTER_SIM_CURRENT","FILTER_PASS_EVENTS":1075,"BETS":1075,"TERMINAL":251,"UNRESOLVED":824,"WINS":71,"LOSSES":180,"PNL_U":-50.29,"ROI_PCT":-20.0359,"MAX_DD_U":-57.13,"WIN_RATE_PCT":28.29},{"MODEL":"CONTRACT_A_PRICE_FLOOR_050_BAD_BUCKET_OFF","FILTER_PASS_EVENTS":17,"BETS":17,"TERMINAL":1,"UNRESOLVED":16,"WINS":1,"LOSSES":0,"PNL_U":1,"ROI_PCT":100,"MAX_DD_U":0,"WIN_RATE_PCT":100},{"MODEL":"CONTRACT_A_TOTALS_PRICE_FLOOR_050_BAD_BUCKET_OFF","FILTER_PASS_EVENTS":8,"BETS":8,"TERMINAL":0,"UNRESOLVED":8,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},{"MODEL":"C0_REFERENCE","FILTER_PASS_EVENTS":5565,"BETS":5565,"TERMINAL":1578,"UNRESOLVED":3987,"WINS":931,"LOSSES":647,"PNL_U":241.6,"ROI_PCT":15.3107,"MAX_DD_U":-22.5,"WIN_RATE_PCT":59}],"sportTable":{"CONTRACT_A_PRICE_FLOOR_050_BAD_BUCKET_OFF":{"baseball":{"BETS":5,"TERMINAL":0,"UNRESOLVED":5,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},"mma":{"BETS":1,"TERMINAL":0,"UNRESOLVED":1,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},"soccer":{"BETS":10,"TERMINAL":1,"UNRESOLVED":9,"WINS":1,"LOSSES":0,"PNL_U":1,"ROI_PCT":100,"MAX_DD_U":0,"WIN_RATE_PCT":100},"unknown":{"BETS":1,"TERMINAL":0,"UNRESOLVED":1,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null}},"CONTRACT_A_TOTALS_PRICE_FLOOR_050_BAD_BUCKET_OFF":{"baseball":{"BETS":1,"TERMINAL":0,"UNRESOLVED":1,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},"mma":{"BETS":1,"TERMINAL":0,"UNRESOLVED":1,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},"soccer":{"BETS":6,"TERMINAL":0,"UNRESOLVED":6,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null}}},"marketTable":{"CONTRACT_A_PRICE_FLOOR_050_BAD_BUCKET_OFF":{"allowed_fullmatch_moneyline":{"BETS":7,"TERMINAL":1,"UNRESOLVED":6,"WINS":1,"LOSSES":0,"PNL_U":1,"ROI_PCT":100,"MAX_DD_U":0,"WIN_RATE_PCT":100},"allowed_fullmatch_spread":{"BETS":2,"TERMINAL":0,"UNRESOLVED":2,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null},"allowed_fullmatch_total":{"BETS":8,"TERMINAL":0,"UNRESOLVED":8,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null}},"CONTRACT_A_TOTALS_PRICE_FLOOR_050_BAD_BUCKET_OFF":{"allowed_fullmatch_total":{"BETS":8,"TERMINAL":0,"UNRESOLVED":8,"WINS":0,"LOSSES":0,"PNL_U":0,"ROI_PCT":null,"MAX_DD_U":0,"WIN_RATE_PCT":null}}}},"unavailableDimensions":[{"dimension":"Cumulative PnL / equity curve (all models)","reason":"No persisted chronological per-bet or per-day series exists in SEPTEMBER_TABLES.json; runReplay() emits aggregates only. Expanding the replay engine is out of scope."},{"dimension":"Score / entry-price / lead-time / volume bands for C0–C5","reason":"SEPTEMBER_TABLES.json groups by sport only. Band economics are persisted for CONTRACT_A_FILTER_SIM_CURRENT only (CONTRACT_A_ATTRIBUTION_V1.json)."},{"dimension":"Volume / liquidity segmentation (any model)","reason":"No source artifact groups or reports economics by volume_usd / liquidity_usd."},{"dimension":"CONTRACT_A_ACTUAL — historical production-selection lane","reason":"Does not exist. The current Contract A lane is CONTRACT_A_FILTER_SIM_CURRENT, a filter simulation that by design does not reproduce the scheduler / slot allocation / historical picks."},{"dimension":"Market-family grouping for C0–C5","reason":"Not persisted in SEPTEMBER_TABLES.json (group_by=sport). Available only as a fresh runReplay(--group-by market_family) run, which this mission does not perform."}]}</script>
+<script>
+
+const M = JSON.parse(document.getElementById("model-data").textContent);
+const hasPlotly = typeof window.Plotly !== "undefined";
+const LAYOUT = { paper_bgcolor: "#14171d", plot_bgcolor: "#14171d", font: { color: "#cbd5e1", size: 11 },
+  margin: { t: 34, r: 12, b: 90, l: 54 }, legend: { orientation: "h" } };
+const CONF = { displaylogo: false, responsive: true };
+const fmt = (v, d = 2) => v === null || v === undefined ? "N/A" : (typeof v === "number" ? v.toFixed(d) : String(v));
+const cls = (v) => v === null || v === undefined ? "na" : (v < 0 ? "neg" : (v > 0 ? "pos" : ""));
+
+function plot(id, traces, layout) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  if (!hasPlotly) { el.innerHTML = '<div class="sub warn" style="padding:16px">Plotly bundle unavailable — chart skipped.</div>'; return; }
+  Plotly.newPlot(el, traces, Object.assign({}, LAYOUT, layout), CONF);
+}
+function tableHtml(cols, rows) {
+  return '<table><thead><tr>' + cols.map(c => '<th>' + c + '</th>').join('') + '</tr></thead><tbody>' +
+    rows.map(r => '<tr>' + r.map((c, i) => {
+      if (c && typeof c === 'object') return '<td class="' + (c.c || '') + '">' + c.v + '</td>';
+      return '<td' + (i === 0 ? '' : '') + '>' + (c === null || c === undefined ? '<span class="na">N/A</span>' : c) + '</td>';
+    }).join('') + '</tr>').join('') + '</tbody></table>';
+}
+
+const METRIC_COLS = ["MODEL", "STATUS", "SOURCE", "BETS", "TERMINAL", "UNRESOLVED", "WINS", "LOSSES", "PNL_U", "ROI_PCT", "MAX_DD_U", "WIN_RATE"];
+function metricRow(r) {
+  return [r.model, { v: r.STATUS }, { v: r.source === "SEPTEMBER_TABLES.json" ? "primary" : "candidate" },
+    r.BETS, r.TERMINAL, r.UNRESOLVED, r.WINS, r.LOSSES,
+    { v: fmt(r.PNL_U), c: cls(r.PNL_U) }, { v: fmt(r.ROI_PCT, 2), c: cls(r.ROI_PCT) },
+    { v: fmt(r.MAX_DD_U), c: cls(r.MAX_DD_U) }, { v: fmt(r.WIN_RATE_PCT, 2) }];
+}
+
+/* ---- 1 · overview table (DEFAULT operator lanes only) ---- */
+(function () {
+  document.getElementById("tbl-overview").innerHTML = tableHtml(METRIC_COLS, M.defaultModels.map(metricRow));
+})();
+
+/* ---- 1b · deterministic runtime contract ---- */
+(function () {
+  const cols = ["MODEL_ID", "MODEL_VERSION", "RUNTIME_KIND", "LLM_DEP", "NET_DEP", "DB_DEP", "CANONICAL_PREDICATE_OWNER", "STATUS", "DEFAULT_VISIBLE"];
+  const rows = M.runtimeContract.map(c => [c.MODEL_ID, c.MODEL_VERSION, c.RUNTIME_KIND,
+    { v: c.LLM_DEPENDENCY_AT_RUNTIME ? "YES" : "NO" }, { v: c.NETWORK_DEPENDENCY_AT_REPLAY ? "YES" : "NO" },
+    { v: c.DATABASE_DEPENDENCY_AT_REPLAY ? "YES" : "NO" }, c.CANONICAL_PREDICATE_OWNER, c.STATUS,
+    { v: c.DASHBOARD_DEFAULT_VISIBLE ? "YES" : "NO" }]);
+  document.getElementById("tbl-contract").innerHTML = tableHtml(cols, rows);
+})();
+
+/* ---- 2 · comparison charts (DEFAULT operator lanes only) ---- */
+(function () {
+  const D = M.defaultModels;
+  const models = D.map(r => r.model);
+  const bar = (key, d) => ({ x: models, y: D.map(r => r[key]), type: "bar",
+    text: D.map(r => fmt(r[key], d)), textposition: "outside",
+    marker: { color: D.map(r => (r[key] === null ? "#4b5563" : (r[key] < 0 ? "#ef6f6f" : "#5aa9e6"))) } });
+  plot("c-pnl", [bar("PNL_U", 2)], { title: "PnL (u) — default lanes — GROSS_BEFORE_FEES", yaxis: { title: "PNL_U" } });
+  plot("c-roi", [bar("ROI_PCT", 2)], { title: "ROI (%) — default lanes — null = no terminal bets (N/A)", yaxis: { title: "ROI_PCT" } });
+  plot("c-dd", [bar("MAX_DD_U", 2)], { title: "Max drawdown (u) — default lanes", yaxis: { title: "MAX_DD_U" } });
+  plot("c-bets", [
+    { x: models, y: D.map(r => r.BETS), name: "BETS (selected)", type: "bar" },
+    { x: models, y: D.map(r => r.TERMINAL), name: "TERMINAL", type: "bar" },
+    { x: models, y: D.map(r => r.UNRESOLVED), name: "UNRESOLVED", type: "bar" },
+  ], { barmode: "group", title: "Bet N / Terminal N / Unresolved N — default lanes", yaxis: { title: "count" } });
+
+  const fr = D.filter(r => r.ROI_PCT !== null && r.PNL_U !== null);
+  plot("c-frontier", [{
+    x: fr.map(r => r.PNL_U), y: fr.map(r => r.ROI_PCT), mode: "markers+text", type: "scatter",
+    text: fr.map(r => r.model), textposition: "top center",
+    marker: { size: fr.map(r => Math.max(8, Math.sqrt(r.BETS))), color: fr.map(r => r.ROI_PCT),
+      colorscale: "RdYlGn", showscale: true, line: { width: 1, color: "#0f1115" } },
+    customdata: fr.map(r => [r.BETS, r.TERMINAL, r.WINS, r.LOSSES, r.MAX_DD_U]),
+    hovertemplate: "<b>%{text}</b><br>PnL %{x:.2f}u · ROI %{y:.2f}%%<br>" +
+      "BETS %{customdata[0]} · TERMINAL %{customdata[1]}<br>W-L %{customdata[2]}-%{customdata[3]} · MaxDD %{customdata[4]}<extra></extra>",
+  }], { title: "ROI vs PnL frontier (marker ∝ √BETS; models with null ROI omitted)",
+        xaxis: { title: "PNL_U" }, yaxis: { title: "ROI_PCT" } });
+})();
+
+/* ---- 2r · research / hidden models (retained, not in default plots) ---- */
+(function () {
+  const R = M.researchModels;
+  if (!R.length) return;
+  document.getElementById("tbl-research").innerHTML = tableHtml(METRIC_COLS, R.map(metricRow));
+  const models = R.map(r => r.model);
+  const bar = (key, d) => ({ x: models, y: R.map(r => r[key]), type: "bar", text: R.map(r => fmt(r[key], d)),
+    textposition: "outside", marker: { color: R.map(r => (r[key] === null ? "#4b5563" : (r[key] < 0 ? "#ef6f6f" : "#5aa9e6"))) } });
+  plot("c-research-pnl", [bar("PNL_U", 2)], { title: "research models — PNL_U (retained, not operator-default)", yaxis: { title: "PNL_U" } });
+  plot("c-research-roi", [bar("ROI_PCT", 2)], { title: "research models — ROI_PCT (null = N/A)", yaxis: { title: "ROI_PCT" } });
+})();
+
+/* ---- 3 · sport comparison ---- */
+(function () {
+  const sports = M.sports;
+  const allModels = [...new Set(M.sportRows.map(r => r.model))];
+  const defaultInSport = allModels.filter(m => M.dashboardDefaultModels.indexOf(m) !== -1);
+  const models = defaultInSport.length ? defaultInSport : allModels;
+  const get = (m, s, key) => { const row = M.sportRows.find(r => r.model === m && r.sport === s); return row ? row[key] : null; };
+  function draw(metric) {
+    const z = models.map(m => sports.map(s => get(m, s, metric)));
+    plot("c-sport-heat", [{
+      z, x: sports, y: models, type: "heatmap", colorscale: "RdYlGn", hoverongaps: false,
+      hovertemplate: "%{y} · %{x}<br>" + metric + " %{z}<extra></extra>",
+    }], { title: "model × sport — " + metric + " (blank = no data / N/A)" });
+    plot("c-sport-bar", models.map(m => ({
+      x: sports, y: sports.map(s => get(m, s, metric)), name: m, type: "bar",
+    })), { barmode: "group", title: "model × sport — " + metric + " (toggle models in legend)", yaxis: { title: metric } });
+  }
+  document.getElementById("sport-metric").addEventListener("change", e => draw(e.target.value));
+  draw("PNL_U");
+
+  const cols = ["MODEL", "SPORT", "BETS", "TERMINAL", "UNRESOLVED", "WINS", "LOSSES", "PNL_U", "ROI_PCT", "MAX_DD_U"];
+  const rows = M.sportRows.map(r => [r.model, r.sport, r.BETS, r.TERMINAL, r.UNRESOLVED, r.WINS, r.LOSSES,
+    { v: fmt(r.PNL_U), c: cls(r.PNL_U) }, { v: fmt(r.ROI_PCT, 2), c: cls(r.ROI_PCT) }, { v: fmt(r.MAX_DD_U), c: cls(r.MAX_DD_U) }]);
+  document.getElementById("tbl-sport").innerHTML = tableHtml(cols, rows);
+})();
+
+/* ---- 4 · Contract A band diagnostics ---- */
+(function () {
+  const dims = M.contractAAttribution.bandDimensions;
+  const sel = document.getElementById("band-dim");
+  dims.forEach(d => { const o = document.createElement("option"); o.value = d; o.textContent = d; sel.appendChild(o); });
+  function draw(dim) {
+    const b = M.contractAAttribution.bands.filter(x => x.dimension === dim);
+    const hv = "%{x}<br>PnL %{y:.2f}u<br>BETS %{customdata[0]} · TERM %{customdata[1]} · W-L %{customdata[2]}-%{customdata[3]}<extra></extra>";
+    const cd = b.map(r => [r.BETS, r.TERMINAL, r.WINS, r.LOSSES]);
+    plot("c-band-pnl", [{ x: b.map(r => r.bucket), y: b.map(r => r.PNL_U), type: "bar", customdata: cd, hovertemplate: hv,
+      marker: { color: b.map(r => (r.PNL_U === null ? "#4b5563" : (r.PNL_U < 0 ? "#ef6f6f" : "#6ee7a8"))) } }],
+      { title: "CONTRACT_A_FILTER_SIM_CURRENT — PNL_U by " + dim, yaxis: { title: "PNL_U" } });
+    plot("c-band-roi", [{ x: b.map(r => r.bucket), y: b.map(r => r.ROI_PCT), type: "bar", customdata: cd,
+      hovertemplate: hv.replace("PnL %{y:.2f}u", "ROI %{y:.2f}%%") }],
+      { title: "CONTRACT_A_FILTER_SIM_CURRENT — ROI_PCT by " + dim, yaxis: { title: "ROI_PCT" } });
+    const cols = ["BUCKET", "BETS", "TERMINAL", "UNRESOLVED", "WINS", "LOSSES", "PNL_U", "ROI_PCT", "MAX_DD_U", "WIN_RATE_PCT"];
+    document.getElementById("tbl-band").innerHTML = tableHtml(cols, b.map(r => [r.bucket, r.BETS, r.TERMINAL, r.UNRESOLVED,
+      r.WINS, r.LOSSES, { v: fmt(r.PNL_U), c: cls(r.PNL_U) }, { v: fmt(r.ROI_PCT, 2), c: cls(r.ROI_PCT) },
+      { v: fmt(r.MAX_DD_U), c: cls(r.MAX_DD_U) }, { v: fmt(r.WIN_RATE_PCT, 2) }]));
+  }
+  sel.addEventListener("change", e => draw(e.target.value));
+  if (dims.length) draw(dims[0]);
+
+  const rk = M.contractAAttribution.ranked;
+  if (rk.length) {
+    plot("c-ranked", [{
+      x: rk.map(r => r.DELTA_PNL), y: rk.map(r => "#" + r.RANK + " " + r.CONTRACT_A_SEMANTIC), type: "bar", orientation: "h",
+      text: rk.map(r => r.VERDICT), textposition: "outside",
+      marker: { color: rk.map(r => r.VERDICT.indexOf("MAJOR") >= 0 ? "#ef4444" : (r.VERDICT.indexOf("DAMAGE") >= 0 ? "#f59e0b" : "#6b7280")) },
+      hovertemplate: "%{y}<br>Δ PnL if gate removed %{x:.2f}u<extra></extra>",
+    }], { title: "Ranked Contract A damage — Δ PnL if the gate is removed (research diagnostic, not a policy)",
+          xaxis: { title: "DELTA_PNL (u)" }, margin: { l: 240 } });
+    const cols = ["RANK", "SEMANTIC", "CURRENT_RULE", "CURRENT_A_PNL", "ABLATION_PNL", "DELTA_PNL", "DELTA_ROI_PP", "VERDICT"];
+    document.getElementById("tbl-ranked").innerHTML = tableHtml(cols, rk.map(r => [r.RANK, r.CONTRACT_A_SEMANTIC, r.CURRENT_RULE,
+      { v: fmt(r.CURRENT_A_PNL), c: cls(r.CURRENT_A_PNL) }, { v: fmt(r.ABLATION_PNL), c: cls(r.ABLATION_PNL) },
+      { v: fmt(r.DELTA_PNL), c: cls(r.DELTA_PNL) }, { v: fmt(r.DELTA_ROI_PP, 2), c: cls(r.DELTA_ROI_PP) }, r.VERDICT]));
+  }
+})();
+
+/* ---- 5 · Contract A correction comparison ---- */
+(function () {
+  const t = M.contractACandidates.comparison;
+  const names = t.map(r => r.MODEL);
+  const col = (k) => t.map(r => (r[k] === undefined ? null : r[k]));
+  plot("c-cand-pnl", [{ x: names, y: col("PNL_U"), type: "bar", text: col("PNL_U").map(v => fmt(v)), textposition: "outside",
+    marker: { color: col("PNL_U").map(v => (v === null ? "#4b5563" : (v < 0 ? "#ef6f6f" : "#6ee7a8"))) } }],
+    { title: "Contract A candidates — PNL_U", yaxis: { title: "PNL_U" } });
+  plot("c-cand-roi", [
+    { x: names, y: col("ROI_PCT"), name: "ROI_PCT", type: "bar" },
+    { x: names, y: col("MAX_DD_U"), name: "MAX_DD_U", type: "bar" },
+  ], { barmode: "group", title: "Contract A candidates — ROI_PCT / MAX_DD_U", yaxis: { title: "value" } });
+  const cols = ["MODEL", "FILTER_PASS_EVENTS", "BETS", "TERMINAL", "UNRESOLVED", "WINS", "LOSSES", "PNL_U", "ROI_PCT", "MAX_DD_U", "WIN_RATE_PCT"];
+  document.getElementById("tbl-cand").innerHTML = tableHtml(cols, t.map(r => [r.MODEL, r.FILTER_PASS_EVENTS, r.BETS, r.TERMINAL,
+    r.UNRESOLVED, r.WINS, r.LOSSES, { v: fmt(r.PNL_U), c: cls(r.PNL_U) }, { v: fmt(r.ROI_PCT, 2), c: cls(r.ROI_PCT) },
+    { v: fmt(r.MAX_DD_U), c: cls(r.MAX_DD_U) }, { v: fmt(r.WIN_RATE_PCT, 2) }]));
+
+  function nested(title, obj) {
+    if (!obj || !Object.keys(obj).length) return "";
+    let h = '<table><thead><tr><th>' + title + '</th><th>GROUP</th><th>BETS</th><th>TERMINAL</th><th>WINS</th><th>LOSSES</th><th>PNL_U</th><th>ROI_PCT</th><th>MAX_DD_U</th></tr></thead><tbody>';
+    for (const [mdl, groups] of Object.entries(obj))
+      for (const [g, r] of Object.entries(groups))
+        h += '<tr><td>' + mdl + '</td><td>' + g + '</td><td>' + r.BETS + '</td><td>' + r.TERMINAL + '</td><td>' + r.WINS + '</td><td>' + r.LOSSES +
+          '</td><td class="' + cls(r.PNL_U) + '">' + fmt(r.PNL_U) + '</td><td class="' + cls(r.ROI_PCT) + '">' + fmt(r.ROI_PCT, 2) +
+          '</td><td class="' + cls(r.MAX_DD_U) + '">' + fmt(r.MAX_DD_U) + '</td></tr>';
+    return h + '</tbody></table>';
+  }
+  document.getElementById("tbl-cand-sport").innerHTML = nested("candidate × sport", M.contractACandidates.sportTable);
+  document.getElementById("tbl-cand-market").innerHTML = nested("candidate × market family", M.contractACandidates.marketTable);
+})();
+
+/* ---- 6 · data quality ---- */
+(function () {
+  const c = M.meta.counts, fc = M.meta.field_completeness || {};
+  const rows = [
+    ["window", M.meta.window.from + " .. " + M.meta.window.to],
+    ["as_of", M.meta.window.as_of],
+    ["economics_basis", M.meta.economics_basis],
+    ["determinism_hash", M.meta.determinism_hash],
+    ["days_loaded", M.meta.days_loaded.join(", ")],
+    ["days_missing", M.meta.days_missing.length ? M.meta.days_missing.join(", ") : "(none)"],
+    ["IDENTITY_N", c.IDENTITY_N],
+    ["DISTINCT_PHYSICAL_EVENT_N", c.DISTINCT_PHYSICAL_EVENT_N],
+    ["TERMINAL_LABELED_IDENTITY_N", c.TERMINAL_LABELED_IDENTITY_N],
+    ["UNRESOLVED_IDENTITY_N", c.UNRESOLVED_IDENTITY_N],
+  ];
+  for (const [k, v] of Object.entries(fc)) rows.push(["field_completeness · " + k, v]);
+  for (const [d, s] of Object.entries(M.meta.label_sources)) rows.push(["label_source · " + d, s]);
+  document.getElementById("tbl-dq").innerHTML = tableHtml(["FIELD", "VALUE"], rows);
+
+  plot("c-dq-terminal", [{
+    values: [c.TERMINAL_LABELED_IDENTITY_N, c.UNRESOLVED_IDENTITY_N], labels: ["TERMINAL_LABELED", "UNRESOLVED"],
+    type: "pie", hole: 0.55, marker: { colors: ["#5aa9e6", "#6b7280"] },
+  }], { title: "Identity population — terminal vs unresolved (" + c.IDENTITY_N + " total)" });
+
+  const fk = Object.keys(fc).filter(k => /_PCT$/.test(k));
+  if (fk.length) plot("c-dq-fields", [{ x: fk, y: fk.map(k => fc[k]), type: "bar", text: fk.map(k => fc[k] + "%"), textposition: "outside" }],
+    { title: "Field completeness (%)", yaxis: { title: "%", range: [0, 100] } });
+  else document.getElementById("c-dq-fields").innerHTML = '<div class="sub" style="padding:16px">No *_PCT field-completeness metrics in source.</div>';
+})();
+
+</script>
+</body>
+</html>
