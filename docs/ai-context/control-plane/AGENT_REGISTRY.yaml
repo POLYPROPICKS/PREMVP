@@ -673,7 +673,7 @@
       "exclusions": ["mutating execution while pipeline_status is EXPERIMENTAL_DISABLED", "unauthorized R5_CROSS_REPO_OR_LIVE_MONEY", "Ireland", "raw database mutation", "destructive or undeclared migration", "direct venue-money action"],
       "model_policy": "inherit",
       "reasoning_policy": "inherit",
-      "permissions": "repository read/write on the feature branch; GitHub PR create/merge through shared canonical commands; production build-info read; one declared additive-compatible or documented compatibility-transition PREMVP application migration through scripts/control-plane/apply-premvp-approved-migration.mjs",
+      "permissions": "repository read/write on the feature branch; GitHub PR create/merge through shared canonical commands; production build-info read; one declared additive-compatible or documented compatibility-transition PREMVP application migration through scripts/control-plane/apply-premvp-approved-migration.mjs — including its `--target-only` mode (scripts/control-plane/lib/premvp-target-only-migration.mjs): applies exactly one sha256-pinned reviewed migration via an isolated migrations view matching the remote ledger + the single target, dry-run-gated to exactly-one-pending==target, fail-closed on LegacyDbPush*Error / --include-all / authority mismatch, never repairs the ledger and never replays historical migrations",
       "repository_scope": ["POLYPROPICKS/PREMVP"],
       "input_contract": "a PREMVP_RELEASE_RUN manifest validated against docs/ai-context/control-plane/pipelines/PREMVP_RELEASE_RUN.schema.json",
       "output_contract": "canonical COMPLETION_ENVELOPE.schema.json result with verdict PASS, WAIT, BLOCKED or FAIL",

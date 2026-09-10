@@ -15,7 +15,11 @@ import { WALLET_OBSERVATION_COLUMN_NAMES } from "../../lib/executor/executorWall
 
 const root = process.cwd();
 const migrationsDir = path.join(root, "supabase/migrations");
-const migrationFile = "20260909120000_executor_wallet_observation_columns.sql";
+// Re-stamped to a version strictly greater than the live production ledger head
+// (20260909123000_drop_current_serving_gsp_fk) so it applies as a clean append
+// through the target-only lifecycle. DDL semantics are byte-identical to the
+// original 20260909120000 file (sha256 319c4fc0…).
+const migrationFile = "20260910120000_executor_wallet_observation_columns.sql";
 const sql = readFileSync(path.join(migrationsDir, migrationFile), "utf8");
 const sqlWithoutComments = sql.split("\n").map((l) => l.replace(/--.*\r?$/, "")).join("\n");
 

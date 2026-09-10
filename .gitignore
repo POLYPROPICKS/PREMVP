@@ -93,3 +93,6 @@ var/
 
 # Current-serving production runner receipts are resumable local operational state.
 var/current-serving-backfill/
+
+# Supabase CLI local link state (may contain connection strings)
+supabase/.temp/
