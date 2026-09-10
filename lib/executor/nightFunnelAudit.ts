@@ -777,3 +777,481 @@ export function assembleNightFunnelAudit(input: {
     plan_fetch_candidates_call_count: attribution.plan_fetch_candidates_call_count,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DETERMINISTIC_EXACT_ANCHOR_EVIDENCE_PACKET_V1
+//
+// A single-anchor, read-only lineage packet for the Daily Roadmap Optimizer.
+// It eliminates the Optimizer denominator-contamination failure class: a second
+// natural anchor from the SAME day is structurally unable to enter the current
+// cohort denominator, because every stage is isolated by the ONE deterministically
+// selected plan_run_id and, downstream, only by idempotency keys owned by that
+// plan's own queue rows.
+//
+// Like the rest of this module it is pure (no DB, no network) and recomputes NO
+// model / scoring / admission / reservation / rebalance / queue decision. It only
+// (1) selects one anchor deterministically from candidate plan_run_ids and
+// (2) reshapes exact-identifier lineage counts already produced elsewhere,
+// carrying UNIT / SOURCE_STAGE / INPUT_DENOMINATOR / OUTPUT_DENOMINATOR /
+// LINEAGE_KEY on every reported count and keeping unproven downstream evidence
+// explicitly UNKNOWN/absent rather than fabricating a zero.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Canonical natural night-plan anchor id: `night-plan:YYYY-MM-DD:HHMM-<tz>`. */
+export const NATURAL_NIGHT_ANCHOR_RE =
+  /^night-plan:(\d{4}-\d{2}-\d{2}):(\d{2})(\d{2})-([a-z0-9]+)$/;
+
+export interface ParsedNaturalAnchor {
+  plan_run_id: string;
+  /** Calendar date component, `YYYY-MM-DD`. */
+  date: string;
+  /** Wall-clock component, `HHMM`. */
+  time: string;
+  timezone: string;
+  /** `${date} ${time}` — lexicographic order is chronological order (tz-agnostic). */
+  sort_key: string;
+}
+
+export function parseNaturalAnchor(planRunId: string): ParsedNaturalAnchor | null {
+  const m = NATURAL_NIGHT_ANCHOR_RE.exec(planRunId);
+  if (!m) return null;
+  const [, date, hh, mm, timezone] = m;
+  return { plan_run_id: planRunId, date, time: `${hh}${mm}`, timezone, sort_key: `${date} ${hh}${mm}` };
+}
+
+export class AnchorResolutionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AnchorResolutionError";
+  }
+}
+
+/**
+ * Thrown when a row that does NOT belong to the selected plan_run_id (or a
+ * downstream row whose lineage key is not owned by the selected plan's queue
+ * rows) reaches the packet assembler. Cross-anchor contamination must fail
+ * closed here — never be silently counted into the cohort denominator.
+ */
+export class AnchorContaminationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AnchorContaminationError";
+  }
+}
+
+export interface NaturalAnchorResolution {
+  /** The evidence cutoff the resolution was performed against (ISO), or null. */
+  evidence_cutoff_iso: string | null;
+  /** The single deterministically selected latest expected natural anchor. */
+  selected: ParsedNaturalAnchor;
+  /**
+   * Other EXPECTED natural anchors sharing the selected anchor's calendar date
+   * that were NOT selected — direct proof that a second same-day anchor is
+   * visible to the resolver yet excluded from the cohort.
+   */
+  same_day_excluded: ParsedNaturalAnchor[];
+  /** Every expected natural anchor considered (date <= cutoff), sorted ascending. */
+  expected_natural_anchors: ParsedNaturalAnchor[];
+  /** Candidate ids ignored because they are not canonical natural anchors. */
+  non_natural_ignored: string[];
+  /** Natural-anchor ids dropped because their date is after the evidence cutoff. */
+  future_anchors_excluded: string[];
+}
+
+/**
+ * Deterministically select the single latest expected natural anchor from a set
+ * of candidate plan_run_ids.
+ *
+ *  - Non-canonical ids are ignored (surfaced in `non_natural_ignored`).
+ *  - When `cutoffIso` is given, anchors dated after the cutoff's UTC date are
+ *    "not yet expected" and are excluded (surfaced in `future_anchors_excluded`).
+ *  - The selected anchor is the maximum by `${date} ${time}`; the ordering is a
+ *    total order, and any residual ambiguity (two ids with an identical sort key)
+ *    fails closed rather than picking arbitrarily.
+ *
+ * No current date, production count, or specific wall-clock value is hard-coded.
+ */
+export function resolveLatestExpectedNaturalAnchor(
+  candidatePlanRunIds: readonly string[],
+  opts: { cutoffIso?: string | null } = {},
+): NaturalAnchorResolution {
+  const cutoffIso = opts.cutoffIso ?? null;
+  let cutoffDate: string | null = null;
+  if (cutoffIso != null) {
+    const ms = Date.parse(cutoffIso);
+    if (!Number.isFinite(ms)) {
+      throw new AnchorResolutionError(`INVALID_CUTOFF_ISO: ${cutoffIso}`);
+    }
+    cutoffDate = new Date(ms).toISOString().slice(0, 10);
+  }
+
+  const nonNatural: string[] = [];
+  const future: string[] = [];
+  const parsed: ParsedNaturalAnchor[] = [];
+  const seen = new Set<string>();
+
+  for (const id of candidatePlanRunIds) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    const p = parseNaturalAnchor(id);
+    if (!p) {
+      nonNatural.push(id);
+      continue;
+    }
+    if (cutoffDate != null && p.date > cutoffDate) {
+      future.push(id);
+      continue;
+    }
+    parsed.push(p);
+  }
+
+  if (parsed.length === 0) {
+    throw new AnchorResolutionError(
+      `NO_EXPECTED_NATURAL_ANCHOR: ${candidatePlanRunIds.length} candidate(s) — ` +
+        `${nonNatural.length} non-natural, ${future.length} after cutoff`,
+    );
+  }
+
+  parsed.sort((a, b) => (a.sort_key < b.sort_key ? -1 : a.sort_key > b.sort_key ? 1 : 0));
+  const selected = parsed[parsed.length - 1];
+
+  const topPeers = parsed.filter((p) => p.sort_key === selected.sort_key);
+  if (topPeers.length > 1) {
+    throw new AnchorResolutionError(
+      `AMBIGUOUS_LATEST_ANCHOR: ${topPeers.map((p) => p.plan_run_id).join(", ")}`,
+    );
+  }
+
+  const same_day_excluded = parsed.filter(
+    (p) => p.date === selected.date && p.plan_run_id !== selected.plan_run_id,
+  );
+
+  return {
+    evidence_cutoff_iso: cutoffIso,
+    selected,
+    same_day_excluded,
+    expected_natural_anchors: parsed,
+    non_natural_ignored: nonNatural,
+    future_anchors_excluded: future,
+  };
+}
+
+/** Discriminant of `executor_order_events.executor_meta.reconciliation_v1`
+ *  (source of truth: lib/executor/executionReconciliation.ts —
+ *  EXECUTION_RECONCILIATION_VERSION). Duplicated as a literal only to keep this
+ *  pure module free of a runtime import; it is a stable schema discriminant. */
+const RECONCILIATION_V1_DISCRIMINANT = "EXECUTION_RECONCILIATION_V1" as const;
+
+export type EvidenceUnit =
+  | "instant"
+  | "plan_run_id"
+  | "reservation_rows"
+  | "queue_rows"
+  | "idempotency_keys"
+  | "order_event_rows"
+  | "settlement_rows";
+
+export type EvidenceStatus = "EXACT" | "UNKNOWN" | "ABSENT";
+
+/**
+ * One reported lineage count with its full provenance. `value === null` means
+ * UNKNOWN — the count could not be exhaustively established from exact lineage
+ * identifiers and MUST NOT be read as zero.
+ */
+export interface CountedEvidence {
+  value: number | null;
+  unit: EvidenceUnit;
+  source_stage: string;
+  input_denominator: number | null;
+  output_denominator: number | null;
+  lineage_key: string;
+  status: EvidenceStatus;
+  by_status: Record<string, number> | null;
+}
+
+export interface ExactAnchorEvidencePacket {
+  packet_version: "DETERMINISTIC_EXACT_ANCHOR_EVIDENCE_PACKET_V1";
+  evidence_cutoff_iso: string | null;
+  latest_expected_natural_anchor: string;
+  same_day_excluded_anchors: string[];
+  plan_run_id: string;
+  reservation_lineage: CountedEvidence;
+  queue_lineage: CountedEvidence;
+  downstream_execution_lineage: CountedEvidence;
+  settlement_lineage: CountedEvidence;
+  /** First stage transition where exact-lineage evidence stops (or null when fully resolved). */
+  unresolved_transition: string | null;
+  lineage_keys: {
+    reservation: "night_event_reservations.plan_run_id";
+    queue: "event_execution_queue.plan_run_id";
+    order_event: "executor_order_events.idempotency_key";
+    settlement: "executor_order_events.executor_meta.reconciliation_v1.clob_order_id";
+  };
+  isolation_proof: {
+    /** Distinct plan_run_ids seen in the reservation rows — must be exactly [plan_run_id]. */
+    reservation_plan_run_ids: string[];
+    /** Distinct plan_run_ids seen in the queue rows — must be exactly [plan_run_id]. */
+    queue_plan_run_ids: string[];
+    order_event_idempotency_key_source: "SELECTED_PLAN_QUEUE_ROWS";
+    /** Downstream rows presented but rejected because their lineage key is foreign to the selected plan. */
+    foreign_rows_rejected: number;
+  };
+  read_only: true;
+}
+
+export interface PacketReservationRow {
+  plan_run_id: string;
+  status: string;
+}
+export interface PacketQueueRow {
+  plan_run_id: string;
+  status: string;
+  idempotency_key: string | null;
+  reservation_id: string | null;
+}
+export interface PacketOrderEventRow {
+  idempotency_key: string | null;
+  order_status?: string | null;
+  success?: boolean | null;
+  clob_order_id?: string | null;
+  executor_meta?: unknown;
+}
+
+export interface ExactAnchorPacketInput {
+  anchor: NaturalAnchorResolution;
+  /** `night_event_reservations` rows already fetched for the selected plan_run_id. */
+  reservations: readonly PacketReservationRow[];
+  /** `event_execution_queue` rows already fetched for the selected plan_run_id. */
+  queueRows: readonly PacketQueueRow[];
+  /**
+   * `executor_order_events` rows already fetched by exact `idempotency_key IN
+   * (<selected plan queue keys>)`, or `null` when downstream order evidence
+   * could not be exhaustively established for the selected lineage (e.g. a queue
+   * row carries a null idempotency_key, so the key set is not exhaustive).
+   */
+  orderEvents: readonly PacketOrderEventRow[] | null;
+}
+
+const RESERVED_LIKE_STATUSES = new Set(["RESERVED", "QUEUED", "REBALANCE_PENDING"]);
+
+function tallyBy<T>(rows: readonly T[], key: (row: T) => string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const r of rows) {
+    const k = key(r);
+    out[k] = (out[k] ?? 0) + 1;
+  }
+  return out;
+}
+
+function distinct(values: readonly string[]): string[] {
+  return [...new Set(values)].sort();
+}
+
+function hasReconciliationV1(meta: unknown): boolean {
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
+  const value = (meta as Record<string, unknown>).reconciliation_v1;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return (value as Record<string, unknown>).version === RECONCILIATION_V1_DISCRIMINANT;
+}
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === "object") {
+    for (const key of Object.keys(value as Record<string, unknown>)) {
+      deepFreeze((value as Record<string, unknown>)[key]);
+    }
+    Object.freeze(value);
+  }
+  return value;
+}
+
+/**
+ * Assemble the frozen, read-only single-anchor evidence packet from rows that
+ * were ALREADY fetched read-only by the caller. Structural isolation is enforced
+ * here and fails closed:
+ *
+ *  - every reservation row and every queue row MUST carry the selected
+ *    plan_run_id (a foreign-anchor row throws AnchorContaminationError);
+ *  - downstream order events are attributed ONLY through idempotency keys owned
+ *    by the selected plan's queue rows — an order event whose key is foreign is
+ *    rejected (counted in `foreign_rows_rejected`), never added to the denominator;
+ *  - when the queue key set is not exhaustive (or `orderEvents` is null), the
+ *    downstream and settlement lineage stay UNKNOWN (value null), never zero.
+ */
+export function assembleExactAnchorEvidencePacket(
+  input: ExactAnchorPacketInput,
+): ExactAnchorEvidencePacket {
+  const selectedId = input.anchor.selected.plan_run_id;
+
+  // ── Isolation: reservations ────────────────────────────────────────────────
+  const foreignReservations = input.reservations.filter((r) => r.plan_run_id !== selectedId);
+  if (foreignReservations.length > 0) {
+    throw new AnchorContaminationError(
+      `reservation rows for a foreign plan_run_id reached the packet: ` +
+        `${distinct(foreignReservations.map((r) => r.plan_run_id)).join(", ")} (selected ${selectedId})`,
+    );
+  }
+  const reservationPlanRunIds = distinct(input.reservations.map((r) => r.plan_run_id));
+
+  // ── Isolation: queue ──────────────────────────────────────────────────────
+  const foreignQueue = input.queueRows.filter((q) => q.plan_run_id !== selectedId);
+  if (foreignQueue.length > 0) {
+    throw new AnchorContaminationError(
+      `queue rows for a foreign plan_run_id reached the packet: ` +
+        `${distinct(foreignQueue.map((q) => q.plan_run_id)).join(", ")} (selected ${selectedId})`,
+    );
+  }
+  const queuePlanRunIds = distinct(input.queueRows.map((q) => q.plan_run_id));
+
+  let foreignRowsRejected = foreignReservations.length + foreignQueue.length;
+
+  const reservation_lineage: CountedEvidence = {
+    value: input.reservations.length,
+    unit: "reservation_rows",
+    source_stage: "RESERVATION (night_event_reservations)",
+    input_denominator: input.reservations.length,
+    output_denominator: input.reservations.filter((r) => RESERVED_LIKE_STATUSES.has(r.status)).length,
+    lineage_key: `night_event_reservations.plan_run_id=${selectedId}`,
+    status: "EXACT",
+    by_status: tallyBy(input.reservations, (r) => r.status),
+  };
+
+  const distinctQueueReservationIds = distinct(
+    input.queueRows.map((q) => q.reservation_id).filter((v): v is string => v != null),
+  );
+  const queue_lineage: CountedEvidence = {
+    value: input.queueRows.length,
+    unit: "queue_rows",
+    source_stage: "QUEUE (event_execution_queue)",
+    input_denominator: distinctQueueReservationIds.length,
+    output_denominator: input.queueRows.length,
+    lineage_key: `event_execution_queue.plan_run_id=${selectedId}`,
+    status: "EXACT",
+    by_status: tallyBy(input.queueRows, (q) => q.status),
+  };
+
+  // ── Downstream execution / order lineage ──────────────────────────────────
+  const queueKeys = input.queueRows
+    .map((q) => q.idempotency_key)
+    .filter((v): v is string => v != null);
+  const selectedKeySet = new Set(queueKeys);
+  const queueKeySetIsExhaustive =
+    input.queueRows.every((q) => q.idempotency_key != null);
+
+  let unresolvedTransition: string | null = null;
+  let downstream_execution_lineage: CountedEvidence;
+  let settlement_lineage: CountedEvidence;
+
+  if (input.queueRows.length === 0) {
+    // Nothing was queued for this anchor: downstream absence is exhaustively
+    // proven zero by the exact plan_run_id filter.
+    downstream_execution_lineage = {
+      value: 0,
+      unit: "order_event_rows",
+      source_stage: "EXECUTION (executor_order_events via queue idempotency_key)",
+      input_denominator: 0,
+      output_denominator: 0,
+      lineage_key: "executor_order_events.idempotency_key ∈ {} (no queue rows)",
+      status: "ABSENT",
+      by_status: {},
+    };
+    settlement_lineage = {
+      value: 0,
+      unit: "settlement_rows",
+      source_stage: "SETTLEMENT (executor_order_events.executor_meta.reconciliation_v1)",
+      input_denominator: 0,
+      output_denominator: 0,
+      lineage_key: "reconciliation_v1 ∈ {} (no order events)",
+      status: "ABSENT",
+      by_status: {},
+    };
+  } else if (input.orderEvents == null || !queueKeySetIsExhaustive) {
+    unresolvedTransition = "QUEUE→ORDER_EVENT";
+    downstream_execution_lineage = {
+      value: null,
+      unit: "order_event_rows",
+      source_stage: "EXECUTION (executor_order_events via queue idempotency_key)",
+      input_denominator: input.queueRows.length,
+      output_denominator: null,
+      lineage_key: "executor_order_events.idempotency_key (queue key set not exhaustive)",
+      status: "UNKNOWN",
+      by_status: null,
+    };
+    settlement_lineage = {
+      value: null,
+      unit: "settlement_rows",
+      source_stage: "SETTLEMENT (executor_order_events.executor_meta.reconciliation_v1)",
+      input_denominator: null,
+      output_denominator: null,
+      lineage_key: "reconciliation_v1 (downstream order lineage is UNKNOWN)",
+      status: "UNKNOWN",
+      by_status: null,
+    };
+  } else {
+    const matched: PacketOrderEventRow[] = [];
+    for (const ev of input.orderEvents) {
+      if (ev.idempotency_key != null && selectedKeySet.has(ev.idempotency_key)) {
+        matched.push(ev);
+      } else {
+        foreignRowsRejected += 1;
+      }
+    }
+    downstream_execution_lineage = {
+      value: matched.length,
+      unit: "order_event_rows",
+      source_stage: "EXECUTION (executor_order_events via queue idempotency_key)",
+      input_denominator: selectedKeySet.size,
+      output_denominator: matched.length,
+      lineage_key: `executor_order_events.idempotency_key ∈ selected-plan queue keys (${selectedKeySet.size})`,
+      status: "EXACT",
+      by_status: tallyBy(matched, (ev) => String(ev.order_status ?? "UNKNOWN")),
+    };
+
+    const withReconciliation = matched.filter((ev) => hasReconciliationV1(ev.executor_meta));
+    const settlementExhaustive = withReconciliation.length === matched.length;
+    if (!settlementExhaustive) unresolvedTransition = "ORDER_EVENT→SETTLEMENT";
+    settlement_lineage = {
+      value: withReconciliation.length,
+      unit: "settlement_rows",
+      source_stage: "SETTLEMENT (executor_order_events.executor_meta.reconciliation_v1)",
+      input_denominator: matched.length,
+      output_denominator: withReconciliation.length,
+      lineage_key: "executor_order_events.executor_meta.reconciliation_v1.clob_order_id",
+      status: matched.length === 0 ? "ABSENT" : settlementExhaustive ? "EXACT" : "UNKNOWN",
+      by_status:
+        matched.length === 0
+          ? {}
+          : {
+              ATTRIBUTED: withReconciliation.length,
+              UNATTRIBUTED: matched.length - withReconciliation.length,
+            },
+    };
+  }
+
+  const packet: ExactAnchorEvidencePacket = {
+    packet_version: "DETERMINISTIC_EXACT_ANCHOR_EVIDENCE_PACKET_V1",
+    evidence_cutoff_iso: input.anchor.evidence_cutoff_iso,
+    latest_expected_natural_anchor: selectedId,
+    same_day_excluded_anchors: input.anchor.same_day_excluded.map((p) => p.plan_run_id),
+    plan_run_id: selectedId,
+    reservation_lineage,
+    queue_lineage,
+    downstream_execution_lineage,
+    settlement_lineage,
+    unresolved_transition: unresolvedTransition,
+    lineage_keys: {
+      reservation: "night_event_reservations.plan_run_id",
+      queue: "event_execution_queue.plan_run_id",
+      order_event: "executor_order_events.idempotency_key",
+      settlement: "executor_order_events.executor_meta.reconciliation_v1.clob_order_id",
+    },
+    isolation_proof: {
+      reservation_plan_run_ids: reservationPlanRunIds,
+      queue_plan_run_ids: queuePlanRunIds,
+      order_event_idempotency_key_source: "SELECTED_PLAN_QUEUE_ROWS",
+      foreign_rows_rejected: foreignRowsRejected,
+    },
+    read_only: true,
+  };
+
+  return deepFreeze(packet);
+}

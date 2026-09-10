@@ -27,7 +27,14 @@ import {
   wrapPlanFetchCandidates,
   FunnelArithmeticError,
   PlanningAttributionError,
+  parseNaturalAnchor,
+  resolveLatestExpectedNaturalAnchor,
+  assembleExactAnchorEvidencePacket,
+  AnchorResolutionError,
+  AnchorContaminationError,
   type FunnelStage,
+  type NaturalAnchorResolution,
+  type CountedEvidence,
 } from "../../lib/executor/nightFunnelAudit";
 import { buildReservationPlan } from "../../lib/executor/nightEventReservations";
 import type { RawPlanningDiagnostics, FireModelCandidate } from "../../lib/executor/buildFireModelCandidates";
@@ -726,4 +733,208 @@ test("stage 04b: exact reason codes surface as P-reason stages and in the flat r
   assert.equal(attribution.rejected_before_planning_by_reason.WEAK_EVENT_IDENTITY, 2);
   // ...while the stage-03 shadow subset is surfaced separately.
   assert.equal(attribution.planning_shadow_reasons_already_counted_at_stage_03.WEAK_EVENT_IDENTITY, 2);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DETERMINISTIC_EXACT_ANCHOR_EVIDENCE_PACKET_V1
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Regression fixture: two natural anchors on the SAME day plus one earlier-day
+// anchor, one non-canonical id, and one anchor after the evidence cutoff.
+const SAME_DAY_EARLIER = "night-plan:2026-07-22:1000-minsk";
+const SAME_DAY_LATER = "night-plan:2026-07-22:1700-minsk";
+const PRIOR_DAY = "night-plan:2026-07-21:1700-minsk";
+const NON_NATURAL = "manual-replay:2026-07-22:adhoc";
+const AFTER_CUTOFF = "night-plan:2026-07-25:1700-minsk";
+
+function resolveFixture(cutoffIso: string | null = "2026-07-23T06:00:00.000Z"): NaturalAnchorResolution {
+  return resolveLatestExpectedNaturalAnchor(
+    [SAME_DAY_EARLIER, PRIOR_DAY, NON_NATURAL, SAME_DAY_LATER, AFTER_CUTOFF],
+    { cutoffIso },
+  );
+}
+
+function assertProvenance(e: CountedEvidence): void {
+  assert.ok(typeof e.unit === "string" && e.unit.length > 0, "UNIT must be named");
+  assert.ok(typeof e.source_stage === "string" && e.source_stage.length > 0, "SOURCE_STAGE must be named");
+  assert.ok("input_denominator" in e, "INPUT_DENOMINATOR must be present");
+  assert.ok("output_denominator" in e, "OUTPUT_DENOMINATOR must be present");
+  assert.ok(typeof e.lineage_key === "string" && e.lineage_key.length > 0, "LINEAGE_KEY must be named");
+}
+
+test("anchor resolver: parses only canonical night-plan ids", () => {
+  assert.equal(parseNaturalAnchor(SAME_DAY_LATER)?.sort_key, "2026-07-22 1700");
+  assert.equal(parseNaturalAnchor(NON_NATURAL), null);
+});
+
+test("anchor resolver: two same-day anchors -> exactly one latest is selected, the other is same_day_excluded", () => {
+  const r = resolveFixture();
+  assert.equal(r.selected.plan_run_id, SAME_DAY_LATER, "17:00 is later than 10:00 on the same day");
+  assert.deepEqual(r.same_day_excluded.map((p) => p.plan_run_id), [SAME_DAY_EARLIER]);
+  assert.deepEqual(r.non_natural_ignored, [NON_NATURAL]);
+  assert.deepEqual(r.future_anchors_excluded, [AFTER_CUTOFF], "an anchor dated after the cutoff is not yet expected");
+  // prior-day anchor is expected but not same-day, so not in same_day_excluded
+  assert.ok(r.expected_natural_anchors.some((p) => p.plan_run_id === PRIOR_DAY));
+});
+
+test("anchor resolver: no cutoff still selects the single latest natural anchor deterministically", () => {
+  const r = resolveLatestExpectedNaturalAnchor([SAME_DAY_LATER, SAME_DAY_EARLIER, AFTER_CUTOFF], {});
+  assert.equal(r.selected.plan_run_id, AFTER_CUTOFF);
+});
+
+test("anchor resolver: fails closed when no natural anchor is present", () => {
+  assert.throws(
+    () => resolveLatestExpectedNaturalAnchor([NON_NATURAL, "another-adhoc"], {}),
+    (err: unknown) =>
+      err instanceof AnchorResolutionError && /NO_EXPECTED_NATURAL_ANCHOR/.test((err as Error).message),
+  );
+});
+
+test("packet: Reservation and Queue denominators contain only the selected plan_run_id", () => {
+  const anchor = resolveFixture();
+  const packet = assembleExactAnchorEvidencePacket({
+    anchor,
+    reservations: [
+      { plan_run_id: SAME_DAY_LATER, status: "RESERVED" },
+      { plan_run_id: SAME_DAY_LATER, status: "SKIPPED" },
+    ],
+    queueRows: [
+      { plan_run_id: SAME_DAY_LATER, status: "READY", idempotency_key: "idem-1", reservation_id: "res-1" },
+    ],
+    orderEvents: [
+      { idempotency_key: "idem-1", order_status: "EXECUTED", clob_order_id: "clob-1", executor_meta: { reconciliation_v1: { version: "EXECUTION_RECONCILIATION_V1" } } },
+    ],
+  });
+
+  assert.equal(packet.plan_run_id, SAME_DAY_LATER);
+  assert.deepEqual(packet.isolation_proof.reservation_plan_run_ids, [SAME_DAY_LATER]);
+  assert.deepEqual(packet.isolation_proof.queue_plan_run_ids, [SAME_DAY_LATER]);
+  assert.deepEqual(packet.same_day_excluded_anchors, [SAME_DAY_EARLIER]);
+  assert.equal(packet.reservation_lineage.value, 2);
+  assert.equal(packet.reservation_lineage.output_denominator, 1, "only RESERVED/QUEUED/REBALANCE_PENDING count as output");
+  assert.equal(packet.queue_lineage.value, 1);
+  assert.equal(packet.downstream_execution_lineage.value, 1);
+  assert.equal(packet.downstream_execution_lineage.status, "EXACT");
+  assert.equal(packet.settlement_lineage.value, 1);
+  assert.equal(packet.unresolved_transition, null);
+  assert.equal(packet.read_only, true);
+});
+
+test("packet: a foreign-anchor Queue row cannot enter the denominator (fails closed)", () => {
+  const anchor = resolveFixture();
+  assert.throws(
+    () =>
+      assembleExactAnchorEvidencePacket({
+        anchor,
+        reservations: [{ plan_run_id: SAME_DAY_LATER, status: "RESERVED" }],
+        queueRows: [
+          { plan_run_id: SAME_DAY_LATER, status: "READY", idempotency_key: "idem-1", reservation_id: "res-1" },
+          { plan_run_id: SAME_DAY_EARLIER, status: "READY", idempotency_key: "idem-x", reservation_id: "res-x" },
+        ],
+        orderEvents: [],
+      }),
+    (err: unknown) =>
+      err instanceof AnchorContaminationError && /foreign plan_run_id/.test((err as Error).message),
+  );
+});
+
+test("packet: foreign execution/order evidence cannot enter through a foreign Queue lineage", () => {
+  const anchor = resolveFixture();
+  const packet = assembleExactAnchorEvidencePacket({
+    anchor,
+    reservations: [{ plan_run_id: SAME_DAY_LATER, status: "RESERVED" }],
+    queueRows: [
+      { plan_run_id: SAME_DAY_LATER, status: "SENT", idempotency_key: "idem-1", reservation_id: "res-1" },
+    ],
+    orderEvents: [
+      { idempotency_key: "idem-1", order_status: "EXECUTED" },
+      // belongs to the SAME_DAY_EARLIER plan's queue lineage — must be rejected
+      { idempotency_key: "idem-foreign", order_status: "EXECUTED" },
+    ],
+  });
+  assert.equal(packet.downstream_execution_lineage.value, 1, "only the selected-plan idempotency key is counted");
+  assert.equal(packet.downstream_execution_lineage.input_denominator, 1);
+  assert.equal(packet.isolation_proof.foreign_rows_rejected, 1);
+});
+
+test("packet: downstream absence stays UNKNOWN (not zero) when order evidence is not exhaustive", () => {
+  const anchor = resolveFixture();
+
+  // orderEvents === null → not established
+  const p1 = assembleExactAnchorEvidencePacket({
+    anchor,
+    reservations: [{ plan_run_id: SAME_DAY_LATER, status: "RESERVED" }],
+    queueRows: [{ plan_run_id: SAME_DAY_LATER, status: "READY", idempotency_key: "idem-1", reservation_id: "res-1" }],
+    orderEvents: null,
+  });
+  assert.equal(p1.downstream_execution_lineage.value, null);
+  assert.equal(p1.downstream_execution_lineage.status, "UNKNOWN");
+  assert.equal(p1.settlement_lineage.value, null);
+  assert.equal(p1.unresolved_transition, "QUEUE→ORDER_EVENT");
+
+  // a queue row with a null idempotency_key → key set not exhaustive
+  const p2 = assembleExactAnchorEvidencePacket({
+    anchor,
+    reservations: [{ plan_run_id: SAME_DAY_LATER, status: "RESERVED" }],
+    queueRows: [{ plan_run_id: SAME_DAY_LATER, status: "READY", idempotency_key: null, reservation_id: "res-1" }],
+    orderEvents: [],
+  });
+  assert.equal(p2.downstream_execution_lineage.status, "UNKNOWN");
+  assert.equal(p2.downstream_execution_lineage.value, null);
+});
+
+test("packet: zero queue rows is an exhaustively-proven downstream zero (ABSENT, not UNKNOWN)", () => {
+  const anchor = resolveFixture();
+  const packet = assembleExactAnchorEvidencePacket({
+    anchor,
+    reservations: [{ plan_run_id: SAME_DAY_LATER, status: "SKIPPED" }],
+    queueRows: [],
+    orderEvents: null,
+  });
+  assert.equal(packet.downstream_execution_lineage.status, "ABSENT");
+  assert.equal(packet.downstream_execution_lineage.value, 0);
+  assert.equal(packet.settlement_lineage.status, "ABSENT");
+  assert.equal(packet.unresolved_transition, null);
+});
+
+test("packet: every reported count names UNIT, SOURCE_STAGE, INPUT/OUTPUT_DENOMINATOR and LINEAGE_KEY", () => {
+  const anchor = resolveFixture();
+  const packet = assembleExactAnchorEvidencePacket({
+    anchor,
+    reservations: [{ plan_run_id: SAME_DAY_LATER, status: "RESERVED" }],
+    queueRows: [{ plan_run_id: SAME_DAY_LATER, status: "SENT", idempotency_key: "idem-1", reservation_id: "res-1" }],
+    orderEvents: [{ idempotency_key: "idem-1", order_status: "EXECUTED" }],
+  });
+  for (const e of [
+    packet.reservation_lineage,
+    packet.queue_lineage,
+    packet.downstream_execution_lineage,
+    packet.settlement_lineage,
+  ]) {
+    assertProvenance(e);
+  }
+  // settlement here is unresolved (order event carries no reconciliation_v1)
+  assert.equal(packet.settlement_lineage.status, "UNKNOWN");
+  assert.equal(packet.unresolved_transition, "ORDER_EVENT→SETTLEMENT");
+});
+
+test("packet: result is deep-frozen (read-only) — a foreign anchor cannot be spliced in post-hoc", () => {
+  const anchor = resolveFixture();
+  const packet = assembleExactAnchorEvidencePacket({
+    anchor,
+    reservations: [{ plan_run_id: SAME_DAY_LATER, status: "RESERVED" }],
+    queueRows: [],
+    orderEvents: null,
+  });
+  assert.ok(Object.isFrozen(packet));
+  assert.ok(Object.isFrozen(packet.isolation_proof));
+  assert.ok(Object.isFrozen(packet.isolation_proof.queue_plan_run_ids));
+  assert.throws(() => {
+    (packet.isolation_proof.queue_plan_run_ids as string[]).push(SAME_DAY_EARLIER);
+  }, TypeError);
+});
+
+test("packet: audit library source still imports no Supabase client after the packet extension", () => {
+  const src = readFileSync(path.join(root, "lib/executor/nightFunnelAudit.ts"), "utf8");
+  assert.doesNotMatch(src, /from\s+["'][^"']*supabase[^"']*["']/i, "pure audit lib must not import any supabase client");
 });
