@@ -1,0 +1,446 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-09-10__evolution-canonical-cycle",
+  "period_start": "2026-09-10T00:00:00Z",
+  "period_end": "2026-09-11T00:00:00Z",
+  "evidence_cutoff": "2026-09-11T00:30:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (Routine A)",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#289",
+      "POLYPROPICKS/PREMVP#290",
+      "POLYPROPICKS/PREMVP#291",
+      "POLYPROPICKS/PREMVP#292"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-09-10__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "NOT_ENOUGH_EVIDENCE",
+    "what_moved": [
+      {
+        "statement": "PR#291 then PR#292 shipped a read-only exact-anchor evidence packet (nightFunnelAudit.ts) isolating one natural anchor's Reservation/Queue/downstream lineage by exact plan_run_id, rejecting foreign-anchor rows; PR#292 fixed eligibility to the anchor's exact scheduled instant instead of calendar-date, closing the last named path to a wrong current cohort.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#291",
+          "POLYPROPICKS/PREMVP#292",
+          "lib/executor/nightFunnelAudit.ts",
+          "tests/contur3/nightFunnelAudit.test.ts"
+        ]
+      },
+      {
+        "statement": "PR#290 added a --target-only mode to the PREMVP release pipeline (sha256-pinned single-migration apply, dry-run-gated to exactly-one-pending==target, fail-closed on legacy-push fallback/--include-all/authority mismatch) and restamped the wallet migration above the live ledger head; AGENT_REGISTRY.yaml was updated the same PR to describe the new mode.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#290",
+          "scripts/control-plane/lib/premvp-target-only-migration.mjs",
+          "tests/control-plane/premvpTargetOnlyMigration.test.mjs",
+          "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#premvp.command.release_pipeline.v1"
+        ]
+      },
+      {
+        "statement": "PR#289 canonicalized the 2026-09-10 Automation Roadmap Governor result (EVIDENCE_INSUFFICIENT) via the registered evolution_canonicalize.v1 terminal-persistence lifecycle with zero intermediate Founder action and no lingering draft PR: the PR was opened and merged inside one minute (created 02:06:12Z, merged 02:07:33Z).",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#289",
+          "docs/ai-context/control-plane/evolution/roadmap-proposals/2026-09-10__automation-roadmap-governor-result.json"
+        ]
+      }
+    ],
+    "next_verified_production_fact_now_possible": "A bounded read-only run of audit-night-funnel.ts against a real past anchor, exercising the PR#292 instant-based resolver outside its own tests -- not yet observed. E7 (production_observation.v1 against the B7 SHA) also remains unexecuted two cycles running.",
+    "blockers_removed": [
+      {
+        "statement": "PR#292 removed the one remaining proven path to a wrong CURRENT cohort in the exact-anchor evidence packet: a same-day later natural anchor could previously be treated as already due by calendar-date match; it is now gated on its exact scheduled instant.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#292",
+          "tests/contur3/nightFunnelAudit.test.ts"
+        ]
+      }
+    ],
+    "blockers_introduced": [],
+    "not_proven": [
+      "No production deployment check and no runtime observation was performed this period for PR#289-#292: every claim above is SOURCE_LEVEL (build, typecheck, and this Routine's own independent re-run of the focused test files), never PROVEN_IN_RUNTIME. runtime_or_business_evidence_exists is false for this period.",
+      "The wallet-observation migration (20260910120000_executor_wallet_observation_columns.sql) is explicitly NOT applied by PR#290 -- its own body states this. The target-only apply mode that would apply it has never been exercised for real, on any executor.",
+      "The exact-anchor evidence packet (PR#291/#292) has never been invoked against a real natural anchor outside its own unit-test fixtures; audit-night-funnel.ts has not produced one real packet this period.",
+      "CURRENT_STATE.yaml (state_version 22, updated_at 2026-09-08T11:07:12Z) is now three days stale and describes zero of the 13 merges landed since (9 from 2026-09-09 plus #289-#292 this period) -- still frames the roadmap step as BOUNDED_PRE_HOOK_SEED with no reference to the newer work.",
+      "PR#290 self-declares risk class R4_CONTUR_PRODUCTION_BOUNDARY and states 'Contur gate reviewer receipt required before merge' -- but get_reviews and get_check_runs on PR#290 both returned zero entries. The claimed gate requirement has no verifiable receipt attached, a third instance of this exact pattern after PR#285 and PR#286 in the prior cycle.",
+      "CURRENT_STATE.yaml's four open blockers (BLK-001 natural night-reservations run, BLK-002 no deterministic reviewer/CI gate, BLK-003 Supabase write access from claude_code_cloud, BLK-004 Ireland runtime access) remain unresolved and unchanged this period.",
+      "The tracked open (unmerged) PR pile stands at 30 at this cutoff (list_pull_requests, state=open), essentially unchanged from 31 at the prior cutoff; one new PR (#293, an offline-modeling operator) was opened this period and remains open/unmerged, so it is not counted as confirmed evidence here.",
+      "Reconciled PnL is not claimed and cannot be: no fills, fees or settlement evidence exists for this period."
+    ],
+    "runtime_or_business_evidence_exists": false,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_ADDED",
+    "capabilities": [
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "A read-only exact-anchor evidence packet isolates one anchor's Reservation/Queue/downstream lineage by exact plan_run_id and scheduled instant, rejecting foreign rows into an explicit count, with UNKNOWN/ABSENT semantics for non-exhaustive evidence.",
+        "persisted_artifact": "lib/executor/nightFunnelAudit.ts",
+        "use_or_validation_evidence": "44/44 tests pass (35 from PR#291 + 9 new from PR#292); independently re-run at evidence_cutoff, confirmed 44/44.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#291",
+          "POLYPROPICKS/PREMVP#292",
+          "tests/contur3/nightFunnelAudit.test.ts"
+        ]
+      },
+      {
+        "domain": "PERMISSION_AND_TOOL_POLICY",
+        "statement": "The release pipeline gained a --target-only mode: sha256-pinned single-migration apply, dry-run-gated, fail-closed on legacy db-push/--include-all/authority mismatch. AGENT_REGISTRY.yaml stayed in sync this PR, unlike CURRENT_STATE.",
+        "persisted_artifact": "scripts/control-plane/lib/premvp-target-only-migration.mjs",
+        "use_or_validation_evidence": "13/13 tests pass; independently re-run at evidence_cutoff, confirmed 13/13. No live migration applied via this mode yet.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#290",
+          "tests/control-plane/premvpTargetOnlyMigration.test.mjs",
+          "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#premvp.command.release_pipeline.v1"
+        ]
+      },
+      {
+        "domain": "AUTOMATION_ECONOMICS",
+        "statement": "evolution_canonicalize.v1 completed a full validate-PR-merge cycle for a Governor result with zero Founder action, no draft-PR accumulation, under two minutes -- evidence against the recurring draft-accumulation concern, though one clean run is not proof it's closed.",
+        "persisted_artifact": "scripts/control-plane/evolution-canonicalize.mjs",
+        "use_or_validation_evidence": "PR#289 timestamps (created 02:06:12Z, merged 02:07:33Z) read from the GitHub API.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#289"
+        ]
+      }
+    ],
+    "not_proven": [
+      "None of these three capabilities has been exercised against real production data this period: the exact-anchor packet has no real invocation, the target-only migration mode has applied nothing live, and one clean fast canonicalization is a sample of one, not a proven pattern across accumulation-prone conditions (e.g. a failing admission requiring rework).",
+      "premvp.ci_gate.reviewer_receipt_enforcement (AGENT_REGISTRY.yaml) remains PLANNED/NOT_PROVEN: PR#290's self-declared R4_CONTUR_PRODUCTION_BOUNDARY / Contur-gate-required claim again has no corroborating GitHub review or check run (BLK-002 unchanged)."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": 0,
+      "runtime_evidence_count": 0,
+      "reusable_artifacts_created": 2,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-09-10T00:00:00Z",
+    "period_end": "2026-09-11T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "capture_coverage": "PARTIAL",
+    "founder_actions_proven": 0,
+    "founder_actions_removable": "UNKNOWN",
+    "chat_interaction_coverage": "PARTIAL",
+    "executor_runs": "UNKNOWN",
+    "successful_terminal_results": 4,
+    "reruns_resumes": "UNKNOWN",
+    "recovery_iterations": "UNKNOWN",
+    "architect_corrections": 0,
+    "reviewer_corrections_rejections": 0,
+    "orchestration_waste_iterations": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+        "origin": "STATE_OR_CONTEXT_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-07-ZERO-CI-GATE-ON-MERGE",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": "CHAIN-NO-CI-GATE-MERGE-ENFORCEMENT",
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-10-EXACT-ANCHOR-CALENDAR-DATE-SEMANTICS",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#292",
+        "proven_effective_evidence_refs": [
+          "POLYPROPICKS/PREMVP#292",
+          "tests/contur3/nightFunnelAudit.test.ts (44/44, independently re-run by this Routine at evidence_cutoff)"
+        ]
+      }
+    ],
+    "defect_counts_by_origin": {
+      "STATE_OR_CONTEXT_DEFECT": 1,
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 1,
+      "PRODUCT_OR_RUNTIME_DEFECT": 1
+    },
+    "defect_counts_by_recurrence": {
+      "SAME_ROOT_REPEAT": 2,
+      "NEW_INDEPENDENT": 1
+    },
+    "repeated_defect_families": 0,
+    "active_onion_chains": 0,
+    "implemented_fixes": 1,
+    "proven_effective_fixes": 1,
+    "runtime_evidence_count": 0,
+    "reusable_artifacts_created": 2,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN"
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "CURRENT_STATE.yaml is now three days stale (updated_at 2026-09-08T11:07:12Z) and describes zero of the 13 merges landed since -- the 09-09 GSP-independence/wallet-state chain plus this period's target-only migration mode and exact-anchor evidence packet. The gap is now wider than when this hypothesis was first raised.",
+      "why_it_matters": "The single canonical operational-state document a Founder or downstream automation would read has drifted further from what is actually on origin/main; a Governor comparing cycles against it inherits a growing STATE_OR_CONTEXT gap rather than a shrinking one.",
+      "axis_a_effect": "Indirect: risks the next Architect step being scoped against a materially outdated picture of what already shipped.",
+      "axis_b_effect": "Directly undermines Axis B's own evidence base; contrast with this period's AGENT_REGISTRY.yaml update (PR#290), which shows the reconciliation is possible when done inline with the shipping PR.",
+      "proposed_automation": "A post-merge step (reusing the existing PROVEN_IN_RUNTIME premvp.command.control_plane_reconcile.v1) appending a factual accepted_completions entry after any merge touching lib/executor/**, lib/feed/**, app/api/executor/**, or supabase/migrations/** -- no roadmap/capability-verdict change, which stays Founder-authorized.",
+      "persistent_artifact": "scripts/control-plane/reconcile-control-plane.mjs (existing) plus a new invocation trigger, if adopted",
+      "expected_value": "Removes a recurring, evidence-costly Axis-B/Axis-A cross-check this and prior cycles have had to perform by hand every period.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low if scoped to a factual append-only entry; a naive version that infers roadmap progress from file paths would violate the boundary that only Founder authorization changes roadmap_phase/current_value_step.",
+      "success_metric": "Two consecutive Evolution cycles find zero material CURRENT_STATE staleness gap at evidence_cutoff.",
+      "rollback_or_stop_condition": "Stop and revert to manual reconciliation if the automation ever writes a roadmap_phase, current_value_step, capability verdict, or PnL-gate change without separate Founder authorization.",
+      "timing": "NOW is a proposal for the next architect step only; it does not authorize execution inside this review.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "POLYPROPICKS/PREMVP#289",
+        "POLYPROPICKS/PREMVP#290",
+        "POLYPROPICKS/PREMVP#291",
+        "POLYPROPICKS/PREMVP#292"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "This period again established only a lower bound of zero operator-action events across four real merges: no OPERATOR_ACTION_EVENT record has ever existed in this repository, so founder_actions_proven stays 0 by construction for at least the sixth consecutive cycle.",
+      "why_it_matters": "The Founder-effort axis this Routine is chartered to measure remains structurally uncaptured; every cycle's operator-action total is a floor, never an estimate.",
+      "axis_a_effect": "None directly -- this is a measurement gap, not a product blocker.",
+      "axis_b_effect": "Blocks Axis B capability maturity for MISSION_REGISTRY / VERIFICATION_AND_EVIDENCE: the operator-action capture pipeline has schemas and a collector but no populated source.",
+      "proposed_automation": "Wire at least one real OPERATOR_ACTION_EVENT source (e.g. a lightweight capture at the point a Founder message starts a CloudCode/Codex session) so the next Evolution input bundle can carry real events instead of an empty array.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/schemas/OPERATOR_ACTION_EVENT.schema.json (exists); a new capture point would be the missing artifact",
+      "expected_value": "Converts founder_actions_proven from a permanent floor of 0 into a real measurement.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low for a passive capture; risk is scope creep into a new mandatory workflow step that itself becomes Founder friction.",
+      "success_metric": "The next Evolution input bundle contains at least one non-empty operator_action_events entry with capture_coverage other than the declared bundle default.",
+      "rollback_or_stop_condition": "Stop if the only available capture point requires a new mandatory manual step from the Founder.",
+      "timing": "SYSTEM_LATER -- lower priority than the Axis A evidence gap in H13, but persistent across six+ cycles.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml",
+        "POLYPROPICKS/PREMVP#289",
+        "POLYPROPICKS/PREMVP#290",
+        "POLYPROPICKS/PREMVP#291",
+        "POLYPROPICKS/PREMVP#292"
+      ]
+    },
+    {
+      "id": "H6",
+      "observed_problem": "PR#290 self-declares risk class R4_CONTUR_PRODUCTION_BOUNDARY and states 'Contur gate reviewer receipt required before merge' -- a third instance of this exact pattern after PR#285 and PR#286 in the prior cycle. get_reviews and get_check_runs on PR#290 both returned zero entries.",
+      "why_it_matters": "This is the third consecutive real-merge occurrence of exactly the gap the control plane's own AGENT_REGISTRY.yaml entry (premvp.ci_gate.reviewer_receipt_enforcement) and the 2026-09-08 Governor recommendation already named -- the self-declared highest-risk merge class still ships on prose self-attestation, not a verifiable receipt.",
+      "axis_a_effect": "Increases undetected risk on production-boundary code paths without closing the loop, though this period's specific PR#290 change was infra/migration-mode scaffolding, not itself a live-money path.",
+      "axis_b_effect": "premvp.ci_gate.reviewer_receipt_enforcement remains PLANNED/NOT_PROVEN; this period is a third data point for the same gap.",
+      "proposed_automation": "A required GitHub status check that fails a PR labeled/detected as R4_CONTUR_PRODUCTION_BOUNDARY unless a machine-readable reviewer receipt is attached, reusing premvp.reviewer.contur_gate.v1's already-specified output_contract.",
+      "persistent_artifact": "premvp.ci_gate.reviewer_receipt_enforcement (AGENT_REGISTRY.yaml; PLANNED, implementation_path null)",
+      "expected_value": "Converts a self-attested claim into a verifiable one for exactly the highest-risk merge class, closing BLK-002 for R4 specifically.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium -- requires branch-protection changes and a working receipt-attachment mechanism; validate in report-only mode first.",
+      "success_metric": "The next R4-risk PR carries a verifiable reviewer receipt rather than body-text-only self-attestation.",
+      "rollback_or_stop_condition": "Stop and fall back to advisory (non-blocking) mode if the gate produces a false block on a legitimately reviewed PR.",
+      "timing": "NOW is a proposal only; this exact hypothesis was already the 2026-09-08 Governor's recommendation and remains unimplemented across three cycles.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#290",
+        "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#premvp.ci_gate.reviewer_receipt_enforcement",
+        "docs/ai-context/control-plane/evolution/roadmap-proposals/2026-09-08__automation-roadmap-governor-result.json"
+      ]
+    },
+    {
+      "id": "H7",
+      "observed_problem": "The tracked open-PR count stands at 30 at this cutoff, essentially unchanged from 31 at the prior cutoff; one new PR (#293, an offline-modeling operator) was opened this period and remains open. None of this period's 4 real merges came from that open pile.",
+      "why_it_matters": "A persistently large open/draft PR pile is dead weight for any future Governor-lineage or draft-PR audit and risks being mistaken for pending work.",
+      "axis_a_effect": "None directly -- these are not active blockers on the merges that did land.",
+      "axis_b_effect": "Continues to understate Axis B capability signal-to-noise for any future capability audit scanning open PRs.",
+      "proposed_automation": "A periodic (not this Routine's) audit that classifies each open PR as SUPERSEDED / STILL_ACTIVE / ABANDONED against current origin/main and proposes closure only for provably superseded entries -- never an automatic close.",
+      "persistent_artifact": "No artifact proposed yet -- remains PRODUCT_FIRST until a Founder decision on disposition criteria exists.",
+      "expected_value": "Reduces repository noise; not itself an Axis A or Axis B improvement.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium -- an automated closer could discard in-progress Founder work; must never auto-close without explicit supersession proof.",
+      "success_metric": "Open PR count decreases across two consecutive cutoffs without any provably-active PR being closed.",
+      "rollback_or_stop_condition": "Stop if any classification would require inferring Founder intent rather than reading provable Git supersession.",
+      "timing": "PRODUCT_FIRST -- this is repository hygiene, not a business or capability priority.",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "mcp__github__list_pull_requests(state=open) at 2026-09-11T00:17Z cutoff",
+        "POLYPROPICKS/PREMVP#293"
+      ]
+    },
+    {
+      "id": "H8",
+      "observed_problem": "No new instance this period -- the D-1 research-corpus reader defect chain (CHAIN-D1-RESEARCH-CORPUS-READER-20260904) had no new confirmed recurrence; none of this period's four merges touch that reader.",
+      "why_it_matters": "Recorded for lineage continuity only, per the routine's rule against re-litigating a dormant chain as if it were new or resolved.",
+      "axis_a_effect": "none",
+      "axis_b_effect": "none",
+      "proposed_automation": "No action proposed this period; carry the chain forward dormant.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-04__evolution-canonical-cycle.json (original record)",
+      "expected_value": "N/A -- continuity record only.",
+      "implementation_cost": "NOT_AVAILABLE",
+      "verification_cost": "NOT_AVAILABLE",
+      "risk": "None this period.",
+      "success_metric": "No further recurrence observed across subsequent cycles.",
+      "rollback_or_stop_condition": "N/A",
+      "timing": "SYSTEM_LATER",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-04__evolution-canonical-cycle.json"
+      ]
+    },
+    {
+      "id": "H13",
+      "observed_problem": "For at least a sixth consecutive cycle, real engineering merges land with only SOURCE_LEVEL evidence, and no runtime/production observation step closes the loop into PROVEN_IN_RUNTIME -- this period's PR#289-#292 included.",
+      "why_it_matters": "This remains the single reason Axis A keeps returning NOT_ENOUGH_EVIDENCE despite real work landing every period: the gap is not the absence of engineering work, it is the absence of a habitual, bounded runtime-observation step after a merge.",
+      "axis_a_effect": "Directly: closing this gap is the only way a future cycle's Axis A verdict can move past NOT_ENOUGH_EVIDENCE for this class of work.",
+      "axis_b_effect": "Would exercise premvp.command.production_observation.v1 (already PROVEN_IN_RUNTIME) against a real recent merge instead of leaving it dormant.",
+      "proposed_automation": "After any merge touching lib/executor/**, lib/feed/**, or app/api/executor/**, automatically queue one bounded premvp.command.production_observation.v1 run against that merge's SHA and record its outcome in EVIDENCE_LEDGER.md regardless of result.",
+      "persistent_artifact": "scripts/control-plane/production-observation.mjs (existing, PROVEN_IN_RUNTIME) plus a new invocation trigger, if adopted",
+      "expected_value": "Converts every future cycle's largest recurring NOT_PROVEN item into a routinely-closed one.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low -- the command is already read-only and fails closed; the only new risk is call-volume/cost if triggered on every merge rather than batched.",
+      "success_metric": "The next Evolution cycle reports at least one PROVEN_IN_RUNTIME observation for a merge landed in the reviewed period.",
+      "rollback_or_stop_condition": "Stop and revert to manual triggering if automatic queuing produces false PROMPT_GATE_BLOCKED escalations rather than clean WAIT_INFRASTRUCTURE_RECOVERY classifications.",
+      "timing": "NOW is a proposal for the next architect step; it does not authorize execution in this review.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#premvp.command.production_observation.v1",
+        "POLYPROPICKS/PREMVP#289",
+        "POLYPROPICKS/PREMVP#290",
+        "POLYPROPICKS/PREMVP#291",
+        "POLYPROPICKS/PREMVP#292",
+        "docs/ai-context/control-plane/evolution/cycles/2026-09-09__evolution-canonical-cycle.json"
+      ]
+    },
+    {
+      "id": "H14",
+      "observed_problem": "PR#291 shipped anchor resolution using calendar-date matching -- a wrong eligibility rule for a 'current as of instant X' resolver. Caught same-day, corrected in PR#292 to the exact scheduled instant, with 9 new boundary-condition tests.",
+      "why_it_matters": "This is a second instance (after the prior cycle's H11 field-normalization pattern) of a boundary-condition semantics error in a 'current/latest as of instant X' resolver being discovered only after merging to canonical main rather than in pre-merge design review, even though it was caught and fixed same-day with no evidence of real-world exposure.",
+      "axis_a_effect": "Indirect: this exact resolver class gates which evidence enters the Optimizer's current cohort; an uncaught version of this bug would have silently corrupted a production evidence packet, though this instance was self-corrected before any real invocation.",
+      "axis_b_effect": "Strengthens VERIFICATION_AND_EVIDENCE (44/44 tests including the new boundary cases) but is also direct evidence that boundary-condition review discipline for 'as-of-instant' resolvers is not yet a repeatable pre-merge checklist item.",
+      "proposed_automation": "A short pre-merge checklist/test-template specific to any new 'latest/current as-of-instant' resolver: require an explicit exact-instant boundary test (at, just-before, just-after the cutoff) in the first PR, not only after a same-day correction.",
+      "persistent_artifact": "tests/contur3/nightFunnelAudit.test.ts (existing exemplar of the boundary tests that should be required up front)",
+      "expected_value": "Converts a same-day post-merge self-correction pattern into a pre-merge requirement, reducing the number of cycles where a shipped 'as-of-instant' resolver needs a same-day follow-up correction.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low -- this proposes a checklist/test-template convention, not a new enforcement mechanism.",
+      "success_metric": "The next new 'as-of-instant' resolver ships with its exact-boundary test in the same PR as first implementation, not a same-day follow-up PR.",
+      "rollback_or_stop_condition": "Stop if applying the checklist to unrelated resolver types produces false-positive review friction.",
+      "timing": "SYSTEM_LATER -- the actual defect was already caught and fixed same-day with no production exposure.",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#291",
+        "POLYPROPICKS/PREMVP#292",
+        "tests/contur3/nightFunnelAudit.test.ts"
+      ]
+    }
+  ],
+  "insufficient_supported_hypotheses": false,
+  "insufficient_supported_hypotheses_reason": null,
+  "founder_practices": [
+    {
+      "id": "P9",
+      "skill_practiced": "Before merging any PR that self-declares a production-boundary risk class (e.g. R4_CONTUR_PRODUCTION_BOUNDARY) and claims a reviewer-gate pass or requirement, check get_reviews/get_check_runs for a real receipt first -- not after the fact in the next Evolution review.",
+      "why_it_matters_now": "PR#290 is the third instance (after PR#285 and PR#286 in the prior cycle) of this exact self-attested-but-unverifiable pattern; the check itself takes one tool call and would catch the gap before merge instead of after.",
+      "how_it_applies_to_current_project": "Before merging any future PR naming R4_CONTUR_PRODUCTION_BOUNDARY, run get_reviews and get_check_runs first; if both are empty, either block the merge or correct the PR's own risk-class self-declaration.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-10__evolution-canonical-cycle.json (this cycle's H6/P9 record)",
+      "ladder_level": 4
+    },
+    {
+      "id": "P8",
+      "skill_practiced": "Ship the exact boundary-instant test cases (at, just-before, just-after cutoff) in the same PR that introduces a new 'current/latest as of instant X' resolver, rather than only after a same-day correction surfaces the gap.",
+      "why_it_matters_now": "PR#291's calendar-date resolver needed a same-day PR#292 correction with 9 new boundary tests; those exact tests could have shipped with PR#291 if the boundary case had been enumerated up front.",
+      "how_it_applies_to_current_project": "Any future 'as-of-instant' resolver in this codebase (e.g. eligibility windows for CURRENT_OPERATIONAL_COVERAGE_PROOF) should enumerate at/just-before/just-after boundary tests before its first merge.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-10__evolution-canonical-cycle.json (this cycle's H14/P8 record)",
+      "ladder_level": 3
+    }
+  ],
+  "founder_practice_comparison": "P9 is the higher-priority pre-merge gate: it protects exactly the production-boundary risk class the control plane already flags as requiring the highest-reasoning reviewer, and closing it would make H6/BLK-002 evidence-based rather than repeatedly rediscovered. P8 is a narrower resolver-design habit whose cost was already paid (same-day, no production exposure) this period.",
+  "founder_practice_recommended_order": [
+    "P9",
+    "P8"
+  ],
+  "experiments": [
+    {
+      "id": "E10",
+      "hypothesis": "One bounded, read-only invocation of scripts/contur3/audit-night-funnel.ts against a real past natural anchor, using the corrected PR#292 instant-based resolver, can produce the first exact-anchor evidence packet exercised outside its own unit-test fixtures.",
+      "bounded_scope": "One read-only script invocation against one already-past natural anchor; no DB writes, no producer trigger, no Ireland access.",
+      "persistent_artifact": "A captured packet output plus a docs/ai-context/control-plane/EVIDENCE_LEDGER.md entry on completion",
+      "promotion_condition": "The packet resolves a real plan_run_id with a resolved (non-UNKNOWN) status for at least one downstream stage.",
+      "stop_condition": "Stop and record WAIT_INFRASTRUCTURE_RECOVERY if the script's own database reachability check fails -- never force a synthetic result."
+    },
+    {
+      "id": "E7",
+      "hypothesis": "Carried forward from the 2026-09-09 cycle, still unexecuted: a single bounded, read-only premvp.command.production_observation.v1 run against B7's exact reviewed result (05c9aad6bb621dfebd1f2d03f49be91c9a5b1400) can establish PROVEN_IN_RUNTIME deployment identity for the GSP-independence migration, the largest standing Axis A NOT_PROVEN item across two consecutive cycles now.",
+      "bounded_scope": "One observation run against the named SHA; read-only Git ancestry, HTTPS GET to the app build-identity surface, and PostgREST SELECT via the already-provisioned service-role key; no write, no producer trigger, no Ireland access.",
+      "persistent_artifact": "reports/observation/<observation_id>.json (gitignored, non-secret checkpoint) and, on completion, a docs/ai-context/control-plane/EVIDENCE_LEDGER.md entry",
+      "promotion_condition": "The observation reaches PRODUCER_PRODUCTION_EFFECT_PROVEN or at least DEPLOYMENT_IDENTITY_PROVEN for 05c9aad6bb621dfebd1f2d03f49be91c9a5b1400.",
+      "stop_condition": "Stop and record WAIT_INFRASTRUCTURE_RECOVERY if the command's own database/PostgREST health check fails -- never force a synthetic result."
+    },
+    {
+      "id": "E12",
+      "hypothesis": "The PR#290 --target-only migration mode can complete one real, Founder-authorized apply of the one pinned pending wallet migration, converting the wallet-state capability's SOURCE_LEVEL evidence into a first PROVEN_IN_RUNTIME migration application.",
+      "bounded_scope": "One --target-only dry-run followed by one apply of exactly the pinned migration (20260910120000_executor_wallet_observation_columns.sql); fails closed on any ledger mismatch or more than one pending migration.",
+      "persistent_artifact": "supabase/migrations/20260910120000_executor_wallet_observation_columns.sql (already committed) plus a docs/ai-context/control-plane/EVIDENCE_LEDGER.md entry on apply",
+      "promotion_condition": "The dry-run confirms exactly-one-pending==target, then the apply completes with the pipeline's own PASS verdict.",
+      "stop_condition": "Stop and record BLOCKED if the dry-run finds more than one pending migration or any ledger/authority mismatch -- never force --include-all."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE (per CURRENT_STATE.yaml, updated_at 2026-09-08T11:07:12Z, state_version 22) -- but live origin/main has since advanced through 13 further merges (the 09-09 GSP-independence/wallet-state chain plus this period's target-only migration mode and exact-anchor evidence packet) that CURRENT_STATE does not yet reflect at all; see hypothesis H1."
+  },
+  "next_step": "Persist via the proven GitHub-MCP canonicalization path (zero Founder action). Then run E10 (bounded read-only audit-night-funnel invocation against a real anchor) as the highest-value next action, alongside E7 (still open from 2026-09-09) against the B7 SHA. Do not babysit the 30-member open-PR family beyond recording it for Routine B.",
+  "corrections": [],
+  "accepted": false
+}
