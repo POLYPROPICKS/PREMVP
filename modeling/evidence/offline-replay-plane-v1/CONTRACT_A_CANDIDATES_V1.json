@@ -1,0 +1,266 @@
+{
+  "mission": "COMPARE_TWO_FIXED_CONTRACT_A_CORRECTIONS_V1",
+  "window": {
+    "from": "2026-09-01",
+    "to": "2026-09-10",
+    "asOf": "2026-09-10T14:04:29.586Z"
+  },
+  "economics_basis": "GROSS_BEFORE_FEES",
+  "baseline_reproduced": {
+    "value": {
+      "MODEL": "CONTRACT_A_FILTER_SIM_CURRENT",
+      "FILTER_PASS_EVENTS": 1075,
+      "BETS": 1075,
+      "TERMINAL": 251,
+      "UNRESOLVED": 824,
+      "WINS": 71,
+      "LOSSES": 180,
+      "PNL_U": -50.29,
+      "ROI_PCT": -20.0359,
+      "MAX_DD_U": -57.13,
+      "WIN_RATE_PCT": 28.29
+    },
+    "expected": {
+      "TERMINAL": 251,
+      "WINS": 71,
+      "LOSSES": 180,
+      "PNL_U": -50.29,
+      "ROI": -20.04
+    },
+    "match": true,
+    "superseded_non_canonical": {
+      "TERMINAL": 545,
+      "PNL_U": -86.91,
+      "ROI": -15.95,
+      "authority": "NON_CANONICAL_LOCAL_WIP_SEMANTICS"
+    }
+  },
+  "candidate_1_definition": {
+    "minEntryPrice": 0.5,
+    "skipBadBucket": true
+  },
+  "candidate_2_definition": {
+    "minEntryPrice": 0.5,
+    "skipBadBucket": true,
+    "restrictToMarketClasses": [
+      "allowed_fullmatch_total"
+    ]
+  },
+  "NO_RESEARCH_ONLY_MARKET_ADMISSION": true,
+  "comparison_table": [
+    {
+      "MODEL": "CONTRACT_A_FILTER_SIM_CURRENT",
+      "FILTER_PASS_EVENTS": 1075,
+      "BETS": 1075,
+      "TERMINAL": 251,
+      "UNRESOLVED": 824,
+      "WINS": 71,
+      "LOSSES": 180,
+      "PNL_U": -50.29,
+      "ROI_PCT": -20.0359,
+      "MAX_DD_U": -57.13,
+      "WIN_RATE_PCT": 28.29
+    },
+    {
+      "MODEL": "CONTRACT_A_PRICE_FLOOR_050_BAD_BUCKET_OFF",
+      "FILTER_PASS_EVENTS": 17,
+      "BETS": 17,
+      "TERMINAL": 1,
+      "UNRESOLVED": 16,
+      "WINS": 1,
+      "LOSSES": 0,
+      "PNL_U": 1,
+      "ROI_PCT": 100,
+      "MAX_DD_U": 0,
+      "WIN_RATE_PCT": 100
+    },
+    {
+      "MODEL": "CONTRACT_A_TOTALS_PRICE_FLOOR_050_BAD_BUCKET_OFF",
+      "FILTER_PASS_EVENTS": 8,
+      "BETS": 8,
+      "TERMINAL": 0,
+      "UNRESOLVED": 8,
+      "WINS": 0,
+      "LOSSES": 0,
+      "PNL_U": 0,
+      "ROI_PCT": null,
+      "MAX_DD_U": 0,
+      "WIN_RATE_PCT": null
+    },
+    {
+      "MODEL": "C0_REFERENCE",
+      "FILTER_PASS_EVENTS": 5565,
+      "BETS": 5565,
+      "TERMINAL": 1578,
+      "UNRESOLVED": 3987,
+      "WINS": 931,
+      "LOSSES": 647,
+      "PNL_U": 241.6,
+      "ROI_PCT": 15.3107,
+      "MAX_DD_U": -22.5,
+      "WIN_RATE_PCT": 59
+    }
+  ],
+  "sport_table": {
+    "CONTRACT_A_PRICE_FLOOR_050_BAD_BUCKET_OFF": {
+      "baseball": {
+        "BETS": 5,
+        "TERMINAL": 0,
+        "UNRESOLVED": 5,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": null,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": null
+      },
+      "mma": {
+        "BETS": 1,
+        "TERMINAL": 0,
+        "UNRESOLVED": 1,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": null,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": null
+      },
+      "soccer": {
+        "BETS": 10,
+        "TERMINAL": 1,
+        "UNRESOLVED": 9,
+        "WINS": 1,
+        "LOSSES": 0,
+        "PNL_U": 1,
+        "ROI_PCT": 100,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": 100
+      },
+      "unknown": {
+        "BETS": 1,
+        "TERMINAL": 0,
+        "UNRESOLVED": 1,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": null,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": null
+      }
+    },
+    "CONTRACT_A_TOTALS_PRICE_FLOOR_050_BAD_BUCKET_OFF": {
+      "baseball": {
+        "BETS": 1,
+        "TERMINAL": 0,
+        "UNRESOLVED": 1,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": null,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": null
+      },
+      "mma": {
+        "BETS": 1,
+        "TERMINAL": 0,
+        "UNRESOLVED": 1,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": null,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": null
+      },
+      "soccer": {
+        "BETS": 6,
+        "TERMINAL": 0,
+        "UNRESOLVED": 6,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": null,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": null
+      }
+    }
+  },
+  "market_table": {
+    "CONTRACT_A_PRICE_FLOOR_050_BAD_BUCKET_OFF": {
+      "allowed_fullmatch_moneyline": {
+        "BETS": 7,
+        "TERMINAL": 1,
+        "UNRESOLVED": 6,
+        "WINS": 1,
+        "LOSSES": 0,
+        "PNL_U": 1,
+        "ROI_PCT": 100,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": 100
+      },
+      "allowed_fullmatch_spread": {
+        "BETS": 2,
+        "TERMINAL": 0,
+        "UNRESOLVED": 2,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": null,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": null
+      },
+      "allowed_fullmatch_total": {
+        "BETS": 8,
+        "TERMINAL": 0,
+        "UNRESOLVED": 8,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": null,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": null
+      }
+    },
+    "CONTRACT_A_TOTALS_PRICE_FLOOR_050_BAD_BUCKET_OFF": {
+      "allowed_fullmatch_total": {
+        "BETS": 8,
+        "TERMINAL": 0,
+        "UNRESOLVED": 8,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": null,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": null
+      }
+    }
+  },
+  "attribution_candidate_1": {
+    "REMOVED_SUB_050": {
+      "TERMINAL_N": 251,
+      "PNL_U": -50.29
+    },
+    "RESTORED_BY_BAD_BUCKET_OFF": {
+      "TERMINAL_N": 0,
+      "PNL_U": 0
+    }
+  },
+  "attribution_candidate_2": {
+    "REMOVED_MONEYLINE": {
+      "TERMINAL_N": 1,
+      "PNL_U": 1
+    },
+    "REMOVED_SPREAD": {
+      "TERMINAL_N": 0,
+      "PNL_U": 0
+    },
+    "REMOVED_OTHER_FROM_C1": {
+      "TERMINAL_N": 0,
+      "PNL_U": 0
+    },
+    "RETAINED_TOTAL": {
+      "TERMINAL_N": 0,
+      "PNL_U": 0
+    }
+  },
+  "decision": "NO_FIXED_CORRECTION_SUPPORTED"
+}

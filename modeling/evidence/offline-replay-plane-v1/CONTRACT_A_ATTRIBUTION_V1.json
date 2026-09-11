@@ -1,0 +1,613 @@
+{
+  "mission": "ATTRIBUTE_CONTRACT_A_NEGATIVE_PNL_TO_EXACT_FILTERS_V1",
+  "window": {
+    "from": "2026-09-01",
+    "to": "2026-09-10",
+    "asOf": "2026-09-10T14:04:29.586Z"
+  },
+  "economics_basis": "GROSS_BEFORE_FEES",
+  "baseline_reproduced": {
+    "C0": {
+      "BETS": 5565,
+      "TERMINAL": 1578,
+      "UNRESOLVED": 3987,
+      "WINS": 931,
+      "LOSSES": 647,
+      "PNL_U": 241.6,
+      "ROI_PCT": 15.3107,
+      "MAX_DD_U": -22.5,
+      "WIN_RATE_PCT": 59
+    },
+    "CONTRACT_A_FILTER_SIM_CURRENT": {
+      "BETS": 1075,
+      "TERMINAL": 251,
+      "UNRESOLVED": 824,
+      "WINS": 71,
+      "LOSSES": 180,
+      "PNL_U": -50.29,
+      "ROI_PCT": -20.0359,
+      "MAX_DD_U": -57.13,
+      "WIN_RATE_PCT": 28.29
+    },
+    "expected": {
+      "C0_TERMINAL": 1578,
+      "C0_PNL_U": 241.6,
+      "A_TERMINAL": 251,
+      "A_PNL_U": -50.29
+    },
+    "match": true,
+    "superseded_non_canonical": {
+      "A_TERMINAL": 545,
+      "A_PNL_U": -86.91,
+      "A_ROI": -15.95,
+      "authority": "NON_CANONICAL_LOCAL_WIP_SEMANTICS"
+    }
+  },
+  "analysis_1_selected_bet_economics": {
+    "by_entry_price": {
+      "0.44-0.50": {
+        "BETS": 263,
+        "TERMINAL": 65,
+        "UNRESOLVED": 198,
+        "WINS": 18,
+        "LOSSES": 47,
+        "PNL_U": -25.87,
+        "ROI_PCT": -39.7973,
+        "MAX_DD_U": -28.26,
+        "WIN_RATE_PCT": 27.69
+      },
+      "0.50-0.54": {
+        "BETS": 4,
+        "TERMINAL": 0,
+        "UNRESOLVED": 4,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": null,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": null
+      },
+      "<0.44": {
+        "BETS": 808,
+        "TERMINAL": 186,
+        "UNRESOLVED": 622,
+        "WINS": 53,
+        "LOSSES": 133,
+        "PNL_U": -24.42,
+        "ROI_PCT": -13.13,
+        "MAX_DD_U": -42.04,
+        "WIN_RATE_PCT": 28.49
+      }
+    },
+    "by_lead_time": {
+      "0-2h": {
+        "BETS": 63,
+        "TERMINAL": 22,
+        "UNRESOLVED": 41,
+        "WINS": 4,
+        "LOSSES": 18,
+        "PNL_U": -9.98,
+        "ROI_PCT": -45.3592,
+        "MAX_DD_U": -9.98,
+        "WIN_RATE_PCT": 18.18
+      },
+      "2-6h": {
+        "BETS": 134,
+        "TERMINAL": 33,
+        "UNRESOLVED": 101,
+        "WINS": 12,
+        "LOSSES": 21,
+        "PNL_U": -3.64,
+        "ROI_PCT": -11.0358,
+        "MAX_DD_U": -6.12,
+        "WIN_RATE_PCT": 36.36
+      },
+      "6-24h": {
+        "BETS": 878,
+        "TERMINAL": 196,
+        "UNRESOLVED": 682,
+        "WINS": 55,
+        "LOSSES": 141,
+        "PNL_U": -36.67,
+        "ROI_PCT": -18.7088,
+        "MAX_DD_U": -44.92,
+        "WIN_RATE_PCT": 28.06
+      }
+    },
+    "by_score": {
+      "50-59": {
+        "BETS": 147,
+        "TERMINAL": 39,
+        "UNRESOLVED": 108,
+        "WINS": 15,
+        "LOSSES": 24,
+        "PNL_U": 23.47,
+        "ROI_PCT": 60.184,
+        "MAX_DD_U": -6,
+        "WIN_RATE_PCT": 38.46
+      },
+      "60-64": {
+        "BETS": 346,
+        "TERMINAL": 80,
+        "UNRESOLVED": 266,
+        "WINS": 19,
+        "LOSSES": 61,
+        "PNL_U": -29.6,
+        "ROI_PCT": -36.9989,
+        "MAX_DD_U": -36.77,
+        "WIN_RATE_PCT": 23.75
+      },
+      "65-71": {
+        "BETS": 539,
+        "TERMINAL": 120,
+        "UNRESOLVED": 419,
+        "WINS": 33,
+        "LOSSES": 87,
+        "PNL_U": -41.71,
+        "ROI_PCT": -34.762,
+        "MAX_DD_U": -45.82,
+        "WIN_RATE_PCT": 27.5
+      },
+      ">=72": {
+        "BETS": 43,
+        "TERMINAL": 12,
+        "UNRESOLVED": 31,
+        "WINS": 4,
+        "LOSSES": 8,
+        "PNL_U": -2.45,
+        "ROI_PCT": -20.4021,
+        "MAX_DD_U": -3.98,
+        "WIN_RATE_PCT": 33.33
+      }
+    },
+    "by_data_coverage": {
+      "25": {
+        "BETS": 493,
+        "TERMINAL": 122,
+        "UNRESOLVED": 371,
+        "WINS": 36,
+        "LOSSES": 86,
+        "PNL_U": -23.78,
+        "ROI_PCT": -19.4902,
+        "MAX_DD_U": -30.54,
+        "WIN_RATE_PCT": 29.51
+      },
+      "50": {
+        "BETS": 457,
+        "TERMINAL": 100,
+        "UNRESOLVED": 357,
+        "WINS": 29,
+        "LOSSES": 71,
+        "PNL_U": -11.65,
+        "ROI_PCT": -11.6477,
+        "MAX_DD_U": -18.73,
+        "WIN_RATE_PCT": 29
+      },
+      "75": {
+        "BETS": 125,
+        "TERMINAL": 29,
+        "UNRESOLVED": 96,
+        "WINS": 6,
+        "LOSSES": 23,
+        "PNL_U": -14.86,
+        "ROI_PCT": -51.2559,
+        "MAX_DD_U": -16.06,
+        "WIN_RATE_PCT": 20.69
+      }
+    },
+    "by_formula_version": {
+      "trusted-initial-formula-v1.1": {
+        "BETS": 1075,
+        "TERMINAL": 251,
+        "UNRESOLVED": 824,
+        "WINS": 71,
+        "LOSSES": 180,
+        "PNL_U": -50.29,
+        "ROI_PCT": -20.0359,
+        "MAX_DD_U": -57.13,
+        "WIN_RATE_PCT": 28.29
+      }
+    },
+    "by_market_family": {
+      "allowed_fullmatch_moneyline": {
+        "BETS": 460,
+        "TERMINAL": 106,
+        "UNRESOLVED": 354,
+        "WINS": 29,
+        "LOSSES": 77,
+        "PNL_U": -23.43,
+        "ROI_PCT": -22.1002,
+        "MAX_DD_U": -31.67,
+        "WIN_RATE_PCT": 27.36
+      },
+      "allowed_fullmatch_spread": {
+        "BETS": 205,
+        "TERMINAL": 51,
+        "UNRESOLVED": 154,
+        "WINS": 10,
+        "LOSSES": 41,
+        "PNL_U": -22.66,
+        "ROI_PCT": -44.4351,
+        "MAX_DD_U": -29.27,
+        "WIN_RATE_PCT": 19.61
+      },
+      "allowed_fullmatch_total": {
+        "BETS": 410,
+        "TERMINAL": 94,
+        "UNRESOLVED": 316,
+        "WINS": 32,
+        "LOSSES": 62,
+        "PNL_U": -4.2,
+        "ROI_PCT": -4.4702,
+        "MAX_DD_U": -14.21,
+        "WIN_RATE_PCT": 34.04
+      }
+    }
+  },
+  "analysis_2_bad_bucket_ablation": {
+    "name": "CONTRACT_A_MINUS_BAD_BUCKET",
+    "BETS": 1283,
+    "TERMINAL": 313,
+    "UNRESOLVED": 970,
+    "WINS": 108,
+    "LOSSES": 205,
+    "PNL_U": -39.85,
+    "ROI_PCT": -12.7303,
+    "MAX_DD_U": -51.42,
+    "WIN_RATE_PCT": 34.5,
+    "DELTA_TERMINAL": 62,
+    "DELTA_PNL_U": 10.44,
+    "DELTA_ROI_PP": 7.3056,
+    "NEWLY_ADMITTED_EVENT_ECON": {
+      "BETS": 208,
+      "TERMINAL": 59,
+      "UNRESOLVED": 149,
+      "WINS": 31,
+      "LOSSES": 28,
+      "PNL_U": 7.38,
+      "ROI_PCT": 12.5131,
+      "MAX_DD_U": -8.2,
+      "WIN_RATE_PCT": 52.54
+    }
+  },
+  "analysis_3_other_ablations": {
+    "A_minus_tier_admission": {
+      "name": "CONTRACT_A_MINUS_TIER_ADMISSION",
+      "BETS": 1075,
+      "TERMINAL": 251,
+      "UNRESOLVED": 824,
+      "WINS": 71,
+      "LOSSES": 180,
+      "PNL_U": -50.29,
+      "ROI_PCT": -20.0359,
+      "MAX_DD_U": -57.13,
+      "WIN_RATE_PCT": 28.29,
+      "DELTA_TERMINAL": 0,
+      "DELTA_PNL_U": 0,
+      "DELTA_ROI_PP": 0,
+      "NEWLY_ADMITTED_EVENT_ECON": {
+        "BETS": 0,
+        "TERMINAL": 0,
+        "UNRESOLVED": 0,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": null,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": null
+      }
+    },
+    "B_minus_score_floor": {
+      "name": "CONTRACT_A_MINUS_SCORE_FLOOR",
+      "BETS": 1075,
+      "TERMINAL": 251,
+      "UNRESOLVED": 824,
+      "WINS": 71,
+      "LOSSES": 180,
+      "PNL_U": -50.29,
+      "ROI_PCT": -20.0359,
+      "MAX_DD_U": -57.13,
+      "WIN_RATE_PCT": 28.29,
+      "DELTA_TERMINAL": 0,
+      "DELTA_PNL_U": 0,
+      "DELTA_ROI_PP": 0,
+      "NEWLY_ADMITTED_EVENT_ECON": {
+        "BETS": 0,
+        "TERMINAL": 0,
+        "UNRESOLVED": 0,
+        "WINS": 0,
+        "LOSSES": 0,
+        "PNL_U": 0,
+        "ROI_PCT": null,
+        "MAX_DD_U": 0,
+        "WIN_RATE_PCT": null
+      }
+    },
+    "C_minus_executable_market_anchor": {
+      "name": "CONTRACT_A_MINUS_EXECUTABLE_MARKET_ANCHOR",
+      "BETS": 2317,
+      "TERMINAL": 570,
+      "UNRESOLVED": 1747,
+      "WINS": 254,
+      "LOSSES": 316,
+      "PNL_U": 53.91,
+      "ROI_PCT": 9.4571,
+      "MAX_DD_U": -26.59,
+      "WIN_RATE_PCT": 44.56,
+      "DELTA_TERMINAL": 319,
+      "DELTA_PNL_U": 104.2,
+      "DELTA_ROI_PP": 29.493,
+      "NEWLY_ADMITTED_EVENT_ECON": {
+        "BETS": 1242,
+        "TERMINAL": 312,
+        "UNRESOLVED": 930,
+        "WINS": 179,
+        "LOSSES": 133,
+        "PNL_U": 100.7,
+        "ROI_PCT": 32.2758,
+        "MAX_DD_U": -9,
+        "WIN_RATE_PCT": 57.37
+      },
+      "NOTE": "RESEARCH_ONLY_COUNTERFACTUAL — admits classes current money policy rejects"
+    }
+  },
+  "analysis_4_formula_mix": {
+    "trusted-initial-formula-v1.1": {
+      "BETS": 1075,
+      "TERMINAL": 251,
+      "UNRESOLVED": 824,
+      "WINS": 71,
+      "LOSSES": 180,
+      "PNL_U": -50.29,
+      "ROI_PCT": -20.0359,
+      "MAX_DD_U": -57.13,
+      "WIN_RATE_PCT": 28.29
+    }
+  },
+  "analysis_5_c0_contract_a_overlap": {
+    "event_counts": {
+      "A_AND_C0": 159,
+      "A_ONLY": 916,
+      "C0_ONLY": 5406,
+      "NEITHER": 4218,
+      "TOTAL": 10699
+    },
+    "shared_events": {
+      "SAME_SELECTED_MARKET_OUTCOME_N": 9,
+      "DIFFERENT_SELECTED_MARKET_OUTCOME_N": 150
+    },
+    "A_SELECTED_ON_SHARED_EVENTS": {
+      "BETS": 159,
+      "TERMINAL": 31,
+      "UNRESOLVED": 128,
+      "WINS": 12,
+      "LOSSES": 19,
+      "PNL_U": -2.91,
+      "ROI_PCT": -9.3982,
+      "MAX_DD_U": -10.15,
+      "WIN_RATE_PCT": 38.71
+    },
+    "C0_SELECTED_ON_SHARED_EVENTS": {
+      "BETS": 159,
+      "TERMINAL": 52,
+      "UNRESOLVED": 107,
+      "WINS": 28,
+      "LOSSES": 24,
+      "PNL_U": 2.12,
+      "ROI_PCT": 4.0836,
+      "MAX_DD_U": -9.06,
+      "WIN_RATE_PCT": 53.85
+    },
+    "SAME_EVENT_SAME_IDENTITY": {
+      "BETS": 9,
+      "TERMINAL": 0,
+      "UNRESOLVED": 9,
+      "WINS": 0,
+      "LOSSES": 0,
+      "PNL_U": 0,
+      "ROI_PCT": null,
+      "MAX_DD_U": 0,
+      "WIN_RATE_PCT": null
+    },
+    "SAME_EVENT_DIFFERENT_IDENTITY_A": {
+      "BETS": 150,
+      "TERMINAL": 31,
+      "UNRESOLVED": 119,
+      "WINS": 12,
+      "LOSSES": 19,
+      "PNL_U": -2.91,
+      "ROI_PCT": -9.3982,
+      "MAX_DD_U": -10.15,
+      "WIN_RATE_PCT": 38.71
+    },
+    "SAME_EVENT_DIFFERENT_IDENTITY_C0": {
+      "BETS": 150,
+      "TERMINAL": 52,
+      "UNRESOLVED": 98,
+      "WINS": 28,
+      "LOSSES": 24,
+      "PNL_U": 2.12,
+      "ROI_PCT": 4.0836,
+      "MAX_DD_U": -9.06,
+      "WIN_RATE_PCT": 53.85
+    },
+    "A_ONLY_EVENTS_ECON": {
+      "BETS": 916,
+      "TERMINAL": 220,
+      "UNRESOLVED": 696,
+      "WINS": 59,
+      "LOSSES": 161,
+      "PNL_U": -47.38,
+      "ROI_PCT": -21.5348,
+      "MAX_DD_U": -54.22,
+      "WIN_RATE_PCT": 26.82
+    },
+    "C0_ONLY_EVENTS_ECON": {
+      "BETS": 5406,
+      "TERMINAL": 1526,
+      "UNRESOLVED": 3880,
+      "WINS": 903,
+      "LOSSES": 623,
+      "PNL_U": 239.48,
+      "ROI_PCT": 15.6933,
+      "MAX_DD_U": -22.5,
+      "WIN_RATE_PCT": 59.17
+    }
+  },
+  "analysis_6_soccer_tennis_shared_family_control": {
+    "soccer": {
+      "allowed_fullmatch_moneyline": {
+        "A": {
+          "BETS": 365,
+          "TERMINAL": 84,
+          "UNRESOLVED": 281,
+          "WINS": 23,
+          "LOSSES": 61,
+          "PNL_U": -17.19,
+          "ROI_PCT": -20.4686,
+          "MAX_DD_U": -22.76,
+          "WIN_RATE_PCT": 27.38
+        },
+        "C0": {
+          "BETS": 3,
+          "TERMINAL": 1,
+          "UNRESOLVED": 2,
+          "WINS": 1,
+          "LOSSES": 0,
+          "PNL_U": 1,
+          "ROI_PCT": 100,
+          "MAX_DD_U": 0,
+          "WIN_RATE_PCT": 100
+        }
+      },
+      "allowed_fullmatch_spread": {
+        "A": {
+          "BETS": 133,
+          "TERMINAL": 35,
+          "UNRESOLVED": 98,
+          "WINS": 6,
+          "LOSSES": 29,
+          "PNL_U": -17.66,
+          "ROI_PCT": -50.4502,
+          "MAX_DD_U": -22.02,
+          "WIN_RATE_PCT": 17.14
+        },
+        "C0": {
+          "BETS": 1,
+          "TERMINAL": 0,
+          "UNRESOLVED": 1,
+          "WINS": 0,
+          "LOSSES": 0,
+          "PNL_U": 0,
+          "ROI_PCT": null,
+          "MAX_DD_U": 0,
+          "WIN_RATE_PCT": null
+        }
+      },
+      "allowed_fullmatch_total": {
+        "A": {
+          "BETS": 390,
+          "TERMINAL": 90,
+          "UNRESOLVED": 300,
+          "WINS": 29,
+          "LOSSES": 61,
+          "PNL_U": -6.9,
+          "ROI_PCT": -7.6674,
+          "MAX_DD_U": -15.7,
+          "WIN_RATE_PCT": 32.22
+        },
+        "C0": {
+          "BETS": 8,
+          "TERMINAL": 2,
+          "UNRESOLVED": 6,
+          "WINS": 2,
+          "LOSSES": 0,
+          "PNL_U": 2,
+          "ROI_PCT": 100,
+          "MAX_DD_U": 0,
+          "WIN_RATE_PCT": 100
+        }
+      }
+    },
+    "tennis": {
+      "allowed_fullmatch_moneyline": {
+        "A": {
+          "BETS": 5,
+          "TERMINAL": 0,
+          "UNRESOLVED": 5,
+          "WINS": 0,
+          "LOSSES": 0,
+          "PNL_U": 0,
+          "ROI_PCT": null,
+          "MAX_DD_U": 0,
+          "WIN_RATE_PCT": null
+        },
+        "C0": {
+          "BETS": 0,
+          "TERMINAL": 0,
+          "UNRESOLVED": 0,
+          "WINS": 0,
+          "LOSSES": 0,
+          "PNL_U": 0,
+          "ROI_PCT": null,
+          "MAX_DD_U": 0,
+          "WIN_RATE_PCT": null
+        }
+      }
+    }
+  },
+  "ranked_founder_table": [
+    {
+      "RANK": 1,
+      "CONTRACT_A_SEMANTIC": "EXECUTABLE_MARKET_ANCHOR",
+      "CURRENT_RULE": "resolveMarketAnchorDecision().allowed (fullmatch money/spread/total only)",
+      "EVIDENCE": "ablation TERMINAL=570, newly-admitted-only TERMINAL=312 PnL=100.7",
+      "CURRENT_A_PNL": -50.29,
+      "ABLATION_PNL": 53.91,
+      "DELTA_PNL": 104.2,
+      "CURRENT_A_ROI": -20.0359,
+      "ABLATION_ROI": 9.4571,
+      "DELTA_ROI_PP": 29.49,
+      "VERDICT": "LIKELY_MAJOR_DAMAGE"
+    },
+    {
+      "RANK": 2,
+      "CONTRACT_A_SEMANTIC": "BAD_BUCKET",
+      "CURRENT_RULE": "reject coverage∈[50,74] ∧ price∈[0.44,0.58]",
+      "EVIDENCE": "ablation TERMINAL=313, newly-admitted-only TERMINAL=59 PnL=7.38",
+      "CURRENT_A_PNL": -50.29,
+      "ABLATION_PNL": -39.85,
+      "DELTA_PNL": 10.44,
+      "CURRENT_A_ROI": -20.0359,
+      "ABLATION_ROI": -12.7303,
+      "DELTA_ROI_PP": 7.31,
+      "VERDICT": "LIKELY_DAMAGE"
+    },
+    {
+      "RANK": 3,
+      "CONTRACT_A_SEMANTIC": "TIER_ADMISSION",
+      "CURRENT_RULE": "computeTier(score,cov) must be non-null (T1/T2/T3)",
+      "EVIDENCE": "ablation TERMINAL=251, newly-admitted-only TERMINAL=0 PnL=0",
+      "CURRENT_A_PNL": -50.29,
+      "ABLATION_PNL": -50.29,
+      "DELTA_PNL": 0,
+      "CURRENT_A_ROI": -20.0359,
+      "ABLATION_ROI": -20.0359,
+      "DELTA_ROI_PP": 0,
+      "VERDICT": "NEUTRAL_OR_PROTECTIVE"
+    },
+    {
+      "RANK": 4,
+      "CONTRACT_A_SEMANTIC": "SCORE_FLOOR",
+      "CURRENT_RULE": "score ≥ 50",
+      "EVIDENCE": "ablation TERMINAL=251, newly-admitted-only TERMINAL=0 PnL=0",
+      "CURRENT_A_PNL": -50.29,
+      "ABLATION_PNL": -50.29,
+      "DELTA_PNL": 0,
+      "CURRENT_A_ROI": -20.0359,
+      "ABLATION_ROI": -20.0359,
+      "DELTA_ROI_PP": 0,
+      "VERDICT": "NEUTRAL_OR_PROTECTIVE"
+    }
+  ]
+}
