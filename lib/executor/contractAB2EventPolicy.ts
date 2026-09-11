@@ -10,6 +10,7 @@
 //
 //   * persisted canonical Signal Score  >= 65    (SCORE_THRESHOLD)
 //   * entry / signal price               >= 0.30  (PRICE_FLOOR)
+//   * entry / signal price               >= 0.50  (CONTRACT_A_MIN_ENTRY_PRICE — loss containment)
 //   * eSports excluded
 //
 // They are HARD pre-Reservation gates, evaluated exactly once, at the single
@@ -43,12 +44,31 @@
 // verbatim from lib/modeling/historicalFunnelVariants.ts (import-safe: no
 // PnL / bankroll dependency graph); the price-floor predicate + threshold are
 // re-hosted verbatim from the frozen source cited above.
+//
+// LOSS-CONTAINMENT ADDITION (RELEASE_CONTRACT_A_MIN_ENTRY_PRICE_050_V1): the
+// frozen B2_PRICE_FLOOR (0.30) is left untouched, verbatim, per its own
+// DO-NOT-TUNE contract. A separate, stricter Contract A money-admission
+// invariant is layered on top of it, evaluated after every existing B2 gate:
+// entry_price_num >= CONTRACT_A_MIN_ENTRY_PRICE (0.50). Deterministic proof
+// (251/251 terminal Contract A rows, all sub-0.50, PNL -50.29u) showed every
+// currently measured Contract A loss sits below 0.50. This gate is Contract A
+// PLANNING-stage policy only: it rejects the row from becoming a Reservation
+// candidate, but never mutates or removes the row from general scored /
+// research evidence, and it is never relaxed or bypassed with a fallback.
 
 import { getScoreValue, isEsports } from "@/lib/modeling/historicalFunnelVariants";
 
 /** Frozen B2 thresholds. Verbatim from frozenModelProducerV2Shadow.ts. DO NOT TUNE. */
 export const B2_SCORE_THRESHOLD = 65 as const;
 export const B2_PRICE_FLOOR = 0.3 as const;
+
+/**
+ * Contract A money-admission price floor (loss-containment release). Stricter
+ * than, and layered on top of, the frozen B2_PRICE_FLOOR above. An identity
+ * below this price can never become an economic Reservation candidate. Never
+ * lower this value and never add a fallback path around it.
+ */
+export const CONTRACT_A_MIN_ENTRY_PRICE = 0.5 as const;
 
 /**
  * Every reason the B2 pre-Reservation event policy can fail closed. A closed
@@ -58,6 +78,7 @@ export type ContractAB2RejectionReasonCode =
   | "B2_ESPORTS_EXCLUDED"
   | "B2_SCORE_BELOW_65"
   | "B2_PRICE_BELOW_030"
+  | "B2_PRICE_BELOW_050"
   | "B2_ASOF_EVIDENCE_UNAVAILABLE";
 
 export type ContractAB2PolicyVerdict =
@@ -184,5 +205,22 @@ export function evaluateContractAB2EventPolicy(
     return { allowed: false, reason_code: "B2_PRICE_BELOW_030", detail: raw === null ? "null" : String(raw) };
   }
 
+  if (!passesContractAMinEntryPrice(row)) {
+    const raw = finiteNumber(row.entry_price_num);
+    return { allowed: false, reason_code: "B2_PRICE_BELOW_050", detail: raw === null ? "null" : String(raw) };
+  }
+
   return { allowed: true };
+}
+
+/**
+ * Contract A money-admission invariant (loss-containment release): finite
+ * entry_price_num, 0 < v <= 1, and v >= CONTRACT_A_MIN_ENTRY_PRICE (0.50).
+ * Evaluated strictly after the frozen B2 price floor above — never replaces
+ * it, never relaxed, never bypassed by a fallback path.
+ */
+function passesContractAMinEntryPrice(row: Row): boolean {
+  const raw = finiteNumber(row.entry_price_num);
+  const p = raw !== null && raw > 0 && raw <= 1 ? raw : null;
+  return p !== null && p >= CONTRACT_A_MIN_ENTRY_PRICE;
 }

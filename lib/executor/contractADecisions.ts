@@ -671,9 +671,11 @@ export async function produceContractAPlanningDecisions(
     const base = buildContractAPlanningDecision(candidate, diagnosticsOf(sourceRow));
     if (!base.accepted) return base;
     // HARD B2 event-policy gates: persisted canonical Signal Score >= 65,
-    // entry/signal price >= 0.30, eSports excluded. NOT timing — the historical
-    // <120m predicate is the old frozen execution-time contour and is not
-    // reapplied at the 17:00 planning stage.
+    // entry/signal price >= 0.30, entry/signal price >= 0.50 (Contract A
+    // loss-containment money-admission floor, layered on top of the frozen
+    // 0.30 floor — see contractAB2EventPolicy.ts), eSports excluded. NOT
+    // timing — the historical <120m predicate is the old frozen
+    // execution-time contour and is not reapplied at the 17:00 planning stage.
     const b2 = evaluateContractAB2EventPolicy(sourceRow ?? null, base.decision.strategic_scope);
     if (b2.allowed) return base;
     console.log(
