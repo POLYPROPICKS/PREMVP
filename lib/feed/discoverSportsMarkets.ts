@@ -51,6 +51,48 @@ const DEFAULT_CONFIG: SportsDiscoveryConfig = {
   persistInventory: false,
 };
 
+// ── BOUNDED_MULTI_IDENTITY_SOURCE_QUALIFICATION_V1 ─────────────────────────
+// The authorized bounded SOURCE corridor for fan-out sibling identities —
+// deliberately wider than Signal Score's own unchanged 1.35..5.00 admission
+// corridor (lib/feed/buildLandingCards.ts, selectOutcome). A source-eligible
+// identity outside the scorer's own corridor legitimately reaches the scorer
+// and returns score-null; that is expected, not a defect here.
+export const SOURCE_ODDS_MIN = 1.30;
+export const SOURCE_ODDS_MAX = 6.00;
+export const SOURCE_AGGREGATE_VOLUME_MIN_USD = 1000;
+
+export function isSourceOddsEligible(europeanOdds: number): boolean {
+  return (
+    Number.isFinite(europeanOdds) &&
+    europeanOdds >= SOURCE_ODDS_MIN &&
+    europeanOdds <= SOURCE_ODDS_MAX
+  );
+}
+
+export function isSourceAggregateVolumeEligible(aggregateProviderEventVolumeUsd: number): boolean {
+  return (
+    Number.isFinite(aggregateProviderEventVolumeUsd) &&
+    aggregateProviderEventVolumeUsd >= SOURCE_AGGREGATE_VOLUME_MIN_USD
+  );
+}
+
+// A market is source-odds-eligible if at least one of its own two outcome
+// prices implies decimal odds inside the authorized source corridor. This
+// does not select a side (unchanged scorer selection remains
+// selectOutcome's job) — it only decides whether this identity is a
+// candidate the scorer should be allowed to attempt at all.
+export function marketHasSourceEligibleOddsSide(m: { outcomePrices?: unknown }): boolean {
+  const raw = (m as { outcomePrices?: unknown }).outcomePrices;
+  const prices = Array.isArray(raw) ? raw : [];
+  for (const p of prices) {
+    const priceNum = typeof p === "number" ? p : Number(p);
+    if (!Number.isFinite(priceNum) || priceNum <= 0 || priceNum >= 1) continue;
+    const europeanOdds = Math.round((1 / priceNum) * 10000) / 10000;
+    if (isSourceOddsEligible(europeanOdds)) return true;
+  }
+  return false;
+}
+
 const ESPORTS_SERIES_EVENT_RE =
   /^(?:will\s+)?(?:counter-strike|dota\s*2|lol|league\s+of\s+legends|valorant)\s*:\s*.+?\s+(?:vs\.?|beat(?:s)?)\s+.+?\s*\(\s*bo(?:1|3|5)\s*\)/i;
 const ESPORTS_SUBMARKET_RE =
@@ -1427,19 +1469,33 @@ export async function discoverSportsMarkets(
         oneDayPriceChange: g.primaryMarket.oneDayPriceChange,
         providerMarketId: g.primaryMarket.id,
       } : null,
-      // Add all grouped markets for mapper to try
-      marketsRaw: g.markets.map(m => ({
-        outcomes: m.outcomes,
-        outcomePrices: m.outcomePrices,
-        clobTokenIds: m.clobTokenIds,
-        question: m.question,
-        sportsMarketType: m.sportsMarketType,
-        conditionId: m.conditionId,
-        volumeNum: m.volumeNum,
-        volume24hr: m.volume24hr,
-        volumeClob: m.volumeClob,
-        oneDayPriceChange: m.oneDayPriceChange,
-      })),
+      // Add all grouped markets for mapper to try.
+      // BOUNDED_MULTI_IDENTITY_SOURCE_QUALIFICATION_V1: only markets that satisfy
+      // the authorized bounded source corridor are carried as fan-out siblings —
+      // aggregate provider-event volume (g.eventVolumeUsd, the existing summed
+      // canonicalMarketVolume owner) >= SOURCE_AGGREGATE_VOLUME_MIN_USD, and at
+      // least one own outcome price implying decimal odds within
+      // [SOURCE_ODDS_MIN, SOURCE_ODDS_MAX]. Market-class (moneyline/spread/total)
+      // eligibility is unchanged — still enforced downstream by
+      // isAuthorizedRecoveryMarketType in buildLandingCards.ts. This does not
+      // rank, cap-to-one, or prefer any market — every source-eligible sibling is
+      // still carried through for the existing fan-out to attempt independently.
+      marketsRaw: isSourceAggregateVolumeEligible(g.eventVolumeUsd)
+        ? g.markets
+            .filter(m => marketHasSourceEligibleOddsSide(m))
+            .map(m => ({
+              outcomes: m.outcomes,
+              outcomePrices: m.outcomePrices,
+              clobTokenIds: m.clobTokenIds,
+              question: m.question,
+              sportsMarketType: m.sportsMarketType,
+              conditionId: m.conditionId,
+              volumeNum: m.volumeNum,
+              volume24hr: m.volume24hr,
+              volumeClob: m.volumeClob,
+              oneDayPriceChange: m.oneDayPriceChange,
+            }))
+        : [],
     }));
 
   counts.finalPairs = finalCandidates.length;
