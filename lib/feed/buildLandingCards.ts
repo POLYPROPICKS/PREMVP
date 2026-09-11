@@ -149,6 +149,92 @@ export function sampleToCandidateMarket(sample: SportsDiscoverySample): Candidat
   };
 }
 
+// ── SCORER_INPUT_FANOUT_ONLY_V1 ───────────────────────────────────────────
+// One physical event (one `SportsDiscoverySample`) can carry several
+// canonically-supported selected-outcome identities under the SAME provider
+// event group: `sample.primaryMarketRaw` (the pre-existing single
+// representative) plus any `sample.marketsRaw` sibling whose
+// `sportsMarketType` is already authorized for recovery (moneyline / spread /
+// total — `AUTHORIZED_RECOVERY_MARKET_TYPES`, unchanged). Prior behavior
+// collapsed this to exactly one `CandidateMarket` (the primary) and only
+// consulted siblings as a single-pick enrichment fallback
+// (`selectRecoverablePrimaryMarket`). This function instead expands the
+// sample into one independent `CandidateMarket` per already-carried
+// identity so each runs the existing unchanged scorer path
+// (`runPrimaryCandidateLoop` -> `enrichMarket`) on its own — no new source
+// qualification, no new provider/network fetch, no widened price corridor.
+// Returns `[]` only when the primary market itself cannot be built (mirrors
+// `sampleToCandidateMarket` returning `null`).
+export function sampleToCandidateMarkets(sample: SportsDiscoverySample): CandidateMarket[] {
+  const primary = sampleToCandidateMarket(sample);
+  if (!primary) return [];
+
+  const candidates: CandidateMarket[] = [primary];
+  const primaryConditionId = safeString(sample.primaryMarketRaw?.conditionId);
+  const seenConditionIds = new Set<string>(primaryConditionId ? [primaryConditionId] : []);
+  const primaryParentMeta = (primary.market as unknown as Record<string, unknown>)
+    ._parentMeta as ParentEventMeta;
+
+  const siblingCandidates = (sample.marketsRaw ?? [])
+    .filter((sib) => {
+      if (!sib) return false;
+      const conditionId = safeString(sib.conditionId);
+      if (!conditionId || seenConditionIds.has(conditionId)) return false;
+      // Same canonical full-match product contour already authorized for
+      // recovery — moneyline / spread / total only. No new eligibility corridor.
+      if (!isAuthorizedRecoveryMarketType(sib.sportsMarketType)) return false;
+      const outcomes = safeParseArray<string>(sib.outcomes);
+      const prices = safeParseArray<unknown>(sib.outcomePrices);
+      const tokenIds = safeParseArray<string>(sib.clobTokenIds);
+      if (outcomes.length !== 2 || prices.length !== 2 || tokenIds.length !== 2) return false;
+      if (!safeString(tokenIds[0]) || !safeString(tokenIds[1])) return false;
+      return true;
+    })
+    // Deterministic order: stable lexicographic by conditionId.
+    .sort((a, b) => String(a.conditionId).localeCompare(String(b.conditionId)));
+
+  for (const sib of siblingCandidates) {
+    const conditionId = safeString(sib.conditionId);
+    if (!conditionId || seenConditionIds.has(conditionId)) continue;
+    seenConditionIds.add(conditionId);
+
+    const siblingMarket: PolymarketRawMarket = {
+      id: conditionId,
+      conditionId,
+      question: sib.question ?? primary.market.question,
+      slug: primary.market.slug,
+      active: true,
+      closed: false,
+      outcomes: sib.outcomes as unknown as PolymarketRawOutcome[] | string,
+      outcomePrices: sib.outcomePrices as unknown as Record<string, number> | string,
+      clobTokenIds: sib.clobTokenIds as unknown as string[] | string,
+      volume24hr: sib.volume24hr ?? undefined,
+      oneDayPriceChange: sib.oneDayPriceChange ?? undefined,
+    };
+
+    (siblingMarket as unknown as Record<string, unknown>)._parentMeta = {
+      ...primaryParentMeta,
+      sportsMarketType: sib.sportsMarketType ?? primaryParentMeta.sportsMarketType,
+      providerMarketId: conditionId,
+    };
+
+    candidates.push({
+      event: { ...primary.event, markets: [siblingMarket] },
+      market: siblingMarket,
+      rejectionReasons: [],
+      warnings: [...primary.warnings, "scorer-input-fanout-sibling-identity"],
+      isSportsRelated: primary.isSportsRelated,
+      isEnded: false,
+      sportsMatchedKeyword: primary.sportsMatchedKeyword,
+      // Carried for parity with the primary candidate — unchanged existing
+      // enrichment-fallback recovery still has same-shard siblings available.
+      siblingMarketsRaw: sample.marketsRaw,
+    });
+  }
+
+  return candidates;
+}
+
 export function researchNestedMarketToCandidate(rm: ResearchNestedMarket): {
   candidate: CandidateMarket;
   forcedOutcome: ForcedOutcomeSelection;
@@ -3018,6 +3104,11 @@ export async function runPrimaryCandidateLoop(
       continue;
     }
 
+    // SCORER_INPUT_FANOUT_ONLY_V1: the identity this candidate attempted, fixed
+    // BEFORE any recovery substitution below. Used to gate canonicalPrimaryPairs
+    // admission — see the identity-match check after pair generation.
+    const attemptedConditionId = safeString(candidate.market.conditionId);
+
     let effectiveCandidate = candidate;
     let enriched = await deps.enrichMarket(candidate.event, candidate.market, candidate.warnings);
 
@@ -3094,6 +3185,27 @@ export async function runPrimaryCandidateLoop(
       });
       continue;
     }
+
+    // SCORER_INPUT_FANOUT_ONLY_V1: admission integrity. Each candidate attempted
+    // exactly one identity (attemptedConditionId, fixed before recovery). Primary
+    // representative-market recovery (above) may substitute a DIFFERENT market
+    // when this candidate's own market fails to enrich — that is still a valid
+    // enrichment, but the returned pair no longer represents the identity THIS
+    // candidate attempted, so it may not enter canonicalPrimaryPairs. Under
+    // fan-out, the substituted identity already gets its own independent, honest
+    // attempt as its own CandidateMarket (see sampleToCandidateMarkets), so no
+    // coverage is lost — only cross-identity score/pair copying is blocked.
+    if (pair.diagnostics.conditionId !== attemptedConditionId) {
+      recordPrimaryTerminal("PRIMARY_REJECTED_IDENTITY_MISMATCH");
+      rejected.push({
+        id: effectiveCandidate.market.id,
+        rejectionReasons: [
+          `Identity mismatch: attempted conditionId=${attemptedConditionId ?? "null"}, returned conditionId=${pair.diagnostics.conditionId ?? "null"}`,
+        ],
+      });
+      continue;
+    }
+
     if (pair.premiumSignal.winProbability < 52) {
       recordPrimaryTerminal("PRIMARY_REJECTED_WIN_PROBABILITY_BELOW_52");
       rejected.push({
@@ -3378,13 +3490,19 @@ export async function buildLandingCards(options?: {
 
       let sampleToNullCount = 0;
       let fallback48hNullDrops = 0;
+      // SCORER_INPUT_FANOUT_ONLY_V1: each discovery sample (one physical event)
+      // can now expand into >1 CandidateMarket — the primary representative plus
+      // any already-carried authorized-type sibling identity. A sample counts as
+      // "null" only when it produces zero candidates (mirrors the prior
+      // single-representative semantics, where null meant the primary itself
+      // failed to build).
       candidates = discoverySamples.reduce<CandidateMarket[]>((acc, sample) => {
-        const c = sampleToCandidateMarket(sample);
-        if (c === null) {
+        const cs = sampleToCandidateMarkets(sample);
+        if (cs.length === 0) {
           sampleToNullCount++;
           if (sample.strategy === "markets-first-48h-fallback") fallback48hNullDrops++;
         } else {
-          acc.push(c);
+          acc.push(...cs);
         }
         return acc;
       }, []);
