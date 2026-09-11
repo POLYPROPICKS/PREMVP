@@ -499,8 +499,27 @@ export async function discoverSportsMarkets(
       //   - events[0]     → m.nestedEventId, m.nestedEventSlug, m.nestedEventStartTime
       // Both eventStartTime AND nestedEventStartTime being set gives classifyGameSignal
       // 2 reasons → "strong" signal for all keyset-derived markets with a valid startTime.
+      //
+      // PHYSICAL_EVENT_FRAGMENTATION_FIXED_V1: Gamma's LaLiga (and similar) provider
+      // markets never carry their own market-level gameId -- it is null on every
+      // nested market. createGroupKey (below) prefers `game:{gameId}` and falls back
+      // to `event:{nestedEventId}` only when gameId is absent, which fragments one
+      // physical match into one group per provider event id (e.g. the moneyline event
+      // and the separate "More Markets" spreads/totals event). The provider DOES
+      // expose the physical-match identity as event.gameId. Propagate it onto the
+      // flattened market only when the market itself has no gameId, so createGroupKey
+      // groups by the shared physical match. No other grouping/ranking logic changes.
+      const marketGameId =
+        typeof mkt.gameId === "string" || typeof mkt.gameId === "number"
+          ? String(mkt.gameId).trim() || null
+          : null;
+      const eventGameId =
+        typeof event.gameId === "string" || typeof event.gameId === "number"
+          ? String(event.gameId).trim() || null
+          : null;
       const augmented: Record<string, unknown> = {
         ...mkt,
+        gameId: marketGameId ?? eventGameId ?? null,
         eventStartTime: eventStartTime ?? null,
         events: [{
           id: eventId,
