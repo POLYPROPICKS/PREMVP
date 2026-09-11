@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { sampleToCandidateMarket, sampleToCandidateMarkets } from "../../lib/feed/buildLandingCards";
+import { runPrimaryCandidateLoop, sampleToCandidateMarkets, type PrimaryCandidateLoopParams } from "../../lib/feed/buildLandingCards";
 import type { SportsDiscoverySample } from "../../lib/feed/types";
 
 // MISSION: SCORER_INPUT_FANOUT_ONLY_V1
@@ -56,35 +56,37 @@ function sample(marketsRaw: SiblingRaw[] | undefined, opts?: Partial<SportsDisco
   } as unknown as SportsDiscoverySample;
 }
 
-test("1. one physical event with a primary + two authorized siblings produces 3 distinct scorer inputs", () => {
+test("1. one physical event with a primary + two authorized siblings produces each two-sided token as a distinct scorer input", () => {
   const s = sample([
     sib("cond-spread", { sportsMarketType: "spreads", outcomePrices: [0.47, 0.53] }),
     sib("cond-total", { sportsMarketType: "totals", outcomePrices: [0.44, 0.56] }),
   ]);
 
   const candidates = sampleToCandidateMarkets(s);
-  assert.equal(candidates.length, 3, "primary + 2 authorized siblings");
+  assert.equal(candidates.length, 6, "three authorized two-sided markets emit six scorer inputs");
 
   const conditionIds = candidates.map((c) => c.market.conditionId);
-  assert.deepEqual(new Set(conditionIds).size, 3, "all identities distinct");
-  assert.ok(conditionIds.includes("cond-primary"));
-  assert.ok(conditionIds.includes("cond-spread"));
-  assert.ok(conditionIds.includes("cond-total"));
+  assert.deepEqual(new Set(conditionIds).size, 3, "physical provider markets remain distinct");
+  assert.equal(new Set(candidates.map((c) => c.forcedOutcome?.selectedTokenId)).size, 6, "each scorer input owns one exact token");
+  assert.deepEqual(
+    candidates.map((c) => c.forcedOutcome?.selectedPriceNum).sort((a, b) => (a ?? 0) - (b ?? 0)),
+    [0.03, 0.44, 0.47, 0.53, 0.56, 0.97],
+  );
 });
 
 test("2. each fan-out candidate is keyed by its own distinct condition_id (identity, not a clone)", () => {
   const s = sample([sib("cond-spread", { sportsMarketType: "spreads", outcomePrices: [0.47, 0.53] })]);
   const candidates = sampleToCandidateMarkets(s);
-  const primary = candidates.find((c) => c.market.conditionId === "cond-primary")!;
-  const spreadCandidate = candidates.find((c) => c.market.conditionId === "cond-spread")!;
+  const primary = candidates.filter((c) => c.market.conditionId === "cond-primary");
+  const spreadCandidate = candidates.filter((c) => c.market.conditionId === "cond-spread");
 
-  assert.ok(primary);
-  assert.ok(spreadCandidate);
+  assert.equal(primary.length, 2);
+  assert.equal(spreadCandidate.length, 2);
   // Distinct market objects, distinct outcome/price/token payloads — not the
   // same object reused for two identities.
-  assert.notEqual(primary.market, spreadCandidate.market);
-  assert.notEqual(primary.market.conditionId, spreadCandidate.market.conditionId);
-  assert.deepEqual(spreadCandidate.market.outcomePrices, [0.47, 0.53]);
+  assert.notEqual(primary[0].market, spreadCandidate[0].market);
+  assert.notEqual(primary[0].market.conditionId, spreadCandidate[0].market.conditionId);
+  assert.deepEqual(spreadCandidate[0].market.outcomePrices, [0.47, 0.53]);
 });
 
 test("3. unauthorized market families (corners / halftime) are excluded from fan-out — no new eligibility corridor", () => {
@@ -93,7 +95,7 @@ test("3. unauthorized market families (corners / halftime) are excluded from fan
     sib("cond-ht", { sportsMarketType: "soccer_halftime_result", outcomePrices: [0.45, 0.55] }),
   ]);
   const candidates = sampleToCandidateMarkets(s);
-  assert.equal(candidates.length, 1, "only the primary — unauthorized siblings never become scorer inputs");
+  assert.equal(candidates.length, 2, "only the primary's two identities — unauthorized siblings never become scorer inputs");
   assert.equal(candidates[0].market.conditionId, "cond-primary");
 });
 
@@ -103,7 +105,7 @@ test("4. malformed / non-binary siblings are excluded (fail-closed, same guards 
     sib("cond-notoken", { clobTokenIds: ["", ""] }),
   ]);
   const candidates = sampleToCandidateMarkets(s);
-  assert.equal(candidates.length, 1, "only the primary — malformed siblings never become scorer inputs");
+  assert.equal(candidates.length, 2, "only the primary's two identities — malformed siblings never become scorer inputs");
 });
 
 test("5. the primary's own conditionId is never duplicated even if it also appears in marketsRaw", () => {
@@ -112,17 +114,16 @@ test("5. the primary's own conditionId is never duplicated even if it also appea
     sib("cond-spread", { sportsMarketType: "spreads", outcomePrices: [0.47, 0.53] }),
   ]);
   const candidates = sampleToCandidateMarkets(s);
-  assert.equal(candidates.length, 2, "primary + the one genuinely distinct authorized sibling");
+  assert.equal(candidates.length, 4, "two identities for each genuinely distinct authorized market");
   const conditionIds = candidates.map((c) => c.market.conditionId);
-  assert.equal(conditionIds.filter((id) => id === "cond-primary").length, 1);
+  assert.equal(conditionIds.filter((id) => id === "cond-primary").length, 2);
 });
 
-test("6. no siblings -> fan-out degrades to exactly the legacy single representative (byte-parity with sampleToCandidateMarket)", () => {
+test("6. a single authorized two-sided market emits both identities rather than the legacy selected-outcome representative", () => {
   const s = sample(undefined);
   const candidates = sampleToCandidateMarkets(s);
-  const legacy = sampleToCandidateMarket(s);
-  assert.equal(candidates.length, 1);
-  assert.deepEqual(candidates[0], legacy);
+  assert.equal(candidates.length, 2);
+  assert.deepEqual(candidates.map((c) => c.forcedOutcome?.selectedTokenId).sort(), ["cond-primary-tokA", "cond-primary-tokB"]);
 });
 
 test("7. a sample whose primary cannot be built (no conditionId) still yields zero candidates — fail-closed, not widened", () => {
@@ -141,6 +142,59 @@ test("8. deterministic ordering — primary first, siblings lexicographic by con
   const candidates = sampleToCandidateMarkets(s);
   assert.deepEqual(
     candidates.map((c) => c.market.conditionId),
-    ["cond-primary", "cond-a-spread", "cond-z-total"],
+    ["cond-primary", "cond-primary", "cond-a-spread", "cond-a-spread", "cond-z-total", "cond-z-total"],
   );
+});
+
+test("9. 0.20/0.80 and 0.50/0.50 preserve both exact token/price identities with no tie collapse", () => {
+  const asymmetric = sample(undefined, {
+    primaryMarketRaw: {
+      outcomes: ["Underdog", "Favorite"], outcomePrices: [0.20, 0.80], clobTokenIds: ["tok-20", "tok-80"],
+      question: "A vs B", sportsMarketType: "moneyline", conditionId: "cond-asymmetric",
+    },
+  });
+  const tied = sample(undefined, {
+    primaryMarketRaw: {
+      outcomes: ["Over", "Under"], outcomePrices: [0.50, 0.50], clobTokenIds: ["tok-over", "tok-under"],
+      question: "Total", sportsMarketType: "totals", conditionId: "cond-tied",
+    },
+  });
+  for (const [input, expected] of [[asymmetric, ["tok-20", "tok-80"]], [tied, ["tok-over", "tok-under"]]] as const) {
+    const candidates = sampleToCandidateMarkets(input);
+    assert.equal(candidates.length, 2);
+    assert.deepEqual(candidates.map((c) => c.forcedOutcome?.selectedTokenId).sort(), expected);
+    assert.equal(new Set(candidates.map((c) => c.forcedOutcome?.selectedTokenId)).size, 2, "no same-token duplicate scorer input");
+  }
+});
+
+test("10. the two identities invoke the existing scorer boundary independently with no score copy", async () => {
+  const candidates = sampleToCandidateMarkets(sample(undefined, {
+    primaryMarketRaw: {
+      outcomes: ["Team A", "Team B"], outcomePrices: [0.45, 0.55], clobTokenIds: ["tok-a", "tok-b"],
+      question: "Team A vs Team B", sportsMarketType: "moneyline", conditionId: "cond-scorer",
+    },
+  }));
+  const attempts: Array<{ token: string; price: number }> = [];
+  const params: PrimaryCandidateLoopParams = {
+    candidates, limit: 15, minDataCoverage: 40, excludeEnded: true, evaluateFullPrimaryPopulation: true,
+    budgetGuard: { isExhausted: () => false, elapsedMs: () => 0, budgetMs: 1 } as PrimaryCandidateLoopParams["budgetGuard"],
+    collectResearchSnapshots: false, isResearchCapReached: () => true, pinnedKeysForPersistCheck: new Set(), rejected: [],
+    researchFunnel: { candidatesSeen: 0, rejectedPreResearchCandidateReasons: 0, enrichmentNull: 0, attempted: 0, rejectedMissingConditionOrSelectedToken: 0, rejectedNoBinaryGuard: 0, rejectedMissingOpposingToken: 0, rejectedInvalidPrice: 0, rejectedOddsBelowMin: 0, rejectedOddsAboveMax: 0, eligible: 0, execFetchAttempted: 0, execFetchOk: 0, execFetchEmptyBook: 0, execFetchFailed: 0 },
+    seenPairIds: new Set(), seenMarketKeys: new Set(),
+    deps: {
+      enrichMarket: async (_event, _market, _warnings, forced) => {
+        attempts.push({ token: forced!.selectedTokenId, price: forced!.selectedPriceNum });
+        return { diagnostics: { dataCoverage: 100, rejectionReasons: [], conditionId: "cond-scorer" } } as never;
+      },
+      selectRecoverablePrimaryMarket: () => null,
+      generateLandingCardPair: () => {
+        const attempt = attempts[attempts.length - 1];
+        return { id: `pair-${attempt.token}`, premiumSignal: { winProbability: 70, time: "3h" }, marketSource: { headline: attempt.token }, diagnostics: { conditionId: "cond-scorer", selectedTokenId: attempt.token } } as never;
+      },
+      computeCandidateProviderEventKey: () => null,
+      captureResearchSnapshot: async () => {},
+    },
+  };
+  await runPrimaryCandidateLoop(params);
+  assert.deepEqual(attempts, [{ token: "tok-a", price: 0.45 }, { token: "tok-b", price: 0.55 }]);
 });
