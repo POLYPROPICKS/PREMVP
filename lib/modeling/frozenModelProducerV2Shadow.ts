@@ -1,6 +1,6 @@
 // Frozen Model Producer V2 Shadow (Integration Milestone 2A, Part B; parity
 // repair v2). Pure, read-only, side-effect-free evaluator for the FROZEN
-// B2_PRICE_FLOOR_030_TIMING_WITHIN_120M threshold contract. This module does
+// B2_PRICE_FLOOR_030_CONTRACT_A_TIMING_WINDOW threshold contract. This module does
 // NOT touch execution/order/reservation/queue/Ireland/CLOB systems -- it only
 // classifies already-generated signal candidates (generated_signal_pairs
 // export rows) into ACCEPTED decisions or REJECTED-with-reason.
@@ -16,11 +16,11 @@
 // and would blow the approved file budget). The two functions are:
 //
 //   export const PRICE_FLOOR = 0.3 as const;
-//   export const TIMING_UPPER_HOURS = 2 as const;
+//   export const CONTRACT_A_TIMING_WINDOW_MINUTES = 1440 as const;
 //   function passesPriceFloor(row): getEntryPriceValue(row) !== null && p >= PRICE_FLOOR
-//   function passesTimingWithin120m(row): h !== null && h >= 0 && h < TIMING_UPPER_HOURS
+//   function passesContractATimingWindow(row, asOfMs): 0 < minutesUntilStart <= CONTRACT_A_TIMING_WINDOW_MINUTES
 //   function getEntryPriceValue(row): finiteNumber(row.entry_price_num); 0 < v <= 1 ? v : null
-//   function getHoursUntilStartValue(row): (startMs(diagnostics.gameStartIso) - createdMs(row.created_at)) / 3_600_000
+//   function getMinutesUntilStartAt(row, asOfMs): (startMs(diagnostics.gameStartIso) - asOfMs) / 60_000
 //
 // Score (>=65) and eSports exclusion adapters (getScoreValue, isEsports) are
 // imported verbatim from historicalFunnelVariants.ts -- reused directly, not
@@ -54,7 +54,8 @@ export const FROZEN_MODEL_V2_SCHEMA_VERSION = "FROZEN_MODEL_V2_SHADOW_DECISION_V
 // ---- Frozen thresholds. DO NOT TUNE. Verbatim from accepted source. ----
 const SCORE_THRESHOLD = 65;
 const PRICE_FLOOR = 0.3;
-const TIMING_UPPER_HOURS = 2; // 120 minutes
+/** Canonical Contract A pre-start policy: physical event start must be within 24 hours. */
+export const CONTRACT_A_TIMING_WINDOW_MINUTES = 1440 as const;
 const T90_OFFSET_MS = 90 * 60_000;
 
 const CONDITION_ID_FIELDS = ["condition_id", "conditionId"] as const;
@@ -168,25 +169,22 @@ function passesPriceFloor(row: ExportRow): boolean {
   return p !== null && p >= PRICE_FLOOR;
 }
 
-// Verbatim port of historicalFunnelVariants.ts's getHoursUntilStartValue,
-// computed relative to the row's OWN created_at (the snapshot's own capture
-// time), not an external as-of wall clock -- matching the accepted source.
-function getHoursUntilStartValue(row: ExportRow): number | null {
+/**
+ * Physical event lead time at the authoritative evaluation instant. This is
+ * deliberately not observation age: created_at remains solely for the
+ * independent as-of and T-90 snapshot gates.
+ */
+function getMinutesUntilStartAt(row: ExportRow, asOfMs: number): number | null {
   const gameStartIso = getGameStartIso(row);
-  const createdAt = typeof row.created_at === "string" ? row.created_at : null;
-  if (gameStartIso === null || createdAt === null) return null;
+  if (gameStartIso === null) return null;
   const startMs = Date.parse(gameStartIso);
-  const createdMs = Date.parse(createdAt);
-  if (Number.isNaN(startMs) || Number.isNaN(createdMs)) return null;
-  return (startMs - createdMs) / 3_600_000;
+  if (!Number.isFinite(startMs)) return null;
+  return (startMs - asOfMs) / 60_000;
 }
 
-// Verbatim port of boundedRoutingExperiments.ts's passesTimingWithin120m:
-// 0 <= hoursUntilStart < 2. Already-started (negative) and >=120min both fail
-// closed.
-function passesTimingWithin120m(row: ExportRow): boolean {
-  const h = getHoursUntilStartValue(row);
-  return h !== null && h >= 0 && h < TIMING_UPPER_HOURS;
+function passesContractATimingWindow(row: ExportRow, asOfMs: number): boolean {
+  const minutes = getMinutesUntilStartAt(row, asOfMs);
+  return minutes !== null && minutes > 0 && minutes <= CONTRACT_A_TIMING_WINDOW_MINUTES;
 }
 
 function getGameStartIso(row: ExportRow): string | null {
@@ -345,13 +343,13 @@ export function produceFrozenModelV2ShadowDecisions(
       continue;
     }
 
-    if (!passesTimingWithin120m(t90Snapshot)) {
+    if (!passesContractATimingWindow(t90Snapshot, asOfMs)) {
       rejections.push({ index: bucket[0].index, observationId: identity.observationId, eventKey: identity.eventKey, reason: "OUTSIDE_120M" });
       continue;
     }
 
     const entryPrice = getEntryPriceValue(t90Snapshot)!;
-    const minutesUntilStart = getHoursUntilStartValue(t90Snapshot)! * 60;
+    const minutesUntilStart = getMinutesUntilStartAt(t90Snapshot, asOfMs)!;
     const createdAtIso = new Date(createdMs(t90Snapshot)!).toISOString();
 
     eligible.push({ index: bucket[0].index, row: t90Snapshot, identity, score, entryPrice, minutesUntilStart, createdAtIso });

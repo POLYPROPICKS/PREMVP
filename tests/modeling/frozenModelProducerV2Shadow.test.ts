@@ -3,6 +3,7 @@ import { test } from "node:test";
 import {
   produceFrozenModelV2ShadowDecisions,
   FROZEN_MODEL_V2_VERSION,
+  CONTRACT_A_TIMING_WINDOW_MINUTES,
 } from "../../lib/modeling/frozenModelProducerV2Shadow";
 import {
   getStrictDedupKeyForExportRow,
@@ -42,13 +43,29 @@ function baseRow(overrides: Partial<ExportRow> = {}): ExportRow {
   };
 }
 
+async function withNow<T>(iso: string, fn: () => Promise<T>): Promise<T> {
+  const nowMs = Date.parse(iso);
+  const RealDate = Date;
+  class SnapshotDate extends RealDate {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    constructor(value?: any) { super(value ?? nowMs); }
+    static now() { return nowMs; }
+  }
+  globalThis.Date = SnapshotDate as DateConstructor;
+  try {
+    return await fn();
+  } finally {
+    globalThis.Date = RealDate;
+  }
+}
+
 test("accepts a clean eligible row (T-90-exact snapshot, 90 minutes to start)", () => {
   const result = produceFrozenModelV2ShadowDecisions([baseRow()], AS_OF);
   assert.equal(result.acceptedDecisions.length, 1);
   assert.equal(result.rejections.length, 0);
   assert.equal(result.modelVersion, FROZEN_MODEL_V2_VERSION);
   assert.equal(result.acceptedDecisions[0].selectedOutcome, "TEAM_A");
-  assert.equal(result.acceptedDecisions[0].minutesUntilStart, 90);
+  assert.equal(result.acceptedDecisions[0].minutesUntilStart, 60);
 });
 
 test("score threshold: 65 accepted, 64 rejected", () => {
@@ -69,32 +86,34 @@ test("price floor: 0.30 accepted, 0.29 rejected", () => {
   assert.equal(at029.rejections[0].reason, "PRICE_BELOW_030");
 });
 
-test("timing upper bound: 119.999 minutes accepted, exactly 120 rejected, 121 rejected", () => {
-  // created_at chosen so the row is its own T-90-eligible snapshot (created
-  // well before game_start - 90min is not needed here -- we only need
-  // created_at <= game_start - 90min, which all three cases below satisfy,
-  // since minutesUntilStart 119.999/120/121 are all >= 90).
-  const at119_999 = produceFrozenModelV2ShadowDecisions(
-    [baseRow({ created_at: "2026-07-20T11:00:00.001Z" })], // 119.999... min before start
-    AS_OF,
+test("Contract A timing uses physical event start relative to as-of: +1441 rejects; +1440, +121, +120 and +1 accept; at/past start reject", () => {
+  assert.equal(CONTRACT_A_TIMING_WINDOW_MINUTES, 1440);
+  const startMs = Date.parse("2026-07-22T12:00:00.000Z");
+  const atLead = (minutes: number) => produceFrozenModelV2ShadowDecisions(
+    [baseRow({
+      // Earlier than both the as-of point and T-90: proves lead time is
+      // anchored to physical start, not snapshot age.
+      created_at: new Date(startMs - Math.max(90, minutes + 1) * 60_000).toISOString(),
+      diagnostics: { gameStartIso: new Date(startMs).toISOString() },
+    })],
+    new Date(startMs - minutes * 60_000).toISOString(),
   );
-  assert.equal(at119_999.acceptedDecisions.length, 1);
-  assert.ok(at119_999.acceptedDecisions[0].minutesUntilStart < 120);
-  assert.ok(at119_999.acceptedDecisions[0].minutesUntilStart > 119.99);
 
-  const at120 = produceFrozenModelV2ShadowDecisions(
-    [baseRow({ created_at: "2026-07-20T11:00:00.000Z" })], // exactly 120 min before start
-    AS_OF,
-  );
-  assert.equal(at120.acceptedDecisions.length, 0);
-  assert.equal(at120.rejections[0].reason, "OUTSIDE_120M");
+  const beyond = atLead(1441);
+  assert.equal(beyond.acceptedDecisions.length, 0);
+  assert.equal(beyond.rejections[0].reason, "OUTSIDE_120M");
 
-  const at121 = produceFrozenModelV2ShadowDecisions(
-    [baseRow({ created_at: "2026-07-20T10:59:00.000Z" })], // 121 min before start
-    AS_OF,
-  );
-  assert.equal(at121.acceptedDecisions.length, 0);
-  assert.equal(at121.rejections[0].reason, "OUTSIDE_120M");
+  for (const minutes of [1440, 121, 120, 1]) {
+    const result = atLead(minutes);
+    assert.equal(result.acceptedDecisions.length, 1, `+${minutes} minutes must be eligible`);
+    assert.equal(result.acceptedDecisions[0].minutesUntilStart, minutes);
+  }
+
+  for (const minutes of [0, -1]) {
+    const result = atLead(minutes);
+    assert.equal(result.acceptedDecisions.length, 0, `${minutes} minutes must fail closed`);
+    assert.equal(result.rejections[0].reason, "OUTSIDE_120M");
+  }
 });
 
 test("timing lower bound is enforced by T-90 eligibility: a row created less than 90 minutes before start is never T-90-eligible, so it fails closed as SNAPSHOT_NOT_T90_COMPATIBLE (not OUTSIDE_120M) -- it can never reach the timing gate with minutesUntilStart in [0,90)", () => {
@@ -124,7 +143,7 @@ test("T-90 snapshot resolution: latest eligible snapshot wins; one millisecond a
   // latest ELIGIBLE snapshot -- never oneMsAfterT90 (score 99, ineligible),
   // proving the higher-score-but-ineligible row cannot displace it.
   assert.equal(result.acceptedDecisions[0].score, 80);
-  assert.equal(result.acceptedDecisions[0].minutesUntilStart, 90);
+  assert.equal(result.acceptedDecisions[0].minutesUntilStart, 60);
 });
 
 test("T-90 snapshot resolution is order-independent (shuffled input selects the same snapshot)", () => {
@@ -374,7 +393,9 @@ test("does not import any reservation/queue/Ireland/CLOB module", async () => {
 
 test("CONTRACT_A_V1: an accepted Contract A decision maps to exactly one FireModelCandidate preserving condition_id/token_id/side/observation identity, even though it has no diagnostics.dataCoverage (would fail Contur3's LOW_COVERAGE gate)", async () => {
   const row = baseRow({ condition_id: "cond-contract-a-1", token_id: "tok-contract-a-1", selected_outcome: "TEAM_A" });
-  const { candidates, rawDiagnostics } = await buildFireModelCandidates(10, "all", true, [row], "CONTRACT_A_V1");
+  const { candidates, rawDiagnostics } = await withNow(AS_OF, () =>
+    buildFireModelCandidates(10, "all", true, [row], "CONTRACT_A_V1")
+  );
 
   assert.equal(candidates.length, 1);
   assert.equal(rawDiagnostics, null);
@@ -413,8 +434,17 @@ test("CONTRACT_A_V1: an unknown selector mode fails closed instead of silently d
 });
 
 test("CONTRACT_A_V1: live final-stage loading fails closed when its required source environment is unavailable", async () => {
-  await assert.rejects(
-    () => buildFireModelCandidates(10, "all", true, undefined, "CONTRACT_A_V1"),
-    /SUPABASE_URL/,
-  );
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  delete process.env.SUPABASE_URL;
+  delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  try {
+    await assert.rejects(
+      () => buildFireModelCandidates(10, "all", true, undefined, "CONTRACT_A_V1"),
+      /SUPABASE_URL/,
+    );
+  } finally {
+    if (url !== undefined) process.env.SUPABASE_URL = url;
+    if (key !== undefined) process.env.SUPABASE_SERVICE_ROLE_KEY = key;
+  }
 });
