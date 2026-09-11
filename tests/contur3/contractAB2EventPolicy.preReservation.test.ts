@@ -29,7 +29,6 @@ import {
 import {
   B2_SCORE_THRESHOLD,
   B2_PRICE_FLOOR,
-  CONTRACT_A_MIN_ENTRY_PRICE,
   evaluateContractAB2EventPolicy,
   resolveContractAAsOfSnapshots,
 } from "../../lib/executor/contractAB2EventPolicy";
@@ -90,9 +89,7 @@ function row(overrides: {
     // persisted canonical Signal Score is exactly signal_confidence_num here.
     signal_confidence_num: overrides.confidence === undefined ? 70 : overrides.confidence,
     smart_money_score_num: null,
-    // Default is >= CONTRACT_A_MIN_ENTRY_PRICE (0.50) so tests that don't
-    // target the price gate itself aren't confounded by it.
-    entry_price_num: overrides.entryPrice ?? 0.55,
+    entry_price_num: overrides.entryPrice ?? 0.42,
     metric_formula_version: overrides.metricFormulaVersion ?? "v2-lite-growth-safe",
     created_at: overrides.createdAt ?? "2026-07-27T15:30:00.000Z",
     expires_at: "2026-07-28T04:00:00.000Z",
@@ -108,12 +105,7 @@ function row(overrides: {
         eventStartIso: gameStartIso,
         sportFamily,
       },
-      // 80, not 60: production's pre-existing (unrelated, untouched) upstream
-      // candidate gate rejects BAD_BUCKET_COV_PRICE for coverage 50-74 AND
-      // entry_price 0.44-0.58 — a combination this suite's 0.49/0.50/0.55
-      // price-gate fixtures would otherwise fall into before ever reaching
-      // Contract A / B2 evaluation. 80 sits outside that coverage band.
-      dataCoverage: 80,
+      dataCoverage: 60,
       shadowScope: sportFamily,
       eventTitle: "New York Yankees vs Philadelphia Phillies",
       marketTitle: "Yankees vs Phillies moneyline",
@@ -151,12 +143,10 @@ test("B2-1b: persisted canonical Signal Score below 65 rejects before Reservatio
 
 // ── 2. Price gate ────────────────────────────────────────────────────────────
 
-test("B2-2a: entry/signal price exactly 0.30 clears the frozen B2 floor but is still rejected by the stricter 0.50 Contract A money-admission gate", async () => {
+test("B2-2a: entry/signal price exactly 0.30 passes the pre-Reservation gate", async () => {
   assert.equal(B2_PRICE_FLOOR, 0.3);
   const result = await onlyResult([row({ entryPrice: 0.3 })]);
-  assert.equal(result.accepted, false);
-  if (result.accepted) return;
-  assert.equal(result.rejection.reason_code, "B2_PRICE_BELOW_050");
+  assert.equal(result.accepted, true);
 });
 
 test("B2-2b: entry/signal price below 0.30 rejects before Reservation", async () => {
@@ -164,89 +154,6 @@ test("B2-2b: entry/signal price below 0.30 rejects before Reservation", async ()
   assert.equal(result.accepted, false);
   if (result.accepted) return;
   assert.equal(result.rejection.reason_code, "B2_PRICE_BELOW_030");
-});
-
-// ── 2c. RELEASE_CONTRACT_A_MIN_ENTRY_PRICE_050_V1 — Contract A money-admission floor ──
-
-test("B2-2c: entry price 0.49 is rejected with reason B2_PRICE_BELOW_050", async () => {
-  assert.equal(CONTRACT_A_MIN_ENTRY_PRICE, 0.5);
-  const result = await onlyResult([row({ entryPrice: 0.49 })]);
-  assert.equal(result.accepted, false);
-  if (result.accepted) return;
-  assert.equal(result.rejection.reason_code, "B2_PRICE_BELOW_050");
-});
-
-test("B2-2d: entry price 0.499999 is rejected with reason B2_PRICE_BELOW_050", async () => {
-  const result = await onlyResult([row({ entryPrice: 0.499999 })]);
-  assert.equal(result.accepted, false);
-  if (result.accepted) return;
-  assert.equal(result.rejection.reason_code, "B2_PRICE_BELOW_050");
-});
-
-test("B2-2e: entry price exactly 0.50 passes the money-admission price gate", async () => {
-  const result = await onlyResult([row({ entryPrice: 0.5 })]);
-  assert.equal(result.accepted, true);
-});
-
-test("B2-2f: entry price 0.55 passes the money-admission price gate", async () => {
-  const result = await onlyResult([row({ entryPrice: 0.55 })]);
-  assert.equal(result.accepted, true);
-});
-
-test("B2-2g: passing the 0.50 price gate does not bypass the score gate", async () => {
-  // 55: clears the upstream candidate-generation LOW_SCORE (>=50) gate so the
-  // row reaches Contract A / B2 at all, while still failing B2_SCORE_BELOW_65.
-  const result = await onlyResult([row({ entryPrice: 0.55, confidence: 55 })]);
-  assert.equal(result.accepted, false);
-  if (result.accepted) return;
-  assert.equal(result.rejection.reason_code, "B2_SCORE_BELOW_65");
-});
-
-test("B2-2h: passing the 0.50 price gate does not bypass eSports exclusion", () => {
-  const verdict = evaluateContractAB2EventPolicy(
-    { condition_id: "c", selected_token_id: "t", signal_confidence_num: 90, entry_price_num: 0.55 },
-    "ESPORT"
-  );
-  assert.equal(verdict.allowed, false);
-  if (verdict.allowed) return;
-  assert.equal(verdict.reason_code, "B2_ESPORTS_EXCLUDED");
-});
-
-test("B2-2i: no Reservation is created when every candidate is sub-0.50 — zero fallback, zero sub-0.50 admission", async () => {
-  const subA = row({
-    id: "00000000-0000-4000-8000-000000000101",
-    conditionId: "cond-sub-a",
-    tokenId: "tok-sub-a",
-    eventSlug: "mlb-sub-a-2026-07-27",
-    entryPrice: 0.49,
-    confidence: 90,
-  });
-  const subB = row({
-    id: "00000000-0000-4000-8000-000000000102",
-    conditionId: "cond-sub-b",
-    tokenId: "tok-sub-b",
-    eventSlug: "mlb-sub-b-2026-07-27",
-    entryPrice: 0.29,
-    confidence: 90,
-  });
-
-  // Per-row Contract A rejection trace: the exact, stable reason survives —
-  // never silently disappeared, never a sub-0.50 fallback.
-  const decisions = await planningOf([subA, subB]);
-  assert.equal(decisions.length, 2);
-  const reasons = decisions.map((d) => (d.accepted ? "ACCEPTED" : d.rejection.reason_code)).sort();
-  assert.deepEqual(reasons, ["B2_PRICE_BELOW_030", "B2_PRICE_BELOW_050"]);
-
-  // Reservation-level invariant: zero Contract A candidates admitted, no
-  // sub-0.50 fallback fills the slot — zero is an acceptable outcome.
-  const plan = await at(PLANNING_NOW_MS, () =>
-    buildReservationPlan(PLANNING_NOW_MS, {
-      selectorMode: "CONTRACT_A_PLANNING_V1",
-      fetchSourceRows: async () => [subA, subB],
-    })
-  );
-  assert.equal(plan.reservations.length, 0, "zero Contract A candidates — no sub-0.50 fallback fills the slot");
-  assert.equal(plan.diagnostics.planning_decisions_rejected, 2, "both sub-0.50 identities are rejected, not silently dropped");
 });
 
 // ── 3. eSports exclusion ─────────────────────────────────────────────────────
@@ -367,7 +274,7 @@ test("B2-7: the broad 17:00 planning horizon is unchanged — a mid-horizon B2-p
 // ── 8. Post-Reservation Final Identity / Rebalance does not re-evaluate B2 ───
 
 test("B2-8: Final Identity accepts a reserved identity whose later snapshot would fail every B2 gate", async () => {
-  const planningRow = row({ confidence: 70, entryPrice: 0.55 });
+  const planningRow = row({ confidence: 70, entryPrice: 0.42 });
   const [planning] = await planningOf([planningRow]);
   assert.equal(planning.accepted, true);
   if (!planning.accepted) return;

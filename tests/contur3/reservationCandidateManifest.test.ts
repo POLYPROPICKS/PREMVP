@@ -66,10 +66,7 @@ function servingRow(overrides: {
     selected_outcome: overrides.side ?? "New York Yankees",
     score: overrides.score ?? 80,
     signal_confidence_num: overrides.confidence ?? 70,
-    // 0.65: above CONTRACT_A_MIN_ENTRY_PRICE (0.50, RELEASE_CONTRACT_A_MIN_ENTRY_PRICE_050_V1)
-    // and outside the pre-existing, unrelated BAD_BUCKET_COV_PRICE band (coverage
-    // 50-74 AND price 0.44-0.58) — this fixture is not testing price boundaries.
-    entry_price_num: 0.65,
+    entry_price_num: 0.42,
     metric_formula_version: "v2-lite-growth-safe",
     created_at: "2026-07-27T19:30:00.000Z",
     expires_at: "2026-07-28T04:00:00.000Z",
@@ -149,7 +146,7 @@ test("RCM-2: manifest entries carry enough immutable identity to rediscover the 
   assert.equal(entry.side, "New York Yankees");
   assert.equal(entry.market_slug, "New York Yankees vs. Philadelphia Phillies - Moneyline");
   assert.equal(entry.metric_formula_version, "v2-lite-growth-safe");
-  assert.equal(entry.entry_price_num, 0.65);
+  assert.equal(entry.entry_price_num, 0.42);
   assert.equal(entry.signal_confidence_num, 77);
   assert.equal(plan.reservations[0].diagnostics.candidate_manifest_version, "RESERVATION_CANDIDATE_MANIFEST_V1");
 });

@@ -48,10 +48,7 @@ function source(id: string, score: number, conditionId: string, eventId = EVENT_
     score,
     signal_confidence_num: score,
     smart_money_score_num: 50,
-    // 0.65: above CONTRACT_A_MIN_ENTRY_PRICE (0.50, RELEASE_CONTRACT_A_MIN_ENTRY_PRICE_050_V1)
-    // and outside the pre-existing, unrelated BAD_BUCKET_COV_PRICE band (coverage
-    // 50-74 AND price 0.44-0.58) — this fixture is not testing price boundaries.
-    entry_price_num: 0.65,
+    entry_price_num: 0.42,
     stake_usd: 1.1,
     max_entry_price: 0.55,
     created_at: "2026-08-06T13:30:00.000Z",

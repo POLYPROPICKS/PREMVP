@@ -65,10 +65,7 @@ const SOURCE_ROW = {
   score: 80,
   signal_confidence_num: 70,
   smart_money_score_num: null,
-  // 0.65: above CONTRACT_A_MIN_ENTRY_PRICE (0.50, RELEASE_CONTRACT_A_MIN_ENTRY_PRICE_050_V1)
-  // and outside the pre-existing, unrelated BAD_BUCKET_COV_PRICE band (coverage
-  // 50-74 AND price 0.44-0.58) — this fixture tests lineage/identity, not price.
-  entry_price_num: 0.65,
+  entry_price_num: 0.42,
   metric_formula_version: "v2-lite-growth-safe",
   created_at: "2026-07-27T19:30:00.000Z", // exact T-90 snapshot for a 21:00Z kickoff
   expires_at: KICKOFF_ISO,
