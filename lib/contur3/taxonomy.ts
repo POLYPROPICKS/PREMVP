@@ -63,6 +63,10 @@ const FORBIDDEN_FUTURES_SQ = /outright|towinoutright|winnergroup/;
 const FORBIDDEN_FUTURES_TOKEN = /\bfutures?\b/;
 const ESPORTS_SQ = /esports|csgo|dota|leagueoflegends|valorant|counterstrike/;
 const ESPORTS_TOKEN = /\bcs2\b/;
+// Polymarket tennis tournament settlement labels such as "Main Draw: Completed
+// Match" are not executable match-winner markets. In particular, "Main Draw"
+// must not reach the broad `draw` moneyline token below.
+const TOURNAMENT_COMPLETED_MATCH_SQ = /completedmatch/;
 const ALLOWED_MONEYLINE_SQ = /moneyline|matchwinner|towin|matchresult|winner|drawnobet|1x2/;
 const ALLOWED_MONEYLINE_TOKEN = /\bdraw\b/;
 const ALLOWED_SPREAD_SQ = /spread|handicap/;
@@ -89,6 +93,7 @@ export function classifyMarketText(input: unknown): MarketClass {
   if (FORBIDDEN_PROPS_SQ.test(squashed) || FORBIDDEN_PROPS_TOKEN.test(joined)) return "forbidden_props";
   if (FORBIDDEN_FUTURES_SQ.test(squashed) || FORBIDDEN_FUTURES_TOKEN.test(joined)) return "forbidden_futures";
   if (ESPORTS_SQ.test(squashed) || ESPORTS_TOKEN.test(joined)) return "esports_non_policy";
+  if (TOURNAMENT_COMPLETED_MATCH_SQ.test(squashed)) return "unknown";
   if (ALLOWED_MONEYLINE_SQ.test(squashed) || ALLOWED_MONEYLINE_TOKEN.test(joined)) return "allowed_fullmatch_moneyline";
   if (ALLOWED_SPREAD_SQ.test(squashed)) return "allowed_fullmatch_spread";
   if (ALLOWED_TOTAL_SQ.test(squashed) || ALLOWED_TOTAL_TOKEN.test(joined)) return "allowed_fullmatch_total";
