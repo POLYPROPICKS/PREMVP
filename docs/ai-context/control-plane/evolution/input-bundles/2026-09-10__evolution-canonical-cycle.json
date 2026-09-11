@@ -1,0 +1,64 @@
+{
+    "bundle_id": "2026-09-10__evolution-canonical-cycle",
+    "repository": "POLYPROPICKS/PREMVP",
+    "period_start": "2026-09-10T00:00:00Z",
+    "period_end": "2026-09-11T00:00:00Z",
+    "evidence_cutoff": "2026-09-11T00:30:00Z",
+    "capture_coverage": "PARTIAL",
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+        "POLYPROPICKS/PREMVP#289",
+        "POLYPROPICKS/PREMVP#290",
+        "POLYPROPICKS/PREMVP#291",
+        "POLYPROPICKS/PREMVP#292"
+    ],
+    "operator_action_events": [],
+    "operating_telemetry": {
+        "founder_actions_removable": "UNKNOWN",
+        "executor_runs": "UNKNOWN",
+        "successful_terminal_results": 4,
+        "reruns_resumes": "UNKNOWN",
+        "recovery_iterations": "UNKNOWN",
+        "reviewer_corrections_rejections": 0,
+        "orchestration_waste_iterations": 0,
+        "runtime_evidence_count": 0,
+        "reusable_artifacts_created": 2,
+        "actions_per_verified_result": "UNKNOWN",
+        "time_to_verified_result": "UNKNOWN"
+    },
+    "supporting_metrics": {
+        "runtime_evidence_count": 0,
+        "reusable_artifacts_created": 2,
+        "reviewer_rejection_count": 0,
+        "architect_corrections": 0
+    },
+    "defect_occurrences": [
+        {
+            "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+            "origin": "STATE_OR_CONTEXT_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-07-ZERO-CI-GATE-ON-MERGE",
+            "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": "CHAIN-NO-CI-GATE-MERGE-ENFORCEMENT",
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-10-EXACT-ANCHOR-CALENDAR-DATE-SEMANTICS",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "NEW_INDEPENDENT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#292",
+            "proven_effective_evidence_refs": [
+                "POLYPROPICKS/PREMVP#292",
+                "tests/contur3/nightFunnelAudit.test.ts (44/44, independently re-run by this Routine at evidence_cutoff)"
+            ]
+        }
+    ]
+}
