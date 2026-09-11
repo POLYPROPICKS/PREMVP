@@ -18,7 +18,10 @@ const exactSource = {
   score: 80,
   signal_confidence_num: 70,
   smart_money_score_num: null,
-  entry_price_num: 0.42,
+  // 0.65: above CONTRACT_A_MIN_ENTRY_PRICE (0.50, RELEASE_CONTRACT_A_MIN_ENTRY_PRICE_050_V1)
+  // and outside the pre-existing, unrelated BAD_BUCKET_COV_PRICE band (coverage
+  // 50-74 AND price 0.44-0.58) — this fixture is not testing price boundaries.
+  entry_price_num: 0.65,
   metric_formula_version: "v2-lite-growth-safe",
   created_at: "2026-07-27T19:30:00.000Z",
   expires_at: START,
@@ -132,5 +135,6 @@ test("C1 RED: a persisted Step B Reservation reaches Contract A final identity, 
   assert.equal(repo.rows[0].diagnostics.event_start_iso, START);
   assert.equal(repo.rows[0].condition_id, "cond-exact");
   assert.equal(repo.rows[0].token_id, "token-exact");
-  assert.equal(repo.rows[0].diagnostics.max_entry_price, 0.42);
+  // This diagnostics field is carried verbatim from SOURCE_ROW.entry_price_num.
+  assert.equal(repo.rows[0].diagnostics.max_entry_price, 0.65);
 });
