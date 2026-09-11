@@ -232,7 +232,7 @@ export function sampleToCandidateMarkets(sample: SportsDiscoverySample): Candida
     });
   }
 
-  return candidates;
+  return candidates.flatMap(fanOutAuthorizedTwoSidedOutcomeCandidates);
 }
 
 export function researchNestedMarketToCandidate(rm: ResearchNestedMarket): {
@@ -322,6 +322,8 @@ export interface CandidateMarket {
    * on the discovery sample. Used only by primary representative-market recovery.
    */
   siblingMarketsRaw?: SportsDiscoverySample["marketsRaw"];
+  /** Exact provider outcome identity for an independent scorer attempt. */
+  forcedOutcome?: ForcedOutcomeSelection;
 }
 
 export interface ForcedOutcomeSelection {
@@ -329,6 +331,37 @@ export interface ForcedOutcomeSelection {
   selectedOutcomeName?: string | null;
   selectedOutcomeIndex?: number | null;
   selectedPriceNum: number;
+}
+
+/**
+ * Preserves each eligible provider outcome/token from an authorized binary
+ * full-match market as a separate scorer input. The existing scorer still
+ * evaluates each candidate independently; this only removes the pre-scorer
+ * selectOutcome collapse.
+ */
+function fanOutAuthorizedTwoSidedOutcomeCandidates(candidate: CandidateMarket): CandidateMarket[] {
+  if (!isAuthorizedRecoveryMarketType(getParentMeta(candidate.market).sportsMarketType)) return [candidate];
+
+  const outcomes = safeParseArray<string>(candidate.market.outcomes);
+  const prices = safeParseArray<unknown>(candidate.market.outcomePrices);
+  const tokenIds = safeParseArray<string>(candidate.market.clobTokenIds || candidate.market.tokenIds);
+  if (outcomes.length !== 2 || prices.length !== 2 || tokenIds.length !== 2) return [candidate];
+
+  const seenTokens = new Set<string>();
+  const selections: ForcedOutcomeSelection[] = [];
+  for (let index = 0; index < 2; index += 1) {
+    const selectedOutcomeName = safeString(outcomes[index]);
+    const selectedTokenId = safeString(tokenIds[index]);
+    const selectedPriceNum = safeParseNumber(prices[index]);
+    if (!selectedOutcomeName || !selectedTokenId || selectedPriceNum === null || selectedPriceNum <= 0 || selectedPriceNum >= 1) {
+      return [candidate];
+    }
+    if (seenTokens.has(selectedTokenId)) return [candidate];
+    seenTokens.add(selectedTokenId);
+    selections.push({ selectedTokenId, selectedOutcomeName, selectedOutcomeIndex: index, selectedPriceNum });
+  }
+
+  return selections.map((forcedOutcome) => ({ ...candidate, forcedOutcome }));
 }
 
 export interface ParentEventMeta {
@@ -3110,7 +3143,7 @@ export async function runPrimaryCandidateLoop(
     const attemptedConditionId = safeString(candidate.market.conditionId);
 
     let effectiveCandidate = candidate;
-    let enriched = await deps.enrichMarket(candidate.event, candidate.market, candidate.warnings);
+    let enriched = await deps.enrichMarket(candidate.event, candidate.market, candidate.warnings, candidate.forcedOutcome);
 
     // Primary representative-market recovery — runs whenever semantic evaluation
     // is live for this candidate, i.e. always under full-population evaluation,
