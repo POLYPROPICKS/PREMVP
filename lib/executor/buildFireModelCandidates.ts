@@ -1350,9 +1350,16 @@ async function buildContractAV1Candidates(
           : "MISSING_SIDE";
 
     const createdMs = Date.parse(decision.createdAtIso);
-    const gameStartIso = Number.isFinite(createdMs)
-      ? new Date(createdMs + decision.minutesUntilStart * 60_000).toISOString()
-      : decision.createdAtIso;
+    const sourceGameStartIso =
+      sourceRow.diagnostics && typeof sourceRow.diagnostics === "object"
+        ? (sourceRow.diagnostics as Record<string, unknown>).gameStartIso
+        : null;
+    const gameStartIso =
+      typeof sourceGameStartIso === "string" && Number.isFinite(Date.parse(sourceGameStartIso))
+        ? new Date(Date.parse(sourceGameStartIso)).toISOString()
+        : Number.isFinite(createdMs)
+          ? new Date(createdMs + decision.minutesUntilStart * 60_000).toISOString()
+          : decision.createdAtIso;
     const hoursToStartNow = decision.minutesUntilStart / 60;
     const eventSlug = typeof sourceRow.event_slug === "string" ? sourceRow.event_slug : null;
     const rawMarketSlug = typeof sourceRow.market_slug === "string" ? sourceRow.market_slug : decision.eventKey;
