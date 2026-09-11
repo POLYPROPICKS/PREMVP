@@ -195,6 +195,57 @@ test("10. the two identities invoke the existing scorer boundary independently w
       captureResearchSnapshot: async () => {},
     },
   };
-  await runPrimaryCandidateLoop(params);
+  const result = await runPrimaryCandidateLoop(params);
   assert.deepEqual(attempts, [{ token: "tok-a", price: 0.45 }, { token: "tok-b", price: 0.55 }]);
+
+  // BOTH_SIDE_EVIDENCE_RELEASE_V1: both independently scored sides of the
+  // SAME market (same conditionId, same market.id/undefined market key) must
+  // both survive the primary-loop duplicate guard. Before the fix, the
+  // second candidate was rejected as PRIMARY_REJECTED_DUPLICATE purely
+  // because it shared the market-level key with the first.
+  assert.equal(result.canonicalPrimaryPairs.length, 2, "both sides of the market must qualify, not just the first-processed one");
+  assert.deepEqual(
+    result.canonicalPrimaryPairs.map((p) => p.diagnostics.selectedTokenId).sort(),
+    ["tok-a", "tok-b"],
+  );
+});
+
+test("11. same-token duplicate (identical market.id + selected token processed twice) is still rejected", () => {
+  const seenPairIds = new Set<string>();
+  const seenMarketKeys = new Set<string>();
+  const candidates = sampleToCandidateMarkets(sample(undefined, {
+    primaryMarketRaw: {
+      outcomes: ["Team A", "Team B"], outcomePrices: [0.45, 0.55], clobTokenIds: ["tok-a", "tok-b"],
+      question: "Team A vs Team B", sportsMarketType: "moneyline", conditionId: "cond-dup",
+    },
+  }));
+  // Duplicate the FIRST fan-out candidate (same token, same market) to simulate
+  // the same exact economic identity being offered twice in one cycle.
+  const duped = [candidates[0], candidates[0], candidates[1]];
+  const attempts: string[] = [];
+  const params: PrimaryCandidateLoopParams = {
+    candidates: duped, limit: 15, minDataCoverage: 40, excludeEnded: true, evaluateFullPrimaryPopulation: true,
+    budgetGuard: { isExhausted: () => false, elapsedMs: () => 0, budgetMs: 1 } as PrimaryCandidateLoopParams["budgetGuard"],
+    collectResearchSnapshots: false, isResearchCapReached: () => true, pinnedKeysForPersistCheck: new Set(), rejected: [],
+    researchFunnel: { candidatesSeen: 0, rejectedPreResearchCandidateReasons: 0, enrichmentNull: 0, attempted: 0, rejectedMissingConditionOrSelectedToken: 0, rejectedNoBinaryGuard: 0, rejectedMissingOpposingToken: 0, rejectedInvalidPrice: 0, rejectedOddsBelowMin: 0, rejectedOddsAboveMax: 0, eligible: 0, execFetchAttempted: 0, execFetchOk: 0, execFetchEmptyBook: 0, execFetchFailed: 0 },
+    seenPairIds, seenMarketKeys,
+    deps: {
+      enrichMarket: async (_event, _market, _warnings, forced) => {
+        attempts.push(forced!.selectedTokenId);
+        return { diagnostics: { dataCoverage: 100, rejectionReasons: [], conditionId: "cond-dup" } } as never;
+      },
+      selectRecoverablePrimaryMarket: () => null,
+      generateLandingCardPair: () => {
+        const token = attempts[attempts.length - 1];
+        return { id: `pair-${token}`, premiumSignal: { winProbability: 70, time: "3h" }, marketSource: { headline: token }, diagnostics: { conditionId: "cond-dup", selectedTokenId: token } } as never;
+      },
+      computeCandidateProviderEventKey: () => null,
+      captureResearchSnapshot: async () => {},
+    },
+  };
+  const result = (async () => runPrimaryCandidateLoop(params))();
+  return result.then((r) => {
+    assert.equal(r.canonicalPrimaryPairs.length, 2, "exactly one row per distinct (condition,token); the repeated identity is deduped, not tripled");
+    assert.deepEqual(r.canonicalPrimaryPairs.map((p) => p.diagnostics.selectedTokenId).sort(), ["tok-a", "tok-b"]);
+  });
 });

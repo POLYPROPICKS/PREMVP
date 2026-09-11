@@ -3257,11 +3257,18 @@ export async function runPrimaryCandidateLoop(
       continue;
     }
 
+    // Identity for dedup MUST include the selected token: two independently
+    // scored sides of the same binary market share market.id/conditionId/slug
+    // but are different economic identities (condition_id, selected_token_id)
+    // and must both be able to qualify. Keying on market/condition alone here
+    // silently dropped whichever side's fan-out candidate was processed second,
+    // making provider outcome-array order the accidental side-selector.
+    const selectedTokenIdForKey = safeString(pair.diagnostics.selectedTokenId);
     const marketKey =
-      safeString(effectiveCandidate.market.id) ||
-      safeString(effectiveCandidate.market.conditionId) ||
-      safeString(effectiveCandidate.market.slug) ||
-      pair.id;
+      (safeString(effectiveCandidate.market.id) ||
+        safeString(effectiveCandidate.market.conditionId) ||
+        safeString(effectiveCandidate.market.slug) ||
+        pair.id) + (selectedTokenIdForKey ? `::${selectedTokenIdForKey}` : "");
 
     if (seenPairIds.has(pair.id) || seenMarketKeys.has(marketKey)) {
       recordPrimaryTerminal("PRIMARY_REJECTED_DUPLICATE");
