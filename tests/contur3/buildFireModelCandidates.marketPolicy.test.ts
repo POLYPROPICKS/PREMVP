@@ -140,6 +140,15 @@ const ESPORTS_NON_POLICY = sourceRow({
   shadowScope: "esports",
 });
 
+const TENNIS_COMPLETED_MATCH = sourceRow({
+  id: "tennis-completed-match",
+  event_slug: "itf-llorca1-yesypc1-2026-07-27-completed-match",
+  market_slug: "W35 Reus, Main Draw: Completed Match: Lucia Cortez Llorca vs Daria Yesypchuk",
+  eventTitle: "W35 Reus: Lucia Cortez Llorca vs Daria Yesypchuk",
+  marketTitle: "W35 Reus, Main Draw: Completed Match: Lucia Cortez Llorca vs Daria Yesypchuk",
+  shadowScope: "tennis",
+});
+
 const ALL_ROWS = [ALLOWED_FULLMATCH_SPREAD, HALFTIME, CORNERS, PROP, ESPORTS_NON_POLICY];
 
 async function planningCandidates(rows: unknown[]) {
@@ -179,6 +188,14 @@ test("MP-1b: every blocked class is rejected with a structured upstream reason",
       `no structured MARKET_POLICY_* rejection reason for ${row.market_slug}: ${JSON.stringify(reasons)}`
     );
   }
+});
+
+test("MP-1b1: tennis Completed Match never becomes a Contract A planning candidate", async () => {
+  const { candidates, rawDiagnostics } = await planningCandidates([TENNIS_COMPLETED_MATCH]);
+  assert.equal(candidates.length, 0);
+  assert.equal(rawDiagnostics?.market_policy_eligible, 0);
+  assert.equal(rawDiagnostics?.market_policy_rejected, 1);
+  assert.equal(rawDiagnostics?.market_policy_rejected_by_reason.UNKNOWN_MARKET_CLASS, 1);
 });
 
 // ── TEST 1c — the production arithmetic can no longer happen ────────────────

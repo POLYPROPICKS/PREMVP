@@ -19,6 +19,7 @@ import {
   isForbiddenMarketClass,
   isLiveAllowedFullMatch,
   normalizeMarketText,
+  resolveMarketAnchorDecision,
 } from "../../lib/contur3/taxonomy";
 import { TAXONOMY_CORPUS } from "./fixtures/market-taxonomy-corpus";
 // Legacy monitor classifier (parity audit only — monitor stays the .mjs runtime copy
@@ -49,6 +50,25 @@ test("invariant: unknown market is fail-closed (never live-allowed)", () => {
   assert.equal(isLiveAllowedFullMatch(""), false);
   assert.equal(isLiveAllowedFullMatch(null), false);
   assert.equal(isLiveAllowedFullMatch(undefined), false);
+});
+
+test("invariant: tennis Completed Match is not promoted by Main Draw", () => {
+  const decision = resolveMarketAnchorDecision({
+    providerMarketQuestion:
+      "W35 Reus, Main Draw: Completed Match: Lucia Cortez Llorca vs Daria Yesypchuk",
+    marketTitle: null,
+    eventTitle: null,
+    marketSlug: null,
+    eventSlug: null,
+    matchFamilyKey: null,
+  });
+  assert.deepEqual(decision, {
+    market_class: "unknown",
+    event_scope: "full_match",
+    allowed: false,
+    reason_code: "UNKNOWN_MARKET_CLASS",
+    evidence_source: "structured",
+  });
 });
 
 test("invariant: esports is an explicit non-policy class, not unknown, and not live-allowed", () => {

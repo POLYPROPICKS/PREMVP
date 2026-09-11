@@ -46,6 +46,16 @@ export const TAXONOMY_CORPUS: TaxonomyCorpusCase[] = [
     monitorDivergence: "unknown",
     note: "mid-string draw: legacy \\bdraw\\b is dead after strip-normalization",
   },
+  {
+    text: "WTA Reus: Lucia Cortez Llorca vs Daria Yesypchuk — Match Winner",
+    expected: "allowed_fullmatch_moneyline",
+    note: "legitimate tennis full-match moneyline remains allowed",
+  },
+  {
+    text: "W35 Reus, Main Draw: Completed Match: Lucia Cortez Llorca vs Daria Yesypchuk",
+    expected: "unknown",
+    note: "tennis completed-match settlement identity is fail-closed before Main Draw can match draw",
+  },
   // ── Allowed full-match spread ─────────────────────────────────────────
   { text: "Japan -1.5 spread", expected: "allowed_fullmatch_spread" },
   { text: "Asian handicap: Sweden +0.5", expected: "allowed_fullmatch_spread" },
