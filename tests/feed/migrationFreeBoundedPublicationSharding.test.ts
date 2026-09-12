@@ -167,9 +167,12 @@ test("6+7. score, price, and diagnostics remain identity-specific through shardi
 });
 
 test("8. a failing shard does not falsely present the partial cycle as a complete authoritative success", async () => {
+  // Population exceeds the 508 whole-cycle threshold so this genuinely
+  // shards by market family (a population this size would NOT be split
+  // into per-family envelopes if it fit in one call -- see test 9).
   const qualified = [
-    ...Array.from({ length: 5 }, (_, n) => pair(n, "moneyline")),
-    ...Array.from({ length: 5 }, (_, n) => pair(n, "total")),
+    ...Array.from({ length: 400 }, (_, n) => pair(n, "moneyline")),
+    ...Array.from({ length: 200 }, (_, n) => pair(n, "total")),
   ] as never[];
   let moneylineCallCount = 0;
   let totalCallCount = 0;
@@ -213,4 +216,30 @@ test("9. the un-migrated 508 cap still behaves correctly for a population within
   });
   assert.equal(calls.length, 1, "a population within the cap stays a single publication call, unchanged from before sharding");
   assert.equal(result.servingProjectedCount, 300);
+});
+
+test("10. a typical multi-family population under the cap (moneyline+spread+total together) is still ONE atomic call with the original observationId", async () => {
+  // A realistic small cycle spans all three families simultaneously. Sharding
+  // by family unconditionally would split this into 3 envelopes and lose the
+  // caller's observationId -- exactly the regression this test guards.
+  const qualified = [
+    ...Array.from({ length: 20 }, (_, n) => pair(n, "moneyline")),
+    ...Array.from({ length: 12 }, (_, n) => pair(n, "spread")),
+    ...Array.from({ length: 8 }, (_, n) => pair(n, "total")),
+  ] as never[];
+  const calls: Array<{ observationId: string; rowCount: number; identities: string[] }> = [];
+  const observationId = "00000000-0000-4000-8000-00000000000e";
+  await persistCanonicalPrimarySignalPopulation({
+    primaryQualifiedPairs: qualified,
+    publicPairsToCache: qualified,
+    source: "polymarket",
+    formulaVersion: "v2",
+    expiresAt: "2026-09-13T00:00:00.000Z",
+    observationId,
+    observedAt: "2026-09-12T06:00:00.000Z",
+    publish: fakePublishCapturing(calls) as never,
+  });
+  assert.equal(calls.length, 1, "a multi-family cycle under the cap is one call, not one call per family");
+  assert.equal(calls[0].rowCount, 40);
+  assert.equal(calls[0].observationId, observationId, "the caller's own producer-cycle observationId is preserved unchanged (job_runs run_id correlation)");
 });

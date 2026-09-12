@@ -122,7 +122,20 @@ export async function persistCanonicalPrimarySignalPopulation(args: {
 }): Promise<PrimaryPopulationPersistResult> {
   const extras = selectCanonicalPrimaryExtras(args.primaryQualifiedPairs, args.publicPairsToCache);
   const combinedPairs = [...extras, ...args.publicPairsToCache].map(toWriteInputPair);
-  const shards = shardWriteInputPairs(combinedPairs);
+
+  // A cycle that fits within the live DB ceiling keeps the EXACT pre-sharding
+  // behavior: one call, one envelope (args.observationId unchanged), no
+  // family grouping at all. Sharding by market family only applies once a
+  // cycle genuinely cannot fit in one call -- most cycles span all three
+  // families (moneyline/spread/total) simultaneously even when tiny, so
+  // grouping unconditionally would needlessly split ordinary cycles into
+  // multiple envelopes and lose the single-call atomicity/observationId
+  // correlation (job_runs run_id <-> primary_evidence_outbox lookup) that
+  // every cycle previously had.
+  const shards: Array<{ label: string; pairs: WriteInputPair[] }> =
+    combinedPairs.length <= PRIMARY_EVIDENCE_SHARD_MAX_ROWS
+      ? [{ label: "whole-cycle", pairs: combinedPairs }]
+      : shardWriteInputPairs(combinedPairs);
 
   const publish = args.publish ?? publishPrimaryEvidenceToServing;
   let servingProjectedCount = 0;
