@@ -5,6 +5,7 @@ import { persistCanonicalPrimarySignalPopulation } from "../../lib/feed/persistP
 import { PRIMARY_SCORER_PROVEN_CAPACITY, PRIMARY_LOOP_DEFAULT_BUDGET_MS } from "../../lib/feed/buildLandingCards";
 import type { LandingCardPair } from "../../lib/feed/types";
 import { buildPrimaryEvidenceRows } from "../../lib/feed/primaryEvidenceServing";
+import type { WritePairsInput } from "../../lib/feed/cacheGeneratedSignals";
 
 function pair(n: number): LandingCardPair {
   return {
@@ -69,4 +70,34 @@ test("row observation IDs are unique and stable for an idempotent envelope retry
   const retry = buildPrimaryEvidenceRows(observationId, input);
   assert.deepEqual(retry, first);
   assert.notEqual(first[0].observation_id, first[1].observation_id);
+});
+
+test("two independently scored tokens of one condition become distinct primary-evidence and serving identities", async () => {
+  const sides = [
+    { ...pair(1), diagnostics: { conditionId: "cond-binary", selectedTokenId: "tok-a", selectedOutcome: "A", currentPrice: 0.45 } },
+    { ...pair(2), diagnostics: { conditionId: "cond-binary", selectedTokenId: "tok-b", selectedOutcome: "B", currentPrice: 0.55 } },
+  ] as LandingCardPair[];
+  let published: WritePairsInput | null = null;
+  const result = await persistCanonicalPrimarySignalPopulation({
+    primaryQualifiedPairs: sides,
+    publicPairsToCache: sides,
+    source: "polymarket",
+    formulaVersion: "v2-lite-growth-safe",
+    expiresAt: "2026-09-08T20:00:00.000Z",
+    observationId,
+    observedAt,
+    publish: async (args) => {
+      published = args.input;
+      return { servingProjectedCount: 2, primaryEvidenceCapturedCount: 2, durationMs: 7 };
+    },
+  });
+
+  const rows = buildPrimaryEvidenceRows(observationId, published!);
+  assert.equal(result.primaryEvidenceCapturedCount, 2);
+  assert.equal(result.servingProjectedCount, 2);
+  assert.deepEqual(rows.map((r) => [r.condition_id, r.selected_token_id, r.entry_price_num]), [
+    ["cond-binary", "tok-a", 0.45],
+    ["cond-binary", "tok-b", 0.55],
+  ]);
+  assert.equal(new Set(rows.map((r) => `${r.condition_id}::${r.selected_token_id}`)).size, 2);
 });

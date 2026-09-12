@@ -3257,13 +3257,17 @@ export async function runPrimaryCandidateLoop(
       continue;
     }
 
-    const marketKey =
-      safeString(effectiveCandidate.market.id) ||
-      safeString(effectiveCandidate.market.conditionId) ||
-      safeString(effectiveCandidate.market.slug) ||
-      pair.id;
+    // Primary persistence is economic-identity scoped. A binary market's two
+    // independently scored tokens must both remain eligible here; only a
+    // repeated occurrence of the same (condition, token) is a duplicate.
+    const conditionId = safeString(pair.diagnostics.conditionId);
+    const selectedTokenId = safeString(pair.diagnostics.selectedTokenId);
+    const economicIdentity = conditionId && selectedTokenId
+      ? `${conditionId}::${selectedTokenId}`
+      : null;
+    const dedupKey = economicIdentity || pair.id;
 
-    if (seenPairIds.has(pair.id) || seenMarketKeys.has(marketKey)) {
+    if (seenPairIds.has(dedupKey) || seenMarketKeys.has(dedupKey)) {
       recordPrimaryTerminal("PRIMARY_REJECTED_DUPLICATE");
       rejected.push({
         id: effectiveCandidate.market.id,
@@ -3272,8 +3276,8 @@ export async function runPrimaryCandidateLoop(
       continue;
     }
 
-    seenPairIds.add(pair.id);
-    seenMarketKeys.add(marketKey);
+    seenPairIds.add(dedupKey);
+    seenMarketKeys.add(dedupKey);
 
     recordPrimaryTerminal("PRIMARY_QUALIFIED");
     canonicalPrimaryPairs.push(pair);

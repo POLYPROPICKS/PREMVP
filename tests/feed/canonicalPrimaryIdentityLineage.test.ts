@@ -175,3 +175,43 @@ test("3. recovery that resolves back to the SAME attempted identity still qualif
   assert.equal(r.primaryTerminalReasonCounts.PRIMARY_QUALIFIED, 1);
   assert.equal(r.primaryTerminalReasonCounts.PRIMARY_REJECTED_IDENTITY_MISMATCH, undefined);
 });
+
+test("4. two scored tokens of one condition survive post-scorer dedup, while a repeated exact token is skipped", async () => {
+  const side = (token: string, price: number): CandidateMarket => ({
+    ...fanoutCandidate("cond-binary"),
+    forcedOutcome: { selectedTokenId: token, selectedOutcomeName: token, selectedOutcomeIndex: token === "tok-a" ? 0 : 1, selectedPriceNum: price },
+  });
+  const candidates = [side("tok-a", 0.45), side("tok-b", 0.55), side("tok-a", 0.45)];
+  const attempts: Array<{ token: string; price: number }> = [];
+
+  const r = await runPrimaryCandidateLoop(
+    baseParams(candidates, {
+      enrichMarket: async (_event, _market, _warnings, forced) => {
+        attempts.push({ token: forced!.selectedTokenId, price: forced!.selectedPriceNum });
+        return { diagnostics: { dataCoverage: 80, rejectionReasons: [], conditionId: "cond-binary", token: forced!.selectedTokenId, price: forced!.selectedPriceNum } } as never;
+      },
+      generateLandingCardPair: (enriched) => {
+        const d = (enriched as unknown as { diagnostics: { token: string; price: number } }).diagnostics;
+        return {
+          // Deliberately identical presentation id: only the economic identity may dedup.
+          id: "same-condition-presentation",
+          premiumSignal: { winProbability: d.token === "tok-a" ? 66 : 74, time: "3h" },
+          diagnostics: { conditionId: "cond-binary", selectedTokenId: d.token, currentPrice: d.price },
+        } as unknown as LandingCardPair;
+      },
+    }),
+  );
+
+  assert.deepEqual(attempts, [
+    { token: "tok-a", price: 0.45 },
+    { token: "tok-b", price: 0.55 },
+    { token: "tok-a", price: 0.45 },
+  ]);
+  assert.equal(r.canonicalPrimaryPairs.length, 2);
+  assert.deepEqual(
+    r.canonicalPrimaryPairs.map((p) => [p.diagnostics.selectedTokenId, p.diagnostics.currentPrice]),
+    [["tok-a", 0.45], ["tok-b", 0.55]],
+  );
+  assert.deepEqual(r.canonicalPrimaryPairs.map((p) => p.premiumSignal.winProbability), [66, 74]);
+  assert.equal(r.primaryTerminalReasonCounts.PRIMARY_REJECTED_DUPLICATE, 1);
+});
