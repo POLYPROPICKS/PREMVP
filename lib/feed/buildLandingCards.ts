@@ -132,6 +132,7 @@ export function sampleToCandidateMarket(sample: SportsDiscoverySample): Candidat
     providerSportTagIds: sample.providerSportTagIds ?? undefined,
     providerSeriesIds: sample.providerSeriesIds ?? undefined,
     providerMarketId: primary.providerMarketId ?? primary.conditionId,
+    gameId: sample.gameId,
   };
 
   return {
@@ -381,6 +382,8 @@ export interface ParentEventMeta {
   providerSportTagIds?: string[];
   providerSeriesIds?: string[];
   providerMarketId?: string;
+  /** Canonical physical-event identity emitted by sports discovery grouping. */
+  gameId?: string;
 }
 
 export function buildStructuredProviderDiagnostics(
@@ -433,6 +436,7 @@ export function buildStructuredProviderDiagnostics(
       ...(eventStartIso ? { eventStartIso } : {}),
       ...(providerMarketId ? { providerMarketId } : {}),
       ...(parentMeta.sportsMarketType ? { marketType: parentMeta.sportsMarketType } : {}),
+      ...(parentMeta.gameId ? { gameId: parentMeta.gameId } : {}),
       ...(parentMeta.providerSportTagIds?.length ? { sportTagIds: [...parentMeta.providerSportTagIds] } : {}),
       ...(parentMeta.providerSeriesIds?.length ? { seriesIds: [...parentMeta.providerSeriesIds] } : {}),
     },
