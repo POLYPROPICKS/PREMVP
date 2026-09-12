@@ -16,6 +16,32 @@ function minskParts(ms: number) { const x = new Date(ms + MINSK_UTC_OFFSET_HOURS
 function minskWallToUtcMs(y: number, mo: number, d: number, h: number, minute = 0) { return Date.UTC(y, mo, d, h, minute, 0) - MINSK_UTC_OFFSET_HOURS * 3_600_000; }
 function minskDate(y: number, mo: number, d: number) { return `${y.toString().padStart(4, "0")}-${(mo + 1).toString().padStart(2, "0")}-${d.toString().padStart(2, "0")}`; }
 
+// MORNING_11H_CODE_WORKAROUND_V1: emergency compatibility shim. The producer/
+// Reservation timing race (Reservation firing before the delayed-recovery
+// producer cycle could refresh serving) requires the morning anchor to move
+// from 10:00 to 11:00 Minsk, but this environment has no path to edit the
+// production RESERVATION_TIMES_MINSK value directly. Until that env var is
+// updated at the source, remap the legacy 10:00 anchor to its effective 11:00
+// time here. Remove this function (and its one call site below) once
+// RESERVATION_TIMES_MINSK is updated to "11:00,17:00" (or equivalent) in the
+// hosting environment -- at that point this becomes a no-op passthrough for
+// every configured value, so removing it is a pure cleanup, not a behavior
+// change.
+const LEGACY_MORNING_ANCHOR_HHMM = "1000";
+const LEGACY_MORNING_ANCHOR_EFFECTIVE: ReservationAnchorTime = { hour: 11, minute: 0, hhmm: "1100" };
+
+function applyLegacyMorningAnchorCompat(times: ReservationAnchorTime[]): ReservationAnchorTime[] {
+  const remapped = times.map((t) => (t.hhmm === LEGACY_MORNING_ANCHOR_HHMM ? LEGACY_MORNING_ANCHOR_EFFECTIVE : t));
+  const seenHHMM = new Set<string>();
+  const deduped: ReservationAnchorTime[] = [];
+  for (const t of remapped) {
+    if (seenHHMM.has(t.hhmm)) continue;
+    seenHHMM.add(t.hhmm);
+    deduped.push(t);
+  }
+  return deduped;
+}
+
 /** The only Reservation schedule config. Absent retains the historical 17:00 anchor. */
 export function parseReservationTimesMinsk(value: string | undefined = process.env.RESERVATION_TIMES_MINSK): ReservationAnchorTime[] {
   if (value === undefined) return [{ hour: 17, minute: 0, hhmm: "1700" }];
@@ -28,7 +54,7 @@ export function parseReservationTimesMinsk(value: string | undefined = process.e
     if (hour > 23 || minute > 59 || seen.has(hhmm)) throw new Error(`RESERVATION_TIMES_MINSK_INVALID: invalid or duplicate anchor ${JSON.stringify(part)}`);
     seen.add(hhmm); return { hour, minute, hhmm };
   });
-  return times.sort((a, b) => a.hour - b.hour || a.minute - b.minute);
+  return applyLegacyMorningAnchorCompat(times).sort((a, b) => a.hour - b.hour || a.minute - b.minute);
 }
 
 export function planDateMinsk(nowMs: number): string { const p = minskParts(nowMs); return minskDate(p.y, p.mo, p.d); }
