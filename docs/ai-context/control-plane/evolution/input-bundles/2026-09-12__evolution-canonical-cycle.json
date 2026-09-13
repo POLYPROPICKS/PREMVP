@@ -1,0 +1,89 @@
+{
+    "bundle_id": "2026-09-12__evolution-canonical-cycle",
+    "repository": "POLYPROPICKS/PREMVP",
+    "period_start": "2026-09-12T00:00:00Z",
+    "period_end": "2026-09-13T00:00:00Z",
+    "evidence_cutoff": "2026-09-13T00:30:00Z",
+    "capture_coverage": "PARTIAL",
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+        "POLYPROPICKS/PREMVP#304",
+        "POLYPROPICKS/PREMVP#305",
+        "POLYPROPICKS/PREMVP#306",
+        "POLYPROPICKS/PREMVP#307",
+        "POLYPROPICKS/PREMVP#308",
+        "POLYPROPICKS/PREMVP#309"
+    ],
+    "operator_action_events": [],
+    "operating_telemetry": {
+        "founder_actions_removable": "UNKNOWN",
+        "executor_runs": "UNKNOWN",
+        "successful_terminal_results": 6,
+        "reruns_resumes": "UNKNOWN",
+        "recovery_iterations": 1,
+        "reviewer_corrections_rejections": 0,
+        "orchestration_waste_iterations": 0,
+        "runtime_evidence_count": 2,
+        "reusable_artifacts_created": 3,
+        "actions_per_verified_result": "UNKNOWN",
+        "time_to_verified_result": "UNKNOWN"
+    },
+    "supporting_metrics": {
+        "runtime_evidence_count": 2,
+        "reusable_artifacts_created": 3,
+        "reviewer_rejection_count": 0,
+        "architect_corrections": 0
+    },
+    "defect_occurrences": [
+        {
+            "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+            "origin": "STATE_OR_CONTEXT_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-12-PR306-PR307-UNVERIFIED-RECEIPT-CLAIM",
+            "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": "CHAIN-NO-CI-GATE-MERGE-ENFORCEMENT",
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-12-PRIMARY-OUTBOX-CAP-EXCEEDED-LIVE-OUTAGE",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-MULTI-IDENTITY-FANOUT-CAPACITY-BOUNDARY",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#309",
+            "proven_effective_evidence_refs": [
+                "Live Supabase job_runs query (source=polymarket, order=started_at.asc, 2026-09-12T00:00:00Z window) executed 2026-09-13T00:2x UTC during this review: 4 error rows (05:00:20Z, 05:30:28Z, 06:03:21Z, 06:30:44Z, all DIRECT_SERVING_PUBLICATION_FAILED), then 44 consecutive success rows from 07:0xZ through 2026-09-13T00:01:40Z with zero further DIRECT_SERVING_PUBLICATION_FAILED occurrences"
+            ]
+        },
+        {
+            "defect_id": "DEF-2026-09-12-RESERVATION-PRODUCER-RECOVERY-RACE",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-MULTI-IDENTITY-FANOUT-CAPACITY-BOUNDARY",
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-12-NO-HOSTING-ENV-CONFIG-WRITE-CAPABILITY",
+            "origin": "CONTROL_PLANE_DEFECT",
+            "recurrence": "NEW_INDEPENDENT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-12-PRODUCTION-OBSERVATION-MEASUREMENT-QUERY-TIMEOUT-CLOUD",
+            "origin": "ENVIRONMENT_OR_PERMISSION_DEFECT",
+            "recurrence": "NEW_INDEPENDENT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        }
+    ]
+}
