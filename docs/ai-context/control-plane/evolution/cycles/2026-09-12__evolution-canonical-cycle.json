@@ -1,0 +1,479 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-09-12__evolution-canonical-cycle",
+  "period_start": "2026-09-12T00:00:00Z",
+  "period_end": "2026-09-13T00:00:00Z",
+  "evidence_cutoff": "2026-09-13T00:30:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (Routine A)",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#304",
+      "POLYPROPICKS/PREMVP#305",
+      "POLYPROPICKS/PREMVP#306",
+      "POLYPROPICKS/PREMVP#307",
+      "POLYPROPICKS/PREMVP#308",
+      "POLYPROPICKS/PREMVP#309"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-09-12__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "ADVANCED",
+    "what_moved": [
+      {
+        "statement": "A real live-production outage was found, root-caused and fixed within this period, and this Routine independently proved the fix holds -- the first time Axis A rests on evidence gathered live, not an executor's self-report. PR#308 diagnosed a fan-out-outgrown 508-row outbox cap causing total publish failure; PR#309 shipped a migration-free per-market-family sharded fix.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#308",
+          "POLYPROPICKS/PREMVP#309",
+          "Live Supabase job_runs query (source=polymarket) executed directly by this review, 2026-09-13T00:2x UTC: 2026-09-12 05:00:20Z, 05:30:28Z, 06:03:21Z and 06:30:44Z all recorded status=error, error_message=\"DIRECT_SERVING_PUBLICATION_FAILED: primary observation row count must be between 1 and 508\"",
+          "Same live query: every job_runs row from 2026-09-12T07:0xZ (first cycle after PR#309 merged at 06:56:36Z) through 2026-09-13T00:01:40Z -- 44 consecutive rows -- recorded status=success with error_message null and zero recurrence of the cap failure"
+        ]
+      },
+      {
+        "statement": "PR#306 and PR#307 landed two small, source-level evidence-fidelity fixes on the same feed path (preserving both token identities through evidence; persisting the canonical provider game id through to serving diagnostics), each self-reporting focused tests, typecheck and build passing.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#306",
+          "POLYPROPICKS/PREMVP#307"
+        ]
+      }
+    ],
+    "next_verified_production_fact_now_possible": "A read-only check of Reservation's next 10:00 Minsk anchor firing against the nearest job_runs completion time would prove or disprove PR#310's race diagnosis independently, and show whether a producer-freshness gate (H17) is the better fix",
+    "blockers_removed": [
+      {
+        "statement": "The live primary-evidence publication outage (zero rows served across at least 4 consecutive producer cycles, 05:00-06:37 UTC on 2026-09-12) was fixed by PR#309 and has not recurred across 44 subsequent cycles through this review's evidence cutoff -- independently confirmed via a direct, read-only job_runs query, not merely PR#309's own self-report.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#309",
+          "Live Supabase job_runs query executed 2026-09-13T00:2x UTC during this review"
+        ]
+      }
+    ],
+    "blockers_introduced": [
+      {
+        "statement": "The same period's own compounding history (the 2026-09-11 multi-identity fan-out landing on top of a fixed 300/508-row outbox cap) produced a real, proven live outage: zero primary signals served for at least 4 producer cycles (~1.5 hours) on the morning of 2026-09-12, before same-day diagnosis and a same-day fix.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#308",
+          "Live Supabase job_runs query executed 2026-09-13T00:2x UTC during this review: 4 error rows at 05:00:20Z, 05:30:28Z, 06:03:21Z, 06:30:44Z"
+        ]
+      },
+      {
+        "statement": "A second, still-open symptom surfaced: PR#310 (open, unmerged) reports Reservation firing with source_rows=0, racing the producer's post-incident recovery cycle, and proposes a code-level anchor shim only because no registered capability exists to edit the production env var directly.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#310"
+        ]
+      }
+    ],
+    "not_proven": [
+      "Whether PR#310's diagnosis (Reservation racing the producer's recovery cycle) is itself independently confirmed is not proven this period -- PR#310 is unmerged, self-reported, and this review did not query Reservation's own run history to corroborate it (out of the bounded scope this review's own verification budget justified).",
+      "This review's attempt to run premvp.command.production_observation.v1 against PR#309's SHA did not complete: ancestry was proven via git, but its measurement stage (a 5000-row count=exact scan) timed out here even though a lightweight targeted query succeeded in under a second -- see H13.",
+      "Reconciled PnL is not claimed and cannot be: no fills, fees or settlement evidence exists for this period.",
+      "PR#306 and PR#307 each claim a passing Contur R4 gate receipt in body text ('Contur R4 receipt PASS', 'Contur receipt PASS') -- get_reviews and get_check_runs both returned zero reviews and zero checks for each PR, the same unverifiable-claim pattern flagged in the 2026-09-09 and 2026-09-11 cycles (see H6).",
+      "CURRENT_STATE.yaml (state_version 22, updated 2026-09-08) still reflects none of the last four periods' merges, including this period's proven live-outage-and-fix -- per its own stale_when rule this is STATE_REFRESH_REQUIRED for a fourth+ consecutive period.",
+      "The open (unmerged) PR pile grew from 30 (2026-09-11 cutoff) to 34 at this cutoff, including two feed-path PRs (#303, draft; #310, ready) directly relevant to this period's own incident that remain unmerged."
+    ],
+    "runtime_or_business_evidence_exists": true,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_STRENGTHENED",
+    "capabilities": [
+      {
+        "domain": "REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS",
+        "statement": "PR#309 replaced a single-envelope, all-or-nothing publish call with per-market-family sharded publication, each family independently bounded under the existing 508-row cap.",
+        "persisted_artifact": "tests/feed/migrationFreeBoundedPublicationSharding.test.ts",
+        "use_or_validation_evidence": "7 new tests plus 34/34 regressions self-reported passing; independently confirmed live via job_runs: 44/44 success, zero cap-failure recurrences since merge.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#309",
+          "tests/feed/migrationFreeBoundedPublicationSharding.test.ts",
+          "Live Supabase job_runs query executed 2026-09-13T00:2x UTC during this review"
+        ]
+      },
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "This Routine, for the first time, invoked production_observation.v1 against a real merge SHA (H13). Ancestry proved via git; the measurement stage's failure mode from claude_code_cloud is now characterized, not unexercised.",
+        "persisted_artifact": "reports/observation/2026-09-12__pr309-migration-free-sharding.json",
+        "use_or_validation_evidence": "Live run vs PR#309's SHA: ancestor proven, measurement timed out, verdict WAIT_INFRASTRUCTURE_RECOVERY -- the command's own fail-safe, not a fabricated pass.",
+        "evidence_refs": [
+          "reports/observation/2026-09-12__pr309-migration-free-sharding.json",
+          "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#premvp.command.production_observation.v1"
+        ]
+      }
+    ],
+    "not_proven": [
+      "premvp.command.production_observation.v1's supported_executors claim for claude_code_cloud (AGENT_REGISTRY.yaml) is not yet proven end-to-end from this exact sandboxed session: its measurement stage's specific query shape (count=exact, 5000-row limit against generated_signal_pairs) times out here even though lighter, targeted Supabase reads from the same session succeed quickly.",
+      "No OPERATOR_ACTION_EVENT record has ever existed in this repository -- the Founder-effort capture pipeline remains schema-only for an eighth+ consecutive cycle (see H4)."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": 0,
+      "runtime_evidence_count": 2,
+      "reusable_artifacts_created": 3,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-09-12T00:00:00Z",
+    "period_end": "2026-09-13T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "capture_coverage": "PARTIAL",
+    "founder_actions_proven": 0,
+    "founder_actions_removable": "UNKNOWN",
+    "chat_interaction_coverage": "PARTIAL",
+    "executor_runs": "UNKNOWN",
+    "successful_terminal_results": 6,
+    "reruns_resumes": "UNKNOWN",
+    "recovery_iterations": 1,
+    "architect_corrections": 0,
+    "reviewer_corrections_rejections": 0,
+    "orchestration_waste_iterations": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+        "origin": "STATE_OR_CONTEXT_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-12-PR306-PR307-UNVERIFIED-RECEIPT-CLAIM",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": "CHAIN-NO-CI-GATE-MERGE-ENFORCEMENT",
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-12-PRIMARY-OUTBOX-CAP-EXCEEDED-LIVE-OUTAGE",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-MULTI-IDENTITY-FANOUT-CAPACITY-BOUNDARY",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#309",
+        "proven_effective_evidence_refs": [
+          "Live Supabase job_runs query executed 2026-09-13T00:2x UTC during this review: 44 consecutive success rows from 2026-09-12T07:0xZ through 2026-09-13T00:01:40Z, zero DIRECT_SERVING_PUBLICATION_FAILED recurrences"
+        ]
+      },
+      {
+        "defect_id": "DEF-2026-09-12-RESERVATION-PRODUCER-RECOVERY-RACE",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-MULTI-IDENTITY-FANOUT-CAPACITY-BOUNDARY",
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-12-NO-HOSTING-ENV-CONFIG-WRITE-CAPABILITY",
+        "origin": "CONTROL_PLANE_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-12-PRODUCTION-OBSERVATION-MEASUREMENT-QUERY-TIMEOUT-CLOUD",
+        "origin": "ENVIRONMENT_OR_PERMISSION_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "STATE_OR_CONTEXT_DEFECT": 1,
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 1,
+      "PRODUCT_OR_RUNTIME_DEFECT": 2,
+      "CONTROL_PLANE_DEFECT": 1,
+      "ENVIRONMENT_OR_PERMISSION_DEFECT": 1
+    },
+    "defect_counts_by_recurrence": {
+      "SAME_ROOT_REPEAT": 2,
+      "LATENT_NEXT_LAYER_EXPOSED": 2,
+      "NEW_INDEPENDENT": 2
+    },
+    "repeated_defect_families": 1,
+    "active_onion_chains": 1,
+    "implemented_fixes": 1,
+    "proven_effective_fixes": 1,
+    "runtime_evidence_count": 2,
+    "reusable_artifacts_created": 3,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN"
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "CURRENT_STATE.yaml (state_version 22, updated 2026-09-08T11:07:12Z) is now stale across a fourth+ consecutive period -- it reflects none of the 2026-09-09 GSP-independence chain, the 2026-09-10 exact-anchor fix, the 2026-09-11 money-admission/fan-out/grouping merges, or this period's proven live outage-and-fix.",
+      "why_it_matters": "The single canonical operational-state document a Founder or downstream automation is told to trust has now missed the single most business-relevant fact this Routine has ever recorded -- a proven live serving outage and its proven fix.",
+      "axis_a_effect": "Indirect: delays correct scoping of the next roadmap step against the actual current architecture rather than a stale one.",
+      "axis_b_effect": "Directly undermines Axis B's own evidence base -- Routine B compares cycles against a state document that has not tracked four periods of what shipped.",
+      "proposed_automation": "A post-merge step (reusing existing, PROVEN_IN_RUNTIME premvp.command.control_plane_reconcile.v1) after every merge touching lib/executor/**, lib/feed/**, or lib/modeling/**, appending a factual accepted_completions entry -- no roadmap/capability-verdict change, which stays Founder-authorized.",
+      "persistent_artifact": "scripts/control-plane/reconcile-control-plane.mjs (existing) plus a new invocation trigger, if adopted",
+      "expected_value": "Removes a recurring, evidence-costly Axis-B/Axis-A cross-check every Evolution cycle currently performs by hand.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low if scoped to a factual append-only entry with no roadmap/capability assertion.",
+      "success_metric": "Two consecutive Evolution cycles find zero material CURRENT_STATE staleness gap at evidence_cutoff.",
+      "rollback_or_stop_condition": "Stop and revert to manual reconciliation if the automation ever writes a roadmap_phase, current_value_step, capability verdict, or PnL-gate change without separate Founder authorization.",
+      "timing": "NOW is a proposal for the next architect step only, per policy; it does not authorize execution in this review.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "POLYPROPICKS/PREMVP#308",
+        "POLYPROPICKS/PREMVP#309"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "This period again established only a lower bound of zero operator-action events -- no OPERATOR_ACTION_EVENT record has ever existed in this repository, only the schema file, now for an eighth+ consecutive cycle.",
+      "why_it_matters": "The Founder-effort axis this Routine is chartered to measure remains structurally uncaptured; this period's incident response (PR#308/#309/#310, all under one session id) cannot be distinguished as Founder-launched versus scheduled-trigger-launched without it.",
+      "axis_a_effect": "None directly -- this is a measurement gap, not a product blocker.",
+      "axis_b_effect": "Blocks Axis B capability maturity for MISSION_REGISTRY / VERIFICATION_AND_EVIDENCE: the operator-action capture pipeline has schemas and a collector but no populated source.",
+      "proposed_automation": "Wire at least one real OPERATOR_ACTION_EVENT source so the next Evolution input bundle can carry real events instead of an empty array.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/schemas/OPERATOR_ACTION_EVENT.schema.json (exists); a new capture point would be the missing artifact",
+      "expected_value": "Converts founder_actions_proven from a permanent floor of 0 into a real measurement.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low for a passive capture; risk is scope creep into a new mandatory workflow step.",
+      "success_metric": "The next Evolution input bundle contains at least one non-empty operator_action_events entry.",
+      "rollback_or_stop_condition": "Stop if the only available capture point requires a new mandatory manual step from the Founder.",
+      "timing": "SYSTEM_LATER -- persistent across eight+ cycles, still not the period's highest-value gap.",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml"
+      ]
+    },
+    {
+      "id": "H6",
+      "observed_problem": "PR#306 ('Contur R4 receipt PASS') and PR#307 ('Contur receipt PASS') each claim a passing gate receipt in body text, yet get_reviews and get_check_runs found zero GitHub reviews and zero checks on either PR -- two more instances of a pattern first flagged in the 2026-09-09 cycle and repeated in 2026-09-11 (PR#300/#301).",
+      "why_it_matters": "On exactly the risk class the control plane calls out as requiring the highest-reasoning reviewer before a production-boundary merge, the only evidence of that reviewer having run is prose the same author wrote -- now four consecutive periods with new unverifiable instances.",
+      "axis_a_effect": "Increases undetected risk on exactly the feed/evidence code paths that this period's own live outage originated in.",
+      "axis_b_effect": "premvp.ci_gate.reviewer_receipt_enforcement remains PLANNED/NOT_PROVEN in AGENT_REGISTRY.yaml (implementation_path null, unchanged); this period is direct new evidence for exactly the gap that entry already names.",
+      "proposed_automation": "A required GitHub status check that fails a PR labeled/detected as R4_CONTUR_PRODUCTION_BOUNDARY unless a machine-readable reviewer receipt is attached to the PR, reusing the already-specified output_contract of premvp.reviewer.contur_gate.v1.",
+      "persistent_artifact": "premvp.ci_gate.reviewer_receipt_enforcement (AGENT_REGISTRY.yaml; currently PLANNED, implementation_path null)",
+      "expected_value": "Converts a self-attested claim into a verifiable one for exactly the highest-risk merge class, on exactly the path that produced this period's live incident.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium -- requires branch-protection changes and a working receipt-attachment mechanism.",
+      "success_metric": "The next R4-risk PR carries a verifiable reviewer receipt rather than body-text-only self-attestation.",
+      "rollback_or_stop_condition": "Stop and fall back to advisory (non-blocking) mode if the gate produces a false block on a legitimately reviewed PR.",
+      "timing": "NOW is a proposal only; this exact hypothesis was already the Automation Roadmap Governor's 2026-09-08 recommendation and remains unimplemented, now with two more repeat instances directly on the incident path.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#306",
+        "POLYPROPICKS/PREMVP#307",
+        "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#premvp.ci_gate.reviewer_receipt_enforcement"
+      ]
+    },
+    {
+      "id": "H7",
+      "observed_problem": "The tracked open-PR count grew from 30 (2026-09-11 cutoff) to 34 at this cutoff (mcp__github__list_pull_requests, state=open) -- including PR#303 (a draft, superseded-in-substance by the merged #306-#309 chain) and PR#310 (the still-open follow-on hotfix for this period's own incident).",
+      "why_it_matters": "A persistently large open/draft PR pile now includes at least one PR (#310) that is a live, unresolved follow-on to a proven production incident -- the pile is no longer purely inert.",
+      "axis_a_effect": "Indirect: PR#310 remaining unmerged leaves the Reservation/producer race (DEF-2026-09-12-RESERVATION-PRODUCER-RECOVERY-RACE) open past this cutoff.",
+      "axis_b_effect": "Continues to understate Axis B capability signal-to-noise for any future capability audit scanning open PRs.",
+      "proposed_automation": "A periodic (not this Routine's) audit that classifies each open PR as SUPERSEDED / STILL_ACTIVE / ABANDONED against current origin/main and proposes closure only for provably superseded entries -- never an automatic close.",
+      "persistent_artifact": "No artifact proposed yet -- remains PRODUCT_FIRST until a Founder decision on disposition criteria exists.",
+      "expected_value": "Reduces repository noise; not itself an Axis A or Axis B improvement.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium -- an automated closer could discard in-progress Founder work; must never auto-close without explicit supersession proof.",
+      "success_metric": "Open PR count decreases across two consecutive cutoffs without any provably-active PR being closed.",
+      "rollback_or_stop_condition": "Stop if any classification would require inferring Founder intent rather than reading provable Git supersession.",
+      "timing": "PRODUCT_FIRST -- repository hygiene, not a business or capability priority.",
+      "classification": "PRODUCT_FIRST",
+      "evidence_refs": [
+        "mcp__github__list_pull_requests(state=open) at 2026-09-13T00:2x UTC cutoff"
+      ]
+    },
+    {
+      "id": "H13",
+      "observed_problem": "For the first time, this Routine invoked premvp.command.production_observation.v1 against a real merge SHA (PR#309) instead of only proposing it. Ancestry proved via git, but the measurement query timed out here, while a lightweight job_runs query completed in under a second and supplied this cycle's strongest evidence.",
+      "why_it_matters": "The command's own AGENT_REGISTRY.yaml entry lists claude_code_cloud as a supported executor and the command as PROVEN_IN_RUNTIME, but this period's real attempt shows that claim does not hold for its current measurement-stage query shape from this exact sandboxed session -- a concrete, evidence-backed gap rather than the previous six+ cycles' untested assumption.",
+      "axis_a_effect": "Directly: a cheaper, job_runs-based measurement stage would let this Routine independently confirm production-effect claims (like this period's outage-and-fix) inside its own verification budget instead of hitting WAIT_INFRASTRUCTURE_RECOVERY.",
+      "axis_b_effect": "Would convert premvp.command.production_observation.v1 from a claimed-portable, unexercised command into one actually proven end-to-end from claude_code_cloud.",
+      "proposed_automation": "Change production-observation.mjs's measurement stage to query job_runs (status, error_message, generated_count, started_at/finished_at) for the producer-cycle-level production-effect check instead of a raw count=exact/5000-row scan of generated_signal_pairs -- reusing exactly the query shape this review used directly and confirmed fast and sufficient.",
+      "persistent_artifact": "scripts/control-plane/production-observation.mjs (existing, to be modified); reports/observation/2026-09-12__pr309-migration-free-sharding.json (this cycle's checkpoint evidence of the current failure mode)",
+      "expected_value": "Converts every future Evolution cycle's largest recurring NOT_PROVEN item (no independently-obtained runtime evidence) from a standing gap into a routinely-closed one, using a query shape already proven fast from this exact environment.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low -- job_runs is already the producer's own status-of-record; the only new risk is ensuring the revised measurement still distinguishes a genuine production-effect proof from a merely-running job.",
+      "success_metric": "The next Evolution cycle's production_observation.v1 invocation against a real merge SHA reaches PRODUCER_PRODUCTION_EFFECT_PROVEN or a clean WAIT_INFRASTRUCTURE_RECOVERY within its 20s per-request timeout, rather than a query-shape-induced timeout.",
+      "rollback_or_stop_condition": "Stop and revert to the original query shape if a job_runs-only measurement is ever shown to miss a real publication failure that the raw-table scan would have caught.",
+      "timing": "NOW is a proposal for the next architect step; it does not authorize execution in this review.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "reports/observation/2026-09-12__pr309-migration-free-sharding.json",
+        "docs/ai-context/control-plane/AGENT_REGISTRY.yaml#premvp.command.production_observation.v1",
+        "POLYPROPICKS/PREMVP#309"
+      ]
+    },
+    {
+      "id": "H17",
+      "observed_problem": "PR#310 (open, unmerged) reports Reservation firing with source_rows=0 because its fixed 10:00 Minsk anchor now races the producer's post-incident recovery cadence, and proposes a hardcoded code-level remap of that one anchor (10:00 -> 11:00) as an 'emergency compatibility hotfix' rather than a structural fix.",
+      "why_it_matters": "Shifting one hardcoded anchor by one hour fixes today's specific race but leaves Reservation structurally unaware of producer-cycle completion -- the same class of race can recur at any anchor time whenever a producer cycle runs long, regardless of the exact clock time chosen.",
+      "axis_a_effect": "Direct: an unaddressed producer/Reservation race can silently zero out a scheduled Reservation window the same way this period's outage silently zeroed out serving, but on the money-committing side rather than the read side.",
+      "axis_b_effect": "Would add a genuinely reusable cross-cutting capability (a producer-freshness precondition) rather than another single-anchor patch, directly addressing the CHAIN-MULTI-IDENTITY-FANOUT-CAPACITY-BOUNDARY chain's third exposed layer.",
+      "proposed_automation": "Before Reservation reads its planning source rows, check the most recent completed job_runs row and require it to postdate Reservation's own anchor time (within a bounded staleness window); if not, defer/retry as PRODUCER_NOT_YET_FRESH instead of silently reading a stale population.",
+      "persistent_artifact": "lib/executor/nightWindow.ts / lib/executor/contractAB2EventPolicy.ts (existing Reservation planning boundary, to be extended); a new test asserting Reservation defers when the nearest job_runs row predates its own anchor",
+      "expected_value": "Eliminates an entire class of anchor/producer-timing races rather than one instance of it, and is exactly the kind of structural fix PR#310 itself flags as needed once the env var can be corrected.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium -- a naive freshness gate could over-defer Reservation on a day when the producer is legitimately delayed for unrelated reasons; needs a bounded max-wait/stop condition.",
+      "success_metric": "A live Reservation anchor firing after this fix is proven, via job_runs comparison, to have read a producer-fresh population rather than a stale or empty one.",
+      "rollback_or_stop_condition": "Stop and fall back to the fixed-anchor behavior if the freshness gate ever causes Reservation to skip a window where source_rows would in fact have been non-empty.",
+      "timing": "NOW is a proposal for the next architect step; it does not authorize execution in this review.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#310",
+        "POLYPROPICKS/PREMVP#308"
+      ]
+    },
+    {
+      "id": "H18",
+      "observed_problem": "PR#310's own body states plainly: 'This session has no path to edit the production RESERVATION_TIMES_MINSK environment variable directly (no registered hosting-platform config tool/credential exists in this environment)' -- forcing a temporary code-level workaround for what is, in substance, a configuration change.",
+      "why_it_matters": "The control plane has registered commands for GitHub PR create/merge and for read-only production observation, but no registered, bounded, read-and-write-scoped capability for the one class of change (hosting environment configuration) that this period's incident response actually needed -- so the fix had to be shaped around that missing capability rather than the other way around.",
+      "axis_a_effect": "Indirect: future incidents whose correct fix is a config change rather than a code change will keep producing temporary code-level workarounds (like PR#310's shim, explicitly marked to be deleted once the env var is corrected) until this capability exists.",
+      "axis_b_effect": "A new capability domain entirely (PERMISSION_AND_TOOL_POLICY / DECLARATIVE_ENVIRONMENTS) -- currently absent from AGENT_REGISTRY.yaml for any hosting-platform config surface.",
+      "proposed_automation": "A narrowly-scoped, read-first registered command that can read and (with explicit Founder authorization per change) write a named allowlist of non-secret hosting environment variables on the deployment platform already in CAPABILITY_MATRIX.yaml, with every write recorded as an EVIDENCE_LEDGER.md entry.",
+      "persistent_artifact": "No artifact exists yet -- would require a new AGENT_REGISTRY.yaml COMMAND entry plus its implementation script.",
+      "expected_value": "Removes an entire class of 'temporary code shim standing in for a config change' incidents, of which PR#310 is the first observed instance.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium-high -- any write capability to production configuration is itself a new, real access surface and needs its own explicit Founder-authorized scope and allowlist before it exists.",
+      "success_metric": "The next hosting-config-shaped incident is resolved by a config change plus an EVIDENCE_LEDGER.md entry, with zero temporary code-level shims committed as a workaround.",
+      "rollback_or_stop_condition": "Stop and do not build this until a Founder decision explicitly authorizes which environment variables, on which platform, may ever be written this way.",
+      "timing": "NOW is a proposal for the next architect step; it does not authorize execution in this review, and explicitly requires a Founder scoping decision before any implementation begins.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#310"
+      ]
+    },
+    {
+      "id": "H19",
+      "observed_problem": "This period's incident traces to one generalizable pattern: a fixed downstream capacity constant (the 508-row outbox CHECK) was sized against the population at write-time, and a later, independently-reviewed fan-out change increased that population without anyone re-checking the constant it flows into.",
+      "why_it_matters": "This is the second time this exact class of defect has appeared in this review's history (the 2026-09-11 physical-event grouping fix, PR#302, was itself downstream of an earlier identity-model change) -- it is a recognizable pattern, not a one-off, and the current review process has no step that catches it before merge.",
+      "axis_a_effect": "Direct: catching this class of defect pre-merge would have prevented this period's ~1.5-hour live outage entirely.",
+      "axis_b_effect": "Would add a genuinely reusable pre-merge check spanning the whole scoring/discovery/publication pipeline rather than a fix to one specific cap.",
+      "proposed_automation": "A focused, advisory pre-merge check that, for any PR touching lib/feed/** or lib/executor/** and changing a fan-out/multiplier constant, greps the repo for fixed downstream capacity constants (DB CHECK/RPC/outbox caps) reachable from that path, and flags any whose derivation references a population size the PR would increase.",
+      "persistent_artifact": "No artifact exists yet -- would be a new focused script under scripts/control-plane/, e.g. capacity-boundary-check.mjs",
+      "expected_value": "Converts a class of defect that has now recurred twice into a routinely-caught one, on exactly the code paths (feed/scoring/discovery) that have produced this review's two most significant proven defects.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low -- proposed as advisory/report-only, never a merge-blocking gate, since capacity derivations are not always machine-parseable.",
+      "success_metric": "The check runs once against this period's PR#298/#299/#301/#308/#309 chain and correctly flags the 508-cap-vs-fan-out mismatch as a concrete retroactive validation before being trusted going forward.",
+      "rollback_or_stop_condition": "Stop and keep it advisory-only if it ever produces a false flag rate high enough to be routinely ignored.",
+      "timing": "NOW is a proposal for the next architect step; it does not authorize execution in this review.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#302",
+        "POLYPROPICKS/PREMVP#308",
+        "POLYPROPICKS/PREMVP#309"
+      ]
+    }
+  ],
+  "insufficient_supported_hypotheses": false,
+  "insufficient_supported_hypotheses_reason": null,
+  "founder_practices": [
+    {
+      "id": "P12",
+      "skill_practiced": "When a merged PR's body claims a production incident was found and fixed, independently verify the claim with one cheap, targeted, read-only query against the actual system of record (here: job_runs.status/error_message ordered by started_at) rather than accepting the self-report or the more expensive registered observation command's default query shape.",
+      "why_it_matters_now": "This period's Axis A verdict rests on exactly this practice: a direct job_runs query converted PR#308/#309's self-reported outage-and-fix into this Routine's first-ever PROVEN_IN_RUNTIME evidence, while the registered production_observation.v1 command's default query timed out on the same task.",
+      "how_it_applies_to_current_project": "Apply this as a standing step whenever a PR body claims a live production finding or fix on the feed/executor path: identify the one cheap table/column that would prove or disprove the claim before reaching for a heavier, general-purpose command.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-12__evolution-canonical-cycle.json (this cycle's Axis A record)",
+      "ladder_level": 4
+    },
+    {
+      "id": "P13",
+      "skill_practiced": "When reviewing or authoring a change that adds a new fan-out or multiplier dimension to a data pipeline (more identities, more sides, more market families per unit of input), explicitly re-check every fixed downstream capacity constant reachable from that path against the new maximum population size, rather than assuming an existing cap remains valid.",
+      "why_it_matters_now": "This period's entire live outage traces to exactly this gap: the 2026-09-11 multi-identity fan-out increased the qualified-row population without anyone re-checking the 508-row outbox cap it would flow into, and the gap was not caught until it broke in production.",
+      "how_it_applies_to_current_project": "Apply this check to every future change on lib/feed/** or lib/executor/** that changes how many candidates, sides, or identities are produced per cycle, before merge rather than after a live failure.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-12__evolution-canonical-cycle.json (this cycle's H19 record)",
+      "ladder_level": 5
+    }
+  ],
+  "founder_practice_comparison": "P12 is a cheap habit this Routine can apply on every review with no code change. P13 is heavier and only applies to future fan-out-shaped changes, but would have prevented this period's whole outage. P12 first: it costs one query and is entirely this Routine's own control; P13 needs the next change's author to buy in.",
+  "founder_practice_recommended_order": [
+    "P12",
+    "P13"
+  ],
+  "experiments": [
+    {
+      "id": "E16",
+      "hypothesis": "Changing premvp.command.production_observation.v1's measurement stage to query job_runs (status/error_message/generated_count) instead of a count=exact/5000-row scan of generated_signal_pairs will let the command complete from claude_code_cloud within its existing timeout, closing H13.",
+      "bounded_scope": "One code change to the measurement-stage query in scripts/control-plane/production-observation.mjs, re-run once against the same PR#309 SHA (8ac2f895) already ancestor-proven this cycle; read-only, no schema or policy change.",
+      "persistent_artifact": "scripts/control-plane/production-observation.mjs (modified) and its updated test coverage",
+      "promotion_condition": "The command reaches PRODUCER_PRODUCTION_EFFECT_PROVEN (or a clean, fast WAIT_INFRASTRUCTURE_RECOVERY distinct from a query-shape timeout) against the same SHA that timed out this cycle.",
+      "stop_condition": "Stop and revert to the original query if the job_runs-based measurement is shown to miss a real publication failure the raw-table scan would have caught."
+    },
+    {
+      "id": "E17",
+      "hypothesis": "A single bounded, read-only comparison of Reservation's next 10:00 Minsk (07:00 UTC) anchor firing against the nearest job_runs completion timestamp can independently confirm or disconfirm PR#310's own diagnosis (Reservation racing the producer's recovery cycle) before any anchor-remap or freshness-gate code change is built.",
+      "bounded_scope": "One read-only query pair (Reservation's own logged source_rows count for that anchor; the nearest preceding job_runs row) for the next occurrence of the 10:00 Minsk anchor, whether or not PR#310 has merged by then.",
+      "persistent_artifact": "A findings note appended to the next Evolution cycle or Governor input, citing the exact anchor timestamp, job_runs row, and observed source_rows count",
+      "promotion_condition": "The comparison produces a concrete, reusable confirmation (or disconfirmation) of the race hypothesis that H17's proposed producer-freshness gate can be scoped against.",
+      "stop_condition": "Stop if the next anchor occurrence happens outside this Routine's evidence_cutoff window and cannot be captured before the next cycle's own cutoff."
+    },
+    {
+      "id": "E18",
+      "hypothesis": "This cycle's own terminal persistence can again reach canonical origin/main with zero intermediate Founder action, using the same GitHub-MCP-backed path already proven for prior cycles' lineages.",
+      "bounded_scope": "One canonical Evolution cycle document plus its rendered report, persisted via the registered branch/PR/merge lifecycle; no product code path touched.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-12__evolution-canonical-cycle.json and its .report.md",
+      "promotion_condition": "The cycle reaches canonical origin/main with a founder_action count of zero for this persistence step.",
+      "stop_condition": "Stop and return the canonical resumable outcome if the registered persistence lifecycle cannot complete within this execution window."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE (per CURRENT_STATE.yaml, updated_at 2026-09-08T11:07:12Z, state_version 22) -- but live origin/main has since advanced through four periods of merges (2026-09-09 GSP-independence chain, 2026-09-10 exact-anchor fix, 2026-09-11 money-admission/fan-out/grouping merges, and this period's proven live outage-and-fix) that CURRENT_STATE does not yet reflect at all; see hypothesis H1."
+  },
+  "next_step": "Persist via the proven GitHub-MCP path (zero Founder action). Then run E16 (fix the production-observation query) and E17 (confirm PR#310's Reservation-race diagnosis) as the highest-value next actions. Do not babysit the 34-member open-PR family beyond recording it; PR#310 is a product-lane decision, not this Routine's to merge.",
+  "corrections": [],
+  "accepted": false
+}
