@@ -1,0 +1,297 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-09-13__evolution-canonical-cycle",
+  "period_start": "2026-09-13T00:00:00Z",
+  "period_end": "2026-09-14T00:00:00Z",
+  "evidence_cutoff": "2026-09-14T00:20:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (Routine A)",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#312"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-09-13__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "STALLED",
+    "what_moved": [
+      {
+        "statement": "No product-affecting change merged during this period. The only merge to main was PR#312, Routine B's own scheduled Automation Roadmap Governor result-persistence -- it exercised the pre-existing Governor lifecycle, returned terminal_disposition EVIDENCE_INSUFFICIENT (only 1 new canonical Evolution Cycle since the last Governor run, below the minimum of 3), and selected no automation investment.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#312"
+        ]
+      },
+      {
+        "statement": "The 2026-09-12 outage fix (PR#309) was re-checked for this period and holds: a job_runs query for source=polymarket across 2026-09-13T00:00Z-2026-09-14T01:00Z found zero status=error rows and 49 status=success rows, latest at 2026-09-14T00:02:55Z.",
+        "evidence_class": "PROVEN_IN_RUNTIME",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#309",
+          "Live Supabase job_runs query executed 2026-09-14T00:1x UTC: source=polymarket, window [2026-09-13T00:00:00Z, 2026-09-14T01:00:00Z), 0 error rows, 49 success rows, latest id=0e574014-2ac8-4491-9376-da1954882939 at 2026-09-14T00:02:55.936Z"
+        ]
+      }
+    ],
+    "next_verified_production_fact_now_possible": "PR#310 (open, unmerged since 2026-09-12T07:56 UTC) proposes a fix for the Reservation/producer-recovery race. This review reproduced the failure live at today's 10:00 Minsk anchor (see below), so the next anchor after a fix merges is now a clean before/after comparison rather than a self-reported claim.",
+    "blockers_removed": [],
+    "blockers_introduced": [],
+    "not_proven": [
+      "The night-event-reservations 10:00 Minsk anchor (2026-09-13T07:00:53Z) fired with 65 source_rows but planning_eligible_events=0 (first_zero_stage=TIMING_ELIGIBLE) -- consistent with PR#310's race diagnosis, not fully isolated as its exact cause. A later anchor (14:00:54Z) succeeded. PR#310 remains unmerged, zero activity this period.",
+      "CURRENT_STATE.yaml (state_version 22, updated_at 2026-09-08T11:07:12Z) is now stale across a fifth consecutive period -- it still reflects none of the 2026-09-09 through 2026-09-12 merges, including the proven live outage-and-fix, and now also predates this period's confirmation that the fix holds.",
+      "The tracked open PR count is unchanged at 34 between the 2026-09-12 and this period's cutoff (mcp__github__list_pull_requests, state=open) -- including PR#303 (draft, substantively superseded) and PR#310, neither of which moved.",
+      "Reconciled PnL is not claimed and cannot be: no fills, fees or settlement evidence exists for this period.",
+      "No OPERATOR_ACTION_EVENT record exists in this repository for this period -- the Founder-effort capture pipeline remains schema-only for a ninth consecutive cycle (see H4)."
+    ],
+    "runtime_or_business_evidence_exists": true,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "NO_MEASURABLE_CHANGE",
+    "capabilities": [],
+    "not_proven": [
+      "No new or strengthened reusable Manifest 2 / Agent OS capability is evidenced this period. The sole Git landing (PR#312) exercised the pre-existing, already-proven Governor persistence lifecycle without extending it -- reusing an existing capability is not, by itself, an Axis B advance.",
+      "premvp.command.production_observation.v1's claude_code_cloud measurement-stage timeout (identified 2026-09-12, hypothesis H13) remains unexercised and unresolved this period -- no new merge required invoking it, so neither the defect nor a fix for it has new evidence this cycle."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": 0,
+      "runtime_evidence_count": 2,
+      "reusable_artifacts_created": 0,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-09-13T00:00:00Z",
+    "period_end": "2026-09-14T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "capture_coverage": "PARTIAL",
+    "founder_actions_proven": 0,
+    "founder_actions_removable": "UNKNOWN",
+    "chat_interaction_coverage": "PARTIAL",
+    "executor_runs": "UNKNOWN",
+    "successful_terminal_results": 1,
+    "reruns_resumes": "UNKNOWN",
+    "recovery_iterations": 0,
+    "architect_corrections": 0,
+    "reviewer_corrections_rejections": 0,
+    "orchestration_waste_iterations": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+        "origin": "STATE_OR_CONTEXT_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-12-RESERVATION-PRODUCER-RECOVERY-RACE",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": "CHAIN-MULTI-IDENTITY-FANOUT-CAPACITY-BOUNDARY",
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-12-NO-HOSTING-ENV-CONFIG-WRITE-CAPABILITY",
+        "origin": "CONTROL_PLANE_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "STATE_OR_CONTEXT_DEFECT": 1,
+      "PRODUCT_OR_RUNTIME_DEFECT": 1,
+      "CONTROL_PLANE_DEFECT": 1
+    },
+    "defect_counts_by_recurrence": {
+      "SAME_ROOT_REPEAT": 3
+    },
+    "repeated_defect_families": 0,
+    "active_onion_chains": 0,
+    "implemented_fixes": 0,
+    "proven_effective_fixes": 0,
+    "runtime_evidence_count": 2,
+    "reusable_artifacts_created": 0,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN"
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "CURRENT_STATE.yaml (state_version 22, updated 2026-09-08T11:07:12Z) is now stale across a fifth consecutive period -- it still reflects none of the 2026-09-09 through 2026-09-12 merges, including the proven live outage-and-fix, and now also predates this period's independent confirmation that the fix holds.",
+      "why_it_matters": "The single canonical operational-state document a Founder or downstream automation is told to trust has missed five consecutive periods of real change, including the most business-relevant fact this Routine has ever recorded.",
+      "axis_a_effect": "Indirect: delays correct scoping of the next roadmap step against the actual current architecture rather than a stale one.",
+      "axis_b_effect": "Directly undermines Axis B's own evidence base -- Routine B compares cycles against a state document that has not tracked five periods of what shipped.",
+      "proposed_automation": "A post-merge step (reusing the existing, PROVEN_IN_RUNTIME premvp.command.control_plane_reconcile.v1) after every merge touching lib/executor/**, lib/feed/**, or lib/modeling/**, appending a factual accepted_completions entry -- no roadmap/capability-verdict change, which stays Founder-authorized.",
+      "persistent_artifact": "scripts/control-plane/reconcile-control-plane.mjs (existing) plus a new invocation trigger, if adopted",
+      "expected_value": "Removes a recurring, evidence-costly Axis-B/Axis-A cross-check every Evolution cycle currently performs by hand.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low if scoped to a factual append-only entry with no roadmap/capability assertion.",
+      "success_metric": "Two consecutive Evolution cycles find zero material CURRENT_STATE staleness gap at evidence_cutoff.",
+      "rollback_or_stop_condition": "Stop and revert to manual reconciliation if the automation ever writes a roadmap_phase, current_value_step, capability verdict, or PnL-gate change without separate Founder authorization.",
+      "timing": "NOW is a proposal for the next architect step only, per policy; it does not authorize execution in this review.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "This period again established only a lower bound of zero operator-action events -- no OPERATOR_ACTION_EVENT record has ever existed in this repository, only the schema file, now for a ninth consecutive cycle.",
+      "why_it_matters": "The Founder-effort axis this Routine is chartered to measure remains structurally uncaptured; this period's near-total absence of merged work cannot be distinguished from 'the Founder was busy elsewhere' versus 'nothing was launched' without it.",
+      "axis_a_effect": "None directly -- this is a measurement gap, not a product blocker.",
+      "axis_b_effect": "Blocks Axis B capability maturity for MISSION_REGISTRY / VERIFICATION_AND_EVIDENCE: the operator-action capture pipeline has schemas and a collector but no populated source.",
+      "proposed_automation": "Wire at least one real OPERATOR_ACTION_EVENT source so the next Evolution input bundle can carry real events instead of an empty array.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/schemas/OPERATOR_ACTION_EVENT.schema.json (exists); a new capture point would be the missing artifact",
+      "expected_value": "Converts founder_actions_proven from a permanent floor of 0 into a real measurement.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low for a passive capture; risk is scope creep into a new mandatory workflow step.",
+      "success_metric": "The next Evolution input bundle contains at least one non-empty operator_action_events entry.",
+      "rollback_or_stop_condition": "Stop if the only available capture point requires a new mandatory manual step from the Founder.",
+      "timing": "SYSTEM_LATER -- persistent across nine cycles, still not this period's highest-value gap.",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml"
+      ]
+    },
+    {
+      "id": "H17",
+      "observed_problem": "PR#310 (open, unmerged since 2026-09-12) diagnoses Reservation's 10:00 Minsk anchor as racing the producer's recovery cadence. This review reproduced the same shape of failure today: 65 source_rows but planning_eligible_events=0 at the 10:00 anchor, while a later anchor (14:00:54Z) succeeded normally.",
+      "why_it_matters": "This is now the second consecutive period this exact anchor has produced a zero-eligible-events result while a structural fix sits unmerged -- a fixed-anchor patch (PR#310's own hotfix) addresses today's specific timing, but the underlying race can recur at any anchor whenever a producer cycle runs long.",
+      "axis_a_effect": "Direct: an unaddressed producer/Reservation race can silently zero out a scheduled Reservation window on the money-committing side, the same class of silent failure as the 2026-09-12 serving outage on the read side.",
+      "axis_b_effect": "Would add a genuinely reusable cross-cutting capability (a producer-freshness precondition) rather than another single-anchor patch, on the same CHAIN-MULTI-IDENTITY-FANOUT-CAPACITY-BOUNDARY chain.",
+      "proposed_automation": "Before Reservation reads its planning source rows, check the most recent completed job_runs row and require it to postdate Reservation's own anchor time (within a bounded staleness window); if not, defer/retry as PRODUCER_NOT_YET_FRESH instead of silently reading a stale or incompletely-refreshed population.",
+      "persistent_artifact": "lib/executor/nightWindow.ts / lib/executor/contractAB2EventPolicy.ts (existing Reservation planning boundary, to be extended); a new test asserting Reservation defers when the nearest job_runs row predates its own anchor",
+      "expected_value": "Eliminates an entire class of anchor/producer-timing races rather than one instance of it -- now independently confirmed to recur, not merely hypothesized.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium -- a naive freshness gate could over-defer Reservation on a day when the producer is legitimately delayed for unrelated reasons; needs a bounded max-wait/stop condition.",
+      "success_metric": "A live Reservation anchor firing after this fix is proven, via job_runs comparison, to have read a producer-fresh population rather than a stale or empty one.",
+      "rollback_or_stop_condition": "Stop and fall back to the fixed-anchor behavior if the freshness gate ever causes Reservation to skip a window where source_rows would in fact have been non-empty.",
+      "timing": "NOW is a proposal for the next architect step; it does not authorize execution in this review.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#310",
+        "Live Supabase job_runs query executed 2026-09-14T00:1x UTC: id=ce9ebc47-3651-4c97-8366-c6d84a4a0449, source=night-event-reservations, started_at=2026-09-13T07:00:53.736Z, diagnostics.source_rows=65, diagnostics.planning_eligible_events=0, diagnostics.first_zero_stage=TIMING_ELIGIBLE, diagnostics.reserved_count=0"
+      ]
+    },
+    {
+      "id": "H18",
+      "observed_problem": "PR#310's own body states this session has no path to edit the production RESERVATION_TIMES_MINSK environment variable directly, forcing a temporary code-level workaround for what is, in substance, a configuration change. That capability gap is unchanged this period and PR#310 remains unmerged.",
+      "why_it_matters": "The control plane has registered commands for GitHub PR create/merge and for read-only production observation, but still no registered, bounded, read-and-write-scoped capability for hosting-platform environment configuration -- the one class of change this period's still-open Reservation fix actually needs.",
+      "axis_a_effect": "Indirect: future incidents whose correct fix is a config change rather than a code change will keep producing temporary code-level workarounds until this capability exists.",
+      "axis_b_effect": "A new capability domain entirely (PERMISSION_AND_TOOL_POLICY / DECLARATIVE_ENVIRONMENTS) -- still absent from AGENT_REGISTRY.yaml for any hosting-platform config surface.",
+      "proposed_automation": "A narrowly-scoped, read-first registered command that can read and (with explicit Founder authorization per change) write a named allowlist of non-secret hosting environment variables on the deployment platform already in CAPABILITY_MATRIX.yaml, with every write recorded as an EVIDENCE_LEDGER.md entry.",
+      "persistent_artifact": "No artifact exists yet -- would require a new AGENT_REGISTRY.yaml COMMAND entry plus its implementation script.",
+      "expected_value": "Removes an entire class of 'temporary code shim standing in for a config change' incidents, of which PR#310 remains the only observed instance.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium-high -- any write capability to production configuration is itself a new, real access surface and needs its own explicit Founder-authorized scope and allowlist before it exists.",
+      "success_metric": "The next hosting-config-shaped incident is resolved by a config change plus an EVIDENCE_LEDGER.md entry, with zero temporary code-level shims committed as a workaround.",
+      "rollback_or_stop_condition": "Stop and do not build this until a Founder decision explicitly authorizes which environment variables, on which platform, may ever be written this way.",
+      "timing": "NOW is a proposal for the next architect step; it does not authorize execution in this review, and explicitly requires a Founder scoping decision before any implementation begins.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#310"
+      ]
+    }
+  ],
+  "insufficient_supported_hypotheses": true,
+  "insufficient_supported_hypotheses_reason": "Near-zero-merge period (one Routine-internal PR only). Only four hypotheses (H1, H4, H17, H18) carry material period-specific evidence; reused with updated evidence per evidence-economy policy rather than inventing new ones to reach five.",
+  "founder_practices": [
+    {
+      "id": "P14",
+      "skill_practiced": "When an open, unmerged PR proposes a fix for a defect that fires on a predictable schedule (a cron/anchor-based job), query the live system once at or after that anchor's next natural firing to convert a self-reported diagnosis into independently confirmed runtime evidence -- instead of waiting for the PR author's own claim or leaving the question open across cycles.",
+      "why_it_matters_now": "This period had zero new merges; the single most valuable new evidence available was confirming, via one targeted live query, that PR#310's still-unmerged diagnosis is real -- upgrading the 2026-09-12 cycle's own proposed experiment (E17) from an open question into independently confirmed evidence, with no code change.",
+      "how_it_applies_to_current_project": "Apply this same check to any open, unmerged PR whose target defect fires on a predictable schedule, at each anchor occurrence up to the next Evolution cycle's cutoff, rather than waiting for the PR author to self-report.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-13__evolution-canonical-cycle.json (this cycle's H17 record)",
+      "ladder_level": 4
+    },
+    {
+      "id": "P15",
+      "skill_practiced": "When CURRENT_STATE.yaml crosses its own declared staleness threshold for a fifth or more consecutive period without a fix landing, name the standing STATE_OR_CONTEXT_DEFECT explicitly as a blocker in the Founder report's key insight, rather than a routine footnote -- because Routine B's own cross-cycle comparisons depend on this document.",
+      "why_it_matters_now": "Five consecutive periods of drift is no longer a minor lag; it is now the single longest-running unaddressed defect this Routine has recorded, and it costs nothing to name plainly.",
+      "how_it_applies_to_current_project": "Continue naming this defect in every Founder report's key insight until either CURRENT_STATE.yaml is refreshed or H1's reconciliation automation lands.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-13__evolution-canonical-cycle.json (this cycle's H1 record)",
+      "ladder_level": 3
+    }
+  ],
+  "founder_practice_comparison": "P14 costs one query and directly closes a standing experiment (E17) with zero code change, producing new independently-confirmed evidence. P15 costs nothing but naming an existing fact more prominently. Do P14 first since it produces new verified evidence; sustain P15 alongside it going forward.",
+  "founder_practice_recommended_order": [
+    "P14",
+    "P15"
+  ],
+  "experiments": [
+    {
+      "id": "E19",
+      "hypothesis": "If PR#310 (or a structural producer-freshness gate per H17) merges before the next 10:00 Minsk anchor, that next firing will show planning_eligible_events > 0 with a non-zero reserved_count, instead of the 0 observed at today's 2026-09-13T07:00:53Z anchor.",
+      "bounded_scope": "One read-only comparison of the next 10:00 Minsk (07:00 UTC) night-event-reservations job_runs row against today's diagnostics, whether or not a fix has merged by then; no code or schema change.",
+      "persistent_artifact": "A findings note appended to the next Evolution cycle, citing the exact anchor timestamp, job_runs row id, and observed diagnostics",
+      "promotion_condition": "The next anchor firing shows planning_eligible_events > 0 and reserved_count > 0, or -- if unfixed -- reproduces the same TIMING_ELIGIBLE / zero-eligible pattern, either way closing this comparison with concrete evidence.",
+      "stop_condition": "Stop if the next anchor occurrence falls outside the next Evolution cycle's evidence_cutoff window and cannot be captured before that cycle closes."
+    },
+    {
+      "id": "E20",
+      "hypothesis": "This cycle's own terminal persistence can again reach canonical origin/main with zero intermediate Founder action, using the same GitHub-MCP-backed path already proven for the prior twelve cycles' lineages.",
+      "bounded_scope": "One canonical Evolution cycle document plus its rendered report, persisted via the registered branch/PR/merge lifecycle; no product code path touched.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-13__evolution-canonical-cycle.json and its .report.md",
+      "promotion_condition": "The cycle reaches canonical origin/main with a founder_action count of zero for this persistence step.",
+      "stop_condition": "Stop and return the canonical resumable outcome if the registered persistence lifecycle cannot complete within this execution window."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_2_AUTOMATION_ROADMAP_AND_GOVERNANCE",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE (per CURRENT_STATE.yaml, updated_at 2026-09-08T11:07:12Z, state_version 22) -- live origin/main has now advanced through five periods of merges (2026-09-09 through 2026-09-12) that CURRENT_STATE does not reflect at all; this period added no new merges but did add independent confirmation that the 2026-09-12 fix holds and that the Reservation race (H17) recurs. See H1."
+  },
+  "next_step": "Persist via the proven GitHub-MCP path (zero Founder action). Then run E19 (confirm/deny the Reservation race at the next 10:00 Minsk anchor) as the highest-value next action. PR#310 and PR#303 remain product-lane merge decisions, not this Routine's to make -- do not babysit the unchanged 34-member open-PR pile beyond recording it.",
+  "corrections": [],
+  "accepted": false
+}
