@@ -179,3 +179,44 @@ test("target slot count is configurable and 15 selects exactly 15 distinct event
   } satisfies LiveReservationAllocationPolicy;
   assert.equal(build(events, {}, top20).reservations.length, 20);
 });
+
+// ── FIX_RESERVATION_REDECISION_BUG_V1 ───────────────────────────────────────
+//
+// Production incident plan_run_id=night-plan:2026-09-14:1000-minsk: 23
+// Contract-A-approved ("authoritative") candidates were ALL rejected as
+// OUTSIDE_RESERVATION_HORIZON, collapsing planning_eligible_events to 0 even
+// though nothing about those events was physically unreservable. The cause
+// was Reservation re-checking its own per-anchor [window.startMs,
+// window.horizonEndMs) bucket -- a Reservation-run scheduling concept -- as a
+// second approval gate on top of Contract A's already-authoritative decision.
+// Reservation's only remaining timing responsibility is the hard
+// execution-safety invariant: an event that has already started can never be
+// reserved.
+
+test("REDECISION-1: an authoritative candidate starting well beyond this anchor's own bucket window is still reserved", () => {
+  // ANCHOR_MS = 17:00 Minsk 2026-08-11 (14:00Z); the default single-anchor
+  // window's horizonEndMs is 17:00 Minsk the NEXT day (2026-08-12T14:00:00Z).
+  // This candidate starts two days out -- outside that bucket -- but is still
+  // in the future relative to the anchor/nowMs used for this run.
+  const farFutureStart = "2026-08-13T10:00:00.000Z";
+  const result = build([accepted({ id: "far-future", start: farFutureStart })]);
+  assert.deepEqual(
+    result.reservations.map((row) => row.physical_event_id),
+    ["provider:polymarket:far-future:2026-08-11"],
+    "an already-authoritative Contract A decision must not be re-rejected merely because it falls outside Reservation's own anchor-bucket window",
+  );
+  assert.equal(
+    result.rejections.some((r) => r.reason_code === "OUTSIDE_RESERVATION_HORIZON"),
+    false,
+  );
+});
+
+test("REDECISION-2: an authoritative candidate whose event already started is still rejected -- the hard execution-safety invariant survives", () => {
+  const alreadyStarted = "2026-08-11T13:00:00.000Z"; // before ANCHOR_MS (14:00Z)
+  const result = build([accepted({ id: "already-started", start: alreadyStarted })]);
+  assert.equal(result.reservations.length, 0, "an already-started event can never be reserved");
+  assert.equal(
+    result.rejections.find((r) => r.physical_event_id?.includes("already-started"))?.reason_code,
+    "OUTSIDE_RESERVATION_HORIZON",
+  );
+});

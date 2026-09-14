@@ -1950,7 +1950,15 @@ export function buildReservationsFromPlanningDecisions(
   }
 
   // 2. Reservation owns the occurrence's validity in time. The event start is
-  //    validated, never reconstructed.
+  //    validated, never reconstructed. Contract A is already the authority on
+  //    WHETHER this decision is currently eligible (its own serving/freshness
+  //    policy produced event_start_iso for a candidate it judges tradeable
+  //    now); Reservation's own [window.startMs, window.horizonEndMs) anchor
+  //    bucket is a Reservation-run scheduling concept, not a second approval
+  //    gate, so it must never re-reject an already-authoritative decision.
+  //    The one timing fact Reservation itself must still enforce is the hard
+  //    execution-safety invariant: an event that has already started (or for
+  //    which no start time could be parsed) can never be reserved.
   const admitted: ContractAPlanningDecision[] = [];
   for (const decision of approved) {
     const startMs = Date.parse(decision.event_start_iso);
@@ -1962,7 +1970,7 @@ export function buildReservationsFromPlanningDecisions(
       );
       continue;
     }
-    if (!isWithinHorizon(startMs, ctx.window, ctx.nowMs)) {
+    if (startMs <= ctx.nowMs) {
       reject(
         "OUTSIDE_RESERVATION_HORIZON",
         decision.physical_event_id,
