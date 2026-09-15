@@ -1,0 +1,68 @@
+{
+    "bundle_id": "2026-09-14__evolution-canonical-cycle",
+    "repository": "POLYPROPICKS/PREMVP",
+    "period_start": "2026-09-14T00:00:00Z",
+    "period_end": "2026-09-15T00:00:00Z",
+    "evidence_cutoff": "2026-09-15T00:20:00Z",
+    "capture_coverage": "PARTIAL",
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+        "POLYPROPICKS/PREMVP#313",
+        "POLYPROPICKS/PREMVP#314",
+        "POLYPROPICKS/PREMVP#315"
+    ],
+    "operator_action_events": [],
+    "operating_telemetry": {
+        "founder_actions_removable": "UNKNOWN",
+        "executor_runs": "UNKNOWN",
+        "successful_terminal_results": 3,
+        "reruns_resumes": "UNKNOWN",
+        "recovery_iterations": 0,
+        "reviewer_corrections_rejections": 0,
+        "orchestration_waste_iterations": 0,
+        "runtime_evidence_count": 3,
+        "reusable_artifacts_created": 0,
+        "actions_per_verified_result": "UNKNOWN",
+        "time_to_verified_result": "UNKNOWN"
+    },
+    "supporting_metrics": {
+        "runtime_evidence_count": 3,
+        "reusable_artifacts_created": 0,
+        "reviewer_rejection_count": 0,
+        "architect_corrections": 0
+    },
+    "defect_occurrences": [
+        {
+            "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+            "origin": "STATE_OR_CONTEXT_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-12-RESERVATION-PRODUCER-RECOVERY-RACE",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": "CHAIN-MULTI-IDENTITY-FANOUT-CAPACITY-BOUNDARY",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#315",
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-14-RESERVATION-HORIZON-REJECTION-SCOPE-MISDIAGNOSIS",
+            "origin": "DIAGNOSIS_SCOPE_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-MULTI-IDENTITY-FANOUT-CAPACITY-BOUNDARY",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#315",
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-12-NO-HOSTING-ENV-CONFIG-WRITE-CAPABILITY",
+            "origin": "CONTROL_PLANE_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        }
+    ]
+}
