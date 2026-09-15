@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { pathToFileURL } from "node:url";
 import {
   buildKeysetFilter,
   compareWatermarks,
@@ -313,6 +314,167 @@ async function syncTable(target: Client, source: Client, spec: TableSpec): Promi
   };
 }
 
+// MAKE_RESEARCH_CLONE_SYNC_SELF_DIAGNOSTIC_V1 — structured, secret-free causal
+// evidence emitted through this script's own console output on every natural
+// execution. Never logs URLs, JWTs, service-role keys, headers, or
+// evidence_rows payloads -- only table names, counts, timestamps, and the
+// existing redacted safeError() codes/messages already used above.
+
+/** The union of stages this run can report. "COMPLETE" means the full sync
+ * finished with no unclassified failure (individual tables may still be
+ * APPEND_PENDING/RECONCILIATION_PENDING -- that is normal resumable state,
+ * not a failure). */
+export type SyncStage =
+  | "SOURCE_UNREACHABLE"
+  | "CLONE_UNREACHABLE"
+  | "CLONE_OUTBOX_MISSING"
+  | "CLONE_OUTBOX_REACHABLE"
+  | "SYNC_READ_FAILURE"
+  | "SYNC_WRITE_FAILURE"
+  | "CONFIG_FAILURE"
+  | "OTHER_FAILURE"
+  | "COMPLETE";
+
+/**
+ * Classifies an already-redacted safeError() code (never the raw error) into
+ * a causal stage, using the exact error-code prefixes this file already
+ * throws (RESEARCH_CLONE_SOURCE_READ_*, RESEARCH_CLONE_TARGET_WRITE_*, etc.).
+ * Pure and dependency-free so it is directly unit-testable without any live
+ * credentials.
+ */
+export function classifyCausalErrorClass(errorCode: string): SyncStage {
+  if (
+    errorCode.includes("RUNTIME_TARGET_MISMATCH") ||
+    errorCode.startsWith("MISSING_") ||
+    errorCode === "REQUIRED_CLONE_WRITE_AUTHORIZATION_UNAVAILABLE"
+  ) {
+    return "CONFIG_FAILURE";
+  }
+  if (/_TARGET_WRITE_|_CHECKPOINT_WRITE_/.test(errorCode)) return "SYNC_WRITE_FAILURE";
+  if (
+    /_SOURCE_READ_|_MAX_WATERMARK_|_TARGET_READ_|_CHECKPOINT_READ_|_DUPLICATE_SOURCE_ID_|_APPEND_ONLY_CONFLICT_|_INITIAL_WATERMARK_REQUIRED_/.test(
+      errorCode,
+    )
+  ) {
+    return "SYNC_READ_FAILURE";
+  }
+  return "OTHER_FAILURE";
+}
+
+export interface ReachabilityProbeResult {
+  reachable: boolean;
+  errorMessageSafe: string | null;
+}
+
+/** Cheapest bounded read that proves production is answering requests at all
+ * -- reuses generated_signal_pairs, a table this sync already depends on, so
+ * no new table dependency is introduced. */
+export async function probeSourceReachable(source: Client): Promise<ReachabilityProbeResult> {
+  try {
+    const { error } = await source.from("generated_signal_pairs").select("id").limit(1);
+    if (error) throw new Error(`RESEARCH_CLONE_SOURCE_PROBE:${safeError(error)}`);
+    return { reachable: true, errorMessageSafe: null };
+  } catch (error) {
+    return { reachable: false, errorMessageSafe: safeError(error) };
+  }
+}
+
+/** Cheapest bounded read that proves the clone is answering requests --
+ * reuses job_runs, which this sync's checkpoint read/write already requires
+ * unconditionally for every table, so no new table dependency is introduced. */
+export async function probeCloneReachable(target: Client): Promise<ReachabilityProbeResult> {
+  try {
+    const { error } = await target.from("job_runs").select("source").limit(1);
+    if (error) throw new Error(`RESEARCH_CLONE_TARGET_PROBE:${safeError(error)}`);
+    return { reachable: true, errorMessageSafe: null };
+  } catch (error) {
+    return { reachable: false, errorMessageSafe: safeError(error) };
+  }
+}
+
+export interface CloneOutboxDiagnostics {
+  tableExists: boolean;
+  rowN: number | null;
+  latestObservedAt: string | null;
+  stage: SyncStage;
+  errorMessageSafe: string | null;
+}
+
+/**
+ * Bounded, dedicated diagnostic read of the clone's primary_evidence_outbox
+ * table: an exact head-count (no rows returned) plus a single-row read of
+ * the latest observed_at. Never reads evidence_rows. Makes the previously
+ * ambiguous "optional table missing -> silent no-op" condition explicitly
+ * observable, independent of whether the per-table sync attempt below also
+ * hits the same missing-table condition.
+ */
+export async function probeCloneOutbox(target: Client): Promise<CloneOutboxDiagnostics> {
+  try {
+    const countRes = await target
+      .from("primary_evidence_outbox")
+      .select("observation_id", { count: "exact", head: true });
+    if (countRes.error) throw new Error(`RESEARCH_CLONE_OUTBOX_PROBE:${safeError(countRes.error)}`);
+    const latestRes = await target
+      .from("primary_evidence_outbox")
+      .select("observed_at")
+      .order("observed_at", { ascending: false })
+      .limit(1);
+    if (latestRes.error) throw new Error(`RESEARCH_CLONE_OUTBOX_PROBE:${safeError(latestRes.error)}`);
+    const latest = (latestRes.data?.[0] as { observed_at?: string } | undefined)?.observed_at ?? null;
+    return {
+      tableExists: true,
+      rowN: countRes.count ?? 0,
+      latestObservedAt: latest,
+      stage: "CLONE_OUTBOX_REACHABLE",
+      errorMessageSafe: null,
+    };
+  } catch (error) {
+    if (isMissingTableError(error)) {
+      return {
+        tableExists: false,
+        rowN: null,
+        latestObservedAt: null,
+        stage: "CLONE_OUTBOX_MISSING",
+        errorMessageSafe: null,
+      };
+    }
+    const code = safeError(error);
+    return {
+      tableExists: false,
+      rowN: null,
+      latestObservedAt: null,
+      stage: classifyCausalErrorClass(code),
+      errorMessageSafe: code,
+    };
+  }
+}
+
+interface SelfDiagnostics {
+  SYNC_STAGE: SyncStage;
+  SOURCE_REACHABLE: boolean;
+  CLONE_REACHABLE: boolean;
+  CLONE_OUTBOX_TABLE_EXISTS: boolean;
+  CLONE_OUTBOX_ROW_N: number | null;
+  CLONE_OUTBOX_LATEST_OBSERVED_AT: string | null;
+  CAUSAL_ERROR_CLASS: SyncStage | null;
+  CAUSAL_ERROR_MESSAGE_SAFE: string | null;
+  SCHEMA_PENDING_TABLES: TableName[];
+}
+
+function initialDiagnostics(): SelfDiagnostics {
+  return {
+    SYNC_STAGE: "SOURCE_UNREACHABLE",
+    SOURCE_REACHABLE: false,
+    CLONE_REACHABLE: false,
+    CLONE_OUTBOX_TABLE_EXISTS: false,
+    CLONE_OUTBOX_ROW_N: null,
+    CLONE_OUTBOX_LATEST_OBSERVED_AT: null,
+    CAUSAL_ERROR_CLASS: null,
+    CAUSAL_ERROR_MESSAGE_SAFE: null,
+    SCHEMA_PENDING_TABLES: [],
+  };
+}
+
 async function main(): Promise<void> {
   // EMERGENCY_QUIESCE_PROD_DB_BACKGROUND_LOAD_V1: first thing this entrypoint
   // does, before any env resolution or Supabase client creation. This is the
@@ -326,58 +488,121 @@ async function main(): Promise<void> {
     console.log(`[research-clone-daily-sync] ${JSON.stringify(buildEmergencyQuiesceResult("research-clone-sync"))}`);
     return;
   }
-  const productionUrl = requiredEnv("SUPABASE_URL");
-  const productionKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
-  const cloneUrl = requiredEnv("SUPABASE_CLONE_URL");
-  const cloneKey = requiredEnv("SUPABASE_CLONE_SERVICE_ROLE_KEY");
-  if (projectRef(productionUrl) !== EXPECTED_PRODUCTION_REF || projectRef(cloneUrl) !== EXPECTED_CLONE_REF || productionUrl === cloneUrl) {
-    throw new Error("RESEARCH_CLONE_RUNTIME_TARGET_MISMATCH");
-  }
-
+  const diagnostics = initialDiagnostics();
   const startedAt = Date.now();
-  const source = createClient(productionUrl, productionKey, { auth: { autoRefreshToken: false, persistSession: false } });
-  const target = createClient(cloneUrl, cloneKey, { auth: { autoRefreshToken: false, persistSession: false } });
-  const tables: Record<TableName, TableEvidence> = {} as Record<TableName, TableEvidence>;
-  const schemaPendingTables: TableName[] = [];
-  // Each table is synced in turn. A spent page budget on an earlier table is a
-  // resumable `*_PENDING` outcome, never a throw, so later tables are not starved
-  // and the next scheduled run continues from the durable checkpoints/cursors.
-  for (const spec of SPECS) {
-    try {
-      tables[spec.table] = await syncTable(target, source, spec);
-    } catch (error) {
-      // An optional table's clone-side schema (ops/research-clone/
-      // primary-evidence-outbox-schema.sql) may not be applied yet — a missing
-      // table is a safe no-op for that table only, never a cron failure, and
-      // never masks a real error on a proven table or a non-schema error here.
-      if (spec.optional && isMissingTableError(error)) {
-        tables[spec.table] = EMPTY_TABLE_EVIDENCE;
-        schemaPendingTables.push(spec.table);
-        continue;
-      }
-      throw error;
+  try {
+    const productionUrl = requiredEnv("SUPABASE_URL");
+    const productionKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
+    const cloneUrl = requiredEnv("SUPABASE_CLONE_URL");
+    const cloneKey = requiredEnv("SUPABASE_CLONE_SERVICE_ROLE_KEY");
+    if (projectRef(productionUrl) !== EXPECTED_PRODUCTION_REF || projectRef(cloneUrl) !== EXPECTED_CLONE_REF || productionUrl === cloneUrl) {
+      throw new Error("RESEARCH_CLONE_RUNTIME_TARGET_MISMATCH");
     }
+
+    const source = createClient(productionUrl, productionKey, { auth: { autoRefreshToken: false, persistSession: false } });
+    const target = createClient(cloneUrl, cloneKey, { auth: { autoRefreshToken: false, persistSession: false } });
+
+    // Explicit preflight diagnostics, in causal order: production
+    // reachability, then clone reachability, then the specific
+    // primary_evidence_outbox existence/count/watermark check that was
+    // previously an ambiguous silent no-op. Each stops the run early with a
+    // precise SYNC_STAGE rather than letting an unreachable dependency
+    // surface as a confusing mid-loop stack trace.
+    const sourceProbe = await probeSourceReachable(source);
+    diagnostics.SOURCE_REACHABLE = sourceProbe.reachable;
+    if (!sourceProbe.reachable) {
+      diagnostics.SYNC_STAGE = "SOURCE_UNREACHABLE";
+      diagnostics.CAUSAL_ERROR_CLASS = "SOURCE_UNREACHABLE";
+      diagnostics.CAUSAL_ERROR_MESSAGE_SAFE = sourceProbe.errorMessageSafe;
+      console.error(JSON.stringify({ STATUS: "FAILED", DURATION_MS: Date.now() - startedAt, ...diagnostics }));
+      process.exitCode = 1;
+      return;
+    }
+
+    const cloneProbe = await probeCloneReachable(target);
+    diagnostics.CLONE_REACHABLE = cloneProbe.reachable;
+    if (!cloneProbe.reachable) {
+      diagnostics.SYNC_STAGE = "CLONE_UNREACHABLE";
+      diagnostics.CAUSAL_ERROR_CLASS = "CLONE_UNREACHABLE";
+      diagnostics.CAUSAL_ERROR_MESSAGE_SAFE = cloneProbe.errorMessageSafe;
+      console.error(JSON.stringify({ STATUS: "FAILED", DURATION_MS: Date.now() - startedAt, ...diagnostics }));
+      process.exitCode = 1;
+      return;
+    }
+
+    const outboxProbe = await probeCloneOutbox(target);
+    diagnostics.CLONE_OUTBOX_TABLE_EXISTS = outboxProbe.tableExists;
+    diagnostics.CLONE_OUTBOX_ROW_N = outboxProbe.rowN;
+    diagnostics.CLONE_OUTBOX_LATEST_OBSERVED_AT = outboxProbe.latestObservedAt;
+    diagnostics.SYNC_STAGE = outboxProbe.stage;
+    if (outboxProbe.stage !== "CLONE_OUTBOX_REACHABLE" && outboxProbe.stage !== "CLONE_OUTBOX_MISSING") {
+      diagnostics.CAUSAL_ERROR_CLASS = outboxProbe.stage;
+      diagnostics.CAUSAL_ERROR_MESSAGE_SAFE = outboxProbe.errorMessageSafe;
+      console.error(JSON.stringify({ STATUS: "FAILED", DURATION_MS: Date.now() - startedAt, ...diagnostics }));
+      process.exitCode = 1;
+      return;
+    }
+
+    const tables: Record<TableName, TableEvidence> = {} as Record<TableName, TableEvidence>;
+    const schemaPendingTables: TableName[] = [];
+    // Each table is synced in turn. A spent page budget on an earlier table is a
+    // resumable `*_PENDING` outcome, never a throw, so later tables are not starved
+    // and the next scheduled run continues from the durable checkpoints/cursors.
+    for (const spec of SPECS) {
+      try {
+        tables[spec.table] = await syncTable(target, source, spec);
+      } catch (error) {
+        // An optional table's clone-side schema (ops/research-clone/
+        // primary-evidence-outbox-schema.sql) may not be applied yet — a missing
+        // table is a safe no-op for that table only, never a cron failure, and
+        // never masks a real error on a proven table or a non-schema error here.
+        // (The dedicated outboxProbe above already made this condition
+        // explicitly observable via SYNC_STAGE/CLONE_OUTBOX_TABLE_EXISTS; this
+        // still degrades gracefully so partial-schema deploys never crash.)
+        if (spec.optional && isMissingTableError(error)) {
+          tables[spec.table] = EMPTY_TABLE_EVIDENCE;
+          schemaPendingTables.push(spec.table);
+          continue;
+        }
+        throw error;
+      }
+    }
+    diagnostics.SCHEMA_PENDING_TABLES = schemaPendingTables;
+    const pendingTables = (Object.keys(tables) as TableName[]).filter(
+      (name) => tables[name].APPEND_PENDING || tables[name].RECONCILIATION_PENDING,
+    );
+    console.log(
+      JSON.stringify({
+        TABLES: tables,
+        PENDING_TABLES: pendingTables,
+        RESUME_PENDING: pendingTables.length > 0,
+        DURATION_MS: Date.now() - startedAt,
+        STATUS: "SUCCESS",
+        ...diagnostics,
+        SYNC_STAGE: "COMPLETE",
+      }),
+    );
+    // Do not advance the downstream model-ready boundary until every raw table
+    // reached its durable clone checkpoint. The scheduled command uses `&&`, so
+    // a resumable partial sync safely suppresses model materialization.
+    if (pendingTables.length > 0) process.exitCode = 75;
+  } catch (error) {
+    const code = safeError(error);
+    diagnostics.CAUSAL_ERROR_CLASS = classifyCausalErrorClass(code);
+    diagnostics.CAUSAL_ERROR_MESSAGE_SAFE = code;
+    diagnostics.SYNC_STAGE = diagnostics.CAUSAL_ERROR_CLASS;
+    console.error(JSON.stringify({ STATUS: "FAILED", DURATION_MS: Date.now() - startedAt, ...diagnostics }));
+    process.exitCode = 1;
   }
-  const pendingTables = (Object.keys(tables) as TableName[]).filter(
-    (name) => tables[name].APPEND_PENDING || tables[name].RECONCILIATION_PENDING,
-  );
-  console.log(
-    JSON.stringify({
-      TABLES: tables,
-      PENDING_TABLES: pendingTables,
-      SCHEMA_PENDING_TABLES: schemaPendingTables,
-      RESUME_PENDING: pendingTables.length > 0,
-      DURATION_MS: Date.now() - startedAt,
-      STATUS: "SUCCESS",
-    }),
-  );
-  // Do not advance the downstream model-ready boundary until every raw table
-  // reached its durable clone checkpoint. The scheduled command uses `&&`, so
-  // a resumable partial sync safely suppresses model materialization.
-  if (pendingTables.length > 0) process.exitCode = 75;
 }
 
-main().catch((error) => {
-  console.error(JSON.stringify({ STATUS: "FAILED", ERROR: safeError(error) }));
-  process.exitCode = 1;
-});
+// CLI entry-point guard: run only when this file is the invoked script, not
+// when imported (e.g. by regression tests exercising the pure diagnostic
+// classifier/probes above without live credentials).
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((error) => {
+    // Defensive last-resort net; main() already catches and reports internally.
+    console.error(JSON.stringify({ STATUS: "FAILED", ERROR: safeError(error) }));
+    process.exitCode = 1;
+  });
+}
