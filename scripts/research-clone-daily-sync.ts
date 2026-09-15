@@ -477,6 +477,10 @@ function initialDiagnostics(): SelfDiagnostics {
 
 /**
  * TEMPORARY_HARD_STOP_RESEARCH_SYNC_UNSAFE_PRODUCTION_READ_V1.
+ * (EMERGENCY_REDEPLOY_SAFE_RUNTIME_AND_RECOVER_PRODUCT_V1: comment-only
+ * redeploy marker -- no behavior change -- to trigger a fresh registered
+ * deployment attempt of this exact safe hard-stop revision after the prior
+ * Build > Build image failure.)
  *
  * ISOLATE_UNSAFE_RESEARCH_SYNC_AND_RECOVER_MONEY_PATH_V1 mission evidence
  * (RESEARCH_SYNC_DB_LOAD_TRIGGER_CLASSIFIED): this script's sourcePage()
