@@ -158,14 +158,15 @@ export async function keysetPage(
   cols: string,
   afterTs: string,
   afterId: string,
+  idField: string = "id",
 ): Promise<{ rows: Row[]; source: "tie" | "advance" }> {
   if (afterId) {
     const tie = await db
       .from(table)
       .select(cols)
       .eq(tsField, afterTs)
-      .gt("id", afterId)
-      .order("id", { ascending: true })
+      .gt(idField, afterId)
+      .order(idField, { ascending: true })
       .limit(PAGE);
     if (tie.error) throw new Error(`CLONE_READ_${table}:${tie.error.code ?? ""}:${tie.error.message}`);
     if ((tie.data ?? []).length > 0) return { rows: (tie.data ?? []) as unknown as Row[], source: "tie" };
@@ -175,7 +176,7 @@ export async function keysetPage(
     .select(cols)
     .gt(tsField, afterTs)
     .order(tsField, { ascending: true })
-    .order("id", { ascending: true })
+    .order(idField, { ascending: true })
     .limit(PAGE);
   if (adv.error) throw new Error(`CLONE_READ_${table}:${adv.error.code ?? ""}:${adv.error.message}`);
   return { rows: (adv.data ?? []) as unknown as Row[], source: "advance" };
@@ -249,6 +250,95 @@ export async function readSignalPairs(
     const last = obj(chunk[chunk.length - 1]);
     afterCreated = String(last.created_at);
     afterId = String(last.id);
+  }
+  return { pairs: out, maxWatermark };
+}
+
+const OUTBOX_COLS = "observation_id, observed_at, evidence_rows, evidence_row_count";
+
+/**
+ * Bounded keyset read of primary_evidence_outbox over the D-1 window — the
+ * current authoritative production evidence source after
+ * supabase/migrations/20260908120000_make_current_money_state_gsp_independent.sql
+ * moved money publication off generated_signal_pairs
+ * (lib/feed/persistPrimarySignalPopulation.ts gspWriteStatus
+ * DEFERRED_TO_PRIMARY_EVIDENCE_OUTBOX). Each envelope's evidence_rows is the
+ * exact GSP-row-shaped JSON captured at publish time
+ * (lib/feed/primaryEvidenceServing.ts buildPrimaryEvidenceRows reuses
+ * buildGeneratedSignalPairRows verbatim), so flattening it reproduces the
+ * same identity/diagnostics shape readSignalPairs produces from GSP, keyed by
+ * each row's own embedded observation_id (never the envelope id, which is
+ * shared by every row in the same publish cycle).
+ */
+export async function readPrimaryEvidenceOutbox(
+  db: SupabaseClient,
+  startUtc: string,
+  endUtc: string,
+): Promise<{ pairs: RawPair[]; maxWatermark: string | null }> {
+  const out: RawPair[] = [];
+  let afterObserved = new Date(Date.parse(startUtc) - 1).toISOString();
+  let afterId = "";
+  let maxWatermark: string | null = null;
+
+  for (let guard = 0; guard < 1000; guard++) {
+    const { rows: chunk, source } = await keysetPage(
+      db,
+      "primary_evidence_outbox",
+      "observed_at",
+      OUTBOX_COLS,
+      afterObserved,
+      afterId,
+      "observation_id",
+    );
+    if (chunk.length === 0) break;
+    if (String(obj(chunk[0]).observed_at) >= endUtc) break;
+
+    let crossed = false;
+    for (const raw of chunk) {
+      if (String(obj(raw).observed_at) >= endUtc) {
+        crossed = true;
+        break;
+      }
+      const envelope = obj(raw);
+      const observedAt = String(envelope.observed_at);
+      const envelopeId = String(envelope.observation_id);
+      maxWatermark = `${observedAt}|${envelopeId}`;
+      const items = Array.isArray(envelope.evidence_rows) ? (envelope.evidence_rows as Row[]) : [];
+      for (const item of items) {
+        const r = obj(item);
+        const d = obj(r.diagnostics);
+        const itemId = str(r.observation_id);
+        if (!itemId) continue;
+        const cid = str(r.condition_id);
+        const tok = str(r.selected_token_id);
+        out.push({
+          _createdAt: observedAt,
+          _id: itemId,
+          conditionId: cid ?? "",
+          selectedTokenId: tok ?? "",
+          decisionAt: observedAt,
+          sourceCreatedAt: observedAt,
+          entryPriceNum: num(r.entry_price_num),
+          volumeUsd: num(d.volumeUsd),
+          eventStartIso: str(d.gameStartIso),
+          providerEventId: str(d.providerEventId),
+          marketTypeRaw: str(d.marketType),
+          marketFamily: str(d.marketFamily),
+          providerSportCode: str(d.providerSportCode),
+          providerSportFamily: str(d.providerSportFamily),
+          formulaVersion: str(r.formula_version),
+          preEventScoreNum: num(r.pre_event_score_num),
+          gammaTerminal: null,
+          cloneSignalResult: str(r.signal_result),
+          _cloneSignalResultRaw: str(r.signal_result),
+        });
+      }
+    }
+    if (crossed) break;
+    if (source === "advance" && chunk.length < PAGE) break;
+    const last = obj(chunk[chunk.length - 1]);
+    afterObserved = String(last.observed_at);
+    afterId = String(last.observation_id);
   }
   return { pairs: out, maxWatermark };
 }
@@ -402,8 +492,21 @@ async function main() {
   const { client: db, url } = resolveCloneClient();
   const sourceProject = projectRef(url);
 
-  const { pairs, maxWatermark } = await readSignalPairs(db, startUtc, endUtc);
+  // Two disjoint-identity sources are read and combined, never pooled into one
+  // unlabeled count: legacy generated_signal_pairs (pre-transition, and any
+  // residual non-blocking legacy probe writes) and the current authoritative
+  // primary_evidence_outbox (post-GSP-independence money publication). Row
+  // identity (_id) never collides across the two: GSP rows key on the GSP
+  // UUID primary key, outbox rows key on each embedded row's own
+  // observation_id (a distinct namespace derived via sha256 in
+  // lib/feed/buildLandingCards.ts observationUuid).
+  const gsp = await readSignalPairs(db, startUtc, endUtc);
+  const outbox = await readPrimaryEvidenceOutbox(db, startUtc, endUtc);
+  const pairs = [...gsp.pairs, ...outbox.pairs];
+  const maxWatermark = gsp.maxWatermark;
   const rawRowN = pairs.length;
+  const gspInputRawRowN = gsp.pairs.length;
+  const outboxInputRawRowN = outbox.pairs.length;
 
   const conditionIds = Array.from(
     new Set(pairs.map((p) => p.conditionId).filter(Boolean)),
@@ -546,10 +649,18 @@ async function main() {
       unit: "generated_signal_pairs (created_at|id) keyset",
       source_stage: "INPUT_RAW",
     },
+    OUTBOX_SOURCE_MAX_WATERMARK: {
+      value: outbox.maxWatermark,
+      unit: "primary_evidence_outbox (observed_at|observation_id) keyset",
+      source_stage: "INPUT_RAW",
+      note: "Current authoritative production evidence source; distinct identity namespace from generated_signal_pairs, never pooled with SOURCE_MAX_WATERMARK.",
+    },
     OBS_LOOKBACK_FLOOR: floorUtc,
 
     COUNTS: [
-      { name: "INPUT_RAW_ROW_N", value: rawRowN, unit: "generated_signal_pairs decision rows (repeated emissions included)", source_stage: "INPUT_RAW" },
+      { name: "GSP_INPUT_RAW_ROW_N", value: gspInputRawRowN, unit: "generated_signal_pairs decision rows (repeated emissions included)", source_stage: "INPUT_RAW_GSP" },
+      { name: "OUTBOX_INPUT_RAW_ROW_N", value: outboxInputRawRowN, unit: "primary_evidence_outbox evidence_rows items in window (current authoritative source)", source_stage: "INPUT_RAW_OUTBOX" },
+      { name: "INPUT_RAW_ROW_N", value: rawRowN, unit: "GSP_INPUT_RAW_ROW_N + OUTBOX_INPUT_RAW_ROW_N, disjoint identity namespaces", source_stage: "INPUT_RAW" },
       { name: "INPUT_OBSERVATION_ROW_N", value: observations.length, unit: "generated_signal_research_snapshots rows", source_stage: "INPUT_RAW_OBSERVATION" },
       { name: "OUTPUT_COMPACT_ROW_N", value: rows.length, unit: "compact PIT feature rows (1 per canonical identity)", source_stage: "OUTPUT_COMPACT" },
       { name: "PIT_FUTURE_LEAK_N", value: pitFutureLeakN, unit: "compact rows with an eligible observation after DECISION_AT", source_stage: "OUTPUT_COMPACT" },
@@ -633,6 +744,8 @@ async function main() {
         ok: true,
         d1,
         window: { startUtc, endUtc },
+        GSP_INPUT_RAW_ROW_N: gspInputRawRowN,
+        OUTBOX_INPUT_RAW_ROW_N: outboxInputRawRowN,
         INPUT_RAW_ROW_N: rawRowN,
         OUTPUT_COMPACT_ROW_N: rows.length,
         PHYSICAL_EVENT_CENSUS: {
