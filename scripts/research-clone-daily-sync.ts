@@ -475,7 +475,45 @@ function initialDiagnostics(): SelfDiagnostics {
   };
 }
 
-async function main(): Promise<void> {
+/**
+ * TEMPORARY_HARD_STOP_RESEARCH_SYNC_UNSAFE_PRODUCTION_READ_V1.
+ *
+ * ISOLATE_UNSAFE_RESEARCH_SYNC_AND_RECOVER_MONEY_PATH_V1 mission evidence
+ * (RESEARCH_SYNC_DB_LOAD_TRIGGER_CLASSIFIED): this script's sourcePage()
+ * keyset read against production primary_evidence_outbox has no supporting
+ * index on observed_at anywhere in supabase/migrations/ (unlike the other
+ * three synced tables), and select("*") pulls the full evidence_rows jsonb
+ * payload (up to 1524 array elements/row) on every page, with no query
+ * timeout and no retry/backoff anywhere in this file. That is a proven-unsafe
+ * query shape against production.
+ *
+ * The preferred fix is the selective EMERGENCY_QUIESCE_SCOPES=research-clone-sync
+ * runtime configuration already supported by lib/ops/emergencyQuiesce.ts (see
+ * the isEmergencyQuiesceActive("research-clone-sync") check below) -- but
+ * activating it requires a Railway env var change this executor cannot make.
+ * Until either that env var is set, or the query shape itself is fixed (a
+ * bounded time window and/or a matching index -- NOT done in this commit),
+ * this unconditional code-level hard stop is the temporary safeguard: it is
+ * scoped to ONLY this script, runs before any env resolution or Supabase
+ * client creation, and does not touch signal-cache, Reservation, Rebalance,
+ * Queue, or any other guarded entrypoint.
+ *
+ * Remove this block only together with a proven-safe replacement query shape
+ * for primary_evidence_outbox -- never by itself.
+ */
+const RESEARCH_SYNC_HARD_STOPPED = true;
+
+export async function main(): Promise<void> {
+  if (RESEARCH_SYNC_HARD_STOPPED) {
+    console.log(
+      JSON.stringify({
+        STATUS: "HARD_STOPPED",
+        REASON: "TEMPORARY_HARD_STOP_RESEARCH_SYNC_UNSAFE_PRODUCTION_READ_V1",
+        SOURCE: "research-clone-sync",
+      }),
+    );
+    return;
+  }
   // EMERGENCY_QUIESCE_PROD_DB_BACKGROUND_LOAD_V1: first thing this entrypoint
   // does, before any env resolution or Supabase client creation. This is the
   // ONLY step of the research-clone-daily-sync Railway startCommand that
