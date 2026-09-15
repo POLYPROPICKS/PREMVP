@@ -88,7 +88,7 @@ function resolveD1(explicit?: string): string {
   return minskD1.toISOString().slice(0, 10);
 }
 
-function minskWindow(d1: string): { startUtc: string; endUtc: string } {
+export function minskWindow(d1: string): { startUtc: string; endUtc: string } {
   const startUtcMs = Date.parse(`${d1}T00:00:00.000Z`) - MINSK_OFFSET_HOURS * 3600_000;
   return {
     startUtc: new Date(startUtcMs).toISOString(),
@@ -96,11 +96,11 @@ function minskWindow(d1: string): { startUtc: string; endUtc: string } {
   };
 }
 
-function projectRef(url: string): string {
+export function projectRef(url: string): string {
   return new URL(url).hostname.split(".")[0];
 }
 
-function resolveCloneClient(): { client: SupabaseClient; url: string } {
+export function resolveCloneClient(): { client: SupabaseClient; url: string } {
   const url = process.env.SUPABASE_CLONE_URL;
   const key = process.env.SUPABASE_CLONE_SERVICE_ROLE_KEY;
   if (!url || !key) {
@@ -430,7 +430,7 @@ export async function readObservations(
 }
 
 /** Gamma/CLOB settlement authority, per market (condition_id). */
-async function resolveGammaTerminal(
+export async function resolveGammaTerminal(
   conditionId: string,
   selectedTokenId: string,
   entryPriceNum: number | null,
@@ -448,7 +448,7 @@ async function resolveGammaTerminal(
   return { terminal: null, resolverState: r.resolverState };
 }
 
-async function mapWithConcurrency<T, R>(
+export async function mapWithConcurrency<T, R>(
   items: T[],
   limit: number,
   fn: (item: T) => Promise<R>,
