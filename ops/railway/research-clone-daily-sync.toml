@@ -22,6 +22,17 @@ buildCommand = "npm ci --ignore-scripts"
 # resolveMissingRecentDates) — never an unbounded backfill. It never writes
 # research_model_economics; the pre-existing research-clone:model-ready step
 # is unchanged and keeps that responsibility.
-startCommand = "npm run research-clone:sync && npm run research-clone:model-ready && npm run research-clone:model-ready-direct"
+#
+# UNBLOCK_DIRECT_MODEL_READY_RUNTIME_V1: the first two steps stay chained with
+# `&&` (unchanged legacy gating — scripts/research-clone-daily-sync.ts sets
+# process.exitCode=75 on a resumable partial sync specifically because "the
+# scheduled command uses &&, so a resumable partial sync safely suppresses
+# model materialization" for the LEGACY research-clone:model-ready economics
+# step). The direct model-ready path is the analytics authority and reads
+# straight from the research clone tables in bounded, already-synced slices —
+# it has no dependency on that run's sync/legacy-pipeline exit code, so it is
+# separated with `;` and always attempts to run, even when the legacy sync or
+# legacy pipeline step fails or is still catching up.
+startCommand = "npm run research-clone:sync && npm run research-clone:model-ready; npm run research-clone:model-ready-direct"
 cronSchedule = "0 2 * * *"
 restartPolicyType = "NEVER"
