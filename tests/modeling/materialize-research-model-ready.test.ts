@@ -12,7 +12,9 @@ import assert from "node:assert/strict";
 
 import {
   datesInRange,
+  latestClosedMinskDay,
   materializeDayRows,
+  resolveMissingRecentDates,
   writeDayRows,
 } from "../../scripts/modeling/materialize-research-model-ready";
 
@@ -192,4 +194,57 @@ test("writeDayRows: upserts on the full economic-identity conflict key (idempote
 
   const economicsWrite = recording.writes.find((w) => w.table === "research_model_economics");
   assert.equal(economicsWrite, undefined, "this materializer never writes research_model_economics");
+});
+
+test("latestClosedMinskDay: is the calendar day strictly before the current Minsk day", () => {
+  // Noon UTC on 2026-09-15 is 15:00 Minsk (UTC+3) on the same calendar day —
+  // the latest CLOSED day is the day before.
+  const now = new Date("2026-09-15T12:00:00.000Z");
+  assert.equal(latestClosedMinskDay(now), "2026-09-14");
+});
+
+/** Fake clone client exposing only research_model_ready_days reads. */
+function makeFakeDaysClient(dayRows: Array<{ model_date: string; status: string }>) {
+  return {
+    from(table: string) {
+      if (table !== "research_model_ready_days") throw new Error(`unexpected table ${table}`);
+      const filters: Array<{ op: "gte" | "lte"; field: string; value: string }> = [];
+      const chain = {
+        select() {
+          return chain;
+        },
+        gte(field: string, value: string) {
+          filters.push({ op: "gte", field, value });
+          return chain;
+        },
+        lte(field: string, value: string) {
+          filters.push({ op: "lte", field, value });
+          return Promise.resolve({
+            data: dayRows.filter((r) =>
+              filters.concat([{ op: "lte", field, value }]).every((f) => {
+                const v = r[f.field as "model_date"];
+                return f.op === "gte" ? v >= f.value : v <= f.value;
+              }),
+            ),
+            error: null,
+          });
+        },
+      };
+      return chain;
+    },
+  } as any;
+}
+
+test("resolveMissingRecentDates: bounded window, excludes already-accepted dates, never an unbounded backfill", async () => {
+  const now = new Date("2026-09-15T12:00:00.000Z"); // latest closed Minsk day: 2026-09-14
+  const db = makeFakeDaysClient([
+    { model_date: "2026-09-12", status: "MODEL_READY" },
+    { model_date: "2026-09-13", status: "DEGRADED_EXCLUDED" },
+  ]);
+  const missing = await resolveMissingRecentDates(db, 7, now);
+  assert.equal(missing.length, 5, "7-day window minus the 2 already-accepted dates");
+  assert.equal(missing.includes("2026-09-12"), false);
+  assert.equal(missing.includes("2026-09-13"), false);
+  assert.equal(missing.includes("2026-09-14"), true, "latest closed day is a candidate when unaccepted");
+  assert.equal(missing[0], "2026-09-08", "window floor is exactly windowDays back from the latest closed day");
 });

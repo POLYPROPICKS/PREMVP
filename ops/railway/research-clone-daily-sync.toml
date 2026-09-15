@@ -14,6 +14,14 @@
 buildCommand = "npm ci --ignore-scripts"
 
 [deploy]
-startCommand = "npm run research-clone:sync && npm run research-clone:model-ready"
+# The third step is the DIRECT_MODEL_READY_RESEARCH_PATH_V1 materializer
+# (scripts/modeling/materialize-research-model-ready.ts). Reuses this same
+# service's existing production-read + research-clone credentials; adds no
+# new service, scheduler, or credential system. With no --start/--end/--dates
+# it defaults to a bounded "missing/recent" window (see
+# resolveMissingRecentDates) — never an unbounded backfill. It never writes
+# research_model_economics; the pre-existing research-clone:model-ready step
+# is unchanged and keeps that responsibility.
+startCommand = "npm run research-clone:sync && npm run research-clone:model-ready && npm run research-clone:model-ready-direct"
 cronSchedule = "0 2 * * *"
 restartPolicyType = "NEVER"

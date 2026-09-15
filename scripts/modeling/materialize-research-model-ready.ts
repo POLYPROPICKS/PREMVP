@@ -59,12 +59,59 @@ import {
 const WRITE_PAGE = 500;
 const OBS_LOOKBACK_DAYS = 30;
 const DAY_MS = 86_400_000;
+const MINSK_OFFSET_HOURS = 3; // Europe/Minsk = UTC+3 year-round (no DST since 2011)
+// Bounded default cron window: "missing/recent", never an unbounded backfill.
+const DEFAULT_RECENT_WINDOW_DAYS = 7;
 
 function arg(name: string): string | undefined {
   const eq = process.argv.find((v) => v.startsWith(`${name}=`));
   if (eq) return eq.slice(name.length + 1);
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+/** Latest fully-closed Europe/Minsk calendar date given a wall clock (defaults to now). */
+export function latestClosedMinskDay(now: Date = new Date()): string {
+  const minskNow = new Date(now.getTime() + MINSK_OFFSET_HOURS * 3600_000);
+  const minskMidnightUtcMs =
+    Date.UTC(minskNow.getUTCFullYear(), minskNow.getUTCMonth(), minskNow.getUTCDate()) -
+    MINSK_OFFSET_HOURS * 3600_000;
+  return new Date(minskMidnightUtcMs - DAY_MS + MINSK_OFFSET_HOURS * 3600_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
+/**
+ * Bounded default source of dates for the unattended cron invocation
+ * (no --start/--end/--dates supplied): the last DEFAULT_RECENT_WINDOW_DAYS
+ * closed Minsk dates ending at the latest closed day, minus whichever of
+ * those are already accepted in research_model_ready_days
+ * (MODEL_READY or DEGRADED_EXCLUDED). Never an unbounded historical
+ * backfill — "missing/recent" only, mirroring the bounded-window discipline
+ * already proven in scripts/modeling/clone-model-ready-pipeline.ts.
+ */
+export async function resolveMissingRecentDates(
+  db: SupabaseClient,
+  windowDays: number = DEFAULT_RECENT_WINDOW_DAYS,
+  now: Date = new Date(),
+): Promise<string[]> {
+  const end = latestClosedMinskDay(now);
+  const start = new Date(Date.parse(`${end}T00:00:00Z`) - (windowDays - 1) * DAY_MS)
+    .toISOString()
+    .slice(0, 10);
+  const candidates = datesInRange(start, end);
+  const { data, error } = await db
+    .from("research_model_ready_days")
+    .select("model_date,status")
+    .gte("model_date", start)
+    .lte("model_date", end);
+  if (error) throw new Error(`MATERIALIZE_DAY_READ:${error.code ?? error.message}`);
+  const accepted = new Set(
+    (data ?? [])
+      .filter((r: { status: string }) => r.status === "MODEL_READY" || r.status === "DEGRADED_EXCLUDED")
+      .map((r: { model_date: string }) => r.model_date),
+  );
+  return candidates.filter((d) => !accepted.has(d));
 }
 
 export function datesInRange(start: string, end: string): string[] {
@@ -204,13 +251,15 @@ async function main() {
   const explicitDates = arg("--dates")?.split(",").filter(Boolean).sort();
   const start = arg("--start");
   const end = arg("--end");
-  if (!explicitDates && !(start && end)) {
-    throw new Error("MATERIALIZE_ARGS_REQUIRED: pass --start YYYY-MM-DD --end YYYY-MM-DD (or --dates a,b,c)");
-  }
-  const dates = explicitDates ?? datesInRange(start!, end!);
 
   const { client: db, url } = resolveCloneClient();
   const sourceProject = projectRef(url);
+
+  // No explicit range: the unattended/cron entry point — bounded
+  // "missing/recent" default. An explicit --start/--end/--dates call (the
+  // independently-callable path, e.g. a one-off activation for a named
+  // historical range) always wins and is never narrowed by this default.
+  const dates = explicitDates ?? (start && end ? datesInRange(start, end) : await resolveMissingRecentDates(db));
 
   const report: DayMaterializationCounts[] = [];
   for (const d of dates) {
