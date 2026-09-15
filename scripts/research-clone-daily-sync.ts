@@ -9,6 +9,7 @@ import {
   type SyncRow,
   type Watermark,
 } from "../lib/research-clone/dailySync";
+import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "../lib/ops/emergencyQuiesce";
 
 const EXPECTED_PRODUCTION_REF = "nbnldzfsxffztsfrrxqy";
 const EXPECTED_CLONE_REF = "nppznoujvnyjargjkmnv";
@@ -313,6 +314,18 @@ async function syncTable(target: Client, source: Client, spec: TableSpec): Promi
 }
 
 async function main(): Promise<void> {
+  // EMERGENCY_QUIESCE_PROD_DB_BACKGROUND_LOAD_V1: first thing this entrypoint
+  // does, before any env resolution or Supabase client creation. This is the
+  // ONLY step of the research-clone-daily-sync Railway startCommand that
+  // reads production (nbnldzfsxffztsfrrxqy) -- the model-ready steps that
+  // follow it read only the research clone. Selective quiesce via
+  // EMERGENCY_QUIESCE_SCOPES=research-clone-sync (or the global
+  // EMERGENCY_QUIESCE=1) stops this production read without touching
+  // Reservation/Rebalance, which are separate guarded entrypoints.
+  if (isEmergencyQuiesceActive("research-clone-sync")) {
+    console.log(`[research-clone-daily-sync] ${JSON.stringify(buildEmergencyQuiesceResult("research-clone-sync"))}`);
+    return;
+  }
   const productionUrl = requiredEnv("SUPABASE_URL");
   const productionKey = requiredEnv("SUPABASE_SERVICE_ROLE_KEY");
   const cloneUrl = requiredEnv("SUPABASE_CLONE_URL");

@@ -503,7 +503,7 @@ async function main() {
 
   // EMERGENCY_QUIESCE_PROD_DB_BACKGROUND_LOAD_V1: before the Supabase client
   // is even constructed. Exits 0 so Railway sees a clean run.
-  if (isEmergencyQuiesceActive()) {
+  if (isEmergencyQuiesceActive("resolve-signals")) {
     console.log(`[resolve-signals] ${JSON.stringify(buildEmergencyQuiesceResult("resolve-signals"))}`);
     process.exit(0);
   }
