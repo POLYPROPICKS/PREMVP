@@ -1,0 +1,245 @@
+/**
+ * DIRECT_MODEL_READY_RESEARCH_PATH_V1 — smallest reusable materialization
+ * path: authoritative production evidence (RESEARCH CLONE mirror, READ ONLY)
+ * -> bounded per-day extraction -> Gamma-authoritative settlement enrichment
+ * -> research_model_ready_rows / research_model_ready_days.
+ *
+ * Reuses, verbatim, the exact bounded reads and identity/PIT/settlement
+ * semantics already proven in scripts/modeling/live-d1-research-corpus.ts
+ * (readSignalPairs, readPrimaryEvidenceOutbox, readObservations,
+ * resolveGammaTerminal, the frozen buildCompactCorpus materializer) and the
+ * exact storage row shape already proven in
+ * scripts/modeling/clone-model-ready-pipeline.ts
+ * (lib/research-clone/modelReady.ts toStoredModelRow,
+ * normalizeMaterializedSportFamily). This is orchestration-only reuse — no
+ * parallel research architecture.
+ *
+ * Unlike clone-model-ready-pipeline.ts this path:
+ *   - never requires a prior local corpus/manifest artifact (no
+ *     scripts/modeling/live-d1-research-corpus.ts subprocess, no full-envelope
+ *     clone-sync prerequisite);
+ *   - never computes or writes research_model_economics (C0/C1/C4/C5
+ *     economics are explicitly out of scope for this materializer);
+ *   - takes an explicit --start/--end (or --dates) range so the same path
+ *     later covers 1D/7D/14D/30D without another implementation.
+ *
+ * Idempotent: research_model_ready_rows is upserted on its full economic
+ * identity key (model_date,population_id,condition_id,selected_token_id,
+ * decision_at) — a rerun of the same date never creates a duplicate
+ * identity, it only refreshes the row content.
+ *
+ *   npx tsx scripts/modeling/materialize-research-model-ready.ts \
+ *     --start 2026-09-01 --end 2026-09-15
+ */
+import { pathToFileURL } from "node:url";
+import type { SupabaseClient } from "@supabase/supabase-js";
+
+import {
+  buildCompactCorpus,
+  type CompactCorpusSlice,
+} from "@/lib/modeling/forward-rich/compactCorpus";
+import type {
+  ForwardRichSignalPair,
+  GammaTerminalState,
+} from "@/lib/modeling/forward-rich/types";
+import { toStoredModelRow } from "../../lib/research-clone/modelReady";
+import type { ScorecardReadyRow } from "../../lib/modeling/research-corpus/rollingCorpus";
+import { normalizeMaterializedSportFamily } from "./clone-model-ready-pipeline";
+import {
+  mapWithConcurrency,
+  minskWindow,
+  projectRef,
+  readObservations,
+  readPrimaryEvidenceOutbox,
+  readSignalPairs,
+  resolveCloneClient,
+  resolveGammaTerminal,
+} from "./live-d1-research-corpus";
+
+const WRITE_PAGE = 500;
+const OBS_LOOKBACK_DAYS = 30;
+const DAY_MS = 86_400_000;
+
+function arg(name: string): string | undefined {
+  const eq = process.argv.find((v) => v.startsWith(`${name}=`));
+  if (eq) return eq.slice(name.length + 1);
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+export function datesInRange(start: string, end: string): string[] {
+  const startMs = Date.parse(`${start}T00:00:00Z`);
+  const endMs = Date.parse(`${end}T00:00:00Z`);
+  if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || startMs > endMs) {
+    throw new Error("MATERIALIZE_RANGE_INVALID: --start must be a valid date <= --end");
+  }
+  const out: string[] = [];
+  for (let t = startMs; t <= endMs; t += DAY_MS) out.push(new Date(t).toISOString().slice(0, 10));
+  return out;
+}
+
+export interface DayMaterializationCounts {
+  date: string;
+  sourceEvidenceIdentityN: number;
+  modelReadyRowN: number;
+  terminalRowN: number;
+  openRowN: number;
+  noMatchN: number;
+  ambiguousN: number;
+  voidN: number;
+  pitFutureLeakN: number;
+}
+
+/**
+ * Materializes one Minsk calendar date into model-ready rows. Read-only
+ * against the research clone; writes nothing. Bounded reads only (keyset
+ * pages on the proven (timestamp,id) shape); never a full table scan; never
+ * touches production primary.
+ */
+export async function materializeDayRows(
+  db: SupabaseClient,
+  d: string,
+): Promise<{ rows: ScorecardReadyRow[]; counts: DayMaterializationCounts }> {
+  const { startUtc, endUtc } = minskWindow(d);
+  // Bounded to "now" for a same-day/in-progress window; never reads beyond
+  // the current instant. Fully-closed historical days are unaffected.
+  const boundedEndUtc = Date.parse(endUtc) > Date.now() ? new Date().toISOString() : endUtc;
+
+  const gsp = await readSignalPairs(db, startUtc, boundedEndUtc);
+  const outbox = await readPrimaryEvidenceOutbox(db, startUtc, boundedEndUtc);
+  const pairs = [...gsp.pairs, ...outbox.pairs];
+
+  const conditionIds = Array.from(new Set(pairs.map((p) => p.conditionId).filter(Boolean)));
+  const floorUtc = new Date(Date.parse(startUtc) - OBS_LOOKBACK_DAYS * DAY_MS).toISOString();
+  const observations = conditionIds.length
+    ? await readObservations(db, conditionIds, floorUtc, boundedEndUtc)
+    : [];
+
+  const identities = Array.from(
+    new Map(
+      pairs
+        .filter((p) => p.conditionId && p.selectedTokenId)
+        .map((p) => [
+          `${p.conditionId}::${p.selectedTokenId}`,
+          { conditionId: p.conditionId, selectedTokenId: p.selectedTokenId, entryPriceNum: p.entryPriceNum },
+        ]),
+    ).values(),
+  );
+  const gammaResults = await mapWithConcurrency(identities, 8, (id) =>
+    resolveGammaTerminal(id.conditionId, id.selectedTokenId, id.entryPriceNum),
+  );
+  const gammaByIdentity = new Map<string, GammaTerminalState | null>();
+  identities.forEach((id, i) =>
+    gammaByIdentity.set(`${id.conditionId}::${id.selectedTokenId}`, gammaResults[i].terminal),
+  );
+  for (const p of pairs) {
+    p.gammaTerminal = gammaByIdentity.get(`${p.conditionId}::${p.selectedTokenId}`) ?? null;
+  }
+
+  const slice: CompactCorpusSlice = {
+    sliceDateUtc: d,
+    sinceCutoff: startUtc,
+    materializedAt: new Date().toISOString(),
+    signalPairs: pairs.map((p) => {
+      const { _createdAt, _id, _cloneSignalResultRaw, ...clean } = p as typeof p & {
+        _createdAt: string;
+        _id: string;
+        _cloneSignalResultRaw: string | null;
+      };
+      return clean as ForwardRichSignalPair;
+    }),
+    observations,
+  };
+  const corpus = buildCompactCorpus(slice);
+
+  let pitFutureLeakN = 0;
+  for (const r of corpus.rows) {
+    for (const s of [r.score, r.selectedPrice]) {
+      if (s.lastEligibleObservedAt !== null && s.lastEligibleObservedAt > r.decisionAt) pitFutureLeakN++;
+    }
+  }
+
+  const rows: ScorecardReadyRow[] = corpus.rows.map((r) => ({
+    ...(r as unknown as Record<string, unknown>),
+    sportFamily: normalizeMaterializedSportFamily(r as { providerSportFamily?: unknown }),
+    frozenLabel: r.label,
+    labelAsOf: r.label,
+  })) as unknown as ScorecardReadyRow[];
+
+  const counts: DayMaterializationCounts = {
+    date: d,
+    sourceEvidenceIdentityN: identities.length,
+    modelReadyRowN: rows.length,
+    terminalRowN: rows.filter((r) => r.labelAsOf === "WIN" || r.labelAsOf === "LOSS").length,
+    openRowN: rows.filter((r) => r.labelAsOf === "OPEN").length,
+    noMatchN: rows.filter((r) => r.labelAsOf === "NO_MATCH").length,
+    ambiguousN: rows.filter((r) => (r.labelAsOf as string) === "AMBIGUOUS").length,
+    voidN: rows.filter((r) => (r.labelAsOf as string) === "VOID").length,
+    pitFutureLeakN,
+  };
+  return { rows, counts };
+}
+
+/** Writes materialized rows + the day marker. No economics side effects. */
+export async function writeDayRows(db: SupabaseClient, d: string, rows: ScorecardReadyRow[]): Promise<void> {
+  for (let i = 0; i < rows.length; i += WRITE_PAGE) {
+    const payload = rows.slice(i, i + WRITE_PAGE).map((r) => toStoredModelRow(d, r));
+    const { error } = await db
+      .from("research_model_ready_rows")
+      .upsert(payload, { onConflict: "model_date,population_id,condition_id,selected_token_id,decision_at" });
+    if (error) throw new Error(`MATERIALIZE_ROW_WRITE:${error.code ?? error.message}`);
+  }
+  const { error: dayError } = await db.from("research_model_ready_days").upsert({
+    model_date: d,
+    status: "MODEL_READY",
+    row_n: rows.length,
+    canonical_content_sha256: null,
+    source_kind: "RESEARCH_CLONE",
+    completed_at: new Date().toISOString(),
+  });
+  if (dayError) throw new Error(`MATERIALIZE_DAY_WRITE:${dayError.code ?? dayError.message}`);
+}
+
+async function main() {
+  const explicitDates = arg("--dates")?.split(",").filter(Boolean).sort();
+  const start = arg("--start");
+  const end = arg("--end");
+  if (!explicitDates && !(start && end)) {
+    throw new Error("MATERIALIZE_ARGS_REQUIRED: pass --start YYYY-MM-DD --end YYYY-MM-DD (or --dates a,b,c)");
+  }
+  const dates = explicitDates ?? datesInRange(start!, end!);
+
+  const { client: db, url } = resolveCloneClient();
+  const sourceProject = projectRef(url);
+
+  const report: DayMaterializationCounts[] = [];
+  for (const d of dates) {
+    const { rows, counts } = await materializeDayRows(db, d);
+    await writeDayRows(db, d, rows);
+    report.push(counts);
+  }
+
+  console.log(
+    JSON.stringify(
+      {
+        STATUS: "SUCCESS",
+        MATERIALIZATION_PATH: "DIRECT_MODEL_READY_RESEARCH_PATH_V1",
+        SOURCE_PROJECT: sourceProject,
+        SOURCE_KIND: "RESEARCH_CLONE",
+        DATE_COVERAGE: { start: dates[0], end: dates.at(-1) },
+        REPORT: report,
+        RESEARCH_MODEL_ECONOMICS_WRITE_N: 0,
+        PRODUCTION_MUTATION_N: 0,
+      },
+      null,
+      2,
+    ),
+  );
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((e) => {
+    console.error(JSON.stringify({ STATUS: "FAILED", ERROR: e instanceof Error ? e.message : String(e) }));
+    process.exitCode = 1;
+  });
+}
