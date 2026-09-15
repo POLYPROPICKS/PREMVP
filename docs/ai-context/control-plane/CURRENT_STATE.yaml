@@ -1,7 +1,7 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-09-08T11:07:12Z",
-  "state_version": 22,
+  "updated_at": "2026-09-15T07:59:07Z",
+  "state_version": 23,
   "roadmap_phase": "PHASE1_PLANNING_SERVING_CLOSURE",
   "current_value_step": {
     "id": "BOUNDED_PRE_HOOK_SEED",
@@ -117,16 +117,16 @@
   ],
   "main": {
     "repository": "POLYPROPICKS/PREMVP",
-    "origin_main_sha": "6f35a0f9c6038f082cfabcb26a8f7a030cc7f6d7",
+    "origin_main_sha": "1aa4fb2df4f58b29044350c1505608f075b996ed",
     "origin_main_sha_semantics": "LAST_VERIFIED_ORIGIN_MAIN_BASELINE",
     "freshness_check_mode": "BASELINE_ANCESTOR_WITH_STATE_ONLY_ADVANCE",
     "proof": {
       "evidence_class": "PROVEN_IN_RUNTIME",
       "commands": [
-        "git merge-base --is-ancestor 6f35a0f9c6038f082cfabcb26a8f7a030cc7f6d7 origin/main",
-        "git merge-base --is-ancestor 877b6adb4d9706fb5d220fe090b176135b1792b4 6f35a0f9c6038f082cfabcb26a8f7a030cc7f6d7"
+        "git merge-base --is-ancestor 1aa4fb2df4f58b29044350c1505608f075b996ed origin/main",
+        "git merge-base --is-ancestor a7a61e57eaf5868e1ca2431be16c36c27300def4 1aa4fb2df4f58b29044350c1505608f075b996ed"
       ],
-      "observed_at": "2026-09-08T11:07:12Z",
+      "observed_at": "2026-09-15T07:59:07Z",
       "note": "Automatic factual reconciliation. This records only an already-accepted PREMVP merge and terminal completion lineage; it does not accept product, runtime, capability, roadmap, business, or PnL claims."
     }
   },
@@ -399,10 +399,18 @@
       "implementation_sha": "877b6adb4d9706fb5d220fe090b176135b1792b4",
       "merge_commit": "6f35a0f9c6038f082cfabcb26a8f7a030cc7f6d7",
       "evidence_ref": "COMPLETION_ENVELOPE#release-premvp-adapter-self-contained-pr269"
+    },
+    {
+      "id": "research-clone-pr318-current-evidence-v1",
+      "evidence_class": "PROVEN_IN_RUNTIME",
+      "statement": "Accepted PREMVP completion research-clone-pr318-current-evidence-v1 reconciled from its terminal PASS envelope and exact merge ancestry.",
+      "implementation_sha": "a7a61e57eaf5868e1ca2431be16c36c27300def4",
+      "merge_commit": "1aa4fb2df4f58b29044350c1505608f075b996ed",
+      "evidence_ref": "COMPLETION_ENVELOPE#research-clone-pr318-current-evidence-v1"
     }
   ],
   "evidence_freshness": {
-    "origin_main_sha_checked_at": "2026-09-08T11:07:12Z",
+    "origin_main_sha_checked_at": "2026-09-15T07:59:07Z",
     "capability_audit_accepted_at": "2026-08-03T00:00:00Z",
     "external_checkpoint_accepted_at": "2026-08-03T00:00:00Z",
     "max_age_days": 7
@@ -415,5 +423,5 @@
     "a referenced execution target verdict in CAPABILITY_MATRIX.yaml has passed its expires_when"
   ],
   "stale_when_note": "Exact equality between main.origin_main_sha and live origin/main is NOT required and is not used as a staleness test. A state-only bootstrap advance (touching only CURRENT_STATE.yaml, ARCHITECT_SNAPSHOT.md, EVIDENCE_LEDGER.md) keeps state FRESH even though origin/main has moved past the recorded baseline.",
-  "last_accepted_completion_id": "release-premvp-adapter-self-contained-pr269"
+  "last_accepted_completion_id": "research-clone-pr318-current-evidence-v1"
 }
