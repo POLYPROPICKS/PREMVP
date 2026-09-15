@@ -45,7 +45,7 @@ export const dynamic = "force-dynamic";
 async function handle(request: NextRequest) {
   // EMERGENCY_QUIESCE_PROD_DB_BACKGROUND_LOAD_V1: first thing this route
   // does, before auth, before any Supabase client call.
-  if (isEmergencyQuiesceActive()) {
+  if (isEmergencyQuiesceActive("cron/night-event-reservations")) {
     return NextResponse.json(buildEmergencyQuiesceResult("cron/night-event-reservations"), {
       status: 200,
       headers: { "Cache-Control": "no-store" },

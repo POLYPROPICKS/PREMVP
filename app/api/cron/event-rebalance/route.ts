@@ -48,7 +48,7 @@ async function handle(request: NextRequest) {
   // EMERGENCY_QUIESCE_PROD_DB_BACKGROUND_LOAD_V1: the very first thing this
   // route does, before auth, before any Supabase client call. A deterministic
   // 200 so the scheduler never sees a failure to retry.
-  if (isEmergencyQuiesceActive()) {
+  if (isEmergencyQuiesceActive("cron/event-rebalance")) {
     return NextResponse.json(buildEmergencyQuiesceResult("cron/event-rebalance"), {
       status: 200,
       headers: { "Cache-Control": "no-store" },
