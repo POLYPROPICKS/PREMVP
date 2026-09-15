@@ -1,6 +1,17 @@
 export type SyncRow = Record<string, unknown> & { id: string };
 export type Watermark = Record<string, string>;
 
+/**
+ * True for a PostgREST/Postgres "table does not exist" error. Used to let an
+ * optional synced table (one introduced after its clone-side schema exists,
+ * e.g. a table pending ops/research-clone/*-schema.sql being applied)
+ * degrade to a safe no-op instead of failing the whole sync run.
+ */
+export function isMissingTableError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /PGRST205|42P01|relation .* does not exist/i.test(message);
+}
+
 export interface AppendSyncPort<Row extends SyncRow> {
   sourceMaxWatermark(): Promise<Watermark | null>;
   targetMaxWatermark(): Promise<Watermark | null>;

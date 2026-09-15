@@ -2,6 +2,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   buildKeysetFilter,
   compareWatermarks,
+  isMissingTableError,
   rowWatermark,
   runAppendSync,
   runReconcileSweep,
@@ -24,13 +25,36 @@ const SYNC_VERSION = "research-clone-daily-sync-v1";
 // generated Supabase Database type, so keep the database boundary explicitly
 // dynamic rather than pretending a partial type is exhaustive.
 type Client = any;
-type TableName = "generated_signal_pairs" | "generated_signal_research_snapshots" | "night_event_reservations";
+type TableName =
+  | "generated_signal_pairs"
+  | "generated_signal_research_snapshots"
+  | "night_event_reservations"
+  | "primary_evidence_outbox";
 
 type TableSpec = {
   table: TableName;
   fields: readonly [string, string];
   appendOnly: boolean;
   reconciliationStart?: (targetBefore: Watermark, now: Date) => string;
+  /**
+   * Row identity column used for dedup/upsert. Defaults to "id" — the shape
+   * every table synced before RESTORE_RESEARCH_CLONE_CURRENT_EVIDENCE_LINEAGE_V1
+   * used. primary_evidence_outbox's primary key is observation_id, so this is
+   * the one narrow parameterization needed to reuse the identical proven
+   * append-sync path for the current post-GSP evidence source.
+   */
+  idField?: string;
+  /**
+   * True only for a table introduced after the three originally-proven synced
+   * tables. A missing-table error on an optional table degrades to a safe,
+   * explicitly-flagged no-op (mirrors the established
+   * scripts/modeling/clone-model-ready-pipeline.ts isSchemaPendingError
+   * pattern) instead of failing the whole nightly run — so landing this code
+   * ahead of the one-time clone-side schema apply
+   * (ops/research-clone/primary-evidence-outbox-schema.sql) cannot regress
+   * the three tables that already sync successfully today.
+   */
+  optional?: boolean;
 };
 
 type TableEvidence = {
@@ -68,7 +92,33 @@ const SPECS: readonly TableSpec[] = [
       return targetBefore.plan_date_minsk > recent ? recent : targetBefore.plan_date_minsk;
     },
   },
+  {
+    // Current authoritative production evidence source (supabase/migrations/
+    // 20260908120000_make_current_money_state_gsp_independent.sql). Production
+    // money publication now writes here (via publish_primary_signal_observation)
+    // independently of generated_signal_pairs, whose write is a non-blocking
+    // legacy probe only (gspWriteStatus DEFERRED_TO_PRIMARY_EVIDENCE_OUTBOX in
+    // lib/feed/persistPrimarySignalPopulation.ts). Each row is a durable,
+    // immutable publication envelope (ON CONFLICT DO NOTHING at the production
+    // RPC) — append-only, no reconciliation sweep needed.
+    table: "primary_evidence_outbox",
+    fields: ["observed_at", "observation_id"],
+    appendOnly: true,
+    idField: "observation_id",
+    optional: true,
+  },
 ];
+
+const EMPTY_TABLE_EVIDENCE: TableEvidence = {
+  SOURCE_MAX_WATERMARK: null,
+  TARGET_BEFORE: null,
+  TARGET_AFTER: null,
+  NEW_ROWS: 0,
+  UPDATED_ROWS: 0,
+  DUPLICATE_N: 0,
+  APPEND_PENDING: false,
+  RECONCILIATION_PENDING: false,
+};
 
 function projectRef(url: string): string {
   return new URL(url).hostname.split(".")[0];
@@ -185,19 +235,28 @@ async function writeCheckpoint(target: Client, spec: TableSpec, source: string, 
   if (error) throw new Error(`RESEARCH_CLONE_CHECKPOINT_WRITE_${spec.table}:${safeError(error)}`);
 }
 
-async function existingById(target: Client, spec: TableSpec, rows: SyncRow[]): Promise<Map<string, SyncRow>> {
-  const ids = rows.map((row) => row.id);
+function idFieldOf(spec: TableSpec): string {
+  return spec.idField ?? "id";
+}
+
+function rowId(spec: TableSpec, row: SyncRow): unknown {
+  return row[idFieldOf(spec)];
+}
+
+async function existingById(target: Client, spec: TableSpec, rows: SyncRow[]): Promise<Map<unknown, SyncRow>> {
+  const idField = idFieldOf(spec);
+  const ids = rows.map((row) => rowId(spec, row));
   if (new Set(ids).size !== ids.length) throw new Error(`RESEARCH_CLONE_DUPLICATE_SOURCE_ID_${spec.table}`);
-  const { data, error } = await target.from(spec.table).select("*").in("id", ids);
+  const { data, error } = await target.from(spec.table).select("*").in(idField, ids);
   if (error) throw new Error(`RESEARCH_CLONE_TARGET_READ_${spec.table}:${safeError(error)}`);
-  return new Map(((data ?? []) as SyncRow[]).map((row) => [row.id, row]));
+  return new Map(((data ?? []) as SyncRow[]).map((row) => [rowId(spec, row), row]));
 }
 
 async function applyRows(target: Client, spec: TableSpec, rows: SyncRow[]) {
   const existing = await existingById(target, spec, rows);
-  const newRows = rows.filter((row) => !existing.has(row.id));
+  const newRows = rows.filter((row) => !existing.has(rowId(spec, row)));
   const changedRows = rows.filter((row) => {
-    const current = existing.get(row.id);
+    const current = existing.get(rowId(spec, row));
     return current !== undefined && stableJson(current) !== stableJson(row);
   });
   if (spec.appendOnly && changedRows.length > 0) {
@@ -205,7 +264,7 @@ async function applyRows(target: Client, spec: TableSpec, rows: SyncRow[]) {
   }
   const writeRows = [...newRows, ...changedRows];
   if (writeRows.length > 0) {
-    const { error } = await target.from(spec.table).upsert(writeRows, { onConflict: "id" });
+    const { error } = await target.from(spec.table).upsert(writeRows, { onConflict: idFieldOf(spec) });
     if (error) throw new Error(`RESEARCH_CLONE_TARGET_WRITE_${spec.table}:${safeError(error)}`);
   }
   return { newRows: newRows.length, updatedRows: changedRows.length, duplicateN: 0 };
@@ -266,10 +325,26 @@ async function main(): Promise<void> {
   const source = createClient(productionUrl, productionKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const target = createClient(cloneUrl, cloneKey, { auth: { autoRefreshToken: false, persistSession: false } });
   const tables: Record<TableName, TableEvidence> = {} as Record<TableName, TableEvidence>;
+  const schemaPendingTables: TableName[] = [];
   // Each table is synced in turn. A spent page budget on an earlier table is a
   // resumable `*_PENDING` outcome, never a throw, so later tables are not starved
   // and the next scheduled run continues from the durable checkpoints/cursors.
-  for (const spec of SPECS) tables[spec.table] = await syncTable(target, source, spec);
+  for (const spec of SPECS) {
+    try {
+      tables[spec.table] = await syncTable(target, source, spec);
+    } catch (error) {
+      // An optional table's clone-side schema (ops/research-clone/
+      // primary-evidence-outbox-schema.sql) may not be applied yet — a missing
+      // table is a safe no-op for that table only, never a cron failure, and
+      // never masks a real error on a proven table or a non-schema error here.
+      if (spec.optional && isMissingTableError(error)) {
+        tables[spec.table] = EMPTY_TABLE_EVIDENCE;
+        schemaPendingTables.push(spec.table);
+        continue;
+      }
+      throw error;
+    }
+  }
   const pendingTables = (Object.keys(tables) as TableName[]).filter(
     (name) => tables[name].APPEND_PENDING || tables[name].RECONCILIATION_PENDING,
   );
@@ -277,6 +352,7 @@ async function main(): Promise<void> {
     JSON.stringify({
       TABLES: tables,
       PENDING_TABLES: pendingTables,
+      SCHEMA_PENDING_TABLES: schemaPendingTables,
       RESUME_PENDING: pendingTables.length > 0,
       DURATION_MS: Date.now() - startedAt,
       STATUS: "SUCCESS",
