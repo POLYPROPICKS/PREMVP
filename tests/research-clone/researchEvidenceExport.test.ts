@@ -218,7 +218,8 @@ test("prepared migration is additive, read-only and service-role-only", () => {
 
   assert.match(sql, /CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_primary_evidence_outbox_observed/);
   assert.match(sql, /ON public\.primary_evidence_outbox \(observed_at, observation_id\)/);
-  assert.match(sql, /CREATE OR REPLACE FUNCTION public\.research_evidence_page/);
+  assert.match(sql, /CREATE FUNCTION public\.research_evidence_page/);
+  assert.doesNotMatch(sql, /CREATE OR REPLACE FUNCTION public\.research_evidence_page/);
 
   // Read-only by definition. Scanned against executable SQL only: `--` comment
   // lines legitimately name the statements this migration promises not to use.

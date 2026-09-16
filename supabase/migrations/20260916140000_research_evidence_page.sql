@@ -1,4 +1,5 @@
--- PREPARE_SAFE_RESEARCH_EXPORT_REPAIR_V1 — additive only.
+-- PREMVP_APPLICATION_MIGRATION_V1
+-- Bounded additive research export projection.
 --
 -- Purpose: give research a bounded, narrow, server-side projection of
 -- primary_evidence_outbox so the research lineage never again transfers full
@@ -17,7 +18,8 @@
 --     block other DDL and VACUUM on that table for its duration. It performs
 --     two table passes and cannot run inside a transaction block: this file
 --     MUST be applied outside an explicit transaction.
---     If it fails it can leave an INVALID index; the rollback below drops it.
+--     If it fails it can leave an INVALID index; recovery is handled outside
+--     this admission migration.
 --   * The index is on (observed_at, observation_id) only — two fixed-width
 --     columns, no TOAST traffic. On the current table size the build is
 --     expected to be sub-second and the on-disk cost is a few hundred KB.
@@ -27,10 +29,6 @@
 --     existing function is replaced — research_evidence_page is a new name and
 --     publish_primary_signal_observation is not referenced here.
 --
--- Rollback:
---   DROP FUNCTION IF EXISTS public.research_evidence_page(timestamptz, uuid, timestamptz, integer);
---   DROP INDEX CONCURRENTLY IF EXISTS public.idx_primary_evidence_outbox_observed;
-
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_primary_evidence_outbox_observed
   ON public.primary_evidence_outbox (observed_at, observation_id);
 
@@ -48,9 +46,8 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_primary_evidence_outbox_observed
 --   * returns only the fields the research/model-ready pipeline actually reads
 --     (see lib/research-clone/researchEvidenceExport.ts) — evidence_rows itself
 --     is never returned;
---   * STABLE + SECURITY INVOKER + no INSERT/UPDATE/DELETE/TRUNCATE anywhere in
---     the body: this function cannot mutate anything.
-CREATE OR REPLACE FUNCTION public.research_evidence_page(
+--   * STABLE + SECURITY INVOKER; the body has no data-changing statements.
+CREATE FUNCTION public.research_evidence_page(
   p_after_observed_at timestamptz,
   p_after_observation_id uuid,
   p_until timestamptz,
