@@ -1,0 +1,88 @@
+{
+    "bundle_id": "2026-09-15__evolution-canonical-cycle",
+    "repository": "POLYPROPICKS/PREMVP",
+    "period_start": "2026-09-15T00:00:00Z",
+    "period_end": "2026-09-16T00:00:00Z",
+    "evidence_cutoff": "2026-09-16T00:20:00Z",
+    "capture_coverage": "PARTIAL",
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+        "POLYPROPICKS/PREMVP#318",
+        "POLYPROPICKS/PREMVP#320",
+        "POLYPROPICKS/PREMVP#321",
+        "POLYPROPICKS/PREMVP#322",
+        "POLYPROPICKS/PREMVP#323",
+        "POLYPROPICKS/PREMVP#324",
+        "POLYPROPICKS/PREMVP#325"
+    ],
+    "operator_action_events": [],
+    "operating_telemetry": {
+        "founder_actions_removable": "UNKNOWN",
+        "executor_runs": "UNKNOWN",
+        "successful_terminal_results": 7,
+        "reruns_resumes": 2,
+        "recovery_iterations": 2,
+        "reviewer_corrections_rejections": 0,
+        "orchestration_waste_iterations": 0,
+        "runtime_evidence_count": 1,
+        "reusable_artifacts_created": 2,
+        "actions_per_verified_result": "UNKNOWN",
+        "time_to_verified_result": "UNKNOWN"
+    },
+    "supporting_metrics": {
+        "runtime_evidence_count": 1,
+        "reusable_artifacts_created": 2,
+        "reviewer_rejection_count": 0,
+        "architect_corrections": 0
+    },
+    "defect_occurrences": [
+        {
+            "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+            "origin": "STATE_OR_CONTEXT_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-12-NO-HOSTING-ENV-CONFIG-WRITE-CAPABILITY",
+            "origin": "CONTROL_PLANE_DEFECT",
+            "recurrence": "SAME_ROOT_REPEAT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": null,
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-15-RESEARCH-CLONE-GSP-DEPRECATION-SILENT-NOOP",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "NEW_INDEPENDENT",
+            "defect_chain_id": "CHAIN-RESEARCH-CLONE-PIPELINE-HARDENING",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#318",
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-15-DIRECT-MATERIALIZER-BLOCKED-BY-LEGACY-EXIT-CHAINING",
+            "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-RESEARCH-CLONE-PIPELINE-HARDENING",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#321",
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-15-PRIMARY-EVIDENCE-OUTBOX-UNSAFE-QUERY-SHAPE",
+            "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+            "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+            "defect_chain_id": "CHAIN-RESEARCH-CLONE-PIPELINE-HARDENING",
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#324",
+            "proven_effective_evidence_refs": []
+        },
+        {
+            "defect_id": "DEF-2026-09-15-RAILWAY-BUILD-IMAGE-FLAKE",
+            "origin": "ENVIRONMENT_OR_PERMISSION_DEFECT",
+            "recurrence": "NEW_INDEPENDENT",
+            "defect_chain_id": null,
+            "implemented_fix_ref": "POLYPROPICKS/PREMVP#325",
+            "proven_effective_evidence_refs": []
+        }
+    ]
+}

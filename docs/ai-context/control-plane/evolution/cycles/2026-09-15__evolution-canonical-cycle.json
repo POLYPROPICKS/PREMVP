@@ -1,0 +1,401 @@
+{
+  "schema_version": "1.1",
+  "cycle_id": "2026-09-15__evolution-canonical-cycle",
+  "period_start": "2026-09-15T00:00:00Z",
+  "period_end": "2026-09-16T00:00:00Z",
+  "evidence_cutoff": "2026-09-16T00:20:00Z",
+  "repository": "POLYPROPICKS/PREMVP",
+  "generated_by": {
+    "executor": "claude_code_cloud",
+    "model_label": "Claude Sonnet 5 (Claude Code CLI), running as the claude_code_cloud execution target per CAPABILITY_MATRIX.yaml, invoked by a scheduled Routine (Routine A)",
+    "prompt_id": "premvp.prompt.daily_evolution_review.v1"
+  },
+  "inputs": {
+    "completion_envelope_ids": [],
+    "confirmed_changes": [
+      "POLYPROPICKS/PREMVP#318",
+      "POLYPROPICKS/PREMVP#320",
+      "POLYPROPICKS/PREMVP#321",
+      "POLYPROPICKS/PREMVP#322",
+      "POLYPROPICKS/PREMVP#323",
+      "POLYPROPICKS/PREMVP#324",
+      "POLYPROPICKS/PREMVP#325"
+    ],
+    "input_bundle_ref": "docs/ai-context/control-plane/evolution/input-bundles/2026-09-15__evolution-canonical-cycle.json"
+  },
+  "axis_a": {
+    "verdict": "NO_MEASURABLE_CHANGE",
+    "what_moved": [],
+    "next_verified_production_fact_now_possible": "Once the research clone actually receives 2026-09-01 through 2026-09-15 data through the restored evidence lineage, the next possible verified fact is a first live comparison between the new direct materializer's research_model_ready_rows output and the existing model-ready pipeline output for the same dates.",
+    "blockers_removed": [
+      {
+        "statement": "The research-clone daily sync had silently reported success while writing zero new rows since around 2026-09-11, because a migration moved money-evidence publication off generated_signal_pairs onto primary_evidence_outbox; PR#318 adds that table as a fourth synced source and restores the lineage feeding research_model_ready_rows.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#318"
+        ]
+      },
+      {
+        "statement": "The new direct model-ready materializer added this period could never run in production, because the Railway startCommand chained it after the legacy sync step with a hard AND, so any nonzero exit from that unrelated legacy step silently skipped it; PR#321 separates the steps so the direct materializer always attempts to run regardless of the legacy step's outcome.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#320",
+          "POLYPROPICKS/PREMVP#321"
+        ]
+      }
+    ],
+    "blockers_introduced": [
+      {
+        "statement": "research-clone-daily-sync's read of primary_evidence_outbox is now unconditionally hard-stopped, because that keyset query has no index on observed_at and pulls the full evidence_rows JSONB payload unbounded; it stays offline pending an index and bounded window, or a Railway scoped-quiesce variable this executor cannot set.",
+        "evidence_class": "SUPPORTED",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#324"
+        ]
+      }
+    ],
+    "not_proven": [
+      "No fills, fees, settlement or reconciled PnL evidence exists for this period.",
+      "PR#318's restored evidence lineage has not been run against the real research-clone project; this environment holds no SUPABASE_CLONE_URL or SUPABASE_CLONE_SERVICE_ROLE_KEY credential.",
+      "PR#320's direct materializer has never executed against real 2026-09-01 through 2026-09-15 data, for the same credential reason.",
+      "PR#321's fix has not yet been confirmed by a second live research-clone-daily-sync run reaching a completed model-ready-direct stage; only the first, failing run and the code and unit-test fix are evidenced.",
+      "The selective EMERGENCY_QUIESCE_SCOPES capability shipped in PR#322 has not been activated on any Railway service, so research-clone-daily-sync remains fully hard-stopped rather than safely scoped."
+    ],
+    "runtime_or_business_evidence_exists": true,
+    "pnl": {
+      "reconciled_claimed": false,
+      "evidence_kinds": [],
+      "evidence_refs": []
+    }
+  },
+  "axis_b": {
+    "verdict": "CAPABILITY_ADDED",
+    "capabilities": [
+      {
+        "domain": "REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS",
+        "statement": "A thin, reusable direct model-ready materializer reads bounded date ranges from the research clone into research_model_ready_rows and research_model_ready_days, reusing the already-proven identity, point-in-time and settlement helpers unmodified.",
+        "persisted_artifact": "scripts/modeling/materialize-research-model-ready.ts",
+        "use_or_validation_evidence": "4 of 4 new unit tests pass; 96 of 96 pre-existing modeling and research-clone tests still pass, no regression.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#320"
+        ]
+      },
+      {
+        "domain": "VERIFICATION_AND_EVIDENCE",
+        "statement": "research-clone-daily-sync now reports structured, secret-free causal diagnostics on every run -- sync stage, reachability, outbox presence and row count -- replacing an ambiguous success-with-zero-rows signal.",
+        "persisted_artifact": "scripts/research-clone-daily-sync.ts",
+        "use_or_validation_evidence": "13 of 13 new unit tests cover every stage; no probe selects evidence_rows or a secret field; 51 of 51 pre-existing tests still pass.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#323"
+        ]
+      },
+      {
+        "domain": "PERMISSION_AND_TOOL_POLICY",
+        "statement": "A scoped kill switch can quiesce exactly the sources named in EMERGENCY_QUIESCE_SCOPES, for example signal-cache generation and the research-clone sync, leaving the money path -- night reservations and event rebalance -- unaffected.",
+        "persisted_artifact": "lib/ops/emergencyQuiesce.ts",
+        "use_or_validation_evidence": "7 of 7 new unit tests prove the scoped mode isolates only named sources; 38 of 38 pre-existing tests still pass, money-path sources untouched.",
+        "evidence_refs": [
+          "POLYPROPICKS/PREMVP#322"
+        ]
+      }
+    ],
+    "not_proven": [
+      "None of the three capabilities added this period has been exercised against live production or clone data yet; every validation so far is unit or regression tests only.",
+      "The automatic CURRENT_STATE reconciliation used earlier this period for PR#318 did not repeat for the five further merges that followed it the same day, so post-merge state reconciliation is still not reliably automatic."
+    ]
+  },
+  "supporting_metrics": {
+    "role": "DIAGNOSTIC_ONLY",
+    "values": {
+      "time_to_verified_result": "UNKNOWN",
+      "first_pass_pass_rate": "UNKNOWN",
+      "rework_count": "UNKNOWN",
+      "cost_per_verified_result": "UNKNOWN",
+      "reviewer_rejection_count": 0,
+      "runtime_evidence_count": 1,
+      "reusable_artifacts_created": 2,
+      "cloudcode_actions": 0,
+      "codex_actions": 0,
+      "architect_corrections": 0,
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN",
+      "founder_actions_lower_bound_secondary": 3
+    }
+  },
+  "operator_actions": {
+    "schema_version": "1.0",
+    "period_start": "2026-09-15T00:00:00Z",
+    "period_end": "2026-09-16T00:00:00Z",
+    "capture_coverage": "PARTIAL",
+    "total_operator_actions": 0,
+    "by_type": {
+      "START": 0,
+      "FOLLOW_UP": 0,
+      "CORRECTION": 0,
+      "RETRY": 0,
+      "HANDOFF": 0,
+      "APPROVAL": 0
+    },
+    "by_surface": {
+      "CLOUDCODE": 0,
+      "CODEX": 0,
+      "UNKNOWN": 0
+    },
+    "architect_corrections": 0,
+    "duplicates_dropped": 0,
+    "excluded": [],
+    "derived": {
+      "intermediate_actions_per_mission": "UNKNOWN",
+      "actions_per_verified_result": "UNKNOWN"
+    }
+  },
+  "operating_telemetry": {
+    "capture_coverage": "PARTIAL",
+    "chat_interaction_coverage": "PARTIAL",
+    "founder_actions_proven": 0,
+    "founder_actions_removable": "UNKNOWN",
+    "executor_runs": "UNKNOWN",
+    "successful_terminal_results": 7,
+    "reruns_resumes": 2,
+    "recovery_iterations": 2,
+    "architect_corrections": 0,
+    "reviewer_corrections_rejections": 0,
+    "orchestration_waste_iterations": 0,
+    "defect_occurrences": [
+      {
+        "defect_id": "DEF-2026-08-28-CURRENT-STATE-EVIDENCE-LEDGER-STALE",
+        "origin": "STATE_OR_CONTEXT_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-12-NO-HOSTING-ENV-CONFIG-WRITE-CAPABILITY",
+        "origin": "CONTROL_PLANE_DEFECT",
+        "recurrence": "SAME_ROOT_REPEAT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": null,
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-15-RESEARCH-CLONE-GSP-DEPRECATION-SILENT-NOOP",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": "CHAIN-RESEARCH-CLONE-PIPELINE-HARDENING",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#318",
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-15-DIRECT-MATERIALIZER-BLOCKED-BY-LEGACY-EXIT-CHAINING",
+        "origin": "ORCHESTRATION_OR_RECOVERY_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-RESEARCH-CLONE-PIPELINE-HARDENING",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#321",
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-15-PRIMARY-EVIDENCE-OUTBOX-UNSAFE-QUERY-SHAPE",
+        "origin": "PRODUCT_OR_RUNTIME_DEFECT",
+        "recurrence": "LATENT_NEXT_LAYER_EXPOSED",
+        "defect_chain_id": "CHAIN-RESEARCH-CLONE-PIPELINE-HARDENING",
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#324",
+        "proven_effective_evidence_refs": []
+      },
+      {
+        "defect_id": "DEF-2026-09-15-RAILWAY-BUILD-IMAGE-FLAKE",
+        "origin": "ENVIRONMENT_OR_PERMISSION_DEFECT",
+        "recurrence": "NEW_INDEPENDENT",
+        "defect_chain_id": null,
+        "implemented_fix_ref": "POLYPROPICKS/PREMVP#325",
+        "proven_effective_evidence_refs": []
+      }
+    ],
+    "defect_counts_by_origin": {
+      "STATE_OR_CONTEXT_DEFECT": 1,
+      "CONTROL_PLANE_DEFECT": 1,
+      "PRODUCT_OR_RUNTIME_DEFECT": 2,
+      "ORCHESTRATION_OR_RECOVERY_DEFECT": 1,
+      "ENVIRONMENT_OR_PERMISSION_DEFECT": 1
+    },
+    "defect_counts_by_recurrence": {
+      "SAME_ROOT_REPEAT": 2,
+      "NEW_INDEPENDENT": 2,
+      "LATENT_NEXT_LAYER_EXPOSED": 2
+    },
+    "repeated_defect_families": 1,
+    "active_onion_chains": 1,
+    "implemented_fixes": 4,
+    "proven_effective_fixes": 0,
+    "runtime_evidence_count": 1,
+    "reusable_artifacts_created": 2,
+    "actions_per_verified_result": "UNKNOWN",
+    "time_to_verified_result": "UNKNOWN"
+  },
+  "automation_hypotheses": [
+    {
+      "id": "H1",
+      "observed_problem": "CURRENT_STATE.yaml moved from state_version 22 to 23 this period, but only for PR#318; the five further merges that followed in the same period, PR#320 through PR#325, are still not reflected in it at the evidence cutoff -- the reconciliation mechanism now exists and fired once, but did not fire again for the rest of the same day.",
+      "why_it_matters": "A partially-automatic reconciliation is easy to mistake for a fully solved gap; the canonical operational state document still lags real merges within the very day it was last updated.",
+      "axis_a_effect": "Indirect: the next architect step could still be scoped against a document missing the last five merges of the day.",
+      "axis_b_effect": "Confirms the reconciliation command exists and works when invoked, but the invocation point after every merge is not yet wired -- this remains a MISSION_REGISTRY gap, not a VERIFICATION_AND_EVIDENCE gap.",
+      "proposed_automation": "Trigger the existing reconciliation command from the same post-merge point every relevant PR uses, instead of leaving each PR's own execution to decide whether to invoke it.",
+      "persistent_artifact": "scripts/control-plane/reconcile-control-plane.mjs",
+      "expected_value": "Removes the now-recurring evidence check of whether CURRENT_STATE reflects the whole day, not just its first merge.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low if scoped to the existing factual, append-only reconciliation with no roadmap or capability-verdict change.",
+      "success_metric": "The next Evolution cycle finds CURRENT_STATE current as of every merge in its period, not only the first.",
+      "rollback_or_stop_condition": "Stop and revert to manual reconciliation if the automation ever writes a roadmap_phase, current_value_step, capability verdict or PnL-gate change without separate authorization.",
+      "timing": "NOW is a proposal for the next architect step only; it does not authorize execution in this review.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/CURRENT_STATE.yaml",
+        "POLYPROPICKS/PREMVP#319"
+      ]
+    },
+    {
+      "id": "H4",
+      "observed_problem": "This period again produced only a lower bound of manual Founder actions, established indirectly from distinct Claude Code session identifiers referenced inside merged PR bodies plus one explicitly described manual Railway action, rather than from any OPERATOR_ACTION_EVENT record -- still an eleventh consecutive period with zero such records.",
+      "why_it_matters": "The Founder-effort axis this Routine is chartered to measure remains structurally uncaptured; today's lower bound of three is only as reliable as the assumption that each distinct session id maps to exactly one manual start.",
+      "axis_a_effect": "None directly -- this is a measurement gap, not a product blocker.",
+      "axis_b_effect": "Blocks Axis B capability maturity for MISSION_REGISTRY and VERIFICATION_AND_EVIDENCE: the capture pipeline still has schemas and a collector but no populated source.",
+      "proposed_automation": "Wire at least one real event source, even a minimal one that logs a session id and a timestamp at the moment a Founder manually opens a Claude Code or Codex session against this repository, so the next input bundle can carry a real, non-empty operator_action_events array instead of relying on session-id correlation after the fact.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/schemas/OPERATOR_ACTION_EVENT.schema.json",
+      "expected_value": "Converts a proven lower bound into a real measurement, and removes the need for the session-id correlation workaround used this period.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low for a passive capture; risk is scope creep into a new mandatory manual step for the Founder.",
+      "success_metric": "The next Evolution input bundle contains at least one non-empty operator_action_events entry from a real capture point rather than an inferred session id.",
+      "rollback_or_stop_condition": "Stop if the only available capture point requires a new mandatory manual step from the Founder.",
+      "timing": "SYSTEM_LATER -- persistent across eleven cycles, still not this period's highest-value gap.",
+      "classification": "SYSTEM_LATER",
+      "evidence_refs": [
+        "docs/ai-context/control-plane/evolution/OPERATOR_ACTION_POLICY.yaml",
+        "POLYPROPICKS/PREMVP#318",
+        "POLYPROPICKS/PREMVP#321"
+      ]
+    },
+    {
+      "id": "H17",
+      "observed_problem": "PR#315 (merged 2026-09-14) proved the recurring 10:00 Minsk zero-eligible-events symptom, diagnosed by prior cycles as a producer-freshness race (PR#310), was actually a mis-scoped OUTSIDE_RESERVATION_HORIZON rejection unrelated to producer timing. This period produced no new evidence about PR#310's disposition.",
+      "why_it_matters": "Two prior cycles proposed and left open a timing-based workaround (PR#310: remap the anchor from 10:00 to 11:00 Minsk) for a symptom whose actual, now-fixed cause was a horizon-check scoping bug unrelated to anchor timing. PR#310's disposition -- superseded, still needed, or independent -- remains unstated.",
+      "axis_a_effect": "Indirect: an unresolved, stale PR proposing a workaround for an already-fixed cause risks merging an unnecessary change or masking whether the true cause is closed.",
+      "axis_b_effect": "Names a diagnosis-scope gap in how this Routine reasons about a recurring symptom across cycles: a standing hypothesis can be carried forward without re-examining whether a later fix already supersedes it.",
+      "proposed_automation": "When a recurring defect's diagnosed root cause changes between cycles, require the review to explicitly state whether the newly identified fix supersedes, coexists with, or is independent of any prior open PR proposing a fix for the same symptom.",
+      "persistent_artifact": "scripts/control-plane/evolution-evaluate.mjs",
+      "expected_value": "Prevents a stale, superseded workaround PR from either merging unnecessarily or lingering as an unaddressed open item after its actual root cause has already been fixed elsewhere.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low -- this is a review-discipline addition, not a runtime change.",
+      "success_metric": "The next Evolution cycle that finds a merged fix for a previously open defect explicitly states the old open PR's disposition rather than repeating it unchanged in not_proven.",
+      "rollback_or_stop_condition": "Stop if this check ever blocks a review from persisting terminal evidence -- it is diagnostic guidance, not a gate.",
+      "timing": "NOW is a proposal for the next architect step; it does not authorize execution in this review.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#310",
+        "POLYPROPICKS/PREMVP#315"
+      ]
+    },
+    {
+      "id": "H18",
+      "observed_problem": "This period produced a second and third confirmation of the same gap first logged on 2026-09-12 (PR#310): PR#322 built a selective Railway kill switch and PR#324 explicitly could not activate it, because this executor still has no path to read or write a Railway environment variable, and shipped an unconditional code-level hard stop as a stand-in for that one configuration change.",
+      "why_it_matters": "Three separate incidents across four days have each produced their own temporary code-level workaround for what is, in substance, the same missing capability: a bounded, Founder-authorized way to read and write named hosting environment variables.",
+      "axis_a_effect": "Direct this period: research-clone-daily-sync is currently fully disabled in code (PR#324) specifically because the safer, scoped fix (PR#322) could not be activated without this capability.",
+      "axis_b_effect": "Still a missing capability domain entirely -- PERMISSION_AND_TOOL_POLICY and DECLARATIVE_ENVIRONMENTS have no hosting-platform configuration surface in the agent registry.",
+      "proposed_automation": "The same narrowly-scoped, read-first, Founder-authorized-write command proposed on 2026-09-14, now with a concrete first allowlist candidate ready to hand: EMERGENCY_QUIESCE_SCOPES on the research-clone-daily-sync and signal-cache-cron Railway services only.",
+      "persistent_artifact": "docs/ai-context/control-plane/AGENT_REGISTRY.yaml",
+      "expected_value": "Closes three days of accumulating code-level workarounds with one bounded, reusable configuration-write path, and immediately lets PR#322's already-built and already-tested scoped quiesce replace PR#324's blunt hard stop.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Medium-high -- any write capability to production configuration is a new real access surface and needs its own explicit Founder-authorized scope and allowlist before it exists.",
+      "success_metric": "research-clone-daily-sync is unblocked by setting the scoped variable through this capability, with an EVIDENCE_LEDGER.md entry, rather than by another temporary code-level shim.",
+      "rollback_or_stop_condition": "Stop and do not build this until the Founder explicitly authorizes which variables, on which services, may ever be written this way.",
+      "timing": "NOW is a proposal for the next architect step; it does not authorize execution in this review, and still requires a Founder scoping decision before any implementation begins.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#310",
+        "POLYPROPICKS/PREMVP#322",
+        "POLYPROPICKS/PREMVP#324"
+      ]
+    },
+    {
+      "id": "H19",
+      "observed_problem": "Within one research-clone hardening effort, two independent latent defects surfaced only once each step was exercised: PR#320's materializer was unreachable in production due to an unrelated startCommand chaining rule, fixed in PR#321; PR#318's new outbox read ran an unindexed, unbounded query, hard-stopped in PR#324. Neither was caught by unit tests or a clean build.",
+      "why_it_matters": "Two latent-layer defects on the same path in one period is the signal that the diagnosis and verification boundary used before merge is too narrow: passing tests and a clean build are being treated as sufficient proof for a change that reads or writes production, when neither checks deploy-chaining behavior nor query cost against real data volume.",
+      "axis_a_effect": "Indirect: each layer that only reaches production after merge costs an extra day and, in PR#324's case, a temporary full outage of the research-clone sync as the safe response.",
+      "axis_b_effect": "Names a missing invariant for REUSABLE_FUNCTIONS_SCRIPTS_VALIDATORS and RECOVERY_AND_CHECKPOINTS: no new script that reads or writes a production or research-clone table should merge without an explicit statement of its query bound and its place in the relevant startCommand chain.",
+      "proposed_automation": "A short, mandatory pre-merge checklist for any change that adds or edits a production or research-clone read or write path, covering exactly two questions: is every new query backed by an index or an explicit bound, and does this step's exit code affect any other step chained after it.",
+      "persistent_artifact": "docs/ai-context/RESEARCH_CLONE_PRODUCTION_READ_SAFETY_CHECKLIST.md",
+      "expected_value": "Would have surfaced both of this period's latent defects at review time instead of after a live Railway execution.",
+      "implementation_cost": "UNKNOWN",
+      "verification_cost": "UNKNOWN",
+      "risk": "Low -- this is a review-discipline checklist, not a runtime change or a CI gate.",
+      "success_metric": "The next PR that adds a new production or research-clone read or write path cites the checklist and states its query bound and chaining position before merge, with zero latent-layer defects found afterward on that same path.",
+      "rollback_or_stop_condition": "Stop if the checklist is ever used to block a merge rather than to inform review -- it is guidance, not a gate.",
+      "timing": "NOW is a proposal for the next architect step; it does not authorize execution in this review.",
+      "classification": "NOW",
+      "evidence_refs": [
+        "POLYPROPICKS/PREMVP#320",
+        "POLYPROPICKS/PREMVP#321",
+        "POLYPROPICKS/PREMVP#318",
+        "POLYPROPICKS/PREMVP#324"
+      ]
+    }
+  ],
+  "insufficient_supported_hypotheses": false,
+  "insufficient_supported_hypotheses_reason": null,
+  "founder_practices": [
+    {
+      "id": "FP1",
+      "skill_practiced": "Reading a self-diagnostic run's stage and causal-error output before handing off the next fix.",
+      "why_it_matters_now": "research-clone-daily-sync now reports its own sync stage and causal error class on every run; reading that output directly lets the Founder scope the next mission to the actual failing stage instead of the whole script.",
+      "how_it_applies_to_current_project": "The next time research-clone-daily-sync or its model-ready steps misbehave, check the new SYNC_STAGE and CAUSAL_ERROR_CLASS log lines first, and hand that exact stage to the next mission rather than a general re-diagnose-everything request.",
+      "persistent_git_artifact": "scripts/research-clone-daily-sync.ts"
+    },
+    {
+      "id": "FP2",
+      "skill_practiced": "Writing one bounded, explicit scope decision for a hosting-platform write capability.",
+      "why_it_matters_now": "The same missing capability, a scoped way to read and write named Railway environment variables, has now caused three separate temporary code workarounds in four days, most recently a full hard stop of the research-clone sync.",
+      "how_it_applies_to_current_project": "Decide and write down, once, the exact variable names and exact Railway services this capability may ever touch, starting with EMERGENCY_QUIESCE_SCOPES on research-clone-daily-sync and signal-cache-cron, so the next mission can build the bounded command instead of another code-level shim.",
+      "persistent_git_artifact": "docs/ai-context/control-plane/EVIDENCE_LEDGER.md"
+    }
+  ],
+  "founder_practice_comparison": "Practice FP1 is small and immediate: it only changes how the Founder reads an existing log line, and pays off on the very next research-clone incident. Practice FP2 is a one-time, higher-stakes decision that unblocks a structural capability gap repeated three times so far, but needs more thought since it is a real production write-access boundary.",
+  "founder_practice_recommended_order": [
+    "FP1",
+    "FP2"
+  ],
+  "experiments": [
+    {
+      "id": "EXP1",
+      "hypothesis": "A single narrow, Founder-authorized command that can read and write exactly the EMERGENCY_QUIESCE_SCOPES variable on exactly the research-clone-daily-sync and signal-cache-cron Railway services would let a scoped-quiesce incident like this period's close the same day instead of falling back to a full hard stop.",
+      "bounded_scope": "Exactly one variable name, exactly two named services, read-first with every write requiring explicit per-change Founder authorization; nothing else in Railway or any other hosting surface is touched.",
+      "persistent_artifact": "docs/ai-context/control-plane/AGENT_REGISTRY.yaml",
+      "promotion_condition": "The Founder authorizes the exact variable and service allowlist in writing, the command is built, and it is used at least once to close a real incident without a manual dashboard action.",
+      "stop_condition": "Stop if the Founder does not authorize a bounded allowlist, or if building it would require any broader write scope than the two named services."
+    },
+    {
+      "id": "EXP2",
+      "hypothesis": "Naming an explicit query bound and startCommand chaining position for every new production or research-clone read path, before merge, would have caught both of this period's latent defects at review time.",
+      "bounded_scope": "Applies only to the next research-clone PR that adds or edits a production or clone read or write path; a checklist reference in the PR description, not a CI gate.",
+      "persistent_artifact": "docs/ai-context/RESEARCH_CLONE_PRODUCTION_READ_SAFETY_CHECKLIST.md",
+      "promotion_condition": "The next such PR cites the checklist and states its query bound and chaining position, and no latent-layer defect is found on that path afterward.",
+      "stop_condition": "Stop if two consecutive research-clone PRs show the checklist adds review overhead with no defect prevented."
+    },
+    {
+      "id": "EXP3",
+      "hypothesis": "Extracting distinct Claude Code session identifiers referenced in merged PR bodies can serve as a temporary secondary lower bound for manual Founder actions until a real OPERATOR_ACTION_EVENT source exists.",
+      "bounded_scope": "For the next three Evolution cycles, continue deriving a founder-actions lower bound this way from PR bodies merged in the period, without building any new capture pipeline.",
+      "persistent_artifact": "docs/ai-context/control-plane/evolution/cycles/2026-09-15__evolution-canonical-cycle.json",
+      "promotion_condition": "Three consecutive cycles derive a non-zero lower bound this way with no later evidence contradicting the one-session-equals-one-start assumption.",
+      "stop_condition": "Stop if a session id is ever found to span two different Founder-launched missions."
+    }
+  ],
+  "roadmap": {
+    "evolution_stage": "STAGE_1_DAILY_EVOLUTION_ROUTINE_MVP",
+    "product_phase_unchanged": true,
+    "observed_product_phase": "PHASE1_PLANNING_SERVING_CLOSURE"
+  },
+  "next_step": "Founder: trigger one more research-clone-daily-sync run to confirm PR#321 reaches a completed model-ready-direct stage; decide the exact Railway variable and service allowlist so PR#322's scoped quiesce can replace PR#324's hard stop; and, when convenient, apply the outbox schema SQL and share clone credentials to validate PR#318 and PR#320 live.",
+  "accepted": false
+}
