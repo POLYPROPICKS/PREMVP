@@ -16,14 +16,14 @@ Package schema 1.0. One bounded UI sequence, no shell, no SQL, no secret handlin
 
 ## 2. Add exactly these four Project Sources
 
-- `SOURCES/ARCHITECT_SNAPSHOT.md` (GENERATED_SNAPSHOT) — sha256 `d099a10f5a4868249f2ad17709ea42ecea0e43b304deaad15326f8731479b903`
-- `SOURCES/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md` (GENERATED_BUNDLE) — sha256 `8dca5501258f453c0575fd451ff53c13baf8ed86bc6d4daed9b61a91bedc02d3`
-- `SOURCES/PROMPT__PROTOCOL.md` (MISSION_CONTRACT) — sha256 `2a29eac3e3a741760b228036c9bec3b146c58c76d48b37b4208fdcbbd60bb5ac`
-- `SOURCES/COMPLETION_ENVELOPE.schema.json` (COMPLETION_CONTRACT) — sha256 `7fe32fbf1853e6382539ac515e43c7ca55eb240dcd65dc09c80f4b9a0173d5b7`
+- `SOURCES/ARCHITECT_SNAPSHOT.md` (GENERATED_SNAPSHOT) — sha256 `79550b363d1471e0eb7176f90bab67cbf625f52df9525f397e47410bc913607f`
+- `SOURCES/CHATGPT_ARCHITECT_PROJECT_BUNDLE.md` (GENERATED_BUNDLE) — sha256 `6745921d533b24293cdfb6a48532d0eb88083c8880303b4bf7f27656efe0c82a`
+- `SOURCES/PROMPT__PROTOCOL.md` (MISSION_CONTRACT) — sha256 `77307e74c921b8327a58f5cf6427fa85958dc76d5c54be041f7c7b41736b5809`
+- `SOURCES/COMPLETION_ENVELOPE.schema.json` (COMPLETION_CONTRACT) — sha256 `7af9580d3c03b72e61b63e140165fa0148ff942bb4dc1c8d938a478e78064703`
 
 ## 3. Replace the Project Instructions
 
-Replace the entire Project Instructions field with the contents of `PROJECT_INSTRUCTIONS.txt` — sha256 `281c0a02592d2fba3092103a09b7bc2b24fec9400cda0eba8fc97a3866c390c1`. Do not append to the previous instructions.
+Replace the entire Project Instructions field with the contents of `PROJECT_INSTRUCTIONS.txt` — sha256 `19241ee1425cb6b909ce7b3c8d91f5d14af541dd53a52aa4998df9ae80307b13`. Do not append to the previous instructions.
 
 ## 4. Verify
 

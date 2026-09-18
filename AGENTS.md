@@ -33,6 +33,10 @@ persisted-key join, and at most one corrected join only when the probe revealed 
 otherwise return `UNRESOLVED_EVIDENCE_GAP`. No speculative FK fishing, JSON-path fishing,
 timeout escalation or historical-table fishing.
 
+MODEL ECONOMICS: route by mission; prefer runtime-confirmed safe workhorse; READ/SQL →
+GLM-5.3 Flash family; implementation → Kimi K2.7 Code family; $15 specialist never default;
+switching models does not reset quota; current runtime/provider evidence beats static table.
+
 Two corrections this makes to the rest of this file:
 
 1. **§4 is environment-specific and superseded.** The Windows repo path and "Windows CMD

@@ -466,9 +466,14 @@
                                                                       "OUTPUT_TOKENS":  { "type":  ["integer", "null"] },
                                                                       "MODEL_TURNS":  { "type":  ["integer", "null"] },
                                                                       "MAJOR_TOOL_CALLS":  { "type":  ["integer", "null"] },
-                                                                      "RAW_ROWS_RETURNED":  { "type":  ["integer", "null"] },
-                                                                      "FILES_READ":  { "type":  ["integer", "null"] }
-                                                                  }
+                                                                       "RAW_ROWS_RETURNED":  { "type":  ["integer", "null"] },
+                                                                       "FILES_READ":  { "type":  ["integer", "null"] },
+                                                                       "MODEL_FAMILY":  { "type":  ["string", "null"] },
+                                                                       "GO_COST_CLASS":  { "type":  ["string", "null"] },
+                                                                       "GO_5H_USAGE_DELTA":  { "type":  ["number", "string", "null"] },
+                                                                       "GO_WEEK_USAGE_DELTA":  { "type":  ["number", "string", "null"] },
+                                                                       "GO_MONTH_USAGE_DELTA":  { "type":  ["number", "string", "null"] }
+                                                                   }
                                                }
                    },
     "definitions":  {

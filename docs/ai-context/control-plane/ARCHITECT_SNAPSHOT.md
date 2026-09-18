@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate: npm run control-plane:snapshot -->
 
-State v23 · updated 2026-09-15T07:59:07Z · policy 1.4.0
+State v23 · updated 2026-09-15T07:59:07Z · policy 1.5.0
 
 ## 1. Source authority
 
