@@ -1,8 +1,8 @@
-{
+﻿{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://polypropicks.com/schemas/control-plane/evolution/GOVERNOR_RESULT.schema.json",
   "title": "PolyProPicks Automation Roadmap Governor Result",
-  "description": "The machine-readable result of one Automation Roadmap Governor run. Enforced by scripts/control-plane/lib/evolution-governor.mjs — a focused dependency-free validator, not a generic JSON Schema engine. The Governor deterministically prepares its evidence from canonical persisted Evolution Cycles and every result carries exactly one terminal disposition.",
+  "description": "The machine-readable result of one Automation Roadmap Governor run. Enforced by scripts/control-plane/lib/evolution-governor.mjs вЂ” a focused dependency-free validator, not a generic JSON Schema engine. The Governor deterministically prepares its evidence from canonical persisted Evolution Cycles and every result carries exactly one terminal disposition.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -27,7 +27,7 @@
       "type": "object",
       "required": ["executor", "model_label", "prompt_id"],
       "properties": {
-        "executor": { "type": "string", "enum": ["claude_code_cloud", "local_codex_windows"] },
+        "executor": { "type": "string", "enum": ["claude_code_cloud", "local_codex_windows", "opencode_windows"] },
         "model_label": { "type": "string", "minLength": 1 },
         "prompt_id": { "type": "string", "minLength": 1 }
       }
@@ -54,7 +54,7 @@
 
     "findings": {
       "type": "object",
-      "description": "Plain answers to the eight governing questions. Every findings claim that is material carries evidence — insufficient evidence is stated explicitly, never inferred.",
+      "description": "Plain answers to the eight governing questions. Every findings claim that is material carries evidence вЂ” insufficient evidence is stated explicitly, never inferred.",
       "required": [
         "axis_b_advancement",
         "axis_a_support_or_distraction",
@@ -141,7 +141,7 @@
     },
 
     "roadmap_delta": {
-      "description": "A single ROADMAP_DELTA when findings.roadmap_delta_justified is true and eligibility.eligible is true. Null otherwise — a Governor never fabricates a delta to fill this field.",
+      "description": "A single ROADMAP_DELTA when findings.roadmap_delta_justified is true and eligibility.eligible is true. Null otherwise вЂ” a Governor never fabricates a delta to fill this field.",
       "anyOf": [{ "type": "null" }, { "$ref": "ROADMAP_DELTA.schema.json" }]
     },
 
@@ -194,8 +194,9 @@
     "accepted must be false.",
     "eligible must be false whenever new_validated_cycle_count < 3 and weekly_boundary_reached is false; the result must then be an explicit no-change outcome with roadmap_delta null.",
     "roadmap_delta is non-null only when eligibility.eligible is true and findings.roadmap_delta_justified is true.",
-    "roadmap_factual_updates never carries a strategic key — PnL priority, product-roadmap phase, live-money gates, risk authority, strategic stage order, accepted capability level and promotion rules are never auto-updated.",
-    "Every repeated_problems entry names at least two distinct cycle references — a single-cycle observation is not a repetition.",
+    "roadmap_factual_updates never carries a strategic key вЂ” PnL priority, product-roadmap phase, live-money gates, risk authority, strategic stage order, accepted capability level and promotion rules are never auto-updated.",
+    "Every repeated_problems entry names at least two distinct cycle references вЂ” a single-cycle observation is not a repetition.",
     "founder_skills_practiced ladder_id values must be members of FOUNDER_CAPABILITY_LADDER.yaml; the Governor never promotes a level, it only records repetition evidence."
   ]
 }
+

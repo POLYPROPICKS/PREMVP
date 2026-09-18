@@ -1,8 +1,8 @@
-{
+﻿{
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://polypropicks.com/schemas/control-plane/evolution/EVOLUTION_CYCLE.schema.json",
   "title": "PolyProPicks Evolution Cycle",
-  "description": "The machine-readable result of one Daily Evolution Review. Enforced by scripts/control-plane/lib/evolution-cycle.mjs — a focused dependency-free validator, not a generic JSON Schema engine. All detailed machine evidence lives here; the Founder report is the plain-language view of the same cycle.",
+  "description": "The machine-readable result of one Daily Evolution Review. Enforced by scripts/control-plane/lib/evolution-cycle.mjs вЂ” a focused dependency-free validator, not a generic JSON Schema engine. All detailed machine evidence lives here; the Founder report is the plain-language view of the same cycle.",
   "type": "object",
   "additionalProperties": true,
   "required": [
@@ -39,7 +39,7 @@
       "type": "object",
       "required": ["executor", "model_label", "prompt_id"],
       "properties": {
-        "executor": { "type": "string", "enum": ["claude_code_cloud", "local_codex_windows"] },
+        "executor": { "type": "string", "enum": ["claude_code_cloud", "local_codex_windows", "opencode_windows"] },
         "model_label": { "type": "string", "minLength": 1 },
         "prompt_id": { "type": "string", "minLength": 1 }
       }
@@ -311,10 +311,11 @@
     "founder_practices contains exactly two entries.",
     "experiments contains two or three entries, each with a persistent artifact, a promotion condition and a stop condition.",
     "Fewer than five automation hypotheses requires insufficient_supported_hypotheses true with a reason.",
-    "roadmap.product_phase_unchanged must be true — an Evolution cycle never changes the product phase.",
+    "roadmap.product_phase_unchanged must be true вЂ” an Evolution cycle never changes the product phase.",
     "accepted must be false.",
     "For schema_version 1.1, period_end must be at or before evidence_cutoff; legacy 1.0 cycles remain readable without a cutoff.",
     "Defect origin and recurrence remain independent dimensions; LATENT_NEXT_LAYER_EXPOSED is not a regression classification.",
     "A proven-effective fix requires a distinct implemented_fix_ref plus post-fix evidence."
   ]
 }
+
