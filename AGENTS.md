@@ -1,22 +1,28 @@
 # AGENTS.md — PolyProPicks AI Agent Constitution
 
 <!-- ACTIVATION POINT: Read after CLAUDE.md, before any implementation -->
-<!-- TOKEN LOADING RULE: ALWAYS load. Tier 0. Repo root. -->
+<!-- TOKEN LOADING RULE: Load this guardrail, then only mission-relevant canonical sources. -->
 <!-- OWNER: Founder/Operator -->
 <!-- MONITORING CHECK: Agent behavior audited against §3 forbidden list and §5 stop conditions -->
 
 ## 0. Architect Control Plane — highest-priority entrypoint
 
-Canonical artifacts live in `/docs/ai-context/control-plane/` and are read before the
-hierarchy in §1:
+Canonical artifacts live in `/docs/ai-context/control-plane/`. Resolve them narrowly before
+the hierarchy in §1:
 
-- `ARCHITECT_CONTROL_PLANE.yaml` — read first (policy, boundaries, source authority).
-- `CURRENT_STATE.yaml` — read before planning. **The only** current operational state
-  artifact. Legacy state documents cannot override it; `EVIDENCE_LEDGER.md` is history only.
-- `ROUTING_AND_PIPELINES.yaml` — executor and reviewer selection, by risk class only.
-- `PROMPT__PROTOCOL.md` — contract for every executor prompt.
-- `COMPLETION_ENVELOPE.schema.json` — contract for every executor result.
-- `CAPABILITY_MATRIX.yaml` — environment-specific paths, repositories and shells.
+- `ARCHITECT_CONTROL_PLANE.yaml` — resolve the relevant policy and boundaries first.
+- `CURRENT_STATE.yaml` — read only when current operational state matters. It remains the only
+  current operational state artifact; legacy state documents cannot override it.
+- Then read only the exact registry, router, policy, prompt or completion artifact required by
+  the mission. `EVIDENCE_LEDGER.md` remains history only.
+
+Default discovery is supplied evidence → exact known path/symbol → filenames/headings →
+`rg`/`git grep` → smallest code ranges. Initial repository-read ceiling is 8 code files;
+broaden only with a proven dependency. For database investigation use `AGGREGATE_FIRST`,
+projected columns and exact joins, never `SELECT *` for deterministic work; raw rows are a
+ceiling of 50 per stage and 200 per mission. Prefer compact output and the cheapest capable
+model. These economics supplement, and do not weaken, safety, authority, lifecycle,
+repository-boundary, recovery or verification rules.
 
 Two corrections this makes to the rest of this file:
 
@@ -250,16 +256,16 @@ Safe next action: [one action]
 Do NOT: commit / push / continue patching
 ```
 
-## 10. Token loading rules
+## 10. Targeted loading rules
 
 | Artifact | When to load |
 |---|---|
-| CLAUDE.md | Always — first |
-| AGENTS.md | Always — second |
-| SMALL_TASK_EXECUTION_AND_VALUE_PROTOCOL.md | Always before any Founder-action task |
-| TASK_ROUTING_MATRIX.md | Before every task classification |
-| CLAUDE_CODE_EXECUTION_PROTOCOL.md | Before every implementation task |
-| VERIFICATION_GATES.md | After every patch |
+| CLAUDE.md | Entrypoint guardrail |
+| AGENTS.md | Entrypoint guardrail |
+| SMALL_TASK_EXECUTION_AND_VALUE_PROTOCOL.md | Founder-action task only |
+| TASK_ROUTING_MATRIX.md | Task classification/routing only |
+| CLAUDE_CODE_EXECUTION_PROTOCOL.md | Implementation procedure only |
+| VERIFICATION_GATES.md | After a patch when its gate applies |
 | 04_PRODUCT_DECISIONS_LOCKED.md | When product/UX/payment decisions arise |
 | 02_CURRENT_TECH_STATE.md | When tech state uncertain |
 | 03_CURRENT_SOURCE_ARCHITECTURE_MAP.md | When source wiring uncertain |
@@ -270,10 +276,9 @@ Do NOT: commit / push / continue patching
 ## 11. Context tier system
 
 ```
-Tier 0: CLAUDE.md, AGENTS.md, SMALL_TASK_EXECUTION_AND_VALUE_PROTOCOL.md ← always load
-Tier 1: TASK_ROUTING_MATRIX, EXECUTION_PROTOCOL,     ← load at task start
-        VERIFICATION_GATES, FAILURE_MODES
-Tier 2: 01–04, 08, 10, 11 /docs/ai-context/          ← load when task-relevant
+Tier 0: CLAUDE.md, AGENTS.md ← entrypoint guardrails
+Tier 1: routing, execution and verification artifacts ← load when task-relevant
+Tier 2: project context and canonical artifacts ← load when task-relevant
 Tier 3: MONITORING, SCORECARD, DRIFT_LOG              ← load after task
 Tier 4: 06, 07 /docs/ai-context/                     ← load at failure only
 ```

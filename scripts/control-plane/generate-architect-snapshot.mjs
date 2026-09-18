@@ -28,7 +28,7 @@ const DIR = 'docs/ai-context/control-plane';
 export const SNAPSHOT_REL = `${DIR}/ARCHITECT_SNAPSHOT.md`;
 
 function readJson(root, rel) {
-  return JSON.parse(fs.readFileSync(path.join(root, DIR, rel), 'utf8'));
+  return JSON.parse(fs.readFileSync(path.join(root, DIR, rel), 'utf8').replace(/^\uFEFF/, ''));
 }
 
 function bullets(lines) {

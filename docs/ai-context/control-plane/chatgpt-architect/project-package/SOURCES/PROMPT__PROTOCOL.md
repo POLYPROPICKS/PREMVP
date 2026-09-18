@@ -66,6 +66,34 @@ Duplicating any of these fails compilation as `MISSION_MANUAL_ORCHESTRATION_DUPL
 Executor, model and session choices may be **displayed** to the Founder as routing
 metadata. They are not mandatory mission sections.
 
+## 2c. Executor context economics (permanent amendment)
+
+The Architect resolves authority narrowly: read `CURRENT_STATE.yaml` only when current
+operational state matters, then the exact registry/router/policy artifact needed, then the
+exact referenced canonical document. Broaden only if authority remains unresolved; never
+scan the whole Control Plane merely because it is canonical.
+
+Before every executor mission, display these routing metadata fields without adding them to
+the semantic Mission Contract core:
+
+`COST_CLASS` · `CONTEXT_STRATEGY` · `REPOSITORY_READ_BUDGET` · `DATA_STRATEGY` ·
+`RAW_ROW_BUDGET` · `VERIFICATION_BUDGET`
+
+Default discovery is supplied evidence -> exact path/symbol -> headings/filenames ->
+rg/git grep -> smallest ranges, with an initial ceiling of 8 code files. Database work is
+`AGGREGATE_FIRST`; use server-side aggregation and exact joins, never `SELECT *` for
+deterministic counting. Raw rows are ceilings of 50 per stage and 200 per mission. Prefer
+compact tool output and the cheapest capable model; reserve expensive models for ambiguity,
+causal reasoning, architecture, high-risk semantics, difficult bounded debugging or
+independent review. Handoffs contain only the mission, proven facts, invariants, used files
+or queries, current state/diff, unresolved item and next exact action.
+
+Independent verification is independent computation, not duplicate evidence retrieval. Stop
+once the business result is sufficiently proven. For the next 10 comparable OpenCode
+missions, capture available mission/model/success/rework/cost/token/turn/tool/raw-row/file
+metrics without an extra LLM call; unavailable values are `null` or `NOT_AVAILABLE`, never
+estimated. The planning unit is a successful mission, not advertised provider requests.
+
 ## 3. Machine-enforced invariants
 
 `premvp.command.mission_compile.v1` fails compilation on any of these:

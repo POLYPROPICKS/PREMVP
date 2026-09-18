@@ -447,10 +447,29 @@
                                                       "type":  "string"
                                                   }
                                     },
-                       "founder_action":  {
-                                              "type":  "string",
-                                              "minLength":  1
-                                          }
+                        "founder_action":  {
+                                               "type":  "string",
+                                               "minLength":  1
+                                           },
+                        "execution_economics":  {
+                                                    "type":  ["object", "null"],
+                                                    "description":  "Optional compact telemetry for comparable mission measurement. Provider metrics may be unavailable and are never estimated.",
+                                                    "properties":  {
+                                                                      "MISSION_ID":  { "type":  ["string", "null"] },
+                                                                      "MODEL":  { "type":  ["string", "null"] },
+                                                                      "MISSION_CLASS":  { "type":  ["string", "null"] },
+                                                                      "SUCCESS":  { "type":  ["boolean", "null"] },
+                                                                      "REWORK_REQUIRED":  { "type":  ["boolean", "null"] },
+                                                                      "COST_DELTA":  { "type":  ["number", "string", "null"] },
+                                                                      "INPUT_TOKENS":  { "type":  ["integer", "null"] },
+                                                                      "CACHED_TOKENS":  { "type":  ["integer", "null"] },
+                                                                      "OUTPUT_TOKENS":  { "type":  ["integer", "null"] },
+                                                                      "MODEL_TURNS":  { "type":  ["integer", "null"] },
+                                                                      "MAJOR_TOOL_CALLS":  { "type":  ["integer", "null"] },
+                                                                      "RAW_ROWS_RETURNED":  { "type":  ["integer", "null"] },
+                                                                      "FILES_READ":  { "type":  ["integer", "null"] }
+                                                                  }
+                                               }
                    },
     "definitions":  {
                         "reviewer_receipt":  {
