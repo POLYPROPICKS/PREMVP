@@ -85,6 +85,17 @@ export interface ForwardRichSignalPair {
   marketFamily?: string | null;
   providerSportCode?: string | null;
   providerSportFamily?: string | null;
+  /**
+   * Existing immutable provider context captured on the same signal pair.
+   * Direct classification fields remain authoritative when populated; this
+   * carrier is only a lossless fallback for their established equivalents.
+   */
+  providerEventContext?: {
+    marketType?: string | null;
+    marketFamily?: string | null;
+    providerSportCode?: string | null;
+    league?: string | null;
+  } | null;
 
   formulaVersion?: string | null;
 
@@ -148,6 +159,29 @@ export interface DerivedSeries {
 }
 
 /**
+ * Immutable, feature-eligible score point retained for future dynamics
+ * research. Every point is observed at or before DECISION_AT.
+ */
+export interface PreDecisionScoreObservation {
+  observedAt: string;
+  snapshotRunId: string | null;
+  scoreValue: number;
+  scoreMetricFormulaVersion: string | null;
+}
+
+/**
+ * Immutable price point retained strictly for post-decision evaluation.
+ * It is never a model feature and exists only when
+ * DECISION_AT < observedAt < EVENT_START.
+ */
+export interface LaterPreStartPriceEvaluationObservation {
+  observedAt: string;
+  snapshotRunId: string | null;
+  selectedPrice: number;
+  evaluationOnly: true;
+}
+
+/**
  * Label layer (RESEARCH_CORPUS_CONTRACT.md §5). SEPARATE from the immutable PIT
  * feature block — it is attached at materialization and updated as settlement
  * resolves; it never feeds back into a frozen feature value.
@@ -194,6 +228,8 @@ export interface ForwardRichResearchRow {
   // ── RICH: score SERIES (GSRS observation movement) ──────────────────────
   scoreMetricFormulaVersion: string | null;
   score: DerivedSeries;
+  /** Full PIT-safe score history for dynamics/persistence research. */
+  preDecisionScoreHistory: PreDecisionScoreObservation[];
 
   // ── RICH: volume (immutable GSP semantic) ────────────────────────────────
   volumeUsd: number | null;
@@ -202,6 +238,8 @@ export interface ForwardRichResearchRow {
 
   // ── RICH: price movement (immutable GSRS observations) ───────────────────
   selectedPrice: DerivedSeries;
+  /** Post-decision, pre-start price path for evaluation only; never a feature. */
+  laterPreStartPriceEvaluation: LaterPreStartPriceEvaluationObservation[];
 
   // ── classification (exact signal-side, verbatim) ────────────────────────
   marketTypeRaw: string | null;

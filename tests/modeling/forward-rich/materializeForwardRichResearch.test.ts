@@ -53,7 +53,7 @@ function obs(
   };
 }
 
-test("point-in-time: observations after DECISION_AT are excluded from every series", () => {
+test("point-in-time: post-decision observations are excluded from features but retained only for later price evaluation", () => {
   const rows = materializeForwardRichResearch({
     signalPairs: [pair()],
     observations: [
@@ -75,7 +75,39 @@ test("point-in-time: observations after DECISION_AT are excluded from every seri
   assert.equal(r.score.delta, 4);
   assert.equal(r.score.lastEligibleObservedAt, "2026-09-02T11:00:00.000Z");
   assert.equal(r.selectedPrice.delta, 0.04);
+  assert.deepEqual(r.preDecisionScoreHistory.map((p) => [p.observedAt, p.scoreValue]), [
+    ["2026-09-02T06:00:00.000Z", 60],
+    ["2026-09-02T11:00:00.000Z", 64],
+  ]);
+  assert.deepEqual(r.laterPreStartPriceEvaluation, [
+    {
+      observedAt: "2026-09-02T14:00:00.000Z",
+      snapshotRunId: "run-2026-09-02T14:00:00.000Z",
+      selectedPrice: 0.5,
+      evaluationOnly: true,
+    },
+  ]);
   assert.equal(r.eligibleObservationWindowEnd, "2026-09-02T12:00:00.000Z");
+});
+
+test("evaluation-only price path excludes decision-time, after-start, and invalid observations", () => {
+  const [row] = materializeForwardRichResearch({
+    signalPairs: [pair()],
+    observations: [
+      obs("2026-09-02T12:00:00.000Z", 65, 0.45),
+      obs("2026-09-02T13:00:00.000Z", 66, 0.46),
+      obs("2026-09-02T19:00:00.000Z", 67, 0.47),
+      obs("2026-09-02T20:00:00.000Z", 68, 0.48),
+      obs("2026-09-02T15:00:00.000Z", 69, null),
+    ],
+    sinceCutoff: CUTOFF,
+    materializedAt: MAT_AT,
+  });
+  assert.deepEqual(row.laterPreStartPriceEvaluation.map((p) => [p.observedAt, p.selectedPrice, p.evaluationOnly]), [
+    ["2026-09-02T13:00:00.000Z", 0.46, true],
+  ]);
+  assert.equal(row.selectedPrice.lastEligibleValue, 0.45);
+  assert.equal(row.score.lastEligibleValue, 65);
 });
 
 test("delta is null with fewer than 2 eligible observations", () => {
@@ -129,6 +161,64 @@ test("classification keys are preserved verbatim for forward hypothesis evaluati
   assert.equal(rows[0].decisionAt, "2026-09-02T12:00:00.000Z");
 });
 
+test("nested provider event context preserves attribution only when direct fields are absent", () => {
+  const base = pair({
+    marketTypeRaw: null,
+    marketFamily: null,
+    providerSportCode: null,
+    providerEventContext: {
+      marketType: "soccer_exact_score",
+      marketFamily: "props",
+      providerSportCode: "uwcl",
+      league: "ignored-because-provider-code-exists",
+    },
+  });
+  const directWins = pair({
+    marketTypeRaw: "moneyline",
+    marketFamily: "main",
+    providerSportCode: "epl",
+    providerEventContext: {
+      marketType: "soccer_exact_score",
+      marketFamily: "props",
+      providerSportCode: "uwcl",
+      league: "uwcl",
+    },
+  });
+  const rows = materializeForwardRichResearch({
+    signalPairs: [base, { ...directWins, conditionId: "cond-B", selectedTokenId: "tok-B" }],
+    observations: [],
+    sinceCutoff: CUTOFF,
+    materializedAt: MAT_AT,
+  });
+
+  assert.deepEqual(
+    rows.map((r) => [r.conditionId, r.selectedTokenId, r.marketTypeRaw, r.marketFamily, r.providerSportCode]),
+    [
+      ["cond-A", "tok-A", "soccer_exact_score", "props", "uwcl"],
+      ["cond-B", "tok-B", "moneyline", "main", "epl"],
+    ],
+  );
+  assert.equal(rows[0].entryPrice, base.entryPriceNum);
+  assert.equal(rows[0].gammaTerminal, base.gammaTerminal ?? null);
+});
+
+test("missing nested attribution remains null without changing identity or economics", () => {
+  const input = pair({ marketTypeRaw: null, marketFamily: null, providerSportCode: null });
+  const [row] = materializeForwardRichResearch({
+    signalPairs: [input],
+    observations: [],
+    sinceCutoff: CUTOFF,
+    materializedAt: MAT_AT,
+  });
+  assert.equal(row.marketTypeRaw, null);
+  assert.equal(row.marketFamily, null);
+  assert.equal(row.providerSportCode, null);
+  assert.equal(row.conditionId, input.conditionId);
+  assert.equal(row.selectedTokenId, input.selectedTokenId);
+  assert.equal(row.entryPrice, input.entryPriceNum);
+  assert.equal(row.label, "OPEN");
+});
+
 test("deterministic: identical input yields byte-identical output across runs", () => {
   const build = () =>
     materializeForwardRichResearch({
@@ -145,4 +235,54 @@ test("deterministic: identical input yields byte-identical output across runs", 
     });
   assert.equal(JSON.stringify(build()), JSON.stringify(build()));
   assert.deepEqual(build().map((r) => r.conditionId), ["a", "b"]);
+
+  const ordered = materializeForwardRichResearch({
+    signalPairs: [pair()],
+    observations: [
+      obs("2026-09-02T06:00:00.000Z", 60, 0.4),
+      obs("2026-09-02T11:00:00.000Z", 64, 0.44),
+      obs("2026-09-02T14:00:00.000Z", 71, 0.5),
+    ],
+    sinceCutoff: CUTOFF,
+    materializedAt: MAT_AT,
+  });
+  const reversed = materializeForwardRichResearch({
+    signalPairs: [pair()],
+    observations: [...ordered[0].preDecisionScoreHistory]
+      .map((p) => obs(p.observedAt, p.scoreValue, 0.4, { snapshotRunId: p.snapshotRunId ?? undefined }))
+      .reverse()
+      .concat(obs("2026-09-02T14:00:00.000Z", 71, 0.5)),
+    sinceCutoff: CUTOFF,
+    materializedAt: MAT_AT,
+  });
+  assert.deepEqual(
+    reversed[0].preDecisionScoreHistory.map((p) => [p.observedAt, p.scoreValue]),
+    ordered[0].preDecisionScoreHistory.map((p) => [p.observedAt, p.scoreValue]),
+  );
+});
+
+test("dynamic carriers preserve identity and cannot change economics or settlement", () => {
+  const input = pair({ gammaTerminal: "LOSS", entryPriceNum: 0.42 });
+  const base = {
+    observations: [
+      obs("2026-09-02T06:00:00.000Z", 60, 0.4),
+      obs("2026-09-02T13:00:00.000Z", 65, 0.45),
+    ],
+    sinceCutoff: CUTOFF,
+    materializedAt: MAT_AT,
+  };
+  const [row] = materializeForwardRichResearch({ signalPairs: [input], ...base });
+  const [winRow] = materializeForwardRichResearch({
+    signalPairs: [pair({ gammaTerminal: "WIN", entryPriceNum: input.entryPriceNum })],
+    ...base,
+  });
+  assert.equal(row.conditionId, input.conditionId);
+  assert.equal(row.selectedTokenId, input.selectedTokenId);
+  assert.equal(row.entryPrice, input.entryPriceNum);
+  assert.equal(row.gammaTerminal, "LOSS");
+  assert.equal(row.label, "LOSS");
+  assert.equal(row.preDecisionScoreHistory.length, 1);
+  assert.equal(row.laterPreStartPriceEvaluation.length, 1);
+  assert.deepEqual(row.preDecisionScoreHistory, winRow.preDecisionScoreHistory);
+  assert.deepEqual(row.laterPreStartPriceEvaluation, winRow.laterPreStartPriceEvaluation);
 });
