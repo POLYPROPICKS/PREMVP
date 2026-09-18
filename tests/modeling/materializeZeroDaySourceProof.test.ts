@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 
 import {
   ACCEPTED_DAY_STATUSES,
+  UNPROVEN_ZERO_DAY_CODE,
   writeDayRows,
 } from "../../scripts/modeling/materialize-research-model-ready";
 import type { ScorecardReadyRow } from "../../lib/modeling/research-corpus/rollingCorpus";
@@ -95,4 +96,16 @@ test("a real day still writes MODEL_READY on the exact economic-identity conflic
 
 test("SOURCE_EMPTY counts as settled so the cron does not re-materialize a proven-empty day", () => {
   assert.deepEqual([...ACCEPTED_DAY_STATUSES], ["MODEL_READY", "DEGRADED_EXCLUDED", "SOURCE_EMPTY"]);
+});
+
+// The main() loop survives exactly one error class by matching this prefix. If the
+// thrown message ever stopped starting with it, that catch would silently widen into
+// swallowing real write failures — so the coupling is asserted, not assumed.
+test("the survivable refusal is tagged with UNPROVEN_ZERO_DAY_CODE", async () => {
+  const { client } = recordingClient();
+  await assert.rejects(
+    () => writeDayRows(client, D, [], { kind: "SOURCE_UNVERIFIED" }),
+    (e: unknown) => e instanceof Error && e.message.startsWith(UNPROVEN_ZERO_DAY_CODE),
+  );
+  assert.equal(UNPROVEN_ZERO_DAY_CODE, "MATERIALIZE_SOURCE_UNVERIFIED_REFUSING_ZERO_DAY");
 });
