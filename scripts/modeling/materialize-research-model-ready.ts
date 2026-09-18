@@ -242,6 +242,9 @@ export type DaySourceProof =
   | { kind: "SOURCE_PROVEN"; sourceEnvelopeN: number; sourceEvidenceRowN: number }
   | { kind: "SOURCE_UNVERIFIED" };
 
+/** Error-code prefix for the unproven-zero-day refusal — the one survivable per-date failure. */
+export const UNPROVEN_ZERO_DAY_CODE = "MATERIALIZE_SOURCE_UNVERIFIED_REFUSING_ZERO_DAY";
+
 /** Day statuses the automatic cron treats as settled and will not revisit. */
 export const ACCEPTED_DAY_STATUSES = ["MODEL_READY", "DEGRADED_EXCLUDED", "SOURCE_EMPTY"] as const;
 
@@ -263,7 +266,7 @@ export async function writeDayRows(
   if (rows.length === 0) {
     if (proof.kind !== "SOURCE_PROVEN") {
       throw new Error(
-        `MATERIALIZE_SOURCE_UNVERIFIED_REFUSING_ZERO_DAY:${d}: a zero-row day is only acceptable with an authoritative emptiness proof; refusing to record a missing/stale source as complete`,
+        `${UNPROVEN_ZERO_DAY_CODE}:${d}: a zero-row day is only acceptable with an authoritative emptiness proof; refusing to record a missing/stale source as complete`,
       );
     }
     if (proof.sourceEnvelopeN !== 0 || proof.sourceEvidenceRowN !== 0) {
@@ -319,24 +322,40 @@ async function main() {
   const dates = explicitDates ?? (start && end ? datesInRange(start, end) : await resolveMissingRecentDates(db));
 
   const report: DayMaterializationCounts[] = [];
+  // A day whose emptiness this path cannot prove. It is deliberately NOT written
+  // and NOT accepted, so resolveMissingRecentDates keeps offering it on the next
+  // run — the gap stays recoverable instead of being falsified as complete.
+  const unprovenZeroDays: string[] = [];
   for (const d of dates) {
     const { rows, counts } = await materializeDayRows(db, d);
-    // No authoritative emptiness proof exists on this path yet: the clone-side
-    // narrow export that can supply one lands with the runtime mission. Until
-    // then a zero-row day fails loudly rather than being recorded as complete.
-    await writeDayRows(db, d, rows, { kind: "SOURCE_UNVERIFIED" });
+    try {
+      // No authoritative emptiness proof exists on this path yet: the clone-side
+      // narrow export that can supply one lands with the runtime mission. Until
+      // then a zero-row day is refused rather than recorded as complete.
+      await writeDayRows(db, d, rows, { kind: "SOURCE_UNVERIFIED" });
+    } catch (error) {
+      // ONLY the unproven-zero-day refusal is survivable, and only for this one
+      // date: skipping it leaves the day unrecorded and retryable, which is
+      // strictly safer than aborting every remaining date in the run. Every
+      // other error — a genuine write failure, a non-empty source that produced
+      // no rows — still fails the whole run.
+      if (!(error instanceof Error) || !error.message.startsWith(UNPROVEN_ZERO_DAY_CODE)) throw error;
+      unprovenZeroDays.push(d);
+      continue;
+    }
     report.push(counts);
   }
 
   console.log(
     JSON.stringify(
       {
-        STATUS: "SUCCESS",
+        STATUS: unprovenZeroDays.length === 0 ? "SUCCESS" : "SUCCESS_WITH_UNPROVEN_ZERO_DAYS",
         MATERIALIZATION_PATH: "DIRECT_MODEL_READY_RESEARCH_PATH_V1",
         SOURCE_PROJECT: sourceProject,
         SOURCE_KIND: "RESEARCH_CLONE",
         DATE_COVERAGE: { start: dates[0], end: dates.at(-1) },
         REPORT: report,
+        UNPROVEN_ZERO_DAYS: unprovenZeroDays,
         RESEARCH_MODEL_ECONOMICS_WRITE_N: 0,
         PRODUCTION_MUTATION_N: 0,
       },
