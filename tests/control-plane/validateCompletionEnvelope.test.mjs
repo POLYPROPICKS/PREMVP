@@ -9,8 +9,11 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 
-import { validateCompletionEnvelope } from '../../scripts/control-plane/validate-completion-envelope.mjs';
+import { loadRouting, loadSchema, validateCompletionEnvelope } from '../../scripts/control-plane/validate-completion-envelope.mjs';
 
 const RESULT_SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
 const BASE_SHA = '6e593a5d0e66e50941f130f7792f67e487dbb347';
@@ -99,6 +102,29 @@ function hardStop(overrides = {}) {
 test('6. valid completion envelope passes', () => {
   const result = validateCompletionEnvelope(validEnvelope());
   assert.equal(result.ok, true, result.errors.join('\n'));
+});
+
+test('6a. opencode_windows completion envelope passes and unknown executors fail', () => {
+  assert.equal(validateCompletionEnvelope(validEnvelope({ executor: 'opencode_windows', environment: 'opencode_windows' })).ok, true);
+  const invalid = validateCompletionEnvelope(validEnvelope({ executor: 'unknown_executor', environment: 'unknown_executor' }));
+  assert.equal(invalid.ok, false);
+  assert.match(invalid.errors.join('\n'), /INVALID_EXECUTOR: unknown_executor/);
+});
+
+test('6aa. canonical JSON readers accept one leading BOM and reject malformed JSON', () => {
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), 'completion-envelope-'));
+  try {
+    const valid = path.join(temp, 'valid.json');
+    const invalid = path.join(temp, 'invalid.json');
+    fs.writeFileSync(valid, '\uFEFF{"ok":true}', 'utf8');
+    fs.writeFileSync(invalid, '\uFEFF{', 'utf8');
+    assert.deepEqual(loadSchema(valid), { ok: true });
+    assert.deepEqual(loadRouting(valid), { ok: true });
+    assert.throws(() => loadSchema(invalid), SyntaxError);
+    assert.throws(() => loadRouting(invalid), SyntaxError);
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
 });
 
 test('6b. missing required fields fail', () => {

@@ -35,6 +35,20 @@ test('local PR adapters retain the existing gh command behavior', () => {
   assert.equal(merge.script, 'scripts/control-plane/github-pr-merge.mjs');
 });
 
+test('OpenCode PR adapters bind exactly once to the shared local gh scripts', () => {
+  for (const [commandId, operation, capability, script] of [
+    ['premvp.command.github_pr_create.v1', 'pr_create', 'GITHUB_PR_CREATE', 'scripts/control-plane/github-pr-create.mjs'],
+    ['premvp.command.github_pr_merge.v1', 'pr_merge', 'GITHUB_PR_MERGE', 'scripts/control-plane/github-pr-merge.mjs'],
+  ]) {
+    const entry = registry.entries.find((candidate) => candidate.canonical_id === commandId);
+    const bindings = entry.executor_bindings.filter((binding) => binding.executor_id === 'opencode_windows');
+    assert.equal(bindings.length, 1);
+    assert.deepEqual(bindings[0], { executor_id: 'opencode_windows', transport: 'local_gh_cli', operation, capability, script });
+    assert.equal(entry.supported_executors.filter((executor) => executor === 'opencode_windows').length, 1);
+    assert.equal(resolveGitHubPrAdapter({ registry, commandId, executorId: 'opencode_windows' }).script, script);
+  }
+});
+
 test('missing and unsupported adapters fail closed without executor substitution', () => {
   assert.throws(
     () => resolveGitHubPrAdapter({ registry, commandId: 'premvp.command.github_pr_create.v1', executorId: 'ireland_local' }),
