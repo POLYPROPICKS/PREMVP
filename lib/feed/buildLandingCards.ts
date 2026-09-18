@@ -480,16 +480,17 @@ export const RESEARCH_SCORER_CHUNK_SIZE = 4;
 export const PRIMARY_SCORER_PROVEN_CAPACITY = 254;
 
 /**
- * Concatenate the 24h primary discovery samples with the 48h fallback samples and
- * bound the result to the proven primary-scorer throughput. Ordering is preserved
- * exactly — the already volume-DESC/time-ASC sorted 24h block first, then the 48h
- * fallback block; only the tail beyond `capacity` is dropped. A population at or
- * below the bound is returned unchanged (concatenation only).
+ * Concatenate the 24h primary discovery samples with the 48h fallback samples.
+ * Ordering is preserved exactly — the already volume-DESC/time-ASC sorted 24h
+ * block first, then the 48h fallback block; only the tail beyond an explicit
+ * `capacity` is dropped. By default the full concatenated eligible population is
+ * returned unchanged (concatenation only). The finite runtime safety mechanism is
+ * PRIMARY_LOOP_DEFAULT_BUDGET_MS, not a fixed membership count.
  */
 export function boundPrimaryScorerPopulation<T>(
   primary24h: readonly T[],
   fallback48h: readonly T[],
-  capacity: number = PRIMARY_SCORER_PROVEN_CAPACITY,
+  capacity: number = Infinity,
 ): T[] {
   return [...primary24h, ...fallback48h].slice(0, Math.max(1, capacity));
 }
