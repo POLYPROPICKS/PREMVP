@@ -10,6 +10,10 @@ const pruneMigration = readFileSync(
   "supabase/migrations/20260814120000_current_signal_pair_serving_prune.sql",
   "utf8",
 );
+const pruneBatchRaiseMigration = readFileSync(
+  "supabase/migrations/20260918160000_current_signal_pair_serving_prune_batch_raise.sql",
+  "utf8",
+);
 const liquidityGateMigration = readFileSync(
   "supabase/migrations/20260825000000_current_signal_pair_serving_event_liquidity_gate.sql",
   "utf8",
@@ -111,6 +115,18 @@ test("serving prune is bounded, index-backed, and never performs a broad GSP rea
   assert.match(pruneMigration, /GRANT EXECUTE ON FUNCTION public\.prune_current_signal_pair_serving\(integer, uuid\[\]\) TO service_role/i);
   assert.doesNotMatch(pruneMigration, /FROM public\.generated_signal_pairs source\s+WHERE\s+source\.signal_result IS NOT NULL/i);
   assert.doesNotMatch(pruneMigration, /DELETE FROM public\.generated_signal_pairs/i);
+});
+
+test("prune batch ceiling was raised to 500 without changing predicate, index, or historical-data safety", () => {
+  assert.match(pruneBatchRaiseMigration, /p_batch_size < 1 OR p_batch_size > 500/);
+  assert.doesNotMatch(pruneBatchRaiseMigration, /p_batch_size > 25\b/);
+  assert.match(pruneBatchRaiseMigration, /serving\.projection_status = 'ACTIVE'/);
+  assert.match(pruneBatchRaiseMigration, /serving\.expires_at <= now\(\)/);
+  assert.match(pruneBatchRaiseMigration, /ORDER BY serving\.expires_at ASC[\s\S]*LIMIT p_batch_size[\s\S]*FOR UPDATE SKIP LOCKED/);
+  assert.doesNotMatch(pruneBatchRaiseMigration, /CREATE INDEX/i);
+  assert.doesNotMatch(pruneBatchRaiseMigration, /DELETE FROM public\.generated_signal_pairs/i);
+  assert.match(pruneBatchRaiseMigration, /REVOKE EXECUTE ON FUNCTION public\.prune_current_signal_pair_serving\(integer, uuid\[\]\) FROM PUBLIC/i);
+  assert.match(pruneBatchRaiseMigration, /GRANT EXECUTE ON FUNCTION public\.prune_current_signal_pair_serving\(integer, uuid\[\]\) TO service_role/i);
 });
 
 type PrunableServingCandidate = ServingCandidate & { projectionStatus: "ACTIVE" | "PENDING" };
@@ -247,21 +263,21 @@ test("writer projection is idempotent by source UUID and serving prune batches e
     args: { p_source_generated_signal_pair_ids: ["source-a", "source-b"] },
   });
 
-  const prune = await pruneCurrentSignalPairServing(Array.from({ length: 26 }, (_, index) => `source-${index}`));
+  const prune = await pruneCurrentSignalPairServing(Array.from({ length: 501 }, (_, index) => `source-${index}`));
   assert.deepEqual(prune, { attempted: true, deletedRows: 0, batches: 2, durationMs: prune.durationMs });
   assert.deepEqual(calls.slice(1), [
     {
       fn: "prune_current_signal_pair_serving",
       args: {
-        p_batch_size: 25,
-        p_resolved_source_generated_signal_pair_ids: Array.from({ length: 25 }, (_, index) => `source-${index}`),
+        p_batch_size: 500,
+        p_resolved_source_generated_signal_pair_ids: Array.from({ length: 500 }, (_, index) => `source-${index}`),
       },
     },
     {
       fn: "prune_current_signal_pair_serving",
       args: {
-        p_batch_size: 25,
-        p_resolved_source_generated_signal_pair_ids: ["source-25"],
+        p_batch_size: 500,
+        p_resolved_source_generated_signal_pair_ids: ["source-500"],
       },
     },
   ]);
