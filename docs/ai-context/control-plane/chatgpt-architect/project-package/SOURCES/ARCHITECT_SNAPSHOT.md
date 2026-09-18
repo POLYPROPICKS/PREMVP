@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate: npm run control-plane:snapshot -->
 
-State v23 · updated 2026-09-15T07:59:07Z · policy 1.3.0
+State v23 · updated 2026-09-15T07:59:07Z · policy 1.4.0
 
 ## 1. Source authority
 
@@ -44,15 +44,19 @@ Only current-state authority: `CURRENT_STATE.yaml`. `EVIDENCE_LEDGER.md` is hist
 - PROVEN: none
 - NOT PROVEN: REPOSITORY_READ, RUNTIME_ACCESS, REMOTE_IDENTITY, AGENT_AVAILABILITY, DEPLOY
 
-Access surfaces are not executors: CLOUD_WEB→claude_code_cloud, CLOUD_MOBILE→claude_code_cloud, DESKTOP→local_codex_windows, MOBILE_REMOTE→local_codex_windows.
+**`opencode_windows`** — host true, terminal false, surfaces OPENCODE_DESKTOP
+- PROVEN: REPOSITORY_READ, DATABASE_READ
+- NOT PROVEN: DEPENDENCY_INSTALL, TYPECHECK, BUILD, DATABASE_WRITE, GIT_PUSH_FEATURE_BRANCH, GITHUB_PR_CREATE, GITHUB_PR_MERGE, PRODUCTION_HTTPS_READ, WEATHER_GATE_REVIEW, CONTUR_GATE_REVIEW, IRELAND_RUNTIME_ACCESS, DEPLOY
+
+Access surfaces are not executors: CLOUD_WEB→claude_code_cloud, CLOUD_MOBILE→claude_code_cloud, DESKTOP→local_codex_windows, MOBILE_REMOTE→local_codex_windows, OPENCODE_DESKTOP→opencode_windows.
 
 ## 5. Routing (minimum agents — never all agents)
 
 | Risk class | Executors | Required reviewers | Fail closed |
 |---|---|---|---|
-| `R0_READ_ONLY` | claude_code_cloud, local_codex_windows | — | no |
-| `R1_BOUNDED_CODE` | claude_code_cloud, local_codex_windows | — | no |
-| `R2_ARCHITECTURE_OR_ROADMAP` | claude_code_cloud, local_codex_windows | — | no |
+| `R0_READ_ONLY` | claude_code_cloud, local_codex_windows, opencode_windows | — | no |
+| `R1_BOUNDED_CODE` | claude_code_cloud, local_codex_windows, opencode_windows | — | no |
+| `R2_ARCHITECTURE_OR_ROADMAP` | claude_code_cloud, local_codex_windows, opencode_windows | — | no |
 | `R3_WEATHER_MODEL_CHANGE` | claude_code_cloud, local_codex_windows | premvp.reviewer.weather_gate.v1 | no |
 | `R4_CONTUR_PRODUCTION_BOUNDARY` | claude_code_cloud, local_codex_windows | premvp.reviewer.contur_gate.v1 | no |
 | `R5_CROSS_REPO_OR_LIVE_MONEY` | — | — | **YES** |

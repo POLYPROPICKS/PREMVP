@@ -1,7 +1,7 @@
 # CLAUDE.md — PolyProPicks Primary Agent Entrypoint
 
 <!-- ACTIVATION POINT: Claude Code reads this file FIRST before any action -->
-<!-- TOKEN LOADING RULE: ALWAYS load. Never skip. Tier 0. -->
+<!-- TOKEN LOADING RULE: Load this guardrail, then only mission-relevant canonical sources. -->
 <!-- MONITORING CHECK: First response must include task classification + execution mode + stop conditions -->
 
 ## 0. Architect Control Plane — read first
@@ -9,21 +9,21 @@
 The canonical control plane lives in `/docs/ai-context/control-plane/`. It takes priority
 over legacy state documents.
 
-1. Read `ARCHITECT_CONTROL_PLANE.yaml` **first** — policy, boundaries, source authority.
-2. Read `CURRENT_STATE.yaml` **before planning** — it is the **only** current operational
-   state artifact. Legacy state documents (`01_*`, `02_*`, `09_*`, `11_*`, `WORK_TRU_*`)
-   are descriptive or historical and **cannot override it**. `EVIDENCE_LEDGER.md` is
-   history only.
-3. Use `ROUTING_AND_PIPELINES.yaml` for executor and reviewer selection. Reviewers are
+1. Resolve the relevant sections of `ARCHITECT_CONTROL_PLANE.yaml` first — policy,
+   boundaries and source authority.
+2. Read `CURRENT_STATE.yaml` only when current operational state matters. It remains the
+   **only** current operational state artifact; legacy state documents cannot override it.
+3. Use only the exact router, registry, policy, prompt or completion artifact required.
+4. Use `ROUTING_AND_PIPELINES.yaml` for executor and reviewer selection. Reviewers are
    invoked by risk class — never all agents for every task.
-4. Use `PROMPT__PROTOCOL.md` for **every** executor prompt. Missing or contradictory
+5. Use `PROMPT__PROTOCOL.md` for **every** executor prompt. Missing or contradictory
    input → `PROMPT_GATE_BLOCKED`.
-5. Use `COMPLETION_ENVELOPE.schema.json` for **every** executor result. A task that
+6. Use `COMPLETION_ENVELOPE.schema.json` for **every** executor result. A task that
    requires a reviewer cannot return `PASS` without a valid reviewer receipt.
-6. Environment-specific paths, repositories and shells come from `CAPABILITY_MATRIX.yaml`.
+7. Environment-specific paths, repositories and shells come from `CAPABILITY_MATRIX.yaml`.
    Do **not** hardcode Windows as the only execution environment — `§4` of `AGENTS.md` is
    superseded on this point.
-7. PREMVP and Ireland implementation prompts must remain **separate**. One prompt targets
+8. PREMVP and Ireland implementation prompts must remain **separate**. One prompt targets
    exactly one repository boundary.
 
 Verify with `npm run control-plane:check`.
@@ -45,17 +45,20 @@ Neither role may: claim "done" without proof, give manual snippet instructions t
 3. Current user message
 4. Old chat history (lowest priority — do not rely on)
 
-## 3. Read next (required before any implementation)
+## 3. Targeted loading (required only when relevant)
 
 ```
-/docs/ai-context/12_AGENT_STARTUP_PROTOCOL.md   ← always; missing → STOP
-/AGENTS.md                                       ← constitution + forbidden list (incl. CONTUR3 + Premium QA gates)
-/docs/ai-context/TASK_ROUTING_MATRIX.md          ← before every task
-/docs/ai-context/CLAUDE_CODE_EXECUTION_PROTOCOL.md ← before every patch
-/docs/ai-context/P0_FEED_FORENSIC_AUTOMATION_PROTOCOL.md ← before any feed/data/scoring incident
+/AGENTS.md                                       ← constitution + forbidden list
+/docs/ai-context/TASK_ROUTING_MATRIX.md          ← task classification/routing only
+/docs/ai-context/CLAUDE_CODE_EXECUTION_PROTOCOL.md ← implementation procedure only
+/docs/ai-context/P0_FEED_FORENSIC_AUTOMATION_PROTOCOL.md ← feed/data/scoring incidents only
 ```
 
-Load Tier 2 (project context) only when task-relevant. Do NOT load Tier 4 (lessons/archive) at session start.
+Load only the exact canonical artifact and smallest source ranges relevant to the mission.
+Default discovery is supplied evidence → exact path/symbol → headings/filenames → `rg`/`git grep`.
+Initial repository-read ceiling is 8 code files. Use `AGGREGATE_FIRST` for deterministic DB
+investigation, compact output, and the cheapest capable model; raw rows are capped at 50 per
+stage and 200 per mission. Do not load legacy or broad context at session start.
 
 **Feed/data/scoring incidents:** follow `P0_FEED_FORENSIC_AUTOMATION_PROTOCOL.md`. No trace table = no patch.
 **Source coverage:** run `npm run audit:sports-sources` — Gamma tag_slug alone is not sufficient for Polymarket sports categories; see `P0_SOURCE_COVERAGE_AUDIT_PROTOCOL.md`.
@@ -75,7 +78,7 @@ STOP CONDITIONS FOR THIS TASK:
 EVIDENCE REQUIRED:
 - [ ] git status --short
 - [ ] git diff --stat
-- [ ] npm run build result
+- [ ] focused required check result (full build only when scope or policy requires it)
 - [ ] old/new snippets
 - [ ] [task-specific]
 FOUNDER ACTION: [exactly one action]

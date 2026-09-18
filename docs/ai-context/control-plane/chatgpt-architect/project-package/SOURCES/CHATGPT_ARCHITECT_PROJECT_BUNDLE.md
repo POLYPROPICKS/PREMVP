@@ -2,7 +2,7 @@
 
 <!-- GENERATED FILE — do not edit by hand. Regenerate: npm run control-plane:architect-bundle -->
 
-State v23 · updated 2026-09-15T07:59:07Z · policy 1.3.0
+State v23 · updated 2026-09-15T07:59:07Z · policy 1.4.0
 
 Canonical authority is `docs/ai-context/control-plane/**`. Live Git and runtime output outrank this guide for every fact. Never invent a command id, SHA, executor, capability verdict or runtime proof.
 
@@ -18,17 +18,17 @@ Registered commands own precheck, worktree, dependency bootstrap, PR, merge, dep
 
 ## 2. Machine-enforced invariants
 
-- CAPABILITY_BY_DIRECT_ACTION_ONLY — every required capability resolves to a direct action that declares it.
-- RISK_NOT_CAPABILITY — risk class controls authority, safety and reviewers; it never injects a technical capability.
-- APPLICATION_PERSISTENCE_NOT_RAW_DB_MUTATION — APPLICATION_OWNED persistence must not require DATABASE_WRITE.
-- ONE_REPOSITORY_BOUNDARY — every direct action shares the mission repository boundary; foreign-repository capabilities are rejected.
-- REGISTERED_COMMAND_VALIDITY — registration + executable binding + executor invocability, all three.
-- RECOVERY_BEFORE_BLOCK — a canonically recoverable condition may never be declared a hard boundary.
-- INCOMPLETE_IS_NOT_TERMINAL — unfinished implementation never justifies a terminal block.
-- SESSION_END_IS_TRANSPORT_RESUME — execution-slice exhaustion is transport state, not a business block.
-- OPERATOR_ACTION_BUDGET — start <= 1, intermediate = 0, terminal_result = 1.
-- ACCEPTANCE_AFTER_EXECUTION — TERMINAL acceptance criteria are never evaluated at the START GATE.
-- NO_MANUAL_ORCHESTRATION — lifecycle mechanics owned by registered commands may not be restated as mission prose.
+- CAPABILITY_BY_DIRECT_ACTION_ONLY вЂ” every required capability resolves to a direct action that declares it.
+- RISK_NOT_CAPABILITY вЂ” risk class controls authority, safety and reviewers; it never injects a technical capability.
+- APPLICATION_PERSISTENCE_NOT_RAW_DB_MUTATION вЂ” APPLICATION_OWNED persistence must not require DATABASE_WRITE.
+- ONE_REPOSITORY_BOUNDARY вЂ” every direct action shares the mission repository boundary; foreign-repository capabilities are rejected.
+- REGISTERED_COMMAND_VALIDITY вЂ” registration + executable binding + executor invocability, all three.
+- RECOVERY_BEFORE_BLOCK вЂ” a canonically recoverable condition may never be declared a hard boundary.
+- INCOMPLETE_IS_NOT_TERMINAL вЂ” unfinished implementation never justifies a terminal block.
+- SESSION_END_IS_TRANSPORT_RESUME вЂ” execution-slice exhaustion is transport state, not a business block.
+- OPERATOR_ACTION_BUDGET вЂ” start <= 1, intermediate = 0, terminal_result = 1.
+- ACCEPTANCE_AFTER_EXECUTION вЂ” TERMINAL acceptance criteria are never evaluated at the START GATE.
+- NO_MANUAL_ORCHESTRATION вЂ” lifecycle mechanics owned by registered commands may not be restated as mission prose.
 
 ## 3. Outcome semantics
 
@@ -52,9 +52,9 @@ Registered commands own precheck, worktree, dependency bootstrap, PR, merge, dep
 
 | Risk class | Executors | Required reviewers | Fail closed |
 |---|---|---|---|
-| `R0_READ_ONLY` | claude_code_cloud, local_codex_windows | — | no |
-| `R1_BOUNDED_CODE` | claude_code_cloud, local_codex_windows | — | no |
-| `R2_ARCHITECTURE_OR_ROADMAP` | claude_code_cloud, local_codex_windows | — | no |
+| `R0_READ_ONLY` | claude_code_cloud, local_codex_windows, opencode_windows | — | no |
+| `R1_BOUNDED_CODE` | claude_code_cloud, local_codex_windows, opencode_windows | — | no |
+| `R2_ARCHITECTURE_OR_ROADMAP` | claude_code_cloud, local_codex_windows, opencode_windows | — | no |
 | `R3_WEATHER_MODEL_CHANGE` | claude_code_cloud, local_codex_windows | premvp.reviewer.weather_gate.v1 | no |
 | `R4_CONTUR_PRODUCTION_BOUNDARY` | claude_code_cloud, local_codex_windows | premvp.reviewer.contur_gate.v1 | no |
 | `R5_CROSS_REPO_OR_LIVE_MONEY` | — | — | **YES** |
@@ -66,8 +66,9 @@ Reviewers are selected by risk class. There is no all-agent policy.
 - `claude_code_cloud` — PROVEN: REPOSITORY_READ, DEPENDENCY_INSTALL, TYPECHECK, BUILD, DATABASE_READ, PRODUCTION_HTTPS_READ, GIT_PUSH_FEATURE_BRANCH
 - `local_codex_windows` — PROVEN: REPOSITORY_READ, DEPENDENCY_INSTALL, TYPECHECK, BUILD, LOCAL_TEST_RUN, GIT_PUSH_FEATURE_BRANCH, GITHUB_PR_CREATE, GITHUB_PR_MERGE, WEATHER_GATE_REVIEW, CONTUR_GATE_REVIEW, DETERMINISTIC_REVIEWER_INVOCATION, DATABASE_READ
 - `ireland_local` — PROVEN: none
+- `opencode_windows` — PROVEN: REPOSITORY_READ, DATABASE_READ
 
-Access surfaces are not executors: CLOUD_WEB→claude_code_cloud, CLOUD_MOBILE→claude_code_cloud, DESKTOP→local_codex_windows, MOBILE_REMOTE→local_codex_windows.
+Access surfaces are not executors: CLOUD_WEB→claude_code_cloud, CLOUD_MOBILE→claude_code_cloud, DESKTOP→local_codex_windows, MOBILE_REMOTE→local_codex_windows, OPENCODE_DESKTOP→opencode_windows.
 
 ## 6. Registered commands
 

@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "policy_version": "1.3.0",
+  "policy_version": "1.4.0",
   "updated_at": "2026-08-25T00:00:00Z",
   "_format_note": "JSON-compatible YAML 1.2 subset. Every .yaml file in this directory MUST also parse with JSON.parse. Do not introduce block YAML syntax here.",
 
@@ -29,6 +29,37 @@
       "PROMPT_CONTRACT_CHECK",
       "FINAL_OUTPUT"
     ]
+  },
+
+  "executor_context_economics": {
+    "status": "PERMANENT_AMENDMENT_EXECUTOR_CONTEXT_ECONOMICS_V1",
+    "supplements": ["authority", "lifecycle", "repository_boundary", "verification", "recovery", "Founder contracts"],
+    "authority_resolution": "Resolve live canonical Control Plane narrowly: CURRENT_STATE.yaml only when current operational state matters, then the exact registry/router/policy artifact needed, then the exact referenced canonical document; broaden only if authority remains unresolved. Never scan the whole Control Plane merely because it is canonical.",
+    "execution_objective": "Optimize verified business result per model turn + context tokens + tool output + verification cost. Correctness and safety remain higher priority than cost.",
+    "architect_routing_metadata": [
+      "COST_CLASS = CHEAP / STANDARD / EXPENSIVE",
+      "CONTEXT_STRATEGY = REUSE / TARGETED_DISCOVERY / FRESH_BOUNDED",
+      "REPOSITORY_READ_BUDGET",
+      "DATA_STRATEGY = NONE / AGGREGATE_FIRST / ROW_LEVEL_REQUIRED",
+      "RAW_ROW_BUDGET",
+      "VERIFICATION_BUDGET"
+    ],
+    "routing_metadata_rule": "These are Founder-facing routing/presentation metadata, not additions to the semantic Mission Contract core.",
+    "repository_discovery": "supplied evidence -> exact known path/symbol -> filenames/headings -> rg/git grep -> smallest code ranges -> broader dependency only when proven necessary; normal initial ceiling <= 8 code files.",
+    "database": "AGGREGATE_FIRST. For deterministic counts, percentages, composition, retention, linked/unlinked populations and distributions, prefer server-side WHERE, COUNT, COUNT FILTER, GROUP BY, CTE and exact persisted-key JOIN. Never SELECT * or retrieve raw rows for deterministic calculation.",
+    "raw_row_ceilings": { "per_stage": 50, "per_mission_total": 200 },
+    "tool_output": "Prefer compact aggregates, projected columns, exact IDs, exact code ranges, rg output, bounded logs and focused diffs. Deterministic tools calculate; models interpret.",
+    "model": "Use the cheapest capable model for mechanical tracing, SQL aggregation, exact joins and evidence collection. Reserve frontier/expensive models for ambiguity, causal reasoning, architecture, high-risk semantics, difficult debugging after bounded evidence or compact independent review. Do not encode temporary provider prices, allowances, rankings or advertised request counts.",
+    "handoff_fields": ["MISSION", "PROVEN_FACTS", "INVARIANTS", "FILES_OR_QUERIES_ALREADY_USED", "CURRENT_STATE_OR_DIFF", "UNRESOLVED_ITEM", "NEXT_EXACT_ACTION"],
+    "verification": "Independent verification is independent computation, not duplicate expensive retrieval: DB uses a second compact COUNT/GROUP BY/query shape; code uses a focused test or executable smoke. Do not run a full suite/build unless changed scope or mandatory policy requires it. Stop once the business result is sufficiently proven.",
+    "measurement": {
+      "window": "next 10 comparable OpenCode missions, when available and without an extra LLM call solely for telemetry",
+      "fields": ["MISSION_ID", "MODEL", "MISSION_CLASS", "SUCCESS", "REWORK_REQUIRED", "COST_DELTA", "INPUT_TOKENS", "CACHED_TOKENS", "OUTPUT_TOKENS", "MODEL_TURNS", "MAJOR_TOOL_CALLS", "RAW_ROWS_RETURNED", "FILES_READ"],
+      "unavailable_metrics": "null or NOT_AVAILABLE, never estimated",
+      "planning_unit": "successful mission, not advertised provider requests",
+      "evaluation": "after 5 comparable missions: preliminary P50 successful-mission cost; after 10: P50, P75, success rate, rework rate and cost by model/class",
+      "target": ">= 2x lower P50 cost per comparable successful mission without materially higher rework; 3x-5x is a hypothesis, not a promise"
+    }
   },
 
   "operator_mode": {

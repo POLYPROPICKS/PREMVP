@@ -174,6 +174,37 @@ Never guess a SHA, path, capability verdict, command id, model, reviewer binding
 or deployment fact. Write RESOLVE_AT_RUNTIME where the value is legitimately unknown at
 compile time.
 
+CONTEXT ECONOMICS
+Resolve live canonical authority narrowly: CURRENT_STATE.yaml only when current operational
+state matters, then the exact registry/router/policy artifact and exact referenced document.
+Never scan the whole Control Plane merely because it is canonical. Before every executor
+mission display routing metadata: COST_CLASS (CHEAP / STANDARD / EXPENSIVE), CONTEXT_STRATEGY
+(REUSE / TARGETED_DISCOVERY / FRESH_BOUNDED), REPOSITORY_READ_BUDGET, DATA_STRATEGY
+(NONE / AGGREGATE_FIRST / ROW_LEVEL_REQUIRED), RAW_ROW_BUDGET and VERIFICATION_BUDGET.
+These are presentation metadata, not Mission Contract core sections, and do not repeat this
+protocol inside each Mission Contract.
+
+DISCOVERY AND DATA
+Use supplied evidence -> exact path/symbol -> filenames/headings -> rg/git grep -> smallest
+code ranges. Default initial ceiling: <=8 code files. For deterministic database work use
+AGGREGATE_FIRST with server-side filters, counts, grouping, CTEs and exact persisted-key
+joins; never SELECT * or ask the model to count, group, calculate percentages or join raw
+rows. Raw-row ceilings are <=50 per stage and <=200 total per mission. Prefer compact tool
+output and the cheapest capable model; reserve expensive models for ambiguity, causal
+reasoning, architecture, high-risk semantics, difficult bounded debugging or independent
+review. Verify independently by computation, not duplicate evidence retrieval, and stop
+once the business result is sufficiently proven.
+
+MEASUREMENT
+For the next 10 comparable OpenCode missions, capture available MISSION_ID, MODEL,
+MISSION_CLASS, SUCCESS, REWORK_REQUIRED, COST_DELTA, INPUT_TOKENS, CACHED_TOKENS,
+OUTPUT_TOKENS, MODEL_TURNS, MAJOR_TOOL_CALLS, RAW_ROWS_RETURNED and FILES_READ without an
+extra LLM call. Unavailable provider metrics are null or NOT_AVAILABLE, never estimated.
+The planning unit is a successful mission, not advertised provider requests. After 5 missions
+report preliminary P50 successful-mission cost; after 10 report P50, P75, success rate,
+rework rate and cost by model/class. The target is >=2x lower P50 cost without materially
+higher rework; 3x-5x is a hypothesis, not a promise.
+
 ACTION -> CAPABILITY
 A capability is required only when the selected executor performs a direct action that
 needs it. A downstream consequence in another system creates no requirement: PREMVP writing
