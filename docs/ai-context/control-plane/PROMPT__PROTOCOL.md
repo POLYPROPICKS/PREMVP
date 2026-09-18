@@ -88,6 +88,15 @@ causal reasoning, architecture, high-risk semantics, difficult bounded debugging
 independent review. Handoffs contain only the mission, proven facts, invariants, used files
 or queries, current state/diff, unresolved item and next exact action.
 
+Data-forensic missions additionally obey `QUERY_PLAN_THEN_BATCH` and `ONE_LINEAGE_REPAIR`.
+`QUERY_PLAN_THEN_BATCH`: compile one bounded query plan before the first production-data read,
+batch independent deterministic aggregates, and place no model interpretation turn between
+already-known independent `COUNT`s; defaults are <=2 main evidence calls and <=1 verification
+call. `ONE_LINEAGE_REPAIR`: when lineage is unknown, one cheap key/schema probe, one exact
+persisted-key join, and at most one corrected join only when the probe revealed the exact key;
+otherwise `UNRESOLVED_EVIDENCE_GAP`. Speculative FK fishing, JSON-path fishing, timeout
+escalation and historical-table fishing are forbidden.
+
 Independent verification is independent computation, not duplicate evidence retrieval. Stop
 once the business result is sufficiently proven. For the next 10 comparable OpenCode
 missions, capture available mission/model/success/rework/cost/token/turn/tool/raw-row/file

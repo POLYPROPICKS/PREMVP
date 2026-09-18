@@ -90,6 +90,39 @@ export function resolveInitialWatermark(
   return compareWatermarks(targetWatermark, checkpoint, fields) >= 0 ? targetWatermark : checkpoint;
 }
 
+/** Lowest UUID — the bootstrap tie-breaker for a keyset with no prior position. */
+export const ZERO_UUID = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * PREPARE_SAFE_RESEARCH_EXPORT_REPAIR_V1 — empty-clone bootstrap.
+ *
+ * A clone table with zero rows and no durable checkpoint previously produced a
+ * null cursor, and the caller's sourcePage() rejected it with
+ * RESEARCH_CLONE_INITIAL_WATERMARK_REQUIRED_*. That made the very state the
+ * sync exists to repair — an empty clone table — unrecoverable, and it is why
+ * primary_evidence_outbox never received a single row.
+ *
+ * A null cursor is now only fatal when the caller supplied no explicit start
+ * authority. Given an explicit `--since` (or an explicit requested day), the
+ * cursor bootstraps one millisecond before that instant so the first
+ * strictly-greater read includes a row sitting exactly on the boundary. The
+ * bound is explicit and caller-supplied: this never degrades to "scan all
+ * history".
+ */
+export function resolveBootstrapWatermark(
+  targetWatermark: Watermark | null,
+  checkpoint: Watermark | null,
+  fields: readonly string[],
+  bootstrapSince: string | null,
+): Watermark | null {
+  const resolved = resolveInitialWatermark(targetWatermark, checkpoint, fields);
+  if (resolved !== null) return resolved;
+  if (!bootstrapSince) return null;
+  const ms = Date.parse(bootstrapSince);
+  if (!Number.isFinite(ms)) throw new Error("RESEARCH_CLONE_BOOTSTRAP_SINCE_INVALID");
+  return { [fields[0]]: new Date(ms - 1).toISOString(), [fields[1]]: ZERO_UUID };
+}
+
 /**
  * Generic bounded append runner. The source port has no write operation by design;
  * clone commit happens before every durable clone-side checkpoint advance.
@@ -98,13 +131,14 @@ export async function runAppendSync<Row extends SyncRow>(
   fields: readonly string[],
   maxPages: number,
   port: AppendSyncPort<Row>,
+  bootstrapSince: string | null = null,
 ): Promise<AppendSyncResult> {
   const [sourceMaxWatermark, targetBefore, checkpoint] = await Promise.all([
     port.sourceMaxWatermark(),
     port.targetMaxWatermark(),
     port.readCheckpoint(),
   ]);
-  let cursor = resolveInitialWatermark(targetBefore, checkpoint, fields);
+  let cursor = resolveBootstrapWatermark(targetBefore, checkpoint, fields, bootstrapSince);
   let newRows = 0;
   let updatedRows = 0;
   let duplicateN = 0;

@@ -24,6 +24,15 @@ ceiling of 50 per stage and 200 per mission. Prefer compact output and the cheap
 model. These economics supplement, and do not weaken, safety, authority, lifecycle,
 repository-boundary, recovery or verification rules.
 
+Two further data-forensic rules apply (`EXECUTOR_CONTEXT_ECONOMICS_V2`). `QUERY_PLAN_THEN_BATCH`:
+compile one bounded query plan before the first production-data read, batch independent
+deterministic aggregates, and never place a model interpretation turn between already-known
+independent `COUNT`s — default budgets are <=2 main evidence calls and <=1 verification call.
+`ONE_LINEAGE_REPAIR`: when lineage is unknown, take one cheap key/schema probe, one exact
+persisted-key join, and at most one corrected join only when the probe revealed the exact key;
+otherwise return `UNRESOLVED_EVIDENCE_GAP`. No speculative FK fishing, JSON-path fishing,
+timeout escalation or historical-table fishing.
+
 Two corrections this makes to the rest of this file:
 
 1. **§4 is environment-specific and superseded.** The Windows repo path and "Windows CMD

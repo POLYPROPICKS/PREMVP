@@ -292,7 +292,43 @@ async function reconcileRecent(
   return { updatedRows: sweep.updatedRows, pending: sweep.pending };
 }
 
-async function syncTable(target: Client, source: Client, spec: TableSpec): Promise<TableEvidence> {
+/**
+ * PREPARE_SAFE_RESEARCH_EXPORT_REPAIR_V1 — explicit bootstrap start authority.
+ *
+ * `--since <ISO instant>` (or `--day YYYY-MM-DD`, resolved to that Minsk day's
+ * 21:00Z-prior boundary) is the ONLY way a table with an empty clone and no
+ * durable checkpoint may start. Absent it the previous fail-closed behaviour is
+ * unchanged. The bound is always caller-supplied and finite — this never
+ * degrades into an unbounded historical scan.
+ */
+export function resolveBootstrapSinceArg(argv: readonly string[]): string | null {
+  const read = (name: string): string | undefined => {
+    const eq = argv.find((v) => v.startsWith(`${name}=`));
+    if (eq) return eq.slice(name.length + 1);
+    const i = argv.indexOf(name);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
+  const since = read("--since");
+  if (since) {
+    if (!Number.isFinite(Date.parse(since))) throw new Error("RESEARCH_CLONE_BOOTSTRAP_SINCE_INVALID");
+    return new Date(Date.parse(since)).toISOString();
+  }
+  const day = read("--day");
+  if (day) {
+    const ms = Date.parse(`${day}T00:00:00Z`);
+    if (!Number.isFinite(ms)) throw new Error("RESEARCH_CLONE_BOOTSTRAP_SINCE_INVALID");
+    // Europe/Minsk is fixed UTC+3, so a Minsk calendar day starts at 21:00Z the day before.
+    return new Date(ms - 3 * 3_600_000).toISOString();
+  }
+  return null;
+}
+
+async function syncTable(
+  target: Client,
+  source: Client,
+  spec: TableSpec,
+  bootstrapSince: string | null = null,
+): Promise<TableEvidence> {
   const append = await runAppendSync(spec.fields, MAX_APPEND_PAGES, {
     sourceMaxWatermark: () => maxWatermark(source, spec),
     targetMaxWatermark: () => maxWatermark(target, spec),
@@ -300,7 +336,7 @@ async function syncTable(target: Client, source: Client, spec: TableSpec): Promi
     fetchSourcePage: (after) => sourcePage(source, spec, after),
     upsertTargetRows: (rows) => applyRows(target, spec, rows),
     writeCheckpoint: (watermark) => writeCheckpoint(target, spec, checkpointSource(spec), watermark),
-  });
+  }, bootstrapSince);
   const reconciliation = await reconcileRecent(target, source, spec, append.targetBefore);
   return {
     SOURCE_MAX_WATERMARK: append.sourceMaxWatermark,
@@ -587,12 +623,13 @@ export async function main(): Promise<void> {
 
     const tables: Record<TableName, TableEvidence> = {} as Record<TableName, TableEvidence>;
     const schemaPendingTables: TableName[] = [];
+    const bootstrapSince = resolveBootstrapSinceArg(process.argv);
     // Each table is synced in turn. A spent page budget on an earlier table is a
     // resumable `*_PENDING` outcome, never a throw, so later tables are not starved
     // and the next scheduled run continues from the durable checkpoints/cursors.
     for (const spec of SPECS) {
       try {
-        tables[spec.table] = await syncTable(target, source, spec);
+        tables[spec.table] = await syncTable(target, source, spec, bootstrapSince);
       } catch (error) {
         // An optional table's clone-side schema (ops/research-clone/
         // primary-evidence-outbox-schema.sql) may not be applied yet — a missing

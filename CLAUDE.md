@@ -60,6 +60,13 @@ Initial repository-read ceiling is 8 code files. Use `AGGREGATE_FIRST` for deter
 investigation, compact output, and the cheapest capable model; raw rows are capped at 50 per
 stage and 200 per mission. Do not load legacy or broad context at session start.
 
+**Data-forensic economics V2:** `QUERY_PLAN_THEN_BATCH` — compile one bounded query plan before
+the first production-data read, batch independent deterministic aggregates (default <=2 main
+evidence calls, <=1 verification call), and never interpret between already-known independent
+`COUNT`s. `ONE_LINEAGE_REPAIR` — one cheap key/schema probe, one exact persisted-key join, at
+most one corrected join when the probe revealed the exact key; otherwise `UNRESOLVED_EVIDENCE_GAP`.
+No speculative FK, JSON-path, timeout or historical-table fishing.
+
 **Feed/data/scoring incidents:** follow `P0_FEED_FORENSIC_AUTOMATION_PROTOCOL.md`. No trace table = no patch.
 **Source coverage:** run `npm run audit:sports-sources` — Gamma tag_slug alone is not sufficient for Polymarket sports categories; see `P0_SOURCE_COVERAGE_AUDIT_PROTOCOL.md`.
 
