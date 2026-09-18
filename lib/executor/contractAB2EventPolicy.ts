@@ -8,11 +8,21 @@
 // contract (lib/modeling/frozenModelProducerV2Shadow.ts,
 // FROZEN_MODEL_V2_VERSION = "B2_PRICE_FLOOR_030_TIMING_WITHIN_120M"):
 //
-//   * persisted canonical Signal Score  >= 65    (SCORE_THRESHOLD)
 //   * entry / signal price               >= 0.30  (PRICE_FLOOR)
 //   * entry / signal price               >= 0.50  (CONTRACT_A_MIN_ENTRY_PRICE — loss containment)
+//   * entry / signal price               <  0.60  (CONTRACT_A_MAX_ENTRY_PRICE_EXCLUSIVE — exploration contour)
 //   * eSports excluded
 //
+// CONTROL_A_EXPLORATION_V2 (bounded broadening release): the persisted
+// canonical Signal Score >= 65 hard admission rejection is REMOVED. Score
+// floor / tier ablation historically produced ~zero PnL improvement, and the
+// score gate was pruning materially more candidates than it protected value
+// on. Score remains fully available downstream (planning_score on the
+// Contract A Planning Decision, diagnostics, future modeling feature) — it is
+// simply no longer a hard B2 rejection reason. `B2_SCORE_BELOW_65` and
+// `B2_SCORE_THRESHOLD` are retained (not deleted) for compatibility with
+// existing typed consumers and historical evidence; the active predicate
+// below never emits that reason code.
 // They are HARD pre-Reservation gates, evaluated exactly once, at the single
 // pre-Reservation owner (produceContractAPlanningDecisions in
 // contractADecisions.ts). That owner is entered only by the Reservation build
@@ -56,9 +66,15 @@
 // candidate, but never mutates or removes the row from general scored /
 // research evidence, and it is never relaxed or bypassed with a fallback.
 
-import { getScoreValue, isEsports } from "@/lib/modeling/historicalFunnelVariants";
+import { isEsports } from "@/lib/modeling/historicalFunnelVariants";
 
-/** Frozen B2 thresholds. Verbatim from frozenModelProducerV2Shadow.ts. DO NOT TUNE. */
+/**
+ * Frozen B2 price floor. Verbatim from frozenModelProducerV2Shadow.ts. DO NOT TUNE.
+ * `B2_SCORE_THRESHOLD` is retained for compatibility with existing typed
+ * consumers and historical evidence only — it is no longer enforced as a
+ * hard B2 admission gate (see CONTROL_A_EXPLORATION_V2 above). Do not
+ * reintroduce it as a rejection without a new, explicitly authorized mission.
+ */
 export const B2_SCORE_THRESHOLD = 65 as const;
 export const B2_PRICE_FLOOR = 0.3 as const;
 
@@ -71,14 +87,25 @@ export const B2_PRICE_FLOOR = 0.3 as const;
 export const CONTRACT_A_MIN_ENTRY_PRICE = 0.5 as const;
 
 /**
+ * Contract A money-admission price ceiling, exclusive (CONTROL_A_EXPLORATION_V2).
+ * Bounds the exploration contour to the historically safer
+ * [0.50, 0.60) research-compatible price region (C0/C1/C4/C5). An identity at
+ * or above this price is never admitted through this gate.
+ */
+export const CONTRACT_A_MAX_ENTRY_PRICE_EXCLUSIVE = 0.6 as const;
+
+/**
  * Every reason the B2 pre-Reservation event policy can fail closed. A closed
  * union — a new B2 failure mode is a contract change, not a free-text string.
+ * `B2_SCORE_BELOW_65` is retained for compatibility but is never emitted by
+ * the active predicate (see CONTROL_A_EXPLORATION_V2 above).
  */
 export type ContractAB2RejectionReasonCode =
   | "B2_ESPORTS_EXCLUDED"
   | "B2_SCORE_BELOW_65"
   | "B2_PRICE_BELOW_030"
   | "B2_PRICE_BELOW_050"
+  | "B2_PRICE_AT_OR_ABOVE_060"
   | "B2_ASOF_EVIDENCE_UNAVAILABLE";
 
 export type ContractAB2PolicyVerdict =
@@ -169,15 +196,16 @@ export function resolveContractAAsOfSnapshots(rows: readonly Row[], nowMs: numbe
 
 /**
  * The hard B2 event-policy verdict for one persisted planning source row and
- * the strategic scope Contract A already resolved for it. Score / price /
- * eSports only — never timing, never a post-cutoff snapshot.
+ * the strategic scope Contract A already resolved for it. Price band / eSports
+ * only (CONTROL_A_EXPLORATION_V2) — never score, never timing, never a
+ * post-cutoff snapshot.
  *
  * eSports is checked first (matching the frozen B2 producer's gate order), on
  * BOTH the canonical resolved scope and the B2 text adapter, so a
  * diagnostics-only esports signal that never reaches the flat row text is still
- * excluded. Score is the PERSISTED canonical Signal Score
- * (signal_confidence_num first, via getScoreValue): a row with no persisted
- * canonical score cannot satisfy "persisted canonical Signal Score >= 65".
+ * excluded. Score is intentionally NOT evaluated here: it remains available
+ * downstream (planning_score, diagnostics, future modeling feature) but is no
+ * longer a hard admission bottleneck.
  */
 export function evaluateContractAB2EventPolicy(
   row: Row | null | undefined,
@@ -191,15 +219,6 @@ export function evaluateContractAB2EventPolicy(
     return { allowed: false, reason_code: "B2_ESPORTS_EXCLUDED", detail: strategicScope ?? null };
   }
 
-  const score = getScoreValue(row);
-  if (score === null || score < B2_SCORE_THRESHOLD) {
-    return {
-      allowed: false,
-      reason_code: "B2_SCORE_BELOW_65",
-      detail: score === null ? "null" : String(score),
-    };
-  }
-
   if (!passesB2PriceFloor(row)) {
     const raw = finiteNumber(row.entry_price_num);
     return { allowed: false, reason_code: "B2_PRICE_BELOW_030", detail: raw === null ? "null" : String(raw) };
@@ -208,6 +227,11 @@ export function evaluateContractAB2EventPolicy(
   if (!passesContractAMinEntryPrice(row)) {
     const raw = finiteNumber(row.entry_price_num);
     return { allowed: false, reason_code: "B2_PRICE_BELOW_050", detail: raw === null ? "null" : String(raw) };
+  }
+
+  if (!passesContractAMaxEntryPrice(row)) {
+    const raw = finiteNumber(row.entry_price_num);
+    return { allowed: false, reason_code: "B2_PRICE_AT_OR_ABOVE_060", detail: raw === null ? "null" : String(raw) };
   }
 
   return { allowed: true };
@@ -223,4 +247,16 @@ function passesContractAMinEntryPrice(row: Row): boolean {
   const raw = finiteNumber(row.entry_price_num);
   const p = raw !== null && raw > 0 && raw <= 1 ? raw : null;
   return p !== null && p >= CONTRACT_A_MIN_ENTRY_PRICE;
+}
+
+/**
+ * Contract A money-admission price ceiling (CONTROL_A_EXPLORATION_V2): finite
+ * entry_price_num, 0 < v <= 1, and v < CONTRACT_A_MAX_ENTRY_PRICE_EXCLUSIVE
+ * (0.60). Bounds the exploration contour to the historically safer
+ * [0.50, 0.60) research-compatible region; never bypassed by a fallback path.
+ */
+function passesContractAMaxEntryPrice(row: Row): boolean {
+  const raw = finiteNumber(row.entry_price_num);
+  const p = raw !== null && raw > 0 && raw <= 1 ? raw : null;
+  return p !== null && p < CONTRACT_A_MAX_ENTRY_PRICE_EXCLUSIVE;
 }
