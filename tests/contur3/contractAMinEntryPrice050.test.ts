@@ -71,10 +71,9 @@ test("0.55 -> price gate passes through to existing downstream predicates", () =
   assert.equal(verdict.allowed, true);
 });
 
-test("passing the price gate never bypasses an existing downstream predicate (score, eSports)", () => {
-  const belowScore = evaluateContractAB2EventPolicy(passingRow(0.55, { signal_confidence_num: 40 }), "MLB");
-  assert.equal(belowScore.allowed, false);
-  if (!belowScore.allowed) assert.equal(belowScore.reason_code, "B2_SCORE_BELOW_65");
+test("passing the price gate never bypasses an existing downstream predicate (eSports); score is no longer a downstream predicate (CONTROL_A_EXPLORATION_V2)", () => {
+  const lowScore = evaluateContractAB2EventPolicy(passingRow(0.55, { signal_confidence_num: 40 }), "MLB");
+  assert.equal(lowScore.allowed, true, "score < 65 must not be rejected solely for score");
 
   const esports = evaluateContractAB2EventPolicy(passingRow(0.55), "ESPORT");
   assert.equal(esports.allowed, false);
@@ -164,7 +163,7 @@ test("one-physical-event economic invariant unchanged: a >=0.50 sibling identity
     conditionId: "cond-sibling-pass",
     tokenId: "tok-sibling-pass",
     eventSlug: "mlb-nyy-phi-2026-07-27",
-    entryPrice: 0.6,
+    entryPrice: 0.55, // within [0.50, 0.60) — CONTROL_A_EXPLORATION_V2 rejects entry_price_num >= 0.60
   });
 
   const plan = await at(PLANNING_NOW_MS, () =>
