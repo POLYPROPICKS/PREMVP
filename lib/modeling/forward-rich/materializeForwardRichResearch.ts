@@ -22,8 +22,10 @@ import type {
   ForwardRichSignalPair,
   ForwardRichSnapshotObservation,
   GammaTerminalState,
+  LaterPreStartPriceEvaluationObservation,
   MaterializeForwardRichInput,
   PopulationId,
+  PreDecisionScoreObservation,
 } from "./types";
 
 const HOUR_MS = 3_600_000;
@@ -81,6 +83,14 @@ function round(value: number, dp: number): number {
   return Object.is(r, -0) ? 0 : r;
 }
 
+function contextString(
+  context: ForwardRichSignalPair["providerEventContext"],
+  key: "marketType" | "marketFamily" | "providerSportCode" | "league",
+): string | null {
+  const value = context?.[key];
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
 /** Stable chronological order with a total tiebreak so runs are deterministic. */
 function byObservedAt(
   a: ForwardRichSnapshotObservation,
@@ -90,6 +100,12 @@ function byObservedAt(
   const aRun = a.snapshotRunId ?? "";
   const bRun = b.snapshotRunId ?? "";
   if (aRun !== bRun) return aRun < bRun ? -1 : 1;
+  const aSource = a.sourceCreatedAt ?? "";
+  const bSource = b.sourceCreatedAt ?? "";
+  if (aSource !== bSource) return aSource < bSource ? -1 : 1;
+  const aValue = `${a.scoreValue ?? ""}|${a.selectedPriceNum ?? ""}`;
+  const bValue = `${b.scoreValue ?? ""}|${b.selectedPriceNum ?? ""}`;
+  if (aValue !== bValue) return aValue < bValue ? -1 : 1;
   return 0;
 }
 
@@ -124,6 +140,50 @@ function deriveSeries(
     lastEligibleObservedAt: last.observedAt,
     delta: points.length >= 2 ? round(last.value - first.value, 6) : null,
   };
+}
+
+function derivePreDecisionScoreHistory(
+  eligible: ForwardRichSnapshotObservation[],
+): PreDecisionScoreObservation[] {
+  return eligible.flatMap((o) =>
+    typeof o.scoreValue === "number" && Number.isFinite(o.scoreValue)
+      ? [{
+          observedAt: o.snapshotAt,
+          snapshotRunId: o.snapshotRunId ?? null,
+          scoreValue: o.scoreValue,
+          scoreMetricFormulaVersion: o.scoreMetricFormulaVersion ?? null,
+        }]
+      : [],
+  );
+}
+
+function deriveLaterPreStartPriceEvaluation(
+  observations: ForwardRichSnapshotObservation[],
+  decisionAt: string,
+  eventStart: string | null,
+): LaterPreStartPriceEvaluationObservation[] {
+  if (eventStart === null) return [];
+  const decisionMs = Date.parse(decisionAt);
+  const eventStartMs = Date.parse(eventStart);
+  if (!Number.isFinite(decisionMs) || !Number.isFinite(eventStartMs)) return [];
+
+  return observations.flatMap((o) => {
+    const observedMs = Date.parse(o.snapshotAt);
+    if (
+      !Number.isFinite(observedMs) ||
+      !(decisionMs < observedMs && observedMs < eventStartMs) ||
+      typeof o.selectedPriceNum !== "number" ||
+      !Number.isFinite(o.selectedPriceNum)
+    ) {
+      return [];
+    }
+    return [{
+      observedAt: o.snapshotAt,
+      snapshotRunId: o.snapshotRunId ?? null,
+      selectedPrice: o.selectedPriceNum,
+      evaluationOnly: true,
+    }];
+  });
 }
 
 export function materializeForwardRichResearch(
@@ -193,16 +253,25 @@ export function materializeForwardRichResearch(
 
       scoreMetricFormulaVersion,
       score: deriveSeries(eligible, (o) => o.scoreValue),
+      preDecisionScoreHistory: derivePreDecisionScoreHistory(eligible),
 
       volumeUsd: pair.volumeUsd ?? null,
       volumeSemantic: "generated_signal_pairs.diagnostics.volumeUsd",
       volumeSourceCreatedAt: pair.sourceCreatedAt,
 
       selectedPrice: deriveSeries(eligible, (o) => o.selectedPriceNum),
+      laterPreStartPriceEvaluation: deriveLaterPreStartPriceEvaluation(
+        allObs,
+        pair.decisionAt,
+        eventStart,
+      ),
 
-      marketTypeRaw: pair.marketTypeRaw ?? null,
-      marketFamily: pair.marketFamily ?? null,
-      providerSportCode: pair.providerSportCode ?? null,
+      marketTypeRaw: pair.marketTypeRaw ?? contextString(pair.providerEventContext, "marketType"),
+      marketFamily: pair.marketFamily ?? contextString(pair.providerEventContext, "marketFamily"),
+      providerSportCode:
+        pair.providerSportCode ??
+        contextString(pair.providerEventContext, "providerSportCode") ??
+        contextString(pair.providerEventContext, "league"),
       providerSportFamily: pair.providerSportFamily ?? null,
       dataCoverage: dataCoverage ?? null,
 

@@ -79,6 +79,7 @@ async function fetchSignalPairs(sinceCutoff: string): Promise<ForwardRichSignalP
         marketFamily: str(d.marketFamily),
         providerSportCode: str(d.providerSportCode),
         providerSportFamily: str(d.providerSportFamily),
+        providerEventContext: obj(d.providerEventContext),
         formulaVersion: str(r.formula_version),
       });
     }
