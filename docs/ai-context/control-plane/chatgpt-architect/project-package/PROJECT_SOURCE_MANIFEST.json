@@ -7,7 +7,7 @@
   "provenance": {
     "_volatile": true,
     "_note": "Resolved live at generation time and normalized by --check, which verifies content hashes rather than the commit id.",
-    "generated_from_commit": "29cf6da69809eb45861ded10342d4dbad9e3c33e"
+    "generated_from_commit": "07a42d4c54dc697f7bdf359fc05078aa8a3fda0c"
   },
   "active_project_sources": [
     {
@@ -31,8 +31,8 @@
       "role": "MISSION_CONTRACT",
       "canonical_path": "docs/ai-context/control-plane/PROMPT__PROTOCOL.md",
       "upload_path": "docs/ai-context/control-plane/chatgpt-architect/project-package/SOURCES/PROMPT__PROTOCOL.md",
-      "bytes": 12566,
-      "sha256": "87567e6fc8b34b8371a0e299ffc4bcbcd98baae4a745f2c084c63c70a76b0bc4"
+      "bytes": 13267,
+      "sha256": "2a29eac3e3a741760b228036c9bec3b146c58c76d48b37b4208fdcbbd60bb5ac"
     },
     {
       "name": "COMPLETION_ENVELOPE.schema.json",
@@ -46,9 +46,9 @@
   "project_instructions": {
     "name": "PROJECT_INSTRUCTIONS.txt",
     "upload_path": "docs/ai-context/control-plane/chatgpt-architect/project-package/PROJECT_INSTRUCTIONS.txt",
-    "word_count": 1098,
-    "bytes": 8412,
-    "sha256": "a150156733ad844903e0ff51803db5e5fbe4bcf8db434e7f5a9541587c7a9a08"
+    "word_count": 1190,
+    "bytes": 9118,
+    "sha256": "281c0a02592d2fba3092103a09b7bc2b24fec9400cda0eba8fc97a3866c390c1"
   },
   "excluded_historical_sources": [
     {

@@ -108,7 +108,9 @@ export async function resolveMissingRecentDates(
   if (error) throw new Error(`MATERIALIZE_DAY_READ:${error.code ?? error.message}`);
   const accepted = new Set(
     (data ?? [])
-      .filter((r: { status: string }) => r.status === "MODEL_READY" || r.status === "DEGRADED_EXCLUDED")
+      .filter((r: { status: string }) =>
+        (ACCEPTED_DAY_STATUSES as readonly string[]).includes(r.status),
+      )
       .map((r: { model_date: string }) => r.model_date),
   );
   return candidates.filter((d) => !accepted.has(d));
@@ -227,8 +229,63 @@ export async function materializeDayRows(
   return { rows, counts };
 }
 
-/** Writes materialized rows + the day marker. No economics side effects. */
-export async function writeDayRows(db: SupabaseClient, d: string, rows: ScorecardReadyRow[]): Promise<void> {
+/**
+ * PREPARE_SAFE_RESEARCH_EXPORT_REPAIR_V1 — authoritative emptiness proof.
+ *
+ * A zero-row day has two completely different meanings and they must never
+ * collapse into one status. Either the authoritative source genuinely published
+ * nothing that day (SOURCE_EMPTY — a real, accepted fact), or the source was
+ * missing, stale or unreachable (SOURCE_UNVERIFIED — not a fact about the day
+ * at all). Only the first may be written.
+ */
+export type DaySourceProof =
+  | { kind: "SOURCE_PROVEN"; sourceEnvelopeN: number; sourceEvidenceRowN: number }
+  | { kind: "SOURCE_UNVERIFIED" };
+
+/** Day statuses the automatic cron treats as settled and will not revisit. */
+export const ACCEPTED_DAY_STATUSES = ["MODEL_READY", "DEGRADED_EXCLUDED", "SOURCE_EMPTY"] as const;
+
+/**
+ * Writes materialized rows + the day marker. No economics side effects.
+ *
+ * Refuses to record a zero-row day as complete unless `proof` shows the
+ * authoritative source was actually read and actually held nothing. Before this
+ * guard a broken source silently produced `MODEL_READY, row_n = 0`, which
+ * `resolveMissingRecentDates` then treated as accepted — permanently converting
+ * a recoverable gap into falsified history that no automatic run would revisit.
+ */
+export async function writeDayRows(
+  db: SupabaseClient,
+  d: string,
+  rows: ScorecardReadyRow[],
+  proof: DaySourceProof = { kind: "SOURCE_UNVERIFIED" },
+): Promise<void> {
+  if (rows.length === 0) {
+    if (proof.kind !== "SOURCE_PROVEN") {
+      throw new Error(
+        `MATERIALIZE_SOURCE_UNVERIFIED_REFUSING_ZERO_DAY:${d}: a zero-row day is only acceptable with an authoritative emptiness proof; refusing to record a missing/stale source as complete`,
+      );
+    }
+    if (proof.sourceEnvelopeN !== 0 || proof.sourceEvidenceRowN !== 0) {
+      throw new Error(
+        `MATERIALIZE_SOURCE_NONEMPTY_BUT_ZERO_ROWS:${d}: source held ${proof.sourceEnvelopeN} envelopes / ${proof.sourceEvidenceRowN} evidence rows but materialization produced none`,
+      );
+    }
+    const { error: emptyError } = await db.from("research_model_ready_days").upsert({
+      model_date: d,
+      status: "SOURCE_EMPTY",
+      row_n: 0,
+      canonical_content_sha256: null,
+      source_kind: "RESEARCH_CLONE",
+      completed_at: new Date().toISOString(),
+    });
+    if (emptyError) throw new Error(`MATERIALIZE_DAY_WRITE:${emptyError.code ?? emptyError.message}`);
+    return;
+  }
+  return writeNonEmptyDayRows(db, d, rows);
+}
+
+async function writeNonEmptyDayRows(db: SupabaseClient, d: string, rows: ScorecardReadyRow[]): Promise<void> {
   for (let i = 0; i < rows.length; i += WRITE_PAGE) {
     const payload = rows.slice(i, i + WRITE_PAGE).map((r) => toStoredModelRow(d, r));
     const { error } = await db
@@ -264,7 +321,10 @@ async function main() {
   const report: DayMaterializationCounts[] = [];
   for (const d of dates) {
     const { rows, counts } = await materializeDayRows(db, d);
-    await writeDayRows(db, d, rows);
+    // No authoritative emptiness proof exists on this path yet: the clone-side
+    // narrow export that can supply one lands with the runtime mission. Until
+    // then a zero-row day fails loudly rather than being recorded as complete.
+    await writeDayRows(db, d, rows, { kind: "SOURCE_UNVERIFIED" });
     report.push(counts);
   }
 

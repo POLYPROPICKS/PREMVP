@@ -195,6 +195,15 @@ reasoning, architecture, high-risk semantics, difficult bounded debugging or ind
 review. Verify independently by computation, not duplicate evidence retrieval, and stop
 once the business result is sufficiently proven.
 
+QUERY PLAN AND LINEAGE (data-forensic missions)
+QUERY_PLAN_THEN_BATCH: compile one bounded query plan before the first production-data read,
+batch independent deterministic aggregates into as few calls as possible, and never insert a
+model interpretation turn between already-known independent COUNTs. Defaults: <=2 main evidence
+calls and <=1 verification call. ONE_LINEAGE_REPAIR: when a join/lineage key is unknown, take
+one cheap key/schema probe, one exact persisted-key join, and at most one corrected join only
+when the probe revealed the exact key; otherwise return UNRESOLVED_EVIDENCE_GAP. Speculative FK
+fishing, JSON-path fishing, timeout escalation and historical-table fishing are forbidden.
+
 MEASUREMENT
 For the next 10 comparable OpenCode missions, capture available MISSION_ID, MODEL,
 MISSION_CLASS, SUCCESS, REWORK_REQUIRED, COST_DELTA, INPUT_TOKENS, CACHED_TOKENS,

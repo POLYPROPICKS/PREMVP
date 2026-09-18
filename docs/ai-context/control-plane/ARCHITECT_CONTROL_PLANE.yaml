@@ -32,7 +32,7 @@
   },
 
   "executor_context_economics": {
-    "status": "PERMANENT_AMENDMENT_EXECUTOR_CONTEXT_ECONOMICS_V1",
+    "status": "PERMANENT_AMENDMENT_EXECUTOR_CONTEXT_ECONOMICS_V2",
     "supplements": ["authority", "lifecycle", "repository_boundary", "verification", "recovery", "Founder contracts"],
     "authority_resolution": "Resolve live canonical Control Plane narrowly: CURRENT_STATE.yaml only when current operational state matters, then the exact registry/router/policy artifact needed, then the exact referenced canonical document; broaden only if authority remains unresolved. Never scan the whole Control Plane merely because it is canonical.",
     "execution_objective": "Optimize verified business result per model turn + context tokens + tool output + verification cost. Correctness and safety remain higher priority than cost.",
@@ -48,6 +48,24 @@
     "repository_discovery": "supplied evidence -> exact known path/symbol -> filenames/headings -> rg/git grep -> smallest code ranges -> broader dependency only when proven necessary; normal initial ceiling <= 8 code files.",
     "database": "AGGREGATE_FIRST. For deterministic counts, percentages, composition, retention, linked/unlinked populations and distributions, prefer server-side WHERE, COUNT, COUNT FILTER, GROUP BY, CTE and exact persisted-key JOIN. Never SELECT * or retrieve raw rows for deterministic calculation.",
     "raw_row_ceilings": { "per_stage": 50, "per_mission_total": 200 },
+    "query_plan_then_batch": {
+      "rule": "QUERY_PLAN_THEN_BATCH",
+      "applies_to": "data-forensic missions",
+      "requirement": "Compile one bounded query plan BEFORE the first production-data read, then batch independent deterministic aggregates into as few calls as possible. No model interpretation turn between already-known independent COUNTs.",
+      "budgets": { "main_evidence_calls": 2, "verification_calls": 1 },
+      "budget_semantics": "Defaults, not hard stops: exceeding them requires an explicit evidence-backed reason in the completion envelope."
+    },
+    "one_lineage_repair": {
+      "rule": "ONE_LINEAGE_REPAIR",
+      "applies_to": "missions where a join/lineage key is unknown",
+      "sequence": [
+        "one cheap key/schema probe",
+        "one exact persisted-key join",
+        "at most one corrected join, ONLY when the probe revealed the exact key"
+      ],
+      "otherwise": "UNRESOLVED_EVIDENCE_GAP",
+      "forbidden": ["speculative FK fishing", "JSON-path fishing", "timeout escalation", "historical-table fishing"]
+    },
     "tool_output": "Prefer compact aggregates, projected columns, exact IDs, exact code ranges, rg output, bounded logs and focused diffs. Deterministic tools calculate; models interpret.",
     "model": "Use the cheapest capable model for mechanical tracing, SQL aggregation, exact joins and evidence collection. Reserve frontier/expensive models for ambiguity, causal reasoning, architecture, high-risk semantics, difficult debugging after bounded evidence or compact independent review. Do not encode temporary provider prices, allowances, rankings or advertised request counts.",
     "handoff_fields": ["MISSION", "PROVEN_FACTS", "INVARIANTS", "FILES_OR_QUERIES_ALREADY_USED", "CURRENT_STATE_OR_DIFF", "UNRESOLVED_ITEM", "NEXT_EXACT_ACTION"],
