@@ -1,6 +1,10 @@
 import { supabaseAdmin } from "@/lib/supabase/server";
 
-export const CURRENT_SERVING_PRUNE_BATCH_SIZE = 25;
+// Raised from 25 (see supabase/migrations/20260918160000_current_signal_pair_serving_prune_batch_raise.sql):
+// 25 rows/call could not keep pace with sustained ACTIVE-row accumulation on
+// current_signal_pair_serving (BATCH_LIMIT_STARVATION). The predicate/index
+// are unchanged; only the per-call ceiling grew.
+export const CURRENT_SERVING_PRUNE_BATCH_SIZE = 500;
 
 export class ServingProjectionPendingError extends Error {
   readonly sourceGeneratedSignalPairIds: readonly string[];
