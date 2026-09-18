@@ -33,7 +33,7 @@ const PIPELINE_SPEC_PATH = path.join(
 const ROUTING_PATH = path.join(REPO_ROOT, 'docs/ai-context/control-plane/ROUTING_AND_PIPELINES.yaml');
 
 function loadJson(p) {
-  return JSON.parse(fs.readFileSync(p, 'utf8'));
+  return JSON.parse(fs.readFileSync(p, 'utf8').replace(/^\uFEFF/, ''));
 }
 
 function printHelp() {

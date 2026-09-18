@@ -44,7 +44,7 @@ const RISK_CLASSES = [
   'R0_READ_ONLY', 'R1_BOUNDED_CODE', 'R2_ARCHITECTURE_OR_ROADMAP',
   'R3_WEATHER_MODEL_CHANGE', 'R4_CONTUR_PRODUCTION_BOUNDARY', 'R5_CROSS_REPO_OR_LIVE_MONEY',
 ];
-const EXECUTORS = ['claude_code_cloud', 'local_codex_windows', 'ireland_local'];
+const EXECUTORS = ['claude_code_cloud', 'local_codex_windows', 'opencode_windows', 'ireland_local'];
 const TEST_RESULTS = ['PASS', 'FAIL', 'SKIPPED', 'NOT_RUN'];
 
 const BUSINESS_RESULT_EVIDENCE_CLASSES = [
@@ -60,12 +60,16 @@ const RECEIPT_REQUIRED_FIELDS = [
   'reviewed_sha', 'verdict', 'evidence_refs',
 ];
 
-function loadSchema(schemaPath = SCHEMA_PATH) {
-  return JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
+function parseCanonicalJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, ''));
 }
 
-function loadRouting(routingPath = ROUTING_PATH) {
-  return JSON.parse(fs.readFileSync(routingPath, 'utf8'));
+export function loadSchema(schemaPath = SCHEMA_PATH) {
+  return parseCanonicalJson(schemaPath);
+}
+
+export function loadRouting(routingPath = ROUTING_PATH) {
+  return parseCanonicalJson(routingPath);
 }
 
 /**
