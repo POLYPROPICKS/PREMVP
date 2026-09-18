@@ -24,8 +24,8 @@ AS $$
 DECLARE
   deleted_count integer;
 BEGIN
-  IF p_batch_size < 1 OR p_batch_size > 500 THEN
-    RAISE EXCEPTION 'p_batch_size must be between 1 and 500';
+  IF p_batch_size < 1 OR p_batch_size > 5000 THEN
+    RAISE EXCEPTION 'p_batch_size must be between 1 and 5000';
   END IF;
 
   IF p_resolved_source_generated_signal_pair_ids IS NOT NULL THEN
