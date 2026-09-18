@@ -65,6 +65,10 @@ the first production-data read, batch independent deterministic aggregates (defa
 evidence calls, <=1 verification call), and never interpret between already-known independent
 `COUNT`s. `ONE_LINEAGE_REPAIR` — one cheap key/schema probe, one exact persisted-key join, at
 most one corrected join when the probe revealed the exact key; otherwise `UNRESOLVED_EVIDENCE_GAP`.
+
+**Model economics:** route by mission; prefer runtime-confirmed safe workhorse; READ/SQL →
+GLM-5.3 Flash family; implementation → Kimi K2.7 Code family; $15 specialist never default;
+switching models does not reset quota; current runtime/provider evidence beats static table.
 No speculative FK, JSON-path, timeout or historical-table fishing.
 
 **Feed/data/scoring incidents:** follow `P0_FEED_FORENSIC_AUTOMATION_PROTOCOL.md`. No trace table = no patch.

@@ -76,8 +76,12 @@ scan the whole Control Plane merely because it is canonical.
 Before every executor mission, display these routing metadata fields without adding them to
 the semantic Mission Contract core:
 
-`COST_CLASS` · `CONTEXT_STRATEGY` · `REPOSITORY_READ_BUDGET` · `DATA_STRATEGY` ·
-`RAW_ROW_BUDGET` · `VERIFICATION_BUDGET`
+`MODEL` · `MODEL_LEVEL` · `GO_COST_CLASS` · `WHY_THIS_MODEL` · `SESSION` · `COST_CLASS` ·
+`CONTEXT_STRATEGY` · `REPOSITORY_READ_BUDGET` · `DATA_STRATEGY` · `RAW_ROW_BUDGET` ·
+`VERIFICATION_BUDGET`
+
+For `GO_COST_CLASS=$15_SPECIALIST` also display `EXPLICIT_COST_JUSTIFICATION`; absent
+justification means fall back to a capable safer model.
 
 Default discovery is supplied evidence -> exact path/symbol -> headings/filenames ->
 rg/git grep -> smallest ranges, with an initial ceiling of 8 code files. Database work is
@@ -96,6 +100,17 @@ call. `ONE_LINEAGE_REPAIR`: when lineage is unknown, one cheap key/schema probe,
 persisted-key join, and at most one corrected join only when the probe revealed the exact key;
 otherwise `UNRESOLVED_EVIDENCE_GAP`. Speculative FK fishing, JSON-path fishing, timeout
 escalation and historical-table fishing are forbidden.
+
+Model routing and quota policy (permanent amendment): `MODEL SWITCHING IS NEVER A QUOTA-RESET
+STRATEGY`. Select model by coherent mission, not by prompt turn. Default READ/SQL/lineage/logs
+-> runtime-confirmed GLM-5.3 Flash family or safer capable equivalent; default implementation
+-> runtime-confirmed Kimi K2.7 Code family or safer equivalent; mechanical work -> proven
+$60_SAFE low-cost model; long-context synthesis -> Qwen3.7 Plus when useful. `$15_SPECIALIST`
+models require explicit cost justification and are never the default for exploration, SQL/data,
+routine diagnosis, normal implementation, test loops, logs, mechanical work or broad review.
+Runtime availability and current provider evidence beat static tables; never silently upgrade
+from `$60_SAFE` to `$15_SPECIALIST`. PREMVP frontier work routes to Claude Code/Architect; Ireland
+remains Codex only.
 
 Independent verification is independent computation, not duplicate evidence retrieval. Stop
 once the business result is sufficiently proven. For the next 10 comparable OpenCode
