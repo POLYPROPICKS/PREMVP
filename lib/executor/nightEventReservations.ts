@@ -701,6 +701,11 @@ export interface ReservationPlan {
     allocation_allocatable_after_time_guard?: number;
     allocation_minimum_lead_rejected?: number;
     allocation_missing_provider_volume?: number;
+    // ── SCORE60_RESEARCH_SHADOW_V1 (observation only; never gates a decision) ──
+    shadow_score60_event_n?: number;
+    shadow_score60_has_selection_n?: number;
+    shadow_score60_no_selection_n?: number;
+    shadow_score60_selection_changed_n?: number;
   };
 }
 
@@ -1709,14 +1714,38 @@ export interface ReservationCandidateManifestEntry {
   event_slug: string | null;
   entry_price_num: number | null;
   signal_confidence_num: number | null;
+  pre_event_score_num: number | null;
   metric_formula_version: string | null;
   source_created_at: string | null;
+}
+
+/**
+ * SCORE60_RESEARCH_SHADOW_V1 — non-mutating counterfactual over the SAME
+ * bounded candidate identities this Reservation already decided over.
+ * Observation only: never feeds an existing sorting/filtering function and
+ * never changes which identity Reservation actually selected.
+ */
+export interface Score60ResearchShadowSelection {
+  condition_id: string;
+  token_id: string;
+  entry_price_num: number | null;
+  pre_event_score_num: number | null;
+}
+
+export interface Score60ResearchShadow {
+  version: "SCORE60_RESEARCH_SHADOW_V1";
+  c0_eligible_identity_n: number;
+  score60_eligible_identity_n: number;
+  c0_selected: Score60ResearchShadowSelection | null;
+  score60_selected: Score60ResearchShadowSelection | null;
+  selection_changed: "YES" | "NO" | "NO_SCORE60_SELECTION";
 }
 
 export interface ReservationCandidateManifest {
   manifest_version: typeof RESERVATION_CANDIDATE_MANIFEST_VERSION;
   entries: ReservationCandidateManifestEntry[];
   truncated: boolean;
+  score60_research_shadow: Score60ResearchShadow;
 }
 
 function nonEmptyManifestString(value: unknown): string | null {
@@ -1742,8 +1771,89 @@ function manifestEntryFromSourceRow(row: Record<string, unknown>): ReservationCa
     signal_confidence_num: typeof row.signal_confidence_num === "number" && Number.isFinite(row.signal_confidence_num)
       ? row.signal_confidence_num
       : null,
+    // Verbatim from the source row. Never inferred from signal_confidence_num,
+    // planning_score, event_score, coverage or tier.
+    pre_event_score_num: typeof row.pre_event_score_num === "number" && Number.isFinite(row.pre_event_score_num)
+      ? row.pre_event_score_num
+      : null,
     metric_formula_version: nonEmptyManifestString(row.metric_formula_version),
     source_created_at: nonEmptyManifestString(row.created_at),
+  };
+}
+
+const SHADOW_C0_PRICE_MIN_INCLUSIVE = 0.5;
+const SHADOW_C0_PRICE_MAX_EXCLUSIVE = 0.6;
+const SHADOW_SCORE60_THRESHOLD = 60;
+
+function shadowInC0PriceBand(entry: ReservationCandidateManifestEntry): boolean {
+  return (
+    typeof entry.entry_price_num === "number" &&
+    entry.entry_price_num >= SHADOW_C0_PRICE_MIN_INCLUSIVE &&
+    entry.entry_price_num < SHADOW_C0_PRICE_MAX_EXCLUSIVE
+  );
+}
+
+/** Research ordering: source_created_at / created_at ASC, then condition_id ASC, then token_id ASC. */
+function compareShadowEntries(
+  a: ReservationCandidateManifestEntry,
+  b: ReservationCandidateManifestEntry
+): number {
+  return (
+    (a.source_created_at ?? "").localeCompare(b.source_created_at ?? "") ||
+    a.condition_id.localeCompare(b.condition_id) ||
+    a.token_id.localeCompare(b.token_id)
+  );
+}
+
+function shadowSelection(entry: ReservationCandidateManifestEntry | null): Score60ResearchShadowSelection | null {
+  if (entry === null) return null;
+  return {
+    condition_id: entry.condition_id,
+    token_id: entry.token_id,
+    entry_price_num: entry.entry_price_num,
+    pre_event_score_num: entry.pre_event_score_num,
+  };
+}
+
+/**
+ * ONE pure, non-mutating shadow comparator over the complete bounded
+ * candidate-identity set for ONE physical event (computed BEFORE manifest
+ * truncation, from the same in-memory rows Planning already read — no new
+ * query). SHADOW_C0 = the same price-band eligibility C0 uses. SHADOW_SCORE60
+ * additionally requires pre_event_score_num >= 60; a missing score makes a
+ * row ineligible only for SHADOW_SCORE60, never for SHADOW_C0. Absence of a
+ * qualifying SHADOW_SCORE60 identity is recorded as NO_SCORE60_SELECTION —
+ * the physical event itself is never rejected.
+ */
+function computeScore60ResearchShadow(entries: readonly ReservationCandidateManifestEntry[]): Score60ResearchShadow {
+  const c0Eligible = entries.filter(shadowInC0PriceBand);
+  const score60Eligible = c0Eligible.filter(
+    (entry) => typeof entry.pre_event_score_num === "number" && entry.pre_event_score_num >= SHADOW_SCORE60_THRESHOLD
+  );
+
+  const c0Selected = [...c0Eligible].sort(compareShadowEntries)[0] ?? null;
+  const score60Selected = [...score60Eligible].sort(compareShadowEntries)[0] ?? null;
+
+  let selectionChanged: Score60ResearchShadow["selection_changed"];
+  if (score60Selected === null) {
+    selectionChanged = "NO_SCORE60_SELECTION";
+  } else if (
+    c0Selected !== null &&
+    c0Selected.condition_id === score60Selected.condition_id &&
+    c0Selected.token_id === score60Selected.token_id
+  ) {
+    selectionChanged = "NO";
+  } else {
+    selectionChanged = "YES";
+  }
+
+  return {
+    version: "SCORE60_RESEARCH_SHADOW_V1",
+    c0_eligible_identity_n: c0Eligible.length,
+    score60_eligible_identity_n: score60Eligible.length,
+    c0_selected: shadowSelection(c0Selected),
+    score60_selected: shadowSelection(score60Selected),
+    selection_changed: selectionChanged,
   };
 }
 
@@ -1800,11 +1910,16 @@ export function buildReservationCandidateManifestsByPhysicalEvent(
       seen.add(key);
       deduped.push(entry);
     }
+    // Shadow is computed on the complete bounded (pre-truncation) `deduped`
+    // set — the same in-memory rows Planning already read, no new query —
+    // then the manifest entries themselves are truncated as before.
+    const score60ResearchShadow = computeScore60ResearchShadow(deduped);
     deduped.sort(compareManifestEntries);
     result.set(physicalEventId, {
       manifest_version: RESERVATION_CANDIDATE_MANIFEST_VERSION,
       entries: deduped.slice(0, maxEntriesPerEvent),
       truncated: deduped.length > maxEntriesPerEvent,
+      score60_research_shadow: score60ResearchShadow,
     });
   }
   return result;
@@ -1895,6 +2010,9 @@ function planningDecisionReservationRow(
       candidate_manifest: candidateManifest?.entries ?? [],
       candidate_manifest_count: candidateManifest?.entries.length ?? 0,
       candidate_manifest_truncated: candidateManifest?.truncated ?? false,
+      // Non-mutating research counterfactual — observation only, never a
+      // second selection and never fed into this Reservation's own decision.
+      score60_research_shadow: candidateManifest?.score60_research_shadow ?? null,
     },
   };
 }
@@ -2119,6 +2237,24 @@ function contractAPlanDiagnostics(input: {
   const outsideHorizon = rejectionCountsByCode.OUTSIDE_RESERVATION_HORIZON ?? 0;
   const reservedCount = built.reservations.length;
 
+  // Observation-only aggregate over the per-Reservation shadow diagnostics
+  // already computed in planningDecisionReservationRow — no new read.
+  let shadowScore60EventN = 0;
+  let shadowScore60HasSelectionN = 0;
+  let shadowScore60NoSelectionN = 0;
+  let shadowScore60SelectionChangedN = 0;
+  for (const r of built.reservations) {
+    const shadow = r.diagnostics?.score60_research_shadow as Score60ResearchShadow | null | undefined;
+    if (!shadow) continue;
+    shadowScore60EventN += 1;
+    if (shadow.selection_changed === "NO_SCORE60_SELECTION") {
+      shadowScore60NoSelectionN += 1;
+    } else {
+      shadowScore60HasSelectionN += 1;
+      if (shadow.selection_changed === "YES") shadowScore60SelectionChangedN += 1;
+    }
+  }
+
   return {
     // ── Contract A authority ────────────────────────────────────────────────
     reservation_authority: "CONTRACT_A_PLANNING_DECISION",
@@ -2228,6 +2364,10 @@ function contractAPlanDiagnostics(input: {
     canary_target_requested: input.canaryRequested,
     canary_target_matched_group_count: input.canaryMatchedGroupCount,
     canary_target_group_key: input.canaryTargetGroupKey,
+    shadow_score60_event_n: shadowScore60EventN,
+    shadow_score60_has_selection_n: shadowScore60HasSelectionN,
+    shadow_score60_no_selection_n: shadowScore60NoSelectionN,
+    shadow_score60_selection_changed_n: shadowScore60SelectionChangedN,
   };
 }
 
