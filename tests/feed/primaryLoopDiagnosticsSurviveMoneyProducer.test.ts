@@ -260,3 +260,80 @@ test("generate-signals.ts (canonical money producer) still persists result.resea
     "expected the existing diagnostics.researchFunnel = result.researchFunnel ?? null assignment to be reused, not duplicated",
   );
 });
+
+// ── Aggregate physical-event attribution under the loop budget ────────────────
+
+test("real runPrimaryCandidateLoop: physical-event budget attribution (opened-only / straddling / fully skipped) conserves, identity count unchanged", async () => {
+  // Physical events: A = c0,c1 (opened), B = c2,c3 (c2 opened, c3 skipped),
+  // C = c4,c5 (every identity skipped). 5s/open vs 12s budget => c0,c1,c2 open.
+  const eventOf = ["A", "A", "B", "B", "C", "C"];
+  const candidates = eventOf.map((ev, i) => {
+    const c = candidate(i);
+    (c.event as unknown as { id: string }).id = `EV-${ev}`;
+    return c;
+  });
+  const clock = fakeClock();
+  const budgetGuard = createPrimaryLoopBudgetGuard({ startedAtMs: clock.now(), budgetMs: 12_000, now: clock.now });
+
+  const r = await runPrimaryCandidateLoop({
+    candidates,
+    limit: 15,
+    minDataCoverage: 40,
+    excludeEnded: true,
+    evaluateFullPrimaryPopulation: true,
+    budgetGuard,
+    collectResearchSnapshots: false,
+    isResearchCapReached: () => true,
+    pinnedKeysForPersistCheck: new Set<string>(),
+    rejected: [],
+    researchFunnel: freshResearchFunnel(),
+    seenPairIds: new Set<string>(),
+    seenMarketKeys: new Set<string>(),
+    deps: {
+      enrichMarket: async (_event, market) => {
+        clock.advance(5_000);
+        const key = String(market.id).replace("mkt-", "");
+        return {
+          diagnostics: { dataCoverage: 80, rejectionReasons: [], conditionId: `cond-${key}` },
+          __key: key,
+        } as unknown as Awaited<ReturnType<PrimaryCandidateLoopParams["deps"]["enrichMarket"]>>;
+      },
+      selectRecoverablePrimaryMarket: () => null,
+      generateLandingCardPair: (enriched) => {
+        const e = enriched as unknown as { __key: string };
+        return {
+          id: `pair-${e.__key}`,
+          premiumSignal: { winProbability: 70, time: "3h" },
+          marketSource: { headline: e.__key },
+          diagnostics: { conditionId: `cond-${e.__key}`, selectedTokenId: `tok-${e.__key}` },
+        } as unknown as LandingCardPair;
+      },
+      computeCandidateProviderEventKey: (c) => (c.event as unknown as { id: string }).id,
+      captureResearchSnapshot: async () => {},
+    },
+  });
+
+  // Identity level: unchanged meaning (3 opened, 3 skipped).
+  assert.equal(r.primaryTerminalReasonCounts[PRIMARY_LOOP_BUDGET_EXHAUSTED_TERMINAL_REASON], 3);
+  assert.equal(r.primaryCandidatesEntered, 6);
+  // Event level.
+  assert.equal(r.primaryDistinctPhysicalEventsEntered, 3);
+  assert.equal(r.primaryLoopBudgetExcludedPhysicalEvents, 2, "B (straddling) + C (fully skipped)");
+  assert.equal(r.primaryLoopBudgetFullyExcludedPhysicalEvents, 1, "C");
+  assert.equal(r.primaryLoopBudgetPartiallyExcludedPhysicalEvents, 1, "B");
+  assert.equal(
+    r.primaryLoopBudgetExcludedPhysicalEvents,
+    r.primaryLoopBudgetFullyExcludedPhysicalEvents + r.primaryLoopBudgetPartiallyExcludedPhysicalEvents,
+  );
+});
+
+test("buildLandingCards() publishes the physical-event budget counters onto rf unconditionally (money-producer boundary)", () => {
+  for (const f of [
+    "primaryDistinctPhysicalEventsEntered",
+    "primaryLoopBudgetExcludedPhysicalEvents",
+    "primaryLoopBudgetFullyExcludedPhysicalEvents",
+    "primaryLoopBudgetPartiallyExcludedPhysicalEvents",
+  ]) {
+    assert.ok(new RegExp(String.raw`rf\.${f}\s*=\s*primaryLoop\.${f}`).test(BUILD_LANDING_CARDS_SRC), f);
+  }
+});
