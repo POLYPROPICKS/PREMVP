@@ -52,6 +52,8 @@ export interface ReplayPopulation {
   MODELS: ReplayModelResult[];
   /** Descriptive only; never alters C4 membership. */
   C4_SPORT_FAMILY_BREAKDOWN: ReplaySportRow[];
+  /** Exact membership deltas from the frozen engine's own selected bets (single-factor transitions). */
+  PAIRWISE_DELTAS: { C0_TO_C5: PairwiseDelta; C1_TO_C4: PairwiseDelta };
 }
 
 export interface ReplayBusinessResult {
@@ -72,6 +74,113 @@ const round = (v: number, dp: number) => {
   const r = Math.round((v + Number.EPSILON) * f) / f;
   return Object.is(r, -0) ? 0 : r;
 };
+
+/** Minimal shape of a frozen-engine model result consumed by the pairwise delta. */
+export interface PairwiseModelInput {
+  MODEL_ID: string;
+  PNL_U: number;
+  selectedBets: Array<{
+    physicalEventKey: string;
+    ref?: string;
+    decisionTimestamp: string;
+    entryPrice: number;
+    sportFamily: string;
+    pnlU: number;
+  }>;
+}
+
+export interface PairwiseDelta {
+  LEFT_MODEL: string;
+  RIGHT_MODEL: string;
+  LEFT_EVENT_N: number;
+  RIGHT_EVENT_N: number;
+  UNION_EVENT_N: number;
+  SHARED_EVENT_N: number;
+  LEFT_ONLY_EVENT_N: number;
+  RIGHT_ONLY_EVENT_N: number;
+  SHARED_SAME_SELECTION_N: number;
+  SHARED_CHANGED_SELECTION_N: number;
+  LEFT_PNL_U: number;
+  RIGHT_PNL_U: number;
+  DELTA_PNL_U: number;
+  LEFT_ONLY_PNL_U: number;
+  RIGHT_ONLY_PNL_U: number;
+  SHARED_CHANGED_LEFT_PNL_U: number;
+  SHARED_CHANGED_RIGHT_PNL_U: number;
+  SHARED_CHANGED_DELTA_PNL_U: number;
+}
+
+/** Deterministic economic selection carrier already present on a selected bet (outcome excluded). */
+function selectionCarrier(b: PairwiseModelInput["selectedBets"][number]): string {
+  return JSON.stringify([b.ref ?? "", b.decisionTimestamp, b.entryPrice, b.sportFamily]);
+}
+
+/**
+ * Exact membership accounting between two frozen models, computed ONLY from the
+ * frozen engine's own selected bets (physical identity = physicalEventKey).
+ * Throws if any count invariant is violated.
+ */
+export function computePairwiseDelta(left: PairwiseModelInput, right: PairwiseModelInput): PairwiseDelta {
+  const L = new Map(left.selectedBets.map((b) => [b.physicalEventKey, b]));
+  const R = new Map(right.selectedBets.map((b) => [b.physicalEventKey, b]));
+  let leftOnlyPnl = 0;
+  let rightOnlyPnl = 0;
+  let changedLeftPnl = 0;
+  let changedRightPnl = 0;
+  let leftOnly = 0;
+  let rightOnly = 0;
+  let same = 0;
+  let changed = 0;
+  for (const [key, lb] of L) {
+    const rb = R.get(key);
+    if (!rb) {
+      leftOnly++;
+      leftOnlyPnl += lb.pnlU;
+    } else if (selectionCarrier(lb) === selectionCarrier(rb)) {
+      same++;
+    } else {
+      changed++;
+      changedLeftPnl += lb.pnlU;
+      changedRightPnl += rb.pnlU;
+    }
+  }
+  for (const [key, rb] of R) {
+    if (!L.has(key)) {
+      rightOnly++;
+      rightOnlyPnl += rb.pnlU;
+    }
+  }
+  const shared = same + changed;
+  const out: PairwiseDelta = {
+    LEFT_MODEL: left.MODEL_ID,
+    RIGHT_MODEL: right.MODEL_ID,
+    LEFT_EVENT_N: L.size,
+    RIGHT_EVENT_N: R.size,
+    UNION_EVENT_N: shared + leftOnly + rightOnly,
+    SHARED_EVENT_N: shared,
+    LEFT_ONLY_EVENT_N: leftOnly,
+    RIGHT_ONLY_EVENT_N: rightOnly,
+    SHARED_SAME_SELECTION_N: same,
+    SHARED_CHANGED_SELECTION_N: changed,
+    LEFT_PNL_U: left.PNL_U,
+    RIGHT_PNL_U: right.PNL_U,
+    DELTA_PNL_U: round(right.PNL_U - left.PNL_U, 2),
+    LEFT_ONLY_PNL_U: round(leftOnlyPnl, 2),
+    RIGHT_ONLY_PNL_U: round(rightOnlyPnl, 2),
+    SHARED_CHANGED_LEFT_PNL_U: round(changedLeftPnl, 2),
+    SHARED_CHANGED_RIGHT_PNL_U: round(changedRightPnl, 2),
+    SHARED_CHANGED_DELTA_PNL_U: round(changedRightPnl - changedLeftPnl, 2),
+  };
+  if (
+    out.LEFT_EVENT_N !== out.SHARED_EVENT_N + out.LEFT_ONLY_EVENT_N ||
+    out.RIGHT_EVENT_N !== out.SHARED_EVENT_N + out.RIGHT_ONLY_EVENT_N ||
+    out.UNION_EVENT_N !== out.SHARED_EVENT_N + out.LEFT_ONLY_EVENT_N + out.RIGHT_ONLY_EVENT_N ||
+    out.SHARED_EVENT_N !== out.SHARED_SAME_SELECTION_N + out.SHARED_CHANGED_SELECTION_N
+  ) {
+    throw new Error(`PAIRWISE_INVARIANT_VIOLATED ${left.MODEL_ID}->${right.MODEL_ID}`);
+  }
+  return out;
+}
 
 /** Stable JSON: object keys sorted recursively, so the hash is order independent. */
 export function canonicalJson(value: unknown): string {
@@ -129,7 +238,11 @@ export function buildReplayResult(
         roi_pct: round((v.pnl / v.n) * 100, 4),
       }))
       .sort((a, b) => b.selected_event_n - a.selected_event_n || a.sport_family.localeCompare(b.sport_family));
-    return { POPULATION_ID: pop, ROW_N: popRows.length, MODELS, C4_SPORT_FAMILY_BREAKDOWN };
+    const PAIRWISE_DELTAS = {
+      C0_TO_C5: computePairwiseDelta(evaluated.C0, evaluated.C5),
+      C1_TO_C4: computePairwiseDelta(evaluated.C1, evaluated.C4),
+    };
+    return { POPULATION_ID: pop, ROW_N: popRows.length, MODELS, C4_SPORT_FAMILY_BREAKDOWN, PAIRWISE_DELTAS };
   });
   return {
     RANGE_START: start,
