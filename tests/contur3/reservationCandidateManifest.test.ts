@@ -15,8 +15,17 @@ import assert from "node:assert/strict";
 import {
   buildReservationPlan,
   buildReservationCandidateManifestsByPhysicalEvent,
+  buildReservationsFromPlanningDecisions,
   type ReservationCandidateManifestEntry,
+  type Score60ResearchShadow,
 } from "../../lib/executor/nightEventReservations";
+import {
+  resolveContractAProviderPhysicalEventIdentity,
+  CONTRACT_A_DECISION_VERSION,
+  type ContractAPlanningDecision,
+  type ContractADecisionResult,
+} from "../../lib/executor/contractADecisions";
+import type { NightWindow } from "../../lib/executor/nightWindow";
 
 const NOW_MS = Date.parse("2026-07-27T17:30:00.000Z");
 const KICKOFF_A = "2026-07-27T21:00:00.000Z";
@@ -53,6 +62,9 @@ function servingRow(overrides: {
   gameStartIso?: string;
   score?: number;
   confidence?: number;
+  preEventScore?: number | null;
+  entryPrice?: number;
+  createdAt?: string;
   marketSlug?: string;
 }): Record<string, unknown> {
   const gameStartIso = overrides.gameStartIso ?? KICKOFF_A;
@@ -66,9 +78,10 @@ function servingRow(overrides: {
     selected_outcome: overrides.side ?? "New York Yankees",
     score: overrides.score ?? 80,
     signal_confidence_num: overrides.confidence ?? 70,
-    entry_price_num: 0.42,
+    pre_event_score_num: overrides.preEventScore ?? null,
+    entry_price_num: overrides.entryPrice ?? 0.42,
     metric_formula_version: "v2-lite-growth-safe",
-    created_at: "2026-07-27T19:30:00.000Z",
+    created_at: overrides.createdAt ?? "2026-07-27T19:30:00.000Z",
     expires_at: "2026-07-28T04:00:00.000Z",
     signal_result: null,
     event_slug: eventSlug,
@@ -209,6 +222,215 @@ test("RCM-5: omitting the candidate-manifest source rows (legacy call shape) sti
   assert.deepEqual(built.reservations[0].diagnostics.candidate_manifest, []);
   assert.equal(built.reservations[0].diagnostics.candidate_manifest_truncated, false);
   assert.equal(built.reservations[0].diagnostics.candidate_manifest_count, 0);
+});
+
+// ── 5. pre_event_score_num shadow carrier ──────────────────────────────────
+//
+// These tests enter through `buildReservationsFromPlanningDecisions` directly
+// with hand-built, already-ACCEPTED Planning Decisions — the exact seam
+// Reservation itself consumes once Contract A Planning has decided. This
+// deliberately bypasses Contract A's own eligibility gates (B2 price/score/
+// coverage policy, tiering, etc.), which this mission never touches and which
+// `buildReservationPlan`'s full producer seam is not fixture-friendly for.
+// `sourceRowsForCandidateManifest` still carries the exact same raw Serving
+// rows Planning would have read, so the manifest/shadow computation under
+// test is exercised exactly as production wires it.
+
+const WINDOW: NightWindow = {
+  startMs: NOW_MS,
+  endMs: NOW_MS + 6 * 3600_000,
+  startIso: new Date(NOW_MS).toISOString(),
+  endIso: new Date(NOW_MS + 6 * 3600_000).toISOString(),
+  horizonEndMs: NOW_MS + 24 * 3600_000,
+  horizonEndIso: new Date(NOW_MS + 24 * 3600_000).toISOString(),
+  planDateMinsk: "2026-07-27",
+};
+
+function nonEmptyStr(value: unknown): string | null {
+  return typeof value === "string" && value.trim() !== "" ? value : null;
+}
+
+/** One ACCEPTED Contract A Planning Decision for the physical event a row's diagnostics resolve to. */
+function planningDecisionFor(
+  row: Record<string, unknown>,
+  overrides: { planningRank?: number } = {},
+): ContractADecisionResult<ContractAPlanningDecision> {
+  const diagnostics = row.diagnostics as Record<string, unknown>;
+  const identity = resolveContractAProviderPhysicalEventIdentity(diagnostics);
+  if (!identity) throw new Error("test fixture row is missing a resolvable providerEventContext");
+  return {
+    accepted: true,
+    decision: {
+      decision_version: CONTRACT_A_DECISION_VERSION,
+      contract_a_version: "CONTRACT_A_PLANNING_V1",
+      status: "ACCEPTED",
+      physical_event_id: identity.physicalEventId,
+      source_lineage: {
+        generated_signal_pair_id: nonEmptyStr(row.id),
+        generated_signal_pair_id_is_uuid: true,
+        observation_id: null,
+        event_slug: nonEmptyStr(row.event_slug),
+        provider_event_key: null,
+        provider_event_id: identity.eventId,
+        provider_event_start_iso: identity.eventStartIso,
+        provider_sport: "baseball",
+        producer_source: null,
+        source_created_at: nonEmptyStr(row.created_at),
+      },
+      event_start_iso: identity.eventStartIso,
+      event_start_iso_source: "source_row_game_start_iso",
+      inferred_sport: "baseball",
+      strategic_scope: "MLB",
+      sport_metadata_source: "upstream",
+      league: null,
+      planning_score: 80,
+      planning_tier: "TIER_1",
+      planning_rank: overrides.planningRank ?? 1,
+      planning_policy_verdict: null,
+      execution_window: { stale_after: null, no_trade_after: null, timing_bucket: "T_2_6H" },
+      final_identity_evidence: null,
+      rejection_trace: null,
+    },
+  };
+}
+
+/** rows = the full bounded Serving snapshot; decisionRows = one representative row per admitted physical event. */
+function buildFromDecisions(rows: Record<string, unknown>[], decisionRows: Record<string, unknown>[]) {
+  const results = decisionRows.map((row, i) => planningDecisionFor(row, { planningRank: i + 1 }));
+  return buildReservationsFromPlanningDecisions(
+    results,
+    { planRunId: "test-plan-run", window: WINDOW, nowMs: NOW_MS },
+    [],
+    { sourceRowsForCandidateManifest: rows },
+  );
+}
+
+test("RCM-7: manifest copies pre_event_score_num verbatim and keeps it distinct from signal_confidence_num", () => {
+  const row = servingRow({ conditionId: "cond-moneyline", tokenId: "tok-yankees-ml", entryPrice: 0.55, confidence: 70, preEventScore: 42 });
+  const built = buildFromDecisions([row], [row]);
+  assert.equal(built.reservations.length, 1);
+  const [entry] = manifestEntries(built.reservations[0].diagnostics);
+  assert.equal(entry.pre_event_score_num, 42);
+  assert.equal(entry.signal_confidence_num, 70);
+  assert.notEqual(entry.pre_event_score_num, entry.signal_confidence_num, "never conflated with signal_confidence_num");
+});
+
+test("RCM-8: SHADOW_C0 selects the chronological-first price-band identity; SHADOW_SCORE60 skips a <60 identity and selects the next >=60 identity", () => {
+  const rows = [
+    servingRow({
+      conditionId: "cond-early-low-score",
+      tokenId: "tok-early",
+      entryPrice: 0.55,
+      preEventScore: 40,
+      createdAt: "2026-07-27T19:00:00.000Z",
+    }),
+    servingRow({
+      conditionId: "cond-late-high-score",
+      tokenId: "tok-late",
+      entryPrice: 0.56,
+      preEventScore: 70,
+      createdAt: "2026-07-27T19:30:00.000Z",
+    }),
+  ];
+  const built = buildFromDecisions(rows, [rows[0]]);
+  assert.equal(built.reservations.length, 1);
+  const shadow = built.reservations[0].diagnostics.score60_research_shadow as Score60ResearchShadow;
+  assert.equal(shadow.version, "SCORE60_RESEARCH_SHADOW_V1");
+  assert.equal(shadow.c0_eligible_identity_n, 2);
+  assert.equal(shadow.score60_eligible_identity_n, 1);
+  assert.equal(shadow.c0_selected?.condition_id, "cond-early-low-score", "C0 selects the chronological-first price-band identity regardless of score");
+  assert.equal(shadow.score60_selected?.condition_id, "cond-late-high-score", "SCORE60 skips the <60 identity and selects the next >=60 identity");
+  assert.equal(shadow.selection_changed, "YES");
+});
+
+test("RCM-9: no >=60 identity produces NO_SCORE60_SELECTION but the Reservation still exists", () => {
+  const row = servingRow({ conditionId: "cond-moneyline", tokenId: "tok-yankees-ml", entryPrice: 0.55, preEventScore: null });
+  const built = buildFromDecisions([row], [row]);
+  assert.equal(built.reservations.length, 1, "the physical event is never rejected for lacking a SHADOW_SCORE60 identity");
+  const shadow = built.reservations[0].diagnostics.score60_research_shadow as Score60ResearchShadow;
+  assert.equal(shadow.c0_eligible_identity_n, 1);
+  assert.equal(shadow.score60_eligible_identity_n, 0);
+  assert.equal(shadow.score60_selected, null);
+  assert.equal(shadow.selection_changed, "NO_SCORE60_SELECTION");
+});
+
+test("RCM-10: Reservation rank/identity/event_score/status are byte-equivalent regardless of the shadow's score60 outcome", () => {
+  const base = (preEventScore: number | null) =>
+    servingRow({ conditionId: "cond-moneyline", tokenId: "tok-yankees-ml", entryPrice: 0.55, confidence: 70, preEventScore });
+  const rowNoScore = base(null);
+  const rowHighScore = base(90);
+  const builtNoScore = buildFromDecisions([rowNoScore], [rowNoScore]);
+  const builtHighScore = buildFromDecisions([rowHighScore], [rowHighScore]);
+  // candidate_manifest legitimately differs (it carries pre_event_score_num
+  // verbatim, by design) — everything ELSE that drives the actual production
+  // decision must stay byte-equivalent.
+  const stripScoreDependentFields = (diagnostics: Record<string, unknown>) => {
+    const { score60_research_shadow: _shadow, candidate_manifest: _manifest, ...rest } = diagnostics;
+    return rest;
+  };
+  assert.equal(builtNoScore.reservations[0].reservation_rank, builtHighScore.reservations[0].reservation_rank);
+  assert.equal(builtNoScore.reservations[0].physical_event_id, builtHighScore.reservations[0].physical_event_id);
+  assert.equal(builtNoScore.reservations[0].event_score, builtHighScore.reservations[0].event_score);
+  assert.equal(builtNoScore.reservations[0].status, builtHighScore.reservations[0].status);
+  assert.equal(
+    builtNoScore.reservations[0].diagnostics.candidate_manifest_count,
+    builtHighScore.reservations[0].diagnostics.candidate_manifest_count,
+  );
+  assert.deepEqual(
+    stripScoreDependentFields(builtNoScore.reservations[0].diagnostics),
+    stripScoreDependentFields(builtHighScore.reservations[0].diagnostics),
+    "every production-decision diagnostics field is unaffected by pre_event_score_num",
+  );
+});
+
+test("RCM-11: the shadow is computed purely from the given bounded snapshot — no widening beyond the rows passed in", () => {
+  const rows = [
+    servingRow({ conditionId: "cond-a", tokenId: "tok-a", entryPrice: 0.55, preEventScore: 70 }),
+    servingRow({ conditionId: "cond-b", tokenId: "tok-b", entryPrice: 0.57, preEventScore: 80 }),
+  ];
+  const built = buildFromDecisions(rows, [rows[0]]);
+  assert.equal(built.reservations.length, 1);
+  const shadow = built.reservations[0].diagnostics.score60_research_shadow as Score60ResearchShadow;
+  // Exactly the two rows passed in are visible to the shadow — never fewer (truncation)
+  // and never more (a wider read); buildReservationCandidateManifestsByPhysicalEvent and
+  // its shadow are pure functions with no I/O of their own.
+  assert.equal(shadow.c0_eligible_identity_n, 2);
+  assert.equal(shadow.score60_eligible_identity_n, 2);
+});
+
+// ── 6. Plan-level aggregate counters ───────────────────────────────────────
+
+test("RCM-12: reservation-level shadow diagnostics aggregate correctly across all admitted events", () => {
+  const rows = [
+    // Event A: has a >=60 identity that differs from C0's chronological pick.
+    servingRow({ conditionId: "a-early", tokenId: "a-early-tok", eventSlug: "event-a", providerEventId: "evt-a", gameStartIso: KICKOFF_A, entryPrice: 0.55, preEventScore: 30, createdAt: "2026-07-27T19:00:00.000Z" }),
+    servingRow({ conditionId: "a-late", tokenId: "a-late-tok", eventSlug: "event-a", providerEventId: "evt-a", gameStartIso: KICKOFF_A, entryPrice: 0.56, preEventScore: 65, createdAt: "2026-07-27T19:30:00.000Z" }),
+    // Event B: no >=60 identity at all.
+    servingRow({ conditionId: "b-only", tokenId: "b-only-tok", eventSlug: "event-b", providerEventId: "evt-b", gameStartIso: KICKOFF_B, entryPrice: 0.55, preEventScore: null }),
+  ];
+  const built = buildFromDecisions(rows, [rows[0], rows[2]]);
+  assert.equal(built.reservations.length, 2);
+
+  // Aggregate exactly as contractAPlanDiagnostics() does, over the built reservations.
+  let eventN = 0;
+  let hasSelectionN = 0;
+  let noSelectionN = 0;
+  let changedN = 0;
+  for (const r of built.reservations) {
+    const shadow = r.diagnostics.score60_research_shadow as Score60ResearchShadow | null;
+    if (!shadow) continue;
+    eventN += 1;
+    if (shadow.selection_changed === "NO_SCORE60_SELECTION") {
+      noSelectionN += 1;
+    } else {
+      hasSelectionN += 1;
+      if (shadow.selection_changed === "YES") changedN += 1;
+    }
+  }
+  assert.equal(eventN, 2);
+  assert.equal(hasSelectionN, 1);
+  assert.equal(noSelectionN, 1);
+  assert.equal(changedN, 1);
 });
 
 test("RCM-6: a legacy-shaped Reservation row missing candidate_manifest entirely is still a valid diagnostics object", () => {

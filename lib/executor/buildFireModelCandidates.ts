@@ -403,7 +403,7 @@ const SIGNAL_SELECT_COLS =
 // consumes the established generated_signal_pairs-shaped row contract.
 const SERVING_SIGNAL_SELECT_COLS =
   "observation_id, observed_at, source_generated_signal_pair_id, condition_id, selected_outcome, selected_token_id, " +
-  "entry_price_num, signal_confidence_num, diagnostics, market_slug, event_slug, " +
+  "entry_price_num, signal_confidence_num, pre_event_score_num, diagnostics, market_slug, event_slug, " +
   "metric_formula_version, source_created_at, expires_at, signal_result, projection_status";
 const PLANNING_SERVING_ROW_LIMIT = 10_000;
 

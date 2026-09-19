@@ -18,6 +18,10 @@ const liquidityGateMigration = readFileSync(
   "supabase/migrations/20260825000000_current_signal_pair_serving_event_liquidity_gate.sql",
   "utf8",
 );
+const preEventScoreShadowMigration = readFileSync(
+  "supabase/migrations/20260919170000_current_signal_pair_serving_pre_event_score_shadow.sql",
+  "utf8",
+);
 
 test("liquidity-gated serving projection requires canonical event evidence and removes unknown historical serving rows", () => {
   assert.match(liquidityGateMigration, /source\.diagnostics ->> 'eventVolumeUsd'/);
@@ -287,6 +291,44 @@ test("writer projection is idempotent by source UUID and serving prune batches e
     refreshCurrentSignalPairServing(["source-c"]),
     (error: unknown) => error instanceof ServingProjectionPendingError && error.sourceGeneratedSignalPairIds[0] === "source-c",
   );
+});
+
+test("pre_event_score_num shadow migration adds the serving column and threads it through both refresh branches", () => {
+  assert.match(preEventScoreShadowMigration, /ALTER TABLE public\.current_signal_pair_serving\s+ADD COLUMN IF NOT EXISTS pre_event_score_num numeric;/);
+  // Signature is preserved exactly (same default, same return shape).
+  assert.match(
+    preEventScoreShadowMigration,
+    /CREATE OR REPLACE FUNCTION public\.refresh_current_signal_pair_serving\(\s*p_source_generated_signal_pair_ids uuid\[\] DEFAULT NULL\s*\)\s*RETURNS TABLE \(source_generated_signal_pair_id uuid\)/,
+  );
+  // Both branches (IF ... ELSE) still exist, and both select the exact source column.
+  assert.match(preEventScoreShadowMigration, /IF p_source_generated_signal_pair_ids IS NOT NULL THEN/);
+  assert.match(preEventScoreShadowMigration, /ELSE[\s\S]*FROM public\.generated_signal_pairs source/);
+  const sourceSelectCount = (
+    preEventScoreShadowMigration.match(/source\.entry_price_num, source\.signal_confidence_num, source\.pre_event_score_num, source\.expires_at,/g) ?? []
+  ).length;
+  assert.equal(sourceSelectCount, 2, "pre_event_score_num is read from source in BOTH branches' latest_source CTE");
+  const insertColumnCount = (preEventScoreShadowMigration.match(/INSERT INTO public\.current_signal_pair_serving \(\s*condition_id, selected_token_id, metric_formula_version,\s*source_generated_signal_pair_id, selected_outcome, diagnostics, event_slug,\s*market_slug, entry_price_num, signal_confidence_num, pre_event_score_num, expires_at, signal_result,/g) ?? []).length;
+  assert.equal(insertColumnCount, 2, "pre_event_score_num is inserted in BOTH branches, in the same column list, verbatim from source");
+  const updateSetCount = (preEventScoreShadowMigration.match(/pre_event_score_num = EXCLUDED\.pre_event_score_num,/g) ?? []).length;
+  assert.equal(updateSetCount, 2, "pre_event_score_num is copied on conflict-update in BOTH branches");
+  // Freshness comparison and conflict key are unchanged.
+  assert.match(
+    preEventScoreShadowMigration,
+    /\(EXCLUDED\.source_created_at, EXCLUDED\.source_generated_signal_pair_id\)[\s\S]*>[\s\S]*\(current_signal_pair_serving\.source_created_at, current_signal_pair_serving\.source_generated_signal_pair_id\)/,
+  );
+  assert.match(preEventScoreShadowMigration, /ON CONFLICT \(condition_id, selected_token_id, metric_formula_version\) DO UPDATE/);
+});
+
+test("pre_event_score_num backfill joins by source_generated_signal_pair_id only and touches no other serving field", () => {
+  const backfillMatch = preEventScoreShadowMigration.match(
+    /UPDATE public\.current_signal_pair_serving serving\s+SET ([\s\S]*?)\s+FROM public\.generated_signal_pairs source\s+WHERE ([\s\S]*?);/,
+  );
+  assert.ok(backfillMatch, "expected exactly one bounded backfill UPDATE statement");
+  const [, setClause, whereClause] = backfillMatch!;
+  assert.equal(setClause.trim(), "pre_event_score_num = source.pre_event_score_num", "backfill sets ONLY pre_event_score_num");
+  assert.doesNotMatch(setClause, /,/, "backfill never touches a second serving field");
+  assert.match(whereClause, /source\.id = serving\.source_generated_signal_pair_id/, "backfill joins by the exact source identity, never reconstructed by condition/token");
+  assert.doesNotMatch(whereClause, /condition_id|selected_token_id/i, "backfill never joins by condition/token");
 });
 
 test("production-shaped cohort conserves old Planning immutable identities in the serving projection", () => {
