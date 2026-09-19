@@ -177,3 +177,82 @@ export function distinctEvidenceIdentities(rows: readonly NarrowEvidenceRow[]): 
 export function distinctPhysicalEvents(rows: readonly NarrowEvidenceRow[]): number {
   return new Set(rows.map((r) => r.provider_event_id).filter((v): v is string => !!v)).size;
 }
+
+// ── v3: ITEM-LEVEL cursor ────────────────────────────────────────────────────
+// research_evidence_page_v3 returns FLATTENED item rows bounded by a ROW count.
+// An envelope-level cursor cannot safely paginate a flattened result (a page
+// that ends inside an envelope would skip that envelope's remaining items), so
+// the v3 cursor is the full (observed_at, observation_id, item_observation_id)
+// triplet and always advances to the exact last item returned.
+
+/** Server-side flattened-row clamp mirrored here. */
+export const RESEARCH_EVIDENCE_V3_MAX_ROWS = 500;
+
+export interface EvidenceItemCursor extends EvidenceCursor {
+  itemObservationId: string;
+}
+
+export interface EvidencePageV3Args {
+  p_after_observed_at: string;
+  p_after_observation_id: string;
+  p_after_item_observation_id: string;
+  p_until: string;
+  p_max_rows: number;
+}
+
+export function buildEvidencePageV3Args(
+  cursor: EvidenceItemCursor,
+  untilIso: string,
+  maxRows: number = RESEARCH_EVIDENCE_V3_MAX_ROWS,
+): EvidencePageV3Args {
+  if (!untilIso || !Number.isFinite(Date.parse(untilIso))) {
+    throw new ResearchExportContractError("RESEARCH_EXPORT_UPPER_TIME_BOUND_REQUIRED");
+  }
+  if (!Number.isInteger(maxRows) || maxRows < 1) {
+    throw new ResearchExportContractError("RESEARCH_EXPORT_PAGE_BOUND_INVALID");
+  }
+  if (maxRows > RESEARCH_EVIDENCE_V3_MAX_ROWS) {
+    throw new ResearchExportContractError("RESEARCH_EXPORT_PAGE_BOUND_EXCEEDED");
+  }
+  if (!Number.isFinite(Date.parse(cursor.observedAt))) {
+    throw new ResearchExportContractError("RESEARCH_EXPORT_CURSOR_INVALID");
+  }
+  return {
+    p_after_observed_at: cursor.observedAt,
+    p_after_observation_id: cursor.observationId,
+    p_after_item_observation_id: cursor.itemObservationId,
+    p_until: untilIso,
+    p_max_rows: maxRows,
+  };
+}
+
+/** One millisecond before the window with the lowest envelope and item UUIDs. */
+export function bootstrapItemCursor(sinceIso: string): EvidenceItemCursor {
+  const base = bootstrapCursor(sinceIso);
+  return { ...base, itemObservationId: ZERO_UUID };
+}
+
+/** Advances to the EXACT last item returned; an empty page never moves the cursor. */
+export function nextItemCursor(rows: readonly NarrowEvidenceRow[], current: EvidenceItemCursor): EvidenceItemCursor {
+  if (rows.length === 0) return current;
+  const last = rows[rows.length - 1];
+  return {
+    observedAt: last.observed_at,
+    observationId: last.observation_id,
+    itemObservationId: last.item_observation_id,
+  };
+}
+
+export function compareItemCursor(left: EvidenceItemCursor, right: EvidenceItemCursor): -1 | 0 | 1 {
+  const byTime = Date.parse(left.observedAt) - Date.parse(right.observedAt);
+  if (byTime !== 0) return byTime < 0 ? -1 : 1;
+  const byEnvelope = left.observationId.localeCompare(right.observationId);
+  if (byEnvelope !== 0) return byEnvelope < 0 ? -1 : 1;
+  const byItem = left.itemObservationId.localeCompare(right.itemObservationId);
+  if (byItem !== 0) return byItem < 0 ? -1 : 1;
+  return 0;
+}
+
+export function itemCursorAdvanced(before: EvidenceItemCursor, after: EvidenceItemCursor): boolean {
+  return compareItemCursor(after, before) > 0;
+}
