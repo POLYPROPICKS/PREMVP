@@ -15,14 +15,16 @@ import {
   CLONE_EVIDENCE_CONFLICT_KEY,
   CLONE_EVIDENCE_SOURCE_KIND,
   CLONE_EVIDENCE_TABLE,
-  RESEARCH_EVIDENCE_PAGE_MAX_ENVELOPES,
-  bootstrapCursor,
-  buildEvidencePageArgs,
-  compareCursor,
-  cursorAdvanced,
+  RESEARCH_EVIDENCE_V3_MAX_ROWS,
+  ZERO_UUID as EVIDENCE_ZERO_UUID,
+  bootstrapItemCursor,
+  buildEvidencePageV3Args,
+  compareItemCursor,
   dedupeNarrowRows,
-  nextCursor,
+  itemCursorAdvanced,
+  nextItemCursor,
   type EvidenceCursor,
+  type EvidenceItemCursor,
   type NarrowEvidenceRow,
 } from "../lib/research-clone/researchEvidenceExport";
 
@@ -110,7 +112,7 @@ const SPECS: readonly TableSpec[] = [
   // primary_evidence_outbox is deliberately NOT a generic raw SYNC_SPEC: the
   // generic sourcePage() reads select("*") (full evidence_rows JSON) with no
   // bound. Current evidence is transported by syncResearchEvidencePage() below
-  // through the bounded server-side research_evidence_page() RPC instead.
+  // through the bounded server-side research_evidence_page_v3() RPC instead.
 ];
 
 const EMPTY_TABLE_EVIDENCE: TableEvidence = {
@@ -325,19 +327,60 @@ export function resolveBootstrapSinceArg(argv: readonly string[]): string | null
   return null;
 }
 
-// ── Bounded narrow research-evidence transport ───────────────────────────────
-// production primary_evidence_outbox -> research_evidence_page() RPC (max 20
-// envelopes/call, 5s statement timeout, explicit p_until, row-value cursor,
-// never returns evidence_rows) -> clone research_evidence_page_rows.
+// ── Bounded narrow research-evidence transport (v3, item-level cursor) ───────
+// production primary_evidence_outbox -> research_evidence_page_v3() RPC (max 500
+// FLATTENED rows/call, 5s statement timeout, explicit p_until, item-level
+// (observed_at, observation_id, item_observation_id) cursor, never returns
+// evidence_rows) -> clone research_evidence_page_rows.
+//
+// The v3 cursor advances to the exact last ITEM returned, so a page that ends
+// inside an envelope resumes inside that envelope (an envelope-level cursor over
+// flattened rows silently skipped the remainder of such envelopes).
 
-const EVIDENCE_CHECKPOINT_SOURCE = `${SYNC_VERSION}:checkpoint:${CLONE_EVIDENCE_TABLE}`;
-const MAX_EVIDENCE_PAGES = 200; // finite budget: 200 x 20 envelopes per run
+// Separate from the legacy v2 envelope-level checkpoint, which is NOT item-complete.
+const EVIDENCE_CHECKPOINT_SOURCE = `${SYNC_VERSION}:checkpoint:${CLONE_EVIDENCE_TABLE}:v3`;
+// Explicit repair mode owns its own resumable cursor; it never touches the normal one.
+const EVIDENCE_REPAIR_CHECKPOINT_SOURCE = `${SYNC_VERSION}:repair-cursor:${CLONE_EVIDENCE_TABLE}:v3`;
+const MAX_EVIDENCE_PAGES = 200; // finite: 200 x 500 rows per normal run
+const MAX_REPAIR_EVIDENCE_PAGES = 500; // finite: 500 x 500 rows covers the measured ~194k-row window
 const EVIDENCE_UPSERT_CHUNK = 500;
 
+export interface EvidenceRepairOptions {
+  sinceIso: string;
+  untilIso: string | null;
+}
+
+/**
+ * `--repair-since <ISO>` [`--repair-until <ISO>`]: explicit, finitely bounded
+ * historical repair. Returns null when repair mode is not requested.
+ */
+export function resolveRepairArgs(argv: readonly string[]): EvidenceRepairOptions | null {
+  const read = (name: string): string | undefined => {
+    const eq = argv.find((v) => v.startsWith(`${name}=`));
+    if (eq) return eq.slice(name.length + 1);
+    const i = argv.indexOf(name);
+    return i >= 0 ? argv[i + 1] : undefined;
+  };
+  const since = read("--repair-since");
+  const until = read("--repair-until");
+  if (!since) {
+    if (until) throw new Error("RESEARCH_CLONE_REPAIR_UNTIL_REQUIRES_SINCE");
+    return null;
+  }
+  if (!Number.isFinite(Date.parse(since))) throw new Error("RESEARCH_CLONE_REPAIR_ARG_INVALID");
+  if (until !== undefined && !Number.isFinite(Date.parse(until))) throw new Error("RESEARCH_CLONE_REPAIR_ARG_INVALID");
+  if (until !== undefined && Date.parse(until) <= Date.parse(since)) throw new Error("RESEARCH_CLONE_REPAIR_ARG_INVALID");
+  return {
+    sinceIso: new Date(Date.parse(since)).toISOString(),
+    untilIso: until !== undefined ? new Date(Date.parse(until)).toISOString() : null,
+  };
+}
+
 type EvidenceSyncEvidence = {
+  MODE: "DAILY" | "REPAIR";
   P_UNTIL: string;
-  CURSOR_BEFORE: EvidenceCursor | null;
-  CURSOR_AFTER: EvidenceCursor | null;
+  CURSOR_BEFORE: EvidenceItemCursor | null;
+  CURSOR_AFTER: EvidenceItemCursor | null;
   PAGES: number;
   ROWS_WRITTEN: number;
   SKIPPED_NO_ITEM_ID: number;
@@ -345,28 +388,43 @@ type EvidenceSyncEvidence = {
   RECONCILIATION_PENDING: false;
 };
 
-async function evidenceCheckpoint(target: Client): Promise<EvidenceCursor | null> {
+type EvidenceCheckpoint = {
+  cursor: EvidenceItemCursor;
+  since: string | null;
+  until: string | null;
+  complete: boolean;
+};
+
+async function readEvidenceCheckpoint(target: Client, source: string): Promise<EvidenceCheckpoint | null> {
   const { data, error } = await target
     .from("job_runs")
     .select("diagnostics")
-    .eq("source", EVIDENCE_CHECKPOINT_SOURCE)
+    .eq("source", source)
     .eq("status", "success")
     .order("started_at", { ascending: false })
     .limit(1);
   if (error) throw new Error(`RESEARCH_CLONE_CHECKPOINT_READ_${CLONE_EVIDENCE_TABLE}:${safeError(error)}`);
-  const wm = ((data?.[0] ?? {}) as { diagnostics?: { watermark?: { observed_at?: unknown; observation_id?: unknown } } })
-    .diagnostics?.watermark;
-  if (typeof wm?.observed_at === "string" && typeof wm?.observation_id === "string") {
-    return { observedAt: wm.observed_at, observationId: wm.observation_id };
+  const d = ((data?.[0] ?? {}) as { diagnostics?: Record<string, any> }).diagnostics;
+  const wm = d?.watermark;
+  if (
+    typeof wm?.observed_at === "string" &&
+    typeof wm?.observation_id === "string" &&
+    typeof wm?.item_observation_id === "string"
+  ) {
+    return {
+      cursor: { observedAt: wm.observed_at, observationId: wm.observation_id, itemObservationId: wm.item_observation_id },
+      since: typeof d?.since === "string" ? d.since : null,
+      until: typeof d?.until === "string" ? d.until : null,
+      complete: d?.complete === true,
+    };
   }
   return null;
 }
 
 /**
  * Greatest clone envelope position that is strictly BEFORE the clone's newest
- * envelope. The newest envelope may have been only partially written by an
- * interrupted chunked upsert, so it is deliberately re-read (idempotent upsert)
- * rather than trusted as complete.
+ * envelope. The newest envelope may have been only partially written, so it is
+ * deliberately re-read (idempotent upsert) rather than trusted as complete.
  */
 async function cloneEvidenceStepBackCursor(target: Client): Promise<EvidenceCursor | null> {
   const newest = await target
@@ -390,10 +448,15 @@ async function cloneEvidenceStepBackCursor(target: Client): Promise<EvidenceCurs
   return p ? { observedAt: p.observed_at, observationId: p.observation_id } : null;
 }
 
-async function writeEvidenceCheckpoint(target: Client, cursor: EvidenceCursor): Promise<void> {
+async function writeEvidenceCheckpoint(
+  target: Client,
+  source: string,
+  cursor: EvidenceItemCursor,
+  extra: Record<string, unknown> = {},
+): Promise<void> {
   const now = new Date().toISOString();
   const { error } = await target.from("job_runs").insert({
-    source: EVIDENCE_CHECKPOINT_SOURCE,
+    source,
     formula_version: SYNC_VERSION,
     started_at: now,
     finished_at: now,
@@ -403,7 +466,12 @@ async function writeEvidenceCheckpoint(target: Client, cursor: EvidenceCursor): 
     duration_ms: 0,
     diagnostics: {
       table: CLONE_EVIDENCE_TABLE,
-      watermark: { observed_at: cursor.observedAt, observation_id: cursor.observationId },
+      watermark: {
+        observed_at: cursor.observedAt,
+        observation_id: cursor.observationId,
+        item_observation_id: cursor.itemObservationId,
+      },
+      ...extra,
     },
   });
   if (error) throw new Error(`RESEARCH_CLONE_CHECKPOINT_WRITE_${CLONE_EVIDENCE_TABLE}:${safeError(error)}`);
@@ -413,28 +481,61 @@ export async function syncResearchEvidencePage(
   target: Client,
   source: Client,
   bootstrapSince: string | null,
+  repair: EvidenceRepairOptions | null = null,
 ): Promise<EvidenceSyncEvidence> {
-  // ONE fixed upper bound for the whole run — never a moving horizon.
+  // ONE fixed run-start instant; every page in a run shares the same upper bound.
   const pUntil = new Date().toISOString();
-  const checkpoint = await evidenceCheckpoint(target);
-  const cloneBack = await cloneEvidenceStepBackCursor(target);
-  const candidates = [checkpoint, cloneBack].filter((c): c is EvidenceCursor => c !== null);
-  const start: EvidenceCursor | null = candidates.length
-    ? candidates.reduce((a, b) => (compareCursor(a, b) >= 0 ? a : b))
-    : bootstrapSince
-      ? bootstrapCursor(bootstrapSince)
-      : null;
-  if (!start) throw new Error("RESEARCH_CLONE_EVIDENCE_CURSOR_UNAVAILABLE_NO_START_AUTHORITY");
-  let cursor: EvidenceCursor = start;
+  let start: EvidenceItemCursor;
+  let until = pUntil;
+  let maxPages = MAX_EVIDENCE_PAGES;
+  let checkpointSource = EVIDENCE_CHECKPOINT_SOURCE;
+  let extra: Record<string, unknown> = {};
+
+  if (repair) {
+    // Explicit repair: the NORMAL forward checkpoint is never read, moved or reset.
+    // Only its own repair cursor (same since, unfinished, compatible until) resumes.
+    maxPages = MAX_REPAIR_EVIDENCE_PAGES;
+    checkpointSource = EVIDENCE_REPAIR_CHECKPOINT_SOURCE;
+    const cp = await readEvidenceCheckpoint(target, EVIDENCE_REPAIR_CHECKPOINT_SOURCE);
+    const resume =
+      cp !== null &&
+      cp.since === repair.sinceIso &&
+      !cp.complete &&
+      cp.until !== null &&
+      (repair.untilIso === null || cp.until === repair.untilIso);
+    if (resume && cp) {
+      start = cp.cursor;
+      until = cp.until as string;
+    } else {
+      start = bootstrapItemCursor(repair.sinceIso);
+      until = repair.untilIso ?? pUntil;
+    }
+    extra = { since: repair.sinceIso, until };
+  } else {
+    const checkpoint = await readEvidenceCheckpoint(target, EVIDENCE_CHECKPOINT_SOURCE);
+    const cloneBack = await cloneEvidenceStepBackCursor(target);
+    const candidates: EvidenceItemCursor[] = [];
+    if (checkpoint) candidates.push(checkpoint.cursor);
+    // Envelope-level clone position: re-read that envelope from its first item.
+    if (cloneBack) candidates.push({ ...cloneBack, itemObservationId: EVIDENCE_ZERO_UUID });
+    const chosen = candidates.length
+      ? candidates.reduce((a, b) => (compareItemCursor(a, b) >= 0 ? a : b))
+      : bootstrapSince
+        ? bootstrapItemCursor(bootstrapSince)
+        : null;
+    if (!chosen) throw new Error("RESEARCH_CLONE_EVIDENCE_CURSOR_UNAVAILABLE_NO_START_AUTHORITY");
+    start = chosen;
+  }
+  let cursor: EvidenceItemCursor = start;
 
   let pages = 0;
   let rowsWritten = 0;
   let skipped = 0;
   let drained = false;
-  while (pages < MAX_EVIDENCE_PAGES) {
-    const args = buildEvidencePageArgs(cursor, pUntil, RESEARCH_EVIDENCE_PAGE_MAX_ENVELOPES);
-    const { data, error } = await source.rpc("research_evidence_page_v2", args);
-    if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_research_evidence_page_v2:${safeError(error)}`);
+  while (pages < maxPages) {
+    const args = buildEvidencePageV3Args(cursor, until, RESEARCH_EVIDENCE_V3_MAX_ROWS);
+    const { data, error } = await source.rpc("research_evidence_page_v3", args);
+    if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_research_evidence_page_v3:${safeError(error)}`);
     const rows = (data ?? []) as NarrowEvidenceRow[];
     pages++;
     if (rows.length === 0) {
@@ -457,13 +558,17 @@ export async function syncResearchEvidencePage(
     }
     rowsWritten += records.length;
     // Advance the cursor and checkpoint ONLY after the page write succeeded.
-    const advanced = nextCursor(rows, cursor);
-    if (!cursorAdvanced(cursor, advanced)) throw new Error("RESEARCH_CLONE_EVIDENCE_CURSOR_STALLED");
+    const advanced = nextItemCursor(rows, cursor);
+    if (!itemCursorAdvanced(cursor, advanced)) throw new Error("RESEARCH_CLONE_EVIDENCE_CURSOR_STALLED");
     cursor = advanced;
-    await writeEvidenceCheckpoint(target, cursor);
+    await writeEvidenceCheckpoint(target, checkpointSource, cursor, repair ? { ...extra, complete: false } : extra);
+  }
+  if (repair && drained) {
+    await writeEvidenceCheckpoint(target, checkpointSource, cursor, { ...extra, complete: true });
   }
   return {
-    P_UNTIL: pUntil,
+    MODE: repair ? "REPAIR" : "DAILY",
+    P_UNTIL: until,
     CURSOR_BEFORE: start,
     CURSOR_AFTER: cursor,
     PAGES: pages,
@@ -733,6 +838,24 @@ export async function main(): Promise<void> {
     const tables: Record<TableName, TableEvidence> = {} as Record<TableName, TableEvidence>;
     const schemaPendingTables: TableName[] = [];
     const bootstrapSince = resolveBootstrapSinceArg(process.argv);
+    const repair = resolveRepairArgs(process.argv);
+    if (repair) {
+      // Explicit bounded historical repair: narrow evidence only, own repair cursor.
+      const repaired = await syncResearchEvidencePage(target, source, bootstrapSince, repair);
+      console.log(
+        JSON.stringify({
+          RESEARCH_EVIDENCE_PAGE: repaired,
+          PENDING_TABLES: repaired.APPEND_PENDING ? [CLONE_EVIDENCE_TABLE] : [],
+          RESUME_PENDING: repaired.APPEND_PENDING,
+          DURATION_MS: Date.now() - startedAt,
+          STATUS: "SUCCESS",
+          ...diagnostics,
+          SYNC_STAGE: "COMPLETE",
+        }),
+      );
+      if (repaired.APPEND_PENDING) process.exitCode = 75;
+      return;
+    }
     // Each table is synced in turn. A spent page budget on an earlier table is a
     // resumable `*_PENDING` outcome, never a throw, so later tables are not starved
     // and the next scheduled run continues from the durable checkpoints/cursors.

@@ -339,8 +339,8 @@ test("production primary_evidence_outbox is no longer a generic raw SYNC_SPECS t
   const specs = SCRIPT.slice(SCRIPT.indexOf("const SPECS"), SCRIPT.indexOf("const EMPTY_TABLE_EVIDENCE"));
   assert.equal(specs.includes('table: "primary_evidence_outbox"'), false);
   assert.equal(/\|\s*"primary_evidence_outbox"/.test(SCRIPT), false, "TableName no longer includes primary_evidence_outbox");
-  assert.match(SCRIPT, /source\.rpc\("research_evidence_page_v2", args\)/);
-  assert.equal(/source\.rpc\("research_evidence_page",/.test(SCRIPT), false, "runtime never calls the v1 RPC");
+  assert.match(SCRIPT, /source\.rpc\("research_evidence_page_v3", args\)/);
+  assert.equal(/source\.rpc\("research_evidence_page(?:_v2)?",/.test(SCRIPT), false, "runtime never calls v1/v2");
   assert.match(SCRIPT, /syncResearchEvidencePage\(target, source, bootstrapSince\)/);
   assert.match(SCRIPT, /onConflict: CLONE_EVIDENCE_CONFLICT_KEY/);
   assert.match(SCRIPT, /source_kind: CLONE_EVIDENCE_SOURCE_KIND/);
@@ -387,4 +387,248 @@ test("release contract: v2 migration path/version, index names, no duplicate clo
   assert.ok("20260919080000" > "20260918162403", "version is strictly after live migration head");
   assert.match(CLONE_SCHEMA, /create index if not exists research_evidence_page_rows_window_idx/);
   assert.equal(CLONE_SCHEMA.includes("idx_research_evidence_page_rows_window"), false);
+});
+
+// ───────────────────────────── v3: item-level cursor ─────────────────────────
+
+import {
+  RESEARCH_EVIDENCE_V3_MAX_ROWS,
+  buildEvidencePageV3Args,
+  bootstrapItemCursor,
+  compareItemCursor,
+  nextItemCursor,
+  itemCursorAdvanced,
+  type EvidencePageV3Args,
+} from "../../lib/research-clone/researchEvidenceExport";
+import { resolveRepairArgs, syncResearchEvidencePage } from "../../scripts/research-clone-daily-sync";
+
+const SQL_V3 = readFileSync(repoRoot + "supabase/migrations/20260919100000_research_evidence_page_v3.sql", "utf8");
+const EXEC_V3 = SQL_V3.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
+
+test("v3 migration: new function, item cursor, 500-row bound, v1/v2 untouched, no new index", () => {
+  assert.match(SQL_V3, /CREATE OR REPLACE FUNCTION public\.research_evidence_page_v3\(/);
+  assert.match(SQL_V3, /p_after_item_observation_id uuid/);
+  assert.match(SQL_V3, /p_max_rows integer DEFAULT 500/);
+  assert.match(SQL_V3, /LIMIT LEAST\(GREATEST\(COALESCE\(p_max_rows, 500\), 1\), 500\)/);
+  assert.match(SQL_V3, /\(f\.env_at, f\.env_id, f\.item_id\) > \(v_after_at, v_after_env, v_after_item\)/);
+  assert.match(SQL_V3, /ORDER BY f\.env_at, f\.env_id, f\.item_id/);
+  // envelope lookup starts AT the cursor envelope so a partially returned envelope can resume
+  assert.match(SQL_V3, /\(o\.observed_at, o\.observation_id\) >= \(v_after_at, v_after_env\)/);
+  assert.match(SQL_V3, /SET statement_timeout = '5s'/);
+  assert.match(EXEC_V3, /\bSTABLE\b/);
+  assert.match(EXEC_V3, /SECURITY INVOKER/);
+  assert.match(EXEC_V3, /SET search_path = public, pg_temp/);
+  assert.match(SQL_V3, /requires an explicit p_until/);
+  assert.match(SQL_V3, /GRANT EXECUTE ON FUNCTION public\.research_evidence_page_v3[\s\S]{0,200}TO service_role/);
+  assert.match(SQL_V3, /REVOKE ALL ON FUNCTION public\.research_evidence_page_v3[\s\S]{0,200}FROM PUBLIC, anon, authenticated/);
+  assert.equal(/\bOFFSET\b/i.test(EXEC_V3), false);
+  assert.equal(/CREATE\s+(?:UNIQUE\s+)?INDEX/i.test(EXEC_V3), false, "no equivalent index is re-created");
+  assert.equal(
+    /(?:DROP|ALTER|CREATE(?: OR REPLACE)?)\s+FUNCTION(?: IF EXISTS)?\s+public\.research_evidence_page(?:_v2)?\(/.test(EXEC_V3),
+    false,
+    "v1/v2 preserved",
+  );
+  assert.equal(/publish_primary_signal_observation/.test(EXEC_V3), false);
+  const returnsBlock = SQL_V3.slice(SQL_V3.indexOf("RETURNS TABLE ("), SQL_V3.indexOf("LANGUAGE plpgsql"));
+  assert.equal(returnsBlock.includes("evidence_rows"), false);
+  for (const col of ["volume_semantic text", "selected_outcome text", "data_coverage numeric", "market_type text", "volume_usd numeric"]) {
+    assert.ok(returnsBlock.includes(col), col);
+  }
+  assert.match(SQL_V3, /providerEventContext'->>'marketType'/);
+  assert.match(SQL_V3, /parentEventVolume24hr/);
+});
+
+test("v3 client contract: item cursor args, 500-row bound, explicit until", () => {
+  assert.equal(RESEARCH_EVIDENCE_V3_MAX_ROWS, 500);
+  const c = bootstrapItemCursor("2026-09-09T00:00:00Z");
+  const a = buildEvidencePageV3Args(c, "2026-09-20T00:00:00Z");
+  assert.deepEqual(Object.keys(a).sort(), [
+    "p_after_item_observation_id", "p_after_observation_id", "p_after_observed_at", "p_max_rows", "p_until",
+  ]);
+  assert.equal(a.p_max_rows, 500);
+  assert.throws(() => buildEvidencePageV3Args(c, "2026-09-20T00:00:00Z", 501), ResearchExportContractError);
+  assert.throws(() => buildEvidencePageV3Args(c, ""), /UPPER_TIME_BOUND_REQUIRED/);
+  const r = row("2026-09-14T01:00:00.000Z", "env-a", "item-2");
+  const n = nextItemCursor([row("2026-09-14T01:00:00.000Z", "env-a", "item-1"), r], c);
+  assert.deepEqual(n, { observedAt: r.observed_at, observationId: "env-a", itemObservationId: "item-2" });
+  assert.equal(itemCursorAdvanced(c, n), true);
+  assert.equal(compareItemCursor(n, n), 0);
+});
+
+// ---- in-memory simulation of research_evidence_page_v3 SQL semantics --------
+
+type SimEnv = { at: string; id: string; items: string[] };
+const UUID0 = "00000000-0000-0000-0000-000000000000";
+const pad = (n: number, w = 12) => `00000000-0000-0000-0000-${String(n).padStart(w, "0")}`;
+
+function simV3(envs: SimEnv[], a: Record<string, unknown> | EvidencePageV3Args) {
+  const afterAt = Date.parse(a.p_after_observed_at as string);
+  const afterEnv = a.p_after_observation_id as string;
+  const afterItem = a.p_after_item_observation_id as string;
+  const until = Date.parse(a.p_until as string);
+  const cmp = (x: [number, string, string], y: [number, string, string]) =>
+    x[0] !== y[0] ? x[0] - y[0] : x[1] !== y[1] ? (x[1] < y[1] ? -1 : 1) : x[2] === y[2] ? 0 : x[2] < y[2] ? -1 : 1;
+  const window = envs
+    .filter((e) => cmp([Date.parse(e.at), e.id, ""], [afterAt, afterEnv, ""]) >= 0 && Date.parse(e.at) < until)
+    .sort((x, y) => cmp([Date.parse(x.at), x.id, ""], [Date.parse(y.at), y.id, ""]))
+    .slice(0, 20);
+  const flat = window.flatMap((e) => e.items.map((i) => ({ e, i })));
+  return flat
+    .filter((f) => cmp([Date.parse(f.e.at), f.e.id, f.i], [afterAt, afterEnv, afterItem]) > 0)
+    .sort((x, y) => cmp([Date.parse(x.e.at), x.e.id, x.i], [Date.parse(y.e.at), y.e.id, y.i]))
+    .slice(0, Math.min(Math.max(Number(a.p_max_rows ?? 500), 1), 500))
+    .map((f) => row(f.e.at, f.e.id, f.i));
+}
+
+function fakeSource(envs: SimEnv[], calls: Array<{ name: string; args: Record<string, any> }> = []) {
+  return {
+    calls,
+    async rpc(name: string, args: Record<string, unknown>) {
+      calls.push({ name, args });
+      return { data: simV3(envs, args), error: null };
+    },
+  };
+}
+
+/** Minimal chainable clone fake: job_runs (select/eq/order/limit/insert) + narrow rows (select empty / upsert). */
+function fakeTarget(jobRuns: Array<{ source: string; status: string; diagnostics: any }> = []) {
+  const rows = new Map<string, Record<string, unknown>>();
+  const inserts: Array<{ source: string; diagnostics: any }> = [];
+  return {
+    rows,
+    inserts,
+    from(table: string) {
+      const q: any = { table, filters: [] as Array<[string, unknown]> };
+      q.select = () => q;
+      q.eq = (c: string, v: unknown) => (q.filters.push([c, v]), q);
+      q.order = () => q;
+      q.or = () => q;
+      q.limit = () => q;
+      q.then = (res: (v: unknown) => unknown) => {
+        if (table === "job_runs") {
+          const src = q.filters.find((f: [string, unknown]) => f[0] === "source")?.[1];
+          const hit = [...jobRuns].reverse().find((j) => j.source === src);
+          return res({ data: hit ? [{ diagnostics: hit.diagnostics }] : [], error: null });
+        }
+        return res({ data: [], error: null });
+      };
+      q.insert = async (rec: any) => {
+        jobRuns.push(rec);
+        inserts.push(rec);
+        return { error: null };
+      };
+      q.upsert = async (recs: any[], opts: { onConflict: string }) => {
+        assert.equal(opts.onConflict, "observation_id,item_observation_id");
+        for (const r of recs) {
+          assert.equal(r.source_kind, "PRODUCTION_RESEARCH_EVIDENCE_PAGE");
+          rows.set(`${r.observation_id}::${r.item_observation_id}`, r);
+        }
+        return { error: null };
+      };
+      return q;
+    },
+  };
+}
+
+const T0 = "2026-09-19T01:00:00.000Z";
+const envA: SimEnv = { at: T0, id: pad(1), items: Array.from({ length: 1200 }, (_, i) => pad(i + 1)) };
+const envB: SimEnv = { at: "2026-09-19T02:00:00.000Z", id: pad(2), items: Array.from({ length: 300 }, (_, i) => pad(i + 1)) };
+const envC: SimEnv = { at: "2026-09-19T03:00:00.000Z", id: pad(3), items: Array.from({ length: 10 }, (_, i) => pad(i + 1)) };
+const SRC_TOTAL = 1200 + 300 + 10;
+
+test("REGRESSION: a page that ends INSIDE an envelope resumes at the next item of the SAME envelope (no skipped items)", () => {
+  const cursor0 = bootstrapItemCursor(T0);
+  const p1 = simV3([envA, envB, envC], buildEvidencePageV3Args(cursor0, "2026-09-20T00:00:00Z"));
+  assert.equal(p1.length, 500);
+  assert.ok(p1.every((r) => r.observation_id === envA.id), "page 1 lies entirely inside envelope A (1200 items)");
+  const c1 = nextItemCursor(p1, cursor0);
+  assert.equal(c1.observationId, envA.id);
+  assert.equal(c1.itemObservationId, envA.items[499]);
+  const p2 = simV3([envA, envB, envC], buildEvidencePageV3Args(c1, "2026-09-20T00:00:00Z"));
+  assert.equal(p2[0].observation_id, envA.id, "page 2 continues in the same envelope");
+  assert.equal(p2[0].item_observation_id, envA.items[500], "and begins with the NEXT item");
+  // the exact defect: an ENVELOPE-level cursor would have skipped A's remaining 700 items
+  const envelopeLevel = simV3([envA, envB, envC], {
+    ...buildEvidencePageV3Args(c1, "2026-09-20T00:00:00Z"),
+    p_after_item_observation_id: "ffffffff-ffff-ffff-ffff-ffffffffffff",
+  });
+  assert.equal(envelopeLevel[0].observation_id, envB.id, "documents what the old cursor did: jumped to envelope B");
+});
+
+test("multi-envelope boundary: a boundary that cuts an envelope leaves later envelopes reachable; full union equals source", async () => {
+  const source = fakeSource([envA, envB, envC]);
+  const target = fakeTarget();
+  const r = await syncResearchEvidencePage(target, source, "2026-09-19T00:00:00.000Z");
+  assert.equal(target.rows.size, SRC_TOTAL, "two-plus-page union equals the source item count");
+  assert.equal(r.ROWS_WRITTEN, SRC_TOTAL);
+  assert.equal(r.APPEND_PENDING, false);
+  assert.ok(source.calls.every((c) => c.name === "research_evidence_page_v3"));
+  assert.ok(source.calls.every((c) => c.args.p_max_rows === 500 && typeof c.args.p_until === "string"));
+  assert.equal(new Set(source.calls.map((c) => c.args.p_until)).size, 1, "one fixed p_until for the whole run");
+  assert.deepEqual(r.CURSOR_AFTER, { observedAt: envC.at, observationId: envC.id, itemObservationId: envC.items[9] });
+  // idempotent replay writes the same keys, never duplicates
+  const again = await syncResearchEvidencePage(target, fakeSource([envA, envB, envC]), "2026-09-19T00:00:00.000Z");
+  assert.equal(target.rows.size, SRC_TOTAL);
+  assert.equal(again.APPEND_PENDING, false);
+});
+
+test("normal daily mode: durable v3 forward cursor (separate checkpoint source), advanced only after writes", async () => {
+  const jobRuns = [
+    { source: "research-clone-daily-sync-v1:checkpoint:research_evidence_page_rows", status: "success",
+      diagnostics: { watermark: { observed_at: envC.at, observation_id: envC.id } } }, // legacy v2 checkpoint: must be ignored
+    { source: "research-clone-daily-sync-v1:checkpoint:research_evidence_page_rows:v3", status: "success",
+      diagnostics: { watermark: { observed_at: envB.at, observation_id: envB.id, item_observation_id: envB.items[299] } } },
+  ];
+  const source = fakeSource([envA, envB, envC]);
+  const target = fakeTarget(jobRuns);
+  await syncResearchEvidencePage(target, source, null);
+  assert.equal(source.calls[0].args.p_after_observation_id, envB.id, "starts from the v3 forward cursor");
+  assert.equal(source.calls[0].args.p_after_item_observation_id, envB.items[299]);
+  assert.equal(target.rows.size, 10, "only envelope C remained");
+  assert.ok(target.inserts.every((i) => i.source.endsWith(":checkpoint:research_evidence_page_rows:v3")));
+  assert.ok(target.inserts.every((i) => typeof i.diagnostics.watermark.item_observation_id === "string"));
+});
+
+test("--repair-since overrides the forward cursor for repair ONLY, and never touches the normal checkpoint", async () => {
+  assert.equal(resolveRepairArgs(["node", "s"]), null);
+  assert.deepEqual(resolveRepairArgs(["node", "s", "--repair-since", "2026-09-09T00:00:00Z"]), {
+    sinceIso: "2026-09-09T00:00:00.000Z", untilIso: null,
+  });
+  assert.deepEqual(resolveRepairArgs(["node", "s", "--repair-since=2026-09-09T00:00:00Z", "--repair-until=2026-09-19T00:00:00Z"]), {
+    sinceIso: "2026-09-09T00:00:00.000Z", untilIso: "2026-09-19T00:00:00.000Z",
+  });
+  assert.throws(() => resolveRepairArgs(["node", "s", "--repair-until", "2026-09-19T00:00:00Z"]), /REPAIR_UNTIL_REQUIRES_SINCE/);
+  assert.throws(() => resolveRepairArgs(["node", "s", "--repair-since", "nope"]), /REPAIR_ARG_INVALID/);
+  assert.throws(
+    () => resolveRepairArgs(["node", "s", "--repair-since", "2026-09-19T00:00:00Z", "--repair-until", "2026-09-09T00:00:00Z"]),
+    /REPAIR_ARG_INVALID/,
+  );
+
+  const forward = { source: "research-clone-daily-sync-v1:checkpoint:research_evidence_page_rows:v3", status: "success",
+    diagnostics: { watermark: { observed_at: envC.at, observation_id: envC.id, item_observation_id: envC.items[9] } } };
+  const jobRuns = [forward];
+  const source = fakeSource([envA, envB, envC]);
+  const target = fakeTarget(jobRuns);
+  const r = await syncResearchEvidencePage(target, source, null, { sinceIso: T0, untilIso: "2026-09-20T00:00:00.000Z" });
+  assert.equal(r.MODE, "REPAIR");
+  assert.equal(source.calls[0].args.p_after_observed_at, new Date(Date.parse(T0) - 1).toISOString(), "starts at the repair boundary, not the forward cursor");
+  assert.equal(target.rows.size, SRC_TOTAL, "repair restored every item although the forward cursor was already at the end");
+  assert.ok(target.inserts.every((i) => i.source.endsWith(":repair-cursor:research_evidence_page_rows:v3")), "only the repair cursor is written");
+  assert.equal(jobRuns.filter((j) => j.source === forward.source).length, 1, "normal checkpoint untouched (no reset, no move)");
+  assert.equal(target.inserts.at(-1)!.diagnostics.complete, true);
+  assert.equal(r.P_UNTIL, "2026-09-20T00:00:00.000Z");
+  // repair upserts are idempotent on the same clone conflict key
+  const again = await syncResearchEvidencePage(target, fakeSource([envA, envB, envC]), null, { sinceIso: T0, untilIso: "2026-09-20T00:00:00.000Z" });
+  assert.equal(target.rows.size, SRC_TOTAL);
+  assert.equal(again.APPEND_PENDING, false);
+});
+
+test("repair mode is finitely bounded and resumable; runtime uses v3 only", () => {
+  const src = readFileSync(repoRoot + "scripts/research-clone-daily-sync.ts", "utf8");
+  assert.match(src, /MAX_REPAIR_EVIDENCE_PAGES = 500/);
+  assert.ok(500 * RESEARCH_EVIDENCE_V3_MAX_ROWS >= 194090, "repair page budget covers the measured window");
+  assert.match(src, /source\.rpc\("research_evidence_page_v3", args\)/);
+  assert.equal(/source\.rpc\("research_evidence_page(?:_v2)?",/.test(src), false);
+  assert.match(src, /checkpoint:\$\{CLONE_EVIDENCE_TABLE\}:v3/);
+  assert.match(src, /repair-cursor:\$\{CLONE_EVIDENCE_TABLE\}:v3/);
 });
