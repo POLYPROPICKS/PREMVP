@@ -1,0 +1,7338 @@
+{
+  "ARTIFACT": "DAILY_PORTFOLIO_FRONTIER_V1",
+  "RANGE": {
+    "START": "2026-08-04",
+    "END": "2026-08-31"
+  },
+  "PARTITION_HASHES": {
+    "2026-08-04": "8548378e3eb2d9a9e95098c8e3e2664498ca453d24e8843bc62579607223fda1",
+    "2026-08-05": "2aba9363192f51b94f14bbf5b445659666af5454ffc003038c25ff879dace033",
+    "2026-08-06": "9bbefd28ede4b80642524eab5d04f97812f231c2c6b9839d669a39ae9ec395bf",
+    "2026-08-07": "b7ab559e65ea47c0a8a9ce2795a44390f75fa80df94a64b86ecb57e38630e814",
+    "2026-08-08": "52ff5d624c28705550082ac746bbed3699d22bfda7d15a3f131074f6a3899857",
+    "2026-08-09": "be32d2215c0d1174e442327de79b743cc23df0907878a4f722568989ab44eb4b",
+    "2026-08-10": "1a9e644d9ec5471173e7d020b5fcef06d442b25a9accf6fe63ba8abb07bee8f9",
+    "2026-08-11": "9ed792d412db7e4b68fba1396adadcf2de90989f4972669341c5a1c91f7cf4dc",
+    "2026-08-12": "a1b79ebebe19a8bafffbddc588245258e06e6f902b9b30a2543b2028e85c5e56",
+    "2026-08-13": "22be899a7450d53aa7e90847501c3e2801ff3e25d216acc98c2c9e3c5993267d",
+    "2026-08-14": "1205ed2f796b6d667c65226f23cd4c85ee0d93bb0e49fd088a48102db921cbb4",
+    "2026-08-15": "456340b55b9e207e11d8e9a3e79ac632b23eb5346f5a799a32e9a6882e435f7f",
+    "2026-08-16": "685c55d196677d09f51bd4b67b6560f84d7eeabae76bf6f13f5d64fabd3caff9",
+    "2026-08-17": "2a237eb6f21be3c9bde46106a36fa820cf14a43df37e524cf7ea73479746c817",
+    "2026-08-18": "83ebd492ee20bee121cf4eb6cb203499f0810cf66adca7232d0ef5794673ac5f",
+    "2026-08-19": "9b66d2a932bc8c968f65ebdb72cb56b5d7b936c59fc4ad70b25876182717f793",
+    "2026-08-20": "d719d6da8f84d60a40d259c36560b1c2b28e23d2ed0fe9b12f0621c7a869d47d",
+    "2026-08-21": "7d41c3ea901e796dd72aa23a3cf6e2acd6142d52b3c33f99b4bf7131fe1974f6",
+    "2026-08-22": "f2266b0b113830e0dc7c5f40d9a994be93da6dfea2163c7f1828c3c33c24f4af",
+    "2026-08-23": "344592832483764ace6cf047582d31c5470168a4b0828c309024f4dc1af4d0d5",
+    "2026-08-24": "03361b87c8fea02e05d9be50e2003a3ab4a406461ec5157d7cf1c42ff73ad630",
+    "2026-08-25": "e3e028a4ad649a52855a30a8f9beb9372485272d3594ffa8e6f6e829da4a153c",
+    "2026-08-26": "ca14195233000fe1c8ed86fba04c4fab0dbf790c711bfe6951faa1063ca54896",
+    "2026-08-27": "b8d69fbfe3ae1334105558f2a134860ed1bf8defddf07d6c63798b88e2350b08",
+    "2026-08-28": "3bd8e76e21a0a9665bebdd144c3c818af0124049ef16b5c0b2c34673a461366d",
+    "2026-08-29": "66889b4bf0d0d62747b53318b637ba2825bb676982d74275ab9303838ee2c628",
+    "2026-08-30": "d73f547d2494a4c05748dc333dd948ad0a8d90a5336d624a582f62fd42d03a59",
+    "2026-08-31": "c46668b3f570da8c282e1cea30432e5337f006670be9fe611cfbb73989719ed1"
+  },
+  "PIT_FUTURE_LEAK_N": 0,
+  "C0_PARITY": {
+    "SEP_PUBLIC_RICH_V1": {
+      "PASS": true,
+      "expected": {
+        "events": 239,
+        "wins": 159,
+        "losses": 80,
+        "pnl_u": 74.56,
+        "roi_pct": 31.1952,
+        "max_drawdown_u": -20.33
+      },
+      "actual": {
+        "events": 239,
+        "wins": 159,
+        "losses": 80,
+        "pnl_u": 74.56,
+        "roi_pct": 31.1952,
+        "max_drawdown_u": -20.33
+      }
+    },
+    "SEP_SHADOW_STRATEGIC_V1": {
+      "PASS": true,
+      "expected": {
+        "events": 624,
+        "wins": 313,
+        "losses": 311,
+        "pnl_u": -12.46,
+        "roi_pct": -1.9964,
+        "max_drawdown_u": -42.62
+      },
+      "actual": {
+        "events": 624,
+        "wins": 313,
+        "losses": 311,
+        "pnl_u": -12.46,
+        "roi_pct": -1.9964,
+        "max_drawdown_u": -42.62
+      }
+    }
+  },
+  "STRATEGY_DEFINITIONS": {
+    "STANDALONE": [
+      "C0",
+      "P50_52",
+      "P50_54",
+      "SCORE63_64",
+      "SCORE63_64_P50_52",
+      "TENNIS",
+      "TENNIS_P50_52",
+      "LEAD12_18",
+      "TENNIS_LEAD12_18",
+      "TENNIS_LEAD18_24"
+    ],
+    "PORTFOLIOS": {
+      "PORTFOLIO_DUAL": 2,
+      "PORTFOLIO_BROAD": 3,
+      "PORTFOLIO_C0_FILL": 4
+    }
+  },
+  "UNCAPPED_RESULTS": {
+    "SEP_PUBLIC_RICH_V1::C0": {
+      "events": 239,
+      "wins": 159,
+      "losses": 80,
+      "pnl_u": 74.56,
+      "roi_pct": 31.1952,
+      "max_drawdown_u": -18.12,
+      "active_day_n": 15,
+      "mean_events_per_active_day": 15.9333,
+      "median_events_per_active_day": 5,
+      "p25_events_per_active_day": 1,
+      "p75_events_per_active_day": 31.5,
+      "mean_daily_pnl_u": 2.6629,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 4.9707,
+      "positive_pnl_day_n": 8,
+      "negative_pnl_day_n": 7,
+      "zero_pnl_day_n": 13,
+      "best_day_pnl_u": 50.52,
+      "worst_day_pnl_u": -9.23,
+      "p25_daily_pnl_u": -0.25,
+      "p75_daily_pnl_u": 0.9325,
+      "days_supply_ge_15": 6,
+      "days_supply_ge_20": 5,
+      "days_supply_ge_30": 5,
+      "days_supply_ge_40": 2,
+      "days_supply_ge_50": 1
+    },
+    "SEP_PUBLIC_RICH_V1::P50_52": {
+      "events": 204,
+      "wins": 137,
+      "losses": 67,
+      "pnl_u": 69.67,
+      "roi_pct": 34.1504,
+      "max_drawdown_u": -21.33,
+      "active_day_n": 15,
+      "mean_events_per_active_day": 13.6,
+      "median_events_per_active_day": 5,
+      "p25_events_per_active_day": 1,
+      "p75_events_per_active_day": 25.5,
+      "mean_daily_pnl_u": 2.4879,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 4.6447,
+      "positive_pnl_day_n": 7,
+      "negative_pnl_day_n": 8,
+      "zero_pnl_day_n": 13,
+      "best_day_pnl_u": 50,
+      "worst_day_pnl_u": -8.06,
+      "p25_daily_pnl_u": -1,
+      "p75_daily_pnl_u": 0.25,
+      "days_supply_ge_15": 6,
+      "days_supply_ge_20": 5,
+      "days_supply_ge_30": 2,
+      "days_supply_ge_40": 1,
+      "days_supply_ge_50": 1
+    },
+    "SEP_PUBLIC_RICH_V1::P50_54": {
+      "events": 220,
+      "wins": 148,
+      "losses": 72,
+      "pnl_u": 74.56,
+      "roi_pct": 33.8921,
+      "max_drawdown_u": -18.21,
+      "active_day_n": 15,
+      "mean_events_per_active_day": 14.6667,
+      "median_events_per_active_day": 5,
+      "p25_events_per_active_day": 1,
+      "p75_events_per_active_day": 28,
+      "mean_daily_pnl_u": 2.6629,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 4.9707,
+      "positive_pnl_day_n": 7,
+      "negative_pnl_day_n": 8,
+      "zero_pnl_day_n": 13,
+      "best_day_pnl_u": 50,
+      "worst_day_pnl_u": -6.23,
+      "p25_daily_pnl_u": -0.4525,
+      "p75_daily_pnl_u": 0.25,
+      "days_supply_ge_15": 6,
+      "days_supply_ge_20": 5,
+      "days_supply_ge_30": 3,
+      "days_supply_ge_40": 1,
+      "days_supply_ge_50": 1
+    },
+    "SEP_PUBLIC_RICH_V1::SCORE63_64": {
+      "events": 187,
+      "wins": 123,
+      "losses": 64,
+      "pnl_u": 58.67,
+      "roi_pct": 31.3726,
+      "max_drawdown_u": -22.33,
+      "active_day_n": 13,
+      "mean_events_per_active_day": 14.3846,
+      "median_events_per_active_day": 3,
+      "p25_events_per_active_day": 2,
+      "p75_events_per_active_day": 25,
+      "mean_daily_pnl_u": 2.095,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 4.5131,
+      "positive_pnl_day_n": 5,
+      "negative_pnl_day_n": 7,
+      "zero_pnl_day_n": 16,
+      "best_day_pnl_u": 46,
+      "worst_day_pnl_u": -9.06,
+      "p25_daily_pnl_u": -0.25,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 6,
+      "days_supply_ge_20": 5,
+      "days_supply_ge_30": 2,
+      "days_supply_ge_40": 1,
+      "days_supply_ge_50": 1
+    },
+    "SEP_PUBLIC_RICH_V1::SCORE63_64_P50_52": {
+      "events": 187,
+      "wins": 123,
+      "losses": 64,
+      "pnl_u": 58.67,
+      "roi_pct": 31.3726,
+      "max_drawdown_u": -22.33,
+      "active_day_n": 13,
+      "mean_events_per_active_day": 14.3846,
+      "median_events_per_active_day": 3,
+      "p25_events_per_active_day": 2,
+      "p75_events_per_active_day": 25,
+      "mean_daily_pnl_u": 2.095,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 4.5131,
+      "positive_pnl_day_n": 5,
+      "negative_pnl_day_n": 7,
+      "zero_pnl_day_n": 16,
+      "best_day_pnl_u": 46,
+      "worst_day_pnl_u": -9.06,
+      "p25_daily_pnl_u": -0.25,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 6,
+      "days_supply_ge_20": 5,
+      "days_supply_ge_30": 2,
+      "days_supply_ge_40": 1,
+      "days_supply_ge_50": 1
+    },
+    "SEP_PUBLIC_RICH_V1::TENNIS": {
+      "events": 94,
+      "wins": 91,
+      "losses": 3,
+      "pnl_u": 87.83,
+      "roi_pct": 93.4413,
+      "max_drawdown_u": -2,
+      "active_day_n": 6,
+      "mean_events_per_active_day": 15.6667,
+      "median_events_per_active_day": 3.5,
+      "p25_events_per_active_day": 1.5,
+      "p75_events_per_active_day": 22.75,
+      "mean_daily_pnl_u": 3.1368,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 14.6383,
+      "positive_pnl_day_n": 6,
+      "negative_pnl_day_n": 0,
+      "zero_pnl_day_n": 22,
+      "best_day_pnl_u": 51.83,
+      "worst_day_pnl_u": 0,
+      "p25_daily_pnl_u": 0,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 2,
+      "days_supply_ge_20": 2,
+      "days_supply_ge_30": 1,
+      "days_supply_ge_40": 1,
+      "days_supply_ge_50": 1
+    },
+    "SEP_PUBLIC_RICH_V1::TENNIS_P50_52": {
+      "events": 93,
+      "wins": 90,
+      "losses": 3,
+      "pnl_u": 87,
+      "roi_pct": 93.5484,
+      "max_drawdown_u": -2,
+      "active_day_n": 6,
+      "mean_events_per_active_day": 15.5,
+      "median_events_per_active_day": 3.5,
+      "p25_events_per_active_day": 1.5,
+      "p75_events_per_active_day": 22.75,
+      "mean_daily_pnl_u": 3.1071,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 14.5,
+      "positive_pnl_day_n": 6,
+      "negative_pnl_day_n": 0,
+      "zero_pnl_day_n": 22,
+      "best_day_pnl_u": 51,
+      "worst_day_pnl_u": 0,
+      "p25_daily_pnl_u": 0,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 2,
+      "days_supply_ge_20": 2,
+      "days_supply_ge_30": 1,
+      "days_supply_ge_40": 1,
+      "days_supply_ge_50": 1
+    },
+    "SEP_PUBLIC_RICH_V1::LEAD12_18": {
+      "events": 86,
+      "wins": 60,
+      "losses": 26,
+      "pnl_u": 32.71,
+      "roi_pct": 38.0401,
+      "max_drawdown_u": -6.32,
+      "active_day_n": 7,
+      "mean_events_per_active_day": 12.2857,
+      "median_events_per_active_day": 8,
+      "p25_events_per_active_day": 5.5,
+      "p75_events_per_active_day": 20,
+      "mean_daily_pnl_u": 1.1682,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 4.6729,
+      "positive_pnl_day_n": 4,
+      "negative_pnl_day_n": 2,
+      "zero_pnl_day_n": 22,
+      "best_day_pnl_u": 23.68,
+      "worst_day_pnl_u": -3.68,
+      "p25_daily_pnl_u": 0,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 3,
+      "days_supply_ge_20": 2,
+      "days_supply_ge_30": 0,
+      "days_supply_ge_40": 0,
+      "days_supply_ge_50": 0
+    },
+    "SEP_PUBLIC_RICH_V1::TENNIS_LEAD12_18": {
+      "events": 32,
+      "wins": 32,
+      "losses": 0,
+      "pnl_u": 32,
+      "roi_pct": 100,
+      "max_drawdown_u": 0,
+      "active_day_n": 2,
+      "mean_events_per_active_day": 16,
+      "median_events_per_active_day": 16,
+      "p25_events_per_active_day": 12,
+      "p75_events_per_active_day": 20,
+      "mean_daily_pnl_u": 1.1429,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 16,
+      "positive_pnl_day_n": 2,
+      "negative_pnl_day_n": 0,
+      "zero_pnl_day_n": 26,
+      "best_day_pnl_u": 24,
+      "worst_day_pnl_u": 0,
+      "p25_daily_pnl_u": 0,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 1,
+      "days_supply_ge_20": 1,
+      "days_supply_ge_30": 0,
+      "days_supply_ge_40": 0,
+      "days_supply_ge_50": 0
+    },
+    "SEP_PUBLIC_RICH_V1::TENNIS_LEAD18_24": {
+      "events": 40,
+      "wins": 40,
+      "losses": 0,
+      "pnl_u": 40,
+      "roi_pct": 100,
+      "max_drawdown_u": 0,
+      "active_day_n": 2,
+      "mean_events_per_active_day": 20,
+      "median_events_per_active_day": 20,
+      "p25_events_per_active_day": 19.5,
+      "p75_events_per_active_day": 20.5,
+      "mean_daily_pnl_u": 1.4286,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 20,
+      "positive_pnl_day_n": 2,
+      "negative_pnl_day_n": 0,
+      "zero_pnl_day_n": 26,
+      "best_day_pnl_u": 21,
+      "worst_day_pnl_u": 0,
+      "p25_daily_pnl_u": 0,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 2,
+      "days_supply_ge_20": 1,
+      "days_supply_ge_30": 0,
+      "days_supply_ge_40": 0,
+      "days_supply_ge_50": 0
+    },
+    "SEP_PUBLIC_RICH_V1::PORTFOLIO_DUAL": {
+      "events": 204,
+      "wins": 137,
+      "losses": 67,
+      "pnl_u": 69.67,
+      "roi_pct": 34.1504,
+      "max_drawdown_u": -21.33,
+      "active_day_n": 15,
+      "mean_events_per_active_day": 13.6,
+      "median_events_per_active_day": 5,
+      "p25_events_per_active_day": 1,
+      "p75_events_per_active_day": 25.5,
+      "mean_daily_pnl_u": 2.4879,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 4.6447,
+      "positive_pnl_day_n": 7,
+      "negative_pnl_day_n": 8,
+      "zero_pnl_day_n": 13,
+      "best_day_pnl_u": 50,
+      "worst_day_pnl_u": -8.06,
+      "p25_daily_pnl_u": -1,
+      "p75_daily_pnl_u": 0.25,
+      "days_supply_ge_15": 6,
+      "days_supply_ge_20": 5,
+      "days_supply_ge_30": 2,
+      "days_supply_ge_40": 1,
+      "days_supply_ge_50": 1
+    },
+    "SEP_PUBLIC_RICH_V1::PORTFOLIO_BROAD": {
+      "events": 220,
+      "wins": 147,
+      "losses": 73,
+      "pnl_u": 72.7,
+      "roi_pct": 33.044,
+      "max_drawdown_u": -20.07,
+      "active_day_n": 15,
+      "mean_events_per_active_day": 14.6667,
+      "median_events_per_active_day": 5,
+      "p25_events_per_active_day": 1,
+      "p75_events_per_active_day": 28,
+      "mean_daily_pnl_u": 2.5961,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 4.8467,
+      "positive_pnl_day_n": 7,
+      "negative_pnl_day_n": 8,
+      "zero_pnl_day_n": 13,
+      "best_day_pnl_u": 50,
+      "worst_day_pnl_u": -8.15,
+      "p25_daily_pnl_u": -0.4525,
+      "p75_daily_pnl_u": 0.25,
+      "days_supply_ge_15": 6,
+      "days_supply_ge_20": 5,
+      "days_supply_ge_30": 3,
+      "days_supply_ge_40": 1,
+      "days_supply_ge_50": 1
+    },
+    "SEP_PUBLIC_RICH_V1::PORTFOLIO_C0_FILL": {
+      "events": 239,
+      "wins": 157,
+      "losses": 82,
+      "pnl_u": 71.27,
+      "roi_pct": 29.8188,
+      "max_drawdown_u": -21.59,
+      "active_day_n": 15,
+      "mean_events_per_active_day": 15.9333,
+      "median_events_per_active_day": 5,
+      "p25_events_per_active_day": 1,
+      "p75_events_per_active_day": 31.5,
+      "mean_daily_pnl_u": 2.5454,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 4.7513,
+      "positive_pnl_day_n": 8,
+      "negative_pnl_day_n": 7,
+      "zero_pnl_day_n": 13,
+      "best_day_pnl_u": 50.52,
+      "worst_day_pnl_u": -11.15,
+      "p25_daily_pnl_u": -0.25,
+      "p75_daily_pnl_u": 1,
+      "days_supply_ge_15": 6,
+      "days_supply_ge_20": 5,
+      "days_supply_ge_30": 5,
+      "days_supply_ge_40": 2,
+      "days_supply_ge_50": 1
+    },
+    "SEP_SHADOW_STRATEGIC_V1::C0": {
+      "events": 624,
+      "wins": 313,
+      "losses": 311,
+      "pnl_u": -12.46,
+      "roi_pct": -1.9964,
+      "max_drawdown_u": -42.7,
+      "active_day_n": 27,
+      "mean_events_per_active_day": 23.1111,
+      "median_events_per_active_day": 6,
+      "p25_events_per_active_day": 3,
+      "p75_events_per_active_day": 38,
+      "mean_daily_pnl_u": -0.445,
+      "median_daily_pnl_u": -0.74,
+      "pnl_per_active_day": -0.4615,
+      "positive_pnl_day_n": 10,
+      "negative_pnl_day_n": 17,
+      "zero_pnl_day_n": 1,
+      "best_day_pnl_u": 13.33,
+      "worst_day_pnl_u": -13.79,
+      "p25_daily_pnl_u": -1.8325,
+      "p75_daily_pnl_u": 1.1375,
+      "days_supply_ge_15": 13,
+      "days_supply_ge_20": 10,
+      "days_supply_ge_30": 8,
+      "days_supply_ge_40": 6,
+      "days_supply_ge_50": 4
+    },
+    "SEP_SHADOW_STRATEGIC_V1::P50_52": {
+      "events": 488,
+      "wins": 244,
+      "losses": 244,
+      "pnl_u": -1.29,
+      "roi_pct": -0.265,
+      "max_drawdown_u": -34.53,
+      "active_day_n": 20,
+      "mean_events_per_active_day": 24.4,
+      "median_events_per_active_day": 15.5,
+      "p25_events_per_active_day": 3.5,
+      "p75_events_per_active_day": 33.5,
+      "mean_daily_pnl_u": -0.0468,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": -0.0645,
+      "positive_pnl_day_n": 7,
+      "negative_pnl_day_n": 10,
+      "zero_pnl_day_n": 11,
+      "best_day_pnl_u": 14.65,
+      "worst_day_pnl_u": -9.14,
+      "p25_daily_pnl_u": -1.25,
+      "p75_daily_pnl_u": 0.245,
+      "days_supply_ge_15": 10,
+      "days_supply_ge_20": 9,
+      "days_supply_ge_30": 6,
+      "days_supply_ge_40": 4,
+      "days_supply_ge_50": 2
+    },
+    "SEP_SHADOW_STRATEGIC_V1::P50_54": {
+      "events": 534,
+      "wins": 265,
+      "losses": 269,
+      "pnl_u": -7.46,
+      "roi_pct": -1.3965,
+      "max_drawdown_u": -36.71,
+      "active_day_n": 22,
+      "mean_events_per_active_day": 24.2727,
+      "median_events_per_active_day": 13,
+      "p25_events_per_active_day": 2.25,
+      "p75_events_per_active_day": 34.25,
+      "mean_daily_pnl_u": -0.2668,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": -0.3391,
+      "positive_pnl_day_n": 9,
+      "negative_pnl_day_n": 11,
+      "zero_pnl_day_n": 8,
+      "best_day_pnl_u": 12.53,
+      "worst_day_pnl_u": -9.12,
+      "p25_daily_pnl_u": -2,
+      "p75_daily_pnl_u": 0.8775,
+      "days_supply_ge_15": 10,
+      "days_supply_ge_20": 10,
+      "days_supply_ge_30": 8,
+      "days_supply_ge_40": 4,
+      "days_supply_ge_50": 2
+    },
+    "SEP_SHADOW_STRATEGIC_V1::SCORE63_64": {
+      "events": 0,
+      "wins": 0,
+      "losses": 0,
+      "pnl_u": 0,
+      "roi_pct": 0,
+      "max_drawdown_u": 0,
+      "active_day_n": 0,
+      "mean_events_per_active_day": 0,
+      "median_events_per_active_day": 0,
+      "p25_events_per_active_day": 0,
+      "p75_events_per_active_day": 0,
+      "mean_daily_pnl_u": 0,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 0,
+      "positive_pnl_day_n": 0,
+      "negative_pnl_day_n": 0,
+      "zero_pnl_day_n": 28,
+      "best_day_pnl_u": 0,
+      "worst_day_pnl_u": 0,
+      "p25_daily_pnl_u": 0,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 0,
+      "days_supply_ge_20": 0,
+      "days_supply_ge_30": 0,
+      "days_supply_ge_40": 0,
+      "days_supply_ge_50": 0
+    },
+    "SEP_SHADOW_STRATEGIC_V1::SCORE63_64_P50_52": {
+      "events": 0,
+      "wins": 0,
+      "losses": 0,
+      "pnl_u": 0,
+      "roi_pct": 0,
+      "max_drawdown_u": 0,
+      "active_day_n": 0,
+      "mean_events_per_active_day": 0,
+      "median_events_per_active_day": 0,
+      "p25_events_per_active_day": 0,
+      "p75_events_per_active_day": 0,
+      "mean_daily_pnl_u": 0,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 0,
+      "positive_pnl_day_n": 0,
+      "negative_pnl_day_n": 0,
+      "zero_pnl_day_n": 28,
+      "best_day_pnl_u": 0,
+      "worst_day_pnl_u": 0,
+      "p25_daily_pnl_u": 0,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 0,
+      "days_supply_ge_20": 0,
+      "days_supply_ge_30": 0,
+      "days_supply_ge_40": 0,
+      "days_supply_ge_50": 0
+    },
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS": {
+      "events": 3,
+      "wins": 2,
+      "losses": 1,
+      "pnl_u": 0.66,
+      "roi_pct": 22.029,
+      "max_drawdown_u": -1,
+      "active_day_n": 1,
+      "mean_events_per_active_day": 3,
+      "median_events_per_active_day": 3,
+      "p25_events_per_active_day": 3,
+      "p75_events_per_active_day": 3,
+      "mean_daily_pnl_u": 0.0236,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 0.66,
+      "positive_pnl_day_n": 1,
+      "negative_pnl_day_n": 0,
+      "zero_pnl_day_n": 27,
+      "best_day_pnl_u": 0.66,
+      "worst_day_pnl_u": 0,
+      "p25_daily_pnl_u": 0,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 0,
+      "days_supply_ge_20": 0,
+      "days_supply_ge_30": 0,
+      "days_supply_ge_40": 0,
+      "days_supply_ge_50": 0
+    },
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS_P50_52": {
+      "events": 2,
+      "wins": 1,
+      "losses": 1,
+      "pnl_u": -0.02,
+      "roi_pct": -0.9901,
+      "max_drawdown_u": -1,
+      "active_day_n": 1,
+      "mean_events_per_active_day": 2,
+      "median_events_per_active_day": 2,
+      "p25_events_per_active_day": 2,
+      "p75_events_per_active_day": 2,
+      "mean_daily_pnl_u": -0.0007,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": -0.02,
+      "positive_pnl_day_n": 0,
+      "negative_pnl_day_n": 1,
+      "zero_pnl_day_n": 27,
+      "best_day_pnl_u": 0,
+      "worst_day_pnl_u": -0.02,
+      "p25_daily_pnl_u": 0,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 0,
+      "days_supply_ge_20": 0,
+      "days_supply_ge_30": 0,
+      "days_supply_ge_40": 0,
+      "days_supply_ge_50": 0
+    },
+    "SEP_SHADOW_STRATEGIC_V1::LEAD12_18": {
+      "events": 122,
+      "wins": 61,
+      "losses": 61,
+      "pnl_u": -2.92,
+      "roi_pct": -2.3922,
+      "max_drawdown_u": -10,
+      "active_day_n": 16,
+      "mean_events_per_active_day": 7.625,
+      "median_events_per_active_day": 5.5,
+      "p25_events_per_active_day": 2,
+      "p75_events_per_active_day": 9,
+      "mean_daily_pnl_u": -0.105,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": -0.1825,
+      "positive_pnl_day_n": 6,
+      "negative_pnl_day_n": 9,
+      "zero_pnl_day_n": 13,
+      "best_day_pnl_u": 2.9,
+      "worst_day_pnl_u": -5,
+      "p25_daily_pnl_u": -1,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 2,
+      "days_supply_ge_20": 1,
+      "days_supply_ge_30": 1,
+      "days_supply_ge_40": 0,
+      "days_supply_ge_50": 0
+    },
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS_LEAD12_18": {
+      "events": 1,
+      "wins": 1,
+      "losses": 0,
+      "pnl_u": 0.68,
+      "roi_pct": 68.0672,
+      "max_drawdown_u": 0,
+      "active_day_n": 1,
+      "mean_events_per_active_day": 1,
+      "median_events_per_active_day": 1,
+      "p25_events_per_active_day": 1,
+      "p75_events_per_active_day": 1,
+      "mean_daily_pnl_u": 0.0243,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 0.68,
+      "positive_pnl_day_n": 1,
+      "negative_pnl_day_n": 0,
+      "zero_pnl_day_n": 27,
+      "best_day_pnl_u": 0.68,
+      "worst_day_pnl_u": 0,
+      "p25_daily_pnl_u": 0,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 0,
+      "days_supply_ge_20": 0,
+      "days_supply_ge_30": 0,
+      "days_supply_ge_40": 0,
+      "days_supply_ge_50": 0
+    },
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS_LEAD18_24": {
+      "events": 0,
+      "wins": 0,
+      "losses": 0,
+      "pnl_u": 0,
+      "roi_pct": 0,
+      "max_drawdown_u": 0,
+      "active_day_n": 0,
+      "mean_events_per_active_day": 0,
+      "median_events_per_active_day": 0,
+      "p25_events_per_active_day": 0,
+      "p75_events_per_active_day": 0,
+      "mean_daily_pnl_u": 0,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": 0,
+      "positive_pnl_day_n": 0,
+      "negative_pnl_day_n": 0,
+      "zero_pnl_day_n": 28,
+      "best_day_pnl_u": 0,
+      "worst_day_pnl_u": 0,
+      "p25_daily_pnl_u": 0,
+      "p75_daily_pnl_u": 0,
+      "days_supply_ge_15": 0,
+      "days_supply_ge_20": 0,
+      "days_supply_ge_30": 0,
+      "days_supply_ge_40": 0,
+      "days_supply_ge_50": 0
+    },
+    "SEP_SHADOW_STRATEGIC_V1::PORTFOLIO_DUAL": {
+      "events": 488,
+      "wins": 244,
+      "losses": 244,
+      "pnl_u": -1.29,
+      "roi_pct": -0.265,
+      "max_drawdown_u": -34.53,
+      "active_day_n": 20,
+      "mean_events_per_active_day": 24.4,
+      "median_events_per_active_day": 15.5,
+      "p25_events_per_active_day": 3.5,
+      "p75_events_per_active_day": 33.5,
+      "mean_daily_pnl_u": -0.0468,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": -0.0645,
+      "positive_pnl_day_n": 7,
+      "negative_pnl_day_n": 10,
+      "zero_pnl_day_n": 11,
+      "best_day_pnl_u": 14.65,
+      "worst_day_pnl_u": -9.14,
+      "p25_daily_pnl_u": -1.25,
+      "p75_daily_pnl_u": 0.245,
+      "days_supply_ge_15": 10,
+      "days_supply_ge_20": 9,
+      "days_supply_ge_30": 6,
+      "days_supply_ge_40": 4,
+      "days_supply_ge_50": 2
+    },
+    "SEP_SHADOW_STRATEGIC_V1::PORTFOLIO_BROAD": {
+      "events": 534,
+      "wins": 265,
+      "losses": 269,
+      "pnl_u": -7.34,
+      "roi_pct": -1.3753,
+      "max_drawdown_u": -36.71,
+      "active_day_n": 22,
+      "mean_events_per_active_day": 24.2727,
+      "median_events_per_active_day": 13,
+      "p25_events_per_active_day": 2.25,
+      "p75_events_per_active_day": 34.25,
+      "mean_daily_pnl_u": -0.2629,
+      "median_daily_pnl_u": 0,
+      "pnl_per_active_day": -0.3336,
+      "positive_pnl_day_n": 9,
+      "negative_pnl_day_n": 11,
+      "zero_pnl_day_n": 8,
+      "best_day_pnl_u": 12.53,
+      "worst_day_pnl_u": -9.12,
+      "p25_daily_pnl_u": -2,
+      "p75_daily_pnl_u": 0.8775,
+      "days_supply_ge_15": 10,
+      "days_supply_ge_20": 10,
+      "days_supply_ge_30": 8,
+      "days_supply_ge_40": 4,
+      "days_supply_ge_50": 2
+    },
+    "SEP_SHADOW_STRATEGIC_V1::PORTFOLIO_C0_FILL": {
+      "events": 624,
+      "wins": 313,
+      "losses": 311,
+      "pnl_u": -12.34,
+      "roi_pct": -1.9783,
+      "max_drawdown_u": -42.7,
+      "active_day_n": 27,
+      "mean_events_per_active_day": 23.1111,
+      "median_events_per_active_day": 6,
+      "p25_events_per_active_day": 3,
+      "p75_events_per_active_day": 38,
+      "mean_daily_pnl_u": -0.4411,
+      "median_daily_pnl_u": -0.74,
+      "pnl_per_active_day": -0.457,
+      "positive_pnl_day_n": 10,
+      "negative_pnl_day_n": 17,
+      "zero_pnl_day_n": 1,
+      "best_day_pnl_u": 13.33,
+      "worst_day_pnl_u": -13.79,
+      "p25_daily_pnl_u": -1.8275,
+      "p75_daily_pnl_u": 1.1375,
+      "days_supply_ge_15": 13,
+      "days_supply_ge_20": 10,
+      "days_supply_ge_30": 8,
+      "days_supply_ge_40": 6,
+      "days_supply_ge_50": 4
+    }
+  },
+  "DAILY_RESULTS": {
+    "SEP_PUBLIC_RICH_V1::C0": [
+      {
+        "date": "2026-08-04",
+        "event_n": 32,
+        "pnl_u": 0.91
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 19,
+        "pnl_u": -3.23
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 3,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 31,
+        "pnl_u": -9.23
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 44,
+        "pnl_u": -2.41
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 3,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 5,
+        "pnl_u": 5
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 5,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 33,
+        "pnl_u": 33
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 59,
+        "pnl_u": 50.52
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::P50_52": [
+      {
+        "date": "2026-08-04",
+        "event_n": 26,
+        "pnl_u": -2.06
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 17,
+        "pnl_u": -5
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 3,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 26,
+        "pnl_u": -8.06
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 25,
+        "pnl_u": -3.22
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 3,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 5,
+        "pnl_u": 5
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 5,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 33,
+        "pnl_u": 33
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 56,
+        "pnl_u": 50
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::P50_54": [
+      {
+        "date": "2026-08-04",
+        "event_n": 28,
+        "pnl_u": -0.27
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 19,
+        "pnl_u": -5.08
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 3,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 28,
+        "pnl_u": -6.23
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 35,
+        "pnl_u": -1.86
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 3,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 5,
+        "pnl_u": 5
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 5,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 33,
+        "pnl_u": 33
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 56,
+        "pnl_u": 50
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::SCORE63_64": [
+      {
+        "date": "2026-08-04",
+        "event_n": 25,
+        "pnl_u": -3.06
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 16,
+        "pnl_u": -4
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 3,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 25,
+        "pnl_u": -9.06
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 25,
+        "pnl_u": -3.22
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 2,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 2,
+        "pnl_u": 2
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 3,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 31,
+        "pnl_u": 31
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 52,
+        "pnl_u": 46
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::SCORE63_64_P50_52": [
+      {
+        "date": "2026-08-04",
+        "event_n": 25,
+        "pnl_u": -3.06
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 16,
+        "pnl_u": -4
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 3,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 25,
+        "pnl_u": -9.06
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 25,
+        "pnl_u": -3.22
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 2,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 2,
+        "pnl_u": 2
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 3,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 31,
+        "pnl_u": 31
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 52,
+        "pnl_u": 46
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::TENNIS": [
+      {
+        "date": "2026-08-04",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 4,
+        "pnl_u": 4
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 3,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 29,
+        "pnl_u": 29
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 56,
+        "pnl_u": 51.83
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::TENNIS_P50_52": [
+      {
+        "date": "2026-08-04",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 4,
+        "pnl_u": 4
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 3,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 29,
+        "pnl_u": 29
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 55,
+        "pnl_u": 51
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::LEAD12_18": [
+      {
+        "date": "2026-08-04",
+        "event_n": 15,
+        "pnl_u": 4.75
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 8,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 3,
+        "pnl_u": 0.96
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 25,
+        "pnl_u": -3.68
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 8,
+        "pnl_u": 8
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 26,
+        "pnl_u": 23.68
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::TENNIS_LEAD12_18": [
+      {
+        "date": "2026-08-04",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 8,
+        "pnl_u": 8
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 24,
+        "pnl_u": 24
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::TENNIS_LEAD18_24": [
+      {
+        "date": "2026-08-04",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 19,
+        "pnl_u": 19
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 21,
+        "pnl_u": 21
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::PORTFOLIO_DUAL": [
+      {
+        "date": "2026-08-04",
+        "event_n": 26,
+        "pnl_u": -2.06
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 17,
+        "pnl_u": -5
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 3,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 26,
+        "pnl_u": -8.06
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 25,
+        "pnl_u": -3.22
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 3,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 5,
+        "pnl_u": 5
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 5,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 33,
+        "pnl_u": 33
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 56,
+        "pnl_u": 50
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::PORTFOLIO_BROAD": [
+      {
+        "date": "2026-08-04",
+        "event_n": 28,
+        "pnl_u": -0.27
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 19,
+        "pnl_u": -5.08
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 3,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 28,
+        "pnl_u": -8.15
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 35,
+        "pnl_u": -1.81
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 3,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 5,
+        "pnl_u": 5
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 5,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 33,
+        "pnl_u": 33
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 56,
+        "pnl_u": 50
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::PORTFOLIO_C0_FILL": [
+      {
+        "date": "2026-08-04",
+        "event_n": 32,
+        "pnl_u": 1.06
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 19,
+        "pnl_u": -5.08
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 3,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 31,
+        "pnl_u": -11.15
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 44,
+        "pnl_u": -2.08
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 3,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 5,
+        "pnl_u": 5
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 5,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 33,
+        "pnl_u": 33
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 59,
+        "pnl_u": 50.52
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::C0": [
+      {
+        "date": "2026-08-04",
+        "event_n": 4,
+        "pnl_u": -2.11
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 17,
+        "pnl_u": 3.9
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 147,
+        "pnl_u": 4.57
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 50,
+        "pnl_u": 1.55
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 39,
+        "pnl_u": -3.23
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 69,
+        "pnl_u": 13.33
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 41,
+        "pnl_u": 8.46
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 15,
+        "pnl_u": -1.77
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 4,
+        "pnl_u": -0.48
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 3,
+        "pnl_u": -1.2
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 17,
+        "pnl_u": 0.56
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 47,
+        "pnl_u": -13.79
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 53,
+        "pnl_u": -9.23
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 26,
+        "pnl_u": -3.18
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 6,
+        "pnl_u": -0.1
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 6,
+        "pnl_u": 3.24
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 24,
+        "pnl_u": -8.54
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 37,
+        "pnl_u": -2.02
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 3,
+        "pnl_u": 0.53
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 5,
+        "pnl_u": -1.21
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 4,
+        "pnl_u": -0.44
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 2,
+        "pnl_u": 1.7
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::P50_52": [
+      {
+        "date": "2026-08-04",
+        "event_n": 4,
+        "pnl_u": -2
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 5,
+        "pnl_u": 2.9
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 143,
+        "pnl_u": 6.86
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 43,
+        "pnl_u": 4.94
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 33,
+        "pnl_u": 0.98
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 57,
+        "pnl_u": 14.65
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 25,
+        "pnl_u": 2.82
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 10,
+        "pnl_u": -2
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 14,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 35,
+        "pnl_u": -9.14
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 46,
+        "pnl_u": -4.14
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 17,
+        "pnl_u": -5
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 4,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 2,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 20,
+        "pnl_u": -8.12
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 26,
+        "pnl_u": -2.06
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 0,
+        "pnl_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::P50_54": [
+      {
+        "date": "2026-08-04",
+        "event_n": 4,
+        "pnl_u": -2.11
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 12,
+        "pnl_u": 3.5
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 145,
+        "pnl_u": 4.86
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 46,
+        "pnl_u": 3.83
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 35,
+        "pnl_u": -1.02
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 61,
+        "pnl_u": 12.53
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 31,
+        "pnl_u": 2.57
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 10,
+        "pnl_u": -2
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 2,
+        "pnl_u": -2
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 14,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 38,
+        "pnl_u": -8.29
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 49,
+        "pnl_u": -5.23
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 20,
+        "pnl_u": -4.19
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 5,
+        "pnl_u": 0.9
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 2,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 21,
+        "pnl_u": -9.12
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 32,
+        "pnl_u": -2.36
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 3,
+        "pnl_u": 0.79
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 1,
+        "pnl_u": 0.87
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::SCORE63_64": [
+      {
+        "date": "2026-08-04",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 0,
+        "pnl_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::SCORE63_64_P50_52": [
+      {
+        "date": "2026-08-04",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 0,
+        "pnl_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS": [
+      {
+        "date": "2026-08-04",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 3,
+        "pnl_u": 0.66
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 0,
+        "pnl_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS_P50_52": [
+      {
+        "date": "2026-08-04",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 2,
+        "pnl_u": -0.02
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 0,
+        "pnl_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::LEAD12_18": [
+      {
+        "date": "2026-08-04",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 39,
+        "pnl_u": -5
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 8,
+        "pnl_u": 2
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 18,
+        "pnl_u": 1.25
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 9,
+        "pnl_u": -1.2
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 2,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 4,
+        "pnl_u": 1.56
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 9,
+        "pnl_u": -1.08
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 7,
+        "pnl_u": 2.9
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 9,
+        "pnl_u": 2.43
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 3,
+        "pnl_u": 2.6
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 2,
+        "pnl_u": -2
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 7,
+        "pnl_u": -3.15
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 2,
+        "pnl_u": -0.25
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 0,
+        "pnl_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS_LEAD12_18": [
+      {
+        "date": "2026-08-04",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 1,
+        "pnl_u": 0.68
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 0,
+        "pnl_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS_LEAD18_24": [
+      {
+        "date": "2026-08-04",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 0,
+        "pnl_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PORTFOLIO_DUAL": [
+      {
+        "date": "2026-08-04",
+        "event_n": 4,
+        "pnl_u": -2
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 5,
+        "pnl_u": 2.9
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 143,
+        "pnl_u": 6.86
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 43,
+        "pnl_u": 4.94
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 33,
+        "pnl_u": 0.98
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 57,
+        "pnl_u": 14.65
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 25,
+        "pnl_u": 2.82
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 10,
+        "pnl_u": -2
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 14,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 35,
+        "pnl_u": -9.14
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 46,
+        "pnl_u": -4.14
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 17,
+        "pnl_u": -5
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 4,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 2,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 20,
+        "pnl_u": -8.12
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 26,
+        "pnl_u": -2.06
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 0,
+        "pnl_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PORTFOLIO_BROAD": [
+      {
+        "date": "2026-08-04",
+        "event_n": 4,
+        "pnl_u": -2
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 12,
+        "pnl_u": 3.5
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 145,
+        "pnl_u": 4.86
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 46,
+        "pnl_u": 3.83
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 35,
+        "pnl_u": -1.02
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 61,
+        "pnl_u": 12.53
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 31,
+        "pnl_u": 2.57
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 10,
+        "pnl_u": -2
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 2,
+        "pnl_u": -2
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 14,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 38,
+        "pnl_u": -8.29
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 49,
+        "pnl_u": -5.23
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 20,
+        "pnl_u": -4.19
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 5,
+        "pnl_u": 0.9
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 2,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 21,
+        "pnl_u": -9.12
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 32,
+        "pnl_u": -2.36
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 3,
+        "pnl_u": 0.79
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 1,
+        "pnl_u": 0.87
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PORTFOLIO_C0_FILL": [
+      {
+        "date": "2026-08-04",
+        "event_n": 4,
+        "pnl_u": -2
+      },
+      {
+        "date": "2026-08-05",
+        "event_n": 17,
+        "pnl_u": 3.9
+      },
+      {
+        "date": "2026-08-06",
+        "event_n": 147,
+        "pnl_u": 4.57
+      },
+      {
+        "date": "2026-08-07",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-08",
+        "event_n": 1,
+        "pnl_u": 1
+      },
+      {
+        "date": "2026-08-09",
+        "event_n": 50,
+        "pnl_u": 1.55
+      },
+      {
+        "date": "2026-08-10",
+        "event_n": 39,
+        "pnl_u": -3.23
+      },
+      {
+        "date": "2026-08-11",
+        "event_n": 69,
+        "pnl_u": 13.33
+      },
+      {
+        "date": "2026-08-12",
+        "event_n": 41,
+        "pnl_u": 8.46
+      },
+      {
+        "date": "2026-08-13",
+        "event_n": 15,
+        "pnl_u": -1.77
+      },
+      {
+        "date": "2026-08-14",
+        "event_n": 4,
+        "pnl_u": -0.48
+      },
+      {
+        "date": "2026-08-15",
+        "event_n": 3,
+        "pnl_u": -1.2
+      },
+      {
+        "date": "2026-08-16",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-17",
+        "event_n": 17,
+        "pnl_u": 0.56
+      },
+      {
+        "date": "2026-08-18",
+        "event_n": 47,
+        "pnl_u": -13.79
+      },
+      {
+        "date": "2026-08-19",
+        "event_n": 53,
+        "pnl_u": -9.23
+      },
+      {
+        "date": "2026-08-20",
+        "event_n": 26,
+        "pnl_u": -3.18
+      },
+      {
+        "date": "2026-08-21",
+        "event_n": 6,
+        "pnl_u": -0.1
+      },
+      {
+        "date": "2026-08-22",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-23",
+        "event_n": 6,
+        "pnl_u": 3.24
+      },
+      {
+        "date": "2026-08-24",
+        "event_n": 24,
+        "pnl_u": -8.54
+      },
+      {
+        "date": "2026-08-25",
+        "event_n": 37,
+        "pnl_u": -2.02
+      },
+      {
+        "date": "2026-08-26",
+        "event_n": 3,
+        "pnl_u": 0.53
+      },
+      {
+        "date": "2026-08-27",
+        "event_n": 5,
+        "pnl_u": -1.21
+      },
+      {
+        "date": "2026-08-28",
+        "event_n": 4,
+        "pnl_u": -0.44
+      },
+      {
+        "date": "2026-08-29",
+        "event_n": 0,
+        "pnl_u": 0
+      },
+      {
+        "date": "2026-08-30",
+        "event_n": 1,
+        "pnl_u": -1
+      },
+      {
+        "date": "2026-08-31",
+        "event_n": 2,
+        "pnl_u": 1.7
+      }
+    ]
+  },
+  "CAPACITY_RESULTS": {
+    "SEP_PUBLIC_RICH_V1::C0": [
+      {
+        "cap": 15,
+        "selected_event_n": 111,
+        "active_day_n": 15,
+        "total_pnl_u": 29.3,
+        "roi_pct": 26.3952,
+        "pnl_per_active_day": 1.9533,
+        "mean_selected_events_per_active_day": 7.4,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -11.84
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 140,
+        "active_day_n": 15,
+        "total_pnl_u": 37.78,
+        "roi_pct": 26.9842,
+        "pnl_per_active_day": 2.5187,
+        "mean_selected_events_per_active_day": 9.3333,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -13.44
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 190,
+        "active_day_n": 15,
+        "total_pnl_u": 53.22,
+        "roi_pct": 28.0092,
+        "pnl_per_active_day": 3.548,
+        "mean_selected_events_per_active_day": 12.6667,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -17.65
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 216,
+        "active_day_n": 15,
+        "total_pnl_u": 64.23,
+        "roi_pct": 29.7366,
+        "pnl_per_active_day": 4.282,
+        "mean_selected_events_per_active_day": 14.4,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -17.93
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 230,
+        "active_day_n": 15,
+        "total_pnl_u": 74.04,
+        "roi_pct": 32.1917,
+        "pnl_per_active_day": 4.936,
+        "mean_selected_events_per_active_day": 15.3333,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -18.12
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::P50_52": [
+      {
+        "cap": 15,
+        "selected_event_n": 111,
+        "active_day_n": 15,
+        "total_pnl_u": 24.77,
+        "roi_pct": 22.3109,
+        "pnl_per_active_day": 1.6513,
+        "mean_selected_events_per_active_day": 7.4,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -15.18
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 138,
+        "active_day_n": 15,
+        "total_pnl_u": 27.75,
+        "roi_pct": 20.1053,
+        "pnl_per_active_day": 1.85,
+        "mean_selected_events_per_active_day": 9.2,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -21.18
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 175,
+        "active_day_n": 15,
+        "total_pnl_u": 46.67,
+        "roi_pct": 26.6668,
+        "pnl_per_active_day": 3.1113,
+        "mean_selected_events_per_active_day": 11.6667,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -21.33
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 188,
+        "active_day_n": 15,
+        "total_pnl_u": 59.67,
+        "roi_pct": 31.7377,
+        "pnl_per_active_day": 3.978,
+        "mean_selected_events_per_active_day": 12.5333,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -21.33
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 198,
+        "active_day_n": 15,
+        "total_pnl_u": 69.67,
+        "roi_pct": 35.1853,
+        "pnl_per_active_day": 4.6447,
+        "mean_selected_events_per_active_day": 13.2,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -21.33
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::P50_54": [
+      {
+        "cap": 15,
+        "selected_event_n": 111,
+        "active_day_n": 15,
+        "total_pnl_u": 22.37,
+        "roi_pct": 20.1494,
+        "pnl_per_active_day": 1.4913,
+        "mean_selected_events_per_active_day": 7.4,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -15.63
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 140,
+        "active_day_n": 15,
+        "total_pnl_u": 31.15,
+        "roi_pct": 22.2529,
+        "pnl_per_active_day": 2.0767,
+        "mean_selected_events_per_active_day": 9.3333,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -18.71
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 186,
+        "active_day_n": 15,
+        "total_pnl_u": 50.79,
+        "roi_pct": 27.3075,
+        "pnl_per_active_day": 3.386,
+        "mean_selected_events_per_active_day": 12.4,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -17.21
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 204,
+        "active_day_n": 15,
+        "total_pnl_u": 64.56,
+        "roi_pct": 31.6484,
+        "pnl_per_active_day": 4.304,
+        "mean_selected_events_per_active_day": 13.6,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -18.21
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 214,
+        "active_day_n": 15,
+        "total_pnl_u": 74.56,
+        "roi_pct": 34.8424,
+        "pnl_per_active_day": 4.9707,
+        "mean_selected_events_per_active_day": 14.2667,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -18.21
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::SCORE63_64": [
+      {
+        "cap": 15,
+        "selected_event_n": 103,
+        "active_day_n": 13,
+        "total_pnl_u": 18.77,
+        "roi_pct": 18.2185,
+        "pnl_per_active_day": 1.4438,
+        "mean_selected_events_per_active_day": 7.9231,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -17.18
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 129,
+        "active_day_n": 13,
+        "total_pnl_u": 22.75,
+        "roi_pct": 17.632,
+        "pnl_per_active_day": 1.75,
+        "mean_selected_events_per_active_day": 9.9231,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -22.18
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 164,
+        "active_day_n": 13,
+        "total_pnl_u": 41.67,
+        "roi_pct": 25.4066,
+        "pnl_per_active_day": 3.2054,
+        "mean_selected_events_per_active_day": 12.6154,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -22.33
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 175,
+        "active_day_n": 13,
+        "total_pnl_u": 52.67,
+        "roi_pct": 30.0953,
+        "pnl_per_active_day": 4.0515,
+        "mean_selected_events_per_active_day": 13.4615,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -22.33
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 185,
+        "active_day_n": 13,
+        "total_pnl_u": 60.67,
+        "roi_pct": 32.7929,
+        "pnl_per_active_day": 4.6669,
+        "mean_selected_events_per_active_day": 14.2308,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -22.33
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::SCORE63_64_P50_52": [
+      {
+        "cap": 15,
+        "selected_event_n": 103,
+        "active_day_n": 13,
+        "total_pnl_u": 18.77,
+        "roi_pct": 18.2185,
+        "pnl_per_active_day": 1.4438,
+        "mean_selected_events_per_active_day": 7.9231,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -17.18
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 129,
+        "active_day_n": 13,
+        "total_pnl_u": 22.75,
+        "roi_pct": 17.632,
+        "pnl_per_active_day": 1.75,
+        "mean_selected_events_per_active_day": 9.9231,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -22.18
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 164,
+        "active_day_n": 13,
+        "total_pnl_u": 41.67,
+        "roi_pct": 25.4066,
+        "pnl_per_active_day": 3.2054,
+        "mean_selected_events_per_active_day": 12.6154,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -22.33
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 175,
+        "active_day_n": 13,
+        "total_pnl_u": 52.67,
+        "roi_pct": 30.0953,
+        "pnl_per_active_day": 4.0515,
+        "mean_selected_events_per_active_day": 13.4615,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -22.33
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 185,
+        "active_day_n": 13,
+        "total_pnl_u": 60.67,
+        "roi_pct": 32.7929,
+        "pnl_per_active_day": 4.6669,
+        "mean_selected_events_per_active_day": 14.2308,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -22.33
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::TENNIS": [
+      {
+        "cap": 15,
+        "selected_event_n": 39,
+        "active_day_n": 6,
+        "total_pnl_u": 37,
+        "roi_pct": 94.8718,
+        "pnl_per_active_day": 6.1667,
+        "mean_selected_events_per_active_day": 6.5,
+        "median_selected_events_per_active_day": 3.5,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 49,
+        "active_day_n": 6,
+        "total_pnl_u": 47,
+        "roi_pct": 95.9184,
+        "pnl_per_active_day": 7.8333,
+        "mean_selected_events_per_active_day": 8.1667,
+        "median_selected_events_per_active_day": 3.5,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 68,
+        "active_day_n": 6,
+        "total_pnl_u": 66,
+        "roi_pct": 97.0588,
+        "pnl_per_active_day": 11,
+        "mean_selected_events_per_active_day": 11.3333,
+        "median_selected_events_per_active_day": 3.5,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 78,
+        "active_day_n": 6,
+        "total_pnl_u": 76,
+        "roi_pct": 97.4359,
+        "pnl_per_active_day": 12.6667,
+        "mean_selected_events_per_active_day": 13,
+        "median_selected_events_per_active_day": 3.5,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 88,
+        "active_day_n": 6,
+        "total_pnl_u": 86,
+        "roi_pct": 97.7273,
+        "pnl_per_active_day": 14.3333,
+        "mean_selected_events_per_active_day": 14.6667,
+        "median_selected_events_per_active_day": 3.5,
+        "max_drawdown_u": -1
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::TENNIS_P50_52": [
+      {
+        "cap": 15,
+        "selected_event_n": 39,
+        "active_day_n": 6,
+        "total_pnl_u": 37,
+        "roi_pct": 94.8718,
+        "pnl_per_active_day": 6.1667,
+        "mean_selected_events_per_active_day": 6.5,
+        "median_selected_events_per_active_day": 3.5,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 49,
+        "active_day_n": 6,
+        "total_pnl_u": 47,
+        "roi_pct": 95.9184,
+        "pnl_per_active_day": 7.8333,
+        "mean_selected_events_per_active_day": 8.1667,
+        "median_selected_events_per_active_day": 3.5,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 68,
+        "active_day_n": 6,
+        "total_pnl_u": 66,
+        "roi_pct": 97.0588,
+        "pnl_per_active_day": 11,
+        "mean_selected_events_per_active_day": 11.3333,
+        "median_selected_events_per_active_day": 3.5,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 78,
+        "active_day_n": 6,
+        "total_pnl_u": 76,
+        "roi_pct": 97.4359,
+        "pnl_per_active_day": 12.6667,
+        "mean_selected_events_per_active_day": 13,
+        "median_selected_events_per_active_day": 3.5,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 88,
+        "active_day_n": 6,
+        "total_pnl_u": 86,
+        "roi_pct": 97.7273,
+        "pnl_per_active_day": 14.3333,
+        "mean_selected_events_per_active_day": 14.6667,
+        "median_selected_events_per_active_day": 3.5,
+        "max_drawdown_u": -1
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::LEAD12_18": [
+      {
+        "cap": 15,
+        "selected_event_n": 65,
+        "active_day_n": 7,
+        "total_pnl_u": 24.54,
+        "roi_pct": 37.7584,
+        "pnl_per_active_day": 3.5057,
+        "mean_selected_events_per_active_day": 9.2857,
+        "median_selected_events_per_active_day": 8,
+        "max_drawdown_u": -6.32
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 75,
+        "active_day_n": 7,
+        "total_pnl_u": 28.39,
+        "roi_pct": 37.8526,
+        "pnl_per_active_day": 4.0557,
+        "mean_selected_events_per_active_day": 10.7143,
+        "median_selected_events_per_active_day": 8,
+        "max_drawdown_u": -6.32
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 86,
+        "active_day_n": 7,
+        "total_pnl_u": 32.71,
+        "roi_pct": 38.0401,
+        "pnl_per_active_day": 4.6729,
+        "mean_selected_events_per_active_day": 12.2857,
+        "median_selected_events_per_active_day": 8,
+        "max_drawdown_u": -6.32
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 86,
+        "active_day_n": 7,
+        "total_pnl_u": 32.71,
+        "roi_pct": 38.0401,
+        "pnl_per_active_day": 4.6729,
+        "mean_selected_events_per_active_day": 12.2857,
+        "median_selected_events_per_active_day": 8,
+        "max_drawdown_u": -6.32
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 86,
+        "active_day_n": 7,
+        "total_pnl_u": 32.71,
+        "roi_pct": 38.0401,
+        "pnl_per_active_day": 4.6729,
+        "mean_selected_events_per_active_day": 12.2857,
+        "median_selected_events_per_active_day": 8,
+        "max_drawdown_u": -6.32
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::TENNIS_LEAD12_18": [
+      {
+        "cap": 15,
+        "selected_event_n": 23,
+        "active_day_n": 2,
+        "total_pnl_u": 23,
+        "roi_pct": 100,
+        "pnl_per_active_day": 11.5,
+        "mean_selected_events_per_active_day": 11.5,
+        "median_selected_events_per_active_day": 11.5,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 28,
+        "active_day_n": 2,
+        "total_pnl_u": 28,
+        "roi_pct": 100,
+        "pnl_per_active_day": 14,
+        "mean_selected_events_per_active_day": 14,
+        "median_selected_events_per_active_day": 14,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 32,
+        "active_day_n": 2,
+        "total_pnl_u": 32,
+        "roi_pct": 100,
+        "pnl_per_active_day": 16,
+        "mean_selected_events_per_active_day": 16,
+        "median_selected_events_per_active_day": 16,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 32,
+        "active_day_n": 2,
+        "total_pnl_u": 32,
+        "roi_pct": 100,
+        "pnl_per_active_day": 16,
+        "mean_selected_events_per_active_day": 16,
+        "median_selected_events_per_active_day": 16,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 32,
+        "active_day_n": 2,
+        "total_pnl_u": 32,
+        "roi_pct": 100,
+        "pnl_per_active_day": 16,
+        "mean_selected_events_per_active_day": 16,
+        "median_selected_events_per_active_day": 16,
+        "max_drawdown_u": 0
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::TENNIS_LEAD18_24": [
+      {
+        "cap": 15,
+        "selected_event_n": 30,
+        "active_day_n": 2,
+        "total_pnl_u": 30,
+        "roi_pct": 100,
+        "pnl_per_active_day": 15,
+        "mean_selected_events_per_active_day": 15,
+        "median_selected_events_per_active_day": 15,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 39,
+        "active_day_n": 2,
+        "total_pnl_u": 39,
+        "roi_pct": 100,
+        "pnl_per_active_day": 19.5,
+        "mean_selected_events_per_active_day": 19.5,
+        "median_selected_events_per_active_day": 19.5,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 40,
+        "active_day_n": 2,
+        "total_pnl_u": 40,
+        "roi_pct": 100,
+        "pnl_per_active_day": 20,
+        "mean_selected_events_per_active_day": 20,
+        "median_selected_events_per_active_day": 20,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 40,
+        "active_day_n": 2,
+        "total_pnl_u": 40,
+        "roi_pct": 100,
+        "pnl_per_active_day": 20,
+        "mean_selected_events_per_active_day": 20,
+        "median_selected_events_per_active_day": 20,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 40,
+        "active_day_n": 2,
+        "total_pnl_u": 40,
+        "roi_pct": 100,
+        "pnl_per_active_day": 20,
+        "mean_selected_events_per_active_day": 20,
+        "median_selected_events_per_active_day": 20,
+        "max_drawdown_u": 0
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::PORTFOLIO_DUAL": [
+      {
+        "cap": 15,
+        "selected_event_n": 111,
+        "active_day_n": 15,
+        "total_pnl_u": 22.77,
+        "roi_pct": 20.5091,
+        "pnl_per_active_day": 1.518,
+        "mean_selected_events_per_active_day": 7.4,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -17.18
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 138,
+        "active_day_n": 15,
+        "total_pnl_u": 25.75,
+        "roi_pct": 18.656,
+        "pnl_per_active_day": 1.7167,
+        "mean_selected_events_per_active_day": 9.2,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -23.18
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 175,
+        "active_day_n": 15,
+        "total_pnl_u": 46.67,
+        "roi_pct": 26.6668,
+        "pnl_per_active_day": 3.1113,
+        "mean_selected_events_per_active_day": 11.6667,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -21.33
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 188,
+        "active_day_n": 15,
+        "total_pnl_u": 59.67,
+        "roi_pct": 31.7377,
+        "pnl_per_active_day": 3.978,
+        "mean_selected_events_per_active_day": 12.5333,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -21.33
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 198,
+        "active_day_n": 15,
+        "total_pnl_u": 69.67,
+        "roi_pct": 35.1853,
+        "pnl_per_active_day": 4.6447,
+        "mean_selected_events_per_active_day": 13.2,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -21.33
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::PORTFOLIO_BROAD": [
+      {
+        "cap": 15,
+        "selected_event_n": 111,
+        "active_day_n": 15,
+        "total_pnl_u": 22.77,
+        "roi_pct": 20.5091,
+        "pnl_per_active_day": 1.518,
+        "mean_selected_events_per_active_day": 7.4,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -17.18
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 140,
+        "active_day_n": 15,
+        "total_pnl_u": 25.67,
+        "roi_pct": 18.3345,
+        "pnl_per_active_day": 1.7113,
+        "mean_selected_events_per_active_day": 9.3333,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -23.25
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 186,
+        "active_day_n": 15,
+        "total_pnl_u": 49.02,
+        "roi_pct": 26.3536,
+        "pnl_per_active_day": 3.268,
+        "mean_selected_events_per_active_day": 12.4,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -19.77
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 204,
+        "active_day_n": 15,
+        "total_pnl_u": 62.7,
+        "roi_pct": 30.7337,
+        "pnl_per_active_day": 4.18,
+        "mean_selected_events_per_active_day": 13.6,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -20.07
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 214,
+        "active_day_n": 15,
+        "total_pnl_u": 72.7,
+        "roi_pct": 33.9704,
+        "pnl_per_active_day": 4.8467,
+        "mean_selected_events_per_active_day": 14.2667,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -20.07
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::PORTFOLIO_C0_FILL": [
+      {
+        "cap": 15,
+        "selected_event_n": 111,
+        "active_day_n": 15,
+        "total_pnl_u": 22.77,
+        "roi_pct": 20.5091,
+        "pnl_per_active_day": 1.518,
+        "mean_selected_events_per_active_day": 7.4,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -17.18
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 140,
+        "active_day_n": 15,
+        "total_pnl_u": 25.67,
+        "roi_pct": 18.3345,
+        "pnl_per_active_day": 1.7113,
+        "mean_selected_events_per_active_day": 9.3333,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -23.25
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 190,
+        "active_day_n": 15,
+        "total_pnl_u": 48.59,
+        "roi_pct": 25.5732,
+        "pnl_per_active_day": 3.2393,
+        "mean_selected_events_per_active_day": 12.6667,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -21.5
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 216,
+        "active_day_n": 15,
+        "total_pnl_u": 63.04,
+        "roi_pct": 29.1861,
+        "pnl_per_active_day": 4.2027,
+        "mean_selected_events_per_active_day": 14.4,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -21.59
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 230,
+        "active_day_n": 15,
+        "total_pnl_u": 70.75,
+        "roi_pct": 30.7615,
+        "pnl_per_active_day": 4.7167,
+        "mean_selected_events_per_active_day": 15.3333,
+        "median_selected_events_per_active_day": 5,
+        "max_drawdown_u": -21.59
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::C0": [
+      {
+        "cap": 15,
+        "selected_event_n": 237,
+        "active_day_n": 27,
+        "total_pnl_u": 5.69,
+        "roi_pct": 2.4004,
+        "pnl_per_active_day": 0.2107,
+        "mean_selected_events_per_active_day": 8.7778,
+        "median_selected_events_per_active_day": 6,
+        "max_drawdown_u": -7.76
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 291,
+        "active_day_n": 27,
+        "total_pnl_u": 4.06,
+        "roi_pct": 1.3953,
+        "pnl_per_active_day": 0.1504,
+        "mean_selected_events_per_active_day": 10.7778,
+        "median_selected_events_per_active_day": 6,
+        "max_drawdown_u": -23.41
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 381,
+        "active_day_n": 27,
+        "total_pnl_u": -23.28,
+        "roi_pct": -6.1103,
+        "pnl_per_active_day": -0.8622,
+        "mean_selected_events_per_active_day": 14.1111,
+        "median_selected_events_per_active_day": 6,
+        "max_drawdown_u": -39.59
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 457,
+        "active_day_n": 27,
+        "total_pnl_u": -32.44,
+        "roi_pct": -7.0985,
+        "pnl_per_active_day": -1.2015,
+        "mean_selected_events_per_active_day": 16.9259,
+        "median_selected_events_per_active_day": 6,
+        "max_drawdown_u": -46.61
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 505,
+        "active_day_n": 27,
+        "total_pnl_u": -20.83,
+        "roi_pct": -4.124,
+        "pnl_per_active_day": -0.7715,
+        "mean_selected_events_per_active_day": 18.7037,
+        "median_selected_events_per_active_day": 6,
+        "max_drawdown_u": -41.7
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::P50_52": [
+      {
+        "cap": 15,
+        "selected_event_n": 193,
+        "active_day_n": 20,
+        "total_pnl_u": -7.84,
+        "roi_pct": -4.0639,
+        "pnl_per_active_day": -0.392,
+        "mean_selected_events_per_active_day": 9.65,
+        "median_selected_events_per_active_day": 14.5,
+        "max_drawdown_u": -23.41
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 240,
+        "active_day_n": 20,
+        "total_pnl_u": -7.08,
+        "roi_pct": -2.9488,
+        "pnl_per_active_day": -0.354,
+        "mean_selected_events_per_active_day": 12,
+        "median_selected_events_per_active_day": 15.5,
+        "max_drawdown_u": -32.43
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 311,
+        "active_day_n": 20,
+        "total_pnl_u": -20.25,
+        "roi_pct": -6.5126,
+        "pnl_per_active_day": -1.0125,
+        "mean_selected_events_per_active_day": 15.55,
+        "median_selected_events_per_active_day": 15.5,
+        "max_drawdown_u": -35.53
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 359,
+        "active_day_n": 20,
+        "total_pnl_u": -14.25,
+        "roi_pct": -3.9705,
+        "pnl_per_active_day": -0.7125,
+        "mean_selected_events_per_active_day": 17.95,
+        "median_selected_events_per_active_day": 15.5,
+        "max_drawdown_u": -32.53
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 388,
+        "active_day_n": 20,
+        "total_pnl_u": -7.29,
+        "roi_pct": -1.8797,
+        "pnl_per_active_day": -0.3645,
+        "mean_selected_events_per_active_day": 19.4,
+        "median_selected_events_per_active_day": 15.5,
+        "max_drawdown_u": -34.53
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::P50_54": [
+      {
+        "cap": 15,
+        "selected_event_n": 206,
+        "active_day_n": 22,
+        "total_pnl_u": -2.7,
+        "roi_pct": -1.3103,
+        "pnl_per_active_day": -0.1227,
+        "mean_selected_events_per_active_day": 9.3636,
+        "median_selected_events_per_active_day": 13,
+        "max_drawdown_u": -17.87
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 256,
+        "active_day_n": 22,
+        "total_pnl_u": -5.05,
+        "roi_pct": -1.9721,
+        "pnl_per_active_day": -0.2295,
+        "mean_selected_events_per_active_day": 11.6364,
+        "median_selected_events_per_active_day": 13,
+        "max_drawdown_u": -33.17
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 337,
+        "active_day_n": 22,
+        "total_pnl_u": -22.26,
+        "roi_pct": -6.6064,
+        "pnl_per_active_day": -1.0118,
+        "mean_selected_events_per_active_day": 15.3182,
+        "median_selected_events_per_active_day": 13,
+        "max_drawdown_u": -37.25
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 393,
+        "active_day_n": 22,
+        "total_pnl_u": -20.42,
+        "roi_pct": -5.1955,
+        "pnl_per_active_day": -0.9282,
+        "mean_selected_events_per_active_day": 17.8636,
+        "median_selected_events_per_active_day": 13,
+        "max_drawdown_u": -36.37
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 428,
+        "active_day_n": 22,
+        "total_pnl_u": -13.42,
+        "roi_pct": -3.1351,
+        "pnl_per_active_day": -0.61,
+        "mean_selected_events_per_active_day": 19.4545,
+        "median_selected_events_per_active_day": 13,
+        "max_drawdown_u": -35.37
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::SCORE63_64": [
+      {
+        "cap": 15,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::SCORE63_64_P50_52": [
+      {
+        "cap": 15,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS": [
+      {
+        "cap": 15,
+        "selected_event_n": 3,
+        "active_day_n": 1,
+        "total_pnl_u": 0.66,
+        "roi_pct": 22.029,
+        "pnl_per_active_day": 0.66,
+        "mean_selected_events_per_active_day": 3,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 3,
+        "active_day_n": 1,
+        "total_pnl_u": 0.66,
+        "roi_pct": 22.029,
+        "pnl_per_active_day": 0.66,
+        "mean_selected_events_per_active_day": 3,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 3,
+        "active_day_n": 1,
+        "total_pnl_u": 0.66,
+        "roi_pct": 22.029,
+        "pnl_per_active_day": 0.66,
+        "mean_selected_events_per_active_day": 3,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 3,
+        "active_day_n": 1,
+        "total_pnl_u": 0.66,
+        "roi_pct": 22.029,
+        "pnl_per_active_day": 0.66,
+        "mean_selected_events_per_active_day": 3,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 3,
+        "active_day_n": 1,
+        "total_pnl_u": 0.66,
+        "roi_pct": 22.029,
+        "pnl_per_active_day": 0.66,
+        "mean_selected_events_per_active_day": 3,
+        "median_selected_events_per_active_day": 3,
+        "max_drawdown_u": -1
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS_P50_52": [
+      {
+        "cap": 15,
+        "selected_event_n": 2,
+        "active_day_n": 1,
+        "total_pnl_u": -0.02,
+        "roi_pct": -0.9901,
+        "pnl_per_active_day": -0.02,
+        "mean_selected_events_per_active_day": 2,
+        "median_selected_events_per_active_day": 2,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 2,
+        "active_day_n": 1,
+        "total_pnl_u": -0.02,
+        "roi_pct": -0.9901,
+        "pnl_per_active_day": -0.02,
+        "mean_selected_events_per_active_day": 2,
+        "median_selected_events_per_active_day": 2,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 2,
+        "active_day_n": 1,
+        "total_pnl_u": -0.02,
+        "roi_pct": -0.9901,
+        "pnl_per_active_day": -0.02,
+        "mean_selected_events_per_active_day": 2,
+        "median_selected_events_per_active_day": 2,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 2,
+        "active_day_n": 1,
+        "total_pnl_u": -0.02,
+        "roi_pct": -0.9901,
+        "pnl_per_active_day": -0.02,
+        "mean_selected_events_per_active_day": 2,
+        "median_selected_events_per_active_day": 2,
+        "max_drawdown_u": -1
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 2,
+        "active_day_n": 1,
+        "total_pnl_u": -0.02,
+        "roi_pct": -0.9901,
+        "pnl_per_active_day": -0.02,
+        "mean_selected_events_per_active_day": 2,
+        "median_selected_events_per_active_day": 2,
+        "max_drawdown_u": -1
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::LEAD12_18": [
+      {
+        "cap": 15,
+        "selected_event_n": 95,
+        "active_day_n": 16,
+        "total_pnl_u": -1.7,
+        "roi_pct": -1.7939,
+        "pnl_per_active_day": -0.1062,
+        "mean_selected_events_per_active_day": 5.9375,
+        "median_selected_events_per_active_day": 5.5,
+        "max_drawdown_u": -6.39
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 103,
+        "active_day_n": 16,
+        "total_pnl_u": -3.92,
+        "roi_pct": -3.8043,
+        "pnl_per_active_day": -0.245,
+        "mean_selected_events_per_active_day": 6.4375,
+        "median_selected_events_per_active_day": 5.5,
+        "max_drawdown_u": -7.91
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 113,
+        "active_day_n": 16,
+        "total_pnl_u": -3.92,
+        "roi_pct": -3.4677,
+        "pnl_per_active_day": -0.245,
+        "mean_selected_events_per_active_day": 7.0625,
+        "median_selected_events_per_active_day": 5.5,
+        "max_drawdown_u": -10
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 122,
+        "active_day_n": 16,
+        "total_pnl_u": -2.92,
+        "roi_pct": -2.3922,
+        "pnl_per_active_day": -0.1825,
+        "mean_selected_events_per_active_day": 7.625,
+        "median_selected_events_per_active_day": 5.5,
+        "max_drawdown_u": -10
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 122,
+        "active_day_n": 16,
+        "total_pnl_u": -2.92,
+        "roi_pct": -2.3922,
+        "pnl_per_active_day": -0.1825,
+        "mean_selected_events_per_active_day": 7.625,
+        "median_selected_events_per_active_day": 5.5,
+        "max_drawdown_u": -10
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS_LEAD12_18": [
+      {
+        "cap": 15,
+        "selected_event_n": 1,
+        "active_day_n": 1,
+        "total_pnl_u": 0.68,
+        "roi_pct": 68.0672,
+        "pnl_per_active_day": 0.68,
+        "mean_selected_events_per_active_day": 1,
+        "median_selected_events_per_active_day": 1,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 1,
+        "active_day_n": 1,
+        "total_pnl_u": 0.68,
+        "roi_pct": 68.0672,
+        "pnl_per_active_day": 0.68,
+        "mean_selected_events_per_active_day": 1,
+        "median_selected_events_per_active_day": 1,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 1,
+        "active_day_n": 1,
+        "total_pnl_u": 0.68,
+        "roi_pct": 68.0672,
+        "pnl_per_active_day": 0.68,
+        "mean_selected_events_per_active_day": 1,
+        "median_selected_events_per_active_day": 1,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 1,
+        "active_day_n": 1,
+        "total_pnl_u": 0.68,
+        "roi_pct": 68.0672,
+        "pnl_per_active_day": 0.68,
+        "mean_selected_events_per_active_day": 1,
+        "median_selected_events_per_active_day": 1,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 1,
+        "active_day_n": 1,
+        "total_pnl_u": 0.68,
+        "roi_pct": 68.0672,
+        "pnl_per_active_day": 0.68,
+        "mean_selected_events_per_active_day": 1,
+        "median_selected_events_per_active_day": 1,
+        "max_drawdown_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS_LEAD18_24": [
+      {
+        "cap": 15,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 0,
+        "active_day_n": 0,
+        "total_pnl_u": 0,
+        "roi_pct": 0,
+        "pnl_per_active_day": 0,
+        "mean_selected_events_per_active_day": 0,
+        "median_selected_events_per_active_day": 0,
+        "max_drawdown_u": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PORTFOLIO_DUAL": [
+      {
+        "cap": 15,
+        "selected_event_n": 193,
+        "active_day_n": 20,
+        "total_pnl_u": -9.84,
+        "roi_pct": -5.1002,
+        "pnl_per_active_day": -0.492,
+        "mean_selected_events_per_active_day": 9.65,
+        "median_selected_events_per_active_day": 14.5,
+        "max_drawdown_u": -23.41
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 240,
+        "active_day_n": 20,
+        "total_pnl_u": -7.1,
+        "roi_pct": -2.9571,
+        "pnl_per_active_day": -0.355,
+        "mean_selected_events_per_active_day": 12,
+        "median_selected_events_per_active_day": 15.5,
+        "max_drawdown_u": -32.43
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 311,
+        "active_day_n": 20,
+        "total_pnl_u": -20.25,
+        "roi_pct": -6.5126,
+        "pnl_per_active_day": -1.0125,
+        "mean_selected_events_per_active_day": 15.55,
+        "median_selected_events_per_active_day": 15.5,
+        "max_drawdown_u": -35.53
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 359,
+        "active_day_n": 20,
+        "total_pnl_u": -16.25,
+        "roi_pct": -4.5276,
+        "pnl_per_active_day": -0.8125,
+        "mean_selected_events_per_active_day": 17.95,
+        "median_selected_events_per_active_day": 15.5,
+        "max_drawdown_u": -32.63
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 388,
+        "active_day_n": 20,
+        "total_pnl_u": -9.25,
+        "roi_pct": -2.3851,
+        "pnl_per_active_day": -0.4625,
+        "mean_selected_events_per_active_day": 19.4,
+        "median_selected_events_per_active_day": 15.5,
+        "max_drawdown_u": -34.53
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PORTFOLIO_BROAD": [
+      {
+        "cap": 15,
+        "selected_event_n": 206,
+        "active_day_n": 22,
+        "total_pnl_u": -7.68,
+        "roi_pct": -3.7263,
+        "pnl_per_active_day": -0.3491,
+        "mean_selected_events_per_active_day": 9.3636,
+        "median_selected_events_per_active_day": 13,
+        "max_drawdown_u": -23.51
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 256,
+        "active_day_n": 22,
+        "total_pnl_u": -4.12,
+        "roi_pct": -1.6093,
+        "pnl_per_active_day": -0.1873,
+        "mean_selected_events_per_active_day": 11.6364,
+        "median_selected_events_per_active_day": 13,
+        "max_drawdown_u": -31.72
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 337,
+        "active_day_n": 22,
+        "total_pnl_u": -17.75,
+        "roi_pct": -5.2678,
+        "pnl_per_active_day": -0.8068,
+        "mean_selected_events_per_active_day": 15.3182,
+        "median_selected_events_per_active_day": 13,
+        "max_drawdown_u": -36.04
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 393,
+        "active_day_n": 22,
+        "total_pnl_u": -15.98,
+        "roi_pct": -4.067,
+        "pnl_per_active_day": -0.7264,
+        "mean_selected_events_per_active_day": 17.8636,
+        "median_selected_events_per_active_day": 13,
+        "max_drawdown_u": -32.62
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 428,
+        "active_day_n": 22,
+        "total_pnl_u": -11.19,
+        "roi_pct": -2.6149,
+        "pnl_per_active_day": -0.5086,
+        "mean_selected_events_per_active_day": 19.4545,
+        "median_selected_events_per_active_day": 13,
+        "max_drawdown_u": -35.37
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PORTFOLIO_C0_FILL": [
+      {
+        "cap": 15,
+        "selected_event_n": 237,
+        "active_day_n": 27,
+        "total_pnl_u": -6.58,
+        "roi_pct": -2.7745,
+        "pnl_per_active_day": -0.2437,
+        "mean_selected_events_per_active_day": 8.7778,
+        "median_selected_events_per_active_day": 6,
+        "max_drawdown_u": -23.03
+      },
+      {
+        "cap": 20,
+        "selected_event_n": 291,
+        "active_day_n": 27,
+        "total_pnl_u": -3.44,
+        "roi_pct": -1.1833,
+        "pnl_per_active_day": -0.1274,
+        "mean_selected_events_per_active_day": 10.7778,
+        "median_selected_events_per_active_day": 6,
+        "max_drawdown_u": -31.03
+      },
+      {
+        "cap": 30,
+        "selected_event_n": 381,
+        "active_day_n": 27,
+        "total_pnl_u": -15.5,
+        "roi_pct": -4.0671,
+        "pnl_per_active_day": -0.5741,
+        "mean_selected_events_per_active_day": 14.1111,
+        "median_selected_events_per_active_day": 6,
+        "max_drawdown_u": -34.22
+      },
+      {
+        "cap": 40,
+        "selected_event_n": 457,
+        "active_day_n": 27,
+        "total_pnl_u": -12.51,
+        "roi_pct": -2.7382,
+        "pnl_per_active_day": -0.4633,
+        "mean_selected_events_per_active_day": 16.9259,
+        "median_selected_events_per_active_day": 6,
+        "max_drawdown_u": -32.11
+      },
+      {
+        "cap": 50,
+        "selected_event_n": 505,
+        "active_day_n": 27,
+        "total_pnl_u": -13.7,
+        "roi_pct": -2.7127,
+        "pnl_per_active_day": -0.5074,
+        "mean_selected_events_per_active_day": 18.7037,
+        "median_selected_events_per_active_day": 6,
+        "max_drawdown_u": -39.7
+      }
+    ]
+  },
+  "MARGINAL_CAPACITY_RESULTS": {
+    "SEP_PUBLIC_RICH_V1::C0": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 29,
+        "incremental_pnl_u": 8.48,
+        "incremental_roi_pct": 29.2414,
+        "incremental_pnl_per_day": 0.5653
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 50,
+        "incremental_pnl_u": 15.44,
+        "incremental_roi_pct": 30.88,
+        "incremental_pnl_per_day": 1.0293
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 26,
+        "incremental_pnl_u": 11.01,
+        "incremental_roi_pct": 42.3462,
+        "incremental_pnl_per_day": 0.734
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 14,
+        "incremental_pnl_u": 9.81,
+        "incremental_roi_pct": 70.0714,
+        "incremental_pnl_per_day": 0.654
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::P50_52": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 27,
+        "incremental_pnl_u": 2.98,
+        "incremental_roi_pct": 11.037,
+        "incremental_pnl_per_day": 0.1987
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 37,
+        "incremental_pnl_u": 18.92,
+        "incremental_roi_pct": 51.1351,
+        "incremental_pnl_per_day": 1.2613
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 13,
+        "incremental_pnl_u": 13,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 0.8667
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 10,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 0.6667
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::P50_54": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 29,
+        "incremental_pnl_u": 8.78,
+        "incremental_roi_pct": 30.2759,
+        "incremental_pnl_per_day": 0.5853
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 46,
+        "incremental_pnl_u": 19.64,
+        "incremental_roi_pct": 42.6957,
+        "incremental_pnl_per_day": 1.3093
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 18,
+        "incremental_pnl_u": 13.77,
+        "incremental_roi_pct": 76.5,
+        "incremental_pnl_per_day": 0.918
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 10,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 0.6667
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::SCORE63_64": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 26,
+        "incremental_pnl_u": 3.98,
+        "incremental_roi_pct": 15.3077,
+        "incremental_pnl_per_day": 0.3062
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 35,
+        "incremental_pnl_u": 18.92,
+        "incremental_roi_pct": 54.0571,
+        "incremental_pnl_per_day": 1.4554
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 11,
+        "incremental_pnl_u": 11,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 0.8462
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 8,
+        "incremental_roi_pct": 80,
+        "incremental_pnl_per_day": 0.6154
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::SCORE63_64_P50_52": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 26,
+        "incremental_pnl_u": 3.98,
+        "incremental_roi_pct": 15.3077,
+        "incremental_pnl_per_day": 0.3062
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 35,
+        "incremental_pnl_u": 18.92,
+        "incremental_roi_pct": 54.0571,
+        "incremental_pnl_per_day": 1.4554
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 11,
+        "incremental_pnl_u": 11,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 0.8462
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 8,
+        "incremental_roi_pct": 80,
+        "incremental_pnl_per_day": 0.6154
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::TENNIS": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 10,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 1.6667
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 19,
+        "incremental_pnl_u": 19,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 3.1667
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 10,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 1.6667
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 10,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 1.6667
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::TENNIS_P50_52": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 10,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 1.6667
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 19,
+        "incremental_pnl_u": 19,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 3.1667
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 10,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 1.6667
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 10,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 1.6667
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::LEAD12_18": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 3.85,
+        "incremental_roi_pct": 38.5,
+        "incremental_pnl_per_day": 0.55
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 11,
+        "incremental_pnl_u": 4.32,
+        "incremental_roi_pct": 39.2727,
+        "incremental_pnl_per_day": 0.6171
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::TENNIS_LEAD12_18": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 5,
+        "incremental_pnl_u": 5,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 2.5
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 4,
+        "incremental_pnl_u": 4,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 2
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::TENNIS_LEAD18_24": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 9,
+        "incremental_pnl_u": 9,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 4.5
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 1,
+        "incremental_pnl_u": 1,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 0.5
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::PORTFOLIO_DUAL": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 27,
+        "incremental_pnl_u": 2.98,
+        "incremental_roi_pct": 11.037,
+        "incremental_pnl_per_day": 0.1987
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 37,
+        "incremental_pnl_u": 20.92,
+        "incremental_roi_pct": 56.5405,
+        "incremental_pnl_per_day": 1.3947
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 13,
+        "incremental_pnl_u": 13,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 0.8667
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 10,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 0.6667
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::PORTFOLIO_BROAD": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 29,
+        "incremental_pnl_u": 2.9,
+        "incremental_roi_pct": 10,
+        "incremental_pnl_per_day": 0.1933
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 46,
+        "incremental_pnl_u": 23.35,
+        "incremental_roi_pct": 50.7609,
+        "incremental_pnl_per_day": 1.5567
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 18,
+        "incremental_pnl_u": 13.68,
+        "incremental_roi_pct": 76,
+        "incremental_pnl_per_day": 0.912
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 10,
+        "incremental_roi_pct": 100,
+        "incremental_pnl_per_day": 0.6667
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::PORTFOLIO_C0_FILL": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 29,
+        "incremental_pnl_u": 2.9,
+        "incremental_roi_pct": 10,
+        "incremental_pnl_per_day": 0.1933
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 50,
+        "incremental_pnl_u": 22.92,
+        "incremental_roi_pct": 45.84,
+        "incremental_pnl_per_day": 1.528
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 26,
+        "incremental_pnl_u": 14.45,
+        "incremental_roi_pct": 55.5769,
+        "incremental_pnl_per_day": 0.9633
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 14,
+        "incremental_pnl_u": 7.71,
+        "incremental_roi_pct": 55.0714,
+        "incremental_pnl_per_day": 0.514
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::C0": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 54,
+        "incremental_pnl_u": -1.63,
+        "incremental_roi_pct": -3.0185,
+        "incremental_pnl_per_day": -0.0604
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 90,
+        "incremental_pnl_u": -27.34,
+        "incremental_roi_pct": -30.3778,
+        "incremental_pnl_per_day": -1.0126
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 76,
+        "incremental_pnl_u": -9.16,
+        "incremental_roi_pct": -12.0526,
+        "incremental_pnl_per_day": -0.3393
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 48,
+        "incremental_pnl_u": 11.61,
+        "incremental_roi_pct": 24.1875,
+        "incremental_pnl_per_day": 0.43
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::P50_52": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 47,
+        "incremental_pnl_u": 0.76,
+        "incremental_roi_pct": 1.617,
+        "incremental_pnl_per_day": 0.038
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 71,
+        "incremental_pnl_u": -13.17,
+        "incremental_roi_pct": -18.5493,
+        "incremental_pnl_per_day": -0.6585
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 48,
+        "incremental_pnl_u": 6,
+        "incremental_roi_pct": 12.5,
+        "incremental_pnl_per_day": 0.3
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 29,
+        "incremental_pnl_u": 6.96,
+        "incremental_roi_pct": 24,
+        "incremental_pnl_per_day": 0.348
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::P50_54": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 50,
+        "incremental_pnl_u": -2.35,
+        "incremental_roi_pct": -4.7,
+        "incremental_pnl_per_day": -0.1068
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 81,
+        "incremental_pnl_u": -17.21,
+        "incremental_roi_pct": -21.2469,
+        "incremental_pnl_per_day": -0.7823
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 56,
+        "incremental_pnl_u": 1.84,
+        "incremental_roi_pct": 3.2857,
+        "incremental_pnl_per_day": 0.0836
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 35,
+        "incremental_pnl_u": 7,
+        "incremental_roi_pct": 20,
+        "incremental_pnl_per_day": 0.3182
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::SCORE63_64": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::SCORE63_64_P50_52": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS_P50_52": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::LEAD12_18": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 8,
+        "incremental_pnl_u": -2.22,
+        "incremental_roi_pct": -27.75,
+        "incremental_pnl_per_day": -0.1387
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 10,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 9,
+        "incremental_pnl_u": 1,
+        "incremental_roi_pct": 11.1111,
+        "incremental_pnl_per_day": 0.0625
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS_LEAD12_18": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::TENNIS_LEAD18_24": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 0,
+        "incremental_pnl_u": 0,
+        "incremental_roi_pct": 0,
+        "incremental_pnl_per_day": 0
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PORTFOLIO_DUAL": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 47,
+        "incremental_pnl_u": 2.74,
+        "incremental_roi_pct": 5.8298,
+        "incremental_pnl_per_day": 0.137
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 71,
+        "incremental_pnl_u": -13.15,
+        "incremental_roi_pct": -18.5211,
+        "incremental_pnl_per_day": -0.6575
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 48,
+        "incremental_pnl_u": 4,
+        "incremental_roi_pct": 8.3333,
+        "incremental_pnl_per_day": 0.2
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 29,
+        "incremental_pnl_u": 7,
+        "incremental_roi_pct": 24.1379,
+        "incremental_pnl_per_day": 0.35
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PORTFOLIO_BROAD": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 50,
+        "incremental_pnl_u": 3.56,
+        "incremental_roi_pct": 7.12,
+        "incremental_pnl_per_day": 0.1618
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 81,
+        "incremental_pnl_u": -13.63,
+        "incremental_roi_pct": -16.8272,
+        "incremental_pnl_per_day": -0.6195
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 56,
+        "incremental_pnl_u": 1.77,
+        "incremental_roi_pct": 3.1607,
+        "incremental_pnl_per_day": 0.0805
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 35,
+        "incremental_pnl_u": 4.79,
+        "incremental_roi_pct": 13.6857,
+        "incremental_pnl_per_day": 0.2177
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PORTFOLIO_C0_FILL": [
+      {
+        "layer": "15_TO_20",
+        "incremental_event_n": 54,
+        "incremental_pnl_u": 3.14,
+        "incremental_roi_pct": 5.8148,
+        "incremental_pnl_per_day": 0.1163
+      },
+      {
+        "layer": "20_TO_30",
+        "incremental_event_n": 90,
+        "incremental_pnl_u": -12.06,
+        "incremental_roi_pct": -13.4,
+        "incremental_pnl_per_day": -0.4467
+      },
+      {
+        "layer": "30_TO_40",
+        "incremental_event_n": 76,
+        "incremental_pnl_u": 2.99,
+        "incremental_roi_pct": 3.9342,
+        "incremental_pnl_per_day": 0.1107
+      },
+      {
+        "layer": "40_TO_50",
+        "incremental_event_n": 48,
+        "incremental_pnl_u": -1.19,
+        "incremental_roi_pct": -2.4792,
+        "incremental_pnl_per_day": -0.0441
+      }
+    ]
+  },
+  "PNL_ROI_FRONTIER": {
+    "SEP_PUBLIC_RICH_V1": [
+      {
+        "strategy_id": "TENNIS",
+        "uncapped_events": 94,
+        "active_days": 6,
+        "mean_events_per_active_day": 15.6667,
+        "total_pnl_u": 87.83,
+        "pnl_per_active_day": 14.6383,
+        "roi_pct": 93.4413,
+        "max_drawdown_u": -2,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "GE_75"
+      },
+      {
+        "strategy_id": "TENNIS_P50_52",
+        "uncapped_events": 93,
+        "active_days": 6,
+        "mean_events_per_active_day": 15.5,
+        "total_pnl_u": 87,
+        "pnl_per_active_day": 14.5,
+        "roi_pct": 93.5484,
+        "max_drawdown_u": -2,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "GE_75"
+      },
+      {
+        "strategy_id": "P50_54",
+        "uncapped_events": 220,
+        "active_days": 15,
+        "mean_events_per_active_day": 14.6667,
+        "total_pnl_u": 74.56,
+        "pnl_per_active_day": 4.9707,
+        "roi_pct": 33.8921,
+        "max_drawdown_u": -18.21,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "C0",
+        "uncapped_events": 239,
+        "active_days": 15,
+        "mean_events_per_active_day": 15.9333,
+        "total_pnl_u": 74.56,
+        "pnl_per_active_day": 4.9707,
+        "roi_pct": 31.1952,
+        "max_drawdown_u": -18.12,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "PORTFOLIO_BROAD",
+        "uncapped_events": 220,
+        "active_days": 15,
+        "mean_events_per_active_day": 14.6667,
+        "total_pnl_u": 72.7,
+        "pnl_per_active_day": 4.8467,
+        "roi_pct": 33.044,
+        "max_drawdown_u": -20.07,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "PORTFOLIO_C0_FILL",
+        "uncapped_events": 239,
+        "active_days": 15,
+        "mean_events_per_active_day": 15.9333,
+        "total_pnl_u": 71.27,
+        "pnl_per_active_day": 4.7513,
+        "roi_pct": 29.8188,
+        "max_drawdown_u": -21.59,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "20_TO_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "P50_52",
+        "uncapped_events": 204,
+        "active_days": 15,
+        "mean_events_per_active_day": 13.6,
+        "total_pnl_u": 69.67,
+        "pnl_per_active_day": 4.6447,
+        "roi_pct": 34.1504,
+        "max_drawdown_u": -21.33,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "PORTFOLIO_DUAL",
+        "uncapped_events": 204,
+        "active_days": 15,
+        "mean_events_per_active_day": 13.6,
+        "total_pnl_u": 69.67,
+        "pnl_per_active_day": 4.6447,
+        "roi_pct": 34.1504,
+        "max_drawdown_u": -21.33,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "SCORE63_64",
+        "uncapped_events": 187,
+        "active_days": 13,
+        "mean_events_per_active_day": 14.3846,
+        "total_pnl_u": 58.67,
+        "pnl_per_active_day": 4.5131,
+        "roi_pct": 31.3726,
+        "max_drawdown_u": -22.33,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "SCORE63_64_P50_52",
+        "uncapped_events": 187,
+        "active_days": 13,
+        "mean_events_per_active_day": 14.3846,
+        "total_pnl_u": 58.67,
+        "pnl_per_active_day": 4.5131,
+        "roi_pct": 31.3726,
+        "max_drawdown_u": -22.33,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "TENNIS_LEAD18_24",
+        "uncapped_events": 40,
+        "active_days": 2,
+        "mean_events_per_active_day": 20,
+        "total_pnl_u": 40,
+        "pnl_per_active_day": 20,
+        "roi_pct": 100,
+        "max_drawdown_u": 0,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "LEAD12_18",
+        "uncapped_events": 86,
+        "active_days": 7,
+        "mean_events_per_active_day": 12.2857,
+        "total_pnl_u": 32.71,
+        "pnl_per_active_day": 4.6729,
+        "roi_pct": 38.0401,
+        "max_drawdown_u": -6.32,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "TENNIS_LEAD12_18",
+        "uncapped_events": 32,
+        "active_days": 2,
+        "mean_events_per_active_day": 16,
+        "total_pnl_u": 32,
+        "pnl_per_active_day": 16,
+        "roi_pct": 100,
+        "max_drawdown_u": 0,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1": [
+      {
+        "strategy_id": "TENNIS_LEAD12_18",
+        "uncapped_events": 1,
+        "active_days": 1,
+        "mean_events_per_active_day": 1,
+        "total_pnl_u": 0.68,
+        "pnl_per_active_day": 0.68,
+        "roi_pct": 68.0672,
+        "max_drawdown_u": 0,
+        "FLOW_CLASS": "LOW_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "0_TO_25"
+      },
+      {
+        "strategy_id": "TENNIS",
+        "uncapped_events": 3,
+        "active_days": 1,
+        "mean_events_per_active_day": 3,
+        "total_pnl_u": 0.66,
+        "pnl_per_active_day": 0.66,
+        "roi_pct": 22.029,
+        "max_drawdown_u": -1,
+        "FLOW_CLASS": "LOW_FLOW",
+        "ROI_CLASS": "20_TO_30",
+        "PNL_CLASS": "0_TO_25"
+      },
+      {
+        "strategy_id": "SCORE63_64",
+        "uncapped_events": 0,
+        "active_days": 0,
+        "mean_events_per_active_day": 0,
+        "total_pnl_u": 0,
+        "pnl_per_active_day": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "FLOW_CLASS": "LOW_FLOW",
+        "ROI_CLASS": "0_TO_10",
+        "PNL_CLASS": "0_TO_25"
+      },
+      {
+        "strategy_id": "SCORE63_64_P50_52",
+        "uncapped_events": 0,
+        "active_days": 0,
+        "mean_events_per_active_day": 0,
+        "total_pnl_u": 0,
+        "pnl_per_active_day": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "FLOW_CLASS": "LOW_FLOW",
+        "ROI_CLASS": "0_TO_10",
+        "PNL_CLASS": "0_TO_25"
+      },
+      {
+        "strategy_id": "TENNIS_LEAD18_24",
+        "uncapped_events": 0,
+        "active_days": 0,
+        "mean_events_per_active_day": 0,
+        "total_pnl_u": 0,
+        "pnl_per_active_day": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "FLOW_CLASS": "LOW_FLOW",
+        "ROI_CLASS": "0_TO_10",
+        "PNL_CLASS": "0_TO_25"
+      },
+      {
+        "strategy_id": "TENNIS_P50_52",
+        "uncapped_events": 2,
+        "active_days": 1,
+        "mean_events_per_active_day": 2,
+        "total_pnl_u": -0.02,
+        "pnl_per_active_day": -0.02,
+        "roi_pct": -0.9901,
+        "max_drawdown_u": -1,
+        "FLOW_CLASS": "LOW_FLOW",
+        "ROI_CLASS": "NEGATIVE",
+        "PNL_CLASS": "NEGATIVE"
+      },
+      {
+        "strategy_id": "P50_52",
+        "uncapped_events": 488,
+        "active_days": 20,
+        "mean_events_per_active_day": 24.4,
+        "total_pnl_u": -1.29,
+        "pnl_per_active_day": -0.0645,
+        "roi_pct": -0.265,
+        "max_drawdown_u": -34.53,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "NEGATIVE",
+        "PNL_CLASS": "NEGATIVE"
+      },
+      {
+        "strategy_id": "PORTFOLIO_DUAL",
+        "uncapped_events": 488,
+        "active_days": 20,
+        "mean_events_per_active_day": 24.4,
+        "total_pnl_u": -1.29,
+        "pnl_per_active_day": -0.0645,
+        "roi_pct": -0.265,
+        "max_drawdown_u": -34.53,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "NEGATIVE",
+        "PNL_CLASS": "NEGATIVE"
+      },
+      {
+        "strategy_id": "LEAD12_18",
+        "uncapped_events": 122,
+        "active_days": 16,
+        "mean_events_per_active_day": 7.625,
+        "total_pnl_u": -2.92,
+        "pnl_per_active_day": -0.1825,
+        "roi_pct": -2.3922,
+        "max_drawdown_u": -10,
+        "FLOW_CLASS": "LOW_FLOW",
+        "ROI_CLASS": "NEGATIVE",
+        "PNL_CLASS": "NEGATIVE"
+      },
+      {
+        "strategy_id": "PORTFOLIO_BROAD",
+        "uncapped_events": 534,
+        "active_days": 22,
+        "mean_events_per_active_day": 24.2727,
+        "total_pnl_u": -7.34,
+        "pnl_per_active_day": -0.3336,
+        "roi_pct": -1.3753,
+        "max_drawdown_u": -36.71,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "NEGATIVE",
+        "PNL_CLASS": "NEGATIVE"
+      },
+      {
+        "strategy_id": "P50_54",
+        "uncapped_events": 534,
+        "active_days": 22,
+        "mean_events_per_active_day": 24.2727,
+        "total_pnl_u": -7.46,
+        "pnl_per_active_day": -0.3391,
+        "roi_pct": -1.3965,
+        "max_drawdown_u": -36.71,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "NEGATIVE",
+        "PNL_CLASS": "NEGATIVE"
+      },
+      {
+        "strategy_id": "PORTFOLIO_C0_FILL",
+        "uncapped_events": 624,
+        "active_days": 27,
+        "mean_events_per_active_day": 23.1111,
+        "total_pnl_u": -12.34,
+        "pnl_per_active_day": -0.457,
+        "roi_pct": -1.9783,
+        "max_drawdown_u": -42.7,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "NEGATIVE",
+        "PNL_CLASS": "NEGATIVE"
+      },
+      {
+        "strategy_id": "C0",
+        "uncapped_events": 624,
+        "active_days": 27,
+        "mean_events_per_active_day": 23.1111,
+        "total_pnl_u": -12.46,
+        "pnl_per_active_day": -0.4615,
+        "roi_pct": -1.9964,
+        "max_drawdown_u": -42.7,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "NEGATIVE",
+        "PNL_CLASS": "NEGATIVE"
+      }
+    ]
+  },
+  "CORE_CANDIDATES": {
+    "SEP_PUBLIC_RICH_V1": [
+      {
+        "strategy_id": "TENNIS",
+        "uncapped_events": 94,
+        "active_days": 6,
+        "mean_events_per_active_day": 15.6667,
+        "total_pnl_u": 87.83,
+        "pnl_per_active_day": 14.6383,
+        "roi_pct": 93.4413,
+        "max_drawdown_u": -2,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "GE_75"
+      },
+      {
+        "strategy_id": "TENNIS_P50_52",
+        "uncapped_events": 93,
+        "active_days": 6,
+        "mean_events_per_active_day": 15.5,
+        "total_pnl_u": 87,
+        "pnl_per_active_day": 14.5,
+        "roi_pct": 93.5484,
+        "max_drawdown_u": -2,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "GE_75"
+      },
+      {
+        "strategy_id": "P50_54",
+        "uncapped_events": 220,
+        "active_days": 15,
+        "mean_events_per_active_day": 14.6667,
+        "total_pnl_u": 74.56,
+        "pnl_per_active_day": 4.9707,
+        "roi_pct": 33.8921,
+        "max_drawdown_u": -18.21,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "C0",
+        "uncapped_events": 239,
+        "active_days": 15,
+        "mean_events_per_active_day": 15.9333,
+        "total_pnl_u": 74.56,
+        "pnl_per_active_day": 4.9707,
+        "roi_pct": 31.1952,
+        "max_drawdown_u": -18.12,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "PORTFOLIO_BROAD",
+        "uncapped_events": 220,
+        "active_days": 15,
+        "mean_events_per_active_day": 14.6667,
+        "total_pnl_u": 72.7,
+        "pnl_per_active_day": 4.8467,
+        "roi_pct": 33.044,
+        "max_drawdown_u": -20.07,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "PORTFOLIO_C0_FILL",
+        "uncapped_events": 239,
+        "active_days": 15,
+        "mean_events_per_active_day": 15.9333,
+        "total_pnl_u": 71.27,
+        "pnl_per_active_day": 4.7513,
+        "roi_pct": 29.8188,
+        "max_drawdown_u": -21.59,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "20_TO_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "P50_52",
+        "uncapped_events": 204,
+        "active_days": 15,
+        "mean_events_per_active_day": 13.6,
+        "total_pnl_u": 69.67,
+        "pnl_per_active_day": 4.6447,
+        "roi_pct": 34.1504,
+        "max_drawdown_u": -21.33,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "PORTFOLIO_DUAL",
+        "uncapped_events": 204,
+        "active_days": 15,
+        "mean_events_per_active_day": 13.6,
+        "total_pnl_u": 69.67,
+        "pnl_per_active_day": 4.6447,
+        "roi_pct": 34.1504,
+        "max_drawdown_u": -21.33,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "SCORE63_64",
+        "uncapped_events": 187,
+        "active_days": 13,
+        "mean_events_per_active_day": 14.3846,
+        "total_pnl_u": 58.67,
+        "pnl_per_active_day": 4.5131,
+        "roi_pct": 31.3726,
+        "max_drawdown_u": -22.33,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "SCORE63_64_P50_52",
+        "uncapped_events": 187,
+        "active_days": 13,
+        "mean_events_per_active_day": 14.3846,
+        "total_pnl_u": 58.67,
+        "pnl_per_active_day": 4.5131,
+        "roi_pct": 31.3726,
+        "max_drawdown_u": -22.33,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "TENNIS_LEAD18_24",
+        "uncapped_events": 40,
+        "active_days": 2,
+        "mean_events_per_active_day": 20,
+        "total_pnl_u": 40,
+        "pnl_per_active_day": 20,
+        "roi_pct": 100,
+        "max_drawdown_u": 0,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "LEAD12_18",
+        "uncapped_events": 86,
+        "active_days": 7,
+        "mean_events_per_active_day": 12.2857,
+        "total_pnl_u": 32.71,
+        "pnl_per_active_day": 4.6729,
+        "roi_pct": 38.0401,
+        "max_drawdown_u": -6.32,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      },
+      {
+        "strategy_id": "TENNIS_LEAD12_18",
+        "uncapped_events": 32,
+        "active_days": 2,
+        "mean_events_per_active_day": 16,
+        "total_pnl_u": 32,
+        "pnl_per_active_day": 16,
+        "roi_pct": 100,
+        "max_drawdown_u": 0,
+        "FLOW_CLASS": "MEDIUM_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "25_TO_75"
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1": []
+  },
+  "SATELLITE_CANDIDATES": {
+    "SEP_PUBLIC_RICH_V1": [],
+    "SEP_SHADOW_STRATEGIC_V1": [
+      {
+        "strategy_id": "TENNIS_LEAD12_18",
+        "uncapped_events": 1,
+        "active_days": 1,
+        "mean_events_per_active_day": 1,
+        "total_pnl_u": 0.68,
+        "pnl_per_active_day": 0.68,
+        "roi_pct": 68.0672,
+        "max_drawdown_u": 0,
+        "FLOW_CLASS": "LOW_FLOW",
+        "ROI_CLASS": "GE_30",
+        "PNL_CLASS": "0_TO_25"
+      },
+      {
+        "strategy_id": "TENNIS",
+        "uncapped_events": 3,
+        "active_days": 1,
+        "mean_events_per_active_day": 3,
+        "total_pnl_u": 0.66,
+        "pnl_per_active_day": 0.66,
+        "roi_pct": 22.029,
+        "max_drawdown_u": -1,
+        "FLOW_CLASS": "LOW_FLOW",
+        "ROI_CLASS": "20_TO_30",
+        "PNL_CLASS": "0_TO_25"
+      }
+    ]
+  },
+  "DETERMINISM_REVERSED_PARTITIONS": "PASS",
+  "CANONICAL_RESULT_SHA256": "09760f02fe98fbb3afe034eb85f40beac18aeee51f4f511b8d5e668bf5dff132"
+}
