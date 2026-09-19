@@ -1,0 +1,4931 @@
+{
+  "ARTIFACT": "AUGUST_FACTOR_ATLAS_V1",
+  "RANGE": {
+    "START": "2026-08-04",
+    "END": "2026-08-31"
+  },
+  "PARTITION_HASHES": {
+    "2026-08-04": "8548378e3eb2d9a9e95098c8e3e2664498ca453d24e8843bc62579607223fda1",
+    "2026-08-05": "2aba9363192f51b94f14bbf5b445659666af5454ffc003038c25ff879dace033",
+    "2026-08-06": "9bbefd28ede4b80642524eab5d04f97812f231c2c6b9839d669a39ae9ec395bf",
+    "2026-08-07": "b7ab559e65ea47c0a8a9ce2795a44390f75fa80df94a64b86ecb57e38630e814",
+    "2026-08-08": "52ff5d624c28705550082ac746bbed3699d22bfda7d15a3f131074f6a3899857",
+    "2026-08-09": "be32d2215c0d1174e442327de79b743cc23df0907878a4f722568989ab44eb4b",
+    "2026-08-10": "1a9e644d9ec5471173e7d020b5fcef06d442b25a9accf6fe63ba8abb07bee8f9",
+    "2026-08-11": "9ed792d412db7e4b68fba1396adadcf2de90989f4972669341c5a1c91f7cf4dc",
+    "2026-08-12": "a1b79ebebe19a8bafffbddc588245258e06e6f902b9b30a2543b2028e85c5e56",
+    "2026-08-13": "22be899a7450d53aa7e90847501c3e2801ff3e25d216acc98c2c9e3c5993267d",
+    "2026-08-14": "1205ed2f796b6d667c65226f23cd4c85ee0d93bb0e49fd088a48102db921cbb4",
+    "2026-08-15": "456340b55b9e207e11d8e9a3e79ac632b23eb5346f5a799a32e9a6882e435f7f",
+    "2026-08-16": "685c55d196677d09f51bd4b67b6560f84d7eeabae76bf6f13f5d64fabd3caff9",
+    "2026-08-17": "2a237eb6f21be3c9bde46106a36fa820cf14a43df37e524cf7ea73479746c817",
+    "2026-08-18": "83ebd492ee20bee121cf4eb6cb203499f0810cf66adca7232d0ef5794673ac5f",
+    "2026-08-19": "9b66d2a932bc8c968f65ebdb72cb56b5d7b936c59fc4ad70b25876182717f793",
+    "2026-08-20": "d719d6da8f84d60a40d259c36560b1c2b28e23d2ed0fe9b12f0621c7a869d47d",
+    "2026-08-21": "7d41c3ea901e796dd72aa23a3cf6e2acd6142d52b3c33f99b4bf7131fe1974f6",
+    "2026-08-22": "f2266b0b113830e0dc7c5f40d9a994be93da6dfea2163c7f1828c3c33c24f4af",
+    "2026-08-23": "344592832483764ace6cf047582d31c5470168a4b0828c309024f4dc1af4d0d5",
+    "2026-08-24": "03361b87c8fea02e05d9be50e2003a3ab4a406461ec5157d7cf1c42ff73ad630",
+    "2026-08-25": "e3e028a4ad649a52855a30a8f9beb9372485272d3594ffa8e6f6e829da4a153c",
+    "2026-08-26": "ca14195233000fe1c8ed86fba04c4fab0dbf790c711bfe6951faa1063ca54896",
+    "2026-08-27": "b8d69fbfe3ae1334105558f2a134860ed1bf8defddf07d6c63798b88e2350b08",
+    "2026-08-28": "3bd8e76e21a0a9665bebdd144c3c818af0124049ef16b5c0b2c34673a461366d",
+    "2026-08-29": "66889b4bf0d0d62747b53318b637ba2825bb676982d74275ab9303838ee2c628",
+    "2026-08-30": "d73f547d2494a4c05748dc333dd948ad0a8d90a5336d624a582f62fd42d03a59",
+    "2026-08-31": "c46668b3f570da8c282e1cea30432e5337f006670be9fe611cfbb73989719ed1"
+  },
+  "PIT_FUTURE_LEAK_N": 0,
+  "POPULATIONS": [
+    "SEP_PUBLIC_RICH_V1",
+    "SEP_SHADOW_STRATEGIC_V1"
+  ],
+  "FEATURE_COVERAGE": {
+    "SEP_PUBLIC_RICH_V1": {
+      "c0_band_input_n": 799,
+      "score_level_n": 799,
+      "score_series_ge2_n": 0,
+      "price_series_ge2_n": 148,
+      "volume_n": 0,
+      "lead_n": 799,
+      "sport_n": 98
+    },
+    "SEP_SHADOW_STRATEGIC_V1": {
+      "c0_band_input_n": 2015,
+      "score_level_n": 0,
+      "score_series_ge2_n": 0,
+      "price_series_ge2_n": 80,
+      "volume_n": 45,
+      "lead_n": 2015,
+      "sport_n": 926
+    }
+  },
+  "C0_PARITY": {
+    "SEP_PUBLIC_RICH_V1": {
+      "PASS": true,
+      "expected": {
+        "events": 239,
+        "wins": 159,
+        "losses": 80,
+        "pnl_u": 74.56,
+        "roi_pct": 31.1952,
+        "max_drawdown_u": -20.33
+      },
+      "actual": {
+        "events": 239,
+        "wins": 159,
+        "losses": 80,
+        "pnl_u": 74.56,
+        "roi_pct": 31.1952,
+        "max_drawdown_u": -20.33
+      }
+    },
+    "SEP_SHADOW_STRATEGIC_V1": {
+      "PASS": true,
+      "expected": {
+        "events": 624,
+        "wins": 313,
+        "losses": 311,
+        "pnl_u": -12.46,
+        "roi_pct": -1.9964,
+        "max_drawdown_u": -42.62
+      },
+      "actual": {
+        "events": 624,
+        "wins": 313,
+        "losses": 311,
+        "pnl_u": -12.46,
+        "roi_pct": -1.9964,
+        "max_drawdown_u": -42.62
+      }
+    }
+  },
+  "MAIN_EFFECTS": {
+    "SEP_PUBLIC_RICH_V1::PRICE": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE",
+        "CELL_ID": "P50_52",
+        "events": 204,
+        "wins": 137,
+        "losses": 67,
+        "pnl_u": 69.67,
+        "roi_pct": 34.1504,
+        "max_drawdown_u": -22.27,
+        "sample_flag": "N_100_299",
+        "positive_week_n": 2,
+        "negative_week_n": 2,
+        "zero_week_n": 0,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 101,
+            "pnl_u": -19.33,
+            "roi_pct": -19.1417
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 3,
+            "pnl_u": 1,
+            "roi_pct": 33.3333
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 1,
+            "pnl_u": -1,
+            "roi_pct": -100
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 100,
+            "pnl_u": 88,
+            "roi_pct": 88
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE",
+        "CELL_ID": "P52_54",
+        "events": 49,
+        "wins": 32,
+        "losses": 17,
+        "pnl_u": 12.01,
+        "roi_pct": 24.5129,
+        "max_drawdown_u": -2.15,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 0,
+        "zero_week_n": 3,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 49,
+            "pnl_u": 12.01,
+            "roi_pct": 24.5129
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE",
+        "CELL_ID": "P54_56",
+        "events": 33,
+        "wins": 18,
+        "losses": 15,
+        "pnl_u": -0.12,
+        "roi_pct": -0.3604,
+        "max_drawdown_u": -5.57,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 1,
+        "zero_week_n": 2,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 31,
+            "pnl_u": 0.05,
+            "roi_pct": 0.149
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 2,
+            "pnl_u": -0.17,
+            "roi_pct": -8.2569
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE",
+        "CELL_ID": "P56_58",
+        "events": 30,
+        "wins": 19,
+        "losses": 11,
+        "pnl_u": 3.38,
+        "roi_pct": 11.2791,
+        "max_drawdown_u": -3.43,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 0,
+        "zero_week_n": 3,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 30,
+            "pnl_u": 3.38,
+            "roi_pct": 11.2791
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE",
+        "CELL_ID": "P58_60",
+        "events": 21,
+        "wins": 15,
+        "losses": 6,
+        "pnl_u": 4.57,
+        "roi_pct": 21.7658,
+        "max_drawdown_u": -4,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::SCORE_LEVEL": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_LEVEL",
+        "CELL_ID": "S_LT60",
+        "events": 9,
+        "wins": 7,
+        "losses": 2,
+        "pnl_u": 2.81,
+        "roi_pct": 31.1937,
+        "max_drawdown_u": -2,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_LEVEL",
+        "CELL_ID": "S_60_62",
+        "events": 86,
+        "wins": 54,
+        "losses": 32,
+        "pnl_u": 15.64,
+        "roi_pct": 18.1818,
+        "max_drawdown_u": -6.48,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 1,
+        "zero_week_n": 1,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 77,
+            "pnl_u": 10.8,
+            "roi_pct": 14.0279
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 1,
+            "pnl_u": -1,
+            "roi_pct": -100
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 8,
+            "pnl_u": 5.83,
+            "roi_pct": 72.9358
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_LEVEL",
+        "CELL_ID": "S_63_64",
+        "events": 187,
+        "wins": 123,
+        "losses": 64,
+        "pnl_u": 58.67,
+        "roi_pct": 31.3726,
+        "max_drawdown_u": -22.33,
+        "sample_flag": "N_100_299",
+        "positive_week_n": 1,
+        "negative_week_n": 1,
+        "zero_week_n": 2,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 97,
+            "pnl_u": -21.33,
+            "roi_pct": -21.993
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 2,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 89,
+            "pnl_u": 79,
+            "roi_pct": 88.764
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_LEVEL",
+        "CELL_ID": "S_65_67",
+        "events": 7,
+        "wins": 5,
+        "losses": 2,
+        "pnl_u": 3,
+        "roi_pct": 42.8571,
+        "max_drawdown_u": -1,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_LEVEL",
+        "CELL_ID": "S_GE68",
+        "events": 1,
+        "wins": 1,
+        "losses": 0,
+        "pnl_u": 1,
+        "roi_pct": 100,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::LEAD_TIME": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "LEAD_TIME",
+        "CELL_ID": "L_LT3",
+        "events": 38,
+        "wins": 29,
+        "losses": 9,
+        "pnl_u": 19.66,
+        "roi_pct": 51.7291,
+        "max_drawdown_u": -2.19,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 3,
+        "negative_week_n": 0,
+        "zero_week_n": 1,
+        "robustness": "3_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 20,
+            "pnl_u": 3.66,
+            "roi_pct": 18.2853
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 2,
+            "pnl_u": 2,
+            "roi_pct": 100
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 16,
+            "pnl_u": 14,
+            "roi_pct": 87.5
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "LEAD_TIME",
+        "CELL_ID": "L_3_6",
+        "events": 5,
+        "wins": 3,
+        "losses": 2,
+        "pnl_u": 1,
+        "roi_pct": 20,
+        "max_drawdown_u": -1,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "LEAD_TIME",
+        "CELL_ID": "L_6_12",
+        "events": 12,
+        "wins": 9,
+        "losses": 3,
+        "pnl_u": 5.64,
+        "roi_pct": 47.015,
+        "max_drawdown_u": -1.17,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "LEAD_TIME",
+        "CELL_ID": "L_12_18",
+        "events": 86,
+        "wins": 60,
+        "losses": 26,
+        "pnl_u": 32.71,
+        "roi_pct": 38.0401,
+        "max_drawdown_u": -7.32,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 0,
+        "zero_week_n": 2,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 51,
+            "pnl_u": 2.03,
+            "roi_pct": 3.9879
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 35,
+            "pnl_u": 30.68,
+            "roi_pct": 87.6591
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "LEAD_TIME",
+        "CELL_ID": "L_18_24",
+        "events": 124,
+        "wins": 74,
+        "losses": 50,
+        "pnl_u": 20.94,
+        "roi_pct": 16.8837,
+        "max_drawdown_u": -21.67,
+        "sample_flag": "N_100_299",
+        "positive_week_n": 1,
+        "negative_week_n": 1,
+        "zero_week_n": 2,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 84,
+            "pnl_u": -19.06,
+            "roi_pct": -22.6956
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 40,
+            "pnl_u": 40,
+            "roi_pct": 100
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "LEAD_TIME",
+        "CELL_ID": "L_GE24",
+        "events": 3,
+        "wins": 0,
+        "losses": 3,
+        "pnl_u": -3,
+        "roi_pct": -100,
+        "max_drawdown_u": -3,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::VOLUME": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "VOLUME",
+        "CELL_ID": "V_LT100K",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "VOLUME",
+        "CELL_ID": "V_100_200K",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "VOLUME",
+        "CELL_ID": "V_200_350K",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "VOLUME",
+        "CELL_ID": "V_350_500K",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "VOLUME",
+        "CELL_ID": "V_GE500K",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::SPORT": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SPORT",
+        "CELL_ID": "SPORT_TENNIS",
+        "events": 94,
+        "wins": 91,
+        "losses": 3,
+        "pnl_u": 87.83,
+        "roi_pct": 93.4413,
+        "max_drawdown_u": -1.17,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 0,
+        "zero_week_n": 2,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 2,
+            "pnl_u": 2,
+            "roi_pct": 100
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 92,
+            "pnl_u": 85.83,
+            "roi_pct": 93.2988
+          }
+        ]
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::SCORE_SERIES_DIRECTION": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_SERIES_DIRECTION",
+        "CELL_ID": "SCORE_DELTA_NEG",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_SERIES_DIRECTION",
+        "CELL_ID": "SCORE_DELTA_ZERO",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_SERIES_DIRECTION",
+        "CELL_ID": "SCORE_DELTA_POS",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::PRICE_SERIES_DIRECTION": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_DIRECTION",
+        "CELL_ID": "PRICE_DELTA_NEG",
+        "events": 12,
+        "wins": 8,
+        "losses": 4,
+        "pnl_u": 3.79,
+        "roi_pct": 31.5564,
+        "max_drawdown_u": -2.06,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_DIRECTION",
+        "CELL_ID": "PRICE_DELTA_ZERO",
+        "events": 68,
+        "wins": 55,
+        "losses": 13,
+        "pnl_u": 40.96,
+        "roi_pct": 60.2317,
+        "max_drawdown_u": -6.36,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 3,
+        "negative_week_n": 0,
+        "zero_week_n": 1,
+        "robustness": "3_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 26,
+            "pnl_u": 1.28,
+            "roi_pct": 4.9112
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 2,
+            "pnl_u": 2,
+            "roi_pct": 100
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 40,
+            "pnl_u": 37.68,
+            "roi_pct": 94.2017
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_DIRECTION",
+        "CELL_ID": "PRICE_DELTA_POS",
+        "events": 16,
+        "wins": 10,
+        "losses": 6,
+        "pnl_u": 3.37,
+        "roi_pct": 21.0318,
+        "max_drawdown_u": -2.21,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::PRICE_SERIES_MAGNITUDE": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_MAGNITUDE",
+        "CELL_ID": "PRICE_DELTA_LE_NEG_002",
+        "events": 6,
+        "wins": 5,
+        "losses": 1,
+        "pnl_u": 3.86,
+        "roi_pct": 64.4137,
+        "max_drawdown_u": -1,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_MAGNITUDE",
+        "CELL_ID": "PRICE_DELTA_NEG_002_TO_0",
+        "events": 9,
+        "wins": 5,
+        "losses": 4,
+        "pnl_u": 0.83,
+        "roi_pct": 9.1691,
+        "max_drawdown_u": -2.06,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_MAGNITUDE",
+        "CELL_ID": "PRICE_DELTA_0_TO_POS_002",
+        "events": 72,
+        "wins": 57,
+        "losses": 15,
+        "pnl_u": 40.94,
+        "roi_pct": 56.858,
+        "max_drawdown_u": -6.36,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 3,
+        "negative_week_n": 0,
+        "zero_week_n": 1,
+        "robustness": "3_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 30,
+            "pnl_u": 1.26,
+            "roi_pct": 4.1904
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 2,
+            "pnl_u": 2,
+            "roi_pct": 100
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 40,
+            "pnl_u": 37.68,
+            "roi_pct": 94.2017
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_MAGNITUDE",
+        "CELL_ID": "PRICE_DELTA_GE_POS_002",
+        "events": 10,
+        "wins": 7,
+        "losses": 3,
+        "pnl_u": 3.26,
+        "roi_pct": 32.5764,
+        "max_drawdown_u": -2,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PRICE": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE",
+        "CELL_ID": "P50_52",
+        "events": 488,
+        "wins": 244,
+        "losses": 244,
+        "pnl_u": -1.29,
+        "roi_pct": -0.265,
+        "max_drawdown_u": -35.45,
+        "sample_flag": "N_GE300",
+        "positive_week_n": 2,
+        "negative_week_n": 2,
+        "zero_week_n": 0,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 229,
+            "pnl_u": 14.69,
+            "roi_pct": 6.4134
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 108,
+            "pnl_u": 13.47,
+            "roi_pct": 12.4722
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 146,
+            "pnl_u": -28.55,
+            "roi_pct": -19.5564
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 32,
+            "pnl_u": -0.16,
+            "roi_pct": -0.4902
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE",
+        "CELL_ID": "P52_54",
+        "events": 96,
+        "wins": 52,
+        "losses": 44,
+        "pnl_u": 2.82,
+        "roi_pct": 2.9402,
+        "max_drawdown_u": -6.67,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 2,
+        "zero_week_n": 0,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 29,
+            "pnl_u": 7.14,
+            "roi_pct": 24.6183
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 33,
+            "pnl_u": -2.61,
+            "roi_pct": -7.9109
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 35,
+            "pnl_u": -6.48,
+            "roi_pct": -18.5239
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 12,
+            "pnl_u": 1.23,
+            "roi_pct": 10.2211
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE",
+        "CELL_ID": "P54_56",
+        "events": 67,
+        "wins": 36,
+        "losses": 31,
+        "pnl_u": -1.19,
+        "roi_pct": -1.7725,
+        "max_drawdown_u": -10.12,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 2,
+        "zero_week_n": 0,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 20,
+            "pnl_u": -1.67,
+            "roi_pct": -8.3311
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 24,
+            "pnl_u": -0.23,
+            "roi_pct": -0.9464
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 30,
+            "pnl_u": 2.81,
+            "roi_pct": 9.379
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 15,
+            "pnl_u": 1.52,
+            "roi_pct": 10.104
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE",
+        "CELL_ID": "P56_58",
+        "events": 78,
+        "wins": 39,
+        "losses": 39,
+        "pnl_u": -9.19,
+        "roi_pct": -11.7761,
+        "max_drawdown_u": -15.38,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 2,
+        "zero_week_n": 0,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 23,
+            "pnl_u": 3.52,
+            "roi_pct": 15.3
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 26,
+            "pnl_u": 0.41,
+            "roi_pct": 1.5844
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 31,
+            "pnl_u": -9.87,
+            "roi_pct": -31.8326
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 9,
+            "pnl_u": -1.94,
+            "roi_pct": -21.5006
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE",
+        "CELL_ID": "P58_60",
+        "events": 49,
+        "wins": 27,
+        "losses": 22,
+        "pnl_u": -3,
+        "roi_pct": -6.1282,
+        "max_drawdown_u": -9.07,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 3,
+        "negative_week_n": 1,
+        "zero_week_n": 0,
+        "robustness": "3_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 17,
+            "pnl_u": 0.08,
+            "roi_pct": 0.4766
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 16,
+            "pnl_u": 1.01,
+            "roi_pct": 6.3005
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 25,
+            "pnl_u": -6.3,
+            "roi_pct": -25.189
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 10,
+            "pnl_u": 1.94,
+            "roi_pct": 19.3783
+          }
+        ]
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::SCORE_LEVEL": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_LEVEL",
+        "CELL_ID": "S_LT60",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_LEVEL",
+        "CELL_ID": "S_60_62",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_LEVEL",
+        "CELL_ID": "S_63_64",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_LEVEL",
+        "CELL_ID": "S_65_67",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_LEVEL",
+        "CELL_ID": "S_GE68",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::LEAD_TIME": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "LEAD_TIME",
+        "CELL_ID": "L_LT3",
+        "events": 61,
+        "wins": 31,
+        "losses": 30,
+        "pnl_u": -2.16,
+        "roi_pct": -3.5403,
+        "max_drawdown_u": -8.16,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 3,
+        "zero_week_n": 0,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 11,
+            "pnl_u": -3.13,
+            "roi_pct": -28.4819
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 28,
+            "pnl_u": 4.41,
+            "roi_pct": 15.7491
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 17,
+            "pnl_u": -2.16,
+            "roi_pct": -12.6941
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 9,
+            "pnl_u": -1.61,
+            "roi_pct": -17.8598
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "LEAD_TIME",
+        "CELL_ID": "L_3_6",
+        "events": 37,
+        "wins": 24,
+        "losses": 13,
+        "pnl_u": 9.44,
+        "roi_pct": 25.5019,
+        "max_drawdown_u": -2.28,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 3,
+        "negative_week_n": 1,
+        "zero_week_n": 0,
+        "robustness": "3_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 25,
+            "pnl_u": 7.96,
+            "roi_pct": 31.8213
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 6,
+            "pnl_u": -0.06,
+            "roi_pct": -0.9709
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 3,
+            "pnl_u": 0.78,
+            "roi_pct": 26.0667
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 3,
+            "pnl_u": 0.76,
+            "roi_pct": 25.2205
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "LEAD_TIME",
+        "CELL_ID": "L_6_12",
+        "events": 85,
+        "wins": 43,
+        "losses": 42,
+        "pnl_u": 0.13,
+        "roi_pct": 0.1517,
+        "max_drawdown_u": -11.46,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 2,
+        "zero_week_n": 0,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 58,
+            "pnl_u": 6,
+            "roi_pct": 10.3448
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 10,
+            "pnl_u": -2.2,
+            "roi_pct": -21.982
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 16,
+            "pnl_u": -6.43,
+            "roi_pct": -40.1595
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 3,
+            "pnl_u": 2.59,
+            "roi_pct": 86.2505
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "LEAD_TIME",
+        "CELL_ID": "L_12_18",
+        "events": 122,
+        "wins": 61,
+        "losses": 61,
+        "pnl_u": -2.92,
+        "roi_pct": -2.3922,
+        "max_drawdown_u": -9,
+        "sample_flag": "N_100_299",
+        "positive_week_n": 2,
+        "negative_week_n": 2,
+        "zero_week_n": 0,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 48,
+            "pnl_u": -4,
+            "roi_pct": -8.3333
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 34,
+            "pnl_u": 0.61,
+            "roi_pct": 1.7929
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 32,
+            "pnl_u": 4.87,
+            "roi_pct": 15.2054
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 15,
+            "pnl_u": -2.13,
+            "roi_pct": -14.1878
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "LEAD_TIME",
+        "CELL_ID": "L_18_24",
+        "events": 149,
+        "wins": 76,
+        "losses": 73,
+        "pnl_u": 0.52,
+        "roi_pct": 0.3502,
+        "max_drawdown_u": -11.82,
+        "sample_flag": "N_100_299",
+        "positive_week_n": 2,
+        "negative_week_n": 2,
+        "zero_week_n": 0,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 50,
+            "pnl_u": -0.29,
+            "roi_pct": -0.5812
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 33,
+            "pnl_u": 9.76,
+            "roi_pct": 29.5852
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 44,
+            "pnl_u": -8.02,
+            "roi_pct": -18.2268
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 24,
+            "pnl_u": 0.53,
+            "roi_pct": 2.2182
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "LEAD_TIME",
+        "CELL_ID": "L_GE24",
+        "events": 177,
+        "wins": 80,
+        "losses": 97,
+        "pnl_u": -20.49,
+        "roi_pct": -11.574,
+        "max_drawdown_u": -28.69,
+        "sample_flag": "N_100_299",
+        "positive_week_n": 2,
+        "negative_week_n": 2,
+        "zero_week_n": 0,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 67,
+            "pnl_u": -1.86,
+            "roi_pct": -2.7727
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 43,
+            "pnl_u": 3.38,
+            "roi_pct": 7.8637
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 98,
+            "pnl_u": -25.27,
+            "roi_pct": -25.7884
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 14,
+            "pnl_u": 3.58,
+            "roi_pct": 25.6042
+          }
+        ]
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::VOLUME": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "VOLUME",
+        "CELL_ID": "V_LT100K",
+        "events": 41,
+        "wins": 20,
+        "losses": 21,
+        "pnl_u": -4.29,
+        "roi_pct": -10.4569,
+        "max_drawdown_u": -8,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 2,
+        "zero_week_n": 0,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 4,
+            "pnl_u": -2.11,
+            "roi_pct": -52.8302
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 10,
+            "pnl_u": -2.9,
+            "roi_pct": -29.0344
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 12,
+            "pnl_u": 1.15,
+            "roi_pct": 9.5419
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 16,
+            "pnl_u": 0.44,
+            "roi_pct": 2.7259
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "VOLUME",
+        "CELL_ID": "V_100_200K",
+        "events": 1,
+        "wins": 0,
+        "losses": 1,
+        "pnl_u": -1,
+        "roi_pct": -100,
+        "max_drawdown_u": -1,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "VOLUME",
+        "CELL_ID": "V_200_350K",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "VOLUME",
+        "CELL_ID": "V_350_500K",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "VOLUME",
+        "CELL_ID": "V_GE500K",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::SPORT": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SPORT",
+        "CELL_ID": "SPORT_BASKETBALL",
+        "events": 14,
+        "wins": 7,
+        "losses": 7,
+        "pnl_u": -0.53,
+        "roi_pct": -3.7897,
+        "max_drawdown_u": -5,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SPORT",
+        "CELL_ID": "SPORT_ESPORTS",
+        "events": 177,
+        "wins": 77,
+        "losses": 100,
+        "pnl_u": -27.03,
+        "roi_pct": -15.2708,
+        "max_drawdown_u": -35.1,
+        "sample_flag": "N_100_299",
+        "positive_week_n": 2,
+        "negative_week_n": 1,
+        "zero_week_n": 1,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 49,
+            "pnl_u": 5.98,
+            "roi_pct": 12.1945
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 140,
+            "pnl_u": -38.27,
+            "roi_pct": -27.3365
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 36,
+            "pnl_u": 5.46,
+            "roi_pct": 15.1711
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SPORT",
+        "CELL_ID": "SPORT_SOCCER",
+        "events": 48,
+        "wins": 29,
+        "losses": 19,
+        "pnl_u": 7.28,
+        "roi_pct": 15.1686,
+        "max_drawdown_u": -4.04,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 1,
+        "zero_week_n": 1,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 39,
+            "pnl_u": 6.51,
+            "roi_pct": 16.7034
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 11,
+            "pnl_u": 4.59,
+            "roi_pct": 41.6998
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 3,
+            "pnl_u": -1.02,
+            "roi_pct": -33.9934
+          }
+        ]
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SPORT",
+        "CELL_ID": "SPORT_TABLE_TENNIS",
+        "events": 60,
+        "wins": 29,
+        "losses": 31,
+        "pnl_u": -2,
+        "roi_pct": -3.3333,
+        "max_drawdown_u": -9,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 2,
+        "zero_week_n": 1,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 23,
+            "pnl_u": 3,
+            "roi_pct": 13.0435
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 28,
+            "pnl_u": -4,
+            "roi_pct": -14.2857
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 9,
+            "pnl_u": -1,
+            "roi_pct": -11.1111
+          }
+        ]
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::SCORE_SERIES_DIRECTION": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_SERIES_DIRECTION",
+        "CELL_ID": "SCORE_DELTA_NEG",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_SERIES_DIRECTION",
+        "CELL_ID": "SCORE_DELTA_ZERO",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "SCORE_SERIES_DIRECTION",
+        "CELL_ID": "SCORE_DELTA_POS",
+        "events": 0,
+        "wins": 0,
+        "losses": 0,
+        "pnl_u": 0,
+        "roi_pct": 0,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PRICE_SERIES_DIRECTION": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_DIRECTION",
+        "CELL_ID": "PRICE_DELTA_NEG",
+        "events": 20,
+        "wins": 10,
+        "losses": 10,
+        "pnl_u": -2.2,
+        "roi_pct": -11.0136,
+        "max_drawdown_u": -4,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_DIRECTION",
+        "CELL_ID": "PRICE_DELTA_ZERO",
+        "events": 10,
+        "wins": 6,
+        "losses": 4,
+        "pnl_u": 1.66,
+        "roi_pct": 16.6221,
+        "max_drawdown_u": -1,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_DIRECTION",
+        "CELL_ID": "PRICE_DELTA_POS",
+        "events": 34,
+        "wins": 17,
+        "losses": 17,
+        "pnl_u": -2.77,
+        "roi_pct": -8.1581,
+        "max_drawdown_u": -6.96,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 3,
+        "zero_week_n": 0,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 3,
+            "pnl_u": 0.89,
+            "roi_pct": 29.5597
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 9,
+            "pnl_u": -0.05,
+            "roi_pct": -0.5411
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 11,
+            "pnl_u": -0.07,
+            "roi_pct": -0.6572
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 13,
+            "pnl_u": -2.09,
+            "roi_pct": -16.0846
+          }
+        ]
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PRICE_SERIES_MAGNITUDE": [
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_MAGNITUDE",
+        "CELL_ID": "PRICE_DELTA_LE_NEG_002",
+        "events": 12,
+        "wins": 4,
+        "losses": 8,
+        "pnl_u": -4.6,
+        "roi_pct": -38.321,
+        "max_drawdown_u": -5.4,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_MAGNITUDE",
+        "CELL_ID": "PRICE_DELTA_NEG_002_TO_0",
+        "events": 9,
+        "wins": 6,
+        "losses": 3,
+        "pnl_u": 1.4,
+        "roi_pct": 15.5088,
+        "max_drawdown_u": -1.2,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_MAGNITUDE",
+        "CELL_ID": "PRICE_DELTA_0_TO_POS_002",
+        "events": 22,
+        "wins": 10,
+        "losses": 12,
+        "pnl_u": -3.14,
+        "roi_pct": -14.259,
+        "max_drawdown_u": -3.14,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      },
+      {
+        "SOURCE": "MAIN_EFFECT",
+        "FACTOR_ID": "PRICE_SERIES_MAGNITUDE",
+        "CELL_ID": "PRICE_DELTA_GE_POS_002",
+        "events": 23,
+        "wins": 13,
+        "losses": 10,
+        "pnl_u": 1.03,
+        "roi_pct": 4.4585,
+        "max_drawdown_u": -3.38,
+        "sample_flag": "N_LT30",
+        "positive_week_n": null,
+        "negative_week_n": null,
+        "zero_week_n": null,
+        "robustness": null,
+        "weekly": null
+      }
+    ]
+  },
+  "INTERACTIONS": {
+    "SEP_PUBLIC_RICH_V1::PRICE_X_SPORT": [
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "PRICE_X_SPORT",
+        "CELL_ID": "P50_52__SPORT_TENNIS",
+        "events": 93,
+        "wins": 90,
+        "losses": 3,
+        "pnl_u": 87,
+        "roi_pct": 93.5484,
+        "max_drawdown_u": -2,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 0,
+        "zero_week_n": 2,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 2,
+            "pnl_u": 2,
+            "roi_pct": 100
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 91,
+            "pnl_u": 85,
+            "roi_pct": 93.4066
+          }
+        ]
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::SCORE_LEVEL_X_SPORT": [
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "SCORE_LEVEL_X_SPORT",
+        "CELL_ID": "S_63_64__SPORT_TENNIS",
+        "events": 84,
+        "wins": 81,
+        "losses": 3,
+        "pnl_u": 78,
+        "roi_pct": 92.8571,
+        "max_drawdown_u": -2,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 0,
+        "zero_week_n": 2,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 1,
+            "pnl_u": 1,
+            "roi_pct": 100
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 83,
+            "pnl_u": 77,
+            "roi_pct": 92.7711
+          }
+        ]
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::PRICE_X_SCORE_LEVEL": [
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "PRICE_X_SCORE_LEVEL",
+        "CELL_ID": "P50_52__S_63_64",
+        "events": 187,
+        "wins": 123,
+        "losses": 64,
+        "pnl_u": 58.67,
+        "roi_pct": 31.3726,
+        "max_drawdown_u": -22.33,
+        "sample_flag": "N_100_299",
+        "positive_week_n": 1,
+        "negative_week_n": 1,
+        "zero_week_n": 2,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 97,
+            "pnl_u": -21.33,
+            "roi_pct": -21.993
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 2,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 89,
+            "pnl_u": 79,
+            "roi_pct": 88.764
+          }
+        ]
+      },
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "PRICE_X_SCORE_LEVEL",
+        "CELL_ID": "P52_54__S_60_62",
+        "events": 49,
+        "wins": 32,
+        "losses": 17,
+        "pnl_u": 12.01,
+        "roi_pct": 24.5129,
+        "max_drawdown_u": -2.15,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 0,
+        "zero_week_n": 3,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 49,
+            "pnl_u": 12.01,
+            "roi_pct": 24.5129
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          }
+        ]
+      },
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "PRICE_X_SCORE_LEVEL",
+        "CELL_ID": "P54_56__S_60_62",
+        "events": 33,
+        "wins": 18,
+        "losses": 15,
+        "pnl_u": -0.12,
+        "roi_pct": -0.3604,
+        "max_drawdown_u": -5.57,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 1,
+        "zero_week_n": 2,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 31,
+            "pnl_u": 0.05,
+            "roi_pct": 0.149
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 2,
+            "pnl_u": -0.17,
+            "roi_pct": -8.2569
+          }
+        ]
+      },
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "PRICE_X_SCORE_LEVEL",
+        "CELL_ID": "P56_58__S_60_62",
+        "events": 30,
+        "wins": 19,
+        "losses": 11,
+        "pnl_u": 3.38,
+        "roi_pct": 11.2791,
+        "max_drawdown_u": -3.43,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 0,
+        "zero_week_n": 3,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 30,
+            "pnl_u": 3.38,
+            "roi_pct": 11.2791
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          }
+        ]
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::LEAD_TIME_X_SPORT": [
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "LEAD_TIME_X_SPORT",
+        "CELL_ID": "L_12_18__SPORT_TENNIS",
+        "events": 32,
+        "wins": 32,
+        "losses": 0,
+        "pnl_u": 32,
+        "roi_pct": 100,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 0,
+        "zero_week_n": 3,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 32,
+            "pnl_u": 32,
+            "roi_pct": 100
+          }
+        ]
+      },
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "LEAD_TIME_X_SPORT",
+        "CELL_ID": "L_18_24__SPORT_TENNIS",
+        "events": 40,
+        "wins": 40,
+        "losses": 0,
+        "pnl_u": 40,
+        "roi_pct": 100,
+        "max_drawdown_u": 0,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 0,
+        "zero_week_n": 3,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 40,
+            "pnl_u": 40,
+            "roi_pct": 100
+          }
+        ]
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::VOLUME_X_PRICE": [],
+    "SEP_PUBLIC_RICH_V1::SCORE_SERIES_DIRECTION_X_SPORT": [],
+    "SEP_PUBLIC_RICH_V1::PRICE_SERIES_DIRECTION_X_SPORT": [
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "PRICE_SERIES_DIRECTION_X_SPORT",
+        "CELL_ID": "PRICE_DELTA_ZERO__SPORT_TENNIS",
+        "events": 36,
+        "wins": 35,
+        "losses": 1,
+        "pnl_u": 34,
+        "roi_pct": 94.4444,
+        "max_drawdown_u": -1,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 0,
+        "zero_week_n": 2,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 2,
+            "pnl_u": 2,
+            "roi_pct": 100
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 34,
+            "pnl_u": 32,
+            "roi_pct": 94.1176
+          }
+        ]
+      }
+    ],
+    "SEP_PUBLIC_RICH_V1::SCORE_LEVEL_X_LEAD_TIME": [
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "SCORE_LEVEL_X_LEAD_TIME",
+        "CELL_ID": "S_60_62__L_18_24",
+        "events": 57,
+        "wins": 36,
+        "losses": 21,
+        "pnl_u": 9.77,
+        "roi_pct": 17.1421,
+        "max_drawdown_u": -5.25,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 0,
+        "zero_week_n": 3,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 57,
+            "pnl_u": 9.77,
+            "roi_pct": 17.1421
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          }
+        ]
+      },
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "SCORE_LEVEL_X_LEAD_TIME",
+        "CELL_ID": "S_63_64__L_12_18",
+        "events": 71,
+        "wins": 55,
+        "losses": 16,
+        "pnl_u": 38.79,
+        "roi_pct": 54.6271,
+        "max_drawdown_u": -4.04,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 0,
+        "zero_week_n": 2,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 39,
+            "pnl_u": 6.79,
+            "roi_pct": 17.3981
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 32,
+            "pnl_u": 32,
+            "roi_pct": 100
+          }
+        ]
+      },
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "SCORE_LEVEL_X_LEAD_TIME",
+        "CELL_ID": "S_63_64__L_18_24",
+        "events": 101,
+        "wins": 59,
+        "losses": 42,
+        "pnl_u": 16.8,
+        "roi_pct": 16.6372,
+        "max_drawdown_u": -23.2,
+        "sample_flag": "N_100_299",
+        "positive_week_n": 1,
+        "negative_week_n": 1,
+        "zero_week_n": 2,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 61,
+            "pnl_u": -23.2,
+            "roi_pct": -38.027
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 40,
+            "pnl_u": 40,
+            "roi_pct": 100
+          }
+        ]
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::PRICE_X_SPORT": [
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "PRICE_X_SPORT",
+        "CELL_ID": "P50_52__SPORT_ESPORTS",
+        "events": 133,
+        "wins": 57,
+        "losses": 76,
+        "pnl_u": -19.22,
+        "roi_pct": -14.448,
+        "max_drawdown_u": -28.08,
+        "sample_flag": "N_100_299",
+        "positive_week_n": 2,
+        "negative_week_n": 1,
+        "zero_week_n": 1,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 41,
+            "pnl_u": 6.92,
+            "roi_pct": 16.8809
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 96,
+            "pnl_u": -28.18,
+            "roi_pct": -29.3499
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 18,
+            "pnl_u": 1.9,
+            "roi_pct": 10.5675
+          }
+        ]
+      },
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "PRICE_X_SPORT",
+        "CELL_ID": "P50_52__SPORT_TABLE_TENNIS",
+        "events": 60,
+        "wins": 29,
+        "losses": 31,
+        "pnl_u": -2,
+        "roi_pct": -3.3333,
+        "max_drawdown_u": -9,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 2,
+        "zero_week_n": 1,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 23,
+            "pnl_u": 3,
+            "roi_pct": 13.0435
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 28,
+            "pnl_u": -4,
+            "roi_pct": -14.2857
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 9,
+            "pnl_u": -1,
+            "roi_pct": -11.1111
+          }
+        ]
+      },
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "PRICE_X_SPORT",
+        "CELL_ID": "P52_54__SPORT_ESPORTS",
+        "events": 34,
+        "wins": 16,
+        "losses": 18,
+        "pnl_u": -3.57,
+        "roi_pct": -10.5136,
+        "max_drawdown_u": -3.89,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 2,
+        "zero_week_n": 1,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 16,
+            "pnl_u": -2.68,
+            "roi_pct": -16.7726
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 24,
+            "pnl_u": -6.94,
+            "roi_pct": -28.9373
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 5,
+            "pnl_u": 0.68,
+            "roi_pct": 13.5806
+          }
+        ]
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::SCORE_LEVEL_X_SPORT": [],
+    "SEP_SHADOW_STRATEGIC_V1::PRICE_X_SCORE_LEVEL": [],
+    "SEP_SHADOW_STRATEGIC_V1::LEAD_TIME_X_SPORT": [
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "LEAD_TIME_X_SPORT",
+        "CELL_ID": "L_12_18__SPORT_ESPORTS",
+        "events": 46,
+        "wins": 23,
+        "losses": 23,
+        "pnl_u": -1.54,
+        "roi_pct": -3.3507,
+        "max_drawdown_u": -6.15,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 2,
+        "zero_week_n": 1,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 12,
+            "pnl_u": -0.66,
+            "roi_pct": -5.4607
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 29,
+            "pnl_u": 2.26,
+            "roi_pct": 7.8004
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 11,
+            "pnl_u": -1.73,
+            "roi_pct": -15.7674
+          }
+        ]
+      },
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "LEAD_TIME_X_SPORT",
+        "CELL_ID": "L_18_24__SPORT_TABLE_TENNIS",
+        "events": 47,
+        "wins": 22,
+        "losses": 25,
+        "pnl_u": -3,
+        "roi_pct": -6.383,
+        "max_drawdown_u": -9,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 1,
+        "negative_week_n": 2,
+        "zero_week_n": 1,
+        "robustness": "1_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 11,
+            "pnl_u": 1,
+            "roi_pct": 9.0909
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 27,
+            "pnl_u": -3,
+            "roi_pct": -11.1111
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 9,
+            "pnl_u": -1,
+            "roi_pct": -11.1111
+          }
+        ]
+      },
+      {
+        "SOURCE": "INTERACTION",
+        "FACTOR_ID": "LEAD_TIME_X_SPORT",
+        "CELL_ID": "L_GE24__SPORT_ESPORTS",
+        "events": 79,
+        "wins": 28,
+        "losses": 51,
+        "pnl_u": -23.95,
+        "roi_pct": -30.3217,
+        "max_drawdown_u": -27.6,
+        "sample_flag": "N_30_99",
+        "positive_week_n": 2,
+        "negative_week_n": 1,
+        "zero_week_n": 1,
+        "robustness": "2_POS",
+        "weekly": [
+          {
+            "WEEK_ID": "W1",
+            "event_n": 0,
+            "pnl_u": 0,
+            "roi_pct": 0
+          },
+          {
+            "WEEK_ID": "W2",
+            "event_n": 27,
+            "pnl_u": 0.63,
+            "roi_pct": 2.3355
+          },
+          {
+            "WEEK_ID": "W3",
+            "event_n": 81,
+            "pnl_u": -29.61,
+            "roi_pct": -36.5508
+          },
+          {
+            "WEEK_ID": "W4",
+            "event_n": 9,
+            "pnl_u": 2.76,
+            "roi_pct": 30.6312
+          }
+        ]
+      }
+    ],
+    "SEP_SHADOW_STRATEGIC_V1::VOLUME_X_PRICE": [],
+    "SEP_SHADOW_STRATEGIC_V1::SCORE_SERIES_DIRECTION_X_SPORT": [],
+    "SEP_SHADOW_STRATEGIC_V1::PRICE_SERIES_DIRECTION_X_SPORT": [],
+    "SEP_SHADOW_STRATEGIC_V1::SCORE_LEVEL_X_LEAD_TIME": []
+  },
+  "LEADERBOARDS": {
+    "SEP_PUBLIC_RICH_V1": {
+      "TOP_BY_TOTAL_PNL": [
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "SPORT",
+          "CELL_ID": "SPORT_TENNIS",
+          "events": 94,
+          "wins": 91,
+          "losses": 3,
+          "pnl_u": 87.83,
+          "roi_pct": 93.4413,
+          "max_drawdown_u": -1.17,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 2,
+          "negative_week_n": 0,
+          "zero_week_n": 2,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 2,
+              "pnl_u": 2,
+              "roi_pct": 100
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 92,
+              "pnl_u": 85.83,
+              "roi_pct": 93.2988
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_X_SPORT",
+          "CELL_ID": "P50_52__SPORT_TENNIS",
+          "events": 93,
+          "wins": 90,
+          "losses": 3,
+          "pnl_u": 87,
+          "roi_pct": 93.5484,
+          "max_drawdown_u": -2,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 2,
+          "negative_week_n": 0,
+          "zero_week_n": 2,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 2,
+              "pnl_u": 2,
+              "roi_pct": 100
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 91,
+              "pnl_u": 85,
+              "roi_pct": 93.4066
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "SCORE_LEVEL_X_SPORT",
+          "CELL_ID": "S_63_64__SPORT_TENNIS",
+          "events": 84,
+          "wins": 81,
+          "losses": 3,
+          "pnl_u": 78,
+          "roi_pct": 92.8571,
+          "max_drawdown_u": -2,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 2,
+          "negative_week_n": 0,
+          "zero_week_n": 2,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 1,
+              "pnl_u": 1,
+              "roi_pct": 100
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 83,
+              "pnl_u": 77,
+              "roi_pct": 92.7711
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "PRICE",
+          "CELL_ID": "P50_52",
+          "events": 204,
+          "wins": 137,
+          "losses": 67,
+          "pnl_u": 69.67,
+          "roi_pct": 34.1504,
+          "max_drawdown_u": -22.27,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 2,
+          "zero_week_n": 0,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 101,
+              "pnl_u": -19.33,
+              "roi_pct": -19.1417
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 3,
+              "pnl_u": 1,
+              "roi_pct": 33.3333
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 1,
+              "pnl_u": -1,
+              "roi_pct": -100
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 100,
+              "pnl_u": 88,
+              "roi_pct": 88
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "SCORE_LEVEL",
+          "CELL_ID": "S_63_64",
+          "events": 187,
+          "wins": 123,
+          "losses": 64,
+          "pnl_u": 58.67,
+          "roi_pct": 31.3726,
+          "max_drawdown_u": -22.33,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 1,
+          "negative_week_n": 1,
+          "zero_week_n": 2,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 97,
+              "pnl_u": -21.33,
+              "roi_pct": -21.993
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 2,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 89,
+              "pnl_u": 79,
+              "roi_pct": 88.764
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_X_SCORE_LEVEL",
+          "CELL_ID": "P50_52__S_63_64",
+          "events": 187,
+          "wins": 123,
+          "losses": 64,
+          "pnl_u": 58.67,
+          "roi_pct": 31.3726,
+          "max_drawdown_u": -22.33,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 1,
+          "negative_week_n": 1,
+          "zero_week_n": 2,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 97,
+              "pnl_u": -21.33,
+              "roi_pct": -21.993
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 2,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 89,
+              "pnl_u": 79,
+              "roi_pct": 88.764
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "PRICE_SERIES_DIRECTION",
+          "CELL_ID": "PRICE_DELTA_ZERO",
+          "events": 68,
+          "wins": 55,
+          "losses": 13,
+          "pnl_u": 40.96,
+          "roi_pct": 60.2317,
+          "max_drawdown_u": -6.36,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 3,
+          "negative_week_n": 0,
+          "zero_week_n": 1,
+          "robustness": "3_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 26,
+              "pnl_u": 1.28,
+              "roi_pct": 4.9112
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 2,
+              "pnl_u": 2,
+              "roi_pct": 100
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 40,
+              "pnl_u": 37.68,
+              "roi_pct": 94.2017
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "PRICE_SERIES_MAGNITUDE",
+          "CELL_ID": "PRICE_DELTA_0_TO_POS_002",
+          "events": 72,
+          "wins": 57,
+          "losses": 15,
+          "pnl_u": 40.94,
+          "roi_pct": 56.858,
+          "max_drawdown_u": -6.36,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 3,
+          "negative_week_n": 0,
+          "zero_week_n": 1,
+          "robustness": "3_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 30,
+              "pnl_u": 1.26,
+              "roi_pct": 4.1904
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 2,
+              "pnl_u": 2,
+              "roi_pct": 100
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 40,
+              "pnl_u": 37.68,
+              "roi_pct": 94.2017
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "LEAD_TIME_X_SPORT",
+          "CELL_ID": "L_18_24__SPORT_TENNIS",
+          "events": 40,
+          "wins": 40,
+          "losses": 0,
+          "pnl_u": 40,
+          "roi_pct": 100,
+          "max_drawdown_u": 0,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 1,
+          "negative_week_n": 0,
+          "zero_week_n": 3,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 40,
+              "pnl_u": 40,
+              "roi_pct": 100
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "SCORE_LEVEL_X_LEAD_TIME",
+          "CELL_ID": "S_63_64__L_12_18",
+          "events": 71,
+          "wins": 55,
+          "losses": 16,
+          "pnl_u": 38.79,
+          "roi_pct": 54.6271,
+          "max_drawdown_u": -4.04,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 2,
+          "negative_week_n": 0,
+          "zero_week_n": 2,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 39,
+              "pnl_u": 6.79,
+              "roi_pct": 17.3981
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 32,
+              "pnl_u": 32,
+              "roi_pct": 100
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_SERIES_DIRECTION_X_SPORT",
+          "CELL_ID": "PRICE_DELTA_ZERO__SPORT_TENNIS",
+          "events": 36,
+          "wins": 35,
+          "losses": 1,
+          "pnl_u": 34,
+          "roi_pct": 94.4444,
+          "max_drawdown_u": -1,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 2,
+          "negative_week_n": 0,
+          "zero_week_n": 2,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 2,
+              "pnl_u": 2,
+              "roi_pct": 100
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 34,
+              "pnl_u": 32,
+              "roi_pct": 94.1176
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "LEAD_TIME",
+          "CELL_ID": "L_12_18",
+          "events": 86,
+          "wins": 60,
+          "losses": 26,
+          "pnl_u": 32.71,
+          "roi_pct": 38.0401,
+          "max_drawdown_u": -7.32,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 2,
+          "negative_week_n": 0,
+          "zero_week_n": 2,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 51,
+              "pnl_u": 2.03,
+              "roi_pct": 3.9879
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 35,
+              "pnl_u": 30.68,
+              "roi_pct": 87.6591
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "LEAD_TIME_X_SPORT",
+          "CELL_ID": "L_12_18__SPORT_TENNIS",
+          "events": 32,
+          "wins": 32,
+          "losses": 0,
+          "pnl_u": 32,
+          "roi_pct": 100,
+          "max_drawdown_u": 0,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 1,
+          "negative_week_n": 0,
+          "zero_week_n": 3,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 32,
+              "pnl_u": 32,
+              "roi_pct": 100
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "LEAD_TIME",
+          "CELL_ID": "L_18_24",
+          "events": 124,
+          "wins": 74,
+          "losses": 50,
+          "pnl_u": 20.94,
+          "roi_pct": 16.8837,
+          "max_drawdown_u": -21.67,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 1,
+          "negative_week_n": 1,
+          "zero_week_n": 2,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 84,
+              "pnl_u": -19.06,
+              "roi_pct": -22.6956
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 40,
+              "pnl_u": 40,
+              "roi_pct": 100
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "LEAD_TIME",
+          "CELL_ID": "L_LT3",
+          "events": 38,
+          "wins": 29,
+          "losses": 9,
+          "pnl_u": 19.66,
+          "roi_pct": 51.7291,
+          "max_drawdown_u": -2.19,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 3,
+          "negative_week_n": 0,
+          "zero_week_n": 1,
+          "robustness": "3_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 20,
+              "pnl_u": 3.66,
+              "roi_pct": 18.2853
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 2,
+              "pnl_u": 2,
+              "roi_pct": 100
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 16,
+              "pnl_u": 14,
+              "roi_pct": 87.5
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "SCORE_LEVEL_X_LEAD_TIME",
+          "CELL_ID": "S_63_64__L_18_24",
+          "events": 101,
+          "wins": 59,
+          "losses": 42,
+          "pnl_u": 16.8,
+          "roi_pct": 16.6372,
+          "max_drawdown_u": -23.2,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 1,
+          "negative_week_n": 1,
+          "zero_week_n": 2,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 61,
+              "pnl_u": -23.2,
+              "roi_pct": -38.027
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 40,
+              "pnl_u": 40,
+              "roi_pct": 100
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "SCORE_LEVEL",
+          "CELL_ID": "S_60_62",
+          "events": 86,
+          "wins": 54,
+          "losses": 32,
+          "pnl_u": 15.64,
+          "roi_pct": 18.1818,
+          "max_drawdown_u": -6.48,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 2,
+          "negative_week_n": 1,
+          "zero_week_n": 1,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 77,
+              "pnl_u": 10.8,
+              "roi_pct": 14.0279
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 1,
+              "pnl_u": -1,
+              "roi_pct": -100
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 8,
+              "pnl_u": 5.83,
+              "roi_pct": 72.9358
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "PRICE",
+          "CELL_ID": "P52_54",
+          "events": 49,
+          "wins": 32,
+          "losses": 17,
+          "pnl_u": 12.01,
+          "roi_pct": 24.5129,
+          "max_drawdown_u": -2.15,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 1,
+          "negative_week_n": 0,
+          "zero_week_n": 3,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 49,
+              "pnl_u": 12.01,
+              "roi_pct": 24.5129
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_X_SCORE_LEVEL",
+          "CELL_ID": "P52_54__S_60_62",
+          "events": 49,
+          "wins": 32,
+          "losses": 17,
+          "pnl_u": 12.01,
+          "roi_pct": 24.5129,
+          "max_drawdown_u": -2.15,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 1,
+          "negative_week_n": 0,
+          "zero_week_n": 3,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 49,
+              "pnl_u": 12.01,
+              "roi_pct": 24.5129
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "LEAD_TIME_X_SPORT",
+          "CELL_ID": "L_LT3__SPORT_TENNIS",
+          "events": 12,
+          "wins": 11,
+          "losses": 1,
+          "pnl_u": 10,
+          "roi_pct": 83.3333,
+          "max_drawdown_u": -1,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        }
+      ],
+      "TOP_BY_ROI_WITH_N_GE100": [
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "PRICE",
+          "CELL_ID": "P50_52",
+          "events": 204,
+          "wins": 137,
+          "losses": 67,
+          "pnl_u": 69.67,
+          "roi_pct": 34.1504,
+          "max_drawdown_u": -22.27,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 2,
+          "zero_week_n": 0,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 101,
+              "pnl_u": -19.33,
+              "roi_pct": -19.1417
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 3,
+              "pnl_u": 1,
+              "roi_pct": 33.3333
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 1,
+              "pnl_u": -1,
+              "roi_pct": -100
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 100,
+              "pnl_u": 88,
+              "roi_pct": 88
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "SCORE_LEVEL",
+          "CELL_ID": "S_63_64",
+          "events": 187,
+          "wins": 123,
+          "losses": 64,
+          "pnl_u": 58.67,
+          "roi_pct": 31.3726,
+          "max_drawdown_u": -22.33,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 1,
+          "negative_week_n": 1,
+          "zero_week_n": 2,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 97,
+              "pnl_u": -21.33,
+              "roi_pct": -21.993
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 2,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 89,
+              "pnl_u": 79,
+              "roi_pct": 88.764
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_X_SCORE_LEVEL",
+          "CELL_ID": "P50_52__S_63_64",
+          "events": 187,
+          "wins": 123,
+          "losses": 64,
+          "pnl_u": 58.67,
+          "roi_pct": 31.3726,
+          "max_drawdown_u": -22.33,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 1,
+          "negative_week_n": 1,
+          "zero_week_n": 2,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 97,
+              "pnl_u": -21.33,
+              "roi_pct": -21.993
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 2,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 89,
+              "pnl_u": 79,
+              "roi_pct": 88.764
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "LEAD_TIME",
+          "CELL_ID": "L_18_24",
+          "events": 124,
+          "wins": 74,
+          "losses": 50,
+          "pnl_u": 20.94,
+          "roi_pct": 16.8837,
+          "max_drawdown_u": -21.67,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 1,
+          "negative_week_n": 1,
+          "zero_week_n": 2,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 84,
+              "pnl_u": -19.06,
+              "roi_pct": -22.6956
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 40,
+              "pnl_u": 40,
+              "roi_pct": 100
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "SCORE_LEVEL_X_LEAD_TIME",
+          "CELL_ID": "S_63_64__L_18_24",
+          "events": 101,
+          "wins": 59,
+          "losses": 42,
+          "pnl_u": 16.8,
+          "roi_pct": 16.6372,
+          "max_drawdown_u": -23.2,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 1,
+          "negative_week_n": 1,
+          "zero_week_n": 2,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 61,
+              "pnl_u": -23.2,
+              "roi_pct": -38.027
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 40,
+              "pnl_u": 40,
+              "roi_pct": 100
+            }
+          ]
+        }
+      ],
+      "TOP_BY_ROBUSTNESS_WITH_N_GE100": [
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "PRICE",
+          "CELL_ID": "P50_52",
+          "events": 204,
+          "wins": 137,
+          "losses": 67,
+          "pnl_u": 69.67,
+          "roi_pct": 34.1504,
+          "max_drawdown_u": -22.27,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 2,
+          "zero_week_n": 0,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 101,
+              "pnl_u": -19.33,
+              "roi_pct": -19.1417
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 3,
+              "pnl_u": 1,
+              "roi_pct": 33.3333
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 1,
+              "pnl_u": -1,
+              "roi_pct": -100
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 100,
+              "pnl_u": 88,
+              "roi_pct": 88
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "SCORE_LEVEL",
+          "CELL_ID": "S_63_64",
+          "events": 187,
+          "wins": 123,
+          "losses": 64,
+          "pnl_u": 58.67,
+          "roi_pct": 31.3726,
+          "max_drawdown_u": -22.33,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 1,
+          "negative_week_n": 1,
+          "zero_week_n": 2,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 97,
+              "pnl_u": -21.33,
+              "roi_pct": -21.993
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 2,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 89,
+              "pnl_u": 79,
+              "roi_pct": 88.764
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_X_SCORE_LEVEL",
+          "CELL_ID": "P50_52__S_63_64",
+          "events": 187,
+          "wins": 123,
+          "losses": 64,
+          "pnl_u": 58.67,
+          "roi_pct": 31.3726,
+          "max_drawdown_u": -22.33,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 1,
+          "negative_week_n": 1,
+          "zero_week_n": 2,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 97,
+              "pnl_u": -21.33,
+              "roi_pct": -21.993
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 2,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 89,
+              "pnl_u": 79,
+              "roi_pct": 88.764
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "LEAD_TIME",
+          "CELL_ID": "L_18_24",
+          "events": 124,
+          "wins": 74,
+          "losses": 50,
+          "pnl_u": 20.94,
+          "roi_pct": 16.8837,
+          "max_drawdown_u": -21.67,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 1,
+          "negative_week_n": 1,
+          "zero_week_n": 2,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 84,
+              "pnl_u": -19.06,
+              "roi_pct": -22.6956
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 40,
+              "pnl_u": 40,
+              "roi_pct": 100
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "SCORE_LEVEL_X_LEAD_TIME",
+          "CELL_ID": "S_63_64__L_18_24",
+          "events": 101,
+          "wins": 59,
+          "losses": 42,
+          "pnl_u": 16.8,
+          "roi_pct": 16.6372,
+          "max_drawdown_u": -23.2,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 1,
+          "negative_week_n": 1,
+          "zero_week_n": 2,
+          "robustness": "1_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 61,
+              "pnl_u": -23.2,
+              "roi_pct": -38.027
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 40,
+              "pnl_u": 40,
+              "roi_pct": 100
+            }
+          ]
+        }
+      ]
+    },
+    "SEP_SHADOW_STRATEGIC_V1": {
+      "TOP_BY_TOTAL_PNL": [
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "LEAD_TIME",
+          "CELL_ID": "L_3_6",
+          "events": 37,
+          "wins": 24,
+          "losses": 13,
+          "pnl_u": 9.44,
+          "roi_pct": 25.5019,
+          "max_drawdown_u": -2.28,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 3,
+          "negative_week_n": 1,
+          "zero_week_n": 0,
+          "robustness": "3_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 25,
+              "pnl_u": 7.96,
+              "roi_pct": 31.8213
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 6,
+              "pnl_u": -0.06,
+              "roi_pct": -0.9709
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 3,
+              "pnl_u": 0.78,
+              "roi_pct": 26.0667
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 3,
+              "pnl_u": 0.76,
+              "roi_pct": 25.2205
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "SPORT",
+          "CELL_ID": "SPORT_SOCCER",
+          "events": 48,
+          "wins": 29,
+          "losses": 19,
+          "pnl_u": 7.28,
+          "roi_pct": 15.1686,
+          "max_drawdown_u": -4.04,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 2,
+          "negative_week_n": 1,
+          "zero_week_n": 1,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 39,
+              "pnl_u": 6.51,
+              "roi_pct": 16.7034
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 11,
+              "pnl_u": 4.59,
+              "roi_pct": 41.6998
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 3,
+              "pnl_u": -1.02,
+              "roi_pct": -33.9934
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_X_SPORT",
+          "CELL_ID": "P54_56__SPORT_SOCCER",
+          "events": 11,
+          "wins": 9,
+          "losses": 2,
+          "pnl_u": 5.48,
+          "roi_pct": 49.8413,
+          "max_drawdown_u": -2,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "LEAD_TIME_X_SPORT",
+          "CELL_ID": "L_18_24__SPORT_SOCCER",
+          "events": 12,
+          "wins": 9,
+          "losses": 3,
+          "pnl_u": 5.26,
+          "roi_pct": 43.8173,
+          "max_drawdown_u": -1.02,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "VOLUME_X_PRICE",
+          "CELL_ID": "V_LT100K__P54_56",
+          "events": 13,
+          "wins": 9,
+          "losses": 4,
+          "pnl_u": 3.33,
+          "roi_pct": 25.6337,
+          "max_drawdown_u": -2.2,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "PRICE",
+          "CELL_ID": "P52_54",
+          "events": 96,
+          "wins": 52,
+          "losses": 44,
+          "pnl_u": 2.82,
+          "roi_pct": 2.9402,
+          "max_drawdown_u": -6.67,
+          "sample_flag": "N_30_99",
+          "positive_week_n": 2,
+          "negative_week_n": 2,
+          "zero_week_n": 0,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 29,
+              "pnl_u": 7.14,
+              "roi_pct": 24.6183
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 33,
+              "pnl_u": -2.61,
+              "roi_pct": -7.9109
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 35,
+              "pnl_u": -6.48,
+              "roi_pct": -18.5239
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 12,
+              "pnl_u": 1.23,
+              "roi_pct": 10.2211
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "LEAD_TIME_X_SPORT",
+          "CELL_ID": "L_GE24__SPORT_BASKETBALL",
+          "events": 5,
+          "wins": 4,
+          "losses": 1,
+          "pnl_u": 2.81,
+          "roi_pct": 56.1672,
+          "max_drawdown_u": -1,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_X_SPORT",
+          "CELL_ID": "P50_52__SPORT_SOCCER",
+          "events": 29,
+          "wins": 16,
+          "losses": 13,
+          "pnl_u": 2.63,
+          "roi_pct": 9.0621,
+          "max_drawdown_u": -4,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_X_SPORT",
+          "CELL_ID": "P56_58__SPORT_SOCCER",
+          "events": 8,
+          "wins": 6,
+          "losses": 2,
+          "pnl_u": 2.56,
+          "roi_pct": 31.9841,
+          "max_drawdown_u": -1,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "VOLUME_X_PRICE",
+          "CELL_ID": "V_LT100K__P52_54",
+          "events": 7,
+          "wins": 5,
+          "losses": 2,
+          "pnl_u": 2.45,
+          "roi_pct": 35.0324,
+          "max_drawdown_u": -1,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "LEAD_TIME_X_SPORT",
+          "CELL_ID": "L_LT3__SPORT_ESPORTS",
+          "events": 9,
+          "wins": 6,
+          "losses": 3,
+          "pnl_u": 2.18,
+          "roi_pct": 24.2325,
+          "max_drawdown_u": -1.36,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "LEAD_TIME_X_SPORT",
+          "CELL_ID": "L_3_6__SPORT_SOCCER",
+          "events": 2,
+          "wins": 2,
+          "losses": 0,
+          "pnl_u": 1.94,
+          "roi_pct": 97.0874,
+          "max_drawdown_u": 0,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_X_SPORT",
+          "CELL_ID": "P58_60__SPORT_SOCCER",
+          "events": 5,
+          "wins": 4,
+          "losses": 1,
+          "pnl_u": 1.79,
+          "roi_pct": 35.8878,
+          "max_drawdown_u": -1,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_SERIES_DIRECTION_X_SPORT",
+          "CELL_ID": "PRICE_DELTA_POS__SPORT_SOCCER",
+          "events": 2,
+          "wins": 2,
+          "losses": 0,
+          "pnl_u": 1.67,
+          "roi_pct": 83.5093,
+          "max_drawdown_u": 0,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "PRICE_SERIES_DIRECTION",
+          "CELL_ID": "PRICE_DELTA_ZERO",
+          "events": 10,
+          "wins": 6,
+          "losses": 4,
+          "pnl_u": 1.66,
+          "roi_pct": 16.6221,
+          "max_drawdown_u": -1,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "PRICE_SERIES_MAGNITUDE",
+          "CELL_ID": "PRICE_DELTA_NEG_002_TO_0",
+          "events": 9,
+          "wins": 6,
+          "losses": 3,
+          "pnl_u": 1.4,
+          "roi_pct": 15.5088,
+          "max_drawdown_u": -1.2,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "PRICE_SERIES_MAGNITUDE",
+          "CELL_ID": "PRICE_DELTA_GE_POS_002",
+          "events": 23,
+          "wins": 13,
+          "losses": 10,
+          "pnl_u": 1.03,
+          "roi_pct": 4.4585,
+          "max_drawdown_u": -3.38,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "LEAD_TIME_X_SPORT",
+          "CELL_ID": "L_LT3__SPORT_TABLE_TENNIS",
+          "events": 13,
+          "wins": 7,
+          "losses": 6,
+          "pnl_u": 1,
+          "roi_pct": 7.6923,
+          "max_drawdown_u": -3,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "LEAD_TIME_X_SPORT",
+          "CELL_ID": "L_3_6__SPORT_ESPORTS",
+          "events": 1,
+          "wins": 1,
+          "losses": 0,
+          "pnl_u": 1,
+          "roi_pct": 100,
+          "max_drawdown_u": 0,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_SERIES_DIRECTION_X_SPORT",
+          "CELL_ID": "PRICE_DELTA_ZERO__SPORT_ESPORTS",
+          "events": 3,
+          "wins": 2,
+          "losses": 1,
+          "pnl_u": 0.92,
+          "roi_pct": 30.7692,
+          "max_drawdown_u": -1,
+          "sample_flag": "N_LT30",
+          "positive_week_n": null,
+          "negative_week_n": null,
+          "zero_week_n": null,
+          "robustness": null,
+          "weekly": null
+        }
+      ],
+      "TOP_BY_ROI_WITH_N_GE100": [
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "LEAD_TIME",
+          "CELL_ID": "L_18_24",
+          "events": 149,
+          "wins": 76,
+          "losses": 73,
+          "pnl_u": 0.52,
+          "roi_pct": 0.3502,
+          "max_drawdown_u": -11.82,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 2,
+          "zero_week_n": 0,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 50,
+              "pnl_u": -0.29,
+              "roi_pct": -0.5812
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 33,
+              "pnl_u": 9.76,
+              "roi_pct": 29.5852
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 44,
+              "pnl_u": -8.02,
+              "roi_pct": -18.2268
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 24,
+              "pnl_u": 0.53,
+              "roi_pct": 2.2182
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "PRICE",
+          "CELL_ID": "P50_52",
+          "events": 488,
+          "wins": 244,
+          "losses": 244,
+          "pnl_u": -1.29,
+          "roi_pct": -0.265,
+          "max_drawdown_u": -35.45,
+          "sample_flag": "N_GE300",
+          "positive_week_n": 2,
+          "negative_week_n": 2,
+          "zero_week_n": 0,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 229,
+              "pnl_u": 14.69,
+              "roi_pct": 6.4134
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 108,
+              "pnl_u": 13.47,
+              "roi_pct": 12.4722
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 146,
+              "pnl_u": -28.55,
+              "roi_pct": -19.5564
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 32,
+              "pnl_u": -0.16,
+              "roi_pct": -0.4902
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "LEAD_TIME",
+          "CELL_ID": "L_12_18",
+          "events": 122,
+          "wins": 61,
+          "losses": 61,
+          "pnl_u": -2.92,
+          "roi_pct": -2.3922,
+          "max_drawdown_u": -9,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 2,
+          "zero_week_n": 0,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 48,
+              "pnl_u": -4,
+              "roi_pct": -8.3333
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 34,
+              "pnl_u": 0.61,
+              "roi_pct": 1.7929
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 32,
+              "pnl_u": 4.87,
+              "roi_pct": 15.2054
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 15,
+              "pnl_u": -2.13,
+              "roi_pct": -14.1878
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "LEAD_TIME",
+          "CELL_ID": "L_GE24",
+          "events": 177,
+          "wins": 80,
+          "losses": 97,
+          "pnl_u": -20.49,
+          "roi_pct": -11.574,
+          "max_drawdown_u": -28.69,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 2,
+          "zero_week_n": 0,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 67,
+              "pnl_u": -1.86,
+              "roi_pct": -2.7727
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 43,
+              "pnl_u": 3.38,
+              "roi_pct": 7.8637
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 98,
+              "pnl_u": -25.27,
+              "roi_pct": -25.7884
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 14,
+              "pnl_u": 3.58,
+              "roi_pct": 25.6042
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_X_SPORT",
+          "CELL_ID": "P50_52__SPORT_ESPORTS",
+          "events": 133,
+          "wins": 57,
+          "losses": 76,
+          "pnl_u": -19.22,
+          "roi_pct": -14.448,
+          "max_drawdown_u": -28.08,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 1,
+          "zero_week_n": 1,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 41,
+              "pnl_u": 6.92,
+              "roi_pct": 16.8809
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 96,
+              "pnl_u": -28.18,
+              "roi_pct": -29.3499
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 18,
+              "pnl_u": 1.9,
+              "roi_pct": 10.5675
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "SPORT",
+          "CELL_ID": "SPORT_ESPORTS",
+          "events": 177,
+          "wins": 77,
+          "losses": 100,
+          "pnl_u": -27.03,
+          "roi_pct": -15.2708,
+          "max_drawdown_u": -35.1,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 1,
+          "zero_week_n": 1,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 49,
+              "pnl_u": 5.98,
+              "roi_pct": 12.1945
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 140,
+              "pnl_u": -38.27,
+              "roi_pct": -27.3365
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 36,
+              "pnl_u": 5.46,
+              "roi_pct": 15.1711
+            }
+          ]
+        }
+      ],
+      "TOP_BY_ROBUSTNESS_WITH_N_GE100": [
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "LEAD_TIME",
+          "CELL_ID": "L_18_24",
+          "events": 149,
+          "wins": 76,
+          "losses": 73,
+          "pnl_u": 0.52,
+          "roi_pct": 0.3502,
+          "max_drawdown_u": -11.82,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 2,
+          "zero_week_n": 0,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 50,
+              "pnl_u": -0.29,
+              "roi_pct": -0.5812
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 33,
+              "pnl_u": 9.76,
+              "roi_pct": 29.5852
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 44,
+              "pnl_u": -8.02,
+              "roi_pct": -18.2268
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 24,
+              "pnl_u": 0.53,
+              "roi_pct": 2.2182
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "PRICE",
+          "CELL_ID": "P50_52",
+          "events": 488,
+          "wins": 244,
+          "losses": 244,
+          "pnl_u": -1.29,
+          "roi_pct": -0.265,
+          "max_drawdown_u": -35.45,
+          "sample_flag": "N_GE300",
+          "positive_week_n": 2,
+          "negative_week_n": 2,
+          "zero_week_n": 0,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 229,
+              "pnl_u": 14.69,
+              "roi_pct": 6.4134
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 108,
+              "pnl_u": 13.47,
+              "roi_pct": 12.4722
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 146,
+              "pnl_u": -28.55,
+              "roi_pct": -19.5564
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 32,
+              "pnl_u": -0.16,
+              "roi_pct": -0.4902
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "LEAD_TIME",
+          "CELL_ID": "L_12_18",
+          "events": 122,
+          "wins": 61,
+          "losses": 61,
+          "pnl_u": -2.92,
+          "roi_pct": -2.3922,
+          "max_drawdown_u": -9,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 2,
+          "zero_week_n": 0,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 48,
+              "pnl_u": -4,
+              "roi_pct": -8.3333
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 34,
+              "pnl_u": 0.61,
+              "roi_pct": 1.7929
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 32,
+              "pnl_u": 4.87,
+              "roi_pct": 15.2054
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 15,
+              "pnl_u": -2.13,
+              "roi_pct": -14.1878
+            }
+          ]
+        },
+        {
+          "SOURCE": "INTERACTION",
+          "FACTOR_ID": "PRICE_X_SPORT",
+          "CELL_ID": "P50_52__SPORT_ESPORTS",
+          "events": 133,
+          "wins": 57,
+          "losses": 76,
+          "pnl_u": -19.22,
+          "roi_pct": -14.448,
+          "max_drawdown_u": -28.08,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 1,
+          "zero_week_n": 1,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 41,
+              "pnl_u": 6.92,
+              "roi_pct": 16.8809
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 96,
+              "pnl_u": -28.18,
+              "roi_pct": -29.3499
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 18,
+              "pnl_u": 1.9,
+              "roi_pct": 10.5675
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "LEAD_TIME",
+          "CELL_ID": "L_GE24",
+          "events": 177,
+          "wins": 80,
+          "losses": 97,
+          "pnl_u": -20.49,
+          "roi_pct": -11.574,
+          "max_drawdown_u": -28.69,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 2,
+          "zero_week_n": 0,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 67,
+              "pnl_u": -1.86,
+              "roi_pct": -2.7727
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 43,
+              "pnl_u": 3.38,
+              "roi_pct": 7.8637
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 98,
+              "pnl_u": -25.27,
+              "roi_pct": -25.7884
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 14,
+              "pnl_u": 3.58,
+              "roi_pct": 25.6042
+            }
+          ]
+        },
+        {
+          "SOURCE": "MAIN_EFFECT",
+          "FACTOR_ID": "SPORT",
+          "CELL_ID": "SPORT_ESPORTS",
+          "events": 177,
+          "wins": 77,
+          "losses": 100,
+          "pnl_u": -27.03,
+          "roi_pct": -15.2708,
+          "max_drawdown_u": -35.1,
+          "sample_flag": "N_100_299",
+          "positive_week_n": 2,
+          "negative_week_n": 1,
+          "zero_week_n": 1,
+          "robustness": "2_POS",
+          "weekly": [
+            {
+              "WEEK_ID": "W1",
+              "event_n": 0,
+              "pnl_u": 0,
+              "roi_pct": 0
+            },
+            {
+              "WEEK_ID": "W2",
+              "event_n": 49,
+              "pnl_u": 5.98,
+              "roi_pct": 12.1945
+            },
+            {
+              "WEEK_ID": "W3",
+              "event_n": 140,
+              "pnl_u": -38.27,
+              "roi_pct": -27.3365
+            },
+            {
+              "WEEK_ID": "W4",
+              "event_n": 36,
+              "pnl_u": 5.46,
+              "roi_pct": 15.1711
+            }
+          ]
+        }
+      ]
+    }
+  },
+  "DETERMINISM_REVERSED_PARTITIONS": "PASS",
+  "CANONICAL_RESULT_SHA256": "941bd54caccde133545d1308cfb1fcce4cecd36f03e02d0b33e50c5575016faa"
+}
