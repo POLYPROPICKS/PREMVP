@@ -433,8 +433,8 @@ export async function syncResearchEvidencePage(
   let drained = false;
   while (pages < MAX_EVIDENCE_PAGES) {
     const args = buildEvidencePageArgs(cursor, pUntil, RESEARCH_EVIDENCE_PAGE_MAX_ENVELOPES);
-    const { data, error } = await source.rpc("research_evidence_page", args);
-    if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_research_evidence_page:${safeError(error)}`);
+    const { data, error } = await source.rpc("research_evidence_page_v2", args);
+    if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_research_evidence_page_v2:${safeError(error)}`);
     const rows = (data ?? []) as NarrowEvidenceRow[];
     pages++;
     if (rows.length === 0) {

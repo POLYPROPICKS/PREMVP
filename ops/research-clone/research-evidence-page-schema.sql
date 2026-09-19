@@ -3,7 +3,7 @@
 --
 -- Narrow research projection of production primary_evidence_outbox, written by
 -- scripts/research-clone-daily-sync.ts from the bounded production RPC
--- public.research_evidence_page (supabase/migrations/20260916140000_research_evidence_page.sql).
+-- public.research_evidence_page_v2 (supabase/migrations/20260919080000_research_evidence_page_v2.sql).
 -- One row per evidence item; raw evidence_rows JSON is never stored here.
 --
 -- Idempotent: creates the table when absent and upgrades an existing table
@@ -39,7 +39,7 @@ alter table public.research_evidence_page_rows add column if not exists data_cov
 -- (parentEventVolume24hr vs legacy volumeUsd); never conflated.
 alter table public.research_evidence_page_rows add column if not exists volume_semantic text;
 
-create index if not exists idx_research_evidence_page_rows_window
+create index if not exists research_evidence_page_rows_window_idx
   on public.research_evidence_page_rows (observed_at, observation_id, item_observation_id);
 
 alter table public.research_evidence_page_rows enable row level security;

@@ -11,25 +11,26 @@
 -- transfer of that single day is ~140 MB, of which research consumes 18 fields.
 -- Envelope-level metadata for the same day reads in ~175 ms.
 --
--- LOCK / LOAD CHARACTERISTICS (explicit, not inferred from tests):
---   * CREATE INDEX CONCURRENTLY takes SHARE UPDATE EXCLUSIVE on
---     primary_evidence_outbox. It does NOT block INSERT from
---     publish_primary_signal_observation, and does NOT block SELECT. It does
---     block other DDL and VACUUM on that table for its duration. It performs
---     two table passes and cannot run inside a transaction block: this file
---     MUST be applied outside an explicit transaction.
---     If it fails it can leave an INVALID index; recovery is handled outside
---     this admission migration.
+-- RELEASE / REPLAY DESIGN (explicit):
+--   * PRODUCTION ADMISSION: the Architect pre-creates THIS SAME named index on
+--     live production with CREATE INDEX CONCURRENTLY IF NOT EXISTS BEFORE this
+--     migration is merged. CONCURRENTLY does not block INSERT from
+--     publish_primary_signal_observation nor SELECT; it cannot run in a
+--     transaction block, so it is NOT part of this committed file.
+--   * MIGRATION REPLAY: the committed statement is a plain, transaction-safe
+--     CREATE INDEX IF NOT EXISTS. On production it is a no-op (the index
+--     already exists); on a fresh/local database it keeps the migration
+--     reproducible.
 --   * The index is on (observed_at, observation_id) only — two fixed-width
---     columns, no TOAST traffic. On the current table size the build is
---     expected to be sub-second and the on-disk cost is a few hundred KB.
---   * CREATE FUNCTION takes no lock on any table. research_evidence_page is
---     STABLE, SECURITY INVOKER, and reads exactly one table.
---   * No table is rewritten. No existing row is read-modified-written. No
---     existing function is replaced — research_evidence_page is a new name and
+--     columns, no TOAST traffic.
+--   * CREATE OR REPLACE FUNCTION public.research_evidence_page_v2 is a NEW name:
+--     the existing v1 public.research_evidence_page (18-column contract) is not
+--     dropped, altered, revoked or replaced. The function is STABLE,
+--     SECURITY INVOKER and reads exactly one table.
+--   * No table is rewritten. No money-path function is touched —
 --     publish_primary_signal_observation is not referenced here.
 --
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_primary_evidence_outbox_observed
+CREATE INDEX IF NOT EXISTS idx_primary_evidence_outbox_observed
   ON public.primary_evidence_outbox (observed_at, observation_id);
 
 -- Bounded narrow research page.
@@ -47,7 +48,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_primary_evidence_outbox_observed
 --     (see lib/research-clone/researchEvidenceExport.ts) — evidence_rows itself
 --     is never returned;
 --   * STABLE + SECURITY INVOKER; the body has no data-changing statements.
-CREATE FUNCTION public.research_evidence_page(
+CREATE OR REPLACE FUNCTION public.research_evidence_page_v2(
   p_after_observed_at timestamptz,
   p_after_observation_id uuid,
   p_until timestamptz,
@@ -84,7 +85,7 @@ SET statement_timeout = '5s'
 AS $$
 BEGIN
   IF p_until IS NULL THEN
-    RAISE EXCEPTION 'research_evidence_page requires an explicit p_until upper time bound';
+    RAISE EXCEPTION 'research_evidence_page_v2 requires an explicit p_until upper time bound';
   END IF;
 
   RETURN QUERY
@@ -138,10 +139,10 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.research_evidence_page(timestamptz, uuid, timestamptz, integer)
+REVOKE ALL ON FUNCTION public.research_evidence_page_v2(timestamptz, uuid, timestamptz, integer)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.research_evidence_page(timestamptz, uuid, timestamptz, integer)
+GRANT EXECUTE ON FUNCTION public.research_evidence_page_v2(timestamptz, uuid, timestamptz, integer)
   TO service_role;
 
-COMMENT ON FUNCTION public.research_evidence_page(timestamptz, uuid, timestamptz, integer) IS
+COMMENT ON FUNCTION public.research_evidence_page_v2(timestamptz, uuid, timestamptz, integer) IS
   'Read-only bounded narrow research projection of primary_evidence_outbox. Max 20 envelopes per call, 5s statement timeout, explicit upper time bound required. Never returns evidence_rows.';

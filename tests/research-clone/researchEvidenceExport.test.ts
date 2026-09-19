@@ -7,7 +7,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -217,12 +217,18 @@ test("identity and physical-event denominators stay separate, never pooled", () 
 // ------------------------------------------------------- migration contract
 
 test("prepared migration is additive, read-only and service-role-only", () => {
-  const sql = readFileSync(repoRoot + "supabase/migrations/20260916140000_research_evidence_page.sql", "utf8");
+  const sql = readFileSync(repoRoot + "supabase/migrations/20260919080000_research_evidence_page_v2.sql", "utf8");
 
-  assert.match(sql, /CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_primary_evidence_outbox_observed/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS idx_primary_evidence_outbox_observed/);
+  const executableSql = sql.split("\n").filter((l) => !l.trimStart().startsWith("--")).join("\n");
+  assert.doesNotMatch(executableSql, /CONCURRENTLY/, "committed index statement is transaction-safe");
   assert.match(sql, /ON public\.primary_evidence_outbox \(observed_at, observation_id\)/);
-  assert.match(sql, /CREATE FUNCTION public\.research_evidence_page/);
-  assert.doesNotMatch(sql, /CREATE OR REPLACE FUNCTION public\.research_evidence_page/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION public\.research_evidence_page_v2\(/);
+  assert.doesNotMatch(
+    executableSql,
+    /(?:CREATE(?: OR REPLACE)? FUNCTION|DROP FUNCTION(?: IF EXISTS)?|ALTER FUNCTION|REVOKE[^;]*ON FUNCTION|GRANT[^;]*ON FUNCTION) public\.research_evidence_page\(/,
+    "live v1 must not be created, replaced, dropped, altered or re-granted",
+  );
 
   // Read-only by definition. Scanned against executable SQL only: `--` comment
   // lines legitimately name the statements this migration promises not to use.
@@ -242,7 +248,7 @@ test("prepared migration is additive, read-only and service-role-only", () => {
   // Bounds actually present in the shipped SQL.
   assert.match(sql, /SET statement_timeout = '5s'/);
   assert.match(sql, /LIMIT LEAST\(GREATEST\(COALESCE\(p_max_envelopes, 20\), 1\), 20\)/);
-  assert.match(sql, /RAISE EXCEPTION 'research_evidence_page requires an explicit p_until upper time bound'/);
+  assert.match(sql, /RAISE EXCEPTION 'research_evidence_page_v2 requires an explicit p_until upper time bound'/);
   assert.match(sql, /ORDER BY o\.observed_at, o\.observation_id/);
   assert.match(sql, /GRANT EXECUTE ON FUNCTION public\.research_evidence_page[\s\S]{0,200}TO service_role/);
   assert.match(sql, /REVOKE ALL ON FUNCTION public\.research_evidence_page[\s\S]{0,200}FROM PUBLIC, anon, authenticated/);
@@ -260,7 +266,7 @@ test("prepared migration is additive, read-only and service-role-only", () => {
 
 // ------------------------------------------- current-attribute projection
 
-const SQL = readFileSync(repoRoot + "supabase/migrations/20260916140000_research_evidence_page.sql", "utf8");
+const SQL = readFileSync(repoRoot + "supabase/migrations/20260919080000_research_evidence_page_v2.sql", "utf8");
 const SCRIPT = readFileSync(repoRoot + "scripts/research-clone-daily-sync.ts", "utf8");
 const CLONE_SCHEMA = readFileSync(repoRoot + "ops/research-clone/research-evidence-page-schema.sql", "utf8");
 
@@ -333,7 +339,8 @@ test("production primary_evidence_outbox is no longer a generic raw SYNC_SPECS t
   const specs = SCRIPT.slice(SCRIPT.indexOf("const SPECS"), SCRIPT.indexOf("const EMPTY_TABLE_EVIDENCE"));
   assert.equal(specs.includes('table: "primary_evidence_outbox"'), false);
   assert.equal(/\|\s*"primary_evidence_outbox"/.test(SCRIPT), false, "TableName no longer includes primary_evidence_outbox");
-  assert.match(SCRIPT, /source\.rpc\("research_evidence_page", args\)/);
+  assert.match(SCRIPT, /source\.rpc\("research_evidence_page_v2", args\)/);
+  assert.equal(/source\.rpc\("research_evidence_page",/.test(SCRIPT), false, "runtime never calls the v1 RPC");
   assert.match(SCRIPT, /syncResearchEvidencePage\(target, source, bootstrapSince\)/);
   assert.match(SCRIPT, /onConflict: CLONE_EVIDENCE_CONFLICT_KEY/);
   assert.match(SCRIPT, /source_kind: CLONE_EVIDENCE_SOURCE_KIND/);
@@ -370,4 +377,14 @@ test("main() honours EMERGENCY_QUIESCE_SCOPES=research-clone-sync before touchin
   }
   assert.equal(logs.length, 1);
   assert.match(logs[0], /EMERGENCY_QUIESCED/);
+});
+
+test("release contract: v2 migration path/version, index names, no duplicate clone index", () => {
+  const migDir = repoRoot + "supabase/migrations/";
+  const files = readdirSync(migDir);
+  assert.ok(files.includes("20260919080000_research_evidence_page_v2.sql"));
+  assert.equal(files.includes("20260916140000_research_evidence_page.sql"), false, "old out-of-order migration removed");
+  assert.ok("20260919080000" > "20260918162403", "version is strictly after live migration head");
+  assert.match(CLONE_SCHEMA, /create index if not exists research_evidence_page_rows_window_idx/);
+  assert.equal(CLONE_SCHEMA.includes("idx_research_evidence_page_rows_window"), false);
 });
