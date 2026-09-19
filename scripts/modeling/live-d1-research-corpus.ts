@@ -357,6 +357,134 @@ export async function readPrimaryEvidenceOutbox(
   return { pairs: out, maxWatermark };
 }
 
+
+/**
+ * CANONICAL CURRENT research evidence source: the clone's narrow
+ * `research_evidence_page_rows` (written by research-clone-daily-sync from the
+ * bounded production research_evidence_page_v3 RPC). The raw clone
+ * primary_evidence_outbox is NOT read by this path.
+ *
+ * Explicit columns only (never SELECT *). Deterministic keyset pagination over
+ * exactly (observed_at, observation_id, item_observation_id): no OFFSET, and no
+ * two-field envelope cursor — a page may end inside a large envelope and the
+ * next read resumes inside it. The proven three-step two-read shape is used
+ * (drain the same-envelope item tie, then the same-timestamp envelope tie, then
+ * advance by strictly greater timestamp) so PostgREST never sees a composite
+ * `or=` keyset. Values are mapped verbatim; providerEventContext is NOT
+ * fabricated and selected outcome / coverage / volume semantics are never
+ * recomputed.
+ */
+const NARROW_EVIDENCE_COLS =
+  "observation_id, observed_at, item_observation_id, condition_id, selected_token_id, entry_price_num, signal_result, formula_version, pre_event_score_num, provider_event_id, provider_sport_code, provider_sport_family, market_family, market_type, game_start_iso, volume_usd, volume_semantic, selected_outcome, data_coverage";
+export const NARROW_EVIDENCE_TABLE = "research_evidence_page_rows";
+
+export async function narrowEvidenceKeysetPage(
+  db: SupabaseClient,
+  afterTs: string,
+  afterObs: string,
+  afterItem: string,
+): Promise<{ rows: Row[]; source: "item-tie" | "envelope-tie" | "advance" }> {
+  const t = NARROW_EVIDENCE_TABLE;
+  if (afterObs && afterItem) {
+    const itemTie = await db
+      .from(t)
+      .select(NARROW_EVIDENCE_COLS)
+      .eq("observed_at", afterTs)
+      .eq("observation_id", afterObs)
+      .gt("item_observation_id", afterItem)
+      .order("item_observation_id", { ascending: true })
+      .limit(PAGE);
+    if (itemTie.error) throw new Error(`CLONE_READ_${t}:${itemTie.error.code ?? ""}:${itemTie.error.message}`);
+    if ((itemTie.data ?? []).length > 0) return { rows: (itemTie.data ?? []) as unknown as Row[], source: "item-tie" };
+  }
+  if (afterObs) {
+    const envTie = await db
+      .from(t)
+      .select(NARROW_EVIDENCE_COLS)
+      .eq("observed_at", afterTs)
+      .gt("observation_id", afterObs)
+      .order("observation_id", { ascending: true })
+      .order("item_observation_id", { ascending: true })
+      .limit(PAGE);
+    if (envTie.error) throw new Error(`CLONE_READ_${t}:${envTie.error.code ?? ""}:${envTie.error.message}`);
+    if ((envTie.data ?? []).length > 0) return { rows: (envTie.data ?? []) as unknown as Row[], source: "envelope-tie" };
+  }
+  const adv = await db
+    .from(t)
+    .select(NARROW_EVIDENCE_COLS)
+    .gt("observed_at", afterTs)
+    .order("observed_at", { ascending: true })
+    .order("observation_id", { ascending: true })
+    .order("item_observation_id", { ascending: true })
+    .limit(PAGE);
+  if (adv.error) throw new Error(`CLONE_READ_${t}:${adv.error.code ?? ""}:${adv.error.message}`);
+  return { rows: (adv.data ?? []) as unknown as Row[], source: "advance" };
+}
+
+export async function readResearchEvidencePageRows(
+  db: SupabaseClient,
+  startUtc: string,
+  endUtc: string,
+): Promise<{ pairs: RawPair[]; maxWatermark: string | null }> {
+  const out: RawPair[] = [];
+  let afterTs = new Date(Date.parse(startUtc) - 1).toISOString();
+  let afterObs = "";
+  let afterItem = "";
+  let maxWatermark: string | null = null;
+
+  for (let guard = 0; guard < 2000; guard++) {
+    const { rows: chunk, source } = await narrowEvidenceKeysetPage(db, afterTs, afterObs, afterItem);
+    if (chunk.length === 0) break;
+    if (String(obj(chunk[0]).observed_at) >= endUtc) break;
+
+    let crossed = false;
+    for (const raw of chunk) {
+      const r = obj(raw);
+      const observedAt = String(r.observed_at);
+      if (observedAt >= endUtc) {
+        crossed = true;
+        break;
+      }
+      const envelopeId = String(r.observation_id);
+      const itemId = str(r.item_observation_id);
+      maxWatermark = `${observedAt}|${envelopeId}`;
+      if (!itemId) continue;
+      const signalResult = str(r.signal_result);
+      out.push({
+        _createdAt: observedAt,
+        _id: itemId,
+        conditionId: str(r.condition_id) ?? "",
+        selectedTokenId: str(r.selected_token_id) ?? "",
+        decisionAt: observedAt,
+        sourceCreatedAt: observedAt,
+        entryPriceNum: num(r.entry_price_num),
+        volumeUsd: num(r.volume_usd),
+        volumeSemantic: (str(r.volume_semantic) ?? undefined) as RawPair["volumeSemantic"],
+        selectedOutcome: str(r.selected_outcome),
+        dataCoverage: num(r.data_coverage),
+        eventStartIso: str(r.game_start_iso),
+        providerEventId: str(r.provider_event_id),
+        marketTypeRaw: str(r.market_type),
+        marketFamily: str(r.market_family),
+        providerSportCode: str(r.provider_sport_code),
+        providerSportFamily: str(r.provider_sport_family),
+        formulaVersion: str(r.formula_version),
+        preEventScoreNum: num(r.pre_event_score_num),
+        gammaTerminal: null,
+        cloneSignalResult: signalResult,
+        _cloneSignalResultRaw: signalResult,
+      });
+    }
+    if (crossed) break;
+    if (source === "advance" && chunk.length < PAGE) break;
+    const last = obj(chunk[chunk.length - 1]);
+    afterTs = String(last.observed_at);
+    afterObs = String(last.observation_id);
+    afterItem = String(last.item_observation_id);
+  }
+  return { pairs: out, maxWatermark };
+}
+
 /** Bounded read of GSRS observations for the seen identities only. */
 export async function readObservations(
   db: SupabaseClient,
@@ -515,7 +643,7 @@ async function main() {
   // observation_id (a distinct namespace derived via sha256 in
   // lib/feed/buildLandingCards.ts observationUuid).
   const gsp = await readSignalPairs(db, startUtc, endUtc);
-  const outbox = await readPrimaryEvidenceOutbox(db, startUtc, endUtc);
+  const outbox = await readResearchEvidencePageRows(db, startUtc, endUtc);
   const pairs = [...gsp.pairs, ...outbox.pairs];
   const maxWatermark = gsp.maxWatermark;
   const rawRowN = pairs.length;

@@ -50,7 +50,7 @@ import {
   minskWindow,
   projectRef,
   readObservations,
-  readPrimaryEvidenceOutbox,
+  readResearchEvidencePageRows,
   readSignalPairs,
   resolveCloneClient,
   resolveGammaTerminal,
@@ -155,7 +155,8 @@ export async function materializeDayRows(
   const boundedEndUtc = Date.parse(endUtc) > Date.now() ? new Date().toISOString() : endUtc;
 
   const gsp = await readSignalPairs(db, startUtc, boundedEndUtc);
-  const outbox = await readPrimaryEvidenceOutbox(db, startUtc, boundedEndUtc);
+  // Canonical CURRENT source: the narrow research_evidence_page_rows (never the raw clone outbox).
+  const outbox = await readResearchEvidencePageRows(db, startUtc, boundedEndUtc);
   const pairs = [...gsp.pairs, ...outbox.pairs];
 
   const conditionIds = Array.from(new Set(pairs.map((p) => p.conditionId).filter(Boolean)));
@@ -206,6 +207,13 @@ export async function materializeDayRows(
     for (const s of [r.score, r.selectedPrice]) {
       if (s.lastEligibleObservedAt !== null && s.lastEligibleObservedAt > r.decisionAt) pitFutureLeakN++;
     }
+  }
+
+  // Fail closed: source evidence was read but nothing materialized.
+  if (pairs.length > 0 && corpus.rows.length === 0) {
+    throw new Error(
+      `MATERIALIZE_SOURCE_NONEMPTY_BUT_ZERO_ROWS:${d}: source held ${pairs.length} evidence rows but materialization produced none`,
+    );
   }
 
   const rows: ScorecardReadyRow[] = corpus.rows.map((r) => ({

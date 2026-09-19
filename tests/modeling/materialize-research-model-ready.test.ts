@@ -96,7 +96,7 @@ function makeFakeClone(gspRows: Record<string, unknown>[], outboxRows: Record<st
   const client = {
     from(table: string) {
       if (table === "generated_signal_pairs") return readBuilder(table, gspRows);
-      if (table === "primary_evidence_outbox") return readBuilder(table, outboxRows);
+      if (table === "research_evidence_page_rows") return readBuilder(table, outboxRows);
       if (table === "generated_signal_research_snapshots") return readBuilder(table, []);
       return writeBuilder(table);
     },
@@ -109,31 +109,29 @@ const T0 = Date.parse(`${D}T12:00:00.000Z`);
 const iso = (ms: number) => new Date(ms).toISOString();
 const uuid = (n: number) => `10000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
 
-function outboxEnvelope(n: number, observedAtMs: number, itemId: string) {
+/** One narrow research_evidence_page_rows row (current canonical source shape). */
+function narrowRow(n: number, observedAtMs: number, itemId: string, extra: Record<string, unknown> = {}) {
   return {
     observation_id: uuid(n),
     observed_at: iso(observedAtMs),
-    evidence_rows: [
-      {
-        observation_id: itemId,
-        condition_id: "0xcond-a",
-        selected_token_id: "token-a",
-        formula_version: "v2-lite-growth-safe",
-        entry_price_num: 0.55,
-        signal_result: null,
-        pre_event_score_num: 70,
-        diagnostics: {
-          providerEventId: "polymarket-event-a",
-          gameStartIso: iso(T0 + 6 * 3600_000),
-          marketType: "moneyline",
-          marketFamily: "moneyline",
-          providerSportCode: "SOCCER",
-          providerSportFamily: "soccer",
-          volumeUsd: 500,
-        },
-      },
-    ],
-    evidence_row_count: 1,
+    item_observation_id: itemId,
+    condition_id: "0xcond-a",
+    selected_token_id: "token-a",
+    formula_version: "v2-lite-growth-safe",
+    entry_price_num: 0.55,
+    signal_result: null,
+    pre_event_score_num: 70,
+    provider_event_id: "polymarket-event-a",
+    provider_sport_code: "SOCCER",
+    provider_sport_family: "soccer",
+    market_family: "moneyline",
+    market_type: "match_winner",
+    game_start_iso: iso(T0 + 6 * 3600_000),
+    volume_usd: 12345.5,
+    volume_semantic: "primary_evidence_outbox.evidence_rows[].diagnostics.parentEventVolume24hr",
+    selected_outcome: "Draw",
+    data_coverage: 0.75,
+    ...extra,
   };
 }
 
@@ -154,7 +152,7 @@ function stubFetchUnreachable(): () => void {
 
 test("materializeDayRows: bounded read -> frozen materializer -> counted rows, no production write", async () => {
   const restore = stubFetchUnreachable();
-  const { client } = makeFakeClone([], [outboxEnvelope(1, T0, uuid(101))]);
+  const { client } = makeFakeClone([], [narrowRow(1, T0, uuid(101))]);
   const { rows, counts } = await materializeDayRows(client, D).finally(restore);
 
   assert.equal(counts.date, D);
@@ -174,7 +172,7 @@ test("materializeDayRows: bounded read -> frozen materializer -> counted rows, n
 
 test("writeDayRows: upserts on the full economic-identity conflict key (idempotent, no duplicate identity)", async () => {
   const restore = stubFetchUnreachable();
-  const { client } = makeFakeClone([], [outboxEnvelope(1, T0, uuid(101))]);
+  const { client } = makeFakeClone([], [narrowRow(1, T0, uuid(101))]);
   const { rows } = await materializeDayRows(client, D).finally(restore);
 
   const recording = makeFakeClone([], []);
@@ -247,4 +245,98 @@ test("resolveMissingRecentDates: bounded window, excludes already-accepted dates
   assert.equal(missing.includes("2026-09-13"), false);
   assert.equal(missing.includes("2026-09-14"), true, "latest closed day is a candidate when unaccepted");
   assert.equal(missing[0], "2026-09-08", "window floor is exactly windowDays back from the latest closed day");
+});
+
+// ── CURRENT canonical source: research_evidence_page_rows ────────────────────
+
+import { readResearchEvidencePageRows } from "../../scripts/modeling/live-d1-research-corpus";
+
+/** Wraps a fake clone so every read is recorded (table + select column list). */
+function spyClient(inner: any) {
+  const reads: Array<{ table: string; cols: unknown }> = [];
+  return {
+    reads,
+    client: {
+      from(table: string) {
+        const b = inner.from(table);
+        if (typeof b.select !== "function") return b;
+        const orig = b.select.bind(b);
+        b.select = (cols?: unknown) => {
+          reads.push({ table, cols });
+          return orig(cols);
+        };
+        return b;
+      },
+    } as any,
+  };
+}
+
+test("current materializer consumes research_evidence_page_rows, never the raw clone primary_evidence_outbox; rich attributes verbatim", async () => {
+  const restore = stubFetchUnreachable();
+  const { client } = makeFakeClone([], [narrowRow(1, T0, uuid(101))]);
+  const spy = spyClient(client);
+  const { rows } = await materializeDayRows(spy.client, D).finally(restore);
+
+  const tables = new Set(spy.reads.map((r) => r.table));
+  assert.ok(tables.has("research_evidence_page_rows"), "reads the narrow canonical source");
+  assert.equal(tables.has("primary_evidence_outbox"), false, "raw clone outbox is not required by the current path");
+  assert.equal(rows.length, 1);
+  const r = rows[0] as unknown as Record<string, unknown>;
+  assert.equal(r.selectedOutcome, "Draw");
+  assert.equal(r.marketTypeRaw, "match_winner");
+  assert.equal(r.volumeUsd, 12345.5);
+  assert.equal(r.volumeSemantic, "primary_evidence_outbox.evidence_rows[].diagnostics.parentEventVolume24hr");
+  assert.equal(r.dataCoverage, 0.75);
+  assert.equal(r.providerEventId, "polymarket-event-a");
+  assert.equal(r.entryPrice, 0.55);
+});
+
+test("readResearchEvidencePageRows: explicit columns only, three-field keyset resumes INSIDE one envelope, providerEventContext not fabricated", async () => {
+  // 2500 items in ONE envelope (> the 1000-row page) plus one later envelope.
+  const items = Array.from({ length: 2500 }, (_, i) =>
+    narrowRow(1, T0, `20000000-0000-0000-0000-${String(i + 1).padStart(12, "0")}`),
+  );
+  const later = narrowRow(2, T0 + 60_000, "20000000-0000-0000-0000-999999999999");
+  const { client } = makeFakeClone([], [...items, later]);
+  const spy = spyClient(client);
+  const { pairs } = await readResearchEvidencePageRows(spy.client, `${D}T00:00:00.000Z`, `${D}T23:59:59.999Z`);
+
+  assert.equal(pairs.length, 2501, "no item skipped at the page boundaries inside the 2500-item envelope");
+  assert.equal(new Set(pairs.map((p) => p._id)).size, 2501, "no item duplicated");
+  assert.equal(pairs[0]._id, items[0].item_observation_id);
+  assert.equal(pairs[999]._id, items[999].item_observation_id);
+  assert.equal(pairs[1000]._id, items[1000].item_observation_id, "page 2 continues at the NEXT item of the same envelope");
+  assert.equal(pairs.at(-1)!._id, later.item_observation_id, "later envelope remains reachable");
+  for (const r of spy.reads) {
+    assert.equal(r.table, "research_evidence_page_rows");
+    assert.equal(typeof r.cols, "string");
+    assert.notEqual((r.cols as string).trim(), "*", "never SELECT *");
+    assert.match(r.cols as string, /item_observation_id/);
+  }
+  const p = pairs[0] as unknown as Record<string, unknown>;
+  assert.equal("providerEventContext" in p, false, "providerEventContext is not fabricated");
+  assert.equal(p.selectedOutcome, "Draw");
+  assert.equal(p.dataCoverage, 0.75);
+  assert.equal(p.marketTypeRaw, "match_winner");
+  assert.equal(p.volumeSemantic, "primary_evidence_outbox.evidence_rows[].diagnostics.parentEventVolume24hr");
+});
+
+test("null narrow attributes stay null (no fabrication) and the legacy GSP leg is still read", async () => {
+  const { client } = makeFakeClone([], [
+    narrowRow(1, T0, uuid(101), { selected_outcome: null, data_coverage: null, market_type: null, volume_usd: null, volume_semantic: null }),
+  ]);
+  const spy = spyClient(client);
+  const { pairs } = await readResearchEvidencePageRows(spy.client, `${D}T00:00:00.000Z`, `${D}T23:59:59.999Z`);
+  const p = pairs[0] as unknown as Record<string, unknown>;
+  assert.equal(p.selectedOutcome, null);
+  assert.equal(p.dataCoverage, null);
+  assert.equal(p.marketTypeRaw, null);
+  assert.equal(p.volumeUsd, null);
+  assert.equal(p.volumeSemantic, undefined);
+
+  const restore = stubFetchUnreachable();
+  const gsp = makeFakeClone([], []);
+  const spy2 = spyClient(gsp.client);
+  await materializeDayRows(spy2.client, D).finally(restore);
+  assert.ok(spy2.reads.some((r) => r.table === "generated_signal_pairs"), "legacy generated_signal_pairs support preserved");
 });
