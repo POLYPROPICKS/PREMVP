@@ -3593,7 +3593,10 @@ export async function buildLandingCards(options?: {
             candidatesAfterDataCoverageFilter,
             pairsGenerated,
           },
-          ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
+          ...(collectResearchSnapshots ? { researchSnapshots } : {}),
+          // Primary-loop terminal attribution is always cheap counters (no arrays)
+          // and must survive to job diagnostics regardless of collectResearchSnapshots.
+          researchFunnel: rf,
         };
       }
     } else {
@@ -3616,7 +3619,10 @@ export async function buildLandingCards(options?: {
             candidatesAfterCategoryFilter, candidatesAfterEndedFilter,
             candidatesAfterDataCoverageFilter, pairsGenerated,
           },
-          ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
+          ...(collectResearchSnapshots ? { researchSnapshots } : {}),
+          // Primary-loop terminal attribution is always cheap counters (no arrays)
+          // and must survive to job diagnostics regardless of collectResearchSnapshots.
+          researchFunnel: rf,
         };
       }
 
@@ -4164,7 +4170,10 @@ export async function buildLandingCards(options?: {
           },
         } : {}),
       } as unknown as import("./types").InspectedMetadata,
-      ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
+      ...(collectResearchSnapshots ? { researchSnapshots } : {}),
+      // Primary-loop terminal attribution is always cheap counters (no arrays)
+      // and must survive to job diagnostics regardless of collectResearchSnapshots.
+      researchFunnel: rf,
       ...(firemodel11ResearchCandidates.length > 0 ? { firemodel11ResearchCandidates } : {}),
       // Full canonical-qualified primary population (public + beyond public rank
       // `limit`). Only surfaced under full-population evaluation; the public
@@ -4205,7 +4214,10 @@ export async function buildLandingCards(options?: {
           },
         } : {}),
       } as unknown as import("./types").InspectedMetadata,
-      ...(collectResearchSnapshots ? { researchSnapshots, researchFunnel: rf } : {}),
+      ...(collectResearchSnapshots ? { researchSnapshots } : {}),
+      // Primary-loop terminal attribution is always cheap counters (no arrays)
+      // and must survive to job diagnostics regardless of collectResearchSnapshots.
+      researchFunnel: rf,
     };
   }
 }
