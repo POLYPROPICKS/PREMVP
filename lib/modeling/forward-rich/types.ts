@@ -64,6 +64,11 @@ export type PopulationId =
  */
 export type GammaTerminalState = "WIN" | "LOSS" | "VOID";
 
+export type VolumeSemantic =
+  | "generated_signal_pairs.diagnostics.volumeUsd"
+  | "primary_evidence_outbox.evidence_rows[].diagnostics.volumeUsd"
+  | "primary_evidence_outbox.evidence_rows[].diagnostics.parentEventVolume24hr";
+
 /** One immutable generated_signal_pairs decision row, normalized by the caller. */
 export interface ForwardRichSignalPair {
   conditionId: string;
@@ -76,6 +81,15 @@ export interface ForwardRichSignalPair {
   entryPriceNum: number | null;
   /** diagnostics.volumeUsd — immutable at GSP insert. Never merged with rolling inventory volume. */
   volumeUsd: number | null;
+  /**
+   * Which source field supplied `volumeUsd`. Omitted => generated_signal_pairs.diagnostics.volumeUsd.
+   * Current primary_evidence_outbox rows carry parentEventVolume24hr (a different semantic).
+   */
+  volumeSemantic?: VolumeSemantic;
+  /** Evidence item top-level `selected_outcome`, verbatim. Never inferred from token id. */
+  selectedOutcome?: string | null;
+  /** Decision-time diagnostics.dataCoverage, verbatim (no averaging/recompute). */
+  dataCoverage?: number | null;
 
   eventStartIso?: string | null;
   providerEventId?: string | null;
@@ -233,7 +247,7 @@ export interface ForwardRichResearchRow {
 
   // ── RICH: volume (immutable GSP semantic) ────────────────────────────────
   volumeUsd: number | null;
-  volumeSemantic: "generated_signal_pairs.diagnostics.volumeUsd";
+  volumeSemantic: VolumeSemantic;
   volumeSourceCreatedAt: string;
 
   // ── RICH: price movement (immutable GSRS observations) ───────────────────
@@ -247,6 +261,8 @@ export interface ForwardRichResearchRow {
   providerSportCode: string | null;
   providerSportFamily: string | null;
   dataCoverage: number | null;
+  /** Evidence item `selected_outcome`, verbatim (null when the source has none). */
+  selectedOutcome: string | null;
 
   // ── point-in-time accounting ────────────────────────────────────────────
   eligibleObservationWindowEnd: string;
