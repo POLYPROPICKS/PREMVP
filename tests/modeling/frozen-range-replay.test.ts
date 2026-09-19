@@ -125,3 +125,109 @@ test("reverse partition order yields an identical business result", () => {
   assert.deepEqual(proof.result, fwd);
   assert.match(proof.canonicalSha256, /^[0-9a-f]{64}$/);
 });
+
+// ───────────────────────── pairwise membership deltas ────────────────────────
+
+import { computePairwiseDelta } from "../../scripts/modeling/frozen-range-replay";
+
+/**
+ * One partition, one population. Physical events:
+ *  E1 soccer            : selected by C0,C1,C4,C5 -> shared SAME selection everywhere
+ *  E2 table-tennis only : C0 selects it, C5 does not          -> C0->C5 LEFT-ONLY
+ *  E3 tennis lead>=24h  : C4 selects it, C1 does not          -> C1->C4 RIGHT-ONLY
+ *  E4 two candidates    : first table-tennis (earlier), later soccer
+ *                         C0 takes the tt candidate, C5 the soccer one -> C0->C5 SHARED CHANGED
+ *  E5 two candidates    : first tennis lead>=24h (earlier), later soccer
+ *                         C4 takes the tennis candidate, C1 the soccer one -> C1->C4 SHARED CHANGED
+ */
+function pairwiseFixture(): LoadedPartition[] {
+  const H = 3600_000;
+  const ev = (decisionAt: string, hours: number) => new Date(Date.parse(decisionAt) + hours * H).toISOString();
+  const mk = (id: string, event: string, decisionAt: string, sport: string, lead: number, label: "WIN" | "LOSS", price: number) =>
+    row({ conditionId: id, providerEventId: event, decisionAt, sportFamily: sport, label, entryPrice: price, eventStart: ev(decisionAt, lead) });
+  return [
+    part("2026-08-04", [
+      mk("e1", "E1", "2026-08-04T08:00:00.000Z", "soccer", 5, "WIN", 0.55),
+      mk("e2", "E2", "2026-08-04T08:10:00.000Z", "table-tennis", 5, "LOSS", 0.52),
+      mk("e3", "E3", "2026-08-04T08:20:00.000Z", "tennis", 30, "WIN", 0.54),
+      mk("e4a", "E4", "2026-08-04T08:30:00.000Z", "table-tennis", 5, "LOSS", 0.51),
+      mk("e4b", "E4", "2026-08-04T08:40:00.000Z", "soccer", 5, "WIN", 0.56),
+      mk("e5a", "E5", "2026-08-04T08:50:00.000Z", "tennis", 30, "LOSS", 0.53),
+      mk("e5b", "E5", "2026-08-04T09:00:00.000Z", "soccer", 5, "WIN", 0.57),
+    ]),
+  ];
+}
+
+test("pairwise deltas: left-only / right-only / shared same / shared changed, exact PnL accounting, invariants", () => {
+  const r = buildReplayResult("2026-08-04", "2026-08-04", pairwiseFixture());
+  assert.equal(r.POPULATIONS.length, 1);
+  const pw = r.POPULATIONS[0].PAIRWISE_DELTAS;
+  assert.deepEqual(Object.keys(pw), ["C0_TO_C5", "C1_TO_C4"]);
+
+  const a = pw.C0_TO_C5;
+  assert.equal(a.LEFT_MODEL, "C0");
+  assert.equal(a.RIGHT_MODEL, "C5");
+  assert.equal(a.LEFT_EVENT_N, 5, "E1..E5");
+  assert.equal(a.RIGHT_EVENT_N, 4, "E2 (table-tennis only) disappears");
+  assert.equal(a.LEFT_ONLY_EVENT_N, 1);
+  assert.equal(a.RIGHT_ONLY_EVENT_N, 0);
+  assert.equal(a.SHARED_EVENT_N, 4);
+  assert.equal(a.SHARED_SAME_SELECTION_N, 3, "E1, E3, E5 (C0 and C5 pick the same first candidate)");
+  assert.equal(a.SHARED_CHANGED_SELECTION_N, 1, "E4: same physical event, different candidate");
+  assert.equal(a.UNION_EVENT_N, 5);
+  // pnl: E2 LOSS at 0.52 = -1 ; E4 C0 tt LOSS = -1, C5 soccer WIN at 0.56 = +0.7857
+  assert.equal(a.LEFT_ONLY_PNL_U, -1);
+  assert.equal(a.SHARED_CHANGED_LEFT_PNL_U, -1);
+  assert.equal(a.SHARED_CHANGED_RIGHT_PNL_U, 0.79);
+  assert.equal(a.SHARED_CHANGED_DELTA_PNL_U, 1.79);
+  assert.equal(a.DELTA_PNL_U, round2(a.RIGHT_PNL_U - a.LEFT_PNL_U));
+  // exact accounting: right - left = -(left-only) + shared-changed delta (right-only is 0)
+  assert.ok(Math.abs(a.DELTA_PNL_U - (a.RIGHT_ONLY_PNL_U - a.LEFT_ONLY_PNL_U + a.SHARED_CHANGED_DELTA_PNL_U)) < 0.011);
+
+  const b = pw.C1_TO_C4;
+  assert.equal(b.LEFT_MODEL, "C1");
+  assert.equal(b.RIGHT_MODEL, "C4");
+  assert.equal(b.LEFT_ONLY_EVENT_N, 0);
+  assert.equal(b.RIGHT_ONLY_EVENT_N, 1, "E3 appears via the lead-time branch");
+  assert.equal(b.SHARED_CHANGED_SELECTION_N, 1, "E5: C4 takes the earlier tennis candidate");
+  assert.equal(b.RIGHT_ONLY_PNL_U, 0.85, "E3 WIN at 0.54");
+  assert.ok(Math.abs(b.DELTA_PNL_U - (b.RIGHT_ONLY_PNL_U - b.LEFT_ONLY_PNL_U + b.SHARED_CHANGED_DELTA_PNL_U)) < 0.011);
+
+  for (const p of [a, b]) {
+    assert.equal(p.UNION_EVENT_N, p.SHARED_EVENT_N + p.LEFT_ONLY_EVENT_N + p.RIGHT_ONLY_EVENT_N);
+    assert.equal(p.SHARED_EVENT_N, p.SHARED_SAME_SELECTION_N + p.SHARED_CHANGED_SELECTION_N);
+    assert.equal(p.LEFT_EVENT_N, p.SHARED_EVENT_N + p.LEFT_ONLY_EVENT_N);
+    assert.equal(p.RIGHT_EVENT_N, p.SHARED_EVENT_N + p.RIGHT_ONLY_EVENT_N);
+    assert.equal(p.DELTA_PNL_U, round2(p.RIGHT_PNL_U - p.LEFT_PNL_U));
+  }
+  // engine totals unchanged by the extra field
+  const models = r.POPULATIONS[0].MODELS;
+  assert.equal(models.find((m) => m.MODEL_ID === "C0")!.PNL_U, a.LEFT_PNL_U);
+  assert.equal(models.find((m) => m.MODEL_ID === "C4")!.PNL_U, b.RIGHT_PNL_U);
+});
+
+function round2(v: number): number {
+  return Math.round((v + Number.EPSILON) * 100) / 100;
+}
+
+test("pairwise deltas: identical selection sets produce zero deltas; invariants throw on corrupted input", () => {
+  const bet = { physicalEventKey: "k", ref: "r", decisionTimestamp: "t", entryPrice: 0.5, sportFamily: "soccer", pnlU: 1 };
+  const same = computePairwiseDelta({ MODEL_ID: "L", PNL_U: 1, selectedBets: [bet] }, { MODEL_ID: "R", PNL_U: 1, selectedBets: [bet] });
+  assert.equal(same.DELTA_PNL_U, 0);
+  assert.equal(same.SHARED_SAME_SELECTION_N, 1);
+  assert.equal(same.SHARED_CHANGED_SELECTION_N, 0);
+  // outcome/pnl is NOT part of selection identity: same carrier, different pnl -> still "same selection"
+  const samePnlDiff = computePairwiseDelta(
+    { MODEL_ID: "L", PNL_U: 1, selectedBets: [bet] },
+    { MODEL_ID: "R", PNL_U: -1, selectedBets: [{ ...bet, pnlU: -1 }] },
+  );
+  assert.equal(samePnlDiff.SHARED_SAME_SELECTION_N, 1);
+});
+
+test("pairwise deltas are deterministic under reversed partition order", () => {
+  const fwd = buildReplayResult("2026-08-04", "2026-08-04", pairwiseFixture());
+  const rev = buildReplayResult("2026-08-04", "2026-08-04", [...pairwiseFixture()].reverse());
+  assert.deepEqual(rev, fwd);
+  const proof = buildReplayWithDeterminismProof("2026-08-04", "2026-08-04", pairwiseFixture());
+  assert.deepEqual(proof.result.POPULATIONS[0].PAIRWISE_DELTAS, fwd.POPULATIONS[0].PAIRWISE_DELTAS);
+});
