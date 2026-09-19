@@ -3062,6 +3062,14 @@ export interface PrimaryCandidateLoopResult {
   pairsGenerated: number;
   pinnedCandidatesPersisted: number;
   primaryLoopBudgetExhausted: boolean;
+  /**
+   * AGGREGATE physical-event attribution (canonical computeCandidateProviderEventKey;
+   * candidates with a null key are not counted). Excluded = fully + partially.
+   */
+  primaryDistinctPhysicalEventsEntered: number;
+  primaryLoopBudgetExcludedPhysicalEvents: number;
+  primaryLoopBudgetFullyExcludedPhysicalEvents: number;
+  primaryLoopBudgetPartiallyExcludedPhysicalEvents: number;
 }
 
 export async function runPrimaryCandidateLoop(
@@ -3097,6 +3105,9 @@ export async function runPrimaryCandidateLoop(
   let pairsGenerated = 0;
   let pinnedCandidatesPersisted = 0;
   let primaryLoopBudgetExhausted = false;
+  const enteredEventKeys = new Set<string>();
+  const openedEventKeys = new Set<string>();
+  const budgetSkippedEventKeys = new Set<string>();
 
   for (const candidate of candidates) {
     const publicCapReached = publicPairs.length >= limit;
@@ -3113,11 +3124,15 @@ export async function runPrimaryCandidateLoop(
     if (!primaryLoopBudgetExhausted && budgetGuard.isExhausted()) {
       primaryLoopBudgetExhausted = true;
     }
+    const physicalEventKey = deps.computeCandidateProviderEventKey(candidate);
+    if (physicalEventKey !== null) enteredEventKeys.add(physicalEventKey);
     if (primaryLoopBudgetExhausted) {
       primaryCandidatesEntered++;
       recordPrimaryTerminal(PRIMARY_LOOP_BUDGET_EXHAUSTED_TERMINAL_REASON);
+      if (physicalEventKey !== null) budgetSkippedEventKeys.add(physicalEventKey);
       continue;
     }
+    if (physicalEventKey !== null) openedEventKeys.add(physicalEventKey);
 
     primaryCandidatesEntered++;
     if (researchCollectionActive) rf.candidatesSeen++;
@@ -3305,6 +3320,14 @@ export async function runPrimaryCandidateLoop(
     pairsGenerated,
     pinnedCandidatesPersisted,
     primaryLoopBudgetExhausted,
+    primaryDistinctPhysicalEventsEntered: enteredEventKeys.size,
+    primaryLoopBudgetExcludedPhysicalEvents: budgetSkippedEventKeys.size,
+    primaryLoopBudgetFullyExcludedPhysicalEvents: Array.from(budgetSkippedEventKeys).filter(
+      (k) => !openedEventKeys.has(k),
+    ).length,
+    primaryLoopBudgetPartiallyExcludedPhysicalEvents: Array.from(budgetSkippedEventKeys).filter(
+      (k) => openedEventKeys.has(k),
+    ).length,
   };
 }
 
@@ -3761,6 +3784,12 @@ export async function buildLandingCards(options?: {
     rf.primaryLoopBudgetExhausted = primaryLoopBudgetExhausted;
     rf.primaryLoopBudgetExcludedCandidates =
       primaryTerminalReasonCounts[PRIMARY_LOOP_BUDGET_EXHAUSTED_TERMINAL_REASON] ?? 0;
+    rf.primaryDistinctPhysicalEventsEntered = primaryLoop.primaryDistinctPhysicalEventsEntered;
+    rf.primaryLoopBudgetExcludedPhysicalEvents = primaryLoop.primaryLoopBudgetExcludedPhysicalEvents;
+    rf.primaryLoopBudgetFullyExcludedPhysicalEvents =
+      primaryLoop.primaryLoopBudgetFullyExcludedPhysicalEvents;
+    rf.primaryLoopBudgetPartiallyExcludedPhysicalEvents =
+      primaryLoop.primaryLoopBudgetPartiallyExcludedPhysicalEvents;
 
     // Include non-sports rejected markets in final rejected list (for category=sports)
     const finalRejected = rejected;

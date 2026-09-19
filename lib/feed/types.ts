@@ -316,6 +316,12 @@ export interface ResearchFunnelCounters {
   primaryLoopElapsedMs?: number;
   primaryLoopBudgetExhausted?: boolean;
   primaryLoopBudgetExcludedCandidates?: number;
+  // Aggregate physical-event attribution (canonical provider-event key; no raw ids).
+  // excluded = fullyExcluded + partiallyExcluded; identities above stay identity-level.
+  primaryDistinctPhysicalEventsEntered?: number;
+  primaryLoopBudgetExcludedPhysicalEvents?: number;
+  primaryLoopBudgetFullyExcludedPhysicalEvents?: number;
+  primaryLoopBudgetPartiallyExcludedPhysicalEvents?: number;
 }
 
 // ─── S2: Wide research universe — pre-grouping, pre-volume nested market ───────
