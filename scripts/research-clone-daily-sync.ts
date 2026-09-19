@@ -11,6 +11,20 @@ import {
   type Watermark,
 } from "../lib/research-clone/dailySync";
 import { isEmergencyQuiesceActive, buildEmergencyQuiesceResult } from "../lib/ops/emergencyQuiesce";
+import {
+  CLONE_EVIDENCE_CONFLICT_KEY,
+  CLONE_EVIDENCE_SOURCE_KIND,
+  CLONE_EVIDENCE_TABLE,
+  RESEARCH_EVIDENCE_PAGE_MAX_ENVELOPES,
+  bootstrapCursor,
+  buildEvidencePageArgs,
+  compareCursor,
+  cursorAdvanced,
+  dedupeNarrowRows,
+  nextCursor,
+  type EvidenceCursor,
+  type NarrowEvidenceRow,
+} from "../lib/research-clone/researchEvidenceExport";
 
 const EXPECTED_PRODUCTION_REF = "nbnldzfsxffztsfrrxqy";
 const EXPECTED_CLONE_REF = "nppznoujvnyjargjkmnv";
@@ -30,8 +44,7 @@ type Client = any;
 type TableName =
   | "generated_signal_pairs"
   | "generated_signal_research_snapshots"
-  | "night_event_reservations"
-  | "primary_evidence_outbox";
+  | "night_event_reservations";
 
 type TableSpec = {
   table: TableName;
@@ -94,21 +107,10 @@ const SPECS: readonly TableSpec[] = [
       return targetBefore.plan_date_minsk > recent ? recent : targetBefore.plan_date_minsk;
     },
   },
-  {
-    // Current authoritative production evidence source (supabase/migrations/
-    // 20260908120000_make_current_money_state_gsp_independent.sql). Production
-    // money publication now writes here (via publish_primary_signal_observation)
-    // independently of generated_signal_pairs, whose write is a non-blocking
-    // legacy probe only (gspWriteStatus DEFERRED_TO_PRIMARY_EVIDENCE_OUTBOX in
-    // lib/feed/persistPrimarySignalPopulation.ts). Each row is a durable,
-    // immutable publication envelope (ON CONFLICT DO NOTHING at the production
-    // RPC) — append-only, no reconciliation sweep needed.
-    table: "primary_evidence_outbox",
-    fields: ["observed_at", "observation_id"],
-    appendOnly: true,
-    idField: "observation_id",
-    optional: true,
-  },
+  // primary_evidence_outbox is deliberately NOT a generic raw SYNC_SPEC: the
+  // generic sourcePage() reads select("*") (full evidence_rows JSON) with no
+  // bound. Current evidence is transported by syncResearchEvidencePage() below
+  // through the bounded server-side research_evidence_page() RPC instead.
 ];
 
 const EMPTY_TABLE_EVIDENCE: TableEvidence = {
@@ -323,6 +325,155 @@ export function resolveBootstrapSinceArg(argv: readonly string[]): string | null
   return null;
 }
 
+// ── Bounded narrow research-evidence transport ───────────────────────────────
+// production primary_evidence_outbox -> research_evidence_page() RPC (max 20
+// envelopes/call, 5s statement timeout, explicit p_until, row-value cursor,
+// never returns evidence_rows) -> clone research_evidence_page_rows.
+
+const EVIDENCE_CHECKPOINT_SOURCE = `${SYNC_VERSION}:checkpoint:${CLONE_EVIDENCE_TABLE}`;
+const MAX_EVIDENCE_PAGES = 200; // finite budget: 200 x 20 envelopes per run
+const EVIDENCE_UPSERT_CHUNK = 500;
+
+type EvidenceSyncEvidence = {
+  P_UNTIL: string;
+  CURSOR_BEFORE: EvidenceCursor | null;
+  CURSOR_AFTER: EvidenceCursor | null;
+  PAGES: number;
+  ROWS_WRITTEN: number;
+  SKIPPED_NO_ITEM_ID: number;
+  APPEND_PENDING: boolean;
+  RECONCILIATION_PENDING: false;
+};
+
+async function evidenceCheckpoint(target: Client): Promise<EvidenceCursor | null> {
+  const { data, error } = await target
+    .from("job_runs")
+    .select("diagnostics")
+    .eq("source", EVIDENCE_CHECKPOINT_SOURCE)
+    .eq("status", "success")
+    .order("started_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(`RESEARCH_CLONE_CHECKPOINT_READ_${CLONE_EVIDENCE_TABLE}:${safeError(error)}`);
+  const wm = ((data?.[0] ?? {}) as { diagnostics?: { watermark?: { observed_at?: unknown; observation_id?: unknown } } })
+    .diagnostics?.watermark;
+  if (typeof wm?.observed_at === "string" && typeof wm?.observation_id === "string") {
+    return { observedAt: wm.observed_at, observationId: wm.observation_id };
+  }
+  return null;
+}
+
+/**
+ * Greatest clone envelope position that is strictly BEFORE the clone's newest
+ * envelope. The newest envelope may have been only partially written by an
+ * interrupted chunked upsert, so it is deliberately re-read (idempotent upsert)
+ * rather than trusted as complete.
+ */
+async function cloneEvidenceStepBackCursor(target: Client): Promise<EvidenceCursor | null> {
+  const newest = await target
+    .from(CLONE_EVIDENCE_TABLE)
+    .select("observed_at,observation_id")
+    .order("observed_at", { ascending: false })
+    .order("observation_id", { ascending: false })
+    .limit(1);
+  if (newest.error) throw new Error(`RESEARCH_CLONE_MAX_WATERMARK_${CLONE_EVIDENCE_TABLE}:${safeError(newest.error)}`);
+  const top = newest.data?.[0] as { observed_at: string; observation_id: string } | undefined;
+  if (!top) return null;
+  const prev = await target
+    .from(CLONE_EVIDENCE_TABLE)
+    .select("observed_at,observation_id")
+    .or(`observed_at.lt.${top.observed_at},and(observed_at.eq.${top.observed_at},observation_id.lt.${top.observation_id})`)
+    .order("observed_at", { ascending: false })
+    .order("observation_id", { ascending: false })
+    .limit(1);
+  if (prev.error) throw new Error(`RESEARCH_CLONE_MAX_WATERMARK_${CLONE_EVIDENCE_TABLE}:${safeError(prev.error)}`);
+  const p = prev.data?.[0] as { observed_at: string; observation_id: string } | undefined;
+  return p ? { observedAt: p.observed_at, observationId: p.observation_id } : null;
+}
+
+async function writeEvidenceCheckpoint(target: Client, cursor: EvidenceCursor): Promise<void> {
+  const now = new Date().toISOString();
+  const { error } = await target.from("job_runs").insert({
+    source: EVIDENCE_CHECKPOINT_SOURCE,
+    formula_version: SYNC_VERSION,
+    started_at: now,
+    finished_at: now,
+    status: "success",
+    generated_count: 0,
+    rejected_count: 0,
+    duration_ms: 0,
+    diagnostics: {
+      table: CLONE_EVIDENCE_TABLE,
+      watermark: { observed_at: cursor.observedAt, observation_id: cursor.observationId },
+    },
+  });
+  if (error) throw new Error(`RESEARCH_CLONE_CHECKPOINT_WRITE_${CLONE_EVIDENCE_TABLE}:${safeError(error)}`);
+}
+
+export async function syncResearchEvidencePage(
+  target: Client,
+  source: Client,
+  bootstrapSince: string | null,
+): Promise<EvidenceSyncEvidence> {
+  // ONE fixed upper bound for the whole run — never a moving horizon.
+  const pUntil = new Date().toISOString();
+  const checkpoint = await evidenceCheckpoint(target);
+  const cloneBack = await cloneEvidenceStepBackCursor(target);
+  const candidates = [checkpoint, cloneBack].filter((c): c is EvidenceCursor => c !== null);
+  const start: EvidenceCursor | null = candidates.length
+    ? candidates.reduce((a, b) => (compareCursor(a, b) >= 0 ? a : b))
+    : bootstrapSince
+      ? bootstrapCursor(bootstrapSince)
+      : null;
+  if (!start) throw new Error("RESEARCH_CLONE_EVIDENCE_CURSOR_UNAVAILABLE_NO_START_AUTHORITY");
+  let cursor: EvidenceCursor = start;
+
+  let pages = 0;
+  let rowsWritten = 0;
+  let skipped = 0;
+  let drained = false;
+  while (pages < MAX_EVIDENCE_PAGES) {
+    const args = buildEvidencePageArgs(cursor, pUntil, RESEARCH_EVIDENCE_PAGE_MAX_ENVELOPES);
+    const { data, error } = await source.rpc("research_evidence_page_v2", args);
+    if (error) throw new Error(`RESEARCH_CLONE_SOURCE_READ_research_evidence_page_v2:${safeError(error)}`);
+    const rows = (data ?? []) as NarrowEvidenceRow[];
+    pages++;
+    if (rows.length === 0) {
+      drained = true;
+      break;
+    }
+    const keyed = rows.filter((r) => !!r.item_observation_id);
+    skipped += rows.length - keyed.length;
+    const ingestedAt = new Date().toISOString();
+    const records = dedupeNarrowRows(keyed).map((r) => ({
+      ...r,
+      ingested_at: ingestedAt,
+      source_kind: CLONE_EVIDENCE_SOURCE_KIND,
+    }));
+    for (let i = 0; i < records.length; i += EVIDENCE_UPSERT_CHUNK) {
+      const { error: writeError } = await target
+        .from(CLONE_EVIDENCE_TABLE)
+        .upsert(records.slice(i, i + EVIDENCE_UPSERT_CHUNK), { onConflict: CLONE_EVIDENCE_CONFLICT_KEY });
+      if (writeError) throw new Error(`RESEARCH_CLONE_APPLY_${CLONE_EVIDENCE_TABLE}:${safeError(writeError)}`);
+    }
+    rowsWritten += records.length;
+    // Advance the cursor and checkpoint ONLY after the page write succeeded.
+    const advanced = nextCursor(rows, cursor);
+    if (!cursorAdvanced(cursor, advanced)) throw new Error("RESEARCH_CLONE_EVIDENCE_CURSOR_STALLED");
+    cursor = advanced;
+    await writeEvidenceCheckpoint(target, cursor);
+  }
+  return {
+    P_UNTIL: pUntil,
+    CURSOR_BEFORE: start,
+    CURSOR_AFTER: cursor,
+    PAGES: pages,
+    ROWS_WRITTEN: rowsWritten,
+    SKIPPED_NO_ITEM_ID: skipped,
+    APPEND_PENDING: !drained,
+    RECONCILIATION_PENDING: false,
+  };
+}
+
 async function syncTable(
   target: Client,
   source: Client,
@@ -511,49 +662,7 @@ function initialDiagnostics(): SelfDiagnostics {
   };
 }
 
-/**
- * TEMPORARY_HARD_STOP_RESEARCH_SYNC_UNSAFE_PRODUCTION_READ_V1.
- * (EMERGENCY_REDEPLOY_SAFE_RUNTIME_AND_RECOVER_PRODUCT_V1: comment-only
- * redeploy marker -- no behavior change -- to trigger a fresh registered
- * deployment attempt of this exact safe hard-stop revision after the prior
- * Build > Build image failure.)
- *
- * ISOLATE_UNSAFE_RESEARCH_SYNC_AND_RECOVER_MONEY_PATH_V1 mission evidence
- * (RESEARCH_SYNC_DB_LOAD_TRIGGER_CLASSIFIED): this script's sourcePage()
- * keyset read against production primary_evidence_outbox has no supporting
- * index on observed_at anywhere in supabase/migrations/ (unlike the other
- * three synced tables), and select("*") pulls the full evidence_rows jsonb
- * payload (up to 1524 array elements/row) on every page, with no query
- * timeout and no retry/backoff anywhere in this file. That is a proven-unsafe
- * query shape against production.
- *
- * The preferred fix is the selective EMERGENCY_QUIESCE_SCOPES=research-clone-sync
- * runtime configuration already supported by lib/ops/emergencyQuiesce.ts (see
- * the isEmergencyQuiesceActive("research-clone-sync") check below) -- but
- * activating it requires a Railway env var change this executor cannot make.
- * Until either that env var is set, or the query shape itself is fixed (a
- * bounded time window and/or a matching index -- NOT done in this commit),
- * this unconditional code-level hard stop is the temporary safeguard: it is
- * scoped to ONLY this script, runs before any env resolution or Supabase
- * client creation, and does not touch signal-cache, Reservation, Rebalance,
- * Queue, or any other guarded entrypoint.
- *
- * Remove this block only together with a proven-safe replacement query shape
- * for primary_evidence_outbox -- never by itself.
- */
-const RESEARCH_SYNC_HARD_STOPPED = true;
-
 export async function main(): Promise<void> {
-  if (RESEARCH_SYNC_HARD_STOPPED) {
-    console.log(
-      JSON.stringify({
-        STATUS: "HARD_STOPPED",
-        REASON: "TEMPORARY_HARD_STOP_RESEARCH_SYNC_UNSAFE_PRODUCTION_READ_V1",
-        SOURCE: "research-clone-sync",
-      }),
-    );
-    return;
-  }
   // EMERGENCY_QUIESCE_PROD_DB_BACKGROUND_LOAD_V1: first thing this entrypoint
   // does, before any env resolution or Supabase client creation. This is the
   // ONLY step of the research-clone-daily-sync Railway startCommand that
@@ -647,12 +756,15 @@ export async function main(): Promise<void> {
       }
     }
     diagnostics.SCHEMA_PENDING_TABLES = schemaPendingTables;
-    const pendingTables = (Object.keys(tables) as TableName[]).filter(
+    const researchEvidence = await syncResearchEvidencePage(target, source, bootstrapSince);
+    const pendingTables: string[] = (Object.keys(tables) as TableName[]).filter(
       (name) => tables[name].APPEND_PENDING || tables[name].RECONCILIATION_PENDING,
     );
+    if (researchEvidence.APPEND_PENDING) pendingTables.push(CLONE_EVIDENCE_TABLE);
     console.log(
       JSON.stringify({
         TABLES: tables,
+        RESEARCH_EVIDENCE_PAGE: researchEvidence,
         PENDING_TABLES: pendingTables,
         RESUME_PENDING: pendingTables.length > 0,
         DURATION_MS: Date.now() - startedAt,
