@@ -223,7 +223,9 @@ export function materializeForwardRichResearch(
         ? round((Date.parse(eventStart) - Date.parse(pair.decisionAt)) / HOUR_MS, 4)
         : null;
 
+    // Decision-time pair value (current outbox) wins; GSRS is a historical fallback.
     const dataCoverage =
+      (typeof pair.dataCoverage === "number" ? pair.dataCoverage : null) ??
       eligible.find((o) => typeof o.dataCoverageNum === "number")?.dataCoverageNum ?? null;
 
     const gammaTerminal = pair.gammaTerminal ?? null;
@@ -256,7 +258,7 @@ export function materializeForwardRichResearch(
       preDecisionScoreHistory: derivePreDecisionScoreHistory(eligible),
 
       volumeUsd: pair.volumeUsd ?? null,
-      volumeSemantic: "generated_signal_pairs.diagnostics.volumeUsd",
+      volumeSemantic: pair.volumeSemantic ?? "generated_signal_pairs.diagnostics.volumeUsd",
       volumeSourceCreatedAt: pair.sourceCreatedAt,
 
       selectedPrice: deriveSeries(eligible, (o) => o.selectedPriceNum),
@@ -274,6 +276,7 @@ export function materializeForwardRichResearch(
         contextString(pair.providerEventContext, "league"),
       providerSportFamily: pair.providerSportFamily ?? null,
       dataCoverage: dataCoverage ?? null,
+      selectedOutcome: pair.selectedOutcome ?? null,
 
       eligibleObservationWindowEnd: windowEnd,
       totalObservationsSeen: allObs.length,

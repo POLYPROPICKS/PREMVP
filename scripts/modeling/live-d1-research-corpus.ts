@@ -320,10 +320,22 @@ export async function readPrimaryEvidenceOutbox(
           decisionAt: observedAt,
           sourceCreatedAt: observedAt,
           entryPriceNum: num(r.entry_price_num),
-          volumeUsd: num(d.volumeUsd),
+          ...(num(d.parentEventVolume24hr) != null
+            ? {
+                volumeUsd: num(d.parentEventVolume24hr),
+                volumeSemantic:
+                  "primary_evidence_outbox.evidence_rows[].diagnostics.parentEventVolume24hr" as const,
+              }
+            : {
+                volumeUsd: num(d.volumeUsd),
+                volumeSemantic:
+                  "primary_evidence_outbox.evidence_rows[].diagnostics.volumeUsd" as const,
+              }),
+          selectedOutcome: str(r.selected_outcome),
+          dataCoverage: num(d.dataCoverage),
           eventStartIso: str(d.gameStartIso),
           providerEventId: str(d.providerEventId),
-          marketTypeRaw: str(d.marketType),
+          marketTypeRaw: str(obj(d.providerEventContext).marketType) ?? str(d.marketType),
           marketFamily: str(d.marketFamily),
           providerSportCode: str(d.providerSportCode),
           providerSportFamily: str(d.providerSportFamily),

@@ -149,3 +149,94 @@ test("PROOF: post-Sep-11 primary_evidence_outbox evidence reaches research_model
   // Matches ops/research-clone/model-ready-schema.sql's declared settlement_label enum.
   assert.match(storedRow.settlement_label, /^(WIN|LOSS|VOID|OPEN|NO_MATCH|AMBIGUOUS)$/);
 });
+
+function outboxEnvelope(diagnostics: Record<string, unknown>, extra: Record<string, unknown> = {}) {
+  return [
+    {
+      observation_id: "30000000-0000-0000-0000-000000000002",
+      observed_at: DECISION_AT,
+      evidence_rows: [
+        {
+          observation_id: "30000000-0000-0000-0000-0000000000b1",
+          condition_id: "0xcur-condition",
+          selected_token_id: "cur-token",
+          formula_version: "v2-lite-growth-safe",
+          entry_price_num: 0.41,
+          signal_result: null,
+          pre_event_score_num: 61,
+          ...extra,
+          diagnostics: {
+            providerEventId: "polymarket-cur-event",
+            gameStartIso: EVENT_START,
+            providerSportCode: "TENNIS",
+            providerSportFamily: "tennis",
+            ...diagnostics,
+          },
+        },
+      ],
+      evidence_row_count: 1,
+    },
+  ];
+}
+
+async function toCanonical(envelopes: ReturnType<typeof outboxEnvelope>) {
+  const { pairs } = await readPrimaryEvidenceOutbox(
+    makeFakeClient(envelopes),
+    "2026-09-12T00:00:00.000Z",
+    "2026-09-13T00:00:00.000Z",
+  );
+  assert.equal(pairs.length, 1);
+  const clean = (({ _createdAt, _id, _cloneSignalResultRaw, ...c }) => c)(pairs[0]);
+  const corpus = buildCompactCorpus({
+    sliceDateUtc: D1,
+    sinceCutoff: "2026-09-12T00:00:00.000Z",
+    materializedAt: "2026-09-13T02:00:00.000Z",
+    signalPairs: [{ ...clean, gammaTerminal: "WIN" as const }],
+    observations: [],
+  });
+  const compactRow = corpus.rows[0] as unknown as Record<string, unknown>;
+  const scorecardRow = {
+    ...(compactRow as unknown as ScorecardReadyRow),
+    sportFamily: normalizeMaterializedSportFamily(compactRow as { providerSportFamily?: unknown }),
+    frozenLabel: "WIN" as const,
+    labelAsOf: "WIN" as const,
+  };
+  return toStoredModelRow(D1, scorecardRow);
+}
+
+test("CURRENT-LIVE-SHAPE: selected_outcome / providerEventContext.marketType / parentEventVolume24hr / dataCoverage reach canonical_row (legacy aliases absent)", async () => {
+  const stored = await toCanonical(
+    outboxEnvelope(
+      {
+        providerEventContext: { marketType: "match_winner" },
+        parentEventVolume24hr: 123456.5,
+        dataCoverage: 0.75,
+      },
+      { selected_outcome: "Sinner" },
+    ),
+  );
+  const c = stored.canonical_row as unknown as Record<string, unknown>;
+  assert.equal(c.selectedOutcome, "Sinner");
+  assert.equal(c.marketTypeRaw, "match_winner");
+  assert.equal(c.volumeUsd, 123456.5);
+  assert.equal(
+    c.volumeSemantic,
+    "primary_evidence_outbox.evidence_rows[].diagnostics.parentEventVolume24hr",
+  );
+  assert.equal(c.dataCoverage, 0.75);
+  assert.equal(stored.condition_id, "0xcur-condition");
+  assert.equal(stored.selected_token_id, "cur-token");
+  assert.equal(stored.provider_event_id, "polymarket-cur-event");
+  assert.equal(c.entryPrice, 0.41);
+  assert.equal(c.eventStart, EVENT_START);
+});
+
+test("HISTORICAL-COMPAT: diagnostics.volumeUsd / diagnostics.marketType still map; missing coverage/outcome stay null", async () => {
+  const stored = await toCanonical(outboxEnvelope({ volumeUsd: 5000, marketType: "moneyline" }));
+  const c = stored.canonical_row as unknown as Record<string, unknown>;
+  assert.equal(c.volumeUsd, 5000);
+  assert.equal(c.volumeSemantic, "primary_evidence_outbox.evidence_rows[].diagnostics.volumeUsd");
+  assert.equal(c.marketTypeRaw, "moneyline");
+  assert.equal(c.selectedOutcome, null);
+  assert.equal(c.dataCoverage, null);
+});
