@@ -3484,10 +3484,12 @@ export async function buildLandingCards(options?: {
         fallbackWindowHours: 48,
         fetchVolumeMinUsd: 50000,
         finalEventVolumeMinUsd: MINIMUM_MODEL_EVENT_VOLUME_USD,
-        // PRE17: was `limit * 2` (=30). Discovery must not pre-truncate below the
-        // proven primary-scorer capacity; the single bound is applied just below
-        // via boundPrimaryScorerPopulation().
-        targetCards: PRIMARY_SCORER_PROVEN_CAPACITY,
+        // PRE17: was `limit * 2` (=30), then `PRIMARY_SCORER_PROVEN_CAPACITY`
+        // (=254) — both were positional pre-truncations applied before any
+        // eligibility gate ran. Discovery must not pre-truncate the eligible
+        // population at all; the single membership bound is applied just below
+        // via boundPrimaryScorerPopulation(), which already defaults unbounded.
+        targetCards: Infinity,
         producerRunId: options?.producerRunId,
       });
 
