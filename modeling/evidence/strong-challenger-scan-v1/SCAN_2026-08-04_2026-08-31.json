@@ -417,8 +417,8 @@
         "roi_pct": -1.9964,
         "max_drawdown_u": -42.62,
         "sample_flag": "N_GE_200",
-        "positive_week_n": 2,
-        "negative_week_n": 2,
+        "positive_week_n": 3,
+        "negative_week_n": 1,
         "zero_week_n": 0
       },
       {
@@ -430,8 +430,8 @@
         "roi_pct": 15.1686,
         "max_drawdown_u": -4.04,
         "sample_flag": "N_20_49",
-        "positive_week_n": 0,
-        "negative_week_n": 3,
+        "positive_week_n": 2,
+        "negative_week_n": 1,
         "zero_week_n": 1
       },
       {
@@ -443,8 +443,8 @@
         "roi_pct": -6.8081,
         "max_drawdown_u": -26.62,
         "sample_flag": "N_GE_200",
-        "positive_week_n": 0,
-        "negative_week_n": 4,
+        "positive_week_n": 2,
+        "negative_week_n": 2,
         "zero_week_n": 0
       },
       {
@@ -456,8 +456,8 @@
         "roi_pct": -1.8542,
         "max_drawdown_u": -37.62,
         "sample_flag": "N_GE_200",
-        "positive_week_n": 2,
-        "negative_week_n": 2,
+        "positive_week_n": 3,
+        "negative_week_n": 1,
         "zero_week_n": 0
       },
       {
@@ -624,8 +624,8 @@
         {
           "WEEK_ID": "W1",
           "event_n": 133,
-          "pnl_u": -25.76,
-          "roi_pct": -19.3681
+          "pnl_u": -14.96,
+          "roi_pct": -11.2474
         },
         {
           "WEEK_ID": "W2",
@@ -642,8 +642,8 @@
         {
           "WEEK_ID": "W4",
           "event_n": 103,
-          "pnl_u": 88.9,
-          "roi_pct": 86.3075
+          "pnl_u": 88.52,
+          "roi_pct": 85.9374
         }
       ],
       "REF_C1": [
@@ -668,8 +668,8 @@
         {
           "WEEK_ID": "W4",
           "event_n": 3,
-          "pnl_u": -0.94,
-          "roi_pct": -31.2715
+          "pnl_u": -1.32,
+          "roi_pct": -43.9776
         }
       ],
       "REF_C4": [
@@ -694,16 +694,16 @@
         {
           "WEEK_ID": "W4",
           "event_n": 4,
-          "pnl_u": -1.94,
-          "roi_pct": -48.4536
+          "pnl_u": -2.32,
+          "roi_pct": -57.9832
         }
       ],
       "REF_C5": [
         {
           "WEEK_ID": "W1",
           "event_n": 133,
-          "pnl_u": -25.76,
-          "roi_pct": -19.3681
+          "pnl_u": -14.96,
+          "roi_pct": -11.2474
         },
         {
           "WEEK_ID": "W2",
@@ -720,8 +720,8 @@
         {
           "WEEK_ID": "W4",
           "event_n": 103,
-          "pnl_u": 88.9,
-          "roi_pct": 86.3075
+          "pnl_u": 88.52,
+          "roi_pct": 85.9374
         }
       ],
       "PRICE_050_054": [
@@ -1042,26 +1042,26 @@
         {
           "WEEK_ID": "W1",
           "event_n": 259,
-          "pnl_u": 13.79,
-          "roi_pct": 5.3233
+          "pnl_u": 4.67,
+          "roi_pct": 1.8046
         },
         {
           "WEEK_ID": "W2",
-          "event_n": 152,
-          "pnl_u": -4.76,
-          "roi_pct": -3.134
+          "event_n": 151,
+          "pnl_u": 16.91,
+          "roi_pct": 11.197
         },
         {
           "WEEK_ID": "W3",
-          "event_n": 169,
-          "pnl_u": -20.01,
-          "roi_pct": -11.8419
+          "event_n": 204,
+          "pnl_u": -36.13,
+          "roi_pct": -17.7115
         },
         {
           "WEEK_ID": "W4",
-          "event_n": 55,
-          "pnl_u": 1.32,
-          "roi_pct": 2.3989
+          "event_n": 67,
+          "pnl_u": 4.73,
+          "roi_pct": 7.053
         }
       ],
       "REF_C1": [
@@ -1073,73 +1073,73 @@
         },
         {
           "WEEK_ID": "W2",
-          "event_n": 38,
-          "pnl_u": -5.46,
-          "roi_pct": -14.3575
+          "event_n": 39,
+          "pnl_u": 6.51,
+          "roi_pct": 16.7034
         },
         {
           "WEEK_ID": "W3",
-          "event_n": 7,
-          "pnl_u": -4.89,
-          "roi_pct": -69.9248
+          "event_n": 11,
+          "pnl_u": 4.59,
+          "roi_pct": 41.6998
         },
         {
           "WEEK_ID": "W4",
           "event_n": 3,
-          "pnl_u": -3,
-          "roi_pct": -100
+          "pnl_u": -1.02,
+          "roi_pct": -33.9934
         }
       ],
       "REF_C4": [
         {
           "WEEK_ID": "W1",
           "event_n": 67,
-          "pnl_u": -6.72,
-          "roi_pct": -10.0241
+          "pnl_u": -1.86,
+          "roi_pct": -2.7727
         },
         {
           "WEEK_ID": "W2",
-          "event_n": 72,
-          "pnl_u": -6.74,
-          "roi_pct": -9.3574
+          "event_n": 70,
+          "pnl_u": 9.05,
+          "roi_pct": 12.9244
         },
         {
           "WEEK_ID": "W3",
-          "event_n": 63,
-          "pnl_u": -17.19,
-          "roi_pct": -27.2809
+          "event_n": 98,
+          "pnl_u": -25.27,
+          "roi_pct": -25.7884
         },
         {
           "WEEK_ID": "W4",
-          "event_n": 12,
-          "pnl_u": -3.97,
-          "roi_pct": -33.0666
+          "event_n": 14,
+          "pnl_u": 3.58,
+          "roi_pct": 25.6042
         }
       ],
       "REF_C5": [
         {
           "WEEK_ID": "W1",
           "event_n": 259,
-          "pnl_u": 13.79,
-          "roi_pct": 5.3233
+          "pnl_u": 4.67,
+          "roi_pct": 1.8046
         },
         {
           "WEEK_ID": "W2",
-          "event_n": 129,
-          "pnl_u": -7.76,
-          "roi_pct": -6.0184
+          "event_n": 128,
+          "pnl_u": 13.91,
+          "roi_pct": 10.8652
         },
         {
           "WEEK_ID": "W3",
-          "event_n": 141,
-          "pnl_u": -16.01,
-          "roi_pct": -11.3566
+          "event_n": 176,
+          "pnl_u": -32.13,
+          "roi_pct": -18.2566
         },
         {
           "WEEK_ID": "W4",
-          "event_n": 46,
-          "pnl_u": 2.32,
-          "roi_pct": 5.0422
+          "event_n": 58,
+          "pnl_u": 5.73,
+          "roi_pct": 9.8716
         }
       ],
       "PRICE_050_054": [
@@ -1633,5 +1633,5 @@
     }
   },
   "DETERMINISM_REVERSED_PARTITIONS": "PASS",
-  "CANONICAL_RESULT_SHA256": "8b6110587fb696d9882f60d9a5d95d8a52a6bc7242e9ea3795892c49ec5d213d"
+  "CANONICAL_RESULT_SHA256": "0d0ed0c624bfc368e934a5cbbbb1e595844727edd357b26280507c985a89856a"
 }

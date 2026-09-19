@@ -33,6 +33,7 @@ import {
   type EvaluatedEvent,
   type ResearchEngineInputEvent,
   type SelectedBet,
+  type FrozenModelId,
 } from "@/lib/modeling/research-engine";
 import { loadPartition } from "./rolling-research-corpus";
 
@@ -382,7 +383,7 @@ export function buildScanResult(start: string, end: string, partitions: LoadedPa
         MAX_DRAWDOWN_U: evaluated[id].MAX_DRAWDOWN_U,
         selectedBets: bets,
       };
-      const weekly = computeWeeklyForKeySet(weekPartitions, pop, new Set(bets.map((b) => b.physicalEventKey)));
+      const weekly = computeWeeklyForFrozenModel(weekPartitions, pop, id);
       WEEKLY_RESULTS[pop][refId] = weekly.rows;
       CHALLENGERS_OUT[pop].push({
         CHALLENGER_ID: refId,
@@ -469,18 +470,24 @@ export function computeWeeklyForPredicate(
   return { rows, ...weeklyAggFromRows(rows) };
 }
 
-/** Weekly slice for a REFERENCE model: same weekly economics, restricted to the frozen engine's own selected keys. */
-function computeWeeklyForKeySet(
+/**
+ * Weekly slice for a REFERENCE frozen model: independently re-runs the actual
+ * frozen engine (evaluateRows) on that week's own rows. NEVER a full-range
+ * key-membership replay — a physical event's full-range-qualifying row can
+ * differ from its row within a given week, so full-range membership is not
+ * authoritative for a week's predicate result.
+ */
+export function computeWeeklyForFrozenModel(
   weekPartitions: Array<{ WEEK_ID: string; start: string; end: string; partitions: LoadedPartition[] }>,
   populationId: string,
-  fullRangeKeys: Set<string>,
+  modelId: FrozenModelId,
 ): WeeklyAgg {
   const rows = weekPartitions.map((w) => {
     const weekView = buildExplicitDateRangeRowView({ rangeStart: w.start, rangeEnd: w.end, partitions: w.partitions });
     const popRows = weekView.rows.filter((r: ScorecardReadyRow) => r.populationId === populationId);
-    const input = toChallengerInput(popRows);
-    const result = runChallenger(input, (e) => fullRangeKeys.has(e.physicalEventKey));
-    return { WEEK_ID: w.WEEK_ID, event_n: result.SELECTED_PHYSICAL_EVENT_N, pnl_u: result.PNL_U, roi_pct: result.ROI_PCT };
+    const evaluated = evaluateRows(popRows) as Record<string, any>;
+    const m = evaluated[modelId];
+    return { WEEK_ID: w.WEEK_ID, event_n: m.SELECTED_PHYSICAL_EVENT_N, pnl_u: m.PNL_U, roi_pct: m.ROI_PCT };
   });
   return { rows, ...weeklyAggFromRows(rows) };
 }

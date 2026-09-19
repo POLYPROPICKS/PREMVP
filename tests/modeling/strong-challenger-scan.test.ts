@@ -7,6 +7,7 @@ import {
   CHALLENGERS,
   WEEKS,
   canonicalJson,
+  computeWeeklyForFrozenModel,
   computeWeeklyForPredicate,
   runChallenger,
   sha256,
@@ -141,6 +142,42 @@ test("reversed partition order is deterministic for weekly challenger results", 
   const reversed = computeWeeklyForPredicate(weeksReversed, "SEP_PUBLIC_RICH_V1", predicate);
   assert.equal(sha256(canonicalJson(forward)), sha256(canonicalJson(reversed)));
   assert.equal(forward.rows[0].event_n, 2);
+});
+
+test("weekly REF authority: frozen-engine per-week evaluation differs from a full-range key-membership replay", () => {
+  // Same physicalEventKey ("evt-SHARED"), two occurrences: week1's own row fails
+  // the C1 price-band predicate (0.65 is outside [0.5, 0.6)); week2's own row
+  // qualifies. The full-range frozen engine therefore selects the week2 row.
+  const rowA = row({ conditionId: "WA", providerEventId: "evt-SHARED", decisionAt: "2026-08-04T09:00:00.000Z", entryPrice: 0.65, sportFamily: "soccer", label: "WIN" });
+  const rowB = row({ conditionId: "WB", providerEventId: "evt-SHARED", decisionAt: "2026-08-11T09:00:00.000Z", entryPrice: 0.55, sportFamily: "soccer", label: "LOSS" });
+
+  const fullRangeScorecardRows = [rowA, rowB].map((r) => toScorecardRow(r));
+  const expectedFullRange = evaluateRows(fullRangeScorecardRows as any) as Record<string, any>;
+  assert.equal(expectedFullRange.C1.SELECTED_PHYSICAL_EVENT_N, 1);
+  assert.equal(expectedFullRange.C1.selectedBets[0].entryPrice, 0.55);
+
+  const weekPartitions = [
+    { WEEK_ID: "W1", start: "2026-08-04", end: "2026-08-04", partitions: [part("2026-08-04", [rowA])] },
+    { WEEK_ID: "W2", start: "2026-08-11", end: "2026-08-11", partitions: [part("2026-08-11", [rowB])] },
+  ];
+
+  // CORRECT (current implementation): authoritative weekly REF independently
+  // re-runs the actual frozen engine (evaluateRows) on each week's own rows.
+  const weeklyC1 = computeWeeklyForFrozenModel(weekPartitions, "SEP_PUBLIC_RICH_V1", "C1");
+  assert.equal(weeklyC1.rows[0].event_n, 0, "week1's own row fails the C1 price-band predicate");
+  assert.equal(weeklyC1.rows[1].event_n, 1, "week2's own row satisfies C1");
+
+  // PROVEN DEFECT (now removed): replaying full-range SELECTED KEYS against a
+  // week, instead of independently evaluating the frozen predicate on that
+  // week's own rows, wrongly selects week1's non-qualifying row too.
+  const fullRangeC1Keys = new Set(expectedFullRange.C1.selectedBets.map((b: { physicalEventKey: string }) => b.physicalEventKey));
+  const keyMembershipReplay = runChallenger(toChallengerInput([toScorecardRow(rowA)]), (e) => fullRangeC1Keys.has(e.physicalEventKey));
+  assert.equal(keyMembershipReplay.SELECTED_PHYSICAL_EVENT_N, 1, "key-membership-only replay incorrectly selects a non-qualifying row");
+  assert.notEqual(
+    keyMembershipReplay.SELECTED_PHYSICAL_EVENT_N,
+    weeklyC1.rows[0].event_n,
+    "the old key-membership proxy differs from the authoritative frozen-engine weekly result",
+  );
 });
 
 // Minimal ScorecardReadyRow-shaped adapter carrying only the fields
