@@ -279,3 +279,77 @@ test("15: no final executable identity field is populated at Reservation -- only
   assert.equal(diagnostics.planning_final_identity_evidence, null);
   assert.equal(diagnostics.portfolio_policy_id, "LIVE_RESERVATION_PORTFOLIO_BROAD_V2");
 });
+
+// ── RESERVATION_WINDOW_BOUNDARY_RESTORE_V1 ─────────────────────────────────
+// An approved physical event may occupy a slot of THIS plan only inside
+// nowMs < start AND [window.startMs, window.horizonEndMs) (isWithinHorizon).
+
+const W_NOW = ANCHOR_MS;
+const W_WINDOW = {
+  ...resolveNightWindow(ANCHOR_MS),
+  startMs: ANCHOR_MS + 1 * 3_600_000, // 15:00Z, after nowMs so "before window" is reachable
+  horizonEndMs: ANCHOR_MS + 9 * 3_600_000, // 23:00Z exclusive
+  horizonEndIso: new Date(ANCHOR_MS + 9 * 3_600_000).toISOString(),
+};
+
+function buildWindowed(startIsoById: Record<string, string>) {
+  const results: ContractADecisionResult<ContractAPlanningDecision>[] = [];
+  const rows: Record<string, unknown>[] = [];
+  for (const [id, start] of Object.entries(startIsoById)) {
+    results.push(acceptedFor({ physicalEventId: `provider:polymarket:${id}:2026-08-11`, generatedSignalPairId: id, conditionId: `c-${id}`, tokenId: `t-${id}`, sport: "TENNIS", start }));
+    rows.push(sourceRow({ id, conditionId: `c-${id}`, tokenId: `t-${id}`, entryPrice: 0.51 }));
+  }
+  return buildReservationsFromPlanningDecisions(
+    results,
+    { planRunId: buildPlanRunId(ANCHOR_MS), window: W_WINDOW, nowMs: W_NOW },
+    [],
+    { allocationPolicy: LIVE_RESERVATION_PORTFOLIO_BROAD_V2, sourceRowsForCandidateManifest: rows },
+  );
+}
+const reasonOf = (r: ReturnType<typeof buildWindowed>, id: string) =>
+  r.rejections.find((x) => x.physical_event_id?.includes(`:${id}:`))?.reason_code;
+
+test("W1: an event inside the current window is admitted", () => {
+  const r = buildWindowed({ inside: "2026-08-11T16:00:00.000Z" });
+  assert.equal(r.reservations.length, 1);
+});
+
+test("W2-W5: before-window, already-started, exactly-at-end and after-end events are OUTSIDE_RESERVATION_HORIZON", () => {
+  const r = buildWindowed({
+    inside: "2026-08-11T16:00:00.000Z",
+    before: "2026-08-11T14:30:00.000Z", // > nowMs but < window.startMs
+    started: "2026-08-11T13:00:00.000Z", // <= nowMs
+    atend: new Date(W_WINDOW.horizonEndMs).toISOString(), // exclusive bound
+    after: "2026-08-13T10:00:00.000Z", // the 2026-09-22-style leak
+  });
+  assert.deepEqual(r.reservations.map((x) => x.physical_event_id), ["provider:polymarket:inside:2026-08-11"]);
+  for (const id of ["before", "started", "atend", "after"]) {
+    assert.equal(reasonOf(r, id), "OUTSIDE_RESERVATION_HORIZON", id);
+  }
+});
+
+test("W6: out-of-window Broad events cannot consume Reservation capacity", () => {
+  const start: Record<string, string> = {};
+  for (let i = 0; i < 2; i++) start[`late-${i}`] = "2026-08-13T10:00:00.000Z";
+  for (let i = 0; i < 30; i++) start[`in-${String(i).padStart(2, "0")}`] = "2026-08-11T16:00:00.000Z";
+  const r = buildWindowed(start);
+  assert.equal(r.reservations.length, 30, "all 30 slots go to in-window events");
+  assert.ok(r.reservations.every((x) => x.physical_event_id?.includes(":in-")));
+  assert.equal(r.capExcluded, 0);
+});
+
+test("W7: in-window Broad events still rank tier ASC, decision_at ASC, physical_event_id ASC", () => {
+  const results = [
+    acceptedFor({ physicalEventId: "provider:polymarket:z-tier3:2026-08-11", generatedSignalPairId: "z3", conditionId: "cz3", tokenId: "tz3", start: "2026-08-11T16:00:00.000Z" }),
+    acceptedFor({ physicalEventId: "provider:polymarket:a-tier1:2026-08-11", generatedSignalPairId: "a1", conditionId: "ca1", tokenId: "ta1", sport: "TENNIS", start: "2026-08-11T16:00:00.000Z" }),
+  ];
+  const rows = [
+    sourceRow({ id: "z3", conditionId: "cz3", tokenId: "tz3", entryPrice: 0.53, createdAt: "2026-08-11T08:00:00.000Z" }),
+    sourceRow({ id: "a1", conditionId: "ca1", tokenId: "ta1", entryPrice: 0.51, createdAt: "2026-08-11T09:00:00.000Z" }),
+  ];
+  const r = buildReservationsFromPlanningDecisions(results, { planRunId: buildPlanRunId(ANCHOR_MS), window: W_WINDOW, nowMs: W_NOW }, [], { allocationPolicy: LIVE_RESERVATION_PORTFOLIO_BROAD_V2, sourceRowsForCandidateManifest: rows });
+  assert.deepEqual(r.reservations.map((x) => x.physical_event_id), [
+    "provider:polymarket:a-tier1:2026-08-11",
+    "provider:polymarket:z-tier3:2026-08-11",
+  ]);
+});
