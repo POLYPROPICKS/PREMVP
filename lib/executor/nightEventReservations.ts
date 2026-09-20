@@ -2106,15 +2106,13 @@ export function buildReservationsFromPlanningDecisions(
   }
 
   // 2. Reservation owns the occurrence's validity in time. The event start is
-  //    validated, never reconstructed. Contract A is already the authority on
-  //    WHETHER this decision is currently eligible (its own serving/freshness
-  //    policy produced event_start_iso for a candidate it judges tradeable
-  //    now); Reservation's own [window.startMs, window.horizonEndMs) anchor
-  //    bucket is a Reservation-run scheduling concept, not a second approval
-  //    gate, so it must never re-reject an already-authoritative decision.
-  //    The one timing fact Reservation itself must still enforce is the hard
-  //    execution-safety invariant: an event that has already started (or for
-  //    which no start time could be parsed) can never be reserved.
+  //    validated, never reconstructed. Contract A decides WHETHER an event is
+  //    model-valid; Reservation decides WHICH plan owns it. An event may occupy
+  //    a slot of this plan only inside its exact Reservation window:
+  //    nowMs < start AND [window.startMs, window.horizonEndMs) — the single
+  //    window authority is isWithinHorizon() (nightWindow.ts). An event at or
+  //    beyond the next Reservation boundary belongs to a later plan and must
+  //    never consume this plan's capacity. (RESERVATION_WINDOW_BOUNDARY_RESTORE_V1)
   const admitted: ContractAPlanningDecision[] = [];
   for (const decision of approved) {
     const startMs = Date.parse(decision.event_start_iso);
@@ -2126,7 +2124,7 @@ export function buildReservationsFromPlanningDecisions(
       );
       continue;
     }
-    if (startMs <= ctx.nowMs) {
+    if (!isWithinHorizon(startMs, ctx.window, ctx.nowMs)) {
       reject(
         "OUTSIDE_RESERVATION_HORIZON",
         decision.physical_event_id,
@@ -2334,7 +2332,12 @@ function contractAPlanDiagnostics(input: {
     rejectionCountsByCode[rejection.reason_code] =
       (rejectionCountsByCode[rejection.reason_code] ?? 0) + 1;
   }
-  const outsideHorizon = rejectionCountsByCode.OUTSIDE_RESERVATION_HORIZON ?? 0;
+  // Unique physical events (Contract A decisions are event-level).
+  const outsideHorizon = new Set(
+    built.rejections
+      .filter((r) => r.reason_code === "OUTSIDE_RESERVATION_HORIZON")
+      .map((r, i) => r.physical_event_id ?? `__no_event_id_${i}`)
+  ).size;
   const reservedCount = built.reservations.length;
 
   // Observation-only aggregate over the per-Reservation shadow diagnostics

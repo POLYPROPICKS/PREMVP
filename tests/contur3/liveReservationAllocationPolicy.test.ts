@@ -193,21 +193,17 @@ test("target slot count is configurable and 15 selects exactly 15 distinct event
 // execution-safety invariant: an event that has already started can never be
 // reserved.
 
-test("REDECISION-1: an authoritative candidate starting well beyond this anchor's own bucket window is still reserved", () => {
-  // ANCHOR_MS = 17:00 Minsk 2026-08-11 (14:00Z); the default single-anchor
-  // window's horizonEndMs is 17:00 Minsk the NEXT day (2026-08-12T14:00:00Z).
-  // This candidate starts two days out -- outside that bucket -- but is still
-  // in the future relative to the anchor/nowMs used for this run.
-  const farFutureStart = "2026-08-13T10:00:00.000Z";
-  const result = build([accepted({ id: "far-future", start: farFutureStart })]);
-  assert.deepEqual(
-    result.reservations.map((row) => row.physical_event_id),
-    ["provider:polymarket:far-future:2026-08-11"],
-    "an already-authoritative Contract A decision must not be re-rejected merely because it falls outside Reservation's own anchor-bucket window",
-  );
+test("REDECISION-1: an authoritative candidate starting beyond this plan's own window is rejected (RESERVATION_WINDOW_BOUNDARY_RESTORE_V1)", () => {
+  // Default single-anchor window: [17:00 Minsk, next 17:00 Minsk) = [2026-08-11T14:00Z, 2026-08-12T14:00Z).
+  // An event two days out belongs to a later plan and must not consume a slot here.
+  const result = build([
+    accepted({ id: "far-future", start: "2026-08-13T10:00:00.000Z" }),
+    accepted({ id: "in-window" }),
+  ]);
+  assert.deepEqual(result.reservations.map((row) => row.physical_event_id), ["provider:polymarket:in-window:2026-08-11"]);
   assert.equal(
-    result.rejections.some((r) => r.reason_code === "OUTSIDE_RESERVATION_HORIZON"),
-    false,
+    result.rejections.find((r) => r.physical_event_id?.includes("far-future"))?.reason_code,
+    "OUTSIDE_RESERVATION_HORIZON",
   );
 });
 
