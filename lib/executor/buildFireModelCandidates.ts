@@ -110,6 +110,10 @@ export interface RawPlanningDiagnostics {
   sport_classification_confidence_counts: Record<string, number>;
   match_family_quality_counts: Record<string, number>;
   rejected_before_planning_by_reason: Record<string, number>;
+  // Planning rows that matched the legacy BAD_BUCKET_COV_PRICE combination
+  // (coverage 50-74 AND entry_price 0.44-0.58) but were allowed to continue,
+  // since CONTRACT_A_PLANNING_V1 no longer hard-rejects on it.
+  bad_bucket_shadow_match_count: number;
   sample_source_rows: Array<Record<string, unknown>>;
   // Per-version drop-reason breakdown — reveals why shadow-strategic-sports-v1 rows are dropped.
   dropped_by_formula_version_and_reason: Record<string, Record<string, number>>;
@@ -1829,6 +1833,7 @@ export async function buildFireModelCandidates(
         sport_classification_confidence_counts: {},
         match_family_quality_counts: {},
         rejected_before_planning_by_reason: {},
+        bad_bucket_shadow_match_count: 0,
         sample_source_rows: [],
         dropped_by_formula_version_and_reason: {},
         versions_queried: [...versions],
@@ -2045,10 +2050,18 @@ export async function buildFireModelCandidates(
 
     if (rawDiag && activityLabelDetected) rawDiag.activity_label_rows += 1;
 
-    // Bad bucket: coverage 50–74 AND entry_price 0.44–0.58
+    // Bad bucket: coverage 50–74 AND entry_price 0.44–0.58. This combination is
+    // not part of the proven PORTFOLIO_BROAD research policy (preferred tiers ->
+    // P50_52 -> P52_54), so on CONTRACT_A_PLANNING_V1 it is telemetry-only: the
+    // row continues through every other existing guard unchanged. The legacy
+    // (non-Planning) hard reject is preserved exactly as before.
     if (coverage >= 50 && coverage <= 74 && entryPrice >= 0.44 && entryPrice <= 0.58) {
-      rejectReason("BAD_BUCKET_COV_PRICE");
-      continue;
+      if (planningMode && selectorMode === "CONTRACT_A_PLANNING_V1") {
+        if (rawDiag) rawDiag.bad_bucket_shadow_match_count += 1;
+      } else {
+        rejectReason("BAD_BUCKET_COV_PRICE");
+        continue;
+      }
     }
 
     const authoritative = authoritativeScope(providerContext);
