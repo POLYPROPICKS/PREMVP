@@ -414,7 +414,8 @@ const SERVING_SIGNAL_SELECT_COLS =
   "observation_id, observed_at, source_generated_signal_pair_id, condition_id, selected_outcome, selected_token_id, " +
   "entry_price_num, signal_confidence_num, pre_event_score_num, diagnostics, market_slug, event_slug, " +
   "metric_formula_version, source_created_at, expires_at, signal_result, projection_status";
-const PLANNING_SERVING_ROW_LIMIT = 10_000;
+// Serving pages stay <= the 1000-row transport cap; completion never relies on it.
+const PLANNING_SERVING_PAGE_SIZE_LADDER = [1000, 500, 250] as const;
 
 // Live executor row cap (recency-bounded). Planning mode is NEVER capped here.
 const LIVE_ROW_LIMIT = 150;
@@ -542,6 +543,14 @@ export async function fetchAllPlanningRowsByKeyset(
     pageSizeLadder?: readonly number[];
     retryPolicy?: PaginatedFetchRetryPolicy;
     sleep?: (ms: number) => Promise<void>;
+    /** Row fields carrying the keyset (default created_at / id). */
+    keyFields?: { createdAt: string; id: string };
+    /**
+     * Complete only on an EMPTY page (true cursor exhaustion). A short page is
+     * not proof of exhaustion when a transport caps responses below the
+     * requested page size. Costs one extra terminal query.
+     */
+    exhaustOnEmptyPage?: boolean;
   } = {}
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): Promise<any[]> {
@@ -549,6 +558,7 @@ export async function fetchAllPlanningRowsByKeyset(
   const pageSizeLadder = opts.pageSizeLadder ?? (opts.pageSize ? [opts.pageSize] : PLANNING_SOURCE_PAGE_SIZE_LADDER);
   const retryPolicy = opts.retryPolicy ?? DEFAULT_PLANNING_PAGE_RETRY_POLICY;
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const keyFields = opts.keyFields ?? { createdAt: "created_at", id: "id" };
   if (!pageSizeLadder.length || pageSizeLadder.some((pageSize) => !Number.isInteger(pageSize) || pageSize < 1 || pageSize > PLANNING_PAGE_SIZE)) {
     throw new Error(`${stage} invalid pageSizeLadder`);
   }
@@ -612,10 +622,10 @@ export async function fetchAllPlanningRowsByKeyset(
       throw new Error(`${stage} exceeded planning fetch ceiling`);
     }
     all.push(...batch);
-    if (batch.length < batchPageSize) break;
+    if (opts.exhaustOnEmptyPage ? batch.length === 0 : batch.length < batchPageSize) break;
     const tail = batch.at(-1);
-    const createdAt = typeof tail?.created_at === "string" ? tail.created_at : "";
-    const id = typeof tail?.id === "string" ? tail.id : "";
+    const createdAt = typeof tail?.[keyFields.createdAt] === "string" ? tail[keyFields.createdAt] : "";
+    const id = typeof tail?.[keyFields.id] === "string" ? tail[keyFields.id] : "";
     if (!createdAt || !id) throw new Error(`${stage} invalid keyset cursor at page=${page}`);
     const nextCursor = { createdAt, id };
     if (cursor && (nextCursor.createdAt > cursor.createdAt || (nextCursor.createdAt === cursor.createdAt && nextCursor.id >= cursor.id))) {
@@ -1636,14 +1646,32 @@ async function fetchContractAPlanningServingRowSets(
   includePlanningShadowRows: boolean,
 ): Promise<{ scoredRows: Record<string, unknown>[]; planningShadowRows: Record<string, unknown>[] }> {
   const { supabaseAdmin } = await import("@/lib/supabase/server");
-  const read = async (buildQuery: () => any, stage: string) => {
-    const { data, error } = await buildQuery().limit(PLANNING_SERVING_ROW_LIMIT);
-    if (error) throw new Error(`${stage} failed: ${error.message}`);
-    const rows = (data ?? []) as Record<string, unknown>[];
-    if (rows.length === PLANNING_SERVING_ROW_LIMIT) {
-      throw new Error(`${stage} reached bounded serving limit=${PLANNING_SERVING_ROW_LIMIT}`);
-    }
-    return rows.map(normalizeServingSourceRow);
+  // CONTRACT_A_SERVING_COMPLETE_PAGINATION_V1: a single .limit(10_000) request
+  // was silently capped by the transport at 1000 rows, truncating the source
+  // before Contract A. Read the whole bounded snapshot by deterministic
+  // (source_created_at DESC, observation_id DESC) keyset pages; completion is
+  // cursor exhaustion (empty page), never a short page. The hard ceiling
+  // (PLANNING_FETCH_CEILING) fails closed instead of truncating.
+  const read = async (
+    buildQuery: (cursor: PlanningKeysetCursor | null) => any,
+    stage: string,
+  ) => {
+    const rows = await fetchAllPlanningRowsByKeyset(buildQuery, {
+      stage,
+      pageSizeLadder: PLANNING_SERVING_PAGE_SIZE_LADDER,
+      keyFields: { createdAt: "source_created_at", id: "observation_id" },
+      exhaustOnEmptyPage: true,
+    });
+    return (rows as Record<string, unknown>[]).map(normalizeServingSourceRow);
+  };
+  // One frozen snapshot: every page shares the same lower and upper bound.
+  const applyServingSnapshot = (query: any, cursor: PlanningKeysetCursor | null, lowerIso: string | null) => {
+    let bounded = query.lte("source_created_at", snapshotAsOfIso);
+    if (lowerIso) bounded = bounded.gte("source_created_at", lowerIso);
+    if (!cursor) return bounded;
+    return bounded.or(
+      `source_created_at.lt.${cursor.createdAt},and(source_created_at.eq.${cursor.createdAt},observation_id.lt.${cursor.id})`
+    );
   };
   // Same PLANNING_LOOKBACK_HOURS bound the pre-cutover generated_signal_pairs
   // scored query always applied (see fetchPlanningSourceRowSets above), derived
@@ -1664,7 +1692,8 @@ async function fetchContractAPlanningServingRowSets(
   // evidence as long as it is still within the source_created_at lookback
   // bound below. Executable-identity freshness stays owned exclusively by
   // Final Identity / rebalance -- this function never feeds either of those.
-  const buildScoredQuery = () =>
+  const buildScoredQuery = (cursor: PlanningKeysetCursor | null) =>
+    applyServingSnapshot(
     supabaseAdmin
       .from("current_signal_pair_serving")
       .select(SERVING_SIGNAL_SELECT_COLS)
@@ -1673,16 +1702,19 @@ async function fetchContractAPlanningServingRowSets(
       // READ authority is the one selected production population only.
       .in("metric_formula_version", PRODUCTION_SCORED_PLANNING_VERSIONS)
       .is("signal_result", null)
-      .gte("source_created_at", scoredLookbackIso)
       .not("selected_token_id", "is", null)
       .not("condition_id", "is", null)
       .not("entry_price_num", "is", null)
       .gte("signal_confidence_num", 50)
       .order("source_created_at", { ascending: false })
-      .order("observation_id", { ascending: false });
+      .order("observation_id", { ascending: false }),
+    cursor,
+    scoredLookbackIso,
+    );
   const scoredRows = await read(buildScoredQuery, "planning_serving_scored_rows_fetch");
   if (!includePlanningShadowRows) return { scoredRows, planningShadowRows: [] };
-  const buildShadowQuery = () =>
+  const buildShadowQuery = (cursor: PlanningKeysetCursor | null) =>
+    applyServingSnapshot(
     supabaseAdmin
       .from("current_signal_pair_serving")
       .select(SERVING_SIGNAL_SELECT_COLS)
@@ -1694,7 +1726,10 @@ async function fetchContractAPlanningServingRowSets(
       .not("condition_id", "is", null)
       .is("signal_confidence_num", null)
       .order("source_created_at", { ascending: false })
-      .order("observation_id", { ascending: false });
+      .order("observation_id", { ascending: false }),
+    cursor,
+    null,
+    );
   return {
     scoredRows,
     planningShadowRows: await read(buildShadowQuery, "planning_serving_shadow_rows_fetch"),

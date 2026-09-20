@@ -60,6 +60,15 @@ function applyFilters(rows: Row[], filters: Filter[]): Row[] {
         if (op2 === "is" && val === null) out = out.filter((r) => r[col] != null);
         break;
       }
+      case "cursor": {
+        const [c] = f.args as [{ createdAt: string; id: string }];
+        out = out.filter((r) => {
+          const t = r.source_created_at as string;
+          const id = r.observation_id as string;
+          return t < c.createdAt || (t === c.createdAt && id < c.id);
+        });
+        break;
+      }
       case "eq": {
         const [col, val] = f.args as [string, unknown];
         out = out.filter((r) => r[col] === val);
@@ -92,9 +101,18 @@ function makeFakeSupabaseAdmin(rows: Row[], callLog: CallLog[]) {
         lte(...args: unknown[]) { filters.push({ op: "lte", args }); return builder; },
         not(...args: unknown[]) { filters.push({ op: "not", args }); return builder; },
         eq(...args: unknown[]) { filters.push({ op: "eq", args }); return builder; },
+        or(expr: string) {
+          const m = /source_created_at\.lt\.([^,]+),and\(source_created_at\.eq\.([^,]+),observation_id\.lt\.([^)]+)\)/.exec(expr);
+          if (!m) throw new Error(`unhandled or(): ${expr}`);
+          filters.push({ op: "cursor", args: [{ createdAt: m[1], id: m[3] }] });
+          return builder;
+        },
         order() { return builder; },
         limit(n: number) {
-          const result = applyFilters(rows, filters);
+          const result = applyFilters(rows, filters).sort((a, b) =>
+            String(b.source_created_at) === String(a.source_created_at)
+              ? String(b.observation_id).localeCompare(String(a.observation_id))
+              : String(b.source_created_at).localeCompare(String(a.source_created_at)));
           const response = { data: result.slice(0, n), error: null };
           return { ...response, abortSignal: (_signal: unknown) => Promise.resolve(response) };
         },
@@ -126,6 +144,7 @@ function scoredRow(): Row {
     signal_result: null,
     diagnostics: {},
     projection_status: "ACTIVE",
+    observation_id: "obs-scored-row-1",
     source_generated_signal_pair_id: "scored-row-1",
     source_created_at: ROW_CREATED_AT_ISO,
   };
@@ -148,6 +167,7 @@ function unscoreable_shadow_strategic_v1_row(): Row {
     signal_result: null,
     diagnostics: {},
     projection_status: "ACTIVE",
+    observation_id: "obs-shadow-row-1",
     source_generated_signal_pair_id: "shadow-row-1",
     source_created_at: ROW_CREATED_AT_ISO,
   };
@@ -223,7 +243,7 @@ test("R4: Contract A source loader reads the bounded serving projection and excl
   assert.equal(result.length, 0);
 });
 
-test("R4: CONTRACT_A_PLANNING_V1 reads scored and shadow current-serving sets without keyset pagination", async (t) => {
+test("R4: CONTRACT_A_PLANNING_V1 reads scored and shadow current-serving sets through complete keyset pagination", async (t) => {
   const callLog: CallLog[] = [];
   t.mock.module("../../lib/supabase/server", {
     namedExports: { supabaseAdmin: makeFakeSupabaseAdmin([scoredRow(), unscoreable_shadow_strategic_v1_row()], callLog) },
@@ -231,7 +251,8 @@ test("R4: CONTRACT_A_PLANNING_V1 reads scored and shadow current-serving sets wi
   const { buildFireModelCandidates } = await import("../../lib/executor/buildFireModelCandidates");
   await buildFireModelCandidates(1000, "all", true, undefined, "CONTRACT_A_PLANNING_V1", REAL_NOW_MS);
 
-  assert.equal(callLog.length, 2, "one bounded query each for scored and shadow serving sets");
+  // Each set is read to cursor exhaustion (page + terminal empty page).
+  assert.ok(callLog.length >= 2, "scored and shadow serving sets are each queried at least once");
   assert.ok(callLog.every((call) => call.table === "current_signal_pair_serving"));
   assert.ok(callLog.every((call) => call.selectCols?.includes("source_generated_signal_pair_id")));
 });

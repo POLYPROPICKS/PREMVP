@@ -73,6 +73,15 @@ function applyFilters(rows: Row[], filters: Filter[]): Row[] {
         if (op2 === "is" && val === null) out = out.filter((r) => r[col] != null);
         break;
       }
+      case "cursor": {
+        const [c] = f.args as [{ createdAt: string; id: string }];
+        out = out.filter((r) => {
+          const t = r.source_created_at as string;
+          const id = r.observation_id as string;
+          return t < c.createdAt || (t === c.createdAt && id < c.id);
+        });
+        break;
+      }
       case "eq": {
         const [col, val] = f.args as [string, unknown];
         out = out.filter((r) => r[col] === val);
@@ -86,7 +95,7 @@ function applyFilters(rows: Row[], filters: Filter[]): Row[] {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function makeFakeSupabaseAdmin(rows: Row[], callLog: CallLog[]) {
+function makeFakeSupabaseAdmin(rows: Row[], callLog: CallLog[], transportCap = Infinity) {
   return {
     from(table: string) {
       const filters: Filter[] = [];
@@ -105,10 +114,19 @@ function makeFakeSupabaseAdmin(rows: Row[], callLog: CallLog[]) {
         lte(...args: unknown[]) { filters.push({ op: "lte", args }); return builder; },
         not(...args: unknown[]) { filters.push({ op: "not", args }); return builder; },
         eq(...args: unknown[]) { filters.push({ op: "eq", args }); return builder; },
+        or(expr: string) {
+          const m = /source_created_at\.lt\.([^,]+),and\(source_created_at\.eq\.([^,]+),observation_id\.lt\.([^)]+)\)/.exec(expr);
+          if (!m) throw new Error(`unhandled or(): ${expr}`);
+          filters.push({ op: "cursor", args: [{ createdAt: m[1], id: m[3] }] });
+          return builder;
+        },
         order() { return builder; },
         limit(n: number) {
-          const result = applyFilters(rows, filters);
-          const response = { data: result.slice(0, n), error: null };
+          const result = applyFilters(rows, filters).sort((a, b) =>
+            String(b.source_created_at) === String(a.source_created_at)
+              ? String(b.observation_id).localeCompare(String(a.observation_id))
+              : String(b.source_created_at).localeCompare(String(a.source_created_at)));
+          const response = { data: result.slice(0, Math.min(n, transportCap)), error: null };
           return { ...response, abortSignal: (_signal: unknown) => Promise.resolve(response) };
         },
       };
@@ -131,6 +149,7 @@ const PAST_EXPIRES_ISO = new Date(REAL_NOW_MS - 3600_000).toISOString();
 
 function servingRow(suffix: string, sourceCreatedAtIso: string, expiresAtIso: string = FUTURE_EXPIRES_ISO): Row {
   return {
+    observation_id: `obs-${suffix}`,
     source_generated_signal_pair_id: `gsp-${suffix}`,
     condition_id: `condition-${suffix}`,
     selected_outcome: "A",
