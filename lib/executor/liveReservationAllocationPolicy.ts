@@ -242,6 +242,8 @@ export interface PortfolioBroadSourceRowFields {
   entry_price_num: number;
   pre_event_score_num: number | null;
   source_created_at: string | null;
+  /** Whether this identity's own expires_at was already <= the resolution snapshot time. Model evidence only -- never executable-identity authority. */
+  is_expired_source: boolean;
 }
 
 /**
@@ -277,6 +279,7 @@ export interface PortfolioBroadPhysicalEventAllocation {
   portfolio_pre_event_score_num: number | null;
   portfolio_condition_id: string;
   portfolio_token_id: string;
+  portfolio_is_expired_source: boolean;
 }
 
 export interface PortfolioBroadResolution {
@@ -302,6 +305,7 @@ export function resolvePortfolioBroadPhysicalEventAllocations(
   acceptedDecisions: readonly ContractAPlanningDecision[],
   sourceRows: readonly Record<string, unknown>[],
   policyId: string = LIVE_RESERVATION_PORTFOLIO_BROAD_V2.policyId,
+  snapshotAtIso: string = new Date().toISOString(),
 ): PortfolioBroadResolution {
   const rowsById = new Map<string, Record<string, unknown>>();
   const rowsByObservation = new Map<string, Record<string, unknown>>();
@@ -335,6 +339,7 @@ export function resolvePortfolioBroadPhysicalEventAllocations(
         ? row.pre_event_score_num
         : null;
     const sourceCreatedAt = typeof row.created_at === "string" ? row.created_at : null;
+    const isExpiredSource = typeof row.expires_at === "string" && row.expires_at <= snapshotAtIso;
 
     const tier = classifyPortfolioBroadTier(entryPriceNum, preEventScoreNum, decision.strategic_scope);
     if (tier === null) continue;
@@ -348,6 +353,7 @@ export function resolvePortfolioBroadPhysicalEventAllocations(
         entry_price_num: entryPriceNum,
         pre_event_score_num: preEventScoreNum,
         source_created_at: sourceCreatedAt,
+        is_expired_source: isExpiredSource,
       },
     };
     const list = byPhysicalEvent.get(decision.physical_event_id);
@@ -371,6 +377,7 @@ export function resolvePortfolioBroadPhysicalEventAllocations(
       portfolio_pre_event_score_num: winner.row.pre_event_score_num,
       portfolio_condition_id: winner.row.condition_id,
       portfolio_token_id: winner.row.token_id,
+      portfolio_is_expired_source: winner.row.is_expired_source,
     });
   }
 

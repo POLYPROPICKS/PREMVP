@@ -714,6 +714,8 @@ export interface ReservationPlan {
     portfolio_broad_tier1_event_n?: number;
     portfolio_broad_tier2_event_n?: number;
     portfolio_broad_tier3_event_n?: number;
+    /** Unique physical events qualified through a source identity already expired at plan snapshot time (CONTRACT_A_PLANNING_EVENT_LEVEL_FRESHNESS_V1). Model evidence only. */
+    portfolio_broad_from_expired_source_event_n?: number;
     // ── SCORE60_RESEARCH_SHADOW_V1 (observation only; never gates a decision) ──
     shadow_score60_event_n?: number;
     shadow_score60_has_selection_n?: number;
@@ -1703,6 +1705,8 @@ export interface PlanningDecisionReservationResult {
   portfolioBroadTier1EventN: number;
   portfolioBroadTier2EventN: number;
   portfolioBroadTier3EventN: number;
+  /** Unique physical events qualified through a source identity whose expires_at was already <= plan snapshot time. Model evidence only. */
+  portfolioBroadFromExpiredSourceEventN: number;
 }
 
 const RESERVATION_CANDIDATE_MANIFEST_VERSION = "RESERVATION_CANDIDATE_MANIFEST_V1" as const;
@@ -2148,6 +2152,7 @@ export function buildReservationsFromPlanningDecisions(
   let portfolioBroadTier1EventN = 0;
   let portfolioBroadTier2EventN = 0;
   let portfolioBroadTier3EventN = 0;
+  let portfolioBroadFromExpiredSourceEventN = 0;
   let allocationCandidates: LiveReservationAllocationCandidate[];
 
   if (isPortfolioBroadPolicy) {
@@ -2155,6 +2160,7 @@ export function buildReservationsFromPlanningDecisions(
       admitted,
       opts.sourceRowsForCandidateManifest ?? [],
       allocationPolicy.policyId,
+      new Date(ctx.nowMs).toISOString(),
     );
     for (const physicalEventId of resolution.notQualifiedPhysicalEventIds) {
       portfolioBroadRejectedEventN += 1;
@@ -2167,6 +2173,7 @@ export function buildReservationsFromPlanningDecisions(
       if (alloc.portfolio_tier === 1) portfolioBroadTier1EventN += 1;
       else if (alloc.portfolio_tier === 2) portfolioBroadTier2EventN += 1;
       else portfolioBroadTier3EventN += 1;
+      if (alloc.portfolio_is_expired_source) portfolioBroadFromExpiredSourceEventN += 1;
       allocationCandidates.push({
         decision: alloc.decision,
         providerMarketVolume:
@@ -2290,6 +2297,7 @@ export function buildReservationsFromPlanningDecisions(
     portfolioBroadTier1EventN,
     portfolioBroadTier2EventN,
     portfolioBroadTier3EventN,
+    portfolioBroadFromExpiredSourceEventN,
     missingProviderVolume: allocation.rankedDistinct.filter(
       (candidate) => candidate.providerMarketVolume === null,
     ).length,
@@ -2369,6 +2377,7 @@ function contractAPlanDiagnostics(input: {
     portfolio_broad_tier1_event_n: built.portfolioBroadTier1EventN,
     portfolio_broad_tier2_event_n: built.portfolioBroadTier2EventN,
     portfolio_broad_tier3_event_n: built.portfolioBroadTier3EventN,
+    portfolio_broad_from_expired_source_event_n: built.portfolioBroadFromExpiredSourceEventN,
     // ── Real stage counts for this path ─────────────────────────────────────
     universe_size: input.decisionCount,
     upstream_approved_candidates: built.approvedCount,

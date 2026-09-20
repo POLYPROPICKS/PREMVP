@@ -78,6 +78,7 @@ function rawDiag(overrides: Partial<RawPlanningDiagnostics> = {}): RawPlanningDi
     match_family_quality_counts: {},
     rejected_before_planning_by_reason: {},
     bad_bucket_shadow_match_count: 0,
+    planning_expired_source_row_n: 0,
     sample_source_rows: [],
     dropped_by_formula_version_and_reason: {},
     versions_queried: [],
