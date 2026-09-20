@@ -48,8 +48,11 @@ import type {
 import { resolveContractAProviderPhysicalEventIdentity } from "./contractADecisions";
 import {
   LIVE_RESERVATION_ALLOCATION_V1,
+  LIVE_RESERVATION_PORTFOLIO_BROAD_V2,
   rankAllocatableApprovedPhysicalEvents,
+  resolvePortfolioBroadPhysicalEventAllocations,
   type LiveReservationAllocationPolicy,
+  type LiveReservationAllocationCandidate,
 } from "./liveReservationAllocationPolicy";
 import {
   resolvePlanningAnchorDecision,
@@ -408,6 +411,8 @@ function anchorEvidenceForCandidate(c: FireModelCandidate): MarketAnchorDecision
 // candidates exist. Tier1 first; Tier2 then Tier3 only as explicit fallback to reach
 // the target. Fallback never uses forbidden market classes.
 const TARGET_LIVE_SLOTS = LIVE_RESERVATION_ALLOCATION_V1.targetReservationSlots;
+/** Production default as of LIVE_RESERVATION_PORTFOLIO_BROAD_V2: active cap 30, hard ceiling 50 (not yet activated). */
+const DEFAULT_LIVE_ALLOCATION_POLICY: LiveReservationAllocationPolicy = LIVE_RESERVATION_PORTFOLIO_BROAD_V2;
 
 function eventTierOf(c: FireModelCandidate): "TIER1" | "TIER2" | "TIER3" | "REJECTED" {
   if (c.strategy === "TIER1_CORE_STRICT_72_COV50") return "TIER1";
@@ -701,6 +706,14 @@ export interface ReservationPlan {
     allocation_allocatable_after_time_guard?: number;
     allocation_minimum_lead_rejected?: number;
     allocation_missing_provider_volume?: number;
+    /** Policy invariant ceiling (50) for the next controlled capacity promotion -- not the active cap. */
+    allocation_hard_reservation_ceiling?: number | null;
+    // ── PORTFOLIO_BROAD event-level Decision Policy (all UNIQUE PHYSICAL EVENTS) ──
+    portfolio_broad_qualified_event_n?: number;
+    portfolio_broad_rejected_event_n?: number;
+    portfolio_broad_tier1_event_n?: number;
+    portfolio_broad_tier2_event_n?: number;
+    portfolio_broad_tier3_event_n?: number;
     // ── SCORE60_RESEARCH_SHADOW_V1 (observation only; never gates a decision) ──
     shadow_score60_event_n?: number;
     shadow_score60_has_selection_n?: number;
@@ -1650,7 +1663,9 @@ export type PlanningDecisionReservationReasonCode =
   | "OCCURRENCE_IDENTITY_CONFLICT"
   | "ACTIVE_DUPLICATE"
   | "CAP_EXCLUDED"
-  | "PERSISTENCE_VALIDATION_FAILED";
+  | "PERSISTENCE_VALIDATION_FAILED"
+  /** Decision Policy rejection, not a Contract A failure: the accepted event has no PORTFOLIO_BROAD-qualified identity. */
+  | "PORTFOLIO_BROAD_NOT_QUALIFIED";
 
 /**
  * One bounded rejection record. Carries operational identity and a stable code
@@ -1682,6 +1697,12 @@ export interface PlanningDecisionReservationResult {
   minimumLeadRejected: number;
   allocatableAfterTimeGuard: number;
   missingProviderVolume: number;
+  /** PORTFOLIO_BROAD only (0 under a non-Broad policy) — all counts are UNIQUE PHYSICAL EVENTS. */
+  portfolioBroadQualifiedEventN: number;
+  portfolioBroadRejectedEventN: number;
+  portfolioBroadTier1EventN: number;
+  portfolioBroadTier2EventN: number;
+  portfolioBroadTier3EventN: number;
 }
 
 const RESERVATION_CANDIDATE_MANIFEST_VERSION = "RESERVATION_CANDIDATE_MANIFEST_V1" as const;
@@ -1938,6 +1959,11 @@ function planningDecisionReservationRow(
   allocation: {
     policy: LiveReservationAllocationPolicy;
     providerMarketVolume: number | null;
+    /** PORTFOLIO_BROAD only — model evidence for the identity Decision Policy actually selected. Never the executable identity. */
+    portfolioTier?: 1 | 2 | 3 | null;
+    portfolioDecisionAt?: string | null;
+    portfolioEntryPriceNum?: number | null;
+    portfolioPreEventScoreNum?: number | null;
   },
   reservationRank: number,
   candidateManifest: ReservationCandidateManifest | undefined
@@ -1986,6 +2012,14 @@ function planningDecisionReservationRow(
         ? "PREFERRED"
         : "STANDARD",
       provider_market_volume: allocation.providerMarketVolume,
+      // PORTFOLIO_BROAD_V2 model decision evidence, persisted verbatim -- this
+      // is NEVER the executable identity (owned exclusively by T-70..T-3 Final
+      // Identity Decision). null under a non-Broad policy.
+      portfolio_policy_id: allocation.portfolioTier != null ? allocation.policy.policyId : null,
+      portfolio_tier: allocation.portfolioTier ?? null,
+      portfolio_decision_at: allocation.portfolioDecisionAt ?? null,
+      portfolio_entry_price_num: allocation.portfolioEntryPriceNum ?? null,
+      portfolio_pre_event_score_num: allocation.portfolioPreEventScoreNum ?? null,
       // Time and metadata provenance.
       event_start_iso_source: decision.event_start_iso_source,
       sport_metadata_source: decision.sport_metadata_source,
@@ -2099,14 +2133,62 @@ export function buildReservationsFromPlanningDecisions(
     admitted.push(decision);
   }
 
-  // 3. LIVE_RESERVATION_ALLOCATION_V1 orders already-approved physical events.
-  const allocationPolicy = opts.allocationPolicy ?? LIVE_RESERVATION_ALLOCATION_V1;
-  const allocation = rankAllocatableApprovedPhysicalEvents(
-    admitted.map((decision) => ({
+  // 3. The active Decision Policy orders already-approved physical events.
+  //    PORTFOLIO_BROAD_V2 is event-level: one physical event may hold many
+  //    admitted identities, but only its highest-priority qualifying tier's
+  //    chronologically-first identity ever becomes the allocation candidate —
+  //    an event with zero qualifying identities is rejected here
+  //    (PORTFOLIO_BROAD_NOT_QUALIFIED), as a Decision Policy verdict, not a
+  //    Contract A failure.
+  const allocationPolicy = opts.allocationPolicy ?? DEFAULT_LIVE_ALLOCATION_POLICY;
+  const isPortfolioBroadPolicy = allocationPolicy.rankingOrder[0] === "PORTFOLIO_TIER_ASC";
+
+  let portfolioBroadQualifiedEventN = 0;
+  let portfolioBroadRejectedEventN = 0;
+  let portfolioBroadTier1EventN = 0;
+  let portfolioBroadTier2EventN = 0;
+  let portfolioBroadTier3EventN = 0;
+  let allocationCandidates: LiveReservationAllocationCandidate[];
+
+  if (isPortfolioBroadPolicy) {
+    const resolution = resolvePortfolioBroadPhysicalEventAllocations(
+      admitted,
+      opts.sourceRowsForCandidateManifest ?? [],
+      allocationPolicy.policyId,
+    );
+    for (const physicalEventId of resolution.notQualifiedPhysicalEventIds) {
+      portfolioBroadRejectedEventN += 1;
+      const anyDecision = admitted.find((d) => d.physical_event_id === physicalEventId);
+      reject("PORTFOLIO_BROAD_NOT_QUALIFIED", physicalEventId, anyDecision?.decision_version ?? null);
+    }
+    allocationCandidates = [];
+    for (const alloc of resolution.qualified.values()) {
+      portfolioBroadQualifiedEventN += 1;
+      if (alloc.portfolio_tier === 1) portfolioBroadTier1EventN += 1;
+      else if (alloc.portfolio_tier === 2) portfolioBroadTier2EventN += 1;
+      else portfolioBroadTier3EventN += 1;
+      allocationCandidates.push({
+        decision: alloc.decision,
+        providerMarketVolume:
+          opts.providerVolumeByPhysicalEventId?.get(alloc.physical_event_id) ?? null,
+        portfolioTier: alloc.portfolio_tier,
+        portfolioDecisionAt: alloc.portfolio_decision_at,
+        portfolioEntryPriceNum: alloc.portfolio_entry_price_num,
+        portfolioPreEventScoreNum: alloc.portfolio_pre_event_score_num,
+        portfolioConditionId: alloc.portfolio_condition_id,
+        portfolioTokenId: alloc.portfolio_token_id,
+      });
+    }
+  } else {
+    allocationCandidates = admitted.map((decision) => ({
       decision,
       providerMarketVolume:
         opts.providerVolumeByPhysicalEventId?.get(decision.physical_event_id) ?? null,
-    })),
+    }));
+  }
+
+  const allocation = rankAllocatableApprovedPhysicalEvents(
+    allocationCandidates,
     ctx.window.startMs,
     allocationPolicy,
   );
@@ -2182,6 +2264,10 @@ export function buildReservationsFromPlanningDecisions(
         {
           policy: allocationPolicy,
           providerMarketVolume: candidate.providerMarketVolume,
+          portfolioTier: candidate.portfolioTier ?? null,
+          portfolioDecisionAt: candidate.portfolioDecisionAt ?? null,
+          portfolioEntryPriceNum: candidate.portfolioEntryPriceNum ?? null,
+          portfolioPreEventScoreNum: candidate.portfolioPreEventScoreNum ?? null,
         },
         reservations.length + 1,
         candidateManifestsByPhysicalEventId.get(occurrenceId),
@@ -2199,6 +2285,11 @@ export function buildReservationsFromPlanningDecisions(
     capExcluded,
     minimumLeadRejected: allocation.excludedBeforeMinimumLead.length,
     allocatableAfterTimeGuard: allocation.rankedDistinct.length,
+    portfolioBroadQualifiedEventN,
+    portfolioBroadRejectedEventN,
+    portfolioBroadTier1EventN,
+    portfolioBroadTier2EventN,
+    portfolioBroadTier3EventN,
     missingProviderVolume: allocation.rankedDistinct.filter(
       (candidate) => candidate.providerMarketVolume === null,
     ).length,
@@ -2221,8 +2312,9 @@ function contractAPlanDiagnostics(input: {
   canaryRequested: boolean;
   canaryMatchedGroupCount: number;
   canaryTargetGroupKey: string | null;
+  allocationPolicy: LiveReservationAllocationPolicy;
 }): ReservationPlan["diagnostics"] {
-  const { built } = input;
+  const { built, allocationPolicy } = input;
   const bySport: Record<string, number> = {};
   const byTier: Record<string, number> = {};
   for (const r of built.reservations) {
@@ -2263,13 +2355,20 @@ function contractAPlanDiagnostics(input: {
     planning_decisions_rejected: built.rejectedCount,
     duplicate_rejected: built.duplicateRejected,
     cap_excluded: built.capExcluded,
-    allocation_policy_id: LIVE_RESERVATION_ALLOCATION_V1.policyId,
-    allocation_min_start_lead_minutes: LIVE_RESERVATION_ALLOCATION_V1.minStartLeadMinutes,
-    allocation_target_reservation_slots: LIVE_RESERVATION_ALLOCATION_V1.targetReservationSlots,
-    allocation_ranking_order: [...LIVE_RESERVATION_ALLOCATION_V1.rankingOrder],
+    allocation_policy_id: allocationPolicy.policyId,
+    allocation_min_start_lead_minutes: allocationPolicy.minStartLeadMinutes,
+    allocation_target_reservation_slots: allocationPolicy.targetReservationSlots,
+    allocation_hard_reservation_ceiling: allocationPolicy.hardReservationCeiling ?? null,
+    allocation_ranking_order: [...allocationPolicy.rankingOrder],
     allocation_allocatable_after_time_guard: built.allocatableAfterTimeGuard,
     allocation_minimum_lead_rejected: built.minimumLeadRejected,
     allocation_missing_provider_volume: built.missingProviderVolume,
+    // PORTFOLIO_BROAD event-level Decision Policy counts -- all UNIQUE PHYSICAL EVENTS.
+    portfolio_broad_qualified_event_n: built.portfolioBroadQualifiedEventN,
+    portfolio_broad_rejected_event_n: built.portfolioBroadRejectedEventN,
+    portfolio_broad_tier1_event_n: built.portfolioBroadTier1EventN,
+    portfolio_broad_tier2_event_n: built.portfolioBroadTier2EventN,
+    portfolio_broad_tier3_event_n: built.portfolioBroadTier3EventN,
     // ── Real stage counts for this path ─────────────────────────────────────
     universe_size: input.decisionCount,
     upstream_approved_candidates: built.approvedCount,
@@ -2277,7 +2376,7 @@ function contractAPlanDiagnostics(input: {
     unique_physical_events: new Set(built.admittedOccurrenceIds).size,
     duplicate_events_removed: built.duplicateRejected,
     slot_allocated: reservedCount,
-    slot_remaining: Math.max(0, TARGET_LIVE_SLOTS - reservedCount),
+    slot_remaining: Math.max(0, allocationPolicy.targetReservationSlots - reservedCount),
     event_groups: built.admittedOccurrenceIds.length,
     canonical_event_groups: new Set(built.admittedOccurrenceIds).size,
     reserved_count: reservedCount,
@@ -2430,6 +2529,8 @@ export async function buildContractAReservationPlan(
     activeOccurrences?: readonly ReservationOccurrenceGuardRow[];
     targetPhysicalEventKeyHash?: string;
     hashPhysicalEventKey?: (key: string) => string;
+    /** Defaults to LIVE_RESERVATION_PORTFOLIO_BROAD_V2 (active cap 30, hard ceiling 50). */
+    allocationPolicy?: LiveReservationAllocationPolicy;
   } = {}
 ): Promise<ReservationPlan> {
   const window = resolveNightWindow(nowMs, deps.anchor);
@@ -2452,9 +2553,10 @@ export async function buildContractAReservationPlan(
 
   const ctx = { planRunId, window, nowMs };
   const activeOccurrences = deps.activeOccurrences ?? [];
+  const allocationPolicy = deps.allocationPolicy ?? DEFAULT_LIVE_ALLOCATION_POLICY;
   const providerVolumes = providerVolumeByPhysicalEventId(rows, results);
   let built = buildReservationsFromPlanningDecisions(results, ctx, activeOccurrences, {
-    allocationPolicy: LIVE_RESERVATION_ALLOCATION_V1,
+    allocationPolicy,
     providerVolumeByPhysicalEventId: providerVolumes,
     sourceRowsForCandidateManifest: rows,
   });
@@ -2475,7 +2577,7 @@ export async function buildContractAReservationPlan(
     canaryTargetGroupKey = matches.length === 1 ? matches[0] : null;
     built = buildReservationsFromPlanningDecisions(results, ctx, activeOccurrences, {
       restrictToOccurrenceIds: new Set(canaryTargetGroupKey ? [canaryTargetGroupKey] : []),
-      allocationPolicy: LIVE_RESERVATION_ALLOCATION_V1,
+      allocationPolicy,
       providerVolumeByPhysicalEventId: providerVolumes,
       sourceRowsForCandidateManifest: rows,
     });
@@ -2496,7 +2598,7 @@ export async function buildContractAReservationPlan(
       duplicate_rejected: built.duplicateRejected,
       cap_excluded: built.capExcluded,
       reservations_created: built.reservations.length,
-      cap: TARGET_LIVE_SLOTS,
+      cap: allocationPolicy.targetReservationSlots,
       first_rejection_code: built.rejections[0]?.reason_code ?? null,
     })
   );
@@ -2515,6 +2617,7 @@ export async function buildContractAReservationPlan(
       canaryRequested,
       canaryMatchedGroupCount,
       canaryTargetGroupKey,
+      allocationPolicy,
     }),
   };
 }
