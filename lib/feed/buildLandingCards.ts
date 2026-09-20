@@ -892,6 +892,56 @@ export function prioritizePinnedCandidates(
 }
 
 /**
+ * PRIMARY_SCORER_EVENT_FAIR_SCHEDULING_V1 — reorders the already-current
+ * production candidate order (post sortCandidatesForProductRanking, post
+ * prioritizePinnedCandidates) so the sequential primary loop gives every
+ * canonical physical event its first identity attempt before opening any
+ * event's second identity, its second before any third, etc. This does not
+ * change WHICH physical event is prioritized (that remains
+ * sortCandidatesForProductRanking + prioritizePinnedCandidates); it only
+ * postpones deep identity fanout within an event so one high-fanout event
+ * cannot monopolize the scarce sequential wall-clock budget before other
+ * already-higher-priority events (including pinned ones) receive even one
+ * attempt. Candidate membership, per-candidate order within an event, and
+ * first physical-event appearance order (i.e. existing priority, pins
+ * included) are all exactly conserved. Candidates with no resolvable
+ * physical-event key (computeCandidateProviderEventKey returns null) are
+ * never given an invented identity — they are appended last, in their exact
+ * existing relative order.
+ */
+export function orderPrimaryCandidatesEventFair(candidates: CandidateMarket[]): CandidateMarket[] {
+  const groups = new Map<string, CandidateMarket[]>();
+  const eventOrder: string[] = [];
+  const unkeyed: CandidateMarket[] = [];
+
+  for (const candidate of candidates) {
+    const key = computeCandidateProviderEventKey(candidate);
+    if (key === null) {
+      unkeyed.push(candidate);
+      continue;
+    }
+    const group = groups.get(key);
+    if (group) {
+      group.push(candidate);
+    } else {
+      groups.set(key, [candidate]);
+      eventOrder.push(key);
+    }
+  }
+
+  const maxDepth = Math.max(0, ...[...groups.values()].map((g) => g.length));
+  const breadthFirst: CandidateMarket[] = [];
+  for (let depth = 0; depth < maxDepth; depth++) {
+    for (const key of eventOrder) {
+      const group = groups.get(key)!;
+      if (depth < group.length) breadthFirst.push(group[depth]);
+    }
+  }
+
+  return [...breadthFirst, ...unkeyed];
+}
+
+/**
  * Safely parse JSON string or return as-is if already array
  */
 function safeParseArray<T>(value: unknown): T[] {
@@ -3070,6 +3120,8 @@ export interface PrimaryCandidateLoopResult {
   primaryLoopBudgetExcludedPhysicalEvents: number;
   primaryLoopBudgetFullyExcludedPhysicalEvents: number;
   primaryLoopBudgetPartiallyExcludedPhysicalEvents: number;
+  /** Distinct keyed physical events for which at least one candidate actually started evaluation (opened). */
+  primaryDistinctPhysicalEventsOpened: number;
 }
 
 export async function runPrimaryCandidateLoop(
@@ -3328,6 +3380,7 @@ export async function runPrimaryCandidateLoop(
     primaryLoopBudgetPartiallyExcludedPhysicalEvents: Array.from(budgetSkippedEventKeys).filter(
       (k) => openedEventKeys.has(k),
     ).length,
+    primaryDistinctPhysicalEventsOpened: openedEventKeys.size,
   };
 }
 
@@ -3704,6 +3757,17 @@ export async function buildLandingCards(options?: {
       candidatesAfterEndedFilter = candidates.length;
     }
 
+    // PRIMARY_SCORER_EVENT_FAIR_SCHEDULING_V1: only reorders WHICH identity
+    // depth of an already-prioritized physical event is attempted next; it
+    // never changes physical-event priority (sortCandidatesForProductRanking
+    // + prioritizePinnedCandidates already ran above), candidate membership,
+    // or per-event internal identity order. Scoped to full-population
+    // evaluation only — the legacy/public/API ordering (evaluateFullPrimaryPopulation
+    // === false) is left byte-for-byte unchanged.
+    if (evaluateFullPrimaryPopulation) {
+      candidates = orderPrimaryCandidatesEventFair(candidates);
+    }
+
     // PRIMARY-LOOP WALL-CLOCK GUARD: capture the loop start time and arm the
     // budget. `PRIMARY_SCORER_PROVEN_CAPACITY` (254) bounds the population count
     // only; this guard is the authoritative runtime bound on the sequential loop.
@@ -3790,6 +3854,7 @@ export async function buildLandingCards(options?: {
       primaryLoop.primaryLoopBudgetFullyExcludedPhysicalEvents;
     rf.primaryLoopBudgetPartiallyExcludedPhysicalEvents =
       primaryLoop.primaryLoopBudgetPartiallyExcludedPhysicalEvents;
+    rf.primaryDistinctPhysicalEventsOpened = primaryLoop.primaryDistinctPhysicalEventsOpened;
 
     // Include non-sports rejected markets in final rejected list (for category=sports)
     const finalRejected = rejected;

@@ -333,7 +333,64 @@ test("buildLandingCards() publishes the physical-event budget counters onto rf u
     "primaryLoopBudgetExcludedPhysicalEvents",
     "primaryLoopBudgetFullyExcludedPhysicalEvents",
     "primaryLoopBudgetPartiallyExcludedPhysicalEvents",
+    "primaryDistinctPhysicalEventsOpened",
   ]) {
     assert.ok(new RegExp(String.raw`rf\.${f}\s*=\s*primaryLoop\.${f}`).test(BUILD_LANDING_CARDS_SRC), f);
   }
+});
+
+// ── PRIMARY_SCORER_EVENT_FAIR_SCHEDULING_V1: opened-events telemetry ──────────
+
+test("real runPrimaryCandidateLoop: primaryDistinctPhysicalEventsOpened equals exactly the keyed physical events that started evaluation", async () => {
+  // A = c0,c1 (opened), B = c2,c3 (c2 opened, c3 skipped), C = c4,c5 (skipped).
+  const eventOf = ["A", "A", "B", "B", "C", "C"];
+  const candidates = eventOf.map((ev, i) => {
+    const c = candidate(i);
+    (c.event as unknown as { id: string }).id = `EV-${ev}`;
+    return c;
+  });
+  const clock = fakeClock();
+  const budgetGuard = createPrimaryLoopBudgetGuard({ startedAtMs: clock.now(), budgetMs: 12_000, now: clock.now });
+
+  const r = await runPrimaryCandidateLoop({
+    candidates,
+    limit: 15,
+    minDataCoverage: 40,
+    excludeEnded: true,
+    evaluateFullPrimaryPopulation: true,
+    budgetGuard,
+    collectResearchSnapshots: false,
+    isResearchCapReached: () => true,
+    pinnedKeysForPersistCheck: new Set<string>(),
+    rejected: [],
+    researchFunnel: freshResearchFunnel(),
+    seenPairIds: new Set<string>(),
+    seenMarketKeys: new Set<string>(),
+    deps: {
+      enrichMarket: async (_event, market) => {
+        clock.advance(5_000);
+        const key = String(market.id).replace("mkt-", "");
+        return {
+          diagnostics: { dataCoverage: 80, rejectionReasons: [], conditionId: `cond-${key}` },
+          __key: key,
+        } as unknown as Awaited<ReturnType<PrimaryCandidateLoopParams["deps"]["enrichMarket"]>>;
+      },
+      selectRecoverablePrimaryMarket: () => null,
+      generateLandingCardPair: (enriched) => {
+        const e = enriched as unknown as { __key: string };
+        return {
+          id: `pair-${e.__key}`,
+          premiumSignal: { winProbability: 70, time: "3h" },
+          marketSource: { headline: e.__key },
+          diagnostics: { conditionId: `cond-${e.__key}`, selectedTokenId: `tok-${e.__key}` },
+        } as unknown as LandingCardPair;
+      },
+      computeCandidateProviderEventKey: (c) => (c.event as unknown as { id: string }).id,
+      captureResearchSnapshot: async () => {},
+    },
+  });
+
+  // Only A and B actually started evaluation (c0, c1, c2 open before the
+  // budget trips); C never opens a single candidate.
+  assert.equal(r.primaryDistinctPhysicalEventsOpened, 2);
 });
