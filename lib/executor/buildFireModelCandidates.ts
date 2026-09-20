@@ -114,6 +114,11 @@ export interface RawPlanningDiagnostics {
   // (coverage 50-74 AND entry_price 0.44-0.58) but were allowed to continue,
   // since CONTRACT_A_PLANNING_V1 no longer hard-rejects on it.
   bad_bucket_shadow_match_count: number;
+  // CONTRACT_A_PLANNING_EVENT_LEVEL_FRESHNESS_V1: scored Planning source rows
+  // admitted into the Planning corpus whose expires_at was already <= this
+  // run's snapshot time -- i.e. rows that would have been hard-excluded before
+  // this fix, now retained as event-level Planning evidence.
+  planning_expired_source_row_n: number;
   sample_source_rows: Array<Record<string, unknown>>;
   // Per-version drop-reason breakdown — reveals why shadow-strategic-sports-v1 rows are dropped.
   dropped_by_formula_version_and_reason: Record<string, Record<string, number>>;
@@ -1651,6 +1656,14 @@ async function fetchContractAPlanningServingRowSets(
   const scoredLookbackIso = new Date(
     Date.parse(snapshotAsOfIso) - PLANNING_LOOKBACK_HOURS * 3_600_000
   ).toISOString();
+  // CONTRACT_A_PLANNING_EVENT_LEVEL_FRESHNESS_V1: this function is reached
+  // only for CONTRACT_A_PLANNING_V1 Planning reads (both call sites below),
+  // never a live/non-Planning selector. Contract A Planning reserves a
+  // PHYSICAL EVENT from bounded model evidence, not a live-executable
+  // identity, so an expired identity snapshot remains valid Planning
+  // evidence as long as it is still within the source_created_at lookback
+  // bound below. Executable-identity freshness stays owned exclusively by
+  // Final Identity / rebalance -- this function never feeds either of those.
   const buildScoredQuery = () =>
     supabaseAdmin
       .from("current_signal_pair_serving")
@@ -1661,7 +1674,6 @@ async function fetchContractAPlanningServingRowSets(
       .in("metric_formula_version", PRODUCTION_SCORED_PLANNING_VERSIONS)
       .is("signal_result", null)
       .gte("source_created_at", scoredLookbackIso)
-      .gt("expires_at", snapshotAsOfIso)
       .not("selected_token_id", "is", null)
       .not("condition_id", "is", null)
       .not("entry_price_num", "is", null)
@@ -1743,12 +1755,19 @@ export async function buildFireModelCandidates(
     const scoredAdmissionVersions = planningMode
       ? PRODUCTION_SCORED_PLANNING_VERSIONS
       : versions;
+    // CONTRACT_A_PLANNING_EVENT_LEVEL_FRESHNESS_V1: Contract A Planning
+    // reserves a PHYSICAL EVENT, not this identity snapshot -- an expired
+    // identity is still valid EVENT-LEVEL model evidence within the existing
+    // bounded PLANNING_LOOKBACK_HOURS corpus. Executable-identity freshness
+    // remains owned exclusively by Final Identity / rebalance, unchanged.
+    // Every other selector (including non-Planning/live) still requires
+    // expires_at > now exactly as before.
+    const isContractAPlanning = planningMode && selectorMode === "CONTRACT_A_PLANNING_V1";
     scoredRows = injectedRows.filter(
       (row) =>
         scoredAdmissionVersions.includes(row.metric_formula_version as string) &&
         row.signal_result == null &&
-        typeof row.expires_at === "string" &&
-        row.expires_at > nowIso &&
+        (isContractAPlanning || (typeof row.expires_at === "string" && row.expires_at > nowIso)) &&
         row.selected_token_id != null &&
         row.condition_id != null &&
         row.entry_price_num != null &&
@@ -1834,6 +1853,9 @@ export async function buildFireModelCandidates(
         match_family_quality_counts: {},
         rejected_before_planning_by_reason: {},
         bad_bucket_shadow_match_count: 0,
+        planning_expired_source_row_n: (scoredRows ?? []).filter(
+          (row: any) => typeof row.expires_at === "string" && row.expires_at <= new Date(nowMs).toISOString(),
+        ).length,
         sample_source_rows: [],
         dropped_by_formula_version_and_reason: {},
         versions_queried: [...versions],

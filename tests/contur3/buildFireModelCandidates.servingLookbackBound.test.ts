@@ -14,6 +14,16 @@
 // 72h>), pinned to the same snapshotAsOfIso the query's own expires_at upper
 // bound already uses, restoring exact lookback parity with the legacy GSP path.
 //
+//
+// CONTRACT_A_PLANNING_EVENT_LEVEL_FRESHNESS_V1: the scored query's
+// .gt("expires_at", snapshotAsOfIso) predicate is removed -- Contract A
+// Planning reserves a PHYSICAL EVENT from bounded model evidence, not a
+// live-executable identity, so an expired identity snapshot remains valid
+// Planning evidence as long as it is still within the (unchanged) 72h
+// source_created_at lookback. This file's own invariant 4 is updated below
+// to assert expires_at is no longer filtered, and a new invariant proves an
+// expired-but-in-lookback row is now admitted.
+//
 // Run: node --experimental-test-module-mocks --import tsx --test tests/contur3/buildFireModelCandidates.servingLookbackBound.test.ts
 
 import { test } from "node:test";
@@ -115,8 +125,11 @@ const FUTURE_EXPIRES_ISO = new Date(REAL_NOW_MS + 6 * 3600_000).toISOString();
 const RECENT_ROW_CREATED_ISO = new Date(REAL_NOW_MS - 71 * 3600_000).toISOString();
 // 96 hours ago: outside the 72h lookback window -> must be excluded.
 const STALE_ROW_CREATED_ISO = new Date(REAL_NOW_MS - 96 * 3600_000).toISOString();
+// Already expired relative to REAL_NOW_MS, but the identity snapshot itself
+// is irrelevant to the lookback bound -- only source_created_at governs it.
+const PAST_EXPIRES_ISO = new Date(REAL_NOW_MS - 3600_000).toISOString();
 
-function servingRow(suffix: string, sourceCreatedAtIso: string): Row {
+function servingRow(suffix: string, sourceCreatedAtIso: string, expiresAtIso: string = FUTURE_EXPIRES_ISO): Row {
   return {
     source_generated_signal_pair_id: `gsp-${suffix}`,
     condition_id: `condition-${suffix}`,
@@ -128,7 +141,7 @@ function servingRow(suffix: string, sourceCreatedAtIso: string): Row {
     market_slug: "Spain vs. Argentina - Moneyline",
     event_slug: "spain-vs-argentina-2026",
     source_created_at: sourceCreatedAtIso,
-    expires_at: FUTURE_EXPIRES_ISO,
+    expires_at: expiresAtIso,
     signal_result: null,
     projection_status: "ACTIVE",
     // loadContractAPlanningSourceRows additionally requires
@@ -190,13 +203,14 @@ test("scored serving query carries a 72h source_created_at lower bound", async (
     "a serving row inside the 72h lookback must still be admitted",
   );
 
-  // Invariant 4: every other proven scored predicate is unchanged.
+  // Invariant 4: every other proven scored predicate is unchanged, and
+  // expires_at is no longer applied as an admission gate on this query
+  // (CONTRACT_A_PLANNING_EVENT_LEVEL_FRESHNESS_V1).
   const filterOps = new Set(scoredCall!.filters.map((f) => `${f.op}:${f.args[0]}`));
   for (const expected of [
     "eq:projection_status",
     "in:metric_formula_version",
     "is:signal_result",
-    "gt:expires_at",
     "not:selected_token_id",
     "not:condition_id",
     "not:entry_price_num",
@@ -204,6 +218,7 @@ test("scored serving query carries a 72h source_created_at lower bound", async (
   ]) {
     assert.ok(filterOps.has(expected), `expected unchanged predicate ${expected} to still be present`);
   }
+  assert.ok(!filterOps.has("gt:expires_at"), "expires_at must no longer gate Contract A Planning admission");
   const versionFilter = scoredCall!.filters.find((f) => f.op === "in" && f.args[0] === "metric_formula_version");
   assert.deepEqual(new Set(versionFilter!.args[1] as string[]), new Set(["v2-lite-growth-safe"]));
   const confidenceFilter = scoredCall!.filters.find((f) => f.op === "gte" && f.args[0] === "signal_confidence_num");
@@ -213,5 +228,31 @@ test("scored serving query carries a 72h source_created_at lower bound", async (
   assert.ok(
     !callLog.some((c) => c.table === "generated_signal_pairs"),
     "the money-authoritative serving read must never fall back to generated_signal_pairs",
+  );
+});
+
+// ── A/H: an already-expired identity, still within the 72h lookback, remains
+// Planning-admissible; only source_created_at governs admission now ─────────
+
+test("an already-expired source row inside the 72h lookback is admitted as Contract A Planning evidence", async (t) => {
+  const expiredButRecentRow = servingRow("expired-recent", RECENT_ROW_CREATED_ISO, PAST_EXPIRES_ISO);
+  const staleAndExpiredRow = servingRow("expired-stale", STALE_ROW_CREATED_ISO, PAST_EXPIRES_ISO);
+  const servingRows = [expiredButRecentRow, staleAndExpiredRow];
+
+  const callLog: CallLog[] = [];
+  t.mock.module("../../lib/supabase/server", {
+    namedExports: { supabaseAdmin: makeFakeSupabaseAdmin(servingRows, callLog) },
+  });
+
+  const { loadContractAPlanningSourceRows } = await import("../../lib/executor/buildFireModelCandidates");
+  const result = await loadContractAPlanningSourceRows(REAL_NOW_MS);
+
+  assert.ok(
+    result.some((r) => r.condition_id === "condition-expired-recent"),
+    "an expired identity within the 72h lookback must still be admitted as event-level Planning evidence",
+  );
+  assert.ok(
+    !result.some((r) => r.condition_id === "condition-expired-stale"),
+    "the 72h source_created_at lookback bound itself is unchanged and still excludes an older row, expired or not",
   );
 });
