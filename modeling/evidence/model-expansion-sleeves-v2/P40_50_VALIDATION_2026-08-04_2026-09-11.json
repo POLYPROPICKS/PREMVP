@@ -1,0 +1,437 @@
+{
+ "MISSION": "P40_50_LONGER_SEPTEMBER_VALIDATION_V2",
+ "PERIODS": {
+  "AUG": [
+   "2026-08-04",
+   "2026-08-31",
+   28
+  ],
+  "SEP": [
+   "2026-09-01",
+   "2026-09-11",
+   11
+  ]
+ },
+ "LATEST_RELIABLY_SETTLED_DATE": "2026-09-11",
+ "GAMMA": {
+  "MODE": "CONDITION_IDS_CLOSED_TRUE",
+  "BATCHES": 271,
+  "BATCHES_FAILED": 0,
+  "CONDITIONS_REQUESTED": 10838,
+  "CONDITIONS_RESOLVED": 10406,
+  "CONDITIONS_UNRESOLVED": 432,
+  "SETTLEMENT_COVERAGE_PCT_REQUESTED": 96.01,
+  "ALL_CANDIDATE_CONDITIONS": 10838,
+  "PRIMARY_SLEEVE_CONDITIONS": {
+   "TOTAL": 3697,
+   "REQUESTED": 3697,
+   "RESOLVED": 3594,
+   "COVERAGE_PCT": 97.21
+  },
+  "PRIMARY_DONE_AT_S": 60,
+  "SINGLE_LOOKUP_CONCURRENCY": 0
+ },
+ "SNAPSHOT": {
+  "ROWS_SEEN": 214798,
+  "FETCH_ERRORS": 0,
+  "CANDIDATE_IDENTITY_BAND_ROWS": 19665,
+  "BROAD_MEMBERSHIP_EVENTS": 6529,
+  "MARKET_FAMILY_COUNTS_IN_CANDIDATES": {
+   "mlb": 1225,
+   "sports": 11520,
+   "esports": 4286,
+   "nba": 131,
+   "tennis": 1770,
+   "champions league": 49,
+   "nfl": 91,
+   "ufc": 169,
+   "la liga": 129,
+   "mls": 96,
+   "ligue 1": 87,
+   "premier league": 68,
+   "bundesliga": 44
+  }
+ },
+ "DAILY_CONDITION_COVERAGE": {
+  "2026-08-04": "244/259",
+  "2026-08-05": "252/276",
+  "2026-08-06": "238/256",
+  "2026-08-07": "283/326",
+  "2026-08-08": "439/470",
+  "2026-08-09": "336/361",
+  "2026-08-10": "223/238",
+  "2026-08-11": "360/383",
+  "2026-08-12": "215/223",
+  "2026-08-13": "163/171",
+  "2026-08-14": "225/229",
+  "2026-08-15": "237/254",
+  "2026-08-16": "202/213",
+  "2026-08-17": "252/263",
+  "2026-08-18": "293/309",
+  "2026-08-19": "199/207",
+  "2026-08-20": "198/208",
+  "2026-08-21": "274/282",
+  "2026-08-22": "226/230",
+  "2026-08-23": "175/186",
+  "2026-08-24": "207/219",
+  "2026-08-25": "292/306",
+  "2026-08-26": "230/240",
+  "2026-08-27": "386/408",
+  "2026-08-28": "672/687",
+  "2026-08-29": "698/708",
+  "2026-08-30": "422/428",
+  "2026-08-31": "509/518",
+  "2026-09-01": "641/652",
+  "2026-09-02": "768/795",
+  "2026-09-03": "663/685",
+  "2026-09-04": "430/436",
+  "2026-09-06": "488/493",
+  "2026-09-07": "610/633",
+  "2026-09-11": "67/70"
+ },
+ "PRICE_040_042_ALL_CLASSES": {
+  "AUG": {
+   "N": 1532,
+   "PNL": 27.2,
+   "ROI": 1.78,
+   "WIN_RATE": 41.58,
+   "AVG_ENTRY": 0.409,
+   "EVENTS_PER_DAY": 54.71
+  },
+  "SEP": {
+   "N": 647,
+   "PNL": -37.3,
+   "ROI": -5.77,
+   "WIN_RATE": 38.49,
+   "AVG_ENTRY": 0.408,
+   "EVENTS_PER_DAY": 58.82
+  },
+  "COMBINED": {
+   "N": 2179,
+   "PNL": -10.1,
+   "ROI": -0.46,
+   "WIN_RATE": 40.66,
+   "AVG_ENTRY": 0.409,
+   "EVENTS_PER_DAY": 55.87
+  },
+  "OVERLAP_WITH_CURRENT_BROAD_N": 783,
+  "INCREMENTAL_UNIQUE_EVENTS_N": 1396,
+  "INCREMENTAL_EVENTS_PER_DAY": 35.79,
+  "CROSS_PERIOD_POSITIVE": false,
+  "LABEL": "N>=30"
+ },
+ "PRICE_040_042_FULL_MATCH_ONLY": {
+  "AUG": {
+   "N": 1341,
+   "PNL": 42.05,
+   "ROI": 3.14,
+   "WIN_RATE": 42.13,
+   "AVG_ENTRY": 0.409,
+   "EVENTS_PER_DAY": 47.89
+  },
+  "SEP": {
+   "N": 513,
+   "PNL": -23.49,
+   "ROI": -4.58,
+   "WIN_RATE": 38.99,
+   "AVG_ENTRY": 0.408,
+   "EVENTS_PER_DAY": 46.64
+  },
+  "COMBINED": {
+   "N": 1854,
+   "PNL": 18.56,
+   "ROI": 1,
+   "WIN_RATE": 41.26,
+   "AVG_ENTRY": 0.409,
+   "EVENTS_PER_DAY": 47.54
+  },
+  "OVERLAP_WITH_CURRENT_BROAD_N": 724,
+  "INCREMENTAL_UNIQUE_EVENTS_N": 1130,
+  "INCREMENTAL_EVENTS_PER_DAY": 28.97,
+  "CROSS_PERIOD_POSITIVE": false,
+  "LABEL": "N>=30"
+ },
+ "BASEBALL_P40_50_ALL_CLASSES": {
+  "AUG": {
+   "N": 453,
+   "PNL": 40.34,
+   "ROI": 8.91,
+   "WIN_RATE": 49.45,
+   "AVG_ENTRY": 0.456,
+   "EVENTS_PER_DAY": 16.18
+  },
+  "SEP": {
+   "N": 119,
+   "PNL": 5.89,
+   "ROI": 4.95,
+   "WIN_RATE": 47.9,
+   "AVG_ENTRY": 0.455,
+   "EVENTS_PER_DAY": 10.82
+  },
+  "COMBINED": {
+   "N": 572,
+   "PNL": 46.24,
+   "ROI": 8.08,
+   "WIN_RATE": 49.13,
+   "AVG_ENTRY": 0.456,
+   "EVENTS_PER_DAY": 14.67
+  },
+  "OVERLAP_WITH_CURRENT_BROAD_N": 177,
+  "INCREMENTAL_UNIQUE_EVENTS_N": 395,
+  "INCREMENTAL_EVENTS_PER_DAY": 10.13,
+  "CROSS_PERIOD_POSITIVE": true,
+  "LABEL": "N>=30"
+ },
+ "BASEBALL_P40_50_FULL_MATCH_ONLY": {
+  "AUG": {
+   "N": 452,
+   "PNL": 43.43,
+   "ROI": 9.61,
+   "WIN_RATE": 49.78,
+   "AVG_ENTRY": 0.456,
+   "EVENTS_PER_DAY": 16.14
+  },
+  "SEP": {
+   "N": 119,
+   "PNL": 8.53,
+   "ROI": 7.17,
+   "WIN_RATE": 48.74,
+   "AVG_ENTRY": 0.455,
+   "EVENTS_PER_DAY": 10.82
+  },
+  "COMBINED": {
+   "N": 571,
+   "PNL": 51.96,
+   "ROI": 9.1,
+   "WIN_RATE": 49.56,
+   "AVG_ENTRY": 0.456,
+   "EVENTS_PER_DAY": 14.64
+  },
+  "OVERLAP_WITH_CURRENT_BROAD_N": 176,
+  "INCREMENTAL_UNIQUE_EVENTS_N": 395,
+  "INCREMENTAL_EVENTS_PER_DAY": 10.13,
+  "CROSS_PERIOD_POSITIVE": true,
+  "LABEL": "N>=30"
+ },
+ "SOCCER_P40_50_ALL_CLASSES": {
+  "AUG": {
+   "N": 114,
+   "PNL": -5.58,
+   "ROI": -4.89,
+   "WIN_RATE": 42.11,
+   "AVG_ENTRY": 0.443,
+   "EVENTS_PER_DAY": 4.07
+  },
+  "SEP": {
+   "N": 28,
+   "PNL": -7.65,
+   "ROI": -27.32,
+   "WIN_RATE": 32.14,
+   "AVG_ENTRY": 0.447,
+   "EVENTS_PER_DAY": 2.55
+  },
+  "COMBINED": {
+   "N": 142,
+   "PNL": -13.23,
+   "ROI": -9.32,
+   "WIN_RATE": 40.14,
+   "AVG_ENTRY": 0.444,
+   "EVENTS_PER_DAY": 3.64
+  },
+  "OVERLAP_WITH_CURRENT_BROAD_N": 26,
+  "INCREMENTAL_UNIQUE_EVENTS_N": 116,
+  "INCREMENTAL_EVENTS_PER_DAY": 2.97,
+  "CROSS_PERIOD_POSITIVE": false,
+  "LABEL": "N>=30"
+ },
+ "SOCCER_P40_50_FULL_MATCH_ONLY": {
+  "AUG": {
+   "N": 86,
+   "PNL": -11.37,
+   "ROI": -13.22,
+   "WIN_RATE": 38.37,
+   "AVG_ENTRY": 0.443,
+   "EVENTS_PER_DAY": 3.07
+  },
+  "SEP": {
+   "N": 24,
+   "PNL": -13.23,
+   "ROI": -55.11,
+   "WIN_RATE": 20.83,
+   "AVG_ENTRY": 0.449,
+   "EVENTS_PER_DAY": 2.18
+  },
+  "COMBINED": {
+   "N": 110,
+   "PNL": -24.59,
+   "ROI": -22.36,
+   "WIN_RATE": 34.55,
+   "AVG_ENTRY": 0.444,
+   "EVENTS_PER_DAY": 2.82
+  },
+  "OVERLAP_WITH_CURRENT_BROAD_N": 20,
+  "INCREMENTAL_UNIQUE_EVENTS_N": 90,
+  "INCREMENTAL_EVENTS_PER_DAY": 2.31,
+  "CROSS_PERIOD_POSITIVE": false,
+  "LABEL": "N>=30"
+ },
+ "P40_50_WHOLE_ALL_CLASSES": {
+  "AUG": {
+   "N": 4537,
+   "PNL": -54.68,
+   "ROI": -1.21,
+   "WIN_RATE": 45.18,
+   "AVG_ENTRY": 0.458,
+   "EVENTS_PER_DAY": 162.04
+  },
+  "SEP": {
+   "N": 1903,
+   "PNL": 109.07,
+   "ROI": 5.73,
+   "WIN_RATE": 48.92,
+   "AVG_ENTRY": 0.461,
+   "EVENTS_PER_DAY": 173
+  },
+  "COMBINED": {
+   "N": 6440,
+   "PNL": 54.39,
+   "ROI": 0.84,
+   "WIN_RATE": 46.29,
+   "AVG_ENTRY": 0.459,
+   "EVENTS_PER_DAY": 165.13
+  },
+  "OVERLAP_WITH_CURRENT_BROAD_N": 3160,
+  "INCREMENTAL_UNIQUE_EVENTS_N": 3280,
+  "INCREMENTAL_EVENTS_PER_DAY": 84.1,
+  "CROSS_PERIOD_POSITIVE": false,
+  "LABEL": "N>=30"
+ },
+ "BUCKET_CONTEXT_ALL_CLASSES": {
+  "0.42_0.44": {
+   "AUG": {
+    "N": 1729,
+    "PNL": -31.44,
+    "ROI": -1.82,
+    "WIN_RATE": 42.11,
+    "AVG_ENTRY": 0.429,
+    "EVENTS_PER_DAY": 61.75
+   },
+   "SEP": {
+    "N": 740,
+    "PNL": -19.15,
+    "ROI": -2.59,
+    "WIN_RATE": 41.76,
+    "AVG_ENTRY": 0.429,
+    "EVENTS_PER_DAY": 67.27
+   },
+   "COMBINED": {
+    "N": 2469,
+    "PNL": -50.59,
+    "ROI": -2.05,
+    "WIN_RATE": 42,
+    "AVG_ENTRY": 0.429,
+    "EVENTS_PER_DAY": 63.31
+   },
+   "OVERLAP_WITH_CURRENT_BROAD_N": 937,
+   "INCREMENTAL_UNIQUE_EVENTS_N": 1532,
+   "INCREMENTAL_EVENTS_PER_DAY": 39.28,
+   "CROSS_PERIOD_POSITIVE": false,
+   "LABEL": "N>=30"
+  },
+  "0.44_0.46": {
+   "AUG": {
+    "N": 1954,
+    "PNL": -58.38,
+    "ROI": -2.99,
+    "WIN_RATE": 43.55,
+    "AVG_ENTRY": 0.449,
+    "EVENTS_PER_DAY": 69.79
+   },
+   "SEP": {
+    "N": 800,
+    "PNL": -42.29,
+    "ROI": -5.29,
+    "WIN_RATE": 42.5,
+    "AVG_ENTRY": 0.449,
+    "EVENTS_PER_DAY": 72.73
+   },
+   "COMBINED": {
+    "N": 2754,
+    "PNL": -100.68,
+    "ROI": -3.66,
+    "WIN_RATE": 43.25,
+    "AVG_ENTRY": 0.449,
+    "EVENTS_PER_DAY": 70.62
+   },
+   "OVERLAP_WITH_CURRENT_BROAD_N": 1228,
+   "INCREMENTAL_UNIQUE_EVENTS_N": 1526,
+   "INCREMENTAL_EVENTS_PER_DAY": 39.13,
+   "CROSS_PERIOD_POSITIVE": false,
+   "LABEL": "N>=30"
+  },
+  "0.46_0.48": {
+   "AUG": {
+    "N": 1995,
+    "PNL": -46.8,
+    "ROI": -2.35,
+    "WIN_RATE": 45.76,
+    "AVG_ENTRY": 0.469,
+    "EVENTS_PER_DAY": 71.25
+   },
+   "SEP": {
+    "N": 831,
+    "PNL": -89.69,
+    "ROI": -10.79,
+    "WIN_RATE": 41.76,
+    "AVG_ENTRY": 0.468,
+    "EVENTS_PER_DAY": 75.55
+   },
+   "COMBINED": {
+    "N": 2826,
+    "PNL": -136.49,
+    "ROI": -4.83,
+    "WIN_RATE": 44.59,
+    "AVG_ENTRY": 0.468,
+    "EVENTS_PER_DAY": 72.46
+   },
+   "OVERLAP_WITH_CURRENT_BROAD_N": 1472,
+   "INCREMENTAL_UNIQUE_EVENTS_N": 1354,
+   "INCREMENTAL_EVENTS_PER_DAY": 34.72,
+   "CROSS_PERIOD_POSITIVE": false,
+   "LABEL": "N>=30"
+  },
+  "0.48_0.50": {
+   "AUG": {
+    "N": 2432,
+    "PNL": -107.99,
+    "ROI": -4.44,
+    "WIN_RATE": 46.75,
+    "AVG_ENTRY": 0.489,
+    "EVENTS_PER_DAY": 86.86
+   },
+   "SEP": {
+    "N": 1164,
+    "PNL": 125.76,
+    "ROI": 10.8,
+    "WIN_RATE": 54.3,
+    "AVG_ENTRY": 0.49,
+    "EVENTS_PER_DAY": 105.82
+   },
+   "COMBINED": {
+    "N": 3596,
+    "PNL": 17.77,
+    "ROI": 0.49,
+    "WIN_RATE": 49.19,
+    "AVG_ENTRY": 0.489,
+    "EVENTS_PER_DAY": 92.21
+   },
+   "OVERLAP_WITH_CURRENT_BROAD_N": 2295,
+   "INCREMENTAL_UNIQUE_EVENTS_N": 1301,
+   "INCREMENTAL_EVENTS_PER_DAY": 33.36,
+   "CROSS_PERIOD_POSITIVE": false,
+   "LABEL": "N>=30"
+  }
+ },
+ "BUCKET_CONTEXT_NOTE": "context only; conditions outside the priority sleeves are settled only while inside the time budget (see GAMMA coverage)",
+ "SELECTOR": "pre-event only; earliest (snapshot_at, condition_id, selected_token_id) per physical event; no outcome-aware choice"
+}

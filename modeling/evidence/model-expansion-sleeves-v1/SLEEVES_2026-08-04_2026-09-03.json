@@ -1,0 +1,4488 @@
+{
+ "AUG_PERIOD": [
+  "2026-08-04",
+  "2026-08-31"
+ ],
+ "SEP_PERIOD": [
+  "2026-09-01",
+  "2026-09-03"
+ ],
+ "AUG_DAYS": 28,
+ "SEP_DAYS": 3,
+ "POPULATIONS": {
+  "SEP_PUBLIC_RICH_V1": {
+   "CURRENT_BROAD_REFERENCE": {
+    "AUG": {
+     "N": 220,
+     "PNL": 72.7,
+     "ROI": 33.04,
+     "WINRATE": 66.82,
+     "AVG_PRICE": 0.50287,
+     "EV_PER_DAY": 7.86
+    },
+    "SEP": {
+     "N": 436,
+     "PNL": 131.22,
+     "ROI": 30.1,
+     "WINRATE": 65.14,
+     "AVG_PRICE": 0.50095,
+     "EV_PER_DAY": 145.33
+    },
+    "COMBINED": {
+     "N": 656,
+     "PNL": 203.91,
+     "ROI": 31.08,
+     "WINRATE": 65.7,
+     "AVG_PRICE": 0.50159,
+     "EV_PER_DAY": 21.16
+    },
+    "OVERLAP_N": 656,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "MARKET_CLASS_COUNTS_ROWS": {
+    "UNKNOWN": 3474
+   },
+   "EXACT_SCORE_ALL_SIDES": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "EXACT_SCORE_ALL_SIDES_BY_PRICE": {
+    "0.40_0.50": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0
+    },
+    "0.50_0.60": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0
+    },
+    "0.60_0.70": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0
+    },
+    "0.70_0.80": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0
+    },
+    "0.80_0.90": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0
+    },
+    "0.90_0.97": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0
+    }
+   },
+   "EXACT_SCORE_ALL_SIDES_C0_050_060": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "EXACT_SCORE_ALL_SIDES_BROAD_050_054": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "FIRST_HALF_ALL_PRICES": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "FIRST_HALF_C0_050_060": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "FIRST_HALF_BROAD_050_054": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "SECOND_HALF_ALL_PRICES": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "SECOND_HALF_C0_050_060": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "SECOND_HALF_BROAD_050_054": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "FULL_MATCH_ALL_PRICES": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "FULL_MATCH_C0_050_060": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "FULL_MATCH_BROAD_050_054": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "HALVES_BY_SPORT_MARKET_C0": {},
+   "P40_50_FULL_MATCH": {
+    "AUG": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "OVERLAP_N": 0,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "P40_50_ALL_CLASSES": {
+    "AUG": {
+     "N": 578,
+     "PNL": 29.27,
+     "ROI": 5.06,
+     "WINRATE": 47.23,
+     "AVG_PRICE": 0.45054,
+     "EV_PER_DAY": 20.64
+    },
+    "SEP": {
+     "N": 344,
+     "PNL": -16.22,
+     "ROI": -4.71,
+     "WINRATE": 43.31,
+     "AVG_PRICE": 0.4537,
+     "EV_PER_DAY": 114.67
+    },
+    "COMBINED": {
+     "N": 922,
+     "PNL": 13.05,
+     "ROI": 1.41,
+     "WINRATE": 45.77,
+     "AVG_PRICE": 0.45172,
+     "EV_PER_DAY": 29.74
+    },
+    "OVERLAP_N": 93,
+    "INCREMENTAL_N": 829,
+    "INCREMENTAL_EVENTS_PER_DAY": 26.74
+   },
+   "P40_50_ALL_CLASSES_BUCKETS": {
+    "0.40_0.42": {
+     "AUG": {
+      "N": 93,
+      "PNL": 19.52,
+      "ROI": 20.98,
+      "WINRATE": 49.46,
+      "AVG_PRICE": 0.40935000000000005,
+      "EV_PER_DAY": 3.32
+     },
+     "SEP": {
+      "N": 52,
+      "PNL": 9.26,
+      "ROI": 17.8,
+      "WINRATE": 48.08,
+      "AVG_PRICE": 0.40846,
+      "EV_PER_DAY": 17.33
+     },
+     "COMBINED": {
+      "N": 145,
+      "PNL": 28.77,
+      "ROI": 19.84,
+      "WINRATE": 48.97,
+      "AVG_PRICE": 0.40902999999999995,
+      "EV_PER_DAY": 4.68
+     },
+     "OVERLAP_N": 14,
+     "INCREMENTAL_N": 131,
+     "INCREMENTAL_EVENTS_PER_DAY": 4.23
+    },
+    "0.42_0.44": {
+     "AUG": {
+      "N": 116,
+      "PNL": 7.14,
+      "ROI": 6.16,
+      "WINRATE": 45.69,
+      "AVG_PRICE": 0.42918,
+      "EV_PER_DAY": 4.14
+     },
+     "SEP": {
+      "N": 60,
+      "PNL": -20.32,
+      "ROI": -33.87,
+      "WINRATE": 28.33,
+      "AVG_PRICE": 0.4295,
+      "EV_PER_DAY": 20
+     },
+     "COMBINED": {
+      "N": 176,
+      "PNL": -13.18,
+      "ROI": -7.49,
+      "WINRATE": 39.77,
+      "AVG_PRICE": 0.42929,
+      "EV_PER_DAY": 5.68
+     },
+     "OVERLAP_N": 17,
+     "INCREMENTAL_N": 159,
+     "INCREMENTAL_EVENTS_PER_DAY": 5.13
+    },
+    "0.44_0.46": {
+     "AUG": {
+      "N": 174,
+      "PNL": 1.8,
+      "ROI": 1.04,
+      "WINRATE": 45.4,
+      "AVG_PRICE": 0.4491,
+      "EV_PER_DAY": 6.21
+     },
+     "SEP": {
+      "N": 93,
+      "PNL": 0.5,
+      "ROI": 0.54,
+      "WINRATE": 45.16,
+      "AVG_PRICE": 0.44833,
+      "EV_PER_DAY": 31
+     },
+     "COMBINED": {
+      "N": 267,
+      "PNL": 2.3,
+      "ROI": 0.86,
+      "WINRATE": 45.32,
+      "AVG_PRICE": 0.44883,
+      "EV_PER_DAY": 8.61
+     },
+     "OVERLAP_N": 26,
+     "INCREMENTAL_N": 241,
+     "INCREMENTAL_EVENTS_PER_DAY": 7.77
+    },
+    "0.46_0.48": {
+     "AUG": {
+      "N": 159,
+      "PNL": -9.75,
+      "ROI": -6.13,
+      "WINRATE": 44.03,
+      "AVG_PRICE": 0.4689,
+      "EV_PER_DAY": 5.68
+     },
+     "SEP": {
+      "N": 72,
+      "PNL": -22.9,
+      "ROI": -31.8,
+      "WINRATE": 31.94,
+      "AVG_PRICE": 0.46824,
+      "EV_PER_DAY": 24
+     },
+     "COMBINED": {
+      "N": 231,
+      "PNL": -32.65,
+      "ROI": -14.13,
+      "WINRATE": 40.26,
+      "AVG_PRICE": 0.46869,
+      "EV_PER_DAY": 7.45
+     },
+     "OVERLAP_N": 43,
+     "INCREMENTAL_N": 188,
+     "INCREMENTAL_EVENTS_PER_DAY": 6.06
+    },
+    "0.48_0.50": {
+     "AUG": {
+      "N": 125,
+      "PNL": -0.18,
+      "ROI": -0.15,
+      "WINRATE": 48.8,
+      "AVG_PRICE": 0.48828,
+      "EV_PER_DAY": 4.46
+     },
+     "SEP": {
+      "N": 94,
+      "PNL": 11.95,
+      "ROI": 12.71,
+      "WINRATE": 55.32,
+      "AVG_PRICE": 0.48968,
+      "EV_PER_DAY": 31.33
+     },
+     "COMBINED": {
+      "N": 219,
+      "PNL": 11.77,
+      "ROI": 5.37,
+      "WINRATE": 51.6,
+      "AVG_PRICE": 0.48888,
+      "EV_PER_DAY": 7.06
+     },
+     "OVERLAP_N": 74,
+     "INCREMENTAL_N": 145,
+     "INCREMENTAL_EVENTS_PER_DAY": 4.68
+    }
+   },
+   "P40_50_ALL_CLASSES_BY_SPORT": {
+    "baseball": {
+     "AUG": {
+      "N": 53,
+      "PNL": 4.42,
+      "ROI": 8.34,
+      "WINRATE": 49.06,
+      "AVG_PRICE": 0.45557,
+      "EV_PER_DAY": 1.89
+     },
+     "SEP": {
+      "N": 41,
+      "PNL": 8.27,
+      "ROI": 20.18,
+      "WINRATE": 53.66,
+      "AVG_PRICE": 0.44902,
+      "EV_PER_DAY": 13.67
+     },
+     "COMBINED": {
+      "N": 94,
+      "PNL": 12.69,
+      "ROI": 13.5,
+      "WINRATE": 51.06,
+      "AVG_PRICE": 0.45271,
+      "EV_PER_DAY": 3.03
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 94,
+     "INCREMENTAL_EVENTS_PER_DAY": 3.03,
+     "LABEL": "N>=30"
+    },
+    "basketball": {
+     "AUG": {
+      "N": 8,
+      "PNL": 0.69,
+      "ROI": 8.62,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.4625,
+      "EV_PER_DAY": 0.29
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 8,
+      "PNL": 0.69,
+      "ROI": 8.62,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.4625,
+      "EV_PER_DAY": 0.26
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 8,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.26,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "cricket": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 7,
+      "PNL": -0.4,
+      "ROI": -5.73,
+      "WINRATE": 42.86,
+      "AVG_PRICE": 0.47070999999999996,
+      "EV_PER_DAY": 2.33
+     },
+     "COMBINED": {
+      "N": 7,
+      "PNL": -0.4,
+      "ROI": -5.73,
+      "WINRATE": 42.86,
+      "AVG_PRICE": 0.47070999999999996,
+      "EV_PER_DAY": 0.23
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 7,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.23,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "esports": {
+     "AUG": {
+      "N": 6,
+      "PNL": -1.35,
+      "ROI": -22.47,
+      "WINRATE": 33.33,
+      "AVG_PRICE": 0.43333,
+      "EV_PER_DAY": 0.21
+     },
+     "SEP": {
+      "N": 20,
+      "PNL": -2.31,
+      "ROI": -11.55,
+      "WINRATE": 40,
+      "AVG_PRICE": 0.4605,
+      "EV_PER_DAY": 6.67
+     },
+     "COMBINED": {
+      "N": 26,
+      "PNL": -3.66,
+      "ROI": -14.07,
+      "WINRATE": 38.46,
+      "AVG_PRICE": 0.45423,
+      "EV_PER_DAY": 0.84
+     },
+     "OVERLAP_N": 3,
+     "INCREMENTAL_N": 23,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.74,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "hockey": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 1,
+      "PNL": 1.15,
+      "ROI": 115.05,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.465,
+      "EV_PER_DAY": 0.33
+     },
+     "COMBINED": {
+      "N": 1,
+      "PNL": 1.15,
+      "ROI": 115.05,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.465,
+      "EV_PER_DAY": 0.03
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "mma": {
+     "AUG": {
+      "N": 3,
+      "PNL": 3.85,
+      "ROI": 128.32,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.43833,
+      "EV_PER_DAY": 0.11
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 3,
+      "PNL": 3.85,
+      "ROI": 128.32,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.43833,
+      "EV_PER_DAY": 0.1
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 3,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.1,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "soccer": {
+     "AUG": {
+      "N": 331,
+      "PNL": 29.69,
+      "ROI": 8.97,
+      "WINRATE": 48.64,
+      "AVG_PRICE": 0.44755,
+      "EV_PER_DAY": 11.82
+     },
+     "SEP": {
+      "N": 216,
+      "PNL": -42.04,
+      "ROI": -19.46,
+      "WINRATE": 36.11,
+      "AVG_PRICE": 0.44881,
+      "EV_PER_DAY": 72
+     },
+     "COMBINED": {
+      "N": 547,
+      "PNL": -12.35,
+      "ROI": -2.26,
+      "WINRATE": 43.69,
+      "AVG_PRICE": 0.44805,
+      "EV_PER_DAY": 17.65
+     },
+     "OVERLAP_N": 2,
+     "INCREMENTAL_N": 545,
+     "INCREMENTAL_EVENTS_PER_DAY": 17.58,
+     "LABEL": "N>=30"
+    },
+    "tennis": {
+     "AUG": {
+      "N": 2,
+      "PNL": -2,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.46,
+      "EV_PER_DAY": 0.07
+     },
+     "SEP": {
+      "N": 49,
+      "PNL": 16.8,
+      "ROI": 34.29,
+      "WINRATE": 63.27,
+      "AVG_PRICE": 0.46764,
+      "EV_PER_DAY": 16.33
+     },
+     "COMBINED": {
+      "N": 51,
+      "PNL": 14.8,
+      "ROI": 29.03,
+      "WINRATE": 60.78,
+      "AVG_PRICE": 0.46734,
+      "EV_PER_DAY": 1.65
+     },
+     "OVERLAP_N": 6,
+     "INCREMENTAL_N": 45,
+     "INCREMENTAL_EVENTS_PER_DAY": 1.45,
+     "LABEL": "N>=30"
+    },
+    "unknown": {
+     "AUG": {
+      "N": 175,
+      "PNL": -6.03,
+      "ROI": -3.45,
+      "WINRATE": 44,
+      "AVG_PRICE": 0.45482999999999996,
+      "EV_PER_DAY": 6.25
+     },
+     "SEP": {
+      "N": 10,
+      "PNL": 2.3,
+      "ROI": 22.99,
+      "WINRATE": 60,
+      "AVG_PRICE": 0.4835,
+      "EV_PER_DAY": 3.33
+     },
+     "COMBINED": {
+      "N": 185,
+      "PNL": -3.74,
+      "ROI": -2.02,
+      "WINRATE": 44.86,
+      "AVG_PRICE": 0.45638,
+      "EV_PER_DAY": 5.97
+     },
+     "OVERLAP_N": 82,
+     "INCREMENTAL_N": 103,
+     "INCREMENTAL_EVENTS_PER_DAY": 3.32,
+     "LABEL": "N>=30"
+    }
+   },
+   "P40_50_FULL_MATCH_BUCKETS": {
+    "0.40_0.42": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0
+    },
+    "0.42_0.44": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0
+    },
+    "0.44_0.46": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0
+    },
+    "0.46_0.48": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0
+    },
+    "0.48_0.50": {
+     "AUG": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0
+    }
+   },
+   "P40_50_BY_CLASS_SPORT_TYPE": {}
+  },
+  "SEP_SHADOW_STRATEGIC_V1": {
+   "CURRENT_BROAD_REFERENCE": {
+    "AUG": {
+     "N": 534,
+     "PNL": -7.34,
+     "ROI": -1.38,
+     "WINRATE": 49.63,
+     "AVG_PRICE": 0.50331,
+     "EV_PER_DAY": 19.07
+    },
+    "SEP": {
+     "N": 6,
+     "PNL": -0.11,
+     "ROI": -1.89,
+     "WINRATE": 50,
+     "AVG_PRICE": 0.5125,
+     "EV_PER_DAY": 2
+    },
+    "COMBINED": {
+     "N": 540,
+     "PNL": -7.46,
+     "ROI": -1.38,
+     "WINRATE": 49.63,
+     "AVG_PRICE": 0.50342,
+     "EV_PER_DAY": 17.42
+    },
+    "OVERLAP_N": 540,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "MARKET_CLASS_COUNTS_ROWS": {
+    "FULL_MATCH": 1607,
+    "OTHER": 1899,
+    "FIRST_HALF": 196,
+    "SECOND_HALF": 199,
+    "EXACT_SCORE": 471
+   },
+   "EXACT_SCORE_ALL_SIDES": {
+    "AUG": {
+     "N": 32,
+     "PNL": 44.64,
+     "ROI": 139.5,
+     "WINRATE": 15.63,
+     "AVG_PRICE": 0.19956000000000002,
+     "EV_PER_DAY": 1.14
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 32,
+     "PNL": 44.64,
+     "ROI": 139.5,
+     "WINRATE": 15.63,
+     "AVG_PRICE": 0.19956000000000002,
+     "EV_PER_DAY": 1.03
+    },
+    "OVERLAP_N": 5,
+    "INCREMENTAL_N": 27,
+    "INCREMENTAL_EVENTS_PER_DAY": 0.87
+   },
+   "EXACT_SCORE_ALL_SIDES_BY_PRICE": {
+    "0.40_0.50": {
+     "AUG": {
+      "N": 9,
+      "PNL": -6.62,
+      "ROI": -73.54,
+      "WINRATE": 11.11,
+      "AVG_PRICE": 0.43056,
+      "EV_PER_DAY": 0.32
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 9,
+      "PNL": -6.62,
+      "ROI": -73.54,
+      "WINRATE": 11.11,
+      "AVG_PRICE": 0.43056,
+      "EV_PER_DAY": 0.29
+     },
+     "OVERLAP_N": 4,
+     "INCREMENTAL_N": 5,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.16
+    },
+    "0.50_0.60": {
+     "AUG": {
+      "N": 7,
+      "PNL": 0.68,
+      "ROI": 9.72,
+      "WINRATE": 57.14,
+      "AVG_PRICE": 0.52143,
+      "EV_PER_DAY": 0.25
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 7,
+      "PNL": 0.68,
+      "ROI": 9.72,
+      "WINRATE": 57.14,
+      "AVG_PRICE": 0.52143,
+      "EV_PER_DAY": 0.23
+     },
+     "OVERLAP_N": 5,
+     "INCREMENTAL_N": 2,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.06
+    },
+    "0.60_0.70": {
+     "AUG": {
+      "N": 8,
+      "PNL": 4.69,
+      "ROI": 58.61,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.63188,
+      "EV_PER_DAY": 0.29
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 8,
+      "PNL": 4.69,
+      "ROI": 58.61,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.63188,
+      "EV_PER_DAY": 0.26
+     },
+     "OVERLAP_N": 1,
+     "INCREMENTAL_N": 7,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.23
+    },
+    "0.70_0.80": {
+     "AUG": {
+      "N": 4,
+      "PNL": 0.19,
+      "ROI": 4.73,
+      "WINRATE": 75,
+      "AVG_PRICE": 0.715,
+      "EV_PER_DAY": 0.14
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 4,
+      "PNL": 0.19,
+      "ROI": 4.73,
+      "WINRATE": 75,
+      "AVG_PRICE": 0.715,
+      "EV_PER_DAY": 0.13
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 4,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.13
+    },
+    "0.80_0.90": {
+     "AUG": {
+      "N": 15,
+      "PNL": 0.08,
+      "ROI": 0.52,
+      "WINRATE": 86.67,
+      "AVG_PRICE": 0.86323,
+      "EV_PER_DAY": 0.54
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 15,
+      "PNL": 0.08,
+      "ROI": 0.52,
+      "WINRATE": 86.67,
+      "AVG_PRICE": 0.86323,
+      "EV_PER_DAY": 0.48
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 15,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.48
+    },
+    "0.90_0.97": {
+     "AUG": {
+      "N": 17,
+      "PNL": 1.34,
+      "ROI": 7.91,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.92715,
+      "EV_PER_DAY": 0.61
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 17,
+      "PNL": 1.34,
+      "ROI": 7.91,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.92715,
+      "EV_PER_DAY": 0.55
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 17,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.55
+    }
+   },
+   "EXACT_SCORE_ALL_SIDES_C0_050_060": {
+    "AUG": {
+     "N": 7,
+     "PNL": 0.68,
+     "ROI": 9.72,
+     "WINRATE": 57.14,
+     "AVG_PRICE": 0.52143,
+     "EV_PER_DAY": 0.25
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 7,
+     "PNL": 0.68,
+     "ROI": 9.72,
+     "WINRATE": 57.14,
+     "AVG_PRICE": 0.52143,
+     "EV_PER_DAY": 0.23
+    },
+    "OVERLAP_N": 5,
+    "INCREMENTAL_N": 2,
+    "INCREMENTAL_EVENTS_PER_DAY": 0.06
+   },
+   "EXACT_SCORE_ALL_SIDES_BROAD_050_054": {
+    "AUG": {
+     "N": 5,
+     "PNL": 0.83,
+     "ROI": 16.57,
+     "WINRATE": 60,
+     "AVG_PRICE": 0.514,
+     "EV_PER_DAY": 0.18
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 5,
+     "PNL": 0.83,
+     "ROI": 16.57,
+     "WINRATE": 60,
+     "AVG_PRICE": 0.514,
+     "EV_PER_DAY": 0.16
+    },
+    "OVERLAP_N": 5,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "FIRST_HALF_ALL_PRICES": {
+    "AUG": {
+     "N": 49,
+     "PNL": -16.65,
+     "ROI": -33.97,
+     "WINRATE": 30.61,
+     "AVG_PRICE": 0.4198,
+     "EV_PER_DAY": 1.75
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 49,
+     "PNL": -16.65,
+     "ROI": -33.97,
+     "WINRATE": 30.61,
+     "AVG_PRICE": 0.4198,
+     "EV_PER_DAY": 1.58
+    },
+    "OVERLAP_N": 36,
+    "INCREMENTAL_N": 13,
+    "INCREMENTAL_EVENTS_PER_DAY": 0.42
+   },
+   "FIRST_HALF_C0_050_060": {
+    "AUG": {
+     "N": 36,
+     "PNL": 0.07,
+     "ROI": 0.19,
+     "WINRATE": 52.78,
+     "AVG_PRICE": 0.52125,
+     "EV_PER_DAY": 1.29
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 36,
+     "PNL": 0.07,
+     "ROI": 0.19,
+     "WINRATE": 52.78,
+     "AVG_PRICE": 0.52125,
+     "EV_PER_DAY": 1.16
+    },
+    "OVERLAP_N": 32,
+    "INCREMENTAL_N": 4,
+    "INCREMENTAL_EVENTS_PER_DAY": 0.13
+   },
+   "FIRST_HALF_BROAD_050_054": {
+    "AUG": {
+     "N": 30,
+     "PNL": -2.63,
+     "ROI": -8.78,
+     "WINRATE": 46.67,
+     "AVG_PRICE": 0.5105,
+     "EV_PER_DAY": 1.07
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 30,
+     "PNL": -2.63,
+     "ROI": -8.78,
+     "WINRATE": 46.67,
+     "AVG_PRICE": 0.5105,
+     "EV_PER_DAY": 0.97
+    },
+    "OVERLAP_N": 30,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "SECOND_HALF_ALL_PRICES": {
+    "AUG": {
+     "N": 57,
+     "PNL": 1.08,
+     "ROI": 1.89,
+     "WINRATE": 36.84,
+     "AVG_PRICE": 0.42632,
+     "EV_PER_DAY": 2.04
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 57,
+     "PNL": 1.08,
+     "ROI": 1.89,
+     "WINRATE": 36.84,
+     "AVG_PRICE": 0.42632,
+     "EV_PER_DAY": 1.84
+    },
+    "OVERLAP_N": 39,
+    "INCREMENTAL_N": 18,
+    "INCREMENTAL_EVENTS_PER_DAY": 0.58
+   },
+   "SECOND_HALF_C0_050_060": {
+    "AUG": {
+     "N": 42,
+     "PNL": 2.09,
+     "ROI": 4.98,
+     "WINRATE": 54.76,
+     "AVG_PRICE": 0.52048,
+     "EV_PER_DAY": 1.5
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 42,
+     "PNL": 2.09,
+     "ROI": 4.98,
+     "WINRATE": 54.76,
+     "AVG_PRICE": 0.52048,
+     "EV_PER_DAY": 1.35
+    },
+    "OVERLAP_N": 35,
+    "INCREMENTAL_N": 7,
+    "INCREMENTAL_EVENTS_PER_DAY": 0.23
+   },
+   "SECOND_HALF_BROAD_050_054": {
+    "AUG": {
+     "N": 34,
+     "PNL": 3.16,
+     "ROI": 9.3,
+     "WINRATE": 55.88,
+     "AVG_PRICE": 0.5085299999999999,
+     "EV_PER_DAY": 1.21
+    },
+    "SEP": {
+     "N": 0,
+     "PNL": 0,
+     "ROI": 0,
+     "WINRATE": 0,
+     "AVG_PRICE": 0,
+     "EV_PER_DAY": 0
+    },
+    "COMBINED": {
+     "N": 34,
+     "PNL": 3.16,
+     "ROI": 9.3,
+     "WINRATE": 55.88,
+     "AVG_PRICE": 0.5085299999999999,
+     "EV_PER_DAY": 1.1
+    },
+    "OVERLAP_N": 34,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "FULL_MATCH_ALL_PRICES": {
+    "AUG": {
+     "N": 641,
+     "PNL": -21.42,
+     "ROI": -3.34,
+     "WINRATE": 42.12,
+     "AVG_PRICE": 0.44274,
+     "EV_PER_DAY": 22.89
+    },
+    "SEP": {
+     "N": 36,
+     "PNL": -7.51,
+     "ROI": -20.86,
+     "WINRATE": 41.67,
+     "AVG_PRICE": 0.48779,
+     "EV_PER_DAY": 12
+    },
+    "COMBINED": {
+     "N": 677,
+     "PNL": -28.93,
+     "ROI": -4.27,
+     "WINRATE": 42.1,
+     "AVG_PRICE": 0.44514,
+     "EV_PER_DAY": 21.84
+    },
+    "OVERLAP_N": 387,
+    "INCREMENTAL_N": 290,
+    "INCREMENTAL_EVENTS_PER_DAY": 9.35
+   },
+   "FULL_MATCH_C0_050_060": {
+    "AUG": {
+     "N": 382,
+     "PNL": -23.35,
+     "ROI": -6.11,
+     "WINRATE": 48.43,
+     "AVG_PRICE": 0.51613,
+     "EV_PER_DAY": 13.64
+    },
+    "SEP": {
+     "N": 9,
+     "PNL": -1.63,
+     "ROI": -18.17,
+     "WINRATE": 44.44,
+     "AVG_PRICE": 0.54167,
+     "EV_PER_DAY": 3
+    },
+    "COMBINED": {
+     "N": 391,
+     "PNL": -24.99,
+     "ROI": -6.39,
+     "WINRATE": 48.34,
+     "AVG_PRICE": 0.51671,
+     "EV_PER_DAY": 12.61
+    },
+    "OVERLAP_N": 331,
+    "INCREMENTAL_N": 60,
+    "INCREMENTAL_EVENTS_PER_DAY": 1.94
+   },
+   "FULL_MATCH_BROAD_050_054": {
+    "AUG": {
+     "N": 307,
+     "PNL": -17.38,
+     "ROI": -5.66,
+     "WINRATE": 47.56,
+     "AVG_PRICE": 0.50383,
+     "EV_PER_DAY": 10.96
+    },
+    "SEP": {
+     "N": 5,
+     "PNL": -1.11,
+     "ROI": -22.26,
+     "WINRATE": 40,
+     "AVG_PRICE": 0.515,
+     "EV_PER_DAY": 1.67
+    },
+    "COMBINED": {
+     "N": 312,
+     "PNL": -18.5,
+     "ROI": -5.93,
+     "WINRATE": 47.44,
+     "AVG_PRICE": 0.50401,
+     "EV_PER_DAY": 10.06
+    },
+    "OVERLAP_N": 312,
+    "INCREMENTAL_N": 0,
+    "INCREMENTAL_EVENTS_PER_DAY": 0
+   },
+   "HALVES_BY_SPORT_MARKET_C0": {
+    "FIRST_HALF|soccer|moneyline|C0_050_060": {
+     "AUG": {
+      "N": 4,
+      "PNL": 1.64,
+      "ROI": 41.06,
+      "WINRATE": 75,
+      "AVG_PRICE": 0.5275,
+      "EV_PER_DAY": 0.14
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 4,
+      "PNL": 1.64,
+      "ROI": 41.06,
+      "WINRATE": 75,
+      "AVG_PRICE": 0.5275,
+      "EV_PER_DAY": 0.13
+     },
+     "OVERLAP_N": 3,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FIRST_HALF|soccer|total|C0_050_060": {
+     "AUG": {
+      "N": 8,
+      "PNL": 1.75,
+      "ROI": 21.91,
+      "WINRATE": 62.5,
+      "AVG_PRICE": 0.51,
+      "EV_PER_DAY": 0.29
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 8,
+      "PNL": 1.75,
+      "ROI": 21.91,
+      "WINRATE": 62.5,
+      "AVG_PRICE": 0.51,
+      "EV_PER_DAY": 0.26
+     },
+     "OVERLAP_N": 8,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FIRST_HALF|soccer|other|C0_050_060": {
+     "AUG": {
+      "N": 1,
+      "PNL": -1,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.5,
+      "EV_PER_DAY": 0.04
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 1,
+      "PNL": -1,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.5,
+      "EV_PER_DAY": 0.03
+     },
+     "OVERLAP_N": 1,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FIRST_HALF|soccer|ALL|C0_050_060": {
+     "AUG": {
+      "N": 12,
+      "PNL": 3.4,
+      "ROI": 28.3,
+      "WINRATE": 66.67,
+      "AVG_PRICE": 0.51583,
+      "EV_PER_DAY": 0.43
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 12,
+      "PNL": 3.4,
+      "ROI": 28.3,
+      "WINRATE": 66.67,
+      "AVG_PRICE": 0.51583,
+      "EV_PER_DAY": 0.39
+     },
+     "OVERLAP_N": 11,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FIRST_HALF|unknown|moneyline|C0_050_060": {
+     "AUG": {
+      "N": 12,
+      "PNL": -4.55,
+      "ROI": -37.94,
+      "WINRATE": 33.33,
+      "AVG_PRICE": 0.5275,
+      "EV_PER_DAY": 0.43
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 12,
+      "PNL": -4.55,
+      "ROI": -37.94,
+      "WINRATE": 33.33,
+      "AVG_PRICE": 0.5275,
+      "EV_PER_DAY": 0.39
+     },
+     "OVERLAP_N": 9,
+     "INCREMENTAL_N": 3,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.1,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FIRST_HALF|unknown|spread|C0_050_060": {
+     "AUG": {
+      "N": 2,
+      "PNL": 2,
+      "ROI": 100,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.5,
+      "EV_PER_DAY": 0.07
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 2,
+      "PNL": 2,
+      "ROI": 100,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.5,
+      "EV_PER_DAY": 0.06
+     },
+     "OVERLAP_N": 2,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FIRST_HALF|unknown|total|C0_050_060": {
+     "AUG": {
+      "N": 12,
+      "PNL": 1.2,
+      "ROI": 10.03,
+      "WINRATE": 58.33,
+      "AVG_PRICE": 0.52083,
+      "EV_PER_DAY": 0.43
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 12,
+      "PNL": 1.2,
+      "ROI": 10.03,
+      "WINRATE": 58.33,
+      "AVG_PRICE": 0.52083,
+      "EV_PER_DAY": 0.39
+     },
+     "OVERLAP_N": 12,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FIRST_HALF|unknown|ALL|C0_050_060": {
+     "AUG": {
+      "N": 24,
+      "PNL": -3.33,
+      "ROI": -13.87,
+      "WINRATE": 45.83,
+      "AVG_PRICE": 0.52396,
+      "EV_PER_DAY": 0.86
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 24,
+      "PNL": -3.33,
+      "ROI": -13.87,
+      "WINRATE": 45.83,
+      "AVG_PRICE": 0.52396,
+      "EV_PER_DAY": 0.77
+     },
+     "OVERLAP_N": 21,
+     "INCREMENTAL_N": 3,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.1,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|soccer|moneyline|C0_050_060": {
+     "AUG": {
+      "N": 7,
+      "PNL": 2.19,
+      "ROI": 31.33,
+      "WINRATE": 71.43,
+      "AVG_PRICE": 0.54143,
+      "EV_PER_DAY": 0.25
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 7,
+      "PNL": 2.19,
+      "ROI": 31.33,
+      "WINRATE": 71.43,
+      "AVG_PRICE": 0.54143,
+      "EV_PER_DAY": 0.23
+     },
+     "OVERLAP_N": 4,
+     "INCREMENTAL_N": 3,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.1,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|soccer|total|C0_050_060": {
+     "AUG": {
+      "N": 14,
+      "PNL": -2.47,
+      "ROI": -17.64,
+      "WINRATE": 42.86,
+      "AVG_PRICE": 0.51,
+      "EV_PER_DAY": 0.5
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 14,
+      "PNL": -2.47,
+      "ROI": -17.64,
+      "WINRATE": 42.86,
+      "AVG_PRICE": 0.51,
+      "EV_PER_DAY": 0.45
+     },
+     "OVERLAP_N": 13,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|soccer|other|C0_050_060": {
+     "AUG": {
+      "N": 2,
+      "PNL": -0.13,
+      "ROI": -6.54,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.5175,
+      "EV_PER_DAY": 0.07
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 2,
+      "PNL": -0.13,
+      "ROI": -6.54,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.5175,
+      "EV_PER_DAY": 0.06
+     },
+     "OVERLAP_N": 2,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|soccer|ALL|C0_050_060": {
+     "AUG": {
+      "N": 21,
+      "PNL": -0.28,
+      "ROI": -1.32,
+      "WINRATE": 52.38,
+      "AVG_PRICE": 0.52048,
+      "EV_PER_DAY": 0.75
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 21,
+      "PNL": -0.28,
+      "ROI": -1.32,
+      "WINRATE": 52.38,
+      "AVG_PRICE": 0.52048,
+      "EV_PER_DAY": 0.68
+     },
+     "OVERLAP_N": 17,
+     "INCREMENTAL_N": 4,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.13,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|unknown|moneyline|C0_050_060": {
+     "AUG": {
+      "N": 11,
+      "PNL": 0.56,
+      "ROI": 5.09,
+      "WINRATE": 54.55,
+      "AVG_PRICE": 0.52955,
+      "EV_PER_DAY": 0.39
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 11,
+      "PNL": 0.56,
+      "ROI": 5.09,
+      "WINRATE": 54.55,
+      "AVG_PRICE": 0.52955,
+      "EV_PER_DAY": 0.35
+     },
+     "OVERLAP_N": 8,
+     "INCREMENTAL_N": 3,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.1,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|unknown|total|C0_050_060": {
+     "AUG": {
+      "N": 10,
+      "PNL": -0.12,
+      "ROI": -1.15,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.5115,
+      "EV_PER_DAY": 0.36
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 10,
+      "PNL": -0.12,
+      "ROI": -1.15,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.5115,
+      "EV_PER_DAY": 0.32
+     },
+     "OVERLAP_N": 10,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|unknown|other|C0_050_060": {
+     "AUG": {
+      "N": 4,
+      "PNL": 1.92,
+      "ROI": 48.08,
+      "WINRATE": 75,
+      "AVG_PRICE": 0.505,
+      "EV_PER_DAY": 0.14
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 4,
+      "PNL": 1.92,
+      "ROI": 48.08,
+      "WINRATE": 75,
+      "AVG_PRICE": 0.505,
+      "EV_PER_DAY": 0.13
+     },
+     "OVERLAP_N": 4,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|unknown|ALL|C0_050_060": {
+     "AUG": {
+      "N": 21,
+      "PNL": 2.37,
+      "ROI": 11.27,
+      "WINRATE": 57.14,
+      "AVG_PRICE": 0.52048,
+      "EV_PER_DAY": 0.75
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 21,
+      "PNL": 2.37,
+      "ROI": 11.27,
+      "WINRATE": 57.14,
+      "AVG_PRICE": 0.52048,
+      "EV_PER_DAY": 0.68
+     },
+     "OVERLAP_N": 18,
+     "INCREMENTAL_N": 3,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.1,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|basketball|spread|C0_050_060": {
+     "AUG": {
+      "N": 9,
+      "PNL": 0.57,
+      "ROI": 6.3,
+      "WINRATE": 55.56,
+      "AVG_PRICE": 0.5233300000000001,
+      "EV_PER_DAY": 0.32
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 9,
+      "PNL": 0.57,
+      "ROI": 6.3,
+      "WINRATE": 55.56,
+      "AVG_PRICE": 0.5233300000000001,
+      "EV_PER_DAY": 0.29
+     },
+     "OVERLAP_N": 7,
+     "INCREMENTAL_N": 2,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.06,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|basketball|total|C0_050_060": {
+     "AUG": {
+      "N": 8,
+      "PNL": -2.12,
+      "ROI": -26.47,
+      "WINRATE": 37.5,
+      "AVG_PRICE": 0.52,
+      "EV_PER_DAY": 0.29
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 8,
+      "PNL": -2.12,
+      "ROI": -26.47,
+      "WINRATE": 37.5,
+      "AVG_PRICE": 0.52,
+      "EV_PER_DAY": 0.26
+     },
+     "OVERLAP_N": 8,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|basketball|ALL|C0_050_060": {
+     "AUG": {
+      "N": 14,
+      "PNL": -0.53,
+      "ROI": -3.79,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.52286,
+      "EV_PER_DAY": 0.5
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 14,
+      "PNL": -0.53,
+      "ROI": -3.79,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.52286,
+      "EV_PER_DAY": 0.45
+     },
+     "OVERLAP_N": 12,
+     "INCREMENTAL_N": 2,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.06,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|cricket|moneyline|C0_050_060": {
+     "AUG": {
+      "N": 2,
+      "PNL": -0.11,
+      "ROI": -5.66,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.54,
+      "EV_PER_DAY": 0.07
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 2,
+      "PNL": -0.11,
+      "ROI": -5.66,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.54,
+      "EV_PER_DAY": 0.06
+     },
+     "OVERLAP_N": 1,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|cricket|ALL|C0_050_060": {
+     "AUG": {
+      "N": 2,
+      "PNL": -0.11,
+      "ROI": -5.66,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.54,
+      "EV_PER_DAY": 0.07
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 2,
+      "PNL": -0.11,
+      "ROI": -5.66,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.54,
+      "EV_PER_DAY": 0.06
+     },
+     "OVERLAP_N": 1,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|esports|moneyline|C0_050_060": {
+     "AUG": {
+      "N": 102,
+      "PNL": -31.51,
+      "ROI": -30.89,
+      "WINRATE": 36.27,
+      "AVG_PRICE": 0.52025,
+      "EV_PER_DAY": 3.64
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 102,
+      "PNL": -31.51,
+      "ROI": -30.89,
+      "WINRATE": 36.27,
+      "AVG_PRICE": 0.52025,
+      "EV_PER_DAY": 3.29
+     },
+     "OVERLAP_N": 82,
+     "INCREMENTAL_N": 20,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.65,
+     "LABEL": "N>=30"
+    },
+    "FULL_MATCH|esports|total|C0_050_060": {
+     "AUG": {
+      "N": 40,
+      "PNL": 2.95,
+      "ROI": 7.39,
+      "WINRATE": 55,
+      "AVG_PRICE": 0.518,
+      "EV_PER_DAY": 1.43
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 40,
+      "PNL": 2.95,
+      "ROI": 7.39,
+      "WINRATE": 55,
+      "AVG_PRICE": 0.518,
+      "EV_PER_DAY": 1.29
+     },
+     "OVERLAP_N": 34,
+     "INCREMENTAL_N": 6,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.19,
+     "LABEL": "N>=30"
+    },
+    "FULL_MATCH|esports|ALL|C0_050_060": {
+     "AUG": {
+      "N": 126,
+      "PNL": -26.08,
+      "ROI": -20.7,
+      "WINRATE": 41.27,
+      "AVG_PRICE": 0.51913,
+      "EV_PER_DAY": 4.5
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 126,
+      "PNL": -26.08,
+      "ROI": -20.7,
+      "WINRATE": 41.27,
+      "AVG_PRICE": 0.51913,
+      "EV_PER_DAY": 4.06
+     },
+     "OVERLAP_N": 100,
+     "INCREMENTAL_N": 26,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.84,
+     "LABEL": "N>=30"
+    },
+    "FULL_MATCH|soccer|moneyline|C0_050_060": {
+     "AUG": {
+      "N": 2,
+      "PNL": 1.65,
+      "ROI": 82.56,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.55,
+      "EV_PER_DAY": 0.07
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 2,
+      "PNL": 1.65,
+      "ROI": 82.56,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.55,
+      "EV_PER_DAY": 0.06
+     },
+     "OVERLAP_N": 1,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|soccer|spread|C0_050_060": {
+     "AUG": {
+      "N": 1,
+      "PNL": 0.94,
+      "ROI": 94.17,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.515,
+      "EV_PER_DAY": 0.04
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 1,
+      "PNL": 0.94,
+      "ROI": 94.17,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.515,
+      "EV_PER_DAY": 0.03
+     },
+     "OVERLAP_N": 1,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|soccer|total|C0_050_060": {
+     "AUG": {
+      "N": 3,
+      "PNL": 0.66,
+      "ROI": 22.03,
+      "WINRATE": 66.67,
+      "AVG_PRICE": 0.5333300000000001,
+      "EV_PER_DAY": 0.11
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 3,
+      "PNL": 0.66,
+      "ROI": 22.03,
+      "WINRATE": 66.67,
+      "AVG_PRICE": 0.5333300000000001,
+      "EV_PER_DAY": 0.1
+     },
+     "OVERLAP_N": 3,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|soccer|ALL|C0_050_060": {
+     "AUG": {
+      "N": 5,
+      "PNL": 2.31,
+      "ROI": 46.24,
+      "WINRATE": 80,
+      "AVG_PRICE": 0.54,
+      "EV_PER_DAY": 0.18
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 5,
+      "PNL": 2.31,
+      "ROI": 46.24,
+      "WINRATE": 80,
+      "AVG_PRICE": 0.54,
+      "EV_PER_DAY": 0.16
+     },
+     "OVERLAP_N": 4,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|table-tennis|moneyline|C0_050_060": {
+     "AUG": {
+      "N": 51,
+      "PNL": -5,
+      "ROI": -9.8,
+      "WINRATE": 45.1,
+      "AVG_PRICE": 0.5,
+      "EV_PER_DAY": 1.82
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 51,
+      "PNL": -5,
+      "ROI": -9.8,
+      "WINRATE": 45.1,
+      "AVG_PRICE": 0.5,
+      "EV_PER_DAY": 1.65
+     },
+     "OVERLAP_N": 51,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "N>=30"
+    },
+    "FULL_MATCH|table-tennis|ALL|C0_050_060": {
+     "AUG": {
+      "N": 51,
+      "PNL": -5,
+      "ROI": -9.8,
+      "WINRATE": 45.1,
+      "AVG_PRICE": 0.5,
+      "EV_PER_DAY": 1.82
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 51,
+      "PNL": -5,
+      "ROI": -9.8,
+      "WINRATE": 45.1,
+      "AVG_PRICE": 0.5,
+      "EV_PER_DAY": 1.65
+     },
+     "OVERLAP_N": 51,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "N>=30"
+    },
+    "FULL_MATCH|unknown|moneyline|C0_050_060": {
+     "AUG": {
+      "N": 170,
+      "PNL": 4.55,
+      "ROI": 2.68,
+      "WINRATE": 52.94,
+      "AVG_PRICE": 0.517,
+      "EV_PER_DAY": 6.07
+     },
+     "SEP": {
+      "N": 9,
+      "PNL": -1.63,
+      "ROI": -18.17,
+      "WINRATE": 44.44,
+      "AVG_PRICE": 0.54167,
+      "EV_PER_DAY": 3
+     },
+     "COMBINED": {
+      "N": 179,
+      "PNL": 2.92,
+      "ROI": 1.63,
+      "WINRATE": 52.51,
+      "AVG_PRICE": 0.51824,
+      "EV_PER_DAY": 5.77
+     },
+     "OVERLAP_N": 151,
+     "INCREMENTAL_N": 28,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.9,
+     "LABEL": "N>=30"
+    },
+    "FULL_MATCH|unknown|spread|C0_050_060": {
+     "AUG": {
+      "N": 8,
+      "PNL": 3.45,
+      "ROI": 43.11,
+      "WINRATE": 75,
+      "AVG_PRICE": 0.525,
+      "EV_PER_DAY": 0.29
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 8,
+      "PNL": 3.45,
+      "ROI": 43.11,
+      "WINRATE": 75,
+      "AVG_PRICE": 0.525,
+      "EV_PER_DAY": 0.26
+     },
+     "OVERLAP_N": 7,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|unknown|total|C0_050_060": {
+     "AUG": {
+      "N": 28,
+      "PNL": -2.74,
+      "ROI": -9.79,
+      "WINRATE": 46.43,
+      "AVG_PRICE": 0.5142899999999999,
+      "EV_PER_DAY": 1
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 28,
+      "PNL": -2.74,
+      "ROI": -9.79,
+      "WINRATE": 46.43,
+      "AVG_PRICE": 0.5142899999999999,
+      "EV_PER_DAY": 0.9
+     },
+     "OVERLAP_N": 27,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|unknown|ALL|C0_050_060": {
+     "AUG": {
+      "N": 184,
+      "PNL": 6.06,
+      "ROI": 3.29,
+      "WINRATE": 53.26,
+      "AVG_PRICE": 0.51712,
+      "EV_PER_DAY": 6.57
+     },
+     "SEP": {
+      "N": 9,
+      "PNL": -1.63,
+      "ROI": -18.17,
+      "WINRATE": 44.44,
+      "AVG_PRICE": 0.54167,
+      "EV_PER_DAY": 3
+     },
+     "COMBINED": {
+      "N": 193,
+      "PNL": 4.42,
+      "ROI": 2.29,
+      "WINRATE": 52.85,
+      "AVG_PRICE": 0.5182599999999999,
+      "EV_PER_DAY": 6.23
+     },
+     "OVERLAP_N": 163,
+     "INCREMENTAL_N": 30,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.97,
+     "LABEL": "N>=30"
+    }
+   },
+   "P40_50_FULL_MATCH": {
+    "AUG": {
+     "N": 222,
+     "PNL": -3.13,
+     "ROI": -1.41,
+     "WINRATE": 44.59,
+     "AVG_PRICE": 0.45518000000000003,
+     "EV_PER_DAY": 7.93
+    },
+    "SEP": {
+     "N": 8,
+     "PNL": -1.03,
+     "ROI": -12.93,
+     "WINRATE": 37.5,
+     "AVG_PRICE": 0.43125,
+     "EV_PER_DAY": 2.67
+    },
+    "COMBINED": {
+     "N": 230,
+     "PNL": -4.17,
+     "ROI": -1.81,
+     "WINRATE": 44.35,
+     "AVG_PRICE": 0.45435000000000003,
+     "EV_PER_DAY": 7.42
+    },
+    "OVERLAP_N": 111,
+    "INCREMENTAL_N": 119,
+    "INCREMENTAL_EVENTS_PER_DAY": 3.84
+   },
+   "P40_50_ALL_CLASSES": {
+    "AUG": {
+     "N": 368,
+     "PNL": -24.15,
+     "ROI": -6.56,
+     "WINRATE": 42.39,
+     "AVG_PRICE": 0.4567,
+     "EV_PER_DAY": 13.14
+    },
+    "SEP": {
+     "N": 10,
+     "PNL": -3.03,
+     "ROI": -30.34,
+     "WINRATE": 30,
+     "AVG_PRICE": 0.444,
+     "EV_PER_DAY": 3.33
+    },
+    "COMBINED": {
+     "N": 378,
+     "PNL": -27.19,
+     "ROI": -7.19,
+     "WINRATE": 42.06,
+     "AVG_PRICE": 0.45636,
+     "EV_PER_DAY": 12.19
+    },
+    "OVERLAP_N": 200,
+    "INCREMENTAL_N": 178,
+    "INCREMENTAL_EVENTS_PER_DAY": 5.74
+   },
+   "P40_50_ALL_CLASSES_BUCKETS": {
+    "0.40_0.42": {
+     "AUG": {
+      "N": 59,
+      "PNL": 0.12,
+      "ROI": 0.2,
+      "WINRATE": 40.68,
+      "AVG_PRICE": 0.40755,
+      "EV_PER_DAY": 2.11
+     },
+     "SEP": {
+      "N": 4,
+      "PNL": -1.56,
+      "ROI": -39.02,
+      "WINRATE": 25,
+      "AVG_PRICE": 0.41125,
+      "EV_PER_DAY": 1.33
+     },
+     "COMBINED": {
+      "N": 63,
+      "PNL": -1.44,
+      "ROI": -2.29,
+      "WINRATE": 39.68,
+      "AVG_PRICE": 0.40779000000000004,
+      "EV_PER_DAY": 2.03
+     },
+     "OVERLAP_N": 32,
+     "INCREMENTAL_N": 31,
+     "INCREMENTAL_EVENTS_PER_DAY": 1
+    },
+    "0.42_0.44": {
+     "AUG": {
+      "N": 65,
+      "PNL": -1.9,
+      "ROI": -2.92,
+      "WINRATE": 41.54,
+      "AVG_PRICE": 0.42762,
+      "EV_PER_DAY": 2.32
+     },
+     "SEP": {
+      "N": 1,
+      "PNL": 1.35,
+      "ROI": 135.29,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.425,
+      "EV_PER_DAY": 0.33
+     },
+     "COMBINED": {
+      "N": 66,
+      "PNL": -0.55,
+      "ROI": -0.83,
+      "WINRATE": 42.42,
+      "AVG_PRICE": 0.42757999999999996,
+      "EV_PER_DAY": 2.13
+     },
+     "OVERLAP_N": 29,
+     "INCREMENTAL_N": 37,
+     "INCREMENTAL_EVENTS_PER_DAY": 1.19
+    },
+    "0.44_0.46": {
+     "AUG": {
+      "N": 76,
+      "PNL": 15.67,
+      "ROI": 20.62,
+      "WINRATE": 53.95,
+      "AVG_PRICE": 0.44683999999999996,
+      "EV_PER_DAY": 2.71
+     },
+     "SEP": {
+      "N": 1,
+      "PNL": -1,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.455,
+      "EV_PER_DAY": 0.33
+     },
+     "COMBINED": {
+      "N": 77,
+      "PNL": 14.67,
+      "ROI": 19.05,
+      "WINRATE": 53.25,
+      "AVG_PRICE": 0.44695,
+      "EV_PER_DAY": 2.48
+     },
+     "OVERLAP_N": 32,
+     "INCREMENTAL_N": 45,
+     "INCREMENTAL_EVENTS_PER_DAY": 1.45
+    },
+    "0.46_0.48": {
+     "AUG": {
+      "N": 115,
+      "PNL": -16.52,
+      "ROI": -14.37,
+      "WINRATE": 40,
+      "AVG_PRICE": 0.4677,
+      "EV_PER_DAY": 4.11
+     },
+     "SEP": {
+      "N": 2,
+      "PNL": 0.17,
+      "ROI": 8.7,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.4625,
+      "EV_PER_DAY": 0.67
+     },
+     "COMBINED": {
+      "N": 117,
+      "PNL": -16.35,
+      "ROI": -13.97,
+      "WINRATE": 40.17,
+      "AVG_PRICE": 0.46761,
+      "EV_PER_DAY": 3.77
+     },
+     "OVERLAP_N": 69,
+     "INCREMENTAL_N": 48,
+     "INCREMENTAL_EVENTS_PER_DAY": 1.55
+    },
+    "0.48_0.50": {
+     "AUG": {
+      "N": 184,
+      "PNL": -16.19,
+      "ROI": -8.8,
+      "WINRATE": 44.57,
+      "AVG_PRICE": 0.48910000000000003,
+      "EV_PER_DAY": 6.57
+     },
+     "SEP": {
+      "N": 2,
+      "PNL": -2,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.495,
+      "EV_PER_DAY": 0.67
+     },
+     "COMBINED": {
+      "N": 186,
+      "PNL": -18.19,
+      "ROI": -9.78,
+      "WINRATE": 44.09,
+      "AVG_PRICE": 0.48916000000000004,
+      "EV_PER_DAY": 6
+     },
+     "OVERLAP_N": 135,
+     "INCREMENTAL_N": 51,
+     "INCREMENTAL_EVENTS_PER_DAY": 1.65
+    }
+   },
+   "P40_50_ALL_CLASSES_BY_SPORT": {
+    "baseball": {
+     "AUG": {
+      "N": 1,
+      "PNL": -1,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.495,
+      "EV_PER_DAY": 0.04
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 1,
+      "PNL": -1,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.495,
+      "EV_PER_DAY": 0.03
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "basketball": {
+     "AUG": {
+      "N": 15,
+      "PNL": 2.7,
+      "ROI": 17.97,
+      "WINRATE": 53.33,
+      "AVG_PRICE": 0.46032999999999996,
+      "EV_PER_DAY": 0.54
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 15,
+      "PNL": 2.7,
+      "ROI": 17.97,
+      "WINRATE": 53.33,
+      "AVG_PRICE": 0.46032999999999996,
+      "EV_PER_DAY": 0.48
+     },
+     "OVERLAP_N": 11,
+     "INCREMENTAL_N": 4,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.13,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "cricket": {
+     "AUG": {
+      "N": 10,
+      "PNL": -3.56,
+      "ROI": -35.6,
+      "WINRATE": 30,
+      "AVG_PRICE": 0.485,
+      "EV_PER_DAY": 0.36
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 10,
+      "PNL": -3.56,
+      "ROI": -35.6,
+      "WINRATE": 30,
+      "AVG_PRICE": 0.485,
+      "EV_PER_DAY": 0.32
+     },
+     "OVERLAP_N": 8,
+     "INCREMENTAL_N": 2,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.06,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "esports": {
+     "AUG": {
+      "N": 151,
+      "PNL": 12.39,
+      "ROI": 8.21,
+      "WINRATE": 49.01,
+      "AVG_PRICE": 0.45588999999999996,
+      "EV_PER_DAY": 5.39
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 151,
+      "PNL": 12.39,
+      "ROI": 8.21,
+      "WINRATE": 49.01,
+      "AVG_PRICE": 0.45588999999999996,
+      "EV_PER_DAY": 4.87
+     },
+     "OVERLAP_N": 79,
+     "INCREMENTAL_N": 72,
+     "INCREMENTAL_EVENTS_PER_DAY": 2.32,
+     "LABEL": "N>=30"
+    },
+    "mma": {
+     "AUG": {
+      "N": 4,
+      "PNL": -4,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.4275,
+      "EV_PER_DAY": 0.14
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 4,
+      "PNL": -4,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.4275,
+      "EV_PER_DAY": 0.13
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 4,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.13,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "soccer": {
+     "AUG": {
+      "N": 38,
+      "PNL": -8.99,
+      "ROI": -23.65,
+      "WINRATE": 34.21,
+      "AVG_PRICE": 0.45842,
+      "EV_PER_DAY": 1.36
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 38,
+      "PNL": -8.99,
+      "ROI": -23.65,
+      "WINRATE": 34.21,
+      "AVG_PRICE": 0.45842,
+      "EV_PER_DAY": 1.23
+     },
+     "OVERLAP_N": 25,
+     "INCREMENTAL_N": 13,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.42,
+     "LABEL": "N>=30"
+    },
+    "tennis": {
+     "AUG": {
+      "N": 2,
+      "PNL": -2,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.49,
+      "EV_PER_DAY": 0.07
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 2,
+      "PNL": -2,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.49,
+      "EV_PER_DAY": 0.06
+     },
+     "OVERLAP_N": 2,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "unknown": {
+     "AUG": {
+      "N": 147,
+      "PNL": -19.69,
+      "ROI": -13.4,
+      "WINRATE": 39.46,
+      "AVG_PRICE": 0.45487,
+      "EV_PER_DAY": 5.25
+     },
+     "SEP": {
+      "N": 10,
+      "PNL": -3.03,
+      "ROI": -30.34,
+      "WINRATE": 30,
+      "AVG_PRICE": 0.444,
+      "EV_PER_DAY": 3.33
+     },
+     "COMBINED": {
+      "N": 157,
+      "PNL": -22.73,
+      "ROI": -14.48,
+      "WINRATE": 38.85,
+      "AVG_PRICE": 0.45418000000000003,
+      "EV_PER_DAY": 5.06
+     },
+     "OVERLAP_N": 75,
+     "INCREMENTAL_N": 82,
+     "INCREMENTAL_EVENTS_PER_DAY": 2.65,
+     "LABEL": "N>=30"
+    }
+   },
+   "P40_50_FULL_MATCH_BUCKETS": {
+    "0.40_0.42": {
+     "AUG": {
+      "N": 40,
+      "PNL": 6.74,
+      "ROI": 16.85,
+      "WINRATE": 47.5,
+      "AVG_PRICE": 0.40775,
+      "EV_PER_DAY": 1.43
+     },
+     "SEP": {
+      "N": 4,
+      "PNL": -1.56,
+      "ROI": -39.02,
+      "WINRATE": 25,
+      "AVG_PRICE": 0.41125,
+      "EV_PER_DAY": 1.33
+     },
+     "COMBINED": {
+      "N": 44,
+      "PNL": 5.18,
+      "ROI": 11.77,
+      "WINRATE": 45.45,
+      "AVG_PRICE": 0.40807,
+      "EV_PER_DAY": 1.42
+     },
+     "OVERLAP_N": 21,
+     "INCREMENTAL_N": 23,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.74
+    },
+    "0.42_0.44": {
+     "AUG": {
+      "N": 33,
+      "PNL": -2.68,
+      "ROI": -8.13,
+      "WINRATE": 39.39,
+      "AVG_PRICE": 0.42848,
+      "EV_PER_DAY": 1.18
+     },
+     "SEP": {
+      "N": 1,
+      "PNL": 1.35,
+      "ROI": 135.29,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.425,
+      "EV_PER_DAY": 0.33
+     },
+     "COMBINED": {
+      "N": 34,
+      "PNL": -1.33,
+      "ROI": -3.91,
+      "WINRATE": 41.18,
+      "AVG_PRICE": 0.42838,
+      "EV_PER_DAY": 1.1
+     },
+     "OVERLAP_N": 12,
+     "INCREMENTAL_N": 22,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.71
+    },
+    "0.44_0.46": {
+     "AUG": {
+      "N": 44,
+      "PNL": 5.29,
+      "ROI": 12.03,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.4467,
+      "EV_PER_DAY": 1.57
+     },
+     "SEP": {
+      "N": 1,
+      "PNL": -1,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.455,
+      "EV_PER_DAY": 0.33
+     },
+     "COMBINED": {
+      "N": 45,
+      "PNL": 4.29,
+      "ROI": 9.54,
+      "WINRATE": 48.89,
+      "AVG_PRICE": 0.44689,
+      "EV_PER_DAY": 1.45
+     },
+     "OVERLAP_N": 15,
+     "INCREMENTAL_N": 30,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.97
+    },
+    "0.46_0.48": {
+     "AUG": {
+      "N": 63,
+      "PNL": -9.53,
+      "ROI": -15.12,
+      "WINRATE": 39.68,
+      "AVG_PRICE": 0.46746,
+      "EV_PER_DAY": 2.25
+     },
+     "SEP": {
+      "N": 2,
+      "PNL": 0.17,
+      "ROI": 8.7,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.4625,
+      "EV_PER_DAY": 0.67
+     },
+     "COMBINED": {
+      "N": 65,
+      "PNL": -9.35,
+      "ROI": -14.39,
+      "WINRATE": 40,
+      "AVG_PRICE": 0.46731,
+      "EV_PER_DAY": 2.1
+     },
+     "OVERLAP_N": 34,
+     "INCREMENTAL_N": 31,
+     "INCREMENTAL_EVENTS_PER_DAY": 1
+    },
+    "0.48_0.50": {
+     "AUG": {
+      "N": 92,
+      "PNL": -6.25,
+      "ROI": -6.8,
+      "WINRATE": 45.65,
+      "AVG_PRICE": 0.48918,
+      "EV_PER_DAY": 3.29
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 92,
+      "PNL": -6.25,
+      "ROI": -6.8,
+      "WINRATE": 45.65,
+      "AVG_PRICE": 0.48918,
+      "EV_PER_DAY": 2.97
+     },
+     "OVERLAP_N": 62,
+     "INCREMENTAL_N": 30,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.97
+    }
+   },
+   "P40_50_BY_CLASS_SPORT_TYPE": {
+    "FULL_MATCH|basketball|spread": {
+     "AUG": {
+      "N": 8,
+      "PNL": -1.38,
+      "ROI": -17.25,
+      "WINRATE": 37.5,
+      "AVG_PRICE": 0.46687,
+      "EV_PER_DAY": 0.29
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 8,
+      "PNL": -1.38,
+      "ROI": -17.25,
+      "WINRATE": 37.5,
+      "AVG_PRICE": 0.46687,
+      "EV_PER_DAY": 0.26
+     },
+     "OVERLAP_N": 5,
+     "INCREMENTAL_N": 3,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.1,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|basketball|total": {
+     "AUG": {
+      "N": 13,
+      "PNL": 0.22,
+      "ROI": 1.67,
+      "WINRATE": 46.15,
+      "AVG_PRICE": 0.46576999999999996,
+      "EV_PER_DAY": 0.46
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 13,
+      "PNL": 0.22,
+      "ROI": 1.67,
+      "WINRATE": 46.15,
+      "AVG_PRICE": 0.46576999999999996,
+      "EV_PER_DAY": 0.42
+     },
+     "OVERLAP_N": 11,
+     "INCREMENTAL_N": 2,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.06,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|cricket|moneyline": {
+     "AUG": {
+      "N": 1,
+      "PNL": 1.22,
+      "ROI": 122.22,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.45,
+      "EV_PER_DAY": 0.04
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 1,
+      "PNL": 1.22,
+      "ROI": 122.22,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.45,
+      "EV_PER_DAY": 0.03
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|esports|moneyline": {
+     "AUG": {
+      "N": 72,
+      "PNL": 12.71,
+      "ROI": 17.66,
+      "WINRATE": 52.78,
+      "AVG_PRICE": 0.44895999999999997,
+      "EV_PER_DAY": 2.57
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 72,
+      "PNL": 12.71,
+      "ROI": 17.66,
+      "WINRATE": 52.78,
+      "AVG_PRICE": 0.44895999999999997,
+      "EV_PER_DAY": 2.32
+     },
+     "OVERLAP_N": 46,
+     "INCREMENTAL_N": 26,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.84,
+     "LABEL": "N>=30"
+    },
+    "FULL_MATCH|esports|total": {
+     "AUG": {
+      "N": 47,
+      "PNL": -7.59,
+      "ROI": -16.14,
+      "WINRATE": 38.3,
+      "AVG_PRICE": 0.46319,
+      "EV_PER_DAY": 1.68
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 47,
+      "PNL": -7.59,
+      "ROI": -16.14,
+      "WINRATE": 38.3,
+      "AVG_PRICE": 0.46319,
+      "EV_PER_DAY": 1.52
+     },
+     "OVERLAP_N": 14,
+     "INCREMENTAL_N": 33,
+     "INCREMENTAL_EVENTS_PER_DAY": 1.06,
+     "LABEL": "N>=30"
+    },
+    "FULL_MATCH|mma|total": {
+     "AUG": {
+      "N": 1,
+      "PNL": 1.02,
+      "ROI": 102.02,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.495,
+      "EV_PER_DAY": 0.04
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 1,
+      "PNL": 1.02,
+      "ROI": 102.02,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.495,
+      "EV_PER_DAY": 0.03
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|soccer|moneyline": {
+     "AUG": {
+      "N": 2,
+      "PNL": -2,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.45,
+      "EV_PER_DAY": 0.07
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 2,
+      "PNL": -2,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.45,
+      "EV_PER_DAY": 0.06
+     },
+     "OVERLAP_N": 1,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|soccer|spread": {
+     "AUG": {
+      "N": 1,
+      "PNL": -1,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.475,
+      "EV_PER_DAY": 0.04
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 1,
+      "PNL": -1,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.475,
+      "EV_PER_DAY": 0.03
+     },
+     "OVERLAP_N": 1,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|soccer|total": {
+     "AUG": {
+      "N": 2,
+      "PNL": 0.06,
+      "ROI": 3.09,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.4825,
+      "EV_PER_DAY": 0.07
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 2,
+      "PNL": 0.06,
+      "ROI": 3.09,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.4825,
+      "EV_PER_DAY": 0.06
+     },
+     "OVERLAP_N": 2,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|unknown|moneyline": {
+     "AUG": {
+      "N": 79,
+      "PNL": -6.11,
+      "ROI": -7.73,
+      "WINRATE": 41.77,
+      "AVG_PRICE": 0.45297000000000004,
+      "EV_PER_DAY": 2.82
+     },
+     "SEP": {
+      "N": 7,
+      "PNL": -2.21,
+      "ROI": -31.54,
+      "WINRATE": 28.57,
+      "AVG_PRICE": 0.42713999999999996,
+      "EV_PER_DAY": 2.33
+     },
+     "COMBINED": {
+      "N": 86,
+      "PNL": -8.31,
+      "ROI": -9.67,
+      "WINRATE": 40.7,
+      "AVG_PRICE": 0.45087,
+      "EV_PER_DAY": 2.77
+     },
+     "OVERLAP_N": 36,
+     "INCREMENTAL_N": 50,
+     "INCREMENTAL_EVENTS_PER_DAY": 1.61,
+     "LABEL": "N>=30"
+    },
+    "FULL_MATCH|unknown|spread": {
+     "AUG": {
+      "N": 3,
+      "PNL": -0.96,
+      "ROI": -31.97,
+      "WINRATE": 33.33,
+      "AVG_PRICE": 0.48833,
+      "EV_PER_DAY": 0.11
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 3,
+      "PNL": -0.96,
+      "ROI": -31.97,
+      "WINRATE": 33.33,
+      "AVG_PRICE": 0.48833,
+      "EV_PER_DAY": 0.1
+     },
+     "OVERLAP_N": 3,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FULL_MATCH|unknown|total": {
+     "AUG": {
+      "N": 21,
+      "PNL": -6.22,
+      "ROI": -29.61,
+      "WINRATE": 33.33,
+      "AVG_PRICE": 0.475,
+      "EV_PER_DAY": 0.75
+     },
+     "SEP": {
+      "N": 1,
+      "PNL": 1.17,
+      "ROI": 117.39,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.46,
+      "EV_PER_DAY": 0.33
+     },
+     "COMBINED": {
+      "N": 22,
+      "PNL": -5.05,
+      "ROI": -22.93,
+      "WINRATE": 36.36,
+      "AVG_PRICE": 0.47432,
+      "EV_PER_DAY": 0.71
+     },
+     "OVERLAP_N": 11,
+     "INCREMENTAL_N": 11,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.35,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FIRST_HALF|soccer|moneyline": {
+     "AUG": {
+      "N": 3,
+      "PNL": -3,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.48667,
+      "EV_PER_DAY": 0.11
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 3,
+      "PNL": -3,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.48667,
+      "EV_PER_DAY": 0.1
+     },
+     "OVERLAP_N": 3,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FIRST_HALF|soccer|total": {
+     "AUG": {
+      "N": 5,
+      "PNL": -0.92,
+      "ROI": -18.36,
+      "WINRATE": 40,
+      "AVG_PRICE": 0.485,
+      "EV_PER_DAY": 0.18
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 5,
+      "PNL": -0.92,
+      "ROI": -18.36,
+      "WINRATE": 40,
+      "AVG_PRICE": 0.485,
+      "EV_PER_DAY": 0.16
+     },
+     "OVERLAP_N": 5,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FIRST_HALF|unknown|moneyline": {
+     "AUG": {
+      "N": 7,
+      "PNL": -4.94,
+      "ROI": -70.54,
+      "WINRATE": 14.29,
+      "AVG_PRICE": 0.45286000000000004,
+      "EV_PER_DAY": 0.25
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 7,
+      "PNL": -4.94,
+      "ROI": -70.54,
+      "WINRATE": 14.29,
+      "AVG_PRICE": 0.45286000000000004,
+      "EV_PER_DAY": 0.23
+     },
+     "OVERLAP_N": 4,
+     "INCREMENTAL_N": 3,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.1,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "FIRST_HALF|unknown|total": {
+     "AUG": {
+      "N": 8,
+      "PNL": -3.85,
+      "ROI": -48.17,
+      "WINRATE": 25,
+      "AVG_PRICE": 0.46563,
+      "EV_PER_DAY": 0.29
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 8,
+      "PNL": -3.85,
+      "ROI": -48.17,
+      "WINRATE": 25,
+      "AVG_PRICE": 0.46563,
+      "EV_PER_DAY": 0.26
+     },
+     "OVERLAP_N": 8,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|soccer|moneyline": {
+     "AUG": {
+      "N": 5,
+      "PNL": 1.55,
+      "ROI": 31.02,
+      "WINRATE": 60,
+      "AVG_PRICE": 0.468,
+      "EV_PER_DAY": 0.18
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 5,
+      "PNL": 1.55,
+      "ROI": 31.02,
+      "WINRATE": 60,
+      "AVG_PRICE": 0.468,
+      "EV_PER_DAY": 0.16
+     },
+     "OVERLAP_N": 3,
+     "INCREMENTAL_N": 2,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.06,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|soccer|total": {
+     "AUG": {
+      "N": 7,
+      "PNL": -0.22,
+      "ROI": -3.16,
+      "WINRATE": 42.86,
+      "AVG_PRICE": 0.44571,
+      "EV_PER_DAY": 0.25
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 7,
+      "PNL": -0.22,
+      "ROI": -3.16,
+      "WINRATE": 42.86,
+      "AVG_PRICE": 0.44571,
+      "EV_PER_DAY": 0.23
+     },
+     "OVERLAP_N": 6,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|soccer|other": {
+     "AUG": {
+      "N": 2,
+      "PNL": -2,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.4575,
+      "EV_PER_DAY": 0.07
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 2,
+      "PNL": -2,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.4575,
+      "EV_PER_DAY": 0.06
+     },
+     "OVERLAP_N": 2,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|unknown|moneyline": {
+     "AUG": {
+      "N": 9,
+      "PNL": -4.29,
+      "ROI": -47.71,
+      "WINRATE": 22.22,
+      "AVG_PRICE": 0.45277999999999996,
+      "EV_PER_DAY": 0.32
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 9,
+      "PNL": -4.29,
+      "ROI": -47.71,
+      "WINRATE": 22.22,
+      "AVG_PRICE": 0.45277999999999996,
+      "EV_PER_DAY": 0.29
+     },
+     "OVERLAP_N": 5,
+     "INCREMENTAL_N": 4,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.13,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|unknown|total": {
+     "AUG": {
+      "N": 8,
+      "PNL": -5.78,
+      "ROI": -72.22,
+      "WINRATE": 12.5,
+      "AVG_PRICE": 0.46563,
+      "EV_PER_DAY": 0.29
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 8,
+      "PNL": -5.78,
+      "ROI": -72.22,
+      "WINRATE": 12.5,
+      "AVG_PRICE": 0.46563,
+      "EV_PER_DAY": 0.26
+     },
+     "OVERLAP_N": 8,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "SECOND_HALF|unknown|other": {
+     "AUG": {
+      "N": 1,
+      "PNL": 1.3,
+      "ROI": 129.89,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.435,
+      "EV_PER_DAY": 0.04
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 1,
+      "PNL": 1.3,
+      "ROI": 129.89,
+      "WINRATE": 100,
+      "AVG_PRICE": 0.435,
+      "EV_PER_DAY": 0.03
+     },
+     "OVERLAP_N": 1,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "EXACT_SCORE|soccer|other": {
+     "AUG": {
+      "N": 4,
+      "PNL": -1.62,
+      "ROI": -40.48,
+      "WINRATE": 25,
+      "AVG_PRICE": 0.43375,
+      "EV_PER_DAY": 0.14
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 4,
+      "PNL": -1.62,
+      "ROI": -40.48,
+      "WINRATE": 25,
+      "AVG_PRICE": 0.43375,
+      "EV_PER_DAY": 0.13
+     },
+     "OVERLAP_N": 1,
+     "INCREMENTAL_N": 3,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.1,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "EXACT_SCORE|unknown|other": {
+     "AUG": {
+      "N": 5,
+      "PNL": -5,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.428,
+      "EV_PER_DAY": 0.18
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 5,
+      "PNL": -5,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.428,
+      "EV_PER_DAY": 0.16
+     },
+     "OVERLAP_N": 3,
+     "INCREMENTAL_N": 2,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.06,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "OTHER|baseball|other": {
+     "AUG": {
+      "N": 1,
+      "PNL": -1,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.495,
+      "EV_PER_DAY": 0.04
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 1,
+      "PNL": -1,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.495,
+      "EV_PER_DAY": 0.03
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "OTHER|basketball|other": {
+     "AUG": {
+      "N": 2,
+      "PNL": 0.27,
+      "ROI": 13.64,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.4575,
+      "EV_PER_DAY": 0.07
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 2,
+      "PNL": 0.27,
+      "ROI": 13.64,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.4575,
+      "EV_PER_DAY": 0.06
+     },
+     "OVERLAP_N": 2,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "OTHER|cricket|other": {
+     "AUG": {
+      "N": 9,
+      "PNL": -4.78,
+      "ROI": -53.13,
+      "WINRATE": 22.22,
+      "AVG_PRICE": 0.48889,
+      "EV_PER_DAY": 0.32
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 9,
+      "PNL": -4.78,
+      "ROI": -53.13,
+      "WINRATE": 22.22,
+      "AVG_PRICE": 0.48889,
+      "EV_PER_DAY": 0.29
+     },
+     "OVERLAP_N": 8,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "OTHER|esports|spread": {
+     "AUG": {
+      "N": 32,
+      "PNL": 3.67,
+      "ROI": 11.46,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.46016,
+      "EV_PER_DAY": 1.14
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 32,
+      "PNL": 3.67,
+      "ROI": 11.46,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.46016,
+      "EV_PER_DAY": 1.03
+     },
+     "OVERLAP_N": 15,
+     "INCREMENTAL_N": 17,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.55,
+     "LABEL": "N>=30"
+    },
+    "OTHER|esports|total": {
+     "AUG": {
+      "N": 15,
+      "PNL": 6,
+      "ROI": 39.98,
+      "WINRATE": 66.67,
+      "AVG_PRICE": 0.47763,
+      "EV_PER_DAY": 0.54
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 15,
+      "PNL": 6,
+      "ROI": 39.98,
+      "WINRATE": 66.67,
+      "AVG_PRICE": 0.47763,
+      "EV_PER_DAY": 0.48
+     },
+     "OVERLAP_N": 7,
+     "INCREMENTAL_N": 8,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.26,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "OTHER|esports|other": {
+     "AUG": {
+      "N": 29,
+      "PNL": 7.16,
+      "ROI": 24.71,
+      "WINRATE": 58.62,
+      "AVG_PRICE": 0.46655,
+      "EV_PER_DAY": 1.04
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 29,
+      "PNL": 7.16,
+      "ROI": 24.71,
+      "WINRATE": 58.62,
+      "AVG_PRICE": 0.46655,
+      "EV_PER_DAY": 0.94
+     },
+     "OVERLAP_N": 21,
+     "INCREMENTAL_N": 8,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.26,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "OTHER|mma|other": {
+     "AUG": {
+      "N": 4,
+      "PNL": -4,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.4275,
+      "EV_PER_DAY": 0.14
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 4,
+      "PNL": -4,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.4275,
+      "EV_PER_DAY": 0.13
+     },
+     "OVERLAP_N": 0,
+     "INCREMENTAL_N": 4,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.13,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "OTHER|soccer|total": {
+     "AUG": {
+      "N": 13,
+      "PNL": -4.29,
+      "ROI": -32.98,
+      "WINRATE": 30.77,
+      "AVG_PRICE": 0.46576999999999996,
+      "EV_PER_DAY": 0.46
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 13,
+      "PNL": -4.29,
+      "ROI": -32.98,
+      "WINRATE": 30.77,
+      "AVG_PRICE": 0.46576999999999996,
+      "EV_PER_DAY": 0.42
+     },
+     "OVERLAP_N": 9,
+     "INCREMENTAL_N": 4,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.13,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "OTHER|soccer|other": {
+     "AUG": {
+      "N": 12,
+      "PNL": 1.14,
+      "ROI": 9.51,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.4725,
+      "EV_PER_DAY": 0.43
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 12,
+      "PNL": 1.14,
+      "ROI": 9.51,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.4725,
+      "EV_PER_DAY": 0.39
+     },
+     "OVERLAP_N": 9,
+     "INCREMENTAL_N": 3,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.1,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "OTHER|tennis|total": {
+     "AUG": {
+      "N": 2,
+      "PNL": -2,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.49,
+      "EV_PER_DAY": 0.07
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 2,
+      "PNL": -2,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.49,
+      "EV_PER_DAY": 0.06
+     },
+     "OVERLAP_N": 2,
+     "INCREMENTAL_N": 0,
+     "INCREMENTAL_EVENTS_PER_DAY": 0,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "OTHER|unknown|spread": {
+     "AUG": {
+      "N": 12,
+      "PNL": 0.53,
+      "ROI": 4.45,
+      "WINRATE": 50,
+      "AVG_PRICE": 0.47879,
+      "EV_PER_DAY": 0.43
+     },
+     "SEP": {
+      "N": 1,
+      "PNL": -1,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.495,
+      "EV_PER_DAY": 0.33
+     },
+     "COMBINED": {
+      "N": 13,
+      "PNL": -0.47,
+      "ROI": -3.59,
+      "WINRATE": 46.15,
+      "AVG_PRICE": 0.48004,
+      "EV_PER_DAY": 0.42
+     },
+     "OVERLAP_N": 9,
+     "INCREMENTAL_N": 4,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.13,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "OTHER|unknown|total": {
+     "AUG": {
+      "N": 9,
+      "PNL": -2.01,
+      "ROI": -22.34,
+      "WINRATE": 33.33,
+      "AVG_PRICE": 0.44667,
+      "EV_PER_DAY": 0.32
+     },
+     "SEP": {
+      "N": 0,
+      "PNL": 0,
+      "ROI": 0,
+      "WINRATE": 0,
+      "AVG_PRICE": 0,
+      "EV_PER_DAY": 0
+     },
+     "COMBINED": {
+      "N": 9,
+      "PNL": -2.01,
+      "ROI": -22.34,
+      "WINRATE": 33.33,
+      "AVG_PRICE": 0.44667,
+      "EV_PER_DAY": 0.29
+     },
+     "OVERLAP_N": 8,
+     "INCREMENTAL_N": 1,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.03,
+     "LABEL": "SMALL_SAMPLE"
+    },
+    "OTHER|unknown|other": {
+     "AUG": {
+      "N": 24,
+      "PNL": 8.46,
+      "ROI": 35.26,
+      "WINRATE": 62.5,
+      "AVG_PRICE": 0.45792,
+      "EV_PER_DAY": 0.86
+     },
+     "SEP": {
+      "N": 1,
+      "PNL": -1,
+      "ROI": -100,
+      "WINRATE": 0,
+      "AVG_PRICE": 0.495,
+      "EV_PER_DAY": 0.33
+     },
+     "COMBINED": {
+      "N": 25,
+      "PNL": 7.46,
+      "ROI": 29.85,
+      "WINRATE": 60,
+      "AVG_PRICE": 0.4594,
+      "EV_PER_DAY": 0.81
+     },
+     "OVERLAP_N": 18,
+     "INCREMENTAL_N": 7,
+     "INCREMENTAL_EVENTS_PER_DAY": 0.23,
+     "LABEL": "SMALL_SAMPLE"
+    }
+   }
+  }
+ }
+}
