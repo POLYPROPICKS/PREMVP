@@ -294,6 +294,7 @@
   function fmtPct(v) { return v === null || v === undefined ? "—" : v.toFixed(2) + "%"; }
   function fmtPctFrac(v) { return v === null || v === undefined ? "—" : (v * 100).toFixed(2) + "%"; }
   function fmtN(v) { return v === null || v === undefined ? "—" : String(v); }
+  function fmtUsd(v) { return v === null || v === undefined ? "—" : (v >= 0 ? "+" : "") + "$" + v.toFixed(2); }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
 
   // ==================== OVERVIEW ====================
@@ -312,7 +313,7 @@
     ["Queue (latest)", latestLiveDay ? fmtN(latestLiveDay.queue.total) : "—"],
     ["Orders (latest)", latestLiveDay ? fmtN(latestLiveDay.orders.total) : "—"],
     ["Settled count", latestLiveDay ? (latestLiveDay.settled.status === "AVAILABLE" ? fmtN(latestLiveDay.settled.count) : "PENDING") : "PENDING", "muted"],
-    ["Realized live P&L", latestLiveDay && latestLiveDay.settled.realized_pnl_u != null ? fmtU(latestLiveDay.settled.realized_pnl_u) : "PENDING / NOT SETTLED", "muted"],
+    ["Realized live P&L", latestLiveDay && latestLiveDay.settled.realized_pnl_usd != null ? fmtUsd(latestLiveDay.settled.realized_pnl_usd) : "PENDING / NOT SETTLED", "muted"],
   ];
   document.getElementById("kpis").innerHTML = kpis.map(function (k) {
     return '<div class="kpi"><div class="label">' + esc(k[0]) + '</div><div class="value' + (k[2] ? " " + k[2] : "") + '">' + esc(k[1]) + '</div></div>';
@@ -443,33 +444,36 @@
 
   // ==================== LIVE tab (Section C) ====================
   (function () {
-    var stages = [
-      ["SOURCE / PLANNING", "—"],
-      ["RESERVATION", null],
-      ["QUEUE", null],
-      ["EXECUTION", null],
-      ["ORDER", null],
-      ["FILLED", null],
-      ["SETTLED", null],
-    ];
     var day = latestLiveDay;
-    var html = "";
-    if (!LIVE || LIVE.status === "STOPPED") {
+    var html = '<div class="note">Current policy: <b>' + esc(meta.livePolicyModel) + '</b></div>';
+    if (!LIVE || LIVE.status === "STOPPED" && !day) {
       html += '<div class="banner">' + esc((LIVE && LIVE.stopReason) || "LIVE_RUNTIME_DATA.js has not been generated yet") +
-        '. Run <code>npm run research-live:modeling-dashboard-refresh</code> from an environment with production SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY to populate this panel. Fail-closed by design — never silently falls back to another project.</div>';
+        '. Run <code>npm run research-live:modeling-dashboard-refresh</code> from an environment with approved production SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (must resolve to project ref <code>nbnldzfsxffztsfrrxqy</code>) to populate this panel. Fail-closed by design — never silently falls back to another project, including the research clone.</div>';
     } else if (!day) {
-      html += '<div class="banner">No live day aggregate captured yet.</div>';
+      html += '<div class="banner">No live plan-date aggregate captured yet.</div>';
     } else {
-      html += '<div class="note">Minsk plan date: <b>' + esc(day.minskDate) + '</b> · generated ' + esc(day.generatedAt) + '</div>';
+      if (LIVE.status === "STOPPED" && LIVE.lastRefreshAttempt) {
+        html += '<div class="banner">Most recent refresh attempt could not reach production: ' + esc(LIVE.lastRefreshAttempt.stopReason) +
+          ' (at ' + esc(LIVE.lastRefreshAttempt.at) + '). The snapshot below is preserved, not overwritten.</div>';
+      }
+      var prov = day.provenance;
+      html += '<div class="note">Plan date: <b>' + esc(day.minskDate) + '</b>' +
+        (prov ? ' &middot; source: <b>' + esc(prov.source) + '</b> &middot; production ref: <code>' + esc(prov.productionProjectRef) + '</code> &middot; production writes: ' + prov.productionWrites : '') +
+        ' &middot; generated ' + esc(day.generatedAt) + '</div>';
       html += '<div class="funnel" style="margin-top:10px">' +
         stage("Reservations", day.reservations.total) + arrow() +
-        stage("Reserved waiting", day.reservations.reservedWaiting) + arrow() +
-        stage("Queued (reservation)", day.reservations.queued) + arrow() +
+        stage("RESERVED", day.reservations.reserved) + arrow() +
+        stage("QUEUED", day.reservations.queued) + arrow() +
         stage("Queue rows", day.queue.total) + arrow() +
-        stage("Queue READY", day.queue.ready) + arrow() +
-        stage("Queue EXECUTED", day.queue.executed) + arrow() +
+        stage("READY", day.queue.ready) + arrow() +
+        stage("EXECUTED", day.queue.executed) + arrow() +
+        stage("EXPIRED", day.queue.expired) +
+        '</div>';
+      html += '<div class="funnel" style="margin-top:8px">' +
         stage("Order events", day.orders.total) + arrow() +
-        stage("Orders accepted", day.orders.accepted) +
+        stage("CLOB orders", day.orders.clobOrderN) + arrow() +
+        stage("accepted_open", day.orders.acceptedOpenN) + arrow() +
+        stage("Submitted stake USD", day.orders.submittedStakeUsd != null ? "$" + day.orders.submittedStakeUsd.toFixed(2) : "—") +
         '</div>';
     }
     function stage(label, n) {
@@ -480,13 +484,13 @@
 
     var settledHtml;
     if (!day) {
-      settledHtml = '<div class="banner">PENDING / NOT SETTLED — no live day captured yet.</div>';
+      settledHtml = '<div class="banner">PENDING / NOT SETTLED — no live plan-date captured yet.</div>';
     } else if (day.settled.status === "AVAILABLE") {
-      settledHtml = '<div class="note">Settled count: <b>' + fmtN(day.settled.count) + '</b> (source: ' + esc(day.settled.source) + ')</div>' +
-        '<div class="note">Realized live P&amp;L: <b>' + (day.settled.realized_pnl_u != null ? fmtU(day.settled.realized_pnl_u) : "PENDING (authoritative sum not yet wired)") + '</b></div>' +
+      settledHtml = '<div class="note">Settled N (settled_at IS NOT NULL): <b>' + fmtN(day.settled.count) + '</b> (source: ' + esc(day.settled.source) + ')</div>' +
+        '<div class="note">Realized live P&amp;L (sum real_pnl, settled rows only): <b>' + (day.settled.realized_pnl_usd != null ? fmtUsd(day.settled.realized_pnl_usd) : "PENDING") + '</b></div>' +
         '<div class="note">' + esc(day.settled.note) + '</div>';
     } else {
-      settledHtml = '<div class="banner">PENDING / NOT SETTLED — ' + esc(day.settled.note) + ' Realized P&amp;L is never inferred from potential payout.</div>';
+      settledHtml = '<div class="banner">Settlement status: <b>PENDING / NOT SETTLED</b> — ' + esc(day.settled.note) + '</div>';
     }
     document.getElementById("liveSettled").innerHTML = settledHtml;
   })();
