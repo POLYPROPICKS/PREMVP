@@ -13,6 +13,7 @@ import {
   EXECUTABLE_STAKE_USD,
   QUEUE_MAX_ENTRY_PRICE,
   QUEUE_MAX_STAKE_USD,
+  mapQueueRowToIrelandCandidate,
   queueMoneyEnvelopeViolation,
   validateOrderEventAgainstQueueRow,
   type EventExecutionQueueRow,
@@ -185,5 +186,51 @@ test("QME-9: a Queue row itself above $4.00 or 0.62 fails callback validation cl
   assert.deepEqual(
     validateOrderEventAgainstQueueRow(submission({ submitted_price: 0.5, submitted_size: 6 }), queueRow({}, 0.7)),
     { ok: false, reason: "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING" }
+  );
+});
+
+// ── SET_LIVE_QUEUE_EXECUTION_PRICE_CAP_TO_062_V1 ────────────────────────────
+// Founder decision 2026-09-21: for normal live Queue rows, max_entry_price is
+// a flat QUEUE_MAX_ENTRY_PRICE (0.62), never the raw candidate entry_price_num
+// (ae6e944 only added the 0.62 ceiling *guard* -- the writer itself still
+// copied entry_price_num verbatim, so a 0.50 candidate reached Ireland with
+// max_entry_price=0.50, one PRICE_ABOVE_CAP retry away from failing at 0.51).
+
+test("QME-10: candidate entry_price_num=0.50 -> Queue max_entry_price=0.62 (flat cap, not the raw price)", async () => {
+  const repo = repoFor(reservation(0.5));
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  assert.equal(result.queued_count, 1, JSON.stringify(result.outcomes));
+  const diag = repo.queueRows[0].diagnostics as Record<string, unknown>;
+  assert.equal(diag.max_entry_price, 0.62);
+});
+
+test("QME-11: candidate entry_price_num=0.45 -> Queue max_entry_price=0.62 (flat cap, not the raw price)", async () => {
+  const repo = repoFor(reservation(0.45));
+  const result = await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  assert.equal(result.queued_count, 1, JSON.stringify(result.outcomes));
+  const diag = repo.queueRows[0].diagnostics as Record<string, unknown>;
+  assert.equal(diag.max_entry_price, 0.62);
+});
+
+test("QME-12: the original candidate entry_price_num is preserved separately from the execution cap", async () => {
+  const repo = repoFor(reservation(0.5));
+  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  const diag = repo.queueRows[0].diagnostics as Record<string, unknown>;
+  assert.equal(diag.max_entry_price, 0.62);
+  assert.equal(diag.entry_price, 0.5, "original entry_price_num must survive alongside the 0.62 execution cap");
+});
+
+test("QME-13: the Ireland projection carries price_cap=0.62 for a sub-0.62 candidate", async () => {
+  const repo = repoFor(reservation(0.5));
+  await runEventRebalance(IN_WINDOW_MS, { write: true }, { repo });
+  const candidate = mapQueueRowToIrelandCandidate(repo.queueRows[0], IN_WINDOW_MS);
+  assert.equal(candidate.max_entry_price, 0.62);
+  assert.equal(candidate.price_cap, 0.62);
+});
+
+test("QME-14: callback at 0.61 (within the 0.62 cap) is accepted", () => {
+  assert.deepEqual(
+    validateOrderEventAgainstQueueRow(submission({ submitted_price: 0.61, submitted_size: 6.55 }), queueRow()),
+    { ok: true }
   );
 });

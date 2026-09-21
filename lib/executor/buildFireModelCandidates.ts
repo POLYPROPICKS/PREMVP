@@ -20,7 +20,7 @@ import {
   getStrictDedupKeyForExportRow,
   type ExportRow,
 } from "@/lib/modeling/generatedSignalPairsExportContract";
-import { EXECUTABLE_STAKE_USD } from "./executorQueueTypes";
+import { EXECUTABLE_STAKE_USD, QUEUE_MAX_ENTRY_PRICE } from "./executorQueueTypes";
 import {
   candidateAnchorInput,
   fullMatchAnchorDecision,
@@ -2174,7 +2174,11 @@ export async function buildFireModelCandidates(
     let stakeUsd = computeStake(baseStake, smartMoney, isEsport);
     if (stakeUsd <= 0) { rejectReason("ZERO_STAKE"); continue; }
 
-    const maxEntryPrice = Math.min(Math.round((entryPrice + 0.04) * 1000) / 1000, 0.99);
+    // Founder-authorized 2026-09-21: normal live Queue execution cap is a flat
+    // QUEUE_MAX_ENTRY_PRICE (0.62), never a per-candidate entryPrice+buffer
+    // computation. The original entryPrice is preserved separately below
+    // under diagnostics.entry_price for analytics.
+    const maxEntryPrice = QUEUE_MAX_ENTRY_PRICE;
     const executorAction = computeExecutorAction(score, coverage, hoursToStart, tier);
 
     const { sport, family } = inferSportAndFamily(strategicScope);
