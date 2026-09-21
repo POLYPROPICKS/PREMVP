@@ -162,14 +162,26 @@ September density.
 
 ## Decision output
 
-- **Highest observed absolute-P&L cap/model in this dataset:** PORTFOLIO_BROAD at cap 50 — 374.88u total P&L,
-  25.78% ROI, -31.87u MaxDD (30-day flat-1u projection 234.30u).
-- **Highest sustainable cap before marginal economics materially deteriorate:** cap 30 across the board. Every
-  model's 21–30 layer is still solidly positive (ROI 19.7%–74.8%, PnL/cal-day 1.4–6.1u), but from cap 30→50 the
-  price-anchor pools (C0/C5, and to a lesser extent P50_54/PORTFOLIO_C0_FILL) show incremental ROI roughly
-  halving (C0: 19.7%→12.97%→13.65%; C5 similarly), i.e. still money-positive but visibly weaker per-event than
-  the 1–30 layers. PORTFOLIO_BROAD and P50_52 hold incremental ROI closer to 25–30% all the way to cap 50 and
-  are the strongest candidates if going past cap 30.
+**CORRECTION (post-publication):** the line below previously read "Highest observed absolute-P&L cap/model
+in this dataset: PORTFOLIO_BROAD at cap 50 — 374.88u total P&L." That was incorrect against this artifact's
+own TABLE 2, which shows **P50_52 at cap 50 = +379.30u** (N=1343, ROI 28.24%, MaxDD -29.04u) — higher than
+PORTFOLIO_BROAD's +374.88u. Corrected below. See the companion artifact
+`QUALITY_FILL_PORTFOLIO_TEST_2026-08-04_2026-09-20.md` for a fixed-candidate quality-ordering test that beats
+this corrected baseline.
+
+- **Highest observed absolute-P&L cap/model in this dataset:** P50_52 at cap 50 — 379.30u total P&L, 28.24%
+  ROI, -29.04u MaxDD (30-day flat-1u projection 237.06u). PORTFOLIO_BROAD at cap 50 (374.88u, 25.78% ROI) is
+  second-highest, not first.
+- **Highest sustainable cap before marginal economics materially deteriorate:** cap 30 is NOT a universal
+  sustainable ceiling — it is only the point where the price-anchor pools (C0/C5, and to a lesser extent
+  P50_54/PORTFOLIO_C0_FILL) start showing incremental ROI roughly halving (C0: 19.7%→12.97%→13.65%; C5
+  similarly). For **P50_52 specifically, every layer past cap 30 remains solidly positive**: 31–40 is
+  +65.29u at 33.31% ROI and 41–50 is +46.66u at 30.90% ROI — both above the 21–30 layer's own 29.38% ROI on
+  a per-event basis. The evidence therefore says additional capacity remains profitable for P50_52 well past
+  cap 30; the binding constraint on reaching cap 50 in practice is calendar-day availability/fill-rate
+  (FILL_RATE_50 = 0.2917 for P50_52 — see TABLE 1), not diminishing per-event economics. PORTFOLIO_BROAD and
+  P50_52 hold incremental ROI closer to 25–30% all the way to cap 50 and are the strongest candidates if
+  going past cap 30.
 - **Is 30/day currently realistic?** Yes for the price-anchor pools as an ACTIVE-DAY median (median selected
   bets/active-day hits or exceeds 28–30 at cap 30 for P50_54/PORTFOLIO_BROAD/C0/C5/PORTFOLIO_C0_FILL), but the
   underlying SUPPLY is not there on every calendar day: FILL_RATE_30 ranges 0.48–0.71 (P50_52 weakest at 0.48,
