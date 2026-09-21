@@ -1,26 +1,40 @@
 /**
- * UNIFIED_CORE_SCOREBOARD_V1 — first business-readable comparison of the
- * current model/slice families over the common model-ready period
- * 2026-08-04..2026-09-20.
+ * UNIFIED_CORE_SCOREBOARD_V1 — the owned, reproducible Git entrypoint for
+ * the business-readable comparison of the current model/slice families,
+ * gate economics, market-type economics and selected-price-movement
+ * economics over the common research-clone model-ready period.
  *
  * Reuses the frozen research engine and existing exact Git predicates
  * verbatim — never re-implements settlement/economics in SQL:
  *   - C0/C1/C4/C5 predicates: lib/modeling/research-engine/models.ts
  *   - PORTFOLIO_BROAD tiers, P50_52/P50_54/TENNIS_P50_52/SCORE63_64_P50_52
  *     standalone predicates: scripts/modeling/daily-portfolio-frontier.ts
- *   - toAtlasInput row normalizer: scripts/modeling/factor-atlas.ts
+ *   - toAtlasInput row normalizer + SCORE_LEVEL/LEAD_TIME/PRICE_SERIES_DIRECTION
+ *     bucket boundaries: scripts/modeling/factor-atlas.ts
  *   - evaluateEvent/sortChronologically/aggregateMetrics/settleBetU:
  *     lib/modeling/research-engine
+ *   - BAD_BUCKET_COV_PRICE predicate: lib/executor/buildFireModelCandidates.ts
  *
- * Source: research_model_ready_rows (RESEARCH CLONE, read-only) for
- * 2026-08-04..2026-09-20. LEGACY_C4_HISTORICAL is NOT recomputed here — it
- * is reported from the existing accepted golden-contract reference
- * (lib/modeling/research-engine/goldenContract.ts), kept strictly isolated
- * from this common-period denominator.
+ * Source: research_model_ready_rows (RESEARCH CLONE, read-only, deterministic
+ * paginated reads ordered on the persisted identity key). Coverage and
+ * marketTypeRaw are not persisted on canonical_row, so both are reconstructed
+ * via the same already-proven bounded evidence read the materializer itself
+ * uses (readResearchEvidencePageRows), joined back onto the model-ready
+ * identity — never a new corpus or table. LEGACY_C4_HISTORICAL is NOT
+ * recomputed here — it is reported from the existing accepted golden-contract
+ * reference (lib/modeling/research-engine/goldenContract.ts), kept strictly
+ * isolated from this common-period denominator.
  *
- *   npx tsx scripts/modeling/unified-core-scoreboard.ts
+ * Canonical invocation (also `npm run research-clone:scoreboard --`):
+ *   npx tsx scripts/modeling/unified-core-scoreboard.ts \
+ *     --start=2026-08-04 --end=2026-09-20
+ *
+ * Emits Founder-readable tables to stdout and one aggregate structured JSON
+ * artifact under modeling/evidence/ (never raw model-ready rows). Running
+ * twice on unchanged clone data reproduces identical business metrics.
  */
 import { createClient } from "@supabase/supabase-js";
+import { mkdirSync, writeFileSync } from "node:fs";
 import "dotenv/config";
 
 import type { ScorecardReadyRow } from "@/lib/modeling/research-corpus/rollingCorpus";
@@ -40,11 +54,25 @@ import { resolveSportFamily } from "@/lib/research-clone/modelReady";
 import { toAtlasInput, type AtlasInputEvent } from "./factor-atlas";
 import { readResearchEvidencePageRows } from "./live-d1-research-corpus";
 
-const START = "2026-08-04";
-const END = "2026-09-20";
+const DEFAULT_START = "2026-08-04";
+const DEFAULT_END = "2026-09-20";
+const PAGE = 1000;
+const EVIDENCE_OUT_DIR = "modeling/evidence/unified-core-scoreboard-v1";
+/** Research-clone project ref this runner is bound to — fail-closed guard against pointing at production. */
+const EXPECTED_CLONE_PROJECT_REF = "nppznoujvnyjargjkmnv";
+
+function arg(name: string, fallback: string): string {
+  const eq = process.argv.find((v) => v.startsWith(`--${name}=`));
+  if (eq) return eq.slice(name.length + 3);
+  const i = process.argv.indexOf(`--${name}`);
+  return i >= 0 && process.argv[i + 1] ? process.argv[i + 1] : fallback;
+}
+
+const START = arg("start", DEFAULT_START);
+const END = arg("end", DEFAULT_END);
+/** Aug/Sep split is a fixed calendar boundary independent of --start/--end. */
 const AUG_END = "2026-08-31";
 const SEP_START = "2026-09-01";
-const PAGE = 1000;
 
 type AtlasEvaluatedEvent = ReturnType<typeof evaluateEvent> & AtlasInputEvent;
 
@@ -158,10 +186,19 @@ function priceBucketComposition(bets: SelectedBet[]) {
   return buckets.map(([id, lo, hi]) => metricsFor(bets.filter((b) => b.entryPrice >= lo && b.entryPrice < hi)) && { bucket: id, ...metricsFor(bets.filter((b) => b.entryPrice >= lo && b.entryPrice < hi)) });
 }
 
+function projectRefOf(url: string): string {
+  return new URL(url).hostname.split(".")[0];
+}
+
+/** Fail-closed: only ever runs against the bound research-clone project — never production. */
 async function resolveDb() {
   const url = process.env.SUPABASE_CLONE_URL;
   const key = process.env.SUPABASE_CLONE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error("MISSING_CLONE_CREDENTIALS");
+  const ref = projectRefOf(url);
+  if (ref !== EXPECTED_CLONE_PROJECT_REF) {
+    throw new Error(`REFUSING_NON_CLONE_TARGET: expected research-clone project ${EXPECTED_CLONE_PROJECT_REF}, got ${ref}`);
+  }
   return createClient(url, key);
 }
 
@@ -190,25 +227,34 @@ async function fetchRows(): Promise<ScorecardReadyRow[]> {
   return rows;
 }
 
+interface EvidenceJoin {
+  coverage: number | null;
+  marketTypeRaw: string | null;
+}
+
 /**
  * Legacy BAD_BUCKET_COV_PRICE coverage input (coverage 50-74 AND
- * entry_price 0.44-0.58 — lib/executor/buildFireModelCandidates.ts:2115) is a
- * per-row diagnostics scalar (diagnostics.dataCoverage / data_coverage) that
- * is NOT persisted onto research_model_ready_rows.canonical_row
- * (ScorecardReadyRow has no coverage field). It is reconstructed here via
- * the SAME already-proven bounded evidence read the materializer itself uses
- * (readResearchEvidencePageRows) — no new corpus, no new table — joined back
- * onto the model-ready identity (condition_id, selected_token_id, decision_at).
+ * entry_price 0.44-0.58 — lib/executor/buildFireModelCandidates.ts:2115) and
+ * marketTypeRaw (moneyline/totals/spreads/... — Architect discovery, not
+ * rescanned here) are per-row diagnostics fields that are NOT persisted onto
+ * research_model_ready_rows.canonical_row (ScorecardReadyRow carries neither).
+ * Both are reconstructed here via the SAME already-proven bounded evidence
+ * read the materializer itself uses (readResearchEvidencePageRows) — no new
+ * corpus, no new table — joined back onto the model-ready identity
+ * (condition_id, selected_token_id, decision_at) in a single bounded read.
  */
-async function fetchCoverageMap(): Promise<Map<string, number | null>> {
+async function fetchEvidenceJoinMap(): Promise<Map<string, EvidenceJoin>> {
   const db = await resolveDb();
-  const startUtc = "2026-08-02T21:00:00.000Z";
-  const endUtc = "2026-09-21T21:00:00.000Z";
+  const startUtc = new Date(Date.parse(`${START}T00:00:00Z`) - 2 * 86_400_000).toISOString();
+  const endUtc = new Date(Date.parse(`${END}T00:00:00Z`) + 2 * 86_400_000).toISOString();
   const { pairs } = await readResearchEvidencePageRows(db, startUtc, endUtc);
-  const map = new Map<string, number | null>();
+  const map = new Map<string, EvidenceJoin>();
   for (const p of pairs) {
     const key = `${p.conditionId}|${p.selectedTokenId}|${p.decisionAt}`;
-    map.set(key, typeof p.dataCoverage === "number" ? p.dataCoverage : null);
+    map.set(key, {
+      coverage: typeof p.dataCoverage === "number" ? p.dataCoverage : null,
+      marketTypeRaw: typeof p.marketTypeRaw === "string" && p.marketTypeRaw.length > 0 ? p.marketTypeRaw : null,
+    });
   }
   return map;
 }
@@ -222,14 +268,16 @@ async function main() {
   const input = toAtlasInput(rawRows);
   const processedN = new Set(input.map((e) => e.physicalEventKey)).size;
 
-  const coverageMap = await fetchCoverageMap();
-  const coverageMatchedRawN = rawRows.filter(
-    (r) => coverageMap.get(`${r.conditionId}|${r.selectedTokenId}|${r.decisionAt}`) !== undefined,
-  ).length;
+  const evidenceMap = await fetchEvidenceJoinMap();
+  const evidenceOf = (r: ScorecardReadyRow) => evidenceMap.get(`${r.conditionId}|${r.selectedTokenId}|${r.decisionAt}`);
+  const coverageMatchedRawN = rawRows.filter((r) => evidenceOf(r) !== undefined).length;
+  const marketTypeMatchedN = new Set(
+    rawRows.filter((r) => evidenceOf(r)?.marketTypeRaw != null && r.providerEventId).map((r) => r.providerEventId),
+  ).size;
   // Mirrors toAtlasInput's exact filter (factor-atlas.ts) — rebuilt here from
   // rawRows directly (rather than zipped against the already-filtered
   // `input`) so each event keeps its exact conditionId/selectedTokenId for
-  // the coverage join.
+  // the evidence join.
   const inputWithCoverage = rawRows
     .filter(
       (r) =>
@@ -253,7 +301,8 @@ async function main() {
       selectedPrice: r.selectedPrice,
       volumeUsd: typeof r.volumeUsd === "number" ? r.volumeUsd : null,
       rowLeadTimeHours: typeof r.leadTimeHours === "number" ? r.leadTimeHours : null,
-      coverage: coverageMap.get(`${r.conditionId}|${r.selectedTokenId}|${r.decisionAt}`) ?? null,
+      coverage: evidenceOf(r)?.coverage ?? null,
+      marketTypeRaw: evidenceOf(r)?.marketTypeRaw ?? null,
     }));
 
   const TIER_PREFERRED = (e: AtlasEvaluatedEvent) =>
@@ -378,6 +427,50 @@ async function main() {
     },
   };
 
+  // ── E: MARKET-TYPE ECONOMICS (exact Architect-identified marketTypeRaw categories) ──
+  const MATERIAL_MARKET_TYPES = ["moneyline", "totals", "spreads", "child_moneyline", "tennis_completed_match", "total_corners"];
+  const marketTypeTable = MATERIAL_MARKET_TYPES.map((mt) => {
+    const bets = runStandalone(inputWithCoverage, (e) => (e as unknown as { marketTypeRaw: string | null }).marketTypeRaw === mt);
+    return {
+      MARKET_TYPE: mt,
+      ...metricsFor(bets),
+      AUGUST: metricsFor(splitByDate(bets, START, AUG_END)),
+      SEPTEMBER_THROUGH_20: metricsFor(splitByDate(bets, SEP_START, END)),
+      SPORTS: sportComposition(bets),
+      PRICE_BUCKETS: priceBucketComposition(bets),
+    };
+  });
+  const DIAGNOSTIC_MARKET_TYPES = ["soccer_exact_score", "soccer_first_to_score"];
+  const marketTypeDiagnostics = DIAGNOSTIC_MARKET_TYPES.map((mt) => {
+    const bets = runStandalone(inputWithCoverage, (e) => (e as unknown as { marketTypeRaw: string | null }).marketTypeRaw === mt);
+    return { STATUS: "SMALL_SAMPLE_DIAGNOSTIC", MARKET_TYPE: mt, ...metricsFor(bets) };
+  });
+  const marketTypeAttribution = {
+    NOTE: "marketTypeRaw is not persisted on canonical_row; reconstructed via the same evidence join used for coverage. Presence is necessarily partial — do not treat as explaining the full processed population.",
+    PHYSICAL_EVENTS_WITH_MARKET_TYPE_ATTRIBUTION_N: marketTypeMatchedN,
+    PROCESSED_N: processedN,
+    UWCL_NOTE: "Not reconstructed — league identity is weak/absent in this common layer, per mission boundary.",
+  };
+
+  // ── F: SELECTED-PRICE-MOVEMENT ECONOMICS (existing factor-atlas PRICE_SERIES_DIRECTION buckets, C0 band) ──
+  const priceMovementBuckets = [
+    { ID: "PRICE_DELTA_NEG", predicate: (e: AtlasEvaluatedEvent) => inC0(e.entryPrice) && e.selectedPrice.observationCount >= 2 && typeof e.selectedPrice.delta === "number" && e.selectedPrice.delta < 0 },
+    { ID: "PRICE_DELTA_ZERO", predicate: (e: AtlasEvaluatedEvent) => inC0(e.entryPrice) && e.selectedPrice.observationCount >= 2 && typeof e.selectedPrice.delta === "number" && e.selectedPrice.delta === 0 },
+    { ID: "PRICE_DELTA_POS", predicate: (e: AtlasEvaluatedEvent) => inC0(e.entryPrice) && e.selectedPrice.observationCount >= 2 && typeof e.selectedPrice.delta === "number" && e.selectedPrice.delta > 0 },
+  ];
+  const priceMovementTable = priceMovementBuckets.map(({ ID, predicate }) => {
+    const bets = runStandalone(input, predicate);
+    const overall = metricsFor(bets);
+    return {
+      STATUS: overall.events >= 100 ? "MAIN" : "SMALL_SAMPLE_DIAGNOSTIC",
+      BUCKET: ID,
+      ...overall,
+      AUGUST: metricsFor(splitByDate(bets, START, AUG_END)),
+      SEPTEMBER_THROUGH_20: metricsFor(splitByDate(bets, SEP_START, END)),
+    };
+  });
+  const priceMovementUsableN = runStandalone(input, (e) => inC0(e.entryPrice) && e.selectedPrice.observationCount >= 2).length;
+
   const legacy = {
     STATUS: "HISTORICAL_REFERENCE_ISOLATED",
     MODEL: "LEGACY_C4_HISTORICAL",
@@ -390,22 +483,26 @@ async function main() {
     MAX_DD_U: GOLDEN_REFERENCE_CONTRACT_V1.models.C4.MAX_DRAWDOWN_U,
   };
 
-  console.log(
-    JSON.stringify(
-      {
-        DATASET: "AUG04_SEP20_COMMON",
-        PROCESSED_N: processedN,
-        SOURCE_ROW_N: rawRows.length,
-        MODELS: table,
-        LEGACY_C4_HISTORICAL: legacy,
-        SCORE_ECONOMICS: { BUCKETS: scoreTable, SUMMARY_50_64_VS_GE_65: scoreSummary },
-        LEGACY_BAD_BUCKET_COUNTERFACTUAL: badBucketCounterfactual,
-        LEAD_TIME_ECONOMICS: { BUCKETS: leadTable, C4_DECOMPOSITION: c4Decomposition },
-      },
-      null,
-      2,
-    ),
-  );
+  const artifact = {
+    MISSION: "UNIFIED_CORE_SCOREBOARD_V1",
+    DATASET_RANGE: { start: START, end: END },
+    SOURCE_ROW_N: rawRows.length,
+    PROCESSED_N: processedN,
+    MODELS: table,
+    LEGACY_C4_HISTORICAL: legacy,
+    SCORE_ECONOMICS: { BUCKETS: scoreTable, SUMMARY_50_64_VS_GE_65: scoreSummary },
+    LEGACY_BAD_BUCKET_COUNTERFACTUAL: badBucketCounterfactual,
+    LEAD_TIME_ECONOMICS: { BUCKETS: leadTable, C4_DECOMPOSITION: c4Decomposition },
+    MARKET_TYPE_ECONOMICS: { MATERIAL_TYPES: marketTypeTable, DIAGNOSTIC_TYPES: marketTypeDiagnostics, ATTRIBUTION: marketTypeAttribution },
+    SELECTED_PRICE_MOVEMENT_ECONOMICS: { USABLE_SERIES_N_WITHIN_C0: priceMovementUsableN, BUCKETS: priceMovementTable },
+  };
+
+  console.log(JSON.stringify(artifact, null, 2));
+
+  mkdirSync(EVIDENCE_OUT_DIR, { recursive: true });
+  const outPath = `${EVIDENCE_OUT_DIR}/SCOREBOARD_${START}_${END}.json`;
+  writeFileSync(outPath, JSON.stringify({ GENERATED_AT: new Date().toISOString(), ...artifact }, null, 2));
+  console.error(`Wrote aggregate evidence artifact: ${outPath}`);
 }
 
 main().catch((err) => {
