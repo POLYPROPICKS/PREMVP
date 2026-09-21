@@ -13,8 +13,18 @@
  *   modeling/evidence/daily-cap-pnl-optimization-v1/DAILY_CAP_PNL_OPTIMIZATION_2026-08-04_2026-09-20.md
  *   modeling/evidence/daily-cap-pnl-optimization-v1/QUALITY_FILL_PORTFOLIO_TEST_2026-08-04_2026-09-20.md
  *   modeling/evidence/daily-cap-pnl-optimization-v1/QUALITY_FILL_D_RESULT_2026-08-04_2026-09-20.md
+ *   modeling/evidence/unified-core-scoreboard-v1/CANONICAL_DECISION_AUTHORITY_2026-08-04_2026-09-20.md
+ *     (uncapped founder table, gate economics, market-type economics; PORTFOLIO_BROAD's
+ *     LIVE reference status, and the diagnostic/reference-only models that were never
+ *     run through the daily-cap engine: C0_ONLY_NOT_C1, SCORE63_64, C1, C4_CURRENT,
+ *     TENNIS_LEAD18_24, LEGACY_C4_HISTORICAL, QUALITY_FILL_B, QUALITY_FILL_D-ref)
+ *   modeling/evidence/unified-core-scoreboard-v1/BROAD_ANATOMY_anatomy_2026-08-04_2026-09-20.md
+ *     (score-bucket / score x price / score x sport / price x sport economics)
  * `null` marks a cell that has no accepted aggregate figure in those artifacts
- * (never fabricated / never recomputed from raw rows to fill a gap).
+ * (never fabricated / never recomputed from raw rows to fill a gap). Models that
+ * were only ever evaluated UNCAPPED (no daily-cap-engine run in accepted evidence)
+ * carry an `uncapped` block instead of `caps`/`marginal`/`fill` -- never backfilled
+ * with a fabricated capped number.
  */
 window.POLYPROPICKS_MODELING_DATA = {
   ARTIFACT: "MODELING_DAILY_DATA_V1",
@@ -28,14 +38,18 @@ window.POLYPROPICKS_MODELING_DATA = {
     processedPhysicalEvents: 7985,
     preferredModel: "QUALITY_FILL_A",
     fillReferenceModel: "QUALITY_FILL_D",
+    livePolicyModel: "PORTFOLIO_BROAD",
     latestDashboardDate: "2026-09-20",
     provenance: {
       source: "PREMVP-DB-CLONE / research_model_ready_days / research_model_ready_rows",
+      liveSource: "Production runtime (read-only): night_event_reservations / event_execution_queue / executor_order_events; settlement from bet_execution_ledger or an existing executor live net view when authoritative evidence is populated there",
       economics: "Flat 1u backtest research projection only -- not realized live cash P&L",
       productionWrites: 0,
       volumeSource: "PR #367 evidence, read-only provenance -- NOT_ACTIONABLE_CURRENT_COVERAGE",
       sep21FreezeCommitPr: "#368",
       refreshCommand: "npm run research-clone:modeling-dashboard-refresh",
+      liveRefreshCommand: "npm run research-live:modeling-dashboard-refresh",
+      combinedRefreshCommand: "npm run modeling-dashboard:refresh",
     },
   },
 
@@ -91,11 +105,56 @@ window.POLYPROPICKS_MODELING_DATA = {
         "41_50": { incr_n: 169, incr_pnl_u: 43.07, incr_roi_pct: 25.49 },
       },
     },
+    QUALITY_FILL_B: {
+      status: "REFERENCE_QUALITY_FILL_VARIANT",
+      label: "QUALITY_FILL_B",
+      mainRules: "Tennis P50_52 -> Soccer P50_54 -> non-Esports remaining P50_52 -> Esports P50_52 (last)",
+      sportMixNote: "Tier composition only (see mainRules) -- per-event sport-mix aggregate not in accepted evidence; not recomputed (RAW_ROW_BUDGET=0).",
+      fill: { fill30: 0.5, fill40: 0.375, fill50: 0.3125 },
+      augSep: { aug: null, sep: null },
+      caps: {
+        15: null,
+        20: null,
+        30: { selected_n: 1026, pnl_u: 307.9, roi_pct: 30.01, maxdd_u: -24.35, proj30d_u: 192.44 },
+        40: { selected_n: 1222, pnl_u: 368.96, roi_pct: 30.19, maxdd_u: -27.6, proj30d_u: 230.6 },
+        50: { selected_n: 1382, pnl_u: 400.25, roi_pct: 28.96, maxdd_u: -30.62, proj30d_u: 250.16 },
+      },
+      marginal: {
+        "1_15": null,
+        "16_20": null,
+        "21_30": { incr_n: 272, incr_pnl_u: 88.16, incr_roi_pct: 32.41 },
+        "31_40": { incr_n: 196, incr_pnl_u: 61.06, incr_roi_pct: 31.15 },
+        "41_50": { incr_n: 160, incr_pnl_u: 31.29, incr_roi_pct: 19.56 },
+      },
+    },
+    QUALITY_FILL_C: {
+      status: "REFERENCE_QUALITY_FILL_VARIANT",
+      label: "QUALITY_FILL_C",
+      mainRules: "Tennis P50_52 -> Soccer P50_54 -> non-Esports remaining P50_52 -> Esports P50_52 -> Soccer P54_60 (last)",
+      sportMixNote: "Tier composition only (see mainRules) -- per-event sport-mix aggregate not in accepted evidence; not recomputed (RAW_ROW_BUDGET=0).",
+      fill: { fill30: 0.5833, fill40: 0.3958, fill50: 0.3333 },
+      augSep: { aug: null, sep: null },
+      caps: {
+        15: null,
+        20: null,
+        30: { selected_n: 1076, pnl_u: 303.99, roi_pct: 28.25, maxdd_u: -25.01, proj30d_u: 189.99 },
+        40: { selected_n: 1296, pnl_u: 365.73, roi_pct: 28.22, maxdd_u: -27.6, proj30d_u: 228.58 },
+        50: { selected_n: 1465, pnl_u: 396.76, roi_pct: 27.08, maxdd_u: -32.28, proj30d_u: 247.97 },
+      },
+      marginal: {
+        "1_15": null,
+        "16_20": null,
+        "21_30": { incr_n: 310, incr_pnl_u: 87.35, incr_roi_pct: 28.18 },
+        "31_40": { incr_n: 220, incr_pnl_u: 61.74, incr_roi_pct: 28.06 },
+        "41_50": { incr_n: 169, incr_pnl_u: 31.03, incr_roi_pct: 18.36 },
+      },
+    },
     P50_52: {
       status: "STRONG_SIMPLE_BASELINE",
       label: "P50_52",
       mainRules: "0.50 <= entry_price < 0.52, all sports",
-      sportMixNote: "Single-band price rule (all sports) -- see mainRules.",
+      sportMixNote: "tennis 45.8%, soccer 22.2% of selected bets (uncapped, CANONICAL_DECISION_AUTHORITY founder table).",
+      uncapped: { processed_n: 7985, bet_n: 2983, bet_pct: 37.4, roi_pct: 19.06, pnl_u: 568.57, maxdd_u: -31.04 },
       fill: { fill30: 0.4792, fill40: 0.3542, fill50: 0.2917 },
       augSep: {
         aug: { n: 621, pnl_u: 72.69, roi_pct: 11.7 },
@@ -117,10 +176,15 @@ window.POLYPROPICKS_MODELING_DATA = {
       },
     },
     PORTFOLIO_BROAD: {
-      status: "PRODUCTION_REFERENCE_MODEL_NOT_RESEARCH_PNL_LEADER",
+      status: "CURRENT_LIVE_POLICY_REFERENCE",
+      isLivePolicy: true,
       label: "PORTFOLIO_BROAD",
       mainRules: "tier1 Tennis/Score63-64 P50_52 -> tier2 P50_52 all sports -> tier3 P52_54 all sports",
-      sportMixNote: "Tiered, multi-sport composite -- see mainRules.",
+      sportMixNote: "tennis 42.7%, soccer 24.8% of selected bets (uncapped, CANONICAL_DECISION_AUTHORITY founder table).",
+      // Uncapped full-range selection economics (no daily cap applied) -- the LIVE production
+      // policy identity reference. Distinct from the `caps` block below, which is the same
+      // PORTFOLIO_BROAD rule run through the daily-cap engine (15/20/30/40/50 bets/day).
+      uncapped: { processed_n: 7985, bet_n: 3229, bet_pct: 40.4, roi_pct: 18.74, pnl_u: 605.23, maxdd_u: -37.32 },
       fill: { fill30: 0.5625, fill40: 0.375, fill50: 0.3333 },
       augSep: {
         aug: { n: 688, pnl_u: 66.18, roi_pct: 9.62 },
@@ -145,7 +209,8 @@ window.POLYPROPICKS_MODELING_DATA = {
       status: "STRONG_RESEARCH_BASELINE",
       label: "P50_54",
       mainRules: "0.50 <= entry_price < 0.54, all sports",
-      sportMixNote: "Single-band price rule (all sports) -- see mainRules.",
+      sportMixNote: "tennis 42.7%, soccer 24.7% of selected bets (uncapped, CANONICAL_DECISION_AUTHORITY founder table).",
+      uncapped: { processed_n: 7985, bet_n: 3229, bet_pct: 40.4, roi_pct: 18.9, pnl_u: 610.13, maxdd_u: -38.31 },
       fill: { fill30: 0.5625, fill40: null, fill50: 0.3125 },
       augSep: { aug: null, sep: null },
       caps: {
@@ -167,7 +232,8 @@ window.POLYPROPICKS_MODELING_DATA = {
       status: "TRACKED_REFERENCE_PRICE_ANCHOR_BAND",
       label: "C5",
       mainRules: "Frozen C5 price-anchor definition (lib/modeling/research-engine/models.ts)",
-      sportMixNote: "Price-anchor band, all sports -- see mainRules.",
+      sportMixNote: "tennis 38.6%, soccer 28.7% of selected bets (uncapped, CANONICAL_DECISION_AUTHORITY founder table).",
+      uncapped: { processed_n: 7985, bet_n: 3653, bet_pct: 45.8, roi_pct: 16.55, pnl_u: 604.52, maxdd_u: -38.96 },
       fill: { fill30: 0.6667, fill40: null, fill50: 0.375 },
       augSep: { aug: null, sep: null },
       caps: {
@@ -189,7 +255,8 @@ window.POLYPROPICKS_MODELING_DATA = {
       status: "TRACKED_REFERENCE_PRICE_ANCHOR_BAND",
       label: "C0",
       mainRules: "0.50 <= entry_price < 0.60, all sports",
-      sportMixNote: "Price-anchor band, all sports -- see mainRules.",
+      sportMixNote: "tennis 38%, soccer 28.3% of selected bets (uncapped, CANONICAL_DECISION_AUTHORITY founder table).",
+      uncapped: { processed_n: 7985, bet_n: 3713, bet_pct: 46.5, roi_pct: 16.23, pnl_u: 602.52, maxdd_u: -42.96 },
       fill: { fill30: 0.6875, fill40: null, fill50: 0.375 },
       augSep: { aug: null, sep: null },
       caps: {
@@ -212,6 +279,7 @@ window.POLYPROPICKS_MODELING_DATA = {
       label: "TENNIS_P50_52",
       mainRules: "0.50 <= entry_price < 0.52, sportFamily = tennis",
       sportMixNote: "100% tennis by construction -- see mainRules.",
+      uncapped: { processed_n: 7985, bet_n: 1365, bet_pct: 17.1, roi_pct: 35.07, pnl_u: 478.77, maxdd_u: -16.0 },
       fill: { fill30: 0.2083, fill40: null, fill50: 0.1458 },
       augSep: { aug: null, sep: null },
       caps: {
@@ -231,14 +299,170 @@ window.POLYPROPICKS_MODELING_DATA = {
     },
   },
 
-  // PLOT 4 (signal score): accepted evidence is status-only (closed hypotheses),
-  // no accepted score-bucket P&L / score x price heatmap aggregate exists in the
-  // Sep21 evidence set read for this freeze. Never recomputed from raw rows
-  // (RAW_ROW_BUDGET=0, NO NEW CALCULATION SEARCH). Buckets kept as labels only.
+  // Reference/diagnostic models that were only ever evaluated UNCAPPED against the
+  // daily-cap engine (no accepted cap30/40/50 run exists) -- source:
+  // modeling/evidence/unified-core-scoreboard-v1/CANONICAL_DECISION_AUTHORITY_2026-08-04_2026-09-20.md
+  // founder table + gate-economics + C4 lead-time decomposition sections. Shown in
+  // SECTION A alongside the capped models; their CAP/FILL cells render as N/A rather
+  // than a fabricated capped number.
+  uncappedModels: {
+    C0_ONLY_NOT_C1: {
+      status: "REFERENCE_DIAGNOSTIC",
+      label: "C0_ONLY_NOT_C1",
+      mainRules: "C0 (0.50<=price<0.60) AND sport != soccer",
+      sportMixNote: "tennis 53%, esports 14.2% of selected bets.",
+      uncapped: { processed_n: 7985, bet_n: 2664, bet_pct: 33.4, roi_pct: 17.0, pnl_u: 452.82, maxdd_u: -44.27 },
+    },
+    SCORE63_64: {
+      status: "REFERENCE_DIAGNOSTIC",
+      label: "SCORE63_64 overlay",
+      mainRules: "0.50<=price<0.60 AND score in [63,65)",
+      sportMixNote: "tennis 55.3%, soccer 26.1% of selected bets.",
+      uncapped: { processed_n: 7985, bet_n: 2230, bet_pct: 27.9, roi_pct: 18.38, pnl_u: 409.78, maxdd_u: -24.33 },
+    },
+    C1: {
+      status: "REFERENCE_DIAGNOSTIC",
+      label: "C1",
+      mainRules: "0.50<=price<0.60 AND soccer",
+      sportMixNote: "soccer 100% by construction.",
+      uncapped: { processed_n: 7985, bet_n: 1053, bet_pct: 13.2, roi_pct: 14.39, pnl_u: 151.55, maxdd_u: -27.65 },
+    },
+    C4_CURRENT: {
+      status: "REFERENCE_DIAGNOSTIC",
+      label: "C4 (current)",
+      mainRules: "0.50<=price<0.60 AND (soccer OR lead_time_hours >= 24)",
+      sportMixNote: "soccer 83.6%, esports 9.9% of selected bets.",
+      uncapped: { processed_n: 7985, bet_n: 1255, bet_pct: 15.7, roi_pct: 9.63, pnl_u: 120.81, maxdd_u: -32.88 },
+    },
+    TENNIS_LEAD18_24: {
+      status: "SMALL_SAMPLE_DIAGNOSTIC",
+      label: "TENNIS_LEAD18-24 diagnostic",
+      mainRules: "diagnostic only, not a decision leader (tennis, lead_time_hours in [18,24))",
+      sportMixNote: "tennis 100% by construction.",
+      uncapped: { processed_n: 7985, bet_n: 245, bet_pct: 3.1, roi_pct: 58.03, pnl_u: 142.17, maxdd_u: -5.23 },
+    },
+    LEGACY_C4_HISTORICAL: {
+      status: "REFERENCE_ISOLATED_NOT_IN_AUG_SEP_DENOMINATOR",
+      label: "LEGACY_C4_HISTORICAL",
+      mainRules: "frozen golden-contract reference (Jun-Aug, separate dataset)",
+      sportMixNote: "not published in the Aug04-Sep20 accepted evidence.",
+      uncapped: { processed_n: null, bet_n: 4142, bet_pct: null, roi_pct: 11.85, pnl_u: 490.71, maxdd_u: -15.84, wins: 2398, losses: 1744, datasetLabel: "Jun-Aug (isolated, NOT in Aug04-Sep20 denominator)" },
+    },
+  },
+
+  // SECTION F — signal score. Accepted frozen Git evidence:
+  // modeling/evidence/unified-core-scoreboard-v1/BROAD_ANATOMY_anatomy_2026-08-04_2026-09-20.md
+  // Score is useful ranking context (NON-MONOTONIC), not a universal hard gate;
+  // hard score >= 65 is a NO_GO gate (see closedHypotheses / CANONICAL_DECISION_AUTHORITY
+  // gate economics: >=65 N=485, thin volume, August N=3 uninterpretable).
   signalScore: {
-    dataAvailable: false,
-    note: "DATA_NOT_AVAILABLE_IN_ACCEPTED_AGGREGATE_EVIDENCE -- signal score is useful ranking context (NON-MONOTONIC, not a universal hard gate); hard score >= 65 is a NO_GO gate. No accepted score-bucket P&L or score x price heatmap artifact exists to render without a new calculation, which this mission may not run.",
+    dataAvailable: true,
+    note: "Score bucket / score x price / score x sport economics from accepted frozen Git evidence (BROAD_ANATOMY_anatomy_2026-08-04_2026-09-20.md, price band 0.50<=price<0.60). Score is useful ranking context, NON-MONOTONIC, not a universal hard gate. No new score calculation was run.",
     buckets: ["50-59", "60-62", "63-64", "65-67", ">=68"],
+    byBucket: [
+      { bucket: "50-59", n: 66, wins: 38, losses: 28, pnl_u: -1.85, roi_pct: -2.8024, maxdd_u: -7.96 },
+      { bucket: "60-62", n: 486, wins: 303, losses: 183, pnl_u: 72.37, roi_pct: 14.89, maxdd_u: -9.43 },
+      { bucket: "63-64", n: 2230, wins: 1329, losses: 901, pnl_u: 409.78, roi_pct: 18.3759, maxdd_u: -24.33 },
+      { bucket: "65-67", n: 348, wins: 236, losses: 112, pnl_u: 106.21, roi_pct: 30.521, maxdd_u: -20.26 },
+      { bucket: ">=68", n: 216, wins: 117, losses: 99, pnl_u: 4.71, roi_pct: 2.1789, maxdd_u: -11.3 },
+    ],
+    // score x price matrix -- MAIN cells only (N>=100); SMALL_SAMPLE cells (19 of them)
+    // excluded per the artifact's own reporting threshold, not recomputed.
+    scoreByPrice: [
+      { score: "60-62", price: ".52-.54", n: 208, pnl_u: 67.98, roi_pct: 32.6824 },
+      { score: "60-62", price: ".54-.56", n: 134, pnl_u: 1.01, roi_pct: 0.7558 },
+      { score: "60-62", price: ".56-.58", n: 133, pnl_u: 6.4, roi_pct: 4.8113 },
+      { score: "60-62", price: ".58-.60", n: 116, pnl_u: 5.36, roi_pct: 4.6217 },
+      { score: "63-64", price: ".50-.52", n: 2131, pnl_u: 407.58, roi_pct: 19.1263 },
+      { score: "65-67", price: ".50-.52", n: 212, pnl_u: 97.19, roi_pct: 45.8436 },
+    ],
+    scoreBySport: [
+      { score: "60-62", sport: "soccer", n: 239, pnl_u: 55.94, roi_pct: 23.406 },
+      { score: "63-64", sport: "tennis", n: 1233, pnl_u: 364.47, roi_pct: 29.5592 },
+      { score: "63-64", sport: "soccer", n: 583, pnl_u: 60.78, roi_pct: 10.4259 },
+      { score: "63-64", sport: "esports", n: 110, pnl_u: 7.71, roi_pct: 7.0048 },
+      { score: "65-67", sport: "soccer", n: 207, pnl_u: 57.92, roi_pct: 27.9816 },
+      { score: "68+", sport: "soccer", n: 144, pnl_u: 12.53, roi_pct: 8.6988 },
+    ],
+    smallSampleExcluded: { scoreByPrice: 19, scoreBySport: 19, priceBySport: 18 },
+  },
+
+  // SECTION G — sports panel. Same source artifact as signalScore (price x sport table).
+  sports: {
+    note: "Price x sport economics from accepted frozen Git evidence (BROAD_ANATOMY_anatomy_2026-08-04_2026-09-20.md, price band 0.50<=price<0.60). MAIN cells only (N>=100); no new sport search was run.",
+    priceBySport: [
+      { price: ".50-.52", sport: "tennis", n: 1365, wins: 922, losses: 443, pnl_u: 478.77, roi_pct: 35.0744, maxdd_u: -16.0, highlight: true },
+      { price: ".50-.52", sport: "soccer", n: 665, wins: 386, losses: 279, pnl_u: 100.11, roi_pct: 15.0549, maxdd_u: -18.76, highlight: true },
+      { price: ".50-.52", sport: "esports", n: 288, wins: 141, losses: 147, pnl_u: -7.15, roi_pct: -2.484, maxdd_u: -26.76, highlight: true },
+      { price: ".52-.54", sport: "soccer", n: 208, wins: 143, losses: 65, pnl_u: 63.64, roi_pct: 30.5968, maxdd_u: -4.77, highlight: true },
+      { price: ".54-.56", sport: "soccer", n: 150, wins: 90, losses: 60, pnl_u: 14.54, roi_pct: 9.6952, maxdd_u: -5.06 },
+      { price: ".56-.58", sport: "soccer", n: 157, wins: 92, losses: 65, pnl_u: 5.08, roi_pct: 3.2375, maxdd_u: -10.56 },
+      { price: ".58-.60", sport: "soccer", n: 127, wins: 80, losses: 47, pnl_u: 8.92, roi_pct: 7.024, maxdd_u: -8.27 },
+    ],
+  },
+
+  // SECTION H — market types. Source: CANONICAL_DECISION_AUTHORITY_2026-08-04_2026-09-20.md
+  marketTypes: {
+    attributionCoverageN: 2193,
+    attributionCoverageDenominator: 7985,
+    note: "marketTypeRaw is read directly off canonical_row (direct materializer row construction). ATTRIBUTION_LIMITED: 2,193 / 7,985 processed physical events carry a resolvable marketTypeRaw -- this section does NOT explain the full processed population.",
+    rows: [
+      { marketType: "moneyline", status: "RESEARCH", n: 1341, pnl_u: -18.97, roi_pct: -1.41, maxdd_u: -41.05, aug: { n: 747, pnl_u: -22.93 }, sep: { n: 594, pnl_u: 3.96 } },
+      { marketType: "totals", status: "RESEARCH", n: 565, pnl_u: -6.72, roi_pct: -1.19, maxdd_u: -47.11, aug: { n: 185, pnl_u: 19.57 }, sep: { n: 380, pnl_u: -26.3 } },
+      { marketType: "spreads", status: "RESEARCH", n: 368, pnl_u: -59.66, roi_pct: -16.21, maxdd_u: -74.9, aug: { n: 34, pnl_u: -3.5 }, sep: { n: 334, pnl_u: -56.16 } },
+      { marketType: "child_moneyline", status: "RESEARCH", n: 302, pnl_u: -26.18, roi_pct: -8.67, maxdd_u: -26.25, aug: { n: 294, pnl_u: -20.31 }, sep: { n: 8, pnl_u: -5.87 } },
+      { marketType: "tennis_completed_match", status: "RESEARCH", n: 202, pnl_u: 42.08, roi_pct: 20.83, maxdd_u: -7.0, aug: { n: 121, pnl_u: 7.04 }, sep: { n: 81, pnl_u: 35.04 } },
+      { marketType: "total_corners", status: "RESEARCH", n: 120, pnl_u: 11.99, roi_pct: 9.99, maxdd_u: -10.18, aug: { n: 13, pnl_u: -1.63 }, sep: { n: 107, pnl_u: 13.62 } },
+    ],
+    smallSampleExcluded: [
+      { marketType: "soccer_exact_score", n: 32, pnl_u: 44.64 },
+      { marketType: "soccer_first_to_score", n: 26, pnl_u: 13.35 },
+    ],
+  },
+
+  // SECTION I — data coverage / caveats.
+  dataQuality: [
+    { item: "marketTypeRaw coverage", value: "2,193 / 7,985", status: "ATTRIBUTION_LIMITED" },
+    { item: "volume", value: "~14% overall observed; August much thinner than September", status: "NOT_ACTIONABLE_CURRENT_COVERAGE" },
+    { item: "BAD_BUCKET legacy hard-reject", value: "removed events 100% in September (0 in August) in both C0/Broad cuts -- flagged August join-completeness caveat, not resolved", status: "NO_GO_AS_HARD_REJECT" },
+    { item: "dynamic score trajectory", value: null, status: "DATA_NOT_AVAILABLE" },
+    { item: "Exact Score", value: "N=32, +44.64u (diagnostic)", status: "SMALL_SAMPLE" },
+    { item: "First-to-score", value: "N=26, +13.35u (diagnostic)", status: "SMALL_SAMPLE" },
+    { item: "live settled P&L", value: null, status: "PENDING_WHEN_NO_AUTHORITATIVE_SETTLEMENT_EXISTS" },
+  ],
+
+  // SECTION D — Live vs best research. Frozen cap50 evidence, both sides already
+  // accepted (see models.PORTFOLIO_BROAD.caps[50] and models.QUALITY_FILL_A.caps[50]
+  // above -- this block restates the exact deltas for direct dashboard rendering).
+  liveVsResearch: {
+    liveModel: "PORTFOLIO_BROAD",
+    researchModel: "QUALITY_FILL_A",
+    cap: 50,
+    delta: {
+      pnl_u: 27.37,
+      roi_pct_points: 3.33,
+      maxdd_u_better: 3.25,
+      proj30d_u: 17.11,
+      fill30_pct_points: -6.25,
+      fill50_pct_points: -2.08,
+    },
+    interpretation: "Broad currently trades somewhat higher fill availability for lower frozen research P&L/ROI. QUALITY_FILL_A is NOT promoted to production by this dashboard.",
+  },
+
+  // SECTION E — research gap anatomy. Structural rule differences only, no new
+  // calculation, no recommendation engine. Label: SHADOW RESEARCH DIFFERENCE (not
+  // production action).
+  gapAnatomy: {
+    label: "SHADOW RESEARCH DIFFERENCE",
+    note: "Structural rule differences only -- not a production action or recommendation.",
+    liveBroadRules: ["tier1: Tennis OR Score63-64 @ P50_52", "tier2: P50_52 (all sports)", "tier3: P52_54 (all sports)"],
+    qualityFillARules: ["tier1: Tennis P50_52", "tier2: Soccer P50_54", "tier3: remaining P50_52 (all sports)"],
+    differences: [
+      "QUALITY_FILL_A removes score63-64 as a universal priority mechanism.",
+      "QUALITY_FILL_A gives selective widening to Soccer through .54, instead of Broad's blanket P52_54 tier across all sports.",
+      "QUALITY_FILL_A does not blanket-prioritize all P52_54 events.",
+      "Broad produces somewhat more fill (Fill30 56.25% vs 50.00%, Fill50 33.33% vs 31.25%), but lower frozen cap50 P&L (+374.88u vs +402.25u).",
+    ],
   },
 
   closedHypotheses: [
