@@ -469,6 +469,101 @@ async function main() {
   });
   const priceMovementUsableN = runStandalone(input, (e) => inC0(e.entryPrice) && e.selectedPrice.observationCount >= 2).length;
 
+  // ── G/H/I/J: BROAD ANATOMY — score × price, score × sport, price × sport,
+  // Broad ablation. Reuses the exact C0 band, SCORE_BUCKETS, tier predicates
+  // and metricsFor/splitByDate helpers already defined above — no new SQL,
+  // no new corpus, no re-implemented settlement.
+  const PRICE_SUB_BUCKETS: Array<[string, number, number]> = [
+    [".50-.52", 0.5, 0.52],
+    [".52-.54", 0.52, 0.54],
+    [".54-.56", 0.54, 0.56],
+    [".56-.58", 0.56, 0.58],
+    [".58-.60", 0.58, 0.6],
+  ];
+  const CORE_SPORTS = ["tennis", "soccer", "esports", "baseball", "cricket"] as const;
+
+  const inScoreBucket = (e: AtlasEvaluatedEvent, lo: number, hi: number) => typeof e.scoreLevel === "number" && e.scoreLevel >= lo && e.scoreLevel < hi;
+  const inPriceBucket = (e: AtlasEvaluatedEvent, lo: number, hi: number) => e.entryPrice >= lo && e.entryPrice < hi;
+
+  function interactionRow(extra: Record<string, string>, bets: SelectedBet[]) {
+    const overall = metricsFor(bets);
+    return {
+      STATUS: overall.events >= 100 ? "MAIN" : "SMALL_SAMPLE",
+      ...extra,
+      ...overall,
+      AUGUST: metricsFor(splitByDate(bets, START, AUG_END)),
+      SEPTEMBER_THROUGH_20: metricsFor(splitByDate(bets, SEP_START, END)),
+    };
+  }
+
+  const scorePriceInteraction = SCORE_BUCKETS.flatMap(([sId, sLo, sHi]) =>
+    PRICE_SUB_BUCKETS.map(([pId, pLo, pHi]) =>
+      interactionRow({ SCORE_BUCKET: sId, PRICE_BUCKET: pId }, runStandalone(input, (e) => inScoreBucket(e, sLo, sHi) && inPriceBucket(e, pLo, pHi))),
+    ),
+  );
+
+  const scoreSportInteraction = SCORE_BUCKETS.flatMap(([sId, sLo, sHi]) =>
+    CORE_SPORTS.map((sport) =>
+      interactionRow({ SCORE_BUCKET: sId, SPORT: sport }, runStandalone(input, (e) => inC0(e.entryPrice) && inScoreBucket(e, sLo, sHi) && e.sportFamily === sport)),
+    ),
+  );
+
+  const priceSportInteraction = PRICE_SUB_BUCKETS.flatMap(([pId, pLo, pHi]) =>
+    CORE_SPORTS.map((sport) =>
+      interactionRow({ PRICE_BUCKET: pId, SPORT: sport }, runStandalone(input, (e) => inPriceBucket(e, pLo, pHi) && e.sportFamily === sport)),
+    ),
+  );
+
+  // Broad ablation: decompose PORTFOLIO_BROAD's tiered selection
+  // (TIER_PREFERRED > TIER_P50_52 > TIER_P52_54, defined above) into its
+  // layers and isolate the incremental effect of each reprioritization
+  // rule versus plain P50_54.
+  const TIER_TENNIS_ONLY = (e: AtlasEvaluatedEvent) => e.entryPrice >= 0.5 && e.entryPrice < 0.52 && e.sportFamily === "tennis";
+  const TIER_SCORE63_64_ONLY = (e: AtlasEvaluatedEvent) => e.entryPrice >= 0.5 && e.entryPrice < 0.52 && typeof e.scoreLevel === "number" && e.scoreLevel >= 63 && e.scoreLevel < 65;
+
+  const broadModel = models.find((m) => m.id === "PORTFOLIO_BROAD")!;
+  const p5052Model = models.find((m) => m.id === "P50_52")!;
+  const p5054Model = models.find((m) => m.id === "P50_54")!;
+  const layerP5254Bets = runStandalone(input, (e) => e.entryPrice >= 0.52 && e.entryPrice < 0.54);
+  const broadScoreOnlyBets = runPortfolio(input, [TIER_SCORE63_64_ONLY, TIER_P50_52, TIER_P52_54]);
+  const broadTennisOnlyBets = runPortfolio(input, [TIER_TENNIS_ONLY, TIER_P50_52, TIER_P52_54]);
+
+  function incrementalVs(componentBets: SelectedBet[], baselineBets: SelectedBet[]) {
+    const baselineKeys = new Set(baselineBets.map((b) => b.physicalEventKey));
+    const componentKeys = new Set(componentBets.map((b) => b.physicalEventKey));
+    const added = metricsFor(componentBets.filter((b) => !baselineKeys.has(b.physicalEventKey)));
+    const removed = metricsFor(baselineBets.filter((b) => !componentKeys.has(b.physicalEventKey)));
+    return {
+      ADDED_N: added.events,
+      REMOVED_N: removed.events,
+      INCREMENTAL_N: added.events - removed.events,
+      INCREMENTAL_PNL_U: round(added.pnl_u - removed.pnl_u, 4),
+    };
+  }
+
+  function ablationRow(component: string, note: string, componentBets: SelectedBet[], baselineBets: SelectedBet[]) {
+    const overall = metricsFor(componentBets);
+    return {
+      COMPONENT: component,
+      NOTE: note,
+      N: overall.events,
+      PNL_U: overall.pnl_u,
+      ROI_PCT: overall.roi_pct,
+      MAX_DD_U: overall.max_drawdown_u,
+      ...incrementalVs(componentBets, baselineBets),
+      AUGUST: metricsFor(splitByDate(componentBets, START, AUG_END)),
+      SEPTEMBER_THROUGH_20: metricsFor(splitByDate(componentBets, SEP_START, END)),
+    };
+  }
+
+  const broadAblation = [
+    ablationRow("PURE_P50_52_LAYER", "standalone 0.50<=price<0.52, baseline=empty", p5052Model.bets, []),
+    ablationRow("P52_54_LAYER_ADDED", "standalone 0.52<=price<0.54 slice, baseline=empty", layerP5254Bets, []),
+    ablationRow("SCORE63_64_OVERLAY_EFFECT_VS_P50_54", "Broad variant with ONLY the score63-64 preferred leg (tennis leg dropped) vs plain P50_54", broadScoreOnlyBets, p5054Model.bets),
+    ablationRow("TENNIS_PRIORITY_EFFECT_VS_P50_54", "Broad variant with ONLY the tennis preferred leg (score leg dropped) vs plain P50_54", broadTennisOnlyBets, p5054Model.bets),
+    ablationRow("BROAD_VS_P50_54_TOTAL", "actual PORTFOLIO_BROAD (both preferred legs combined) vs plain P50_54", broadModel.bets, p5054Model.bets),
+  ];
+
   const legacy = {
     STATUS: "HISTORICAL_REFERENCE_ISOLATED",
     MODEL: "LEGACY_C4_HISTORICAL",
@@ -493,6 +588,12 @@ async function main() {
     LEAD_TIME_ECONOMICS: { BUCKETS: leadTable, C4_DECOMPOSITION: c4Decomposition },
     MARKET_TYPE_ECONOMICS: { MATERIAL_TYPES: marketTypeTable, DIAGNOSTIC_TYPES: marketTypeDiagnostics, ATTRIBUTION: marketTypeAttribution },
     SELECTED_PRICE_MOVEMENT_ECONOMICS: { USABLE_SERIES_N_WITHIN_C0: priceMovementUsableN, BUCKETS: priceMovementTable },
+    BROAD_ANATOMY_V1: {
+      SCORE_PRICE_INTERACTION: scorePriceInteraction,
+      SCORE_SPORT_INTERACTION: scoreSportInteraction,
+      PRICE_SPORT_INTERACTION: priceSportInteraction,
+      BROAD_ABLATION: broadAblation,
+    },
   };
 
   console.log(JSON.stringify(artifact, null, 2));
@@ -501,6 +602,117 @@ async function main() {
   const outPath = `${EVIDENCE_OUT_DIR}/SCOREBOARD_${START}_${END}.json`;
   writeFileSync(outPath, JSON.stringify({ GENERATED_AT: new Date().toISOString(), ...artifact }, null, 2));
   console.error(`Wrote aggregate evidence artifact: ${outPath}`);
+
+  const mdPath = `${EVIDENCE_OUT_DIR}/BROAD_ANATOMY_${START}_${END}.md`;
+  writeFileSync(mdPath, buildBroadAnatomyMarkdown({ start: START, end: END, processedN, scoreTable, scorePriceInteraction, scoreSportInteraction, priceSportInteraction, broadAblation }));
+  console.error(`Wrote markdown summary: ${mdPath}`);
+}
+
+interface MetricsFields {
+  events: number;
+  wins: number;
+  losses: number;
+  pnl_u: number;
+  roi_pct: number;
+  max_drawdown_u: number;
+}
+interface ScoreBucketRow extends MetricsFields {
+  BUCKET: string;
+}
+interface InteractionRow extends MetricsFields {
+  STATUS: string;
+  SCORE_BUCKET?: string;
+  PRICE_BUCKET?: string;
+  SPORT?: string;
+}
+interface AblationRow {
+  COMPONENT: string;
+  NOTE: string;
+  N: number;
+  PNL_U: number;
+  ROI_PCT: number;
+  MAX_DD_U: number;
+  INCREMENTAL_N: number;
+  INCREMENTAL_PNL_U: number;
+}
+
+function fmtMetrics(m: MetricsFields): string {
+  return `${m.events} | ${m.wins}/${m.losses} | ${m.pnl_u} | ${m.roi_pct}% | ${m.max_drawdown_u}`;
+}
+
+function buildBroadAnatomyMarkdown(args: {
+  start: string;
+  end: string;
+  processedN: number;
+  scoreTable: ScoreBucketRow[];
+  scorePriceInteraction: InteractionRow[];
+  scoreSportInteraction: InteractionRow[];
+  priceSportInteraction: InteractionRow[];
+  broadAblation: AblationRow[];
+}): string {
+  const { start, end, processedN, scoreTable, scorePriceInteraction, scoreSportInteraction, priceSportInteraction, broadAblation } = args;
+  const lines: string[] = [];
+  lines.push(`# Broad Anatomy + Signal-Score Economics (${start} → ${end})`);
+  lines.push("");
+  lines.push(`Generated by \`npm run research-clone:scoreboard -- --start=${start} --end=${end}\` (BROAD_ANATOMY_V1 section). Common-period processed physical events: **${processedN}**.`);
+  lines.push("");
+  lines.push("No raw rows below — aggregate metrics only. Full aggregate JSON is in the sibling `SCOREBOARD_*.json` artifact in this same directory.");
+  lines.push("");
+
+  lines.push("## A. Founder table — score buckets (0.50<=price<0.60)");
+  lines.push("");
+  lines.push("| Score bucket | N | W/L | PnL(u) | ROI% | MaxDD(u) |");
+  lines.push("|---|---|---|---|---|---|");
+  for (const row of scoreTable) {
+    lines.push(`| ${row.BUCKET} | ${fmtMetrics(row)} |`);
+  }
+  lines.push("");
+
+  lines.push("## B1. Interaction — score × price");
+  lines.push("");
+  lines.push("| Score | Price | Status | N | W/L | PnL(u) | ROI% | MaxDD(u) |");
+  lines.push("|---|---|---|---|---|---|---|---|");
+  for (const row of scorePriceInteraction) {
+    lines.push(`| ${row.SCORE_BUCKET} | ${row.PRICE_BUCKET} | ${row.STATUS} | ${fmtMetrics(row)} |`);
+  }
+  lines.push("");
+
+  lines.push("## B2. Interaction — score × sport");
+  lines.push("");
+  lines.push("| Score | Sport | Status | N | W/L | PnL(u) | ROI% | MaxDD(u) |");
+  lines.push("|---|---|---|---|---|---|---|---|");
+  for (const row of scoreSportInteraction) {
+    lines.push(`| ${row.SCORE_BUCKET} | ${row.SPORT} | ${row.STATUS} | ${fmtMetrics(row)} |`);
+  }
+  lines.push("");
+
+  lines.push("## B3. Interaction — price × sport");
+  lines.push("");
+  lines.push("| Price | Sport | Status | N | W/L | PnL(u) | ROI% | MaxDD(u) |");
+  lines.push("|---|---|---|---|---|---|---|---|");
+  for (const row of priceSportInteraction) {
+    lines.push(`| ${row.PRICE_BUCKET} | ${row.SPORT} | ${row.STATUS} | ${fmtMetrics(row)} |`);
+  }
+  lines.push("");
+
+  lines.push("## C. Broad ablation");
+  lines.push("");
+  lines.push("| Component | N | PnL(u) | ROI% | MaxDD(u) | Incremental N | Incremental PnL(u) | Note |");
+  lines.push("|---|---|---|---|---|---|---|---|");
+  for (const row of broadAblation) {
+    lines.push(`| ${row.COMPONENT} | ${row.N} | ${row.PNL_U} | ${row.ROI_PCT}% | ${row.MAX_DD_U} | ${row.INCREMENTAL_N} | ${row.INCREMENTAL_PNL_U} | ${row.NOTE} |`);
+  }
+  lines.push("");
+
+  lines.push("## Business questions");
+  lines.push("");
+  lines.push("- **Does higher score always mean better economics?** See section A — compare PnL/ROI/MaxDD monotonicity across the 5 score buckets; N<100 buckets are SMALL_SAMPLE and diagnostic only.");
+  lines.push("- **Is score only useful in certain price bands?** See section B1 — compare each score bucket's ROI/PnL across the 5 sub-price bands; a score effect that only shows up in specific price bands is a price-band effect, not a universal score effect.");
+  lines.push("- **Is Broad actually better than plain P50_54, or just more complex?** See the `BROAD_VS_P50_54_TOTAL` row of section C — its Incremental N/PnL is Broad's net edge over plain P50_54 after accounting for events both add and drop via reprioritization.");
+  lines.push("- **Which sports drive the Broad edge?** See section C's `TENNIS_PRIORITY_EFFECT_VS_P50_54` and `SCORE63_64_OVERLAY_EFFECT_VS_P50_54` rows (each isolates one reprioritization leg against plain P50_54) and cross-reference section B2/B3 sport composition.");
+  lines.push("");
+
+  return lines.join("\n");
 }
 
 main().catch((err) => {
