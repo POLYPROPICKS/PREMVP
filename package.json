@@ -13,6 +13,7 @@
     "research-clone:model-ready": "tsx scripts/modeling/clone-model-ready-pipeline.ts",
     "research-clone:model-ready-direct": "tsx scripts/modeling/materialize-research-model-ready.ts",
     "research-clone:scoreboard": "tsx scripts/modeling/unified-core-scoreboard.ts",
+    "research-clone:modeling-dashboard-refresh": "tsx scripts/modeling/refresh-modeling-dashboard.ts",
     "test:research-clone-sync": "node --import tsx --test tests/research-clone/*.test.ts",
     "current-serving:backfill": "tsx scripts/current-serving-backfill-runner.ts",
     "resolve:signals": "tsx scripts/resolve-signals.ts",

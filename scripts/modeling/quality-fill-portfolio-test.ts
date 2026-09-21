@@ -20,6 +20,7 @@
  */
 import { createClient } from "@supabase/supabase-js";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import "dotenv/config";
 
 import { enumerateMinskDates, type ScorecardReadyRow } from "@/lib/modeling/research-corpus/rollingCorpus";
@@ -117,7 +118,8 @@ const TIER_NON_ESPORTS_REMAINING_P5052 = (e: Ev) => inP5052(e) && e.sportFamily 
 const TIER_ESPORTS_P5052 = (e: Ev) => inP5052(e) && e.sportFamily === ESPORTS_FAMILY;
 const TIER_SOCCER_P5460 = (e: Ev) => inP5460(e) && e.sportFamily === SOCCER_FAMILY;
 
-const QUALITY_PORTFOLIOS: Record<string, Array<(e: Ev) => boolean>> = {
+/** Exported so scripts/modeling/refresh-modeling-dashboard.ts can reuse the exact frozen QUALITY_FILL_A/D tier definitions without redefining them. */
+export const QUALITY_PORTFOLIOS: Record<string, Array<(e: Ev) => boolean>> = {
   QUALITY_FILL_A: [TIER_TENNIS_P5052, TIER_SOCCER_P5054, TIER_REMAINING_P5052],
   QUALITY_FILL_B: [TIER_TENNIS_P5052, TIER_SOCCER_P5054, TIER_NON_ESPORTS_REMAINING_P5052, TIER_ESPORTS_P5052],
   QUALITY_FILL_C: [
@@ -352,7 +354,16 @@ async function main() {
   console.error(`Wrote aggregate evidence artifact: ${outPath}`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+/**
+ * Guarded entrypoint (same pattern as scripts/modeling/daily-portfolio-frontier.ts):
+ * `main()` only auto-runs when this file is the invoked script, so
+ * scripts/modeling/refresh-modeling-dashboard.ts can import `QUALITY_PORTFOLIOS`
+ * (the accepted QUALITY_FILL_A/D tier definitions) without triggering this
+ * file's own DB-fetching main() as a side effect of the import.
+ */
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
