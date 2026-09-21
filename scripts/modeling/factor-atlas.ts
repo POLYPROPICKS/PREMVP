@@ -58,7 +58,20 @@ export interface AtlasInputEvent extends ResearchEngineInputEvent {
   volumeUsd: number | null;
   /** Verbatim ScorecardReadyRow.leadTimeHours — distinct from the engine-computed leadTimeHours. */
   rowLeadTimeHours: number | null;
+  /**
+   * Verbatim canonical_row.marketTypeRaw. Not declared on the
+   * ScorecardReadyRow TS interface (lib/modeling/research-corpus/rollingCorpus.ts),
+   * but rows written by the direct materializer
+   * (scripts/modeling/materialize-research-model-ready.ts:219 spreads the
+   * full forward-rich row — lib/modeling/forward-rich/materializeForwardRichResearch.ts:271 —
+   * before narrowing the TS type) DO carry it on the persisted JSON. Read
+   * directly off canonical_row here; never reconstructed via a secondary
+   * evidence-table join.
+   */
+  marketTypeRaw: string | null;
 }
+/** canonical_row carries more fields at runtime than the ScorecardReadyRow TS interface declares — see AtlasInputEvent.marketTypeRaw. */
+type ScorecardReadyRowWithMarketType = ScorecardReadyRow & { marketTypeRaw?: unknown };
 interface AtlasEvaluatedEvent extends EvaluatedEvent {
   scoreLevel: number | null;
   score: DerivedSeries;
@@ -115,6 +128,7 @@ export function toAtlasInput(rows: ScorecardReadyRow[]): AtlasInputEvent[] {
       selectedPrice: r.selectedPrice,
       volumeUsd: typeof r.volumeUsd === "number" ? r.volumeUsd : null,
       rowLeadTimeHours: typeof r.leadTimeHours === "number" ? r.leadTimeHours : null,
+      marketTypeRaw: typeof (r as ScorecardReadyRowWithMarketType).marketTypeRaw === "string" ? ((r as ScorecardReadyRowWithMarketType).marketTypeRaw as string) : null,
     }));
 }
 
