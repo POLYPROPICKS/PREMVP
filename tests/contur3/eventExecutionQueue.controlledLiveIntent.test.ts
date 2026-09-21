@@ -88,7 +88,7 @@ function baseCandidate(overrides: Partial<FireModelCandidate> = {}): FireModelCa
     live_policy_version: "v1",
     paper_eligible: true,
     max_entry_price: 0.55,
-    stake_usd: 7,
+    stake_usd: 4,
     max_order_usd: 7,
     max_spread: 0.03,
     one_order_only: true,
@@ -361,7 +361,7 @@ test("CTL5: controlled mode writes at most one queue row when multiple reservati
 });
 
 test("CTL6: controlled mode caps stake_usd at 1.00 even when the candidate's own stake is higher", async () => {
-  const candidate = baseCandidate({ stake_usd: 7 });
+  const candidate = baseCandidate({ stake_usd: 4 });
   const { reservation, fetchFinalIdentitySourceRows, fetchExactTokenOrderbook } =
     createQueueAuthorityFixture(IN_WINDOW_MS, baseReservation(), candidate);
   const repo = makeFakeRepo([reservation]);

@@ -107,7 +107,7 @@
     },
     {
       "field": "stake_usd",
-      "source_authority": "EXECUTABLE_STAKE_USD constant (lib/executor/executorQueueTypes.ts:25, currently 1.10 USD) -- an execution-contract constant OWNED BY THE EXECUTOR, explicitly NOT a per-row generated_signal_pairs column",
+      "source_authority": "EXECUTABLE_STAKE_USD constant (lib/executor/executorQueueTypes.ts:25, currently the Founder-authorized $4.00 Queue envelope, QUEUE_MAX_STAKE_USD; max_entry_price ceiling 0.62) -- an execution-contract constant OWNED BY THE EXECUTOR, explicitly NOT a per-row generated_signal_pairs column",
       "producer": "exactProviderSignalPair() stamps stakeUsd=EXECUTABLE_STAKE_USD; buildQueueRow()/buildQueueRowFromFinalIdentity() write it onto the Queue row's stake_usd column",
       "consumer": "IrelandQueueCandidate.stake_usd and .max_stake_usd (MVP: max_stake_usd === stake_usd, a hard cap, not a suggestion); validateOrderEventAgainstQueueRow() STAKE_EXCEEDS_QUEUE_MAX check",
       "semantic_meaning": "$1.10 is deliberately the smallest size that clears Polymarket's CLOB minimum-order-size rejection while keeping per-order exposure minimal (source comment). Persisting stake per signal pair instead would create a second, forgeable stake authority -- explicitly rejected by design.",

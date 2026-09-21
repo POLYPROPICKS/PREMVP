@@ -20,7 +20,7 @@ export const RECONCILE_COMMAND_ID = 'premvp.command.control_plane_reconcile.v1';
 export const RELEASE_PIPELINE_COMMAND_ID = 'premvp.command.release_pipeline.v1';
 export const CANONICAL_REPOSITORY = 'POLYPROPICKS/PREMVP';
 export const R5_AUTHORIZED_ROUTE_ID = 'FOUNDER_AUTHORIZED_PREMVP_FUTURE_QUEUE_STAKE_V1';
-export const R5_AUTHORIZATION_REF = 'FOUNDER_AUTH_R5_PREMVP_FUTURE_QUEUE_STAKE_20260824';
+export const R5_AUTHORIZATION_REF = 'FOUNDER_AUTH_R5_PREMVP_QUEUE_MONEY_ENVELOPE_20260921';
 
 const REQUIRED_FIELDS = [
   'schema_version', 'release_run_id', 'task_id', 'task_class', 'risk_class', 'executor',
@@ -58,7 +58,7 @@ export function isAuthorizedBoundedR5Manifest(manifest) {
     a.route_id === R5_AUTHORIZED_ROUTE_ID &&
     a.authorization_ref === R5_AUTHORIZATION_REF &&
     a.direct_action_scope === 'FUTURE_QUEUE_STAKE_CONFIGURATION' &&
-    a.max_stake_usd === 2.5 &&
+    a.max_stake_usd === 4 &&
     a.historical_queue_mutation === false &&
     a.raw_database_mutation === false &&
     a.direct_venue_action === false

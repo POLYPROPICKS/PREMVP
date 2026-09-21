@@ -98,7 +98,7 @@ test('4b. exact Founder-authorized future Queue R5 route requires the Contur rev
   const manifest = baseManifest({
     risk_class: 'R5_CROSS_REPO_OR_LIVE_MONEY',
     task_id: 'R5_FUTURE_QUEUE_STAKE_20260824',
-    r5_authorization: { route_id: R5_AUTHORIZED_ROUTE_ID, authorization_ref: R5_AUTHORIZATION_REF, direct_action_scope: 'FUTURE_QUEUE_STAKE_CONFIGURATION', max_stake_usd: 2.5, historical_queue_mutation: false, raw_database_mutation: false, direct_venue_action: false },
+    r5_authorization: { route_id: R5_AUTHORIZED_ROUTE_ID, authorization_ref: R5_AUTHORIZATION_REF, direct_action_scope: 'FUTURE_QUEUE_STAKE_CONFIGURATION', max_stake_usd: 4, historical_queue_mutation: false, raw_database_mutation: false, direct_venue_action: false },
   });
   const result = validateReleaseRunManifest(manifest);
   assert.equal(result.ok, true, result.errors.join('\n'));

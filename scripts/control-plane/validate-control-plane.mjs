@@ -462,10 +462,10 @@ export function validateControlPlane(root = REPO_ROOT) {
     } else {
       const route = routes[0];
       if (route.id !== 'FOUNDER_AUTHORIZED_PREMVP_FUTURE_QUEUE_STAKE_V1' ||
-          route.authorization_ref !== 'FOUNDER_AUTH_R5_PREMVP_FUTURE_QUEUE_STAKE_20260824' ||
+          route.authorization_ref !== 'FOUNDER_AUTH_R5_PREMVP_QUEUE_MONEY_ENVELOPE_20260921' ||
           route.repository !== 'POLYPROPICKS/PREMVP' || route.executor !== 'local_codex_windows' ||
           route.direct_action_scope !== 'FUTURE_QUEUE_STAKE_CONFIGURATION' ||
-          route.max_stake_usd !== 2.5 || route.release_allowed !== true) {
+          route.max_stake_usd !== 4 || route.release_allowed !== true) {
         err('ROUTING: R5 bounded route does not match the exact Founder authorization');
       }
       if (route.required_reviewer !== 'premvp.reviewer.contur_gate.v1' ||

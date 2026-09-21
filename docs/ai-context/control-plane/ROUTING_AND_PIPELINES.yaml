@@ -490,11 +490,11 @@
                              "authorized_bounded_routes":  [
                                                                {
                                                                    "id":  "FOUNDER_AUTHORIZED_PREMVP_FUTURE_QUEUE_STAKE_V1",
-                                                                   "authorization_ref":  "FOUNDER_AUTH_R5_PREMVP_FUTURE_QUEUE_STAKE_20260824",
+                                                                   "authorization_ref":  "FOUNDER_AUTH_R5_PREMVP_QUEUE_MONEY_ENVELOPE_20260921",
                                                                    "repository":  "POLYPROPICKS/PREMVP",
                                                                    "executor":  "local_codex_windows",
                                                                    "direct_action_scope":  "FUTURE_QUEUE_STAKE_CONFIGURATION",
-                                                                   "max_stake_usd":  2.5,
+                                                                   "max_stake_usd":  4.0,
                                                                    "required_capabilities":  [
                                                                                                  "REPOSITORY_READ",
                                                                                                  "LOCAL_TEST_RUN",
