@@ -50,19 +50,25 @@ Main tables below show only canonical-selected N>=100 cells. Excluded as SMALL_S
 | .56-.58 | soccer | MAIN | 157 | 92/65 | 5.08 | 3.2375% | -10.56 |
 | .58-.60 | soccer | MAIN | 127 | 80/47 | 8.92 | 7.024% | -8.27 |
 
-## C. Broad ablation
+## C. Broad ablation — paired comparison vs P50_54
 
-| Component | N | PnL(u) | ROI% | MaxDD(u) | Incremental N | Incremental PnL(u) | Note |
-|---|---|---|---|---|---|---|---|
-| PURE_P50_52_LAYER | 2983 | 568.57 | 19.0604% | -31.04 | 2983 | 568.57 | standalone 0.50<=price<0.52, baseline=empty |
-| P52_54_LAYER_ADDED | 471 | 70.07 | 14.8764% | -19.8 | 471 | 70.07 | standalone 0.52<=price<0.54 slice, baseline=empty |
-| SCORE63_64_OVERLAY_EFFECT_VS_P50_54 | 3229 | 605.23 | 18.7436% | -37.32 | 0 | 0 | Broad variant with ONLY the score63-64 preferred leg (tennis leg dropped) vs plain P50_54 |
-| TENNIS_PRIORITY_EFFECT_VS_P50_54 | 3229 | 609.23 | 18.8674% | -37.32 | 0 | 0 | Broad variant with ONLY the tennis preferred leg (score leg dropped) vs plain P50_54 |
-| BROAD_VS_P50_54_TOTAL | 3229 | 605.23 | 18.7436% | -37.32 | 0 | 0 | actual PORTFOLIO_BROAD (both preferred legs combined) vs plain P50_54 |
+Membership diff alone (added/removed physical events) is not sufficient: Broad and P50_54 can share the identical physical-event set while Broad's reprioritization selects a DIFFERENT candidate bet (decisionTimestamp/entryPrice) inside a shared event. Each row below pairs component vs baseline by `physicalEventKey` and classifies every shared event as SAME_SELECTION or RESELECTED_WITHIN_EVENT, so `TOTAL_PNL_DELTA` reconciles exactly to component P&L − baseline P&L.
+
+| Component | Baseline N | Component N | Shared | Added | Removed | Reselected (shared) | Unchanged (shared) | Added PnL Δ(u) | Removed PnL Δ(u) | Reselected PnL Δ(u) | **Total PnL Δ(u)** | Note |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| PURE_P50_52_LAYER | 0 | 2983 | 0 | 2983 | 0 | 0 | 0 | 568.57 | 0 | 0 | **568.57** | STANDALONE_SLICE_REFERENCE: independently selected 0.50<=price<0.52, baseline=empty. NOT additive with P52_54_LAYER_ADDED — see standaloneSliceOverlapN. |
+| P52_54_LAYER_ADDED | 0 | 471 | 0 | 471 | 0 | 0 | 0 | 70.07 | 0 | 0 | **70.07** | STANDALONE_SLICE_REFERENCE: independently selected 0.52<=price<0.54, baseline=empty. NOT additive with PURE_P50_52_LAYER — see standaloneSliceOverlapN. |
+| SCORE63_64_OVERLAY_EFFECT_VS_P50_54 | 3229 | 3229 | 3229 | 0 | 0 | 44 | 3185 | 0 | 0 | -4.8954 | **-4.8954** | Broad variant with ONLY the score63-64 preferred leg (tennis leg dropped) vs plain P50_54, paired by physicalEventKey |
+| TENNIS_PRIORITY_EFFECT_VS_P50_54 | 3229 | 3229 | 3229 | 0 | 0 | 18 | 3211 | 0 | 0 | -0.8978 | **-0.8978** | Broad variant with ONLY the tennis preferred leg (score leg dropped) vs plain P50_54, paired by physicalEventKey |
+| BROAD_VS_P50_54_TOTAL | 3229 | 3229 | 3229 | 0 | 0 | 36 | 3193 | 0 | 0 | -4.8954 | **-4.8954** | actual PORTFOLIO_BROAD (both preferred legs combined) vs plain P50_54, paired by physicalEventKey — includes within-event reselection |
+
+**PORTFOLIO_BROAD minus P50_54 = -4.8954u** (component P&L 605.23u − baseline P&L 610.1254u), decomposed as added-event Δ 0u + removed-event Δ 0u + within-event reselection Δ -4.8954u across 36 of 3229 shared events.
+
+**STANDALONE_SLICE_REFERENCE caveat:** `PURE_P50_52_LAYER` and `P52_54_LAYER_ADDED` above are each independently re-selected price slices (baseline=empty), not layers of a single reprioritized portfolio. Their `PNL_U` values are NOT additive — physical-event overlap between the two standalone slices: **225** shared physical events. Do not sum their PNL_U as a "gross before reprioritization" figure for P50_54 or Broad.
 
 ## Business questions
 
 - **Does higher score always mean better economics?** See section A — compare PnL/ROI/MaxDD monotonicity across the 5 score buckets; N<100 buckets are SMALL_SAMPLE and diagnostic only.
 - **Is score only useful in certain price bands?** See section B1 — compare each score bucket's ROI/PnL across the 5 sub-price bands; a score effect that only shows up in specific price bands is a price-band effect, not a universal score effect.
-- **Is Broad actually better than plain P50_54, or just more complex?** See the `BROAD_VS_P50_54_TOTAL` row of section C — its Incremental N/PnL is Broad's net edge over plain P50_54 after accounting for events both add and drop via reprioritization.
+- **Is Broad actually better than plain P50_54, or just more complex?** See the `BROAD_VS_P50_54_TOTAL` row of section C — its `TOTAL_PNL_DELTA` is Broad's net edge over plain P50_54 after accounting for both membership changes (added/removed events) and within-event reselection on shared events.
 - **Which sports drive the Broad edge?** See section C's `TENNIS_PRIORITY_EFFECT_VS_P50_54` and `SCORE63_64_OVERLAY_EFFECT_VS_P50_54` rows (each isolates one reprioritization leg against plain P50_54) and cross-reference section B2/B3 sport composition.

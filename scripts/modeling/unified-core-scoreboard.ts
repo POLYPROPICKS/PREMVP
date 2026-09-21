@@ -558,16 +558,51 @@ async function main() {
   const broadScoreOnlyBets = runPortfolio(input, [TIER_SCORE63_64_ONLY, TIER_P50_52, TIER_P52_54]);
   const broadTennisOnlyBets = runPortfolio(input, [TIER_TENNIS_ONLY, TIER_P50_52, TIER_P52_54]);
 
-  function incrementalVs(componentBets: SelectedBet[], baselineBets: SelectedBet[]) {
-    const baselineKeys = new Set(baselineBets.map((b) => b.physicalEventKey));
-    const componentKeys = new Set(componentBets.map((b) => b.physicalEventKey));
-    const added = metricsFor(componentBets.filter((b) => !baselineKeys.has(b.physicalEventKey)));
-    const removed = metricsFor(baselineBets.filter((b) => !componentKeys.has(b.physicalEventKey)));
+  /**
+   * Paired comparison keyed by physicalEventKey. Membership diff alone
+   * (added/removed events) is insufficient when both sets can select a
+   * DIFFERENT candidate bet (decisionTimestamp/entryPrice/ref) for the SAME
+   * physical event — e.g. Broad vs P50_54 can have identical membership
+   * while reprioritization changes which observation was selected inside
+   * shared events. RESELECTED_EVENT_PNL_DELTA captures exactly that, so
+   * TOTAL_PNL_DELTA reconciles exactly to component P&L - baseline P&L.
+   */
+  function pairedVs(componentBets: SelectedBet[], baselineBets: SelectedBet[]) {
+    const baselineByKey = new Map(baselineBets.map((b) => [b.physicalEventKey, b]));
+    const componentByKey = new Map(componentBets.map((b) => [b.physicalEventKey, b]));
+
+    const addedBets = componentBets.filter((b) => !baselineByKey.has(b.physicalEventKey));
+    const removedBets = baselineBets.filter((b) => !componentByKey.has(b.physicalEventKey));
+    const sharedKeys = [...componentByKey.keys()].filter((k) => baselineByKey.has(k));
+
+    let sharedPnlDelta = 0;
+    let reselectedN = 0;
+    let unchangedN = 0;
+    for (const key of sharedKeys) {
+      const c = componentByKey.get(key)!;
+      const b = baselineByKey.get(key)!;
+      const sameSelection = c.decisionTimestamp === b.decisionTimestamp && c.entryPrice === b.entryPrice && (c.ref ?? null) === (b.ref ?? null);
+      if (sameSelection) unchangedN += 1;
+      else reselectedN += 1;
+      sharedPnlDelta += c.pnlU - b.pnlU;
+    }
+
+    const addedPnlDelta = round(metricsFor(addedBets).pnl_u, 4);
+    const removedPnlDelta = round(-metricsFor(removedBets).pnl_u, 4);
+    const reselectedPnlDelta = round(sharedPnlDelta, 4);
+
     return {
-      ADDED_N: added.events,
-      REMOVED_N: removed.events,
-      INCREMENTAL_N: added.events - removed.events,
-      INCREMENTAL_PNL_U: round(added.pnl_u - removed.pnl_u, 4),
+      BASELINE_N: baselineBets.length,
+      COMPONENT_N: componentBets.length,
+      SHARED_EVENT_N: sharedKeys.length,
+      ADDED_EVENT_N: addedBets.length,
+      REMOVED_EVENT_N: removedBets.length,
+      RESELECTED_SHARED_EVENT_N: reselectedN,
+      UNCHANGED_SHARED_EVENT_N: unchangedN,
+      ADDED_EVENT_PNL_DELTA: addedPnlDelta,
+      REMOVED_EVENT_PNL_DELTA: removedPnlDelta,
+      RESELECTED_EVENT_PNL_DELTA: reselectedPnlDelta,
+      TOTAL_PNL_DELTA: round(addedPnlDelta + removedPnlDelta + reselectedPnlDelta, 4),
     };
   }
 
@@ -580,18 +615,27 @@ async function main() {
       PNL_U: overall.pnl_u,
       ROI_PCT: overall.roi_pct,
       MAX_DD_U: overall.max_drawdown_u,
-      ...incrementalVs(componentBets, baselineBets),
+      ...pairedVs(componentBets, baselineBets),
       AUGUST: metricsFor(splitByDate(componentBets, START, AUG_END)),
       SEPTEMBER_THROUGH_20: metricsFor(splitByDate(componentBets, SEP_START, END)),
     };
   }
 
+  // STANDALONE_SLICE_REFERENCE: these two rows are independently re-selected
+  // price slices, each free to pick a different candidate time/price for the
+  // SAME physical event as the other slice. Their PNL_U values are NOT
+  // additive (PURE_P50_52_LAYER.PNL_U + P52_54_LAYER_ADDED.PNL_U != P50_54 or
+  // Broad P&L) unless the two slices are proven disjoint on physical events —
+  // see standaloneSliceOverlapN below, which is 0 iff that additivity claim
+  // would actually hold for this dataset.
+  const standaloneSliceOverlapN = p5052Model.bets.filter((b) => layerP5254Bets.some((o) => o.physicalEventKey === b.physicalEventKey)).length;
+
   const broadAblation = [
-    ablationRow("PURE_P50_52_LAYER", "standalone 0.50<=price<0.52, baseline=empty", p5052Model.bets, []),
-    ablationRow("P52_54_LAYER_ADDED", "standalone 0.52<=price<0.54 slice, baseline=empty", layerP5254Bets, []),
-    ablationRow("SCORE63_64_OVERLAY_EFFECT_VS_P50_54", "Broad variant with ONLY the score63-64 preferred leg (tennis leg dropped) vs plain P50_54", broadScoreOnlyBets, p5054Model.bets),
-    ablationRow("TENNIS_PRIORITY_EFFECT_VS_P50_54", "Broad variant with ONLY the tennis preferred leg (score leg dropped) vs plain P50_54", broadTennisOnlyBets, p5054Model.bets),
-    ablationRow("BROAD_VS_P50_54_TOTAL", "actual PORTFOLIO_BROAD (both preferred legs combined) vs plain P50_54", broadModel.bets, p5054Model.bets),
+    ablationRow("PURE_P50_52_LAYER", "STANDALONE_SLICE_REFERENCE: independently selected 0.50<=price<0.52, baseline=empty. NOT additive with P52_54_LAYER_ADDED — see standaloneSliceOverlapN.", p5052Model.bets, []),
+    ablationRow("P52_54_LAYER_ADDED", "STANDALONE_SLICE_REFERENCE: independently selected 0.52<=price<0.54, baseline=empty. NOT additive with PURE_P50_52_LAYER — see standaloneSliceOverlapN.", layerP5254Bets, []),
+    ablationRow("SCORE63_64_OVERLAY_EFFECT_VS_P50_54", "Broad variant with ONLY the score63-64 preferred leg (tennis leg dropped) vs plain P50_54, paired by physicalEventKey", broadScoreOnlyBets, p5054Model.bets),
+    ablationRow("TENNIS_PRIORITY_EFFECT_VS_P50_54", "Broad variant with ONLY the tennis preferred leg (score leg dropped) vs plain P50_54, paired by physicalEventKey", broadTennisOnlyBets, p5054Model.bets),
+    ablationRow("BROAD_VS_P50_54_TOTAL", "actual PORTFOLIO_BROAD (both preferred legs combined) vs plain P50_54, paired by physicalEventKey — includes within-event reselection", broadModel.bets, p5054Model.bets),
   ];
 
   const legacy = {
@@ -624,6 +668,12 @@ async function main() {
       SCORE_SPORT_INTERACTION: scoreSportSplit,
       PRICE_SPORT_INTERACTION: priceSportSplit,
       BROAD_ABLATION: broadAblation,
+      STANDALONE_SLICE_OVERLAP: {
+        NOTE: "physical-event overlap between standalone PURE_P50_52_LAYER and standalone P52_54_LAYER_ADDED; overlap>0 means their PNL_U values are NOT additive",
+        PURE_P50_52_LAYER_N: p5052Model.bets.length,
+        P52_54_LAYER_ADDED_N: layerP5254Bets.length,
+        SHARED_PHYSICAL_EVENT_N: standaloneSliceOverlapN,
+      },
     },
   };
 
@@ -647,6 +697,7 @@ async function main() {
       scoreSportInteraction: scoreSportSplit.MATERIAL,
       priceSportInteraction: priceSportSplit.MATERIAL,
       broadAblation,
+      standaloneSliceOverlapN,
       diagnosticCounts: {
         scorePrice: scorePriceSplit.DIAGNOSTIC_APPENDIX.length,
         scoreSport: scoreSportSplit.DIAGNOSTIC_APPENDIX.length,
@@ -681,8 +732,17 @@ interface AblationRow {
   PNL_U: number;
   ROI_PCT: number;
   MAX_DD_U: number;
-  INCREMENTAL_N: number;
-  INCREMENTAL_PNL_U: number;
+  BASELINE_N: number;
+  COMPONENT_N: number;
+  SHARED_EVENT_N: number;
+  ADDED_EVENT_N: number;
+  REMOVED_EVENT_N: number;
+  RESELECTED_SHARED_EVENT_N: number;
+  UNCHANGED_SHARED_EVENT_N: number;
+  ADDED_EVENT_PNL_DELTA: number;
+  REMOVED_EVENT_PNL_DELTA: number;
+  RESELECTED_EVENT_PNL_DELTA: number;
+  TOTAL_PNL_DELTA: number;
 }
 
 function fmtMetrics(m: MetricsFields): string {
@@ -698,9 +758,10 @@ function buildBroadAnatomyMarkdown(args: {
   scoreSportInteraction: InteractionRow[];
   priceSportInteraction: InteractionRow[];
   broadAblation: AblationRow[];
+  standaloneSliceOverlapN: number;
   diagnosticCounts: { scorePrice: number; scoreSport: number; priceSport: number };
 }): string {
-  const { start, end, processedN, scoreTable, scorePriceInteraction, scoreSportInteraction, priceSportInteraction, broadAblation, diagnosticCounts } = args;
+  const { start, end, processedN, scoreTable, scorePriceInteraction, scoreSportInteraction, priceSportInteraction, broadAblation, standaloneSliceOverlapN, diagnosticCounts } = args;
   const lines: string[] = [];
   lines.push(`# Broad Anatomy + Signal-Score Economics (${start} → ${end})`);
   lines.push("");
@@ -749,20 +810,37 @@ function buildBroadAnatomyMarkdown(args: {
   }
   lines.push("");
 
-  lines.push("## C. Broad ablation");
+  lines.push("## C. Broad ablation — paired comparison vs P50_54");
   lines.push("");
-  lines.push("| Component | N | PnL(u) | ROI% | MaxDD(u) | Incremental N | Incremental PnL(u) | Note |");
-  lines.push("|---|---|---|---|---|---|---|---|");
+  lines.push(
+    "Membership diff alone (added/removed physical events) is not sufficient: Broad and P50_54 can share the identical physical-event set while Broad's reprioritization selects a DIFFERENT candidate bet (decisionTimestamp/entryPrice) inside a shared event. Each row below pairs component vs baseline by `physicalEventKey` and classifies every shared event as SAME_SELECTION or RESELECTED_WITHIN_EVENT, so `TOTAL_PNL_DELTA` reconciles exactly to component P&L − baseline P&L.",
+  );
+  lines.push("");
+  lines.push(
+    "| Component | Baseline N | Component N | Shared | Added | Removed | Reselected (shared) | Unchanged (shared) | Added PnL Δ(u) | Removed PnL Δ(u) | Reselected PnL Δ(u) | **Total PnL Δ(u)** | Note |",
+  );
+  lines.push("|---|---|---|---|---|---|---|---|---|---|---|---|---|");
   for (const row of broadAblation) {
-    lines.push(`| ${row.COMPONENT} | ${row.N} | ${row.PNL_U} | ${row.ROI_PCT}% | ${row.MAX_DD_U} | ${row.INCREMENTAL_N} | ${row.INCREMENTAL_PNL_U} | ${row.NOTE} |`);
+    lines.push(
+      `| ${row.COMPONENT} | ${row.BASELINE_N} | ${row.COMPONENT_N} | ${row.SHARED_EVENT_N} | ${row.ADDED_EVENT_N} | ${row.REMOVED_EVENT_N} | ${row.RESELECTED_SHARED_EVENT_N} | ${row.UNCHANGED_SHARED_EVENT_N} | ${row.ADDED_EVENT_PNL_DELTA} | ${row.REMOVED_EVENT_PNL_DELTA} | ${row.RESELECTED_EVENT_PNL_DELTA} | **${row.TOTAL_PNL_DELTA}** | ${row.NOTE} |`,
+    );
   }
+  lines.push("");
+  const broadRow = broadAblation.find((r) => r.COMPONENT === "BROAD_VS_P50_54_TOTAL")!;
+  lines.push(
+    `**PORTFOLIO_BROAD minus P50_54 = ${broadRow.TOTAL_PNL_DELTA}u** (component P&L ${broadRow.PNL_U}u − baseline P&L ${round(broadRow.PNL_U - broadRow.TOTAL_PNL_DELTA, 4)}u), decomposed as added-event Δ ${broadRow.ADDED_EVENT_PNL_DELTA}u + removed-event Δ ${broadRow.REMOVED_EVENT_PNL_DELTA}u + within-event reselection Δ ${broadRow.RESELECTED_EVENT_PNL_DELTA}u across ${broadRow.RESELECTED_SHARED_EVENT_N} of ${broadRow.SHARED_EVENT_N} shared events.`,
+  );
+  lines.push("");
+  lines.push(
+    `**STANDALONE_SLICE_REFERENCE caveat:** \`PURE_P50_52_LAYER\` and \`P52_54_LAYER_ADDED\` above are each independently re-selected price slices (baseline=empty), not layers of a single reprioritized portfolio. Their \`PNL_U\` values are NOT additive — physical-event overlap between the two standalone slices: **${standaloneSliceOverlapN}** shared physical events. Do not sum their PNL_U as a "gross before reprioritization" figure for P50_54 or Broad.`,
+  );
   lines.push("");
 
   lines.push("## Business questions");
   lines.push("");
   lines.push("- **Does higher score always mean better economics?** See section A — compare PnL/ROI/MaxDD monotonicity across the 5 score buckets; N<100 buckets are SMALL_SAMPLE and diagnostic only.");
   lines.push("- **Is score only useful in certain price bands?** See section B1 — compare each score bucket's ROI/PnL across the 5 sub-price bands; a score effect that only shows up in specific price bands is a price-band effect, not a universal score effect.");
-  lines.push("- **Is Broad actually better than plain P50_54, or just more complex?** See the `BROAD_VS_P50_54_TOTAL` row of section C — its Incremental N/PnL is Broad's net edge over plain P50_54 after accounting for events both add and drop via reprioritization.");
+  lines.push("- **Is Broad actually better than plain P50_54, or just more complex?** See the `BROAD_VS_P50_54_TOTAL` row of section C — its `TOTAL_PNL_DELTA` is Broad's net edge over plain P50_54 after accounting for both membership changes (added/removed events) and within-event reselection on shared events.");
   lines.push("- **Which sports drive the Broad edge?** See section C's `TENNIS_PRIORITY_EFFECT_VS_P50_54` and `SCORE63_64_OVERLAY_EFFECT_VS_P50_54` rows (each isolates one reprioritization leg against plain P50_54) and cross-reference section B2/B3 sport composition.");
   lines.push("");
 
