@@ -489,6 +489,138 @@ async function main() {
   });
   const priceMovementUsableN = runStandalone(input, (e) => inC0(e.entryPrice) && e.selectedPrice.observationCount >= 2).length;
 
+  // ── K: VOLUME ECONOMICS (existing factor-atlas VOLUME buckets, C0 band) ──
+  // Bucket boundaries mirror factor-atlas.ts VOLUME_FACTOR exactly
+  // (V_LT100K/V_100_200K/V_200_350K/V_350_500K/V_GE500K) — no new thresholds.
+  // Reuses runStandalone/metricsFor/splitByDate/sportComposition/
+  // priceBucketComposition verbatim; no economics reimplemented here.
+  const hasVolume = (e: AtlasEvaluatedEvent) => typeof e.volumeUsd === "number";
+  const VOLUME_BUCKETS: Array<[string, number, number]> = [
+    ["V_LT100K", -Infinity, 100_000],
+    ["V_100_200K", 100_000, 200_000],
+    ["V_200_350K", 200_000, 350_000],
+    ["V_350_500K", 350_000, 500_000],
+    ["V_GE500K", 500_000, Infinity],
+  ];
+  const inVolumeBucket = (e: AtlasEvaluatedEvent, lo: number, hi: number) => hasVolume(e) && e.volumeUsd! >= lo && e.volumeUsd! < hi;
+
+  const volumeTable = VOLUME_BUCKETS.map(([id, lo, hi]) => {
+    const bets = runStandalone(input, (e) => inC0(e.entryPrice) && inVolumeBucket(e, lo, hi));
+    const overall = metricsFor(bets);
+    return {
+      STATUS: overall.events >= 100 ? "MAIN" : "SMALL_SAMPLE",
+      BUCKET: id,
+      ...overall,
+      AUGUST: metricsFor(splitByDate(bets, START, AUG_END)),
+      SEPTEMBER_THROUGH_20: metricsFor(splitByDate(bets, SEP_START, END)),
+      SPORTS: sportComposition(bets),
+      PRICE_BUCKETS: priceBucketComposition(bets),
+    };
+  });
+
+  /**
+   * Coverage/selection-bias reporting needs volumeUsd on the SELECTED C0
+   * event, which toSelectedBet() deliberately does not carry. Rather than
+   * widen SelectedBet, mirror the exact same C0 selection identity
+   * (evaluateEvent/sortChronologically, one physicalEventKey -> max one
+   * selection, chronological-first qualifying row wins) used everywhere
+   * else in this file, retaining the full evaluated event for reporting
+   * only — no new economics, no new selection rule.
+   */
+  function selectC0Events(events: AtlasInputEvent[]): AtlasEvaluatedEvent[] {
+    const ordered = sortChronologically(events.map((e) => evaluateEvent(e) as AtlasEvaluatedEvent)) as AtlasEvaluatedEvent[];
+    const claimed = new Set<string>();
+    const selected: AtlasEvaluatedEvent[] = [];
+    for (const event of ordered) {
+      if (claimed.has(event.physicalEventKey)) continue;
+      if (!inC0(event.entryPrice)) continue;
+      claimed.add(event.physicalEventKey);
+      selected.push(event);
+    }
+    return selected;
+  }
+  const c0Selected = selectC0Events(input);
+  const volumeAvailable = c0Selected.filter(hasVolume);
+  const volumeMissing = c0Selected.filter((e) => !hasVolume(e));
+  const dateOf = (e: AtlasEvaluatedEvent) => minskDate(e.decisionTimestamp);
+  const augC0Selected = c0Selected.filter((e) => dateOf(e) >= START && dateOf(e) <= AUG_END);
+  const sepC0Selected = c0Selected.filter((e) => dateOf(e) >= SEP_START && dateOf(e) <= END);
+  const augVolumeAvailable = augC0Selected.filter(hasVolume);
+  const sepVolumeAvailable = sepC0Selected.filter(hasVolume);
+
+  function sportMixOf(events: AtlasEvaluatedEvent[]) {
+    const counts = new Map<string, number>();
+    for (const e of events) {
+      const key = e.sportFamily || "unknown";
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    const total = events.length || 1;
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([sport, n]) => ({ sport, n, pct: round((n / total) * 100, 1) }));
+  }
+  function priceMixOf(events: AtlasEvaluatedEvent[]) {
+    const total = events.length || 1;
+    return PRICE_SUB_BUCKETS_FOR_VOLUME.map(([id, lo, hi]) => {
+      const n = events.filter((e) => e.entryPrice >= lo && e.entryPrice < hi).length;
+      return { bucket: id, n, pct: round((n / total) * 100, 1) };
+    });
+  }
+  const PRICE_SUB_BUCKETS_FOR_VOLUME: Array<[string, number, number]> = [
+    ["0.50-0.52", 0.5, 0.52],
+    ["0.52-0.54", 0.52, 0.54],
+    ["0.54-0.60", 0.54, 0.6],
+  ];
+  const coveragePct = (n: number, d: number) => round((n / (d || 1)) * 100, 1);
+  const volumeCoverage = {
+    C0_N: c0Selected.length,
+    VOLUME_AVAILABLE_N: volumeAvailable.length,
+    VOLUME_MISSING_N: volumeMissing.length,
+    VOLUME_COVERAGE_PCT: coveragePct(volumeAvailable.length, c0Selected.length),
+    AUGUST: { C0_N: augC0Selected.length, VOLUME_AVAILABLE_N: augVolumeAvailable.length, COVERAGE_PCT: coveragePct(augVolumeAvailable.length, augC0Selected.length) },
+    SEPTEMBER_THROUGH_20: { C0_N: sepC0Selected.length, VOLUME_AVAILABLE_N: sepVolumeAvailable.length, COVERAGE_PCT: coveragePct(sepVolumeAvailable.length, sepC0Selected.length) },
+    SPORT_MIX_WITH_VOLUME: sportMixOf(volumeAvailable),
+    SPORT_MIX_WITHOUT_VOLUME: sportMixOf(volumeMissing),
+    PRICE_MIX_WITH_VOLUME: priceMixOf(volumeAvailable),
+    PRICE_MIX_WITHOUT_VOLUME: priceMixOf(volumeMissing),
+  };
+
+  // Only architect-identified material presence cells (canonical selected N>=100 decides MAIN vs SMALL_SAMPLE).
+  const P50_52_PRED = (e: AtlasEvaluatedEvent) => e.entryPrice >= 0.5 && e.entryPrice < 0.52;
+  const VOLUME_INTERACTION_CELLS: Array<{ ID: string; predicate: (e: AtlasEvaluatedEvent) => boolean }> = [
+    { ID: "V_LT100K__P50_52", predicate: (e) => inVolumeBucket(e, -Infinity, 100_000) && P50_52_PRED(e) },
+    { ID: "V_GE500K__P50_52", predicate: (e) => inVolumeBucket(e, 500_000, Infinity) && P50_52_PRED(e) },
+    { ID: "V_GE500K__SOCCER", predicate: (e) => inVolumeBucket(e, 500_000, Infinity) && e.sportFamily === SOCCER_FAMILY },
+  ];
+  const volumeInteractionTable = VOLUME_INTERACTION_CELLS.map(({ ID, predicate }) => {
+    const bets = runStandalone(input, (e) => inC0(e.entryPrice) && predicate(e));
+    const overall = metricsFor(bets);
+    return {
+      STATUS: overall.events >= 100 ? "MAIN" : "SMALL_SAMPLE",
+      CELL: ID,
+      ...overall,
+      AUGUST: metricsFor(splitByDate(bets, START, AUG_END)),
+      SEPTEMBER_THROUGH_20: metricsFor(splitByDate(bets, SEP_START, END)),
+    };
+  });
+
+  // Parent-controlled incremental test: does the volume cell separate from
+  // its obvious price/sport parent AFTER restricting the parent to the same
+  // volume-observed population (never the full unobserved C0 population).
+  const p5052WithVolumeBets = runStandalone(input, (e) => inC0(e.entryPrice) && P50_52_PRED(e) && hasVolume(e));
+  const soccerWithVolumeBets = runStandalone(input, (e) => inC0(e.entryPrice) && e.sportFamily === SOCCER_FAMILY && hasVolume(e));
+  const vGe500kP5052Bets = runStandalone(input, (e) => inC0(e.entryPrice) && inVolumeBucket(e, 500_000, Infinity) && P50_52_PRED(e));
+  const vGe500kSoccerBets = runStandalone(input, (e) => inC0(e.entryPrice) && inVolumeBucket(e, 500_000, Infinity) && e.sportFamily === SOCCER_FAMILY);
+  const parentControlledTable = [
+    { CELL: "V_GE500K x P50_52", PARENT: "ALL_P50_52_WITH_VOLUME_OBSERVED", CELL_METRICS: metricsFor(vGe500kP5052Bets), PARENT_METRICS: metricsFor(p5052WithVolumeBets) },
+    { CELL: "V_GE500K x SOCCER", PARENT: "ALL_SOCCER_WITH_VOLUME_OBSERVED", CELL_METRICS: metricsFor(vGe500kSoccerBets), PARENT_METRICS: metricsFor(soccerWithVolumeBets) },
+  ];
+
+  const volumeEconomics = {
+    COVERAGE: volumeCoverage,
+    BUCKETS: volumeTable,
+    MATERIAL_INTERACTIONS: volumeInteractionTable,
+    PARENT_CONTROLLED: parentControlledTable,
+  };
+
   // ── G/H/I/J: BROAD ANATOMY — score × price, score × sport, price × sport,
   // Broad ablation. Reuses the exact C0 band, SCORE_BUCKETS, tier predicates
   // and metricsFor/splitByDate helpers already defined above — no new SQL,
@@ -662,6 +794,7 @@ async function main() {
     LEAD_TIME_ECONOMICS: { BUCKETS: leadTable, C4_DECOMPOSITION: c4Decomposition },
     MARKET_TYPE_ECONOMICS: { MATERIAL_TYPES: marketTypeTable, DIAGNOSTIC_TYPES: marketTypeDiagnostics, ATTRIBUTION: marketTypeAttribution },
     SELECTED_PRICE_MOVEMENT_ECONOMICS: { USABLE_SERIES_N_WITHIN_C0: priceMovementUsableN, BUCKETS: priceMovementTable },
+    VOLUME_ECONOMICS: volumeEconomics,
     BROAD_ANATOMY_V1: {
       SECTION,
       SCORE_PRICE_INTERACTION: scorePriceSplit,
@@ -684,6 +817,10 @@ async function main() {
   const outPath = `${EVIDENCE_OUT_DIR}/SCOREBOARD${suffix}_${START}_${END}.json`;
   writeFileSync(outPath, JSON.stringify({ GENERATED_AT: new Date().toISOString(), ...artifact }, null, 2));
   console.error(`Wrote aggregate evidence artifact: ${outPath}`);
+
+  const volumeMdPath = `${EVIDENCE_OUT_DIR}/VOLUME_ECONOMICS${suffix}_${START}_${END}.md`;
+  writeFileSync(volumeMdPath, buildVolumeEconomicsMarkdown({ start: START, end: END, processedN, volumeEconomics }));
+  console.error(`Wrote markdown summary: ${volumeMdPath}`);
 
   const mdPath = `${EVIDENCE_OUT_DIR}/BROAD_ANATOMY${suffix}_${START}_${END}.md`;
   writeFileSync(
@@ -747,6 +884,123 @@ interface AblationRow {
 
 function fmtMetrics(m: MetricsFields): string {
   return `${m.events} | ${m.wins}/${m.losses} | ${m.pnl_u} | ${m.roi_pct}% | ${m.max_drawdown_u}`;
+}
+
+interface VolumeMetrics extends MetricsFields {
+  AUGUST: MetricsFields;
+  SEPTEMBER_THROUGH_20: MetricsFields;
+}
+interface VolumeBucketRow extends VolumeMetrics {
+  STATUS: string;
+  BUCKET: string;
+  SPORTS: Array<{ sport: string; n: number; pct: number }>;
+  PRICE_BUCKETS: Array<{ bucket: string; events: number; wins: number; losses: number; pnl_u: number; roi_pct: number; max_drawdown_u: number } | undefined>;
+}
+interface VolumeInteractionRow extends VolumeMetrics {
+  STATUS: string;
+  CELL: string;
+}
+interface VolumeEconomicsArgs {
+  start: string;
+  end: string;
+  processedN: number;
+  volumeEconomics: {
+    COVERAGE: {
+      C0_N: number;
+      VOLUME_AVAILABLE_N: number;
+      VOLUME_MISSING_N: number;
+      VOLUME_COVERAGE_PCT: number;
+      AUGUST: { C0_N: number; VOLUME_AVAILABLE_N: number; COVERAGE_PCT: number };
+      SEPTEMBER_THROUGH_20: { C0_N: number; VOLUME_AVAILABLE_N: number; COVERAGE_PCT: number };
+      SPORT_MIX_WITH_VOLUME: Array<{ sport: string; n: number; pct: number }>;
+      SPORT_MIX_WITHOUT_VOLUME: Array<{ sport: string; n: number; pct: number }>;
+      PRICE_MIX_WITH_VOLUME: Array<{ bucket: string; n: number; pct: number }>;
+      PRICE_MIX_WITHOUT_VOLUME: Array<{ bucket: string; n: number; pct: number }>;
+    };
+    BUCKETS: VolumeBucketRow[];
+    MATERIAL_INTERACTIONS: VolumeInteractionRow[];
+    PARENT_CONTROLLED: Array<{ CELL: string; PARENT: string; CELL_METRICS: MetricsFields; PARENT_METRICS: MetricsFields }>;
+  };
+}
+
+function fmtMix(rows: Array<{ sport?: string; bucket?: string; n: number; pct: number }>): string {
+  return rows.map((r) => `${r.sport ?? r.bucket} ${r.pct}%(${r.n})`).join(", ");
+}
+
+function buildVolumeEconomicsMarkdown(args: VolumeEconomicsArgs): string {
+  const { start, end, processedN, volumeEconomics } = args;
+  const { COVERAGE, BUCKETS, MATERIAL_INTERACTIONS, PARENT_CONTROLLED } = volumeEconomics;
+  const lines: string[] = [];
+  lines.push(`# Volume Economic Value (${start} → ${end})`);
+  lines.push("");
+  lines.push(
+    `Generated by \`npm run research-clone:scoreboard -- --start=${start} --end=${end}\` (VOLUME_ECONOMICS section). Common-period processed physical events: **${processedN}**. Bucket boundaries reuse factor-atlas.ts VOLUME_FACTOR exactly — no new thresholds. No raw rows below — aggregate metrics only; full JSON is the sibling \`SCOREBOARD*_*.json\` artifact in this directory.`,
+  );
+  lines.push("");
+
+  lines.push("## TABLE 1 — Volume coverage");
+  lines.push("");
+  lines.push("| | C0 N | Volume-available N | Volume-missing N | Coverage % |");
+  lines.push("|---|---|---|---|---|");
+  lines.push(`| Overall | ${COVERAGE.C0_N} | ${COVERAGE.VOLUME_AVAILABLE_N} | ${COVERAGE.VOLUME_MISSING_N} | ${COVERAGE.VOLUME_COVERAGE_PCT}% |`);
+  lines.push(`| August | ${COVERAGE.AUGUST.C0_N} | ${COVERAGE.AUGUST.VOLUME_AVAILABLE_N} | ${COVERAGE.AUGUST.C0_N - COVERAGE.AUGUST.VOLUME_AVAILABLE_N} | ${COVERAGE.AUGUST.COVERAGE_PCT}% |`);
+  lines.push(
+    `| September-through-20 | ${COVERAGE.SEPTEMBER_THROUGH_20.C0_N} | ${COVERAGE.SEPTEMBER_THROUGH_20.VOLUME_AVAILABLE_N} | ${COVERAGE.SEPTEMBER_THROUGH_20.C0_N - COVERAGE.SEPTEMBER_THROUGH_20.VOLUME_AVAILABLE_N} | ${COVERAGE.SEPTEMBER_THROUGH_20.COVERAGE_PCT}% |`,
+  );
+  lines.push("");
+  lines.push(`- Sport mix WITH volume: ${fmtMix(COVERAGE.SPORT_MIX_WITH_VOLUME)}`);
+  lines.push(`- Sport mix WITHOUT volume: ${fmtMix(COVERAGE.SPORT_MIX_WITHOUT_VOLUME)}`);
+  lines.push(`- Price-band mix WITH volume: ${fmtMix(COVERAGE.PRICE_MIX_WITH_VOLUME)}`);
+  lines.push(`- Price-band mix WITHOUT volume: ${fmtMix(COVERAGE.PRICE_MIX_WITHOUT_VOLUME)}`);
+  lines.push("");
+  lines.push("Missing volume is never treated as zero — volume-missing events are simply excluded from every volume-bucket cell below, not folded into V_LT100K.");
+  lines.push("");
+
+  lines.push("## TABLE 2 — Volume bucket economics");
+  lines.push("");
+  lines.push("| Bucket | Status | N | W/L | PnL(u) | ROI% | MaxDD(u) | August N/PnL | Sep N/PnL | Sport mix | Price mix |");
+  lines.push("|---|---|---|---|---|---|---|---|---|---|---|");
+  for (const row of BUCKETS) {
+    const sportMix = row.SPORTS.slice(0, 3).map((s) => `${s.sport} ${s.pct}%`).join(", ");
+    const priceMix = row.PRICE_BUCKETS.filter((p): p is NonNullable<typeof p> => !!p).map((p) => `${p.bucket} ${p.events}`).join(", ");
+    lines.push(
+      `| ${row.BUCKET} | ${row.STATUS} | ${fmtMetrics(row)} | ${row.AUGUST.events}/${row.AUGUST.pnl_u} | ${row.SEPTEMBER_THROUGH_20.events}/${row.SEPTEMBER_THROUGH_20.pnl_u} | ${sportMix} | ${priceMix} |`,
+    );
+  }
+  lines.push("");
+  lines.push("N<100 buckets are SMALL_SAMPLE / diagnostic only, per mission boundary.");
+  lines.push("");
+
+  lines.push("## TABLE 3 — Material volume interactions (canonical selected N>=100 only)");
+  lines.push("");
+  lines.push("| Cell | Status | N | W/L | PnL(u) | ROI% | MaxDD(u) | August N/PnL | Sep N/PnL |");
+  lines.push("|---|---|---|---|---|---|---|---|---|");
+  for (const row of MATERIAL_INTERACTIONS) {
+    lines.push(`| ${row.CELL} | ${row.STATUS} | ${fmtMetrics(row)} | ${row.AUGUST.events}/${row.AUGUST.pnl_u} | ${row.SEPTEMBER_THROUGH_20.events}/${row.SEPTEMBER_THROUGH_20.pnl_u} |`);
+  }
+  lines.push("");
+  lines.push("Cells with canonical N<100 are diagnostic-only and excluded from this main table (see the sibling JSON's `MATERIAL_INTERACTIONS` array for the full evaluated set, which also carries the excluded thin cells' status).");
+  lines.push("");
+
+  lines.push("## TABLE 4 — Parent-controlled incremental comparison");
+  lines.push("");
+  lines.push("| Cell | Cell N/PnL/ROI% | Parent | Parent N/PnL/ROI% | Incremental? |");
+  lines.push("|---|---|---|---|---|");
+  for (const row of PARENT_CONTROLLED) {
+    const cellRoi = row.CELL_METRICS.roi_pct;
+    const parentRoi = row.PARENT_METRICS.roi_pct;
+    const verdict = row.CELL_METRICS.events < 100 || row.PARENT_METRICS.events < 100 ? "SMALL_SAMPLE" : cellRoi > parentRoi ? "SEPARATES_ABOVE_PARENT" : "NO_SEPARATION_ABOVE_PARENT";
+    lines.push(
+      `| ${row.CELL} | ${row.CELL_METRICS.events}/${row.CELL_METRICS.pnl_u}/${cellRoi}% | ${row.PARENT} | ${row.PARENT_METRICS.events}/${row.PARENT_METRICS.pnl_u}/${parentRoi}% | ${verdict} |`,
+    );
+  }
+  lines.push("");
+  lines.push(
+    "Each parent is restricted to the SAME volume-observed population as its cell (never the full unobserved-volume C0 population) — this isolates whatever the volume cell adds AFTER controlling for the obvious price/sport parent, not a volume-observed-vs-everyone comparison.",
+  );
+  lines.push("");
+
+  return lines.join("\n");
 }
 
 function buildBroadAnatomyMarkdown(args: {
