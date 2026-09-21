@@ -7,9 +7,10 @@
  * P50_52 @ cap50 (+379.30u) while preserving/improving 30-50/day supply?
  * This is a fixed-candidate allocation test, not a threshold/score sweep.
  *
- * ENGINE_REUSE: runStandalone/runPortfolio/computeDailyResults/computeCapacity
- * imported verbatim from scripts/modeling/daily-portfolio-frontier.ts. The
- * only new code is the FIXED tier predicates for the 3 QUALITY_FILL
+ * ENGINE_REUSE: runStandalone/runPortfolio/computeDailyResults/computeCapacity/
+ * applyDailyCap imported verbatim from scripts/modeling/daily-portfolio-frontier.ts —
+ * one capacity-selection authority for both baseline and candidate cap50 selections.
+ * The only new code is the FIXED tier predicates for the QUALITY_FILL A/B/C/D
  * candidates (ordinary price/sport-family boolean composition of the same
  * fields the frozen engine already exposes) and the reporting/aggregation
  * around them. No new score threshold. No new capacity engine.
@@ -29,6 +30,7 @@ import {
   runPortfolio,
   computeDailyResults,
   computeCapacity,
+  applyDailyCap,
   metricsFor,
   type TieredBet,
   type CapacityResult,
@@ -125,9 +127,18 @@ const QUALITY_PORTFOLIOS: Record<string, Array<(e: Ev) => boolean>> = {
     TIER_ESPORTS_P5052,
     TIER_SOCCER_P5460,
   ],
+  // QUALITY_FILL_A + Soccer 0.54-0.60 as a LAST fallback tier (fixed before running; unchanged after seeing results).
+  QUALITY_FILL_D: [TIER_TENNIS_P5052, TIER_SOCCER_P5054, TIER_REMAINING_P5052, TIER_SOCCER_P5460],
 };
 
-const REQUIRED_MODELS = ["P50_52", "PORTFOLIO_BROAD", "QUALITY_FILL_A", "QUALITY_FILL_B", "QUALITY_FILL_C"] as const;
+const REQUIRED_MODELS = [
+  "P50_52",
+  "PORTFOLIO_BROAD",
+  "QUALITY_FILL_A",
+  "QUALITY_FILL_B",
+  "QUALITY_FILL_C",
+  "QUALITY_FILL_D",
+] as const;
 
 // P50_52 / PORTFOLIO_BROAD tier definitions reused verbatim (same predicates as daily-portfolio-frontier.ts).
 const TIER_PREFERRED = (e: Ev & { scoreLevel?: number }) =>
@@ -199,65 +210,22 @@ function marginalLayers(model: string, capMap: Map<number, CapEconRow>, calendar
   });
 }
 
+/**
+ * CAP_ENGINE_AUTHORITY: baseline and candidate cap50 selections both go through the
+ * canonical `applyDailyCap()` (scripts/modeling/daily-portfolio-frontier.ts) — no
+ * second capacity-selection implementation here.
+ */
 function pairedComparisonAtCap50(baselineBets: TieredBet[], candidateBets: TieredBet[], baselineDates: string[]) {
   const cap = 50;
-  const baseCapped = new Set(
-    (function () {
-      const byDay = new Map<string, TieredBet[]>();
-      for (const b of baselineBets) {
-        const l = byDay.get(b.day);
-        if (l) l.push(b);
-        else byDay.set(b.day, [b]);
-      }
-      const kept: TieredBet[] = [];
-      for (const dayBets of byDay.values()) {
-        const ordered = [...dayBets].sort(
-          (a, b) => a.tier - b.tier || a.decisionTimestamp.localeCompare(b.decisionTimestamp) || a.physicalEventKey.localeCompare(b.physicalEventKey),
-        );
-        kept.push(...ordered.slice(0, cap));
-      }
-      return kept;
-    })().map((b) => b.physicalEventKey),
-  );
-  const candCapped = (function () {
-    const byDay = new Map<string, TieredBet[]>();
-    for (const b of candidateBets) {
-      const l = byDay.get(b.day);
-      if (l) l.push(b);
-      else byDay.set(b.day, [b]);
-    }
-    const kept: TieredBet[] = [];
-    for (const dayBets of byDay.values()) {
-      const ordered = [...dayBets].sort(
-        (a, b) => a.tier - b.tier || a.decisionTimestamp.localeCompare(b.decisionTimestamp) || a.physicalEventKey.localeCompare(b.physicalEventKey),
-      );
-      kept.push(...ordered.slice(0, cap));
-    }
-    return kept;
-  })();
-  const candKeys = new Set(candCapped.map((b) => b.physicalEventKey));
+  const baseCappedBets = applyDailyCap(baselineBets, cap);
+  const candCappedBets = applyDailyCap(candidateBets, cap);
+  const baseCapped = new Set(baseCappedBets.map((b) => b.physicalEventKey));
+  const candKeys = new Set(candCappedBets.map((b) => b.physicalEventKey));
   const shared = [...candKeys].filter((k) => baseCapped.has(k));
-  const added = candCapped.filter((b) => !baseCapped.has(b.physicalEventKey));
+  const added = candCappedBets.filter((b) => !baseCapped.has(b.physicalEventKey));
   const removed = [...baseCapped].filter((k) => !candKeys.has(k));
-  const baseMetrics = metricsFor(
-    (function () {
-      const byDay = new Map<string, TieredBet[]>();
-      for (const b of baselineBets) {
-        const l = byDay.get(b.day);
-        if (l) l.push(b);
-        else byDay.set(b.day, [b]);
-      }
-      const kept: TieredBet[] = [];
-      for (const dayBets of byDay.values()) {
-        const ordered = [...dayBets].sort(
-          (a, b) => a.tier - b.tier || a.decisionTimestamp.localeCompare(b.decisionTimestamp) || a.physicalEventKey.localeCompare(b.physicalEventKey),
-        );
-        kept.push(...ordered.slice(0, cap));
-      }
-      return kept;
-    })(),
-  );
-  const candMetrics = metricsFor(candCapped);
+  const baseMetrics = metricsFor(baseCappedBets);
+  const candMetrics = metricsFor(candCappedBets);
   const baseFill = fillRates(baselineBets, baselineDates);
   const candFill = fillRates(candidateBets, baselineDates);
   return {
@@ -265,11 +233,17 @@ function pairedComparisonAtCap50(baselineBets: TieredBet[], candidateBets: Tiere
     ADDED_EVENT_N: added.length,
     REMOVED_EVENT_N: removed.length,
     BASELINE_CAP50_N: baseCapped.size,
-    CANDIDATE_CAP50_N: candCapped.length,
+    CANDIDATE_CAP50_N: candCappedBets.length,
     BASELINE_CAP50_PNL_U: baseMetrics.pnl_u,
     CANDIDATE_CAP50_PNL_U: candMetrics.pnl_u,
     PNL_DELTA_U: round(candMetrics.pnl_u - baseMetrics.pnl_u, 2),
     FILL_RATE_50_DELTA: round(candFill.FILL_RATE_50 - baseFill.FILL_RATE_50, 4),
+    BASELINE_FILL_RATE_50: baseFill.FILL_RATE_50,
+    CANDIDATE_FILL_RATE_50: candFill.FILL_RATE_50,
+    BASELINE_FILL_RATE_30: baseFill.FILL_RATE_30,
+    CANDIDATE_FILL_RATE_30: candFill.FILL_RATE_30,
+    BASELINE_FILL_RATE_40: baseFill.FILL_RATE_40,
+    CANDIDATE_FILL_RATE_40: candFill.FILL_RATE_40,
   };
 }
 
@@ -343,11 +317,17 @@ async function main() {
     table4[modelId] = pairedComparisonAtCap50(baseline, betsByModel.get(modelId)!, dates);
   }
 
+  // TABLE 5 — cap50 paired comparison QUALITY_FILL_D vs QUALITY_FILL_A (canonical applyDailyCap() output)
+  const table5DvsA = pairedComparisonAtCap50(betsByModel.get("QUALITY_FILL_A")!, betsByModel.get("QUALITY_FILL_D")!, dates);
+  const aCap50Pnl = capMapOverallByModel.get("QUALITY_FILL_A")!.get(50)!.total_pnl_u;
+  const dCap50Pnl = capMapOverallByModel.get("QUALITY_FILL_D")!.get(50)!.total_pnl_u;
+  const reconciledTotalDelta = round(dCap50Pnl - aCap50Pnl, 2);
+
   const artifact = {
     MISSION: "QUALITY_FILL_PORTFOLIO_TEST_V1",
     PARENT_MISSION: "DAILY_CAP_PNL_OPTIMIZATION_V1",
     ENGINE_REUSE:
-      "runStandalone/runPortfolio/computeDailyResults/computeCapacity imported verbatim from scripts/modeling/daily-portfolio-frontier.ts. Only new code: FIXED tier predicates for QUALITY_FILL_A/B/C (ordinary price+sport-family composition), no new score threshold, no new capacity engine.",
+      "runStandalone/runPortfolio/computeDailyResults/computeCapacity/applyDailyCap imported verbatim from scripts/modeling/daily-portfolio-frontier.ts (one capacity-selection authority for baseline and candidate cap50 selections alike). Only new code: FIXED tier predicates for QUALITY_FILL_A/B/C/D (ordinary price+sport-family composition), no new score threshold, no new capacity engine.",
     DATASET_RANGE: { start: START, end: END },
     CALENDAR_DAYS: dates.length,
     SOURCE_ROW_N: rawRows.length,
@@ -355,6 +335,13 @@ async function main() {
     TABLE_2_MARGINAL_LAYERS: table2,
     TABLE_3_FILL_RATES: table3,
     TABLE_4_CAP50_PAIRED_VS_P50_52: table4,
+    TABLE_5_CAP50_PAIRED_D_VS_A: {
+      ...table5DvsA,
+      QUALITY_FILL_A_CAP50_PNL_U: aCap50Pnl,
+      QUALITY_FILL_D_CAP50_PNL_U: dCap50Pnl,
+      RECONCILED_TOTAL_PNL_DELTA_U: reconciledTotalDelta,
+      RECONCILES: reconciledTotalDelta === table5DvsA.PNL_DELTA_U,
+    },
   };
 
   console.log(JSON.stringify(artifact, null, 2));

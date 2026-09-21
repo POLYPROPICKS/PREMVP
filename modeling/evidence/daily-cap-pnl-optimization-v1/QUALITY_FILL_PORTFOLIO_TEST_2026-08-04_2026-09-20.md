@@ -133,11 +133,14 @@ candidates beat P50_52 @ cap50 in absolute P&L; PORTFOLIO_BROAD does not.
    baseline, using only the proven Soccer .52–.54 sleeve (+63.64u, 30.60% ROI standalone) instead of widening
    every sport to .54.
 2. **Does putting Esports last improve capped P&L without sacrificing sparse-day fill?** No net gain over
-   QUALITY_FILL_A: QUALITY_FILL_B (+400.25u) is marginally below QUALITY_FILL_A (+402.25u) at cap 50 — moving
-   Esports from "excluded" to "last tier" costs ~2u once Esports actually starts filling cap 50 slots (see
-   TABLE 2, QUALITY_FILL_B's 41–50 layer ROI drops to 19.56%, dragged by Esports P50_52's known -2.48%
-   standalone ROI). Fill rate is identical to QUALITY_FILL_A (0.5000/0.3750/0.3125) at this cap range — the
-   Esports tier does not yet get exercised meaningfully within cap 50 on this dataset.
+   QUALITY_FILL_A: QUALITY_FILL_B (+400.25u) is marginally below QUALITY_FILL_A (+402.25u) at cap 50. Note
+   QUALITY_FILL_A does NOT exclude Esports — its tier 3 ("remaining P50_52") already includes Esports P50_52
+   at the same priority as every other remaining sport. QUALITY_FILL_B only *lowers* Esports' priority
+   relative to other P50_52 events (splitting tier 3 into non-Esports-first, Esports-last); this reordering
+   costs ~2u once Esports actually starts filling cap 50 slots (see TABLE 2, QUALITY_FILL_B's 41–50 layer ROI
+   drops to 19.56%, dragged by Esports P50_52's known -2.48% standalone ROI). Fill rate is identical to
+   QUALITY_FILL_A (0.5000/0.3750/0.3125) at this cap range — the lowered-priority Esports tier does not yet
+   get exercised meaningfully within cap 50 on this dataset.
 3. **Does Soccer 0.54–0.60 add useful last-resort capacity at cap50?** Yes for fill quality, at a P&L cost:
    QUALITY_FILL_C reaches the best fill rates of all 5 models tested (Fill30 0.5833, Fill50 0.3333, tying
    PORTFOLIO_BROAD) but its cap50 P&L (+396.76u) is below both QUALITY_FILL_A and QUALITY_FILL_B — the
