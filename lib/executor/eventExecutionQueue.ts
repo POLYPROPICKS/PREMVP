@@ -34,6 +34,7 @@ import { classifyActiveReservationDue } from "./reservationRebalanceContract.mjs
 import {
   EXECUTABLE_TIER,
   EXECUTABLE_STAKE_USD,
+  queueMoneyEnvelopeViolation,
   type EventExecutionQueueRow,
   type NightEventReservationRow,
 } from "./executorQueueTypes";
@@ -1730,7 +1731,21 @@ export async function runEventRebalance(
                 fetchFinalIdentitySourceRows
               )
             : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
-    if (selection.outcome === "SKIPPED") {
+    // Founder-authorized money envelope ($4.00 stake / 0.62 price). The
+    // selected candidate is never re-ranked or clamped: a row outside the
+    // envelope is rejected with a specific reason and no Queue row is written.
+    const envelopeViolation =
+      selection.outcome !== "SKIPPED" && selection.queueRow
+        ? queueMoneyEnvelopeViolation(
+            selection.queueRow.stake_usd,
+            typeof selection.queueRow.diagnostics?.max_entry_price === "number"
+              ? selection.queueRow.diagnostics.max_entry_price
+              : null
+          )
+        : null;
+    if (envelopeViolation) {
+      plannedActions.push({ kind: "SKIPPED", reservation, reason: envelopeViolation });
+    } else if (selection.outcome === "SKIPPED") {
       plannedActions.push({ kind: "SKIPPED", reservation, reason: selection.reason, blockedCandidates: selection.blockedCandidates });
     } else {
       plannedActions.push({ kind: "QUEUE", reservation, row: selection.queueRow!, reason: selection.reason });
@@ -2062,6 +2077,14 @@ export async function runControlledLiveIntent(
             )
           : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
     if (selection.outcome !== "QUEUED" || !selection.queueRow) continue;
+    if (
+      queueMoneyEnvelopeViolation(
+        selection.queueRow.stake_usd,
+        typeof selection.queueRow.diagnostics?.max_entry_price === "number"
+          ? selection.queueRow.diagnostics.max_entry_price
+          : null
+      )
+    ) continue;
 
     const controlledRow = applyControlledLiveIntentOverrides(selection.queueRow);
 

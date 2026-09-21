@@ -17,15 +17,42 @@ export type ReservationStatus =
   | "EXPIRED"
   | "CANCELLED";
 
-// Executable policy constants (LOCKED — Tier1 only, $2.50 maximum stake, no halftime).
-// Stake is $2.50 for new Queue instructions: the Founder-authorized fixed
-// amount that clears the observed venue minimum-order-size at a $0.50 price.
-// Existing Queue rows retain their already-persisted stake.
+// Executable policy constants (LOCKED — Tier1 only, no halftime).
+// Founder-authorized Queue money envelope (2026-09-21, supersedes the earlier $2.50 pin):
+//   QUEUE_MAX_STAKE_USD       stake_usd is authorized up to $4.00 per Queue instruction.
+//   QUEUE_MAX_ENTRY_PRICE     max_entry_price may never exceed 0.62.
+// $4.00 is a maximum envelope, not a spend target: Ireland's sizing/venue rules may
+// submit a lower notional. PREMVP stays the authority; a value above either bound is
+// rejected (fail closed), never silently clamped. Existing Queue rows keep their
+// already-persisted stake.
+export const QUEUE_MAX_STAKE_USD = 4.0 as const;
+export const QUEUE_MAX_ENTRY_PRICE = 0.62 as const;
 export const EXECUTABLE_TIER = "TIER1" as const;
-export const EXECUTABLE_STAKE_USD = 2.5 as const;
+export const EXECUTABLE_STAKE_USD = QUEUE_MAX_STAKE_USD;
 export const QUEUE_SCHEMA_VERSION = "executor-queue-v1" as const;
 export const QUEUE_EXECUTION_MODE = "NIGHT_LIVE_EXECUTION" as const;
 export const QUEUE_SOURCE = "event_execution_queue" as const;
+
+export type QueueMoneyEnvelopeViolation =
+  | "QUEUE_STAKE_ABOVE_ENVELOPE"
+  | "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING";
+
+/**
+ * Pure fail-closed check of a Queue instruction against the Founder-authorized
+ * money envelope. Returns a specific reason, or null when within bounds.
+ * A missing/non-finite max_entry_price is not judged here (callers already
+ * fail closed on it separately).
+ */
+export function queueMoneyEnvelopeViolation(
+  stakeUsd: number,
+  maxEntryPrice: number | null
+): QueueMoneyEnvelopeViolation | null {
+  if (!Number.isFinite(stakeUsd) || stakeUsd > QUEUE_MAX_STAKE_USD) return "QUEUE_STAKE_ABOVE_ENVELOPE";
+  if (maxEntryPrice !== null && Number.isFinite(maxEntryPrice) && maxEntryPrice > QUEUE_MAX_ENTRY_PRICE) {
+    return "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING";
+  }
+  return null;
+}
 
 export interface NightEventReservationRow {
   id?: string;
@@ -334,6 +361,9 @@ export function validateOrderEventAgainstQueueRow(
   if (submitted.stake_usd === null || !Number.isFinite(submitted.stake_usd) || submitted.stake_usd <= 0) {
     return { ok: false, reason: "MISSING_STAKE_USD" };
   }
+  if (queueRow.stake_usd > QUEUE_MAX_STAKE_USD) {
+    return { ok: false, reason: "QUEUE_STAKE_ABOVE_ENVELOPE" };
+  }
   if (submitted.stake_usd > queueRow.stake_usd) {
     return { ok: false, reason: "STAKE_EXCEEDS_QUEUE_MAX" };
   }
@@ -347,6 +377,9 @@ export function validateOrderEventAgainstQueueRow(
   const maxEntryPrice = extractMaxEntryPrice(queueRow.diagnostics ?? {});
   if (maxEntryPrice === null) {
     return { ok: false, reason: "QUEUE_MAX_ENTRY_PRICE_MISSING" };
+  }
+  if (maxEntryPrice > QUEUE_MAX_ENTRY_PRICE) {
+    return { ok: false, reason: "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING" };
   }
   if (
     submitted.submitted_price === null ||

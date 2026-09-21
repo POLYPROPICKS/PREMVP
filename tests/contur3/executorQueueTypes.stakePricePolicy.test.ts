@@ -39,7 +39,7 @@ function baseQueueRow(overrides: Partial<EventExecutionQueueRow> = {}): EventExe
     score: 80,
     coverage: 60,
     tier: "TIER1",
-    stake_usd: 7,
+    stake_usd: 4,
     preferred_entry_iso: "2026-07-07T14:50:00.000Z",
     latest_entry_iso: "2026-07-07T15:57:00.000Z",
     selection_rank: 1,
@@ -61,8 +61,8 @@ function baseSubmission(overrides: Partial<OrderEventSubmission> = {}): OrderEve
     condition_id: "cond-1",
     side: "Argentina",
     market_slug: "argentina-vs-egypt-moneyline",
-    stake_usd: 7,
-    submitted_size: 7,
+    stake_usd: 4,
+    submitted_size: 6,
     submitted_price: 0.6,
     ...overrides,
   };
@@ -76,7 +76,7 @@ test("valid event passes: matching identity, stake <= max, price <= cap", () => 
 test("consumer may execute at strictly lower stake than queue max", () => {
   const result = validateOrderEventAgainstQueueRow(
     baseSubmission({ submitted_size: 3 }),
-    baseQueueRow({ stake_usd: 7 })
+    baseQueueRow({ stake_usd: 4 })
   );
   assert.equal(result.ok, true);
 });
