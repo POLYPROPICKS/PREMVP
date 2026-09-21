@@ -38,6 +38,7 @@ import {
 } from "@/lib/modeling/research-engine";
 import { resolveSportFamily } from "@/lib/research-clone/modelReady";
 import { toAtlasInput, type AtlasInputEvent } from "./factor-atlas";
+import { readResearchEvidencePageRows } from "./live-d1-research-corpus";
 
 const START = "2026-08-04";
 const END = "2026-09-20";
@@ -174,6 +175,11 @@ async function fetchRows(): Promise<ScorecardReadyRow[]> {
       .select("canonical_row")
       .gte("model_date", START)
       .lte("model_date", END)
+      .order("model_date")
+      .order("population_id")
+      .order("condition_id")
+      .order("selected_token_id")
+      .order("decision_at")
       .range(from, from + PAGE - 1);
     if (error) throw new Error(`FETCH_ROWS:${error.code ?? error.message}`);
     if (!data || data.length === 0) break;
@@ -184,10 +190,71 @@ async function fetchRows(): Promise<ScorecardReadyRow[]> {
   return rows;
 }
 
+/**
+ * Legacy BAD_BUCKET_COV_PRICE coverage input (coverage 50-74 AND
+ * entry_price 0.44-0.58 — lib/executor/buildFireModelCandidates.ts:2115) is a
+ * per-row diagnostics scalar (diagnostics.dataCoverage / data_coverage) that
+ * is NOT persisted onto research_model_ready_rows.canonical_row
+ * (ScorecardReadyRow has no coverage field). It is reconstructed here via
+ * the SAME already-proven bounded evidence read the materializer itself uses
+ * (readResearchEvidencePageRows) — no new corpus, no new table — joined back
+ * onto the model-ready identity (condition_id, selected_token_id, decision_at).
+ */
+async function fetchCoverageMap(): Promise<Map<string, number | null>> {
+  const db = await resolveDb();
+  const startUtc = "2026-08-02T21:00:00.000Z";
+  const endUtc = "2026-09-21T21:00:00.000Z";
+  const { pairs } = await readResearchEvidencePageRows(db, startUtc, endUtc);
+  const map = new Map<string, number | null>();
+  for (const p of pairs) {
+    const key = `${p.conditionId}|${p.selectedTokenId}|${p.decisionAt}`;
+    map.set(key, typeof p.dataCoverage === "number" ? p.dataCoverage : null);
+  }
+  return map;
+}
+
+function isBadBucket(e: { entryPrice: number; coverage: number | null }): boolean {
+  return typeof e.coverage === "number" && e.coverage >= 50 && e.coverage <= 74 && e.entryPrice >= 0.44 && e.entryPrice <= 0.58;
+}
+
 async function main() {
   const rawRows = await fetchRows();
   const input = toAtlasInput(rawRows);
   const processedN = new Set(input.map((e) => e.physicalEventKey)).size;
+
+  const coverageMap = await fetchCoverageMap();
+  const coverageMatchedRawN = rawRows.filter(
+    (r) => coverageMap.get(`${r.conditionId}|${r.selectedTokenId}|${r.decisionAt}`) !== undefined,
+  ).length;
+  // Mirrors toAtlasInput's exact filter (factor-atlas.ts) — rebuilt here from
+  // rawRows directly (rather than zipped against the already-filtered
+  // `input`) so each event keeps its exact conditionId/selectedTokenId for
+  // the coverage join.
+  const inputWithCoverage = rawRows
+    .filter(
+      (r) =>
+        (r.labelAsOf === "WIN" || r.labelAsOf === "LOSS") &&
+        r.providerEventId &&
+        r.eventStart &&
+        r.entryPrice !== null &&
+        r.entryPrice > 0 &&
+        r.entryPrice < 1,
+    )
+    .map((r) => ({
+      physicalEventKey: r.providerEventId!,
+      decisionTimestamp: r.decisionAt,
+      eventStart: r.eventStart!,
+      entryPrice: r.entryPrice!,
+      sportFamily: resolveSportFamily(r) ?? "",
+      outcome: r.labelAsOf as "WIN" | "LOSS",
+      ref: r.conditionId,
+      scoreLevel: typeof r.scoreLevel === "number" ? r.scoreLevel : null,
+      score: r.score,
+      selectedPrice: r.selectedPrice,
+      volumeUsd: typeof r.volumeUsd === "number" ? r.volumeUsd : null,
+      rowLeadTimeHours: typeof r.leadTimeHours === "number" ? r.leadTimeHours : null,
+      coverage: coverageMap.get(`${r.conditionId}|${r.selectedTokenId}|${r.decisionAt}`) ?? null,
+    }));
 
   const TIER_PREFERRED = (e: AtlasEvaluatedEvent) =>
     (e.entryPrice >= 0.5 && e.entryPrice < 0.52 && e.sportFamily === "tennis") ||
@@ -241,6 +308,76 @@ async function main() {
     };
   });
 
+  // ── B: SCORE ECONOMICS (existing factor-atlas SCORE_LEVEL buckets, C0 band) ──
+  const SCORE_BUCKETS: Array<[string, number, number]> = [
+    ["50-59", 50, 60],
+    ["60-62", 60, 63],
+    ["63-64", 63, 65],
+    ["65-67", 65, 68],
+    ["68+", 68, Infinity],
+  ];
+  const scoreTable = SCORE_BUCKETS.map(([id, lo, hi]) => {
+    const bets = runStandalone(input, (e) => inC0(e.entryPrice) && typeof e.scoreLevel === "number" && e.scoreLevel >= lo && e.scoreLevel < hi);
+    return { BUCKET: id, ...metricsFor(bets), AUGUST: metricsFor(splitByDate(bets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(bets, SEP_START, END)) };
+  });
+  const score50_64Bets = runStandalone(input, (e) => inC0(e.entryPrice) && typeof e.scoreLevel === "number" && e.scoreLevel >= 50 && e.scoreLevel < 65);
+  const scoreGe65Bets = runStandalone(input, (e) => inC0(e.entryPrice) && typeof e.scoreLevel === "number" && e.scoreLevel >= 65);
+  const scoreSummary = {
+    SCORE_50_64: { ...metricsFor(score50_64Bets), AUGUST: metricsFor(splitByDate(score50_64Bets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(score50_64Bets, SEP_START, END)) },
+    SCORE_GE_65: { ...metricsFor(scoreGe65Bets), AUGUST: metricsFor(splitByDate(scoreGe65Bets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(scoreGe65Bets, SEP_START, END)) },
+  };
+
+  // ── C: LEGACY BAD_BUCKET_COV_PRICE HARD-REJECT COUNTERFACTUAL (C0 base) ──
+  const c0Bets = runStandalone(inputWithCoverage, (e) => inC0(e.entryPrice));
+  const badBucketRemovedBets = runStandalone(inputWithCoverage, (e) => inC0(e.entryPrice) && isBadBucket(e));
+  const badBucketRetainedBets = runStandalone(inputWithCoverage, (e) => inC0(e.entryPrice) && !isBadBucket(e));
+  const broadBets = runStandalone(inputWithCoverage, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.54);
+  const badBucketRemovedBroadBets = runStandalone(inputWithCoverage, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.54 && isBadBucket(e));
+  const badBucketRetainedBroadBets = runStandalone(inputWithCoverage, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.54 && !isBadBucket(e));
+  const badBucketCounterfactual = {
+    COVERAGE_SOURCE_NOTE:
+      "coverage is not persisted on research_model_ready_rows.canonical_row; reconstructed via the same proven bounded evidence read the materializer uses (readResearchEvidencePageRows), joined on condition_id+selected_token_id+decision_at.",
+    COVERAGE_JOIN_MATCH_N: coverageMatchedRawN,
+    COVERAGE_JOIN_TOTAL_RAW_N: rawRows.length,
+    WITHIN_C0: {
+      BASELINE_N: c0Bets.length,
+      REMOVED: { ...metricsFor(badBucketRemovedBets), AUGUST: metricsFor(splitByDate(badBucketRemovedBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(badBucketRemovedBets, SEP_START, END)), SPORTS: sportComposition(badBucketRemovedBets) },
+      RETAINED: { ...metricsFor(badBucketRetainedBets), AUGUST: metricsFor(splitByDate(badBucketRetainedBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(badBucketRetainedBets, SEP_START, END)), SPORTS: sportComposition(badBucketRetainedBets) },
+    },
+    WITHIN_BROAD_0_50_0_54: {
+      BASELINE_N: broadBets.length,
+      REMOVED: { ...metricsFor(badBucketRemovedBroadBets), AUGUST: metricsFor(splitByDate(badBucketRemovedBroadBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(badBucketRemovedBroadBets, SEP_START, END)), SPORTS: sportComposition(badBucketRemovedBroadBets) },
+      RETAINED: { ...metricsFor(badBucketRetainedBroadBets), AUGUST: metricsFor(splitByDate(badBucketRetainedBroadBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(badBucketRetainedBroadBets, SEP_START, END)), SPORTS: sportComposition(badBucketRetainedBroadBets) },
+    },
+  };
+
+  // ── D: LEAD-TIME / C4 DECOMPOSITION (existing factor-atlas LEAD_TIME buckets, C0 band) ──
+  const LEAD_BUCKETS: Array<[string, number, number]> = [
+    ["<3h", -Infinity, 3],
+    ["3-6h", 3, 6],
+    ["6-12h", 6, 12],
+    ["12-18h", 12, 18],
+    ["18-24h", 18, 24],
+    [">=24h", 24, Infinity],
+  ];
+  const leadTable = LEAD_BUCKETS.map(([id, lo, hi]) => {
+    const bets = runStandalone(input, (e) => inC0(e.entryPrice) && e.leadTimeHours >= lo && e.leadTimeHours < hi);
+    return { BUCKET: id, ...metricsFor(bets), AUGUST: metricsFor(splitByDate(bets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(bets, SEP_START, END)) };
+  });
+  const c4SoccerBets = runStandalone(input, (e) => inC0(e.entryPrice) && e.sportFamily === SOCCER_FAMILY);
+  const c4NonSoccerLead24Bets = runStandalone(input, (e) => inC0(e.entryPrice) && e.sportFamily !== SOCCER_FAMILY && e.leadTimeHours >= C4_LEAD_TIME_HOURS_THRESHOLD);
+  const c4Full = table.find((m) => m.MODEL === "C4")!;
+  const c4Decomposition = {
+    C4_COMBINED: { N: c4Full.BET, PNL_U: c4Full.PNL_U, ROI_PCT: c4Full.ROI_PCT, MAX_DD_U: c4Full.MAX_DD_U },
+    SOCCER_COMPONENT: { ...metricsFor(c4SoccerBets), AUGUST: metricsFor(splitByDate(c4SoccerBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(c4SoccerBets, SEP_START, END)) },
+    NON_SOCCER_LEAD_GE_24_COMPONENT: {
+      ...metricsFor(c4NonSoccerLead24Bets),
+      AUGUST: metricsFor(splitByDate(c4NonSoccerLead24Bets, START, AUG_END)),
+      SEPTEMBER_THROUGH_20: metricsFor(splitByDate(c4NonSoccerLead24Bets, SEP_START, END)),
+      SPORTS: sportComposition(c4NonSoccerLead24Bets),
+    },
+  };
+
   const legacy = {
     STATUS: "HISTORICAL_REFERENCE_ISOLATED",
     MODEL: "LEGACY_C4_HISTORICAL",
@@ -261,6 +398,9 @@ async function main() {
         SOURCE_ROW_N: rawRows.length,
         MODELS: table,
         LEGACY_C4_HISTORICAL: legacy,
+        SCORE_ECONOMICS: { BUCKETS: scoreTable, SUMMARY_50_64_VS_GE_65: scoreSummary },
+        LEGACY_BAD_BUCKET_COUNTERFACTUAL: badBucketCounterfactual,
+        LEAD_TIME_ECONOMICS: { BUCKETS: leadTable, C4_DECOMPOSITION: c4Decomposition },
       },
       null,
       2,
