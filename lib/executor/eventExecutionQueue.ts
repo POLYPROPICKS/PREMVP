@@ -34,6 +34,7 @@ import { classifyActiveReservationDue } from "./reservationRebalanceContract.mjs
 import {
   EXECUTABLE_TIER,
   EXECUTABLE_STAKE_USD,
+  QUEUE_MAX_ENTRY_PRICE,
   queueMoneyEnvelopeViolation,
   type EventExecutionQueueRow,
   type NightEventReservationRow,
@@ -98,6 +99,8 @@ type ExactProviderSignalPair = {
   eventStartIso: string;
   stakeUsd: number;
   maxEntryPrice: number;
+  /** Original candidate entry_price_num, preserved verbatim for analytics — distinct from the Queue execution cap (maxEntryPrice). */
+  entryPrice: number;
   scoreContractVersion: string;
   marketSlug: string | null;
 };
@@ -894,18 +897,21 @@ function exactProviderSignalPair(row: FinalIdentitySourceRow): ExactProviderSign
   const signalScore = finite(row.signal_confidence_num);
   // Execution-contract constant, never row data.
   const stakeUsd = EXECUTABLE_STAKE_USD;
-  // Frozen accepted pre-Reservation price for this exact sibling.
-  const maxEntryPrice = finite(row.entry_price_num);
+  // Frozen accepted pre-Reservation price for this exact sibling — preserved
+  // for analytics, distinct from the Queue execution cap.
+  const entryPrice = finite(row.entry_price_num);
   const scoreContractVersion = text(row.metric_formula_version);
   if (
     c.v !== "v1" || c.provider !== "polymarket" || !id || !eventId || !eventStartIso ||
     !Number.isFinite(Date.parse(eventStartIso)) || !conditionId || !tokenId || !side ||
     !scoreContractVersion ||
-    signalScore === null || stakeUsd <= 0 || maxEntryPrice === null || maxEntryPrice <= 0
+    signalScore === null || stakeUsd <= 0 || entryPrice === null || entryPrice <= 0
   ) return null;
+  // Founder-authorized 2026-09-21: normal live Queue execution cap is a flat
+  // QUEUE_MAX_ENTRY_PRICE, never the raw candidate entry price.
   return {
     id, conditionId, tokenId, side, signalScore, eventId, eventStartIso,
-    stakeUsd, maxEntryPrice, scoreContractVersion, marketSlug: text(row.market_slug),
+    stakeUsd, maxEntryPrice: QUEUE_MAX_ENTRY_PRICE, entryPrice, scoreContractVersion, marketSlug: text(row.market_slug),
   };
 }
 
@@ -1141,6 +1147,8 @@ type SelectedExactCandidate = {
   signalScore: number;
   stakeUsd: number;
   maxEntryPrice: number;
+  /** Original candidate entry_price_num, preserved verbatim for analytics — distinct from the Queue execution cap (maxEntryPrice). */
+  entryPrice: number;
   scoreContractVersion: string;
   marketSlug: string | null;
 };
@@ -1175,7 +1183,7 @@ function buildQueueRowFromExactCandidate(
       source_lineage: { generated_signal_pair_id: selected.id },
       selected_signal_pair_id: selected.id, selected_signal_score: selected.signalScore,
       selected_score_contract_version: selected.scoreContractVersion,
-      max_entry_price: selected.maxEntryPrice, stake_guard_usd: selected.stakeUsd,
+      max_entry_price: selected.maxEntryPrice, entry_price: selected.entryPrice, stake_guard_usd: selected.stakeUsd,
       source_authority: provenance.sourceAuthority,
       mechanical_guard_trace: provenance.mechanicalGuardTrace,
     },
@@ -1242,15 +1250,17 @@ function manifestEntryToExactSignalPair(entry: unknown): ManifestExactSignalPair
   const side = text(e.side);
   const scoreContractVersion = text(e.metric_formula_version);
   const signalScore = finite(e.signal_confidence_num);
-  const maxEntryPrice = finite(e.entry_price_num);
+  const entryPrice = finite(e.entry_price_num);
   if (
     id === null || conditionId === null || tokenId === null || side === null ||
     scoreContractVersion === null || signalScore === null ||
-    maxEntryPrice === null || maxEntryPrice <= 0
+    entryPrice === null || entryPrice <= 0
   ) return null;
+  // Founder-authorized 2026-09-21: normal live Queue execution cap is a flat
+  // QUEUE_MAX_ENTRY_PRICE, never the raw candidate entry price.
   return {
     id, conditionId, tokenId, side, signalScore,
-    stakeUsd: EXECUTABLE_STAKE_USD, maxEntryPrice, scoreContractVersion,
+    stakeUsd: EXECUTABLE_STAKE_USD, maxEntryPrice: QUEUE_MAX_ENTRY_PRICE, entryPrice, scoreContractVersion,
     marketSlug: text(e.market_slug),
   };
 }
@@ -1734,12 +1744,15 @@ export async function runEventRebalance(
     // Founder-authorized money envelope ($4.00 stake / 0.62 price). The
     // selected candidate is never re-ranked or clamped: a row outside the
     // envelope is rejected with a specific reason and no Queue row is written.
+    // Gated on the ORIGINAL candidate entry_price_num (diagnostics.entry_price),
+    // never on diagnostics.max_entry_price -- that field is now always the flat
+    // 0.62 execution cap, so it can never itself exceed the ceiling.
     const envelopeViolation =
       selection.outcome !== "SKIPPED" && selection.queueRow
         ? queueMoneyEnvelopeViolation(
             selection.queueRow.stake_usd,
-            typeof selection.queueRow.diagnostics?.max_entry_price === "number"
-              ? selection.queueRow.diagnostics.max_entry_price
+            typeof selection.queueRow.diagnostics?.entry_price === "number"
+              ? selection.queueRow.diagnostics.entry_price
               : null
           )
         : null;
@@ -2077,11 +2090,14 @@ export async function runControlledLiveIntent(
             )
           : selectQueueRowForDueReservation(reservation, marketsByKey, contractAFinalUniverse, rebalanceRunId);
     if (selection.outcome !== "QUEUED" || !selection.queueRow) continue;
+    // Gated on the ORIGINAL entry_price_num (diagnostics.entry_price) -- see
+    // the matching comment in runEventRebalance for why max_entry_price
+    // itself can no longer be used for this check.
     if (
       queueMoneyEnvelopeViolation(
         selection.queueRow.stake_usd,
-        typeof selection.queueRow.diagnostics?.max_entry_price === "number"
-          ? selection.queueRow.diagnostics.max_entry_price
+        typeof selection.queueRow.diagnostics?.entry_price === "number"
+          ? selection.queueRow.diagnostics.entry_price
           : null
       )
     ) continue;
