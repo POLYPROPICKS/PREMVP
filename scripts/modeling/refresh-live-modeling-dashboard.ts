@@ -1,36 +1,42 @@
 /**
  * REFRESH_LIVE_MODELING_DASHBOARD_V1 — Git-owned READ-ONLY production runtime
  * refresh for the SAME Sep21 dashboard's LIVE panel. This is a LIVE-READOUT
- * mission script, not a modeling/search mission: it aggregates the current
- * production funnel (Reservation -> Queue -> Execution -> Order -> Filled ->
- * Settled) for the current Minsk PLAN date, and never infers realized P&L
+ * mission script, not a modeling/search mission: it aggregates the actual
+ * Sep21 PLAN path (Reservation -> Queue -> Executor Order -> CLOB Order ->
+ * Settlement) for the current Minsk PLAN date, and never infers realized P&L
  * from potential payout.
  *
- * BUSINESS-PATH AUTHORITY:
- *   - Reservation scope: night_event_reservations.plan_date_minsk (the Minsk
- *     PLAN date the reservation was made for), never game_start_iso. The
- *     dashboard question is "what happened in the Sep21 production plan",
- *     not "which games happened to start during the Sep21 wall-clock day".
- *   - Queue scope: event_execution_queue rows whose reservation_id belongs to
- *     that same plan date's reservations -- never queue.game_start_iso as the
- *     primary plan-day boundary.
- *   - Orders (ORDER_EVENT_N / CLOB_ORDER_N / ACCEPTED_OPEN_N / SUBMITTED_STAKE_USD)
- *     use their own exact authoritative fields: clob_order_id IS NOT NULL,
- *     raw_event_json->>'state' = 'accepted_open' (never success=true as a
- *     substitute), sum(stake_usd).
- *   - Settlement: bet_execution_ledger rows are NOT automatically settled.
- *     Authoritative settled_n = count(settled_at IS NOT NULL); realized P&L =
- *     sum(real_pnl) only over those settled rows. Never potential payout /
- *     gross_profit_if_win / accepted_open as realized P&L. No settled rows ->
- *     PENDING_NOT_SETTLED, realized P&L stays null.
+ * PLAN LINEAGE (the funnel's own authority chain -- every stage below joins
+ * on the PREVIOUS stage's own key, never a wall-clock day guess):
+ *   1. night_event_reservations.plan_date_minsk = the Minsk PLAN date.
+ *   2. event_execution_queue.reservation_id IN (that plan date's reservation ids).
+ *   3. executor_order_events.idempotency_key = event_execution_queue.idempotency_key
+ *      (only queue rows from step 2) -- this is PLAN_LINKED order evidence,
+ *      not "orders created sometime that calendar day".
+ *   4. bet_execution_ledger.exchange_order_id = executor_order_events.clob_order_id
+ *      (only the plan-linked orders from step 3) -- settlement is attributed to
+ *      the PLAN, never to whichever wall-clock day settled_at happens to fall
+ *      on (a Sep21 order settling Sep22 stays attributed to the Sep21 plan).
+ *      settled_n = count(settled_at IS NOT NULL) over those matched rows only;
+ *      realized P&L = sum(real_pnl) over the same matched+settled rows only.
+ *
+ * SEPARATE TELEMETRY: the same day-scoped executor_order_events read (bounded
+ * by created_at within the Minsk calendar day, since order events carry no
+ * plan_date_minsk of their own) is also reported, UNFILTERED, as
+ * calendarDayTelemetry -- explicitly labelled NOT_IDENTICAL_TO_PLAN_FUNNEL.
+ * It must never substitute for the plan-linked (idempotency_key-joined)
+ * figures above; one calendar-day executor event does not necessarily map to
+ * this plan's own queue path.
  *
  * HARD SAFETY (same posture as scripts/contur3/lib/contur3LiveFunnelMonitor.mjs):
  *   - SELECT-only reads (count-only where a count suffices; small bounded
  *     column-limited reads only where an actual sum/join requires row values
- *     -- reservation ids for the queue join, stake_usd for the stake sum,
- *     real_pnl for the settled-P&L sum -- each scoped to one plan date's
- *     tiny operational row set, never the research corpus). Never writes a
- *     production DB row.
+ *     -- reservation ids for the queue join, queue idempotency keys for the
+ *     order join, order idempotency_key/clob_order_id/stake_usd/raw_event_json
+ *     for the plan-link + stake sum, plan-linked clob_order_id values for the
+ *     ledger join, real_pnl for the settled-P&L sum -- each scoped to one
+ *     plan date's tiny operational row set, never the research corpus).
+ *     Never writes a production DB row.
  *   - Fails closed (STOPPED_PRODUCTION_ENV_MISSING / REFUSING_UNKNOWN_PRODUCTION_TARGET)
  *     rather than silently falling back to any other project -- including the
  *     research clone -- when SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are
@@ -92,18 +98,7 @@ async function resolveProductionDb(): Promise<{ db: SupabaseClient; ref: string 
   return { db: createClient(url, key), ref };
 }
 
-async function countRows(db: SupabaseClient, table: string, build: (q: any) => any): Promise<{ ok: true; count: number } | { ok: false; error: string }> {
-  try {
-    const query = build(db.from(table).select("*", { count: "exact", head: true }));
-    const { count, error } = await query;
-    if (error) return { ok: false, error: error.code ?? error.message };
-    return { ok: true, count: count ?? 0 };
-  } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
-/** Small, column-limited, single-plan-date-bounded read -- never the research corpus, never unbounded. Used only where a count cannot answer the question (an id list for a FK join, or a sum). */
+/** Small, column-limited, single-plan-date-bounded read -- never the research corpus, never unbounded. Used only where a count cannot answer the question (an id/key list for a FK join, or a sum). */
 async function selectRows<T>(db: SupabaseClient, table: string, columns: string, build: (q: any) => any, limit = 2000): Promise<{ ok: true; rows: T[] } | { ok: false; error: string }> {
   try {
     const query = build(db.from(table).select(columns)).limit(limit);
@@ -128,8 +123,21 @@ function loadExisting(path: string): any {
   }
 }
 
+type OrderAgg = { total: number; clobOrderN: number; acceptedOpenN: number; submittedStakeUsd: number; status: "OK" };
+type OrderRow = { idempotency_key: string | null; clob_order_id: string | null; stake_usd: number | null; raw_event_json: { state?: string } | null };
+
+function aggregateOrders(rows: OrderRow[]): OrderAgg {
+  return {
+    total: rows.length,
+    clobOrderN: rows.filter((r) => r.clob_order_id != null).length,
+    acceptedOpenN: rows.filter((r) => r.raw_event_json?.state === "accepted_open").length,
+    submittedStakeUsd: Math.round(rows.reduce((s, r) => s + (r.stake_usd ?? 0), 0) * 100) / 100,
+    status: "OK",
+  };
+}
+
 async function collectPlanDateAggregate(db: SupabaseClient, minskDate: string) {
-  // ── Reservations: scoped by plan_date_minsk (the plan authority), not game_start_iso. ──
+  // ── Stage 1: Reservations scoped by plan_date_minsk (the plan authority), never game_start_iso. ──
   const reservationRows = await selectRows<{ id: string; status: string }>(
     db, "night_event_reservations", "id,status", (q) => q.eq("plan_date_minsk", minskDate),
   );
@@ -143,14 +151,17 @@ async function collectPlanDateAggregate(db: SupabaseClient, minskDate: string) {
       }
     : { total: null, reserved: null, queued: null, status: "MEASUREMENT_MISSING" as const };
 
-  // ── Queue: traced from reservation_id membership in this plan date's reservations, never queue.game_start_iso. ──
+  // ── Stage 2: Queue traced from reservation_id membership in this plan date's reservations, never queue.game_start_iso. ──
   let queue: { total: number | null; ready: number | null; executed: number | null; expired: number | null; other: number | null; status: "OK" | "MEASUREMENT_MISSING" | "NO_RESERVATIONS" };
+  let queueIdempotencyKeys: string[] = [];
   if (!reservationRows.ok) {
     queue = { total: null, ready: null, executed: null, expired: null, other: null, status: "MEASUREMENT_MISSING" };
   } else if (reservationIds.length === 0) {
     queue = { total: 0, ready: 0, executed: 0, expired: 0, other: 0, status: "NO_RESERVATIONS" };
   } else {
-    const queueRows = await selectRows<{ status: string }>(db, "event_execution_queue", "status", (q) => q.in("reservation_id", reservationIds));
+    const queueRows = await selectRows<{ status: string; idempotency_key: string | null }>(
+      db, "event_execution_queue", "status,idempotency_key", (q) => q.in("reservation_id", reservationIds),
+    );
     if (!queueRows.ok) {
       queue = { total: null, ready: null, executed: null, expired: null, other: null, status: "MEASUREMENT_MISSING" };
     } else {
@@ -159,53 +170,71 @@ async function collectPlanDateAggregate(db: SupabaseClient, minskDate: string) {
       const executed = statuses.filter((s) => s === "EXECUTED").length;
       const expired = statuses.filter((s) => s === "EXPIRED").length;
       queue = { total: statuses.length, ready, executed, expired, other: statuses.length - ready - executed - expired, status: "OK" };
+      queueIdempotencyKeys = queueRows.rows.map((r) => r.idempotency_key).filter((k): k is string => !!k);
     }
   }
 
-  // ── Orders: exact authoritative fields, day-scoped by created_at (order events carry no plan_date_minsk of their own). ──
+  // ── Candidate executor order rows: bounded by created_at within the Minsk calendar day (order
+  // events carry no plan_date_minsk of their own). This SAME read backs both aggregates below --
+  // it is split by idempotency_key membership, never re-fetched with different date logic. ──
   const dayStartUtc = new Date(`${minskDate}T00:00:00+03:00`).toISOString();
   const dayEndUtc = new Date(`${minskDate}T23:59:59.999+03:00`).toISOString();
-  const ordersTotal = await countRows(db, "executor_order_events", (q) => q.gte("created_at", dayStartUtc).lte("created_at", dayEndUtc));
-  const clobOrderN = await countRows(db, "executor_order_events", (q) => q.gte("created_at", dayStartUtc).lte("created_at", dayEndUtc).not("clob_order_id", "is", null));
-  const acceptedOpenN = await countRows(db, "executor_order_events", (q) => q.gte("created_at", dayStartUtc).lte("created_at", dayEndUtc).filter("raw_event_json->>state", "eq", "accepted_open"));
-  const stakeRows = await selectRows<{ stake_usd: number | null }>(db, "executor_order_events", "stake_usd", (q) => q.gte("created_at", dayStartUtc).lte("created_at", dayEndUtc));
-  const submittedStakeUsd = stakeRows.ok ? Math.round(stakeRows.rows.reduce((s, r) => s + (r.stake_usd ?? 0), 0) * 100) / 100 : null;
-  const orders = {
-    total: ordersTotal.ok ? ordersTotal.count : null,
-    clobOrderN: clobOrderN.ok ? clobOrderN.count : null,
-    acceptedOpenN: acceptedOpenN.ok ? acceptedOpenN.count : null,
-    submittedStakeUsd,
-    status: ordersTotal.ok && clobOrderN.ok && acceptedOpenN.ok && stakeRows.ok ? ("OK" as const) : ("MEASUREMENT_MISSING" as const),
-  };
-
-  // ── Settlement: settled_at IS NOT NULL is the only authoritative settled evidence. ──
-  // Never success=true / accepted_open / potential payout / gross_profit_if_win as realized P&L.
-  const settledRows = await selectRows<{ real_pnl: number | null }>(
-    db, "bet_execution_ledger", "real_pnl",
-    (q) => q.not("settled_at", "is", null).gte("settled_at", dayStartUtc).lte("settled_at", dayEndUtc),
+  const orderRows = await selectRows<OrderRow>(
+    db, "executor_order_events", "idempotency_key,clob_order_id,stake_usd,raw_event_json",
+    (q) => q.gte("created_at", dayStartUtc).lte("created_at", dayEndUtc),
   );
-  let settled: { status: "PENDING_NOT_SETTLED" | "AVAILABLE" | "MEASUREMENT_MISSING"; count: number | null; realized_pnl_usd: number | null; source: string | null; note: string };
-  if (!settledRows.ok) {
-    settled = { status: "MEASUREMENT_MISSING", count: null, realized_pnl_usd: null, source: null, note: `bet_execution_ledger read failed: ${settledRows.error}` };
-  } else if (settledRows.rows.length > 0) {
-    settled = {
-      status: "AVAILABLE",
-      count: settledRows.rows.length,
-      realized_pnl_usd: Math.round(settledRows.rows.reduce((s, r) => s + (r.real_pnl ?? 0), 0) * 100) / 100,
-      source: "bet_execution_ledger (settled_at IS NOT NULL)",
-      note: "Authoritative settled rows for this plan date -- realized P&L is sum(real_pnl) over settled_at IS NOT NULL rows only.",
-    };
+
+  // ── Stage 3: PLAN_LINKED orders = candidate rows whose idempotency_key matches THIS plan's queue rows. ──
+  const planLinkedRows = orderRows.ok ? orderRows.rows.filter((r) => r.idempotency_key != null && queueIdempotencyKeys.includes(r.idempotency_key)) : [];
+  const planOrders: OrderAgg | { total: null; clobOrderN: null; acceptedOpenN: null; submittedStakeUsd: null; status: "MEASUREMENT_MISSING" } =
+    orderRows.ok && queue.status !== "MEASUREMENT_MISSING" ? aggregateOrders(planLinkedRows) : { total: null, clobOrderN: null, acceptedOpenN: null, submittedStakeUsd: null, status: "MEASUREMENT_MISSING" };
+
+  // Calendar-day telemetry: the SAME read, unfiltered -- separate card, never the plan funnel's next stage.
+  const calendarOrders: OrderAgg | { total: null; clobOrderN: null; acceptedOpenN: null; submittedStakeUsd: null; status: "MEASUREMENT_MISSING" } =
+    orderRows.ok ? aggregateOrders(orderRows.rows) : { total: null, clobOrderN: null, acceptedOpenN: null, submittedStakeUsd: null, status: "MEASUREMENT_MISSING" };
+
+  // ── Stage 4: Settlement traced from PLAN-LINKED clob_order_id -> ledger.exchange_order_id.
+  // Never scoped by settled_at wall-clock day -- a Sep21 order settling Sep22 stays this plan's. ──
+  const planLinkedClobIds = planLinkedRows.map((r) => r.clob_order_id).filter((id): id is string => !!id);
+  let settled: { status: "PENDING_NOT_SETTLED" | "AVAILABLE" | "MEASUREMENT_MISSING" | "NO_PLAN_LINKED_CLOB_ORDERS"; count: number | null; realized_pnl_usd: number | null; source: string | null; note: string };
+  if (!orderRows.ok || queue.status === "MEASUREMENT_MISSING") {
+    settled = { status: "MEASUREMENT_MISSING", count: null, realized_pnl_usd: null, source: null, note: "Plan-linked order evidence unavailable -- cannot trace settlement." };
+  } else if (planLinkedClobIds.length === 0) {
+    settled = { status: "NO_PLAN_LINKED_CLOB_ORDERS", count: 0, realized_pnl_usd: null, source: null, note: "No plan-linked CLOB order ids to join against bet_execution_ledger.exchange_order_id." };
   } else {
-    settled = {
-      status: "PENDING_NOT_SETTLED",
-      count: 0,
-      realized_pnl_usd: null,
-      source: null,
-      note: "No bet_execution_ledger rows with settled_at IS NOT NULL for this plan date -- never inferring realized P&L from potential payout, accepted_open, or gross_profit_if_win.",
-    };
+    const ledgerRows = await selectRows<{ exchange_order_id: string; settled_at: string | null; real_pnl: number | null }>(
+      db, "bet_execution_ledger", "exchange_order_id,settled_at,real_pnl", (q) => q.in("exchange_order_id", planLinkedClobIds),
+    );
+    if (!ledgerRows.ok) {
+      settled = { status: "MEASUREMENT_MISSING", count: null, realized_pnl_usd: null, source: null, note: `bet_execution_ledger read failed: ${ledgerRows.error}` };
+    } else {
+      const settledMatched = ledgerRows.rows.filter((r) => r.settled_at != null);
+      if (settledMatched.length > 0) {
+        settled = {
+          status: "AVAILABLE",
+          count: settledMatched.length,
+          realized_pnl_usd: Math.round(settledMatched.reduce((s, r) => s + (r.real_pnl ?? 0), 0) * 100) / 100,
+          source: "bet_execution_ledger (exchange_order_id = plan-linked clob_order_id, settled_at IS NOT NULL)",
+          note: "Authoritative settled rows joined from this plan's own CLOB order ids -- never scoped by settlement wall-clock day.",
+        };
+      } else {
+        settled = {
+          status: "PENDING_NOT_SETTLED",
+          count: 0,
+          realized_pnl_usd: null,
+          source: null,
+          note: "0 bet_execution_ledger rows with settled_at IS NOT NULL among this plan's linked CLOB order ids -- never inferring realized P&L from potential payout, accepted_open, or gross_profit_if_win.",
+        };
+      }
+    }
   }
 
-  return { minskDate, reservations, queue, orders, settled, generatedAt: new Date().toISOString() };
+  return {
+    minskDate,
+    planFunnel: { reservations, queue, orders: planOrders, settled },
+    calendarDayTelemetry: { orders: calendarOrders, label: "NOT_IDENTICAL_TO_PLAN_FUNNEL" },
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 function writeBody(path: string, body: unknown): void {
@@ -213,12 +242,15 @@ function writeBody(path: string, body: unknown): void {
  * LIVE_RUNTIME_DATA_V1 -- production runtime aggregate for MODELING_DASHBOARD.html's
  * LIVE panel. Generated by scripts/modeling/refresh-live-modeling-dashboard.ts
  * (READ-ONLY: night_event_reservations scoped by plan_date_minsk; event_execution_queue
- * traced by reservation_id; executor_order_events read for exact clob_order_id /
- * raw_event_json->>'state' / stake_usd fields; bet_execution_ledger read only for
- * settled_at IS NOT NULL rows). Production writes = 0. Previously captured aggregate
- * days -- including any Architect-verified seeded snapshot -- are preserved verbatim;
- * a failed refresh NEVER deletes them, and a successful refresh only replaces the
- * CURRENT Minsk plan date's own snapshot.
+ * traced by reservation_id; executor_order_events plan-linked via
+ * queue.idempotency_key = order.idempotency_key; settlement traced from plan-linked
+ * clob_order_id -> bet_execution_ledger.exchange_order_id, settled_at IS NOT NULL only,
+ * never a wall-clock settlement day). Production writes = 0. Previously captured
+ * aggregate days -- including any Architect-verified seeded snapshot -- are preserved
+ * verbatim; a failed refresh NEVER deletes them, and a successful refresh only replaces
+ * the CURRENT Minsk plan date's own snapshot. planFunnel and calendarDayTelemetry are
+ * always kept separate -- the latter is informational only and is never the plan
+ * funnel's next stage.
  */
 `;
   writeFileSync(path, `${header}window.POLYPROPICKS_LIVE_RUNTIME_DATA = ${JSON.stringify(body, null, 2)};\n`, "utf8");
