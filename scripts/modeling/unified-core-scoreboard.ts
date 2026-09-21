@@ -74,6 +74,14 @@ function arg(name: string, fallback: string): string {
 
 const START = arg("start", DEFAULT_START);
 const END = arg("end", DEFAULT_END);
+/**
+ * --section=anatomy skips fetchCoverageMap()/research_evidence_page_rows —
+ * that read only feeds the legacy BAD_BUCKET counterfactual (section C) and
+ * is not needed by score/interaction/Broad-ablation anatomy. Default
+ * ("full") behavior is unchanged.
+ */
+const SECTION = arg("section", "full");
+const ANATOMY_ONLY = SECTION === "anatomy";
 /** Aug/Sep split is a fixed calendar boundary independent of --start/--end. */
 const AUG_END = "2026-08-31";
 const SEP_START = "2026-09-01";
@@ -266,41 +274,47 @@ async function main() {
 
   // marketTypeRaw comes straight off canonical_row via `input` (toAtlasInput) —
   // no evidence-table reconstruction. Only BAD_BUCKET's coverage genuinely
-  // needs the secondary join.
-  const coverageMap = await fetchCoverageMap();
+  // needs the secondary join, and that join (fetchCoverageMap ->
+  // research_evidence_page_rows) is the slow edge for this runner: it is
+  // skipped entirely in --section=anatomy, since anatomy mode never computes
+  // the legacy BAD_BUCKET counterfactual.
+  const coverageMap = ANATOMY_ONLY ? new Map<string, number | null>() : await fetchCoverageMap();
   const coverageOf = (r: ScorecardReadyRow) => coverageMap.get(`${r.conditionId}|${r.selectedTokenId}|${r.decisionAt}`);
-  const coverageMatchedRawN = rawRows.filter((r) => coverageOf(r) !== undefined).length;
+  const coverageMatchedRawN = ANATOMY_ONLY ? 0 : rawRows.filter((r) => coverageOf(r) !== undefined).length;
   const marketTypeMatchedN = new Set(input.filter((e) => e.marketTypeRaw != null).map((e) => e.physicalEventKey)).size;
   // Mirrors toAtlasInput's exact filter (factor-atlas.ts) — rebuilt here from
   // rawRows directly (rather than zipped against the already-filtered
   // `input`) so each event keeps its exact conditionId/selectedTokenId for
-  // the coverage join.
-  const inputWithCoverage = rawRows
-    .filter(
-      (r) =>
-        (r.labelAsOf === "WIN" || r.labelAsOf === "LOSS") &&
-        r.providerEventId &&
-        r.eventStart &&
-        r.entryPrice !== null &&
-        r.entryPrice > 0 &&
-        r.entryPrice < 1,
-    )
-    .map((r) => ({
-      physicalEventKey: r.providerEventId!,
-      decisionTimestamp: r.decisionAt,
-      eventStart: r.eventStart!,
-      entryPrice: r.entryPrice!,
-      sportFamily: resolveSportFamily(r) ?? "",
-      outcome: r.labelAsOf as "WIN" | "LOSS",
-      ref: r.conditionId,
-      scoreLevel: typeof r.scoreLevel === "number" ? r.scoreLevel : null,
-      score: r.score,
-      selectedPrice: r.selectedPrice,
-      volumeUsd: typeof r.volumeUsd === "number" ? r.volumeUsd : null,
-      rowLeadTimeHours: typeof r.leadTimeHours === "number" ? r.leadTimeHours : null,
-      marketTypeRaw: null, // unused by BAD_BUCKET logic; market-type economics use `input` (toAtlasInput) directly
-      coverage: coverageOf(r) ?? null,
-    }));
+  // the coverage join. Only needed by the legacy BAD_BUCKET counterfactual
+  // (section C) — skipped in anatomy mode.
+  const inputWithCoverage = ANATOMY_ONLY
+    ? []
+    : rawRows
+        .filter(
+          (r) =>
+            (r.labelAsOf === "WIN" || r.labelAsOf === "LOSS") &&
+            r.providerEventId &&
+            r.eventStart &&
+            r.entryPrice !== null &&
+            r.entryPrice > 0 &&
+            r.entryPrice < 1,
+        )
+        .map((r) => ({
+          physicalEventKey: r.providerEventId!,
+          decisionTimestamp: r.decisionAt,
+          eventStart: r.eventStart!,
+          entryPrice: r.entryPrice!,
+          sportFamily: resolveSportFamily(r) ?? "",
+          outcome: r.labelAsOf as "WIN" | "LOSS",
+          ref: r.conditionId,
+          scoreLevel: typeof r.scoreLevel === "number" ? r.scoreLevel : null,
+          score: r.score,
+          selectedPrice: r.selectedPrice,
+          volumeUsd: typeof r.volumeUsd === "number" ? r.volumeUsd : null,
+          rowLeadTimeHours: typeof r.leadTimeHours === "number" ? r.leadTimeHours : null,
+          marketTypeRaw: null, // unused by BAD_BUCKET logic; market-type economics use `input` (toAtlasInput) directly
+          coverage: coverageOf(r) ?? null,
+        }));
 
   const TIER_PREFERRED = (e: AtlasEvaluatedEvent) =>
     (e.entryPrice >= 0.5 && e.entryPrice < 0.52 && e.sportFamily === "tennis") ||
@@ -374,29 +388,35 @@ async function main() {
   };
 
   // ── C: LEGACY BAD_BUCKET_COV_PRICE HARD-REJECT COUNTERFACTUAL (C0 base) ──
-  const c0Bets = runStandalone(inputWithCoverage, (e) => inC0(e.entryPrice));
-  const isBB = (e: AtlasEvaluatedEvent) => isBadBucket(e as unknown as { entryPrice: number; coverage: number | null });
-  const badBucketRemovedBets = runStandalone(inputWithCoverage, (e) => inC0(e.entryPrice) && isBB(e));
-  const badBucketRetainedBets = runStandalone(inputWithCoverage, (e) => inC0(e.entryPrice) && !isBB(e));
-  const broadBets = runStandalone(inputWithCoverage, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.54);
-  const badBucketRemovedBroadBets = runStandalone(inputWithCoverage, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.54 && isBB(e));
-  const badBucketRetainedBroadBets = runStandalone(inputWithCoverage, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.54 && !isBB(e));
-  const badBucketCounterfactual = {
-    COVERAGE_SOURCE_NOTE:
-      "coverage is not persisted on research_model_ready_rows.canonical_row; reconstructed via the same proven bounded evidence read the materializer uses (readResearchEvidencePageRows), joined on condition_id+selected_token_id+decision_at.",
-    COVERAGE_JOIN_MATCH_N: coverageMatchedRawN,
-    COVERAGE_JOIN_TOTAL_RAW_N: rawRows.length,
-    WITHIN_C0: {
-      BASELINE_N: c0Bets.length,
-      REMOVED: { ...metricsFor(badBucketRemovedBets), AUGUST: metricsFor(splitByDate(badBucketRemovedBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(badBucketRemovedBets, SEP_START, END)), SPORTS: sportComposition(badBucketRemovedBets) },
-      RETAINED: { ...metricsFor(badBucketRetainedBets), AUGUST: metricsFor(splitByDate(badBucketRetainedBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(badBucketRetainedBets, SEP_START, END)), SPORTS: sportComposition(badBucketRetainedBets) },
-    },
-    WITHIN_BROAD_0_50_0_54: {
-      BASELINE_N: broadBets.length,
-      REMOVED: { ...metricsFor(badBucketRemovedBroadBets), AUGUST: metricsFor(splitByDate(badBucketRemovedBroadBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(badBucketRemovedBroadBets, SEP_START, END)), SPORTS: sportComposition(badBucketRemovedBroadBets) },
-      RETAINED: { ...metricsFor(badBucketRetainedBroadBets), AUGUST: metricsFor(splitByDate(badBucketRetainedBroadBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(badBucketRetainedBroadBets, SEP_START, END)), SPORTS: sportComposition(badBucketRetainedBroadBets) },
-    },
-  };
+  // Skipped entirely in --section=anatomy (depends on inputWithCoverage,
+  // which requires the coverage-map evidence read this section mode omits).
+  const badBucketCounterfactual: unknown = ANATOMY_ONLY
+    ? { SKIPPED: "not computed in --section=anatomy (requires fetchCoverageMap/research_evidence_page_rows)" }
+    : (() => {
+        const c0Bets = runStandalone(inputWithCoverage, (e) => inC0(e.entryPrice));
+        const isBB = (e: AtlasEvaluatedEvent) => isBadBucket(e as unknown as { entryPrice: number; coverage: number | null });
+        const badBucketRemovedBets = runStandalone(inputWithCoverage, (e) => inC0(e.entryPrice) && isBB(e));
+        const badBucketRetainedBets = runStandalone(inputWithCoverage, (e) => inC0(e.entryPrice) && !isBB(e));
+        const broadBets = runStandalone(inputWithCoverage, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.54);
+        const badBucketRemovedBroadBets = runStandalone(inputWithCoverage, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.54 && isBB(e));
+        const badBucketRetainedBroadBets = runStandalone(inputWithCoverage, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.54 && !isBB(e));
+        return {
+          COVERAGE_SOURCE_NOTE:
+            "coverage is not persisted on research_model_ready_rows.canonical_row; reconstructed via the same proven bounded evidence read the materializer uses (readResearchEvidencePageRows), joined on condition_id+selected_token_id+decision_at.",
+          COVERAGE_JOIN_MATCH_N: coverageMatchedRawN,
+          COVERAGE_JOIN_TOTAL_RAW_N: rawRows.length,
+          WITHIN_C0: {
+            BASELINE_N: c0Bets.length,
+            REMOVED: { ...metricsFor(badBucketRemovedBets), AUGUST: metricsFor(splitByDate(badBucketRemovedBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(badBucketRemovedBets, SEP_START, END)), SPORTS: sportComposition(badBucketRemovedBets) },
+            RETAINED: { ...metricsFor(badBucketRetainedBets), AUGUST: metricsFor(splitByDate(badBucketRetainedBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(badBucketRetainedBets, SEP_START, END)), SPORTS: sportComposition(badBucketRetainedBets) },
+          },
+          WITHIN_BROAD_0_50_0_54: {
+            BASELINE_N: broadBets.length,
+            REMOVED: { ...metricsFor(badBucketRemovedBroadBets), AUGUST: metricsFor(splitByDate(badBucketRemovedBroadBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(badBucketRemovedBroadBets, SEP_START, END)), SPORTS: sportComposition(badBucketRemovedBroadBets) },
+            RETAINED: { ...metricsFor(badBucketRetainedBroadBets), AUGUST: metricsFor(splitByDate(badBucketRetainedBroadBets, START, AUG_END)), SEPTEMBER_THROUGH_20: metricsFor(splitByDate(badBucketRetainedBroadBets, SEP_START, END)), SPORTS: sportComposition(badBucketRetainedBroadBets) },
+          },
+        };
+      })();
 
   // ── D: LEAD-TIME / C4 DECOMPOSITION (existing factor-atlas LEAD_TIME buckets, C0 band) ──
   const LEAD_BUCKETS: Array<[string, number, number]> = [
@@ -514,6 +534,16 @@ async function main() {
     ),
   );
 
+  // Decision tables carry only canonical-selected N>=100 cells; N<100 cells
+  // (many by construction, e.g. cricket, or thin score/price/sport corners)
+  // move to a diagnostic-only appendix so the main tables stay readable.
+  function splitMaterial<T extends { STATUS: string }>(rows: T[]) {
+    return { MATERIAL: rows.filter((r) => r.STATUS === "MAIN"), DIAGNOSTIC_APPENDIX: rows.filter((r) => r.STATUS !== "MAIN") };
+  }
+  const scorePriceSplit = splitMaterial(scorePriceInteraction);
+  const scoreSportSplit = splitMaterial(scoreSportInteraction);
+  const priceSportSplit = splitMaterial(priceSportInteraction);
+
   // Broad ablation: decompose PORTFOLIO_BROAD's tiered selection
   // (TIER_PREFERRED > TIER_P50_52 > TIER_P52_54, defined above) into its
   // layers and isolate the incremental effect of each reprioritization
@@ -589,9 +619,10 @@ async function main() {
     MARKET_TYPE_ECONOMICS: { MATERIAL_TYPES: marketTypeTable, DIAGNOSTIC_TYPES: marketTypeDiagnostics, ATTRIBUTION: marketTypeAttribution },
     SELECTED_PRICE_MOVEMENT_ECONOMICS: { USABLE_SERIES_N_WITHIN_C0: priceMovementUsableN, BUCKETS: priceMovementTable },
     BROAD_ANATOMY_V1: {
-      SCORE_PRICE_INTERACTION: scorePriceInteraction,
-      SCORE_SPORT_INTERACTION: scoreSportInteraction,
-      PRICE_SPORT_INTERACTION: priceSportInteraction,
+      SECTION,
+      SCORE_PRICE_INTERACTION: scorePriceSplit,
+      SCORE_SPORT_INTERACTION: scoreSportSplit,
+      PRICE_SPORT_INTERACTION: priceSportSplit,
       BROAD_ABLATION: broadAblation,
     },
   };
@@ -599,12 +630,30 @@ async function main() {
   console.log(JSON.stringify(artifact, null, 2));
 
   mkdirSync(EVIDENCE_OUT_DIR, { recursive: true });
-  const outPath = `${EVIDENCE_OUT_DIR}/SCOREBOARD_${START}_${END}.json`;
+  const suffix = ANATOMY_ONLY ? "_anatomy" : "";
+  const outPath = `${EVIDENCE_OUT_DIR}/SCOREBOARD${suffix}_${START}_${END}.json`;
   writeFileSync(outPath, JSON.stringify({ GENERATED_AT: new Date().toISOString(), ...artifact }, null, 2));
   console.error(`Wrote aggregate evidence artifact: ${outPath}`);
 
-  const mdPath = `${EVIDENCE_OUT_DIR}/BROAD_ANATOMY_${START}_${END}.md`;
-  writeFileSync(mdPath, buildBroadAnatomyMarkdown({ start: START, end: END, processedN, scoreTable, scorePriceInteraction, scoreSportInteraction, priceSportInteraction, broadAblation }));
+  const mdPath = `${EVIDENCE_OUT_DIR}/BROAD_ANATOMY${suffix}_${START}_${END}.md`;
+  writeFileSync(
+    mdPath,
+    buildBroadAnatomyMarkdown({
+      start: START,
+      end: END,
+      processedN,
+      scoreTable,
+      scorePriceInteraction: scorePriceSplit.MATERIAL,
+      scoreSportInteraction: scoreSportSplit.MATERIAL,
+      priceSportInteraction: priceSportSplit.MATERIAL,
+      broadAblation,
+      diagnosticCounts: {
+        scorePrice: scorePriceSplit.DIAGNOSTIC_APPENDIX.length,
+        scoreSport: scoreSportSplit.DIAGNOSTIC_APPENDIX.length,
+        priceSport: priceSportSplit.DIAGNOSTIC_APPENDIX.length,
+      },
+    }),
+  );
   console.error(`Wrote markdown summary: ${mdPath}`);
 }
 
@@ -649,14 +698,19 @@ function buildBroadAnatomyMarkdown(args: {
   scoreSportInteraction: InteractionRow[];
   priceSportInteraction: InteractionRow[];
   broadAblation: AblationRow[];
+  diagnosticCounts: { scorePrice: number; scoreSport: number; priceSport: number };
 }): string {
-  const { start, end, processedN, scoreTable, scorePriceInteraction, scoreSportInteraction, priceSportInteraction, broadAblation } = args;
+  const { start, end, processedN, scoreTable, scorePriceInteraction, scoreSportInteraction, priceSportInteraction, broadAblation, diagnosticCounts } = args;
   const lines: string[] = [];
   lines.push(`# Broad Anatomy + Signal-Score Economics (${start} → ${end})`);
   lines.push("");
   lines.push(`Generated by \`npm run research-clone:scoreboard -- --start=${start} --end=${end}\` (BROAD_ANATOMY_V1 section). Common-period processed physical events: **${processedN}**.`);
   lines.push("");
-  lines.push("No raw rows below — aggregate metrics only. Full aggregate JSON is in the sibling `SCOREBOARD_*.json` artifact in this same directory.");
+  lines.push("No raw rows below — aggregate metrics only. Full aggregate JSON is in the sibling `SCOREBOARD*_*.json` artifact in this same directory.");
+  lines.push("");
+  lines.push(
+    `Main tables below show only canonical-selected N>=100 cells. Excluded as SMALL_SAMPLE diagnostic-only (not shown, see JSON \`DIAGNOSTIC_APPENDIX\`): score×price ${diagnosticCounts.scorePrice}, score×sport ${diagnosticCounts.scoreSport}, price×sport ${diagnosticCounts.priceSport}.`,
+  );
   lines.push("");
 
   lines.push("## A. Founder table — score buckets (0.50<=price<0.60)");
