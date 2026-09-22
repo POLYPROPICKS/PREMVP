@@ -296,9 +296,83 @@ export async function writeDayRows(
   return writeNonEmptyDayRows(db, d, rows);
 }
 
+/** Settlement states this guard treats as final; every other labelAsOf value is non-terminal. */
+const TERMINAL_LABELS = new Set(["WIN", "LOSS"]);
+
+function economicIdentityKey(r: {
+  populationId: string;
+  conditionId: string;
+  selectedTokenId: string;
+  decisionAt: string;
+}): string {
+  return `${r.populationId}|${r.conditionId}|${r.selectedTokenId}|${r.decisionAt}`;
+}
+
+/**
+ * MONOTONIC_SETTLEMENT_GUARD_V1 — date-bounded, single query per rematerialized
+ * day. A rerun of writeDayRows (e.g. an explicit --start/--end repair call)
+ * must never let an already-terminal WIN/LOSS row regress to a non-terminal
+ * label (OPEN/NO_MATCH/AMBIGUOUS/VOID); clone-model-ready-pipeline.ts's own
+ * invariant is "once accepted, the clone row-set and its label AS-OF remain
+ * immutable" and this materializer's upsert-on-economic-identity path had no
+ * enforcement of that for terminal labels. This mission does not invent a
+ * terminal-correction mechanism: WIN/LOSS -> WIN/LOSS still overwrites freely
+ * (refreshing other canonical_row content), OPEN/non-terminal -> WIN/LOSS still
+ * promotes freely; only terminal -> non-terminal is refused, by substituting
+ * back the existing terminal canonical row untouched.
+ */
+async function loadExistingTerminalRows(
+  db: SupabaseClient,
+  d: string,
+): Promise<Map<string, ScorecardReadyRow>> {
+  const { data, error } = await db
+    .from("research_model_ready_rows")
+    .select("population_id,condition_id,selected_token_id,decision_at,settlement_label,canonical_row")
+    .eq("model_date", d)
+    .in("settlement_label", ["WIN", "LOSS"]);
+  if (error) throw new Error(`MATERIALIZE_EXISTING_TERMINAL_READ:${error.code ?? error.message}`);
+  const map = new Map<string, ScorecardReadyRow>();
+  for (const row of (data ?? []) as Array<{
+    population_id: string;
+    condition_id: string;
+    selected_token_id: string;
+    decision_at: string;
+    settlement_label: string;
+    canonical_row: ScorecardReadyRow;
+  }>) {
+    map.set(
+      economicIdentityKey({
+        populationId: row.population_id,
+        conditionId: row.condition_id,
+        selectedTokenId: row.selected_token_id,
+        decisionAt: row.decision_at,
+      }),
+      row.canonical_row,
+    );
+  }
+  return map;
+}
+
+export function applyMonotonicSettlementGuard(
+  incoming: ScorecardReadyRow[],
+  existingTerminal: Map<string, ScorecardReadyRow>,
+): ScorecardReadyRow[] {
+  return incoming.map((r) => {
+    const existing = existingTerminal.get(economicIdentityKey(r));
+    if (!existing) return r;
+    if (!TERMINAL_LABELS.has(r.labelAsOf as string)) {
+      // Terminal -> non-terminal regression refused: preserve the existing terminal row verbatim.
+      return existing;
+    }
+    return r;
+  });
+}
+
 async function writeNonEmptyDayRows(db: SupabaseClient, d: string, rows: ScorecardReadyRow[]): Promise<void> {
-  for (let i = 0; i < rows.length; i += WRITE_PAGE) {
-    const payload = rows.slice(i, i + WRITE_PAGE).map((r) => toStoredModelRow(d, r));
+  const existingTerminal = await loadExistingTerminalRows(db, d);
+  const guardedRows = applyMonotonicSettlementGuard(rows, existingTerminal);
+  for (let i = 0; i < guardedRows.length; i += WRITE_PAGE) {
+    const payload = guardedRows.slice(i, i + WRITE_PAGE).map((r) => toStoredModelRow(d, r));
     const { error } = await db
       .from("research_model_ready_rows")
       .upsert(payload, { onConflict: "model_date,population_id,condition_id,selected_token_id,decision_at" });

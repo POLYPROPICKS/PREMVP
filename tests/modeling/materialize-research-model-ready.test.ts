@@ -87,6 +87,18 @@ function makeFakeClone(gspRows: Record<string, unknown>[], outboxRows: Record<st
   }
   function writeBuilder(table: string) {
     return {
+      select() {
+        // MONOTONIC_SETTLEMENT_GUARD_V1: writeDayRows reads existing terminal
+        // rows for the date before upserting. No pre-existing rows in these
+        // fixtures, so the guard is a no-op pass-through.
+        return this;
+      },
+      eq() {
+        return this;
+      },
+      in() {
+        return Promise.resolve({ data: [], error: null });
+      },
       upsert(rows: Record<string, unknown>[], opts?: { onConflict?: string }) {
         writes.push({ table, rows, onConflict: opts?.onConflict });
         return Promise.resolve({ error: null });
