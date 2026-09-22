@@ -18,17 +18,28 @@ export type ReservationStatus =
   | "CANCELLED";
 
 // Executable policy constants (LOCKED — Tier1 only, no halftime).
-// Founder-authorized Queue money envelope (2026-09-21, supersedes the earlier $2.50 pin):
-//   QUEUE_MAX_STAKE_USD       stake_usd is authorized up to $4.00 per Queue instruction.
+// Founder-authorized Queue money envelope, RESTORE_DEFAULT_250_SEPARATE_MAX_400_CONTRACT_V1
+// (2026-09-22, corrects the accidental "$4 every bet" regression from the
+// 2026-09-21 envelope change, which collapsed the ordinary stake into the
+// exceptional ceiling by defining EXECUTABLE_STAKE_USD === QUEUE_MAX_STAKE_USD):
+//   QUEUE_DEFAULT_STAKE_USD   the ORDINARY stake written to every normal Queue
+//                             row's stake_usd. $2.50, not $4.00.
+//   QUEUE_MAX_STAKE_USD       the exceptional hard ceiling ($4.00), reserved
+//                             for a venue-minimum-size headroom problem. Never
+//                             the ordinary stake, never equal to stake_usd by
+//                             construction. Persisted separately, per Queue
+//                             row, as diagnostics.max_stake_usd.
 //   QUEUE_MAX_ENTRY_PRICE     max_entry_price may never exceed 0.62.
-// $4.00 is a maximum envelope, not a spend target: Ireland's sizing/venue rules may
-// submit a lower notional. PREMVP stays the authority; a value above either bound is
-// rejected (fail closed), never silently clamped. Existing Queue rows keep their
-// already-persisted stake.
+// PREMVP stays the authority; a value above either bound is rejected (fail
+// closed), never silently clamped. Existing Queue rows keep their
+// already-persisted stake. This contract authorizes the envelope only -- it
+// does not decide when a consumer may actually spend above the default.
+export const QUEUE_DEFAULT_STAKE_USD = 2.5 as const;
 export const QUEUE_MAX_STAKE_USD = 4.0 as const;
 export const QUEUE_MAX_ENTRY_PRICE = 0.62 as const;
 export const EXECUTABLE_TIER = "TIER1" as const;
-export const EXECUTABLE_STAKE_USD = QUEUE_MAX_STAKE_USD;
+/** The ordinary stake written to every normal Queue row -- never the exceptional ceiling. */
+export const EXECUTABLE_STAKE_USD = QUEUE_DEFAULT_STAKE_USD;
 export const QUEUE_SCHEMA_VERSION = "executor-queue-v1" as const;
 export const QUEUE_EXECUTION_MODE = "NIGHT_LIVE_EXECUTION" as const;
 export const QUEUE_SOURCE = "event_execution_queue" as const;
@@ -38,10 +49,11 @@ export type QueueMoneyEnvelopeViolation =
   | "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING";
 
 /**
- * Pure fail-closed check of a Queue instruction against the Founder-authorized
- * money envelope. Returns a specific reason, or null when within bounds.
- * A missing/non-finite max_entry_price is not judged here (callers already
- * fail closed on it separately).
+ * Pure fail-closed check of a Queue instruction's OWN row-level stake_usd
+ * (the ordinary $2.50 default, not the $4.00 diagnostics ceiling) against the
+ * Founder-authorized money envelope. Returns a specific reason, or null when
+ * within bounds. A missing/non-finite max_entry_price is not judged here
+ * (callers already fail closed on it separately).
  */
 export function queueMoneyEnvelopeViolation(
   stakeUsd: number,
@@ -52,6 +64,21 @@ export function queueMoneyEnvelopeViolation(
     return "QUEUE_MAX_ENTRY_PRICE_ABOVE_CEILING";
   }
   return null;
+}
+
+/**
+ * The hard authorized maximum stake for ONE Queue row: diagnostics.max_stake_usd
+ * when present and finite, otherwise the row's own stake_usd. Backward
+ * compatible with historical rows written before this contract, which never
+ * carried diagnostics.max_stake_usd at all -- such a row's effective max stake
+ * remains exactly its historical stake_usd, never silently promoted to $4.
+ */
+export function extractMaxStakeUsd(
+  diagnostics: Record<string, unknown>,
+  fallbackStakeUsd: number
+): number {
+  const v = diagnostics.max_stake_usd;
+  return typeof v === "number" && Number.isFinite(v) ? v : fallbackStakeUsd;
 }
 
 export interface NightEventReservationRow {
@@ -242,7 +269,9 @@ function extractSignalPairId(diagnostics: Record<string, unknown>): string | nul
 /**
  * Pure row → consumer-candidate projection (no DB, no side effects) so it can be
  * unit-tested and shared between /api/executor/queue and any future consumer route.
- * MVP treats the recommended stake as the hard max: max_stake_usd === stake_usd.
+ * max_stake_usd is the row's own diagnostics.max_stake_usd exceptional ceiling
+ * when present, otherwise its historical stake_usd (RESTORE_DEFAULT_250_SEPARATE_
+ * MAX_400_CONTRACT_V1) -- it is deliberately NOT always equal to stake_usd.
  */
 export function mapQueueRowToIrelandCandidate(
   row: EventExecutionQueueRow,
@@ -285,7 +314,7 @@ export function mapQueueRowToIrelandCandidate(
     coverage: row.coverage,
     tier: row.tier,
     stake_usd: row.stake_usd,
-    max_stake_usd: row.stake_usd,
+    max_stake_usd: extractMaxStakeUsd(row.diagnostics ?? {}, row.stake_usd),
     max_entry_price: maxEntryPrice,
     price_cap: maxEntryPrice,
     preferred_entry_iso: row.preferred_entry_iso,
@@ -329,10 +358,15 @@ export type OrderEventValidationResult =
  *   - canonical execution invariants (token_id/condition_id/side) must match the queue row;
  *     display text such as market_slug is never identity or an admission gate;
  *     if the queue row has a value for a field, the submission must report it too
+ *   - the effective max stake for this row is diagnostics.max_stake_usd when
+ *     present (the exceptional headroom ceiling), otherwise the row's own
+ *     stake_usd (RESTORE_DEFAULT_250_SEPARATE_MAX_400_CONTRACT_V1) -- a
+ *     historical row without diagnostics.max_stake_usd is never silently
+ *     promoted to $4
  *   - callback stake_usd is a USD allocation ceiling and must be finite,
- *     positive, and <= the queue row stake_usd
+ *     positive, and <= the row's effective max stake
  *   - submitted_size is shares; actual USD notional is submitted_price ×
- *     submitted_size and must be <= the queue row stake_usd
+ *     submitted_size and must be <= the row's effective max stake
  *   - queue row must carry a max_entry_price to validate against (no cap = no
  *     safe execution boundary, so validation fails closed)
  *   - submitted price is mandatory, must be finite/positive, and <= queue row
@@ -361,10 +395,11 @@ export function validateOrderEventAgainstQueueRow(
   if (submitted.stake_usd === null || !Number.isFinite(submitted.stake_usd) || submitted.stake_usd <= 0) {
     return { ok: false, reason: "MISSING_STAKE_USD" };
   }
-  if (queueRow.stake_usd > QUEUE_MAX_STAKE_USD) {
+  const effectiveMaxStakeUsd = extractMaxStakeUsd(queueRow.diagnostics ?? {}, queueRow.stake_usd);
+  if (!Number.isFinite(effectiveMaxStakeUsd) || effectiveMaxStakeUsd > QUEUE_MAX_STAKE_USD) {
     return { ok: false, reason: "QUEUE_STAKE_ABOVE_ENVELOPE" };
   }
-  if (submitted.stake_usd > queueRow.stake_usd) {
+  if (submitted.stake_usd > effectiveMaxStakeUsd) {
     return { ok: false, reason: "STAKE_EXCEEDS_QUEUE_MAX" };
   }
   if (
@@ -391,7 +426,7 @@ export function validateOrderEventAgainstQueueRow(
   if (submitted.submitted_price > maxEntryPrice) {
     return { ok: false, reason: "PRICE_EXCEEDS_QUEUE_MAX" };
   }
-  if (submitted.submitted_price * submitted.submitted_size > queueRow.stake_usd) {
+  if (submitted.submitted_price * submitted.submitted_size > effectiveMaxStakeUsd) {
     return { ok: false, reason: "ORDER_NOTIONAL_EXCEEDS_QUEUE_MAX" };
   }
   return { ok: true };

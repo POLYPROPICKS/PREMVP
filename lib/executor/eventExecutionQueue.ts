@@ -34,6 +34,7 @@ import { classifyActiveReservationDue } from "./reservationRebalanceContract.mjs
 import {
   EXECUTABLE_TIER,
   EXECUTABLE_STAKE_USD,
+  QUEUE_MAX_STAKE_USD,
   QUEUE_MAX_ENTRY_PRICE,
   queueMoneyEnvelopeViolation,
   type EventExecutionQueueRow,
@@ -358,6 +359,7 @@ function buildQueueRowFromFinalIdentity(
       max_entry_price: decision.price_policy.max_entry_price,
       entry_price: decision.price_policy.entry_price,
       stake_guard_usd: decision.price_policy.stake_usd,
+      max_stake_usd: QUEUE_MAX_STAKE_USD,
       current_executable_price: refresh.executablePrice,
       current_executable_depth_usd: refresh.executableDepth,
       current_spread: refresh.spread,
@@ -1184,6 +1186,10 @@ function buildQueueRowFromExactCandidate(
       selected_signal_pair_id: selected.id, selected_signal_score: selected.signalScore,
       selected_score_contract_version: selected.scoreContractVersion,
       max_entry_price: selected.maxEntryPrice, entry_price: selected.entryPrice, stake_guard_usd: selected.stakeUsd,
+      // RESTORE_DEFAULT_250_SEPARATE_MAX_400_CONTRACT_V1: the exceptional hard
+      // ceiling, persisted separately from stake_usd (which is the ordinary
+      // $2.50 default) via the existing Queue diagnostics contract.
+      max_stake_usd: QUEUE_MAX_STAKE_USD,
       source_authority: provenance.sourceAuthority,
       mechanical_guard_trace: provenance.mechanicalGuardTrace,
     },
