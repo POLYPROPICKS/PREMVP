@@ -37,6 +37,10 @@ const PAGE_SIZE = 250;
 const MAX_APPEND_PAGES = 1000;
 const MAX_RECONCILIATION_PAGES = 4;
 const RECENT_RECONCILIATION_MS = 72 * 60 * 60 * 1000;
+// bet_execution_ledger rows keep receiving fills/settlements well after the
+// row is first written, so its reconcile window is the mission-specified 30
+// days rather than the 72h window used for the faster-settling tables.
+const LEDGER_RECONCILIATION_MS = 30 * 24 * 60 * 60 * 1000;
 const SYNC_VERSION = "research-clone-daily-sync-v1";
 
 // This worker mirrors the source schema row-for-row. The application has no
@@ -46,9 +50,12 @@ type Client = any;
 type TableName =
   | "generated_signal_pairs"
   | "generated_signal_research_snapshots"
-  | "night_event_reservations";
+  | "night_event_reservations"
+  | "event_execution_queue"
+  | "executor_order_events"
+  | "bet_execution_ledger";
 
-type TableSpec = {
+export type TableSpec = {
   table: TableName;
   fields: readonly [string, string];
   appendOnly: boolean;
@@ -85,7 +92,7 @@ type TableEvidence = {
   RECONCILIATION_PENDING: boolean;
 };
 
-const SPECS: readonly TableSpec[] = [
+export const SPECS: readonly TableSpec[] = [
   {
     table: "generated_signal_pairs",
     fields: ["created_at", "id"],
@@ -107,6 +114,29 @@ const SPECS: readonly TableSpec[] = [
     reconciliationStart: (targetBefore, now) => {
       const recent = new Date(now.getTime() - RECENT_RECONCILIATION_MS).toISOString().slice(0, 10);
       return targetBefore.plan_date_minsk > recent ? recent : targetBefore.plan_date_minsk;
+    },
+  },
+  {
+    table: "event_execution_queue",
+    fields: ["queued_at", "id"],
+    appendOnly: false,
+    reconciliationStart: (targetBefore, now) => {
+      const recent = new Date(now.getTime() - RECENT_RECONCILIATION_MS).toISOString();
+      return targetBefore.queued_at > recent ? recent : targetBefore.queued_at;
+    },
+  },
+  {
+    table: "executor_order_events",
+    fields: ["created_at", "id"],
+    appendOnly: true,
+  },
+  {
+    table: "bet_execution_ledger",
+    fields: ["created_at", "id"],
+    appendOnly: false,
+    reconciliationStart: (targetBefore, now) => {
+      const recent = new Date(now.getTime() - LEDGER_RECONCILIATION_MS).toISOString();
+      return targetBefore.created_at > recent ? recent : targetBefore.created_at;
     },
   },
   // primary_evidence_outbox is deliberately NOT a generic raw SYNC_SPEC: the
