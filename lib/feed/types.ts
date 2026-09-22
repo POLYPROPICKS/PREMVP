@@ -325,6 +325,10 @@ export interface ResearchFunnelCounters {
   // Distinct keyed physical events for which at least one candidate actually
   // started evaluation (opened), as opposed to merely entering the loop.
   primaryDistinctPhysicalEventsOpened?: number;
+  // Reservation-relevant identity coverage under the existing primary-loop budget.
+  relevantEventsPresent?: number;
+  relevantEventsOpened?: number;
+  relevantEventsBudgetMissed?: number;
 }
 
 // ─── S2: Wide research universe — pre-grouping, pre-volume nested market ───────

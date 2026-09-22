@@ -929,16 +929,37 @@ export function orderPrimaryCandidatesEventFair(candidates: CandidateMarket[]): 
     }
   }
 
-  const maxDepth = Math.max(0, ...[...groups.values()].map((g) => g.length));
-  const breadthFirst: CandidateMarket[] = [];
+  // A current Reservation identity gets one deterministic opening opportunity
+  // for its event before ordinary identity breadth/depth scheduling resumes.
+  // This only reorders candidates from the already-fetched, already-authorized
+  // fanout; it does not add an identity, widen a market family, or alter price.
+  const firstPass: CandidateMarket[] = [];
+  const remainingGroups = new Map<string, CandidateMarket[]>();
+  for (const key of eventOrder) {
+    const group = groups.get(key)!;
+    const relevantIndex = group.findIndex(isReservationRelevantPrimaryCandidate);
+    const selectedIndex = relevantIndex === -1 ? 0 : relevantIndex;
+    firstPass.push(group[selectedIndex]);
+    remainingGroups.set(key, group.filter((_, index) => index !== selectedIndex));
+  }
+
+  const maxDepth = Math.max(0, ...[...remainingGroups.values()].map((g) => g.length));
+  const breadthFirst: CandidateMarket[] = [...firstPass];
   for (let depth = 0; depth < maxDepth; depth++) {
     for (const key of eventOrder) {
-      const group = groups.get(key)!;
+      const group = remainingGroups.get(key)!;
       if (depth < group.length) breadthFirst.push(group[depth]);
     }
   }
 
   return [...breadthFirst, ...unkeyed];
+}
+
+/** Exact Reservation input contour, applied only to already-fanned-out identities. */
+function isReservationRelevantPrimaryCandidate(candidate: CandidateMarket): boolean {
+  if (!isAuthorizedRecoveryMarketType(getParentMeta(candidate.market).sportsMarketType)) return false;
+  const price = candidate.forcedOutcome?.selectedPriceNum;
+  return typeof price === "number" && Number.isFinite(price) && price >= 0.5 && price < 0.54;
 }
 
 /**
@@ -3122,6 +3143,9 @@ export interface PrimaryCandidateLoopResult {
   primaryLoopBudgetPartiallyExcludedPhysicalEvents: number;
   /** Distinct keyed physical events for which at least one candidate actually started evaluation (opened). */
   primaryDistinctPhysicalEventsOpened: number;
+  relevantEventsPresent: number;
+  relevantEventsOpened: number;
+  relevantEventsBudgetMissed: number;
 }
 
 export async function runPrimaryCandidateLoop(
@@ -3160,6 +3184,8 @@ export async function runPrimaryCandidateLoop(
   const enteredEventKeys = new Set<string>();
   const openedEventKeys = new Set<string>();
   const budgetSkippedEventKeys = new Set<string>();
+  const relevantEventKeys = new Set<string>();
+  const openedRelevantEventKeys = new Set<string>();
 
   for (const candidate of candidates) {
     const publicCapReached = publicPairs.length >= limit;
@@ -3178,13 +3204,19 @@ export async function runPrimaryCandidateLoop(
     }
     const physicalEventKey = deps.computeCandidateProviderEventKey(candidate);
     if (physicalEventKey !== null) enteredEventKeys.add(physicalEventKey);
+    if (physicalEventKey !== null && isReservationRelevantPrimaryCandidate(candidate)) {
+      relevantEventKeys.add(physicalEventKey);
+    }
     if (primaryLoopBudgetExhausted) {
       primaryCandidatesEntered++;
       recordPrimaryTerminal(PRIMARY_LOOP_BUDGET_EXHAUSTED_TERMINAL_REASON);
       if (physicalEventKey !== null) budgetSkippedEventKeys.add(physicalEventKey);
       continue;
     }
-    if (physicalEventKey !== null) openedEventKeys.add(physicalEventKey);
+    if (physicalEventKey !== null) {
+      openedEventKeys.add(physicalEventKey);
+      if (isReservationRelevantPrimaryCandidate(candidate)) openedRelevantEventKeys.add(physicalEventKey);
+    }
 
     primaryCandidatesEntered++;
     if (researchCollectionActive) rf.candidatesSeen++;
@@ -3381,6 +3413,11 @@ export async function runPrimaryCandidateLoop(
       (k) => openedEventKeys.has(k),
     ).length,
     primaryDistinctPhysicalEventsOpened: openedEventKeys.size,
+    relevantEventsPresent: relevantEventKeys.size,
+    relevantEventsOpened: openedRelevantEventKeys.size,
+    relevantEventsBudgetMissed: Array.from(relevantEventKeys).filter(
+      (k) => !openedRelevantEventKeys.has(k),
+    ).length,
   };
 }
 
@@ -3855,6 +3892,9 @@ export async function buildLandingCards(options?: {
     rf.primaryLoopBudgetPartiallyExcludedPhysicalEvents =
       primaryLoop.primaryLoopBudgetPartiallyExcludedPhysicalEvents;
     rf.primaryDistinctPhysicalEventsOpened = primaryLoop.primaryDistinctPhysicalEventsOpened;
+    rf.relevantEventsPresent = primaryLoop.relevantEventsPresent;
+    rf.relevantEventsOpened = primaryLoop.relevantEventsOpened;
+    rf.relevantEventsBudgetMissed = primaryLoop.relevantEventsBudgetMissed;
 
     // Include non-sports rejected markets in final rejected list (for category=sports)
     const finalRejected = rejected;
