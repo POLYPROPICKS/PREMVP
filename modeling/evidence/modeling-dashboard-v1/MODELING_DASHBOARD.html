@@ -453,8 +453,34 @@
       return '<div class="funnel-stage"><div class="n">' + (n == null ? "—" : n) + '</div><div class="label">' + esc(label) + '</div></div>';
     }
     function arrow() { return '<div class="funnel-arrow">→</div>'; }
+    function pct(part, total) { return total ? (part / total * 100) : null; }
+    function fmtPct1(v) { return v == null ? "—" : v.toFixed(1) + "%"; }
+    function sportMixRow(label, mix, total) {
+      if (!mix) return '<div class="row"><span>' + esc(label) + '</span><span>—</span></div>';
+      return '<div class="row"><span>' + esc(label) + '</span><span>Football ' + mix.football + ' (' + fmtPct1(pct(mix.football, total)) +
+        ') · Tennis ' + mix.tennis + ' (' + fmtPct1(pct(mix.tennis, total)) + ') · Other ' + mix.other + ' (' + fmtPct1(pct(mix.other, total)) + ')</span></div>';
+    }
+    function concentrationBanner(day) {
+      var findings = [];
+      [
+        ["Reservation", day.planFunnel.reservations.sportMix, day.planFunnel.reservations.total],
+        ["Queue", day.planFunnel.queue.sportMix, day.planFunnel.queue.total],
+        ["Orders", day.planFunnel.orders.sportMix, day.planFunnel.orders.total],
+      ].forEach(function (t) {
+        var stageLabel = t[0], mix = t[1], total = t[2];
+        if (!mix || !total) return;
+        ["football", "tennis", "other"].forEach(function (bucket) {
+          var p = pct(mix[bucket], total);
+          if (p != null && p > 50) findings.push(stageLabel + " " + bucket + " " + fmtPct1(p));
+        });
+      });
+      if (!findings.length) return "";
+      return '<div class="banner info">SPORT CONCENTRATION (historical observation, not a claim of current policy violation): ' + esc(findings.join(" · ")) + '.</div>';
+    }
 
-    var html = '<div class="note">Current policy: <b>' + esc(meta.livePolicyModel) + '</b></div>';
+    var headingDate = day ? day.minskDate : (LIVE ? LIVE.latestMinskDate : null);
+    var html = '<h3>Latest available PLAN — ' + esc(headingDate || "NOT_YET_AVAILABLE") + '</h3>';
+    html += '<div class="note">Current policy: <b>' + esc(meta.livePolicyModel) + '</b></div>';
     if ((!LIVE || LIVE.status === "STOPPED") && !day) {
       html += '<div class="banner">' + esc((LIVE && LIVE.stopReason) || "LIVE_RUNTIME_DATA.js has not been generated yet") +
         '. Run <code>npm run research-live:modeling-dashboard-refresh</code> from an environment with approved production SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY (must resolve to project ref <code>nbnldzfsxffztsfrrxqy</code>) to populate this panel. Fail-closed by design — never silently falls back to another project, including the research clone.</div>';
@@ -469,17 +495,24 @@
       html += '<div class="banner">Most recent refresh attempt could not reach production: ' + esc(LIVE.lastRefreshAttempt.stopReason) +
         ' (at ' + esc(LIVE.lastRefreshAttempt.at) + '). The snapshot below is preserved, not overwritten.</div>';
     }
+    var currentMinskDate = day.currentMinskDate || LIVE.currentMinskDate;
+    var isStale = currentMinskDate && day.minskDate < currentMinskDate;
+    if (isStale || day.isLatestAvailablePlanForToday === false) {
+      html += '<div class="banner">Today\'s Reservation has not run yet. Showing the latest available plan (' + esc(day.minskDate) + ').</div>';
+    }
+    html += concentrationBanner(day);
     var prov = day.provenance;
     html += '<div class="note">Plan date: <b>' + esc(day.minskDate) + '</b>' +
       (prov ? ' &middot; source: <b>' + esc(prov.source) + '</b> &middot; production ref: <code>' + esc(prov.productionProjectRef) + '</code> &middot; production writes: ' + prov.productionWrites : '') +
       ' &middot; generated ' + esc(day.generatedAt) + '</div>';
-    html += '<h3 style="margin-top:14px">SEP21 PLAN FUNNEL</h3>';
+    html += '<h3 style="margin-top:14px">PLAN FUNNEL — ' + esc(day.minskDate) + '</h3>';
     html += '<div class="funnel" style="margin-top:10px">' +
       stage("Reservations", pf.reservations.total) + arrow() +
       stage("RESERVED", pf.reservations.reserved) + arrow() +
       stage("QUEUED", pf.reservations.queued) + arrow() +
       stage("Queue rows", pf.queue.total) + arrow() +
       stage("READY", pf.queue.ready) + arrow() +
+      stage("CLAIMED", pf.queue.claimed) + arrow() +
       stage("EXECUTED", pf.queue.executed) + arrow() +
       stage("EXPIRED", pf.queue.expired) +
       '</div>';
@@ -490,6 +523,12 @@
       stage("Plan-linked submitted stake USD", pf.orders.submittedStakeUsd != null ? "$" + pf.orders.submittedStakeUsd.toFixed(2) : "—") +
       '</div>';
     html += '<div class="note">Orders linked via <code>event_execution_queue.idempotency_key = executor_order_events.idempotency_key</code> for this plan\'s own reservations/queue — never a calendar-day guess.</div>';
+    html += '<h3 style="margin-top:14px">SPORT MIX (Queue and Orders inherit classification through Reservation lineage, never free-text league codes)</h3>';
+    html += '<div class="gap-card" style="grid-template-columns:1fr 1fr 1fr">' +
+      '<div class="col">' + sportMixRow("Reservations", pf.reservations.sportMix, pf.reservations.total) + '</div>' +
+      '<div class="col">' + sportMixRow("Queue", pf.queue.sportMix, pf.queue.total) + '</div>' +
+      '<div class="col">' + sportMixRow("Orders", pf.orders.sportMix, pf.orders.total) + '</div>' +
+      '</div>';
     document.getElementById("liveFunnel").innerHTML = html;
 
     var settledHtml;

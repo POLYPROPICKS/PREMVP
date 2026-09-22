@@ -98,6 +98,47 @@ async function resolveProductionDb(): Promise<{ db: SupabaseClient; ref: string 
   return { db: createClient(url, key), ref };
 }
 
+type SportBucket = "football" | "tennis" | "other";
+type SportMix = { football: number; tennis: number; other: number };
+
+function emptySportMix(): SportMix {
+  return { football: 0, tennis: 0, other: 0 };
+}
+
+/** football = sport SOCCER or league WC; tennis = sport TENNIS; everything else = other. */
+function classifySport(sport: string | null | undefined, league: string | null | undefined): SportBucket {
+  const s = `${sport ?? ""}`.toUpperCase();
+  const l = `${league ?? ""}`.toUpperCase();
+  if (s === "TENNIS") return "tennis";
+  if (s === "SOCCER" || l === "WC") return "football";
+  return "other";
+}
+
+function tallySportMix(buckets: SportBucket[]): SportMix {
+  const mix = emptySportMix();
+  for (const b of buckets) mix[b] += 1;
+  return mix;
+}
+
+/** Latest plan_date_minsk <= the current Minsk date that actually has reservation rows -- never
+ * assumes "today" has a plan. If today has no Reservation yet, this resolves to the most recent
+ * prior plan date instead, so a valid previous plan is never overwritten by an empty today. */
+async function resolveLatestPlanDate(db: SupabaseClient, currentMinskDate: string): Promise<{ date: string | null; status: "OK" | "NO_PLAN_FOUND" | "MEASUREMENT_MISSING"; error?: string }> {
+  try {
+    const { data, error } = await db
+      .from("night_event_reservations")
+      .select("plan_date_minsk")
+      .lte("plan_date_minsk", currentMinskDate)
+      .order("plan_date_minsk", { ascending: false })
+      .limit(1);
+    if (error) return { date: null, status: "MEASUREMENT_MISSING", error: error.code ?? error.message };
+    if (!data || data.length === 0) return { date: null, status: "NO_PLAN_FOUND" };
+    return { date: (data[0] as { plan_date_minsk: string }).plan_date_minsk, status: "OK" };
+  } catch (e) {
+    return { date: null, status: "MEASUREMENT_MISSING", error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 /** Small, column-limited, single-plan-date-bounded read -- never the research corpus, never unbounded. Used only where a count cannot answer the question (an id/key list for a FK join, or a sum). */
 async function selectRows<T>(db: SupabaseClient, table: string, columns: string, build: (q: any) => any, limit = 2000): Promise<{ ok: true; rows: T[] } | { ok: false; error: string }> {
   try {
@@ -123,54 +164,76 @@ function loadExisting(path: string): any {
   }
 }
 
-type OrderAgg = { total: number; clobOrderN: number; acceptedOpenN: number; submittedStakeUsd: number; status: "OK" };
+type OrderAgg = { total: number; clobOrderN: number; acceptedOpenN: number; submittedStakeUsd: number; sportMix: SportMix | null; status: "OK" };
 type OrderRow = { idempotency_key: string | null; clob_order_id: string | null; stake_usd: number | null; raw_event_json: { state?: string } | null };
 
-function aggregateOrders(rows: OrderRow[]): OrderAgg {
+/** sportBucketOf: resolves each order row's sport strictly through its Queue idempotency_key lineage
+ * (never a free-text league guess on the order row itself). null when lineage is unavailable, e.g. for
+ * calendarDayTelemetry, which is unfiltered and not plan-linked -- its sportMix is reported as null. */
+function aggregateOrders(rows: OrderRow[], sportBucketOf: ((r: OrderRow) => SportBucket | null) | null): OrderAgg {
   return {
     total: rows.length,
     clobOrderN: rows.filter((r) => r.clob_order_id != null).length,
     acceptedOpenN: rows.filter((r) => r.raw_event_json?.state === "accepted_open").length,
     submittedStakeUsd: Math.round(rows.reduce((s, r) => s + (r.stake_usd ?? 0), 0) * 100) / 100,
+    sportMix: sportBucketOf ? tallySportMix(rows.map((r) => sportBucketOf(r) ?? "other")) : null,
     status: "OK",
   };
 }
 
-async function collectPlanDateAggregate(db: SupabaseClient, minskDate: string) {
+async function collectPlanDateAggregate(db: SupabaseClient, minskDate: string, currentMinskDate: string) {
   // ── Stage 1: Reservations scoped by plan_date_minsk (the plan authority), never game_start_iso. ──
-  const reservationRows = await selectRows<{ id: string; status: string }>(
-    db, "night_event_reservations", "id,status", (q) => q.eq("plan_date_minsk", minskDate),
+  const reservationRows = await selectRows<{ id: string; status: string; sport: string | null; league: string | null }>(
+    db, "night_event_reservations", "id,status,sport,league", (q) => q.eq("plan_date_minsk", minskDate),
   );
   const reservationIds = reservationRows.ok ? reservationRows.rows.map((r) => r.id) : [];
+  // Lineage map for Queue/Orders sportMix: classified once here, at the Reservation, never re-derived
+  // from Queue/Order free-text league codes.
+  const reservationSportById = new Map<string, SportBucket>(
+    reservationRows.ok ? reservationRows.rows.map((r) => [r.id, classifySport(r.sport, r.league)]) : [],
+  );
   const reservations = reservationRows.ok
     ? {
         total: reservationRows.rows.length,
         reserved: reservationRows.rows.filter((r) => `${r.status}`.toUpperCase() === "RESERVED").length,
         queued: reservationRows.rows.filter((r) => `${r.status}`.toUpperCase() === "QUEUED").length,
+        sportMix: tallySportMix(reservationRows.rows.map((r) => reservationSportById.get(r.id) ?? "other")),
         status: "OK" as const,
       }
-    : { total: null, reserved: null, queued: null, status: "MEASUREMENT_MISSING" as const };
+    : { total: null, reserved: null, queued: null, sportMix: null, status: "MEASUREMENT_MISSING" as const };
 
   // ── Stage 2: Queue traced from reservation_id membership in this plan date's reservations, never queue.game_start_iso. ──
-  let queue: { total: number | null; ready: number | null; executed: number | null; expired: number | null; other: number | null; status: "OK" | "MEASUREMENT_MISSING" | "NO_RESERVATIONS" };
+  let queue: { total: number | null; ready: number | null; claimed: number | null; executed: number | null; expired: number | null; other: number | null; sportMix: SportMix | null; status: "OK" | "MEASUREMENT_MISSING" | "NO_RESERVATIONS" };
   let queueIdempotencyKeys: string[] = [];
+  // idempotency_key -> sportBucket, inherited through reservation_id lineage, for Order sportMix below.
+  const queueSportByIdempotencyKey = new Map<string, SportBucket>();
   if (!reservationRows.ok) {
-    queue = { total: null, ready: null, executed: null, expired: null, other: null, status: "MEASUREMENT_MISSING" };
+    queue = { total: null, ready: null, claimed: null, executed: null, expired: null, other: null, sportMix: null, status: "MEASUREMENT_MISSING" };
   } else if (reservationIds.length === 0) {
-    queue = { total: 0, ready: 0, executed: 0, expired: 0, other: 0, status: "NO_RESERVATIONS" };
+    queue = { total: 0, ready: 0, claimed: 0, executed: 0, expired: 0, other: 0, sportMix: emptySportMix(), status: "NO_RESERVATIONS" };
   } else {
-    const queueRows = await selectRows<{ status: string; idempotency_key: string | null }>(
-      db, "event_execution_queue", "status,idempotency_key", (q) => q.in("reservation_id", reservationIds),
+    const queueRows = await selectRows<{ status: string; idempotency_key: string | null; reservation_id: string }>(
+      db, "event_execution_queue", "status,idempotency_key,reservation_id", (q) => q.in("reservation_id", reservationIds),
     );
     if (!queueRows.ok) {
-      queue = { total: null, ready: null, executed: null, expired: null, other: null, status: "MEASUREMENT_MISSING" };
+      queue = { total: null, ready: null, claimed: null, executed: null, expired: null, other: null, sportMix: null, status: "MEASUREMENT_MISSING" };
     } else {
       const statuses = queueRows.rows.map((r) => `${r.status}`.toUpperCase());
       const ready = statuses.filter((s) => s === "READY").length;
+      const claimed = statuses.filter((s) => s === "CLAIMED").length;
       const executed = statuses.filter((s) => s === "EXECUTED").length;
       const expired = statuses.filter((s) => s === "EXPIRED").length;
-      queue = { total: statuses.length, ready, executed, expired, other: statuses.length - ready - executed - expired, status: "OK" };
+      const queueSportBuckets = queueRows.rows.map((r) => reservationSportById.get(r.reservation_id) ?? "other");
+      queue = {
+        total: statuses.length, ready, claimed, executed, expired,
+        other: statuses.length - ready - claimed - executed - expired,
+        sportMix: tallySportMix(queueSportBuckets),
+        status: "OK",
+      };
       queueIdempotencyKeys = queueRows.rows.map((r) => r.idempotency_key).filter((k): k is string => !!k);
+      queueRows.rows.forEach((r) => {
+        if (r.idempotency_key) queueSportByIdempotencyKey.set(r.idempotency_key, reservationSportById.get(r.reservation_id) ?? "other");
+      });
     }
   }
 
@@ -186,12 +249,15 @@ async function collectPlanDateAggregate(db: SupabaseClient, minskDate: string) {
 
   // ── Stage 3: PLAN_LINKED orders = candidate rows whose idempotency_key matches THIS plan's queue rows. ──
   const planLinkedRows = orderRows.ok ? orderRows.rows.filter((r) => r.idempotency_key != null && queueIdempotencyKeys.includes(r.idempotency_key)) : [];
-  const planOrders: OrderAgg | { total: null; clobOrderN: null; acceptedOpenN: null; submittedStakeUsd: null; status: "MEASUREMENT_MISSING" } =
-    orderRows.ok && queue.status !== "MEASUREMENT_MISSING" ? aggregateOrders(planLinkedRows) : { total: null, clobOrderN: null, acceptedOpenN: null, submittedStakeUsd: null, status: "MEASUREMENT_MISSING" };
+  const planOrders: OrderAgg | { total: null; clobOrderN: null; acceptedOpenN: null; submittedStakeUsd: null; sportMix: null; status: "MEASUREMENT_MISSING" } =
+    orderRows.ok && queue.status !== "MEASUREMENT_MISSING"
+      ? aggregateOrders(planLinkedRows, (r) => (r.idempotency_key ? queueSportByIdempotencyKey.get(r.idempotency_key) ?? "other" : null))
+      : { total: null, clobOrderN: null, acceptedOpenN: null, submittedStakeUsd: null, sportMix: null, status: "MEASUREMENT_MISSING" };
 
   // Calendar-day telemetry: the SAME read, unfiltered -- separate card, never the plan funnel's next stage.
-  const calendarOrders: OrderAgg | { total: null; clobOrderN: null; acceptedOpenN: null; submittedStakeUsd: null; status: "MEASUREMENT_MISSING" } =
-    orderRows.ok ? aggregateOrders(orderRows.rows) : { total: null, clobOrderN: null, acceptedOpenN: null, submittedStakeUsd: null, status: "MEASUREMENT_MISSING" };
+  // No plan lineage exists for unfiltered rows, so sportMix is intentionally null here.
+  const calendarOrders: OrderAgg | { total: null; clobOrderN: null; acceptedOpenN: null; submittedStakeUsd: null; sportMix: null; status: "MEASUREMENT_MISSING" } =
+    orderRows.ok ? aggregateOrders(orderRows.rows, null) : { total: null, clobOrderN: null, acceptedOpenN: null, submittedStakeUsd: null, sportMix: null, status: "MEASUREMENT_MISSING" };
 
   // ── Stage 4: Settlement traced from PLAN-LINKED clob_order_id -> ledger.exchange_order_id.
   // Never scoped by settled_at wall-clock day -- a Sep21 order settling Sep22 stays this plan's. ──
@@ -231,6 +297,8 @@ async function collectPlanDateAggregate(db: SupabaseClient, minskDate: string) {
 
   return {
     minskDate,
+    currentMinskDate,
+    isLatestAvailablePlanForToday: minskDate === currentMinskDate,
     planFunnel: { reservations, queue, orders: planOrders, settled },
     calendarDayTelemetry: { orders: calendarOrders, label: "NOT_IDENTICAL_TO_PLAN_FUNNEL" },
     generatedAt: new Date().toISOString(),
@@ -273,8 +341,28 @@ async function main(): Promise<void> {
     return;
   }
 
-  const minskDate = minskDateNow();
-  const aggregate = await collectPlanDateAggregate(resolved.db, minskDate);
+  const currentMinskDate = minskDateNow();
+  // Never assume "today Minsk" has a plan -- resolve the latest plan_date_minsk <= today that
+  // actually has Reservation rows. If today has no Reservation yet, this naturally falls back to
+  // the latest prior plan date instead of publishing an empty today's plan over a valid previous one.
+  const resolvedPlanDate = await resolveLatestPlanDate(resolved.db, currentMinskDate);
+  if (resolvedPlanDate.status !== "OK" || !resolvedPlanDate.date) {
+    const stopReason = resolvedPlanDate.status === "NO_PLAN_FOUND"
+      ? `NO_PLAN_FOUND: no night_event_reservations row with plan_date_minsk <= ${currentMinskDate}.`
+      : `MEASUREMENT_MISSING: failed to resolve latest plan date${resolvedPlanDate.error ? ` (${resolvedPlanDate.error})` : ""}.`;
+    console.log(JSON.stringify({ STATUS: "STOPPED", REASON: stopReason }, null, 2));
+    // Fail-closed: never overwrite a previously captured valid plan snapshot on a failed resolve.
+    if (existing) {
+      writeBody(DATA_FILE, { ...existing, lastRefreshAttempt: { at: new Date().toISOString(), stopReason } });
+    } else {
+      writeBody(DATA_FILE, { ARTIFACT: "LIVE_RUNTIME_DATA_V1", GENERATED_AT: new Date().toISOString(), status: "STOPPED", stopReason, days: [] });
+    }
+    process.exitCode = 0;
+    return;
+  }
+
+  const minskDate = resolvedPlanDate.date;
+  const aggregate = await collectPlanDateAggregate(resolved.db, minskDate, currentMinskDate);
 
   const priorDays: any[] = (existing?.days ?? []).filter((d: { minskDate: string }) => d.minskDate !== minskDate);
   const days = [...priorDays, aggregate].sort((a, b) => a.minskDate.localeCompare(b.minskDate));
@@ -284,12 +372,13 @@ async function main(): Promise<void> {
     GENERATED_AT: new Date().toISOString(),
     status: "OK",
     productionProjectRef: resolved.ref,
+    currentMinskDate,
     latestMinskDate: minskDate,
     days,
   };
   writeBody(DATA_FILE, body);
 
-  console.log(JSON.stringify({ STATUS: "OK", MINSK_DATE: minskDate, AGGREGATE: aggregate }, null, 2));
+  console.log(JSON.stringify({ STATUS: "OK", CURRENT_MINSK_DATE: currentMinskDate, LATEST_PLAN_MINSK_DATE: minskDate, AGGREGATE: aggregate }, null, 2));
 }
 
 main().catch((err) => {

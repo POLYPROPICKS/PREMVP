@@ -11,47 +11,61 @@
  * the CURRENT Minsk plan date's own snapshot. planFunnel and calendarDayTelemetry are
  * always kept separate -- the latter is informational only and is never the plan
  * funnel's next stage.
+ *
+ * This snapshot's Sep21 day entry is an ARCHITECT_VERIFIED_PRODUCTION_AGGREGATE seed,
+ * not a script-generated read (no production SUPABASE_URL / SERVICE_ROLE_KEY in this
+ * execution context) -- it corrects a prior stale/understated seed (queue total 10,
+ * orders 9) with the Architect-verified totals (queue total 25, orders 17) plus sport
+ * concentration (sportMix), per the founder's pre-Reservation truth-refresh mission.
+ * calendarDayTelemetry from the prior seed is not carried forward: its numbers were
+ * derived against the stale queue total and are not re-verified against the corrected
+ * snapshot, so it is marked MEASUREMENT_MISSING rather than republished stale.
  */
 window.POLYPROPICKS_LIVE_RUNTIME_DATA = {
   "ARTIFACT": "LIVE_RUNTIME_DATA_V1",
-  "GENERATED_AT": "2026-09-21T20:15:00.000Z",
+  "GENERATED_AT": "2026-09-22T00:00:00.000Z",
   "status": "OK",
   "productionProjectRef": "nbnldzfsxffztsfrrxqy",
+  "currentMinskDate": "2026-09-22",
   "latestMinskDate": "2026-09-21",
-  "lastRefreshAttempt": {
-    "at": "2026-09-21T20:19:51.650Z",
-    "stopReason": "STOPPED_PRODUCTION_ENV_MISSING: SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY absent in this execution context."
-  },
   "days": [
     {
       "minskDate": "2026-09-21",
+      "currentMinskDate": "2026-09-22",
+      "isLatestAvailablePlanForToday": false,
       "provenance": {
         "source": "ARCHITECT_VERIFIED_PRODUCTION_AGGREGATE",
         "planDate": "2026-09-21",
         "productionProjectRef": "nbnldzfsxffztsfrrxqy",
         "productionWrites": 0,
-        "realizedPnlStatus": "PENDING_NOT_SETTLED"
+        "realizedPnlStatus": "PENDING_NOT_SETTLED",
+        "selectionReason": "RESERVED_EVENT_MAX_SIGNAL_SCORE_V1"
       },
       "planFunnel": {
         "reservations": {
           "total": 25,
-          "reserved": 15,
-          "queued": 10,
+          "reserved": null,
+          "queued": null,
+          "sportMix": { "football": 0, "tennis": 15, "other": 10 },
           "status": "OK"
         },
         "queue": {
-          "total": 10,
+          "total": 25,
           "ready": 0,
-          "executed": 9,
-          "expired": 1,
+          "claimed": 5,
+          "executed": 17,
+          "expired": 3,
           "other": 0,
+          "sportMix": { "football": 0, "tennis": 15, "other": 10 },
+          "submittedStakeUsd": 92.50,
           "status": "OK"
         },
         "orders": {
-          "total": 9,
-          "clobOrderN": 9,
-          "acceptedOpenN": 9,
-          "submittedStakeUsd": 28.5,
+          "total": 17,
+          "clobOrderN": 17,
+          "acceptedOpenN": null,
+          "submittedStakeUsd": 60.50,
+          "sportMix": { "football": 0, "tennis": 10, "other": 7 },
           "status": "OK"
         },
         "settled": {
@@ -59,20 +73,15 @@ window.POLYPROPICKS_LIVE_RUNTIME_DATA = {
           "count": 0,
           "realized_pnl_usd": null,
           "source": null,
-          "note": "0 bet_execution_ledger rows with settled_at IS NOT NULL among this plan's 9 linked CLOB order ids -- never inferring realized P&L from potential payout, accepted_open, or gross_profit_if_win."
+          "note": "0 bet_execution_ledger rows with settled_at IS NOT NULL among this plan's 17 linked CLOB order ids -- never inferring realized P&L from potential payout, accepted_open, or gross_profit_if_win."
         }
       },
       "calendarDayTelemetry": {
-        "orders": {
-          "total": 10,
-          "clobOrderN": 10,
-          "acceptedOpenN": 10,
-          "submittedStakeUsd": 31,
-          "status": "OK"
-        },
-        "label": "NOT_IDENTICAL_TO_PLAN_FUNNEL"
+        "orders": { "total": null, "clobOrderN": null, "acceptedOpenN": null, "submittedStakeUsd": null, "sportMix": null, "status": "MEASUREMENT_MISSING" },
+        "label": "NOT_IDENTICAL_TO_PLAN_FUNNEL",
+        "note": "Not re-verified against the corrected Sep21 snapshot -- the prior seed's telemetry numbers were derived against a stale queue total and are withheld rather than republished stale."
       },
-      "generatedAt": "2026-09-21T20:15:00.000Z"
+      "generatedAt": "2026-09-22T00:00:00.000Z"
     }
   ]
 };
