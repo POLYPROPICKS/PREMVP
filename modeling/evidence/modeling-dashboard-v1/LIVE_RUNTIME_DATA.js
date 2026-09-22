@@ -20,14 +20,62 @@
  * calendarDayTelemetry from the prior seed is not carried forward: its numbers were
  * derived against the stale queue total and are not re-verified against the corrected
  * snapshot, so it is marked MEASUREMENT_MISSING rather than republished stale.
+ *
+ * "today" is the SEP22 calendar-day activity (independent of the PLAN funnel below, which
+ * stays keyed to the latest plan_date_minsk that actually has Reservation rows -- Sep21,
+ * since Sep22's Reservation has not run yet). Also an ARCHITECT_VERIFIED_PRODUCTION_AGGREGATE
+ * seed. wallet.observedAt/ageMinutes/stale are the LAST OBSERVED spendable balance from an
+ * accepted Ireland/Polymarket callback (EXECUTOR_WALLET_STATE_V1), never the legacy
+ * bankroll_state ($300, June legacy) -- the dashboard recomputes live freshness/age from
+ * observedAt at render time rather than trusting this seed's precomputed age.
  */
 window.POLYPROPICKS_LIVE_RUNTIME_DATA = {
   "ARTIFACT": "LIVE_RUNTIME_DATA_V1",
-  "GENERATED_AT": "2026-09-22T00:00:00.000Z",
+  "GENERATED_AT": "2026-09-22T05:30:00.000Z",
   "status": "OK",
   "productionProjectRef": "nbnldzfsxffztsfrrxqy",
   "currentMinskDate": "2026-09-22",
   "latestMinskDate": "2026-09-21",
+  "today": {
+    "minskDate": "2026-09-22",
+    "provenance": {
+      "source": "ARCHITECT_VERIFIED_PRODUCTION_AGGREGATE",
+      "productionProjectRef": "nbnldzfsxffztsfrrxqy",
+      "productionWrites": 0
+    },
+    "reservations": { "total": 0, "status": "OK" },
+    "queue": {
+      "total": 15,
+      "ready": 0,
+      "claimed": 5,
+      "executed": 7,
+      "expired": 3,
+      "other": 0,
+      "submittedStakeUsd": 60.00,
+      "status": "OK"
+    },
+    "orders": {
+      "total": 7,
+      "submittedStakeUsd": 28.00,
+      "bySport": [
+        { "sport": "HOCKEY", "orders": 3, "stakeUsd": 12.00 },
+        { "sport": "MLB", "orders": 1, "stakeUsd": 4.00 },
+        { "sport": "NPB", "orders": 1, "stakeUsd": 4.00 },
+        { "sport": "TENNIS", "orders": 1, "stakeUsd": 4.00 },
+        { "sport": "WNBA", "orders": 1, "stakeUsd": 4.00 }
+      ],
+      "status": "OK"
+    },
+    "wallet": {
+      "status": "OK",
+      "spendableUsd": 5.260932,
+      "collateralUsd": 5.260932,
+      "allowanceUsd": null,
+      "observedAt": "2026-09-22T05:18:21.213Z",
+      "lifecyclePoint": "POST_SUBMIT"
+    },
+    "generatedAt": "2026-09-22T05:30:00.000Z"
+  },
   "days": [
     {
       "minskDate": "2026-09-21",

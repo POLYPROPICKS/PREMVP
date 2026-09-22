@@ -105,7 +105,11 @@
 
 <div id="tab-live" class="tab-panel">
   <section>
-    <h2>Section C — Sep21 PLAN funnel (current Minsk plan date)</h2>
+    <h2>Section B — TODAY (real-time calendar-day activity)</h2>
+    <div class="panel"><div id="liveToday"></div></div>
+  </section>
+  <section>
+    <h2>Section C — Last observed PLAN</h2>
     <div class="panel"><div id="liveFunnel"></div></div>
   </section>
   <section>
@@ -300,11 +304,21 @@
   function fmtN(v) { return v === null || v === undefined ? "—" : String(v); }
   function fmtUsd(v) { return v === null || v === undefined ? "—" : (v >= 0 ? "+" : "") + "$" + v.toFixed(2); }
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; }); }
+  function walletAgeMinutes(observedAt) { return observedAt ? Math.round((Date.now() - Date.parse(observedAt)) / 60000) : null; }
+  function fmtAge(mins) { if (mins == null) return "—"; if (mins < 1) return "just now"; if (mins < 60) return mins + "m ago"; return Math.floor(mins / 60) + "h " + (mins % 60) + "m ago"; }
+  function fmtMinskTime(iso) {
+    if (!iso) return "—";
+    try { return new Intl.DateTimeFormat("en-GB", { timeZone: "Europe/Minsk", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(iso)) + " Minsk"; }
+    catch (e) { return iso; }
+  }
 
   // ==================== OVERVIEW ====================
   var pref = models[meta.preferredModel];
   var liveModel = models[meta.livePolicyModel];
+  var todayLive = LIVE && LIVE.today ? LIVE.today : null;
   var latestLiveDay = LIVE && LIVE.days && LIVE.days.length ? LIVE.days[LIVE.days.length - 1] : null;
+  var walletNow = todayLive && todayLive.wallet && todayLive.wallet.status === "OK" ? todayLive.wallet : null;
+  var walletAgeNow = walletNow ? walletAgeMinutes(walletNow.observedAt) : null;
   var kpis = [
     ["Canonical period", meta.frozenPeriodStart + " → " + meta.frozenPeriodEnd],
     ["Preferred (research)", meta.preferredModel],
@@ -312,12 +326,12 @@
     ["30-day projection", fmtU(pref.caps[50].proj30d_u), "good"],
     ["Fill30 / Fill50", fmtPctFrac(pref.fill.fill30) + " / " + fmtPctFrac(pref.fill.fill50)],
     ["Current live policy", meta.livePolicyModel, "warn"],
-    ["Latest live plan date", latestLiveDay ? latestLiveDay.minskDate : (LIVE ? "PENDING" : "NOT_REFRESHED_YET"), "muted"],
-    ["Reservations (latest)", latestLiveDay ? fmtN(latestLiveDay.planFunnel.reservations.total) : "—"],
-    ["Queue (latest)", latestLiveDay ? fmtN(latestLiveDay.planFunnel.queue.total) : "—"],
-    ["Plan-linked orders (latest)", latestLiveDay ? fmtN(latestLiveDay.planFunnel.orders.total) : "—"],
-    ["Settled count", latestLiveDay ? (latestLiveDay.planFunnel.settled.status === "AVAILABLE" ? fmtN(latestLiveDay.planFunnel.settled.count) : "PENDING") : "PENDING", "muted"],
-    ["Realized live P&L", latestLiveDay && latestLiveDay.planFunnel.settled.realized_pnl_usd != null ? fmtUsd(latestLiveDay.planFunnel.settled.realized_pnl_usd) : "PENDING / NOT SETTLED", "muted"],
+    ["Today plan", todayLive ? (todayLive.reservations.total > 0 ? fmtN(todayLive.reservations.total) : "NOT RUN YET") : "—", "warn"],
+    ["Today queue", todayLive ? fmtN(todayLive.queue.total) : "—"],
+    ["Today orders", todayLive ? fmtN(todayLive.orders.total) : "—"],
+    ["Today stake", todayLive && todayLive.orders.submittedStakeUsd != null ? "$" + todayLive.orders.submittedStakeUsd.toFixed(2) : "—"],
+    ["Last observed wallet", walletNow ? "$" + walletNow.spendableUsd.toFixed(2) + " (" + fmtAge(walletAgeNow) + ")" : "—", "muted"],
+    ["Last plan date", latestLiveDay ? latestLiveDay.minskDate : (LIVE ? "PENDING" : "NOT_REFRESHED_YET"), "muted"],
   ];
   document.getElementById("kpis").innerHTML = kpis.map(function (k) {
     return '<div class="kpi"><div class="label">' + esc(k[0]) + '</div><div class="value' + (k[2] ? " " + k[2] : "") + '">' + esc(k[1]) + '</div></div>';
@@ -446,6 +460,74 @@
       '<div class="note">' + esc(g.note) + '</div>';
   })();
 
+  // ==================== LIVE tab — Section B (TODAY) ====================
+  (function () {
+    var today = todayLive;
+    var el = document.getElementById("liveToday");
+    if (!today) {
+      el.innerHTML = '<div class="banner">No TODAY calendar-day snapshot captured yet. Run <code>npm run research-live:modeling-dashboard-refresh</code> to populate this panel.</div>';
+      return;
+    }
+    function card(label, value, cls) {
+      return '<div class="kpi"><div class="label">' + esc(label) + '</div><div class="value' + (cls ? " " + cls : "") + '">' + value + '</div></div>';
+    }
+    function stage(label, n) {
+      return '<div class="funnel-stage"><div class="n">' + (n == null ? "—" : n) + '</div><div class="label">' + esc(label) + '</div></div>';
+    }
+    function arrow() { return '<div class="funnel-arrow">→</div>'; }
+
+    var res = today.reservations, q = today.queue, ord = today.orders, w = today.wallet;
+    var reservationDisplay = res && res.total != null ? (res.total > 0 ? fmtN(res.total) : "NOT RUN YET") : "—";
+    var wallet = w && w.status === "OK" ? w : null;
+    var ageMins = wallet ? walletAgeMinutes(wallet.observedAt) : null;
+    var stale = ageMins != null && ageMins > 30;
+
+    var html = '<div class="note">Calendar day: <b>' + esc(today.minskDate) + '</b> (Minsk) — real-time activity, shown even when today\'s own Reservation has not run yet.</div>';
+    html += '<div class="kpis" style="padding:12px 0 4px">' +
+      card("Today's Reservation", esc(reservationDisplay), res && res.total > 0 ? "" : "warn") +
+      card("Current calendar-day Queue", fmtN(q.total)) +
+      card("Bets today", fmtN(ord.total)) +
+      card("Submitted stake today", ord.submittedStakeUsd != null ? "$" + ord.submittedStakeUsd.toFixed(2) : "—") +
+      card("Last observed spendable wallet", wallet ? "$" + wallet.spendableUsd.toFixed(2) : "—", stale ? "warn" : "good") +
+      card("Wallet observed at", fmtMinskTime(wallet ? wallet.observedAt : null), "muted") +
+      '</div>';
+
+    if (wallet) {
+      html += '<div class="note">Wallet freshness: <b>' + esc(fmtAge(ageMins)) + '</b> &middot; lifecycle: <code>' + esc(wallet.lifecyclePoint || "UNKNOWN") + '</code>' +
+        (wallet.collateralUsd != null ? ' &middot; collateral: $' + wallet.collateralUsd.toFixed(2) : '') + '</div>';
+      if (stale) {
+        html += '<div class="banner">STALE OBSERVATION — last wallet read is ' + esc(fmtAge(ageMins)) + '. This is the LAST OBSERVED balance, not guaranteed real-time current cash. Never treat legacy bankroll_state as current wallet.</div>';
+      } else {
+        html += '<div class="note">This is the LAST OBSERVED balance from an accepted executor callback, not guaranteed real-time current cash.</div>';
+      }
+    } else {
+      html += '<div class="banner">No wallet observation available yet — never falling back to legacy bankroll_state as current wallet.</div>';
+    }
+
+    html += '<h3 style="margin-top:14px">CURRENT QUEUE (calendar-day, bounded by created_at within today\'s Minsk day)</h3>';
+    html += '<div class="funnel" style="margin-top:10px">' +
+      stage("READY", q.ready) + arrow() +
+      stage("CLAIMED", q.claimed) + arrow() +
+      stage("EXECUTED", q.executed) + arrow() +
+      stage("EXPIRED", q.expired) + arrow() +
+      stage("TOTAL", q.total) +
+      '</div>';
+    html += '<div class="note">Queue stake represented today: <b>' + (q.submittedStakeUsd != null ? "$" + q.submittedStakeUsd.toFixed(2) : "—") + '</b></div>';
+
+    html += '<h3 style="margin-top:14px">TODAY\'S BETS</h3>';
+    if (ord.bySport && ord.bySport.length) {
+      html += '<table><thead><tr><th>Sport</th><th>Orders</th><th>Stake</th></tr></thead><tbody>' +
+        ord.bySport.map(function (r) { return "<tr><td>" + esc(r.sport) + "</td><td>" + r.orders + "</td><td>$" + r.stakeUsd.toFixed(2) + "</td></tr>"; }).join("") +
+        "</tbody></table>";
+    } else {
+      html += '<div class="note">No orders yet today.</div>';
+    }
+    html += '<div class="note">Sport per bet is resolved dynamically from <code>event_execution_queue.sport</code> via <code>idempotency_key</code> lineage on each of today\'s <code>executor_order_events</code> rows — never hardcoded.</div>';
+    html += '<div class="note">Calendar-day telemetry: this TODAY panel is bounded by <code>created_at</code> within the Minsk calendar day and is labelled separately from the PLAN funnel below — it is not the PLAN\'s next stage.</div>';
+
+    el.innerHTML = html;
+  })();
+
   // ==================== LIVE tab (Section C) ====================
   (function () {
     var day = latestLiveDay;
@@ -479,7 +561,7 @@
     }
 
     var headingDate = day ? day.minskDate : (LIVE ? LIVE.latestMinskDate : null);
-    var html = '<h3>Latest available PLAN — ' + esc(headingDate || "NOT_YET_AVAILABLE") + '</h3>';
+    var html = '<h3>LAST OBSERVED PLAN — ' + esc(headingDate || "NOT_YET_AVAILABLE") + ' — PRE-CURRENT-POLICY</h3>';
     html += '<div class="note">Current policy: <b>' + esc(meta.livePolicyModel) + '</b></div>';
     if ((!LIVE || LIVE.status === "STOPPED") && !day) {
       html += '<div class="banner">' + esc((LIVE && LIVE.stopReason) || "LIVE_RUNTIME_DATA.js has not been generated yet") +
@@ -498,7 +580,7 @@
     var currentMinskDate = day.currentMinskDate || LIVE.currentMinskDate;
     var isStale = currentMinskDate && day.minskDate < currentMinskDate;
     if (isStale || day.isLatestAvailablePlanForToday === false) {
-      html += '<div class="banner">Today\'s Reservation has not run yet. Showing the latest available plan (' + esc(day.minskDate) + ').</div>';
+      html += '<div class="note">This is the last PLAN with a Reservation, not today\'s activity — see TODAY (Section B) above for real-time Sep' + esc((currentMinskDate || "").slice(8, 10)) + ' calendar-day activity.</div>';
     }
     html += concentrationBanner(day);
     var prov = day.provenance;

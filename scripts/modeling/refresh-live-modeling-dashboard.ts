@@ -44,6 +44,12 @@
  *     production project. The expected ref is hard-pinned in source, not an
  *     optional env override.
  *
+ * TODAY (independent of the PLAN funnel above): calendar-day Reservation count, Queue and Order
+ * activity for the CURRENT Minsk date, plus the latest observed executor wallet spendable balance
+ * (EXECUTOR_WALLET_STATE_V1 -- never the legacy bankroll_state). Reported even when today's own
+ * Reservation has not run yet, so the Founder always sees today's real activity, not just the
+ * most recent plan.
+ *
  * Tables read (production, read-only):
  *   night_event_reservations, event_execution_queue, executor_order_events
  *   Settlement (only if populated): bet_execution_ledger
@@ -62,6 +68,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import vm from "node:vm";
 import "dotenv/config";
+import { selectCurrentSpendableWalletState, type WalletObservationRow } from "@/lib/executor/executorWalletState";
 
 const DATA_FILE = "modeling/evidence/modeling-dashboard-v1/LIVE_RUNTIME_DATA.js";
 // Known production project ref. Hard-pinned, not an optional env override --
@@ -305,6 +312,143 @@ async function collectPlanDateAggregate(db: SupabaseClient, minskDate: string, c
   };
 }
 
+type SportBreakdownRow = { sport: string; orders: number; stakeUsd: number };
+
+/** Full per-sport granularity (raw sport code, e.g. HOCKEY/MLB/NPB/TENNIS/WNBA) -- distinct from the
+ * football/tennis/other sportMix used by the PLAN funnel. Computed dynamically from whatever rows are
+ * passed in; nothing here is hardcoded to any particular day's sports. */
+function buildSportBreakdown(rows: { sport: string | null; stakeUsd: number }[]): SportBreakdownRow[] {
+  const map = new Map<string, { orders: number; stakeUsd: number }>();
+  for (const r of rows) {
+    const key = (r.sport ?? "UNKNOWN").toUpperCase() || "UNKNOWN";
+    const cur = map.get(key) ?? { orders: 0, stakeUsd: 0 };
+    cur.orders += 1;
+    cur.stakeUsd += r.stakeUsd;
+    map.set(key, cur);
+  }
+  return Array.from(map.entries())
+    .map(([sport, v]) => ({ sport, orders: v.orders, stakeUsd: Math.round(v.stakeUsd * 100) / 100 }))
+    .sort((a, b) => b.orders - a.orders || a.sport.localeCompare(b.sport));
+}
+
+function minskDayBoundsUtc(minskDate: string): { startUtc: string; endUtc: string } {
+  return {
+    startUtc: new Date(`${minskDate}T00:00:00+03:00`).toISOString(),
+    endUtc: new Date(`${minskDate}T23:59:59.999+03:00`).toISOString(),
+  };
+}
+
+/** TODAY's calendar-day activity -- independent of whether today's Reservation has run yet.
+ * Queue/Orders here are bounded by created_at within the Minsk calendar day, exactly like
+ * calendarDayTelemetry above, and are explicitly NOT the PLAN funnel (which is keyed by the
+ * latest plan_date_minsk that actually has Reservation rows, which may be a prior day). */
+async function collectTodayCalendarActivity(db: SupabaseClient, todayMinskDate: string) {
+  const reservationRows = await selectRows<{ id: string }>(
+    db, "night_event_reservations", "id", (q) => q.eq("plan_date_minsk", todayMinskDate),
+  );
+  const reservations = reservationRows.ok
+    ? { total: reservationRows.rows.length, status: "OK" as const }
+    : { total: null, status: "MEASUREMENT_MISSING" as const };
+
+  const { startUtc, endUtc } = minskDayBoundsUtc(todayMinskDate);
+
+  const queueRows = await selectRows<{ status: string; idempotency_key: string | null; sport: string | null; league: string | null; stake_usd: number | null }>(
+    db, "event_execution_queue", "status,idempotency_key,sport,league,stake_usd", (q) => q.gte("created_at", startUtc).lte("created_at", endUtc),
+  );
+  let queue: { total: number | null; ready: number | null; claimed: number | null; executed: number | null; expired: number | null; other: number | null; submittedStakeUsd: number | null; status: "OK" | "MEASUREMENT_MISSING" };
+  if (!queueRows.ok) {
+    queue = { total: null, ready: null, claimed: null, executed: null, expired: null, other: null, submittedStakeUsd: null, status: "MEASUREMENT_MISSING" };
+  } else {
+    const statuses = queueRows.rows.map((r) => `${r.status}`.toUpperCase());
+    const ready = statuses.filter((s) => s === "READY").length;
+    const claimed = statuses.filter((s) => s === "CLAIMED").length;
+    const executed = statuses.filter((s) => s === "EXECUTED").length;
+    const expired = statuses.filter((s) => s === "EXPIRED").length;
+    queue = {
+      total: statuses.length, ready, claimed, executed, expired,
+      other: statuses.length - ready - claimed - executed - expired,
+      submittedStakeUsd: Math.round(queueRows.rows.reduce((s, r) => s + (r.stake_usd ?? 0), 0) * 100) / 100,
+      status: "OK",
+    };
+  }
+
+  const orderRows = await selectRows<OrderRow>(
+    db, "executor_order_events", "idempotency_key,clob_order_id,stake_usd,raw_event_json",
+    (q) => q.gte("created_at", startUtc).lte("created_at", endUtc),
+  );
+  let orders: { total: number | null; submittedStakeUsd: number | null; bySport: SportBreakdownRow[] | null; status: "OK" | "MEASUREMENT_MISSING" };
+  if (!orderRows.ok) {
+    orders = { total: null, submittedStakeUsd: null, bySport: null, status: "MEASUREMENT_MISSING" };
+  } else {
+    // Sport lineage for today's orders comes from event_execution_queue.sport/league via
+    // idempotency_key -- NOT bounded by today's calendar window, since a queue row can be written
+    // the prior evening for an order that executes after midnight. Never a free-text guess on the
+    // order row itself (executor_order_events carries no sport/league column of its own).
+    const orderKeys = orderRows.rows.map((r) => r.idempotency_key).filter((k): k is string => !!k);
+    const sportByKey = new Map<string, string | null>();
+    if (orderKeys.length > 0) {
+      const lineageRows = await selectRows<{ idempotency_key: string; sport: string | null; league: string | null }>(
+        db, "event_execution_queue", "idempotency_key,sport,league", (q) => q.in("idempotency_key", orderKeys),
+      );
+      if (lineageRows.ok) {
+        lineageRows.rows.forEach((r) => sportByKey.set(r.idempotency_key, r.sport));
+      }
+    }
+    orders = {
+      total: orderRows.rows.length,
+      submittedStakeUsd: Math.round(orderRows.rows.reduce((s, r) => s + (r.stake_usd ?? 0), 0) * 100) / 100,
+      bySport: buildSportBreakdown(orderRows.rows.map((r) => ({ sport: r.idempotency_key ? sportByKey.get(r.idempotency_key) ?? null : null, stakeUsd: r.stake_usd ?? 0 }))),
+      status: "OK",
+    };
+  }
+
+  return { minskDate: todayMinskDate, reservations, queue, orders, generatedAt: new Date().toISOString() };
+}
+
+const WALLET_STALE_AFTER_MINUTES = 30;
+
+/** Latest valid spendable_balance_usd by wallet_observed_at, via the canonical
+ * EXECUTOR_WALLET_STATE_V1 selection logic -- never the legacy bankroll_state. */
+async function fetchWalletState(db: SupabaseClient) {
+  const rows = await selectRows<Record<string, unknown>>(
+    db, "executor_order_events",
+    "id,idempotency_key,clob_order_id,created_at,spendable_balance_usd,collateral_balance_usd,allowance_usd,wallet_observed_at,wallet_observation_lifecycle_point",
+    (q) => q.not("wallet_observed_at", "is", null).not("spendable_balance_usd", "is", null).order("wallet_observed_at", { ascending: false }),
+    200,
+  );
+  if (!rows.ok) {
+    return { status: "MEASUREMENT_MISSING" as const, spendableUsd: null, collateralUsd: null, allowanceUsd: null, observedAt: null, lifecyclePoint: null, ageMinutes: null, stale: null, error: rows.error };
+  }
+  const numOf = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : (typeof v === "string" && v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : null));
+  const strOf = (v: unknown): string | null => (typeof v === "string" && v.length > 0 ? v : null);
+  const walletRows: WalletObservationRow[] = rows.rows.map((r) => ({
+    id: String(r.id),
+    idempotency_key: strOf(r.idempotency_key),
+    clob_order_id: strOf(r.clob_order_id),
+    created_at: strOf(r.created_at),
+    spendable_balance_usd: numOf(r.spendable_balance_usd),
+    collateral_balance_usd: numOf(r.collateral_balance_usd),
+    allowance_usd: numOf(r.allowance_usd),
+    wallet_observed_at: strOf(r.wallet_observed_at),
+    wallet_observation_lifecycle_point: (strOf(r.wallet_observation_lifecycle_point) as WalletObservationRow["wallet_observation_lifecycle_point"]) ?? null,
+  }));
+  const state = selectCurrentSpendableWalletState(walletRows);
+  if (!state) {
+    return { status: "NO_OBSERVATION" as const, spendableUsd: null, collateralUsd: null, allowanceUsd: null, observedAt: null, lifecyclePoint: null, ageMinutes: null, stale: null };
+  }
+  const ageMinutes = Math.round((Date.now() - Date.parse(state.wallet_observed_at)) / 60_000);
+  return {
+    status: "OK" as const,
+    spendableUsd: state.current_spendable_balance_usd,
+    collateralUsd: state.collateral_balance_usd,
+    allowanceUsd: state.allowance_usd,
+    observedAt: state.wallet_observed_at,
+    lifecyclePoint: state.wallet_observation_lifecycle_point,
+    ageMinutes,
+    stale: ageMinutes > WALLET_STALE_AFTER_MINUTES,
+  };
+}
+
 function writeBody(path: string, body: unknown): void {
   const header = `/**
  * LIVE_RUNTIME_DATA_V1 -- production runtime aggregate for MODELING_DASHBOARD.html's
@@ -363,6 +507,10 @@ async function main(): Promise<void> {
 
   const minskDate = resolvedPlanDate.date;
   const aggregate = await collectPlanDateAggregate(resolved.db, minskDate, currentMinskDate);
+  // TODAY is independent of the PLAN funnel above -- it is today's calendar-day activity even
+  // when today's own Reservation has not run yet (minskDate here may be a prior day).
+  const today = await collectTodayCalendarActivity(resolved.db, currentMinskDate);
+  const wallet = await fetchWalletState(resolved.db);
 
   const priorDays: any[] = (existing?.days ?? []).filter((d: { minskDate: string }) => d.minskDate !== minskDate);
   const days = [...priorDays, aggregate].sort((a, b) => a.minskDate.localeCompare(b.minskDate));
@@ -374,11 +522,12 @@ async function main(): Promise<void> {
     productionProjectRef: resolved.ref,
     currentMinskDate,
     latestMinskDate: minskDate,
+    today: { ...today, wallet },
     days,
   };
   writeBody(DATA_FILE, body);
 
-  console.log(JSON.stringify({ STATUS: "OK", CURRENT_MINSK_DATE: currentMinskDate, LATEST_PLAN_MINSK_DATE: minskDate, AGGREGATE: aggregate }, null, 2));
+  console.log(JSON.stringify({ STATUS: "OK", CURRENT_MINSK_DATE: currentMinskDate, LATEST_PLAN_MINSK_DATE: minskDate, TODAY: today, WALLET: wallet, AGGREGATE: aggregate }, null, 2));
 }
 
 main().catch((err) => {
