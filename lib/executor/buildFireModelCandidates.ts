@@ -1684,14 +1684,10 @@ async function fetchContractAPlanningServingRowSets(
   const scoredLookbackIso = new Date(
     Date.parse(snapshotAsOfIso) - PLANNING_LOOKBACK_HOURS * 3_600_000
   ).toISOString();
-  // CONTRACT_A_PLANNING_EVENT_LEVEL_FRESHNESS_V1: this function is reached
-  // only for CONTRACT_A_PLANNING_V1 Planning reads (both call sites below),
-  // never a live/non-Planning selector. Contract A Planning reserves a
-  // PHYSICAL EVENT from bounded model evidence, not a live-executable
-  // identity, so an expired identity snapshot remains valid Planning
-  // evidence as long as it is still within the source_created_at lookback
-  // bound below. Executable-identity freshness stays owned exclusively by
-  // Final Identity / rebalance -- this function never feeds either of those.
+  // RESTORE_FRESH_RESERVATION_EVIDENCE_V1: expired identity evidence must
+  // NOT become a live-money Reservation candidate. expires_at > snapshot is
+  // an admission gate again; the 72h source_created_at lookback below remains
+  // an additional bound, not a replacement for freshness.
   const buildScoredQuery = (cursor: PlanningKeysetCursor | null) =>
     applyServingSnapshot(
     supabaseAdmin
@@ -1702,6 +1698,7 @@ async function fetchContractAPlanningServingRowSets(
       // READ authority is the one selected production population only.
       .in("metric_formula_version", PRODUCTION_SCORED_PLANNING_VERSIONS)
       .is("signal_result", null)
+      .gt("expires_at", snapshotAsOfIso)
       .not("selected_token_id", "is", null)
       .not("condition_id", "is", null)
       .not("entry_price_num", "is", null)
@@ -1790,19 +1787,15 @@ export async function buildFireModelCandidates(
     const scoredAdmissionVersions = planningMode
       ? PRODUCTION_SCORED_PLANNING_VERSIONS
       : versions;
-    // CONTRACT_A_PLANNING_EVENT_LEVEL_FRESHNESS_V1: Contract A Planning
-    // reserves a PHYSICAL EVENT, not this identity snapshot -- an expired
-    // identity is still valid EVENT-LEVEL model evidence within the existing
-    // bounded PLANNING_LOOKBACK_HOURS corpus. Executable-identity freshness
-    // remains owned exclusively by Final Identity / rebalance, unchanged.
-    // Every other selector (including non-Planning/live) still requires
-    // expires_at > now exactly as before.
-    const isContractAPlanning = planningMode && selectorMode === "CONTRACT_A_PLANNING_V1";
+    // RESTORE_FRESH_RESERVATION_EVIDENCE_V1: expired identity evidence must
+    // NOT become a live-money Reservation candidate, for CONTRACT_A_PLANNING_V1
+    // exactly as for every other selector. The 72h PLANNING_LOOKBACK_HOURS
+    // bound (below) remains an additional bound, not a substitute for it.
     scoredRows = injectedRows.filter(
       (row) =>
         scoredAdmissionVersions.includes(row.metric_formula_version as string) &&
         row.signal_result == null &&
-        (isContractAPlanning || (typeof row.expires_at === "string" && row.expires_at > nowIso)) &&
+        typeof row.expires_at === "string" && row.expires_at > nowIso &&
         row.selected_token_id != null &&
         row.condition_id != null &&
         row.entry_price_num != null &&

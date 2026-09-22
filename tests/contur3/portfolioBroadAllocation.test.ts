@@ -150,7 +150,10 @@ test("7: one physical event with a Tier2 and a Tier1 accepted identity -- Tier1 
   assert.equal(diagnostics.source_lineage.observation_id, "c-tier1::t-tier1");
 });
 
-test("8: same tier -- earliest source_created_at wins; condition_id/token_id are deterministic tie-breaks", () => {
+test("8: same tier -- freshest (newest) source_created_at wins; condition_id/token_id are deterministic tie-breaks", () => {
+  // RESTORE_FRESH_RESERVATION_EVIDENCE_V1: same-tier ties no longer prefer
+  // the oldest source_created_at -- older evidence winning ties on the live
+  // money Reservation path is exactly the regression this restore fixes.
   const physicalEventId = "provider:polymarket:evt-b:2026-08-11";
   const results = [
     acceptedFor({ physicalEventId, generatedSignalPairId: "row-later", conditionId: "c-z", tokenId: "t-z" }),
@@ -163,7 +166,7 @@ test("8: same tier -- earliest source_created_at wins; condition_id/token_id are
   const result = build(results, rows);
   const diagnostics = (id: number) => result.reservations[id]?.diagnostics as { source_lineage: { observation_id: string } };
   assert.equal(result.reservations.length, 1);
-  assert.equal(diagnostics(0).source_lineage.observation_id, "c-a::t-a");
+  assert.equal(diagnostics(0).source_lineage.observation_id, "c-z::t-z");
 
   // Tie-break: identical source_created_at -> condition_id ASC decides.
   const tieRows = [

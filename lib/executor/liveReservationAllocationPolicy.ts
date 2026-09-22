@@ -257,13 +257,13 @@ export interface PortfolioBroadIdentityCandidate {
   row: PortfolioBroadSourceRowFields;
 }
 
-/** Chronological-first tie-break within a tier: source_created_at ASC, condition_id ASC, token_id ASC. */
+/** Freshest-first tie-break within a tier: source_created_at DESC, condition_id ASC, token_id ASC. */
 function comparePortfolioBroadIdentities(
   a: PortfolioBroadIdentityCandidate,
   b: PortfolioBroadIdentityCandidate,
 ): number {
   return (
-    (a.row.source_created_at ?? "").localeCompare(b.row.source_created_at ?? "") ||
+    (b.row.source_created_at ?? "").localeCompare(a.row.source_created_at ?? "") ||
     a.row.condition_id.localeCompare(b.row.condition_id) ||
     a.row.token_id.localeCompare(b.row.token_id)
   );
