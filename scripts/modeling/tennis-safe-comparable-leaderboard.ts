@@ -71,9 +71,11 @@ import {
   runStandaloneStrict,
   runPortfolioStrict,
   applyDailyCap,
+  computePartialCapacity,
   partialMetricsFor,
   settledBetsOnly,
   metricsFor,
+  type PartialSettlementMetrics,
   type SelectedCandidate,
 } from "./daily-portfolio-frontier";
 import { QUALITY_PORTFOLIOS } from "./quality-fill-portfolio-test";
@@ -377,8 +379,16 @@ function unresolvedBounds(capped: SelectedCandidate[], settlementByCandidateIden
   return { worst: round(partialPnl + worstDelta, 2), best: round(partialPnl + bestDelta, 2) };
 }
 
-function rowFor(modelId: string, cap: number | "UNCAPPED", capped: SelectedCandidate[], uncapped: SelectedCandidate[], dates: string[], settlementByCandidateIdentity: Map<string, CorpusLabel>): CapRow {
-  const partial = partialMetricsFor(capped, settlementByCandidateIdentity);
+function rowFor(
+  modelId: string,
+  cap: number | "UNCAPPED",
+  capped: SelectedCandidate[],
+  uncapped: SelectedCandidate[],
+  dates: string[],
+  settlementByCandidateIdentity: Map<string, CorpusLabel>,
+  partialOverride?: PartialSettlementMetrics,
+): CapRow {
+  const partial = partialOverride ?? partialMetricsFor(capped, settlementByCandidateIdentity);
   const { settledBets } = settledBetsOnly(capped, settlementByCandidateIdentity);
   const m = metricsFor(settledBets);
   const bounds = unresolvedBounds(capped, settlementByCandidateIdentity, m.pnl_u);
@@ -469,8 +479,27 @@ async function main() {
   for (const [modelId, bets] of Object.entries(modelBets)) {
     table.push(uncappedRow(modelId, bets, dates, settlementByCandidateIdentity));
     for (const cap of DISPLAY_CAPS) {
-      const capped = modelId === "QUALITY_FILL_A_SAFE" ? applyLiveMixAllocation(bets, dates, QUALITY_FILL_A_SAFE_MIX_CONFIGS[cap]) : applyDailyCap(bets, cap);
-      table.push(rowFor(modelId, cap, capped, bets, dates, settlementByCandidateIdentity));
+      if (modelId === "QUALITY_FILL_A_SAFE") {
+        const capped = applyLiveMixAllocation(bets, dates, QUALITY_FILL_A_SAFE_MIX_CONFIGS[cap]);
+        table.push(rowFor(modelId, cap, capped, bets, dates, settlementByCandidateIdentity));
+        continue;
+      }
+
+      // Shared fixed capacity primitive supplies the settlement reconciliation;
+      // applyDailyCap supplies the same selected identities for composition,
+      // drawdown, and unresolved-open bounds.
+      const capacity = computePartialCapacity(bets, settlementByCandidateIdentity, cap);
+      const capped = applyDailyCap(bets, cap);
+      const partial: PartialSettlementMetrics = {
+        SELECTED_N: capacity.selected_n,
+        SETTLED_N: capacity.settled_n,
+        OPEN_N: capacity.open_n,
+        OTHER_NONTERMINAL_N: capacity.other_nonterminal_n,
+        SETTLED_PNL_U_PARTIAL: capacity.settled_pnl_u_partial,
+        SETTLED_ROI_PCT_PARTIAL: capacity.settled_roi_pct_partial,
+        SETTLEMENT_COVERAGE_PCT: capacity.settlement_coverage_pct,
+      };
+      table.push(rowFor(modelId, cap, capped, bets, dates, settlementByCandidateIdentity, partial));
     }
   }
 
