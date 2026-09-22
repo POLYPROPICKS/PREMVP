@@ -2,11 +2,20 @@
 //   node --import tsx --test tests/contur3/portfolioBroadAllocation.test.ts
 //
 // PORTFOLIO_BROAD is the proven research Decision Policy: event-level tier
-// qualification (Tier 1 before Tier 2 before Tier 3), capacity ordered by
-// tier -> decision time -> physical event id -- never by score, sport
-// preference or provider volume. One physical event may hold many accepted
-// identities; only its highest-priority qualifying identity is ever a
-// Reservation candidate, and only accepted Contract A Planning Decisions
+// qualification (Tier 1 before Tier 2 before Tier 3) still governs which
+// identity wins WITHIN one physical event (see classifyPortfolioBroadTier +
+// resolvePortfolioBroadPhysicalEventAllocations, unchanged by this file).
+//
+// RESTORE_SIGNAL_SCORE_AND_FOOTBALL_RESERVATION_PRIORITY_V1: capacity
+// ordering ACROSS physical events no longer uses tier -> decision_at ASC.
+// It is now Signal Score DESC (the canonical planning_score persisted on the
+// Contract A Planning Decision, never pre_event_score_num) -> football
+// preference (SOCCER/WC only; TENNIS gets no automatic priority) -> freshest
+// source evidence DESC -> provider volume DESC -> physical event id ASC.
+// Portfolio tier is qualification/diagnostic evidence only at capacity time;
+// it never outranks a higher Signal Score. One physical event may hold many
+// accepted identities; only its highest-priority qualifying identity is ever
+// a Reservation candidate, and only accepted Contract A Planning Decisions
 // (never a raw unaccepted source row) can qualify an event.
 
 import { test } from "node:test";
@@ -31,8 +40,9 @@ function acceptedFor(input: {
   generatedSignalPairId: string;
   conditionId: string;
   tokenId: string;
-  sport?: "SOCCER" | "TENNIS" | "MLB";
+  sport?: "SOCCER" | "TENNIS" | "MLB" | "WC";
   start?: string;
+  planningScore?: number;
 }): ContractADecisionResult<ContractAPlanningDecision> {
   const sport = input.sport ?? "MLB";
   const start = input.start ?? EVENT_START;
@@ -61,7 +71,7 @@ function acceptedFor(input: {
       strategic_scope: sport,
       sport_metadata_source: "upstream",
       league: null,
-      planning_score: 64,
+      planning_score: input.planningScore ?? 64,
       planning_tier: "TIER3_MICRO_EXPAND_50_COV25",
       planning_rank: 1,
       planning_policy_verdict: null,
@@ -93,6 +103,7 @@ function sourceRow(input: {
 function build(
   results: ContractADecisionResult<ContractAPlanningDecision>[],
   rows: Record<string, unknown>[],
+  providerVolumeByPhysicalEventId?: Map<string, number>,
 ) {
   return buildReservationsFromPlanningDecisions(
     results,
@@ -101,14 +112,21 @@ function build(
     {
       allocationPolicy: LIVE_RESERVATION_PORTFOLIO_BROAD_V2,
       sourceRowsForCandidateManifest: rows,
+      providerVolumeByPhysicalEventId,
     },
   );
 }
 
 // ── Pure tier classification ────────────────────────────────────────────────
 
-test("1: TENNIS + price 0.51 + missing pre_event_score -> Tier 1", () => {
-  assert.equal(classifyPortfolioBroadTier(0.51, null, "TENNIS"), 1);
+test("1: TENNIS + price 0.51 + missing pre_event_score -> Tier 2, NOT automatic Tier 1", () => {
+  // RESTORE_SIGNAL_SCORE_AND_FOOTBALL_RESERVATION_PRIORITY_V1 removes the
+  // prior TENNIS-only automatic Tier 1 special case.
+  assert.equal(classifyPortfolioBroadTier(0.51, null, "TENNIS"), 2);
+});
+
+test("1b: TENNIS + price 0.51 + qualifying pre_event_score 64 -> Tier 1, via the same score band every sport uses", () => {
+  assert.equal(classifyPortfolioBroadTier(0.51, 64, "TENNIS"), 1);
 });
 
 test("2: non-tennis + price 0.51 + pre_event_score 63 -> Tier 1", () => {
@@ -131,9 +149,10 @@ test("6: price 0.49 -> NOT qualified", () => {
   assert.equal(classifyPortfolioBroadTier(0.49, 90, "TENNIS"), null);
 });
 
-// ── Event-level tier priority and chronological tie-break ──────────────────
+// ── Event-level tier priority (identity selection WITHIN one physical event) ──
+// unchanged by this mission: still governs which identity wins an event.
 
-test("7: one physical event with a Tier2 and a Tier1 accepted identity -- Tier1 wins", () => {
+test("7: one physical event with a Tier2 and a genuinely-qualifying Tier1 accepted identity -- Tier1 wins", () => {
   const physicalEventId = "provider:polymarket:evt-a:2026-08-11";
   const results = [
     acceptedFor({ physicalEventId, generatedSignalPairId: "row-tier2", conditionId: "c-tier2", tokenId: "t-tier2" }),
@@ -141,7 +160,8 @@ test("7: one physical event with a Tier2 and a Tier1 accepted identity -- Tier1 
   ];
   const rows = [
     sourceRow({ id: "row-tier2", conditionId: "c-tier2", tokenId: "t-tier2", entryPrice: 0.51, createdAt: "2026-08-11T09:00:00.000Z" }),
-    sourceRow({ id: "row-tier1", conditionId: "c-tier1", tokenId: "t-tier1", entryPrice: 0.51, createdAt: "2026-08-11T11:00:00.000Z" }),
+    // Qualifies Tier 1 via a real score in-band -- NOT because it is tennis.
+    sourceRow({ id: "row-tier1", conditionId: "c-tier1", tokenId: "t-tier1", entryPrice: 0.51, preEventScore: 64, createdAt: "2026-08-11T11:00:00.000Z" }),
   ];
   const result = build(results, rows);
   assert.equal(result.reservations.length, 1);
@@ -151,9 +171,9 @@ test("7: one physical event with a Tier2 and a Tier1 accepted identity -- Tier1 
 });
 
 test("8: same tier -- freshest (newest) source_created_at wins; condition_id/token_id are deterministic tie-breaks", () => {
-  // RESTORE_FRESH_RESERVATION_EVIDENCE_V1: same-tier ties no longer prefer
-  // the oldest source_created_at -- older evidence winning ties on the live
-  // money Reservation path is exactly the regression this restore fixes.
+  // RESTORE_FRESH_RESERVATION_EVIDENCE_V1 (preserved by this mission): same-
+  // tier ties within one physical event prefer the newest source_created_at,
+  // never the oldest.
   const physicalEventId = "provider:polymarket:evt-b:2026-08-11";
   const results = [
     acceptedFor({ physicalEventId, generatedSignalPairId: "row-later", conditionId: "c-z", tokenId: "t-z" }),
@@ -201,9 +221,9 @@ test("9: a raw source row with no corresponding ACCEPTED decision cannot qualify
   );
 });
 
-// ── One physical event, one Reservation maximum ─────────────────────────────
+// ── One physical event, one Reservation maximum (unchanged) ─────────────────
 
-test("10: one physical event produces at most one Reservation even with 3 qualifying identities", () => {
+test("physical-event dedupe: one physical event produces at most one Reservation even with 3 qualifying identities", () => {
   const physicalEventId = "provider:polymarket:evt-d:2026-08-11";
   const results = [
     acceptedFor({ physicalEventId, generatedSignalPairId: "r1", conditionId: "c1", tokenId: "t1" }),
@@ -219,30 +239,116 @@ test("10: one physical event produces at most one Reservation even with 3 qualif
   assert.equal(result.reservations.length, 1);
 });
 
-// ── Capacity ordering: tier ASC -> decision_at ASC -> physical_event_id ASC ─
+// ── RESTORE_SIGNAL_SCORE_AND_FOOTBALL_RESERVATION_PRIORITY_V1: capacity
+// ordering across physical events is Signal Score DESC -> football
+// preference -> freshest source -> provider volume -> physical event id ────
 
-test("11: capacity ordering is exactly tier ASC, then decision_at ASC, then physical_event_id ASC", () => {
+test("capacity-1: score 74 tennis vs score 76 football -> the higher-score football event ranks first", () => {
   const results = [
-    acceptedFor({ physicalEventId: "provider:polymarket:z-tier3:2026-08-11", generatedSignalPairId: "z3", conditionId: "cz3", tokenId: "tz3" }),
-    acceptedFor({ physicalEventId: "provider:polymarket:a-tier1-late:2026-08-11", generatedSignalPairId: "a1l", conditionId: "ca1l", tokenId: "ta1l", sport: "TENNIS" }),
-    acceptedFor({ physicalEventId: "provider:polymarket:b-tier1-early:2026-08-11", generatedSignalPairId: "b1e", conditionId: "cb1e", tokenId: "tb1e", sport: "TENNIS" }),
+    acceptedFor({ physicalEventId: "provider:polymarket:evt-tennis-74:2026-08-11", generatedSignalPairId: "t74", conditionId: "ct74", tokenId: "tt74", sport: "TENNIS", planningScore: 74 }),
+    acceptedFor({ physicalEventId: "provider:polymarket:evt-soccer-76:2026-08-11", generatedSignalPairId: "s76", conditionId: "cs76", tokenId: "ts76", sport: "SOCCER", planningScore: 76 }),
   ];
   const rows = [
-    sourceRow({ id: "z3", conditionId: "cz3", tokenId: "tz3", entryPrice: 0.53, createdAt: "2026-08-11T08:00:00.000Z" }),
-    sourceRow({ id: "a1l", conditionId: "ca1l", tokenId: "ta1l", entryPrice: 0.51, createdAt: "2026-08-11T09:00:00.000Z" }),
-    sourceRow({ id: "b1e", conditionId: "cb1e", tokenId: "tb1e", entryPrice: 0.51, createdAt: "2026-08-11T08:30:00.000Z" }),
+    sourceRow({ id: "t74", conditionId: "ct74", tokenId: "tt74", entryPrice: 0.51 }),
+    sourceRow({ id: "s76", conditionId: "cs76", tokenId: "ts76", entryPrice: 0.51 }),
   ];
   const result = build(results, rows);
   assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
-    "provider:polymarket:b-tier1-early:2026-08-11",
-    "provider:polymarket:a-tier1-late:2026-08-11",
-    "provider:polymarket:z-tier3:2026-08-11",
+    "provider:polymarket:evt-soccer-76:2026-08-11",
+    "provider:polymarket:evt-tennis-74:2026-08-11",
   ]);
 });
 
-// ── Capacity cap: 31 qualifying events -> 30 reserved, 1 cap-excluded ───────
+test("capacity-2: score 74 football vs score 74 tennis, equal score -> football ranks first", () => {
+  const results = [
+    acceptedFor({ physicalEventId: "provider:polymarket:evt-tennis-74b:2026-08-11", generatedSignalPairId: "t74b", conditionId: "ct74b", tokenId: "tt74b", sport: "TENNIS", planningScore: 74 }),
+    acceptedFor({ physicalEventId: "provider:polymarket:evt-soccer-74b:2026-08-11", generatedSignalPairId: "s74b", conditionId: "cs74b", tokenId: "ts74b", sport: "SOCCER", planningScore: 74 }),
+  ];
+  const rows = [
+    sourceRow({ id: "t74b", conditionId: "ct74b", tokenId: "tt74b", entryPrice: 0.51 }),
+    sourceRow({ id: "s74b", conditionId: "cs74b", tokenId: "ts74b", entryPrice: 0.51 }),
+  ];
+  const result = build(results, rows);
+  assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
+    "provider:polymarket:evt-soccer-74b:2026-08-11",
+    "provider:polymarket:evt-tennis-74b:2026-08-11",
+  ]);
+});
 
-test("12: 31 qualifying physical events -> 30 Reservations, 1 CAP_EXCLUDED", () => {
+test("capacity-3: score 75 tennis vs score 70 football -> tennis ranks first (Signal Score is truly primary, football is only a tie-break)", () => {
+  const results = [
+    acceptedFor({ physicalEventId: "provider:polymarket:evt-tennis-75:2026-08-11", generatedSignalPairId: "t75", conditionId: "ct75", tokenId: "tt75", sport: "TENNIS", planningScore: 75 }),
+    acceptedFor({ physicalEventId: "provider:polymarket:evt-soccer-70:2026-08-11", generatedSignalPairId: "s70", conditionId: "cs70", tokenId: "ts70", sport: "SOCCER", planningScore: 70 }),
+  ];
+  const rows = [
+    sourceRow({ id: "t75", conditionId: "ct75", tokenId: "tt75", entryPrice: 0.51 }),
+    sourceRow({ id: "s70", conditionId: "cs70", tokenId: "ts70", entryPrice: 0.51 }),
+  ];
+  const result = build(results, rows);
+  assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
+    "provider:polymarket:evt-tennis-75:2026-08-11",
+    "provider:polymarket:evt-soccer-70:2026-08-11",
+  ]);
+});
+
+test("capacity-4: football (WC) preferred over a non-football, non-tennis sport at equal score", () => {
+  const results = [
+    acceptedFor({ physicalEventId: "provider:polymarket:evt-mlb-70:2026-08-11", generatedSignalPairId: "m70", conditionId: "cm70", tokenId: "tm70", sport: "MLB", planningScore: 70 }),
+    acceptedFor({ physicalEventId: "provider:polymarket:evt-wc-70:2026-08-11", generatedSignalPairId: "w70", conditionId: "cw70", tokenId: "tw70", sport: "WC", planningScore: 70 }),
+  ];
+  const rows = [
+    sourceRow({ id: "m70", conditionId: "cm70", tokenId: "tm70", entryPrice: 0.51 }),
+    sourceRow({ id: "w70", conditionId: "cw70", tokenId: "tw70", entryPrice: 0.51 }),
+  ];
+  const result = build(results, rows);
+  assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
+    "provider:polymarket:evt-wc-70:2026-08-11",
+    "provider:polymarket:evt-mlb-70:2026-08-11",
+  ]);
+});
+
+test("capacity-5: equal score and equal football-preference tier -> freshest source evidence wins, then provider volume, then physical_event_id", () => {
+  const results = [
+    acceptedFor({ physicalEventId: "provider:polymarket:z-evt:2026-08-11", generatedSignalPairId: "z", conditionId: "cz", tokenId: "tz", sport: "MLB", planningScore: 70 }),
+    acceptedFor({ physicalEventId: "provider:polymarket:a-evt:2026-08-11", generatedSignalPairId: "a", conditionId: "ca", tokenId: "ta", sport: "MLB", planningScore: 70 }),
+    acceptedFor({ physicalEventId: "provider:polymarket:b-evt:2026-08-11", generatedSignalPairId: "b", conditionId: "cb", tokenId: "tb", sport: "MLB", planningScore: 70 }),
+  ];
+  const rows = [
+    sourceRow({ id: "z", conditionId: "cz", tokenId: "tz", entryPrice: 0.51, createdAt: "2026-08-11T08:00:00.000Z" }),
+    sourceRow({ id: "a", conditionId: "ca", tokenId: "ta", entryPrice: 0.51, createdAt: "2026-08-11T09:00:00.000Z" }),
+    sourceRow({ id: "b", conditionId: "cb", tokenId: "tb", entryPrice: 0.51, createdAt: "2026-08-11T08:30:00.000Z" }),
+  ];
+  const result = build(results, rows);
+  assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
+    "provider:polymarket:a-evt:2026-08-11", // 09:00 -- freshest
+    "provider:polymarket:b-evt:2026-08-11", // 08:30
+    "provider:polymarket:z-evt:2026-08-11", // 08:00 -- oldest
+  ]);
+});
+
+test("capacity-6: equal score, equal football-preference tier, equal freshness -> higher provider volume wins", () => {
+  const results = [
+    acceptedFor({ physicalEventId: "provider:polymarket:low-vol:2026-08-11", generatedSignalPairId: "lv", conditionId: "clv", tokenId: "tlv", sport: "MLB", planningScore: 70 }),
+    acceptedFor({ physicalEventId: "provider:polymarket:high-vol:2026-08-11", generatedSignalPairId: "hv", conditionId: "chv", tokenId: "thv", sport: "MLB", planningScore: 70 }),
+  ];
+  const rows = [
+    sourceRow({ id: "lv", conditionId: "clv", tokenId: "tlv", entryPrice: 0.51, createdAt: "2026-08-11T09:00:00.000Z" }),
+    sourceRow({ id: "hv", conditionId: "chv", tokenId: "thv", entryPrice: 0.51, createdAt: "2026-08-11T09:00:00.000Z" }),
+  ];
+  const volumes = new Map([
+    ["provider:polymarket:low-vol:2026-08-11", 100],
+    ["provider:polymarket:high-vol:2026-08-11", 9000],
+  ]);
+  const result = build(results, rows, volumes);
+  assert.deepEqual(result.reservations.map((r) => r.physical_event_id), [
+    "provider:polymarket:high-vol:2026-08-11",
+    "provider:polymarket:low-vol:2026-08-11",
+  ]);
+});
+
+// ── Capacity cap: 31 qualifying events -> 30 reserved, 1 cap-excluded (unchanged) ──
+
+test("cap: 31 qualifying physical events -> 30 Reservations, 1 CAP_EXCLUDED", () => {
   const results: ContractADecisionResult<ContractAPlanningDecision>[] = [];
   const rows: Record<string, unknown>[] = [];
   for (let i = 0; i < 31; i++) {
@@ -341,10 +447,10 @@ test("W6: out-of-window Broad events cannot consume Reservation capacity", () =>
   assert.equal(r.capExcluded, 0);
 });
 
-test("W7: in-window Broad events still rank tier ASC, decision_at ASC, physical_event_id ASC", () => {
+test("W7: in-window Broad events still rank by Signal Score, then football preference, then freshest source", () => {
   const results = [
-    acceptedFor({ physicalEventId: "provider:polymarket:z-tier3:2026-08-11", generatedSignalPairId: "z3", conditionId: "cz3", tokenId: "tz3", start: "2026-08-11T16:00:00.000Z" }),
-    acceptedFor({ physicalEventId: "provider:polymarket:a-tier1:2026-08-11", generatedSignalPairId: "a1", conditionId: "ca1", tokenId: "ta1", sport: "TENNIS", start: "2026-08-11T16:00:00.000Z" }),
+    acceptedFor({ physicalEventId: "provider:polymarket:z-tennis-70:2026-08-11", generatedSignalPairId: "z3", conditionId: "cz3", tokenId: "tz3", sport: "TENNIS", planningScore: 70, start: "2026-08-11T16:00:00.000Z" }),
+    acceptedFor({ physicalEventId: "provider:polymarket:a-soccer-76:2026-08-11", generatedSignalPairId: "a1", conditionId: "ca1", tokenId: "ta1", sport: "SOCCER", planningScore: 76, start: "2026-08-11T16:00:00.000Z" }),
   ];
   const rows = [
     sourceRow({ id: "z3", conditionId: "cz3", tokenId: "tz3", entryPrice: 0.53, createdAt: "2026-08-11T08:00:00.000Z" }),
@@ -352,7 +458,7 @@ test("W7: in-window Broad events still rank tier ASC, decision_at ASC, physical_
   ];
   const r = buildReservationsFromPlanningDecisions(results, { planRunId: buildPlanRunId(ANCHOR_MS), window: W_WINDOW, nowMs: W_NOW }, [], { allocationPolicy: LIVE_RESERVATION_PORTFOLIO_BROAD_V2, sourceRowsForCandidateManifest: rows });
   assert.deepEqual(r.reservations.map((x) => x.physical_event_id), [
-    "provider:polymarket:a-tier1:2026-08-11",
-    "provider:polymarket:z-tier3:2026-08-11",
+    "provider:polymarket:a-soccer-76:2026-08-11",
+    "provider:polymarket:z-tennis-70:2026-08-11",
   ]);
 });

@@ -2143,7 +2143,7 @@ export function buildReservationsFromPlanningDecisions(
   //    (PORTFOLIO_BROAD_NOT_QUALIFIED), as a Decision Policy verdict, not a
   //    Contract A failure.
   const allocationPolicy = opts.allocationPolicy ?? DEFAULT_LIVE_ALLOCATION_POLICY;
-  const isPortfolioBroadPolicy = allocationPolicy.rankingOrder[0] === "PORTFOLIO_TIER_ASC";
+  const isPortfolioBroadPolicy = allocationPolicy.policyId === LIVE_RESERVATION_PORTFOLIO_BROAD_V2.policyId;
 
   let portfolioBroadQualifiedEventN = 0;
   let portfolioBroadRejectedEventN = 0;
