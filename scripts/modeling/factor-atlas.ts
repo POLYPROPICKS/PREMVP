@@ -19,6 +19,7 @@ import { pathToFileURL } from "node:url";
 import {
   buildExplicitDateRangeRowView,
   enumerateMinskDates,
+  type CorpusLabel,
   type DerivedSeries,
   type LoadedPartition,
   type ScorecardReadyRow,
@@ -130,6 +131,64 @@ export function toAtlasInput(rows: ScorecardReadyRow[]): AtlasInputEvent[] {
       volumeUsd: typeof r.volumeUsd === "number" ? r.volumeUsd : null,
       rowLeadTimeHours: typeof r.leadTimeHours === "number" ? r.leadTimeHours : null,
       marketTypeRaw: typeof (r as ScorecardReadyRowWithMarketType).marketTypeRaw === "string" ? ((r as ScorecardReadyRowWithMarketType).marketTypeRaw as string) : null,
+    }));
+}
+
+/**
+ * SELECTION_BEFORE_SETTLEMENT_V1 — decision-time-only candidate input.
+ *
+ * Identical qualification to `toAtlasInput()` above MINUS the
+ * `labelAsOf === WIN/LOSS` filter. `labelAsOf` is carried through verbatim
+ * for a caller to read strictly AFTER a candidate has already been selected
+ * and capped (see `runStandaloneStrict`/`runPortfolioStrict` and
+ * `partialMetricsFor` in scripts/modeling/daily-portfolio-frontier.ts) — it
+ * is never exposed to a qualification predicate or to the chronological
+ * comparator, so settlement availability can never influence which
+ * candidate occupies a physical event's slot.
+ */
+export interface DecisionTimeCandidate {
+  physicalEventKey: string;
+  decisionTimestamp: string;
+  eventStart: string;
+  entryPrice: number;
+  sportFamily: string;
+  ref: string;
+  candidateRef: string;
+  scoreLevel: number | null;
+  score: DerivedSeries;
+  selectedPrice: DerivedSeries;
+  volumeUsd: number | null;
+  rowLeadTimeHours: number | null;
+  marketTypeRaw: string | null;
+  /** Settlement status, attached but NEVER read for qualification/ordering. */
+  labelAsOf: CorpusLabel;
+}
+
+export function toDecisionTimeCandidates(rows: ScorecardReadyRow[]): DecisionTimeCandidate[] {
+  return rows
+    .filter(
+      (r) =>
+        r.providerEventId &&
+        r.eventStart &&
+        r.entryPrice !== null &&
+        r.entryPrice > 0 &&
+        r.entryPrice < 1,
+    )
+    .map((r) => ({
+      physicalEventKey: r.providerEventId!,
+      decisionTimestamp: r.decisionAt,
+      eventStart: r.eventStart!,
+      entryPrice: r.entryPrice!,
+      sportFamily: resolveSportFamily(r) ?? "",
+      ref: r.conditionId,
+      candidateRef: r.selectedTokenId,
+      scoreLevel: typeof r.scoreLevel === "number" ? r.scoreLevel : null,
+      score: r.score,
+      selectedPrice: r.selectedPrice,
+      volumeUsd: typeof r.volumeUsd === "number" ? r.volumeUsd : null,
+      rowLeadTimeHours: typeof r.leadTimeHours === "number" ? r.leadTimeHours : null,
+      marketTypeRaw: typeof (r as ScorecardReadyRowWithMarketType).marketTypeRaw === "string" ? ((r as ScorecardReadyRowWithMarketType).marketTypeRaw as string) : null,
+      labelAsOf: r.labelAsOf,
     }));
 }
 
