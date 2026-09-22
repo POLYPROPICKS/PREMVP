@@ -1,27 +1,41 @@
 /**
  * TENNIS_SAFE_COMPARABLE_LEADERBOARD_V1 — rebuilds the CURRENT comparable
- * model leaderboard over ONE shared safe-tennis universe.
+ * model leaderboard over ONE shared safe-tennis universe, on the
+ * SELECTION_BEFORE_SETTLEMENT_V1 shared fixed path (PR #379): settlement
+ * never participates in safe-tennis qualification, model qualification,
+ * physical-event candidate selection, or daily capacity allocation. It is
+ * joined back ONLY after selection+cap.
  *
  * The old generic tennis population mixed a profitable
  * tennis_completed_match regime with ordinary/low-tier tennis that should
- * never have been eligible. This runner filters TENNIS rows to only those
- * that pass the shared live-money gate (lib/executor/tennisLiveEligibility.ts
- * resolveTennisMoneyEligibility — imported verbatim, never re-implemented
- * here) BEFORE any model predicate runs, so every _SAFE variant below shares
- * the exact same corrected tennis universe. Non-tennis rows are unaffected.
+ * never have been eligible. This runner filters TENNIS candidates to only
+ * those that pass the shared live-money gate
+ * (lib/executor/tennisLiveEligibility.ts resolveTennisMoneyEligibility —
+ * imported verbatim, never re-implemented here) BEFORE any model predicate
+ * runs, on DECISION-TIME candidates, so every _SAFE variant below shares the
+ * exact same corrected tennis universe and settlement never influences which
+ * tennis rows are even eligible. Non-tennis rows are unaffected.
  *
- * Reuses the existing engine verbatim — no second sync/capacity engine:
+ * Reuses the existing engine verbatim — no second sync/capacity engine, no
+ * duplicated tennis rule, no duplicated live-mix rule:
  *   - C0/C4/C5 frozen predicates: lib/modeling/research-engine/models.ts
  *   - PORTFOLIO_BROAD tiers: scripts/modeling/daily-portfolio-frontier.ts
  *   - QUALITY_FILL_A/D tiers: scripts/modeling/quality-fill-portfolio-test.ts
- *   - runStandalone/runPortfolio/applyDailyCap/computeCapacity/metricsFor/
- *     computeDailyResults: scripts/modeling/daily-portfolio-frontier.ts
- *   - toAtlasInput normalizer: scripts/modeling/factor-atlas.ts
+ *   - toDecisionTimeSelectionInput: scripts/modeling/factor-atlas.ts
+ *   - runStandaloneStrict/runPortfolioStrict/applyDailyCap/
+ *     computePartialCapacity/partialMetricsFor/settledBetsOnly/metricsFor:
+ *     scripts/modeling/daily-portfolio-frontier.ts
+ *   - selectLiveReservationMix: lib/executor/liveReservationAllocationPolicy.ts
+ *     (the exact live allocation rule — QUALITY_FILL_A_SAFE cap30/40/50 no
+ *     longer uses a local reimplementation)
+ *   - resolveTennisMoneyEligibility: lib/executor/tennisLiveEligibility.ts
  *   - evaluateEvent/aggregateMetrics/settleBetU: lib/modeling/research-engine
  *
- * P50_52 (no _SAFE suffix) is the one unchanged generic raw benchmark
- * (RAW_LEGACY_BASELINE) — computed over the FULL, unfiltered universe,
- * exactly as it always has been, for comparison only.
+ * P50_52 (no _SAFE suffix) is the one unchanged generic RAW_LEGACY_BASELINE
+ * (LEGACY_SETTLEMENT_FIRST, NOT_CURRENT_AUTHORITY) — computed over the FULL
+ * unfiltered universe via the pre-#379 toAtlasInput()/runStandalone() path,
+ * exactly as it always has been, for comparison only. It is never used to
+ * choose the current SAFE model.
  *
  * Where canonical_row lacks tournament identity (event title/slug, market
  * type text), it is enriched ONLY with identity metadata joined from
@@ -42,14 +56,26 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import "dotenv/config";
 
-import { enumerateMinskDates, type ScorecardReadyRow } from "@/lib/modeling/research-corpus/rollingCorpus";
+import { enumerateMinskDates, type CorpusLabel, type ScorecardReadyRow } from "@/lib/modeling/research-corpus/rollingCorpus";
 import { FROZEN_MODELS, SOCCER_FAMILY } from "@/lib/modeling/research-engine/models";
+import { settleBetU } from "@/lib/modeling/research-engine";
 import {
   resolveTennisMoneyEligibility,
   type TennisMoneyEligibilityDecision,
 } from "@/lib/executor/tennisLiveEligibility";
-import { toAtlasInput, type AtlasInputEvent } from "./factor-atlas";
-import { PORTFOLIOS, runStandalone, runPortfolio, computeDailyResults, applyDailyCap, metricsFor, type TieredBet } from "./daily-portfolio-frontier";
+import { selectLiveReservationMix, type LiveReservationMixGuardConfig } from "@/lib/executor/liveReservationAllocationPolicy";
+import { toAtlasInput, toDecisionTimeSelectionInput, type DecisionTimeCandidate } from "./factor-atlas";
+import {
+  PORTFOLIOS,
+  runStandalone,
+  runStandaloneStrict,
+  runPortfolioStrict,
+  applyDailyCap,
+  partialMetricsFor,
+  settledBetsOnly,
+  metricsFor,
+  type SelectedCandidate,
+} from "./daily-portfolio-frontier";
 import { QUALITY_PORTFOLIOS } from "./quality-fill-portfolio-test";
 
 const DEFAULT_START = "2026-08-04";
@@ -61,6 +87,13 @@ const EXPECTED_CLONE_PROJECT_REF = "nppznoujvnyjargjkmnv";
 const TENNIS_FAMILY = "tennis";
 /** Chunk size for the .in("condition_id", ...) identity join, mirroring the established CID_CHUNK pattern. */
 const CID_CHUNK = 200;
+
+/** Production live-mix configs, per this mission (LIVE_RESERVATION_MIX_GUARD_V1-shaped). */
+export const QUALITY_FILL_A_SAFE_MIX_CONFIGS: Record<30 | 40 | 50, LiveReservationMixGuardConfig> = {
+  30: { cap: 30, footballFirstSlots: 20, tennisMaxWhenFootballSufficient: 7 },
+  40: { cap: 40, footballFirstSlots: 26, tennisMaxWhenFootballSufficient: 10 },
+  50: { cap: 50, footballFirstSlots: 33, tennisMaxWhenFootballSufficient: 12 },
+};
 
 function arg(name: string, fallback: string): string {
   const eq = process.argv.find((v) => v.startsWith(`--${name}=`));
@@ -192,10 +225,12 @@ async function fetchTennisIdentityLookup(db: any, conditionIds: string[]): Promi
  * resolveTennisMoneyEligibility() verbatim — never a re-derived rule.
  * marketTypeRaw already on canonical_row (when present) is preferred over
  * the joined identity's structuredMarketType; the join exists only to fill
- * in the identity/text fields canonical_row never carries.
+ * in the identity/text fields canonical_row never carries. Only
+ * decision-time fields (marketTypeRaw, joined identity text) feed this — no
+ * settlement/outcome is read or available here.
  */
 export function resolveSafeTennisDecision(
-  e: Pick<AtlasInputEvent, "marketTypeRaw">,
+  e: Pick<DecisionTimeCandidate, "marketTypeRaw">,
   identity: IdentityCandidate | null,
 ): TennisMoneyEligibilityDecision {
   return resolveTennisMoneyEligibility({
@@ -206,25 +241,23 @@ export function resolveSafeTennisDecision(
 }
 
 export interface SafeUniverseResult {
-  safeUniverse: AtlasInputEvent[];
+  safeUniverse: DecisionTimeCandidate[];
   rawTennisN: number;
   approvedTennisN: number;
-  excludedTennisInput: AtlasInputEvent[];
+  excludedTennisInput: DecisionTimeCandidate[];
 }
 
 /**
  * ONE shared safe-tennis universe: non-tennis rows pass through unchanged;
  * a tennis row is retained only when resolveTennisMoneyEligibility says it
  * is eligible. Applied ONCE, upstream of every model predicate below — no
- * model-specific tennis logic exists anywhere else in this file.
+ * model-specific tennis logic exists anywhere else in this file. Runs on
+ * DECISION-TIME candidates (no labelAsOf field exists on this type) — the
+ * safe-tennis gate itself never sees settlement.
  */
-export function buildSafeUniverse(
-  input: AtlasInputEvent[],
-  selectedTokenIdOf: (e: AtlasInputEvent) => string | undefined,
-  identityLookup: IdentityLookup,
-): SafeUniverseResult {
-  const safeUniverse: AtlasInputEvent[] = [];
-  const excludedTennisInput: AtlasInputEvent[] = [];
+export function buildSafeUniverse(input: DecisionTimeCandidate[], identityLookup: IdentityLookup): SafeUniverseResult {
+  const safeUniverse: DecisionTimeCandidate[] = [];
+  const excludedTennisInput: DecisionTimeCandidate[] = [];
   let rawTennisN = 0;
   let approvedTennisN = 0;
   for (const e of input) {
@@ -233,8 +266,7 @@ export function buildSafeUniverse(
       continue;
     }
     rawTennisN += 1;
-    const selectedTokenId = selectedTokenIdOf(e);
-    const identity = selectedTokenId ? identityLookup(e.ref ?? "", selectedTokenId, e.decisionTimestamp) : null;
+    const identity = identityLookup(e.ref, e.candidateRef, e.decisionTimestamp);
     const decision = resolveSafeTennisDecision(e, identity);
     if (decision.eligible) {
       approvedTennisN += 1;
@@ -248,7 +280,7 @@ export function buildSafeUniverse(
 
 // ── Sport composition + fill rate reporting ─────────────────────────────────
 
-export function sportSplit(bets: TieredBet[]) {
+export function sportSplit(bets: SelectedCandidate[]) {
   const total = bets.length || 1;
   const footballN = bets.filter((b) => b.sportFamily === SOCCER_FAMILY).length;
   const tennisN = bets.filter((b) => b.sportFamily === TENNIS_FAMILY).length;
@@ -263,58 +295,61 @@ export function sportSplit(bets: TieredBet[]) {
   };
 }
 
-/** Fraction of days in range whose UNCAPPED daily supply meets `cap`. */
-export function fillRateAtCap(uncappedBets: TieredBet[], dates: string[], cap: number): number {
+/** Fraction of days in range whose UNCAPPED daily supply meets `cap`. Settlement-neutral (counts selected candidates only). */
+export function fillRateAtCap(uncapped: SelectedCandidate[], dates: string[], cap: number): number {
   if (dates.length === 0) return 0;
-  const daily = computeDailyResults(uncappedBets, dates);
-  return round(daily.filter((d) => d.event_n >= cap).length / dates.length, 4);
+  const byDay = new Map<string, number>();
+  for (const c of uncapped) byDay.set(c.day, (byDay.get(c.day) ?? 0) + 1);
+  const daysMeetingCap = dates.filter((d) => (byDay.get(d) ?? 0) >= cap).length;
+  return round(daysMeetingCap / dates.length, 4);
 }
 
-// ── QUALITY_FILL_A_SAFE cap30 already-approved live allocation ─────────────
-// football >=20 supply that day: 20 football -> max 7 approved tennis -> other fills the rest.
-// football <20 that day: all football -> approved tennis unrestricted -> other fills the rest.
-// Reuses the same tier/decision/physicalEventKey ordering the generic capacity
-// engine (applyDailyCap in daily-portfolio-frontier.ts) uses within a day —
-// this function only changes WHICH sport buckets are prioritized and by how
-// much, never the underlying selection/settlement.
+// ── QUALITY_FILL_A_SAFE cap30/40/50 exact live allocation ──────────────────
+// Reuses selectLiveReservationMix() (lib/executor/liveReservationAllocationPolicy.ts)
+// verbatim, per day, over already-selected (settlement-blind) candidates —
+// no local reimplementation of the mix rule, no settlement input.
 
-function withinDayOrder(a: TieredBet, b: TieredBet): number {
+function withinDayOrder(a: SelectedCandidate, b: SelectedCandidate): number {
   return a.tier - b.tier || a.decisionTimestamp.localeCompare(b.decisionTimestamp) || a.physicalEventKey.localeCompare(b.physicalEventKey);
 }
 
-export function applyQualityFillACap30(bets: TieredBet[], allDates: string[]): TieredBet[] {
-  const byDay = new Map<string, TieredBet[]>();
+export function applyLiveMixAllocation(bets: SelectedCandidate[], allDates: string[], config: LiveReservationMixGuardConfig): SelectedCandidate[] {
+  const byDay = new Map<string, SelectedCandidate[]>();
   for (const bet of bets) {
     const list = byDay.get(bet.day);
     if (list) list.push(bet);
     else byDay.set(bet.day, [bet]);
   }
-  const kept: TieredBet[] = [];
+  const kept: SelectedCandidate[] = [];
   for (const date of allDates) {
     const dayBets = (byDay.get(date) ?? []).slice().sort(withinDayOrder);
     const football = dayBets.filter((b) => b.sportFamily === SOCCER_FAMILY);
     const tennis = dayBets.filter((b) => b.sportFamily === TENNIS_FAMILY);
     const other = dayBets.filter((b) => b.sportFamily !== SOCCER_FAMILY && b.sportFamily !== TENNIS_FAMILY);
-    const fb = football.length >= 20 ? football.slice(0, 20) : football;
-    const tn = football.length >= 20 ? tennis.slice(0, 7) : tennis;
-    const remaining = Math.max(0, 30 - fb.length - tn.length);
-    const ot = other.slice(0, remaining);
-    kept.push(...fb, ...tn, ...ot);
+    const { selected, finalN } = selectLiveReservationMix(football, tennis, other, config);
+    if (finalN > config.cap) throw new Error(`LIVE_MIX_CAP_EXCEEDED: ${date} finalN=${finalN} cap=${config.cap}`);
+    kept.push(...selected);
   }
   return kept;
 }
 
 // ── Model definitions: non-tennis semantics reused verbatim; tennis is
 // governed ONLY by the shared safe universe built above — no per-model
-// tennis predicate exists here. ───────────────────────────────────────────
+// tennis predicate exists here. Settlement is joined back ONLY here, after
+// selection+cap, via partialMetricsFor/settledBetsOnly (imported verbatim).
+// ─────────────────────────────────────────────────────────────────────────
 
 interface CapRow {
   MODEL: string;
   CAP: number | "UNCAPPED";
-  N: number;
-  PNL_U: number;
-  ROI_PCT: number;
-  MAX_DD_U: number;
+  SELECTED_N: number;
+  SETTLED_N: number;
+  OPEN_N: number;
+  OTHER_NONTERMINAL_N: number;
+  SETTLEMENT_COVERAGE_PCT: number;
+  PNL_U_PARTIAL: number;
+  SETTLED_ROI_PCT_PARTIAL: number;
+  MAX_DD_U_PARTIAL: number;
   FILL_RATE: number;
   FOOTBALL_N: number;
   FOOTBALL_PCT: number;
@@ -322,91 +357,134 @@ interface CapRow {
   TENNIS_PCT: number;
   OTHER_N: number;
   OTHER_PCT: number;
+  FINAL_PNL_WORST: number;
+  FINAL_PNL_BEST: number;
+  FINAL_ROI_WORST_PCT: number;
+  FINAL_ROI_BEST_PCT: number;
+  STATUS: "PARTIAL" | "FINAL_REPRODUCIBLE";
 }
 
-function rowFor(modelId: string, cap: number, uncapped: TieredBet[], dates: string[], cappedOverride?: TieredBet[]): CapRow {
-  const capped = cappedOverride ?? applyDailyCap(uncapped, cap);
-  const m = metricsFor(capped);
+/** FINAL_PNL_WORST/BEST: deterministic unresolved bounds. OPEN candidates only — settled ones are already in PNL_U_PARTIAL. */
+function unresolvedBounds(capped: SelectedCandidate[], settlementByCandidateIdentity: Map<string, CorpusLabel>, partialPnl: number) {
+  let worstDelta = 0;
+  let bestDelta = 0;
+  for (const c of capped) {
+    const label = settlementByCandidateIdentity.get(c.candidateIdentity);
+    if (label !== "OPEN") continue;
+    worstDelta += settleBetU("LOSS", c.entryPrice);
+    bestDelta += settleBetU("WIN", c.entryPrice);
+  }
+  return { worst: round(partialPnl + worstDelta, 2), best: round(partialPnl + bestDelta, 2) };
+}
+
+function rowFor(modelId: string, cap: number | "UNCAPPED", capped: SelectedCandidate[], uncapped: SelectedCandidate[], dates: string[], settlementByCandidateIdentity: Map<string, CorpusLabel>): CapRow {
+  const partial = partialMetricsFor(capped, settlementByCandidateIdentity);
+  const { settledBets } = settledBetsOnly(capped, settlementByCandidateIdentity);
+  const m = metricsFor(settledBets);
+  const bounds = unresolvedBounds(capped, settlementByCandidateIdentity, m.pnl_u);
+  const selectedN = partial.SELECTED_N || 1;
   return {
     MODEL: modelId,
     CAP: cap,
-    N: m.events,
-    PNL_U: m.pnl_u,
-    ROI_PCT: m.roi_pct,
-    MAX_DD_U: m.max_drawdown_u,
-    FILL_RATE: fillRateAtCap(uncapped, dates, cap),
+    SELECTED_N: partial.SELECTED_N,
+    SETTLED_N: partial.SETTLED_N,
+    OPEN_N: partial.OPEN_N,
+    OTHER_NONTERMINAL_N: partial.OTHER_NONTERMINAL_N,
+    SETTLEMENT_COVERAGE_PCT: partial.SETTLEMENT_COVERAGE_PCT,
+    PNL_U_PARTIAL: m.pnl_u,
+    SETTLED_ROI_PCT_PARTIAL: m.roi_pct,
+    MAX_DD_U_PARTIAL: m.max_drawdown_u,
+    FILL_RATE: cap === "UNCAPPED" ? 1 : fillRateAtCap(uncapped, dates, cap),
     ...sportSplit(capped),
+    FINAL_PNL_WORST: bounds.worst,
+    FINAL_PNL_BEST: bounds.best,
+    FINAL_ROI_WORST_PCT: round((bounds.worst / selectedN) * 100, 4),
+    FINAL_ROI_BEST_PCT: round((bounds.best / selectedN) * 100, 4),
+    STATUS: partial.OPEN_N > 0 ? "PARTIAL" : "FINAL_REPRODUCIBLE",
   };
 }
 
-function uncappedRow(modelId: string, bets: TieredBet[]): CapRow {
-  const m = metricsFor(bets);
-  return {
-    MODEL: modelId,
-    CAP: "UNCAPPED",
-    N: m.events,
-    PNL_U: m.pnl_u,
-    ROI_PCT: m.roi_pct,
-    MAX_DD_U: m.max_drawdown_u,
-    FILL_RATE: 1,
-    ...sportSplit(bets),
-  };
+function uncappedRow(modelId: string, bets: SelectedCandidate[], dates: string[], settlementByCandidateIdentity: Map<string, CorpusLabel>): CapRow {
+  return rowFor(modelId, "UNCAPPED", bets, bets, dates, settlementByCandidateIdentity);
 }
 
 async function main() {
   const rawRows = await fetchRows();
-  const input = toAtlasInput(rawRows);
   const dates = enumerateMinskDates(START, END);
 
-  const rawBySelectedTokenId = new Map(rawRows.map((r) => [`${r.conditionId}|${r.decisionAt}`, r.selectedTokenId]));
-  const selectedTokenIdOf = (e: AtlasInputEvent) => rawBySelectedTokenId.get(`${e.ref}|${e.decisionTimestamp}`);
+  // ── RAW_LEGACY_BASELINE — unchanged, pre-#379 settlement-first path, kept ONLY for comparison ──
+  const legacyInput = toAtlasInput(rawRows);
+  const p5052Raw = runStandalone(legacyInput, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.52);
+  const p5052RawMetrics = metricsFor(p5052Raw);
 
-  const tennisConditionIds = input.filter((e) => e.sportFamily === TENNIS_FAMILY).map((e) => e.ref).filter((v): v is string => !!v);
+  // ── SELECTION_BEFORE_SETTLEMENT_V1 fixed path for every CURRENT _SAFE model ──
+  const { candidates: decisionTimeCandidates, settlementByCandidateIdentity } = toDecisionTimeSelectionInput(rawRows);
+
+  const tennisConditionIds = decisionTimeCandidates.filter((e) => e.sportFamily === TENNIS_FAMILY).map((e) => e.ref).filter((v): v is string => !!v);
   const db = await resolveDb();
   const identityLookup = await fetchTennisIdentityLookup(db, tennisConditionIds);
 
-  const { safeUniverse, rawTennisN, approvedTennisN, excludedTennisInput } = buildSafeUniverse(input, selectedTokenIdOf, identityLookup);
-  const excludedTennisBets = runStandalone(excludedTennisInput, () => true);
-  const excludedTennisPnlU = metricsFor(excludedTennisBets).pnl_u;
-
-  // RAW_LEGACY_BASELINE — unchanged, computed over the FULL unfiltered universe.
-  const p5052Raw = runStandalone(input, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.52);
+  const { safeUniverse, rawTennisN, approvedTennisN, excludedTennisInput } = buildSafeUniverse(decisionTimeCandidates, identityLookup);
+  const excludedTennisSelected = runStandaloneStrict(excludedTennisInput, () => true);
+  const excludedTennisSettled = settledBetsOnly(excludedTennisSelected, settlementByCandidateIdentity).settledBets;
+  const excludedTennisPnlU = metricsFor(excludedTennisSettled).pnl_u;
 
   const broadTiers = PORTFOLIOS.find((p) => p.id === "PORTFOLIO_BROAD")!.tiers;
 
-  const modelBets: Record<string, TieredBet[]> = {
-    P50_52_SAFE: runStandalone(safeUniverse, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.52),
-    P50_54_SAFE: runStandalone(safeUniverse, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.54),
-    PORTFOLIO_BROAD_SAFE: runPortfolio(safeUniverse, broadTiers),
-    QUALITY_FILL_A_SAFE: runPortfolio(safeUniverse, QUALITY_PORTFOLIOS.QUALITY_FILL_A as Array<(e: any) => boolean>),
-    QUALITY_FILL_D_SAFE: runPortfolio(safeUniverse, QUALITY_PORTFOLIOS.QUALITY_FILL_D as Array<(e: any) => boolean>),
-    C0_SAFE: runStandalone(safeUniverse, (e) => FROZEN_MODELS.C0.predicate(e)),
-    C4_SAFE: runStandalone(safeUniverse, (e) => FROZEN_MODELS.C4.predicate(e)),
-    C5_SAFE: runStandalone(safeUniverse, (e) => FROZEN_MODELS.C5.predicate(e)),
-    C0_ONLY_NOT_C1_SAFE: runStandalone(safeUniverse, (e) => FROZEN_MODELS.C0.predicate(e) && e.sportFamily !== SOCCER_FAMILY),
-    SCORE63_64_SAFE: runStandalone(safeUniverse, (e) => FROZEN_MODELS.C0.predicate(e) && typeof e.scoreLevel === "number" && e.scoreLevel >= 63 && e.scoreLevel < 65),
-    TENNIS_P50_52_SAFE: runStandalone(safeUniverse, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.52 && e.sportFamily === TENNIS_FAMILY),
+  const modelBets: Record<string, SelectedCandidate[]> = {
+    P50_52_SAFE: runStandaloneStrict(safeUniverse, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.52),
+    P50_54_SAFE: runStandaloneStrict(safeUniverse, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.54),
+    PORTFOLIO_BROAD_SAFE: runPortfolioStrict(safeUniverse, broadTiers as Parameters<typeof runPortfolioStrict>[1]),
+    QUALITY_FILL_A_SAFE: runPortfolioStrict(safeUniverse, QUALITY_PORTFOLIOS.QUALITY_FILL_A as Parameters<typeof runPortfolioStrict>[1]),
+    QUALITY_FILL_D_SAFE: runPortfolioStrict(safeUniverse, QUALITY_PORTFOLIOS.QUALITY_FILL_D as Parameters<typeof runPortfolioStrict>[1]),
+    C0_SAFE: runStandaloneStrict(safeUniverse, (e) => FROZEN_MODELS.C0.predicate(e)),
+    C4_SAFE: runStandaloneStrict(safeUniverse, (e) => FROZEN_MODELS.C4.predicate(e)),
+    C5_SAFE: runStandaloneStrict(safeUniverse, (e) => FROZEN_MODELS.C5.predicate(e)),
+    C0_ONLY_NOT_C1_SAFE: runStandaloneStrict(safeUniverse, (e) => FROZEN_MODELS.C0.predicate(e) && e.sportFamily !== SOCCER_FAMILY),
+    SCORE63_64_SAFE: runStandaloneStrict(safeUniverse, (e) => FROZEN_MODELS.C0.predicate(e) && typeof e.scoreLevel === "number" && e.scoreLevel >= 63 && e.scoreLevel < 65),
+    TENNIS_P50_52_SAFE: runStandaloneStrict(safeUniverse, (e) => e.entryPrice >= 0.5 && e.entryPrice < 0.52 && e.sportFamily === TENNIS_FAMILY),
   };
 
-  const table: CapRow[] = [uncappedRow("P50_52 (RAW_LEGACY_BASELINE)", p5052Raw)];
+  const table: CapRow[] = [
+    {
+      MODEL: "P50_52 (RAW_LEGACY_BASELINE / LEGACY_SETTLEMENT_FIRST / NOT_CURRENT_AUTHORITY)",
+      CAP: "UNCAPPED",
+      SELECTED_N: p5052RawMetrics.events,
+      SETTLED_N: p5052RawMetrics.events,
+      OPEN_N: 0,
+      OTHER_NONTERMINAL_N: 0,
+      SETTLEMENT_COVERAGE_PCT: 100,
+      PNL_U_PARTIAL: p5052RawMetrics.pnl_u,
+      SETTLED_ROI_PCT_PARTIAL: p5052RawMetrics.roi_pct,
+      MAX_DD_U_PARTIAL: p5052RawMetrics.max_drawdown_u,
+      FILL_RATE: 1,
+      ...sportSplit(p5052Raw as unknown as SelectedCandidate[]),
+      FINAL_PNL_WORST: p5052RawMetrics.pnl_u,
+      FINAL_PNL_BEST: p5052RawMetrics.pnl_u,
+      FINAL_ROI_WORST_PCT: p5052RawMetrics.roi_pct,
+      FINAL_ROI_BEST_PCT: p5052RawMetrics.roi_pct,
+      STATUS: "FINAL_REPRODUCIBLE",
+    },
+  ];
   for (const [modelId, bets] of Object.entries(modelBets)) {
-    table.push(uncappedRow(modelId, bets));
+    table.push(uncappedRow(modelId, bets, dates, settlementByCandidateIdentity));
     for (const cap of DISPLAY_CAPS) {
-      const override = modelId === "QUALITY_FILL_A_SAFE" && cap === 30 ? applyQualityFillACap30(bets, dates) : undefined;
-      table.push(rowFor(modelId, cap, bets, dates, override));
+      const capped = modelId === "QUALITY_FILL_A_SAFE" ? applyLiveMixAllocation(bets, dates, QUALITY_FILL_A_SAFE_MIX_CONFIGS[cap]) : applyDailyCap(bets, cap);
+      table.push(rowFor(modelId, cap, capped, bets, dates, settlementByCandidateIdentity));
     }
   }
 
   const artifact = {
     MISSION: "TENNIS_SAFE_COMPARABLE_LEADERBOARD_V1",
+    NOTE: "Every _SAFE model uses the selection-before-settlement fixed path (PR #379). PNL_U_PARTIAL/SETTLED_ROI_PCT_PARTIAL/MAX_DD_U_PARTIAL are never a complete headline result while OPEN_N > 0 (STATUS=PARTIAL); FINAL_PNL_WORST/BEST bound the unresolved OPEN candidates deterministically (LOSS / WIN-at-own-entry-price) and use SELECTED_N as the ROI denominator.",
     DATASET_RANGE: { start: START, end: END },
     SOURCE_ROW_N: rawRows.length,
-    PROCESSED_N: input.length,
+    PROCESSED_N: decisionTimeCandidates.length,
     TENNIS_SAFE_UNIVERSE: {
       RAW_TENNIS_N: rawTennisN,
       APPROVED_TENNIS_N: approvedTennisN,
       EXCLUDED_TENNIS_N: rawTennisN - approvedTennisN,
-      EXCLUDED_TENNIS_PNL_U: round(excludedTennisPnlU, 4),
+      EXCLUDED_TENNIS_PNL_U_PARTIAL: round(excludedTennisPnlU, 4),
     },
     TABLE: table,
   };

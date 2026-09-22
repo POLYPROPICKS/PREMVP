@@ -1,8 +1,9 @@
 // TENNIS_SAFE_COMPARABLE_LEADERBOARD_V1 — focused coverage for the pure,
 // DB-independent parts: the shared safe-tennis universe filter (reusing
 // resolveTennisMoneyEligibility verbatim, never a re-derived rule),
-// decision-time-safe identity lookup, and the QUALITY_FILL_A cap30
-// already-approved live allocation rule.
+// decision-time-safe identity lookup, the QUALITY_FILL_A_SAFE exact live-mix
+// allocation (selectLiveReservationMix, reused verbatim), and the
+// settlement-blind selection / post-selection settlement-join contract.
 //   node --import tsx --test tests/modeling/tennisSafeComparableLeaderboard.test.ts
 
 import { test } from "node:test";
@@ -14,31 +15,41 @@ import {
   resolveSafeTennisDecision,
   sportSplit,
   fillRateAtCap,
-  applyQualityFillACap30,
+  applyLiveMixAllocation,
+  QUALITY_FILL_A_SAFE_MIX_CONFIGS,
   round,
   type IdentityCandidate,
 } from "../../scripts/modeling/tennis-safe-comparable-leaderboard";
-import type { AtlasInputEvent } from "../../scripts/modeling/factor-atlas";
-import type { TieredBet } from "../../scripts/modeling/daily-portfolio-frontier";
+import type { DecisionTimeCandidate } from "../../scripts/modeling/factor-atlas";
+import type { SelectedCandidate } from "../../scripts/modeling/daily-portfolio-frontier";
+import type { CorpusLabel } from "../../lib/modeling/research-corpus/rollingCorpus";
+import { selectLiveReservationMix } from "../../lib/executor/liveReservationAllocationPolicy";
 
-function baseEvent(overrides: Partial<AtlasInputEvent>): AtlasInputEvent {
+function baseEvent(overrides: Partial<DecisionTimeCandidate>): DecisionTimeCandidate {
   return {
     physicalEventKey: "evt-1",
     decisionTimestamp: "2026-09-01T10:00:00.000Z",
     eventStart: "2026-09-01T12:00:00.000Z",
     entryPrice: 0.51,
     sportFamily: "tennis",
-    outcome: "WIN",
     ref: "0xcond1",
+    candidateRef: "tok1",
     scoreLevel: null,
     score: { observationCount: 0, delta: null } as any,
     selectedPrice: { observationCount: 0, delta: null } as any,
     volumeUsd: null,
     rowLeadTimeHours: null,
     marketTypeRaw: null,
+    candidateIdentity: "0xcond1::tok1::2026-09-01T10:00:00.000Z",
     ...overrides,
   };
 }
+
+test("FOCUSED: DecisionTimeCandidate (what every model predicate and the safe-tennis gate receive) has no settlement field at all", () => {
+  const e = baseEvent({});
+  assert.equal("labelAsOf" in e, false);
+  assert.equal("outcome" in e, false);
+});
 
 test("resolveSafeTennisDecision reuses resolveTennisMoneyEligibility verbatim: eligible completed-match tennis with clean identity passes", () => {
   const identity: IdentityCandidate = {
@@ -107,37 +118,27 @@ test("buildIdentityLookup is decision-time-safe: never returns a GSP candidate c
 
 test("buildSafeUniverse: non-tennis rows pass through unchanged", () => {
   const soccerRow = baseEvent({ sportFamily: "soccer", physicalEventKey: "evt-soccer" });
-  const { safeUniverse, rawTennisN, approvedTennisN } = buildSafeUniverse([soccerRow], () => undefined, () => null);
+  const { safeUniverse, rawTennisN, approvedTennisN } = buildSafeUniverse([soccerRow], () => null);
   assert.deepEqual(safeUniverse, [soccerRow]);
   assert.equal(rawTennisN, 0);
   assert.equal(approvedTennisN, 0);
 });
 
-test("buildSafeUniverse: an approved tennis row is retained, an excluded one is dropped and counted", () => {
-  const approvedRow = baseEvent({ physicalEventKey: "evt-approved", ref: "0xapproved" });
-  const excludedRow = baseEvent({ physicalEventKey: "evt-excluded", ref: "0xexcluded" });
+test("buildSafeUniverse: an approved tennis row is retained, an excluded one is dropped and counted (gate runs BEFORE model selection, decision-time only)", () => {
+  const approvedRow = baseEvent({ physicalEventKey: "evt-approved", ref: "0xapproved", candidateRef: "tok1" });
+  const excludedRow = baseEvent({ physicalEventKey: "evt-excluded", ref: "0xexcluded", candidateRef: "tok1" });
   const identityLookup = (conditionId: string): IdentityCandidate | null =>
     conditionId === "0xapproved"
       ? { createdAt: "2026-09-01T09:59:00.000Z", structuredMarketType: "tennis_completed_match", marketText: "ATP Rome: Completed Match: A vs B", eventIdentityText: "ATP Rome: A vs B" }
       : { createdAt: "2026-09-01T09:59:00.000Z", structuredMarketType: "tennis_completed_match", marketText: "M15 Reus: Completed Match: A vs B", eventIdentityText: "M15 Reus: A vs B" };
-  const result = buildSafeUniverse([approvedRow, excludedRow], () => "tok1", identityLookup);
+  const result = buildSafeUniverse([approvedRow, excludedRow], identityLookup);
   assert.equal(result.rawTennisN, 2);
   assert.equal(result.approvedTennisN, 1);
   assert.deepEqual(result.safeUniverse.map((e) => e.physicalEventKey), ["evt-approved"]);
   assert.deepEqual(result.excludedTennisInput.map((e) => e.physicalEventKey), ["evt-excluded"]);
 });
 
-test("buildSafeUniverse: a tennis row with no resolvable selected_token_id is excluded (safe default), never silently approved", () => {
-  const row = baseEvent({ physicalEventKey: "evt-no-token" });
-  const result = buildSafeUniverse([row], () => undefined, () => {
-    throw new Error("identityLookup must not be called without a selectedTokenId");
-  });
-  assert.equal(result.approvedTennisN, 0);
-  assert.equal(result.rawTennisN, 1);
-  assert.deepEqual(result.excludedTennisInput.map((e) => e.physicalEventKey), ["evt-no-token"]);
-});
-
-function tieredBet(overrides: Partial<TieredBet>): TieredBet {
+function selectedCandidate(overrides: Partial<SelectedCandidate>): SelectedCandidate {
   return {
     physicalEventKey: "k",
     decisionTimestamp: "2026-09-01T10:00:00.000Z",
@@ -145,20 +146,25 @@ function tieredBet(overrides: Partial<TieredBet>): TieredBet {
     leadTimeHours: 2,
     entryPrice: 0.51,
     sportFamily: "soccer",
-    outcome: "WIN",
-    pnlU: 1,
     tier: 1,
     day: "2026-09-01",
+    candidateIdentity: "k::identity",
     ...overrides,
   };
 }
 
+test("SelectedCandidate (output of selection+cap) also has no settlement field", () => {
+  const c = selectedCandidate({});
+  assert.equal("labelAsOf" in c, false);
+  assert.equal("outcome" in c, false);
+});
+
 test("sportSplit buckets into football/tennis/other with correct pct", () => {
   const bets = [
-    tieredBet({ sportFamily: "soccer", physicalEventKey: "a" }),
-    tieredBet({ sportFamily: "tennis", physicalEventKey: "b" }),
-    tieredBet({ sportFamily: "baseball", physicalEventKey: "c" }),
-    tieredBet({ sportFamily: "baseball", physicalEventKey: "d" }),
+    selectedCandidate({ sportFamily: "soccer", physicalEventKey: "a" }),
+    selectedCandidate({ sportFamily: "tennis", physicalEventKey: "b" }),
+    selectedCandidate({ sportFamily: "baseball", physicalEventKey: "c" }),
+    selectedCandidate({ sportFamily: "baseball", physicalEventKey: "d" }),
   ];
   const split = sportSplit(bets);
   assert.equal(split.FOOTBALL_N, 1);
@@ -172,45 +178,96 @@ test("sportSplit buckets into football/tennis/other with correct pct", () => {
 test("fillRateAtCap: fraction of days meeting the cap threshold, measured on UNCAPPED daily supply", () => {
   const dates = ["2026-09-01", "2026-09-02", "2026-09-03"];
   const bets = [
-    ...Array.from({ length: 30 }, (_, i) => tieredBet({ physicalEventKey: `d1-${i}`, day: "2026-09-01" })),
-    ...Array.from({ length: 10 }, (_, i) => tieredBet({ physicalEventKey: `d2-${i}`, day: "2026-09-02" })),
+    ...Array.from({ length: 30 }, (_, i) => selectedCandidate({ physicalEventKey: `d1-${i}`, day: "2026-09-01" })),
+    ...Array.from({ length: 10 }, (_, i) => selectedCandidate({ physicalEventKey: `d2-${i}`, day: "2026-09-02" })),
   ];
   assert.equal(fillRateAtCap(bets, dates, 30), round(1 / 3, 4));
   assert.equal(fillRateAtCap(bets, dates, 5), round(2 / 3, 4));
 });
 
-test("QUALITY_FILL_A cap30: football >=20 supply keeps exactly 20 football + max 7 tennis, other fills the rest", () => {
+// ── QUALITY_FILL_A_SAFE live-mix allocation (selectLiveReservationMix, reused verbatim) ──
+
+test("cap30/40/50 configs never exceed their cap (sufficient-football branch)", () => {
   const day = "2026-09-01";
-  const football = Array.from({ length: 25 }, (_, i) => tieredBet({ physicalEventKey: `fb-${i}`, sportFamily: "soccer", day, tier: 1 }));
-  const tennis = Array.from({ length: 10 }, (_, i) => tieredBet({ physicalEventKey: `tn-${i}`, sportFamily: "tennis", day, tier: 1 }));
-  const other = Array.from({ length: 5 }, (_, i) => tieredBet({ physicalEventKey: `ot-${i}`, sportFamily: "baseball", day, tier: 1 }));
-  const kept = applyQualityFillACap30([...football, ...tennis, ...other], [day]);
-  const split = sportSplit(kept);
-  assert.equal(split.FOOTBALL_N, 20);
-  assert.equal(split.TENNIS_N, 7);
-  assert.equal(split.OTHER_N, 3); // 30 - 20 - 7
-  assert.equal(kept.length, 30);
+  for (const cap of [30, 40, 50] as const) {
+    const config = QUALITY_FILL_A_SAFE_MIX_CONFIGS[cap];
+    const football = Array.from({ length: config.footballFirstSlots + 10 }, (_, i) => selectedCandidate({ physicalEventKey: `fb-${i}`, sportFamily: "soccer", day }));
+    const tennis = Array.from({ length: 30 }, (_, i) => selectedCandidate({ physicalEventKey: `tn-${i}`, sportFamily: "tennis", day }));
+    const other = Array.from({ length: 30 }, (_, i) => selectedCandidate({ physicalEventKey: `ot-${i}`, sportFamily: "baseball", day }));
+    const kept = applyLiveMixAllocation([...football, ...tennis, ...other], [day], config);
+    assert.ok(kept.length <= cap, `cap${cap}: kept.length=${kept.length} must be <= ${cap}`);
+  }
 });
 
-test("QUALITY_FILL_A cap30: football <20 supply keeps ALL football + unrestricted approved tennis, other fills what remains", () => {
+test("cap30/40/50: sufficient-football branch enforces exactly footballFirstSlots + tennisMaxWhenFootballSufficient", () => {
   const day = "2026-09-01";
-  const football = Array.from({ length: 12 }, (_, i) => tieredBet({ physicalEventKey: `fb-${i}`, sportFamily: "soccer", day, tier: 1 }));
-  const tennis = Array.from({ length: 15 }, (_, i) => tieredBet({ physicalEventKey: `tn-${i}`, sportFamily: "tennis", day, tier: 1 }));
-  const other = Array.from({ length: 10 }, (_, i) => tieredBet({ physicalEventKey: `ot-${i}`, sportFamily: "baseball", day, tier: 1 }));
-  const kept = applyQualityFillACap30([...football, ...tennis, ...other], [day]);
-  const split = sportSplit(kept);
-  assert.equal(split.FOOTBALL_N, 12, "all football kept, not capped at 20");
-  assert.equal(split.TENNIS_N, 15, "tennis is unrestricted when football supply < 20");
-  assert.equal(split.OTHER_N, 3); // 30 - 12 - 15
+  const expectations: Array<[30 | 40 | 50, number, number]> = [
+    [30, 20, 7],
+    [40, 26, 10],
+    [50, 33, 12],
+  ];
+  for (const [cap, footballFirstSlots, tennisMax] of expectations) {
+    const config = QUALITY_FILL_A_SAFE_MIX_CONFIGS[cap];
+    assert.equal(config.footballFirstSlots, footballFirstSlots);
+    assert.equal(config.tennisMaxWhenFootballSufficient, tennisMax);
+    const football = Array.from({ length: footballFirstSlots + 15 }, (_, i) => selectedCandidate({ physicalEventKey: `fb-${i}`, sportFamily: "soccer", day }));
+    const tennis = Array.from({ length: 20 }, (_, i) => selectedCandidate({ physicalEventKey: `tn-${i}`, sportFamily: "tennis", day }));
+    const other = Array.from({ length: 20 }, (_, i) => selectedCandidate({ physicalEventKey: `ot-${i}`, sportFamily: "baseball", day }));
+    const kept = applyLiveMixAllocation([...football, ...tennis, ...other], [day], config);
+    const split = sportSplit(kept);
+    assert.equal(split.FOOTBALL_N, footballFirstSlots, `cap${cap} football`);
+    assert.equal(split.TENNIS_N, tennisMax, `cap${cap} tennis`);
+    assert.equal(split.OTHER_N, cap - footballFirstSlots - tennisMax, `cap${cap} other`);
+    assert.equal(kept.length, cap);
+  }
 });
 
-test("QUALITY_FILL_A cap30: unrestricted tennis can push a thin-football day past 30 total (rule is literal, not re-capped)", () => {
+test("cap30/40/50: shortage branch (football < footballFirstSlots) allows ALL football + tennis to fill remaining capacity without the percentage cap, other fills the rest, total never exceeds cap", () => {
   const day = "2026-09-01";
-  const football = Array.from({ length: 5 }, (_, i) => tieredBet({ physicalEventKey: `fb-${i}`, sportFamily: "soccer", day, tier: 1 }));
-  const tennis = Array.from({ length: 40 }, (_, i) => tieredBet({ physicalEventKey: `tn-${i}`, sportFamily: "tennis", day, tier: 1 }));
-  const kept = applyQualityFillACap30([...football, ...tennis], [day]);
-  const split = sportSplit(kept);
-  assert.equal(split.FOOTBALL_N, 5);
-  assert.equal(split.TENNIS_N, 40);
-  assert.equal(kept.length, 45);
+  for (const cap of [30, 40, 50] as const) {
+    const config = QUALITY_FILL_A_SAFE_MIX_CONFIGS[cap];
+    const footballN = Math.floor(config.footballFirstSlots / 2);
+    const football = Array.from({ length: footballN }, (_, i) => selectedCandidate({ physicalEventKey: `fb-${i}`, sportFamily: "soccer", day }));
+    const tennis = Array.from({ length: 50 }, (_, i) => selectedCandidate({ physicalEventKey: `tn-${i}`, sportFamily: "tennis", day }));
+    const other = Array.from({ length: 50 }, (_, i) => selectedCandidate({ physicalEventKey: `ot-${i}`, sportFamily: "baseball", day }));
+    const kept = applyLiveMixAllocation([...football, ...tennis, ...other], [day], config);
+    const split = sportSplit(kept);
+    assert.equal(split.FOOTBALL_N, footballN, `cap${cap}: all football kept, not capped at footballFirstSlots`);
+    assert.equal(kept.length, cap, `cap${cap}: total must hit the cap exactly (tennis+other backfill), never exceed it`);
+    assert.ok(split.TENNIS_N > config.tennisMaxWhenFootballSufficient, `cap${cap}: tennis must NOT be restricted to ${config.tennisMaxWhenFootballSufficient} in the shortage branch`);
+  }
+});
+
+test("selectLiveReservationMix (the exact reused rule) never returns more than cap even with abundant supply in every bucket", () => {
+  const football = Array.from({ length: 100 }, (_, i) => ({ id: `fb-${i}` }));
+  const tennis = Array.from({ length: 100 }, (_, i) => ({ id: `tn-${i}` }));
+  const other = Array.from({ length: 100 }, (_, i) => ({ id: `ot-${i}` }));
+  for (const config of Object.values(QUALITY_FILL_A_SAFE_MIX_CONFIGS)) {
+    const { finalN } = selectLiveReservationMix(football, tennis, other, config);
+    assert.ok(finalN <= config.cap);
+  }
+});
+
+// ── settlement reconciliation (post-selection join only) ───────────────────
+
+test("settlement reconciliation: SELECTED_N = SETTLED_N + OPEN_N + OTHER_NONTERMINAL_N on a mixed capped set", async () => {
+  const { partialMetricsFor } = await import("../../scripts/modeling/daily-portfolio-frontier");
+  const capped: SelectedCandidate[] = [
+    selectedCandidate({ physicalEventKey: "e1", candidateIdentity: "e1::id" }),
+    selectedCandidate({ physicalEventKey: "e2", candidateIdentity: "e2::id" }),
+    selectedCandidate({ physicalEventKey: "e3", candidateIdentity: "e3::id" }),
+    selectedCandidate({ physicalEventKey: "e4", candidateIdentity: "e4::id" }),
+  ];
+  const settlementByCandidateIdentity = new Map<string, CorpusLabel>([
+    ["e1::id", "WIN"],
+    ["e2::id", "LOSS"],
+    ["e3::id", "OPEN"],
+    ["e4::id", "VOID"],
+  ]);
+  const m = partialMetricsFor(capped, settlementByCandidateIdentity);
+  assert.equal(m.SELECTED_N, 4);
+  assert.equal(m.SETTLED_N, 2);
+  assert.equal(m.OPEN_N, 1);
+  assert.equal(m.OTHER_NONTERMINAL_N, 1);
+  assert.equal(m.SETTLED_N + m.OPEN_N + m.OTHER_NONTERMINAL_N, m.SELECTED_N);
 });
